@@ -1,0 +1,67 @@
+# AI Video Canvas — TODO
+
+## Phase 1: 项目结构 & 数据库 & 样式
+- [x] 数据库 Schema：users, projects, canvas_nodes, canvas_edges, assets, video_tasks, chat_messages
+- [x] 全局样式：深色优雅主题，自定义 CSS 变量，Google Font（Inter + Playfair Display + JetBrains Mono）
+- [x] 顶部导航栏：Logo、项目切换、用户头像、导出按钮
+
+## Phase 2: 无限画布核心
+- [x] 无限画布容器（ReactFlow）
+- [x] 鼠标/触控拖拽平移
+- [x] 滚轮缩放（支持 pinch）
+- [x] 多选框选节点（rubber-band selection）
+- [x] 右键画布空白处：快速添加节点菜单
+- [x] 右键节点：操作菜单（复制、删除）
+- [x] 画布 viewport 持久化（保存到数据库）
+
+## Phase 3: 节点系统 & 连线
+- [x] 节点基础组件（可拖拽、可选中、可调整大小）
+- [x] 脚本节点（Script Node）：文本编辑
+- [x] 分镜节点（Storyboard Node）：图片预览 + 提示词
+- [x] 提示词节点（Prompt Node）：正/反向提示词编辑
+- [x] 素材节点（Asset Node）：图片/视频预览
+- [x] 视频任务节点（Video Task Node）：任务状态展示
+- [x] AI 对话节点（AI Chat Node）：内嵌对话面板
+- [x] 便签节点（Note Node）
+- [x] 节点连线（拖拽端口连线，贝塞尔曲线）
+- [x] 连线删除（Delete 键）
+
+## Phase 4: AI 功能
+- [x] AI 对话节点：调用 LLM API
+- [x] 上下文感知：对选中节点内容发起 AI 问答
+- [x] 分镜节点内嵌图像生成（调用 imageGeneration helper）
+- [x] 提示词节点一键生成图像预览
+
+## Phase 5: 项目管理 & 素材
+- [x] 画布项目 CRUD（新建、重命名、删除、切换）
+- [x] 画布数据自动保存到数据库（debounce 2s）
+- [x] JSON 导出当前画布
+- [x] 素材上传（图片/视频，上传到 S3，base64 传输）
+- [x] 素材管理面板（侧边栏）
+
+## Phase 6: 视频任务节点
+- [x] 视频任务节点 UI：提示词、参考图、参数配置
+- [x] 对接 Runway API（提交任务、轮询状态）
+- [x] 对接 Kling API（提交任务、轮询状态）
+- [x] Mock provider 用于测试（15s 后自动完成）
+- [x] 任务状态轮询（服务端 setInterval 10s）
+- [x] 视频结果在节点内播放
+
+## Phase 7: 多人实时协作
+- [x] WebSocket 服务端（Socket.io）
+- [x] 节点位置/内容变更实时广播
+- [x] 协作者光标实时显示（带用户名/颜色）
+- [x] 在线用户列表展示
+
+## Phase 8: UI 精修 & 测试
+- [x] BaseNode group-hover 修复（header actions 可见性）
+- [x] 动画与过渡效果（fadeIn, scaleIn, slideUp）
+- [x] ReactFlow 样式覆盖（controls, minimap, handles）
+- [x] Vitest 单元测试：24 个测试全部通过
+- [x] 项目重命名 UI（画布顶部栏双击/铅笔图标）
+- [x] Edges 持久化纳入自动保存
+- [x] Viewport 变化标记 dirty 并保存
+- [x] BaseNode group-hover 修复（group 类移至根容器）
+- [x] TypeScript 类型错误全部修复（0 errors）
+- [x] 24 个 Vitest 测试全部通过
+- [x] 最终 Checkpoint 与交付
