@@ -25,9 +25,11 @@ const STATUS = {
 } as const;
 
 const PROVIDERS = [
-  { value: "runway", label: "Runway Gen-3" },
-  { value: "kling",  label: "Kling 可灵" },
-  { value: "mock",   label: "Mock 测试" },
+  { value: "poyo_seedance", label: "Seedance 2 (Poyo)" },
+  { value: "poyo_veo",      label: "Veo 3.1 (Poyo)" },
+  { value: "runway",        label: "Runway Gen-3" },
+  { value: "kling",         label: "Kling 可灵" },
+  { value: "mock",          label: "Mock 测试" },
 ];
 
 const BORDER_DEFAULT = "oklch(0.20 0.008 260)";

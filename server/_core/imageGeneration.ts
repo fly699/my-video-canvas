@@ -1,25 +1,11 @@
-/**
- * Image generation helper using internal ImageService
- *
- * Example usage:
- *   const { url: imageUrl } = await generateImage({
- *     prompt: "A serene landscape with mountains"
- *   });
- *
- * For editing:
- *   const { url: imageUrl } = await generateImage({
- *     prompt: "Add a rainbow to this landscape",
- *     originalImages: [{
- *       url: "https://example.com/original.jpg",
- *       mimeType: "image/jpeg"
- *     }]
- *   });
- */
 import { storagePut } from "server/storage";
 import { ENV } from "./env";
 
 export type GenerateImageOptions = {
   prompt: string;
+  model?: string;
+  size?: string;
+  quality?: "low" | "medium" | "high";
   originalImages?: Array<{
     url?: string;
     b64Json?: string;
@@ -31,24 +17,93 @@ export type GenerateImageResponse = {
   url?: string;
 };
 
-export async function generateImage(
-  options: GenerateImageOptions
-): Promise<GenerateImageResponse> {
-  if (!ENV.forgeApiUrl) {
-    throw new Error("BUILT_IN_FORGE_API_URL is not configured");
-  }
-  if (!ENV.forgeApiKey) {
-    throw new Error("BUILT_IN_FORGE_API_KEY is not configured");
+const POYO_BASE = "https://api.poyo.ai";
+const POLL_INTERVAL_MS = 3000;
+const POLL_MAX_ATTEMPTS = 40; // 2 min max
+
+async function generateImagePoyo(options: GenerateImageOptions): Promise<GenerateImageResponse> {
+  const model = options.model ?? "gpt-image-2";
+  const input: Record<string, unknown> = {
+    prompt: options.prompt,
+    size: options.size ?? "16:9",
+    quality: options.quality ?? "medium",
+  };
+  if (options.originalImages?.[0]?.url) {
+    input.reference_image_url = options.originalImages[0].url;
   }
 
-  // Build the full URL by appending the service path to the base URL
-  const baseUrl = ENV.forgeApiUrl.endsWith("/")
-    ? ENV.forgeApiUrl
-    : `${ENV.forgeApiUrl}/`;
-  const fullUrl = new URL(
-    "images.v1.ImageService/GenerateImage",
-    baseUrl
-  ).toString();
+  // Submit task
+  const submitRes = await fetch(`${POYO_BASE}/api/generate/submit`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${ENV.poyoApiKey}`,
+    },
+    body: JSON.stringify({ model, input }),
+  });
+
+  if (!submitRes.ok) {
+    const text = await submitRes.text().catch(() => "");
+    throw new Error(`Poyo image submit failed (${submitRes.status}): ${text}`);
+  }
+
+  const submitData = (await submitRes.json()) as { code: number; data: { task_id: string } };
+  const taskId = submitData.data?.task_id;
+  if (!taskId) throw new Error("Poyo image submit: no task_id returned");
+
+  // Poll until finished
+  for (let i = 0; i < POLL_MAX_ATTEMPTS; i++) {
+    await new Promise((r) => setTimeout(r, POLL_INTERVAL_MS));
+
+    const statusRes = await fetch(`${POYO_BASE}/api/generate/status/${taskId}`, {
+      headers: { Authorization: `Bearer ${ENV.poyoApiKey}` },
+    });
+
+    if (!statusRes.ok) continue;
+
+    const statusData = (await statusRes.json()) as {
+      code: number;
+      data: {
+        status: string;
+        files?: Array<{ file_url: string; file_type: string }>;
+        error_message?: string;
+      };
+    };
+    const d = statusData.data;
+
+    if (d.status === "finished") {
+      const fileUrl = d.files?.[0]?.file_url;
+      if (!fileUrl) throw new Error("Poyo image: finished but no file URL");
+
+      // Download and re-upload to own storage for persistence
+      try {
+        const imgRes = await fetch(fileUrl);
+        if (imgRes.ok) {
+          const buf = Buffer.from(await imgRes.arrayBuffer());
+          const mimeType = imgRes.headers.get("content-type") ?? "image/png";
+          const { url } = await storagePut(`generated/${Date.now()}.png`, buf, mimeType);
+          return { url };
+        }
+      } catch {
+        // If download fails, return poyo URL directly (expires in 24h per docs)
+      }
+      return { url: fileUrl };
+    }
+
+    if (d.status === "failed") {
+      throw new Error(`Poyo image generation failed: ${d.error_message ?? "unknown error"}`);
+    }
+  }
+
+  throw new Error("Poyo image generation timed out");
+}
+
+async function generateImageForge(options: GenerateImageOptions): Promise<GenerateImageResponse> {
+  if (!ENV.forgeApiUrl) throw new Error("BUILT_IN_FORGE_API_URL is not configured");
+  if (!ENV.forgeApiKey) throw new Error("BUILT_IN_FORGE_API_KEY is not configured");
+
+  const baseUrl = ENV.forgeApiUrl.endsWith("/") ? ENV.forgeApiUrl : `${ENV.forgeApiUrl}/`;
+  const fullUrl = new URL("images.v1.ImageService/GenerateImage", baseUrl).toString();
 
   const response = await fetch(fullUrl, {
     method: "POST",
@@ -60,33 +115,22 @@ export async function generateImage(
     },
     body: JSON.stringify({
       prompt: options.prompt,
-      original_images: options.originalImages || [],
+      original_images: options.originalImages ?? [],
     }),
   });
 
   if (!response.ok) {
     const detail = await response.text().catch(() => "");
-    throw new Error(
-      `Image generation request failed (${response.status} ${response.statusText})${detail ? `: ${detail}` : ""}`
-    );
+    throw new Error(`Image generation request failed (${response.status} ${response.statusText})${detail ? `: ${detail}` : ""}`);
   }
 
-  const result = (await response.json()) as {
-    image: {
-      b64Json: string;
-      mimeType: string;
-    };
-  };
-  const base64Data = result.image.b64Json;
-  const buffer = Buffer.from(base64Data, "base64");
+  const result = (await response.json()) as { image: { b64Json: string; mimeType: string } };
+  const buffer = Buffer.from(result.image.b64Json, "base64");
+  const { url } = await storagePut(`generated/${Date.now()}.png`, buffer, result.image.mimeType);
+  return { url };
+}
 
-  // Save to S3
-  const { url } = await storagePut(
-    `generated/${Date.now()}.png`,
-    buffer,
-    result.image.mimeType
-  );
-  return {
-    url,
-  };
+export async function generateImage(options: GenerateImageOptions): Promise<GenerateImageResponse> {
+  if (ENV.poyoApiKey) return generateImagePoyo(options);
+  return generateImageForge(options);
 }

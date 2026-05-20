@@ -10,7 +10,7 @@ export type NodeType =
   | "ai_chat"
   | "note";
 
-export type VideoProvider = "runway" | "kling" | "mock";
+export type VideoProvider = "runway" | "kling" | "mock" | "poyo_seedance" | "poyo_veo";
 export type VideoTaskStatus = "pending" | "processing" | "succeeded" | "failed";
 
 // ── Node Data Payloads ────────────────────────────────────────────────────────

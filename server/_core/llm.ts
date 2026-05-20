@@ -210,16 +210,19 @@ const normalizeToolChoice = (
   return toolChoice;
 };
 
-const resolveApiUrl = () =>
-  ENV.forgeApiUrl && ENV.forgeApiUrl.trim().length > 0
-    ? `${ENV.forgeApiUrl.replace(/\/$/, "")}/v1/chat/completions`
-    : "https://forge.manus.im/v1/chat/completions";
-
-const assertApiKey = () => {
-  if (!ENV.forgeApiKey) {
-    throw new Error("OPENAI_API_KEY is not configured");
-  }
+const resolveApiUrl = () => {
+  if (ENV.poyoApiKey) return "https://api.poyo.ai/v1/chat/completions";
+  if (ENV.forgeApiUrl?.trim()) return `${ENV.forgeApiUrl.replace(/\/$/, "")}/v1/chat/completions`;
+  return "https://forge.manus.im/v1/chat/completions";
 };
+
+const getApiKey = () => {
+  const key = ENV.poyoApiKey || ENV.forgeApiKey;
+  if (!key) throw new Error("No AI API key configured (POYO_API_KEY or BUILT_IN_FORGE_API_KEY)");
+  return key;
+};
+
+const assertApiKey = () => { getApiKey(); };
 
 const normalizeResponseFormat = ({
   responseFormat,
@@ -267,9 +270,10 @@ const normalizeResponseFormat = ({
 };
 
 export const AVAILABLE_MODELS = [
-  { id: "gemini-2.5-flash",       label: "Gemini 2.5 Flash",  tag: "默认" },
-  { id: "claude-haiku-4-5-20251001", label: "Claude Haiku 4.5", tag: "快速" },
-  { id: "claude-sonnet-4-6",      label: "Claude Sonnet 4.6", tag: "智能" },
+  { id: "gemini-2.5-flash",          label: "Gemini 2.5 Flash",  tag: "默认" },
+  { id: "claude-haiku-4-5-20251001", label: "Claude Haiku 4.5",  tag: "快速" },
+  { id: "claude-sonnet-4-6",         label: "Claude Sonnet 4.6", tag: "智能" },
+  { id: "gpt-5.2",                   label: "GPT-5.2",           tag: "Poyo" },
 ] as const;
 
 export const DEFAULT_MODEL = "gemini-2.5-flash";
@@ -306,9 +310,11 @@ export async function invokeLLM(params: InvokeParams): Promise<InvokeResult> {
     payload.tool_choice = normalizedToolChoice;
   }
 
-  payload.max_tokens = 32768
-  payload.thinking = {
-    "budget_tokens": 128
+  payload.max_tokens = params.maxTokens ?? params.max_tokens ?? 4096;
+
+  // Extended thinking is Manus Forge-specific; skip for poyo.ai
+  if (!ENV.poyoApiKey) {
+    payload.thinking = { budget_tokens: 128 };
   }
 
   const normalizedResponseFormat = normalizeResponseFormat({
@@ -326,7 +332,7 @@ export async function invokeLLM(params: InvokeParams): Promise<InvokeResult> {
     method: "POST",
     headers: {
       "content-type": "application/json",
-      authorization: `Bearer ${ENV.forgeApiKey}`,
+      authorization: `Bearer ${getApiKey()}`,
     },
     body: JSON.stringify(payload),
   });
