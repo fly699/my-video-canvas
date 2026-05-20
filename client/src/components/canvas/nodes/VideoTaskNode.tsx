@@ -61,22 +61,38 @@ export const VideoTaskNode = memo(function VideoTaskNode({ id, selected, data }:
   });
 
   const pollQuery = trpc.videoTasks.poll.useQuery({ id: payload.taskId! }, { enabled: false, refetchInterval: false });
+  // Keep a stable ref so the interval callback always calls the latest refetch
+  const pollQueryRef = useRef(pollQuery);
+  pollQueryRef.current = pollQuery;
 
   useEffect(() => {
     if (payload.status === "processing" && payload.taskId) {
       pollRef.current = setInterval(async () => {
-        const result = await pollQuery.refetch();
-        if (result.data) {
-          const task = result.data;
-          if (task.status === "succeeded" || task.status === "failed") {
-            updateNodeData(id, { status: task.status, resultVideoUrl: task.resultVideoUrl ?? undefined, errorMessage: task.errorMessage ?? undefined });
-            if (pollRef.current) clearInterval(pollRef.current);
+        try {
+          const result = await pollQueryRef.current.refetch();
+          if (result.error) throw result.error;
+          if (result.data) {
+            const task = result.data;
+            if (task.status === "succeeded" || task.status === "failed") {
+              updateNodeData(id, {
+                status: task.status,
+                resultVideoUrl: task.resultVideoUrl ?? undefined,
+                errorMessage: task.errorMessage ?? undefined,
+              });
+              if (pollRef.current) clearInterval(pollRef.current);
+            }
           }
+        } catch (err) {
+          updateNodeData(id, { status: "failed", errorMessage: String(err) });
+          if (pollRef.current) clearInterval(pollRef.current);
+          toast.error("轮询失败：" + String(err));
         }
       }, 5000);
     }
     return () => { if (pollRef.current) clearInterval(pollRef.current); };
-  }, [payload.status, payload.taskId]);
+  // pollQueryRef is stable; id/updateNodeData are stable references
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [payload.status, payload.taskId, id, updateNodeData]);
 
   const handleChange = useCallback(
     (field: keyof VideoTaskNodeData, value: unknown) => { updateNodeData(id, { [field]: value }); },
