@@ -40,6 +40,7 @@ import {
   FileText,
   Image,
   Wand2,
+  Sparkles,
   Video,
   Bot,
   StickyNote,
@@ -57,7 +58,7 @@ const edgeTypes = { custom: CustomEdge };
 
 // ── Icon map ──────────────────────────────────────────────────────────────────
 const ICON_MAP: Record<string, React.ComponentType<{ className?: string; style?: React.CSSProperties }>> = {
-  FileText, Image, Wand2, Paperclip, Video, Bot, StickyNote,
+  FileText, Image, Wand2, Sparkles, Paperclip, Video, Bot, StickyNote,
 };
 
 // ── Tool button ───────────────────────────────────────────────────────────────

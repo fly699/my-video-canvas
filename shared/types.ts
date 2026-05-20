@@ -4,6 +4,7 @@ export type NodeType =
   | "script"
   | "storyboard"
   | "prompt"
+  | "image_gen"
   | "asset"
   | "video_task"
   | "ai_chat"
@@ -67,8 +68,19 @@ export interface VideoTaskNodeData {
 
 export interface AIChatNodeData {
   systemPrompt?: string;
-  contextNodeIds?: string[]; // IDs of nodes whose content is injected as context
+  contextNodeIds?: string[];
   messages?: Array<{ role: "user" | "assistant"; content: string }>;
+  model?: string;
+}
+
+export interface ImageGenNodeData {
+  prompt: string;
+  negativePrompt?: string;
+  style?: string;
+  aspectRatio?: string;
+  referenceImageUrl?: string;
+  imageUrl?: string;
+  imageStorageKey?: string;
 }
 
 export interface NoteNodeData {
@@ -80,6 +92,7 @@ export type NodeData =
   | ScriptNodeData
   | StoryboardNodeData
   | PromptNodeData
+  | ImageGenNodeData
   | AssetNodeData
   | VideoTaskNodeData
   | AIChatNodeData

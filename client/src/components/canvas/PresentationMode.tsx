@@ -1,14 +1,14 @@
 import { useState, useEffect, useCallback, memo } from "react";
-import { X, ChevronLeft, ChevronRight, FileText, Image, Wand2, Paperclip, Video, Bot, StickyNote } from "lucide-react";
+import { X, ChevronLeft, ChevronRight, FileText, Image, Wand2, Sparkles, Paperclip, Video, Bot, StickyNote } from "lucide-react";
 import type { CanvasNode } from "../../hooks/useCanvasStore";
 import { getNodeConfig } from "../../lib/nodeConfig";
 import type {
-  ScriptNodeData, StoryboardNodeData, PromptNodeData,
+  ScriptNodeData, StoryboardNodeData, PromptNodeData, ImageGenNodeData,
   AssetNodeData, VideoTaskNodeData, AIChatNodeData, NoteNodeData,
 } from "../../../../shared/types";
 
 const ICONS: Record<string, React.ComponentType<{ className?: string; style?: React.CSSProperties }>> = {
-  FileText, Image, Wand2, Paperclip, Video, Bot, StickyNote,
+  FileText, Image, Wand2, Sparkles, Paperclip, Video, Bot, StickyNote,
 };
 
 interface PresentationModeProps {
@@ -91,6 +91,35 @@ function SlideContent({ node }: { node: CanvasNode }) {
             </div>
           )}
           <div className="flex gap-2 flex-wrap mt-auto">
+            {d.style && <Chip label={d.style} />}
+            {d.aspectRatio && <Chip label={d.aspectRatio} />}
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  if (nodeType === "image_gen") {
+    const d = payload as ImageGenNodeData;
+    return (
+      <div className="w-full h-full flex gap-5 p-5 overflow-hidden">
+        {d.imageUrl ? (
+          <div className="flex-shrink-0 w-1/2 rounded-lg overflow-hidden" style={{ background: "oklch(0.08 0.005 260)", border: "1px solid oklch(0.18 0.008 260)" }}>
+            <img src={d.imageUrl} alt="generated" className="w-full h-full object-contain" />
+          </div>
+        ) : (
+          <div className="flex-shrink-0 w-1/2 rounded-lg flex items-center justify-center" style={{ background: "oklch(0.08 0.005 260)", border: "1px dashed oklch(0.72 0.20 330 / 0.3)" }}>
+            <span style={{ color: "oklch(0.35 0.006 260)", fontSize: 13 }}>尚未生成图像</span>
+          </div>
+        )}
+        <div className="flex-1 flex flex-col gap-3 overflow-auto">
+          {d.prompt && (
+            <div>
+              <div style={{ fontSize: 10, color: "oklch(0.45 0.008 260)", letterSpacing: "0.05em", marginBottom: 6 }}>提示词</div>
+              <p style={{ fontSize: 14, color: "oklch(0.80 0.005 260)", lineHeight: 1.6 }}>{d.prompt}</p>
+            </div>
+          )}
+          <div className="flex flex-wrap gap-2 mt-auto">
             {d.style && <Chip label={d.style} />}
             {d.aspectRatio && <Chip label={d.aspectRatio} />}
           </div>
@@ -288,7 +317,7 @@ export const PresentationMode = memo(function PresentationMode({ nodes, onClose 
             <Icon style={{ width: 14, height: 14, color: config.color }} />
           </div>
           <div className="min-w-0">
-            <div style={{ fontSize: 15, fontWeight: 600, color: "oklch(0.92 0.005 260)", letterSpacing: "-0.01em", truncate: true }}>
+            <div style={{ fontSize: 15, fontWeight: 600, color: "oklch(0.92 0.005 260)", letterSpacing: "-0.01em", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
               {current.data.title}
             </div>
             <div style={{ fontSize: 10, color: config.color, letterSpacing: "0.05em", textTransform: "uppercase", marginTop: 1 }}>
