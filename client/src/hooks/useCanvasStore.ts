@@ -217,7 +217,7 @@ function getDefaultPayload(type: NodeType): NodeData {
       return { name: "素材", type: "image", url: "" };
     case "video_task":
       return {
-        provider: "mock",
+        provider: "poyo_seedance",
         status: "pending",
         prompt: "",
       };

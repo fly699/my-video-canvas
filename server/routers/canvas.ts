@@ -29,6 +29,7 @@ import {
 import { storagePut } from "../storage";
 import { invokeLLM } from "../_core/llm";
 import { generateImage } from "../_core/imageGeneration";
+import { isPoyoVideoProvider, submitPoyoVideo, checkPoyoVideoStatus } from "../_core/poyoVideo";
 
 // ── Projects ──────────────────────────────────────────────────────────────────
 
@@ -227,7 +228,7 @@ export const videoTasksRouter = router({
       z.object({
         projectId: z.number(),
         nodeId: z.string(),
-        provider: z.enum(["runway", "kling", "mock"]),
+        provider: z.enum(["runway", "kling", "mock", "poyo_seedance", "poyo_veo"]),
         prompt: z.string(),
         negativePrompt: z.string().optional(),
         referenceImageUrl: z.string().optional(),
@@ -235,6 +236,21 @@ export const videoTasksRouter = router({
       })
     )
     .mutation(async ({ ctx, input }) => {
+      let externalTaskId: string | undefined;
+      let initialStatus: "pending" | "processing" = "pending";
+
+      if (isPoyoVideoProvider(input.provider)) {
+        const result = await submitPoyoVideo({
+          provider: input.provider,
+          prompt: input.prompt,
+          negativePrompt: input.negativePrompt,
+          referenceImageUrl: input.referenceImageUrl,
+          params: input.params as Record<string, unknown>,
+        });
+        externalTaskId = result.externalTaskId;
+        initialStatus = "processing";
+      }
+
       await createVideoTask({
         userId: ctx.user.id,
         projectId: input.projectId,
@@ -244,7 +260,8 @@ export const videoTasksRouter = router({
         negativePrompt: input.negativePrompt,
         referenceImageUrl: input.referenceImageUrl,
         params: input.params as Record<string, unknown>,
-        status: "pending",
+        externalTaskId,
+        status: initialStatus,
       });
       const tasks = await getVideoTasksByProject(input.projectId);
       return tasks[0];
@@ -252,7 +269,31 @@ export const videoTasksRouter = router({
 
   poll: protectedProcedure
     .input(z.object({ id: z.number() }))
-    .query(({ input }) => getVideoTask(input.id)),
+    .query(async ({ input }) => {
+      const task = await getVideoTask(input.id);
+      if (!task) return null;
+
+      // For poyo.ai tasks still processing, sync status from upstream
+      if (task.status === "processing" && task.externalTaskId && isPoyoVideoProvider(task.provider)) {
+        try {
+          const upstream = await checkPoyoVideoStatus(task.externalTaskId);
+          if (upstream.status === "finished") {
+            const update = { status: "succeeded" as const, resultVideoUrl: upstream.resultVideoUrl };
+            await updateVideoTask(task.id, update);
+            return { ...task, ...update };
+          }
+          if (upstream.status === "failed") {
+            const update = { status: "failed" as const, errorMessage: upstream.errorMessage ?? "生成失败" };
+            await updateVideoTask(task.id, update);
+            return { ...task, ...update };
+          }
+        } catch {
+          // Ignore sync errors; return DB state so polling continues
+        }
+      }
+
+      return task;
+    }),
 
   updateStatus: protectedProcedure
     .input(

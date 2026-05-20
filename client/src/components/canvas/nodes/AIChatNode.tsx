@@ -10,6 +10,7 @@ const MODELS = [
   { id: "gemini-2.5-flash",          label: "Gemini 2.5 Flash",  tag: "默认" },
   { id: "claude-haiku-4-5-20251001", label: "Claude Haiku 4.5",  tag: "快速" },
   { id: "claude-sonnet-4-6",         label: "Claude Sonnet 4.6", tag: "智能" },
+  { id: "gpt-5.2",                   label: "GPT-5.2",           tag: "Poyo" },
 ] as const;
 // Streamdown removed — replaced with safe inline markdown renderer to avoid ReactFlow DOM conflicts
 function SimpleMarkdown({ children }: { children: string }) {
@@ -41,7 +42,7 @@ const BORDER_DEFAULT = "oklch(0.20 0.008 260)";
 const BORDER_FOCUS   = `${accentColor.slice(0, -1)} / 0.5)`;
 
 export const AIChatNode = memo(function AIChatNode({ id, selected, data }: Props) {
-  const { updateNodeData, nodes } = useCanvasStore();
+  const { updateNodeData, nodes, edges } = useCanvasStore();
   const payload = data.payload;
   const [input, setInput] = useState("");
   const [localMessages, setLocalMessages] = useState<Array<{ role: "user" | "assistant"; content: string }>>(
@@ -69,21 +70,29 @@ export const AIChatNode = memo(function AIChatNode({ id, selected, data }: Props
 
   const clearMutation = trpc.aiChat.clearMessages.useMutation({
     onSuccess: () => { setLocalMessages([]); toast.success("对话已清除"); },
+    onError: (err) => toast.error("清除失败：" + err.message),
   });
 
   const buildContext = useCallback(() => {
-    const contextIds = payload.contextNodeIds ?? [];
+    // Auto-include nodes connected via incoming edges + any explicitly set contextNodeIds
+    const edgeSourceIds = edges.filter((e) => e.target === id).map((e) => e.source);
+    const contextIds = Array.from(new Set([...(payload.contextNodeIds ?? []), ...edgeSourceIds]));
     if (!contextIds.length) return undefined;
     const parts: string[] = [];
     for (const nodeId of contextIds) {
       const node = nodes.find((n) => n.id === nodeId);
       if (!node) continue;
       const p = node.data.payload as Record<string, unknown>;
-      const content = (p.content as string) || (p.description as string) || (p.positivePrompt as string) || "";
+      const content =
+        (p.content as string) ||
+        (p.description as string) ||
+        (p.positivePrompt as string) ||
+        (p.prompt as string) ||
+        "";
       if (content) parts.push(`[${node.data.title}]: ${content}`);
     }
     return parts.join("\n\n") || undefined;
-  }, [nodes, payload.contextNodeIds]);
+  }, [id, nodes, edges, payload.contextNodeIds]);
 
   const handleSend = () => {
     const msg = input.trim();

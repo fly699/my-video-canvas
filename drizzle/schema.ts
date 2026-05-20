@@ -110,7 +110,7 @@ export const videoTasks = mysqlTable("video_tasks", {
   userId: int("userId").notNull(),
   projectId: int("projectId").notNull(),
   nodeId: varchar("nodeId", { length: 64 }).notNull(),
-  provider: mysqlEnum("provider", ["runway", "kling", "mock"]).notNull(),
+  provider: mysqlEnum("provider", ["runway", "kling", "mock", "poyo_seedance", "poyo_veo"]).notNull(),
   externalTaskId: varchar("externalTaskId", { length: 255 }),
   status: mysqlEnum("status", [
     "pending",
