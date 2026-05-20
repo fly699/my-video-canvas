@@ -1,4 +1,4 @@
-import { memo, useState, useRef, useCallback } from "react";
+import { memo, useState, useRef, useCallback, useEffect } from "react";
 import { Handle, Position, NodeResizer } from "@xyflow/react";
 import { getNodeConfig } from "../../lib/nodeConfig";
 import type { NodeType } from "../../../../shared/types";
@@ -55,6 +55,9 @@ export const BaseNode = memo(function BaseNode({
     if (e.key === "Escape") { setTitleValue(title); setEditingTitle(false); }
   }, [handleTitleSave, title]);
 
+  const [entered, setEntered] = useState(false);
+  useEffect(() => { const t = setTimeout(() => setEntered(true), 280); return () => clearTimeout(t); }, []);
+
   const handleStyle: React.CSSProperties = {
     ...HANDLE_STYLE,
     ...(selected ? { borderColor: `${config.color}70`, boxShadow: `0 0 6px ${config.color}50` } : {}),
@@ -62,7 +65,7 @@ export const BaseNode = memo(function BaseNode({
 
   return (
     <div
-      className="group/node relative flex flex-col overflow-visible"
+      className={`group/node relative flex flex-col overflow-visible${entered ? "" : " animate-node-enter"}`}
       style={{
         borderRadius: 14,
         background: "oklch(0.115 0.007 260)",

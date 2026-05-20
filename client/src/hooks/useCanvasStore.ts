@@ -45,6 +45,7 @@ interface CanvasStore {
   updateNodeTitle: (id: string, title: string) => void;
   deleteNode: (id: string) => void;
   duplicateNode: (id: string) => void;
+  updateEdgeLabel: (id: string, label: string) => void;
   setSelectedNodeIds: (ids: string[]) => void;
   setCollaborator: (cursor: CollaboratorCursor) => void;
   removeCollaborator: (userId: number) => void;
@@ -87,7 +88,7 @@ export const useCanvasStore = create<CanvasStore>((set, get) => ({
         {
           ...connection,
           id: nanoid(),
-          style: { stroke: "oklch(0.45 0.05 260)", strokeWidth: 2 },
+          type: "custom",
           animated: false,
         },
         state.edges
@@ -149,6 +150,15 @@ export const useCanvasStore = create<CanvasStore>((set, get) => ({
     set((state) => ({
       nodes: state.nodes.filter((n) => n.id !== id),
       edges: state.edges.filter((e) => e.source !== id && e.target !== id),
+      isDirty: true,
+    }));
+  },
+
+  updateEdgeLabel: (id, label) => {
+    set((state) => ({
+      edges: state.edges.map((e) =>
+        e.id === id ? { ...e, label: label || undefined } : e
+      ),
       isDirty: true,
     }));
   },
