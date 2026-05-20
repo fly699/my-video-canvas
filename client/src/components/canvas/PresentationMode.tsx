@@ -288,7 +288,7 @@ export const PresentationMode = memo(function PresentationMode({ nodes, onClose 
             <Icon style={{ width: 14, height: 14, color: config.color }} />
           </div>
           <div className="min-w-0">
-            <div style={{ fontSize: 15, fontWeight: 600, color: "oklch(0.92 0.005 260)", letterSpacing: "-0.01em", truncate: true }}>
+            <div className="truncate" style={{ fontSize: 15, fontWeight: 600, color: "oklch(0.92 0.005 260)", letterSpacing: "-0.01em" }}>
               {current.data.title}
             </div>
             <div style={{ fontSize: 10, color: config.color, letterSpacing: "0.05em", textTransform: "uppercase", marginTop: 1 }}>
