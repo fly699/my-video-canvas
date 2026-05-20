@@ -390,8 +390,14 @@ function CanvasInner({ projectId }: { projectId: number }) {
                   if (renameValue.trim()) updateProject.mutate({ id: projectId, name: renameValue.trim() });
                   setRenamingProject(false);
                 }}
-                className="text-sm font-medium outline-none border-b w-36"
-                style={{ background: "transparent", color: "oklch(0.90 0.005 260)", borderColor: "oklch(0.68 0.22 285)" }}
+                className="text-sm font-medium outline-none w-36"
+                style={{
+                  background: "transparent",
+                  color: "oklch(0.90 0.005 260)",
+                  borderBottomWidth: 1,
+                  borderBottomStyle: "solid",
+                  borderBottomColor: "oklch(0.68 0.22 285)",
+                }}
                 autoFocus
               />
               <button onClick={() => setRenamingProject(false)} style={{ color: "oklch(0.50 0.008 260)" }}>
@@ -574,7 +580,7 @@ function CanvasInner({ projectId }: { projectId: number }) {
               minWidth: 200,
             }}
           >
-            <div className="px-3 py-2.5 border-b" style={{ borderColor: "oklch(0.18 0.008 260)" }}>
+            <div className="px-3 py-2.5" style={{ borderBottomWidth: 1, borderBottomStyle: "solid", borderBottomColor: "oklch(0.18 0.008 260)" }}>
               <p className="text-[10px] font-medium uppercase tracking-wider" style={{ color: "oklch(0.45 0.008 260)" }}>
                 添加节点
               </p>

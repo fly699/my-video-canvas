@@ -17,12 +17,16 @@ interface Props {
   };
 }
 
+const BORDER_DEFAULT = "oklch(0.20 0.008 260)";
+
 const fieldStyle: React.CSSProperties = {
   width: "100%",
   padding: "5px 8px",
   fontSize: 11,
   background: "oklch(0.09 0.006 260)",
-  border: "1px solid oklch(0.20 0.008 260)",
+  borderWidth: 1,
+  borderStyle: "solid",
+  borderColor: BORDER_DEFAULT,
   borderRadius: 6,
   color: "oklch(0.80 0.006 260)",
   outline: "none",
@@ -68,6 +72,12 @@ export const PromptNode = memo(function PromptNode({ id, selected, data }: Props
   };
 
   const accentColor = "oklch(0.68 0.22 300)";
+  const accentFocus  = `${accentColor.replace(")", " / 0.6)").replace("oklch(", "oklch(")}`;
+  // Build focus/blur handlers per accent
+  const onFocusAccent = (e: React.FocusEvent<HTMLElement>) => { e.currentTarget.style.borderColor = `${accentColor.slice(0, -1)} / 0.6)`; };
+  const onBlurAccent  = (e: React.FocusEvent<HTMLElement>) => { e.currentTarget.style.borderColor = `${accentColor.slice(0, -1)} / 0.3)`; };
+  const onFocusNeg    = (e: React.FocusEvent<HTMLElement>) => { e.currentTarget.style.borderColor = "oklch(0.45 0.008 260)"; };
+  const onBlurDefault = (e: React.FocusEvent<HTMLElement>) => { e.currentTarget.style.borderColor = BORDER_DEFAULT; };
 
   return (
     <BaseNode id={id} selected={selected} nodeType="prompt" title={data.title} minHeight={200}>
@@ -77,7 +87,12 @@ export const PromptNode = memo(function PromptNode({ id, selected, data }: Props
         {payload.imageUrl && (
           <div
             className="relative rounded-lg overflow-hidden flex-shrink-0"
-            style={{ height: 100, border: "1px solid oklch(0.20 0.008 260)" }}
+            style={{
+              height: 100,
+              borderWidth: 1,
+              borderStyle: "solid",
+              borderColor: BORDER_DEFAULT,
+            }}
           >
             <img src={payload.imageUrl} alt="preview" className="w-full h-full object-cover" draggable={false} />
             <div
@@ -89,8 +104,10 @@ export const PromptNode = memo(function PromptNode({ id, selected, data }: Props
                 disabled={generating}
                 className="nodrag flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-medium"
                 style={{
-                  background: `${accentColor}20`,
-                  border: `1px solid ${accentColor}50`,
+                  background: `${accentColor.slice(0, -1)} / 0.2)`,
+                  borderWidth: 1,
+                  borderStyle: "solid",
+                  borderColor: `${accentColor.slice(0, -1)} / 0.5)`,
                   color: accentColor,
                 }}
               >
@@ -112,9 +129,9 @@ export const PromptNode = memo(function PromptNode({ id, selected, data }: Props
             onChange={(e) => handleChange("positivePrompt", e.target.value)}
             rows={3}
             className="nodrag"
-            style={{ ...monoStyle, borderColor: `${accentColor}30` }}
-            onFocus={(e) => { (e.currentTarget as HTMLElement).style.borderColor = `${accentColor}60`; }}
-            onBlur={(e) => { (e.currentTarget as HTMLElement).style.borderColor = `${accentColor}30`; }}
+            style={{ ...monoStyle, borderColor: `${accentColor.slice(0, -1)} / 0.3)` }}
+            onFocus={onFocusAccent}
+            onBlur={onBlurAccent}
           />
         </div>
 
@@ -130,8 +147,8 @@ export const PromptNode = memo(function PromptNode({ id, selected, data }: Props
             rows={2}
             className="nodrag"
             style={monoStyle}
-            onFocus={(e) => { (e.currentTarget as HTMLElement).style.borderColor = "oklch(0.45 0.008 260)"; }}
-            onBlur={(e) => { (e.currentTarget as HTMLElement).style.borderColor = "oklch(0.20 0.008 260)"; }}
+            onFocus={onFocusNeg}
+            onBlur={onBlurDefault}
           />
         </div>
 
@@ -143,8 +160,8 @@ export const PromptNode = memo(function PromptNode({ id, selected, data }: Props
             onChange={(e) => handleChange("style", e.target.value)}
             className="nodrag flex-1"
             style={fieldStyle}
-            onFocus={(e) => { (e.currentTarget as HTMLElement).style.borderColor = `${accentColor}50`; }}
-            onBlur={(e) => { (e.currentTarget as HTMLElement).style.borderColor = "oklch(0.20 0.008 260)"; }}
+            onFocus={(e) => { e.currentTarget.style.borderColor = `${accentColor.slice(0, -1)} / 0.5)`; }}
+            onBlur={onBlurDefault}
           />
           <input
             placeholder="比例 (16:9)"
@@ -152,8 +169,8 @@ export const PromptNode = memo(function PromptNode({ id, selected, data }: Props
             onChange={(e) => handleChange("aspectRatio", e.target.value)}
             className="nodrag"
             style={{ ...fieldStyle, width: 90 }}
-            onFocus={(e) => { (e.currentTarget as HTMLElement).style.borderColor = `${accentColor}50`; }}
-            onBlur={(e) => { (e.currentTarget as HTMLElement).style.borderColor = "oklch(0.20 0.008 260)"; }}
+            onFocus={(e) => { e.currentTarget.style.borderColor = `${accentColor.slice(0, -1)} / 0.5)`; }}
+            onBlur={onBlurDefault}
           />
         </div>
 
@@ -165,8 +182,12 @@ export const PromptNode = memo(function PromptNode({ id, selected, data }: Props
           style={{
             background: generating || !payload.positivePrompt?.trim()
               ? "oklch(0.13 0.007 260)"
-              : `${accentColor}15`,
-            border: `1px solid ${generating || !payload.positivePrompt?.trim() ? "oklch(0.20 0.008 260)" : `${accentColor}40`}`,
+              : `${accentColor.slice(0, -1)} / 0.15)`,
+            borderWidth: 1,
+            borderStyle: "solid",
+            borderColor: generating || !payload.positivePrompt?.trim()
+              ? BORDER_DEFAULT
+              : `${accentColor.slice(0, -1)} / 0.4)`,
             color: generating || !payload.positivePrompt?.trim()
               ? "oklch(0.38 0.006 260)"
               : accentColor,

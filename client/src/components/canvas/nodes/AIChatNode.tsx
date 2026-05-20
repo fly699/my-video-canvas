@@ -1,4 +1,4 @@
-import { memo, useState, useRef, useEffect, useCallback } from "react";
+import { memo, useCallback, useEffect, useRef, useState } from "react";
 import { BaseNode } from "../BaseNode";
 import { useCanvasStore } from "../../../hooks/useCanvasStore";
 import type { AIChatNodeData } from "../../../../../shared/types";
@@ -19,6 +19,8 @@ interface Props {
 }
 
 const accentColor = "oklch(0.70 0.18 200)";
+const BORDER_DEFAULT = "oklch(0.20 0.008 260)";
+const BORDER_FOCUS   = `${accentColor.slice(0, -1)} / 0.5)`;
 
 export const AIChatNode = memo(function AIChatNode({ id, selected, data }: Props) {
   const { updateNodeData, nodes } = useCanvasStore();
@@ -75,6 +77,9 @@ export const AIChatNode = memo(function AIChatNode({ id, selected, data }: Props
     if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); handleSend(); }
   };
 
+  const onFocusInput = (e: React.FocusEvent<HTMLInputElement>) => { e.currentTarget.style.borderColor = BORDER_FOCUS; };
+  const onBlurInput  = (e: React.FocusEvent<HTMLInputElement>) => { e.currentTarget.style.borderColor = BORDER_DEFAULT; };
+
   return (
     <BaseNode id={id} selected={selected} nodeType="ai_chat" title={data.title} minHeight={320}>
       <div className="flex flex-col h-full" style={{ minHeight: 280 }}>
@@ -82,7 +87,7 @@ export const AIChatNode = memo(function AIChatNode({ id, selected, data }: Props
         {/* ── System prompt ── */}
         <div
           className="px-2.5 py-2 flex-shrink-0"
-          style={{ borderBottom: "1px solid oklch(0.18 0.008 260)" }}
+          style={{ borderBottomWidth: 1, borderBottomStyle: "solid", borderBottomColor: "oklch(0.18 0.008 260)" }}
         >
           <input
             placeholder="系统提示词（可选）"
@@ -109,7 +114,12 @@ export const AIChatNode = memo(function AIChatNode({ id, selected, data }: Props
             <div className="flex flex-col items-center justify-center h-24 gap-2">
               <div
                 className="w-8 h-8 rounded-xl flex items-center justify-center"
-                style={{ background: `${accentColor}15`, border: `1px solid ${accentColor}30` }}
+                style={{
+                  background: `${accentColor.slice(0, -1)} / 0.15)`,
+                  borderWidth: 1,
+                  borderStyle: "solid",
+                  borderColor: `${accentColor.slice(0, -1)} / 0.3)`,
+                }}
               >
                 <Sparkles className="w-4 h-4" style={{ color: accentColor }} />
               </div>
@@ -127,8 +137,12 @@ export const AIChatNode = memo(function AIChatNode({ id, selected, data }: Props
                     style={{
                       background: msg.role === "user"
                         ? "oklch(0.68 0.22 285 / 0.20)"
-                        : `${accentColor}18`,
-                      border: `1px solid ${msg.role === "user" ? "oklch(0.68 0.22 285 / 0.35)" : `${accentColor}30`}`,
+                        : `${accentColor.slice(0, -1)} / 0.18)`,
+                      borderWidth: 1,
+                      borderStyle: "solid",
+                      borderColor: msg.role === "user"
+                        ? "oklch(0.68 0.22 285 / 0.35)"
+                        : `${accentColor.slice(0, -1)} / 0.3)`,
                     }}
                   >
                     {msg.role === "user" ? (
@@ -143,8 +157,12 @@ export const AIChatNode = memo(function AIChatNode({ id, selected, data }: Props
                     style={{
                       background: msg.role === "user"
                         ? "oklch(0.68 0.22 285 / 0.10)"
-                        : `${accentColor}0a`,
-                      border: `1px solid ${msg.role === "user" ? "oklch(0.68 0.22 285 / 0.20)" : `${accentColor}18`}`,
+                        : `${accentColor.slice(0, -1)} / 0.04)`,
+                      borderWidth: 1,
+                      borderStyle: "solid",
+                      borderColor: msg.role === "user"
+                        ? "oklch(0.68 0.22 285 / 0.20)"
+                        : `${accentColor.slice(0, -1)} / 0.18)`,
                       color: "oklch(0.80 0.006 260)",
                     }}
                   >
@@ -161,13 +179,23 @@ export const AIChatNode = memo(function AIChatNode({ id, selected, data }: Props
                 <div className="flex gap-1.5">
                   <div
                     className="w-5 h-5 rounded-full flex items-center justify-center flex-shrink-0"
-                    style={{ background: `${accentColor}18`, border: `1px solid ${accentColor}30` }}
+                    style={{
+                      background: `${accentColor.slice(0, -1)} / 0.18)`,
+                      borderWidth: 1,
+                      borderStyle: "solid",
+                      borderColor: `${accentColor.slice(0, -1)} / 0.3)`,
+                    }}
                   >
                     <Bot className="w-2.5 h-2.5" style={{ color: accentColor }} />
                   </div>
                   <div
                     className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg"
-                    style={{ background: `${accentColor}0a`, border: `1px solid ${accentColor}18` }}
+                    style={{
+                      background: `${accentColor.slice(0, -1)} / 0.04)`,
+                      borderWidth: 1,
+                      borderStyle: "solid",
+                      borderColor: `${accentColor.slice(0, -1)} / 0.18)`,
+                    }}
                   >
                     <Loader2 className="w-3 h-3 animate-spin" style={{ color: accentColor }} />
                     <span className="text-[10px]" style={{ color: "oklch(0.50 0.008 260)" }}>思考中...</span>
@@ -181,7 +209,7 @@ export const AIChatNode = memo(function AIChatNode({ id, selected, data }: Props
         {/* ── Input bar ── */}
         <div
           className="px-2.5 pb-2.5 pt-2 flex gap-1.5 flex-shrink-0"
-          style={{ borderTop: "1px solid oklch(0.18 0.008 260)" }}
+          style={{ borderTopWidth: 1, borderTopStyle: "solid", borderTopColor: "oklch(0.18 0.008 260)" }}
         >
           <input
             ref={inputRef}
@@ -195,23 +223,33 @@ export const AIChatNode = memo(function AIChatNode({ id, selected, data }: Props
               fontSize: 11,
               padding: "5px 8px",
               background: "oklch(0.09 0.006 260)",
-              border: "1px solid oklch(0.20 0.008 260)",
+              borderWidth: 1,
+              borderStyle: "solid",
+              borderColor: BORDER_DEFAULT,
               borderRadius: 7,
               color: "oklch(0.80 0.006 260)",
               outline: "none",
               transition: "border-color 120ms ease",
             }}
-            onFocus={(e) => { (e.currentTarget as HTMLElement).style.borderColor = `${accentColor}50`; }}
-            onBlur={(e) => { (e.currentTarget as HTMLElement).style.borderColor = "oklch(0.20 0.008 260)"; }}
+            onFocus={onFocusInput}
+            onBlur={onBlurInput}
           />
           <button
             onClick={handleSend}
             disabled={!input.trim() || sendMutation.isPending}
             className="nodrag w-7 h-7 rounded-lg flex items-center justify-center transition-all flex-shrink-0"
             style={{
-              background: !input.trim() || sendMutation.isPending ? "oklch(0.13 0.007 260)" : `${accentColor}18`,
-              border: `1px solid ${!input.trim() || sendMutation.isPending ? "oklch(0.20 0.008 260)" : `${accentColor}40`}`,
-              color: !input.trim() || sendMutation.isPending ? "oklch(0.35 0.006 260)" : accentColor,
+              background: !input.trim() || sendMutation.isPending
+                ? "oklch(0.13 0.007 260)"
+                : `${accentColor.slice(0, -1)} / 0.18)`,
+              borderWidth: 1,
+              borderStyle: "solid",
+              borderColor: !input.trim() || sendMutation.isPending
+                ? BORDER_DEFAULT
+                : `${accentColor.slice(0, -1)} / 0.4)`,
+              color: !input.trim() || sendMutation.isPending
+                ? "oklch(0.35 0.006 260)"
+                : accentColor,
               cursor: !input.trim() || sendMutation.isPending ? "not-allowed" : "pointer",
             }}
           >
@@ -223,12 +261,22 @@ export const AIChatNode = memo(function AIChatNode({ id, selected, data }: Props
             className="nodrag w-7 h-7 rounded-lg flex items-center justify-center transition-all flex-shrink-0"
             style={{
               background: "transparent",
-              border: "1px solid transparent",
+              borderWidth: 1,
+              borderStyle: "solid",
+              borderColor: "transparent",
               color: localMessages.length === 0 ? "oklch(0.28 0.006 260)" : "oklch(0.45 0.008 260)",
               cursor: localMessages.length === 0 ? "not-allowed" : "pointer",
             }}
-            onMouseEnter={(e) => { if (localMessages.length > 0) { (e.currentTarget as HTMLElement).style.background = "oklch(0.62 0.20 25 / 0.10)"; (e.currentTarget as HTMLElement).style.color = "oklch(0.62 0.20 25)"; } }}
-            onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.background = "transparent"; (e.currentTarget as HTMLElement).style.color = localMessages.length === 0 ? "oklch(0.28 0.006 260)" : "oklch(0.45 0.008 260)"; }}
+            onMouseEnter={(e) => {
+              if (localMessages.length > 0) {
+                (e.currentTarget as HTMLElement).style.background = "oklch(0.62 0.20 25 / 0.10)";
+                (e.currentTarget as HTMLElement).style.color = "oklch(0.62 0.20 25)";
+              }
+            }}
+            onMouseLeave={(e) => {
+              (e.currentTarget as HTMLElement).style.background = "transparent";
+              (e.currentTarget as HTMLElement).style.color = localMessages.length === 0 ? "oklch(0.28 0.006 260)" : "oklch(0.45 0.008 260)";
+            }}
           >
             <Trash2 className="w-3 h-3" />
           </button>

@@ -14,12 +14,17 @@ interface Props {
   };
 }
 
+const BORDER_DEFAULT = "oklch(0.20 0.008 260)";
+const BORDER_FOCUS = "oklch(0.62 0.18 240 / 0.6)";
+
 const inputStyle: React.CSSProperties = {
   width: "100%",
   padding: "6px 10px",
   fontSize: 11,
   background: "oklch(0.09 0.006 260)",
-  border: "1px solid oklch(0.20 0.008 260)",
+  borderWidth: 1,
+  borderStyle: "solid",
+  borderColor: BORDER_DEFAULT,
   borderRadius: 7,
   color: "oklch(0.80 0.006 260)",
   outline: "none",
@@ -35,6 +40,9 @@ const textareaStyle: React.CSSProperties = {
   fontFamily: "'JetBrains Mono', 'Fira Code', monospace",
   fontSize: 11.5,
 };
+
+const onFocus = (e: React.FocusEvent<HTMLElement>) => { e.currentTarget.style.borderColor = BORDER_FOCUS; };
+const onBlur  = (e: React.FocusEvent<HTMLElement>) => { e.currentTarget.style.borderColor = BORDER_DEFAULT; };
 
 export const ScriptNode = memo(function ScriptNode({ id, selected, data }: Props) {
   const { updateNodeData } = useCanvasStore();
@@ -56,8 +64,8 @@ export const ScriptNode = memo(function ScriptNode({ id, selected, data }: Props
           onChange={(e) => handleChange("synopsis", e.target.value)}
           className="nodrag"
           style={inputStyle}
-          onFocus={(e) => { (e.currentTarget as HTMLElement).style.borderColor = "oklch(0.62 0.18 240 / 0.6)"; }}
-          onBlur={(e) => { (e.currentTarget as HTMLElement).style.borderColor = "oklch(0.20 0.008 260)"; }}
+          onFocus={onFocus}
+          onBlur={onBlur}
         />
         <textarea
           placeholder={"在此输入脚本内容...\n\n支持多行文本，双击标题可重命名节点。"}
@@ -65,8 +73,8 @@ export const ScriptNode = memo(function ScriptNode({ id, selected, data }: Props
           onChange={(e) => handleChange("content", e.target.value)}
           className="nodrag flex-1"
           style={textareaStyle}
-          onFocus={(e) => { (e.currentTarget as HTMLElement).style.borderColor = "oklch(0.62 0.18 240 / 0.6)"; }}
-          onBlur={(e) => { (e.currentTarget as HTMLElement).style.borderColor = "oklch(0.20 0.008 260)"; }}
+          onFocus={onFocus}
+          onBlur={onBlur}
         />
         <div
           className="flex items-center justify-between"

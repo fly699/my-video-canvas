@@ -18,10 +18,10 @@ interface Props {
 }
 
 const STATUS = {
-  pending:    { icon: Clock,         label: "待提交", accent: "oklch(0.50 0.008 260)", bg: "oklch(0.14 0.007 260)", border: "oklch(0.22 0.008 260)" },
-  processing: { icon: Loader2,       label: "生成中", accent: "oklch(0.68 0.22 285)",  bg: "oklch(0.68 0.22 285 / 0.08)", border: "oklch(0.68 0.22 285 / 0.30)", spin: true },
-  succeeded:  { icon: CheckCircle2,  label: "已完成", accent: "oklch(0.72 0.18 155)",  bg: "oklch(0.72 0.18 155 / 0.08)", border: "oklch(0.72 0.18 155 / 0.30)" },
-  failed:     { icon: XCircle,       label: "失败",   accent: "oklch(0.62 0.20 25)",   bg: "oklch(0.62 0.20 25 / 0.08)",  border: "oklch(0.62 0.20 25 / 0.30)" },
+  pending:    { icon: Clock,         label: "待提交", accent: "oklch(0.50 0.008 260)", bg: "oklch(0.14 0.007 260)", borderColor: "oklch(0.22 0.008 260)" },
+  processing: { icon: Loader2,       label: "生成中", accent: "oklch(0.68 0.22 285)",  bg: "oklch(0.68 0.22 285 / 0.08)", borderColor: "oklch(0.68 0.22 285 / 0.30)", spin: true },
+  succeeded:  { icon: CheckCircle2,  label: "已完成", accent: "oklch(0.72 0.18 155)",  bg: "oklch(0.72 0.18 155 / 0.08)", borderColor: "oklch(0.72 0.18 155 / 0.30)" },
+  failed:     { icon: XCircle,       label: "失败",   accent: "oklch(0.62 0.20 25)",   bg: "oklch(0.62 0.20 25 / 0.08)",  borderColor: "oklch(0.62 0.20 25 / 0.30)" },
 } as const;
 
 const PROVIDERS = [
@@ -30,12 +30,16 @@ const PROVIDERS = [
   { value: "mock",   label: "Mock 测试" },
 ];
 
+const BORDER_DEFAULT = "oklch(0.20 0.008 260)";
+
 const fieldStyle: React.CSSProperties = {
   width: "100%",
   padding: "5px 8px",
   fontSize: 11,
   background: "oklch(0.09 0.006 260)",
-  border: "1px solid oklch(0.20 0.008 260)",
+  borderWidth: 1,
+  borderStyle: "solid",
+  borderColor: BORDER_DEFAULT,
   borderRadius: 6,
   color: "oklch(0.80 0.006 260)",
   outline: "none",
@@ -92,6 +96,10 @@ export const VideoTaskNode = memo(function VideoTaskNode({ id, selected, data }:
   const StatusIcon = status.icon;
   const isLocked = payload.status === "processing" || payload.status === "succeeded";
 
+  const onFocusAccent = (e: React.FocusEvent<HTMLElement>) => { e.currentTarget.style.borderColor = `${accentColor.slice(0, -1)} / 0.6)`; };
+  const onFocusMid    = (e: React.FocusEvent<HTMLElement>) => { e.currentTarget.style.borderColor = "oklch(0.40 0.008 260)"; };
+  const onBlurDefault = (e: React.FocusEvent<HTMLElement>) => { e.currentTarget.style.borderColor = BORDER_DEFAULT; };
+
   return (
     <BaseNode id={id} selected={selected} nodeType="video_task" title={data.title} minHeight={240}>
       <div className="flex flex-col h-full p-2.5 gap-2">
@@ -99,7 +107,12 @@ export const VideoTaskNode = memo(function VideoTaskNode({ id, selected, data }:
         {/* ── Status pill ── */}
         <div
           className="flex items-center gap-2 px-2.5 py-2 rounded-lg"
-          style={{ background: status.bg, border: `1px solid ${status.border}` }}
+          style={{
+            background: status.bg,
+            borderWidth: 1,
+            borderStyle: "solid",
+            borderColor: status.borderColor,
+          }}
         >
           <StatusIcon
             className={`w-3.5 h-3.5 flex-shrink-0 ${(status as { spin?: boolean }).spin ? "animate-spin" : ""}`}
@@ -122,7 +135,11 @@ export const VideoTaskNode = memo(function VideoTaskNode({ id, selected, data }:
         {payload.status === "succeeded" && payload.resultVideoUrl && (
           <div
             className="rounded-lg overflow-hidden flex-shrink-0"
-            style={{ border: `1px solid ${STATUS.succeeded.border}` }}
+            style={{
+              borderWidth: 1,
+              borderStyle: "solid",
+              borderColor: STATUS.succeeded.borderColor,
+            }}
           >
             <video src={payload.resultVideoUrl} controls className="w-full nodrag" style={{ maxHeight: 140, display: "block" }} />
           </div>
@@ -132,7 +149,12 @@ export const VideoTaskNode = memo(function VideoTaskNode({ id, selected, data }:
         {payload.status === "failed" && payload.errorMessage && (
           <div
             className="flex items-start gap-2 p-2 rounded-lg"
-            style={{ background: STATUS.failed.bg, border: `1px solid ${STATUS.failed.border}` }}
+            style={{
+              background: STATUS.failed.bg,
+              borderWidth: 1,
+              borderStyle: "solid",
+              borderColor: STATUS.failed.borderColor,
+            }}
           >
             <AlertCircle className="w-3.5 h-3.5 flex-shrink-0 mt-0.5" style={{ color: STATUS.failed.accent }} />
             <p className="text-[11px] leading-relaxed" style={{ color: STATUS.failed.accent }}>{payload.errorMessage}</p>
@@ -150,8 +172,8 @@ export const VideoTaskNode = memo(function VideoTaskNode({ id, selected, data }:
             cursor: isLocked ? "not-allowed" : "pointer",
             opacity: isLocked ? 0.5 : 1,
           }}
-          onFocus={(e) => { (e.currentTarget as HTMLElement).style.borderColor = `${accentColor}60`; }}
-          onBlur={(e) => { (e.currentTarget as HTMLElement).style.borderColor = "oklch(0.20 0.008 260)"; }}
+          onFocus={onFocusAccent}
+          onBlur={onBlurDefault}
         >
           {PROVIDERS.map((p) => (
             <option key={p.value} value={p.value} style={{ background: "oklch(0.12 0.007 260)" }}>
@@ -176,8 +198,8 @@ export const VideoTaskNode = memo(function VideoTaskNode({ id, selected, data }:
             fontSize: 10.5,
             opacity: isLocked ? 0.5 : 1,
           }}
-          onFocus={(e) => { (e.currentTarget as HTMLElement).style.borderColor = `${accentColor}60`; }}
-          onBlur={(e) => { (e.currentTarget as HTMLElement).style.borderColor = "oklch(0.20 0.008 260)"; }}
+          onFocus={onFocusAccent}
+          onBlur={onBlurDefault}
         />
 
         <input
@@ -187,8 +209,8 @@ export const VideoTaskNode = memo(function VideoTaskNode({ id, selected, data }:
           disabled={isLocked}
           className="nodrag"
           style={{ ...fieldStyle, opacity: isLocked ? 0.5 : 1 }}
-          onFocus={(e) => { (e.currentTarget as HTMLElement).style.borderColor = "oklch(0.40 0.008 260)"; }}
-          onBlur={(e) => { (e.currentTarget as HTMLElement).style.borderColor = "oklch(0.20 0.008 260)"; }}
+          onFocus={onFocusMid}
+          onBlur={onBlurDefault}
         />
 
         <input
@@ -198,8 +220,8 @@ export const VideoTaskNode = memo(function VideoTaskNode({ id, selected, data }:
           disabled={isLocked}
           className="nodrag"
           style={{ ...fieldStyle, opacity: isLocked ? 0.5 : 1 }}
-          onFocus={(e) => { (e.currentTarget as HTMLElement).style.borderColor = "oklch(0.40 0.008 260)"; }}
-          onBlur={(e) => { (e.currentTarget as HTMLElement).style.borderColor = "oklch(0.20 0.008 260)"; }}
+          onFocus={onFocusMid}
+          onBlur={onBlurDefault}
         />
 
         {/* ── Actions ── */}
@@ -210,7 +232,9 @@ export const VideoTaskNode = memo(function VideoTaskNode({ id, selected, data }:
               className="nodrag flex items-center justify-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-all"
               style={{
                 background: "oklch(0.14 0.007 260)",
-                border: "1px solid oklch(0.22 0.008 260)",
+                borderWidth: 1,
+                borderStyle: "solid",
+                borderColor: "oklch(0.22 0.008 260)",
                 color: "oklch(0.60 0.008 260)",
               }}
               onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.background = "oklch(0.18 0.008 260)"; }}
@@ -225,9 +249,17 @@ export const VideoTaskNode = memo(function VideoTaskNode({ id, selected, data }:
             disabled={isLocked || createTaskMutation.isPending}
             className="nodrag flex-1 flex items-center justify-center gap-1.5 py-1.5 rounded-lg text-xs font-medium transition-all"
             style={{
-              background: isLocked || createTaskMutation.isPending ? "oklch(0.13 0.007 260)" : `${accentColor}15`,
-              border: `1px solid ${isLocked || createTaskMutation.isPending ? "oklch(0.20 0.008 260)" : `${accentColor}40`}`,
-              color: isLocked || createTaskMutation.isPending ? "oklch(0.38 0.006 260)" : accentColor,
+              background: isLocked || createTaskMutation.isPending
+                ? "oklch(0.13 0.007 260)"
+                : `${accentColor.slice(0, -1)} / 0.15)`,
+              borderWidth: 1,
+              borderStyle: "solid",
+              borderColor: isLocked || createTaskMutation.isPending
+                ? BORDER_DEFAULT
+                : `${accentColor.slice(0, -1)} / 0.4)`,
+              color: isLocked || createTaskMutation.isPending
+                ? "oklch(0.38 0.006 260)"
+                : accentColor,
               cursor: isLocked || createTaskMutation.isPending ? "not-allowed" : "pointer",
             }}
           >

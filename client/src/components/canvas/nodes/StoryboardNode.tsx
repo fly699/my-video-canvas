@@ -17,17 +17,25 @@ interface Props {
   };
 }
 
+const BORDER_DEFAULT = "oklch(0.20 0.008 260)";
+const BORDER_FOCUS   = "oklch(0.65 0.20 160 / 0.6)";
+
 const fieldStyle: React.CSSProperties = {
   width: "100%",
   padding: "5px 8px",
   fontSize: 11,
   background: "oklch(0.09 0.006 260)",
-  border: "1px solid oklch(0.20 0.008 260)",
+  borderWidth: 1,
+  borderStyle: "solid",
+  borderColor: BORDER_DEFAULT,
   borderRadius: 6,
   color: "oklch(0.80 0.006 260)",
   outline: "none",
   transition: "border-color 120ms ease",
 };
+
+const onFocus = (e: React.FocusEvent<HTMLElement>) => { e.currentTarget.style.borderColor = BORDER_FOCUS; };
+const onBlur  = (e: React.FocusEvent<HTMLElement>) => { e.currentTarget.style.borderColor = BORDER_DEFAULT; };
 
 export const StoryboardNode = memo(function StoryboardNode({ id, selected, data }: Props) {
   const { updateNodeData } = useCanvasStore();
@@ -69,13 +77,14 @@ export const StoryboardNode = memo(function StoryboardNode({ id, selected, data 
           style={{
             height: 150,
             background: "oklch(0.09 0.006 260)",
-            border: "1px solid oklch(0.20 0.008 260)",
+            borderWidth: 1,
+            borderStyle: "solid",
+            borderColor: BORDER_DEFAULT,
           }}
         >
           {payload.imageUrl ? (
             <>
               <img src={payload.imageUrl} alt="分镜" className="w-full h-full object-cover" draggable={false} />
-              {/* Overlay gradient */}
               <div
                 className="absolute inset-0 opacity-0 hover:opacity-100 transition-opacity flex items-center justify-center"
                 style={{ background: "oklch(0 0 0 / 0.55)" }}
@@ -86,7 +95,9 @@ export const StoryboardNode = memo(function StoryboardNode({ id, selected, data 
                   className="nodrag flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-all"
                   style={{
                     background: "oklch(0.65 0.20 160 / 0.20)",
-                    border: "1px solid oklch(0.65 0.20 160 / 0.5)",
+                    borderWidth: 1,
+                    borderStyle: "solid",
+                    borderColor: "oklch(0.65 0.20 160 / 0.5)",
                     color: "oklch(0.75 0.18 160)",
                   }}
                 >
@@ -94,7 +105,6 @@ export const StoryboardNode = memo(function StoryboardNode({ id, selected, data 
                   {generating ? "生成中..." : "重新生成"}
                 </button>
               </div>
-              {/* Scene badge */}
               {payload.sceneNumber && (
                 <div
                   className="absolute top-2 left-2 px-1.5 py-0.5 rounded text-[10px] font-semibold"
@@ -119,7 +129,11 @@ export const StoryboardNode = memo(function StoryboardNode({ id, selected, data 
                   background: generating || !payload.promptText?.trim()
                     ? "oklch(0.15 0.008 260)"
                     : "oklch(0.65 0.20 160 / 0.15)",
-                  border: `1px solid ${generating || !payload.promptText?.trim() ? "oklch(0.22 0.008 260)" : "oklch(0.65 0.20 160 / 0.45)"}`,
+                  borderWidth: 1,
+                  borderStyle: "solid",
+                  borderColor: generating || !payload.promptText?.trim()
+                    ? "oklch(0.22 0.008 260)"
+                    : "oklch(0.65 0.20 160 / 0.45)",
                   color: generating || !payload.promptText?.trim()
                     ? "oklch(0.40 0.006 260)"
                     : "oklch(0.72 0.18 160)",
@@ -150,8 +164,8 @@ export const StoryboardNode = memo(function StoryboardNode({ id, selected, data 
               onChange={(e) => handleChange(field, type === "number" ? Number(e.target.value) : e.target.value)}
               className="nodrag"
               style={{ ...fieldStyle, width }}
-              onFocus={(e) => { (e.currentTarget as HTMLElement).style.borderColor = "oklch(0.65 0.20 160 / 0.6)"; }}
-              onBlur={(e) => { (e.currentTarget as HTMLElement).style.borderColor = "oklch(0.20 0.008 260)"; }}
+              onFocus={onFocus}
+              onBlur={onBlur}
             />
           ))}
           <input
@@ -160,8 +174,8 @@ export const StoryboardNode = memo(function StoryboardNode({ id, selected, data 
             onChange={(e) => handleChange("cameraMovement", e.target.value)}
             className="nodrag flex-1"
             style={fieldStyle}
-            onFocus={(e) => { (e.currentTarget as HTMLElement).style.borderColor = "oklch(0.65 0.20 160 / 0.6)"; }}
-            onBlur={(e) => { (e.currentTarget as HTMLElement).style.borderColor = "oklch(0.20 0.008 260)"; }}
+            onFocus={onFocus}
+            onBlur={onBlur}
           />
         </div>
 
@@ -173,8 +187,8 @@ export const StoryboardNode = memo(function StoryboardNode({ id, selected, data 
           className="nodrag"
           rows={2}
           style={{ ...fieldStyle, resize: "none", lineHeight: 1.6 }}
-          onFocus={(e) => { (e.currentTarget as HTMLElement).style.borderColor = "oklch(0.65 0.20 160 / 0.6)"; }}
-          onBlur={(e) => { (e.currentTarget as HTMLElement).style.borderColor = "oklch(0.20 0.008 260)"; }}
+          onFocus={onFocus}
+          onBlur={onBlur}
         />
 
         {/* ── Prompt ── */}
@@ -191,8 +205,8 @@ export const StoryboardNode = memo(function StoryboardNode({ id, selected, data 
             fontFamily: "'JetBrains Mono', monospace",
             fontSize: 10.5,
           }}
-          onFocus={(e) => { (e.currentTarget as HTMLElement).style.borderColor = "oklch(0.65 0.20 160 / 0.6)"; }}
-          onBlur={(e) => { (e.currentTarget as HTMLElement).style.borderColor = "oklch(0.20 0.008 260)"; }}
+          onFocus={onFocus}
+          onBlur={onBlur}
         />
 
         {/* ── Style row ── */}
@@ -203,8 +217,8 @@ export const StoryboardNode = memo(function StoryboardNode({ id, selected, data 
             onChange={(e) => handleChange("colorTone", e.target.value)}
             className="nodrag flex-1"
             style={fieldStyle}
-            onFocus={(e) => { (e.currentTarget as HTMLElement).style.borderColor = "oklch(0.65 0.20 160 / 0.6)"; }}
-            onBlur={(e) => { (e.currentTarget as HTMLElement).style.borderColor = "oklch(0.20 0.008 260)"; }}
+            onFocus={onFocus}
+            onBlur={onBlur}
           />
           <input
             placeholder="镜头"
@@ -212,8 +226,8 @@ export const StoryboardNode = memo(function StoryboardNode({ id, selected, data 
             onChange={(e) => handleChange("lens", e.target.value)}
             className="nodrag flex-1"
             style={fieldStyle}
-            onFocus={(e) => { (e.currentTarget as HTMLElement).style.borderColor = "oklch(0.65 0.20 160 / 0.6)"; }}
-            onBlur={(e) => { (e.currentTarget as HTMLElement).style.borderColor = "oklch(0.20 0.008 260)"; }}
+            onFocus={onFocus}
+            onBlur={onBlur}
           />
         </div>
       </div>

@@ -138,11 +138,13 @@ export const BaseNode = memo(function BaseNode({
                 onChange={(e) => setTitleValue(e.target.value)}
                 onKeyDown={handleTitleKeyDown}
                 onBlur={handleTitleSave}
-                className="flex-1 min-w-0 text-xs font-medium outline-none border-b"
+                className="flex-1 min-w-0 text-xs font-medium outline-none"
                 style={{
                   background: "transparent",
                   color: "oklch(0.92 0.005 260)",
-                  borderColor: config.color,
+                  borderBottomWidth: 1,
+                  borderBottomStyle: "solid",
+                  borderBottomColor: config.color,
                 }}
                 autoFocus
               />
