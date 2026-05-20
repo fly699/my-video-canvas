@@ -91,7 +91,7 @@ export const nodesRouter = router({
       z.object({
         id: z.string().optional(),
         projectId: z.number(),
-        type: z.enum(["script", "storyboard", "prompt", "asset", "video_task", "ai_chat", "note"]),
+        type: z.enum(["script", "storyboard", "prompt", "image_gen", "asset", "video_task", "ai_chat", "note"]),
         title: z.string().optional(),
         data: nodeDataSchema,
         posX: z.number(),
@@ -121,7 +121,7 @@ export const nodesRouter = router({
         z.object({
           id: z.string(),
           projectId: z.number(),
-          type: z.enum(["script", "storyboard", "prompt", "asset", "video_task", "ai_chat", "note"]),
+          type: z.enum(["script", "storyboard", "prompt", "image_gen", "asset", "video_task", "ai_chat", "note"]),
           title: z.string().optional().nullable(),
           data: nodeDataSchema,
           posX: z.number(),
@@ -287,6 +287,7 @@ export const aiChatRouter = router({
         message: z.string().min(1),
         systemPrompt: z.string().optional(),
         contextContent: z.string().optional(),
+        model: z.string().optional(),
       })
     )
     .mutation(async ({ input }) => {
@@ -312,7 +313,7 @@ export const aiChatRouter = router({
         ...history.map((m) => ({ role: m.role as "user" | "assistant", content: m.content })),
       ];
 
-      const response = await invokeLLM({ messages });
+      const response = await invokeLLM({ messages, model: input.model });
       const rawContent = response.choices?.[0]?.message?.content;
       const assistantContent: string =
         typeof rawContent === "string"

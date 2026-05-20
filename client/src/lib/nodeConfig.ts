@@ -1,4 +1,4 @@
-import { NodeType } from "../../../shared/types";
+import type { NodeType } from "../../../shared/types";
 
 export interface NodeConfig {
   type: NodeType;
@@ -45,6 +45,17 @@ export const NODE_CONFIGS: Record<NodeType, NodeConfig> = {
     defaultWidth: 320,
     defaultHeight: 240,
     defaultTitle: "提示词",
+  },
+  image_gen: {
+    type: "image_gen",
+    label: "图像生成",
+    icon: "Sparkles",
+    color: "oklch(0.72 0.20 330)",
+    bgColor: "oklch(0.72 0.20 330 / 0.08)",
+    borderColor: "oklch(0.72 0.20 330 / 0.4)",
+    defaultWidth: 340,
+    defaultHeight: 380,
+    defaultTitle: "图像生成",
   },
   asset: {
     type: "asset",

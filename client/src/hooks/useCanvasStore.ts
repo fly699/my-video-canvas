@@ -211,6 +211,8 @@ function getDefaultPayload(type: NodeType): NodeData {
       return { description: "", promptText: "" };
     case "prompt":
       return { positivePrompt: "", negativePrompt: "" };
+    case "image_gen":
+      return { prompt: "", style: "", aspectRatio: "16:9" };
     case "asset":
       return { name: "素材", type: "image", url: "" };
     case "video_task":

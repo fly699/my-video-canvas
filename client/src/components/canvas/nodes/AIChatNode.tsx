@@ -4,7 +4,13 @@ import { useCanvasStore } from "../../../hooks/useCanvasStore";
 import type { AIChatNodeData } from "../../../../../shared/types";
 import { trpc } from "@/lib/trpc";
 import { toast } from "sonner";
-import { Send, Loader2, Trash2, Bot, User, Sparkles } from "lucide-react";
+import { Send, Loader2, Trash2, Bot, User, Sparkles, ChevronDown } from "lucide-react";
+
+const MODELS = [
+  { id: "gemini-2.5-flash",          label: "Gemini 2.5 Flash",  tag: "默认" },
+  { id: "claude-haiku-4-5-20251001", label: "Claude Haiku 4.5",  tag: "快速" },
+  { id: "claude-sonnet-4-6",         label: "Claude Sonnet 4.6", tag: "智能" },
+] as const;
 // Streamdown removed — replaced with safe inline markdown renderer to avoid ReactFlow DOM conflicts
 function SimpleMarkdown({ children }: { children: string }) {
   // Convert basic markdown to safe HTML
@@ -41,6 +47,8 @@ export const AIChatNode = memo(function AIChatNode({ id, selected, data }: Props
   const [localMessages, setLocalMessages] = useState<Array<{ role: "user" | "assistant"; content: string }>>(
     payload.messages ?? []
   );
+  const [model, setModel] = useState<string>(payload.model ?? "gemini-2.5-flash");
+  const [showModelPicker, setShowModelPicker] = useState(false);
   const scrollRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
 
@@ -82,7 +90,7 @@ export const AIChatNode = memo(function AIChatNode({ id, selected, data }: Props
     if (!msg || sendMutation.isPending) return;
     setInput("");
     setLocalMessages((prev) => [...prev, { role: "user", content: msg }]);
-    sendMutation.mutate({ nodeId: id, projectId: data.projectId, message: msg, systemPrompt: payload.systemPrompt, contextContent: buildContext() });
+    sendMutation.mutate({ nodeId: id, projectId: data.projectId, message: msg, systemPrompt: payload.systemPrompt, contextContent: buildContext(), model });
   };
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
@@ -114,6 +122,62 @@ export const AIChatNode = memo(function AIChatNode({ id, selected, data }: Props
               color: "oklch(0.55 0.008 260)",
             }}
           />
+        </div>
+
+        {/* ── Model selector ── */}
+        <div
+          className="px-2.5 py-1.5 flex items-center gap-1.5 flex-shrink-0 relative"
+          style={{ borderBottomWidth: 1, borderBottomStyle: "solid", borderBottomColor: "oklch(0.18 0.008 260)" }}
+        >
+          <span style={{ fontSize: 9, fontWeight: 500, textTransform: "uppercase", letterSpacing: "0.06em", color: "oklch(0.38 0.006 260)" }}>模型</span>
+          <button
+            className="nodrag flex items-center gap-1 px-2 py-0.5 rounded-md transition-all"
+            style={{
+              fontSize: 10, fontWeight: 500,
+              background: "oklch(0.13 0.007 260)",
+              border: showModelPicker ? "1px solid oklch(0.68 0.22 285 / 0.45)" : "1px solid oklch(0.22 0.008 260)",
+              color: "oklch(0.72 0.20 330)",
+              cursor: "pointer",
+            }}
+            onClick={() => setShowModelPicker(!showModelPicker)}
+          >
+            {MODELS.find((m) => m.id === model)?.label ?? model}
+            <ChevronDown style={{ width: 9, height: 9, opacity: 0.7 }} />
+          </button>
+          {/* Model dropdown */}
+          {showModelPicker && (
+            <div
+              className="absolute left-2.5 top-8 z-50 rounded-xl overflow-hidden animate-scale-in"
+              style={{
+                background: "oklch(0.12 0.007 260)",
+                border: "1px solid oklch(0.22 0.008 260)",
+                boxShadow: "0 8px 32px oklch(0 0 0 / 0.55)",
+                minWidth: 200,
+              }}
+            >
+              {MODELS.map((m) => (
+                <button
+                  key={m.id}
+                  className="nodrag w-full flex items-center justify-between px-3 py-2 transition-all text-left"
+                  style={{
+                    background: model === m.id ? "oklch(0.72 0.20 330 / 0.10)" : "transparent",
+                    borderBottom: "1px solid oklch(0.17 0.008 260)",
+                    cursor: "pointer",
+                  }}
+                  onClick={() => { setModel(m.id); updateNodeData(id, { model: m.id }); setShowModelPicker(false); }}
+                  onMouseEnter={(e) => { if (model !== m.id) (e.currentTarget as HTMLElement).style.background = "oklch(0.16 0.008 260)"; }}
+                  onMouseLeave={(e) => { if (model !== m.id) (e.currentTarget as HTMLElement).style.background = "transparent"; }}
+                >
+                  <span style={{ fontSize: 11, color: model === m.id ? "oklch(0.72 0.20 330)" : "oklch(0.75 0.006 260)", fontWeight: model === m.id ? 500 : 400 }}>
+                    {m.label}
+                  </span>
+                  <span style={{ fontSize: 9, color: "oklch(0.45 0.008 260)", background: "oklch(0.18 0.008 260)", borderRadius: 99, padding: "1px 6px", letterSpacing: "0.04em" }}>
+                    {m.tag}
+                  </span>
+                </button>
+              ))}
+            </div>
+          )}
         </div>
 
         {/* ── Messages ── */}

@@ -57,6 +57,7 @@ export type ToolChoice =
 
 export type InvokeParams = {
   messages: Message[];
+  model?: string;
   tools?: Tool[];
   toolChoice?: ToolChoice;
   tool_choice?: ToolChoice;
@@ -265,11 +266,20 @@ const normalizeResponseFormat = ({
   };
 };
 
+export const AVAILABLE_MODELS = [
+  { id: "gemini-2.5-flash",       label: "Gemini 2.5 Flash",  tag: "默认" },
+  { id: "claude-haiku-4-5-20251001", label: "Claude Haiku 4.5", tag: "快速" },
+  { id: "claude-sonnet-4-6",      label: "Claude Sonnet 4.6", tag: "智能" },
+] as const;
+
+export const DEFAULT_MODEL = "gemini-2.5-flash";
+
 export async function invokeLLM(params: InvokeParams): Promise<InvokeResult> {
   assertApiKey();
 
   const {
     messages,
+    model,
     tools,
     toolChoice,
     tool_choice,
@@ -280,7 +290,7 @@ export async function invokeLLM(params: InvokeParams): Promise<InvokeResult> {
   } = params;
 
   const payload: Record<string, unknown> = {
-    model: "gemini-2.5-flash",
+    model: model ?? DEFAULT_MODEL,
     messages: messages.map(normalizeMessage),
   };
 

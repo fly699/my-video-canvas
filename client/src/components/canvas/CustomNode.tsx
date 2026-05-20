@@ -7,6 +7,7 @@ import { AssetNode } from "./nodes/AssetNode";
 import { VideoTaskNode } from "./nodes/VideoTaskNode";
 import { AIChatNode } from "./nodes/AIChatNode";
 import { NoteNode } from "./nodes/NoteNode";
+import { ImageGenNode } from "./nodes/ImageGenNode";
 import type { NodeType } from "../../../../shared/types";
 
 interface CustomNodeData {
@@ -30,6 +31,8 @@ export const CustomNode = memo(function CustomNode(props: NodeProps) {
       return <StoryboardNode {...(props as unknown as AnyNodeProps)} />;
     case "prompt":
       return <PromptNode {...(props as unknown as AnyNodeProps)} />;
+    case "image_gen":
+      return <ImageGenNode {...(props as unknown as AnyNodeProps)} />;
     case "asset":
       return <AssetNode {...(props as unknown as AnyNodeProps)} />;
     case "video_task":

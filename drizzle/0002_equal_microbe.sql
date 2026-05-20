@@ -1,0 +1,1 @@
+ALTER TABLE `canvas_nodes` MODIFY COLUMN `type` enum('script','storyboard','prompt','asset','video_task','ai_chat','note','image_gen') NOT NULL;
