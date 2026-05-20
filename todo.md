@@ -78,3 +78,9 @@
 - [x] CollaboratorCursors / AssetPanel — 精修细节
 - [x] ErrorBoundary / ManusDialog / NotFound — 与深色主题一致，中文化
 - [x] TypeScript 0 errors，24 Vitest 测试全部通过
+
+## Phase 10: Bug 修复
+- [x] 修复新用户登录后 Canvas 页面无限转圈（auth loading 状态守卫）
+- [x] 添加首页（Home.tsx）登出按钮（用户头像旁）
+- [x] 添加画布页（Canvas.tsx）顶部栏登出按钮
+- [x] TypeScript 0 errors，26 Vitest 测试全部通过

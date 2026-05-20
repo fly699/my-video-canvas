@@ -50,6 +50,7 @@ import {
   Maximize2,
   Command,
   Play,
+  LogOut,
 } from "lucide-react";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 
@@ -161,7 +162,7 @@ function MobileToolDivider() {
 
 // ── Canvas inner ──────────────────────────────────────────────────────────────
 function CanvasInner({ projectId }: { projectId: number }) {
-  const { user, isAuthenticated } = useAuth();
+  const { user, isAuthenticated, logout } = useAuth();
   const [, navigate] = useLocation();
   const reactFlow = useReactFlow();
   const isMobile = useIsMobile();
@@ -567,6 +568,32 @@ function CanvasInner({ projectId }: { projectId: number }) {
             </TooltipTrigger>
             <TooltipContent side="bottom" className="text-xs">导出 JSON</TooltipContent>
           </Tooltip>
+          {/* Divider */}
+          <div className="w-px h-4 mx-1" style={{ background: "oklch(0.22 0.008 260)" }} />
+          {/* Logout */}
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <button
+                onClick={async () => {
+                  await logout();
+                  navigate("/");
+                }}
+                className="w-7 h-7 rounded-lg flex items-center justify-center transition-all"
+                style={{ color: "oklch(0.50 0.008 260)" }}
+                onMouseEnter={(e) => {
+                  (e.currentTarget as HTMLElement).style.background = "oklch(0.55 0.18 20 / 0.12)";
+                  (e.currentTarget as HTMLElement).style.color = "oklch(0.65 0.18 20)";
+                }}
+                onMouseLeave={(e) => {
+                  (e.currentTarget as HTMLElement).style.background = "transparent";
+                  (e.currentTarget as HTMLElement).style.color = "oklch(0.50 0.008 260)";
+                }}
+              >
+                <LogOut className="w-3.5 h-3.5" />
+              </button>
+            </TooltipTrigger>
+            <TooltipContent side="bottom" className="text-xs">退出登录</TooltipContent>
+          </Tooltip>
         </div>
       </header>
 
@@ -847,6 +874,28 @@ export default function Canvas() {
     if (!loading && !isAuthenticated) navigate("/");
   }, [loading, isAuthenticated, navigate]);
 
+  // Show auth loading screen — prevents CanvasInner from rendering with isAuthenticated=false
+  // which would cause projectLoading to never resolve (query is disabled when not authenticated)
+  if (loading) {
+    return (
+      <div
+        className="w-screen h-screen flex flex-col items-center justify-center gap-3"
+        style={{ background: "oklch(0.07 0.005 260)" }}
+      >
+        <div
+          className="w-10 h-10 rounded-xl flex items-center justify-center"
+          style={{ background: "linear-gradient(135deg, oklch(0.68 0.22 285), oklch(0.60 0.20 310))" }}
+        >
+          <Film className="w-5 h-5 text-white" />
+        </div>
+        <div className="flex items-center gap-2 text-sm" style={{ color: "oklch(0.45 0.008 260)" }}>
+          <Loader2 className="w-4 h-4 animate-spin" />
+          验证身份中...
+        </div>
+      </div>
+    );
+  }
+
   if (!projectId || isNaN(projectId)) {
     return (
       <div className="w-screen h-screen flex items-center justify-center" style={{ background: "oklch(0.07 0.005 260)", color: "oklch(0.45 0.008 260)" }}>
@@ -854,6 +903,9 @@ export default function Canvas() {
       </div>
     );
   }
+
+  // Only mount CanvasInner once auth is confirmed — avoids infinite loading spinner
+  if (!isAuthenticated) return null;
 
   return (
     <ReactFlowProvider>

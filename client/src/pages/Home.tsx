@@ -19,6 +19,7 @@ import {
   Zap,
   Clock,
   ChevronRight,
+  LogOut,
 } from "lucide-react";
 
 // ── Animated background grid ─────────────────────────────────────────────────
@@ -264,7 +265,7 @@ function NewProjectCard({ onClick }: { onClick: () => void }) {
 
 // ── Main ──────────────────────────────────────────────────────────────────────
 export default function Home() {
-  const { user, isAuthenticated, loading } = useAuth();
+  const { user, isAuthenticated, loading, logout } = useAuth();
   const [, navigate] = useLocation();
   const [creating, setCreating] = useState(false);
 
@@ -471,6 +472,31 @@ export default function Home() {
             >
               {(user.name ?? user.email ?? "U")[0].toUpperCase()}
             </div>
+            <button
+              onClick={async () => {
+                await logout();
+                toast.success("已退出登录");
+              }}
+              title="退出登录"
+              className="w-7 h-7 rounded-lg flex items-center justify-center transition-all duration-150"
+              style={{
+                background: "transparent",
+                border: "1px solid oklch(0.22 0.008 260)",
+                color: "oklch(0.50 0.008 260)",
+              }}
+              onMouseEnter={(e) => {
+                (e.currentTarget as HTMLElement).style.background = "oklch(0.55 0.18 20 / 0.12)";
+                (e.currentTarget as HTMLElement).style.borderColor = "oklch(0.55 0.18 20 / 0.4)";
+                (e.currentTarget as HTMLElement).style.color = "oklch(0.65 0.18 20)";
+              }}
+              onMouseLeave={(e) => {
+                (e.currentTarget as HTMLElement).style.background = "transparent";
+                (e.currentTarget as HTMLElement).style.borderColor = "oklch(0.22 0.008 260)";
+                (e.currentTarget as HTMLElement).style.color = "oklch(0.50 0.008 260)";
+              }}
+            >
+              <LogOut className="w-3.5 h-3.5" />
+            </button>
           </div>
         )}
       </nav>
