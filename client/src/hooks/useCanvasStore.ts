@@ -50,6 +50,7 @@ interface CanvasStore {
   removeCollaborator: (userId: number) => void;
   markClean: () => void;
   markDirty: () => void;
+  resetCanvas: () => void;
 }
 
 export const useCanvasStore = create<CanvasStore>((set, get) => ({
@@ -189,6 +190,7 @@ export const useCanvasStore = create<CanvasStore>((set, get) => ({
 
   markClean: () => set({ isDirty: false }),
   markDirty: () => set({ isDirty: true }),
+  resetCanvas: () => set({ nodes: [], edges: [], selectedNodeIds: [], collaborators: new Map(), isDirty: false }),
 }));
 
 function getDefaultPayload(type: NodeType): NodeData {

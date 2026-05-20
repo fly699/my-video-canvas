@@ -6,12 +6,18 @@ import ErrorBoundary from "./components/ErrorBoundary";
 import { ThemeProvider } from "./contexts/ThemeContext";
 import Home from "./pages/Home";
 import Canvas from "./pages/Canvas";
+import { useParams } from "wouter";
+
+function CanvasWithKey() {
+  const params = useParams<{ projectId: string }>();
+  return <Canvas key={params.projectId} />;
+}
 
 function Router() {
   return (
     <Switch>
       <Route path="/" component={Home} />
-      <Route path="/canvas/:projectId" component={Canvas} />
+      <Route path="/canvas/:projectId" component={CanvasWithKey} />
       <Route path="/404" component={NotFound} />
       <Route component={NotFound} />
     </Switch>

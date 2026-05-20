@@ -5,7 +5,19 @@ import type { AIChatNodeData } from "../../../../../shared/types";
 import { trpc } from "@/lib/trpc";
 import { toast } from "sonner";
 import { Send, Loader2, Trash2, Bot, User, Sparkles } from "lucide-react";
-import { Streamdown } from "streamdown";
+// Streamdown removed — replaced with safe inline markdown renderer to avoid ReactFlow DOM conflicts
+function SimpleMarkdown({ children }: { children: string }) {
+  // Convert basic markdown to safe HTML
+  const html = children
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/\*\*(.+?)\*\*/g, "<strong>$1</strong>")
+    .replace(/\*(.+?)\*/g, "<em>$1</em>")
+    .replace(/`(.+?)`/g, "<code>$1</code>")
+    .replace(/\n/g, "<br/>");
+  return <span dangerouslySetInnerHTML={{ __html: html }} />;
+}
 
 interface Props {
   id: string;
@@ -167,7 +179,7 @@ export const AIChatNode = memo(function AIChatNode({ id, selected, data }: Props
                     }}
                   >
                     {msg.role === "assistant" ? (
-                      <Streamdown className="prose prose-invert prose-xs max-w-none">{msg.content}</Streamdown>
+                      <SimpleMarkdown>{msg.content}</SimpleMarkdown>
                     ) : (
                       <span>{msg.content}</span>
                     )}

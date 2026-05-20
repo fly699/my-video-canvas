@@ -134,7 +134,7 @@ function CanvasInner({ projectId }: { projectId: number }) {
     onNodesChange, onEdgesChange, onConnect,
     addNode, deleteNode, duplicateNode,
     setProjectId, isDirty, markClean, markDirty,
-    setCollaborator, removeCollaborator, collaborators,
+    setCollaborator, removeCollaborator, collaborators, resetCanvas,
   } = useCanvasStore();
 
   const [contextMenu, setContextMenu] = useState<{
@@ -167,7 +167,11 @@ function CanvasInner({ projectId }: { projectId: number }) {
   const upsertEdge = trpc.edges.upsert.useMutation();
   const updateProject = trpc.projects.update.useMutation();
 
-  useEffect(() => { setProjectId(projectId); }, [projectId, setProjectId]);
+  // Reset canvas store on unmount to prevent stale nodes polluting next canvas
+  useEffect(() => {
+    setProjectId(projectId);
+    return () => { resetCanvas(); };
+  }, [projectId, setProjectId, resetCanvas]);
 
   useEffect(() => {
     if (!dbNodes) return;
