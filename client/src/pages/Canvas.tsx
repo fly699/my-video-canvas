@@ -13,11 +13,14 @@ import {
 import "@xyflow/react/dist/style.css";
 import { useCanvasStore, type CanvasNode, type CanvasEdge } from "../hooks/useCanvasStore";
 import { CustomNode } from "../components/canvas/CustomNode";
+import { CustomEdge } from "../components/canvas/CustomEdge";
 import { ContextMenu } from "../components/canvas/ContextMenu";
 import { CollaboratorCursors } from "../components/canvas/CollaboratorCursors";
 import { AssetPanel } from "../components/canvas/AssetPanel";
+import { PresentationMode } from "../components/canvas/PresentationMode";
 import { trpc } from "@/lib/trpc";
 import { useAuth } from "@/_core/hooks/useAuth";
+import { useIsMobile } from "@/hooks/useMobile";
 import { toast } from "sonner";
 import type { NodeType, CollaboratorCursor } from "../../../shared/types";
 import { getNodeConfig, NODE_TYPE_LIST, COLLABORATOR_COLORS } from "../lib/nodeConfig";
@@ -45,10 +48,12 @@ import {
   ZoomOut,
   Maximize2,
   Command,
+  Play,
 } from "lucide-react";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 
 const nodeTypes = { custom: CustomNode };
+const edgeTypes = { custom: CustomEdge };
 
 // ── Icon map ──────────────────────────────────────────────────────────────────
 const ICON_MAP: Record<string, React.ComponentType<{ className?: string; style?: React.CSSProperties }>> = {
@@ -123,11 +128,42 @@ function ToolDivider() {
   return <div className="w-5 h-px bg-white/8 mx-auto my-1" />;
 }
 
+// ── Mobile tool button ────────────────────────────────────────────────────────
+function MobileToolBtn({
+  icon: Icon, label, onClick, active, accent, color,
+}: {
+  icon: React.ComponentType<{ className?: string; style?: React.CSSProperties }>;
+  label: string; onClick: () => void; active?: boolean; accent?: string; color?: string;
+}) {
+  return (
+    <button
+      onClick={onClick}
+      title={label}
+      style={{
+        width: 36, height: 36, borderRadius: 10,
+        display: "flex", alignItems: "center", justifyContent: "center",
+        background: active ? "oklch(0.68 0.22 285 / 0.15)" : "transparent",
+        border: active ? "1px solid oklch(0.68 0.22 285 / 0.35)" : "1px solid transparent",
+        color: active ? "oklch(0.68 0.22 285)" : (color ?? "oklch(0.58 0.008 260)"),
+        transition: "all 120ms ease",
+        flexShrink: 0,
+      }}
+    >
+      <Icon className="w-4 h-4" style={color && !active ? { color } : undefined} />
+    </button>
+  );
+}
+
+function MobileToolDivider() {
+  return <div style={{ width: 1, height: 20, background: "oklch(0.20 0.008 260)", flexShrink: 0 }} />;
+}
+
 // ── Canvas inner ──────────────────────────────────────────────────────────────
 function CanvasInner({ projectId }: { projectId: number }) {
   const { user, isAuthenticated } = useAuth();
   const [, navigate] = useLocation();
   const reactFlow = useReactFlow();
+  const isMobile = useIsMobile();
 
   const {
     nodes, edges, setNodes, setEdges,
@@ -144,6 +180,7 @@ function CanvasInner({ projectId }: { projectId: number }) {
   const [showAssets, setShowAssets] = useState(false);
   const [showCollaborators, setShowCollaborators] = useState(false);
   const [showNodePicker, setShowNodePicker] = useState(false);
+  const [showPresentation, setShowPresentation] = useState(false);
 
   const socketRef = useRef<Socket | null>(null);
   const [socketConnected, setSocketConnected] = useState(false);
@@ -188,7 +225,8 @@ function CanvasInner({ projectId }: { projectId: number }) {
   useEffect(() => {
     if (!dbEdges) return;
     const flowEdges: CanvasEdge[] = dbEdges.map((e) => ({
-      id: e.id, source: e.sourceNodeId, target: e.targetNodeId,
+      id: e.id, type: "custom",
+      source: e.sourceNodeId, target: e.targetNodeId,
       sourceHandle: e.sourcePort ?? "output", targetHandle: e.targetPort ?? "input",
       label: e.label ?? undefined,
     }));
@@ -459,6 +497,22 @@ function CanvasInner({ projectId }: { projectId: number }) {
             {collaboratorList.length > 0 && <span>{collaboratorList.length}</span>}
           </button>
 
+          {/* Presentation mode */}
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <button
+                onClick={() => setShowPresentation(true)}
+                className="w-7 h-7 rounded-lg flex items-center justify-center transition-all"
+                style={{ color: "oklch(0.55 0.008 260)" }}
+                onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.background = "oklch(0.16 0.008 260)"; (e.currentTarget as HTMLElement).style.color = "oklch(0.80 0.005 260)"; }}
+                onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.background = "transparent"; (e.currentTarget as HTMLElement).style.color = "oklch(0.55 0.008 260)"; }}
+              >
+                <Play className="w-3.5 h-3.5" />
+              </button>
+            </TooltipTrigger>
+            <TooltipContent side="bottom" className="text-xs">演示模式</TooltipContent>
+          </Tooltip>
+
           {/* Assets */}
           <Tooltip>
             <TooltipTrigger asChild>
@@ -518,10 +572,12 @@ function CanvasInner({ projectId }: { projectId: number }) {
       {/* ══ Main ═════════════════════════════════════════════════════════════ */}
       <div className="flex-1 flex overflow-hidden relative">
 
-        {/* ── Left tool sidebar ── */}
+        {/* ── Left tool sidebar (desktop only) ── */}
         <aside
-          className="w-12 flex flex-col items-center py-3 gap-1 flex-shrink-0 z-10"
+          className="flex-col items-center py-3 gap-1 flex-shrink-0 z-10"
           style={{
+            display: isMobile ? "none" : "flex",
+            width: isMobile ? 0 : 48,
             background: "oklch(0.09 0.006 260 / 0.95)",
             backdropFilter: "blur(20px)",
             borderRight: "1px solid oklch(0.18 0.008 260)",
@@ -629,6 +685,7 @@ function CanvasInner({ projectId }: { projectId: number }) {
             nodes={nodes}
             edges={edges}
             nodeTypes={nodeTypes}
+            edgeTypes={edgeTypes}
             onNodesChange={onNodesChange}
             onEdgesChange={onEdgesChange}
             onConnect={onConnect}
@@ -644,7 +701,7 @@ function CanvasInner({ projectId }: { projectId: number }) {
             deleteKeyCode="Delete"
             multiSelectionKeyCode="Shift"
             proOptions={{ hideAttribution: true }}
-            defaultEdgeOptions={{ animated: false }}
+            defaultEdgeOptions={{ type: "custom", animated: false }}
           >
             <Background
               variant={BackgroundVariant.Dots}
@@ -736,6 +793,44 @@ function CanvasInner({ projectId }: { projectId: number }) {
           onDeleteNode={contextMenu.nodeId ? () => deleteNode(contextMenu.nodeId!) : undefined}
           onDuplicateNode={contextMenu.nodeId ? () => duplicateNode(contextMenu.nodeId!) : undefined}
         />
+      )}
+
+      {/* ── Mobile bottom toolbar ── */}
+      {isMobile && (
+        <div
+          className="absolute bottom-5 left-1/2 z-30 flex items-center gap-2 px-3 py-2 rounded-2xl animate-slide-up"
+          style={{
+            transform: "translateX(-50%)",
+            background: "oklch(0.11 0.007 260 / 0.95)",
+            backdropFilter: "blur(20px)",
+            border: "1px solid oklch(0.20 0.008 260)",
+            boxShadow: "0 8px 32px oklch(0 0 0 / 0.55), 0 0 0 1px oklch(0.20 0.008 260 / 0.4)",
+          }}
+        >
+          <MobileToolBtn icon={Plus} label="添加节点" accent="oklch(0.68 0.22 285)" onClick={() => setShowNodePicker(!showNodePicker)} />
+          <MobileToolDivider />
+          {NODE_TYPE_LIST.slice(0, 4).map((config) => {
+            const Icon = ICON_MAP[config.icon] ?? FileText;
+            return (
+              <MobileToolBtn
+                key={config.type}
+                icon={Icon}
+                label={`添加${config.label}`}
+                color={config.color}
+                onClick={() => addNodeAtCenter(config.type)}
+              />
+            );
+          })}
+          <MobileToolDivider />
+          <MobileToolBtn icon={Maximize2} label="适应视图" onClick={() => reactFlow.fitView({ padding: 0.15, duration: 400 })} />
+          <MobileToolBtn icon={Paperclip} label="素材库" active={showAssets} onClick={() => setShowAssets(!showAssets)} />
+          <MobileToolBtn icon={Play} label="演示模式" onClick={() => setShowPresentation(true)} />
+        </div>
+      )}
+
+      {/* ── Presentation mode ── */}
+      {showPresentation && (
+        <PresentationMode nodes={nodes} onClose={() => setShowPresentation(false)} />
       )}
     </div>
   );
