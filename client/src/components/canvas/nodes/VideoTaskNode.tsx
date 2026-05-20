@@ -2,21 +2,9 @@ import { memo, useCallback, useEffect, useRef } from "react";
 import { BaseNode } from "../BaseNode";
 import { useCanvasStore } from "../../../hooks/useCanvasStore";
 import type { VideoTaskNodeData, VideoProvider } from "../../../../../shared/types";
-import { Textarea } from "@/components/ui/textarea";
-import { Input } from "@/components/ui/input";
-import { Button } from "@/components/ui/button";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { trpc } from "@/lib/trpc";
 import { toast } from "sonner";
-import {
-  Play,
-  Loader2,
-  CheckCircle2,
-  XCircle,
-  Clock,
-  Video,
-  RefreshCw,
-} from "lucide-react";
+import { Play, Loader2, CheckCircle2, XCircle, Clock, RefreshCw, AlertCircle } from "lucide-react";
 
 interface Props {
   id: string;
@@ -29,39 +17,47 @@ interface Props {
   };
 }
 
-const STATUS_CONFIG = {
-  pending: { icon: Clock, color: "text-muted-foreground", label: "待提交" },
-  processing: { icon: Loader2, color: "text-[oklch(0.68_0.22_300)]", label: "生成中", spin: true },
-  succeeded: { icon: CheckCircle2, color: "text-[oklch(0.65_0.20_160)]", label: "已完成" },
-  failed: { icon: XCircle, color: "text-destructive", label: "失败" },
+const STATUS = {
+  pending:    { icon: Clock,         label: "待提交", accent: "oklch(0.50 0.008 260)", bg: "oklch(0.14 0.007 260)", border: "oklch(0.22 0.008 260)" },
+  processing: { icon: Loader2,       label: "生成中", accent: "oklch(0.68 0.22 285)",  bg: "oklch(0.68 0.22 285 / 0.08)", border: "oklch(0.68 0.22 285 / 0.30)", spin: true },
+  succeeded:  { icon: CheckCircle2,  label: "已完成", accent: "oklch(0.72 0.18 155)",  bg: "oklch(0.72 0.18 155 / 0.08)", border: "oklch(0.72 0.18 155 / 0.30)" },
+  failed:     { icon: XCircle,       label: "失败",   accent: "oklch(0.62 0.20 25)",   bg: "oklch(0.62 0.20 25 / 0.08)",  border: "oklch(0.62 0.20 25 / 0.30)" },
+} as const;
+
+const PROVIDERS = [
+  { value: "runway", label: "Runway Gen-3" },
+  { value: "kling",  label: "Kling 可灵" },
+  { value: "mock",   label: "Mock 测试" },
+];
+
+const fieldStyle: React.CSSProperties = {
+  width: "100%",
+  padding: "5px 8px",
+  fontSize: 11,
+  background: "oklch(0.09 0.006 260)",
+  border: "1px solid oklch(0.20 0.008 260)",
+  borderRadius: 6,
+  color: "oklch(0.80 0.006 260)",
+  outline: "none",
+  transition: "border-color 120ms ease",
 };
 
 export const VideoTaskNode = memo(function VideoTaskNode({ id, selected, data }: Props) {
   const { updateNodeData } = useCanvasStore();
   const payload = data.payload;
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const accentColor = "oklch(0.62 0.20 25)";
 
   const createTaskMutation = trpc.videoTasks.create.useMutation({
     onSuccess: (task) => {
-      updateNodeData(id, {
-        status: "processing",
-        taskId: task.id,
-        externalTaskId: task.externalTaskId ?? undefined,
-      });
+      updateNodeData(id, { status: "processing", taskId: task.id, externalTaskId: task.externalTaskId ?? undefined });
       toast.success("视频任务已提交");
     },
     onError: (err) => toast.error("提交失败：" + err.message),
   });
 
-  const pollQuery = trpc.videoTasks.poll.useQuery(
-    { id: payload.taskId! },
-    {
-      enabled: false,
-      refetchInterval: false,
-    }
-  );
+  const pollQuery = trpc.videoTasks.poll.useQuery({ id: payload.taskId! }, { enabled: false, refetchInterval: false });
 
-  // Poll task status
   useEffect(() => {
     if (payload.status === "processing" && payload.taskId) {
       pollRef.current = setInterval(async () => {
@@ -69,148 +65,171 @@ export const VideoTaskNode = memo(function VideoTaskNode({ id, selected, data }:
         if (result.data) {
           const task = result.data;
           if (task.status === "succeeded" || task.status === "failed") {
-            updateNodeData(id, {
-              status: task.status,
-              resultVideoUrl: task.resultVideoUrl ?? undefined,
-              errorMessage: task.errorMessage ?? undefined,
-            });
+            updateNodeData(id, { status: task.status, resultVideoUrl: task.resultVideoUrl ?? undefined, errorMessage: task.errorMessage ?? undefined });
             if (pollRef.current) clearInterval(pollRef.current);
           }
         }
       }, 5000);
     }
-    return () => {
-      if (pollRef.current) clearInterval(pollRef.current);
-    };
+    return () => { if (pollRef.current) clearInterval(pollRef.current); };
   }, [payload.status, payload.taskId]);
 
   const handleChange = useCallback(
-    (field: keyof VideoTaskNodeData, value: unknown) => {
-      updateNodeData(id, { [field]: value });
-    },
+    (field: keyof VideoTaskNodeData, value: unknown) => { updateNodeData(id, { [field]: value }); },
     [id, updateNodeData]
   );
 
   const handleSubmit = () => {
-    if (!payload.prompt?.trim()) {
-      toast.error("请填写提示词");
-      return;
-    }
+    if (!payload.prompt?.trim()) { toast.error("请填写提示词"); return; }
     createTaskMutation.mutate({
-      projectId: data.projectId,
-      nodeId: id,
-      provider: payload.provider,
-      prompt: payload.prompt,
-      negativePrompt: payload.negativePrompt,
-      referenceImageUrl: payload.referenceImageUrl,
+      projectId: data.projectId, nodeId: id,
+      provider: payload.provider, prompt: payload.prompt,
+      negativePrompt: payload.negativePrompt, referenceImageUrl: payload.referenceImageUrl,
     });
   };
 
-  const statusConfig = STATUS_CONFIG[payload.status] ?? STATUS_CONFIG.pending;
-  const StatusIcon = statusConfig.icon;
+  const status = STATUS[payload.status] ?? STATUS.pending;
+  const StatusIcon = status.icon;
+  const isLocked = payload.status === "processing" || payload.status === "succeeded";
 
   return (
     <BaseNode id={id} selected={selected} nodeType="video_task" title={data.title} minHeight={240}>
-      <div className="flex flex-col h-full p-3 gap-2">
-        {/* Status bar */}
-        <div className="flex items-center gap-2 px-2 py-1.5 rounded-lg bg-muted/20 border border-border/30">
+      <div className="flex flex-col h-full p-2.5 gap-2">
+
+        {/* ── Status pill ── */}
+        <div
+          className="flex items-center gap-2 px-2.5 py-2 rounded-lg"
+          style={{ background: status.bg, border: `1px solid ${status.border}` }}
+        >
           <StatusIcon
-            className={`w-3.5 h-3.5 flex-shrink-0 ${statusConfig.color} ${
-              (statusConfig as { spin?: boolean }).spin ? "animate-spin" : ""
-            }`}
+            className={`w-3.5 h-3.5 flex-shrink-0 ${(status as { spin?: boolean }).spin ? "animate-spin" : ""}`}
+            style={{ color: status.accent }}
           />
-          <span className={`text-xs font-medium ${statusConfig.color}`}>{statusConfig.label}</span>
+          <span className="text-xs font-medium" style={{ color: status.accent }}>{status.label}</span>
           {payload.status === "processing" && (
-            <span className="ml-auto text-[10px] text-muted-foreground animate-pulse">轮询中...</span>
+            <span className="ml-auto text-[10px] animate-pulse" style={{ color: "oklch(0.50 0.008 260)" }}>
+              轮询中...
+            </span>
+          )}
+          {payload.status === "succeeded" && (
+            <span className="ml-auto text-[10px]" style={{ color: "oklch(0.45 0.008 260)" }}>
+              生成完成
+            </span>
           )}
         </div>
 
-        {/* Result video */}
+        {/* ── Result video ── */}
         {payload.status === "succeeded" && payload.resultVideoUrl && (
-          <div className="rounded-lg overflow-hidden border border-[oklch(0.65_0.20_160/0.4)]">
-            <video
-              src={payload.resultVideoUrl}
-              controls
-              className="w-full nodrag"
-              style={{ maxHeight: 140 }}
-            />
-          </div>
-        )}
-
-        {/* Error */}
-        {payload.status === "failed" && payload.errorMessage && (
-          <div className="p-2 rounded-lg bg-destructive/10 border border-destructive/30 text-xs text-destructive">
-            {payload.errorMessage}
-          </div>
-        )}
-
-        {/* Provider */}
-        <div className="flex gap-2">
-          <Select
-            value={payload.provider}
-            onValueChange={(v) => handleChange("provider", v as VideoProvider)}
-            disabled={payload.status === "processing"}
+          <div
+            className="rounded-lg overflow-hidden flex-shrink-0"
+            style={{ border: `1px solid ${STATUS.succeeded.border}` }}
           >
-            <SelectTrigger className="h-7 text-xs bg-transparent border-border/40 nodrag">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="runway">Runway</SelectItem>
-              <SelectItem value="kling">Kling (可灵)</SelectItem>
-              <SelectItem value="mock">Mock (测试)</SelectItem>
-            </SelectContent>
-          </Select>
-        </div>
+            <video src={payload.resultVideoUrl} controls className="w-full nodrag" style={{ maxHeight: 140, display: "block" }} />
+          </div>
+        )}
 
-        {/* Prompt */}
-        <Textarea
+        {/* ── Error ── */}
+        {payload.status === "failed" && payload.errorMessage && (
+          <div
+            className="flex items-start gap-2 p-2 rounded-lg"
+            style={{ background: STATUS.failed.bg, border: `1px solid ${STATUS.failed.border}` }}
+          >
+            <AlertCircle className="w-3.5 h-3.5 flex-shrink-0 mt-0.5" style={{ color: STATUS.failed.accent }} />
+            <p className="text-[11px] leading-relaxed" style={{ color: STATUS.failed.accent }}>{payload.errorMessage}</p>
+          </div>
+        )}
+
+        {/* ── Provider ── */}
+        <select
+          value={payload.provider}
+          onChange={(e) => handleChange("provider", e.target.value as VideoProvider)}
+          disabled={isLocked}
+          className="nodrag"
+          style={{
+            ...fieldStyle,
+            cursor: isLocked ? "not-allowed" : "pointer",
+            opacity: isLocked ? 0.5 : 1,
+          }}
+          onFocus={(e) => { (e.currentTarget as HTMLElement).style.borderColor = `${accentColor}60`; }}
+          onBlur={(e) => { (e.currentTarget as HTMLElement).style.borderColor = "oklch(0.20 0.008 260)"; }}
+        >
+          {PROVIDERS.map((p) => (
+            <option key={p.value} value={p.value} style={{ background: "oklch(0.12 0.007 260)" }}>
+              {p.label}
+            </option>
+          ))}
+        </select>
+
+        {/* ── Prompt ── */}
+        <textarea
           placeholder="视频生成提示词..."
           value={payload.prompt ?? ""}
           onChange={(e) => handleChange("prompt", e.target.value)}
-          className="resize-none text-xs bg-transparent border-border/40 focus:border-[oklch(0.62_0.20_25/0.6)] nodrag font-mono"
           rows={3}
-          disabled={payload.status === "processing"}
+          disabled={isLocked}
+          className="nodrag"
+          style={{
+            ...fieldStyle,
+            resize: "none",
+            lineHeight: 1.65,
+            fontFamily: "'JetBrains Mono', monospace",
+            fontSize: 10.5,
+            opacity: isLocked ? 0.5 : 1,
+          }}
+          onFocus={(e) => { (e.currentTarget as HTMLElement).style.borderColor = `${accentColor}60`; }}
+          onBlur={(e) => { (e.currentTarget as HTMLElement).style.borderColor = "oklch(0.20 0.008 260)"; }}
         />
 
-        <Input
+        <input
           placeholder="反向提示词（可选）"
           value={payload.negativePrompt ?? ""}
           onChange={(e) => handleChange("negativePrompt", e.target.value)}
-          className="h-7 text-xs bg-transparent border-border/40 nodrag"
-          disabled={payload.status === "processing"}
+          disabled={isLocked}
+          className="nodrag"
+          style={{ ...fieldStyle, opacity: isLocked ? 0.5 : 1 }}
+          onFocus={(e) => { (e.currentTarget as HTMLElement).style.borderColor = "oklch(0.40 0.008 260)"; }}
+          onBlur={(e) => { (e.currentTarget as HTMLElement).style.borderColor = "oklch(0.20 0.008 260)"; }}
         />
 
-        <Input
+        <input
           placeholder="参考图 URL（可选）"
           value={payload.referenceImageUrl ?? ""}
           onChange={(e) => handleChange("referenceImageUrl", e.target.value)}
-          className="h-7 text-xs bg-transparent border-border/40 nodrag"
-          disabled={payload.status === "processing"}
+          disabled={isLocked}
+          className="nodrag"
+          style={{ ...fieldStyle, opacity: isLocked ? 0.5 : 1 }}
+          onFocus={(e) => { (e.currentTarget as HTMLElement).style.borderColor = "oklch(0.40 0.008 260)"; }}
+          onBlur={(e) => { (e.currentTarget as HTMLElement).style.borderColor = "oklch(0.20 0.008 260)"; }}
         />
 
-        {/* Actions */}
-        <div className="flex gap-2 mt-auto">
+        {/* ── Actions ── */}
+        <div className="flex gap-1.5 mt-auto">
           {payload.status === "failed" && (
-            <Button
-              size="sm"
-              variant="ghost"
+            <button
               onClick={() => updateNodeData(id, { status: "pending", errorMessage: undefined })}
-              className="flex-1 h-7 text-xs gap-1.5 nodrag"
+              className="nodrag flex items-center justify-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-all"
+              style={{
+                background: "oklch(0.14 0.007 260)",
+                border: "1px solid oklch(0.22 0.008 260)",
+                color: "oklch(0.60 0.008 260)",
+              }}
+              onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.background = "oklch(0.18 0.008 260)"; }}
+              onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.background = "oklch(0.14 0.007 260)"; }}
             >
               <RefreshCw className="w-3 h-3" />
               重置
-            </Button>
+            </button>
           )}
-          <Button
-            size="sm"
+          <button
             onClick={handleSubmit}
-            disabled={
-              payload.status === "processing" ||
-              payload.status === "succeeded" ||
-              createTaskMutation.isPending
-            }
-            className="flex-1 h-7 text-xs gap-1.5 bg-[oklch(0.62_0.20_25/0.2)] hover:bg-[oklch(0.62_0.20_25/0.3)] border border-[oklch(0.62_0.20_25/0.4)] text-[oklch(0.62_0.20_25)] nodrag"
-            variant="ghost"
+            disabled={isLocked || createTaskMutation.isPending}
+            className="nodrag flex-1 flex items-center justify-center gap-1.5 py-1.5 rounded-lg text-xs font-medium transition-all"
+            style={{
+              background: isLocked || createTaskMutation.isPending ? "oklch(0.13 0.007 260)" : `${accentColor}15`,
+              border: `1px solid ${isLocked || createTaskMutation.isPending ? "oklch(0.20 0.008 260)" : `${accentColor}40`}`,
+              color: isLocked || createTaskMutation.isPending ? "oklch(0.38 0.006 260)" : accentColor,
+              cursor: isLocked || createTaskMutation.isPending ? "not-allowed" : "pointer",
+            }}
           >
             {createTaskMutation.isPending || payload.status === "processing" ? (
               <Loader2 className="w-3 h-3 animate-spin" />
@@ -218,7 +237,7 @@ export const VideoTaskNode = memo(function VideoTaskNode({ id, selected, data }:
               <Play className="w-3 h-3" />
             )}
             {payload.status === "processing" ? "生成中..." : "提交任务"}
-          </Button>
+          </button>
         </div>
       </div>
     </BaseNode>

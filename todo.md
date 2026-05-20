@@ -65,3 +65,16 @@
 - [x] TypeScript 类型错误全部修复（0 errors）
 - [x] 24 个 Vitest 测试全部通过
 - [x] 最终 Checkpoint 与交付
+
+## Phase 9: UI 全面重做（对标 Runway/Linear）
+- [x] 全局样式 index.css — 纯黑极简主题（#080808 底色 + 紫色品牌色）
+- [x] 首页 Landing Page — 视觉冲击力强，项目卡片精美，动画效果
+- [x] 画布页顶部栏 — 极简导航，项目重命名，协作者头像，快捷操作
+- [x] 画布工具侧边栏 — 精致图标按钮，节点选择器弹出面板
+- [x] BaseNode — 精致卡片式设计，玻璃质感，Handle 精美
+- [x] ScriptNode / StoryboardNode / PromptNode — 独特视觉语言
+- [x] VideoTaskNode / AIChatNode / NoteNode / AssetNode — 精美重做
+- [x] ContextMenu — 精致右键菜单，节点图标彩色
+- [x] CollaboratorCursors / AssetPanel — 精修细节
+- [x] ErrorBoundary / ManusDialog / NotFound — 与深色主题一致，中文化
+- [x] TypeScript 0 errors，24 Vitest 测试全部通过

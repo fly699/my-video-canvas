@@ -2,13 +2,10 @@ import { memo, useState, useRef, useEffect, useCallback } from "react";
 import { BaseNode } from "../BaseNode";
 import { useCanvasStore } from "../../../hooks/useCanvasStore";
 import type { AIChatNodeData } from "../../../../../shared/types";
-import { Input } from "@/components/ui/input";
-import { Button } from "@/components/ui/button";
 import { trpc } from "@/lib/trpc";
 import { toast } from "sonner";
 import { Send, Loader2, Trash2, Bot, User, Sparkles } from "lucide-react";
 import { Streamdown } from "streamdown";
-import { ScrollArea } from "@/components/ui/scroll-area";
 
 interface Props {
   id: string;
@@ -21,34 +18,26 @@ interface Props {
   };
 }
 
+const accentColor = "oklch(0.70 0.18 200)";
+
 export const AIChatNode = memo(function AIChatNode({ id, selected, data }: Props) {
   const { updateNodeData, nodes } = useCanvasStore();
   const payload = data.payload;
   const [input, setInput] = useState("");
-  const [localMessages, setLocalMessages] = useState<
-    Array<{ role: "user" | "assistant"; content: string }>
-  >(payload.messages ?? []);
+  const [localMessages, setLocalMessages] = useState<Array<{ role: "user" | "assistant"; content: string }>>(
+    payload.messages ?? []
+  );
   const scrollRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
 
-  // Sync local messages to node data
+  useEffect(() => { updateNodeData(id, { messages: localMessages }); }, [localMessages]);
   useEffect(() => {
-    updateNodeData(id, { messages: localMessages });
-  }, [localMessages]);
-
-  // Auto scroll
-  useEffect(() => {
-    if (scrollRef.current) {
-      scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
-    }
+    if (scrollRef.current) scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
   }, [localMessages]);
 
   const sendMutation = trpc.aiChat.sendMessage.useMutation({
     onSuccess: (result) => {
-      setLocalMessages((prev) => [
-        ...prev,
-        { role: "assistant", content: result.content },
-      ]);
+      setLocalMessages((prev) => [...prev, { role: "assistant", content: result.content }]);
     },
     onError: (err) => {
       toast.error("AI 响应失败：" + err.message);
@@ -57,13 +46,9 @@ export const AIChatNode = memo(function AIChatNode({ id, selected, data }: Props
   });
 
   const clearMutation = trpc.aiChat.clearMessages.useMutation({
-    onSuccess: () => {
-      setLocalMessages([]);
-      toast.success("对话已清除");
-    },
+    onSuccess: () => { setLocalMessages([]); toast.success("对话已清除"); },
   });
 
-  // Build context from connected/selected nodes
   const buildContext = useCallback(() => {
     const contextIds = payload.contextNodeIds ?? [];
     if (!contextIds.length) return undefined;
@@ -72,11 +57,7 @@ export const AIChatNode = memo(function AIChatNode({ id, selected, data }: Props
       const node = nodes.find((n) => n.id === nodeId);
       if (!node) continue;
       const p = node.data.payload as Record<string, unknown>;
-      const content =
-        (p.content as string) ||
-        (p.description as string) ||
-        (p.positivePrompt as string) ||
-        "";
+      const content = (p.content as string) || (p.description as string) || (p.positivePrompt as string) || "";
       if (content) parts.push(`[${node.data.title}]: ${content}`);
     }
     return parts.join("\n\n") || undefined;
@@ -87,131 +68,170 @@ export const AIChatNode = memo(function AIChatNode({ id, selected, data }: Props
     if (!msg || sendMutation.isPending) return;
     setInput("");
     setLocalMessages((prev) => [...prev, { role: "user", content: msg }]);
-    sendMutation.mutate({
-      nodeId: id,
-      projectId: data.projectId,
-      message: msg,
-      systemPrompt: payload.systemPrompt,
-      contextContent: buildContext(),
-    });
+    sendMutation.mutate({ nodeId: id, projectId: data.projectId, message: msg, systemPrompt: payload.systemPrompt, contextContent: buildContext() });
   };
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
-    if (e.key === "Enter" && !e.shiftKey) {
-      e.preventDefault();
-      handleSend();
-    }
+    if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); handleSend(); }
   };
 
   return (
     <BaseNode id={id} selected={selected} nodeType="ai_chat" title={data.title} minHeight={320}>
       <div className="flex flex-col h-full" style={{ minHeight: 280 }}>
-        {/* System prompt */}
-        <div className="px-3 pt-2 pb-1 border-b border-border/30">
-          <Input
+
+        {/* ── System prompt ── */}
+        <div
+          className="px-2.5 py-2 flex-shrink-0"
+          style={{ borderBottom: "1px solid oklch(0.18 0.008 260)" }}
+        >
+          <input
             placeholder="系统提示词（可选）"
             value={payload.systemPrompt ?? ""}
             onChange={(e) => updateNodeData(id, { systemPrompt: e.target.value })}
-            className="h-6 text-[10px] bg-transparent border-border/30 nodrag placeholder:text-muted-foreground/30"
+            className="nodrag w-full"
+            style={{
+              fontSize: 10,
+              background: "transparent",
+              border: "none",
+              outline: "none",
+              color: "oklch(0.55 0.008 260)",
+            }}
           />
         </div>
 
-        {/* Messages */}
+        {/* ── Messages ── */}
         <div
           ref={scrollRef}
-          className="flex-1 overflow-y-auto px-3 py-2 space-y-2 nodrag"
-          style={{ minHeight: 120, maxHeight: 260 }}
+          className="flex-1 overflow-y-auto px-2.5 py-2 nodrag"
+          style={{ minHeight: 120, maxHeight: 280 }}
         >
           {localMessages.length === 0 ? (
-            <div className="flex flex-col items-center justify-center h-20 text-center gap-1">
-              <Sparkles className="w-5 h-5 text-muted-foreground/30" />
-              <p className="text-[10px] text-muted-foreground/40">
+            <div className="flex flex-col items-center justify-center h-24 gap-2">
+              <div
+                className="w-8 h-8 rounded-xl flex items-center justify-center"
+                style={{ background: `${accentColor}15`, border: `1px solid ${accentColor}30` }}
+              >
+                <Sparkles className="w-4 h-4" style={{ color: accentColor }} />
+              </div>
+              <p className="text-[10px] text-center" style={{ color: "oklch(0.38 0.006 260)" }}>
                 发送消息开始 AI 对话
               </p>
             </div>
           ) : (
-            localMessages.map((msg, i) => (
-              <div
-                key={i}
-                className={`flex gap-2 ${msg.role === "user" ? "flex-row-reverse" : "flex-row"}`}
-              >
-                <div
-                  className={`w-5 h-5 rounded-full flex items-center justify-center flex-shrink-0 mt-0.5 ${
-                    msg.role === "user"
-                      ? "bg-primary/20"
-                      : "bg-[oklch(0.70_0.18_200/0.2)]"
-                  }`}
-                >
-                  {msg.role === "user" ? (
-                    <User className="w-2.5 h-2.5 text-primary" />
-                  ) : (
-                    <Bot className="w-2.5 h-2.5 text-[oklch(0.70_0.18_200)]" />
-                  )}
+            <div className="space-y-2">
+              {localMessages.map((msg, i) => (
+                <div key={i} className={`flex gap-1.5 ${msg.role === "user" ? "flex-row-reverse" : "flex-row"}`}>
+                  {/* Avatar */}
+                  <div
+                    className="w-5 h-5 rounded-full flex items-center justify-center flex-shrink-0 mt-0.5"
+                    style={{
+                      background: msg.role === "user"
+                        ? "oklch(0.68 0.22 285 / 0.20)"
+                        : `${accentColor}18`,
+                      border: `1px solid ${msg.role === "user" ? "oklch(0.68 0.22 285 / 0.35)" : `${accentColor}30`}`,
+                    }}
+                  >
+                    {msg.role === "user" ? (
+                      <User className="w-2.5 h-2.5" style={{ color: "oklch(0.68 0.22 285)" }} />
+                    ) : (
+                      <Bot className="w-2.5 h-2.5" style={{ color: accentColor }} />
+                    )}
+                  </div>
+                  {/* Bubble */}
+                  <div
+                    className="flex-1 min-w-0 rounded-lg px-2.5 py-1.5 text-[11px] leading-relaxed"
+                    style={{
+                      background: msg.role === "user"
+                        ? "oklch(0.68 0.22 285 / 0.10)"
+                        : `${accentColor}0a`,
+                      border: `1px solid ${msg.role === "user" ? "oklch(0.68 0.22 285 / 0.20)" : `${accentColor}18`}`,
+                      color: "oklch(0.80 0.006 260)",
+                    }}
+                  >
+                    {msg.role === "assistant" ? (
+                      <Streamdown className="prose prose-invert prose-xs max-w-none">{msg.content}</Streamdown>
+                    ) : (
+                      <span>{msg.content}</span>
+                    )}
+                  </div>
                 </div>
-                <div
-                  className={`flex-1 min-w-0 rounded-lg px-2.5 py-1.5 text-xs leading-relaxed ${
-                    msg.role === "user"
-                      ? "bg-primary/10 text-foreground/90"
-                      : "bg-[oklch(0.70_0.18_200/0.08)] text-foreground/90"
-                  }`}
-                >
-                  {msg.role === "assistant" ? (
-                    <Streamdown className="prose prose-invert prose-xs max-w-none">
-                      {msg.content}
-                    </Streamdown>
-                  ) : (
-                    <span>{msg.content}</span>
-                  )}
+              ))}
+              {/* Loading bubble */}
+              {sendMutation.isPending && (
+                <div className="flex gap-1.5">
+                  <div
+                    className="w-5 h-5 rounded-full flex items-center justify-center flex-shrink-0"
+                    style={{ background: `${accentColor}18`, border: `1px solid ${accentColor}30` }}
+                  >
+                    <Bot className="w-2.5 h-2.5" style={{ color: accentColor }} />
+                  </div>
+                  <div
+                    className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg"
+                    style={{ background: `${accentColor}0a`, border: `1px solid ${accentColor}18` }}
+                  >
+                    <Loader2 className="w-3 h-3 animate-spin" style={{ color: accentColor }} />
+                    <span className="text-[10px]" style={{ color: "oklch(0.50 0.008 260)" }}>思考中...</span>
+                  </div>
                 </div>
-              </div>
-            ))
-          )}
-          {sendMutation.isPending && (
-            <div className="flex gap-2">
-              <div className="w-5 h-5 rounded-full bg-[oklch(0.70_0.18_200/0.2)] flex items-center justify-center flex-shrink-0">
-                <Bot className="w-2.5 h-2.5 text-[oklch(0.70_0.18_200)]" />
-              </div>
-              <div className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg bg-[oklch(0.70_0.18_200/0.08)]">
-                <Loader2 className="w-3 h-3 animate-spin text-[oklch(0.70_0.18_200)]" />
-                <span className="text-[10px] text-muted-foreground">思考中...</span>
-              </div>
+              )}
             </div>
           )}
         </div>
 
-        {/* Input */}
-        <div className="px-3 pb-3 pt-2 border-t border-border/30 flex gap-2">
-          <Input
+        {/* ── Input bar ── */}
+        <div
+          className="px-2.5 pb-2.5 pt-2 flex gap-1.5 flex-shrink-0"
+          style={{ borderTop: "1px solid oklch(0.18 0.008 260)" }}
+        >
+          <input
             ref={inputRef}
             placeholder="发送消息... (Enter 发送)"
             value={input}
             onChange={(e) => setInput(e.target.value)}
             onKeyDown={handleKeyDown}
             disabled={sendMutation.isPending}
-            className="flex-1 h-7 text-xs bg-transparent border-border/40 nodrag"
+            className="nodrag flex-1"
+            style={{
+              fontSize: 11,
+              padding: "5px 8px",
+              background: "oklch(0.09 0.006 260)",
+              border: "1px solid oklch(0.20 0.008 260)",
+              borderRadius: 7,
+              color: "oklch(0.80 0.006 260)",
+              outline: "none",
+              transition: "border-color 120ms ease",
+            }}
+            onFocus={(e) => { (e.currentTarget as HTMLElement).style.borderColor = `${accentColor}50`; }}
+            onBlur={(e) => { (e.currentTarget as HTMLElement).style.borderColor = "oklch(0.20 0.008 260)"; }}
           />
-          <Button
-            size="icon"
+          <button
             onClick={handleSend}
             disabled={!input.trim() || sendMutation.isPending}
-            className="w-7 h-7 bg-[oklch(0.70_0.18_200/0.2)] hover:bg-[oklch(0.70_0.18_200/0.3)] border border-[oklch(0.70_0.18_200/0.4)] nodrag"
-            variant="ghost"
+            className="nodrag w-7 h-7 rounded-lg flex items-center justify-center transition-all flex-shrink-0"
+            style={{
+              background: !input.trim() || sendMutation.isPending ? "oklch(0.13 0.007 260)" : `${accentColor}18`,
+              border: `1px solid ${!input.trim() || sendMutation.isPending ? "oklch(0.20 0.008 260)" : `${accentColor}40`}`,
+              color: !input.trim() || sendMutation.isPending ? "oklch(0.35 0.006 260)" : accentColor,
+              cursor: !input.trim() || sendMutation.isPending ? "not-allowed" : "pointer",
+            }}
           >
-            {sendMutation.isPending ? (
-              <Loader2 className="w-3 h-3 animate-spin" />
-            ) : (
-              <Send className="w-3 h-3 text-[oklch(0.70_0.18_200)]" />
-            )}
-          </Button>
-          <Button
-            size="icon"
+            {sendMutation.isPending ? <Loader2 className="w-3 h-3 animate-spin" /> : <Send className="w-3 h-3" />}
+          </button>
+          <button
             onClick={() => clearMutation.mutate({ nodeId: id, projectId: data.projectId })}
             disabled={localMessages.length === 0}
-            className="w-7 h-7 nodrag"
-            variant="ghost"
+            className="nodrag w-7 h-7 rounded-lg flex items-center justify-center transition-all flex-shrink-0"
+            style={{
+              background: "transparent",
+              border: "1px solid transparent",
+              color: localMessages.length === 0 ? "oklch(0.28 0.006 260)" : "oklch(0.45 0.008 260)",
+              cursor: localMessages.length === 0 ? "not-allowed" : "pointer",
+            }}
+            onMouseEnter={(e) => { if (localMessages.length > 0) { (e.currentTarget as HTMLElement).style.background = "oklch(0.62 0.20 25 / 0.10)"; (e.currentTarget as HTMLElement).style.color = "oklch(0.62 0.20 25)"; } }}
+            onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.background = "transparent"; (e.currentTarget as HTMLElement).style.color = localMessages.length === 0 ? "oklch(0.28 0.006 260)" : "oklch(0.45 0.008 260)"; }}
           >
-            <Trash2 className="w-3 h-3 text-muted-foreground hover:text-destructive" />
-          </Button>
+            <Trash2 className="w-3 h-3" />
+          </button>
         </div>
       </div>
     </BaseNode>

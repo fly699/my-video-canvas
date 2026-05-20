@@ -1,17 +1,8 @@
 import { useState, useRef, useCallback } from "react";
 import { trpc } from "@/lib/trpc";
 import { toast } from "sonner";
-import { Button } from "@/components/ui/button";
 import { useCanvasStore } from "../../hooks/useCanvasStore";
-import {
-  Upload,
-  X,
-  FileImage,
-  FileVideo,
-  Trash2,
-  Plus,
-  Loader2,
-} from "lucide-react";
+import { Upload, X, FileImage, FileVideo, FileAudio, File, Trash2, Plus, Loader2 } from "lucide-react";
 
 interface Props {
   projectId: number;
@@ -21,165 +12,201 @@ interface Props {
 export function AssetPanel({ projectId, onClose }: Props) {
   const { addNode } = useCanvasStore();
   const [uploading, setUploading] = useState(false);
+  const [dragOver, setDragOver] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const { data: assets, refetch } = trpc.assets.list.useQuery({ projectId });
 
   const uploadMutation = trpc.assets.upload.useMutation({
-    onSuccess: () => {
-      toast.success("素材上传成功");
-      refetch();
-      setUploading(false);
-    },
-    onError: (err) => {
-      toast.error("上传失败：" + err.message);
-      setUploading(false);
-    },
+    onSuccess: () => { toast.success("素材上传成功"); refetch(); setUploading(false); },
+    onError: (err) => { toast.error("上传失败：" + err.message); setUploading(false); },
   });
 
   const deleteMutation = trpc.assets.delete.useMutation({
-    onSuccess: () => {
-      toast.success("素材已删除");
-      refetch();
-    },
+    onSuccess: () => { toast.success("素材已删除"); refetch(); },
   });
 
-  const handleFileSelect = useCallback(
-    async (e: React.ChangeEvent<HTMLInputElement>) => {
-      const file = e.target.files?.[0];
-      if (!file) return;
-
-      if (file.size > 20 * 1024 * 1024) {
-        toast.error("文件大小不能超过 20MB");
-        return;
-      }
-
+  const processFile = useCallback(
+    (file: File) => {
+      if (file.size > 20 * 1024 * 1024) { toast.error("文件大小不能超过 20MB"); return; }
       setUploading(true);
       const reader = new FileReader();
       reader.onload = () => {
         const base64 = (reader.result as string).split(",")[1];
-        const type = file.type.startsWith("video/")
-          ? "video"
-          : file.type.startsWith("audio/")
-          ? "audio"
-          : file.type.startsWith("image/")
-          ? "image"
-          : "other";
-
-        uploadMutation.mutate({
-          name: file.name,
-          type,
-          mimeType: file.type,
-          size: file.size,
-          base64,
-          projectId,
-        });
+        const type = file.type.startsWith("video/") ? "video" : file.type.startsWith("audio/") ? "audio" : file.type.startsWith("image/") ? "image" : "other";
+        uploadMutation.mutate({ name: file.name, type, mimeType: file.type, size: file.size, base64, projectId });
       };
       reader.readAsDataURL(file);
-      e.target.value = "";
     },
     [projectId, uploadMutation]
   );
 
+  const handleFileSelect = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) processFile(file);
+    e.target.value = "";
+  }, [processFile]);
+
+  const handleDrop = useCallback((e: React.DragEvent) => {
+    e.preventDefault();
+    setDragOver(false);
+    const file = e.dataTransfer.files?.[0];
+    if (file) processFile(file);
+  }, [processFile]);
+
   const handleAddToCanvas = (asset: NonNullable<typeof assets>[0]) => {
-    const node = addNode("asset", { x: 200, y: 200 });
-    // The node data will be updated via store
-    toast.success(`素材节点已添加到画布`);
+    addNode("asset", { x: 200, y: 200 });
+    toast.success("素材节点已添加到画布");
+  };
+
+  const getIcon = (type: string) => {
+    if (type === "video") return FileVideo;
+    if (type === "audio") return FileAudio;
+    if (type === "image") return FileImage;
+    return File;
+  };
+
+  const getAccent = (type: string) => {
+    if (type === "video") return "oklch(0.62 0.20 25)";
+    if (type === "audio") return "oklch(0.68 0.22 285)";
+    if (type === "image") return "oklch(0.65 0.18 60)";
+    return "oklch(0.50 0.008 260)";
   };
 
   return (
-    <div className="flex flex-col h-full">
-      {/* Header */}
-      <div className="flex items-center justify-between px-4 py-3 border-b border-border/30">
-        <h3 className="text-sm font-medium">素材库</h3>
-        <button onClick={onClose} className="p-1 rounded hover:bg-white/5 text-muted-foreground">
+    <div
+      className="flex flex-col h-full"
+      style={{ background: "oklch(0.10 0.007 260)", borderLeft: "1px solid oklch(0.18 0.008 260)" }}
+    >
+      {/* ── Header ── */}
+      <div
+        className="flex items-center justify-between px-4 py-3 flex-shrink-0"
+        style={{ borderBottom: "1px solid oklch(0.16 0.008 260)" }}
+      >
+        <div>
+          <h3 className="text-sm font-semibold" style={{ color: "oklch(0.88 0.006 260)" }}>素材库</h3>
+          <p className="text-[10px] mt-0.5" style={{ color: "oklch(0.42 0.006 260)" }}>
+            {assets?.length ?? 0} 个素材
+          </p>
+        </div>
+        <button
+          onClick={onClose}
+          className="w-7 h-7 rounded-lg flex items-center justify-center transition-all"
+          style={{ color: "oklch(0.45 0.008 260)", background: "transparent" }}
+          onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.background = "oklch(0.16 0.008 260)"; (e.currentTarget as HTMLElement).style.color = "oklch(0.70 0.008 260)"; }}
+          onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.background = "transparent"; (e.currentTarget as HTMLElement).style.color = "oklch(0.45 0.008 260)"; }}
+        >
           <X className="w-4 h-4" />
         </button>
       </div>
 
-      {/* Upload */}
-      <div className="px-4 py-3 border-b border-border/30">
-        <input
-          ref={fileInputRef}
-          type="file"
-          accept="image/*,video/*,audio/*"
-          onChange={handleFileSelect}
-          className="hidden"
-        />
-        <Button
-          size="sm"
-          onClick={() => fileInputRef.current?.click()}
-          disabled={uploading}
-          className="w-full gap-2 border-dashed border-border/60 hover:border-primary/40"
-          variant="outline"
+      {/* ── Upload zone ── */}
+      <div className="px-3 py-3 flex-shrink-0" style={{ borderBottom: "1px solid oklch(0.16 0.008 260)" }}>
+        <input ref={fileInputRef} type="file" accept="image/*,video/*,audio/*" onChange={handleFileSelect} className="hidden" />
+        <div
+          onClick={() => !uploading && fileInputRef.current?.click()}
+          onDragOver={(e) => { e.preventDefault(); setDragOver(true); }}
+          onDragLeave={() => setDragOver(false)}
+          onDrop={handleDrop}
+          className="flex flex-col items-center justify-center gap-2 rounded-xl py-5 cursor-pointer transition-all"
+          style={{
+            border: `1.5px dashed ${dragOver ? "oklch(0.65 0.18 60 / 0.6)" : "oklch(0.22 0.008 260)"}`,
+            background: dragOver ? "oklch(0.65 0.18 60 / 0.06)" : "oklch(0.09 0.006 260)",
+          }}
         >
           {uploading ? (
-            <Loader2 className="w-4 h-4 animate-spin" />
+            <Loader2 className="w-5 h-5 animate-spin" style={{ color: "oklch(0.65 0.18 60)" }} />
           ) : (
-            <Upload className="w-4 h-4" />
+            <Upload className="w-5 h-5" style={{ color: dragOver ? "oklch(0.65 0.18 60)" : "oklch(0.38 0.008 260)" }} />
           )}
-          {uploading ? "上传中..." : "上传素材"}
-        </Button>
-        <p className="text-[10px] text-muted-foreground/50 mt-1.5 text-center">
-          支持图片、视频、音频，最大 20MB
-        </p>
+          <div className="text-center">
+            <p className="text-xs font-medium" style={{ color: uploading ? "oklch(0.65 0.18 60)" : "oklch(0.58 0.008 260)" }}>
+              {uploading ? "上传中..." : "点击或拖拽上传"}
+            </p>
+            <p className="text-[10px] mt-0.5" style={{ color: "oklch(0.35 0.006 260)" }}>
+              图片 · 视频 · 音频 · 最大 20MB
+            </p>
+          </div>
+        </div>
       </div>
 
-      {/* Asset list */}
-      <div className="flex-1 overflow-y-auto px-3 py-2 space-y-1.5">
+      {/* ── Asset list ── */}
+      <div className="flex-1 overflow-y-auto px-3 py-2">
         {!assets || assets.length === 0 ? (
-          <div className="flex flex-col items-center justify-center py-12 text-center gap-2">
-            <FileImage className="w-8 h-8 text-muted-foreground/30" />
-            <p className="text-xs text-muted-foreground/50">暂无素材</p>
+          <div className="flex flex-col items-center justify-center py-16 gap-3">
+            <div
+              className="w-12 h-12 rounded-2xl flex items-center justify-center"
+              style={{ background: "oklch(0.13 0.007 260)", border: "1px solid oklch(0.18 0.008 260)" }}
+            >
+              <FileImage className="w-6 h-6" style={{ color: "oklch(0.28 0.006 260)" }} />
+            </div>
+            <p className="text-xs text-center" style={{ color: "oklch(0.38 0.006 260)" }}>
+              暂无素材<br />
+              <span style={{ color: "oklch(0.30 0.006 260)", fontSize: 10 }}>上传后将在此显示</span>
+            </p>
           </div>
         ) : (
-          assets.map((asset) => (
-            <div
-              key={asset.id}
-              className="group flex items-center gap-2 p-2 rounded-lg hover:bg-white/5 transition-colors"
-            >
-              {/* Thumbnail */}
-              <div className="w-10 h-10 rounded-lg overflow-hidden bg-muted/30 flex-shrink-0 border border-border/30">
-                {asset.type === "image" ? (
-                  <img src={asset.url} alt={asset.name} className="w-full h-full object-cover" />
-                ) : (
-                  <div className="w-full h-full flex items-center justify-center">
-                    <FileVideo className="w-5 h-5 text-muted-foreground/50" />
+          <div className="space-y-1">
+            {assets.map((asset) => {
+              const Icon = getIcon(asset.type);
+              const accent = getAccent(asset.type);
+              return (
+                <div
+                  key={asset.id}
+                  className="group flex items-center gap-2.5 p-2 rounded-lg transition-all"
+                  style={{ background: "transparent" }}
+                  onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.background = "oklch(0.14 0.007 260)"; }}
+                  onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.background = "transparent"; }}
+                >
+                  {/* Thumbnail */}
+                  <div
+                    className="w-10 h-10 rounded-lg overflow-hidden flex-shrink-0 flex items-center justify-center"
+                    style={{ background: `${accent}12`, border: `1px solid ${accent}25` }}
+                  >
+                    {asset.type === "image" ? (
+                      <img src={asset.url} alt={asset.name} className="w-full h-full object-cover" />
+                    ) : (
+                      <Icon className="w-5 h-5" style={{ color: accent }} />
+                    )}
                   </div>
-                )}
-              </div>
 
-              {/* Info */}
-              <div className="flex-1 min-w-0">
-                <p className="text-xs font-medium truncate">{asset.name}</p>
-                <p className="text-[10px] text-muted-foreground/50">
-                  {asset.type} · {asset.size ? `${(asset.size / 1024).toFixed(0)}KB` : ""}
-                </p>
-              </div>
+                  {/* Info */}
+                  <div className="flex-1 min-w-0">
+                    <p className="text-xs font-medium truncate" style={{ color: "oklch(0.75 0.006 260)" }}>
+                      {asset.name}
+                    </p>
+                    <p className="text-[10px] mt-0.5" style={{ color: "oklch(0.40 0.006 260)" }}>
+                      {asset.type} · {asset.size ? `${(asset.size / 1024).toFixed(0)} KB` : "—"}
+                    </p>
+                  </div>
 
-              {/* Actions */}
-              <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                <button
-                  onClick={() => handleAddToCanvas(asset)}
-                  className="p-1 rounded hover:bg-white/10 text-muted-foreground hover:text-foreground"
-                  title="添加到画布"
-                >
-                  <Plus className="w-3.5 h-3.5" />
-                </button>
-                <button
-                  onClick={() => {
-                    if (confirm("确认删除此素材？")) {
-                      deleteMutation.mutate({ id: asset.id });
-                    }
-                  }}
-                  className="p-1 rounded hover:bg-destructive/20 text-muted-foreground hover:text-destructive"
-                  title="删除"
-                >
-                  <Trash2 className="w-3.5 h-3.5" />
-                </button>
-              </div>
-            </div>
-          ))
+                  {/* Actions */}
+                  <div className="flex items-center gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity">
+                    <button
+                      onClick={() => handleAddToCanvas(asset)}
+                      title="添加到画布"
+                      className="w-6 h-6 rounded-md flex items-center justify-center transition-all"
+                      style={{ color: "oklch(0.50 0.008 260)" }}
+                      onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.background = "oklch(0.72 0.18 155 / 0.15)"; (e.currentTarget as HTMLElement).style.color = "oklch(0.72 0.18 155)"; }}
+                      onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.background = "transparent"; (e.currentTarget as HTMLElement).style.color = "oklch(0.50 0.008 260)"; }}
+                    >
+                      <Plus className="w-3.5 h-3.5" />
+                    </button>
+                    <button
+                      onClick={() => { if (confirm("确认删除此素材？")) deleteMutation.mutate({ id: asset.id }); }}
+                      title="删除"
+                      className="w-6 h-6 rounded-md flex items-center justify-center transition-all"
+                      style={{ color: "oklch(0.50 0.008 260)" }}
+                      onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.background = "oklch(0.62 0.20 25 / 0.15)"; (e.currentTarget as HTMLElement).style.color = "oklch(0.62 0.20 25)"; }}
+                      onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.background = "transparent"; (e.currentTarget as HTMLElement).style.color = "oklch(0.50 0.008 260)"; }}
+                    >
+                      <Trash2 className="w-3.5 h-3.5" />
+                    </button>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
         )}
       </div>
     </div>

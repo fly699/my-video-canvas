@@ -1,20 +1,13 @@
-import { cn } from "@/lib/utils";
-import { AlertTriangle, RotateCcw } from "lucide-react";
-import { Component, ReactNode } from "react";
+import { Component, type ReactNode } from "react";
+import { Film, RefreshCw } from "lucide-react";
 
-interface Props {
-  children: ReactNode;
-}
+interface Props { children: ReactNode; }
+interface State { hasError: boolean; error?: Error; }
 
-interface State {
-  hasError: boolean;
-  error: Error | null;
-}
-
-class ErrorBoundary extends Component<Props, State> {
+export default class ErrorBoundary extends Component<Props, State> {
   constructor(props: Props) {
     super(props);
-    this.state = { hasError: false, error: null };
+    this.state = { hasError: false };
   }
 
   static getDerivedStateFromError(error: Error): State {
@@ -22,41 +15,66 @@ class ErrorBoundary extends Component<Props, State> {
   }
 
   render() {
-    if (this.state.hasError) {
-      return (
-        <div className="flex items-center justify-center min-h-screen p-8 bg-background">
-          <div className="flex flex-col items-center w-full max-w-2xl p-8">
-            <AlertTriangle
-              size={48}
-              className="text-destructive mb-6 flex-shrink-0"
-            />
+    if (!this.state.hasError) return this.props.children;
 
-            <h2 className="text-xl mb-4">An unexpected error occurred.</h2>
-
-            <div className="p-4 w-full rounded bg-muted overflow-auto mb-6">
-              <pre className="text-sm text-muted-foreground whitespace-break-spaces">
-                {this.state.error?.stack}
-              </pre>
-            </div>
-
-            <button
-              onClick={() => window.location.reload()}
-              className={cn(
-                "flex items-center gap-2 px-4 py-2 rounded-lg",
-                "bg-primary text-primary-foreground",
-                "hover:opacity-90 cursor-pointer"
-              )}
-            >
-              <RotateCcw size={16} />
-              Reload Page
-            </button>
-          </div>
+    return (
+      <div
+        className="w-screen h-screen flex flex-col items-center justify-center gap-6"
+        style={{ background: "oklch(0.07 0.005 260)" }}
+      >
+        {/* Logo */}
+        <div
+          className="w-12 h-12 rounded-2xl flex items-center justify-center"
+          style={{
+            background: "linear-gradient(135deg, oklch(0.68 0.22 285), oklch(0.60 0.20 310))",
+            boxShadow: "0 8px 32px oklch(0.68 0.22 285 / 0.30)",
+          }}
+        >
+          <Film className="w-6 h-6 text-white" />
         </div>
-      );
-    }
 
-    return this.props.children;
+        <div className="text-center">
+          <p className="text-base font-semibold mb-1" style={{ color: "oklch(0.80 0.006 260)" }}>
+            页面出现了意外错误
+          </p>
+          <p className="text-sm" style={{ color: "oklch(0.42 0.006 260)" }}>
+            请刷新页面重试，或联系支持团队
+          </p>
+        </div>
+
+        {this.state.error && (
+          <div
+            className="max-w-md w-full mx-4 p-3 rounded-xl text-xs font-mono overflow-auto"
+            style={{
+              background: "oklch(0.10 0.006 260)",
+              border: "1px solid oklch(0.18 0.008 260)",
+              color: "oklch(0.55 0.008 260)",
+              maxHeight: 120,
+            }}
+          >
+            {this.state.error.message}
+          </div>
+        )}
+
+        <button
+          onClick={() => window.location.reload()}
+          className="flex items-center gap-2 px-5 py-2.5 rounded-xl text-sm font-medium transition-all"
+          style={{
+            background: "oklch(0.68 0.22 285 / 0.15)",
+            border: "1px solid oklch(0.68 0.22 285 / 0.35)",
+            color: "oklch(0.78 0.18 285)",
+          }}
+          onMouseEnter={(e) => {
+            (e.currentTarget as HTMLElement).style.background = "oklch(0.68 0.22 285 / 0.25)";
+          }}
+          onMouseLeave={(e) => {
+            (e.currentTarget as HTMLElement).style.background = "oklch(0.68 0.22 285 / 0.15)";
+          }}
+        >
+          <RefreshCw className="w-4 h-4" />
+          刷新页面
+        </button>
+      </div>
+    );
   }
 }
-
-export default ErrorBoundary;
