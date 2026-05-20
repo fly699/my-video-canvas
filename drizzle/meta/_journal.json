@@ -22,6 +22,20 @@
       "when": 1779267381547,
       "tag": "0002_equal_microbe",
       "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "5",
+      "when": 1779270283081,
+      "tag": "0003_bizarre_wonder_man",
+      "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "5",
+      "when": 1779270366536,
+      "tag": "0004_sad_wasp",
+      "breakpoints": true
     }
   ]
 }

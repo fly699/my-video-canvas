@@ -1,0 +1,1 @@
+ALTER TABLE `video_tasks` MODIFY COLUMN `provider` enum('runway','kling','mock','poyo_seedance','poyo_veo') NOT NULL;
