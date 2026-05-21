@@ -2,12 +2,13 @@ import { useEffect, useRef } from "react";
 import { NODE_TYPE_LIST } from "../../lib/nodeConfig";
 import type { NodeType } from "../../../../shared/types";
 import {
-  FileText, Image, Wand2, Paperclip, Video, Bot, StickyNote,
+  FileText, Image, Wand2, Sparkles, Paperclip, Video, Bot, StickyNote,
+  Music, Layers, Folder,
   Copy, Trash2, Plus, Play,
 } from "lucide-react";
 
 const ICONS: Record<string, React.ComponentType<{ className?: string; style?: React.CSSProperties }>> = {
-  FileText, Image, Wand2, Paperclip, Video, Bot, StickyNote,
+  FileText, Image, Wand2, Sparkles, Paperclip, Video, Bot, StickyNote, Music, Layers, Folder,
 };
 
 interface ContextMenuProps {

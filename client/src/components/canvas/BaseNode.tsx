@@ -7,12 +7,13 @@ import { NodeSelectedContext } from "../../contexts/NodeSelectedContext";
 import { trpc } from "@/lib/trpc";
 import { useWorkflowRunState } from "../../contexts/WorkflowRunContext";
 import {
-  FileText, Image, Wand2, Paperclip, Video, Bot, StickyNote,
+  FileText, Image, Wand2, Sparkles, Paperclip, Video, Bot, StickyNote,
+  Music, Layers, Folder,
   Trash2, Copy, GripVertical, Check, X, Loader2,
 } from "lucide-react";
 
 const ICONS: Record<string, React.ComponentType<{ className?: string; style?: React.CSSProperties }>> = {
-  FileText, Image, Wand2, Paperclip, Video, Bot, StickyNote,
+  FileText, Image, Wand2, Sparkles, Paperclip, Video, Bot, StickyNote, Music, Layers, Folder,
 };
 
 interface BaseNodeProps {

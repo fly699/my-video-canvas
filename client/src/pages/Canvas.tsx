@@ -616,6 +616,7 @@ function CanvasInner({ projectId }: { projectId: number }) {
 
         {/* Right actions */}
         <div className="flex items-center gap-1">
+          {/* ── View panel toggles ── */}
           {/* Collaborators indicator */}
           <button
             onClick={() => setShowCollaborators(!showCollaborators)}
@@ -749,6 +750,9 @@ function CanvasInner({ projectId }: { projectId: number }) {
             </TooltipTrigger>
             <TooltipContent side="bottom" className="text-xs">胶片条</TooltipContent>
           </Tooltip>
+
+          {/* ── Separator: View panels | Edit actions ── */}
+          <div className="w-px h-4 mx-1" style={{ background: "oklch(0.22 0.008 260)" }} />
 
           {/* Undo */}
           <Tooltip>
@@ -942,38 +946,62 @@ function CanvasInner({ projectId }: { projectId: number }) {
             onClick={(e) => e.stopPropagation()}
             style={{
               transform: "translateX(-50%)",
-              background: "oklch(0.11 0.007 260 / 0.97)",
+              background: "oklch(0.11 0.007 260 / 0.98)",
               border: "1px solid oklch(0.22 0.008 260)",
-              boxShadow: "0 16px 60px oklch(0 0 0 / 0.70), 0 4px 16px oklch(0 0 0 / 0.40), 0 0 0 1px oklch(0.22 0.008 260 / 0.5)",
-              backdropFilter: "blur(24px)",
-              minWidth: 480,
+              boxShadow: "0 20px 80px oklch(0 0 0 / 0.75), 0 4px 16px oklch(0 0 0 / 0.40), 0 0 0 1px oklch(0.22 0.008 260 / 0.5)",
+              backdropFilter: "blur(32px)",
+              width: 520,
             }}
           >
-            <div className="px-4 py-3" style={{ borderBottom: "1px solid oklch(0.18 0.008 260)" }}>
-              <p className="text-[11px] font-semibold uppercase tracking-widest" style={{ color: "oklch(0.40 0.006 260)" }}>
-                添加节点
-              </p>
+            <div
+              className="px-4 py-2.5 flex items-center justify-between"
+              style={{ borderBottom: "1px solid oklch(0.17 0.008 260)" }}
+            >
+              <div className="flex items-center gap-2">
+                <Plus className="w-3.5 h-3.5" style={{ color: "oklch(0.68 0.22 285)" }} />
+                <p className="text-[11px] font-semibold uppercase tracking-widest" style={{ color: "oklch(0.42 0.006 260)" }}>
+                  添加节点
+                </p>
+              </div>
+              <p className="text-[10px]" style={{ color: "oklch(0.32 0.006 260)" }}>点击添加到画布中心</p>
             </div>
-            <div className="p-2 grid grid-cols-4 gap-1">
+            <div className="p-2.5 grid grid-cols-4 gap-1.5">
               {NODE_TYPE_LIST.map((config) => {
                 const Icon = ICON_MAP[config.icon] ?? FileText;
                 return (
                   <button
                     key={config.type}
                     onClick={() => addNodeAtCenter(config.type)}
-                    className="flex flex-col items-center gap-2 px-3 py-3 rounded-xl transition-all text-center"
+                    className="group/picker flex flex-col items-center gap-2.5 px-2 py-3 rounded-xl transition-all text-center"
                     style={{ color: "oklch(0.70 0.008 260)" }}
-                    onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.background = "oklch(0.16 0.008 260)"; (e.currentTarget as HTMLElement).style.color = "oklch(0.90 0.005 260)"; }}
-                    onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.background = "transparent"; (e.currentTarget as HTMLElement).style.color = "oklch(0.70 0.008 260)"; }}
+                    onMouseEnter={(e) => {
+                      const el = e.currentTarget as HTMLElement;
+                      el.style.background = "oklch(0.16 0.008 260)";
+                      el.style.color = "oklch(0.92 0.005 260)";
+                    }}
+                    onMouseLeave={(e) => {
+                      const el = e.currentTarget as HTMLElement;
+                      el.style.background = "transparent";
+                      el.style.color = "oklch(0.70 0.008 260)";
+                    }}
                   >
                     <div
-                      className="w-9 h-9 rounded-xl flex items-center justify-center flex-shrink-0"
-                      style={{ background: `${config.color}18`, border: `1px solid ${config.color}35` }}
+                      className="w-10 h-10 rounded-xl flex items-center justify-center flex-shrink-0 transition-all"
+                      style={{
+                        background: `${config.color}14`,
+                        border: `1px solid ${config.color}30`,
+                        boxShadow: `0 2px 8px ${config.color}10`,
+                      }}
                     >
-                      <Icon className="w-4.5 h-4.5" style={{ color: config.color, width: 18, height: 18 }} />
+                      <Icon style={{ color: config.color, width: 18, height: 18 }} />
                     </div>
-                    <div>
-                      <p className="text-[11px] font-medium leading-none">{config.label}</p>
+                    <div className="flex flex-col gap-0.5">
+                      <p className="text-[11px] font-semibold leading-none" style={{ letterSpacing: "-0.01em" }}>
+                        {config.label}
+                      </p>
+                      <p className="text-[9px] leading-none" style={{ color: "oklch(0.38 0.006 260)" }}>
+                        {config.defaultTitle}
+                      </p>
                     </div>
                   </button>
                 );
@@ -1027,7 +1055,13 @@ function CanvasInner({ projectId }: { projectId: number }) {
               position="bottom-right"
               nodeColor={(n) => getNodeConfig((n.data as { nodeType: NodeType }).nodeType)?.color ?? "oklch(0.30 0.010 260)"}
               maskColor="oklch(0.09 0.006 260 / 0.85)"
-              style={{ background: "oklch(0.11 0.007 260)", border: "1px solid oklch(0.20 0.008 260)", borderRadius: 12, marginBottom: 64 }}
+              style={{
+                background: "oklch(0.11 0.007 260)",
+                border: "1px solid oklch(0.20 0.008 260)",
+                borderRadius: 12,
+                marginBottom: 72,
+                marginRight: 8,
+              }}
             />
           </ReactFlow>
           </WorkflowRunProvider>
@@ -1064,36 +1098,6 @@ function CanvasInner({ projectId }: { projectId: number }) {
               </TooltipTrigger>
               <TooltipContent side="top" className="text-xs">添加节点</TooltipContent>
             </Tooltip>
-
-            {/* Divider */}
-            <div style={{ width: 1, height: 18, background: "oklch(0.22 0.008 260)", flexShrink: 0 }} />
-
-            {/* Node type quick-add */}
-            {NODE_TYPE_LIST.map((config) => {
-              const Icon = ICON_MAP[config.icon] ?? FileText;
-              return (
-                <Tooltip key={config.type}>
-                  <TooltipTrigger asChild>
-                    <button
-                      onClick={() => addNodeAtCenter(config.type)}
-                      className="w-8 h-8 rounded-xl flex items-center justify-center transition-all"
-                      style={{ color: "oklch(0.50 0.008 260)" }}
-                      onMouseEnter={(e) => {
-                        (e.currentTarget as HTMLElement).style.background = `${config.color}18`;
-                        (e.currentTarget as HTMLElement).style.color = config.color;
-                      }}
-                      onMouseLeave={(e) => {
-                        (e.currentTarget as HTMLElement).style.background = "transparent";
-                        (e.currentTarget as HTMLElement).style.color = "oklch(0.50 0.008 260)";
-                      }}
-                    >
-                      <Icon className="w-3.5 h-3.5" />
-                    </button>
-                  </TooltipTrigger>
-                  <TooltipContent side="top" className="text-xs">{config.label}</TooltipContent>
-                </Tooltip>
-              );
-            })}
 
             {/* Divider */}
             <div style={{ width: 1, height: 18, background: "oklch(0.22 0.008 260)", flexShrink: 0 }} />
