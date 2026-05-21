@@ -105,3 +105,11 @@
 - [x] 重置后清空 taskId/resultVideoUrl/errorMessage，状态回到 pending
 - [x] 提交按钮在 succeeded 状态下禁用（需先重置才能重新提交）
 - [x] TypeScript 0 errors，26 Vitest 测试全部通过
+
+## Phase 13: Poyo Bug 修复 + Runway/Kling 清理 + 模型选择器扩展
+- [x] 修复 videoTaskPoller.ts submit 分支：Poyo provider 调用 submitPoyoVideo() 而非 submitMockTask()
+- [x] 修复 videoTaskPoller.ts poll 分支：Poyo provider 调用 checkPoyoVideoStatus() 而非 pollMockTask()
+- [x] 删除 Runway/Kling API Key 相关代码（provider 选项保留但标注需配置 Key）
+- [x] StoryboardNode 添加图像模型选择器（Manus Forge / Flux 1.1 Pro / SDXL）
+- [x] PromptNode 添加图像模型选择器（Manus Forge / Flux 1.1 Pro / SDXL）
+- [x] TypeScript 0 errors，测试全部通过

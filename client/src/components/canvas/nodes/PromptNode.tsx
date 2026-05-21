@@ -4,7 +4,7 @@ import { useCanvasStore } from "../../../hooks/useCanvasStore";
 import type { PromptNodeData } from "../../../../../shared/types";
 import { trpc } from "@/lib/trpc";
 import { toast } from "sonner";
-import { Sparkles, Loader2, RefreshCw } from "lucide-react";
+import { Sparkles, Loader2, RefreshCw, ChevronDown } from "lucide-react";
 
 interface Props {
   id: string;
@@ -18,6 +18,14 @@ interface Props {
 }
 
 const BORDER_DEFAULT = "oklch(0.20 0.008 260)";
+
+const IMAGE_MODELS = [
+  { id: "manus_forge",  label: "Manus Forge", tag: "内置" },
+  { id: "poyo_flux",    label: "Flux 1.1 Pro", tag: "Poyo" },
+  { id: "poyo_sdxl",    label: "SDXL",         tag: "Poyo" },
+] as const;
+
+type ImageModelId = typeof IMAGE_MODELS[number]["id"];
 
 const fieldStyle: React.CSSProperties = {
   width: "100%",
@@ -45,6 +53,9 @@ export const PromptNode = memo(function PromptNode({ id, selected, data }: Props
   const { updateNodeData } = useCanvasStore();
   const payload = data.payload;
   const [generating, setGenerating] = useState(false);
+  const [showModelPicker, setShowModelPicker] = useState(false);
+  const model: ImageModelId = (payload.imageModel as ImageModelId) ?? "manus_forge";
+  const setModel = (m: ImageModelId) => { updateNodeData(id, { imageModel: m }); };
 
   const genImageMutation = trpc.imageGen.generate.useMutation({
     onSuccess: (result) => {
@@ -68,16 +79,21 @@ export const PromptNode = memo(function PromptNode({ id, selected, data }: Props
   const handleGenerate = () => {
     if (!payload.positivePrompt?.trim()) { toast.error("请先填写正向提示词"); return; }
     setGenerating(true);
-    genImageMutation.mutate({ prompt: payload.positivePrompt, negativePrompt: payload.negativePrompt, style: payload.style });
+    genImageMutation.mutate({
+      prompt: payload.positivePrompt,
+      negativePrompt: payload.negativePrompt,
+      style: payload.style,
+      model,
+    });
   };
 
   const accentColor = "oklch(0.68 0.22 300)";
-  const accentFocus  = `${accentColor.replace(")", " / 0.6)").replace("oklch(", "oklch(")}`;
-  // Build focus/blur handlers per accent
   const onFocusAccent = (e: React.FocusEvent<HTMLElement>) => { e.currentTarget.style.borderColor = `${accentColor.slice(0, -1)} / 0.6)`; };
   const onBlurAccent  = (e: React.FocusEvent<HTMLElement>) => { e.currentTarget.style.borderColor = `${accentColor.slice(0, -1)} / 0.3)`; };
   const onFocusNeg    = (e: React.FocusEvent<HTMLElement>) => { e.currentTarget.style.borderColor = "oklch(0.45 0.008 260)"; };
   const onBlurDefault = (e: React.FocusEvent<HTMLElement>) => { e.currentTarget.style.borderColor = BORDER_DEFAULT; };
+
+  const currentModel = IMAGE_MODELS.find((m) => m.id === model) ?? IMAGE_MODELS[0];
 
   return (
     <BaseNode id={id} selected={selected} nodeType="prompt" title={data.title} minHeight={200}>
@@ -172,6 +188,68 @@ export const PromptNode = memo(function PromptNode({ id, selected, data }: Props
             onFocus={(e) => { e.currentTarget.style.borderColor = `${accentColor.slice(0, -1)} / 0.5)`; }}
             onBlur={onBlurDefault}
           />
+        </div>
+
+        {/* ── Model selector ── */}
+        <div className="relative nodrag">
+          <button
+            onClick={() => setShowModelPicker((v) => !v)}
+            className="nodrag flex items-center justify-between w-full px-2.5 py-1.5 rounded-lg text-xs transition-all"
+            style={{
+              background: "oklch(0.09 0.006 260)",
+              borderWidth: 1,
+              borderStyle: "solid",
+              borderColor: `${accentColor.slice(0, -1)} / 0.30)`,
+              color: accentColor,
+            }}
+          >
+            <span className="flex items-center gap-1.5">
+              <Sparkles className="w-3 h-3" />
+              {currentModel.label}
+              <span
+                className="px-1 py-0.5 rounded text-[9px] font-semibold"
+                style={{ background: `${accentColor.slice(0, -1)} / 0.15)`, color: accentColor }}
+              >
+                {currentModel.tag}
+              </span>
+            </span>
+            <ChevronDown className="w-3 h-3 opacity-60" style={{ transform: showModelPicker ? "rotate(180deg)" : "none", transition: "transform 150ms" }} />
+          </button>
+
+          {showModelPicker && (
+            <div
+              className="absolute bottom-full left-0 right-0 mb-1 rounded-lg overflow-hidden z-50"
+              style={{
+                background: "oklch(0.12 0.007 260)",
+                borderWidth: 1,
+                borderStyle: "solid",
+                borderColor: "oklch(0.22 0.008 260)",
+                boxShadow: "0 8px 24px oklch(0 0 0 / 0.5)",
+              }}
+            >
+              {IMAGE_MODELS.map((m) => (
+                <button
+                  key={m.id}
+                  className="nodrag flex items-center justify-between w-full px-2.5 py-2 text-xs transition-colors"
+                  style={{
+                    background: model === m.id ? `${accentColor.slice(0, -1)} / 0.10)` : "transparent",
+                    color: model === m.id ? accentColor : "oklch(0.65 0.006 260)",
+                  }}
+                  onClick={() => { setModel(m.id); setShowModelPicker(false); }}
+                  onMouseEnter={(e) => { if (model !== m.id) (e.currentTarget as HTMLElement).style.background = "oklch(0.16 0.008 260)"; }}
+                  onMouseLeave={(e) => { if (model !== m.id) (e.currentTarget as HTMLElement).style.background = "transparent"; }}
+                >
+                  <span>{m.label}</span>
+                  <span
+                    className="px-1 py-0.5 rounded text-[9px] font-semibold"
+                    style={{ background: `${accentColor.slice(0, -1)} / 0.12)`, color: `${accentColor.slice(0, -1)} / 0.8)` }}
+                  >
+                    {m.tag}
+                  </span>
+                </button>
+              ))}
+            </div>
+          )}
         </div>
 
         {/* Generate button */}

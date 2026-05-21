@@ -27,8 +27,6 @@ const STATUS = {
 const PROVIDERS = [
   { value: "poyo_seedance", label: "Seedance 2 (Poyo)" },
   { value: "poyo_veo",      label: "Veo 3.1 (Poyo)" },
-  { value: "runway",        label: "Runway Gen-3" },
-  { value: "kling",         label: "Kling 可灵" },
   { value: "mock",          label: "Mock 测试" },
 ];
 

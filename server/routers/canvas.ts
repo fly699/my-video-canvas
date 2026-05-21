@@ -229,7 +229,7 @@ export const videoTasksRouter = router({
       z.object({
         projectId: z.number(),
         nodeId: z.string(),
-        provider: z.enum(["runway", "kling", "mock", "poyo_seedance", "poyo_veo"]),
+        provider: z.enum(["mock", "poyo_seedance", "poyo_veo"]),
         prompt: z.string(),
         negativePrompt: z.string().optional(),
         referenceImageUrl: z.string().optional(),

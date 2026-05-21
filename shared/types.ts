@@ -10,7 +10,7 @@ export type NodeType =
   | "ai_chat"
   | "note";
 
-export type VideoProvider = "runway" | "kling" | "mock" | "poyo_seedance" | "poyo_veo";
+export type VideoProvider = "mock" | "poyo_seedance" | "poyo_veo";
 export type VideoTaskStatus = "pending" | "processing" | "succeeded" | "failed";
 
 // ── Node Data Payloads ────────────────────────────────────────────────────────
@@ -31,6 +31,7 @@ export interface StoryboardNodeData {
   cameraMovement?: string;
   lens?: string;
   colorTone?: string;
+  imageModel?: "manus_forge" | "poyo_flux" | "poyo_sdxl";
 }
 
 export interface PromptNodeData {
@@ -40,6 +41,7 @@ export interface PromptNodeData {
   imageStorageKey?: string;
   style?: string;
   aspectRatio?: string;
+  imageModel?: "manus_forge" | "poyo_flux" | "poyo_sdxl";
 }
 
 export interface AssetNodeData {

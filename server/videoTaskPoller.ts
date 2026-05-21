@@ -1,5 +1,6 @@
 import type { Server as SocketIOServer } from "socket.io";
 import { getPendingVideoTasks, updateVideoTask } from "./db";
+import { isPoyoVideoProvider, submitPoyoVideo, checkPoyoVideoStatus } from "./_core/poyoVideo";
 
 // ── Video Provider Adapters ───────────────────────────────────────────────────
 
@@ -13,138 +14,8 @@ interface PollResult {
   errorMessage?: string;
 }
 
-async function submitRunwayTask(prompt: string, referenceImageUrl?: string, params?: Record<string, unknown>): Promise<SubmitResult> {
-  const apiKey = process.env.RUNWAY_API_KEY;
-  if (!apiKey) throw new Error("RUNWAY_API_KEY not configured");
+// ── Mock provider (for testing) ───────────────────────────────────────────────
 
-  const body: Record<string, unknown> = {
-    promptText: prompt,
-    model: (params?.model as string) ?? "gen3a_turbo",
-    duration: (params?.duration as number) ?? 5,
-    ratio: (params?.ratio as string) ?? "1280:768",
-  };
-
-  if (referenceImageUrl) {
-    body.promptImage = referenceImageUrl;
-  }
-
-  const res = await fetch("https://api.dev.runwayml.com/v1/image_to_video", {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      Authorization: `Bearer ${apiKey}`,
-      "X-Runway-Version": "2024-11-06",
-    },
-    body: JSON.stringify(body),
-  });
-
-  if (!res.ok) {
-    const err = await res.text();
-    throw new Error(`Runway API error: ${err}`);
-  }
-
-  const data = (await res.json()) as { id: string };
-  return { externalTaskId: data.id };
-}
-
-async function pollRunwayTask(externalTaskId: string): Promise<PollResult> {
-  const apiKey = process.env.RUNWAY_API_KEY;
-  if (!apiKey) throw new Error("RUNWAY_API_KEY not configured");
-
-  const res = await fetch(`https://api.dev.runwayml.com/v1/tasks/${externalTaskId}`, {
-    headers: {
-      Authorization: `Bearer ${apiKey}`,
-      "X-Runway-Version": "2024-11-06",
-    },
-  });
-
-  if (!res.ok) throw new Error(`Runway poll error: ${res.status}`);
-
-  const data = (await res.json()) as {
-    status: string;
-    output?: string[];
-    failure?: string;
-  };
-
-  if (data.status === "SUCCEEDED") {
-    return { status: "succeeded", resultVideoUrl: data.output?.[0] };
-  } else if (data.status === "FAILED") {
-    return { status: "failed", errorMessage: data.failure ?? "Unknown error" };
-  } else {
-    return { status: "processing" };
-  }
-}
-
-async function submitKlingTask(prompt: string, referenceImageUrl?: string, params?: Record<string, unknown>): Promise<SubmitResult> {
-  const apiKey = process.env.KLING_API_KEY;
-  if (!apiKey) throw new Error("KLING_API_KEY not configured");
-
-  const body: Record<string, unknown> = {
-    prompt,
-    negative_prompt: (params?.negativePrompt as string) ?? "",
-    cfg_scale: (params?.cfgScale as number) ?? 0.5,
-    mode: (params?.mode as string) ?? "std",
-    duration: (params?.duration as string) ?? "5",
-  };
-
-  if (referenceImageUrl) {
-    body.image = referenceImageUrl;
-  }
-
-  const endpoint = referenceImageUrl
-    ? "https://api.klingai.com/v1/videos/image2video"
-    : "https://api.klingai.com/v1/videos/text2video";
-
-  const res = await fetch(endpoint, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      Authorization: `Bearer ${apiKey}`,
-    },
-    body: JSON.stringify(body),
-  });
-
-  if (!res.ok) {
-    const err = await res.text();
-    throw new Error(`Kling API error: ${err}`);
-  }
-
-  const data = (await res.json()) as { data: { task_id: string } };
-  return { externalTaskId: data.data.task_id };
-}
-
-async function pollKlingTask(externalTaskId: string): Promise<PollResult> {
-  const apiKey = process.env.KLING_API_KEY;
-  if (!apiKey) throw new Error("KLING_API_KEY not configured");
-
-  const res = await fetch(`https://api.klingai.com/v1/videos/text2video/${externalTaskId}`, {
-    headers: { Authorization: `Bearer ${apiKey}` },
-  });
-
-  if (!res.ok) throw new Error(`Kling poll error: ${res.status}`);
-
-  const data = (await res.json()) as {
-    data: {
-      task_status: string;
-      task_result?: { videos?: Array<{ url: string }> };
-      task_status_msg?: string;
-    };
-  };
-
-  const status = data.data.task_status;
-  if (status === "succeed") {
-    return {
-      status: "succeeded",
-      resultVideoUrl: data.data.task_result?.videos?.[0]?.url,
-    };
-  } else if (status === "failed") {
-    return { status: "failed", errorMessage: data.data.task_status_msg ?? "Failed" };
-  } else {
-    return { status: "processing" };
-  }
-}
-
-// Mock provider for testing
 async function submitMockTask(): Promise<SubmitResult> {
   return { externalTaskId: `mock-${Date.now()}` };
 }
@@ -173,22 +44,21 @@ export function setupVideoTaskPoller(io: SocketIOServer) {
         try {
           let result: PollResult;
 
-          // Submit if still pending
+          // ── Submit if still pending ──────────────────────────────────────
           if (task.status === "pending") {
             let submitResult: SubmitResult;
-            if (task.provider === "runway") {
-              submitResult = await submitRunwayTask(
-                task.prompt ?? "",
-                task.referenceImageUrl ?? undefined,
-                (task.params as Record<string, unknown>) ?? undefined
-              );
-            } else if (task.provider === "kling") {
-              submitResult = await submitKlingTask(
-                task.prompt ?? "",
-                task.referenceImageUrl ?? undefined,
-                (task.params as Record<string, unknown>) ?? undefined
-              );
+
+            if (isPoyoVideoProvider(task.provider)) {
+              // Poyo.ai: Seedance 2 / Veo 3.1
+              submitResult = await submitPoyoVideo({
+                provider: task.provider,
+                prompt: task.prompt ?? "",
+                negativePrompt: task.negativePrompt ?? undefined,
+                referenceImageUrl: task.referenceImageUrl ?? undefined,
+                params: (task.params as Record<string, unknown>) ?? undefined,
+              });
             } else {
+              // Mock provider (and any unconfigured provider falls back to mock)
               submitResult = await submitMockTask();
             }
 
@@ -199,14 +69,21 @@ export function setupVideoTaskPoller(io: SocketIOServer) {
             continue;
           }
 
-          // Poll status
+          // ── Poll status ──────────────────────────────────────────────────
           if (!task.externalTaskId) continue;
 
-          if (task.provider === "runway") {
-            result = await pollRunwayTask(task.externalTaskId);
-          } else if (task.provider === "kling") {
-            result = await pollKlingTask(task.externalTaskId);
+          if (isPoyoVideoProvider(task.provider)) {
+            // Poyo.ai status check
+            const upstream = await checkPoyoVideoStatus(task.externalTaskId);
+            if (upstream.status === "finished") {
+              result = { status: "succeeded", resultVideoUrl: upstream.resultVideoUrl };
+            } else if (upstream.status === "failed") {
+              result = { status: "failed", errorMessage: upstream.errorMessage ?? "生成失败" };
+            } else {
+              result = { status: "processing" };
+            }
           } else {
+            // Mock provider
             result = await pollMockTask(task.externalTaskId, task.createdAt);
           }
 
