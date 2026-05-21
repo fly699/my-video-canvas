@@ -202,7 +202,7 @@ export const VideoTaskNode = memo(function VideoTaskNode({ id, selected, data }:
         }
       }, 5000);
     }
-    return () => { if (pollRef.current) clearInterval(pollRef.current); };
+    return () => { if (pollRef.current) { clearInterval(pollRef.current); pollRef.current = null; } };
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [payload.status, payload.taskId, id, updateNodeData]);
 

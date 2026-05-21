@@ -191,14 +191,16 @@ function CanvasInner({ projectId }: { projectId: number }) {
 
   const socketRef = useRef<Socket | null>(null);
   const [socketConnected, setSocketConnected] = useState(false);
+  const nodesRef = useRef(nodes);
+  nodesRef.current = nodes;
   const [viewport, setViewport] = useState({ x: 0, y: 0, zoom: 1 });
   const [renamingProject, setRenamingProject] = useState(false);
   const [renameValue, setRenameValue] = useState("");
   const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // ── Data loading ────────────────────────────────────────────────────────────
-  const { data: project, isLoading: projectLoading } = trpc.projects.get.useQuery(
-    { id: projectId }, { enabled: !!projectId && isAuthenticated }
+  const { data: project, isLoading: projectLoading, isError: projectError } = trpc.projects.get.useQuery(
+    { id: projectId }, { enabled: !!projectId && isAuthenticated, retry: false }
   );
   const { data: dbNodes } = trpc.nodes.list.useQuery(
     { projectId }, { enabled: !!projectId && isAuthenticated }
@@ -209,6 +211,8 @@ function CanvasInner({ projectId }: { projectId: number }) {
 
   const batchUpsertNodes = trpc.nodes.batchUpsert.useMutation();
   const upsertEdge = trpc.edges.upsert.useMutation();
+  const deleteNodeMutation = trpc.nodes.delete.useMutation();
+  const deleteEdgeMutation = trpc.edges.delete.useMutation();
   const updateProject = trpc.projects.update.useMutation();
 
   // Reset canvas store on unmount to prevent stale nodes polluting next canvas
@@ -296,7 +300,7 @@ function CanvasInner({ projectId }: { projectId: number }) {
         setCollaborator({ userId: event.userId, userName: event.userName, color: event.color, x: p.x, y: p.y });
       } else if (event.type === "node:move") {
         const p = event.payload as { id: string; x: number; y: number };
-        setNodes(nodes.map((n) => n.id === p.id ? { ...n, position: { x: p.x, y: p.y } } : n));
+        setNodes(nodesRef.current.map((n) => n.id === p.id ? { ...n, position: { x: p.x, y: p.y } } : n));
       } else if (event.type === "user:leave") {
         removeCollaborator(event.userId);
       }
@@ -391,6 +395,18 @@ function CanvasInner({ projectId }: { projectId: number }) {
   }, [saveCanvas, undo, redo]);
 
   const collaboratorList = Array.from(collaborators.values());
+
+  // ── Error / not found ────────────────────────────────────────────────────────
+  if (projectError) {
+    return (
+      <div className="w-screen h-screen flex flex-col items-center justify-center gap-4" style={{ background: "oklch(0.07 0.005 260)" }}>
+        <p className="text-sm" style={{ color: "oklch(0.60 0.008 260)" }}>项目不存在或无权访问</p>
+        <button onClick={() => navigate("/")} className="text-xs px-3 py-1.5 rounded-lg" style={{ background: "oklch(0.16 0.008 260)", color: "oklch(0.75 0.005 260)" }}>
+          返回主页
+        </button>
+      </div>
+    );
+  }
 
   // ── Loading ─────────────────────────────────────────────────────────────────
   if (projectLoading) {
@@ -727,6 +743,8 @@ function CanvasInner({ projectId }: { projectId: number }) {
             onEdgesChange={onEdgesChange}
             onConnect={onConnect}
             onNodeContextMenu={handleNodeContextMenu as Parameters<typeof ReactFlow>[0]["onNodeContextMenu"]}
+            onNodesDelete={(deleted) => deleted.forEach((n) => deleteNodeMutation.mutate({ id: n.id, projectId }))}
+            onEdgesDelete={(deleted) => deleted.forEach((e) => deleteEdgeMutation.mutate({ id: e.id, projectId }))}
             onMoveEnd={(_, vp) => { setViewport(vp); markDirty(); }}
             selectionMode={SelectionMode.Partial}
             selectionOnDrag
@@ -1034,7 +1052,11 @@ function CanvasInner({ projectId }: { projectId: number }) {
           type={contextMenu.type} nodeId={contextMenu.nodeId}
           onClose={() => setContextMenu(null)}
           onAddNode={handleAddNode}
-          onDeleteNode={contextMenu.nodeId ? () => deleteNode(contextMenu.nodeId!) : undefined}
+          onDeleteNode={contextMenu.nodeId ? () => {
+            const nid = contextMenu.nodeId!;
+            deleteNode(nid);
+            deleteNodeMutation.mutate({ id: nid, projectId });
+          } : undefined}
           onDuplicateNode={contextMenu.nodeId ? () => duplicateNode(contextMenu.nodeId!) : undefined}
         />
       )}

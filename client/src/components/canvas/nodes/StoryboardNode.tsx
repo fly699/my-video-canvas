@@ -104,7 +104,7 @@ export const StoryboardNode = memo(function StoryboardNode({ id, selected, data 
   });
 
   const handleChange = useCallback(
-    (field: keyof StoryboardNodeData, value: string | number) => {
+    (field: keyof StoryboardNodeData, value: string | number | undefined) => {
       updateNodeData(id, { [field]: value });
     },
     [id, updateNodeData]
@@ -230,7 +230,7 @@ export const StoryboardNode = memo(function StoryboardNode({ id, selected, data 
               type={type}
               placeholder={placeholder}
               value={(payload[field] as string | number) ?? ""}
-              onChange={(e) => handleChange(field, type === "number" ? Number(e.target.value) : e.target.value)}
+              onChange={(e) => handleChange(field, type === "number" ? (e.target.value === "" ? undefined : Number(e.target.value)) : e.target.value)}
               className="nodrag"
               style={{ ...fieldStyle, width }}
               onFocus={onFocus}
