@@ -51,13 +51,25 @@ export function useWorkflowRunner() {
   const imageGenMutation = trpc.imageGen.generate.useMutation();
   const videoTaskMutation = trpc.videoTasks.create.useMutation();
 
-  const runWorkflow = useCallback(async (startNodeId: string) => {
+  const runWorkflow = useCallback(async (startNodeId: string | null) => {
     const { nodes, edges } = useCanvasStore.getState();
-    const execOrder = getExecutionOrder(startNodeId, nodes, edges);
-    const runnableIds = execOrder.filter(id => {
-      const node = nodes.find(n => n.id === id);
-      return node && RUNNABLE_TYPES.includes(node.data.nodeType);
-    });
+
+    // If no startNodeId, run all runnable nodes in topological order from the first one
+    let runnableIds: string[];
+    if (startNodeId) {
+      const execOrder = getExecutionOrder(startNodeId, nodes, edges);
+      // Include the start node itself plus descendants
+      const fullOrder = [startNodeId, ...execOrder];
+      runnableIds = fullOrder.filter(id => {
+        const node = nodes.find(n => n.id === id);
+        return node && RUNNABLE_TYPES.includes(node.data.nodeType);
+      });
+    } else {
+      // Run all runnable nodes
+      runnableIds = nodes
+        .filter(n => RUNNABLE_TYPES.includes(n.data.nodeType))
+        .map(n => n.id);
+    }
 
     if (runnableIds.length === 0) {
       toast.info("没有可运行的节点（分镜/提示词/图像/视频）");
@@ -129,6 +141,15 @@ export function useWorkflowRunner() {
       } catch {
         failed.push(nodeId);
         toast.error(`节点 "${node.data.title}" 执行失败`);
+      }
+
+      // Update progress after each node
+      if (!abortRef.current) {
+        setRunState(s => ({
+          ...s,
+          completedIds: [...completed],
+          failedIds: [...failed],
+        }));
       }
     }
 

@@ -3,7 +3,7 @@ import { NODE_TYPE_LIST } from "../../lib/nodeConfig";
 import type { NodeType } from "../../../../shared/types";
 import {
   FileText, Image, Wand2, Paperclip, Video, Bot, StickyNote,
-  Copy, Trash2, Plus,
+  Copy, Trash2, Plus, Play,
 } from "lucide-react";
 
 const ICONS: Record<string, React.ComponentType<{ className?: string; style?: React.CSSProperties }>> = {
@@ -19,11 +19,12 @@ interface ContextMenuProps {
   onAddNode?: (type: NodeType) => void;
   onDeleteNode?: () => void;
   onDuplicateNode?: () => void;
+  onRunWorkflow?: () => void;
 }
 
 export function ContextMenu({
   x, y, type, nodeId,
-  onClose, onAddNode, onDeleteNode, onDuplicateNode,
+  onClose, onAddNode, onDeleteNode, onDuplicateNode, onRunWorkflow,
 }: ContextMenuProps) {
   const menuRef = useRef<HTMLDivElement>(null);
 
@@ -41,7 +42,7 @@ export function ContextMenu({
   }, [onClose]);
 
   const menuWidth = 210;
-  const menuHeight = type === "canvas" ? 360 : 110;
+  const menuHeight = type === "canvas" ? 360 : (onRunWorkflow ? 148 : 110);
   const left = Math.min(x, window.innerWidth - menuWidth - 8);
   const top = Math.min(y, window.innerHeight - menuHeight - 8);
 
@@ -131,6 +132,26 @@ export function ContextMenu({
         </>
       ) : (
         <div style={{ padding: "4px" }}>
+          {onRunWorkflow && (
+            <button
+              onClick={() => { onRunWorkflow(); onClose(); }}
+              style={{
+                display: "flex", alignItems: "center", gap: 10,
+                width: "100%", padding: "7px 8px", fontSize: 12,
+                cursor: "pointer", background: "transparent", border: "none",
+                textAlign: "left", color: "oklch(0.72 0.22 142)", borderRadius: 8,
+                transition: "all 120ms ease",
+              }}
+              onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.background = "oklch(0.72 0.22 142 / 0.10)"; (e.currentTarget as HTMLElement).style.color = "oklch(0.80 0.22 142)"; }}
+              onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.background = "transparent"; (e.currentTarget as HTMLElement).style.color = "oklch(0.72 0.22 142)"; }}
+            >
+              <Play className="w-3.5 h-3.5" />
+              从此节点运行工作流
+            </button>
+          )}
+          {onRunWorkflow && (onDuplicateNode || onDeleteNode) && (
+            <div style={{ height: 1, background: "oklch(0.18 0.008 260)", margin: "3px 6px" }} />
+          )}
           {onDuplicateNode && (
             <button
               onClick={() => { onDuplicateNode(); onClose(); }}

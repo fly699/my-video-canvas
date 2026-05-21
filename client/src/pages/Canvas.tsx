@@ -20,6 +20,7 @@ import { ContextMenu } from "../components/canvas/ContextMenu";
 import { CollaboratorCursors } from "../components/canvas/CollaboratorCursors";
 import { AssetPanel } from "../components/canvas/AssetPanel";
 import { PresentationMode } from "../components/canvas/PresentationMode";
+import { WorkflowRunProvider } from "../contexts/WorkflowRunContext";
 import { trpc } from "@/lib/trpc";
 import { useAuth } from "@/_core/hooks/useAuth";
 import { useIsMobile } from "@/hooks/useMobile";
@@ -189,6 +190,10 @@ function CanvasInner({ projectId }: { projectId: number }) {
   const [showNodePicker, setShowNodePicker] = useState(false);
   const [showPresentation, setShowPresentation] = useState(false);
   const [showShortcuts, setShowShortcuts] = useState(false);
+  const [showStatsSidebar, setShowStatsSidebar] = useState(false);
+
+  // Workflow runner
+  const { runState, runWorkflow } = useWorkflowRunner();
 
   const socketRef = useRef<Socket | null>(null);
   const [socketConnected, setSocketConnected] = useState(false);
@@ -381,6 +386,13 @@ function CanvasInner({ projectId }: { projectId: number }) {
         if (selected.length > 0) toast.success(`已复制 ${selected.length} 个节点`, { duration: 1200 });
       }
 
+      // Shift+R: run workflow from selected node
+      if (!isEditing && e.shiftKey && e.key === "R") {
+        e.preventDefault();
+        const selected = nodes.find((n) => n.selected);
+        runWorkflow(selected?.id ?? null);
+      }
+
       // Undo: Cmd+Z / Ctrl+Z
       if (!isEditing && (e.metaKey || e.ctrlKey) && !e.shiftKey && e.key === "z") {
         e.preventDefault();
@@ -401,7 +413,7 @@ function CanvasInner({ projectId }: { projectId: number }) {
     };
     window.addEventListener("keydown", handler);
     return () => window.removeEventListener("keydown", handler);
-  }, [saveCanvas, undo, redo]);
+  }, [saveCanvas, undo, redo, runWorkflow, nodes]);
 
   const collaboratorList = Array.from(collaborators.values());
 
@@ -587,6 +599,26 @@ function CanvasInner({ projectId }: { projectId: number }) {
             <TooltipContent side="bottom" className="text-xs">素材库</TooltipContent>
           </Tooltip>
 
+          {/* Stats sidebar toggle */}
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <button
+                onClick={() => setShowStatsSidebar((v) => !v)}
+                className="w-7 h-7 rounded-lg flex items-center justify-center transition-all"
+                style={{
+                  background: showStatsSidebar ? "oklch(0.68 0.22 285 / 0.12)" : "transparent",
+                  border: showStatsSidebar ? "1px solid oklch(0.68 0.22 285 / 0.3)" : "1px solid transparent",
+                  color: showStatsSidebar ? "oklch(0.68 0.22 285)" : "oklch(0.55 0.008 260)",
+                }}
+                onMouseEnter={(e) => { if (!showStatsSidebar) { (e.currentTarget as HTMLElement).style.background = "oklch(0.16 0.008 260)"; (e.currentTarget as HTMLElement).style.color = "oklch(0.80 0.005 260)"; } }}
+                onMouseLeave={(e) => { if (!showStatsSidebar) { (e.currentTarget as HTMLElement).style.background = "transparent"; (e.currentTarget as HTMLElement).style.color = "oklch(0.55 0.008 260)"; } }}
+              >
+                <LayoutGrid className="w-3.5 h-3.5" />
+              </button>
+            </TooltipTrigger>
+            <TooltipContent side="bottom" className="text-xs">画布统计</TooltipContent>
+          </Tooltip>
+
           {/* Undo */}
           <Tooltip>
             <TooltipTrigger asChild>
@@ -739,11 +771,37 @@ function CanvasInner({ projectId }: { projectId: number }) {
 
         {/* ── Canvas ── */}
         <div
-          className="flex-1 relative"
+          className="flex-1 relative canvas-vignette"
           onContextMenu={handleCanvasContextMenu}
           onMouseMove={handleMouseMove}
           onClick={() => { setShowNodePicker(false); }}
         >
+          {/* Workflow progress bar */}
+          {runState.running && (
+            <div
+              style={{
+                position: "absolute",
+                top: 0,
+                left: 0,
+                right: 0,
+                height: 3,
+                zIndex: 50,
+                background: "oklch(0.10 0.007 260)",
+              }}
+            >
+              <div
+                style={{
+                  height: "100%",
+                  width: `${nodes.length > 0 ? Math.round(((runState.completedIds.length + runState.failedIds.length) / nodes.length) * 100) : 0}%`,
+                  background: "linear-gradient(90deg, oklch(0.72 0.22 142), oklch(0.70 0.20 195))",
+                  transition: "width 350ms ease",
+                  boxShadow: "0 0 8px oklch(0.72 0.22 142 / 0.60)",
+                }}
+              />
+            </div>
+          )}
+
+          <WorkflowRunProvider value={runState}>
           <ReactFlow
             nodes={nodes}
             edges={edges}
@@ -773,9 +831,9 @@ function CanvasInner({ projectId }: { projectId: number }) {
           >
             <Background
               variant={BackgroundVariant.Dots}
-              gap={28}
-              size={1}
-              color="oklch(0.22 0.008 260)"
+              gap={24}
+              size={1.5}
+              color="oklch(0.25 0.008 260 / 0.6)"
             />
             <MiniMap
               position="bottom-right"
@@ -784,6 +842,7 @@ function CanvasInner({ projectId }: { projectId: number }) {
               style={{ background: "oklch(0.11 0.007 260)", border: "1px solid oklch(0.20 0.008 260)", borderRadius: 12, marginBottom: 64 }}
             />
           </ReactFlow>
+          </WorkflowRunProvider>
 
           {/* ── Bottom floating toolbar ── */}
           <div
@@ -911,6 +970,44 @@ function CanvasInner({ projectId }: { projectId: number }) {
             {/* Divider */}
             <div style={{ width: 1, height: 18, background: "oklch(0.22 0.008 260)", flexShrink: 0 }} />
 
+            {/* Run workflow button */}
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <button
+                  onClick={() => runWorkflow(null)}
+                  disabled={runState.running || nodes.length === 0}
+                  className="flex items-center gap-1.5 h-8 px-3 rounded-xl text-xs font-semibold transition-all"
+                  style={{
+                    background: runState.running
+                      ? "oklch(0.72 0.22 142 / 0.12)"
+                      : "oklch(0.72 0.22 142 / 0.15)",
+                    border: `1px solid oklch(0.72 0.22 142 / ${runState.running ? "0.5" : "0.35"})`,
+                    color: runState.running ? "oklch(0.75 0.20 142)" : "oklch(0.72 0.22 142)",
+                    cursor: runState.running || nodes.length === 0 ? "not-allowed" : "pointer",
+                    opacity: nodes.length === 0 ? 0.5 : 1,
+                  }}
+                >
+                  {runState.running ? (
+                    <>
+                      <Loader2 className="w-3 h-3 animate-spin" />
+                      运行中 {runState.completedIds.length + runState.failedIds.length}/{nodes.length}
+                    </>
+                  ) : (
+                    <>
+                      <Play className="w-3 h-3" />
+                      运行
+                    </>
+                  )}
+                </button>
+              </TooltipTrigger>
+              <TooltipContent side="top" className="text-xs">
+                运行工作流 <kbd className="ml-1 px-1 py-0.5 rounded text-[10px] bg-white/10 font-mono">Shift+R</kbd>
+              </TooltipContent>
+            </Tooltip>
+
+            {/* Divider */}
+            <div style={{ width: 1, height: 18, background: "oklch(0.22 0.008 260)", flexShrink: 0 }} />
+
             {/* Shortcut help button */}
             <div className="relative">
               <Tooltip>
@@ -961,6 +1058,9 @@ function CanvasInner({ projectId }: { projectId: number }) {
                       { key: "Cmd/Ctrl + Z", desc: "撤销" },
                       { key: "Cmd/Ctrl + Shift + Z", desc: "重做" },
                       { key: "Ctrl + Y", desc: "重做（Windows）" },
+                    ]},
+                    { group: "工作流", items: [
+                      { key: "Shift + R", desc: "从选中节点运行工作流" },
                     ]},
                     { group: "其他", items: [
                       { key: "Cmd/Ctrl + S", desc: "保存画布" },
@@ -1054,6 +1154,100 @@ function CanvasInner({ projectId }: { projectId: number }) {
             <AssetPanel projectId={projectId} onClose={() => setShowAssets(false)} />
           </div>
         )}
+
+        {/* ── Stats sidebar ── */}
+        <div
+          style={{
+            width: 200,
+            flexShrink: 0,
+            background: "oklch(0.10 0.006 260)",
+            borderLeft: "1px solid oklch(0.18 0.007 260)",
+            display: "flex",
+            flexDirection: "column",
+            transform: showStatsSidebar ? "translateX(0)" : "translateX(100%)",
+            transition: "transform 280ms cubic-bezier(0.23, 1, 0.32, 1)",
+            position: showStatsSidebar ? "relative" : "absolute",
+            right: 0,
+            top: 0,
+            bottom: 0,
+            zIndex: 15,
+            pointerEvents: showStatsSidebar ? "auto" : "none",
+          }}
+        >
+          <div className="p-3 flex flex-col gap-3">
+            <p className="text-[10px] font-semibold uppercase tracking-widest" style={{ color: "oklch(0.42 0.006 260)" }}>
+              画布统计
+            </p>
+
+            {/* Node counts by type */}
+            <div className="flex flex-col gap-1.5">
+              {NODE_TYPE_LIST.map((config) => {
+                const count = nodes.filter((n) => n.data.nodeType === config.type).length;
+                if (count === 0) return null;
+                return (
+                  <div key={config.type} className="flex items-center justify-between">
+                    <div className="flex items-center gap-1.5">
+                      <div
+                        className="w-2 h-2 rounded-full flex-shrink-0"
+                        style={{ background: config.color }}
+                      />
+                      <span style={{ fontSize: 11, color: "oklch(0.65 0.005 260)" }}>{config.label}</span>
+                    </div>
+                    <span
+                      className="font-mono text-[11px] px-1.5 py-0.5 rounded"
+                      style={{ background: `${config.color}18`, color: config.color, border: `1px solid ${config.color}28` }}
+                    >
+                      {count}
+                    </span>
+                  </div>
+                );
+              })}
+              {nodes.length === 0 && (
+                <p style={{ fontSize: 11, color: "oklch(0.38 0.006 260)" }}>暂无节点</p>
+              )}
+            </div>
+
+            <div style={{ height: 1, background: "oklch(0.18 0.007 260)" }} />
+
+            {/* Edge count */}
+            <div className="flex items-center justify-between">
+              <span style={{ fontSize: 11, color: "oklch(0.55 0.005 260)" }}>连接数</span>
+              <span className="font-mono text-[11px]" style={{ color: "oklch(0.65 0.005 260)" }}>{edges.length}</span>
+            </div>
+
+            {/* Total nodes */}
+            <div className="flex items-center justify-between">
+              <span style={{ fontSize: 11, color: "oklch(0.55 0.005 260)" }}>节点总数</span>
+              <span className="font-mono text-[11px]" style={{ color: "oklch(0.65 0.005 260)" }}>{nodes.length}</span>
+            </div>
+
+            {/* Last run status */}
+            {(runState.completedIds.length > 0 || runState.failedIds.length > 0) && !runState.running && (
+              <>
+                <div style={{ height: 1, background: "oklch(0.18 0.007 260)" }} />
+                <div>
+                  <p className="text-[10px] font-semibold uppercase tracking-widest mb-1.5" style={{ color: "oklch(0.42 0.006 260)" }}>
+                    上次运行
+                  </p>
+                  <div className="flex items-center gap-1.5">
+                    <div className="w-2 h-2 rounded-full" style={{ background: "oklch(0.72 0.18 155)" }} />
+                    <span style={{ fontSize: 11, color: "oklch(0.65 0.005 260)" }}>
+                      {runState.completedIds.length} 完成
+                    </span>
+                  </div>
+                  {runState.failedIds.length > 0 && (
+                    <div className="flex items-center gap-1.5 mt-0.5">
+                      <div className="w-2 h-2 rounded-full" style={{ background: "oklch(0.62 0.22 25)" }} />
+                      <span style={{ fontSize: 11, color: "oklch(0.65 0.005 260)" }}>
+                        {runState.failedIds.length} 失败
+                      </span>
+                    </div>
+                  )}
+                </div>
+              </>
+            )}
+          </div>
+        </div>
       </div>
 
       {/* ── Context menu ── */}
@@ -1069,6 +1263,7 @@ function CanvasInner({ projectId }: { projectId: number }) {
             deleteNodeMutation.mutate({ id: nid, projectId });
           } : undefined}
           onDuplicateNode={contextMenu.nodeId ? () => duplicateNode(contextMenu.nodeId!) : undefined}
+          onRunWorkflow={contextMenu.nodeId ? () => runWorkflow(contextMenu.nodeId ?? null) : undefined}
         />
       )}
 
