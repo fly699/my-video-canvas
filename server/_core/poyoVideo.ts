@@ -38,29 +38,34 @@ export async function submitPoyoVideo(opts: {
 
   const input: Record<string, unknown> = {
     prompt: opts.prompt,
-    aspect_ratio: (opts.params?.aspect_ratio as string) ?? "16:9",
     ...(opts.negativePrompt ? { negative_prompt: opts.negativePrompt } : {}),
     ...(opts.referenceImageUrl ? { reference_image_url: opts.referenceImageUrl } : {}),
   };
 
-  if (model === "kling-2.6") {
-    input.duration = (opts.params?.duration as number) ?? 5;
-    if (opts.params?.sound !== undefined) input.sound = Boolean(opts.params.sound);
-  } else if (model === "kling-o3-standard" || model === "kling-o3-pro" || model === "kling-o3-4k") {
-    input.duration = (opts.params?.duration as number) ?? 5;
-  } else if (model === "veo-3.1") {
-    input.duration = (opts.params?.duration as number) ?? 5;
-  } else if (model === "wan2.5-text-to-video" || model === "wan2.5-image-to-video") {
-    input.duration = (opts.params?.duration as number) ?? 5;
-  } else if (model === "runway-gen-4.5") {
-    input.duration = (opts.params?.duration as number) ?? 5;
-  } else {
-    // seedance-2
+  if (model === "seedance-2") {
+    // seedance-2 uses resolution (720p/1080p) + aspect_ratio separately
     input.resolution = (opts.params?.resolution as string) ?? "720p";
+    input.aspect_ratio = (opts.params?.aspect_ratio as string) ?? "16:9";
     input.duration = (opts.params?.duration as number) ?? 5;
     if (opts.params?.camera_fixed !== undefined) {
       input.camera_fixed = Boolean(opts.params.camera_fixed);
     }
+  } else if (model === "kling-2.6") {
+    input.aspect_ratio = (opts.params?.aspect_ratio as string) ?? "16:9";
+    input.duration = (opts.params?.duration as number) ?? 5;
+    if (opts.params?.sound !== undefined) input.sound = Boolean(opts.params.sound);
+  } else if (model === "kling-o3-standard" || model === "kling-o3-pro" || model === "kling-o3-4k") {
+    input.aspect_ratio = (opts.params?.aspect_ratio as string) ?? "16:9";
+    input.duration = (opts.params?.duration as number) ?? 5;
+  } else if (model === "veo-3.1") {
+    input.aspect_ratio = (opts.params?.aspect_ratio as string) ?? "16:9";
+    input.duration = (opts.params?.duration as number) ?? 5;
+  } else if (model === "wan2.5-text-to-video" || model === "wan2.5-image-to-video") {
+    input.aspect_ratio = (opts.params?.aspect_ratio as string) ?? "16:9";
+    input.duration = (opts.params?.duration as number) ?? 5;
+  } else if (model === "runway-gen-4.5") {
+    input.aspect_ratio = (opts.params?.aspect_ratio as string) ?? "16:9";
+    input.duration = (opts.params?.duration as number) ?? 5;
   }
 
   const res = await fetch(`${POYO_BASE}/api/generate/submit`, {
