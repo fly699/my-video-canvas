@@ -141,7 +141,8 @@ export const ImageGenNode = memo(function ImageGenNode({ id, selected, data }: P
       referenceImageUrl: payload.referenceImageUrl,
       model: payload.model,
       // Poyo image model params
-      ...((payload.model === "poyo_flux" || payload.model === "poyo_sdxl" || payload.model === "poyo_gpt_image") ? {
+      ...((payload.model === "poyo_flux" || payload.model === "poyo_sdxl" || payload.model === "poyo_gpt_image" ||
+           payload.model === "poyo_seedream" || payload.model === "poyo_grok_image" || payload.model === "poyo_wan_image") ? {
         poyoAspectRatio: payload.aspectRatio,
       } : {}),
       // Soul Standard specific params
