@@ -443,7 +443,7 @@ export const imageGenRouter = router({
         negativePrompt: z.string().optional(),
         referenceImageUrl: z.string().optional(),
         style: z.string().optional(),
-        model: z.enum(["manus_forge", "poyo_flux", "poyo_sdxl", "hf_soul_standard", "hf_reve"]).optional(),
+        model: z.enum(["manus_forge", "poyo_flux", "poyo_sdxl", "poyo_gpt_image", "hf_soul_standard", "hf_reve"]).optional(),
         poyoAspectRatio: z.string().optional(),
         poyoQuality: z.enum(["low", "medium", "high"]).optional(),
         widthAndHeight: z.string().optional(),
@@ -471,7 +471,7 @@ export const imageGenRouter = router({
         ...(input.referenceImageUrl
           ? { originalImages: [{ url: input.referenceImageUrl, mimeType: "image/jpeg" }] }
           : {}),
-        ...((input.model === "poyo_flux" || input.model === "poyo_sdxl") ? {
+        ...((input.model === "poyo_flux" || input.model === "poyo_sdxl" || input.model === "poyo_gpt_image") ? {
           size: input.poyoAspectRatio,
           quality: input.poyoQuality,
         } : {}),
