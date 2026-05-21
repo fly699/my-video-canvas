@@ -84,3 +84,13 @@
 - [x] 添加首页（Home.tsx）登出按钮（用户头像旁）
 - [x] 添加画布页（Canvas.tsx）顶部栏登出按钮
 - [x] TypeScript 0 errors，26 Vitest 测试全部通过
+
+## Phase 11: 图像生成节点 & 视频播放修复
+- [x] 图像生成节点：添加模型选择器（Manus Forge / Flux 1.1 Pro / SDXL）
+- [x] 图像生成节点：补全"生成图像"按钮（原节点缺失）
+- [x] 图像生成节点：完整重写 UI（提示词、反向提示词、风格、比例、参考图）
+- [x] 后端 imageGenRouter：添加 model 字段支持，按模型路由到不同后端
+- [x] 后端 imageGeneration.ts：支持 manus_forge / poyo_flux / poyo_sdxl 三种模型
+- [x] 视频播放：添加服务端视频代理 /api/video-proxy（解决 CORS/跨域问题）
+- [x] VideoTaskNode 和 PresentationMode：外部视频 URL 通过代理播放
+- [x] TypeScript 0 errors，26 Vitest 测试全部通过

@@ -392,6 +392,7 @@ export const imageGenRouter = router({
         negativePrompt: z.string().optional(),
         referenceImageUrl: z.string().optional(),
         style: z.string().optional(),
+        model: z.enum(["manus_forge", "poyo_flux", "poyo_sdxl"]).optional(),
       })
     )
     .mutation(async ({ input }) => {
@@ -405,6 +406,7 @@ export const imageGenRouter = router({
 
       const result = await generateImage({
         prompt: fullPrompt,
+        model: input.model,
         ...(input.referenceImageUrl
           ? { originalImages: [{ url: input.referenceImageUrl, mimeType: "image/jpeg" }] }
           : {}),

@@ -159,7 +159,13 @@ export const VideoTaskNode = memo(function VideoTaskNode({ id, selected, data }:
               borderColor: STATUS.succeeded.borderColor,
             }}
           >
-            <video src={payload.resultVideoUrl} controls className="w-full nodrag" style={{ maxHeight: 140, display: "block" }} />
+            <video
+              src={payload.resultVideoUrl?.startsWith("http") ? `/api/video-proxy?url=${encodeURIComponent(payload.resultVideoUrl)}` : payload.resultVideoUrl}
+              controls
+              className="w-full nodrag"
+              style={{ maxHeight: 140, display: "block" }}
+              preload="metadata"
+            />
           </div>
         )}
 

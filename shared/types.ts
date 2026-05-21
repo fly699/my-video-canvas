@@ -73,6 +73,7 @@ export interface AIChatNodeData {
   model?: string;
 }
 
+export type ImageGenModel = "manus_forge" | "poyo_flux" | "poyo_sdxl";
 export interface ImageGenNodeData {
   prompt: string;
   negativePrompt?: string;
@@ -81,6 +82,7 @@ export interface ImageGenNodeData {
   referenceImageUrl?: string;
   imageUrl?: string;
   imageStorageKey?: string;
+  model?: ImageGenModel;
 }
 
 export interface NoteNodeData {

@@ -152,7 +152,13 @@ function SlideContent({ node }: { node: CanvasNode }) {
     return (
       <div className="w-full h-full flex flex-col gap-4 p-5 overflow-auto">
         {d.resultVideoUrl ? (
-          <video src={d.resultVideoUrl} controls className="w-full rounded-lg" style={{ maxHeight: "60%" }} />
+          <video
+            src={d.resultVideoUrl?.startsWith("http") ? `/api/video-proxy?url=${encodeURIComponent(d.resultVideoUrl)}` : d.resultVideoUrl}
+            controls
+            className="w-full rounded-lg"
+            style={{ maxHeight: "60%" }}
+            preload="metadata"
+          />
         ) : (
           <div className="flex items-center gap-2 p-4 rounded-lg" style={{ background: "oklch(0.10 0.006 260)", border: "1px solid oklch(0.18 0.008 260)" }}>
             <StatusBadge status={d.status} />

@@ -131,6 +131,13 @@ async function generateImageForge(options: GenerateImageOptions): Promise<Genera
 }
 
 export async function generateImage(options: GenerateImageOptions): Promise<GenerateImageResponse> {
+  // Route by explicit model selection
+  if (options.model === "manus_forge") return generateImageForge(options);
+  if (options.model === "poyo_flux" || options.model === "poyo_sdxl") {
+    const poyoModel = options.model === "poyo_flux" ? "flux-1.1-pro" : "stable-diffusion-xl";
+    return generateImagePoyo({ ...options, model: poyoModel });
+  }
+  // Default: use poyo if key available, else forge
   if (ENV.poyoApiKey) return generateImagePoyo(options);
   return generateImageForge(options);
 }

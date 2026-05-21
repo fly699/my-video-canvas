@@ -1,10 +1,10 @@
 import { memo, useCallback, useState } from "react";
 import { BaseNode } from "../BaseNode";
 import { useCanvasStore } from "../../../hooks/useCanvasStore";
-import type { ImageGenNodeData } from "../../../../../shared/types";
+import type { ImageGenNodeData, ImageGenModel } from "../../../../../shared/types";
 import { trpc } from "@/lib/trpc";
 import { toast } from "sonner";
-import { Sparkles, Loader2, RefreshCw, Link } from "lucide-react";
+import { Sparkles, Loader2, RefreshCw, Link, Cpu } from "lucide-react";
 
 interface Props {
   id: string;
@@ -38,6 +38,11 @@ const fieldBase: React.CSSProperties = {
 
 const STYLES = ["写实", "动漫", "插画", "3D渲染", "水彩", "油画", "素描", "赛博朋克", "复古胶片"];
 const RATIOS = ["1:1", "16:9", "9:16", "4:3", "3:4", "2:1"];
+const MODELS: { value: ImageGenModel; label: string; desc: string }[] = [
+  { value: "manus_forge", label: "Manus Forge", desc: "内置 · 稳定" },
+  { value: "poyo_flux",   label: "Flux 1.1 Pro (Poyo)", desc: "高质量 · 写实" },
+  { value: "poyo_sdxl",   label: "SDXL (Poyo)", desc: "快速 · 多风格" },
+];
 
 export const ImageGenNode = memo(function ImageGenNode({ id, selected, data }: Props) {
   const { updateNodeData } = useCanvasStore();
@@ -69,6 +74,7 @@ export const ImageGenNode = memo(function ImageGenNode({ id, selected, data }: P
       negativePrompt: payload.negativePrompt,
       style: payload.style,
       referenceImageUrl: payload.referenceImageUrl,
+      model: payload.model,
     });
   };
 
@@ -91,7 +97,10 @@ export const ImageGenNode = memo(function ImageGenNode({ id, selected, data }: P
                 onClick={handleGenerate}
                 disabled={generating}
                 className="nodrag flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-medium"
-                style={{ background: `${accent} / 0.2)`.replace("oklch(0.72", "oklch(0.72"), borderWidth: 1, borderStyle: "solid", borderColor: BORDER_ACCENT, color: accent }}
+                style={{
+                  background: "oklch(0.72 0.20 330 / 0.2)",
+                  borderWidth: 1, borderStyle: "solid", borderColor: BORDER_ACCENT, color: accent,
+                }}
               >
                 {generating ? <Loader2 className="w-3 h-3 animate-spin" /> : <RefreshCw className="w-3 h-3" />}
                 重新生成
@@ -109,6 +118,29 @@ export const ImageGenNode = memo(function ImageGenNode({ id, selected, data }: P
             </div>
           </div>
         )}
+
+        {/* Model selector */}
+        <div>
+          <label style={{ fontSize: 10, fontWeight: 500, textTransform: "uppercase", letterSpacing: "0.05em", color: "oklch(0.42 0.006 260)", display: "flex", alignItems: "center", gap: 4, marginBottom: 4 }}>
+            <Cpu style={{ width: 10, height: 10 }} />
+            模型
+          </label>
+          <select
+            value={payload.model ?? ""}
+            onChange={(e) => update("model", e.target.value)}
+            className="nodrag"
+            style={{ ...fieldBase, cursor: "pointer" }}
+            onFocus={(e) => { e.currentTarget.style.borderColor = BORDER_ACCENT; }}
+            onBlur={(e) => { e.currentTarget.style.borderColor = BORDER_DEFAULT; }}
+          >
+            <option value="">自动选择</option>
+            {MODELS.map((m) => (
+              <option key={m.value} value={m.value} style={{ background: "oklch(0.12 0.007 260)" }}>
+                {m.label} — {m.desc}
+              </option>
+            ))}
+          </select>
+        </div>
 
         {/* Prompt */}
         <div>
