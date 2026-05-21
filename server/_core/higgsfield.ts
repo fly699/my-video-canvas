@@ -9,7 +9,12 @@ const POLL_MAX_ATTEMPTS = 60; // 4 min max
 
 function getAuthHeader(): string {
   if (!ENV.higgsfieldApiKey) throw new Error("HIGGSFIELD_API_KEY is not configured");
-  return `Key ${ENV.higgsfieldApiKey}`;
+  // If both access key and secret are stored separately, combine them for the API call.
+  // Set HIGGSFIELD_API_KEY = your access key and HIGGSFIELD_API_SECRET = your secret key.
+  const token = ENV.higgsfieldApiSecret
+    ? `${ENV.higgsfieldApiKey}:${ENV.higgsfieldApiSecret}`
+    : ENV.higgsfieldApiKey;
+  return `Key ${token}`;
 }
 
 // ── Image Generation ──────────────────────────────────────────────────────────
