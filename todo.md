@@ -179,7 +179,14 @@
 - [x] ImageGenNode：selected=false 时自动折叠参数区，selected=true 时展开
 - [x] TypeScript 0 errors，测试全部通过
 
-## Phase 22: 节点未选中时折叠全部内容
-- [ ] BaseNode：selected=false 时隐藏整个内容区（children），仅显示标题栏
-- [ ] 折叠/展开用 CSS max-height 过渡动画，避免布局跳动
-- [ ] TypeScript 0 errors，测试全部通过
+## Phase 22: 节点未选中时折叠输入区，结果始终显示
+- [x] VideoTaskNode：selected=false 时折叠所有输入/参数区，视频播放始终显示
+- [x] ImageGenNode：selected=false 时折叠所有输入/参数区，图像结果始终显示
+- [x] 折叠/展开用 CSS max-height 过渡动画，避免布局跳动
+- [x] TypeScript 0 errors，测试全部通过
+
+## Phase 23: 滚动条加粗 + 节点可缩放 + 分镜自动折叠
+- [x] index.css：全局滚动条加粗（width 6px，hover 8px），颜色与主题一致
+- [x] BaseNode：添加 resizable prop，ScriptNode/PromptNode/NoteNode/AIChatNode/AssetNode 传 resizable=true
+- [x] StoryboardNode：未选中时自动折叠输入区，结果（分镜图）始终显示
+- [x] TypeScript 0 errors，测试全部通过

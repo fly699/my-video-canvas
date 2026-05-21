@@ -1,4 +1,4 @@
-import { memo, useCallback, useRef, useState } from "react";
+import { memo, useCallback, useEffect, useRef, useState } from "react";
 import { BaseNode } from "../BaseNode";
 import { useCanvasStore } from "../../../hooks/useCanvasStore";
 import type { StoryboardNodeData } from "../../../../../shared/types";
@@ -53,6 +53,12 @@ export const StoryboardNode = memo(function StoryboardNode({ id, selected, data 
   const payload = data.payload;
   const [generating, setGenerating] = useState(false);
   const [showModelPicker, setShowModelPicker] = useState(false);
+  const [inputExpanded, setInputExpanded] = useState(!!selected);
+
+  // Auto-collapse inputs when deselected, expand when selected
+  useEffect(() => {
+    setInputExpanded(!!selected);
+  }, [selected]);
   const model: ImageModelId = (payload.imageModel as ImageModelId) ?? "manus_forge";
   const setModel = (m: ImageModelId) => { updateNodeData(id, { imageModel: m }); };
 
@@ -122,7 +128,7 @@ export const StoryboardNode = memo(function StoryboardNode({ id, selected, data 
     <BaseNode id={id} selected={selected} nodeType="storyboard" title={data.title} minHeight={280}>
       <div className="flex flex-col h-full p-3.5 gap-3">
 
-        {/* ── Image preview ── */}
+        {/* ── Image preview ── always visible ──*/}
         <div
           className="relative rounded-lg overflow-hidden flex-shrink-0"
           style={{
@@ -201,6 +207,18 @@ export const StoryboardNode = memo(function StoryboardNode({ id, selected, data 
           )}
         </div>
 
+        {/* ── Collapsible inputs ── */}
+        <div
+          style={{
+            overflow: "hidden",
+            maxHeight: inputExpanded ? 2000 : 0,
+            opacity: inputExpanded ? 1 : 0,
+            transition: "max-height 250ms cubic-bezier(0.23,1,0.32,1), opacity 200ms ease",
+            display: "flex",
+            flexDirection: "column",
+            gap: 12,
+          }}
+        >
         {/* ── Scene meta ── */}
         <div className="flex gap-1.5">
           {[
@@ -386,6 +404,8 @@ export const StoryboardNode = memo(function StoryboardNode({ id, selected, data 
               ))}
             </div>
           )}
+        </div>
+        {/* End collapsible inputs */}
         </div>
 
       </div>

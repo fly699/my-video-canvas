@@ -110,7 +110,7 @@ export const AIChatNode = memo(function AIChatNode({ id, selected, data }: Props
   const onBlurInput  = (e: React.FocusEvent<HTMLInputElement>) => { e.currentTarget.style.borderColor = BORDER_DEFAULT; };
 
   return (
-    <BaseNode id={id} selected={selected} nodeType="ai_chat" title={data.title} minHeight={320}>
+    <BaseNode id={id} selected={selected} nodeType="ai_chat" title={data.title} minHeight={320} resizable>
       <div className="flex flex-col h-full" style={{ minHeight: 280 }}>
 
         {/* ── System prompt ── */}

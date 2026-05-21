@@ -105,7 +105,7 @@ export const AssetNode = memo(function AssetNode({ id, selected, data }: Props) 
     payload.type === "image" ? FileImage : File;
 
   return (
-    <BaseNode id={id} selected={selected} nodeType="asset" title={data.title} minHeight={160}>
+    <BaseNode id={id} selected={selected} nodeType="asset" title={data.title} minHeight={160} resizable>
       <div className="p-3.5 flex flex-col gap-3">
         {renderPreview()}
         <div className="flex items-center gap-2">

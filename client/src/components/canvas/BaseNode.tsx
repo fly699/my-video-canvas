@@ -23,11 +23,13 @@ interface BaseNodeProps {
   minHeight?: number;
   showHandles?: boolean;
   headerRight?: React.ReactNode;
+  /** 是否允许用户手动拖拽缩放，默认 false */
+  resizable?: boolean;
 }
 
 export const BaseNode = memo(function BaseNode({
   id, selected, nodeType, title, children,
-  minWidth = 280, minHeight = 140, showHandles = true, headerRight,
+  minWidth = 280, minHeight = 140, showHandles = true, headerRight, resizable = false,
 }: BaseNodeProps) {
   const config = getNodeConfig(nodeType);
   const Icon = ICONS[config.icon] ?? FileText;
@@ -100,11 +102,11 @@ export const BaseNode = memo(function BaseNode({
       onMouseEnter={() => setIsHovered(true)}
       onMouseLeave={() => setIsHovered(false)}
     >
-      {/* Resize handles — only when selected */}
+      {/* Resize handles — only when selected AND resizable */}
       <NodeResizer
         minWidth={minWidth}
         minHeight={minHeight}
-        isVisible={selected}
+        isVisible={resizable && selected}
         lineStyle={{
           borderColor: `${config.color}40`,
           borderWidth: 1,

@@ -24,7 +24,7 @@ export const NoteNode = memo(function NoteNode({ id, selected, data }: Props) {
   );
 
   return (
-    <BaseNode id={id} selected={selected} nodeType="note" title={data.title} minHeight={120}>
+    <BaseNode id={id} selected={selected} nodeType="note" title={data.title} minHeight={120} resizable>
       <div className="p-3.5 h-full">
         <textarea
           placeholder="在此记录想法..."

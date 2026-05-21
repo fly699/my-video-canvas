@@ -57,7 +57,7 @@ export const ScriptNode = memo(function ScriptNode({ id, selected, data }: Props
   );
 
   return (
-    <BaseNode id={id} selected={selected} nodeType="script" title={data.title} minHeight={200}>
+    <BaseNode id={id} selected={selected} nodeType="script" title={data.title} minHeight={200} resizable>
       <div className="flex flex-col h-full p-3.5 gap-3">
         <input
           placeholder="故事梗概（可选）"

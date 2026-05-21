@@ -129,7 +129,7 @@ export const PromptNode = memo(function PromptNode({ id, selected, data }: Props
   const currentModel = IMAGE_MODELS.find((m) => m.id === model) ?? IMAGE_MODELS[0];
 
   return (
-    <BaseNode id={id} selected={selected} nodeType="prompt" title={data.title} minHeight={200}>
+    <BaseNode id={id} selected={selected} nodeType="prompt" title={data.title} minHeight={200} resizable>
       <div className="flex flex-col h-full p-3.5 gap-3">
 
         {/* Preview image */}
