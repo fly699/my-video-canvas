@@ -4,7 +4,7 @@ import { useCanvasStore } from "../../../hooks/useCanvasStore";
 import type { VideoTaskNodeData, VideoProvider } from "../../../../../shared/types";
 import { trpc } from "@/lib/trpc";
 import { toast } from "sonner";
-import { Play, Loader2, CheckCircle2, XCircle, Clock, RefreshCw, AlertCircle } from "lucide-react";
+import { Play, Loader2, CheckCircle2, XCircle, Clock, RefreshCw, AlertCircle, Download } from "lucide-react";
 
 interface Props {
   id: string;
@@ -278,19 +278,40 @@ export const VideoTaskNode = memo(function VideoTaskNode({ id, selected, data }:
 
         {/* ── Result video ── */}
         {payload.status === "succeeded" && payload.resultVideoUrl && videoSrc && (
-          <div className="rounded-lg overflow-hidden flex-shrink-0" style={{ borderWidth: 1, borderStyle: "solid", borderColor: STATUS.succeeded.borderColor }}>
-            <video
-              key={videoSrc}
-              src={videoSrc}
-              controls
-              className="w-full nodrag"
-              style={{ maxHeight: 140, display: "block" }}
-              preload="metadata"
-              onError={(e) => {
-                const target = e.currentTarget;
-                console.error("[VideoTaskNode] Video load error:", target.error?.message, "src:", target.src);
+          <div className="flex-shrink-0">
+            <div className="rounded-lg overflow-hidden" style={{ borderWidth: 1, borderStyle: "solid", borderColor: STATUS.succeeded.borderColor }}>
+              <video
+                key={videoSrc}
+                src={videoSrc}
+                controls
+                className="w-full nodrag"
+                style={{ maxHeight: 140, display: "block" }}
+                preload="metadata"
+                onError={(e) => {
+                  const target = e.currentTarget;
+                  console.error("[VideoTaskNode] Video load error:", target.error?.message, "src:", target.src);
+                }}
+              />
+            </div>
+            {/* Download button */}
+            <a
+              href={`/api/video-proxy?url=${encodeURIComponent(payload.resultVideoUrl)}&download=1`}
+              download
+              className="nodrag mt-1.5 flex items-center justify-center gap-1.5 w-full py-1.5 rounded-lg text-xs font-medium transition-all"
+              style={{
+                background: "oklch(0.72 0.18 155 / 0.10)",
+                borderWidth: 1, borderStyle: "solid",
+                borderColor: "oklch(0.72 0.18 155 / 0.30)",
+                color: "oklch(0.72 0.18 155)",
+                textDecoration: "none",
+                display: "flex",
               }}
-            />
+              onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.background = "oklch(0.72 0.18 155 / 0.18)"; }}
+              onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.background = "oklch(0.72 0.18 155 / 0.10)"; }}
+            >
+              <Download className="w-3 h-3" />
+              下载视频
+            </a>
           </div>
         )}
 

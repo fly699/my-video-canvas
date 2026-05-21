@@ -97,6 +97,13 @@ export function registerVideoProxy(app: Express) {
       // Cache for 1 hour
       forwardHeaders["Cache-Control"] = "public, max-age=3600";
 
+      // If download=1 is set, add Content-Disposition to trigger browser download
+      if (req.query.download === "1") {
+        const urlPath = new URL(decodedUrl).pathname;
+        const filename = urlPath.split("/").pop() || "video.mp4";
+        forwardHeaders["Content-Disposition"] = `attachment; filename="${filename}"`;
+      }
+
       // If upstream fails, return a helpful error but still with CORS headers
       if (!upstream.ok && upstream.status !== 206) {
         res.set(forwardHeaders);

@@ -438,6 +438,9 @@ export const imageGenRouter = router({
         batchSize: z.number().int().min(1).max(4).optional(),
         seed: z.number().int().optional(),
         enhancePrompt: z.boolean().optional(),
+        // Reve specific params
+        reveAspectRatio: z.string().optional(),
+        reveResolution: z.enum(["720p", "1080p"]).optional(),
       })
     )
     .mutation(async ({ input }) => {
@@ -462,6 +465,11 @@ export const imageGenRouter = router({
           batchSize: input.batchSize,
           seed: input.seed,
           enhancePrompt: input.enhancePrompt,
+        } : {}),
+        // Reve specific params passed through
+        ...(input.model === "hf_reve" ? {
+          reveAspectRatio: input.reveAspectRatio,
+          reveResolution: input.reveResolution,
         } : {}),
       });
 

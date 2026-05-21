@@ -25,6 +25,14 @@ export interface CanvasNode extends Node {
 
 export interface CanvasEdge extends Edge {}
 
+// ── History snapshot (for undo/redo) ─────────────────────────────────────────
+interface HistorySnapshot {
+  nodes: CanvasNode[];
+  edges: CanvasEdge[];
+}
+
+const MAX_HISTORY = 50;
+
 interface CanvasStore {
   nodes: CanvasNode[];
   edges: CanvasEdge[];
@@ -32,6 +40,10 @@ interface CanvasStore {
   collaborators: Map<number, CollaboratorCursor>;
   projectId: number | null;
   isDirty: boolean;
+
+  // Undo/redo history
+  past: HistorySnapshot[];
+  future: HistorySnapshot[];
 
   // Actions
   setProjectId: (id: number) => void;
@@ -52,6 +64,18 @@ interface CanvasStore {
   markClean: () => void;
   markDirty: () => void;
   resetCanvas: () => void;
+  undo: () => void;
+  redo: () => void;
+}
+
+/** Push current state to past stack and clear future */
+function pushHistory(state: CanvasStore): Partial<CanvasStore> {
+  const snapshot: HistorySnapshot = {
+    nodes: state.nodes,
+    edges: state.edges,
+  };
+  const past = [...state.past, snapshot].slice(-MAX_HISTORY);
+  return { past, future: [] };
 }
 
 export const useCanvasStore = create<CanvasStore>((set, get) => ({
@@ -61,22 +85,33 @@ export const useCanvasStore = create<CanvasStore>((set, get) => ({
   collaborators: new Map(),
   projectId: null,
   isDirty: false,
+  past: [],
+  future: [],
 
   setProjectId: (id) => set({ projectId: id }),
 
+  // setNodes / setEdges are used for initial load — don't push to history
   setNodes: (nodes) => set({ nodes }),
-
   setEdges: (edges) => set({ edges }),
 
   onNodesChange: (changes) => {
+    // Only push history for structural changes (add/remove), not position drags
+    const isStructural = changes.some(
+      (c) => c.type === "add" || c.type === "remove"
+    );
     set((state) => ({
+      ...(isStructural ? pushHistory(state) : {}),
       nodes: applyNodeChanges(changes, state.nodes) as CanvasNode[],
       isDirty: true,
     }));
   },
 
   onEdgesChange: (changes) => {
+    const isStructural = changes.some(
+      (c) => c.type === "add" || c.type === "remove"
+    );
     set((state) => ({
+      ...(isStructural ? pushHistory(state) : {}),
       edges: applyEdgeChanges(changes, state.edges) as CanvasEdge[],
       isDirty: true,
     }));
@@ -84,6 +119,7 @@ export const useCanvasStore = create<CanvasStore>((set, get) => ({
 
   onConnect: (connection) => {
     set((state) => ({
+      ...pushHistory(state),
       edges: addEdge(
         {
           ...connection,
@@ -119,6 +155,7 @@ export const useCanvasStore = create<CanvasStore>((set, get) => ({
     };
 
     set((state) => ({
+      ...pushHistory(state),
       nodes: [...state.nodes, newNode],
       isDirty: true,
     }));
@@ -128,6 +165,7 @@ export const useCanvasStore = create<CanvasStore>((set, get) => ({
 
   updateNodeData: (id, payload) => {
     set((state) => ({
+      ...pushHistory(state),
       nodes: state.nodes.map((n) =>
         n.id === id
           ? { ...n, data: { ...n.data, payload: { ...n.data.payload, ...payload } } }
@@ -139,6 +177,7 @@ export const useCanvasStore = create<CanvasStore>((set, get) => ({
 
   updateNodeTitle: (id, title) => {
     set((state) => ({
+      ...pushHistory(state),
       nodes: state.nodes.map((n) =>
         n.id === id ? { ...n, data: { ...n.data, title } } : n
       ),
@@ -148,6 +187,7 @@ export const useCanvasStore = create<CanvasStore>((set, get) => ({
 
   deleteNode: (id) => {
     set((state) => ({
+      ...pushHistory(state),
       nodes: state.nodes.filter((n) => n.id !== id),
       edges: state.edges.filter((e) => e.source !== id && e.target !== id),
       isDirty: true,
@@ -156,6 +196,7 @@ export const useCanvasStore = create<CanvasStore>((set, get) => ({
 
   updateEdgeLabel: (id, label) => {
     set((state) => ({
+      ...pushHistory(state),
       edges: state.edges.map((e) =>
         e.id === id ? { ...e, label: label || undefined } : e
       ),
@@ -175,6 +216,7 @@ export const useCanvasStore = create<CanvasStore>((set, get) => ({
       selected: false,
     };
     set((state) => ({
+      ...pushHistory(state),
       nodes: [...state.nodes, newNode],
       isDirty: true,
     }));
@@ -200,7 +242,34 @@ export const useCanvasStore = create<CanvasStore>((set, get) => ({
 
   markClean: () => set({ isDirty: false }),
   markDirty: () => set({ isDirty: true }),
-  resetCanvas: () => set({ nodes: [], edges: [], selectedNodeIds: [], collaborators: new Map(), isDirty: false }),
+  resetCanvas: () =>
+    set({ nodes: [], edges: [], selectedNodeIds: [], collaborators: new Map(), isDirty: false, past: [], future: [] }),
+
+  undo: () => {
+    const { past, nodes, edges, future } = get();
+    if (past.length === 0) return;
+    const prev = past[past.length - 1];
+    set({
+      past: past.slice(0, -1),
+      future: [{ nodes, edges }, ...future].slice(0, MAX_HISTORY),
+      nodes: prev.nodes,
+      edges: prev.edges,
+      isDirty: true,
+    });
+  },
+
+  redo: () => {
+    const { past, nodes, edges, future } = get();
+    if (future.length === 0) return;
+    const next = future[0];
+    set({
+      past: [...past, { nodes, edges }].slice(-MAX_HISTORY),
+      future: future.slice(1),
+      nodes: next.nodes,
+      edges: next.edges,
+      isDirty: true,
+    });
+  },
 }));
 
 function getDefaultPayload(type: NodeType): NodeData {

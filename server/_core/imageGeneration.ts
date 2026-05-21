@@ -17,6 +17,9 @@ export type GenerateImageOptions = {
   batchSize?: number;
   seed?: number;
   enhancePrompt?: boolean;
+  // Reve specific params
+  reveAspectRatio?: string;
+  reveResolution?: string;
 };
 
 export type GenerateImageResponse = {
@@ -157,6 +160,9 @@ export async function generateImage(options: GenerateImageOptions): Promise<Gene
       batchSize: options.batchSize,
       seed: options.seed,
       enhancePrompt: options.enhancePrompt,
+      // Reve specific params (map to higgsfield field names)
+      aspectRatio: options.reveAspectRatio,
+      resolution: options.reveResolution,
     });
     return { url: result.url };
   }

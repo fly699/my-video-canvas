@@ -51,6 +51,8 @@ import {
   Command,
   Play,
   LogOut,
+  Undo2,
+  Redo2,
 } from "lucide-react";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 
@@ -173,6 +175,7 @@ function CanvasInner({ projectId }: { projectId: number }) {
     addNode, deleteNode, duplicateNode,
     setProjectId, isDirty, markClean, markDirty,
     setCollaborator, removeCollaborator, collaborators, resetCanvas,
+    undo, redo, past, future,
   } = useCanvasStore();
 
   const [contextMenu, setContextMenu] = useState<{
@@ -356,12 +359,34 @@ function CanvasInner({ projectId }: { projectId: number }) {
   // ── Keyboard shortcuts ──────────────────────────────────────────────────────
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
+      // Skip undo/redo when focus is inside an input or textarea
+      const tag = (e.target as HTMLElement)?.tagName;
+      const isEditing = tag === "INPUT" || tag === "TEXTAREA" || (e.target as HTMLElement)?.isContentEditable;
+
       if ((e.metaKey || e.ctrlKey) && e.key === "s") { e.preventDefault(); saveCanvas(); toast.success("已保存"); }
       if (e.key === "Escape") { setContextMenu(null); setShowNodePicker(false); }
+
+      // Undo: Cmd+Z / Ctrl+Z
+      if (!isEditing && (e.metaKey || e.ctrlKey) && !e.shiftKey && e.key === "z") {
+        e.preventDefault();
+        undo();
+        toast.info("已撤销", { duration: 1200 });
+      }
+      // Redo: Cmd+Shift+Z or Ctrl+Y
+      if (!isEditing && (e.metaKey || e.ctrlKey) && e.shiftKey && e.key === "z") {
+        e.preventDefault();
+        redo();
+        toast.info("已重做", { duration: 1200 });
+      }
+      if (!isEditing && e.ctrlKey && !e.shiftKey && e.key === "y") {
+        e.preventDefault();
+        redo();
+        toast.info("已重做", { duration: 1200 });
+      }
     };
     window.addEventListener("keydown", handler);
     return () => window.removeEventListener("keydown", handler);
-  }, [saveCanvas]);
+  }, [saveCanvas, undo, redo]);
 
   const collaboratorList = Array.from(collaborators.values());
 
@@ -533,6 +558,44 @@ function CanvasInner({ projectId }: { projectId: number }) {
               </button>
             </TooltipTrigger>
             <TooltipContent side="bottom" className="text-xs">素材库</TooltipContent>
+          </Tooltip>
+
+          {/* Undo */}
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <button
+                onClick={() => { undo(); toast.info("已撤销", { duration: 1200 }); }}
+                disabled={past.length === 0}
+                className="w-7 h-7 rounded-lg flex items-center justify-center transition-all"
+                style={{ color: past.length === 0 ? "oklch(0.30 0.006 260)" : "oklch(0.55 0.008 260)", cursor: past.length === 0 ? "not-allowed" : "pointer" }}
+                onMouseEnter={(e) => { if (past.length > 0) { (e.currentTarget as HTMLElement).style.background = "oklch(0.16 0.008 260)"; (e.currentTarget as HTMLElement).style.color = "oklch(0.80 0.005 260)"; } }}
+                onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.background = "transparent"; (e.currentTarget as HTMLElement).style.color = past.length === 0 ? "oklch(0.30 0.006 260)" : "oklch(0.55 0.008 260)"; }}
+              >
+                <Undo2 className="w-3.5 h-3.5" />
+              </button>
+            </TooltipTrigger>
+            <TooltipContent side="bottom" className="text-xs">
+              撤销 <kbd className="ml-1 px-1 py-0.5 rounded text-[10px] bg-white/10 font-mono">⌘Z</kbd>
+            </TooltipContent>
+          </Tooltip>
+
+          {/* Redo */}
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <button
+                onClick={() => { redo(); toast.info("已重做", { duration: 1200 }); }}
+                disabled={future.length === 0}
+                className="w-7 h-7 rounded-lg flex items-center justify-center transition-all"
+                style={{ color: future.length === 0 ? "oklch(0.30 0.006 260)" : "oklch(0.55 0.008 260)", cursor: future.length === 0 ? "not-allowed" : "pointer" }}
+                onMouseEnter={(e) => { if (future.length > 0) { (e.currentTarget as HTMLElement).style.background = "oklch(0.16 0.008 260)"; (e.currentTarget as HTMLElement).style.color = "oklch(0.80 0.005 260)"; } }}
+                onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.background = "transparent"; (e.currentTarget as HTMLElement).style.color = future.length === 0 ? "oklch(0.30 0.006 260)" : "oklch(0.55 0.008 260)"; }}
+              >
+                <Redo2 className="w-3.5 h-3.5" />
+              </button>
+            </TooltipTrigger>
+            <TooltipContent side="bottom" className="text-xs">
+              重做 <kbd className="ml-1 px-1 py-0.5 rounded text-[10px] bg-white/10 font-mono">⌘⇧Z</kbd>
+            </TooltipContent>
           </Tooltip>
 
           {/* Save */}

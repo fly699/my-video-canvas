@@ -121,3 +121,9 @@
 - [x] ImageGenNode：添加参考图文件上传按鈕（上传到 S3，自动填入 URL）
 - [x] StoryboardNode/PromptNode：同步添加参考图上传
 - [x] TypeScript 0 errors，测试全部通过
+
+## Phase 15: 视频下载 + 撤销/重做 + Reve 参数面板
+- [x] VideoTaskNode：生成成功后显示下载按钮（通过 video-proxy 代理下载，触发 Content-Disposition）
+- [x] 画布 Cmd+Z / Ctrl+Z 撤销、Cmd+Shift+Z / Ctrl+Y 重做（Zustand 历史栈，节点/边变更时快照）
+- [x] ImageGenNode：Reve 模型专属参数面板（aspect_ratio 下拉 + resolution 下拉）
+- [x] TypeScript 0 errors，测试全部通过
