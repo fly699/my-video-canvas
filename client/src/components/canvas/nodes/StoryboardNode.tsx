@@ -7,6 +7,7 @@ import { toast } from "sonner";
 import { Sparkles, ImageIcon, Loader2, RefreshCw, ChevronDown, Upload, X, Wand2, History, Languages } from "lucide-react";
 import { IMAGE_MODELS, type ImageModelId } from "@/lib/models";
 import { makeImageProxyFallback } from "@/lib/utils";
+import { LLMModelPicker, type LLMModelId } from "../LLMModelPicker";
 
 interface Props {
   id: string;
@@ -46,6 +47,7 @@ export const StoryboardNode = memo(function StoryboardNode({ id, selected, data 
   const [generating, setGenerating] = useState(false);
   const [showModelPicker, setShowModelPicker] = useState(false);
   const [inputExpanded, setInputExpanded] = useState(!!selected);
+  const [llmModel, setLlmModel] = useState<LLMModelId>("gemini-2.5-flash");
   const [showHistory, setShowHistory] = useState(false);
 
   // Auto-collapse inputs when deselected, expand when selected
@@ -143,7 +145,7 @@ export const StoryboardNode = memo(function StoryboardNode({ id, selected, data 
   const handleExpandPrompt = useCallback(() => {
     if (!payload.description?.trim()) { toast.error("请先填写场景描述"); return; }
     setExpandingPrompt(true);
-    aiExpandMutation.mutate({ text: payload.description, mode: "storyboard_prompt" });
+    aiExpandMutation.mutate({ text: payload.description, mode: "storyboard_prompt", model: llmModel });
   }, [payload.description, aiExpandMutation]);
 
   const handleChange = useCallback(
@@ -366,12 +368,13 @@ export const StoryboardNode = memo(function StoryboardNode({ id, selected, data 
           onFocus={onFocus}
           onBlur={onBlur}
         />
-        <div className="flex items-center gap-1 mt-1">
+        <div className="flex items-center gap-1 mt-1 flex-wrap">
+          <LLMModelPicker value={llmModel} onChange={setLlmModel} disabled={expandingDesc || expandingPrompt || translating} />
           <button
             onClick={() => {
               if (!payload.description?.trim()) { toast.error("请先填写场景描述"); return; }
               setExpandingDesc(true);
-              aiExpandDescMutation.mutate({ text: payload.description, mode: "expand" });
+              aiExpandDescMutation.mutate({ text: payload.description, mode: "expand", model: llmModel });
             }}
             disabled={expandingDesc}
             className="nodrag flex items-center gap-1 px-1.5 py-0.5 rounded-md text-[9px] font-medium transition-all"
@@ -437,7 +440,7 @@ export const StoryboardNode = memo(function StoryboardNode({ id, selected, data 
               const text = payload.promptText?.trim() || payload.description?.trim();
               if (!text) { toast.error("请先填写内容"); return; }
               setTranslating(true);
-              aiTranslateMutation.mutate({ text, mode: "translate_en" });
+              aiTranslateMutation.mutate({ text, mode: "translate_en", model: llmModel });
             }}
             disabled={translating}
             className="nodrag flex items-center gap-1 px-1.5 py-0.5 rounded-md text-[9px] font-medium transition-all"

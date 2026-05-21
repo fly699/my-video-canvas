@@ -1,10 +1,11 @@
-import { memo, useCallback } from "react";
+import { memo, useCallback, useState } from "react";
 import { BaseNode } from "../BaseNode";
 import { useCanvasStore } from "../../../hooks/useCanvasStore";
 import type { ScriptNodeData } from "../../../../../shared/types";
 import { trpc } from "@/lib/trpc";
 import { toast } from "sonner";
-import { Sparkles, Loader2, Languages } from "lucide-react";
+import { Sparkles, Loader2 } from "lucide-react";
+import { LLMModelPicker, type LLMModelId } from "../LLMModelPicker";
 
 interface Props {
   id: string;
@@ -51,6 +52,7 @@ const onBlur  = (e: React.FocusEvent<HTMLElement>) => { e.currentTarget.style.bo
 export const ScriptNode = memo(function ScriptNode({ id, selected, data }: Props) {
   const { updateNodeData } = useCanvasStore();
   const payload = data.payload;
+  const [llmModel, setLlmModel] = useState<LLMModelId>("gemini-2.5-flash");
 
   const handleChange = useCallback(
     (field: keyof ScriptNodeData, value: string) => {
@@ -82,6 +84,8 @@ export const ScriptNode = memo(function ScriptNode({ id, selected, data }: Props
     onError: (err) => { toast.error("AI 润色失败：" + err.message); },
   });
 
+  const anyPending = generateMutation.isPending || polishMutation.isPending;
+
   return (
     <BaseNode id={id} selected={selected} nodeType="script" title={data.title} minHeight={200} resizable>
       <div className="flex flex-col h-full p-3.5 gap-3">
@@ -104,18 +108,19 @@ export const ScriptNode = memo(function ScriptNode({ id, selected, data }: Props
           onBlur={onBlur}
         />
         <div className="flex items-center gap-1 flex-wrap">
+          <LLMModelPicker value={llmModel} onChange={setLlmModel} disabled={anyPending} />
           <button
             onClick={() => {
               if (!payload.content.trim()) { toast.error("请先填写脚本内容"); return; }
-              polishMutation.mutate({ text: payload.content, mode: "polish" });
+              polishMutation.mutate({ text: payload.content, mode: "polish", model: llmModel });
             }}
-            disabled={polishMutation.isPending}
+            disabled={anyPending}
             className="nodrag flex items-center gap-1 px-1.5 py-0.5 rounded-md text-[9px] font-medium transition-all"
             style={{
               background: polishMutation.isPending ? "oklch(0.13 0.007 260)" : "oklch(0.62 0.18 240 / 0.10)",
               border: `1px solid ${polishMutation.isPending ? "oklch(0.20 0.008 260)" : "oklch(0.62 0.18 240 / 0.35)"}`,
-              color: polishMutation.isPending ? "oklch(0.38 0.006 260)" : "oklch(0.72 0.16 240)",
-              cursor: polishMutation.isPending ? "not-allowed" : "pointer",
+              color: anyPending ? "oklch(0.38 0.006 260)" : "oklch(0.72 0.16 240)",
+              cursor: anyPending ? "not-allowed" : "pointer",
             }}
           >
             {polishMutation.isPending ? <Loader2 className="w-2.5 h-2.5 animate-spin" /> : <Sparkles className="w-2.5 h-2.5" />}
@@ -128,15 +133,15 @@ export const ScriptNode = memo(function ScriptNode({ id, selected, data }: Props
         <button
           onClick={() => {
             if (!payload.content.trim()) { toast.error("请先填写脚本内容"); return; }
-            generateMutation.mutate({ content: payload.content, synopsis: payload.synopsis });
+            generateMutation.mutate({ content: payload.content, synopsis: payload.synopsis, model: llmModel });
           }}
-          disabled={generateMutation.isPending}
+          disabled={anyPending}
           className="nodrag flex items-center justify-center gap-1.5 w-full py-1.5 rounded-lg text-xs font-medium transition-all"
           style={{
             background: generateMutation.isPending ? "oklch(0.13 0.007 260)" : "oklch(0.62 0.18 240 / 0.12)",
             border: `1px solid ${generateMutation.isPending ? "oklch(0.20 0.008 260)" : "oklch(0.62 0.18 240 / 0.40)"}`,
-            color: generateMutation.isPending ? "oklch(0.38 0.006 260)" : "oklch(0.72 0.16 240)",
-            cursor: generateMutation.isPending ? "not-allowed" : "pointer",
+            color: anyPending ? "oklch(0.38 0.006 260)" : "oklch(0.72 0.16 240)",
+            cursor: anyPending ? "not-allowed" : "pointer",
           }}
         >
           {generateMutation.isPending ? <Loader2 className="w-3 h-3 animate-spin" /> : <Sparkles className="w-3 h-3" />}

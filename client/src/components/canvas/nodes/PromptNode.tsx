@@ -7,6 +7,7 @@ import { trpc } from "@/lib/trpc";
 import { toast } from "sonner";
 import { Sparkles, Loader2, RefreshCw, ChevronDown, Upload, X, Grid2X2, Check, Languages } from "lucide-react";
 import { makeImageProxyFallback } from "@/lib/utils";
+import { LLMModelPicker, type LLMModelId } from "../LLMModelPicker";
 
 interface Props {
   id: string;
@@ -72,6 +73,7 @@ export const PromptNode = memo(function PromptNode({ id, selected, data }: Props
 
   const [expandingPrompt, setExpandingPrompt] = useState(false);
   const [translating, setTranslating] = useState(false);
+  const [llmModel, setLlmModel] = useState<LLMModelId>("gemini-2.5-flash");
 
   const aiExpandMutation = trpc.aiEnhance.enhance.useMutation({
     onSuccess: (result) => {
@@ -257,20 +259,21 @@ export const PromptNode = memo(function PromptNode({ id, selected, data }: Props
             onFocus={onFocusAccent}
             onBlur={onBlurAccent}
           />
-          <div className="flex items-center gap-1 mt-1">
+          <div className="flex items-center gap-1 mt-1 flex-wrap">
+            <LLMModelPicker value={llmModel} onChange={setLlmModel} disabled={expandingPrompt || translating} />
             <button
               onClick={() => {
                 if (!payload.positivePrompt?.trim()) { toast.error("请先填写提示词"); return; }
                 setExpandingPrompt(true);
-                aiExpandMutation.mutate({ text: payload.positivePrompt, mode: "expand" });
+                aiExpandMutation.mutate({ text: payload.positivePrompt, mode: "expand", model: llmModel });
               }}
-              disabled={expandingPrompt}
+              disabled={expandingPrompt || translating}
               className="nodrag flex items-center gap-1 px-1.5 py-0.5 rounded-md text-[9px] font-medium transition-all"
               style={{
                 background: expandingPrompt ? "oklch(0.13 0.007 260)" : "oklch(0.68 0.22 300 / 0.10)",
                 border: `1px solid ${expandingPrompt ? "oklch(0.20 0.008 260)" : "oklch(0.68 0.22 300 / 0.35)"}`,
-                color: expandingPrompt ? "oklch(0.38 0.006 260)" : "oklch(0.72 0.18 300)",
-                cursor: expandingPrompt ? "not-allowed" : "pointer",
+                color: expandingPrompt || translating ? "oklch(0.38 0.006 260)" : "oklch(0.72 0.18 300)",
+                cursor: expandingPrompt || translating ? "not-allowed" : "pointer",
               }}
             >
               {expandingPrompt ? <Loader2 className="w-2.5 h-2.5 animate-spin" /> : <Sparkles className="w-2.5 h-2.5" />}
@@ -280,15 +283,15 @@ export const PromptNode = memo(function PromptNode({ id, selected, data }: Props
               onClick={() => {
                 if (!payload.positivePrompt?.trim()) { toast.error("请先填写提示词"); return; }
                 setTranslating(true);
-                aiTranslateMutation.mutate({ text: payload.positivePrompt, mode: "translate_en" });
+                aiTranslateMutation.mutate({ text: payload.positivePrompt, mode: "translate_en", model: llmModel });
               }}
-              disabled={translating}
+              disabled={translating || expandingPrompt}
               className="nodrag flex items-center gap-1 px-1.5 py-0.5 rounded-md text-[9px] font-medium transition-all"
               style={{
                 background: translating ? "oklch(0.13 0.007 260)" : "oklch(0.65 0.18 200 / 0.10)",
                 border: `1px solid ${translating ? "oklch(0.20 0.008 260)" : "oklch(0.65 0.18 200 / 0.35)"}`,
-                color: translating ? "oklch(0.38 0.006 260)" : "oklch(0.70 0.16 200)",
-                cursor: translating ? "not-allowed" : "pointer",
+                color: translating || expandingPrompt ? "oklch(0.38 0.006 260)" : "oklch(0.70 0.16 200)",
+                cursor: translating || expandingPrompt ? "not-allowed" : "pointer",
               }}
             >
               {translating ? <Loader2 className="w-2.5 h-2.5 animate-spin" /> : <Languages className="w-2.5 h-2.5" />}

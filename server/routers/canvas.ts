@@ -515,6 +515,7 @@ export const scriptsRouter = router({
         content: z.string().min(1),
         synopsis: z.string().optional(),
         count: z.number().int().min(2).max(8).default(4),
+        model: z.string().optional(),
       })
     )
     .mutation(async ({ input }) => {
@@ -537,7 +538,7 @@ Each element must have these fields:
           { role: "system" as const, content: systemPrompt },
           { role: "user" as const, content: userContent },
         ],
-        model: "gemini-2.5-flash",
+        model: input.model ?? "gemini-2.5-flash",
       });
 
       const text = extractTextContent(response);
@@ -614,6 +615,7 @@ export const aiEnhanceRouter = router({
       z.object({
         text: z.string().min(1).max(8000),
         mode: z.enum(["expand", "translate_en", "polish", "storyboard_prompt", "translate_zh"]),
+        model: z.string().optional(),
       })
     )
     .mutation(async ({ input }) => {
@@ -641,7 +643,7 @@ Output an optimized English prompt under 80 words. Output ONLY the prompt text.`
           { role: "system" as const, content: systemPrompts[input.mode] },
           { role: "user" as const, content: input.text },
         ],
-        model: "gemini-2.5-flash",
+        model: input.model ?? "gemini-2.5-flash",
       });
       return { result: extractTextContent(response).trim() };
     }),
