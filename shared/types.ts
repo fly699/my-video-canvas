@@ -10,7 +10,14 @@ export type NodeType =
   | "ai_chat"
   | "note";
 
-export type VideoProvider = "mock" | "poyo_seedance" | "poyo_veo";
+export type VideoProvider =
+  | "mock"
+  | "poyo_seedance"
+  | "poyo_veo"
+  | "hf_dop_standard"
+  | "hf_dop_preview"
+  | "hf_kling_21_pro"
+  | "hf_seedance_pro";
 export type VideoTaskStatus = "pending" | "processing" | "succeeded" | "failed";
 
 // ── Node Data Payloads ────────────────────────────────────────────────────────
@@ -31,7 +38,7 @@ export interface StoryboardNodeData {
   cameraMovement?: string;
   lens?: string;
   colorTone?: string;
-  imageModel?: "manus_forge" | "poyo_flux" | "poyo_sdxl";
+  imageModel?: ImageGenModel;
 }
 
 export interface PromptNodeData {
@@ -41,7 +48,7 @@ export interface PromptNodeData {
   imageStorageKey?: string;
   style?: string;
   aspectRatio?: string;
-  imageModel?: "manus_forge" | "poyo_flux" | "poyo_sdxl";
+  imageModel?: ImageGenModel;
 }
 
 export interface AssetNodeData {
@@ -75,7 +82,7 @@ export interface AIChatNodeData {
   model?: string;
 }
 
-export type ImageGenModel = "manus_forge" | "poyo_flux" | "poyo_sdxl";
+export type ImageGenModel = "manus_forge" | "poyo_flux" | "poyo_sdxl" | "hf_soul_standard" | "hf_reve";
 export interface ImageGenNodeData {
   prompt: string;
   negativePrompt?: string;

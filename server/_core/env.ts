@@ -8,4 +8,5 @@ export const ENV = {
   forgeApiUrl: process.env.BUILT_IN_FORGE_API_URL ?? "",
   forgeApiKey: process.env.BUILT_IN_FORGE_API_KEY ?? "",
   poyoApiKey: process.env.POYO_API_KEY ?? "",
+  higgsfieldApiKey: process.env.HIGGSFIELD_API_KEY ?? "",
 };

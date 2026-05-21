@@ -31,6 +31,7 @@ import { storagePut } from "../storage";
 import { invokeLLM } from "../_core/llm";
 import { generateImage } from "../_core/imageGeneration";
 import { isPoyoVideoProvider, submitPoyoVideo, checkPoyoVideoStatus } from "../_core/poyoVideo";
+import { isHiggsfieldVideoProvider, submitHiggsfieldVideo, checkHiggsfieldVideoStatus } from "../_core/higgsfield";
 
 // ── Projects ──────────────────────────────────────────────────────────────────
 
@@ -229,7 +230,7 @@ export const videoTasksRouter = router({
       z.object({
         projectId: z.number(),
         nodeId: z.string(),
-        provider: z.enum(["mock", "poyo_seedance", "poyo_veo"]),
+        provider: z.enum(["mock", "poyo_seedance", "poyo_veo", "hf_dop_standard", "hf_dop_preview", "hf_kling_21_pro", "hf_seedance_pro"]),
         prompt: z.string(),
         negativePrompt: z.string().optional(),
         referenceImageUrl: z.string().optional(),
@@ -242,6 +243,16 @@ export const videoTasksRouter = router({
 
       if (isPoyoVideoProvider(input.provider)) {
         const result = await submitPoyoVideo({
+          provider: input.provider,
+          prompt: input.prompt,
+          negativePrompt: input.negativePrompt,
+          referenceImageUrl: input.referenceImageUrl,
+          params: input.params as Record<string, unknown>,
+        });
+        externalTaskId = result.externalTaskId;
+        initialStatus = "processing";
+      } else if (isHiggsfieldVideoProvider(input.provider)) {
+        const result = await submitHiggsfieldVideo({
           provider: input.provider,
           prompt: input.prompt,
           negativePrompt: input.negativePrompt,
@@ -279,6 +290,25 @@ export const videoTasksRouter = router({
         try {
           const upstream = await checkPoyoVideoStatus(task.externalTaskId);
           if (upstream.status === "finished") {
+            const update = { status: "succeeded" as const, resultVideoUrl: upstream.resultVideoUrl };
+            await updateVideoTask(task.id, update);
+            return { ...task, ...update };
+          }
+          if (upstream.status === "failed") {
+            const update = { status: "failed" as const, errorMessage: upstream.errorMessage ?? "生成失败" };
+            await updateVideoTask(task.id, update);
+            return { ...task, ...update };
+          }
+        } catch {
+          // Ignore sync errors; return DB state so polling continues
+        }
+      }
+
+      // For Higgsfield tasks still processing, sync status from upstream
+      if (task.status === "processing" && task.externalTaskId && isHiggsfieldVideoProvider(task.provider)) {
+        try {
+          const upstream = await checkHiggsfieldVideoStatus(task.externalTaskId);
+          if (upstream.status === "succeeded" && upstream.resultVideoUrl) {
             const update = { status: "succeeded" as const, resultVideoUrl: upstream.resultVideoUrl };
             await updateVideoTask(task.id, update);
             return { ...task, ...update };
@@ -401,7 +431,7 @@ export const imageGenRouter = router({
         negativePrompt: z.string().optional(),
         referenceImageUrl: z.string().optional(),
         style: z.string().optional(),
-        model: z.enum(["manus_forge", "poyo_flux", "poyo_sdxl"]).optional(),
+        model: z.enum(["manus_forge", "poyo_flux", "poyo_sdxl", "hf_soul_standard", "hf_reve"]).optional(),
       })
     )
     .mutation(async ({ input }) => {

@@ -38,10 +38,12 @@ const fieldBase: React.CSSProperties = {
 
 const STYLES = ["写实", "动漫", "插画", "3D渲染", "水彩", "油画", "素描", "赛博朋克", "复古胶片"];
 const RATIOS = ["1:1", "16:9", "9:16", "4:3", "3:4", "2:1"];
-const MODELS: { value: ImageGenModel; label: string; desc: string }[] = [
-  { value: "manus_forge", label: "Manus Forge", desc: "内置 · 稳定" },
-  { value: "poyo_flux",   label: "Flux 1.1 Pro (Poyo)", desc: "高质量 · 写实" },
-  { value: "poyo_sdxl",   label: "SDXL (Poyo)", desc: "快速 · 多风格" },
+const MODELS: { value: ImageGenModel; label: string; desc: string; group: string }[] = [
+  { value: "manus_forge",      label: "Manus Forge",              desc: "内置 · 稳定",      group: "Manus" },
+  { value: "poyo_flux",        label: "Flux 1.1 Pro",             desc: "高质量 · 写实",    group: "Poyo" },
+  { value: "poyo_sdxl",        label: "SDXL",                     desc: "快速 · 多风格",    group: "Poyo" },
+  { value: "hf_soul_standard", label: "Soul Standard",            desc: "旗舰 · 电影级",    group: "Higgsfield" },
+  { value: "hf_reve",          label: "Reve Text-to-Image",       desc: "通用 · 快速",      group: "Higgsfield" },
 ];
 
 export const ImageGenNode = memo(function ImageGenNode({ id, selected, data }: Props) {
@@ -134,10 +136,14 @@ export const ImageGenNode = memo(function ImageGenNode({ id, selected, data }: P
             onBlur={(e) => { e.currentTarget.style.borderColor = BORDER_DEFAULT; }}
           >
             <option value="">自动选择</option>
-            {MODELS.map((m) => (
-              <option key={m.value} value={m.value} style={{ background: "oklch(0.12 0.007 260)" }}>
-                {m.label} — {m.desc}
-              </option>
+            {["Manus", "Poyo", "Higgsfield"].map((group) => (
+              <optgroup key={group} label={`── ${group} ──`} style={{ background: "oklch(0.12 0.007 260)" }}>
+                {MODELS.filter((m) => m.group === group).map((m) => (
+                  <option key={m.value} value={m.value} style={{ background: "oklch(0.12 0.007 260)" }}>
+                    {m.label} — {m.desc}
+                  </option>
+                ))}
+              </optgroup>
             ))}
           </select>
         </div>

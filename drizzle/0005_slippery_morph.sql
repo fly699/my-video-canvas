@@ -1,0 +1,1 @@
+ALTER TABLE `video_tasks` MODIFY COLUMN `provider` enum('mock','poyo_seedance','poyo_veo','hf_dop_standard','hf_dop_preview','hf_kling_21_pro','hf_seedance_pro') NOT NULL;

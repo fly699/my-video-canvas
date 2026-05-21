@@ -20,9 +20,11 @@ interface Props {
 const BORDER_DEFAULT = "oklch(0.20 0.008 260)";
 
 const IMAGE_MODELS = [
-  { id: "manus_forge",  label: "Manus Forge", tag: "内置" },
-  { id: "poyo_flux",    label: "Flux 1.1 Pro", tag: "Poyo" },
-  { id: "poyo_sdxl",    label: "SDXL",         tag: "Poyo" },
+  { id: "manus_forge",      label: "Manus Forge",        tag: "内置",        group: "Manus" },
+  { id: "poyo_flux",        label: "Flux 1.1 Pro",       tag: "Poyo",        group: "Poyo" },
+  { id: "poyo_sdxl",        label: "SDXL",               tag: "Poyo",        group: "Poyo" },
+  { id: "hf_soul_standard", label: "Soul Standard",      tag: "Higgsfield",  group: "Higgsfield" },
+  { id: "hf_reve",          label: "Reve Text-to-Image", tag: "Higgsfield",  group: "Higgsfield" },
 ] as const;
 
 type ImageModelId = typeof IMAGE_MODELS[number]["id"];
@@ -227,26 +229,33 @@ export const PromptNode = memo(function PromptNode({ id, selected, data }: Props
                 boxShadow: "0 8px 24px oklch(0 0 0 / 0.5)",
               }}
             >
-              {IMAGE_MODELS.map((m) => (
-                <button
-                  key={m.id}
-                  className="nodrag flex items-center justify-between w-full px-2.5 py-2 text-xs transition-colors"
-                  style={{
-                    background: model === m.id ? `${accentColor.slice(0, -1)} / 0.10)` : "transparent",
-                    color: model === m.id ? accentColor : "oklch(0.65 0.006 260)",
-                  }}
-                  onClick={() => { setModel(m.id); setShowModelPicker(false); }}
-                  onMouseEnter={(e) => { if (model !== m.id) (e.currentTarget as HTMLElement).style.background = "oklch(0.16 0.008 260)"; }}
-                  onMouseLeave={(e) => { if (model !== m.id) (e.currentTarget as HTMLElement).style.background = "transparent"; }}
-                >
-                  <span>{m.label}</span>
-                  <span
-                    className="px-1 py-0.5 rounded text-[9px] font-semibold"
-                    style={{ background: `${accentColor.slice(0, -1)} / 0.12)`, color: `${accentColor.slice(0, -1)} / 0.8)` }}
-                  >
-                    {m.tag}
-                  </span>
-                </button>
+              {["Manus", "Poyo", "Higgsfield"].map((group) => (
+                <div key={group}>
+                  <div className="px-2.5 py-1" style={{ fontSize: 9, fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.08em", color: "oklch(0.38 0.006 260)", borderBottom: "1px solid oklch(0.20 0.008 260)" }}>
+                    {group}
+                  </div>
+                  {IMAGE_MODELS.filter((m) => m.group === group).map((m) => (
+                    <button
+                      key={m.id}
+                      className="nodrag flex items-center justify-between w-full px-2.5 py-2 text-xs transition-colors"
+                      style={{
+                        background: model === m.id ? `${accentColor.slice(0, -1)} / 0.10)` : "transparent",
+                        color: model === m.id ? accentColor : "oklch(0.65 0.006 260)",
+                      }}
+                      onClick={() => { setModel(m.id); setShowModelPicker(false); }}
+                      onMouseEnter={(e) => { if (model !== m.id) (e.currentTarget as HTMLElement).style.background = "oklch(0.16 0.008 260)"; }}
+                      onMouseLeave={(e) => { if (model !== m.id) (e.currentTarget as HTMLElement).style.background = "transparent"; }}
+                    >
+                      <span>{m.label}</span>
+                      <span
+                        className="px-1 py-0.5 rounded text-[9px] font-semibold"
+                        style={{ background: `${accentColor.slice(0, -1)} / 0.12)`, color: `${accentColor.slice(0, -1)} / 0.8)` }}
+                      >
+                        {m.tag}
+                      </span>
+                    </button>
+                  ))}
+                </div>
               ))}
             </div>
           )}

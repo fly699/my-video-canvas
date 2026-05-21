@@ -1,6 +1,7 @@
 import type { Server as SocketIOServer } from "socket.io";
 import { getPendingVideoTasks, updateVideoTask } from "./db";
 import { isPoyoVideoProvider, submitPoyoVideo, checkPoyoVideoStatus } from "./_core/poyoVideo";
+import { isHiggsfieldVideoProvider, submitHiggsfieldVideo, checkHiggsfieldVideoStatus } from "./_core/higgsfield";
 
 // ── Video Provider Adapters ───────────────────────────────────────────────────
 
@@ -57,6 +58,15 @@ export function setupVideoTaskPoller(io: SocketIOServer) {
                 referenceImageUrl: task.referenceImageUrl ?? undefined,
                 params: (task.params as Record<string, unknown>) ?? undefined,
               });
+            } else if (isHiggsfieldVideoProvider(task.provider)) {
+              // Higgsfield: DoP / Kling / Seedance
+              submitResult = await submitHiggsfieldVideo({
+                provider: task.provider,
+                prompt: task.prompt ?? "",
+                negativePrompt: task.negativePrompt ?? undefined,
+                referenceImageUrl: task.referenceImageUrl ?? undefined,
+                params: (task.params as Record<string, unknown>) ?? undefined,
+              });
             } else {
               // Mock provider (and any unconfigured provider falls back to mock)
               submitResult = await submitMockTask();
@@ -76,6 +86,16 @@ export function setupVideoTaskPoller(io: SocketIOServer) {
             // Poyo.ai status check
             const upstream = await checkPoyoVideoStatus(task.externalTaskId);
             if (upstream.status === "finished") {
+              result = { status: "succeeded", resultVideoUrl: upstream.resultVideoUrl };
+            } else if (upstream.status === "failed") {
+              result = { status: "failed", errorMessage: upstream.errorMessage ?? "生成失败" };
+            } else {
+              result = { status: "processing" };
+            }
+          } else if (isHiggsfieldVideoProvider(task.provider)) {
+            // Higgsfield status check
+            const upstream = await checkHiggsfieldVideoStatus(task.externalTaskId);
+            if (upstream.status === "succeeded" && upstream.resultVideoUrl) {
               result = { status: "succeeded", resultVideoUrl: upstream.resultVideoUrl };
             } else if (upstream.status === "failed") {
               result = { status: "failed", errorMessage: upstream.errorMessage ?? "生成失败" };

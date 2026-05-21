@@ -24,10 +24,14 @@ const STATUS = {
   failed:     { icon: XCircle,       label: "失败",   accent: "oklch(0.62 0.20 25)",   bg: "oklch(0.62 0.20 25 / 0.08)",  borderColor: "oklch(0.62 0.20 25 / 0.30)" },
 } as const;
 
-const PROVIDERS = [
-  { value: "poyo_seedance", label: "Seedance 2 (Poyo)" },
-  { value: "poyo_veo",      label: "Veo 3.1 (Poyo)" },
-  { value: "mock",          label: "Mock 测试" },
+const PROVIDERS: { value: VideoProvider; label: string; group: string }[] = [
+  { value: "poyo_seedance",   label: "Seedance 2",          group: "Poyo" },
+  { value: "poyo_veo",        label: "Veo 3.1",             group: "Poyo" },
+  { value: "hf_dop_standard", label: "DoP Standard",        group: "Higgsfield" },
+  { value: "hf_dop_preview",  label: "DoP Preview",         group: "Higgsfield" },
+  { value: "hf_kling_21_pro", label: "Kling 2.1 Pro",       group: "Higgsfield" },
+  { value: "hf_seedance_pro", label: "Seedance 1.0 Pro",    group: "Higgsfield" },
+  { value: "mock",            label: "Mock 测试",           group: "Dev" },
 ];
 
 const BORDER_DEFAULT = "oklch(0.20 0.008 260)";
@@ -248,10 +252,14 @@ export const VideoTaskNode = memo(function VideoTaskNode({ id, selected, data }:
           onFocus={onFocusAccent}
           onBlur={onBlurDefault}
         >
-          {PROVIDERS.map((p) => (
-            <option key={p.value} value={p.value} style={{ background: "oklch(0.12 0.007 260)" }}>
-              {p.label}
-            </option>
+          {["Poyo", "Higgsfield", "Dev"].map((group) => (
+            <optgroup key={group} label={`── ${group} ──`} style={{ background: "oklch(0.12 0.007 260)" }}>
+              {PROVIDERS.filter((p) => p.group === group).map((p) => (
+                <option key={p.value} value={p.value} style={{ background: "oklch(0.12 0.007 260)" }}>
+                  {p.label}
+                </option>
+              ))}
+            </optgroup>
           ))}
         </select>
 

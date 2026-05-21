@@ -1,5 +1,6 @@
 import { storagePut } from "server/storage";
 import { ENV } from "./env";
+import { generateHiggsfieldImage, type HiggsfieldImageModel } from "./higgsfield";
 
 export type GenerateImageOptions = {
   prompt: string;
@@ -136,6 +137,17 @@ export async function generateImage(options: GenerateImageOptions): Promise<Gene
   if (options.model === "poyo_flux" || options.model === "poyo_sdxl") {
     const poyoModel = options.model === "poyo_flux" ? "flux-1.1-pro" : "stable-diffusion-xl";
     return generateImagePoyo({ ...options, model: poyoModel });
+  }
+  // Higgsfield image models
+  if (options.model === "hf_soul_standard" || options.model === "hf_reve") {
+    const hfModel: HiggsfieldImageModel =
+      options.model === "hf_soul_standard" ? "higgsfield-ai/soul/standard" : "reve/text-to-image";
+    const result = await generateHiggsfieldImage({
+      model: hfModel,
+      prompt: options.prompt,
+      referenceImageUrl: options.originalImages?.[0]?.url,
+    });
+    return { url: result.url };
   }
   // Default: use poyo if key available, else forge
   if (ENV.poyoApiKey) return generateImagePoyo(options);
