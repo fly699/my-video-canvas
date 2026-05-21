@@ -7,6 +7,7 @@ import { trpc } from "@/lib/trpc";
 import { toast } from "sonner";
 import { Sparkles, Loader2, RefreshCw, Upload, X, Cpu, Check, Grid2X2, Download, ZoomIn, ChevronDown, ChevronRight } from "lucide-react";
 import { ImageLightbox } from "../ImageLightbox";
+import { IMAGE_MODELS } from "@/lib/models";
 
 interface Props {
   id: string;
@@ -60,13 +61,7 @@ const SOUL_SIZES = [
   "1024x1280", "1024x1536", "1280x1024", "1536x1024",
 ];
 
-const MODELS: { value: ImageGenModel; label: string; desc: string; group: string }[] = [
-  { value: "manus_forge",      label: "Manus Forge",        desc: "内置 · 稳定",   group: "Manus" },
-  { value: "poyo_flux",        label: "Flux 2 Pro",         desc: "高质量 · 写实", group: "Poyo" },
-  { value: "poyo_sdxl",        label: "Flux 2 Flex",        desc: "快速 · 多风格", group: "Poyo" },
-  { value: "hf_soul_standard", label: "Soul Standard",      desc: "旗舰 · 电影级", group: "Higgsfield" },
-  { value: "hf_reve",          label: "Reve Text-to-Image", desc: "通用 · 快速",   group: "Higgsfield" },
-];
+const MODELS = IMAGE_MODELS as unknown as { value: ImageGenModel; label: string; desc: string; group: string }[];
 
 export const ImageGenNode = memo(function ImageGenNode({ id, selected, data }: Props) {
   const { updateNodeData } = useCanvasStore();

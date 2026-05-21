@@ -5,13 +5,7 @@ import type { AIChatNodeData } from "../../../../../shared/types";
 import { trpc } from "@/lib/trpc";
 import { toast } from "sonner";
 import { Send, Loader2, Trash2, Bot, User, Sparkles, ChevronDown } from "lucide-react";
-
-const MODELS = [
-  { id: "gemini-2.5-flash",          label: "Gemini 2.5 Flash",  tag: "默认" },
-  { id: "claude-haiku-4-5-20251001", label: "Claude Haiku 4.5",  tag: "快速" },
-  { id: "claude-sonnet-4-6",         label: "Claude Sonnet 4.6", tag: "智能" },
-  { id: "gpt-5.2",                   label: "GPT-5.2",           tag: "Poyo" },
-] as const;
+import { CHAT_MODELS } from "@/lib/models";
 // Streamdown removed — replaced with safe inline markdown renderer to avoid ReactFlow DOM conflicts
 function SimpleMarkdown({ children }: { children: string }) {
   // Convert basic markdown to safe HTML
@@ -150,7 +144,7 @@ export const AIChatNode = memo(function AIChatNode({ id, selected, data }: Props
             }}
             onClick={() => setShowModelPicker(!showModelPicker)}
           >
-            {MODELS.find((m) => m.id === model)?.label ?? model}
+            {CHAT_MODELS.find((m) => m.id === model)?.label ?? model}
             <ChevronDown style={{ width: 9, height: 9, opacity: 0.7 }} />
           </button>
           {/* Model dropdown */}
@@ -164,7 +158,7 @@ export const AIChatNode = memo(function AIChatNode({ id, selected, data }: Props
                 minWidth: 200,
               }}
             >
-              {MODELS.map((m) => (
+              {CHAT_MODELS.map((m) => (
                 <button
                   key={m.id}
                   className="nodrag w-full flex items-center justify-between px-3 py-2 transition-all text-left"

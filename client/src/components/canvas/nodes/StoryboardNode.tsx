@@ -5,6 +5,7 @@ import type { StoryboardNodeData } from "../../../../../shared/types";
 import { trpc } from "@/lib/trpc";
 import { toast } from "sonner";
 import { Sparkles, ImageIcon, Loader2, RefreshCw, ChevronDown, Upload, X } from "lucide-react";
+import { IMAGE_MODELS, type ImageModelId } from "@/lib/models";
 
 interface Props {
   id: string;
@@ -19,16 +20,6 @@ interface Props {
 
 const BORDER_DEFAULT = "oklch(0.20 0.008 260)";
 const BORDER_FOCUS   = "oklch(0.65 0.20 160 / 0.6)";
-
-const IMAGE_MODELS = [
-  { id: "manus_forge",      label: "Manus Forge",        tag: "内置",        group: "Manus" },
-  { id: "poyo_flux",        label: "Flux 2 Pro",       tag: "Poyo",        group: "Poyo" },
-  { id: "poyo_sdxl",        label: "Flux 2 Flex",               tag: "Poyo",        group: "Poyo" },
-  { id: "hf_soul_standard", label: "Soul Standard",      tag: "Higgsfield",  group: "Higgsfield" },
-  { id: "hf_reve",          label: "Reve Text-to-Image", tag: "Higgsfield",  group: "Higgsfield" },
-] as const;
-
-type ImageModelId = typeof IMAGE_MODELS[number]["id"];
 
 const fieldStyle: React.CSSProperties = {
   width: "100%",
@@ -122,7 +113,7 @@ export const StoryboardNode = memo(function StoryboardNode({ id, selected, data 
     });
   };
 
-  const currentModel = IMAGE_MODELS.find((m) => m.id === model) ?? IMAGE_MODELS[0];
+  const currentModel = IMAGE_MODELS.find((m) => m.value === model) ?? IMAGE_MODELS[0];
 
   return (
     <BaseNode id={id} selected={selected} nodeType="storyboard" title={data.title} minHeight={280}>
@@ -357,7 +348,7 @@ export const StoryboardNode = memo(function StoryboardNode({ id, selected, data 
                 className="px-1 py-0.5 rounded text-[9px] font-semibold"
                 style={{ background: "oklch(0.65 0.20 160 / 0.15)", color: "oklch(0.65 0.20 160)" }}
               >
-                {currentModel.tag}
+                {currentModel.group}
               </span>
             </span>
             <ChevronDown className="w-3 h-3 opacity-60" style={{ transform: showModelPicker ? "rotate(180deg)" : "none", transition: "transform 150ms" }} />
@@ -381,22 +372,22 @@ export const StoryboardNode = memo(function StoryboardNode({ id, selected, data 
                   </div>
                   {IMAGE_MODELS.filter((m) => m.group === group).map((m) => (
                     <button
-                      key={m.id}
+                      key={m.value}
                       className="nodrag flex items-center justify-between w-full px-2.5 py-2 text-xs transition-colors"
                       style={{
-                        background: model === m.id ? "oklch(0.65 0.20 160 / 0.10)" : "transparent",
-                        color: model === m.id ? "oklch(0.72 0.18 160)" : "oklch(0.65 0.006 260)",
+                        background: model === m.value ? "oklch(0.65 0.20 160 / 0.10)" : "transparent",
+                        color: model === m.value ? "oklch(0.72 0.18 160)" : "oklch(0.65 0.006 260)",
                       }}
-                      onClick={() => { setModel(m.id); setShowModelPicker(false); }}
-                      onMouseEnter={(e) => { if (model !== m.id) (e.currentTarget as HTMLElement).style.background = "oklch(0.16 0.008 260)"; }}
-                      onMouseLeave={(e) => { if (model !== m.id) (e.currentTarget as HTMLElement).style.background = "transparent"; }}
+                      onClick={() => { setModel(m.value); setShowModelPicker(false); }}
+                      onMouseEnter={(e) => { if (model !== m.value) (e.currentTarget as HTMLElement).style.background = "oklch(0.16 0.008 260)"; }}
+                      onMouseLeave={(e) => { if (model !== m.value) (e.currentTarget as HTMLElement).style.background = "transparent"; }}
                     >
                       <span>{m.label}</span>
                       <span
                         className="px-1 py-0.5 rounded text-[9px] font-semibold"
                         style={{ background: "oklch(0.65 0.20 160 / 0.12)", color: "oklch(0.55 0.15 160)" }}
                       >
-                        {m.tag}
+                        {m.desc}
                       </span>
                     </button>
                   ))}

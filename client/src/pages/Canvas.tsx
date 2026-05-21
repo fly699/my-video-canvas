@@ -18,7 +18,10 @@ import { CustomEdge } from "../components/canvas/CustomEdge";
 import { ContextMenu } from "../components/canvas/ContextMenu";
 import { CollaboratorCursors } from "../components/canvas/CollaboratorCursors";
 import { AssetPanel } from "../components/canvas/AssetPanel";
+import { TemplatePanel } from "../components/canvas/TemplatePanel";
+import { NodeSearch } from "../components/canvas/NodeSearch";
 import { PresentationMode } from "../components/canvas/PresentationMode";
+import { useWorkflowRunner } from "../hooks/useWorkflowRunner";
 import { trpc } from "@/lib/trpc";
 import { useAuth } from "@/_core/hooks/useAuth";
 import { useIsMobile } from "@/hooks/useMobile";
@@ -54,6 +57,7 @@ import {
   LogOut,
   Undo2,
   Redo2,
+  Search,
 } from "lucide-react";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 
@@ -184,10 +188,14 @@ function CanvasInner({ projectId }: { projectId: number }) {
   } | null>(null);
 
   const [showAssets, setShowAssets] = useState(false);
+  const [showTemplates, setShowTemplates] = useState(false);
+  const [showNodeSearch, setShowNodeSearch] = useState(false);
   const [showCollaborators, setShowCollaborators] = useState(false);
   const [showNodePicker, setShowNodePicker] = useState(false);
   const [showPresentation, setShowPresentation] = useState(false);
   const [showShortcuts, setShowShortcuts] = useState(false);
+
+  const { runState } = useWorkflowRunner();
 
   const socketRef = useRef<Socket | null>(null);
   const [socketConnected, setSocketConnected] = useState(false);
@@ -358,6 +366,41 @@ function CanvasInner({ projectId }: { projectId: number }) {
     toast.success("画布已导出为 JSON");
   };
 
+  // ── Export images ───────────────────────────────────────────────────────────
+  const handleExportImages = useCallback(async () => {
+    const imageNodes = nodes.filter((n) => {
+      const p = n.data.payload as Record<string, unknown>;
+      return (n.data.nodeType === "image_gen" || n.data.nodeType === "storyboard") && p.imageUrl;
+    });
+
+    if (imageNodes.length === 0) {
+      toast.error("没有可导出的图像");
+      return;
+    }
+
+    toast.info(`正在下载 ${imageNodes.length} 张图像...`);
+
+    for (let i = 0; i < imageNodes.length; i++) {
+      const node = imageNodes[i];
+      const p = node.data.payload as Record<string, unknown>;
+      const url = p.imageUrl as string;
+      await new Promise<void>((resolve) => {
+        setTimeout(() => {
+          const a = document.createElement("a");
+          const filename = `${node.data.title.replace(/[^a-zA-Z0-9一-龥]/g, "_")}-${i + 1}.png`;
+          if (url.startsWith("/") || url.startsWith(window.location.origin)) {
+            a.href = url;
+          } else {
+            a.href = `/api/image-proxy?url=${encodeURIComponent(url)}&download=1`;
+          }
+          a.download = filename;
+          a.click();
+          resolve();
+        }, i * 150);
+      });
+    }
+  }, [nodes]);
+
   // ── Keyboard shortcuts ──────────────────────────────────────────────────────
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
@@ -366,7 +409,13 @@ function CanvasInner({ projectId }: { projectId: number }) {
       const isEditing = tag === "INPUT" || tag === "TEXTAREA" || (e.target as HTMLElement)?.isContentEditable;
 
       if ((e.metaKey || e.ctrlKey) && e.key === "s") { e.preventDefault(); saveCanvas(); toast.success("已保存"); }
-      if (e.key === "Escape") { setContextMenu(null); setShowNodePicker(false); }
+      if (e.key === "Escape") { setContextMenu(null); setShowNodePicker(false); setShowNodeSearch(false); }
+
+      // Cmd+K / Ctrl+K — Node search
+      if ((e.metaKey || e.ctrlKey) && e.key === "k") {
+        e.preventDefault();
+        setShowNodeSearch((v) => !v);
+      }
 
       // Undo: Cmd+Z / Ctrl+Z
       if (!isEditing && (e.metaKey || e.ctrlKey) && !e.shiftKey && e.key === "z") {
@@ -542,6 +591,44 @@ function CanvasInner({ projectId }: { projectId: number }) {
             <TooltipContent side="bottom" className="text-xs">演示模式</TooltipContent>
           </Tooltip>
 
+          {/* Templates */}
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <button
+                onClick={() => setShowTemplates(!showTemplates)}
+                className="w-7 h-7 rounded-lg flex items-center justify-center transition-all"
+                style={{
+                  background: showTemplates ? "oklch(0.68 0.22 285 / 0.12)" : "transparent",
+                  border: showTemplates ? "1px solid oklch(0.68 0.22 285 / 0.3)" : "1px solid transparent",
+                  color: showTemplates ? "oklch(0.68 0.22 285)" : "oklch(0.55 0.008 260)",
+                }}
+                onMouseEnter={(e) => { if (!showTemplates) { (e.currentTarget as HTMLElement).style.background = "oklch(0.16 0.008 260)"; (e.currentTarget as HTMLElement).style.color = "oklch(0.80 0.005 260)"; } }}
+                onMouseLeave={(e) => { if (!showTemplates) { (e.currentTarget as HTMLElement).style.background = "transparent"; (e.currentTarget as HTMLElement).style.color = "oklch(0.55 0.008 260)"; } }}
+              >
+                <LayoutGrid className="w-3.5 h-3.5" />
+              </button>
+            </TooltipTrigger>
+            <TooltipContent side="bottom" className="text-xs">工作流模板</TooltipContent>
+          </Tooltip>
+
+          {/* Node Search */}
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <button
+                onClick={() => setShowNodeSearch(true)}
+                className="w-7 h-7 rounded-lg flex items-center justify-center transition-all"
+                style={{ color: "oklch(0.55 0.008 260)" }}
+                onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.background = "oklch(0.16 0.008 260)"; (e.currentTarget as HTMLElement).style.color = "oklch(0.80 0.005 260)"; }}
+                onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.background = "transparent"; (e.currentTarget as HTMLElement).style.color = "oklch(0.55 0.008 260)"; }}
+              >
+                <Search className="w-3.5 h-3.5" />
+              </button>
+            </TooltipTrigger>
+            <TooltipContent side="bottom" className="text-xs">
+              搜索节点 <kbd className="ml-1 px-1 py-0.5 rounded text-[10px] bg-white/10 font-mono">⌘K</kbd>
+            </TooltipContent>
+          </Tooltip>
+
           {/* Assets */}
           <Tooltip>
             <TooltipTrigger asChild>
@@ -618,7 +705,23 @@ function CanvasInner({ projectId }: { projectId: number }) {
             </TooltipContent>
           </Tooltip>
 
-          {/* Export */}
+          {/* Export Images */}
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <button
+                onClick={handleExportImages}
+                className="w-7 h-7 rounded-lg flex items-center justify-center transition-all"
+                style={{ color: "oklch(0.55 0.008 260)" }}
+                onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.background = "oklch(0.16 0.008 260)"; (e.currentTarget as HTMLElement).style.color = "oklch(0.65 0.20 160)"; }}
+                onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.background = "transparent"; (e.currentTarget as HTMLElement).style.color = "oklch(0.55 0.008 260)"; }}
+              >
+                <Image className="w-3.5 h-3.5" />
+              </button>
+            </TooltipTrigger>
+            <TooltipContent side="bottom" className="text-xs">导出所有图像</TooltipContent>
+          </Tooltip>
+
+          {/* Export JSON */}
           <Tooltip>
             <TooltipTrigger asChild>
               <button
@@ -1012,6 +1115,24 @@ function CanvasInner({ projectId }: { projectId: number }) {
           )}
         </div>
 
+        {/* ── Template panel ── */}
+        {showTemplates && (
+          <div
+            className="w-64 flex flex-col flex-shrink-0 animate-slide-down"
+            style={{
+              background: "oklch(0.09 0.006 260 / 0.95)",
+              backdropFilter: "blur(20px)",
+              borderLeft: "1px solid oklch(0.18 0.008 260)",
+            }}
+          >
+            <TemplatePanel
+              onClose={() => setShowTemplates(false)}
+              centerX={(() => { const vp = reactFlow.getViewport(); return (window.innerWidth / 2 - vp.x) / vp.zoom; })()}
+              centerY={(() => { const vp = reactFlow.getViewport(); return (window.innerHeight / 2 - vp.y) / vp.zoom; })()}
+            />
+          </div>
+        )}
+
         {/* ── Asset panel ── */}
         {showAssets && (
           <div
@@ -1027,6 +1148,39 @@ function CanvasInner({ projectId }: { projectId: number }) {
         )}
       </div>
 
+      {/* ── Workflow progress bar ── */}
+      {runState.running && (
+        <div
+          className="fixed bottom-0 left-0 right-0 z-40 flex items-center gap-3 px-4 py-2"
+          style={{
+            background: "oklch(0.10 0.007 260 / 0.95)",
+            backdropFilter: "blur(20px)",
+            borderTop: "1px solid oklch(0.20 0.008 260)",
+          }}
+        >
+          <Loader2 className="w-3.5 h-3.5 animate-spin flex-shrink-0" style={{ color: "oklch(0.68 0.22 285)" }} />
+          <div className="flex-1">
+            <div
+              className="h-1.5 rounded-full overflow-hidden"
+              style={{ background: "oklch(0.18 0.008 260)" }}
+            >
+              <div
+                className="h-full rounded-full transition-all duration-300"
+                style={{
+                  width: runState.runnableCount > 0
+                    ? `${(runState.completedIds.length / runState.runnableCount) * 100}%`
+                    : "0%",
+                  background: "linear-gradient(90deg, oklch(0.68 0.22 285), oklch(0.65 0.20 160))",
+                }}
+              />
+            </div>
+          </div>
+          <span className="text-[11px] font-mono flex-shrink-0" style={{ color: "oklch(0.55 0.008 260)" }}>
+            运行中 {runState.completedIds.length}/{runState.runnableCount}
+          </span>
+        </div>
+      )}
+
       {/* ── Context menu ── */}
       {contextMenu && (
         <ContextMenu
@@ -1039,7 +1193,10 @@ function CanvasInner({ projectId }: { projectId: number }) {
         />
       )}
 
-
+      {/* ── Node search ── */}
+      {showNodeSearch && (
+        <NodeSearch onClose={() => setShowNodeSearch(false)} />
+      )}
 
       {/* ── Presentation mode ── */}
       {showPresentation && (
