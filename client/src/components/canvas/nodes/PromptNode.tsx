@@ -31,24 +31,25 @@ type ImageModelId = typeof IMAGE_MODELS[number]["id"];
 
 const fieldStyle: React.CSSProperties = {
   width: "100%",
-  padding: "5px 8px",
-  fontSize: 11,
+  padding: "7px 10px",
+  fontSize: 12,
   background: "oklch(0.09 0.006 260)",
   borderWidth: 1,
   borderStyle: "solid",
   borderColor: BORDER_DEFAULT,
-  borderRadius: 6,
-  color: "oklch(0.80 0.006 260)",
+  borderRadius: 8,
+  color: "oklch(0.86 0.006 260)",
   outline: "none",
-  transition: "border-color 120ms ease",
+  transition: "border-color 150ms ease, background 150ms ease",
+  lineHeight: 1.5,
 };
 
 const monoStyle: React.CSSProperties = {
   ...fieldStyle,
   fontFamily: "'JetBrains Mono', 'Fira Code', monospace",
-  fontSize: 10.5,
+  fontSize: 11,
   resize: "none",
-  lineHeight: 1.65,
+  lineHeight: 1.7,
 };
 
 export const PromptNode = memo(function PromptNode({ id, selected, data }: Props) {
@@ -129,7 +130,7 @@ export const PromptNode = memo(function PromptNode({ id, selected, data }: Props
 
   return (
     <BaseNode id={id} selected={selected} nodeType="prompt" title={data.title} minHeight={200}>
-      <div className="flex flex-col h-full p-2.5 gap-2">
+      <div className="flex flex-col h-full p-3.5 gap-3">
 
         {/* Preview image */}
         {payload.imageUrl && (
@@ -168,7 +169,7 @@ export const PromptNode = memo(function PromptNode({ id, selected, data }: Props
 
         {/* Positive prompt */}
         <div>
-          <label style={{ fontSize: 10, fontWeight: 500, textTransform: "uppercase", letterSpacing: "0.05em", color: "oklch(0.42 0.006 260)", display: "block", marginBottom: 4 }}>
+          <label style={{ fontSize: 10.5, fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.06em", color: "oklch(0.45 0.008 260)", display: "block", marginBottom: 5 }}>
             正向提示词
           </label>
           <textarea

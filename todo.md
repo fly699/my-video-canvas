@@ -145,3 +145,15 @@
 - [x] VideoTaskNode 添加左侧参考图输入 Handle（target type）
 - [x] Canvas.tsx onConnect 回调：检测 image_gen→video_task 连线，自动将 imageUrl 填入 VideoTaskNode 的 referenceImageUrl
 - [x] TypeScript 0 errors，测试全部通过
+
+## Phase 18: 画布 UI 全面重设计
+- [x] BaseNode：参考 Figma 卡片风格，圆角更大、阴影更柔、标题栏与内容区分离、无选中时无蓝色边框噪音
+- [x] 选中状态：仅高亮边框+轻微阴影，不显示 ReactFlow 默认蓝色缩放手柄框
+- [x] CustomEdge：更细更优雅的连线，hover 时才显示删除按鈕，动画更流畅
+- [x] Handle 样式：更小更克制，仅 hover 节点时才显示，避免视觉噪音
+- [x] 画布工具栏：重新设计为浮动胶囊式底部工具栏（参考 Figma），节点添加、缩放、适配等操作集中
+- [x] 缩放控件：移除 ReactFlow 默认 Controls，改为自定义简洁按鈕组
+- [x] 右键菜单：更现代的圆角卡片样式，图标+文字，分组分隔线
+- [x] 节点内容区：内边距更宽松，字体层级清晰，操作按鈕统一高度
+- [x] 整体背景：更细腻的点阵/网格背景，颜色更低调
+- [x] TypeScript 0 errors，测试全部通过

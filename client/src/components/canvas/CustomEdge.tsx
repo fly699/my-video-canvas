@@ -2,7 +2,7 @@ import { useState, useCallback, useRef, useEffect, memo } from "react";
 import { BaseEdge, EdgeLabelRenderer, getBezierPath } from "@xyflow/react";
 import type { EdgeProps } from "@xyflow/react";
 import { useCanvasStore } from "../../hooks/useCanvasStore";
-import { Check, X } from "lucide-react";
+import { Check, X, Trash2 } from "lucide-react";
 
 export const CustomEdge = memo(function CustomEdge({
   id,
@@ -15,9 +15,10 @@ export const CustomEdge = memo(function CustomEdge({
     targetX, targetY, targetPosition,
   });
 
-  const { updateEdgeLabel } = useCanvasStore();
+  const { updateEdgeLabel, edges, onEdgesChange } = useCanvasStore();
   const [editing, setEditing] = useState(false);
   const [editValue, setEditValue] = useState(typeof label === "string" ? label : "");
+  const [hovered, setHovered] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
@@ -41,19 +42,43 @@ export const CustomEdge = memo(function CustomEdge({
     e.stopPropagation();
   }, [handleSave]);
 
+  const handleDelete = useCallback((e: React.MouseEvent) => {
+    e.stopPropagation();
+    onEdgesChange([{ type: "remove", id }]);
+  }, [id, onEdgesChange]);
+
   const hasLabel = typeof label === "string" && label.trim().length > 0;
+  const showControls = hovered || selected;
 
   return (
     <>
+      {/* Invisible wider hit area */}
+      <path
+        d={edgePath}
+        fill="none"
+        stroke="transparent"
+        strokeWidth={20}
+        onMouseEnter={() => setHovered(true)}
+        onMouseLeave={() => setHovered(false)}
+        style={{ cursor: "pointer" }}
+      />
+
       <BaseEdge
         id={id}
         path={edgePath}
-        interactionWidth={16}
+        interactionWidth={0}
         style={{
-          stroke: selected ? "oklch(0.68 0.22 285)" : "oklch(0.32 0.012 260)",
-          strokeWidth: selected ? 2 : 1.5,
-          filter: selected ? "drop-shadow(0 0 5px oklch(0.68 0.22 285 / 0.45))" : undefined,
-          transition: "stroke 120ms ease, stroke-width 120ms ease",
+          stroke: selected
+            ? "oklch(0.68 0.22 285)"
+            : hovered
+              ? "oklch(0.50 0.015 260)"
+              : "oklch(0.28 0.010 260)",
+          strokeWidth: selected ? 1.5 : hovered ? 1.5 : 1,
+          filter: selected
+            ? "drop-shadow(0 0 4px oklch(0.68 0.22 285 / 0.40))"
+            : undefined,
+          transition: "stroke 140ms ease, stroke-width 140ms ease, filter 140ms ease",
+          pointerEvents: "none",
         }}
       />
 
@@ -65,6 +90,8 @@ export const CustomEdge = memo(function CustomEdge({
             pointerEvents: "all",
           }}
           className="nodrag nopan"
+          onMouseEnter={() => setHovered(true)}
+          onMouseLeave={() => setHovered(false)}
           onDoubleClick={handleDoubleClick}
         >
           {editing ? (
@@ -73,11 +100,11 @@ export const CustomEdge = memo(function CustomEdge({
                 display: "flex",
                 alignItems: "center",
                 gap: 4,
-                background: "oklch(0.12 0.007 260)",
-                border: "1px solid oklch(0.68 0.22 285 / 0.55)",
-                borderRadius: 6,
-                padding: "3px 6px",
-                boxShadow: "0 4px 20px oklch(0 0 0 / 0.55), 0 0 0 1px oklch(0.68 0.22 285 / 0.15)",
+                background: "oklch(0.13 0.007 260)",
+                border: "1px solid oklch(0.68 0.22 285 / 0.50)",
+                borderRadius: 8,
+                padding: "4px 8px",
+                boxShadow: "0 4px 20px oklch(0 0 0 / 0.55)",
                 backdropFilter: "blur(12px)",
               }}
             >
@@ -93,7 +120,7 @@ export const CustomEdge = memo(function CustomEdge({
                   color: "oklch(0.92 0.005 260)",
                   fontSize: 11,
                   outline: "none",
-                  width: 72,
+                  width: 80,
                   fontFamily: "var(--font-sans)",
                 }}
               />
@@ -105,51 +132,96 @@ export const CustomEdge = memo(function CustomEdge({
               </button>
               <button
                 onMouseDown={(e) => { e.preventDefault(); setEditing(false); }}
-                style={{ color: "oklch(0.50 0.008 260)", padding: 1, lineHeight: 0 }}
+                style={{ color: "oklch(0.45 0.008 260)", padding: 1, lineHeight: 0 }}
               >
                 <X style={{ width: 10, height: 10 }} />
+              </button>
+            </div>
+          ) : showControls ? (
+            <div
+              style={{
+                display: "flex",
+                alignItems: "center",
+                gap: 2,
+                background: "oklch(0.13 0.007 260 / 0.95)",
+                border: `1px solid ${selected ? "oklch(0.68 0.22 285 / 0.45)" : "oklch(0.24 0.008 260)"}`,
+                borderRadius: 20,
+                padding: "3px 6px",
+                backdropFilter: "blur(12px)",
+                boxShadow: "0 2px 12px oklch(0 0 0 / 0.40)",
+                opacity: showControls ? 1 : 0,
+                transition: "opacity 140ms ease",
+              }}
+            >
+              {hasLabel ? (
+                <span
+                  style={{
+                    fontSize: 10,
+                    fontFamily: "var(--font-sans)",
+                    color: selected ? "oklch(0.82 0.12 285)" : "oklch(0.58 0.008 260)",
+                    userSelect: "none",
+                    whiteSpace: "nowrap",
+                    paddingLeft: 2,
+                    paddingRight: 2,
+                  }}
+                  title="双击编辑标签"
+                >
+                  {label as string}
+                </span>
+              ) : (
+                <button
+                  onClick={(e) => { e.stopPropagation(); setEditing(true); setEditValue(""); }}
+                  style={{
+                    fontSize: 10,
+                    fontFamily: "var(--font-sans)",
+                    color: "oklch(0.40 0.006 260)",
+                    cursor: "pointer",
+                    background: "transparent",
+                    border: "none",
+                    padding: "0 2px",
+                  }}
+                  title="添加标签"
+                >
+                  + 标签
+                </button>
+              )}
+              <div style={{ width: 1, height: 10, background: "oklch(0.24 0.008 260)", margin: "0 2px" }} />
+              <button
+                onClick={handleDelete}
+                style={{
+                  color: "oklch(0.40 0.008 260)",
+                  background: "transparent",
+                  border: "none",
+                  cursor: "pointer",
+                  padding: 2,
+                  lineHeight: 0,
+                  borderRadius: 4,
+                  transition: "color 120ms ease",
+                }}
+                onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.color = "oklch(0.65 0.22 25)"; }}
+                onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.color = "oklch(0.40 0.008 260)"; }}
+                title="删除连线"
+              >
+                <Trash2 style={{ width: 10, height: 10 }} />
               </button>
             </div>
           ) : hasLabel ? (
             <div
               style={{
-                background: "oklch(0.12 0.007 260 / 0.92)",
-                border: `1px solid ${selected ? "oklch(0.68 0.22 285 / 0.50)" : "oklch(0.24 0.008 260)"}`,
-                borderRadius: 99,
-                padding: "2px 9px",
+                background: "oklch(0.12 0.007 260 / 0.90)",
+                border: "1px solid oklch(0.22 0.008 260)",
+                borderRadius: 20,
+                padding: "2px 8px",
                 fontSize: 10,
                 fontFamily: "var(--font-sans)",
-                color: selected ? "oklch(0.82 0.12 285)" : "oklch(0.58 0.008 260)",
-                backdropFilter: "blur(10px)",
-                cursor: "pointer",
-                transition: "all 120ms ease",
+                color: "oklch(0.52 0.008 260)",
+                backdropFilter: "blur(8px)",
                 userSelect: "none",
                 whiteSpace: "nowrap",
-                letterSpacing: "0.01em",
               }}
-              title="双击编辑标签"
             >
               {label as string}
             </div>
-          ) : selected ? (
-            <button
-              onClick={(e) => { e.stopPropagation(); setEditing(true); setEditValue(""); }}
-              style={{
-                background: "oklch(0.13 0.007 260 / 0.90)",
-                border: "1px dashed oklch(0.30 0.010 260)",
-                borderRadius: 99,
-                padding: "2px 9px",
-                fontSize: 10,
-                fontFamily: "var(--font-sans)",
-                color: "oklch(0.42 0.006 260)",
-                cursor: "pointer",
-                backdropFilter: "blur(10px)",
-                transition: "all 120ms ease",
-                letterSpacing: "0.01em",
-              }}
-            >
-              + 标签
-            </button>
           ) : null}
         </div>
       </EdgeLabelRenderer>

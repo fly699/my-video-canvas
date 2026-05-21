@@ -32,16 +32,17 @@ type ImageModelId = typeof IMAGE_MODELS[number]["id"];
 
 const fieldStyle: React.CSSProperties = {
   width: "100%",
-  padding: "5px 8px",
-  fontSize: 11,
+  padding: "7px 10px",
+  fontSize: 12,
   background: "oklch(0.09 0.006 260)",
   borderWidth: 1,
   borderStyle: "solid",
   borderColor: BORDER_DEFAULT,
-  borderRadius: 6,
-  color: "oklch(0.80 0.006 260)",
+  borderRadius: 8,
+  color: "oklch(0.86 0.006 260)",
   outline: "none",
-  transition: "border-color 120ms ease",
+  transition: "border-color 150ms ease, background 150ms ease",
+  lineHeight: 1.5,
 };
 
 const onFocus = (e: React.FocusEvent<HTMLElement>) => { e.currentTarget.style.borderColor = BORDER_FOCUS; };
@@ -119,7 +120,7 @@ export const StoryboardNode = memo(function StoryboardNode({ id, selected, data 
 
   return (
     <BaseNode id={id} selected={selected} nodeType="storyboard" title={data.title} minHeight={280}>
-      <div className="flex flex-col h-full p-2.5 gap-2">
+      <div className="flex flex-col h-full p-3.5 gap-3">
 
         {/* ── Image preview ── */}
         <div

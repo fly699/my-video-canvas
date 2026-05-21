@@ -25,27 +25,28 @@ const BORDER_ACCENT = `oklch(0.72 0.20 330 / 0.5)`;
 
 const fieldBase: React.CSSProperties = {
   width: "100%",
-  padding: "5px 8px",
-  fontSize: 11,
+  padding: "7px 10px",
+  fontSize: 12,
   background: "oklch(0.09 0.006 260)",
   borderWidth: 1,
   borderStyle: "solid",
   borderColor: BORDER_DEFAULT,
-  borderRadius: 6,
-  color: "oklch(0.80 0.006 260)",
+  borderRadius: 8,
+  color: "oklch(0.86 0.006 260)",
   outline: "none",
   fontFamily: "var(--font-sans)",
-  transition: "border-color 120ms ease",
+  transition: "border-color 150ms ease, background 150ms ease",
+  lineHeight: 1.5,
 };
 
 const labelStyle: React.CSSProperties = {
-  fontSize: 10,
-  fontWeight: 500,
+  fontSize: 10.5,
+  fontWeight: 600,
   textTransform: "uppercase",
-  letterSpacing: "0.05em",
-  color: "oklch(0.42 0.006 260)",
+  letterSpacing: "0.06em",
+  color: "oklch(0.45 0.008 260)",
   display: "block",
-  marginBottom: 4,
+  marginBottom: 5,
 };
 
 const STYLES = ["写实", "动漫", "插画", "3D渲染", "水彩", "油画", "素描", "赛博朋克", "复古胶片"];
@@ -185,7 +186,7 @@ export const ImageGenNode = memo(function ImageGenNode({ id, selected, data }: P
 
   return (
     <BaseNode id={id} selected={selected} nodeType="image_gen" title={data.title} minHeight={300}>
-      <div className="flex flex-col h-full p-2.5 gap-2 overflow-auto">
+      <div className="flex flex-col h-full p-3.5 gap-3 overflow-auto">
 
         {/* ── Batch grid result ── */}
         {hasMultiple ? (

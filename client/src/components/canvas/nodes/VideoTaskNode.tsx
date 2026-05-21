@@ -112,26 +112,27 @@ const accentColor = "oklch(0.62 0.20 25)";
 
 const fieldStyle: React.CSSProperties = {
   width: "100%",
-  padding: "5px 8px",
-  fontSize: 11,
+  padding: "7px 10px",
+  fontSize: 12,
   background: "oklch(0.09 0.006 260)",
   borderWidth: 1,
   borderStyle: "solid",
   borderColor: BORDER_DEFAULT,
-  borderRadius: 6,
-  color: "oklch(0.80 0.006 260)",
+  borderRadius: 8,
+  color: "oklch(0.86 0.006 260)",
   outline: "none",
-  transition: "border-color 120ms ease",
+  transition: "border-color 150ms ease, background 150ms ease",
+  lineHeight: 1.5,
 };
 
 const labelStyle: React.CSSProperties = {
-  fontSize: 10,
-  fontWeight: 500,
+  fontSize: 10.5,
+  fontWeight: 600,
   textTransform: "uppercase",
-  letterSpacing: "0.05em",
-  color: "oklch(0.42 0.006 260)",
+  letterSpacing: "0.06em",
+  color: "oklch(0.45 0.008 260)",
   display: "block",
-  marginBottom: 3,
+  marginBottom: 5,
 };
 
 export const VideoTaskNode = memo(function VideoTaskNode({ id, selected, data }: Props) {
@@ -257,7 +258,7 @@ export const VideoTaskNode = memo(function VideoTaskNode({ id, selected, data }:
 
   return (
     <BaseNode id={id} selected={selected} nodeType="video_task" title={data.title} minHeight={260}>
-      <div className="flex flex-col h-full p-2.5 gap-2 overflow-auto">
+      <div className="flex flex-col h-full p-3.5 gap-3 overflow-auto">
 
         {/* ── Status pill ── */}
         <div
@@ -397,10 +398,10 @@ export const VideoTaskNode = memo(function VideoTaskNode({ id, selected, data }:
         {/* ── Dynamic model-specific params ── */}
         {paramDefs.length > 0 && (
           <div
-            className="flex flex-col gap-2 p-2 rounded-lg"
-            style={{ background: "oklch(0.10 0.006 260)", borderWidth: 1, borderStyle: "solid", borderColor: "oklch(0.17 0.007 260)" }}
+            className="flex flex-col gap-3 p-3 rounded-xl"
+            style={{ background: "oklch(0.085 0.006 260)", borderWidth: 1, borderStyle: "solid", borderColor: "oklch(0.18 0.007 260)" }}
           >
-            <span style={{ fontSize: 10, fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.06em", color: "oklch(0.38 0.006 260)" }}>
+            <span style={{ fontSize: 10.5, fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.07em", color: "oklch(0.40 0.008 260)" }}>
               模型参数
             </span>
             {paramDefs.map((def) => {
@@ -493,16 +494,16 @@ export const VideoTaskNode = memo(function VideoTaskNode({ id, selected, data }:
         )}
 
         {/* ── Actions ── */}
-        <div className="flex gap-1.5 mt-auto flex-shrink-0">
+        <div className="flex gap-2 mt-auto flex-shrink-0">
           {isResettable && (
             <button
               onClick={handleReset}
               disabled={resetTaskMutation.isPending}
-              className="nodrag flex items-center justify-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-all"
+              className="nodrag flex items-center justify-center gap-1.5 px-3.5 py-2 rounded-xl text-xs font-medium transition-all"
               style={{
                 background: "oklch(0.14 0.007 260)",
                 borderWidth: 1, borderStyle: "solid", borderColor: "oklch(0.22 0.008 260)",
-                color: resetTaskMutation.isPending ? "oklch(0.38 0.006 260)" : "oklch(0.60 0.008 260)",
+                color: resetTaskMutation.isPending ? "oklch(0.38 0.006 260)" : "oklch(0.62 0.008 260)",
                 cursor: resetTaskMutation.isPending ? "not-allowed" : "pointer",
               }}
               onMouseEnter={(e) => { if (!resetTaskMutation.isPending) (e.currentTarget as HTMLElement).style.background = "oklch(0.18 0.008 260)"; }}
@@ -516,7 +517,7 @@ export const VideoTaskNode = memo(function VideoTaskNode({ id, selected, data }:
           <button
             onClick={handleSubmit}
             disabled={isLocked || isResettable || createTaskMutation.isPending}
-            className="nodrag flex-1 flex items-center justify-center gap-1.5 py-1.5 rounded-lg text-xs font-medium transition-all"
+            className="nodrag flex-1 flex items-center justify-center gap-1.5 py-2 rounded-xl text-xs font-semibold transition-all"
             style={{
               background: isLocked || isResettable || createTaskMutation.isPending
                 ? "oklch(0.13 0.007 260)"

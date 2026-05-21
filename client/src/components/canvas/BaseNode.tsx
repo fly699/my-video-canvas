@@ -5,7 +5,7 @@ import type { NodeType } from "../../../../shared/types";
 import { useCanvasStore } from "../../hooks/useCanvasStore";
 import {
   FileText, Image, Wand2, Paperclip, Video, Bot, StickyNote,
-  Trash2, Copy, GripVertical, Check, X,
+  Trash2, Copy, GripVertical, Check, X, Maximize2,
 } from "lucide-react";
 
 const ICONS: Record<string, React.ComponentType<{ className?: string; style?: React.CSSProperties }>> = {
@@ -24,18 +24,9 @@ interface BaseNodeProps {
   headerRight?: React.ReactNode;
 }
 
-const HANDLE_STYLE: React.CSSProperties = {
-  width: 10,
-  height: 10,
-  borderRadius: "50%",
-  border: "2px solid oklch(0.20 0.008 260)",
-  background: "oklch(0.14 0.007 260)",
-  transition: "border-color 120ms ease, background 120ms ease, box-shadow 120ms ease",
-};
-
 export const BaseNode = memo(function BaseNode({
   id, selected, nodeType, title, children,
-  minWidth = 240, minHeight = 120, showHandles = true, headerRight,
+  minWidth = 280, minHeight = 140, showHandles = true, headerRight,
 }: BaseNodeProps) {
   const config = getNodeConfig(nodeType);
   const Icon = ICONS[config.icon] ?? FileText;
@@ -44,6 +35,7 @@ export const BaseNode = memo(function BaseNode({
   const [editingTitle, setEditingTitle] = useState(false);
   const [titleValue, setTitleValue] = useState(title);
   const titleInputRef = useRef<HTMLInputElement>(null);
+  const [isHovered, setIsHovered] = useState(false);
 
   const handleTitleSave = useCallback(() => {
     updateNodeTitle(id, titleValue || title);
@@ -55,115 +47,163 @@ export const BaseNode = memo(function BaseNode({
     if (e.key === "Escape") { setTitleValue(title); setEditingTitle(false); }
   }, [handleTitleSave, title]);
 
-  const [entered, setEntered] = useState(false);
-  useEffect(() => { const t = setTimeout(() => setEntered(true), 280); return () => clearTimeout(t); }, []);
+  // Sync title when prop changes
+  useEffect(() => { setTitleValue(title); }, [title]);
 
-  const handleStyle: React.CSSProperties = {
-    ...HANDLE_STYLE,
-    ...(selected ? { borderColor: `${config.color}70`, boxShadow: `0 0 6px ${config.color}50` } : {}),
+  // Entry animation
+  const [entered, setEntered] = useState(false);
+  useEffect(() => { const t = setTimeout(() => setEntered(true), 20); return () => clearTimeout(t); }, []);
+
+  const showActions = isHovered || selected;
+
+  // Handle style — tiny dots, only visible on hover/selected
+  const handleBase: React.CSSProperties = {
+    width: 10,
+    height: 10,
+    borderRadius: "50%",
+    background: config.color,
+    border: `2px solid oklch(0.08 0.005 260)`,
+    opacity: isHovered || selected ? 1 : 0,
+    transition: "opacity 150ms ease, transform 150ms ease, box-shadow 150ms ease",
+    transform: isHovered || selected ? "scale(1)" : "scale(0.6)",
+    boxShadow: isHovered || selected ? `0 0 0 3px ${config.color}28` : "none",
+    zIndex: 10,
   };
 
   return (
     <div
-      className={`group/node relative flex flex-col overflow-visible${entered ? "" : " animate-node-enter"}`}
+      className="group/node relative flex flex-col"
       style={{
-        borderRadius: 14,
-        background: "oklch(0.115 0.007 260)",
+        borderRadius: 16,
+        background: "oklch(0.115 0.007 260 / 0.97)",
         border: selected
-          ? `1.5px solid ${config.color}90`
-          : `1px solid oklch(0.195 0.008 260)`,
+          ? `1.5px solid ${config.color}80`
+          : isHovered
+            ? `1px solid oklch(0.28 0.010 260)`
+            : `1px solid oklch(0.18 0.008 260)`,
         boxShadow: selected
-          ? `0 0 0 3px ${config.color}18, 0 12px 48px oklch(0 0 0 / 0.65), 0 4px 12px oklch(0 0 0 / 0.45)`
-          : "0 4px 20px oklch(0 0 0 / 0.50), 0 1px 4px oklch(0 0 0 / 0.35)",
+          ? `0 0 0 4px ${config.color}14, 0 20px 60px oklch(0 0 0 / 0.70), 0 4px 16px oklch(0 0 0 / 0.50)`
+          : isHovered
+            ? `0 8px 32px oklch(0 0 0 / 0.55), 0 2px 8px oklch(0 0 0 / 0.40)`
+            : `0 2px 12px oklch(0 0 0 / 0.40), 0 1px 3px oklch(0 0 0 / 0.30)`,
         minWidth,
         minHeight,
         width: "100%",
         height: "100%",
-        transition: "border-color 150ms ease, box-shadow 150ms ease",
-        backdropFilter: "blur(2px)",
+        transition: "border-color 150ms ease, box-shadow 180ms ease",
+        backdropFilter: "blur(4px)",
+        opacity: entered ? 1 : 0,
+        transform: entered ? "scale(1) translateY(0)" : "scale(0.96) translateY(6px)",
+        overflow: "hidden",
       }}
+      onMouseEnter={() => setIsHovered(true)}
+      onMouseLeave={() => setIsHovered(false)}
     >
-      {/* Resize handles */}
+      {/* Resize handles — only when selected */}
       <NodeResizer
         minWidth={minWidth}
         minHeight={minHeight}
         isVisible={selected}
-        lineStyle={{ borderColor: `${config.color}50`, borderWidth: 1 }}
+        lineStyle={{
+          borderColor: `${config.color}40`,
+          borderWidth: 1,
+          borderStyle: "dashed",
+        }}
         handleStyle={{
-          width: 8, height: 8, borderRadius: 3,
-          background: config.color, border: "none",
-          boxShadow: `0 0 8px ${config.color}90`,
+          width: 7,
+          height: 7,
+          borderRadius: 2,
+          background: config.color,
+          border: `1.5px solid oklch(0.08 0.005 260)`,
+          boxShadow: `0 0 6px ${config.color}80`,
+          opacity: 1,
         }}
       />
 
-      {/* ── Top accent line ── */}
+      {/* ── Color accent strip at top ── */}
       <div
-        className="absolute top-0 left-4 right-4 h-px rounded-full"
         style={{
-          background: `linear-gradient(90deg, transparent, ${config.color}60, transparent)`,
-          opacity: selected ? 1 : 0.4,
-          transition: "opacity 150ms ease",
+          height: 2,
+          background: `linear-gradient(90deg, transparent 0%, ${config.color}70 30%, ${config.color}90 50%, ${config.color}70 70%, transparent 100%)`,
+          opacity: selected ? 1 : isHovered ? 0.7 : 0.35,
+          transition: "opacity 180ms ease",
+          flexShrink: 0,
         }}
       />
 
       {/* ── Header ── */}
       <div
-        className="flex items-center gap-2 px-2.5 py-2 select-none flex-shrink-0 rounded-t-[13px]"
+        className="flex items-center gap-2.5 px-3.5 py-2.5 select-none flex-shrink-0"
         style={{
-          background: `linear-gradient(180deg, ${config.color}12 0%, ${config.color}06 100%)`,
-          borderBottom: `1px solid ${config.color}20`,
+          background: `linear-gradient(180deg, ${config.color}0e 0%, transparent 100%)`,
+          borderBottom: `1px solid oklch(0.20 0.008 260 / 0.60)`,
+          minHeight: 44,
         }}
       >
-        {/* Drag handle */}
+        {/* Drag grip */}
         <GripVertical
-          className="w-3 h-3 flex-shrink-0 cursor-grab active:cursor-grabbing"
-          style={{ color: "oklch(0.32 0.008 260)" }}
+          className="w-3.5 h-3.5 flex-shrink-0 cursor-grab active:cursor-grabbing"
+          style={{
+            color: isHovered ? "oklch(0.42 0.008 260)" : "oklch(0.26 0.008 260)",
+            transition: "color 150ms ease",
+          }}
         />
 
-        {/* Icon */}
+        {/* Node type icon */}
         <div
-          className="w-5 h-5 rounded-md flex items-center justify-center flex-shrink-0"
+          className="w-6 h-6 rounded-lg flex items-center justify-center flex-shrink-0"
           style={{
-            background: `${config.color}20`,
-            border: `1px solid ${config.color}38`,
+            background: `${config.color}1a`,
+            border: `1px solid ${config.color}35`,
           }}
         >
-          <Icon className="w-3 h-3" style={{ color: config.color }} />
+          <Icon className="w-3.5 h-3.5" style={{ color: config.color }} />
         </div>
 
         {/* Title */}
         <div className="flex-1 min-w-0">
           {editingTitle ? (
-            <div className="flex items-center gap-1">
+            <div className="flex items-center gap-1.5">
               <input
                 ref={titleInputRef}
                 value={titleValue}
                 onChange={(e) => setTitleValue(e.target.value)}
                 onKeyDown={handleTitleKeyDown}
                 onBlur={handleTitleSave}
-                className="flex-1 min-w-0 text-xs font-medium outline-none"
+                className="flex-1 min-w-0 text-xs font-medium outline-none bg-transparent"
                 style={{
-                  background: "transparent",
-                  color: "oklch(0.92 0.005 260)",
-                  borderBottomWidth: 1,
-                  borderBottomStyle: "solid",
-                  borderBottomColor: config.color,
+                  color: "oklch(0.94 0.005 260)",
+                  borderBottom: `1.5px solid ${config.color}`,
+                  paddingBottom: 1,
                 }}
                 autoFocus
               />
-              <button onClick={handleTitleSave} className="p-0.5 rounded" style={{ color: "oklch(0.72 0.18 155)" }}>
+              <button
+                onClick={handleTitleSave}
+                className="p-0.5 rounded-md transition-colors"
+                style={{ color: "oklch(0.72 0.18 155)" }}
+              >
                 <Check className="w-3 h-3" />
               </button>
-              <button onClick={() => { setTitleValue(title); setEditingTitle(false); }} className="p-0.5 rounded" style={{ color: "oklch(0.50 0.008 260)" }}>
+              <button
+                onClick={() => { setTitleValue(title); setEditingTitle(false); }}
+                className="p-0.5 rounded-md transition-colors"
+                style={{ color: "oklch(0.45 0.008 260)" }}
+              >
                 <X className="w-3 h-3" />
               </button>
             </div>
           ) : (
             <span
-              className="text-xs font-medium truncate block cursor-text"
-              style={{ color: "oklch(0.84 0.006 260)" }}
+              className="text-xs font-semibold truncate block"
+              style={{
+                color: selected ? "oklch(0.94 0.005 260)" : "oklch(0.80 0.006 260)",
+                cursor: "text",
+                letterSpacing: "-0.01em",
+                transition: "color 150ms ease",
+              }}
               onDoubleClick={() => { setEditingTitle(true); setTitleValue(title); }}
-              title={title}
+              title={`双击编辑标题: ${title}`}
             >
               {title}
             </span>
@@ -174,53 +214,91 @@ export const BaseNode = memo(function BaseNode({
 
         {/* Type badge */}
         <span
-          className="text-[9px] font-semibold px-1.5 py-0.5 rounded-full flex-shrink-0 leading-none tracking-wide"
+          className="text-[9px] font-bold px-1.5 py-0.5 rounded-full flex-shrink-0 leading-none tracking-widest uppercase"
           style={{
-            background: `${config.color}18`,
-            color: config.color,
-            border: `1px solid ${config.color}30`,
-            textTransform: "uppercase",
-            letterSpacing: "0.04em",
+            background: `${config.color}15`,
+            color: `${config.color}`,
+            border: `1px solid ${config.color}28`,
+            opacity: 0.85,
           }}
         >
           {config.label}
         </span>
 
-        {/* Actions — visible on hover */}
-        <div className="flex items-center gap-0.5 opacity-0 group-hover/node:opacity-100 transition-opacity duration-150">
+        {/* Action buttons — fade in on hover/select */}
+        <div
+          className="flex items-center gap-0.5 flex-shrink-0"
+          style={{
+            opacity: showActions ? 1 : 0,
+            transition: "opacity 150ms ease",
+            pointerEvents: showActions ? "auto" : "none",
+          }}
+        >
           <button
             onClick={() => duplicateNode(id)}
-            className="w-5 h-5 rounded flex items-center justify-center transition-all"
-            style={{ color: "oklch(0.42 0.008 260)" }}
-            onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.background = "oklch(0.20 0.008 260)"; (e.currentTarget as HTMLElement).style.color = "oklch(0.75 0.006 260)"; }}
-            onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.background = "transparent"; (e.currentTarget as HTMLElement).style.color = "oklch(0.42 0.008 260)"; }}
-            title="复制节点"
+            className="w-6 h-6 rounded-md flex items-center justify-center transition-all"
+            style={{ color: "oklch(0.40 0.008 260)" }}
+            onMouseEnter={(e) => {
+              (e.currentTarget as HTMLElement).style.background = "oklch(0.20 0.008 260)";
+              (e.currentTarget as HTMLElement).style.color = "oklch(0.72 0.006 260)";
+            }}
+            onMouseLeave={(e) => {
+              (e.currentTarget as HTMLElement).style.background = "transparent";
+              (e.currentTarget as HTMLElement).style.color = "oklch(0.40 0.008 260)";
+            }}
+            title="复制节点 (Ctrl+D)"
           >
             <Copy className="w-3 h-3" />
           </button>
           <button
             onClick={() => deleteNode(id)}
-            className="w-5 h-5 rounded flex items-center justify-center transition-all"
-            style={{ color: "oklch(0.42 0.008 260)" }}
-            onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.background = "oklch(0.60 0.22 25 / 0.15)"; (e.currentTarget as HTMLElement).style.color = "oklch(0.65 0.22 25)"; }}
-            onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.background = "transparent"; (e.currentTarget as HTMLElement).style.color = "oklch(0.42 0.008 260)"; }}
-            title="删除节点"
+            className="w-6 h-6 rounded-md flex items-center justify-center transition-all"
+            style={{ color: "oklch(0.40 0.008 260)" }}
+            onMouseEnter={(e) => {
+              (e.currentTarget as HTMLElement).style.background = "oklch(0.62 0.22 25 / 0.12)";
+              (e.currentTarget as HTMLElement).style.color = "oklch(0.65 0.22 25)";
+            }}
+            onMouseLeave={(e) => {
+              (e.currentTarget as HTMLElement).style.background = "transparent";
+              (e.currentTarget as HTMLElement).style.color = "oklch(0.40 0.008 260)";
+            }}
+            title="删除节点 (Delete)"
           >
             <Trash2 className="w-3 h-3" />
           </button>
         </div>
       </div>
 
-      {/* ── Content ── */}
+      {/* ── Content area ── */}
       <div className="flex-1 overflow-auto min-h-0">{children}</div>
 
-      {/* ── Handles ── */}
+      {/* ── Connection Handles ── */}
       {showHandles && (
         <>
-          <Handle type="target"  position={Position.Left}   id="input"  style={{ ...handleStyle, top: "50%", left: -5 }} />
-          <Handle type="source"  position={Position.Right}  id="output" style={{ ...handleStyle, top: "50%", right: -5 }} />
-          <Handle type="target"  position={Position.Top}    id="top"    style={{ ...handleStyle, left: "50%", top: -5 }} />
-          <Handle type="source"  position={Position.Bottom} id="bottom" style={{ ...handleStyle, left: "50%", bottom: -5 }} />
+          <Handle
+            type="target"
+            position={Position.Left}
+            id="input"
+            style={{ ...handleBase, top: "50%", left: -5 }}
+          />
+          <Handle
+            type="source"
+            position={Position.Right}
+            id="output"
+            style={{ ...handleBase, top: "50%", right: -5 }}
+          />
+          <Handle
+            type="target"
+            position={Position.Top}
+            id="top"
+            style={{ ...handleBase, left: "50%", top: -5 }}
+          />
+          <Handle
+            type="source"
+            position={Position.Bottom}
+            id="bottom"
+            style={{ ...handleBase, left: "50%", bottom: -5 }}
+          />
         </>
       )}
     </div>

@@ -284,121 +284,117 @@ button:active:not(:disabled) {
   background-color: var(--color-background) !important;
 }
 
-/* Dot grid */
+/* Fine dot grid — subtle, not distracting */
 .react-flow__background pattern circle {
-  fill: oklch(0.28 0.008 260) !important;
+  fill: oklch(0.20 0.006 260) !important;
+  r: 0.8 !important;
 }
 
-/* Edges */
+/* Edges — thin and quiet by default */
 .react-flow__edge-path {
-  stroke: oklch(0.30 0.010 260);
+  stroke: oklch(0.28 0.009 260);
   stroke-width: 1.5;
-  transition: stroke 120ms ease, stroke-width 120ms ease;
+  transition: stroke 150ms ease, stroke-width 150ms ease, filter 150ms ease, opacity 150ms ease;
 }
-.react-flow__edge.selected .react-flow__edge-path,
 .react-flow__edge:hover .react-flow__edge-path {
-  stroke: var(--color-brand);
+  stroke: oklch(0.50 0.012 260);
   stroke-width: 2;
-  filter: drop-shadow(0 0 4px oklch(0.68 0.22 285 / 0.5));
+}
+.react-flow__edge.selected .react-flow__edge-path {
+  stroke: oklch(0.68 0.22 285);
+  stroke-width: 2;
+  filter: drop-shadow(0 0 4px oklch(0.68 0.22 285 / 0.45));
 }
 .react-flow__edge-interaction {
-  stroke-width: 16;
+  stroke-width: 24;
+  cursor: pointer;
 }
 
-/* Connection line */
+/* Connection line — dashed brand color */
 .react-flow__connectionline path {
-  stroke: var(--color-brand) !important;
+  stroke: oklch(0.68 0.22 285) !important;
   stroke-width: 1.5 !important;
-  stroke-dasharray: 5 3 !important;
+  stroke-dasharray: 6 4 !important;
+  opacity: 0.8 !important;
 }
 
-/* Handles */
+/* Handles — managed via inline styles in BaseNode; CSS fallback */
 .react-flow__handle {
-  width: 8px !important;
-  height: 8px !important;
-  border-radius: 50% !important;
-  border: 1.5px solid oklch(0.30 0.010 260) !important;
-  background: var(--color-surface) !important;
-  transition: all 120ms ease !important;
-  opacity: 0;
-}
-.react-flow__node:hover .react-flow__handle,
-.react-flow__node.selected .react-flow__handle {
-  opacity: 1;
+  transition: all 150ms ease !important;
 }
 .react-flow__handle:hover,
 .react-flow__handle.connectingfrom,
 .react-flow__handle.connectingto {
-  border-color: var(--color-brand) !important;
-  background: var(--color-brand) !important;
-  box-shadow: 0 0 0 3px oklch(0.68 0.22 285 / 0.25) !important;
-  transform: scale(1.4) !important;
+  border-color: oklch(0.68 0.22 285) !important;
+  background: oklch(0.68 0.22 285) !important;
+  box-shadow: 0 0 0 4px oklch(0.68 0.22 285 / 0.22) !important;
+  transform: scale(1.5) !important;
   opacity: 1 !important;
 }
 
-/* Controls */
+/* Hide default ReactFlow controls — we use custom ones */
 .react-flow__controls {
-  background: var(--color-surface-raised) !important;
-  border: 1px solid var(--color-border) !important;
-  border-radius: var(--radius-lg) !important;
-  box-shadow: 0 4px 24px oklch(0 0 0 / 0.5) !important;
-  overflow: hidden !important;
-  padding: 2px !important;
-  gap: 0 !important;
-}
-.react-flow__controls-button {
-  background: transparent !important;
-  border: none !important;
-  color: var(--color-foreground-muted) !important;
-  width: 28px !important;
-  height: 28px !important;
-  border-radius: var(--radius-sm) !important;
-  margin: 1px !important;
-  transition: all 120ms ease !important;
-  display: flex !important;
-  align-items: center !important;
-  justify-content: center !important;
-}
-.react-flow__controls-button:hover {
-  background: var(--color-surface-overlay) !important;
-  color: var(--color-foreground) !important;
-}
-.react-flow__controls-button svg {
-  width: 12px !important;
-  height: 12px !important;
-  fill: currentColor !important;
+  display: none !important;
 }
 
 /* Minimap */
 .react-flow__minimap {
-  background: var(--color-surface-raised) !important;
-  border: 1px solid var(--color-border) !important;
-  border-radius: var(--radius-lg) !important;
+  background: oklch(0.11 0.007 260 / 0.95) !important;
+  border: 1px solid oklch(0.20 0.008 260) !important;
+  border-radius: 12px !important;
   overflow: hidden !important;
+  box-shadow: 0 4px 20px oklch(0 0 0 / 0.45) !important;
 }
 .react-flow__minimap-mask {
-  fill: oklch(0.68 0.22 285 / 0.12) !important;
+  fill: oklch(0.68 0.22 285 / 0.10) !important;
 }
 .react-flow__minimap-node {
-  fill: oklch(0.30 0.010 260) !important;
+  fill: oklch(0.28 0.010 260) !important;
+  rx: 2 !important;
 }
 
-/* Selection box */
+/* Selection box — subtle violet tint */
 .react-flow__selection {
-  background: oklch(0.68 0.22 285 / 0.06) !important;
-  border: 1px solid oklch(0.68 0.22 285 / 0.5) !important;
+  background: oklch(0.68 0.22 285 / 0.05) !important;
+  border: 1px solid oklch(0.68 0.22 285 / 0.40) !important;
+  border-radius: 6px !important;
 }
 
-/* Node resize handle */
+/* Node resize controls */
 .react-flow__resize-control.handle {
-  width: 6px !important;
-  height: 6px !important;
+  width: 7px !important;
+  height: 7px !important;
   border-radius: 2px !important;
-  background: var(--color-brand) !important;
-  border: none !important;
+  background: oklch(0.68 0.22 285) !important;
+  border: 1.5px solid oklch(0.08 0.005 260) !important;
+  box-shadow: 0 0 5px oklch(0.68 0.22 285 / 0.60) !important;
 }
 .react-flow__resize-control.line {
-  border-color: oklch(0.68 0.22 285 / 0.4) !important;
+  border-color: oklch(0.68 0.22 285 / 0.35) !important;
+  border-style: dashed !important;
+}
+
+/* Node wrapper — remove default ReactFlow node border/shadow */
+.react-flow__node {
+  border-radius: 16px;
+  /* Prevent ReactFlow from adding its own focus ring */
+  outline: none !important;
+}
+.react-flow__node:focus,
+.react-flow__node:focus-visible {
+  outline: none !important;
+  box-shadow: none !important;
+}
+.react-flow__node.selected > div {
+  /* Selection ring handled by BaseNode inline styles */
+}
+
+/* Pane cursor */
+.react-flow__pane {
+  cursor: default;
+}
+.react-flow__pane.dragging {
+  cursor: grabbing !important;
 }
 
 /* ── Container & Flex fixes ─────────────────────────────────────────────────── */

@@ -106,7 +106,7 @@ export const AssetNode = memo(function AssetNode({ id, selected, data }: Props) 
 
   return (
     <BaseNode id={id} selected={selected} nodeType="asset" title={data.title} minHeight={160}>
-      <div className="p-2.5 flex flex-col gap-2">
+      <div className="p-3.5 flex flex-col gap-3">
         {renderPreview()}
         <div className="flex items-center gap-2">
           <TypeIcon className="w-3.5 h-3.5 flex-shrink-0" style={{ color: accentColor }} />

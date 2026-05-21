@@ -115,7 +115,7 @@ export const AIChatNode = memo(function AIChatNode({ id, selected, data }: Props
 
         {/* ── System prompt ── */}
         <div
-          className="px-2.5 py-2 flex-shrink-0"
+          className="px-3.5 py-2.5 flex-shrink-0"
           style={{ borderBottomWidth: 1, borderBottomStyle: "solid", borderBottomColor: "oklch(0.18 0.008 260)" }}
         >
           <input
@@ -124,21 +124,21 @@ export const AIChatNode = memo(function AIChatNode({ id, selected, data }: Props
             onChange={(e) => updateNodeData(id, { systemPrompt: e.target.value })}
             className="nodrag w-full"
             style={{
-              fontSize: 10,
+              fontSize: 11.5,
               background: "transparent",
               border: "none",
               outline: "none",
-              color: "oklch(0.55 0.008 260)",
+              color: "oklch(0.58 0.008 260)",
             }}
           />
         </div>
 
         {/* ── Model selector ── */}
         <div
-          className="px-2.5 py-1.5 flex items-center gap-1.5 flex-shrink-0 relative"
+          className="px-3.5 py-2 flex items-center gap-2 flex-shrink-0 relative"
           style={{ borderBottomWidth: 1, borderBottomStyle: "solid", borderBottomColor: "oklch(0.18 0.008 260)" }}
         >
-          <span style={{ fontSize: 9, fontWeight: 500, textTransform: "uppercase", letterSpacing: "0.06em", color: "oklch(0.38 0.006 260)" }}>模型</span>
+          <span style={{ fontSize: 10, fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.06em", color: "oklch(0.40 0.008 260)" }}>模型</span>
           <button
             className="nodrag flex items-center gap-1 px-2 py-0.5 rounded-md transition-all"
             style={{
@@ -192,7 +192,7 @@ export const AIChatNode = memo(function AIChatNode({ id, selected, data }: Props
         {/* ── Messages ── */}
         <div
           ref={scrollRef}
-          className="flex-1 overflow-y-auto px-2.5 py-2 nodrag"
+          className="flex-1 overflow-y-auto px-3.5 py-3 nodrag"
           style={{ minHeight: 120, maxHeight: 280 }}
         >
           {localMessages.length === 0 ? (
@@ -238,7 +238,7 @@ export const AIChatNode = memo(function AIChatNode({ id, selected, data }: Props
                   </div>
                   {/* Bubble */}
                   <div
-                    className="flex-1 min-w-0 rounded-lg px-2.5 py-1.5 text-[11px] leading-relaxed"
+                    className="flex-1 min-w-0 rounded-lg px-3 py-2 text-xs leading-relaxed"
                     style={{
                       background: msg.role === "user"
                         ? "oklch(0.68 0.22 285 / 0.10)"
@@ -293,7 +293,7 @@ export const AIChatNode = memo(function AIChatNode({ id, selected, data }: Props
 
         {/* ── Input bar ── */}
         <div
-          className="px-2.5 pb-2.5 pt-2 flex gap-1.5 flex-shrink-0"
+          className="px-3.5 pb-3.5 pt-2.5 flex gap-2 flex-shrink-0"
           style={{ borderTopWidth: 1, borderTopStyle: "solid", borderTopColor: "oklch(0.18 0.008 260)" }}
         >
           <input
@@ -305,16 +305,16 @@ export const AIChatNode = memo(function AIChatNode({ id, selected, data }: Props
             disabled={sendMutation.isPending}
             className="nodrag flex-1"
             style={{
-              fontSize: 11,
-              padding: "5px 8px",
+              fontSize: 12,
+              padding: "7px 10px",
               background: "oklch(0.09 0.006 260)",
               borderWidth: 1,
               borderStyle: "solid",
               borderColor: BORDER_DEFAULT,
-              borderRadius: 7,
-              color: "oklch(0.80 0.006 260)",
+              borderRadius: 8,
+              color: "oklch(0.86 0.006 260)",
               outline: "none",
-              transition: "border-color 120ms ease",
+              transition: "border-color 150ms ease",
             }}
             onFocus={onFocusInput}
             onBlur={onBlurInput}
@@ -322,7 +322,7 @@ export const AIChatNode = memo(function AIChatNode({ id, selected, data }: Props
           <button
             onClick={handleSend}
             disabled={!input.trim() || sendMutation.isPending}
-            className="nodrag w-7 h-7 rounded-lg flex items-center justify-center transition-all flex-shrink-0"
+            className="nodrag w-8 h-8 rounded-lg flex items-center justify-center transition-all flex-shrink-0"
             style={{
               background: !input.trim() || sendMutation.isPending
                 ? "oklch(0.13 0.007 260)"
@@ -343,7 +343,7 @@ export const AIChatNode = memo(function AIChatNode({ id, selected, data }: Props
           <button
             onClick={() => clearMutation.mutate({ nodeId: id, projectId: data.projectId })}
             disabled={localMessages.length === 0}
-            className="nodrag w-7 h-7 rounded-lg flex items-center justify-center transition-all flex-shrink-0"
+            className="nodrag w-8 h-8 rounded-lg flex items-center justify-center transition-all flex-shrink-0"
             style={{
               background: "transparent",
               borderWidth: 1,

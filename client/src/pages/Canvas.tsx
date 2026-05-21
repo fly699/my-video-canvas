@@ -663,100 +663,44 @@ function CanvasInner({ projectId }: { projectId: number }) {
       {/* ══ Main ═════════════════════════════════════════════════════════════ */}
       <div className="flex-1 flex overflow-hidden relative">
 
-        {/* ── Left tool sidebar (desktop only) ── */}
-        <aside
-          className="flex-col items-center py-3 gap-1 flex-shrink-0 z-10"
-          style={{
-            display: isMobile ? "none" : "flex",
-            width: isMobile ? 0 : 48,
-            background: "oklch(0.09 0.006 260 / 0.95)",
-            backdropFilter: "blur(20px)",
-            borderRight: "1px solid oklch(0.18 0.008 260)",
-          }}
-        >
-          {/* Add node button */}
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <button
-                onClick={() => setShowNodePicker(!showNodePicker)}
-                className="w-9 h-9 rounded-lg flex items-center justify-center transition-all"
-                style={{
-                  background: showNodePicker
-                    ? "linear-gradient(135deg, oklch(0.68 0.22 285), oklch(0.60 0.20 310))"
-                    : "oklch(0.68 0.22 285 / 0.12)",
-                  border: "1px solid oklch(0.68 0.22 285 / 0.35)",
-                  color: "oklch(0.85 0.15 285)",
-                }}
-              >
-                <Plus className="w-4 h-4" />
-              </button>
-            </TooltipTrigger>
-            <TooltipContent side="right" className="text-xs">添加节点</TooltipContent>
-          </Tooltip>
-
-          <ToolDivider />
-
-          {/* Node type shortcuts */}
-          {NODE_TYPE_LIST.map((config) => {
-            const Icon = ICON_MAP[config.icon] ?? FileText;
-            return (
-              <ToolBtn
-                key={config.type}
-                icon={Icon}
-                label={`添加${config.label}节点`}
-                accent={config.color}
-                onClick={() => addNodeAtCenter(config.type)}
-              />
-            );
-          })}
-
-          <ToolDivider />
-
-          {/* Fit view */}
-          <ToolBtn
-            icon={Maximize2}
-            label="适应视图"
-            onClick={() => reactFlow.fitView({ padding: 0.15, duration: 400 })}
-          />
-        </aside>
-
-        {/* Node picker popup */}
+        {/* Node picker popup — centered above bottom toolbar */}
         {showNodePicker && (
           <div
-            className="absolute left-14 top-3 z-30 rounded-xl overflow-hidden animate-scale-in"
+            className="absolute bottom-20 left-1/2 z-30 rounded-2xl overflow-hidden animate-scale-in"
             style={{
-              background: "oklch(0.12 0.007 260)",
+              transform: "translateX(-50%)",
+              background: "oklch(0.11 0.007 260 / 0.97)",
               border: "1px solid oklch(0.22 0.008 260)",
-              boxShadow: "0 8px 40px oklch(0 0 0 / 0.6), 0 0 0 1px oklch(0.22 0.008 260 / 0.5)",
-              minWidth: 200,
+              boxShadow: "0 16px 60px oklch(0 0 0 / 0.70), 0 4px 16px oklch(0 0 0 / 0.40), 0 0 0 1px oklch(0.22 0.008 260 / 0.5)",
+              backdropFilter: "blur(24px)",
+              minWidth: 480,
             }}
           >
-            <div className="px-3 py-2.5" style={{ borderBottomWidth: 1, borderBottomStyle: "solid", borderBottomColor: "oklch(0.18 0.008 260)" }}>
-              <p className="text-[10px] font-medium uppercase tracking-wider" style={{ color: "oklch(0.45 0.008 260)" }}>
+            <div className="px-4 py-3" style={{ borderBottom: "1px solid oklch(0.18 0.008 260)" }}>
+              <p className="text-[11px] font-semibold uppercase tracking-widest" style={{ color: "oklch(0.40 0.006 260)" }}>
                 添加节点
               </p>
             </div>
-            <div className="p-1.5">
+            <div className="p-2 grid grid-cols-4 gap-1">
               {NODE_TYPE_LIST.map((config) => {
                 const Icon = ICON_MAP[config.icon] ?? FileText;
                 return (
                   <button
                     key={config.type}
                     onClick={() => addNodeAtCenter(config.type)}
-                    className="w-full flex items-center gap-2.5 px-2.5 py-2 rounded-lg transition-all text-left"
+                    className="flex flex-col items-center gap-2 px-3 py-3 rounded-xl transition-all text-center"
                     style={{ color: "oklch(0.70 0.008 260)" }}
                     onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.background = "oklch(0.16 0.008 260)"; (e.currentTarget as HTMLElement).style.color = "oklch(0.90 0.005 260)"; }}
                     onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.background = "transparent"; (e.currentTarget as HTMLElement).style.color = "oklch(0.70 0.008 260)"; }}
                   >
                     <div
-                      className="w-6 h-6 rounded-md flex items-center justify-center flex-shrink-0"
-                      style={{ background: `${config.color}20`, border: `1px solid ${config.color}40` }}
+                      className="w-9 h-9 rounded-xl flex items-center justify-center flex-shrink-0"
+                      style={{ background: `${config.color}18`, border: `1px solid ${config.color}35` }}
                     >
-                      <Icon className="w-3.5 h-3.5" style={{ color: config.color }} />
+                      <Icon className="w-4.5 h-4.5" style={{ color: config.color, width: 18, height: 18 }} />
                     </div>
                     <div>
-                      <p className="text-xs font-medium leading-none mb-0.5">{config.label}</p>
-                      <p className="text-[10px]" style={{ color: "oklch(0.42 0.006 260)" }}>{config.defaultTitle}</p>
+                      <p className="text-[11px] font-medium leading-none">{config.label}</p>
                     </div>
                   </button>
                 );
@@ -800,14 +744,136 @@ function CanvasInner({ projectId }: { projectId: number }) {
               size={1}
               color="oklch(0.22 0.008 260)"
             />
-            <Controls position="bottom-left" showInteractive={false} />
             <MiniMap
               position="bottom-right"
               nodeColor={(n) => getNodeConfig((n.data as { nodeType: NodeType }).nodeType)?.color ?? "oklch(0.30 0.010 260)"}
               maskColor="oklch(0.09 0.006 260 / 0.85)"
-              style={{ background: "oklch(0.11 0.007 260)", border: "1px solid oklch(0.20 0.008 260)", borderRadius: 12 }}
+              style={{ background: "oklch(0.11 0.007 260)", border: "1px solid oklch(0.20 0.008 260)", borderRadius: 12, marginBottom: 64 }}
             />
           </ReactFlow>
+
+          {/* ── Bottom floating toolbar ── */}
+          <div
+            className="absolute bottom-5 left-1/2 z-20 flex items-center gap-1.5 px-2.5 py-1.5 rounded-2xl"
+            style={{
+              transform: "translateX(-50%)",
+              background: "oklch(0.10 0.007 260 / 0.95)",
+              backdropFilter: "blur(24px)",
+              border: "1px solid oklch(0.20 0.008 260)",
+              boxShadow: "0 8px 40px oklch(0 0 0 / 0.60), 0 2px 8px oklch(0 0 0 / 0.40), 0 0 0 1px oklch(0.20 0.008 260 / 0.5)",
+            }}
+          >
+            {/* Add node — primary action */}
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <button
+                  onClick={() => setShowNodePicker(!showNodePicker)}
+                  className="flex items-center gap-1.5 h-8 px-3 rounded-xl text-xs font-semibold transition-all"
+                  style={{
+                    background: showNodePicker
+                      ? "linear-gradient(135deg, oklch(0.68 0.22 285), oklch(0.60 0.20 310))"
+                      : "oklch(0.68 0.22 285 / 0.15)",
+                    border: `1px solid oklch(0.68 0.22 285 / ${showNodePicker ? "0" : "0.35"})`,
+                    color: showNodePicker ? "white" : "oklch(0.78 0.15 285)",
+                  }}
+                >
+                  <Plus className="w-3.5 h-3.5" />
+                  添加
+                </button>
+              </TooltipTrigger>
+              <TooltipContent side="top" className="text-xs">添加节点</TooltipContent>
+            </Tooltip>
+
+            {/* Divider */}
+            <div style={{ width: 1, height: 18, background: "oklch(0.22 0.008 260)", flexShrink: 0 }} />
+
+            {/* Node type quick-add */}
+            {NODE_TYPE_LIST.map((config) => {
+              const Icon = ICON_MAP[config.icon] ?? FileText;
+              return (
+                <Tooltip key={config.type}>
+                  <TooltipTrigger asChild>
+                    <button
+                      onClick={() => addNodeAtCenter(config.type)}
+                      className="w-8 h-8 rounded-xl flex items-center justify-center transition-all"
+                      style={{ color: "oklch(0.50 0.008 260)" }}
+                      onMouseEnter={(e) => {
+                        (e.currentTarget as HTMLElement).style.background = `${config.color}18`;
+                        (e.currentTarget as HTMLElement).style.color = config.color;
+                      }}
+                      onMouseLeave={(e) => {
+                        (e.currentTarget as HTMLElement).style.background = "transparent";
+                        (e.currentTarget as HTMLElement).style.color = "oklch(0.50 0.008 260)";
+                      }}
+                    >
+                      <Icon className="w-3.5 h-3.5" />
+                    </button>
+                  </TooltipTrigger>
+                  <TooltipContent side="top" className="text-xs">{config.label}</TooltipContent>
+                </Tooltip>
+              );
+            })}
+
+            {/* Divider */}
+            <div style={{ width: 1, height: 18, background: "oklch(0.22 0.008 260)", flexShrink: 0 }} />
+
+            {/* Zoom controls */}
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <button
+                  onClick={() => reactFlow.zoomOut({ duration: 200 })}
+                  className="w-8 h-8 rounded-xl flex items-center justify-center transition-all"
+                  style={{ color: "oklch(0.50 0.008 260)" }}
+                  onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.background = "oklch(0.18 0.008 260)"; (e.currentTarget as HTMLElement).style.color = "oklch(0.80 0.005 260)"; }}
+                  onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.background = "transparent"; (e.currentTarget as HTMLElement).style.color = "oklch(0.50 0.008 260)"; }}
+                >
+                  <span style={{ fontSize: 16, lineHeight: 1, fontWeight: 300 }}>−</span>
+                </button>
+              </TooltipTrigger>
+              <TooltipContent side="top" className="text-xs">缩小</TooltipContent>
+            </Tooltip>
+
+            <button
+              onClick={() => reactFlow.zoomTo(1, { duration: 300 })}
+              className="h-7 px-2 rounded-lg text-[11px] font-mono transition-all tabular-nums"
+              style={{ color: "oklch(0.50 0.008 260)", minWidth: 44, textAlign: "center" }}
+              onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.background = "oklch(0.18 0.008 260)"; (e.currentTarget as HTMLElement).style.color = "oklch(0.80 0.005 260)"; }}
+              onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.background = "transparent"; (e.currentTarget as HTMLElement).style.color = "oklch(0.50 0.008 260)"; }}
+              title="点击重置为 100%"
+            >
+              {Math.round(viewport.zoom * 100)}%
+            </button>
+
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <button
+                  onClick={() => reactFlow.zoomIn({ duration: 200 })}
+                  className="w-8 h-8 rounded-xl flex items-center justify-center transition-all"
+                  style={{ color: "oklch(0.50 0.008 260)" }}
+                  onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.background = "oklch(0.18 0.008 260)"; (e.currentTarget as HTMLElement).style.color = "oklch(0.80 0.005 260)"; }}
+                  onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.background = "transparent"; (e.currentTarget as HTMLElement).style.color = "oklch(0.50 0.008 260)"; }}
+                >
+                  <span style={{ fontSize: 16, lineHeight: 1, fontWeight: 300 }}>+</span>
+                </button>
+              </TooltipTrigger>
+              <TooltipContent side="top" className="text-xs">放大</TooltipContent>
+            </Tooltip>
+
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <button
+                  onClick={() => reactFlow.fitView({ padding: 0.15, duration: 400 })}
+                  className="w-8 h-8 rounded-xl flex items-center justify-center transition-all"
+                  style={{ color: "oklch(0.50 0.008 260)" }}
+                  onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.background = "oklch(0.18 0.008 260)"; (e.currentTarget as HTMLElement).style.color = "oklch(0.80 0.005 260)"; }}
+                  onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.background = "transparent"; (e.currentTarget as HTMLElement).style.color = "oklch(0.50 0.008 260)"; }}
+                >
+                  <Maximize2 className="w-3.5 h-3.5" />
+                </button>
+              </TooltipTrigger>
+              <TooltipContent side="top" className="text-xs">适应视图</TooltipContent>
+            </Tooltip>
+          </div>
 
           {/* Collaborator cursors */}
           <CollaboratorCursors cursors={collaboratorList} viewport={viewport} />
@@ -886,38 +952,7 @@ function CanvasInner({ projectId }: { projectId: number }) {
         />
       )}
 
-      {/* ── Mobile bottom toolbar ── */}
-      {isMobile && (
-        <div
-          className="absolute bottom-5 left-1/2 z-30 flex items-center gap-2 px-3 py-2 rounded-2xl animate-slide-up"
-          style={{
-            transform: "translateX(-50%)",
-            background: "oklch(0.11 0.007 260 / 0.95)",
-            backdropFilter: "blur(20px)",
-            border: "1px solid oklch(0.20 0.008 260)",
-            boxShadow: "0 8px 32px oklch(0 0 0 / 0.55), 0 0 0 1px oklch(0.20 0.008 260 / 0.4)",
-          }}
-        >
-          <MobileToolBtn icon={Plus} label="添加节点" accent="oklch(0.68 0.22 285)" onClick={() => setShowNodePicker(!showNodePicker)} />
-          <MobileToolDivider />
-          {NODE_TYPE_LIST.slice(0, 4).map((config) => {
-            const Icon = ICON_MAP[config.icon] ?? FileText;
-            return (
-              <MobileToolBtn
-                key={config.type}
-                icon={Icon}
-                label={`添加${config.label}`}
-                color={config.color}
-                onClick={() => addNodeAtCenter(config.type)}
-              />
-            );
-          })}
-          <MobileToolDivider />
-          <MobileToolBtn icon={Maximize2} label="适应视图" onClick={() => reactFlow.fitView({ padding: 0.15, duration: 400 })} />
-          <MobileToolBtn icon={Paperclip} label="素材库" active={showAssets} onClick={() => setShowAssets(!showAssets)} />
-          <MobileToolBtn icon={Play} label="演示模式" onClick={() => setShowPresentation(true)} />
-        </div>
-      )}
+
 
       {/* ── Presentation mode ── */}
       {showPresentation && (
