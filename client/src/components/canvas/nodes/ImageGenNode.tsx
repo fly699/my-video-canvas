@@ -153,10 +153,10 @@ export const ImageGenNode = memo(function ImageGenNode({ id, selected, data }: P
         seed: payload.seed,
         enhancePrompt: payload.enhancePrompt,
       } : {}),
-      // Reve specific params
-      ...(payload.model === "hf_reve" ? {
+      // Reve / Seedream v4 / Flux Pro aspect ratio
+      ...(payload.model === "hf_reve" || payload.model === "hf_seedream_v4" || payload.model === "hf_flux_pro" ? {
         reveAspectRatio: payload.reveAspectRatio,
-        reveResolution: payload.reveResolution,
+        ...(payload.model === "hf_reve" ? { reveResolution: payload.reveResolution } : {}),
       } : {}),
     });
   };
@@ -212,6 +212,10 @@ export const ImageGenNode = memo(function ImageGenNode({ id, selected, data }: P
 
   const isSoul = payload.model === "hf_soul_standard";
   const isReve = payload.model === "hf_reve";
+  const isSeedreamV4 = payload.model === "hf_seedream_v4";
+  const isFluxPro = payload.model === "hf_flux_pro";
+  // Models that use the collapsible params panel
+  const isReveLike = isReve || isSeedreamV4 || isFluxPro;
 
   return (
     <BaseNode id={id} selected={selected} nodeType="image_gen" title={data.title} minHeight={300}>
@@ -458,8 +462,8 @@ export const ImageGenNode = memo(function ImageGenNode({ id, selected, data }: P
 
         {/* Reve params are now inside the collapsible block below */}
 
-        {/* Style + Ratio (non-Soul, non-Reve models) */}
-        {!isSoul && !isReve && (
+        {/* Style + Ratio (non-Soul, non-Reve/Seedream/FluxPro models) */}
+        {!isSoul && !isReveLike && (
           <div className="flex gap-1.5">
             <div className="flex-1">
               <label style={labelStyle}>风格</label>
@@ -487,8 +491,8 @@ export const ImageGenNode = memo(function ImageGenNode({ id, selected, data }: P
           </div>
         )}
 
-        {/* Soul Standard / Reve specific params — collapsible */}
-        {(isSoul || isReve) && (
+        {/* Soul / Reve / Seedream v4 / Flux Pro specific params — collapsible */}
+        {(isSoul || isReveLike) && (
           <div
             className="rounded-xl"
             style={{ background: "oklch(0.085 0.006 260)", borderWidth: 1, borderStyle: "solid", borderColor: "oklch(0.18 0.007 260)" }}
@@ -615,8 +619,8 @@ export const ImageGenNode = memo(function ImageGenNode({ id, selected, data }: P
             </div>
           </>
                 }
-                {/* Reve params */}
-                {isReve && (
+                {/* Reve / Seedream v4 / Flux Pro params */}
+                {isReveLike && (
                   <div className="flex gap-1.5">
                     <div className="flex-1">
                       <label style={labelStyle}>宽高比</label>
@@ -636,20 +640,22 @@ export const ImageGenNode = memo(function ImageGenNode({ id, selected, data }: P
                         <option value="9:16">9:16 竖屏</option>
                       </select>
                     </div>
-                    <div style={{ width: 80 }}>
-                      <label style={labelStyle}>分辨率</label>
-                      <select
-                        value={payload.reveResolution ?? "720p"}
-                        onChange={(e) => update("reveResolution", e.target.value as "720p" | "1080p")}
-                        className="nodrag"
-                        style={{ ...fieldBase, cursor: "pointer" }}
-                        onFocus={(e) => { e.currentTarget.style.borderColor = BORDER_ACCENT; }}
-                        onBlur={(e) => { e.currentTarget.style.borderColor = BORDER_DEFAULT; }}
-                      >
-                        <option value="720p">720p</option>
-                        <option value="1080p">1080p</option>
-                      </select>
-                    </div>
+                    {isReve && (
+                      <div style={{ width: 80 }}>
+                        <label style={labelStyle}>分辨率</label>
+                        <select
+                          value={payload.reveResolution ?? "720p"}
+                          onChange={(e) => update("reveResolution", e.target.value as "720p" | "1080p")}
+                          className="nodrag"
+                          style={{ ...fieldBase, cursor: "pointer" }}
+                          onFocus={(e) => { e.currentTarget.style.borderColor = BORDER_ACCENT; }}
+                          onBlur={(e) => { e.currentTarget.style.borderColor = BORDER_DEFAULT; }}
+                        >
+                          <option value="720p">720p</option>
+                          <option value="1080p">1080p</option>
+                        </select>
+                      </div>
+                    )}
                   </div>
                 )}
               </div>

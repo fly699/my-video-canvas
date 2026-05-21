@@ -160,10 +160,11 @@ export async function generateImage(options: GenerateImageOptions): Promise<Gene
     return generateImagePoyo({ ...options, model: poyoModel });
   }
   // Higgsfield image models
-  if (options.model === "hf_soul_standard" || options.model === "hf_reve" || options.model === "hf_seedream_v4") {
+  if (options.model === "hf_soul_standard" || options.model === "hf_reve" || options.model === "hf_seedream_v4" || options.model === "hf_flux_pro") {
     const hfModel: HiggsfieldImageModel =
       options.model === "hf_soul_standard" ? "higgsfield-ai/soul/standard"
       : options.model === "hf_seedream_v4" ? "bytedance/seedream/v4/text-to-image"
+      : options.model === "hf_flux_pro" ? "flux-pro/kontext/max/text-to-image"
       : "reve/text-to-image";
     const result = await generateHiggsfieldImage({
       model: hfModel,

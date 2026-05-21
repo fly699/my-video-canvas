@@ -103,7 +103,7 @@ export interface AIChatNodeData {
   model?: string;
 }
 
-export type ImageGenModel = "manus_forge" | "poyo_flux" | "poyo_sdxl" | "poyo_gpt_image" | "poyo_seedream" | "poyo_grok_image" | "poyo_wan_image" | "hf_soul_standard" | "hf_reve" | "hf_seedream_v4";
+export type ImageGenModel = "manus_forge" | "poyo_flux" | "poyo_sdxl" | "poyo_gpt_image" | "poyo_seedream" | "poyo_grok_image" | "poyo_wan_image" | "hf_soul_standard" | "hf_reve" | "hf_seedream_v4" | "hf_flux_pro";
 export interface ImageGenNodeData {
   prompt: string;
   negativePrompt?: string;

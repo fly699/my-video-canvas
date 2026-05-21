@@ -18,6 +18,7 @@ export const IMAGE_MODELS = [
   { value: "hf_soul_standard", label: "Soul Standard",      desc: "旗舰 · 电影级",    group: "Higgsfield" },
   { value: "hf_reve",          label: "Reve",               desc: "通用 · 快速",      group: "Higgsfield" },
   { value: "hf_seedream_v4",   label: "Seedream v4",        desc: "ByteDance · 4K",   group: "Higgsfield" },
+  { value: "hf_flux_pro",      label: "Flux Pro Kontext",   desc: "上下文感知 · Max",  group: "Higgsfield" },
 ] as const;
 
 export type ChatModelId = typeof CHAT_MODELS[number]["id"];
