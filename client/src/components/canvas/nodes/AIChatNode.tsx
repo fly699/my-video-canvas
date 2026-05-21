@@ -1,10 +1,10 @@
-import { memo, useCallback, useEffect, useRef, useState } from "react";
+import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { BaseNode } from "../BaseNode";
 import { useCanvasStore } from "../../../hooks/useCanvasStore";
-import type { AIChatNodeData } from "../../../../../shared/types";
+import type { AIChatNodeData, NodeType } from "../../../../../shared/types";
 import { trpc } from "@/lib/trpc";
 import { toast } from "sonner";
-import { Send, Loader2, Trash2, Bot, User, Sparkles, ChevronDown } from "lucide-react";
+import { Send, Loader2, Trash2, Bot, User, Sparkles, ChevronDown, ArrowRight } from "lucide-react";
 import { CHAT_MODELS } from "@/lib/models";
 // Streamdown removed — replaced with safe inline markdown renderer to avoid ReactFlow DOM conflicts
 function SimpleMarkdown({ children }: { children: string }) {
@@ -35,8 +35,18 @@ const accentColor = "oklch(0.70 0.18 200)";
 const BORDER_DEFAULT = "oklch(0.20 0.008 260)";
 const BORDER_FOCUS   = `${accentColor.slice(0, -1)} / 0.5)`;
 
+const FIELD_MAP: Partial<Record<NodeType, string>> = {
+  script: "content",
+  storyboard: "promptText",
+  prompt: "positivePrompt",
+  image_gen: "prompt",
+  video_task: "prompt",
+  note: "content",
+};
+
 export const AIChatNode = memo(function AIChatNode({ id, selected, data }: Props) {
-  const { updateNodeData, nodes, edges } = useCanvasStore();
+  const { updateNodeData } = useCanvasStore();
+  const hasDownstream = useCanvasStore(useMemo(() => (s) => s.edges.some(e => e.source === id), [id]));
   const payload = data.payload;
   const [input, setInput] = useState("");
   const [localMessages, setLocalMessages] = useState<Array<{ role: "user" | "assistant"; content: string }>>(
@@ -47,7 +57,7 @@ export const AIChatNode = memo(function AIChatNode({ id, selected, data }: Props
   const scrollRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
 
-  useEffect(() => { updateNodeData(id, { messages: localMessages }); }, [localMessages]);
+  useEffect(() => { updateNodeData(id, { messages: localMessages }); }, [localMessages, id, updateNodeData]);
   useEffect(() => {
     if (scrollRef.current) scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
   }, [localMessages]);
@@ -67,8 +77,25 @@ export const AIChatNode = memo(function AIChatNode({ id, selected, data }: Props
     onError: (err) => toast.error("清除失败：" + err.message),
   });
 
+  const pushToDownstream = useCallback((content: string) => {
+    const { nodes: currentNodes, edges: currentEdges, batchUpdateNodeData } = useCanvasStore.getState();
+    const updates = currentEdges
+      .filter(e => e.source === id)
+      .flatMap(edge => {
+        const targetNode = currentNodes.find(n => n.id === edge.target);
+        const field = targetNode ? FIELD_MAP[targetNode.data.nodeType] : undefined;
+        return field ? [{ id: edge.target, payload: { [field]: content } }] : [];
+      });
+    if (updates.length > 0) {
+      batchUpdateNodeData(updates);
+      toast.success(`已推送到 ${updates.length} 个节点`);
+    } else {
+      toast.error("没有可接收的下游节点");
+    }
+  }, [id]);
+
   const buildContext = useCallback(() => {
-    // Auto-include nodes connected via incoming edges + any explicitly set contextNodeIds
+    const { nodes, edges } = useCanvasStore.getState();
     const edgeSourceIds = edges.filter((e) => e.target === id).map((e) => e.source);
     const contextIds = Array.from(new Set([...(payload.contextNodeIds ?? []), ...edgeSourceIds]));
     if (!contextIds.length) return undefined;
@@ -86,7 +113,7 @@ export const AIChatNode = memo(function AIChatNode({ id, selected, data }: Props
       if (content) parts.push(`[${node.data.title}]: ${content}`);
     }
     return parts.join("\n\n") || undefined;
-  }, [id, nodes, edges, payload.contextNodeIds]);
+  }, [id, payload.contextNodeIds]);
 
   const handleSend = () => {
     const msg = input.trim();
@@ -359,6 +386,21 @@ export const AIChatNode = memo(function AIChatNode({ id, selected, data }: Props
           >
             <Trash2 className="w-3 h-3" />
           </button>
+          {hasDownstream && localMessages.some(m => m.role === "assistant") && (
+            <button
+              onClick={() => {
+                const lastAI = [...localMessages].reverse().find(m => m.role === "assistant");
+                if (lastAI) pushToDownstream(lastAI.content);
+              }}
+              className="nodrag w-8 h-8 rounded-lg flex items-center justify-center transition-all flex-shrink-0"
+              title="推送最新 AI 回复到连接的下游节点"
+              style={{ background: "transparent", border: "1px solid transparent", color: "oklch(0.50 0.008 260)" }}
+              onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.background = "oklch(0.70 0.18 200 / 0.12)"; (e.currentTarget as HTMLElement).style.color = accentColor; }}
+              onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.background = "transparent"; (e.currentTarget as HTMLElement).style.color = "oklch(0.50 0.008 260)"; }}
+            >
+              <ArrowRight className="w-3 h-3" />
+            </button>
+          )}
         </div>
       </div>
     </BaseNode>

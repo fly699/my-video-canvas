@@ -2,6 +2,9 @@ import { memo, useCallback } from "react";
 import { BaseNode } from "../BaseNode";
 import { useCanvasStore } from "../../../hooks/useCanvasStore";
 import type { ScriptNodeData } from "../../../../../shared/types";
+import { trpc } from "@/lib/trpc";
+import { toast } from "sonner";
+import { Sparkles, Loader2 } from "lucide-react";
 
 interface Props {
   id: string;
@@ -56,6 +59,21 @@ export const ScriptNode = memo(function ScriptNode({ id, selected, data }: Props
     [id, updateNodeData]
   );
 
+  const generateMutation = trpc.scripts.generateStoryboards.useMutation({
+    onSuccess: (result) => {
+      const { nodes: currentNodes, batchAddSceneNodes } = useCanvasStore.getState();
+      const ownPos = currentNodes.find((n) => n.id === id)?.position ?? { x: 0, y: 0 };
+      batchAddSceneNodes(result.scenes, id, ownPos);
+      toast.success("分镜已生成", {
+        description: `共 ${result.scenes.length} 个场景节点已添加到画布`,
+        duration: 4000,
+      });
+    },
+    onError: (err) => {
+      toast.error("AI 生成分镜失败：" + err.message);
+    },
+  });
+
   return (
     <BaseNode id={id} selected={selected} nodeType="script" title={data.title} minHeight={200} resizable>
       <div className="flex flex-col h-full p-3.5 gap-3">
@@ -90,6 +108,23 @@ export const ScriptNode = memo(function ScriptNode({ id, selected, data }: Props
             <span>脚本</span>
           </div>
         </div>
+        <button
+          onClick={() => {
+            if (!payload.content.trim()) { toast.error("请先填写脚本内容"); return; }
+            generateMutation.mutate({ content: payload.content, synopsis: payload.synopsis });
+          }}
+          disabled={generateMutation.isPending}
+          className="nodrag flex items-center justify-center gap-1.5 w-full py-1.5 rounded-lg text-xs font-medium transition-all"
+          style={{
+            background: generateMutation.isPending ? "oklch(0.13 0.007 260)" : "oklch(0.62 0.18 240 / 0.12)",
+            border: `1px solid ${generateMutation.isPending ? "oklch(0.20 0.008 260)" : "oklch(0.62 0.18 240 / 0.40)"}`,
+            color: generateMutation.isPending ? "oklch(0.38 0.006 260)" : "oklch(0.72 0.16 240)",
+            cursor: generateMutation.isPending ? "not-allowed" : "pointer",
+          }}
+        >
+          {generateMutation.isPending ? <Loader2 className="w-3 h-3 animate-spin" /> : <Sparkles className="w-3 h-3" />}
+          {generateMutation.isPending ? "AI 生成分镜中..." : "AI 生成分镜"}
+        </button>
       </div>
     </BaseNode>
   );

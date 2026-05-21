@@ -4,7 +4,7 @@ import { useCanvasStore } from "../../../hooks/useCanvasStore";
 import type { StoryboardNodeData } from "../../../../../shared/types";
 import { trpc } from "@/lib/trpc";
 import { toast } from "sonner";
-import { Sparkles, ImageIcon, Loader2, RefreshCw, ChevronDown, Upload, X } from "lucide-react";
+import { Sparkles, ImageIcon, Loader2, RefreshCw, ChevronDown, Upload, X, Wand2 } from "lucide-react";
 import { IMAGE_MODELS, type ImageModelId } from "@/lib/models";
 
 interface Props {
@@ -94,8 +94,33 @@ export const StoryboardNode = memo(function StoryboardNode({ id, selected, data 
     },
   });
 
+  // AI prompt expansion
+  const [expandingPrompt, setExpandingPrompt] = useState(false);
+  const aiExpandMutation = trpc.aiChat.sendMessage.useMutation({
+    onSuccess: (result) => {
+      updateNodeData(id, { promptText: result.content });
+      setExpandingPrompt(false);
+      toast.success("提示词已扩写");
+    },
+    onError: (err) => {
+      setExpandingPrompt(false);
+      toast.error("AI 扩写失败：" + err.message);
+    },
+  });
+
+  const handleExpandPrompt = useCallback(() => {
+    if (!payload.description?.trim()) { toast.error("请先填写场景描述"); return; }
+    setExpandingPrompt(true);
+    aiExpandMutation.mutate({
+      nodeId: id,
+      projectId: data.projectId,
+      message: `请将以下分镜描述扩写为详细的图像生成英文提示词（Stable Diffusion格式，100词以内）：${payload.description}`,
+      systemPrompt: "You are a professional image prompt engineer. Respond only with the English prompt text, no explanations or extra formatting.",
+    });
+  }, [id, data.projectId, payload.description, aiExpandMutation]);
+
   const handleChange = useCallback(
-    (field: keyof StoryboardNodeData, value: string | number) => {
+    (field: keyof StoryboardNodeData, value: string | number | undefined) => {
       updateNodeData(id, { [field]: value });
     },
     [id, updateNodeData]
@@ -221,7 +246,7 @@ export const StoryboardNode = memo(function StoryboardNode({ id, selected, data 
               type={type}
               placeholder={placeholder}
               value={(payload[field] as string | number) ?? ""}
-              onChange={(e) => handleChange(field, type === "number" ? Number(e.target.value) : e.target.value)}
+              onChange={(e) => handleChange(field, type === "number" ? (e.target.value === "" ? undefined : Number(e.target.value)) : e.target.value)}
               className="nodrag"
               style={{ ...fieldStyle, width }}
               onFocus={onFocus}
@@ -252,22 +277,46 @@ export const StoryboardNode = memo(function StoryboardNode({ id, selected, data 
         />
 
         {/* ── Prompt ── */}
-        <textarea
-          placeholder="正向提示词（用于 AI 生图）..."
-          value={payload.promptText ?? ""}
-          onChange={(e) => handleChange("promptText", e.target.value)}
-          className="nodrag"
-          rows={2}
-          style={{
-            ...fieldStyle,
-            resize: "none",
-            lineHeight: 1.6,
-            fontFamily: "'JetBrains Mono', monospace",
-            fontSize: 10.5,
-          }}
-          onFocus={onFocus}
-          onBlur={onBlur}
-        />
+        <div className="flex flex-col gap-1">
+          <textarea
+            placeholder="正向提示词（用于 AI 生图）..."
+            value={payload.promptText ?? ""}
+            onChange={(e) => handleChange("promptText", e.target.value)}
+            className="nodrag"
+            rows={2}
+            style={{
+              ...fieldStyle,
+              resize: "none",
+              lineHeight: 1.6,
+              fontFamily: "'JetBrains Mono', monospace",
+              fontSize: 10.5,
+            }}
+            onFocus={onFocus}
+            onBlur={onBlur}
+          />
+          <button
+            onClick={handleExpandPrompt}
+            disabled={expandingPrompt || !payload.description?.trim()}
+            className="nodrag flex items-center gap-1 px-2 py-1 rounded text-[10px] transition-all self-start"
+            style={{
+              background: expandingPrompt || !payload.description?.trim()
+                ? "oklch(0.13 0.007 260)"
+                : "oklch(0.65 0.20 160 / 0.12)",
+              borderWidth: 1,
+              borderStyle: "solid",
+              borderColor: expandingPrompt || !payload.description?.trim()
+                ? "oklch(0.22 0.008 260)"
+                : "oklch(0.65 0.20 160 / 0.35)",
+              color: expandingPrompt || !payload.description?.trim()
+                ? "oklch(0.38 0.006 260)"
+                : "oklch(0.65 0.20 160)",
+              cursor: expandingPrompt || !payload.description?.trim() ? "not-allowed" : "pointer",
+            }}
+          >
+            {expandingPrompt ? <Loader2 className="w-3 h-3 animate-spin" /> : <Wand2 className="w-3 h-3" />}
+            {expandingPrompt ? "AI 扩写中..." : "✨ AI 扩写提示词"}
+          </button>
+        </div>
 
         {/* ── Style row ── */}
         <div className="flex gap-1.5">

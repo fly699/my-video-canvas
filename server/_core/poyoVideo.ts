@@ -50,6 +50,7 @@ export async function submitPoyoVideo(opts: {
       Authorization: `Bearer ${ENV.poyoApiKey}`,
     },
     body: JSON.stringify({ model, input }),
+    signal: AbortSignal.timeout(15_000),
   });
 
   if (!res.ok) {
@@ -76,6 +77,7 @@ export async function checkPoyoVideoStatus(externalTaskId: string): Promise<Poyo
 
   const res = await fetch(`${POYO_BASE}/api/generate/status/${externalTaskId}`, {
     headers: { Authorization: `Bearer ${ENV.poyoApiKey}` },
+    signal: AbortSignal.timeout(15_000),
   });
 
   if (!res.ok) {

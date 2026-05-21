@@ -10,6 +10,7 @@ import {
   videoTasksRouter,
   aiChatRouter,
   imageGenRouter,
+  scriptsRouter,
 } from "./routers/canvas";
 import { uploadRouter } from "./routers/upload";
 
@@ -32,6 +33,7 @@ export const appRouter = router({
   videoTasks: videoTasksRouter,
   aiChat: aiChatRouter,
   imageGen: imageGenRouter,
+  scripts: scriptsRouter,
   upload: uploadRouter,
 });
 

@@ -278,6 +278,14 @@ export const AVAILABLE_MODELS = [
 
 export const DEFAULT_MODEL = "gemini-2.5-flash";
 
+/** Extract plain text from an LLM response, handling both string and array content. */
+export function extractTextContent(response: InvokeResult): string {
+  const raw = response.choices?.[0]?.message?.content;
+  if (typeof raw === "string") return raw;
+  if (Array.isArray(raw)) return raw.map((p) => (p.type === "text" ? p.text : "")).join("");
+  return "";
+}
+
 export async function invokeLLM(params: InvokeParams): Promise<InvokeResult> {
   assertApiKey();
 

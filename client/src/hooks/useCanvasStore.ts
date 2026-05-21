@@ -53,7 +53,13 @@ interface CanvasStore {
   onEdgesChange: (changes: EdgeChange[]) => void;
   onConnect: (connection: Connection) => void;
   addNode: (type: NodeType, position: { x: number; y: number }) => CanvasNode;
+  batchAddSceneNodes: (
+    scenes: Array<{ description?: string; promptText?: string; cameraMovement?: string; duration?: number }>,
+    sourceNodeId: string,
+    sourcePosition: { x: number; y: number }
+  ) => void;
   updateNodeData: (id: string, payload: Partial<NodeData>) => void;
+  batchUpdateNodeData: (updates: { id: string; payload: Partial<NodeData> }[]) => void;
   updateNodeTitle: (id: string, title: string) => void;
   deleteNode: (id: string) => void;
   duplicateNode: (id: string) => void;
@@ -119,7 +125,7 @@ export const useCanvasStore = create<CanvasStore>((set, get) => ({
 
   onConnect: (connection) => {
     set((state) => {
-      // Auto-fill referenceImageUrl when connecting image_gen → video_task
+      // Pre-populate so the video node is ready immediately if an image was generated before connecting
       let updatedNodes = state.nodes;
       if (connection.source && connection.target) {
         const sourceNode = state.nodes.find((n) => n.id === connection.source);
@@ -182,6 +188,44 @@ export const useCanvasStore = create<CanvasStore>((set, get) => ({
     return newNode;
   },
 
+  batchAddSceneNodes: (scenes, sourceNodeId, sourcePosition) => {
+    set((state) => {
+      const projectId = state.nodes.find((n) => n.id === sourceNodeId)?.data.projectId ?? 0;
+      const config = getNodeConfig("storyboard");
+      const nodeWidth = (config.defaultWidth as number) ?? 360;
+      const newNodes: CanvasNode[] = scenes.map((scene, i) => ({
+        id: nanoid(),
+        type: "custom" as const,
+        position: { x: sourcePosition.x + i * (nodeWidth + 40), y: sourcePosition.y + 500 },
+        data: {
+          nodeType: "storyboard" as const,
+          title: config.defaultTitle,
+          payload: {
+            description: scene.description ?? "",
+            promptText: scene.promptText ?? "",
+            cameraMovement: scene.cameraMovement,
+            duration: scene.duration,
+          },
+          projectId,
+        },
+        style: { width: nodeWidth },
+      }));
+      const newEdges: CanvasEdge[] = newNodes.map((node) => ({
+        id: nanoid(),
+        source: sourceNodeId,
+        target: node.id,
+        type: "custom",
+        animated: false,
+      }));
+      return {
+        ...pushHistory(state),
+        nodes: [...state.nodes, ...newNodes],
+        edges: [...state.edges, ...newEdges],
+        isDirty: true,
+      };
+    });
+  },
+
   updateNodeData: (id, payload) => {
     set((state) => ({
       ...pushHistory(state),
@@ -190,6 +234,19 @@ export const useCanvasStore = create<CanvasStore>((set, get) => ({
           ? { ...n, data: { ...n.data, payload: { ...n.data.payload, ...payload } } }
           : n
       ),
+      isDirty: true,
+    }));
+  },
+
+  batchUpdateNodeData: (updates) => {
+    if (updates.length === 0) return;
+    const updateMap = new Map(updates.map((u) => [u.id, u.payload]));
+    set((state) => ({
+      ...pushHistory(state),
+      nodes: state.nodes.map((n) => {
+        const patch = updateMap.get(n.id);
+        return patch ? { ...n, data: { ...n.data, payload: { ...n.data.payload, ...patch } } } : n;
+      }),
       isDirty: true,
     }));
   },

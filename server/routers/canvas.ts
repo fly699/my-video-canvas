@@ -28,7 +28,7 @@ import {
   clearChatMessages,
 } from "../db";
 import { storagePut } from "../storage";
-import { invokeLLM } from "../_core/llm";
+import { invokeLLM, extractTextContent } from "../_core/llm";
 import { generateImage } from "../_core/imageGeneration";
 import { isPoyoVideoProvider, submitPoyoVideo, checkPoyoVideoStatus } from "../_core/poyoVideo";
 import { isHiggsfieldVideoProvider, submitHiggsfieldVideo, checkHiggsfieldVideoStatus } from "../_core/higgsfield";
@@ -220,6 +220,9 @@ export const assetsRouter = router({
 
 // ── Video Tasks ───────────────────────────────────────────────────────────────
 
+const pollLastCheck = new Map<string, number>();
+const POLL_THROTTLE_MS = 4_000;
+
 export const videoTasksRouter = router({
   list: protectedProcedure
     .input(z.object({ projectId: z.number() }))
@@ -285,41 +288,55 @@ export const videoTasksRouter = router({
       const task = await getVideoTask(input.id);
       if (!task) return null;
 
-      // For poyo.ai tasks still processing, sync status from upstream
+      // For poyo.ai tasks still processing, sync status from upstream (throttled)
       if (task.status === "processing" && task.externalTaskId && isPoyoVideoProvider(task.provider)) {
-        try {
-          const upstream = await checkPoyoVideoStatus(task.externalTaskId);
-          if (upstream.status === "finished") {
-            const update = { status: "succeeded" as const, resultVideoUrl: upstream.resultVideoUrl };
-            await updateVideoTask(task.id, update);
-            return { ...task, ...update };
+        const now = Date.now();
+        const lastCheck = pollLastCheck.get(task.externalTaskId) ?? 0;
+        if (now - lastCheck >= POLL_THROTTLE_MS) {
+          pollLastCheck.set(task.externalTaskId, now);
+          try {
+            const upstream = await checkPoyoVideoStatus(task.externalTaskId);
+            if (upstream.status === "finished") {
+              pollLastCheck.delete(task.externalTaskId);
+              const update = { status: "succeeded" as const, resultVideoUrl: upstream.resultVideoUrl };
+              await updateVideoTask(task.id, update);
+              return { ...task, ...update };
+            }
+            if (upstream.status === "failed") {
+              pollLastCheck.delete(task.externalTaskId);
+              const update = { status: "failed" as const, errorMessage: upstream.errorMessage ?? "生成失败" };
+              await updateVideoTask(task.id, update);
+              return { ...task, ...update };
+            }
+          } catch {
+            // Ignore sync errors; return DB state so polling continues
           }
-          if (upstream.status === "failed") {
-            const update = { status: "failed" as const, errorMessage: upstream.errorMessage ?? "生成失败" };
-            await updateVideoTask(task.id, update);
-            return { ...task, ...update };
-          }
-        } catch {
-          // Ignore sync errors; return DB state so polling continues
         }
       }
 
-      // For Higgsfield tasks still processing, sync status from upstream
+      // For Higgsfield tasks still processing, sync status from upstream (throttled)
       if (task.status === "processing" && task.externalTaskId && isHiggsfieldVideoProvider(task.provider)) {
-        try {
-          const upstream = await checkHiggsfieldVideoStatus(task.externalTaskId);
-          if (upstream.status === "succeeded" && upstream.resultVideoUrl) {
-            const update = { status: "succeeded" as const, resultVideoUrl: upstream.resultVideoUrl };
-            await updateVideoTask(task.id, update);
-            return { ...task, ...update };
+        const now = Date.now();
+        const lastCheck = pollLastCheck.get(task.externalTaskId) ?? 0;
+        if (now - lastCheck >= POLL_THROTTLE_MS) {
+          pollLastCheck.set(task.externalTaskId, now);
+          try {
+            const upstream = await checkHiggsfieldVideoStatus(task.externalTaskId);
+            if (upstream.status === "succeeded" && upstream.resultVideoUrl) {
+              pollLastCheck.delete(task.externalTaskId);
+              const update = { status: "succeeded" as const, resultVideoUrl: upstream.resultVideoUrl };
+              await updateVideoTask(task.id, update);
+              return { ...task, ...update };
+            }
+            if (upstream.status === "failed") {
+              pollLastCheck.delete(task.externalTaskId);
+              const update = { status: "failed" as const, errorMessage: upstream.errorMessage ?? "生成失败" };
+              await updateVideoTask(task.id, update);
+              return { ...task, ...update };
+            }
+          } catch {
+            // Ignore sync errors; return DB state so polling continues
           }
-          if (upstream.status === "failed") {
-            const update = { status: "failed" as const, errorMessage: upstream.errorMessage ?? "生成失败" };
-            await updateVideoTask(task.id, update);
-            return { ...task, ...update };
-          }
-        } catch {
-          // Ignore sync errors; return DB state so polling continues
         }
       }
 
@@ -394,13 +411,7 @@ export const aiChatRouter = router({
       ];
 
       const response = await invokeLLM({ messages, model: input.model });
-      const rawContent = response.choices?.[0]?.message?.content;
-      const assistantContent: string =
-        typeof rawContent === "string"
-          ? rawContent
-          : Array.isArray(rawContent)
-          ? rawContent.map((p) => (p.type === "text" ? p.text : "")).join("")
-          : "Sorry, I could not generate a response.";
+      const assistantContent = extractTextContent(response) || "Sorry, I could not generate a response.";
 
       // Save assistant message
       await addChatMessage({
@@ -474,5 +485,53 @@ export const imageGenRouter = router({
       });
 
       return { url: result.url, urls: result.urls };
+    }),
+});
+
+// ── Scripts ───────────────────────────────────────────────────────────────────
+
+export const scriptsRouter = router({
+  generateStoryboards: protectedProcedure
+    .input(
+      z.object({
+        content: z.string().min(1),
+        synopsis: z.string().optional(),
+        count: z.number().int().min(2).max(8).default(4),
+      })
+    )
+    .mutation(async ({ input }) => {
+      const systemPrompt = `You are a professional film director and storyboard artist.
+Given a script, break it into exactly ${input.count} visual storyboard scenes.
+Output ONLY a valid JSON array with no markdown fences, no explanation.
+Each element must have these fields:
+- "description": string (2-3 sentences, what the viewer sees)
+- "promptText": string (English, detailed cinematic prompt for image generation)
+- "cameraMovement": string (one of: static, pan-left, pan-right, zoom-in, zoom-out, tilt-up, tilt-down, tracking)
+- "duration": number (scene duration in seconds, integer 2-10)`;
+
+      const userContent = [
+        input.synopsis ? `Synopsis: ${input.synopsis}\n\n` : "",
+        `Script:\n${input.content}`,
+      ].join("");
+
+      const response = await invokeLLM({
+        messages: [
+          { role: "system" as const, content: systemPrompt },
+          { role: "user" as const, content: userContent },
+        ],
+        model: "gemini-2.5-flash",
+      });
+
+      const text = extractTextContent(response);
+      const jsonMatch = text.match(/\[[\s\S]*\]/);
+      if (!jsonMatch) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "AI 未返回有效 JSON" });
+
+      let scenes: Array<{ description: string; promptText: string; cameraMovement?: string; duration?: number }>;
+      try {
+        scenes = JSON.parse(jsonMatch[0]);
+      } catch {
+        throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "JSON 解析失败" });
+      }
+      return { scenes: scenes.slice(0, input.count) };
     }),
 });
