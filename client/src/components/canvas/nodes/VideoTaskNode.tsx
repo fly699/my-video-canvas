@@ -139,7 +139,9 @@ export const VideoTaskNode = memo(function VideoTaskNode({ id, selected, data }:
   const { updateNodeData } = useCanvasStore();
   const payload = data.payload;
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
-  const [paramsExpanded, setParamsExpanded] = useState(true);
+  // Auto-collapse params when node is deselected; expand when selected
+  const [paramsExpanded, setParamsExpanded] = useState(!!selected);
+  useEffect(() => { setParamsExpanded(!!selected); }, [selected]);
 
   const createTaskMutation = trpc.videoTasks.create.useMutation({
     onSuccess: (task) => {

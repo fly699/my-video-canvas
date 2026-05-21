@@ -3,6 +3,7 @@ import { Handle, Position, NodeResizer } from "@xyflow/react";
 import { getNodeConfig } from "../../lib/nodeConfig";
 import type { NodeType } from "../../../../shared/types";
 import { useCanvasStore } from "../../hooks/useCanvasStore";
+import { NodeSelectedContext } from "../../contexts/NodeSelectedContext";
 import {
   FileText, Image, Wand2, Paperclip, Video, Bot, StickyNote,
   Trash2, Copy, GripVertical, Check, X, Maximize2,
@@ -271,7 +272,9 @@ export const BaseNode = memo(function BaseNode({
 
       {/* ── Content area ── */}
       {/* Content area — wheel events scroll node content; Ctrl+wheel zooms canvas (Figma mode) */}
-      <div className="overflow-visible nopan">{children}</div>
+      <NodeSelectedContext.Provider value={!!selected}>
+        <div className="overflow-visible nopan">{children}</div>
+      </NodeSelectedContext.Provider>
 
       {/* ── Connection Handles ── */}
       {showHandles && (

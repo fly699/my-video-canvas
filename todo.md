@@ -172,3 +172,9 @@
 - [x] ImageGenNode：参数区添加折叠/展开按鈕
 - [x] 底部工具栏：添加 "?" 按鈕，点击弹出快捷键速查浮层
 - [x] TypeScript 0 errors，测试全部通过
+
+## Phase 21: 节点未选中时自动折叠参数
+- [x] BaseNode 将 selected 状态通过 NodeSelectedContext.Provider 传递给子节点
+- [x] VideoTaskNode：selected=false 时自动折叠参数区，selected=true 时展开
+- [x] ImageGenNode：selected=false 时自动折叠参数区，selected=true 时展开
+- [x] TypeScript 0 errors，测试全部通过

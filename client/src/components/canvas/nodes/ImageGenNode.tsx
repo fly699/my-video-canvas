@@ -1,4 +1,4 @@
-import { memo, useCallback, useRef, useState } from "react";
+import { memo, useCallback, useEffect, useRef, useState } from "react";
 import { Handle, Position } from "@xyflow/react";
 import { BaseNode } from "../BaseNode";
 import { useCanvasStore } from "../../../hooks/useCanvasStore";
@@ -74,7 +74,9 @@ export const ImageGenNode = memo(function ImageGenNode({ id, selected, data }: P
   const [generating, setGenerating] = useState(false);
   const [uploading, setUploading] = useState(false);
   const [lightboxIndex, setLightboxIndex] = useState<number | null>(null);
-  const [paramsExpanded, setParamsExpanded] = useState(true);
+  // Auto-collapse params when node is deselected; expand when selected
+  const [paramsExpanded, setParamsExpanded] = useState(!!selected);
+  useEffect(() => { setParamsExpanded(!!selected); }, [selected]);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   // Determine if we are in batch/grid mode
