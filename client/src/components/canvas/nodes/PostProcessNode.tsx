@@ -1,9 +1,10 @@
-import { memo, useCallback, useMemo } from "react";
+import { memo, useCallback, useState, useMemo } from "react";
 import { BaseNode } from "../BaseNode";
 import { useCanvasStore } from "../../../hooks/useCanvasStore";
-import type { PostProcessNodeData, PostProcessOp } from "../../../../../shared/types";
+import type { PostProcessNodeData } from "../../../../../shared/types";
+import { POST_PROCESS_CATEGORIES, buildEffectPrompt, getEffectById } from "../../../lib/postProcessOptions";
 import { toast } from "sonner";
-import { Wand2, ZoomIn, Film, Sparkles, Loader2, Download, ArrowRight } from "lucide-react";
+import { Copy, ChevronDown, ChevronRight, X, Layers } from "lucide-react";
 
 interface Props {
   id: string;
@@ -19,158 +20,258 @@ interface Props {
 const accent = "oklch(0.65 0.18 190)";
 const accentA = (a: number) => `oklch(0.65 0.18 190 / ${a})`;
 
-const OPS: { value: PostProcessOp; label: string; icon: typeof ZoomIn; desc: string; inputType: "image" | "video" | "both" }[] = [
-  { value: "upscale2x",  label: "超分 2×",   icon: ZoomIn,    desc: "图像分辨率提升 2 倍",     inputType: "image" },
-  { value: "upscale4x",  label: "超分 4×",   icon: ZoomIn,    desc: "图像分辨率提升 4 倍",     inputType: "image" },
-  { value: "denoise",    label: "降噪",       icon: Sparkles,  desc: "去除图像/视频噪点",       inputType: "both" },
-  { value: "sharpen",    label: "锐化",       icon: Wand2,     desc: "增强边缘清晰度",         inputType: "both" },
-  { value: "fps2x",      label: "插帧 2×",   icon: Film,      desc: "视频帧率提升 2 倍",       inputType: "video" },
-];
-
 export const PostProcessNode = memo(function PostProcessNode({ id, selected, data }: Props) {
   const { updateNodeData } = useCanvasStore();
   const payload = data.payload;
-  const op = payload.operation ?? "upscale2x";
 
-  // Get upstream input from connected nodes
-  const inputUrl = useCanvasStore(useMemo(() => (s: ReturnType<typeof useCanvasStore.getState>) => {
-    const upstreamEdges = s.edges.filter(e => e.target === id);
-    for (const edge of upstreamEdges) {
-      const node = s.nodes.find(n => n.id === edge.source);
-      if (!node) continue;
-      const p = node.data.payload as Record<string, unknown>;
-      if (p.resultVideoUrl) return { url: p.resultVideoUrl as string, type: "video" as const };
-      if (p.imageUrl) return { url: p.imageUrl as string, type: "image" as const };
-      if (p.url && (node.data.nodeType === "asset" || node.data.nodeType === "audio")) {
-        const assetType = (p.type as string) ?? "image";
-        if (assetType === "image" || assetType === "video") return { url: p.url as string, type: assetType as "image" | "video" };
-      }
+  const selectedEffects: string[] = payload.selectedEffects ?? [];
+  const intensities: Record<string, number> = payload.effectIntensities ?? {};
+
+  const [activeCategory, setActiveCategory] = useState(POST_PROCESS_CATEGORIES[0].id);
+  const [showPromptPreview, setShowPromptPreview] = useState(false);
+
+  const activeCat = POST_PROCESS_CATEGORIES.find(c => c.id === activeCategory) ?? POST_PROCESS_CATEGORIES[0];
+
+  // Compute generated prompt
+  const generatedPrompt = useMemo(
+    () => buildEffectPrompt(selectedEffects, intensities),
+    [selectedEffects, intensities]
+  );
+
+  const toggleEffect = useCallback((effectId: string) => {
+    const effect = getEffectById(effectId);
+    if (!effect) return;
+
+    let next: string[];
+    if (selectedEffects.includes(effectId)) {
+      next = selectedEffects.filter(e => e !== effectId);
+    } else {
+      // Remove incompatible effects
+      const incompatible = effect.incompatibleWith ?? [];
+      next = [...selectedEffects.filter(e => !incompatible.includes(e)), effectId];
     }
-    return null;
-  }, [id]));
+    const newPrompt = buildEffectPrompt(next, intensities);
+    updateNodeData(id, { selectedEffects: next, generatedPrompt: newPrompt });
+  }, [id, selectedEffects, intensities, updateNodeData]);
 
-  const handleProcess = useCallback(() => {
-    if (!inputUrl) { toast.error("请先连接上游图像或视频节点"); return; }
-    const currentOp = OPS.find(o => o.value === op)!;
-    if (currentOp.inputType === "image" && inputUrl.type !== "image") {
-      toast.error("此操作仅支持图像输入"); return;
-    }
-    if (currentOp.inputType === "video" && inputUrl.type !== "video") {
-      toast.error("此操作仅支持视频输入"); return;
-    }
-    updateNodeData(id, { status: "processing", inputImageUrl: inputUrl.type === "image" ? inputUrl.url : undefined, inputVideoUrl: inputUrl.type === "video" ? inputUrl.url : undefined });
-    // Simulate processing (real implementation would call a backend API)
-    setTimeout(() => {
-      updateNodeData(id, { status: "done", outputUrl: inputUrl.url });
-      toast.success(`${currentOp.label}处理完成`);
-    }, 2000);
-  }, [id, inputUrl, op, updateNodeData]);
+  const setIntensity = useCallback((effectId: string, value: number) => {
+    const next = { ...intensities, [effectId]: value };
+    const newPrompt = buildEffectPrompt(selectedEffects, next);
+    updateNodeData(id, { effectIntensities: next, generatedPrompt: newPrompt });
+  }, [id, selectedEffects, intensities, updateNodeData]);
 
-  const handleDownload = () => {
-    if (!payload.outputUrl) return;
-    const a = document.createElement("a");
-    a.href = payload.outputUrl;
-    a.download = `processed-${op}-${Date.now()}.png`;
-    a.click();
-  };
+  const removeEffect = useCallback((effectId: string) => {
+    const next = selectedEffects.filter(e => e !== effectId);
+    const newPrompt = buildEffectPrompt(next, intensities);
+    updateNodeData(id, { selectedEffects: next, generatedPrompt: newPrompt });
+  }, [id, selectedEffects, intensities, updateNodeData]);
 
-  const selectedOp = OPS.find(o => o.value === op) ?? OPS[0];
-  const isProcessing = payload.status === "processing";
+  const copyPrompt = useCallback(() => {
+    if (!generatedPrompt) { toast.error("尚未选择任何效果"); return; }
+    navigator.clipboard.writeText(generatedPrompt);
+    toast.success("效果提示词已复制到剪贴板");
+  }, [generatedPrompt]);
+
+  const clearAll = useCallback(() => {
+    updateNodeData(id, { selectedEffects: [], generatedPrompt: "" });
+  }, [id, updateNodeData]);
 
   return (
-    <BaseNode id={id} selected={selected} nodeType="post_process" title={data.title} minHeight={200} resizable>
-      <div className="flex flex-col gap-3 p-3.5">
+    <BaseNode id={id} selected={selected} nodeType="post_process" title={data.title} minHeight={320} resizable>
+      <div className="flex flex-col nodrag" style={{ userSelect: "none" }}>
 
-        {/* Operation selector */}
-        <div className="flex flex-col gap-1">
-          <label style={{ fontSize: 10, fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.06em", color: "oklch(0.42 0.008 260)", marginBottom: 4, display: "block" }}>
-            处理操作
-          </label>
-          <div className="flex flex-wrap gap-1">
-            {OPS.map((o) => {
-              const Icon = o.icon;
+        {/* ── Category tab bar ── */}
+        <div
+          className="flex gap-0.5 px-2 py-1.5 overflow-x-auto"
+          style={{ borderBottom: `1px solid oklch(0.18 0.008 260)`, background: "oklch(0.10 0.006 260)" }}
+        >
+          {POST_PROCESS_CATEGORIES.map(cat => {
+            const active = cat.id === activeCategory;
+            const selectedCount = cat.effects.filter(e => selectedEffects.includes(e.id)).length;
+            return (
+              <button
+                key={cat.id}
+                onClick={() => setActiveCategory(cat.id)}
+                className="flex items-center gap-1 px-2 py-1 rounded-lg text-[10px] font-medium whitespace-nowrap transition-all flex-shrink-0"
+                style={{
+                  background: active ? `${cat.color}20` : "transparent",
+                  border: active ? `1px solid ${cat.color}45` : "1px solid transparent",
+                  color: active ? cat.color : "oklch(0.42 0.006 260)",
+                  position: "relative",
+                }}
+              >
+                <span style={{ fontSize: 12 }}>{cat.emoji}</span>
+                <span className="hidden sm:inline">{cat.label}</span>
+                {selectedCount > 0 && (
+                  <span
+                    style={{
+                      minWidth: 14, height: 14, borderRadius: 7, fontSize: 8, fontWeight: 700,
+                      background: cat.color, color: "oklch(0.98 0 0)",
+                      display: "flex", alignItems: "center", justifyContent: "center",
+                      padding: "0 3px",
+                    }}
+                  >
+                    {selectedCount}
+                  </span>
+                )}
+              </button>
+            );
+          })}
+        </div>
+
+        {/* ── Effect grid for active category ── */}
+        <div className="p-2.5" style={{ borderBottom: "1px solid oklch(0.16 0.007 260)" }}>
+          <div className="grid gap-1.5" style={{ gridTemplateColumns: "1fr 1fr" }}>
+            {activeCat.effects.map(effect => {
+              const isSelected = selectedEffects.includes(effect.id);
+              const catColor = activeCat.color;
+              const intensity = intensities[effect.id] ?? 0.6;
               return (
-                <button
-                  key={o.value}
-                  onClick={() => updateNodeData(id, { operation: o.value, status: "idle", outputUrl: undefined })}
-                  className="nodrag flex items-center gap-1 px-2 py-1 rounded-md text-[10px] transition-all"
-                  style={{
-                    background: op === o.value ? accentA(0.15) : "oklch(0.09 0.006 260)",
-                    border: `1px solid ${op === o.value ? accentA(0.40) : "oklch(0.20 0.008 260)"}`,
-                    color: op === o.value ? accent : "oklch(0.50 0.008 260)",
-                    fontWeight: op === o.value ? 600 : 400,
-                    cursor: "pointer",
-                  }}
-                  title={o.desc}
-                >
-                  <Icon style={{ width: 10, height: 10 }} />
-                  {o.label}
-                </button>
+                <div key={effect.id} className="flex flex-col gap-1">
+                  <button
+                    onClick={() => toggleEffect(effect.id)}
+                    className="flex items-center gap-1.5 px-2 py-1.5 rounded-lg text-left transition-all"
+                    style={{
+                      background: isSelected ? `${catColor}18` : "oklch(0.09 0.005 260)",
+                      border: isSelected ? `1.5px solid ${catColor}50` : "1px solid oklch(0.18 0.007 260)",
+                      color: isSelected ? catColor : "oklch(0.55 0.008 260)",
+                      cursor: "pointer",
+                    }}
+                    title={effect.description}
+                  >
+                    <span style={{ fontSize: 13, flexShrink: 0 }}>{effect.emoji}</span>
+                    <span style={{ fontSize: 10, fontWeight: isSelected ? 600 : 400, lineHeight: 1.3 }}>
+                      {effect.label}
+                    </span>
+                    {isSelected && (
+                      <div
+                        style={{
+                          marginLeft: "auto", width: 6, height: 6, borderRadius: "50%",
+                          background: catColor, flexShrink: 0,
+                        }}
+                      />
+                    )}
+                  </button>
+                  {/* Intensity slider — only for selected effects with hasIntensity */}
+                  {isSelected && effect.hasIntensity && (
+                    <div className="flex items-center gap-1.5 px-2">
+                      <span style={{ fontSize: 9, color: "oklch(0.42 0.006 260)", flexShrink: 0 }}>
+                        {effect.intensityLabel ?? "强度"}
+                      </span>
+                      <input
+                        type="range" min={0} max={1} step={0.05}
+                        value={intensity}
+                        onChange={e => setIntensity(effect.id, parseFloat(e.target.value))}
+                        className="flex-1"
+                        style={{ height: 3, accentColor: catColor }}
+                      />
+                      <span style={{ fontSize: 9, color: "oklch(0.40 0.006 260)", width: 24, textAlign: "right", flexShrink: 0 }}>
+                        {Math.round(intensity * 100)}%
+                      </span>
+                    </div>
+                  )}
+                </div>
               );
             })}
           </div>
-          <p style={{ fontSize: 10, color: "oklch(0.40 0.006 260)", marginTop: 2 }}>{selectedOp.desc}</p>
         </div>
 
-        {/* Input preview */}
-        <div
-          className="rounded-lg overflow-hidden flex-shrink-0"
-          style={{
-            height: 80,
-            background: "oklch(0.09 0.006 260)",
-            border: `1px solid ${inputUrl ? accentA(0.25) : "oklch(0.18 0.008 260)"}`,
-            display: "flex", alignItems: "center", justifyContent: "center",
-          }}
-        >
-          {inputUrl ? (
-            inputUrl.type === "image" ? (
-              <img src={payload.outputUrl ?? inputUrl.url} alt="input" className="w-full h-full object-cover" />
-            ) : (
-              <video src={payload.outputUrl ?? inputUrl.url} className="w-full nodrag" style={{ maxHeight: 80, display: "block" }} />
-            )
+        {/* ── Selected effects chips ── */}
+        <div className="px-2.5 py-2" style={{ borderBottom: "1px solid oklch(0.16 0.007 260)" }}>
+          <div className="flex items-center justify-between mb-1.5">
+            <span style={{ fontSize: 9, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.06em", color: "oklch(0.38 0.006 260)" }}>
+              已选效果 {selectedEffects.length > 0 ? `(${selectedEffects.length})` : ""}
+            </span>
+            {selectedEffects.length > 0 && (
+              <button
+                onClick={clearAll}
+                style={{ fontSize: 9, color: "oklch(0.45 0.012 25)", cursor: "pointer", background: "none", border: "none" }}
+              >
+                清除全部
+              </button>
+            )}
+          </div>
+          {selectedEffects.length === 0 ? (
+            <div style={{ fontSize: 10, color: "oklch(0.30 0.006 260)", fontStyle: "italic", textAlign: "center", padding: "6px 0" }}>
+              点击上方效果开始选择 →
+            </div>
           ) : (
-            <div className="flex flex-col items-center gap-1.5">
-              <ArrowRight style={{ width: 18, height: 18, color: "oklch(0.28 0.006 260)" }} />
-              <span style={{ fontSize: 10, color: "oklch(0.35 0.006 260)" }}>连接上游图像或视频</span>
+            <div className="flex flex-wrap gap-1">
+              {selectedEffects.map(eid => {
+                const effect = getEffectById(eid);
+                if (!effect) return null;
+                const cat = POST_PROCESS_CATEGORIES.find(c => c.effects.some(e => e.id === eid));
+                return (
+                  <span
+                    key={eid}
+                    className="flex items-center gap-1 px-1.5 py-0.5 rounded-full text-[9px]"
+                    style={{
+                      background: cat ? `${cat.color}18` : accentA(0.12),
+                      border: `1px solid ${cat ? `${cat.color}35` : accentA(0.30)}`,
+                      color: cat?.color ?? accent,
+                    }}
+                  >
+                    <span>{effect.emoji}</span>
+                    {effect.label}
+                    <button
+                      onClick={() => removeEffect(eid)}
+                      style={{ lineHeight: 0, background: "none", border: "none", cursor: "pointer", color: "inherit", opacity: 0.7, marginLeft: 1 }}
+                    >
+                      <X style={{ width: 8, height: 8 }} />
+                    </button>
+                  </span>
+                );
+              })}
             </div>
           )}
         </div>
 
-        {/* Process button */}
-        <div className="flex gap-1.5">
+        {/* ── Prompt preview ── */}
+        <div className="px-2.5 py-2">
           <button
-            onClick={handleProcess}
-            disabled={isProcessing || !inputUrl}
-            className="nodrag flex-1 flex items-center justify-center gap-1.5 py-2 rounded-lg text-xs font-medium transition-all"
-            style={{
-              background: isProcessing || !inputUrl ? "oklch(0.13 0.007 260)" : accentA(0.15),
-              borderWidth: 1, borderStyle: "solid",
-              borderColor: isProcessing || !inputUrl ? "oklch(0.22 0.008 260)" : accentA(0.4),
-              color: isProcessing || !inputUrl ? "oklch(0.38 0.006 260)" : accent,
-              cursor: isProcessing || !inputUrl ? "not-allowed" : "pointer",
-            }}
+            onClick={() => setShowPromptPreview(p => !p)}
+            className="flex items-center gap-1.5 w-full"
+            style={{ background: "none", border: "none", cursor: "pointer", color: "oklch(0.42 0.006 260)", textAlign: "left" }}
           >
-            {isProcessing ? <Loader2 style={{ width: 12, height: 12 }} className="animate-spin" /> : <Wand2 style={{ width: 12, height: 12 }} />}
-            {isProcessing ? "处理中..." : `执行${selectedOp.label}`}
+            {showPromptPreview ? <ChevronDown style={{ width: 10, height: 10 }} /> : <ChevronRight style={{ width: 10, height: 10 }} />}
+            <span style={{ fontSize: 9, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.06em" }}>
+              效果提示词预览
+            </span>
+            {generatedPrompt && (
+              <Layers style={{ width: 9, height: 9, color: accent, marginLeft: "auto" }} />
+            )}
           </button>
-          {payload.outputUrl && payload.status === "done" && (
-            <button
-              onClick={handleDownload}
-              className="nodrag w-8 h-8 rounded-lg flex items-center justify-center transition-all flex-shrink-0"
-              style={{ background: accentA(0.10), border: `1px solid ${accentA(0.30)}`, color: accent, cursor: "pointer" }}
-              title="下载结果"
-            >
-              <Download style={{ width: 13, height: 13 }} />
-            </button>
+
+          {showPromptPreview && (
+            <div className="mt-1.5 flex flex-col gap-1.5">
+              <div
+                className="rounded-lg p-2"
+                style={{ background: "oklch(0.09 0.006 260)", border: accentA(0.20) + " 1px solid", minHeight: 40 }}
+              >
+                <p style={{ fontSize: 10, color: generatedPrompt ? "oklch(0.65 0.008 260)" : "oklch(0.30 0.006 260)", lineHeight: 1.5, fontFamily: "'JetBrains Mono', monospace" }}>
+                  {generatedPrompt || "— 选择效果后自动生成 —"}
+                </p>
+              </div>
+              {generatedPrompt && (
+                <div className="flex gap-1.5">
+                  <button
+                    onClick={copyPrompt}
+                    className="flex-1 flex items-center justify-center gap-1.5 py-1.5 rounded-lg text-[10px] font-medium transition-all"
+                    style={{ background: accentA(0.12), border: `1px solid ${accentA(0.35)}`, color: accent, cursor: "pointer" }}
+                  >
+                    <Copy style={{ width: 10, height: 10 }} />
+                    复制效果词
+                  </button>
+                  <div
+                    style={{ fontSize: 9, color: "oklch(0.35 0.006 260)", display: "flex", alignItems: "center", gap: 3, background: accentA(0.06), border: `1px solid ${accentA(0.15)}`, borderRadius: 8, padding: "0 8px" }}
+                  >
+                    🔗 连接视频节点自动生效
+                  </div>
+                </div>
+              )}
+            </div>
           )}
         </div>
-
-        {payload.status === "done" && (
-          <p style={{ fontSize: 10, color: "oklch(0.60 0.15 155)", textAlign: "center" }}>✓ 处理完成</p>
-        )}
-        {payload.status === "failed" && payload.errorMessage && (
-          <p style={{ fontSize: 10, color: "oklch(0.60 0.18 25)", textAlign: "center" }}>{payload.errorMessage}</p>
-        )}
       </div>
     </BaseNode>
   );

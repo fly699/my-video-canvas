@@ -314,20 +314,20 @@ button:active:not(:disabled) {
   r: 0.8 !important;
 }
 
-/* Edges — thin and quiet by default */
+/* Edges — visible but not overwhelming */
 .react-flow__edge-path {
-  stroke: oklch(0.28 0.009 260);
-  stroke-width: 1.5;
+  stroke: oklch(0.32 0.010 260);
+  stroke-width: 2;
   transition: stroke 150ms ease, stroke-width 150ms ease, filter 150ms ease, opacity 150ms ease;
 }
 .react-flow__edge:hover .react-flow__edge-path {
-  stroke: oklch(0.50 0.012 260);
-  stroke-width: 2;
+  stroke: oklch(0.55 0.012 260);
+  stroke-width: 2.5;
 }
 .react-flow__edge.selected .react-flow__edge-path {
   stroke: oklch(0.68 0.22 285);
-  stroke-width: 2;
-  filter: drop-shadow(0 0 4px oklch(0.68 0.22 285 / 0.45));
+  stroke-width: 3;
+  filter: drop-shadow(0 0 5px oklch(0.68 0.22 285 / 0.50));
 }
 .react-flow__edge-interaction {
   stroke-width: 24;
@@ -337,9 +337,9 @@ button:active:not(:disabled) {
 /* Connection line — dashed brand color */
 .react-flow__connectionline path {
   stroke: oklch(0.68 0.22 285) !important;
-  stroke-width: 1.5 !important;
-  stroke-dasharray: 6 4 !important;
-  opacity: 0.8 !important;
+  stroke-width: 2.5 !important;
+  stroke-dasharray: 7 5 !important;
+  opacity: 0.9 !important;
 }
 
 /* Handles — managed via inline styles in BaseNode; CSS fallback */
@@ -351,9 +351,27 @@ button:active:not(:disabled) {
 .react-flow__handle.connectingto {
   border-color: oklch(0.68 0.22 285) !important;
   background: oklch(0.68 0.22 285) !important;
-  box-shadow: 0 0 0 4px oklch(0.68 0.22 285 / 0.22) !important;
-  transform: scale(1.5) !important;
+  box-shadow: 0 0 0 5px oklch(0.68 0.22 285 / 0.28) !important;
+  transform: scale(1.6) !important;
   opacity: 1 !important;
+}
+
+/* Valid connection target — green glow */
+.react-flow__handle.valid {
+  background: oklch(0.65 0.22 142) !important;
+  border-color: oklch(0.65 0.22 142) !important;
+  box-shadow: 0 0 0 5px oklch(0.65 0.22 142 / 0.30) !important;
+  transform: scale(1.7) !important;
+  opacity: 1 !important;
+}
+
+/* Invalid connection target — dim and shrink */
+.react-flow__handle.invalid {
+  background: oklch(0.30 0.008 260) !important;
+  border-color: oklch(0.25 0.008 260) !important;
+  box-shadow: none !important;
+  transform: scale(0.65) !important;
+  opacity: 0.25 !important;
 }
 
 /* Hide default ReactFlow controls — we use custom ones */

@@ -11,7 +11,9 @@ export type NodeType =
   | "note"
   | "audio"
   | "post_process"
-  | "group";
+  | "group"
+  | "character"
+  | "clip";
 
 export const VIDEO_PROVIDERS = [
   "mock",
@@ -113,15 +115,21 @@ export interface ImageGenNodeData {
   imageUrl?: string;
   imageStorageKey?: string;
   model?: ImageGenModel;
+  // Poyo image params
+  poyoQuality?: "low" | "medium" | "high";
   // Soul Standard specific params
   widthAndHeight?: string;
   soulQuality?: "720p" | "1080p";
   batchSize?: number;
   seed?: number;
   enhancePrompt?: boolean;
-  // Reve specific params
+  // Reve / Seedream v4 / Flux Pro aspect ratio
   reveAspectRatio?: string;
   reveResolution?: "720p" | "1080p";
+  // Flux Pro Kontext specific params
+  fluxGuidanceScale?: number;
+  fluxSeed?: number;
+  fluxNumImages?: number;
   // Batch generation results
   imageUrls?: string[]; // multiple generated images (Soul batchSize=4, etc.)
 }
@@ -131,22 +139,64 @@ export interface NoteNodeData {
   color?: string;
 }
 
-export type AudioSource = "upload" | "tts";
+export type AudioCategory = "upload" | "music" | "dubbing" | "sfx";
+export type AudioSource = "upload" | "tts"; // legacy compat
 export interface AudioNodeData {
+  audioCategory?: AudioCategory;
+  // Shared / upload
   name?: string;
   url?: string;
   storageKey?: string;
   duration?: number;
-  source: AudioSource;
-  ttsText?: string;
-  ttsVoice?: string;
   mimeType?: string;
   size?: number;
+  // AI model selection (per category)
+  aiModel?: string;
+  // Music (配乐)
+  musicPrompt?: string;
+  musicDuration?: number;
+  musicStyle?: string;
+  // Dubbing / TTS (配音)
+  ttsText?: string;
+  ttsVoice?: string;
+  ttsSpeed?: number;
+  // SFX (音效)
+  sfxPrompt?: string;
+  sfxDuration?: number;
+  // Legacy compat
+  source?: AudioSource;
+}
+
+export type CharacterKind = "person" | "scene";
+export interface CharacterNodeData {
+  characterKind?: CharacterKind;
+  // Person (人物)
+  name?: string;
+  role?: string;
+  gender?: string;
+  age?: string;
+  appearance?: string;
+  personality?: string;
+  // Scene (场景)
+  sceneName?: string;
+  locationType?: string;
+  sceneDescription?: string;
+  atmosphere?: string;
+  timeOfDay?: string;
+  // Shared
+  referenceImageUrl?: string;
+  referenceStorageKey?: string;
+  notes?: string;
 }
 
 export type PostProcessOp = "upscale2x" | "upscale4x" | "denoise" | "sharpen" | "fps2x";
 export interface PostProcessNodeData {
-  operation: PostProcessOp;
+  // New: rich effect selection
+  selectedEffects?: string[];
+  effectIntensities?: Record<string, number>;
+  generatedPrompt?: string; // auto-generated English prompt from selected effects
+  // Legacy: simple operation mode (keep for compat)
+  operation?: PostProcessOp;
   inputImageUrl?: string;
   inputVideoUrl?: string;
   outputUrl?: string;
@@ -161,6 +211,25 @@ export interface GroupNodeData {
   childIds?: string[];
 }
 
+export interface ClipNodeData {
+  // Source (auto-detected from connected nodes)
+  inputVideoUrl?: string;
+  inputAudioUrl?: string;
+  sourceDuration?: number;   // total duration of the source video (seconds)
+  // Trim points
+  startTime?: number;        // seconds, default 0
+  endTime?: number;          // seconds, default = sourceDuration
+  // Speed
+  speed?: number;            // 0.25-4.0, default 1.0
+  // Audio mix
+  audioVolume?: number;      // 0.0-2.0, default 1.0
+  // Output
+  outputUrl?: string;
+  outputDuration?: number;
+  status?: "idle" | "processing" | "done" | "failed";
+  errorMessage?: string;
+}
+
 export type NodeData =
   | ScriptNodeData
   | StoryboardNodeData
@@ -172,7 +241,9 @@ export type NodeData =
   | NoteNodeData
   | AudioNodeData
   | PostProcessNodeData
-  | GroupNodeData;
+  | GroupNodeData
+  | CharacterNodeData
+  | ClipNodeData;
 
 // ── Canvas Node ───────────────────────────────────────────────────────────────
 

@@ -4,7 +4,7 @@ import { useCanvasStore } from "../../../hooks/useCanvasStore";
 import type { StoryboardNodeData } from "../../../../../shared/types";
 import { trpc } from "@/lib/trpc";
 import { toast } from "sonner";
-import { Sparkles, ImageIcon, Loader2, RefreshCw, ChevronDown, Upload, X, Wand2, History } from "lucide-react";
+import { Sparkles, ImageIcon, Loader2, RefreshCw, ChevronDown, Upload, X, Wand2, History, Languages } from "lucide-react";
 import { IMAGE_MODELS, type ImageModelId } from "@/lib/models";
 import { makeImageProxyFallback } from "@/lib/utils";
 
@@ -102,9 +102,9 @@ export const StoryboardNode = memo(function StoryboardNode({ id, selected, data 
 
   // AI prompt expansion
   const [expandingPrompt, setExpandingPrompt] = useState(false);
-  const aiExpandMutation = trpc.aiChat.sendMessage.useMutation({
+  const aiExpandMutation = trpc.aiEnhance.enhance.useMutation({
     onSuccess: (result) => {
-      updateNodeData(id, { promptText: result.content });
+      updateNodeData(id, { promptText: result.result });
       setExpandingPrompt(false);
       toast.success("提示词已扩写");
     },
@@ -114,16 +114,37 @@ export const StoryboardNode = memo(function StoryboardNode({ id, selected, data 
     },
   });
 
+  const [expandingDesc, setExpandingDesc] = useState(false);
+  const aiExpandDescMutation = trpc.aiEnhance.enhance.useMutation({
+    onSuccess: (result) => {
+      updateNodeData(id, { description: result.result });
+      setExpandingDesc(false);
+      toast.success("场景描述已扩写");
+    },
+    onError: (err) => {
+      setExpandingDesc(false);
+      toast.error("AI 扩写失败：" + err.message);
+    },
+  });
+
+  const [translating, setTranslating] = useState(false);
+  const aiTranslateMutation = trpc.aiEnhance.enhance.useMutation({
+    onSuccess: (result) => {
+      updateNodeData(id, { promptText: result.result });
+      setTranslating(false);
+      toast.success("已翻译为英文提示词");
+    },
+    onError: (err) => {
+      setTranslating(false);
+      toast.error("翻译失败：" + err.message);
+    },
+  });
+
   const handleExpandPrompt = useCallback(() => {
     if (!payload.description?.trim()) { toast.error("请先填写场景描述"); return; }
     setExpandingPrompt(true);
-    aiExpandMutation.mutate({
-      nodeId: id,
-      projectId: data.projectId,
-      message: `请将以下分镜描述扩写为详细的图像生成英文提示词（Stable Diffusion格式，100词以内）：${payload.description}`,
-      systemPrompt: "You are a professional image prompt engineer. Respond only with the English prompt text, no explanations or extra formatting.",
-    });
-  }, [id, data.projectId, payload.description, aiExpandMutation]);
+    aiExpandMutation.mutate({ text: payload.description, mode: "storyboard_prompt" });
+  }, [payload.description, aiExpandMutation]);
 
   const handleChange = useCallback(
     (field: keyof StoryboardNodeData, value: string | number | undefined) => {
@@ -345,6 +366,26 @@ export const StoryboardNode = memo(function StoryboardNode({ id, selected, data 
           onFocus={onFocus}
           onBlur={onBlur}
         />
+        <div className="flex items-center gap-1 mt-1">
+          <button
+            onClick={() => {
+              if (!payload.description?.trim()) { toast.error("请先填写场景描述"); return; }
+              setExpandingDesc(true);
+              aiExpandDescMutation.mutate({ text: payload.description, mode: "expand" });
+            }}
+            disabled={expandingDesc}
+            className="nodrag flex items-center gap-1 px-1.5 py-0.5 rounded-md text-[9px] font-medium transition-all"
+            style={{
+              background: expandingDesc ? "oklch(0.13 0.007 260)" : "oklch(0.65 0.20 160 / 0.10)",
+              border: `1px solid ${expandingDesc ? "oklch(0.20 0.008 260)" : "oklch(0.65 0.20 160 / 0.35)"}`,
+              color: expandingDesc ? "oklch(0.38 0.006 260)" : "oklch(0.65 0.20 160)",
+              cursor: expandingDesc ? "not-allowed" : "pointer",
+            }}
+          >
+            {expandingDesc ? <Loader2 className="w-2.5 h-2.5 animate-spin" /> : <Sparkles className="w-2.5 h-2.5" />}
+            AI 扩写描述
+          </button>
+        </div>
 
         {/* ── Prompt ── */}
         <div className="flex flex-col gap-1">
@@ -390,6 +431,25 @@ export const StoryboardNode = memo(function StoryboardNode({ id, selected, data 
           >
             {expandingPrompt ? <Loader2 className="w-3 h-3 animate-spin" /> : <Wand2 className="w-3 h-3" />}
             {expandingPrompt ? "AI 扩写中..." : "✨ AI 扩写提示词"}
+          </button>
+          <button
+            onClick={() => {
+              const text = payload.promptText?.trim() || payload.description?.trim();
+              if (!text) { toast.error("请先填写内容"); return; }
+              setTranslating(true);
+              aiTranslateMutation.mutate({ text, mode: "translate_en" });
+            }}
+            disabled={translating}
+            className="nodrag flex items-center gap-1 px-1.5 py-0.5 rounded-md text-[9px] font-medium transition-all"
+            style={{
+              background: translating ? "oklch(0.13 0.007 260)" : "oklch(0.68 0.22 300 / 0.10)",
+              border: `1px solid ${translating ? "oklch(0.20 0.008 260)" : "oklch(0.68 0.22 300 / 0.35)"}`,
+              color: translating ? "oklch(0.38 0.006 260)" : "oklch(0.72 0.18 300)",
+              cursor: translating ? "not-allowed" : "pointer",
+            }}
+          >
+            {translating ? <Loader2 className="w-2.5 h-2.5 animate-spin" /> : <Languages className="w-2.5 h-2.5" />}
+            翻译英文
           </button>
         </div>
 

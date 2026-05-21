@@ -9,6 +9,7 @@ import {
   ReactFlowProvider,
   SelectionMode,
   PanOnScrollMode,
+  type Connection,
 } from "@xyflow/react";
 import "@xyflow/react/dist/style.css";
 import { useCanvasStore, type CanvasNode, type CanvasEdge } from "../hooks/useCanvasStore";
@@ -23,6 +24,8 @@ import { TemplatePanel } from "../components/canvas/TemplatePanel";
 import { NodeSearch } from "../components/canvas/NodeSearch";
 import { PresentationMode } from "../components/canvas/PresentationMode";
 import { FilmstripPanel } from "../components/canvas/FilmstripPanel";
+import { isConnectionValid } from "../lib/connectionRules";
+import { BeginnerGuide, ConnectionHintsPanel } from "../components/canvas/BeginnerGuide";
 import { trpc } from "@/lib/trpc";
 import { useAuth } from "@/_core/hooks/useAuth";
 import { useIsMobile } from "@/hooks/useMobile";
@@ -190,6 +193,8 @@ function CanvasInner({ projectId }: { projectId: number }) {
   const [showFilmstrip, setShowFilmstrip] = useState(false);
   const [globalAspectRatio, setGlobalAspectRatio] = useState<string | null>(null);
   const [showRatioPicker, setShowRatioPicker] = useState(false);
+  const [showConnectionHints, setShowConnectionHints] = useState(false);
+  const [connectingFromType, setConnectingFromType] = useState<NodeType | null>(null);
 
   // Workflow runner
   const { runState, runWorkflow } = useWorkflowRunner();
@@ -372,6 +377,25 @@ function CanvasInner({ projectId }: { projectId: number }) {
       toast.info(`纵横比锁定为 ${ratio}，新建节点将自动继承`);
     }
   }, [batchUpdateNodeData]);
+
+  const isValidConnectionFn = useCallback((connection: Connection | CanvasEdge) => {
+    if (!connection.source || !connection.target || connection.source === connection.target) return false;
+    const sourceNode = nodes.find(n => n.id === connection.source);
+    const targetNode = nodes.find(n => n.id === connection.target);
+    if (!sourceNode || !targetNode) return true;
+    return isConnectionValid(sourceNode.data.nodeType, targetNode.data.nodeType);
+  }, [nodes]);
+
+  const handleConnectStart = useCallback((_: unknown, params: { nodeId: string | null; handleType: string | null }) => {
+    if (params.nodeId) {
+      const node = nodes.find(n => n.id === params.nodeId);
+      if (node) setConnectingFromType(node.data.nodeType);
+    }
+  }, [nodes]);
+
+  const handleConnectEnd = useCallback(() => {
+    setConnectingFromType(null);
+  }, []);
 
   // ── Export ──────────────────────────────────────────────────────────────────
   const handleExport = () => {
@@ -1038,6 +1062,10 @@ function CanvasInner({ projectId }: { projectId: number }) {
             multiSelectionKeyCode="Shift"
             proOptions={{ hideAttribution: true }}
             defaultEdgeOptions={{ type: "custom", animated: false }}
+            isValidConnection={isValidConnectionFn}
+            onConnectStart={handleConnectStart}
+            onConnectEnd={handleConnectEnd}
+            connectionRadius={35}
           >
             <Background
               variant={BackgroundVariant.Dots}
@@ -1059,6 +1087,13 @@ function CanvasInner({ projectId }: { projectId: number }) {
             />
           </ReactFlow>
           </WorkflowRunProvider>
+
+          <ConnectionHintsPanel
+            visible={showConnectionHints}
+            selectedNodeType={connectingFromType}
+            onClose={() => setShowConnectionHints(false)}
+          />
+          <BeginnerGuide />
 
           {/* ── Bottom floating toolbar ── */}
           <div
@@ -1276,6 +1311,27 @@ function CanvasInner({ projectId }: { projectId: number }) {
                 </div>
               )}
             </div>
+
+            {/* Connection hints toggle */}
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <button
+                  onClick={() => setShowConnectionHints(h => !h)}
+                  style={{
+                    width: 32, height: 32, borderRadius: 10,
+                    background: showConnectionHints ? "oklch(0.68 0.22 285 / 0.15)" : "transparent",
+                    border: showConnectionHints ? "1px solid oklch(0.68 0.22 285 / 0.35)" : "1px solid transparent",
+                    color: showConnectionHints ? "oklch(0.78 0.18 285)" : "oklch(0.48 0.008 260)",
+                    display: "flex", alignItems: "center", justifyContent: "center",
+                    cursor: "pointer",
+                    transition: "all 150ms ease",
+                  }}
+                >
+                  <span style={{ fontSize: 14 }}>🔗</span>
+                </button>
+              </TooltipTrigger>
+              <TooltipContent side="top" className="text-xs">连线指引</TooltipContent>
+            </Tooltip>
           </div>
 
           {/* Filmstrip panel */}

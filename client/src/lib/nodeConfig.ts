@@ -1,11 +1,11 @@
 import type { NodeType } from "../../../shared/types";
 import {
   FileText, Image, Wand2, Sparkles, Paperclip, Video, Bot, StickyNote,
-  Music, Layers, Folder,
+  Music, Layers, Folder, Users, Scissors,
 } from "lucide-react";
 
 export const NODE_ICONS: Record<string, React.ComponentType<{ className?: string; style?: React.CSSProperties }>> = {
-  FileText, Image, Wand2, Sparkles, Paperclip, Video, Bot, StickyNote, Music, Layers, Folder,
+  FileText, Image, Wand2, Sparkles, Paperclip, Video, Bot, StickyNote, Music, Layers, Folder, Users, Scissors,
 };
 
 export interface NodeConfig {
@@ -119,7 +119,7 @@ export const NODE_CONFIGS: Record<NodeType, NodeConfig> = {
     color: "oklch(0.65 0.18 190)",
     bgColor: "oklch(0.65 0.18 190 / 0.08)",
     borderColor: "oklch(0.65 0.18 190 / 0.4)",
-    defaultWidth: 300,
+    defaultWidth: 420,
     defaultTitle: "后处理",
   },
   group: {
@@ -132,6 +132,26 @@ export const NODE_CONFIGS: Record<NodeType, NodeConfig> = {
     defaultWidth: 500,
     defaultHeight: 400,
     defaultTitle: "分组",
+  },
+  character: {
+    type: "character",
+    label: "角色/场景",
+    icon: "Users",
+    color: "oklch(0.66 0.18 140)",
+    bgColor: "oklch(0.66 0.18 140 / 0.08)",
+    borderColor: "oklch(0.66 0.18 140 / 0.4)",
+    defaultWidth: 320,
+    defaultTitle: "角色",
+  },
+  clip: {
+    type: "clip",
+    label: "剪辑",
+    icon: "Scissors",
+    color: "oklch(0.68 0.20 55)",
+    bgColor: "oklch(0.68 0.20 55 / 0.08)",
+    borderColor: "oklch(0.68 0.20 55 / 0.4)",
+    defaultWidth: 400,
+    defaultTitle: "剪辑",
   },
 };
 

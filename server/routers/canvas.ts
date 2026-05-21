@@ -32,6 +32,8 @@ import { invokeLLM, extractTextContent } from "../_core/llm";
 import { generateImage } from "../_core/imageGeneration";
 import { isPoyoVideoProvider, submitPoyoVideo, checkPoyoVideoStatus } from "../_core/poyoVideo";
 import { isHiggsfieldVideoProvider, submitHiggsfieldVideo, checkHiggsfieldVideoStatus } from "../_core/higgsfield";
+import { submitAndPollPoyoMusic, type PoyoMusicModel } from "../_core/poyoAudio";
+import { trimVideo, getVideoDuration } from "../_core/videoEditor";
 import { VIDEO_PROVIDERS } from "../../shared/types";
 
 // ── Projects ──────────────────────────────────────────────────────────────────
@@ -454,6 +456,10 @@ export const imageGenRouter = router({
         // Reve specific params
         reveAspectRatio: z.string().optional(),
         reveResolution: z.enum(["720p", "1080p"]).optional(),
+        // Flux Pro Kontext extra params
+        fluxGuidanceScale: z.number().min(1).max(20).optional(),
+        fluxSeed: z.number().int().optional(),
+        fluxNumImages: z.number().int().min(1).max(4).optional(),
       })
     )
     .mutation(async ({ input }) => {
@@ -483,10 +489,16 @@ export const imageGenRouter = router({
           seed: input.seed,
           enhancePrompt: input.enhancePrompt,
         } : {}),
-        // Reve/Seedream v4/Flux Pro specific params passed through
+        // Reve/Seedream v4/Flux Pro aspect ratio
         ...(input.model === "hf_reve" || input.model === "hf_seedream_v4" || input.model === "hf_flux_pro" ? {
           reveAspectRatio: input.reveAspectRatio,
           ...(input.model === "hf_reve" ? { reveResolution: input.reveResolution } : {}),
+        } : {}),
+        // Flux Pro Kontext extra params
+        ...(input.model === "hf_flux_pro" ? {
+          fluxGuidanceScale: input.fluxGuidanceScale,
+          fluxSeed: input.fluxSeed,
+          fluxNumImages: input.fluxNumImages,
         } : {}),
       });
 
@@ -539,5 +551,98 @@ Each element must have these fields:
         throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "JSON 解析失败" });
       }
       return { scenes: scenes.slice(0, input.count) };
+    }),
+});
+
+// ── Audio Generation ──────────────────────────────────────────────────────────
+
+export const audioGenRouter = router({
+  generateMusic: protectedProcedure
+    .input(
+      z.object({
+        model: z.enum(["suno-v4.5", "suno-v5", "mureka", "minimax-music-02"]),
+        prompt: z.string().min(1),
+        style: z.string().optional(),
+        durationSeconds: z.number().int().min(10).max(480).optional(),
+        instrumental: z.boolean().optional(),
+        negativePrompt: z.string().optional(),
+      })
+    )
+    .mutation(async ({ input }) => {
+      const result = await submitAndPollPoyoMusic({
+        model: input.model as PoyoMusicModel,
+        prompt: input.prompt,
+        style: input.style,
+        durationSeconds: input.durationSeconds,
+        instrumental: input.instrumental,
+        negativePrompt: input.negativePrompt,
+      });
+      return { url: result.url, duration: result.duration };
+    }),
+});
+
+// ── Video Clip Editor ─────────────────────────────────────────────────────────
+export const clipRouter = router({
+  trimVideo: protectedProcedure
+    .input(
+      z.object({
+        inputUrl: z.string().url(),
+        startTime: z.number().min(0),
+        endTime: z.number().min(0),
+        speed: z.number().min(0.25).max(4.0).optional(),
+        audioUrl: z.string().optional(),
+        audioVolume: z.number().min(0).max(2.0).optional(),
+      })
+    )
+    .mutation(async ({ input }) => {
+      const result = await trimVideo(input);
+      return { url: result.url, duration: result.duration };
+    }),
+
+  getVideoDuration: protectedProcedure
+    .input(z.object({ url: z.string() }))
+    .query(async ({ input }) => {
+      const duration = await getVideoDuration(input.url);
+      return { duration };
+    }),
+});
+
+// ── AI Prompt Enhancement ─────────────────────────────────────────────────────
+export const aiEnhanceRouter = router({
+  enhance: protectedProcedure
+    .input(
+      z.object({
+        text: z.string().min(1).max(8000),
+        mode: z.enum(["expand", "translate_en", "polish", "storyboard_prompt", "translate_zh"]),
+      })
+    )
+    .mutation(async ({ input }) => {
+      const systemPrompts: Record<string, string> = {
+        expand: `You are a creative writing assistant specializing in AI video generation prompts.
+Expand the given text into a rich, detailed description with sensory details, atmosphere, lighting, composition, and cinematic qualities.
+Keep the expanded text concise (2-4 sentences). Respond in the same language as the input. Output ONLY the expanded text.`,
+        translate_en: `You are a professional translator specializing in AI image/video generation prompts.
+Translate the given text to English, optimizing it for AI generation models.
+Use vivid, descriptive, cinematic language. Output ONLY the English translation, nothing else.`,
+        translate_zh: `You are a professional translator.
+Translate the given text to Simplified Chinese.
+Output ONLY the Chinese translation, nothing else.`,
+        polish: `You are a professional screenwriter and script editor.
+Polish the given script text to improve clarity, pacing, narrative flow, and dramatic tension.
+Maintain the original story intent while enhancing the writing quality.
+Respond in the same language as the input. Output ONLY the polished text.`,
+        storyboard_prompt: `You are a cinematographer and storyboard artist.
+Convert the given scene description into a detailed visual prompt for AI video/image generation.
+Include: camera angle, lens type, lighting setup, composition, color palette, atmosphere, action.
+Output an optimized English prompt under 80 words. Output ONLY the prompt text.`,
+      };
+      const response = await invokeLLM({
+        messages: [
+          { role: "system" as const, content: systemPrompts[input.mode] },
+          { role: "user" as const, content: input.text },
+        ],
+        model: "gemini-2.5-flash",
+      });
+      return { result: extractTextContent(response).trim() };
     }),
 });
