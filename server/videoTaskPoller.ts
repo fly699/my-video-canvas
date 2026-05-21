@@ -154,7 +154,7 @@ async function pollMockTask(externalTaskId: string, createdAt: Date): Promise<Po
   if (elapsed > 15000) {
     return {
       status: "succeeded",
-      resultVideoUrl: "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/BigBuckBunny.mp4",
+      resultVideoUrl: "https://www.learningcontainer.com/wp-content/uploads/2020/05/sample-mp4-file.mp4",
     };
   }
   return { status: "processing" };

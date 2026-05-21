@@ -234,6 +234,12 @@ export async function updateVideoTask(id: number, data: Partial<InsertVideoTask>
   await db.update(videoTasks).set(data).where(eq(videoTasks.id, id));
 }
 
+export async function deleteVideoTask(id: number) {
+  const db = await getDb();
+  if (!db) throw new Error("DB unavailable");
+  await db.delete(videoTasks).where(eq(videoTasks.id, id));
+}
+
 export async function getPendingVideoTasks() {
   const db = await getDb();
   if (!db) return [];

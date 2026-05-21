@@ -4,24 +4,31 @@
  *
  * Usage: GET /api/video-proxy?url=<encoded-video-url>
  * Supports range requests for seek/scrub in <video> elements.
+ *
+ * Security: Only HTTPS URLs are allowed. Private/internal IPs are blocked.
  */
 import type { Express } from "express";
 
-const ALLOWED_HOSTS = [
-  "api.poyo.ai",
-  "cdn.poyo.ai",
-  "storage.poyo.ai",
-  "commondatastorage.googleapis.com",
-  "storage.googleapis.com",
-  "runwayml.com",
-  "p16-capcut-sign-sg.ibyteimg.com",
-  "p16-capcut-sign-va.ibyteimg.com",
+const BLOCKED_HOSTS = [
+  "localhost",
+  "127.0.0.1",
+  "0.0.0.0",
+  "::1",
+  "169.254.169.254", // AWS metadata
+  "metadata.google.internal",
 ];
 
 function isAllowedUrl(rawUrl: string): boolean {
   try {
     const u = new URL(rawUrl);
-    return ALLOWED_HOSTS.some((h) => u.hostname === h || u.hostname.endsWith(`.${h}`));
+    // Only allow HTTPS
+    if (u.protocol !== "https:") return false;
+    // Block internal/private hosts
+    const host = u.hostname.toLowerCase();
+    if (BLOCKED_HOSTS.some((b) => host === b || host.endsWith(`.${b}`))) return false;
+    // Block private IP ranges
+    if (/^10\.|^172\.(1[6-9]|2\d|3[01])\.|^192\.168\./.test(host)) return false;
+    return true;
   } catch {
     return false;
   }
@@ -44,13 +51,15 @@ export function registerVideoProxy(app: Express) {
     }
 
     if (!isAllowedUrl(decodedUrl)) {
-      res.status(403).send("URL not in allowed list");
+      res.status(403).send("URL not allowed");
       return;
     }
 
     try {
       const headers: Record<string, string> = {
-        "User-Agent": "Mozilla/5.0 (compatible; VideoProxy/1.0)",
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+        "Accept": "video/webm,video/mp4,video/*,*/*;q=0.9",
+        "Accept-Language": "en-US,en;q=0.9",
       };
 
       // Forward Range header for seek support
@@ -58,21 +67,22 @@ export function registerVideoProxy(app: Express) {
         headers["Range"] = req.headers.range;
       }
 
-      const upstream = await fetch(decodedUrl, { headers });
-
-      if (!upstream.ok && upstream.status !== 206) {
-        res.status(upstream.status).send(`Upstream error: ${upstream.statusText}`);
-        return;
-      }
+      const upstream = await fetch(decodedUrl, {
+        headers,
+        redirect: "follow",
+      });
 
       // Forward relevant response headers
       const forwardHeaders: Record<string, string> = {
         "Access-Control-Allow-Origin": "*",
-        "Cache-Control": "public, max-age=3600",
+        "Access-Control-Allow-Methods": "GET, HEAD, OPTIONS",
+        "Access-Control-Allow-Headers": "Range",
+        "Access-Control-Expose-Headers": "Content-Length, Content-Range, Accept-Ranges",
       };
 
       const contentType = upstream.headers.get("content-type");
       if (contentType) forwardHeaders["Content-Type"] = contentType;
+      else forwardHeaders["Content-Type"] = "video/mp4";
 
       const contentLength = upstream.headers.get("content-length");
       if (contentLength) forwardHeaders["Content-Length"] = contentLength;
@@ -82,6 +92,17 @@ export function registerVideoProxy(app: Express) {
 
       const acceptRanges = upstream.headers.get("accept-ranges");
       if (acceptRanges) forwardHeaders["Accept-Ranges"] = acceptRanges;
+      else forwardHeaders["Accept-Ranges"] = "bytes";
+
+      // Cache for 1 hour
+      forwardHeaders["Cache-Control"] = "public, max-age=3600";
+
+      // If upstream fails, return a helpful error but still with CORS headers
+      if (!upstream.ok && upstream.status !== 206) {
+        res.set(forwardHeaders);
+        res.status(upstream.status).send(`Upstream error: ${upstream.status} ${upstream.statusText}`);
+        return;
+      }
 
       res.writeHead(upstream.status, forwardHeaders);
 
@@ -95,7 +116,10 @@ export function registerVideoProxy(app: Express) {
       const pump = async () => {
         while (true) {
           const { done, value } = await reader.read();
-          if (done) { res.end(); break; }
+          if (done) {
+            res.end();
+            break;
+          }
           const canContinue = res.write(value);
           if (!canContinue) {
             await new Promise<void>((resolve) => res.once("drain", resolve));
@@ -106,6 +130,7 @@ export function registerVideoProxy(app: Express) {
     } catch (err) {
       console.error("[VideoProxy] error:", err);
       if (!res.headersSent) {
+        res.set("Access-Control-Allow-Origin", "*");
         res.status(502).send("Video proxy error");
       }
     }

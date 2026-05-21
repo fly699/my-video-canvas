@@ -62,6 +62,30 @@ export const VideoTaskNode = memo(function VideoTaskNode({ id, selected, data }:
     onError: (err) => toast.error("提交失败：" + err.message),
   });
 
+  const resetTaskMutation = trpc.videoTasks.reset.useMutation({
+    onSuccess: () => {
+      updateNodeData(id, {
+        status: "pending",
+        taskId: undefined,
+        externalTaskId: undefined,
+        resultVideoUrl: undefined,
+        errorMessage: undefined,
+      });
+      toast.success("已重置，可重新提交");
+    },
+    onError: (err) => {
+      // Even if DB delete fails (e.g. task already gone), reset local state
+      updateNodeData(id, {
+        status: "pending",
+        taskId: undefined,
+        externalTaskId: undefined,
+        resultVideoUrl: undefined,
+        errorMessage: undefined,
+      });
+      console.warn("Reset task DB error (ignored):", err.message);
+    },
+  });
+
   const pollQuery = trpc.videoTasks.poll.useQuery({ id: payload.taskId! }, { enabled: false, refetchInterval: false });
   // Keep a stable ref so the interval callback always calls the latest refetch
   const pollQueryRef = useRef(pollQuery);
@@ -110,13 +134,35 @@ export const VideoTaskNode = memo(function VideoTaskNode({ id, selected, data }:
     });
   };
 
+  const handleReset = () => {
+    if (payload.taskId) {
+      resetTaskMutation.mutate({ id: payload.taskId });
+    } else {
+      // No DB record yet, just reset local state
+      updateNodeData(id, {
+        status: "pending",
+        taskId: undefined,
+        externalTaskId: undefined,
+        resultVideoUrl: undefined,
+        errorMessage: undefined,
+      });
+    }
+  };
+
   const status = STATUS[payload.status] ?? STATUS.pending;
   const StatusIcon = status.icon;
-  const isLocked = payload.status === "processing" || payload.status === "succeeded";
+  // Only lock editing while actively processing
+  const isLocked = payload.status === "processing";
+  const isResettable = payload.status === "succeeded" || payload.status === "failed";
 
   const onFocusAccent = (e: React.FocusEvent<HTMLElement>) => { e.currentTarget.style.borderColor = `${accentColor.slice(0, -1)} / 0.6)`; };
   const onFocusMid    = (e: React.FocusEvent<HTMLElement>) => { e.currentTarget.style.borderColor = "oklch(0.40 0.008 260)"; };
   const onBlurDefault = (e: React.FocusEvent<HTMLElement>) => { e.currentTarget.style.borderColor = BORDER_DEFAULT; };
+
+  // Determine video proxy URL
+  const videoSrc = payload.resultVideoUrl?.startsWith("http")
+    ? `/api/video-proxy?url=${encodeURIComponent(payload.resultVideoUrl)}`
+    : payload.resultVideoUrl;
 
   return (
     <BaseNode id={id} selected={selected} nodeType="video_task" title={data.title} minHeight={240}>
@@ -150,7 +196,7 @@ export const VideoTaskNode = memo(function VideoTaskNode({ id, selected, data }:
         </div>
 
         {/* ── Result video ── */}
-        {payload.status === "succeeded" && payload.resultVideoUrl && (
+        {payload.status === "succeeded" && payload.resultVideoUrl && videoSrc && (
           <div
             className="rounded-lg overflow-hidden flex-shrink-0"
             style={{
@@ -160,11 +206,16 @@ export const VideoTaskNode = memo(function VideoTaskNode({ id, selected, data }:
             }}
           >
             <video
-              src={payload.resultVideoUrl?.startsWith("http") ? `/api/video-proxy?url=${encodeURIComponent(payload.resultVideoUrl)}` : payload.resultVideoUrl}
+              key={videoSrc}
+              src={videoSrc}
               controls
               className="w-full nodrag"
               style={{ maxHeight: 140, display: "block" }}
               preload="metadata"
+              onError={(e) => {
+                const target = e.currentTarget;
+                console.error("[VideoTaskNode] Video load error:", target.error?.message, "src:", target.src);
+              }}
             />
           </div>
         )}
@@ -250,42 +301,51 @@ export const VideoTaskNode = memo(function VideoTaskNode({ id, selected, data }:
 
         {/* ── Actions ── */}
         <div className="flex gap-1.5 mt-auto">
-          {payload.status === "failed" && (
+          {/* Reset button: show for both failed and succeeded states */}
+          {isResettable && (
             <button
-              onClick={() => updateNodeData(id, { status: "pending", errorMessage: undefined })}
+              onClick={handleReset}
+              disabled={resetTaskMutation.isPending}
               className="nodrag flex items-center justify-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-all"
               style={{
                 background: "oklch(0.14 0.007 260)",
                 borderWidth: 1,
                 borderStyle: "solid",
                 borderColor: "oklch(0.22 0.008 260)",
-                color: "oklch(0.60 0.008 260)",
+                color: resetTaskMutation.isPending ? "oklch(0.38 0.006 260)" : "oklch(0.60 0.008 260)",
+                cursor: resetTaskMutation.isPending ? "not-allowed" : "pointer",
               }}
-              onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.background = "oklch(0.18 0.008 260)"; }}
+              onMouseEnter={(e) => { if (!resetTaskMutation.isPending) (e.currentTarget as HTMLElement).style.background = "oklch(0.18 0.008 260)"; }}
               onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.background = "oklch(0.14 0.007 260)"; }}
+              title="重置后可修改参数重新生成"
             >
-              <RefreshCw className="w-3 h-3" />
+              {resetTaskMutation.isPending ? (
+                <Loader2 className="w-3 h-3 animate-spin" />
+              ) : (
+                <RefreshCw className="w-3 h-3" />
+              )}
               重置
             </button>
           )}
           <button
             onClick={handleSubmit}
-            disabled={isLocked || createTaskMutation.isPending}
+            disabled={isLocked || isResettable || createTaskMutation.isPending}
             className="nodrag flex-1 flex items-center justify-center gap-1.5 py-1.5 rounded-lg text-xs font-medium transition-all"
             style={{
-              background: isLocked || createTaskMutation.isPending
+              background: isLocked || isResettable || createTaskMutation.isPending
                 ? "oklch(0.13 0.007 260)"
                 : `${accentColor.slice(0, -1)} / 0.15)`,
               borderWidth: 1,
               borderStyle: "solid",
-              borderColor: isLocked || createTaskMutation.isPending
+              borderColor: isLocked || isResettable || createTaskMutation.isPending
                 ? BORDER_DEFAULT
                 : `${accentColor.slice(0, -1)} / 0.4)`,
-              color: isLocked || createTaskMutation.isPending
+              color: isLocked || isResettable || createTaskMutation.isPending
                 ? "oklch(0.38 0.006 260)"
                 : accentColor,
-              cursor: isLocked || createTaskMutation.isPending ? "not-allowed" : "pointer",
+              cursor: isLocked || isResettable || createTaskMutation.isPending ? "not-allowed" : "pointer",
             }}
+            title={isResettable ? "请先点击「重置」再重新提交" : ""}
           >
             {createTaskMutation.isPending || payload.status === "processing" ? (
               <Loader2 className="w-3 h-3 animate-spin" />

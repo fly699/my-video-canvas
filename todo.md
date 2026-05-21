@@ -94,3 +94,14 @@
 - [x] 视频播放：添加服务端视频代理 /api/video-proxy（解决 CORS/跨域问题）
 - [x] VideoTaskNode 和 PresentationMode：外部视频 URL 通过代理播放
 - [x] TypeScript 0 errors，26 Vitest 测试全部通过
+
+## Phase 12: 视频播放 & 重置修复（Round 2）
+- [x] 视频代理白名单改为 HTTPS 全域名允许（仅屏蔽内网 IP），修复跨域名视频被拒问题
+- [x] Mock 测试视频 URL 换为可访问的 learningcontainer.com 视频（原 Google Storage 已私有）
+- [x] 视频代理对上游 4xx 仍返回 CORS 头，避免浏览器 CORS 错误叠加
+- [x] 添加 deleteVideoTask DB 函数
+- [x] 添加 videoTasks.reset tRPC mutation（删除 DB 记录）
+- [x] VideoTaskNode 重置按钮在 succeeded 和 failed 状态均显示
+- [x] 重置后清空 taskId/resultVideoUrl/errorMessage，状态回到 pending
+- [x] 提交按钮在 succeeded 状态下禁用（需先重置才能重新提交）
+- [x] TypeScript 0 errors，26 Vitest 测试全部通过

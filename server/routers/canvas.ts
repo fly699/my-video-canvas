@@ -8,6 +8,7 @@ import {
   createProject,
   updateProject,
   deleteProject,
+  deleteVideoTask,
   getNodesByProject,
   upsertNode,
   deleteNode,
@@ -309,6 +310,14 @@ export const videoTasksRouter = router({
     .mutation(async ({ input }) => {
       const { id, ...data } = input;
       await updateVideoTask(id, data);
+      return { success: true };
+    }),
+
+  // Delete a task record so the node can be re-submitted
+  reset: protectedProcedure
+    .input(z.object({ id: z.number() }))
+    .mutation(async ({ input }) => {
+      await deleteVideoTask(input.id);
       return { success: true };
     }),
 });
