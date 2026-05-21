@@ -57,6 +57,13 @@
       "when": 1779378138366,
       "tag": "0007_safe_romulus",
       "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "5",
+      "when": 1779382363671,
+      "tag": "0008_cool_mordo",
+      "breakpoints": true
     }
   ]
 }
