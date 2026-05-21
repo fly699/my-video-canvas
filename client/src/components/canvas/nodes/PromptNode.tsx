@@ -5,7 +5,7 @@ import { useCanvasStore } from "../../../hooks/useCanvasStore";
 import type { PromptNodeData, ImageGenModel } from "../../../../../shared/types";
 import { trpc } from "@/lib/trpc";
 import { toast } from "sonner";
-import { Sparkles, Loader2, RefreshCw, ChevronDown, Upload, X, Grid2X2, Check } from "lucide-react";
+import { Sparkles, Loader2, RefreshCw, ChevronDown, Upload, X, Grid2X2, Check, Languages } from "lucide-react";
 import { makeImageProxyFallback } from "@/lib/utils";
 
 interface Props {
@@ -67,6 +67,33 @@ export const PromptNode = memo(function PromptNode({ id, selected, data }: Props
     onError: (err) => {
       setUploadingRef(false);
       toast.error("参考图上传失败：" + err.message);
+    },
+  });
+
+  const [expandingPrompt, setExpandingPrompt] = useState(false);
+  const [translating, setTranslating] = useState(false);
+
+  const aiExpandMutation = trpc.aiEnhance.enhance.useMutation({
+    onSuccess: (result) => {
+      updateNodeData(id, { positivePrompt: result.result });
+      setExpandingPrompt(false);
+      toast.success("提示词已扩写");
+    },
+    onError: (err) => {
+      setExpandingPrompt(false);
+      toast.error("扩写失败：" + err.message);
+    },
+  });
+
+  const aiTranslateMutation = trpc.aiEnhance.enhance.useMutation({
+    onSuccess: (result) => {
+      updateNodeData(id, { positivePrompt: result.result });
+      setTranslating(false);
+      toast.success("已翻译为英文");
+    },
+    onError: (err) => {
+      setTranslating(false);
+      toast.error("翻译失败：" + err.message);
     },
   });
 
@@ -230,6 +257,44 @@ export const PromptNode = memo(function PromptNode({ id, selected, data }: Props
             onFocus={onFocusAccent}
             onBlur={onBlurAccent}
           />
+          <div className="flex items-center gap-1 mt-1">
+            <button
+              onClick={() => {
+                if (!payload.positivePrompt?.trim()) { toast.error("请先填写提示词"); return; }
+                setExpandingPrompt(true);
+                aiExpandMutation.mutate({ text: payload.positivePrompt, mode: "expand" });
+              }}
+              disabled={expandingPrompt}
+              className="nodrag flex items-center gap-1 px-1.5 py-0.5 rounded-md text-[9px] font-medium transition-all"
+              style={{
+                background: expandingPrompt ? "oklch(0.13 0.007 260)" : "oklch(0.68 0.22 300 / 0.10)",
+                border: `1px solid ${expandingPrompt ? "oklch(0.20 0.008 260)" : "oklch(0.68 0.22 300 / 0.35)"}`,
+                color: expandingPrompt ? "oklch(0.38 0.006 260)" : "oklch(0.72 0.18 300)",
+                cursor: expandingPrompt ? "not-allowed" : "pointer",
+              }}
+            >
+              {expandingPrompt ? <Loader2 className="w-2.5 h-2.5 animate-spin" /> : <Sparkles className="w-2.5 h-2.5" />}
+              AI 扩写
+            </button>
+            <button
+              onClick={() => {
+                if (!payload.positivePrompt?.trim()) { toast.error("请先填写提示词"); return; }
+                setTranslating(true);
+                aiTranslateMutation.mutate({ text: payload.positivePrompt, mode: "translate_en" });
+              }}
+              disabled={translating}
+              className="nodrag flex items-center gap-1 px-1.5 py-0.5 rounded-md text-[9px] font-medium transition-all"
+              style={{
+                background: translating ? "oklch(0.13 0.007 260)" : "oklch(0.65 0.18 200 / 0.10)",
+                border: `1px solid ${translating ? "oklch(0.20 0.008 260)" : "oklch(0.65 0.18 200 / 0.35)"}`,
+                color: translating ? "oklch(0.38 0.006 260)" : "oklch(0.70 0.16 200)",
+                cursor: translating ? "not-allowed" : "pointer",
+              }}
+            >
+              {translating ? <Loader2 className="w-2.5 h-2.5 animate-spin" /> : <Languages className="w-2.5 h-2.5" />}
+              翻译英文
+            </button>
+          </div>
         </div>
 
         {/* Negative prompt */}
