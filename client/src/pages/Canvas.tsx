@@ -372,6 +372,14 @@ function CanvasInner({ projectId }: { projectId: number }) {
       if ((e.metaKey || e.ctrlKey) && e.key === "s") { e.preventDefault(); saveCanvas(); toast.success("已保存"); }
       if (e.key === "Escape") { setContextMenu(null); setShowNodePicker(false); }
 
+      // Duplicate selected node: Cmd+D / Ctrl+D
+      if ((e.metaKey || e.ctrlKey) && e.key === "d") {
+        e.preventDefault();
+        const selected = useCanvasStore.getState().nodes.filter(n => n.selected);
+        selected.forEach(n => duplicateNode(n.id));
+        if (selected.length > 0) toast.success(`已复制 ${selected.length} 个节点`, { duration: 1200 });
+      }
+
       // Undo: Cmd+Z / Ctrl+Z
       if (!isEditing && (e.metaKey || e.ctrlKey) && !e.shiftKey && e.key === "z") {
         e.preventDefault();
@@ -685,6 +693,7 @@ function CanvasInner({ projectId }: { projectId: number }) {
         {showNodePicker && (
           <div
             className="absolute bottom-20 left-1/2 z-30 rounded-2xl overflow-hidden animate-scale-in"
+            onClick={(e) => e.stopPropagation()}
             style={{
               transform: "translateX(-50%)",
               background: "oklch(0.11 0.007 260 / 0.97)",
@@ -778,6 +787,7 @@ function CanvasInner({ projectId }: { projectId: number }) {
           {/* ── Bottom floating toolbar ── */}
           <div
             className="absolute bottom-5 left-1/2 z-20 flex items-center gap-1.5 px-2.5 py-1.5 rounded-2xl"
+            onClick={(e) => e.stopPropagation()}
             style={{
               transform: "translateX(-50%)",
               background: "oklch(0.10 0.007 260 / 0.95)",

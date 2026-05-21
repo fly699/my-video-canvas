@@ -65,9 +65,10 @@ export function useAuth(options?: UseAuthOptions) {
     if (meQuery.isLoading || logoutMutation.isPending) return;
     if (state.user) return;
     if (typeof window === "undefined") return;
+    if (!redirectPath || redirectPath === "#") return;
     if (window.location.pathname === redirectPath) return;
 
-    window.location.href = redirectPath
+    window.location.href = redirectPath;
   }, [
     redirectOnUnauthenticated,
     redirectPath,
