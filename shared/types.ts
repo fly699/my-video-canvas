@@ -41,6 +41,7 @@ export interface StoryboardNodeData {
   lens?: string;
   colorTone?: string;
   imageModel?: ImageGenModel;
+  referenceImageUrl?: string;
 }
 
 export interface PromptNodeData {
@@ -51,6 +52,7 @@ export interface PromptNodeData {
   style?: string;
   aspectRatio?: string;
   imageModel?: ImageGenModel;
+  referenceImageUrl?: string;
 }
 
 export interface AssetNodeData {

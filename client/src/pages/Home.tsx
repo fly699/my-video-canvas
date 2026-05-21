@@ -410,7 +410,7 @@ export default function Home() {
             {[
               { icon: Layers, title: "节点式工作流", desc: "脚本、分镜、提示词节点自由编排，可视化连线" },
               { icon: Wand2, title: "AI 创作助手", desc: "内嵌大模型对话，扩写脚本、生成提示词、分镜图像一键生成" },
-              { icon: Film, title: "视频生成任务", desc: "对接 Runway、Kling 等主流 API，任务状态实时追踪" },
+              { icon: Film, title: "视频生成任务", desc: "对接 Higgsfield、Poyo 等主流 AI 视频 API，任务状态实时追踪" },
               { icon: Users, title: "多人实时协作", desc: "多用户同时编辑，节点变更时同步，协作者光标可见" },
             ].map((f) => (
               <div

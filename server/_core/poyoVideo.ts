@@ -31,13 +31,17 @@ export async function submitPoyoVideo(opts: {
 
   const input: Record<string, unknown> = {
     prompt: opts.prompt,
-    aspect_ratio: (opts.params?.aspectRatio as string) ?? "16:9",
+    // UI stores keys as-is (aspect_ratio, resolution, duration, camera_fixed)
+    aspect_ratio: (opts.params?.aspect_ratio as string) ?? "16:9",
     resolution: (opts.params?.resolution as string) ?? "720p",
     duration: (opts.params?.duration as number) ?? 5,
-    generate_audio: (opts.params?.generateAudio as boolean) ?? false,
     ...(opts.negativePrompt ? { negative_prompt: opts.negativePrompt } : {}),
     ...(opts.referenceImageUrl ? { reference_image_url: opts.referenceImageUrl } : {}),
   };
+  // camera_fixed is Seedance-specific (not supported by Veo)
+  if (opts.params?.camera_fixed !== undefined) {
+    input.camera_fixed = Boolean(opts.params.camera_fixed);
+  }
 
   const res = await fetch(`${POYO_BASE}/api/generate/submit`, {
     method: "POST",

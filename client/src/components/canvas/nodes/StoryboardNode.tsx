@@ -1,10 +1,10 @@
-import { memo, useCallback, useState } from "react";
+import { memo, useCallback, useRef, useState } from "react";
 import { BaseNode } from "../BaseNode";
 import { useCanvasStore } from "../../../hooks/useCanvasStore";
 import type { StoryboardNodeData } from "../../../../../shared/types";
 import { trpc } from "@/lib/trpc";
 import { toast } from "sonner";
-import { Sparkles, ImageIcon, Loader2, RefreshCw, ChevronDown } from "lucide-react";
+import { Sparkles, ImageIcon, Loader2, RefreshCw, ChevronDown, Upload, X } from "lucide-react";
 
 interface Props {
   id: string;
@@ -55,6 +55,35 @@ export const StoryboardNode = memo(function StoryboardNode({ id, selected, data 
   const model: ImageModelId = (payload.imageModel as ImageModelId) ?? "manus_forge";
   const setModel = (m: ImageModelId) => { updateNodeData(id, { imageModel: m }); };
 
+  const [uploadingRef, setUploadingRef] = useState(false);
+  const refInputRef = useRef<HTMLInputElement>(null);
+
+  const uploadRefMutation = trpc.upload.uploadImage.useMutation({
+    onSuccess: (result) => {
+      updateNodeData(id, { referenceImageUrl: result.url });
+      setUploadingRef(false);
+      toast.success("参考图已上传");
+    },
+    onError: (err) => {
+      setUploadingRef(false);
+      toast.error("参考图上传失败：" + err.message);
+    },
+  });
+
+  const handleRefUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    if (file.size > 16 * 1024 * 1024) { toast.error("文件不能超过 16MB"); return; }
+    setUploadingRef(true);
+    const reader = new FileReader();
+    reader.onload = () => {
+      const base64 = (reader.result as string).split(",")[1];
+      uploadRefMutation.mutate({ base64, mimeType: file.type, filename: file.name });
+    };
+    reader.readAsDataURL(file);
+    e.target.value = "";
+  };
+
   const genImageMutation = trpc.imageGen.generate.useMutation({
     onSuccess: (result) => {
       updateNodeData(id, { imageUrl: result.url });
@@ -81,6 +110,7 @@ export const StoryboardNode = memo(function StoryboardNode({ id, selected, data 
       prompt: payload.promptText,
       negativePrompt: payload.negativePrompt,
       style: payload.colorTone,
+      referenceImageUrl: payload.referenceImageUrl,
       model,
     });
   };
@@ -249,6 +279,43 @@ export const StoryboardNode = memo(function StoryboardNode({ id, selected, data 
             onFocus={onFocus}
             onBlur={onBlur}
           />
+        </div>
+
+        {/* ── Reference image upload ── */}
+        <div className="flex items-center gap-1.5">
+          <input
+            ref={refInputRef}
+            type="file"
+            accept="image/*"
+            className="hidden"
+            onChange={handleRefUpload}
+          />
+          <button
+            onClick={() => refInputRef.current?.click()}
+            disabled={uploadingRef}
+            className="nodrag flex items-center gap-1 px-2 py-1 rounded text-[10px] transition-all flex-1"
+            style={{
+              background: "oklch(0.09 0.006 260)",
+              borderWidth: 1,
+              borderStyle: "solid",
+              borderColor: "oklch(0.22 0.008 260)",
+              color: "oklch(0.55 0.006 260)",
+              cursor: uploadingRef ? "not-allowed" : "pointer",
+            }}
+          >
+            {uploadingRef ? <Loader2 className="w-3 h-3 animate-spin" /> : <Upload className="w-3 h-3" />}
+            {payload.referenceImageUrl ? "更换参考图" : "上传参考图"}
+          </button>
+          {payload.referenceImageUrl && (
+            <button
+              onClick={() => updateNodeData(id, { referenceImageUrl: undefined })}
+              className="nodrag p-1 rounded transition-all"
+              style={{ background: "oklch(0.09 0.006 260)", borderWidth: 1, borderStyle: "solid", borderColor: "oklch(0.22 0.008 260)", color: "oklch(0.50 0.006 260)" }}
+              title="清除参考图"
+            >
+              <X className="w-3 h-3" />
+            </button>
+          )}
         </div>
 
         {/* ── Model selector ── */}
