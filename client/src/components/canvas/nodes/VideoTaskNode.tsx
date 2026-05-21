@@ -340,7 +340,7 @@ export const VideoTaskNode = memo(function VideoTaskNode({ id, selected, data }:
         >
 
         {/* ── Provider ── */}
-        <div>
+        <div style={{ marginTop: 4 }}>
           <label style={labelStyle}>视频模型</label>
           <select
             value={payload.provider}

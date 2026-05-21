@@ -203,6 +203,30 @@ export function TemplatePanel({ onClose, centerX, centerY }: Props) {
                 <p className="text-[11px] mt-1" style={{ color: "oklch(0.50 0.008 260)" }}>
                   {template.desc}
                 </p>
+                <div className="flex items-center gap-1.5 mt-2">
+                  <span
+                    className="text-[9px] font-semibold px-1.5 py-0.5 rounded-full"
+                    style={{
+                      background: "oklch(0.68 0.22 285 / 0.12)",
+                      border: "1px solid oklch(0.68 0.22 285 / 0.25)",
+                      color: "oklch(0.68 0.22 285 / 0.85)",
+                    }}
+                  >
+                    {template.nodes.reduce((sum, n) => sum + (n.count ?? 1), 0)} 节点
+                  </span>
+                  {(template.edgeSpecs?.length ?? 0) > 0 && (
+                    <span
+                      className="text-[9px] font-semibold px-1.5 py-0.5 rounded-full"
+                      style={{
+                        background: "oklch(0.20 0.008 260)",
+                        border: "1px solid oklch(0.26 0.008 260)",
+                        color: "oklch(0.52 0.008 260)",
+                      }}
+                    >
+                      {template.edgeSpecs!.length} 连接
+                    </span>
+                  )}
+                </div>
               </div>
             </div>
           </button>

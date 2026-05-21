@@ -12,6 +12,7 @@ export function NodeSearch({ onClose }: Props) {
   const [query, setQuery] = useState("");
   const [selectedIndex, setSelectedIndex] = useState(0);
   const inputRef = useRef<HTMLInputElement>(null);
+  const listRef = useRef<HTMLDivElement>(null);
   const { nodes } = useCanvasStore();
   const reactFlow = useReactFlow();
 
@@ -36,6 +37,12 @@ export function NodeSearch({ onClose }: Props) {
   useEffect(() => {
     setSelectedIndex(0);
   }, [query]);
+
+  // Scroll selected item into view when navigating
+  useEffect(() => {
+    const item = listRef.current?.children[selectedIndex] as HTMLElement | undefined;
+    item?.scrollIntoView({ block: "nearest" });
+  }, [selectedIndex]);
 
   const focusNode = useCallback(
     (node: CanvasNode) => {
@@ -122,7 +129,7 @@ export function NodeSearch({ onClose }: Props) {
 
         {/* Results */}
         {filtered.length > 0 && (
-          <div className="max-h-72 overflow-y-auto py-1.5">
+          <div ref={listRef} className="max-h-72 overflow-y-auto py-1.5">
             {filtered.map((node, idx) => {
               const config = getNodeConfig(node.data.nodeType);
               const isSelected = idx === selectedIndex;

@@ -130,7 +130,7 @@ export const BaseNode = memo(function BaseNode({
         minHeight,
         width: "100%",
         // height is content-driven; do not set height:100% which would require a parent height
-        transition: "border-color 150ms ease, box-shadow 180ms ease",
+        transition: "border-color 150ms ease, box-shadow 180ms ease, opacity 180ms ease, transform 180ms ease",
         backdropFilter: "blur(4px)",
         opacity: entered ? 1 : 0,
         transform: entered ? "scale(1) translateY(0)" : "scale(0.96) translateY(6px)",

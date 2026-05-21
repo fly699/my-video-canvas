@@ -3,7 +3,6 @@ import { useParams, useLocation } from "wouter";
 import {
   ReactFlow,
   Background,
-  Controls,
   MiniMap,
   BackgroundVariant,
   useReactFlow,
@@ -50,10 +49,8 @@ import {
   Bot,
   StickyNote,
   LayoutGrid,
-  ZoomIn,
-  ZoomOut,
+  BarChart2,
   Maximize2,
-  Command,
   Play,
   LogOut,
   Undo2,
@@ -697,7 +694,7 @@ function CanvasInner({ projectId }: { projectId: number }) {
                 onMouseEnter={(e) => { if (!showStatsSidebar) { (e.currentTarget as HTMLElement).style.background = "oklch(0.16 0.008 260)"; (e.currentTarget as HTMLElement).style.color = "oklch(0.80 0.005 260)"; } }}
                 onMouseLeave={(e) => { if (!showStatsSidebar) { (e.currentTarget as HTMLElement).style.background = "transparent"; (e.currentTarget as HTMLElement).style.color = "oklch(0.55 0.008 260)"; } }}
               >
-                <LayoutGrid className="w-3.5 h-3.5" />
+                <BarChart2 className="w-3.5 h-3.5" />
               </button>
             </TooltipTrigger>
             <TooltipContent side="bottom" className="text-xs">画布统计</TooltipContent>
@@ -876,31 +873,6 @@ function CanvasInner({ projectId }: { projectId: number }) {
           onMouseMove={handleMouseMove}
           onClick={() => { setShowNodePicker(false); }}
         >
-          {/* Workflow progress bar */}
-          {runState.running && (
-            <div
-              style={{
-                position: "absolute",
-                top: 0,
-                left: 0,
-                right: 0,
-                height: 3,
-                zIndex: 50,
-                background: "oklch(0.10 0.007 260)",
-              }}
-            >
-              <div
-                style={{
-                  height: "100%",
-                  width: `${runState.runnableCount > 0 ? Math.round(((runState.completedIds.length + runState.failedIds.length) / runState.runnableCount) * 100) : 0}%`,
-                  background: "linear-gradient(90deg, oklch(0.72 0.22 142), oklch(0.70 0.20 195))",
-                  transition: "width 350ms ease",
-                  boxShadow: "0 0 8px oklch(0.72 0.22 142 / 0.60)",
-                }}
-              />
-            </div>
-          )}
-
           <WorkflowRunProvider value={runState}>
           <ReactFlow
             nodes={nodes}
@@ -1163,6 +1135,7 @@ function CanvasInner({ projectId }: { projectId: number }) {
                       { key: "Shift + R", desc: "从选中节点运行工作流" },
                     ]},
                     { group: "其他", items: [
+                      { key: "Cmd/Ctrl + K", desc: "搜索节点" },
                       { key: "Cmd/Ctrl + S", desc: "保存画布" },
                       { key: "?", desc: "开关快捷键面板" },
                     ]},
@@ -1276,18 +1249,17 @@ function CanvasInner({ projectId }: { projectId: number }) {
         {/* ── Stats sidebar ── */}
         <div
           style={{
+            position: "absolute",
+            right: 0,
+            top: 0,
+            bottom: 0,
             width: 200,
-            flexShrink: 0,
             background: "oklch(0.10 0.006 260)",
             borderLeft: "1px solid oklch(0.18 0.007 260)",
             display: "flex",
             flexDirection: "column",
             transform: showStatsSidebar ? "translateX(0)" : "translateX(100%)",
             transition: "transform 280ms cubic-bezier(0.23, 1, 0.32, 1)",
-            position: showStatsSidebar ? "relative" : "absolute",
-            right: 0,
-            top: 0,
-            bottom: 0,
             zIndex: 15,
             pointerEvents: showStatsSidebar ? "auto" : "none",
           }}
