@@ -81,7 +81,9 @@ export const ImageGenNode = memo(function ImageGenNode({ id, selected, data }: P
         updateNodeData(id, { imageUrls: result.urls, imageUrl: result.urls[0] });
         toast.success(`批量生成完成，共 ${result.urls.length} 张图像`);
       } else {
-        updateNodeData(id, { imageUrl: result.url, imageUrls: undefined });
+        const imageUrl = result.url ?? result.urls?.[0];
+        if (!imageUrl) { toast.error("生成完成但未返回图像"); return; }
+        updateNodeData(id, { imageUrl, imageUrls: undefined });
         toast.success("图像生成成功");
       }
     },
@@ -137,6 +139,10 @@ export const ImageGenNode = memo(function ImageGenNode({ id, selected, data }: P
       style: payload.style,
       referenceImageUrl: payload.referenceImageUrl,
       model: payload.model,
+      // Poyo image model params
+      ...((payload.model === "poyo_flux" || payload.model === "poyo_sdxl") ? {
+        poyoAspectRatio: payload.aspectRatio,
+      } : {}),
       // Soul Standard specific params
       ...(payload.model === "hf_soul_standard" ? {
         widthAndHeight: payload.widthAndHeight,
@@ -265,7 +271,18 @@ export const ImageGenNode = memo(function ImageGenNode({ id, selected, data }: P
                     onMouseEnter={(e) => { if (!isSelected) e.currentTarget.style.opacity = "1"; }}
                     onMouseLeave={(e) => { if (!isSelected) e.currentTarget.style.opacity = "0.72"; }}
                   >
-                    <img src={url} alt={`generated-${idx}`} className="w-full h-full object-cover" draggable={false} />
+                    <img
+                      src={url}
+                      alt={`generated-${idx}`}
+                      className="w-full h-full object-cover"
+                      draggable={false}
+                      onError={(e) => {
+                        const img = e.currentTarget;
+                        if (url.startsWith("http") && !img.src.includes("/api/image-proxy")) {
+                          img.src = `/api/image-proxy?url=${encodeURIComponent(url)}`;
+                        }
+                      }}
+                    />
                     {/* Selected checkmark */}
                     {isSelected && (
                       <div
@@ -305,7 +322,19 @@ export const ImageGenNode = memo(function ImageGenNode({ id, selected, data }: P
                     下载
                   </button>
                 </div>
-                <img src={payload.imageUrl} alt="selected" className="w-full object-contain" style={{ maxHeight: 120 }} draggable={false} />
+                <img
+                  src={payload.imageUrl}
+                  alt="selected"
+                  className="w-full object-contain"
+                  style={{ maxHeight: 120 }}
+                  draggable={false}
+                  onError={(e) => {
+                    const img = e.currentTarget;
+                    if (payload.imageUrl?.startsWith("http") && !img.src.includes("/api/image-proxy")) {
+                      img.src = `/api/image-proxy?url=${encodeURIComponent(payload.imageUrl)}`;
+                    }
+                  }}
+                />
               </div>
             )}
           </div>
@@ -316,7 +345,18 @@ export const ImageGenNode = memo(function ImageGenNode({ id, selected, data }: P
               className="relative rounded-lg overflow-hidden flex-shrink-0"
               style={{ aspectRatio: "16/9", borderWidth: 1, borderStyle: "solid", borderColor: BORDER_DEFAULT, background: "oklch(0.08 0.005 260)" }}
             >
-              <img src={payload.imageUrl} alt="generated" className="w-full h-full object-contain" draggable={false} />
+              <img
+                src={payload.imageUrl}
+                alt="generated"
+                className="w-full h-full object-contain"
+                draggable={false}
+                onError={(e) => {
+                  const img = e.currentTarget;
+                  if (payload.imageUrl?.startsWith("http") && !img.src.includes("/api/image-proxy")) {
+                    img.src = `/api/image-proxy?url=${encodeURIComponent(payload.imageUrl)}`;
+                  }
+                }}
+              />
               <div
                 className="absolute inset-0 opacity-0 hover:opacity-100 transition-opacity flex items-center justify-center gap-2"
                 style={{ background: "oklch(0 0 0 / 0.55)" }}
@@ -638,7 +678,18 @@ export const ImageGenNode = memo(function ImageGenNode({ id, selected, data }: P
               className="relative rounded-lg overflow-hidden"
               style={{ height: 80, borderWidth: 1, borderStyle: "solid", borderColor: BORDER_DEFAULT, background: "oklch(0.08 0.005 260)" }}
             >
-              <img src={payload.referenceImageUrl} alt="reference" className="w-full h-full object-cover" draggable={false} />
+              <img
+                src={payload.referenceImageUrl}
+                alt="reference"
+                className="w-full h-full object-cover"
+                draggable={false}
+                onError={(e) => {
+                  const img = e.currentTarget;
+                  if (payload.referenceImageUrl?.startsWith("http") && !img.src.includes("/api/image-proxy")) {
+                    img.src = `/api/image-proxy?url=${encodeURIComponent(payload.referenceImageUrl)}`;
+                  }
+                }}
+              />
               <button
                 onClick={() => update("referenceImageUrl", undefined)}
                 className="nodrag absolute top-1 right-1 p-0.5 rounded-full"

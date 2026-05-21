@@ -26,15 +26,21 @@ const STATUS = {
 } as const;
 
 const PROVIDERS: { value: VideoProvider; label: string; group: string }[] = [
-  { value: "poyo_seedance",   label: "Seedance 2",          group: "Poyo" },
-  { value: "poyo_veo",        label: "Veo 3.1",             group: "Poyo" },
-  { value: "hf_dop_standard", label: "DoP Standard",        group: "Higgsfield" },
-  { value: "hf_dop_preview",  label: "DoP Preview",         group: "Higgsfield" },
-  { value: "hf_dop_lite",     label: "DoP Lite",            group: "Higgsfield" },
-  { value: "hf_dop_turbo",    label: "DoP Turbo",           group: "Higgsfield" },
-  { value: "hf_kling_21_pro", label: "Kling 2.1 Pro",       group: "Higgsfield" },
-  { value: "hf_seedance_pro", label: "Seedance 1.0 Pro",    group: "Higgsfield" },
-  { value: "mock",            label: "Mock 测试",           group: "Dev" },
+  { value: "poyo_seedance",       label: "Seedance 2",          group: "Poyo" },
+  { value: "poyo_veo",            label: "Veo 3.1",             group: "Poyo" },
+  { value: "poyo_kling26",        label: "Kling 2.6",           group: "Poyo" },
+  { value: "poyo_kling_o3_std",   label: "Kling O3 Standard",   group: "Poyo" },
+  { value: "poyo_kling_o3_pro",   label: "Kling O3 Pro",        group: "Poyo" },
+  { value: "poyo_kling_o3_4k",    label: "Kling O3 4K",         group: "Poyo" },
+  { value: "hf_dop_standard",     label: "DoP Standard",        group: "Higgsfield" },
+  { value: "hf_dop_preview",      label: "DoP Preview",         group: "Higgsfield" },
+  { value: "hf_dop_lite",         label: "DoP Lite",            group: "Higgsfield" },
+  { value: "hf_dop_turbo",        label: "DoP Turbo",           group: "Higgsfield" },
+  { value: "hf_kling_21_pro",     label: "Kling 2.1 Pro",       group: "Higgsfield" },
+  { value: "hf_kling_30",         label: "Kling 3.0 Pro",       group: "Higgsfield" },
+  { value: "hf_seedance_pro",     label: "Seedance 1.0 Pro",    group: "Higgsfield" },
+  { value: "hf_seedance_20",      label: "Seedance 2.0 Pro",    group: "Higgsfield" },
+  { value: "mock",                label: "Mock 测试",           group: "Dev" },
 ];
 
 // ── Per-model parameter definitions ──────────────────────────────────────────
@@ -102,6 +108,51 @@ const PROVIDER_PARAMS: Record<string, ParamDef[]> = {
       options: [{ value: "480p", label: "480p" }, { value: "720p", label: "720p" }, { value: "1080p", label: "1080p" }] },
     { type: "number", key: "duration", label: "时长（秒）", min: 2, max: 12, step: 1, default: 5 },
     { type: "toggle", key: "camera_fixed", label: "固定镜头", default: false },
+  ],
+  // Poyo Kling 2.6: aspect_ratio, duration (5/10), sound
+  poyo_kling26: [
+    { type: "select", key: "aspect_ratio", label: "宽高比", default: "16:9",
+      options: [{ value: "16:9", label: "16:9 横屏" }, { value: "9:16", label: "9:16 竖屏" }, { value: "1:1", label: "1:1 方形" }] },
+    { type: "select", key: "duration", label: "时长（秒）", default: 5,
+      options: [{ value: 5, label: "5 秒" }, { value: 10, label: "10 秒" }] },
+    { type: "toggle", key: "sound", label: "AI 生成音效", default: false },
+  ],
+  // Poyo Kling O3 Standard/Pro/4K: aspect_ratio, duration (3-15s)
+  poyo_kling_o3_std: [
+    { type: "select", key: "aspect_ratio", label: "宽高比", default: "16:9",
+      options: [{ value: "16:9", label: "16:9 横屏" }, { value: "9:16", label: "9:16 竖屏" }, { value: "1:1", label: "1:1 方形" }] },
+    { type: "number", key: "duration", label: "时长（秒）", min: 3, max: 15, step: 1, default: 5 },
+  ],
+  poyo_kling_o3_pro: [
+    { type: "select", key: "aspect_ratio", label: "宽高比", default: "16:9",
+      options: [{ value: "16:9", label: "16:9 横屏" }, { value: "9:16", label: "9:16 竖屏" }, { value: "1:1", label: "1:1 方形" }] },
+    { type: "number", key: "duration", label: "时长（秒）", min: 3, max: 15, step: 1, default: 5 },
+  ],
+  poyo_kling_o3_4k: [
+    { type: "select", key: "aspect_ratio", label: "宽高比", default: "16:9",
+      options: [{ value: "16:9", label: "16:9 横屏" }, { value: "9:16", label: "9:16 竖屏" }, { value: "1:1", label: "1:1 方形" }] },
+    { type: "number", key: "duration", label: "时长（秒）", min: 3, max: 15, step: 1, default: 5 },
+  ],
+  // Higgsfield Seedance 2.0 Pro: same params as 1.0 Pro
+  hf_seedance_20: [
+    { type: "select", key: "aspect_ratio", label: "宽高比", default: "16:9",
+      options: [
+        { value: "21:9", label: "21:9 超宽" }, { value: "16:9", label: "16:9 横屏" },
+        { value: "4:3", label: "4:3 标准" }, { value: "1:1", label: "1:1 方形" },
+        { value: "3:4", label: "3:4 竖屏" }, { value: "9:16", label: "9:16 竖屏" }, { value: "auto", label: "自动" },
+      ]},
+    { type: "select", key: "resolution", label: "分辨率", default: "720p",
+      options: [{ value: "480p", label: "480p" }, { value: "720p", label: "720p" }, { value: "1080p", label: "1080p" }] },
+    { type: "number", key: "duration", label: "时长（秒）", min: 2, max: 12, step: 1, default: 5 },
+    { type: "toggle", key: "camera_fixed", label: "固定镜头", default: false },
+  ],
+  // Higgsfield Kling 3.0 Pro: duration (5/10s), aspect_ratio, cfg_scale
+  hf_kling_30: [
+    { type: "select", key: "duration", label: "时长（秒）", default: 5,
+      options: [{ value: 5, label: "5 秒" }, { value: 10, label: "10 秒" }] },
+    { type: "select", key: "aspect_ratio", label: "宽高比", default: "16:9",
+      options: [{ value: "16:9", label: "16:9 横屏" }, { value: "9:16", label: "9:16 竖屏" }, { value: "1:1", label: "1:1 方形" }] },
+    { type: "number", key: "cfg_scale", label: "引导强度（0-1）", min: 0, max: 1, step: 0.1, default: 0.5 },
   ],
   // Mock: no extra params
   mock: [],
@@ -522,7 +573,7 @@ export const VideoTaskNode = memo(function VideoTaskNode({ id, selected, data }:
         </div>
 
         {/* ── Negative prompt (for models that support it) ── */}
-        {(payload.provider === "hf_kling_21_pro" || payload.provider === "poyo_seedance" || payload.provider === "poyo_veo") && (
+        {(payload.provider === "hf_kling_21_pro" || payload.provider === "hf_kling_30" || payload.provider === "poyo_seedance" || payload.provider === "poyo_veo" || payload.provider === "poyo_kling26" || payload.provider === "poyo_kling_o3_std" || payload.provider === "poyo_kling_o3_pro" || payload.provider === "poyo_kling_o3_4k") && (
           <div>
             <label style={labelStyle}>反向提示词（可选）</label>
             <input

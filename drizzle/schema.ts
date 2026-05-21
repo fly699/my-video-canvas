@@ -112,7 +112,7 @@ export const videoTasks = mysqlTable("video_tasks", {
   userId: int("userId").notNull(),
   projectId: int("projectId").notNull(),
   nodeId: varchar("nodeId", { length: 64 }).notNull(),
-  provider: mysqlEnum("provider", ["mock", "poyo_seedance", "poyo_veo", "hf_dop_standard", "hf_dop_preview", "hf_dop_lite", "hf_dop_turbo", "hf_kling_21_pro", "hf_seedance_pro"]).notNull(),
+  provider: mysqlEnum("provider", ["mock", "poyo_seedance", "poyo_veo", "poyo_kling26", "poyo_kling_o3_std", "poyo_kling_o3_pro", "poyo_kling_o3_4k", "hf_dop_standard", "hf_dop_preview", "hf_dop_lite", "hf_dop_turbo", "hf_kling_21_pro", "hf_kling_30", "hf_seedance_pro", "hf_seedance_20"]).notNull(),
   externalTaskId: varchar("externalTaskId", { length: 255 }),
   status: mysqlEnum("status", [
     "pending",

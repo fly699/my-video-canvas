@@ -85,9 +85,11 @@ export const StoryboardNode = memo(function StoryboardNode({ id, selected, data 
 
   const genImageMutation = trpc.imageGen.generate.useMutation({
     onSuccess: (result) => {
+      const imageUrl = result.url ?? result.urls?.[0];
+      if (!imageUrl) { setGenerating(false); toast.error("生成完成但未返回图像"); return; }
       const currentHistory = (useCanvasStore.getState().nodes.find(n => n.id === id)?.data.payload as StoryboardNodeData)?.imageHistory ?? [];
-      const newHistory = [result.url, ...currentHistory].filter((u): u is string => !!u).slice(0, 5);
-      updateNodeData(id, { imageUrl: result.url, imageHistory: newHistory });
+      const newHistory = [imageUrl, ...currentHistory].filter(Boolean).slice(0, 5);
+      updateNodeData(id, { imageUrl, imageHistory: newHistory });
       setGenerating(false);
       toast.success("分镜图像已生成");
     },
@@ -160,7 +162,18 @@ export const StoryboardNode = memo(function StoryboardNode({ id, selected, data 
         >
           {payload.imageUrl ? (
             <>
-              <img src={payload.imageUrl} alt="分镜" className="w-full h-full object-cover" draggable={false} />
+              <img
+                src={payload.imageUrl}
+                alt="分镜"
+                className="w-full h-full object-cover"
+                draggable={false}
+                onError={(e) => {
+                  const img = e.currentTarget;
+                  if (payload.imageUrl && payload.imageUrl.startsWith("http") && !img.src.includes("/api/image-proxy")) {
+                    img.src = `/api/image-proxy?url=${encodeURIComponent(payload.imageUrl)}`;
+                  }
+                }}
+              />
               <div
                 className="absolute inset-0 opacity-0 hover:opacity-100 transition-opacity flex flex-col items-center justify-center gap-1"
                 style={{ background: "oklch(0 0 0 / 0.55)" }}
@@ -272,7 +285,17 @@ export const StoryboardNode = memo(function StoryboardNode({ id, selected, data 
                   }}
                   title={i === 0 ? "当前版本" : `版本 ${i + 1}`}
                 >
-                  <img src={url} alt={`历史 ${i + 1}`} style={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }} />
+                  <img
+                    src={url}
+                    alt={`历史 ${i + 1}`}
+                    style={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }}
+                    onError={(e) => {
+                      const img = e.currentTarget;
+                      if (url.startsWith("http") && !img.src.includes("/api/image-proxy")) {
+                        img.src = `/api/image-proxy?url=${encodeURIComponent(url)}`;
+                      }
+                    }}
+                  />
                 </button>
               ))}
             </div>

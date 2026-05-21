@@ -17,12 +17,18 @@ export type VideoProvider =
   | "mock"
   | "poyo_seedance"
   | "poyo_veo"
+  | "poyo_kling26"
+  | "poyo_kling_o3_std"
+  | "poyo_kling_o3_pro"
+  | "poyo_kling_o3_4k"
   | "hf_dop_standard"
   | "hf_dop_preview"
   | "hf_dop_lite"
   | "hf_dop_turbo"
   | "hf_kling_21_pro"
-  | "hf_seedance_pro";
+  | "hf_kling_30"
+  | "hf_seedance_pro"
+  | "hf_seedance_20";
 export type VideoTaskStatus = "pending" | "processing" | "succeeded" | "failed";
 
 // ── Node Data Payloads ────────────────────────────────────────────────────────

@@ -113,7 +113,10 @@ export const PromptNode = memo(function PromptNode({ id, selected, data }: Props
       style: payload.style,
       referenceImageUrl: payload.referenceImageUrl,
       model: model as ImageGenModel,
-      ...(batchMode ? { batchSize: 2 } : {}),
+      ...((model === "poyo_flux" || model === "poyo_sdxl") ? {
+        poyoAspectRatio: payload.aspectRatio,
+      } : {}),
+      ...(model === "hf_soul_standard" && batchMode ? { batchSize: 2 } : {}),
     });
   };
 
@@ -143,7 +146,18 @@ export const PromptNode = memo(function PromptNode({ id, selected, data }: Props
                   }}
                   onClick={() => updateNodeData(id, { imageUrl: url, selectedImageIndex: i })}
                 >
-                  <img src={url} alt={`图像 ${i + 1}`} className="w-full h-full object-cover" draggable={false} />
+                  <img
+                    src={url}
+                    alt={`图像 ${i + 1}`}
+                    className="w-full h-full object-cover"
+                    draggable={false}
+                    onError={(e) => {
+                      const img = e.currentTarget;
+                      if (url.startsWith("http") && !img.src.includes("/api/image-proxy")) {
+                        img.src = `/api/image-proxy?url=${encodeURIComponent(url)}`;
+                      }
+                    }}
+                  />
                   {(payload.selectedImageIndex ?? 0) === i && (
                     <div
                       className="absolute top-1 right-1 w-4 h-4 rounded-full flex items-center justify-center"
@@ -175,7 +189,18 @@ export const PromptNode = memo(function PromptNode({ id, selected, data }: Props
               borderColor: BORDER_DEFAULT,
             }}
           >
-            <img src={payload.imageUrl} alt="preview" className="w-full h-full object-cover" draggable={false} />
+            <img
+              src={payload.imageUrl}
+              alt="preview"
+              className="w-full h-full object-cover"
+              draggable={false}
+              onError={(e) => {
+                const img = e.currentTarget;
+                if (payload.imageUrl?.startsWith("http") && !img.src.includes("/api/image-proxy")) {
+                  img.src = `/api/image-proxy?url=${encodeURIComponent(payload.imageUrl)}`;
+                }
+              }}
+            />
             <div
               className="absolute inset-0 opacity-0 hover:opacity-100 transition-opacity flex items-center justify-center"
               style={{ background: "oklch(0 0 0 / 0.55)" }}

@@ -233,7 +233,7 @@ export const videoTasksRouter = router({
       z.object({
         projectId: z.number(),
         nodeId: z.string(),
-        provider: z.enum(["mock", "poyo_seedance", "poyo_veo", "hf_dop_standard", "hf_dop_preview", "hf_dop_lite", "hf_dop_turbo", "hf_kling_21_pro", "hf_seedance_pro"]),
+        provider: z.enum(["mock", "poyo_seedance", "poyo_veo", "poyo_kling26", "poyo_kling_o3_std", "poyo_kling_o3_pro", "poyo_kling_o3_4k", "hf_dop_standard", "hf_dop_preview", "hf_dop_lite", "hf_dop_turbo", "hf_kling_21_pro", "hf_kling_30", "hf_seedance_pro", "hf_seedance_20"]),
         prompt: z.string(),
         negativePrompt: z.string().optional(),
         referenceImageUrl: z.string().optional(),
@@ -443,6 +443,9 @@ export const imageGenRouter = router({
         referenceImageUrl: z.string().optional(),
         style: z.string().optional(),
         model: z.enum(["manus_forge", "poyo_flux", "poyo_sdxl", "hf_soul_standard", "hf_reve"]).optional(),
+        // Poyo image model params
+        poyoAspectRatio: z.string().optional(),
+        poyoQuality: z.enum(["low", "medium", "high"]).optional(),
         // Soul Standard specific params
         widthAndHeight: z.string().optional(),
         quality: z.enum(["720p", "1080p"]).optional(),
@@ -469,6 +472,11 @@ export const imageGenRouter = router({
         ...(input.referenceImageUrl
           ? { originalImages: [{ url: input.referenceImageUrl, mimeType: "image/jpeg" }] }
           : {}),
+        // Poyo image model params passed through
+        ...((input.model === "poyo_flux" || input.model === "poyo_sdxl") ? {
+          size: input.poyoAspectRatio,
+          quality: input.poyoQuality,
+        } : {}),
         // Soul Standard specific params passed through
         ...(input.model === "hf_soul_standard" ? {
           widthAndHeight: input.widthAndHeight,
