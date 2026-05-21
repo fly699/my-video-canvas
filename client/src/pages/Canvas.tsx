@@ -430,12 +430,18 @@ function CanvasInner({ projectId }: { projectId: number }) {
       const isEditing = tag === "INPUT" || tag === "TEXTAREA" || (e.target as HTMLElement)?.isContentEditable;
 
       if ((e.metaKey || e.ctrlKey) && e.key === "s") { e.preventDefault(); saveCanvas(); toast.success("已保存"); }
-      if (e.key === "Escape") { setContextMenu(null); setShowNodePicker(false); setShowNodeSearch(false); }
+      if (e.key === "Escape") { setContextMenu(null); setShowNodePicker(false); setShowNodeSearch(false); setShowTemplates(false); }
 
       // Cmd+K / Ctrl+K — Node search
       if ((e.metaKey || e.ctrlKey) && e.key === "k") {
         e.preventDefault();
         setShowNodeSearch((v) => !v);
+      }
+
+      // Cmd+T / Ctrl+T — Templates
+      if ((e.metaKey || e.ctrlKey) && e.key === "t") {
+        e.preventDefault();
+        setShowTemplates((v) => !v);
       }
 
       // Duplicate selected node: Cmd+D / Ctrl+D
@@ -656,7 +662,9 @@ function CanvasInner({ projectId }: { projectId: number }) {
                 <LayoutGrid className="w-3.5 h-3.5" />
               </button>
             </TooltipTrigger>
-            <TooltipContent side="bottom" className="text-xs">工作流模板</TooltipContent>
+            <TooltipContent side="bottom" className="text-xs">
+              快速模板 <kbd className="ml-1 px-1 py-0.5 rounded text-[10px] bg-white/10 font-mono">⌘T</kbd>
+            </TooltipContent>
           </Tooltip>
 
           {/* Node Search */}
@@ -1325,22 +1333,13 @@ function CanvasInner({ projectId }: { projectId: number }) {
           )}
         </div>
 
-        {/* ── Template panel ── */}
+        {/* ── Template panel (full-screen modal) ── */}
         {showTemplates && (
-          <div
-            className="w-64 flex flex-col flex-shrink-0 animate-slide-down"
-            style={{
-              background: "oklch(0.09 0.006 260 / 0.95)",
-              backdropFilter: "blur(20px)",
-              borderLeft: "1px solid oklch(0.18 0.008 260)",
-            }}
-          >
-            <TemplatePanel
-              onClose={() => setShowTemplates(false)}
-              centerX={(() => { const vp = reactFlow.getViewport(); return (window.innerWidth / 2 - vp.x) / vp.zoom; })()}
-              centerY={(() => { const vp = reactFlow.getViewport(); return (window.innerHeight / 2 - vp.y) / vp.zoom; })()}
-            />
-          </div>
+          <TemplatePanel
+            onClose={() => setShowTemplates(false)}
+            centerX={(() => { const vp = reactFlow.getViewport(); return (window.innerWidth / 2 - vp.x) / vp.zoom; })()}
+            centerY={(() => { const vp = reactFlow.getViewport(); return (window.innerHeight / 2 - vp.y) / vp.zoom; })()}
+          />
         )}
 
         {/* ── Asset panel ── */}

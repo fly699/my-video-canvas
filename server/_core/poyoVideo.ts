@@ -45,10 +45,13 @@ export async function submitPoyoVideo(opts: {
     if (opts.params?.sound !== undefined) input.sound = Boolean(opts.params.sound);
   } else if (model === "kling-o3-standard" || model === "kling-o3-pro" || model === "kling-o3-4k") {
     input.duration = (opts.params?.duration as number) ?? 5;
+  } else if (model === "veo-3.1") {
+    input.duration = (opts.params?.duration as number) ?? 5;
   } else {
+    // seedance-2
     input.resolution = (opts.params?.resolution as string) ?? "720p";
     input.duration = (opts.params?.duration as number) ?? 5;
-    if (opts.params?.camera_fixed !== undefined && model === "seedance-2") {
+    if (opts.params?.camera_fixed !== undefined) {
       input.camera_fixed = Boolean(opts.params.camera_fixed);
     }
   }
