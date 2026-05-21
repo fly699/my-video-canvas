@@ -98,10 +98,17 @@ export function useWorkflowRunner() {
           const prompt = (p.prompt as string) || "";
           if (!prompt.trim() && !(p.referenceImageUrl as string)) { failed.push(nodeId); continue; }
 
+          const validProviders = ["mock", "poyo_seedance", "poyo_veo", "hf_dop_standard", "hf_dop_preview", "hf_dop_lite", "hf_dop_turbo", "hf_kling_21_pro", "hf_seedance_pro"] as const;
+          type VideoProvider = typeof validProviders[number];
+          const providerValue = (p.provider as string) || "poyo_seedance";
+          const provider: VideoProvider = (validProviders as readonly string[]).includes(providerValue)
+            ? providerValue as VideoProvider
+            : "poyo_seedance";
+
           const task = await videoTaskMutation.mutateAsync({
             projectId: node.data.projectId,
             nodeId,
-            provider: ((p.provider as string) || "poyo_seedance") as "mock" | "poyo_seedance" | "poyo_veo" | "hf_dop_standard" | "hf_dop_preview" | "hf_dop_lite" | "hf_dop_turbo" | "hf_kling_21_pro" | "hf_seedance_pro",
+            provider,
             prompt: prompt || "cinematic video",
             referenceImageUrl: (p.referenceImageUrl as string) || undefined,
             params: (p.params as Record<string, unknown>) || {},
