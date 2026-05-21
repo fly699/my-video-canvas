@@ -4,7 +4,7 @@ import { useCanvasStore } from "../../../hooks/useCanvasStore";
 import type { ImageGenNodeData, ImageGenModel } from "../../../../../shared/types";
 import { trpc } from "@/lib/trpc";
 import { toast } from "sonner";
-import { Sparkles, Loader2, RefreshCw, Upload, X, Cpu, ImageIcon } from "lucide-react";
+import { Sparkles, Loader2, RefreshCw, Upload, X, Cpu, Check, Grid2X2 } from "lucide-react";
 
 interface Props {
   id: string;
@@ -72,11 +72,21 @@ export const ImageGenNode = memo(function ImageGenNode({ id, selected, data }: P
   const [uploading, setUploading] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
+  // Determine if we are in batch/grid mode
+  const hasMultiple = (payload.imageUrls?.length ?? 0) > 1;
+
   const genMutation = trpc.imageGen.generate.useMutation({
     onSuccess: (result) => {
-      updateNodeData(id, { imageUrl: result.url });
+      if (result.urls && result.urls.length > 1) {
+        // Batch mode: store all urls, set first as selected imageUrl
+        updateNodeData(id, { imageUrls: result.urls, imageUrl: result.urls[0] });
+        toast.success(`批量生成完成，共 ${result.urls.length} 张图像`);
+      } else {
+        // Single mode: clear imageUrls, set imageUrl
+        updateNodeData(id, { imageUrl: result.url, imageUrls: undefined });
+        toast.success("图像生成成功");
+      }
       setGenerating(false);
-      toast.success("图像生成成功");
     },
     onError: (err) => {
       setGenerating(false);
@@ -137,8 +147,16 @@ export const ImageGenNode = memo(function ImageGenNode({ id, selected, data }: P
       uploadMutation.mutate({ base64, mimeType: file.type, filename: file.name });
     };
     reader.readAsDataURL(file);
-    // reset input so same file can be re-selected
     e.target.value = "";
+  };
+
+  const handleSelectImage = (url: string) => {
+    update("imageUrl", url);
+    toast.success("已选择此图像");
+  };
+
+  const handleClearBatch = () => {
+    updateNodeData(id, { imageUrls: undefined, imageUrl: undefined });
   };
 
   const isSoul = payload.model === "hf_soul_standard";
@@ -148,38 +166,133 @@ export const ImageGenNode = memo(function ImageGenNode({ id, selected, data }: P
     <BaseNode id={id} selected={selected} nodeType="image_gen" title={data.title} minHeight={300}>
       <div className="flex flex-col h-full p-2.5 gap-2 overflow-auto">
 
-        {/* Result image */}
-        {payload.imageUrl ? (
-          <div
-            className="relative rounded-lg overflow-hidden flex-shrink-0"
-            style={{ aspectRatio: "16/9", borderWidth: 1, borderStyle: "solid", borderColor: BORDER_DEFAULT, background: "oklch(0.08 0.005 260)" }}
-          >
-            <img src={payload.imageUrl} alt="generated" className="w-full h-full object-contain" draggable={false} />
-            <div
-              className="absolute inset-0 opacity-0 hover:opacity-100 transition-opacity flex items-center justify-center gap-2"
-              style={{ background: "oklch(0 0 0 / 0.55)" }}
-            >
-              <button
-                onClick={handleGenerate}
-                disabled={generating}
-                className="nodrag flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-medium"
-                style={{ background: "oklch(0.72 0.20 330 / 0.2)", borderWidth: 1, borderStyle: "solid", borderColor: BORDER_ACCENT, color: accent }}
-              >
-                {generating ? <Loader2 className="w-3 h-3 animate-spin" /> : <RefreshCw className="w-3 h-3" />}
-                重新生成
-              </button>
+        {/* ── Batch grid result ── */}
+        {hasMultiple ? (
+          <div className="flex-shrink-0">
+            {/* Header */}
+            <div className="flex items-center justify-between mb-1.5">
+              <span style={{ fontSize: 10, color: "oklch(0.42 0.006 260)", display: "flex", alignItems: "center", gap: 4 }}>
+                <Grid2X2 style={{ width: 10, height: 10 }} />
+                {payload.imageUrls!.length} 张图像 · 点击选择
+              </span>
+              <div className="flex gap-1">
+                <button
+                  onClick={handleGenerate}
+                  disabled={generating}
+                  className="nodrag flex items-center gap-1 px-2 py-0.5 rounded text-xs"
+                  style={{ background: "oklch(0.72 0.20 330 / 0.12)", borderWidth: 1, borderStyle: "solid", borderColor: BORDER_ACCENT, color: accent, fontSize: 10 }}
+                >
+                  {generating ? <Loader2 className="w-2.5 h-2.5 animate-spin" /> : <RefreshCw className="w-2.5 h-2.5" />}
+                  重新生成
+                </button>
+                <button
+                  onClick={handleClearBatch}
+                  className="nodrag flex items-center gap-1 px-2 py-0.5 rounded text-xs"
+                  style={{ background: "oklch(0.14 0.007 260)", borderWidth: 1, borderStyle: "solid", borderColor: BORDER_DEFAULT, color: "oklch(0.50 0.006 260)", fontSize: 10 }}
+                >
+                  <X className="w-2.5 h-2.5" />
+                  清空
+                </button>
+              </div>
             </div>
+
+            {/* Grid */}
+            <div
+              className="grid gap-1"
+              style={{ gridTemplateColumns: payload.imageUrls!.length === 4 ? "1fr 1fr" : `repeat(${Math.min(payload.imageUrls!.length, 3)}, 1fr)` }}
+            >
+              {payload.imageUrls!.map((url, idx) => {
+                const isSelected = url === payload.imageUrl;
+                return (
+                  <button
+                    key={idx}
+                    onClick={() => handleSelectImage(url)}
+                    className="nodrag relative rounded-lg overflow-hidden group"
+                    style={{
+                      aspectRatio: "1/1",
+                      borderWidth: 2,
+                      borderStyle: "solid",
+                      borderColor: isSelected ? accent : "transparent",
+                      background: "oklch(0.08 0.005 260)",
+                      padding: 0,
+                      cursor: "pointer",
+                      transition: "border-color 150ms ease, opacity 150ms ease",
+                      opacity: isSelected ? 1 : 0.72,
+                    }}
+                    onMouseEnter={(e) => { if (!isSelected) e.currentTarget.style.opacity = "1"; }}
+                    onMouseLeave={(e) => { if (!isSelected) e.currentTarget.style.opacity = "0.72"; }}
+                  >
+                    <img src={url} alt={`generated-${idx}`} className="w-full h-full object-cover" draggable={false} />
+                    {/* Selected checkmark */}
+                    {isSelected && (
+                      <div
+                        className="absolute top-1 right-1 rounded-full flex items-center justify-center"
+                        style={{ width: 16, height: 16, background: accent }}
+                      >
+                        <Check style={{ width: 10, height: 10, color: "oklch(0.08 0.005 260)" }} />
+                      </div>
+                    )}
+                    {/* Hover overlay */}
+                    {!isSelected && (
+                      <div
+                        className="absolute inset-0 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center"
+                        style={{ background: "oklch(0.72 0.20 330 / 0.15)" }}
+                      >
+                        <span style={{ fontSize: 9, color: accent, fontWeight: 600, letterSpacing: "0.05em" }}>选择</span>
+                      </div>
+                    )}
+                  </button>
+                );
+              })}
+            </div>
+
+            {/* Selected image preview (larger) */}
+            {payload.imageUrl && (
+              <div
+                className="mt-1.5 rounded-lg overflow-hidden"
+                style={{ borderWidth: 1, borderStyle: "solid", borderColor: `oklch(0.72 0.20 330 / 0.3)`, background: "oklch(0.08 0.005 260)" }}
+              >
+                <div style={{ fontSize: 9, color: accent, padding: "3px 8px", borderBottom: `1px solid oklch(0.72 0.20 330 / 0.15)`, letterSpacing: "0.05em", fontWeight: 600 }}>
+                  ✓ 已选择
+                </div>
+                <img src={payload.imageUrl} alt="selected" className="w-full object-contain" style={{ maxHeight: 120 }} draggable={false} />
+              </div>
+            )}
           </div>
         ) : (
-          <div
-            className="rounded-lg flex items-center justify-center flex-shrink-0"
-            style={{ aspectRatio: "16/9", borderWidth: 1, borderStyle: "dashed", borderColor: `oklch(0.72 0.20 330 / 0.25)`, background: `oklch(0.72 0.20 330 / 0.04)` }}
-          >
-            <div className="flex flex-col items-center gap-1.5" style={{ color: "oklch(0.72 0.20 330 / 0.5)" }}>
-              <Sparkles style={{ width: 24, height: 24 }} />
-              <span style={{ fontSize: 11 }}>生成图像将显示在这里</span>
+          /* ── Single image result ── */
+          payload.imageUrl ? (
+            <div
+              className="relative rounded-lg overflow-hidden flex-shrink-0"
+              style={{ aspectRatio: "16/9", borderWidth: 1, borderStyle: "solid", borderColor: BORDER_DEFAULT, background: "oklch(0.08 0.005 260)" }}
+            >
+              <img src={payload.imageUrl} alt="generated" className="w-full h-full object-contain" draggable={false} />
+              <div
+                className="absolute inset-0 opacity-0 hover:opacity-100 transition-opacity flex items-center justify-center gap-2"
+                style={{ background: "oklch(0 0 0 / 0.55)" }}
+              >
+                <button
+                  onClick={handleGenerate}
+                  disabled={generating}
+                  className="nodrag flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-medium"
+                  style={{ background: "oklch(0.72 0.20 330 / 0.2)", borderWidth: 1, borderStyle: "solid", borderColor: BORDER_ACCENT, color: accent }}
+                >
+                  {generating ? <Loader2 className="w-3 h-3 animate-spin" /> : <RefreshCw className="w-3 h-3" />}
+                  重新生成
+                </button>
+              </div>
             </div>
-          </div>
+          ) : (
+            <div
+              className="rounded-lg flex items-center justify-center flex-shrink-0"
+              style={{ aspectRatio: "16/9", borderWidth: 1, borderStyle: "dashed", borderColor: `oklch(0.72 0.20 330 / 0.25)`, background: `oklch(0.72 0.20 330 / 0.04)` }}
+            >
+              <div className="flex flex-col items-center gap-1.5" style={{ color: "oklch(0.72 0.20 330 / 0.5)" }}>
+                <Sparkles style={{ width: 24, height: 24 }} />
+                <span style={{ fontSize: 11 }}>生成图像将显示在这里</span>
+              </div>
+            </div>
+          )
         )}
 
         {/* Model selector */}
@@ -437,7 +550,9 @@ export const ImageGenNode = memo(function ImageGenNode({ id, selected, data }: P
           }}
         >
           {generating ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Sparkles className="w-3.5 h-3.5" />}
-          {generating ? "AI 生成中..." : "生成图像"}
+          {generating
+            ? (isSoul && (payload.batchSize ?? 1) > 1 ? `批量生成中 (${payload.batchSize} 张)...` : "AI 生成中...")
+            : (isSoul && (payload.batchSize ?? 1) > 1 ? `批量生成 ${payload.batchSize} 张` : "生成图像")}
         </button>
       </div>
     </BaseNode>

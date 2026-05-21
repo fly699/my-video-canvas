@@ -24,6 +24,7 @@ export type GenerateImageOptions = {
 
 export type GenerateImageResponse = {
   url?: string;
+  urls?: string[]; // multiple images when batchSize > 1
 };
 
 const POYO_BASE = "https://api.poyo.ai";
@@ -164,7 +165,7 @@ export async function generateImage(options: GenerateImageOptions): Promise<Gene
       aspectRatio: options.reveAspectRatio,
       resolution: options.reveResolution,
     });
-    return { url: result.url };
+    return { url: result.url, urls: result.urls };
   }
   // Default: use poyo if key available, else forge
   if (ENV.poyoApiKey) return generateImagePoyo(options);

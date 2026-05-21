@@ -473,6 +473,6 @@ export const imageGenRouter = router({
         } : {}),
       });
 
-      return { url: result.url };
+      return { url: result.url, urls: result.urls };
     }),
 });

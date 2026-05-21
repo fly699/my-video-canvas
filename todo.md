@@ -127,3 +127,11 @@
 - [x] 画布 Cmd+Z / Ctrl+Z 撤销、Cmd+Shift+Z / Ctrl+Y 重做（Zustand 历史栈，节点/边变更时快照）
 - [x] ImageGenNode：Reve 模型专属参数面板（aspect_ratio 下拉 + resolution 下拉）
 - [x] TypeScript 0 errors，测试全部通过
+
+## Phase 16: 批量图像生成网格展示
+- [x] 后端 imageGeneration.ts：Soul Standard batchSize>1 时返回多张图 URL 数组
+- [x] 后端 canvas.ts imageGenRouter：返回 urls 数组（向后兼容 url 单图）
+- [x] shared/types.ts：ImageGenNodeData 添加 imageUrls 字段（多图数组）
+- [x] 前端 ImageGenNode：生成后以网格形式展示多张图，点击选中某张作为最终 imageUrl
+- [x] 选中图片高亮边框，未选中半透明；支持重新生成（清空多图）
+- [x] TypeScript 0 errors，测试全部通过

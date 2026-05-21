@@ -105,6 +105,8 @@ export interface ImageGenNodeData {
   // Reve specific params
   reveAspectRatio?: string;
   reveResolution?: "720p" | "1080p";
+  // Batch generation results
+  imageUrls?: string[]; // multiple generated images (Soul batchSize=4, etc.)
 }
 
 export interface NoteNodeData {

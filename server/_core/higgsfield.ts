@@ -42,9 +42,10 @@ export interface HiggsfieldImageOptions {
 
 export interface HiggsfieldImageResult {
   url: string;
+  urls?: string[]; // multiple URLs when batchSize > 1
 }
 
-async function pollHiggsfieldRequest(requestId: string): Promise<{ fileUrl: string }> {
+async function pollHiggsfieldRequest(requestId: string): Promise<{ fileUrl: string; fileUrls?: string[] }> {
   const statusUrl = `${HIGGSFIELD_BASE}/request/${requestId}`;
   for (let i = 0; i < POLL_MAX_ATTEMPTS; i++) {
     await new Promise((r) => setTimeout(r, POLL_INTERVAL_MS));
@@ -72,13 +73,16 @@ async function pollHiggsfieldRequest(requestId: string): Promise<{ fileUrl: stri
       throw new Error(`Higgsfield generation failed: ${body.error ?? "unknown error"}`);
     }
 
-    // Completed — extract file URL
+    // Completed — extract file URL(s)
     if (status === "completed" || status === "succeeded" || status === "done") {
-      const fileUrl =
-        body.file_url ??
-        (Array.isArray(body.outputs) ? body.outputs[0] : undefined) ??
-        (Array.isArray(body.output) ? body.output[0] : typeof body.output === "string" ? body.output : undefined);
-      if (fileUrl) return { fileUrl };
+      // Collect all output URLs (batch support)
+      const allUrls: string[] = [];
+      if (body.file_url) allUrls.push(body.file_url);
+      if (Array.isArray(body.outputs)) allUrls.push(...body.outputs);
+      if (Array.isArray(body.output)) allUrls.push(...body.output);
+      else if (typeof body.output === "string") allUrls.push(body.output);
+      const unique = allUrls.filter((u, i, arr) => u && arr.indexOf(u) === i);
+      if (unique.length > 0) return { fileUrl: unique[0], fileUrls: unique };
     }
   }
   throw new Error("Higgsfield generation timed out");
@@ -129,21 +133,26 @@ export async function generateHiggsfieldImage(
   const requestId = data.request_id ?? data.id;
   if (!requestId) throw new Error("Higgsfield image: no request_id returned");
 
-  const { fileUrl } = await pollHiggsfieldRequest(requestId);
+  const { fileUrl, fileUrls } = await pollHiggsfieldRequest(requestId);
+  const allFileUrls = fileUrls ?? [fileUrl];
 
-  // Download and re-upload to own storage for persistence
-  try {
-    const imgRes = await fetch(fileUrl);
-    if (imgRes.ok) {
-      const buf = Buffer.from(await imgRes.arrayBuffer());
-      const mimeType = imgRes.headers.get("content-type") ?? "image/png";
-      const { url } = await storagePut(`generated/hf-${Date.now()}.png`, buf, mimeType);
-      return { url };
-    }
-  } catch {
-    // If download fails, return Higgsfield URL directly
+  // Download and re-upload all images to own storage for persistence
+  const storedUrls: string[] = [];
+  for (const fUrl of allFileUrls) {
+    try {
+      const imgRes = await fetch(fUrl);
+      if (imgRes.ok) {
+        const buf = Buffer.from(await imgRes.arrayBuffer());
+        const mimeType = imgRes.headers.get("content-type") ?? "image/png";
+        const { url } = await storagePut(`generated/hf-${Date.now()}-${storedUrls.length}.png`, buf, mimeType);
+        storedUrls.push(url);
+        continue;
+      }
+    } catch { /* fall through */ }
+    storedUrls.push(fUrl); // fallback to original URL
   }
-  return { url: fileUrl };
+
+  return { url: storedUrls[0], urls: storedUrls.length > 1 ? storedUrls : undefined };
 }
 
 // ── Video Generation ──────────────────────────────────────────────────────────
