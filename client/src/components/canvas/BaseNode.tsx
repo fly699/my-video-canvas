@@ -270,7 +270,21 @@ export const BaseNode = memo(function BaseNode({
       </div>
 
       {/* ── Content area ── */}
-      <div className="flex-1 overflow-auto min-h-0">{children}</div>
+      <div
+        className="flex-1 overflow-auto min-h-0"
+        onWheelCapture={(e) => {
+          // Prevent wheel events from reaching ReactFlow (which would zoom the canvas)
+          // only when the content is actually scrollable
+          const el = e.currentTarget;
+          const canScrollY = el.scrollHeight > el.clientHeight;
+          const canScrollX = el.scrollWidth > el.clientWidth;
+          if (canScrollY || canScrollX) {
+            e.stopPropagation();
+          }
+        }}
+      >
+        {children}
+      </div>
 
       {/* ── Connection Handles ── */}
       {showHandles && (

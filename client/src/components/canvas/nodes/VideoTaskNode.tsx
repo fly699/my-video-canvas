@@ -398,17 +398,21 @@ export const VideoTaskNode = memo(function VideoTaskNode({ id, selected, data }:
         {/* ── Dynamic model-specific params ── */}
         {paramDefs.length > 0 && (
           <div
-            className="flex flex-col gap-3 p-3 rounded-xl"
+            className="p-3 rounded-xl"
             style={{ background: "oklch(0.085 0.006 260)", borderWidth: 1, borderStyle: "solid", borderColor: "oklch(0.18 0.007 260)" }}
           >
-            <span style={{ fontSize: 10.5, fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.07em", color: "oklch(0.40 0.008 260)" }}>
+            <span style={{ fontSize: 10.5, fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.07em", color: "oklch(0.40 0.008 260)", display: "block", marginBottom: 8 }}>
               模型参数
             </span>
+            {/* 2-column grid for compact layout */}
+            <div className="grid grid-cols-2 gap-x-2.5 gap-y-2.5">
             {paramDefs.map((def) => {
               const curVal = params[def.key] ?? def.default;
+              // toggle spans full width for readability
+              const isToggle = def.type === "toggle";
               if (def.type === "select") {
                 return (
-                  <div key={def.key}>
+                  <div key={def.key} className={isToggle ? "col-span-2" : ""}>
                     <label style={labelStyle}>{def.label}</label>
                     <select
                       value={String(curVal ?? "")}
@@ -459,7 +463,7 @@ export const VideoTaskNode = memo(function VideoTaskNode({ id, selected, data }:
               if (def.type === "toggle") {
                 const checked = curVal === true || curVal === "true";
                 return (
-                  <div key={def.key} className="flex items-center justify-between">
+                  <div key={def.key} className="col-span-2 flex items-center justify-between py-0.5">
                     <label style={{ ...labelStyle, marginBottom: 0 }}>{def.label}</label>
                     <button
                       onClick={() => handleParamChange(def.key, !checked)}
@@ -490,6 +494,7 @@ export const VideoTaskNode = memo(function VideoTaskNode({ id, selected, data }:
               }
               return null;
             })}
+            </div>{/* end grid */}
           </div>
         )}
 

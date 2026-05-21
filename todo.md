@@ -157,3 +157,10 @@
 - [x] 节点内容区：内边距更宽松，字体层级清晰，操作按鈕统一高度
 - [x] 整体背景：更细腻的点阵/网格背景，颜色更低调
 - [x] TypeScript 0 errors，测试全部通过
+
+## Phase 19: 滚轮交互修复 + 参数横向布局
+- [x] BaseNode 内容区：hover 节点时阻止 wheel 事件冒泡，使滚轮滚动节点内容而非缩放画布
+- [x] VideoTaskNode：模型参数面板改为 2 列横向网格，无需滚动即可看全所有参数
+- [x] ImageGenNode：参数区已是横向 flex 布局，无需修改
+- [x] StoryboardNode/PromptNode：参数区已是横向布局，无需修改
+- [x] TypeScript 0 errors，测试全部通过
