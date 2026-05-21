@@ -493,3 +493,52 @@ export const imageGenRouter = router({
       return { url: result.url, urls: result.urls };
     }),
 });
+
+// ── Scripts ───────────────────────────────────────────────────────────────────
+
+export const scriptsRouter = router({
+  generateStoryboards: protectedProcedure
+    .input(
+      z.object({
+        content: z.string().min(1),
+        synopsis: z.string().optional(),
+        count: z.number().int().min(2).max(8).default(4),
+      })
+    )
+    .mutation(async ({ input }) => {
+      const systemPrompt = `You are a professional film director and storyboard artist.
+Given a script, break it into exactly ${input.count} visual storyboard scenes.
+Output ONLY a valid JSON array with no markdown fences, no explanation.
+Each element must have these fields:
+- "description": string (2-3 sentences, what the viewer sees)
+- "promptText": string (English, detailed cinematic prompt for image generation)
+- "cameraMovement": string (one of: static, pan-left, pan-right, zoom-in, zoom-out, tilt-up, tilt-down, tracking)
+- "duration": number (scene duration in seconds, integer 2-10)`;
+
+      const userContent = [
+        input.synopsis ? `Synopsis: ${input.synopsis}\n\n` : "",
+        `Script:\n${input.content}`,
+      ].join("");
+
+      const response = await invokeLLM({
+        messages: [
+          { role: "system" as const, content: systemPrompt },
+          { role: "user" as const, content: userContent },
+        ],
+        model: "gemini-2.5-flash",
+      });
+
+      const rawContent = response.choices?.[0]?.message?.content;
+      const text = typeof rawContent === "string" ? rawContent : "";
+      const jsonMatch = text.match(/\[[\s\S]*\]/);
+      if (!jsonMatch) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "AI 未返回有效 JSON" });
+
+      let scenes: Array<{ description: string; promptText: string; cameraMovement?: string; duration?: number }>;
+      try {
+        scenes = JSON.parse(jsonMatch[0]);
+      } catch {
+        throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "JSON 解析失败" });
+      }
+      return { scenes: scenes.slice(0, input.count) };
+    }),
+});

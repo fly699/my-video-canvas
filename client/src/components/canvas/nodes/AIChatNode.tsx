@@ -4,7 +4,7 @@ import { useCanvasStore } from "../../../hooks/useCanvasStore";
 import type { AIChatNodeData } from "../../../../../shared/types";
 import { trpc } from "@/lib/trpc";
 import { toast } from "sonner";
-import { Send, Loader2, Trash2, Bot, User, Sparkles, ChevronDown } from "lucide-react";
+import { Send, Loader2, Trash2, Bot, User, Sparkles, ChevronDown, ArrowRight } from "lucide-react";
 
 const MODELS = [
   { id: "gemini-2.5-flash",          label: "Gemini 2.5 Flash",  tag: "默认" },
@@ -72,6 +72,34 @@ export const AIChatNode = memo(function AIChatNode({ id, selected, data }: Props
     onSuccess: () => { setLocalMessages([]); toast.success("对话已清除"); },
     onError: (err) => toast.error("清除失败：" + err.message),
   });
+
+  const outgoingEdges = edges.filter(e => e.source === id);
+  const hasDownstream = outgoingEdges.length > 0;
+
+  const pushToDownstream = useCallback((content: string) => {
+    const fieldMap: Record<string, string> = {
+      script: "content",
+      storyboard: "promptText",
+      prompt: "positivePrompt",
+      image_gen: "prompt",
+      video_task: "prompt",
+      note: "content",
+    };
+    const { nodes: currentNodes, updateNodeData, edges: currentEdges } = useCanvasStore.getState();
+    const outgoing = currentEdges.filter(e => e.source === id);
+    let pushed = 0;
+    outgoing.forEach(edge => {
+      const targetNode = currentNodes.find(n => n.id === edge.target);
+      if (!targetNode) return;
+      const field = fieldMap[targetNode.data.nodeType];
+      if (field) {
+        updateNodeData(edge.target, { [field]: content });
+        pushed++;
+      }
+    });
+    if (pushed > 0) toast.success(`已推送到 ${pushed} 个节点`);
+    else toast.error("没有可接收的下游节点");
+  }, [id]);
 
   const buildContext = useCallback(() => {
     // Auto-include nodes connected via incoming edges + any explicitly set contextNodeIds
@@ -365,6 +393,21 @@ export const AIChatNode = memo(function AIChatNode({ id, selected, data }: Props
           >
             <Trash2 className="w-3 h-3" />
           </button>
+          {hasDownstream && localMessages.some(m => m.role === "assistant") && (
+            <button
+              onClick={() => {
+                const lastAI = [...localMessages].reverse().find(m => m.role === "assistant");
+                if (lastAI) pushToDownstream(lastAI.content);
+              }}
+              className="nodrag w-8 h-8 rounded-lg flex items-center justify-center transition-all flex-shrink-0"
+              title="推送最新 AI 回复到连接的下游节点"
+              style={{ background: "transparent", border: "1px solid transparent", color: "oklch(0.50 0.008 260)" }}
+              onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.background = "oklch(0.70 0.18 200 / 0.12)"; (e.currentTarget as HTMLElement).style.color = accentColor; }}
+              onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.background = "transparent"; (e.currentTarget as HTMLElement).style.color = "oklch(0.50 0.008 260)"; }}
+            >
+              <ArrowRight className="w-3 h-3" />
+            </button>
+          )}
         </div>
       </div>
     </BaseNode>

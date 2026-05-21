@@ -69,7 +69,7 @@ const MODELS: { value: ImageGenModel; label: string; desc: string; group: string
 ];
 
 export const ImageGenNode = memo(function ImageGenNode({ id, selected, data }: Props) {
-  const { updateNodeData } = useCanvasStore();
+  const { updateNodeData, edges, nodes } = useCanvasStore();
   const payload = data.payload;
   const [generating, setGenerating] = useState(false);
   const [uploading, setUploading] = useState(false);
@@ -159,7 +159,17 @@ export const ImageGenNode = memo(function ImageGenNode({ id, selected, data }: P
 
   const handleSelectImage = (url: string) => {
     update("imageUrl", url);
-    toast.success("已选择此图像");
+    // Propagate to connected video_task nodes via image-out handle
+    const outgoing = edges.filter(e => e.source === id && e.sourceHandle === "image-out");
+    let propagated = 0;
+    outgoing.forEach(edge => {
+      const target = nodes.find(n => n.id === edge.target);
+      if (target?.data.nodeType === "video_task") {
+        updateNodeData(edge.target, { referenceImageUrl: url });
+        propagated++;
+      }
+    });
+    toast.success(propagated > 0 ? `已选择图像并更新 ${propagated} 个视频节点` : "已选择此图像");
   };
 
   const handleClearBatch = () => {
