@@ -100,7 +100,7 @@ export interface AIChatNodeData {
   model?: string;
 }
 
-export type ImageGenModel = "manus_forge" | "poyo_flux" | "poyo_sdxl" | "hf_soul_standard" | "hf_reve";
+export type ImageGenModel = "manus_forge" | "poyo_flux" | "poyo_sdxl" | "poyo_gpt_image" | "hf_soul_standard" | "hf_reve";
 export interface ImageGenNodeData {
   prompt: string;
   negativePrompt?: string;

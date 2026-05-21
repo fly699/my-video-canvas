@@ -150,6 +150,7 @@ async function generateImageForge(options: GenerateImageOptions): Promise<Genera
 export async function generateImage(options: GenerateImageOptions): Promise<GenerateImageResponse> {
   // Route by explicit model selection
   if (options.model === "manus_forge") return generateImageForge(options);
+  if (options.model === "poyo_gpt_image") return generateImagePoyo({ ...options, model: "gpt-image-2" });
   if (options.model === "poyo_flux" || options.model === "poyo_sdxl") {
     // flux-2-pro: high quality Flux model; flux-2-flex: flexible/cheaper variant
     const poyoModel = options.model === "poyo_flux" ? "flux-2-pro" : "flux-2-flex";
