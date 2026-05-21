@@ -22,6 +22,7 @@ import { AssetPanel } from "../components/canvas/AssetPanel";
 import { TemplatePanel } from "../components/canvas/TemplatePanel";
 import { NodeSearch } from "../components/canvas/NodeSearch";
 import { PresentationMode } from "../components/canvas/PresentationMode";
+import { FilmstripPanel } from "../components/canvas/FilmstripPanel";
 import { trpc } from "@/lib/trpc";
 import { useAuth } from "@/_core/hooks/useAuth";
 import { useIsMobile } from "@/hooks/useMobile";
@@ -193,6 +194,7 @@ function CanvasInner({ projectId }: { projectId: number }) {
   const [showPresentation, setShowPresentation] = useState(false);
   const [showShortcuts, setShowShortcuts] = useState(false);
   const [showStatsSidebar, setShowStatsSidebar] = useState(false);
+  const [showFilmstrip, setShowFilmstrip] = useState(false);
 
   // Workflow runner
   const { runState, runWorkflow } = useWorkflowRunner();
@@ -700,6 +702,26 @@ function CanvasInner({ projectId }: { projectId: number }) {
             <TooltipContent side="bottom" className="text-xs">画布统计</TooltipContent>
           </Tooltip>
 
+          {/* Filmstrip toggle */}
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <button
+                onClick={() => setShowFilmstrip((v) => !v)}
+                className="w-7 h-7 rounded-lg flex items-center justify-center transition-all"
+                style={{
+                  background: showFilmstrip ? "oklch(0.68 0.22 285 / 0.12)" : "transparent",
+                  border: showFilmstrip ? "1px solid oklch(0.68 0.22 285 / 0.3)" : "1px solid transparent",
+                  color: showFilmstrip ? "oklch(0.68 0.22 285)" : "oklch(0.55 0.008 260)",
+                }}
+                onMouseEnter={(e) => { if (!showFilmstrip) { (e.currentTarget as HTMLElement).style.background = "oklch(0.16 0.008 260)"; (e.currentTarget as HTMLElement).style.color = "oklch(0.80 0.005 260)"; } }}
+                onMouseLeave={(e) => { if (!showFilmstrip) { (e.currentTarget as HTMLElement).style.background = "transparent"; (e.currentTarget as HTMLElement).style.color = "oklch(0.55 0.008 260)"; } }}
+              >
+                <Film className="w-3.5 h-3.5" />
+              </button>
+            </TooltipTrigger>
+            <TooltipContent side="bottom" className="text-xs">胶片条</TooltipContent>
+          </Tooltip>
+
           {/* Undo */}
           <Tooltip>
             <TooltipTrigger asChild>
@@ -1163,6 +1185,11 @@ function CanvasInner({ projectId }: { projectId: number }) {
               )}
             </div>
           </div>
+
+          {/* Filmstrip panel */}
+          {showFilmstrip && (
+            <FilmstripPanel onClose={() => setShowFilmstrip(false)} />
+          )}
 
           {/* Collaborator cursors */}
           <CollaboratorCursors cursors={collaboratorList} viewport={viewport} />

@@ -274,6 +274,10 @@
   100% { box-shadow: 0 0 0 0 oklch(0.72 0.22 142 / 0), 0 0 0 3px oklch(0.72 0.22 142 / 0.22); }
 }
 
+@keyframes edge-flow {
+  to { stroke-dashoffset: -20; }
+}
+
 /* ── Workflow run pulse ring ─────────────────────────────────────────────────── */
 .node-run-pulse {
   animation: avc-run-ring 1.2s cubic-bezier(0.66, 0, 0, 1) infinite;
