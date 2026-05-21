@@ -553,6 +553,97 @@ Each element must have these fields:
       }
       return { scenes: scenes.slice(0, input.count) };
     }),
+
+  generateFullScript: protectedProcedure
+    .input(
+      z.object({
+        synopsis: z.string().min(1).max(2000),
+        genre: z.string().optional(),
+        style: z.string().optional(),
+        mood: z.string().optional(),
+        sceneCount: z.number().int().min(2).max(12).default(5),
+        totalDuration: z.number().int().min(10).max(600).default(60),
+        targetVideoModel: z.string().optional(),
+        aspectRatio: z.string().default("16:9"),
+        model: z.string().optional(),
+      })
+    )
+    .mutation(async ({ input }) => {
+      const MODEL_PROMPT_GUIDES: Record<string, string> = {
+        kling: "Kling (Kuaishou): Excellent precise camera control. Use detailed camera moves: push-in, dolly, orbital pan, crane shot. Rich motion expression with emotional narrative. Describe subject actions precisely.",
+        veo: "Veo 3.1 (Google): Natural language understanding. Use flowing natural English. Emphasize realistic physics, human emotions, complex interactions. Write like a film scene description. No keyword lists.",
+        runway: "Runway Gen-4.5: Concise style-focused prompts under 60 words. Lead with aesthetic style, then subject and action. Format: [cinematography style], [subject] [action], [environment], [lighting].",
+        wan: "Wan 2.5 (Alibaba): Structured keyword prompts. Format: subject, action description, environment/background, visual style, lighting condition, camera angle. Good for stylized artistic content.",
+        seedance: "Seedance 2 (ByteDance): Photorealistic output. Include: shot type (ECU/CU/MS/LS), lens focal length, lighting setup, color grade style, specific camera movement. Professional cinematography terminology.",
+        dop: "DoP/Higgsfield: Professional director's language. Specify: focal length, aperture suggestion, lighting type and color temperature, film stock style, composition rule, emotional subtext. Cinematic excellence.",
+      };
+
+      const modelGuide = input.targetVideoModel
+        ? (MODEL_PROMPT_GUIDES[input.targetVideoModel] ?? "General cinematic: descriptive English prompts with visual details, lighting, and camera information.")
+        : "General cinematic: descriptive English prompts with visual details, lighting, camera information, and mood.";
+
+      const avgDuration = Math.round(input.totalDuration / input.sceneCount);
+
+      const systemPrompt = `You are a professional screenwriter and AI video director creating multi-modal storyboard scripts optimized for AI video generation.
+
+Target Video Model Prompt Style Guide:
+${modelGuide}
+
+Production Brief:
+- Genre: ${input.genre ?? "general"}
+- Visual Style: ${input.style ?? "cinematic"}
+- Emotional Tone: ${input.mood ?? "neutral"}
+- Aspect Ratio: ${input.aspectRatio}
+- Total Duration: ~${input.totalDuration} seconds across ${input.sceneCount} scenes (avg ${avgDuration}s/scene)
+
+Your task: Generate a complete storyboard script. Output ONLY a valid JSON object with NO markdown fences, NO extra text:
+{
+  "scriptText": "A polished Chinese narrative script with proper scene headings (场景一、二...), vivid action lines, and atmospheric descriptions. Professional screenplay style. Minimum 200 characters.",
+  "scenes": [
+    {
+      "description": "Chinese visual description: what the viewer sees, atmosphere, character actions. 2-3 sentences.",
+      "promptText": "English AI generation prompt optimized for the target model. Follow the prompt style guide above strictly.",
+      "cameraMovement": "one of: static|pan-left|pan-right|zoom-in|zoom-out|tilt-up|tilt-down|tracking",
+      "duration": ${avgDuration}
+    }
+  ]
+}
+
+Rules:
+1. Generate exactly ${input.sceneCount} scene objects
+2. scriptText must be cohesive Chinese narrative covering all scenes
+3. Each promptText MUST follow the target model's style guide
+4. Duration values should total approximately ${input.totalDuration} seconds
+5. Create compelling visual storytelling appropriate for the genre and mood`;
+
+      const response = await invokeLLM({
+        messages: [
+          { role: "system" as const, content: systemPrompt },
+          { role: "user" as const, content: `Story Synopsis:\n${input.synopsis}` },
+        ],
+        model: input.model ?? "claude-sonnet-4-6",
+        maxTokens: 8000,
+      });
+
+      const text = extractTextContent(response);
+      const jsonMatch = text.match(/\{[\s\S]*\}/);
+      if (!jsonMatch) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "AI 未返回有效 JSON" });
+
+      let parsed: {
+        scriptText?: string;
+        scenes?: Array<{ description?: string; promptText?: string; cameraMovement?: string; duration?: number }>;
+      };
+      try {
+        parsed = JSON.parse(jsonMatch[0]);
+      } catch {
+        throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "JSON 解析失败，请重试" });
+      }
+
+      return {
+        scriptText: parsed.scriptText ?? "",
+        scenes: (parsed.scenes ?? []).slice(0, input.sceneCount),
+      };
+    }),
 });
 
 // ── Audio Generation ──────────────────────────────────────────────────────────
