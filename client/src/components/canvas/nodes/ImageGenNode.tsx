@@ -62,8 +62,8 @@ const SOUL_SIZES = [
 
 const MODELS: { value: ImageGenModel; label: string; desc: string; group: string }[] = [
   { value: "manus_forge",      label: "Manus Forge",        desc: "内置 · 稳定",   group: "Manus" },
-  { value: "poyo_flux",        label: "Flux 1.1 Pro",       desc: "高质量 · 写实", group: "Poyo" },
-  { value: "poyo_sdxl",        label: "SDXL",               desc: "快速 · 多风格", group: "Poyo" },
+  { value: "poyo_flux",        label: "Flux 2 Pro",         desc: "高质量 · 写实", group: "Poyo" },
+  { value: "poyo_sdxl",        label: "Flux 2 Flex",        desc: "快速 · 多风格", group: "Poyo" },
   { value: "hf_soul_standard", label: "Soul Standard",      desc: "旗舰 · 电影级", group: "Higgsfield" },
   { value: "hf_reve",          label: "Reve Text-to-Image", desc: "通用 · 快速",   group: "Higgsfield" },
 ];

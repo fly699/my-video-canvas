@@ -144,7 +144,8 @@ export async function generateImage(options: GenerateImageOptions): Promise<Gene
   // Route by explicit model selection
   if (options.model === "manus_forge") return generateImageForge(options);
   if (options.model === "poyo_flux" || options.model === "poyo_sdxl") {
-    const poyoModel = options.model === "poyo_flux" ? "flux-1.1-pro" : "stable-diffusion-xl";
+    // flux-2-pro: high quality Flux model; flux-2-flex: flexible/cheaper variant
+    const poyoModel = options.model === "poyo_flux" ? "flux-2-pro" : "flux-2-flex";
     return generateImagePoyo({ ...options, model: poyoModel });
   }
   // Higgsfield image models

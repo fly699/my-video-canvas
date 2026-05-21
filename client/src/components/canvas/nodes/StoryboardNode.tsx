@@ -22,8 +22,8 @@ const BORDER_FOCUS   = "oklch(0.65 0.20 160 / 0.6)";
 
 const IMAGE_MODELS = [
   { id: "manus_forge",      label: "Manus Forge",        tag: "内置",        group: "Manus" },
-  { id: "poyo_flux",        label: "Flux 1.1 Pro",       tag: "Poyo",        group: "Poyo" },
-  { id: "poyo_sdxl",        label: "SDXL",               tag: "Poyo",        group: "Poyo" },
+  { id: "poyo_flux",        label: "Flux 2 Pro",       tag: "Poyo",        group: "Poyo" },
+  { id: "poyo_sdxl",        label: "Flux 2 Flex",               tag: "Poyo",        group: "Poyo" },
   { id: "hf_soul_standard", label: "Soul Standard",      tag: "Higgsfield",  group: "Higgsfield" },
   { id: "hf_reve",          label: "Reve Text-to-Image", tag: "Higgsfield",  group: "Higgsfield" },
 ] as const;

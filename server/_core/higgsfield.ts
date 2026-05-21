@@ -46,7 +46,7 @@ export interface HiggsfieldImageResult {
 }
 
 async function pollHiggsfieldRequest(requestId: string): Promise<{ fileUrl: string; fileUrls?: string[] }> {
-  const statusUrl = `${HIGGSFIELD_BASE}/request/${requestId}`;
+  const statusUrl = `${HIGGSFIELD_BASE}/requests/${requestId}/status`;
   for (let i = 0; i < POLL_MAX_ATTEMPTS; i++) {
     await new Promise((r) => setTimeout(r, POLL_INTERVAL_MS));
 
@@ -65,7 +65,10 @@ async function pollHiggsfieldRequest(requestId: string): Promise<{ fileUrl: stri
       output?: string | string[];
       outputs?: string[];
       file_url?: string;
+      images?: Array<{ url: string }>;
+      videos?: Array<{ url: string }>;
       error?: string;
+      detail?: unknown;
     };
 
     const status = body.status ?? body.state ?? "";
@@ -76,7 +79,11 @@ async function pollHiggsfieldRequest(requestId: string): Promise<{ fileUrl: stri
     // Completed — extract file URL(s)
     if (status === "completed" || status === "succeeded" || status === "done") {
       // Collect all output URLs (batch support)
+      // New API format: images/videos array
       const allUrls: string[] = [];
+      if (Array.isArray(body.images)) allUrls.push(...body.images.map((img) => img.url).filter(Boolean));
+      if (Array.isArray(body.videos)) allUrls.push(...body.videos.map((v) => v.url).filter(Boolean));
+      // Legacy format fallbacks
       if (body.file_url) allUrls.push(body.file_url);
       if (Array.isArray(body.outputs)) allUrls.push(...body.outputs);
       if (Array.isArray(body.output)) allUrls.push(...body.output);
@@ -273,7 +280,7 @@ export interface HiggsfieldVideoStatus {
 export async function checkHiggsfieldVideoStatus(
   requestId: string
 ): Promise<HiggsfieldVideoStatus> {
-  const res = await fetch(`${HIGGSFIELD_BASE}/request/${requestId}`, {
+  const res = await fetch(`${HIGGSFIELD_BASE}/requests/${requestId}/status`, {
     headers: { Authorization: getAuthHeader(), Accept: "application/json" },
   });
 
@@ -288,6 +295,8 @@ export async function checkHiggsfieldVideoStatus(
     output?: string | string[];
     outputs?: string[];
     file_url?: string;
+    images?: Array<{ url: string }>;
+    videos?: Array<{ url: string }>;
     error?: string;
   };
 
@@ -298,7 +307,10 @@ export async function checkHiggsfieldVideoStatus(
   }
 
   if (rawStatus === "completed" || rawStatus === "succeeded" || rawStatus === "done") {
+    // New API format: videos/images array
     const fileUrl =
+      (Array.isArray(body.videos) && body.videos[0]?.url ? body.videos[0].url : undefined) ??
+      (Array.isArray(body.images) && body.images[0]?.url ? body.images[0].url : undefined) ??
       body.file_url ??
       (Array.isArray(body.outputs) ? body.outputs[0] : undefined) ??
       (Array.isArray(body.output) ? body.output[0] : typeof body.output === "string" ? body.output : undefined);

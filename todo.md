@@ -190,3 +190,10 @@
 - [x] BaseNode：添加 resizable prop，ScriptNode/PromptNode/NoteNode/AIChatNode/AssetNode 传 resizable=true
 - [x] StoryboardNode：未选中时自动折叠输入区，结果（分镜图）始终显示
 - [x] TypeScript 0 errors，测试全部通过
+
+## Bug Fix: 图像生成全部失败修复
+- [x] Higgsfield status 轮询 URL 修复：/request/{id} → /requests/{id}/status（405→200）
+- [x] Higgsfield 响应解析修复：新增 images/videos 数组字段支持（API 返回格式变更）
+- [x] Poyo 图像模型名称修复：flux-1.1-pro → flux-2-pro，stable-diffusion-xl → flux-2-flex
+- [x] 前端模型标签同步更新：ImageGenNode/StoryboardNode/PromptNode 显示 Flux 2 Pro / Flux 2 Flex
+- [x] TypeScript 0 errors，28 测试全部通过
