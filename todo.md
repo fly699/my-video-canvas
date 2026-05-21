@@ -178,3 +178,8 @@
 - [x] VideoTaskNode：selected=false 时自动折叠参数区，selected=true 时展开
 - [x] ImageGenNode：selected=false 时自动折叠参数区，selected=true 时展开
 - [x] TypeScript 0 errors，测试全部通过
+
+## Phase 22: 节点未选中时折叠全部内容
+- [ ] BaseNode：selected=false 时隐藏整个内容区（children），仅显示标题栏
+- [ ] 折叠/展开用 CSS max-height 过渡动画，避免布局跳动
+- [ ] TypeScript 0 errors，测试全部通过

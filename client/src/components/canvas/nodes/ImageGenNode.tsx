@@ -343,6 +343,17 @@ export const ImageGenNode = memo(function ImageGenNode({ id, selected, data }: P
           )
         )}
 
+        {/* ── Input area (collapsed when not selected) ── */}
+        <div
+          style={{
+            overflow: "hidden",
+            maxHeight: selected ? "9999px" : "0px",
+            transition: selected
+              ? "max-height 220ms cubic-bezier(0.23, 1, 0.32, 1)"
+              : "max-height 160ms cubic-bezier(0.77, 0, 0.175, 1)",
+          }}
+        >
+
         {/* Model selector */}
         <div>
           <label style={{ ...labelStyle, display: "flex", alignItems: "center", gap: 4 }}>
@@ -610,7 +621,7 @@ export const ImageGenNode = memo(function ImageGenNode({ id, selected, data }: P
         <button
           onClick={handleGenerate}
           disabled={generating || !payload.prompt?.trim()}
-          className="nodrag flex items-center justify-center gap-1.5 w-full py-2 rounded-lg text-xs font-semibold transition-all mt-auto"
+          className="nodrag flex items-center justify-center gap-1.5 w-full py-2 rounded-lg text-xs font-semibold transition-all"
           style={{
             background: generating || !payload.prompt?.trim()
               ? "oklch(0.13 0.007 260)"
@@ -627,6 +638,8 @@ export const ImageGenNode = memo(function ImageGenNode({ id, selected, data }: P
             ? (isSoul && (payload.batchSize ?? 1) > 1 ? `批量生成中 (${payload.batchSize} 张)...` : "AI 生成中...")
             : (isSoul && (payload.batchSize ?? 1) > 1 ? `批量生成 ${payload.batchSize} 张` : "生成图像")}
         </button>
+
+        </div>{/* end input collapse wrapper */}
       </div>
 
       {/* Output handle — connects to VideoTaskNode reference image input */}

@@ -328,6 +328,17 @@ export const VideoTaskNode = memo(function VideoTaskNode({ id, selected, data }:
           </div>
         )}
 
+        {/* ── Input area (collapsed when not selected) ── */}
+        <div
+          style={{
+            overflow: "hidden",
+            maxHeight: selected ? "9999px" : "0px",
+            transition: selected
+              ? "max-height 220ms cubic-bezier(0.23, 1, 0.32, 1)"
+              : "max-height 160ms cubic-bezier(0.77, 0, 0.175, 1)",
+          }}
+        >
+
         {/* ── Provider ── */}
         <div>
           <label style={labelStyle}>视频模型</label>
@@ -513,7 +524,7 @@ export const VideoTaskNode = memo(function VideoTaskNode({ id, selected, data }:
         )}
 
         {/* ── Actions ── */}
-        <div className="flex gap-2 mt-auto flex-shrink-0">
+        <div className="flex gap-2 flex-shrink-0">
           {isResettable && (
             <button
               onClick={handleReset}
@@ -560,6 +571,8 @@ export const VideoTaskNode = memo(function VideoTaskNode({ id, selected, data }:
             {payload.status === "processing" ? "生成中..." : "提交任务"}
           </button>
         </div>
+
+        </div>{/* end input collapse wrapper */}
       </div>
 
       {/* Input handle — receives image URL from ImageGenNode */}

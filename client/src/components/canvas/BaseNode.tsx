@@ -271,7 +271,6 @@ export const BaseNode = memo(function BaseNode({
       </div>
 
       {/* ── Content area ── */}
-      {/* Content area — wheel events scroll node content; Ctrl+wheel zooms canvas (Figma mode) */}
       <NodeSelectedContext.Provider value={!!selected}>
         <div className="overflow-visible nopan">{children}</div>
       </NodeSelectedContext.Provider>
