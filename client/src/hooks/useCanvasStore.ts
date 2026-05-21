@@ -370,6 +370,10 @@ function getDefaultPayload(type: NodeType): NodeData {
       return { systemPrompt: "", messages: [] };
     case "note":
       return { content: "" };
+    case "audio":
+      return { audioCategory: "music" };
+    case "character":
+      return { characterKind: "person" };
     default:
       return {} as NodeData;
   }

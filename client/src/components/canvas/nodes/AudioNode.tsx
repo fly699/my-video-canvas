@@ -1,10 +1,12 @@
 import { memo, useCallback, useRef, useState } from "react";
 import { BaseNode } from "../BaseNode";
 import { useCanvasStore } from "../../../hooks/useCanvasStore";
-import type { AudioNodeData } from "../../../../../shared/types";
+import type { AudioNodeData, AudioCategory } from "../../../../../shared/types";
 import { trpc } from "@/lib/trpc";
 import { toast } from "sonner";
-import { Music, Upload, Mic, Loader2, Play, Pause, X, Volume2 } from "lucide-react";
+import {
+  Music, Upload, Mic, Loader2, Play, Pause, X, Volume2, Zap, Wind,
+} from "lucide-react";
 
 interface Props {
   id: string;
@@ -20,6 +22,53 @@ interface Props {
 const accent = "oklch(0.68 0.20 340)";
 const accentA = (a: number) => `oklch(0.68 0.20 340 / ${a})`;
 const BORDER_DEFAULT = "oklch(0.20 0.008 260)";
+const BORDER_ACCENT = accentA(0.5);
+
+const fieldStyle: React.CSSProperties = {
+  width: "100%",
+  padding: "7px 10px",
+  fontSize: 12,
+  background: "oklch(0.09 0.006 260)",
+  borderWidth: 1,
+  borderStyle: "solid",
+  borderColor: BORDER_DEFAULT,
+  borderRadius: 8,
+  color: "oklch(0.86 0.006 260)",
+  outline: "none",
+  transition: "border-color 150ms ease",
+  lineHeight: 1.5,
+  fontFamily: "var(--font-sans)",
+};
+
+const labelStyle: React.CSSProperties = {
+  fontSize: 10.5,
+  fontWeight: 600,
+  textTransform: "uppercase" as const,
+  letterSpacing: "0.06em",
+  color: "oklch(0.45 0.008 260)",
+  display: "block",
+  marginBottom: 5,
+};
+
+// ── Model lists ───────────────────────────────────────────────────────────────
+
+const MUSIC_MODELS = [
+  { value: "suno_v45",         label: "Suno v4.5",       desc: "旗舰 · 全风格",   group: "Suno" },
+  { value: "udio_v2",          label: "Udio 2.0",        desc: "高质量 · 多语言", group: "Udio" },
+  { value: "stable_audio_2",   label: "Stable Audio 2",  desc: "稳定AI · 纯音乐", group: "Stability" },
+];
+
+const DUBBING_MODELS = [
+  { value: "openai_tts_hd",    label: "OpenAI TTS-HD",   desc: "高清 · 自然",     group: "OpenAI" },
+  { value: "openai_tts",       label: "OpenAI TTS",      desc: "标准 · 快速",     group: "OpenAI" },
+  { value: "elevenlabs_v3",    label: "ElevenLabs v3",   desc: "拟真 · 多语言",   group: "ElevenLabs" },
+  { value: "cosyvoice_2",      label: "CosyVoice 2.0",   desc: "阿里 · 中文优化", group: "Alibaba" },
+];
+
+const SFX_MODELS = [
+  { value: "elevenlabs_sfx",   label: "ElevenLabs SFX",  desc: "音效 · 精准",     group: "ElevenLabs" },
+  { value: "audiogen",         label: "AudioGen",        desc: "Meta · 开源",     group: "Meta" },
+];
 
 const TTS_VOICES = [
   { value: "alloy",   label: "Alloy",   desc: "中性" },
@@ -30,15 +79,34 @@ const TTS_VOICES = [
   { value: "shimmer", label: "Shimmer", desc: "柔和" },
 ];
 
+const MUSIC_STYLES = ["流行", "摇滚", "爵士", "古典", "电子", "嘻哈", "氛围", "史诗", "轻音乐", "中国风"];
+
+const CATEGORIES: { id: AudioCategory; label: string; icon: React.ReactNode }[] = [
+  { id: "music",   label: "配乐",   icon: <Music style={{ width: 11, height: 11 }} /> },
+  { id: "dubbing", label: "配音",   icon: <Mic style={{ width: 11, height: 11 }} /> },
+  { id: "sfx",     label: "音效",   icon: <Zap style={{ width: 11, height: 11 }} /> },
+  { id: "upload",  label: "上传",   icon: <Upload style={{ width: 11, height: 11 }} /> },
+];
+
+// ── Component ─────────────────────────────────────────────────────────────────
+
 export const AudioNode = memo(function AudioNode({ id, selected, data }: Props) {
   const { updateNodeData } = useCanvasStore();
   const payload = data.payload;
   const [isPlaying, setIsPlaying] = useState(false);
   const [uploading, setUploading] = useState(false);
-  const [generatingTts, setGeneratingTts] = useState(false);
+  const [generating, setGenerating] = useState(false);
   const audioRef = useRef<HTMLAudioElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
-  const source = payload.source ?? "upload";
+
+  // Resolve active category (support legacy source field)
+  const category: AudioCategory = payload.audioCategory
+    ?? (payload.source === "tts" ? "dubbing" : "upload");
+
+  const update = useCallback(
+    (key: keyof AudioNodeData, value: unknown) => updateNodeData(id, { [key]: value }),
+    [id, updateNodeData],
+  );
 
   const uploadMutation = trpc.upload.uploadImage.useMutation({
     onSuccess: (result) => {
@@ -46,10 +114,7 @@ export const AudioNode = memo(function AudioNode({ id, selected, data }: Props) 
       setUploading(false);
       toast.success("音频已上传");
     },
-    onError: (err) => {
-      setUploading(false);
-      toast.error("上传失败：" + err.message);
-    },
+    onError: (err) => { setUploading(false); toast.error("上传失败：" + err.message); },
   });
 
   const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -77,112 +142,317 @@ export const AudioNode = memo(function AudioNode({ id, selected, data }: Props) 
     }
   }, [isPlaying]);
 
+  const handleGenerate = () => {
+    setGenerating(false);
+    toast.info("AI 音频生成功能即将上线，敬请期待");
+  };
+
   const formatDuration = (s?: number) =>
     s ? `${Math.floor(s / 60)}:${String(Math.floor(s % 60)).padStart(2, "0")}` : "--:--";
 
-  const fieldStyle: React.CSSProperties = {
-    width: "100%",
-    padding: "7px 10px",
-    fontSize: 12,
-    background: "oklch(0.09 0.006 260)",
-    borderWidth: 1,
-    borderStyle: "solid",
-    borderColor: BORDER_DEFAULT,
-    borderRadius: 8,
-    color: "oklch(0.86 0.006 260)",
-    outline: "none",
-    transition: "border-color 150ms ease",
-    lineHeight: 1.5,
-  };
+  // ── Audio player (shared across modes) ──────────────────────────────────────
+  const audioPlayer = payload.url ? (
+    <div
+      className="flex items-center gap-2 rounded-lg px-2.5 py-2"
+      style={{ background: "oklch(0.09 0.006 260)", border: `1px solid ${accentA(0.25)}` }}
+    >
+      <Volume2 style={{ width: 13, height: 13, color: accent, flexShrink: 0 }} />
+      <div className="flex-1 min-w-0">
+        <p className="truncate" style={{ fontSize: 11, color: "oklch(0.72 0.006 260)" }}>
+          {payload.name ?? "音频"}
+        </p>
+        <p style={{ fontSize: 10, color: "oklch(0.40 0.006 260)" }}>{formatDuration(payload.duration)}</p>
+      </div>
+      <button
+        onClick={handlePlayPause}
+        className="nodrag w-7 h-7 rounded-full flex items-center justify-center flex-shrink-0 transition-all"
+        style={{ background: accentA(0.18), border: `1px solid ${accentA(0.4)}`, color: accent }}
+      >
+        {isPlaying ? <Pause style={{ width: 11, height: 11 }} /> : <Play style={{ width: 11, height: 11 }} />}
+      </button>
+      <button
+        onClick={() => updateNodeData(id, { url: undefined, name: undefined, duration: undefined, storageKey: undefined })}
+        className="nodrag p-1.5 rounded transition-all"
+        style={{ background: "oklch(0.12 0.007 260)", border: "1px solid oklch(0.22 0.008 260)", color: "oklch(0.45 0.008 260)", cursor: "pointer" }}
+      >
+        <X style={{ width: 10, height: 10 }} />
+      </button>
+      <audio
+        ref={audioRef}
+        src={payload.url}
+        onEnded={() => setIsPlaying(false)}
+        onLoadedMetadata={(e) => update("duration", (e.target as HTMLAudioElement).duration)}
+        style={{ display: "none" }}
+      />
+    </div>
+  ) : null;
+
+  // ── Model selector helper ────────────────────────────────────────────────────
+  const ModelSelect = ({ models, value, onChange }: {
+    models: typeof MUSIC_MODELS;
+    value?: string;
+    onChange: (v: string) => void;
+  }) => (
+    <div>
+      <label style={labelStyle}>AI 模型</label>
+      <select
+        value={value ?? models[0]?.value ?? ""}
+        onChange={(e) => onChange(e.target.value)}
+        className="nodrag"
+        style={{ ...fieldStyle, cursor: "pointer" }}
+        onFocus={(e) => { e.currentTarget.style.borderColor = BORDER_ACCENT; }}
+        onBlur={(e) => { e.currentTarget.style.borderColor = BORDER_DEFAULT; }}
+      >
+        {models.map((m) => (
+          <option key={m.value} value={m.value} style={{ background: "oklch(0.10 0.006 260)" }}>
+            {m.label} — {m.desc}
+          </option>
+        ))}
+      </select>
+    </div>
+  );
+
+  // ── Generate button ──────────────────────────────────────────────────────────
+  const GenerateBtn = ({ disabled, label }: { disabled?: boolean; label: string }) => (
+    <button
+      onClick={handleGenerate}
+      disabled={generating || disabled}
+      className="nodrag flex items-center justify-center gap-1.5 w-full py-2 rounded-lg text-xs font-medium transition-all"
+      style={{
+        background: generating || disabled ? "oklch(0.13 0.007 260)" : accentA(0.15),
+        borderWidth: 1, borderStyle: "solid",
+        borderColor: generating || disabled ? BORDER_DEFAULT : accentA(0.4),
+        color: generating || disabled ? "oklch(0.38 0.006 260)" : accent,
+        cursor: generating || disabled ? "not-allowed" : "pointer",
+      }}
+    >
+      {generating
+        ? <Loader2 style={{ width: 12, height: 12 }} className="animate-spin" />
+        : <Zap style={{ width: 12, height: 12 }} />}
+      {generating ? "生成中..." : label}
+    </button>
+  );
 
   return (
     <BaseNode id={id} selected={selected} nodeType="audio" title={data.title} minHeight={160} resizable>
       <div className="flex flex-col gap-3 p-3.5">
 
-        {/* Source toggle */}
-        <div className="flex gap-1 p-0.5 rounded-lg" style={{ background: "oklch(0.09 0.006 260)", border: "1px solid oklch(0.18 0.008 260)" }}>
-          {(["upload", "tts"] as const).map((s) => (
+        {/* Category tabs */}
+        <div
+          className="flex gap-0.5 p-0.5 rounded-lg"
+          style={{ background: "oklch(0.09 0.006 260)", border: "1px solid oklch(0.18 0.008 260)" }}
+        >
+          {CATEGORIES.map((c) => (
             <button
-              key={s}
-              onClick={() => updateNodeData(id, { source: s })}
-              className="nodrag flex-1 flex items-center justify-center gap-1.5 py-1.5 rounded-md text-xs font-medium transition-all"
+              key={c.id}
+              onClick={() => updateNodeData(id, { audioCategory: c.id })}
+              className="nodrag flex-1 flex items-center justify-center gap-1 py-1.5 rounded-md text-[10.5px] font-medium transition-all"
               style={{
-                background: source === s ? accentA(0.18) : "transparent",
-                border: `1px solid ${source === s ? accentA(0.40) : "transparent"}`,
-                color: source === s ? accent : "oklch(0.48 0.008 260)",
+                background: category === c.id ? accentA(0.18) : "transparent",
+                border: `1px solid ${category === c.id ? accentA(0.40) : "transparent"}`,
+                color: category === c.id ? accent : "oklch(0.48 0.008 260)",
                 cursor: "pointer",
               }}
             >
-              {s === "upload" ? <Upload style={{ width: 11, height: 11 }} /> : <Mic style={{ width: 11, height: 11 }} />}
-              {s === "upload" ? "上传文件" : "文字转语音"}
+              {c.icon}
+              {c.label}
             </button>
           ))}
         </div>
 
-        {source === "upload" ? (
+        {/* ── 配乐 Music ── */}
+        {category === "music" && (
+          <>
+            <ModelSelect
+              models={MUSIC_MODELS}
+              value={payload.aiModel}
+              onChange={(v) => update("aiModel", v)}
+            />
+            <div>
+              <label style={labelStyle}>音乐描述</label>
+              <textarea
+                placeholder="描述你想要的配乐风格、氛围、节奏..."
+                value={payload.musicPrompt ?? ""}
+                onChange={(e) => update("musicPrompt", e.target.value)}
+                rows={3}
+                className="nodrag"
+                style={{ ...fieldStyle, resize: "none", lineHeight: 1.6 }}
+                onFocus={(e) => { e.currentTarget.style.borderColor = BORDER_ACCENT; }}
+                onBlur={(e) => { e.currentTarget.style.borderColor = BORDER_DEFAULT; }}
+              />
+            </div>
+            {/* Style tags */}
+            <div>
+              <label style={labelStyle}>风格标签</label>
+              <div className="flex flex-wrap gap-1">
+                {MUSIC_STYLES.map((s) => (
+                  <button
+                    key={s}
+                    onClick={() => update("musicStyle", payload.musicStyle === s ? undefined : s)}
+                    className="nodrag px-2 py-0.5 rounded text-[10px] transition-all"
+                    style={{
+                      background: payload.musicStyle === s ? accentA(0.15) : "oklch(0.09 0.006 260)",
+                      border: `1px solid ${payload.musicStyle === s ? accentA(0.4) : "oklch(0.20 0.008 260)"}`,
+                      color: payload.musicStyle === s ? accent : "oklch(0.50 0.008 260)",
+                      cursor: "pointer",
+                      fontWeight: payload.musicStyle === s ? 600 : 400,
+                    }}
+                  >
+                    {s}
+                  </button>
+                ))}
+              </div>
+            </div>
+            {/* Duration */}
+            <div>
+              <label style={labelStyle}>时长（秒）</label>
+              <input
+                type="number"
+                min={10}
+                max={240}
+                step={5}
+                value={payload.musicDuration ?? 30}
+                onChange={(e) => update("musicDuration", Number(e.target.value))}
+                className="nodrag"
+                style={{ ...fieldStyle, width: 80 }}
+                onFocus={(e) => { e.currentTarget.style.borderColor = BORDER_ACCENT; }}
+                onBlur={(e) => { e.currentTarget.style.borderColor = BORDER_DEFAULT; }}
+              />
+            </div>
+            <GenerateBtn disabled={!payload.musicPrompt?.trim()} label="生成配乐" />
+            {audioPlayer}
+          </>
+        )}
+
+        {/* ── 配音 Dubbing ── */}
+        {category === "dubbing" && (
+          <>
+            <ModelSelect
+              models={DUBBING_MODELS}
+              value={payload.aiModel}
+              onChange={(v) => update("aiModel", v)}
+            />
+            <div>
+              <label style={labelStyle}>配音文本</label>
+              <textarea
+                placeholder="输入要转换为语音的文字..."
+                value={payload.ttsText ?? ""}
+                onChange={(e) => update("ttsText", e.target.value)}
+                rows={4}
+                className="nodrag"
+                style={{ ...fieldStyle, resize: "none", lineHeight: 1.6 }}
+                onFocus={(e) => { e.currentTarget.style.borderColor = BORDER_ACCENT; }}
+                onBlur={(e) => { e.currentTarget.style.borderColor = BORDER_DEFAULT; }}
+              />
+            </div>
+            {/* Voice selector */}
+            <div>
+              <label style={labelStyle}>音色</label>
+              <div className="flex flex-wrap gap-1">
+                {TTS_VOICES.map((v) => (
+                  <button
+                    key={v.value}
+                    onClick={() => update("ttsVoice", v.value)}
+                    className="nodrag flex items-center gap-1 px-2 py-1 rounded-md text-[10px] transition-all"
+                    style={{
+                      background: payload.ttsVoice === v.value ? accentA(0.15) : "oklch(0.09 0.006 260)",
+                      border: `1px solid ${payload.ttsVoice === v.value ? accentA(0.40) : "oklch(0.20 0.008 260)"}`,
+                      color: payload.ttsVoice === v.value ? accent : "oklch(0.50 0.008 260)",
+                      cursor: "pointer",
+                      fontWeight: payload.ttsVoice === v.value ? 600 : 400,
+                    }}
+                  >
+                    {v.label}
+                    <span style={{ color: "oklch(0.38 0.006 260)", fontSize: 9 }}>{v.desc}</span>
+                  </button>
+                ))}
+              </div>
+            </div>
+            {/* Speed */}
+            <div>
+              <label style={labelStyle}>语速</label>
+              <div className="flex items-center gap-2">
+                <input
+                  type="range"
+                  min={0.5}
+                  max={2.0}
+                  step={0.1}
+                  value={payload.ttsSpeed ?? 1.0}
+                  onChange={(e) => update("ttsSpeed", Number(e.target.value))}
+                  className="nodrag flex-1"
+                  style={{ accentColor: accent }}
+                />
+                <span style={{ fontSize: 11, color: "oklch(0.55 0.006 260)", width: 30, textAlign: "right" }}>
+                  {(payload.ttsSpeed ?? 1.0).toFixed(1)}x
+                </span>
+              </div>
+            </div>
+            <GenerateBtn disabled={!payload.ttsText?.trim()} label="生成配音" />
+            {audioPlayer}
+          </>
+        )}
+
+        {/* ── 音效 SFX ── */}
+        {category === "sfx" && (
+          <>
+            <ModelSelect
+              models={SFX_MODELS}
+              value={payload.aiModel}
+              onChange={(v) => update("aiModel", v)}
+            />
+            <div>
+              <label style={labelStyle}>音效描述</label>
+              <textarea
+                placeholder="描述需要的音效，例如：雨声、脚步声、爆炸声..."
+                value={payload.sfxPrompt ?? ""}
+                onChange={(e) => update("sfxPrompt", e.target.value)}
+                rows={3}
+                className="nodrag"
+                style={{ ...fieldStyle, resize: "none", lineHeight: 1.6 }}
+                onFocus={(e) => { e.currentTarget.style.borderColor = BORDER_ACCENT; }}
+                onBlur={(e) => { e.currentTarget.style.borderColor = BORDER_DEFAULT; }}
+              />
+            </div>
+            <div>
+              <label style={labelStyle}>时长（秒）</label>
+              <input
+                type="number"
+                min={1}
+                max={22}
+                step={1}
+                value={payload.sfxDuration ?? 5}
+                onChange={(e) => update("sfxDuration", Number(e.target.value))}
+                className="nodrag"
+                style={{ ...fieldStyle, width: 80 }}
+                onFocus={(e) => { e.currentTarget.style.borderColor = BORDER_ACCENT; }}
+                onBlur={(e) => { e.currentTarget.style.borderColor = BORDER_DEFAULT; }}
+              />
+            </div>
+            <GenerateBtn disabled={!payload.sfxPrompt?.trim()} label="生成音效" />
+            {audioPlayer}
+          </>
+        )}
+
+        {/* ── 上传 Upload ── */}
+        {category === "upload" && (
           <>
             {payload.url ? (
-              <div
-                className="flex flex-col gap-2 rounded-lg p-2.5"
-                style={{ background: "oklch(0.09 0.006 260)", border: `1px solid ${accentA(0.25)}` }}
-              >
-                <div className="flex items-center gap-2">
-                  <div
-                    className="w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0"
-                    style={{ background: accentA(0.15), border: `1px solid ${accentA(0.3)}` }}
-                  >
-                    <Volume2 style={{ width: 14, height: 14, color: accent }} />
-                  </div>
-                  <div className="flex-1 min-w-0">
-                    <p className="text-xs font-medium truncate" style={{ color: "oklch(0.80 0.006 260)" }}>
-                      {payload.name ?? "音频文件"}
-                    </p>
-                    <p style={{ fontSize: 10, color: "oklch(0.42 0.006 260)" }}>
-                      {formatDuration(payload.duration)}
-                      {payload.size ? ` · ${(payload.size / 1024 / 1024).toFixed(1)} MB` : ""}
-                    </p>
-                  </div>
-                  <button
-                    onClick={handlePlayPause}
-                    className="nodrag w-7 h-7 rounded-full flex items-center justify-center transition-all flex-shrink-0"
-                    style={{ background: accentA(0.18), border: `1px solid ${accentA(0.4)}`, color: accent }}
-                  >
-                    {isPlaying ? <Pause style={{ width: 11, height: 11 }} /> : <Play style={{ width: 11, height: 11 }} />}
-                  </button>
-                </div>
-                {payload.url && (
-                  <audio
-                    ref={audioRef}
-                    src={payload.url}
-                    onEnded={() => setIsPlaying(false)}
-                    onLoadedMetadata={(e) => updateNodeData(id, { duration: (e.target as HTMLAudioElement).duration })}
-                    style={{ display: "none" }}
-                  />
-                )}
-                <div className="flex gap-1">
-                  <button
-                    onClick={() => fileInputRef.current?.click()}
-                    className="nodrag flex items-center gap-1 px-2 py-1 rounded text-[10px] transition-all flex-1"
-                    style={{ background: "oklch(0.12 0.007 260)", border: "1px solid oklch(0.22 0.008 260)", color: "oklch(0.48 0.008 260)", cursor: "pointer" }}
-                  >
-                    <Upload style={{ width: 10, height: 10 }} />
-                    替换
-                  </button>
-                  <button
-                    onClick={() => updateNodeData(id, { url: undefined, name: undefined, duration: undefined })}
-                    className="nodrag p-1.5 rounded transition-all"
-                    style={{ background: "oklch(0.12 0.007 260)", border: "1px solid oklch(0.22 0.008 260)", color: "oklch(0.45 0.008 260)", cursor: "pointer" }}
-                    title="清除"
-                  >
-                    <X style={{ width: 10, height: 10 }} />
-                  </button>
-                </div>
-              </div>
+              <>
+                {audioPlayer}
+                <button
+                  onClick={() => fileInputRef.current?.click()}
+                  className="nodrag flex items-center justify-center gap-1 w-full py-1.5 rounded-lg text-[10px] transition-all"
+                  style={{ background: "oklch(0.12 0.007 260)", border: "1px solid oklch(0.22 0.008 260)", color: "oklch(0.48 0.008 260)", cursor: "pointer" }}
+                >
+                  <Upload style={{ width: 10, height: 10 }} />
+                  替换文件
+                </button>
+              </>
             ) : (
               <button
                 onClick={() => fileInputRef.current?.click()}
                 disabled={uploading}
-                className="nodrag flex flex-col items-center justify-center gap-2 w-full py-5 rounded-lg transition-all"
+                className="nodrag flex flex-col items-center justify-center gap-2 w-full py-6 rounded-lg transition-all"
                 style={{
                   background: uploading ? "oklch(0.12 0.007 260)" : accentA(0.06),
                   border: `1.5px dashed ${uploading ? "oklch(0.22 0.008 260)" : accentA(0.35)}`,
@@ -190,9 +460,11 @@ export const AudioNode = memo(function AudioNode({ id, selected, data }: Props) 
                   cursor: uploading ? "not-allowed" : "pointer",
                 }}
               >
-                {uploading ? <Loader2 style={{ width: 20, height: 20 }} className="animate-spin" /> : <Music style={{ width: 20, height: 20 }} />}
+                {uploading
+                  ? <Loader2 style={{ width: 20, height: 20 }} className="animate-spin" />
+                  : <Wind style={{ width: 20, height: 20 }} />}
                 <span className="text-xs">{uploading ? "上传中..." : "点击上传音频"}</span>
-                <span style={{ fontSize: 10, color: "oklch(0.38 0.006 260)" }}>支持 MP3、WAV、M4A</span>
+                <span style={{ fontSize: 10, color: "oklch(0.38 0.006 260)" }}>支持 MP3、WAV、M4A、OGG</span>
               </button>
             )}
             <input
@@ -203,69 +475,8 @@ export const AudioNode = memo(function AudioNode({ id, selected, data }: Props) 
               onChange={handleFileUpload}
             />
           </>
-        ) : (
-          <>
-            {/* TTS mode */}
-            <textarea
-              placeholder="输入要转换为语音的文字..."
-              value={payload.ttsText ?? ""}
-              onChange={(e) => updateNodeData(id, { ttsText: e.target.value })}
-              rows={3}
-              className="nodrag"
-              style={{ ...fieldStyle, resize: "none", lineHeight: 1.6, fontFamily: "var(--font-sans)" }}
-              onFocus={(e) => { e.currentTarget.style.borderColor = accentA(0.5); }}
-              onBlur={(e) => { e.currentTarget.style.borderColor = BORDER_DEFAULT; }}
-            />
-            {/* Voice selector */}
-            <div className="flex flex-wrap gap-1">
-              {TTS_VOICES.map((v) => (
-                <button
-                  key={v.value}
-                  onClick={() => updateNodeData(id, { ttsVoice: v.value })}
-                  className="nodrag flex items-center gap-1 px-2 py-1 rounded-md text-[10px] transition-all"
-                  style={{
-                    background: payload.ttsVoice === v.value ? accentA(0.15) : "oklch(0.09 0.006 260)",
-                    border: `1px solid ${payload.ttsVoice === v.value ? accentA(0.40) : "oklch(0.20 0.008 260)"}`,
-                    color: payload.ttsVoice === v.value ? accent : "oklch(0.50 0.008 260)",
-                    cursor: "pointer",
-                    fontWeight: payload.ttsVoice === v.value ? 600 : 400,
-                  }}
-                >
-                  {v.label}
-                  <span style={{ color: "oklch(0.38 0.006 260)", fontSize: 9 }}>{v.desc}</span>
-                </button>
-              ))}
-            </div>
-            <button
-              onClick={() => {
-                if (!payload.ttsText?.trim()) { toast.error("请先输入文字内容"); return; }
-                toast.info("TTS 功能即将上线，敬请期待");
-              }}
-              disabled={generatingTts || !payload.ttsText?.trim()}
-              className="nodrag flex items-center justify-center gap-1.5 w-full py-2 rounded-lg text-xs font-medium transition-all"
-              style={{
-                background: generatingTts || !payload.ttsText?.trim() ? "oklch(0.13 0.007 260)" : accentA(0.15),
-                borderWidth: 1, borderStyle: "solid",
-                borderColor: generatingTts || !payload.ttsText?.trim() ? BORDER_DEFAULT : accentA(0.4),
-                color: generatingTts || !payload.ttsText?.trim() ? "oklch(0.38 0.006 260)" : accent,
-                cursor: generatingTts || !payload.ttsText?.trim() ? "not-allowed" : "pointer",
-              }}
-            >
-              {generatingTts ? <Loader2 style={{ width: 12, height: 12 }} className="animate-spin" /> : <Mic style={{ width: 12, height: 12 }} />}
-              {generatingTts ? "生成中..." : "生成语音"}
-            </button>
-            {payload.url && (
-              <div className="flex items-center gap-2 rounded-lg p-2" style={{ background: "oklch(0.09 0.006 260)", border: `1px solid ${accentA(0.25)}` }}>
-                <Volume2 style={{ width: 12, height: 12, color: accent, flexShrink: 0 }} />
-                <span style={{ fontSize: 10, color: "oklch(0.60 0.006 260)", flex: 1 }}>语音已生成 {formatDuration(payload.duration)}</span>
-                <button onClick={handlePlayPause} className="nodrag" style={{ background: "none", border: "none", color: accent, cursor: "pointer" }}>
-                  {isPlaying ? <Pause style={{ width: 12, height: 12 }} /> : <Play style={{ width: 12, height: 12 }} />}
-                </button>
-                <audio ref={audioRef} src={payload.url} onEnded={() => setIsPlaying(false)} style={{ display: "none" }} />
-              </div>
-            )}
-          </>
         )}
+
       </div>
     </BaseNode>
   );

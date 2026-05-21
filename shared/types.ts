@@ -11,7 +11,8 @@ export type NodeType =
   | "note"
   | "audio"
   | "post_process"
-  | "group";
+  | "group"
+  | "character";
 
 export const VIDEO_PROVIDERS = [
   "mock",
@@ -131,17 +132,54 @@ export interface NoteNodeData {
   color?: string;
 }
 
-export type AudioSource = "upload" | "tts";
+export type AudioCategory = "upload" | "music" | "dubbing" | "sfx";
+export type AudioSource = "upload" | "tts"; // legacy compat
 export interface AudioNodeData {
+  audioCategory?: AudioCategory;
+  // Shared / upload
   name?: string;
   url?: string;
   storageKey?: string;
   duration?: number;
-  source: AudioSource;
-  ttsText?: string;
-  ttsVoice?: string;
   mimeType?: string;
   size?: number;
+  // AI model selection (per category)
+  aiModel?: string;
+  // Music (配乐)
+  musicPrompt?: string;
+  musicDuration?: number;
+  musicStyle?: string;
+  // Dubbing / TTS (配音)
+  ttsText?: string;
+  ttsVoice?: string;
+  ttsSpeed?: number;
+  // SFX (音效)
+  sfxPrompt?: string;
+  sfxDuration?: number;
+  // Legacy compat
+  source?: AudioSource;
+}
+
+export type CharacterKind = "person" | "scene";
+export interface CharacterNodeData {
+  characterKind?: CharacterKind;
+  // Person (人物)
+  name?: string;
+  role?: string;
+  gender?: string;
+  age?: string;
+  appearance?: string;
+  personality?: string;
+  // Scene (场景)
+  sceneName?: string;
+  locationType?: string;
+  sceneDescription?: string;
+  atmosphere?: string;
+  timeOfDay?: string;
+  // Shared
+  referenceImageUrl?: string;
+  referenceStorageKey?: string;
+  notes?: string;
 }
 
 export type PostProcessOp = "upscale2x" | "upscale4x" | "denoise" | "sharpen" | "fps2x";
@@ -172,7 +210,8 @@ export type NodeData =
   | NoteNodeData
   | AudioNodeData
   | PostProcessNodeData
-  | GroupNodeData;
+  | GroupNodeData
+  | CharacterNodeData;
 
 // ── Canvas Node ───────────────────────────────────────────────────────────────
 
