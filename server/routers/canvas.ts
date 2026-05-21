@@ -97,7 +97,7 @@ export const nodesRouter = router({
       z.object({
         id: z.string().optional(),
         projectId: z.number(),
-        type: z.enum(["script", "storyboard", "prompt", "image_gen", "asset", "video_task", "ai_chat", "note", "audio", "post_process", "group"]),
+        type: z.enum(["script", "storyboard", "prompt", "image_gen", "asset", "video_task", "ai_chat", "note", "audio", "post_process", "group", "character", "clip"]),
         title: z.string().optional(),
         data: nodeDataSchema,
         posX: z.number(),
@@ -127,7 +127,7 @@ export const nodesRouter = router({
         z.object({
           id: z.string(),
           projectId: z.number(),
-          type: z.enum(["script", "storyboard", "prompt", "image_gen", "asset", "video_task", "ai_chat", "note", "audio", "post_process", "group"]),
+          type: z.enum(["script", "storyboard", "prompt", "image_gen", "asset", "video_task", "ai_chat", "note", "audio", "post_process", "group", "character", "clip"]),
           title: z.string().optional().nullable(),
           data: nodeDataSchema,
           posX: z.number(),
@@ -311,8 +311,8 @@ export const videoTasksRouter = router({
               await updateVideoTask(task.id, update);
               return { ...task, ...update };
             }
-          } catch {
-            // Ignore sync errors; return DB state so polling continues
+          } catch (err) {
+            console.error(`[poll] Poyo status check failed for task ${task.id} (${task.externalTaskId}):`, err instanceof Error ? err.message : String(err));
           }
         }
       }
@@ -337,8 +337,8 @@ export const videoTasksRouter = router({
               await updateVideoTask(task.id, update);
               return { ...task, ...update };
             }
-          } catch {
-            // Ignore sync errors; return DB state so polling continues
+          } catch (err) {
+            console.error(`[poll] Higgsfield status check failed for task ${task.id} (${task.externalTaskId}):`, err instanceof Error ? err.message : String(err));
           }
         }
       }
@@ -592,7 +592,7 @@ export const clipRouter = router({
         speed: z.number().min(0.25).max(4.0).optional(),
         audioUrl: z.string().optional(),
         audioVolume: z.number().min(0).max(2.0).optional(),
-      })
+      }).refine(d => d.endTime > d.startTime, { message: "出点必须大于入点", path: ["endTime"] })
     )
     .mutation(async ({ input }) => {
       const result = await trimVideo(input);

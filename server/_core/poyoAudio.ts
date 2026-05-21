@@ -45,6 +45,7 @@ export async function submitAndPollPoyoMusic(
       Authorization: `Bearer ${ENV.poyoApiKey}`,
     },
     body: JSON.stringify({ model: opts.model, input }),
+    signal: AbortSignal.timeout(15_000),
   });
 
   if (!submitRes.ok) {
@@ -62,6 +63,7 @@ export async function submitAndPollPoyoMusic(
 
     const statusRes = await fetch(`${POYO_BASE}/api/generate/status/${taskId}`, {
       headers: { Authorization: `Bearer ${ENV.poyoApiKey}` },
+      signal: AbortSignal.timeout(10_000),
     });
     if (!statusRes.ok) continue;
 
