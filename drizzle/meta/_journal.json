@@ -43,6 +43,13 @@
       "when": 1779334186357,
       "tag": "0005_slippery_morph",
       "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "5",
+      "when": 1779371107250,
+      "tag": "0006_cheerful_husk",
+      "breakpoints": true
     }
   ]
 }

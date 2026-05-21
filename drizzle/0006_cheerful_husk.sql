@@ -1,0 +1,2 @@
+ALTER TABLE `canvas_nodes` MODIFY COLUMN `type` enum('script','storyboard','prompt','image_gen','asset','video_task','ai_chat','note','audio','post_process','group') NOT NULL;--> statement-breakpoint
+ALTER TABLE `video_tasks` MODIFY COLUMN `provider` enum('mock','poyo_seedance','poyo_veo','poyo_kling26','poyo_kling_o3_std','poyo_kling_o3_pro','poyo_kling_o3_4k','hf_dop_standard','hf_dop_preview','hf_dop_lite','hf_dop_turbo','hf_kling_21_pro','hf_kling_30','hf_seedance_pro','hf_seedance_20') NOT NULL;
