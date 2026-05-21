@@ -32,12 +32,19 @@ const POLL_INTERVAL_MS = 3000;
 const POLL_MAX_ATTEMPTS = 40; // 2 min max
 
 async function generateImagePoyo(options: GenerateImageOptions): Promise<GenerateImageResponse> {
+  if (!ENV.poyoApiKey) throw new Error("POYO_API_KEY is not configured");
+
   const model = options.model ?? "gpt-image-2";
-  const input: Record<string, unknown> = {
-    prompt: options.prompt,
-    size: options.size ?? "16:9",
-    quality: options.quality ?? "medium",
-  };
+  const input: Record<string, unknown> = { prompt: options.prompt };
+
+  if (model === "gpt-image-2") {
+    input.size = options.size ?? "16:9";
+    input.quality = options.quality ?? "medium";
+  } else {
+    // Flux models (flux-2-pro, flux-2-flex) use aspect_ratio
+    input.aspect_ratio = options.size ?? "16:9";
+  }
+
   if (options.originalImages?.[0]?.url) {
     input.reference_image_url = options.originalImages[0].url;
   }
