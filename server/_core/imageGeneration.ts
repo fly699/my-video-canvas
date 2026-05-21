@@ -150,16 +150,22 @@ async function generateImageForge(options: GenerateImageOptions): Promise<Genera
 export async function generateImage(options: GenerateImageOptions): Promise<GenerateImageResponse> {
   // Route by explicit model selection
   if (options.model === "manus_forge") return generateImageForge(options);
-  if (options.model === "poyo_gpt_image") return generateImagePoyo({ ...options, model: "gpt-image-2" });
+  if (options.model === "poyo_gpt_image")  return generateImagePoyo({ ...options, model: "gpt-image-2" });
+  if (options.model === "poyo_seedream")   return generateImagePoyo({ ...options, model: "seedream-4.5" });
+  if (options.model === "poyo_grok_image") return generateImagePoyo({ ...options, model: "grok-imagine-image" });
+  if (options.model === "poyo_wan_image")  return generateImagePoyo({ ...options, model: "wan-2.7-image" });
   if (options.model === "poyo_flux" || options.model === "poyo_sdxl") {
     // flux-2-pro: high quality Flux model; flux-2-flex: flexible/cheaper variant
     const poyoModel = options.model === "poyo_flux" ? "flux-2-pro" : "flux-2-flex";
     return generateImagePoyo({ ...options, model: poyoModel });
   }
   // Higgsfield image models
-  if (options.model === "hf_soul_standard" || options.model === "hf_reve") {
+  if (options.model === "hf_soul_standard" || options.model === "hf_reve" || options.model === "hf_seedream_v4" || options.model === "hf_flux_pro") {
     const hfModel: HiggsfieldImageModel =
-      options.model === "hf_soul_standard" ? "higgsfield-ai/soul/standard" : "reve/text-to-image";
+      options.model === "hf_soul_standard" ? "higgsfield-ai/soul/standard"
+      : options.model === "hf_seedream_v4" ? "bytedance/seedream/v4/text-to-image"
+      : options.model === "hf_flux_pro" ? "flux-pro/kontext/max/text-to-image"
+      : "reve/text-to-image";
     const result = await generateHiggsfieldImage({
       model: hfModel,
       prompt: options.prompt,

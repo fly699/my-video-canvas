@@ -443,7 +443,7 @@ export const imageGenRouter = router({
         negativePrompt: z.string().optional(),
         referenceImageUrl: z.string().optional(),
         style: z.string().optional(),
-        model: z.enum(["manus_forge", "poyo_flux", "poyo_sdxl", "poyo_gpt_image", "hf_soul_standard", "hf_reve"]).optional(),
+        model: z.enum(["manus_forge", "poyo_flux", "poyo_sdxl", "poyo_gpt_image", "poyo_seedream", "poyo_grok_image", "poyo_wan_image", "hf_soul_standard", "hf_reve", "hf_seedream_v4", "hf_flux_pro"]).optional(),
         poyoAspectRatio: z.string().optional(),
         poyoQuality: z.enum(["low", "medium", "high"]).optional(),
         widthAndHeight: z.string().optional(),
@@ -471,7 +471,8 @@ export const imageGenRouter = router({
         ...(input.referenceImageUrl
           ? { originalImages: [{ url: input.referenceImageUrl, mimeType: "image/jpeg" }] }
           : {}),
-        ...((input.model === "poyo_flux" || input.model === "poyo_sdxl" || input.model === "poyo_gpt_image") ? {
+        ...((input.model === "poyo_flux" || input.model === "poyo_sdxl" || input.model === "poyo_gpt_image" ||
+             input.model === "poyo_seedream" || input.model === "poyo_grok_image" || input.model === "poyo_wan_image") ? {
           size: input.poyoAspectRatio,
           quality: input.poyoQuality,
         } : {}),
@@ -482,10 +483,10 @@ export const imageGenRouter = router({
           seed: input.seed,
           enhancePrompt: input.enhancePrompt,
         } : {}),
-        // Reve specific params passed through
-        ...(input.model === "hf_reve" ? {
+        // Reve/Seedream v4/Flux Pro specific params passed through
+        ...(input.model === "hf_reve" || input.model === "hf_seedream_v4" || input.model === "hf_flux_pro" ? {
           reveAspectRatio: input.reveAspectRatio,
-          reveResolution: input.reveResolution,
+          ...(input.model === "hf_reve" ? { reveResolution: input.reveResolution } : {}),
         } : {}),
       });
 

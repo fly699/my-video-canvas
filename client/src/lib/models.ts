@@ -8,12 +8,17 @@ export const CHAT_MODELS = [
 
 // Image generation models (shared between StoryboardNode, ImageGenNode, PromptNode)
 export const IMAGE_MODELS = [
-  { value: "manus_forge",      label: "Manus Forge",        desc: "内置 · 稳定",   group: "Manus" },
-  { value: "poyo_flux",        label: "Flux 2 Pro",         desc: "高质量 · 写实", group: "Poyo" },
-  { value: "poyo_sdxl",        label: "Flux 2 Flex",        desc: "快速 · 多风格", group: "Poyo" },
+  { value: "manus_forge",      label: "Manus Forge",        desc: "内置 · 稳定",       group: "Manus" },
+  { value: "poyo_flux",        label: "Flux 2 Pro",         desc: "高质量 · 写实",     group: "Poyo" },
+  { value: "poyo_sdxl",        label: "Flux 2 Flex",        desc: "快速 · 多风格",     group: "Poyo" },
   { value: "poyo_gpt_image",   label: "GPT Image 2",        desc: "类 GPT-4o · 创意", group: "Poyo" },
-  { value: "hf_soul_standard", label: "Soul Standard",      desc: "旗舰 · 电影级", group: "Higgsfield" },
-  { value: "hf_reve",          label: "Reve Text-to-Image", desc: "通用 · 快速",   group: "Higgsfield" },
+  { value: "poyo_seedream",    label: "Seedream 4.5",       desc: "ByteDance · 4K",   group: "Poyo" },
+  { value: "poyo_grok_image",  label: "Grok Imagine",       desc: "xAI · Aurora",     group: "Poyo" },
+  { value: "poyo_wan_image",   label: "Wan 2.7 Image",      desc: "Alibaba · 思考",   group: "Poyo" },
+  { value: "hf_soul_standard", label: "Soul Standard",      desc: "旗舰 · 电影级",    group: "Higgsfield" },
+  { value: "hf_reve",          label: "Reve",               desc: "通用 · 快速",      group: "Higgsfield" },
+  { value: "hf_seedream_v4",   label: "Seedream v4",        desc: "ByteDance · 4K",   group: "Higgsfield" },
+  { value: "hf_flux_pro",      label: "Flux Pro Kontext",   desc: "上下文感知 · Max",  group: "Higgsfield" },
 ] as const;
 
 export type ChatModelId = typeof CHAT_MODELS[number]["id"];

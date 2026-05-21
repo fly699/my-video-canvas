@@ -32,6 +32,9 @@ const PROVIDERS: { value: VideoProvider; label: string; group: string }[] = [
   { value: "poyo_kling_o3_std",   label: "Kling O3 Standard",   group: "Poyo" },
   { value: "poyo_kling_o3_pro",   label: "Kling O3 Pro",        group: "Poyo" },
   { value: "poyo_kling_o3_4k",    label: "Kling O3 4K",         group: "Poyo" },
+  { value: "poyo_wan25_t2v",      label: "Wan 2.5 文生视频",    group: "Poyo" },
+  { value: "poyo_wan25_i2v",      label: "Wan 2.5 图生视频",    group: "Poyo" },
+  { value: "poyo_runway45",       label: "Runway Gen 4.5",      group: "Poyo" },
   { value: "hf_dop_standard",     label: "DoP Standard",        group: "Higgsfield" },
   { value: "hf_dop_preview",      label: "DoP Preview",         group: "Higgsfield" },
   { value: "hf_dop_lite",         label: "DoP Lite",            group: "Higgsfield" },
@@ -118,6 +121,22 @@ const PROVIDER_PARAMS: Record<string, ParamDef[]> = {
   poyo_kling_o3_std: KLING_O3_PARAMS,
   poyo_kling_o3_pro: KLING_O3_PARAMS,
   poyo_kling_o3_4k:  KLING_O3_PARAMS,
+  poyo_wan25_t2v: [
+    { type: "select", key: "aspect_ratio", label: "宽高比", default: "16:9",
+      options: [{ value: "16:9", label: "16:9 横屏" }, { value: "9:16", label: "9:16 竖屏" }, { value: "1:1", label: "1:1 方形" }] },
+    { type: "number", key: "duration", label: "时长（秒）", min: 3, max: 10, step: 1, default: 5 },
+  ],
+  poyo_wan25_i2v: [
+    { type: "select", key: "aspect_ratio", label: "宽高比", default: "16:9",
+      options: [{ value: "16:9", label: "16:9 横屏" }, { value: "9:16", label: "9:16 竖屏" }, { value: "1:1", label: "1:1 方形" }] },
+    { type: "number", key: "duration", label: "时长（秒）", min: 3, max: 10, step: 1, default: 5 },
+  ],
+  poyo_runway45: [
+    { type: "select", key: "aspect_ratio", label: "宽高比", default: "16:9",
+      options: [{ value: "16:9", label: "16:9 横屏" }, { value: "9:16", label: "9:16 竖屏" }] },
+    { type: "select", key: "duration", label: "时长（秒）", default: 5,
+      options: [{ value: 5, label: "5 秒" }, { value: 10, label: "10 秒" }] },
+  ],
   hf_seedance_20:    HF_SEEDANCE_PARAMS,
   hf_kling_30: [
     { type: "select", key: "duration", label: "时长（秒）", default: 5,

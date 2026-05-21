@@ -2,15 +2,18 @@ import { ENV } from "./env";
 
 const POYO_BASE = "https://api.poyo.ai";
 
-export type PoyoVideoModel = "seedance-2" | "veo-3.1" | "kling-2.6" | "kling-o3-standard" | "kling-o3-pro" | "kling-o3-4k";
+export type PoyoVideoModel = "seedance-2" | "veo-3.1" | "kling-2.6" | "kling-o3-standard" | "kling-o3-pro" | "kling-o3-4k" | "wan2.5-text-to-video" | "wan2.5-image-to-video" | "runway-gen-4.5";
 
 export const POYO_PROVIDER_MAP: Record<string, PoyoVideoModel> = {
-  poyo_seedance: "seedance-2",
-  poyo_veo: "veo-3.1",
-  poyo_kling26: "kling-2.6",
+  poyo_seedance:     "seedance-2",
+  poyo_veo:          "veo-3.1",
+  poyo_kling26:      "kling-2.6",
   poyo_kling_o3_std: "kling-o3-standard",
   poyo_kling_o3_pro: "kling-o3-pro",
-  poyo_kling_o3_4k: "kling-o3-4k",
+  poyo_kling_o3_4k:  "kling-o3-4k",
+  poyo_wan25_t2v:    "wan2.5-text-to-video",
+  poyo_wan25_i2v:    "wan2.5-image-to-video",
+  poyo_runway45:     "runway-gen-4.5",
 };
 
 export function isPoyoVideoProvider(provider: string): boolean {
@@ -46,6 +49,10 @@ export async function submitPoyoVideo(opts: {
   } else if (model === "kling-o3-standard" || model === "kling-o3-pro" || model === "kling-o3-4k") {
     input.duration = (opts.params?.duration as number) ?? 5;
   } else if (model === "veo-3.1") {
+    input.duration = (opts.params?.duration as number) ?? 5;
+  } else if (model === "wan2.5-text-to-video" || model === "wan2.5-image-to-video") {
+    input.duration = (opts.params?.duration as number) ?? 5;
+  } else if (model === "runway-gen-4.5") {
     input.duration = (opts.params?.duration as number) ?? 5;
   } else {
     // seedance-2

@@ -21,6 +21,9 @@ export const VIDEO_PROVIDERS = [
   "poyo_kling_o3_std",
   "poyo_kling_o3_pro",
   "poyo_kling_o3_4k",
+  "poyo_wan25_t2v",
+  "poyo_wan25_i2v",
+  "poyo_runway45",
   "hf_dop_standard",
   "hf_dop_preview",
   "hf_dop_lite",
@@ -100,7 +103,7 @@ export interface AIChatNodeData {
   model?: string;
 }
 
-export type ImageGenModel = "manus_forge" | "poyo_flux" | "poyo_sdxl" | "poyo_gpt_image" | "hf_soul_standard" | "hf_reve";
+export type ImageGenModel = "manus_forge" | "poyo_flux" | "poyo_sdxl" | "poyo_gpt_image" | "poyo_seedream" | "poyo_grok_image" | "poyo_wan_image" | "hf_soul_standard" | "hf_reve" | "hf_seedream_v4" | "hf_flux_pro";
 export interface ImageGenNodeData {
   prompt: string;
   negativePrompt?: string;

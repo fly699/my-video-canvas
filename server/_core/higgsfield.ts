@@ -21,7 +21,9 @@ function getAuthHeader(): string {
 
 export type HiggsfieldImageModel =
   | "higgsfield-ai/soul/standard"
-  | "reve/text-to-image";
+  | "reve/text-to-image"
+  | "bytedance/seedream/v4/text-to-image"
+  | "flux-pro/kontext/max/text-to-image";
 
 export const HIGGSFIELD_IMAGE_MODELS: { value: HiggsfieldImageModel; label: string; desc: string }[] = [
   { value: "higgsfield-ai/soul/standard", label: "Soul Standard (Higgsfield)", desc: "旗舰文生图 · 高质量" },
@@ -122,6 +124,14 @@ export async function generateHiggsfieldImage(
     // Reve specific params
     if (opts.aspectRatio) body.aspect_ratio = opts.aspectRatio;
     if (opts.resolution) body.resolution = opts.resolution;
+    if (opts.negativePrompt) body.negative_prompt = opts.negativePrompt;
+    if (opts.referenceImageUrl) body.image_url = opts.referenceImageUrl;
+  } else if (opts.model === "bytedance/seedream/v4/text-to-image") {
+    if (opts.aspectRatio) body.aspect_ratio = opts.aspectRatio;
+    if (opts.negativePrompt) body.negative_prompt = opts.negativePrompt;
+    if (opts.referenceImageUrl) body.image_url = opts.referenceImageUrl;
+  } else if (opts.model === "flux-pro/kontext/max/text-to-image") {
+    if (opts.aspectRatio) body.aspect_ratio = opts.aspectRatio;
     if (opts.negativePrompt) body.negative_prompt = opts.negativePrompt;
     if (opts.referenceImageUrl) body.image_url = opts.referenceImageUrl;
   }
