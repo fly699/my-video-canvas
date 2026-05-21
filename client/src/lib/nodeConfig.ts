@@ -94,6 +94,37 @@ export const NODE_CONFIGS: Record<NodeType, NodeConfig> = {
     defaultWidth: 260,
     defaultTitle: "便签",
   },
+  audio: {
+    type: "audio",
+    label: "音频",
+    icon: "Music",
+    color: "oklch(0.68 0.20 340)",
+    bgColor: "oklch(0.68 0.20 340 / 0.08)",
+    borderColor: "oklch(0.68 0.20 340 / 0.4)",
+    defaultWidth: 300,
+    defaultTitle: "音频",
+  },
+  post_process: {
+    type: "post_process",
+    label: "后处理",
+    icon: "Layers",
+    color: "oklch(0.65 0.18 190)",
+    bgColor: "oklch(0.65 0.18 190 / 0.08)",
+    borderColor: "oklch(0.65 0.18 190 / 0.4)",
+    defaultWidth: 300,
+    defaultTitle: "后处理",
+  },
+  group: {
+    type: "group",
+    label: "分组",
+    icon: "Folder",
+    color: "oklch(0.55 0.08 260)",
+    bgColor: "oklch(0.55 0.08 260 / 0.04)",
+    borderColor: "oklch(0.55 0.08 260 / 0.25)",
+    defaultWidth: 500,
+    defaultHeight: 400,
+    defaultTitle: "分组",
+  },
 };
 
 export const NODE_TYPE_LIST = Object.values(NODE_CONFIGS);

@@ -5,7 +5,7 @@ import { useCanvasStore } from "../../../hooks/useCanvasStore";
 import type { PromptNodeData, ImageGenModel } from "../../../../../shared/types";
 import { trpc } from "@/lib/trpc";
 import { toast } from "sonner";
-import { Sparkles, Loader2, RefreshCw, ChevronDown, Upload, X } from "lucide-react";
+import { Sparkles, Loader2, RefreshCw, ChevronDown, Upload, X, Grid2X2, Check } from "lucide-react";
 
 interface Props {
   id: string;
@@ -50,6 +50,7 @@ export const PromptNode = memo(function PromptNode({ id, selected, data }: Props
   const { updateNodeData } = useCanvasStore();
   const payload = data.payload;
   const [showModelPicker, setShowModelPicker] = useState(false);
+  const [batchMode, setBatchMode] = useState(false);
   const model = (payload.imageModel as string) ?? IMAGE_MODELS[0].value;
   const setModel = (m: string) => { updateNodeData(id, { imageModel: m as ImageGenModel }); };
 
@@ -84,8 +85,13 @@ export const PromptNode = memo(function PromptNode({ id, selected, data }: Props
 
   const genImageMutation = trpc.imageGen.generate.useMutation({
     onSuccess: (result) => {
-      updateNodeData(id, { imageUrl: result.url });
-      toast.success("图像已生成");
+      if (result.urls && result.urls.length > 1) {
+        updateNodeData(id, { imageUrls: result.urls, imageUrl: result.urls[0], selectedImageIndex: 0 });
+        toast.success(`${result.urls.length} 张图像已生成`);
+      } else {
+        updateNodeData(id, { imageUrl: result.url, imageUrls: undefined, selectedImageIndex: undefined });
+        toast.success("图像已生成");
+      }
     },
     onError: (err) => {
       toast.error("生成失败：" + err.message);
@@ -107,6 +113,7 @@ export const PromptNode = memo(function PromptNode({ id, selected, data }: Props
       style: payload.style,
       referenceImageUrl: payload.referenceImageUrl,
       model: model as ImageGenModel,
+      ...(batchMode ? { batchSize: 2 } : {}),
     });
   };
 
@@ -121,8 +128,44 @@ export const PromptNode = memo(function PromptNode({ id, selected, data }: Props
     <BaseNode id={id} selected={selected} nodeType="prompt" title={data.title} minHeight={200} resizable>
       <div className="flex flex-col h-full p-3.5 gap-3">
 
-        {/* Preview image */}
-        {payload.imageUrl && (
+        {/* Preview area — single or A/B compare */}
+        {payload.imageUrls && payload.imageUrls.length > 1 ? (
+          <div className="flex flex-col gap-1.5 flex-shrink-0">
+            <div className="flex gap-1.5">
+              {payload.imageUrls.map((url, i) => (
+                <div
+                  key={i}
+                  className="relative rounded-lg overflow-hidden flex-1"
+                  style={{
+                    height: 90,
+                    border: `1.5px solid ${(payload.selectedImageIndex ?? 0) === i ? accentColor : "oklch(0.22 0.008 260)"}`,
+                    cursor: "pointer",
+                  }}
+                  onClick={() => updateNodeData(id, { imageUrl: url, selectedImageIndex: i })}
+                >
+                  <img src={url} alt={`图像 ${i + 1}`} className="w-full h-full object-cover" draggable={false} />
+                  {(payload.selectedImageIndex ?? 0) === i && (
+                    <div
+                      className="absolute top-1 right-1 w-4 h-4 rounded-full flex items-center justify-center"
+                      style={{ background: accentColor }}
+                    >
+                      <Check style={{ width: 9, height: 9, color: "white" }} />
+                    </div>
+                  )}
+                  <div
+                    className="absolute bottom-1 left-1 px-1 rounded text-[9px] font-semibold"
+                    style={{ background: "oklch(0 0 0 / 0.6)", color: "oklch(0.85 0.005 260)" }}
+                  >
+                    {i === 0 ? "A" : "B"}
+                  </div>
+                </div>
+              ))}
+            </div>
+            <p style={{ fontSize: 10, color: "oklch(0.40 0.006 260)", textAlign: "center" }}>
+              点击选择图像 · 已选: {(payload.selectedImageIndex ?? 0) === 0 ? "A" : "B"}
+            </p>
+          </div>
+        ) : payload.imageUrl ? (
           <div
             className="relative rounded-lg overflow-hidden flex-shrink-0"
             style={{
@@ -154,7 +197,7 @@ export const PromptNode = memo(function PromptNode({ id, selected, data }: Props
               </button>
             </div>
           </div>
-        )}
+        ) : null}
 
         {/* Positive prompt */}
         <div>
@@ -318,29 +361,47 @@ export const PromptNode = memo(function PromptNode({ id, selected, data }: Props
           )}
         </div>
 
-        {/* Generate button */}
-        <button
-          onClick={handleGenerate}
-          disabled={genImageMutation.isPending || !payload.positivePrompt?.trim()}
-          className="nodrag flex items-center justify-center gap-1.5 w-full py-2 rounded-lg text-xs font-medium transition-all"
-          style={{
-            background: genImageMutation.isPending || !payload.positivePrompt?.trim()
-              ? "oklch(0.13 0.007 260)"
-              : accentA(0.15),
-            borderWidth: 1,
-            borderStyle: "solid",
-            borderColor: genImageMutation.isPending || !payload.positivePrompt?.trim()
-              ? BORDER_DEFAULT
-              : accentA(0.4),
-            color: genImageMutation.isPending || !payload.positivePrompt?.trim()
-              ? "oklch(0.38 0.006 260)"
-              : accentColor,
-            cursor: genImageMutation.isPending || !payload.positivePrompt?.trim() ? "not-allowed" : "pointer",
-          }}
-        >
-          {genImageMutation.isPending ? <Loader2 className="w-3 h-3 animate-spin" /> : <Sparkles className="w-3 h-3" />}
-          {genImageMutation.isPending ? "生成中..." : "AI 生成图像"}
-        </button>
+        {/* Batch toggle + Generate button */}
+        <div className="flex gap-1.5">
+          <button
+            onClick={() => setBatchMode((v) => !v)}
+            className="nodrag flex items-center gap-1 px-2 py-1.5 rounded-lg text-[11px] font-medium transition-all flex-shrink-0"
+            style={{
+              background: batchMode ? accentA(0.15) : "oklch(0.13 0.007 260)",
+              borderWidth: 1,
+              borderStyle: "solid",
+              borderColor: batchMode ? accentA(0.4) : BORDER_DEFAULT,
+              color: batchMode ? accentColor : "oklch(0.45 0.008 260)",
+              cursor: "pointer",
+            }}
+            title={batchMode ? "当前：生成2图 A/B对比" : "点击开启A/B对比模式"}
+          >
+            <Grid2X2 className="w-3 h-3" />
+            {batchMode ? "A/B" : "1图"}
+          </button>
+          <button
+            onClick={handleGenerate}
+            disabled={genImageMutation.isPending || !payload.positivePrompt?.trim()}
+            className="nodrag flex items-center justify-center gap-1.5 flex-1 py-2 rounded-lg text-xs font-medium transition-all"
+            style={{
+              background: genImageMutation.isPending || !payload.positivePrompt?.trim()
+                ? "oklch(0.13 0.007 260)"
+                : accentA(0.15),
+              borderWidth: 1,
+              borderStyle: "solid",
+              borderColor: genImageMutation.isPending || !payload.positivePrompt?.trim()
+                ? BORDER_DEFAULT
+                : accentA(0.4),
+              color: genImageMutation.isPending || !payload.positivePrompt?.trim()
+                ? "oklch(0.38 0.006 260)"
+                : accentColor,
+              cursor: genImageMutation.isPending || !payload.positivePrompt?.trim() ? "not-allowed" : "pointer",
+            }}
+          >
+            {genImageMutation.isPending ? <Loader2 className="w-3 h-3 animate-spin" /> : <Sparkles className="w-3 h-3" />}
+            {genImageMutation.isPending ? "生成中..." : batchMode ? "生成 2 图" : "AI 生成图像"}
+          </button>
+        </div>
       </div>
     </BaseNode>
   );

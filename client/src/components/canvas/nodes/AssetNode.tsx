@@ -1,7 +1,10 @@
-import { memo } from "react";
+import { memo, useRef, useState } from "react";
 import { BaseNode } from "../BaseNode";
 import type { AssetNodeData } from "../../../../../shared/types";
-import { FileVideo, FileImage, FileAudio, File, ExternalLink } from "lucide-react";
+import { FileVideo, FileImage, FileAudio, File, ExternalLink, Upload, RefreshCw, Loader2 } from "lucide-react";
+import { useCanvasStore } from "../../../hooks/useCanvasStore";
+import { trpc } from "@/lib/trpc";
+import { toast } from "sonner";
 
 interface Props {
   id: string;
@@ -18,6 +21,35 @@ const accentColor = "oklch(0.65 0.18 60)";
 
 export const AssetNode = memo(function AssetNode({ id, selected, data }: Props) {
   const payload = data.payload;
+  const { updateNodeData } = useCanvasStore();
+  const [uploading, setUploading] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  const uploadMutation = trpc.upload.uploadImage.useMutation({
+    onSuccess: (result) => {
+      updateNodeData(id, { url: result.url, storageKey: result.storageKey });
+      setUploading(false);
+      toast.success("素材已替换");
+    },
+    onError: (err) => {
+      setUploading(false);
+      toast.error("上传失败：" + err.message);
+    },
+  });
+
+  const handleReplace = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    if (file.size > 32 * 1024 * 1024) { toast.error("文件不能超过 32MB"); return; }
+    setUploading(true);
+    const reader = new FileReader();
+    reader.onload = () => {
+      const base64 = (reader.result as string).split(",")[1];
+      uploadMutation.mutate({ base64, mimeType: file.type, filename: file.name });
+    };
+    reader.readAsDataURL(file);
+    e.target.value = "";
+  };
 
   const renderPreview = () => {
     if (!payload.url) {
@@ -47,6 +79,15 @@ export const AssetNode = memo(function AssetNode({ id, selected, data }: Props) 
             className="absolute inset-0 opacity-0 group-hover/img:opacity-100 transition-opacity flex items-end justify-end p-2"
             style={{ background: "oklch(0 0 0 / 0.40)" }}
           >
+            <button
+              onClick={(e) => { e.preventDefault(); e.stopPropagation(); fileInputRef.current?.click(); }}
+              disabled={uploading}
+              className="nodrag w-6 h-6 rounded-md flex items-center justify-center mr-1"
+              style={{ background: "oklch(0 0 0 / 0.60)", color: "oklch(0.80 0.005 260)" }}
+              title="替换图片"
+            >
+              {uploading ? <Loader2 className="w-3 h-3 animate-spin" /> : <RefreshCw className="w-3 h-3" />}
+            </button>
             <a
               href={payload.url}
               target="_blank"
@@ -121,7 +162,29 @@ export const AssetNode = memo(function AssetNode({ id, selected, data }: Props) 
               {payload.mimeType.split("/")[1]?.toUpperCase() ?? payload.mimeType}
             </span>
           )}
+          <button
+            onClick={() => fileInputRef.current?.click()}
+            disabled={uploading || !payload.url}
+            className="nodrag flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] flex-shrink-0 transition-all"
+            style={{
+              background: "oklch(0.09 0.006 260)",
+              border: "1px solid oklch(0.22 0.008 260)",
+              color: "oklch(0.48 0.008 260)",
+              cursor: uploading || !payload.url ? "not-allowed" : "pointer",
+            }}
+            title="替换素材"
+          >
+            {uploading ? <Loader2 className="w-3 h-3 animate-spin" /> : <RefreshCw className="w-3 h-3" />}
+            {uploading ? "上传中" : "替换"}
+          </button>
         </div>
+        <input
+          ref={fileInputRef}
+          type="file"
+          accept="image/*,video/*,audio/*"
+          className="hidden"
+          onChange={handleReplace}
+        />
       </div>
     </BaseNode>
   );

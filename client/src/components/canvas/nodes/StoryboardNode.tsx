@@ -4,7 +4,7 @@ import { useCanvasStore } from "../../../hooks/useCanvasStore";
 import type { StoryboardNodeData } from "../../../../../shared/types";
 import { trpc } from "@/lib/trpc";
 import { toast } from "sonner";
-import { Sparkles, ImageIcon, Loader2, RefreshCw, ChevronDown, Upload, X, Wand2 } from "lucide-react";
+import { Sparkles, ImageIcon, Loader2, RefreshCw, ChevronDown, Upload, X, Wand2, History } from "lucide-react";
 import { IMAGE_MODELS, type ImageModelId } from "@/lib/models";
 
 interface Props {
@@ -45,6 +45,7 @@ export const StoryboardNode = memo(function StoryboardNode({ id, selected, data 
   const [generating, setGenerating] = useState(false);
   const [showModelPicker, setShowModelPicker] = useState(false);
   const [inputExpanded, setInputExpanded] = useState(!!selected);
+  const [showHistory, setShowHistory] = useState(false);
 
   // Auto-collapse inputs when deselected, expand when selected
   useEffect(() => {
@@ -84,7 +85,9 @@ export const StoryboardNode = memo(function StoryboardNode({ id, selected, data 
 
   const genImageMutation = trpc.imageGen.generate.useMutation({
     onSuccess: (result) => {
-      updateNodeData(id, { imageUrl: result.url });
+      const currentHistory = (useCanvasStore.getState().nodes.find(n => n.id === id)?.data.payload as StoryboardNodeData)?.imageHistory ?? [];
+      const newHistory = [result.url, ...currentHistory].filter((u): u is string => !!u).slice(0, 5);
+      updateNodeData(id, { imageUrl: result.url, imageHistory: newHistory });
       setGenerating(false);
       toast.success("分镜图像已生成");
     },
@@ -159,7 +162,7 @@ export const StoryboardNode = memo(function StoryboardNode({ id, selected, data 
             <>
               <img src={payload.imageUrl} alt="分镜" className="w-full h-full object-cover" draggable={false} />
               <div
-                className="absolute inset-0 opacity-0 hover:opacity-100 transition-opacity flex items-center justify-center"
+                className="absolute inset-0 opacity-0 hover:opacity-100 transition-opacity flex flex-col items-center justify-center gap-1"
                 style={{ background: "oklch(0 0 0 / 0.55)" }}
               >
                 <button
@@ -177,6 +180,21 @@ export const StoryboardNode = memo(function StoryboardNode({ id, selected, data 
                   {generating ? <Loader2 className="w-3 h-3 animate-spin" /> : <RefreshCw className="w-3 h-3" />}
                   {generating ? "生成中..." : "重新生成"}
                 </button>
+                {(payload.imageHistory?.length ?? 0) > 1 && (
+                  <button
+                    onClick={(e) => { e.stopPropagation(); setShowHistory((v) => !v); }}
+                    className="nodrag flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs font-medium transition-all mt-1"
+                    style={{
+                      background: "oklch(0.68 0.22 285 / 0.20)",
+                      borderWidth: 1, borderStyle: "solid",
+                      borderColor: "oklch(0.68 0.22 285 / 0.5)",
+                      color: "oklch(0.75 0.18 285)",
+                    }}
+                  >
+                    <History className="w-3 h-3" />
+                    历史 ({payload.imageHistory!.length})
+                  </button>
+                )}
               </div>
               {payload.sceneNumber && (
                 <div
@@ -222,6 +240,44 @@ export const StoryboardNode = memo(function StoryboardNode({ id, selected, data 
             </div>
           )}
         </div>
+
+        {/* ── Generation history panel ── */}
+        {showHistory && (payload.imageHistory?.length ?? 0) > 1 && (
+          <div className="flex flex-col gap-2 flex-shrink-0">
+            <div className="flex items-center justify-between">
+              <span style={{ fontSize: 10, fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.06em", color: "oklch(0.42 0.006 260)" }}>
+                生成历史
+              </span>
+              <button
+                onClick={() => setShowHistory(false)}
+                className="nodrag"
+                style={{ fontSize: 10, color: "oklch(0.40 0.006 260)", cursor: "pointer", background: "none", border: "none" }}
+              >
+                收起
+              </button>
+            </div>
+            <div style={{ display: "flex", gap: 6, overflowX: "auto" }}>
+              {payload.imageHistory!.map((url, i) => (
+                <button
+                  key={i}
+                  onClick={() => { updateNodeData(id, { imageUrl: url }); setShowHistory(false); }}
+                  className="nodrag flex-shrink-0 rounded overflow-hidden"
+                  style={{
+                    width: 60, height: 45,
+                    border: url === payload.imageUrl
+                      ? "1.5px solid oklch(0.65 0.20 160)"
+                      : "1.5px solid oklch(0.22 0.008 260)",
+                    cursor: "pointer",
+                    padding: 0,
+                  }}
+                  title={i === 0 ? "当前版本" : `版本 ${i + 1}`}
+                >
+                  <img src={url} alt={`历史 ${i + 1}`} style={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }} />
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
 
         {/* ── Collapsible inputs ── */}
         <div

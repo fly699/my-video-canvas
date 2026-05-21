@@ -231,7 +231,7 @@ export const useCanvasStore = create<CanvasStore>((set, get) => ({
       ...pushHistory(state),
       nodes: state.nodes.map((n) =>
         n.id === id
-          ? { ...n, data: { ...n.data, payload: { ...n.data.payload, ...payload } } }
+          ? { ...n, data: { ...n.data, payload: { ...n.data.payload, ...payload } as NodeData } }
           : n
       ),
       isDirty: true,
@@ -245,7 +245,7 @@ export const useCanvasStore = create<CanvasStore>((set, get) => ({
       ...pushHistory(state),
       nodes: state.nodes.map((n) => {
         const patch = updateMap.get(n.id);
-        return patch ? { ...n, data: { ...n.data, payload: { ...n.data.payload, ...patch } } } : n;
+        return patch ? { ...n, data: { ...n.data, payload: { ...n.data.payload, ...patch } as NodeData } } : n;
       }),
       isDirty: true,
     }));

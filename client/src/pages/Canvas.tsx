@@ -57,6 +57,12 @@ import {
   Undo2,
   Redo2,
   Search,
+  Music,
+  Layers,
+  Folder,
+  Lock,
+  Unlock,
+  ChevronDown,
 } from "lucide-react";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 
@@ -65,7 +71,7 @@ const edgeTypes = { custom: CustomEdge };
 
 // ── Icon map ──────────────────────────────────────────────────────────────────
 const ICON_MAP: Record<string, React.ComponentType<{ className?: string; style?: React.CSSProperties }>> = {
-  FileText, Image, Wand2, Sparkles, Paperclip, Video, Bot, StickyNote,
+  FileText, Image, Wand2, Sparkles, Paperclip, Video, Bot, StickyNote, Music, Layers, Folder,
 };
 
 // ── Tool button ───────────────────────────────────────────────────────────────
@@ -195,6 +201,8 @@ function CanvasInner({ projectId }: { projectId: number }) {
   const [showShortcuts, setShowShortcuts] = useState(false);
   const [showStatsSidebar, setShowStatsSidebar] = useState(false);
   const [showFilmstrip, setShowFilmstrip] = useState(false);
+  const [globalAspectRatio, setGlobalAspectRatio] = useState<string | null>(null);
+  const [showRatioPicker, setShowRatioPicker] = useState(false);
 
   // Workflow runner
   const { runState, runWorkflow } = useWorkflowRunner();
@@ -267,7 +275,9 @@ function CanvasInner({ projectId }: { projectId: number }) {
     try {
       if (nodes.length > 0) {
         await batchUpsertNodes.mutateAsync(nodes.map((n) => ({
-          id: n.id, projectId, type: n.data.nodeType, title: n.data.title,
+          id: n.id, projectId,
+          type: n.data.nodeType as "script" | "storyboard" | "prompt" | "image_gen" | "asset" | "video_task" | "ai_chat" | "note" | "audio" | "post_process" | "group",
+          title: n.data.title,
           data: n.data.payload as Record<string, unknown>,
           posX: n.position.x, posY: n.position.y,
           width: (n.style?.width as number) ?? 320, height: (n.style?.height as number) ?? 200, zIndex: n.zIndex ?? 0,
@@ -357,6 +367,24 @@ function CanvasInner({ projectId }: { projectId: number }) {
     addNode(type, { x: cx + Math.random() * 80 - 40, y: cy + Math.random() * 80 - 40 });
     setShowNodePicker(false);
   }, [addNode, reactFlow]);
+
+  // ── Global aspect ratio lock ────────────────────────────────────────────────
+  const RATIO_PRESETS = ["16:9", "9:16", "1:1", "4:3", "3:4", "2.35:1"];
+  const { batchUpdateNodeData } = useCanvasStore();
+  const applyGlobalRatio = useCallback((ratio: string | null) => {
+    setGlobalAspectRatio(ratio);
+    setShowRatioPicker(false);
+    if (!ratio) { toast.info("已解除纵横比锁定"); return; }
+    const targets = useCanvasStore.getState().nodes.filter(n =>
+      ["storyboard", "prompt", "image_gen"].includes(n.data.nodeType)
+    );
+    if (targets.length > 0) {
+      batchUpdateNodeData(targets.map(n => ({ id: n.id, payload: { aspectRatio: ratio } })));
+      toast.success(`已将 ${targets.length} 个节点纵横比锁定为 ${ratio}`);
+    } else {
+      toast.info(`纵横比锁定为 ${ratio}，新建节点将自动继承`);
+    }
+  }, [batchUpdateNodeData]);
 
   // ── Export ──────────────────────────────────────────────────────────────────
   const handleExport = () => {
@@ -809,6 +837,72 @@ function CanvasInner({ projectId }: { projectId: number }) {
             </TooltipTrigger>
             <TooltipContent side="bottom" className="text-xs">导出 JSON</TooltipContent>
           </Tooltip>
+          {/* Divider */}
+          <div className="w-px h-4 mx-1" style={{ background: "oklch(0.22 0.008 260)" }} />
+
+          {/* Global aspect ratio lock */}
+          <div className="relative">
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <button
+                  onClick={() => setShowRatioPicker((v) => !v)}
+                  className="flex items-center gap-1 h-7 px-2 rounded-lg text-[11px] transition-all"
+                  style={{
+                    background: globalAspectRatio ? "oklch(0.72 0.20 80 / 0.12)" : "transparent",
+                    border: globalAspectRatio ? "1px solid oklch(0.72 0.20 80 / 0.35)" : "1px solid oklch(0.22 0.008 260)",
+                    color: globalAspectRatio ? "oklch(0.72 0.20 80)" : "oklch(0.50 0.008 260)",
+                  }}
+                  onMouseEnter={(e) => { if (!globalAspectRatio) { (e.currentTarget as HTMLElement).style.background = "oklch(0.16 0.008 260)"; (e.currentTarget as HTMLElement).style.color = "oklch(0.80 0.005 260)"; } }}
+                  onMouseLeave={(e) => { if (!globalAspectRatio) { (e.currentTarget as HTMLElement).style.background = "transparent"; (e.currentTarget as HTMLElement).style.color = "oklch(0.50 0.008 260)"; } }}
+                >
+                  {globalAspectRatio ? <Lock className="w-3 h-3" /> : <Unlock className="w-3 h-3" />}
+                  {globalAspectRatio ?? "比例"}
+                  <ChevronDown className="w-2.5 h-2.5 opacity-60" />
+                </button>
+              </TooltipTrigger>
+              <TooltipContent side="bottom" className="text-xs">全局纵横比锁定</TooltipContent>
+            </Tooltip>
+            {showRatioPicker && (
+              <div
+                className="absolute right-0 top-9 z-50 rounded-xl overflow-hidden"
+                style={{
+                  background: "oklch(0.12 0.007 260)",
+                  border: "1px solid oklch(0.22 0.008 260)",
+                  boxShadow: "0 8px 32px oklch(0 0 0 / 0.55)",
+                  minWidth: 120,
+                }}
+              >
+                <button
+                  className="w-full flex items-center gap-2 px-3 py-2 text-xs transition-all text-left"
+                  style={{ borderBottom: "1px solid oklch(0.17 0.008 260)", color: "oklch(0.55 0.008 260)" }}
+                  onClick={() => applyGlobalRatio(null)}
+                  onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.background = "oklch(0.16 0.008 260)"; }}
+                  onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.background = "transparent"; }}
+                >
+                  <Unlock className="w-3 h-3" />
+                  解除锁定
+                </button>
+                {RATIO_PRESETS.map((r) => (
+                  <button
+                    key={r}
+                    className="w-full flex items-center justify-between px-3 py-2 text-xs transition-all"
+                    style={{
+                      borderBottom: "1px solid oklch(0.17 0.008 260)",
+                      background: globalAspectRatio === r ? "oklch(0.72 0.20 80 / 0.10)" : "transparent",
+                      color: globalAspectRatio === r ? "oklch(0.72 0.20 80)" : "oklch(0.65 0.006 260)",
+                    }}
+                    onClick={() => applyGlobalRatio(r)}
+                    onMouseEnter={(e) => { if (globalAspectRatio !== r) (e.currentTarget as HTMLElement).style.background = "oklch(0.16 0.008 260)"; }}
+                    onMouseLeave={(e) => { if (globalAspectRatio !== r) (e.currentTarget as HTMLElement).style.background = "transparent"; }}
+                  >
+                    <span>{r}</span>
+                    {globalAspectRatio === r && <Lock className="w-2.5 h-2.5" />}
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
+
           {/* Divider */}
           <div className="w-px h-4 mx-1" style={{ background: "oklch(0.22 0.008 260)" }} />
           {/* Logout */}

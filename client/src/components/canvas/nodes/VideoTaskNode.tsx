@@ -5,7 +5,7 @@ import type { VideoTaskNodeData, VideoProvider } from "../../../../../shared/typ
 import { trpc } from "@/lib/trpc";
 import { toast } from "sonner";
 import { Handle, Position } from "@xyflow/react";
-import { Play, Loader2, CheckCircle2, XCircle, Clock, RefreshCw, AlertCircle, Download, ChevronDown, ChevronRight } from "lucide-react";
+import { Play, Loader2, CheckCircle2, XCircle, Clock, RefreshCw, AlertCircle, Download, ChevronDown, ChevronRight, Layers } from "lucide-react";
 
 interface Props {
   id: string;
@@ -142,6 +142,10 @@ export const VideoTaskNode = memo(function VideoTaskNode({ id, selected, data }:
   // Auto-collapse params when node is deselected; expand when selected
   const [paramsExpanded, setParamsExpanded] = useState(!!selected);
   useEffect(() => { setParamsExpanded(!!selected); }, [selected]);
+
+  const [parallelMode, setParallelMode] = useState(false);
+  const [parallelProviders, setParallelProviders] = useState<VideoProvider[]>([]);
+  const [parallelResults, setParallelResults] = useState<Record<string, { status: "pending" | "processing" | "done" | "failed"; videoUrl?: string; taskId?: number }>>({});
 
   const createTaskMutation = trpc.videoTasks.create.useMutation({
     onSuccess: (task) => {
@@ -338,6 +342,146 @@ export const VideoTaskNode = memo(function VideoTaskNode({ id, selected, data }:
               : "max-height 160ms cubic-bezier(0.77, 0, 0.175, 1)",
           }}
         >
+
+        {/* ── Parallel compare mode toggle ── */}
+        <div className="flex items-center justify-between px-3.5 pt-2 pb-1 flex-shrink-0" style={{ marginLeft: -14, marginRight: -14 }}>
+          <span style={{ fontSize: 10, fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.06em", color: "oklch(0.40 0.008 260)" }}>
+            {parallelMode ? "并行对比模式" : "单模型模式"}
+          </span>
+          <button
+            onClick={() => { setParallelMode((v) => !v); setParallelProviders([]); setParallelResults({}); }}
+            className="nodrag flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] transition-all"
+            style={{
+              background: parallelMode ? "oklch(0.68 0.22 285 / 0.15)" : "oklch(0.13 0.007 260)",
+              border: `1px solid ${parallelMode ? "oklch(0.68 0.22 285 / 0.40)" : "oklch(0.22 0.008 260)"}`,
+              color: parallelMode ? "oklch(0.68 0.22 285)" : "oklch(0.45 0.008 260)",
+              cursor: "pointer",
+            }}
+          >
+            <Layers style={{ width: 10, height: 10 }} />
+            {parallelMode ? "关闭" : "并行对比"}
+          </button>
+        </div>
+
+        {parallelMode && (
+          <div className="flex flex-col gap-2 flex-shrink-0">
+            <p style={{ fontSize: 10, color: "oklch(0.42 0.006 260)" }}>选择最多 3 个模型并行生成对比：</p>
+            <div className="flex flex-col gap-1">
+              {PROVIDERS.filter(p => p.value !== "mock").map((p) => {
+                const checked = parallelProviders.includes(p.value);
+                return (
+                  <button
+                    key={p.value}
+                    onClick={() => {
+                      if (checked) {
+                        setParallelProviders(prev => prev.filter(v => v !== p.value));
+                      } else if (parallelProviders.length < 3) {
+                        setParallelProviders(prev => [...prev, p.value]);
+                      }
+                    }}
+                    className="nodrag flex items-center gap-2 px-2.5 py-1.5 rounded-lg text-xs transition-all text-left"
+                    style={{
+                      background: checked ? "oklch(0.68 0.22 285 / 0.10)" : "oklch(0.09 0.006 260)",
+                      border: `1px solid ${checked ? "oklch(0.68 0.22 285 / 0.40)" : "oklch(0.20 0.008 260)"}`,
+                      color: checked ? "oklch(0.75 0.15 285)" : "oklch(0.60 0.006 260)",
+                      cursor: (!checked && parallelProviders.length >= 3) ? "not-allowed" : "pointer",
+                      opacity: (!checked && parallelProviders.length >= 3) ? 0.5 : 1,
+                    }}
+                  >
+                    <div style={{
+                      width: 14, height: 14, borderRadius: 3, flexShrink: 0,
+                      background: checked ? "oklch(0.68 0.22 285)" : "transparent",
+                      border: `1.5px solid ${checked ? "oklch(0.68 0.22 285)" : "oklch(0.30 0.008 260)"}`,
+                      display: "flex", alignItems: "center", justifyContent: "center",
+                    }}>
+                      {checked && <span style={{ color: "white", fontSize: 9, fontWeight: 700 }}>✓</span>}
+                    </div>
+                    <span>{p.label}</span>
+                    <span style={{ marginLeft: "auto", fontSize: 9, color: "oklch(0.40 0.006 260)", background: "oklch(0.14 0.007 260)", borderRadius: 99, padding: "1px 5px" }}>{p.group}</span>
+                    {parallelResults[p.value] && (
+                      <span style={{
+                        fontSize: 9, borderRadius: 99, padding: "1px 5px",
+                        background: parallelResults[p.value].status === "done" ? "oklch(0.72 0.18 155 / 0.15)" : "oklch(0.68 0.22 285 / 0.12)",
+                        color: parallelResults[p.value].status === "done" ? "oklch(0.65 0.18 155)" : "oklch(0.68 0.22 285)",
+                      }}>
+                        {parallelResults[p.value].status === "done" ? "完成" : parallelResults[p.value].status === "failed" ? "失败" : "生成中"}
+                      </span>
+                    )}
+                  </button>
+                );
+              })}
+            </div>
+            {parallelProviders.length > 0 && (
+              <button
+                onClick={() => {
+                  if (!(payload.prompt?.trim())) { toast.error("请先填写提示词"); return; }
+                  toast.info(`正在并行提交 ${parallelProviders.length} 个任务...`);
+                  parallelProviders.forEach(provider => {
+                    setParallelResults(prev => ({ ...prev, [provider]: { status: "processing" } }));
+                    createTaskMutation.mutate(
+                      { nodeId: id, projectId: data.projectId, provider, prompt: payload.prompt!, negativePrompt: payload.negativePrompt, referenceImageUrl: payload.referenceImageUrl, params: payload.params },
+                      {
+                        onSuccess: (result) => {
+                          setParallelResults(prev => ({ ...prev, [provider]: { status: "done", videoUrl: result.resultVideoUrl ?? undefined, taskId: result.id } }));
+                        },
+                        onError: (err) => {
+                          setParallelResults(prev => ({ ...prev, [provider]: { status: "failed" } }));
+                          toast.error(`${provider} 失败: ${err.message}`);
+                        },
+                      }
+                    );
+                  });
+                }}
+                className="nodrag flex items-center justify-center gap-1.5 w-full py-2 rounded-lg text-xs font-medium transition-all"
+                style={{
+                  background: "oklch(0.68 0.22 285 / 0.12)",
+                  border: "1px solid oklch(0.68 0.22 285 / 0.35)",
+                  color: "oklch(0.72 0.18 285)",
+                  cursor: "pointer",
+                }}
+              >
+                <Play style={{ width: 11, height: 11 }} />
+                并行生成 {parallelProviders.length} 个模型
+              </button>
+            )}
+            {/* Parallel results grid */}
+            {Object.keys(parallelResults).length > 0 && (
+              <div className="flex flex-col gap-2 mt-1">
+                <span style={{ fontSize: 10, fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.06em", color: "oklch(0.42 0.006 260)" }}>对比结果</span>
+                <div className="flex gap-1.5">
+                  {Object.entries(parallelResults).map(([provider, result]) => (
+                    <div
+                      key={provider}
+                      className="flex-1 rounded-lg overflow-hidden"
+                      style={{
+                        minWidth: 0,
+                        background: "oklch(0.09 0.006 260)",
+                        border: `1px solid ${result.status === "done" ? "oklch(0.65 0.18 155 / 0.35)" : "oklch(0.20 0.008 260)"}`,
+                      }}
+                    >
+                      {result.status === "done" && result.videoUrl ? (
+                        <video src={result.videoUrl} controls className="w-full nodrag" style={{ maxHeight: 80, display: "block" }} />
+                      ) : (
+                        <div className="flex items-center justify-center" style={{ height: 60 }}>
+                          {result.status === "processing" ? (
+                            <Loader2 className="w-4 h-4 animate-spin" style={{ color: "oklch(0.68 0.22 285)" }} />
+                          ) : (
+                            <XCircle className="w-4 h-4" style={{ color: "oklch(0.62 0.20 25)" }} />
+                          )}
+                        </div>
+                      )}
+                      <div className="px-1.5 py-1">
+                        <p style={{ fontSize: 9, color: "oklch(0.50 0.006 260)", textAlign: "center" }}>
+                          {PROVIDERS.find(p => p.value === provider)?.label ?? provider}
+                        </p>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+          </div>
+        )}
 
         {/* ── Provider ── */}
         <div style={{ marginTop: 4 }}>

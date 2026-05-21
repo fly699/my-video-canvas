@@ -4,7 +4,7 @@ import { useCanvasStore } from "../../../hooks/useCanvasStore";
 import type { AIChatNodeData, NodeType } from "../../../../../shared/types";
 import { trpc } from "@/lib/trpc";
 import { toast } from "sonner";
-import { Send, Loader2, Trash2, Bot, User, Sparkles, ChevronDown, ArrowRight, Copy } from "lucide-react";
+import { Send, Loader2, Trash2, Bot, User, Sparkles, ChevronDown, ArrowRight, Copy, BookOpen } from "lucide-react";
 import { CHAT_MODELS } from "@/lib/models";
 // Streamdown removed — replaced with safe inline markdown renderer to avoid ReactFlow DOM conflicts
 function SimpleMarkdown({ children }: { children: string }) {
@@ -45,6 +45,14 @@ const FIELD_MAP: Partial<Record<NodeType, string>> = {
   note: "content",
 };
 
+const SYSTEM_PROMPT_TEMPLATES = [
+  { label: "导演助手", icon: "🎬", prompt: "你是一位专业的电影导演助手，擅长分析剧本、提出视觉化建议和分镜构思。请用简洁专业的中文回答。" },
+  { label: "分镜生成", icon: "🖼️", prompt: "你是专业的分镜师。根据场景描述，生成详细的分镜描述，包括：镜头类型、运镜方式、景深、灯光氛围、构图要点。每个分镜用编号列出。" },
+  { label: "提示词优化", icon: "✨", prompt: "你是专业的 AI 图像提示词工程师。用户输入中文描述，你将其转化为高质量的英文 Stable Diffusion 提示词（100词以内），聚焦于视觉细节、光影、风格、构图。只输出提示词，无需解释。" },
+  { label: "视频脚本", icon: "📝", prompt: "你是专业的视频脚本创作者。根据主题创作简洁有力的视频脚本，包括旁白文字、配乐建议和镜头切换节奏。" },
+  { label: "角色设计", icon: "👤", prompt: "你是角色设计专家。根据描述生成详细的角色外观描述，包括：年龄体型、服装风格、表情神态、标志性特征，用于 AI 图像生成。" },
+] as const;
+
 export const AIChatNode = memo(function AIChatNode({ id, selected, data }: Props) {
   const { updateNodeData } = useCanvasStore();
   const hasDownstream = useCanvasStore(useMemo(() => (s) => s.edges.some(e => e.source === id), [id]));
@@ -55,9 +63,11 @@ export const AIChatNode = memo(function AIChatNode({ id, selected, data }: Props
   );
   const [model, setModel] = useState<string>(payload.model ?? "gemini-2.5-flash");
   const [showModelPicker, setShowModelPicker] = useState(false);
+  const [showTemplates, setShowTemplates] = useState(false);
   const scrollRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
   const modelPickerRef = useRef<HTMLDivElement>(null);
+  const templateRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => { updateNodeData(id, { messages: localMessages }); }, [localMessages, id, updateNodeData]);
   useEffect(() => {
@@ -73,6 +83,16 @@ export const AIChatNode = memo(function AIChatNode({ id, selected, data }: Props
     document.addEventListener("mousedown", handler);
     return () => document.removeEventListener("mousedown", handler);
   }, [showModelPicker]);
+
+  useEffect(() => {
+    if (!showTemplates) return;
+    const handler = (e: MouseEvent) => {
+      if (templateRef.current && !templateRef.current.contains(e.target as Node))
+        setShowTemplates(false);
+    };
+    document.addEventListener("mousedown", handler);
+    return () => document.removeEventListener("mousedown", handler);
+  }, [showTemplates]);
 
   const sendMutation = trpc.aiChat.sendMessage.useMutation({
     onSuccess: (result) => {
@@ -148,22 +168,73 @@ export const AIChatNode = memo(function AIChatNode({ id, selected, data }: Props
 
         {/* ── System prompt ── */}
         <div
-          className="px-3.5 py-2.5 flex-shrink-0"
+          ref={templateRef}
+          className="px-3.5 py-2 flex items-center gap-1.5 flex-shrink-0 relative"
           style={{ borderBottomWidth: 1, borderBottomStyle: "solid", borderBottomColor: "oklch(0.18 0.008 260)" }}
         >
           <input
             placeholder="系统提示词（可选）"
             value={payload.systemPrompt ?? ""}
             onChange={(e) => updateNodeData(id, { systemPrompt: e.target.value })}
-            className="nodrag w-full"
+            className="nodrag flex-1"
             style={{
-              fontSize: 11.5,
+              fontSize: 11,
               background: "transparent",
               border: "none",
               outline: "none",
               color: "oklch(0.58 0.008 260)",
             }}
           />
+          <button
+            onClick={() => setShowTemplates((v) => !v)}
+            className="nodrag flex items-center gap-1 px-1.5 py-1 rounded transition-all flex-shrink-0"
+            style={{
+              fontSize: 9,
+              background: showTemplates ? accentA(0.12) : "transparent",
+              border: `1px solid ${showTemplates ? accentA(0.35) : "oklch(0.22 0.008 260)"}`,
+              color: showTemplates ? accentColor : "oklch(0.42 0.008 260)",
+              cursor: "pointer",
+            }}
+            title="模板库"
+          >
+            <BookOpen style={{ width: 10, height: 10 }} />
+            模板
+          </button>
+          {showTemplates && (
+            <div
+              className="absolute left-0 right-0 z-50 rounded-xl overflow-hidden"
+              style={{
+                top: "calc(100% + 4px)",
+                background: "oklch(0.12 0.007 260)",
+                border: "1px solid oklch(0.22 0.008 260)",
+                boxShadow: "0 8px 32px oklch(0 0 0 / 0.55)",
+              }}
+            >
+              {SYSTEM_PROMPT_TEMPLATES.map((t) => (
+                <button
+                  key={t.label}
+                  className="nodrag w-full flex items-center gap-2 px-3 py-2 transition-all text-left"
+                  style={{
+                    borderBottom: "1px solid oklch(0.17 0.008 260)",
+                    cursor: "pointer",
+                  }}
+                  onClick={() => {
+                    updateNodeData(id, { systemPrompt: t.prompt });
+                    setShowTemplates(false);
+                    toast.success(`已应用模板：${t.label}`);
+                  }}
+                  onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.background = "oklch(0.16 0.008 260)"; }}
+                  onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.background = "transparent"; }}
+                >
+                  <span style={{ fontSize: 14 }}>{t.icon}</span>
+                  <div className="flex flex-col flex-1 min-w-0">
+                    <span style={{ fontSize: 11, fontWeight: 500, color: "oklch(0.78 0.006 260)" }}>{t.label}</span>
+                    <span style={{ fontSize: 9.5, color: "oklch(0.42 0.006 260)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{t.prompt.slice(0, 50)}...</span>
+                  </div>
+                </button>
+              ))}
+            </div>
+          )}
         </div>
 
         {/* ── Model selector ── */}

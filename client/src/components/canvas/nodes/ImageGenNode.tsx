@@ -5,7 +5,7 @@ import { useCanvasStore } from "../../../hooks/useCanvasStore";
 import type { ImageGenNodeData, ImageGenModel } from "../../../../../shared/types";
 import { trpc } from "@/lib/trpc";
 import { toast } from "sonner";
-import { Sparkles, Loader2, RefreshCw, Upload, X, Cpu, Check, Grid2X2, Download, ZoomIn, ChevronDown, ChevronRight } from "lucide-react";
+import { Sparkles, Loader2, RefreshCw, Upload, X, Cpu, Check, Grid2X2, Download, ZoomIn, ChevronDown, ChevronRight, Lock, Unlock } from "lucide-react";
 import { ImageLightbox } from "../ImageLightbox";
 import { IMAGE_MODELS } from "@/lib/models";
 
@@ -69,6 +69,7 @@ export const ImageGenNode = memo(function ImageGenNode({ id, selected, data }: P
   const [uploading, setUploading] = useState(false);
   const [lightboxIndex, setLightboxIndex] = useState<number | null>(null);
   const [paramsExpanded, setParamsExpanded] = useState(false);
+  const [seedLocked, setSeedLocked] = useState(!!(payload.seed));
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   // Determine if we are in batch/grid mode
@@ -105,6 +106,28 @@ export const ImageGenNode = memo(function ImageGenNode({ id, selected, data }: P
     (field: keyof ImageGenNodeData, value: unknown) => updateNodeData(id, { [field]: value }),
     [id, updateNodeData]
   );
+
+  const handlePropagateSeed = useCallback(() => {
+    if (!payload.seed) return;
+    const { nodes: allNodes, edges: allEdges, batchUpdateNodeData } = useCanvasStore.getState();
+    const updates = allEdges
+      .filter(e => e.source === id)
+      .flatMap(edge => {
+        const target = allNodes.find(n => n.id === edge.target);
+        if (!target) return [];
+        const nt = target.data.nodeType;
+        if (nt === "storyboard" || nt === "image_gen" || nt === "video_task") {
+          return [{ id: edge.target, payload: { seed: payload.seed } }];
+        }
+        return [];
+      });
+    if (updates.length > 0) {
+      batchUpdateNodeData(updates);
+      toast.success(`种子 ${payload.seed} 已传播到 ${updates.length} 个节点`);
+    } else {
+      toast.error("没有支持种子的下游节点");
+    }
+  }, [id, payload.seed]);
 
   const handleGenerate = () => {
     if (!payload.prompt?.trim()) { toast.error("请先填写提示词"); return; }
@@ -499,7 +522,32 @@ export const ImageGenNode = memo(function ImageGenNode({ id, selected, data }: P
                 </select>
               </div>
               <div className="flex-1">
-                <label style={labelStyle}>Seed（可选）</label>
+                <div className="flex items-center justify-between mb-[5px]">
+                  <label style={{ ...labelStyle, marginBottom: 0 }}>Seed（可选）</label>
+                  <button
+                    onClick={() => {
+                      if (seedLocked) {
+                        setSeedLocked(false);
+                        update("seed", undefined);
+                      } else {
+                        const randomSeed = Math.floor(Math.random() * 2147483647);
+                        update("seed", randomSeed);
+                        setSeedLocked(true);
+                      }
+                    }}
+                    className="nodrag flex items-center gap-0.5 px-1.5 py-0.5 rounded text-[9px] transition-all"
+                    style={{
+                      background: seedLocked ? "oklch(0.68 0.22 285 / 0.15)" : "oklch(0.14 0.007 260)",
+                      border: `1px solid ${seedLocked ? "oklch(0.68 0.22 285 / 0.40)" : "oklch(0.22 0.008 260)"}`,
+                      color: seedLocked ? "oklch(0.72 0.18 285)" : "oklch(0.45 0.006 260)",
+                      cursor: "pointer",
+                    }}
+                    title={seedLocked ? "解锁种子（清除）" : "锁定随机种子"}
+                  >
+                    {seedLocked ? <Lock className="w-2.5 h-2.5" /> : <Unlock className="w-2.5 h-2.5" />}
+                    {seedLocked ? "已锁" : "锁定"}
+                  </button>
+                </div>
                 <input
                   type="number"
                   placeholder="随机"
@@ -510,6 +558,21 @@ export const ImageGenNode = memo(function ImageGenNode({ id, selected, data }: P
                 />
               </div>
             </div>
+            {payload.model === "hf_soul_standard" && payload.seed !== undefined && (
+              <button
+                onClick={handlePropagateSeed}
+                className="nodrag flex items-center gap-1 px-2 py-1 rounded text-[10px] transition-all self-start"
+                style={{
+                  background: "oklch(0.68 0.22 285 / 0.10)",
+                  border: "1px solid oklch(0.68 0.22 285 / 0.30)",
+                  color: "oklch(0.68 0.22 285)",
+                  cursor: "pointer",
+                }}
+              >
+                <Lock className="w-3 h-3" />
+                传播种子 {payload.seed} 到下游
+              </button>
+            )}
             <div className="flex items-center gap-2">
               <input
                 type="checkbox"
