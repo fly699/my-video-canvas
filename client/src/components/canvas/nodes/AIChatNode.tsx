@@ -1,7 +1,7 @@
-import { memo, useCallback, useEffect, useRef, useState } from "react";
+import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { BaseNode } from "../BaseNode";
 import { useCanvasStore } from "../../../hooks/useCanvasStore";
-import type { AIChatNodeData } from "../../../../../shared/types";
+import type { AIChatNodeData, NodeType } from "../../../../../shared/types";
 import { trpc } from "@/lib/trpc";
 import { toast } from "sonner";
 import { Send, Loader2, Trash2, Bot, User, Sparkles, ChevronDown, ArrowRight } from "lucide-react";
@@ -41,8 +41,18 @@ const accentColor = "oklch(0.70 0.18 200)";
 const BORDER_DEFAULT = "oklch(0.20 0.008 260)";
 const BORDER_FOCUS   = `${accentColor.slice(0, -1)} / 0.5)`;
 
+const FIELD_MAP: Partial<Record<NodeType, string>> = {
+  script: "content",
+  storyboard: "promptText",
+  prompt: "positivePrompt",
+  image_gen: "prompt",
+  video_task: "prompt",
+  note: "content",
+};
+
 export const AIChatNode = memo(function AIChatNode({ id, selected, data }: Props) {
-  const { updateNodeData, nodes, edges } = useCanvasStore();
+  const { updateNodeData } = useCanvasStore();
+  const hasDownstream = useCanvasStore(useMemo(() => (s) => s.edges.some(e => e.source === id), [id]));
   const payload = data.payload;
   const [input, setInput] = useState("");
   const [localMessages, setLocalMessages] = useState<Array<{ role: "user" | "assistant"; content: string }>>(
@@ -73,36 +83,25 @@ export const AIChatNode = memo(function AIChatNode({ id, selected, data }: Props
     onError: (err) => toast.error("清除失败：" + err.message),
   });
 
-  const outgoingEdges = edges.filter(e => e.source === id);
-  const hasDownstream = outgoingEdges.length > 0;
-
   const pushToDownstream = useCallback((content: string) => {
-    const fieldMap: Record<string, string> = {
-      script: "content",
-      storyboard: "promptText",
-      prompt: "positivePrompt",
-      image_gen: "prompt",
-      video_task: "prompt",
-      note: "content",
-    };
-    const { nodes: currentNodes, updateNodeData, edges: currentEdges } = useCanvasStore.getState();
-    const outgoing = currentEdges.filter(e => e.source === id);
-    let pushed = 0;
-    outgoing.forEach(edge => {
-      const targetNode = currentNodes.find(n => n.id === edge.target);
-      if (!targetNode) return;
-      const field = fieldMap[targetNode.data.nodeType];
-      if (field) {
-        updateNodeData(edge.target, { [field]: content });
-        pushed++;
-      }
-    });
-    if (pushed > 0) toast.success(`已推送到 ${pushed} 个节点`);
-    else toast.error("没有可接收的下游节点");
+    const { nodes: currentNodes, edges: currentEdges, batchUpdateNodeData } = useCanvasStore.getState();
+    const updates = currentEdges
+      .filter(e => e.source === id)
+      .flatMap(edge => {
+        const targetNode = currentNodes.find(n => n.id === edge.target);
+        const field = targetNode ? FIELD_MAP[targetNode.data.nodeType] : undefined;
+        return field ? [{ id: edge.target, payload: { [field]: content } }] : [];
+      });
+    if (updates.length > 0) {
+      batchUpdateNodeData(updates);
+      toast.success(`已推送到 ${updates.length} 个节点`);
+    } else {
+      toast.error("没有可接收的下游节点");
+    }
   }, [id]);
 
   const buildContext = useCallback(() => {
-    // Auto-include nodes connected via incoming edges + any explicitly set contextNodeIds
+    const { nodes, edges } = useCanvasStore.getState();
     const edgeSourceIds = edges.filter((e) => e.target === id).map((e) => e.source);
     const contextIds = Array.from(new Set([...(payload.contextNodeIds ?? []), ...edgeSourceIds]));
     if (!contextIds.length) return undefined;
@@ -120,7 +119,7 @@ export const AIChatNode = memo(function AIChatNode({ id, selected, data }: Props
       if (content) parts.push(`[${node.data.title}]: ${content}`);
     }
     return parts.join("\n\n") || undefined;
-  }, [id, nodes, edges, payload.contextNodeIds]);
+  }, [id, payload.contextNodeIds]);
 
   const handleSend = () => {
     const msg = input.trim();

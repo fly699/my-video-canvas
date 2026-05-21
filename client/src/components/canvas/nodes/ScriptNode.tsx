@@ -61,22 +61,13 @@ export const ScriptNode = memo(function ScriptNode({ id, selected, data }: Props
 
   const generateMutation = trpc.scripts.generateStoryboards.useMutation({
     onSuccess: (result) => {
-      const { nodes: currentNodes, addNode, updateNodeData: updateData, onConnect } = useCanvasStore.getState();
-      const ownNode = currentNodes.find((n) => n.id === id);
-      const ownPos = ownNode?.position ?? { x: 0, y: 0 };
-
-      result.scenes.forEach((scene, i) => {
-        const newNode = addNode("storyboard", { x: ownPos.x + i * 400, y: ownPos.y + 500 });
-        updateData(newNode.id, {
-          description: scene.description,
-          promptText: scene.promptText,
-          cameraMovement: scene.cameraMovement,
-          duration: scene.duration,
-        });
-        onConnect({ source: id, target: newNode.id, sourceHandle: "bottom", targetHandle: "top" });
+      const { nodes: currentNodes, batchAddSceneNodes } = useCanvasStore.getState();
+      const ownPos = currentNodes.find((n) => n.id === id)?.position ?? { x: 0, y: 0 };
+      batchAddSceneNodes(result.scenes, id, ownPos);
+      toast.success("分镜已生成", {
+        description: `共 ${result.scenes.length} 个场景节点已添加到画布`,
+        duration: 4000,
       });
-
-      toast.success(`已生成 ${result.scenes.length} 个分镜节点`);
     },
     onError: (err) => {
       toast.error("AI 生成分镜失败：" + err.message);
@@ -120,7 +111,7 @@ export const ScriptNode = memo(function ScriptNode({ id, selected, data }: Props
         <button
           onClick={() => {
             if (!payload.content.trim()) { toast.error("请先填写脚本内容"); return; }
-            generateMutation.mutate({ content: payload.content, synopsis: payload.synopsis, count: 4 });
+            generateMutation.mutate({ content: payload.content, synopsis: payload.synopsis });
           }}
           disabled={generateMutation.isPending}
           className="nodrag flex items-center justify-center gap-1.5 w-full py-1.5 rounded-lg text-xs font-medium transition-all"

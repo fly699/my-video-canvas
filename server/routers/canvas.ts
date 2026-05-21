@@ -28,7 +28,7 @@ import {
   clearChatMessages,
 } from "../db";
 import { storagePut } from "../storage";
-import { invokeLLM } from "../_core/llm";
+import { invokeLLM, extractTextContent } from "../_core/llm";
 import { generateImage } from "../_core/imageGeneration";
 import { isPoyoVideoProvider, submitPoyoVideo, checkPoyoVideoStatus } from "../_core/poyoVideo";
 import { isHiggsfieldVideoProvider, submitHiggsfieldVideo, checkHiggsfieldVideoStatus } from "../_core/higgsfield";
@@ -411,13 +411,7 @@ export const aiChatRouter = router({
       ];
 
       const response = await invokeLLM({ messages, model: input.model });
-      const rawContent = response.choices?.[0]?.message?.content;
-      const assistantContent: string =
-        typeof rawContent === "string"
-          ? rawContent
-          : Array.isArray(rawContent)
-          ? rawContent.map((p) => (p.type === "text" ? p.text : "")).join("")
-          : "Sorry, I could not generate a response.";
+      const assistantContent = extractTextContent(response) || "Sorry, I could not generate a response.";
 
       // Save assistant message
       await addChatMessage({
@@ -528,8 +522,7 @@ Each element must have these fields:
         model: "gemini-2.5-flash",
       });
 
-      const rawContent = response.choices?.[0]?.message?.content;
-      const text = typeof rawContent === "string" ? rawContent : "";
+      const text = extractTextContent(response);
       const jsonMatch = text.match(/\[[\s\S]*\]/);
       if (!jsonMatch) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "AI 未返回有效 JSON" });
 

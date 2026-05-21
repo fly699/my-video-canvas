@@ -1,4 +1,4 @@
-import { useState, useCallback } from "react";
+import { useState, useCallback, useRef, useEffect } from "react";
 import { trpc } from "@/lib/trpc";
 import { useCanvasStore } from "./useCanvasStore";
 import { toast } from "sonner";
@@ -9,12 +9,11 @@ export interface WorkflowRunState {
   currentNodeId: string | null;
   completedIds: string[];
   failedIds: string[];
-  totalCount: number;
 }
 
 const RUNNABLE_TYPES: NodeType[] = ["storyboard", "prompt", "image_gen", "video_task"];
 
-/** Topological sort of reachable nodes from startId */
+/** Topological sort of reachable nodes from startId via DFS post-order. */
 function getExecutionOrder(
   startId: string,
   nodes: { id: string; data: { nodeType: NodeType } }[],
@@ -35,19 +34,25 @@ function getExecutionOrder(
     order.unshift(id);
   }
   dfs(startId);
-  return order.filter(id => id !== startId); // exclude start node (script/source)
+  return order.filter(id => id !== startId);
 }
 
 export function useWorkflowRunner() {
   const [runState, setRunState] = useState<WorkflowRunState>({
-    running: false, currentNodeId: null, completedIds: [], failedIds: [], totalCount: 0,
+    running: false, currentNodeId: null, completedIds: [], failedIds: [],
   });
+
+  const abortRef = useRef(false);
+  useEffect(() => {
+    abortRef.current = false;
+    return () => { abortRef.current = true; };
+  }, []);
 
   const imageGenMutation = trpc.imageGen.generate.useMutation();
   const videoTaskMutation = trpc.videoTasks.create.useMutation();
 
   const runWorkflow = useCallback(async (startNodeId: string) => {
-    const { nodes, edges, updateNodeData } = useCanvasStore.getState();
+    const { nodes, edges } = useCanvasStore.getState();
     const execOrder = getExecutionOrder(startNodeId, nodes, edges);
     const runnableIds = execOrder.filter(id => {
       const node = nodes.find(n => n.id === id);
@@ -59,15 +64,19 @@ export function useWorkflowRunner() {
       return;
     }
 
-    setRunState({ running: true, currentNodeId: null, completedIds: [], failedIds: [], totalCount: runnableIds.length });
+    if (!abortRef.current) {
+      setRunState({ running: true, currentNodeId: null, completedIds: [], failedIds: [] });
+    }
     const completed: string[] = [];
     const failed: string[] = [];
 
     for (const nodeId of runnableIds) {
+      if (abortRef.current) break;
+
       const node = useCanvasStore.getState().nodes.find(n => n.id === nodeId);
       if (!node) continue;
 
-      setRunState(s => ({ ...s, currentNodeId: nodeId }));
+      if (!abortRef.current) setRunState(s => ({ ...s, currentNodeId: nodeId }));
       const p = node.data.payload as Record<string, unknown>;
       const nodeType = node.data.nodeType;
 
@@ -82,16 +91,17 @@ export function useWorkflowRunner() {
             style: (p.style as string) || undefined,
             model: ((p.imageModel as string) || (p.model as string)) as "manus_forge" | "poyo_flux" | "poyo_sdxl" | "hf_soul_standard" | "hf_reve" | undefined || undefined,
           });
-          updateNodeData(nodeId, { imageUrl: result.url });
+          useCanvasStore.getState().updateNodeData(nodeId, { imageUrl: result.url });
 
-          // Propagate imageUrl to connected video_task nodes
-          const outgoingEdges = useCanvasStore.getState().edges.filter(e => e.source === nodeId);
-          outgoingEdges.forEach(edge => {
-            const target = useCanvasStore.getState().nodes.find(n => n.id === edge.target);
-            if (target?.data.nodeType === "video_task" && result.url) {
-              updateNodeData(edge.target, { referenceImageUrl: result.url });
-            }
-          });
+          const downstreamUpdates = useCanvasStore.getState().edges
+            .filter(e => e.source === nodeId)
+            .flatMap(edge => {
+              const target = useCanvasStore.getState().nodes.find(n => n.id === edge.target);
+              return target?.data.nodeType === "video_task" && result.url
+                ? [{ id: edge.target, payload: { referenceImageUrl: result.url } }]
+                : [];
+            });
+          if (downstreamUpdates.length > 0) useCanvasStore.getState().batchUpdateNodeData(downstreamUpdates);
           completed.push(nodeId);
 
         } else if (nodeType === "video_task") {
@@ -113,24 +123,29 @@ export function useWorkflowRunner() {
             referenceImageUrl: (p.referenceImageUrl as string) || undefined,
             params: (p.params as Record<string, unknown>) || {},
           });
-          updateNodeData(nodeId, { taskId: task.id, status: "processing" });
+          useCanvasStore.getState().updateNodeData(nodeId, { taskId: task.id, status: "processing" });
           completed.push(nodeId);
         }
-      } catch (err) {
+      } catch {
         failed.push(nodeId);
         toast.error(`节点 "${node.data.title}" 执行失败`);
       }
     }
 
-    setRunState({ running: false, currentNodeId: null, completedIds: completed, failedIds: failed, totalCount: runnableIds.length });
-    const ok = completed.length;
-    const ko = failed.length;
-    if (ko === 0) toast.success(`工作流完成：${ok} 个节点执行成功`);
-    else toast.warning(`工作流完成：${ok} 成功，${ko} 失败`);
+    if (!abortRef.current) {
+      setRunState({ running: false, currentNodeId: null, completedIds: completed, failedIds: failed });
+      const ok = completed.length;
+      const ko = failed.length;
+      if (ko === 0) {
+        toast.success("工作流执行完成", { description: `${ok} 个节点成功`, duration: 5000 });
+      } else {
+        toast.warning("工作流执行完成", { description: `${ok} 成功，${ko} 失败`, duration: 5000 });
+      }
+    }
   }, [imageGenMutation, videoTaskMutation]);
 
   const reset = useCallback(() => {
-    setRunState({ running: false, currentNodeId: null, completedIds: [], failedIds: [], totalCount: 0 });
+    setRunState({ running: false, currentNodeId: null, completedIds: [], failedIds: [] });
   }, []);
 
   return { runWorkflow, runState, reset };

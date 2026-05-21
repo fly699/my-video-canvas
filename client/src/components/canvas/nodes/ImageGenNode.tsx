@@ -1,4 +1,4 @@
-import { memo, useCallback, useEffect, useRef, useState } from "react";
+import { memo, useCallback, useRef, useState } from "react";
 import { Handle, Position } from "@xyflow/react";
 import { BaseNode } from "../BaseNode";
 import { useCanvasStore } from "../../../hooks/useCanvasStore";
@@ -69,14 +69,12 @@ const MODELS: { value: ImageGenModel; label: string; desc: string; group: string
 ];
 
 export const ImageGenNode = memo(function ImageGenNode({ id, selected, data }: Props) {
-  const { updateNodeData, edges, nodes } = useCanvasStore();
+  const { updateNodeData } = useCanvasStore();
   const payload = data.payload;
   const [generating, setGenerating] = useState(false);
   const [uploading, setUploading] = useState(false);
   const [lightboxIndex, setLightboxIndex] = useState<number | null>(null);
-  // Auto-collapse params when node is deselected; expand when selected
-  const [paramsExpanded, setParamsExpanded] = useState(!!selected);
-  useEffect(() => { setParamsExpanded(!!selected); }, [selected]);
+  const [paramsExpanded, setParamsExpanded] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   // Determine if we are in batch/grid mode
@@ -159,17 +157,15 @@ export const ImageGenNode = memo(function ImageGenNode({ id, selected, data }: P
 
   const handleSelectImage = (url: string) => {
     update("imageUrl", url);
-    // Propagate to connected video_task nodes via image-out handle
-    const outgoing = edges.filter(e => e.source === id && e.sourceHandle === "image-out");
-    let propagated = 0;
-    outgoing.forEach(edge => {
-      const target = nodes.find(n => n.id === edge.target);
-      if (target?.data.nodeType === "video_task") {
-        updateNodeData(edge.target, { referenceImageUrl: url });
-        propagated++;
-      }
-    });
-    toast.success(propagated > 0 ? `已选择图像并更新 ${propagated} 个视频节点` : "已选择此图像");
+    const { edges, nodes, batchUpdateNodeData } = useCanvasStore.getState();
+    const updates = edges
+      .filter(e => e.source === id && e.sourceHandle === "image-out" && e.targetHandle === "ref-image-in")
+      .flatMap(edge => {
+        const target = nodes.find(n => n.id === edge.target);
+        return target?.data.nodeType === "video_task" ? [{ id: edge.target, payload: { referenceImageUrl: url } }] : [];
+      });
+    if (updates.length > 0) batchUpdateNodeData(updates);
+    toast.success(updates.length > 0 ? `已选择图像并更新 ${updates.length} 个视频节点` : "已选择此图像");
   };
 
   const handleClearBatch = () => {
