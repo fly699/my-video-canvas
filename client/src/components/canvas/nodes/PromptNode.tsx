@@ -1,8 +1,8 @@
 import { memo, useCallback, useRef, useState } from "react";
-import { IMAGE_MODELS, type ImageModelId } from "@/lib/models";
+import { IMAGE_MODELS } from "@/lib/models";
 import { BaseNode } from "../BaseNode";
 import { useCanvasStore } from "../../../hooks/useCanvasStore";
-import type { PromptNodeData } from "../../../../../shared/types";
+import type { PromptNodeData, ImageGenModel } from "../../../../../shared/types";
 import { trpc } from "@/lib/trpc";
 import { toast } from "sonner";
 import { Sparkles, Loader2, RefreshCw, ChevronDown, Upload, X } from "lucide-react";
@@ -51,7 +51,7 @@ export const PromptNode = memo(function PromptNode({ id, selected, data }: Props
   const payload = data.payload;
   const [showModelPicker, setShowModelPicker] = useState(false);
   const model = (payload.imageModel as string) ?? IMAGE_MODELS[0].value;
-  const setModel = (m: string) => { updateNodeData(id, { imageModel: m as ImageModelId }); };
+  const setModel = (m: string) => { updateNodeData(id, { imageModel: m as ImageGenModel }); };
 
   const [uploadingRef, setUploadingRef] = useState(false);
   const refInputRef = useRef<HTMLInputElement>(null);
@@ -106,7 +106,7 @@ export const PromptNode = memo(function PromptNode({ id, selected, data }: Props
       negativePrompt: payload.negativePrompt,
       style: payload.style,
       referenceImageUrl: payload.referenceImageUrl,
-      model: model as ImageModelId,
+      model: model as ImageGenModel,
     });
   };
 
