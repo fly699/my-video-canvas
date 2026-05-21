@@ -9,6 +9,7 @@ import {
   useReactFlow,
   ReactFlowProvider,
   SelectionMode,
+  PanOnScrollMode,
 } from "@xyflow/react";
 import "@xyflow/react/dist/style.css";
 import { useCanvasStore, type CanvasNode, type CanvasEdge } from "../hooks/useCanvasStore";
@@ -729,8 +730,11 @@ function CanvasInner({ projectId }: { projectId: number }) {
             selectionMode={SelectionMode.Partial}
             selectionOnDrag
             panOnDrag={[1, 2]}
-            zoomOnScroll
+            panOnScroll
+            panOnScrollMode={PanOnScrollMode.Free}
+            zoomOnScroll={false}
             zoomOnPinch
+            zoomActivationKeyCode="Control"
             fitView={!project?.viewportState}
             fitViewOptions={{ padding: 0.2 }}
             deleteKeyCode="Delete"
