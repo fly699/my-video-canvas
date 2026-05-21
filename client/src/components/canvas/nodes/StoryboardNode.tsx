@@ -6,6 +6,7 @@ import { trpc } from "@/lib/trpc";
 import { toast } from "sonner";
 import { Sparkles, ImageIcon, Loader2, RefreshCw, ChevronDown, Upload, X, Wand2, History } from "lucide-react";
 import { IMAGE_MODELS, type ImageModelId } from "@/lib/models";
+import { makeImageProxyFallback } from "@/lib/utils";
 
 interface Props {
   id: string;
@@ -88,7 +89,7 @@ export const StoryboardNode = memo(function StoryboardNode({ id, selected, data 
       const imageUrl = result.url ?? result.urls?.[0];
       if (!imageUrl) { setGenerating(false); toast.error("生成完成但未返回图像"); return; }
       const currentHistory = (useCanvasStore.getState().nodes.find(n => n.id === id)?.data.payload as StoryboardNodeData)?.imageHistory ?? [];
-      const newHistory = [imageUrl, ...currentHistory].filter(Boolean).slice(0, 5);
+      const newHistory = [imageUrl, ...currentHistory].filter((u): u is string => !!u).slice(0, 5);
       updateNodeData(id, { imageUrl, imageHistory: newHistory });
       setGenerating(false);
       toast.success("分镜图像已生成");
@@ -167,12 +168,7 @@ export const StoryboardNode = memo(function StoryboardNode({ id, selected, data 
                 alt="分镜"
                 className="w-full h-full object-cover"
                 draggable={false}
-                onError={(e) => {
-                  const img = e.currentTarget;
-                  if (payload.imageUrl && payload.imageUrl.startsWith("http") && !img.src.includes("/api/image-proxy")) {
-                    img.src = `/api/image-proxy?url=${encodeURIComponent(payload.imageUrl)}`;
-                  }
-                }}
+                onError={makeImageProxyFallback(payload.imageUrl ?? "")}
               />
               <div
                 className="absolute inset-0 opacity-0 hover:opacity-100 transition-opacity flex flex-col items-center justify-center gap-1"
@@ -289,12 +285,7 @@ export const StoryboardNode = memo(function StoryboardNode({ id, selected, data 
                     src={url}
                     alt={`历史 ${i + 1}`}
                     style={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }}
-                    onError={(e) => {
-                      const img = e.currentTarget;
-                      if (url.startsWith("http") && !img.src.includes("/api/image-proxy")) {
-                        img.src = `/api/image-proxy?url=${encodeURIComponent(url)}`;
-                      }
-                    }}
+                    onError={makeImageProxyFallback(url)}
                   />
                 </button>
               ))}

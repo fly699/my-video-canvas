@@ -43,16 +43,42 @@ const PROVIDERS: { value: VideoProvider; label: string; group: string }[] = [
   { value: "mock",                label: "Mock 测试",           group: "Dev" },
 ];
 
-// ── Per-model parameter definitions ──────────────────────────────────────────
-// Based on official Higgsfield SDK types.d.ts and Poyo API docs
-
 type ParamDef =
   | { type: "select"; key: string; label: string; options: { value: string | number; label: string }[]; default?: string | number }
   | { type: "number"; key: string; label: string; min: number; max: number; step: number; default?: number }
   | { type: "toggle"; key: string; label: string; default?: boolean };
 
+const HF_DOP_PARAMS: ParamDef[] = [
+  { type: "toggle", key: "enhance_prompt", label: "AI 增强提示词", default: false },
+  { type: "number", key: "seed", label: "随机种子（可选）", min: 0, max: 2147483647, step: 1 },
+];
+
+const KLING_O3_PARAMS: ParamDef[] = [
+  { type: "select", key: "aspect_ratio", label: "宽高比", default: "16:9",
+    options: [{ value: "16:9", label: "16:9 横屏" }, { value: "9:16", label: "9:16 竖屏" }, { value: "1:1", label: "1:1 方形" }] },
+  { type: "number", key: "duration", label: "时长（秒）", min: 3, max: 15, step: 1, default: 5 },
+];
+
+const HF_SEEDANCE_PARAMS: ParamDef[] = [
+  { type: "select", key: "aspect_ratio", label: "宽高比", default: "16:9",
+    options: [
+      { value: "21:9", label: "21:9 超宽" }, { value: "16:9", label: "16:9 横屏" },
+      { value: "4:3", label: "4:3 标准" }, { value: "1:1", label: "1:1 方形" },
+      { value: "3:4", label: "3:4 竖屏" }, { value: "9:16", label: "9:16 竖屏" }, { value: "auto", label: "自动" },
+    ]},
+  { type: "select", key: "resolution", label: "分辨率", default: "720p",
+    options: [{ value: "480p", label: "480p" }, { value: "720p", label: "720p" }, { value: "1080p", label: "1080p" }] },
+  { type: "number", key: "duration", label: "时长（秒）", min: 2, max: 12, step: 1, default: 5 },
+  { type: "toggle", key: "camera_fixed", label: "固定镜头", default: false },
+];
+
+const SUPPORTS_NEGATIVE_PROMPT = new Set<string>([
+  "hf_kling_21_pro", "hf_kling_30",
+  "poyo_seedance", "poyo_veo",
+  "poyo_kling26", "poyo_kling_o3_std", "poyo_kling_o3_pro", "poyo_kling_o3_4k",
+]);
+
 const PROVIDER_PARAMS: Record<string, ParamDef[]> = {
-  // Poyo Seedance 2: aspect_ratio, resolution, duration, camera_fixed
   poyo_seedance: [
     { type: "select", key: "aspect_ratio", label: "宽高比", default: "16:9",
       options: [
@@ -65,30 +91,15 @@ const PROVIDER_PARAMS: Record<string, ParamDef[]> = {
     { type: "number", key: "duration", label: "时长（秒）", min: 2, max: 12, step: 1, default: 5 },
     { type: "toggle", key: "camera_fixed", label: "固定镜头", default: false },
   ],
-  // Poyo Veo 3.1: aspect_ratio, duration
   poyo_veo: [
     { type: "select", key: "aspect_ratio", label: "宽高比", default: "16:9",
       options: [{ value: "16:9", label: "16:9 横屏" }, { value: "9:16", label: "9:16 竖屏" }, { value: "1:1", label: "1:1 方形" }] },
     { type: "number", key: "duration", label: "时长（秒）", min: 5, max: 30, step: 5, default: 5 },
   ],
-  // Higgsfield DoP Standard/Preview/Lite/Turbo: seed, enhance_prompt
-  hf_dop_standard: [
-    { type: "toggle", key: "enhance_prompt", label: "AI 增强提示词", default: false },
-    { type: "number", key: "seed", label: "随机种子（可选）", min: 0, max: 2147483647, step: 1 },
-  ],
-  hf_dop_preview: [
-    { type: "toggle", key: "enhance_prompt", label: "AI 增强提示词", default: false },
-    { type: "number", key: "seed", label: "随机种子（可选）", min: 0, max: 2147483647, step: 1 },
-  ],
-  hf_dop_lite: [
-    { type: "toggle", key: "enhance_prompt", label: "AI 增强提示词", default: false },
-    { type: "number", key: "seed", label: "随机种子（可选）", min: 0, max: 2147483647, step: 1 },
-  ],
-  hf_dop_turbo: [
-    { type: "toggle", key: "enhance_prompt", label: "AI 增强提示词", default: false },
-    { type: "number", key: "seed", label: "随机种子（可选）", min: 0, max: 2147483647, step: 1 },
-  ],
-  // Higgsfield Kling 2.1 Pro: duration (5/10s), aspect_ratio, cfg_scale
+  hf_dop_standard: HF_DOP_PARAMS,
+  hf_dop_preview:  HF_DOP_PARAMS,
+  hf_dop_lite:     HF_DOP_PARAMS,
+  hf_dop_turbo:    HF_DOP_PARAMS,
   hf_kling_21_pro: [
     { type: "select", key: "duration", label: "时长（秒）", default: 5,
       options: [{ value: 5, label: "5 秒" }, { value: 10, label: "10 秒" }] },
@@ -96,20 +107,7 @@ const PROVIDER_PARAMS: Record<string, ParamDef[]> = {
       options: [{ value: "16:9", label: "16:9 横屏" }, { value: "9:16", label: "9:16 竖屏" }, { value: "1:1", label: "1:1 方形" }] },
     { type: "number", key: "cfg_scale", label: "引导强度（0-1）", min: 0, max: 1, step: 0.1, default: 0.5 },
   ],
-  // Higgsfield Seedance 1.0 Pro: aspect_ratio, resolution, duration, camera_fixed
-  hf_seedance_pro: [
-    { type: "select", key: "aspect_ratio", label: "宽高比", default: "16:9",
-      options: [
-        { value: "21:9", label: "21:9 超宽" }, { value: "16:9", label: "16:9 横屏" },
-        { value: "4:3", label: "4:3 标准" }, { value: "1:1", label: "1:1 方形" },
-        { value: "3:4", label: "3:4 竖屏" }, { value: "9:16", label: "9:16 竖屏" }, { value: "auto", label: "自动" },
-      ]},
-    { type: "select", key: "resolution", label: "分辨率", default: "720p",
-      options: [{ value: "480p", label: "480p" }, { value: "720p", label: "720p" }, { value: "1080p", label: "1080p" }] },
-    { type: "number", key: "duration", label: "时长（秒）", min: 2, max: 12, step: 1, default: 5 },
-    { type: "toggle", key: "camera_fixed", label: "固定镜头", default: false },
-  ],
-  // Poyo Kling 2.6: aspect_ratio, duration (5/10), sound
+  hf_seedance_pro: HF_SEEDANCE_PARAMS,
   poyo_kling26: [
     { type: "select", key: "aspect_ratio", label: "宽高比", default: "16:9",
       options: [{ value: "16:9", label: "16:9 横屏" }, { value: "9:16", label: "9:16 竖屏" }, { value: "1:1", label: "1:1 方形" }] },
@@ -117,36 +115,10 @@ const PROVIDER_PARAMS: Record<string, ParamDef[]> = {
       options: [{ value: 5, label: "5 秒" }, { value: 10, label: "10 秒" }] },
     { type: "toggle", key: "sound", label: "AI 生成音效", default: false },
   ],
-  // Poyo Kling O3 Standard/Pro/4K: aspect_ratio, duration (3-15s)
-  poyo_kling_o3_std: [
-    { type: "select", key: "aspect_ratio", label: "宽高比", default: "16:9",
-      options: [{ value: "16:9", label: "16:9 横屏" }, { value: "9:16", label: "9:16 竖屏" }, { value: "1:1", label: "1:1 方形" }] },
-    { type: "number", key: "duration", label: "时长（秒）", min: 3, max: 15, step: 1, default: 5 },
-  ],
-  poyo_kling_o3_pro: [
-    { type: "select", key: "aspect_ratio", label: "宽高比", default: "16:9",
-      options: [{ value: "16:9", label: "16:9 横屏" }, { value: "9:16", label: "9:16 竖屏" }, { value: "1:1", label: "1:1 方形" }] },
-    { type: "number", key: "duration", label: "时长（秒）", min: 3, max: 15, step: 1, default: 5 },
-  ],
-  poyo_kling_o3_4k: [
-    { type: "select", key: "aspect_ratio", label: "宽高比", default: "16:9",
-      options: [{ value: "16:9", label: "16:9 横屏" }, { value: "9:16", label: "9:16 竖屏" }, { value: "1:1", label: "1:1 方形" }] },
-    { type: "number", key: "duration", label: "时长（秒）", min: 3, max: 15, step: 1, default: 5 },
-  ],
-  // Higgsfield Seedance 2.0 Pro: same params as 1.0 Pro
-  hf_seedance_20: [
-    { type: "select", key: "aspect_ratio", label: "宽高比", default: "16:9",
-      options: [
-        { value: "21:9", label: "21:9 超宽" }, { value: "16:9", label: "16:9 横屏" },
-        { value: "4:3", label: "4:3 标准" }, { value: "1:1", label: "1:1 方形" },
-        { value: "3:4", label: "3:4 竖屏" }, { value: "9:16", label: "9:16 竖屏" }, { value: "auto", label: "自动" },
-      ]},
-    { type: "select", key: "resolution", label: "分辨率", default: "720p",
-      options: [{ value: "480p", label: "480p" }, { value: "720p", label: "720p" }, { value: "1080p", label: "1080p" }] },
-    { type: "number", key: "duration", label: "时长（秒）", min: 2, max: 12, step: 1, default: 5 },
-    { type: "toggle", key: "camera_fixed", label: "固定镜头", default: false },
-  ],
-  // Higgsfield Kling 3.0 Pro: duration (5/10s), aspect_ratio, cfg_scale
+  poyo_kling_o3_std: KLING_O3_PARAMS,
+  poyo_kling_o3_pro: KLING_O3_PARAMS,
+  poyo_kling_o3_4k:  KLING_O3_PARAMS,
+  hf_seedance_20:    HF_SEEDANCE_PARAMS,
   hf_kling_30: [
     { type: "select", key: "duration", label: "时长（秒）", default: 5,
       options: [{ value: 5, label: "5 秒" }, { value: 10, label: "10 秒" }] },
@@ -154,7 +126,6 @@ const PROVIDER_PARAMS: Record<string, ParamDef[]> = {
       options: [{ value: "16:9", label: "16:9 横屏" }, { value: "9:16", label: "9:16 竖屏" }, { value: "1:1", label: "1:1 方形" }] },
     { type: "number", key: "cfg_scale", label: "引导强度（0-1）", min: 0, max: 1, step: 0.1, default: 0.5 },
   ],
-  // Mock: no extra params
   mock: [],
 };
 
@@ -573,7 +544,7 @@ export const VideoTaskNode = memo(function VideoTaskNode({ id, selected, data }:
         </div>
 
         {/* ── Negative prompt (for models that support it) ── */}
-        {(payload.provider === "hf_kling_21_pro" || payload.provider === "hf_kling_30" || payload.provider === "poyo_seedance" || payload.provider === "poyo_veo" || payload.provider === "poyo_kling26" || payload.provider === "poyo_kling_o3_std" || payload.provider === "poyo_kling_o3_pro" || payload.provider === "poyo_kling_o3_4k") && (
+        {SUPPORTS_NEGATIVE_PROMPT.has(payload.provider) && (
           <div>
             <label style={labelStyle}>反向提示词（可选）</label>
             <input

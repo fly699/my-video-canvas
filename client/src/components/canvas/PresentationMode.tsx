@@ -1,15 +1,11 @@
 import { useState, useEffect, useCallback, memo } from "react";
-import { X, ChevronLeft, ChevronRight, FileText, Image, Wand2, Sparkles, Paperclip, Video, Bot, StickyNote } from "lucide-react";
+import { X, ChevronLeft, ChevronRight, FileText, Paperclip } from "lucide-react";
 import type { CanvasNode } from "../../hooks/useCanvasStore";
-import { getNodeConfig } from "../../lib/nodeConfig";
+import { getNodeConfig, NODE_ICONS } from "../../lib/nodeConfig";
 import type {
   ScriptNodeData, StoryboardNodeData, PromptNodeData, ImageGenNodeData,
   AssetNodeData, VideoTaskNodeData, AIChatNodeData, NoteNodeData,
 } from "../../../../shared/types";
-
-const ICONS: Record<string, React.ComponentType<{ className?: string; style?: React.CSSProperties }>> = {
-  FileText, Image, Wand2, Sparkles, Paperclip, Video, Bot, StickyNote,
-};
 
 interface PresentationModeProps {
   nodes: CanvasNode[];
@@ -295,7 +291,7 @@ export const PresentationMode = memo(function PresentationMode({ nodes, onClose 
   }
 
   const config = getNodeConfig(current.data.nodeType);
-  const Icon = ICONS[config.icon] ?? FileText;
+  const Icon = NODE_ICONS[config.icon] ?? FileText;
 
   return (
     <div

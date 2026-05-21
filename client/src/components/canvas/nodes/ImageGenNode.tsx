@@ -8,6 +8,7 @@ import { toast } from "sonner";
 import { Sparkles, Loader2, RefreshCw, Upload, X, Cpu, Check, Grid2X2, Download, ZoomIn, ChevronDown, ChevronRight, Lock, Unlock } from "lucide-react";
 import { ImageLightbox } from "../ImageLightbox";
 import { IMAGE_MODELS } from "@/lib/models";
+import { makeImageProxyFallback } from "@/lib/utils";
 
 interface Props {
   id: string;
@@ -276,12 +277,7 @@ export const ImageGenNode = memo(function ImageGenNode({ id, selected, data }: P
                       alt={`generated-${idx}`}
                       className="w-full h-full object-cover"
                       draggable={false}
-                      onError={(e) => {
-                        const img = e.currentTarget;
-                        if (url.startsWith("http") && !img.src.includes("/api/image-proxy")) {
-                          img.src = `/api/image-proxy?url=${encodeURIComponent(url)}`;
-                        }
-                      }}
+                      onError={makeImageProxyFallback(url)}
                     />
                     {/* Selected checkmark */}
                     {isSelected && (
@@ -328,12 +324,7 @@ export const ImageGenNode = memo(function ImageGenNode({ id, selected, data }: P
                   className="w-full object-contain"
                   style={{ maxHeight: 120 }}
                   draggable={false}
-                  onError={(e) => {
-                    const img = e.currentTarget;
-                    if (payload.imageUrl?.startsWith("http") && !img.src.includes("/api/image-proxy")) {
-                      img.src = `/api/image-proxy?url=${encodeURIComponent(payload.imageUrl)}`;
-                    }
-                  }}
+                  onError={makeImageProxyFallback(payload.imageUrl ?? "")}
                 />
               </div>
             )}
@@ -350,12 +341,7 @@ export const ImageGenNode = memo(function ImageGenNode({ id, selected, data }: P
                 alt="generated"
                 className="w-full h-full object-contain"
                 draggable={false}
-                onError={(e) => {
-                  const img = e.currentTarget;
-                  if (payload.imageUrl?.startsWith("http") && !img.src.includes("/api/image-proxy")) {
-                    img.src = `/api/image-proxy?url=${encodeURIComponent(payload.imageUrl)}`;
-                  }
-                }}
+                onError={makeImageProxyFallback(payload.imageUrl ?? "")}
               />
               <div
                 className="absolute inset-0 opacity-0 hover:opacity-100 transition-opacity flex items-center justify-center gap-2"
@@ -683,12 +669,7 @@ export const ImageGenNode = memo(function ImageGenNode({ id, selected, data }: P
                 alt="reference"
                 className="w-full h-full object-cover"
                 draggable={false}
-                onError={(e) => {
-                  const img = e.currentTarget;
-                  if (payload.referenceImageUrl?.startsWith("http") && !img.src.includes("/api/image-proxy")) {
-                    img.src = `/api/image-proxy?url=${encodeURIComponent(payload.referenceImageUrl)}`;
-                  }
-                }}
+                onError={makeImageProxyFallback(payload.referenceImageUrl ?? "")}
               />
               <button
                 onClick={() => update("referenceImageUrl", undefined)}

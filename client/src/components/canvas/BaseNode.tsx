@@ -7,14 +7,9 @@ import { NodeSelectedContext } from "../../contexts/NodeSelectedContext";
 import { trpc } from "@/lib/trpc";
 import { useWorkflowRunState } from "../../contexts/WorkflowRunContext";
 import {
-  FileText, Image, Wand2, Sparkles, Paperclip, Video, Bot, StickyNote,
-  Music, Layers, Folder,
-  Trash2, Copy, GripVertical, Check, X, Loader2,
+  Trash2, Copy, GripVertical, Check, X, Loader2, FileText,
 } from "lucide-react";
-
-const ICONS: Record<string, React.ComponentType<{ className?: string; style?: React.CSSProperties }>> = {
-  FileText, Image, Wand2, Sparkles, Paperclip, Video, Bot, StickyNote, Music, Layers, Folder,
-};
+import { NODE_ICONS } from "../../lib/nodeConfig";
 
 interface BaseNodeProps {
   id: string;
@@ -35,7 +30,7 @@ export const BaseNode = memo(function BaseNode({
   minWidth = 280, minHeight = 140, showHandles = true, headerRight, resizable = false,
 }: BaseNodeProps) {
   const config = getNodeConfig(nodeType);
-  const Icon = ICONS[config.icon] ?? FileText;
+  const Icon = NODE_ICONS[config.icon] ?? FileText;
   const { deleteNode, duplicateNode, updateNodeTitle, projectId } = useCanvasStore();
   const deleteNodeMutation = trpc.nodes.delete.useMutation();
 

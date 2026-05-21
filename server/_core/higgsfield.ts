@@ -239,7 +239,6 @@ export async function submitHiggsfieldVideo(
     if (p.enhance_prompt !== undefined) body.enhance_prompt = p.enhance_prompt;
   }
 
-  // ── Kling 2.1 Pro: duration (5/10), aspect_ratio, cfg_scale ──────────────
   if (opts.provider === "hf_kling_21_pro") {
     body.duration = p.duration ?? 5;
     body.aspect_ratio = p.aspect_ratio ?? "16:9";
@@ -247,23 +246,13 @@ export async function submitHiggsfieldVideo(
     if (opts.negativePrompt) body.negative_prompt = opts.negativePrompt;
   }
 
-  // ── Seedance 1.0 Pro: aspect_ratio, resolution, duration, camera_fixed ───
-  if (opts.provider === "hf_seedance_pro") {
+  if (opts.provider === "hf_seedance_pro" || opts.provider === "hf_seedance_20") {
     body.aspect_ratio = p.aspect_ratio ?? "16:9";
     body.resolution = p.resolution ?? "720p";
     body.duration = p.duration ?? 5;
     if (p.camera_fixed !== undefined) body.camera_fixed = p.camera_fixed;
   }
 
-  // ── Seedance 2.0 Pro: same params as 1.0 Pro ──────────────────────────────
-  if (opts.provider === "hf_seedance_20") {
-    body.aspect_ratio = p.aspect_ratio ?? "16:9";
-    body.resolution = p.resolution ?? "720p";
-    body.duration = p.duration ?? 5;
-    if (p.camera_fixed !== undefined) body.camera_fixed = p.camera_fixed;
-  }
-
-  // ── Kling 3.0 Pro: duration, aspect_ratio, cfg_scale ─────────────────────
   if (opts.provider === "hf_kling_30") {
     body.duration = p.duration ?? 5;
     body.aspect_ratio = p.aspect_ratio ?? "16:9";

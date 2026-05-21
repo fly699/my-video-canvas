@@ -6,6 +6,7 @@ import type { PromptNodeData, ImageGenModel } from "../../../../../shared/types"
 import { trpc } from "@/lib/trpc";
 import { toast } from "sonner";
 import { Sparkles, Loader2, RefreshCw, ChevronDown, Upload, X, Grid2X2, Check } from "lucide-react";
+import { makeImageProxyFallback } from "@/lib/utils";
 
 interface Props {
   id: string;
@@ -151,12 +152,7 @@ export const PromptNode = memo(function PromptNode({ id, selected, data }: Props
                     alt={`图像 ${i + 1}`}
                     className="w-full h-full object-cover"
                     draggable={false}
-                    onError={(e) => {
-                      const img = e.currentTarget;
-                      if (url.startsWith("http") && !img.src.includes("/api/image-proxy")) {
-                        img.src = `/api/image-proxy?url=${encodeURIComponent(url)}`;
-                      }
-                    }}
+                    onError={makeImageProxyFallback(url)}
                   />
                   {(payload.selectedImageIndex ?? 0) === i && (
                     <div
@@ -194,12 +190,7 @@ export const PromptNode = memo(function PromptNode({ id, selected, data }: Props
               alt="preview"
               className="w-full h-full object-cover"
               draggable={false}
-              onError={(e) => {
-                const img = e.currentTarget;
-                if (payload.imageUrl?.startsWith("http") && !img.src.includes("/api/image-proxy")) {
-                  img.src = `/api/image-proxy?url=${encodeURIComponent(payload.imageUrl)}`;
-                }
-              }}
+              onError={makeImageProxyFallback(payload.imageUrl ?? "")}
             />
             <div
               className="absolute inset-0 opacity-0 hover:opacity-100 transition-opacity flex items-center justify-center"

@@ -28,7 +28,7 @@ import { useAuth } from "@/_core/hooks/useAuth";
 import { useIsMobile } from "@/hooks/useMobile";
 import { toast } from "sonner";
 import type { NodeType, CollaboratorCursor } from "../../../shared/types";
-import { getNodeConfig, NODE_TYPE_LIST, COLLABORATOR_COLORS } from "../lib/nodeConfig";
+import { getNodeConfig, NODE_TYPE_LIST, NODE_ICONS, COLLABORATOR_COLORS } from "../lib/nodeConfig";
 import { io, type Socket } from "socket.io-client";
 import {
   Film,
@@ -38,17 +38,12 @@ import {
   ChevronLeft,
   Plus,
   Paperclip,
+  Image,
   Loader2,
   Pencil,
   Check,
   X,
   FileText,
-  Image,
-  Wand2,
-  Sparkles,
-  Video,
-  Bot,
-  StickyNote,
   LayoutGrid,
   BarChart2,
   Maximize2,
@@ -57,9 +52,6 @@ import {
   Undo2,
   Redo2,
   Search,
-  Music,
-  Layers,
-  Folder,
   Lock,
   Unlock,
   ChevronDown,
@@ -68,11 +60,6 @@ import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip
 
 const nodeTypes = { custom: CustomNode };
 const edgeTypes = { custom: CustomEdge };
-
-// ── Icon map ──────────────────────────────────────────────────────────────────
-const ICON_MAP: Record<string, React.ComponentType<{ className?: string; style?: React.CSSProperties }>> = {
-  FileText, Image, Wand2, Sparkles, Paperclip, Video, Bot, StickyNote, Music, Layers, Folder,
-};
 
 // ── Tool button ───────────────────────────────────────────────────────────────
 function ToolBtn({
@@ -616,7 +603,6 @@ function CanvasInner({ projectId }: { projectId: number }) {
 
         {/* Right actions */}
         <div className="flex items-center gap-1">
-          {/* ── View panel toggles ── */}
           {/* Collaborators indicator */}
           <button
             onClick={() => setShowCollaborators(!showCollaborators)}
@@ -967,7 +953,7 @@ function CanvasInner({ projectId }: { projectId: number }) {
             </div>
             <div className="p-2.5 grid grid-cols-4 gap-1.5">
               {NODE_TYPE_LIST.map((config) => {
-                const Icon = ICON_MAP[config.icon] ?? FileText;
+                const Icon = NODE_ICONS[config.icon] ?? FileText;
                 return (
                   <button
                     key={config.type}

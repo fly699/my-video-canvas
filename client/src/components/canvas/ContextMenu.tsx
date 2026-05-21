@@ -2,14 +2,9 @@ import { useEffect, useRef } from "react";
 import { NODE_TYPE_LIST } from "../../lib/nodeConfig";
 import type { NodeType } from "../../../../shared/types";
 import {
-  FileText, Image, Wand2, Sparkles, Paperclip, Video, Bot, StickyNote,
-  Music, Layers, Folder,
-  Copy, Trash2, Plus, Play,
+  FileText, Copy, Trash2, Plus, Play,
 } from "lucide-react";
-
-const ICONS: Record<string, React.ComponentType<{ className?: string; style?: React.CSSProperties }>> = {
-  FileText, Image, Wand2, Sparkles, Paperclip, Video, Bot, StickyNote, Music, Layers, Folder,
-};
+import { NODE_ICONS } from "../../lib/nodeConfig";
 
 interface ContextMenuProps {
   x: number;
@@ -82,7 +77,7 @@ export function ContextMenu({
           </div>
           <div style={{ padding: "4px" }}>
             {NODE_TYPE_LIST.map((config) => {
-              const Icon = ICONS[config.icon] ?? FileText;
+              const Icon = NODE_ICONS[config.icon] ?? FileText;
               return (
                 <button
                   key={config.type}
