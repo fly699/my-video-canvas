@@ -6,12 +6,17 @@ export type GenerateImageOptions = {
   prompt: string;
   model?: string;
   size?: string;
-  quality?: "low" | "medium" | "high";
+  quality?: "low" | "medium" | "high" | "720p" | "1080p";
   originalImages?: Array<{
     url?: string;
     b64Json?: string;
     mimeType?: string;
   }>;
+  // Soul Standard specific params
+  widthAndHeight?: string;
+  batchSize?: number;
+  seed?: number;
+  enhancePrompt?: boolean;
 };
 
 export type GenerateImageResponse = {
@@ -146,6 +151,12 @@ export async function generateImage(options: GenerateImageOptions): Promise<Gene
       model: hfModel,
       prompt: options.prompt,
       referenceImageUrl: options.originalImages?.[0]?.url,
+      // Soul Standard specific params
+      widthAndHeight: options.widthAndHeight,
+      quality: options.quality as string | undefined,
+      batchSize: options.batchSize,
+      seed: options.seed,
+      enhancePrompt: options.enhancePrompt,
     });
     return { url: result.url };
   }

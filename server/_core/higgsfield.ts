@@ -1,4 +1,5 @@
 import { ENV } from "./env";
+import { storagePut } from "../storage";
 
 const HIGGSFIELD_BASE = "https://platform.higgsfield.ai";
 const POLL_INTERVAL_MS = 4000;
@@ -26,8 +27,16 @@ export interface HiggsfieldImageOptions {
   model: HiggsfieldImageModel;
   prompt: string;
   negativePrompt?: string;
+  // Soul Standard specific
+  widthAndHeight?: string;   // e.g. "1024x1024"
+  quality?: string;          // "720p" | "1080p"
+  batchSize?: number;        // 1 | 4
+  enhancePrompt?: boolean;
+  seed?: number;
+  // Reve specific
   aspectRatio?: string;
   resolution?: string;
+  // Shared
   referenceImageUrl?: string;
 }
 
@@ -78,16 +87,28 @@ async function pollHiggsfieldRequest(requestId: string): Promise<{ fileUrl: stri
 export async function generateHiggsfieldImage(
   opts: HiggsfieldImageOptions
 ): Promise<HiggsfieldImageResult> {
-  // Map model path to endpoint
   const endpoint = `${HIGGSFIELD_BASE}/${opts.model}`;
 
   const body: Record<string, unknown> = {
     prompt: opts.prompt,
-    aspect_ratio: opts.aspectRatio ?? "16:9",
-    resolution: opts.resolution ?? "720p",
   };
-  if (opts.negativePrompt) body.negative_prompt = opts.negativePrompt;
-  if (opts.referenceImageUrl) body.image_url = opts.referenceImageUrl;
+
+  if (opts.model === "higgsfield-ai/soul/standard") {
+    // Soul Standard specific params (from official SDK types.d.ts)
+    if (opts.widthAndHeight) body.width_and_height = opts.widthAndHeight;
+    else body.width_and_height = "1024x1024"; // default
+    if (opts.quality) body.quality = opts.quality;
+    if (opts.batchSize !== undefined) body.batch_size = opts.batchSize;
+    if (opts.enhancePrompt !== undefined) body.enhance_prompt = opts.enhancePrompt;
+    if (opts.seed !== undefined) body.seed = opts.seed;
+    if (opts.referenceImageUrl) body.image_url = opts.referenceImageUrl;
+  } else if (opts.model === "reve/text-to-image") {
+    // Reve specific params
+    if (opts.aspectRatio) body.aspect_ratio = opts.aspectRatio;
+    if (opts.resolution) body.resolution = opts.resolution;
+    if (opts.negativePrompt) body.negative_prompt = opts.negativePrompt;
+    if (opts.referenceImageUrl) body.image_url = opts.referenceImageUrl;
+  }
 
   const res = await fetch(endpoint, {
     method: "POST",
@@ -109,6 +130,19 @@ export async function generateHiggsfieldImage(
   if (!requestId) throw new Error("Higgsfield image: no request_id returned");
 
   const { fileUrl } = await pollHiggsfieldRequest(requestId);
+
+  // Download and re-upload to own storage for persistence
+  try {
+    const imgRes = await fetch(fileUrl);
+    if (imgRes.ok) {
+      const buf = Buffer.from(await imgRes.arrayBuffer());
+      const mimeType = imgRes.headers.get("content-type") ?? "image/png";
+      const { url } = await storagePut(`generated/hf-${Date.now()}.png`, buf, mimeType);
+      return { url };
+    }
+  } catch {
+    // If download fails, return Higgsfield URL directly
+  }
   return { url: fileUrl };
 }
 
@@ -117,14 +151,18 @@ export async function generateHiggsfieldImage(
 export type HiggsfieldVideoModel =
   | "higgsfield-ai/dop/standard"
   | "higgsfield-ai/dop/preview"
+  | "higgsfield-ai/dop/lite"
+  | "higgsfield-ai/dop/turbo"
   | "kling-video/v2.1/pro/image-to-video"
   | "bytedance/seedance/v1/pro/image-to-video";
 
 export const HIGGSFIELD_VIDEO_MODELS: { value: HiggsfieldVideoModel; label: string; desc: string }[] = [
-  { value: "higgsfield-ai/dop/standard",              label: "DoP Standard (Higgsfield)",  desc: "高质量 · 电影级" },
-  { value: "higgsfield-ai/dop/preview",               label: "DoP Preview (Higgsfield)",   desc: "预览版 · 快速" },
-  { value: "kling-video/v2.1/pro/image-to-video",     label: "Kling 2.1 Pro",              desc: "高级动态动画" },
-  { value: "bytedance/seedance/v1/pro/image-to-video", label: "Seedance 1.0 Pro",           desc: "专业级视频生成" },
+  { value: "higgsfield-ai/dop/standard",               label: "DoP Standard",       desc: "高质量 · 电影级" },
+  { value: "higgsfield-ai/dop/preview",                label: "DoP Preview",        desc: "预览版 · 快速" },
+  { value: "higgsfield-ai/dop/lite",                   label: "DoP Lite",           desc: "轻量版 · 高速" },
+  { value: "higgsfield-ai/dop/turbo",                  label: "DoP Turbo",          desc: "极速版" },
+  { value: "kling-video/v2.1/pro/image-to-video",      label: "Kling 2.1 Pro",      desc: "高级动态动画" },
+  { value: "bytedance/seedance/v1/pro/image-to-video", label: "Seedance 1.0 Pro",   desc: "专业级视频生成" },
 ];
 
 export function isHiggsfieldVideoProvider(provider: string): boolean {
@@ -135,6 +173,8 @@ export function isHiggsfieldVideoProvider(provider: string): boolean {
 export const HIGGSFIELD_PROVIDER_MAP: Record<string, HiggsfieldVideoModel> = {
   hf_dop_standard:  "higgsfield-ai/dop/standard",
   hf_dop_preview:   "higgsfield-ai/dop/preview",
+  hf_dop_lite:      "higgsfield-ai/dop/lite",
+  hf_dop_turbo:     "higgsfield-ai/dop/turbo",
   hf_kling_21_pro:  "kling-video/v2.1/pro/image-to-video",
   hf_seedance_pro:  "bytedance/seedance/v1/pro/image-to-video",
 };
@@ -158,13 +198,40 @@ export async function submitHiggsfieldVideo(
   if (!modelPath) throw new Error(`Unknown Higgsfield provider: ${opts.provider}`);
 
   const endpoint = `${HIGGSFIELD_BASE}/${modelPath}`;
+  const p = opts.params ?? {};
 
   const body: Record<string, unknown> = {
     prompt: opts.prompt,
-    duration: (opts.params?.duration as number) ?? 5,
   };
-  if (opts.negativePrompt) body.negative_prompt = opts.negativePrompt;
+
   if (opts.referenceImageUrl) body.image_url = opts.referenceImageUrl;
+
+  // ── DoP models: seed, enhance_prompt ──────────────────────────────────────
+  if (
+    opts.provider === "hf_dop_standard" ||
+    opts.provider === "hf_dop_preview" ||
+    opts.provider === "hf_dop_lite" ||
+    opts.provider === "hf_dop_turbo"
+  ) {
+    if (p.seed !== undefined) body.seed = p.seed;
+    if (p.enhance_prompt !== undefined) body.enhance_prompt = p.enhance_prompt;
+  }
+
+  // ── Kling 2.1 Pro: duration (5/10), aspect_ratio, cfg_scale ──────────────
+  if (opts.provider === "hf_kling_21_pro") {
+    body.duration = p.duration ?? 5;
+    body.aspect_ratio = p.aspect_ratio ?? "16:9";
+    if (p.cfg_scale !== undefined) body.cfg_scale = p.cfg_scale;
+    if (opts.negativePrompt) body.negative_prompt = opts.negativePrompt;
+  }
+
+  // ── Seedance 1.0 Pro: aspect_ratio, resolution, duration, camera_fixed ───
+  if (opts.provider === "hf_seedance_pro") {
+    body.aspect_ratio = p.aspect_ratio ?? "16:9";
+    body.resolution = p.resolution ?? "720p";
+    body.duration = p.duration ?? 5;
+    if (p.camera_fixed !== undefined) body.camera_fixed = p.camera_fixed;
+  }
 
   const res = await fetch(endpoint, {
     method: "POST",

@@ -11,6 +11,7 @@ import {
   aiChatRouter,
   imageGenRouter,
 } from "./routers/canvas";
+import { uploadRouter } from "./routers/upload";
 
 export const appRouter = router({
   system: systemRouter,
@@ -31,6 +32,7 @@ export const appRouter = router({
   videoTasks: videoTasksRouter,
   aiChat: aiChatRouter,
   imageGen: imageGenRouter,
+  upload: uploadRouter,
 });
 
 export type AppRouter = typeof appRouter;

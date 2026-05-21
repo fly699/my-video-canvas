@@ -230,7 +230,7 @@ export const videoTasksRouter = router({
       z.object({
         projectId: z.number(),
         nodeId: z.string(),
-        provider: z.enum(["mock", "poyo_seedance", "poyo_veo", "hf_dop_standard", "hf_dop_preview", "hf_kling_21_pro", "hf_seedance_pro"]),
+        provider: z.enum(["mock", "poyo_seedance", "poyo_veo", "hf_dop_standard", "hf_dop_preview", "hf_dop_lite", "hf_dop_turbo", "hf_kling_21_pro", "hf_seedance_pro"]),
         prompt: z.string(),
         negativePrompt: z.string().optional(),
         referenceImageUrl: z.string().optional(),
@@ -432,6 +432,12 @@ export const imageGenRouter = router({
         referenceImageUrl: z.string().optional(),
         style: z.string().optional(),
         model: z.enum(["manus_forge", "poyo_flux", "poyo_sdxl", "hf_soul_standard", "hf_reve"]).optional(),
+        // Soul Standard specific params
+        widthAndHeight: z.string().optional(),
+        quality: z.enum(["720p", "1080p"]).optional(),
+        batchSize: z.number().int().min(1).max(4).optional(),
+        seed: z.number().int().optional(),
+        enhancePrompt: z.boolean().optional(),
       })
     )
     .mutation(async ({ input }) => {
@@ -449,6 +455,14 @@ export const imageGenRouter = router({
         ...(input.referenceImageUrl
           ? { originalImages: [{ url: input.referenceImageUrl, mimeType: "image/jpeg" }] }
           : {}),
+        // Soul Standard specific params passed through
+        ...(input.model === "hf_soul_standard" ? {
+          widthAndHeight: input.widthAndHeight,
+          quality: input.quality,
+          batchSize: input.batchSize,
+          seed: input.seed,
+          enhancePrompt: input.enhancePrompt,
+        } : {}),
       });
 
       return { url: result.url };

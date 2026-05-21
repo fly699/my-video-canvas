@@ -16,6 +16,8 @@ export type VideoProvider =
   | "poyo_veo"
   | "hf_dop_standard"
   | "hf_dop_preview"
+  | "hf_dop_lite"
+  | "hf_dop_turbo"
   | "hf_kling_21_pro"
   | "hf_seedance_pro";
 export type VideoTaskStatus = "pending" | "processing" | "succeeded" | "failed";
@@ -92,6 +94,12 @@ export interface ImageGenNodeData {
   imageUrl?: string;
   imageStorageKey?: string;
   model?: ImageGenModel;
+  // Soul Standard specific params
+  widthAndHeight?: string;
+  soulQuality?: "720p" | "1080p";
+  batchSize?: number;
+  seed?: number;
+  enhancePrompt?: boolean;
 }
 
 export interface NoteNodeData {

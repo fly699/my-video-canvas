@@ -113,3 +113,11 @@
 - [x] StoryboardNode 添加图像模型选择器（Manus Forge / Flux 1.1 Pro / SDXL）
 - [x] PromptNode 添加图像模型选择器（Manus Forge / Flux 1.1 Pro / SDXL）
 - [x] TypeScript 0 errors，测试全部通过
+
+## Phase 14: 模型参数完整化 + 参考图上传
+- [ ] 阅读 Higgsfield 官方文档，记录每个视频/图像模型的完整参数
+- [ ] 阅读 Poyo.ai 官方文档，记录 Seedance 2 / Veo 3.1 的完整参数
+- [ ] VideoTaskNode：每个模型显示对应的参数面板（分辨率、时长、宽高比等）
+- [ ] ImageGenNode：添加参考图文件上传按钮（上传到 S3，自动填入 URL）
+- [ ] StoryboardNode/PromptNode：同步添加参考图上传
+- [ ] TypeScript 0 errors，测试全部通过

@@ -29,12 +29,85 @@ const PROVIDERS: { value: VideoProvider; label: string; group: string }[] = [
   { value: "poyo_veo",        label: "Veo 3.1",             group: "Poyo" },
   { value: "hf_dop_standard", label: "DoP Standard",        group: "Higgsfield" },
   { value: "hf_dop_preview",  label: "DoP Preview",         group: "Higgsfield" },
+  { value: "hf_dop_lite",     label: "DoP Lite",            group: "Higgsfield" },
+  { value: "hf_dop_turbo",    label: "DoP Turbo",           group: "Higgsfield" },
   { value: "hf_kling_21_pro", label: "Kling 2.1 Pro",       group: "Higgsfield" },
   { value: "hf_seedance_pro", label: "Seedance 1.0 Pro",    group: "Higgsfield" },
   { value: "mock",            label: "Mock 测试",           group: "Dev" },
 ];
 
+// ── Per-model parameter definitions ──────────────────────────────────────────
+// Based on official Higgsfield SDK types.d.ts and Poyo API docs
+
+type ParamDef =
+  | { type: "select"; key: string; label: string; options: { value: string | number; label: string }[]; default?: string | number }
+  | { type: "number"; key: string; label: string; min: number; max: number; step: number; default?: number }
+  | { type: "toggle"; key: string; label: string; default?: boolean };
+
+const PROVIDER_PARAMS: Record<string, ParamDef[]> = {
+  // Poyo Seedance 2: aspect_ratio, resolution, duration, camera_fixed
+  poyo_seedance: [
+    { type: "select", key: "aspect_ratio", label: "宽高比", default: "16:9",
+      options: [
+        { value: "21:9", label: "21:9 超宽" }, { value: "16:9", label: "16:9 横屏" },
+        { value: "4:3", label: "4:3 标准" }, { value: "1:1", label: "1:1 方形" },
+        { value: "3:4", label: "3:4 竖屏" }, { value: "9:16", label: "9:16 竖屏" }, { value: "auto", label: "自动" },
+      ]},
+    { type: "select", key: "resolution", label: "分辨率", default: "720p",
+      options: [{ value: "480p", label: "480p" }, { value: "720p", label: "720p" }, { value: "1080p", label: "1080p" }] },
+    { type: "number", key: "duration", label: "时长（秒）", min: 2, max: 12, step: 1, default: 5 },
+    { type: "toggle", key: "camera_fixed", label: "固定镜头", default: false },
+  ],
+  // Poyo Veo 3.1: aspect_ratio, duration
+  poyo_veo: [
+    { type: "select", key: "aspect_ratio", label: "宽高比", default: "16:9",
+      options: [{ value: "16:9", label: "16:9 横屏" }, { value: "9:16", label: "9:16 竖屏" }, { value: "1:1", label: "1:1 方形" }] },
+    { type: "number", key: "duration", label: "时长（秒）", min: 5, max: 30, step: 5, default: 5 },
+  ],
+  // Higgsfield DoP Standard/Preview/Lite/Turbo: seed, enhance_prompt
+  hf_dop_standard: [
+    { type: "toggle", key: "enhance_prompt", label: "AI 增强提示词", default: false },
+    { type: "number", key: "seed", label: "随机种子（可选）", min: 0, max: 2147483647, step: 1 },
+  ],
+  hf_dop_preview: [
+    { type: "toggle", key: "enhance_prompt", label: "AI 增强提示词", default: false },
+    { type: "number", key: "seed", label: "随机种子（可选）", min: 0, max: 2147483647, step: 1 },
+  ],
+  hf_dop_lite: [
+    { type: "toggle", key: "enhance_prompt", label: "AI 增强提示词", default: false },
+    { type: "number", key: "seed", label: "随机种子（可选）", min: 0, max: 2147483647, step: 1 },
+  ],
+  hf_dop_turbo: [
+    { type: "toggle", key: "enhance_prompt", label: "AI 增强提示词", default: false },
+    { type: "number", key: "seed", label: "随机种子（可选）", min: 0, max: 2147483647, step: 1 },
+  ],
+  // Higgsfield Kling 2.1 Pro: duration (5/10s), aspect_ratio, cfg_scale
+  hf_kling_21_pro: [
+    { type: "select", key: "duration", label: "时长（秒）", default: 5,
+      options: [{ value: 5, label: "5 秒" }, { value: 10, label: "10 秒" }] },
+    { type: "select", key: "aspect_ratio", label: "宽高比", default: "16:9",
+      options: [{ value: "16:9", label: "16:9 横屏" }, { value: "9:16", label: "9:16 竖屏" }, { value: "1:1", label: "1:1 方形" }] },
+    { type: "number", key: "cfg_scale", label: "引导强度（0-1）", min: 0, max: 1, step: 0.1, default: 0.5 },
+  ],
+  // Higgsfield Seedance 1.0 Pro: aspect_ratio, resolution, duration, camera_fixed
+  hf_seedance_pro: [
+    { type: "select", key: "aspect_ratio", label: "宽高比", default: "16:9",
+      options: [
+        { value: "21:9", label: "21:9 超宽" }, { value: "16:9", label: "16:9 横屏" },
+        { value: "4:3", label: "4:3 标准" }, { value: "1:1", label: "1:1 方形" },
+        { value: "3:4", label: "3:4 竖屏" }, { value: "9:16", label: "9:16 竖屏" }, { value: "auto", label: "自动" },
+      ]},
+    { type: "select", key: "resolution", label: "分辨率", default: "720p",
+      options: [{ value: "480p", label: "480p" }, { value: "720p", label: "720p" }, { value: "1080p", label: "1080p" }] },
+    { type: "number", key: "duration", label: "时长（秒）", min: 2, max: 12, step: 1, default: 5 },
+    { type: "toggle", key: "camera_fixed", label: "固定镜头", default: false },
+  ],
+  // Mock: no extra params
+  mock: [],
+};
+
 const BORDER_DEFAULT = "oklch(0.20 0.008 260)";
+const accentColor = "oklch(0.62 0.20 25)";
 
 const fieldStyle: React.CSSProperties = {
   width: "100%",
@@ -50,11 +123,20 @@ const fieldStyle: React.CSSProperties = {
   transition: "border-color 120ms ease",
 };
 
+const labelStyle: React.CSSProperties = {
+  fontSize: 10,
+  fontWeight: 500,
+  textTransform: "uppercase",
+  letterSpacing: "0.05em",
+  color: "oklch(0.42 0.006 260)",
+  display: "block",
+  marginBottom: 3,
+};
+
 export const VideoTaskNode = memo(function VideoTaskNode({ id, selected, data }: Props) {
   const { updateNodeData } = useCanvasStore();
   const payload = data.payload;
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
-  const accentColor = "oklch(0.62 0.20 25)";
 
   const createTaskMutation = trpc.videoTasks.create.useMutation({
     onSuccess: (task) => {
@@ -76,7 +158,6 @@ export const VideoTaskNode = memo(function VideoTaskNode({ id, selected, data }:
       toast.success("已重置，可重新提交");
     },
     onError: (err) => {
-      // Even if DB delete fails (e.g. task already gone), reset local state
       updateNodeData(id, {
         status: "pending",
         taskId: undefined,
@@ -89,7 +170,6 @@ export const VideoTaskNode = memo(function VideoTaskNode({ id, selected, data }:
   });
 
   const pollQuery = trpc.videoTasks.poll.useQuery({ id: payload.taskId! }, { enabled: false, refetchInterval: false });
-  // Keep a stable ref so the interval callback always calls the latest refetch
   const pollQueryRef = useRef(pollQuery);
   pollQueryRef.current = pollQuery;
 
@@ -118,7 +198,6 @@ export const VideoTaskNode = memo(function VideoTaskNode({ id, selected, data }:
       }, 5000);
     }
     return () => { if (pollRef.current) clearInterval(pollRef.current); };
-  // pollQueryRef is stable; id/updateNodeData are stable references
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [payload.status, payload.taskId, id, updateNodeData]);
 
@@ -127,12 +206,20 @@ export const VideoTaskNode = memo(function VideoTaskNode({ id, selected, data }:
     [id, updateNodeData]
   );
 
+  const handleParamChange = useCallback(
+    (key: string, value: unknown) => {
+      updateNodeData(id, { params: { ...(payload.params ?? {}), [key]: value } });
+    },
+    [id, updateNodeData, payload.params]
+  );
+
   const handleSubmit = () => {
     if (!payload.prompt?.trim()) { toast.error("请填写提示词"); return; }
     createTaskMutation.mutate({
       projectId: data.projectId, nodeId: id,
       provider: payload.provider, prompt: payload.prompt,
       negativePrompt: payload.negativePrompt, referenceImageUrl: payload.referenceImageUrl,
+      params: payload.params,
     });
   };
 
@@ -140,7 +227,6 @@ export const VideoTaskNode = memo(function VideoTaskNode({ id, selected, data }:
     if (payload.taskId) {
       resetTaskMutation.mutate({ id: payload.taskId });
     } else {
-      // No DB record yet, just reset local state
       updateNodeData(id, {
         status: "pending",
         taskId: undefined,
@@ -153,32 +239,29 @@ export const VideoTaskNode = memo(function VideoTaskNode({ id, selected, data }:
 
   const status = STATUS[payload.status] ?? STATUS.pending;
   const StatusIcon = status.icon;
-  // Only lock editing while actively processing
   const isLocked = payload.status === "processing";
   const isResettable = payload.status === "succeeded" || payload.status === "failed";
 
-  const onFocusAccent = (e: React.FocusEvent<HTMLElement>) => { e.currentTarget.style.borderColor = `${accentColor.slice(0, -1)} / 0.6)`; };
+  const onFocusAccent = (e: React.FocusEvent<HTMLElement>) => { e.currentTarget.style.borderColor = "oklch(0.62 0.20 25 / 0.6)"; };
   const onFocusMid    = (e: React.FocusEvent<HTMLElement>) => { e.currentTarget.style.borderColor = "oklch(0.40 0.008 260)"; };
   const onBlurDefault = (e: React.FocusEvent<HTMLElement>) => { e.currentTarget.style.borderColor = BORDER_DEFAULT; };
 
-  // Determine video proxy URL
   const videoSrc = payload.resultVideoUrl?.startsWith("http")
     ? `/api/video-proxy?url=${encodeURIComponent(payload.resultVideoUrl)}`
     : payload.resultVideoUrl;
 
+  // Get param defs for current provider
+  const paramDefs = PROVIDER_PARAMS[payload.provider] ?? [];
+  const params = payload.params ?? {};
+
   return (
-    <BaseNode id={id} selected={selected} nodeType="video_task" title={data.title} minHeight={240}>
-      <div className="flex flex-col h-full p-2.5 gap-2">
+    <BaseNode id={id} selected={selected} nodeType="video_task" title={data.title} minHeight={260}>
+      <div className="flex flex-col h-full p-2.5 gap-2 overflow-auto">
 
         {/* ── Status pill ── */}
         <div
-          className="flex items-center gap-2 px-2.5 py-2 rounded-lg"
-          style={{
-            background: status.bg,
-            borderWidth: 1,
-            borderStyle: "solid",
-            borderColor: status.borderColor,
-          }}
+          className="flex items-center gap-2 px-2.5 py-2 rounded-lg flex-shrink-0"
+          style={{ background: status.bg, borderWidth: 1, borderStyle: "solid", borderColor: status.borderColor }}
         >
           <StatusIcon
             className={`w-3.5 h-3.5 flex-shrink-0 ${(status as { spin?: boolean }).spin ? "animate-spin" : ""}`}
@@ -186,27 +269,16 @@ export const VideoTaskNode = memo(function VideoTaskNode({ id, selected, data }:
           />
           <span className="text-xs font-medium" style={{ color: status.accent }}>{status.label}</span>
           {payload.status === "processing" && (
-            <span className="ml-auto text-[10px] animate-pulse" style={{ color: "oklch(0.50 0.008 260)" }}>
-              轮询中...
-            </span>
+            <span className="ml-auto text-[10px] animate-pulse" style={{ color: "oklch(0.50 0.008 260)" }}>轮询中...</span>
           )}
           {payload.status === "succeeded" && (
-            <span className="ml-auto text-[10px]" style={{ color: "oklch(0.45 0.008 260)" }}>
-              生成完成
-            </span>
+            <span className="ml-auto text-[10px]" style={{ color: "oklch(0.45 0.008 260)" }}>生成完成</span>
           )}
         </div>
 
         {/* ── Result video ── */}
         {payload.status === "succeeded" && payload.resultVideoUrl && videoSrc && (
-          <div
-            className="rounded-lg overflow-hidden flex-shrink-0"
-            style={{
-              borderWidth: 1,
-              borderStyle: "solid",
-              borderColor: STATUS.succeeded.borderColor,
-            }}
-          >
+          <div className="rounded-lg overflow-hidden flex-shrink-0" style={{ borderWidth: 1, borderStyle: "solid", borderColor: STATUS.succeeded.borderColor }}>
             <video
               key={videoSrc}
               src={videoSrc}
@@ -224,90 +296,182 @@ export const VideoTaskNode = memo(function VideoTaskNode({ id, selected, data }:
 
         {/* ── Error ── */}
         {payload.status === "failed" && payload.errorMessage && (
-          <div
-            className="flex items-start gap-2 p-2 rounded-lg"
-            style={{
-              background: STATUS.failed.bg,
-              borderWidth: 1,
-              borderStyle: "solid",
-              borderColor: STATUS.failed.borderColor,
-            }}
-          >
+          <div className="flex items-start gap-2 p-2 rounded-lg flex-shrink-0" style={{ background: STATUS.failed.bg, borderWidth: 1, borderStyle: "solid", borderColor: STATUS.failed.borderColor }}>
             <AlertCircle className="w-3.5 h-3.5 flex-shrink-0 mt-0.5" style={{ color: STATUS.failed.accent }} />
             <p className="text-[11px] leading-relaxed" style={{ color: STATUS.failed.accent }}>{payload.errorMessage}</p>
           </div>
         )}
 
         {/* ── Provider ── */}
-        <select
-          value={payload.provider}
-          onChange={(e) => handleChange("provider", e.target.value as VideoProvider)}
-          disabled={isLocked}
-          className="nodrag"
-          style={{
-            ...fieldStyle,
-            cursor: isLocked ? "not-allowed" : "pointer",
-            opacity: isLocked ? 0.5 : 1,
-          }}
-          onFocus={onFocusAccent}
-          onBlur={onBlurDefault}
-        >
-          {["Poyo", "Higgsfield", "Dev"].map((group) => (
-            <optgroup key={group} label={`── ${group} ──`} style={{ background: "oklch(0.12 0.007 260)" }}>
-              {PROVIDERS.filter((p) => p.group === group).map((p) => (
-                <option key={p.value} value={p.value} style={{ background: "oklch(0.12 0.007 260)" }}>
-                  {p.label}
-                </option>
-              ))}
-            </optgroup>
-          ))}
-        </select>
+        <div>
+          <label style={labelStyle}>视频模型</label>
+          <select
+            value={payload.provider}
+            onChange={(e) => handleChange("provider", e.target.value as VideoProvider)}
+            disabled={isLocked}
+            className="nodrag"
+            style={{ ...fieldStyle, cursor: isLocked ? "not-allowed" : "pointer", opacity: isLocked ? 0.5 : 1 }}
+            onFocus={onFocusAccent}
+            onBlur={onBlurDefault}
+          >
+            {["Poyo", "Higgsfield", "Dev"].map((group) => (
+              <optgroup key={group} label={`── ${group} ──`} style={{ background: "oklch(0.12 0.007 260)" }}>
+                {PROVIDERS.filter((p) => p.group === group).map((p) => (
+                  <option key={p.value} value={p.value} style={{ background: "oklch(0.12 0.007 260)" }}>{p.label}</option>
+                ))}
+              </optgroup>
+            ))}
+          </select>
+        </div>
 
         {/* ── Prompt ── */}
-        <textarea
-          placeholder="视频生成提示词..."
-          value={payload.prompt ?? ""}
-          onChange={(e) => handleChange("prompt", e.target.value)}
-          rows={3}
-          disabled={isLocked}
-          className="nodrag"
-          style={{
-            ...fieldStyle,
-            resize: "none",
-            lineHeight: 1.65,
-            fontFamily: "'JetBrains Mono', monospace",
-            fontSize: 10.5,
-            opacity: isLocked ? 0.5 : 1,
-          }}
-          onFocus={onFocusAccent}
-          onBlur={onBlurDefault}
-        />
+        <div>
+          <label style={labelStyle}>提示词 *</label>
+          <textarea
+            placeholder="视频生成提示词..."
+            value={payload.prompt ?? ""}
+            onChange={(e) => handleChange("prompt", e.target.value)}
+            rows={3}
+            disabled={isLocked}
+            className="nodrag"
+            style={{ ...fieldStyle, resize: "none", lineHeight: 1.65, fontFamily: "'JetBrains Mono', monospace", fontSize: 10.5, opacity: isLocked ? 0.5 : 1 }}
+            onFocus={onFocusAccent}
+            onBlur={onBlurDefault}
+          />
+        </div>
 
-        <input
-          placeholder="反向提示词（可选）"
-          value={payload.negativePrompt ?? ""}
-          onChange={(e) => handleChange("negativePrompt", e.target.value)}
-          disabled={isLocked}
-          className="nodrag"
-          style={{ ...fieldStyle, opacity: isLocked ? 0.5 : 1 }}
-          onFocus={onFocusMid}
-          onBlur={onBlurDefault}
-        />
+        {/* ── Negative prompt (for models that support it) ── */}
+        {(payload.provider === "hf_kling_21_pro" || payload.provider === "poyo_seedance" || payload.provider === "poyo_veo") && (
+          <div>
+            <label style={labelStyle}>反向提示词（可选）</label>
+            <input
+              placeholder="blurry, low quality..."
+              value={payload.negativePrompt ?? ""}
+              onChange={(e) => handleChange("negativePrompt", e.target.value)}
+              disabled={isLocked}
+              className="nodrag"
+              style={{ ...fieldStyle, opacity: isLocked ? 0.5 : 1 }}
+              onFocus={onFocusMid}
+              onBlur={onBlurDefault}
+            />
+          </div>
+        )}
 
-        <input
-          placeholder="参考图 URL（可选）"
-          value={payload.referenceImageUrl ?? ""}
-          onChange={(e) => handleChange("referenceImageUrl", e.target.value)}
-          disabled={isLocked}
-          className="nodrag"
-          style={{ ...fieldStyle, opacity: isLocked ? 0.5 : 1 }}
-          onFocus={onFocusMid}
-          onBlur={onBlurDefault}
-        />
+        {/* ── Reference image URL (for all models) ── */}
+        <div>
+          <label style={labelStyle}>参考图 URL（可选）</label>
+          <input
+            placeholder="https://..."
+            value={payload.referenceImageUrl ?? ""}
+            onChange={(e) => handleChange("referenceImageUrl", e.target.value)}
+            disabled={isLocked}
+            className="nodrag"
+            style={{ ...fieldStyle, opacity: isLocked ? 0.5 : 1 }}
+            onFocus={onFocusMid}
+            onBlur={onBlurDefault}
+          />
+        </div>
+
+        {/* ── Dynamic model-specific params ── */}
+        {paramDefs.length > 0 && (
+          <div
+            className="flex flex-col gap-2 p-2 rounded-lg"
+            style={{ background: "oklch(0.10 0.006 260)", borderWidth: 1, borderStyle: "solid", borderColor: "oklch(0.17 0.007 260)" }}
+          >
+            <span style={{ fontSize: 10, fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.06em", color: "oklch(0.38 0.006 260)" }}>
+              模型参数
+            </span>
+            {paramDefs.map((def) => {
+              const curVal = params[def.key] ?? def.default;
+              if (def.type === "select") {
+                return (
+                  <div key={def.key}>
+                    <label style={labelStyle}>{def.label}</label>
+                    <select
+                      value={String(curVal ?? "")}
+                      onChange={(e) => {
+                        const raw = e.target.value;
+                        const num = Number(raw);
+                        handleParamChange(def.key, isNaN(num) || raw === "" ? raw : num);
+                      }}
+                      disabled={isLocked}
+                      className="nodrag"
+                      style={{ ...fieldStyle, cursor: isLocked ? "not-allowed" : "pointer", opacity: isLocked ? 0.5 : 1 }}
+                      onFocus={onFocusMid}
+                      onBlur={onBlurDefault}
+                    >
+                      {def.options.map((opt) => (
+                        <option key={String(opt.value)} value={String(opt.value)} style={{ background: "oklch(0.12 0.007 260)" }}>
+                          {opt.label}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                );
+              }
+              if (def.type === "number") {
+                return (
+                  <div key={def.key}>
+                    <label style={labelStyle}>{def.label}</label>
+                    <input
+                      type="number"
+                      min={def.min}
+                      max={def.max}
+                      step={def.step}
+                      placeholder={def.default !== undefined ? String(def.default) : ""}
+                      value={curVal !== undefined ? String(curVal) : ""}
+                      onChange={(e) => {
+                        const v = e.target.value === "" ? undefined : Number(e.target.value);
+                        handleParamChange(def.key, v);
+                      }}
+                      disabled={isLocked}
+                      className="nodrag"
+                      style={{ ...fieldStyle, opacity: isLocked ? 0.5 : 1 }}
+                      onFocus={onFocusMid}
+                      onBlur={onBlurDefault}
+                    />
+                  </div>
+                );
+              }
+              if (def.type === "toggle") {
+                const checked = curVal === true || curVal === "true";
+                return (
+                  <div key={def.key} className="flex items-center justify-between">
+                    <label style={{ ...labelStyle, marginBottom: 0 }}>{def.label}</label>
+                    <button
+                      onClick={() => handleParamChange(def.key, !checked)}
+                      disabled={isLocked}
+                      className="nodrag relative flex-shrink-0"
+                      style={{
+                        width: 32, height: 18, borderRadius: 9,
+                        background: checked ? "oklch(0.62 0.20 25 / 0.7)" : "oklch(0.18 0.008 260)",
+                        borderWidth: 1, borderStyle: "solid",
+                        borderColor: checked ? "oklch(0.62 0.20 25 / 0.5)" : "oklch(0.28 0.008 260)",
+                        cursor: isLocked ? "not-allowed" : "pointer",
+                        transition: "background 150ms ease, border-color 150ms ease",
+                        opacity: isLocked ? 0.5 : 1,
+                      }}
+                    >
+                      <span
+                        style={{
+                          position: "absolute", top: 2,
+                          left: checked ? 14 : 2,
+                          width: 12, height: 12, borderRadius: "50%",
+                          background: "oklch(0.85 0.006 260)",
+                          transition: "left 150ms ease",
+                        }}
+                      />
+                    </button>
+                  </div>
+                );
+              }
+              return null;
+            })}
+          </div>
+        )}
 
         {/* ── Actions ── */}
-        <div className="flex gap-1.5 mt-auto">
-          {/* Reset button: show for both failed and succeeded states */}
+        <div className="flex gap-1.5 mt-auto flex-shrink-0">
           {isResettable && (
             <button
               onClick={handleReset}
@@ -315,9 +479,7 @@ export const VideoTaskNode = memo(function VideoTaskNode({ id, selected, data }:
               className="nodrag flex items-center justify-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-all"
               style={{
                 background: "oklch(0.14 0.007 260)",
-                borderWidth: 1,
-                borderStyle: "solid",
-                borderColor: "oklch(0.22 0.008 260)",
+                borderWidth: 1, borderStyle: "solid", borderColor: "oklch(0.22 0.008 260)",
                 color: resetTaskMutation.isPending ? "oklch(0.38 0.006 260)" : "oklch(0.60 0.008 260)",
                 cursor: resetTaskMutation.isPending ? "not-allowed" : "pointer",
               }}
@@ -325,11 +487,7 @@ export const VideoTaskNode = memo(function VideoTaskNode({ id, selected, data }:
               onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.background = "oklch(0.14 0.007 260)"; }}
               title="重置后可修改参数重新生成"
             >
-              {resetTaskMutation.isPending ? (
-                <Loader2 className="w-3 h-3 animate-spin" />
-              ) : (
-                <RefreshCw className="w-3 h-3" />
-              )}
+              {resetTaskMutation.isPending ? <Loader2 className="w-3 h-3 animate-spin" /> : <RefreshCw className="w-3 h-3" />}
               重置
             </button>
           )}
@@ -340,12 +498,11 @@ export const VideoTaskNode = memo(function VideoTaskNode({ id, selected, data }:
             style={{
               background: isLocked || isResettable || createTaskMutation.isPending
                 ? "oklch(0.13 0.007 260)"
-                : `${accentColor.slice(0, -1)} / 0.15)`,
-              borderWidth: 1,
-              borderStyle: "solid",
+                : "oklch(0.62 0.20 25 / 0.15)",
+              borderWidth: 1, borderStyle: "solid",
               borderColor: isLocked || isResettable || createTaskMutation.isPending
                 ? BORDER_DEFAULT
-                : `${accentColor.slice(0, -1)} / 0.4)`,
+                : "oklch(0.62 0.20 25 / 0.4)",
               color: isLocked || isResettable || createTaskMutation.isPending
                 ? "oklch(0.38 0.006 260)"
                 : accentColor,
