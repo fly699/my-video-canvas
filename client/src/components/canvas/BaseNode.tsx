@@ -4,6 +4,7 @@ import { getNodeConfig } from "../../lib/nodeConfig";
 import type { NodeType } from "../../../../shared/types";
 import { useCanvasStore } from "../../hooks/useCanvasStore";
 import { NodeSelectedContext } from "../../contexts/NodeSelectedContext";
+import { trpc } from "@/lib/trpc";
 import {
   FileText, Image, Wand2, Paperclip, Video, Bot, StickyNote,
   Trash2, Copy, GripVertical, Check, X, Maximize2,
@@ -33,7 +34,8 @@ export const BaseNode = memo(function BaseNode({
 }: BaseNodeProps) {
   const config = getNodeConfig(nodeType);
   const Icon = ICONS[config.icon] ?? FileText;
-  const { deleteNode, duplicateNode, updateNodeTitle } = useCanvasStore();
+  const { deleteNode, duplicateNode, updateNodeTitle, projectId } = useCanvasStore();
+  const deleteNodeMutation = trpc.nodes.delete.useMutation();
 
   const [editingTitle, setEditingTitle] = useState(false);
   const [titleValue, setTitleValue] = useState(title);
@@ -254,7 +256,7 @@ export const BaseNode = memo(function BaseNode({
             <Copy className="w-3 h-3" />
           </button>
           <button
-            onClick={() => deleteNode(id)}
+            onClick={() => { deleteNode(id); if (projectId) deleteNodeMutation.mutate({ id, projectId }); }}
             className="w-6 h-6 rounded-md flex items-center justify-center transition-all"
             style={{ color: "oklch(0.40 0.008 260)" }}
             onMouseEnter={(e) => {
