@@ -4,7 +4,7 @@ import { useCanvasStore } from "../../../hooks/useCanvasStore";
 import type { AIChatNodeData, NodeType } from "../../../../../shared/types";
 import { trpc } from "@/lib/trpc";
 import { toast } from "sonner";
-import { Send, Loader2, Trash2, Bot, User, Sparkles, ChevronDown, ArrowRight } from "lucide-react";
+import { Send, Loader2, Trash2, Bot, User, Sparkles, ChevronDown, ArrowRight, Copy } from "lucide-react";
 import { CHAT_MODELS } from "@/lib/models";
 // Streamdown removed — replaced with safe inline markdown renderer to avoid ReactFlow DOM conflicts
 function SimpleMarkdown({ children }: { children: string }) {
@@ -32,8 +32,9 @@ interface Props {
 }
 
 const accentColor = "oklch(0.70 0.18 200)";
+const accentA = (a: number) => `oklch(0.70 0.18 200 / ${a})`;
 const BORDER_DEFAULT = "oklch(0.20 0.008 260)";
-const BORDER_FOCUS   = `${accentColor.slice(0, -1)} / 0.5)`;
+const BORDER_FOCUS   = accentA(0.5);
 
 const FIELD_MAP: Partial<Record<NodeType, string>> = {
   script: "content",
@@ -56,11 +57,22 @@ export const AIChatNode = memo(function AIChatNode({ id, selected, data }: Props
   const [showModelPicker, setShowModelPicker] = useState(false);
   const scrollRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
+  const modelPickerRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => { updateNodeData(id, { messages: localMessages }); }, [localMessages, id, updateNodeData]);
   useEffect(() => {
     if (scrollRef.current) scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
   }, [localMessages]);
+
+  useEffect(() => {
+    if (!showModelPicker) return;
+    const handler = (e: MouseEvent) => {
+      if (modelPickerRef.current && !modelPickerRef.current.contains(e.target as Node))
+        setShowModelPicker(false);
+    };
+    document.addEventListener("mousedown", handler);
+    return () => document.removeEventListener("mousedown", handler);
+  }, [showModelPicker]);
 
   const sendMutation = trpc.aiChat.sendMessage.useMutation({
     onSuccess: (result) => {
@@ -156,6 +168,7 @@ export const AIChatNode = memo(function AIChatNode({ id, selected, data }: Props
 
         {/* ── Model selector ── */}
         <div
+          ref={modelPickerRef}
           className="px-3.5 py-2 flex items-center gap-2 flex-shrink-0 relative"
           style={{ borderBottomWidth: 1, borderBottomStyle: "solid", borderBottomColor: "oklch(0.18 0.008 260)" }}
         >
@@ -221,10 +234,10 @@ export const AIChatNode = memo(function AIChatNode({ id, selected, data }: Props
               <div
                 className="w-8 h-8 rounded-xl flex items-center justify-center"
                 style={{
-                  background: `${accentColor.slice(0, -1)} / 0.15)`,
+                  background: accentA(0.15),
                   borderWidth: 1,
                   borderStyle: "solid",
-                  borderColor: `${accentColor.slice(0, -1)} / 0.3)`,
+                  borderColor: accentA(0.3),
                 }}
               >
                 <Sparkles className="w-4 h-4" style={{ color: accentColor }} />
@@ -236,19 +249,19 @@ export const AIChatNode = memo(function AIChatNode({ id, selected, data }: Props
           ) : (
             <div className="space-y-2">
               {localMessages.map((msg, i) => (
-                <div key={i} className={`flex gap-1.5 ${msg.role === "user" ? "flex-row-reverse" : "flex-row"}`}>
+                <div key={i} className={`group/msg flex gap-1.5 ${msg.role === "user" ? "flex-row-reverse" : "flex-row"}`}>
                   {/* Avatar */}
                   <div
                     className="w-5 h-5 rounded-full flex items-center justify-center flex-shrink-0 mt-0.5"
                     style={{
                       background: msg.role === "user"
                         ? "oklch(0.68 0.22 285 / 0.20)"
-                        : `${accentColor.slice(0, -1)} / 0.18)`,
+                        : accentA(0.18),
                       borderWidth: 1,
                       borderStyle: "solid",
                       borderColor: msg.role === "user"
                         ? "oklch(0.68 0.22 285 / 0.35)"
-                        : `${accentColor.slice(0, -1)} / 0.3)`,
+                        : accentA(0.3),
                     }}
                   >
                     {msg.role === "user" ? (
@@ -257,25 +270,38 @@ export const AIChatNode = memo(function AIChatNode({ id, selected, data }: Props
                       <Bot className="w-2.5 h-2.5" style={{ color: accentColor }} />
                     )}
                   </div>
-                  {/* Bubble */}
-                  <div
-                    className="flex-1 min-w-0 rounded-lg px-3 py-2 text-xs leading-relaxed"
-                    style={{
-                      background: msg.role === "user"
-                        ? "oklch(0.68 0.22 285 / 0.10)"
-                        : `${accentColor.slice(0, -1)} / 0.04)`,
-                      borderWidth: 1,
-                      borderStyle: "solid",
-                      borderColor: msg.role === "user"
-                        ? "oklch(0.68 0.22 285 / 0.20)"
-                        : `${accentColor.slice(0, -1)} / 0.18)`,
-                      color: "oklch(0.80 0.006 260)",
-                    }}
-                  >
-                    {msg.role === "assistant" ? (
-                      <SimpleMarkdown>{msg.content}</SimpleMarkdown>
-                    ) : (
-                      <span>{msg.content}</span>
+                  {/* Bubble + copy button */}
+                  <div className="flex flex-col flex-1 min-w-0">
+                    <div
+                      className="rounded-lg px-3 py-2 text-xs leading-relaxed"
+                      style={{
+                        background: msg.role === "user"
+                          ? "oklch(0.68 0.22 285 / 0.10)"
+                          : accentA(0.04),
+                        borderWidth: 1,
+                        borderStyle: "solid",
+                        borderColor: msg.role === "user"
+                          ? "oklch(0.68 0.22 285 / 0.20)"
+                          : accentA(0.18),
+                        color: "oklch(0.80 0.006 260)",
+                      }}
+                    >
+                      {msg.role === "assistant" ? (
+                        <SimpleMarkdown>{msg.content}</SimpleMarkdown>
+                      ) : (
+                        <span>{msg.content}</span>
+                      )}
+                    </div>
+                    {msg.role === "assistant" && (
+                      <button
+                        onClick={() => navigator.clipboard.writeText(msg.content).then(() => toast.success("已复制", { duration: 1200 }))}
+                        className="nodrag opacity-0 group-hover/msg:opacity-100 transition-opacity mt-1 flex items-center gap-1 text-[10px] self-start"
+                        style={{ color: "oklch(0.42 0.006 260)" }}
+                        title="复制消息"
+                      >
+                        <Copy style={{ width: 10, height: 10 }} />
+                        复制
+                      </button>
                     )}
                   </div>
                 </div>
@@ -286,10 +312,10 @@ export const AIChatNode = memo(function AIChatNode({ id, selected, data }: Props
                   <div
                     className="w-5 h-5 rounded-full flex items-center justify-center flex-shrink-0"
                     style={{
-                      background: `${accentColor.slice(0, -1)} / 0.18)`,
+                      background: accentA(0.18),
                       borderWidth: 1,
                       borderStyle: "solid",
-                      borderColor: `${accentColor.slice(0, -1)} / 0.3)`,
+                      borderColor: accentA(0.3),
                     }}
                   >
                     <Bot className="w-2.5 h-2.5" style={{ color: accentColor }} />
@@ -297,10 +323,10 @@ export const AIChatNode = memo(function AIChatNode({ id, selected, data }: Props
                   <div
                     className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg"
                     style={{
-                      background: `${accentColor.slice(0, -1)} / 0.04)`,
+                      background: accentA(0.04),
                       borderWidth: 1,
                       borderStyle: "solid",
-                      borderColor: `${accentColor.slice(0, -1)} / 0.18)`,
+                      borderColor: accentA(0.18),
                     }}
                   >
                     <Loader2 className="w-3 h-3 animate-spin" style={{ color: accentColor }} />
@@ -347,12 +373,12 @@ export const AIChatNode = memo(function AIChatNode({ id, selected, data }: Props
             style={{
               background: !input.trim() || sendMutation.isPending
                 ? "oklch(0.13 0.007 260)"
-                : `${accentColor.slice(0, -1)} / 0.18)`,
+                : accentA(0.18),
               borderWidth: 1,
               borderStyle: "solid",
               borderColor: !input.trim() || sendMutation.isPending
                 ? BORDER_DEFAULT
-                : `${accentColor.slice(0, -1)} / 0.4)`,
+                : accentA(0.4),
               color: !input.trim() || sendMutation.isPending
                 ? "oklch(0.35 0.006 260)"
                 : accentColor,

@@ -66,7 +66,6 @@ const MODELS = IMAGE_MODELS as unknown as { value: ImageGenModel; label: string;
 export const ImageGenNode = memo(function ImageGenNode({ id, selected, data }: Props) {
   const { updateNodeData } = useCanvasStore();
   const payload = data.payload;
-  const [generating, setGenerating] = useState(false);
   const [uploading, setUploading] = useState(false);
   const [lightboxIndex, setLightboxIndex] = useState<number | null>(null);
   const [paramsExpanded, setParamsExpanded] = useState(false);
@@ -78,18 +77,14 @@ export const ImageGenNode = memo(function ImageGenNode({ id, selected, data }: P
   const genMutation = trpc.imageGen.generate.useMutation({
     onSuccess: (result) => {
       if (result.urls && result.urls.length > 1) {
-        // Batch mode: store all urls, set first as selected imageUrl
         updateNodeData(id, { imageUrls: result.urls, imageUrl: result.urls[0] });
         toast.success(`批量生成完成，共 ${result.urls.length} 张图像`);
       } else {
-        // Single mode: clear imageUrls, set imageUrl
         updateNodeData(id, { imageUrl: result.url, imageUrls: undefined });
         toast.success("图像生成成功");
       }
-      setGenerating(false);
     },
     onError: (err) => {
-      setGenerating(false);
       toast.error("图像生成失败：" + err.message);
     },
   });
@@ -113,7 +108,6 @@ export const ImageGenNode = memo(function ImageGenNode({ id, selected, data }: P
 
   const handleGenerate = () => {
     if (!payload.prompt?.trim()) { toast.error("请先填写提示词"); return; }
-    setGenerating(true);
     genMutation.mutate({
       prompt: payload.prompt,
       negativePrompt: payload.negativePrompt,
@@ -204,11 +198,11 @@ export const ImageGenNode = memo(function ImageGenNode({ id, selected, data }: P
               <div className="flex gap-1">
                 <button
                   onClick={handleGenerate}
-                  disabled={generating}
+                  disabled={genMutation.isPending}
                   className="nodrag flex items-center gap-1 px-2 py-0.5 rounded text-xs"
                   style={{ background: "oklch(0.72 0.20 330 / 0.12)", borderWidth: 1, borderStyle: "solid", borderColor: BORDER_ACCENT, color: accent, fontSize: 10 }}
                 >
-                  {generating ? <Loader2 className="w-2.5 h-2.5 animate-spin" /> : <RefreshCw className="w-2.5 h-2.5" />}
+                  {genMutation.isPending ? <Loader2 className="w-2.5 h-2.5 animate-spin" /> : <RefreshCw className="w-2.5 h-2.5" />}
                   重新生成
                 </button>
                 <button
@@ -322,11 +316,11 @@ export const ImageGenNode = memo(function ImageGenNode({ id, selected, data }: P
                 </button>
                 <button
                   onClick={handleGenerate}
-                  disabled={generating}
+                  disabled={genMutation.isPending}
                   className="nodrag flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-medium"
                   style={{ background: "oklch(0.72 0.20 330 / 0.2)", borderWidth: 1, borderStyle: "solid", borderColor: BORDER_ACCENT, color: accent }}
                 >
-                  {generating ? <Loader2 className="w-3 h-3 animate-spin" /> : <RefreshCw className="w-3 h-3" />}
+                  {genMutation.isPending ? <Loader2 className="w-3 h-3 animate-spin" /> : <RefreshCw className="w-3 h-3" />}
                   重新生成
                 </button>
               </div>
@@ -621,21 +615,21 @@ export const ImageGenNode = memo(function ImageGenNode({ id, selected, data }: P
         {/* Generate button */}
         <button
           onClick={handleGenerate}
-          disabled={generating || !payload.prompt?.trim()}
+          disabled={genMutation.isPending || !payload.prompt?.trim()}
           className="nodrag flex items-center justify-center gap-1.5 w-full py-2 rounded-lg text-xs font-semibold transition-all"
           style={{
-            background: generating || !payload.prompt?.trim()
+            background: genMutation.isPending || !payload.prompt?.trim()
               ? "oklch(0.13 0.007 260)"
               : "linear-gradient(135deg, oklch(0.72 0.20 330 / 0.18), oklch(0.68 0.22 285 / 0.18))",
             borderWidth: 1, borderStyle: "solid",
-            borderColor: generating || !payload.prompt?.trim() ? BORDER_DEFAULT : BORDER_ACCENT,
-            color: generating || !payload.prompt?.trim() ? "oklch(0.38 0.006 260)" : accent,
-            cursor: generating || !payload.prompt?.trim() ? "not-allowed" : "pointer",
+            borderColor: genMutation.isPending || !payload.prompt?.trim() ? BORDER_DEFAULT : BORDER_ACCENT,
+            color: genMutation.isPending || !payload.prompt?.trim() ? "oklch(0.38 0.006 260)" : accent,
+            cursor: genMutation.isPending || !payload.prompt?.trim() ? "not-allowed" : "pointer",
             letterSpacing: "0.02em",
           }}
         >
-          {generating ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Sparkles className="w-3.5 h-3.5" />}
-          {generating
+          {genMutation.isPending ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Sparkles className="w-3.5 h-3.5" />}
+          {genMutation.isPending
             ? (isSoul && (payload.batchSize ?? 1) > 1 ? `批量生成中 (${payload.batchSize} 张)...` : "AI 生成中...")
             : (isSoul && (payload.batchSize ?? 1) > 1 ? `批量生成 ${payload.batchSize} 张` : "生成图像")}
         </button>

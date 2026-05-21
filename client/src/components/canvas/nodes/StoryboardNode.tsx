@@ -294,6 +294,11 @@ export const StoryboardNode = memo(function StoryboardNode({ id, selected, data 
             onFocus={onFocus}
             onBlur={onBlur}
           />
+          <div className="flex items-center justify-between">
+            <span style={{ fontSize: 9.5, color: "oklch(0.38 0.006 260)" }}>
+              {(payload.promptText ?? "").length} 字
+            </span>
+          </div>
           <button
             onClick={handleExpandPrompt}
             disabled={expandingPrompt || !payload.description?.trim()}
