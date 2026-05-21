@@ -192,12 +192,12 @@ export const VideoTaskNode = memo(function VideoTaskNode({ id, selected, data }:
                 resultVideoUrl: task.resultVideoUrl ?? undefined,
                 errorMessage: task.errorMessage ?? undefined,
               });
-              if (pollRef.current) clearInterval(pollRef.current);
+              if (pollRef.current) { clearInterval(pollRef.current); pollRef.current = null; }
             }
           }
         } catch (err) {
           updateNodeData(id, { status: "failed", errorMessage: String(err) });
-          if (pollRef.current) clearInterval(pollRef.current);
+          if (pollRef.current) { clearInterval(pollRef.current); pollRef.current = null; }
           toast.error("轮询失败：" + String(err));
         }
       }, 5000);

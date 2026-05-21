@@ -220,6 +220,9 @@ export const assetsRouter = router({
 
 // ── Video Tasks ───────────────────────────────────────────────────────────────
 
+const pollLastCheck = new Map<string, number>();
+const POLL_THROTTLE_MS = 4_000;
+
 export const videoTasksRouter = router({
   list: protectedProcedure
     .input(z.object({ projectId: z.number() }))
@@ -285,41 +288,55 @@ export const videoTasksRouter = router({
       const task = await getVideoTask(input.id);
       if (!task) return null;
 
-      // For poyo.ai tasks still processing, sync status from upstream
+      // For poyo.ai tasks still processing, sync status from upstream (throttled)
       if (task.status === "processing" && task.externalTaskId && isPoyoVideoProvider(task.provider)) {
-        try {
-          const upstream = await checkPoyoVideoStatus(task.externalTaskId);
-          if (upstream.status === "finished") {
-            const update = { status: "succeeded" as const, resultVideoUrl: upstream.resultVideoUrl };
-            await updateVideoTask(task.id, update);
-            return { ...task, ...update };
+        const now = Date.now();
+        const lastCheck = pollLastCheck.get(task.externalTaskId) ?? 0;
+        if (now - lastCheck >= POLL_THROTTLE_MS) {
+          pollLastCheck.set(task.externalTaskId, now);
+          try {
+            const upstream = await checkPoyoVideoStatus(task.externalTaskId);
+            if (upstream.status === "finished") {
+              pollLastCheck.delete(task.externalTaskId);
+              const update = { status: "succeeded" as const, resultVideoUrl: upstream.resultVideoUrl };
+              await updateVideoTask(task.id, update);
+              return { ...task, ...update };
+            }
+            if (upstream.status === "failed") {
+              pollLastCheck.delete(task.externalTaskId);
+              const update = { status: "failed" as const, errorMessage: upstream.errorMessage ?? "生成失败" };
+              await updateVideoTask(task.id, update);
+              return { ...task, ...update };
+            }
+          } catch {
+            // Ignore sync errors; return DB state so polling continues
           }
-          if (upstream.status === "failed") {
-            const update = { status: "failed" as const, errorMessage: upstream.errorMessage ?? "生成失败" };
-            await updateVideoTask(task.id, update);
-            return { ...task, ...update };
-          }
-        } catch {
-          // Ignore sync errors; return DB state so polling continues
         }
       }
 
-      // For Higgsfield tasks still processing, sync status from upstream
+      // For Higgsfield tasks still processing, sync status from upstream (throttled)
       if (task.status === "processing" && task.externalTaskId && isHiggsfieldVideoProvider(task.provider)) {
-        try {
-          const upstream = await checkHiggsfieldVideoStatus(task.externalTaskId);
-          if (upstream.status === "succeeded" && upstream.resultVideoUrl) {
-            const update = { status: "succeeded" as const, resultVideoUrl: upstream.resultVideoUrl };
-            await updateVideoTask(task.id, update);
-            return { ...task, ...update };
+        const now = Date.now();
+        const lastCheck = pollLastCheck.get(task.externalTaskId) ?? 0;
+        if (now - lastCheck >= POLL_THROTTLE_MS) {
+          pollLastCheck.set(task.externalTaskId, now);
+          try {
+            const upstream = await checkHiggsfieldVideoStatus(task.externalTaskId);
+            if (upstream.status === "succeeded" && upstream.resultVideoUrl) {
+              pollLastCheck.delete(task.externalTaskId);
+              const update = { status: "succeeded" as const, resultVideoUrl: upstream.resultVideoUrl };
+              await updateVideoTask(task.id, update);
+              return { ...task, ...update };
+            }
+            if (upstream.status === "failed") {
+              pollLastCheck.delete(task.externalTaskId);
+              const update = { status: "failed" as const, errorMessage: upstream.errorMessage ?? "生成失败" };
+              await updateVideoTask(task.id, update);
+              return { ...task, ...update };
+            }
+          } catch {
+            // Ignore sync errors; return DB state so polling continues
           }
-          if (upstream.status === "failed") {
-            const update = { status: "failed" as const, errorMessage: upstream.errorMessage ?? "生成失败" };
-            await updateVideoTask(task.id, update);
-            return { ...task, ...update };
-          }
-        } catch {
-          // Ignore sync errors; return DB state so polling continues
         }
       }
 

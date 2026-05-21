@@ -53,7 +53,7 @@ export const AIChatNode = memo(function AIChatNode({ id, selected, data }: Props
   const scrollRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
 
-  useEffect(() => { updateNodeData(id, { messages: localMessages }); }, [localMessages]);
+  useEffect(() => { updateNodeData(id, { messages: localMessages }); }, [localMessages, id, updateNodeData]);
   useEffect(() => {
     if (scrollRef.current) scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
   }, [localMessages]);
