@@ -40,9 +40,13 @@ export interface HiggsfieldImageOptions {
   batchSize?: number;        // 1 | 4
   enhancePrompt?: boolean;
   seed?: number;
-  // Reve specific
+  // Reve / Seedream v4 / Flux Pro shared
   aspectRatio?: string;
   resolution?: string;
+  // Flux Pro Kontext extra
+  guidanceScale?: number;    // 1-20, default 3.5
+  numImages?: number;        // 1-4
+  fluxSeed?: number;
   // Shared
   referenceImageUrl?: string;
 }
@@ -134,6 +138,9 @@ export async function generateHiggsfieldImage(
     if (opts.aspectRatio) body.aspect_ratio = opts.aspectRatio;
     if (opts.negativePrompt) body.negative_prompt = opts.negativePrompt;
     if (opts.referenceImageUrl) body.image_url = opts.referenceImageUrl;
+    if (opts.guidanceScale !== undefined) body.guidance_scale = opts.guidanceScale;
+    if (opts.numImages !== undefined) body.num_images = opts.numImages;
+    if (opts.fluxSeed !== undefined) body.seed = opts.fluxSeed;
   }
 
   const res = await fetch(endpoint, {

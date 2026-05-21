@@ -144,6 +144,7 @@ export const ImageGenNode = memo(function ImageGenNode({ id, selected, data }: P
       ...((payload.model === "poyo_flux" || payload.model === "poyo_sdxl" || payload.model === "poyo_gpt_image" ||
            payload.model === "poyo_seedream" || payload.model === "poyo_grok_image" || payload.model === "poyo_wan_image") ? {
         poyoAspectRatio: payload.aspectRatio,
+        ...(payload.model === "poyo_gpt_image" ? { poyoQuality: payload.poyoQuality } : {}),
       } : {}),
       // Soul Standard specific params
       ...(payload.model === "hf_soul_standard" ? {
@@ -157,6 +158,12 @@ export const ImageGenNode = memo(function ImageGenNode({ id, selected, data }: P
       ...(payload.model === "hf_reve" || payload.model === "hf_seedream_v4" || payload.model === "hf_flux_pro" ? {
         reveAspectRatio: payload.reveAspectRatio,
         ...(payload.model === "hf_reve" ? { reveResolution: payload.reveResolution } : {}),
+      } : {}),
+      // Flux Pro Kontext extra params
+      ...(payload.model === "hf_flux_pro" ? {
+        fluxGuidanceScale: payload.fluxGuidanceScale,
+        fluxSeed: payload.fluxSeed,
+        fluxNumImages: payload.fluxNumImages,
       } : {}),
     });
   };
@@ -214,6 +221,7 @@ export const ImageGenNode = memo(function ImageGenNode({ id, selected, data }: P
   const isReve = payload.model === "hf_reve";
   const isSeedreamV4 = payload.model === "hf_seedream_v4";
   const isFluxPro = payload.model === "hf_flux_pro";
+  const isGptImage = payload.model === "poyo_gpt_image";
   // Models that use the collapsible params panel
   const isReveLike = isReve || isSeedreamV4 || isFluxPro;
 
@@ -464,30 +472,50 @@ export const ImageGenNode = memo(function ImageGenNode({ id, selected, data }: P
 
         {/* Style + Ratio (non-Soul, non-Reve/Seedream/FluxPro models) */}
         {!isSoul && !isReveLike && (
-          <div className="flex gap-1.5">
-            <div className="flex-1">
-              <label style={labelStyle}>风格</label>
-              <select
-                value={payload.style ?? ""}
-                onChange={(e) => update("style", e.target.value)}
-                className="nodrag"
-                style={{ ...fieldBase, cursor: "pointer" }}
-              >
-                <option value="">默认</option>
-                {STYLES.map((s) => <option key={s} value={s}>{s}</option>)}
-              </select>
+          <div className="flex flex-col gap-1.5">
+            <div className="flex gap-1.5">
+              <div className="flex-1">
+                <label style={labelStyle}>风格</label>
+                <select
+                  value={payload.style ?? ""}
+                  onChange={(e) => update("style", e.target.value)}
+                  className="nodrag"
+                  style={{ ...fieldBase, cursor: "pointer" }}
+                >
+                  <option value="">默认</option>
+                  {STYLES.map((s) => <option key={s} value={s}>{s}</option>)}
+                </select>
+              </div>
+              <div style={{ width: 80 }}>
+                <label style={labelStyle}>比例</label>
+                <select
+                  value={payload.aspectRatio ?? ""}
+                  onChange={(e) => update("aspectRatio", e.target.value)}
+                  className="nodrag"
+                  style={{ ...fieldBase, cursor: "pointer" }}
+                >
+                  {RATIOS.map((r) => <option key={r} value={r}>{r}</option>)}
+                </select>
+              </div>
             </div>
-            <div style={{ width: 80 }}>
-              <label style={labelStyle}>比例</label>
-              <select
-                value={payload.aspectRatio ?? ""}
-                onChange={(e) => update("aspectRatio", e.target.value)}
-                className="nodrag"
-                style={{ ...fieldBase, cursor: "pointer" }}
-              >
-                {RATIOS.map((r) => <option key={r} value={r}>{r}</option>)}
-              </select>
-            </div>
+            {/* GPT Image 2 quality selector */}
+            {isGptImage && (
+              <div>
+                <label style={labelStyle}>质量</label>
+                <select
+                  value={payload.poyoQuality ?? "medium"}
+                  onChange={(e) => update("poyoQuality", e.target.value as "low" | "medium" | "high")}
+                  className="nodrag"
+                  style={{ ...fieldBase, cursor: "pointer" }}
+                  onFocus={(e) => { e.currentTarget.style.borderColor = BORDER_ACCENT; }}
+                  onBlur={(e) => { e.currentTarget.style.borderColor = BORDER_DEFAULT; }}
+                >
+                  <option value="low">低质量 · 快速</option>
+                  <option value="medium">标准质量</option>
+                  <option value="high">高质量 · 慢速</option>
+                </select>
+              </div>
+            )}
           </div>
         )}
 
@@ -621,40 +649,97 @@ export const ImageGenNode = memo(function ImageGenNode({ id, selected, data }: P
                 }
                 {/* Reve / Seedream v4 / Flux Pro params */}
                 {isReveLike && (
-                  <div className="flex gap-1.5">
-                    <div className="flex-1">
-                      <label style={labelStyle}>宽高比</label>
-                      <select
-                        value={payload.reveAspectRatio ?? "16:9"}
-                        onChange={(e) => update("reveAspectRatio", e.target.value)}
-                        className="nodrag"
-                        style={{ ...fieldBase, cursor: "pointer" }}
-                        onFocus={(e) => { e.currentTarget.style.borderColor = BORDER_ACCENT; }}
-                        onBlur={(e) => { e.currentTarget.style.borderColor = BORDER_DEFAULT; }}
-                      >
-                        <option value="21:9">21:9 超宽</option>
-                        <option value="16:9">16:9 横屏</option>
-                        <option value="4:3">4:3 标准</option>
-                        <option value="1:1">1:1 方形</option>
-                        <option value="3:4">3:4 竖屏</option>
-                        <option value="9:16">9:16 竖屏</option>
-                      </select>
-                    </div>
-                    {isReve && (
-                      <div style={{ width: 80 }}>
-                        <label style={labelStyle}>分辨率</label>
+                  <div className="flex flex-col gap-2">
+                    <div className="flex gap-1.5">
+                      <div className="flex-1">
+                        <label style={labelStyle}>宽高比</label>
                         <select
-                          value={payload.reveResolution ?? "720p"}
-                          onChange={(e) => update("reveResolution", e.target.value as "720p" | "1080p")}
+                          value={payload.reveAspectRatio ?? "16:9"}
+                          onChange={(e) => update("reveAspectRatio", e.target.value)}
                           className="nodrag"
                           style={{ ...fieldBase, cursor: "pointer" }}
                           onFocus={(e) => { e.currentTarget.style.borderColor = BORDER_ACCENT; }}
                           onBlur={(e) => { e.currentTarget.style.borderColor = BORDER_DEFAULT; }}
                         >
-                          <option value="720p">720p</option>
-                          <option value="1080p">1080p</option>
+                          <option value="21:9">21:9 超宽</option>
+                          <option value="16:9">16:9 横屏</option>
+                          <option value="4:3">4:3 标准</option>
+                          <option value="3:2">3:2 标准宽</option>
+                          <option value="1:1">1:1 方形</option>
+                          <option value="2:3">2:3 竖向</option>
+                          <option value="3:4">3:4 竖屏</option>
+                          <option value="9:16">9:16 竖屏</option>
+                          <option value="9:21">9:21 超竖</option>
                         </select>
                       </div>
+                      {isReve && (
+                        <div style={{ width: 80 }}>
+                          <label style={labelStyle}>分辨率</label>
+                          <select
+                            value={payload.reveResolution ?? "720p"}
+                            onChange={(e) => update("reveResolution", e.target.value as "720p" | "1080p")}
+                            className="nodrag"
+                            style={{ ...fieldBase, cursor: "pointer" }}
+                            onFocus={(e) => { e.currentTarget.style.borderColor = BORDER_ACCENT; }}
+                            onBlur={(e) => { e.currentTarget.style.borderColor = BORDER_DEFAULT; }}
+                          >
+                            <option value="720p">720p</option>
+                            <option value="1080p">1080p</option>
+                          </select>
+                        </div>
+                      )}
+                    </div>
+                    {/* Flux Pro Kontext extra params */}
+                    {isFluxPro && (
+                      <>
+                        <div className="flex gap-1.5">
+                          <div className="flex-1">
+                            <label style={labelStyle}>引导强度</label>
+                            <div className="flex items-center gap-2">
+                              <input
+                                type="range"
+                                min={1}
+                                max={20}
+                                step={0.5}
+                                value={payload.fluxGuidanceScale ?? 3.5}
+                                onChange={(e) => update("fluxGuidanceScale", Number(e.target.value))}
+                                className="nodrag flex-1"
+                                style={{ accentColor: accent }}
+                              />
+                              <span style={{ fontSize: 11, color: "oklch(0.55 0.006 260)", width: 28, textAlign: "right" }}>
+                                {(payload.fluxGuidanceScale ?? 3.5).toFixed(1)}
+                              </span>
+                            </div>
+                          </div>
+                          <div style={{ width: 72 }}>
+                            <label style={labelStyle}>批量</label>
+                            <select
+                              value={String(payload.fluxNumImages ?? 1)}
+                              onChange={(e) => update("fluxNumImages", Number(e.target.value))}
+                              className="nodrag"
+                              style={{ ...fieldBase, cursor: "pointer" }}
+                            >
+                              <option value="1">1 张</option>
+                              <option value="2">2 张</option>
+                              <option value="3">3 张</option>
+                              <option value="4">4 张</option>
+                            </select>
+                          </div>
+                        </div>
+                        <div>
+                          <label style={labelStyle}>Seed（可选）</label>
+                          <input
+                            type="number"
+                            placeholder="随机"
+                            value={payload.fluxSeed ?? ""}
+                            onChange={(e) => update("fluxSeed", e.target.value ? Number(e.target.value) : undefined)}
+                            className="nodrag"
+                            style={fieldBase}
+                            onFocus={(e) => { e.currentTarget.style.borderColor = BORDER_ACCENT; }}
+                            onBlur={(e) => { e.currentTarget.style.borderColor = BORDER_DEFAULT; }}
+                          />
+                        </div>
+                      </>
                     )}
                   </div>
                 )}

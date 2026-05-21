@@ -114,15 +114,21 @@ export interface ImageGenNodeData {
   imageUrl?: string;
   imageStorageKey?: string;
   model?: ImageGenModel;
+  // Poyo image params
+  poyoQuality?: "low" | "medium" | "high";
   // Soul Standard specific params
   widthAndHeight?: string;
   soulQuality?: "720p" | "1080p";
   batchSize?: number;
   seed?: number;
   enhancePrompt?: boolean;
-  // Reve specific params
+  // Reve / Seedream v4 / Flux Pro aspect ratio
   reveAspectRatio?: string;
   reveResolution?: "720p" | "1080p";
+  // Flux Pro Kontext specific params
+  fluxGuidanceScale?: number;
+  fluxSeed?: number;
+  fluxNumImages?: number;
   // Batch generation results
   imageUrls?: string[]; // multiple generated images (Soul batchSize=4, etc.)
 }

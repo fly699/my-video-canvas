@@ -32,6 +32,7 @@ import { invokeLLM, extractTextContent } from "../_core/llm";
 import { generateImage } from "../_core/imageGeneration";
 import { isPoyoVideoProvider, submitPoyoVideo, checkPoyoVideoStatus } from "../_core/poyoVideo";
 import { isHiggsfieldVideoProvider, submitHiggsfieldVideo, checkHiggsfieldVideoStatus } from "../_core/higgsfield";
+import { submitAndPollPoyoMusic, type PoyoMusicModel } from "../_core/poyoAudio";
 import { VIDEO_PROVIDERS } from "../../shared/types";
 
 // ── Projects ──────────────────────────────────────────────────────────────────
@@ -454,6 +455,10 @@ export const imageGenRouter = router({
         // Reve specific params
         reveAspectRatio: z.string().optional(),
         reveResolution: z.enum(["720p", "1080p"]).optional(),
+        // Flux Pro Kontext extra params
+        fluxGuidanceScale: z.number().min(1).max(20).optional(),
+        fluxSeed: z.number().int().optional(),
+        fluxNumImages: z.number().int().min(1).max(4).optional(),
       })
     )
     .mutation(async ({ input }) => {
@@ -483,10 +488,16 @@ export const imageGenRouter = router({
           seed: input.seed,
           enhancePrompt: input.enhancePrompt,
         } : {}),
-        // Reve/Seedream v4/Flux Pro specific params passed through
+        // Reve/Seedream v4/Flux Pro aspect ratio
         ...(input.model === "hf_reve" || input.model === "hf_seedream_v4" || input.model === "hf_flux_pro" ? {
           reveAspectRatio: input.reveAspectRatio,
           ...(input.model === "hf_reve" ? { reveResolution: input.reveResolution } : {}),
+        } : {}),
+        // Flux Pro Kontext extra params
+        ...(input.model === "hf_flux_pro" ? {
+          fluxGuidanceScale: input.fluxGuidanceScale,
+          fluxSeed: input.fluxSeed,
+          fluxNumImages: input.fluxNumImages,
         } : {}),
       });
 
@@ -539,5 +550,32 @@ Each element must have these fields:
         throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "JSON 解析失败" });
       }
       return { scenes: scenes.slice(0, input.count) };
+    }),
+});
+
+// ── Audio Generation ──────────────────────────────────────────────────────────
+
+export const audioGenRouter = router({
+  generateMusic: protectedProcedure
+    .input(
+      z.object({
+        model: z.enum(["suno-v4.5", "suno-v5", "mureka", "minimax-music-02"]),
+        prompt: z.string().min(1),
+        style: z.string().optional(),
+        durationSeconds: z.number().int().min(10).max(480).optional(),
+        instrumental: z.boolean().optional(),
+        negativePrompt: z.string().optional(),
+      })
+    )
+    .mutation(async ({ input }) => {
+      const result = await submitAndPollPoyoMusic({
+        model: input.model as PoyoMusicModel,
+        prompt: input.prompt,
+        style: input.style,
+        durationSeconds: input.durationSeconds,
+        instrumental: input.instrumental,
+        negativePrompt: input.negativePrompt,
+      });
+      return { url: result.url, duration: result.duration };
     }),
 });

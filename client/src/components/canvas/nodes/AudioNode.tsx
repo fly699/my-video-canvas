@@ -52,12 +52,15 @@ const labelStyle: React.CSSProperties = {
 
 // ── Model lists ───────────────────────────────────────────────────────────────
 
+// Real Poyo-backed music models
 const MUSIC_MODELS = [
-  { value: "suno_v45",         label: "Suno v4.5",       desc: "旗舰 · 全风格",   group: "Suno" },
-  { value: "udio_v2",          label: "Udio 2.0",        desc: "高质量 · 多语言", group: "Udio" },
-  { value: "stable_audio_2",   label: "Stable Audio 2",  desc: "稳定AI · 纯音乐", group: "Stability" },
+  { value: "suno-v4.5",       label: "Suno v4.5",       desc: "旗舰 · 全风格",   group: "Suno" },
+  { value: "suno-v5",         label: "Suno v5",         desc: "8 分钟 · 最高质量",group: "Suno" },
+  { value: "mureka",           label: "Mureka",          desc: "昆仑 · 中文友好", group: "Mureka" },
+  { value: "minimax-music-02", label: "MiniMax Music-02",desc: "多模态 · 精准",   group: "MiniMax" },
 ];
 
+// Dubbing/TTS — coming soon; no Poyo TTS endpoint confirmed
 const DUBBING_MODELS = [
   { value: "openai_tts_hd",    label: "OpenAI TTS-HD",   desc: "高清 · 自然",     group: "OpenAI" },
   { value: "openai_tts",       label: "OpenAI TTS",      desc: "标准 · 快速",     group: "OpenAI" },
@@ -65,6 +68,7 @@ const DUBBING_MODELS = [
   { value: "cosyvoice_2",      label: "CosyVoice 2.0",   desc: "阿里 · 中文优化", group: "Alibaba" },
 ];
 
+// SFX — coming soon
 const SFX_MODELS = [
   { value: "elevenlabs_sfx",   label: "ElevenLabs SFX",  desc: "音效 · 精准",     group: "ElevenLabs" },
   { value: "audiogen",         label: "AudioGen",        desc: "Meta · 开源",     group: "Meta" },
@@ -95,9 +99,20 @@ export const AudioNode = memo(function AudioNode({ id, selected, data }: Props) 
   const payload = data.payload;
   const [isPlaying, setIsPlaying] = useState(false);
   const [uploading, setUploading] = useState(false);
-  const [generating, setGenerating] = useState(false);
   const audioRef = useRef<HTMLAudioElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  const musicMutation = trpc.audioGen.generateMusic.useMutation({
+    onSuccess: (result) => {
+      updateNodeData(id, {
+        url: result.url,
+        duration: result.duration,
+        name: `${payload.musicStyle ? payload.musicStyle + " · " : ""}${payload.musicPrompt?.slice(0, 24) ?? "配乐"}`,
+      });
+      toast.success("配乐生成完成");
+    },
+    onError: (err) => toast.error("生成失败：" + err.message),
+  });
 
   // Resolve active category (support legacy source field)
   const category: AudioCategory = payload.audioCategory
@@ -142,9 +157,20 @@ export const AudioNode = memo(function AudioNode({ id, selected, data }: Props) 
     }
   }, [isPlaying]);
 
-  const handleGenerate = () => {
-    setGenerating(false);
-    toast.info("AI 音频生成功能即将上线，敬请期待");
+  const handleGenerateMusic = () => {
+    if (!payload.musicPrompt?.trim()) { toast.error("请先输入音乐描述"); return; }
+    const modelVal = (payload.aiModel ?? "suno-v4.5") as "suno-v4.5" | "suno-v5" | "mureka" | "minimax-music-02";
+    musicMutation.mutate({
+      model: modelVal,
+      prompt: payload.musicPrompt,
+      style: payload.musicStyle,
+      durationSeconds: payload.musicDuration ?? 30,
+      instrumental: true,
+    });
+  };
+
+  const handleGenerateStub = () => {
+    toast.info("该功能即将上线，敬请期待");
   };
 
   const formatDuration = (s?: number) =>
@@ -213,23 +239,25 @@ export const AudioNode = memo(function AudioNode({ id, selected, data }: Props) 
   );
 
   // ── Generate button ──────────────────────────────────────────────────────────
-  const GenerateBtn = ({ disabled, label }: { disabled?: boolean; label: string }) => (
+  const GenerateBtn = ({
+    disabled, label, loading, onClick,
+  }: { disabled?: boolean; label: string; loading?: boolean; onClick: () => void }) => (
     <button
-      onClick={handleGenerate}
-      disabled={generating || disabled}
+      onClick={onClick}
+      disabled={loading || disabled}
       className="nodrag flex items-center justify-center gap-1.5 w-full py-2 rounded-lg text-xs font-medium transition-all"
       style={{
-        background: generating || disabled ? "oklch(0.13 0.007 260)" : accentA(0.15),
+        background: loading || disabled ? "oklch(0.13 0.007 260)" : accentA(0.15),
         borderWidth: 1, borderStyle: "solid",
-        borderColor: generating || disabled ? BORDER_DEFAULT : accentA(0.4),
-        color: generating || disabled ? "oklch(0.38 0.006 260)" : accent,
-        cursor: generating || disabled ? "not-allowed" : "pointer",
+        borderColor: loading || disabled ? BORDER_DEFAULT : accentA(0.4),
+        color: loading || disabled ? "oklch(0.38 0.006 260)" : accent,
+        cursor: loading || disabled ? "not-allowed" : "pointer",
       }}
     >
-      {generating
+      {loading
         ? <Loader2 style={{ width: 12, height: 12 }} className="animate-spin" />
         : <Zap style={{ width: 12, height: 12 }} />}
-      {generating ? "生成中..." : label}
+      {loading ? "生成中..." : label}
     </button>
   );
 
@@ -319,7 +347,12 @@ export const AudioNode = memo(function AudioNode({ id, selected, data }: Props) 
                 onBlur={(e) => { e.currentTarget.style.borderColor = BORDER_DEFAULT; }}
               />
             </div>
-            <GenerateBtn disabled={!payload.musicPrompt?.trim()} label="生成配乐" />
+            <GenerateBtn
+              disabled={!payload.musicPrompt?.trim()}
+              loading={musicMutation.isPending}
+              onClick={handleGenerateMusic}
+              label="生成配乐"
+            />
             {audioPlayer}
           </>
         )}
@@ -387,7 +420,7 @@ export const AudioNode = memo(function AudioNode({ id, selected, data }: Props) 
                 </span>
               </div>
             </div>
-            <GenerateBtn disabled={!payload.ttsText?.trim()} label="生成配音" />
+            <GenerateBtn disabled={!payload.ttsText?.trim()} loading={false} onClick={handleGenerateStub} label="生成配音（即将上线）" />
             {audioPlayer}
           </>
         )}
@@ -428,7 +461,7 @@ export const AudioNode = memo(function AudioNode({ id, selected, data }: Props) 
                 onBlur={(e) => { e.currentTarget.style.borderColor = BORDER_DEFAULT; }}
               />
             </div>
-            <GenerateBtn disabled={!payload.sfxPrompt?.trim()} label="生成音效" />
+            <GenerateBtn disabled={!payload.sfxPrompt?.trim()} loading={false} onClick={handleGenerateStub} label="生成音效（即将上线）" />
             {audioPlayer}
           </>
         )}

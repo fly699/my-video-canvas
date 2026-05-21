@@ -11,6 +11,7 @@ import {
   aiChatRouter,
   imageGenRouter,
   scriptsRouter,
+  audioGenRouter,
 } from "./routers/canvas";
 import { uploadRouter } from "./routers/upload";
 
@@ -34,6 +35,7 @@ export const appRouter = router({
   aiChat: aiChatRouter,
   imageGen: imageGenRouter,
   scripts: scriptsRouter,
+  audioGen: audioGenRouter,
   upload: uploadRouter,
 });
 

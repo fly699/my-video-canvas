@@ -17,9 +17,13 @@ export type GenerateImageOptions = {
   batchSize?: number;
   seed?: number;
   enhancePrompt?: boolean;
-  // Reve specific params
+  // Reve / Seedream v4 / Flux Pro shared
   reveAspectRatio?: string;
   reveResolution?: string;
+  // Flux Pro Kontext extra params
+  fluxGuidanceScale?: number;
+  fluxSeed?: number;
+  fluxNumImages?: number;
 };
 
 export type GenerateImageResponse = {
@@ -176,9 +180,13 @@ export async function generateImage(options: GenerateImageOptions): Promise<Gene
       batchSize: options.batchSize,
       seed: options.seed,
       enhancePrompt: options.enhancePrompt,
-      // Reve specific params (map to higgsfield field names)
+      // Reve / Seedream v4 / Flux Pro aspect ratio
       aspectRatio: options.reveAspectRatio,
       resolution: options.reveResolution,
+      // Flux Pro Kontext extra
+      guidanceScale: options.fluxGuidanceScale,
+      numImages: options.fluxNumImages,
+      fluxSeed: options.fluxSeed,
     });
     return { url: result.url, urls: result.urls };
   }
