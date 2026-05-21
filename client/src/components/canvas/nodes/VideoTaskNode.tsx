@@ -1,11 +1,11 @@
-import { memo, useCallback, useEffect, useRef } from "react";
+import { memo, useCallback, useEffect, useRef, useState } from "react";
 import { BaseNode } from "../BaseNode";
 import { useCanvasStore } from "../../../hooks/useCanvasStore";
 import type { VideoTaskNodeData, VideoProvider } from "../../../../../shared/types";
 import { trpc } from "@/lib/trpc";
 import { toast } from "sonner";
 import { Handle, Position } from "@xyflow/react";
-import { Play, Loader2, CheckCircle2, XCircle, Clock, RefreshCw, AlertCircle, Download } from "lucide-react";
+import { Play, Loader2, CheckCircle2, XCircle, Clock, RefreshCw, AlertCircle, Download, ChevronDown, ChevronRight } from "lucide-react";
 
 interface Props {
   id: string;
@@ -139,6 +139,7 @@ export const VideoTaskNode = memo(function VideoTaskNode({ id, selected, data }:
   const { updateNodeData } = useCanvasStore();
   const payload = data.payload;
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const [paramsExpanded, setParamsExpanded] = useState(true);
 
   const createTaskMutation = trpc.videoTasks.create.useMutation({
     onSuccess: (task) => {
@@ -398,14 +399,25 @@ export const VideoTaskNode = memo(function VideoTaskNode({ id, selected, data }:
         {/* ── Dynamic model-specific params ── */}
         {paramDefs.length > 0 && (
           <div
-            className="p-3 rounded-xl"
+            className="rounded-xl"
             style={{ background: "oklch(0.085 0.006 260)", borderWidth: 1, borderStyle: "solid", borderColor: "oklch(0.18 0.007 260)" }}
           >
-            <span style={{ fontSize: 10.5, fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.07em", color: "oklch(0.40 0.008 260)", display: "block", marginBottom: 8 }}>
-              模型参数
-            </span>
+            {/* Collapsible header */}
+            <button
+              onClick={() => setParamsExpanded((v) => !v)}
+              className="nodrag w-full flex items-center justify-between px-3 py-2 rounded-xl"
+              style={{ cursor: "pointer", background: "transparent" }}
+            >
+              <span style={{ fontSize: 10.5, fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.07em", color: "oklch(0.40 0.008 260)" }}>
+                模型参数
+              </span>
+              {paramsExpanded
+                ? <ChevronDown className="w-3 h-3" style={{ color: "oklch(0.40 0.008 260)" }} />
+                : <ChevronRight className="w-3 h-3" style={{ color: "oklch(0.40 0.008 260)" }} />
+              }
+            </button>
             {/* 2-column grid for compact layout */}
-            <div className="grid grid-cols-2 gap-x-2.5 gap-y-2.5">
+            {paramsExpanded && <div className="grid grid-cols-2 gap-x-2.5 gap-y-2.5 px-3 pb-3">
             {paramDefs.map((def) => {
               const curVal = params[def.key] ?? def.default;
               // toggle spans full width for readability
@@ -494,7 +506,7 @@ export const VideoTaskNode = memo(function VideoTaskNode({ id, selected, data }:
               }
               return null;
             })}
-            </div>{/* end grid */}
+            </div>}{/* end grid */}
           </div>
         )}
 

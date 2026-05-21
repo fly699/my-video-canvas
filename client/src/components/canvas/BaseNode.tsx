@@ -89,7 +89,7 @@ export const BaseNode = memo(function BaseNode({
         minWidth,
         minHeight,
         width: "100%",
-        height: "100%",
+        // height is content-driven; do not set height:100% which would require a parent height
         transition: "border-color 150ms ease, box-shadow 180ms ease",
         backdropFilter: "blur(4px)",
         opacity: entered ? 1 : 0,
@@ -271,7 +271,7 @@ export const BaseNode = memo(function BaseNode({
 
       {/* ── Content area ── */}
       {/* Content area — wheel events scroll node content; Ctrl+wheel zooms canvas (Figma mode) */}
-      <div className="flex-1 overflow-auto min-h-0 nopan">{children}</div>
+      <div className="overflow-visible nopan">{children}</div>
 
       {/* ── Connection Handles ── */}
       {showHandles && (

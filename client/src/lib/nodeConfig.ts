@@ -8,7 +8,7 @@ export interface NodeConfig {
   bgColor: string;
   borderColor: string;
   defaultWidth: number;
-  defaultHeight: number;
+  defaultHeight?: number; // undefined = auto height driven by content
   defaultTitle: string;
 }
 
@@ -21,7 +21,6 @@ export const NODE_CONFIGS: Record<NodeType, NodeConfig> = {
     bgColor: "oklch(0.62 0.18 240 / 0.08)",
     borderColor: "oklch(0.62 0.18 240 / 0.4)",
     defaultWidth: 380,
-    defaultHeight: 320,
     defaultTitle: "新脚本",
   },
   storyboard: {
@@ -32,8 +31,7 @@ export const NODE_CONFIGS: Record<NodeType, NodeConfig> = {
     bgColor: "oklch(0.65 0.20 160 / 0.08)",
     borderColor: "oklch(0.65 0.20 160 / 0.4)",
     defaultWidth: 340,
-    defaultHeight: 400,
-    defaultTitle: "分镜 #1",
+    defaultTitle: "分镖 #1",
   },
   prompt: {
     type: "prompt",
@@ -43,7 +41,6 @@ export const NODE_CONFIGS: Record<NodeType, NodeConfig> = {
     bgColor: "oklch(0.68 0.22 300 / 0.08)",
     borderColor: "oklch(0.68 0.22 300 / 0.4)",
     defaultWidth: 340,
-    defaultHeight: 280,
     defaultTitle: "提示词",
   },
   image_gen: {
@@ -54,7 +51,6 @@ export const NODE_CONFIGS: Record<NodeType, NodeConfig> = {
     bgColor: "oklch(0.72 0.20 330 / 0.08)",
     borderColor: "oklch(0.72 0.20 330 / 0.4)",
     defaultWidth: 360,
-    defaultHeight: 420,
     defaultTitle: "图像生成",
   },
   asset: {
@@ -65,7 +61,6 @@ export const NODE_CONFIGS: Record<NodeType, NodeConfig> = {
     bgColor: "oklch(0.65 0.18 60 / 0.08)",
     borderColor: "oklch(0.65 0.18 60 / 0.4)",
     defaultWidth: 300,
-    defaultHeight: 260,
     defaultTitle: "素材",
   },
   video_task: {
@@ -76,7 +71,6 @@ export const NODE_CONFIGS: Record<NodeType, NodeConfig> = {
     bgColor: "oklch(0.62 0.20 25 / 0.08)",
     borderColor: "oklch(0.62 0.20 25 / 0.4)",
     defaultWidth: 380,
-    defaultHeight: 360,
     defaultTitle: "视频生成",
   },
   ai_chat: {
@@ -87,7 +81,7 @@ export const NODE_CONFIGS: Record<NodeType, NodeConfig> = {
     bgColor: "oklch(0.70 0.18 200 / 0.08)",
     borderColor: "oklch(0.70 0.18 200 / 0.4)",
     defaultWidth: 400,
-    defaultHeight: 460,
+    defaultHeight: 460, // ai_chat needs fixed height for scroll area
     defaultTitle: "AI 助手",
   },
   note: {
@@ -98,7 +92,6 @@ export const NODE_CONFIGS: Record<NodeType, NodeConfig> = {
     bgColor: "oklch(0.60 0.10 90 / 0.08)",
     borderColor: "oklch(0.60 0.10 90 / 0.4)",
     defaultWidth: 260,
-    defaultHeight: 180,
     defaultTitle: "便签",
   },
 };

@@ -164,3 +164,11 @@
 - [x] ImageGenNode：参数区已是横向 flex 布局，无需修改
 - [x] StoryboardNode/PromptNode：参数区已是横向布局，无需修改
 - [x] TypeScript 0 errors，测试全部通过
+
+## Phase 20: 节点高度自适应 + 参数折叠 + 快捷键提示
+- [x] 节点高度自适应：移除各节点固定 minHeight，改为内容驱动自动高度（nodeConfig 中 height 改为 undefined）
+- [x] BaseNode：移除固定高度约束，内容区 overflow-auto 改为 overflow-visible
+- [x] VideoTaskNode：模型参数区添加折叠/展开按鈕（默认展开，点击收起）
+- [x] ImageGenNode：参数区添加折叠/展开按鈕
+- [x] 底部工具栏：添加 "?" 按鈕，点击弹出快捷键速查浮层
+- [x] TypeScript 0 errors，测试全部通过

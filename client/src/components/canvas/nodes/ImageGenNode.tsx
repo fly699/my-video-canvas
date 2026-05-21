@@ -5,7 +5,7 @@ import { useCanvasStore } from "../../../hooks/useCanvasStore";
 import type { ImageGenNodeData, ImageGenModel } from "../../../../../shared/types";
 import { trpc } from "@/lib/trpc";
 import { toast } from "sonner";
-import { Sparkles, Loader2, RefreshCw, Upload, X, Cpu, Check, Grid2X2, Download, ZoomIn } from "lucide-react";
+import { Sparkles, Loader2, RefreshCw, Upload, X, Cpu, Check, Grid2X2, Download, ZoomIn, ChevronDown, ChevronRight } from "lucide-react";
 import { ImageLightbox } from "../ImageLightbox";
 
 interface Props {
@@ -74,6 +74,7 @@ export const ImageGenNode = memo(function ImageGenNode({ id, selected, data }: P
   const [generating, setGenerating] = useState(false);
   const [uploading, setUploading] = useState(false);
   const [lightboxIndex, setLightboxIndex] = useState<number | null>(null);
+  const [paramsExpanded, setParamsExpanded] = useState(true);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   // Determine if we are in batch/grid mode
@@ -397,43 +398,7 @@ export const ImageGenNode = memo(function ImageGenNode({ id, selected, data }: P
           />
         </div>
 
-        {/* Reve specific params */}
-        {isReve && (
-          <div className="flex gap-1.5">
-            <div className="flex-1">
-              <label style={labelStyle}>宽高比</label>
-              <select
-                value={payload.reveAspectRatio ?? "16:9"}
-                onChange={(e) => update("reveAspectRatio", e.target.value)}
-                className="nodrag"
-                style={{ ...fieldBase, cursor: "pointer" }}
-                onFocus={(e) => { e.currentTarget.style.borderColor = BORDER_ACCENT; }}
-                onBlur={(e) => { e.currentTarget.style.borderColor = BORDER_DEFAULT; }}
-              >
-                <option value="21:9">21:9 超宽</option>
-                <option value="16:9">16:9 横屏</option>
-                <option value="4:3">4:3 标准</option>
-                <option value="1:1">1:1 方形</option>
-                <option value="3:4">3:4 竖屏</option>
-                <option value="9:16">9:16 竖屏</option>
-              </select>
-            </div>
-            <div style={{ width: 80 }}>
-              <label style={labelStyle}>分辨率</label>
-              <select
-                value={payload.reveResolution ?? "720p"}
-                onChange={(e) => update("reveResolution", e.target.value as "720p" | "1080p")}
-                className="nodrag"
-                style={{ ...fieldBase, cursor: "pointer" }}
-                onFocus={(e) => { e.currentTarget.style.borderColor = BORDER_ACCENT; }}
-                onBlur={(e) => { e.currentTarget.style.borderColor = BORDER_DEFAULT; }}
-              >
-                <option value="720p">720p</option>
-                <option value="1080p">1080p</option>
-              </select>
-            </div>
-          </div>
-        )}
+        {/* Reve params are now inside the collapsible block below */}
 
         {/* Style + Ratio (non-Soul, non-Reve models) */}
         {!isSoul && !isReve && (
@@ -464,9 +429,29 @@ export const ImageGenNode = memo(function ImageGenNode({ id, selected, data }: P
           </div>
         )}
 
-        {/* Soul Standard specific params */}
-        {isSoul && (
-          <>
+        {/* Soul Standard / Reve specific params — collapsible */}
+        {(isSoul || isReve) && (
+          <div
+            className="rounded-xl"
+            style={{ background: "oklch(0.085 0.006 260)", borderWidth: 1, borderStyle: "solid", borderColor: "oklch(0.18 0.007 260)" }}
+          >
+            <button
+              onClick={() => setParamsExpanded((v) => !v)}
+              className="nodrag w-full flex items-center justify-between px-3 py-2 rounded-xl"
+              style={{ cursor: "pointer", background: "transparent" }}
+            >
+              <span style={{ fontSize: 10.5, fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.07em", color: "oklch(0.40 0.008 260)" }}>
+                模型参数
+              </span>
+              {paramsExpanded
+                ? <ChevronDown className="w-3 h-3" style={{ color: "oklch(0.40 0.008 260)" }} />
+                : <ChevronRight className="w-3 h-3" style={{ color: "oklch(0.40 0.008 260)" }} />
+              }
+            </button>
+            {paramsExpanded && (
+              <div className="px-3 pb-3 flex flex-col gap-2.5">
+                {/* Soul Standard params */}
+                {isSoul && <>
             <div className="flex gap-1.5">
               <div className="flex-1">
                 <label style={labelStyle}>尺寸</label>
@@ -531,6 +516,47 @@ export const ImageGenNode = memo(function ImageGenNode({ id, selected, data }: P
               </label>
             </div>
           </>
+                }
+                {/* Reve params */}
+                {isReve && (
+                  <div className="flex gap-1.5">
+                    <div className="flex-1">
+                      <label style={labelStyle}>宽高比</label>
+                      <select
+                        value={payload.reveAspectRatio ?? "16:9"}
+                        onChange={(e) => update("reveAspectRatio", e.target.value)}
+                        className="nodrag"
+                        style={{ ...fieldBase, cursor: "pointer" }}
+                        onFocus={(e) => { e.currentTarget.style.borderColor = BORDER_ACCENT; }}
+                        onBlur={(e) => { e.currentTarget.style.borderColor = BORDER_DEFAULT; }}
+                      >
+                        <option value="21:9">21:9 超宽</option>
+                        <option value="16:9">16:9 横屏</option>
+                        <option value="4:3">4:3 标准</option>
+                        <option value="1:1">1:1 方形</option>
+                        <option value="3:4">3:4 竖屏</option>
+                        <option value="9:16">9:16 竖屏</option>
+                      </select>
+                    </div>
+                    <div style={{ width: 80 }}>
+                      <label style={labelStyle}>分辨率</label>
+                      <select
+                        value={payload.reveResolution ?? "720p"}
+                        onChange={(e) => update("reveResolution", e.target.value as "720p" | "1080p")}
+                        className="nodrag"
+                        style={{ ...fieldBase, cursor: "pointer" }}
+                        onFocus={(e) => { e.currentTarget.style.borderColor = BORDER_ACCENT; }}
+                        onBlur={(e) => { e.currentTarget.style.borderColor = BORDER_DEFAULT; }}
+                      >
+                        <option value="720p">720p</option>
+                        <option value="1080p">1080p</option>
+                      </select>
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
         )}
 
         {/* Reference image upload */}

@@ -169,7 +169,7 @@ export const useCanvasStore = create<CanvasStore>((set, get) => ({
       },
       style: {
         width: config.defaultWidth,
-        height: config.defaultHeight,
+        // height is intentionally omitted — let content drive the node height
       },
     };
 

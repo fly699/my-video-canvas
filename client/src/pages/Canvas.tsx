@@ -187,6 +187,7 @@ function CanvasInner({ projectId }: { projectId: number }) {
   const [showCollaborators, setShowCollaborators] = useState(false);
   const [showNodePicker, setShowNodePicker] = useState(false);
   const [showPresentation, setShowPresentation] = useState(false);
+  const [showShortcuts, setShowShortcuts] = useState(false);
 
   const socketRef = useRef<Socket | null>(null);
   const [socketConnected, setSocketConnected] = useState(false);
@@ -877,6 +878,88 @@ function CanvasInner({ projectId }: { projectId: number }) {
               </TooltipTrigger>
               <TooltipContent side="top" className="text-xs">适应视图</TooltipContent>
             </Tooltip>
+
+            {/* Divider */}
+            <div style={{ width: 1, height: 18, background: "oklch(0.22 0.008 260)", flexShrink: 0 }} />
+
+            {/* Shortcut help button */}
+            <div className="relative">
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <button
+                    onClick={() => setShowShortcuts((v) => !v)}
+                    className="w-8 h-8 rounded-xl flex items-center justify-center transition-all text-xs font-bold"
+                    style={{
+                      color: showShortcuts ? "oklch(0.80 0.18 285)" : "oklch(0.50 0.008 260)",
+                      background: showShortcuts ? "oklch(0.68 0.22 285 / 0.15)" : "transparent",
+                    }}
+                    onMouseEnter={(e) => { if (!showShortcuts) { (e.currentTarget as HTMLElement).style.background = "oklch(0.18 0.008 260)"; (e.currentTarget as HTMLElement).style.color = "oklch(0.80 0.005 260)"; } }}
+                    onMouseLeave={(e) => { if (!showShortcuts) { (e.currentTarget as HTMLElement).style.background = "transparent"; (e.currentTarget as HTMLElement).style.color = "oklch(0.50 0.008 260)"; } }}
+                  >
+                    ?
+                  </button>
+                </TooltipTrigger>
+                <TooltipContent side="top" className="text-xs">快捷键列表</TooltipContent>
+              </Tooltip>
+
+              {/* Shortcuts panel */}
+              {showShortcuts && (
+                <div
+                  className="absolute bottom-12 right-0 rounded-2xl p-4 z-40 animate-scale-in"
+                  style={{
+                    width: 280,
+                    background: "oklch(0.10 0.007 260 / 0.97)",
+                    backdropFilter: "blur(24px)",
+                    border: "1px solid oklch(0.20 0.008 260)",
+                    boxShadow: "0 16px 48px oklch(0 0 0 / 0.70), 0 4px 12px oklch(0 0 0 / 0.40)",
+                  }}
+                >
+                  <p className="text-[10px] font-semibold uppercase tracking-widest mb-3" style={{ color: "oklch(0.42 0.006 260)" }}>快捷键速查</p>
+                  {[
+                    { group: "画布操作", items: [
+                      { key: "Ctrl + 滚轮", desc: "缩放画布" },
+                      { key: "滚轮", desc: "上下平移" },
+                      { key: "Shift + 滚轮", desc: "左右平移" },
+                      { key: "拖拽空白处", desc: "平移画布" },
+                    ]},
+                    { group: "节点操作", items: [
+                      { key: "Delete / Backspace", desc: "删除选中节点" },
+                      { key: "Cmd/Ctrl + D", desc: "复制节点" },
+                      { key: "Cmd/Ctrl + A", desc: "全选节点" },
+                      { key: "Esc", desc: "取消选中" },
+                    ]},
+                    { group: "撤销/重做", items: [
+                      { key: "Cmd/Ctrl + Z", desc: "撤销" },
+                      { key: "Cmd/Ctrl + Shift + Z", desc: "重做" },
+                      { key: "Ctrl + Y", desc: "重做（Windows）" },
+                    ]},
+                    { group: "其他", items: [
+                      { key: "Cmd/Ctrl + S", desc: "保存画布" },
+                      { key: "?", desc: "开关快捷键面板" },
+                    ]},
+                  ].map(({ group, items }) => (
+                    <div key={group} className="mb-3 last:mb-0">
+                      <p className="text-[9px] font-semibold uppercase tracking-widest mb-1.5" style={{ color: "oklch(0.35 0.006 260)" }}>{group}</p>
+                      <div className="flex flex-col gap-1">
+                        {items.map(({ key, desc }) => (
+                          <div key={key} className="flex items-center justify-between">
+                            <span style={{ fontSize: 11, color: "oklch(0.65 0.005 260)" }}>{desc}</span>
+                            <span
+                              className="font-mono text-[10px] px-1.5 py-0.5 rounded-md"
+                              style={{
+                                background: "oklch(0.16 0.007 260)",
+                                border: "1px solid oklch(0.24 0.008 260)",
+                                color: "oklch(0.72 0.12 285)",
+                              }}
+                            >{key}</span>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
           </div>
 
           {/* Collaborator cursors */}
