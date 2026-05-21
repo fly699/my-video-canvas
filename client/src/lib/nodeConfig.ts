@@ -1,11 +1,11 @@
 import type { NodeType } from "../../../shared/types";
 import {
   FileText, Image, Wand2, Sparkles, Paperclip, Video, Bot, StickyNote,
-  Music, Layers, Folder, Users,
+  Music, Layers, Folder, Users, Scissors,
 } from "lucide-react";
 
 export const NODE_ICONS: Record<string, React.ComponentType<{ className?: string; style?: React.CSSProperties }>> = {
-  FileText, Image, Wand2, Sparkles, Paperclip, Video, Bot, StickyNote, Music, Layers, Folder, Users,
+  FileText, Image, Wand2, Sparkles, Paperclip, Video, Bot, StickyNote, Music, Layers, Folder, Users, Scissors,
 };
 
 export interface NodeConfig {
@@ -142,6 +142,16 @@ export const NODE_CONFIGS: Record<NodeType, NodeConfig> = {
     borderColor: "oklch(0.66 0.18 140 / 0.4)",
     defaultWidth: 320,
     defaultTitle: "角色",
+  },
+  clip: {
+    type: "clip",
+    label: "剪辑",
+    icon: "Scissors",
+    color: "oklch(0.68 0.20 55)",
+    bgColor: "oklch(0.68 0.20 55 / 0.08)",
+    borderColor: "oklch(0.68 0.20 55 / 0.4)",
+    defaultWidth: 400,
+    defaultTitle: "剪辑",
   },
 };
 

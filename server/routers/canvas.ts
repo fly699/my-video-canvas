@@ -33,6 +33,7 @@ import { generateImage } from "../_core/imageGeneration";
 import { isPoyoVideoProvider, submitPoyoVideo, checkPoyoVideoStatus } from "../_core/poyoVideo";
 import { isHiggsfieldVideoProvider, submitHiggsfieldVideo, checkHiggsfieldVideoStatus } from "../_core/higgsfield";
 import { submitAndPollPoyoMusic, type PoyoMusicModel } from "../_core/poyoAudio";
+import { trimVideo, getVideoDuration } from "../_core/videoEditor";
 import { VIDEO_PROVIDERS } from "../../shared/types";
 
 // ── Projects ──────────────────────────────────────────────────────────────────
@@ -577,5 +578,31 @@ export const audioGenRouter = router({
         negativePrompt: input.negativePrompt,
       });
       return { url: result.url, duration: result.duration };
+    }),
+});
+
+// ── Video Clip Editor ─────────────────────────────────────────────────────────
+export const clipRouter = router({
+  trimVideo: protectedProcedure
+    .input(
+      z.object({
+        inputUrl: z.string().url(),
+        startTime: z.number().min(0),
+        endTime: z.number().min(0),
+        speed: z.number().min(0.25).max(4.0).optional(),
+        audioUrl: z.string().optional(),
+        audioVolume: z.number().min(0).max(2.0).optional(),
+      })
+    )
+    .mutation(async ({ input }) => {
+      const result = await trimVideo(input);
+      return { url: result.url, duration: result.duration };
+    }),
+
+  getVideoDuration: protectedProcedure
+    .input(z.object({ url: z.string() }))
+    .query(async ({ input }) => {
+      const duration = await getVideoDuration(input.url);
+      return { duration };
     }),
 });

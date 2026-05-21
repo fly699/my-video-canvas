@@ -290,6 +290,7 @@ const NODE_DOT_COLORS: Partial<Record<NodeType, string>> = {
   post_process: "oklch(0.65 0.18 190)",
   group:        "oklch(0.55 0.08 260)",
   character:    "oklch(0.66 0.18 140)",
+  clip:         "oklch(0.68 0.20 55)",
 };
 
 const NODE_TYPE_LABELS: Partial<Record<NodeType, string>> = {
@@ -305,6 +306,7 @@ const NODE_TYPE_LABELS: Partial<Record<NodeType, string>> = {
   post_process: "后处理",
   group:        "分组",
   character:    "角色/场景",
+  clip:         "剪辑",
 };
 
 // ── Custom template localStorage ──────────────────────────────────────────────

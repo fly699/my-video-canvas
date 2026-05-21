@@ -12,6 +12,7 @@ import { AudioNode } from "./nodes/AudioNode";
 import { PostProcessNode } from "./nodes/PostProcessNode";
 import { GroupNode } from "./nodes/GroupNode";
 import { CharacterNode } from "./nodes/CharacterNode";
+import { ClipNode } from "./nodes/ClipNode";
 import type { NodeType } from "../../../../shared/types";
 
 interface CustomNodeData {
@@ -53,6 +54,8 @@ export const CustomNode = memo(function CustomNode(props: NodeProps) {
       return <GroupNode {...(props as unknown as AnyNodeProps)} />;
     case "character":
       return <CharacterNode {...(props as unknown as AnyNodeProps)} />;
+    case "clip":
+      return <ClipNode {...(props as unknown as AnyNodeProps)} />;
     default:
       return null;
   }

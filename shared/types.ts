@@ -12,7 +12,8 @@ export type NodeType =
   | "audio"
   | "post_process"
   | "group"
-  | "character";
+  | "character"
+  | "clip";
 
 export const VIDEO_PROVIDERS = [
   "mock",
@@ -205,6 +206,25 @@ export interface GroupNodeData {
   childIds?: string[];
 }
 
+export interface ClipNodeData {
+  // Source (auto-detected from connected nodes)
+  inputVideoUrl?: string;
+  inputAudioUrl?: string;
+  sourceDuration?: number;   // total duration of the source video (seconds)
+  // Trim points
+  startTime?: number;        // seconds, default 0
+  endTime?: number;          // seconds, default = sourceDuration
+  // Speed
+  speed?: number;            // 0.25-4.0, default 1.0
+  // Audio mix
+  audioVolume?: number;      // 0.0-2.0, default 1.0
+  // Output
+  outputUrl?: string;
+  outputDuration?: number;
+  status?: "idle" | "processing" | "done" | "failed";
+  errorMessage?: string;
+}
+
 export type NodeData =
   | ScriptNodeData
   | StoryboardNodeData
@@ -217,7 +237,8 @@ export type NodeData =
   | AudioNodeData
   | PostProcessNodeData
   | GroupNodeData
-  | CharacterNodeData;
+  | CharacterNodeData
+  | ClipNodeData;
 
 // ── Canvas Node ───────────────────────────────────────────────────────────────
 

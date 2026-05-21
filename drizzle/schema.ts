@@ -59,6 +59,7 @@ export const canvasNodes = mysqlTable("canvas_nodes", {
     "post_process",
     "group",
     "character",
+    "clip",
   ]).notNull(),
   title: varchar("title", { length: 255 }),
   /** Node-type-specific data (content, promptText, imageUrl, etc.) */

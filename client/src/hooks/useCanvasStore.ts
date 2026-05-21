@@ -374,6 +374,8 @@ function getDefaultPayload(type: NodeType): NodeData {
       return { audioCategory: "music" };
     case "character":
       return { characterKind: "person" };
+    case "clip":
+      return { speed: 1.0, audioVolume: 1.0, status: "idle" };
     default:
       return {} as NodeData;
   }
