@@ -9,6 +9,7 @@ import {
   float,
   boolean,
 } from "drizzle-orm/mysql-core";
+import { VIDEO_PROVIDERS } from "../shared/types";
 
 export const users = mysqlTable("users", {
   id: int("id").autoincrement().primaryKey(),
@@ -54,6 +55,9 @@ export const canvasNodes = mysqlTable("canvas_nodes", {
     "video_task",
     "ai_chat",
     "note",
+    "audio",
+    "post_process",
+    "group",
   ]).notNull(),
   title: varchar("title", { length: 255 }),
   /** Node-type-specific data (content, promptText, imageUrl, etc.) */
@@ -109,7 +113,7 @@ export const videoTasks = mysqlTable("video_tasks", {
   userId: int("userId").notNull(),
   projectId: int("projectId").notNull(),
   nodeId: varchar("nodeId", { length: 64 }).notNull(),
-  provider: mysqlEnum("provider", ["mock", "poyo_seedance", "poyo_veo", "hf_dop_standard", "hf_dop_preview", "hf_dop_lite", "hf_dop_turbo", "hf_kling_21_pro", "hf_seedance_pro"]).notNull(),
+  provider: mysqlEnum("provider", [...VIDEO_PROVIDERS] as [string, ...string[]]).notNull(),
   externalTaskId: varchar("externalTaskId", { length: 255 }),
   status: mysqlEnum("status", [
     "pending",

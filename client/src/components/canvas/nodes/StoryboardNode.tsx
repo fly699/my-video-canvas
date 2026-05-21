@@ -4,7 +4,9 @@ import { useCanvasStore } from "../../../hooks/useCanvasStore";
 import type { StoryboardNodeData } from "../../../../../shared/types";
 import { trpc } from "@/lib/trpc";
 import { toast } from "sonner";
-import { Sparkles, ImageIcon, Loader2, RefreshCw, ChevronDown, Upload, X } from "lucide-react";
+import { Sparkles, ImageIcon, Loader2, RefreshCw, ChevronDown, Upload, X, Wand2, History } from "lucide-react";
+import { IMAGE_MODELS, type ImageModelId } from "@/lib/models";
+import { makeImageProxyFallback } from "@/lib/utils";
 
 interface Props {
   id: string;
@@ -19,16 +21,6 @@ interface Props {
 
 const BORDER_DEFAULT = "oklch(0.20 0.008 260)";
 const BORDER_FOCUS   = "oklch(0.65 0.20 160 / 0.6)";
-
-const IMAGE_MODELS = [
-  { id: "manus_forge",      label: "Manus Forge",        tag: "内置",        group: "Manus" },
-  { id: "poyo_flux",        label: "Flux 2 Pro",       tag: "Poyo",        group: "Poyo" },
-  { id: "poyo_sdxl",        label: "Flux 2 Flex",               tag: "Poyo",        group: "Poyo" },
-  { id: "hf_soul_standard", label: "Soul Standard",      tag: "Higgsfield",  group: "Higgsfield" },
-  { id: "hf_reve",          label: "Reve Text-to-Image", tag: "Higgsfield",  group: "Higgsfield" },
-] as const;
-
-type ImageModelId = typeof IMAGE_MODELS[number]["id"];
 
 const fieldStyle: React.CSSProperties = {
   width: "100%",
@@ -54,6 +46,7 @@ export const StoryboardNode = memo(function StoryboardNode({ id, selected, data 
   const [generating, setGenerating] = useState(false);
   const [showModelPicker, setShowModelPicker] = useState(false);
   const [inputExpanded, setInputExpanded] = useState(!!selected);
+  const [showHistory, setShowHistory] = useState(false);
 
   // Auto-collapse inputs when deselected, expand when selected
   useEffect(() => {
@@ -93,7 +86,11 @@ export const StoryboardNode = memo(function StoryboardNode({ id, selected, data 
 
   const genImageMutation = trpc.imageGen.generate.useMutation({
     onSuccess: (result) => {
-      updateNodeData(id, { imageUrl: result.url });
+      const imageUrl = result.url ?? result.urls?.[0];
+      if (!imageUrl) { setGenerating(false); toast.error("生成完成但未返回图像"); return; }
+      const currentHistory = (useCanvasStore.getState().nodes.find(n => n.id === id)?.data.payload as StoryboardNodeData)?.imageHistory ?? [];
+      const newHistory = [imageUrl, ...currentHistory].filter((u): u is string => !!u).slice(0, 5);
+      updateNodeData(id, { imageUrl, imageHistory: newHistory });
       setGenerating(false);
       toast.success("分镜图像已生成");
     },
@@ -102,6 +99,31 @@ export const StoryboardNode = memo(function StoryboardNode({ id, selected, data 
       toast.error("图像生成失败：" + err.message);
     },
   });
+
+  // AI prompt expansion
+  const [expandingPrompt, setExpandingPrompt] = useState(false);
+  const aiExpandMutation = trpc.aiChat.sendMessage.useMutation({
+    onSuccess: (result) => {
+      updateNodeData(id, { promptText: result.content });
+      setExpandingPrompt(false);
+      toast.success("提示词已扩写");
+    },
+    onError: (err) => {
+      setExpandingPrompt(false);
+      toast.error("AI 扩写失败：" + err.message);
+    },
+  });
+
+  const handleExpandPrompt = useCallback(() => {
+    if (!payload.description?.trim()) { toast.error("请先填写场景描述"); return; }
+    setExpandingPrompt(true);
+    aiExpandMutation.mutate({
+      nodeId: id,
+      projectId: data.projectId,
+      message: `请将以下分镜描述扩写为详细的图像生成英文提示词（Stable Diffusion格式，100词以内）：${payload.description}`,
+      systemPrompt: "You are a professional image prompt engineer. Respond only with the English prompt text, no explanations or extra formatting.",
+    });
+  }, [id, data.projectId, payload.description, aiExpandMutation]);
 
   const handleChange = useCallback(
     (field: keyof StoryboardNodeData, value: string | number | undefined) => {
@@ -122,7 +144,7 @@ export const StoryboardNode = memo(function StoryboardNode({ id, selected, data 
     });
   };
 
-  const currentModel = IMAGE_MODELS.find((m) => m.id === model) ?? IMAGE_MODELS[0];
+  const currentModel = IMAGE_MODELS.find((m) => m.value === model) ?? IMAGE_MODELS[0];
 
   return (
     <BaseNode id={id} selected={selected} nodeType="storyboard" title={data.title} minHeight={280}>
@@ -141,9 +163,15 @@ export const StoryboardNode = memo(function StoryboardNode({ id, selected, data 
         >
           {payload.imageUrl ? (
             <>
-              <img src={payload.imageUrl} alt="分镜" className="w-full h-full object-cover" draggable={false} />
+              <img
+                src={payload.imageUrl}
+                alt="分镜"
+                className="w-full h-full object-cover"
+                draggable={false}
+                onError={makeImageProxyFallback(payload.imageUrl ?? "")}
+              />
               <div
-                className="absolute inset-0 opacity-0 hover:opacity-100 transition-opacity flex items-center justify-center"
+                className="absolute inset-0 opacity-0 hover:opacity-100 transition-opacity flex flex-col items-center justify-center gap-1"
                 style={{ background: "oklch(0 0 0 / 0.55)" }}
               >
                 <button
@@ -161,6 +189,21 @@ export const StoryboardNode = memo(function StoryboardNode({ id, selected, data 
                   {generating ? <Loader2 className="w-3 h-3 animate-spin" /> : <RefreshCw className="w-3 h-3" />}
                   {generating ? "生成中..." : "重新生成"}
                 </button>
+                {(payload.imageHistory?.length ?? 0) > 1 && (
+                  <button
+                    onClick={(e) => { e.stopPropagation(); setShowHistory((v) => !v); }}
+                    className="nodrag flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs font-medium transition-all mt-1"
+                    style={{
+                      background: "oklch(0.68 0.22 285 / 0.20)",
+                      borderWidth: 1, borderStyle: "solid",
+                      borderColor: "oklch(0.68 0.22 285 / 0.5)",
+                      color: "oklch(0.75 0.18 285)",
+                    }}
+                  >
+                    <History className="w-3 h-3" />
+                    历史 ({payload.imageHistory!.length})
+                  </button>
+                )}
               </div>
               {payload.sceneNumber && (
                 <div
@@ -206,6 +249,49 @@ export const StoryboardNode = memo(function StoryboardNode({ id, selected, data 
             </div>
           )}
         </div>
+
+        {/* ── Generation history panel ── */}
+        {showHistory && (payload.imageHistory?.length ?? 0) > 1 && (
+          <div className="flex flex-col gap-2 flex-shrink-0">
+            <div className="flex items-center justify-between">
+              <span style={{ fontSize: 10, fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.06em", color: "oklch(0.42 0.006 260)" }}>
+                生成历史
+              </span>
+              <button
+                onClick={() => setShowHistory(false)}
+                className="nodrag"
+                style={{ fontSize: 10, color: "oklch(0.40 0.006 260)", cursor: "pointer", background: "none", border: "none" }}
+              >
+                收起
+              </button>
+            </div>
+            <div style={{ display: "flex", gap: 6, overflowX: "auto" }}>
+              {payload.imageHistory!.map((url, i) => (
+                <button
+                  key={i}
+                  onClick={() => { updateNodeData(id, { imageUrl: url }); setShowHistory(false); }}
+                  className="nodrag flex-shrink-0 rounded overflow-hidden"
+                  style={{
+                    width: 60, height: 45,
+                    border: url === payload.imageUrl
+                      ? "1.5px solid oklch(0.65 0.20 160)"
+                      : "1.5px solid oklch(0.22 0.008 260)",
+                    cursor: "pointer",
+                    padding: 0,
+                  }}
+                  title={i === 0 ? "当前版本" : `版本 ${i + 1}`}
+                >
+                  <img
+                    src={url}
+                    alt={`历史 ${i + 1}`}
+                    style={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }}
+                    onError={makeImageProxyFallback(url)}
+                  />
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
 
         {/* ── Collapsible inputs ── */}
         <div
@@ -261,22 +347,51 @@ export const StoryboardNode = memo(function StoryboardNode({ id, selected, data 
         />
 
         {/* ── Prompt ── */}
-        <textarea
-          placeholder="正向提示词（用于 AI 生图）..."
-          value={payload.promptText ?? ""}
-          onChange={(e) => handleChange("promptText", e.target.value)}
-          className="nodrag"
-          rows={2}
-          style={{
-            ...fieldStyle,
-            resize: "none",
-            lineHeight: 1.6,
-            fontFamily: "'JetBrains Mono', monospace",
-            fontSize: 10.5,
-          }}
-          onFocus={onFocus}
-          onBlur={onBlur}
-        />
+        <div className="flex flex-col gap-1">
+          <textarea
+            placeholder="正向提示词（用于 AI 生图）..."
+            value={payload.promptText ?? ""}
+            onChange={(e) => handleChange("promptText", e.target.value)}
+            className="nodrag"
+            rows={2}
+            style={{
+              ...fieldStyle,
+              resize: "none",
+              lineHeight: 1.6,
+              fontFamily: "'JetBrains Mono', monospace",
+              fontSize: 10.5,
+            }}
+            onFocus={onFocus}
+            onBlur={onBlur}
+          />
+          <div className="flex items-center justify-between">
+            <span style={{ fontSize: 9.5, color: "oklch(0.38 0.006 260)" }}>
+              {(payload.promptText ?? "").length} 字
+            </span>
+          </div>
+          <button
+            onClick={handleExpandPrompt}
+            disabled={expandingPrompt || !payload.description?.trim()}
+            className="nodrag flex items-center gap-1 px-2 py-1 rounded text-[10px] transition-all self-start"
+            style={{
+              background: expandingPrompt || !payload.description?.trim()
+                ? "oklch(0.13 0.007 260)"
+                : "oklch(0.65 0.20 160 / 0.12)",
+              borderWidth: 1,
+              borderStyle: "solid",
+              borderColor: expandingPrompt || !payload.description?.trim()
+                ? "oklch(0.22 0.008 260)"
+                : "oklch(0.65 0.20 160 / 0.35)",
+              color: expandingPrompt || !payload.description?.trim()
+                ? "oklch(0.38 0.006 260)"
+                : "oklch(0.65 0.20 160)",
+              cursor: expandingPrompt || !payload.description?.trim() ? "not-allowed" : "pointer",
+            }}
+          >
+            {expandingPrompt ? <Loader2 className="w-3 h-3 animate-spin" /> : <Wand2 className="w-3 h-3" />}
+            {expandingPrompt ? "AI 扩写中..." : "✨ AI 扩写提示词"}
+          </button>
+        </div>
 
         {/* ── Style row ── */}
         <div className="flex gap-1.5">
@@ -357,7 +472,7 @@ export const StoryboardNode = memo(function StoryboardNode({ id, selected, data 
                 className="px-1 py-0.5 rounded text-[9px] font-semibold"
                 style={{ background: "oklch(0.65 0.20 160 / 0.15)", color: "oklch(0.65 0.20 160)" }}
               >
-                {currentModel.tag}
+                {currentModel.group}
               </span>
             </span>
             <ChevronDown className="w-3 h-3 opacity-60" style={{ transform: showModelPicker ? "rotate(180deg)" : "none", transition: "transform 150ms" }} />
@@ -381,22 +496,22 @@ export const StoryboardNode = memo(function StoryboardNode({ id, selected, data 
                   </div>
                   {IMAGE_MODELS.filter((m) => m.group === group).map((m) => (
                     <button
-                      key={m.id}
+                      key={m.value}
                       className="nodrag flex items-center justify-between w-full px-2.5 py-2 text-xs transition-colors"
                       style={{
-                        background: model === m.id ? "oklch(0.65 0.20 160 / 0.10)" : "transparent",
-                        color: model === m.id ? "oklch(0.72 0.18 160)" : "oklch(0.65 0.006 260)",
+                        background: model === m.value ? "oklch(0.65 0.20 160 / 0.10)" : "transparent",
+                        color: model === m.value ? "oklch(0.72 0.18 160)" : "oklch(0.65 0.006 260)",
                       }}
-                      onClick={() => { setModel(m.id); setShowModelPicker(false); }}
-                      onMouseEnter={(e) => { if (model !== m.id) (e.currentTarget as HTMLElement).style.background = "oklch(0.16 0.008 260)"; }}
-                      onMouseLeave={(e) => { if (model !== m.id) (e.currentTarget as HTMLElement).style.background = "transparent"; }}
+                      onClick={() => { setModel(m.value); setShowModelPicker(false); }}
+                      onMouseEnter={(e) => { if (model !== m.value) (e.currentTarget as HTMLElement).style.background = "oklch(0.16 0.008 260)"; }}
+                      onMouseLeave={(e) => { if (model !== m.value) (e.currentTarget as HTMLElement).style.background = "transparent"; }}
                     >
                       <span>{m.label}</span>
                       <span
                         className="px-1 py-0.5 rounded text-[9px] font-semibold"
                         style={{ background: "oklch(0.65 0.20 160 / 0.12)", color: "oklch(0.55 0.15 160)" }}
                       >
-                        {m.tag}
+                        {m.desc}
                       </span>
                     </button>
                   ))}

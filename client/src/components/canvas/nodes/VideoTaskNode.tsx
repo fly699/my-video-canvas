@@ -5,7 +5,7 @@ import type { VideoTaskNodeData, VideoProvider } from "../../../../../shared/typ
 import { trpc } from "@/lib/trpc";
 import { toast } from "sonner";
 import { Handle, Position } from "@xyflow/react";
-import { Play, Loader2, CheckCircle2, XCircle, Clock, RefreshCw, AlertCircle, Download, ChevronDown, ChevronRight } from "lucide-react";
+import { Play, Loader2, CheckCircle2, XCircle, Clock, RefreshCw, AlertCircle, Download, ChevronDown, ChevronRight, Layers } from "lucide-react";
 
 interface Props {
   id: string;
@@ -26,27 +26,59 @@ const STATUS = {
 } as const;
 
 const PROVIDERS: { value: VideoProvider; label: string; group: string }[] = [
-  { value: "poyo_seedance",   label: "Seedance 2",          group: "Poyo" },
-  { value: "poyo_veo",        label: "Veo 3.1",             group: "Poyo" },
-  { value: "hf_dop_standard", label: "DoP Standard",        group: "Higgsfield" },
-  { value: "hf_dop_preview",  label: "DoP Preview",         group: "Higgsfield" },
-  { value: "hf_dop_lite",     label: "DoP Lite",            group: "Higgsfield" },
-  { value: "hf_dop_turbo",    label: "DoP Turbo",           group: "Higgsfield" },
-  { value: "hf_kling_21_pro", label: "Kling 2.1 Pro",       group: "Higgsfield" },
-  { value: "hf_seedance_pro", label: "Seedance 1.0 Pro",    group: "Higgsfield" },
-  { value: "mock",            label: "Mock 测试",           group: "Dev" },
+  { value: "poyo_seedance",       label: "Seedance 2",          group: "Poyo" },
+  { value: "poyo_veo",            label: "Veo 3.1",             group: "Poyo" },
+  { value: "poyo_kling26",        label: "Kling 2.6",           group: "Poyo" },
+  { value: "poyo_kling_o3_std",   label: "Kling O3 Standard",   group: "Poyo" },
+  { value: "poyo_kling_o3_pro",   label: "Kling O3 Pro",        group: "Poyo" },
+  { value: "poyo_kling_o3_4k",    label: "Kling O3 4K",         group: "Poyo" },
+  { value: "hf_dop_standard",     label: "DoP Standard",        group: "Higgsfield" },
+  { value: "hf_dop_preview",      label: "DoP Preview",         group: "Higgsfield" },
+  { value: "hf_dop_lite",         label: "DoP Lite",            group: "Higgsfield" },
+  { value: "hf_dop_turbo",        label: "DoP Turbo",           group: "Higgsfield" },
+  { value: "hf_kling_21_pro",     label: "Kling 2.1 Pro",       group: "Higgsfield" },
+  { value: "hf_kling_30",         label: "Kling 3.0 Pro",       group: "Higgsfield" },
+  { value: "hf_seedance_pro",     label: "Seedance 1.0 Pro",    group: "Higgsfield" },
+  { value: "hf_seedance_20",      label: "Seedance 2.0 Pro",    group: "Higgsfield" },
+  { value: "mock",                label: "Mock 测试",           group: "Dev" },
 ];
-
-// ── Per-model parameter definitions ──────────────────────────────────────────
-// Based on official Higgsfield SDK types.d.ts and Poyo API docs
 
 type ParamDef =
   | { type: "select"; key: string; label: string; options: { value: string | number; label: string }[]; default?: string | number }
   | { type: "number"; key: string; label: string; min: number; max: number; step: number; default?: number }
   | { type: "toggle"; key: string; label: string; default?: boolean };
 
+const HF_DOP_PARAMS: ParamDef[] = [
+  { type: "toggle", key: "enhance_prompt", label: "AI 增强提示词", default: false },
+  { type: "number", key: "seed", label: "随机种子（可选）", min: 0, max: 2147483647, step: 1 },
+];
+
+const KLING_O3_PARAMS: ParamDef[] = [
+  { type: "select", key: "aspect_ratio", label: "宽高比", default: "16:9",
+    options: [{ value: "16:9", label: "16:9 横屏" }, { value: "9:16", label: "9:16 竖屏" }, { value: "1:1", label: "1:1 方形" }] },
+  { type: "number", key: "duration", label: "时长（秒）", min: 3, max: 15, step: 1, default: 5 },
+];
+
+const HF_SEEDANCE_PARAMS: ParamDef[] = [
+  { type: "select", key: "aspect_ratio", label: "宽高比", default: "16:9",
+    options: [
+      { value: "21:9", label: "21:9 超宽" }, { value: "16:9", label: "16:9 横屏" },
+      { value: "4:3", label: "4:3 标准" }, { value: "1:1", label: "1:1 方形" },
+      { value: "3:4", label: "3:4 竖屏" }, { value: "9:16", label: "9:16 竖屏" }, { value: "auto", label: "自动" },
+    ]},
+  { type: "select", key: "resolution", label: "分辨率", default: "720p",
+    options: [{ value: "480p", label: "480p" }, { value: "720p", label: "720p" }, { value: "1080p", label: "1080p" }] },
+  { type: "number", key: "duration", label: "时长（秒）", min: 2, max: 12, step: 1, default: 5 },
+  { type: "toggle", key: "camera_fixed", label: "固定镜头", default: false },
+];
+
+const SUPPORTS_NEGATIVE_PROMPT = new Set<string>([
+  "hf_kling_21_pro", "hf_kling_30",
+  "poyo_seedance", "poyo_veo",
+  "poyo_kling26", "poyo_kling_o3_std", "poyo_kling_o3_pro", "poyo_kling_o3_4k",
+]);
+
 const PROVIDER_PARAMS: Record<string, ParamDef[]> = {
-  // Poyo Seedance 2: aspect_ratio, resolution, duration, camera_fixed
   poyo_seedance: [
     { type: "select", key: "aspect_ratio", label: "宽高比", default: "16:9",
       options: [
@@ -59,30 +91,15 @@ const PROVIDER_PARAMS: Record<string, ParamDef[]> = {
     { type: "number", key: "duration", label: "时长（秒）", min: 2, max: 12, step: 1, default: 5 },
     { type: "toggle", key: "camera_fixed", label: "固定镜头", default: false },
   ],
-  // Poyo Veo 3.1: aspect_ratio, duration
   poyo_veo: [
     { type: "select", key: "aspect_ratio", label: "宽高比", default: "16:9",
       options: [{ value: "16:9", label: "16:9 横屏" }, { value: "9:16", label: "9:16 竖屏" }, { value: "1:1", label: "1:1 方形" }] },
     { type: "number", key: "duration", label: "时长（秒）", min: 5, max: 30, step: 5, default: 5 },
   ],
-  // Higgsfield DoP Standard/Preview/Lite/Turbo: seed, enhance_prompt
-  hf_dop_standard: [
-    { type: "toggle", key: "enhance_prompt", label: "AI 增强提示词", default: false },
-    { type: "number", key: "seed", label: "随机种子（可选）", min: 0, max: 2147483647, step: 1 },
-  ],
-  hf_dop_preview: [
-    { type: "toggle", key: "enhance_prompt", label: "AI 增强提示词", default: false },
-    { type: "number", key: "seed", label: "随机种子（可选）", min: 0, max: 2147483647, step: 1 },
-  ],
-  hf_dop_lite: [
-    { type: "toggle", key: "enhance_prompt", label: "AI 增强提示词", default: false },
-    { type: "number", key: "seed", label: "随机种子（可选）", min: 0, max: 2147483647, step: 1 },
-  ],
-  hf_dop_turbo: [
-    { type: "toggle", key: "enhance_prompt", label: "AI 增强提示词", default: false },
-    { type: "number", key: "seed", label: "随机种子（可选）", min: 0, max: 2147483647, step: 1 },
-  ],
-  // Higgsfield Kling 2.1 Pro: duration (5/10s), aspect_ratio, cfg_scale
+  hf_dop_standard: HF_DOP_PARAMS,
+  hf_dop_preview:  HF_DOP_PARAMS,
+  hf_dop_lite:     HF_DOP_PARAMS,
+  hf_dop_turbo:    HF_DOP_PARAMS,
   hf_kling_21_pro: [
     { type: "select", key: "duration", label: "时长（秒）", default: 5,
       options: [{ value: 5, label: "5 秒" }, { value: 10, label: "10 秒" }] },
@@ -90,20 +107,25 @@ const PROVIDER_PARAMS: Record<string, ParamDef[]> = {
       options: [{ value: "16:9", label: "16:9 横屏" }, { value: "9:16", label: "9:16 竖屏" }, { value: "1:1", label: "1:1 方形" }] },
     { type: "number", key: "cfg_scale", label: "引导强度（0-1）", min: 0, max: 1, step: 0.1, default: 0.5 },
   ],
-  // Higgsfield Seedance 1.0 Pro: aspect_ratio, resolution, duration, camera_fixed
-  hf_seedance_pro: [
+  hf_seedance_pro: HF_SEEDANCE_PARAMS,
+  poyo_kling26: [
     { type: "select", key: "aspect_ratio", label: "宽高比", default: "16:9",
-      options: [
-        { value: "21:9", label: "21:9 超宽" }, { value: "16:9", label: "16:9 横屏" },
-        { value: "4:3", label: "4:3 标准" }, { value: "1:1", label: "1:1 方形" },
-        { value: "3:4", label: "3:4 竖屏" }, { value: "9:16", label: "9:16 竖屏" }, { value: "auto", label: "自动" },
-      ]},
-    { type: "select", key: "resolution", label: "分辨率", default: "720p",
-      options: [{ value: "480p", label: "480p" }, { value: "720p", label: "720p" }, { value: "1080p", label: "1080p" }] },
-    { type: "number", key: "duration", label: "时长（秒）", min: 2, max: 12, step: 1, default: 5 },
-    { type: "toggle", key: "camera_fixed", label: "固定镜头", default: false },
+      options: [{ value: "16:9", label: "16:9 横屏" }, { value: "9:16", label: "9:16 竖屏" }, { value: "1:1", label: "1:1 方形" }] },
+    { type: "select", key: "duration", label: "时长（秒）", default: 5,
+      options: [{ value: 5, label: "5 秒" }, { value: 10, label: "10 秒" }] },
+    { type: "toggle", key: "sound", label: "AI 生成音效", default: false },
   ],
-  // Mock: no extra params
+  poyo_kling_o3_std: KLING_O3_PARAMS,
+  poyo_kling_o3_pro: KLING_O3_PARAMS,
+  poyo_kling_o3_4k:  KLING_O3_PARAMS,
+  hf_seedance_20:    HF_SEEDANCE_PARAMS,
+  hf_kling_30: [
+    { type: "select", key: "duration", label: "时长（秒）", default: 5,
+      options: [{ value: 5, label: "5 秒" }, { value: 10, label: "10 秒" }] },
+    { type: "select", key: "aspect_ratio", label: "宽高比", default: "16:9",
+      options: [{ value: "16:9", label: "16:9 横屏" }, { value: "9:16", label: "9:16 竖屏" }, { value: "1:1", label: "1:1 方形" }] },
+    { type: "number", key: "cfg_scale", label: "引导强度（0-1）", min: 0, max: 1, step: 0.1, default: 0.5 },
+  ],
   mock: [],
 };
 
@@ -142,6 +164,10 @@ export const VideoTaskNode = memo(function VideoTaskNode({ id, selected, data }:
   // Auto-collapse params when node is deselected; expand when selected
   const [paramsExpanded, setParamsExpanded] = useState(!!selected);
   useEffect(() => { setParamsExpanded(!!selected); }, [selected]);
+
+  const [parallelMode, setParallelMode] = useState(false);
+  const [parallelProviders, setParallelProviders] = useState<VideoProvider[]>([]);
+  const [parallelResults, setParallelResults] = useState<Record<string, { status: "pending" | "processing" | "done" | "failed"; videoUrl?: string; taskId?: number }>>({});
 
   const createTaskMutation = trpc.videoTasks.create.useMutation({
     onSuccess: (task) => {
@@ -339,8 +365,148 @@ export const VideoTaskNode = memo(function VideoTaskNode({ id, selected, data }:
           }}
         >
 
+        {/* ── Parallel compare mode toggle ── */}
+        <div className="flex items-center justify-between px-3.5 pt-2 pb-1 flex-shrink-0" style={{ marginLeft: -14, marginRight: -14 }}>
+          <span style={{ fontSize: 10, fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.06em", color: "oklch(0.40 0.008 260)" }}>
+            {parallelMode ? "并行对比模式" : "单模型模式"}
+          </span>
+          <button
+            onClick={() => { setParallelMode((v) => !v); setParallelProviders([]); setParallelResults({}); }}
+            className="nodrag flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] transition-all"
+            style={{
+              background: parallelMode ? "oklch(0.68 0.22 285 / 0.15)" : "oklch(0.13 0.007 260)",
+              border: `1px solid ${parallelMode ? "oklch(0.68 0.22 285 / 0.40)" : "oklch(0.22 0.008 260)"}`,
+              color: parallelMode ? "oklch(0.68 0.22 285)" : "oklch(0.45 0.008 260)",
+              cursor: "pointer",
+            }}
+          >
+            <Layers style={{ width: 10, height: 10 }} />
+            {parallelMode ? "关闭" : "并行对比"}
+          </button>
+        </div>
+
+        {parallelMode && (
+          <div className="flex flex-col gap-2 flex-shrink-0">
+            <p style={{ fontSize: 10, color: "oklch(0.42 0.006 260)" }}>选择最多 3 个模型并行生成对比：</p>
+            <div className="flex flex-col gap-1">
+              {PROVIDERS.filter(p => p.value !== "mock").map((p) => {
+                const checked = parallelProviders.includes(p.value);
+                return (
+                  <button
+                    key={p.value}
+                    onClick={() => {
+                      if (checked) {
+                        setParallelProviders(prev => prev.filter(v => v !== p.value));
+                      } else if (parallelProviders.length < 3) {
+                        setParallelProviders(prev => [...prev, p.value]);
+                      }
+                    }}
+                    className="nodrag flex items-center gap-2 px-2.5 py-1.5 rounded-lg text-xs transition-all text-left"
+                    style={{
+                      background: checked ? "oklch(0.68 0.22 285 / 0.10)" : "oklch(0.09 0.006 260)",
+                      border: `1px solid ${checked ? "oklch(0.68 0.22 285 / 0.40)" : "oklch(0.20 0.008 260)"}`,
+                      color: checked ? "oklch(0.75 0.15 285)" : "oklch(0.60 0.006 260)",
+                      cursor: (!checked && parallelProviders.length >= 3) ? "not-allowed" : "pointer",
+                      opacity: (!checked && parallelProviders.length >= 3) ? 0.5 : 1,
+                    }}
+                  >
+                    <div style={{
+                      width: 14, height: 14, borderRadius: 3, flexShrink: 0,
+                      background: checked ? "oklch(0.68 0.22 285)" : "transparent",
+                      border: `1.5px solid ${checked ? "oklch(0.68 0.22 285)" : "oklch(0.30 0.008 260)"}`,
+                      display: "flex", alignItems: "center", justifyContent: "center",
+                    }}>
+                      {checked && <span style={{ color: "white", fontSize: 9, fontWeight: 700 }}>✓</span>}
+                    </div>
+                    <span>{p.label}</span>
+                    <span style={{ marginLeft: "auto", fontSize: 9, color: "oklch(0.40 0.006 260)", background: "oklch(0.14 0.007 260)", borderRadius: 99, padding: "1px 5px" }}>{p.group}</span>
+                    {parallelResults[p.value] && (
+                      <span style={{
+                        fontSize: 9, borderRadius: 99, padding: "1px 5px",
+                        background: parallelResults[p.value].status === "done" ? "oklch(0.72 0.18 155 / 0.15)" : "oklch(0.68 0.22 285 / 0.12)",
+                        color: parallelResults[p.value].status === "done" ? "oklch(0.65 0.18 155)" : "oklch(0.68 0.22 285)",
+                      }}>
+                        {parallelResults[p.value].status === "done" ? "完成" : parallelResults[p.value].status === "failed" ? "失败" : "生成中"}
+                      </span>
+                    )}
+                  </button>
+                );
+              })}
+            </div>
+            {parallelProviders.length > 0 && (
+              <button
+                onClick={() => {
+                  if (!(payload.prompt?.trim())) { toast.error("请先填写提示词"); return; }
+                  toast.info(`正在并行提交 ${parallelProviders.length} 个任务...`);
+                  parallelProviders.forEach(provider => {
+                    setParallelResults(prev => ({ ...prev, [provider]: { status: "processing" } }));
+                    createTaskMutation.mutate(
+                      { nodeId: id, projectId: data.projectId, provider, prompt: payload.prompt!, negativePrompt: payload.negativePrompt, referenceImageUrl: payload.referenceImageUrl, params: payload.params },
+                      {
+                        onSuccess: (result) => {
+                          setParallelResults(prev => ({ ...prev, [provider]: { status: "done", videoUrl: result.resultVideoUrl ?? undefined, taskId: result.id } }));
+                        },
+                        onError: (err) => {
+                          setParallelResults(prev => ({ ...prev, [provider]: { status: "failed" } }));
+                          toast.error(`${provider} 失败: ${err.message}`);
+                        },
+                      }
+                    );
+                  });
+                }}
+                className="nodrag flex items-center justify-center gap-1.5 w-full py-2 rounded-lg text-xs font-medium transition-all"
+                style={{
+                  background: "oklch(0.68 0.22 285 / 0.12)",
+                  border: "1px solid oklch(0.68 0.22 285 / 0.35)",
+                  color: "oklch(0.72 0.18 285)",
+                  cursor: "pointer",
+                }}
+              >
+                <Play style={{ width: 11, height: 11 }} />
+                并行生成 {parallelProviders.length} 个模型
+              </button>
+            )}
+            {/* Parallel results grid */}
+            {Object.keys(parallelResults).length > 0 && (
+              <div className="flex flex-col gap-2 mt-1">
+                <span style={{ fontSize: 10, fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.06em", color: "oklch(0.42 0.006 260)" }}>对比结果</span>
+                <div className="flex gap-1.5">
+                  {Object.entries(parallelResults).map(([provider, result]) => (
+                    <div
+                      key={provider}
+                      className="flex-1 rounded-lg overflow-hidden"
+                      style={{
+                        minWidth: 0,
+                        background: "oklch(0.09 0.006 260)",
+                        border: `1px solid ${result.status === "done" ? "oklch(0.65 0.18 155 / 0.35)" : "oklch(0.20 0.008 260)"}`,
+                      }}
+                    >
+                      {result.status === "done" && result.videoUrl ? (
+                        <video src={result.videoUrl} controls className="w-full nodrag" style={{ maxHeight: 80, display: "block" }} />
+                      ) : (
+                        <div className="flex items-center justify-center" style={{ height: 60 }}>
+                          {result.status === "processing" ? (
+                            <Loader2 className="w-4 h-4 animate-spin" style={{ color: "oklch(0.68 0.22 285)" }} />
+                          ) : (
+                            <XCircle className="w-4 h-4" style={{ color: "oklch(0.62 0.20 25)" }} />
+                          )}
+                        </div>
+                      )}
+                      <div className="px-1.5 py-1">
+                        <p style={{ fontSize: 9, color: "oklch(0.50 0.006 260)", textAlign: "center" }}>
+                          {PROVIDERS.find(p => p.value === provider)?.label ?? provider}
+                        </p>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+          </div>
+        )}
+
         {/* ── Provider ── */}
-        <div>
+        <div style={{ marginTop: 4 }}>
           <label style={labelStyle}>视频模型</label>
           <select
             value={payload.provider}
@@ -378,7 +544,7 @@ export const VideoTaskNode = memo(function VideoTaskNode({ id, selected, data }:
         </div>
 
         {/* ── Negative prompt (for models that support it) ── */}
-        {(payload.provider === "hf_kling_21_pro" || payload.provider === "poyo_seedance" || payload.provider === "poyo_veo") && (
+        {SUPPORTS_NEGATIVE_PROMPT.has(payload.provider) && (
           <div>
             <label style={labelStyle}>反向提示词（可选）</label>
             <input

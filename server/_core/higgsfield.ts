@@ -170,7 +170,9 @@ export type HiggsfieldVideoModel =
   | "higgsfield-ai/dop/lite"
   | "higgsfield-ai/dop/turbo"
   | "kling-video/v2.1/pro/image-to-video"
-  | "bytedance/seedance/v1/pro/image-to-video";
+  | "bytedance/seedance/v1/pro/image-to-video"
+  | "bytedance/seedance/v2/pro/image-to-video"
+  | "kling-video/v3.0/pro/image-to-video";
 
 export const HIGGSFIELD_VIDEO_MODELS: { value: HiggsfieldVideoModel; label: string; desc: string }[] = [
   { value: "higgsfield-ai/dop/standard",               label: "DoP Standard",       desc: "高质量 · 电影级" },
@@ -179,6 +181,8 @@ export const HIGGSFIELD_VIDEO_MODELS: { value: HiggsfieldVideoModel; label: stri
   { value: "higgsfield-ai/dop/turbo",                  label: "DoP Turbo",          desc: "极速版" },
   { value: "kling-video/v2.1/pro/image-to-video",      label: "Kling 2.1 Pro",      desc: "高级动态动画" },
   { value: "bytedance/seedance/v1/pro/image-to-video", label: "Seedance 1.0 Pro",   desc: "专业级视频生成" },
+  { value: "bytedance/seedance/v2/pro/image-to-video", label: "Seedance 2.0 Pro",   desc: "Seedance 最新版" },
+  { value: "kling-video/v3.0/pro/image-to-video",      label: "Kling 3.0 Pro",      desc: "Kling 最新旗舰" },
 ];
 
 export function isHiggsfieldVideoProvider(provider: string): boolean {
@@ -193,6 +197,8 @@ export const HIGGSFIELD_PROVIDER_MAP: Record<string, HiggsfieldVideoModel> = {
   hf_dop_turbo:     "higgsfield-ai/dop/turbo",
   hf_kling_21_pro:  "kling-video/v2.1/pro/image-to-video",
   hf_seedance_pro:  "bytedance/seedance/v1/pro/image-to-video",
+  hf_seedance_20:   "bytedance/seedance/v2/pro/image-to-video",
+  hf_kling_30:      "kling-video/v3.0/pro/image-to-video",
 };
 
 export interface SubmitHiggsfieldVideoOptions {
@@ -233,7 +239,6 @@ export async function submitHiggsfieldVideo(
     if (p.enhance_prompt !== undefined) body.enhance_prompt = p.enhance_prompt;
   }
 
-  // ── Kling 2.1 Pro: duration (5/10), aspect_ratio, cfg_scale ──────────────
   if (opts.provider === "hf_kling_21_pro") {
     body.duration = p.duration ?? 5;
     body.aspect_ratio = p.aspect_ratio ?? "16:9";
@@ -241,12 +246,18 @@ export async function submitHiggsfieldVideo(
     if (opts.negativePrompt) body.negative_prompt = opts.negativePrompt;
   }
 
-  // ── Seedance 1.0 Pro: aspect_ratio, resolution, duration, camera_fixed ───
-  if (opts.provider === "hf_seedance_pro") {
+  if (opts.provider === "hf_seedance_pro" || opts.provider === "hf_seedance_20") {
     body.aspect_ratio = p.aspect_ratio ?? "16:9";
     body.resolution = p.resolution ?? "720p";
     body.duration = p.duration ?? 5;
     if (p.camera_fixed !== undefined) body.camera_fixed = p.camera_fixed;
+  }
+
+  if (opts.provider === "hf_kling_30") {
+    body.duration = p.duration ?? 5;
+    body.aspect_ratio = p.aspect_ratio ?? "16:9";
+    if (p.cfg_scale !== undefined) body.cfg_scale = p.cfg_scale;
+    if (opts.negativePrompt) body.negative_prompt = opts.negativePrompt;
   }
 
   const res = await fetch(endpoint, {

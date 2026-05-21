@@ -2,11 +2,15 @@ import { ENV } from "./env";
 
 const POYO_BASE = "https://api.poyo.ai";
 
-export type PoyoVideoModel = "seedance-2" | "veo-3.1";
+export type PoyoVideoModel = "seedance-2" | "veo-3.1" | "kling-2.6" | "kling-o3-standard" | "kling-o3-pro" | "kling-o3-4k";
 
 export const POYO_PROVIDER_MAP: Record<string, PoyoVideoModel> = {
   poyo_seedance: "seedance-2",
   poyo_veo: "veo-3.1",
+  poyo_kling26: "kling-2.6",
+  poyo_kling_o3_std: "kling-o3-standard",
+  poyo_kling_o3_pro: "kling-o3-pro",
+  poyo_kling_o3_4k: "kling-o3-4k",
 };
 
 export function isPoyoVideoProvider(provider: string): boolean {
@@ -31,16 +35,22 @@ export async function submitPoyoVideo(opts: {
 
   const input: Record<string, unknown> = {
     prompt: opts.prompt,
-    // UI stores keys as-is (aspect_ratio, resolution, duration, camera_fixed)
     aspect_ratio: (opts.params?.aspect_ratio as string) ?? "16:9",
-    resolution: (opts.params?.resolution as string) ?? "720p",
-    duration: (opts.params?.duration as number) ?? 5,
     ...(opts.negativePrompt ? { negative_prompt: opts.negativePrompt } : {}),
     ...(opts.referenceImageUrl ? { reference_image_url: opts.referenceImageUrl } : {}),
   };
-  // camera_fixed is Seedance-specific (not supported by Veo)
-  if (opts.params?.camera_fixed !== undefined) {
-    input.camera_fixed = Boolean(opts.params.camera_fixed);
+
+  if (model === "kling-2.6") {
+    input.duration = (opts.params?.duration as number) ?? 5;
+    if (opts.params?.sound !== undefined) input.sound = Boolean(opts.params.sound);
+  } else if (model === "kling-o3-standard" || model === "kling-o3-pro" || model === "kling-o3-4k") {
+    input.duration = (opts.params?.duration as number) ?? 5;
+  } else {
+    input.resolution = (opts.params?.resolution as string) ?? "720p";
+    input.duration = (opts.params?.duration as number) ?? 5;
+    if (opts.params?.camera_fixed !== undefined && model === "seedance-2") {
+      input.camera_fixed = Boolean(opts.params.camera_fixed);
+    }
   }
 
   const res = await fetch(`${POYO_BASE}/api/generate/submit`, {

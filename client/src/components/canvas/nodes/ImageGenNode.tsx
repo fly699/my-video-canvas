@@ -1,12 +1,14 @@
-import { memo, useCallback, useEffect, useRef, useState } from "react";
+import { memo, useCallback, useRef, useState } from "react";
 import { Handle, Position } from "@xyflow/react";
 import { BaseNode } from "../BaseNode";
 import { useCanvasStore } from "../../../hooks/useCanvasStore";
 import type { ImageGenNodeData, ImageGenModel } from "../../../../../shared/types";
 import { trpc } from "@/lib/trpc";
 import { toast } from "sonner";
-import { Sparkles, Loader2, RefreshCw, Upload, X, Cpu, Check, Grid2X2, Download, ZoomIn, ChevronDown, ChevronRight } from "lucide-react";
+import { Sparkles, Loader2, RefreshCw, Upload, X, Cpu, Check, Grid2X2, Download, ZoomIn, ChevronDown, ChevronRight, Lock, Unlock } from "lucide-react";
 import { ImageLightbox } from "../ImageLightbox";
+import { IMAGE_MODELS } from "@/lib/models";
+import { makeImageProxyFallback } from "@/lib/utils";
 
 interface Props {
   id: string;
@@ -60,23 +62,15 @@ const SOUL_SIZES = [
   "1024x1280", "1024x1536", "1280x1024", "1536x1024",
 ];
 
-const MODELS: { value: ImageGenModel; label: string; desc: string; group: string }[] = [
-  { value: "manus_forge",      label: "Manus Forge",        desc: "内置 · 稳定",   group: "Manus" },
-  { value: "poyo_flux",        label: "Flux 2 Pro",         desc: "高质量 · 写实", group: "Poyo" },
-  { value: "poyo_sdxl",        label: "Flux 2 Flex",        desc: "快速 · 多风格", group: "Poyo" },
-  { value: "hf_soul_standard", label: "Soul Standard",      desc: "旗舰 · 电影级", group: "Higgsfield" },
-  { value: "hf_reve",          label: "Reve Text-to-Image", desc: "通用 · 快速",   group: "Higgsfield" },
-];
+const MODELS = IMAGE_MODELS as unknown as { value: ImageGenModel; label: string; desc: string; group: string }[];
 
 export const ImageGenNode = memo(function ImageGenNode({ id, selected, data }: Props) {
   const { updateNodeData } = useCanvasStore();
   const payload = data.payload;
-  const [generating, setGenerating] = useState(false);
   const [uploading, setUploading] = useState(false);
   const [lightboxIndex, setLightboxIndex] = useState<number | null>(null);
-  // Auto-collapse params when node is deselected; expand when selected
-  const [paramsExpanded, setParamsExpanded] = useState(!!selected);
-  useEffect(() => { setParamsExpanded(!!selected); }, [selected]);
+  const [paramsExpanded, setParamsExpanded] = useState(false);
+  const [seedLocked, setSeedLocked] = useState(!!(payload.seed));
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   // Determine if we are in batch/grid mode
@@ -85,18 +79,16 @@ export const ImageGenNode = memo(function ImageGenNode({ id, selected, data }: P
   const genMutation = trpc.imageGen.generate.useMutation({
     onSuccess: (result) => {
       if (result.urls && result.urls.length > 1) {
-        // Batch mode: store all urls, set first as selected imageUrl
         updateNodeData(id, { imageUrls: result.urls, imageUrl: result.urls[0] });
         toast.success(`批量生成完成，共 ${result.urls.length} 张图像`);
       } else {
-        // Single mode: clear imageUrls, set imageUrl
-        updateNodeData(id, { imageUrl: result.url, imageUrls: undefined });
+        const imageUrl = result.url ?? result.urls?.[0];
+        if (!imageUrl) { toast.error("生成完成但未返回图像"); return; }
+        updateNodeData(id, { imageUrl, imageUrls: undefined });
         toast.success("图像生成成功");
       }
-      setGenerating(false);
     },
     onError: (err) => {
-      setGenerating(false);
       toast.error("图像生成失败：" + err.message);
     },
   });
@@ -118,15 +110,40 @@ export const ImageGenNode = memo(function ImageGenNode({ id, selected, data }: P
     [id, updateNodeData]
   );
 
+  const handlePropagateSeed = useCallback(() => {
+    if (!payload.seed) return;
+    const { nodes: allNodes, edges: allEdges, batchUpdateNodeData } = useCanvasStore.getState();
+    const updates = allEdges
+      .filter(e => e.source === id)
+      .flatMap(edge => {
+        const target = allNodes.find(n => n.id === edge.target);
+        if (!target) return [];
+        const nt = target.data.nodeType;
+        if (nt === "storyboard" || nt === "image_gen" || nt === "video_task") {
+          return [{ id: edge.target, payload: { seed: payload.seed } }];
+        }
+        return [];
+      });
+    if (updates.length > 0) {
+      batchUpdateNodeData(updates);
+      toast.success(`种子 ${payload.seed} 已传播到 ${updates.length} 个节点`);
+    } else {
+      toast.error("没有支持种子的下游节点");
+    }
+  }, [id, payload.seed]);
+
   const handleGenerate = () => {
     if (!payload.prompt?.trim()) { toast.error("请先填写提示词"); return; }
-    setGenerating(true);
     genMutation.mutate({
       prompt: payload.prompt,
       negativePrompt: payload.negativePrompt,
       style: payload.style,
       referenceImageUrl: payload.referenceImageUrl,
       model: payload.model,
+      // Poyo image model params
+      ...((payload.model === "poyo_flux" || payload.model === "poyo_sdxl") ? {
+        poyoAspectRatio: payload.aspectRatio,
+      } : {}),
       // Soul Standard specific params
       ...(payload.model === "hf_soul_standard" ? {
         widthAndHeight: payload.widthAndHeight,
@@ -159,7 +176,15 @@ export const ImageGenNode = memo(function ImageGenNode({ id, selected, data }: P
 
   const handleSelectImage = (url: string) => {
     update("imageUrl", url);
-    toast.success("已选择此图像");
+    const { edges, nodes, batchUpdateNodeData } = useCanvasStore.getState();
+    const updates = edges
+      .filter(e => e.source === id && e.sourceHandle === "image-out" && e.targetHandle === "ref-image-in")
+      .flatMap(edge => {
+        const target = nodes.find(n => n.id === edge.target);
+        return target?.data.nodeType === "video_task" ? [{ id: edge.target, payload: { referenceImageUrl: url } }] : [];
+      });
+    if (updates.length > 0) batchUpdateNodeData(updates);
+    toast.success(updates.length > 0 ? `已选择图像并更新 ${updates.length} 个视频节点` : "已选择此图像");
   };
 
   const handleClearBatch = () => {
@@ -203,11 +228,11 @@ export const ImageGenNode = memo(function ImageGenNode({ id, selected, data }: P
               <div className="flex gap-1">
                 <button
                   onClick={handleGenerate}
-                  disabled={generating}
+                  disabled={genMutation.isPending}
                   className="nodrag flex items-center gap-1 px-2 py-0.5 rounded text-xs"
                   style={{ background: "oklch(0.72 0.20 330 / 0.12)", borderWidth: 1, borderStyle: "solid", borderColor: BORDER_ACCENT, color: accent, fontSize: 10 }}
                 >
-                  {generating ? <Loader2 className="w-2.5 h-2.5 animate-spin" /> : <RefreshCw className="w-2.5 h-2.5" />}
+                  {genMutation.isPending ? <Loader2 className="w-2.5 h-2.5 animate-spin" /> : <RefreshCw className="w-2.5 h-2.5" />}
                   重新生成
                 </button>
                 <button
@@ -247,7 +272,13 @@ export const ImageGenNode = memo(function ImageGenNode({ id, selected, data }: P
                     onMouseEnter={(e) => { if (!isSelected) e.currentTarget.style.opacity = "1"; }}
                     onMouseLeave={(e) => { if (!isSelected) e.currentTarget.style.opacity = "0.72"; }}
                   >
-                    <img src={url} alt={`generated-${idx}`} className="w-full h-full object-cover" draggable={false} />
+                    <img
+                      src={url}
+                      alt={`generated-${idx}`}
+                      className="w-full h-full object-cover"
+                      draggable={false}
+                      onError={makeImageProxyFallback(url)}
+                    />
                     {/* Selected checkmark */}
                     {isSelected && (
                       <div
@@ -287,7 +318,14 @@ export const ImageGenNode = memo(function ImageGenNode({ id, selected, data }: P
                     下载
                   </button>
                 </div>
-                <img src={payload.imageUrl} alt="selected" className="w-full object-contain" style={{ maxHeight: 120 }} draggable={false} />
+                <img
+                  src={payload.imageUrl}
+                  alt="selected"
+                  className="w-full object-contain"
+                  style={{ maxHeight: 120 }}
+                  draggable={false}
+                  onError={makeImageProxyFallback(payload.imageUrl ?? "")}
+                />
               </div>
             )}
           </div>
@@ -298,7 +336,13 @@ export const ImageGenNode = memo(function ImageGenNode({ id, selected, data }: P
               className="relative rounded-lg overflow-hidden flex-shrink-0"
               style={{ aspectRatio: "16/9", borderWidth: 1, borderStyle: "solid", borderColor: BORDER_DEFAULT, background: "oklch(0.08 0.005 260)" }}
             >
-              <img src={payload.imageUrl} alt="generated" className="w-full h-full object-contain" draggable={false} />
+              <img
+                src={payload.imageUrl}
+                alt="generated"
+                className="w-full h-full object-contain"
+                draggable={false}
+                onError={makeImageProxyFallback(payload.imageUrl ?? "")}
+              />
               <div
                 className="absolute inset-0 opacity-0 hover:opacity-100 transition-opacity flex items-center justify-center gap-2"
                 style={{ background: "oklch(0 0 0 / 0.55)" }}
@@ -321,11 +365,11 @@ export const ImageGenNode = memo(function ImageGenNode({ id, selected, data }: P
                 </button>
                 <button
                   onClick={handleGenerate}
-                  disabled={generating}
+                  disabled={genMutation.isPending}
                   className="nodrag flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-medium"
                   style={{ background: "oklch(0.72 0.20 330 / 0.2)", borderWidth: 1, borderStyle: "solid", borderColor: BORDER_ACCENT, color: accent }}
                 >
-                  {generating ? <Loader2 className="w-3 h-3 animate-spin" /> : <RefreshCw className="w-3 h-3" />}
+                  {genMutation.isPending ? <Loader2 className="w-3 h-3 animate-spin" /> : <RefreshCw className="w-3 h-3" />}
                   重新生成
                 </button>
               </div>
@@ -504,7 +548,32 @@ export const ImageGenNode = memo(function ImageGenNode({ id, selected, data }: P
                 </select>
               </div>
               <div className="flex-1">
-                <label style={labelStyle}>Seed（可选）</label>
+                <div className="flex items-center justify-between mb-[5px]">
+                  <label style={{ ...labelStyle, marginBottom: 0 }}>Seed（可选）</label>
+                  <button
+                    onClick={() => {
+                      if (seedLocked) {
+                        setSeedLocked(false);
+                        update("seed", undefined);
+                      } else {
+                        const randomSeed = Math.floor(Math.random() * 2147483647);
+                        update("seed", randomSeed);
+                        setSeedLocked(true);
+                      }
+                    }}
+                    className="nodrag flex items-center gap-0.5 px-1.5 py-0.5 rounded text-[9px] transition-all"
+                    style={{
+                      background: seedLocked ? "oklch(0.68 0.22 285 / 0.15)" : "oklch(0.14 0.007 260)",
+                      border: `1px solid ${seedLocked ? "oklch(0.68 0.22 285 / 0.40)" : "oklch(0.22 0.008 260)"}`,
+                      color: seedLocked ? "oklch(0.72 0.18 285)" : "oklch(0.45 0.006 260)",
+                      cursor: "pointer",
+                    }}
+                    title={seedLocked ? "解锁种子（清除）" : "锁定随机种子"}
+                  >
+                    {seedLocked ? <Lock className="w-2.5 h-2.5" /> : <Unlock className="w-2.5 h-2.5" />}
+                    {seedLocked ? "已锁" : "锁定"}
+                  </button>
+                </div>
                 <input
                   type="number"
                   placeholder="随机"
@@ -515,6 +584,21 @@ export const ImageGenNode = memo(function ImageGenNode({ id, selected, data }: P
                 />
               </div>
             </div>
+            {payload.model === "hf_soul_standard" && payload.seed !== undefined && (
+              <button
+                onClick={handlePropagateSeed}
+                className="nodrag flex items-center gap-1 px-2 py-1 rounded text-[10px] transition-all self-start"
+                style={{
+                  background: "oklch(0.68 0.22 285 / 0.10)",
+                  border: "1px solid oklch(0.68 0.22 285 / 0.30)",
+                  color: "oklch(0.68 0.22 285)",
+                  cursor: "pointer",
+                }}
+              >
+                <Lock className="w-3 h-3" />
+                传播种子 {payload.seed} 到下游
+              </button>
+            )}
             <div className="flex items-center gap-2">
               <input
                 type="checkbox"
@@ -580,7 +664,13 @@ export const ImageGenNode = memo(function ImageGenNode({ id, selected, data }: P
               className="relative rounded-lg overflow-hidden"
               style={{ height: 80, borderWidth: 1, borderStyle: "solid", borderColor: BORDER_DEFAULT, background: "oklch(0.08 0.005 260)" }}
             >
-              <img src={payload.referenceImageUrl} alt="reference" className="w-full h-full object-cover" draggable={false} />
+              <img
+                src={payload.referenceImageUrl}
+                alt="reference"
+                className="w-full h-full object-cover"
+                draggable={false}
+                onError={makeImageProxyFallback(payload.referenceImageUrl ?? "")}
+              />
               <button
                 onClick={() => update("referenceImageUrl", undefined)}
                 className="nodrag absolute top-1 right-1 p-0.5 rounded-full"
@@ -620,21 +710,21 @@ export const ImageGenNode = memo(function ImageGenNode({ id, selected, data }: P
         {/* Generate button */}
         <button
           onClick={handleGenerate}
-          disabled={generating || !payload.prompt?.trim()}
+          disabled={genMutation.isPending || !payload.prompt?.trim()}
           className="nodrag flex items-center justify-center gap-1.5 w-full py-2 rounded-lg text-xs font-semibold transition-all"
           style={{
-            background: generating || !payload.prompt?.trim()
+            background: genMutation.isPending || !payload.prompt?.trim()
               ? "oklch(0.13 0.007 260)"
               : "linear-gradient(135deg, oklch(0.72 0.20 330 / 0.18), oklch(0.68 0.22 285 / 0.18))",
             borderWidth: 1, borderStyle: "solid",
-            borderColor: generating || !payload.prompt?.trim() ? BORDER_DEFAULT : BORDER_ACCENT,
-            color: generating || !payload.prompt?.trim() ? "oklch(0.38 0.006 260)" : accent,
-            cursor: generating || !payload.prompt?.trim() ? "not-allowed" : "pointer",
+            borderColor: genMutation.isPending || !payload.prompt?.trim() ? BORDER_DEFAULT : BORDER_ACCENT,
+            color: genMutation.isPending || !payload.prompt?.trim() ? "oklch(0.38 0.006 260)" : accent,
+            cursor: genMutation.isPending || !payload.prompt?.trim() ? "not-allowed" : "pointer",
             letterSpacing: "0.02em",
           }}
         >
-          {generating ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Sparkles className="w-3.5 h-3.5" />}
-          {generating
+          {genMutation.isPending ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Sparkles className="w-3.5 h-3.5" />}
+          {genMutation.isPending
             ? (isSoul && (payload.batchSize ?? 1) > 1 ? `批量生成中 (${payload.batchSize} 张)...` : "AI 生成中...")
             : (isSoul && (payload.batchSize ?? 1) > 1 ? `批量生成 ${payload.batchSize} 张` : "生成图像")}
         </button>

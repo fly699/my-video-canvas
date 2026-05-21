@@ -8,6 +8,9 @@ import { VideoTaskNode } from "./nodes/VideoTaskNode";
 import { AIChatNode } from "./nodes/AIChatNode";
 import { NoteNode } from "./nodes/NoteNode";
 import { ImageGenNode } from "./nodes/ImageGenNode";
+import { AudioNode } from "./nodes/AudioNode";
+import { PostProcessNode } from "./nodes/PostProcessNode";
+import { GroupNode } from "./nodes/GroupNode";
 import type { NodeType } from "../../../../shared/types";
 
 interface CustomNodeData {
@@ -41,6 +44,12 @@ export const CustomNode = memo(function CustomNode(props: NodeProps) {
       return <AIChatNode {...(props as unknown as AnyNodeProps)} />;
     case "note":
       return <NoteNode {...(props as unknown as AnyNodeProps)} />;
+    case "audio":
+      return <AudioNode {...(props as unknown as AnyNodeProps)} />;
+    case "post_process":
+      return <PostProcessNode {...(props as unknown as AnyNodeProps)} />;
+    case "group":
+      return <GroupNode {...(props as unknown as AnyNodeProps)} />;
     default:
       return null;
   }

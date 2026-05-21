@@ -8,18 +8,29 @@ export type NodeType =
   | "asset"
   | "video_task"
   | "ai_chat"
-  | "note";
+  | "note"
+  | "audio"
+  | "post_process"
+  | "group";
 
-export type VideoProvider =
-  | "mock"
-  | "poyo_seedance"
-  | "poyo_veo"
-  | "hf_dop_standard"
-  | "hf_dop_preview"
-  | "hf_dop_lite"
-  | "hf_dop_turbo"
-  | "hf_kling_21_pro"
-  | "hf_seedance_pro";
+export const VIDEO_PROVIDERS = [
+  "mock",
+  "poyo_seedance",
+  "poyo_veo",
+  "poyo_kling26",
+  "poyo_kling_o3_std",
+  "poyo_kling_o3_pro",
+  "poyo_kling_o3_4k",
+  "hf_dop_standard",
+  "hf_dop_preview",
+  "hf_dop_lite",
+  "hf_dop_turbo",
+  "hf_kling_21_pro",
+  "hf_kling_30",
+  "hf_seedance_pro",
+  "hf_seedance_20",
+] as const;
+export type VideoProvider = (typeof VIDEO_PROVIDERS)[number];
 export type VideoTaskStatus = "pending" | "processing" | "succeeded" | "failed";
 
 // ── Node Data Payloads ────────────────────────────────────────────────────────
@@ -34,6 +45,7 @@ export interface StoryboardNodeData {
   description: string;
   imageUrl?: string;
   imageStorageKey?: string;
+  imageHistory?: string[];
   promptText?: string;
   negativePrompt?: string;
   duration?: number; // seconds
@@ -53,6 +65,8 @@ export interface PromptNodeData {
   aspectRatio?: string;
   imageModel?: ImageGenModel;
   referenceImageUrl?: string;
+  imageUrls?: string[];
+  selectedImageIndex?: number;
 }
 
 export interface AssetNodeData {
@@ -114,6 +128,36 @@ export interface NoteNodeData {
   color?: string;
 }
 
+export type AudioSource = "upload" | "tts";
+export interface AudioNodeData {
+  name?: string;
+  url?: string;
+  storageKey?: string;
+  duration?: number;
+  source: AudioSource;
+  ttsText?: string;
+  ttsVoice?: string;
+  mimeType?: string;
+  size?: number;
+}
+
+export type PostProcessOp = "upscale2x" | "upscale4x" | "denoise" | "sharpen" | "fps2x";
+export interface PostProcessNodeData {
+  operation: PostProcessOp;
+  inputImageUrl?: string;
+  inputVideoUrl?: string;
+  outputUrl?: string;
+  status?: "idle" | "processing" | "done" | "failed";
+  errorMessage?: string;
+}
+
+export interface GroupNodeData {
+  label?: string;
+  color?: string;
+  collapsed?: boolean;
+  childIds?: string[];
+}
+
 export type NodeData =
   | ScriptNodeData
   | StoryboardNodeData
@@ -122,7 +166,10 @@ export type NodeData =
   | AssetNodeData
   | VideoTaskNodeData
   | AIChatNodeData
-  | NoteNodeData;
+  | NoteNodeData
+  | AudioNodeData
+  | PostProcessNodeData
+  | GroupNodeData;
 
 // ── Canvas Node ───────────────────────────────────────────────────────────────
 

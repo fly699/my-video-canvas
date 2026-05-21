@@ -1,17 +1,11 @@
-import { memo, useCallback, useEffect, useRef, useState } from "react";
+import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { BaseNode } from "../BaseNode";
 import { useCanvasStore } from "../../../hooks/useCanvasStore";
-import type { AIChatNodeData } from "../../../../../shared/types";
+import type { AIChatNodeData, NodeType } from "../../../../../shared/types";
 import { trpc } from "@/lib/trpc";
 import { toast } from "sonner";
-import { Send, Loader2, Trash2, Bot, User, Sparkles, ChevronDown } from "lucide-react";
-
-const MODELS = [
-  { id: "gemini-2.5-flash",          label: "Gemini 2.5 Flash",  tag: "默认" },
-  { id: "claude-haiku-4-5-20251001", label: "Claude Haiku 4.5",  tag: "快速" },
-  { id: "claude-sonnet-4-6",         label: "Claude Sonnet 4.6", tag: "智能" },
-  { id: "gpt-5.2",                   label: "GPT-5.2",           tag: "Poyo" },
-] as const;
+import { Send, Loader2, Trash2, Bot, User, Sparkles, ChevronDown, ArrowRight, Copy, BookOpen } from "lucide-react";
+import { CHAT_MODELS } from "@/lib/models";
 // Streamdown removed — replaced with safe inline markdown renderer to avoid ReactFlow DOM conflicts
 function SimpleMarkdown({ children }: { children: string }) {
   // Convert basic markdown to safe HTML
@@ -38,11 +32,30 @@ interface Props {
 }
 
 const accentColor = "oklch(0.70 0.18 200)";
+const accentA = (a: number) => `oklch(0.70 0.18 200 / ${a})`;
 const BORDER_DEFAULT = "oklch(0.20 0.008 260)";
-const BORDER_FOCUS   = `${accentColor.slice(0, -1)} / 0.5)`;
+const BORDER_FOCUS   = accentA(0.5);
+
+const FIELD_MAP: Partial<Record<NodeType, string>> = {
+  script: "content",
+  storyboard: "promptText",
+  prompt: "positivePrompt",
+  image_gen: "prompt",
+  video_task: "prompt",
+  note: "content",
+};
+
+const SYSTEM_PROMPT_TEMPLATES = [
+  { label: "导演助手", icon: "🎬", prompt: "你是一位专业的电影导演助手，擅长分析剧本、提出视觉化建议和分镜构思。请用简洁专业的中文回答。" },
+  { label: "分镜生成", icon: "🖼️", prompt: "你是专业的分镜师。根据场景描述，生成详细的分镜描述，包括：镜头类型、运镜方式、景深、灯光氛围、构图要点。每个分镜用编号列出。" },
+  { label: "提示词优化", icon: "✨", prompt: "你是专业的 AI 图像提示词工程师。用户输入中文描述，你将其转化为高质量的英文 Stable Diffusion 提示词（100词以内），聚焦于视觉细节、光影、风格、构图。只输出提示词，无需解释。" },
+  { label: "视频脚本", icon: "📝", prompt: "你是专业的视频脚本创作者。根据主题创作简洁有力的视频脚本，包括旁白文字、配乐建议和镜头切换节奏。" },
+  { label: "角色设计", icon: "👤", prompt: "你是角色设计专家。根据描述生成详细的角色外观描述，包括：年龄体型、服装风格、表情神态、标志性特征，用于 AI 图像生成。" },
+] as const;
 
 export const AIChatNode = memo(function AIChatNode({ id, selected, data }: Props) {
-  const { updateNodeData, nodes, edges } = useCanvasStore();
+  const { updateNodeData } = useCanvasStore();
+  const hasDownstream = useCanvasStore(useMemo(() => (s) => s.edges.some(e => e.source === id), [id]));
   const payload = data.payload;
   const [input, setInput] = useState("");
   const [localMessages, setLocalMessages] = useState<Array<{ role: "user" | "assistant"; content: string }>>(
@@ -50,13 +63,36 @@ export const AIChatNode = memo(function AIChatNode({ id, selected, data }: Props
   );
   const [model, setModel] = useState<string>(payload.model ?? "gemini-2.5-flash");
   const [showModelPicker, setShowModelPicker] = useState(false);
+  const [showTemplates, setShowTemplates] = useState(false);
   const scrollRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
+  const modelPickerRef = useRef<HTMLDivElement>(null);
+  const templateRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => { updateNodeData(id, { messages: localMessages }); }, [localMessages, id, updateNodeData]);
   useEffect(() => {
     if (scrollRef.current) scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
   }, [localMessages]);
+
+  useEffect(() => {
+    if (!showModelPicker) return;
+    const handler = (e: MouseEvent) => {
+      if (modelPickerRef.current && !modelPickerRef.current.contains(e.target as Node))
+        setShowModelPicker(false);
+    };
+    document.addEventListener("mousedown", handler);
+    return () => document.removeEventListener("mousedown", handler);
+  }, [showModelPicker]);
+
+  useEffect(() => {
+    if (!showTemplates) return;
+    const handler = (e: MouseEvent) => {
+      if (templateRef.current && !templateRef.current.contains(e.target as Node))
+        setShowTemplates(false);
+    };
+    document.addEventListener("mousedown", handler);
+    return () => document.removeEventListener("mousedown", handler);
+  }, [showTemplates]);
 
   const sendMutation = trpc.aiChat.sendMessage.useMutation({
     onSuccess: (result) => {
@@ -73,8 +109,25 @@ export const AIChatNode = memo(function AIChatNode({ id, selected, data }: Props
     onError: (err) => toast.error("清除失败：" + err.message),
   });
 
+  const pushToDownstream = useCallback((content: string) => {
+    const { nodes: currentNodes, edges: currentEdges, batchUpdateNodeData } = useCanvasStore.getState();
+    const updates = currentEdges
+      .filter(e => e.source === id)
+      .flatMap(edge => {
+        const targetNode = currentNodes.find(n => n.id === edge.target);
+        const field = targetNode ? FIELD_MAP[targetNode.data.nodeType] : undefined;
+        return field ? [{ id: edge.target, payload: { [field]: content } }] : [];
+      });
+    if (updates.length > 0) {
+      batchUpdateNodeData(updates);
+      toast.success(`已推送到 ${updates.length} 个节点`);
+    } else {
+      toast.error("没有可接收的下游节点");
+    }
+  }, [id]);
+
   const buildContext = useCallback(() => {
-    // Auto-include nodes connected via incoming edges + any explicitly set contextNodeIds
+    const { nodes, edges } = useCanvasStore.getState();
     const edgeSourceIds = edges.filter((e) => e.target === id).map((e) => e.source);
     const contextIds = Array.from(new Set([...(payload.contextNodeIds ?? []), ...edgeSourceIds]));
     if (!contextIds.length) return undefined;
@@ -92,7 +145,7 @@ export const AIChatNode = memo(function AIChatNode({ id, selected, data }: Props
       if (content) parts.push(`[${node.data.title}]: ${content}`);
     }
     return parts.join("\n\n") || undefined;
-  }, [id, nodes, edges, payload.contextNodeIds]);
+  }, [id, payload.contextNodeIds]);
 
   const handleSend = () => {
     const msg = input.trim();
@@ -115,26 +168,78 @@ export const AIChatNode = memo(function AIChatNode({ id, selected, data }: Props
 
         {/* ── System prompt ── */}
         <div
-          className="px-3.5 py-2.5 flex-shrink-0"
+          ref={templateRef}
+          className="px-3.5 py-2 flex items-center gap-1.5 flex-shrink-0 relative"
           style={{ borderBottomWidth: 1, borderBottomStyle: "solid", borderBottomColor: "oklch(0.18 0.008 260)" }}
         >
           <input
             placeholder="系统提示词（可选）"
             value={payload.systemPrompt ?? ""}
             onChange={(e) => updateNodeData(id, { systemPrompt: e.target.value })}
-            className="nodrag w-full"
+            className="nodrag flex-1"
             style={{
-              fontSize: 11.5,
+              fontSize: 11,
               background: "transparent",
               border: "none",
               outline: "none",
               color: "oklch(0.58 0.008 260)",
             }}
           />
+          <button
+            onClick={() => setShowTemplates((v) => !v)}
+            className="nodrag flex items-center gap-1 px-1.5 py-1 rounded transition-all flex-shrink-0"
+            style={{
+              fontSize: 9,
+              background: showTemplates ? accentA(0.12) : "transparent",
+              border: `1px solid ${showTemplates ? accentA(0.35) : "oklch(0.22 0.008 260)"}`,
+              color: showTemplates ? accentColor : "oklch(0.42 0.008 260)",
+              cursor: "pointer",
+            }}
+            title="模板库"
+          >
+            <BookOpen style={{ width: 10, height: 10 }} />
+            模板
+          </button>
+          {showTemplates && (
+            <div
+              className="absolute left-0 right-0 z-50 rounded-xl overflow-hidden"
+              style={{
+                top: "calc(100% + 4px)",
+                background: "oklch(0.12 0.007 260)",
+                border: "1px solid oklch(0.22 0.008 260)",
+                boxShadow: "0 8px 32px oklch(0 0 0 / 0.55)",
+              }}
+            >
+              {SYSTEM_PROMPT_TEMPLATES.map((t) => (
+                <button
+                  key={t.label}
+                  className="nodrag w-full flex items-center gap-2 px-3 py-2 transition-all text-left"
+                  style={{
+                    borderBottom: "1px solid oklch(0.17 0.008 260)",
+                    cursor: "pointer",
+                  }}
+                  onClick={() => {
+                    updateNodeData(id, { systemPrompt: t.prompt });
+                    setShowTemplates(false);
+                    toast.success(`已应用模板：${t.label}`);
+                  }}
+                  onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.background = "oklch(0.16 0.008 260)"; }}
+                  onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.background = "transparent"; }}
+                >
+                  <span style={{ fontSize: 14 }}>{t.icon}</span>
+                  <div className="flex flex-col flex-1 min-w-0">
+                    <span style={{ fontSize: 11, fontWeight: 500, color: "oklch(0.78 0.006 260)" }}>{t.label}</span>
+                    <span style={{ fontSize: 9.5, color: "oklch(0.42 0.006 260)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{t.prompt.slice(0, 50)}...</span>
+                  </div>
+                </button>
+              ))}
+            </div>
+          )}
         </div>
 
         {/* ── Model selector ── */}
         <div
+          ref={modelPickerRef}
           className="px-3.5 py-2 flex items-center gap-2 flex-shrink-0 relative"
           style={{ borderBottomWidth: 1, borderBottomStyle: "solid", borderBottomColor: "oklch(0.18 0.008 260)" }}
         >
@@ -150,7 +255,7 @@ export const AIChatNode = memo(function AIChatNode({ id, selected, data }: Props
             }}
             onClick={() => setShowModelPicker(!showModelPicker)}
           >
-            {MODELS.find((m) => m.id === model)?.label ?? model}
+            {CHAT_MODELS.find((m) => m.id === model)?.label ?? model}
             <ChevronDown style={{ width: 9, height: 9, opacity: 0.7 }} />
           </button>
           {/* Model dropdown */}
@@ -164,7 +269,7 @@ export const AIChatNode = memo(function AIChatNode({ id, selected, data }: Props
                 minWidth: 200,
               }}
             >
-              {MODELS.map((m) => (
+              {CHAT_MODELS.map((m) => (
                 <button
                   key={m.id}
                   className="nodrag w-full flex items-center justify-between px-3 py-2 transition-all text-left"
@@ -200,10 +305,10 @@ export const AIChatNode = memo(function AIChatNode({ id, selected, data }: Props
               <div
                 className="w-8 h-8 rounded-xl flex items-center justify-center"
                 style={{
-                  background: `${accentColor.slice(0, -1)} / 0.15)`,
+                  background: accentA(0.15),
                   borderWidth: 1,
                   borderStyle: "solid",
-                  borderColor: `${accentColor.slice(0, -1)} / 0.3)`,
+                  borderColor: accentA(0.3),
                 }}
               >
                 <Sparkles className="w-4 h-4" style={{ color: accentColor }} />
@@ -215,19 +320,19 @@ export const AIChatNode = memo(function AIChatNode({ id, selected, data }: Props
           ) : (
             <div className="space-y-2">
               {localMessages.map((msg, i) => (
-                <div key={i} className={`flex gap-1.5 ${msg.role === "user" ? "flex-row-reverse" : "flex-row"}`}>
+                <div key={i} className={`group/msg flex gap-1.5 ${msg.role === "user" ? "flex-row-reverse" : "flex-row"}`}>
                   {/* Avatar */}
                   <div
                     className="w-5 h-5 rounded-full flex items-center justify-center flex-shrink-0 mt-0.5"
                     style={{
                       background: msg.role === "user"
                         ? "oklch(0.68 0.22 285 / 0.20)"
-                        : `${accentColor.slice(0, -1)} / 0.18)`,
+                        : accentA(0.18),
                       borderWidth: 1,
                       borderStyle: "solid",
                       borderColor: msg.role === "user"
                         ? "oklch(0.68 0.22 285 / 0.35)"
-                        : `${accentColor.slice(0, -1)} / 0.3)`,
+                        : accentA(0.3),
                     }}
                   >
                     {msg.role === "user" ? (
@@ -236,25 +341,38 @@ export const AIChatNode = memo(function AIChatNode({ id, selected, data }: Props
                       <Bot className="w-2.5 h-2.5" style={{ color: accentColor }} />
                     )}
                   </div>
-                  {/* Bubble */}
-                  <div
-                    className="flex-1 min-w-0 rounded-lg px-3 py-2 text-xs leading-relaxed"
-                    style={{
-                      background: msg.role === "user"
-                        ? "oklch(0.68 0.22 285 / 0.10)"
-                        : `${accentColor.slice(0, -1)} / 0.04)`,
-                      borderWidth: 1,
-                      borderStyle: "solid",
-                      borderColor: msg.role === "user"
-                        ? "oklch(0.68 0.22 285 / 0.20)"
-                        : `${accentColor.slice(0, -1)} / 0.18)`,
-                      color: "oklch(0.80 0.006 260)",
-                    }}
-                  >
-                    {msg.role === "assistant" ? (
-                      <SimpleMarkdown>{msg.content}</SimpleMarkdown>
-                    ) : (
-                      <span>{msg.content}</span>
+                  {/* Bubble + copy button */}
+                  <div className="flex flex-col flex-1 min-w-0">
+                    <div
+                      className="rounded-lg px-3 py-2 text-xs leading-relaxed"
+                      style={{
+                        background: msg.role === "user"
+                          ? "oklch(0.68 0.22 285 / 0.10)"
+                          : accentA(0.04),
+                        borderWidth: 1,
+                        borderStyle: "solid",
+                        borderColor: msg.role === "user"
+                          ? "oklch(0.68 0.22 285 / 0.20)"
+                          : accentA(0.18),
+                        color: "oklch(0.80 0.006 260)",
+                      }}
+                    >
+                      {msg.role === "assistant" ? (
+                        <SimpleMarkdown>{msg.content}</SimpleMarkdown>
+                      ) : (
+                        <span>{msg.content}</span>
+                      )}
+                    </div>
+                    {msg.role === "assistant" && (
+                      <button
+                        onClick={() => navigator.clipboard.writeText(msg.content).then(() => toast.success("已复制", { duration: 1200 }))}
+                        className="nodrag opacity-0 group-hover/msg:opacity-100 transition-opacity mt-1 flex items-center gap-1 text-[10px] self-start"
+                        style={{ color: "oklch(0.42 0.006 260)" }}
+                        title="复制消息"
+                      >
+                        <Copy style={{ width: 10, height: 10 }} />
+                        复制
+                      </button>
                     )}
                   </div>
                 </div>
@@ -265,10 +383,10 @@ export const AIChatNode = memo(function AIChatNode({ id, selected, data }: Props
                   <div
                     className="w-5 h-5 rounded-full flex items-center justify-center flex-shrink-0"
                     style={{
-                      background: `${accentColor.slice(0, -1)} / 0.18)`,
+                      background: accentA(0.18),
                       borderWidth: 1,
                       borderStyle: "solid",
-                      borderColor: `${accentColor.slice(0, -1)} / 0.3)`,
+                      borderColor: accentA(0.3),
                     }}
                   >
                     <Bot className="w-2.5 h-2.5" style={{ color: accentColor }} />
@@ -276,10 +394,10 @@ export const AIChatNode = memo(function AIChatNode({ id, selected, data }: Props
                   <div
                     className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg"
                     style={{
-                      background: `${accentColor.slice(0, -1)} / 0.04)`,
+                      background: accentA(0.04),
                       borderWidth: 1,
                       borderStyle: "solid",
-                      borderColor: `${accentColor.slice(0, -1)} / 0.18)`,
+                      borderColor: accentA(0.18),
                     }}
                   >
                     <Loader2 className="w-3 h-3 animate-spin" style={{ color: accentColor }} />
@@ -326,12 +444,12 @@ export const AIChatNode = memo(function AIChatNode({ id, selected, data }: Props
             style={{
               background: !input.trim() || sendMutation.isPending
                 ? "oklch(0.13 0.007 260)"
-                : `${accentColor.slice(0, -1)} / 0.18)`,
+                : accentA(0.18),
               borderWidth: 1,
               borderStyle: "solid",
               borderColor: !input.trim() || sendMutation.isPending
                 ? BORDER_DEFAULT
-                : `${accentColor.slice(0, -1)} / 0.4)`,
+                : accentA(0.4),
               color: !input.trim() || sendMutation.isPending
                 ? "oklch(0.35 0.006 260)"
                 : accentColor,
@@ -365,6 +483,21 @@ export const AIChatNode = memo(function AIChatNode({ id, selected, data }: Props
           >
             <Trash2 className="w-3 h-3" />
           </button>
+          {hasDownstream && localMessages.some(m => m.role === "assistant") && (
+            <button
+              onClick={() => {
+                const lastAI = [...localMessages].reverse().find(m => m.role === "assistant");
+                if (lastAI) pushToDownstream(lastAI.content);
+              }}
+              className="nodrag w-8 h-8 rounded-lg flex items-center justify-center transition-all flex-shrink-0"
+              title="推送最新 AI 回复到连接的下游节点"
+              style={{ background: "transparent", border: "1px solid transparent", color: "oklch(0.50 0.008 260)" }}
+              onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.background = "oklch(0.70 0.18 200 / 0.12)"; (e.currentTarget as HTMLElement).style.color = accentColor; }}
+              onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.background = "transparent"; (e.currentTarget as HTMLElement).style.color = "oklch(0.50 0.008 260)"; }}
+            >
+              <ArrowRight className="w-3 h-3" />
+            </button>
+          )}
         </div>
       </div>
     </BaseNode>

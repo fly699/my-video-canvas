@@ -3,7 +3,6 @@ import { useParams, useLocation } from "wouter";
 import {
   ReactFlow,
   Background,
-  Controls,
   MiniMap,
   BackgroundVariant,
   useReactFlow,
@@ -13,18 +12,23 @@ import {
 } from "@xyflow/react";
 import "@xyflow/react/dist/style.css";
 import { useCanvasStore, type CanvasNode, type CanvasEdge } from "../hooks/useCanvasStore";
+import { useWorkflowRunner } from "../hooks/useWorkflowRunner";
+import { WorkflowRunProvider } from "../contexts/WorkflowRunContext";
 import { CustomNode } from "../components/canvas/CustomNode";
 import { CustomEdge } from "../components/canvas/CustomEdge";
 import { ContextMenu } from "../components/canvas/ContextMenu";
 import { CollaboratorCursors } from "../components/canvas/CollaboratorCursors";
 import { AssetPanel } from "../components/canvas/AssetPanel";
+import { TemplatePanel } from "../components/canvas/TemplatePanel";
+import { NodeSearch } from "../components/canvas/NodeSearch";
 import { PresentationMode } from "../components/canvas/PresentationMode";
+import { FilmstripPanel } from "../components/canvas/FilmstripPanel";
 import { trpc } from "@/lib/trpc";
 import { useAuth } from "@/_core/hooks/useAuth";
 import { useIsMobile } from "@/hooks/useMobile";
 import { toast } from "sonner";
 import type { NodeType, CollaboratorCursor } from "../../../shared/types";
-import { getNodeConfig, NODE_TYPE_LIST, COLLABORATOR_COLORS } from "../lib/nodeConfig";
+import { getNodeConfig, NODE_TYPE_LIST, NODE_ICONS, COLLABORATOR_COLORS } from "../lib/nodeConfig";
 import { io, type Socket } from "socket.io-client";
 import {
   Film,
@@ -34,36 +38,28 @@ import {
   ChevronLeft,
   Plus,
   Paperclip,
+  Image,
   Loader2,
   Pencil,
   Check,
   X,
   FileText,
-  Image,
-  Wand2,
-  Sparkles,
-  Video,
-  Bot,
-  StickyNote,
   LayoutGrid,
-  ZoomIn,
-  ZoomOut,
+  BarChart2,
   Maximize2,
-  Command,
   Play,
   LogOut,
   Undo2,
   Redo2,
+  Search,
+  Lock,
+  Unlock,
+  ChevronDown,
 } from "lucide-react";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 
 const nodeTypes = { custom: CustomNode };
 const edgeTypes = { custom: CustomEdge };
-
-// ── Icon map ──────────────────────────────────────────────────────────────────
-const ICON_MAP: Record<string, React.ComponentType<{ className?: string; style?: React.CSSProperties }>> = {
-  FileText, Image, Wand2, Sparkles, Paperclip, Video, Bot, StickyNote,
-};
 
 // ── Tool button ───────────────────────────────────────────────────────────────
 function ToolBtn({
@@ -184,10 +180,19 @@ function CanvasInner({ projectId }: { projectId: number }) {
   } | null>(null);
 
   const [showAssets, setShowAssets] = useState(false);
+  const [showTemplates, setShowTemplates] = useState(false);
+  const [showNodeSearch, setShowNodeSearch] = useState(false);
   const [showCollaborators, setShowCollaborators] = useState(false);
   const [showNodePicker, setShowNodePicker] = useState(false);
   const [showPresentation, setShowPresentation] = useState(false);
   const [showShortcuts, setShowShortcuts] = useState(false);
+  const [showStatsSidebar, setShowStatsSidebar] = useState(false);
+  const [showFilmstrip, setShowFilmstrip] = useState(false);
+  const [globalAspectRatio, setGlobalAspectRatio] = useState<string | null>(null);
+  const [showRatioPicker, setShowRatioPicker] = useState(false);
+
+  // Workflow runner
+  const { runState, runWorkflow } = useWorkflowRunner();
 
   const socketRef = useRef<Socket | null>(null);
   const [socketConnected, setSocketConnected] = useState(false);
@@ -257,7 +262,9 @@ function CanvasInner({ projectId }: { projectId: number }) {
     try {
       if (nodes.length > 0) {
         await batchUpsertNodes.mutateAsync(nodes.map((n) => ({
-          id: n.id, projectId, type: n.data.nodeType, title: n.data.title,
+          id: n.id, projectId,
+          type: n.data.nodeType as "script" | "storyboard" | "prompt" | "image_gen" | "asset" | "video_task" | "ai_chat" | "note" | "audio" | "post_process" | "group",
+          title: n.data.title,
           data: n.data.payload as Record<string, unknown>,
           posX: n.position.x, posY: n.position.y,
           width: (n.style?.width as number) ?? 320, height: (n.style?.height as number) ?? 200, zIndex: n.zIndex ?? 0,
@@ -348,6 +355,24 @@ function CanvasInner({ projectId }: { projectId: number }) {
     setShowNodePicker(false);
   }, [addNode, reactFlow]);
 
+  // ── Global aspect ratio lock ────────────────────────────────────────────────
+  const RATIO_PRESETS = ["16:9", "9:16", "1:1", "4:3", "3:4", "2.35:1"];
+  const { batchUpdateNodeData } = useCanvasStore();
+  const applyGlobalRatio = useCallback((ratio: string | null) => {
+    setGlobalAspectRatio(ratio);
+    setShowRatioPicker(false);
+    if (!ratio) { toast.info("已解除纵横比锁定"); return; }
+    const targets = useCanvasStore.getState().nodes.filter(n =>
+      ["storyboard", "prompt", "image_gen"].includes(n.data.nodeType)
+    );
+    if (targets.length > 0) {
+      batchUpdateNodeData(targets.map(n => ({ id: n.id, payload: { aspectRatio: ratio } })));
+      toast.success(`已将 ${targets.length} 个节点纵横比锁定为 ${ratio}`);
+    } else {
+      toast.info(`纵横比锁定为 ${ratio}，新建节点将自动继承`);
+    }
+  }, [batchUpdateNodeData]);
+
   // ── Export ──────────────────────────────────────────────────────────────────
   const handleExport = () => {
     const blob = new Blob([JSON.stringify({
@@ -362,6 +387,41 @@ function CanvasInner({ projectId }: { projectId: number }) {
     toast.success("画布已导出为 JSON");
   };
 
+  // ── Export images ───────────────────────────────────────────────────────────
+  const handleExportImages = useCallback(async () => {
+    const imageNodes = nodes.filter((n) => {
+      const p = n.data.payload as Record<string, unknown>;
+      return (n.data.nodeType === "image_gen" || n.data.nodeType === "storyboard") && p.imageUrl;
+    });
+
+    if (imageNodes.length === 0) {
+      toast.error("没有可导出的图像");
+      return;
+    }
+
+    toast.info(`正在下载 ${imageNodes.length} 张图像...`);
+
+    for (let i = 0; i < imageNodes.length; i++) {
+      const node = imageNodes[i];
+      const p = node.data.payload as Record<string, unknown>;
+      const url = p.imageUrl as string;
+      await new Promise<void>((resolve) => {
+        setTimeout(() => {
+          const a = document.createElement("a");
+          const filename = `${node.data.title.replace(/[^a-zA-Z0-9一-龥]/g, "_")}-${i + 1}.png`;
+          if (url.startsWith("/") || url.startsWith(window.location.origin)) {
+            a.href = url;
+          } else {
+            a.href = `/api/image-proxy?url=${encodeURIComponent(url)}&download=1`;
+          }
+          a.download = filename;
+          a.click();
+          resolve();
+        }, i * 150);
+      });
+    }
+  }, [nodes]);
+
   // ── Keyboard shortcuts ──────────────────────────────────────────────────────
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
@@ -370,7 +430,13 @@ function CanvasInner({ projectId }: { projectId: number }) {
       const isEditing = tag === "INPUT" || tag === "TEXTAREA" || (e.target as HTMLElement)?.isContentEditable;
 
       if ((e.metaKey || e.ctrlKey) && e.key === "s") { e.preventDefault(); saveCanvas(); toast.success("已保存"); }
-      if (e.key === "Escape") { setContextMenu(null); setShowNodePicker(false); }
+      if (e.key === "Escape") { setContextMenu(null); setShowNodePicker(false); setShowNodeSearch(false); }
+
+      // Cmd+K / Ctrl+K — Node search
+      if ((e.metaKey || e.ctrlKey) && e.key === "k") {
+        e.preventDefault();
+        setShowNodeSearch((v) => !v);
+      }
 
       // Duplicate selected node: Cmd+D / Ctrl+D
       if ((e.metaKey || e.ctrlKey) && e.key === "d") {
@@ -378,6 +444,13 @@ function CanvasInner({ projectId }: { projectId: number }) {
         const selected = useCanvasStore.getState().nodes.filter(n => n.selected);
         selected.forEach(n => duplicateNode(n.id));
         if (selected.length > 0) toast.success(`已复制 ${selected.length} 个节点`, { duration: 1200 });
+      }
+
+      // Shift+R: run workflow from selected node
+      if (!isEditing && e.shiftKey && e.key === "R") {
+        e.preventDefault();
+        const selected = nodes.find((n) => n.selected);
+        runWorkflow(selected?.id ?? null);
       }
 
       // Undo: Cmd+Z / Ctrl+Z
@@ -400,7 +473,7 @@ function CanvasInner({ projectId }: { projectId: number }) {
     };
     window.addEventListener("keydown", handler);
     return () => window.removeEventListener("keydown", handler);
-  }, [saveCanvas, undo, redo]);
+  }, [saveCanvas, undo, redo, runWorkflow, nodes]);
 
   const collaboratorList = Array.from(collaborators.values());
 
@@ -566,6 +639,44 @@ function CanvasInner({ projectId }: { projectId: number }) {
             <TooltipContent side="bottom" className="text-xs">演示模式</TooltipContent>
           </Tooltip>
 
+          {/* Templates */}
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <button
+                onClick={() => setShowTemplates(!showTemplates)}
+                className="w-7 h-7 rounded-lg flex items-center justify-center transition-all"
+                style={{
+                  background: showTemplates ? "oklch(0.68 0.22 285 / 0.12)" : "transparent",
+                  border: showTemplates ? "1px solid oklch(0.68 0.22 285 / 0.3)" : "1px solid transparent",
+                  color: showTemplates ? "oklch(0.68 0.22 285)" : "oklch(0.55 0.008 260)",
+                }}
+                onMouseEnter={(e) => { if (!showTemplates) { (e.currentTarget as HTMLElement).style.background = "oklch(0.16 0.008 260)"; (e.currentTarget as HTMLElement).style.color = "oklch(0.80 0.005 260)"; } }}
+                onMouseLeave={(e) => { if (!showTemplates) { (e.currentTarget as HTMLElement).style.background = "transparent"; (e.currentTarget as HTMLElement).style.color = "oklch(0.55 0.008 260)"; } }}
+              >
+                <LayoutGrid className="w-3.5 h-3.5" />
+              </button>
+            </TooltipTrigger>
+            <TooltipContent side="bottom" className="text-xs">工作流模板</TooltipContent>
+          </Tooltip>
+
+          {/* Node Search */}
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <button
+                onClick={() => setShowNodeSearch(true)}
+                className="w-7 h-7 rounded-lg flex items-center justify-center transition-all"
+                style={{ color: "oklch(0.55 0.008 260)" }}
+                onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.background = "oklch(0.16 0.008 260)"; (e.currentTarget as HTMLElement).style.color = "oklch(0.80 0.005 260)"; }}
+                onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.background = "transparent"; (e.currentTarget as HTMLElement).style.color = "oklch(0.55 0.008 260)"; }}
+              >
+                <Search className="w-3.5 h-3.5" />
+              </button>
+            </TooltipTrigger>
+            <TooltipContent side="bottom" className="text-xs">
+              搜索节点 <kbd className="ml-1 px-1 py-0.5 rounded text-[10px] bg-white/10 font-mono">⌘K</kbd>
+            </TooltipContent>
+          </Tooltip>
+
           {/* Assets */}
           <Tooltip>
             <TooltipTrigger asChild>
@@ -585,6 +696,49 @@ function CanvasInner({ projectId }: { projectId: number }) {
             </TooltipTrigger>
             <TooltipContent side="bottom" className="text-xs">素材库</TooltipContent>
           </Tooltip>
+
+          {/* Stats sidebar toggle */}
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <button
+                onClick={() => setShowStatsSidebar((v) => !v)}
+                className="w-7 h-7 rounded-lg flex items-center justify-center transition-all"
+                style={{
+                  background: showStatsSidebar ? "oklch(0.68 0.22 285 / 0.12)" : "transparent",
+                  border: showStatsSidebar ? "1px solid oklch(0.68 0.22 285 / 0.3)" : "1px solid transparent",
+                  color: showStatsSidebar ? "oklch(0.68 0.22 285)" : "oklch(0.55 0.008 260)",
+                }}
+                onMouseEnter={(e) => { if (!showStatsSidebar) { (e.currentTarget as HTMLElement).style.background = "oklch(0.16 0.008 260)"; (e.currentTarget as HTMLElement).style.color = "oklch(0.80 0.005 260)"; } }}
+                onMouseLeave={(e) => { if (!showStatsSidebar) { (e.currentTarget as HTMLElement).style.background = "transparent"; (e.currentTarget as HTMLElement).style.color = "oklch(0.55 0.008 260)"; } }}
+              >
+                <BarChart2 className="w-3.5 h-3.5" />
+              </button>
+            </TooltipTrigger>
+            <TooltipContent side="bottom" className="text-xs">画布统计</TooltipContent>
+          </Tooltip>
+
+          {/* Filmstrip toggle */}
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <button
+                onClick={() => setShowFilmstrip((v) => !v)}
+                className="w-7 h-7 rounded-lg flex items-center justify-center transition-all"
+                style={{
+                  background: showFilmstrip ? "oklch(0.68 0.22 285 / 0.12)" : "transparent",
+                  border: showFilmstrip ? "1px solid oklch(0.68 0.22 285 / 0.3)" : "1px solid transparent",
+                  color: showFilmstrip ? "oklch(0.68 0.22 285)" : "oklch(0.55 0.008 260)",
+                }}
+                onMouseEnter={(e) => { if (!showFilmstrip) { (e.currentTarget as HTMLElement).style.background = "oklch(0.16 0.008 260)"; (e.currentTarget as HTMLElement).style.color = "oklch(0.80 0.005 260)"; } }}
+                onMouseLeave={(e) => { if (!showFilmstrip) { (e.currentTarget as HTMLElement).style.background = "transparent"; (e.currentTarget as HTMLElement).style.color = "oklch(0.55 0.008 260)"; } }}
+              >
+                <Film className="w-3.5 h-3.5" />
+              </button>
+            </TooltipTrigger>
+            <TooltipContent side="bottom" className="text-xs">胶片条</TooltipContent>
+          </Tooltip>
+
+          {/* ── Separator: View panels | Edit actions ── */}
+          <div className="w-px h-4 mx-1" style={{ background: "oklch(0.22 0.008 260)" }} />
 
           {/* Undo */}
           <Tooltip>
@@ -642,7 +796,23 @@ function CanvasInner({ projectId }: { projectId: number }) {
             </TooltipContent>
           </Tooltip>
 
-          {/* Export */}
+          {/* Export Images */}
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <button
+                onClick={handleExportImages}
+                className="w-7 h-7 rounded-lg flex items-center justify-center transition-all"
+                style={{ color: "oklch(0.55 0.008 260)" }}
+                onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.background = "oklch(0.16 0.008 260)"; (e.currentTarget as HTMLElement).style.color = "oklch(0.65 0.20 160)"; }}
+                onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.background = "transparent"; (e.currentTarget as HTMLElement).style.color = "oklch(0.55 0.008 260)"; }}
+              >
+                <Image className="w-3.5 h-3.5" />
+              </button>
+            </TooltipTrigger>
+            <TooltipContent side="bottom" className="text-xs">导出所有图像</TooltipContent>
+          </Tooltip>
+
+          {/* Export JSON */}
           <Tooltip>
             <TooltipTrigger asChild>
               <button
@@ -657,6 +827,72 @@ function CanvasInner({ projectId }: { projectId: number }) {
             </TooltipTrigger>
             <TooltipContent side="bottom" className="text-xs">导出 JSON</TooltipContent>
           </Tooltip>
+          {/* Divider */}
+          <div className="w-px h-4 mx-1" style={{ background: "oklch(0.22 0.008 260)" }} />
+
+          {/* Global aspect ratio lock */}
+          <div className="relative">
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <button
+                  onClick={() => setShowRatioPicker((v) => !v)}
+                  className="flex items-center gap-1 h-7 px-2 rounded-lg text-[11px] transition-all"
+                  style={{
+                    background: globalAspectRatio ? "oklch(0.72 0.20 80 / 0.12)" : "transparent",
+                    border: globalAspectRatio ? "1px solid oklch(0.72 0.20 80 / 0.35)" : "1px solid oklch(0.22 0.008 260)",
+                    color: globalAspectRatio ? "oklch(0.72 0.20 80)" : "oklch(0.50 0.008 260)",
+                  }}
+                  onMouseEnter={(e) => { if (!globalAspectRatio) { (e.currentTarget as HTMLElement).style.background = "oklch(0.16 0.008 260)"; (e.currentTarget as HTMLElement).style.color = "oklch(0.80 0.005 260)"; } }}
+                  onMouseLeave={(e) => { if (!globalAspectRatio) { (e.currentTarget as HTMLElement).style.background = "transparent"; (e.currentTarget as HTMLElement).style.color = "oklch(0.50 0.008 260)"; } }}
+                >
+                  {globalAspectRatio ? <Lock className="w-3 h-3" /> : <Unlock className="w-3 h-3" />}
+                  {globalAspectRatio ?? "比例"}
+                  <ChevronDown className="w-2.5 h-2.5 opacity-60" />
+                </button>
+              </TooltipTrigger>
+              <TooltipContent side="bottom" className="text-xs">全局纵横比锁定</TooltipContent>
+            </Tooltip>
+            {showRatioPicker && (
+              <div
+                className="absolute right-0 top-9 z-50 rounded-xl overflow-hidden"
+                style={{
+                  background: "oklch(0.12 0.007 260)",
+                  border: "1px solid oklch(0.22 0.008 260)",
+                  boxShadow: "0 8px 32px oklch(0 0 0 / 0.55)",
+                  minWidth: 120,
+                }}
+              >
+                <button
+                  className="w-full flex items-center gap-2 px-3 py-2 text-xs transition-all text-left"
+                  style={{ borderBottom: "1px solid oklch(0.17 0.008 260)", color: "oklch(0.55 0.008 260)" }}
+                  onClick={() => applyGlobalRatio(null)}
+                  onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.background = "oklch(0.16 0.008 260)"; }}
+                  onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.background = "transparent"; }}
+                >
+                  <Unlock className="w-3 h-3" />
+                  解除锁定
+                </button>
+                {RATIO_PRESETS.map((r) => (
+                  <button
+                    key={r}
+                    className="w-full flex items-center justify-between px-3 py-2 text-xs transition-all"
+                    style={{
+                      borderBottom: "1px solid oklch(0.17 0.008 260)",
+                      background: globalAspectRatio === r ? "oklch(0.72 0.20 80 / 0.10)" : "transparent",
+                      color: globalAspectRatio === r ? "oklch(0.72 0.20 80)" : "oklch(0.65 0.006 260)",
+                    }}
+                    onClick={() => applyGlobalRatio(r)}
+                    onMouseEnter={(e) => { if (globalAspectRatio !== r) (e.currentTarget as HTMLElement).style.background = "oklch(0.16 0.008 260)"; }}
+                    onMouseLeave={(e) => { if (globalAspectRatio !== r) (e.currentTarget as HTMLElement).style.background = "transparent"; }}
+                  >
+                    <span>{r}</span>
+                    {globalAspectRatio === r && <Lock className="w-2.5 h-2.5" />}
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
+
           {/* Divider */}
           <div className="w-px h-4 mx-1" style={{ background: "oklch(0.22 0.008 260)" }} />
           {/* Logout */}
@@ -696,38 +932,62 @@ function CanvasInner({ projectId }: { projectId: number }) {
             onClick={(e) => e.stopPropagation()}
             style={{
               transform: "translateX(-50%)",
-              background: "oklch(0.11 0.007 260 / 0.97)",
+              background: "oklch(0.11 0.007 260 / 0.98)",
               border: "1px solid oklch(0.22 0.008 260)",
-              boxShadow: "0 16px 60px oklch(0 0 0 / 0.70), 0 4px 16px oklch(0 0 0 / 0.40), 0 0 0 1px oklch(0.22 0.008 260 / 0.5)",
-              backdropFilter: "blur(24px)",
-              minWidth: 480,
+              boxShadow: "0 20px 80px oklch(0 0 0 / 0.75), 0 4px 16px oklch(0 0 0 / 0.40), 0 0 0 1px oklch(0.22 0.008 260 / 0.5)",
+              backdropFilter: "blur(32px)",
+              width: 520,
             }}
           >
-            <div className="px-4 py-3" style={{ borderBottom: "1px solid oklch(0.18 0.008 260)" }}>
-              <p className="text-[11px] font-semibold uppercase tracking-widest" style={{ color: "oklch(0.40 0.006 260)" }}>
-                添加节点
-              </p>
+            <div
+              className="px-4 py-2.5 flex items-center justify-between"
+              style={{ borderBottom: "1px solid oklch(0.17 0.008 260)" }}
+            >
+              <div className="flex items-center gap-2">
+                <Plus className="w-3.5 h-3.5" style={{ color: "oklch(0.68 0.22 285)" }} />
+                <p className="text-[11px] font-semibold uppercase tracking-widest" style={{ color: "oklch(0.42 0.006 260)" }}>
+                  添加节点
+                </p>
+              </div>
+              <p className="text-[10px]" style={{ color: "oklch(0.32 0.006 260)" }}>点击添加到画布中心</p>
             </div>
-            <div className="p-2 grid grid-cols-4 gap-1">
+            <div className="p-2.5 grid grid-cols-4 gap-1.5">
               {NODE_TYPE_LIST.map((config) => {
-                const Icon = ICON_MAP[config.icon] ?? FileText;
+                const Icon = NODE_ICONS[config.icon] ?? FileText;
                 return (
                   <button
                     key={config.type}
                     onClick={() => addNodeAtCenter(config.type)}
-                    className="flex flex-col items-center gap-2 px-3 py-3 rounded-xl transition-all text-center"
+                    className="group/picker flex flex-col items-center gap-2.5 px-2 py-3 rounded-xl transition-all text-center"
                     style={{ color: "oklch(0.70 0.008 260)" }}
-                    onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.background = "oklch(0.16 0.008 260)"; (e.currentTarget as HTMLElement).style.color = "oklch(0.90 0.005 260)"; }}
-                    onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.background = "transparent"; (e.currentTarget as HTMLElement).style.color = "oklch(0.70 0.008 260)"; }}
+                    onMouseEnter={(e) => {
+                      const el = e.currentTarget as HTMLElement;
+                      el.style.background = "oklch(0.16 0.008 260)";
+                      el.style.color = "oklch(0.92 0.005 260)";
+                    }}
+                    onMouseLeave={(e) => {
+                      const el = e.currentTarget as HTMLElement;
+                      el.style.background = "transparent";
+                      el.style.color = "oklch(0.70 0.008 260)";
+                    }}
                   >
                     <div
-                      className="w-9 h-9 rounded-xl flex items-center justify-center flex-shrink-0"
-                      style={{ background: `${config.color}18`, border: `1px solid ${config.color}35` }}
+                      className="w-10 h-10 rounded-xl flex items-center justify-center flex-shrink-0 transition-all"
+                      style={{
+                        background: `${config.color}14`,
+                        border: `1px solid ${config.color}30`,
+                        boxShadow: `0 2px 8px ${config.color}10`,
+                      }}
                     >
-                      <Icon className="w-4.5 h-4.5" style={{ color: config.color, width: 18, height: 18 }} />
+                      <Icon style={{ color: config.color, width: 18, height: 18 }} />
                     </div>
-                    <div>
-                      <p className="text-[11px] font-medium leading-none">{config.label}</p>
+                    <div className="flex flex-col gap-0.5">
+                      <p className="text-[11px] font-semibold leading-none" style={{ letterSpacing: "-0.01em" }}>
+                        {config.label}
+                      </p>
+                      <p className="text-[9px] leading-none" style={{ color: "oklch(0.38 0.006 260)" }}>
+                        {config.defaultTitle}
+                      </p>
                     </div>
                   </button>
                 );
@@ -738,11 +998,12 @@ function CanvasInner({ projectId }: { projectId: number }) {
 
         {/* ── Canvas ── */}
         <div
-          className="flex-1 relative"
+          className="flex-1 relative canvas-vignette"
           onContextMenu={handleCanvasContextMenu}
           onMouseMove={handleMouseMove}
           onClick={() => { setShowNodePicker(false); }}
         >
+          <WorkflowRunProvider value={runState}>
           <ReactFlow
             nodes={nodes}
             edges={edges}
@@ -772,17 +1033,24 @@ function CanvasInner({ projectId }: { projectId: number }) {
           >
             <Background
               variant={BackgroundVariant.Dots}
-              gap={28}
-              size={1}
-              color="oklch(0.22 0.008 260)"
+              gap={24}
+              size={1.5}
+              color="oklch(0.25 0.008 260 / 0.6)"
             />
             <MiniMap
               position="bottom-right"
               nodeColor={(n) => getNodeConfig((n.data as { nodeType: NodeType }).nodeType)?.color ?? "oklch(0.30 0.010 260)"}
               maskColor="oklch(0.09 0.006 260 / 0.85)"
-              style={{ background: "oklch(0.11 0.007 260)", border: "1px solid oklch(0.20 0.008 260)", borderRadius: 12, marginBottom: 64 }}
+              style={{
+                background: "oklch(0.11 0.007 260)",
+                border: "1px solid oklch(0.20 0.008 260)",
+                borderRadius: 12,
+                marginBottom: 72,
+                marginRight: 8,
+              }}
             />
           </ReactFlow>
+          </WorkflowRunProvider>
 
           {/* ── Bottom floating toolbar ── */}
           <div
@@ -816,36 +1084,6 @@ function CanvasInner({ projectId }: { projectId: number }) {
               </TooltipTrigger>
               <TooltipContent side="top" className="text-xs">添加节点</TooltipContent>
             </Tooltip>
-
-            {/* Divider */}
-            <div style={{ width: 1, height: 18, background: "oklch(0.22 0.008 260)", flexShrink: 0 }} />
-
-            {/* Node type quick-add */}
-            {NODE_TYPE_LIST.map((config) => {
-              const Icon = ICON_MAP[config.icon] ?? FileText;
-              return (
-                <Tooltip key={config.type}>
-                  <TooltipTrigger asChild>
-                    <button
-                      onClick={() => addNodeAtCenter(config.type)}
-                      className="w-8 h-8 rounded-xl flex items-center justify-center transition-all"
-                      style={{ color: "oklch(0.50 0.008 260)" }}
-                      onMouseEnter={(e) => {
-                        (e.currentTarget as HTMLElement).style.background = `${config.color}18`;
-                        (e.currentTarget as HTMLElement).style.color = config.color;
-                      }}
-                      onMouseLeave={(e) => {
-                        (e.currentTarget as HTMLElement).style.background = "transparent";
-                        (e.currentTarget as HTMLElement).style.color = "oklch(0.50 0.008 260)";
-                      }}
-                    >
-                      <Icon className="w-3.5 h-3.5" />
-                    </button>
-                  </TooltipTrigger>
-                  <TooltipContent side="top" className="text-xs">{config.label}</TooltipContent>
-                </Tooltip>
-              );
-            })}
 
             {/* Divider */}
             <div style={{ width: 1, height: 18, background: "oklch(0.22 0.008 260)", flexShrink: 0 }} />
@@ -910,6 +1148,44 @@ function CanvasInner({ projectId }: { projectId: number }) {
             {/* Divider */}
             <div style={{ width: 1, height: 18, background: "oklch(0.22 0.008 260)", flexShrink: 0 }} />
 
+            {/* Run workflow button */}
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <button
+                  onClick={() => runWorkflow(null)}
+                  disabled={runState.running || nodes.length === 0}
+                  className="flex items-center gap-1.5 h-8 px-3 rounded-xl text-xs font-semibold transition-all"
+                  style={{
+                    background: runState.running
+                      ? "oklch(0.72 0.22 142 / 0.12)"
+                      : "oklch(0.72 0.22 142 / 0.15)",
+                    border: `1px solid oklch(0.72 0.22 142 / ${runState.running ? "0.5" : "0.35"})`,
+                    color: runState.running ? "oklch(0.75 0.20 142)" : "oklch(0.72 0.22 142)",
+                    cursor: runState.running || nodes.length === 0 ? "not-allowed" : "pointer",
+                    opacity: nodes.length === 0 ? 0.5 : 1,
+                  }}
+                >
+                  {runState.running ? (
+                    <>
+                      <Loader2 className="w-3 h-3 animate-spin" />
+                      运行中 {runState.completedIds.length + runState.failedIds.length}/{runState.runnableCount || nodes.length}
+                    </>
+                  ) : (
+                    <>
+                      <Play className="w-3 h-3" />
+                      运行
+                    </>
+                  )}
+                </button>
+              </TooltipTrigger>
+              <TooltipContent side="top" className="text-xs">
+                运行工作流 <kbd className="ml-1 px-1 py-0.5 rounded text-[10px] bg-white/10 font-mono">Shift+R</kbd>
+              </TooltipContent>
+            </Tooltip>
+
+            {/* Divider */}
+            <div style={{ width: 1, height: 18, background: "oklch(0.22 0.008 260)", flexShrink: 0 }} />
+
             {/* Shortcut help button */}
             <div className="relative">
               <Tooltip>
@@ -961,7 +1237,11 @@ function CanvasInner({ projectId }: { projectId: number }) {
                       { key: "Cmd/Ctrl + Shift + Z", desc: "重做" },
                       { key: "Ctrl + Y", desc: "重做（Windows）" },
                     ]},
+                    { group: "工作流", items: [
+                      { key: "Shift + R", desc: "从选中节点运行工作流" },
+                    ]},
                     { group: "其他", items: [
+                      { key: "Cmd/Ctrl + K", desc: "搜索节点" },
                       { key: "Cmd/Ctrl + S", desc: "保存画布" },
                       { key: "?", desc: "开关快捷键面板" },
                     ]},
@@ -989,6 +1269,11 @@ function CanvasInner({ projectId }: { projectId: number }) {
               )}
             </div>
           </div>
+
+          {/* Filmstrip panel */}
+          {showFilmstrip && (
+            <FilmstripPanel onClose={() => setShowFilmstrip(false)} />
+          )}
 
           {/* Collaborator cursors */}
           <CollaboratorCursors cursors={collaboratorList} viewport={viewport} />
@@ -1040,6 +1325,24 @@ function CanvasInner({ projectId }: { projectId: number }) {
           )}
         </div>
 
+        {/* ── Template panel ── */}
+        {showTemplates && (
+          <div
+            className="w-64 flex flex-col flex-shrink-0 animate-slide-down"
+            style={{
+              background: "oklch(0.09 0.006 260 / 0.95)",
+              backdropFilter: "blur(20px)",
+              borderLeft: "1px solid oklch(0.18 0.008 260)",
+            }}
+          >
+            <TemplatePanel
+              onClose={() => setShowTemplates(false)}
+              centerX={(() => { const vp = reactFlow.getViewport(); return (window.innerWidth / 2 - vp.x) / vp.zoom; })()}
+              centerY={(() => { const vp = reactFlow.getViewport(); return (window.innerHeight / 2 - vp.y) / vp.zoom; })()}
+            />
+          </div>
+        )}
+
         {/* ── Asset panel ── */}
         {showAssets && (
           <div
@@ -1053,7 +1356,133 @@ function CanvasInner({ projectId }: { projectId: number }) {
             <AssetPanel projectId={projectId} onClose={() => setShowAssets(false)} />
           </div>
         )}
+
+        {/* ── Stats sidebar ── */}
+        <div
+          style={{
+            position: "absolute",
+            right: 0,
+            top: 0,
+            bottom: 0,
+            width: 200,
+            background: "oklch(0.10 0.006 260)",
+            borderLeft: "1px solid oklch(0.18 0.007 260)",
+            display: "flex",
+            flexDirection: "column",
+            transform: showStatsSidebar ? "translateX(0)" : "translateX(100%)",
+            transition: "transform 280ms cubic-bezier(0.23, 1, 0.32, 1)",
+            zIndex: 15,
+            pointerEvents: showStatsSidebar ? "auto" : "none",
+          }}
+        >
+          <div className="p-3 flex flex-col gap-3">
+            <p className="text-[10px] font-semibold uppercase tracking-widest" style={{ color: "oklch(0.42 0.006 260)" }}>
+              画布统计
+            </p>
+
+            {/* Node counts by type */}
+            <div className="flex flex-col gap-1.5">
+              {NODE_TYPE_LIST.map((config) => {
+                const count = nodes.filter((n) => n.data.nodeType === config.type).length;
+                if (count === 0) return null;
+                return (
+                  <div key={config.type} className="flex items-center justify-between">
+                    <div className="flex items-center gap-1.5">
+                      <div
+                        className="w-2 h-2 rounded-full flex-shrink-0"
+                        style={{ background: config.color }}
+                      />
+                      <span style={{ fontSize: 11, color: "oklch(0.65 0.005 260)" }}>{config.label}</span>
+                    </div>
+                    <span
+                      className="font-mono text-[11px] px-1.5 py-0.5 rounded"
+                      style={{ background: `${config.color}18`, color: config.color, border: `1px solid ${config.color}28` }}
+                    >
+                      {count}
+                    </span>
+                  </div>
+                );
+              })}
+              {nodes.length === 0 && (
+                <p style={{ fontSize: 11, color: "oklch(0.38 0.006 260)" }}>暂无节点</p>
+              )}
+            </div>
+
+            <div style={{ height: 1, background: "oklch(0.18 0.007 260)" }} />
+
+            {/* Edge count */}
+            <div className="flex items-center justify-between">
+              <span style={{ fontSize: 11, color: "oklch(0.55 0.005 260)" }}>连接数</span>
+              <span className="font-mono text-[11px]" style={{ color: "oklch(0.65 0.005 260)" }}>{edges.length}</span>
+            </div>
+
+            {/* Total nodes */}
+            <div className="flex items-center justify-between">
+              <span style={{ fontSize: 11, color: "oklch(0.55 0.005 260)" }}>节点总数</span>
+              <span className="font-mono text-[11px]" style={{ color: "oklch(0.65 0.005 260)" }}>{nodes.length}</span>
+            </div>
+
+            {/* Last run status */}
+            {(runState.completedIds.length > 0 || runState.failedIds.length > 0) && !runState.running && (
+              <>
+                <div style={{ height: 1, background: "oklch(0.18 0.007 260)" }} />
+                <div>
+                  <p className="text-[10px] font-semibold uppercase tracking-widest mb-1.5" style={{ color: "oklch(0.42 0.006 260)" }}>
+                    上次运行
+                  </p>
+                  <div className="flex items-center gap-1.5">
+                    <div className="w-2 h-2 rounded-full" style={{ background: "oklch(0.72 0.18 155)" }} />
+                    <span style={{ fontSize: 11, color: "oklch(0.65 0.005 260)" }}>
+                      {runState.completedIds.length} 完成
+                    </span>
+                  </div>
+                  {runState.failedIds.length > 0 && (
+                    <div className="flex items-center gap-1.5 mt-0.5">
+                      <div className="w-2 h-2 rounded-full" style={{ background: "oklch(0.62 0.22 25)" }} />
+                      <span style={{ fontSize: 11, color: "oklch(0.65 0.005 260)" }}>
+                        {runState.failedIds.length} 失败
+                      </span>
+                    </div>
+                  )}
+                </div>
+              </>
+            )}
+          </div>
+        </div>
       </div>
+
+      {/* ── Workflow progress bar ── */}
+      {runState.running && (
+        <div
+          className="fixed bottom-0 left-0 right-0 z-40 flex items-center gap-3 px-4 py-2"
+          style={{
+            background: "oklch(0.10 0.007 260 / 0.95)",
+            backdropFilter: "blur(20px)",
+            borderTop: "1px solid oklch(0.20 0.008 260)",
+          }}
+        >
+          <Loader2 className="w-3.5 h-3.5 animate-spin flex-shrink-0" style={{ color: "oklch(0.68 0.22 285)" }} />
+          <div className="flex-1">
+            <div
+              className="h-1.5 rounded-full overflow-hidden"
+              style={{ background: "oklch(0.18 0.008 260)" }}
+            >
+              <div
+                className="h-full rounded-full transition-all duration-300"
+                style={{
+                  width: runState.runnableCount > 0
+                    ? `${(runState.completedIds.length / runState.runnableCount) * 100}%`
+                    : "0%",
+                  background: "linear-gradient(90deg, oklch(0.68 0.22 285), oklch(0.65 0.20 160))",
+                }}
+              />
+            </div>
+          </div>
+          <span className="text-[11px] font-mono flex-shrink-0" style={{ color: "oklch(0.55 0.008 260)" }}>
+            运行中 {runState.completedIds.length}/{runState.runnableCount}
+          </span>
+        </div>
+      )}
 
       {/* ── Context menu ── */}
       {contextMenu && (
@@ -1068,10 +1497,14 @@ function CanvasInner({ projectId }: { projectId: number }) {
             deleteNodeMutation.mutate({ id: nid, projectId });
           } : undefined}
           onDuplicateNode={contextMenu.nodeId ? () => duplicateNode(contextMenu.nodeId!) : undefined}
+          onRunWorkflow={contextMenu.nodeId ? () => runWorkflow(contextMenu.nodeId ?? null) : undefined}
         />
       )}
 
-
+      {/* ── Node search ── */}
+      {showNodeSearch && (
+        <NodeSearch onClose={() => setShowNodeSearch(false)} />
+      )}
 
       {/* ── Presentation mode ── */}
       {showPresentation && (

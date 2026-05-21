@@ -28,10 +28,11 @@ import {
   clearChatMessages,
 } from "../db";
 import { storagePut } from "../storage";
-import { invokeLLM } from "../_core/llm";
+import { invokeLLM, extractTextContent } from "../_core/llm";
 import { generateImage } from "../_core/imageGeneration";
 import { isPoyoVideoProvider, submitPoyoVideo, checkPoyoVideoStatus } from "../_core/poyoVideo";
 import { isHiggsfieldVideoProvider, submitHiggsfieldVideo, checkHiggsfieldVideoStatus } from "../_core/higgsfield";
+import { VIDEO_PROVIDERS } from "../../shared/types";
 
 // ── Projects ──────────────────────────────────────────────────────────────────
 
@@ -94,7 +95,7 @@ export const nodesRouter = router({
       z.object({
         id: z.string().optional(),
         projectId: z.number(),
-        type: z.enum(["script", "storyboard", "prompt", "image_gen", "asset", "video_task", "ai_chat", "note"]),
+        type: z.enum(["script", "storyboard", "prompt", "image_gen", "asset", "video_task", "ai_chat", "note", "audio", "post_process", "group"]),
         title: z.string().optional(),
         data: nodeDataSchema,
         posX: z.number(),
@@ -124,7 +125,7 @@ export const nodesRouter = router({
         z.object({
           id: z.string(),
           projectId: z.number(),
-          type: z.enum(["script", "storyboard", "prompt", "image_gen", "asset", "video_task", "ai_chat", "note"]),
+          type: z.enum(["script", "storyboard", "prompt", "image_gen", "asset", "video_task", "ai_chat", "note", "audio", "post_process", "group"]),
           title: z.string().optional().nullable(),
           data: nodeDataSchema,
           posX: z.number(),
@@ -233,7 +234,7 @@ export const videoTasksRouter = router({
       z.object({
         projectId: z.number(),
         nodeId: z.string(),
-        provider: z.enum(["mock", "poyo_seedance", "poyo_veo", "hf_dop_standard", "hf_dop_preview", "hf_dop_lite", "hf_dop_turbo", "hf_kling_21_pro", "hf_seedance_pro"]),
+        provider: z.enum([...VIDEO_PROVIDERS] as [string, ...string[]]),
         prompt: z.string(),
         negativePrompt: z.string().optional(),
         referenceImageUrl: z.string().optional(),
@@ -411,13 +412,7 @@ export const aiChatRouter = router({
       ];
 
       const response = await invokeLLM({ messages, model: input.model });
-      const rawContent = response.choices?.[0]?.message?.content;
-      const assistantContent: string =
-        typeof rawContent === "string"
-          ? rawContent
-          : Array.isArray(rawContent)
-          ? rawContent.map((p) => (p.type === "text" ? p.text : "")).join("")
-          : "Sorry, I could not generate a response.";
+      const assistantContent = extractTextContent(response) || "Sorry, I could not generate a response.";
 
       // Save assistant message
       await addChatMessage({
@@ -449,7 +444,8 @@ export const imageGenRouter = router({
         referenceImageUrl: z.string().optional(),
         style: z.string().optional(),
         model: z.enum(["manus_forge", "poyo_flux", "poyo_sdxl", "hf_soul_standard", "hf_reve"]).optional(),
-        // Soul Standard specific params
+        poyoAspectRatio: z.string().optional(),
+        poyoQuality: z.enum(["low", "medium", "high"]).optional(),
         widthAndHeight: z.string().optional(),
         quality: z.enum(["720p", "1080p"]).optional(),
         batchSize: z.number().int().min(1).max(4).optional(),
@@ -475,7 +471,10 @@ export const imageGenRouter = router({
         ...(input.referenceImageUrl
           ? { originalImages: [{ url: input.referenceImageUrl, mimeType: "image/jpeg" }] }
           : {}),
-        // Soul Standard specific params passed through
+        ...((input.model === "poyo_flux" || input.model === "poyo_sdxl") ? {
+          size: input.poyoAspectRatio,
+          quality: input.poyoQuality,
+        } : {}),
         ...(input.model === "hf_soul_standard" ? {
           widthAndHeight: input.widthAndHeight,
           quality: input.quality,
@@ -491,5 +490,53 @@ export const imageGenRouter = router({
       });
 
       return { url: result.url, urls: result.urls };
+    }),
+});
+
+// ── Scripts ───────────────────────────────────────────────────────────────────
+
+export const scriptsRouter = router({
+  generateStoryboards: protectedProcedure
+    .input(
+      z.object({
+        content: z.string().min(1),
+        synopsis: z.string().optional(),
+        count: z.number().int().min(2).max(8).default(4),
+      })
+    )
+    .mutation(async ({ input }) => {
+      const systemPrompt = `You are a professional film director and storyboard artist.
+Given a script, break it into exactly ${input.count} visual storyboard scenes.
+Output ONLY a valid JSON array with no markdown fences, no explanation.
+Each element must have these fields:
+- "description": string (2-3 sentences, what the viewer sees)
+- "promptText": string (English, detailed cinematic prompt for image generation)
+- "cameraMovement": string (one of: static, pan-left, pan-right, zoom-in, zoom-out, tilt-up, tilt-down, tracking)
+- "duration": number (scene duration in seconds, integer 2-10)`;
+
+      const userContent = [
+        input.synopsis ? `Synopsis: ${input.synopsis}\n\n` : "",
+        `Script:\n${input.content}`,
+      ].join("");
+
+      const response = await invokeLLM({
+        messages: [
+          { role: "system" as const, content: systemPrompt },
+          { role: "user" as const, content: userContent },
+        ],
+        model: "gemini-2.5-flash",
+      });
+
+      const text = extractTextContent(response);
+      const jsonMatch = text.match(/\[[\s\S]*\]/);
+      if (!jsonMatch) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "AI 未返回有效 JSON" });
+
+      let scenes: Array<{ description: string; promptText: string; cameraMovement?: string; duration?: number }>;
+      try {
+        scenes = JSON.parse(jsonMatch[0]);
+      } catch {
+        throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "JSON 解析失败" });
+      }
+      return { scenes: scenes.slice(0, input.count) };
     }),
 });

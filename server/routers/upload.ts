@@ -29,6 +29,6 @@ export const uploadRouter = router({
       const key = `reference-images/${filename}`;
 
       const { url } = await storagePut(key, buf, input.mimeType);
-      return { url };
+      return { url, storageKey: key };
     }),
 });
