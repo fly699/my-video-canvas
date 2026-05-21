@@ -135,3 +135,13 @@
 - [x] 前端 ImageGenNode：生成后以网格形式展示多张图，点击选中某张作为最终 imageUrl
 - [x] 选中图片高亮边框，未选中半透明；支持重新生成（清空多图）
 - [x] TypeScript 0 errors，测试全部通过
+
+## Phase 17: Lightbox 预览 + 图像下载 + 连线输入
+- [x] 创建 ImageLightbox 组件（全屏遮罩、ESC/点击关闭、左右切换、键盘方向键）
+- [x] ImageGenNode 批量网格：点击图片打开 Lightbox，Lightbox 内可选择/关闭
+- [x] ImageGenNode 已选图预览区域添加下载按鈕（通过 /api/image-proxy 代理下载）
+- [x] 服务端添加 /api/image-proxy 路由（类似 video-proxy，支持 download=1）
+- [x] ImageGenNode 添加右侧输出 Handle（source type）
+- [x] VideoTaskNode 添加左侧参考图输入 Handle（target type）
+- [x] Canvas.tsx onConnect 回调：检测 image_gen→video_task 连线，自动将 imageUrl 填入 VideoTaskNode 的 referenceImageUrl
+- [x] TypeScript 0 errors，测试全部通过

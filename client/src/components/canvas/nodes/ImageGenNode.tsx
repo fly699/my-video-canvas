@@ -1,10 +1,12 @@
 import { memo, useCallback, useRef, useState } from "react";
+import { Handle, Position } from "@xyflow/react";
 import { BaseNode } from "../BaseNode";
 import { useCanvasStore } from "../../../hooks/useCanvasStore";
 import type { ImageGenNodeData, ImageGenModel } from "../../../../../shared/types";
 import { trpc } from "@/lib/trpc";
 import { toast } from "sonner";
-import { Sparkles, Loader2, RefreshCw, Upload, X, Cpu, Check, Grid2X2 } from "lucide-react";
+import { Sparkles, Loader2, RefreshCw, Upload, X, Cpu, Check, Grid2X2, Download, ZoomIn } from "lucide-react";
+import { ImageLightbox } from "../ImageLightbox";
 
 interface Props {
   id: string;
@@ -70,6 +72,7 @@ export const ImageGenNode = memo(function ImageGenNode({ id, selected, data }: P
   const payload = data.payload;
   const [generating, setGenerating] = useState(false);
   const [uploading, setUploading] = useState(false);
+  const [lightboxIndex, setLightboxIndex] = useState<number | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   // Determine if we are in batch/grid mode
@@ -159,6 +162,24 @@ export const ImageGenNode = memo(function ImageGenNode({ id, selected, data }: P
     updateNodeData(id, { imageUrls: undefined, imageUrl: undefined });
   };
 
+  const handleDownloadImage = (url: string) => {
+    if (!url) return;
+    const a = document.createElement("a");
+    const filename = `generated-${Date.now()}.png`;
+    // For same-origin storage paths (/manus-storage/...), download directly
+    if (url.startsWith("/") || url.startsWith(window.location.origin)) {
+      a.href = url;
+      a.download = filename;
+    } else {
+      // For external HTTPS URLs, route through image-proxy
+      a.href = `/api/image-proxy?url=${encodeURIComponent(url)}&download=1`;
+      a.download = filename;
+    }
+    a.click();
+  };
+
+  const handleDownloadSelected = () => handleDownloadImage(payload.imageUrl ?? "");
+
   const isSoul = payload.model === "hf_soul_standard";
   const isReve = payload.model === "hf_reve";
 
@@ -206,7 +227,7 @@ export const ImageGenNode = memo(function ImageGenNode({ id, selected, data }: P
                 return (
                   <button
                     key={idx}
-                    onClick={() => handleSelectImage(url)}
+                    onClick={() => setLightboxIndex(idx)}
                     className="nodrag relative rounded-lg overflow-hidden group"
                     style={{
                       aspectRatio: "1/1",
@@ -233,14 +254,12 @@ export const ImageGenNode = memo(function ImageGenNode({ id, selected, data }: P
                       </div>
                     )}
                     {/* Hover overlay */}
-                    {!isSelected && (
-                      <div
-                        className="absolute inset-0 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center"
-                        style={{ background: "oklch(0.72 0.20 330 / 0.15)" }}
-                      >
-                        <span style={{ fontSize: 9, color: accent, fontWeight: 600, letterSpacing: "0.05em" }}>选择</span>
-                      </div>
-                    )}
+                    <div
+                      className="absolute inset-0 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center"
+                      style={{ background: "oklch(0 0 0 / 0.45)" }}
+                    >
+                      <ZoomIn style={{ width: 16, height: 16, color: "oklch(0.90 0.006 260)" }} />
+                    </div>
                   </button>
                 );
               })}
@@ -252,8 +271,17 @@ export const ImageGenNode = memo(function ImageGenNode({ id, selected, data }: P
                 className="mt-1.5 rounded-lg overflow-hidden"
                 style={{ borderWidth: 1, borderStyle: "solid", borderColor: `oklch(0.72 0.20 330 / 0.3)`, background: "oklch(0.08 0.005 260)" }}
               >
-                <div style={{ fontSize: 9, color: accent, padding: "3px 8px", borderBottom: `1px solid oklch(0.72 0.20 330 / 0.15)`, letterSpacing: "0.05em", fontWeight: 600 }}>
-                  ✓ 已选择
+                <div className="flex items-center justify-between" style={{ padding: "3px 8px", borderBottom: `1px solid oklch(0.72 0.20 330 / 0.15)` }}>
+                  <span style={{ fontSize: 9, color: accent, letterSpacing: "0.05em", fontWeight: 600 }}>✓ 已选择</span>
+                  <button
+                    onClick={handleDownloadSelected}
+                    className="nodrag flex items-center gap-0.5"
+                    style={{ fontSize: 9, color: "oklch(0.55 0.006 260)", cursor: "pointer", background: "none", border: "none", padding: 0 }}
+                    title="下载此图像"
+                  >
+                    <Download style={{ width: 9, height: 9 }} />
+                    下载
+                  </button>
                 </div>
                 <img src={payload.imageUrl} alt="selected" className="w-full object-contain" style={{ maxHeight: 120 }} draggable={false} />
               </div>
@@ -271,6 +299,22 @@ export const ImageGenNode = memo(function ImageGenNode({ id, selected, data }: P
                 className="absolute inset-0 opacity-0 hover:opacity-100 transition-opacity flex items-center justify-center gap-2"
                 style={{ background: "oklch(0 0 0 / 0.55)" }}
               >
+                <button
+                  onClick={() => setLightboxIndex(0)}
+                  className="nodrag flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-medium"
+                  style={{ background: "oklch(0.14 0.007 260 / 0.8)", borderWidth: 1, borderStyle: "solid", borderColor: "oklch(0.28 0.008 260)", color: "oklch(0.75 0.006 260)" }}
+                >
+                  <ZoomIn className="w-3 h-3" />
+                  放大
+                </button>
+                <button
+                  onClick={handleDownloadSelected}
+                  className="nodrag flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-medium"
+                  style={{ background: "oklch(0.14 0.007 260 / 0.8)", borderWidth: 1, borderStyle: "solid", borderColor: "oklch(0.28 0.008 260)", color: "oklch(0.75 0.006 260)" }}
+                >
+                  <Download className="w-3 h-3" />
+                  下载
+                </button>
                 <button
                   onClick={handleGenerate}
                   disabled={generating}
@@ -555,6 +599,31 @@ export const ImageGenNode = memo(function ImageGenNode({ id, selected, data }: P
             : (isSoul && (payload.batchSize ?? 1) > 1 ? `批量生成 ${payload.batchSize} 张` : "生成图像")}
         </button>
       </div>
+
+      {/* Output handle — connects to VideoTaskNode reference image input */}
+      <Handle
+        type="source"
+        position={Position.Right}
+        id="image-out"
+        style={{
+          width: 10, height: 10,
+          background: accent,
+          border: `2px solid oklch(0.08 0.005 260)`,
+          right: -5,
+        }}
+      />
+
+      {/* Lightbox */}
+      {lightboxIndex !== null && (
+        <ImageLightbox
+          images={hasMultiple ? payload.imageUrls! : [payload.imageUrl!]}
+          currentIndex={lightboxIndex}
+          selectedUrl={payload.imageUrl}
+          onClose={() => setLightboxIndex(null)}
+          onNavigate={(idx) => setLightboxIndex(idx)}
+          onSelect={(url) => { handleSelectImage(url); setLightboxIndex(null); }}
+        />
+      )}
     </BaseNode>
   );
 });

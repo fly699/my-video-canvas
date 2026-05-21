@@ -4,6 +4,7 @@ import { useCanvasStore } from "../../../hooks/useCanvasStore";
 import type { VideoTaskNodeData, VideoProvider } from "../../../../../shared/types";
 import { trpc } from "@/lib/trpc";
 import { toast } from "sonner";
+import { Handle, Position } from "@xyflow/react";
 import { Play, Loader2, CheckCircle2, XCircle, Clock, RefreshCw, AlertCircle, Download } from "lucide-react";
 
 interface Props {
@@ -540,6 +541,20 @@ export const VideoTaskNode = memo(function VideoTaskNode({ id, selected, data }:
           </button>
         </div>
       </div>
+
+      {/* Input handle — receives image URL from ImageGenNode */}
+      <Handle
+        type="target"
+        position={Position.Left}
+        id="ref-image-in"
+        style={{
+          width: 10, height: 10,
+          background: "oklch(0.68 0.22 285)",
+          border: "2px solid oklch(0.08 0.005 260)",
+          left: -5,
+        }}
+        title="连接 ImageGenNode 输出作为参考图"
+      />
     </BaseNode>
   );
 });

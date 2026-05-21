@@ -118,19 +118,38 @@ export const useCanvasStore = create<CanvasStore>((set, get) => ({
   },
 
   onConnect: (connection) => {
-    set((state) => ({
-      ...pushHistory(state),
-      edges: addEdge(
-        {
-          ...connection,
-          id: nanoid(),
-          type: "custom",
-          animated: false,
-        },
-        state.edges
-      ) as CanvasEdge[],
-      isDirty: true,
-    }));
+    set((state) => {
+      // Auto-fill referenceImageUrl when connecting image_gen → video_task
+      let updatedNodes = state.nodes;
+      if (connection.source && connection.target) {
+        const sourceNode = state.nodes.find((n) => n.id === connection.source);
+        const targetNode = state.nodes.find((n) => n.id === connection.target);
+        if (
+          sourceNode?.data.nodeType === "image_gen" &&
+          targetNode?.data.nodeType === "video_task" &&
+          connection.sourceHandle === "image-out" &&
+          connection.targetHandle === "ref-image-in"
+        ) {
+          const imageUrl = (sourceNode.data.payload as { imageUrl?: string }).imageUrl;
+          if (imageUrl) {
+            updatedNodes = state.nodes.map((n) =>
+              n.id === connection.target
+                ? { ...n, data: { ...n.data, payload: { ...n.data.payload, referenceImageUrl: imageUrl } } }
+                : n
+            ) as CanvasNode[];
+          }
+        }
+      }
+      return {
+        ...pushHistory(state),
+        nodes: updatedNodes,
+        edges: addEdge(
+          { ...connection, id: nanoid(), type: "custom", animated: false },
+          state.edges
+        ) as CanvasEdge[],
+        isDirty: true,
+      };
+    });
   },
 
   addNode: (type, position) => {
