@@ -8,8 +8,12 @@ export function cn(...inputs: ClassValue[]) {
 export function makeImageProxyFallback(url: string) {
   return (e: React.SyntheticEvent<HTMLImageElement>) => {
     const img = e.currentTarget;
-    if (url.startsWith("http") && !img.src.includes("/api/image-proxy")) {
-      img.src = `/api/image-proxy?url=${encodeURIComponent(url)}`;
+    if (img.src.includes("/api/image-proxy")) return;
+    const absoluteUrl = url.startsWith("/")
+      ? `${window.location.origin}${url}`
+      : url;
+    if (absoluteUrl.startsWith("https://")) {
+      img.src = `/api/image-proxy?url=${encodeURIComponent(absoluteUrl)}`;
     }
   };
 }
