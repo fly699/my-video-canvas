@@ -4,7 +4,7 @@ import { useCanvasStore } from "../../../hooks/useCanvasStore";
 import type { ScriptNodeData } from "../../../../../shared/types";
 import { trpc } from "@/lib/trpc";
 import { toast } from "sonner";
-import { Sparkles, Loader2 } from "lucide-react";
+import { Sparkles, Loader2, Languages } from "lucide-react";
 
 interface Props {
   id: string;
@@ -74,6 +74,14 @@ export const ScriptNode = memo(function ScriptNode({ id, selected, data }: Props
     },
   });
 
+  const polishMutation = trpc.aiEnhance.enhance.useMutation({
+    onSuccess: (result) => {
+      updateNodeData(id, { content: result.result });
+      toast.success("脚本已润色");
+    },
+    onError: (err) => { toast.error("AI 润色失败：" + err.message); },
+  });
+
   return (
     <BaseNode id={id} selected={selected} nodeType="script" title={data.title} minHeight={200} resizable>
       <div className="flex flex-col h-full p-3.5 gap-3">
@@ -95,18 +103,27 @@ export const ScriptNode = memo(function ScriptNode({ id, selected, data }: Props
           onFocus={onFocus}
           onBlur={onBlur}
         />
-        <div
-          className="flex items-center justify-between"
-          style={{ fontSize: 10, color: "oklch(0.38 0.006 260)" }}
-        >
-          <span>{payload.content.length} 字</span>
-          <div className="flex items-center gap-1">
-            <span
-              className="w-1.5 h-1.5 rounded-full"
-              style={{ background: "oklch(0.62 0.18 240 / 0.5)" }}
-            />
-            <span>脚本</span>
-          </div>
+        <div className="flex items-center gap-1 flex-wrap">
+          <button
+            onClick={() => {
+              if (!payload.content.trim()) { toast.error("请先填写脚本内容"); return; }
+              polishMutation.mutate({ text: payload.content, mode: "polish" });
+            }}
+            disabled={polishMutation.isPending}
+            className="nodrag flex items-center gap-1 px-1.5 py-0.5 rounded-md text-[9px] font-medium transition-all"
+            style={{
+              background: polishMutation.isPending ? "oklch(0.13 0.007 260)" : "oklch(0.62 0.18 240 / 0.10)",
+              border: `1px solid ${polishMutation.isPending ? "oklch(0.20 0.008 260)" : "oklch(0.62 0.18 240 / 0.35)"}`,
+              color: polishMutation.isPending ? "oklch(0.38 0.006 260)" : "oklch(0.72 0.16 240)",
+              cursor: polishMutation.isPending ? "not-allowed" : "pointer",
+            }}
+          >
+            {polishMutation.isPending ? <Loader2 className="w-2.5 h-2.5 animate-spin" /> : <Sparkles className="w-2.5 h-2.5" />}
+            AI 润色
+          </button>
+          <span style={{ fontSize: 10, color: "oklch(0.32 0.006 260)", marginLeft: "auto" }}>
+            {payload.content.length} 字
+          </span>
         </div>
         <button
           onClick={() => {

@@ -13,6 +13,7 @@ import {
   scriptsRouter,
   audioGenRouter,
   clipRouter,
+  aiEnhanceRouter,
 } from "./routers/canvas";
 import { uploadRouter } from "./routers/upload";
 
@@ -38,6 +39,7 @@ export const appRouter = router({
   scripts: scriptsRouter,
   audioGen: audioGenRouter,
   clip: clipRouter,
+  aiEnhance: aiEnhanceRouter,
   upload: uploadRouter,
 });
 

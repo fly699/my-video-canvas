@@ -376,6 +376,8 @@ function getDefaultPayload(type: NodeType): NodeData {
       return { characterKind: "person" };
     case "clip":
       return { speed: 1.0, audioVolume: 1.0, status: "idle" };
+    case "post_process":
+      return { selectedEffects: [], effectIntensities: {}, generatedPrompt: "" };
     default:
       return {} as NodeData;
   }

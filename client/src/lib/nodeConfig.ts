@@ -119,7 +119,7 @@ export const NODE_CONFIGS: Record<NodeType, NodeConfig> = {
     color: "oklch(0.65 0.18 190)",
     bgColor: "oklch(0.65 0.18 190 / 0.08)",
     borderColor: "oklch(0.65 0.18 190 / 0.4)",
-    defaultWidth: 300,
+    defaultWidth: 420,
     defaultTitle: "后处理",
   },
   group: {

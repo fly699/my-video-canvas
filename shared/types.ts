@@ -191,7 +191,12 @@ export interface CharacterNodeData {
 
 export type PostProcessOp = "upscale2x" | "upscale4x" | "denoise" | "sharpen" | "fps2x";
 export interface PostProcessNodeData {
-  operation: PostProcessOp;
+  // New: rich effect selection
+  selectedEffects?: string[];
+  effectIntensities?: Record<string, number>;
+  generatedPrompt?: string; // auto-generated English prompt from selected effects
+  // Legacy: simple operation mode (keep for compat)
+  operation?: PostProcessOp;
   inputImageUrl?: string;
   inputVideoUrl?: string;
   outputUrl?: string;

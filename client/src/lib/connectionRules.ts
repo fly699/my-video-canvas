@@ -11,7 +11,7 @@ export const CONNECTION_MATRIX: Partial<Record<NodeType, NodeType[]>> = {
   asset: ["image_gen", "video_task", "clip"],
   ai_chat: ["script", "storyboard", "prompt"],
   clip: ["asset"],
-  post_process: ["asset"],
+  post_process: ["video_task", "image_gen", "asset"],
   note: [],
   group: [],
 };
@@ -107,8 +107,8 @@ export const CONNECTION_HINTS: Record<
   },
   post_process: {
     label: "后处理",
-    outgoing: "→ 素材",
-    incoming: "← 图像 / 视频",
+    outgoing: "→ 视频任务 / 图像生成 / 素材（效果注入）",
+    incoming: "← 图像 / 视频 / 素材",
   },
   group: {
     label: "分组",

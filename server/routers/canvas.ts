@@ -606,3 +606,43 @@ export const clipRouter = router({
       return { duration };
     }),
 });
+
+// ── AI Prompt Enhancement ─────────────────────────────────────────────────────
+export const aiEnhanceRouter = router({
+  enhance: protectedProcedure
+    .input(
+      z.object({
+        text: z.string().min(1).max(8000),
+        mode: z.enum(["expand", "translate_en", "polish", "storyboard_prompt", "translate_zh"]),
+      })
+    )
+    .mutation(async ({ input }) => {
+      const systemPrompts: Record<string, string> = {
+        expand: `You are a creative writing assistant specializing in AI video generation prompts.
+Expand the given text into a rich, detailed description with sensory details, atmosphere, lighting, composition, and cinematic qualities.
+Keep the expanded text concise (2-4 sentences). Respond in the same language as the input. Output ONLY the expanded text.`,
+        translate_en: `You are a professional translator specializing in AI image/video generation prompts.
+Translate the given text to English, optimizing it for AI generation models.
+Use vivid, descriptive, cinematic language. Output ONLY the English translation, nothing else.`,
+        translate_zh: `You are a professional translator.
+Translate the given text to Simplified Chinese.
+Output ONLY the Chinese translation, nothing else.`,
+        polish: `You are a professional screenwriter and script editor.
+Polish the given script text to improve clarity, pacing, narrative flow, and dramatic tension.
+Maintain the original story intent while enhancing the writing quality.
+Respond in the same language as the input. Output ONLY the polished text.`,
+        storyboard_prompt: `You are a cinematographer and storyboard artist.
+Convert the given scene description into a detailed visual prompt for AI video/image generation.
+Include: camera angle, lens type, lighting setup, composition, color palette, atmosphere, action.
+Output an optimized English prompt under 80 words. Output ONLY the prompt text.`,
+      };
+      const response = await invokeLLM({
+        messages: [
+          { role: "system" as const, content: systemPrompts[input.mode] },
+          { role: "user" as const, content: input.text },
+        ],
+        model: "gemini-2.5-flash",
+      });
+      return { result: extractTextContent(response).trim() };
+    }),
+});
