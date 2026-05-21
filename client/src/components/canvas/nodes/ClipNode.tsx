@@ -293,26 +293,28 @@ export const ClipNode = memo(function ClipNode({ id, selected, data }: Props) {
 
   return (
     <BaseNode id={id} selected={selected} nodeType="clip" title={data.title} minHeight={280} resizable>
-      {/* Input handle */}
+      {/* Input handles — square = target/receives */}
       <Handle
         type="target"
         position={Position.Left}
         id="video-in"
-        style={{ top: "35%", background: accent, border: `2px solid oklch(0.12 0.007 260)`, width: 10, height: 10 }}
-        title="连接视频"
+        style={{ top: "35%", borderRadius: 3, background: `${accent}90`, border: `2px solid oklch(0.12 0.007 260)`, width: 12, height: 12, left: -6 }}
+        title="视频输入 ← 连接视频任务或素材"
       />
       <Handle
         type="target"
         position={Position.Left}
         id="audio-in"
-        style={{ top: "65%", background: "oklch(0.68 0.20 340)", border: `2px solid oklch(0.12 0.007 260)`, width: 10, height: 10 }}
-        title="连接音频"
+        style={{ top: "65%", borderRadius: 3, background: "oklch(0.68 0.20 340 / 0.85)", border: `2px solid oklch(0.12 0.007 260)`, width: 12, height: 12, left: -6 }}
+        title="音频输入 ← 连接音频节点"
       />
+      {/* Output handle — circle = source/sends */}
       <Handle
         type="source"
         position={Position.Right}
         id="clip-out"
-        style={{ background: accent, border: `2px solid oklch(0.12 0.007 260)`, width: 10, height: 10 }}
+        style={{ borderRadius: "50%", background: accent, border: `2px solid oklch(0.12 0.007 260)`, width: 12, height: 12, right: -6 }}
+        title="剪辑输出 → 连接素材节点保存"
       />
 
       <div className="flex flex-col gap-3 p-3.5">

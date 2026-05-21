@@ -67,18 +67,33 @@ export const BaseNode = memo(function BaseNode({
 
   const showActions = isHovered || selected;
 
-  // Handle style — tiny dots, only visible on hover/selected
-  const handleBase: React.CSSProperties = {
-    width: 10,
-    height: 10,
-    borderRadius: "50%",
-    background: config.color,
+  // Shared base styles for all handles
+  const handleShared: React.CSSProperties = {
+    width: 12,
+    height: 12,
     border: `2px solid oklch(0.08 0.005 260)`,
-    opacity: isHovered || selected ? 1 : 0,
     transition: "opacity 150ms ease, transform 150ms ease, box-shadow 150ms ease",
-    transform: isHovered || selected ? "scale(1)" : "scale(0.6)",
-    boxShadow: isHovered || selected ? `0 0 0 3px ${config.color}28` : "none",
     zIndex: 10,
+  };
+
+  // Target (input) handle: SQUARE with slight rounding — receives data
+  const targetHandle: React.CSSProperties = {
+    ...handleShared,
+    borderRadius: 3,                                       // square = input
+    background: `${config.color}90`,                       // slightly transparent
+    opacity: isHovered || selected ? 1 : 0.25,            // more visible at rest than before
+    transform: isHovered || selected ? "scale(1.1)" : "scale(0.85)",
+    boxShadow: isHovered || selected ? `0 0 0 3px ${config.color}22` : "none",
+  };
+
+  // Source (output) handle: CIRCLE — sends data
+  const sourceHandle: React.CSSProperties = {
+    ...handleShared,
+    borderRadius: "50%",                                   // circle = output
+    background: config.color,                              // fully colored
+    opacity: isHovered || selected ? 1 : 0.30,            // slightly more visible at rest
+    transform: isHovered || selected ? "scale(1.1)" : "scale(0.85)",
+    boxShadow: isHovered || selected ? `0 0 0 4px ${config.color}30` : "none",
   };
 
   // Derive border & shadow from runStatus
@@ -342,30 +357,10 @@ export const BaseNode = memo(function BaseNode({
       {/* ── Connection Handles ── */}
       {showHandles && (
         <>
-          <Handle
-            type="target"
-            position={Position.Left}
-            id="input"
-            style={{ ...handleBase, top: "50%", left: -5 }}
-          />
-          <Handle
-            type="source"
-            position={Position.Right}
-            id="output"
-            style={{ ...handleBase, top: "50%", right: -5 }}
-          />
-          <Handle
-            type="target"
-            position={Position.Top}
-            id="top"
-            style={{ ...handleBase, left: "50%", top: -5 }}
-          />
-          <Handle
-            type="source"
-            position={Position.Bottom}
-            id="bottom"
-            style={{ ...handleBase, left: "50%", bottom: -5 }}
-          />
+          <Handle type="target" position={Position.Left}   id="input"  style={{ ...targetHandle, top: "50%", left: -6 }} />
+          <Handle type="source" position={Position.Right}  id="output" style={{ ...sourceHandle, top: "50%", right: -6 }} />
+          <Handle type="target" position={Position.Top}    id="top"    style={{ ...targetHandle, left: "50%", top: -6 }} />
+          <Handle type="source" position={Position.Bottom} id="bottom" style={{ ...sourceHandle, left: "50%", bottom: -6 }} />
         </>
       )}
     </div>

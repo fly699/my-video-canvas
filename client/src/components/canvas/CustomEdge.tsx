@@ -1,9 +1,17 @@
 import { useState, useCallback, useRef, useEffect, memo } from "react";
-import { BaseEdge, EdgeLabelRenderer, getBezierPath } from "@xyflow/react";
+import { BaseEdge, EdgeLabelRenderer, getBezierPath, Position } from "@xyflow/react";
 import type { EdgeProps } from "@xyflow/react";
 import { useCanvasStore } from "../../hooks/useCanvasStore";
 import { useWorkflowRunState } from "../../contexts/WorkflowRunContext";
+import { getNodeConfig } from "../../lib/nodeConfig";
 import { Check, X, Trash2 } from "lucide-react";
+
+function arrowPoints(tx: number, ty: number, pos: Position, sz: number, hw: number): string {
+  if (pos === Position.Left)  return `${tx+sz},${ty-hw} ${tx+sz},${ty+hw} ${tx},${ty}`;
+  if (pos === Position.Right) return `${tx-sz},${ty-hw} ${tx-sz},${ty+hw} ${tx},${ty}`;
+  if (pos === Position.Top)   return `${tx-hw},${ty+sz} ${tx+hw},${ty+sz} ${tx},${ty}`;
+  return `${tx-hw},${ty-sz} ${tx+hw},${ty-sz} ${tx},${ty}`;
+}
 
 export const CustomEdge = memo(function CustomEdge({
   id,
@@ -16,12 +24,17 @@ export const CustomEdge = memo(function CustomEdge({
   const sourceRunning = running && currentNodeId === source;
   const sourceCompleted = completedIds.includes(source ?? "");
   const sourceFailed = failedIds.includes(source ?? "");
+
+  const nodes = useCanvasStore(s => s.nodes);
+  const sourceNodeType = nodes.find(n => n.id === source)?.data.nodeType as string | undefined;
+  const typeColor = sourceNodeType ? getNodeConfig(sourceNodeType as Parameters<typeof getNodeConfig>[0]).color : null;
+
   const [edgePath, labelX, labelY] = getBezierPath({
     sourceX, sourceY, sourcePosition,
     targetX, targetY, targetPosition,
   });
 
-  const { updateEdgeLabel, edges, onEdgesChange } = useCanvasStore();
+  const { updateEdgeLabel, onEdgesChange } = useCanvasStore();
   const [editing, setEditing] = useState(false);
   const [editValue, setEditValue] = useState(typeof label === "string" ? label : "");
   const [hovered, setHovered] = useState(false);
@@ -56,6 +69,20 @@ export const CustomEdge = memo(function CustomEdge({
   const hasLabel = typeof label === "string" && label.trim().length > 0;
   const showControls = hovered || selected;
 
+  const strokeColor = sourceCompleted
+    ? "oklch(0.60 0.18 155 / 0.85)"
+    : sourceFailed
+      ? "oklch(0.55 0.18 25 / 0.75)"
+      : selected
+        ? "oklch(0.68 0.22 285)"
+        : hovered
+          ? "oklch(0.55 0.015 260)"
+          : typeColor
+            ? `${typeColor}55`
+            : "oklch(0.32 0.010 260)";
+
+  const strokeWidth = selected ? 3 : hovered ? 2.5 : 2;
+
   return (
     <>
       {/* Invisible wider hit area */}
@@ -74,16 +101,8 @@ export const CustomEdge = memo(function CustomEdge({
         path={edgePath}
         interactionWidth={0}
         style={{
-          stroke: sourceCompleted
-            ? "oklch(0.60 0.18 155 / 0.70)"
-            : sourceFailed
-              ? "oklch(0.55 0.18 25 / 0.60)"
-              : selected
-                ? "oklch(0.68 0.22 285)"
-                : hovered
-                  ? "oklch(0.50 0.015 260)"
-                  : "oklch(0.28 0.010 260)",
-          strokeWidth: selected ? 1.5 : hovered ? 1.5 : 1,
+          stroke: strokeColor,
+          strokeWidth,
           filter: selected
             ? "drop-shadow(0 0 4px oklch(0.68 0.22 285 / 0.40))"
             : sourceCompleted
@@ -111,6 +130,14 @@ export const CustomEdge = memo(function CustomEdge({
           pointerEvents="none"
         />
       )}
+
+      {/* Arrowhead at target end */}
+      <polygon
+        points={arrowPoints(targetX, targetY, targetPosition, 9, 5)}
+        fill={strokeColor}
+        opacity={0.9}
+        pointerEvents="none"
+      />
 
       <EdgeLabelRenderer>
         <div

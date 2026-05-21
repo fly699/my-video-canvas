@@ -824,17 +824,19 @@ export const ImageGenNode = memo(function ImageGenNode({ id, selected, data }: P
         </div>{/* end input collapse wrapper */}
       </div>
 
-      {/* Output handle — connects to VideoTaskNode reference image input */}
+      {/* Output handle — source/circle = sends image to VideoTaskNode */}
       <Handle
         type="source"
         position={Position.Right}
         id="image-out"
         style={{
-          width: 10, height: 10,
+          width: 12, height: 12,
+          borderRadius: "50%",
           background: accent,
           border: `2px solid oklch(0.08 0.005 260)`,
-          right: -5,
+          right: -6,
         }}
+        title="图像输出 → 连接到视频任务参考图"
       />
 
       {/* Lightbox */}

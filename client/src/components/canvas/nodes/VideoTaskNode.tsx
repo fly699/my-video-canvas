@@ -760,18 +760,19 @@ export const VideoTaskNode = memo(function VideoTaskNode({ id, selected, data }:
         </div>{/* end input collapse wrapper */}
       </div>
 
-      {/* Input handle — receives image URL from ImageGenNode */}
+      {/* Input handle — target/square = receives image from ImageGenNode */}
       <Handle
         type="target"
         position={Position.Left}
         id="ref-image-in"
         style={{
-          width: 10, height: 10,
-          background: "oklch(0.68 0.22 285)",
+          width: 12, height: 12,
+          borderRadius: 3,
+          background: "oklch(0.68 0.22 285 / 0.85)",
           border: "2px solid oklch(0.08 0.005 260)",
-          left: -5,
+          left: -6,
         }}
-        title="连接 ImageGenNode 输出作为参考图"
+        title="参考图输入 ← 连接图像生成节点"
       />
     </BaseNode>
   );
