@@ -269,7 +269,7 @@ export async function mergeVideos(opts: MergeOptions): Promise<MergeResult> {
       let timeOffset = 0;
 
       for (let i = 1; i < n; i++) {
-        timeOffset += durations[i - 1] - td;
+        timeOffset = Math.max(0, timeOffset + durations[i - 1] - td);
         const outLabel = i === n - 1 ? "[vout]" : `[v${i}]`;
         filterStr += `${lastLabel}[${i}:v]xfade=transition=${xfadeType}:duration=${td.toFixed(3)}:offset=${timeOffset.toFixed(3)}${outLabel};`;
         lastLabel = `[v${i}]`;

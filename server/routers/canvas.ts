@@ -161,7 +161,8 @@ export const nodesRouter = router({
       )
     )
     .mutation(async ({ ctx, input }) => {
-      if (input.length > 0) await assertProjectOwner(input[0].projectId, ctx.user.id);
+      const projectIds = Array.from(new Set(input.map((n) => n.projectId)));
+      await Promise.all(projectIds.map((pid) => assertProjectOwner(pid, ctx.user.id)));
       await batchUpsertNodes(input.map((n) => ({ ...n, data: n.data as Record<string, unknown> })));
       return { success: true };
     }),
@@ -257,7 +258,10 @@ const POLL_THROTTLE_MS = 4_000;
 export const videoTasksRouter = router({
   list: protectedProcedure
     .input(z.object({ projectId: z.number() }))
-    .query(({ input }) => getVideoTasksByProject(input.projectId)),
+    .query(async ({ ctx, input }) => {
+      await assertProjectOwner(input.projectId, ctx.user.id);
+      return getVideoTasksByProject(input.projectId);
+    }),
 
   create: protectedProcedure
     .input(
@@ -322,9 +326,10 @@ export const videoTasksRouter = router({
 
   poll: protectedProcedure
     .input(z.object({ id: z.number() }))
-    .query(async ({ input }) => {
+    .query(async ({ ctx, input }) => {
       const task = await getVideoTask(input.id);
       if (!task) return null;
+      if (task.userId !== ctx.user.id) throw new TRPCError({ code: "FORBIDDEN", message: "Access denied" });
 
       // For poyo.ai tasks still processing, sync status from upstream (throttled)
       if (task.status === "processing" && task.externalTaskId && isPoyoVideoProvider(task.provider)) {

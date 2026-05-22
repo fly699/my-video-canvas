@@ -70,7 +70,7 @@ export const ImageGenNode = memo(function ImageGenNode({ id, selected, data }: P
   const [uploading, setUploading] = useState(false);
   const [lightboxIndex, setLightboxIndex] = useState<number | null>(null);
   const [paramsExpanded, setParamsExpanded] = useState(false);
-  const [seedLocked, setSeedLocked] = useState(!!(payload.seed));
+  const [seedLocked, setSeedLocked] = useState(payload.seed != null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   // Determine if we are in batch/grid mode
@@ -111,7 +111,7 @@ export const ImageGenNode = memo(function ImageGenNode({ id, selected, data }: P
   );
 
   const handlePropagateSeed = useCallback(() => {
-    if (!payload.seed) return;
+    if (payload.seed == null) return;
     const { nodes: allNodes, edges: allEdges, batchUpdateNodeData } = useCanvasStore.getState();
     const updates = allEdges
       .filter(e => e.source === id)

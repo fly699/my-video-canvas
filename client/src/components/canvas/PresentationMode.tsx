@@ -261,6 +261,14 @@ export const PresentationMode = memo(function PresentationMode({ nodes, onClose 
   });
 
   const [index, setIndex] = useState(0);
+
+  // Clamp index when the node list shrinks (e.g. a node is deleted while presentation is open)
+  useEffect(() => {
+    if (sorted.length > 0 && index >= sorted.length) {
+      setIndex(sorted.length - 1);
+    }
+  }, [sorted.length, index]);
+
   const current = sorted[index];
 
   const prev = useCallback(() => setIndex((i) => Math.max(0, i - 1)), []);

@@ -664,23 +664,28 @@ function CanvasInner({ projectId }: { projectId: number }) {
       const tag = (e.target as HTMLElement)?.tagName;
       const isEditing = tag === "INPUT" || tag === "TEXTAREA" || (e.target as HTMLElement)?.isContentEditable;
 
-      if ((e.metaKey || e.ctrlKey) && e.key === "s") { e.preventDefault(); saveCanvas(); toast.success("已保存"); }
+      if ((e.metaKey || e.ctrlKey) && e.key === "s") {
+        e.preventDefault();
+        const wasDirty = useCanvasStore.getState().isDirty;
+        saveCanvas();
+        if (wasDirty) toast.success("已保存");
+      }
       if (e.key === "Escape") { setContextMenu(null); setShowNodePicker(false); setShowNodeSearch(false); setShowTemplates(false); }
 
-      // Cmd+K / Ctrl+K — Node search
-      if ((e.metaKey || e.ctrlKey) && e.key === "k") {
+      // Cmd+K / Ctrl+K — Node search (skip when typing in an input)
+      if (!isEditing && (e.metaKey || e.ctrlKey) && e.key === "k") {
         e.preventDefault();
         setShowNodeSearch((v) => !v);
       }
 
-      // Cmd+T / Ctrl+T — Templates
-      if ((e.metaKey || e.ctrlKey) && e.key === "t") {
+      // Cmd+T / Ctrl+T — Templates (skip when typing in an input)
+      if (!isEditing && (e.metaKey || e.ctrlKey) && e.key === "t") {
         e.preventDefault();
         setShowTemplates((v) => !v);
       }
 
-      // Duplicate selected node: Cmd+D / Ctrl+D
-      if ((e.metaKey || e.ctrlKey) && e.key === "d") {
+      // Duplicate selected node: Cmd+D / Ctrl+D (skip when typing in an input)
+      if (!isEditing && (e.metaKey || e.ctrlKey) && e.key === "d") {
         e.preventDefault();
         const selected = useCanvasStore.getState().nodes.filter(n => n.selected);
         selected.forEach(n => duplicateNode(n.id));

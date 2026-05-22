@@ -119,7 +119,9 @@ export const PromptNode = memo(function PromptNode({ id, selected, data }: Props
         updateNodeData(id, { imageUrls: result.urls, imageUrl: result.urls[0], selectedImageIndex: 0 });
         toast.success(`${result.urls.length} 张图像已生成`);
       } else {
-        updateNodeData(id, { imageUrl: result.url, imageUrls: undefined, selectedImageIndex: undefined });
+        const imageUrl = result.url ?? result.urls?.[0];
+        if (!imageUrl) { toast.error("生成完成但未返回图像"); return; }
+        updateNodeData(id, { imageUrl, imageUrls: undefined, selectedImageIndex: undefined });
         toast.success("图像已生成");
       }
     },

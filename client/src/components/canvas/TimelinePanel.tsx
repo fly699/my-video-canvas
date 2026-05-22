@@ -64,6 +64,7 @@ export function TimelinePanel({ onClose }: TimelinePanelProps) {
   useEffect(() => {
     if (playingId !== null && !videoClips.some((c) => c.nodeId === playingId)) {
       videoRefs.current[playingId]?.pause();
+      delete videoRefs.current[playingId];
       setPlayingId(null);
     }
   }, [videoClips, playingId]);
@@ -79,8 +80,8 @@ export function TimelinePanel({ onClose }: TimelinePanelProps) {
       el.pause();
       setPlayingId(null);
     } else {
-      if (playingId && videoRefs.current[playingId]) {
-        videoRefs.current[playingId]!.pause();
+      if (playingId) {
+        videoRefs.current[playingId]?.pause();
       }
       el.play().catch(() => {});
       setPlayingId(nodeId);
