@@ -1,5 +1,5 @@
 import { useReactFlow } from "@xyflow/react";
-import { X } from "lucide-react";
+import { X, Film, ImageOff } from "lucide-react";
 import { useCanvasStore } from "../../hooks/useCanvasStore";
 import { getNodeConfig } from "../../lib/nodeConfig";
 import type { NodeType } from "../../../../shared/types";
@@ -34,6 +34,7 @@ export function FilmstripPanel({ onClose }: FilmstripPanelProps) {
 
   return (
     <div
+      className="canvas-filmstrip"
       style={{
         position: "absolute",
         bottom: 72,
@@ -61,17 +62,20 @@ export function FilmstripPanel({ onClose }: FilmstripPanelProps) {
           borderBottom: "1px solid var(--c-bd1)",
         }}
       >
-        <span
-          style={{
-            fontSize: 11,
-            fontWeight: 600,
-            letterSpacing: "0.08em",
-            textTransform: "uppercase",
-            color: "var(--c-t4)",
-          }}
-        >
-          {mediaNodes.length} 帧
-        </span>
+        <div style={{ display: "flex", alignItems: "center", gap: 5 }}>
+          <Film style={{ width: 11, height: 11, color: "var(--c-t4)" }} />
+          <span
+            style={{
+              fontSize: 11,
+              fontWeight: 600,
+              letterSpacing: "0.08em",
+              textTransform: "uppercase",
+              color: "var(--c-t4)",
+            }}
+          >
+            胶片条 · {mediaNodes.length} 帧
+          </span>
+        </div>
         <button
           onClick={onClose}
           style={{
@@ -109,7 +113,7 @@ export function FilmstripPanel({ onClose }: FilmstripPanelProps) {
           display: "flex",
           alignItems: "center",
           gap: 8,
-          padding: "0 12px",
+          padding: "6px 12px",
           scrollbarWidth: "thin",
           scrollbarColor: "var(--c-bd3) transparent",
         }}
@@ -119,14 +123,16 @@ export function FilmstripPanel({ onClose }: FilmstripPanelProps) {
             style={{
               flex: 1,
               display: "flex",
+              flexDirection: "column",
               alignItems: "center",
               justifyContent: "center",
+              gap: 6,
               color: "var(--c-t4)",
-              fontSize: 12,
               userSelect: "none",
             }}
           >
-            暂无素材，先生成图像或视频
+            <ImageOff style={{ width: 18, height: 18, opacity: 0.5 }} />
+            <span style={{ fontSize: 11 }}>暂无素材，先生成图像或视频</span>
           </div>
         ) : (
           sortedNodes.map((node, index) => {
@@ -294,6 +300,7 @@ function FilmFrame({
         <span
           style={{
             fontSize: 10,
+            fontWeight: 500,
             color: isSelected ? accentColor : "var(--c-t3)",
             whiteSpace: "nowrap",
             overflow: "hidden",

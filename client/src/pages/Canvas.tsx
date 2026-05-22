@@ -773,10 +773,7 @@ function CanvasInner({ projectId }: { projectId: number }) {
         {/* Back */}
         <button
           onClick={() => navigate("/")}
-          className="w-7 h-7 rounded-lg flex items-center justify-center transition-colors"
-          style={{ color: "var(--c-t3)" }}
-          onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.background = "var(--c-elevated)"; (e.currentTarget as HTMLElement).style.color = "var(--c-t1)"; }}
-          onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.background = "transparent"; (e.currentTarget as HTMLElement).style.color = "var(--c-t3)"; }}
+          className="topbar-btn"
         >
           <ChevronLeft className="w-4 h-4" />
         </button>
@@ -876,10 +873,7 @@ function CanvasInner({ projectId }: { projectId: number }) {
             <TooltipTrigger asChild>
               <button
                 onClick={() => setShowPresentation(true)}
-                className="w-7 h-7 rounded-lg flex items-center justify-center transition-all"
-                style={{ color: "var(--c-t3)" }}
-                onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.background = "var(--c-elevated)"; (e.currentTarget as HTMLElement).style.color = "var(--c-t1)"; }}
-                onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.background = "transparent"; (e.currentTarget as HTMLElement).style.color = "var(--c-t3)"; }}
+                className="topbar-btn"
               >
                 <Play className="w-3.5 h-3.5" />
               </button>
@@ -892,14 +886,9 @@ function CanvasInner({ projectId }: { projectId: number }) {
             <TooltipTrigger asChild>
               <button
                 onClick={() => setShowTemplates(!showTemplates)}
-                className="w-7 h-7 rounded-lg flex items-center justify-center transition-all"
-                style={{
-                  background: showTemplates ? "oklch(0.68 0.22 285 / 0.12)" : "transparent",
-                  border: showTemplates ? "1px solid oklch(0.68 0.22 285 / 0.3)" : "1px solid transparent",
-                  color: showTemplates ? "oklch(0.68 0.22 285)" : "var(--c-t3)",
-                }}
-                onMouseEnter={(e) => { if (!showTemplates) { (e.currentTarget as HTMLElement).style.background = "var(--c-elevated)"; (e.currentTarget as HTMLElement).style.color = "var(--c-t1)"; } }}
-                onMouseLeave={(e) => { if (!showTemplates) { (e.currentTarget as HTMLElement).style.background = "transparent"; (e.currentTarget as HTMLElement).style.color = "var(--c-t3)"; } }}
+                className="topbar-btn"
+                data-active={showTemplates ? "true" : undefined}
+                style={showTemplates ? { background: "oklch(0.68 0.22 285 / 0.12)", border: "1px solid oklch(0.68 0.22 285 / 0.3)", color: "oklch(0.68 0.22 285)" } : undefined}
               >
                 <LayoutGrid className="w-3.5 h-3.5" />
               </button>
@@ -914,10 +903,7 @@ function CanvasInner({ projectId }: { projectId: number }) {
             <TooltipTrigger asChild>
               <button
                 onClick={() => setShowNodeSearch(true)}
-                className="w-7 h-7 rounded-lg flex items-center justify-center transition-all"
-                style={{ color: "var(--c-t3)" }}
-                onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.background = "var(--c-elevated)"; (e.currentTarget as HTMLElement).style.color = "var(--c-t1)"; }}
-                onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.background = "transparent"; (e.currentTarget as HTMLElement).style.color = "var(--c-t3)"; }}
+                className="topbar-btn"
               >
                 <Search className="w-3.5 h-3.5" />
               </button>
@@ -932,14 +918,9 @@ function CanvasInner({ projectId }: { projectId: number }) {
             <TooltipTrigger asChild>
               <button
                 onClick={() => setShowAssets(!showAssets)}
-                className="w-7 h-7 rounded-lg flex items-center justify-center transition-all"
-                style={{
-                  background: showAssets ? "oklch(0.68 0.22 285 / 0.12)" : "transparent",
-                  border: showAssets ? "1px solid oklch(0.68 0.22 285 / 0.3)" : "1px solid transparent",
-                  color: showAssets ? "oklch(0.68 0.22 285)" : "var(--c-t3)",
-                }}
-                onMouseEnter={(e) => { if (!showAssets) { (e.currentTarget as HTMLElement).style.background = "var(--c-elevated)"; (e.currentTarget as HTMLElement).style.color = "var(--c-t1)"; } }}
-                onMouseLeave={(e) => { if (!showAssets) { (e.currentTarget as HTMLElement).style.background = "transparent"; (e.currentTarget as HTMLElement).style.color = "var(--c-t3)"; } }}
+                className="topbar-btn"
+                data-active={showAssets ? "true" : undefined}
+                style={showAssets ? { background: "oklch(0.68 0.22 285 / 0.12)", border: "1px solid oklch(0.68 0.22 285 / 0.3)", color: "oklch(0.68 0.22 285)" } : undefined}
               >
                 <Paperclip className="w-3.5 h-3.5" />
               </button>
@@ -952,14 +933,9 @@ function CanvasInner({ projectId }: { projectId: number }) {
             <TooltipTrigger asChild>
               <button
                 onClick={() => setShowStatsSidebar((v) => !v)}
-                className="w-7 h-7 rounded-lg flex items-center justify-center transition-all"
-                style={{
-                  background: showStatsSidebar ? "oklch(0.68 0.22 285 / 0.12)" : "transparent",
-                  border: showStatsSidebar ? "1px solid oklch(0.68 0.22 285 / 0.3)" : "1px solid transparent",
-                  color: showStatsSidebar ? "oklch(0.68 0.22 285)" : "var(--c-t3)",
-                }}
-                onMouseEnter={(e) => { if (!showStatsSidebar) { (e.currentTarget as HTMLElement).style.background = "var(--c-elevated)"; (e.currentTarget as HTMLElement).style.color = "var(--c-t1)"; } }}
-                onMouseLeave={(e) => { if (!showStatsSidebar) { (e.currentTarget as HTMLElement).style.background = "transparent"; (e.currentTarget as HTMLElement).style.color = "var(--c-t3)"; } }}
+                className="topbar-btn"
+                data-active={showStatsSidebar ? "true" : undefined}
+                style={showStatsSidebar ? { background: "oklch(0.68 0.22 285 / 0.12)", border: "1px solid oklch(0.68 0.22 285 / 0.3)", color: "oklch(0.68 0.22 285)" } : undefined}
               >
                 <BarChart2 className="w-3.5 h-3.5" />
               </button>
@@ -972,14 +948,9 @@ function CanvasInner({ projectId }: { projectId: number }) {
             <TooltipTrigger asChild>
               <button
                 onClick={() => setShowFilmstrip((v) => !v)}
-                className="w-7 h-7 rounded-lg flex items-center justify-center transition-all"
-                style={{
-                  background: showFilmstrip ? "oklch(0.68 0.22 285 / 0.12)" : "transparent",
-                  border: showFilmstrip ? "1px solid oklch(0.68 0.22 285 / 0.3)" : "1px solid transparent",
-                  color: showFilmstrip ? "oklch(0.68 0.22 285)" : "var(--c-t3)",
-                }}
-                onMouseEnter={(e) => { if (!showFilmstrip) { (e.currentTarget as HTMLElement).style.background = "var(--c-elevated)"; (e.currentTarget as HTMLElement).style.color = "var(--c-t1)"; } }}
-                onMouseLeave={(e) => { if (!showFilmstrip) { (e.currentTarget as HTMLElement).style.background = "transparent"; (e.currentTarget as HTMLElement).style.color = "var(--c-t3)"; } }}
+                className="topbar-btn"
+                data-active={showFilmstrip ? "true" : undefined}
+                style={showFilmstrip ? { background: "oklch(0.68 0.22 285 / 0.12)", border: "1px solid oklch(0.68 0.22 285 / 0.3)", color: "oklch(0.68 0.22 285)" } : undefined}
               >
                 <Film className="w-3.5 h-3.5" />
               </button>
@@ -992,14 +963,9 @@ function CanvasInner({ projectId }: { projectId: number }) {
             <TooltipTrigger asChild>
               <button
                 onClick={() => setShowTimeline((v) => !v)}
-                className="w-7 h-7 rounded-lg flex items-center justify-center transition-all"
-                style={{
-                  background: showTimeline ? "oklch(0.62 0.20 25 / 0.12)" : "transparent",
-                  border: showTimeline ? "1px solid oklch(0.62 0.20 25 / 0.3)" : "1px solid transparent",
-                  color: showTimeline ? "oklch(0.65 0.18 30)" : "var(--c-t3)",
-                }}
-                onMouseEnter={(e) => { if (!showTimeline) { (e.currentTarget as HTMLElement).style.background = "var(--c-elevated)"; (e.currentTarget as HTMLElement).style.color = "var(--c-t1)"; } }}
-                onMouseLeave={(e) => { if (!showTimeline) { (e.currentTarget as HTMLElement).style.background = "transparent"; (e.currentTarget as HTMLElement).style.color = "var(--c-t3)"; } }}
+                className="topbar-btn"
+                data-active={showTimeline ? "true" : undefined}
+                style={showTimeline ? { background: "oklch(0.62 0.20 25 / 0.12)", border: "1px solid oklch(0.62 0.20 25 / 0.3)", color: "oklch(0.65 0.18 30)" } : undefined}
               >
                 <ListVideo className="w-3.5 h-3.5" />
               </button>
@@ -1012,14 +978,9 @@ function CanvasInner({ projectId }: { projectId: number }) {
             <TooltipTrigger asChild>
               <button
                 onClick={() => setShowSnapshots((v) => !v)}
-                className="w-7 h-7 rounded-lg flex items-center justify-center transition-all"
-                style={{
-                  background: showSnapshots ? "oklch(0.68 0.22 45 / 0.12)" : "transparent",
-                  border: showSnapshots ? "1px solid oklch(0.68 0.22 45 / 0.3)" : "1px solid transparent",
-                  color: showSnapshots ? "oklch(0.72 0.18 45)" : "var(--c-t3)",
-                }}
-                onMouseEnter={(e) => { if (!showSnapshots) { (e.currentTarget as HTMLElement).style.background = "var(--c-elevated)"; (e.currentTarget as HTMLElement).style.color = "var(--c-t1)"; } }}
-                onMouseLeave={(e) => { if (!showSnapshots) { (e.currentTarget as HTMLElement).style.background = "transparent"; (e.currentTarget as HTMLElement).style.color = "var(--c-t3)"; } }}
+                className="topbar-btn"
+                data-active={showSnapshots ? "true" : undefined}
+                style={showSnapshots ? { background: "oklch(0.68 0.22 45 / 0.12)", border: "1px solid oklch(0.68 0.22 45 / 0.3)", color: "oklch(0.72 0.18 45)" } : undefined}
               >
                 <History className="w-3.5 h-3.5" />
               </button>
@@ -1036,10 +997,7 @@ function CanvasInner({ projectId }: { projectId: number }) {
               <button
                 onClick={() => { undo(); toast.info("已撤销", { duration: 1200 }); }}
                 disabled={past.length === 0}
-                className="w-7 h-7 rounded-lg flex items-center justify-center transition-all"
-                style={{ color: past.length === 0 ? "var(--c-bd3)" : "var(--c-t3)", cursor: past.length === 0 ? "not-allowed" : "pointer" }}
-                onMouseEnter={(e) => { if (past.length > 0) { (e.currentTarget as HTMLElement).style.background = "var(--c-elevated)"; (e.currentTarget as HTMLElement).style.color = "var(--c-t1)"; } }}
-                onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.background = "transparent"; (e.currentTarget as HTMLElement).style.color = past.length === 0 ? "var(--c-bd3)" : "var(--c-t3)"; }}
+                className="topbar-btn"
               >
                 <Undo2 className="w-3.5 h-3.5" />
               </button>
@@ -1055,10 +1013,7 @@ function CanvasInner({ projectId }: { projectId: number }) {
               <button
                 onClick={() => { redo(); toast.info("已重做", { duration: 1200 }); }}
                 disabled={future.length === 0}
-                className="w-7 h-7 rounded-lg flex items-center justify-center transition-all"
-                style={{ color: future.length === 0 ? "var(--c-bd3)" : "var(--c-t3)", cursor: future.length === 0 ? "not-allowed" : "pointer" }}
-                onMouseEnter={(e) => { if (future.length > 0) { (e.currentTarget as HTMLElement).style.background = "var(--c-elevated)"; (e.currentTarget as HTMLElement).style.color = "var(--c-t1)"; } }}
-                onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.background = "transparent"; (e.currentTarget as HTMLElement).style.color = future.length === 0 ? "var(--c-bd3)" : "var(--c-t3)"; }}
+                className="topbar-btn"
               >
                 <Redo2 className="w-3.5 h-3.5" />
               </button>
@@ -1073,10 +1028,7 @@ function CanvasInner({ projectId }: { projectId: number }) {
             <TooltipTrigger asChild>
               <button
                 onClick={() => { saveCanvas(); toast.success("已保存"); }}
-                className="w-7 h-7 rounded-lg flex items-center justify-center transition-all"
-                style={{ color: "var(--c-t3)" }}
-                onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.background = "var(--c-elevated)"; (e.currentTarget as HTMLElement).style.color = "var(--c-t1)"; }}
-                onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.background = "transparent"; (e.currentTarget as HTMLElement).style.color = "var(--c-t3)"; }}
+                className="topbar-btn"
               >
                 <Save className="w-3.5 h-3.5" />
               </button>
@@ -1091,10 +1043,7 @@ function CanvasInner({ projectId }: { projectId: number }) {
             <TooltipTrigger asChild>
               <button
                 onClick={handleExportImages}
-                className="w-7 h-7 rounded-lg flex items-center justify-center transition-all"
-                style={{ color: "var(--c-t3)" }}
-                onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.background = "var(--c-elevated)"; (e.currentTarget as HTMLElement).style.color = "oklch(0.65 0.20 160)"; }}
-                onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.background = "transparent"; (e.currentTarget as HTMLElement).style.color = "var(--c-t3)"; }}
+                className="topbar-btn"
               >
                 <Image className="w-3.5 h-3.5" />
               </button>
@@ -1107,10 +1056,7 @@ function CanvasInner({ projectId }: { projectId: number }) {
             <TooltipTrigger asChild>
               <button
                 onClick={handleExport}
-                className="w-7 h-7 rounded-lg flex items-center justify-center transition-all"
-                style={{ color: "var(--c-t3)" }}
-                onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.background = "var(--c-elevated)"; (e.currentTarget as HTMLElement).style.color = "var(--c-t1)"; }}
-                onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.background = "transparent"; (e.currentTarget as HTMLElement).style.color = "var(--c-t3)"; }}
+                className="topbar-btn"
               >
                 <Download className="w-3.5 h-3.5" />
               </button>
@@ -1193,16 +1139,7 @@ function CanvasInner({ projectId }: { projectId: number }) {
                   await logout();
                   navigate("/");
                 }}
-                className="w-7 h-7 rounded-lg flex items-center justify-center transition-all"
-                style={{ color: "var(--c-t3)" }}
-                onMouseEnter={(e) => {
-                  (e.currentTarget as HTMLElement).style.background = "oklch(0.55 0.18 20 / 0.12)";
-                  (e.currentTarget as HTMLElement).style.color = "oklch(0.65 0.18 20)";
-                }}
-                onMouseLeave={(e) => {
-                  (e.currentTarget as HTMLElement).style.background = "transparent";
-                  (e.currentTarget as HTMLElement).style.color = "var(--c-t3)";
-                }}
+                className="topbar-btn topbar-btn--danger"
               >
                 <LogOut className="w-3.5 h-3.5" />
               </button>

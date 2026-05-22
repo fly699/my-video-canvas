@@ -275,7 +275,7 @@ export const BaseNode = memo(function BaseNode({
             <span
               className="text-xs font-semibold truncate block"
               style={{
-                color: selected ? "var(--c-t1)" : "var(--c-t1)",
+                color: "var(--c-t1)",
                 cursor: "text",
                 letterSpacing: "-0.01em",
                 transition: "color 150ms ease",
