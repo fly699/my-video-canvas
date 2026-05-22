@@ -445,6 +445,8 @@ function getDefaultPayload(type: NodeType): NodeData {
       return { transition: "none", transitionDuration: 0.5, bgMusicVolume: 0.3, status: "idle" };
     case "subtitle":
       return { entries: [], fontSize: 22, fontColor: "white", burnInEnabled: false, status: "idle" };
+    case "overlay":
+      return { mode: "watermark", status: "idle" };
     default:
       return {} as NodeData;
   }

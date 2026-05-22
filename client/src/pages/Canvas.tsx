@@ -24,6 +24,7 @@ import { TemplatePanel } from "../components/canvas/TemplatePanel";
 import { NodeSearch } from "../components/canvas/NodeSearch";
 import { PresentationMode } from "../components/canvas/PresentationMode";
 import { FilmstripPanel } from "../components/canvas/FilmstripPanel";
+import { TimelinePanel } from "../components/canvas/TimelinePanel";
 import { isConnectionValid } from "../lib/connectionRules";
 import { BeginnerGuide, ConnectionHintsPanel } from "../components/canvas/BeginnerGuide";
 import { trpc } from "@/lib/trpc";
@@ -62,6 +63,7 @@ import {
   Trash2,
   RotateCcw,
   BookmarkPlus,
+  ListVideo,
 } from "lucide-react";
 import { loadNamedSnapshots, type NamedSnapshot } from "../hooks/useCanvasStore";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
@@ -308,6 +310,7 @@ function CanvasInner({ projectId }: { projectId: number }) {
   const [showShortcuts, setShowShortcuts] = useState(false);
   const [showStatsSidebar, setShowStatsSidebar] = useState(false);
   const [showFilmstrip, setShowFilmstrip] = useState(false);
+  const [showTimeline, setShowTimeline] = useState(false);
   const [showSnapshots, setShowSnapshots] = useState(false);
   const [globalAspectRatio, setGlobalAspectRatio] = useState<string | null>(null);
   const [showRatioPicker, setShowRatioPicker] = useState(false);
@@ -386,7 +389,7 @@ function CanvasInner({ projectId }: { projectId: number }) {
       if (nodes.length > 0) {
         await batchUpsertNodes.mutateAsync(nodes.map((n) => ({
           id: n.id, projectId,
-          type: n.data.nodeType as "script" | "storyboard" | "prompt" | "image_gen" | "asset" | "video_task" | "ai_chat" | "note" | "audio" | "post_process" | "group" | "character" | "clip" | "merge" | "subtitle",
+          type: n.data.nodeType as "script" | "storyboard" | "prompt" | "image_gen" | "asset" | "video_task" | "ai_chat" | "note" | "audio" | "post_process" | "group" | "character" | "clip" | "merge" | "subtitle" | "overlay",
           title: n.data.title,
           data: n.data.payload as Record<string, unknown>,
           posX: n.position.x, posY: n.position.y,
@@ -415,6 +418,18 @@ function CanvasInner({ projectId }: { projectId: number }) {
   }, [isDirty, saveCanvas]);
 
   // ── Socket ──────────────────────────────────────────────────────────────────
+  const applyingRemoteRef = useRef(false);
+
+  const emitCollabEvent = useCallback((type: string, payload: unknown) => {
+    if (!socketRef.current?.connected || !user) return;
+    socketRef.current.emit("collaboration-event", {
+      type, projectId, userId: user.id,
+      userName: user.name ?? "匿名",
+      color: COLLABORATOR_COLORS[user.id % COLLABORATOR_COLORS.length],
+      payload,
+    });
+  }, [user, projectId]);
+
   useEffect(() => {
     if (!isAuthenticated || !user) return;
     const socket = io("/", { path: "/api/socket", transports: ["websocket", "polling"] });
@@ -431,6 +446,33 @@ function CanvasInner({ projectId }: { projectId: number }) {
       } else if (event.type === "node:move") {
         const p = event.payload as { id: string; x: number; y: number };
         setNodes(nodesRef.current.map((n) => n.id === p.id ? { ...n, position: { x: p.x, y: p.y } } : n));
+      } else if (event.type === "node:add") {
+        const newNode = event.payload as CanvasNode;
+        applyingRemoteRef.current = true;
+        setNodes([...nodesRef.current.filter((n) => n.id !== newNode.id), newNode]);
+        applyingRemoteRef.current = false;
+      } else if (event.type === "node:delete") {
+        const p = event.payload as { id: string };
+        applyingRemoteRef.current = true;
+        setNodes(nodesRef.current.filter((n) => n.id !== p.id));
+        applyingRemoteRef.current = false;
+      } else if (event.type === "node:update") {
+        const p = event.payload as { id: string; patch: Record<string, unknown> };
+        applyingRemoteRef.current = true;
+        setNodes(nodesRef.current.map((n) =>
+          n.id === p.id ? { ...n, data: { ...n.data, payload: { ...n.data.payload, ...p.patch } } } : n
+        ) as CanvasNode[]);
+        applyingRemoteRef.current = false;
+      } else if (event.type === "edge:add") {
+        const newEdge = event.payload as CanvasEdge;
+        const { edges: currentEdges, setEdges: storeSetEdges } = useCanvasStore.getState();
+        if (!currentEdges.find((e) => e.id === newEdge.id)) {
+          storeSetEdges([...currentEdges, newEdge]);
+        }
+      } else if (event.type === "edge:delete") {
+        const p = event.payload as { id: string };
+        const { edges: currentEdges, setEdges: storeSetEdges } = useCanvasStore.getState();
+        storeSetEdges(currentEdges.filter((e) => e.id !== p.id));
       } else if (event.type === "user:leave") {
         removeCollaborator(event.userId);
       }
@@ -466,17 +508,19 @@ function CanvasInner({ projectId }: { projectId: number }) {
 
   const handleAddNode = useCallback((type: NodeType) => {
     const pos = contextMenu?.canvasPos ?? { x: 200, y: 200 };
-    addNode(type, pos);
+    const newNode = addNode(type, pos);
+    emitCollabEvent("node:add", newNode);
     setShowNodePicker(false);
-  }, [contextMenu, addNode]);
+  }, [contextMenu, addNode, emitCollabEvent]);
 
   const addNodeAtCenter = useCallback((type: NodeType) => {
     const vp = reactFlow.getViewport();
     const cx = (window.innerWidth / 2 - vp.x) / vp.zoom;
     const cy = (window.innerHeight / 2 - vp.y) / vp.zoom;
-    addNode(type, { x: cx + Math.random() * 80 - 40, y: cy + Math.random() * 80 - 40 });
+    const newNode = addNode(type, { x: cx + Math.random() * 80 - 40, y: cy + Math.random() * 80 - 40 });
+    emitCollabEvent("node:add", newNode);
     setShowNodePicker(false);
-  }, [addNode, reactFlow]);
+  }, [addNode, reactFlow, emitCollabEvent]);
 
   // ── Global aspect ratio lock ────────────────────────────────────────────────
   const RATIO_PRESETS = ["16:9", "9:16", "1:1", "4:3", "3:4", "2.35:1"];
@@ -887,6 +931,26 @@ function CanvasInner({ projectId }: { projectId: number }) {
             <TooltipContent side="bottom" className="text-xs">胶片条</TooltipContent>
           </Tooltip>
 
+          {/* Timeline toggle */}
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <button
+                onClick={() => setShowTimeline((v) => !v)}
+                className="w-7 h-7 rounded-lg flex items-center justify-center transition-all"
+                style={{
+                  background: showTimeline ? "oklch(0.62 0.20 25 / 0.12)" : "transparent",
+                  border: showTimeline ? "1px solid oklch(0.62 0.20 25 / 0.3)" : "1px solid transparent",
+                  color: showTimeline ? "oklch(0.65 0.18 30)" : "oklch(0.55 0.008 260)",
+                }}
+                onMouseEnter={(e) => { if (!showTimeline) { (e.currentTarget as HTMLElement).style.background = "oklch(0.16 0.008 260)"; (e.currentTarget as HTMLElement).style.color = "oklch(0.80 0.005 260)"; } }}
+                onMouseLeave={(e) => { if (!showTimeline) { (e.currentTarget as HTMLElement).style.background = "transparent"; (e.currentTarget as HTMLElement).style.color = "oklch(0.55 0.008 260)"; } }}
+              >
+                <ListVideo className="w-3.5 h-3.5" />
+              </button>
+            </TooltipTrigger>
+            <TooltipContent side="bottom" className="text-xs">时间轴预览</TooltipContent>
+          </Tooltip>
+
           {/* ── Version history ── */}
           <Tooltip>
             <TooltipTrigger asChild>
@@ -1181,10 +1245,24 @@ function CanvasInner({ projectId }: { projectId: number }) {
             edgeTypes={edgeTypes}
             onNodesChange={onNodesChange}
             onEdgesChange={onEdgesChange}
-            onConnect={onConnect}
+            onConnect={(connection) => {
+              onConnect(connection);
+              // Find newly added edge and broadcast it
+              setTimeout(() => {
+                const { edges: currentEdges } = useCanvasStore.getState();
+                const newEdge = currentEdges[currentEdges.length - 1];
+                if (newEdge) emitCollabEvent("edge:add", newEdge);
+              }, 0);
+            }}
             onNodeContextMenu={handleNodeContextMenu as Parameters<typeof ReactFlow>[0]["onNodeContextMenu"]}
-            onNodesDelete={(deleted) => deleted.forEach((n) => deleteNodeMutation.mutate({ id: n.id, projectId }))}
-            onEdgesDelete={(deleted) => deleted.forEach((e) => deleteEdgeMutation.mutate({ id: e.id, projectId }))}
+            onNodesDelete={(deleted) => deleted.forEach((n) => {
+              deleteNodeMutation.mutate({ id: n.id, projectId });
+              emitCollabEvent("node:delete", { id: n.id });
+            })}
+            onEdgesDelete={(deleted) => deleted.forEach((e) => {
+              deleteEdgeMutation.mutate({ id: e.id, projectId });
+              emitCollabEvent("edge:delete", { id: e.id });
+            })}
             onMoveEnd={(_, vp) => { setViewport(vp); markDirty(); }}
             selectionMode={SelectionMode.Partial}
             selectionOnDrag
@@ -1475,6 +1553,11 @@ function CanvasInner({ projectId }: { projectId: number }) {
           {/* Filmstrip panel */}
           {showFilmstrip && (
             <FilmstripPanel onClose={() => setShowFilmstrip(false)} />
+          )}
+
+          {/* Timeline panel */}
+          {showTimeline && (
+            <TimelinePanel onClose={() => setShowTimeline(false)} />
           )}
 
           {/* Version history snapshot panel */}

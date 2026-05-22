@@ -173,6 +173,16 @@ export const NODE_CONFIGS: Record<NodeType, NodeConfig> = {
     defaultWidth: 400,
     defaultTitle: "字幕",
   },
+  overlay: {
+    type: "overlay",
+    label: "叠加",
+    icon: "Blend",
+    color: "oklch(0.65 0.18 30)",
+    bgColor: "oklch(0.65 0.18 30 / 0.08)",
+    borderColor: "oklch(0.65 0.18 30 / 0.4)",
+    defaultWidth: 400,
+    defaultTitle: "视频叠加",
+  },
 };
 
 export const NODE_TYPE_LIST = Object.values(NODE_CONFIGS);
