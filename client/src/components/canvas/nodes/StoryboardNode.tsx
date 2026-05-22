@@ -379,7 +379,7 @@ export const StoryboardNode = memo(function StoryboardNode({ id, selected, data 
         {/* ── Description ── */}
         <textarea
           placeholder="场景描述..."
-          value={payload.description}
+          value={payload.description ?? ""}
           onChange={(e) => handleChange("description", e.target.value)}
           className="nodrag"
           rows={2}

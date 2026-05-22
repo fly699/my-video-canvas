@@ -485,7 +485,10 @@ export const VideoTaskNode = memo(function VideoTaskNode({ id, selected, data }:
                       { nodeId: id, projectId: data.projectId, provider, prompt: payload.prompt!, negativePrompt: payload.negativePrompt, referenceImageUrl: payload.referenceImageUrl, params: payload.params },
                       {
                         onSuccess: (result) => {
-                          setParallelResults(prev => ({ ...prev, [provider]: { status: "done", videoUrl: result.resultVideoUrl ?? undefined, taskId: result.id } }));
+                          // Task was just created and is still processing — resultVideoUrl is
+                          // always null at this point. Keep status as "processing"; the socket
+                          // event from the poller will update the node payload when done.
+                          setParallelResults(prev => ({ ...prev, [provider]: { status: "processing", taskId: result.id } }));
                         },
                         onError: (err) => {
                           setParallelResults(prev => ({ ...prev, [provider]: { status: "failed" } }));

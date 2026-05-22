@@ -13,6 +13,7 @@ import {
 } from "@xyflow/react";
 import "@xyflow/react/dist/style.css";
 import { useCanvasStore, type CanvasNode, type CanvasEdge } from "../hooks/useCanvasStore";
+import { useShallow } from "zustand/react/shallow";
 import { useWorkflowRunner } from "../hooks/useWorkflowRunner";
 import { WorkflowRunProvider } from "../contexts/WorkflowRunContext";
 import { CustomNode } from "../components/canvas/CustomNode";
@@ -297,7 +298,33 @@ function CanvasInner({ projectId }: { projectId: number }) {
     setCollaborator, removeCollaborator, collaborators, resetCanvas,
     undo, redo, past, future,
     saveNamedSnapshot, restoreNamedSnapshot, deleteNamedSnapshot,
-  } = useCanvasStore();
+  } = useCanvasStore(useShallow((s) => ({
+    nodes: s.nodes,
+    edges: s.edges,
+    setNodes: s.setNodes,
+    setEdges: s.setEdges,
+    onNodesChange: s.onNodesChange,
+    onEdgesChange: s.onEdgesChange,
+    onConnect: s.onConnect,
+    addNode: s.addNode,
+    deleteNode: s.deleteNode,
+    duplicateNode: s.duplicateNode,
+    setProjectId: s.setProjectId,
+    isDirty: s.isDirty,
+    markClean: s.markClean,
+    markDirty: s.markDirty,
+    setCollaborator: s.setCollaborator,
+    removeCollaborator: s.removeCollaborator,
+    collaborators: s.collaborators,
+    resetCanvas: s.resetCanvas,
+    undo: s.undo,
+    redo: s.redo,
+    past: s.past,
+    future: s.future,
+    saveNamedSnapshot: s.saveNamedSnapshot,
+    restoreNamedSnapshot: s.restoreNamedSnapshot,
+    deleteNamedSnapshot: s.deleteNamedSnapshot,
+  })));
 
   const [contextMenu, setContextMenu] = useState<{
     x: number; y: number; type: "canvas" | "node"; nodeId?: string; canvasPos?: { x: number; y: number };
@@ -528,7 +555,7 @@ function CanvasInner({ projectId }: { projectId: number }) {
 
   // ── Global aspect ratio lock ────────────────────────────────────────────────
   const RATIO_PRESETS = ["16:9", "9:16", "1:1", "4:3", "3:4", "2.35:1"];
-  const { batchUpdateNodeData } = useCanvasStore();
+  const batchUpdateNodeData = useCanvasStore((s) => s.batchUpdateNodeData);
   const applyGlobalRatio = useCallback((ratio: string | null) => {
     setGlobalAspectRatio(ratio);
     setShowRatioPicker(false);

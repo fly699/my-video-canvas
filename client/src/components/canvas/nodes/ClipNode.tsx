@@ -236,7 +236,7 @@ export const ClipNode = memo(function ClipNode({ id, selected, data }: Props) {
       v.currentTime = startTime;
       setIsPlaying(false);
     }
-  });
+  }, [isPlaying, endTime, startTime]);
 
   const seekToStart = () => {
     if (videoRef.current) videoRef.current.currentTime = startTime;

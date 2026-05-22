@@ -74,19 +74,35 @@ export function useWorkflowRunner() {
     // Determine which nodes are runnable
     let runnableIds: string[];
     if (startNodeId) {
-      // Run descendants of startNodeId only
-      const visited = new Set<string>();
-      const adj = new Map<string, string[]>();
+      // Collect the start node + all its descendants (forward DFS).
+      // Also collect all upstream ancestors of the start node so that their
+      // outputs are available as inputs before the start node executes.
+      const forwardAdj = new Map<string, string[]>();
+      const reverseAdj = new Map<string, string[]>();
       edges.forEach((e) => {
-        if (!adj.has(e.source)) adj.set(e.source, []);
-        adj.get(e.source)!.push(e.target);
+        if (!forwardAdj.has(e.source)) forwardAdj.set(e.source, []);
+        forwardAdj.get(e.source)!.push(e.target);
+        if (!reverseAdj.has(e.target)) reverseAdj.set(e.target, []);
+        reverseAdj.get(e.target)!.push(e.source);
       });
-      const dfs = (id: string) => {
+
+      const visited = new Set<string>();
+      const dfsForward = (id: string) => {
         if (visited.has(id)) return;
         visited.add(id);
-        (adj.get(id) ?? []).forEach(dfs);
+        (forwardAdj.get(id) ?? []).forEach(dfsForward);
       };
-      dfs(startNodeId);
+      const dfsReverse = (id: string) => {
+        if (visited.has(id)) return;
+        visited.add(id);
+        (reverseAdj.get(id) ?? []).forEach(dfsReverse);
+      };
+
+      // First collect ancestors so topological sort places them before startNode
+      dfsReverse(startNodeId);
+      // Then collect startNode and its descendants
+      dfsForward(startNodeId);
+
       runnableIds = Array.from(visited).filter((id) => {
         const node = nodes.find((n) => n.id === id);
         return node && RUNNABLE_TYPES.includes(node.data.nodeType);
@@ -138,18 +154,17 @@ export function useWorkflowRunner() {
             return "fail";
           }
 
+          const VALID_IMAGE_MODELS = new Set([
+            "manus_forge", "poyo_flux", "poyo_sdxl",
+            "poyo_gpt_image", "poyo_seedream", "poyo_grok_image", "poyo_wan_image",
+            "hf_soul_standard", "hf_reve", "hf_seedream_v4", "hf_flux_pro",
+          ]);
+          const rawModel = (p.imageModel as string) || (p.model as string) || "";
           const result = await imageGenMutation.mutateAsync({
             prompt,
             negativePrompt: (p.negativePrompt as string) || undefined,
             style: (p.style as string) || undefined,
-            model:
-              (((p.imageModel as string) || (p.model as string)) as
-                | "manus_forge"
-                | "poyo_flux"
-                | "poyo_sdxl"
-                | "hf_soul_standard"
-                | "hf_reve"
-                | undefined) || undefined,
+            model: (VALID_IMAGE_MODELS.has(rawModel) ? rawModel : undefined) as Parameters<typeof imageGenMutation.mutateAsync>[0]["model"],
           });
           useCanvasStore.getState().updateNodeData(nodeId, { imageUrl: result.url });
 

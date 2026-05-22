@@ -201,7 +201,7 @@ export const AudioNode = memo(function AudioNode({ id, selected, data }: Props) 
   };
 
   const formatDuration = (s?: number) =>
-    s ? `${Math.floor(s / 60)}:${String(Math.floor(s % 60)).padStart(2, "0")}` : "--:--";
+    s != null ? `${Math.floor(s / 60)}:${String(Math.floor(s % 60)).padStart(2, "0")}` : "--:--";
 
   // ── Audio player (shared across modes) ──────────────────────────────────────
   const audioPlayer = payload.url ? (

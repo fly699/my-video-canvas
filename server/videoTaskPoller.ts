@@ -86,7 +86,11 @@ export function setupVideoTaskPoller(io: SocketIOServer) {
             // Poyo.ai status check
             const upstream = await checkPoyoVideoStatus(task.externalTaskId);
             if (upstream.status === "finished") {
-              result = { status: "succeeded", resultVideoUrl: upstream.resultVideoUrl };
+              if (upstream.resultVideoUrl) {
+                result = { status: "succeeded", resultVideoUrl: upstream.resultVideoUrl };
+              } else {
+                result = { status: "failed", errorMessage: "生成完成但无视频 URL" };
+              }
             } else if (upstream.status === "failed") {
               result = { status: "failed", errorMessage: upstream.errorMessage ?? "生成失败" };
             } else {

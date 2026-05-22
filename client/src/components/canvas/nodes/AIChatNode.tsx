@@ -58,8 +58,10 @@ export const AIChatNode = memo(function AIChatNode({ id, selected, data }: Props
   const hasDownstream = useCanvasStore(useMemo(() => (s) => s.edges.some(e => e.source === id), [id]));
   const payload = data.payload;
   const [input, setInput] = useState("");
+  // Seed from payload.messages; when the node remounts, prefer the store's
+  // persisted messages over the stale payload snapshot captured at mount time.
   const [localMessages, setLocalMessages] = useState<Array<{ role: "user" | "assistant"; content: string }>>(
-    payload.messages ?? []
+    () => (data.payload as typeof payload).messages ?? []
   );
   const [model, setModel] = useState<string>(payload.model ?? "gemini-2.5-flash");
   const [showModelPicker, setShowModelPicker] = useState(false);
@@ -100,7 +102,9 @@ export const AIChatNode = memo(function AIChatNode({ id, selected, data }: Props
     },
     onError: (err) => {
       toast.error("AI 响应失败：" + err.message);
-      setLocalMessages((prev) => prev.slice(0, -1));
+      // The user message was already saved to DB before the LLM call,
+      // so we must NOT roll it back — instead append a visible error marker.
+      setLocalMessages((prev) => [...prev, { role: "assistant", content: `⚠️ ${err.message}` }]);
     },
   });
 

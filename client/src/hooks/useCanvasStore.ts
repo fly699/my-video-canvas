@@ -194,7 +194,8 @@ export const useCanvasStore = create<CanvasStore>((set, get) => ({
   addNode: (type, position) => {
     const config = getNodeConfig(type);
     const id = nanoid();
-    const projectId = get().projectId ?? 0;
+    const projectId = get().projectId;
+    if (!projectId) throw new Error("Cannot add node before project is loaded");
 
     const newNode: CanvasNode = {
       id,
@@ -223,7 +224,7 @@ export const useCanvasStore = create<CanvasStore>((set, get) => ({
 
   batchAddSceneNodes: (scenes, sourceNodeId, sourcePosition) => {
     set((state) => {
-      const projectId = state.nodes.find((n) => n.id === sourceNodeId)?.data.projectId ?? 0;
+      const projectId = state.nodes.find((n) => n.id === sourceNodeId)?.data.projectId ?? get().projectId ?? 0;
       const config = getNodeConfig("storyboard");
       const nodeWidth = (config.defaultWidth as number) ?? 360;
       const newNodes: CanvasNode[] = scenes.map((scene, i) => ({
