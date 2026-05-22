@@ -28,6 +28,7 @@ import { TimelinePanel } from "../components/canvas/TimelinePanel";
 import { isConnectionValid } from "../lib/connectionRules";
 import { BeginnerGuide, ConnectionHintsPanel } from "../components/canvas/BeginnerGuide";
 import { ThemeSwitcher } from "../components/canvas/ThemeSwitcher";
+import { CanvasBgPicker, loadCanvasBg, type CanvasBg } from "../components/canvas/CanvasBgPicker";
 import { trpc } from "@/lib/trpc";
 import { useAuth } from "@/_core/hooks/useAuth";
 import { useIsMobile } from "@/hooks/useMobile";
@@ -312,6 +313,7 @@ function CanvasInner({ projectId }: { projectId: number }) {
   const [showStatsSidebar, setShowStatsSidebar] = useState(false);
   const [showFilmstrip, setShowFilmstrip] = useState(false);
   const [showTimeline, setShowTimeline] = useState(false);
+  const [canvasBg, setCanvasBg] = useState<CanvasBg>(() => loadCanvasBg());
   const [showSnapshots, setShowSnapshots] = useState(false);
   const [globalAspectRatio, setGlobalAspectRatio] = useState<string | null>(null);
   const [showRatioPicker, setShowRatioPicker] = useState(false);
@@ -1235,6 +1237,7 @@ function CanvasInner({ projectId }: { projectId: number }) {
         {/* ── Canvas ── */}
         <div
           className="flex-1 relative canvas-vignette"
+          style={{ background: canvasBg.bgColor }}
           onContextMenu={handleCanvasContextMenu}
           onMouseMove={handleMouseMove}
           onClick={() => { setShowNodePicker(false); }}
@@ -1282,12 +1285,18 @@ function CanvasInner({ projectId }: { projectId: number }) {
             onConnectEnd={handleConnectEnd}
             connectionRadius={35}
           >
-            <Background
-              variant={BackgroundVariant.Dots}
-              gap={24}
-              size={1.5}
-              color="oklch(0.25 0.008 260 / 0.6)"
-            />
+            {canvasBg.pattern !== "none" && (
+              <Background
+                variant={
+                  canvasBg.pattern === "dots"  ? BackgroundVariant.Dots  :
+                  canvasBg.pattern === "lines" ? BackgroundVariant.Lines :
+                  BackgroundVariant.Cross
+                }
+                gap={canvasBg.gap}
+                size={canvasBg.size}
+                color={canvasBg.patternColor}
+              />
+            )}
             <MiniMap
               position="bottom-right"
               nodeColor={(n) => getNodeConfig((n.data as { nodeType: NodeType }).nodeType)?.color ?? "var(--c-bd3)"}
@@ -1550,6 +1559,9 @@ function CanvasInner({ projectId }: { projectId: number }) {
 
             {/* Theme switcher */}
             <ThemeSwitcher />
+
+            {/* Canvas background picker */}
+            <CanvasBgPicker value={canvasBg} onChange={setCanvasBg} />
           </div>
 
           {/* Filmstrip panel */}
