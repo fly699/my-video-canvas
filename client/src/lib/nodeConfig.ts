@@ -1,11 +1,12 @@
 import type { NodeType } from "../../../shared/types";
 import {
-  FileText, Image, Wand2, Sparkles, Paperclip, Video, Bot, StickyNote,
-  Music, Layers, Folder, Users, Scissors, Merge, Captions, Blend,
+  ScrollText, Film, Wand2, ImagePlus, Package, Video, Bot, StickyNote,
+  AudioWaveform, SlidersHorizontal, Folder, UserRound, Scissors, Merge, Captions, Blend,
 } from "lucide-react";
 
 export const NODE_ICONS: Record<string, React.ComponentType<{ className?: string; style?: React.CSSProperties }>> = {
-  FileText, Image, Wand2, Sparkles, Paperclip, Video, Bot, StickyNote, Music, Layers, Folder, Users, Scissors, Merge, Captions, Blend,
+  ScrollText, Film, Wand2, ImagePlus, Package, Video, Bot, StickyNote,
+  AudioWaveform, SlidersHorizontal, Folder, UserRound, Scissors, Merge, Captions, Blend,
 };
 
 export interface NodeConfig {
@@ -24,7 +25,7 @@ export const NODE_CONFIGS: Record<NodeType, NodeConfig> = {
   script: {
     type: "script",
     label: "脚本",
-    icon: "FileText",
+    icon: "ScrollText",
     color: "oklch(0.62 0.18 240)",
     bgColor: "oklch(0.62 0.18 240 / 0.08)",
     borderColor: "oklch(0.62 0.18 240 / 0.4)",
@@ -34,7 +35,7 @@ export const NODE_CONFIGS: Record<NodeType, NodeConfig> = {
   storyboard: {
     type: "storyboard",
     label: "分镜",
-    icon: "Image",
+    icon: "Film",
     color: "oklch(0.65 0.20 160)",
     bgColor: "oklch(0.65 0.20 160 / 0.08)",
     borderColor: "oklch(0.65 0.20 160 / 0.4)",
@@ -54,7 +55,7 @@ export const NODE_CONFIGS: Record<NodeType, NodeConfig> = {
   image_gen: {
     type: "image_gen",
     label: "图像生成",
-    icon: "Sparkles",
+    icon: "ImagePlus",
     color: "oklch(0.72 0.20 330)",
     bgColor: "oklch(0.72 0.20 330 / 0.08)",
     borderColor: "oklch(0.72 0.20 330 / 0.4)",
@@ -64,7 +65,7 @@ export const NODE_CONFIGS: Record<NodeType, NodeConfig> = {
   asset: {
     type: "asset",
     label: "素材",
-    icon: "Paperclip",
+    icon: "Package",
     color: "oklch(0.65 0.18 60)",
     bgColor: "oklch(0.65 0.18 60 / 0.08)",
     borderColor: "oklch(0.65 0.18 60 / 0.4)",
@@ -105,7 +106,7 @@ export const NODE_CONFIGS: Record<NodeType, NodeConfig> = {
   audio: {
     type: "audio",
     label: "音频",
-    icon: "Music",
+    icon: "AudioWaveform",
     color: "oklch(0.68 0.20 340)",
     bgColor: "oklch(0.68 0.20 340 / 0.08)",
     borderColor: "oklch(0.68 0.20 340 / 0.4)",
@@ -115,7 +116,7 @@ export const NODE_CONFIGS: Record<NodeType, NodeConfig> = {
   post_process: {
     type: "post_process",
     label: "后处理",
-    icon: "Layers",
+    icon: "SlidersHorizontal",
     color: "oklch(0.65 0.18 190)",
     bgColor: "oklch(0.65 0.18 190 / 0.08)",
     borderColor: "oklch(0.65 0.18 190 / 0.4)",
@@ -136,7 +137,7 @@ export const NODE_CONFIGS: Record<NodeType, NodeConfig> = {
   character: {
     type: "character",
     label: "角色/场景",
-    icon: "Users",
+    icon: "UserRound",
     color: "oklch(0.66 0.18 140)",
     bgColor: "oklch(0.66 0.18 140 / 0.08)",
     borderColor: "oklch(0.66 0.18 140 / 0.4)",

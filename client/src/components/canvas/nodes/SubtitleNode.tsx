@@ -5,7 +5,7 @@ import { useCanvasStore } from "../../../hooks/useCanvasStore";
 import type { SubtitleNodeData, SubtitleEntry } from "../../../../../shared/types";
 import { trpc } from "@/lib/trpc";
 import { toast } from "sonner";
-import { Captions, Loader2, Download, RotateCcw, Flame, Plus, Trash2, X } from "lucide-react";
+import { Captions, Loader2, Download, RotateCcw, Mic2, Plus, Trash2, X } from "lucide-react";
 
 interface Props {
   id: string;
@@ -427,7 +427,7 @@ export const SubtitleNode = memo(function SubtitleNode({ id, selected, data }: P
             >
               {isBurning
                 ? <Loader2 style={{ width: 12, height: 12 }} className="animate-spin" />
-                : <Flame style={{ width: 12, height: 12 }} />}
+                : <Mic2 style={{ width: 12, height: 12 }} />}
               {isBurning ? "FFmpeg 烧录中..." : "烧录字幕到视频"}
             </button>
           </>
