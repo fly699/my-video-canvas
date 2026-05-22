@@ -1288,6 +1288,7 @@ function CanvasInner({ projectId }: { projectId: number }) {
             edges={edges}
             nodeTypes={nodeTypes}
             edgeTypes={edgeTypes}
+            style={{ background: canvasBg.bgColor }}
             onNodesChange={onNodesChange}
             onEdgesChange={onEdgesChange}
             onConnect={(connection) => {
