@@ -124,6 +124,7 @@ export async function generateHiggsfieldImage(
     if (opts.batchSize !== undefined) body.batch_size = opts.batchSize;
     if (opts.enhancePrompt !== undefined) body.enhance_prompt = opts.enhancePrompt;
     if (opts.seed !== undefined) body.seed = opts.seed;
+    if (opts.negativePrompt) body.negative_prompt = opts.negativePrompt;
     if (opts.referenceImageUrl) body.image_url = opts.referenceImageUrl;
   } else if (opts.model === "reve/text-to-image") {
     // Reve specific params

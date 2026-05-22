@@ -4,6 +4,7 @@ import { generateHiggsfieldImage, type HiggsfieldImageModel } from "./higgsfield
 
 export type GenerateImageOptions = {
   prompt: string;
+  negativePrompt?: string;
   model?: string;
   size?: string;
   quality?: "low" | "medium" | "high" | "720p" | "1080p";
@@ -175,6 +176,7 @@ export async function generateImage(options: GenerateImageOptions): Promise<Gene
     const result = await generateHiggsfieldImage({
       model: hfModel,
       prompt: options.prompt,
+      negativePrompt: options.negativePrompt,
       referenceImageUrl: options.originalImages?.[0]?.url,
       // Soul Standard specific params
       widthAndHeight: options.widthAndHeight,

@@ -471,17 +471,24 @@ export const imageGenRouter = router({
       })
     )
     .mutation(async ({ input }) => {
-      const fullPrompt = [
-        input.style ? `Style: ${input.style}.` : "",
-        input.prompt,
-        input.negativePrompt ? `Avoid: ${input.negativePrompt}` : "",
-      ]
-        .filter(Boolean)
-        .join(" ");
+      const isHfModel = input.model?.startsWith("hf_");
+
+      // For Higgsfield models, keep prompt clean and pass negativePrompt separately.
+      // For other models, embed negative prompt as "Avoid: ..." suffix.
+      const fullPrompt = isHfModel
+        ? [input.style ? `Style: ${input.style}.` : "", input.prompt].filter(Boolean).join(" ")
+        : [
+            input.style ? `Style: ${input.style}.` : "",
+            input.prompt,
+            input.negativePrompt ? `Avoid: ${input.negativePrompt}` : "",
+          ]
+            .filter(Boolean)
+            .join(" ");
 
       const result = await generateImage({
         prompt: fullPrompt,
         model: input.model,
+        ...(isHfModel && input.negativePrompt ? { negativePrompt: input.negativePrompt } : {}),
         ...(input.referenceImageUrl
           ? { originalImages: [{ url: input.referenceImageUrl, mimeType: "image/jpeg" }] }
           : {}),
