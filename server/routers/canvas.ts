@@ -341,6 +341,12 @@ export const videoTasksRouter = router({
               await updateVideoTask(task.id, update);
               return { ...task, ...update };
             }
+            if (upstream.status === "succeeded" && !upstream.resultVideoUrl) {
+              pollLastCheck.delete(task.externalTaskId);
+              const update = { status: "failed" as const, errorMessage: "任务完成但未返回视频 URL" };
+              await updateVideoTask(task.id, update);
+              return { ...task, ...update };
+            }
             if (upstream.status === "failed") {
               pollLastCheck.delete(task.externalTaskId);
               const update = { status: "failed" as const, errorMessage: upstream.errorMessage ?? "生成失败" };

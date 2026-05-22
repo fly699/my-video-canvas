@@ -92,6 +92,58 @@ const CATEGORIES: { id: AudioCategory; label: string; icon: React.ReactNode }[] 
   { id: "upload",  label: "上传",   icon: <Upload style={{ width: 11, height: 11 }} /> },
 ];
 
+// ── Shared sub-components (defined at module level to avoid React remount) ─────
+
+function ModelSelect({ models, value, onChange }: {
+  models: typeof MUSIC_MODELS;
+  value?: string;
+  onChange: (v: string) => void;
+}) {
+  return (
+    <div>
+      <label style={labelStyle}>AI 模型</label>
+      <select
+        value={value ?? models[0]?.value ?? ""}
+        onChange={(e) => onChange(e.target.value)}
+        className="nodrag"
+        style={{ ...fieldStyle, cursor: "pointer" }}
+        onFocus={(e) => { e.currentTarget.style.borderColor = BORDER_ACCENT; }}
+        onBlur={(e) => { e.currentTarget.style.borderColor = BORDER_DEFAULT; }}
+      >
+        {models.map((m) => (
+          <option key={m.value} value={m.value} style={{ background: "var(--c-base)" }}>
+            {m.label} — {m.desc}
+          </option>
+        ))}
+      </select>
+    </div>
+  );
+}
+
+function GenerateBtn({
+  disabled, label, loading, onClick,
+}: { disabled?: boolean; label: string; loading?: boolean; onClick: () => void }) {
+  return (
+    <button
+      onClick={onClick}
+      disabled={loading || disabled}
+      className="nodrag flex items-center justify-center gap-1.5 w-full py-2 rounded-lg text-xs font-medium transition-all"
+      style={{
+        background: loading || disabled ? "var(--c-surface)" : accentA(0.15),
+        borderWidth: 1, borderStyle: "solid",
+        borderColor: loading || disabled ? BORDER_DEFAULT : accentA(0.4),
+        color: loading || disabled ? "var(--c-t4)" : accent,
+        cursor: loading || disabled ? "not-allowed" : "pointer",
+      }}
+    >
+      {loading
+        ? <Loader2 style={{ width: 12, height: 12 }} className="animate-spin" />
+        : <Zap style={{ width: 12, height: 12 }} />}
+      {loading ? "生成中..." : label}
+    </button>
+  );
+}
+
 // ── Component ─────────────────────────────────────────────────────────────────
 
 export const AudioNode = memo(function AudioNode({ id, selected, data }: Props) {
@@ -239,54 +291,6 @@ export const AudioNode = memo(function AudioNode({ id, selected, data }: Props) 
       />
     </div>
   ) : null;
-
-  // ── Model selector helper ────────────────────────────────────────────────────
-  const ModelSelect = ({ models, value, onChange }: {
-    models: typeof MUSIC_MODELS;
-    value?: string;
-    onChange: (v: string) => void;
-  }) => (
-    <div>
-      <label style={labelStyle}>AI 模型</label>
-      <select
-        value={value ?? models[0]?.value ?? ""}
-        onChange={(e) => onChange(e.target.value)}
-        className="nodrag"
-        style={{ ...fieldStyle, cursor: "pointer" }}
-        onFocus={(e) => { e.currentTarget.style.borderColor = BORDER_ACCENT; }}
-        onBlur={(e) => { e.currentTarget.style.borderColor = BORDER_DEFAULT; }}
-      >
-        {models.map((m) => (
-          <option key={m.value} value={m.value} style={{ background: "var(--c-base)" }}>
-            {m.label} — {m.desc}
-          </option>
-        ))}
-      </select>
-    </div>
-  );
-
-  // ── Generate button ──────────────────────────────────────────────────────────
-  const GenerateBtn = ({
-    disabled, label, loading, onClick,
-  }: { disabled?: boolean; label: string; loading?: boolean; onClick: () => void }) => (
-    <button
-      onClick={onClick}
-      disabled={loading || disabled}
-      className="nodrag flex items-center justify-center gap-1.5 w-full py-2 rounded-lg text-xs font-medium transition-all"
-      style={{
-        background: loading || disabled ? "var(--c-surface)" : accentA(0.15),
-        borderWidth: 1, borderStyle: "solid",
-        borderColor: loading || disabled ? BORDER_DEFAULT : accentA(0.4),
-        color: loading || disabled ? "var(--c-t4)" : accent,
-        cursor: loading || disabled ? "not-allowed" : "pointer",
-      }}
-    >
-      {loading
-        ? <Loader2 style={{ width: 12, height: 12 }} className="animate-spin" />
-        : <Zap style={{ width: 12, height: 12 }} />}
-      {loading ? "生成中..." : label}
-    </button>
-  );
 
   return (
     <BaseNode id={id} selected={selected} nodeType="audio" title={data.title} minHeight={160} resizable>

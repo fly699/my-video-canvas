@@ -227,8 +227,8 @@ export const ScriptNode = memo(function ScriptNode({ id, selected, data }: Props
           <LLMModelPicker value={llmModel} onChange={setLlmModel} disabled={anyPending} />
           <button
             onClick={() => {
-              if (!payload.content.trim()) { toast.error("请先填写脚本内容"); return; }
-              polishMutation.mutate({ text: payload.content, mode: "polish", model: llmModel });
+              if (!payload.content?.trim()) { toast.error("请先填写脚本内容"); return; }
+              polishMutation.mutate({ text: payload.content ?? "", mode: "polish", model: llmModel });
             }}
             disabled={anyPending}
             className="nodrag flex items-center gap-1 px-1.5 py-0.5 rounded-md text-[9px] font-medium transition-all"
@@ -243,15 +243,15 @@ export const ScriptNode = memo(function ScriptNode({ id, selected, data }: Props
             AI 润色
           </button>
           <span style={{ fontSize: 10, color: "var(--c-t4)", marginLeft: "auto" }}>
-            {payload.content.length} 字
+            {(payload.content ?? "").length} 字
           </span>
         </div>
 
         {/* Generate storyboards from existing script */}
         <button
           onClick={() => {
-            if (!payload.content.trim()) { toast.error("请先填写脚本内容"); return; }
-            generateMutation.mutate({ content: payload.content, synopsis: payload.synopsis, model: llmModel, count: sceneCount });
+            if (!payload.content?.trim()) { toast.error("请先填写脚本内容"); return; }
+            generateMutation.mutate({ content: payload.content ?? "", synopsis: payload.synopsis, model: llmModel, count: sceneCount });
           }}
           disabled={anyPending}
           className="nodrag flex items-center justify-center gap-1.5 w-full py-1.5 rounded-lg text-xs font-medium transition-all"

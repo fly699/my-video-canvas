@@ -352,7 +352,7 @@ export const OverlayNode = memo(function OverlayNode({ id, selected, data }: Pro
               />
             </div>
             <a
-              href={`/api/video-proxy?url=${encodeURIComponent(payload.outputUrl)}&download=1`}
+              href={payload.outputUrl.startsWith("http") ? `/api/video-proxy?url=${encodeURIComponent(payload.outputUrl)}&download=1` : payload.outputUrl}
               download
               className="nodrag mt-1.5 flex items-center justify-center gap-1.5 w-full py-1.5 rounded-lg text-xs font-medium transition-all"
               style={{

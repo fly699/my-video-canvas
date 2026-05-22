@@ -34,7 +34,7 @@ export async function submitAndPollPoyoMusic(
     prompt: opts.prompt,
   };
   if (opts.style) input.style = opts.style;
-  if (opts.durationSeconds) input.duration_seconds = opts.durationSeconds;
+  if (opts.durationSeconds !== undefined) input.duration_seconds = opts.durationSeconds;
   if (opts.instrumental !== undefined) input.instrumental = opts.instrumental;
   if (opts.negativePrompt) input.negative_tags = opts.negativePrompt;
 
@@ -79,6 +79,7 @@ export async function submitAndPollPoyoMusic(
       };
     };
     const d = statusData.data;
+    if (!d) continue;
 
     if (d.status === "finished") {
       const file = d.files?.[0];
@@ -171,6 +172,7 @@ export async function submitAndPollPoyoTTS(opts: SubmitPoyoTTSOptions): Promise<
       };
     };
     const d = statusData.data;
+    if (!d) continue;
 
     if (d.status === "finished") {
       const file = d.files?.[0];

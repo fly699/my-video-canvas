@@ -73,7 +73,7 @@ export const PostProcessNode = memo(function PostProcessNode({ id, selected, dat
   }, [generatedPrompt]);
 
   const clearAll = useCallback(() => {
-    updateNodeData(id, { selectedEffects: [], generatedPrompt: "" });
+    updateNodeData(id, { selectedEffects: [], effectIntensities: {}, generatedPrompt: "" });
   }, [id, updateNodeData]);
 
   return (
