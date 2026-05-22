@@ -416,13 +416,13 @@ export const SubtitleNode = memo(function SubtitleNode({ id, selected, data }: P
             {/* Burn in button */}
             <button
               onClick={handleBurnIn}
-              disabled={isBurning || !(payload.entries?.length)}
+              disabled={isBurning || isTranscribing || !(payload.entries?.length)}
               className="nodrag flex items-center justify-center gap-1.5 w-full py-2.5 rounded-lg text-xs font-semibold transition-all"
               style={{
-                background: isBurning || !(payload.entries?.length) ? "var(--c-surface)" : accentA(0.15),
-                border: `1px solid ${isBurning || !(payload.entries?.length) ? BORDER_DEFAULT : accentA(0.5)}`,
-                color: isBurning || !(payload.entries?.length) ? "var(--c-t4)" : accent,
-                cursor: isBurning || !(payload.entries?.length) ? "not-allowed" : "pointer",
+                background: isBurning || isTranscribing || !(payload.entries?.length) ? "var(--c-surface)" : accentA(0.15),
+                border: `1px solid ${isBurning || isTranscribing || !(payload.entries?.length) ? BORDER_DEFAULT : accentA(0.5)}`,
+                color: isBurning || isTranscribing || !(payload.entries?.length) ? "var(--c-t4)" : accent,
+                cursor: isBurning || isTranscribing || !(payload.entries?.length) ? "not-allowed" : "pointer",
               }}
             >
               {isBurning

@@ -57,7 +57,9 @@ export const projectsRouter = router({
     .mutation(async ({ ctx, input }) => {
       await createProject({ userId: ctx.user.id, name: input.name, description: input.description });
       const projects = await getProjectsByUser(ctx.user.id);
-      return projects[0];
+      const project = projects[0];
+      if (!project) throw new Error("Failed to create project");
+      return project;
     }),
 
   update: protectedProcedure
@@ -213,7 +215,9 @@ export const assetsRouter = router({
         url,
       });
       const assets = await getAssetsByUser(ctx.user.id, input.projectId);
-      return assets[0];
+      const asset = assets[0];
+      if (!asset) throw new Error("Failed to save asset record");
+      return asset;
     }),
 
   delete: protectedProcedure
@@ -285,7 +289,9 @@ export const videoTasksRouter = router({
         status: initialStatus,
       });
       const tasks = await getVideoTasksByProject(input.projectId);
-      return tasks[0];
+      const task = tasks[0];
+      if (!task) throw new Error("Failed to create video task");
+      return task;
     }),
 
   poll: protectedProcedure

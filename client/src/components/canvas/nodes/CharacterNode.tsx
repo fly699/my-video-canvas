@@ -164,16 +164,18 @@ export const CharacterNode = memo(function CharacterNode({ id, selected, data }:
               <div className="absolute top-1.5 right-1.5 flex gap-1">
                 <button
                   onClick={() => fileInputRef.current?.click()}
+                  disabled={uploading}
                   className="nodrag p-1 rounded transition-all"
-                  style={{ background: "oklch(0.08 0.006 260 / 0.85)", border: "1px solid var(--c-bd3)", color: "var(--c-t2)" }}
+                  style={{ background: "oklch(0.08 0.006 260 / 0.85)", border: "1px solid var(--c-bd3)", color: "var(--c-t2)", cursor: uploading ? "not-allowed" : "pointer" }}
                   title="替换图片"
                 >
                   <Upload style={{ width: 11, height: 11 }} />
                 </button>
                 <button
                   onClick={() => updateNodeData(id, { referenceImageUrl: undefined, referenceStorageKey: undefined })}
+                  disabled={uploading}
                   className="nodrag p-1 rounded transition-all"
-                  style={{ background: "oklch(0.08 0.006 260 / 0.85)", border: "1px solid var(--c-bd3)", color: "var(--c-t2)" }}
+                  style={{ background: "oklch(0.08 0.006 260 / 0.85)", border: "1px solid var(--c-bd3)", color: "var(--c-t2)", cursor: uploading ? "not-allowed" : "pointer" }}
                   title="清除图片"
                 >
                   <X style={{ width: 11, height: 11 }} />

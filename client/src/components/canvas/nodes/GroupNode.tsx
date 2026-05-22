@@ -1,4 +1,4 @@
-import { memo, useState } from "react";
+import { memo, useState, useEffect } from "react";
 import { NodeResizer } from "@xyflow/react";
 import { useCanvasStore } from "../../../hooks/useCanvasStore";
 import type { GroupNodeData } from "../../../../../shared/types";
@@ -28,6 +28,9 @@ export const GroupNode = memo(function GroupNode({ id, selected, data }: Props) 
   const payload = data.payload;
   const [editingLabel, setEditingLabel] = useState(false);
   const [labelValue, setLabelValue] = useState(data.title);
+  useEffect(() => {
+    if (!editingLabel) setLabelValue(data.title);
+  }, [data.title, editingLabel]);
   const collapsed = payload.collapsed ?? false;
   const colorKey = payload.color ?? "gray";
   const color = GROUP_COLORS.find(c => c.value === colorKey) ?? GROUP_COLORS[4];

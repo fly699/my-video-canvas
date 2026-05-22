@@ -83,7 +83,10 @@ export async function submitPoyoVideo(opts: {
     throw new Error(`Poyo video submit failed (${res.status}): ${text}`);
   }
 
-  const data = (await res.json()) as { code: number; data: { task_id: string } };
+  const data = (await res.json()) as { code: number; message?: string; data: { task_id: string } };
+  if (data.code !== undefined && data.code !== 0) {
+    throw new Error(`Poyo video submit error (code ${data.code}): ${data.message ?? JSON.stringify(data)}`);
+  }
   const externalTaskId = data.data?.task_id;
   if (!externalTaskId) throw new Error("Poyo video submit: no task_id returned");
 

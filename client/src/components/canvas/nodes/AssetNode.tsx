@@ -164,13 +164,13 @@ export const AssetNode = memo(function AssetNode({ id, selected, data }: Props) 
           )}
           <button
             onClick={() => fileInputRef.current?.click()}
-            disabled={uploading || !payload.url}
+            disabled={uploading}
             className="nodrag flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] flex-shrink-0 transition-all"
             style={{
               background: "var(--c-input)",
               border: "1px solid var(--c-bd2)",
               color: "var(--c-t3)",
-              cursor: uploading || !payload.url ? "not-allowed" : "pointer",
+              cursor: uploading ? "not-allowed" : "pointer",
             }}
             title="替换素材"
           >

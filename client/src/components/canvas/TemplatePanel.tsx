@@ -872,7 +872,7 @@ export function TemplatePanel({ onClose, centerX, centerY }: Props) {
   const handleSaveCanvas = useCallback((name: string, icon: string) => {
     const { nodes, edges } = useCanvasStore.getState();
     const template = canvasToTemplate(
-      nodes.map((n) => ({ id: n.id, type: n.type, position: n.position, data: n.data as Record<string, unknown> })),
+      nodes.map((n) => ({ id: n.id, type: n.data.nodeType as string, position: n.position, data: n.data as Record<string, unknown> })),
       edges.map((e) => ({ source: e.source, target: e.target })),
       name,
       icon,

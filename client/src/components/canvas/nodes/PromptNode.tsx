@@ -251,7 +251,7 @@ export const PromptNode = memo(function PromptNode({ id, selected, data }: Props
           </label>
           <textarea
             placeholder="masterpiece, best quality, cinematic lighting..."
-            value={payload.positivePrompt}
+            value={payload.positivePrompt ?? ""}
             onChange={(e) => handleChange("positivePrompt", e.target.value)}
             rows={3}
             className="nodrag"

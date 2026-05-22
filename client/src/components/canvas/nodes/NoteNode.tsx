@@ -48,7 +48,7 @@ export const NoteNode = memo(function NoteNode({ id, selected, data }: Props) {
         {selected ? (
           <textarea
             placeholder={"在此记录想法...\n\n支持 Markdown：# 标题  **粗体**  `代码`  - 列表  - [ ] 待办"}
-            value={payload.content}
+            value={payload.content ?? ""}
             onChange={(e) => handleChange(e.target.value)}
             className="nodrag w-full h-full"
             style={{
@@ -63,7 +63,7 @@ export const NoteNode = memo(function NoteNode({ id, selected, data }: Props) {
               fontFamily: "var(--font-mono)",
             }}
           />
-        ) : payload.content.trim() ? (
+        ) : payload.content?.trim() ? (
           <div
             style={{
               fontSize: 12,
