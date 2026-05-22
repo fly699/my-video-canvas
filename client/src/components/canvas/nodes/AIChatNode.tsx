@@ -73,13 +73,18 @@ export const AIChatNode = memo(function AIChatNode({ id, selected, data }: Props
   const inputRef = useRef<HTMLInputElement>(null);
   const modelPickerRef = useRef<HTMLDivElement>(null);
   const templateRef = useRef<HTMLDivElement>(null);
+  // Track what we last persisted so we can detect real changes without
+  // relying on reference equality (which breaks after the _id .map()).
+  const lastSavedRef = useRef(JSON.stringify((data.payload as typeof payload).messages ?? []));
 
   useEffect(() => {
-    const stored = (data.payload as typeof payload).messages;
-    if (stored !== localMessages) {
-      updateNodeData(id, { messages: localMessages.map(({ _id: _, ...m }) => m) });
+    const current = localMessages.map(({ _id: _, ...m }) => m);
+    const serialized = JSON.stringify(current);
+    if (lastSavedRef.current !== serialized) {
+      lastSavedRef.current = serialized;
+      updateNodeData(id, { messages: current }, true);
     }
-  }, [localMessages, id, updateNodeData, data.payload]);
+  }, [localMessages, id, updateNodeData]);
   useEffect(() => {
     if (scrollRef.current) scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
   }, [localMessages]);
