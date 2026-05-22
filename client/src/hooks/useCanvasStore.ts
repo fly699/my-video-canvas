@@ -250,6 +250,8 @@ export const useCanvasStore = create<CanvasStore>((set, get) => ({
         id: nanoid(),
         source: sourceNodeId,
         target: node.id,
+        sourceHandle: "output",
+        targetHandle: "input",
         type: "custom",
         animated: false,
       }));
@@ -324,7 +326,7 @@ export const useCanvasStore = create<CanvasStore>((set, get) => ({
       ...node,
       id: newId,
       position: { x: node.position.x + 40, y: node.position.y + 40 },
-      data: { ...node.data },
+      data: { ...node.data, payload: JSON.parse(JSON.stringify(node.data.payload)) },
       selected: false,
     };
     set((state) => ({

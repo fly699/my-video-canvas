@@ -269,7 +269,7 @@ export const StoryboardNode = memo(function StoryboardNode({ id, selected, data 
                   {generating ? <Loader2 className="w-3 h-3 animate-spin" /> : <RefreshCw className="w-3 h-3" />}
                   {generating ? "生成中..." : "重新生成"}
                 </button>
-                {(payload.imageHistory?.length ?? 0) > 1 && (
+                {(payload.imageHistory?.length ?? 0) > 0 && (
                   <button
                     onClick={(e) => { e.stopPropagation(); setShowHistory((v) => !v); }}
                     className="nodrag flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs font-medium transition-all mt-1"
@@ -331,7 +331,7 @@ export const StoryboardNode = memo(function StoryboardNode({ id, selected, data 
         </div>)}
 
         {/* ── Generation history panel ── */}
-        {showHistory && (payload.imageHistory?.length ?? 0) > 1 && (
+        {showHistory && (payload.imageHistory?.length ?? 0) > 0 && (
           <div className="flex flex-col gap-2 flex-shrink-0">
             <div className="flex items-center justify-between">
               <span style={{ fontSize: 10, fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.06em", color: "var(--c-t4)" }}>

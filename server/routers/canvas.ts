@@ -40,6 +40,19 @@ import { transcribeAudio } from "../_core/voiceTranscription";
 import { VIDEO_PROVIDERS } from "../../shared/types";
 import type { SubtitleEntry } from "../../shared/types";
 
+// ── Ownership helpers ─────────────────────────────────────────────────────────
+
+async function assertProjectOwner(projectId: number, userId: number) {
+  const project = await getProjectById(projectId, userId);
+  if (!project) throw new TRPCError({ code: "FORBIDDEN", message: "Access denied" });
+}
+
+async function assertTaskOwner(taskId: number, userId: number) {
+  const task = await getVideoTask(taskId);
+  if (!task || task.userId !== userId) throw new TRPCError({ code: "FORBIDDEN", message: "Access denied" });
+  return task;
+}
+
 // ── Projects ──────────────────────────────────────────────────────────────────
 
 export const projectsRouter = router({
@@ -94,7 +107,10 @@ const nodeDataSchema = z.record(z.string(), z.unknown());
 export const nodesRouter = router({
   list: protectedProcedure
     .input(z.object({ projectId: z.number() }))
-    .query(({ input }) => getNodesByProject(input.projectId)),
+    .query(async ({ ctx, input }) => {
+      await assertProjectOwner(input.projectId, ctx.user.id);
+      return getNodesByProject(input.projectId);
+    }),
 
   upsert: protectedProcedure
     .input(
@@ -111,7 +127,8 @@ export const nodesRouter = router({
         zIndex: z.number().default(0),
       })
     )
-    .mutation(async ({ input }) => {
+    .mutation(async ({ ctx, input }) => {
+      await assertProjectOwner(input.projectId, ctx.user.id);
       const id = input.id ?? nanoid();
       const { id: _id, ...rest } = { ...input, id };
       await upsertNode({ ...rest, id, data: input.data as Record<string, unknown> });
@@ -120,7 +137,8 @@ export const nodesRouter = router({
 
   delete: protectedProcedure
     .input(z.object({ id: z.string(), projectId: z.number() }))
-    .mutation(async ({ input }) => {
+    .mutation(async ({ ctx, input }) => {
+      await assertProjectOwner(input.projectId, ctx.user.id);
       await deleteNode(input.id, input.projectId);
       return { success: true };
     }),
@@ -142,7 +160,8 @@ export const nodesRouter = router({
         })
       )
     )
-    .mutation(async ({ input }) => {
+    .mutation(async ({ ctx, input }) => {
+      if (input.length > 0) await assertProjectOwner(input[0].projectId, ctx.user.id);
       await batchUpsertNodes(input.map((n) => ({ ...n, data: n.data as Record<string, unknown> })));
       return { success: true };
     }),
@@ -153,7 +172,10 @@ export const nodesRouter = router({
 export const edgesRouter = router({
   list: protectedProcedure
     .input(z.object({ projectId: z.number() }))
-    .query(({ input }) => getEdgesByProject(input.projectId)),
+    .query(async ({ ctx, input }) => {
+      await assertProjectOwner(input.projectId, ctx.user.id);
+      return getEdgesByProject(input.projectId);
+    }),
 
   upsert: protectedProcedure
     .input(
@@ -167,7 +189,8 @@ export const edgesRouter = router({
         label: z.string().optional(),
       })
     )
-    .mutation(async ({ input }) => {
+    .mutation(async ({ ctx, input }) => {
+      await assertProjectOwner(input.projectId, ctx.user.id);
       const id = input.id ?? nanoid();
       await upsertEdge({ ...input, id });
       return { id };
@@ -175,7 +198,8 @@ export const edgesRouter = router({
 
   delete: protectedProcedure
     .input(z.object({ id: z.string(), projectId: z.number() }))
-    .mutation(async ({ input }) => {
+    .mutation(async ({ ctx, input }) => {
+      await assertProjectOwner(input.projectId, ctx.user.id);
       await deleteEdge(input.id, input.projectId);
       return { success: true };
     }),
@@ -248,31 +272,9 @@ export const videoTasksRouter = router({
       })
     )
     .mutation(async ({ ctx, input }) => {
-      let externalTaskId: string | undefined;
-      let initialStatus: "pending" | "processing" = "pending";
+      await assertProjectOwner(input.projectId, ctx.user.id);
 
-      if (isPoyoVideoProvider(input.provider)) {
-        const result = await submitPoyoVideo({
-          provider: input.provider,
-          prompt: input.prompt,
-          negativePrompt: input.negativePrompt,
-          referenceImageUrl: input.referenceImageUrl,
-          params: input.params as Record<string, unknown>,
-        });
-        externalTaskId = result.externalTaskId;
-        initialStatus = "processing";
-      } else if (isHiggsfieldVideoProvider(input.provider)) {
-        const result = await submitHiggsfieldVideo({
-          provider: input.provider,
-          prompt: input.prompt,
-          negativePrompt: input.negativePrompt,
-          referenceImageUrl: input.referenceImageUrl,
-          params: input.params as Record<string, unknown>,
-        });
-        externalTaskId = result.externalTaskId;
-        initialStatus = "processing";
-      }
-
+      // Create DB record first so the task is tracked even if provider submission fails
       const task = await createVideoTask({
         userId: ctx.user.id,
         projectId: input.projectId,
@@ -282,10 +284,39 @@ export const videoTasksRouter = router({
         negativePrompt: input.negativePrompt,
         referenceImageUrl: input.referenceImageUrl,
         params: input.params as Record<string, unknown>,
-        externalTaskId,
-        status: initialStatus,
+        status: "pending",
       });
       if (!task) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "Failed to create video task" });
+
+      // Submit to external provider; on failure the task stays "pending" for the poller to retry
+      try {
+        let externalTaskId: string | undefined;
+        if (isPoyoVideoProvider(input.provider)) {
+          const result = await submitPoyoVideo({
+            provider: input.provider,
+            prompt: input.prompt,
+            negativePrompt: input.negativePrompt,
+            referenceImageUrl: input.referenceImageUrl,
+            params: input.params as Record<string, unknown>,
+          });
+          externalTaskId = result.externalTaskId;
+        } else if (isHiggsfieldVideoProvider(input.provider)) {
+          const result = await submitHiggsfieldVideo({
+            provider: input.provider,
+            prompt: input.prompt,
+            negativePrompt: input.negativePrompt,
+            referenceImageUrl: input.referenceImageUrl,
+            params: input.params as Record<string, unknown>,
+          });
+          externalTaskId = result.externalTaskId;
+        }
+        if (externalTaskId) {
+          await updateVideoTask(task.id, { status: "processing", externalTaskId });
+          return { ...task, status: "processing" as const, externalTaskId };
+        }
+      } catch (err) {
+        console.error(`[videoTasks.create] provider submission failed, task ${task.id} left as pending for poller retry:`, err instanceof Error ? err.message : String(err));
+      }
       return task;
     }),
 
@@ -374,7 +405,8 @@ export const videoTasksRouter = router({
         progress: z.number().optional(),
       })
     )
-    .mutation(async ({ input }) => {
+    .mutation(async ({ ctx, input }) => {
+      await assertTaskOwner(input.id, ctx.user.id);
       const { id, ...data } = input;
       await updateVideoTask(id, data);
       return { success: true };
@@ -383,7 +415,8 @@ export const videoTasksRouter = router({
   // Delete a task record so the node can be re-submitted
   reset: protectedProcedure
     .input(z.object({ id: z.number() }))
-    .mutation(async ({ input }) => {
+    .mutation(async ({ ctx, input }) => {
+      await assertTaskOwner(input.id, ctx.user.id);
       await deleteVideoTask(input.id);
       return { success: true };
     }),

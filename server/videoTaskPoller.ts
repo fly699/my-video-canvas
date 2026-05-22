@@ -69,9 +69,14 @@ export function setupVideoTaskPoller(io: SocketIOServer) {
                 referenceImageUrl: task.referenceImageUrl ?? undefined,
                 params: (task.params as Record<string, unknown>) ?? undefined,
               });
-            } else {
-              // Mock provider (and any unconfigured provider falls back to mock)
+            } else if (task.provider === "mock") {
               submitResult = await submitMockTask();
+            } else {
+              await updateVideoTask(task.id, {
+                status: "failed",
+                errorMessage: `Unknown provider: ${task.provider}`,
+              });
+              continue;
             }
 
             await updateVideoTask(task.id, {
