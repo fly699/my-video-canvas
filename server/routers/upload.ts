@@ -23,7 +23,7 @@ export const uploadRouter = router({
         filename: z.string().optional(),
       })
     )
-    .mutation(async ({ input }) => {
+    .mutation(async ({ ctx, input }) => {
       const buf = Buffer.from(input.base64, "base64");
 
       // Enforce 16 MB limit
@@ -34,7 +34,8 @@ export const uploadRouter = router({
       const ext = input.mimeType.split("/")[1]?.replace("jpeg", "jpg") ?? "jpg";
       const rawName = input.filename ? path.basename(input.filename).replace(/[^a-zA-Z0-9._-]/g, "_") : `ref-${Date.now()}.${ext}`;
       const filename = rawName || `ref-${Date.now()}.${ext}`;
-      const key = `reference-images/${filename}`;
+      // Namespace by userId so different users' same-named files don't collide
+      const key = `reference-images/${ctx.user.id}/${filename}`;
 
       const { url } = await storagePut(key, buf, input.mimeType);
       return { url, storageKey: key };

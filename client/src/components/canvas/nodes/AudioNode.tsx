@@ -217,13 +217,13 @@ export const AudioNode = memo(function AudioNode({ id, selected, data }: Props) 
 
   const handlePlayPause = useCallback(() => {
     if (!audioRef.current) return;
-    if (isPlaying) {
+    if (!audioRef.current.paused) {
       audioRef.current.pause();
       setIsPlaying(false);
     } else {
       audioRef.current.play().then(() => setIsPlaying(true)).catch(() => toast.error("播放失败"));
     }
-  }, [isPlaying]);
+  }, []);
 
   const handleGenerateMusic = () => {
     if (!payload.musicPrompt?.trim()) { toast.error("请先输入音乐描述"); return; }

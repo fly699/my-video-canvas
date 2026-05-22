@@ -147,6 +147,16 @@ export function useWorkflowRunner() {
     const runSingleNode = async (nodeId: string): Promise<"ok" | "fail"> => {
       if (abortRef.current) return "fail";
 
+      // Skip if any direct upstream dependency already failed — avoids wasting
+      // API credits on nodes whose inputs will be undefined/invalid.
+      const hasFailedUpstream = edges.some(
+        (e) => e.target === nodeId && failed.includes(e.source)
+      );
+      if (hasFailedUpstream) {
+        failed.push(nodeId);
+        return "fail";
+      }
+
       const node = useCanvasStore.getState().nodes.find((n) => n.id === nodeId);
       if (!node) return "fail";
 
@@ -186,7 +196,7 @@ export function useWorkflowRunner() {
           useCanvasStore.getState().updateNodeData(nodeId, {
             imageUrl: bestUrl,
             ...(result.urls?.length ? { imageUrls: result.urls } : {}),
-          });
+          }, true);
 
           // Propagate image URL to connected video_task nodes
           const downstreamUpdates = useCanvasStore
@@ -228,7 +238,7 @@ export function useWorkflowRunner() {
           });
           useCanvasStore
             .getState()
-            .updateNodeData(nodeId, { taskId: task.id, status: "processing" });
+            .updateNodeData(nodeId, { taskId: task.id, status: "processing" }, true);
           completed.push(nodeId);
           return "ok";
         }

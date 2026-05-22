@@ -16,7 +16,7 @@ function execFileAsync(cmd: "ffmpeg" | "ffprobe", args: string[]) {
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
-function assertSafeUrl(url: string): void {
+export function assertSafeUrl(url: string): void {
   const { protocol, hostname } = new URL(url);
   if (protocol !== "https:" && protocol !== "http:") {
     throw new Error(`Unsupported URL scheme: ${protocol}`);
@@ -381,7 +381,7 @@ export async function burnSubtitles(
   const fontColor = opts?.fontColor ?? "white";
 
   const videoPath = await downloadToTemp(videoUrl, "mp4");
-  const srtName = `subs-${Date.now()}.srt`;
+  const srtName = `subs-${Date.now()}-${Math.random().toString(36).slice(2)}.srt`;
   const srtPath = path.join(os.tmpdir(), srtName);
   const outName = `ffmpeg-subs-${Date.now()}-${Math.random().toString(36).slice(2)}.mp4`;
   const outPath = path.join(os.tmpdir(), outName);

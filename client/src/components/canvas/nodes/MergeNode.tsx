@@ -77,7 +77,7 @@ export const MergeNode = memo(function MergeNode({ id, selected, data }: Props) 
   const update = (patch: Partial<MergeNodeData>) => updateNodeData(id, patch);
 
   // Collect video URLs from connected source nodes (video-producing types only)
-  const VIDEO_SOURCE_TYPES = new Set(["video_task", "clip", "merge", "overlay", "asset"]);
+  const VIDEO_SOURCE_TYPES = new Set(["video_task", "clip", "merge", "overlay", "asset", "subtitle"]);
   const collectInputUrls = (): string[] => {
     const incomingEdges = edges.filter((e) => e.target === id);
     const urls: string[] = [];

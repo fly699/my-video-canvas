@@ -35,7 +35,7 @@ import { isPoyoVideoProvider, submitPoyoVideo, checkPoyoVideoStatus } from "../_
 import { isHiggsfieldVideoProvider, submitHiggsfieldVideo, checkHiggsfieldVideoStatus } from "../_core/higgsfield";
 import { submitAndPollPoyoMusic, type PoyoMusicModel } from "../_core/poyoAudio";
 import { submitAndPollPoyoTTS, type PoyoTTSModel } from "../_core/poyoAudio";
-import { trimVideo, getVideoDuration, mergeVideos, burnSubtitles, generateSRT, overlayVideo } from "../_core/videoEditor";
+import { trimVideo, getVideoDuration, mergeVideos, burnSubtitles, generateSRT, overlayVideo, assertSafeUrl } from "../_core/videoEditor";
 import { transcribeAudio } from "../_core/voiceTranscription";
 import { VIDEO_PROVIDERS } from "../../shared/types";
 import type { SubtitleEntry } from "../../shared/types";
@@ -404,7 +404,7 @@ export const videoTasksRouter = router({
       z.object({
         id: z.number(),
         status: z.enum(["pending", "processing", "succeeded", "failed"]),
-        resultVideoUrl: z.string().optional(),
+        resultVideoUrl: z.string().url().optional(),
         errorMessage: z.string().optional(),
         externalTaskId: z.string().optional(),
         progress: z.number().optional(),
@@ -522,6 +522,11 @@ export const imageGenRouter = router({
     .mutation(async ({ ctx, input }) => {
       if (input.projectId != null) {
         await assertProjectOwner(input.projectId, ctx.user.id);
+      }
+      if (input.referenceImageUrl) {
+        try { assertSafeUrl(input.referenceImageUrl); } catch {
+          throw new TRPCError({ code: "BAD_REQUEST", message: "referenceImageUrl 不允许指向私有地址" });
+        }
       }
       const isHfModel = input.model?.startsWith("hf_");
 
