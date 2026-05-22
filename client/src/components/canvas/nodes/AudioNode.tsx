@@ -114,6 +114,18 @@ export const AudioNode = memo(function AudioNode({ id, selected, data }: Props) 
     onError: (err) => toast.error("生成失败：" + err.message),
   });
 
+  const ttsMutation = trpc.audioGen.generateDubbing.useMutation({
+    onSuccess: (result) => {
+      updateNodeData(id, {
+        url: result.url,
+        duration: result.duration,
+        name: `配音 · ${(payload.ttsVoice ?? "alloy")} · ${payload.ttsText?.slice(0, 16) ?? ""}`,
+      });
+      toast.success("配音生成完成");
+    },
+    onError: (err) => toast.error("配音生成失败：" + err.message),
+  });
+
   // Resolve active category (support legacy source field)
   const category: AudioCategory = payload.audioCategory
     ?? (payload.source === "tts" ? "dubbing" : "upload");
@@ -169,8 +181,19 @@ export const AudioNode = memo(function AudioNode({ id, selected, data }: Props) 
     });
   };
 
-  const handleGenerateStub = () => {
-    toast.info("该功能即将上线，敬请期待");
+  const handleGenerateTTS = () => {
+    if (!payload.ttsText?.trim()) { toast.error("请先输入配音文本"); return; }
+    const model = (payload.aiModel ?? "openai_tts") as "openai_tts_hd" | "openai_tts" | "elevenlabs_v3" | "cosyvoice_2";
+    ttsMutation.mutate({
+      model,
+      text: payload.ttsText,
+      voice: payload.ttsVoice,
+      speed: payload.ttsSpeed,
+    });
+  };
+
+  const handleGenerateSFXStub = () => {
+    toast.info("音效生成即将上线，敬请期待");
   };
 
   const formatDuration = (s?: number) =>
@@ -420,7 +443,7 @@ export const AudioNode = memo(function AudioNode({ id, selected, data }: Props) 
                 </span>
               </div>
             </div>
-            <GenerateBtn disabled={!payload.ttsText?.trim()} loading={false} onClick={handleGenerateStub} label="生成配音（即将上线）" />
+            <GenerateBtn disabled={!payload.ttsText?.trim()} loading={ttsMutation.isPending} onClick={handleGenerateTTS} label="生成配音" />
             {audioPlayer}
           </>
         )}
@@ -461,7 +484,7 @@ export const AudioNode = memo(function AudioNode({ id, selected, data }: Props) 
                 onBlur={(e) => { e.currentTarget.style.borderColor = BORDER_DEFAULT; }}
               />
             </div>
-            <GenerateBtn disabled={!payload.sfxPrompt?.trim()} loading={false} onClick={handleGenerateStub} label="生成音效（即将上线）" />
+            <GenerateBtn disabled={!payload.sfxPrompt?.trim()} loading={false} onClick={handleGenerateSFXStub} label="生成音效（即将上线）" />
             {audioPlayer}
           </>
         )}

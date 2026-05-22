@@ -14,6 +14,8 @@ import {
   audioGenRouter,
   clipRouter,
   aiEnhanceRouter,
+  mergeRouter,
+  subtitleRouter,
 } from "./routers/canvas";
 import { uploadRouter } from "./routers/upload";
 
@@ -40,6 +42,8 @@ export const appRouter = router({
   audioGen: audioGenRouter,
   clip: clipRouter,
   aiEnhance: aiEnhanceRouter,
+  merge: mergeRouter,
+  subtitle: subtitleRouter,
   upload: uploadRouter,
 });
 

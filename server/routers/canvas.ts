@@ -33,8 +33,11 @@ import { generateImage } from "../_core/imageGeneration";
 import { isPoyoVideoProvider, submitPoyoVideo, checkPoyoVideoStatus } from "../_core/poyoVideo";
 import { isHiggsfieldVideoProvider, submitHiggsfieldVideo, checkHiggsfieldVideoStatus } from "../_core/higgsfield";
 import { submitAndPollPoyoMusic, type PoyoMusicModel } from "../_core/poyoAudio";
-import { trimVideo, getVideoDuration } from "../_core/videoEditor";
+import { submitAndPollPoyoTTS, type PoyoTTSModel } from "../_core/poyoAudio";
+import { trimVideo, getVideoDuration, mergeVideos, burnSubtitles, generateSRT } from "../_core/videoEditor";
+import { transcribeAudio } from "../_core/voiceTranscription";
 import { VIDEO_PROVIDERS } from "../../shared/types";
+import type { SubtitleEntry } from "../../shared/types";
 
 // ── Projects ──────────────────────────────────────────────────────────────────
 
@@ -97,7 +100,7 @@ export const nodesRouter = router({
       z.object({
         id: z.string().optional(),
         projectId: z.number(),
-        type: z.enum(["script", "storyboard", "prompt", "image_gen", "asset", "video_task", "ai_chat", "note", "audio", "post_process", "group", "character", "clip"]),
+        type: z.enum(["script", "storyboard", "prompt", "image_gen", "asset", "video_task", "ai_chat", "note", "audio", "post_process", "group", "character", "clip", "merge", "subtitle"]),
         title: z.string().optional(),
         data: nodeDataSchema,
         posX: z.number(),
@@ -127,7 +130,7 @@ export const nodesRouter = router({
         z.object({
           id: z.string(),
           projectId: z.number(),
-          type: z.enum(["script", "storyboard", "prompt", "image_gen", "asset", "video_task", "ai_chat", "note", "audio", "post_process", "group", "character", "clip"]),
+          type: z.enum(["script", "storyboard", "prompt", "image_gen", "asset", "video_task", "ai_chat", "note", "audio", "post_process", "group", "character", "clip", "merge", "subtitle"]),
           title: z.string().optional().nullable(),
           data: nodeDataSchema,
           posX: z.number(),
@@ -671,6 +674,25 @@ export const audioGenRouter = router({
       });
       return { url: result.url, duration: result.duration };
     }),
+
+  generateDubbing: protectedProcedure
+    .input(
+      z.object({
+        model: z.enum(["openai_tts_hd", "openai_tts", "elevenlabs_v3", "cosyvoice_2"]),
+        text: z.string().min(1).max(5000),
+        voice: z.string().optional(),
+        speed: z.number().min(0.5).max(2.0).optional(),
+      })
+    )
+    .mutation(async ({ input }) => {
+      const result = await submitAndPollPoyoTTS({
+        model: input.model as PoyoTTSModel,
+        text: input.text,
+        voice: input.voice,
+        speed: input.speed,
+      });
+      return { url: result.url, duration: result.duration };
+    }),
 });
 
 // ── Video Clip Editor ─────────────────────────────────────────────────────────
@@ -696,6 +718,74 @@ export const clipRouter = router({
     .query(async ({ input }) => {
       const duration = await getVideoDuration(input.url);
       return { duration };
+    }),
+});
+
+// ── Video Merge ───────────────────────────────────────────────────────────────
+export const mergeRouter = router({
+  mergeVideos: protectedProcedure
+    .input(
+      z.object({
+        inputUrls: z.array(z.string().url()).min(2).max(10),
+        transition: z.enum(["none", "fade", "dissolve"]).optional(),
+        transitionDuration: z.number().min(0.1).max(2.0).optional(),
+        bgMusicUrl: z.string().optional(),
+        bgMusicVolume: z.number().min(0).max(1).optional(),
+      })
+    )
+    .mutation(async ({ input }) => {
+      const result = await mergeVideos(input);
+      return { url: result.url, duration: result.duration };
+    }),
+});
+
+// ── Subtitles ─────────────────────────────────────────────────────────────────
+export const subtitleRouter = router({
+  transcribe: protectedProcedure
+    .input(
+      z.object({
+        audioUrl: z.string(),
+        language: z.string().optional(),
+      })
+    )
+    .mutation(async ({ input }) => {
+      const result = await transcribeAudio({ audioUrl: input.audioUrl, language: input.language });
+      if ("error" in result) {
+        throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: result.error });
+      }
+      const entries: SubtitleEntry[] = result.segments.map((s) => ({
+        start: s.start,
+        end: s.end,
+        text: s.text.trim(),
+      }));
+      return { entries, fullText: result.text, language: result.language };
+    }),
+
+  burnIn: protectedProcedure
+    .input(
+      z.object({
+        videoUrl: z.string().url(),
+        entries: z.array(z.object({ start: z.number(), end: z.number(), text: z.string() })),
+        fontSize: z.number().int().min(8).max(48).optional(),
+        fontColor: z.string().optional(),
+      })
+    )
+    .mutation(async ({ input }) => {
+      const result = await burnSubtitles(input.videoUrl, input.entries as SubtitleEntry[], {
+        fontSize: input.fontSize,
+        fontColor: input.fontColor,
+      });
+      return { url: result.url };
+    }),
+
+  exportSRT: protectedProcedure
+    .input(
+      z.object({
+        entries: z.array(z.object({ start: z.number(), end: z.number(), text: z.string() })),
+      })
+    )
+    .mutation(({ input }) => {
+      return { srt: generateSRT(input.entries as SubtitleEntry[]) };
     }),
 });
 

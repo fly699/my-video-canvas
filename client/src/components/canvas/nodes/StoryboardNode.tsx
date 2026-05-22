@@ -158,11 +158,30 @@ export const StoryboardNode = memo(function StoryboardNode({ id, selected, data 
   const handleGenerate = () => {
     if (!payload.promptText?.trim()) { toast.error("请先填写提示词"); return; }
     setGenerating(true);
+
+    // Character consistency: inject reference image + appearance from connected CharacterNodes
+    const { nodes: allNodes, edges: allEdges } = useCanvasStore.getState();
+    const incomingEdges = allEdges.filter((e) => e.target === id);
+    let charRefUrl: string | undefined = payload.referenceImageUrl;
+    const charDescParts: string[] = [];
+    for (const edge of incomingEdges) {
+      const srcNode = allNodes.find((n) => n.id === edge.source);
+      if (srcNode?.data.nodeType === "character") {
+        const cp = srcNode.data.payload as import("../../../../../shared/types").CharacterNodeData;
+        if (cp.referenceImageUrl && !charRefUrl) charRefUrl = cp.referenceImageUrl;
+        if (cp.characterKind === "person" && cp.appearance) charDescParts.push(cp.appearance);
+        if (cp.characterKind === "scene" && cp.sceneDescription) charDescParts.push(cp.sceneDescription);
+      }
+    }
+    const enhancedPrompt = charDescParts.length
+      ? `${payload.promptText}, ${charDescParts.join(", ")}`
+      : payload.promptText;
+
     genImageMutation.mutate({
-      prompt: payload.promptText,
+      prompt: enhancedPrompt,
       negativePrompt: payload.negativePrompt,
       style: payload.colorTone,
-      referenceImageUrl: payload.referenceImageUrl,
+      referenceImageUrl: charRefUrl,
       model,
     });
   };

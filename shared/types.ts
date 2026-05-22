@@ -13,7 +13,9 @@ export type NodeType =
   | "post_process"
   | "group"
   | "character"
-  | "clip";
+  | "clip"
+  | "merge"
+  | "subtitle";
 
 export const VIDEO_PROVIDERS = [
   "mock",
@@ -230,6 +232,38 @@ export interface ClipNodeData {
   errorMessage?: string;
 }
 
+export type MergeTransition = "none" | "fade" | "dissolve";
+export interface MergeNodeData {
+  inputVideoUrls?: string[];
+  outputUrl?: string;
+  transition?: MergeTransition;
+  transitionDuration?: number;  // 0.1–2.0 seconds, default 0.5
+  bgMusicUrl?: string;
+  bgMusicVolume?: number;       // 0.0–1.0, default 0.3
+  status?: "idle" | "processing" | "done" | "failed";
+  errorMessage?: string;
+  outputDuration?: number;
+}
+
+export interface SubtitleEntry {
+  start: number;  // seconds
+  end: number;    // seconds
+  text: string;
+}
+
+export interface SubtitleNodeData {
+  inputVideoUrl?: string;
+  entries?: SubtitleEntry[];
+  language?: string;
+  outputUrl?: string;
+  srtContent?: string;
+  status?: "idle" | "transcribing" | "burning" | "done" | "failed";
+  errorMessage?: string;
+  burnInEnabled?: boolean;
+  fontSize?: number;             // 14–36, default 22
+  fontColor?: string;            // CSS color, default "white"
+}
+
 export type NodeData =
   | ScriptNodeData
   | StoryboardNodeData
@@ -243,7 +277,9 @@ export type NodeData =
   | PostProcessNodeData
   | GroupNodeData
   | CharacterNodeData
-  | ClipNodeData;
+  | ClipNodeData
+  | MergeNodeData
+  | SubtitleNodeData;
 
 // ── Canvas Node ───────────────────────────────────────────────────────────────
 

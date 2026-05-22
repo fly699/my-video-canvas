@@ -151,6 +151,28 @@ const PROVIDER_PARAMS: Record<string, ParamDef[]> = {
 const BORDER_DEFAULT = "oklch(0.20 0.008 260)";
 const accentColor = "oklch(0.62 0.20 25)";
 
+// Rough cost estimates in Poyo credits per 5s clip (display only)
+const PROVIDER_COST: Record<string, { label: string; color: string }> = {
+  poyo_seedance:     { label: "~3积分", color: "oklch(0.72 0.18 155)" },
+  poyo_veo:          { label: "~20积分", color: "oklch(0.65 0.18 60)" },
+  poyo_kling26:      { label: "~4积分", color: "oklch(0.72 0.18 155)" },
+  poyo_kling_o3_std: { label: "~6积分", color: "oklch(0.72 0.18 155)" },
+  poyo_kling_o3_pro: { label: "~12积分", color: "oklch(0.65 0.18 60)" },
+  poyo_kling_o3_4k:  { label: "~30积分", color: "oklch(0.62 0.20 25)" },
+  poyo_wan25_t2v:    { label: "~2积分", color: "oklch(0.72 0.18 155)" },
+  poyo_wan25_i2v:    { label: "~3积分", color: "oklch(0.72 0.18 155)" },
+  poyo_runway45:     { label: "~10积分", color: "oklch(0.65 0.18 60)" },
+  hf_dop_standard:   { label: "~8积分", color: "oklch(0.65 0.18 60)" },
+  hf_dop_preview:    { label: "~5积分", color: "oklch(0.72 0.18 155)" },
+  hf_dop_lite:       { label: "~3积分", color: "oklch(0.72 0.18 155)" },
+  hf_dop_turbo:      { label: "~2积分", color: "oklch(0.72 0.18 155)" },
+  hf_kling_21_pro:   { label: "~6积分", color: "oklch(0.72 0.18 155)" },
+  hf_kling_30:       { label: "~10积分", color: "oklch(0.65 0.18 60)" },
+  hf_seedance_pro:   { label: "~4积分", color: "oklch(0.72 0.18 155)" },
+  hf_seedance_20:    { label: "~5积分", color: "oklch(0.72 0.18 155)" },
+  mock:              { label: "免费", color: "oklch(0.55 0.08 260)" },
+};
+
 const fieldStyle: React.CSSProperties = {
   width: "100%",
   padding: "7px 10px",
@@ -526,7 +548,22 @@ export const VideoTaskNode = memo(function VideoTaskNode({ id, selected, data }:
 
         {/* ── Provider ── */}
         <div style={{ marginTop: 4 }}>
-          <label style={labelStyle}>视频模型</label>
+          <div className="flex items-center justify-between" style={{ marginBottom: 5 }}>
+            <label style={{ ...labelStyle, marginBottom: 0 }}>视频模型</label>
+            {PROVIDER_COST[payload.provider] && (
+              <span
+                style={{
+                  fontSize: 9, fontWeight: 700, letterSpacing: "0.04em",
+                  padding: "1px 6px", borderRadius: 99,
+                  background: `${PROVIDER_COST[payload.provider].color}18`,
+                  border: `1px solid ${PROVIDER_COST[payload.provider].color}30`,
+                  color: PROVIDER_COST[payload.provider].color,
+                }}
+              >
+                {PROVIDER_COST[payload.provider].label}
+              </span>
+            )}
+          </div>
           <select
             value={payload.provider}
             onChange={(e) => handleChange("provider", e.target.value as VideoProvider)}

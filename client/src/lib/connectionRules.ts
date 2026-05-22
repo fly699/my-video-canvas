@@ -115,4 +115,14 @@ export const CONNECTION_HINTS: Record<
     outgoing: "容器节点，不参与数据流",
     incoming: "容器节点，不参与数据流",
   },
+  merge: {
+    label: "合并",
+    outgoing: "→ 素材（保存）",
+    incoming: "← 剪辑 / 视频任务 / 素材",
+  },
+  subtitle: {
+    label: "字幕",
+    outgoing: "→ 素材（保存）",
+    incoming: "← 剪辑 / 视频任务 / 素材",
+  },
 };
