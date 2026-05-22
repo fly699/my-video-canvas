@@ -13,7 +13,10 @@ export type NodeType =
   | "post_process"
   | "group"
   | "character"
-  | "clip";
+  | "clip"
+  | "merge"
+  | "subtitle"
+  | "overlay";
 
 export const VIDEO_PROVIDERS = [
   "mock",
@@ -230,6 +233,61 @@ export interface ClipNodeData {
   errorMessage?: string;
 }
 
+export type MergeTransition = "none" | "fade" | "dissolve";
+export interface MergeNodeData {
+  inputVideoUrls?: string[];
+  outputUrl?: string;
+  transition?: MergeTransition;
+  transitionDuration?: number;  // 0.1–2.0 seconds, default 0.5
+  bgMusicUrl?: string;
+  bgMusicVolume?: number;       // 0.0–1.0, default 0.3
+  status?: "idle" | "processing" | "done" | "failed";
+  errorMessage?: string;
+  outputDuration?: number;
+}
+
+export interface SubtitleEntry {
+  start: number;  // seconds
+  end: number;    // seconds
+  text: string;
+}
+
+export interface SubtitleNodeData {
+  inputVideoUrl?: string;
+  entries?: SubtitleEntry[];
+  language?: string;
+  outputUrl?: string;
+  srtContent?: string;
+  status?: "idle" | "transcribing" | "burning" | "done" | "failed";
+  errorMessage?: string;
+  burnInEnabled?: boolean;
+  fontSize?: number;             // 14–36, default 22
+  fontColor?: string;            // CSS color, default "white"
+}
+
+export type OverlayMode = "watermark" | "pip" | "color_correction";
+export interface OverlayNodeData {
+  mode?: OverlayMode;
+  // Watermark
+  overlayImageUrl?: string;
+  overlayPosition?: "top-left" | "top-right" | "bottom-left" | "bottom-right" | "center";
+  overlayScale?: number;     // 0.05–1.0
+  overlayOpacity?: number;   // 0.0–1.0
+  // PiP
+  pipVideoUrl?: string;
+  pipPosition?: "top-left" | "top-right" | "bottom-left" | "bottom-right";
+  pipScale?: number;         // 0.1–0.5
+  // Color correction
+  brightness?: number;       // -1.0–1.0
+  contrast?: number;         // 0.0–2.0 (FFmpeg eq contrast range)
+  saturation?: number;       // 0.0–3.0
+  // Common
+  inputVideoUrl?: string;
+  outputUrl?: string;
+  status?: "idle" | "processing" | "done" | "failed";
+  errorMessage?: string;
+}
+
 export type NodeData =
   | ScriptNodeData
   | StoryboardNodeData
@@ -243,7 +301,10 @@ export type NodeData =
   | PostProcessNodeData
   | GroupNodeData
   | CharacterNodeData
-  | ClipNodeData;
+  | ClipNodeData
+  | MergeNodeData
+  | SubtitleNodeData
+  | OverlayNodeData;
 
 // ── Canvas Node ───────────────────────────────────────────────────────────────
 

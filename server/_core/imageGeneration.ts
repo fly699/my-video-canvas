@@ -61,6 +61,7 @@ async function generateImagePoyo(options: GenerateImageOptions): Promise<Generat
       Authorization: `Bearer ${ENV.poyoApiKey}`,
     },
     body: JSON.stringify({ model, input }),
+    signal: AbortSignal.timeout(15_000),
   });
 
   if (!submitRes.ok) {
@@ -78,6 +79,7 @@ async function generateImagePoyo(options: GenerateImageOptions): Promise<Generat
 
     const statusRes = await fetch(`${POYO_BASE}/api/generate/status/${taskId}`, {
       headers: { Authorization: `Bearer ${ENV.poyoApiKey}` },
+      signal: AbortSignal.timeout(10_000),
     });
 
     if (!statusRes.ok) continue;

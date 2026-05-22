@@ -33,8 +33,11 @@ import { generateImage } from "../_core/imageGeneration";
 import { isPoyoVideoProvider, submitPoyoVideo, checkPoyoVideoStatus } from "../_core/poyoVideo";
 import { isHiggsfieldVideoProvider, submitHiggsfieldVideo, checkHiggsfieldVideoStatus } from "../_core/higgsfield";
 import { submitAndPollPoyoMusic, type PoyoMusicModel } from "../_core/poyoAudio";
-import { trimVideo, getVideoDuration } from "../_core/videoEditor";
+import { submitAndPollPoyoTTS, type PoyoTTSModel } from "../_core/poyoAudio";
+import { trimVideo, getVideoDuration, mergeVideos, burnSubtitles, generateSRT, overlayVideo } from "../_core/videoEditor";
+import { transcribeAudio } from "../_core/voiceTranscription";
 import { VIDEO_PROVIDERS } from "../../shared/types";
+import type { SubtitleEntry } from "../../shared/types";
 
 // ── Projects ──────────────────────────────────────────────────────────────────
 
@@ -97,7 +100,7 @@ export const nodesRouter = router({
       z.object({
         id: z.string().optional(),
         projectId: z.number(),
-        type: z.enum(["script", "storyboard", "prompt", "image_gen", "asset", "video_task", "ai_chat", "note", "audio", "post_process", "group"]),
+        type: z.enum(["script", "storyboard", "prompt", "image_gen", "asset", "video_task", "ai_chat", "note", "audio", "post_process", "group", "character", "clip", "merge", "subtitle", "overlay"]),
         title: z.string().optional(),
         data: nodeDataSchema,
         posX: z.number(),
@@ -127,7 +130,7 @@ export const nodesRouter = router({
         z.object({
           id: z.string(),
           projectId: z.number(),
-          type: z.enum(["script", "storyboard", "prompt", "image_gen", "asset", "video_task", "ai_chat", "note", "audio", "post_process", "group"]),
+          type: z.enum(["script", "storyboard", "prompt", "image_gen", "asset", "video_task", "ai_chat", "note", "audio", "post_process", "group", "character", "clip", "merge", "subtitle", "overlay"]),
           title: z.string().optional().nullable(),
           data: nodeDataSchema,
           posX: z.number(),
@@ -311,8 +314,8 @@ export const videoTasksRouter = router({
               await updateVideoTask(task.id, update);
               return { ...task, ...update };
             }
-          } catch {
-            // Ignore sync errors; return DB state so polling continues
+          } catch (err) {
+            console.error(`[poll] Poyo status check failed for task ${task.id} (${task.externalTaskId}):`, err instanceof Error ? err.message : String(err));
           }
         }
       }
@@ -337,8 +340,8 @@ export const videoTasksRouter = router({
               await updateVideoTask(task.id, update);
               return { ...task, ...update };
             }
-          } catch {
-            // Ignore sync errors; return DB state so polling continues
+          } catch (err) {
+            console.error(`[poll] Higgsfield status check failed for task ${task.id} (${task.externalTaskId}):`, err instanceof Error ? err.message : String(err));
           }
         }
       }
@@ -515,6 +518,7 @@ export const scriptsRouter = router({
         content: z.string().min(1),
         synopsis: z.string().optional(),
         count: z.number().int().min(2).max(8).default(4),
+        model: z.string().optional(),
       })
     )
     .mutation(async ({ input }) => {
@@ -537,7 +541,7 @@ Each element must have these fields:
           { role: "system" as const, content: systemPrompt },
           { role: "user" as const, content: userContent },
         ],
-        model: "gemini-2.5-flash",
+        model: input.model ?? "gemini-2.5-flash",
       });
 
       const text = extractTextContent(response);
@@ -551,6 +555,97 @@ Each element must have these fields:
         throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "JSON 解析失败" });
       }
       return { scenes: scenes.slice(0, input.count) };
+    }),
+
+  generateFullScript: protectedProcedure
+    .input(
+      z.object({
+        synopsis: z.string().min(1).max(2000),
+        genre: z.string().optional(),
+        style: z.string().optional(),
+        mood: z.string().optional(),
+        sceneCount: z.number().int().min(2).max(12).default(5),
+        totalDuration: z.number().int().min(10).max(600).default(60),
+        targetVideoModel: z.string().optional(),
+        aspectRatio: z.string().default("16:9"),
+        model: z.string().optional(),
+      })
+    )
+    .mutation(async ({ input }) => {
+      const MODEL_PROMPT_GUIDES: Record<string, string> = {
+        kling: "Kling (Kuaishou): Excellent precise camera control. Use detailed camera moves: push-in, dolly, orbital pan, crane shot. Rich motion expression with emotional narrative. Describe subject actions precisely.",
+        veo: "Veo 3.1 (Google): Natural language understanding. Use flowing natural English. Emphasize realistic physics, human emotions, complex interactions. Write like a film scene description. No keyword lists.",
+        runway: "Runway Gen-4.5: Concise style-focused prompts under 60 words. Lead with aesthetic style, then subject and action. Format: [cinematography style], [subject] [action], [environment], [lighting].",
+        wan: "Wan 2.5 (Alibaba): Structured keyword prompts. Format: subject, action description, environment/background, visual style, lighting condition, camera angle. Good for stylized artistic content.",
+        seedance: "Seedance 2 (ByteDance): Photorealistic output. Include: shot type (ECU/CU/MS/LS), lens focal length, lighting setup, color grade style, specific camera movement. Professional cinematography terminology.",
+        dop: "DoP/Higgsfield: Professional director's language. Specify: focal length, aperture suggestion, lighting type and color temperature, film stock style, composition rule, emotional subtext. Cinematic excellence.",
+      };
+
+      const modelGuide = input.targetVideoModel
+        ? (MODEL_PROMPT_GUIDES[input.targetVideoModel] ?? "General cinematic: descriptive English prompts with visual details, lighting, and camera information.")
+        : "General cinematic: descriptive English prompts with visual details, lighting, camera information, and mood.";
+
+      const avgDuration = Math.round(input.totalDuration / input.sceneCount);
+
+      const systemPrompt = `You are a professional screenwriter and AI video director creating multi-modal storyboard scripts optimized for AI video generation.
+
+Target Video Model Prompt Style Guide:
+${modelGuide}
+
+Production Brief:
+- Genre: ${input.genre ?? "general"}
+- Visual Style: ${input.style ?? "cinematic"}
+- Emotional Tone: ${input.mood ?? "neutral"}
+- Aspect Ratio: ${input.aspectRatio}
+- Total Duration: ~${input.totalDuration} seconds across ${input.sceneCount} scenes (avg ${avgDuration}s/scene)
+
+Your task: Generate a complete storyboard script. Output ONLY a valid JSON object with NO markdown fences, NO extra text:
+{
+  "scriptText": "A polished Chinese narrative script with proper scene headings (场景一、二...), vivid action lines, and atmospheric descriptions. Professional screenplay style. Minimum 200 characters.",
+  "scenes": [
+    {
+      "description": "Chinese visual description: what the viewer sees, atmosphere, character actions. 2-3 sentences.",
+      "promptText": "English AI generation prompt optimized for the target model. Follow the prompt style guide above strictly.",
+      "cameraMovement": "one of: static|pan-left|pan-right|zoom-in|zoom-out|tilt-up|tilt-down|tracking",
+      "duration": ${avgDuration}
+    }
+  ]
+}
+
+Rules:
+1. Generate exactly ${input.sceneCount} scene objects
+2. scriptText must be cohesive Chinese narrative covering all scenes
+3. Each promptText MUST follow the target model's style guide
+4. Duration values should total approximately ${input.totalDuration} seconds
+5. Create compelling visual storytelling appropriate for the genre and mood`;
+
+      const response = await invokeLLM({
+        messages: [
+          { role: "system" as const, content: systemPrompt },
+          { role: "user" as const, content: `Story Synopsis:\n${input.synopsis}` },
+        ],
+        model: input.model ?? "claude-sonnet-4-6",
+        maxTokens: 8000,
+      });
+
+      const text = extractTextContent(response);
+      const jsonMatch = text.match(/\{[\s\S]*\}/);
+      if (!jsonMatch) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "AI 未返回有效 JSON" });
+
+      let parsed: {
+        scriptText?: string;
+        scenes?: Array<{ description?: string; promptText?: string; cameraMovement?: string; duration?: number }>;
+      };
+      try {
+        parsed = JSON.parse(jsonMatch[0]);
+      } catch {
+        throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "JSON 解析失败，请重试" });
+      }
+
+      return {
+        scriptText: parsed.scriptText ?? "",
+        scenes: (parsed.scenes ?? []).slice(0, input.sceneCount),
+      };
     }),
 });
 
@@ -579,6 +674,25 @@ export const audioGenRouter = router({
       });
       return { url: result.url, duration: result.duration };
     }),
+
+  generateDubbing: protectedProcedure
+    .input(
+      z.object({
+        model: z.enum(["openai_tts_hd", "openai_tts", "elevenlabs_v3", "cosyvoice_2"]),
+        text: z.string().min(1).max(5000),
+        voice: z.string().optional(),
+        speed: z.number().min(0.5).max(2.0).optional(),
+      })
+    )
+    .mutation(async ({ input }) => {
+      const result = await submitAndPollPoyoTTS({
+        model: input.model as PoyoTTSModel,
+        text: input.text,
+        voice: input.voice,
+        speed: input.speed,
+      });
+      return { url: result.url, duration: result.duration };
+    }),
 });
 
 // ── Video Clip Editor ─────────────────────────────────────────────────────────
@@ -592,7 +706,7 @@ export const clipRouter = router({
         speed: z.number().min(0.25).max(4.0).optional(),
         audioUrl: z.string().optional(),
         audioVolume: z.number().min(0).max(2.0).optional(),
-      })
+      }).refine(d => d.endTime > d.startTime, { message: "出点必须大于入点", path: ["endTime"] })
     )
     .mutation(async ({ input }) => {
       const result = await trimVideo(input);
@@ -607,6 +721,102 @@ export const clipRouter = router({
     }),
 });
 
+// ── Video Merge ───────────────────────────────────────────────────────────────
+export const mergeRouter = router({
+  mergeVideos: protectedProcedure
+    .input(
+      z.object({
+        inputUrls: z.array(z.string().url()).min(2).max(10),
+        transition: z.enum(["none", "fade", "dissolve"]).optional(),
+        transitionDuration: z.number().min(0.1).max(2.0).optional(),
+        bgMusicUrl: z.string().optional(),
+        bgMusicVolume: z.number().min(0).max(1).optional(),
+      })
+    )
+    .mutation(async ({ input }) => {
+      const result = await mergeVideos(input);
+      return { url: result.url, duration: result.duration };
+    }),
+});
+
+// ── Subtitles ─────────────────────────────────────────────────────────────────
+export const subtitleRouter = router({
+  transcribe: protectedProcedure
+    .input(
+      z.object({
+        audioUrl: z.string(),
+        language: z.string().optional(),
+      })
+    )
+    .mutation(async ({ input }) => {
+      const result = await transcribeAudio({ audioUrl: input.audioUrl, language: input.language });
+      if ("error" in result) {
+        throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: result.error });
+      }
+      const entries: SubtitleEntry[] = result.segments.map((s) => ({
+        start: s.start,
+        end: s.end,
+        text: s.text.trim(),
+      }));
+      return { entries, fullText: result.text, language: result.language };
+    }),
+
+  burnIn: protectedProcedure
+    .input(
+      z.object({
+        videoUrl: z.string().url(),
+        entries: z.array(z.object({ start: z.number(), end: z.number(), text: z.string() })),
+        fontSize: z.number().int().min(8).max(48).optional(),
+        fontColor: z.string().optional(),
+      })
+    )
+    .mutation(async ({ input }) => {
+      const result = await burnSubtitles(input.videoUrl, input.entries as SubtitleEntry[], {
+        fontSize: input.fontSize,
+        fontColor: input.fontColor,
+      });
+      return { url: result.url };
+    }),
+
+  exportSRT: protectedProcedure
+    .input(
+      z.object({
+        entries: z.array(z.object({ start: z.number(), end: z.number(), text: z.string() })),
+      })
+    )
+    .mutation(({ input }) => {
+      return { srt: generateSRT(input.entries as SubtitleEntry[]) };
+    }),
+});
+
+// ── Video Overlay ─────────────────────────────────────────────────────────────
+export const overlayRouter = router({
+  process: protectedProcedure
+    .input(
+      z.object({
+        inputUrl: z.string().url(),
+        mode: z.enum(["watermark", "pip", "color_correction"]),
+        // Watermark
+        overlayImageUrl: z.string().url().optional(),
+        overlayPosition: z.enum(["top-left", "top-right", "bottom-left", "bottom-right", "center"]).optional(),
+        overlayScale: z.number().min(0.05).max(1.0).optional(),
+        overlayOpacity: z.number().min(0).max(1).optional(),
+        // PiP
+        pipVideoUrl: z.string().url().optional(),
+        pipPosition: z.enum(["top-left", "top-right", "bottom-left", "bottom-right"]).optional(),
+        pipScale: z.number().min(0.1).max(0.5).optional(),
+        // Color correction
+        brightness: z.number().min(-1).max(1).optional(),
+        contrast: z.number().min(0).max(2).optional(),
+        saturation: z.number().min(0).max(3).optional(),
+      })
+    )
+    .mutation(async ({ input }) => {
+      const result = await overlayVideo(input);
+      return { url: result.url };
+    }),
+});
+
 // ── AI Prompt Enhancement ─────────────────────────────────────────────────────
 export const aiEnhanceRouter = router({
   enhance: protectedProcedure
@@ -614,6 +824,7 @@ export const aiEnhanceRouter = router({
       z.object({
         text: z.string().min(1).max(8000),
         mode: z.enum(["expand", "translate_en", "polish", "storyboard_prompt", "translate_zh"]),
+        model: z.string().optional(),
       })
     )
     .mutation(async ({ input }) => {
@@ -641,7 +852,7 @@ Output an optimized English prompt under 80 words. Output ONLY the prompt text.`
           { role: "system" as const, content: systemPrompts[input.mode] },
           { role: "user" as const, content: input.text },
         ],
-        model: "gemini-2.5-flash",
+        model: input.model ?? "gemini-2.5-flash",
       });
       return { result: extractTextContent(response).trim() };
     }),

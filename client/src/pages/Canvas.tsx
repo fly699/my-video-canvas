@@ -24,6 +24,7 @@ import { TemplatePanel } from "../components/canvas/TemplatePanel";
 import { NodeSearch } from "../components/canvas/NodeSearch";
 import { PresentationMode } from "../components/canvas/PresentationMode";
 import { FilmstripPanel } from "../components/canvas/FilmstripPanel";
+import { TimelinePanel } from "../components/canvas/TimelinePanel";
 import { isConnectionValid } from "../lib/connectionRules";
 import { BeginnerGuide, ConnectionHintsPanel } from "../components/canvas/BeginnerGuide";
 import { trpc } from "@/lib/trpc";
@@ -58,7 +59,13 @@ import {
   Lock,
   Unlock,
   ChevronDown,
+  History,
+  Trash2,
+  RotateCcw,
+  BookmarkPlus,
+  ListVideo,
 } from "lucide-react";
+import { loadNamedSnapshots, type NamedSnapshot } from "../hooks/useCanvasStore";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 
 const nodeTypes = { custom: CustomNode };
@@ -132,6 +139,117 @@ function ToolDivider() {
   return <div className="w-5 h-px bg-white/8 mx-auto my-1" />;
 }
 
+// ── Snapshot panel ────────────────────────────────────────────────────────────
+function SnapshotPanel({
+  projectId, onSave, onRestore, onDelete, onClose,
+}: {
+  projectId: number;
+  onSave: (name: string) => void;
+  onRestore: (snap: NamedSnapshot) => void;
+  onDelete: (id: string) => void;
+  onClose: () => void;
+}) {
+  const [snapName, setSnapName] = useState("版本 " + new Date().toLocaleString("zh-CN", { month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit" }));
+  const [snaps, setSnaps] = useState<NamedSnapshot[]>(() => loadNamedSnapshots(projectId));
+
+  const handleSave = () => {
+    if (!snapName.trim()) return;
+    onSave(snapName.trim());
+    setSnaps(loadNamedSnapshots(projectId));
+  };
+
+  const handleDelete = (id: string) => {
+    onDelete(id);
+    setSnaps(loadNamedSnapshots(projectId));
+  };
+
+  return (
+    <div
+      className="absolute bottom-14 right-2 z-40 flex flex-col rounded-2xl overflow-hidden"
+      style={{
+        width: 300, maxHeight: 480, background: "oklch(0.11 0.007 260)",
+        border: "1px solid oklch(0.22 0.008 260)", boxShadow: "0 8px 32px oklch(0 0 0 / 0.5)",
+      }}
+    >
+      <div className="flex items-center justify-between px-3.5 py-2.5 border-b" style={{ borderColor: "oklch(0.18 0.008 260)" }}>
+        <div className="flex items-center gap-1.5">
+          <History style={{ width: 13, height: 13, color: "oklch(0.72 0.18 45)" }} />
+          <span className="text-xs font-semibold" style={{ color: "oklch(0.88 0.005 260)" }}>版本历史</span>
+        </div>
+        <button onClick={onClose} className="p-1 rounded" style={{ color: "oklch(0.45 0.008 260)" }}>
+          <X style={{ width: 12, height: 12 }} />
+        </button>
+      </div>
+
+      {/* Save new snapshot */}
+      <div className="flex gap-1.5 p-2.5 border-b" style={{ borderColor: "oklch(0.16 0.008 260)" }}>
+        <input
+          value={snapName}
+          onChange={(e) => setSnapName(e.target.value)}
+          onKeyDown={(e) => { if (e.key === "Enter") handleSave(); }}
+          className="flex-1 px-2 py-1.5 rounded-lg text-xs outline-none"
+          style={{ background: "oklch(0.15 0.008 260)", border: "1px solid oklch(0.24 0.008 260)", color: "oklch(0.85 0.005 260)" }}
+          placeholder="版本名称..."
+          maxLength={40}
+        />
+        <button
+          onClick={handleSave}
+          className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-[10px] font-medium"
+          style={{ background: "oklch(0.72 0.18 45 / 0.15)", border: "1px solid oklch(0.72 0.18 45 / 0.35)", color: "oklch(0.72 0.18 45)", cursor: "pointer" }}
+        >
+          <BookmarkPlus style={{ width: 10, height: 10 }} />
+          保存
+        </button>
+      </div>
+
+      {/* Snapshot list */}
+      <div className="flex-1 overflow-y-auto">
+        {snaps.length === 0 ? (
+          <div className="flex flex-col items-center justify-center py-8 gap-2">
+            <History style={{ width: 20, height: 20, color: "oklch(0.35 0.006 260)" }} />
+            <p className="text-xs" style={{ color: "oklch(0.42 0.006 260)" }}>还没有保存的版本</p>
+          </div>
+        ) : (
+          snaps.map((snap) => (
+            <div
+              key={snap.id}
+              className="flex items-center gap-2 px-3 py-2.5 border-b"
+              style={{ borderColor: "oklch(0.14 0.007 260)" }}
+            >
+              <div className="flex-1 min-w-0">
+                <p className="text-xs font-medium truncate" style={{ color: "oklch(0.80 0.005 260)" }}>{snap.name}</p>
+                <p className="text-[10px]" style={{ color: "oklch(0.40 0.006 260)" }}>
+                  {new Date(snap.createdAt).toLocaleString("zh-CN", { month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit" })} · {snap.nodeCount}节点
+                </p>
+              </div>
+              <button
+                onClick={() => { onRestore(snap); onClose(); }}
+                className="p-1 rounded transition-all"
+                title="恢复此版本"
+                style={{ color: "oklch(0.52 0.008 260)" }}
+                onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.color = "oklch(0.72 0.18 45)"; }}
+                onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.color = "oklch(0.52 0.008 260)"; }}
+              >
+                <RotateCcw style={{ width: 12, height: 12 }} />
+              </button>
+              <button
+                onClick={() => handleDelete(snap.id)}
+                className="p-1 rounded transition-all"
+                title="删除此版本"
+                style={{ color: "oklch(0.45 0.008 260)" }}
+                onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.color = "oklch(0.62 0.20 25)"; }}
+                onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.color = "oklch(0.45 0.008 260)"; }}
+              >
+                <Trash2 style={{ width: 12, height: 12 }} />
+              </button>
+            </div>
+          ))
+        )}
+      </div>
+    </div>
+  );
+}
+
 // ── Mobile tool button ────────────────────────────────────────────────────────
 function MobileToolBtn({
   icon: Icon, label, onClick, active, accent, color,
@@ -176,6 +294,7 @@ function CanvasInner({ projectId }: { projectId: number }) {
     setProjectId, isDirty, markClean, markDirty,
     setCollaborator, removeCollaborator, collaborators, resetCanvas,
     undo, redo, past, future,
+    saveNamedSnapshot, restoreNamedSnapshot, deleteNamedSnapshot,
   } = useCanvasStore();
 
   const [contextMenu, setContextMenu] = useState<{
@@ -191,6 +310,8 @@ function CanvasInner({ projectId }: { projectId: number }) {
   const [showShortcuts, setShowShortcuts] = useState(false);
   const [showStatsSidebar, setShowStatsSidebar] = useState(false);
   const [showFilmstrip, setShowFilmstrip] = useState(false);
+  const [showTimeline, setShowTimeline] = useState(false);
+  const [showSnapshots, setShowSnapshots] = useState(false);
   const [globalAspectRatio, setGlobalAspectRatio] = useState<string | null>(null);
   const [showRatioPicker, setShowRatioPicker] = useState(false);
   const [showConnectionHints, setShowConnectionHints] = useState(false);
@@ -268,7 +389,7 @@ function CanvasInner({ projectId }: { projectId: number }) {
       if (nodes.length > 0) {
         await batchUpsertNodes.mutateAsync(nodes.map((n) => ({
           id: n.id, projectId,
-          type: n.data.nodeType as "script" | "storyboard" | "prompt" | "image_gen" | "asset" | "video_task" | "ai_chat" | "note" | "audio" | "post_process" | "group",
+          type: n.data.nodeType as "script" | "storyboard" | "prompt" | "image_gen" | "asset" | "video_task" | "ai_chat" | "note" | "audio" | "post_process" | "group" | "character" | "clip" | "merge" | "subtitle" | "overlay",
           title: n.data.title,
           data: n.data.payload as Record<string, unknown>,
           posX: n.position.x, posY: n.position.y,
@@ -297,6 +418,16 @@ function CanvasInner({ projectId }: { projectId: number }) {
   }, [isDirty, saveCanvas]);
 
   // ── Socket ──────────────────────────────────────────────────────────────────
+  const emitCollabEvent = useCallback((type: string, payload: unknown) => {
+    if (!socketRef.current?.connected || !user) return;
+    socketRef.current.emit("collaboration-event", {
+      type, projectId, userId: user.id,
+      userName: user.name ?? "匿名",
+      color: COLLABORATOR_COLORS[user.id % COLLABORATOR_COLORS.length],
+      payload,
+    });
+  }, [user, projectId]);
+
   useEffect(() => {
     if (!isAuthenticated || !user) return;
     const socket = io("/", { path: "/api/socket", transports: ["websocket", "polling"] });
@@ -313,6 +444,36 @@ function CanvasInner({ projectId }: { projectId: number }) {
       } else if (event.type === "node:move") {
         const p = event.payload as { id: string; x: number; y: number };
         setNodes(nodesRef.current.map((n) => n.id === p.id ? { ...n, position: { x: p.x, y: p.y } } : n));
+      } else if (event.type === "node:add") {
+        const newNode = event.payload as CanvasNode;
+        const { setNodes: storeSetNodes, markDirty } = useCanvasStore.getState();
+        storeSetNodes([...nodesRef.current.filter((n) => n.id !== newNode.id), newNode]);
+        markDirty();
+      } else if (event.type === "node:delete") {
+        const p = event.payload as { id: string };
+        const { setNodes: storeSetNodes, setEdges: storeSetEdges, edges: currentEdges, markDirty } = useCanvasStore.getState();
+        storeSetNodes(nodesRef.current.filter((n) => n.id !== p.id));
+        storeSetEdges(currentEdges.filter((e) => e.source !== p.id && e.target !== p.id));
+        markDirty();
+      } else if (event.type === "node:update") {
+        const p = event.payload as { id: string; patch: Record<string, unknown> };
+        const { setNodes: storeSetNodes, markDirty } = useCanvasStore.getState();
+        storeSetNodes(nodesRef.current.map((n) =>
+          n.id === p.id ? { ...n, data: { ...n.data, payload: { ...n.data.payload, ...p.patch } } } : n
+        ) as CanvasNode[]);
+        markDirty();
+      } else if (event.type === "edge:add") {
+        const newEdge = event.payload as CanvasEdge;
+        const { edges: currentEdges, setEdges: storeSetEdges, markDirty } = useCanvasStore.getState();
+        if (!currentEdges.find((e) => e.id === newEdge.id)) {
+          storeSetEdges([...currentEdges, newEdge]);
+          markDirty();
+        }
+      } else if (event.type === "edge:delete") {
+        const p = event.payload as { id: string };
+        const { edges: currentEdges, setEdges: storeSetEdges, markDirty } = useCanvasStore.getState();
+        storeSetEdges(currentEdges.filter((e) => e.id !== p.id));
+        markDirty();
       } else if (event.type === "user:leave") {
         removeCollaborator(event.userId);
       }
@@ -348,17 +509,19 @@ function CanvasInner({ projectId }: { projectId: number }) {
 
   const handleAddNode = useCallback((type: NodeType) => {
     const pos = contextMenu?.canvasPos ?? { x: 200, y: 200 };
-    addNode(type, pos);
+    const newNode = addNode(type, pos);
+    emitCollabEvent("node:add", newNode);
     setShowNodePicker(false);
-  }, [contextMenu, addNode]);
+  }, [contextMenu, addNode, emitCollabEvent]);
 
   const addNodeAtCenter = useCallback((type: NodeType) => {
     const vp = reactFlow.getViewport();
     const cx = (window.innerWidth / 2 - vp.x) / vp.zoom;
     const cy = (window.innerHeight / 2 - vp.y) / vp.zoom;
-    addNode(type, { x: cx + Math.random() * 80 - 40, y: cy + Math.random() * 80 - 40 });
+    const newNode = addNode(type, { x: cx + Math.random() * 80 - 40, y: cy + Math.random() * 80 - 40 });
+    emitCollabEvent("node:add", newNode);
     setShowNodePicker(false);
-  }, [addNode, reactFlow]);
+  }, [addNode, reactFlow, emitCollabEvent]);
 
   // ── Global aspect ratio lock ────────────────────────────────────────────────
   const RATIO_PRESETS = ["16:9", "9:16", "1:1", "4:3", "3:4", "2.35:1"];
@@ -769,6 +932,46 @@ function CanvasInner({ projectId }: { projectId: number }) {
             <TooltipContent side="bottom" className="text-xs">胶片条</TooltipContent>
           </Tooltip>
 
+          {/* Timeline toggle */}
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <button
+                onClick={() => setShowTimeline((v) => !v)}
+                className="w-7 h-7 rounded-lg flex items-center justify-center transition-all"
+                style={{
+                  background: showTimeline ? "oklch(0.62 0.20 25 / 0.12)" : "transparent",
+                  border: showTimeline ? "1px solid oklch(0.62 0.20 25 / 0.3)" : "1px solid transparent",
+                  color: showTimeline ? "oklch(0.65 0.18 30)" : "oklch(0.55 0.008 260)",
+                }}
+                onMouseEnter={(e) => { if (!showTimeline) { (e.currentTarget as HTMLElement).style.background = "oklch(0.16 0.008 260)"; (e.currentTarget as HTMLElement).style.color = "oklch(0.80 0.005 260)"; } }}
+                onMouseLeave={(e) => { if (!showTimeline) { (e.currentTarget as HTMLElement).style.background = "transparent"; (e.currentTarget as HTMLElement).style.color = "oklch(0.55 0.008 260)"; } }}
+              >
+                <ListVideo className="w-3.5 h-3.5" />
+              </button>
+            </TooltipTrigger>
+            <TooltipContent side="bottom" className="text-xs">时间轴预览</TooltipContent>
+          </Tooltip>
+
+          {/* ── Version history ── */}
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <button
+                onClick={() => setShowSnapshots((v) => !v)}
+                className="w-7 h-7 rounded-lg flex items-center justify-center transition-all"
+                style={{
+                  background: showSnapshots ? "oklch(0.68 0.22 45 / 0.12)" : "transparent",
+                  border: showSnapshots ? "1px solid oklch(0.68 0.22 45 / 0.3)" : "1px solid transparent",
+                  color: showSnapshots ? "oklch(0.72 0.18 45)" : "oklch(0.55 0.008 260)",
+                }}
+                onMouseEnter={(e) => { if (!showSnapshots) { (e.currentTarget as HTMLElement).style.background = "oklch(0.16 0.008 260)"; (e.currentTarget as HTMLElement).style.color = "oklch(0.80 0.005 260)"; } }}
+                onMouseLeave={(e) => { if (!showSnapshots) { (e.currentTarget as HTMLElement).style.background = "transparent"; (e.currentTarget as HTMLElement).style.color = "oklch(0.55 0.008 260)"; } }}
+              >
+                <History className="w-3.5 h-3.5" />
+              </button>
+            </TooltipTrigger>
+            <TooltipContent side="bottom" className="text-xs">版本历史</TooltipContent>
+          </Tooltip>
+
           {/* ── Separator: View panels | Edit actions ── */}
           <div className="w-px h-4 mx-1" style={{ background: "oklch(0.22 0.008 260)" }} />
 
@@ -1043,10 +1246,21 @@ function CanvasInner({ projectId }: { projectId: number }) {
             edgeTypes={edgeTypes}
             onNodesChange={onNodesChange}
             onEdgesChange={onEdgesChange}
-            onConnect={onConnect}
+            onConnect={(connection) => {
+              const prevIds = new Set(useCanvasStore.getState().edges.map((e) => e.id));
+              onConnect(connection);
+              const newEdge = useCanvasStore.getState().edges.find((e) => !prevIds.has(e.id));
+              if (newEdge) emitCollabEvent("edge:add", newEdge);
+            }}
             onNodeContextMenu={handleNodeContextMenu as Parameters<typeof ReactFlow>[0]["onNodeContextMenu"]}
-            onNodesDelete={(deleted) => deleted.forEach((n) => deleteNodeMutation.mutate({ id: n.id, projectId }))}
-            onEdgesDelete={(deleted) => deleted.forEach((e) => deleteEdgeMutation.mutate({ id: e.id, projectId }))}
+            onNodesDelete={(deleted) => deleted.forEach((n) => {
+              deleteNodeMutation.mutate({ id: n.id, projectId });
+              emitCollabEvent("node:delete", { id: n.id });
+            })}
+            onEdgesDelete={(deleted) => deleted.forEach((e) => {
+              deleteEdgeMutation.mutate({ id: e.id, projectId });
+              emitCollabEvent("edge:delete", { id: e.id });
+            })}
             onMoveEnd={(_, vp) => { setViewport(vp); markDirty(); }}
             selectionMode={SelectionMode.Partial}
             selectionOnDrag
@@ -1339,6 +1553,22 @@ function CanvasInner({ projectId }: { projectId: number }) {
             <FilmstripPanel onClose={() => setShowFilmstrip(false)} />
           )}
 
+          {/* Timeline panel */}
+          {showTimeline && (
+            <TimelinePanel onClose={() => setShowTimeline(false)} />
+          )}
+
+          {/* Version history snapshot panel */}
+          {showSnapshots && (
+            <SnapshotPanel
+              projectId={projectId}
+              onSave={(name) => { saveNamedSnapshot(name); }}
+              onRestore={restoreNamedSnapshot}
+              onDelete={deleteNamedSnapshot}
+              onClose={() => setShowSnapshots(false)}
+            />
+          )}
+
           {/* Collaborator cursors */}
           <CollaboratorCursors cursors={collaboratorList} viewport={viewport} />
 
@@ -1550,6 +1780,7 @@ function CanvasInner({ projectId }: { projectId: number }) {
             const nid = contextMenu.nodeId!;
             deleteNode(nid);
             deleteNodeMutation.mutate({ id: nid, projectId });
+            emitCollabEvent("node:delete", { id: nid });
           } : undefined}
           onDuplicateNode={contextMenu.nodeId ? () => duplicateNode(contextMenu.nodeId!) : undefined}
           onRunWorkflow={contextMenu.nodeId ? () => runWorkflow(contextMenu.nodeId ?? null) : undefined}

@@ -1,11 +1,11 @@
 import type { NodeType } from "../../../shared/types";
 import {
   FileText, Image, Wand2, Sparkles, Paperclip, Video, Bot, StickyNote,
-  Music, Layers, Folder, Users, Scissors,
+  Music, Layers, Folder, Users, Scissors, Merge, Captions, Blend,
 } from "lucide-react";
 
 export const NODE_ICONS: Record<string, React.ComponentType<{ className?: string; style?: React.CSSProperties }>> = {
-  FileText, Image, Wand2, Sparkles, Paperclip, Video, Bot, StickyNote, Music, Layers, Folder, Users, Scissors,
+  FileText, Image, Wand2, Sparkles, Paperclip, Video, Bot, StickyNote, Music, Layers, Folder, Users, Scissors, Merge, Captions, Blend,
 };
 
 export interface NodeConfig {
@@ -152,6 +152,36 @@ export const NODE_CONFIGS: Record<NodeType, NodeConfig> = {
     borderColor: "oklch(0.68 0.20 55 / 0.4)",
     defaultWidth: 400,
     defaultTitle: "剪辑",
+  },
+  merge: {
+    type: "merge",
+    label: "合并",
+    icon: "Merge",
+    color: "oklch(0.62 0.20 270)",
+    bgColor: "oklch(0.62 0.20 270 / 0.08)",
+    borderColor: "oklch(0.62 0.20 270 / 0.4)",
+    defaultWidth: 400,
+    defaultTitle: "视频合并",
+  },
+  subtitle: {
+    type: "subtitle",
+    label: "字幕",
+    icon: "Captions",
+    color: "oklch(0.65 0.18 170)",
+    bgColor: "oklch(0.65 0.18 170 / 0.08)",
+    borderColor: "oklch(0.65 0.18 170 / 0.4)",
+    defaultWidth: 400,
+    defaultTitle: "字幕",
+  },
+  overlay: {
+    type: "overlay",
+    label: "叠加",
+    icon: "Blend",
+    color: "oklch(0.65 0.18 30)",
+    bgColor: "oklch(0.65 0.18 30 / 0.08)",
+    borderColor: "oklch(0.65 0.18 30 / 0.4)",
+    defaultWidth: 400,
+    defaultTitle: "视频叠加",
   },
 };
 

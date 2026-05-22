@@ -183,6 +183,325 @@ export async function trimVideo(opts: TrimOptions): Promise<TrimResult> {
   }
 }
 
+// ── Merge ─────────────────────────────────────────────────────────────────────
+
+export interface MergeOptions {
+  inputUrls: string[];
+  transition?: "none" | "fade" | "dissolve";
+  transitionDuration?: number;
+  bgMusicUrl?: string;
+  bgMusicVolume?: number;
+}
+
+export interface MergeResult {
+  url: string;
+  duration: number;
+}
+
+export async function mergeVideos(opts: MergeOptions): Promise<MergeResult> {
+  const transition = opts.transition ?? "none";
+  const td = opts.transitionDuration ?? 0.5;
+  const bgVol = opts.bgMusicVolume ?? 0.3;
+
+  const inputPaths = await Promise.all(opts.inputUrls.map((u) => downloadToTemp(u, "mp4")));
+  const outName = `ffmpeg-merge-${Date.now()}-${Math.random().toString(36).slice(2)}.mp4`;
+  const outPath = path.join(os.tmpdir(), outName);
+  let bgMusicPath: string | null = null;
+
+  try {
+    if (opts.bgMusicUrl) {
+      bgMusicPath = await downloadToTemp(opts.bgMusicUrl, "mp3");
+    }
+
+    let totalDuration = 0;
+    const args: string[] = [];
+
+    if (transition === "none") {
+      const listName = `ffmpeg-list-${Date.now()}.txt`;
+      const listPath = path.join(os.tmpdir(), listName);
+      const listContent = inputPaths.map((p) => `file '${p}'`).join("\n");
+      await fs.writeFile(listPath, listContent, "utf8");
+
+      args.push("-f", "concat", "-safe", "0", "-i", listPath);
+      if (bgMusicPath) args.push("-i", bgMusicPath);
+
+      if (bgMusicPath) {
+        args.push("-map", "0:v:0", "-map", "1:a:0");
+        args.push("-c:v", "libx264", "-preset", "fast");
+        args.push("-af", `volume=${bgVol.toFixed(4)}`);
+        args.push("-c:a", "aac", "-shortest");
+      } else {
+        args.push("-c:v", "copy", "-c:a", "copy");
+      }
+      args.push("-movflags", "+faststart", "-y", outPath);
+
+      try {
+        await execFileAsync("ffmpeg", args);
+      } catch (err: unknown) {
+        const e = err as { stderr?: string; message?: string };
+        throw new Error(`FFmpeg merge failed:\n${e.stderr || e.message || String(err)}`);
+      } finally {
+        await fs.unlink(listPath).catch(() => undefined);
+      }
+
+      for (const p of inputPaths) {
+        try {
+          const r = await execFileAsync("ffprobe", ["-v", "error", "-show_entries", "format=duration", "-of", "default=noprint_wrappers=1:nokey=1", p]);
+          totalDuration += parseFloat(r.stdout.trim()) || 0;
+        } catch { /* skip */ }
+      }
+    } else {
+      const n = inputPaths.length;
+      inputPaths.forEach((p) => { args.push("-i", p); });
+      if (bgMusicPath) args.push("-i", bgMusicPath);
+
+      const durations: number[] = [];
+      for (const p of inputPaths) {
+        try {
+          const r = await execFileAsync("ffprobe", ["-v", "error", "-show_entries", "format=duration", "-of", "default=noprint_wrappers=1:nokey=1", p]);
+          durations.push(parseFloat(r.stdout.trim()) || 5);
+        } catch { durations.push(5); }
+      }
+
+      const xfadeType = transition === "dissolve" ? "dissolve" : "fade";
+      let filterStr = "";
+      let lastLabel = "[0:v]";
+      let timeOffset = 0;
+
+      for (let i = 1; i < n; i++) {
+        timeOffset += durations[i - 1] - td;
+        const outLabel = i === n - 1 ? "[vout]" : `[v${i}]`;
+        filterStr += `${lastLabel}[${i}:v]xfade=transition=${xfadeType}:duration=${td.toFixed(3)}:offset=${timeOffset.toFixed(3)}${outLabel};`;
+        lastLabel = `[v${i}]`;
+      }
+      if (n === 1) filterStr = "[0:v]copy[vout];";
+      filterStr = filterStr.replace(/;$/, "");
+
+      let audioFilter = "";
+      const audioInputs = inputPaths.map((_, i) => `[${i}:a]`).join("");
+      if (bgMusicPath) {
+        const bgIdx = n;
+        audioFilter = `;${audioInputs}concat=n=${n}:v=0:a=1[acat];[acat][${bgIdx}:a]amix=inputs=2:weights=1 ${bgVol.toFixed(4)}[aout]`;
+      } else {
+        audioFilter = `;${audioInputs}concat=n=${n}:v=0:a=1[aout]`;
+      }
+
+      args.push("-filter_complex", filterStr + audioFilter);
+      args.push("-map", "[vout]", "-map", "[aout]");
+      args.push("-c:v", "libx264", "-preset", "fast", "-c:a", "aac");
+      args.push("-movflags", "+faststart", "-y", outPath);
+
+      try {
+        await execFileAsync("ffmpeg", args);
+      } catch (err: unknown) {
+        const e = err as { stderr?: string; message?: string };
+        throw new Error(`FFmpeg xfade merge failed:\n${e.stderr || e.message || String(err)}`);
+      }
+
+      totalDuration = durations.reduce((s, d) => s + d, 0) - td * (n - 1);
+    }
+
+    const outBuffer = await fs.readFile(outPath);
+    const { url } = await storagePut(`generated/merge-${Date.now()}.mp4`, outBuffer, "video/mp4");
+    return { url, duration: Math.max(0, totalDuration) };
+  } finally {
+    await Promise.all(inputPaths.map((p) => fs.unlink(p).catch(() => undefined)));
+    await fs.unlink(outPath).catch(() => undefined);
+    if (bgMusicPath) await fs.unlink(bgMusicPath).catch(() => undefined);
+  }
+}
+
+// ── Subtitles ─────────────────────────────────────────────────────────────────
+
+export interface SubtitleEntry {
+  start: number;
+  end: number;
+  text: string;
+}
+
+export interface BurnSubtitleOptions {
+  fontSize?: number;
+  fontColor?: string;
+}
+
+function formatSRTTime(seconds: number): string {
+  const h = Math.floor(seconds / 3600);
+  const m = Math.floor((seconds % 3600) / 60);
+  const s = Math.floor(seconds % 60);
+  const ms = Math.round((seconds % 1) * 1000);
+  return `${String(h).padStart(2, "0")}:${String(m).padStart(2, "0")}:${String(s).padStart(2, "0")},${String(ms).padStart(3, "0")}`;
+}
+
+export function generateSRT(entries: SubtitleEntry[]): string {
+  return entries
+    .map((e, i) => `${i + 1}\n${formatSRTTime(e.start)} --> ${formatSRTTime(e.end)}\n${e.text}`)
+    .join("\n\n");
+}
+
+export async function burnSubtitles(
+  videoUrl: string,
+  entries: SubtitleEntry[],
+  opts?: BurnSubtitleOptions,
+): Promise<{ url: string }> {
+  const fontSize = opts?.fontSize ?? 22;
+  const fontColor = opts?.fontColor ?? "white";
+
+  const videoPath = await downloadToTemp(videoUrl, "mp4");
+  const srtName = `subs-${Date.now()}.srt`;
+  const srtPath = path.join(os.tmpdir(), srtName);
+  const outName = `ffmpeg-subs-${Date.now()}-${Math.random().toString(36).slice(2)}.mp4`;
+  const outPath = path.join(os.tmpdir(), outName);
+
+  try {
+    await fs.writeFile(srtPath, generateSRT(entries), "utf8");
+
+    const subsFilter = `subtitles='${srtPath.replace(/'/g, "\\'")}':force_style='FontSize=${fontSize},PrimaryColour=&H${cssColorToASSHex(fontColor)}&'`;
+    const args = [
+      "-i", videoPath,
+      "-vf", subsFilter,
+      "-c:v", "libx264", "-preset", "fast",
+      "-c:a", "copy",
+      "-movflags", "+faststart",
+      "-y", outPath,
+    ];
+
+    try {
+      await execFileAsync("ffmpeg", args);
+    } catch (err: unknown) {
+      const e = err as { stderr?: string; message?: string };
+      throw new Error(`FFmpeg subtitle burn failed:\n${e.stderr || e.message || String(err)}`);
+    }
+
+    const outBuffer = await fs.readFile(outPath);
+    const { url } = await storagePut(`generated/subtitled-${Date.now()}.mp4`, outBuffer, "video/mp4");
+    return { url };
+  } finally {
+    await fs.unlink(videoPath).catch(() => undefined);
+    await fs.unlink(srtPath).catch(() => undefined);
+    await fs.unlink(outPath).catch(() => undefined);
+  }
+}
+
+function cssColorToASSHex(color: string): string {
+  const MAP: Record<string, string> = {
+    white: "FFFFFF", yellow: "00FFFF", red: "0000FF", blue: "FF0000",
+    green: "00FF00", black: "000000", orange: "0080FF",
+  };
+  return MAP[color.toLowerCase()] ?? "FFFFFF";
+}
+
+// ── Overlay ───────────────────────────────────────────────────────────────────
+
+type OverlayMode = "watermark" | "pip" | "color_correction";
+
+export interface OverlayOptions {
+  inputUrl: string;
+  mode: OverlayMode;
+  // Watermark
+  overlayImageUrl?: string;
+  overlayPosition?: "top-left" | "top-right" | "bottom-left" | "bottom-right" | "center";
+  overlayScale?: number;
+  overlayOpacity?: number;
+  // PiP
+  pipVideoUrl?: string;
+  pipPosition?: "top-left" | "top-right" | "bottom-left" | "bottom-right";
+  pipScale?: number;
+  // Color correction
+  brightness?: number;
+  contrast?: number;
+  saturation?: number;
+}
+
+export async function overlayVideo(opts: OverlayOptions): Promise<{ url: string }> {
+  const inputPath = await downloadToTemp(opts.inputUrl, "mp4");
+  const outputPath = path.join(os.tmpdir(), `overlay-out-${Date.now()}.mp4`);
+  const tempFiles = [inputPath, outputPath];
+
+  try {
+    if (opts.mode === "watermark" && opts.overlayImageUrl) {
+      const overlayPath = await downloadToTemp(opts.overlayImageUrl, "png");
+      tempFiles.push(overlayPath);
+
+      const posMap: Record<string, string> = {
+        "top-left": "10:10",
+        "top-right": "W-w-10:10",
+        "bottom-left": "10:H-h-10",
+        "bottom-right": "W-w-10:H-h-10",
+        "center": "(W-w)/2:(H-h)/2",
+      };
+      const xy = posMap[opts.overlayPosition ?? "bottom-right"];
+      const scale = opts.overlayScale ?? 0.2;
+      const opacity = opts.overlayOpacity ?? 1.0;
+
+      // -2 ensures even dimensions required by libx264; -map 0:a? passes audio only if present
+      const overlayFilter = opacity < 1.0
+        ? `[1:v]scale=iw*${scale}:-2,format=rgba,colorchannelmixer=aa=${opacity}[ovr];[0:v][ovr]overlay=${xy}`
+        : `[1:v]scale=iw*${scale}:-2[ovr];[0:v][ovr]overlay=${xy}`;
+
+      try {
+        await execFileAsync("ffmpeg", [
+          "-i", inputPath, "-i", overlayPath,
+          "-filter_complex", overlayFilter,
+          "-map", "0:v", "-map", "0:a?", "-codec:a", "copy",
+          "-y", outputPath,
+        ]);
+      } catch (err: unknown) {
+        const e = err as { stderr?: string; message?: string };
+        throw new Error(`FFmpeg watermark overlay failed:\n${e.stderr || e.message || String(err)}`);
+      }
+    } else if (opts.mode === "pip" && opts.pipVideoUrl) {
+      const pipPath = await downloadToTemp(opts.pipVideoUrl, "mp4");
+      tempFiles.push(pipPath);
+
+      const posMap: Record<string, string> = {
+        "top-left": "10:10",
+        "top-right": "W-w-10:10",
+        "bottom-left": "10:H-h-10",
+        "bottom-right": "W-w-10:H-h-10",
+      };
+      const xy = posMap[opts.pipPosition ?? "bottom-right"];
+      const scale = opts.pipScale ?? 0.25;
+
+      try {
+        await execFileAsync("ffmpeg", [
+          "-i", inputPath, "-i", pipPath,
+          "-filter_complex", `[1:v]scale=iw*${scale}:-2[pip];[0:v][pip]overlay=${xy}`,
+          "-map", "0:v", "-map", "0:a?", "-codec:a", "copy",
+          "-y", outputPath,
+        ]);
+      } catch (err: unknown) {
+        const e = err as { stderr?: string; message?: string };
+        throw new Error(`FFmpeg PiP overlay failed:\n${e.stderr || e.message || String(err)}`);
+      }
+    } else if (opts.mode === "color_correction") {
+      const brightness = opts.brightness ?? 0;
+      const contrast = opts.contrast ?? 1.0;
+      const saturation = opts.saturation ?? 1.0;
+
+      try {
+        await execFileAsync("ffmpeg", [
+          "-i", inputPath,
+          "-vf", `eq=brightness=${brightness}:contrast=${contrast}:saturation=${saturation}`,
+          "-map", "0:v", "-map", "0:a?", "-codec:a", "copy",
+          "-y", outputPath,
+        ]);
+      } catch (err: unknown) {
+        const e = err as { stderr?: string; message?: string };
+        throw new Error(`FFmpeg color correction failed:\n${e.stderr || e.message || String(err)}`);
+      }
+    } else {
+      throw new Error("无效的叠加模式或缺少参数");
+    }
+
+    const buf = await fs.readFile(outputPath);
+    const key = `overlay-${Date.now()}.mp4`;
+    const { url } = await storagePut(key, buf, "video/mp4");
+    return { url };
+  } finally {
+    await Promise.all(tempFiles.map((f) => fs.unlink(f).catch(() => {})));
+  }
+}
+
 export async function getVideoDuration(url: string): Promise<number> {
   let tmpPath: string | null = null;
 

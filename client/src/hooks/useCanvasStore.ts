@@ -31,6 +31,34 @@ interface HistorySnapshot {
   edges: CanvasEdge[];
 }
 
+// ── Named snapshots (version history, localStorage) ───────────────────────────
+export interface NamedSnapshot {
+  id: string;
+  name: string;
+  createdAt: string;
+  nodeCount: number;
+  edgeCount: number;
+  nodes: CanvasNode[];
+  edges: CanvasEdge[];
+}
+
+function getSnapshotKey(projectId: number | null) {
+  return `ai-video-canvas:snapshots:${projectId ?? "default"}`;
+}
+
+export function loadNamedSnapshots(projectId: number | null): NamedSnapshot[] {
+  try {
+    const raw = localStorage.getItem(getSnapshotKey(projectId));
+    return raw ? (JSON.parse(raw) as NamedSnapshot[]) : [];
+  } catch {
+    return [];
+  }
+}
+
+function persistNamedSnapshots(projectId: number | null, snaps: NamedSnapshot[]) {
+  localStorage.setItem(getSnapshotKey(projectId), JSON.stringify(snaps.slice(0, 20)));
+}
+
 const MAX_HISTORY = 50;
 
 interface CanvasStore {
@@ -64,6 +92,11 @@ interface CanvasStore {
   deleteNode: (id: string) => void;
   duplicateNode: (id: string) => void;
   updateEdgeLabel: (id: string, label: string) => void;
+
+  // Named snapshots
+  saveNamedSnapshot: (name: string) => void;
+  restoreNamedSnapshot: (snap: NamedSnapshot) => void;
+  deleteNamedSnapshot: (id: string) => void;
   setSelectedNodeIds: (ids: string[]) => void;
   setCollaborator: (cursor: CollaboratorCursor) => void;
   removeCollaborator: (userId: number) => void;
@@ -316,6 +349,36 @@ export const useCanvasStore = create<CanvasStore>((set, get) => ({
     });
   },
 
+  saveNamedSnapshot: (name) => {
+    const { nodes, edges, projectId } = get();
+    const snap: NamedSnapshot = {
+      id: nanoid(),
+      name,
+      createdAt: new Date().toISOString(),
+      nodeCount: nodes.length,
+      edgeCount: edges.length,
+      nodes,
+      edges,
+    };
+    const existing = loadNamedSnapshots(projectId);
+    persistNamedSnapshots(projectId, [snap, ...existing]);
+  },
+
+  restoreNamedSnapshot: (snap) => {
+    set((state) => ({
+      ...pushHistory(state),
+      nodes: snap.nodes,
+      edges: snap.edges,
+      isDirty: true,
+    }));
+  },
+
+  deleteNamedSnapshot: (snapId) => {
+    const { projectId } = get();
+    const existing = loadNamedSnapshots(projectId);
+    persistNamedSnapshots(projectId, existing.filter((s) => s.id !== snapId));
+  },
+
   markClean: () => set({ isDirty: false }),
   markDirty: () => set({ isDirty: true }),
   resetCanvas: () =>
@@ -378,6 +441,12 @@ function getDefaultPayload(type: NodeType): NodeData {
       return { speed: 1.0, audioVolume: 1.0, status: "idle" };
     case "post_process":
       return { selectedEffects: [], effectIntensities: {}, generatedPrompt: "" };
+    case "merge":
+      return { transition: "none", transitionDuration: 0.5, bgMusicVolume: 0.3, status: "idle" };
+    case "subtitle":
+      return { entries: [], fontSize: 22, fontColor: "white", burnInEnabled: false, status: "idle" };
+    case "overlay":
+      return { mode: "watermark", status: "idle" };
     default:
       return {} as NodeData;
   }

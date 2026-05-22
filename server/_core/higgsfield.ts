@@ -63,6 +63,7 @@ async function pollHiggsfieldRequest(requestId: string): Promise<{ fileUrl: stri
 
     const res = await fetch(statusUrl, {
       headers: { Authorization: getAuthHeader(), Accept: "application/json" },
+      signal: AbortSignal.timeout(10_000),
     });
 
     if (!res.ok) {
@@ -315,6 +316,7 @@ export async function checkHiggsfieldVideoStatus(
 ): Promise<HiggsfieldVideoStatus> {
   const res = await fetch(`${HIGGSFIELD_BASE}/requests/${requestId}/status`, {
     headers: { Authorization: getAuthHeader(), Accept: "application/json" },
+    signal: AbortSignal.timeout(10_000),
   });
 
   if (!res.ok) {

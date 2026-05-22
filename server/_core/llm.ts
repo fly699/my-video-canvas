@@ -320,11 +320,6 @@ export async function invokeLLM(params: InvokeParams): Promise<InvokeResult> {
 
   payload.max_tokens = params.maxTokens ?? params.max_tokens ?? 4096;
 
-  // Extended thinking is Manus Forge-specific; skip for poyo.ai
-  if (!ENV.poyoApiKey) {
-    payload.thinking = { budget_tokens: 128 };
-  }
-
   const normalizedResponseFormat = normalizeResponseFormat({
     responseFormat,
     response_format,
@@ -343,6 +338,7 @@ export async function invokeLLM(params: InvokeParams): Promise<InvokeResult> {
       authorization: `Bearer ${getApiKey()}`,
     },
     body: JSON.stringify(payload),
+    signal: AbortSignal.timeout(120_000),
   });
 
   if (!response.ok) {

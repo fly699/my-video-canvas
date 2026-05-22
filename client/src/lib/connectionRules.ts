@@ -6,12 +6,13 @@ export const CONNECTION_MATRIX: Partial<Record<NodeType, NodeType[]>> = {
   prompt: ["image_gen", "video_task", "storyboard", "script"],
   character: ["storyboard", "image_gen", "video_task", "prompt"],
   image_gen: ["video_task", "asset", "clip"],
-  video_task: ["clip", "asset"],
+  video_task: ["clip", "asset", "overlay", "merge", "subtitle"],
   audio: ["clip"],
-  asset: ["image_gen", "video_task", "clip"],
+  asset: ["image_gen", "video_task", "clip", "merge", "subtitle"],
   ai_chat: ["script", "storyboard", "prompt"],
-  clip: ["asset"],
+  clip: ["asset", "overlay", "merge", "subtitle"],
   post_process: ["video_task", "image_gen", "asset"],
+  overlay: ["asset"],
   note: [],
   group: [],
 };
@@ -114,5 +115,20 @@ export const CONNECTION_HINTS: Record<
     label: "分组",
     outgoing: "容器节点，不参与数据流",
     incoming: "容器节点，不参与数据流",
+  },
+  merge: {
+    label: "合并",
+    outgoing: "→ 素材（保存）",
+    incoming: "← 剪辑 / 视频任务 / 素材",
+  },
+  subtitle: {
+    label: "字幕",
+    outgoing: "→ 素材（保存）",
+    incoming: "← 剪辑 / 视频任务 / 素材",
+  },
+  overlay: {
+    label: "视频叠加",
+    outgoing: "→ 素材（保存）",
+    incoming: "← 剪辑 / 视频任务 / 素材",
   },
 };
