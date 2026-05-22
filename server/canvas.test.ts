@@ -73,6 +73,7 @@ vi.mock("./_core/llm", () => ({
       },
     ],
   }),
+  extractTextContent: vi.fn().mockReturnValue("Test response"),
 }));
 
 // ── Mock image generation ─────────────────────────────────────────────────────

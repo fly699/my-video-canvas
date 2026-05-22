@@ -149,7 +149,7 @@ export const StoryboardNode = memo(function StoryboardNode({ id, selected, data 
     if (!payload.description?.trim()) { toast.error("请先填写场景描述"); return; }
     setExpandingPrompt(true);
     aiExpandMutation.mutate({ text: payload.description, mode: "storyboard_prompt", model: llmModel });
-  }, [payload.description, aiExpandMutation]);
+  }, [payload.description, aiExpandMutation, llmModel]);
 
   const handleChange = useCallback(
     (field: keyof StoryboardNodeData, value: string | number | undefined) => {

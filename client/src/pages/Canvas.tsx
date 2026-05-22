@@ -411,9 +411,10 @@ function CanvasInner({ projectId }: { projectId: number }) {
   useEffect(() => {
     if (project?.viewportState) {
       const vp = project.viewportState as { x: number; y: number; zoom: number };
-      setTimeout(() => reactFlow.setViewport(vp), 100);
+      const tid = setTimeout(() => reactFlow.setViewport(vp), 100);
+      return () => clearTimeout(tid);
     }
-  }, [project]);
+  }, [project, reactFlow]);
 
   // ── Auto-save ───────────────────────────────────────────────────────────────
   const saveCanvas = useCallback(async () => {
@@ -476,22 +477,23 @@ function CanvasInner({ projectId }: { projectId: number }) {
         setCollaborator({ userId: event.userId, userName: event.userName, color: event.color, x: p.x, y: p.y });
       } else if (event.type === "node:move") {
         const p = event.payload as { id: string; x: number; y: number };
-        setNodes(nodesRef.current.map((n) => n.id === p.id ? { ...n, position: { x: p.x, y: p.y } } : n));
+        const { nodes: currentNodes, setNodes: storeSetNodes } = useCanvasStore.getState();
+        storeSetNodes(currentNodes.map((n) => n.id === p.id ? { ...n, position: { x: p.x, y: p.y } } : n));
       } else if (event.type === "node:add") {
         const newNode = event.payload as CanvasNode;
-        const { setNodes: storeSetNodes, markDirty } = useCanvasStore.getState();
-        storeSetNodes([...nodesRef.current.filter((n) => n.id !== newNode.id), newNode]);
+        const { nodes: currentNodes, setNodes: storeSetNodes, markDirty } = useCanvasStore.getState();
+        storeSetNodes([...currentNodes.filter((n) => n.id !== newNode.id), newNode]);
         markDirty();
       } else if (event.type === "node:delete") {
         const p = event.payload as { id: string };
-        const { setNodes: storeSetNodes, setEdges: storeSetEdges, edges: currentEdges, markDirty } = useCanvasStore.getState();
-        storeSetNodes(nodesRef.current.filter((n) => n.id !== p.id));
+        const { nodes: currentNodes, setNodes: storeSetNodes, setEdges: storeSetEdges, edges: currentEdges, markDirty } = useCanvasStore.getState();
+        storeSetNodes(currentNodes.filter((n) => n.id !== p.id));
         storeSetEdges(currentEdges.filter((e) => e.source !== p.id && e.target !== p.id));
         markDirty();
       } else if (event.type === "node:update") {
         const p = event.payload as { id: string; patch: Record<string, unknown> };
-        const { setNodes: storeSetNodes, markDirty } = useCanvasStore.getState();
-        storeSetNodes(nodesRef.current.map((n) =>
+        const { nodes: currentNodes, setNodes: storeSetNodes, markDirty } = useCanvasStore.getState();
+        storeSetNodes(currentNodes.map((n) =>
           n.id === p.id ? { ...n, data: { ...n.data, payload: { ...n.data.payload, ...p.patch } } } : n
         ) as CanvasNode[]);
         markDirty();

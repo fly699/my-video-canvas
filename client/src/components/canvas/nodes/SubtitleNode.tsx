@@ -116,7 +116,9 @@ export const SubtitleNode = memo(function SubtitleNode({ id, selected, data }: P
       const a = document.createElement("a");
       a.href = url;
       a.download = "subtitles.srt";
+      document.body.appendChild(a);
       a.click();
+      document.body.removeChild(a);
       URL.revokeObjectURL(url);
       toast.success("SRT 文件已下载");
     },
