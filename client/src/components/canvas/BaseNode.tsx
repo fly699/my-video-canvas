@@ -7,6 +7,7 @@ import { NodeSelectedContext } from "../../contexts/NodeSelectedContext";
 import { trpc } from "@/lib/trpc";
 import { useWorkflowRunState } from "../../contexts/WorkflowRunContext";
 import { useCanvasMode } from "../../contexts/CanvasModeContext";
+import { useTheme } from "../../contexts/ThemeContext";
 import {
   Trash2, Copy, GripVertical, Check, X, Loader2, FileText,
 } from "lucide-react";
@@ -38,7 +39,9 @@ export const BaseNode = memo(function BaseNode({
   const { deleteNode, duplicateNode, updateNodeTitle, projectId } = useCanvasStore();
   const deleteNodeMutation = trpc.nodes.delete.useMutation();
   const { mode: canvasMode } = useCanvasMode();
+  const { theme } = useTheme();
   const isCreative = canvasMode === "creative";
+  const isLight = theme === "light" || isCreative;
   const hasHero = heroMedia != null;
 
   // Workflow run status
@@ -133,18 +136,12 @@ export const BaseNode = memo(function BaseNode({
           : `1px solid var(--c-bd1)`;
 
   const shadowStyle = runShadow
-    ? `${runShadow}, 0 8px 32px oklch(0 0 0 / ${isCreative ? "0.10" : "0.55"})`
-    : isCreative
-      ? selected
-        ? `0 0 0 3px ${config.color}28, 0 12px 40px oklch(0 0 0 / 0.12), 0 2px 8px oklch(0 0 0 / 0.07)`
-        : isHovered
-          ? `0 4px 20px oklch(0 0 0 / 0.10), 0 1px 4px oklch(0 0 0 / 0.06)`
-          : `0 1px 4px oklch(0 0 0 / 0.06), 0 4px 16px oklch(0 0 0 / 0.06)`
-      : selected
-        ? `0 0 0 4px ${config.color}14, 0 20px 60px oklch(0 0 0 / 0.70), 0 4px 16px oklch(0 0 0 / 0.50)`
-        : isHovered
-          ? `0 8px 32px oklch(0 0 0 / 0.55), 0 2px 8px oklch(0 0 0 / 0.40)`
-          : `0 2px 12px oklch(0 0 0 / 0.40), 0 1px 3px oklch(0 0 0 / 0.30)`;
+    ? `${runShadow}, var(--c-node-shadow-run)`
+    : selected
+      ? `0 0 0 ${isLight ? "3px" : "4px"} ${config.color}${isLight ? "22" : "14"}, var(--c-node-shadow-selected)`
+      : isHovered
+        ? `var(--c-node-shadow-hover)`
+        : `var(--c-node-shadow-rest)`;
 
   return (
     <div
@@ -153,16 +150,14 @@ export const BaseNode = memo(function BaseNode({
       data-has-hero={hasHero ? "true" : "false"}
       style={{
         borderRadius: 16,
-        background: isCreative
-          ? "oklch(1.00 0 0)"
-          : "oklch(0.115 0.007 260 / 0.97)",
+        background: "var(--c-node-bg)",
         border: borderStyle,
         boxShadow: shadowStyle,
         minWidth: isCreative ? Math.round(minWidth * 1.18) : minWidth,
         minHeight,
         width: "100%",
         transition: "border-color 150ms ease, box-shadow 180ms ease, opacity 180ms ease, transform 180ms ease",
-        backdropFilter: isCreative ? "none" : "blur(4px)",
+        backdropFilter: isLight ? "none" : "blur(4px)",
         opacity: entered ? 1 : 0,
         transform: entered ? "scale(1) translateY(0)" : "scale(0.96) translateY(6px)",
         overflow: "hidden",

@@ -85,23 +85,34 @@
     --c-t2:       oklch(0.70 0.006 260);
     --c-t3:       oklch(0.52 0.006 260);
     --c-t4:       oklch(0.38 0.005 260);
+    --c-node-bg:  oklch(0.115 0.007 260 / 0.97);
+    --c-node-shadow-rest:     0 2px 12px oklch(0 0 0 / 0.40), 0 1px 3px oklch(0 0 0 / 0.30);
+    --c-node-shadow-hover:    0 8px 32px oklch(0 0 0 / 0.55), 0 2px 8px oklch(0 0 0 / 0.40);
+    --c-node-shadow-selected: 0 20px 60px oklch(0 0 0 / 0.70), 0 4px 16px oklch(0 0 0 / 0.50);
+    --c-node-shadow-run:      0 8px 32px oklch(0 0 0 / 0.55);
     color-scheme: dark;
   }
 
+  /* ── Light theme — clean, high-contrast-friendly, Notion/Linear-inspired ── */
   :root[data-theme="light"] {
-    --c-canvas:   oklch(0.92 0.004 260);
-    --c-base:     oklch(0.98 0.003 260);
-    --c-surface:  oklch(0.95 0.004 260);
-    --c-elevated: oklch(0.97 0.003 260);
-    --c-overlay:  oklch(0.93 0.005 260);
-    --c-input:    oklch(0.99 0.002 260);
-    --c-bd1:      oklch(0.86 0.005 260);
-    --c-bd2:      oklch(0.80 0.007 260);
-    --c-bd3:      oklch(0.68 0.008 260);
-    --c-t1:       oklch(0.14 0.008 260);
-    --c-t2:       oklch(0.32 0.008 260);
-    --c-t3:       oklch(0.50 0.008 260);
-    --c-t4:       oklch(0.64 0.006 260);
+    --c-canvas:   oklch(0.950 0.004 255);   /* #f1f1f5 — near-white with faint cool tint */
+    --c-base:     oklch(1.000 0.000 0);     /* #ffffff — panels/header pure white */
+    --c-surface:  oklch(0.982 0.002 255);   /* #f8f8fb — very faint off-white */
+    --c-elevated: oklch(1.000 0.000 0);     /* #ffffff */
+    --c-overlay:  oklch(0.965 0.003 255);   /* #f4f4f7 */
+    --c-input:    oklch(0.975 0.002 255);   /* #f6f6f9 — input field */
+    --c-bd1:      oklch(0.900 0.003 255);   /* #e3e3e8 — subtlest border */
+    --c-bd2:      oklch(0.845 0.005 255);   /* #d6d6dc — standard border */
+    --c-bd3:      oklch(0.730 0.006 255);   /* #b9b9be — strong border */
+    --c-t1:       oklch(0.110 0.010 255);   /* #111114 — near black */
+    --c-t2:       oklch(0.295 0.008 255);   /* #404044 — dark gray */
+    --c-t3:       oklch(0.500 0.007 255);   /* #777779 — mid gray */
+    --c-t4:       oklch(0.645 0.005 255);   /* #9e9ea1 — muted */
+    --c-node-bg:  oklch(1.000 0.000 0);     /* white cards, pop off the gray canvas */
+    --c-node-shadow-rest:     0 1px 3px oklch(0 0 0 / 0.07), 0 2px 10px oklch(0 0 0 / 0.05);
+    --c-node-shadow-hover:    0 3px 14px oklch(0 0 0 / 0.10), 0 1px 4px oklch(0 0 0 / 0.07);
+    --c-node-shadow-selected: 0 6px 24px oklch(0 0 0 / 0.13), 0 2px 8px oklch(0 0 0 / 0.08);
+    --c-node-shadow-run:      0 6px 20px oklch(0 0 0 / 0.12);
     color-scheme: light;
   }
 
@@ -119,25 +130,35 @@
     --c-t2:       oklch(0.70 0.006 260);
     --c-t3:       oklch(0.52 0.006 260);
     --c-t4:       oklch(0.38 0.005 260);
+    --c-node-bg:  oklch(0.215 0.009 260);
+    --c-node-shadow-rest:     0 2px 10px oklch(0 0 0 / 0.30), 0 1px 3px oklch(0 0 0 / 0.22);
+    --c-node-shadow-hover:    0 6px 24px oklch(0 0 0 / 0.40), 0 2px 6px oklch(0 0 0 / 0.28);
+    --c-node-shadow-selected: 0 12px 40px oklch(0 0 0 / 0.50), 0 4px 12px oklch(0 0 0 / 0.35);
+    --c-node-shadow-run:      0 6px 24px oklch(0 0 0 / 0.40);
     color-scheme: dark;
   }
 
-  /* ── Creative Mode — LibTV-inspired light canvas ──────────────────────────── */
+  /* ── Creative Mode — LibTV-inspired whiteboard canvas ─────────────────────── */
   /* Overrides theme tokens. Must appear AFTER theme sections to win specificity. */
   :root[data-canvas-mode="creative"] {
-    --c-canvas:   oklch(0.965 0.005 240);   /* warm off-white canvas */
-    --c-base:     oklch(1.000 0.000 0);     /* pure white for cards/header */
+    --c-canvas:   oklch(0.968 0.006 85);    /* warm off-white, slightly paper-like */
+    --c-base:     oklch(1.000 0.000 0);     /* pure white panels/header */
     --c-surface:  oklch(1.000 0.000 0);     /* node card face = pure white */
-    --c-elevated: oklch(0.985 0.003 260);   /* hover-elevated card */
-    --c-overlay:  oklch(0.970 0.004 260);   /* panel overlays */
-    --c-input:    oklch(0.960 0.004 260);   /* input field bg */
-    --c-bd1:      oklch(0.920 0.004 260);   /* subtlest divider */
-    --c-bd2:      oklch(0.880 0.006 260);   /* standard border */
-    --c-bd3:      oklch(0.780 0.008 260);   /* stronger border */
-    --c-t1:       oklch(0.140 0.010 260);   /* primary text */
-    --c-t2:       oklch(0.320 0.009 260);   /* secondary text */
-    --c-t3:       oklch(0.500 0.008 260);   /* muted text */
-    --c-t4:       oklch(0.660 0.006 260);   /* placeholder / disabled */
+    --c-elevated: oklch(0.990 0.002 255);   /* hover-elevated card */
+    --c-overlay:  oklch(0.978 0.003 255);   /* panel overlays */
+    --c-input:    oklch(0.968 0.003 255);   /* input field bg */
+    --c-bd1:      oklch(0.918 0.003 255);   /* subtlest divider */
+    --c-bd2:      oklch(0.870 0.005 255);   /* standard border */
+    --c-bd3:      oklch(0.768 0.007 255);   /* stronger border */
+    --c-t1:       oklch(0.125 0.010 255);   /* primary text */
+    --c-t2:       oklch(0.310 0.009 255);   /* secondary text */
+    --c-t3:       oklch(0.505 0.008 255);   /* muted text */
+    --c-t4:       oklch(0.650 0.006 255);   /* placeholder / disabled */
+    --c-node-bg:  oklch(1.000 0.000 0);     /* white cards */
+    --c-node-shadow-rest:     0 1px 4px oklch(0 0 0 / 0.06), 0 4px 16px oklch(0 0 0 / 0.06);
+    --c-node-shadow-hover:    0 4px 20px oklch(0 0 0 / 0.10), 0 1px 4px oklch(0 0 0 / 0.06);
+    --c-node-shadow-selected: 0 8px 30px oklch(0 0 0 / 0.12), 0 2px 8px oklch(0 0 0 / 0.07);
+    --c-node-shadow-run:      0 6px 20px oklch(0 0 0 / 0.10);
     color-scheme: light;
   }
 
@@ -155,6 +176,11 @@
     --c-t2:       oklch(0.68 0.009 260);
     --c-t3:       oklch(0.50 0.009 260);
     --c-t4:       oklch(0.36 0.008 260);
+    --c-node-bg:  oklch(0.115 0.014 260);
+    --c-node-shadow-rest:     0 2px 14px oklch(0 0 0 / 0.50), 0 1px 3px oklch(0 0 0 / 0.35);
+    --c-node-shadow-hover:    0 8px 36px oklch(0 0 0 / 0.65), 0 2px 8px oklch(0 0 0 / 0.45);
+    --c-node-shadow-selected: 0 20px 70px oklch(0 0 0 / 0.80), 0 4px 16px oklch(0 0 0 / 0.55);
+    --c-node-shadow-run:      0 8px 36px oklch(0 0 0 / 0.65);
     color-scheme: dark;
   }
 
@@ -192,8 +218,8 @@
 
   /* Selection */
   ::selection {
-    background: oklch(0.68 0.22 285 / 0.30);
-    color: oklch(0.99 0 0);
+    background: oklch(0.68 0.22 285 / 0.25);
+    color: var(--c-t1);
   }
 
   /* Focus ring */
@@ -587,14 +613,14 @@ button:active:not(:disabled) {
   filter: none;
 }
 
-/* Creative mode: ReactFlow background gets light dot grid */
+/* Creative mode: ReactFlow background gets warm dot grid */
 :root[data-canvas-mode="creative"] .react-flow__background {
   background-color: var(--c-canvas) !important;
 }
 :root[data-canvas-mode="creative"] .react-flow__background pattern circle,
 :root[data-canvas-mode="creative"] .react-flow__background pattern rect {
-  fill: oklch(0.76 0.006 260) !important;
-  opacity: 0.5;
+  fill: oklch(0.75 0.012 85) !important;
+  opacity: 0.35;
 }
 
 /* Creative mode: top bar adapts to light theme via --c-base token */
