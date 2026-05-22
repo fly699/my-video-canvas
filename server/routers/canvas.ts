@@ -34,7 +34,7 @@ import { isPoyoVideoProvider, submitPoyoVideo, checkPoyoVideoStatus } from "../_
 import { isHiggsfieldVideoProvider, submitHiggsfieldVideo, checkHiggsfieldVideoStatus } from "../_core/higgsfield";
 import { submitAndPollPoyoMusic, type PoyoMusicModel } from "../_core/poyoAudio";
 import { submitAndPollPoyoTTS, type PoyoTTSModel } from "../_core/poyoAudio";
-import { trimVideo, getVideoDuration, mergeVideos, burnSubtitles, generateSRT } from "../_core/videoEditor";
+import { trimVideo, getVideoDuration, mergeVideos, burnSubtitles, generateSRT, overlayVideo } from "../_core/videoEditor";
 import { transcribeAudio } from "../_core/voiceTranscription";
 import { VIDEO_PROVIDERS } from "../../shared/types";
 import type { SubtitleEntry } from "../../shared/types";
@@ -100,7 +100,7 @@ export const nodesRouter = router({
       z.object({
         id: z.string().optional(),
         projectId: z.number(),
-        type: z.enum(["script", "storyboard", "prompt", "image_gen", "asset", "video_task", "ai_chat", "note", "audio", "post_process", "group", "character", "clip", "merge", "subtitle"]),
+        type: z.enum(["script", "storyboard", "prompt", "image_gen", "asset", "video_task", "ai_chat", "note", "audio", "post_process", "group", "character", "clip", "merge", "subtitle", "overlay"]),
         title: z.string().optional(),
         data: nodeDataSchema,
         posX: z.number(),
@@ -130,7 +130,7 @@ export const nodesRouter = router({
         z.object({
           id: z.string(),
           projectId: z.number(),
-          type: z.enum(["script", "storyboard", "prompt", "image_gen", "asset", "video_task", "ai_chat", "note", "audio", "post_process", "group", "character", "clip", "merge", "subtitle"]),
+          type: z.enum(["script", "storyboard", "prompt", "image_gen", "asset", "video_task", "ai_chat", "note", "audio", "post_process", "group", "character", "clip", "merge", "subtitle", "overlay"]),
           title: z.string().optional().nullable(),
           data: nodeDataSchema,
           posX: z.number(),
@@ -786,6 +786,34 @@ export const subtitleRouter = router({
     )
     .mutation(({ input }) => {
       return { srt: generateSRT(input.entries as SubtitleEntry[]) };
+    }),
+});
+
+// ── Video Overlay ─────────────────────────────────────────────────────────────
+export const overlayRouter = router({
+  process: protectedProcedure
+    .input(
+      z.object({
+        inputUrl: z.string().url(),
+        mode: z.enum(["watermark", "pip", "color_correction"]),
+        // Watermark
+        overlayImageUrl: z.string().url().optional(),
+        overlayPosition: z.enum(["top-left", "top-right", "bottom-left", "bottom-right", "center"]).optional(),
+        overlayScale: z.number().min(0.05).max(1.0).optional(),
+        overlayOpacity: z.number().min(0).max(1).optional(),
+        // PiP
+        pipVideoUrl: z.string().url().optional(),
+        pipPosition: z.enum(["top-left", "top-right", "bottom-left", "bottom-right"]).optional(),
+        pipScale: z.number().min(0.1).max(0.5).optional(),
+        // Color correction
+        brightness: z.number().min(-1).max(1).optional(),
+        contrast: z.number().min(0).max(2).optional(),
+        saturation: z.number().min(0).max(3).optional(),
+      })
+    )
+    .mutation(async ({ input }) => {
+      const result = await overlayVideo(input);
+      return { url: result.url };
     }),
 });
 

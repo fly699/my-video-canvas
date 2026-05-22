@@ -1,11 +1,11 @@
 import type { NodeType } from "../../../shared/types";
 import {
   FileText, Image, Wand2, Sparkles, Paperclip, Video, Bot, StickyNote,
-  Music, Layers, Folder, Users, Scissors, Merge, Captions,
+  Music, Layers, Folder, Users, Scissors, Merge, Captions, Blend,
 } from "lucide-react";
 
 export const NODE_ICONS: Record<string, React.ComponentType<{ className?: string; style?: React.CSSProperties }>> = {
-  FileText, Image, Wand2, Sparkles, Paperclip, Video, Bot, StickyNote, Music, Layers, Folder, Users, Scissors, Merge, Captions,
+  FileText, Image, Wand2, Sparkles, Paperclip, Video, Bot, StickyNote, Music, Layers, Folder, Users, Scissors, Merge, Captions, Blend,
 };
 
 export interface NodeConfig {

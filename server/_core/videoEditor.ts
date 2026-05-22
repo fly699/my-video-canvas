@@ -390,6 +390,114 @@ function cssColorToASSHex(color: string): string {
   return MAP[color.toLowerCase()] ?? "FFFFFF";
 }
 
+// ── Overlay ───────────────────────────────────────────────────────────────────
+
+type OverlayMode = "watermark" | "pip" | "color_correction";
+
+export interface OverlayOptions {
+  inputUrl: string;
+  mode: OverlayMode;
+  // Watermark
+  overlayImageUrl?: string;
+  overlayPosition?: "top-left" | "top-right" | "bottom-left" | "bottom-right" | "center";
+  overlayScale?: number;
+  overlayOpacity?: number;
+  // PiP
+  pipVideoUrl?: string;
+  pipPosition?: "top-left" | "top-right" | "bottom-left" | "bottom-right";
+  pipScale?: number;
+  // Color correction
+  brightness?: number;
+  contrast?: number;
+  saturation?: number;
+}
+
+export async function overlayVideo(opts: OverlayOptions): Promise<{ url: string }> {
+  const inputPath = await downloadToTemp(opts.inputUrl, "mp4");
+  const outputPath = path.join(os.tmpdir(), `overlay-out-${Date.now()}.mp4`);
+  const tempFiles = [inputPath, outputPath];
+
+  try {
+    if (opts.mode === "watermark" && opts.overlayImageUrl) {
+      const overlayPath = await downloadToTemp(opts.overlayImageUrl, "png");
+      tempFiles.push(overlayPath);
+
+      const posMap: Record<string, string> = {
+        "top-left": "10:10",
+        "top-right": "W-w-10:10",
+        "bottom-left": "10:H-h-10",
+        "bottom-right": "W-w-10:H-h-10",
+        "center": "(W-w)/2:(H-h)/2",
+      };
+      const xy = posMap[opts.overlayPosition ?? "bottom-right"];
+      const scale = opts.overlayScale ?? 0.2;
+      const opacity = opts.overlayOpacity ?? 1.0;
+
+      const overlayFilter = opacity < 1.0
+        ? `[1:v]scale=iw*${scale}:-1,format=rgba,colorchannelmixer=aa=${opacity}[ovr];[0:v][ovr]overlay=${xy}`
+        : `[1:v]scale=iw*${scale}:-1[ovr];[0:v][ovr]overlay=${xy}`;
+
+      try {
+        await execFileAsync("ffmpeg", [
+          "-i", inputPath, "-i", overlayPath,
+          "-filter_complex", overlayFilter,
+          "-codec:a", "copy", "-y", outputPath,
+        ]);
+      } catch (err: unknown) {
+        const e = err as { stderr?: string; message?: string };
+        throw new Error(`FFmpeg watermark overlay failed:\n${e.stderr || e.message || String(err)}`);
+      }
+    } else if (opts.mode === "pip" && opts.pipVideoUrl) {
+      const pipPath = await downloadToTemp(opts.pipVideoUrl, "mp4");
+      tempFiles.push(pipPath);
+
+      const posMap: Record<string, string> = {
+        "top-left": "10:10",
+        "top-right": "W-w-10:10",
+        "bottom-left": "10:H-h-10",
+        "bottom-right": "W-w-10:H-h-10",
+      };
+      const xy = posMap[opts.pipPosition ?? "bottom-right"];
+      const scale = opts.pipScale ?? 0.25;
+
+      try {
+        await execFileAsync("ffmpeg", [
+          "-i", inputPath, "-i", pipPath,
+          "-filter_complex", `[1:v]scale=iw*${scale}:-1[pip];[0:v][pip]overlay=${xy}`,
+          "-codec:a", "copy", "-y", outputPath,
+        ]);
+      } catch (err: unknown) {
+        const e = err as { stderr?: string; message?: string };
+        throw new Error(`FFmpeg PiP overlay failed:\n${e.stderr || e.message || String(err)}`);
+      }
+    } else if (opts.mode === "color_correction") {
+      const brightness = opts.brightness ?? 0;
+      const contrast = opts.contrast ?? 1.0;
+      const saturation = opts.saturation ?? 1.0;
+
+      try {
+        await execFileAsync("ffmpeg", [
+          "-i", inputPath,
+          "-vf", `eq=brightness=${brightness}:contrast=${contrast}:saturation=${saturation}`,
+          "-codec:a", "copy", "-y", outputPath,
+        ]);
+      } catch (err: unknown) {
+        const e = err as { stderr?: string; message?: string };
+        throw new Error(`FFmpeg color correction failed:\n${e.stderr || e.message || String(err)}`);
+      }
+    } else {
+      throw new Error("无效的叠加模式或缺少参数");
+    }
+
+    const buf = await fs.readFile(outputPath);
+    const key = `overlay-${Date.now()}.mp4`;
+    const { url } = await storagePut(key, buf, "video/mp4");
+    return { url };
+  } finally {
+    await Promise.all(tempFiles.map((f) => fs.unlink(f).catch(() => {})));
+  }
+}
+
 export async function getVideoDuration(url: string): Promise<number> {
   let tmpPath: string | null = null;
 

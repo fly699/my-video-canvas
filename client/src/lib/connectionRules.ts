@@ -125,4 +125,9 @@ export const CONNECTION_HINTS: Record<
     outgoing: "→ 素材（保存）",
     incoming: "← 剪辑 / 视频任务 / 素材",
   },
+  overlay: {
+    label: "视频叠加",
+    outgoing: "→ 素材（保存）",
+    incoming: "← 剪辑 / 视频任务 / 素材",
+  },
 };

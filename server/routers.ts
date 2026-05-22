@@ -16,6 +16,7 @@ import {
   aiEnhanceRouter,
   mergeRouter,
   subtitleRouter,
+  overlayRouter,
 } from "./routers/canvas";
 import { uploadRouter } from "./routers/upload";
 
@@ -44,6 +45,7 @@ export const appRouter = router({
   aiEnhance: aiEnhanceRouter,
   merge: mergeRouter,
   subtitle: subtitleRouter,
+  overlay: overlayRouter,
   upload: uploadRouter,
 });
 

@@ -15,7 +15,8 @@ export type NodeType =
   | "character"
   | "clip"
   | "merge"
-  | "subtitle";
+  | "subtitle"
+  | "overlay";
 
 export const VIDEO_PROVIDERS = [
   "mock",
@@ -264,6 +265,29 @@ export interface SubtitleNodeData {
   fontColor?: string;            // CSS color, default "white"
 }
 
+export type OverlayMode = "watermark" | "pip" | "color_correction";
+export interface OverlayNodeData {
+  mode?: OverlayMode;
+  // Watermark
+  overlayImageUrl?: string;
+  overlayPosition?: "top-left" | "top-right" | "bottom-left" | "bottom-right" | "center";
+  overlayScale?: number;     // 0.05–1.0
+  overlayOpacity?: number;   // 0.0–1.0
+  // PiP
+  pipVideoUrl?: string;
+  pipPosition?: "top-left" | "top-right" | "bottom-left" | "bottom-right";
+  pipScale?: number;         // 0.1–0.5
+  // Color correction
+  brightness?: number;       // -1.0–1.0
+  contrast?: number;         // 0.0–2.0 (FFmpeg eq contrast range)
+  saturation?: number;       // 0.0–3.0
+  // Common
+  inputVideoUrl?: string;
+  outputUrl?: string;
+  status?: "idle" | "processing" | "done" | "failed";
+  errorMessage?: string;
+}
+
 export type NodeData =
   | ScriptNodeData
   | StoryboardNodeData
@@ -279,7 +303,8 @@ export type NodeData =
   | CharacterNodeData
   | ClipNodeData
   | MergeNodeData
-  | SubtitleNodeData;
+  | SubtitleNodeData
+  | OverlayNodeData;
 
 // ── Canvas Node ───────────────────────────────────────────────────────────────
 
