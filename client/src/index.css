@@ -70,6 +70,212 @@
 
 /* ── Base ───────────────────────────────────────────────────────────────────── */
 @layer base {
+  /* ── Theme tokens (used directly by inline styles via var()) ─── */
+  :root, :root[data-theme="dark"] {
+    --c-canvas:   oklch(0.07 0.005 260);
+    --c-base:     oklch(0.10 0.007 260);
+    --c-surface:  oklch(0.13 0.007 260);
+    --c-elevated: oklch(0.16 0.008 260);
+    --c-overlay:  oklch(0.19 0.009 260);
+    --c-input:    oklch(0.09 0.006 260);
+    --c-bd1:      oklch(0.18 0.008 260);
+    --c-bd2:      oklch(0.22 0.008 260);
+    --c-bd3:      oklch(0.30 0.009 260);
+    --c-t1:       oklch(0.88 0.005 260);
+    --c-t2:       oklch(0.70 0.006 260);
+    --c-t3:       oklch(0.52 0.006 260);
+    --c-t4:       oklch(0.38 0.005 260);
+    --c-node-bg:  oklch(0.115 0.007 260 / 0.97);
+    --c-node-shadow-rest:     0 2px 12px oklch(0 0 0 / 0.40), 0 1px 3px oklch(0 0 0 / 0.30);
+    --c-node-shadow-hover:    0 8px 32px oklch(0 0 0 / 0.55), 0 2px 8px oklch(0 0 0 / 0.40);
+    --c-node-shadow-selected: 0 20px 60px oklch(0 0 0 / 0.70), 0 4px 16px oklch(0 0 0 / 0.50);
+    --c-node-shadow-run:      0 8px 32px oklch(0 0 0 / 0.55);
+    color-scheme: dark;
+  }
+
+  /* ── Light theme — clean, high-contrast-friendly, Notion/Linear-inspired ── */
+  :root[data-theme="light"] {
+    --c-canvas:   oklch(0.950 0.004 255);   /* #f1f1f5 — near-white with faint cool tint */
+    --c-base:     oklch(1.000 0.000 0);     /* #ffffff — panels/header pure white */
+    --c-surface:  oklch(0.982 0.002 255);   /* #f8f8fb — very faint off-white */
+    --c-elevated: oklch(1.000 0.000 0);     /* #ffffff */
+    --c-overlay:  oklch(0.965 0.003 255);   /* #f4f4f7 */
+    --c-input:    oklch(0.975 0.002 255);   /* #f6f6f9 — input field */
+    --c-bd1:      oklch(0.900 0.003 255);   /* #e3e3e8 — subtlest border */
+    --c-bd2:      oklch(0.845 0.005 255);   /* #d6d6dc — standard border */
+    --c-bd3:      oklch(0.730 0.006 255);   /* #b9b9be — strong border */
+    --c-t1:       oklch(0.110 0.010 255);   /* #111114 — near black */
+    --c-t2:       oklch(0.295 0.008 255);   /* #404044 — dark gray */
+    --c-t3:       oklch(0.500 0.007 255);   /* #777779 — mid gray */
+    --c-t4:       oklch(0.645 0.005 255);   /* #9e9ea1 — muted */
+    --c-node-bg:  oklch(1.000 0.000 0);     /* white cards, pop off the gray canvas */
+    --c-node-shadow-rest:     0 1px 3px oklch(0 0 0 / 0.07), 0 2px 10px oklch(0 0 0 / 0.05);
+    --c-node-shadow-hover:    0 3px 14px oklch(0 0 0 / 0.10), 0 1px 4px oklch(0 0 0 / 0.07);
+    --c-node-shadow-selected: 0 6px 24px oklch(0 0 0 / 0.13), 0 2px 8px oklch(0 0 0 / 0.08);
+    --c-node-shadow-run:      0 6px 20px oklch(0 0 0 / 0.12);
+    color-scheme: light;
+  }
+
+  :root[data-theme="dim"] {
+    --c-canvas:   oklch(0.16 0.009 260);
+    --c-base:     oklch(0.20 0.009 260);
+    --c-surface:  oklch(0.24 0.009 260);
+    --c-elevated: oklch(0.27 0.009 260);
+    --c-overlay:  oklch(0.30 0.009 260);
+    --c-input:    oklch(0.17 0.008 260);
+    --c-bd1:      oklch(0.30 0.010 260);
+    --c-bd2:      oklch(0.35 0.010 260);
+    --c-bd3:      oklch(0.44 0.010 260);
+    --c-t1:       oklch(0.88 0.005 260);
+    --c-t2:       oklch(0.70 0.006 260);
+    --c-t3:       oklch(0.52 0.006 260);
+    --c-t4:       oklch(0.38 0.005 260);
+    --c-node-bg:  oklch(0.215 0.009 260);
+    --c-node-shadow-rest:     0 2px 10px oklch(0 0 0 / 0.30), 0 1px 3px oklch(0 0 0 / 0.22);
+    --c-node-shadow-hover:    0 6px 24px oklch(0 0 0 / 0.40), 0 2px 6px oklch(0 0 0 / 0.28);
+    --c-node-shadow-selected: 0 12px 40px oklch(0 0 0 / 0.50), 0 4px 12px oklch(0 0 0 / 0.35);
+    --c-node-shadow-run:      0 6px 24px oklch(0 0 0 / 0.40);
+    color-scheme: dark;
+  }
+
+  /* ── Creative Mode — LibTV-inspired whiteboard canvas ─────────────────────── */
+  /* Overrides theme tokens. Must appear AFTER theme sections to win specificity. */
+  :root[data-canvas-mode="creative"] {
+    --c-canvas:   oklch(0.968 0.006 85);    /* warm paper */
+    --c-base:     oklch(0.998 0.003 80);    /* warm white panels */
+    --c-surface:  oklch(0.998 0.003 80);    /* warm white cards */
+    --c-elevated: oklch(0.986 0.005 80);    /* slightly deeper warm */
+    --c-overlay:  oklch(0.975 0.005 80);    /* panel overlays */
+    --c-input:    oklch(0.962 0.006 80);    /* input bg — warm gray */
+    --c-bd1:      oklch(0.910 0.006 80);    /* subtlest divider */
+    --c-bd2:      oklch(0.862 0.008 80);    /* standard border */
+    --c-bd3:      oklch(0.760 0.010 80);    /* stronger border */
+    --c-t1:       oklch(0.130 0.012 60);    /* primary text — warm dark */
+    --c-t2:       oklch(0.315 0.010 60);    /* secondary text */
+    --c-t3:       oklch(0.510 0.008 60);    /* muted text */
+    --c-t4:       oklch(0.655 0.006 60);    /* placeholder / disabled */
+    --c-node-bg:  oklch(0.998 0.003 80);    /* warm white cards */
+    --c-node-shadow-rest:     0 1px 3px oklch(0.50 0.04 80 / 0.06), 0 3px 12px oklch(0.50 0.04 80 / 0.07);
+    --c-node-shadow-hover:    0 4px 18px oklch(0.50 0.04 80 / 0.10), 0 1px 4px oklch(0.50 0.04 80 / 0.06);
+    --c-node-shadow-selected: 0 8px 28px oklch(0.50 0.04 80 / 0.13), 0 2px 6px oklch(0.50 0.04 80 / 0.08);
+    --c-node-shadow-run:      0 6px 20px oklch(0.50 0.04 80 / 0.10);
+    color-scheme: light;
+  }
+
+  :root[data-theme="midnight"] {
+    --c-canvas:   oklch(0.07 0.012 260);
+    --c-base:     oklch(0.10 0.014 260);
+    --c-surface:  oklch(0.13 0.013 260);
+    --c-elevated: oklch(0.16 0.013 260);
+    --c-overlay:  oklch(0.19 0.013 260);
+    --c-input:    oklch(0.09 0.012 260);
+    --c-bd1:      oklch(0.20 0.014 260);
+    --c-bd2:      oklch(0.24 0.014 260);
+    --c-bd3:      oklch(0.32 0.014 260);
+    --c-t1:       oklch(0.88 0.008 260);
+    --c-t2:       oklch(0.68 0.009 260);
+    --c-t3:       oklch(0.50 0.009 260);
+    --c-t4:       oklch(0.36 0.008 260);
+    --c-node-bg:  oklch(0.115 0.014 260);
+    --c-node-shadow-rest:     0 2px 14px oklch(0 0 0 / 0.50), 0 1px 3px oklch(0 0 0 / 0.35);
+    --c-node-shadow-hover:    0 8px 36px oklch(0 0 0 / 0.65), 0 2px 8px oklch(0 0 0 / 0.45);
+    --c-node-shadow-selected: 0 20px 70px oklch(0 0 0 / 0.80), 0 4px 16px oklch(0 0 0 / 0.55);
+    --c-node-shadow-run:      0 8px 36px oklch(0 0 0 / 0.65);
+    color-scheme: dark;
+  }
+
+  /* ── Forest — deep green dark, GitHub-forest inspired ─────────────────────── */
+  :root[data-theme="forest"] {
+    --c-canvas:   oklch(0.068 0.018 150);   /* deep pine black-green */
+    --c-base:     oklch(0.100 0.020 150);
+    --c-surface:  oklch(0.130 0.019 150);
+    --c-elevated: oklch(0.160 0.018 150);
+    --c-overlay:  oklch(0.190 0.017 150);
+    --c-input:    oklch(0.088 0.018 150);
+    --c-bd1:      oklch(0.190 0.018 150);
+    --c-bd2:      oklch(0.230 0.018 150);
+    --c-bd3:      oklch(0.315 0.018 150);
+    --c-t1:       oklch(0.880 0.010 150);   /* cool green-white */
+    --c-t2:       oklch(0.700 0.012 150);
+    --c-t3:       oklch(0.520 0.010 150);
+    --c-t4:       oklch(0.380 0.008 150);
+    --c-node-bg:  oklch(0.112 0.019 150);
+    --c-node-shadow-rest:     0 2px 12px oklch(0 0 0 / 0.45), 0 1px 3px oklch(0 0 0 / 0.32);
+    --c-node-shadow-hover:    0 8px 32px oklch(0 0 0 / 0.58), 0 2px 8px oklch(0 0 0 / 0.42);
+    --c-node-shadow-selected: 0 20px 60px oklch(0 0 0 / 0.72), 0 4px 16px oklch(0 0 0 / 0.52);
+    --c-node-shadow-run:      0 8px 32px oklch(0 0 0 / 0.55);
+    color-scheme: dark;
+  }
+
+  /* ── Rose — warm rose dark, Dracula-warm inspired ─────────────────────────── */
+  :root[data-theme="rose"] {
+    --c-canvas:   oklch(0.068 0.012 10);    /* deep warm black-red */
+    --c-base:     oklch(0.100 0.016 10);
+    --c-surface:  oklch(0.130 0.015 10);
+    --c-elevated: oklch(0.160 0.014 10);
+    --c-overlay:  oklch(0.192 0.014 10);
+    --c-input:    oklch(0.088 0.014 10);
+    --c-bd1:      oklch(0.192 0.016 10);
+    --c-bd2:      oklch(0.235 0.017 10);
+    --c-bd3:      oklch(0.318 0.017 10);
+    --c-t1:       oklch(0.880 0.008 15);    /* warm near-white */
+    --c-t2:       oklch(0.700 0.009 15);
+    --c-t3:       oklch(0.520 0.007 15);
+    --c-t4:       oklch(0.380 0.006 15);
+    --c-node-bg:  oklch(0.112 0.015 10);
+    --c-node-shadow-rest:     0 2px 12px oklch(0 0 0 / 0.42), 0 1px 3px oklch(0 0 0 / 0.30);
+    --c-node-shadow-hover:    0 8px 32px oklch(0 0 0 / 0.55), 0 2px 8px oklch(0 0 0 / 0.40);
+    --c-node-shadow-selected: 0 20px 60px oklch(0 0 0 / 0.70), 0 4px 16px oklch(0 0 0 / 0.50);
+    --c-node-shadow-run:      0 8px 32px oklch(0 0 0 / 0.55);
+    color-scheme: dark;
+  }
+
+  /* ── Ocean — deep blue dark, deep-sea inspired ────────────────────────────── */
+  :root[data-theme="ocean"] {
+    --c-canvas:   oklch(0.062 0.026 232);   /* deep navy black */
+    --c-base:     oklch(0.092 0.030 232);
+    --c-surface:  oklch(0.122 0.028 232);
+    --c-elevated: oklch(0.152 0.026 232);
+    --c-overlay:  oklch(0.182 0.025 232);
+    --c-input:    oklch(0.078 0.026 232);
+    --c-bd1:      oklch(0.185 0.028 232);
+    --c-bd2:      oklch(0.222 0.028 232);
+    --c-bd3:      oklch(0.305 0.028 232);
+    --c-t1:       oklch(0.880 0.012 220);   /* cool blue-white */
+    --c-t2:       oklch(0.700 0.015 220);
+    --c-t3:       oklch(0.520 0.013 220);
+    --c-t4:       oklch(0.380 0.010 220);
+    --c-node-bg:  oklch(0.105 0.028 232);
+    --c-node-shadow-rest:     0 2px 14px oklch(0 0 0 / 0.48), 0 1px 3px oklch(0 0 0 / 0.34);
+    --c-node-shadow-hover:    0 8px 36px oklch(0 0 0 / 0.62), 0 2px 8px oklch(0 0 0 / 0.44);
+    --c-node-shadow-selected: 0 20px 64px oklch(0 0 0 / 0.76), 0 4px 16px oklch(0 0 0 / 0.54);
+    --c-node-shadow-run:      0 8px 32px oklch(0 0 0 / 0.58);
+    color-scheme: dark;
+  }
+
+  /* ── Warm — cream paper light, Notion-warm inspired ──────────────────────── */
+  :root[data-theme="warm"] {
+    --c-canvas:   oklch(0.948 0.020 85);    /* warm cream/parchment */
+    --c-base:     oklch(0.996 0.006 90);    /* warm white panels */
+    --c-surface:  oklch(0.974 0.014 85);
+    --c-elevated: oklch(0.996 0.006 90);
+    --c-overlay:  oklch(0.960 0.016 85);
+    --c-input:    oklch(0.968 0.012 85);
+    --c-bd1:      oklch(0.892 0.018 80);    /* warm border */
+    --c-bd2:      oklch(0.835 0.022 78);
+    --c-bd3:      oklch(0.718 0.025 75);
+    --c-t1:       oklch(0.162 0.022 50);    /* warm dark brown */
+    --c-t2:       oklch(0.332 0.018 50);
+    --c-t3:       oklch(0.518 0.014 50);
+    --c-t4:       oklch(0.658 0.010 50);
+    --c-node-bg:  oklch(0.998 0.004 88);    /* warm near-white cards */
+    --c-node-shadow-rest:     0 1px 3px oklch(0 0 0 / 0.08), 0 2px 10px oklch(0 0 0 / 0.06);
+    --c-node-shadow-hover:    0 3px 14px oklch(0 0 0 / 0.11), 0 1px 4px oklch(0 0 0 / 0.08);
+    --c-node-shadow-selected: 0 6px 24px oklch(0 0 0 / 0.14), 0 2px 8px oklch(0 0 0 / 0.09);
+    --c-node-shadow-run:      0 6px 20px oklch(0 0 0 / 0.13);
+    color-scheme: light;
+  }
+
   *, *::before, *::after {
     border-color: var(--color-border);
     outline-color: var(--color-ring);
@@ -82,8 +288,8 @@
   }
 
   body {
-    background-color: var(--color-background);
-    color: var(--color-foreground);
+    background-color: var(--c-canvas);
+    color: var(--c-t1);
     font-family: var(--font-sans);
     font-size: 13px;
     line-height: 1.5;
@@ -97,15 +303,15 @@
   ::-webkit-scrollbar { width: 6px; height: 6px; }
   ::-webkit-scrollbar-track { background: transparent; }
   ::-webkit-scrollbar-thumb {
-    background: oklch(0.25 0.008 260);
+    background: var(--c-bd2);
     border-radius: 99px;
   }
-  ::-webkit-scrollbar-thumb:hover { background: oklch(0.32 0.010 260); }
+  ::-webkit-scrollbar-thumb:hover { background: var(--c-bd3); }
 
   /* Selection */
   ::selection {
-    background: oklch(0.68 0.22 285 / 0.30);
-    color: oklch(0.99 0 0);
+    background: oklch(0.68 0.22 285 / 0.25);
+    color: var(--c-t1);
   }
 
   /* Focus ring */
@@ -155,19 +361,19 @@
   .surface-raised { background: var(--color-surface-raised); }
   .surface-overlay { background: var(--color-surface-overlay); }
 
-  /* Glass effect */
+  /* Glass effect — adapts to theme via CSS vars */
   .glass {
-    background: oklch(0.10 0.006 260 / 0.80);
+    background: color-mix(in oklch, var(--c-base) 82%, transparent);
     backdrop-filter: blur(20px) saturate(1.6);
     -webkit-backdrop-filter: blur(20px) saturate(1.6);
-    border: 1px solid oklch(0.22 0.008 260 / 0.60);
+    border: 1px solid var(--c-bd2);
   }
 
   .glass-strong {
-    background: oklch(0.13 0.007 260 / 0.92);
+    background: color-mix(in oklch, var(--c-base) 93%, transparent);
     backdrop-filter: blur(32px) saturate(1.8);
     -webkit-backdrop-filter: blur(32px) saturate(1.8);
-    border: 1px solid oklch(0.25 0.010 260 / 0.70);
+    border: 1px solid var(--c-bd1);
   }
 
   /* Brand glow */
@@ -289,7 +495,8 @@
   position: absolute;
   inset: 0;
   pointer-events: none;
-  background: radial-gradient(ellipse at center, transparent 40%, oklch(0.06 0.005 260 / 0.5) 100%);
+  background: radial-gradient(ellipse at center, transparent 40%, var(--c-canvas) 100%);
+  opacity: 0.45;
   z-index: 1;
 }
 
@@ -299,29 +506,60 @@ button:active:not(:disabled) {
   transition: transform 80ms cubic-bezier(0.16, 1, 0.3, 1);
 }
 
+/* ── Topbar icon button ─────────────────────────────────────────────────────── */
+.topbar-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border-radius: 8px;
+  border: 1px solid transparent;
+  background: transparent;
+  color: var(--c-t3);
+  cursor: pointer;
+  flex-shrink: 0;
+  transition: background 150ms ease, color 150ms ease, border-color 150ms ease;
+}
+.topbar-btn:hover:not(:disabled):not([data-active="true"]) {
+  background: var(--c-elevated);
+  color: var(--c-t1);
+}
+.topbar-btn:disabled {
+  color: var(--c-bd3);
+  cursor: not-allowed;
+}
+.topbar-btn--danger:hover:not(:disabled) {
+  background: oklch(0.55 0.18 20 / 0.12) !important;
+  color: oklch(0.65 0.18 20) !important;
+}
+:root[data-canvas-mode="creative"] .topbar-btn:hover:not(:disabled):not([data-active="true"]) {
+  background: var(--c-overlay);
+}
+
 /* ── ReactFlow overrides ────────────────────────────────────────────────────── */
 .react-flow {
-  background: var(--color-background) !important;
+  background: var(--c-canvas) !important;
 }
 
 .react-flow__background {
-  background-color: var(--color-background) !important;
+  background-color: var(--c-canvas) !important;
 }
 
 /* Fine dot grid — subtle, not distracting */
 .react-flow__background pattern circle {
-  fill: oklch(0.20 0.006 260) !important;
+  fill: var(--c-bd2) !important;
   r: 0.8 !important;
 }
 
 /* Edges — visible but not overwhelming */
 .react-flow__edge-path {
-  stroke: oklch(0.32 0.010 260);
+  stroke: var(--c-bd3);
   stroke-width: 2;
   transition: stroke 150ms ease, stroke-width 150ms ease, filter 150ms ease, opacity 150ms ease;
 }
 .react-flow__edge:hover .react-flow__edge-path {
-  stroke: oklch(0.55 0.012 260);
+  stroke: var(--c-t3);
   stroke-width: 2.5;
 }
 .react-flow__edge.selected .react-flow__edge-path {
@@ -367,8 +605,8 @@ button:active:not(:disabled) {
 
 /* Invalid connection target — dim and shrink */
 .react-flow__handle.invalid {
-  background: oklch(0.30 0.008 260) !important;
-  border-color: oklch(0.25 0.008 260) !important;
+  background: var(--c-bd3) !important;
+  border-color: var(--c-bd3) !important;
   box-shadow: none !important;
   transform: scale(0.65) !important;
   opacity: 0.25 !important;
@@ -381,8 +619,8 @@ button:active:not(:disabled) {
 
 /* Minimap */
 .react-flow__minimap {
-  background: oklch(0.11 0.007 260 / 0.95) !important;
-  border: 1px solid oklch(0.20 0.008 260) !important;
+  background: var(--c-base) !important;
+  border: 1px solid var(--c-bd1) !important;
   border-radius: 12px !important;
   overflow: hidden !important;
   box-shadow: 0 4px 20px oklch(0 0 0 / 0.45) !important;
@@ -391,7 +629,7 @@ button:active:not(:disabled) {
   fill: oklch(0.68 0.22 285 / 0.10) !important;
 }
 .react-flow__minimap-node {
-  fill: oklch(0.28 0.010 260) !important;
+  fill: var(--c-bd3) !important;
   rx: 2 !important;
 }
 
@@ -408,7 +646,7 @@ button:active:not(:disabled) {
   height: 7px !important;
   border-radius: 2px !important;
   background: oklch(0.68 0.22 285) !important;
-  border: 1.5px solid oklch(0.08 0.005 260) !important;
+  border: 1.5px solid var(--c-canvas) !important;
   box-shadow: 0 0 5px oklch(0.68 0.22 285 / 0.60) !important;
 }
 .react-flow__resize-control.line {
@@ -437,6 +675,149 @@ button:active:not(:disabled) {
 }
 .react-flow__pane.dragging {
   cursor: grabbing !important;
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   CREATIVE MODE — LibTV-inspired media-first canvas layout
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+/* Hero media: hidden in professional mode, always shown in creative mode */
+.node-hero-media {
+  display: none;
+}
+:root[data-canvas-mode="creative"] .node-hero-media {
+  display: block;
+}
+
+/* Node body: transition for smooth collapse/expand */
+.node-body-wrap {
+  transition:
+    max-height 300ms cubic-bezier(0.4, 0, 0.2, 1),
+    opacity 200ms ease;
+  overflow: visible;        /* professional mode: always visible */
+}
+
+/* Creative mode: collapse controls when node has hero and is NOT selected */
+:root[data-canvas-mode="creative"] [data-has-hero="true"][data-selected="false"] .node-body-wrap {
+  max-height: 0 !important;
+  overflow: hidden !important;
+  opacity: 0;
+}
+:root[data-canvas-mode="creative"] [data-has-hero="true"][data-selected="true"] .node-body-wrap {
+  max-height: 2600px;
+  opacity: 1;
+}
+/* Nodes without hero: always show body (script, note, ai_chat, etc.) */
+:root[data-canvas-mode="creative"] [data-has-hero="false"] .node-body-wrap {
+  max-height: none;
+  overflow: visible;
+  opacity: 1;
+}
+
+/* Hero media style: flush to card width, no side padding */
+:root[data-canvas-mode="creative"] .node-hero-media {
+  width: 100%;
+  flex-shrink: 0;
+  line-height: 0;
+  position: relative;
+  overflow: hidden;
+  /* Clip to card's top corners */
+  border-radius: 0;
+}
+:root[data-canvas-mode="creative"] .node-hero-media img,
+:root[data-canvas-mode="creative"] .node-hero-media video {
+  width: 100%;
+  aspect-ratio: 16 / 9;
+  display: block;
+  object-fit: cover;
+}
+/* Hover overlay: dim + show play icon via CSS */
+:root[data-canvas-mode="creative"] .node-hero-media::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: oklch(0 0 0 / 0.18);
+  opacity: 0;
+  transition: opacity 180ms ease;
+  pointer-events: none;
+}
+:root[data-canvas-mode="creative"] .node-hero-media:hover::after {
+  opacity: 1;
+}
+
+/* In creative mode: wider nodes via CSS min-width override */
+:root[data-canvas-mode="creative"] .react-flow__node {
+  min-width: unset;
+}
+
+/* Creative mode: softer ReactFlow selection ring */
+:root[data-canvas-mode="creative"] .react-flow__node.selected {
+  filter: none;
+}
+
+/* Creative mode: ReactFlow background gets warm dot grid */
+:root[data-canvas-mode="creative"] .react-flow__background {
+  background-color: var(--c-canvas) !important;
+}
+:root[data-canvas-mode="creative"] .react-flow__background pattern circle,
+:root[data-canvas-mode="creative"] .react-flow__background pattern rect {
+  fill: oklch(0.70 0.018 80) !important;
+  opacity: 0.28;
+}
+
+/* Creative mode: top bar adapts to light theme via --c-base token */
+:root[data-canvas-mode="creative"] .canvas-topbar {
+  background: oklch(1.00 0 0 / 0.92) !important;
+  border-bottom-color: var(--c-bd2) !important;
+}
+
+/* Creative mode: left panel adapts */
+:root[data-canvas-mode="creative"] .canvas-left-panel {
+  background: oklch(1.00 0 0 / 0.88) !important;
+  border-right-color: var(--c-bd2) !important;
+}
+
+/* Creative mode: bottom toolbar adapts */
+:root[data-canvas-mode="creative"] .canvas-bottombar {
+  background: oklch(0.998 0.003 80 / 0.92) !important;
+  border-top-color: var(--c-bd2) !important;
+}
+
+/* Creative mode edge lines */
+:root[data-canvas-mode="creative"] .react-flow__edge-path {
+  stroke-width: 1 !important;
+  stroke: oklch(0.72 0.018 80) !important;
+  stroke-opacity: 0.55 !important;
+}
+:root[data-canvas-mode="creative"] .react-flow__edge.selected .react-flow__edge-path {
+  stroke-opacity: 0.85 !important;
+}
+
+/* Creative mode: filmstrip adapts to warm theme */
+:root[data-canvas-mode="creative"] .canvas-filmstrip {
+  background: oklch(0.998 0.003 80 / 0.95) !important;
+  border-top-color: var(--c-bd2) !important;
+}
+
+/* Hero placeholder (no content yet) */
+.node-hero-placeholder {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  aspect-ratio: 16 / 9;
+  background: var(--c-input);
+}
+
+/* Creative mode: node cards get slightly more width */
+:root[data-canvas-mode="creative"] .react-flow__node > div {
+  /* Handled by JS — see BaseNode width scaling */
+}
+
+/* Prevent content-collapse flash during initial render */
+:root[data-canvas-mode="creative"] [data-has-hero="true"] .node-body-wrap {
+  will-change: max-height, opacity;
 }
 
 /* ── Container & Flex fixes ─────────────────────────────────────────────────── */

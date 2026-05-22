@@ -1,64 +1,68 @@
 import React, { createContext, useContext, useEffect, useState } from "react";
 
-type Theme = "light" | "dark";
+export type Theme =
+  | "dark" | "dim" | "midnight"
+  | "forest" | "rose" | "ocean"
+  | "light" | "warm";
+
+export interface ThemeMeta {
+  id: Theme;
+  label: string;
+  /** canvas background color for the swatch preview */
+  canvas: string;
+  /** surface / overlay color for the inner dot preview */
+  surface: string;
+  /** whether this theme uses the dark Tailwind class */
+  dark: boolean;
+}
+
+export const THEMES: ThemeMeta[] = [
+  { id: "dark",     label: "暗色", canvas: "oklch(0.07 0.005 260)",  surface: "oklch(0.22 0.008 260)",  dark: true  },
+  { id: "dim",      label: "柔暗", canvas: "oklch(0.16 0.009 260)",  surface: "oklch(0.35 0.010 260)",  dark: true  },
+  { id: "midnight", label: "午夜", canvas: "oklch(0.07 0.012 260)",  surface: "oklch(0.24 0.014 260)",  dark: true  },
+  { id: "forest",   label: "深林", canvas: "oklch(0.068 0.018 150)", surface: "oklch(0.230 0.018 150)", dark: true  },
+  { id: "rose",     label: "玫瑰", canvas: "oklch(0.068 0.012 10)",  surface: "oklch(0.235 0.017 10)",  dark: true  },
+  { id: "ocean",    label: "深海", canvas: "oklch(0.062 0.026 232)", surface: "oklch(0.222 0.028 232)", dark: true  },
+  { id: "light",    label: "亮色", canvas: "oklch(0.950 0.004 255)", surface: "oklch(0.845 0.005 255)", dark: false },
+  { id: "warm",     label: "暖白", canvas: "oklch(0.948 0.020 85)",  surface: "oklch(0.835 0.022 78)",  dark: false },
+];
 
 interface ThemeContextType {
   theme: Theme;
-  toggleTheme?: () => void;
-  switchable: boolean;
+  setTheme: (t: Theme) => void;
 }
 
 const ThemeContext = createContext<ThemeContextType | undefined>(undefined);
 
-interface ThemeProviderProps {
-  children: React.ReactNode;
-  defaultTheme?: Theme;
-  switchable?: boolean;
-}
-
-export function ThemeProvider({
-  children,
-  defaultTheme = "light",
-  switchable = false,
-}: ThemeProviderProps) {
-  const [theme, setTheme] = useState<Theme>(() => {
-    if (switchable) {
-      const stored = localStorage.getItem("theme");
-      return (stored as Theme) || defaultTheme;
-    }
-    return defaultTheme;
+export function ThemeProvider({ children }: { children: React.ReactNode }) {
+  const [theme, setThemeState] = useState<Theme>(() => {
+    const legacy = localStorage.getItem("theme");
+    if (legacy) { localStorage.setItem("avc:theme", legacy); localStorage.removeItem("theme"); }
+    return (localStorage.getItem("avc:theme") as Theme) || "dark";
   });
 
   useEffect(() => {
-    const root = document.documentElement;
-    if (theme === "dark") {
-      root.classList.add("dark");
+    document.documentElement.setAttribute("data-theme", theme);
+    const meta = THEMES.find((t) => t.id === theme);
+    if (meta?.dark) {
+      document.documentElement.classList.add("dark");
     } else {
-      root.classList.remove("dark");
+      document.documentElement.classList.remove("dark");
     }
+    localStorage.setItem("avc:theme", theme);
+  }, [theme]);
 
-    if (switchable) {
-      localStorage.setItem("theme", theme);
-    }
-  }, [theme, switchable]);
-
-  const toggleTheme = switchable
-    ? () => {
-        setTheme(prev => (prev === "light" ? "dark" : "light"));
-      }
-    : undefined;
+  const setTheme = (t: Theme) => setThemeState(t);
 
   return (
-    <ThemeContext.Provider value={{ theme, toggleTheme, switchable }}>
+    <ThemeContext.Provider value={{ theme, setTheme }}>
       {children}
     </ThemeContext.Provider>
   );
 }
 
 export function useTheme() {
-  const context = useContext(ThemeContext);
-  if (!context) {
-    throw new Error("useTheme must be used within ThemeProvider");
-  }
-  return context;
+  const ctx = useContext(ThemeContext);
+  if (!ctx) throw new Error("useTheme must be used within ThemeProvider");
+  return ctx;
 }

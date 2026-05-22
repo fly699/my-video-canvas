@@ -25,6 +25,7 @@ import {
   getVideoTask,
   getChatMessages,
   addChatMessage,
+  addChatMessagePair,
   clearChatMessages,
 } from "../db";
 import { storagePut } from "../storage";
@@ -34,10 +35,23 @@ import { isPoyoVideoProvider, submitPoyoVideo, checkPoyoVideoStatus } from "../_
 import { isHiggsfieldVideoProvider, submitHiggsfieldVideo, checkHiggsfieldVideoStatus } from "../_core/higgsfield";
 import { submitAndPollPoyoMusic, type PoyoMusicModel } from "../_core/poyoAudio";
 import { submitAndPollPoyoTTS, type PoyoTTSModel } from "../_core/poyoAudio";
-import { trimVideo, getVideoDuration, mergeVideos, burnSubtitles, generateSRT, overlayVideo } from "../_core/videoEditor";
+import { trimVideo, getVideoDuration, mergeVideos, burnSubtitles, generateSRT, overlayVideo, assertSafeUrl } from "../_core/videoEditor";
 import { transcribeAudio } from "../_core/voiceTranscription";
 import { VIDEO_PROVIDERS } from "../../shared/types";
 import type { SubtitleEntry } from "../../shared/types";
+
+// ── Ownership helpers ─────────────────────────────────────────────────────────
+
+async function assertProjectOwner(projectId: number, userId: number) {
+  const project = await getProjectById(projectId, userId);
+  if (!project) throw new TRPCError({ code: "FORBIDDEN", message: "Access denied" });
+}
+
+async function assertTaskOwner(taskId: number, userId: number) {
+  const task = await getVideoTask(taskId);
+  if (!task || task.userId !== userId) throw new TRPCError({ code: "FORBIDDEN", message: "Access denied" });
+  return task;
+}
 
 // ── Projects ──────────────────────────────────────────────────────────────────
 
@@ -55,9 +69,9 @@ export const projectsRouter = router({
   create: protectedProcedure
     .input(z.object({ name: z.string().min(1).max(255), description: z.string().optional() }))
     .mutation(async ({ ctx, input }) => {
-      await createProject({ userId: ctx.user.id, name: input.name, description: input.description });
-      const projects = await getProjectsByUser(ctx.user.id);
-      return projects[0];
+      const project = await createProject({ userId: ctx.user.id, name: input.name, description: input.description });
+      if (!project) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "Failed to create project" });
+      return project;
     }),
 
   update: protectedProcedure
@@ -93,7 +107,10 @@ const nodeDataSchema = z.record(z.string(), z.unknown());
 export const nodesRouter = router({
   list: protectedProcedure
     .input(z.object({ projectId: z.number() }))
-    .query(({ input }) => getNodesByProject(input.projectId)),
+    .query(async ({ ctx, input }) => {
+      await assertProjectOwner(input.projectId, ctx.user.id);
+      return getNodesByProject(input.projectId);
+    }),
 
   upsert: protectedProcedure
     .input(
@@ -110,7 +127,8 @@ export const nodesRouter = router({
         zIndex: z.number().default(0),
       })
     )
-    .mutation(async ({ input }) => {
+    .mutation(async ({ ctx, input }) => {
+      await assertProjectOwner(input.projectId, ctx.user.id);
       const id = input.id ?? nanoid();
       const { id: _id, ...rest } = { ...input, id };
       await upsertNode({ ...rest, id, data: input.data as Record<string, unknown> });
@@ -119,7 +137,8 @@ export const nodesRouter = router({
 
   delete: protectedProcedure
     .input(z.object({ id: z.string(), projectId: z.number() }))
-    .mutation(async ({ input }) => {
+    .mutation(async ({ ctx, input }) => {
+      await assertProjectOwner(input.projectId, ctx.user.id);
       await deleteNode(input.id, input.projectId);
       return { success: true };
     }),
@@ -141,7 +160,9 @@ export const nodesRouter = router({
         })
       )
     )
-    .mutation(async ({ input }) => {
+    .mutation(async ({ ctx, input }) => {
+      const projectIds = Array.from(new Set(input.map((n) => n.projectId)));
+      await Promise.all(projectIds.map((pid) => assertProjectOwner(pid, ctx.user.id)));
       await batchUpsertNodes(input.map((n) => ({ ...n, data: n.data as Record<string, unknown> })));
       return { success: true };
     }),
@@ -152,7 +173,10 @@ export const nodesRouter = router({
 export const edgesRouter = router({
   list: protectedProcedure
     .input(z.object({ projectId: z.number() }))
-    .query(({ input }) => getEdgesByProject(input.projectId)),
+    .query(async ({ ctx, input }) => {
+      await assertProjectOwner(input.projectId, ctx.user.id);
+      return getEdgesByProject(input.projectId);
+    }),
 
   upsert: protectedProcedure
     .input(
@@ -166,7 +190,8 @@ export const edgesRouter = router({
         label: z.string().optional(),
       })
     )
-    .mutation(async ({ input }) => {
+    .mutation(async ({ ctx, input }) => {
+      await assertProjectOwner(input.projectId, ctx.user.id);
       const id = input.id ?? nanoid();
       await upsertEdge({ ...input, id });
       return { id };
@@ -174,7 +199,8 @@ export const edgesRouter = router({
 
   delete: protectedProcedure
     .input(z.object({ id: z.string(), projectId: z.number() }))
-    .mutation(async ({ input }) => {
+    .mutation(async ({ ctx, input }) => {
+      await assertProjectOwner(input.projectId, ctx.user.id);
       await deleteEdge(input.id, input.projectId);
       return { success: true };
     }),
@@ -202,7 +228,7 @@ export const assetsRouter = router({
       const buffer = Buffer.from(input.base64, "base64");
       const key = `assets/${ctx.user.id}/${nanoid()}-${input.name}`;
       const { url } = await storagePut(key, buffer, input.mimeType);
-      await createAsset({
+      const asset = await createAsset({
         userId: ctx.user.id,
         projectId: input.projectId ?? null,
         name: input.name,
@@ -212,8 +238,8 @@ export const assetsRouter = router({
         storageKey: key,
         url,
       });
-      const assets = await getAssetsByUser(ctx.user.id, input.projectId);
-      return assets[0];
+      if (!asset) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "Failed to save asset record" });
+      return asset;
     }),
 
   delete: protectedProcedure
@@ -232,7 +258,10 @@ const POLL_THROTTLE_MS = 4_000;
 export const videoTasksRouter = router({
   list: protectedProcedure
     .input(z.object({ projectId: z.number() }))
-    .query(({ input }) => getVideoTasksByProject(input.projectId)),
+    .query(async ({ ctx, input }) => {
+      await assertProjectOwner(input.projectId, ctx.user.id);
+      return getVideoTasksByProject(input.projectId);
+    }),
 
   create: protectedProcedure
     .input(
@@ -247,32 +276,10 @@ export const videoTasksRouter = router({
       })
     )
     .mutation(async ({ ctx, input }) => {
-      let externalTaskId: string | undefined;
-      let initialStatus: "pending" | "processing" = "pending";
+      await assertProjectOwner(input.projectId, ctx.user.id);
 
-      if (isPoyoVideoProvider(input.provider)) {
-        const result = await submitPoyoVideo({
-          provider: input.provider,
-          prompt: input.prompt,
-          negativePrompt: input.negativePrompt,
-          referenceImageUrl: input.referenceImageUrl,
-          params: input.params as Record<string, unknown>,
-        });
-        externalTaskId = result.externalTaskId;
-        initialStatus = "processing";
-      } else if (isHiggsfieldVideoProvider(input.provider)) {
-        const result = await submitHiggsfieldVideo({
-          provider: input.provider,
-          prompt: input.prompt,
-          negativePrompt: input.negativePrompt,
-          referenceImageUrl: input.referenceImageUrl,
-          params: input.params as Record<string, unknown>,
-        });
-        externalTaskId = result.externalTaskId;
-        initialStatus = "processing";
-      }
-
-      await createVideoTask({
+      // Create DB record first so the task is tracked even if provider submission fails
+      const task = await createVideoTask({
         userId: ctx.user.id,
         projectId: input.projectId,
         nodeId: input.nodeId,
@@ -281,18 +288,48 @@ export const videoTasksRouter = router({
         negativePrompt: input.negativePrompt,
         referenceImageUrl: input.referenceImageUrl,
         params: input.params as Record<string, unknown>,
-        externalTaskId,
-        status: initialStatus,
+        status: "pending",
       });
-      const tasks = await getVideoTasksByProject(input.projectId);
-      return tasks[0];
+      if (!task) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "Failed to create video task" });
+
+      // Submit to external provider; on failure the task stays "pending" for the poller to retry
+      try {
+        let externalTaskId: string | undefined;
+        if (isPoyoVideoProvider(input.provider)) {
+          const result = await submitPoyoVideo({
+            provider: input.provider,
+            prompt: input.prompt,
+            negativePrompt: input.negativePrompt,
+            referenceImageUrl: input.referenceImageUrl,
+            params: input.params as Record<string, unknown>,
+          });
+          externalTaskId = result.externalTaskId;
+        } else if (isHiggsfieldVideoProvider(input.provider)) {
+          const result = await submitHiggsfieldVideo({
+            provider: input.provider,
+            prompt: input.prompt,
+            negativePrompt: input.negativePrompt,
+            referenceImageUrl: input.referenceImageUrl,
+            params: input.params as Record<string, unknown>,
+          });
+          externalTaskId = result.externalTaskId;
+        }
+        if (externalTaskId) {
+          await updateVideoTask(task.id, { status: "processing", externalTaskId });
+          return { ...task, status: "processing" as const, externalTaskId };
+        }
+      } catch (err) {
+        console.error(`[videoTasks.create] provider submission failed, task ${task.id} left as pending for poller retry:`, err instanceof Error ? err.message : String(err));
+      }
+      return task;
     }),
 
   poll: protectedProcedure
     .input(z.object({ id: z.number() }))
-    .query(async ({ input }) => {
+    .query(async ({ ctx, input }) => {
       const task = await getVideoTask(input.id);
       if (!task) return null;
+      if (task.userId !== ctx.user.id) throw new TRPCError({ code: "FORBIDDEN", message: "Access denied" });
 
       // For poyo.ai tasks still processing, sync status from upstream (throttled)
       if (task.status === "processing" && task.externalTaskId && isPoyoVideoProvider(task.provider)) {
@@ -304,6 +341,11 @@ export const videoTasksRouter = router({
             const upstream = await checkPoyoVideoStatus(task.externalTaskId);
             if (upstream.status === "finished") {
               pollLastCheck.delete(task.externalTaskId);
+              if (!upstream.resultVideoUrl) {
+                const update = { status: "failed" as const, errorMessage: "生成完成但无视频文件" };
+                await updateVideoTask(task.id, update);
+                return { ...task, ...update };
+              }
               const update = { status: "succeeded" as const, resultVideoUrl: upstream.resultVideoUrl };
               await updateVideoTask(task.id, update);
               return { ...task, ...update };
@@ -315,6 +357,7 @@ export const videoTasksRouter = router({
               return { ...task, ...update };
             }
           } catch (err) {
+            pollLastCheck.delete(task.externalTaskId);
             console.error(`[poll] Poyo status check failed for task ${task.id} (${task.externalTaskId}):`, err instanceof Error ? err.message : String(err));
           }
         }
@@ -334,6 +377,12 @@ export const videoTasksRouter = router({
               await updateVideoTask(task.id, update);
               return { ...task, ...update };
             }
+            if (upstream.status === "succeeded" && !upstream.resultVideoUrl) {
+              pollLastCheck.delete(task.externalTaskId);
+              const update = { status: "failed" as const, errorMessage: "任务完成但未返回视频 URL" };
+              await updateVideoTask(task.id, update);
+              return { ...task, ...update };
+            }
             if (upstream.status === "failed") {
               pollLastCheck.delete(task.externalTaskId);
               const update = { status: "failed" as const, errorMessage: upstream.errorMessage ?? "生成失败" };
@@ -341,6 +390,7 @@ export const videoTasksRouter = router({
               return { ...task, ...update };
             }
           } catch (err) {
+            pollLastCheck.delete(task.externalTaskId);
             console.error(`[poll] Higgsfield status check failed for task ${task.id} (${task.externalTaskId}):`, err instanceof Error ? err.message : String(err));
           }
         }
@@ -354,13 +404,14 @@ export const videoTasksRouter = router({
       z.object({
         id: z.number(),
         status: z.enum(["pending", "processing", "succeeded", "failed"]),
-        resultVideoUrl: z.string().optional(),
+        resultVideoUrl: z.string().url().optional(),
         errorMessage: z.string().optional(),
         externalTaskId: z.string().optional(),
         progress: z.number().optional(),
       })
     )
-    .mutation(async ({ input }) => {
+    .mutation(async ({ ctx, input }) => {
+      await assertTaskOwner(input.id, ctx.user.id);
       const { id, ...data } = input;
       await updateVideoTask(id, data);
       return { success: true };
@@ -369,7 +420,8 @@ export const videoTasksRouter = router({
   // Delete a task record so the node can be re-submitted
   reset: protectedProcedure
     .input(z.object({ id: z.number() }))
-    .mutation(async ({ input }) => {
+    .mutation(async ({ ctx, input }) => {
+      await assertTaskOwner(input.id, ctx.user.id);
       await deleteVideoTask(input.id);
       return { success: true };
     }),
@@ -380,7 +432,10 @@ export const videoTasksRouter = router({
 export const aiChatRouter = router({
   getMessages: protectedProcedure
     .input(z.object({ nodeId: z.string(), projectId: z.number() }))
-    .query(({ input }) => getChatMessages(input.nodeId, input.projectId)),
+    .query(async ({ ctx, input }) => {
+      await assertProjectOwner(input.projectId, ctx.user.id);
+      return getChatMessages(input.nodeId, input.projectId);
+    }),
 
   sendMessage: protectedProcedure
     .input(
@@ -393,16 +448,9 @@ export const aiChatRouter = router({
         model: z.string().optional(),
       })
     )
-    .mutation(async ({ input }) => {
-      // Save user message
-      await addChatMessage({
-        nodeId: input.nodeId,
-        projectId: input.projectId,
-        role: "user",
-        content: input.message,
-      });
-
-      // Build messages for LLM
+    .mutation(async ({ ctx, input }) => {
+      await assertProjectOwner(input.projectId, ctx.user.id);
+      // Build messages for LLM (user message included inline — not saved to DB yet)
       const history = await getChatMessages(input.nodeId, input.projectId);
       const systemContent = [
         input.systemPrompt ?? "You are a professional film and content creation assistant. Help with scripts, storyboards, prompts, and creative direction.",
@@ -414,25 +462,30 @@ export const aiChatRouter = router({
       const messages = [
         { role: "system" as const, content: systemContent },
         ...history.map((m) => ({ role: m.role as "user" | "assistant", content: m.content })),
+        { role: "user" as const, content: input.message },
       ];
 
-      const response = await invokeLLM({ messages, model: input.model });
-      const assistantContent = extractTextContent(response) || "Sorry, I could not generate a response.";
+      let assistantContent: string;
+      try {
+        const response = await invokeLLM({ messages, model: input.model });
+        assistantContent = extractTextContent(response) || "（模型返回内容为空）";
+      } catch (err) {
+        throw new TRPCError({
+          code: "INTERNAL_SERVER_ERROR",
+          message: err instanceof Error ? err.message : String(err),
+        });
+      }
 
-      // Save assistant message
-      await addChatMessage({
-        nodeId: input.nodeId,
-        projectId: input.projectId,
-        role: "assistant",
-        content: assistantContent,
-      });
+      // Save both messages in a single transaction — prevents partially-persisted pairs
+      await addChatMessagePair(input.nodeId, input.projectId, input.message, assistantContent);
 
       return { content: assistantContent };
     }),
 
   clearMessages: protectedProcedure
     .input(z.object({ nodeId: z.string(), projectId: z.number() }))
-    .mutation(async ({ input }) => {
+    .mutation(async ({ ctx, input }) => {
+      await assertProjectOwner(input.projectId, ctx.user.id);
       await clearChatMessages(input.nodeId, input.projectId);
       return { success: true };
     }),
@@ -463,20 +516,36 @@ export const imageGenRouter = router({
         fluxGuidanceScale: z.number().min(1).max(20).optional(),
         fluxSeed: z.number().int().optional(),
         fluxNumImages: z.number().int().min(1).max(4).optional(),
+        projectId: z.number().optional(),
       })
     )
-    .mutation(async ({ input }) => {
-      const fullPrompt = [
-        input.style ? `Style: ${input.style}.` : "",
-        input.prompt,
-        input.negativePrompt ? `Avoid: ${input.negativePrompt}` : "",
-      ]
-        .filter(Boolean)
-        .join(" ");
+    .mutation(async ({ ctx, input }) => {
+      if (input.projectId != null) {
+        await assertProjectOwner(input.projectId, ctx.user.id);
+      }
+      if (input.referenceImageUrl) {
+        try { assertSafeUrl(input.referenceImageUrl); } catch {
+          throw new TRPCError({ code: "BAD_REQUEST", message: "referenceImageUrl 不允许指向私有地址" });
+        }
+      }
+      const isHfModel = input.model?.startsWith("hf_");
+
+      // For Higgsfield models, keep prompt clean and pass negativePrompt separately.
+      // For other models, embed negative prompt as "Avoid: ..." suffix.
+      const fullPrompt = isHfModel
+        ? [input.style ? `Style: ${input.style}.` : "", input.prompt].filter(Boolean).join(" ")
+        : [
+            input.style ? `Style: ${input.style}.` : "",
+            input.prompt,
+            input.negativePrompt ? `Avoid: ${input.negativePrompt}` : "",
+          ]
+            .filter(Boolean)
+            .join(" ");
 
       const result = await generateImage({
         prompt: fullPrompt,
         model: input.model,
+        ...(isHfModel && input.negativePrompt ? { negativePrompt: input.negativePrompt } : {}),
         ...(input.referenceImageUrl
           ? { originalImages: [{ url: input.referenceImageUrl, mimeType: "image/jpeg" }] }
           : {}),
@@ -661,9 +730,11 @@ export const audioGenRouter = router({
         durationSeconds: z.number().int().min(10).max(480).optional(),
         instrumental: z.boolean().optional(),
         negativePrompt: z.string().optional(),
+        projectId: z.number().optional(),
       })
     )
-    .mutation(async ({ input }) => {
+    .mutation(async ({ ctx, input }) => {
+      if (input.projectId != null) await assertProjectOwner(input.projectId, ctx.user.id);
       const result = await submitAndPollPoyoMusic({
         model: input.model as PoyoMusicModel,
         prompt: input.prompt,
@@ -682,9 +753,11 @@ export const audioGenRouter = router({
         text: z.string().min(1).max(5000),
         voice: z.string().optional(),
         speed: z.number().min(0.5).max(2.0).optional(),
+        projectId: z.number().optional(),
       })
     )
-    .mutation(async ({ input }) => {
+    .mutation(async ({ ctx, input }) => {
+      if (input.projectId != null) await assertProjectOwner(input.projectId, ctx.user.id);
       const result = await submitAndPollPoyoTTS({
         model: input.model as PoyoTTSModel,
         text: input.text,
@@ -704,7 +777,7 @@ export const clipRouter = router({
         startTime: z.number().min(0),
         endTime: z.number().min(0),
         speed: z.number().min(0.25).max(4.0).optional(),
-        audioUrl: z.string().optional(),
+        audioUrl: z.string().url().optional(),
         audioVolume: z.number().min(0).max(2.0).optional(),
       }).refine(d => d.endTime > d.startTime, { message: "出点必须大于入点", path: ["endTime"] })
     )
@@ -714,7 +787,7 @@ export const clipRouter = router({
     }),
 
   getVideoDuration: protectedProcedure
-    .input(z.object({ url: z.string() }))
+    .input(z.object({ url: z.string().url() }))
     .query(async ({ input }) => {
       const duration = await getVideoDuration(input.url);
       return { duration };
@@ -729,7 +802,7 @@ export const mergeRouter = router({
         inputUrls: z.array(z.string().url()).min(2).max(10),
         transition: z.enum(["none", "fade", "dissolve"]).optional(),
         transitionDuration: z.number().min(0.1).max(2.0).optional(),
-        bgMusicUrl: z.string().optional(),
+        bgMusicUrl: z.string().url().optional(),
         bgMusicVolume: z.number().min(0).max(1).optional(),
       })
     )
@@ -744,7 +817,7 @@ export const subtitleRouter = router({
   transcribe: protectedProcedure
     .input(
       z.object({
-        audioUrl: z.string(),
+        audioUrl: z.string().url(),
         language: z.string().optional(),
       })
     )

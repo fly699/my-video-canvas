@@ -6,6 +6,8 @@ import { useCanvasStore } from "../../hooks/useCanvasStore";
 import { NodeSelectedContext } from "../../contexts/NodeSelectedContext";
 import { trpc } from "@/lib/trpc";
 import { useWorkflowRunState } from "../../contexts/WorkflowRunContext";
+import { useCanvasMode } from "../../contexts/CanvasModeContext";
+import { useTheme } from "../../contexts/ThemeContext";
 import {
   Trash2, Copy, GripVertical, Check, X, Loader2, FileText,
 } from "lucide-react";
@@ -23,16 +25,24 @@ interface BaseNodeProps {
   headerRight?: React.ReactNode;
   /** 是否允许用户手动拖拽缩放，默认 false */
   resizable?: boolean;
+  /** 创意模式下显示在标题栏下方的媒体英雄区（图片/视频预览），选中时展开表单控件 */
+  heroMedia?: React.ReactNode;
 }
 
 export const BaseNode = memo(function BaseNode({
   id, selected, nodeType, title, children,
   minWidth = 280, minHeight = 140, showHandles = true, headerRight, resizable = false,
+  heroMedia,
 }: BaseNodeProps) {
   const config = getNodeConfig(nodeType);
   const Icon = NODE_ICONS[config.icon] ?? FileText;
   const { deleteNode, duplicateNode, updateNodeTitle, projectId } = useCanvasStore();
   const deleteNodeMutation = trpc.nodes.delete.useMutation();
+  const { mode: canvasMode } = useCanvasMode();
+  const { theme } = useTheme();
+  const isCreative = canvasMode === "creative";
+  const isLight = theme === "light" || isCreative;
+  const hasHero = heroMedia != null;
 
   // Workflow run status
   const { running, currentNodeId, completedIds, failedIds } = useWorkflowRunState();
@@ -46,17 +56,25 @@ export const BaseNode = memo(function BaseNode({
   const [editingTitle, setEditingTitle] = useState(false);
   const [titleValue, setTitleValue] = useState(title);
   const titleInputRef = useRef<HTMLInputElement>(null);
+  const titleCancelingRef = useRef(false);
   const [isHovered, setIsHovered] = useState(false);
 
   const handleTitleSave = useCallback(() => {
+    if (titleCancelingRef.current) { titleCancelingRef.current = false; return; }
     updateNodeTitle(id, titleValue || title);
     setEditingTitle(false);
   }, [id, titleValue, title, updateNodeTitle]);
 
+  const cancelTitleEdit = useCallback(() => {
+    titleCancelingRef.current = true;
+    setTitleValue(title);
+    setEditingTitle(false);
+  }, [title]);
+
   const handleTitleKeyDown = useCallback((e: React.KeyboardEvent) => {
     if (e.key === "Enter") handleTitleSave();
-    if (e.key === "Escape") { setTitleValue(title); setEditingTitle(false); }
-  }, [handleTitleSave, title]);
+    if (e.key === "Escape") cancelTitleEdit();
+  }, [handleTitleSave, cancelTitleEdit]);
 
   // Sync title when prop changes
   useEffect(() => { setTitleValue(title); }, [title]);
@@ -71,7 +89,7 @@ export const BaseNode = memo(function BaseNode({
   const handleShared: React.CSSProperties = {
     width: 12,
     height: 12,
-    border: `2px solid oklch(0.08 0.005 260)`,
+    border: `2px solid var(--c-canvas)`,
     transition: "opacity 150ms ease, transform 150ms ease, box-shadow 150ms ease",
     zIndex: 10,
   };
@@ -115,34 +133,39 @@ export const BaseNode = memo(function BaseNode({
 
   const borderStyle = runBorder
     ? runBorder
-    : selected
-      ? `1.5px solid ${config.color}80`
-      : isHovered
-        ? `1px solid oklch(0.28 0.010 260)`
-        : `1px solid oklch(0.18 0.008 260)`;
+    : isCreative
+      ? selected
+        ? `1.5px solid ${config.color}70`
+        : `1px solid var(--c-bd2)`
+      : selected
+        ? `1.5px solid ${config.color}80`
+        : isHovered
+          ? `1px solid var(--c-bd3)`
+          : `1px solid var(--c-bd1)`;
 
   const shadowStyle = runShadow
-    ? `${runShadow}, 0 8px 32px oklch(0 0 0 / 0.55)`
+    ? `${runShadow}, var(--c-node-shadow-run)`
     : selected
-      ? `0 0 0 4px ${config.color}14, 0 20px 60px oklch(0 0 0 / 0.70), 0 4px 16px oklch(0 0 0 / 0.50)`
+      ? `0 0 0 ${isLight ? "3px" : "4px"} ${config.color}${isLight ? "22" : "14"}, var(--c-node-shadow-selected)`
       : isHovered
-        ? `0 8px 32px oklch(0 0 0 / 0.55), 0 2px 8px oklch(0 0 0 / 0.40)`
-        : `0 2px 12px oklch(0 0 0 / 0.40), 0 1px 3px oklch(0 0 0 / 0.30)`;
+        ? `var(--c-node-shadow-hover)`
+        : `var(--c-node-shadow-rest)`;
 
   return (
     <div
       className={`group/node relative flex flex-col${runStatus === "running" ? " node-run-pulse" : ""}`}
+      data-selected={selected ? "true" : "false"}
+      data-has-hero={hasHero ? "true" : "false"}
       style={{
         borderRadius: 16,
-        background: "oklch(0.115 0.007 260 / 0.97)",
+        background: "var(--c-node-bg)",
         border: borderStyle,
         boxShadow: shadowStyle,
-        minWidth,
+        minWidth: isCreative ? Math.round(minWidth * 1.25) : minWidth,
         minHeight,
         width: "100%",
-        // height is content-driven; do not set height:100% which would require a parent height
         transition: "border-color 150ms ease, box-shadow 180ms ease, opacity 180ms ease, transform 180ms ease",
-        backdropFilter: "blur(4px)",
+        backdropFilter: isLight ? "none" : "blur(4px)",
         opacity: entered ? 1 : 0,
         transform: entered ? "scale(1) translateY(0)" : "scale(0.96) translateY(6px)",
         overflow: "hidden",
@@ -165,7 +188,7 @@ export const BaseNode = memo(function BaseNode({
           height: 7,
           borderRadius: 2,
           background: config.color,
-          border: `1.5px solid oklch(0.08 0.005 260)`,
+          border: `1.5px solid var(--c-canvas)`,
           boxShadow: `0 0 6px ${config.color}80`,
           opacity: 1,
         }}
@@ -174,9 +197,11 @@ export const BaseNode = memo(function BaseNode({
       {/* ── Color accent strip at top ── */}
       <div
         style={{
-          height: 2,
-          background: `linear-gradient(90deg, transparent 0%, ${config.color}70 30%, ${config.color}90 50%, ${config.color}70 70%, transparent 100%)`,
-          opacity: selected ? 1 : isHovered ? 0.7 : 0.35,
+          height: isCreative ? 3 : 2,
+          background: `linear-gradient(90deg, transparent 0%, ${config.color}${isCreative ? "90" : "70"} 30%, ${config.color}${isCreative ? "bb" : "90"} 50%, ${config.color}${isCreative ? "90" : "70"} 70%, transparent 100%)`,
+          opacity: isCreative
+            ? selected ? 1 : isHovered ? 0.85 : 0.55
+            : selected ? 1 : isHovered ? 0.7 : 0.35,
           transition: "opacity 180ms ease",
           flexShrink: 0,
         }}
@@ -186,16 +211,18 @@ export const BaseNode = memo(function BaseNode({
       <div
         className="flex items-center gap-2.5 px-3.5 py-2.5 select-none flex-shrink-0"
         style={{
-          background: `linear-gradient(180deg, ${config.color}0e 0%, transparent 100%)`,
-          borderBottom: `1px solid oklch(0.20 0.008 260 / 0.60)`,
-          minHeight: 44,
+          background: isCreative
+            ? `${config.color}0a`
+            : `linear-gradient(180deg, ${config.color}0e 0%, transparent 100%)`,
+          borderBottom: `1px solid ${isCreative ? "var(--c-bd1)" : "oklch(0.20 0.008 260 / 0.60)"}`,
+          minHeight: isCreative ? 40 : 44,
         }}
       >
         {/* Drag grip */}
         <GripVertical
           className="w-3.5 h-3.5 flex-shrink-0 cursor-grab active:cursor-grabbing"
           style={{
-            color: isHovered ? "oklch(0.42 0.008 260)" : "oklch(0.26 0.008 260)",
+            color: isHovered ? "var(--c-t4)" : "var(--c-bd3)",
             transition: "color 150ms ease",
           }}
         />
@@ -223,7 +250,7 @@ export const BaseNode = memo(function BaseNode({
                 onBlur={handleTitleSave}
                 className="flex-1 min-w-0 text-xs font-medium outline-none bg-transparent"
                 style={{
-                  color: "oklch(0.94 0.005 260)",
+                  color: "var(--c-t1)",
                   borderBottom: `1.5px solid ${config.color}`,
                   paddingBottom: 1,
                 }}
@@ -237,9 +264,9 @@ export const BaseNode = memo(function BaseNode({
                 <Check className="w-3 h-3" />
               </button>
               <button
-                onClick={() => { setTitleValue(title); setEditingTitle(false); }}
+                onMouseDown={(e) => { e.preventDefault(); cancelTitleEdit(); }}
                 className="p-0.5 rounded-md transition-colors"
-                style={{ color: "oklch(0.45 0.008 260)" }}
+                style={{ color: "var(--c-t4)" }}
               >
                 <X className="w-3 h-3" />
               </button>
@@ -248,7 +275,7 @@ export const BaseNode = memo(function BaseNode({
             <span
               className="text-xs font-semibold truncate block"
               style={{
-                color: selected ? "oklch(0.94 0.005 260)" : "oklch(0.80 0.006 260)",
+                color: "var(--c-t1)",
                 cursor: "text",
                 letterSpacing: "-0.01em",
                 transition: "color 150ms ease",
@@ -317,14 +344,14 @@ export const BaseNode = memo(function BaseNode({
           <button
             onClick={() => duplicateNode(id)}
             className="w-6 h-6 rounded-md flex items-center justify-center transition-all"
-            style={{ color: "oklch(0.40 0.008 260)" }}
+            style={{ color: "var(--c-t4)" }}
             onMouseEnter={(e) => {
-              (e.currentTarget as HTMLElement).style.background = "oklch(0.20 0.008 260)";
-              (e.currentTarget as HTMLElement).style.color = "oklch(0.72 0.006 260)";
+              (e.currentTarget as HTMLElement).style.background = "var(--c-bd2)";
+              (e.currentTarget as HTMLElement).style.color = "var(--c-t2)";
             }}
             onMouseLeave={(e) => {
               (e.currentTarget as HTMLElement).style.background = "transparent";
-              (e.currentTarget as HTMLElement).style.color = "oklch(0.40 0.008 260)";
+              (e.currentTarget as HTMLElement).style.color = "var(--c-t4)";
             }}
             title="复制节点 (Ctrl+D)"
           >
@@ -333,14 +360,14 @@ export const BaseNode = memo(function BaseNode({
           <button
             onClick={() => { deleteNode(id); if (projectId) deleteNodeMutation.mutate({ id, projectId }); }}
             className="w-6 h-6 rounded-md flex items-center justify-center transition-all"
-            style={{ color: "oklch(0.40 0.008 260)" }}
+            style={{ color: "var(--c-t4)" }}
             onMouseEnter={(e) => {
               (e.currentTarget as HTMLElement).style.background = "oklch(0.62 0.22 25 / 0.12)";
               (e.currentTarget as HTMLElement).style.color = "oklch(0.65 0.22 25)";
             }}
             onMouseLeave={(e) => {
               (e.currentTarget as HTMLElement).style.background = "transparent";
-              (e.currentTarget as HTMLElement).style.color = "oklch(0.40 0.008 260)";
+              (e.currentTarget as HTMLElement).style.color = "var(--c-t4)";
             }}
             title="删除节点 (Delete)"
           >
@@ -349,9 +376,18 @@ export const BaseNode = memo(function BaseNode({
         </div>
       </div>
 
-      {/* ── Content area ── */}
+      {/* ── Hero media (creative mode only, shown via CSS) ── */}
+      {hasHero && (
+        <div className="node-hero-media">
+          {heroMedia}
+        </div>
+      )}
+
+      {/* ── Content area (collapsible in creative mode when hero exists) ── */}
       <NodeSelectedContext.Provider value={!!selected}>
-        <div className="overflow-visible nopan">{children}</div>
+        <div className="node-body-wrap">
+          <div className="overflow-visible nopan">{children}</div>
+        </div>
       </NodeSelectedContext.Provider>
 
       {/* ── Connection Handles ── */}

@@ -4,6 +4,7 @@ import NotFound from "@/pages/NotFound";
 import { Route, Switch } from "wouter";
 import ErrorBoundary from "./components/ErrorBoundary";
 import { ThemeProvider } from "./contexts/ThemeContext";
+import { CanvasModeProvider } from "./contexts/CanvasModeContext";
 import Home from "./pages/Home";
 import Canvas from "./pages/Canvas";
 import { useParams } from "wouter";
@@ -27,21 +28,22 @@ function Router() {
 function App() {
   return (
     <ErrorBoundary>
-      <ThemeProvider defaultTheme="dark">
+      <ThemeProvider>
+        <CanvasModeProvider>
         <TooltipProvider delayDuration={400}>
           <Toaster
-            theme="dark"
             position="bottom-right"
             toastOptions={{
               style: {
-                background: "oklch(0.15 0.015 260)",
-                border: "1px solid oklch(0.22 0.015 260)",
-                color: "oklch(0.93 0.01 260)",
+                background: "var(--c-surface)",
+                border: "1px solid var(--c-bd2)",
+                color: "var(--c-t1)",
               },
             }}
           />
           <Router />
         </TooltipProvider>
+        </CanvasModeProvider>
       </ThemeProvider>
     </ErrorBoundary>
   );

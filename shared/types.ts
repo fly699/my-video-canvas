@@ -153,8 +153,11 @@ export interface AudioNodeData {
   duration?: number;
   mimeType?: string;
   size?: number;
-  // AI model selection (per category)
-  aiModel?: string;
+  // AI model selection — per-category fields to avoid cross-tab pollution
+  musicModel?: string;
+  ttsModel?: string;
+  sfxModel?: string;
+  aiModel?: string; // legacy fallback
   // Music (配乐)
   musicPrompt?: string;
   musicDuration?: number;

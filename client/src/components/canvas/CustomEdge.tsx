@@ -3,6 +3,7 @@ import { BaseEdge, EdgeLabelRenderer, getBezierPath, Position } from "@xyflow/re
 import type { EdgeProps } from "@xyflow/react";
 import { useCanvasStore } from "../../hooks/useCanvasStore";
 import { useWorkflowRunState } from "../../contexts/WorkflowRunContext";
+import { useCanvasMode } from "../../contexts/CanvasModeContext";
 import { getNodeConfig } from "../../lib/nodeConfig";
 import { Check, X, Trash2 } from "lucide-react";
 
@@ -12,6 +13,8 @@ function arrowPoints(tx: number, ty: number, pos: Position, sz: number, hw: numb
   if (pos === Position.Top)   return `${tx-hw},${ty+sz} ${tx+hw},${ty+sz} ${tx},${ty}`;
   return `${tx-hw},${ty-sz} ${tx+hw},${ty-sz} ${tx},${ty}`;
 }
+
+const PARTICLE_COUNT = 3;
 
 export const CustomEdge = memo(function CustomEdge({
   id,
@@ -28,6 +31,8 @@ export const CustomEdge = memo(function CustomEdge({
   const nodes = useCanvasStore(s => s.nodes);
   const sourceNodeType = nodes.find(n => n.id === source)?.data.nodeType as string | undefined;
   const typeColor = sourceNodeType ? getNodeConfig(sourceNodeType as Parameters<typeof getNodeConfig>[0]).color : null;
+  const { mode: canvasMode } = useCanvasMode();
+  const isCreative = canvasMode === "creative";
 
   const [edgePath, labelX, labelY] = getBezierPath({
     sourceX, sourceY, sourcePosition,
@@ -39,6 +44,7 @@ export const CustomEdge = memo(function CustomEdge({
   const [editValue, setEditValue] = useState(typeof label === "string" ? label : "");
   const [hovered, setHovered] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
+  const edgeCancelingRef = useRef(false);
 
   useEffect(() => {
     if (editing) setTimeout(() => inputRef.current?.focus(), 10);
@@ -51,13 +57,14 @@ export const CustomEdge = memo(function CustomEdge({
   }, [label]);
 
   const handleSave = useCallback(() => {
+    if (edgeCancelingRef.current) { edgeCancelingRef.current = false; return; }
     updateEdgeLabel(id, editValue.trim());
     setEditing(false);
   }, [id, editValue, updateEdgeLabel]);
 
   const handleKeyDown = useCallback((e: React.KeyboardEvent) => {
     if (e.key === "Enter") handleSave();
-    if (e.key === "Escape") setEditing(false);
+    if (e.key === "Escape") { edgeCancelingRef.current = true; setEditing(false); }
     e.stopPropagation();
   }, [handleSave]);
 
@@ -70,21 +77,52 @@ export const CustomEdge = memo(function CustomEdge({
   const showControls = hovered || selected;
 
   const strokeColor = sourceCompleted
-    ? "oklch(0.60 0.18 155 / 0.85)"
+    ? (isCreative ? "oklch(0.58 0.18 155 / 0.70)" : "oklch(0.60 0.18 155 / 0.85)")
     : sourceFailed
-      ? "oklch(0.55 0.18 25 / 0.75)"
+      ? (isCreative ? "oklch(0.55 0.18 25 / 0.60)" : "oklch(0.55 0.18 25 / 0.75)")
       : selected
-        ? "oklch(0.68 0.22 285)"
+        ? (isCreative ? `${typeColor ?? "oklch(0.68 0.22 285)"}cc` : "oklch(0.68 0.22 285)")
         : hovered
-          ? "oklch(0.55 0.015 260)"
-          : typeColor
-            ? `${typeColor}55`
-            : "oklch(0.32 0.010 260)";
+          ? (isCreative ? "var(--c-bd3)" : "var(--c-bd3)")
+          : isCreative
+            ? (typeColor ? `${typeColor}40` : "oklch(0.78 0.005 260)")
+            : typeColor
+              ? `${typeColor}55`
+              : "var(--c-bd3)";
 
-  const strokeWidth = selected ? 3 : hovered ? 2.5 : 2;
+  const strokeWidth = isCreative
+    ? selected ? 2 : hovered ? 1.5 : 1
+    : selected ? 3 : hovered ? 2.5 : 2;
+
+  // ── Particle flow ───────────────────────────────────────────────────────────
+  const svgPathId = `pp-${id.replace(/[^a-zA-Z0-9_-]/g, "_")}`;
+
+  const durSeconds = sourceRunning ? 0.75 : isCreative ? 3.5 : 2.8;
+  const particleR = sourceRunning ? (isCreative ? 2.5 : 3) : isCreative ? 1.4 : 1.8;
+  const particleColor = sourceRunning
+    ? "oklch(0.88 0.26 142)"
+    : sourceCompleted
+      ? "oklch(0.72 0.18 155)"
+      : sourceFailed
+        ? "oklch(0.70 0.18 25)"
+        : isCreative
+          ? (typeColor ?? "oklch(0.60 0.10 260)")
+          : (typeColor ?? "oklch(0.65 0.06 260)");
+  const particleOpacity = sourceRunning
+    ? 0.95
+    : sourceCompleted ? (isCreative ? 0.55 : 0.65)
+    : sourceFailed ? 0.50
+    : isCreative ? 0.28 : 0.38;
+  const glowR = particleR * 2.5;
+  const glowOpacity = sourceRunning ? 0.28 : isCreative ? 0.06 : 0.10;
 
   return (
     <>
+      {/* Path reference for animateMotion particles */}
+      <defs>
+        <path id={svgPathId} d={edgePath} />
+      </defs>
+
       {/* Invisible wider hit area */}
       <path
         d={edgePath}
@@ -113,29 +151,40 @@ export const CustomEdge = memo(function CustomEdge({
         }}
       />
 
-      {/* Flowing animation overlay when source node is executing */}
-      {(sourceRunning || sourceCompleted) && (
-        <path
-          d={edgePath}
-          fill="none"
-          stroke={sourceRunning ? "oklch(0.78 0.22 142)" : "oklch(0.72 0.18 155)"}
-          strokeWidth={sourceRunning ? 1.5 : 1}
-          strokeDasharray="8 10"
-          strokeLinecap="round"
-          style={{
-            animation: sourceRunning ? "edge-flow 0.45s linear infinite" : undefined,
-            opacity: sourceRunning ? 0.85 : 0.45,
-            strokeDashoffset: sourceCompleted && !sourceRunning ? -4 : 0,
-          }}
-          pointerEvents="none"
-        />
-      )}
+      {/* Flowing particles — always visible, indicating data direction */}
+      {Array.from({ length: PARTICLE_COUNT }, (_, i) => {
+        const beginOffset = -((i / PARTICLE_COUNT) * durSeconds);
+        return (
+          <g key={i}>
+            {/* Glow halo */}
+            <circle r={glowR} fill={particleColor} opacity={glowOpacity}>
+              <animateMotion
+                dur={`${durSeconds}s`}
+                begin={`${beginOffset}s`}
+                repeatCount="indefinite"
+              >
+                <mpath href={`#${svgPathId}`} />
+              </animateMotion>
+            </circle>
+            {/* Core particle */}
+            <circle r={particleR} fill={particleColor} opacity={particleOpacity}>
+              <animateMotion
+                dur={`${durSeconds}s`}
+                begin={`${beginOffset}s`}
+                repeatCount="indefinite"
+              >
+                <mpath href={`#${svgPathId}`} />
+              </animateMotion>
+            </circle>
+          </g>
+        );
+      })}
 
       {/* Arrowhead at target end */}
       <polygon
-        points={arrowPoints(targetX, targetY, targetPosition, 9, 5)}
+        points={arrowPoints(targetX, targetY, targetPosition, isCreative ? 7 : 9, isCreative ? 3.5 : 5)}
         fill={strokeColor}
-        opacity={0.9}
+        opacity={isCreative ? 0.65 : 0.9}
         pointerEvents="none"
       />
 
@@ -157,7 +206,7 @@ export const CustomEdge = memo(function CustomEdge({
                 display: "flex",
                 alignItems: "center",
                 gap: 4,
-                background: "oklch(0.13 0.007 260)",
+                background: "var(--c-surface)",
                 border: "1px solid oklch(0.68 0.22 285 / 0.50)",
                 borderRadius: 8,
                 padding: "4px 8px",
@@ -174,7 +223,7 @@ export const CustomEdge = memo(function CustomEdge({
                 placeholder="标签..."
                 style={{
                   background: "transparent",
-                  color: "oklch(0.92 0.005 260)",
+                  color: "var(--c-t1)",
                   fontSize: 11,
                   outline: "none",
                   width: 80,
@@ -189,7 +238,7 @@ export const CustomEdge = memo(function CustomEdge({
               </button>
               <button
                 onMouseDown={(e) => { e.preventDefault(); setEditing(false); }}
-                style={{ color: "oklch(0.45 0.008 260)", padding: 1, lineHeight: 0 }}
+                style={{ color: "var(--c-t4)", padding: 1, lineHeight: 0 }}
               >
                 <X style={{ width: 10, height: 10 }} />
               </button>
@@ -201,7 +250,7 @@ export const CustomEdge = memo(function CustomEdge({
                 alignItems: "center",
                 gap: 2,
                 background: "oklch(0.13 0.007 260 / 0.95)",
-                border: `1px solid ${selected ? "oklch(0.68 0.22 285 / 0.45)" : "oklch(0.24 0.008 260)"}`,
+                border: `1px solid ${selected ? "oklch(0.68 0.22 285 / 0.45)" : "var(--c-bd3)"}`,
                 borderRadius: 20,
                 padding: "3px 6px",
                 backdropFilter: "blur(12px)",
@@ -215,7 +264,7 @@ export const CustomEdge = memo(function CustomEdge({
                   style={{
                     fontSize: 10,
                     fontFamily: "var(--font-sans)",
-                    color: selected ? "oklch(0.82 0.12 285)" : "oklch(0.58 0.008 260)",
+                    color: selected ? "oklch(0.82 0.12 285)" : "var(--c-t3)",
                     userSelect: "none",
                     whiteSpace: "nowrap",
                     paddingLeft: 2,
@@ -231,7 +280,7 @@ export const CustomEdge = memo(function CustomEdge({
                   style={{
                     fontSize: 10,
                     fontFamily: "var(--font-sans)",
-                    color: "oklch(0.40 0.006 260)",
+                    color: "var(--c-t4)",
                     cursor: "pointer",
                     background: "transparent",
                     border: "none",
@@ -242,11 +291,11 @@ export const CustomEdge = memo(function CustomEdge({
                   + 标签
                 </button>
               )}
-              <div style={{ width: 1, height: 10, background: "oklch(0.24 0.008 260)", margin: "0 2px" }} />
+              <div style={{ width: 1, height: 10, background: "var(--c-bd3)", margin: "0 2px" }} />
               <button
                 onClick={handleDelete}
                 style={{
-                  color: "oklch(0.40 0.008 260)",
+                  color: "var(--c-t4)",
                   background: "transparent",
                   border: "none",
                   cursor: "pointer",
@@ -256,7 +305,7 @@ export const CustomEdge = memo(function CustomEdge({
                   transition: "color 120ms ease",
                 }}
                 onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.color = "oklch(0.65 0.22 25)"; }}
-                onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.color = "oklch(0.40 0.008 260)"; }}
+                onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.color = "var(--c-t4)"; }}
                 title="删除连线"
               >
                 <Trash2 style={{ width: 10, height: 10 }} />
@@ -266,12 +315,12 @@ export const CustomEdge = memo(function CustomEdge({
             <div
               style={{
                 background: "oklch(0.12 0.007 260 / 0.90)",
-                border: "1px solid oklch(0.22 0.008 260)",
+                border: "1px solid var(--c-bd2)",
                 borderRadius: 20,
                 padding: "2px 8px",
                 fontSize: 10,
                 fontFamily: "var(--font-sans)",
-                color: "oklch(0.52 0.008 260)",
+                color: "var(--c-t3)",
                 backdropFilter: "blur(8px)",
                 userSelect: "none",
                 whiteSpace: "nowrap",

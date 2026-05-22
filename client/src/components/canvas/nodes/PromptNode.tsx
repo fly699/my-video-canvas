@@ -5,7 +5,7 @@ import { useCanvasStore } from "../../../hooks/useCanvasStore";
 import type { PromptNodeData, ImageGenModel } from "../../../../../shared/types";
 import { trpc } from "@/lib/trpc";
 import { toast } from "sonner";
-import { Sparkles, Loader2, RefreshCw, ChevronDown, Upload, X, Grid2X2, Check, Languages } from "lucide-react";
+import { Sparkles, Loader2, RefreshCw, ChevronDown, Upload, X, Grid2X2, Check, Languages, Wand2 } from "lucide-react";
 import { makeImageProxyFallback } from "@/lib/utils";
 import { LLMModelPicker, type LLMModelId } from "../LLMModelPicker";
 
@@ -20,7 +20,7 @@ interface Props {
   };
 }
 
-const BORDER_DEFAULT = "oklch(0.20 0.008 260)";
+const BORDER_DEFAULT = "var(--c-bd2)";
 
 const accentColor = "oklch(0.68 0.22 300)";
 const accentA = (a: number) => `oklch(0.68 0.22 300 / ${a})`;
@@ -29,12 +29,12 @@ const fieldStyle: React.CSSProperties = {
   width: "100%",
   padding: "7px 10px",
   fontSize: 12,
-  background: "oklch(0.09 0.006 260)",
+  background: "var(--c-input)",
   borderWidth: 1,
   borderStyle: "solid",
   borderColor: BORDER_DEFAULT,
   borderRadius: 8,
-  color: "oklch(0.86 0.006 260)",
+  color: "var(--c-t1)",
   outline: "none",
   transition: "border-color 150ms ease, background 150ms ease",
   lineHeight: 1.5,
@@ -119,7 +119,9 @@ export const PromptNode = memo(function PromptNode({ id, selected, data }: Props
         updateNodeData(id, { imageUrls: result.urls, imageUrl: result.urls[0], selectedImageIndex: 0 });
         toast.success(`${result.urls.length} 张图像已生成`);
       } else {
-        updateNodeData(id, { imageUrl: result.url, imageUrls: undefined, selectedImageIndex: undefined });
+        const imageUrl = result.url ?? result.urls?.[0];
+        if (!imageUrl) { toast.error("生成完成但未返回图像"); return; }
+        updateNodeData(id, { imageUrl, imageUrls: undefined, selectedImageIndex: undefined });
         toast.success("图像已生成");
       }
     },
@@ -147,18 +149,33 @@ export const PromptNode = memo(function PromptNode({ id, selected, data }: Props
         poyoAspectRatio: payload.aspectRatio,
       } : {}),
       ...(model === "hf_soul_standard" && batchMode ? { batchSize: 2 } : {}),
+      projectId: data.projectId,
     });
   };
 
   const onFocusAccent = (e: React.FocusEvent<HTMLElement>) => { e.currentTarget.style.borderColor = accentA(0.6); };
   const onBlurAccent  = (e: React.FocusEvent<HTMLElement>) => { e.currentTarget.style.borderColor = accentA(0.3); };
-  const onFocusNeg    = (e: React.FocusEvent<HTMLElement>) => { e.currentTarget.style.borderColor = "oklch(0.45 0.008 260)"; };
+  const onFocusNeg    = (e: React.FocusEvent<HTMLElement>) => { e.currentTarget.style.borderColor = "var(--c-t4)"; };
   const onBlurDefault = (e: React.FocusEvent<HTMLElement>) => { e.currentTarget.style.borderColor = BORDER_DEFAULT; };
 
   const currentModel = IMAGE_MODELS.find((m) => m.value === model) ?? IMAGE_MODELS[0];
 
+  // heroMedia shows text prompt preview only — images are shown in the interactive body grid
+  const heroMedia = payload.positivePrompt?.trim() ? (
+    <div
+      className="node-hero-placeholder"
+      style={{ minHeight: 100, padding: "14px 16px", alignItems: "flex-start", justifyContent: "flex-start" }}
+    >
+      <p style={{ fontSize: 11, color: "var(--c-t3)", lineHeight: 1.7, fontFamily: "monospace", margin: 0 }}>
+        {payload.positivePrompt.length > 120
+          ? payload.positivePrompt.slice(0, 120) + "…"
+          : payload.positivePrompt}
+      </p>
+    </div>
+  ) : null;
+
   return (
-    <BaseNode id={id} selected={selected} nodeType="prompt" title={data.title} minHeight={200} resizable>
+    <BaseNode id={id} selected={selected} nodeType="prompt" title={data.title} minHeight={200} resizable heroMedia={heroMedia}>
       <div className="flex flex-col h-full p-3.5 gap-3">
 
         {/* Preview area — single or A/B compare */}
@@ -171,7 +188,7 @@ export const PromptNode = memo(function PromptNode({ id, selected, data }: Props
                   className="relative rounded-lg overflow-hidden flex-1"
                   style={{
                     height: 90,
-                    border: `1.5px solid ${(payload.selectedImageIndex ?? 0) === i ? accentColor : "oklch(0.22 0.008 260)"}`,
+                    border: `1.5px solid ${(payload.selectedImageIndex ?? 0) === i ? accentColor : "var(--c-bd2)"}`,
                     cursor: "pointer",
                   }}
                   onClick={() => updateNodeData(id, { imageUrl: url, selectedImageIndex: i })}
@@ -193,14 +210,14 @@ export const PromptNode = memo(function PromptNode({ id, selected, data }: Props
                   )}
                   <div
                     className="absolute bottom-1 left-1 px-1 rounded text-[9px] font-semibold"
-                    style={{ background: "oklch(0 0 0 / 0.6)", color: "oklch(0.85 0.005 260)" }}
+                    style={{ background: "oklch(0 0 0 / 0.6)", color: "var(--c-t1)" }}
                   >
                     {i === 0 ? "A" : "B"}
                   </div>
                 </div>
               ))}
             </div>
-            <p style={{ fontSize: 10, color: "oklch(0.40 0.006 260)", textAlign: "center" }}>
+            <p style={{ fontSize: 10, color: "var(--c-t4)", textAlign: "center" }}>
               点击选择图像 · 已选: {(payload.selectedImageIndex ?? 0) === 0 ? "A" : "B"}
             </p>
           </div>
@@ -246,12 +263,12 @@ export const PromptNode = memo(function PromptNode({ id, selected, data }: Props
 
         {/* Positive prompt */}
         <div>
-          <label style={{ fontSize: 10.5, fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.06em", color: "oklch(0.45 0.008 260)", display: "block", marginBottom: 5 }}>
+          <label style={{ fontSize: 10.5, fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.06em", color: "var(--c-t4)", display: "block", marginBottom: 5 }}>
             正向提示词
           </label>
           <textarea
             placeholder="masterpiece, best quality, cinematic lighting..."
-            value={payload.positivePrompt}
+            value={payload.positivePrompt ?? ""}
             onChange={(e) => handleChange("positivePrompt", e.target.value)}
             rows={3}
             className="nodrag"
@@ -270,9 +287,9 @@ export const PromptNode = memo(function PromptNode({ id, selected, data }: Props
               disabled={expandingPrompt || translating}
               className="nodrag flex items-center gap-1 px-1.5 py-0.5 rounded-md text-[9px] font-medium transition-all"
               style={{
-                background: expandingPrompt ? "oklch(0.13 0.007 260)" : "oklch(0.68 0.22 300 / 0.10)",
-                border: `1px solid ${expandingPrompt ? "oklch(0.20 0.008 260)" : "oklch(0.68 0.22 300 / 0.35)"}`,
-                color: expandingPrompt || translating ? "oklch(0.38 0.006 260)" : "oklch(0.72 0.18 300)",
+                background: expandingPrompt ? "var(--c-surface)" : "oklch(0.68 0.22 300 / 0.10)",
+                border: `1px solid ${expandingPrompt ? "var(--c-bd2)" : "oklch(0.68 0.22 300 / 0.35)"}`,
+                color: expandingPrompt || translating ? "var(--c-t4)" : "oklch(0.72 0.18 300)",
                 cursor: expandingPrompt || translating ? "not-allowed" : "pointer",
               }}
             >
@@ -288,9 +305,9 @@ export const PromptNode = memo(function PromptNode({ id, selected, data }: Props
               disabled={translating || expandingPrompt}
               className="nodrag flex items-center gap-1 px-1.5 py-0.5 rounded-md text-[9px] font-medium transition-all"
               style={{
-                background: translating ? "oklch(0.13 0.007 260)" : "oklch(0.65 0.18 200 / 0.10)",
-                border: `1px solid ${translating ? "oklch(0.20 0.008 260)" : "oklch(0.65 0.18 200 / 0.35)"}`,
-                color: translating || expandingPrompt ? "oklch(0.38 0.006 260)" : "oklch(0.70 0.16 200)",
+                background: translating ? "var(--c-surface)" : "oklch(0.65 0.18 200 / 0.10)",
+                border: `1px solid ${translating ? "var(--c-bd2)" : "oklch(0.65 0.18 200 / 0.35)"}`,
+                color: translating || expandingPrompt ? "var(--c-t4)" : "oklch(0.70 0.16 200)",
                 cursor: translating || expandingPrompt ? "not-allowed" : "pointer",
               }}
             >
@@ -302,7 +319,7 @@ export const PromptNode = memo(function PromptNode({ id, selected, data }: Props
 
         {/* Negative prompt */}
         <div>
-          <label style={{ fontSize: 10, fontWeight: 500, textTransform: "uppercase", letterSpacing: "0.05em", color: "oklch(0.42 0.006 260)", display: "block", marginBottom: 4 }}>
+          <label style={{ fontSize: 10, fontWeight: 500, textTransform: "uppercase", letterSpacing: "0.05em", color: "var(--c-t4)", display: "block", marginBottom: 4 }}>
             反向提示词
           </label>
           <textarea
@@ -331,11 +348,11 @@ export const PromptNode = memo(function PromptNode({ id, selected, data }: Props
             disabled={uploadingRef}
             className="nodrag flex items-center gap-1 px-2 py-1 rounded text-[10px] transition-all flex-1"
             style={{
-              background: "oklch(0.09 0.006 260)",
+              background: "var(--c-input)",
               borderWidth: 1,
               borderStyle: "solid",
-              borderColor: "oklch(0.22 0.008 260)",
-              color: "oklch(0.55 0.006 260)",
+              borderColor: "var(--c-bd2)",
+              color: "var(--c-t3)",
               cursor: uploadingRef ? "not-allowed" : "pointer",
             }}
           >
@@ -346,7 +363,7 @@ export const PromptNode = memo(function PromptNode({ id, selected, data }: Props
             <button
               onClick={() => updateNodeData(id, { referenceImageUrl: undefined })}
               className="nodrag p-1 rounded transition-all"
-              style={{ background: "oklch(0.09 0.006 260)", borderWidth: 1, borderStyle: "solid", borderColor: "oklch(0.22 0.008 260)", color: "oklch(0.50 0.006 260)" }}
+              style={{ background: "var(--c-input)", borderWidth: 1, borderStyle: "solid", borderColor: "var(--c-bd2)", color: "var(--c-t3)" }}
               title="清除参考图"
             >
               <X className="w-3 h-3" />
@@ -382,7 +399,7 @@ export const PromptNode = memo(function PromptNode({ id, selected, data }: Props
             onClick={() => setShowModelPicker((v) => !v)}
             className="nodrag flex items-center justify-between w-full px-2.5 py-1.5 rounded-lg text-xs transition-all"
             style={{
-              background: "oklch(0.09 0.006 260)",
+              background: "var(--c-input)",
               borderWidth: 1,
               borderStyle: "solid",
               borderColor: accentA(0.30),
@@ -406,16 +423,16 @@ export const PromptNode = memo(function PromptNode({ id, selected, data }: Props
             <div
               className="absolute bottom-full left-0 right-0 mb-1 rounded-lg overflow-hidden z-50"
               style={{
-                background: "oklch(0.12 0.007 260)",
+                background: "var(--c-surface)",
                 borderWidth: 1,
                 borderStyle: "solid",
-                borderColor: "oklch(0.22 0.008 260)",
+                borderColor: "var(--c-bd2)",
                 boxShadow: "0 8px 24px oklch(0 0 0 / 0.5)",
               }}
             >
               {["Manus", "Poyo", "Higgsfield"].map((group) => (
                 <div key={group}>
-                  <div className="px-2.5 py-1" style={{ fontSize: 9, fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.08em", color: "oklch(0.38 0.006 260)", borderBottom: "1px solid oklch(0.20 0.008 260)" }}>
+                  <div className="px-2.5 py-1" style={{ fontSize: 9, fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.08em", color: "var(--c-t4)", borderBottom: "1px solid var(--c-bd2)" }}>
                     {group}
                   </div>
                   {IMAGE_MODELS.filter((m) => m.group === group).map((m) => (
@@ -424,10 +441,10 @@ export const PromptNode = memo(function PromptNode({ id, selected, data }: Props
                       className="nodrag flex items-center justify-between w-full px-2.5 py-2 text-xs transition-colors"
                       style={{
                         background: model === m.value ? accentA(0.10) : "transparent",
-                        color: model === m.value ? accentColor : "oklch(0.65 0.006 260)",
+                        color: model === m.value ? accentColor : "var(--c-t2)",
                       }}
                       onClick={() => { setModel(m.value); setShowModelPicker(false); }}
-                      onMouseEnter={(e) => { if (model !== m.value) (e.currentTarget as HTMLElement).style.background = "oklch(0.16 0.008 260)"; }}
+                      onMouseEnter={(e) => { if (model !== m.value) (e.currentTarget as HTMLElement).style.background = "var(--c-elevated)"; }}
                       onMouseLeave={(e) => { if (model !== m.value) (e.currentTarget as HTMLElement).style.background = "transparent"; }}
                     >
                       <span>{m.label}</span>
@@ -451,11 +468,11 @@ export const PromptNode = memo(function PromptNode({ id, selected, data }: Props
             onClick={() => setBatchMode((v) => !v)}
             className="nodrag flex items-center gap-1 px-2 py-1.5 rounded-lg text-[11px] font-medium transition-all flex-shrink-0"
             style={{
-              background: batchMode ? accentA(0.15) : "oklch(0.13 0.007 260)",
+              background: batchMode ? accentA(0.15) : "var(--c-surface)",
               borderWidth: 1,
               borderStyle: "solid",
               borderColor: batchMode ? accentA(0.4) : BORDER_DEFAULT,
-              color: batchMode ? accentColor : "oklch(0.45 0.008 260)",
+              color: batchMode ? accentColor : "var(--c-t4)",
               cursor: "pointer",
             }}
             title={batchMode ? "当前：生成2图 A/B对比" : "点击开启A/B对比模式"}
@@ -469,7 +486,7 @@ export const PromptNode = memo(function PromptNode({ id, selected, data }: Props
             className="nodrag flex items-center justify-center gap-1.5 flex-1 py-2 rounded-lg text-xs font-medium transition-all"
             style={{
               background: genImageMutation.isPending || !payload.positivePrompt?.trim()
-                ? "oklch(0.13 0.007 260)"
+                ? "var(--c-surface)"
                 : accentA(0.15),
               borderWidth: 1,
               borderStyle: "solid",
@@ -477,7 +494,7 @@ export const PromptNode = memo(function PromptNode({ id, selected, data }: Props
                 ? BORDER_DEFAULT
                 : accentA(0.4),
               color: genImageMutation.isPending || !payload.positivePrompt?.trim()
-                ? "oklch(0.38 0.006 260)"
+                ? "var(--c-t4)"
                 : accentColor,
               cursor: genImageMutation.isPending || !payload.positivePrompt?.trim() ? "not-allowed" : "pointer",
             }}

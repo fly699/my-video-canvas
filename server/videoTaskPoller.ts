@@ -36,6 +36,8 @@ async function pollMockTask(externalTaskId: string, createdAt: Date): Promise<Po
 
 export function setupVideoTaskPoller(io: SocketIOServer) {
   const POLL_INTERVAL = 10_000; // 10 seconds
+  const MAX_TRANSIENT_ERRORS = 10; // after this many consecutive errors, mark task failed
+  const pollErrorCounts = new Map<number, number>();
 
   const poll = async () => {
     try {
@@ -67,9 +69,14 @@ export function setupVideoTaskPoller(io: SocketIOServer) {
                 referenceImageUrl: task.referenceImageUrl ?? undefined,
                 params: (task.params as Record<string, unknown>) ?? undefined,
               });
-            } else {
-              // Mock provider (and any unconfigured provider falls back to mock)
+            } else if (task.provider === "mock") {
               submitResult = await submitMockTask();
+            } else {
+              await updateVideoTask(task.id, {
+                status: "failed",
+                errorMessage: `Unknown provider: ${task.provider}`,
+              });
+              continue;
             }
 
             await updateVideoTask(task.id, {
@@ -86,7 +93,11 @@ export function setupVideoTaskPoller(io: SocketIOServer) {
             // Poyo.ai status check
             const upstream = await checkPoyoVideoStatus(task.externalTaskId);
             if (upstream.status === "finished") {
-              result = { status: "succeeded", resultVideoUrl: upstream.resultVideoUrl };
+              if (upstream.resultVideoUrl) {
+                result = { status: "succeeded", resultVideoUrl: upstream.resultVideoUrl };
+              } else {
+                result = { status: "failed", errorMessage: "生成完成但无视频 URL" };
+              }
             } else if (upstream.status === "failed") {
               result = { status: "failed", errorMessage: upstream.errorMessage ?? "生成失败" };
             } else {
@@ -97,6 +108,8 @@ export function setupVideoTaskPoller(io: SocketIOServer) {
             const upstream = await checkHiggsfieldVideoStatus(task.externalTaskId);
             if (upstream.status === "succeeded" && upstream.resultVideoUrl) {
               result = { status: "succeeded", resultVideoUrl: upstream.resultVideoUrl };
+            } else if (upstream.status === "succeeded" && !upstream.resultVideoUrl) {
+              result = { status: "failed", errorMessage: "任务完成但未返回视频 URL" };
             } else if (upstream.status === "failed") {
               result = { status: "failed", errorMessage: upstream.errorMessage ?? "生成失败" };
             } else {
@@ -107,6 +120,7 @@ export function setupVideoTaskPoller(io: SocketIOServer) {
             result = await pollMockTask(task.externalTaskId, task.createdAt);
           }
 
+          pollErrorCounts.delete(task.id);
           if (result.status !== "processing") {
             await updateVideoTask(task.id, {
               status: result.status,
@@ -131,11 +145,18 @@ export function setupVideoTaskPoller(io: SocketIOServer) {
             });
           }
         } catch (err) {
-          console.error(`[VideoPoller] Task ${task.id} error:`, err);
-          await updateVideoTask(task.id, {
-            status: "failed",
-            errorMessage: err instanceof Error ? err.message : "Unknown error",
-          });
+          const errCount = (pollErrorCounts.get(task.id) ?? 0) + 1;
+          if (errCount >= MAX_TRANSIENT_ERRORS) {
+            pollErrorCounts.delete(task.id);
+            console.error(`[VideoPoller] Task ${task.id} exceeded max retries, marking failed:`, err);
+            await updateVideoTask(task.id, {
+              status: "failed",
+              errorMessage: err instanceof Error ? err.message : "轮询失败次数过多，请重试",
+            });
+          } else {
+            pollErrorCounts.set(task.id, errCount);
+            console.error(`[VideoPoller] Task ${task.id} transient error (attempt ${errCount}/${MAX_TRANSIENT_ERRORS}):`, err);
+          }
         }
       }
     } catch (err) {

@@ -67,7 +67,7 @@ async function pollHiggsfieldRequest(requestId: string): Promise<{ fileUrl: stri
     });
 
     if (!res.ok) {
-      if (res.status === 404) continue; // not ready yet
+      if (res.status === 404 || res.status === 429 || res.status >= 500) continue; // not ready or transient error
       throw new Error(`Higgsfield status check failed (${res.status})`);
     }
 
@@ -124,6 +124,7 @@ export async function generateHiggsfieldImage(
     if (opts.batchSize !== undefined) body.batch_size = opts.batchSize;
     if (opts.enhancePrompt !== undefined) body.enhance_prompt = opts.enhancePrompt;
     if (opts.seed !== undefined) body.seed = opts.seed;
+    if (opts.negativePrompt) body.negative_prompt = opts.negativePrompt;
     if (opts.referenceImageUrl) body.image_url = opts.referenceImageUrl;
   } else if (opts.model === "reve/text-to-image") {
     // Reve specific params
@@ -152,6 +153,7 @@ export async function generateHiggsfieldImage(
       Accept: "application/json",
     },
     body: JSON.stringify(body),
+    signal: AbortSignal.timeout(30_000),
   });
 
   if (!res.ok) {
@@ -291,6 +293,7 @@ export async function submitHiggsfieldVideo(
       Accept: "application/json",
     },
     body: JSON.stringify(body),
+    signal: AbortSignal.timeout(30_000),
   });
 
   if (!res.ok) {

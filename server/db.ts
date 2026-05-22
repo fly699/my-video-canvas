@@ -101,8 +101,10 @@ export async function getProjectById(id: number, userId: number) {
 export async function createProject(data: InsertProject) {
   const db = await getDb();
   if (!db) { if (DEV_MODE) return dev.devCreateProject(data); throw new Error("DB unavailable"); }
-  const [result] = await db.insert(projects).values(data);
-  return result;
+  const [header] = await db.insert(projects).values(data);
+  const insertId = (header as unknown as { insertId: number }).insertId;
+  const rows = await db.select().from(projects).where(eq(projects.id, insertId));
+  return rows[0] ?? null;
 }
 
 export async function updateProject(id: number, userId: number, data: Partial<InsertProject>) {
@@ -150,7 +152,27 @@ export async function deleteNode(id: string, projectId: number) {
 
 export async function batchUpsertNodes(nodes: InsertCanvasNode[]) {
   if (!nodes.length) return;
-  for (const node of nodes) await upsertNode(node);
+  const db = await getDb();
+  if (!db) {
+    if (DEV_MODE) { for (const node of nodes) dev.devUpsertNode(node); return; }
+    throw new Error("DB unavailable");
+  }
+  await db.transaction(async (tx) => {
+    for (const node of nodes) {
+      await tx.insert(canvasNodes).values(node).onDuplicateKeyUpdate({
+        set: {
+          type: node.type,
+          title: node.title,
+          data: node.data,
+          posX: node.posX,
+          posY: node.posY,
+          width: node.width,
+          height: node.height,
+          zIndex: node.zIndex,
+        },
+      });
+    }
+  });
 }
 
 // ── Canvas Edges ──────────────────────────────────────────────────────────────
@@ -199,8 +221,17 @@ export async function getAssetsByUser(userId: number, projectId?: number) {
 export async function createAsset(data: InsertAsset) {
   const db = await getDb();
   if (!db) { if (DEV_MODE) return dev.devCreateAsset(data); throw new Error("DB unavailable"); }
-  const [result] = await db.insert(assets).values(data);
-  return result;
+  const [header] = await db.insert(assets).values(data);
+  const insertId = (header as unknown as { insertId: number }).insertId;
+  const rows = await db.select().from(assets).where(eq(assets.id, insertId));
+  return rows[0] ?? null;
+}
+
+export async function getAssetById(id: number, userId: number) {
+  const db = await getDb();
+  if (!db) return null;
+  const rows = await db.select().from(assets).where(and(eq(assets.id, id), eq(assets.userId, userId)));
+  return rows[0] ?? null;
 }
 
 export async function deleteAsset(id: number, userId: number) {
@@ -214,8 +245,10 @@ export async function deleteAsset(id: number, userId: number) {
 export async function createVideoTask(data: InsertVideoTask) {
   const db = await getDb();
   if (!db) { if (DEV_MODE) return dev.devCreateVideoTask(data); throw new Error("DB unavailable"); }
-  const [result] = await db.insert(videoTasks).values(data);
-  return result;
+  const [header] = await db.insert(videoTasks).values(data);
+  const insertId = (header as unknown as { insertId: number }).insertId;
+  const rows = await db.select().from(videoTasks).where(eq(videoTasks.id, insertId));
+  return rows[0] ?? null;
 }
 
 export async function getVideoTask(id: number) {
@@ -250,7 +283,8 @@ export async function getPendingVideoTasks() {
   return db
     .select()
     .from(videoTasks)
-    .where(inArray(videoTasks.status, ["pending", "processing"]));
+    .where(inArray(videoTasks.status, ["pending", "processing"]))
+    .limit(200);
 }
 
 // ── Chat Messages ─────────────────────────────────────────────────────────────
@@ -270,6 +304,27 @@ export async function addChatMessage(data: InsertChatMessage) {
   if (!db) { if (DEV_MODE) return dev.devAddChatMessage(data); throw new Error("DB unavailable"); }
   const [result] = await db.insert(chatMessages).values(data);
   return result;
+}
+
+export async function addChatMessagePair(
+  nodeId: string,
+  projectId: number,
+  userContent: string,
+  assistantContent: string,
+) {
+  const db = await getDb();
+  if (!db) {
+    if (DEV_MODE) {
+      await dev.devAddChatMessage({ nodeId, projectId, role: "user", content: userContent });
+      await dev.devAddChatMessage({ nodeId, projectId, role: "assistant", content: assistantContent });
+      return;
+    }
+    throw new Error("DB unavailable");
+  }
+  await db.transaction(async (tx) => {
+    await tx.insert(chatMessages).values({ nodeId, projectId, role: "user", content: userContent });
+    await tx.insert(chatMessages).values({ nodeId, projectId, role: "assistant", content: assistantContent });
+  });
 }
 
 export async function clearChatMessages(nodeId: string, projectId: number) {

@@ -4,7 +4,16 @@ import { useCanvasStore } from "../../../hooks/useCanvasStore";
 import type { PostProcessNodeData } from "../../../../../shared/types";
 import { POST_PROCESS_CATEGORIES, buildEffectPrompt, getEffectById } from "../../../lib/postProcessOptions";
 import { toast } from "sonner";
-import { Copy, ChevronDown, ChevronRight, X, Layers } from "lucide-react";
+import { Copy, ChevronDown, ChevronRight, X, Layers, Palette, Aperture, Gauge, Sun, PenTool, Camera, ArrowLeftRight, Film, Wind, Circle, Zap, Flower2, PenLine, ScanLine, Maximize, Building2, Globe, Combine, Sparkles, Timer, Activity, TrendingUp, CloudFog, Lightbulb, Waves, Sunrise, Moon, Brush, Stars, Grid2x2, MessageSquare, Droplet, Box, Monitor, Thermometer, CircleDot, Blend, Wand2, RotateCcw, Image, type LucideIcon } from "lucide-react";
+
+const EFFECT_ICONS: Record<string, LucideIcon> = {
+  Palette, Aperture, Gauge, Sun, PenTool, Camera, ArrowLeftRight,
+  Film, Wind, Circle, Zap, Flower2, PenLine, ScanLine, Maximize,
+  Building2, Globe, Combine, Sparkles, Timer, Activity, TrendingUp,
+  CloudFog, Lightbulb, Waves, Sunrise, Moon, Brush, Stars, Grid2x2,
+  MessageSquare, Droplet, Box, Monitor, Thermometer, CircleDot,
+  Blend, Wand2, RotateCcw, Image, Layers,
+};
 
 interface Props {
   id: string;
@@ -73,7 +82,7 @@ export const PostProcessNode = memo(function PostProcessNode({ id, selected, dat
   }, [generatedPrompt]);
 
   const clearAll = useCallback(() => {
-    updateNodeData(id, { selectedEffects: [], generatedPrompt: "" });
+    updateNodeData(id, { selectedEffects: [], effectIntensities: {}, generatedPrompt: "" });
   }, [id, updateNodeData]);
 
   return (
@@ -83,7 +92,7 @@ export const PostProcessNode = memo(function PostProcessNode({ id, selected, dat
         {/* ── Category tab bar ── */}
         <div
           className="flex gap-0.5 px-2 py-1.5 overflow-x-auto"
-          style={{ borderBottom: `1px solid oklch(0.18 0.008 260)`, background: "oklch(0.10 0.006 260)" }}
+          style={{ borderBottom: `1px solid var(--c-bd1)`, background: "var(--c-base)" }}
         >
           {POST_PROCESS_CATEGORIES.map(cat => {
             const active = cat.id === activeCategory;
@@ -96,11 +105,11 @@ export const PostProcessNode = memo(function PostProcessNode({ id, selected, dat
                 style={{
                   background: active ? `${cat.color}20` : "transparent",
                   border: active ? `1px solid ${cat.color}45` : "1px solid transparent",
-                  color: active ? cat.color : "oklch(0.42 0.006 260)",
+                  color: active ? cat.color : "var(--c-t4)",
                   position: "relative",
                 }}
               >
-                <span style={{ fontSize: 12 }}>{cat.emoji}</span>
+                {(() => { const I = EFFECT_ICONS[cat.icon]; return I ? <I style={{ width: 11, height: 11, flexShrink: 0 }} /> : null; })()}
                 <span className="hidden sm:inline">{cat.label}</span>
                 {selectedCount > 0 && (
                   <span
@@ -120,7 +129,7 @@ export const PostProcessNode = memo(function PostProcessNode({ id, selected, dat
         </div>
 
         {/* ── Effect grid for active category ── */}
-        <div className="p-2.5" style={{ borderBottom: "1px solid oklch(0.16 0.007 260)" }}>
+        <div className="p-2.5" style={{ borderBottom: "1px solid var(--c-bd1)" }}>
           <div className="grid gap-1.5" style={{ gridTemplateColumns: "1fr 1fr" }}>
             {activeCat.effects.map(effect => {
               const isSelected = selectedEffects.includes(effect.id);
@@ -132,14 +141,14 @@ export const PostProcessNode = memo(function PostProcessNode({ id, selected, dat
                     onClick={() => toggleEffect(effect.id)}
                     className="flex items-center gap-1.5 px-2 py-1.5 rounded-lg text-left transition-all"
                     style={{
-                      background: isSelected ? `${catColor}18` : "oklch(0.09 0.005 260)",
-                      border: isSelected ? `1.5px solid ${catColor}50` : "1px solid oklch(0.18 0.007 260)",
-                      color: isSelected ? catColor : "oklch(0.55 0.008 260)",
+                      background: isSelected ? `${catColor}18` : "var(--c-input)",
+                      border: isSelected ? `1.5px solid ${catColor}50` : "1px solid var(--c-bd1)",
+                      color: isSelected ? catColor : "var(--c-t3)",
                       cursor: "pointer",
                     }}
                     title={effect.description}
                   >
-                    <span style={{ fontSize: 13, flexShrink: 0 }}>{effect.emoji}</span>
+                    {(() => { const I = EFFECT_ICONS[effect.icon]; return I ? <I style={{ width: 10, height: 10, flexShrink: 0 }} /> : null; })()}
                     <span style={{ fontSize: 10, fontWeight: isSelected ? 600 : 400, lineHeight: 1.3 }}>
                       {effect.label}
                     </span>
@@ -155,7 +164,7 @@ export const PostProcessNode = memo(function PostProcessNode({ id, selected, dat
                   {/* Intensity slider — only for selected effects with hasIntensity */}
                   {isSelected && effect.hasIntensity && (
                     <div className="flex items-center gap-1.5 px-2">
-                      <span style={{ fontSize: 9, color: "oklch(0.42 0.006 260)", flexShrink: 0 }}>
+                      <span style={{ fontSize: 9, color: "var(--c-t4)", flexShrink: 0 }}>
                         {effect.intensityLabel ?? "强度"}
                       </span>
                       <input
@@ -165,7 +174,7 @@ export const PostProcessNode = memo(function PostProcessNode({ id, selected, dat
                         className="flex-1"
                         style={{ height: 3, accentColor: catColor }}
                       />
-                      <span style={{ fontSize: 9, color: "oklch(0.40 0.006 260)", width: 24, textAlign: "right", flexShrink: 0 }}>
+                      <span style={{ fontSize: 9, color: "var(--c-t4)", width: 24, textAlign: "right", flexShrink: 0 }}>
                         {Math.round(intensity * 100)}%
                       </span>
                     </div>
@@ -177,22 +186,22 @@ export const PostProcessNode = memo(function PostProcessNode({ id, selected, dat
         </div>
 
         {/* ── Selected effects chips ── */}
-        <div className="px-2.5 py-2" style={{ borderBottom: "1px solid oklch(0.16 0.007 260)" }}>
+        <div className="px-2.5 py-2" style={{ borderBottom: "1px solid var(--c-bd1)" }}>
           <div className="flex items-center justify-between mb-1.5">
-            <span style={{ fontSize: 9, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.06em", color: "oklch(0.38 0.006 260)" }}>
+            <span style={{ fontSize: 9, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.06em", color: "var(--c-t4)" }}>
               已选效果 {selectedEffects.length > 0 ? `(${selectedEffects.length})` : ""}
             </span>
             {selectedEffects.length > 0 && (
               <button
                 onClick={clearAll}
-                style={{ fontSize: 9, color: "oklch(0.45 0.012 25)", cursor: "pointer", background: "none", border: "none" }}
+                style={{ fontSize: 9, color: "oklch(0.45 0.012 25)", cursor: "pointer", background: "none", border: "none" }}  /* warm-hue, intentional */
               >
                 清除全部
               </button>
             )}
           </div>
           {selectedEffects.length === 0 ? (
-            <div style={{ fontSize: 10, color: "oklch(0.30 0.006 260)", fontStyle: "italic", textAlign: "center", padding: "6px 0" }}>
+            <div style={{ fontSize: 10, color: "var(--c-t4)", fontStyle: "italic", textAlign: "center", padding: "6px 0" }}>
               点击上方效果开始选择 →
             </div>
           ) : (
@@ -211,7 +220,7 @@ export const PostProcessNode = memo(function PostProcessNode({ id, selected, dat
                       color: cat?.color ?? accent,
                     }}
                   >
-                    <span>{effect.emoji}</span>
+                    {(() => { const I = EFFECT_ICONS[effect.icon]; return I ? <I style={{ width: 8, height: 8 }} /> : null; })()}
                     {effect.label}
                     <button
                       onClick={() => removeEffect(eid)}
@@ -231,7 +240,7 @@ export const PostProcessNode = memo(function PostProcessNode({ id, selected, dat
           <button
             onClick={() => setShowPromptPreview(p => !p)}
             className="flex items-center gap-1.5 w-full"
-            style={{ background: "none", border: "none", cursor: "pointer", color: "oklch(0.42 0.006 260)", textAlign: "left" }}
+            style={{ background: "none", border: "none", cursor: "pointer", color: "var(--c-t4)", textAlign: "left" }}
           >
             {showPromptPreview ? <ChevronDown style={{ width: 10, height: 10 }} /> : <ChevronRight style={{ width: 10, height: 10 }} />}
             <span style={{ fontSize: 9, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.06em" }}>
@@ -246,9 +255,9 @@ export const PostProcessNode = memo(function PostProcessNode({ id, selected, dat
             <div className="mt-1.5 flex flex-col gap-1.5">
               <div
                 className="rounded-lg p-2"
-                style={{ background: "oklch(0.09 0.006 260)", border: accentA(0.20) + " 1px solid", minHeight: 40 }}
+                style={{ background: "var(--c-input)", border: accentA(0.20) + " 1px solid", minHeight: 40 }}
               >
-                <p style={{ fontSize: 10, color: generatedPrompt ? "oklch(0.65 0.008 260)" : "oklch(0.30 0.006 260)", lineHeight: 1.5, fontFamily: "'JetBrains Mono', monospace" }}>
+                <p style={{ fontSize: 10, color: generatedPrompt ? "var(--c-t2)" : "var(--c-t4)", lineHeight: 1.5, fontFamily: "'JetBrains Mono', monospace" }}>
                   {generatedPrompt || "— 选择效果后自动生成 —"}
                 </p>
               </div>
@@ -263,9 +272,9 @@ export const PostProcessNode = memo(function PostProcessNode({ id, selected, dat
                     复制效果词
                   </button>
                   <div
-                    style={{ fontSize: 9, color: "oklch(0.35 0.006 260)", display: "flex", alignItems: "center", gap: 3, background: accentA(0.06), border: `1px solid ${accentA(0.15)}`, borderRadius: 8, padding: "0 8px" }}
+                    style={{ fontSize: 9, color: "var(--c-t4)", display: "flex", alignItems: "center", gap: 3, background: accentA(0.06), border: `1px solid ${accentA(0.15)}`, borderRadius: 8, padding: "0 8px" }}
                   >
-                    🔗 连接视频节点自动生效
+                    复制提示词注入视频/图像节点
                   </div>
                 </div>
               )}

@@ -91,6 +91,16 @@ export async function transcribeAudio(
     }
 
     // Step 2: Download audio from URL
+    // Guard against SSRF to private/local network addresses
+    try {
+      const { protocol, hostname } = new URL(options.audioUrl);
+      const privatePatterns = [/^localhost$/i, /^127\./, /^10\./, /^172\.(1[6-9]|2\d|3[01])\./, /^192\.168\./, /^169\.254\./, /^::1$/, /^0\./];
+      if ((protocol !== "https:" && protocol !== "http:") || privatePatterns.some((p) => p.test(hostname))) {
+        return { error: "Invalid audio URL", code: "INVALID_FORMAT" as const, details: "Private or non-HTTP URLs are not allowed" };
+      }
+    } catch {
+      return { error: "Invalid audio URL", code: "INVALID_FORMAT" as const, details: "Could not parse URL" };
+    }
     let audioBuffer: Buffer;
     let mimeType: string;
     try {
@@ -141,6 +151,10 @@ export async function transcribeAudio(
         : "Transcribe the user's voice to text"
     );
     formData.append("prompt", prompt);
+
+    if (options.language) {
+      formData.append("language", options.language);
+    }
 
     // Step 4: Call the transcription service
     const baseUrl = ENV.forgeApiUrl.endsWith("/")

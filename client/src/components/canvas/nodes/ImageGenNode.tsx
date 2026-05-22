@@ -5,7 +5,7 @@ import { useCanvasStore } from "../../../hooks/useCanvasStore";
 import type { ImageGenNodeData, ImageGenModel } from "../../../../../shared/types";
 import { trpc } from "@/lib/trpc";
 import { toast } from "sonner";
-import { Sparkles, Loader2, RefreshCw, Upload, X, Cpu, Check, Grid2X2, Download, ZoomIn, ChevronDown, ChevronRight, Lock, Unlock } from "lucide-react";
+import { Sparkles, Loader2, RefreshCw, Upload, X, Cpu, Check, Grid2X2, Download, ZoomIn, ChevronDown, ChevronRight, Lock, Unlock, ImagePlus } from "lucide-react";
 import { ImageLightbox } from "../ImageLightbox";
 import { IMAGE_MODELS } from "@/lib/models";
 import { makeImageProxyFallback } from "@/lib/utils";
@@ -22,19 +22,19 @@ interface Props {
 }
 
 const accent = "oklch(0.72 0.20 330)";
-const BORDER_DEFAULT = "oklch(0.20 0.008 260)";
+const BORDER_DEFAULT = "var(--c-bd2)";
 const BORDER_ACCENT = `oklch(0.72 0.20 330 / 0.5)`;
 
 const fieldBase: React.CSSProperties = {
   width: "100%",
   padding: "7px 10px",
   fontSize: 12,
-  background: "oklch(0.09 0.006 260)",
+  background: "var(--c-input)",
   borderWidth: 1,
   borderStyle: "solid",
   borderColor: BORDER_DEFAULT,
   borderRadius: 8,
-  color: "oklch(0.86 0.006 260)",
+  color: "var(--c-t1)",
   outline: "none",
   fontFamily: "var(--font-sans)",
   transition: "border-color 150ms ease, background 150ms ease",
@@ -46,7 +46,7 @@ const labelStyle: React.CSSProperties = {
   fontWeight: 600,
   textTransform: "uppercase",
   letterSpacing: "0.06em",
-  color: "oklch(0.45 0.008 260)",
+  color: "var(--c-t4)",
   display: "block",
   marginBottom: 5,
 };
@@ -70,7 +70,7 @@ export const ImageGenNode = memo(function ImageGenNode({ id, selected, data }: P
   const [uploading, setUploading] = useState(false);
   const [lightboxIndex, setLightboxIndex] = useState<number | null>(null);
   const [paramsExpanded, setParamsExpanded] = useState(false);
-  const [seedLocked, setSeedLocked] = useState(!!(payload.seed));
+  const [seedLocked, setSeedLocked] = useState(payload.seed != null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   // Determine if we are in batch/grid mode
@@ -111,7 +111,7 @@ export const ImageGenNode = memo(function ImageGenNode({ id, selected, data }: P
   );
 
   const handlePropagateSeed = useCallback(() => {
-    if (!payload.seed) return;
+    if (payload.seed == null) return;
     const { nodes: allNodes, edges: allEdges, batchUpdateNodeData } = useCanvasStore.getState();
     const updates = allEdges
       .filter(e => e.source === id)
@@ -165,6 +165,7 @@ export const ImageGenNode = memo(function ImageGenNode({ id, selected, data }: P
         fluxSeed: payload.fluxSeed,
         fluxNumImages: payload.fluxNumImages,
       } : {}),
+      projectId: data.projectId,
     });
   };
 
@@ -225,8 +226,63 @@ export const ImageGenNode = memo(function ImageGenNode({ id, selected, data }: P
   // Models that use the collapsible params panel
   const isReveLike = isReve || isSeedreamV4 || isFluxPro;
 
+  const heroMedia = payload.imageUrls && payload.imageUrls.length > 0 ? (
+    <div
+      className="grid gap-1 p-2"
+      style={{ gridTemplateColumns: payload.imageUrls.length === 4 ? "1fr 1fr" : `repeat(${Math.min(payload.imageUrls.length, 3)}, 1fr)` }}
+    >
+      {payload.imageUrls.map((url, idx) => {
+        const isSelected = url === payload.imageUrl;
+        return (
+          <div key={idx} className="relative rounded-lg overflow-hidden" style={{ aspectRatio: "1/1", background: "var(--c-canvas)" }}>
+            <img
+              src={url}
+              alt={`generated-${idx}`}
+              className="w-full h-full object-cover"
+              draggable={false}
+              onError={makeImageProxyFallback(url)}
+            />
+            {isSelected && (
+              <div
+                className="absolute top-1 right-1 rounded-full flex items-center justify-center"
+                style={{ width: 16, height: 16, background: accent }}
+              >
+                <Check style={{ width: 10, height: 10, color: "var(--c-canvas)" }} />
+              </div>
+            )}
+          </div>
+        );
+      })}
+    </div>
+  ) : payload.imageUrl ? (
+    <div className="relative overflow-hidden group" style={{ width: "100%" }}>
+      <img
+        src={payload.imageUrl}
+        alt="generated"
+        className="w-full h-full object-cover"
+        draggable={false}
+        style={{ objectFit: "cover", display: "block" }}
+        onError={makeImageProxyFallback(payload.imageUrl)}
+      />
+      <div
+        className="absolute inset-0 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center"
+        style={{ background: "oklch(0 0 0 / 0.45)" }}
+      >
+        <button
+          onClick={handleGenerate}
+          disabled={genMutation.isPending}
+          className="nodrag flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-medium"
+          style={{ background: "oklch(0.14 0.007 260 / 0.8)", borderWidth: 1, borderStyle: "solid", borderColor: "var(--c-bd3)", color: "var(--c-t2)" }}
+        >
+          {genMutation.isPending ? <Loader2 className="w-3 h-3 animate-spin" /> : <RefreshCw className="w-3 h-3" />}
+          重新生成
+        </button>
+      </div>
+    </div>
+  ) : null;
+
   return (
-    <BaseNode id={id} selected={selected} nodeType="image_gen" title={data.title} minHeight={300}>
+    <BaseNode id={id} selected={selected} nodeType="image_gen" title={data.title} minHeight={300} heroMedia={heroMedia}>
       <div className="flex flex-col h-full p-3.5 gap-3 overflow-auto">
 
         {/* ── Batch grid result ── */}
@@ -234,7 +290,7 @@ export const ImageGenNode = memo(function ImageGenNode({ id, selected, data }: P
           <div className="flex-shrink-0">
             {/* Header */}
             <div className="flex items-center justify-between mb-1.5">
-              <span style={{ fontSize: 10, color: "oklch(0.42 0.006 260)", display: "flex", alignItems: "center", gap: 4 }}>
+              <span style={{ fontSize: 10, color: "var(--c-t4)", display: "flex", alignItems: "center", gap: 4 }}>
                 <Grid2X2 style={{ width: 10, height: 10 }} />
                 {payload.imageUrls!.length} 张图像 · 点击选择
               </span>
@@ -251,7 +307,7 @@ export const ImageGenNode = memo(function ImageGenNode({ id, selected, data }: P
                 <button
                   onClick={handleClearBatch}
                   className="nodrag flex items-center gap-1 px-2 py-0.5 rounded text-xs"
-                  style={{ background: "oklch(0.14 0.007 260)", borderWidth: 1, borderStyle: "solid", borderColor: BORDER_DEFAULT, color: "oklch(0.50 0.006 260)", fontSize: 10 }}
+                  style={{ background: "var(--c-surface)", borderWidth: 1, borderStyle: "solid", borderColor: BORDER_DEFAULT, color: "var(--c-t3)", fontSize: 10 }}
                 >
                   <X className="w-2.5 h-2.5" />
                   清空
@@ -276,7 +332,7 @@ export const ImageGenNode = memo(function ImageGenNode({ id, selected, data }: P
                       borderWidth: 2,
                       borderStyle: "solid",
                       borderColor: isSelected ? accent : "transparent",
-                      background: "oklch(0.08 0.005 260)",
+                      background: "var(--c-canvas)",
                       padding: 0,
                       cursor: "pointer",
                       transition: "border-color 150ms ease, opacity 150ms ease",
@@ -298,7 +354,7 @@ export const ImageGenNode = memo(function ImageGenNode({ id, selected, data }: P
                         className="absolute top-1 right-1 rounded-full flex items-center justify-center"
                         style={{ width: 16, height: 16, background: accent }}
                       >
-                        <Check style={{ width: 10, height: 10, color: "oklch(0.08 0.005 260)" }} />
+                        <Check style={{ width: 10, height: 10, color: "var(--c-canvas)" }} />
                       </div>
                     )}
                     {/* Hover overlay */}
@@ -306,7 +362,7 @@ export const ImageGenNode = memo(function ImageGenNode({ id, selected, data }: P
                       className="absolute inset-0 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center"
                       style={{ background: "oklch(0 0 0 / 0.45)" }}
                     >
-                      <ZoomIn style={{ width: 16, height: 16, color: "oklch(0.90 0.006 260)" }} />
+                      <ZoomIn style={{ width: 16, height: 16, color: "var(--c-t1)" }} />
                     </div>
                   </button>
                 );
@@ -317,14 +373,14 @@ export const ImageGenNode = memo(function ImageGenNode({ id, selected, data }: P
             {payload.imageUrl && (
               <div
                 className="mt-1.5 rounded-lg overflow-hidden"
-                style={{ borderWidth: 1, borderStyle: "solid", borderColor: `oklch(0.72 0.20 330 / 0.3)`, background: "oklch(0.08 0.005 260)" }}
+                style={{ borderWidth: 1, borderStyle: "solid", borderColor: `oklch(0.72 0.20 330 / 0.3)`, background: "var(--c-canvas)" }}
               >
                 <div className="flex items-center justify-between" style={{ padding: "3px 8px", borderBottom: `1px solid oklch(0.72 0.20 330 / 0.15)` }}>
                   <span style={{ fontSize: 9, color: accent, letterSpacing: "0.05em", fontWeight: 600 }}>✓ 已选择</span>
                   <button
                     onClick={handleDownloadSelected}
                     className="nodrag flex items-center gap-0.5"
-                    style={{ fontSize: 9, color: "oklch(0.55 0.006 260)", cursor: "pointer", background: "none", border: "none", padding: 0 }}
+                    style={{ fontSize: 9, color: "var(--c-t3)", cursor: "pointer", background: "none", border: "none", padding: 0 }}
                     title="下载此图像"
                   >
                     <Download style={{ width: 9, height: 9 }} />
@@ -347,7 +403,7 @@ export const ImageGenNode = memo(function ImageGenNode({ id, selected, data }: P
           payload.imageUrl ? (
             <div
               className="relative rounded-lg overflow-hidden flex-shrink-0"
-              style={{ aspectRatio: "16/9", borderWidth: 1, borderStyle: "solid", borderColor: BORDER_DEFAULT, background: "oklch(0.08 0.005 260)" }}
+              style={{ aspectRatio: "16/9", borderWidth: 1, borderStyle: "solid", borderColor: BORDER_DEFAULT, background: "var(--c-canvas)" }}
             >
               <img
                 src={payload.imageUrl}
@@ -363,7 +419,7 @@ export const ImageGenNode = memo(function ImageGenNode({ id, selected, data }: P
                 <button
                   onClick={() => setLightboxIndex(0)}
                   className="nodrag flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-medium"
-                  style={{ background: "oklch(0.14 0.007 260 / 0.8)", borderWidth: 1, borderStyle: "solid", borderColor: "oklch(0.28 0.008 260)", color: "oklch(0.75 0.006 260)" }}
+                  style={{ background: "oklch(0.14 0.007 260 / 0.8)  /* alpha – intentional */", borderWidth: 1, borderStyle: "solid", borderColor: "var(--c-bd3)", color: "var(--c-t2)" }}
                 >
                   <ZoomIn className="w-3 h-3" />
                   放大
@@ -371,7 +427,7 @@ export const ImageGenNode = memo(function ImageGenNode({ id, selected, data }: P
                 <button
                   onClick={handleDownloadSelected}
                   className="nodrag flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-medium"
-                  style={{ background: "oklch(0.14 0.007 260 / 0.8)", borderWidth: 1, borderStyle: "solid", borderColor: "oklch(0.28 0.008 260)", color: "oklch(0.75 0.006 260)" }}
+                  style={{ background: "oklch(0.14 0.007 260 / 0.8)  /* alpha – intentional */", borderWidth: 1, borderStyle: "solid", borderColor: "var(--c-bd3)", color: "var(--c-t2)" }}
                 >
                   <Download className="w-3 h-3" />
                   下载
@@ -427,9 +483,9 @@ export const ImageGenNode = memo(function ImageGenNode({ id, selected, data }: P
           >
             <option value="">自动选择</option>
             {["Manus", "Poyo", "Higgsfield"].map((group) => (
-              <optgroup key={group} label={`── ${group} ──`} style={{ background: "oklch(0.12 0.007 260)" }}>
+              <optgroup key={group} label={`── ${group} ──`} style={{ background: "var(--c-surface)" }}>
                 {MODELS.filter((m) => m.group === group).map((m) => (
-                  <option key={m.value} value={m.value} style={{ background: "oklch(0.12 0.007 260)" }}>
+                  <option key={m.value} value={m.value} style={{ background: "var(--c-surface)" }}>
                     {m.label} — {m.desc}
                   </option>
                 ))}
@@ -463,7 +519,7 @@ export const ImageGenNode = memo(function ImageGenNode({ id, selected, data }: P
             rows={2}
             className="nodrag"
             style={{ ...fieldBase, resize: "none", lineHeight: 1.6, fontFamily: "var(--font-mono)", fontSize: 10.5 }}
-            onFocus={(e) => { e.currentTarget.style.borderColor = "oklch(0.45 0.008 260)"; }}
+            onFocus={(e) => { e.currentTarget.style.borderColor = "var(--c-t4)"; }}
             onBlur={(e) => { e.currentTarget.style.borderColor = BORDER_DEFAULT; }}
           />
         </div>
@@ -523,19 +579,19 @@ export const ImageGenNode = memo(function ImageGenNode({ id, selected, data }: P
         {(isSoul || isReveLike) && (
           <div
             className="rounded-xl"
-            style={{ background: "oklch(0.085 0.006 260)", borderWidth: 1, borderStyle: "solid", borderColor: "oklch(0.18 0.007 260)" }}
+            style={{ background: "var(--c-input)", borderWidth: 1, borderStyle: "solid", borderColor: "var(--c-bd1)" }}
           >
             <button
               onClick={() => setParamsExpanded((v) => !v)}
               className="nodrag w-full flex items-center justify-between px-3 py-2 rounded-xl"
               style={{ cursor: "pointer", background: "transparent" }}
             >
-              <span style={{ fontSize: 10.5, fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.07em", color: "oklch(0.40 0.008 260)" }}>
+              <span style={{ fontSize: 10.5, fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.07em", color: "var(--c-t4)" }}>
                 模型参数
               </span>
               {paramsExpanded
-                ? <ChevronDown className="w-3 h-3" style={{ color: "oklch(0.40 0.008 260)" }} />
-                : <ChevronRight className="w-3 h-3" style={{ color: "oklch(0.40 0.008 260)" }} />
+                ? <ChevronDown className="w-3 h-3" style={{ color: "var(--c-t4)" }} />
+                : <ChevronRight className="w-3 h-3" style={{ color: "var(--c-t4)" }} />
               }
             </button>
             {paramsExpanded && (
@@ -596,9 +652,9 @@ export const ImageGenNode = memo(function ImageGenNode({ id, selected, data }: P
                     }}
                     className="nodrag flex items-center gap-0.5 px-1.5 py-0.5 rounded text-[9px] transition-all"
                     style={{
-                      background: seedLocked ? "oklch(0.68 0.22 285 / 0.15)" : "oklch(0.14 0.007 260)",
-                      border: `1px solid ${seedLocked ? "oklch(0.68 0.22 285 / 0.40)" : "oklch(0.22 0.008 260)"}`,
-                      color: seedLocked ? "oklch(0.72 0.18 285)" : "oklch(0.45 0.006 260)",
+                      background: seedLocked ? "oklch(0.68 0.22 285 / 0.15)" : "var(--c-surface)",
+                      border: `1px solid ${seedLocked ? "oklch(0.68 0.22 285 / 0.40)" : "var(--c-bd2)"}`,
+                      color: seedLocked ? "oklch(0.72 0.18 285)" : "var(--c-t4)",
                       cursor: "pointer",
                     }}
                     title={seedLocked ? "解锁种子（清除）" : "锁定随机种子"}
@@ -641,7 +697,7 @@ export const ImageGenNode = memo(function ImageGenNode({ id, selected, data }: P
                 className="nodrag"
                 style={{ accentColor: accent, width: 12, height: 12 }}
               />
-              <label htmlFor={`enhance-${id}`} style={{ fontSize: 11, color: "oklch(0.60 0.006 260)", cursor: "pointer" }}>
+              <label htmlFor={`enhance-${id}`} style={{ fontSize: 11, color: "var(--c-t2)", cursor: "pointer" }}>
                 AI 增强提示词
               </label>
             </div>
@@ -706,7 +762,7 @@ export const ImageGenNode = memo(function ImageGenNode({ id, selected, data }: P
                                 className="nodrag flex-1"
                                 style={{ accentColor: accent }}
                               />
-                              <span style={{ fontSize: 11, color: "oklch(0.55 0.006 260)", width: 28, textAlign: "right" }}>
+                              <span style={{ fontSize: 11, color: "var(--c-t3)", width: 28, textAlign: "right" }}>
                                 {(payload.fluxGuidanceScale ?? 3.5).toFixed(1)}
                               </span>
                             </div>
@@ -754,7 +810,7 @@ export const ImageGenNode = memo(function ImageGenNode({ id, selected, data }: P
           {payload.referenceImageUrl ? (
             <div
               className="relative rounded-lg overflow-hidden"
-              style={{ height: 80, borderWidth: 1, borderStyle: "solid", borderColor: BORDER_DEFAULT, background: "oklch(0.08 0.005 260)" }}
+              style={{ height: 80, borderWidth: 1, borderStyle: "solid", borderColor: BORDER_DEFAULT, background: "var(--c-canvas)" }}
             >
               <img
                 src={payload.referenceImageUrl}
@@ -766,7 +822,7 @@ export const ImageGenNode = memo(function ImageGenNode({ id, selected, data }: P
               <button
                 onClick={() => update("referenceImageUrl", undefined)}
                 className="nodrag absolute top-1 right-1 p-0.5 rounded-full"
-                style={{ background: "oklch(0 0 0 / 0.7)", color: "oklch(0.80 0.006 260)" }}
+                style={{ background: "oklch(0 0 0 / 0.7)", color: "var(--c-t1)" }}
               >
                 <X style={{ width: 12, height: 12 }} />
               </button>
@@ -778,9 +834,9 @@ export const ImageGenNode = memo(function ImageGenNode({ id, selected, data }: P
               className="nodrag w-full flex items-center justify-center gap-2 py-3 rounded-lg transition-colors"
               style={{
                 borderWidth: 1, borderStyle: "dashed",
-                borderColor: uploading ? BORDER_DEFAULT : "oklch(0.30 0.008 260)",
-                background: "oklch(0.09 0.006 260)",
-                color: uploading ? "oklch(0.38 0.006 260)" : "oklch(0.55 0.006 260)",
+                borderColor: uploading ? BORDER_DEFAULT : "var(--c-bd3)",
+                background: "var(--c-input)",
+                color: uploading ? "var(--c-t4)" : "var(--c-t3)",
                 fontSize: 11, cursor: uploading ? "not-allowed" : "pointer",
               }}
             >
@@ -806,11 +862,11 @@ export const ImageGenNode = memo(function ImageGenNode({ id, selected, data }: P
           className="nodrag flex items-center justify-center gap-1.5 w-full py-2 rounded-lg text-xs font-semibold transition-all"
           style={{
             background: genMutation.isPending || !payload.prompt?.trim()
-              ? "oklch(0.13 0.007 260)"
+              ? "var(--c-surface)"
               : "linear-gradient(135deg, oklch(0.72 0.20 330 / 0.18), oklch(0.68 0.22 285 / 0.18))",
             borderWidth: 1, borderStyle: "solid",
             borderColor: genMutation.isPending || !payload.prompt?.trim() ? BORDER_DEFAULT : BORDER_ACCENT,
-            color: genMutation.isPending || !payload.prompt?.trim() ? "oklch(0.38 0.006 260)" : accent,
+            color: genMutation.isPending || !payload.prompt?.trim() ? "var(--c-t4)" : accent,
             cursor: genMutation.isPending || !payload.prompt?.trim() ? "not-allowed" : "pointer",
             letterSpacing: "0.02em",
           }}
@@ -833,7 +889,7 @@ export const ImageGenNode = memo(function ImageGenNode({ id, selected, data }: P
           width: 12, height: 12,
           borderRadius: "50%",
           background: accent,
-          border: `2px solid oklch(0.08 0.005 260)`,
+          border: `2px solid var(--c-canvas)`,
           right: -6,
         }}
         title="图像输出 → 连接到视频任务参考图"

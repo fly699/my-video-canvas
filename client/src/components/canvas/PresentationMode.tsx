@@ -20,9 +20,9 @@ function SlideContent({ node }: { node: CanvasNode }) {
     return (
       <div
         className="w-full h-full overflow-auto p-6"
-        style={{ fontFamily: "var(--font-mono)", fontSize: 14, color: "oklch(0.82 0.005 260)", lineHeight: 1.7, whiteSpace: "pre-wrap" }}
+        style={{ fontFamily: "var(--font-mono)", fontSize: 14, color: "var(--c-t1)", lineHeight: 1.7, whiteSpace: "pre-wrap" }}
       >
-        {d.content || <span style={{ color: "oklch(0.35 0.006 260)" }}>（暂无内容）</span>}
+        {d.content || <span style={{ color: "var(--c-t4)" }}>（暂无内容）</span>}
       </div>
     );
   }
@@ -32,25 +32,25 @@ function SlideContent({ node }: { node: CanvasNode }) {
     return (
       <div className="w-full h-full flex gap-5 p-5 overflow-hidden">
         {d.imageUrl ? (
-          <div className="flex-shrink-0 w-1/2 rounded-lg overflow-hidden" style={{ background: "oklch(0.08 0.005 260)", border: "1px solid oklch(0.18 0.008 260)" }}>
+          <div className="flex-shrink-0 w-1/2 rounded-lg overflow-hidden" style={{ background: "var(--c-canvas)", border: "1px solid var(--c-bd1)" }}>
             <img src={d.imageUrl} alt="storyboard" className="w-full h-full object-contain" />
           </div>
         ) : (
-          <div className="flex-shrink-0 w-1/2 rounded-lg flex items-center justify-center" style={{ background: "oklch(0.08 0.005 260)", border: "1px solid oklch(0.18 0.008 260)" }}>
-            <span style={{ color: "oklch(0.35 0.006 260)", fontSize: 13 }}>暂无图像</span>
+          <div className="flex-shrink-0 w-1/2 rounded-lg flex items-center justify-center" style={{ background: "var(--c-canvas)", border: "1px solid var(--c-bd1)" }}>
+            <span style={{ color: "var(--c-t4)", fontSize: 13 }}>暂无图像</span>
           </div>
         )}
         <div className="flex-1 flex flex-col gap-3 overflow-auto">
           {d.sceneNumber && (
-            <div style={{ fontSize: 11, color: "oklch(0.50 0.008 260)", letterSpacing: "0.05em" }}>
+            <div style={{ fontSize: 11, color: "var(--c-t3)", letterSpacing: "0.05em" }}>
               场景 {d.sceneNumber}
             </div>
           )}
           {d.description && (
-            <p style={{ fontSize: 14, color: "oklch(0.80 0.005 260)", lineHeight: 1.6 }}>{d.description}</p>
+            <p style={{ fontSize: 14, color: "var(--c-t1)", lineHeight: 1.6 }}>{d.description}</p>
           )}
           {d.promptText && (
-            <div style={{ background: "oklch(0.10 0.006 260)", borderRadius: 8, padding: "10px 12px", fontSize: 12, color: "oklch(0.65 0.008 260)", fontFamily: "var(--font-mono)", lineHeight: 1.5 }}>
+            <div style={{ background: "var(--c-base)", borderRadius: 8, padding: "10px 12px", fontSize: 12, color: "var(--c-t2)", fontFamily: "var(--font-mono)", lineHeight: 1.5 }}>
               {d.promptText}
             </div>
           )}
@@ -69,21 +69,21 @@ function SlideContent({ node }: { node: CanvasNode }) {
     return (
       <div className="w-full h-full flex gap-5 p-5 overflow-hidden">
         {d.imageUrl && (
-          <div className="flex-shrink-0 w-1/2 rounded-lg overflow-hidden" style={{ background: "oklch(0.08 0.005 260)", border: "1px solid oklch(0.18 0.008 260)" }}>
+          <div className="flex-shrink-0 w-1/2 rounded-lg overflow-hidden" style={{ background: "var(--c-canvas)", border: "1px solid var(--c-bd1)" }}>
             <img src={d.imageUrl} alt="prompt preview" className="w-full h-full object-contain" />
           </div>
         )}
         <div className="flex-1 flex flex-col gap-4 overflow-auto">
           <div>
-            <div style={{ fontSize: 10, color: "oklch(0.45 0.008 260)", letterSpacing: "0.05em", marginBottom: 6 }}>正向提示词</div>
-            <p style={{ fontSize: 13, color: "oklch(0.80 0.005 260)", lineHeight: 1.6, fontFamily: "var(--font-mono)", whiteSpace: "pre-wrap" }}>
-              {d.positivePrompt || <span style={{ color: "oklch(0.35 0.006 260)" }}>（空）</span>}
+            <div style={{ fontSize: 10, color: "var(--c-t4)", letterSpacing: "0.05em", marginBottom: 6 }}>正向提示词</div>
+            <p style={{ fontSize: 13, color: "var(--c-t1)", lineHeight: 1.6, fontFamily: "var(--font-mono)", whiteSpace: "pre-wrap" }}>
+              {d.positivePrompt || <span style={{ color: "var(--c-t4)" }}>（空）</span>}
             </p>
           </div>
           {d.negativePrompt && (
             <div>
-              <div style={{ fontSize: 10, color: "oklch(0.45 0.008 260)", letterSpacing: "0.05em", marginBottom: 6 }}>反向提示词</div>
-              <p style={{ fontSize: 13, color: "oklch(0.60 0.008 260)", lineHeight: 1.6, fontFamily: "var(--font-mono)" }}>{d.negativePrompt}</p>
+              <div style={{ fontSize: 10, color: "var(--c-t4)", letterSpacing: "0.05em", marginBottom: 6 }}>反向提示词</div>
+              <p style={{ fontSize: 13, color: "var(--c-t3)", lineHeight: 1.6, fontFamily: "var(--font-mono)" }}>{d.negativePrompt}</p>
             </div>
           )}
           <div className="flex gap-2 flex-wrap mt-auto">
@@ -100,19 +100,19 @@ function SlideContent({ node }: { node: CanvasNode }) {
     return (
       <div className="w-full h-full flex gap-5 p-5 overflow-hidden">
         {d.imageUrl ? (
-          <div className="flex-shrink-0 w-1/2 rounded-lg overflow-hidden" style={{ background: "oklch(0.08 0.005 260)", border: "1px solid oklch(0.18 0.008 260)" }}>
+          <div className="flex-shrink-0 w-1/2 rounded-lg overflow-hidden" style={{ background: "var(--c-canvas)", border: "1px solid var(--c-bd1)" }}>
             <img src={d.imageUrl} alt="generated" className="w-full h-full object-contain" />
           </div>
         ) : (
-          <div className="flex-shrink-0 w-1/2 rounded-lg flex items-center justify-center" style={{ background: "oklch(0.08 0.005 260)", border: "1px dashed oklch(0.72 0.20 330 / 0.3)" }}>
-            <span style={{ color: "oklch(0.35 0.006 260)", fontSize: 13 }}>尚未生成图像</span>
+          <div className="flex-shrink-0 w-1/2 rounded-lg flex items-center justify-center" style={{ background: "var(--c-canvas)", border: "1px dashed oklch(0.72 0.20 330 / 0.3)" }}>
+            <span style={{ color: "var(--c-t4)", fontSize: 13 }}>尚未生成图像</span>
           </div>
         )}
         <div className="flex-1 flex flex-col gap-3 overflow-auto">
           {d.prompt && (
             <div>
-              <div style={{ fontSize: 10, color: "oklch(0.45 0.008 260)", letterSpacing: "0.05em", marginBottom: 6 }}>提示词</div>
-              <p style={{ fontSize: 14, color: "oklch(0.80 0.005 260)", lineHeight: 1.6 }}>{d.prompt}</p>
+              <div style={{ fontSize: 10, color: "var(--c-t4)", letterSpacing: "0.05em", marginBottom: 6 }}>提示词</div>
+              <p style={{ fontSize: 14, color: "var(--c-t1)", lineHeight: 1.6 }}>{d.prompt}</p>
             </div>
           )}
           <div className="flex flex-wrap gap-2 mt-auto">
@@ -133,7 +133,7 @@ function SlideContent({ node }: { node: CanvasNode }) {
         ) : d.type === "video" && d.url ? (
           <video src={d.url} controls className="max-w-full max-h-full rounded-lg" />
         ) : (
-          <div className="flex flex-col items-center gap-3" style={{ color: "oklch(0.45 0.008 260)" }}>
+          <div className="flex flex-col items-center gap-3" style={{ color: "var(--c-t4)" }}>
             <Paperclip style={{ width: 40, height: 40 }} />
             <span style={{ fontSize: 14 }}>{d.name}</span>
             {d.mimeType && <Chip label={d.mimeType} />}
@@ -156,16 +156,16 @@ function SlideContent({ node }: { node: CanvasNode }) {
             preload="metadata"
           />
         ) : (
-          <div className="flex items-center gap-2 p-4 rounded-lg" style={{ background: "oklch(0.10 0.006 260)", border: "1px solid oklch(0.18 0.008 260)" }}>
+          <div className="flex items-center gap-2 p-4 rounded-lg" style={{ background: "var(--c-base)", border: "1px solid var(--c-bd1)" }}>
             <StatusBadge status={d.status} />
-            <span style={{ fontSize: 13, color: "oklch(0.65 0.008 260)" }}>{statusLabel(d.status)}</span>
-            {d.progress !== undefined && <span style={{ fontSize: 12, color: "oklch(0.50 0.008 260)", marginLeft: "auto" }}>{d.progress}%</span>}
+            <span style={{ fontSize: 13, color: "var(--c-t2)" }}>{statusLabel(d.status)}</span>
+            {d.progress !== undefined && <span style={{ fontSize: 12, color: "var(--c-t3)", marginLeft: "auto" }}>{d.progress}%</span>}
           </div>
         )}
         {d.prompt && (
           <div>
-            <div style={{ fontSize: 10, color: "oklch(0.45 0.008 260)", letterSpacing: "0.05em", marginBottom: 6 }}>提示词</div>
-            <p style={{ fontSize: 13, color: "oklch(0.75 0.006 260)", lineHeight: 1.6, fontFamily: "var(--font-mono)" }}>{d.prompt}</p>
+            <div style={{ fontSize: 10, color: "var(--c-t4)", letterSpacing: "0.05em", marginBottom: 6 }}>提示词</div>
+            <p style={{ fontSize: 13, color: "var(--c-t2)", lineHeight: 1.6, fontFamily: "var(--font-mono)" }}>{d.prompt}</p>
           </div>
         )}
         <div className="flex gap-2 mt-auto">
@@ -182,7 +182,7 @@ function SlideContent({ node }: { node: CanvasNode }) {
     return (
       <div className="w-full h-full flex flex-col gap-2 p-5 overflow-auto">
         {recent.length === 0 ? (
-          <span style={{ color: "oklch(0.35 0.006 260)", fontSize: 13 }}>（暂无对话）</span>
+          <span style={{ color: "var(--c-t4)", fontSize: 13 }}>（暂无对话）</span>
         ) : recent.map((msg, i) => (
           <div
             key={i}
@@ -191,12 +191,12 @@ function SlideContent({ node }: { node: CanvasNode }) {
               maxWidth: "80%",
               background: msg.role === "user"
                 ? "oklch(0.68 0.22 285 / 0.15)"
-                : "oklch(0.13 0.007 260)",
-              border: `1px solid ${msg.role === "user" ? "oklch(0.68 0.22 285 / 0.25)" : "oklch(0.20 0.008 260)"}`,
+                : "var(--c-surface)",
+              border: `1px solid ${msg.role === "user" ? "oklch(0.68 0.22 285 / 0.25)" : "var(--c-bd2)"}`,
               borderRadius: 10,
               padding: "8px 12px",
               fontSize: 12,
-              color: "oklch(0.80 0.005 260)",
+              color: "var(--c-t1)",
               lineHeight: 1.5,
             }}
           >
@@ -212,9 +212,9 @@ function SlideContent({ node }: { node: CanvasNode }) {
     return (
       <div
         className="w-full h-full overflow-auto p-6"
-        style={{ fontSize: 15, color: "oklch(0.85 0.005 260)", lineHeight: 1.75, whiteSpace: "pre-wrap", fontStyle: "italic" }}
+        style={{ fontSize: 15, color: "var(--c-t1)", lineHeight: 1.75, whiteSpace: "pre-wrap", fontStyle: "italic" }}
       >
-        {d.content || <span style={{ color: "oklch(0.35 0.006 260)" }}>（空便签）</span>}
+        {d.content || <span style={{ color: "var(--c-t4)" }}>（空便签）</span>}
       </div>
     );
   }
@@ -231,9 +231,9 @@ function Chip({ label }: { label: string }) {
         padding: "2px 8px",
         borderRadius: 99,
         fontSize: 10,
-        background: "oklch(0.16 0.008 260)",
-        border: "1px solid oklch(0.22 0.008 260)",
-        color: "oklch(0.55 0.008 260)",
+        background: "var(--c-elevated)",
+        border: "1px solid var(--c-bd2)",
+        color: "var(--c-t3)",
         letterSpacing: "0.01em",
       }}
     >
@@ -246,7 +246,7 @@ function StatusBadge({ status }: { status: string }) {
   const color = status === "succeeded" ? "oklch(0.72 0.18 155)" :
     status === "failed" ? "oklch(0.65 0.22 25)" :
     status === "processing" ? "oklch(0.68 0.22 285)" :
-    "oklch(0.50 0.008 260)";
+    "var(--c-t3)";
   return <span style={{ width: 8, height: 8, borderRadius: "50%", background: color, flexShrink: 0, display: "inline-block" }} />;
 }
 
@@ -261,6 +261,14 @@ export const PresentationMode = memo(function PresentationMode({ nodes, onClose 
   });
 
   const [index, setIndex] = useState(0);
+
+  // Clamp index when the node list shrinks (e.g. a node is deleted while presentation is open)
+  useEffect(() => {
+    if (sorted.length > 0 && index >= sorted.length) {
+      setIndex(sorted.length - 1);
+    }
+  }, [sorted.length, index]);
+
   const current = sorted[index];
 
   const prev = useCallback(() => setIndex((i) => Math.max(0, i - 1)), []);
@@ -282,8 +290,8 @@ export const PresentationMode = memo(function PresentationMode({ nodes, onClose 
         className="fixed inset-0 z-50 flex items-center justify-center"
         style={{ background: "oklch(0.04 0.003 260 / 0.97)", backdropFilter: "blur(20px)" }}
       >
-        <div style={{ color: "oklch(0.45 0.008 260)", fontSize: 14 }}>画布上暂无节点</div>
-        <button onClick={onClose} style={{ position: "absolute", top: 20, right: 20, color: "oklch(0.50 0.008 260)" }}>
+        <div style={{ color: "var(--c-t4)", fontSize: 14 }}>画布上暂无节点</div>
+        <button onClick={onClose} style={{ position: "absolute", top: 20, right: 20, color: "var(--c-t3)" }}>
           <X style={{ width: 20, height: 20 }} />
         </button>
       </div>
@@ -305,7 +313,7 @@ export const PresentationMode = memo(function PresentationMode({ nodes, onClose 
       {/* Header bar */}
       <div
         className="flex items-center px-6 py-3 flex-shrink-0"
-        style={{ borderBottom: "1px solid oklch(0.14 0.007 260)" }}
+        style={{ borderBottom: "1px solid var(--c-surface)" }}
       >
         <div className="flex items-center gap-2.5 flex-1 min-w-0">
           <div
@@ -319,7 +327,7 @@ export const PresentationMode = memo(function PresentationMode({ nodes, onClose 
             <Icon style={{ width: 14, height: 14, color: config.color }} />
           </div>
           <div className="min-w-0">
-            <div className="truncate" style={{ fontSize: 15, fontWeight: 600, color: "oklch(0.92 0.005 260)", letterSpacing: "-0.01em" }}>
+            <div className="truncate" style={{ fontSize: 15, fontWeight: 600, color: "var(--c-t1)", letterSpacing: "-0.01em" }}>
               {current.data.title}
             </div>
             <div style={{ fontSize: 10, color: config.color, letterSpacing: "0.05em", textTransform: "uppercase", marginTop: 1 }}>
@@ -329,7 +337,7 @@ export const PresentationMode = memo(function PresentationMode({ nodes, onClose 
         </div>
 
         {/* Slide count */}
-        <div style={{ fontSize: 12, color: "oklch(0.42 0.006 260)", letterSpacing: "0.03em" }}>
+        <div style={{ fontSize: 12, color: "var(--c-t4)", letterSpacing: "0.03em" }}>
           {index + 1} / {sorted.length}
         </div>
 
@@ -340,14 +348,14 @@ export const PresentationMode = memo(function PresentationMode({ nodes, onClose 
             marginLeft: 16,
             width: 32, height: 32, borderRadius: 8,
             display: "flex", alignItems: "center", justifyContent: "center",
-            color: "oklch(0.48 0.008 260)",
+            color: "var(--c-t4)",
             background: "transparent",
             border: "1px solid transparent",
             cursor: "pointer",
             transition: "all 120ms ease",
           }}
-          onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.background = "oklch(0.16 0.008 260)"; (e.currentTarget as HTMLElement).style.color = "oklch(0.80 0.005 260)"; }}
-          onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.background = "transparent"; (e.currentTarget as HTMLElement).style.color = "oklch(0.48 0.008 260)"; }}
+          onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.background = "var(--c-elevated)"; (e.currentTarget as HTMLElement).style.color = "var(--c-t1)"; }}
+          onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.background = "transparent"; (e.currentTarget as HTMLElement).style.color = "var(--c-t4)"; }}
         >
           <X style={{ width: 16, height: 16 }} />
         </button>
@@ -365,7 +373,7 @@ export const PresentationMode = memo(function PresentationMode({ nodes, onClose 
       {/* Footer navigation */}
       <div
         className="flex items-center justify-between px-6 py-4 flex-shrink-0"
-        style={{ borderTop: "1px solid oklch(0.14 0.007 260)" }}
+        style={{ borderTop: "1px solid var(--c-surface)" }}
       >
         {/* Dot indicators */}
         <div className="flex items-center gap-1.5 flex-1">
@@ -379,7 +387,7 @@ export const PresentationMode = memo(function PresentationMode({ nodes, onClose 
                   width: i === index ? 18 : 6,
                   height: 6,
                   borderRadius: 99,
-                  background: i === index ? c.color : "oklch(0.22 0.008 260)",
+                  background: i === index ? c.color : "var(--c-bd2)",
                   border: "none",
                   cursor: "pointer",
                   transition: "all 200ms ease",
@@ -388,7 +396,7 @@ export const PresentationMode = memo(function PresentationMode({ nodes, onClose 
               />
             );
           })}
-          {sorted.length > 20 && <span style={{ fontSize: 10, color: "oklch(0.35 0.006 260)" }}>…</span>}
+          {sorted.length > 20 && <span style={{ fontSize: 10, color: "var(--c-t4)" }}>…</span>}
         </div>
 
         {/* Prev / Next */}
@@ -413,22 +421,22 @@ function NavBtn({ icon: Icon, label, onClick, disabled }: {
       style={{
         width: 36, height: 36, borderRadius: 10,
         display: "flex", alignItems: "center", justifyContent: "center",
-        background: "oklch(0.12 0.007 260)",
-        border: "1px solid oklch(0.20 0.008 260)",
-        color: disabled ? "oklch(0.28 0.006 260)" : "oklch(0.65 0.008 260)",
+        background: "var(--c-base)",
+        border: "1px solid var(--c-bd2)",
+        color: disabled ? "var(--c-bd3)" : "var(--c-t2)",
         cursor: disabled ? "default" : "pointer",
         transition: "all 120ms ease",
       }}
       onMouseEnter={(e) => {
         if (!disabled) {
-          (e.currentTarget as HTMLElement).style.background = "oklch(0.18 0.008 260)";
-          (e.currentTarget as HTMLElement).style.color = "oklch(0.88 0.005 260)";
+          (e.currentTarget as HTMLElement).style.background = "var(--c-bd1)";
+          (e.currentTarget as HTMLElement).style.color = "var(--c-t1)";
         }
       }}
       onMouseLeave={(e) => {
         if (!disabled) {
-          (e.currentTarget as HTMLElement).style.background = "oklch(0.12 0.007 260)";
-          (e.currentTarget as HTMLElement).style.color = "oklch(0.65 0.008 260)";
+          (e.currentTarget as HTMLElement).style.background = "var(--c-base)";
+          (e.currentTarget as HTMLElement).style.color = "var(--c-t2)";
         }
       }}
     >

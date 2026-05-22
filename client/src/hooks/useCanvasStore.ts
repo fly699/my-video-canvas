@@ -86,7 +86,7 @@ interface CanvasStore {
     sourceNodeId: string,
     sourcePosition: { x: number; y: number }
   ) => void;
-  updateNodeData: (id: string, payload: Partial<NodeData>) => void;
+  updateNodeData: (id: string, payload: Partial<NodeData>, silent?: boolean) => void;
   batchUpdateNodeData: (updates: { id: string; payload: Partial<NodeData> }[]) => void;
   updateNodeTitle: (id: string, title: string) => void;
   deleteNode: (id: string) => void;
@@ -194,7 +194,8 @@ export const useCanvasStore = create<CanvasStore>((set, get) => ({
   addNode: (type, position) => {
     const config = getNodeConfig(type);
     const id = nanoid();
-    const projectId = get().projectId ?? 0;
+    const projectId = get().projectId;
+    if (!projectId) throw new Error("Cannot add node before project is loaded");
 
     const newNode: CanvasNode = {
       id,
@@ -222,8 +223,10 @@ export const useCanvasStore = create<CanvasStore>((set, get) => ({
   },
 
   batchAddSceneNodes: (scenes, sourceNodeId, sourcePosition) => {
+    const storeProjectId = get().projectId;
+    if (!storeProjectId) return; // guard: project not loaded yet
     set((state) => {
-      const projectId = state.nodes.find((n) => n.id === sourceNodeId)?.data.projectId ?? 0;
+      const projectId = state.nodes.find((n) => n.id === sourceNodeId)?.data.projectId ?? storeProjectId;
       const config = getNodeConfig("storyboard");
       const nodeWidth = (config.defaultWidth as number) ?? 360;
       const newNodes: CanvasNode[] = scenes.map((scene, i) => ({
@@ -247,6 +250,8 @@ export const useCanvasStore = create<CanvasStore>((set, get) => ({
         id: nanoid(),
         source: sourceNodeId,
         target: node.id,
+        sourceHandle: "output",
+        targetHandle: "input",
         type: "custom",
         animated: false,
       }));
@@ -259,9 +264,9 @@ export const useCanvasStore = create<CanvasStore>((set, get) => ({
     });
   },
 
-  updateNodeData: (id, payload) => {
+  updateNodeData: (id, payload, silent = false) => {
     set((state) => ({
-      ...pushHistory(state),
+      ...(silent ? {} : pushHistory(state)),
       nodes: state.nodes.map((n) =>
         n.id === id
           ? { ...n, data: { ...n.data, payload: { ...n.data.payload, ...payload } as NodeData } }
@@ -321,7 +326,7 @@ export const useCanvasStore = create<CanvasStore>((set, get) => ({
       ...node,
       id: newId,
       position: { x: node.position.x + 40, y: node.position.y + 40 },
-      data: { ...node.data },
+      data: { ...node.data, payload: JSON.parse(JSON.stringify(node.data.payload)) },
       selected: false,
     };
     set((state) => ({

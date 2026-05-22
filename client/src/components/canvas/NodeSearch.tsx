@@ -87,7 +87,7 @@ export function NodeSearch({ onClose }: Props) {
         className="w-full max-w-md rounded-2xl overflow-hidden animate-scale-in"
         style={{
           background: "oklch(0.11 0.007 260 / 0.98)",
-          border: "1px solid oklch(0.22 0.008 260)",
+          border: "1px solid var(--c-bd2)",
           boxShadow: "0 24px 80px oklch(0 0 0 / 0.70), 0 4px 16px oklch(0 0 0 / 0.40)",
           backdropFilter: "blur(24px)",
         }}
@@ -95,9 +95,9 @@ export function NodeSearch({ onClose }: Props) {
         {/* Search input */}
         <div
           className="flex items-center gap-2.5 px-4 py-3"
-          style={{ borderBottom: filtered.length > 0 ? "1px solid oklch(0.18 0.008 260)" : "none" }}
+          style={{ borderBottom: filtered.length > 0 ? "1px solid var(--c-bd1)" : "none" }}
         >
-          <Search className="w-4 h-4 flex-shrink-0" style={{ color: "oklch(0.45 0.008 260)" }} />
+          <Search className="w-4 h-4 flex-shrink-0" style={{ color: "var(--c-t4)" }} />
           <input
             ref={inputRef}
             value={query}
@@ -105,12 +105,12 @@ export function NodeSearch({ onClose }: Props) {
             onKeyDown={handleKeyDown}
             placeholder="搜索节点..."
             className="flex-1 outline-none bg-transparent text-sm"
-            style={{ color: "oklch(0.88 0.005 260)" }}
+            style={{ color: "var(--c-t1)" }}
           />
           {query && (
             <button
               onClick={() => setQuery("")}
-              style={{ color: "oklch(0.42 0.006 260)" }}
+              style={{ color: "var(--c-t4)" }}
             >
               <X className="w-3.5 h-3.5" />
             </button>
@@ -118,9 +118,9 @@ export function NodeSearch({ onClose }: Props) {
           <kbd
             className="px-1.5 py-0.5 rounded text-[10px] font-mono flex-shrink-0"
             style={{
-              background: "oklch(0.16 0.007 260)",
-              border: "1px solid oklch(0.24 0.008 260)",
-              color: "oklch(0.45 0.008 260)",
+              background: "var(--c-elevated)",
+              border: "1px solid var(--c-bd3)",
+              color: "var(--c-t4)",
             }}
           >
             Esc
@@ -150,10 +150,10 @@ export function NodeSearch({ onClose }: Props) {
                     style={{ background: config.color }}
                   />
                   <div className="flex-1 min-w-0">
-                    <p className="text-sm truncate" style={{ color: "oklch(0.85 0.005 260)" }}>
+                    <p className="text-sm truncate" style={{ color: "var(--c-t1)" }}>
                       {node.data.title}
                     </p>
-                    <p className="text-[10px] mt-0.5" style={{ color: "oklch(0.45 0.008 260)" }}>
+                    <p className="text-[10px] mt-0.5" style={{ color: "var(--c-t4)" }}>
                       {config.label}
                     </p>
                   </div>
@@ -161,9 +161,9 @@ export function NodeSearch({ onClose }: Props) {
                     <kbd
                       className="text-[10px] px-1.5 py-0.5 rounded font-mono flex-shrink-0"
                       style={{
-                        background: "oklch(0.16 0.007 260)",
-                        border: "1px solid oklch(0.24 0.008 260)",
-                        color: "oklch(0.50 0.008 260)",
+                        background: "var(--c-elevated)",
+                        border: "1px solid var(--c-bd3)",
+                        color: "var(--c-t3)",
                       }}
                     >
                       ↵
@@ -178,7 +178,7 @@ export function NodeSearch({ onClose }: Props) {
         {/* Empty state */}
         {query.trim() && filtered.length === 0 && (
           <div className="px-4 py-6 text-center">
-            <p className="text-sm" style={{ color: "oklch(0.42 0.006 260)" }}>
+            <p className="text-sm" style={{ color: "var(--c-t4)" }}>
               没有找到匹配的节点
             </p>
           </div>
@@ -187,13 +187,13 @@ export function NodeSearch({ onClose }: Props) {
         {/* Footer hint */}
         <div
           className="px-4 py-2 flex items-center gap-3"
-          style={{ borderTop: "1px solid oklch(0.16 0.008 260)" }}
+          style={{ borderTop: "1px solid var(--c-elevated)" }}
         >
-          <span style={{ fontSize: 10, color: "oklch(0.35 0.006 260)" }}>
-            <kbd className="px-1 rounded" style={{ background: "oklch(0.16 0.007 260)", border: "1px solid oklch(0.22 0.008 260)", color: "oklch(0.45 0.008 260)", fontSize: 9, fontFamily: "monospace" }}>↑</kbd>
-            {" "}<kbd className="px-1 rounded" style={{ background: "oklch(0.16 0.007 260)", border: "1px solid oklch(0.22 0.008 260)", color: "oklch(0.45 0.008 260)", fontSize: 9, fontFamily: "monospace" }}>↓</kbd>
+          <span style={{ fontSize: 10, color: "var(--c-t4)" }}>
+            <kbd className="px-1 rounded" style={{ background: "var(--c-elevated)", border: "1px solid var(--c-bd2)", color: "var(--c-t4)", fontSize: 9, fontFamily: "monospace" }}>↑</kbd>
+            {" "}<kbd className="px-1 rounded" style={{ background: "var(--c-elevated)", border: "1px solid var(--c-bd2)", color: "var(--c-t4)", fontSize: 9, fontFamily: "monospace" }}>↓</kbd>
             {" "}导航 ·
-            {" "}<kbd className="px-1 rounded" style={{ background: "oklch(0.16 0.007 260)", border: "1px solid oklch(0.22 0.008 260)", color: "oklch(0.45 0.008 260)", fontSize: 9, fontFamily: "monospace" }}>↵</kbd>
+            {" "}<kbd className="px-1 rounded" style={{ background: "var(--c-elevated)", border: "1px solid var(--c-bd2)", color: "var(--c-t4)", fontSize: 9, fontFamily: "monospace" }}>↵</kbd>
             {" "}跳转 · {nodes.length} 个节点
           </span>
         </div>

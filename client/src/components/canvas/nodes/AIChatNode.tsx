@@ -4,7 +4,8 @@ import { useCanvasStore } from "../../../hooks/useCanvasStore";
 import type { AIChatNodeData, NodeType } from "../../../../../shared/types";
 import { trpc } from "@/lib/trpc";
 import { toast } from "sonner";
-import { Send, Loader2, Trash2, Bot, User, Sparkles, ChevronDown, ArrowRight, Copy, BookOpen } from "lucide-react";
+import { Send, Loader2, Trash2, Bot, User, Sparkles, ChevronDown, ArrowRight, Copy, BookOpen, Clapperboard, LayoutGrid, Wand2, ScrollText, UserRound } from "lucide-react";
+import type { LucideIcon } from "lucide-react";
 import { CHAT_MODELS } from "@/lib/models";
 // Streamdown removed — replaced with safe inline markdown renderer to avoid ReactFlow DOM conflicts
 function SimpleMarkdown({ children }: { children: string }) {
@@ -33,7 +34,7 @@ interface Props {
 
 const accentColor = "oklch(0.70 0.18 200)";
 const accentA = (a: number) => `oklch(0.70 0.18 200 / ${a})`;
-const BORDER_DEFAULT = "oklch(0.20 0.008 260)";
+const BORDER_DEFAULT = "var(--c-bd2)";
 const BORDER_FOCUS   = accentA(0.5);
 
 const FIELD_MAP: Partial<Record<NodeType, string>> = {
@@ -46,20 +47,24 @@ const FIELD_MAP: Partial<Record<NodeType, string>> = {
 };
 
 const SYSTEM_PROMPT_TEMPLATES = [
-  { label: "导演助手", icon: "🎬", prompt: "你是一位专业的电影导演助手，擅长分析剧本、提出视觉化建议和分镜构思。请用简洁专业的中文回答。" },
-  { label: "分镜生成", icon: "🖼️", prompt: "你是专业的分镜师。根据场景描述，生成详细的分镜描述，包括：镜头类型、运镜方式、景深、灯光氛围、构图要点。每个分镜用编号列出。" },
-  { label: "提示词优化", icon: "✨", prompt: "你是专业的 AI 图像提示词工程师。用户输入中文描述，你将其转化为高质量的英文 Stable Diffusion 提示词（100词以内），聚焦于视觉细节、光影、风格、构图。只输出提示词，无需解释。" },
-  { label: "视频脚本", icon: "📝", prompt: "你是专业的视频脚本创作者。根据主题创作简洁有力的视频脚本，包括旁白文字、配乐建议和镜头切换节奏。" },
-  { label: "角色设计", icon: "👤", prompt: "你是角色设计专家。根据描述生成详细的角色外观描述，包括：年龄体型、服装风格、表情神态、标志性特征，用于 AI 图像生成。" },
+  { label: "导演助手", icon: "Clapperboard", prompt: "你是一位专业的电影导演助手，擅长分析剧本、提出视觉化建议和分镜构思。请用简洁专业的中文回答。" },
+  { label: "分镜生成", icon: "LayoutGrid", prompt: "你是专业的分镜师。根据场景描述，生成详细的分镜描述，包括：镜头类型、运镜方式、景深、灯光氛围、构图要点。每个分镜用编号列出。" },
+  { label: "提示词优化", icon: "Wand2", prompt: "你是专业的 AI 图像提示词工程师。用户输入中文描述，你将其转化为高质量的英文 Stable Diffusion 提示词（100词以内），聚焦于视觉细节、光影、风格、构图。只输出提示词，无需解释。" },
+  { label: "视频脚本", icon: "ScrollText", prompt: "你是专业的视频脚本创作者。根据主题创作简洁有力的视频脚本，包括旁白文字、配乐建议和镜头切换节奏。" },
+  { label: "角色设计", icon: "UserRound", prompt: "你是角色设计专家。根据描述生成详细的角色外观描述，包括：年龄体型、服装风格、表情神态、标志性特征，用于 AI 图像生成。" },
 ] as const;
+
+const PRESET_ICONS: Record<string, LucideIcon> = { Clapperboard, LayoutGrid, Wand2, ScrollText, UserRound };
 
 export const AIChatNode = memo(function AIChatNode({ id, selected, data }: Props) {
   const { updateNodeData } = useCanvasStore();
   const hasDownstream = useCanvasStore(useMemo(() => (s) => s.edges.some(e => e.source === id), [id]));
   const payload = data.payload;
   const [input, setInput] = useState("");
+  // Seed from payload.messages; when the node remounts, prefer the store's
+  // persisted messages over the stale payload snapshot captured at mount time.
   const [localMessages, setLocalMessages] = useState<Array<{ role: "user" | "assistant"; content: string }>>(
-    payload.messages ?? []
+    () => (data.payload as typeof payload).messages ?? []
   );
   const [model, setModel] = useState<string>(payload.model ?? "gemini-2.5-flash");
   const [showModelPicker, setShowModelPicker] = useState(false);
@@ -69,7 +74,12 @@ export const AIChatNode = memo(function AIChatNode({ id, selected, data }: Props
   const modelPickerRef = useRef<HTMLDivElement>(null);
   const templateRef = useRef<HTMLDivElement>(null);
 
-  useEffect(() => { updateNodeData(id, { messages: localMessages }); }, [localMessages, id, updateNodeData]);
+  useEffect(() => {
+    const stored = (data.payload as typeof payload).messages;
+    if (stored !== localMessages) {
+      updateNodeData(id, { messages: localMessages });
+    }
+  }, [localMessages, id, updateNodeData, data.payload]);
   useEffect(() => {
     if (scrollRef.current) scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
   }, [localMessages]);
@@ -94,13 +104,25 @@ export const AIChatNode = memo(function AIChatNode({ id, selected, data }: Props
     return () => document.removeEventListener("mousedown", handler);
   }, [showTemplates]);
 
+  const utils = trpc.useUtils();
   const sendMutation = trpc.aiChat.sendMessage.useMutation({
     onSuccess: (result) => {
       setLocalMessages((prev) => [...prev, { role: "assistant", content: result.content }]);
     },
     onError: (err) => {
-      toast.error("AI 响应失败：" + err.message);
+      // Roll back the optimistic user message appended in handleSend, then
+      // re-sync from the server in case the DB write succeeded but the response
+      // was lost — this prevents silent divergence between client and DB state.
       setLocalMessages((prev) => prev.slice(0, -1));
+      utils.aiChat.getMessages.fetch({ nodeId: id, projectId: data.projectId })
+        .then((msgs) => {
+          if (msgs.length > 0) {
+            const synced = msgs.map((m) => ({ role: m.role as "user" | "assistant", content: m.content }));
+            setLocalMessages(synced);
+          }
+        })
+        .catch(() => { /* best-effort sync; ignore fetch errors */ });
+      toast.error("AI 响应失败：" + err.message);
     },
   });
 
@@ -170,7 +192,7 @@ export const AIChatNode = memo(function AIChatNode({ id, selected, data }: Props
         <div
           ref={templateRef}
           className="px-3.5 py-2 flex items-center gap-1.5 flex-shrink-0 relative"
-          style={{ borderBottomWidth: 1, borderBottomStyle: "solid", borderBottomColor: "oklch(0.18 0.008 260)" }}
+          style={{ borderBottomWidth: 1, borderBottomStyle: "solid", borderBottomColor: "var(--c-bd1)" }}
         >
           <input
             placeholder="系统提示词（可选）"
@@ -182,7 +204,7 @@ export const AIChatNode = memo(function AIChatNode({ id, selected, data }: Props
               background: "transparent",
               border: "none",
               outline: "none",
-              color: "oklch(0.58 0.008 260)",
+              color: "var(--c-t3)",
             }}
           />
           <button
@@ -191,8 +213,8 @@ export const AIChatNode = memo(function AIChatNode({ id, selected, data }: Props
             style={{
               fontSize: 9,
               background: showTemplates ? accentA(0.12) : "transparent",
-              border: `1px solid ${showTemplates ? accentA(0.35) : "oklch(0.22 0.008 260)"}`,
-              color: showTemplates ? accentColor : "oklch(0.42 0.008 260)",
+              border: `1px solid ${showTemplates ? accentA(0.35) : "var(--c-bd2)"}`,
+              color: showTemplates ? accentColor : "var(--c-t4)",
               cursor: "pointer",
             }}
             title="模板库"
@@ -205,8 +227,8 @@ export const AIChatNode = memo(function AIChatNode({ id, selected, data }: Props
               className="absolute left-0 right-0 z-50 rounded-xl overflow-hidden"
               style={{
                 top: "calc(100% + 4px)",
-                background: "oklch(0.12 0.007 260)",
-                border: "1px solid oklch(0.22 0.008 260)",
+                background: "var(--c-base)",
+                border: "1px solid var(--c-bd2)",
                 boxShadow: "0 8px 32px oklch(0 0 0 / 0.55)",
               }}
             >
@@ -215,7 +237,7 @@ export const AIChatNode = memo(function AIChatNode({ id, selected, data }: Props
                   key={t.label}
                   className="nodrag w-full flex items-center gap-2 px-3 py-2 transition-all text-left"
                   style={{
-                    borderBottom: "1px solid oklch(0.17 0.008 260)",
+                    borderBottom: "1px solid var(--c-bd1)",
                     cursor: "pointer",
                   }}
                   onClick={() => {
@@ -223,13 +245,13 @@ export const AIChatNode = memo(function AIChatNode({ id, selected, data }: Props
                     setShowTemplates(false);
                     toast.success(`已应用模板：${t.label}`);
                   }}
-                  onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.background = "oklch(0.16 0.008 260)"; }}
+                  onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.background = "var(--c-elevated)"; }}
                   onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.background = "transparent"; }}
                 >
-                  <span style={{ fontSize: 14 }}>{t.icon}</span>
+                  {(() => { const I = PRESET_ICONS[t.icon]; return I ? <I className="w-3.5 h-3.5 flex-shrink-0" /> : null; })()}
                   <div className="flex flex-col flex-1 min-w-0">
-                    <span style={{ fontSize: 11, fontWeight: 500, color: "oklch(0.78 0.006 260)" }}>{t.label}</span>
-                    <span style={{ fontSize: 9.5, color: "oklch(0.42 0.006 260)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{t.prompt.slice(0, 50)}...</span>
+                    <span style={{ fontSize: 11, fontWeight: 500, color: "var(--c-t1)" }}>{t.label}</span>
+                    <span style={{ fontSize: 9.5, color: "var(--c-t4)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{t.prompt.slice(0, 50)}...</span>
                   </div>
                 </button>
               ))}
@@ -241,15 +263,15 @@ export const AIChatNode = memo(function AIChatNode({ id, selected, data }: Props
         <div
           ref={modelPickerRef}
           className="px-3.5 py-2 flex items-center gap-2 flex-shrink-0 relative"
-          style={{ borderBottomWidth: 1, borderBottomStyle: "solid", borderBottomColor: "oklch(0.18 0.008 260)" }}
+          style={{ borderBottomWidth: 1, borderBottomStyle: "solid", borderBottomColor: "var(--c-bd1)" }}
         >
-          <span style={{ fontSize: 10, fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.06em", color: "oklch(0.40 0.008 260)" }}>模型</span>
+          <span style={{ fontSize: 10, fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.06em", color: "var(--c-t4)" }}>模型</span>
           <button
             className="nodrag flex items-center gap-1 px-2 py-0.5 rounded-md transition-all"
             style={{
               fontSize: 10, fontWeight: 500,
-              background: "oklch(0.13 0.007 260)",
-              border: showModelPicker ? "1px solid oklch(0.68 0.22 285 / 0.45)" : "1px solid oklch(0.22 0.008 260)",
+              background: "var(--c-surface)",
+              border: showModelPicker ? "1px solid oklch(0.68 0.22 285 / 0.45)" : "1px solid var(--c-bd2)",
               color: "oklch(0.72 0.20 330)",
               cursor: "pointer",
             }}
@@ -263,8 +285,8 @@ export const AIChatNode = memo(function AIChatNode({ id, selected, data }: Props
             <div
               className="absolute left-2.5 top-8 z-50 rounded-xl overflow-hidden animate-scale-in"
               style={{
-                background: "oklch(0.12 0.007 260)",
-                border: "1px solid oklch(0.22 0.008 260)",
+                background: "var(--c-base)",
+                border: "1px solid var(--c-bd2)",
                 boxShadow: "0 8px 32px oklch(0 0 0 / 0.55)",
                 minWidth: 200,
               }}
@@ -275,17 +297,17 @@ export const AIChatNode = memo(function AIChatNode({ id, selected, data }: Props
                   className="nodrag w-full flex items-center justify-between px-3 py-2 transition-all text-left"
                   style={{
                     background: model === m.id ? "oklch(0.72 0.20 330 / 0.10)" : "transparent",
-                    borderBottom: "1px solid oklch(0.17 0.008 260)",
+                    borderBottom: "1px solid var(--c-bd1)",
                     cursor: "pointer",
                   }}
                   onClick={() => { setModel(m.id); updateNodeData(id, { model: m.id }); setShowModelPicker(false); }}
-                  onMouseEnter={(e) => { if (model !== m.id) (e.currentTarget as HTMLElement).style.background = "oklch(0.16 0.008 260)"; }}
+                  onMouseEnter={(e) => { if (model !== m.id) (e.currentTarget as HTMLElement).style.background = "var(--c-elevated)"; }}
                   onMouseLeave={(e) => { if (model !== m.id) (e.currentTarget as HTMLElement).style.background = "transparent"; }}
                 >
-                  <span style={{ fontSize: 11, color: model === m.id ? "oklch(0.72 0.20 330)" : "oklch(0.75 0.006 260)", fontWeight: model === m.id ? 500 : 400 }}>
+                  <span style={{ fontSize: 11, color: model === m.id ? "oklch(0.72 0.20 330)" : "var(--c-t2)", fontWeight: model === m.id ? 500 : 400 }}>
                     {m.label}
                   </span>
-                  <span style={{ fontSize: 9, color: "oklch(0.45 0.008 260)", background: "oklch(0.18 0.008 260)", borderRadius: 99, padding: "1px 6px", letterSpacing: "0.04em" }}>
+                  <span style={{ fontSize: 9, color: "var(--c-t4)", background: "var(--c-bd1)", borderRadius: 99, padding: "1px 6px", letterSpacing: "0.04em" }}>
                     {m.tag}
                   </span>
                 </button>
@@ -298,7 +320,7 @@ export const AIChatNode = memo(function AIChatNode({ id, selected, data }: Props
         <div
           ref={scrollRef}
           className="flex-1 overflow-y-auto px-3.5 py-3 nodrag"
-          style={{ minHeight: 120, maxHeight: 280 }}
+          style={{ minHeight: 0 }}
         >
           {localMessages.length === 0 ? (
             <div className="flex flex-col items-center justify-center h-24 gap-2">
@@ -313,7 +335,7 @@ export const AIChatNode = memo(function AIChatNode({ id, selected, data }: Props
               >
                 <Sparkles className="w-4 h-4" style={{ color: accentColor }} />
               </div>
-              <p className="text-[10px] text-center" style={{ color: "oklch(0.38 0.006 260)" }}>
+              <p className="text-[10px] text-center" style={{ color: "var(--c-t4)" }}>
                 发送消息开始 AI 对话
               </p>
             </div>
@@ -354,7 +376,7 @@ export const AIChatNode = memo(function AIChatNode({ id, selected, data }: Props
                         borderColor: msg.role === "user"
                           ? "oklch(0.68 0.22 285 / 0.20)"
                           : accentA(0.18),
-                        color: "oklch(0.80 0.006 260)",
+                        color: "var(--c-t1)",
                       }}
                     >
                       {msg.role === "assistant" ? (
@@ -367,7 +389,7 @@ export const AIChatNode = memo(function AIChatNode({ id, selected, data }: Props
                       <button
                         onClick={() => navigator.clipboard.writeText(msg.content).then(() => toast.success("已复制", { duration: 1200 }))}
                         className="nodrag opacity-0 group-hover/msg:opacity-100 transition-opacity mt-1 flex items-center gap-1 text-[10px] self-start"
-                        style={{ color: "oklch(0.42 0.006 260)" }}
+                        style={{ color: "var(--c-t4)" }}
                         title="复制消息"
                       >
                         <Copy style={{ width: 10, height: 10 }} />
@@ -401,7 +423,7 @@ export const AIChatNode = memo(function AIChatNode({ id, selected, data }: Props
                     }}
                   >
                     <Loader2 className="w-3 h-3 animate-spin" style={{ color: accentColor }} />
-                    <span className="text-[10px]" style={{ color: "oklch(0.50 0.008 260)" }}>思考中...</span>
+                    <span className="text-[10px]" style={{ color: "var(--c-t3)" }}>思考中...</span>
                   </div>
                 </div>
               )}
@@ -412,7 +434,7 @@ export const AIChatNode = memo(function AIChatNode({ id, selected, data }: Props
         {/* ── Input bar ── */}
         <div
           className="px-3.5 pb-3.5 pt-2.5 flex gap-2 flex-shrink-0"
-          style={{ borderTopWidth: 1, borderTopStyle: "solid", borderTopColor: "oklch(0.18 0.008 260)" }}
+          style={{ borderTopWidth: 1, borderTopStyle: "solid", borderTopColor: "var(--c-bd1)" }}
         >
           <input
             ref={inputRef}
@@ -425,12 +447,12 @@ export const AIChatNode = memo(function AIChatNode({ id, selected, data }: Props
             style={{
               fontSize: 12,
               padding: "7px 10px",
-              background: "oklch(0.09 0.006 260)",
+              background: "var(--c-input)",
               borderWidth: 1,
               borderStyle: "solid",
               borderColor: BORDER_DEFAULT,
               borderRadius: 8,
-              color: "oklch(0.86 0.006 260)",
+              color: "var(--c-t1)",
               outline: "none",
               transition: "border-color 150ms ease",
             }}
@@ -443,7 +465,7 @@ export const AIChatNode = memo(function AIChatNode({ id, selected, data }: Props
             className="nodrag w-8 h-8 rounded-lg flex items-center justify-center transition-all flex-shrink-0"
             style={{
               background: !input.trim() || sendMutation.isPending
-                ? "oklch(0.13 0.007 260)"
+                ? "var(--c-surface)"
                 : accentA(0.18),
               borderWidth: 1,
               borderStyle: "solid",
@@ -451,7 +473,7 @@ export const AIChatNode = memo(function AIChatNode({ id, selected, data }: Props
                 ? BORDER_DEFAULT
                 : accentA(0.4),
               color: !input.trim() || sendMutation.isPending
-                ? "oklch(0.35 0.006 260)"
+                ? "var(--c-t4)"
                 : accentColor,
               cursor: !input.trim() || sendMutation.isPending ? "not-allowed" : "pointer",
             }}
@@ -467,7 +489,7 @@ export const AIChatNode = memo(function AIChatNode({ id, selected, data }: Props
               borderWidth: 1,
               borderStyle: "solid",
               borderColor: "transparent",
-              color: localMessages.length === 0 ? "oklch(0.28 0.006 260)" : "oklch(0.45 0.008 260)",
+              color: localMessages.length === 0 ? "var(--c-bd3)" : "var(--c-t4)",
               cursor: localMessages.length === 0 ? "not-allowed" : "pointer",
             }}
             onMouseEnter={(e) => {
@@ -478,7 +500,7 @@ export const AIChatNode = memo(function AIChatNode({ id, selected, data }: Props
             }}
             onMouseLeave={(e) => {
               (e.currentTarget as HTMLElement).style.background = "transparent";
-              (e.currentTarget as HTMLElement).style.color = localMessages.length === 0 ? "oklch(0.28 0.006 260)" : "oklch(0.45 0.008 260)";
+              (e.currentTarget as HTMLElement).style.color = localMessages.length === 0 ? "var(--c-bd3)" : "var(--c-t4)";
             }}
           >
             <Trash2 className="w-3 h-3" />
@@ -491,9 +513,9 @@ export const AIChatNode = memo(function AIChatNode({ id, selected, data }: Props
               }}
               className="nodrag w-8 h-8 rounded-lg flex items-center justify-center transition-all flex-shrink-0"
               title="推送最新 AI 回复到连接的下游节点"
-              style={{ background: "transparent", border: "1px solid transparent", color: "oklch(0.50 0.008 260)" }}
+              style={{ background: "transparent", border: "1px solid transparent", color: "var(--c-t3)" }}
               onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.background = "oklch(0.70 0.18 200 / 0.12)"; (e.currentTarget as HTMLElement).style.color = accentColor; }}
-              onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.background = "transparent"; (e.currentTarget as HTMLElement).style.color = "oklch(0.50 0.008 260)"; }}
+              onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.background = "transparent"; (e.currentTarget as HTMLElement).style.color = "var(--c-t3)"; }}
             >
               <ArrowRight className="w-3 h-3" />
             </button>

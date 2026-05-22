@@ -13,6 +13,7 @@ import {
 } from "@xyflow/react";
 import "@xyflow/react/dist/style.css";
 import { useCanvasStore, type CanvasNode, type CanvasEdge } from "../hooks/useCanvasStore";
+import { useShallow } from "zustand/react/shallow";
 import { useWorkflowRunner } from "../hooks/useWorkflowRunner";
 import { WorkflowRunProvider } from "../contexts/WorkflowRunContext";
 import { CustomNode } from "../components/canvas/CustomNode";
@@ -27,6 +28,9 @@ import { FilmstripPanel } from "../components/canvas/FilmstripPanel";
 import { TimelinePanel } from "../components/canvas/TimelinePanel";
 import { isConnectionValid } from "../lib/connectionRules";
 import { BeginnerGuide, ConnectionHintsPanel } from "../components/canvas/BeginnerGuide";
+import { ThemeSwitcher } from "../components/canvas/ThemeSwitcher";
+import { CanvasBgPicker, loadCanvasBg, type CanvasBg } from "../components/canvas/CanvasBgPicker";
+import { useCanvasMode } from "../contexts/CanvasModeContext";
 import { trpc } from "@/lib/trpc";
 import { useAuth } from "@/_core/hooks/useAuth";
 import { useIsMobile } from "@/hooks/useMobile";
@@ -63,6 +67,7 @@ import {
   Trash2,
   RotateCcw,
   BookmarkPlus,
+  Palette,
   ListVideo,
 } from "lucide-react";
 import { loadNamedSnapshots, type NamedSnapshot } from "../hooks/useCanvasStore";
@@ -104,18 +109,18 @@ function ToolBtn({
               : "1px solid transparent",
             color: active
               ? (accent ?? "oklch(0.68 0.22 285)")
-              : "oklch(0.55 0.008 260)",
+              : "var(--c-t3)",
           }}
           onMouseEnter={(e) => {
             if (!active) {
-              (e.currentTarget as HTMLElement).style.background = "oklch(0.16 0.008 260)";
-              (e.currentTarget as HTMLElement).style.color = "oklch(0.85 0.005 260)";
+              (e.currentTarget as HTMLElement).style.background = "var(--c-elevated)";
+              (e.currentTarget as HTMLElement).style.color = "var(--c-t1)";
             }
           }}
           onMouseLeave={(e) => {
             if (!active) {
               (e.currentTarget as HTMLElement).style.background = "transparent";
-              (e.currentTarget as HTMLElement).style.color = "oklch(0.55 0.008 260)";
+              (e.currentTarget as HTMLElement).style.color = "var(--c-t3)";
             }
           }}
         >
@@ -167,28 +172,28 @@ function SnapshotPanel({
     <div
       className="absolute bottom-14 right-2 z-40 flex flex-col rounded-2xl overflow-hidden"
       style={{
-        width: 300, maxHeight: 480, background: "oklch(0.11 0.007 260)",
-        border: "1px solid oklch(0.22 0.008 260)", boxShadow: "0 8px 32px oklch(0 0 0 / 0.5)",
+        width: 300, maxHeight: 480, background: "var(--c-base)",
+        border: "1px solid var(--c-bd2)", boxShadow: "0 8px 32px oklch(0 0 0 / 0.5)",
       }}
     >
-      <div className="flex items-center justify-between px-3.5 py-2.5 border-b" style={{ borderColor: "oklch(0.18 0.008 260)" }}>
+      <div className="flex items-center justify-between px-3.5 py-2.5 border-b" style={{ borderColor: "var(--c-bd1)" }}>
         <div className="flex items-center gap-1.5">
           <History style={{ width: 13, height: 13, color: "oklch(0.72 0.18 45)" }} />
-          <span className="text-xs font-semibold" style={{ color: "oklch(0.88 0.005 260)" }}>版本历史</span>
+          <span className="text-xs font-semibold" style={{ color: "var(--c-t1)" }}>版本历史</span>
         </div>
-        <button onClick={onClose} className="p-1 rounded" style={{ color: "oklch(0.45 0.008 260)" }}>
+        <button onClick={onClose} className="p-1 rounded" style={{ color: "var(--c-t4)" }}>
           <X style={{ width: 12, height: 12 }} />
         </button>
       </div>
 
       {/* Save new snapshot */}
-      <div className="flex gap-1.5 p-2.5 border-b" style={{ borderColor: "oklch(0.16 0.008 260)" }}>
+      <div className="flex gap-1.5 p-2.5 border-b" style={{ borderColor: "var(--c-elevated)" }}>
         <input
           value={snapName}
           onChange={(e) => setSnapName(e.target.value)}
           onKeyDown={(e) => { if (e.key === "Enter") handleSave(); }}
           className="flex-1 px-2 py-1.5 rounded-lg text-xs outline-none"
-          style={{ background: "oklch(0.15 0.008 260)", border: "1px solid oklch(0.24 0.008 260)", color: "oklch(0.85 0.005 260)" }}
+          style={{ background: "var(--c-surface)", border: "1px solid var(--c-bd3)", color: "var(--c-t1)" }}
           placeholder="版本名称..."
           maxLength={40}
         />
@@ -206,19 +211,19 @@ function SnapshotPanel({
       <div className="flex-1 overflow-y-auto">
         {snaps.length === 0 ? (
           <div className="flex flex-col items-center justify-center py-8 gap-2">
-            <History style={{ width: 20, height: 20, color: "oklch(0.35 0.006 260)" }} />
-            <p className="text-xs" style={{ color: "oklch(0.42 0.006 260)" }}>还没有保存的版本</p>
+            <History style={{ width: 20, height: 20, color: "var(--c-t4)" }} />
+            <p className="text-xs" style={{ color: "var(--c-t4)" }}>还没有保存的版本</p>
           </div>
         ) : (
           snaps.map((snap) => (
             <div
               key={snap.id}
               className="flex items-center gap-2 px-3 py-2.5 border-b"
-              style={{ borderColor: "oklch(0.14 0.007 260)" }}
+              style={{ borderColor: "var(--c-surface)" }}
             >
               <div className="flex-1 min-w-0">
-                <p className="text-xs font-medium truncate" style={{ color: "oklch(0.80 0.005 260)" }}>{snap.name}</p>
-                <p className="text-[10px]" style={{ color: "oklch(0.40 0.006 260)" }}>
+                <p className="text-xs font-medium truncate" style={{ color: "var(--c-t1)" }}>{snap.name}</p>
+                <p className="text-[10px]" style={{ color: "var(--c-t4)" }}>
                   {new Date(snap.createdAt).toLocaleString("zh-CN", { month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit" })} · {snap.nodeCount}节点
                 </p>
               </div>
@@ -226,9 +231,9 @@ function SnapshotPanel({
                 onClick={() => { onRestore(snap); onClose(); }}
                 className="p-1 rounded transition-all"
                 title="恢复此版本"
-                style={{ color: "oklch(0.52 0.008 260)" }}
+                style={{ color: "var(--c-t3)" }}
                 onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.color = "oklch(0.72 0.18 45)"; }}
-                onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.color = "oklch(0.52 0.008 260)"; }}
+                onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.color = "var(--c-t3)"; }}
               >
                 <RotateCcw style={{ width: 12, height: 12 }} />
               </button>
@@ -236,9 +241,9 @@ function SnapshotPanel({
                 onClick={() => handleDelete(snap.id)}
                 className="p-1 rounded transition-all"
                 title="删除此版本"
-                style={{ color: "oklch(0.45 0.008 260)" }}
+                style={{ color: "var(--c-t4)" }}
                 onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.color = "oklch(0.62 0.20 25)"; }}
-                onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.color = "oklch(0.45 0.008 260)"; }}
+                onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.color = "var(--c-t4)"; }}
               >
                 <Trash2 style={{ width: 12, height: 12 }} />
               </button>
@@ -266,7 +271,7 @@ function MobileToolBtn({
         display: "flex", alignItems: "center", justifyContent: "center",
         background: active ? "oklch(0.68 0.22 285 / 0.15)" : "transparent",
         border: active ? "1px solid oklch(0.68 0.22 285 / 0.35)" : "1px solid transparent",
-        color: active ? "oklch(0.68 0.22 285)" : (color ?? "oklch(0.58 0.008 260)"),
+        color: active ? "oklch(0.68 0.22 285)" : (color ?? "var(--c-t3)"),
         transition: "all 120ms ease",
         flexShrink: 0,
       }}
@@ -277,7 +282,7 @@ function MobileToolBtn({
 }
 
 function MobileToolDivider() {
-  return <div style={{ width: 1, height: 20, background: "oklch(0.20 0.008 260)", flexShrink: 0 }} />;
+  return <div style={{ width: 1, height: 20, background: "var(--c-bd2)", flexShrink: 0 }} />;
 }
 
 // ── Canvas inner ──────────────────────────────────────────────────────────────
@@ -295,7 +300,33 @@ function CanvasInner({ projectId }: { projectId: number }) {
     setCollaborator, removeCollaborator, collaborators, resetCanvas,
     undo, redo, past, future,
     saveNamedSnapshot, restoreNamedSnapshot, deleteNamedSnapshot,
-  } = useCanvasStore();
+  } = useCanvasStore(useShallow((s) => ({
+    nodes: s.nodes,
+    edges: s.edges,
+    setNodes: s.setNodes,
+    setEdges: s.setEdges,
+    onNodesChange: s.onNodesChange,
+    onEdgesChange: s.onEdgesChange,
+    onConnect: s.onConnect,
+    addNode: s.addNode,
+    deleteNode: s.deleteNode,
+    duplicateNode: s.duplicateNode,
+    setProjectId: s.setProjectId,
+    isDirty: s.isDirty,
+    markClean: s.markClean,
+    markDirty: s.markDirty,
+    setCollaborator: s.setCollaborator,
+    removeCollaborator: s.removeCollaborator,
+    collaborators: s.collaborators,
+    resetCanvas: s.resetCanvas,
+    undo: s.undo,
+    redo: s.redo,
+    past: s.past,
+    future: s.future,
+    saveNamedSnapshot: s.saveNamedSnapshot,
+    restoreNamedSnapshot: s.restoreNamedSnapshot,
+    deleteNamedSnapshot: s.deleteNamedSnapshot,
+  })));
 
   const [contextMenu, setContextMenu] = useState<{
     x: number; y: number; type: "canvas" | "node"; nodeId?: string; canvasPos?: { x: number; y: number };
@@ -311,10 +342,17 @@ function CanvasInner({ projectId }: { projectId: number }) {
   const [showStatsSidebar, setShowStatsSidebar] = useState(false);
   const [showFilmstrip, setShowFilmstrip] = useState(false);
   const [showTimeline, setShowTimeline] = useState(false);
+  const [canvasBg, setCanvasBg] = useState<CanvasBg>(() => loadCanvasBg());
   const [showSnapshots, setShowSnapshots] = useState(false);
   const [globalAspectRatio, setGlobalAspectRatio] = useState<string | null>(null);
   const [showRatioPicker, setShowRatioPicker] = useState(false);
   const [showConnectionHints, setShowConnectionHints] = useState(false);
+  const { mode: canvasMode, setMode: setCanvasMode } = useCanvasMode();
+  // Auto-show filmstrip when entering creative mode, hide when leaving
+  useEffect(() => {
+    if (canvasMode === "creative") setShowFilmstrip(true);
+    else setShowFilmstrip(false);
+  }, [canvasMode]);
   const [connectingFromType, setConnectingFromType] = useState<NodeType | null>(null);
 
   // Workflow runner
@@ -378,9 +416,10 @@ function CanvasInner({ projectId }: { projectId: number }) {
   useEffect(() => {
     if (project?.viewportState) {
       const vp = project.viewportState as { x: number; y: number; zoom: number };
-      setTimeout(() => reactFlow.setViewport(vp), 100);
+      const tid = setTimeout(() => reactFlow.setViewport(vp), 100);
+      return () => clearTimeout(tid);
     }
-  }, [project]);
+  }, [project, reactFlow]);
 
   // ── Auto-save ───────────────────────────────────────────────────────────────
   const saveCanvas = useCallback(async () => {
@@ -443,22 +482,23 @@ function CanvasInner({ projectId }: { projectId: number }) {
         setCollaborator({ userId: event.userId, userName: event.userName, color: event.color, x: p.x, y: p.y });
       } else if (event.type === "node:move") {
         const p = event.payload as { id: string; x: number; y: number };
-        setNodes(nodesRef.current.map((n) => n.id === p.id ? { ...n, position: { x: p.x, y: p.y } } : n));
+        const { nodes: currentNodes, setNodes: storeSetNodes } = useCanvasStore.getState();
+        storeSetNodes(currentNodes.map((n) => n.id === p.id ? { ...n, position: { x: p.x, y: p.y } } : n));
       } else if (event.type === "node:add") {
         const newNode = event.payload as CanvasNode;
-        const { setNodes: storeSetNodes, markDirty } = useCanvasStore.getState();
-        storeSetNodes([...nodesRef.current.filter((n) => n.id !== newNode.id), newNode]);
+        const { nodes: currentNodes, setNodes: storeSetNodes, markDirty } = useCanvasStore.getState();
+        storeSetNodes([...currentNodes.filter((n) => n.id !== newNode.id), newNode]);
         markDirty();
       } else if (event.type === "node:delete") {
         const p = event.payload as { id: string };
-        const { setNodes: storeSetNodes, setEdges: storeSetEdges, edges: currentEdges, markDirty } = useCanvasStore.getState();
-        storeSetNodes(nodesRef.current.filter((n) => n.id !== p.id));
+        const { nodes: currentNodes, setNodes: storeSetNodes, setEdges: storeSetEdges, edges: currentEdges, markDirty } = useCanvasStore.getState();
+        storeSetNodes(currentNodes.filter((n) => n.id !== p.id));
         storeSetEdges(currentEdges.filter((e) => e.source !== p.id && e.target !== p.id));
         markDirty();
       } else if (event.type === "node:update") {
         const p = event.payload as { id: string; patch: Record<string, unknown> };
-        const { setNodes: storeSetNodes, markDirty } = useCanvasStore.getState();
-        storeSetNodes(nodesRef.current.map((n) =>
+        const { nodes: currentNodes, setNodes: storeSetNodes, markDirty } = useCanvasStore.getState();
+        storeSetNodes(currentNodes.map((n) =>
           n.id === p.id ? { ...n, data: { ...n.data, payload: { ...n.data.payload, ...p.patch } } } : n
         ) as CanvasNode[]);
         markDirty();
@@ -509,8 +549,12 @@ function CanvasInner({ projectId }: { projectId: number }) {
 
   const handleAddNode = useCallback((type: NodeType) => {
     const pos = contextMenu?.canvasPos ?? { x: 200, y: 200 };
-    const newNode = addNode(type, pos);
-    emitCollabEvent("node:add", newNode);
+    try {
+      const newNode = addNode(type, pos);
+      emitCollabEvent("node:add", newNode);
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "添加节点失败");
+    }
     setShowNodePicker(false);
   }, [contextMenu, addNode, emitCollabEvent]);
 
@@ -518,14 +562,18 @@ function CanvasInner({ projectId }: { projectId: number }) {
     const vp = reactFlow.getViewport();
     const cx = (window.innerWidth / 2 - vp.x) / vp.zoom;
     const cy = (window.innerHeight / 2 - vp.y) / vp.zoom;
-    const newNode = addNode(type, { x: cx + Math.random() * 80 - 40, y: cy + Math.random() * 80 - 40 });
-    emitCollabEvent("node:add", newNode);
+    try {
+      const newNode = addNode(type, { x: cx + Math.random() * 80 - 40, y: cy + Math.random() * 80 - 40 });
+      emitCollabEvent("node:add", newNode);
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "添加节点失败");
+    }
     setShowNodePicker(false);
   }, [addNode, reactFlow, emitCollabEvent]);
 
   // ── Global aspect ratio lock ────────────────────────────────────────────────
   const RATIO_PRESETS = ["16:9", "9:16", "1:1", "4:3", "3:4", "2.35:1"];
-  const { batchUpdateNodeData } = useCanvasStore();
+  const batchUpdateNodeData = useCanvasStore((s) => s.batchUpdateNodeData);
   const applyGlobalRatio = useCallback((ratio: string | null) => {
     setGlobalAspectRatio(ratio);
     setShowRatioPicker(false);
@@ -545,7 +593,7 @@ function CanvasInner({ projectId }: { projectId: number }) {
     if (!connection.source || !connection.target || connection.source === connection.target) return false;
     const sourceNode = nodes.find(n => n.id === connection.source);
     const targetNode = nodes.find(n => n.id === connection.target);
-    if (!sourceNode || !targetNode) return true;
+    if (!sourceNode || !targetNode) return false;
     return isConnectionValid(sourceNode.data.nodeType, targetNode.data.nodeType);
   }, [nodes]);
 
@@ -616,23 +664,28 @@ function CanvasInner({ projectId }: { projectId: number }) {
       const tag = (e.target as HTMLElement)?.tagName;
       const isEditing = tag === "INPUT" || tag === "TEXTAREA" || (e.target as HTMLElement)?.isContentEditable;
 
-      if ((e.metaKey || e.ctrlKey) && e.key === "s") { e.preventDefault(); saveCanvas(); toast.success("已保存"); }
+      if ((e.metaKey || e.ctrlKey) && e.key === "s") {
+        e.preventDefault();
+        const wasDirty = useCanvasStore.getState().isDirty;
+        saveCanvas();
+        if (wasDirty) toast.success("已保存");
+      }
       if (e.key === "Escape") { setContextMenu(null); setShowNodePicker(false); setShowNodeSearch(false); setShowTemplates(false); }
 
-      // Cmd+K / Ctrl+K — Node search
-      if ((e.metaKey || e.ctrlKey) && e.key === "k") {
+      // Cmd+K / Ctrl+K — Node search (skip when typing in an input)
+      if (!isEditing && (e.metaKey || e.ctrlKey) && e.key === "k") {
         e.preventDefault();
         setShowNodeSearch((v) => !v);
       }
 
-      // Cmd+T / Ctrl+T — Templates
-      if ((e.metaKey || e.ctrlKey) && e.key === "t") {
+      // Cmd+T / Ctrl+T — Templates (skip when typing in an input)
+      if (!isEditing && (e.metaKey || e.ctrlKey) && e.key === "t") {
         e.preventDefault();
         setShowTemplates((v) => !v);
       }
 
-      // Duplicate selected node: Cmd+D / Ctrl+D
-      if ((e.metaKey || e.ctrlKey) && e.key === "d") {
+      // Duplicate selected node: Cmd+D / Ctrl+D (skip when typing in an input)
+      if (!isEditing && (e.metaKey || e.ctrlKey) && e.key === "d") {
         e.preventDefault();
         const selected = useCanvasStore.getState().nodes.filter(n => n.selected);
         selected.forEach(n => duplicateNode(n.id));
@@ -673,9 +726,9 @@ function CanvasInner({ projectId }: { projectId: number }) {
   // ── Error / not found ────────────────────────────────────────────────────────
   if (projectError) {
     return (
-      <div className="w-screen h-screen flex flex-col items-center justify-center gap-4" style={{ background: "oklch(0.07 0.005 260)" }}>
-        <p className="text-sm" style={{ color: "oklch(0.60 0.008 260)" }}>项目不存在或无权访问</p>
-        <button onClick={() => navigate("/")} className="text-xs px-3 py-1.5 rounded-lg" style={{ background: "oklch(0.16 0.008 260)", color: "oklch(0.75 0.005 260)" }}>
+      <div className="w-screen h-screen flex flex-col items-center justify-center gap-4" style={{ background: "var(--c-canvas)" }}>
+        <p className="text-sm" style={{ color: "var(--c-t3)" }}>项目不存在或无权访问</p>
+        <button onClick={() => navigate("/")} className="text-xs px-3 py-1.5 rounded-lg" style={{ background: "var(--c-elevated)", color: "var(--c-t2)" }}>
           返回主页
         </button>
       </div>
@@ -687,7 +740,7 @@ function CanvasInner({ projectId }: { projectId: number }) {
     return (
       <div
         className="w-screen h-screen flex flex-col items-center justify-center gap-3"
-        style={{ background: "oklch(0.07 0.005 260)" }}
+        style={{ background: "var(--c-canvas)" }}
       >
         <div
           className="w-10 h-10 rounded-xl flex items-center justify-center"
@@ -695,7 +748,7 @@ function CanvasInner({ projectId }: { projectId: number }) {
         >
           <Film className="w-5 h-5 text-white" />
         </div>
-        <div className="flex items-center gap-2 text-sm" style={{ color: "oklch(0.45 0.008 260)" }}>
+        <div className="flex items-center gap-2 text-sm" style={{ color: "var(--c-t4)" }}>
           <Loader2 className="w-4 h-4 animate-spin" />
           加载中...
         </div>
@@ -704,24 +757,23 @@ function CanvasInner({ projectId }: { projectId: number }) {
   }
 
   return (
-    <div className="w-screen h-screen flex flex-col overflow-hidden" style={{ background: "oklch(0.07 0.005 260)" }}>
+    <div className="w-screen h-screen flex flex-col overflow-hidden" style={{ background: "var(--c-canvas)" }}>
 
       {/* ══ Top Bar ══════════════════════════════════════════════════════════ */}
       <header
-        className="h-11 flex items-center px-3 gap-2 flex-shrink-0 z-20"
+        className="canvas-topbar h-11 flex items-center px-3 gap-2 flex-shrink-0 z-20"
         style={{
-          background: "oklch(0.09 0.006 260 / 0.95)",
+          background: canvasMode === "creative"
+            ? "oklch(1.00 0 0 / 0.94)"
+            : "oklch(0.09 0.006 260 / 0.95)",
           backdropFilter: "blur(20px)",
-          borderBottom: "1px solid oklch(0.18 0.008 260)",
+          borderBottom: "1px solid var(--c-bd1)",
         }}
       >
         {/* Back */}
         <button
           onClick={() => navigate("/")}
-          className="w-7 h-7 rounded-lg flex items-center justify-center transition-colors"
-          style={{ color: "oklch(0.50 0.008 260)" }}
-          onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.background = "oklch(0.16 0.008 260)"; (e.currentTarget as HTMLElement).style.color = "oklch(0.85 0.005 260)"; }}
-          onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.background = "transparent"; (e.currentTarget as HTMLElement).style.color = "oklch(0.50 0.008 260)"; }}
+          className="topbar-btn"
         >
           <ChevronLeft className="w-4 h-4" />
         </button>
@@ -754,14 +806,14 @@ function CanvasInner({ projectId }: { projectId: number }) {
                 className="text-sm font-medium outline-none w-36"
                 style={{
                   background: "transparent",
-                  color: "oklch(0.90 0.005 260)",
+                  color: "var(--c-t1)",
                   borderBottomWidth: 1,
                   borderBottomStyle: "solid",
                   borderBottomColor: "oklch(0.68 0.22 285)",
                 }}
                 autoFocus
               />
-              <button onClick={() => setRenamingProject(false)} style={{ color: "oklch(0.50 0.008 260)" }}>
+              <button onClick={() => setRenamingProject(false)} style={{ color: "var(--c-t3)" }}>
                 <X className="w-3 h-3" />
               </button>
             </div>
@@ -770,12 +822,12 @@ function CanvasInner({ projectId }: { projectId: number }) {
               className="group/title flex items-center gap-1 cursor-pointer"
               onClick={() => { setRenameValue(project?.name ?? ""); setRenamingProject(true); }}
             >
-              <span className="text-sm font-medium truncate max-w-[160px]" style={{ color: "oklch(0.88 0.005 260)" }}>
+              <span className="text-sm font-medium truncate max-w-[160px]" style={{ color: "var(--c-t1)" }}>
                 {project?.name ?? "画布"}
               </span>
               <Pencil
                 className="w-3 h-3 opacity-0 group-hover/title:opacity-100 transition-opacity"
-                style={{ color: "oklch(0.50 0.008 260)" }}
+                style={{ color: "var(--c-t3)" }}
               />
             </div>
           )}
@@ -783,7 +835,7 @@ function CanvasInner({ projectId }: { projectId: number }) {
 
         {/* Dirty dot */}
         {isDirty && (
-          <div className="flex items-center gap-1.5 text-xs" style={{ color: "oklch(0.55 0.008 260)" }}>
+          <div className="flex items-center gap-1.5 text-xs" style={{ color: "var(--c-t3)" }}>
             <span
               className="w-1.5 h-1.5 rounded-full"
               style={{ background: "oklch(0.75 0.15 80)", boxShadow: "0 0 4px oklch(0.75 0.15 80 / 0.6)" }}
@@ -803,14 +855,14 @@ function CanvasInner({ projectId }: { projectId: number }) {
             style={{
               background: showCollaborators ? "oklch(0.68 0.22 285 / 0.12)" : "transparent",
               border: showCollaborators ? "1px solid oklch(0.68 0.22 285 / 0.3)" : "1px solid transparent",
-              color: "oklch(0.55 0.008 260)",
+              color: "var(--c-t3)",
             }}
-            onMouseEnter={(e) => { if (!showCollaborators) { (e.currentTarget as HTMLElement).style.background = "oklch(0.16 0.008 260)"; (e.currentTarget as HTMLElement).style.color = "oklch(0.80 0.005 260)"; } }}
-            onMouseLeave={(e) => { if (!showCollaborators) { (e.currentTarget as HTMLElement).style.background = "transparent"; (e.currentTarget as HTMLElement).style.color = "oklch(0.55 0.008 260)"; } }}
+            onMouseEnter={(e) => { if (!showCollaborators) { (e.currentTarget as HTMLElement).style.background = "var(--c-elevated)"; (e.currentTarget as HTMLElement).style.color = "var(--c-t1)"; } }}
+            onMouseLeave={(e) => { if (!showCollaborators) { (e.currentTarget as HTMLElement).style.background = "transparent"; (e.currentTarget as HTMLElement).style.color = "var(--c-t3)"; } }}
           >
             <div
               className="w-1.5 h-1.5 rounded-full"
-              style={{ background: socketConnected ? "oklch(0.72 0.18 155)" : "oklch(0.45 0.008 260)" }}
+              style={{ background: socketConnected ? "oklch(0.72 0.18 155)" : "var(--c-t4)" }}
             />
             <Users className="w-3.5 h-3.5" />
             {collaboratorList.length > 0 && <span>{collaboratorList.length}</span>}
@@ -821,10 +873,7 @@ function CanvasInner({ projectId }: { projectId: number }) {
             <TooltipTrigger asChild>
               <button
                 onClick={() => setShowPresentation(true)}
-                className="w-7 h-7 rounded-lg flex items-center justify-center transition-all"
-                style={{ color: "oklch(0.55 0.008 260)" }}
-                onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.background = "oklch(0.16 0.008 260)"; (e.currentTarget as HTMLElement).style.color = "oklch(0.80 0.005 260)"; }}
-                onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.background = "transparent"; (e.currentTarget as HTMLElement).style.color = "oklch(0.55 0.008 260)"; }}
+                className="topbar-btn"
               >
                 <Play className="w-3.5 h-3.5" />
               </button>
@@ -837,14 +886,9 @@ function CanvasInner({ projectId }: { projectId: number }) {
             <TooltipTrigger asChild>
               <button
                 onClick={() => setShowTemplates(!showTemplates)}
-                className="w-7 h-7 rounded-lg flex items-center justify-center transition-all"
-                style={{
-                  background: showTemplates ? "oklch(0.68 0.22 285 / 0.12)" : "transparent",
-                  border: showTemplates ? "1px solid oklch(0.68 0.22 285 / 0.3)" : "1px solid transparent",
-                  color: showTemplates ? "oklch(0.68 0.22 285)" : "oklch(0.55 0.008 260)",
-                }}
-                onMouseEnter={(e) => { if (!showTemplates) { (e.currentTarget as HTMLElement).style.background = "oklch(0.16 0.008 260)"; (e.currentTarget as HTMLElement).style.color = "oklch(0.80 0.005 260)"; } }}
-                onMouseLeave={(e) => { if (!showTemplates) { (e.currentTarget as HTMLElement).style.background = "transparent"; (e.currentTarget as HTMLElement).style.color = "oklch(0.55 0.008 260)"; } }}
+                className="topbar-btn"
+                data-active={showTemplates ? "true" : undefined}
+                style={showTemplates ? { background: "oklch(0.68 0.22 285 / 0.12)", border: "1px solid oklch(0.68 0.22 285 / 0.3)", color: "oklch(0.68 0.22 285)" } : undefined}
               >
                 <LayoutGrid className="w-3.5 h-3.5" />
               </button>
@@ -859,10 +903,7 @@ function CanvasInner({ projectId }: { projectId: number }) {
             <TooltipTrigger asChild>
               <button
                 onClick={() => setShowNodeSearch(true)}
-                className="w-7 h-7 rounded-lg flex items-center justify-center transition-all"
-                style={{ color: "oklch(0.55 0.008 260)" }}
-                onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.background = "oklch(0.16 0.008 260)"; (e.currentTarget as HTMLElement).style.color = "oklch(0.80 0.005 260)"; }}
-                onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.background = "transparent"; (e.currentTarget as HTMLElement).style.color = "oklch(0.55 0.008 260)"; }}
+                className="topbar-btn"
               >
                 <Search className="w-3.5 h-3.5" />
               </button>
@@ -877,14 +918,9 @@ function CanvasInner({ projectId }: { projectId: number }) {
             <TooltipTrigger asChild>
               <button
                 onClick={() => setShowAssets(!showAssets)}
-                className="w-7 h-7 rounded-lg flex items-center justify-center transition-all"
-                style={{
-                  background: showAssets ? "oklch(0.68 0.22 285 / 0.12)" : "transparent",
-                  border: showAssets ? "1px solid oklch(0.68 0.22 285 / 0.3)" : "1px solid transparent",
-                  color: showAssets ? "oklch(0.68 0.22 285)" : "oklch(0.55 0.008 260)",
-                }}
-                onMouseEnter={(e) => { if (!showAssets) { (e.currentTarget as HTMLElement).style.background = "oklch(0.16 0.008 260)"; (e.currentTarget as HTMLElement).style.color = "oklch(0.80 0.005 260)"; } }}
-                onMouseLeave={(e) => { if (!showAssets) { (e.currentTarget as HTMLElement).style.background = "transparent"; (e.currentTarget as HTMLElement).style.color = "oklch(0.55 0.008 260)"; } }}
+                className="topbar-btn"
+                data-active={showAssets ? "true" : undefined}
+                style={showAssets ? { background: "oklch(0.68 0.22 285 / 0.12)", border: "1px solid oklch(0.68 0.22 285 / 0.3)", color: "oklch(0.68 0.22 285)" } : undefined}
               >
                 <Paperclip className="w-3.5 h-3.5" />
               </button>
@@ -897,14 +933,9 @@ function CanvasInner({ projectId }: { projectId: number }) {
             <TooltipTrigger asChild>
               <button
                 onClick={() => setShowStatsSidebar((v) => !v)}
-                className="w-7 h-7 rounded-lg flex items-center justify-center transition-all"
-                style={{
-                  background: showStatsSidebar ? "oklch(0.68 0.22 285 / 0.12)" : "transparent",
-                  border: showStatsSidebar ? "1px solid oklch(0.68 0.22 285 / 0.3)" : "1px solid transparent",
-                  color: showStatsSidebar ? "oklch(0.68 0.22 285)" : "oklch(0.55 0.008 260)",
-                }}
-                onMouseEnter={(e) => { if (!showStatsSidebar) { (e.currentTarget as HTMLElement).style.background = "oklch(0.16 0.008 260)"; (e.currentTarget as HTMLElement).style.color = "oklch(0.80 0.005 260)"; } }}
-                onMouseLeave={(e) => { if (!showStatsSidebar) { (e.currentTarget as HTMLElement).style.background = "transparent"; (e.currentTarget as HTMLElement).style.color = "oklch(0.55 0.008 260)"; } }}
+                className="topbar-btn"
+                data-active={showStatsSidebar ? "true" : undefined}
+                style={showStatsSidebar ? { background: "oklch(0.68 0.22 285 / 0.12)", border: "1px solid oklch(0.68 0.22 285 / 0.3)", color: "oklch(0.68 0.22 285)" } : undefined}
               >
                 <BarChart2 className="w-3.5 h-3.5" />
               </button>
@@ -917,14 +948,9 @@ function CanvasInner({ projectId }: { projectId: number }) {
             <TooltipTrigger asChild>
               <button
                 onClick={() => setShowFilmstrip((v) => !v)}
-                className="w-7 h-7 rounded-lg flex items-center justify-center transition-all"
-                style={{
-                  background: showFilmstrip ? "oklch(0.68 0.22 285 / 0.12)" : "transparent",
-                  border: showFilmstrip ? "1px solid oklch(0.68 0.22 285 / 0.3)" : "1px solid transparent",
-                  color: showFilmstrip ? "oklch(0.68 0.22 285)" : "oklch(0.55 0.008 260)",
-                }}
-                onMouseEnter={(e) => { if (!showFilmstrip) { (e.currentTarget as HTMLElement).style.background = "oklch(0.16 0.008 260)"; (e.currentTarget as HTMLElement).style.color = "oklch(0.80 0.005 260)"; } }}
-                onMouseLeave={(e) => { if (!showFilmstrip) { (e.currentTarget as HTMLElement).style.background = "transparent"; (e.currentTarget as HTMLElement).style.color = "oklch(0.55 0.008 260)"; } }}
+                className="topbar-btn"
+                data-active={showFilmstrip ? "true" : undefined}
+                style={showFilmstrip ? { background: "oklch(0.68 0.22 285 / 0.12)", border: "1px solid oklch(0.68 0.22 285 / 0.3)", color: "oklch(0.68 0.22 285)" } : undefined}
               >
                 <Film className="w-3.5 h-3.5" />
               </button>
@@ -937,14 +963,9 @@ function CanvasInner({ projectId }: { projectId: number }) {
             <TooltipTrigger asChild>
               <button
                 onClick={() => setShowTimeline((v) => !v)}
-                className="w-7 h-7 rounded-lg flex items-center justify-center transition-all"
-                style={{
-                  background: showTimeline ? "oklch(0.62 0.20 25 / 0.12)" : "transparent",
-                  border: showTimeline ? "1px solid oklch(0.62 0.20 25 / 0.3)" : "1px solid transparent",
-                  color: showTimeline ? "oklch(0.65 0.18 30)" : "oklch(0.55 0.008 260)",
-                }}
-                onMouseEnter={(e) => { if (!showTimeline) { (e.currentTarget as HTMLElement).style.background = "oklch(0.16 0.008 260)"; (e.currentTarget as HTMLElement).style.color = "oklch(0.80 0.005 260)"; } }}
-                onMouseLeave={(e) => { if (!showTimeline) { (e.currentTarget as HTMLElement).style.background = "transparent"; (e.currentTarget as HTMLElement).style.color = "oklch(0.55 0.008 260)"; } }}
+                className="topbar-btn"
+                data-active={showTimeline ? "true" : undefined}
+                style={showTimeline ? { background: "oklch(0.62 0.20 25 / 0.12)", border: "1px solid oklch(0.62 0.20 25 / 0.3)", color: "oklch(0.65 0.18 30)" } : undefined}
               >
                 <ListVideo className="w-3.5 h-3.5" />
               </button>
@@ -957,14 +978,9 @@ function CanvasInner({ projectId }: { projectId: number }) {
             <TooltipTrigger asChild>
               <button
                 onClick={() => setShowSnapshots((v) => !v)}
-                className="w-7 h-7 rounded-lg flex items-center justify-center transition-all"
-                style={{
-                  background: showSnapshots ? "oklch(0.68 0.22 45 / 0.12)" : "transparent",
-                  border: showSnapshots ? "1px solid oklch(0.68 0.22 45 / 0.3)" : "1px solid transparent",
-                  color: showSnapshots ? "oklch(0.72 0.18 45)" : "oklch(0.55 0.008 260)",
-                }}
-                onMouseEnter={(e) => { if (!showSnapshots) { (e.currentTarget as HTMLElement).style.background = "oklch(0.16 0.008 260)"; (e.currentTarget as HTMLElement).style.color = "oklch(0.80 0.005 260)"; } }}
-                onMouseLeave={(e) => { if (!showSnapshots) { (e.currentTarget as HTMLElement).style.background = "transparent"; (e.currentTarget as HTMLElement).style.color = "oklch(0.55 0.008 260)"; } }}
+                className="topbar-btn"
+                data-active={showSnapshots ? "true" : undefined}
+                style={showSnapshots ? { background: "oklch(0.68 0.22 45 / 0.12)", border: "1px solid oklch(0.68 0.22 45 / 0.3)", color: "oklch(0.72 0.18 45)" } : undefined}
               >
                 <History className="w-3.5 h-3.5" />
               </button>
@@ -973,7 +989,7 @@ function CanvasInner({ projectId }: { projectId: number }) {
           </Tooltip>
 
           {/* ── Separator: View panels | Edit actions ── */}
-          <div className="w-px h-4 mx-1" style={{ background: "oklch(0.22 0.008 260)" }} />
+          <div className="w-px h-4 mx-1" style={{ background: "var(--c-bd2)" }} />
 
           {/* Undo */}
           <Tooltip>
@@ -981,10 +997,7 @@ function CanvasInner({ projectId }: { projectId: number }) {
               <button
                 onClick={() => { undo(); toast.info("已撤销", { duration: 1200 }); }}
                 disabled={past.length === 0}
-                className="w-7 h-7 rounded-lg flex items-center justify-center transition-all"
-                style={{ color: past.length === 0 ? "oklch(0.30 0.006 260)" : "oklch(0.55 0.008 260)", cursor: past.length === 0 ? "not-allowed" : "pointer" }}
-                onMouseEnter={(e) => { if (past.length > 0) { (e.currentTarget as HTMLElement).style.background = "oklch(0.16 0.008 260)"; (e.currentTarget as HTMLElement).style.color = "oklch(0.80 0.005 260)"; } }}
-                onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.background = "transparent"; (e.currentTarget as HTMLElement).style.color = past.length === 0 ? "oklch(0.30 0.006 260)" : "oklch(0.55 0.008 260)"; }}
+                className="topbar-btn"
               >
                 <Undo2 className="w-3.5 h-3.5" />
               </button>
@@ -1000,10 +1013,7 @@ function CanvasInner({ projectId }: { projectId: number }) {
               <button
                 onClick={() => { redo(); toast.info("已重做", { duration: 1200 }); }}
                 disabled={future.length === 0}
-                className="w-7 h-7 rounded-lg flex items-center justify-center transition-all"
-                style={{ color: future.length === 0 ? "oklch(0.30 0.006 260)" : "oklch(0.55 0.008 260)", cursor: future.length === 0 ? "not-allowed" : "pointer" }}
-                onMouseEnter={(e) => { if (future.length > 0) { (e.currentTarget as HTMLElement).style.background = "oklch(0.16 0.008 260)"; (e.currentTarget as HTMLElement).style.color = "oklch(0.80 0.005 260)"; } }}
-                onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.background = "transparent"; (e.currentTarget as HTMLElement).style.color = future.length === 0 ? "oklch(0.30 0.006 260)" : "oklch(0.55 0.008 260)"; }}
+                className="topbar-btn"
               >
                 <Redo2 className="w-3.5 h-3.5" />
               </button>
@@ -1018,10 +1028,7 @@ function CanvasInner({ projectId }: { projectId: number }) {
             <TooltipTrigger asChild>
               <button
                 onClick={() => { saveCanvas(); toast.success("已保存"); }}
-                className="w-7 h-7 rounded-lg flex items-center justify-center transition-all"
-                style={{ color: "oklch(0.55 0.008 260)" }}
-                onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.background = "oklch(0.16 0.008 260)"; (e.currentTarget as HTMLElement).style.color = "oklch(0.80 0.005 260)"; }}
-                onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.background = "transparent"; (e.currentTarget as HTMLElement).style.color = "oklch(0.55 0.008 260)"; }}
+                className="topbar-btn"
               >
                 <Save className="w-3.5 h-3.5" />
               </button>
@@ -1036,10 +1043,7 @@ function CanvasInner({ projectId }: { projectId: number }) {
             <TooltipTrigger asChild>
               <button
                 onClick={handleExportImages}
-                className="w-7 h-7 rounded-lg flex items-center justify-center transition-all"
-                style={{ color: "oklch(0.55 0.008 260)" }}
-                onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.background = "oklch(0.16 0.008 260)"; (e.currentTarget as HTMLElement).style.color = "oklch(0.65 0.20 160)"; }}
-                onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.background = "transparent"; (e.currentTarget as HTMLElement).style.color = "oklch(0.55 0.008 260)"; }}
+                className="topbar-btn"
               >
                 <Image className="w-3.5 h-3.5" />
               </button>
@@ -1052,10 +1056,7 @@ function CanvasInner({ projectId }: { projectId: number }) {
             <TooltipTrigger asChild>
               <button
                 onClick={handleExport}
-                className="w-7 h-7 rounded-lg flex items-center justify-center transition-all"
-                style={{ color: "oklch(0.55 0.008 260)" }}
-                onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.background = "oklch(0.16 0.008 260)"; (e.currentTarget as HTMLElement).style.color = "oklch(0.80 0.005 260)"; }}
-                onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.background = "transparent"; (e.currentTarget as HTMLElement).style.color = "oklch(0.55 0.008 260)"; }}
+                className="topbar-btn"
               >
                 <Download className="w-3.5 h-3.5" />
               </button>
@@ -1063,7 +1064,7 @@ function CanvasInner({ projectId }: { projectId: number }) {
             <TooltipContent side="bottom" className="text-xs">导出 JSON</TooltipContent>
           </Tooltip>
           {/* Divider */}
-          <div className="w-px h-4 mx-1" style={{ background: "oklch(0.22 0.008 260)" }} />
+          <div className="w-px h-4 mx-1" style={{ background: "var(--c-bd2)" }} />
 
           {/* Global aspect ratio lock */}
           <div className="relative">
@@ -1074,11 +1075,11 @@ function CanvasInner({ projectId }: { projectId: number }) {
                   className="flex items-center gap-1 h-7 px-2 rounded-lg text-[11px] transition-all"
                   style={{
                     background: globalAspectRatio ? "oklch(0.72 0.20 80 / 0.12)" : "transparent",
-                    border: globalAspectRatio ? "1px solid oklch(0.72 0.20 80 / 0.35)" : "1px solid oklch(0.22 0.008 260)",
-                    color: globalAspectRatio ? "oklch(0.72 0.20 80)" : "oklch(0.50 0.008 260)",
+                    border: globalAspectRatio ? "1px solid oklch(0.72 0.20 80 / 0.35)" : "1px solid var(--c-bd2)",
+                    color: globalAspectRatio ? "oklch(0.72 0.20 80)" : "var(--c-t3)",
                   }}
-                  onMouseEnter={(e) => { if (!globalAspectRatio) { (e.currentTarget as HTMLElement).style.background = "oklch(0.16 0.008 260)"; (e.currentTarget as HTMLElement).style.color = "oklch(0.80 0.005 260)"; } }}
-                  onMouseLeave={(e) => { if (!globalAspectRatio) { (e.currentTarget as HTMLElement).style.background = "transparent"; (e.currentTarget as HTMLElement).style.color = "oklch(0.50 0.008 260)"; } }}
+                  onMouseEnter={(e) => { if (!globalAspectRatio) { (e.currentTarget as HTMLElement).style.background = "var(--c-elevated)"; (e.currentTarget as HTMLElement).style.color = "var(--c-t1)"; } }}
+                  onMouseLeave={(e) => { if (!globalAspectRatio) { (e.currentTarget as HTMLElement).style.background = "transparent"; (e.currentTarget as HTMLElement).style.color = "var(--c-t3)"; } }}
                 >
                   {globalAspectRatio ? <Lock className="w-3 h-3" /> : <Unlock className="w-3 h-3" />}
                   {globalAspectRatio ?? "比例"}
@@ -1091,17 +1092,17 @@ function CanvasInner({ projectId }: { projectId: number }) {
               <div
                 className="absolute right-0 top-9 z-50 rounded-xl overflow-hidden"
                 style={{
-                  background: "oklch(0.12 0.007 260)",
-                  border: "1px solid oklch(0.22 0.008 260)",
+                  background: "var(--c-base)",
+                  border: "1px solid var(--c-bd2)",
                   boxShadow: "0 8px 32px oklch(0 0 0 / 0.55)",
                   minWidth: 120,
                 }}
               >
                 <button
                   className="w-full flex items-center gap-2 px-3 py-2 text-xs transition-all text-left"
-                  style={{ borderBottom: "1px solid oklch(0.17 0.008 260)", color: "oklch(0.55 0.008 260)" }}
+                  style={{ borderBottom: "1px solid var(--c-bd1)", color: "var(--c-t3)" }}
                   onClick={() => applyGlobalRatio(null)}
-                  onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.background = "oklch(0.16 0.008 260)"; }}
+                  onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.background = "var(--c-elevated)"; }}
                   onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.background = "transparent"; }}
                 >
                   <Unlock className="w-3 h-3" />
@@ -1112,12 +1113,12 @@ function CanvasInner({ projectId }: { projectId: number }) {
                     key={r}
                     className="w-full flex items-center justify-between px-3 py-2 text-xs transition-all"
                     style={{
-                      borderBottom: "1px solid oklch(0.17 0.008 260)",
+                      borderBottom: "1px solid var(--c-bd1)",
                       background: globalAspectRatio === r ? "oklch(0.72 0.20 80 / 0.10)" : "transparent",
-                      color: globalAspectRatio === r ? "oklch(0.72 0.20 80)" : "oklch(0.65 0.006 260)",
+                      color: globalAspectRatio === r ? "oklch(0.72 0.20 80)" : "var(--c-t2)",
                     }}
                     onClick={() => applyGlobalRatio(r)}
-                    onMouseEnter={(e) => { if (globalAspectRatio !== r) (e.currentTarget as HTMLElement).style.background = "oklch(0.16 0.008 260)"; }}
+                    onMouseEnter={(e) => { if (globalAspectRatio !== r) (e.currentTarget as HTMLElement).style.background = "var(--c-elevated)"; }}
                     onMouseLeave={(e) => { if (globalAspectRatio !== r) (e.currentTarget as HTMLElement).style.background = "transparent"; }}
                   >
                     <span>{r}</span>
@@ -1129,7 +1130,7 @@ function CanvasInner({ projectId }: { projectId: number }) {
           </div>
 
           {/* Divider */}
-          <div className="w-px h-4 mx-1" style={{ background: "oklch(0.22 0.008 260)" }} />
+          <div className="w-px h-4 mx-1" style={{ background: "var(--c-bd2)" }} />
           {/* Logout */}
           <Tooltip>
             <TooltipTrigger asChild>
@@ -1138,16 +1139,7 @@ function CanvasInner({ projectId }: { projectId: number }) {
                   await logout();
                   navigate("/");
                 }}
-                className="w-7 h-7 rounded-lg flex items-center justify-center transition-all"
-                style={{ color: "oklch(0.50 0.008 260)" }}
-                onMouseEnter={(e) => {
-                  (e.currentTarget as HTMLElement).style.background = "oklch(0.55 0.18 20 / 0.12)";
-                  (e.currentTarget as HTMLElement).style.color = "oklch(0.65 0.18 20)";
-                }}
-                onMouseLeave={(e) => {
-                  (e.currentTarget as HTMLElement).style.background = "transparent";
-                  (e.currentTarget as HTMLElement).style.color = "oklch(0.50 0.008 260)";
-                }}
+                className="topbar-btn topbar-btn--danger"
               >
                 <LogOut className="w-3.5 h-3.5" />
               </button>
@@ -1168,7 +1160,7 @@ function CanvasInner({ projectId }: { projectId: number }) {
             style={{
               transform: "translateX(-50%)",
               background: "oklch(0.11 0.007 260 / 0.98)",
-              border: "1px solid oklch(0.22 0.008 260)",
+              border: "1px solid var(--c-bd2)",
               boxShadow: "0 20px 80px oklch(0 0 0 / 0.75), 0 4px 16px oklch(0 0 0 / 0.40), 0 0 0 1px oklch(0.22 0.008 260 / 0.5)",
               backdropFilter: "blur(32px)",
               width: 520,
@@ -1176,15 +1168,15 @@ function CanvasInner({ projectId }: { projectId: number }) {
           >
             <div
               className="px-4 py-2.5 flex items-center justify-between"
-              style={{ borderBottom: "1px solid oklch(0.17 0.008 260)" }}
+              style={{ borderBottom: "1px solid var(--c-bd1)" }}
             >
               <div className="flex items-center gap-2">
                 <Plus className="w-3.5 h-3.5" style={{ color: "oklch(0.68 0.22 285)" }} />
-                <p className="text-[11px] font-semibold uppercase tracking-widest" style={{ color: "oklch(0.42 0.006 260)" }}>
+                <p className="text-[11px] font-semibold uppercase tracking-widest" style={{ color: "var(--c-t4)" }}>
                   添加节点
                 </p>
               </div>
-              <p className="text-[10px]" style={{ color: "oklch(0.32 0.006 260)" }}>点击添加到画布中心</p>
+              <p className="text-[10px]" style={{ color: "var(--c-t4)" }}>点击添加到画布中心</p>
             </div>
             <div className="p-2.5 grid grid-cols-4 gap-1.5">
               {NODE_TYPE_LIST.map((config) => {
@@ -1194,16 +1186,16 @@ function CanvasInner({ projectId }: { projectId: number }) {
                     key={config.type}
                     onClick={() => addNodeAtCenter(config.type)}
                     className="group/picker flex flex-col items-center gap-2.5 px-2 py-3 rounded-xl transition-all text-center"
-                    style={{ color: "oklch(0.70 0.008 260)" }}
+                    style={{ color: "var(--c-t2)" }}
                     onMouseEnter={(e) => {
                       const el = e.currentTarget as HTMLElement;
-                      el.style.background = "oklch(0.16 0.008 260)";
-                      el.style.color = "oklch(0.92 0.005 260)";
+                      el.style.background = "var(--c-elevated)";
+                      el.style.color = "var(--c-t1)";
                     }}
                     onMouseLeave={(e) => {
                       const el = e.currentTarget as HTMLElement;
                       el.style.background = "transparent";
-                      el.style.color = "oklch(0.70 0.008 260)";
+                      el.style.color = "var(--c-t2)";
                     }}
                   >
                     <div
@@ -1220,7 +1212,7 @@ function CanvasInner({ projectId }: { projectId: number }) {
                       <p className="text-[11px] font-semibold leading-none" style={{ letterSpacing: "-0.01em" }}>
                         {config.label}
                       </p>
-                      <p className="text-[9px] leading-none" style={{ color: "oklch(0.38 0.006 260)" }}>
+                      <p className="text-[9px] leading-none" style={{ color: "var(--c-t4)" }}>
                         {config.defaultTitle}
                       </p>
                     </div>
@@ -1234,6 +1226,7 @@ function CanvasInner({ projectId }: { projectId: number }) {
         {/* ── Canvas ── */}
         <div
           className="flex-1 relative canvas-vignette"
+          style={{ background: canvasBg.bgColor }}
           onContextMenu={handleCanvasContextMenu}
           onMouseMove={handleMouseMove}
           onClick={() => { setShowNodePicker(false); }}
@@ -1244,6 +1237,7 @@ function CanvasInner({ projectId }: { projectId: number }) {
             edges={edges}
             nodeTypes={nodeTypes}
             edgeTypes={edgeTypes}
+            style={{ background: canvasBg.bgColor }}
             onNodesChange={onNodesChange}
             onEdgesChange={onEdgesChange}
             onConnect={(connection) => {
@@ -1281,19 +1275,25 @@ function CanvasInner({ projectId }: { projectId: number }) {
             onConnectEnd={handleConnectEnd}
             connectionRadius={35}
           >
-            <Background
-              variant={BackgroundVariant.Dots}
-              gap={24}
-              size={1.5}
-              color="oklch(0.25 0.008 260 / 0.6)"
-            />
+            {canvasBg.pattern !== "none" && (
+              <Background
+                variant={
+                  canvasBg.pattern === "dots"  ? BackgroundVariant.Dots  :
+                  canvasBg.pattern === "lines" ? BackgroundVariant.Lines :
+                  BackgroundVariant.Cross
+                }
+                gap={canvasBg.gap}
+                size={canvasBg.size}
+                color={canvasBg.patternColor}
+              />
+            )}
             <MiniMap
               position="bottom-right"
-              nodeColor={(n) => getNodeConfig((n.data as { nodeType: NodeType }).nodeType)?.color ?? "oklch(0.30 0.010 260)"}
+              nodeColor={(n) => getNodeConfig((n.data as { nodeType: NodeType }).nodeType)?.color ?? "var(--c-bd3)"}
               maskColor="oklch(0.09 0.006 260 / 0.85)"
               style={{
-                background: "oklch(0.11 0.007 260)",
-                border: "1px solid oklch(0.20 0.008 260)",
+                background: "var(--c-base)",
+                border: "1px solid var(--c-bd2)",
                 borderRadius: 12,
                 marginBottom: 72,
                 marginRight: 8,
@@ -1311,13 +1311,13 @@ function CanvasInner({ projectId }: { projectId: number }) {
 
           {/* ── Bottom floating toolbar ── */}
           <div
-            className="absolute bottom-5 left-1/2 z-20 flex items-center gap-1.5 px-2.5 py-1.5 rounded-2xl"
+            className="canvas-bottombar absolute bottom-5 left-1/2 z-20 flex items-center gap-1.5 px-2.5 py-1.5 rounded-2xl"
             onClick={(e) => e.stopPropagation()}
             style={{
               transform: "translateX(-50%)",
               background: "oklch(0.10 0.007 260 / 0.95)",
               backdropFilter: "blur(24px)",
-              border: "1px solid oklch(0.20 0.008 260)",
+              border: "1px solid var(--c-bd2)",
               boxShadow: "0 8px 40px oklch(0 0 0 / 0.60), 0 2px 8px oklch(0 0 0 / 0.40), 0 0 0 1px oklch(0.20 0.008 260 / 0.5)",
             }}
           >
@@ -1343,7 +1343,7 @@ function CanvasInner({ projectId }: { projectId: number }) {
             </Tooltip>
 
             {/* Divider */}
-            <div style={{ width: 1, height: 18, background: "oklch(0.22 0.008 260)", flexShrink: 0 }} />
+            <div style={{ width: 1, height: 18, background: "var(--c-bd2)", flexShrink: 0 }} />
 
             {/* Zoom controls */}
             <Tooltip>
@@ -1351,9 +1351,9 @@ function CanvasInner({ projectId }: { projectId: number }) {
                 <button
                   onClick={() => reactFlow.zoomOut({ duration: 200 })}
                   className="w-8 h-8 rounded-xl flex items-center justify-center transition-all"
-                  style={{ color: "oklch(0.50 0.008 260)" }}
-                  onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.background = "oklch(0.18 0.008 260)"; (e.currentTarget as HTMLElement).style.color = "oklch(0.80 0.005 260)"; }}
-                  onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.background = "transparent"; (e.currentTarget as HTMLElement).style.color = "oklch(0.50 0.008 260)"; }}
+                  style={{ color: "var(--c-t3)" }}
+                  onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.background = "var(--c-bd1)"; (e.currentTarget as HTMLElement).style.color = "var(--c-t1)"; }}
+                  onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.background = "transparent"; (e.currentTarget as HTMLElement).style.color = "var(--c-t3)"; }}
                 >
                   <span style={{ fontSize: 16, lineHeight: 1, fontWeight: 300 }}>−</span>
                 </button>
@@ -1364,9 +1364,9 @@ function CanvasInner({ projectId }: { projectId: number }) {
             <button
               onClick={() => reactFlow.zoomTo(1, { duration: 300 })}
               className="h-7 px-2 rounded-lg text-[11px] font-mono transition-all tabular-nums"
-              style={{ color: "oklch(0.50 0.008 260)", minWidth: 44, textAlign: "center" }}
-              onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.background = "oklch(0.18 0.008 260)"; (e.currentTarget as HTMLElement).style.color = "oklch(0.80 0.005 260)"; }}
-              onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.background = "transparent"; (e.currentTarget as HTMLElement).style.color = "oklch(0.50 0.008 260)"; }}
+              style={{ color: "var(--c-t3)", minWidth: 44, textAlign: "center" }}
+              onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.background = "var(--c-bd1)"; (e.currentTarget as HTMLElement).style.color = "var(--c-t1)"; }}
+              onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.background = "transparent"; (e.currentTarget as HTMLElement).style.color = "var(--c-t3)"; }}
               title="点击重置为 100%"
             >
               {Math.round(viewport.zoom * 100)}%
@@ -1377,9 +1377,9 @@ function CanvasInner({ projectId }: { projectId: number }) {
                 <button
                   onClick={() => reactFlow.zoomIn({ duration: 200 })}
                   className="w-8 h-8 rounded-xl flex items-center justify-center transition-all"
-                  style={{ color: "oklch(0.50 0.008 260)" }}
-                  onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.background = "oklch(0.18 0.008 260)"; (e.currentTarget as HTMLElement).style.color = "oklch(0.80 0.005 260)"; }}
-                  onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.background = "transparent"; (e.currentTarget as HTMLElement).style.color = "oklch(0.50 0.008 260)"; }}
+                  style={{ color: "var(--c-t3)" }}
+                  onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.background = "var(--c-bd1)"; (e.currentTarget as HTMLElement).style.color = "var(--c-t1)"; }}
+                  onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.background = "transparent"; (e.currentTarget as HTMLElement).style.color = "var(--c-t3)"; }}
                 >
                   <span style={{ fontSize: 16, lineHeight: 1, fontWeight: 300 }}>+</span>
                 </button>
@@ -1392,9 +1392,9 @@ function CanvasInner({ projectId }: { projectId: number }) {
                 <button
                   onClick={() => reactFlow.fitView({ padding: 0.15, duration: 400 })}
                   className="w-8 h-8 rounded-xl flex items-center justify-center transition-all"
-                  style={{ color: "oklch(0.50 0.008 260)" }}
-                  onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.background = "oklch(0.18 0.008 260)"; (e.currentTarget as HTMLElement).style.color = "oklch(0.80 0.005 260)"; }}
-                  onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.background = "transparent"; (e.currentTarget as HTMLElement).style.color = "oklch(0.50 0.008 260)"; }}
+                  style={{ color: "var(--c-t3)" }}
+                  onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.background = "var(--c-bd1)"; (e.currentTarget as HTMLElement).style.color = "var(--c-t1)"; }}
+                  onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.background = "transparent"; (e.currentTarget as HTMLElement).style.color = "var(--c-t3)"; }}
                 >
                   <Maximize2 className="w-3.5 h-3.5" />
                 </button>
@@ -1403,7 +1403,7 @@ function CanvasInner({ projectId }: { projectId: number }) {
             </Tooltip>
 
             {/* Divider */}
-            <div style={{ width: 1, height: 18, background: "oklch(0.22 0.008 260)", flexShrink: 0 }} />
+            <div style={{ width: 1, height: 18, background: "var(--c-bd2)", flexShrink: 0 }} />
 
             {/* Run workflow button */}
             <Tooltip>
@@ -1441,7 +1441,7 @@ function CanvasInner({ projectId }: { projectId: number }) {
             </Tooltip>
 
             {/* Divider */}
-            <div style={{ width: 1, height: 18, background: "oklch(0.22 0.008 260)", flexShrink: 0 }} />
+            <div style={{ width: 1, height: 18, background: "var(--c-bd2)", flexShrink: 0 }} />
 
             {/* Shortcut help button */}
             <div className="relative">
@@ -1451,11 +1451,11 @@ function CanvasInner({ projectId }: { projectId: number }) {
                     onClick={() => setShowShortcuts((v) => !v)}
                     className="w-8 h-8 rounded-xl flex items-center justify-center transition-all text-xs font-bold"
                     style={{
-                      color: showShortcuts ? "oklch(0.80 0.18 285)" : "oklch(0.50 0.008 260)",
+                      color: showShortcuts ? "oklch(0.80 0.18 285)" : "var(--c-t3)",
                       background: showShortcuts ? "oklch(0.68 0.22 285 / 0.15)" : "transparent",
                     }}
-                    onMouseEnter={(e) => { if (!showShortcuts) { (e.currentTarget as HTMLElement).style.background = "oklch(0.18 0.008 260)"; (e.currentTarget as HTMLElement).style.color = "oklch(0.80 0.005 260)"; } }}
-                    onMouseLeave={(e) => { if (!showShortcuts) { (e.currentTarget as HTMLElement).style.background = "transparent"; (e.currentTarget as HTMLElement).style.color = "oklch(0.50 0.008 260)"; } }}
+                    onMouseEnter={(e) => { if (!showShortcuts) { (e.currentTarget as HTMLElement).style.background = "var(--c-bd1)"; (e.currentTarget as HTMLElement).style.color = "var(--c-t1)"; } }}
+                    onMouseLeave={(e) => { if (!showShortcuts) { (e.currentTarget as HTMLElement).style.background = "transparent"; (e.currentTarget as HTMLElement).style.color = "var(--c-t3)"; } }}
                   >
                     ?
                   </button>
@@ -1471,11 +1471,11 @@ function CanvasInner({ projectId }: { projectId: number }) {
                     width: 280,
                     background: "oklch(0.10 0.007 260 / 0.97)",
                     backdropFilter: "blur(24px)",
-                    border: "1px solid oklch(0.20 0.008 260)",
+                    border: "1px solid var(--c-bd2)",
                     boxShadow: "0 16px 48px oklch(0 0 0 / 0.70), 0 4px 12px oklch(0 0 0 / 0.40)",
                   }}
                 >
-                  <p className="text-[10px] font-semibold uppercase tracking-widest mb-3" style={{ color: "oklch(0.42 0.006 260)" }}>快捷键速查</p>
+                  <p className="text-[10px] font-semibold uppercase tracking-widest mb-3" style={{ color: "var(--c-t4)" }}>快捷键速查</p>
                   {[
                     { group: "画布操作", items: [
                       { key: "Ctrl + 滚轮", desc: "缩放画布" },
@@ -1504,16 +1504,16 @@ function CanvasInner({ projectId }: { projectId: number }) {
                     ]},
                   ].map(({ group, items }) => (
                     <div key={group} className="mb-3 last:mb-0">
-                      <p className="text-[9px] font-semibold uppercase tracking-widest mb-1.5" style={{ color: "oklch(0.35 0.006 260)" }}>{group}</p>
+                      <p className="text-[9px] font-semibold uppercase tracking-widest mb-1.5" style={{ color: "var(--c-t4)" }}>{group}</p>
                       <div className="flex flex-col gap-1">
                         {items.map(({ key, desc }) => (
                           <div key={key} className="flex items-center justify-between">
-                            <span style={{ fontSize: 11, color: "oklch(0.65 0.005 260)" }}>{desc}</span>
+                            <span style={{ fontSize: 11, color: "var(--c-t2)" }}>{desc}</span>
                             <span
                               className="font-mono text-[10px] px-1.5 py-0.5 rounded-md"
                               style={{
-                                background: "oklch(0.16 0.007 260)",
-                                border: "1px solid oklch(0.24 0.008 260)",
+                                background: "var(--c-elevated)",
+                                border: "1px solid var(--c-bd3)",
                                 color: "oklch(0.72 0.12 285)",
                               }}
                             >{key}</span>
@@ -1535,7 +1535,7 @@ function CanvasInner({ projectId }: { projectId: number }) {
                     width: 32, height: 32, borderRadius: 10,
                     background: showConnectionHints ? "oklch(0.68 0.22 285 / 0.15)" : "transparent",
                     border: showConnectionHints ? "1px solid oklch(0.68 0.22 285 / 0.35)" : "1px solid transparent",
-                    color: showConnectionHints ? "oklch(0.78 0.18 285)" : "oklch(0.48 0.008 260)",
+                    color: showConnectionHints ? "oklch(0.78 0.18 285)" : "var(--c-t4)",
                     display: "flex", alignItems: "center", justifyContent: "center",
                     cursor: "pointer",
                     transition: "all 150ms ease",
@@ -1546,6 +1546,53 @@ function CanvasInner({ projectId }: { projectId: number }) {
               </TooltipTrigger>
               <TooltipContent side="top" className="text-xs">连线指引</TooltipContent>
             </Tooltip>
+
+            {/* Canvas mode toggle: Professional ↔ Creative */}
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <button
+                  onClick={() => setCanvasMode(canvasMode === "creative" ? "professional" : "creative")}
+                  className="h-7 px-2.5 rounded-lg flex items-center gap-1.5 text-xs font-medium transition-all"
+                  style={{
+                    background: canvasMode === "creative"
+                      ? "oklch(0.68 0.22 285 / 0.12)"
+                      : "transparent",
+                    border: canvasMode === "creative"
+                      ? "1px solid oklch(0.68 0.22 285 / 0.35)"
+                      : "1px solid transparent",
+                    color: canvasMode === "creative"
+                      ? "oklch(0.68 0.22 285)"
+                      : "var(--c-t3)",
+                  }}
+                  onMouseEnter={(e) => {
+                    if (canvasMode !== "creative") {
+                      (e.currentTarget as HTMLElement).style.background = "var(--c-elevated)";
+                      (e.currentTarget as HTMLElement).style.color = "var(--c-t1)";
+                    }
+                  }}
+                  onMouseLeave={(e) => {
+                    if (canvasMode !== "creative") {
+                      (e.currentTarget as HTMLElement).style.background = "transparent";
+                      (e.currentTarget as HTMLElement).style.color = "var(--c-t3)";
+                    }
+                  }}
+                >
+                  <Palette className="w-3.5 h-3.5" />
+                  <span>{canvasMode === "creative" ? "创意" : "专业"}</span>
+                </button>
+              </TooltipTrigger>
+              <TooltipContent side="top" className="text-xs">
+                {canvasMode === "creative"
+                  ? "当前：创意模式（LibTV 风格）· 点击切换专业模式"
+                  : "切换到创意模式（白色画布 · 媒体优先）"}
+              </TooltipContent>
+            </Tooltip>
+
+            {/* Theme switcher */}
+            <ThemeSwitcher />
+
+            {/* Canvas background picker */}
+            <CanvasBgPicker value={canvasBg} onChange={setCanvasBg} />
           </div>
 
           {/* Filmstrip panel */}
@@ -1579,11 +1626,11 @@ function CanvasInner({ projectId }: { projectId: number }) {
               style={{
                 background: "oklch(0.12 0.007 260 / 0.95)",
                 backdropFilter: "blur(20px)",
-                border: "1px solid oklch(0.20 0.008 260)",
+                border: "1px solid var(--c-bd2)",
                 boxShadow: "0 8px 32px oklch(0 0 0 / 0.5)",
               }}
             >
-              <p className="text-[10px] font-medium uppercase tracking-wider mb-2.5" style={{ color: "oklch(0.42 0.006 260)" }}>
+              <p className="text-[10px] font-medium uppercase tracking-wider mb-2.5" style={{ color: "var(--c-t4)" }}>
                 在线协作者
               </p>
               <div className="flex items-center gap-2 py-1">
@@ -1594,8 +1641,8 @@ function CanvasInner({ projectId }: { projectId: number }) {
                   {(user?.name ?? "U")[0].toUpperCase()}
                 </div>
                 <div>
-                  <p className="text-xs font-medium" style={{ color: "oklch(0.80 0.005 260)" }}>{user?.name ?? "我"}</p>
-                  <p className="text-[10px]" style={{ color: "oklch(0.42 0.006 260)" }}>本人</p>
+                  <p className="text-xs font-medium" style={{ color: "var(--c-t1)" }}>{user?.name ?? "我"}</p>
+                  <p className="text-[10px]" style={{ color: "var(--c-t4)" }}>本人</p>
                 </div>
               </div>
               {collaboratorList.map((c) => (
@@ -1607,13 +1654,13 @@ function CanvasInner({ projectId }: { projectId: number }) {
                     {c.userName[0]?.toUpperCase()}
                   </div>
                   <div>
-                    <p className="text-xs font-medium" style={{ color: "oklch(0.80 0.005 260)" }}>{c.userName}</p>
-                    <p className="text-[10px]" style={{ color: "oklch(0.42 0.006 260)" }}>协作中</p>
+                    <p className="text-xs font-medium" style={{ color: "var(--c-t1)" }}>{c.userName}</p>
+                    <p className="text-[10px]" style={{ color: "var(--c-t4)" }}>协作中</p>
                   </div>
                 </div>
               ))}
               {collaboratorList.length === 0 && (
-                <p className="text-xs mt-1" style={{ color: "oklch(0.42 0.006 260)" }}>暂无其他协作者</p>
+                <p className="text-xs mt-1" style={{ color: "var(--c-t4)" }}>暂无其他协作者</p>
               )}
             </div>
           )}
@@ -1635,7 +1682,7 @@ function CanvasInner({ projectId }: { projectId: number }) {
             style={{
               background: "oklch(0.09 0.006 260 / 0.95)",
               backdropFilter: "blur(20px)",
-              borderLeft: "1px solid oklch(0.18 0.008 260)",
+              borderLeft: "1px solid var(--c-bd1)",
             }}
           >
             <AssetPanel projectId={projectId} onClose={() => setShowAssets(false)} />
@@ -1650,8 +1697,8 @@ function CanvasInner({ projectId }: { projectId: number }) {
             top: 0,
             bottom: 0,
             width: 200,
-            background: "oklch(0.10 0.006 260)",
-            borderLeft: "1px solid oklch(0.18 0.007 260)",
+            background: "var(--c-base)",
+            borderLeft: "1px solid var(--c-bd1)",
             display: "flex",
             flexDirection: "column",
             transform: showStatsSidebar ? "translateX(0)" : "translateX(100%)",
@@ -1661,7 +1708,7 @@ function CanvasInner({ projectId }: { projectId: number }) {
           }}
         >
           <div className="p-3 flex flex-col gap-3">
-            <p className="text-[10px] font-semibold uppercase tracking-widest" style={{ color: "oklch(0.42 0.006 260)" }}>
+            <p className="text-[10px] font-semibold uppercase tracking-widest" style={{ color: "var(--c-t4)" }}>
               画布统计
             </p>
 
@@ -1677,7 +1724,7 @@ function CanvasInner({ projectId }: { projectId: number }) {
                         className="w-2 h-2 rounded-full flex-shrink-0"
                         style={{ background: config.color }}
                       />
-                      <span style={{ fontSize: 11, color: "oklch(0.65 0.005 260)" }}>{config.label}</span>
+                      <span style={{ fontSize: 11, color: "var(--c-t2)" }}>{config.label}</span>
                     </div>
                     <span
                       className="font-mono text-[11px] px-1.5 py-0.5 rounded"
@@ -1689,42 +1736,42 @@ function CanvasInner({ projectId }: { projectId: number }) {
                 );
               })}
               {nodes.length === 0 && (
-                <p style={{ fontSize: 11, color: "oklch(0.38 0.006 260)" }}>暂无节点</p>
+                <p style={{ fontSize: 11, color: "var(--c-t4)" }}>暂无节点</p>
               )}
             </div>
 
-            <div style={{ height: 1, background: "oklch(0.18 0.007 260)" }} />
+            <div style={{ height: 1, background: "var(--c-bd1)" }} />
 
             {/* Edge count */}
             <div className="flex items-center justify-between">
-              <span style={{ fontSize: 11, color: "oklch(0.55 0.005 260)" }}>连接数</span>
-              <span className="font-mono text-[11px]" style={{ color: "oklch(0.65 0.005 260)" }}>{edges.length}</span>
+              <span style={{ fontSize: 11, color: "var(--c-t3)" }}>连接数</span>
+              <span className="font-mono text-[11px]" style={{ color: "var(--c-t2)" }}>{edges.length}</span>
             </div>
 
             {/* Total nodes */}
             <div className="flex items-center justify-between">
-              <span style={{ fontSize: 11, color: "oklch(0.55 0.005 260)" }}>节点总数</span>
-              <span className="font-mono text-[11px]" style={{ color: "oklch(0.65 0.005 260)" }}>{nodes.length}</span>
+              <span style={{ fontSize: 11, color: "var(--c-t3)" }}>节点总数</span>
+              <span className="font-mono text-[11px]" style={{ color: "var(--c-t2)" }}>{nodes.length}</span>
             </div>
 
             {/* Last run status */}
             {(runState.completedIds.length > 0 || runState.failedIds.length > 0) && !runState.running && (
               <>
-                <div style={{ height: 1, background: "oklch(0.18 0.007 260)" }} />
+                <div style={{ height: 1, background: "var(--c-bd1)" }} />
                 <div>
-                  <p className="text-[10px] font-semibold uppercase tracking-widest mb-1.5" style={{ color: "oklch(0.42 0.006 260)" }}>
+                  <p className="text-[10px] font-semibold uppercase tracking-widest mb-1.5" style={{ color: "var(--c-t4)" }}>
                     上次运行
                   </p>
                   <div className="flex items-center gap-1.5">
                     <div className="w-2 h-2 rounded-full" style={{ background: "oklch(0.72 0.18 155)" }} />
-                    <span style={{ fontSize: 11, color: "oklch(0.65 0.005 260)" }}>
+                    <span style={{ fontSize: 11, color: "var(--c-t2)" }}>
                       {runState.completedIds.length} 完成
                     </span>
                   </div>
                   {runState.failedIds.length > 0 && (
                     <div className="flex items-center gap-1.5 mt-0.5">
                       <div className="w-2 h-2 rounded-full" style={{ background: "oklch(0.62 0.22 25)" }} />
-                      <span style={{ fontSize: 11, color: "oklch(0.65 0.005 260)" }}>
+                      <span style={{ fontSize: 11, color: "var(--c-t2)" }}>
                         {runState.failedIds.length} 失败
                       </span>
                     </div>
@@ -1743,14 +1790,14 @@ function CanvasInner({ projectId }: { projectId: number }) {
           style={{
             background: "oklch(0.10 0.007 260 / 0.95)",
             backdropFilter: "blur(20px)",
-            borderTop: "1px solid oklch(0.20 0.008 260)",
+            borderTop: "1px solid var(--c-bd2)",
           }}
         >
           <Loader2 className="w-3.5 h-3.5 animate-spin flex-shrink-0" style={{ color: "oklch(0.68 0.22 285)" }} />
           <div className="flex-1">
             <div
               className="h-1.5 rounded-full overflow-hidden"
-              style={{ background: "oklch(0.18 0.008 260)" }}
+              style={{ background: "var(--c-bd1)" }}
             >
               <div
                 className="h-full rounded-full transition-all duration-300"
@@ -1763,7 +1810,7 @@ function CanvasInner({ projectId }: { projectId: number }) {
               />
             </div>
           </div>
-          <span className="text-[11px] font-mono flex-shrink-0" style={{ color: "oklch(0.55 0.008 260)" }}>
+          <span className="text-[11px] font-mono flex-shrink-0" style={{ color: "var(--c-t3)" }}>
             运行中 {runState.completedIds.length}/{runState.runnableCount}
           </span>
         </div>
@@ -1816,7 +1863,7 @@ export default function Canvas() {
     return (
       <div
         className="w-screen h-screen flex flex-col items-center justify-center gap-3"
-        style={{ background: "oklch(0.07 0.005 260)" }}
+        style={{ background: "var(--c-canvas)" }}
       >
         <div
           className="w-10 h-10 rounded-xl flex items-center justify-center"
@@ -1824,7 +1871,7 @@ export default function Canvas() {
         >
           <Film className="w-5 h-5 text-white" />
         </div>
-        <div className="flex items-center gap-2 text-sm" style={{ color: "oklch(0.45 0.008 260)" }}>
+        <div className="flex items-center gap-2 text-sm" style={{ color: "var(--c-t4)" }}>
           <Loader2 className="w-4 h-4 animate-spin" />
           验证身份中...
         </div>
@@ -1834,7 +1881,7 @@ export default function Canvas() {
 
   if (!projectId || isNaN(projectId)) {
     return (
-      <div className="w-screen h-screen flex items-center justify-center" style={{ background: "oklch(0.07 0.005 260)", color: "oklch(0.45 0.008 260)" }}>
+      <div className="w-screen h-screen flex items-center justify-center" style={{ background: "var(--c-canvas)", color: "var(--c-t4)" }}>
         无效的项目 ID
       </div>
     );

@@ -1,4 +1,4 @@
-import { useEffect, useRef } from "react";
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { NODE_TYPE_LIST } from "../../lib/nodeConfig";
 import type { NodeType } from "../../../../shared/types";
 import {
@@ -23,7 +23,9 @@ export function ContextMenu({
   onClose, onAddNode, onDeleteNode, onDuplicateNode, onRunWorkflow,
 }: ContextMenuProps) {
   const menuRef = useRef<HTMLDivElement>(null);
+  const [pos, setPos] = useState<{ left: number; top: number; maxHeight: number } | null>(null);
 
+  // Close on outside click / Escape
   useEffect(() => {
     const handleClick = (e: MouseEvent) => {
       if (menuRef.current && !menuRef.current.contains(e.target as Node)) onClose();
@@ -37,10 +39,30 @@ export function ContextMenu({
     };
   }, [onClose]);
 
+  // Measure actual rendered size, then compute smart position
+  useLayoutEffect(() => {
+    if (!menuRef.current) return;
+    const el = menuRef.current;
+    const { width, height } = el.getBoundingClientRect();
+    const vw = window.innerWidth;
+    const vh = window.innerHeight;
+    const gap = 8;
+
+    // Horizontal: prefer right of cursor, flip left if needed
+    let left = x;
+    if (x + width + gap > vw) left = Math.max(gap, x - width);
+
+    // Vertical: prefer below cursor, flip above if needed
+    let top = y;
+    const maxHeight = Math.min(height, vh - gap * 2);
+    if (y + maxHeight + gap > vh) {
+      top = Math.max(gap, vh - maxHeight - gap);
+    }
+
+    setPos({ left, top, maxHeight });
+  }, [x, y]);
+
   const menuWidth = 210;
-  const menuHeight = type === "canvas" ? 360 : (onRunWorkflow ? 148 : 110);
-  const left = Math.min(x, window.innerWidth - menuWidth - 8);
-  const top = Math.min(y, window.innerHeight - menuHeight - 8);
 
   return (
     <div
@@ -48,15 +70,17 @@ export function ContextMenu({
       className="animate-scale-in"
       style={{
         position: "fixed",
-        left,
-        top,
+        left: pos?.left ?? x,
+        top: pos?.top ?? y,
         zIndex: 9999,
-        background: "oklch(0.12 0.007 260)",
-        border: "1px solid oklch(0.22 0.008 260)",
+        background: "var(--c-base)",
+        border: "1px solid var(--c-bd2)",
         borderRadius: 12,
         boxShadow: "0 8px 40px oklch(0 0 0 / 0.65), 0 2px 8px oklch(0 0 0 / 0.4)",
         minWidth: menuWidth,
         overflow: "hidden",
+        // Before measurement: invisible to avoid position flash
+        visibility: pos ? "visible" : "hidden",
       }}
     >
       {type === "canvas" ? (
@@ -64,18 +88,24 @@ export function ContextMenu({
           <div
             style={{
               padding: "8px 10px 6px",
-              borderBottom: "1px solid oklch(0.18 0.008 260)",
+              borderBottom: "1px solid var(--c-bd1)",
               display: "flex",
               alignItems: "center",
               gap: 6,
             }}
           >
-            <Plus className="w-3 h-3" style={{ color: "oklch(0.45 0.008 260)" }} />
-            <span style={{ fontSize: 10, fontWeight: 500, textTransform: "uppercase", letterSpacing: "0.06em", color: "oklch(0.42 0.006 260)" }}>
+            <Plus className="w-3 h-3" style={{ color: "var(--c-t4)" }} />
+            <span style={{ fontSize: 10, fontWeight: 500, textTransform: "uppercase", letterSpacing: "0.06em", color: "var(--c-t4)" }}>
               添加节点
             </span>
           </div>
-          <div style={{ padding: "4px" }}>
+          <div style={{
+            padding: "4px",
+            overflowY: "auto",
+            maxHeight: pos ? pos.maxHeight - 40 : "none",
+            scrollbarWidth: "thin",
+            scrollbarColor: "var(--c-bd3) transparent",
+          }}>
             {NODE_TYPE_LIST.map((config) => {
               const Icon = NODE_ICONS[config.icon] ?? FileText;
               return (
@@ -93,17 +123,17 @@ export function ContextMenu({
                     background: "transparent",
                     border: "none",
                     textAlign: "left",
-                    color: "oklch(0.70 0.008 260)",
+                    color: "var(--c-t2)",
                     borderRadius: 8,
                     transition: "all 120ms ease",
                   }}
                   onMouseEnter={(e) => {
-                    (e.currentTarget as HTMLElement).style.background = "oklch(0.16 0.008 260)";
-                    (e.currentTarget as HTMLElement).style.color = "oklch(0.90 0.005 260)";
+                    (e.currentTarget as HTMLElement).style.background = "var(--c-elevated)";
+                    (e.currentTarget as HTMLElement).style.color = "var(--c-t1)";
                   }}
                   onMouseLeave={(e) => {
                     (e.currentTarget as HTMLElement).style.background = "transparent";
-                    (e.currentTarget as HTMLElement).style.color = "oklch(0.70 0.008 260)";
+                    (e.currentTarget as HTMLElement).style.color = "var(--c-t2)";
                   }}
                 >
                   <div
@@ -119,7 +149,7 @@ export function ContextMenu({
                   </div>
                   <div>
                     <div style={{ fontWeight: 500, lineHeight: 1.2 }}>{config.label}</div>
-                    <div style={{ fontSize: 10, color: "oklch(0.40 0.006 260)", marginTop: 1 }}>{config.defaultTitle}</div>
+                    <div style={{ fontSize: 10, color: "var(--c-t4)", marginTop: 1 }}>{config.defaultTitle}</div>
                   </div>
                 </button>
               );
@@ -146,7 +176,7 @@ export function ContextMenu({
             </button>
           )}
           {onRunWorkflow && (onDuplicateNode || onDeleteNode) && (
-            <div style={{ height: 1, background: "oklch(0.18 0.008 260)", margin: "3px 6px" }} />
+            <div style={{ height: 1, background: "var(--c-bd1)", margin: "3px 6px" }} />
           )}
           {onDuplicateNode && (
             <button
@@ -155,18 +185,18 @@ export function ContextMenu({
                 display: "flex", alignItems: "center", gap: 10,
                 width: "100%", padding: "7px 8px", fontSize: 12,
                 cursor: "pointer", background: "transparent", border: "none",
-                textAlign: "left", color: "oklch(0.70 0.008 260)", borderRadius: 8,
+                textAlign: "left", color: "var(--c-t2)", borderRadius: 8,
                 transition: "all 120ms ease",
               }}
-              onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.background = "oklch(0.16 0.008 260)"; (e.currentTarget as HTMLElement).style.color = "oklch(0.90 0.005 260)"; }}
-              onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.background = "transparent"; (e.currentTarget as HTMLElement).style.color = "oklch(0.70 0.008 260)"; }}
+              onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.background = "var(--c-elevated)"; (e.currentTarget as HTMLElement).style.color = "var(--c-t1)"; }}
+              onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.background = "transparent"; (e.currentTarget as HTMLElement).style.color = "var(--c-t2)"; }}
             >
-              <Copy className="w-3.5 h-3.5" style={{ color: "oklch(0.50 0.008 260)" }} />
+              <Copy className="w-3.5 h-3.5" style={{ color: "var(--c-t3)" }} />
               复制节点
             </button>
           )}
           {onDuplicateNode && onDeleteNode && (
-            <div style={{ height: 1, background: "oklch(0.18 0.008 260)", margin: "3px 6px" }} />
+            <div style={{ height: 1, background: "var(--c-bd1)", margin: "3px 6px" }} />
           )}
           {onDeleteNode && (
             <button

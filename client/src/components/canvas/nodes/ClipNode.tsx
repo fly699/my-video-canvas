@@ -1,4 +1,4 @@
-import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { memo, useCallback, useEffect, useRef, useState } from "react";
 import { Handle, Position } from "@xyflow/react";
 import { BaseNode } from "../BaseNode";
 import { useCanvasStore } from "../../../hooks/useCanvasStore";
@@ -23,14 +23,14 @@ interface Props {
 
 const accent = "oklch(0.68 0.20 55)";
 const accentA = (a: number) => `oklch(0.68 0.20 55 / ${a})`;
-const BORDER_DEFAULT = "oklch(0.20 0.008 260)";
+const BORDER_DEFAULT = "var(--c-bd2)";
 
 const labelStyle: React.CSSProperties = {
   fontSize: 10.5,
   fontWeight: 600,
   textTransform: "uppercase" as const,
   letterSpacing: "0.06em",
-  color: "oklch(0.45 0.008 260)",
+  color: "var(--c-t4)",
   display: "block",
   marginBottom: 5,
 };
@@ -73,7 +73,7 @@ function TrimBar({
       <div
         ref={trackRef}
         className="nodrag relative h-6 rounded-md cursor-pointer select-none"
-        style={{ background: "oklch(0.09 0.006 260)", border: `1px solid oklch(0.20 0.008 260)` }}
+        style={{ background: "var(--c-input)", border: `1px solid var(--c-bd2)` }}
         onClick={handleTrackClick}
       >
         {/* Selected range */}
@@ -92,7 +92,7 @@ function TrimBar({
           className="absolute top-0 bottom-0 w-0.5"
           style={{
             left: pct(Math.min(Math.max(currentTime, 0), duration)),
-            background: "oklch(0.90 0.006 260)",
+            background: "var(--c-t1)",
             pointerEvents: "none",
           }}
         />
@@ -138,7 +138,7 @@ function TrimBar({
         />
       </div>
       {/* Time labels */}
-      <div className="flex justify-between" style={{ fontSize: 10, color: "oklch(0.42 0.006 260)" }}>
+      <div className="flex justify-between" style={{ fontSize: 10, color: "var(--c-t4)" }}>
         <span style={{ color: accent }}>入 {fmt(startTime)}</span>
         <span>总 {fmt(duration)}</span>
         <span style={{ color: accent }}>出 {fmt(endTime)}</span>
@@ -163,28 +163,33 @@ export const ClipNode = memo(function ClipNode({ id, selected, data }: Props) {
   );
 
   // ── Auto-detect connected upstream nodes ──────────────────────────────────
-  const { inputVideoUrl, inputAudioUrl } = useCanvasStore(
-    useMemo(() => (s: ReturnType<typeof useCanvasStore.getState>) => {
-      const upEdges = s.edges.filter(e => e.target === id);
-      let videoUrl: string | null = null;
-      let audioUrl: string | null = null;
-
-      for (const edge of upEdges) {
+  // Split into two primitive-returning selectors to avoid object identity
+  // churn that would cause Zustand to re-subscribe on every store change.
+  const inputVideoUrl = useCanvasStore(
+    useCallback((s: ReturnType<typeof useCanvasStore.getState>) => {
+      for (const edge of s.edges.filter(e => e.target === id && e.targetHandle === "video-in")) {
         const node = s.nodes.find(n => n.id === edge.source);
         if (!node) continue;
         const p = node.data.payload as Record<string, unknown>;
+        if (p.resultVideoUrl) return p.resultVideoUrl as string;
+        if (p.url && (p.type === "video" || node.data.nodeType === "video_task"))
+          return p.url as string;
+      }
+      return null;
+    }, [id]),
+  );
 
-        if (!videoUrl) {
-          if (p.resultVideoUrl) videoUrl = p.resultVideoUrl as string;
-          else if (p.url && (p.type === "video" || node.data.nodeType === "video_task")) {
-            videoUrl = p.url as string;
-          }
-        }
-        if (!audioUrl && node.data.nodeType === "audio" && p.url) {
-          audioUrl = p.url as string;
+  const inputAudioUrl = useCanvasStore(
+    useCallback((s: ReturnType<typeof useCanvasStore.getState>) => {
+      for (const edge of s.edges.filter(e => e.target === id && e.targetHandle === "audio-in")) {
+        const node = s.nodes.find(n => n.id === edge.source);
+        if (!node) continue;
+        if (node.data.nodeType === "audio") {
+          const p = node.data.payload as Record<string, unknown>;
+          if (p.url) return p.url as string;
         }
       }
-      return { inputVideoUrl: videoUrl, inputAudioUrl: audioUrl };
+      return null;
     }, [id]),
   );
 
@@ -193,8 +198,8 @@ export const ClipNode = memo(function ClipNode({ id, selected, data }: Props) {
 
   const duration = payload.sourceDuration ?? 0;
   const startTime = payload.startTime ?? 0;
-  const endTime = payload.endTime ?? duration;
-  const speed = payload.speed ?? 1.0;
+  const endTime = payload.endTime ?? (payload.sourceDuration ?? Infinity);
+  const speed = Math.max(0.01, payload.speed ?? 1.0);
   const audioVolume = payload.audioVolume ?? 1.0;
 
   // When source video loads, capture duration and init trim points
@@ -212,7 +217,15 @@ export const ClipNode = memo(function ClipNode({ id, selected, data }: Props) {
   };
 
   const handleTimeUpdate = (e: React.SyntheticEvent<HTMLVideoElement>) => {
-    setCurrentTime((e.target as HTMLVideoElement).currentTime);
+    const v = e.target as HTMLVideoElement;
+    setCurrentTime(v.currentTime);
+    // Use !v.paused instead of isPlaying to avoid stale-closure misses during
+    // the window between v.play() being called and the next React render
+    if (!v.paused && v.currentTime >= endTime) {
+      v.pause();
+      v.currentTime = startTime;
+      setIsPlaying(false);
+    }
   };
 
   const togglePlay = () => {
@@ -222,16 +235,19 @@ export const ClipNode = memo(function ClipNode({ id, selected, data }: Props) {
     else { v.play().then(() => setIsPlaying(true)).catch(() => {}); }
   };
 
-  // Clamp playback to trim range
+  // Clamp playback to trim range — poll while playing
   useEffect(() => {
     const v = videoRef.current;
     if (!v || !isPlaying) return;
-    if (v.currentTime >= endTime) {
-      v.pause();
-      v.currentTime = startTime;
-      setIsPlaying(false);
-    }
-  });
+    const timerId = setInterval(() => {
+      if (v.currentTime >= endTime) {
+        v.pause();
+        v.currentTime = startTime;
+        setIsPlaying(false);
+      }
+    }, 100);
+    return () => clearInterval(timerId);
+  }, [isPlaying, endTime, startTime]);
 
   const seekToStart = () => {
     if (videoRef.current) videoRef.current.currentTime = startTime;
@@ -292,20 +308,20 @@ export const ClipNode = memo(function ClipNode({ id, selected, data }: Props) {
     : activeVideoUrl ?? undefined;
 
   return (
-    <BaseNode id={id} selected={selected} nodeType="clip" title={data.title} minHeight={280} resizable>
+    <BaseNode id={id} selected={selected} nodeType="clip" title={data.title} minHeight={280} resizable showHandles={false}>
       {/* Input handles — square = target/receives */}
       <Handle
         type="target"
         position={Position.Left}
         id="video-in"
-        style={{ top: "35%", borderRadius: 3, background: `${accent}90`, border: `2px solid oklch(0.12 0.007 260)`, width: 12, height: 12, left: -6 }}
+        style={{ top: "35%", borderRadius: 3, background: `${accent}90`, border: `2px solid var(--c-surface)`, width: 12, height: 12, left: -6 }}
         title="视频输入 ← 连接视频任务或素材"
       />
       <Handle
         type="target"
         position={Position.Left}
         id="audio-in"
-        style={{ top: "65%", borderRadius: 3, background: "oklch(0.68 0.20 340 / 0.85)", border: `2px solid oklch(0.12 0.007 260)`, width: 12, height: 12, left: -6 }}
+        style={{ top: "65%", borderRadius: 3, background: "oklch(0.68 0.20 340 / 0.85)", border: `2px solid var(--c-surface)`, width: 12, height: 12, left: -6 }}
         title="音频输入 ← 连接音频节点"
       />
       {/* Output handle — circle = source/sends */}
@@ -313,7 +329,7 @@ export const ClipNode = memo(function ClipNode({ id, selected, data }: Props) {
         type="source"
         position={Position.Right}
         id="clip-out"
-        style={{ borderRadius: "50%", background: accent, border: `2px solid oklch(0.12 0.007 260)`, width: 12, height: 12, right: -6 }}
+        style={{ borderRadius: "50%", background: accent, border: `2px solid var(--c-surface)`, width: 12, height: 12, right: -6 }}
         title="剪辑输出 → 连接素材节点保存"
       />
 
@@ -325,8 +341,8 @@ export const ClipNode = memo(function ClipNode({ id, selected, data }: Props) {
             className="flex flex-col items-center justify-center gap-2 rounded-lg py-6"
             style={{ background: accentA(0.05), border: `1.5px dashed ${accentA(0.25)}` }}
           >
-            <ArrowRight style={{ width: 20, height: 20, color: "oklch(0.35 0.006 260)" }} />
-            <span style={{ fontSize: 11, color: "oklch(0.40 0.006 260)" }}>连接视频任务或素材节点</span>
+            <ArrowRight style={{ width: 20, height: 20, color: "var(--c-t4)" }} />
+            <span style={{ fontSize: 11, color: "var(--c-t4)" }}>连接视频任务或素材节点</span>
           </div>
         )}
 
@@ -337,7 +353,7 @@ export const ClipNode = memo(function ClipNode({ id, selected, data }: Props) {
             {payload.outputUrl && (
               <div
                 className="flex gap-0.5 p-0.5 rounded-lg"
-                style={{ background: "oklch(0.09 0.006 260)", border: "1px solid oklch(0.18 0.008 260)" }}
+                style={{ background: "var(--c-input)", border: "1px solid var(--c-bd1)" }}
               >
                 {(["source", "output"] as const).map((m) => (
                   <button
@@ -347,7 +363,7 @@ export const ClipNode = memo(function ClipNode({ id, selected, data }: Props) {
                     style={{
                       background: previewMode === m ? accentA(0.18) : "transparent",
                       border: `1px solid ${previewMode === m ? accentA(0.40) : "transparent"}`,
-                      color: previewMode === m ? accent : "oklch(0.48 0.008 260)",
+                      color: previewMode === m ? accent : "var(--c-t3)",
                       cursor: "pointer",
                     }}
                   >
@@ -359,8 +375,9 @@ export const ClipNode = memo(function ClipNode({ id, selected, data }: Props) {
             )}
 
             {/* Video */}
-            <div className="relative rounded-lg overflow-hidden" style={{ background: "oklch(0.06 0.004 260)", border: `1px solid ${accentA(0.25)}` }}>
+            <div className="relative rounded-lg overflow-hidden" style={{ background: "var(--c-canvas)", border: `1px solid ${accentA(0.25)}` }}>
               <video
+                key={displayUrl}
                 ref={videoRef}
                 src={displayUrl}
                 className="w-full nodrag"
@@ -378,7 +395,7 @@ export const ClipNode = memo(function ClipNode({ id, selected, data }: Props) {
                 <button
                   onClick={seekToStart}
                   className="nodrag flex items-center justify-center w-5 h-5 rounded transition-all"
-                  style={{ color: "oklch(0.65 0.006 260)", background: "none", border: "none", cursor: "pointer" }}
+                  style={{ color: "var(--c-t2)", background: "none", border: "none", cursor: "pointer" }}
                 >
                   <RotateCcw style={{ width: 11, height: 11 }} />
                 </button>
@@ -389,19 +406,19 @@ export const ClipNode = memo(function ClipNode({ id, selected, data }: Props) {
                 >
                   {isPlaying ? <Pause style={{ width: 11, height: 11 }} /> : <Play style={{ width: 11, height: 11 }} />}
                 </button>
-                <span style={{ fontSize: 10, color: "oklch(0.55 0.006 260)", fontVariantNumeric: "tabular-nums" }}>
+                <span style={{ fontSize: 10, color: "var(--c-t3)", fontVariantNumeric: "tabular-nums" }}>
                   {fmt(currentTime)}
                 </span>
                 {/* Mini progress */}
                 {duration > 0 && (
-                  <div className="flex-1 h-1 rounded-full" style={{ background: "oklch(0.20 0.006 260)" }}>
+                  <div className="flex-1 h-1 rounded-full" style={{ background: "var(--c-bd2)" }}>
                     <div
                       className="h-full rounded-full"
                       style={{ width: `${(currentTime / duration) * 100}%`, background: accent }}
                     />
                   </div>
                 )}
-                <span style={{ fontSize: 10, color: "oklch(0.42 0.006 260)", fontVariantNumeric: "tabular-nums" }}>
+                <span style={{ fontSize: 10, color: "var(--c-t4)", fontVariantNumeric: "tabular-nums" }}>
                   {fmt(duration)}
                 </span>
               </div>
@@ -434,7 +451,7 @@ export const ClipNode = memo(function ClipNode({ id, selected, data }: Props) {
                   className="flex justify-between items-center px-2 py-1.5 rounded-lg"
                   style={{ background: accentA(0.06), border: `1px solid ${accentA(0.20)}` }}
                 >
-                  <span style={{ fontSize: 10.5, color: "oklch(0.52 0.006 260)" }}>
+                  <span style={{ fontSize: 10.5, color: "var(--c-t3)" }}>
                     选段时长
                   </span>
                   <span style={{ fontSize: 12, fontWeight: 600, color: accent, fontVariantNumeric: "tabular-nums" }}>
@@ -452,9 +469,9 @@ export const ClipNode = memo(function ClipNode({ id, selected, data }: Props) {
                         onClick={() => update("speed", v)}
                         className="nodrag flex-1 py-1 rounded text-[10px] font-medium transition-all"
                         style={{
-                          background: Math.abs(speed - v) < 0.01 ? accentA(0.18) : "oklch(0.09 0.006 260)",
-                          border: `1px solid ${Math.abs(speed - v) < 0.01 ? accentA(0.4) : "oklch(0.20 0.008 260)"}`,
-                          color: Math.abs(speed - v) < 0.01 ? accent : "oklch(0.50 0.008 260)",
+                          background: Math.abs(speed - v) < 0.01 ? accentA(0.18) : "var(--c-input)",
+                          border: `1px solid ${Math.abs(speed - v) < 0.01 ? accentA(0.4) : "var(--c-bd2)"}`,
+                          color: Math.abs(speed - v) < 0.01 ? accent : "var(--c-t3)",
                           cursor: "pointer",
                         }}
                       >
@@ -474,7 +491,7 @@ export const ClipNode = memo(function ClipNode({ id, selected, data }: Props) {
                       </span>
                     </label>
                     <div className="flex items-center gap-2">
-                      <Volume2 style={{ width: 12, height: 12, color: "oklch(0.50 0.008 260)", flexShrink: 0 }} />
+                      <Volume2 style={{ width: 12, height: 12, color: "var(--c-t3)", flexShrink: 0 }} />
                       <input
                         type="range"
                         min={0}
@@ -485,11 +502,11 @@ export const ClipNode = memo(function ClipNode({ id, selected, data }: Props) {
                         className="nodrag flex-1"
                         style={{ accentColor: accent }}
                       />
-                      <span style={{ fontSize: 11, color: "oklch(0.55 0.006 260)", width: 32, textAlign: "right" }}>
+                      <span style={{ fontSize: 11, color: "var(--c-t3)", width: 32, textAlign: "right" }}>
                         {(audioVolume * 100).toFixed(0)}%
                       </span>
                     </div>
-                    <p style={{ fontSize: 10, color: "oklch(0.38 0.006 260)", marginTop: 4 }}>
+                    <p style={{ fontSize: 10, color: "var(--c-t4)", marginTop: 4 }}>
                       已连接音频轨道，将替换原始音频
                     </p>
                   </div>
@@ -501,10 +518,10 @@ export const ClipNode = memo(function ClipNode({ id, selected, data }: Props) {
                   disabled={isProcessing}
                   className="nodrag flex items-center justify-center gap-1.5 w-full py-2.5 rounded-lg text-xs font-semibold transition-all"
                   style={{
-                    background: isProcessing ? "oklch(0.13 0.007 260)" : accentA(0.18),
+                    background: isProcessing ? "var(--c-surface)" : accentA(0.18),
                     borderWidth: 1, borderStyle: "solid",
                     borderColor: isProcessing ? BORDER_DEFAULT : accentA(0.45),
-                    color: isProcessing ? "oklch(0.38 0.006 260)" : accent,
+                    color: isProcessing ? "var(--c-t4)" : accent,
                     cursor: isProcessing ? "not-allowed" : "pointer",
                   }}
                 >
@@ -530,7 +547,7 @@ export const ClipNode = memo(function ClipNode({ id, selected, data }: Props) {
                   style={{ background: "oklch(0.72 0.18 155 / 0.08)", border: "1px solid oklch(0.72 0.18 155 / 0.30)" }}
                 >
                   <Scissors style={{ width: 11, height: 11, color: "oklch(0.72 0.18 155)", flexShrink: 0 }} />
-                  <span style={{ fontSize: 10.5, color: "oklch(0.65 0.006 260)" }}>
+                  <span style={{ fontSize: 10.5, color: "var(--c-t2)" }}>
                     剪辑完成 · {fmt(payload.outputDuration ?? clipDuration)}
                   </span>
                 </div>
@@ -545,7 +562,7 @@ export const ClipNode = memo(function ClipNode({ id, selected, data }: Props) {
                 <button
                   onClick={handleReset}
                   className="nodrag w-8 h-8 flex items-center justify-center rounded-lg transition-all"
-                  style={{ background: "oklch(0.12 0.007 260)", border: "1px solid oklch(0.22 0.008 260)", color: "oklch(0.50 0.006 260)", cursor: "pointer", flexShrink: 0 }}
+                  style={{ background: "var(--c-surface)", border: "1px solid var(--c-bd2)", color: "var(--c-t3)", cursor: "pointer", flexShrink: 0 }}
                   title="重新剪辑"
                 >
                   <RotateCcw style={{ width: 13, height: 13 }} />

@@ -3,6 +3,7 @@ import { trpc } from "@/lib/trpc";
 import { useCanvasStore } from "./useCanvasStore";
 import { toast } from "sonner";
 import type { NodeType } from "../../../shared/types";
+import { VIDEO_PROVIDERS } from "../../../shared/types";
 
 export interface WorkflowRunState {
   running: boolean;
@@ -47,6 +48,15 @@ function getLayers(
     current = next;
   }
 
+  // Nodes that never reached inDegree=0 form a cycle — include them in a final
+  // layer so the runner doesn't silently skip them.
+  const placed = new Set(layers.flat());
+  const cyclic = runnableIds.filter((id) => !placed.has(id));
+  if (cyclic.length > 0) {
+    console.warn("[useWorkflowRunner] Cycle detected among nodes:", cyclic, "— running them as a final layer.");
+    layers.push(cyclic);
+  }
+
   return layers;
 }
 
@@ -74,20 +84,38 @@ export function useWorkflowRunner() {
     // Determine which nodes are runnable
     let runnableIds: string[];
     if (startNodeId) {
-      // Run descendants of startNodeId only
-      const visited = new Set<string>();
-      const adj = new Map<string, string[]>();
+      // Collect the start node + all its descendants (forward DFS).
+      // Also collect all upstream ancestors of the start node so that their
+      // outputs are available as inputs before the start node executes.
+      const forwardAdj = new Map<string, string[]>();
+      const reverseAdj = new Map<string, string[]>();
       edges.forEach((e) => {
-        if (!adj.has(e.source)) adj.set(e.source, []);
-        adj.get(e.source)!.push(e.target);
+        if (!forwardAdj.has(e.source)) forwardAdj.set(e.source, []);
+        forwardAdj.get(e.source)!.push(e.target);
+        if (!reverseAdj.has(e.target)) reverseAdj.set(e.target, []);
+        reverseAdj.get(e.target)!.push(e.source);
       });
-      const dfs = (id: string) => {
-        if (visited.has(id)) return;
-        visited.add(id);
-        (adj.get(id) ?? []).forEach(dfs);
+
+      const visitedFwd = new Set<string>();
+      const visitedRev = new Set<string>();
+      const dfsForward = (id: string) => {
+        if (visitedFwd.has(id)) return;
+        visitedFwd.add(id);
+        (forwardAdj.get(id) ?? []).forEach(dfsForward);
       };
-      dfs(startNodeId);
-      runnableIds = Array.from(visited).filter((id) => {
+      const dfsReverse = (id: string) => {
+        if (visitedRev.has(id)) return;
+        visitedRev.add(id);
+        (reverseAdj.get(id) ?? []).forEach(dfsReverse);
+      };
+
+      // Collect ancestors (separate set so start node isn't pre-visited)
+      dfsReverse(startNodeId);
+      // Collect startNode and all descendants
+      dfsForward(startNodeId);
+
+      const allIds = new Set(Array.from(visitedRev).concat(Array.from(visitedFwd)));
+      runnableIds = Array.from(allIds).filter((id) => {
         const node = nodes.find((n) => n.id === id);
         return node && RUNNABLE_TYPES.includes(node.data.nodeType);
       });
@@ -119,6 +147,16 @@ export function useWorkflowRunner() {
     const runSingleNode = async (nodeId: string): Promise<"ok" | "fail"> => {
       if (abortRef.current) return "fail";
 
+      // Skip if any direct upstream dependency already failed — avoids wasting
+      // API credits on nodes whose inputs will be undefined/invalid.
+      const hasFailedUpstream = edges.some(
+        (e) => e.target === nodeId && failed.includes(e.source)
+      );
+      if (hasFailedUpstream) {
+        failed.push(nodeId);
+        return "fail";
+      }
+
       const node = useCanvasStore.getState().nodes.find((n) => n.id === nodeId);
       if (!node) return "fail";
 
@@ -138,20 +176,27 @@ export function useWorkflowRunner() {
             return "fail";
           }
 
+          const VALID_IMAGE_MODELS = new Set([
+            "manus_forge", "poyo_flux", "poyo_sdxl",
+            "poyo_gpt_image", "poyo_seedream", "poyo_grok_image", "poyo_wan_image",
+            "hf_soul_standard", "hf_reve", "hf_seedream_v4", "hf_flux_pro",
+          ]);
+          const rawModel = (p.imageModel as string) || (p.model as string) || "";
           const result = await imageGenMutation.mutateAsync({
             prompt,
             negativePrompt: (p.negativePrompt as string) || undefined,
             style: (p.style as string) || undefined,
-            model:
-              (((p.imageModel as string) || (p.model as string)) as
-                | "manus_forge"
-                | "poyo_flux"
-                | "poyo_sdxl"
-                | "hf_soul_standard"
-                | "hf_reve"
-                | undefined) || undefined,
+            model: (VALID_IMAGE_MODELS.has(rawModel) ? rawModel : undefined) as Parameters<typeof imageGenMutation.mutateAsync>[0]["model"],
+            seed: typeof p.seed === "number" ? p.seed : undefined,
+            batchSize: typeof p.batchSize === "number" ? p.batchSize : undefined,
+            referenceImageUrl: (p.referenceImageUrl as string) || undefined,
+            projectId: node.data.projectId,
           });
-          useCanvasStore.getState().updateNodeData(nodeId, { imageUrl: result.url });
+          const bestUrl = result.url ?? result.urls?.[0];
+          useCanvasStore.getState().updateNodeData(nodeId, {
+            imageUrl: bestUrl,
+            ...(result.urls?.length ? { imageUrls: result.urls } : {}),
+          }, true);
 
           // Propagate image URL to connected video_task nodes
           const downstreamUpdates = useCanvasStore
@@ -161,8 +206,8 @@ export function useWorkflowRunner() {
               const target = useCanvasStore
                 .getState()
                 .nodes.find((n) => n.id === edge.target);
-              return target?.data.nodeType === "video_task" && result.url
-                ? [{ id: edge.target, payload: { referenceImageUrl: result.url } }]
+              return target?.data.nodeType === "video_task" && bestUrl
+                ? [{ id: edge.target, payload: { referenceImageUrl: bestUrl } }]
                 : [];
             });
           if (downstreamUpdates.length > 0) {
@@ -177,22 +222,9 @@ export function useWorkflowRunner() {
             return "fail";
           }
 
-          const validProviders = [
-            "mock",
-            "poyo_seedance",
-            "poyo_veo",
-            "hf_dop_standard",
-            "hf_dop_preview",
-            "hf_dop_lite",
-            "hf_dop_turbo",
-            "hf_kling_21_pro",
-            "hf_seedance_pro",
-          ] as const;
-          type VideoProvider = (typeof validProviders)[number];
+          type VideoProvider = (typeof VIDEO_PROVIDERS)[number];
           const providerValue = (p.provider as string) || "poyo_seedance";
-          const provider: VideoProvider = (
-            validProviders as readonly string[]
-          ).includes(providerValue)
+          const provider: VideoProvider = (VIDEO_PROVIDERS as readonly string[]).includes(providerValue)
             ? (providerValue as VideoProvider)
             : "poyo_seedance";
 
@@ -206,7 +238,7 @@ export function useWorkflowRunner() {
           });
           useCanvasStore
             .getState()
-            .updateNodeData(nodeId, { taskId: task.id, status: "processing" });
+            .updateNodeData(nodeId, { taskId: task.id, status: "processing" }, true);
           completed.push(nodeId);
           return "ok";
         }

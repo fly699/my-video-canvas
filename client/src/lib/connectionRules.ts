@@ -13,6 +13,8 @@ export const CONNECTION_MATRIX: Partial<Record<NodeType, NodeType[]>> = {
   clip: ["asset", "overlay", "merge", "subtitle"],
   post_process: ["video_task", "image_gen", "asset"],
   overlay: ["asset"],
+  subtitle: ["asset"],
+  merge: ["asset"],
   note: [],
   group: [],
 };
@@ -41,8 +43,8 @@ export function isConnectionValid(
   targetType: NodeType | null
 ): boolean {
   if (sourceType === null || targetType === null) return true;
-  if (sourceType === targetType) return false;
   if (NOTE_TYPES.includes(sourceType) || NOTE_TYPES.includes(targetType)) return true;
+  if (sourceType === targetType) return false;
   const targets = CONNECTION_MATRIX[sourceType];
   return targets != null && targets.includes(targetType);
 }

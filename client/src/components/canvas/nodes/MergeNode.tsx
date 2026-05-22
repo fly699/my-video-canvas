@@ -20,14 +20,14 @@ interface Props {
 
 const accent = "oklch(0.62 0.20 270)";
 const accentA = (a: number) => `oklch(0.62 0.20 270 / ${a})`;
-const BORDER_DEFAULT = "oklch(0.20 0.008 260)";
+const BORDER_DEFAULT = "var(--c-bd2)";
 
 const labelStyle: React.CSSProperties = {
   fontSize: 10.5,
   fontWeight: 600,
   textTransform: "uppercase" as const,
   letterSpacing: "0.06em",
-  color: "oklch(0.45 0.008 260)",
+  color: "var(--c-t4)",
   display: "block",
   marginBottom: 5,
 };
@@ -36,12 +36,12 @@ const fieldStyle: React.CSSProperties = {
   width: "100%",
   padding: "7px 10px",
   fontSize: 12,
-  background: "oklch(0.09 0.006 260)",
+  background: "var(--c-input)",
   borderWidth: 1,
   borderStyle: "solid",
   borderColor: BORDER_DEFAULT,
   borderRadius: 8,
-  color: "oklch(0.86 0.006 260)",
+  color: "var(--c-t1)",
   outline: "none",
   transition: "border-color 150ms ease",
   lineHeight: 1.5,
@@ -76,13 +76,14 @@ export const MergeNode = memo(function MergeNode({ id, selected, data }: Props) 
 
   const update = (patch: Partial<MergeNodeData>) => updateNodeData(id, patch);
 
-  // Collect video URLs from connected source nodes
+  // Collect video URLs from connected source nodes (video-producing types only)
+  const VIDEO_SOURCE_TYPES = new Set(["video_task", "clip", "merge", "overlay", "asset", "subtitle"]);
   const collectInputUrls = (): string[] => {
     const incomingEdges = edges.filter((e) => e.target === id);
     const urls: string[] = [];
     for (const edge of incomingEdges) {
       const srcNode = nodes.find((n) => n.id === edge.source);
-      if (!srcNode) continue;
+      if (!srcNode || !VIDEO_SOURCE_TYPES.has(srcNode.data.nodeType)) continue;
       const p = srcNode.data.payload as Record<string, unknown>;
       const url = (p.resultVideoUrl ?? p.outputUrl ?? p.url) as string | undefined;
       if (url) urls.push(url);
@@ -119,7 +120,7 @@ export const MergeNode = memo(function MergeNode({ id, selected, data }: Props) 
   const isFailed = payload.status === "failed";
 
   return (
-    <BaseNode id={id} selected={selected} nodeType="merge" title={data.title} minHeight={200}>
+    <BaseNode id={id} selected={selected} nodeType="merge" title={data.title} minHeight={200} showHandles={false}>
       <Handle type="target" position={Position.Top} id="input" style={{ background: accent }} />
 
       <div className="flex flex-col gap-3 p-3.5">
@@ -136,7 +137,7 @@ export const MergeNode = memo(function MergeNode({ id, selected, data }: Props) 
           <div className="flex flex-col gap-1 px-2.5 py-2 rounded-lg" style={{ background: "oklch(0.62 0.20 25 / 0.08)", border: "1px solid oklch(0.62 0.20 25 / 0.3)" }}>
             <span className="text-xs font-medium" style={{ color: "oklch(0.62 0.20 25)" }}>合并失败</span>
             {payload.errorMessage && (
-              <span className="text-[10px]" style={{ color: "oklch(0.50 0.008 260)" }}>{payload.errorMessage}</span>
+              <span className="text-[10px]" style={{ color: "var(--c-t3)" }}>{payload.errorMessage}</span>
             )}
           </div>
         )}
@@ -165,7 +166,7 @@ export const MergeNode = memo(function MergeNode({ id, selected, data }: Props) 
               <button
                 onClick={handleReset}
                 className="nodrag flex items-center justify-center gap-1 px-2.5 py-1.5 rounded-lg text-[10px]"
-                style={{ background: "oklch(0.12 0.007 260)", border: "1px solid oklch(0.22 0.008 260)", color: "oklch(0.48 0.008 260)", cursor: "pointer" }}
+                style={{ background: "var(--c-surface)", border: "1px solid var(--c-bd2)", color: "var(--c-t3)", cursor: "pointer" }}
               >
                 <RotateCcw style={{ width: 9, height: 9 }} />
                 重置
@@ -204,7 +205,7 @@ export const MergeNode = memo(function MergeNode({ id, selected, data }: Props) 
             onBlur={(e) => { e.currentTarget.style.borderColor = BORDER_DEFAULT; }}
           >
             {TRANSITIONS.map((t) => (
-              <option key={t.value} value={t.value} style={{ background: "oklch(0.10 0.006 260)" }}>{t.label}</option>
+              <option key={t.value} value={t.value} style={{ background: "var(--c-base)" }}>{t.label}</option>
             ))}
           </select>
         </div>
@@ -228,9 +229,9 @@ export const MergeNode = memo(function MergeNode({ id, selected, data }: Props) 
           onClick={() => setShowBgMusic((v) => !v)}
           className="nodrag flex items-center justify-between w-full px-2.5 py-2 rounded-lg text-xs transition-all"
           style={{
-            background: showBgMusic ? accentA(0.08) : "oklch(0.12 0.007 260)",
-            border: `1px solid ${showBgMusic ? accentA(0.3) : "oklch(0.20 0.008 260)"}`,
-            color: showBgMusic ? accent : "oklch(0.52 0.008 260)",
+            background: showBgMusic ? accentA(0.08) : "var(--c-surface)",
+            border: `1px solid ${showBgMusic ? accentA(0.3) : "var(--c-bd2)"}`,
+            color: showBgMusic ? accent : "var(--c-t3)",
             cursor: "pointer",
           }}
         >
@@ -258,7 +259,7 @@ export const MergeNode = memo(function MergeNode({ id, selected, data }: Props) 
             <div>
               <div className="flex items-center justify-between" style={{ marginBottom: 5 }}>
                 <label style={{ ...labelStyle, marginBottom: 0 }}>音量</label>
-                <span style={{ fontSize: 10, color: "oklch(0.50 0.008 260)" }}>{((payload.bgMusicVolume ?? 0.3) * 100).toFixed(0)}%</span>
+                <span style={{ fontSize: 10, color: "var(--c-t3)" }}>{((payload.bgMusicVolume ?? 0.3) * 100).toFixed(0)}%</span>
               </div>
               <input
                 type="range" min={0} max={1} step={0.05}
@@ -277,9 +278,9 @@ export const MergeNode = memo(function MergeNode({ id, selected, data }: Props) 
           disabled={isProcessing || isDone}
           className="nodrag flex items-center justify-center gap-1.5 w-full py-2.5 rounded-lg text-xs font-semibold transition-all"
           style={{
-            background: isProcessing || isDone ? "oklch(0.13 0.007 260)" : accentA(0.15),
+            background: isProcessing || isDone ? "var(--c-surface)" : accentA(0.15),
             border: `1px solid ${isProcessing || isDone ? BORDER_DEFAULT : accentA(0.5)}`,
-            color: isProcessing || isDone ? "oklch(0.38 0.006 260)" : accent,
+            color: isProcessing || isDone ? "var(--c-t4)" : accent,
             cursor: isProcessing || isDone ? "not-allowed" : "pointer",
           }}
         >

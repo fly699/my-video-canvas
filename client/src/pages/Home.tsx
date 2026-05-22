@@ -126,7 +126,7 @@ function ProjectCard({
       <div
         className="relative h-36 flex items-center justify-center overflow-hidden"
         style={{
-          background: "linear-gradient(135deg, oklch(0.13 0.007 260) 0%, oklch(0.10 0.006 260) 100%)",
+          background: "linear-gradient(135deg, var(--c-surface) 0%, var(--c-base) 100%)",
         }}
       >
         {/* Decorative nodes preview */}
@@ -214,7 +214,7 @@ function ProjectCard({
           <div
             className="absolute top-8 right-0 w-40 rounded-xl border border-white/10 overflow-hidden z-50 animate-scale-in"
             style={{
-              background: "oklch(0.14 0.007 260)",
+              background: "var(--c-surface)",
               boxShadow: "0 8px 32px oklch(0 0 0 / 0.6), 0 0 0 1px oklch(0.22 0.008 260 / 0.5)",
             }}
           >
@@ -481,8 +481,8 @@ export default function Home() {
               className="w-7 h-7 rounded-lg flex items-center justify-center transition-all duration-150"
               style={{
                 background: "transparent",
-                border: "1px solid oklch(0.22 0.008 260)",
-                color: "oklch(0.50 0.008 260)",
+                border: "1px solid var(--c-bd2)",
+                color: "var(--c-t3)",
               }}
               onMouseEnter={(e) => {
                 (e.currentTarget as HTMLElement).style.background = "oklch(0.55 0.18 20 / 0.12)";
@@ -491,8 +491,8 @@ export default function Home() {
               }}
               onMouseLeave={(e) => {
                 (e.currentTarget as HTMLElement).style.background = "transparent";
-                (e.currentTarget as HTMLElement).style.borderColor = "oklch(0.22 0.008 260)";
-                (e.currentTarget as HTMLElement).style.color = "oklch(0.50 0.008 260)";
+                (e.currentTarget as HTMLElement).style.borderColor = "var(--c-bd2)";
+                (e.currentTarget as HTMLElement).style.color = "var(--c-t3)";
               }}
             >
               <LogOut className="w-3.5 h-3.5" />

@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { X } from "lucide-react";
+import { X, PenLine, Sparkles, Scissors } from "lucide-react";
 import type { NodeType } from "../../../../shared/types";
 import { getNodeConfig } from "../../lib/nodeConfig";
 import {
@@ -39,8 +39,8 @@ function WelcomeModal({ onClose }: { onClose: () => void }) {
       <div
         style={{
           width: 480,
-          backgroundColor: "oklch(0.10 0.007 260)",
-          border: "1px solid oklch(0.22 0.008 260)",
+          backgroundColor: "var(--c-base)",
+          border: "1px solid var(--c-bd2)",
           borderRadius: 16,
           padding: "32px 36px",
           display: "flex",
@@ -54,13 +54,13 @@ function WelcomeModal({ onClose }: { onClose: () => void }) {
             style={{
               fontSize: 26,
               fontWeight: 700,
-              color: "oklch(0.95 0.01 260)",
+              color: "var(--c-t1)",
               marginBottom: 6,
             }}
           >
-            欢迎使用 AI 视频画布 🎬
+            欢迎使用 AI 视频画布
           </div>
-          <div style={{ fontSize: 14, color: "oklch(0.60 0.01 260)" }}>
+          <div style={{ fontSize: 14, color: "var(--c-t3)" }}>
             三步掌握工作流
           </div>
         </div>
@@ -68,17 +68,20 @@ function WelcomeModal({ onClose }: { onClose: () => void }) {
         <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
           {[
             {
-              emoji: "✍️",
+              icon: <PenLine size={15} />,
+              color: "oklch(0.62 0.14 250)",
               title: "创作内容",
               desc: "添加脚本节点，写下你的视频创意或故事",
             },
             {
-              emoji: "🎨",
+              icon: <Sparkles size={15} />,
+              color: "oklch(0.62 0.14 145)",
               title: "生成素材",
               desc: "连接分镖 → 图像生成 → 视频任务，AI 自动生成画面",
             },
             {
-              emoji: "✂️",
+              icon: <Scissors size={15} />,
+              color: "oklch(0.62 0.16 30)",
               title: "剪辑输出",
               desc: "用剪辑节点修剪时长、调整速度、混合音频",
             },
@@ -89,27 +92,40 @@ function WelcomeModal({ onClose }: { onClose: () => void }) {
                 display: "flex",
                 gap: 14,
                 alignItems: "flex-start",
-                backgroundColor: "oklch(0.14 0.007 260)",
-                border: "1px solid oklch(0.22 0.008 260)",
+                backgroundColor: "var(--c-surface)",
+                border: "1px solid var(--c-bd2)",
                 borderRadius: 10,
                 padding: "12px 16px",
               }}
             >
-              <div style={{ fontSize: 22, lineHeight: 1, flexShrink: 0 }}>
-                {step.emoji}
+              <div
+                style={{
+                  width: 30,
+                  height: 30,
+                  borderRadius: 8,
+                  background: `${step.color.replace(")", " / 0.12)")}`,
+                  border: `1px solid ${step.color.replace(")", " / 0.28)")}`,
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  color: step.color,
+                  flexShrink: 0,
+                }}
+              >
+                {step.icon}
               </div>
               <div>
                 <div
                   style={{
                     fontSize: 14,
                     fontWeight: 600,
-                    color: "oklch(0.90 0.01 260)",
+                    color: "var(--c-t1)",
                     marginBottom: 3,
                   }}
                 >
                   {step.title}
                 </div>
-                <div style={{ fontSize: 13, color: "oklch(0.58 0.01 260)" }}>
+                <div style={{ fontSize: 13, color: "var(--c-t3)" }}>
                   {step.desc}
                 </div>
               </div>
@@ -138,13 +154,14 @@ function WelcomeModal({ onClose }: { onClose: () => void }) {
                     width: 44,
                     height: 44,
                     borderRadius: "50%",
-                    backgroundColor: cfg.color,
+                    backgroundColor: `color-mix(in oklch, ${cfg.color} 14%, transparent)`,
+                    border: `1.5px solid color-mix(in oklch, ${cfg.color} 40%, transparent)`,
                     display: "flex",
                     alignItems: "center",
                     justifyContent: "center",
                     fontSize: 11,
                     fontWeight: 600,
-                    color: "oklch(0.10 0.007 260)",
+                    color: cfg.color,
                     textAlign: "center",
                     lineHeight: 1.2,
                   }}
@@ -155,7 +172,7 @@ function WelcomeModal({ onClose }: { onClose: () => void }) {
                   <div
                     style={{
                       fontSize: 18,
-                      color: "oklch(0.45 0.01 260)",
+                      color: "var(--c-t4)",
                       lineHeight: 1,
                     }}
                   >
@@ -183,7 +200,7 @@ function WelcomeModal({ onClose }: { onClose: () => void }) {
               borderRadius: 8,
               border: "none",
               backgroundColor: "oklch(0.68 0.22 285)",
-              color: "oklch(0.98 0.005 260)",
+              color: "var(--c-t1)",
               fontSize: 14,
               fontWeight: 600,
               cursor: "pointer",
@@ -196,7 +213,7 @@ function WelcomeModal({ onClose }: { onClose: () => void }) {
             style={{
               background: "none",
               border: "none",
-              color: "oklch(0.50 0.01 260)",
+              color: "var(--c-t3)",
               fontSize: 12,
               cursor: "pointer",
               padding: "2px 8px",
@@ -238,7 +255,7 @@ export function ConnectionHintsPanel({
         transform: visible ? "translateX(0)" : "translateX(260px)",
         transition: "transform 0.22s cubic-bezier(0.4, 0, 0.2, 1)",
         backgroundColor: "oklch(0.10 0.007 260 / 0.97)",
-        border: "1px solid oklch(0.22 0.008 260)",
+        border: "1px solid var(--c-bd2)",
         borderRadius: 10,
         backdropFilter: "blur(12px)",
         overflow: "hidden",
@@ -251,14 +268,14 @@ export function ConnectionHintsPanel({
           alignItems: "center",
           justifyContent: "space-between",
           padding: "10px 14px",
-          borderBottom: "1px solid oklch(0.22 0.008 260)",
+          borderBottom: "1px solid var(--c-bd2)",
         }}
       >
         <span
           style={{
             fontSize: 13,
             fontWeight: 600,
-            color: "oklch(0.85 0.01 260)",
+            color: "var(--c-t1)",
           }}
         >
           连线指引
@@ -269,7 +286,7 @@ export function ConnectionHintsPanel({
             background: "none",
             border: "none",
             cursor: "pointer",
-            color: "oklch(0.50 0.01 260)",
+            color: "var(--c-t3)",
             display: "flex",
             alignItems: "center",
             padding: 2,
@@ -314,7 +331,7 @@ export function ConnectionHintsPanel({
                   style={{
                     fontSize: 13,
                     fontWeight: 600,
-                    color: "oklch(0.85 0.01 260)",
+                    color: "var(--c-t1)",
                   }}
                 >
                   {hints.label}
@@ -326,7 +343,7 @@ export function ConnectionHintsPanel({
                   <div
                     style={{
                       fontSize: 11,
-                      color: "oklch(0.55 0.01 260)",
+                      color: "var(--c-t3)",
                       marginBottom: 5,
                       textTransform: "uppercase",
                       letterSpacing: "0.05em",
@@ -358,7 +375,7 @@ export function ConnectionHintsPanel({
                           <span
                             style={{
                               fontSize: 12,
-                              color: "oklch(0.75 0.01 260)",
+                              color: "var(--c-t2)",
                             }}
                           >
                             {CONNECTION_HINTS[t].label}
@@ -375,7 +392,7 @@ export function ConnectionHintsPanel({
                   <div
                     style={{
                       fontSize: 11,
-                      color: "oklch(0.55 0.01 260)",
+                      color: "var(--c-t3)",
                       marginBottom: 5,
                       textTransform: "uppercase",
                       letterSpacing: "0.05em",
@@ -407,7 +424,7 @@ export function ConnectionHintsPanel({
                           <span
                             style={{
                               fontSize: 12,
-                              color: "oklch(0.75 0.01 260)",
+                              color: "var(--c-t2)",
                             }}
                           >
                             {CONNECTION_HINTS[s].label}
@@ -426,7 +443,7 @@ export function ConnectionHintsPanel({
               style={{
                 fontSize: 12,
                 fontWeight: 600,
-                color: "oklch(0.70 0.01 260)",
+                color: "var(--c-t2)",
                 marginBottom: 10,
               }}
             >
@@ -458,7 +475,7 @@ export function ConnectionHintsPanel({
                         }}
                       />
                       <span
-                        style={{ fontSize: 12, color: "oklch(0.75 0.01 260)" }}
+                        style={{ fontSize: 12, color: "var(--c-t2)" }}
                       >
                         {CONNECTION_HINTS[type].label}
                       </span>
@@ -468,7 +485,7 @@ export function ConnectionHintsPanel({
                         style={{
                           marginLeft: 4,
                           paddingLeft: 0,
-                          color: "oklch(0.40 0.01 260)",
+                          color: "var(--c-t4)",
                           fontSize: 12,
                           lineHeight: 1,
                           marginTop: 2,
@@ -487,13 +504,13 @@ export function ConnectionHintsPanel({
               style={{
                 marginTop: 12,
                 paddingTop: 10,
-                borderTop: "1px solid oklch(0.22 0.008 260)",
+                borderTop: "1px solid var(--c-bd2)",
               }}
             >
               <div
                 style={{
                   fontSize: 11,
-                  color: "oklch(0.50 0.01 260)",
+                  color: "var(--c-t3)",
                   marginBottom: 6,
                 }}
               >
@@ -527,11 +544,11 @@ export function ConnectionHintsPanel({
                       }}
                     />
                     <span
-                      style={{ fontSize: 11, color: "oklch(0.65 0.01 260)" }}
+                      style={{ fontSize: 11, color: "var(--c-t2)" }}
                     >
                       {CONNECTION_HINTS[from].label}
                     </span>
-                    <span style={{ fontSize: 11, color: "oklch(0.40 0.01 260)" }}>
+                    <span style={{ fontSize: 11, color: "var(--c-t4)" }}>
                       →
                     </span>
                     <div
@@ -544,7 +561,7 @@ export function ConnectionHintsPanel({
                       }}
                     />
                     <span
-                      style={{ fontSize: 11, color: "oklch(0.65 0.01 260)" }}
+                      style={{ fontSize: 11, color: "var(--c-t2)" }}
                     >
                       {CONNECTION_HINTS[to].label}
                     </span>
@@ -558,12 +575,12 @@ export function ConnectionHintsPanel({
         <div
           style={{
             paddingTop: 10,
-            borderTop: "1px solid oklch(0.22 0.008 260)",
+            borderTop: "1px solid var(--c-bd2)",
             fontSize: 11,
-            color: "oklch(0.48 0.01 260)",
+            color: "var(--c-t3)",
           }}
         >
-          💡 拖动节点端点即可连线
+          拖动节点端点即可连线
         </div>
       </div>
     </div>

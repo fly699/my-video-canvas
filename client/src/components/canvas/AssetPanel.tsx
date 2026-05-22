@@ -55,8 +55,12 @@ export function AssetPanel({ projectId, onClose }: Props) {
   }, [processFile]);
 
   const handleAddToCanvas = (asset: NonNullable<typeof assets>[0]) => {
-    addNode("asset", { x: 200, y: 200 });
-    toast.success("素材节点已添加到画布");
+    try {
+      addNode("asset", { x: 200, y: 200 });
+      toast.success("素材节点已添加到画布");
+    } catch (err) {
+      toast.error("无法添加节点：" + (err instanceof Error ? err.message : String(err)));
+    }
   };
 
   const getIcon = (type: string) => {
@@ -70,38 +74,38 @@ export function AssetPanel({ projectId, onClose }: Props) {
     if (type === "video") return "oklch(0.62 0.20 25)";
     if (type === "audio") return "oklch(0.68 0.22 285)";
     if (type === "image") return "oklch(0.65 0.18 60)";
-    return "oklch(0.50 0.008 260)";
+    return "var(--c-t3)";
   };
 
   return (
     <div
       className="flex flex-col h-full"
-      style={{ background: "oklch(0.10 0.007 260)", borderLeft: "1px solid oklch(0.18 0.008 260)" }}
+      style={{ background: "var(--c-base)", borderLeft: "1px solid var(--c-bd1)" }}
     >
       {/* ── Header ── */}
       <div
         className="flex items-center justify-between px-4 py-3 flex-shrink-0"
-        style={{ borderBottom: "1px solid oklch(0.16 0.008 260)" }}
+        style={{ borderBottom: "1px solid var(--c-elevated)" }}
       >
         <div>
-          <h3 className="text-sm font-semibold" style={{ color: "oklch(0.88 0.006 260)" }}>素材库</h3>
-          <p className="text-[10px] mt-0.5" style={{ color: "oklch(0.42 0.006 260)" }}>
+          <h3 className="text-sm font-semibold" style={{ color: "var(--c-t1)" }}>素材库</h3>
+          <p className="text-[10px] mt-0.5" style={{ color: "var(--c-t4)" }}>
             {assets?.length ?? 0} 个素材
           </p>
         </div>
         <button
           onClick={onClose}
           className="w-7 h-7 rounded-lg flex items-center justify-center transition-all"
-          style={{ color: "oklch(0.45 0.008 260)", background: "transparent" }}
-          onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.background = "oklch(0.16 0.008 260)"; (e.currentTarget as HTMLElement).style.color = "oklch(0.70 0.008 260)"; }}
-          onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.background = "transparent"; (e.currentTarget as HTMLElement).style.color = "oklch(0.45 0.008 260)"; }}
+          style={{ color: "var(--c-t4)", background: "transparent" }}
+          onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.background = "var(--c-elevated)"; (e.currentTarget as HTMLElement).style.color = "var(--c-t2)"; }}
+          onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.background = "transparent"; (e.currentTarget as HTMLElement).style.color = "var(--c-t4)"; }}
         >
           <X className="w-4 h-4" />
         </button>
       </div>
 
       {/* ── Upload zone ── */}
-      <div className="px-3 py-3 flex-shrink-0" style={{ borderBottom: "1px solid oklch(0.16 0.008 260)" }}>
+      <div className="px-3 py-3 flex-shrink-0" style={{ borderBottom: "1px solid var(--c-elevated)" }}>
         <input ref={fileInputRef} type="file" accept="image/*,video/*,audio/*" onChange={handleFileSelect} className="hidden" />
         <div
           onClick={() => !uploading && fileInputRef.current?.click()}
@@ -110,20 +114,20 @@ export function AssetPanel({ projectId, onClose }: Props) {
           onDrop={handleDrop}
           className="flex flex-col items-center justify-center gap-2 rounded-xl py-5 cursor-pointer transition-all"
           style={{
-            border: `1.5px dashed ${dragOver ? "oklch(0.65 0.18 60 / 0.6)" : "oklch(0.22 0.008 260)"}`,
-            background: dragOver ? "oklch(0.65 0.18 60 / 0.06)" : "oklch(0.09 0.006 260)",
+            border: `1.5px dashed ${dragOver ? "oklch(0.65 0.18 60 / 0.6)" : "var(--c-bd2)"}`,
+            background: dragOver ? "oklch(0.65 0.18 60 / 0.06)" : "var(--c-input)",
           }}
         >
           {uploading ? (
             <Loader2 className="w-5 h-5 animate-spin" style={{ color: "oklch(0.65 0.18 60)" }} />
           ) : (
-            <Upload className="w-5 h-5" style={{ color: dragOver ? "oklch(0.65 0.18 60)" : "oklch(0.38 0.008 260)" }} />
+            <Upload className="w-5 h-5" style={{ color: dragOver ? "oklch(0.65 0.18 60)" : "var(--c-t4)" }} />
           )}
           <div className="text-center">
-            <p className="text-xs font-medium" style={{ color: uploading ? "oklch(0.65 0.18 60)" : "oklch(0.58 0.008 260)" }}>
+            <p className="text-xs font-medium" style={{ color: uploading ? "oklch(0.65 0.18 60)" : "var(--c-t3)" }}>
               {uploading ? "上传中..." : "点击或拖拽上传"}
             </p>
-            <p className="text-[10px] mt-0.5" style={{ color: "oklch(0.35 0.006 260)" }}>
+            <p className="text-[10px] mt-0.5" style={{ color: "var(--c-t4)" }}>
               图片 · 视频 · 音频 · 最大 20MB
             </p>
           </div>
@@ -136,13 +140,13 @@ export function AssetPanel({ projectId, onClose }: Props) {
           <div className="flex flex-col items-center justify-center py-16 gap-3">
             <div
               className="w-12 h-12 rounded-2xl flex items-center justify-center"
-              style={{ background: "oklch(0.13 0.007 260)", border: "1px solid oklch(0.18 0.008 260)" }}
+              style={{ background: "var(--c-surface)", border: "1px solid var(--c-bd1)" }}
             >
-              <FileImage className="w-6 h-6" style={{ color: "oklch(0.28 0.006 260)" }} />
+              <FileImage className="w-6 h-6" style={{ color: "var(--c-bd3)" }} />
             </div>
-            <p className="text-xs text-center" style={{ color: "oklch(0.38 0.006 260)" }}>
+            <p className="text-xs text-center" style={{ color: "var(--c-t4)" }}>
               暂无素材<br />
-              <span style={{ color: "oklch(0.30 0.006 260)", fontSize: 10 }}>上传后将在此显示</span>
+              <span style={{ color: "var(--c-bd3)", fontSize: 10 }}>上传后将在此显示</span>
             </p>
           </div>
         ) : (
@@ -155,7 +159,7 @@ export function AssetPanel({ projectId, onClose }: Props) {
                   key={asset.id}
                   className="group flex items-center gap-2.5 p-2 rounded-lg transition-all"
                   style={{ background: "transparent" }}
-                  onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.background = "oklch(0.14 0.007 260)"; }}
+                  onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.background = "var(--c-surface)"; }}
                   onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.background = "transparent"; }}
                 >
                   {/* Thumbnail */}
@@ -172,10 +176,10 @@ export function AssetPanel({ projectId, onClose }: Props) {
 
                   {/* Info */}
                   <div className="flex-1 min-w-0">
-                    <p className="text-xs font-medium truncate" style={{ color: "oklch(0.75 0.006 260)" }}>
+                    <p className="text-xs font-medium truncate" style={{ color: "var(--c-t2)" }}>
                       {asset.name}
                     </p>
-                    <p className="text-[10px] mt-0.5" style={{ color: "oklch(0.40 0.006 260)" }}>
+                    <p className="text-[10px] mt-0.5" style={{ color: "var(--c-t4)" }}>
                       {asset.type} · {asset.size ? `${(asset.size / 1024).toFixed(0)} KB` : "—"}
                     </p>
                   </div>
@@ -186,9 +190,9 @@ export function AssetPanel({ projectId, onClose }: Props) {
                       onClick={() => handleAddToCanvas(asset)}
                       title="添加到画布"
                       className="w-6 h-6 rounded-md flex items-center justify-center transition-all"
-                      style={{ color: "oklch(0.50 0.008 260)" }}
+                      style={{ color: "var(--c-t3)" }}
                       onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.background = "oklch(0.72 0.18 155 / 0.15)"; (e.currentTarget as HTMLElement).style.color = "oklch(0.72 0.18 155)"; }}
-                      onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.background = "transparent"; (e.currentTarget as HTMLElement).style.color = "oklch(0.50 0.008 260)"; }}
+                      onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.background = "transparent"; (e.currentTarget as HTMLElement).style.color = "var(--c-t3)"; }}
                     >
                       <Plus className="w-3.5 h-3.5" />
                     </button>
@@ -196,9 +200,9 @@ export function AssetPanel({ projectId, onClose }: Props) {
                       onClick={() => { if (confirm("确认删除此素材？")) deleteMutation.mutate({ id: asset.id }); }}
                       title="删除"
                       className="w-6 h-6 rounded-md flex items-center justify-center transition-all"
-                      style={{ color: "oklch(0.50 0.008 260)" }}
+                      style={{ color: "var(--c-t3)" }}
                       onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.background = "oklch(0.62 0.20 25 / 0.15)"; (e.currentTarget as HTMLElement).style.color = "oklch(0.62 0.20 25)"; }}
-                      onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.background = "transparent"; (e.currentTarget as HTMLElement).style.color = "oklch(0.50 0.008 260)"; }}
+                      onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.background = "transparent"; (e.currentTarget as HTMLElement).style.color = "var(--c-t3)"; }}
                     >
                       <Trash2 className="w-3.5 h-3.5" />
                     </button>

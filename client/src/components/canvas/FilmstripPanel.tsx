@@ -1,5 +1,5 @@
 import { useReactFlow } from "@xyflow/react";
-import { X } from "lucide-react";
+import { X, Film, ImageOff } from "lucide-react";
 import { useCanvasStore } from "../../hooks/useCanvasStore";
 import { getNodeConfig } from "../../lib/nodeConfig";
 import type { NodeType } from "../../../../shared/types";
@@ -12,14 +12,14 @@ export function FilmstripPanel({ onClose }: FilmstripPanelProps) {
   const { nodes } = useCanvasStore();
   const reactFlow = useReactFlow();
 
-  // Filter nodes that have an imageUrl in payload
-  const imageNodes = nodes.filter((node) => {
-    const payload = node.data.payload as Record<string, unknown>;
-    return !!payload.imageUrl;
+  // Filter nodes that have an imageUrl, resultVideoUrl, or imageUrls in payload
+  const mediaNodes = nodes.filter((node) => {
+    const p = node.data.payload as Record<string, unknown>;
+    return !!(p.imageUrl || p.resultVideoUrl || (Array.isArray(p.imageUrls) && (p.imageUrls as string[]).length > 0));
   });
 
   // Sort by Y position ascending, then X position for natural storyboard order
-  const sortedNodes = [...imageNodes].sort((a, b) => {
+  const sortedNodes = [...mediaNodes].sort((a, b) => {
     if (a.position.y !== b.position.y) return a.position.y - b.position.y;
     return a.position.x - b.position.x;
   });
@@ -34,15 +34,16 @@ export function FilmstripPanel({ onClose }: FilmstripPanelProps) {
 
   return (
     <div
+      className="canvas-filmstrip"
       style={{
         position: "absolute",
         bottom: 72,
         left: 0,
         right: 0,
-        height: 120,
-        background: "oklch(0.09 0.006 260 / 0.97)",
-        borderTop: "1px solid oklch(0.18 0.008 260)",
-        backdropFilter: "blur(20px)",
+        height: 140,
+        background: "var(--c-base)",
+        backdropFilter: "blur(16px)",
+        borderTop: "1px solid var(--c-bd1)",
         display: "flex",
         flexDirection: "column",
         zIndex: 25,
@@ -58,20 +59,23 @@ export function FilmstripPanel({ onClose }: FilmstripPanelProps) {
           paddingLeft: 12,
           paddingRight: 8,
           flexShrink: 0,
-          borderBottom: "1px solid oklch(0.16 0.008 260)",
+          borderBottom: "1px solid var(--c-bd1)",
         }}
       >
-        <span
-          style={{
-            fontSize: 11,
-            fontWeight: 600,
-            letterSpacing: "0.08em",
-            textTransform: "uppercase",
-            color: "oklch(0.42 0.006 260)",
-          }}
-        >
-          {sortedNodes.length} 帧
-        </span>
+        <div style={{ display: "flex", alignItems: "center", gap: 5 }}>
+          <Film style={{ width: 11, height: 11, color: "var(--c-t4)" }} />
+          <span
+            style={{
+              fontSize: 11,
+              fontWeight: 600,
+              letterSpacing: "0.08em",
+              textTransform: "uppercase",
+              color: "var(--c-t4)",
+            }}
+          >
+            胶片条 · {mediaNodes.length} 帧
+          </span>
+        </div>
         <button
           onClick={onClose}
           style={{
@@ -84,16 +88,16 @@ export function FilmstripPanel({ onClose }: FilmstripPanelProps) {
             border: "none",
             background: "transparent",
             cursor: "pointer",
-            color: "oklch(0.45 0.008 260)",
+            color: "var(--c-t4)",
             transition: "all 150ms ease",
           }}
           onMouseEnter={(e) => {
-            (e.currentTarget as HTMLElement).style.background = "oklch(0.18 0.008 260)";
-            (e.currentTarget as HTMLElement).style.color = "oklch(0.75 0.005 260)";
+            (e.currentTarget as HTMLElement).style.background = "var(--c-bd1)";
+            (e.currentTarget as HTMLElement).style.color = "var(--c-t2)";
           }}
           onMouseLeave={(e) => {
             (e.currentTarget as HTMLElement).style.background = "transparent";
-            (e.currentTarget as HTMLElement).style.color = "oklch(0.45 0.008 260)";
+            (e.currentTarget as HTMLElement).style.color = "var(--c-t4)";
           }}
         >
           <X style={{ width: 13, height: 13 }} />
@@ -109,9 +113,9 @@ export function FilmstripPanel({ onClose }: FilmstripPanelProps) {
           display: "flex",
           alignItems: "center",
           gap: 8,
-          padding: "0 12px",
+          padding: "6px 12px",
           scrollbarWidth: "thin",
-          scrollbarColor: "oklch(0.25 0.008 260) transparent",
+          scrollbarColor: "var(--c-bd3) transparent",
         }}
       >
         {sortedNodes.length === 0 ? (
@@ -119,19 +123,25 @@ export function FilmstripPanel({ onClose }: FilmstripPanelProps) {
             style={{
               flex: 1,
               display: "flex",
+              flexDirection: "column",
               alignItems: "center",
               justifyContent: "center",
-              color: "oklch(0.38 0.006 260)",
-              fontSize: 12,
+              gap: 6,
+              color: "var(--c-t4)",
               userSelect: "none",
             }}
           >
-            暂无图像，先生成分镜图
+            <ImageOff style={{ width: 18, height: 18, opacity: 0.5 }} />
+            <span style={{ fontSize: 11 }}>暂无素材，先生成图像或视频</span>
           </div>
         ) : (
           sortedNodes.map((node, index) => {
             const payload = node.data.payload as Record<string, unknown>;
-            const imageUrl = payload.imageUrl as string;
+            const mediaUrl = (payload.imageUrl as string | undefined)
+              || (Array.isArray(payload.imageUrls) ? (payload.imageUrls as string[])[0] : undefined)
+              || undefined;
+            const videoUrl = payload.resultVideoUrl as string | undefined;
+            const isVideo = !!videoUrl && !mediaUrl;
             const isStoryboard = node.data.nodeType === "storyboard";
             const sceneNumber = isStoryboard
               ? (payload.sceneNumber as number | undefined)
@@ -144,7 +154,9 @@ export function FilmstripPanel({ onClose }: FilmstripPanelProps) {
               <FilmFrame
                 key={node.id}
                 index={index}
-                imageUrl={imageUrl}
+                imageUrl={mediaUrl}
+                videoUrl={videoUrl}
+                isVideo={isVideo}
                 title={node.data.title}
                 sceneNumber={sceneNumber}
                 accentColor={accentColor}
@@ -161,7 +173,9 @@ export function FilmstripPanel({ onClose }: FilmstripPanelProps) {
 
 interface FilmFrameProps {
   index: number;
-  imageUrl: string;
+  imageUrl?: string;
+  videoUrl?: string;
+  isVideo: boolean;
   title: string;
   sceneNumber?: number;
   accentColor: string;
@@ -170,7 +184,10 @@ interface FilmFrameProps {
 }
 
 function FilmFrame({
+  index,
   imageUrl,
+  videoUrl,
+  isVideo,
   title,
   sceneNumber,
   accentColor,
@@ -181,13 +198,13 @@ function FilmFrame({
     <button
       onClick={onClick}
       style={{
-        width: 90,
-        height: 112,
+        width: 100,
+        height: 122,
         flexShrink: 0,
-        background: "oklch(0.12 0.007 260)",
+        background: "var(--c-base)",
         border: isSelected
           ? `1.5px solid ${accentColor}`
-          : "1.5px solid oklch(0.22 0.008 260)",
+          : "1.5px solid var(--c-bd2)",
         borderRadius: 8,
         overflow: "hidden",
         cursor: "pointer",
@@ -195,8 +212,8 @@ function FilmFrame({
         flexDirection: "column",
         transition: "transform 150ms ease, border-color 150ms ease, box-shadow 150ms ease",
         boxShadow: isSelected
-          ? `0 0 0 1px ${accentColor}40, 0 4px 16px oklch(0 0 0 / 0.5)`
-          : "0 2px 8px oklch(0 0 0 / 0.4)",
+          ? `0 0 0 1px ${accentColor}40, 0 4px 16px oklch(0 0 0 / 0.15)`
+          : "0 2px 8px oklch(0 0 0 / 0.08)",
         position: "relative",
         padding: 0,
       }}
@@ -205,59 +222,66 @@ function FilmFrame({
         el.style.transform = "scale(1.05)";
         if (!isSelected) {
           el.style.borderColor = `${accentColor}80`;
-          el.style.boxShadow = `0 0 0 1px ${accentColor}30, 0 6px 20px oklch(0 0 0 / 0.55)`;
+          el.style.boxShadow = `0 0 0 1px ${accentColor}30, 0 6px 20px oklch(0 0 0 / 0.12)`;
         }
       }}
       onMouseLeave={(e) => {
         const el = e.currentTarget as HTMLElement;
         el.style.transform = "scale(1)";
         if (!isSelected) {
-          el.style.borderColor = "oklch(0.22 0.008 260)";
-          el.style.boxShadow = "0 2px 8px oklch(0 0 0 / 0.4)";
+          el.style.borderColor = "var(--c-bd2)";
+          el.style.boxShadow = "0 2px 8px oklch(0 0 0 / 0.08)";
         }
       }}
     >
-      {/* Image area */}
-      <div style={{ width: "100%", height: 90, position: "relative", overflow: "hidden", flexShrink: 0 }}>
-        <img
-          src={imageUrl}
-          alt={title}
-          style={{
-            width: "100%",
-            height: "100%",
-            objectFit: "cover",
-            display: "block",
-          }}
-          loading="lazy"
-        />
-
-        {/* Scene number badge */}
-        {sceneNumber !== undefined && (
-          <div
+      {/* Image/video area */}
+      <div style={{ width: "100%", height: 100, position: "relative", overflow: "hidden", flexShrink: 0 }}>
+        {isVideo && videoUrl ? (
+          <video
+            src={videoUrl}
+            style={{ width: "100%", height: "100%", objectFit: "cover" }}
+            muted
+            preload="metadata"
+          />
+        ) : (
+          <img
+            src={imageUrl}
+            alt={title}
             style={{
-              position: "absolute",
-              top: 4,
-              left: 4,
-              minWidth: 18,
-              height: 18,
-              paddingLeft: 5,
-              paddingRight: 5,
-              borderRadius: 5,
-              background: `${accentColor}cc`,
-              backdropFilter: "blur(4px)",
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "center",
-              fontSize: 10,
-              fontWeight: 700,
-              color: "white",
-              lineHeight: 1,
-              fontVariantNumeric: "tabular-nums",
+              width: "100%",
+              height: "100%",
+              objectFit: "cover",
+              display: "block",
             }}
-          >
-            {sceneNumber}
-          </div>
+            loading="lazy"
+          />
         )}
+
+        {/* Scene / sequence number badge */}
+        <div
+          style={{
+            position: "absolute",
+            top: 4,
+            left: 4,
+            minWidth: 18,
+            height: 18,
+            paddingLeft: 5,
+            paddingRight: 5,
+            borderRadius: 5,
+            background: sceneNumber !== undefined ? `${accentColor}cc` : "oklch(0 0 0 / 0.42)",
+            backdropFilter: "blur(4px)",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            fontSize: 10,
+            fontWeight: 700,
+            color: "white",
+            lineHeight: 1,
+            fontVariantNumeric: "tabular-nums",
+          }}
+        >
+          {sceneNumber ?? index + 1}
+        </div>
       </div>
 
       {/* Footer strip */}
@@ -269,14 +293,15 @@ function FilmFrame({
           alignItems: "center",
           paddingLeft: 5,
           paddingRight: 5,
-          background: "oklch(0.10 0.007 260)",
-          borderTop: "1px solid oklch(0.18 0.008 260)",
+          background: "var(--c-base)",
+          borderTop: "1px solid var(--c-bd1)",
         }}
       >
         <span
           style={{
             fontSize: 10,
-            color: isSelected ? accentColor : "oklch(0.58 0.006 260)",
+            fontWeight: 500,
+            color: isSelected ? accentColor : "var(--c-t3)",
             whiteSpace: "nowrap",
             overflow: "hidden",
             textOverflow: "ellipsis",
