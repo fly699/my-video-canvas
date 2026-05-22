@@ -416,8 +416,13 @@ export const aiChatRouter = router({
         ...history.map((m) => ({ role: m.role as "user" | "assistant", content: m.content })),
       ];
 
-      const response = await invokeLLM({ messages, model: input.model });
-      const assistantContent = extractTextContent(response) || "Sorry, I could not generate a response.";
+      let assistantContent: string;
+      try {
+        const response = await invokeLLM({ messages, model: input.model });
+        assistantContent = extractTextContent(response) || "（模型返回内容为空）";
+      } catch (err) {
+        assistantContent = `⚠️ 调用失败：${err instanceof Error ? err.message : String(err)}`;
+      }
 
       // Save assistant message
       await addChatMessage({

@@ -298,7 +298,7 @@ export const AIChatNode = memo(function AIChatNode({ id, selected, data }: Props
         <div
           ref={scrollRef}
           className="flex-1 overflow-y-auto px-3.5 py-3 nodrag"
-          style={{ minHeight: 120, maxHeight: 280 }}
+          style={{ minHeight: 0 }}
         >
           {localMessages.length === 0 ? (
             <div className="flex flex-col items-center justify-center h-24 gap-2">
