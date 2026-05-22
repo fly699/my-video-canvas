@@ -165,6 +165,7 @@ export const ImageGenNode = memo(function ImageGenNode({ id, selected, data }: P
         fluxSeed: payload.fluxSeed,
         fluxNumImages: payload.fluxNumImages,
       } : {}),
+      projectId: data.projectId,
     });
   };
 

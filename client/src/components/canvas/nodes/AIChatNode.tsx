@@ -74,7 +74,12 @@ export const AIChatNode = memo(function AIChatNode({ id, selected, data }: Props
   const modelPickerRef = useRef<HTMLDivElement>(null);
   const templateRef = useRef<HTMLDivElement>(null);
 
-  useEffect(() => { updateNodeData(id, { messages: localMessages }); }, [localMessages, id, updateNodeData]);
+  useEffect(() => {
+    const stored = (data.payload as typeof payload).messages;
+    if (stored !== localMessages) {
+      updateNodeData(id, { messages: localMessages });
+    }
+  }, [localMessages, id, updateNodeData, data.payload]);
   useEffect(() => {
     if (scrollRef.current) scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
   }, [localMessages]);

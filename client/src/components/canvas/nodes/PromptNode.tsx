@@ -149,6 +149,7 @@ export const PromptNode = memo(function PromptNode({ id, selected, data }: Props
         poyoAspectRatio: payload.aspectRatio,
       } : {}),
       ...(model === "hf_soul_standard" && batchMode ? { batchSize: 2 } : {}),
+      projectId: data.projectId,
     });
   };
 

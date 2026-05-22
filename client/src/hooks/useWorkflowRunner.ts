@@ -180,6 +180,7 @@ export function useWorkflowRunner() {
             seed: typeof p.seed === "number" ? p.seed : undefined,
             batchSize: typeof p.batchSize === "number" ? p.batchSize : undefined,
             referenceImageUrl: (p.referenceImageUrl as string) || undefined,
+            projectId: node.data.projectId,
           });
           const bestUrl = result.url ?? result.urls?.[0];
           useCanvasStore.getState().updateNodeData(nodeId, {

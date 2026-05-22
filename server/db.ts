@@ -152,7 +152,27 @@ export async function deleteNode(id: string, projectId: number) {
 
 export async function batchUpsertNodes(nodes: InsertCanvasNode[]) {
   if (!nodes.length) return;
-  for (const node of nodes) await upsertNode(node);
+  const db = await getDb();
+  if (!db) {
+    if (DEV_MODE) { for (const node of nodes) dev.devUpsertNode(node); return; }
+    throw new Error("DB unavailable");
+  }
+  await db.transaction(async (tx) => {
+    for (const node of nodes) {
+      await tx.insert(canvasNodes).values(node).onDuplicateKeyUpdate({
+        set: {
+          type: node.type,
+          title: node.title,
+          data: node.data,
+          posX: node.posX,
+          posY: node.posY,
+          width: node.width,
+          height: node.height,
+          zIndex: node.zIndex,
+        },
+      });
+    }
+  });
 }
 
 // ── Canvas Edges ──────────────────────────────────────────────────────────────
@@ -263,7 +283,8 @@ export async function getPendingVideoTasks() {
   return db
     .select()
     .from(videoTasks)
-    .where(inArray(videoTasks.status, ["pending", "processing"]));
+    .where(inArray(videoTasks.status, ["pending", "processing"]))
+    .limit(200);
 }
 
 // ── Chat Messages ─────────────────────────────────────────────────────────────

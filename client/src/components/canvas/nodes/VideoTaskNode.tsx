@@ -278,30 +278,30 @@ export const VideoTaskNode = memo(function VideoTaskNode({ id, selected, data }:
   useEffect(() => () => { parallelPollRefs.current.forEach(clearInterval); parallelPollRefs.current.clear(); }, []);
 
   useEffect(() => {
-    if (payload.status === "processing" && payload.taskId) {
-      pollRef.current = setInterval(async () => {
-        try {
-          const result = await pollQueryRef.current.refetch();
-          if (result.error) throw result.error;
-          if (result.data) {
-            const task = result.data;
-            if (task.status === "succeeded" || task.status === "failed") {
-              updateNodeData(id, {
-                status: task.status,
-                resultVideoUrl: task.resultVideoUrl ?? undefined,
-                errorMessage: task.errorMessage ?? undefined,
-              }, true);
-              if (pollRef.current) { clearInterval(pollRef.current); pollRef.current = null; }
-            }
+    if (!(payload.status === "processing" && payload.taskId)) return;
+    const timerId = setInterval(async () => {
+      try {
+        const result = await pollQueryRef.current.refetch();
+        if (result.error) throw result.error;
+        if (result.data) {
+          const task = result.data;
+          if (task.status === "succeeded" || task.status === "failed") {
+            updateNodeData(id, {
+              status: task.status,
+              resultVideoUrl: task.resultVideoUrl ?? undefined,
+              errorMessage: task.errorMessage ?? undefined,
+            }, true);
+            clearInterval(timerId);
           }
-        } catch (err) {
-          updateNodeData(id, { status: "failed", errorMessage: String(err) }, true);
-          if (pollRef.current) { clearInterval(pollRef.current); pollRef.current = null; }
-          toast.error("轮询失败：" + String(err));
         }
-      }, 5000);
-    }
-    return () => { if (pollRef.current) { clearInterval(pollRef.current); pollRef.current = null; } };
+      } catch (err) {
+        updateNodeData(id, { status: "failed", errorMessage: String(err) }, true);
+        clearInterval(timerId);
+        toast.error("轮询失败：" + String(err));
+      }
+    }, 5000);
+    pollRef.current = timerId;
+    return () => { clearInterval(timerId); pollRef.current = null; };
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [payload.status, payload.taskId, id, updateNodeData]);
 

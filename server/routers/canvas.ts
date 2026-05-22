@@ -516,9 +516,13 @@ export const imageGenRouter = router({
         fluxGuidanceScale: z.number().min(1).max(20).optional(),
         fluxSeed: z.number().int().optional(),
         fluxNumImages: z.number().int().min(1).max(4).optional(),
+        projectId: z.number().optional(),
       })
     )
-    .mutation(async ({ input }) => {
+    .mutation(async ({ ctx, input }) => {
+      if (input.projectId != null) {
+        await assertProjectOwner(input.projectId, ctx.user.id);
+      }
       const isHfModel = input.model?.startsWith("hf_");
 
       // For Higgsfield models, keep prompt clean and pass negativePrompt separately.
@@ -764,7 +768,7 @@ export const clipRouter = router({
         startTime: z.number().min(0),
         endTime: z.number().min(0),
         speed: z.number().min(0.25).max(4.0).optional(),
-        audioUrl: z.string().optional(),
+        audioUrl: z.string().url().optional(),
         audioVolume: z.number().min(0).max(2.0).optional(),
       }).refine(d => d.endTime > d.startTime, { message: "出点必须大于入点", path: ["endTime"] })
     )
@@ -774,7 +778,7 @@ export const clipRouter = router({
     }),
 
   getVideoDuration: protectedProcedure
-    .input(z.object({ url: z.string() }))
+    .input(z.object({ url: z.string().url() }))
     .query(async ({ input }) => {
       const duration = await getVideoDuration(input.url);
       return { duration };
@@ -789,7 +793,7 @@ export const mergeRouter = router({
         inputUrls: z.array(z.string().url()).min(2).max(10),
         transition: z.enum(["none", "fade", "dissolve"]).optional(),
         transitionDuration: z.number().min(0.1).max(2.0).optional(),
-        bgMusicUrl: z.string().optional(),
+        bgMusicUrl: z.string().url().optional(),
         bgMusicVolume: z.number().min(0).max(1).optional(),
       })
     )
@@ -804,7 +808,7 @@ export const subtitleRouter = router({
   transcribe: protectedProcedure
     .input(
       z.object({
-        audioUrl: z.string(),
+        audioUrl: z.string().url(),
         language: z.string().optional(),
       })
     )
