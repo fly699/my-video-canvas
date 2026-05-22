@@ -4,7 +4,16 @@ import { useCanvasStore } from "../../../hooks/useCanvasStore";
 import type { PostProcessNodeData } from "../../../../../shared/types";
 import { POST_PROCESS_CATEGORIES, buildEffectPrompt, getEffectById } from "../../../lib/postProcessOptions";
 import { toast } from "sonner";
-import { Copy, ChevronDown, ChevronRight, X, Layers } from "lucide-react";
+import { Copy, ChevronDown, ChevronRight, X, Layers, Link2, Palette, Aperture, Gauge, Sun, PenTool, Camera, ArrowLeftRight, Film, Wind, Circle, Zap, Flower2, PenLine, ScanLine, Maximize, Building2, Globe, Combine, Sparkles, Timer, Activity, TrendingUp, CloudFog, Lightbulb, Waves, Sunrise, Moon, Brush, Stars, Grid2x2, MessageSquare, Droplet, Box, Monitor, Thermometer, CircleDot, Blend, Wand2, RotateCcw, Image, type LucideIcon } from "lucide-react";
+
+const EFFECT_ICONS: Record<string, LucideIcon> = {
+  Palette, Aperture, Gauge, Sun, PenTool, Camera, ArrowLeftRight,
+  Film, Wind, Circle, Zap, Flower2, PenLine, ScanLine, Maximize,
+  Building2, Globe, Combine, Sparkles, Timer, Activity, TrendingUp,
+  CloudFog, Lightbulb, Waves, Sunrise, Moon, Brush, Stars, Grid2x2,
+  MessageSquare, Droplet, Box, Monitor, Thermometer, CircleDot,
+  Blend, Wand2, RotateCcw, Image, Layers,
+};
 
 interface Props {
   id: string;
@@ -100,7 +109,7 @@ export const PostProcessNode = memo(function PostProcessNode({ id, selected, dat
                   position: "relative",
                 }}
               >
-                <span style={{ fontSize: 12 }}>{cat.emoji}</span>
+                {(() => { const I = EFFECT_ICONS[cat.icon]; return I ? <I style={{ width: 11, height: 11, flexShrink: 0 }} /> : null; })()}
                 <span className="hidden sm:inline">{cat.label}</span>
                 {selectedCount > 0 && (
                   <span
@@ -139,7 +148,7 @@ export const PostProcessNode = memo(function PostProcessNode({ id, selected, dat
                     }}
                     title={effect.description}
                   >
-                    <span style={{ fontSize: 13, flexShrink: 0 }}>{effect.emoji}</span>
+                    {(() => { const I = EFFECT_ICONS[effect.icon]; return I ? <I style={{ width: 10, height: 10, flexShrink: 0 }} /> : null; })()}
                     <span style={{ fontSize: 10, fontWeight: isSelected ? 600 : 400, lineHeight: 1.3 }}>
                       {effect.label}
                     </span>
@@ -211,7 +220,7 @@ export const PostProcessNode = memo(function PostProcessNode({ id, selected, dat
                       color: cat?.color ?? accent,
                     }}
                   >
-                    <span>{effect.emoji}</span>
+                    {(() => { const I = EFFECT_ICONS[effect.icon]; return I ? <I style={{ width: 8, height: 8 }} /> : null; })()}
                     {effect.label}
                     <button
                       onClick={() => removeEffect(eid)}
@@ -265,7 +274,7 @@ export const PostProcessNode = memo(function PostProcessNode({ id, selected, dat
                   <div
                     style={{ fontSize: 9, color: "var(--c-t4)", display: "flex", alignItems: "center", gap: 3, background: accentA(0.06), border: `1px solid ${accentA(0.15)}`, borderRadius: 8, padding: "0 8px" }}
                   >
-                    🔗 连接视频节点自动生效
+                    <Link2 style={{ width: 9, height: 9 }} /> 连接视频节点自动生效
                   </div>
                 </div>
               )}

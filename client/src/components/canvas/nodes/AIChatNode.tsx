@@ -4,7 +4,8 @@ import { useCanvasStore } from "../../../hooks/useCanvasStore";
 import type { AIChatNodeData, NodeType } from "../../../../../shared/types";
 import { trpc } from "@/lib/trpc";
 import { toast } from "sonner";
-import { Send, Loader2, Trash2, Bot, User, Sparkles, ChevronDown, ArrowRight, Copy, BookOpen } from "lucide-react";
+import { Send, Loader2, Trash2, Bot, User, Sparkles, ChevronDown, ArrowRight, Copy, BookOpen, Clapperboard, LayoutGrid, Wand2, ScrollText, UserRound } from "lucide-react";
+import type { LucideIcon } from "lucide-react";
 import { CHAT_MODELS } from "@/lib/models";
 // Streamdown removed — replaced with safe inline markdown renderer to avoid ReactFlow DOM conflicts
 function SimpleMarkdown({ children }: { children: string }) {
@@ -46,12 +47,14 @@ const FIELD_MAP: Partial<Record<NodeType, string>> = {
 };
 
 const SYSTEM_PROMPT_TEMPLATES = [
-  { label: "导演助手", icon: "🎬", prompt: "你是一位专业的电影导演助手，擅长分析剧本、提出视觉化建议和分镜构思。请用简洁专业的中文回答。" },
-  { label: "分镜生成", icon: "🖼️", prompt: "你是专业的分镜师。根据场景描述，生成详细的分镜描述，包括：镜头类型、运镜方式、景深、灯光氛围、构图要点。每个分镜用编号列出。" },
-  { label: "提示词优化", icon: "✨", prompt: "你是专业的 AI 图像提示词工程师。用户输入中文描述，你将其转化为高质量的英文 Stable Diffusion 提示词（100词以内），聚焦于视觉细节、光影、风格、构图。只输出提示词，无需解释。" },
-  { label: "视频脚本", icon: "📝", prompt: "你是专业的视频脚本创作者。根据主题创作简洁有力的视频脚本，包括旁白文字、配乐建议和镜头切换节奏。" },
-  { label: "角色设计", icon: "👤", prompt: "你是角色设计专家。根据描述生成详细的角色外观描述，包括：年龄体型、服装风格、表情神态、标志性特征，用于 AI 图像生成。" },
+  { label: "导演助手", icon: "Clapperboard", prompt: "你是一位专业的电影导演助手，擅长分析剧本、提出视觉化建议和分镜构思。请用简洁专业的中文回答。" },
+  { label: "分镜生成", icon: "LayoutGrid", prompt: "你是专业的分镜师。根据场景描述，生成详细的分镜描述，包括：镜头类型、运镜方式、景深、灯光氛围、构图要点。每个分镜用编号列出。" },
+  { label: "提示词优化", icon: "Wand2", prompt: "你是专业的 AI 图像提示词工程师。用户输入中文描述，你将其转化为高质量的英文 Stable Diffusion 提示词（100词以内），聚焦于视觉细节、光影、风格、构图。只输出提示词，无需解释。" },
+  { label: "视频脚本", icon: "ScrollText", prompt: "你是专业的视频脚本创作者。根据主题创作简洁有力的视频脚本，包括旁白文字、配乐建议和镜头切换节奏。" },
+  { label: "角色设计", icon: "UserRound", prompt: "你是角色设计专家。根据描述生成详细的角色外观描述，包括：年龄体型、服装风格、表情神态、标志性特征，用于 AI 图像生成。" },
 ] as const;
+
+const PRESET_ICONS: Record<string, LucideIcon> = { Clapperboard, LayoutGrid, Wand2, ScrollText, UserRound };
 
 export const AIChatNode = memo(function AIChatNode({ id, selected, data }: Props) {
   const { updateNodeData } = useCanvasStore();
@@ -240,7 +243,7 @@ export const AIChatNode = memo(function AIChatNode({ id, selected, data }: Props
                   onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.background = "var(--c-elevated)"; }}
                   onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.background = "transparent"; }}
                 >
-                  <span style={{ fontSize: 14 }}>{t.icon}</span>
+                  {(() => { const I = PRESET_ICONS[t.icon]; return I ? <I className="w-3.5 h-3.5 flex-shrink-0" /> : null; })()}
                   <div className="flex flex-col flex-1 min-w-0">
                     <span style={{ fontSize: 11, fontWeight: 500, color: "var(--c-t1)" }}>{t.label}</span>
                     <span style={{ fontSize: 9.5, color: "var(--c-t4)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{t.prompt.slice(0, 50)}...</span>

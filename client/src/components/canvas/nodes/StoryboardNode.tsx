@@ -490,7 +490,7 @@ export const StoryboardNode = memo(function StoryboardNode({ id, selected, data 
             }}
           >
             {expandingPrompt ? <Loader2 className="w-3 h-3 animate-spin" /> : <Wand2 className="w-3 h-3" />}
-            {expandingPrompt ? "AI 扩写中..." : "✨ AI 扩写提示词"}
+            {expandingPrompt ? "AI 扩写中..." : "AI 扩写提示词"}
           </button>
           <button
             onClick={() => {

@@ -1,7 +1,20 @@
 import { useCallback, useState, useMemo } from "react";
-import { X, Search, Zap, BookmarkPlus, Trash2, ArrowLeft, Check } from "lucide-react";
+import { X, Search, Zap, BookmarkPlus, Trash2, ArrowLeft, Check, Clapperboard, Lightbulb, Sparkles, LayoutGrid, Film, Play, Video, Scale, Megaphone, Mic, ShoppingBag, Bot, Rocket, FolderOpen, Star, Bookmark, Briefcase, Target, Flame, Sun, Palette, Layers, Trophy, Grid2x2, type LucideIcon } from "lucide-react";
 import { useCanvasStore } from "../../hooks/useCanvasStore";
 import type { NodeType, NodeData } from "../../../../shared/types";
+
+const TEMPLATE_ICONS: Record<string, LucideIcon> = {
+  Clapperboard, Lightbulb, Sparkles, LayoutGrid, Film, Play, Video,
+  Scale, Megaphone, Mic, ShoppingBag, Bot, Rocket, FolderOpen,
+  Star, Bookmark, Briefcase, Target, Flame, Sun, Palette, Layers,
+  Trophy, Grid2x2, Search, Zap,
+};
+
+function TemplateIcon({ name, size = 16 }: { name: string; size?: number }) {
+  const Icon = TEMPLATE_ICONS[name];
+  if (Icon) return <Icon style={{ width: size, height: size }} />;
+  return <span style={{ fontSize: size * 0.9 }}>{name}</span>;
+}
 
 // ── Template data types ───────────────────────────────────────────────────────
 
@@ -40,7 +53,7 @@ const TEMPLATES: Template[] = [
     id: "single-shot",
     name: "单镜头视频",
     desc: "脚本 → 分镜 → 图像 → 视频，最简单的完整流程",
-    icon: "🎬",
+    icon: "Clapperboard",
     category: "starter",
     nodes: [
       { type: "script",     dx: 0,    dy: 0,    title: "脚本" },
@@ -58,7 +71,7 @@ const TEMPLATES: Template[] = [
     id: "quick-brainstorm",
     name: "创意工作区",
     desc: "便签 + AI 对话 + 脚本，适合头脑风暴与创意起草",
-    icon: "💡",
+    icon: "Lightbulb",
     category: "starter",
     nodes: [
       { type: "note",    dx: -480, dy: 0,   title: "创意灵感", initialData: { content: "在这里记录创意想法..." } },
@@ -74,7 +87,7 @@ const TEMPLATES: Template[] = [
     id: "prompt-to-image",
     name: "提示词生图",
     desc: "提示词节点驱动图像生成，快速迭代视觉方案",
-    icon: "✨",
+    icon: "Sparkles",
     category: "starter",
     nodes: [
       { type: "prompt",    dx: 0,   dy: 0,   title: "提示词", initialData: { positivePrompt: "高质量摄影，电影级光线，专业构图" } },
@@ -92,7 +105,7 @@ const TEMPLATES: Template[] = [
     id: "image-batch",
     name: "批量图像生成",
     desc: "一个提示词驱动 4 个并行图像生成节点，对比效果",
-    icon: "🖼️",
+    icon: "LayoutGrid",
     category: "image",
     nodes: [
       { type: "prompt",    dx: 0,    dy: 0,   title: "主提示词" },
@@ -112,7 +125,7 @@ const TEMPLATES: Template[] = [
     id: "storyboard-series",
     name: "连续分镖生成",
     desc: "脚本自动生成 4 格分镖，每格独立出图",
-    icon: "🎞️",
+    icon: "Film",
     category: "image",
     nodes: [
       { type: "script",     dx: 0,    dy: 0,   title: "故事脚本" },
@@ -142,7 +155,7 @@ const TEMPLATES: Template[] = [
     id: "image-to-video",
     name: "图像转视频",
     desc: "生成参考图后直接驱动多个视频模型，快速对比",
-    icon: "▶️",
+    icon: "Play",
     category: "video",
     nodes: [
       { type: "image_gen",  dx: 0,    dy: 0,   title: "参考图生成" },
@@ -160,7 +173,7 @@ const TEMPLATES: Template[] = [
     id: "short-film",
     name: "短片制作流程",
     desc: "脚本 → 3 分镖 → 3 图像 → 3 视频，完整短片工作流",
-    icon: "🎥",
+    icon: "Video",
     category: "video",
     nodes: [
       { type: "script",     dx: 0,    dy: 0,    title: "故事脚本" },
@@ -190,7 +203,7 @@ const TEMPLATES: Template[] = [
     id: "video-compare",
     name: "视频模型对比",
     desc: "同一提示词同时提交多个视频模型，对比生成效果",
-    icon: "⚖️",
+    icon: "Scale",
     category: "video",
     nodes: [
       { type: "prompt",     dx: 0,    dy: 0,   title: "视频提示词", initialData: { positivePrompt: "电影级动态镜头，高质量画面" } },
@@ -212,7 +225,7 @@ const TEMPLATES: Template[] = [
     id: "ad-film",
     name: "广告片工作流",
     desc: "AI 剧本 → 角色/场景 → 4 分镖 → 图像 → 视频 → 合并，完整广告片制作流程",
-    icon: "📢",
+    icon: "Megaphone",
     category: "video",
     nodes: [
       { type: "script",     dx: 0,    dy: 0,    title: "广告脚本" },
@@ -245,7 +258,7 @@ const TEMPLATES: Template[] = [
     id: "vlog",
     name: "Vlog 制作流程",
     desc: "脚本 → 配音旁白 → 背景音乐 → 多镖视频 → 合并，适合日常 Vlog",
-    icon: "🎙️",
+    icon: "Mic",
     category: "video",
     nodes: [
       { type: "script",     dx: 0,    dy: 0,    title: "Vlog 脚本", initialData: { content: "今天我来分享..." } },
@@ -276,7 +289,7 @@ const TEMPLATES: Template[] = [
     id: "product-promo",
     name: "产品介绍视频",
     desc: "产品角色 + 场景 → 3 角度分镖 → 图像参考 → 视频，适合电商/发布会",
-    icon: "🛍️",
+    icon: "ShoppingBag",
     category: "video",
     nodes: [
       { type: "character",  dx: -300, dy: 0,   title: "产品主体",  initialData: { characterKind: "person", role: "产品展示" } },
@@ -311,7 +324,7 @@ const TEMPLATES: Template[] = [
     id: "ai-scriptwriter",
     name: "AI 剧本创作",
     desc: "AI 对话生成故事结构，自动扩展为分镖板",
-    icon: "🤖",
+    icon: "Bot",
     category: "ai",
     nodes: [
       { type: "ai_chat",    dx: 0,    dy: 0,   title: "AI 编剧助手", initialData: { systemPrompt: "你是专业电影编剧，帮助构思故事结构、对话和视觉场景描述。用中文回答，内容简洁有力。" } },
@@ -331,7 +344,7 @@ const TEMPLATES: Template[] = [
     id: "ai-full-pipeline",
     name: "AI 全流程制作",
     desc: "从 AI 对话到最终视频，完整 AI 辅助创作管线",
-    icon: "🚀",
+    icon: "Rocket",
     category: "ai",
     nodes: [
       { type: "ai_chat",    dx: 0,    dy: 0,    title: "AI 创作助手", initialData: { systemPrompt: "你是专业视频制作顾问，帮助从创意到分镖板到最终视频的全流程制作。" } },
@@ -650,7 +663,7 @@ function TemplateCard({
       {/* Card body */}
       <div className="px-3.5 pt-3 pb-3.5 flex flex-col gap-1.5 flex-1">
         <div className="flex items-center gap-2">
-          <span className="text-lg leading-none">{template.icon}</span>
+          <TemplateIcon name={template.icon} size={18} />
           <span className="text-sm font-semibold truncate" style={{ color: "var(--c-t1)" }}>
             {template.name}
           </span>
@@ -706,7 +719,7 @@ function TemplateCard({
 
 // ── Save dialog ───────────────────────────────────────────────────────────────
 
-const QUICK_EMOJIS = ["📋", "⭐", "🔖", "💼", "🎯", "🔥", "💫", "🌟", "🎨", "🎭", "🏆", "🎪"];
+const QUICK_ICONS = ["Film", "Star", "Bookmark", "Briefcase", "Target", "Flame", "Sparkles", "Sun", "Palette", "Layers", "Trophy", "Grid2x2"];
 
 function SaveDialog({
   onSave,
@@ -716,7 +729,7 @@ function SaveDialog({
   onCancel: () => void;
 }) {
   const [name, setName] = useState("我的模板");
-  const [icon, setIcon] = useState("📋");
+  const [icon, setIcon] = useState("Film");
 
   return (
     <div
@@ -741,17 +754,18 @@ function SaveDialog({
         <div className="flex flex-col gap-2">
           <p className="text-[11px]" style={{ color: "var(--c-t3)" }}>图标</p>
           <div className="flex flex-wrap gap-1.5">
-            {QUICK_EMOJIS.map((e) => (
+            {QUICK_ICONS.map((e) => (
               <button
                 key={e}
                 onClick={() => setIcon(e)}
-                className="w-8 h-8 rounded-lg text-base flex items-center justify-center transition-all"
+                className="w-8 h-8 rounded-lg flex items-center justify-center transition-all"
                 style={{
                   background: icon === e ? "oklch(0.68 0.22 285 / 0.20)" : "var(--c-elevated)",
                   border: icon === e ? "1px solid oklch(0.68 0.22 285 / 0.50)" : "1px solid var(--c-bd2)",
+                  color: icon === e ? "oklch(0.78 0.18 285)" : "var(--c-t3)",
                 }}
               >
-                {e}
+                <TemplateIcon name={e} size={14} />
               </button>
             ))}
           </div>
@@ -937,7 +951,7 @@ export function TemplatePanel({ onClose, centerX, centerY }: Props) {
               >
                 <ArrowLeft className="w-4 h-4" />
               </button>
-              <span className="text-xl leading-none">{selectedTemplate.icon}</span>
+              <TemplateIcon name={selectedTemplate.icon} size={20} />
               <div>
                 <p className="text-sm font-semibold" style={{ color: "var(--c-t1)" }}>
                   {selectedTemplate.name}
@@ -1170,7 +1184,7 @@ export function TemplatePanel({ onClose, centerX, centerY }: Props) {
               {filtered.length === 0 ? (
                 category === "custom" && customCount === 0 ? (
                   <div className="flex flex-col items-center justify-center py-12 gap-3">
-                    <span className="text-3xl">📂</span>
+                    <FolderOpen style={{ width: 40, height: 40, color: "var(--c-t4)" }} />
                     <p className="text-sm" style={{ color: "var(--c-t4)" }}>还没有保存的模板</p>
                     <p className="text-xs" style={{ color: "var(--c-t4)" }}>
                       点击右上角「保存画布」将当前工作流另存为模板
@@ -1178,7 +1192,7 @@ export function TemplatePanel({ onClose, centerX, centerY }: Props) {
                   </div>
                 ) : (
                   <div className="flex flex-col items-center justify-center py-12 gap-3">
-                    <span className="text-3xl">🔍</span>
+                    <Search style={{ width: 40, height: 40, color: "var(--c-t4)" }} />
                     <p className="text-sm" style={{ color: "var(--c-t4)" }}>没有找到匹配的模板</p>
                   </div>
                 )

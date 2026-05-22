@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect } from "react";
-import { ChevronDown, Check } from "lucide-react";
+import { ChevronDown, Check, Bot } from "lucide-react";
 
 export const LLM_MODELS = [
   { id: "gemini-2.5-flash",          short: "Gemini",  label: "Gemini 2.5 Flash",  tag: "默认", color: "oklch(0.68 0.18 160)" },
@@ -45,7 +45,7 @@ export function LLMModelPicker({ value, onChange, disabled }: Props) {
           letterSpacing: "0.03em",
         }}
       >
-        <span style={{ fontSize: 10 }}>🤖</span>
+        <Bot style={{ width: 10, height: 10 }} />
         <span>{current.short}</span>
         <ChevronDown
           style={{
