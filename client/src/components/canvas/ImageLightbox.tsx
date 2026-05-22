@@ -1,6 +1,7 @@
 import { useEffect, useCallback } from "react";
 import { createPortal } from "react-dom";
 import { X, ChevronLeft, ChevronRight, Check, Download } from "lucide-react";
+import { makeImageProxyFallback } from "@/lib/utils";
 
 interface ImageLightboxProps {
   images: string[];
@@ -78,6 +79,7 @@ export function ImageLightbox({
             transition: "border-color 150ms ease",
           }}
           draggable={false}
+          onError={makeImageProxyFallback(currentUrl)}
         />
 
         {/* Top bar */}
@@ -164,7 +166,7 @@ export function ImageLightbox({
                   flexShrink: 0,
                 }}
               >
-                <img src={url} alt={`thumb-${idx}`} style={{ width: "100%", height: "100%", objectFit: "cover" }} draggable={false} />
+                <img src={url} alt={`thumb-${idx}`} style={{ width: "100%", height: "100%", objectFit: "cover" }} draggable={false} onError={makeImageProxyFallback(url)} />
               </button>
             ))}
           </div>
