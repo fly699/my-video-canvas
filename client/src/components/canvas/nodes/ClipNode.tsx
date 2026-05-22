@@ -1,4 +1,4 @@
-import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { memo, useCallback, useEffect, useRef, useState } from "react";
 import { Handle, Position } from "@xyflow/react";
 import { BaseNode } from "../BaseNode";
 import { useCanvasStore } from "../../../hooks/useCanvasStore";
@@ -163,28 +163,33 @@ export const ClipNode = memo(function ClipNode({ id, selected, data }: Props) {
   );
 
   // ── Auto-detect connected upstream nodes ──────────────────────────────────
-  const { inputVideoUrl, inputAudioUrl } = useCanvasStore(
-    useMemo(() => (s: ReturnType<typeof useCanvasStore.getState>) => {
-      const upEdges = s.edges.filter(e => e.target === id);
-      let videoUrl: string | null = null;
-      let audioUrl: string | null = null;
-
-      for (const edge of upEdges) {
+  // Split into two primitive-returning selectors to avoid object identity
+  // churn that would cause Zustand to re-subscribe on every store change.
+  const inputVideoUrl = useCanvasStore(
+    useCallback((s: ReturnType<typeof useCanvasStore.getState>) => {
+      for (const edge of s.edges.filter(e => e.target === id)) {
         const node = s.nodes.find(n => n.id === edge.source);
         if (!node) continue;
         const p = node.data.payload as Record<string, unknown>;
+        if (p.resultVideoUrl) return p.resultVideoUrl as string;
+        if (p.url && (p.type === "video" || node.data.nodeType === "video_task"))
+          return p.url as string;
+      }
+      return null;
+    }, [id]),
+  );
 
-        if (!videoUrl) {
-          if (p.resultVideoUrl) videoUrl = p.resultVideoUrl as string;
-          else if (p.url && (p.type === "video" || node.data.nodeType === "video_task")) {
-            videoUrl = p.url as string;
-          }
-        }
-        if (!audioUrl && node.data.nodeType === "audio" && p.url) {
-          audioUrl = p.url as string;
+  const inputAudioUrl = useCanvasStore(
+    useCallback((s: ReturnType<typeof useCanvasStore.getState>) => {
+      for (const edge of s.edges.filter(e => e.target === id)) {
+        const node = s.nodes.find(n => n.id === edge.source);
+        if (!node) continue;
+        if (node.data.nodeType === "audio") {
+          const p = node.data.payload as Record<string, unknown>;
+          if (p.url) return p.url as string;
         }
       }
-      return { inputVideoUrl: videoUrl, inputAudioUrl: audioUrl };
+      return null;
     }, [id]),
   );
 
