@@ -542,8 +542,12 @@ function CanvasInner({ projectId }: { projectId: number }) {
 
   const handleAddNode = useCallback((type: NodeType) => {
     const pos = contextMenu?.canvasPos ?? { x: 200, y: 200 };
-    const newNode = addNode(type, pos);
-    emitCollabEvent("node:add", newNode);
+    try {
+      const newNode = addNode(type, pos);
+      emitCollabEvent("node:add", newNode);
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "添加节点失败");
+    }
     setShowNodePicker(false);
   }, [contextMenu, addNode, emitCollabEvent]);
 
@@ -551,8 +555,12 @@ function CanvasInner({ projectId }: { projectId: number }) {
     const vp = reactFlow.getViewport();
     const cx = (window.innerWidth / 2 - vp.x) / vp.zoom;
     const cy = (window.innerHeight / 2 - vp.y) / vp.zoom;
-    const newNode = addNode(type, { x: cx + Math.random() * 80 - 40, y: cy + Math.random() * 80 - 40 });
-    emitCollabEvent("node:add", newNode);
+    try {
+      const newNode = addNode(type, { x: cx + Math.random() * 80 - 40, y: cy + Math.random() * 80 - 40 });
+      emitCollabEvent("node:add", newNode);
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "添加节点失败");
+    }
     setShowNodePicker(false);
   }, [addNode, reactFlow, emitCollabEvent]);
 

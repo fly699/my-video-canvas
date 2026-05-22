@@ -55,10 +55,8 @@ export const projectsRouter = router({
   create: protectedProcedure
     .input(z.object({ name: z.string().min(1).max(255), description: z.string().optional() }))
     .mutation(async ({ ctx, input }) => {
-      await createProject({ userId: ctx.user.id, name: input.name, description: input.description });
-      const projects = await getProjectsByUser(ctx.user.id);
-      const project = projects[0];
-      if (!project) throw new Error("Failed to create project");
+      const project = await createProject({ userId: ctx.user.id, name: input.name, description: input.description });
+      if (!project) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "Failed to create project" });
       return project;
     }),
 
@@ -204,7 +202,7 @@ export const assetsRouter = router({
       const buffer = Buffer.from(input.base64, "base64");
       const key = `assets/${ctx.user.id}/${nanoid()}-${input.name}`;
       const { url } = await storagePut(key, buffer, input.mimeType);
-      await createAsset({
+      const asset = await createAsset({
         userId: ctx.user.id,
         projectId: input.projectId ?? null,
         name: input.name,
@@ -214,9 +212,7 @@ export const assetsRouter = router({
         storageKey: key,
         url,
       });
-      const assets = await getAssetsByUser(ctx.user.id, input.projectId);
-      const asset = assets[0];
-      if (!asset) throw new Error("Failed to save asset record");
+      if (!asset) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "Failed to save asset record" });
       return asset;
     }),
 
@@ -310,6 +306,11 @@ export const videoTasksRouter = router({
             const upstream = await checkPoyoVideoStatus(task.externalTaskId);
             if (upstream.status === "finished") {
               pollLastCheck.delete(task.externalTaskId);
+              if (!upstream.resultVideoUrl) {
+                const update = { status: "failed" as const, errorMessage: "生成完成但无视频文件" };
+                await updateVideoTask(task.id, update);
+                return { ...task, ...update };
+              }
               const update = { status: "succeeded" as const, resultVideoUrl: upstream.resultVideoUrl };
               await updateVideoTask(task.id, update);
               return { ...task, ...update };

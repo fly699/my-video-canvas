@@ -63,6 +63,7 @@ export function TimelinePanel({ onClose }: TimelinePanelProps) {
   // Clear playing state when the playing clip is removed from the canvas
   useEffect(() => {
     if (playingId !== null && !videoClips.some((c) => c.nodeId === playingId)) {
+      videoRefs.current[playingId]?.pause();
       setPlayingId(null);
     }
   }, [videoClips, playingId]);

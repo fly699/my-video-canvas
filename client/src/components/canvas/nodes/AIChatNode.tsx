@@ -101,10 +101,9 @@ export const AIChatNode = memo(function AIChatNode({ id, selected, data }: Props
       setLocalMessages((prev) => [...prev, { role: "assistant", content: result.content }]);
     },
     onError: (err) => {
+      // Show error as a toast only — do NOT append to localMessages so the
+      // error text is never persisted to payload.messages or the DB.
       toast.error("AI 响应失败：" + err.message);
-      // The user message was already saved to DB before the LLM call,
-      // so we must NOT roll it back — instead append a visible error marker.
-      setLocalMessages((prev) => [...prev, { role: "assistant", content: `⚠️ ${err.message}` }]);
     },
   });
 

@@ -18,6 +18,9 @@ const ThemeContext = createContext<ThemeContextType | undefined>(undefined);
 
 export function ThemeProvider({ children }: { children: React.ReactNode }) {
   const [theme, setThemeState] = useState<Theme>(() => {
+    // One-time migration from the old key name used before the avc: namespace
+    const legacy = localStorage.getItem("theme");
+    if (legacy) { localStorage.setItem("avc:theme", legacy); localStorage.removeItem("theme"); }
     return (localStorage.getItem("avc:theme") as Theme) || "dark";
   });
 

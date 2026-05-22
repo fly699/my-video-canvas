@@ -101,8 +101,10 @@ export async function getProjectById(id: number, userId: number) {
 export async function createProject(data: InsertProject) {
   const db = await getDb();
   if (!db) { if (DEV_MODE) return dev.devCreateProject(data); throw new Error("DB unavailable"); }
-  const [result] = await db.insert(projects).values(data);
-  return result;
+  const [header] = await db.insert(projects).values(data);
+  const insertId = (header as unknown as { insertId: number }).insertId;
+  const rows = await db.select().from(projects).where(eq(projects.id, insertId));
+  return rows[0] ?? null;
 }
 
 export async function updateProject(id: number, userId: number, data: Partial<InsertProject>) {
@@ -199,8 +201,17 @@ export async function getAssetsByUser(userId: number, projectId?: number) {
 export async function createAsset(data: InsertAsset) {
   const db = await getDb();
   if (!db) { if (DEV_MODE) return dev.devCreateAsset(data); throw new Error("DB unavailable"); }
-  const [result] = await db.insert(assets).values(data);
-  return result;
+  const [header] = await db.insert(assets).values(data);
+  const insertId = (header as unknown as { insertId: number }).insertId;
+  const rows = await db.select().from(assets).where(eq(assets.id, insertId));
+  return rows[0] ?? null;
+}
+
+export async function getAssetById(id: number, userId: number) {
+  const db = await getDb();
+  if (!db) return null;
+  const rows = await db.select().from(assets).where(and(eq(assets.id, id), eq(assets.userId, userId)));
+  return rows[0] ?? null;
 }
 
 export async function deleteAsset(id: number, userId: number) {

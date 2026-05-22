@@ -114,6 +114,7 @@ export async function checkPoyoVideoStatus(externalTaskId: string): Promise<Poyo
 
   const body = (await res.json()) as {
     code: number;
+    message?: string;
     data: {
       status: string;
       progress?: number;
@@ -121,6 +122,10 @@ export async function checkPoyoVideoStatus(externalTaskId: string): Promise<Poyo
       error_message?: string;
     };
   };
+
+  if (body.code !== undefined && body.code !== 0) {
+    throw new Error(`Poyo status check error (code ${body.code}): ${body.message ?? JSON.stringify(body)}`);
+  }
 
   const d = body.data;
   const status = d.status as PoyoTaskStatus["status"];
