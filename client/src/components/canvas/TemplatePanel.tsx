@@ -932,11 +932,14 @@ export function TemplatePanel({ onClose, centerX, centerY }: Props) {
       const resolvedNodes: Array<{ id: string }> = [];
 
       try {
+      // Map from spec index → first resolvedNodes index for that spec
+      const specStartIndex: number[] = [];
       for (const spec of template.nodes) {
         const count = spec.count ?? 1;
         const spacing = spec.spacing ?? 0;
         const rowStartX = count > 1 ? centerX + spec.dx - ((count - 1) * spacing) / 2 : centerX + spec.dx;
 
+        specStartIndex.push(resolvedNodes.length);
         for (let i = 0; i < count; i++) {
           const x = count > 1 ? rowStartX + i * spacing : centerX + spec.dx;
           const y = centerY + spec.dy;
@@ -955,8 +958,10 @@ export function TemplatePanel({ onClose, centerX, centerY }: Props) {
       }
 
       for (const edgeSpec of template.edgeSpecs ?? []) {
-        const src = resolvedNodes[edgeSpec.fromIndex];
-        const tgt = resolvedNodes[edgeSpec.toIndex];
+        const srcIdx = specStartIndex[edgeSpec.fromIndex];
+        const tgtIdx = specStartIndex[edgeSpec.toIndex];
+        const src = srcIdx !== undefined ? resolvedNodes[srcIdx] : undefined;
+        const tgt = tgtIdx !== undefined ? resolvedNodes[tgtIdx] : undefined;
         if (src && tgt) {
           const srcType = template.nodes[edgeSpec.fromIndex]?.type;
           const tgtType = template.nodes[edgeSpec.toIndex]?.type;

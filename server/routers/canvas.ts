@@ -432,7 +432,10 @@ export const videoTasksRouter = router({
 export const aiChatRouter = router({
   getMessages: protectedProcedure
     .input(z.object({ nodeId: z.string(), projectId: z.number() }))
-    .query(({ input }) => getChatMessages(input.nodeId, input.projectId)),
+    .query(async ({ ctx, input }) => {
+      await assertProjectOwner(input.projectId, ctx.user.id);
+      return getChatMessages(input.nodeId, input.projectId);
+    }),
 
   sendMessage: protectedProcedure
     .input(
@@ -445,7 +448,8 @@ export const aiChatRouter = router({
         model: z.string().optional(),
       })
     )
-    .mutation(async ({ input }) => {
+    .mutation(async ({ ctx, input }) => {
+      await assertProjectOwner(input.projectId, ctx.user.id);
       // Build messages for LLM (user message included inline — not saved to DB yet)
       const history = await getChatMessages(input.nodeId, input.projectId);
       const systemContent = [
@@ -480,7 +484,8 @@ export const aiChatRouter = router({
 
   clearMessages: protectedProcedure
     .input(z.object({ nodeId: z.string(), projectId: z.number() }))
-    .mutation(async ({ input }) => {
+    .mutation(async ({ ctx, input }) => {
+      await assertProjectOwner(input.projectId, ctx.user.id);
       await clearChatMessages(input.nodeId, input.projectId);
       return { success: true };
     }),

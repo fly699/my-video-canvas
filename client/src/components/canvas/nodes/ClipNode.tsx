@@ -198,8 +198,8 @@ export const ClipNode = memo(function ClipNode({ id, selected, data }: Props) {
 
   const duration = payload.sourceDuration ?? 0;
   const startTime = payload.startTime ?? 0;
-  const endTime = payload.endTime ?? duration;
-  const speed = payload.speed ?? 1.0;
+  const endTime = payload.endTime ?? (payload.sourceDuration ?? Infinity);
+  const speed = Math.max(0.01, payload.speed ?? 1.0);
   const audioVolume = payload.audioVolume ?? 1.0;
 
   // When source video loads, capture duration and init trim points
@@ -377,6 +377,7 @@ export const ClipNode = memo(function ClipNode({ id, selected, data }: Props) {
             {/* Video */}
             <div className="relative rounded-lg overflow-hidden" style={{ background: "var(--c-canvas)", border: `1px solid ${accentA(0.25)}` }}>
               <video
+                key={displayUrl}
                 ref={videoRef}
                 src={displayUrl}
                 className="w-full nodrag"

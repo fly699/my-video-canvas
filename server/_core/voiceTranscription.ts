@@ -142,6 +142,10 @@ export async function transcribeAudio(
     );
     formData.append("prompt", prompt);
 
+    if (options.language) {
+      formData.append("language", options.language);
+    }
+
     // Step 4: Call the transcription service
     const baseUrl = ENV.forgeApiUrl.endsWith("/")
       ? ENV.forgeApiUrl

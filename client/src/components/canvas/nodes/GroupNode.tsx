@@ -86,7 +86,7 @@ export const GroupNode = memo(function GroupNode({ id, selected, data }: Props) 
               value={labelValue}
               onChange={(e) => setLabelValue(e.target.value)}
               onBlur={handleSaveLabel}
-              onKeyDown={(e) => { if (e.key === "Enter") handleSaveLabel(); if (e.key === "Escape") { setEditingLabel(false); setLabelValue(data.title); } }}
+              onKeyDown={(e) => { if (e.key === "Enter") { e.currentTarget.blur(); } if (e.key === "Escape") { setEditingLabel(false); setLabelValue(data.title); } }}
               style={{
                 flex: 1, fontSize: 12, fontWeight: 600, background: "transparent",
                 border: "none", borderBottom: `1px solid ${color.accent}`,

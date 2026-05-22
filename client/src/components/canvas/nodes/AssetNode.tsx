@@ -39,6 +39,7 @@ export const AssetNode = memo(function AssetNode({ id, selected, data }: Props) 
 
   const handleReplace = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
+    e.target.value = "";
     if (!file) return;
     if (file.size > 32 * 1024 * 1024) { toast.error("文件不能超过 32MB"); return; }
     setUploading(true);
@@ -48,7 +49,6 @@ export const AssetNode = memo(function AssetNode({ id, selected, data }: Props) 
       uploadMutation.mutate({ base64, mimeType: file.type, filename: file.name });
     };
     reader.readAsDataURL(file);
-    e.target.value = "";
   };
 
   const renderPreview = () => {
