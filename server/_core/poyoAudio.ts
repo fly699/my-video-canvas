@@ -53,9 +53,12 @@ export async function submitAndPollPoyoMusic(
     throw new Error(`Poyo audio submit failed (${submitRes.status}): ${text}`);
   }
 
-  const submitData = (await submitRes.json()) as { code: number; data: { task_id: string } };
+  const submitData = (await submitRes.json()) as { code?: number; message?: string; data?: { task_id?: string } };
+  if (submitData.code !== undefined && submitData.code !== 0) {
+    throw new Error(`Poyo audio submit error (code ${submitData.code}): ${submitData.message ?? JSON.stringify(submitData)}`);
+  }
   const taskId = submitData.data?.task_id;
-  if (!taskId) throw new Error("Poyo audio submit: no task_id returned");
+  if (!taskId) throw new Error(`Poyo audio submit: no task_id returned. Response: ${JSON.stringify(submitData)}`);
 
   // Poll until finished
   for (let i = 0; i < POLL_MAX_ATTEMPTS; i++) {
@@ -105,6 +108,14 @@ export async function submitAndPollPoyoMusic(
 
 export type PoyoTTSModel = "openai_tts_hd" | "openai_tts" | "elevenlabs_v3" | "cosyvoice_2";
 
+// Map internal model IDs to Poyo API model names
+const TTS_MODEL_MAP: Record<PoyoTTSModel, string> = {
+  openai_tts_hd: "tts-1-hd",
+  openai_tts:    "tts-1",
+  elevenlabs_v3: "elevenlabs-v3",
+  cosyvoice_2:   "cosyvoice-2",
+};
+
 export interface SubmitPoyoTTSOptions {
   model: PoyoTTSModel;
   text: string;
@@ -115,6 +126,7 @@ export interface SubmitPoyoTTSOptions {
 export async function submitAndPollPoyoTTS(opts: SubmitPoyoTTSOptions): Promise<PoyoMusicResult> {
   if (!ENV.poyoApiKey) throw new Error("POYO_API_KEY is not configured");
 
+  const poyoModel = TTS_MODEL_MAP[opts.model] ?? opts.model;
   const input: Record<string, unknown> = { text: opts.text };
   if (opts.voice) input.voice = opts.voice;
   if (opts.speed !== undefined) input.speed = opts.speed;
@@ -125,7 +137,7 @@ export async function submitAndPollPoyoTTS(opts: SubmitPoyoTTSOptions): Promise<
       "Content-Type": "application/json",
       Authorization: `Bearer ${ENV.poyoApiKey}`,
     },
-    body: JSON.stringify({ model: opts.model, input }),
+    body: JSON.stringify({ model: poyoModel, input }),
     signal: AbortSignal.timeout(15_000),
   });
 
@@ -134,9 +146,12 @@ export async function submitAndPollPoyoTTS(opts: SubmitPoyoTTSOptions): Promise<
     throw new Error(`Poyo TTS submit failed (${submitRes.status}): ${text}`);
   }
 
-  const submitData = (await submitRes.json()) as { code: number; data: { task_id: string } };
+  const submitData = (await submitRes.json()) as { code?: number; message?: string; data?: { task_id?: string } };
+  if (submitData.code !== undefined && submitData.code !== 0) {
+    throw new Error(`Poyo TTS submit error (code ${submitData.code}): ${submitData.message ?? JSON.stringify(submitData)}`);
+  }
   const taskId = submitData.data?.task_id;
-  if (!taskId) throw new Error("Poyo TTS submit: no task_id returned");
+  if (!taskId) throw new Error(`Poyo TTS submit: no task_id returned. Response: ${JSON.stringify(submitData)}`);
 
   for (let i = 0; i < POLL_MAX_ATTEMPTS; i++) {
     await new Promise((r) => setTimeout(r, POLL_INTERVAL_MS));
