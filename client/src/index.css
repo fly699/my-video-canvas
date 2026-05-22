@@ -184,6 +184,98 @@
     color-scheme: dark;
   }
 
+  /* ── Forest — deep green dark, GitHub-forest inspired ─────────────────────── */
+  :root[data-theme="forest"] {
+    --c-canvas:   oklch(0.068 0.018 150);   /* deep pine black-green */
+    --c-base:     oklch(0.100 0.020 150);
+    --c-surface:  oklch(0.130 0.019 150);
+    --c-elevated: oklch(0.160 0.018 150);
+    --c-overlay:  oklch(0.190 0.017 150);
+    --c-input:    oklch(0.088 0.018 150);
+    --c-bd1:      oklch(0.190 0.018 150);
+    --c-bd2:      oklch(0.230 0.018 150);
+    --c-bd3:      oklch(0.315 0.018 150);
+    --c-t1:       oklch(0.880 0.010 150);   /* cool green-white */
+    --c-t2:       oklch(0.700 0.012 150);
+    --c-t3:       oklch(0.520 0.010 150);
+    --c-t4:       oklch(0.380 0.008 150);
+    --c-node-bg:  oklch(0.112 0.019 150);
+    --c-node-shadow-rest:     0 2px 12px oklch(0 0 0 / 0.45), 0 1px 3px oklch(0 0 0 / 0.32);
+    --c-node-shadow-hover:    0 8px 32px oklch(0 0 0 / 0.58), 0 2px 8px oklch(0 0 0 / 0.42);
+    --c-node-shadow-selected: 0 20px 60px oklch(0 0 0 / 0.72), 0 4px 16px oklch(0 0 0 / 0.52);
+    --c-node-shadow-run:      0 8px 32px oklch(0 0 0 / 0.55);
+    color-scheme: dark;
+  }
+
+  /* ── Rose — warm rose dark, Dracula-warm inspired ─────────────────────────── */
+  :root[data-theme="rose"] {
+    --c-canvas:   oklch(0.068 0.012 10);    /* deep warm black-red */
+    --c-base:     oklch(0.100 0.016 10);
+    --c-surface:  oklch(0.130 0.015 10);
+    --c-elevated: oklch(0.160 0.014 10);
+    --c-overlay:  oklch(0.192 0.014 10);
+    --c-input:    oklch(0.088 0.014 10);
+    --c-bd1:      oklch(0.192 0.016 10);
+    --c-bd2:      oklch(0.235 0.017 10);
+    --c-bd3:      oklch(0.318 0.017 10);
+    --c-t1:       oklch(0.880 0.008 15);    /* warm near-white */
+    --c-t2:       oklch(0.700 0.009 15);
+    --c-t3:       oklch(0.520 0.007 15);
+    --c-t4:       oklch(0.380 0.006 15);
+    --c-node-bg:  oklch(0.112 0.015 10);
+    --c-node-shadow-rest:     0 2px 12px oklch(0 0 0 / 0.42), 0 1px 3px oklch(0 0 0 / 0.30);
+    --c-node-shadow-hover:    0 8px 32px oklch(0 0 0 / 0.55), 0 2px 8px oklch(0 0 0 / 0.40);
+    --c-node-shadow-selected: 0 20px 60px oklch(0 0 0 / 0.70), 0 4px 16px oklch(0 0 0 / 0.50);
+    --c-node-shadow-run:      0 8px 32px oklch(0 0 0 / 0.55);
+    color-scheme: dark;
+  }
+
+  /* ── Ocean — deep blue dark, deep-sea inspired ────────────────────────────── */
+  :root[data-theme="ocean"] {
+    --c-canvas:   oklch(0.062 0.026 232);   /* deep navy black */
+    --c-base:     oklch(0.092 0.030 232);
+    --c-surface:  oklch(0.122 0.028 232);
+    --c-elevated: oklch(0.152 0.026 232);
+    --c-overlay:  oklch(0.182 0.025 232);
+    --c-input:    oklch(0.078 0.026 232);
+    --c-bd1:      oklch(0.185 0.028 232);
+    --c-bd2:      oklch(0.222 0.028 232);
+    --c-bd3:      oklch(0.305 0.028 232);
+    --c-t1:       oklch(0.880 0.012 220);   /* cool blue-white */
+    --c-t2:       oklch(0.700 0.015 220);
+    --c-t3:       oklch(0.520 0.013 220);
+    --c-t4:       oklch(0.380 0.010 220);
+    --c-node-bg:  oklch(0.105 0.028 232);
+    --c-node-shadow-rest:     0 2px 14px oklch(0 0 0 / 0.48), 0 1px 3px oklch(0 0 0 / 0.34);
+    --c-node-shadow-hover:    0 8px 36px oklch(0 0 0 / 0.62), 0 2px 8px oklch(0 0 0 / 0.44);
+    --c-node-shadow-selected: 0 20px 64px oklch(0 0 0 / 0.76), 0 4px 16px oklch(0 0 0 / 0.54);
+    --c-node-shadow-run:      0 8px 32px oklch(0 0 0 / 0.58);
+    color-scheme: dark;
+  }
+
+  /* ── Warm — cream paper light, Notion-warm inspired ──────────────────────── */
+  :root[data-theme="warm"] {
+    --c-canvas:   oklch(0.948 0.020 85);    /* warm cream/parchment */
+    --c-base:     oklch(0.996 0.006 90);    /* warm white panels */
+    --c-surface:  oklch(0.974 0.014 85);
+    --c-elevated: oklch(0.996 0.006 90);
+    --c-overlay:  oklch(0.960 0.016 85);
+    --c-input:    oklch(0.968 0.012 85);
+    --c-bd1:      oklch(0.892 0.018 80);    /* warm border */
+    --c-bd2:      oklch(0.835 0.022 78);
+    --c-bd3:      oklch(0.718 0.025 75);
+    --c-t1:       oklch(0.162 0.022 50);    /* warm dark brown */
+    --c-t2:       oklch(0.332 0.018 50);
+    --c-t3:       oklch(0.518 0.014 50);
+    --c-t4:       oklch(0.658 0.010 50);
+    --c-node-bg:  oklch(0.998 0.004 88);    /* warm near-white cards */
+    --c-node-shadow-rest:     0 1px 3px oklch(0 0 0 / 0.08), 0 2px 10px oklch(0 0 0 / 0.06);
+    --c-node-shadow-hover:    0 3px 14px oklch(0 0 0 / 0.11), 0 1px 4px oklch(0 0 0 / 0.08);
+    --c-node-shadow-selected: 0 6px 24px oklch(0 0 0 / 0.14), 0 2px 8px oklch(0 0 0 / 0.09);
+    --c-node-shadow-run:      0 6px 20px oklch(0 0 0 / 0.13);
+    color-scheme: light;
+  }
+
   *, *::before, *::after {
     border-color: var(--color-border);
     outline-color: var(--color-ring);
@@ -197,7 +289,7 @@
 
   body {
     background-color: var(--c-canvas);
-    color: var(--color-foreground);
+    color: var(--c-t1);
     font-family: var(--font-sans);
     font-size: 13px;
     line-height: 1.5;
@@ -269,19 +361,19 @@
   .surface-raised { background: var(--color-surface-raised); }
   .surface-overlay { background: var(--color-surface-overlay); }
 
-  /* Glass effect */
+  /* Glass effect — adapts to theme via CSS vars */
   .glass {
-    background: oklch(0.10 0.006 260 / 0.80);
+    background: color-mix(in oklch, var(--c-base) 82%, transparent);
     backdrop-filter: blur(20px) saturate(1.6);
     -webkit-backdrop-filter: blur(20px) saturate(1.6);
-    border: 1px solid oklch(0.22 0.008 260 / 0.60);
+    border: 1px solid var(--c-bd2);
   }
 
   .glass-strong {
-    background: oklch(0.13 0.007 260 / 0.92);
+    background: color-mix(in oklch, var(--c-base) 93%, transparent);
     backdrop-filter: blur(32px) saturate(1.8);
     -webkit-backdrop-filter: blur(32px) saturate(1.8);
-    border: 1px solid oklch(0.25 0.010 260 / 0.70);
+    border: 1px solid var(--c-bd1);
   }
 
   /* Brand glow */
@@ -403,7 +495,8 @@
   position: absolute;
   inset: 0;
   pointer-events: none;
-  background: radial-gradient(ellipse at center, transparent 40%, oklch(0.06 0.005 260 / 0.5) 100%);
+  background: radial-gradient(ellipse at center, transparent 40%, var(--c-canvas) 100%);
+  opacity: 0.45;
   z-index: 1;
 }
 
