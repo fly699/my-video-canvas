@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { X } from "lucide-react";
+import { X, PenLine, Sparkles, Scissors } from "lucide-react";
 import type { NodeType } from "../../../../shared/types";
 import { getNodeConfig } from "../../lib/nodeConfig";
 import {
@@ -58,7 +58,7 @@ function WelcomeModal({ onClose }: { onClose: () => void }) {
               marginBottom: 6,
             }}
           >
-            欢迎使用 AI 视频画布 🎬
+            欢迎使用 AI 视频画布
           </div>
           <div style={{ fontSize: 14, color: "oklch(0.60 0.01 260)" }}>
             三步掌握工作流
@@ -68,17 +68,20 @@ function WelcomeModal({ onClose }: { onClose: () => void }) {
         <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
           {[
             {
-              emoji: "✍️",
+              icon: <PenLine size={15} />,
+              color: "oklch(0.62 0.14 250)",
               title: "创作内容",
               desc: "添加脚本节点，写下你的视频创意或故事",
             },
             {
-              emoji: "🎨",
+              icon: <Sparkles size={15} />,
+              color: "oklch(0.62 0.14 145)",
               title: "生成素材",
               desc: "连接分镖 → 图像生成 → 视频任务，AI 自动生成画面",
             },
             {
-              emoji: "✂️",
+              icon: <Scissors size={15} />,
+              color: "oklch(0.62 0.16 30)",
               title: "剪辑输出",
               desc: "用剪辑节点修剪时长、调整速度、混合音频",
             },
@@ -95,8 +98,21 @@ function WelcomeModal({ onClose }: { onClose: () => void }) {
                 padding: "12px 16px",
               }}
             >
-              <div style={{ fontSize: 22, lineHeight: 1, flexShrink: 0 }}>
-                {step.emoji}
+              <div
+                style={{
+                  width: 30,
+                  height: 30,
+                  borderRadius: 8,
+                  background: `${step.color.replace(")", " / 0.12)")}`,
+                  border: `1px solid ${step.color.replace(")", " / 0.28)")}`,
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  color: step.color,
+                  flexShrink: 0,
+                }}
+              >
+                {step.icon}
               </div>
               <div>
                 <div
@@ -138,13 +154,14 @@ function WelcomeModal({ onClose }: { onClose: () => void }) {
                     width: 44,
                     height: 44,
                     borderRadius: "50%",
-                    backgroundColor: cfg.color,
+                    backgroundColor: `color-mix(in oklch, ${cfg.color} 14%, transparent)`,
+                    border: `1.5px solid color-mix(in oklch, ${cfg.color} 40%, transparent)`,
                     display: "flex",
                     alignItems: "center",
                     justifyContent: "center",
                     fontSize: 11,
                     fontWeight: 600,
-                    color: "oklch(0.10 0.007 260)",
+                    color: cfg.color,
                     textAlign: "center",
                     lineHeight: 1.2,
                   }}
@@ -563,7 +580,7 @@ export function ConnectionHintsPanel({
             color: "oklch(0.48 0.01 260)",
           }}
         >
-          💡 拖动节点端点即可连线
+          拖动节点端点即可连线
         </div>
       </div>
     </div>
