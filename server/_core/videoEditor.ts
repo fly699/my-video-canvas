@@ -433,15 +433,17 @@ export async function overlayVideo(opts: OverlayOptions): Promise<{ url: string 
       const scale = opts.overlayScale ?? 0.2;
       const opacity = opts.overlayOpacity ?? 1.0;
 
+      // -2 ensures even dimensions required by libx264; -map 0:a? passes audio only if present
       const overlayFilter = opacity < 1.0
-        ? `[1:v]scale=iw*${scale}:-1,format=rgba,colorchannelmixer=aa=${opacity}[ovr];[0:v][ovr]overlay=${xy}`
-        : `[1:v]scale=iw*${scale}:-1[ovr];[0:v][ovr]overlay=${xy}`;
+        ? `[1:v]scale=iw*${scale}:-2,format=rgba,colorchannelmixer=aa=${opacity}[ovr];[0:v][ovr]overlay=${xy}`
+        : `[1:v]scale=iw*${scale}:-2[ovr];[0:v][ovr]overlay=${xy}`;
 
       try {
         await execFileAsync("ffmpeg", [
           "-i", inputPath, "-i", overlayPath,
           "-filter_complex", overlayFilter,
-          "-codec:a", "copy", "-y", outputPath,
+          "-map", "0:v", "-map", "0:a?", "-codec:a", "copy",
+          "-y", outputPath,
         ]);
       } catch (err: unknown) {
         const e = err as { stderr?: string; message?: string };
@@ -463,8 +465,9 @@ export async function overlayVideo(opts: OverlayOptions): Promise<{ url: string 
       try {
         await execFileAsync("ffmpeg", [
           "-i", inputPath, "-i", pipPath,
-          "-filter_complex", `[1:v]scale=iw*${scale}:-1[pip];[0:v][pip]overlay=${xy}`,
-          "-codec:a", "copy", "-y", outputPath,
+          "-filter_complex", `[1:v]scale=iw*${scale}:-2[pip];[0:v][pip]overlay=${xy}`,
+          "-map", "0:v", "-map", "0:a?", "-codec:a", "copy",
+          "-y", outputPath,
         ]);
       } catch (err: unknown) {
         const e = err as { stderr?: string; message?: string };
@@ -479,7 +482,8 @@ export async function overlayVideo(opts: OverlayOptions): Promise<{ url: string 
         await execFileAsync("ffmpeg", [
           "-i", inputPath,
           "-vf", `eq=brightness=${brightness}:contrast=${contrast}:saturation=${saturation}`,
-          "-codec:a", "copy", "-y", outputPath,
+          "-map", "0:v", "-map", "0:a?", "-codec:a", "copy",
+          "-y", outputPath,
         ]);
       } catch (err: unknown) {
         const e = err as { stderr?: string; message?: string };

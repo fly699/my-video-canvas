@@ -65,12 +65,13 @@ export const OverlayNode = memo(function OverlayNode({ id, selected, data }: Pro
     [id, updateNodeData]
   );
 
-  // Auto-detect inputVideoUrl from connected video_task/clip/merge/overlay nodes via incoming edges
+  // Auto-detect inputVideoUrl from connected video-output nodes only (not image/asset nodes)
+  const VIDEO_SOURCE_TYPES = new Set(["video_task", "clip", "merge", "overlay"]);
   const autoDetectedVideoUrl = (() => {
     const incomingEdges = edges.filter((e) => e.target === id);
     for (const edge of incomingEdges) {
       const src = nodes.find((n) => n.id === edge.source);
-      if (!src) continue;
+      if (!src || !VIDEO_SOURCE_TYPES.has(src.data.nodeType)) continue;
       const p = src.data.payload as Record<string, unknown>;
       const url =
         (p.resultVideoUrl as string | undefined) ??

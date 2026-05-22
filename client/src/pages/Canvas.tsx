@@ -418,8 +418,6 @@ function CanvasInner({ projectId }: { projectId: number }) {
   }, [isDirty, saveCanvas]);
 
   // ── Socket ──────────────────────────────────────────────────────────────────
-  const applyingRemoteRef = useRef(false);
-
   const emitCollabEvent = useCallback((type: string, payload: unknown) => {
     if (!socketRef.current?.connected || !user) return;
     socketRef.current.emit("collaboration-event", {
@@ -448,31 +446,34 @@ function CanvasInner({ projectId }: { projectId: number }) {
         setNodes(nodesRef.current.map((n) => n.id === p.id ? { ...n, position: { x: p.x, y: p.y } } : n));
       } else if (event.type === "node:add") {
         const newNode = event.payload as CanvasNode;
-        applyingRemoteRef.current = true;
-        setNodes([...nodesRef.current.filter((n) => n.id !== newNode.id), newNode]);
-        applyingRemoteRef.current = false;
+        const { setNodes: storeSetNodes, markDirty } = useCanvasStore.getState();
+        storeSetNodes([...nodesRef.current.filter((n) => n.id !== newNode.id), newNode]);
+        markDirty();
       } else if (event.type === "node:delete") {
         const p = event.payload as { id: string };
-        applyingRemoteRef.current = true;
-        setNodes(nodesRef.current.filter((n) => n.id !== p.id));
-        applyingRemoteRef.current = false;
+        const { setNodes: storeSetNodes, setEdges: storeSetEdges, edges: currentEdges, markDirty } = useCanvasStore.getState();
+        storeSetNodes(nodesRef.current.filter((n) => n.id !== p.id));
+        storeSetEdges(currentEdges.filter((e) => e.source !== p.id && e.target !== p.id));
+        markDirty();
       } else if (event.type === "node:update") {
         const p = event.payload as { id: string; patch: Record<string, unknown> };
-        applyingRemoteRef.current = true;
-        setNodes(nodesRef.current.map((n) =>
+        const { setNodes: storeSetNodes, markDirty } = useCanvasStore.getState();
+        storeSetNodes(nodesRef.current.map((n) =>
           n.id === p.id ? { ...n, data: { ...n.data, payload: { ...n.data.payload, ...p.patch } } } : n
         ) as CanvasNode[]);
-        applyingRemoteRef.current = false;
+        markDirty();
       } else if (event.type === "edge:add") {
         const newEdge = event.payload as CanvasEdge;
-        const { edges: currentEdges, setEdges: storeSetEdges } = useCanvasStore.getState();
+        const { edges: currentEdges, setEdges: storeSetEdges, markDirty } = useCanvasStore.getState();
         if (!currentEdges.find((e) => e.id === newEdge.id)) {
           storeSetEdges([...currentEdges, newEdge]);
+          markDirty();
         }
       } else if (event.type === "edge:delete") {
         const p = event.payload as { id: string };
-        const { edges: currentEdges, setEdges: storeSetEdges } = useCanvasStore.getState();
+        const { edges: currentEdges, setEdges: storeSetEdges, markDirty } = useCanvasStore.getState();
         storeSetEdges(currentEdges.filter((e) => e.id !== p.id));
+        markDirty();
       } else if (event.type === "user:leave") {
         removeCollaborator(event.userId);
       }
@@ -1246,13 +1247,10 @@ function CanvasInner({ projectId }: { projectId: number }) {
             onNodesChange={onNodesChange}
             onEdgesChange={onEdgesChange}
             onConnect={(connection) => {
+              const prevIds = new Set(useCanvasStore.getState().edges.map((e) => e.id));
               onConnect(connection);
-              // Find newly added edge and broadcast it
-              setTimeout(() => {
-                const { edges: currentEdges } = useCanvasStore.getState();
-                const newEdge = currentEdges[currentEdges.length - 1];
-                if (newEdge) emitCollabEvent("edge:add", newEdge);
-              }, 0);
+              const newEdge = useCanvasStore.getState().edges.find((e) => !prevIds.has(e.id));
+              if (newEdge) emitCollabEvent("edge:add", newEdge);
             }}
             onNodeContextMenu={handleNodeContextMenu as Parameters<typeof ReactFlow>[0]["onNodeContextMenu"]}
             onNodesDelete={(deleted) => deleted.forEach((n) => {
@@ -1782,6 +1780,7 @@ function CanvasInner({ projectId }: { projectId: number }) {
             const nid = contextMenu.nodeId!;
             deleteNode(nid);
             deleteNodeMutation.mutate({ id: nid, projectId });
+            emitCollabEvent("node:delete", { id: nid });
           } : undefined}
           onDuplicateNode={contextMenu.nodeId ? () => duplicateNode(contextMenu.nodeId!) : undefined}
           onRunWorkflow={contextMenu.nodeId ? () => runWorkflow(contextMenu.nodeId ?? null) : undefined}

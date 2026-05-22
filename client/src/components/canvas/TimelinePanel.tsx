@@ -1,4 +1,4 @@
-import { useState, useRef } from "react";
+import { useState, useRef, useEffect } from "react";
 import { useReactFlow } from "@xyflow/react";
 import { X, Play, Pause, Clock, Film } from "lucide-react";
 import { useCanvasStore } from "../../hooks/useCanvasStore";
@@ -59,6 +59,13 @@ export function TimelinePanel({ onClose }: TimelinePanelProps) {
     });
 
   const totalDuration = videoClips.reduce((sum, c) => sum + (c.duration ?? 0), 0);
+
+  // Clear playing state when the playing clip is removed from the canvas
+  useEffect(() => {
+    if (playingId !== null && !videoClips.some((c) => c.nodeId === playingId)) {
+      setPlayingId(null);
+    }
+  }, [videoClips, playingId]);
 
   const handleFrameClick = (nodeId: string) => {
     reactFlow.fitView({ nodes: [{ id: nodeId }], padding: 0.5, duration: 400 });
