@@ -171,7 +171,9 @@ export const AudioNode = memo(function AudioNode({ id, selected, data }: Props) 
 
   const handleGenerateMusic = () => {
     if (!payload.musicPrompt?.trim()) { toast.error("请先输入音乐描述"); return; }
-    const modelVal = (payload.aiModel ?? "suno-v4.5") as "suno-v4.5" | "suno-v5" | "mureka" | "minimax-music-02";
+    const validMusic = MUSIC_MODELS.map((m) => m.value);
+    const raw = payload.musicModel ?? payload.aiModel ?? "suno-v4.5";
+    const modelVal = (validMusic.includes(raw) ? raw : "suno-v4.5") as "suno-v4.5" | "suno-v5" | "mureka" | "minimax-music-02";
     musicMutation.mutate({
       model: modelVal,
       prompt: payload.musicPrompt,
@@ -183,7 +185,9 @@ export const AudioNode = memo(function AudioNode({ id, selected, data }: Props) 
 
   const handleGenerateTTS = () => {
     if (!payload.ttsText?.trim()) { toast.error("请先输入配音文本"); return; }
-    const model = (payload.aiModel ?? "openai_tts") as "openai_tts_hd" | "openai_tts" | "elevenlabs_v3" | "cosyvoice_2";
+    const validTTS = DUBBING_MODELS.map((m) => m.value);
+    const rawTTS = payload.ttsModel ?? payload.aiModel ?? "openai_tts";
+    const model = (validTTS.includes(rawTTS) ? rawTTS : "openai_tts") as "openai_tts_hd" | "openai_tts" | "elevenlabs_v3" | "cosyvoice_2";
     ttsMutation.mutate({
       model,
       text: payload.ttsText,
@@ -316,8 +320,8 @@ export const AudioNode = memo(function AudioNode({ id, selected, data }: Props) 
           <>
             <ModelSelect
               models={MUSIC_MODELS}
-              value={payload.aiModel}
-              onChange={(v) => update("aiModel", v)}
+              value={payload.musicModel ?? (MUSIC_MODELS.find(m => m.value === payload.aiModel) ? payload.aiModel : undefined)}
+              onChange={(v) => update("musicModel", v)}
             />
             <div>
               <label style={labelStyle}>音乐描述</label>
@@ -385,8 +389,8 @@ export const AudioNode = memo(function AudioNode({ id, selected, data }: Props) 
           <>
             <ModelSelect
               models={DUBBING_MODELS}
-              value={payload.aiModel}
-              onChange={(v) => update("aiModel", v)}
+              value={payload.ttsModel ?? (DUBBING_MODELS.find(m => m.value === payload.aiModel) ? payload.aiModel : undefined)}
+              onChange={(v) => update("ttsModel", v)}
             />
             <div>
               <label style={labelStyle}>配音文本</label>
@@ -453,8 +457,8 @@ export const AudioNode = memo(function AudioNode({ id, selected, data }: Props) 
           <>
             <ModelSelect
               models={SFX_MODELS}
-              value={payload.aiModel}
-              onChange={(v) => update("aiModel", v)}
+              value={payload.sfxModel ?? (SFX_MODELS.find(m => m.value === payload.aiModel) ? payload.aiModel : undefined)}
+              onChange={(v) => update("sfxModel", v)}
             />
             <div>
               <label style={labelStyle}>音效描述</label>
