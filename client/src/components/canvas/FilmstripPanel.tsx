@@ -178,6 +178,7 @@ interface FilmFrameProps {
 }
 
 function FilmFrame({
+  index,
   imageUrl,
   videoUrl,
   isVideo,
@@ -250,33 +251,31 @@ function FilmFrame({
           />
         )}
 
-        {/* Scene number badge */}
-        {sceneNumber !== undefined && (
-          <div
-            style={{
-              position: "absolute",
-              top: 4,
-              left: 4,
-              minWidth: 18,
-              height: 18,
-              paddingLeft: 5,
-              paddingRight: 5,
-              borderRadius: 5,
-              background: `${accentColor}cc`,
-              backdropFilter: "blur(4px)",
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "center",
-              fontSize: 10,
-              fontWeight: 700,
-              color: "white",
-              lineHeight: 1,
-              fontVariantNumeric: "tabular-nums",
-            }}
-          >
-            {sceneNumber}
-          </div>
-        )}
+        {/* Scene / sequence number badge */}
+        <div
+          style={{
+            position: "absolute",
+            top: 4,
+            left: 4,
+            minWidth: 18,
+            height: 18,
+            paddingLeft: 5,
+            paddingRight: 5,
+            borderRadius: 5,
+            background: sceneNumber !== undefined ? `${accentColor}cc` : "oklch(0 0 0 / 0.42)",
+            backdropFilter: "blur(4px)",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            fontSize: 10,
+            fontWeight: 700,
+            color: "white",
+            lineHeight: 1,
+            fontVariantNumeric: "tabular-nums",
+          }}
+        >
+          {sceneNumber ?? index + 1}
+        </div>
       </div>
 
       {/* Footer strip */}

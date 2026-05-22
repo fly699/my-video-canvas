@@ -179,8 +179,13 @@ export function useWorkflowRunner() {
             model: (VALID_IMAGE_MODELS.has(rawModel) ? rawModel : undefined) as Parameters<typeof imageGenMutation.mutateAsync>[0]["model"],
             seed: typeof p.seed === "number" ? p.seed : undefined,
             batchSize: typeof p.batchSize === "number" ? p.batchSize : undefined,
+            referenceImageUrl: (p.referenceImageUrl as string) || undefined,
           });
-          useCanvasStore.getState().updateNodeData(nodeId, { imageUrl: result.url });
+          const bestUrl = result.url ?? result.urls?.[0];
+          useCanvasStore.getState().updateNodeData(nodeId, {
+            imageUrl: bestUrl,
+            ...(result.urls?.length ? { imageUrls: result.urls } : {}),
+          });
 
           // Propagate image URL to connected video_task nodes
           const downstreamUpdates = useCanvasStore
@@ -190,8 +195,8 @@ export function useWorkflowRunner() {
               const target = useCanvasStore
                 .getState()
                 .nodes.find((n) => n.id === edge.target);
-              return target?.data.nodeType === "video_task" && result.url
-                ? [{ id: edge.target, payload: { referenceImageUrl: result.url } }]
+              return target?.data.nodeType === "video_task" && bestUrl
+                ? [{ id: edge.target, payload: { referenceImageUrl: bestUrl } }]
                 : [];
             });
           if (downstreamUpdates.length > 0) {

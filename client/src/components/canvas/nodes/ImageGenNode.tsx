@@ -260,7 +260,7 @@ export const ImageGenNode = memo(function ImageGenNode({ id, selected, data }: P
         alt="generated"
         className="w-full h-full object-cover"
         draggable={false}
-        style={{ maxHeight: 260, objectFit: "cover", display: "block" }}
+        style={{ objectFit: "cover", display: "block" }}
         onError={makeImageProxyFallback(payload.imageUrl)}
       />
       <div

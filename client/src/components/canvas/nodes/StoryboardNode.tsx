@@ -196,7 +196,7 @@ export const StoryboardNode = memo(function StoryboardNode({ id, selected, data 
       return (
         <img
           src={payload.imageUrl}
-          style={{ width: "100%", maxHeight: 220, objectFit: "cover", display: "block" }}
+          style={{ width: "100%", objectFit: "cover", display: "block" }}
           draggable={false}
           onError={makeImageProxyFallback(payload.imageUrl)}
           alt="分镜"

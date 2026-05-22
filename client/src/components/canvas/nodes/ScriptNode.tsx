@@ -258,7 +258,7 @@ export const ScriptNode = memo(function ScriptNode({ id, selected, data }: Props
         <button
           onClick={() => {
             if (!payload.content?.trim()) { toast.error("请先填写脚本内容"); return; }
-            generateMutation.mutate({ content: payload.content ?? "", synopsis: payload.synopsis, model: llmModel, count: sceneCount });
+            generateMutation.mutate({ content: payload.content ?? "", synopsis: payload.synopsis, model: llmModel, count: Math.min(sceneCount, 8) });
           }}
           disabled={anyPending}
           className="nodrag flex items-center justify-center gap-1.5 w-full py-1.5 rounded-lg text-xs font-medium transition-all"

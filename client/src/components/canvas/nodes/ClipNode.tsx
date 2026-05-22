@@ -167,7 +167,7 @@ export const ClipNode = memo(function ClipNode({ id, selected, data }: Props) {
   // churn that would cause Zustand to re-subscribe on every store change.
   const inputVideoUrl = useCanvasStore(
     useCallback((s: ReturnType<typeof useCanvasStore.getState>) => {
-      for (const edge of s.edges.filter(e => e.target === id)) {
+      for (const edge of s.edges.filter(e => e.target === id && e.targetHandle === "video-in")) {
         const node = s.nodes.find(n => n.id === edge.source);
         if (!node) continue;
         const p = node.data.payload as Record<string, unknown>;
@@ -181,7 +181,7 @@ export const ClipNode = memo(function ClipNode({ id, selected, data }: Props) {
 
   const inputAudioUrl = useCanvasStore(
     useCallback((s: ReturnType<typeof useCanvasStore.getState>) => {
-      for (const edge of s.edges.filter(e => e.target === id)) {
+      for (const edge of s.edges.filter(e => e.target === id && e.targetHandle === "audio-in")) {
         const node = s.nodes.find(n => n.id === edge.source);
         if (!node) continue;
         if (node.data.nodeType === "audio") {
@@ -239,14 +239,14 @@ export const ClipNode = memo(function ClipNode({ id, selected, data }: Props) {
   useEffect(() => {
     const v = videoRef.current;
     if (!v || !isPlaying) return;
-    const id = setInterval(() => {
+    const timerId = setInterval(() => {
       if (v.currentTime >= endTime) {
         v.pause();
         v.currentTime = startTime;
         setIsPlaying(false);
       }
     }, 100);
-    return () => clearInterval(id);
+    return () => clearInterval(timerId);
   }, [isPlaying, endTime, startTime]);
 
   const seekToStart = () => {

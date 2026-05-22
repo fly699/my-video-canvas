@@ -40,7 +40,7 @@ export const NODE_CONFIGS: Record<NodeType, NodeConfig> = {
     bgColor: "oklch(0.65 0.20 160 / 0.08)",
     borderColor: "oklch(0.65 0.20 160 / 0.4)",
     defaultWidth: 340,
-    defaultTitle: "分镖 #1",
+    defaultTitle: "分镜 #1",
   },
   prompt: {
     type: "prompt",

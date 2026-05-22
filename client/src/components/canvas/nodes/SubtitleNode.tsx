@@ -244,10 +244,10 @@ export const SubtitleNode = memo(function SubtitleNode({ id, selected, data }: P
               disabled={isTranscribing || isBurning}
               className="nodrag flex items-center justify-center gap-1.5 w-full py-2 rounded-lg text-xs font-medium transition-all"
               style={{
-                background: isTranscribing ? "var(--c-surface)" : accentA(0.12),
-                border: `1px solid ${isTranscribing ? BORDER_DEFAULT : accentA(0.4)}`,
-                color: isTranscribing ? "var(--c-t4)" : accent,
-                cursor: isTranscribing ? "not-allowed" : "pointer",
+                background: isTranscribing || isBurning ? "var(--c-surface)" : accentA(0.12),
+                border: `1px solid ${isTranscribing || isBurning ? BORDER_DEFAULT : accentA(0.4)}`,
+                color: isTranscribing || isBurning ? "var(--c-t4)" : accent,
+                cursor: isTranscribing || isBurning ? "not-allowed" : "pointer",
               }}
             >
               {isTranscribing
