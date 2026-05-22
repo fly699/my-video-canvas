@@ -1,4 +1,4 @@
-import { useEffect, useRef } from "react";
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { NODE_TYPE_LIST } from "../../lib/nodeConfig";
 import type { NodeType } from "../../../../shared/types";
 import {
@@ -23,7 +23,9 @@ export function ContextMenu({
   onClose, onAddNode, onDeleteNode, onDuplicateNode, onRunWorkflow,
 }: ContextMenuProps) {
   const menuRef = useRef<HTMLDivElement>(null);
+  const [pos, setPos] = useState<{ left: number; top: number; maxHeight: number } | null>(null);
 
+  // Close on outside click / Escape
   useEffect(() => {
     const handleClick = (e: MouseEvent) => {
       if (menuRef.current && !menuRef.current.contains(e.target as Node)) onClose();
@@ -37,10 +39,30 @@ export function ContextMenu({
     };
   }, [onClose]);
 
+  // Measure actual rendered size, then compute smart position
+  useLayoutEffect(() => {
+    if (!menuRef.current) return;
+    const el = menuRef.current;
+    const { width, height } = el.getBoundingClientRect();
+    const vw = window.innerWidth;
+    const vh = window.innerHeight;
+    const gap = 8;
+
+    // Horizontal: prefer right of cursor, flip left if needed
+    let left = x;
+    if (x + width + gap > vw) left = Math.max(gap, x - width);
+
+    // Vertical: prefer below cursor, flip above if needed
+    let top = y;
+    const maxHeight = Math.min(height, vh - gap * 2);
+    if (y + maxHeight + gap > vh) {
+      top = Math.max(gap, vh - maxHeight - gap);
+    }
+
+    setPos({ left, top, maxHeight });
+  }, [x, y]);
+
   const menuWidth = 210;
-  const menuHeight = type === "canvas" ? 360 : (onRunWorkflow ? 148 : 110);
-  const left = Math.min(x, window.innerWidth - menuWidth - 8);
-  const top = Math.min(y, window.innerHeight - menuHeight - 8);
 
   return (
     <div
@@ -48,8 +70,8 @@ export function ContextMenu({
       className="animate-scale-in"
       style={{
         position: "fixed",
-        left,
-        top,
+        left: pos?.left ?? x,
+        top: pos?.top ?? y,
         zIndex: 9999,
         background: "var(--c-base)",
         border: "1px solid var(--c-bd2)",
@@ -57,6 +79,8 @@ export function ContextMenu({
         boxShadow: "0 8px 40px oklch(0 0 0 / 0.65), 0 2px 8px oklch(0 0 0 / 0.4)",
         minWidth: menuWidth,
         overflow: "hidden",
+        // Before measurement: invisible to avoid position flash
+        visibility: pos ? "visible" : "hidden",
       }}
     >
       {type === "canvas" ? (
@@ -75,7 +99,13 @@ export function ContextMenu({
               添加节点
             </span>
           </div>
-          <div style={{ padding: "4px" }}>
+          <div style={{
+            padding: "4px",
+            overflowY: "auto",
+            maxHeight: pos ? pos.maxHeight - 40 : "none",
+            scrollbarWidth: "thin",
+            scrollbarColor: "var(--c-bd3) transparent",
+          }}>
             {NODE_TYPE_LIST.map((config) => {
               const Icon = NODE_ICONS[config.icon] ?? FileText;
               return (
