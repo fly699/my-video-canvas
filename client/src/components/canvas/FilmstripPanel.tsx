@@ -12,14 +12,14 @@ export function FilmstripPanel({ onClose }: FilmstripPanelProps) {
   const { nodes } = useCanvasStore();
   const reactFlow = useReactFlow();
 
-  // Filter nodes that have an imageUrl in payload
-  const imageNodes = nodes.filter((node) => {
-    const payload = node.data.payload as Record<string, unknown>;
-    return !!payload.imageUrl;
+  // Filter nodes that have an imageUrl, resultVideoUrl, or imageUrls in payload
+  const mediaNodes = nodes.filter((node) => {
+    const p = node.data.payload as Record<string, unknown>;
+    return !!(p.imageUrl || p.resultVideoUrl || (Array.isArray(p.imageUrls) && (p.imageUrls as string[]).length > 0));
   });
 
   // Sort by Y position ascending, then X position for natural storyboard order
-  const sortedNodes = [...imageNodes].sort((a, b) => {
+  const sortedNodes = [...mediaNodes].sort((a, b) => {
     if (a.position.y !== b.position.y) return a.position.y - b.position.y;
     return a.position.x - b.position.x;
   });
@@ -39,10 +39,10 @@ export function FilmstripPanel({ onClose }: FilmstripPanelProps) {
         bottom: 72,
         left: 0,
         right: 0,
-        height: 120,
-        background: "oklch(0.09 0.006 260 / 0.97)",
+        height: 140,
+        background: "var(--c-base)",
+        backdropFilter: "blur(16px)",
         borderTop: "1px solid var(--c-bd1)",
-        backdropFilter: "blur(20px)",
         display: "flex",
         flexDirection: "column",
         zIndex: 25,
@@ -58,7 +58,7 @@ export function FilmstripPanel({ onClose }: FilmstripPanelProps) {
           paddingLeft: 12,
           paddingRight: 8,
           flexShrink: 0,
-          borderBottom: "1px solid var(--c-elevated)",
+          borderBottom: "1px solid var(--c-bd1)",
         }}
       >
         <span
@@ -70,7 +70,7 @@ export function FilmstripPanel({ onClose }: FilmstripPanelProps) {
             color: "var(--c-t4)",
           }}
         >
-          {sortedNodes.length} 帧
+          {mediaNodes.length} 帧
         </span>
         <button
           onClick={onClose}
@@ -126,12 +126,16 @@ export function FilmstripPanel({ onClose }: FilmstripPanelProps) {
               userSelect: "none",
             }}
           >
-            暂无图像，先生成分镜图
+            暂无素材，先生成图像或视频
           </div>
         ) : (
           sortedNodes.map((node, index) => {
             const payload = node.data.payload as Record<string, unknown>;
-            const imageUrl = payload.imageUrl as string;
+            const mediaUrl = (payload.imageUrl as string | undefined)
+              || (Array.isArray(payload.imageUrls) ? (payload.imageUrls as string[])[0] : undefined)
+              || undefined;
+            const videoUrl = payload.resultVideoUrl as string | undefined;
+            const isVideo = !!videoUrl && !mediaUrl;
             const isStoryboard = node.data.nodeType === "storyboard";
             const sceneNumber = isStoryboard
               ? (payload.sceneNumber as number | undefined)
@@ -144,7 +148,9 @@ export function FilmstripPanel({ onClose }: FilmstripPanelProps) {
               <FilmFrame
                 key={node.id}
                 index={index}
-                imageUrl={imageUrl}
+                imageUrl={mediaUrl}
+                videoUrl={videoUrl}
+                isVideo={isVideo}
                 title={node.data.title}
                 sceneNumber={sceneNumber}
                 accentColor={accentColor}
@@ -161,7 +167,9 @@ export function FilmstripPanel({ onClose }: FilmstripPanelProps) {
 
 interface FilmFrameProps {
   index: number;
-  imageUrl: string;
+  imageUrl?: string;
+  videoUrl?: string;
+  isVideo: boolean;
   title: string;
   sceneNumber?: number;
   accentColor: string;
@@ -171,6 +179,8 @@ interface FilmFrameProps {
 
 function FilmFrame({
   imageUrl,
+  videoUrl,
+  isVideo,
   title,
   sceneNumber,
   accentColor,
@@ -181,8 +191,8 @@ function FilmFrame({
     <button
       onClick={onClick}
       style={{
-        width: 90,
-        height: 112,
+        width: 100,
+        height: 122,
         flexShrink: 0,
         background: "var(--c-base)",
         border: isSelected
@@ -195,8 +205,8 @@ function FilmFrame({
         flexDirection: "column",
         transition: "transform 150ms ease, border-color 150ms ease, box-shadow 150ms ease",
         boxShadow: isSelected
-          ? `0 0 0 1px ${accentColor}40, 0 4px 16px oklch(0 0 0 / 0.5)`
-          : "0 2px 8px oklch(0 0 0 / 0.4)",
+          ? `0 0 0 1px ${accentColor}40, 0 4px 16px oklch(0 0 0 / 0.15)`
+          : "0 2px 8px oklch(0 0 0 / 0.08)",
         position: "relative",
         padding: 0,
       }}
@@ -205,7 +215,7 @@ function FilmFrame({
         el.style.transform = "scale(1.05)";
         if (!isSelected) {
           el.style.borderColor = `${accentColor}80`;
-          el.style.boxShadow = `0 0 0 1px ${accentColor}30, 0 6px 20px oklch(0 0 0 / 0.55)`;
+          el.style.boxShadow = `0 0 0 1px ${accentColor}30, 0 6px 20px oklch(0 0 0 / 0.12)`;
         }
       }}
       onMouseLeave={(e) => {
@@ -213,23 +223,32 @@ function FilmFrame({
         el.style.transform = "scale(1)";
         if (!isSelected) {
           el.style.borderColor = "var(--c-bd2)";
-          el.style.boxShadow = "0 2px 8px oklch(0 0 0 / 0.4)";
+          el.style.boxShadow = "0 2px 8px oklch(0 0 0 / 0.08)";
         }
       }}
     >
-      {/* Image area */}
-      <div style={{ width: "100%", height: 90, position: "relative", overflow: "hidden", flexShrink: 0 }}>
-        <img
-          src={imageUrl}
-          alt={title}
-          style={{
-            width: "100%",
-            height: "100%",
-            objectFit: "cover",
-            display: "block",
-          }}
-          loading="lazy"
-        />
+      {/* Image/video area */}
+      <div style={{ width: "100%", height: 100, position: "relative", overflow: "hidden", flexShrink: 0 }}>
+        {isVideo && videoUrl ? (
+          <video
+            src={videoUrl}
+            style={{ width: "100%", height: "100%", objectFit: "cover" }}
+            muted
+            preload="metadata"
+          />
+        ) : (
+          <img
+            src={imageUrl}
+            alt={title}
+            style={{
+              width: "100%",
+              height: "100%",
+              objectFit: "cover",
+              display: "block",
+            }}
+            loading="lazy"
+          />
+        )}
 
         {/* Scene number badge */}
         {sceneNumber !== undefined && (

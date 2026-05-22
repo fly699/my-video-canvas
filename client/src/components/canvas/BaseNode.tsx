@@ -153,7 +153,7 @@ export const BaseNode = memo(function BaseNode({
         background: "var(--c-node-bg)",
         border: borderStyle,
         boxShadow: shadowStyle,
-        minWidth: isCreative ? Math.round(minWidth * 1.18) : minWidth,
+        minWidth: isCreative ? Math.round(minWidth * 1.25) : minWidth,
         minHeight,
         width: "100%",
         transition: "border-color 150ms ease, box-shadow 180ms ease, opacity 180ms ease, transform 180ms ease",

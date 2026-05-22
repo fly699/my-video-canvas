@@ -141,24 +141,24 @@
   /* ── Creative Mode — LibTV-inspired whiteboard canvas ─────────────────────── */
   /* Overrides theme tokens. Must appear AFTER theme sections to win specificity. */
   :root[data-canvas-mode="creative"] {
-    --c-canvas:   oklch(0.968 0.006 85);    /* warm off-white, slightly paper-like */
-    --c-base:     oklch(1.000 0.000 0);     /* pure white panels/header */
-    --c-surface:  oklch(1.000 0.000 0);     /* node card face = pure white */
-    --c-elevated: oklch(0.990 0.002 255);   /* hover-elevated card */
-    --c-overlay:  oklch(0.978 0.003 255);   /* panel overlays */
-    --c-input:    oklch(0.968 0.003 255);   /* input field bg */
-    --c-bd1:      oklch(0.918 0.003 255);   /* subtlest divider */
-    --c-bd2:      oklch(0.870 0.005 255);   /* standard border */
-    --c-bd3:      oklch(0.768 0.007 255);   /* stronger border */
-    --c-t1:       oklch(0.125 0.010 255);   /* primary text */
-    --c-t2:       oklch(0.310 0.009 255);   /* secondary text */
-    --c-t3:       oklch(0.505 0.008 255);   /* muted text */
-    --c-t4:       oklch(0.650 0.006 255);   /* placeholder / disabled */
-    --c-node-bg:  oklch(1.000 0.000 0);     /* white cards */
-    --c-node-shadow-rest:     0 1px 4px oklch(0 0 0 / 0.06), 0 4px 16px oklch(0 0 0 / 0.06);
-    --c-node-shadow-hover:    0 4px 20px oklch(0 0 0 / 0.10), 0 1px 4px oklch(0 0 0 / 0.06);
-    --c-node-shadow-selected: 0 8px 30px oklch(0 0 0 / 0.12), 0 2px 8px oklch(0 0 0 / 0.07);
-    --c-node-shadow-run:      0 6px 20px oklch(0 0 0 / 0.10);
+    --c-canvas:   oklch(0.968 0.006 85);    /* warm paper */
+    --c-base:     oklch(0.998 0.003 80);    /* warm white panels */
+    --c-surface:  oklch(0.998 0.003 80);    /* warm white cards */
+    --c-elevated: oklch(0.986 0.005 80);    /* slightly deeper warm */
+    --c-overlay:  oklch(0.975 0.005 80);    /* panel overlays */
+    --c-input:    oklch(0.962 0.006 80);    /* input bg — warm gray */
+    --c-bd1:      oklch(0.910 0.006 80);    /* subtlest divider */
+    --c-bd2:      oklch(0.862 0.008 80);    /* standard border */
+    --c-bd3:      oklch(0.760 0.010 80);    /* stronger border */
+    --c-t1:       oklch(0.130 0.012 60);    /* primary text — warm dark */
+    --c-t2:       oklch(0.315 0.010 60);    /* secondary text */
+    --c-t3:       oklch(0.510 0.008 60);    /* muted text */
+    --c-t4:       oklch(0.655 0.006 60);    /* placeholder / disabled */
+    --c-node-bg:  oklch(0.998 0.003 80);    /* warm white cards */
+    --c-node-shadow-rest:     0 1px 3px oklch(0.50 0.04 80 / 0.06), 0 3px 12px oklch(0.50 0.04 80 / 0.07);
+    --c-node-shadow-hover:    0 4px 18px oklch(0.50 0.04 80 / 0.10), 0 1px 4px oklch(0.50 0.04 80 / 0.06);
+    --c-node-shadow-selected: 0 8px 28px oklch(0.50 0.04 80 / 0.13), 0 2px 6px oklch(0.50 0.04 80 / 0.08);
+    --c-node-shadow-run:      0 6px 20px oklch(0.50 0.04 80 / 0.10);
     color-scheme: light;
   }
 
@@ -687,13 +687,31 @@ button:active:not(:disabled) {
 :root[data-canvas-mode="creative"] .node-hero-media {
   width: 100%;
   flex-shrink: 0;
-  line-height: 0; /* prevent img gap */
+  line-height: 0;
+  position: relative;
+  overflow: hidden;
+  /* Clip to card's top corners */
+  border-radius: 0;
 }
 :root[data-canvas-mode="creative"] .node-hero-media img,
 :root[data-canvas-mode="creative"] .node-hero-media video {
   width: 100%;
+  aspect-ratio: 16 / 9;
   display: block;
   object-fit: cover;
+}
+/* Hover overlay: dim + show play icon via CSS */
+:root[data-canvas-mode="creative"] .node-hero-media::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: oklch(0 0 0 / 0.18);
+  opacity: 0;
+  transition: opacity 180ms ease;
+  pointer-events: none;
+}
+:root[data-canvas-mode="creative"] .node-hero-media:hover::after {
+  opacity: 1;
 }
 
 /* In creative mode: wider nodes via CSS min-width override */
@@ -712,8 +730,8 @@ button:active:not(:disabled) {
 }
 :root[data-canvas-mode="creative"] .react-flow__background pattern circle,
 :root[data-canvas-mode="creative"] .react-flow__background pattern rect {
-  fill: oklch(0.75 0.012 85) !important;
-  opacity: 0.35;
+  fill: oklch(0.70 0.018 80) !important;
+  opacity: 0.28;
 }
 
 /* Creative mode: top bar adapts to light theme via --c-base token */
@@ -728,9 +746,22 @@ button:active:not(:disabled) {
   border-right-color: var(--c-bd2) !important;
 }
 
+/* Creative mode: bottom toolbar adapts */
+:root[data-canvas-mode="creative"] .canvas-bottombar {
+  background: oklch(0.998 0.003 80 / 0.92) !important;
+  border-top-color: var(--c-bd2) !important;
+}
+
 /* Creative mode edge lines */
 :root[data-canvas-mode="creative"] .react-flow__edge-path {
   stroke-width: 1 !important;
+}
+:root[data-canvas-mode="creative"] .react-flow__edge-path {
+  stroke: oklch(0.72 0.018 80) !important;
+  stroke-opacity: 0.55 !important;
+}
+:root[data-canvas-mode="creative"] .react-flow__edge.selected .react-flow__edge-path {
+  stroke-opacity: 0.85 !important;
 }
 
 /* Hero placeholder (no content yet) */

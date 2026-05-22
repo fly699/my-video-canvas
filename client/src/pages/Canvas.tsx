@@ -348,6 +348,11 @@ function CanvasInner({ projectId }: { projectId: number }) {
   const [showRatioPicker, setShowRatioPicker] = useState(false);
   const [showConnectionHints, setShowConnectionHints] = useState(false);
   const { mode: canvasMode, setMode: setCanvasMode } = useCanvasMode();
+  // Auto-show filmstrip when entering creative mode, hide when leaving
+  useEffect(() => {
+    if (canvasMode === "creative") setShowFilmstrip(true);
+    else setShowFilmstrip(false);
+  }, [canvasMode]);
   const [connectingFromType, setConnectingFromType] = useState<NodeType | null>(null);
 
   // Workflow runner
@@ -1364,7 +1369,7 @@ function CanvasInner({ projectId }: { projectId: number }) {
 
           {/* ── Bottom floating toolbar ── */}
           <div
-            className="absolute bottom-5 left-1/2 z-20 flex items-center gap-1.5 px-2.5 py-1.5 rounded-2xl"
+            className="canvas-bottombar absolute bottom-5 left-1/2 z-20 flex items-center gap-1.5 px-2.5 py-1.5 rounded-2xl"
             onClick={(e) => e.stopPropagation()}
             style={{
               transform: "translateX(-50%)",

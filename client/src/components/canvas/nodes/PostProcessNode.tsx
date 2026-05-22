@@ -4,7 +4,7 @@ import { useCanvasStore } from "../../../hooks/useCanvasStore";
 import type { PostProcessNodeData } from "../../../../../shared/types";
 import { POST_PROCESS_CATEGORIES, buildEffectPrompt, getEffectById } from "../../../lib/postProcessOptions";
 import { toast } from "sonner";
-import { Copy, ChevronDown, ChevronRight, X, Layers, Link2, Palette, Aperture, Gauge, Sun, PenTool, Camera, ArrowLeftRight, Film, Wind, Circle, Zap, Flower2, PenLine, ScanLine, Maximize, Building2, Globe, Combine, Sparkles, Timer, Activity, TrendingUp, CloudFog, Lightbulb, Waves, Sunrise, Moon, Brush, Stars, Grid2x2, MessageSquare, Droplet, Box, Monitor, Thermometer, CircleDot, Blend, Wand2, RotateCcw, Image, type LucideIcon } from "lucide-react";
+import { Copy, ChevronDown, ChevronRight, X, Layers, Palette, Aperture, Gauge, Sun, PenTool, Camera, ArrowLeftRight, Film, Wind, Circle, Zap, Flower2, PenLine, ScanLine, Maximize, Building2, Globe, Combine, Sparkles, Timer, Activity, TrendingUp, CloudFog, Lightbulb, Waves, Sunrise, Moon, Brush, Stars, Grid2x2, MessageSquare, Droplet, Box, Monitor, Thermometer, CircleDot, Blend, Wand2, RotateCcw, Image, type LucideIcon } from "lucide-react";
 
 const EFFECT_ICONS: Record<string, LucideIcon> = {
   Palette, Aperture, Gauge, Sun, PenTool, Camera, ArrowLeftRight,
@@ -274,7 +274,7 @@ export const PostProcessNode = memo(function PostProcessNode({ id, selected, dat
                   <div
                     style={{ fontSize: 9, color: "var(--c-t4)", display: "flex", alignItems: "center", gap: 3, background: accentA(0.06), border: `1px solid ${accentA(0.15)}`, borderRadius: 8, padding: "0 8px" }}
                   >
-                    <Link2 style={{ width: 9, height: 9 }} /> 连接视频节点自动生效
+                    复制提示词注入视频/图像节点
                   </div>
                 </div>
               )}

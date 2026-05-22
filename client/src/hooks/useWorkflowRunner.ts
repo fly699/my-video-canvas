@@ -177,6 +177,8 @@ export function useWorkflowRunner() {
             negativePrompt: (p.negativePrompt as string) || undefined,
             style: (p.style as string) || undefined,
             model: (VALID_IMAGE_MODELS.has(rawModel) ? rawModel : undefined) as Parameters<typeof imageGenMutation.mutateAsync>[0]["model"],
+            seed: typeof p.seed === "number" ? p.seed : undefined,
+            batchSize: typeof p.batchSize === "number" ? p.batchSize : undefined,
           });
           useCanvasStore.getState().updateNodeData(nodeId, { imageUrl: result.url });
 
