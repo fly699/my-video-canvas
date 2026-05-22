@@ -63,8 +63,8 @@ export const AIChatNode = memo(function AIChatNode({ id, selected, data }: Props
   const [input, setInput] = useState("");
   // Seed from payload.messages; when the node remounts, prefer the store's
   // persisted messages over the stale payload snapshot captured at mount time.
-  const [localMessages, setLocalMessages] = useState<Array<{ role: "user" | "assistant"; content: string }>>(
-    () => (data.payload as typeof payload).messages ?? []
+  const [localMessages, setLocalMessages] = useState<Array<{ role: "user" | "assistant"; content: string; _id: string }>>(
+    () => ((data.payload as typeof payload).messages ?? []).map(m => ({ ...m, _id: crypto.randomUUID() }))
   );
   const [model, setModel] = useState<string>(payload.model ?? "gemini-2.5-flash");
   const [showModelPicker, setShowModelPicker] = useState(false);
@@ -77,7 +77,7 @@ export const AIChatNode = memo(function AIChatNode({ id, selected, data }: Props
   useEffect(() => {
     const stored = (data.payload as typeof payload).messages;
     if (stored !== localMessages) {
-      updateNodeData(id, { messages: localMessages });
+      updateNodeData(id, { messages: localMessages.map(({ _id: _, ...m }) => m) });
     }
   }, [localMessages, id, updateNodeData, data.payload]);
   useEffect(() => {
@@ -107,7 +107,7 @@ export const AIChatNode = memo(function AIChatNode({ id, selected, data }: Props
   const utils = trpc.useUtils();
   const sendMutation = trpc.aiChat.sendMessage.useMutation({
     onSuccess: (result) => {
-      setLocalMessages((prev) => [...prev, { role: "assistant", content: result.content }]);
+      setLocalMessages((prev) => [...prev, { role: "assistant", content: result.content, _id: crypto.randomUUID() }]);
     },
     onError: (err) => {
       // Roll back the optimistic user message appended in handleSend, then
@@ -117,7 +117,7 @@ export const AIChatNode = memo(function AIChatNode({ id, selected, data }: Props
       utils.aiChat.getMessages.fetch({ nodeId: id, projectId: data.projectId })
         .then((msgs) => {
           if (msgs.length > 0) {
-            const synced = msgs.map((m) => ({ role: m.role as "user" | "assistant", content: m.content }));
+            const synced = msgs.map((m) => ({ role: m.role as "user" | "assistant", content: m.content, _id: crypto.randomUUID() }));
             setLocalMessages(synced);
           }
         })
@@ -173,7 +173,7 @@ export const AIChatNode = memo(function AIChatNode({ id, selected, data }: Props
     const msg = input.trim();
     if (!msg || sendMutation.isPending) return;
     setInput("");
-    setLocalMessages((prev) => [...prev, { role: "user", content: msg }]);
+    setLocalMessages((prev) => [...prev, { role: "user", content: msg, _id: crypto.randomUUID() }]);
     sendMutation.mutate({ nodeId: id, projectId: data.projectId, message: msg, systemPrompt: payload.systemPrompt, contextContent: buildContext(), model });
   };
 
@@ -341,8 +341,8 @@ export const AIChatNode = memo(function AIChatNode({ id, selected, data }: Props
             </div>
           ) : (
             <div className="space-y-2">
-              {localMessages.map((msg, i) => (
-                <div key={i} className={`group/msg flex gap-1.5 ${msg.role === "user" ? "flex-row-reverse" : "flex-row"}`}>
+              {localMessages.map((msg) => (
+                <div key={msg._id} className={`group/msg flex gap-1.5 ${msg.role === "user" ? "flex-row-reverse" : "flex-row"}`}>
                   {/* Avatar */}
                   <div
                     className="w-5 h-5 rounded-full flex items-center justify-center flex-shrink-0 mt-0.5"
