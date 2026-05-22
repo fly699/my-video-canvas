@@ -588,7 +588,7 @@ function CanvasInner({ projectId }: { projectId: number }) {
     if (!connection.source || !connection.target || connection.source === connection.target) return false;
     const sourceNode = nodes.find(n => n.id === connection.source);
     const targetNode = nodes.find(n => n.id === connection.target);
-    if (!sourceNode || !targetNode) return true;
+    if (!sourceNode || !targetNode) return false;
     return isConnectionValid(sourceNode.data.nodeType, targetNode.data.nodeType);
   }, [nodes]);
 

@@ -355,7 +355,12 @@ export async function burnSubtitles(
   try {
     await fs.writeFile(srtPath, generateSRT(entries), "utf8");
 
-    const subsFilter = `subtitles='${srtPath.replace(/'/g, "\\'")}':force_style='FontSize=${fontSize},PrimaryColour=&H${cssColorToASSHex(fontColor)}&'`;
+    // FFmpeg filtergraph escaping: backslash → \\, colon → \:, single-quote → \'
+    const escapedSrtPath = srtPath
+      .replace(/\\/g, "\\\\")
+      .replace(/:/g, "\\:")
+      .replace(/'/g, "\\'");
+    const subsFilter = `subtitles='${escapedSrtPath}':force_style='FontSize=${fontSize},PrimaryColour=&H${cssColorToASSHex(fontColor)}&'`;
     const args = [
       "-i", videoPath,
       "-vf", subsFilter,

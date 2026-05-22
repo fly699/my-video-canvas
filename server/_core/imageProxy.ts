@@ -7,6 +7,7 @@
  * Security: Only HTTPS URLs are allowed. Private/internal IPs are blocked.
  */
 import type { Express } from "express";
+import { isRequestAuthenticated } from "./context";
 
 const BLOCKED_HOSTS = [
   "localhost",
@@ -32,6 +33,11 @@ function isAllowedUrl(rawUrl: string): boolean {
 
 export function registerImageProxy(app: Express) {
   app.get("/api/image-proxy", async (req, res) => {
+    if (!await isRequestAuthenticated(req)) {
+      res.status(401).send("Unauthorized");
+      return;
+    }
+
     const rawUrl = req.query.url as string | undefined;
     if (!rawUrl) {
       res.status(400).send("Missing url parameter");

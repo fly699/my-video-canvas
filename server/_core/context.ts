@@ -27,6 +27,17 @@ const isDevBypass =
   !ENV.oAuthServerUrl &&
   !process.env.DATABASE_URL;
 
+/** Lightweight session check for raw Express routes (proxies, etc.). Returns true if authenticated. */
+export async function isRequestAuthenticated(req: CreateExpressContextOptions["req"]): Promise<boolean> {
+  if (isDevBypass) return true;
+  try {
+    await sdk.authenticateRequest(req);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 export async function createContext(
   opts: CreateExpressContextOptions
 ): Promise<TrpcContext> {
