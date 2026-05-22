@@ -25,6 +25,7 @@ import {
   getVideoTask,
   getChatMessages,
   addChatMessage,
+  addChatMessagePair,
   clearChatMessages,
 } from "../db";
 import { storagePut } from "../storage";
@@ -272,7 +273,7 @@ export const videoTasksRouter = router({
         initialStatus = "processing";
       }
 
-      await createVideoTask({
+      const task = await createVideoTask({
         userId: ctx.user.id,
         projectId: input.projectId,
         nodeId: input.nodeId,
@@ -284,8 +285,6 @@ export const videoTasksRouter = router({
         externalTaskId,
         status: initialStatus,
       });
-      const tasks = await getVideoTasksByProject(input.projectId);
-      const task = tasks[0];
       if (!task) throw new Error("Failed to create video task");
       return task;
     }),
@@ -433,21 +432,8 @@ export const aiChatRouter = router({
         });
       }
 
-      // Save both messages only after LLM succeeds — prevents orphaned user messages in DB
-      await addChatMessage({
-        nodeId: input.nodeId,
-        projectId: input.projectId,
-        role: "user",
-        content: input.message,
-      });
-
-      // Save assistant message only on success
-      await addChatMessage({
-        nodeId: input.nodeId,
-        projectId: input.projectId,
-        role: "assistant",
-        content: assistantContent,
-      });
+      // Save both messages in a single transaction — prevents partially-persisted pairs
+      await addChatMessagePair(input.nodeId, input.projectId, input.message, assistantContent);
 
       return { content: assistantContent };
     }),

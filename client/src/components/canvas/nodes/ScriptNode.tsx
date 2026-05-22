@@ -166,15 +166,19 @@ export const ScriptNode = memo(function ScriptNode({ id, selected, data }: Props
         updateNodeData(id, { content: result.scriptText });
       }
       // Auto-create storyboard nodes
+      let nodesCreated = 0;
       if (result.scenes.length > 0) {
         const { nodes: currentNodes, batchAddSceneNodes, projectId } = useCanvasStore.getState();
-        if (projectId) {
-          const ownPos = currentNodes.find((n) => n.id === id)?.position ?? { x: 0, y: 0 };
-          batchAddSceneNodes(result.scenes, id, ownPos);
+        if (!projectId) {
+          toast.error("画布尚未加载，分镜节点创建失败");
+          return;
         }
+        const ownPos = currentNodes.find((n) => n.id === id)?.position ?? { x: 0, y: 0 };
+        batchAddSceneNodes(result.scenes, id, ownPos);
+        nodesCreated = result.scenes.length;
       }
       toast.success("AI 剧本已生成", {
-        description: `剧本已填入，${result.scenes.length} 个分镜节点已创建`,
+        description: nodesCreated > 0 ? `剧本已填入，${nodesCreated} 个分镜节点已创建` : "剧本已填入",
         duration: 5000,
       });
     },

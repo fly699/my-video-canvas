@@ -36,6 +36,8 @@ async function pollMockTask(externalTaskId: string, createdAt: Date): Promise<Po
 
 export function setupVideoTaskPoller(io: SocketIOServer) {
   const POLL_INTERVAL = 10_000; // 10 seconds
+  const MAX_TRANSIENT_ERRORS = 10; // after this many consecutive errors, mark task failed
+  const pollErrorCounts = new Map<number, number>();
 
   const poll = async () => {
     try {
@@ -135,9 +137,18 @@ export function setupVideoTaskPoller(io: SocketIOServer) {
             });
           }
         } catch (err) {
-          // Treat as transient (network timeout, rate-limit, etc.) — log and
-          // retry on the next poll cycle rather than permanently failing the task.
-          console.error(`[VideoPoller] Task ${task.id} transient error (will retry):`, err);
+          const errCount = (pollErrorCounts.get(task.id) ?? 0) + 1;
+          if (errCount >= MAX_TRANSIENT_ERRORS) {
+            pollErrorCounts.delete(task.id);
+            console.error(`[VideoPoller] Task ${task.id} exceeded max retries, marking failed:`, err);
+            await updateVideoTask(task.id, {
+              status: "failed",
+              errorMessage: err instanceof Error ? err.message : "轮询失败次数过多，请重试",
+            });
+          } else {
+            pollErrorCounts.set(task.id, errCount);
+            console.error(`[VideoPoller] Task ${task.id} transient error (attempt ${errCount}/${MAX_TRANSIENT_ERRORS}):`, err);
+          }
         }
       }
     } catch (err) {

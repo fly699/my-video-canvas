@@ -219,8 +219,9 @@ export const ClipNode = memo(function ClipNode({ id, selected, data }: Props) {
   const handleTimeUpdate = (e: React.SyntheticEvent<HTMLVideoElement>) => {
     const v = e.target as HTMLVideoElement;
     setCurrentTime(v.currentTime);
-    // Clamp immediately on every timeupdate event (the setInterval is a backup)
-    if (isPlaying && v.currentTime >= endTime) {
+    // Use !v.paused instead of isPlaying to avoid stale-closure misses during
+    // the window between v.play() being called and the next React render
+    if (!v.paused && v.currentTime >= endTime) {
       v.pause();
       v.currentTime = startTime;
       setIsPlaying(false);
