@@ -86,7 +86,7 @@ interface CanvasStore {
     sourceNodeId: string,
     sourcePosition: { x: number; y: number }
   ) => void;
-  updateNodeData: (id: string, payload: Partial<NodeData>) => void;
+  updateNodeData: (id: string, payload: Partial<NodeData>, silent?: boolean) => void;
   batchUpdateNodeData: (updates: { id: string; payload: Partial<NodeData> }[]) => void;
   updateNodeTitle: (id: string, title: string) => void;
   deleteNode: (id: string) => void;
@@ -262,9 +262,9 @@ export const useCanvasStore = create<CanvasStore>((set, get) => ({
     });
   },
 
-  updateNodeData: (id, payload) => {
+  updateNodeData: (id, payload, silent = false) => {
     set((state) => ({
-      ...pushHistory(state),
+      ...(silent ? {} : pushHistory(state)),
       nodes: state.nodes.map((n) =>
         n.id === id
           ? { ...n, data: { ...n.data, payload: { ...n.data.payload, ...payload } as NodeData } }

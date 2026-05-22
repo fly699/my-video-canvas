@@ -321,6 +321,7 @@ export const videoTasksRouter = router({
               return { ...task, ...update };
             }
           } catch (err) {
+            pollLastCheck.delete(task.externalTaskId);
             console.error(`[poll] Poyo status check failed for task ${task.id} (${task.externalTaskId}):`, err instanceof Error ? err.message : String(err));
           }
         }
@@ -353,6 +354,7 @@ export const videoTasksRouter = router({
               return { ...task, ...update };
             }
           } catch (err) {
+            pollLastCheck.delete(task.externalTaskId);
             console.error(`[poll] Higgsfield status check failed for task ${task.id} (${task.externalTaskId}):`, err instanceof Error ? err.message : String(err));
           }
         }

@@ -115,6 +115,7 @@ export function setupVideoTaskPoller(io: SocketIOServer) {
             result = await pollMockTask(task.externalTaskId, task.createdAt);
           }
 
+          pollErrorCounts.delete(task.id);
           if (result.status !== "processing") {
             await updateVideoTask(task.id, {
               status: result.status,

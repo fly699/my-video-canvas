@@ -1,4 +1,5 @@
 import { useCallback, useState, useMemo } from "react";
+import { toast } from "sonner";
 import { X, Search, Zap, BookmarkPlus, Trash2, ArrowLeft, Check, Clapperboard, Lightbulb, Sparkles, LayoutGrid, Film, Play, Video, Scale, Megaphone, Mic, ShoppingBag, Bot, Rocket, FolderOpen, Star, Bookmark, Briefcase, Target, Flame, Sun, Palette, Layers, Trophy, Grid2x2, type LucideIcon } from "lucide-react";
 import { useCanvasStore } from "../../hooks/useCanvasStore";
 import type { NodeType, NodeData } from "../../../../shared/types";
@@ -848,6 +849,7 @@ export function TemplatePanel({ onClose, centerX, centerY }: Props) {
     (template: Template) => {
       const resolvedNodes: Array<{ id: string }> = [];
 
+      try {
       for (const spec of template.nodes) {
         const count = spec.count ?? 1;
         const spacing = spec.spacing ?? 0;
@@ -883,6 +885,9 @@ export function TemplatePanel({ onClose, centerX, centerY }: Props) {
       }
 
       onClose();
+      } catch (err) {
+        toast.error("应用模板失败：" + (err instanceof Error ? err.message : String(err)));
+      }
     },
     [addNode, onConnect, updateNodeData, centerX, centerY, onClose]
   );

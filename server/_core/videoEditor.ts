@@ -281,7 +281,7 @@ export async function mergeVideos(opts: MergeOptions): Promise<MergeResult> {
       const audioInputs = inputPaths.map((_, i) => `[${i}:a]`).join("");
       if (bgMusicPath) {
         const bgIdx = n;
-        audioFilter = `;${audioInputs}concat=n=${n}:v=0:a=1[acat];[acat][${bgIdx}:a]amix=inputs=2:weights=1 ${bgVol.toFixed(4)}[aout]`;
+        audioFilter = `;${audioInputs}concat=n=${n}:v=0:a=1[acat];[acat][${bgIdx}:a]amix=inputs=2:weights=1|${bgVol.toFixed(4)}[aout]`;
       } else {
         audioFilter = `;${audioInputs}concat=n=${n}:v=0:a=1[aout]`;
       }

@@ -55,8 +55,12 @@ export function AssetPanel({ projectId, onClose }: Props) {
   }, [processFile]);
 
   const handleAddToCanvas = (asset: NonNullable<typeof assets>[0]) => {
-    addNode("asset", { x: 200, y: 200 });
-    toast.success("素材节点已添加到画布");
+    try {
+      addNode("asset", { x: 200, y: 200 });
+      toast.success("素材节点已添加到画布");
+    } catch (err) {
+      toast.error("无法添加节点：" + (err instanceof Error ? err.message : String(err)));
+    }
   };
 
   const getIcon = (type: string) => {

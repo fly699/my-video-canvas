@@ -244,6 +244,38 @@ export const VideoTaskNode = memo(function VideoTaskNode({ id, selected, data }:
   const pollQuery = trpc.videoTasks.poll.useQuery({ id: payload.taskId! }, { enabled: false, refetchInterval: false });
   const pollQueryRef = useRef(pollQuery);
   pollQueryRef.current = pollQuery;
+  const utils = trpc.useUtils();
+
+  // Poll parallel task IDs — intervals keyed by provider string
+  const parallelPollRefs = useRef<Map<string, ReturnType<typeof setInterval>>>(new Map());
+  useEffect(() => {
+    Object.entries(parallelResults).forEach(([provider, entry]) => {
+      if (entry.status === "processing" && entry.taskId != null && !parallelPollRefs.current.has(provider)) {
+        const taskId = entry.taskId;
+        const intervalId = setInterval(async () => {
+          try {
+            const result = await utils.videoTasks.poll.fetch({ id: taskId });
+            if (result && (result.status === "succeeded" || result.status === "failed")) {
+              setParallelResults(prev => ({
+                ...prev,
+                [provider]: { ...prev[provider], status: result.status === "succeeded" ? "done" : "failed", videoUrl: result.resultVideoUrl ?? undefined },
+              }));
+              clearInterval(parallelPollRefs.current.get(provider));
+              parallelPollRefs.current.delete(provider);
+            }
+          } catch { /* transient — retry next tick */ }
+        }, 5000);
+        parallelPollRefs.current.set(provider, intervalId);
+      }
+      if ((entry.status === "done" || entry.status === "failed") && parallelPollRefs.current.has(provider)) {
+        clearInterval(parallelPollRefs.current.get(provider));
+        parallelPollRefs.current.delete(provider);
+      }
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [parallelResults]);
+  // Cleanup all parallel intervals on unmount
+  useEffect(() => () => { parallelPollRefs.current.forEach(clearInterval); parallelPollRefs.current.clear(); }, []);
 
   useEffect(() => {
     if (payload.status === "processing" && payload.taskId) {
@@ -258,12 +290,12 @@ export const VideoTaskNode = memo(function VideoTaskNode({ id, selected, data }:
                 status: task.status,
                 resultVideoUrl: task.resultVideoUrl ?? undefined,
                 errorMessage: task.errorMessage ?? undefined,
-              });
+              }, true);
               if (pollRef.current) { clearInterval(pollRef.current); pollRef.current = null; }
             }
           }
         } catch (err) {
-          updateNodeData(id, { status: "failed", errorMessage: String(err) });
+          updateNodeData(id, { status: "failed", errorMessage: String(err) }, true);
           if (pollRef.current) { clearInterval(pollRef.current); pollRef.current = null; }
           toast.error("轮询失败：" + String(err));
         }
@@ -311,7 +343,7 @@ export const VideoTaskNode = memo(function VideoTaskNode({ id, selected, data }:
 
   const status = STATUS[payload.status] ?? STATUS.pending;
   const StatusIcon = status.icon;
-  const isLocked = payload.status === "processing";
+  const isLocked = payload.status === "processing" || payload.status === "succeeded";
   const isResettable = payload.status === "succeeded" || payload.status === "failed";
 
   const onFocusAccent = (e: React.FocusEvent<HTMLElement>) => { e.currentTarget.style.borderColor = "oklch(0.62 0.20 25 / 0.6)"; };
