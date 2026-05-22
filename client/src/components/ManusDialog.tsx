@@ -29,8 +29,8 @@ export function ManusDialog({ title, logo, open, onLogin, onOpenChange, onClose 
       <DialogContent
         className="flex flex-col items-center gap-5 p-8 max-w-sm"
         style={{
-          background: "oklch(0.11 0.007 260)",
-          border: "1px solid oklch(0.22 0.008 260)",
+          background: "var(--c-base)",
+          border: "1px solid var(--c-bd2)",
           borderRadius: 20,
           boxShadow: "0 24px 80px oklch(0 0 0 / 0.7), 0 0 0 1px oklch(0.22 0.008 260 / 0.5)",
         }}
@@ -54,10 +54,10 @@ export function ManusDialog({ title, logo, open, onLogin, onOpenChange, onClose 
 
         {/* Text */}
         <div className="text-center">
-          <p className="text-base font-semibold mb-1.5" style={{ color: "oklch(0.88 0.005 260)" }}>
+          <p className="text-base font-semibold mb-1.5" style={{ color: "var(--c-t1)" }}>
             {title ?? "登录以继续"}
           </p>
-          <p className="text-sm" style={{ color: "oklch(0.45 0.006 260)" }}>
+          <p className="text-sm" style={{ color: "var(--c-t4)" }}>
             使用 Manus 账号登录，开始 AI 视频创作
           </p>
         </div>

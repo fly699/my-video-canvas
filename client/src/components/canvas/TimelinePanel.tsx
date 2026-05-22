@@ -98,7 +98,7 @@ export function TimelinePanel({ onClose }: TimelinePanelProps) {
         right: 0,
         height: 148,
         background: "oklch(0.09 0.006 260 / 0.97)",
-        borderTop: "1px solid oklch(0.18 0.008 260)",
+        borderTop: "1px solid var(--c-bd1)",
         backdropFilter: "blur(20px)",
         display: "flex",
         flexDirection: "column",
@@ -115,7 +115,7 @@ export function TimelinePanel({ onClose }: TimelinePanelProps) {
           paddingLeft: 12,
           paddingRight: 8,
           flexShrink: 0,
-          borderBottom: "1px solid oklch(0.16 0.008 260)",
+          borderBottom: "1px solid var(--c-bd1)",
         }}
       >
         <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
@@ -126,7 +126,7 @@ export function TimelinePanel({ onClose }: TimelinePanelProps) {
               fontWeight: 600,
               letterSpacing: "0.08em",
               textTransform: "uppercase",
-              color: "oklch(0.42 0.006 260)",
+              color: "var(--c-t4)",
             }}
           >
             时间轴
@@ -134,7 +134,7 @@ export function TimelinePanel({ onClose }: TimelinePanelProps) {
           <span
             style={{
               fontSize: 10,
-              color: "oklch(0.38 0.006 260)",
+              color: "var(--c-t4)",
             }}
           >
             {videoClips.length} 个片段
@@ -171,16 +171,16 @@ export function TimelinePanel({ onClose }: TimelinePanelProps) {
             border: "none",
             background: "transparent",
             cursor: "pointer",
-            color: "oklch(0.45 0.008 260)",
+            color: "var(--c-t4)",
             transition: "all 150ms ease",
           }}
           onMouseEnter={(e) => {
-            (e.currentTarget as HTMLElement).style.background = "oklch(0.18 0.008 260)";
-            (e.currentTarget as HTMLElement).style.color = "oklch(0.75 0.005 260)";
+            (e.currentTarget as HTMLElement).style.background = "var(--c-bd1)";
+            (e.currentTarget as HTMLElement).style.color = "var(--c-t2)";
           }}
           onMouseLeave={(e) => {
             (e.currentTarget as HTMLElement).style.background = "transparent";
-            (e.currentTarget as HTMLElement).style.color = "oklch(0.45 0.008 260)";
+            (e.currentTarget as HTMLElement).style.color = "var(--c-t4)";
           }}
         >
           <X style={{ width: 13, height: 13 }} />
@@ -198,7 +198,7 @@ export function TimelinePanel({ onClose }: TimelinePanelProps) {
           gap: 8,
           padding: "0 12px",
           scrollbarWidth: "thin",
-          scrollbarColor: "oklch(0.25 0.008 260) transparent",
+          scrollbarColor: "var(--c-bd3) transparent",
         }}
       >
         {videoClips.length === 0 ? (
@@ -208,7 +208,7 @@ export function TimelinePanel({ onClose }: TimelinePanelProps) {
               display: "flex",
               alignItems: "center",
               justifyContent: "center",
-              color: "oklch(0.38 0.006 260)",
+              color: "var(--c-t4)",
               fontSize: 12,
               userSelect: "none",
             }}
@@ -255,10 +255,10 @@ function TimelineClip({ index, clip, isPlaying, videoRef, proxySrc, onNavigate, 
         flexShrink: 0,
         display: "flex",
         flexDirection: "column",
-        background: "oklch(0.12 0.007 260)",
+        background: "var(--c-surface)",
         border: clip.isSelected
           ? `1.5px solid ${clip.accentColor}`
-          : "1.5px solid oklch(0.22 0.008 260)",
+          : "1.5px solid var(--c-bd2)",
         borderRadius: 8,
         overflow: "hidden",
         boxShadow: clip.isSelected
@@ -371,14 +371,14 @@ function TimelineClip({ index, clip, isPlaying, videoRef, proxySrc, onNavigate, 
           alignItems: "center",
           paddingLeft: 5,
           paddingRight: 5,
-          background: "oklch(0.10 0.007 260)",
-          borderTop: "1px solid oklch(0.18 0.008 260)",
+          background: "var(--c-base)",
+          borderTop: "1px solid var(--c-bd1)",
         }}
       >
         <span
           style={{
             fontSize: 10,
-            color: clip.isSelected ? clip.accentColor : "oklch(0.58 0.006 260)",
+            color: clip.isSelected ? clip.accentColor : "var(--c-t3)",
             whiteSpace: "nowrap",
             overflow: "hidden",
             textOverflow: "ellipsis",

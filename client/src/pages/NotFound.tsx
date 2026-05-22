@@ -7,7 +7,7 @@ export default function NotFound() {
   return (
     <div
       className="w-screen h-screen flex flex-col items-center justify-center gap-6"
-      style={{ background: "oklch(0.07 0.005 260)" }}
+      style={{ background: "var(--c-canvas)" }}
     >
       {/* Logo */}
       <div
@@ -33,10 +33,10 @@ export default function NotFound() {
         >
           404
         </p>
-        <p className="text-base font-medium mb-1" style={{ color: "oklch(0.75 0.006 260)" }}>
+        <p className="text-base font-medium mb-1" style={{ color: "var(--c-t2)" }}>
           页面未找到
         </p>
-        <p className="text-sm" style={{ color: "oklch(0.42 0.006 260)" }}>
+        <p className="text-sm" style={{ color: "var(--c-t4)" }}>
           你访问的页面不存在或已被移除
         </p>
       </div>

@@ -20,19 +20,19 @@ interface Props {
   };
 }
 
-const BORDER_DEFAULT = "oklch(0.20 0.008 260)";
+const BORDER_DEFAULT = "var(--c-bd2)";
 const BORDER_FOCUS   = "oklch(0.65 0.20 160 / 0.6)";
 
 const fieldStyle: React.CSSProperties = {
   width: "100%",
   padding: "7px 10px",
   fontSize: 12,
-  background: "oklch(0.09 0.006 260)",
+  background: "var(--c-input)",
   borderWidth: 1,
   borderStyle: "solid",
   borderColor: BORDER_DEFAULT,
   borderRadius: 8,
-  color: "oklch(0.86 0.006 260)",
+  color: "var(--c-t1)",
   outline: "none",
   transition: "border-color 150ms ease, background 150ms ease",
   lineHeight: 1.5,
@@ -197,7 +197,7 @@ export const StoryboardNode = memo(function StoryboardNode({ id, selected, data 
           className="relative rounded-lg overflow-hidden flex-shrink-0"
           style={{
             height: 150,
-            background: "oklch(0.09 0.006 260)",
+            background: "var(--c-input)",
             borderWidth: 1,
             borderStyle: "solid",
             borderColor: BORDER_DEFAULT,
@@ -262,22 +262,22 @@ export const StoryboardNode = memo(function StoryboardNode({ id, selected, data 
             </>
           ) : (
             <div className="w-full h-full flex flex-col items-center justify-center gap-3">
-              <ImageIcon className="w-7 h-7" style={{ color: "oklch(0.30 0.008 260)" }} />
+              <ImageIcon className="w-7 h-7" style={{ color: "var(--c-t4)" }} />
               <button
                 onClick={handleGenerate}
                 disabled={generating || !payload.promptText?.trim()}
                 className="nodrag flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-all"
                 style={{
                   background: generating || !payload.promptText?.trim()
-                    ? "oklch(0.15 0.008 260)"
+                    ? "var(--c-surface)"
                     : "oklch(0.65 0.20 160 / 0.15)",
                   borderWidth: 1,
                   borderStyle: "solid",
                   borderColor: generating || !payload.promptText?.trim()
-                    ? "oklch(0.22 0.008 260)"
+                    ? "var(--c-bd2)"
                     : "oklch(0.65 0.20 160 / 0.45)",
                   color: generating || !payload.promptText?.trim()
-                    ? "oklch(0.40 0.006 260)"
+                    ? "var(--c-t4)"
                     : "oklch(0.72 0.18 160)",
                   cursor: generating || !payload.promptText?.trim() ? "not-allowed" : "pointer",
                 }}
@@ -286,7 +286,7 @@ export const StoryboardNode = memo(function StoryboardNode({ id, selected, data 
                 {generating ? "生成中..." : "AI 生成分镜"}
               </button>
               {!payload.promptText?.trim() && (
-                <p className="text-[10px]" style={{ color: "oklch(0.35 0.006 260)" }}>请先填写提示词</p>
+                <p className="text-[10px]" style={{ color: "var(--c-t4)" }}>请先填写提示词</p>
               )}
             </div>
           )}
@@ -296,13 +296,13 @@ export const StoryboardNode = memo(function StoryboardNode({ id, selected, data 
         {showHistory && (payload.imageHistory?.length ?? 0) > 1 && (
           <div className="flex flex-col gap-2 flex-shrink-0">
             <div className="flex items-center justify-between">
-              <span style={{ fontSize: 10, fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.06em", color: "oklch(0.42 0.006 260)" }}>
+              <span style={{ fontSize: 10, fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.06em", color: "var(--c-t4)" }}>
                 生成历史
               </span>
               <button
                 onClick={() => setShowHistory(false)}
                 className="nodrag"
-                style={{ fontSize: 10, color: "oklch(0.40 0.006 260)", cursor: "pointer", background: "none", border: "none" }}
+                style={{ fontSize: 10, color: "var(--c-t4)", cursor: "pointer", background: "none", border: "none" }}
               >
                 收起
               </button>
@@ -317,7 +317,7 @@ export const StoryboardNode = memo(function StoryboardNode({ id, selected, data 
                     width: 60, height: 45,
                     border: url === payload.imageUrl
                       ? "1.5px solid oklch(0.65 0.20 160)"
-                      : "1.5px solid oklch(0.22 0.008 260)",
+                      : "1.5px solid var(--c-bd2)",
                     cursor: "pointer",
                     padding: 0,
                   }}
@@ -398,9 +398,9 @@ export const StoryboardNode = memo(function StoryboardNode({ id, selected, data 
             disabled={expandingDesc}
             className="nodrag flex items-center gap-1 px-1.5 py-0.5 rounded-md text-[9px] font-medium transition-all"
             style={{
-              background: expandingDesc ? "oklch(0.13 0.007 260)" : "oklch(0.65 0.20 160 / 0.10)",
-              border: `1px solid ${expandingDesc ? "oklch(0.20 0.008 260)" : "oklch(0.65 0.20 160 / 0.35)"}`,
-              color: expandingDesc ? "oklch(0.38 0.006 260)" : "oklch(0.65 0.20 160)",
+              background: expandingDesc ? "var(--c-surface)" : "oklch(0.65 0.20 160 / 0.10)",
+              border: `1px solid ${expandingDesc ? "var(--c-bd2)" : "oklch(0.65 0.20 160 / 0.35)"}`,
+              color: expandingDesc ? "var(--c-t4)" : "oklch(0.65 0.20 160)",
               cursor: expandingDesc ? "not-allowed" : "pointer",
             }}
           >
@@ -428,7 +428,7 @@ export const StoryboardNode = memo(function StoryboardNode({ id, selected, data 
             onBlur={onBlur}
           />
           <div className="flex items-center justify-between">
-            <span style={{ fontSize: 9.5, color: "oklch(0.38 0.006 260)" }}>
+            <span style={{ fontSize: 9.5, color: "var(--c-t4)" }}>
               {(payload.promptText ?? "").length} 字
             </span>
           </div>
@@ -438,15 +438,15 @@ export const StoryboardNode = memo(function StoryboardNode({ id, selected, data 
             className="nodrag flex items-center gap-1 px-2 py-1 rounded text-[10px] transition-all self-start"
             style={{
               background: expandingPrompt || !payload.description?.trim()
-                ? "oklch(0.13 0.007 260)"
+                ? "var(--c-surface)"
                 : "oklch(0.65 0.20 160 / 0.12)",
               borderWidth: 1,
               borderStyle: "solid",
               borderColor: expandingPrompt || !payload.description?.trim()
-                ? "oklch(0.22 0.008 260)"
+                ? "var(--c-bd2)"
                 : "oklch(0.65 0.20 160 / 0.35)",
               color: expandingPrompt || !payload.description?.trim()
-                ? "oklch(0.38 0.006 260)"
+                ? "var(--c-t4)"
                 : "oklch(0.65 0.20 160)",
               cursor: expandingPrompt || !payload.description?.trim() ? "not-allowed" : "pointer",
             }}
@@ -464,9 +464,9 @@ export const StoryboardNode = memo(function StoryboardNode({ id, selected, data 
             disabled={translating}
             className="nodrag flex items-center gap-1 px-1.5 py-0.5 rounded-md text-[9px] font-medium transition-all"
             style={{
-              background: translating ? "oklch(0.13 0.007 260)" : "oklch(0.68 0.22 300 / 0.10)",
-              border: `1px solid ${translating ? "oklch(0.20 0.008 260)" : "oklch(0.68 0.22 300 / 0.35)"}`,
-              color: translating ? "oklch(0.38 0.006 260)" : "oklch(0.72 0.18 300)",
+              background: translating ? "var(--c-surface)" : "oklch(0.68 0.22 300 / 0.10)",
+              border: `1px solid ${translating ? "var(--c-bd2)" : "oklch(0.68 0.22 300 / 0.35)"}`,
+              color: translating ? "var(--c-t4)" : "oklch(0.72 0.18 300)",
               cursor: translating ? "not-allowed" : "pointer",
             }}
           >
@@ -511,11 +511,11 @@ export const StoryboardNode = memo(function StoryboardNode({ id, selected, data 
             disabled={uploadingRef}
             className="nodrag flex items-center gap-1 px-2 py-1 rounded text-[10px] transition-all flex-1"
             style={{
-              background: "oklch(0.09 0.006 260)",
+              background: "var(--c-input)",
               borderWidth: 1,
               borderStyle: "solid",
-              borderColor: "oklch(0.22 0.008 260)",
-              color: "oklch(0.55 0.006 260)",
+              borderColor: "var(--c-bd2)",
+              color: "var(--c-t3)",
               cursor: uploadingRef ? "not-allowed" : "pointer",
             }}
           >
@@ -526,7 +526,7 @@ export const StoryboardNode = memo(function StoryboardNode({ id, selected, data 
             <button
               onClick={() => updateNodeData(id, { referenceImageUrl: undefined })}
               className="nodrag p-1 rounded transition-all"
-              style={{ background: "oklch(0.09 0.006 260)", borderWidth: 1, borderStyle: "solid", borderColor: "oklch(0.22 0.008 260)", color: "oklch(0.50 0.006 260)" }}
+              style={{ background: "var(--c-input)", borderWidth: 1, borderStyle: "solid", borderColor: "var(--c-bd2)", color: "var(--c-t3)" }}
               title="清除参考图"
             >
               <X className="w-3 h-3" />
@@ -540,7 +540,7 @@ export const StoryboardNode = memo(function StoryboardNode({ id, selected, data 
             onClick={() => setShowModelPicker((v) => !v)}
             className="nodrag flex items-center justify-between w-full px-2.5 py-1.5 rounded-lg text-xs transition-all"
             style={{
-              background: "oklch(0.09 0.006 260)",
+              background: "var(--c-input)",
               borderWidth: 1,
               borderStyle: "solid",
               borderColor: "oklch(0.65 0.20 160 / 0.30)",
@@ -564,16 +564,16 @@ export const StoryboardNode = memo(function StoryboardNode({ id, selected, data 
             <div
               className="absolute bottom-full left-0 right-0 mb-1 rounded-lg overflow-hidden z-50"
               style={{
-                background: "oklch(0.12 0.007 260)",
+                background: "var(--c-surface)",
                 borderWidth: 1,
                 borderStyle: "solid",
-                borderColor: "oklch(0.22 0.008 260)",
+                borderColor: "var(--c-bd2)",
                 boxShadow: "0 8px 24px oklch(0 0 0 / 0.5)",
               }}
             >
               {["Manus", "Poyo", "Higgsfield"].map((group) => (
                 <div key={group}>
-                  <div className="px-2.5 py-1" style={{ fontSize: 9, fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.08em", color: "oklch(0.38 0.006 260)", borderBottom: "1px solid oklch(0.20 0.008 260)" }}>
+                  <div className="px-2.5 py-1" style={{ fontSize: 9, fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.08em", color: "var(--c-t4)", borderBottom: "1px solid var(--c-bd2)" }}>
                     {group}
                   </div>
                   {IMAGE_MODELS.filter((m) => m.group === group).map((m) => (
@@ -582,10 +582,10 @@ export const StoryboardNode = memo(function StoryboardNode({ id, selected, data 
                       className="nodrag flex items-center justify-between w-full px-2.5 py-2 text-xs transition-colors"
                       style={{
                         background: model === m.value ? "oklch(0.65 0.20 160 / 0.10)" : "transparent",
-                        color: model === m.value ? "oklch(0.72 0.18 160)" : "oklch(0.65 0.006 260)",
+                        color: model === m.value ? "oklch(0.72 0.18 160)" : "var(--c-t2)",
                       }}
                       onClick={() => { setModel(m.value); setShowModelPicker(false); }}
-                      onMouseEnter={(e) => { if (model !== m.value) (e.currentTarget as HTMLElement).style.background = "oklch(0.16 0.008 260)"; }}
+                      onMouseEnter={(e) => { if (model !== m.value) (e.currentTarget as HTMLElement).style.background = "var(--c-elevated)"; }}
                       onMouseLeave={(e) => { if (model !== m.value) (e.currentTarget as HTMLElement).style.background = "transparent"; }}
                     >
                       <span>{m.label}</span>

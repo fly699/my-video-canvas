@@ -71,7 +71,7 @@ export const BaseNode = memo(function BaseNode({
   const handleShared: React.CSSProperties = {
     width: 12,
     height: 12,
-    border: `2px solid oklch(0.08 0.005 260)`,
+    border: `2px solid var(--c-canvas)`,
     transition: "opacity 150ms ease, transform 150ms ease, box-shadow 150ms ease",
     zIndex: 10,
   };
@@ -118,8 +118,8 @@ export const BaseNode = memo(function BaseNode({
     : selected
       ? `1.5px solid ${config.color}80`
       : isHovered
-        ? `1px solid oklch(0.28 0.010 260)`
-        : `1px solid oklch(0.18 0.008 260)`;
+        ? `1px solid var(--c-bd3)`
+        : `1px solid var(--c-bd1)`;
 
   const shadowStyle = runShadow
     ? `${runShadow}, 0 8px 32px oklch(0 0 0 / 0.55)`
@@ -165,7 +165,7 @@ export const BaseNode = memo(function BaseNode({
           height: 7,
           borderRadius: 2,
           background: config.color,
-          border: `1.5px solid oklch(0.08 0.005 260)`,
+          border: `1.5px solid var(--c-canvas)`,
           boxShadow: `0 0 6px ${config.color}80`,
           opacity: 1,
         }}
@@ -187,7 +187,7 @@ export const BaseNode = memo(function BaseNode({
         className="flex items-center gap-2.5 px-3.5 py-2.5 select-none flex-shrink-0"
         style={{
           background: `linear-gradient(180deg, ${config.color}0e 0%, transparent 100%)`,
-          borderBottom: `1px solid oklch(0.20 0.008 260 / 0.60)`,
+          borderBottom: `1px solid oklch(0.20 0.008 260 / 0.60)`,  /* alpha – intentional */
           minHeight: 44,
         }}
       >
@@ -195,7 +195,7 @@ export const BaseNode = memo(function BaseNode({
         <GripVertical
           className="w-3.5 h-3.5 flex-shrink-0 cursor-grab active:cursor-grabbing"
           style={{
-            color: isHovered ? "oklch(0.42 0.008 260)" : "oklch(0.26 0.008 260)",
+            color: isHovered ? "var(--c-t4)" : "var(--c-bd3)",
             transition: "color 150ms ease",
           }}
         />
@@ -223,7 +223,7 @@ export const BaseNode = memo(function BaseNode({
                 onBlur={handleTitleSave}
                 className="flex-1 min-w-0 text-xs font-medium outline-none bg-transparent"
                 style={{
-                  color: "oklch(0.94 0.005 260)",
+                  color: "var(--c-t1)",
                   borderBottom: `1.5px solid ${config.color}`,
                   paddingBottom: 1,
                 }}
@@ -239,7 +239,7 @@ export const BaseNode = memo(function BaseNode({
               <button
                 onClick={() => { setTitleValue(title); setEditingTitle(false); }}
                 className="p-0.5 rounded-md transition-colors"
-                style={{ color: "oklch(0.45 0.008 260)" }}
+                style={{ color: "var(--c-t4)" }}
               >
                 <X className="w-3 h-3" />
               </button>
@@ -248,7 +248,7 @@ export const BaseNode = memo(function BaseNode({
             <span
               className="text-xs font-semibold truncate block"
               style={{
-                color: selected ? "oklch(0.94 0.005 260)" : "oklch(0.80 0.006 260)",
+                color: selected ? "var(--c-t1)" : "var(--c-t1)",
                 cursor: "text",
                 letterSpacing: "-0.01em",
                 transition: "color 150ms ease",
@@ -317,14 +317,14 @@ export const BaseNode = memo(function BaseNode({
           <button
             onClick={() => duplicateNode(id)}
             className="w-6 h-6 rounded-md flex items-center justify-center transition-all"
-            style={{ color: "oklch(0.40 0.008 260)" }}
+            style={{ color: "var(--c-t4)" }}
             onMouseEnter={(e) => {
-              (e.currentTarget as HTMLElement).style.background = "oklch(0.20 0.008 260)";
-              (e.currentTarget as HTMLElement).style.color = "oklch(0.72 0.006 260)";
+              (e.currentTarget as HTMLElement).style.background = "var(--c-bd2)";
+              (e.currentTarget as HTMLElement).style.color = "var(--c-t2)";
             }}
             onMouseLeave={(e) => {
               (e.currentTarget as HTMLElement).style.background = "transparent";
-              (e.currentTarget as HTMLElement).style.color = "oklch(0.40 0.008 260)";
+              (e.currentTarget as HTMLElement).style.color = "var(--c-t4)";
             }}
             title="复制节点 (Ctrl+D)"
           >
@@ -333,14 +333,14 @@ export const BaseNode = memo(function BaseNode({
           <button
             onClick={() => { deleteNode(id); if (projectId) deleteNodeMutation.mutate({ id, projectId }); }}
             className="w-6 h-6 rounded-md flex items-center justify-center transition-all"
-            style={{ color: "oklch(0.40 0.008 260)" }}
+            style={{ color: "var(--c-t4)" }}
             onMouseEnter={(e) => {
               (e.currentTarget as HTMLElement).style.background = "oklch(0.62 0.22 25 / 0.12)";
               (e.currentTarget as HTMLElement).style.color = "oklch(0.65 0.22 25)";
             }}
             onMouseLeave={(e) => {
               (e.currentTarget as HTMLElement).style.background = "transparent";
-              (e.currentTarget as HTMLElement).style.color = "oklch(0.40 0.008 260)";
+              (e.currentTarget as HTMLElement).style.color = "var(--c-t4)";
             }}
             title="删除节点 (Delete)"
           >

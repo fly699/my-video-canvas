@@ -58,12 +58,12 @@ export const AssetNode = memo(function AssetNode({ id, selected, data }: Props) 
           className="flex flex-col items-center justify-center rounded-lg"
           style={{
             height: 120,
-            background: "oklch(0.09 0.006 260)",
-            border: "1px solid oklch(0.18 0.008 260)",
+            background: "var(--c-input)",
+            border: "1px solid var(--c-bd1)",
           }}
         >
-          <File className="w-7 h-7 mb-2" style={{ color: "oklch(0.28 0.006 260)" }} />
-          <span className="text-xs" style={{ color: "oklch(0.38 0.006 260)" }}>无素材</span>
+          <File className="w-7 h-7 mb-2" style={{ color: "var(--c-t4)" }} />
+          <span className="text-xs" style={{ color: "var(--c-t4)" }}>无素材</span>
         </div>
       );
     }
@@ -72,7 +72,7 @@ export const AssetNode = memo(function AssetNode({ id, selected, data }: Props) 
       return (
         <div
           className="relative rounded-lg overflow-hidden group/img"
-          style={{ height: 140, border: "1px solid oklch(0.20 0.008 260)" }}
+          style={{ height: 140, border: "1px solid var(--c-bd2)" }}
         >
           <img src={payload.url} alt={payload.name} className="w-full h-full object-cover" draggable={false} />
           <div
@@ -83,7 +83,7 @@ export const AssetNode = memo(function AssetNode({ id, selected, data }: Props) 
               onClick={(e) => { e.preventDefault(); e.stopPropagation(); fileInputRef.current?.click(); }}
               disabled={uploading}
               className="nodrag w-6 h-6 rounded-md flex items-center justify-center mr-1"
-              style={{ background: "oklch(0 0 0 / 0.60)", color: "oklch(0.80 0.005 260)" }}
+              style={{ background: "oklch(0 0 0 / 0.60)", color: "var(--c-t1)" }}
               title="替换图片"
             >
               {uploading ? <Loader2 className="w-3 h-3 animate-spin" /> : <RefreshCw className="w-3 h-3" />}
@@ -93,7 +93,7 @@ export const AssetNode = memo(function AssetNode({ id, selected, data }: Props) 
               target="_blank"
               rel="noopener noreferrer"
               className="nodrag w-6 h-6 rounded-md flex items-center justify-center"
-              style={{ background: "oklch(0 0 0 / 0.60)", color: "oklch(0.80 0.005 260)" }}
+              style={{ background: "oklch(0 0 0 / 0.60)", color: "var(--c-t1)" }}
             >
               <ExternalLink className="w-3 h-3" />
             </a>
@@ -106,7 +106,7 @@ export const AssetNode = memo(function AssetNode({ id, selected, data }: Props) 
       return (
         <div
           className="rounded-lg overflow-hidden"
-          style={{ border: "1px solid oklch(0.20 0.008 260)" }}
+          style={{ border: "1px solid var(--c-bd2)" }}
         >
           <video src={payload.url} controls className="w-full nodrag" style={{ maxHeight: 160, display: "block" }} />
         </div>
@@ -117,7 +117,7 @@ export const AssetNode = memo(function AssetNode({ id, selected, data }: Props) 
     return (
       <div
         className="flex items-center gap-3 p-3 rounded-lg"
-        style={{ background: "oklch(0.09 0.006 260)", border: "1px solid oklch(0.18 0.008 260)" }}
+        style={{ background: "var(--c-input)", border: "1px solid var(--c-bd1)" }}
       >
         <div
           className="w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0"
@@ -126,15 +126,15 @@ export const AssetNode = memo(function AssetNode({ id, selected, data }: Props) 
           <Icon className="w-4 h-4" style={{ color: accentColor }} />
         </div>
         <div className="flex-1 min-w-0">
-          <p className="text-xs font-medium truncate" style={{ color: "oklch(0.80 0.006 260)" }}>{payload.name}</p>
+          <p className="text-xs font-medium truncate" style={{ color: "var(--c-t1)" }}>{payload.name}</p>
           {payload.size && (
-            <p className="text-[10px] mt-0.5" style={{ color: "oklch(0.42 0.006 260)" }}>
+            <p className="text-[10px] mt-0.5" style={{ color: "var(--c-t4)" }}>
               {(payload.size / 1024 / 1024).toFixed(2)} MB
             </p>
           )}
         </div>
         <a href={payload.url} target="_blank" rel="noopener noreferrer" className="nodrag">
-          <ExternalLink className="w-3.5 h-3.5" style={{ color: "oklch(0.45 0.008 260)" }} />
+          <ExternalLink className="w-3.5 h-3.5" style={{ color: "var(--c-t4)" }} />
         </a>
       </div>
     );
@@ -151,7 +151,7 @@ export const AssetNode = memo(function AssetNode({ id, selected, data }: Props) 
         {renderPreview()}
         <div className="flex items-center gap-2">
           <TypeIcon className="w-3.5 h-3.5 flex-shrink-0" style={{ color: accentColor }} />
-          <span className="text-xs truncate flex-1" style={{ color: "oklch(0.55 0.008 260)" }}>
+          <span className="text-xs truncate flex-1" style={{ color: "var(--c-t3)" }}>
             {payload.name || "未命名素材"}
           </span>
           {payload.mimeType && (
@@ -167,9 +167,9 @@ export const AssetNode = memo(function AssetNode({ id, selected, data }: Props) 
             disabled={uploading || !payload.url}
             className="nodrag flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] flex-shrink-0 transition-all"
             style={{
-              background: "oklch(0.09 0.006 260)",
-              border: "1px solid oklch(0.22 0.008 260)",
-              color: "oklch(0.48 0.008 260)",
+              background: "var(--c-input)",
+              border: "1px solid var(--c-bd2)",
+              color: "var(--c-t3)",
               cursor: uploading || !payload.url ? "not-allowed" : "pointer",
             }}
             title="替换素材"

@@ -572,7 +572,7 @@ function MiniDiagram({ template, width = 200, height = 88 }: { template: Templat
             key={i}
             x1={from.cx} y1={from.cy}
             x2={to.cx} y2={to.cy}
-            stroke="oklch(0.32 0.008 260)"
+            stroke="var(--c-bd3)"
             strokeWidth={1.2}
             strokeDasharray="3 2"
           />
@@ -582,7 +582,7 @@ function MiniDiagram({ template, width = 200, height = 88 }: { template: Templat
         <circle
           key={i}
           cx={p.cx} cy={p.cy} r={R}
-          fill={NODE_DOT_COLORS[p.type] ?? "oklch(0.50 0.008 260)"}
+          fill={NODE_DOT_COLORS[p.type] ?? "var(--c-t3)"}
           fillOpacity={0.9}
         />
       ))}
@@ -609,20 +609,20 @@ function TemplateCard({
       onClick={() => onSelect(template)}
       className="group w-full text-left rounded-2xl overflow-hidden transition-all duration-150 flex flex-col relative"
       style={{
-        background: "oklch(0.12 0.007 260)",
-        border: "1px solid oklch(0.20 0.008 260)",
+        background: "var(--c-base)",
+        border: "1px solid var(--c-bd2)",
       }}
       onMouseEnter={(e) => {
         const el = e.currentTarget as HTMLElement;
-        el.style.background = "oklch(0.15 0.008 260)";
+        el.style.background = "var(--c-surface)";
         el.style.borderColor = "oklch(0.68 0.22 285 / 0.40)";
         el.style.transform = "translateY(-1px)";
         el.style.boxShadow = "0 6px 24px oklch(0 0 0 / 0.35)";
       }}
       onMouseLeave={(e) => {
         const el = e.currentTarget as HTMLElement;
-        el.style.background = "oklch(0.12 0.007 260)";
-        el.style.borderColor = "oklch(0.20 0.008 260)";
+        el.style.background = "var(--c-base)";
+        el.style.borderColor = "var(--c-bd2)";
         el.style.transform = "translateY(0)";
         el.style.boxShadow = "none";
       }}
@@ -632,7 +632,7 @@ function TemplateCard({
         <button
           onClick={(e) => { e.stopPropagation(); onDelete(template.id); }}
           className="absolute top-2 right-2 z-10 w-6 h-6 rounded-lg flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity"
-          style={{ background: "oklch(0.20 0.008 260)", color: "oklch(0.55 0.15 25)" }}
+          style={{ background: "var(--c-bd2)", color: "oklch(0.55 0.15 25)" }}
           title="删除模板"
         >
           <Trash2 className="w-3 h-3" />
@@ -642,7 +642,7 @@ function TemplateCard({
       {/* Mini diagram */}
       <div
         className="w-full flex items-center justify-center py-3"
-        style={{ background: "oklch(0.095 0.006 260)", borderBottom: "1px solid oklch(0.16 0.007 260)" }}
+        style={{ background: "var(--c-base)", borderBottom: "1px solid var(--c-elevated)" }}
       >
         <MiniDiagram template={template} />
       </div>
@@ -651,14 +651,14 @@ function TemplateCard({
       <div className="px-3.5 pt-3 pb-3.5 flex flex-col gap-1.5 flex-1">
         <div className="flex items-center gap-2">
           <span className="text-lg leading-none">{template.icon}</span>
-          <span className="text-sm font-semibold truncate" style={{ color: "oklch(0.88 0.005 260)" }}>
+          <span className="text-sm font-semibold truncate" style={{ color: "var(--c-t1)" }}>
             {template.name}
           </span>
         </div>
 
         <p
           className="text-[11px] leading-relaxed line-clamp-2"
-          style={{ color: "oklch(0.50 0.008 260)" }}
+          style={{ color: "var(--c-t3)" }}
         >
           {template.desc}
         </p>
@@ -690,9 +690,9 @@ function TemplateCard({
             <span
               className="text-[9px] font-semibold px-1.5 py-0.5 rounded-full"
               style={{
-                background: "oklch(0.18 0.008 260)",
-                border: "1px solid oklch(0.24 0.008 260)",
-                color: "oklch(0.48 0.008 260)",
+                background: "var(--c-bd1)",
+                border: "1px solid var(--c-bd3)",
+                color: "var(--c-t4)",
               }}
             >
               {template.edgeSpecs!.length} 连接
@@ -728,18 +728,18 @@ function SaveDialog({
         className="rounded-2xl p-5 flex flex-col gap-4"
         style={{
           width: 320,
-          background: "oklch(0.13 0.008 260)",
-          border: "1px solid oklch(0.24 0.008 260)",
+          background: "var(--c-surface)",
+          border: "1px solid var(--c-bd3)",
           boxShadow: "0 16px 48px oklch(0 0 0 / 0.50)",
         }}
       >
-        <p className="text-sm font-semibold" style={{ color: "oklch(0.90 0.005 260)" }}>
+        <p className="text-sm font-semibold" style={{ color: "var(--c-t1)" }}>
           保存为模板
         </p>
 
         {/* Emoji picker */}
         <div className="flex flex-col gap-2">
-          <p className="text-[11px]" style={{ color: "oklch(0.50 0.008 260)" }}>图标</p>
+          <p className="text-[11px]" style={{ color: "var(--c-t3)" }}>图标</p>
           <div className="flex flex-wrap gap-1.5">
             {QUICK_EMOJIS.map((e) => (
               <button
@@ -747,8 +747,8 @@ function SaveDialog({
                 onClick={() => setIcon(e)}
                 className="w-8 h-8 rounded-lg text-base flex items-center justify-center transition-all"
                 style={{
-                  background: icon === e ? "oklch(0.68 0.22 285 / 0.20)" : "oklch(0.16 0.008 260)",
-                  border: icon === e ? "1px solid oklch(0.68 0.22 285 / 0.50)" : "1px solid oklch(0.22 0.008 260)",
+                  background: icon === e ? "oklch(0.68 0.22 285 / 0.20)" : "var(--c-elevated)",
+                  border: icon === e ? "1px solid oklch(0.68 0.22 285 / 0.50)" : "1px solid var(--c-bd2)",
                 }}
               >
                 {e}
@@ -759,16 +759,16 @@ function SaveDialog({
 
         {/* Name input */}
         <div className="flex flex-col gap-2">
-          <p className="text-[11px]" style={{ color: "oklch(0.50 0.008 260)" }}>名称</p>
+          <p className="text-[11px]" style={{ color: "var(--c-t3)" }}>名称</p>
           <input
             value={name}
             onChange={(e) => setName(e.target.value)}
             onKeyDown={(e) => { if (e.key === "Enter" && name.trim()) onSave(name.trim(), icon); }}
             className="w-full px-3 py-2 rounded-xl text-sm outline-none"
             style={{
-              background: "oklch(0.16 0.008 260)",
-              border: "1px solid oklch(0.26 0.008 260)",
-              color: "oklch(0.88 0.005 260)",
+              background: "var(--c-elevated)",
+              border: "1px solid var(--c-bd3)",
+              color: "var(--c-t1)",
             }}
             autoFocus
             maxLength={30}
@@ -780,7 +780,7 @@ function SaveDialog({
           <button
             onClick={onCancel}
             className="flex-1 py-2 rounded-xl text-sm font-medium transition-all"
-            style={{ background: "oklch(0.16 0.008 260)", border: "1px solid oklch(0.24 0.008 260)", color: "oklch(0.58 0.008 260)" }}
+            style={{ background: "var(--c-elevated)", border: "1px solid var(--c-bd3)", color: "var(--c-t3)" }}
           >
             取消
           </button>
@@ -789,9 +789,9 @@ function SaveDialog({
             disabled={!name.trim()}
             className="flex-1 py-2 rounded-xl text-sm font-medium transition-all flex items-center justify-center gap-1.5"
             style={{
-              background: name.trim() ? "oklch(0.68 0.22 285 / 0.20)" : "oklch(0.14 0.008 260)",
-              border: name.trim() ? "1px solid oklch(0.68 0.22 285 / 0.40)" : "1px solid oklch(0.20 0.008 260)",
-              color: name.trim() ? "oklch(0.78 0.18 285)" : "oklch(0.38 0.008 260)",
+              background: name.trim() ? "oklch(0.68 0.22 285 / 0.20)" : "var(--c-surface)",
+              border: name.trim() ? "1px solid oklch(0.68 0.22 285 / 0.40)" : "1px solid var(--c-bd2)",
+              color: name.trim() ? "oklch(0.78 0.18 285)" : "var(--c-t4)",
             }}
           >
             <Check className="w-3.5 h-3.5" />
@@ -903,8 +903,8 @@ export function TemplatePanel({ onClose, centerX, centerY }: Props) {
         style={{
           width: "min(860px, 95vw)",
           maxHeight: "88vh",
-          background: "oklch(0.10 0.007 260)",
-          border: "1px solid oklch(0.22 0.008 260)",
+          background: "var(--c-base)",
+          border: "1px solid var(--c-bd2)",
           boxShadow: "0 24px 80px oklch(0 0 0 / 0.65)",
         }}
       >
@@ -922,23 +922,23 @@ export function TemplatePanel({ onClose, centerX, centerY }: Props) {
             {/* Preview header */}
             <div
               className="flex items-center gap-3 px-5 py-4 flex-shrink-0"
-              style={{ borderBottom: "1px solid oklch(0.18 0.008 260)" }}
+              style={{ borderBottom: "1px solid var(--c-bd1)" }}
             >
               <button
                 onClick={() => setSelectedTemplate(null)}
                 className="w-8 h-8 rounded-xl flex items-center justify-center transition-all flex-shrink-0"
-                style={{ color: "oklch(0.55 0.008 260)" }}
-                onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.background = "oklch(0.18 0.008 260)"; }}
+                style={{ color: "var(--c-t3)" }}
+                onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.background = "var(--c-bd1)"; }}
                 onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.background = "transparent"; }}
               >
                 <ArrowLeft className="w-4 h-4" />
               </button>
               <span className="text-xl leading-none">{selectedTemplate.icon}</span>
               <div>
-                <p className="text-sm font-semibold" style={{ color: "oklch(0.90 0.005 260)" }}>
+                <p className="text-sm font-semibold" style={{ color: "var(--c-t1)" }}>
                   {selectedTemplate.name}
                 </p>
-                <p className="text-[11px]" style={{ color: "oklch(0.42 0.006 260)" }}>
+                <p className="text-[11px]" style={{ color: "var(--c-t4)" }}>
                   {selectedTemplate.desc}
                 </p>
               </div>
@@ -946,8 +946,8 @@ export function TemplatePanel({ onClose, centerX, centerY }: Props) {
               <button
                 onClick={onClose}
                 className="w-8 h-8 rounded-xl flex items-center justify-center flex-shrink-0"
-                style={{ color: "oklch(0.45 0.008 260)" }}
-                onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.background = "oklch(0.18 0.008 260)"; }}
+                style={{ color: "var(--c-t4)" }}
+                onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.background = "var(--c-bd1)"; }}
                 onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.background = "transparent"; }}
               >
                 <X className="w-4 h-4" />
@@ -959,26 +959,26 @@ export function TemplatePanel({ onClose, centerX, centerY }: Props) {
               {/* Large diagram */}
               <div
                 className="w-full flex items-center justify-center py-6 rounded-2xl"
-                style={{ background: "oklch(0.095 0.006 260)", border: "1px solid oklch(0.16 0.007 260)" }}
+                style={{ background: "var(--c-base)", border: "1px solid var(--c-elevated)" }}
               >
                 <MiniDiagram template={selectedTemplate} width={480} height={160} />
               </div>
 
               {/* Node list */}
               <div className="flex flex-col gap-2">
-                <p className="text-[11px] font-semibold uppercase tracking-wider" style={{ color: "oklch(0.42 0.006 260)" }}>
+                <p className="text-[11px] font-semibold uppercase tracking-wider" style={{ color: "var(--c-t4)" }}>
                   节点详情 ({selectedTemplate.nodes.length})
                 </p>
                 <div className="flex flex-col gap-2">
                   {selectedTemplate.nodes.map((spec, i) => {
-                    const color = NODE_DOT_COLORS[spec.type] ?? "oklch(0.50 0.008 260)";
+                    const color = NODE_DOT_COLORS[spec.type] ?? "var(--c-t3)";
                     const label = NODE_TYPE_LABELS[spec.type] ?? spec.type;
                     const summary = getNodeDataSummary(spec.type, (spec.initialData ?? {}) as Record<string, unknown>);
                     return (
                       <div
                         key={i}
                         className="flex items-start gap-3 px-3.5 py-3 rounded-xl"
-                        style={{ background: "oklch(0.13 0.007 260)", border: "1px solid oklch(0.18 0.008 260)" }}
+                        style={{ background: "var(--c-surface)", border: "1px solid var(--c-bd1)" }}
                       >
                         <div
                           className="w-2.5 h-2.5 rounded-full mt-1 flex-shrink-0"
@@ -986,7 +986,7 @@ export function TemplatePanel({ onClose, centerX, centerY }: Props) {
                         />
                         <div className="flex-1 min-w-0">
                           <div className="flex items-center gap-2">
-                            <span className="text-xs font-semibold" style={{ color: "oklch(0.80 0.005 260)" }}>
+                            <span className="text-xs font-semibold" style={{ color: "var(--c-t1)" }}>
                               {spec.title ?? label}
                             </span>
                             <span
@@ -1000,8 +1000,8 @@ export function TemplatePanel({ onClose, centerX, centerY }: Props) {
                             <div className="mt-1.5 flex flex-col gap-0.5">
                               {summary.map(([k, v]) => (
                                 <div key={k} className="flex gap-1.5 text-[10px] leading-relaxed">
-                                  <span style={{ color: "oklch(0.44 0.006 260)", flexShrink: 0 }}>{k}:</span>
-                                  <span style={{ color: "oklch(0.62 0.006 260)" }} className="truncate">{v}</span>
+                                  <span style={{ color: "var(--c-t4)", flexShrink: 0 }}>{k}:</span>
+                                  <span style={{ color: "var(--c-t2)" }} className="truncate">{v}</span>
                                 </div>
                               ))}
                             </div>
@@ -1017,12 +1017,12 @@ export function TemplatePanel({ onClose, centerX, centerY }: Props) {
             {/* Preview footer with apply */}
             <div
               className="flex items-center justify-between px-5 py-3 flex-shrink-0"
-              style={{ borderTop: "1px solid oklch(0.16 0.008 260)" }}
+              style={{ borderTop: "1px solid var(--c-elevated)" }}
             >
               <button
                 onClick={() => setSelectedTemplate(null)}
                 className="px-4 py-2 rounded-xl text-sm font-medium transition-all"
-                style={{ background: "oklch(0.16 0.008 260)", border: "1px solid oklch(0.24 0.008 260)", color: "oklch(0.60 0.008 260)" }}
+                style={{ background: "var(--c-elevated)", border: "1px solid var(--c-bd3)", color: "var(--c-t3)" }}
               >
                 返回
               </button>
@@ -1031,7 +1031,7 @@ export function TemplatePanel({ onClose, centerX, centerY }: Props) {
                 className="px-5 py-2 rounded-xl text-sm font-semibold transition-all flex items-center gap-2"
                 style={{
                   background: "linear-gradient(135deg, oklch(0.55 0.22 285), oklch(0.48 0.20 310))",
-                  color: "oklch(0.96 0.005 260)",
+                  color: "var(--c-t1)",
                   boxShadow: "0 4px 16px oklch(0.55 0.22 285 / 0.30)",
                 }}
               >
@@ -1046,7 +1046,7 @@ export function TemplatePanel({ onClose, centerX, centerY }: Props) {
             {/* Header */}
             <div
               className="flex items-center gap-3 px-5 py-4 flex-shrink-0"
-              style={{ borderBottom: "1px solid oklch(0.18 0.008 260)" }}
+              style={{ borderBottom: "1px solid var(--c-bd1)" }}
             >
               <div
                 className="w-8 h-8 rounded-xl flex items-center justify-center flex-shrink-0"
@@ -1055,10 +1055,10 @@ export function TemplatePanel({ onClose, centerX, centerY }: Props) {
                 <Zap className="w-4 h-4" style={{ color: "oklch(0.72 0.20 285)" }} />
               </div>
               <div>
-                <p className="text-sm font-semibold" style={{ color: "oklch(0.90 0.005 260)" }}>
+                <p className="text-sm font-semibold" style={{ color: "var(--c-t1)" }}>
                   快速模板
                 </p>
-                <p className="text-[11px]" style={{ color: "oklch(0.42 0.006 260)" }}>
+                <p className="text-[11px]" style={{ color: "var(--c-t4)" }}>
                   选择模板，一键创建完整工作流
                 </p>
               </div>
@@ -1066,19 +1066,19 @@ export function TemplatePanel({ onClose, centerX, centerY }: Props) {
               {/* Search */}
               <div
                 className="flex-1 flex items-center gap-2 px-3 py-1.5 rounded-xl ml-4"
-                style={{ background: "oklch(0.14 0.007 260)", border: "1px solid oklch(0.22 0.008 260)" }}
+                style={{ background: "var(--c-surface)", border: "1px solid var(--c-bd2)" }}
               >
-                <Search className="w-3.5 h-3.5 flex-shrink-0" style={{ color: "oklch(0.42 0.006 260)" }} />
+                <Search className="w-3.5 h-3.5 flex-shrink-0" style={{ color: "var(--c-t4)" }} />
                 <input
                   value={query}
                   onChange={(e) => setQuery(e.target.value)}
                   placeholder="搜索模板..."
                   className="flex-1 bg-transparent outline-none text-sm"
-                  style={{ color: "oklch(0.85 0.005 260)" }}
+                  style={{ color: "var(--c-t1)" }}
                   autoFocus
                 />
                 {query && (
-                  <button onClick={() => setQuery("")} style={{ color: "oklch(0.42 0.006 260)" }}>
+                  <button onClick={() => setQuery("")} style={{ color: "var(--c-t4)" }}>
                     <X className="w-3 h-3" />
                   </button>
                 )}
@@ -1088,7 +1088,7 @@ export function TemplatePanel({ onClose, centerX, centerY }: Props) {
               <button
                 onClick={() => setShowSaveDialog(true)}
                 className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-medium transition-all flex-shrink-0"
-                style={{ background: "oklch(0.16 0.008 260)", border: "1px solid oklch(0.24 0.008 260)", color: "oklch(0.58 0.008 260)" }}
+                style={{ background: "var(--c-elevated)", border: "1px solid var(--c-bd3)", color: "var(--c-t3)" }}
                 onMouseEnter={(e) => {
                   const el = e.currentTarget as HTMLElement;
                   el.style.borderColor = "oklch(0.72 0.18 45 / 0.40)";
@@ -1096,8 +1096,8 @@ export function TemplatePanel({ onClose, centerX, centerY }: Props) {
                 }}
                 onMouseLeave={(e) => {
                   const el = e.currentTarget as HTMLElement;
-                  el.style.borderColor = "oklch(0.24 0.008 260)";
-                  el.style.color = "oklch(0.58 0.008 260)";
+                  el.style.borderColor = "var(--c-bd3)";
+                  el.style.color = "var(--c-t3)";
                 }}
                 title="将当前画布保存为模板"
               >
@@ -1109,9 +1109,9 @@ export function TemplatePanel({ onClose, centerX, centerY }: Props) {
               <button
                 onClick={onClose}
                 className="w-8 h-8 rounded-xl flex items-center justify-center transition-all flex-shrink-0"
-                style={{ color: "oklch(0.45 0.008 260)" }}
-                onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.background = "oklch(0.18 0.008 260)"; (e.currentTarget as HTMLElement).style.color = "oklch(0.80 0.005 260)"; }}
-                onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.background = "transparent"; (e.currentTarget as HTMLElement).style.color = "oklch(0.45 0.008 260)"; }}
+                style={{ color: "var(--c-t4)" }}
+                onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.background = "var(--c-bd1)"; (e.currentTarget as HTMLElement).style.color = "var(--c-t1)"; }}
+                onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.background = "transparent"; (e.currentTarget as HTMLElement).style.color = "var(--c-t4)"; }}
               >
                 <X className="w-4 h-4" />
               </button>
@@ -1120,7 +1120,7 @@ export function TemplatePanel({ onClose, centerX, centerY }: Props) {
             {/* Category tabs */}
             <div
               className="flex items-center gap-1 px-5 py-3 flex-shrink-0 overflow-x-auto"
-              style={{ borderBottom: "1px solid oklch(0.16 0.008 260)" }}
+              style={{ borderBottom: "1px solid var(--c-elevated)" }}
             >
               {CATEGORIES.map((cat) => {
                 const active = category === cat.id;
@@ -1137,21 +1137,21 @@ export function TemplatePanel({ onClose, centerX, centerY }: Props) {
                     style={{
                       background: active ? `${cat.color}18` : "transparent",
                       border: active ? `1px solid ${cat.color}35` : "1px solid transparent",
-                      color: active ? cat.color : "oklch(0.50 0.008 260)",
+                      color: active ? cat.color : "var(--c-t3)",
                     }}
                     onMouseEnter={(e) => {
-                      if (!active) (e.currentTarget as HTMLElement).style.color = "oklch(0.75 0.005 260)";
+                      if (!active) (e.currentTarget as HTMLElement).style.color = "var(--c-t2)";
                     }}
                     onMouseLeave={(e) => {
-                      if (!active) (e.currentTarget as HTMLElement).style.color = "oklch(0.50 0.008 260)";
+                      if (!active) (e.currentTarget as HTMLElement).style.color = "var(--c-t3)";
                     }}
                   >
                     {cat.label}
                     <span
                       className="text-[9px] px-1 py-0.5 rounded-full font-semibold"
                       style={{
-                        background: active ? `${cat.color}25` : "oklch(0.18 0.008 260)",
-                        color: active ? cat.color : "oklch(0.42 0.006 260)",
+                        background: active ? `${cat.color}25` : "var(--c-bd1)",
+                        color: active ? cat.color : "var(--c-t4)",
                       }}
                     >
                       {count}
@@ -1167,15 +1167,15 @@ export function TemplatePanel({ onClose, centerX, centerY }: Props) {
                 category === "custom" && customCount === 0 ? (
                   <div className="flex flex-col items-center justify-center py-12 gap-3">
                     <span className="text-3xl">📂</span>
-                    <p className="text-sm" style={{ color: "oklch(0.42 0.006 260)" }}>还没有保存的模板</p>
-                    <p className="text-xs" style={{ color: "oklch(0.35 0.006 260)" }}>
+                    <p className="text-sm" style={{ color: "var(--c-t4)" }}>还没有保存的模板</p>
+                    <p className="text-xs" style={{ color: "var(--c-t4)" }}>
                       点击右上角「保存画布」将当前工作流另存为模板
                     </p>
                   </div>
                 ) : (
                   <div className="flex flex-col items-center justify-center py-12 gap-3">
                     <span className="text-3xl">🔍</span>
-                    <p className="text-sm" style={{ color: "oklch(0.42 0.006 260)" }}>没有找到匹配的模板</p>
+                    <p className="text-sm" style={{ color: "var(--c-t4)" }}>没有找到匹配的模板</p>
                   </div>
                 )
               ) : (
@@ -1198,12 +1198,12 @@ export function TemplatePanel({ onClose, centerX, centerY }: Props) {
             {/* Footer */}
             <div
               className="flex items-center justify-between px-5 py-3 flex-shrink-0 text-[10px]"
-              style={{ borderTop: "1px solid oklch(0.16 0.008 260)", color: "oklch(0.38 0.006 260)" }}
+              style={{ borderTop: "1px solid var(--c-elevated)", color: "var(--c-t4)" }}
             >
               <span>{allTemplates.length} 个模板 · 点击卡片预览后应用</span>
               <kbd
                 className="px-1.5 py-0.5 rounded text-[9px] font-mono"
-                style={{ background: "oklch(0.16 0.008 260)", border: "1px solid oklch(0.24 0.008 260)", color: "oklch(0.48 0.008 260)" }}
+                style={{ background: "var(--c-elevated)", border: "1px solid var(--c-bd3)", color: "var(--c-t4)" }}
               >
                 ESC 关闭
               </kbd>

@@ -20,7 +20,7 @@ export default class ErrorBoundary extends Component<Props, State> {
     return (
       <div
         className="w-screen h-screen flex flex-col items-center justify-center gap-6"
-        style={{ background: "oklch(0.07 0.005 260)" }}
+        style={{ background: "var(--c-canvas)" }}
       >
         {/* Logo */}
         <div
@@ -34,10 +34,10 @@ export default class ErrorBoundary extends Component<Props, State> {
         </div>
 
         <div className="text-center">
-          <p className="text-base font-semibold mb-1" style={{ color: "oklch(0.80 0.006 260)" }}>
+          <p className="text-base font-semibold mb-1" style={{ color: "var(--c-t1)" }}>
             页面出现了意外错误
           </p>
-          <p className="text-sm" style={{ color: "oklch(0.42 0.006 260)" }}>
+          <p className="text-sm" style={{ color: "var(--c-t4)" }}>
             请刷新页面重试，或联系支持团队
           </p>
         </div>
@@ -46,9 +46,9 @@ export default class ErrorBoundary extends Component<Props, State> {
           <div
             className="max-w-md w-full mx-4 p-3 rounded-xl text-xs font-mono overflow-auto"
             style={{
-              background: "oklch(0.10 0.006 260)",
-              border: "1px solid oklch(0.18 0.008 260)",
-              color: "oklch(0.55 0.008 260)",
+              background: "var(--c-base)",
+              border: "1px solid var(--c-bd1)",
+              color: "var(--c-t3)",
               maxHeight: 120,
             }}
           >

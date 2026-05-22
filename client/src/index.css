@@ -166,10 +166,10 @@
   ::-webkit-scrollbar { width: 6px; height: 6px; }
   ::-webkit-scrollbar-track { background: transparent; }
   ::-webkit-scrollbar-thumb {
-    background: oklch(0.25 0.008 260);
+    background: var(--c-bd3);
     border-radius: 99px;
   }
-  ::-webkit-scrollbar-thumb:hover { background: oklch(0.32 0.010 260); }
+  ::-webkit-scrollbar-thumb:hover { background: var(--c-bd3); }
 
   /* Selection */
   ::selection {
@@ -385,12 +385,12 @@ button:active:not(:disabled) {
 
 /* Edges — visible but not overwhelming */
 .react-flow__edge-path {
-  stroke: oklch(0.32 0.010 260);
+  stroke: var(--c-bd3);
   stroke-width: 2;
   transition: stroke 150ms ease, stroke-width 150ms ease, filter 150ms ease, opacity 150ms ease;
 }
 .react-flow__edge:hover .react-flow__edge-path {
-  stroke: oklch(0.55 0.012 260);
+  stroke: var(--c-t3);
   stroke-width: 2.5;
 }
 .react-flow__edge.selected .react-flow__edge-path {
@@ -436,8 +436,8 @@ button:active:not(:disabled) {
 
 /* Invalid connection target — dim and shrink */
 .react-flow__handle.invalid {
-  background: oklch(0.30 0.008 260) !important;
-  border-color: oklch(0.25 0.008 260) !important;
+  background: var(--c-bd3) !important;
+  border-color: var(--c-bd3) !important;
   box-shadow: none !important;
   transform: scale(0.65) !important;
   opacity: 0.25 !important;
@@ -460,7 +460,7 @@ button:active:not(:disabled) {
   fill: oklch(0.68 0.22 285 / 0.10) !important;
 }
 .react-flow__minimap-node {
-  fill: oklch(0.28 0.010 260) !important;
+  fill: var(--c-bd3) !important;
   rx: 2 !important;
 }
 
@@ -477,7 +477,7 @@ button:active:not(:disabled) {
   height: 7px !important;
   border-radius: 2px !important;
   background: oklch(0.68 0.22 285) !important;
-  border: 1.5px solid oklch(0.08 0.005 260) !important;
+  border: 1.5px solid var(--c-canvas) !important;
   box-shadow: 0 0 5px oklch(0.68 0.22 285 / 0.60) !important;
 }
 .react-flow__resize-control.line {

@@ -17,18 +17,18 @@ interface Props {
   };
 }
 
-const BORDER_DEFAULT = "oklch(0.20 0.008 260)";
+const BORDER_DEFAULT = "var(--c-bd2)";
 
 const fieldStyle: React.CSSProperties = {
   width: "100%",
   padding: "7px 10px",
   fontSize: 12,
-  background: "oklch(0.09 0.006 260)",
+  background: "var(--c-input)",
   borderWidth: 1,
   borderStyle: "solid",
   borderColor: BORDER_DEFAULT,
   borderRadius: 8,
-  color: "oklch(0.86 0.006 260)",
+  color: "var(--c-t1)",
   outline: "none",
   transition: "border-color 150ms ease",
 };
@@ -38,7 +38,7 @@ const labelStyle: React.CSSProperties = {
   fontWeight: 600,
   textTransform: "uppercase",
   letterSpacing: "0.06em",
-  color: "oklch(0.45 0.008 260)",
+  color: "var(--c-t4)",
   display: "block",
   marginBottom: 5,
 };
@@ -118,7 +118,7 @@ export const OverlayNode = memo(function OverlayNode({ id, selected, data }: Pro
   const isDone = payload.status === "done";
   const isFailed = payload.status === "failed";
 
-  const onFocusMid = (e: React.FocusEvent<HTMLElement>) => { e.currentTarget.style.borderColor = "oklch(0.40 0.008 260)"; };
+  const onFocusMid = (e: React.FocusEvent<HTMLElement>) => { e.currentTarget.style.borderColor = "var(--c-t4)"; };
   const onBlurDefault = (e: React.FocusEvent<HTMLElement>) => { e.currentTarget.style.borderColor = BORDER_DEFAULT; };
 
   const videoSrc = payload.outputUrl?.startsWith("http")
@@ -165,7 +165,7 @@ export const OverlayNode = memo(function OverlayNode({ id, selected, data }: Pro
             onBlur={onBlurDefault}
           />
           {autoDetectedVideoUrl && !payload.inputVideoUrl && (
-            <p style={{ fontSize: 9, color: "oklch(0.42 0.006 260)", marginTop: 3 }}>
+            <p style={{ fontSize: 9, color: "var(--c-t4)", marginTop: 3 }}>
               来自连接节点
             </p>
           )}
@@ -393,10 +393,10 @@ export const OverlayNode = memo(function OverlayNode({ id, selected, data }: Pro
             disabled={isProcessing}
             className="nodrag flex-1 flex items-center justify-center gap-1.5 py-2 rounded-xl text-xs font-semibold transition-all"
             style={{
-              background: isProcessing ? "oklch(0.13 0.007 260)" : `${accentColor.replace(")", " / 0.15)")}`,
+              background: isProcessing ? "var(--c-surface)" : `${accentColor.replace(")", " / 0.15)")}`,
               borderWidth: 1, borderStyle: "solid",
               borderColor: isProcessing ? BORDER_DEFAULT : accentColor.replace(")", " / 0.4)"),
-              color: isProcessing ? "oklch(0.38 0.006 260)" : accentColor,
+              color: isProcessing ? "var(--c-t4)" : accentColor,
               cursor: isProcessing ? "not-allowed" : "pointer",
             }}
           >

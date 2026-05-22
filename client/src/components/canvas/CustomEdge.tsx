@@ -76,10 +76,10 @@ export const CustomEdge = memo(function CustomEdge({
       : selected
         ? "oklch(0.68 0.22 285)"
         : hovered
-          ? "oklch(0.55 0.015 260)"
+          ? "var(--c-bd3)"
           : typeColor
             ? `${typeColor}55`
-            : "oklch(0.32 0.010 260)";
+            : "var(--c-bd3)";
 
   const strokeWidth = selected ? 3 : hovered ? 2.5 : 2;
 
@@ -157,7 +157,7 @@ export const CustomEdge = memo(function CustomEdge({
                 display: "flex",
                 alignItems: "center",
                 gap: 4,
-                background: "oklch(0.13 0.007 260)",
+                background: "var(--c-surface)",
                 border: "1px solid oklch(0.68 0.22 285 / 0.50)",
                 borderRadius: 8,
                 padding: "4px 8px",
@@ -174,7 +174,7 @@ export const CustomEdge = memo(function CustomEdge({
                 placeholder="标签..."
                 style={{
                   background: "transparent",
-                  color: "oklch(0.92 0.005 260)",
+                  color: "var(--c-t1)",
                   fontSize: 11,
                   outline: "none",
                   width: 80,
@@ -189,7 +189,7 @@ export const CustomEdge = memo(function CustomEdge({
               </button>
               <button
                 onMouseDown={(e) => { e.preventDefault(); setEditing(false); }}
-                style={{ color: "oklch(0.45 0.008 260)", padding: 1, lineHeight: 0 }}
+                style={{ color: "var(--c-t4)", padding: 1, lineHeight: 0 }}
               >
                 <X style={{ width: 10, height: 10 }} />
               </button>
@@ -201,7 +201,7 @@ export const CustomEdge = memo(function CustomEdge({
                 alignItems: "center",
                 gap: 2,
                 background: "oklch(0.13 0.007 260 / 0.95)",
-                border: `1px solid ${selected ? "oklch(0.68 0.22 285 / 0.45)" : "oklch(0.24 0.008 260)"}`,
+                border: `1px solid ${selected ? "oklch(0.68 0.22 285 / 0.45)" : "var(--c-bd3)"}`,
                 borderRadius: 20,
                 padding: "3px 6px",
                 backdropFilter: "blur(12px)",
@@ -215,7 +215,7 @@ export const CustomEdge = memo(function CustomEdge({
                   style={{
                     fontSize: 10,
                     fontFamily: "var(--font-sans)",
-                    color: selected ? "oklch(0.82 0.12 285)" : "oklch(0.58 0.008 260)",
+                    color: selected ? "oklch(0.82 0.12 285)" : "var(--c-t3)",
                     userSelect: "none",
                     whiteSpace: "nowrap",
                     paddingLeft: 2,
@@ -231,7 +231,7 @@ export const CustomEdge = memo(function CustomEdge({
                   style={{
                     fontSize: 10,
                     fontFamily: "var(--font-sans)",
-                    color: "oklch(0.40 0.006 260)",
+                    color: "var(--c-t4)",
                     cursor: "pointer",
                     background: "transparent",
                     border: "none",
@@ -242,11 +242,11 @@ export const CustomEdge = memo(function CustomEdge({
                   + 标签
                 </button>
               )}
-              <div style={{ width: 1, height: 10, background: "oklch(0.24 0.008 260)", margin: "0 2px" }} />
+              <div style={{ width: 1, height: 10, background: "var(--c-bd3)", margin: "0 2px" }} />
               <button
                 onClick={handleDelete}
                 style={{
-                  color: "oklch(0.40 0.008 260)",
+                  color: "var(--c-t4)",
                   background: "transparent",
                   border: "none",
                   cursor: "pointer",
@@ -256,7 +256,7 @@ export const CustomEdge = memo(function CustomEdge({
                   transition: "color 120ms ease",
                 }}
                 onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.color = "oklch(0.65 0.22 25)"; }}
-                onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.color = "oklch(0.40 0.008 260)"; }}
+                onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.color = "var(--c-t4)"; }}
                 title="删除连线"
               >
                 <Trash2 style={{ width: 10, height: 10 }} />
@@ -266,12 +266,12 @@ export const CustomEdge = memo(function CustomEdge({
             <div
               style={{
                 background: "oklch(0.12 0.007 260 / 0.90)",
-                border: "1px solid oklch(0.22 0.008 260)",
+                border: "1px solid var(--c-bd2)",
                 borderRadius: 20,
                 padding: "2px 8px",
                 fontSize: 10,
                 fontFamily: "var(--font-sans)",
-                color: "oklch(0.52 0.008 260)",
+                color: "var(--c-t3)",
                 backdropFilter: "blur(8px)",
                 userSelect: "none",
                 whiteSpace: "nowrap",

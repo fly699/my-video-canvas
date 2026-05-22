@@ -19,7 +19,7 @@ interface Props {
 }
 
 const STATUS = {
-  pending:    { icon: Clock,         label: "待提交", accent: "oklch(0.50 0.008 260)", bg: "oklch(0.14 0.007 260)", borderColor: "oklch(0.22 0.008 260)" },
+  pending:    { icon: Clock,         label: "待提交", accent: "var(--c-t3)", bg: "var(--c-surface)", borderColor: "var(--c-bd2)" },
   processing: { icon: Loader2,       label: "生成中", accent: "oklch(0.68 0.22 285)",  bg: "oklch(0.68 0.22 285 / 0.08)", borderColor: "oklch(0.68 0.22 285 / 0.30)", spin: true },
   succeeded:  { icon: CheckCircle2,  label: "已完成", accent: "oklch(0.72 0.18 155)",  bg: "oklch(0.72 0.18 155 / 0.08)", borderColor: "oklch(0.72 0.18 155 / 0.30)" },
   failed:     { icon: XCircle,       label: "失败",   accent: "oklch(0.62 0.20 25)",   bg: "oklch(0.62 0.20 25 / 0.08)",  borderColor: "oklch(0.62 0.20 25 / 0.30)" },
@@ -148,7 +148,7 @@ const PROVIDER_PARAMS: Record<string, ParamDef[]> = {
   mock: [],
 };
 
-const BORDER_DEFAULT = "oklch(0.20 0.008 260)";
+const BORDER_DEFAULT = "var(--c-bd2)";
 const accentColor = "oklch(0.62 0.20 25)";
 
 // Rough cost estimates in Poyo credits per 5s clip (display only)
@@ -177,12 +177,12 @@ const fieldStyle: React.CSSProperties = {
   width: "100%",
   padding: "7px 10px",
   fontSize: 12,
-  background: "oklch(0.09 0.006 260)",
+  background: "var(--c-input)",
   borderWidth: 1,
   borderStyle: "solid",
   borderColor: BORDER_DEFAULT,
   borderRadius: 8,
-  color: "oklch(0.86 0.006 260)",
+  color: "var(--c-t1)",
   outline: "none",
   transition: "border-color 150ms ease, background 150ms ease",
   lineHeight: 1.5,
@@ -193,7 +193,7 @@ const labelStyle: React.CSSProperties = {
   fontWeight: 600,
   textTransform: "uppercase",
   letterSpacing: "0.06em",
-  color: "oklch(0.45 0.008 260)",
+  color: "var(--c-t4)",
   display: "block",
   marginBottom: 5,
 };
@@ -315,7 +315,7 @@ export const VideoTaskNode = memo(function VideoTaskNode({ id, selected, data }:
   const isResettable = payload.status === "succeeded" || payload.status === "failed";
 
   const onFocusAccent = (e: React.FocusEvent<HTMLElement>) => { e.currentTarget.style.borderColor = "oklch(0.62 0.20 25 / 0.6)"; };
-  const onFocusMid    = (e: React.FocusEvent<HTMLElement>) => { e.currentTarget.style.borderColor = "oklch(0.40 0.008 260)"; };
+  const onFocusMid    = (e: React.FocusEvent<HTMLElement>) => { e.currentTarget.style.borderColor = "var(--c-t4)"; };
   const onBlurDefault = (e: React.FocusEvent<HTMLElement>) => { e.currentTarget.style.borderColor = BORDER_DEFAULT; };
 
   const videoSrc = payload.resultVideoUrl?.startsWith("http")
@@ -341,10 +341,10 @@ export const VideoTaskNode = memo(function VideoTaskNode({ id, selected, data }:
           />
           <span className="text-xs font-medium" style={{ color: status.accent }}>{status.label}</span>
           {payload.status === "processing" && (
-            <span className="ml-auto text-[10px] animate-pulse" style={{ color: "oklch(0.50 0.008 260)" }}>轮询中...</span>
+            <span className="ml-auto text-[10px] animate-pulse" style={{ color: "var(--c-t3)" }}>轮询中...</span>
           )}
           {payload.status === "succeeded" && (
-            <span className="ml-auto text-[10px]" style={{ color: "oklch(0.45 0.008 260)" }}>生成完成</span>
+            <span className="ml-auto text-[10px]" style={{ color: "var(--c-t4)" }}>生成完成</span>
           )}
         </div>
 
@@ -408,16 +408,16 @@ export const VideoTaskNode = memo(function VideoTaskNode({ id, selected, data }:
 
         {/* ── Parallel compare mode toggle ── */}
         <div className="flex items-center justify-between px-3.5 pt-2 pb-1 flex-shrink-0" style={{ marginLeft: -14, marginRight: -14 }}>
-          <span style={{ fontSize: 10, fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.06em", color: "oklch(0.40 0.008 260)" }}>
+          <span style={{ fontSize: 10, fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.06em", color: "var(--c-t4)" }}>
             {parallelMode ? "并行对比模式" : "单模型模式"}
           </span>
           <button
             onClick={() => { setParallelMode((v) => !v); setParallelProviders([]); setParallelResults({}); }}
             className="nodrag flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] transition-all"
             style={{
-              background: parallelMode ? "oklch(0.68 0.22 285 / 0.15)" : "oklch(0.13 0.007 260)",
-              border: `1px solid ${parallelMode ? "oklch(0.68 0.22 285 / 0.40)" : "oklch(0.22 0.008 260)"}`,
-              color: parallelMode ? "oklch(0.68 0.22 285)" : "oklch(0.45 0.008 260)",
+              background: parallelMode ? "oklch(0.68 0.22 285 / 0.15)" : "var(--c-surface)",
+              border: `1px solid ${parallelMode ? "oklch(0.68 0.22 285 / 0.40)" : "var(--c-bd2)"}`,
+              color: parallelMode ? "oklch(0.68 0.22 285)" : "var(--c-t4)",
               cursor: "pointer",
             }}
           >
@@ -428,7 +428,7 @@ export const VideoTaskNode = memo(function VideoTaskNode({ id, selected, data }:
 
         {parallelMode && (
           <div className="flex flex-col gap-2 flex-shrink-0">
-            <p style={{ fontSize: 10, color: "oklch(0.42 0.006 260)" }}>选择最多 3 个模型并行生成对比：</p>
+            <p style={{ fontSize: 10, color: "var(--c-t4)" }}>选择最多 3 个模型并行生成对比：</p>
             <div className="flex flex-col gap-1">
               {PROVIDERS.filter(p => p.value !== "mock").map((p) => {
                 const checked = parallelProviders.includes(p.value);
@@ -444,9 +444,9 @@ export const VideoTaskNode = memo(function VideoTaskNode({ id, selected, data }:
                     }}
                     className="nodrag flex items-center gap-2 px-2.5 py-1.5 rounded-lg text-xs transition-all text-left"
                     style={{
-                      background: checked ? "oklch(0.68 0.22 285 / 0.10)" : "oklch(0.09 0.006 260)",
-                      border: `1px solid ${checked ? "oklch(0.68 0.22 285 / 0.40)" : "oklch(0.20 0.008 260)"}`,
-                      color: checked ? "oklch(0.75 0.15 285)" : "oklch(0.60 0.006 260)",
+                      background: checked ? "oklch(0.68 0.22 285 / 0.10)" : "var(--c-input)",
+                      border: `1px solid ${checked ? "oklch(0.68 0.22 285 / 0.40)" : "var(--c-bd2)"}`,
+                      color: checked ? "oklch(0.75 0.15 285)" : "var(--c-t2)",
                       cursor: (!checked && parallelProviders.length >= 3) ? "not-allowed" : "pointer",
                       opacity: (!checked && parallelProviders.length >= 3) ? 0.5 : 1,
                     }}
@@ -454,13 +454,13 @@ export const VideoTaskNode = memo(function VideoTaskNode({ id, selected, data }:
                     <div style={{
                       width: 14, height: 14, borderRadius: 3, flexShrink: 0,
                       background: checked ? "oklch(0.68 0.22 285)" : "transparent",
-                      border: `1.5px solid ${checked ? "oklch(0.68 0.22 285)" : "oklch(0.30 0.008 260)"}`,
+                      border: `1.5px solid ${checked ? "oklch(0.68 0.22 285)" : "var(--c-bd3)"}`,
                       display: "flex", alignItems: "center", justifyContent: "center",
                     }}>
                       {checked && <span style={{ color: "white", fontSize: 9, fontWeight: 700 }}>✓</span>}
                     </div>
                     <span>{p.label}</span>
-                    <span style={{ marginLeft: "auto", fontSize: 9, color: "oklch(0.40 0.006 260)", background: "oklch(0.14 0.007 260)", borderRadius: 99, padding: "1px 5px" }}>{p.group}</span>
+                    <span style={{ marginLeft: "auto", fontSize: 9, color: "var(--c-t4)", background: "var(--c-surface)", borderRadius: 99, padding: "1px 5px" }}>{p.group}</span>
                     {parallelResults[p.value] && (
                       <span style={{
                         fontSize: 9, borderRadius: 99, padding: "1px 5px",
@@ -510,7 +510,7 @@ export const VideoTaskNode = memo(function VideoTaskNode({ id, selected, data }:
             {/* Parallel results grid */}
             {Object.keys(parallelResults).length > 0 && (
               <div className="flex flex-col gap-2 mt-1">
-                <span style={{ fontSize: 10, fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.06em", color: "oklch(0.42 0.006 260)" }}>对比结果</span>
+                <span style={{ fontSize: 10, fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.06em", color: "var(--c-t4)" }}>对比结果</span>
                 <div className="flex gap-1.5">
                   {Object.entries(parallelResults).map(([provider, result]) => (
                     <div
@@ -518,8 +518,8 @@ export const VideoTaskNode = memo(function VideoTaskNode({ id, selected, data }:
                       className="flex-1 rounded-lg overflow-hidden"
                       style={{
                         minWidth: 0,
-                        background: "oklch(0.09 0.006 260)",
-                        border: `1px solid ${result.status === "done" ? "oklch(0.65 0.18 155 / 0.35)" : "oklch(0.20 0.008 260)"}`,
+                        background: "var(--c-input)",
+                        border: `1px solid ${result.status === "done" ? "oklch(0.65 0.18 155 / 0.35)" : "var(--c-bd2)"}`,
                       }}
                     >
                       {result.status === "done" && result.videoUrl ? (
@@ -534,7 +534,7 @@ export const VideoTaskNode = memo(function VideoTaskNode({ id, selected, data }:
                         </div>
                       )}
                       <div className="px-1.5 py-1">
-                        <p style={{ fontSize: 9, color: "oklch(0.50 0.006 260)", textAlign: "center" }}>
+                        <p style={{ fontSize: 9, color: "var(--c-t3)", textAlign: "center" }}>
                           {PROVIDERS.find(p => p.value === provider)?.label ?? provider}
                         </p>
                       </div>
@@ -574,9 +574,9 @@ export const VideoTaskNode = memo(function VideoTaskNode({ id, selected, data }:
             onBlur={onBlurDefault}
           >
             {["Poyo", "Higgsfield", "Dev"].map((group) => (
-              <optgroup key={group} label={`── ${group} ──`} style={{ background: "oklch(0.12 0.007 260)" }}>
+              <optgroup key={group} label={`── ${group} ──`} style={{ background: "var(--c-surface)" }}>
                 {PROVIDERS.filter((p) => p.group === group).map((p) => (
-                  <option key={p.value} value={p.value} style={{ background: "oklch(0.12 0.007 260)" }}>{p.label}</option>
+                  <option key={p.value} value={p.value} style={{ background: "var(--c-surface)" }}>{p.label}</option>
                 ))}
               </optgroup>
             ))}
@@ -635,7 +635,7 @@ export const VideoTaskNode = memo(function VideoTaskNode({ id, selected, data }:
         {paramDefs.length > 0 && (
           <div
             className="rounded-xl"
-            style={{ background: "oklch(0.085 0.006 260)", borderWidth: 1, borderStyle: "solid", borderColor: "oklch(0.18 0.007 260)" }}
+            style={{ background: "var(--c-input)", borderWidth: 1, borderStyle: "solid", borderColor: "var(--c-bd1)" }}
           >
             {/* Collapsible header */}
             <button
@@ -643,12 +643,12 @@ export const VideoTaskNode = memo(function VideoTaskNode({ id, selected, data }:
               className="nodrag w-full flex items-center justify-between px-3 py-2 rounded-xl"
               style={{ cursor: "pointer", background: "transparent" }}
             >
-              <span style={{ fontSize: 10.5, fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.07em", color: "oklch(0.40 0.008 260)" }}>
+              <span style={{ fontSize: 10.5, fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.07em", color: "var(--c-t4)" }}>
                 模型参数
               </span>
               {paramsExpanded
-                ? <ChevronDown className="w-3 h-3" style={{ color: "oklch(0.40 0.008 260)" }} />
-                : <ChevronRight className="w-3 h-3" style={{ color: "oklch(0.40 0.008 260)" }} />
+                ? <ChevronDown className="w-3 h-3" style={{ color: "var(--c-t4)" }} />
+                : <ChevronRight className="w-3 h-3" style={{ color: "var(--c-t4)" }} />
               }
             </button>
             {/* 2-column grid for compact layout */}
@@ -675,7 +675,7 @@ export const VideoTaskNode = memo(function VideoTaskNode({ id, selected, data }:
                       onBlur={onBlurDefault}
                     >
                       {def.options.map((opt) => (
-                        <option key={String(opt.value)} value={String(opt.value)} style={{ background: "oklch(0.12 0.007 260)" }}>
+                        <option key={String(opt.value)} value={String(opt.value)} style={{ background: "var(--c-surface)" }}>
                           {opt.label}
                         </option>
                       ))}
@@ -718,9 +718,9 @@ export const VideoTaskNode = memo(function VideoTaskNode({ id, selected, data }:
                       className="nodrag relative flex-shrink-0"
                       style={{
                         width: 32, height: 18, borderRadius: 9,
-                        background: checked ? "oklch(0.62 0.20 25 / 0.7)" : "oklch(0.18 0.008 260)",
+                        background: checked ? "oklch(0.62 0.20 25 / 0.7)" : "var(--c-bd1)",
                         borderWidth: 1, borderStyle: "solid",
-                        borderColor: checked ? "oklch(0.62 0.20 25 / 0.5)" : "oklch(0.28 0.008 260)",
+                        borderColor: checked ? "oklch(0.62 0.20 25 / 0.5)" : "var(--c-bd3)",
                         cursor: isLocked ? "not-allowed" : "pointer",
                         transition: "background 150ms ease, border-color 150ms ease",
                         opacity: isLocked ? 0.5 : 1,
@@ -731,7 +731,7 @@ export const VideoTaskNode = memo(function VideoTaskNode({ id, selected, data }:
                           position: "absolute", top: 2,
                           left: checked ? 14 : 2,
                           width: 12, height: 12, borderRadius: "50%",
-                          background: "oklch(0.85 0.006 260)",
+                          background: "var(--c-t1)",
                           transition: "left 150ms ease",
                         }}
                       />
@@ -753,13 +753,13 @@ export const VideoTaskNode = memo(function VideoTaskNode({ id, selected, data }:
               disabled={resetTaskMutation.isPending}
               className="nodrag flex items-center justify-center gap-1.5 px-3.5 py-2 rounded-xl text-xs font-medium transition-all"
               style={{
-                background: "oklch(0.14 0.007 260)",
-                borderWidth: 1, borderStyle: "solid", borderColor: "oklch(0.22 0.008 260)",
-                color: resetTaskMutation.isPending ? "oklch(0.38 0.006 260)" : "oklch(0.62 0.008 260)",
+                background: "var(--c-surface)",
+                borderWidth: 1, borderStyle: "solid", borderColor: "var(--c-bd2)",
+                color: resetTaskMutation.isPending ? "var(--c-t4)" : "var(--c-t2)",
                 cursor: resetTaskMutation.isPending ? "not-allowed" : "pointer",
               }}
-              onMouseEnter={(e) => { if (!resetTaskMutation.isPending) (e.currentTarget as HTMLElement).style.background = "oklch(0.18 0.008 260)"; }}
-              onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.background = "oklch(0.14 0.007 260)"; }}
+              onMouseEnter={(e) => { if (!resetTaskMutation.isPending) (e.currentTarget as HTMLElement).style.background = "var(--c-bd1)"; }}
+              onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.background = "var(--c-surface)"; }}
               title="重置后可修改参数重新生成"
             >
               {resetTaskMutation.isPending ? <Loader2 className="w-3 h-3 animate-spin" /> : <RefreshCw className="w-3 h-3" />}
@@ -772,14 +772,14 @@ export const VideoTaskNode = memo(function VideoTaskNode({ id, selected, data }:
             className="nodrag flex-1 flex items-center justify-center gap-1.5 py-2 rounded-xl text-xs font-semibold transition-all"
             style={{
               background: isLocked || isResettable || createTaskMutation.isPending
-                ? "oklch(0.13 0.007 260)"
+                ? "var(--c-surface)"
                 : "oklch(0.62 0.20 25 / 0.15)",
               borderWidth: 1, borderStyle: "solid",
               borderColor: isLocked || isResettable || createTaskMutation.isPending
                 ? BORDER_DEFAULT
                 : "oklch(0.62 0.20 25 / 0.4)",
               color: isLocked || isResettable || createTaskMutation.isPending
-                ? "oklch(0.38 0.006 260)"
+                ? "var(--c-t4)"
                 : accentColor,
               cursor: isLocked || isResettable || createTaskMutation.isPending ? "not-allowed" : "pointer",
             }}
@@ -806,7 +806,7 @@ export const VideoTaskNode = memo(function VideoTaskNode({ id, selected, data }:
           width: 12, height: 12,
           borderRadius: 3,
           background: "oklch(0.68 0.22 285 / 0.85)",
-          border: "2px solid oklch(0.08 0.005 260)",
+          border: "2px solid var(--c-canvas)",
           left: -6,
         }}
         title="参考图输入 ← 连接图像生成节点"

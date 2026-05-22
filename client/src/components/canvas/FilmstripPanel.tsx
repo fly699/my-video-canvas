@@ -41,7 +41,7 @@ export function FilmstripPanel({ onClose }: FilmstripPanelProps) {
         right: 0,
         height: 120,
         background: "oklch(0.09 0.006 260 / 0.97)",
-        borderTop: "1px solid oklch(0.18 0.008 260)",
+        borderTop: "1px solid var(--c-bd1)",
         backdropFilter: "blur(20px)",
         display: "flex",
         flexDirection: "column",
@@ -58,7 +58,7 @@ export function FilmstripPanel({ onClose }: FilmstripPanelProps) {
           paddingLeft: 12,
           paddingRight: 8,
           flexShrink: 0,
-          borderBottom: "1px solid oklch(0.16 0.008 260)",
+          borderBottom: "1px solid var(--c-elevated)",
         }}
       >
         <span
@@ -67,7 +67,7 @@ export function FilmstripPanel({ onClose }: FilmstripPanelProps) {
             fontWeight: 600,
             letterSpacing: "0.08em",
             textTransform: "uppercase",
-            color: "oklch(0.42 0.006 260)",
+            color: "var(--c-t4)",
           }}
         >
           {sortedNodes.length} 帧
@@ -84,16 +84,16 @@ export function FilmstripPanel({ onClose }: FilmstripPanelProps) {
             border: "none",
             background: "transparent",
             cursor: "pointer",
-            color: "oklch(0.45 0.008 260)",
+            color: "var(--c-t4)",
             transition: "all 150ms ease",
           }}
           onMouseEnter={(e) => {
-            (e.currentTarget as HTMLElement).style.background = "oklch(0.18 0.008 260)";
-            (e.currentTarget as HTMLElement).style.color = "oklch(0.75 0.005 260)";
+            (e.currentTarget as HTMLElement).style.background = "var(--c-bd1)";
+            (e.currentTarget as HTMLElement).style.color = "var(--c-t2)";
           }}
           onMouseLeave={(e) => {
             (e.currentTarget as HTMLElement).style.background = "transparent";
-            (e.currentTarget as HTMLElement).style.color = "oklch(0.45 0.008 260)";
+            (e.currentTarget as HTMLElement).style.color = "var(--c-t4)";
           }}
         >
           <X style={{ width: 13, height: 13 }} />
@@ -111,7 +111,7 @@ export function FilmstripPanel({ onClose }: FilmstripPanelProps) {
           gap: 8,
           padding: "0 12px",
           scrollbarWidth: "thin",
-          scrollbarColor: "oklch(0.25 0.008 260) transparent",
+          scrollbarColor: "var(--c-bd3) transparent",
         }}
       >
         {sortedNodes.length === 0 ? (
@@ -121,7 +121,7 @@ export function FilmstripPanel({ onClose }: FilmstripPanelProps) {
               display: "flex",
               alignItems: "center",
               justifyContent: "center",
-              color: "oklch(0.38 0.006 260)",
+              color: "var(--c-t4)",
               fontSize: 12,
               userSelect: "none",
             }}
@@ -184,10 +184,10 @@ function FilmFrame({
         width: 90,
         height: 112,
         flexShrink: 0,
-        background: "oklch(0.12 0.007 260)",
+        background: "var(--c-base)",
         border: isSelected
           ? `1.5px solid ${accentColor}`
-          : "1.5px solid oklch(0.22 0.008 260)",
+          : "1.5px solid var(--c-bd2)",
         borderRadius: 8,
         overflow: "hidden",
         cursor: "pointer",
@@ -212,7 +212,7 @@ function FilmFrame({
         const el = e.currentTarget as HTMLElement;
         el.style.transform = "scale(1)";
         if (!isSelected) {
-          el.style.borderColor = "oklch(0.22 0.008 260)";
+          el.style.borderColor = "var(--c-bd2)";
           el.style.boxShadow = "0 2px 8px oklch(0 0 0 / 0.4)";
         }
       }}
@@ -269,14 +269,14 @@ function FilmFrame({
           alignItems: "center",
           paddingLeft: 5,
           paddingRight: 5,
-          background: "oklch(0.10 0.007 260)",
-          borderTop: "1px solid oklch(0.18 0.008 260)",
+          background: "var(--c-base)",
+          borderTop: "1px solid var(--c-bd1)",
         }}
       >
         <span
           style={{
             fontSize: 10,
-            color: isSelected ? accentColor : "oklch(0.58 0.006 260)",
+            color: isSelected ? accentColor : "var(--c-t3)",
             whiteSpace: "nowrap",
             overflow: "hidden",
             textOverflow: "ellipsis",

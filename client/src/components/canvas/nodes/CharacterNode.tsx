@@ -19,19 +19,19 @@ interface Props {
 
 const accent = "oklch(0.66 0.18 140)";
 const accentA = (a: number) => `oklch(0.66 0.18 140 / ${a})`;
-const BORDER_DEFAULT = "oklch(0.20 0.008 260)";
+const BORDER_DEFAULT = "var(--c-bd2)";
 const BORDER_ACCENT = accentA(0.5);
 
 const fieldStyle: React.CSSProperties = {
   width: "100%",
   padding: "7px 10px",
   fontSize: 12,
-  background: "oklch(0.09 0.006 260)",
+  background: "var(--c-input)",
   borderWidth: 1,
   borderStyle: "solid",
   borderColor: BORDER_DEFAULT,
   borderRadius: 8,
-  color: "oklch(0.86 0.006 260)",
+  color: "var(--c-t1)",
   outline: "none",
   transition: "border-color 150ms ease",
   lineHeight: 1.5,
@@ -43,7 +43,7 @@ const labelStyle: React.CSSProperties = {
   fontWeight: 600,
   textTransform: "uppercase" as const,
   letterSpacing: "0.06em",
-  color: "oklch(0.45 0.008 260)",
+  color: "var(--c-t4)",
   display: "block",
   marginBottom: 5,
 };
@@ -109,9 +109,9 @@ export const CharacterNode = memo(function CharacterNode({ id, selected, data }:
             onClick={() => onChange(value === opt ? undefined : opt)}
             className="nodrag px-2 py-0.5 rounded text-[10px] transition-all"
             style={{
-              background: value === opt ? accentA(0.15) : "oklch(0.09 0.006 260)",
-              border: `1px solid ${value === opt ? accentA(0.4) : "oklch(0.20 0.008 260)"}`,
-              color: value === opt ? accent : "oklch(0.50 0.008 260)",
+              background: value === opt ? accentA(0.15) : "var(--c-input)",
+              border: `1px solid ${value === opt ? accentA(0.4) : "var(--c-bd2)"}`,
+              color: value === opt ? accent : "var(--c-t3)",
               cursor: "pointer",
               fontWeight: value === opt ? 600 : 400,
             }}
@@ -130,7 +130,7 @@ export const CharacterNode = memo(function CharacterNode({ id, selected, data }:
         {/* Kind toggle */}
         <div
           className="flex gap-0.5 p-0.5 rounded-lg"
-          style={{ background: "oklch(0.09 0.006 260)", border: "1px solid oklch(0.18 0.008 260)" }}
+          style={{ background: "var(--c-input)", border: "1px solid var(--c-bd1)" }}
         >
           {KINDS.map((k) => (
             <button
@@ -140,7 +140,7 @@ export const CharacterNode = memo(function CharacterNode({ id, selected, data }:
               style={{
                 background: kind === k.id ? accentA(0.18) : "transparent",
                 border: `1px solid ${kind === k.id ? accentA(0.40) : "transparent"}`,
-                color: kind === k.id ? accent : "oklch(0.48 0.008 260)",
+                color: kind === k.id ? accent : "var(--c-t3)",
                 cursor: "pointer",
               }}
             >
@@ -165,7 +165,7 @@ export const CharacterNode = memo(function CharacterNode({ id, selected, data }:
                 <button
                   onClick={() => fileInputRef.current?.click()}
                   className="nodrag p-1 rounded transition-all"
-                  style={{ background: "oklch(0.08 0.006 260 / 0.85)", border: "1px solid oklch(0.28 0.008 260)", color: "oklch(0.60 0.006 260)" }}
+                  style={{ background: "oklch(0.08 0.006 260 / 0.85)", border: "1px solid var(--c-bd3)", color: "var(--c-t2)" }}
                   title="替换图片"
                 >
                   <Upload style={{ width: 11, height: 11 }} />
@@ -173,7 +173,7 @@ export const CharacterNode = memo(function CharacterNode({ id, selected, data }:
                 <button
                   onClick={() => updateNodeData(id, { referenceImageUrl: undefined, referenceStorageKey: undefined })}
                   className="nodrag p-1 rounded transition-all"
-                  style={{ background: "oklch(0.08 0.006 260 / 0.85)", border: "1px solid oklch(0.28 0.008 260)", color: "oklch(0.60 0.006 260)" }}
+                  style={{ background: "oklch(0.08 0.006 260 / 0.85)", border: "1px solid var(--c-bd3)", color: "var(--c-t2)" }}
                   title="清除图片"
                 >
                   <X style={{ width: 11, height: 11 }} />
@@ -188,7 +188,7 @@ export const CharacterNode = memo(function CharacterNode({ id, selected, data }:
               style={{
                 background: accentA(0.05),
                 border: `1.5px dashed ${accentA(0.30)}`,
-                color: "oklch(0.50 0.008 260)",
+                color: "var(--c-t3)",
                 cursor: uploading ? "not-allowed" : "pointer",
               }}
             >

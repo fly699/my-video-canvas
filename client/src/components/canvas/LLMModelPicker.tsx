@@ -38,9 +38,9 @@ export function LLMModelPicker({ value, onChange, disabled }: Props) {
         style={{
           fontSize: 9,
           fontWeight: 600,
-          background: disabled ? "oklch(0.11 0.005 260)" : "oklch(0.14 0.007 260)",
-          border: `1px solid ${open ? `${current.color}50` : "oklch(0.22 0.008 260)"}`,
-          color: disabled ? "oklch(0.32 0.006 260)" : current.color,
+          background: disabled ? "var(--c-base)" : "var(--c-surface)",
+          border: `1px solid ${open ? `${current.color}50` : "var(--c-bd2)"}`,
+          color: disabled ? "var(--c-t4)" : current.color,
           cursor: disabled ? "not-allowed" : "pointer",
           letterSpacing: "0.03em",
         }}
@@ -64,8 +64,8 @@ export function LLMModelPicker({ value, onChange, disabled }: Props) {
           style={{
             bottom: "calc(100% + 6px)",
             left: 0,
-            background: "oklch(0.11 0.007 260)",
-            border: "1px solid oklch(0.22 0.008 260)",
+            background: "var(--c-base)",
+            border: "1px solid var(--c-bd2)",
             boxShadow: "0 8px 32px oklch(0 0 0 / 0.6)",
             minWidth: 196,
           }}
@@ -76,7 +76,7 @@ export function LLMModelPicker({ value, onChange, disabled }: Props) {
               fontWeight: 700,
               textTransform: "uppercase",
               letterSpacing: "0.08em",
-              color: "oklch(0.35 0.006 260)",
+              color: "var(--c-t4)",
               padding: "6px 10px 4px",
             }}
           >
@@ -94,7 +94,7 @@ export function LLMModelPicker({ value, onChange, disabled }: Props) {
                   border: "none",
                   cursor: "pointer",
                   textAlign: "left",
-                  borderTop: "1px solid oklch(0.16 0.007 260)",
+                  borderTop: "1px solid var(--c-elevated)",
                 }}
               >
                 <span
@@ -106,7 +106,7 @@ export function LLMModelPicker({ value, onChange, disabled }: Props) {
                     flexShrink: 0,
                   }}
                 />
-                <span style={{ fontSize: 11, color: selected ? "oklch(0.86 0.006 260)" : "oklch(0.58 0.006 260)", flex: 1, fontWeight: selected ? 600 : 400 }}>
+                <span style={{ fontSize: 11, color: selected ? "var(--c-t1)" : "var(--c-t3)", flex: 1, fontWeight: selected ? 600 : 400 }}>
                   {m.label}
                 </span>
                 <span
@@ -115,8 +115,8 @@ export function LLMModelPicker({ value, onChange, disabled }: Props) {
                     fontWeight: 700,
                     padding: "1px 5px",
                     borderRadius: 4,
-                    background: selected ? `${m.color}25` : "oklch(0.18 0.007 260)",
-                    color: selected ? m.color : "oklch(0.38 0.006 260)",
+                    background: selected ? `${m.color}25` : "var(--c-bd1)",
+                    color: selected ? m.color : "var(--c-t4)",
                     letterSpacing: "0.04em",
                   }}
                 >

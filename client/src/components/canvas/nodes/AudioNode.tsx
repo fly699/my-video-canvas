@@ -21,19 +21,19 @@ interface Props {
 
 const accent = "oklch(0.68 0.20 340)";
 const accentA = (a: number) => `oklch(0.68 0.20 340 / ${a})`;
-const BORDER_DEFAULT = "oklch(0.20 0.008 260)";
+const BORDER_DEFAULT = "var(--c-bd2)";
 const BORDER_ACCENT = accentA(0.5);
 
 const fieldStyle: React.CSSProperties = {
   width: "100%",
   padding: "7px 10px",
   fontSize: 12,
-  background: "oklch(0.09 0.006 260)",
+  background: "var(--c-input)",
   borderWidth: 1,
   borderStyle: "solid",
   borderColor: BORDER_DEFAULT,
   borderRadius: 8,
-  color: "oklch(0.86 0.006 260)",
+  color: "var(--c-t1)",
   outline: "none",
   transition: "border-color 150ms ease",
   lineHeight: 1.5,
@@ -45,7 +45,7 @@ const labelStyle: React.CSSProperties = {
   fontWeight: 600,
   textTransform: "uppercase" as const,
   letterSpacing: "0.06em",
-  color: "oklch(0.45 0.008 260)",
+  color: "var(--c-t4)",
   display: "block",
   marginBottom: 5,
 };
@@ -203,14 +203,14 @@ export const AudioNode = memo(function AudioNode({ id, selected, data }: Props) 
   const audioPlayer = payload.url ? (
     <div
       className="flex items-center gap-2 rounded-lg px-2.5 py-2"
-      style={{ background: "oklch(0.09 0.006 260)", border: `1px solid ${accentA(0.25)}` }}
+      style={{ background: "var(--c-input)", border: `1px solid ${accentA(0.25)}` }}
     >
       <Volume2 style={{ width: 13, height: 13, color: accent, flexShrink: 0 }} />
       <div className="flex-1 min-w-0">
-        <p className="truncate" style={{ fontSize: 11, color: "oklch(0.72 0.006 260)" }}>
+        <p className="truncate" style={{ fontSize: 11, color: "var(--c-t2)" }}>
           {payload.name ?? "音频"}
         </p>
-        <p style={{ fontSize: 10, color: "oklch(0.40 0.006 260)" }}>{formatDuration(payload.duration)}</p>
+        <p style={{ fontSize: 10, color: "var(--c-t4)" }}>{formatDuration(payload.duration)}</p>
       </div>
       <button
         onClick={handlePlayPause}
@@ -222,7 +222,7 @@ export const AudioNode = memo(function AudioNode({ id, selected, data }: Props) 
       <button
         onClick={() => updateNodeData(id, { url: undefined, name: undefined, duration: undefined, storageKey: undefined })}
         className="nodrag p-1.5 rounded transition-all"
-        style={{ background: "oklch(0.12 0.007 260)", border: "1px solid oklch(0.22 0.008 260)", color: "oklch(0.45 0.008 260)", cursor: "pointer" }}
+        style={{ background: "var(--c-surface)", border: "1px solid var(--c-bd2)", color: "var(--c-t4)", cursor: "pointer" }}
       >
         <X style={{ width: 10, height: 10 }} />
       </button>
@@ -253,7 +253,7 @@ export const AudioNode = memo(function AudioNode({ id, selected, data }: Props) 
         onBlur={(e) => { e.currentTarget.style.borderColor = BORDER_DEFAULT; }}
       >
         {models.map((m) => (
-          <option key={m.value} value={m.value} style={{ background: "oklch(0.10 0.006 260)" }}>
+          <option key={m.value} value={m.value} style={{ background: "var(--c-base)" }}>
             {m.label} — {m.desc}
           </option>
         ))}
@@ -270,10 +270,10 @@ export const AudioNode = memo(function AudioNode({ id, selected, data }: Props) 
       disabled={loading || disabled}
       className="nodrag flex items-center justify-center gap-1.5 w-full py-2 rounded-lg text-xs font-medium transition-all"
       style={{
-        background: loading || disabled ? "oklch(0.13 0.007 260)" : accentA(0.15),
+        background: loading || disabled ? "var(--c-surface)" : accentA(0.15),
         borderWidth: 1, borderStyle: "solid",
         borderColor: loading || disabled ? BORDER_DEFAULT : accentA(0.4),
-        color: loading || disabled ? "oklch(0.38 0.006 260)" : accent,
+        color: loading || disabled ? "var(--c-t4)" : accent,
         cursor: loading || disabled ? "not-allowed" : "pointer",
       }}
     >
@@ -291,7 +291,7 @@ export const AudioNode = memo(function AudioNode({ id, selected, data }: Props) 
         {/* Category tabs */}
         <div
           className="flex gap-0.5 p-0.5 rounded-lg"
-          style={{ background: "oklch(0.09 0.006 260)", border: "1px solid oklch(0.18 0.008 260)" }}
+          style={{ background: "var(--c-input)", border: "1px solid var(--c-bd1)" }}
         >
           {CATEGORIES.map((c) => (
             <button
@@ -301,7 +301,7 @@ export const AudioNode = memo(function AudioNode({ id, selected, data }: Props) 
               style={{
                 background: category === c.id ? accentA(0.18) : "transparent",
                 border: `1px solid ${category === c.id ? accentA(0.40) : "transparent"}`,
-                color: category === c.id ? accent : "oklch(0.48 0.008 260)",
+                color: category === c.id ? accent : "var(--c-t3)",
                 cursor: "pointer",
               }}
             >
@@ -342,9 +342,9 @@ export const AudioNode = memo(function AudioNode({ id, selected, data }: Props) 
                     onClick={() => update("musicStyle", payload.musicStyle === s ? undefined : s)}
                     className="nodrag px-2 py-0.5 rounded text-[10px] transition-all"
                     style={{
-                      background: payload.musicStyle === s ? accentA(0.15) : "oklch(0.09 0.006 260)",
-                      border: `1px solid ${payload.musicStyle === s ? accentA(0.4) : "oklch(0.20 0.008 260)"}`,
-                      color: payload.musicStyle === s ? accent : "oklch(0.50 0.008 260)",
+                      background: payload.musicStyle === s ? accentA(0.15) : "var(--c-input)",
+                      border: `1px solid ${payload.musicStyle === s ? accentA(0.4) : "var(--c-bd2)"}`,
+                      color: payload.musicStyle === s ? accent : "var(--c-t3)",
                       cursor: "pointer",
                       fontWeight: payload.musicStyle === s ? 600 : 400,
                     }}
@@ -411,15 +411,15 @@ export const AudioNode = memo(function AudioNode({ id, selected, data }: Props) 
                     onClick={() => update("ttsVoice", v.value)}
                     className="nodrag flex items-center gap-1 px-2 py-1 rounded-md text-[10px] transition-all"
                     style={{
-                      background: payload.ttsVoice === v.value ? accentA(0.15) : "oklch(0.09 0.006 260)",
-                      border: `1px solid ${payload.ttsVoice === v.value ? accentA(0.40) : "oklch(0.20 0.008 260)"}`,
-                      color: payload.ttsVoice === v.value ? accent : "oklch(0.50 0.008 260)",
+                      background: payload.ttsVoice === v.value ? accentA(0.15) : "var(--c-input)",
+                      border: `1px solid ${payload.ttsVoice === v.value ? accentA(0.40) : "var(--c-bd2)"}`,
+                      color: payload.ttsVoice === v.value ? accent : "var(--c-t3)",
                       cursor: "pointer",
                       fontWeight: payload.ttsVoice === v.value ? 600 : 400,
                     }}
                   >
                     {v.label}
-                    <span style={{ color: "oklch(0.38 0.006 260)", fontSize: 9 }}>{v.desc}</span>
+                    <span style={{ color: "var(--c-t4)", fontSize: 9 }}>{v.desc}</span>
                   </button>
                 ))}
               </div>
@@ -438,7 +438,7 @@ export const AudioNode = memo(function AudioNode({ id, selected, data }: Props) 
                   className="nodrag flex-1"
                   style={{ accentColor: accent }}
                 />
-                <span style={{ fontSize: 11, color: "oklch(0.55 0.006 260)", width: 30, textAlign: "right" }}>
+                <span style={{ fontSize: 11, color: "var(--c-t3)", width: 30, textAlign: "right" }}>
                   {(payload.ttsSpeed ?? 1.0).toFixed(1)}x
                 </span>
               </div>
@@ -498,7 +498,7 @@ export const AudioNode = memo(function AudioNode({ id, selected, data }: Props) 
                 <button
                   onClick={() => fileInputRef.current?.click()}
                   className="nodrag flex items-center justify-center gap-1 w-full py-1.5 rounded-lg text-[10px] transition-all"
-                  style={{ background: "oklch(0.12 0.007 260)", border: "1px solid oklch(0.22 0.008 260)", color: "oklch(0.48 0.008 260)", cursor: "pointer" }}
+                  style={{ background: "var(--c-surface)", border: "1px solid var(--c-bd2)", color: "var(--c-t3)", cursor: "pointer" }}
                 >
                   <Upload style={{ width: 10, height: 10 }} />
                   替换文件
@@ -510,9 +510,9 @@ export const AudioNode = memo(function AudioNode({ id, selected, data }: Props) 
                 disabled={uploading}
                 className="nodrag flex flex-col items-center justify-center gap-2 w-full py-6 rounded-lg transition-all"
                 style={{
-                  background: uploading ? "oklch(0.12 0.007 260)" : accentA(0.06),
-                  border: `1.5px dashed ${uploading ? "oklch(0.22 0.008 260)" : accentA(0.35)}`,
-                  color: uploading ? "oklch(0.45 0.008 260)" : accent,
+                  background: uploading ? "var(--c-surface)" : accentA(0.06),
+                  border: `1.5px dashed ${uploading ? "var(--c-bd2)" : accentA(0.35)}`,
+                  color: uploading ? "var(--c-t4)" : accent,
                   cursor: uploading ? "not-allowed" : "pointer",
                 }}
               >
@@ -520,7 +520,7 @@ export const AudioNode = memo(function AudioNode({ id, selected, data }: Props) 
                   ? <Loader2 style={{ width: 20, height: 20 }} className="animate-spin" />
                   : <Wind style={{ width: 20, height: 20 }} />}
                 <span className="text-xs">{uploading ? "上传中..." : "点击上传音频"}</span>
-                <span style={{ fontSize: 10, color: "oklch(0.38 0.006 260)" }}>支持 MP3、WAV、M4A、OGG</span>
+                <span style={{ fontSize: 10, color: "var(--c-t4)" }}>支持 MP3、WAV、M4A、OGG</span>
               </button>
             )}
             <input

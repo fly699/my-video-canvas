@@ -74,7 +74,7 @@ export function ImageLightbox({
             objectFit: "contain",
             borderRadius: 8,
             boxShadow: "0 0 60px oklch(0 0 0 / 0.6)",
-            border: isSelected ? `2px solid ${accent}` : "2px solid oklch(0.25 0.008 260)",
+            border: isSelected ? `2px solid ${accent}` : "2px solid var(--c-bd3)",
             transition: "border-color 150ms ease",
           }}
           draggable={false}
@@ -85,7 +85,7 @@ export function ImageLightbox({
           className="absolute top-0 left-0 right-0 flex items-center justify-between px-3 py-2 rounded-t-lg"
           style={{ background: "oklch(0 0 0 / 0.6)", backdropFilter: "blur(8px)" }}
         >
-          <span style={{ fontSize: 12, color: "oklch(0.55 0.006 260)" }}>
+          <span style={{ fontSize: 12, color: "var(--c-t3)" }}>
             {currentIndex + 1} / {images.length}
             {isSelected && (
               <span style={{ marginLeft: 8, color: accent, fontWeight: 600 }}>· 已选择</span>
@@ -97,10 +97,10 @@ export function ImageLightbox({
               onClick={handleDownload}
               className="flex items-center gap-1 px-2.5 py-1 rounded-md text-xs font-medium transition-all"
               style={{
-                background: "oklch(0.18 0.008 260)",
+                background: "var(--c-bd1)",
                 borderWidth: 1, borderStyle: "solid",
-                borderColor: "oklch(0.28 0.008 260)",
-                color: "oklch(0.70 0.006 260)",
+                borderColor: "var(--c-bd3)",
+                color: "var(--c-t2)",
                 cursor: "pointer",
               }}
               title="下载此图像"
@@ -113,10 +113,10 @@ export function ImageLightbox({
               onClick={() => onSelect(currentUrl)}
               className="flex items-center gap-1 px-2.5 py-1 rounded-md text-xs font-medium transition-all"
               style={{
-                background: isSelected ? `oklch(0.72 0.20 330 / 0.2)` : "oklch(0.18 0.008 260)",
+                background: isSelected ? `oklch(0.72 0.20 330 / 0.2)` : "var(--c-bd1)",
                 borderWidth: 1, borderStyle: "solid",
-                borderColor: isSelected ? `oklch(0.72 0.20 330 / 0.5)` : "oklch(0.28 0.008 260)",
-                color: isSelected ? accent : "oklch(0.70 0.006 260)",
+                borderColor: isSelected ? `oklch(0.72 0.20 330 / 0.5)` : "var(--c-bd3)",
+                color: isSelected ? accent : "var(--c-t2)",
                 cursor: "pointer",
               }}
             >
@@ -129,10 +129,10 @@ export function ImageLightbox({
               className="flex items-center justify-center rounded-md transition-all"
               style={{
                 width: 28, height: 28,
-                background: "oklch(0.18 0.008 260)",
+                background: "var(--c-bd1)",
                 borderWidth: 1, borderStyle: "solid",
-                borderColor: "oklch(0.28 0.008 260)",
-                color: "oklch(0.60 0.006 260)",
+                borderColor: "var(--c-bd3)",
+                color: "var(--c-t3)",
                 cursor: "pointer",
               }}
             >
@@ -180,8 +180,8 @@ export function ImageLightbox({
             width: 44, height: 44,
             background: "oklch(0.14 0.007 260 / 0.8)",
             borderWidth: 1, borderStyle: "solid",
-            borderColor: "oklch(0.28 0.008 260)",
-            color: "oklch(0.75 0.006 260)",
+            borderColor: "var(--c-bd3)",
+            color: "var(--c-t2)",
             cursor: "pointer",
             backdropFilter: "blur(4px)",
           }}
@@ -197,8 +197,8 @@ export function ImageLightbox({
             width: 44, height: 44,
             background: "oklch(0.14 0.007 260 / 0.8)",
             borderWidth: 1, borderStyle: "solid",
-            borderColor: "oklch(0.28 0.008 260)",
-            color: "oklch(0.75 0.006 260)",
+            borderColor: "var(--c-bd3)",
+            color: "var(--c-t2)",
             cursor: "pointer",
             backdropFilter: "blur(4px)",
           }}

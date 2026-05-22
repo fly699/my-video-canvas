@@ -20,14 +20,14 @@ interface Props {
 
 const accent = "oklch(0.65 0.18 170)";
 const accentA = (a: number) => `oklch(0.65 0.18 170 / ${a})`;
-const BORDER_DEFAULT = "oklch(0.20 0.008 260)";
+const BORDER_DEFAULT = "var(--c-bd2)";
 
 const labelStyle: React.CSSProperties = {
   fontSize: 10.5,
   fontWeight: 600,
   textTransform: "uppercase" as const,
   letterSpacing: "0.06em",
-  color: "oklch(0.45 0.008 260)",
+  color: "var(--c-t4)",
   display: "block",
   marginBottom: 5,
 };
@@ -36,12 +36,12 @@ const fieldStyle: React.CSSProperties = {
   width: "100%",
   padding: "7px 10px",
   fontSize: 12,
-  background: "oklch(0.09 0.006 260)",
+  background: "var(--c-input)",
   borderWidth: 1,
   borderStyle: "solid",
   borderColor: BORDER_DEFAULT,
   borderRadius: 8,
-  color: "oklch(0.86 0.006 260)",
+  color: "var(--c-t1)",
   outline: "none",
   transition: "border-color 150ms ease",
   lineHeight: 1.5,
@@ -176,7 +176,7 @@ export const SubtitleNode = memo(function SubtitleNode({ id, selected, data }: P
       <div className="flex flex-col gap-3 p-3.5">
 
         {/* Tab bar */}
-        <div className="flex gap-0.5 p-0.5 rounded-lg" style={{ background: "oklch(0.09 0.006 260)", border: "1px solid oklch(0.18 0.008 260)" }}>
+        <div className="flex gap-0.5 p-0.5 rounded-lg" style={{ background: "var(--c-input)", border: "1px solid var(--c-bd1)" }}>
           {(["edit", "settings"] as const).map((t) => (
             <button
               key={t}
@@ -185,7 +185,7 @@ export const SubtitleNode = memo(function SubtitleNode({ id, selected, data }: P
               style={{
                 background: tab === t ? accentA(0.18) : "transparent",
                 border: `1px solid ${tab === t ? accentA(0.40) : "transparent"}`,
-                color: tab === t ? accent : "oklch(0.48 0.008 260)",
+                color: tab === t ? accent : "var(--c-t3)",
                 cursor: "pointer",
               }}
             >
@@ -242,9 +242,9 @@ export const SubtitleNode = memo(function SubtitleNode({ id, selected, data }: P
               disabled={isTranscribing || isBurning}
               className="nodrag flex items-center justify-center gap-1.5 w-full py-2 rounded-lg text-xs font-medium transition-all"
               style={{
-                background: isTranscribing ? "oklch(0.13 0.007 260)" : accentA(0.12),
+                background: isTranscribing ? "var(--c-surface)" : accentA(0.12),
                 border: `1px solid ${isTranscribing ? BORDER_DEFAULT : accentA(0.4)}`,
-                color: isTranscribing ? "oklch(0.38 0.006 260)" : accent,
+                color: isTranscribing ? "var(--c-t4)" : accent,
                 cursor: isTranscribing ? "not-allowed" : "pointer",
               }}
             >
@@ -262,7 +262,7 @@ export const SubtitleNode = memo(function SubtitleNode({ id, selected, data }: P
                   <button
                     onClick={() => update({ entries: [] })}
                     className="nodrag flex items-center gap-1 text-[9px] px-1.5 py-0.5 rounded"
-                    style={{ background: "oklch(0.13 0.007 260)", border: "1px solid oklch(0.20 0.008 260)", color: "oklch(0.42 0.006 260)", cursor: "pointer" }}
+                    style={{ background: "var(--c-surface)", border: "1px solid var(--c-bd2)", color: "var(--c-t4)", cursor: "pointer" }}
                   >
                     <X style={{ width: 8, height: 8 }} />
                     清空
@@ -273,7 +273,7 @@ export const SubtitleNode = memo(function SubtitleNode({ id, selected, data }: P
                     <div
                       key={i}
                       className="flex items-start gap-1.5 p-2 rounded-lg"
-                      style={{ background: "oklch(0.09 0.006 260)", border: "1px solid oklch(0.16 0.007 260)" }}
+                      style={{ background: "var(--c-input)", border: "1px solid var(--c-bd1)" }}
                     >
                       <div className="flex flex-col gap-0.5 flex-shrink-0" style={{ width: 88 }}>
                         <input
@@ -290,7 +290,7 @@ export const SubtitleNode = memo(function SubtitleNode({ id, selected, data }: P
                           className="nodrag"
                           style={{ ...fieldStyle, padding: "2px 6px", fontSize: 10, fontFamily: "monospace", width: "100%" }}
                         />
-                        <span style={{ fontSize: 9, color: "oklch(0.40 0.006 260)", textAlign: "center" }}>
+                        <span style={{ fontSize: 9, color: "var(--c-t4)", textAlign: "center" }}>
                           {formatTime(entry.start)} → {formatTime(entry.end)}
                         </span>
                       </div>
@@ -304,7 +304,7 @@ export const SubtitleNode = memo(function SubtitleNode({ id, selected, data }: P
                       <button
                         onClick={() => handleDeleteEntry(i)}
                         className="nodrag p-1 rounded flex-shrink-0"
-                        style={{ color: "oklch(0.42 0.006 260)", cursor: "pointer" }}
+                        style={{ color: "var(--c-t4)", cursor: "pointer" }}
                       >
                         <Trash2 style={{ width: 10, height: 10 }} />
                       </button>
@@ -318,7 +318,7 @@ export const SubtitleNode = memo(function SubtitleNode({ id, selected, data }: P
             <button
               onClick={handleAddEntry}
               className="nodrag flex items-center justify-center gap-1.5 w-full py-1.5 rounded-lg text-[10px] transition-all"
-              style={{ background: "oklch(0.12 0.007 260)", border: "1px solid oklch(0.22 0.008 260)", color: "oklch(0.48 0.008 260)", cursor: "pointer" }}
+              style={{ background: "var(--c-surface)", border: "1px solid var(--c-bd2)", color: "var(--c-t3)", cursor: "pointer" }}
             >
               <Plus style={{ width: 10, height: 10 }} />
               手动添加字幕条目
@@ -348,7 +348,7 @@ export const SubtitleNode = memo(function SubtitleNode({ id, selected, data }: P
             <div>
               <div className="flex items-center justify-between" style={{ marginBottom: 5 }}>
                 <label style={{ ...labelStyle, marginBottom: 0 }}>字体大小</label>
-                <span style={{ fontSize: 10, color: "oklch(0.50 0.008 260)" }}>{payload.fontSize ?? 22}px</span>
+                <span style={{ fontSize: 10, color: "var(--c-t3)" }}>{payload.fontSize ?? 22}px</span>
               </div>
               <input
                 type="range" min={12} max={40} step={1}
@@ -369,9 +369,9 @@ export const SubtitleNode = memo(function SubtitleNode({ id, selected, data }: P
                     onClick={() => update({ fontColor: c.value })}
                     className="nodrag flex-1 py-1.5 rounded-lg text-[10px] font-medium transition-all"
                     style={{
-                      background: payload.fontColor === c.value ? accentA(0.15) : "oklch(0.09 0.006 260)",
-                      border: `1px solid ${payload.fontColor === c.value ? accentA(0.50) : "oklch(0.20 0.008 260)"}`,
-                      color: payload.fontColor === c.value ? accent : "oklch(0.50 0.008 260)",
+                      background: payload.fontColor === c.value ? accentA(0.15) : "var(--c-input)",
+                      border: `1px solid ${payload.fontColor === c.value ? accentA(0.50) : "var(--c-bd2)"}`,
+                      color: payload.fontColor === c.value ? accent : "var(--c-t3)",
                       cursor: "pointer",
                     }}
                   >
@@ -405,7 +405,7 @@ export const SubtitleNode = memo(function SubtitleNode({ id, selected, data }: P
                 <button
                   onClick={() => update({ outputUrl: undefined, status: "done" })}
                   className="nodrag flex items-center justify-center gap-1 py-1.5 rounded-lg text-[10px]"
-                  style={{ background: "oklch(0.12 0.007 260)", border: "1px solid oklch(0.22 0.008 260)", color: "oklch(0.42 0.006 260)", cursor: "pointer" }}
+                  style={{ background: "var(--c-surface)", border: "1px solid var(--c-bd2)", color: "var(--c-t4)", cursor: "pointer" }}
                 >
                   <RotateCcw style={{ width: 9, height: 9 }} />
                   重置烧录
@@ -419,9 +419,9 @@ export const SubtitleNode = memo(function SubtitleNode({ id, selected, data }: P
               disabled={isBurning || !(payload.entries?.length)}
               className="nodrag flex items-center justify-center gap-1.5 w-full py-2.5 rounded-lg text-xs font-semibold transition-all"
               style={{
-                background: isBurning || !(payload.entries?.length) ? "oklch(0.13 0.007 260)" : accentA(0.15),
+                background: isBurning || !(payload.entries?.length) ? "var(--c-surface)" : accentA(0.15),
                 border: `1px solid ${isBurning || !(payload.entries?.length) ? BORDER_DEFAULT : accentA(0.5)}`,
-                color: isBurning || !(payload.entries?.length) ? "oklch(0.38 0.006 260)" : accent,
+                color: isBurning || !(payload.entries?.length) ? "var(--c-t4)" : accent,
                 cursor: isBurning || !(payload.entries?.length) ? "not-allowed" : "pointer",
               }}
             >

@@ -45,7 +45,7 @@ function ChipRow({ label, options, value, onChange, color }: {
 }) {
   return (
     <div className="flex flex-col gap-1">
-      <span style={{ fontSize: 9, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.07em", color: "oklch(0.38 0.006 260)" }}>
+      <span style={{ fontSize: 9, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.07em", color: "var(--c-t4)" }}>
         {label}
       </span>
       <div className="flex gap-1 overflow-x-auto nodrag" style={{ scrollbarWidth: "none" }}>
@@ -57,9 +57,9 @@ function ChipRow({ label, options, value, onChange, color }: {
             style={{
               fontSize: 9,
               fontWeight: value === opt ? 700 : 400,
-              background: value === opt ? `${color}18` : "oklch(0.10 0.005 260)",
-              border: `1px solid ${value === opt ? `${color}55` : "oklch(0.20 0.008 260)"}`,
-              color: value === opt ? color : "oklch(0.44 0.006 260)",
+              background: value === opt ? `${color}18` : "var(--c-base)",
+              border: `1px solid ${value === opt ? `${color}55` : "var(--c-bd2)"}`,
+              color: value === opt ? color : "var(--c-t4)",
               cursor: "pointer",
               whiteSpace: "nowrap",
             }}
@@ -74,7 +74,7 @@ function ChipRow({ label, options, value, onChange, color }: {
 
 // ── Styles ────────────────────────────────────────────────────────────────────
 
-const BORDER_DEFAULT = "oklch(0.20 0.008 260)";
+const BORDER_DEFAULT = "var(--c-bd2)";
 const BORDER_FOCUS   = "oklch(0.62 0.18 240 / 0.6)";
 const ACCENT         = "oklch(0.62 0.18 240)";
 const PANEL_ACCENT   = "oklch(0.72 0.20 55)";
@@ -83,12 +83,12 @@ const inputStyle: React.CSSProperties = {
   width: "100%",
   padding: "7px 10px",
   fontSize: 12,
-  background: "oklch(0.09 0.006 260)",
+  background: "var(--c-input)",
   borderWidth: 1,
   borderStyle: "solid",
   borderColor: BORDER_DEFAULT,
   borderRadius: 8,
-  color: "oklch(0.86 0.006 260)",
+  color: "var(--c-t1)",
   outline: "none",
   transition: "border-color 150ms ease",
   lineHeight: 1.5,
@@ -233,16 +233,16 @@ export const ScriptNode = memo(function ScriptNode({ id, selected, data }: Props
             disabled={anyPending}
             className="nodrag flex items-center gap-1 px-1.5 py-0.5 rounded-md text-[9px] font-medium transition-all"
             style={{
-              background: polishMutation.isPending ? "oklch(0.13 0.007 260)" : `${ACCENT}18`,
+              background: polishMutation.isPending ? "var(--c-surface)" : `${ACCENT}18`,
               border: `1px solid ${polishMutation.isPending ? BORDER_DEFAULT : `${ACCENT}40`}`,
-              color: anyPending ? "oklch(0.38 0.006 260)" : `${ACCENT}`,
+              color: anyPending ? "var(--c-t4)" : `${ACCENT}`,
               cursor: anyPending ? "not-allowed" : "pointer",
             }}
           >
             {polishMutation.isPending ? <Loader2 className="w-2.5 h-2.5 animate-spin" /> : <Sparkles className="w-2.5 h-2.5" />}
             AI 润色
           </button>
-          <span style={{ fontSize: 10, color: "oklch(0.32 0.006 260)", marginLeft: "auto" }}>
+          <span style={{ fontSize: 10, color: "var(--c-t4)", marginLeft: "auto" }}>
             {payload.content.length} 字
           </span>
         </div>
@@ -256,9 +256,9 @@ export const ScriptNode = memo(function ScriptNode({ id, selected, data }: Props
           disabled={anyPending}
           className="nodrag flex items-center justify-center gap-1.5 w-full py-1.5 rounded-lg text-xs font-medium transition-all"
           style={{
-            background: generateMutation.isPending ? "oklch(0.13 0.007 260)" : `${ACCENT}12`,
+            background: generateMutation.isPending ? "var(--c-surface)" : `${ACCENT}12`,
             border: `1px solid ${generateMutation.isPending ? BORDER_DEFAULT : `${ACCENT}40`}`,
-            color: anyPending ? "oklch(0.38 0.006 260)" : ACCENT,
+            color: anyPending ? "var(--c-t4)" : ACCENT,
             cursor: anyPending ? "not-allowed" : "pointer",
           }}
         >
@@ -269,30 +269,30 @@ export const ScriptNode = memo(function ScriptNode({ id, selected, data }: Props
         {/* ── AI 剧本创作 panel ── */}
         <div
           className="rounded-xl overflow-hidden"
-          style={{ border: `1px solid ${showAiPanel ? `${PANEL_ACCENT}40` : "oklch(0.20 0.008 260)"}`, transition: "border-color 200ms ease" }}
+          style={{ border: `1px solid ${showAiPanel ? `${PANEL_ACCENT}40` : "var(--c-bd2)"}`, transition: "border-color 200ms ease" }}
         >
           {/* Panel header */}
           <button
             onClick={() => setShowAiPanel((v) => !v)}
             className="nodrag flex items-center gap-2 w-full px-3 py-2 transition-all"
             style={{
-              background: showAiPanel ? `${PANEL_ACCENT}10` : "oklch(0.10 0.005 260)",
+              background: showAiPanel ? `${PANEL_ACCENT}10` : "var(--c-base)",
               border: "none",
               cursor: "pointer",
               textAlign: "left",
             }}
           >
             <Clapperboard style={{ width: 12, height: 12, color: PANEL_ACCENT, flexShrink: 0 }} />
-            <span style={{ fontSize: 10.5, fontWeight: 700, color: showAiPanel ? PANEL_ACCENT : "oklch(0.58 0.006 260)", flex: 1, letterSpacing: "0.02em" }}>
+            <span style={{ fontSize: 10.5, fontWeight: 700, color: showAiPanel ? PANEL_ACCENT : "var(--c-t3)", flex: 1, letterSpacing: "0.02em" }}>
               AI 剧本创作
             </span>
-            <span style={{ fontSize: 9, color: "oklch(0.38 0.006 260)" }}>
+            <span style={{ fontSize: 9, color: "var(--c-t4)" }}>
               {showAiPanel ? "" : "一键生成多模态分镜剧本"}
             </span>
             <ChevronDown
               style={{
                 width: 10, height: 10,
-                color: "oklch(0.42 0.006 260)",
+                color: "var(--c-t4)",
                 transform: showAiPanel ? "rotate(180deg)" : "none",
                 transition: "transform 200ms ease",
                 flexShrink: 0,
@@ -311,7 +311,7 @@ export const ScriptNode = memo(function ScriptNode({ id, selected, data }: Props
               {/* Target model + Aspect ratio */}
               <div className="flex gap-2 items-start">
                 <div className="flex flex-col gap-1 flex-1">
-                  <span style={{ fontSize: 9, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.07em", color: "oklch(0.38 0.006 260)" }}>
+                  <span style={{ fontSize: 9, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.07em", color: "var(--c-t4)" }}>
                     目标视频模型
                   </span>
                   <select
@@ -320,10 +320,10 @@ export const ScriptNode = memo(function ScriptNode({ id, selected, data }: Props
                     className="nodrag"
                     style={{
                       fontSize: 10,
-                      background: "oklch(0.10 0.005 260)",
-                      border: "1px solid oklch(0.22 0.008 260)",
+                      background: "var(--c-base)",
+                      border: "1px solid var(--c-bd2)",
                       borderRadius: 7,
-                      color: "oklch(0.72 0.006 260)",
+                      color: "var(--c-t2)",
                       padding: "4px 6px",
                       outline: "none",
                       cursor: "pointer",
@@ -339,7 +339,7 @@ export const ScriptNode = memo(function ScriptNode({ id, selected, data }: Props
 
               {/* Aspect ratio chips */}
               <div className="flex flex-col gap-1">
-                <span style={{ fontSize: 9, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.07em", color: "oklch(0.38 0.006 260)" }}>
+                <span style={{ fontSize: 9, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.07em", color: "var(--c-t4)" }}>
                   画面比例
                 </span>
                 <div className="flex gap-1 flex-wrap">
@@ -351,9 +351,9 @@ export const ScriptNode = memo(function ScriptNode({ id, selected, data }: Props
                       style={{
                         fontSize: 9,
                         fontWeight: aspectRatio === r ? 700 : 400,
-                        background: aspectRatio === r ? `${PANEL_ACCENT}18` : "oklch(0.10 0.005 260)",
-                        border: `1px solid ${aspectRatio === r ? `${PANEL_ACCENT}55` : "oklch(0.20 0.008 260)"}`,
-                        color: aspectRatio === r ? PANEL_ACCENT : "oklch(0.44 0.006 260)",
+                        background: aspectRatio === r ? `${PANEL_ACCENT}18` : "var(--c-base)",
+                        border: `1px solid ${aspectRatio === r ? `${PANEL_ACCENT}55` : "var(--c-bd2)"}`,
+                        color: aspectRatio === r ? PANEL_ACCENT : "var(--c-t4)",
                         cursor: "pointer",
                       }}
                     >
@@ -366,29 +366,29 @@ export const ScriptNode = memo(function ScriptNode({ id, selected, data }: Props
               {/* Scene count + Duration */}
               <div className="flex gap-3">
                 <div className="flex flex-col gap-1 flex-1">
-                  <span style={{ fontSize: 9, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.07em", color: "oklch(0.38 0.006 260)" }}>
+                  <span style={{ fontSize: 9, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.07em", color: "var(--c-t4)" }}>
                     场景数量
                   </span>
                   <div className="flex items-center gap-1.5">
-                    <button onClick={() => setSceneCount((n) => Math.max(2, n - 1))} className="nodrag w-6 h-6 flex items-center justify-center rounded-md transition-all" style={{ background: "oklch(0.13 0.006 260)", border: "1px solid oklch(0.22 0.008 260)", color: "oklch(0.60 0.006 260)", cursor: "pointer" }}>
+                    <button onClick={() => setSceneCount((n) => Math.max(2, n - 1))} className="nodrag w-6 h-6 flex items-center justify-center rounded-md transition-all" style={{ background: "var(--c-surface)", border: "1px solid var(--c-bd2)", color: "var(--c-t2)", cursor: "pointer" }}>
                       <Minus style={{ width: 10, height: 10 }} />
                     </button>
                     <span style={{ fontSize: 13, fontWeight: 700, color: PANEL_ACCENT, minWidth: 20, textAlign: "center" }}>{sceneCount}</span>
-                    <button onClick={() => setSceneCount((n) => Math.min(12, n + 1))} className="nodrag w-6 h-6 flex items-center justify-center rounded-md transition-all" style={{ background: "oklch(0.13 0.006 260)", border: "1px solid oklch(0.22 0.008 260)", color: "oklch(0.60 0.006 260)", cursor: "pointer" }}>
+                    <button onClick={() => setSceneCount((n) => Math.min(12, n + 1))} className="nodrag w-6 h-6 flex items-center justify-center rounded-md transition-all" style={{ background: "var(--c-surface)", border: "1px solid var(--c-bd2)", color: "var(--c-t2)", cursor: "pointer" }}>
                       <Plus style={{ width: 10, height: 10 }} />
                     </button>
                   </div>
                 </div>
                 <div className="flex flex-col gap-1 flex-1">
-                  <span style={{ fontSize: 9, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.07em", color: "oklch(0.38 0.006 260)" }}>
+                  <span style={{ fontSize: 9, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.07em", color: "var(--c-t4)" }}>
                     总时长（秒）
                   </span>
                   <div className="flex items-center gap-1.5">
-                    <button onClick={() => setDuration((n) => Math.max(10, n - 15))} className="nodrag w-6 h-6 flex items-center justify-center rounded-md transition-all" style={{ background: "oklch(0.13 0.006 260)", border: "1px solid oklch(0.22 0.008 260)", color: "oklch(0.60 0.006 260)", cursor: "pointer" }}>
+                    <button onClick={() => setDuration((n) => Math.max(10, n - 15))} className="nodrag w-6 h-6 flex items-center justify-center rounded-md transition-all" style={{ background: "var(--c-surface)", border: "1px solid var(--c-bd2)", color: "var(--c-t2)", cursor: "pointer" }}>
                       <Minus style={{ width: 10, height: 10 }} />
                     </button>
                     <span style={{ fontSize: 13, fontWeight: 700, color: PANEL_ACCENT, minWidth: 28, textAlign: "center" }}>{duration}s</span>
-                    <button onClick={() => setDuration((n) => Math.min(600, n + 15))} className="nodrag w-6 h-6 flex items-center justify-center rounded-md transition-all" style={{ background: "oklch(0.13 0.006 260)", border: "1px solid oklch(0.22 0.008 260)", color: "oklch(0.60 0.006 260)", cursor: "pointer" }}>
+                    <button onClick={() => setDuration((n) => Math.min(600, n + 15))} className="nodrag w-6 h-6 flex items-center justify-center rounded-md transition-all" style={{ background: "var(--c-surface)", border: "1px solid var(--c-bd2)", color: "var(--c-t2)", cursor: "pointer" }}>
                       <Plus style={{ width: 10, height: 10 }} />
                     </button>
                   </div>
@@ -404,10 +404,10 @@ export const ScriptNode = memo(function ScriptNode({ id, selected, data }: Props
                   className="nodrag flex-1 flex items-center justify-center gap-1.5 py-2 rounded-lg text-[11px] font-semibold transition-all"
                   style={{
                     background: fullScriptMutation.isPending
-                      ? "oklch(0.13 0.007 260)"
+                      ? "var(--c-surface)"
                       : `linear-gradient(135deg, ${PANEL_ACCENT}22, oklch(0.68 0.18 280 / 0.15))`,
                     border: `1px solid ${fullScriptMutation.isPending ? BORDER_DEFAULT : `${PANEL_ACCENT}50`}`,
-                    color: anyPending ? "oklch(0.38 0.006 260)" : PANEL_ACCENT,
+                    color: anyPending ? "var(--c-t4)" : PANEL_ACCENT,
                     cursor: anyPending ? "not-allowed" : "pointer",
                   }}
                 >
@@ -418,7 +418,7 @@ export const ScriptNode = memo(function ScriptNode({ id, selected, data }: Props
                 </button>
               </div>
 
-              <p style={{ fontSize: 9, color: "oklch(0.32 0.006 260)", lineHeight: 1.5 }}>
+              <p style={{ fontSize: 9, color: "var(--c-t4)", lineHeight: 1.5 }}>
                 将根据上方梗概及参数，生成完整中文剧本并自动创建 {sceneCount} 个针对{" "}
                 {TARGET_MODELS.find((m) => m.value === targetModel)?.label ?? "通用"}{" "}
                 优化的分镜节点
