@@ -5,11 +5,39 @@ import * as fs from "fs/promises";
 import * as path from "path";
 import * as os from "os";
 
-const execFileAsync = promisify(execFile);
+const _execFileRaw = promisify(execFile);
+const FFMPEG_TIMEOUT_MS = 120_000;
+const FFPROBE_TIMEOUT_MS = 30_000;
+
+function execFileAsync(cmd: "ffmpeg" | "ffprobe", args: string[]) {
+  const timeout = cmd === "ffprobe" ? FFPROBE_TIMEOUT_MS : FFMPEG_TIMEOUT_MS;
+  return _execFileRaw(cmd, args, { timeout, maxBuffer: 10 * 1024 * 1024 });
+}
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
+function assertSafeUrl(url: string): void {
+  const { protocol, hostname } = new URL(url);
+  if (protocol !== "https:" && protocol !== "http:") {
+    throw new Error(`Unsupported URL scheme: ${protocol}`);
+  }
+  const privatePatterns = [
+    /^localhost$/i,
+    /^127\./,
+    /^10\./,
+    /^172\.(1[6-9]|2\d|3[01])\./,
+    /^192\.168\./,
+    /^169\.254\./,
+    /^::1$/,
+    /^0\./,
+  ];
+  if (privatePatterns.some((p) => p.test(hostname))) {
+    throw new Error(`Access to private/local hosts is not allowed: ${hostname}`);
+  }
+}
+
 async function downloadToTemp(url: string, ext: string): Promise<string> {
+  assertSafeUrl(url);
   const uniqueName = `ffmpeg-${Date.now()}-${Math.random().toString(36).slice(2)}.${ext}`;
   const tmpPath = path.join(os.tmpdir(), uniqueName);
 
@@ -203,12 +231,18 @@ export async function mergeVideos(opts: MergeOptions): Promise<MergeResult> {
   const td = opts.transitionDuration ?? 0.5;
   const bgVol = opts.bgMusicVolume ?? 0.3;
 
-  const inputPaths = await Promise.all(opts.inputUrls.map((u) => downloadToTemp(u, "mp4")));
+  const inputPaths: string[] = [];
   const outName = `ffmpeg-merge-${Date.now()}-${Math.random().toString(36).slice(2)}.mp4`;
   const outPath = path.join(os.tmpdir(), outName);
   let bgMusicPath: string | null = null;
 
   try {
+    // Download sequentially so inputPaths is populated incrementally;
+    // the finally block can then clean up whichever files were created
+    // even if a mid-array download fails.
+    for (const u of opts.inputUrls) {
+      inputPaths.push(await downloadToTemp(u, "mp4"));
+    }
     if (opts.bgMusicUrl) {
       bgMusicPath = await downloadToTemp(opts.bgMusicUrl, "mp3");
     }

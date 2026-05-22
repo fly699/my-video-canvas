@@ -56,17 +56,25 @@ export const BaseNode = memo(function BaseNode({
   const [editingTitle, setEditingTitle] = useState(false);
   const [titleValue, setTitleValue] = useState(title);
   const titleInputRef = useRef<HTMLInputElement>(null);
+  const titleCancelingRef = useRef(false);
   const [isHovered, setIsHovered] = useState(false);
 
   const handleTitleSave = useCallback(() => {
+    if (titleCancelingRef.current) { titleCancelingRef.current = false; return; }
     updateNodeTitle(id, titleValue || title);
     setEditingTitle(false);
   }, [id, titleValue, title, updateNodeTitle]);
 
+  const cancelTitleEdit = useCallback(() => {
+    titleCancelingRef.current = true;
+    setTitleValue(title);
+    setEditingTitle(false);
+  }, [title]);
+
   const handleTitleKeyDown = useCallback((e: React.KeyboardEvent) => {
     if (e.key === "Enter") handleTitleSave();
-    if (e.key === "Escape") { setTitleValue(title); setEditingTitle(false); }
-  }, [handleTitleSave, title]);
+    if (e.key === "Escape") cancelTitleEdit();
+  }, [handleTitleSave, cancelTitleEdit]);
 
   // Sync title when prop changes
   useEffect(() => { setTitleValue(title); }, [title]);
@@ -256,7 +264,7 @@ export const BaseNode = memo(function BaseNode({
                 <Check className="w-3 h-3" />
               </button>
               <button
-                onClick={() => { setTitleValue(title); setEditingTitle(false); }}
+                onMouseDown={(e) => { e.preventDefault(); cancelTitleEdit(); }}
                 className="p-0.5 rounded-md transition-colors"
                 style={{ color: "var(--c-t4)" }}
               >

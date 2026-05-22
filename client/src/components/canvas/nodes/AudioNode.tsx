@@ -156,6 +156,8 @@ export const AudioNode = memo(function AudioNode({ id, selected, data }: Props) 
 
   const musicMutation = trpc.audioGen.generateMusic.useMutation({
     onSuccess: (result) => {
+      audioRef.current?.pause();
+      setIsPlaying(false);
       updateNodeData(id, {
         url: result.url,
         duration: result.duration,
@@ -168,6 +170,8 @@ export const AudioNode = memo(function AudioNode({ id, selected, data }: Props) 
 
   const ttsMutation = trpc.audioGen.generateDubbing.useMutation({
     onSuccess: (result) => {
+      audioRef.current?.pause();
+      setIsPlaying(false);
       updateNodeData(id, {
         url: result.url,
         duration: result.duration,
@@ -232,6 +236,7 @@ export const AudioNode = memo(function AudioNode({ id, selected, data }: Props) 
       style: payload.musicStyle,
       durationSeconds: payload.musicDuration ?? 30,
       instrumental: true,
+      projectId: data.projectId,
     });
   };
 
@@ -245,6 +250,7 @@ export const AudioNode = memo(function AudioNode({ id, selected, data }: Props) 
       text: payload.ttsText,
       voice: payload.ttsVoice,
       speed: payload.ttsSpeed,
+      projectId: data.projectId,
     });
   };
 

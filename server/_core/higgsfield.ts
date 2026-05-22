@@ -67,7 +67,7 @@ async function pollHiggsfieldRequest(requestId: string): Promise<{ fileUrl: stri
     });
 
     if (!res.ok) {
-      if (res.status === 404) continue; // not ready yet
+      if (res.status === 404 || res.status === 429 || res.status >= 500) continue; // not ready or transient error
       throw new Error(`Higgsfield status check failed (${res.status})`);
     }
 
@@ -153,6 +153,7 @@ export async function generateHiggsfieldImage(
       Accept: "application/json",
     },
     body: JSON.stringify(body),
+    signal: AbortSignal.timeout(30_000),
   });
 
   if (!res.ok) {
@@ -292,6 +293,7 @@ export async function submitHiggsfieldVideo(
       Accept: "application/json",
     },
     body: JSON.stringify(body),
+    signal: AbortSignal.timeout(30_000),
   });
 
   if (!res.ok) {

@@ -42,6 +42,7 @@ export async function storagePut(
 
   const presignResp = await fetch(presignUrl, {
     headers: { Authorization: `Bearer ${forgeKey}` },
+    signal: AbortSignal.timeout(15_000),
   });
 
   if (!presignResp.ok) {
@@ -62,6 +63,7 @@ export async function storagePut(
     method: "PUT",
     headers: { "Content-Type": contentType },
     body: blob,
+    signal: AbortSignal.timeout(60_000),
   });
 
   if (!uploadResp.ok) {

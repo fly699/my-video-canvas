@@ -44,6 +44,7 @@ export const CustomEdge = memo(function CustomEdge({
   const [editValue, setEditValue] = useState(typeof label === "string" ? label : "");
   const [hovered, setHovered] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
+  const edgeCancelingRef = useRef(false);
 
   useEffect(() => {
     if (editing) setTimeout(() => inputRef.current?.focus(), 10);
@@ -56,13 +57,14 @@ export const CustomEdge = memo(function CustomEdge({
   }, [label]);
 
   const handleSave = useCallback(() => {
+    if (edgeCancelingRef.current) { edgeCancelingRef.current = false; return; }
     updateEdgeLabel(id, editValue.trim());
     setEditing(false);
   }, [id, editValue, updateEdgeLabel]);
 
   const handleKeyDown = useCallback((e: React.KeyboardEvent) => {
     if (e.key === "Enter") handleSave();
-    if (e.key === "Escape") setEditing(false);
+    if (e.key === "Escape") { edgeCancelingRef.current = true; setEditing(false); }
     e.stopPropagation();
   }, [handleSave]);
 

@@ -83,7 +83,10 @@ async function generateImagePoyo(options: GenerateImageOptions): Promise<Generat
       signal: AbortSignal.timeout(10_000),
     });
 
-    if (!statusRes.ok) continue;
+    if (!statusRes.ok) {
+      if (statusRes.status === 429 || statusRes.status >= 500) continue; // transient, retry
+      throw new Error(`Poyo status check failed (${statusRes.status})`);
+    }
 
     const statusData = (await statusRes.json()) as {
       code: number;

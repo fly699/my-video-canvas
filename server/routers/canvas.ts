@@ -725,9 +725,11 @@ export const audioGenRouter = router({
         durationSeconds: z.number().int().min(10).max(480).optional(),
         instrumental: z.boolean().optional(),
         negativePrompt: z.string().optional(),
+        projectId: z.number().optional(),
       })
     )
-    .mutation(async ({ input }) => {
+    .mutation(async ({ ctx, input }) => {
+      if (input.projectId != null) await assertProjectOwner(input.projectId, ctx.user.id);
       const result = await submitAndPollPoyoMusic({
         model: input.model as PoyoMusicModel,
         prompt: input.prompt,
@@ -746,9 +748,11 @@ export const audioGenRouter = router({
         text: z.string().min(1).max(5000),
         voice: z.string().optional(),
         speed: z.number().min(0.5).max(2.0).optional(),
+        projectId: z.number().optional(),
       })
     )
-    .mutation(async ({ input }) => {
+    .mutation(async ({ ctx, input }) => {
+      if (input.projectId != null) await assertProjectOwner(input.projectId, ctx.user.id);
       const result = await submitAndPollPoyoTTS({
         model: input.model as PoyoTTSModel,
         text: input.text,

@@ -76,13 +76,14 @@ export const MergeNode = memo(function MergeNode({ id, selected, data }: Props) 
 
   const update = (patch: Partial<MergeNodeData>) => updateNodeData(id, patch);
 
-  // Collect video URLs from connected source nodes
+  // Collect video URLs from connected source nodes (video-producing types only)
+  const VIDEO_SOURCE_TYPES = new Set(["video_task", "clip", "merge", "overlay", "asset"]);
   const collectInputUrls = (): string[] => {
     const incomingEdges = edges.filter((e) => e.target === id);
     const urls: string[] = [];
     for (const edge of incomingEdges) {
       const srcNode = nodes.find((n) => n.id === edge.source);
-      if (!srcNode) continue;
+      if (!srcNode || !VIDEO_SOURCE_TYPES.has(srcNode.data.nodeType)) continue;
       const p = srcNode.data.payload as Record<string, unknown>;
       const url = (p.resultVideoUrl ?? p.outputUrl ?? p.url) as string | undefined;
       if (url) urls.push(url);
