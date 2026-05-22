@@ -103,6 +103,8 @@ export function setupVideoTaskPoller(io: SocketIOServer) {
             const upstream = await checkHiggsfieldVideoStatus(task.externalTaskId);
             if (upstream.status === "succeeded" && upstream.resultVideoUrl) {
               result = { status: "succeeded", resultVideoUrl: upstream.resultVideoUrl };
+            } else if (upstream.status === "succeeded" && !upstream.resultVideoUrl) {
+              result = { status: "failed", errorMessage: "任务完成但未返回视频 URL" };
             } else if (upstream.status === "failed") {
               result = { status: "failed", errorMessage: upstream.errorMessage ?? "生成失败" };
             } else {

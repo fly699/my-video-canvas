@@ -285,7 +285,7 @@ export const videoTasksRouter = router({
         externalTaskId,
         status: initialStatus,
       });
-      if (!task) throw new Error("Failed to create video task");
+      if (!task) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "Failed to create video task" });
       return task;
     }),
 

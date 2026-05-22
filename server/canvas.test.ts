@@ -55,6 +55,7 @@ vi.mock("./db", () => ({
   getPendingVideoTasks: vi.fn().mockResolvedValue([]),
   getChatMessages: vi.fn().mockResolvedValue([]),
   addChatMessage: vi.fn().mockResolvedValue({}),
+  addChatMessagePair: vi.fn().mockResolvedValue(undefined),
   clearChatMessages: vi.fn().mockResolvedValue({}),
 }));
 

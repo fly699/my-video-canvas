@@ -96,13 +96,24 @@ export const AIChatNode = memo(function AIChatNode({ id, selected, data }: Props
     return () => document.removeEventListener("mousedown", handler);
   }, [showTemplates]);
 
+  const utils = trpc.useUtils();
   const sendMutation = trpc.aiChat.sendMessage.useMutation({
     onSuccess: (result) => {
       setLocalMessages((prev) => [...prev, { role: "assistant", content: result.content }]);
     },
     onError: (err) => {
-      // Roll back the optimistic user message appended in handleSend
+      // Roll back the optimistic user message appended in handleSend, then
+      // re-sync from the server in case the DB write succeeded but the response
+      // was lost — this prevents silent divergence between client and DB state.
       setLocalMessages((prev) => prev.slice(0, -1));
+      utils.aiChat.getMessages.fetch({ nodeId: id, projectId: data.projectId })
+        .then((msgs) => {
+          if (msgs.length > 0) {
+            const synced = msgs.map((m) => ({ role: m.role as "user" | "assistant", content: m.content }));
+            setLocalMessages(synced);
+          }
+        })
+        .catch(() => { /* best-effort sync; ignore fetch errors */ });
       toast.error("AI 响应失败：" + err.message);
     },
   });
