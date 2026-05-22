@@ -860,7 +860,11 @@ export function TemplatePanel({ onClose, centerX, centerY }: Props) {
         const src = resolvedNodes[edgeSpec.fromIndex];
         const tgt = resolvedNodes[edgeSpec.toIndex];
         if (src && tgt) {
-          onConnect({ source: src.id, target: tgt.id, sourceHandle: "output", targetHandle: "input" });
+          const srcType = template.nodes[edgeSpec.fromIndex]?.type;
+          const tgtType = template.nodes[edgeSpec.toIndex]?.type;
+          const sourceHandle = srcType === "clip" ? "clip-out" : "output";
+          const targetHandle = tgtType === "clip" ? "video-in" : "input";
+          onConnect({ source: src.id, target: tgt.id, sourceHandle, targetHandle });
         }
       }
 

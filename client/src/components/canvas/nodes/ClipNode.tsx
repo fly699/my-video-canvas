@@ -227,15 +227,18 @@ export const ClipNode = memo(function ClipNode({ id, selected, data }: Props) {
     else { v.play().then(() => setIsPlaying(true)).catch(() => {}); }
   };
 
-  // Clamp playback to trim range
+  // Clamp playback to trim range — poll while playing
   useEffect(() => {
     const v = videoRef.current;
     if (!v || !isPlaying) return;
-    if (v.currentTime >= endTime) {
-      v.pause();
-      v.currentTime = startTime;
-      setIsPlaying(false);
-    }
+    const id = setInterval(() => {
+      if (v.currentTime >= endTime) {
+        v.pause();
+        v.currentTime = startTime;
+        setIsPlaying(false);
+      }
+    }, 100);
+    return () => clearInterval(id);
   }, [isPlaying, endTime, startTime]);
 
   const seekToStart = () => {
@@ -297,7 +300,7 @@ export const ClipNode = memo(function ClipNode({ id, selected, data }: Props) {
     : activeVideoUrl ?? undefined;
 
   return (
-    <BaseNode id={id} selected={selected} nodeType="clip" title={data.title} minHeight={280} resizable>
+    <BaseNode id={id} selected={selected} nodeType="clip" title={data.title} minHeight={280} resizable showHandles={false}>
       {/* Input handles — square = target/receives */}
       <Handle
         type="target"

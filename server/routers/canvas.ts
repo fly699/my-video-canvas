@@ -427,10 +427,13 @@ export const aiChatRouter = router({
         const response = await invokeLLM({ messages, model: input.model });
         assistantContent = extractTextContent(response) || "（模型返回内容为空）";
       } catch (err) {
-        assistantContent = `⚠️ 调用失败：${err instanceof Error ? err.message : String(err)}`;
+        throw new TRPCError({
+          code: "INTERNAL_SERVER_ERROR",
+          message: err instanceof Error ? err.message : String(err),
+        });
       }
 
-      // Save assistant message
+      // Save assistant message only on success
       await addChatMessage({
         nodeId: input.nodeId,
         projectId: input.projectId,

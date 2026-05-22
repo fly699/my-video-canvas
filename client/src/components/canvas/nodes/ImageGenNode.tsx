@@ -278,12 +278,7 @@ export const ImageGenNode = memo(function ImageGenNode({ id, selected, data }: P
         </button>
       </div>
     </div>
-  ) : (
-    <div className="node-hero-placeholder" style={{ minHeight: 180 }}>
-      <ImagePlus style={{ width: 12, height: 12, color: "var(--c-t4)" }} />
-      <span>尚未生成</span>
-    </div>
-  );
+  ) : null;
 
   return (
     <BaseNode id={id} selected={selected} nodeType="image_gen" title={data.title} minHeight={300} heroMedia={heroMedia}>

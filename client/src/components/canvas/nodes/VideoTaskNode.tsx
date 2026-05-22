@@ -340,12 +340,7 @@ export const VideoTaskNode = memo(function VideoTaskNode({ id, selected, data }:
       style={{ width: "100%", maxHeight: 220, objectFit: "cover", display: "block" }}
       draggable={false}
     />
-  ) : (
-    <div className="node-hero-placeholder" style={{ minHeight: 180 }}>
-      <Play style={{ width: 12, height: 12, color: "var(--c-t4)" }} />
-      <span>{status.label}</span>
-    </div>
-  );
+  ) : null;
 
   return (
     <BaseNode id={id} selected={selected} nodeType="video_task" title={data.title} minHeight={260} heroMedia={heroMedia}>

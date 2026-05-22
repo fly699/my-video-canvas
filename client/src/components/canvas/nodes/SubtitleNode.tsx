@@ -170,7 +170,7 @@ export const SubtitleNode = memo(function SubtitleNode({ id, selected, data }: P
   const isBurning = payload.status === "burning" || burnMutation.isPending;
 
   return (
-    <BaseNode id={id} selected={selected} nodeType="subtitle" title={data.title} minHeight={240} resizable>
+    <BaseNode id={id} selected={selected} nodeType="subtitle" title={data.title} minHeight={240} resizable showHandles={false}>
       <Handle type="target" position={Position.Top} id="input" style={{ background: accent }} />
 
       <div className="flex flex-col gap-3 p-3.5">

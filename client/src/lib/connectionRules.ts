@@ -13,6 +13,8 @@ export const CONNECTION_MATRIX: Partial<Record<NodeType, NodeType[]>> = {
   clip: ["asset", "overlay", "merge", "subtitle"],
   post_process: ["video_task", "image_gen", "asset"],
   overlay: ["asset"],
+  subtitle: ["asset"],
+  merge: ["asset"],
   note: [],
   group: [],
 };

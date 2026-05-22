@@ -8,6 +8,7 @@ import { Sparkles, ImageIcon, Loader2, RefreshCw, ChevronDown, Upload, X, Wand2,
 import { IMAGE_MODELS, type ImageModelId } from "@/lib/models";
 import { makeImageProxyFallback } from "@/lib/utils";
 import { LLMModelPicker, type LLMModelId } from "../LLMModelPicker";
+import { useCanvasMode } from "../../../contexts/CanvasModeContext";
 
 interface Props {
   id: string;
@@ -43,6 +44,8 @@ const onBlur  = (e: React.FocusEvent<HTMLElement>) => { e.currentTarget.style.bo
 
 export const StoryboardNode = memo(function StoryboardNode({ id, selected, data }: Props) {
   const { updateNodeData } = useCanvasStore();
+  const { mode: canvasMode } = useCanvasMode();
+  const isCreative = canvasMode === "creative";
   const payload = data.payload;
   const [generating, setGenerating] = useState(false);
   const [showModelPicker, setShowModelPicker] = useState(false);
@@ -220,20 +223,15 @@ export const StoryboardNode = memo(function StoryboardNode({ id, selected, data 
         </div>
       );
     }
-    return (
-      <div className="node-hero-placeholder" style={{ minHeight: 120 }}>
-        <Film style={{ width: 24, height: 24, color: "var(--c-t4)" }} />
-        <span style={{ fontSize: 11, color: "var(--c-t4)", marginTop: 6 }}>分镜描述</span>
-      </div>
-    );
+    return null;
   })();
 
   return (
     <BaseNode id={id} selected={selected} nodeType="storyboard" title={data.title} minHeight={280} heroMedia={heroMedia}>
       <div className="flex flex-col h-full p-3.5 gap-3">
 
-        {/* ── Image preview ── always visible ──*/}
-        <div
+        {/* ── Image preview — hidden in creative mode (image shown in heroMedia instead) ── */}
+        {!(isCreative && payload.imageUrl) && (<div
           className="relative rounded-lg overflow-hidden flex-shrink-0"
           style={{
             height: 150,
@@ -330,7 +328,7 @@ export const StoryboardNode = memo(function StoryboardNode({ id, selected, data 
               )}
             </div>
           )}
-        </div>
+        </div>)}
 
         {/* ── Generation history panel ── */}
         {showHistory && (payload.imageHistory?.length ?? 0) > 1 && (

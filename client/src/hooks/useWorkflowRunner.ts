@@ -3,6 +3,7 @@ import { trpc } from "@/lib/trpc";
 import { useCanvasStore } from "./useCanvasStore";
 import { toast } from "sonner";
 import type { NodeType } from "../../../shared/types";
+import { VIDEO_PROVIDERS } from "../../../shared/types";
 
 export interface WorkflowRunState {
   running: boolean;
@@ -86,24 +87,26 @@ export function useWorkflowRunner() {
         reverseAdj.get(e.target)!.push(e.source);
       });
 
-      const visited = new Set<string>();
+      const visitedFwd = new Set<string>();
+      const visitedRev = new Set<string>();
       const dfsForward = (id: string) => {
-        if (visited.has(id)) return;
-        visited.add(id);
+        if (visitedFwd.has(id)) return;
+        visitedFwd.add(id);
         (forwardAdj.get(id) ?? []).forEach(dfsForward);
       };
       const dfsReverse = (id: string) => {
-        if (visited.has(id)) return;
-        visited.add(id);
+        if (visitedRev.has(id)) return;
+        visitedRev.add(id);
         (reverseAdj.get(id) ?? []).forEach(dfsReverse);
       };
 
-      // First collect ancestors so topological sort places them before startNode
+      // Collect ancestors (separate set so start node isn't pre-visited)
       dfsReverse(startNodeId);
-      // Then collect startNode and its descendants
+      // Collect startNode and all descendants
       dfsForward(startNodeId);
 
-      runnableIds = Array.from(visited).filter((id) => {
+      const allIds = new Set(Array.from(visitedRev).concat(Array.from(visitedFwd)));
+      runnableIds = Array.from(allIds).filter((id) => {
         const node = nodes.find((n) => n.id === id);
         return node && RUNNABLE_TYPES.includes(node.data.nodeType);
       });
@@ -192,22 +195,9 @@ export function useWorkflowRunner() {
             return "fail";
           }
 
-          const validProviders = [
-            "mock",
-            "poyo_seedance",
-            "poyo_veo",
-            "hf_dop_standard",
-            "hf_dop_preview",
-            "hf_dop_lite",
-            "hf_dop_turbo",
-            "hf_kling_21_pro",
-            "hf_seedance_pro",
-          ] as const;
-          type VideoProvider = (typeof validProviders)[number];
+          type VideoProvider = (typeof VIDEO_PROVIDERS)[number];
           const providerValue = (p.provider as string) || "poyo_seedance";
-          const provider: VideoProvider = (
-            validProviders as readonly string[]
-          ).includes(providerValue)
+          const provider: VideoProvider = (VIDEO_PROVIDERS as readonly string[]).includes(providerValue)
             ? (providerValue as VideoProvider)
             : "poyo_seedance";
 

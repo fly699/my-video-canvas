@@ -184,12 +184,7 @@ export const AssetNode = memo(function AssetNode({ id, selected, data }: Props) 
         </div>
       );
     }
-    return (
-      <div className="node-hero-placeholder" style={{ minHeight: 120 }}>
-        <File style={{ width: 24, height: 24, color: "var(--c-t4)" }} />
-        <span style={{ fontSize: 11, color: "var(--c-t4)", marginTop: 6 }}>无素材</span>
-      </div>
-    );
+    return null;
   })();
 
   return (
