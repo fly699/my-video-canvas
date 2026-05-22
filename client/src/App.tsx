@@ -4,6 +4,7 @@ import NotFound from "@/pages/NotFound";
 import { Route, Switch } from "wouter";
 import ErrorBoundary from "./components/ErrorBoundary";
 import { ThemeProvider } from "./contexts/ThemeContext";
+import { CanvasModeProvider } from "./contexts/CanvasModeContext";
 import Home from "./pages/Home";
 import Canvas from "./pages/Canvas";
 import { useParams } from "wouter";
@@ -28,6 +29,7 @@ function App() {
   return (
     <ErrorBoundary>
       <ThemeProvider>
+        <CanvasModeProvider>
         <TooltipProvider delayDuration={400}>
           <Toaster
             position="bottom-right"
@@ -41,6 +43,7 @@ function App() {
           />
           <Router />
         </TooltipProvider>
+        </CanvasModeProvider>
       </ThemeProvider>
     </ErrorBoundary>
   );

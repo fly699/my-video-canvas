@@ -5,7 +5,7 @@ import { useCanvasStore } from "../../../hooks/useCanvasStore";
 import type { PromptNodeData, ImageGenModel } from "../../../../../shared/types";
 import { trpc } from "@/lib/trpc";
 import { toast } from "sonner";
-import { Sparkles, Loader2, RefreshCw, ChevronDown, Upload, X, Grid2X2, Check, Languages } from "lucide-react";
+import { Sparkles, Loader2, RefreshCw, ChevronDown, Upload, X, Grid2X2, Check, Languages, Wand2 } from "lucide-react";
 import { makeImageProxyFallback } from "@/lib/utils";
 import { LLMModelPicker, type LLMModelId } from "../LLMModelPicker";
 
@@ -157,8 +157,75 @@ export const PromptNode = memo(function PromptNode({ id, selected, data }: Props
 
   const currentModel = IMAGE_MODELS.find((m) => m.value === model) ?? IMAGE_MODELS[0];
 
+  const heroMedia = (() => {
+    if (payload.imageUrls && payload.imageUrls.length > 1) {
+      return (
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 4 }}>
+          {payload.imageUrls.map((url, i) => (
+            <div key={i} style={{ aspectRatio: "1/1", position: "relative", overflow: "hidden" }}>
+              <img
+                src={url}
+                className="w-full h-full object-cover"
+                draggable={false}
+                onError={makeImageProxyFallback(url)}
+                alt={`图像 ${i + 1}`}
+              />
+              <div
+                style={{
+                  position: "absolute",
+                  bottom: 4,
+                  left: 4,
+                  fontSize: 9,
+                  fontWeight: 700,
+                  background: "oklch(0 0 0 / 0.6)",
+                  color: "var(--c-t1)",
+                  padding: "1px 4px",
+                  borderRadius: 3,
+                }}
+              >
+                {i === 0 ? "A" : "B"}
+              </div>
+            </div>
+          ))}
+        </div>
+      );
+    }
+    if (payload.imageUrl) {
+      return (
+        <img
+          src={payload.imageUrl}
+          className="w-full h-full object-cover"
+          draggable={false}
+          onError={makeImageProxyFallback(payload.imageUrl)}
+          style={{ maxHeight: 240, objectFit: "cover", width: "100%", display: "block" }}
+          alt="preview"
+        />
+      );
+    }
+    if (payload.positivePrompt?.trim()) {
+      return (
+        <div
+          className="node-hero-placeholder"
+          style={{ minHeight: 100, padding: "14px 16px", alignItems: "flex-start", justifyContent: "flex-start" }}
+        >
+          <p style={{ fontSize: 11, color: "var(--c-t3)", lineHeight: 1.7, fontFamily: "monospace", margin: 0 }}>
+            {payload.positivePrompt.length > 120
+              ? payload.positivePrompt.slice(0, 120) + "…"
+              : payload.positivePrompt}
+          </p>
+        </div>
+      );
+    }
+    return (
+      <div className="node-hero-placeholder" style={{ minHeight: 120 }}>
+        <Wand2 style={{ width: 24, height: 24, color: "var(--c-t4)" }} />
+        <span style={{ fontSize: 11, color: "var(--c-t4)", marginTop: 6 }}>尚未生成</span>
+      </div>
+    );
+  })();
+
   return (
-    <BaseNode id={id} selected={selected} nodeType="prompt" title={data.title} minHeight={200} resizable>
+    <BaseNode id={id} selected={selected} nodeType="prompt" title={data.title} minHeight={200} resizable heroMedia={heroMedia}>
       <div className="flex flex-col h-full p-3.5 gap-3">
 
         {/* Preview area — single or A/B compare */}

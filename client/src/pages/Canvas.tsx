@@ -30,6 +30,7 @@ import { isConnectionValid } from "../lib/connectionRules";
 import { BeginnerGuide, ConnectionHintsPanel } from "../components/canvas/BeginnerGuide";
 import { ThemeSwitcher } from "../components/canvas/ThemeSwitcher";
 import { CanvasBgPicker, loadCanvasBg, type CanvasBg } from "../components/canvas/CanvasBgPicker";
+import { useCanvasMode } from "../contexts/CanvasModeContext";
 import { trpc } from "@/lib/trpc";
 import { useAuth } from "@/_core/hooks/useAuth";
 import { useIsMobile } from "@/hooks/useMobile";
@@ -66,6 +67,7 @@ import {
   Trash2,
   RotateCcw,
   BookmarkPlus,
+  Palette,
   ListVideo,
 } from "lucide-react";
 import { loadNamedSnapshots, type NamedSnapshot } from "../hooks/useCanvasStore";
@@ -345,6 +347,7 @@ function CanvasInner({ projectId }: { projectId: number }) {
   const [globalAspectRatio, setGlobalAspectRatio] = useState<string | null>(null);
   const [showRatioPicker, setShowRatioPicker] = useState(false);
   const [showConnectionHints, setShowConnectionHints] = useState(false);
+  const { mode: canvasMode, setMode: setCanvasMode } = useCanvasMode();
   const [connectingFromType, setConnectingFromType] = useState<NodeType | null>(null);
 
   // Workflow runner
@@ -738,9 +741,11 @@ function CanvasInner({ projectId }: { projectId: number }) {
 
       {/* ══ Top Bar ══════════════════════════════════════════════════════════ */}
       <header
-        className="h-11 flex items-center px-3 gap-2 flex-shrink-0 z-20"
+        className="canvas-topbar h-11 flex items-center px-3 gap-2 flex-shrink-0 z-20"
         style={{
-          background: "oklch(0.09 0.006 260 / 0.95)",
+          background: canvasMode === "creative"
+            ? "oklch(1.00 0 0 / 0.94)"
+            : "oklch(0.09 0.006 260 / 0.95)",
           backdropFilter: "blur(20px)",
           borderBottom: "1px solid var(--c-bd1)",
         }}
@@ -1582,6 +1587,47 @@ function CanvasInner({ projectId }: { projectId: number }) {
                 </button>
               </TooltipTrigger>
               <TooltipContent side="top" className="text-xs">连线指引</TooltipContent>
+            </Tooltip>
+
+            {/* Canvas mode toggle: Professional ↔ Creative */}
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <button
+                  onClick={() => setCanvasMode(canvasMode === "creative" ? "professional" : "creative")}
+                  className="h-7 px-2.5 rounded-lg flex items-center gap-1.5 text-xs font-medium transition-all"
+                  style={{
+                    background: canvasMode === "creative"
+                      ? "oklch(0.68 0.22 285 / 0.12)"
+                      : "transparent",
+                    border: canvasMode === "creative"
+                      ? "1px solid oklch(0.68 0.22 285 / 0.35)"
+                      : "1px solid transparent",
+                    color: canvasMode === "creative"
+                      ? "oklch(0.68 0.22 285)"
+                      : "var(--c-t3)",
+                  }}
+                  onMouseEnter={(e) => {
+                    if (canvasMode !== "creative") {
+                      (e.currentTarget as HTMLElement).style.background = "var(--c-elevated)";
+                      (e.currentTarget as HTMLElement).style.color = "var(--c-t1)";
+                    }
+                  }}
+                  onMouseLeave={(e) => {
+                    if (canvasMode !== "creative") {
+                      (e.currentTarget as HTMLElement).style.background = "transparent";
+                      (e.currentTarget as HTMLElement).style.color = "var(--c-t3)";
+                    }
+                  }}
+                >
+                  <Palette className="w-3.5 h-3.5" />
+                  <span>{canvasMode === "creative" ? "创意" : "专业"}</span>
+                </button>
+              </TooltipTrigger>
+              <TooltipContent side="top" className="text-xs">
+                {canvasMode === "creative"
+                  ? "当前：创意模式（LibTV 风格）· 点击切换专业模式"
+                  : "切换到创意模式（白色画布 · 媒体优先）"}
+              </TooltipContent>
             </Tooltip>
 
             {/* Theme switcher */}

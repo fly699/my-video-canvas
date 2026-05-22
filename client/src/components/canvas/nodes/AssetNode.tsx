@@ -145,8 +145,55 @@ export const AssetNode = memo(function AssetNode({ id, selected, data }: Props) 
     payload.type === "audio" ? FileAudio :
     payload.type === "image" ? FileImage : File;
 
+  const heroMedia = (() => {
+    if (payload.url && payload.type === "image") {
+      return (
+        <img
+          src={payload.url}
+          style={{ width: "100%", maxHeight: 240, objectFit: "cover", display: "block" }}
+          draggable={false}
+          alt={payload.name}
+        />
+      );
+    }
+    if (payload.url && payload.type === "video") {
+      return (
+        <video
+          src={payload.url}
+          controls
+          style={{ width: "100%", maxHeight: 200, display: "block" }}
+          className="nodrag"
+        />
+      );
+    }
+    if (payload.url) {
+      return (
+        <div
+          className="flex items-center gap-3 p-3 rounded-lg"
+          style={{ background: "var(--c-input)", border: "1px solid var(--c-bd1)" }}
+        >
+          <div
+            className="w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0"
+            style={{ background: `${accentColor}18`, border: `1px solid ${accentColor}30` }}
+          >
+            <TypeIcon className="w-4 h-4" style={{ color: accentColor }} />
+          </div>
+          <div className="flex-1 min-w-0">
+            <p className="text-xs font-medium truncate" style={{ color: "var(--c-t1)" }}>{payload.name}</p>
+          </div>
+        </div>
+      );
+    }
+    return (
+      <div className="node-hero-placeholder" style={{ minHeight: 120 }}>
+        <File style={{ width: 24, height: 24, color: "var(--c-t4)" }} />
+        <span style={{ fontSize: 11, color: "var(--c-t4)", marginTop: 6 }}>无素材</span>
+      </div>
+    );
+  })();
+
   return (
-    <BaseNode id={id} selected={selected} nodeType="asset" title={data.title} minHeight={160} resizable>
+    <BaseNode id={id} selected={selected} nodeType="asset" title={data.title} minHeight={160} resizable heroMedia={heroMedia}>
       <div className="p-3.5 flex flex-col gap-3">
         {renderPreview()}
         <div className="flex items-center gap-2">

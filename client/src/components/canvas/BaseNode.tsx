@@ -6,6 +6,7 @@ import { useCanvasStore } from "../../hooks/useCanvasStore";
 import { NodeSelectedContext } from "../../contexts/NodeSelectedContext";
 import { trpc } from "@/lib/trpc";
 import { useWorkflowRunState } from "../../contexts/WorkflowRunContext";
+import { useCanvasMode } from "../../contexts/CanvasModeContext";
 import {
   Trash2, Copy, GripVertical, Check, X, Loader2, FileText,
 } from "lucide-react";
@@ -23,16 +24,22 @@ interface BaseNodeProps {
   headerRight?: React.ReactNode;
   /** 是否允许用户手动拖拽缩放，默认 false */
   resizable?: boolean;
+  /** 创意模式下显示在标题栏下方的媒体英雄区（图片/视频预览），选中时展开表单控件 */
+  heroMedia?: React.ReactNode;
 }
 
 export const BaseNode = memo(function BaseNode({
   id, selected, nodeType, title, children,
   minWidth = 280, minHeight = 140, showHandles = true, headerRight, resizable = false,
+  heroMedia,
 }: BaseNodeProps) {
   const config = getNodeConfig(nodeType);
   const Icon = NODE_ICONS[config.icon] ?? FileText;
   const { deleteNode, duplicateNode, updateNodeTitle, projectId } = useCanvasStore();
   const deleteNodeMutation = trpc.nodes.delete.useMutation();
+  const { mode: canvasMode } = useCanvasMode();
+  const isCreative = canvasMode === "creative";
+  const hasHero = heroMedia != null;
 
   // Workflow run status
   const { running, currentNodeId, completedIds, failedIds } = useWorkflowRunState();
@@ -115,34 +122,47 @@ export const BaseNode = memo(function BaseNode({
 
   const borderStyle = runBorder
     ? runBorder
-    : selected
-      ? `1.5px solid ${config.color}80`
-      : isHovered
-        ? `1px solid var(--c-bd3)`
-        : `1px solid var(--c-bd1)`;
+    : isCreative
+      ? selected
+        ? `1.5px solid ${config.color}70`
+        : `1px solid var(--c-bd2)`
+      : selected
+        ? `1.5px solid ${config.color}80`
+        : isHovered
+          ? `1px solid var(--c-bd3)`
+          : `1px solid var(--c-bd1)`;
 
   const shadowStyle = runShadow
-    ? `${runShadow}, 0 8px 32px oklch(0 0 0 / 0.55)`
-    : selected
-      ? `0 0 0 4px ${config.color}14, 0 20px 60px oklch(0 0 0 / 0.70), 0 4px 16px oklch(0 0 0 / 0.50)`
-      : isHovered
-        ? `0 8px 32px oklch(0 0 0 / 0.55), 0 2px 8px oklch(0 0 0 / 0.40)`
-        : `0 2px 12px oklch(0 0 0 / 0.40), 0 1px 3px oklch(0 0 0 / 0.30)`;
+    ? `${runShadow}, 0 8px 32px oklch(0 0 0 / ${isCreative ? "0.10" : "0.55"})`
+    : isCreative
+      ? selected
+        ? `0 0 0 3px ${config.color}28, 0 12px 40px oklch(0 0 0 / 0.12), 0 2px 8px oklch(0 0 0 / 0.07)`
+        : isHovered
+          ? `0 4px 20px oklch(0 0 0 / 0.10), 0 1px 4px oklch(0 0 0 / 0.06)`
+          : `0 1px 4px oklch(0 0 0 / 0.06), 0 4px 16px oklch(0 0 0 / 0.06)`
+      : selected
+        ? `0 0 0 4px ${config.color}14, 0 20px 60px oklch(0 0 0 / 0.70), 0 4px 16px oklch(0 0 0 / 0.50)`
+        : isHovered
+          ? `0 8px 32px oklch(0 0 0 / 0.55), 0 2px 8px oklch(0 0 0 / 0.40)`
+          : `0 2px 12px oklch(0 0 0 / 0.40), 0 1px 3px oklch(0 0 0 / 0.30)`;
 
   return (
     <div
       className={`group/node relative flex flex-col${runStatus === "running" ? " node-run-pulse" : ""}`}
+      data-selected={selected ? "true" : "false"}
+      data-has-hero={hasHero ? "true" : "false"}
       style={{
         borderRadius: 16,
-        background: "oklch(0.115 0.007 260 / 0.97)",
+        background: isCreative
+          ? "oklch(1.00 0 0)"
+          : "oklch(0.115 0.007 260 / 0.97)",
         border: borderStyle,
         boxShadow: shadowStyle,
-        minWidth,
+        minWidth: isCreative ? Math.round(minWidth * 1.18) : minWidth,
         minHeight,
         width: "100%",
-        // height is content-driven; do not set height:100% which would require a parent height
         transition: "border-color 150ms ease, box-shadow 180ms ease, opacity 180ms ease, transform 180ms ease",
-        backdropFilter: "blur(4px)",
+        backdropFilter: isCreative ? "none" : "blur(4px)",
         opacity: entered ? 1 : 0,
         transform: entered ? "scale(1) translateY(0)" : "scale(0.96) translateY(6px)",
         overflow: "hidden",
@@ -174,9 +194,11 @@ export const BaseNode = memo(function BaseNode({
       {/* ── Color accent strip at top ── */}
       <div
         style={{
-          height: 2,
-          background: `linear-gradient(90deg, transparent 0%, ${config.color}70 30%, ${config.color}90 50%, ${config.color}70 70%, transparent 100%)`,
-          opacity: selected ? 1 : isHovered ? 0.7 : 0.35,
+          height: isCreative ? 3 : 2,
+          background: `linear-gradient(90deg, transparent 0%, ${config.color}${isCreative ? "90" : "70"} 30%, ${config.color}${isCreative ? "bb" : "90"} 50%, ${config.color}${isCreative ? "90" : "70"} 70%, transparent 100%)`,
+          opacity: isCreative
+            ? selected ? 1 : isHovered ? 0.85 : 0.55
+            : selected ? 1 : isHovered ? 0.7 : 0.35,
           transition: "opacity 180ms ease",
           flexShrink: 0,
         }}
@@ -186,9 +208,11 @@ export const BaseNode = memo(function BaseNode({
       <div
         className="flex items-center gap-2.5 px-3.5 py-2.5 select-none flex-shrink-0"
         style={{
-          background: `linear-gradient(180deg, ${config.color}0e 0%, transparent 100%)`,
-          borderBottom: `1px solid oklch(0.20 0.008 260 / 0.60)`,  /* alpha – intentional */
-          minHeight: 44,
+          background: isCreative
+            ? `${config.color}0a`
+            : `linear-gradient(180deg, ${config.color}0e 0%, transparent 100%)`,
+          borderBottom: `1px solid ${isCreative ? "var(--c-bd1)" : "oklch(0.20 0.008 260 / 0.60)"}`,
+          minHeight: isCreative ? 40 : 44,
         }}
       >
         {/* Drag grip */}
@@ -349,9 +373,18 @@ export const BaseNode = memo(function BaseNode({
         </div>
       </div>
 
-      {/* ── Content area ── */}
+      {/* ── Hero media (creative mode only, shown via CSS) ── */}
+      {hasHero && (
+        <div className="node-hero-media">
+          {heroMedia}
+        </div>
+      )}
+
+      {/* ── Content area (collapsible in creative mode when hero exists) ── */}
       <NodeSelectedContext.Provider value={!!selected}>
-        <div className="overflow-visible nopan">{children}</div>
+        <div className="node-body-wrap">
+          <div className="overflow-visible nopan">{children}</div>
+        </div>
       </NodeSelectedContext.Provider>
 
       {/* ── Connection Handles ── */}

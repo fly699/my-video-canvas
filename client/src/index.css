@@ -122,6 +122,25 @@
     color-scheme: dark;
   }
 
+  /* ── Creative Mode — LibTV-inspired light canvas ──────────────────────────── */
+  /* Overrides theme tokens. Must appear AFTER theme sections to win specificity. */
+  :root[data-canvas-mode="creative"] {
+    --c-canvas:   oklch(0.965 0.005 240);   /* warm off-white canvas */
+    --c-base:     oklch(1.000 0.000 0);     /* pure white for cards/header */
+    --c-surface:  oklch(1.000 0.000 0);     /* node card face = pure white */
+    --c-elevated: oklch(0.985 0.003 260);   /* hover-elevated card */
+    --c-overlay:  oklch(0.970 0.004 260);   /* panel overlays */
+    --c-input:    oklch(0.960 0.004 260);   /* input field bg */
+    --c-bd1:      oklch(0.920 0.004 260);   /* subtlest divider */
+    --c-bd2:      oklch(0.880 0.006 260);   /* standard border */
+    --c-bd3:      oklch(0.780 0.008 260);   /* stronger border */
+    --c-t1:       oklch(0.140 0.010 260);   /* primary text */
+    --c-t2:       oklch(0.320 0.009 260);   /* secondary text */
+    --c-t3:       oklch(0.500 0.008 260);   /* muted text */
+    --c-t4:       oklch(0.660 0.006 260);   /* placeholder / disabled */
+    color-scheme: light;
+  }
+
   :root[data-theme="midnight"] {
     --c-canvas:   oklch(0.07 0.012 260);
     --c-base:     oklch(0.10 0.014 260);
@@ -506,6 +525,114 @@ button:active:not(:disabled) {
 }
 .react-flow__pane.dragging {
   cursor: grabbing !important;
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   CREATIVE MODE — LibTV-inspired media-first canvas layout
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+/* Hero media: hidden in professional mode, always shown in creative mode */
+.node-hero-media {
+  display: none;
+}
+:root[data-canvas-mode="creative"] .node-hero-media {
+  display: block;
+}
+
+/* Node body: transition for smooth collapse/expand */
+.node-body-wrap {
+  transition:
+    max-height 300ms cubic-bezier(0.4, 0, 0.2, 1),
+    opacity 200ms ease;
+  overflow: visible;        /* professional mode: always visible */
+}
+
+/* Creative mode: collapse controls when node has hero and is NOT selected */
+:root[data-canvas-mode="creative"] [data-has-hero="true"][data-selected="false"] .node-body-wrap {
+  max-height: 0 !important;
+  overflow: hidden !important;
+  opacity: 0;
+}
+:root[data-canvas-mode="creative"] [data-has-hero="true"][data-selected="true"] .node-body-wrap {
+  max-height: 2600px;
+  opacity: 1;
+}
+/* Nodes without hero: always show body (script, note, ai_chat, etc.) */
+:root[data-canvas-mode="creative"] [data-has-hero="false"] .node-body-wrap {
+  max-height: none;
+  overflow: visible;
+  opacity: 1;
+}
+
+/* Hero media style: flush to card width, no side padding */
+:root[data-canvas-mode="creative"] .node-hero-media {
+  width: 100%;
+  flex-shrink: 0;
+  line-height: 0; /* prevent img gap */
+}
+:root[data-canvas-mode="creative"] .node-hero-media img,
+:root[data-canvas-mode="creative"] .node-hero-media video {
+  width: 100%;
+  display: block;
+  object-fit: cover;
+}
+
+/* In creative mode: wider nodes via CSS min-width override */
+:root[data-canvas-mode="creative"] .react-flow__node {
+  min-width: unset;
+}
+
+/* Creative mode: softer ReactFlow selection ring */
+:root[data-canvas-mode="creative"] .react-flow__node.selected {
+  filter: none;
+}
+
+/* Creative mode: ReactFlow background gets light dot grid */
+:root[data-canvas-mode="creative"] .react-flow__background {
+  background-color: var(--c-canvas) !important;
+}
+:root[data-canvas-mode="creative"] .react-flow__background pattern circle,
+:root[data-canvas-mode="creative"] .react-flow__background pattern rect {
+  fill: oklch(0.76 0.006 260) !important;
+  opacity: 0.5;
+}
+
+/* Creative mode: top bar adapts to light theme via --c-base token */
+:root[data-canvas-mode="creative"] .canvas-topbar {
+  background: oklch(1.00 0 0 / 0.92) !important;
+  border-bottom-color: var(--c-bd2) !important;
+}
+
+/* Creative mode: left panel adapts */
+:root[data-canvas-mode="creative"] .canvas-left-panel {
+  background: oklch(1.00 0 0 / 0.88) !important;
+  border-right-color: var(--c-bd2) !important;
+}
+
+/* Creative mode edge lines */
+:root[data-canvas-mode="creative"] .react-flow__edge-path {
+  stroke-width: 1 !important;
+}
+
+/* Hero placeholder (no content yet) */
+.node-hero-placeholder {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  aspect-ratio: 16 / 9;
+  background: var(--c-input);
+}
+
+/* Creative mode: node cards get slightly more width */
+:root[data-canvas-mode="creative"] .react-flow__node > div {
+  /* Handled by JS — see BaseNode width scaling */
+}
+
+/* Prevent content-collapse flash during initial render */
+:root[data-canvas-mode="creative"] [data-has-hero="true"] .node-body-wrap {
+  will-change: max-height, opacity;
 }
 
 /* ── Container & Flex fixes ─────────────────────────────────────────────────── */

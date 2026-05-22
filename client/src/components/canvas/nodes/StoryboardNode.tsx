@@ -4,7 +4,7 @@ import { useCanvasStore } from "../../../hooks/useCanvasStore";
 import type { StoryboardNodeData } from "../../../../../shared/types";
 import { trpc } from "@/lib/trpc";
 import { toast } from "sonner";
-import { Sparkles, ImageIcon, Loader2, RefreshCw, ChevronDown, Upload, X, Wand2, History, Languages } from "lucide-react";
+import { Sparkles, ImageIcon, Loader2, RefreshCw, ChevronDown, Upload, X, Wand2, History, Languages, Film } from "lucide-react";
 import { IMAGE_MODELS, type ImageModelId } from "@/lib/models";
 import { makeImageProxyFallback } from "@/lib/utils";
 import { LLMModelPicker, type LLMModelId } from "../LLMModelPicker";
@@ -188,8 +188,48 @@ export const StoryboardNode = memo(function StoryboardNode({ id, selected, data 
 
   const currentModel = IMAGE_MODELS.find((m) => m.value === model) ?? IMAGE_MODELS[0];
 
+  const heroMedia = (() => {
+    if (payload.imageUrl) {
+      return (
+        <img
+          src={payload.imageUrl}
+          style={{ width: "100%", maxHeight: 220, objectFit: "cover", display: "block" }}
+          draggable={false}
+          onError={makeImageProxyFallback(payload.imageUrl)}
+          alt="分镜"
+        />
+      );
+    }
+    if (payload.description?.trim()) {
+      return (
+        <div
+          className="node-hero-placeholder"
+          style={{
+            minHeight: 100,
+            padding: "14px 16px",
+            alignItems: "flex-start",
+            justifyContent: "flex-start",
+            background: "var(--c-input)",
+          }}
+        >
+          <p style={{ fontSize: 12, color: "var(--c-t2)", lineHeight: 1.6, margin: 0 }}>
+            {payload.description.length > 120
+              ? payload.description.slice(0, 120) + "…"
+              : payload.description}
+          </p>
+        </div>
+      );
+    }
+    return (
+      <div className="node-hero-placeholder" style={{ minHeight: 120 }}>
+        <Film style={{ width: 24, height: 24, color: "var(--c-t4)" }} />
+        <span style={{ fontSize: 11, color: "var(--c-t4)", marginTop: 6 }}>分镜描述</span>
+      </div>
+    );
+  })();
+
   return (
-    <BaseNode id={id} selected={selected} nodeType="storyboard" title={data.title} minHeight={280}>
+    <BaseNode id={id} selected={selected} nodeType="storyboard" title={data.title} minHeight={280} heroMedia={heroMedia}>
       <div className="flex flex-col h-full p-3.5 gap-3">
 
         {/* ── Image preview ── always visible ──*/}

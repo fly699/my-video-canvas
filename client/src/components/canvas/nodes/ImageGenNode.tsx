@@ -5,7 +5,7 @@ import { useCanvasStore } from "../../../hooks/useCanvasStore";
 import type { ImageGenNodeData, ImageGenModel } from "../../../../../shared/types";
 import { trpc } from "@/lib/trpc";
 import { toast } from "sonner";
-import { Sparkles, Loader2, RefreshCw, Upload, X, Cpu, Check, Grid2X2, Download, ZoomIn, ChevronDown, ChevronRight, Lock, Unlock } from "lucide-react";
+import { Sparkles, Loader2, RefreshCw, Upload, X, Cpu, Check, Grid2X2, Download, ZoomIn, ChevronDown, ChevronRight, Lock, Unlock, ImagePlus } from "lucide-react";
 import { ImageLightbox } from "../ImageLightbox";
 import { IMAGE_MODELS } from "@/lib/models";
 import { makeImageProxyFallback } from "@/lib/utils";
@@ -225,8 +225,68 @@ export const ImageGenNode = memo(function ImageGenNode({ id, selected, data }: P
   // Models that use the collapsible params panel
   const isReveLike = isReve || isSeedreamV4 || isFluxPro;
 
+  const heroMedia = payload.imageUrls && payload.imageUrls.length > 0 ? (
+    <div
+      className="grid gap-1 p-2"
+      style={{ gridTemplateColumns: payload.imageUrls.length === 4 ? "1fr 1fr" : `repeat(${Math.min(payload.imageUrls.length, 3)}, 1fr)` }}
+    >
+      {payload.imageUrls.map((url, idx) => {
+        const isSelected = url === payload.imageUrl;
+        return (
+          <div key={idx} className="relative rounded-lg overflow-hidden" style={{ aspectRatio: "1/1", background: "var(--c-canvas)" }}>
+            <img
+              src={url}
+              alt={`generated-${idx}`}
+              className="w-full h-full object-cover"
+              draggable={false}
+              onError={makeImageProxyFallback(url)}
+            />
+            {isSelected && (
+              <div
+                className="absolute top-1 right-1 rounded-full flex items-center justify-center"
+                style={{ width: 16, height: 16, background: accent }}
+              >
+                <Check style={{ width: 10, height: 10, color: "var(--c-canvas)" }} />
+              </div>
+            )}
+          </div>
+        );
+      })}
+    </div>
+  ) : payload.imageUrl ? (
+    <div className="relative overflow-hidden group" style={{ width: "100%" }}>
+      <img
+        src={payload.imageUrl}
+        alt="generated"
+        className="w-full h-full object-cover"
+        draggable={false}
+        style={{ maxHeight: 260, objectFit: "cover", display: "block" }}
+        onError={makeImageProxyFallback(payload.imageUrl)}
+      />
+      <div
+        className="absolute inset-0 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center"
+        style={{ background: "oklch(0 0 0 / 0.45)" }}
+      >
+        <button
+          onClick={handleGenerate}
+          disabled={genMutation.isPending}
+          className="nodrag flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-medium"
+          style={{ background: "oklch(0.14 0.007 260 / 0.8)", borderWidth: 1, borderStyle: "solid", borderColor: "var(--c-bd3)", color: "var(--c-t2)" }}
+        >
+          {genMutation.isPending ? <Loader2 className="w-3 h-3 animate-spin" /> : <RefreshCw className="w-3 h-3" />}
+          重新生成
+        </button>
+      </div>
+    </div>
+  ) : (
+    <div className="node-hero-placeholder" style={{ minHeight: 180 }}>
+      <ImagePlus style={{ width: 12, height: 12, color: "var(--c-t4)" }} />
+      <span>尚未生成</span>
+    </div>
+  );
+
   return (
-    <BaseNode id={id} selected={selected} nodeType="image_gen" title={data.title} minHeight={300}>
+    <BaseNode id={id} selected={selected} nodeType="image_gen" title={data.title} minHeight={300} heroMedia={heroMedia}>
       <div className="flex flex-col h-full p-3.5 gap-3 overflow-auto">
 
         {/* ── Batch grid result ── */}

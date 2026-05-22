@@ -123,8 +123,22 @@ export const CharacterNode = memo(function CharacterNode({ id, selected, data }:
     </div>
   );
 
+  const heroMedia = payload.referenceImageUrl ? (
+    <img
+      src={payload.referenceImageUrl}
+      alt="参考图"
+      style={{ width: "100%", maxHeight: 240, objectFit: "cover", display: "block" }}
+      draggable={false}
+    />
+  ) : (
+    <div className="node-hero-placeholder" style={{ minHeight: 100 }}>
+      <User style={{ width: 22, height: 22, color: "var(--c-t4)" }} />
+      <span style={{ fontSize: 11, color: "var(--c-t4)", marginTop: 6 }}>暂无参考图</span>
+    </div>
+  );
+
   return (
-    <BaseNode id={id} selected={selected} nodeType="character" title={data.title} minHeight={160} resizable>
+    <BaseNode id={id} selected={selected} nodeType="character" title={data.title} minHeight={160} resizable heroMedia={heroMedia}>
       <div className="flex flex-col gap-3 p-3.5">
 
         {/* Kind toggle */}

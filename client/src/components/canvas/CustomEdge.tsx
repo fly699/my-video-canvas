@@ -3,6 +3,7 @@ import { BaseEdge, EdgeLabelRenderer, getBezierPath, Position } from "@xyflow/re
 import type { EdgeProps } from "@xyflow/react";
 import { useCanvasStore } from "../../hooks/useCanvasStore";
 import { useWorkflowRunState } from "../../contexts/WorkflowRunContext";
+import { useCanvasMode } from "../../contexts/CanvasModeContext";
 import { getNodeConfig } from "../../lib/nodeConfig";
 import { Check, X, Trash2 } from "lucide-react";
 
@@ -30,6 +31,8 @@ export const CustomEdge = memo(function CustomEdge({
   const nodes = useCanvasStore(s => s.nodes);
   const sourceNodeType = nodes.find(n => n.id === source)?.data.nodeType as string | undefined;
   const typeColor = sourceNodeType ? getNodeConfig(sourceNodeType as Parameters<typeof getNodeConfig>[0]).color : null;
+  const { mode: canvasMode } = useCanvasMode();
+  const isCreative = canvasMode === "creative";
 
   const [edgePath, labelX, labelY] = getBezierPath({
     sourceX, sourceY, sourcePosition,
@@ -72,35 +75,44 @@ export const CustomEdge = memo(function CustomEdge({
   const showControls = hovered || selected;
 
   const strokeColor = sourceCompleted
-    ? "oklch(0.60 0.18 155 / 0.85)"
+    ? (isCreative ? "oklch(0.58 0.18 155 / 0.70)" : "oklch(0.60 0.18 155 / 0.85)")
     : sourceFailed
-      ? "oklch(0.55 0.18 25 / 0.75)"
+      ? (isCreative ? "oklch(0.55 0.18 25 / 0.60)" : "oklch(0.55 0.18 25 / 0.75)")
       : selected
-        ? "oklch(0.68 0.22 285)"
+        ? (isCreative ? `${typeColor ?? "oklch(0.68 0.22 285)"}cc` : "oklch(0.68 0.22 285)")
         : hovered
-          ? "var(--c-bd3)"
-          : typeColor
-            ? `${typeColor}55`
-            : "var(--c-bd3)";
+          ? (isCreative ? "var(--c-bd3)" : "var(--c-bd3)")
+          : isCreative
+            ? (typeColor ? `${typeColor}40` : "oklch(0.78 0.005 260)")
+            : typeColor
+              ? `${typeColor}55`
+              : "var(--c-bd3)";
 
-  const strokeWidth = selected ? 3 : hovered ? 2.5 : 2;
+  const strokeWidth = isCreative
+    ? selected ? 2 : hovered ? 1.5 : 1
+    : selected ? 3 : hovered ? 2.5 : 2;
 
   // ── Particle flow ───────────────────────────────────────────────────────────
-  // Sanitize edge ID for use as SVG element ID
   const svgPathId = `pp-${id.replace(/[^a-zA-Z0-9_-]/g, "_")}`;
 
-  const durSeconds = sourceRunning ? 0.75 : 2.8;
-  const particleR = sourceRunning ? 3 : 1.8;
+  const durSeconds = sourceRunning ? 0.75 : isCreative ? 3.5 : 2.8;
+  const particleR = sourceRunning ? (isCreative ? 2.5 : 3) : isCreative ? 1.4 : 1.8;
   const particleColor = sourceRunning
     ? "oklch(0.88 0.26 142)"
     : sourceCompleted
       ? "oklch(0.72 0.18 155)"
       : sourceFailed
         ? "oklch(0.70 0.18 25)"
-        : typeColor ?? "oklch(0.65 0.06 260)";
-  const particleOpacity = sourceRunning ? 0.95 : sourceCompleted ? 0.65 : sourceFailed ? 0.50 : 0.38;
+        : isCreative
+          ? (typeColor ?? "oklch(0.60 0.10 260)")
+          : (typeColor ?? "oklch(0.65 0.06 260)");
+  const particleOpacity = sourceRunning
+    ? 0.95
+    : sourceCompleted ? (isCreative ? 0.55 : 0.65)
+    : sourceFailed ? 0.50
+    : isCreative ? 0.28 : 0.38;
   const glowR = particleR * 2.5;
-  const glowOpacity = sourceRunning ? 0.28 : 0.10;
+  const glowOpacity = sourceRunning ? 0.28 : isCreative ? 0.06 : 0.10;
 
   return (
     <>
@@ -168,9 +180,9 @@ export const CustomEdge = memo(function CustomEdge({
 
       {/* Arrowhead at target end */}
       <polygon
-        points={arrowPoints(targetX, targetY, targetPosition, 9, 5)}
+        points={arrowPoints(targetX, targetY, targetPosition, isCreative ? 7 : 9, isCreative ? 3.5 : 5)}
         fill={strokeColor}
-        opacity={0.9}
+        opacity={isCreative ? 0.65 : 0.9}
         pointerEvents="none"
       />
 
