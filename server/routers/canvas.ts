@@ -407,15 +407,7 @@ export const aiChatRouter = router({
       })
     )
     .mutation(async ({ input }) => {
-      // Save user message
-      await addChatMessage({
-        nodeId: input.nodeId,
-        projectId: input.projectId,
-        role: "user",
-        content: input.message,
-      });
-
-      // Build messages for LLM
+      // Build messages for LLM (user message included inline — not saved to DB yet)
       const history = await getChatMessages(input.nodeId, input.projectId);
       const systemContent = [
         input.systemPrompt ?? "You are a professional film and content creation assistant. Help with scripts, storyboards, prompts, and creative direction.",
@@ -427,6 +419,7 @@ export const aiChatRouter = router({
       const messages = [
         { role: "system" as const, content: systemContent },
         ...history.map((m) => ({ role: m.role as "user" | "assistant", content: m.content })),
+        { role: "user" as const, content: input.message },
       ];
 
       let assistantContent: string;
@@ -439,6 +432,14 @@ export const aiChatRouter = router({
           message: err instanceof Error ? err.message : String(err),
         });
       }
+
+      // Save both messages only after LLM succeeds — prevents orphaned user messages in DB
+      await addChatMessage({
+        nodeId: input.nodeId,
+        projectId: input.projectId,
+        role: "user",
+        content: input.message,
+      });
 
       // Save assistant message only on success
       await addChatMessage({

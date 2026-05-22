@@ -137,7 +137,8 @@ export const ScriptNode = memo(function ScriptNode({ id, selected, data }: Props
 
   const generateMutation = trpc.scripts.generateStoryboards.useMutation({
     onSuccess: (result) => {
-      const { nodes: currentNodes, batchAddSceneNodes } = useCanvasStore.getState();
+      const { nodes: currentNodes, batchAddSceneNodes, projectId } = useCanvasStore.getState();
+      if (!projectId) { toast.error("画布尚未加载，请稍后重试"); return; }
       const ownPos = currentNodes.find((n) => n.id === id)?.position ?? { x: 0, y: 0 };
       batchAddSceneNodes(result.scenes, id, ownPos);
       toast.success("分镜已生成", {
@@ -166,9 +167,11 @@ export const ScriptNode = memo(function ScriptNode({ id, selected, data }: Props
       }
       // Auto-create storyboard nodes
       if (result.scenes.length > 0) {
-        const { nodes: currentNodes, batchAddSceneNodes } = useCanvasStore.getState();
-        const ownPos = currentNodes.find((n) => n.id === id)?.position ?? { x: 0, y: 0 };
-        batchAddSceneNodes(result.scenes, id, ownPos);
+        const { nodes: currentNodes, batchAddSceneNodes, projectId } = useCanvasStore.getState();
+        if (projectId) {
+          const ownPos = currentNodes.find((n) => n.id === id)?.position ?? { x: 0, y: 0 };
+          batchAddSceneNodes(result.scenes, id, ownPos);
+        }
       }
       toast.success("AI 剧本已生成", {
         description: `剧本已填入，${result.scenes.length} 个分镜节点已创建`,

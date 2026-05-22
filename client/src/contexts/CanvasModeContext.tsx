@@ -13,9 +13,10 @@ const CanvasModeContext = createContext<CanvasModeContextType>({
 });
 
 export function CanvasModeProvider({ children }: { children: React.ReactNode }) {
-  const [mode, setModeState] = useState<CanvasMode>(() =>
-    (localStorage.getItem("avc:canvas-mode") as CanvasMode) ?? "professional"
-  );
+  const [mode, setModeState] = useState<CanvasMode>(() => {
+    const stored = localStorage.getItem("avc:canvas-mode");
+    return stored === "creative" || stored === "professional" ? stored : "professional";
+  });
 
   useEffect(() => {
     document.documentElement.setAttribute("data-canvas-mode", mode);
@@ -24,8 +25,9 @@ export function CanvasModeProvider({ children }: { children: React.ReactNode }) 
 
   // Apply persisted value synchronously before first paint
   useEffect(() => {
-    const stored = localStorage.getItem("avc:canvas-mode") as CanvasMode | null;
-    if (stored) document.documentElement.setAttribute("data-canvas-mode", stored);
+    const stored = localStorage.getItem("avc:canvas-mode");
+    const validated: CanvasMode = stored === "creative" || stored === "professional" ? stored : "professional";
+    document.documentElement.setAttribute("data-canvas-mode", validated);
   }, []);
 
   return (

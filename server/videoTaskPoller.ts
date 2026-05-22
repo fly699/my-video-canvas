@@ -135,11 +135,9 @@ export function setupVideoTaskPoller(io: SocketIOServer) {
             });
           }
         } catch (err) {
-          console.error(`[VideoPoller] Task ${task.id} error:`, err);
-          await updateVideoTask(task.id, {
-            status: "failed",
-            errorMessage: err instanceof Error ? err.message : "Unknown error",
-          });
+          // Treat as transient (network timeout, rate-limit, etc.) — log and
+          // retry on the next poll cycle rather than permanently failing the task.
+          console.error(`[VideoPoller] Task ${task.id} transient error (will retry):`, err);
         }
       }
     } catch (err) {

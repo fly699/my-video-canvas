@@ -48,6 +48,15 @@ function getLayers(
     current = next;
   }
 
+  // Nodes that never reached inDegree=0 form a cycle — include them in a final
+  // layer so the runner doesn't silently skip them.
+  const placed = new Set(layers.flat());
+  const cyclic = runnableIds.filter((id) => !placed.has(id));
+  if (cyclic.length > 0) {
+    console.warn("[useWorkflowRunner] Cycle detected among nodes:", cyclic, "— running them as a final layer.");
+    layers.push(cyclic);
+  }
+
   return layers;
 }
 

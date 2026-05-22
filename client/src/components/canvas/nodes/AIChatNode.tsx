@@ -101,8 +101,8 @@ export const AIChatNode = memo(function AIChatNode({ id, selected, data }: Props
       setLocalMessages((prev) => [...prev, { role: "assistant", content: result.content }]);
     },
     onError: (err) => {
-      // Show error as a toast only — do NOT append to localMessages so the
-      // error text is never persisted to payload.messages or the DB.
+      // Roll back the optimistic user message appended in handleSend
+      setLocalMessages((prev) => prev.slice(0, -1));
       toast.error("AI 响应失败：" + err.message);
     },
   });

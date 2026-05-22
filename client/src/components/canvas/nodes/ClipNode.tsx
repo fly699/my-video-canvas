@@ -217,7 +217,14 @@ export const ClipNode = memo(function ClipNode({ id, selected, data }: Props) {
   };
 
   const handleTimeUpdate = (e: React.SyntheticEvent<HTMLVideoElement>) => {
-    setCurrentTime((e.target as HTMLVideoElement).currentTime);
+    const v = e.target as HTMLVideoElement;
+    setCurrentTime(v.currentTime);
+    // Clamp immediately on every timeupdate event (the setInterval is a backup)
+    if (isPlaying && v.currentTime >= endTime) {
+      v.pause();
+      v.currentTime = startTime;
+      setIsPlaying(false);
+    }
   };
 
   const togglePlay = () => {
