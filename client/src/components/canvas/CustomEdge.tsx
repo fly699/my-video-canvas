@@ -13,6 +13,8 @@ function arrowPoints(tx: number, ty: number, pos: Position, sz: number, hw: numb
   return `${tx-hw},${ty-sz} ${tx+hw},${ty-sz} ${tx},${ty}`;
 }
 
+const PARTICLE_COUNT = 3;
+
 export const CustomEdge = memo(function CustomEdge({
   id,
   source,
@@ -83,8 +85,30 @@ export const CustomEdge = memo(function CustomEdge({
 
   const strokeWidth = selected ? 3 : hovered ? 2.5 : 2;
 
+  // ── Particle flow ───────────────────────────────────────────────────────────
+  // Sanitize edge ID for use as SVG element ID
+  const svgPathId = `pp-${id.replace(/[^a-zA-Z0-9_-]/g, "_")}`;
+
+  const durSeconds = sourceRunning ? 0.75 : 2.8;
+  const particleR = sourceRunning ? 3 : 1.8;
+  const particleColor = sourceRunning
+    ? "oklch(0.88 0.26 142)"
+    : sourceCompleted
+      ? "oklch(0.72 0.18 155)"
+      : sourceFailed
+        ? "oklch(0.70 0.18 25)"
+        : typeColor ?? "oklch(0.65 0.06 260)";
+  const particleOpacity = sourceRunning ? 0.95 : sourceCompleted ? 0.65 : sourceFailed ? 0.50 : 0.38;
+  const glowR = particleR * 2.5;
+  const glowOpacity = sourceRunning ? 0.28 : 0.10;
+
   return (
     <>
+      {/* Path reference for animateMotion particles */}
+      <defs>
+        <path id={svgPathId} d={edgePath} />
+      </defs>
+
       {/* Invisible wider hit area */}
       <path
         d={edgePath}
@@ -113,23 +137,34 @@ export const CustomEdge = memo(function CustomEdge({
         }}
       />
 
-      {/* Flowing animation overlay when source node is executing */}
-      {(sourceRunning || sourceCompleted) && (
-        <path
-          d={edgePath}
-          fill="none"
-          stroke={sourceRunning ? "oklch(0.78 0.22 142)" : "oklch(0.72 0.18 155)"}
-          strokeWidth={sourceRunning ? 1.5 : 1}
-          strokeDasharray="8 10"
-          strokeLinecap="round"
-          style={{
-            animation: sourceRunning ? "edge-flow 0.45s linear infinite" : undefined,
-            opacity: sourceRunning ? 0.85 : 0.45,
-            strokeDashoffset: sourceCompleted && !sourceRunning ? -4 : 0,
-          }}
-          pointerEvents="none"
-        />
-      )}
+      {/* Flowing particles — always visible, indicating data direction */}
+      {Array.from({ length: PARTICLE_COUNT }, (_, i) => {
+        const beginOffset = -((i / PARTICLE_COUNT) * durSeconds);
+        return (
+          <g key={i}>
+            {/* Glow halo */}
+            <circle r={glowR} fill={particleColor} opacity={glowOpacity}>
+              <animateMotion
+                dur={`${durSeconds}s`}
+                begin={`${beginOffset}s`}
+                repeatCount="indefinite"
+              >
+                <mpath href={`#${svgPathId}`} />
+              </animateMotion>
+            </circle>
+            {/* Core particle */}
+            <circle r={particleR} fill={particleColor} opacity={particleOpacity}>
+              <animateMotion
+                dur={`${durSeconds}s`}
+                begin={`${beginOffset}s`}
+                repeatCount="indefinite"
+              >
+                <mpath href={`#${svgPathId}`} />
+              </animateMotion>
+            </circle>
+          </g>
+        );
+      })}
 
       {/* Arrowhead at target end */}
       <polygon
