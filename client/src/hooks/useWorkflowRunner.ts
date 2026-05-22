@@ -1,6 +1,6 @@
 import { useState, useCallback, useRef, useEffect } from "react";
 import { trpc } from "@/lib/trpc";
-import { useCanvasStore } from "./useCanvasStore";
+import { useCanvasStore, type CanvasNode } from "./useCanvasStore";
 import { toast } from "sonner";
 import type { NodeType } from "../../../shared/types";
 import { VIDEO_PROVIDERS } from "../../../shared/types";
@@ -13,7 +13,50 @@ export interface WorkflowRunState {
   runnableCount: number; // set on start, 0 when not running
 }
 
-const RUNNABLE_TYPES: NodeType[] = ["storyboard", "prompt", "image_gen", "video_task"];
+const RUNNABLE_TYPES: NodeType[] = [
+  "storyboard", "prompt", "image_gen", "video_task",
+  "clip", "merge", "subtitle", "overlay",
+];
+
+const VIDEO_SOURCE_TYPES = new Set(["video_task", "clip", "merge", "overlay", "asset", "subtitle"]);
+
+/** Pick the video output URL from a node's payload regardless of which field it uses. */
+function getNodeVideoUrl(payload: Record<string, unknown>): string | undefined {
+  return (payload.resultVideoUrl ?? payload.outputUrl ?? payload.url) as string | undefined;
+}
+
+/** Auto-detect the first available video URL from nodes connected into targetId. */
+function autoDetectInputVideo(
+  targetId: string,
+  edges: { source: string; target: string }[],
+  nodes: CanvasNode[],
+): string | undefined {
+  for (const edge of edges) {
+    if (edge.target !== targetId) continue;
+    const src = nodes.find((n) => n.id === edge.source);
+    if (!src || !VIDEO_SOURCE_TYPES.has(src.data.nodeType)) continue;
+    const url = getNodeVideoUrl(src.data.payload as Record<string, unknown>);
+    if (url) return url;
+  }
+  return undefined;
+}
+
+/** Collect all video URLs from nodes connected into targetId. */
+function collectInputVideoUrls(
+  targetId: string,
+  edges: { source: string; target: string }[],
+  nodes: CanvasNode[],
+): string[] {
+  const urls: string[] = [];
+  for (const edge of edges) {
+    if (edge.target !== targetId) continue;
+    const src = nodes.find((n) => n.id === edge.source);
+    if (!src || !VIDEO_SOURCE_TYPES.has(src.data.nodeType)) continue;
+    const url = getNodeVideoUrl(src.data.payload as Record<string, unknown>);
+    if (url) urls.push(url);
+  }
+  return urls;
+}
 
 /** Group runnableIds into dependency layers using topological sort */
 function getLayers(
@@ -48,12 +91,11 @@ function getLayers(
     current = next;
   }
 
-  // Nodes that never reached inDegree=0 form a cycle — include them in a final
-  // layer so the runner doesn't silently skip them.
+  // Nodes that never reached inDegree=0 form a cycle — warn and include as a final layer.
   const placed = new Set(layers.flat());
   const cyclic = runnableIds.filter((id) => !placed.has(id));
   if (cyclic.length > 0) {
-    console.warn("[useWorkflowRunner] Cycle detected among nodes:", cyclic, "— running them as a final layer.");
+    toast.warning(`检测到节点循环依赖，将单独执行（${cyclic.length} 个节点）`);
     layers.push(cyclic);
   }
 
@@ -77,6 +119,11 @@ export function useWorkflowRunner() {
 
   const imageGenMutation = trpc.imageGen.generate.useMutation();
   const videoTaskMutation = trpc.videoTasks.create.useMutation();
+  const clipMutation = trpc.clip.trimVideo.useMutation();
+  const mergeMutation = trpc.merge.mergeVideos.useMutation();
+  const subtitleTranscribeMutation = trpc.subtitle.transcribe.useMutation();
+  const subtitleBurnMutation = trpc.subtitle.burnIn.useMutation();
+  const overlayMutation = trpc.overlay.process.useMutation();
 
   const runWorkflow = useCallback(async (startNodeId: string | null) => {
     const { nodes, edges } = useCanvasStore.getState();
@@ -126,7 +173,7 @@ export function useWorkflowRunner() {
     }
 
     if (runnableIds.length === 0) {
-      toast.info("没有可运行的节点（分镜/提示词/图像/视频）");
+      toast.info("没有可运行的节点");
       return;
     }
 
@@ -165,6 +212,7 @@ export function useWorkflowRunner() {
       const nodeType = node.data.nodeType;
 
       try {
+        // ── Image generation (storyboard / prompt / image_gen) ──────────────
         if (nodeType === "storyboard" || nodeType === "prompt" || nodeType === "image_gen") {
           const prompt =
             (p.promptText as string) ||
@@ -199,13 +247,11 @@ export function useWorkflowRunner() {
           }, true);
 
           // Propagate image URL to connected video_task nodes
-          const downstreamUpdates = useCanvasStore
-            .getState()
-            .edges.filter((e) => e.source === nodeId)
+          const { edges: currentEdges, nodes: currentNodes } = useCanvasStore.getState();
+          const downstreamUpdates = currentEdges
+            .filter((e) => e.source === nodeId)
             .flatMap((edge) => {
-              const target = useCanvasStore
-                .getState()
-                .nodes.find((n) => n.id === edge.target);
+              const target = currentNodes.find((n) => n.id === edge.target);
               return target?.data.nodeType === "video_task" && bestUrl
                 ? [{ id: edge.target, payload: { referenceImageUrl: bestUrl } }]
                 : [];
@@ -215,6 +261,8 @@ export function useWorkflowRunner() {
           }
           completed.push(nodeId);
           return "ok";
+
+        // ── Video task ──────────────────────────────────────────────────────
         } else if (nodeType === "video_task") {
           const prompt = (p.prompt as string) || "";
           if (!prompt.trim() && !(p.referenceImageUrl as string)) {
@@ -239,6 +287,154 @@ export function useWorkflowRunner() {
           useCanvasStore
             .getState()
             .updateNodeData(nodeId, { taskId: task.id, status: "processing" }, true);
+          completed.push(nodeId);
+          return "ok";
+
+        // ── Clip / trim ─────────────────────────────────────────────────────
+        } else if (nodeType === "clip") {
+          const { nodes: ns, edges: es } = useCanvasStore.getState();
+          const inputUrl =
+            (p.inputVideoUrl as string) ||
+            autoDetectInputVideo(nodeId, es, ns);
+          if (!inputUrl) {
+            toast.error(`节点 "${node.data.title}"：未找到视频输入`);
+            failed.push(nodeId);
+            return "fail";
+          }
+          const startTime = typeof p.startTime === "number" ? p.startTime : 0;
+          const endTime = typeof p.endTime === "number" ? p.endTime : (p.sourceDuration as number ?? 0);
+          if (endTime <= startTime) {
+            toast.error(`节点 "${node.data.title}"：出点必须大于入点`);
+            failed.push(nodeId);
+            return "fail";
+          }
+          const result = await clipMutation.mutateAsync({
+            inputUrl,
+            startTime,
+            endTime,
+            speed: typeof p.speed === "number" && Math.abs(p.speed - 1.0) > 0.01 ? p.speed : undefined,
+            audioUrl: (p.inputAudioUrl as string) || undefined,
+            audioVolume: typeof p.audioVolume === "number" ? p.audioVolume : undefined,
+          });
+          useCanvasStore.getState().updateNodeData(nodeId, {
+            outputUrl: result.url,
+            outputDuration: result.duration,
+            status: "done",
+          }, true);
+          completed.push(nodeId);
+          return "ok";
+
+        // ── Merge ───────────────────────────────────────────────────────────
+        } else if (nodeType === "merge") {
+          const { nodes: ns, edges: es } = useCanvasStore.getState();
+          const inputUrls: string[] = (p.inputVideoUrls as string[] | undefined)?.length
+            ? (p.inputVideoUrls as string[])
+            : collectInputVideoUrls(nodeId, es, ns);
+          if (inputUrls.length < 2) {
+            toast.error(`节点 "${node.data.title}"：至少需要 2 个视频输入`);
+            failed.push(nodeId);
+            return "fail";
+          }
+          const result = await mergeMutation.mutateAsync({
+            inputUrls,
+            transition: (p.transition as "none" | "fade" | "dissolve") || undefined,
+            transitionDuration: typeof p.transitionDuration === "number" ? p.transitionDuration : undefined,
+            bgMusicUrl: (p.bgMusicUrl as string) || undefined,
+            bgMusicVolume: typeof p.bgMusicVolume === "number" ? p.bgMusicVolume : undefined,
+          });
+          useCanvasStore.getState().updateNodeData(nodeId, {
+            outputUrl: result.url,
+            outputDuration: result.duration,
+            status: "done",
+          }, true);
+          completed.push(nodeId);
+          return "ok";
+
+        // ── Subtitle ────────────────────────────────────────────────────────
+        } else if (nodeType === "subtitle") {
+          const { nodes: ns, edges: es } = useCanvasStore.getState();
+          const videoUrl =
+            (p.inputVideoUrl as string) ||
+            autoDetectInputVideo(nodeId, es, ns);
+          if (!videoUrl) {
+            toast.error(`节点 "${node.data.title}"：未找到视频输入`);
+            failed.push(nodeId);
+            return "fail";
+          }
+
+          let entries = p.entries as Array<{ start: number; end: number; text: string }> | undefined;
+
+          // Step 1: transcribe if no entries yet
+          if (!entries?.length) {
+            const transcribeResult = await subtitleTranscribeMutation.mutateAsync({
+              audioUrl: videoUrl,
+              language: (p.language as string) || undefined,
+            });
+            entries = transcribeResult.entries;
+            useCanvasStore.getState().updateNodeData(nodeId, {
+              entries,
+              language: transcribeResult.language,
+            }, true);
+          }
+
+          // Step 2: burn-in if enabled
+          if (p.burnInEnabled && entries?.length) {
+            const burnResult = await subtitleBurnMutation.mutateAsync({
+              videoUrl,
+              entries,
+              fontSize: typeof p.fontSize === "number" ? p.fontSize : undefined,
+              fontColor: (p.fontColor as string) || undefined,
+            });
+            useCanvasStore.getState().updateNodeData(nodeId, {
+              outputUrl: burnResult.url,
+              status: "done",
+            }, true);
+          } else {
+            useCanvasStore.getState().updateNodeData(nodeId, { status: "done" }, true);
+          }
+          completed.push(nodeId);
+          return "ok";
+
+        // ── Overlay ─────────────────────────────────────────────────────────
+        } else if (nodeType === "overlay") {
+          const { nodes: ns, edges: es } = useCanvasStore.getState();
+          const inputUrl =
+            (p.inputVideoUrl as string) ||
+            autoDetectInputVideo(nodeId, es, ns);
+          if (!inputUrl) {
+            toast.error(`节点 "${node.data.title}"：未找到视频输入`);
+            failed.push(nodeId);
+            return "fail";
+          }
+          const mode = (p.mode as "watermark" | "pip" | "color_correction") || "watermark";
+          if (mode === "watermark" && !(p.overlayImageUrl as string)) {
+            toast.error(`节点 "${node.data.title}"：水印模式需要叠加图片`);
+            failed.push(nodeId);
+            return "fail";
+          }
+          if (mode === "pip" && !(p.pipVideoUrl as string)) {
+            toast.error(`节点 "${node.data.title}"：画中画模式需要 PiP 视频`);
+            failed.push(nodeId);
+            return "fail";
+          }
+          const result = await overlayMutation.mutateAsync({
+            inputUrl,
+            mode,
+            overlayImageUrl: (p.overlayImageUrl as string) || undefined,
+            overlayPosition: (p.overlayPosition as "top-left" | "top-right" | "bottom-left" | "bottom-right" | "center") || undefined,
+            overlayScale: typeof p.overlayScale === "number" ? p.overlayScale : undefined,
+            overlayOpacity: typeof p.overlayOpacity === "number" ? p.overlayOpacity : undefined,
+            pipVideoUrl: (p.pipVideoUrl as string) || undefined,
+            pipPosition: (p.pipPosition as "top-left" | "top-right" | "bottom-left" | "bottom-right") || undefined,
+            pipScale: typeof p.pipScale === "number" ? p.pipScale : undefined,
+            brightness: typeof p.brightness === "number" ? p.brightness : undefined,
+            contrast: typeof p.contrast === "number" ? p.contrast : undefined,
+            saturation: typeof p.saturation === "number" ? p.saturation : undefined,
+          });
+          useCanvasStore.getState().updateNodeData(nodeId, {
+            outputUrl: result.url,
+            status: "done",
+          }, true);
           completed.push(nodeId);
           return "ok";
         }
@@ -276,16 +472,20 @@ export function useWorkflowRunner() {
       });
       const ok = completed.length;
       const ko = failed.length;
+      const { nodes: finalNodes } = useCanvasStore.getState();
       if (ko === 0) {
         toast.success("工作流执行完成", { description: `${ok} 个节点成功`, duration: 5000 });
       } else {
+        const failedNames = failed
+          .map((fid) => finalNodes.find((n) => n.id === fid)?.data.title ?? fid)
+          .join("、");
         toast.warning("工作流执行完成", {
-          description: `${ok} 成功，${ko} 失败`,
-          duration: 5000,
+          description: `${ok} 成功，${ko} 失败：${failedNames}`,
+          duration: 8000,
         });
       }
     }
-  }, [imageGenMutation, videoTaskMutation]);
+  }, [imageGenMutation, videoTaskMutation, clipMutation, mergeMutation, subtitleTranscribeMutation, subtitleBurnMutation, overlayMutation]);
 
   const reset = useCallback(() => {
     setRunState({
