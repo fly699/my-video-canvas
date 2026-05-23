@@ -21,13 +21,15 @@ async function isWhitelistEnabled(): Promise<boolean> {
   try {
     const settings = await db.getWhitelistSettings();
     // Only write to cache if no invalidation happened while awaiting the DB.
-    // If generation changed, skip the write — the next caller will re-read and pick up the
-    // fresh value; a second eager read here would cause an unbounded concurrent query storm.
     if (_cacheGeneration === gen) {
       _cachedEnabled = settings?.enabled ?? false;
       _cacheExpiry = now + 30_000;
+      return _cachedEnabled;
     }
-    return settings?.enabled ?? false;
+    // Generation changed while awaiting — our read may be stale. Re-read once to get
+    // the post-invalidation value. Don't cache the result so the first caller that
+    // sees a stable generation will populate the cache normally.
+    return (await db.getWhitelistSettings())?.enabled ?? false;
   } catch (err) {
     console.error("[Whitelist] DB error in isWhitelistEnabled, treating as disabled:", err);
     // Always write the throttle cache (no generation check) so every caller backs off for

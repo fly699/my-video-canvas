@@ -44,7 +44,7 @@ class OAuthService {
       const decoded = atob(state);
       try {
         const parsed = JSON.parse(decoded) as { redirectUri?: string };
-        if (typeof parsed.redirectUri === "string") return parsed.redirectUri;
+        if (typeof parsed.redirectUri === "string" && parsed.redirectUri.length > 0) return parsed.redirectUri;
       } catch { /* legacy plain-URI state */ }
       return decoded;
     } catch { /* non-base64 state — return as-is */ }
