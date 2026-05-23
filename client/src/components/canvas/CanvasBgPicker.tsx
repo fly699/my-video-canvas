@@ -107,6 +107,7 @@ interface Props {
 
 export function CanvasBgPicker({ value, onChange }: Props) {
   const [open, setOpen] = useState(false);
+  const [showAllPresets, setShowAllPresets] = useState(false);
   const panelRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -244,8 +245,8 @@ export function CanvasBgPicker({ value, onChange }: Props) {
             <p style={{ fontSize: 10, fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.06em", color: "var(--c-t4)", marginBottom: 8 }}>
               底色
             </p>
-            <div style={{ display: "grid", gridTemplateColumns: "repeat(5, 1fr)", gap: 6 }}>
-              {BG_PRESETS.map((preset) => {
+            <div style={{ display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
+              {(showAllPresets ? BG_PRESETS : BG_PRESETS.slice(0, 3)).map((preset) => {
                 const isActive = value.bgColor === preset.color;
                 return (
                   <button
@@ -278,6 +279,28 @@ export function CanvasBgPicker({ value, onChange }: Props) {
                   </button>
                 );
               })}
+              <button
+                onClick={() => setShowAllPresets(v => !v)}
+                title={showAllPresets ? "收起" : `展开全部 ${BG_PRESETS.length} 个`}
+                style={{
+                  display: "flex",
+                  flexDirection: "column",
+                  alignItems: "center",
+                  gap: 4,
+                  padding: "5px 4px",
+                  borderRadius: 8,
+                  border: "1.5px solid var(--c-bd1)",
+                  background: "var(--c-surface)",
+                  cursor: "pointer",
+                  color: "var(--c-t3)",
+                  fontSize: 10,
+                }}
+              >
+                <div style={{ width: 32, height: 22, borderRadius: 6, display: "flex", alignItems: "center", justifyContent: "center", background: "var(--c-elevated)" }}>
+                  <span style={{ fontSize: 14, lineHeight: 1 }}>{showAllPresets ? "−" : "···"}</span>
+                </div>
+                <span style={{ fontSize: 9, color: "var(--c-t4)" }}>{showAllPresets ? "收起" : "更多"}</span>
+              </button>
             </div>
 
             {/* Gap / size sliders for non-none patterns */}

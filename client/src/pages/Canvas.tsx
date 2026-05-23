@@ -363,6 +363,8 @@ function CanvasInner({ projectId }: { projectId: number }) {
   const nodesRef = useRef(nodes);
   nodesRef.current = nodes;
   const [viewport, setViewport] = useState({ x: 0, y: 0, zoom: 1 });
+  const [barOffset, setBarOffset] = useState({ x: 0, y: 0 });
+  const barDragRef = useRef<{ startX: number; startY: number; initX: number; initY: number } | null>(null);
   const [renamingProject, setRenamingProject] = useState(false);
   const [renameValue, setRenameValue] = useState("");
   const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -771,7 +773,7 @@ function CanvasInner({ projectId }: { projectId: number }) {
         style={{
           background: canvasMode === "creative"
             ? "oklch(1.00 0 0 / 0.94)"
-            : "oklch(0.09 0.006 260 / 0.95)",
+            : "color-mix(in oklch, var(--c-base) 95%, transparent)",
           backdropFilter: "blur(20px)",
           borderBottom: "1px solid var(--c-bd1)",
         }}
@@ -1317,11 +1319,30 @@ function CanvasInner({ projectId }: { projectId: number }) {
 
           {/* ── Bottom floating toolbar ── */}
           <div
-            className="canvas-bottombar absolute bottom-5 left-1/2 z-20 flex items-center gap-1.5 px-2.5 py-1.5 rounded-2xl"
+            className="canvas-bottombar absolute z-20 flex items-center gap-1.5 px-2.5 py-1.5 rounded-2xl"
             onClick={(e) => e.stopPropagation()}
+            onMouseDown={(e) => {
+              // 只响应直接在工具栏背景上的拖拽（不拦截按钮点击）
+              if ((e.target as HTMLElement).closest("button,input,select")) return;
+              e.preventDefault();
+              barDragRef.current = { startX: e.clientX, startY: e.clientY, initX: barOffset.x, initY: barOffset.y };
+              const onMove = (mv: MouseEvent) => {
+                if (!barDragRef.current) return;
+                setBarOffset({
+                  x: barDragRef.current.initX + mv.clientX - barDragRef.current.startX,
+                  y: barDragRef.current.initY + mv.clientY - barDragRef.current.startY,
+                });
+              };
+              const onUp = () => { barDragRef.current = null; window.removeEventListener("mousemove", onMove); window.removeEventListener("mouseup", onUp); };
+              window.addEventListener("mousemove", onMove);
+              window.addEventListener("mouseup", onUp);
+            }}
             style={{
+              bottom: `calc(20px - ${barOffset.y}px)`,
+              left: `calc(50% + ${barOffset.x}px)`,
               transform: "translateX(-50%)",
-              background: "oklch(0.10 0.007 260 / 0.95)",
+              cursor: "grab",
+              background: "color-mix(in oklch, var(--c-base) 95%, transparent)",
               backdropFilter: "blur(24px)",
               border: "1px solid var(--c-bd2)",
               boxShadow: "0 8px 40px oklch(0 0 0 / 0.60), 0 2px 8px oklch(0 0 0 / 0.40), 0 0 0 1px oklch(0.20 0.008 260 / 0.5)",
@@ -1475,7 +1496,7 @@ function CanvasInner({ projectId }: { projectId: number }) {
                   className="absolute bottom-12 right-0 rounded-2xl p-4 z-40 animate-scale-in"
                   style={{
                     width: 280,
-                    background: "oklch(0.10 0.007 260 / 0.97)",
+                    background: "color-mix(in oklch, var(--c-base) 97%, transparent)",
                     backdropFilter: "blur(24px)",
                     border: "1px solid var(--c-bd2)",
                     boxShadow: "0 16px 48px oklch(0 0 0 / 0.70), 0 4px 12px oklch(0 0 0 / 0.40)",
