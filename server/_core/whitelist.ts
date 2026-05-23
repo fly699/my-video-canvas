@@ -26,7 +26,7 @@ async function isWhitelistEnabled(): Promise<boolean> {
     // Only write cache if no invalidation happened while awaiting.
     if (_cacheGeneration === gen) {
       _cachedEnabled = settings?.enabled ?? false;
-      _cacheExpiry = now + 30_000;
+      _cacheExpiry = Date.now() + 30_000;
       return _cachedEnabled;
     }
     // Generation changed — re-read once for the post-invalidation value and cache it
