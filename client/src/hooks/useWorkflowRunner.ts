@@ -242,7 +242,7 @@ export function useWorkflowRunner() {
             style: (p.style as string) || undefined,
             model: (VALID_IMAGE_MODELS.has(rawModel) ? rawModel : undefined) as Parameters<typeof imageGenMutation.mutateAsync>[0]["model"],
             seed: typeof p.seed === "number" ? p.seed : undefined,
-            batchSize: typeof p.batchSize === "number" ? p.batchSize : undefined,
+            batchSize: ([1, 4] as number[]).includes(p.batchSize as number) ? (p.batchSize as 1 | 4) : undefined,
             referenceImageUrl: (p.referenceImageUrl as string) || undefined,
             projectId: node.data.projectId,
           });
@@ -454,6 +454,8 @@ export function useWorkflowRunner() {
           return "ok";
         }
 
+        // Unrecognized runnable node type — mark as failed
+        failed.push(nodeId);
         return "fail";
       } catch (err) {
         failed.push(nodeId);

@@ -103,6 +103,7 @@ export const StoryboardNode = memo(function StoryboardNode({ id, selected, data 
       const base64 = (reader.result as string).split(",")[1];
       uploadRefMutation.mutate({ base64, mimeType: file.type, filename: file.name });
     };
+    reader.onerror = () => { setUploadingRef(false); toast.error("文件读取失败"); };
     reader.readAsDataURL(file);
     e.target.value = "";
   };
@@ -748,6 +749,7 @@ export const StoryboardNode = memo(function StoryboardNode({ id, selected, data 
                 onClick={async () => {
                   try {
                     const res = await fetch(zoomUrl);
+                    if (!res.ok) throw new Error(`HTTP ${res.status}`);
                     const blob = await res.blob();
                     const a = document.createElement("a");
                     const objectUrl = URL.createObjectURL(blob);
@@ -758,6 +760,7 @@ export const StoryboardNode = memo(function StoryboardNode({ id, selected, data 
                     document.body.removeChild(a);
                     setTimeout(() => URL.revokeObjectURL(objectUrl), 10_000);
                   } catch {
+                    toast.info("直接下载失败，已在新标签页打开");
                     window.open(zoomUrl, "_blank");
                   }
                 }}
