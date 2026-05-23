@@ -56,6 +56,14 @@ export const StoryboardNode = memo(function StoryboardNode({ id, selected, data 
   const [batchCount, setBatchCount] = useState<1 | 4>(([1, 4].includes(payload.batchSize as number) ? payload.batchSize : 1) as 1 | 4);
   const [zoomUrl, setZoomUrl] = useState<string | null>(null);
 
+  // Close lightbox on Escape
+  useEffect(() => {
+    if (!zoomUrl) return;
+    const handler = (e: KeyboardEvent) => { if (e.key === "Escape") setZoomUrl(null); };
+    document.addEventListener("keydown", handler);
+    return () => document.removeEventListener("keydown", handler);
+  }, [zoomUrl]);
+
   // Sync batchCount when payload.batchSize changes externally (collab / undo-redo)
   useEffect(() => {
     if ([1, 4].includes(payload.batchSize as number)) {
@@ -108,6 +116,7 @@ export const StoryboardNode = memo(function StoryboardNode({ id, selected, data 
       const newHistory = [...newUrls, ...currentHistory].filter((u): u is string => !!u).slice(0, 12);
       updateNodeData(id, { imageUrl, imageHistory: newHistory });
       setGenerating(false);
+      if (newUrls.length > 1) setShowHistory(true);
       toast.success(newUrls.length > 1 ? `已生成 ${newUrls.length} 张，可在历史中切换` : "分镜图像已生成");
     },
     onError: (err) => {
@@ -744,7 +753,9 @@ export const StoryboardNode = memo(function StoryboardNode({ id, selected, data 
                     const objectUrl = URL.createObjectURL(blob);
                     a.href = objectUrl;
                     a.download = "storyboard.png";
+                    document.body.appendChild(a);
                     a.click();
+                    document.body.removeChild(a);
                     setTimeout(() => URL.revokeObjectURL(objectUrl), 10_000);
                   } catch {
                     window.open(zoomUrl, "_blank");
