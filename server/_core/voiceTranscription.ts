@@ -94,8 +94,10 @@ export async function transcribeAudio(
     // Guard against SSRF to private/local network addresses
     try {
       const { protocol, hostname } = new URL(options.audioUrl);
-      const privatePatterns = [/^localhost$/i, /^127\./, /^10\./, /^172\.(1[6-9]|2\d|3[01])\./, /^192\.168\./, /^169\.254\./, /^::1$/, /^0\./];
-      if ((protocol !== "https:" && protocol !== "http:") || privatePatterns.some((p) => p.test(hostname))) {
+      // URL.hostname wraps IPv6 in brackets (e.g. "[::1]") — strip them before matching.
+      const host = hostname.startsWith("[") && hostname.endsWith("]") ? hostname.slice(1, -1) : hostname;
+      const privatePatterns = [/^localhost$/i, /^127\./, /^10\./, /^172\.(1[6-9]|2\d|3[01])\./, /^192\.168\./, /^169\.254\./, /^::1$/, /^::ffff:/i, /^0\./, /^fd[0-9a-f]{2}:/i];
+      if ((protocol !== "https:" && protocol !== "http:") || privatePatterns.some((p) => p.test(host))) {
         return { error: "Invalid audio URL", code: "INVALID_FORMAT" as const, details: "Private or non-HTTP URLs are not allowed" };
       }
     } catch {

@@ -462,6 +462,7 @@ export const aiChatRouter = router({
       })
     )
     .mutation(async ({ ctx, input }) => {
+      await assertWhitelisted(ctx);
       await assertProjectOwner(input.projectId, ctx.user.id);
       // Build messages for LLM (user message included inline — not saved to DB yet)
       const history = await getChatMessages(input.nodeId, input.projectId);
@@ -614,7 +615,8 @@ export const scriptsRouter = router({
         model: z.string().optional(),
       })
     )
-    .mutation(async ({ input }) => {
+    .mutation(async ({ ctx, input }) => {
+      await assertWhitelisted(ctx);
       const systemPrompt = `You are a professional film director and storyboard artist.
 Given a script, break it into exactly ${input.count} visual storyboard scenes.
 Output ONLY a valid JSON array with no markdown fences, no explanation.
@@ -664,7 +666,8 @@ Each element must have these fields:
         model: z.string().optional(),
       })
     )
-    .mutation(async ({ input }) => {
+    .mutation(async ({ ctx, input }) => {
+      await assertWhitelisted(ctx);
       const MODEL_PROMPT_GUIDES: Record<string, string> = {
         kling: "Kling (Kuaishou): Excellent precise camera control. Use detailed camera moves: push-in, dolly, orbital pan, crane shot. Rich motion expression with emotional narrative. Describe subject actions precisely.",
         veo: "Veo 3.1 (Google): Natural language understanding. Use flowing natural English. Emphasize realistic physics, human emotions, complex interactions. Write like a film scene description. No keyword lists.",
@@ -942,7 +945,8 @@ export const aiEnhanceRouter = router({
         model: z.string().optional(),
       })
     )
-    .mutation(async ({ input }) => {
+    .mutation(async ({ ctx, input }) => {
+      await assertWhitelisted(ctx);
       const systemPrompts: Record<string, string> = {
         expand: `You are a creative writing assistant specializing in AI video generation prompts.
 Expand the given text into a rich, detailed description with sensory details, atmosphere, lighting, composition, and cinematic qualities.

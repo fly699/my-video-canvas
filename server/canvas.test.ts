@@ -45,6 +45,7 @@ vi.mock("./db", () => ({
   createVideoTask: vi.fn().mockResolvedValue({}),
   getVideoTask: vi.fn().mockResolvedValue({
     id: 1,
+    userId: 1,
     status: "pending",
     provider: "mock",
     prompt: "test",
@@ -57,6 +58,9 @@ vi.mock("./db", () => ({
   addChatMessage: vi.fn().mockResolvedValue({}),
   addChatMessagePair: vi.fn().mockResolvedValue(undefined),
   clearChatMessages: vi.fn().mockResolvedValue({}),
+  getWhitelistSettings: vi.fn().mockResolvedValue({ id: 1, enabled: false, updatedAt: new Date() }),
+  isWhitelisted: vi.fn().mockResolvedValue(false),
+  insertAuditLog: vi.fn().mockResolvedValue(undefined),
 }));
 
 // ── Mock LLM ──────────────────────────────────────────────────────────────────
@@ -95,6 +99,7 @@ function createAuthContext(): TrpcContext {
       name: "Test User",
       email: "test@example.com",
       loginMethod: "manus",
+      passwordHash: null,
       role: "user",
       createdAt: new Date(),
       updatedAt: new Date(),
@@ -107,6 +112,7 @@ function createAuthContext(): TrpcContext {
     res: {
       clearCookie: vi.fn(),
     } as unknown as TrpcContext["res"],
+    clientIp: "127.0.0.1",
   };
 }
 

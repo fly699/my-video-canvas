@@ -51,7 +51,10 @@ export const adminRouter = router({
         type: z.enum(["ip", "user"]),
         value: z.string().min(1).max(320),
         note: z.string().max(500).optional(),
-      }))
+      }).refine(
+        (d) => d.type !== "user" || /^\d+$/.test(d.value),
+        { message: "用户类型白名单的 value 必须为纯数字用户 ID", path: ["value"] }
+      ))
       .mutation(async ({ ctx, input }) => {
         await db.addWhitelistEntry(input.type, input.value, input.note ?? null, ctx.user.id);
         return { success: true };
