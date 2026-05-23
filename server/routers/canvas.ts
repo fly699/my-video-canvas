@@ -526,7 +526,7 @@ export const imageGenRouter = router({
         poyoQuality: z.enum(["low", "medium", "high"]).optional(),
         widthAndHeight: z.string().optional(),
         quality: z.enum(["720p", "1080p"]).optional(),
-        batchSize: z.number().int().min(1).max(4).optional(),
+        batchSize: z.union([z.literal(1), z.literal(4)]).optional(),
         seed: z.number().int().optional(),
         enhancePrompt: z.boolean().optional(),
         // Reve specific params

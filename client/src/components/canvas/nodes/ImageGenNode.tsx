@@ -150,7 +150,7 @@ export const ImageGenNode = memo(function ImageGenNode({ id, selected, data }: P
       ...(payload.model === "hf_soul_standard" ? {
         widthAndHeight: payload.widthAndHeight,
         quality: payload.soulQuality,
-        batchSize: payload.batchSize,
+        batchSize: ([1, 4] as number[]).includes(payload.batchSize as number) ? (payload.batchSize as 1 | 4) : undefined,
         seed: payload.seed,
         enhancePrompt: payload.enhancePrompt,
       } : {}),

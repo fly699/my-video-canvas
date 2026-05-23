@@ -760,8 +760,12 @@ export const StoryboardNode = memo(function StoryboardNode({ id, selected, data 
                     document.body.removeChild(a);
                     setTimeout(() => URL.revokeObjectURL(objectUrl), 10_000);
                   } catch {
-                    toast.info("直接下载失败，已在新标签页打开");
-                    window.open(zoomUrl, "_blank");
+                    if (/^https?:\/\//i.test(zoomUrl)) {
+                      toast.info("直接下载失败，将尝试在新标签页打开");
+                      window.open(zoomUrl, "_blank");
+                    } else {
+                      toast.error("下载失败，图片链接无效");
+                    }
                   }
                 }}
                 style={{
