@@ -40,6 +40,7 @@ import { transcribeAudio } from "../_core/voiceTranscription";
 import { VIDEO_PROVIDERS } from "../../shared/types";
 import type { SubtitleEntry } from "../../shared/types";
 import { assertWhitelisted } from "../_core/whitelist";
+import { writeAuditLog, truncate } from "../_core/auditLog";
 
 // ── Ownership helpers ─────────────────────────────────────────────────────────
 
@@ -293,6 +294,16 @@ export const videoTasksRouter = router({
         status: "pending",
       });
       if (!task) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "Failed to create video task" });
+      writeAuditLog({
+        ctx,
+        action: "video_gen",
+        detail: {
+          provider: input.provider,
+          prompt: truncate(input.prompt),
+          taskId: task.id,
+          nodeId: input.nodeId,
+        },
+      });
 
       // Submit to external provider; on failure the task stays "pending" for the poller to retry
       try {
@@ -577,6 +588,16 @@ export const imageGenRouter = router({
         } : {}),
       });
 
+      writeAuditLog({
+        ctx,
+        action: "image_gen",
+        detail: {
+          model: input.model ?? "default",
+          prompt: truncate(input.prompt),
+          resultUrl: result.url ?? result.urls?.[0] ?? null,
+          resultCount: result.urls?.length ?? (result.url ? 1 : 0),
+        },
+      });
       return { url: result.url, urls: result.urls };
     }),
 });
@@ -747,6 +768,11 @@ export const audioGenRouter = router({
         instrumental: input.instrumental,
         negativePrompt: input.negativePrompt,
       });
+      writeAuditLog({
+        ctx,
+        action: "audio_music",
+        detail: { model: input.model, prompt: truncate(input.prompt), resultUrl: result.url, duration: result.duration },
+      });
       return { url: result.url, duration: result.duration };
     }),
 
@@ -768,6 +794,11 @@ export const audioGenRouter = router({
         text: input.text,
         voice: input.voice,
         speed: input.speed,
+      });
+      writeAuditLog({
+        ctx,
+        action: "audio_dubbing",
+        detail: { model: input.model, text: truncate(input.text), voice: input.voice ?? null, resultUrl: result.url, duration: result.duration },
       });
       return { url: result.url, duration: result.duration };
     }),
@@ -837,6 +868,11 @@ export const subtitleRouter = router({
         end: s.end,
         text: s.text.trim(),
       }));
+      writeAuditLog({
+        ctx,
+        action: "subtitle_transcribe",
+        detail: { audioUrl: truncate(input.audioUrl, 200), language: result.language, segmentCount: entries.length },
+      });
       return { entries, fullText: result.text, language: result.language };
     }),
 

@@ -175,3 +175,22 @@ export const whitelistEntries = mysqlTable("whitelistEntries", {
 
 export type WhitelistEntry = typeof whitelistEntries.$inferSelect;
 export type InsertWhitelistEntry = typeof whitelistEntries.$inferInsert;
+
+// ── Audit Logs ────────────────────────────────────────────────────────────────
+
+export const auditLogs = mysqlTable("auditLogs", {
+  id: int("id").autoincrement().primaryKey(),
+  userId: int("userId"),
+  userEmail: varchar("userEmail", { length: 320 }),
+  userName: varchar("userName", { length: 255 }),
+  ip: varchar("ip", { length: 64 }).notNull(),
+  country: varchar("country", { length: 64 }),
+  region: varchar("region", { length: 128 }),
+  city: varchar("city", { length: 128 }),
+  action: varchar("action", { length: 64 }).notNull(),
+  detail: json("detail"),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+});
+
+export type AuditLog = typeof auditLogs.$inferSelect;
+export type InsertAuditLog = typeof auditLogs.$inferInsert;

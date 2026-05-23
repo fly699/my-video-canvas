@@ -3,6 +3,7 @@ import type { Express, Request, Response } from "express";
 import * as db from "../db";
 import { getSessionCookieOptions } from "./cookies";
 import { sdk } from "./sdk";
+import { writeAuditLog } from "./auditLog";
 
 function getQueryParam(req: Request, key: string): string | undefined {
   const value = req.query[key];
@@ -43,6 +44,16 @@ export function registerOAuthRoutes(app: Express) {
 
       const cookieOptions = getSessionCookieOptions(req);
       res.cookie(COOKIE_NAME, sessionToken, { ...cookieOptions, maxAge: ONE_YEAR_MS });
+
+      const clientIp = (req.headers["x-forwarded-for"] as string)?.split(",")[0]?.trim()
+        ?? req.socket?.remoteAddress ?? "unknown";
+      writeAuditLog({
+        ip: clientIp,
+        userEmail: userInfo.email ?? null,
+        userName: userInfo.name ?? null,
+        action: "login_oauth",
+        detail: { method: userInfo.loginMethod ?? userInfo.platform ?? "oauth" },
+      });
 
       res.redirect(302, "/");
     } catch (error) {

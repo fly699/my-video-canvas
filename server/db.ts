@@ -1,4 +1,4 @@
-import { eq, and, desc } from "drizzle-orm";
+import { eq, and, desc, sql } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/mysql2";
 import {
   InsertUser,
@@ -11,12 +11,14 @@ import {
   chatMessages,
   whitelistSettings,
   whitelistEntries,
+  auditLogs,
   InsertProject,
   InsertCanvasNode,
   InsertCanvasEdge,
   InsertAsset,
   InsertVideoTask,
   InsertChatMessage,
+  InsertAuditLog,
 } from "../drizzle/schema";
 import { ENV } from "./_core/env";
 import * as dev from "./_core/devStore";
@@ -408,4 +410,58 @@ export async function isWhitelisted(type: "ip" | "user", value: string): Promise
     .where(and(eq(whitelistEntries.type, type), eq(whitelistEntries.value, value)))
     .limit(1);
   return rows.length > 0;
+}
+
+// ── Audit Logs ────────────────────────────────────────────────────────────────
+
+// Dev-mode in-memory audit log
+const devAuditLogs: InsertAuditLog[] = [];
+
+export async function insertAuditLog(data: InsertAuditLog): Promise<void> {
+  const db = await getDb();
+  if (!db) {
+    devAuditLogs.unshift({ ...data, createdAt: new Date() } as InsertAuditLog);
+    if (devAuditLogs.length > 500) devAuditLogs.pop();
+    return;
+  }
+  await db.insert(auditLogs).values(data);
+}
+
+export async function getAuditLogs(opts: {
+  limit?: number;
+  offset?: number;
+  action?: string;
+}): Promise<{ rows: typeof auditLogs.$inferSelect[]; total: number }> {
+  const limit = opts.limit ?? 50;
+  const offset = opts.offset ?? 0;
+  const db = await getDb();
+
+  if (!db) {
+    const filtered = opts.action
+      ? devAuditLogs.filter((l) => l.action === opts.action)
+      : devAuditLogs;
+    return {
+      rows: filtered.slice(offset, offset + limit) as typeof auditLogs.$inferSelect[],
+      total: filtered.length,
+    };
+  }
+
+  const where = opts.action ? eq(auditLogs.action, opts.action) : undefined;
+
+  const [rows, countRows] = await Promise.all([
+    db.select().from(auditLogs)
+      .where(where)
+      .orderBy(desc(auditLogs.createdAt))
+      .limit(limit)
+      .offset(offset),
+    db.select({ count: sql<number>`COUNT(*)` }).from(auditLogs).where(where),
+  ]);
+
+  return { rows, total: Number(countRows[0]?.count ?? 0) };
+}
+
+export async function clearAuditLogs(): Promise<void> {
+  const db = await getDb();
+  if (!db) { devAuditLogs.splice(0); return; }
+  await db.delete(auditLogs);
 }

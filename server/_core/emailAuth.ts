@@ -6,6 +6,7 @@ import * as db from "../db";
 import { getSessionCookieOptions } from "./cookies";
 import { sdk } from "./sdk";
 import { ENV } from "./env";
+import { writeAuditLog } from "./auditLog";
 
 const scryptAsync = promisify(scrypt);
 
@@ -61,6 +62,17 @@ export function registerEmailAuthRoutes(app: Express) {
       });
       const cookieOptions = getSessionCookieOptions(req);
       res.cookie(COOKIE_NAME, sessionToken, { ...cookieOptions, maxAge: ONE_YEAR_MS });
+
+      const clientIp = (req.headers["x-forwarded-for"] as string)?.split(",")[0]?.trim()
+        ?? req.socket?.remoteAddress ?? "unknown";
+      writeAuditLog({
+        ip: clientIp,
+        userEmail: email.toLowerCase(),
+        userName: name?.trim() || email.split("@")[0],
+        action: "login_email",
+        detail: { method: "email_register" },
+      });
+
       res.json({ success: true });
     } catch (err) {
       console.error("[EmailAuth] Register error", err);
@@ -90,6 +102,18 @@ export function registerEmailAuthRoutes(app: Express) {
       });
       const cookieOptions = getSessionCookieOptions(req);
       res.cookie(COOKIE_NAME, sessionToken, { ...cookieOptions, maxAge: ONE_YEAR_MS });
+
+      const clientIp = (req.headers["x-forwarded-for"] as string)?.split(",")[0]?.trim()
+        ?? req.socket?.remoteAddress ?? "unknown";
+      writeAuditLog({
+        ip: clientIp,
+        userId: user.id,
+        userEmail: user.email ?? null,
+        userName: user.name ?? null,
+        action: "login_email",
+        detail: { method: "email_login" },
+      });
+
       res.json({ success: true });
     } catch (err) {
       console.error("[EmailAuth] Login error", err);
