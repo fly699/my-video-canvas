@@ -592,9 +592,7 @@ export default function Home() {
             </div>
           )}
         </div>
-        <footer className="mt-auto pt-8 pb-6 text-center" style={{ color: "rgba(255,255,255,0.2)", fontSize: "12px" }}>
-          © {new Date().getFullYear()} 金泰智算 · KingTai Smart
-        </footer>
+
       </main>
     </div>
   );
