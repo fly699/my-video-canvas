@@ -271,8 +271,8 @@ export const videoTasksRouter = router({
         projectId: z.number(),
         nodeId: z.string(),
         provider: z.enum([...VIDEO_PROVIDERS] as [string, ...string[]]),
-        prompt: z.string(),
-        negativePrompt: z.string().optional(),
+        prompt: z.string().max(4000),
+        negativePrompt: z.string().max(1000).optional(),
         referenceImageUrl: z.string().optional(),
         params: z.record(z.string(), z.unknown()).optional(),
       })
@@ -889,7 +889,7 @@ export const subtitleRouter = router({
     .input(
       z.object({
         videoUrl: z.string().url(),
-        entries: z.array(z.object({ start: z.number(), end: z.number(), text: z.string() })),
+        entries: z.array(z.object({ start: z.number(), end: z.number(), text: z.string().max(500) })).max(2000),
         fontSize: z.number().int().min(8).max(48).optional(),
         fontColor: z.string().optional(),
       })

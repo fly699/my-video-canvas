@@ -59,18 +59,33 @@ export function registerImageProxy(app: Express) {
       return;
     }
 
+    const MAX_IMAGE_BYTES = 32 * 1024 * 1024; // 32 MB
+    const FETCH_TIMEOUT_MS = 30_000;
+
     try {
+      const controller = new AbortController();
+      const timer = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS);
+
       const upstream = await fetch(decodedUrl, {
         headers: {
           "User-Agent": "Mozilla/5.0 (compatible; ImageProxy/1.0)",
           "Accept": "image/*,*/*;q=0.8",
         },
         redirect: "follow",
+        signal: controller.signal,
       });
+      clearTimeout(timer);
 
       // Validate final URL after redirect chain to prevent SSRF via open redirect
       if (!isAllowedUrl(upstream.url)) {
         res.status(403).send("URL not allowed after redirect");
+        return;
+      }
+
+      // Reject oversized responses before streaming
+      const contentLengthRaw = upstream.headers.get("content-length");
+      if (contentLengthRaw && parseInt(contentLengthRaw, 10) > MAX_IMAGE_BYTES) {
+        res.status(413).send("Image too large");
         return;
       }
 
@@ -88,15 +103,14 @@ export function registerImageProxy(app: Express) {
           ? contentType
           : "image/png";
 
-      const contentLength = upstream.headers.get("content-length");
-      if (contentLength) forwardHeaders["Content-Length"] = contentLength;
+      if (contentLengthRaw) forwardHeaders["Content-Length"] = contentLengthRaw;
 
       // Trigger browser download if download=1
       if (req.query.download === "1") {
         const urlPath = new URL(decodedUrl).pathname;
         const rawName = urlPath.split("/").pop() || "image.png";
-        // Strip characters unsafe in Content-Disposition filename (quotes, CR, LF, semicolons)
-        const filename = rawName.replace(/["\r\n;\\%]/g, "_");
+        // Strip characters unsafe in Content-Disposition filename (quotes, CR, LF, semicolons, null bytes)
+        const filename = rawName.replace(/["\r\n;\\%\x00]/g, "_");
         forwardHeaders["Content-Disposition"] = `attachment; filename="${filename}"`;
       }
 
@@ -114,9 +128,16 @@ export function registerImageProxy(app: Express) {
       }
 
       const reader = upstream.body.getReader();
+      let bytesReceived = 0;
       while (true) {
         const { done, value } = await reader.read();
         if (done) { res.end(); break; }
+        bytesReceived += value.byteLength;
+        if (bytesReceived > MAX_IMAGE_BYTES) {
+          reader.cancel();
+          res.destroy();
+          break;
+        }
         const canContinue = res.write(value);
         if (!canContinue) {
           await new Promise<void>((resolve) => res.once("drain", resolve));

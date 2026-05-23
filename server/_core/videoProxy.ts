@@ -63,7 +63,13 @@ export function registerVideoProxy(app: Express) {
       return;
     }
 
+    const MAX_VIDEO_BYTES = 500 * 1024 * 1024; // 500 MB
+    const FETCH_TIMEOUT_MS = 60_000;
+
     try {
+      const controller = new AbortController();
+      const timer = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS);
+
       const headers: Record<string, string> = {
         "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
         "Accept": "video/webm,video/mp4,video/*,*/*;q=0.9",
@@ -78,11 +84,20 @@ export function registerVideoProxy(app: Express) {
       const upstream = await fetch(decodedUrl, {
         headers,
         redirect: "follow",
+        signal: controller.signal,
       });
+      clearTimeout(timer);
 
       // Validate final URL after redirect chain to prevent SSRF via open redirect
       if (!isAllowedUrl(upstream.url)) {
         res.status(403).send("URL not allowed after redirect");
+        return;
+      }
+
+      // Reject oversized responses before streaming
+      const contentLength = upstream.headers.get("content-length");
+      if (contentLength && parseInt(contentLength, 10) > MAX_VIDEO_BYTES) {
+        res.status(413).send("Video too large");
         return;
       }
 
@@ -102,7 +117,6 @@ export function registerVideoProxy(app: Express) {
           ? contentType
           : "video/mp4";
 
-      const contentLength = upstream.headers.get("content-length");
       if (contentLength) forwardHeaders["Content-Length"] = contentLength;
 
       const contentRange = upstream.headers.get("content-range");
@@ -119,8 +133,8 @@ export function registerVideoProxy(app: Express) {
       if (req.query.download === "1") {
         const urlPath = new URL(decodedUrl).pathname;
         const rawName = urlPath.split("/").pop() || "video.mp4";
-        // Strip characters unsafe in Content-Disposition filename (quotes, CR, LF, semicolons)
-        const filename = rawName.replace(/["\r\n;\\%]/g, "_");
+        // Strip characters unsafe in Content-Disposition filename (quotes, CR, LF, semicolons, null bytes)
+        const filename = rawName.replace(/["\r\n;\\%\x00]/g, "_");
         forwardHeaders["Content-Disposition"] = `attachment; filename="${filename}"`;
       }
 
@@ -138,13 +152,20 @@ export function registerVideoProxy(app: Express) {
         return;
       }
 
-      // Stream the body
+      // Stream the body with a hard byte limit
       const reader = upstream.body.getReader();
+      let bytesReceived = 0;
       const pump = async () => {
         while (true) {
           const { done, value } = await reader.read();
           if (done) {
             res.end();
+            break;
+          }
+          bytesReceived += value.byteLength;
+          if (bytesReceived > MAX_VIDEO_BYTES) {
+            reader.cancel();
+            res.destroy();
             break;
           }
           const canContinue = res.write(value);

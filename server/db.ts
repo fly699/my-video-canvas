@@ -28,7 +28,7 @@ const devWhitelistSettings = { id: 1, enabled: false, updatedAt: new Date() };
 const devWhitelistEntries: Array<{ id: number; type: "ip" | "user"; value: string; note: string | null; createdBy: number | null; createdAt: Date }> = [];
 let devNextWhitelistId = 1;
 
-const DEV_MODE = process.env.NODE_ENV === "development" && !process.env.DATABASE_URL;
+const DEV_MODE = process.env.NODE_ENV === "development" && !process.env.DATABASE_URL && !process.env.OAUTH_SERVER_URL;
 
 let _db: ReturnType<typeof drizzle> | null = null;
 
