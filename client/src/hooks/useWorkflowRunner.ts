@@ -247,10 +247,18 @@ export function useWorkflowRunner() {
             projectId: node.data.projectId,
           });
           const bestUrl = result.url ?? result.urls?.[0];
-          useCanvasStore.getState().updateNodeData(nodeId, {
-            imageUrl: bestUrl,
-            ...(result.urls?.length ? { imageUrls: result.urls } : {}),
-          }, true);
+          if (nodeType === "storyboard") {
+            // StoryboardNodeData uses imageHistory (not imageUrls)
+            const existingHistory = ((useCanvasStore.getState().nodes.find(n => n.id === nodeId)?.data.payload) as Record<string, unknown> | undefined)?.imageHistory as string[] | undefined ?? [];
+            const newUrls = result.urls?.length ? result.urls : bestUrl ? [bestUrl] : [];
+            const newHistory = [...newUrls, ...existingHistory].filter(Boolean).slice(0, 12);
+            useCanvasStore.getState().updateNodeData(nodeId, { imageUrl: bestUrl, imageHistory: newHistory }, true);
+          } else {
+            useCanvasStore.getState().updateNodeData(nodeId, {
+              imageUrl: bestUrl,
+              ...(result.urls?.length ? { imageUrls: result.urls } : {}),
+            }, true);
+          }
 
           // Propagate image URL to connected video_task nodes
           const { edges: currentEdges, nodes: currentNodes } = useCanvasStore.getState();
@@ -498,6 +506,7 @@ export function useWorkflowRunner() {
 
   const reset = useCallback(() => {
     runningRef.current = false;
+    abortRef.current = false;
     setRunState({
       running: false,
       currentNodeId: null,

@@ -361,6 +361,8 @@ function CanvasInner({ projectId }: { projectId: number }) {
   const [pendingRunNodeId, setPendingRunNodeId] = useState<string | null>(null);
   const [runConfirmCountdown, setRunConfirmCountdown] = useState(5);
   const runConfirmOpenRef = useRef(false);
+  const runStateRunningRef = useRef(false);
+  runStateRunningRef.current = runState.running;
 
   const handleRunRequest = useCallback((startNodeId: string | null) => {
     if (runConfirmOpenRef.current) return;
@@ -701,7 +703,7 @@ function CanvasInner({ projectId }: { projectId: number }) {
         saveCanvas();
         if (wasDirty) toast.success("已保存");
       }
-      if (e.key === "Escape") { setContextMenu(null); setShowNodePicker(false); setShowNodeSearch(false); setShowTemplates(false); }
+      if (e.key === "Escape") { setContextMenu(null); setShowNodePicker(false); setShowNodeSearch(false); setShowTemplates(false); runConfirmOpenRef.current = false; setShowRunConfirm(false); }
 
       // Cmd+K / Ctrl+K — Node search (skip when typing in an input)
       if (!isEditing && (e.metaKey || e.ctrlKey) && e.key === "k") {
@@ -726,7 +728,7 @@ function CanvasInner({ projectId }: { projectId: number }) {
       // Shift+R: run workflow from selected node
       if (!isEditing && e.shiftKey && e.key === "R") {
         e.preventDefault();
-        if (runState.running) return;
+        if (runStateRunningRef.current) return;
         const selected = nodes.find((n) => n.selected);
         handleRunRequest(selected?.id ?? null);
       }

@@ -53,13 +53,13 @@ export const StoryboardNode = memo(function StoryboardNode({ id, selected, data 
   const [inputExpanded, setInputExpanded] = useState(!!selected);
   const [llmModel, setLlmModel] = useState<LLMModelId>("gemini-2.5-flash");
   const [showHistory, setShowHistory] = useState(false);
-  const [batchCount, setBatchCount] = useState<1 | 2 | 4>(([1, 2, 4].includes(payload.batchSize as number) ? payload.batchSize : 1) as 1 | 2 | 4);
+  const [batchCount, setBatchCount] = useState<1 | 4>(([1, 4].includes(payload.batchSize as number) ? payload.batchSize : 1) as 1 | 4);
   const [zoomUrl, setZoomUrl] = useState<string | null>(null);
 
   // Sync batchCount when payload.batchSize changes externally (collab / undo-redo)
   useEffect(() => {
-    if ([1, 2, 4].includes(payload.batchSize as number)) {
-      setBatchCount(payload.batchSize as 1 | 2 | 4);
+    if ([1, 4].includes(payload.batchSize as number)) {
+      setBatchCount(payload.batchSize as 1 | 4);
     }
   }, [payload.batchSize]); // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -289,7 +289,7 @@ export const StoryboardNode = memo(function StoryboardNode({ id, selected, data 
                     {generating ? "生成中..." : "重新生成"}
                   </button>
                   <button
-                    onClick={(e) => { e.stopPropagation(); setZoomUrl(payload.imageUrl ?? null); }}
+                    onClick={(e) => { e.stopPropagation(); setZoomUrl(payload.imageUrl || null); }}
                     className="nodrag flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs font-medium transition-all"
                     style={{
                       background: "oklch(0.68 0.18 220 / 0.20)",
@@ -689,7 +689,7 @@ export const StoryboardNode = memo(function StoryboardNode({ id, selected, data 
             抽卡次数
           </span>
           <div className="flex gap-1">
-            {([1, 2, 4] as const).map((n) => (
+            {([1, 4] as const).map((n) => (
               <button
                 key={n}
                 onClick={() => { setBatchCount(n); updateNodeData(id, { batchSize: n }); }}
