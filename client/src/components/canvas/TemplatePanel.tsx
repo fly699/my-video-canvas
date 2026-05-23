@@ -59,7 +59,7 @@ const TEMPLATES: Template[] = [
     category: "starter",
     nodes: [
       { type: "script",     dx: 0,    dy: 0,    title: "脚本" },
-      { type: "storyboard", dx: 0,    dy: 380,  title: "分镖 #1", initialData: { description: "描述这个场景的视觉内容", duration: 5, cameraMovement: "static" } },
+      { type: "storyboard", dx: 0,    dy: 380,  title: "分镜 #1", initialData: { description: "描述这个场景的视觉内容", duration: 5, cameraMovement: "static" } },
       { type: "image_gen",  dx: 0,    dy: 730,  title: "图像生成" },
       { type: "video_task", dx: 0,    dy: 1080, title: "视频生成" },
     ],
@@ -125,16 +125,16 @@ const TEMPLATES: Template[] = [
   },
   {
     id: "storyboard-series",
-    name: "连续分镖生成",
-    desc: "脚本自动生成 4 格分镖，每格独立出图",
+    name: "连续分镜生成",
+    desc: "脚本自动生成 4 格分镜，每格独立出图",
     icon: "Film",
     category: "image",
     nodes: [
       { type: "script",     dx: 0,    dy: 0,   title: "故事脚本" },
-      { type: "storyboard", dx: -570, dy: 400, title: "分镖 #1", initialData: { sceneNumber: 1, description: "开场镜头", cameraMovement: "static",  duration: 4 } },
-      { type: "storyboard", dx: -190, dy: 400, title: "分镖 #2", initialData: { sceneNumber: 2, description: "情节发展", cameraMovement: "pan-right", duration: 4 } },
-      { type: "storyboard", dx: 190,  dy: 400, title: "分镖 #3", initialData: { sceneNumber: 3, description: "高潮时刻", cameraMovement: "zoom-in",  duration: 4 } },
-      { type: "storyboard", dx: 570,  dy: 400, title: "分镖 #4", initialData: { sceneNumber: 4, description: "结尾画面", cameraMovement: "static",  duration: 4 } },
+      { type: "storyboard", dx: -570, dy: 400, title: "分镜 #1", initialData: { sceneNumber: 1, description: "开场镜头", cameraMovement: "static",  duration: 4 } },
+      { type: "storyboard", dx: -190, dy: 400, title: "分镜 #2", initialData: { sceneNumber: 2, description: "情节发展", cameraMovement: "pan-right", duration: 4 } },
+      { type: "storyboard", dx: 190,  dy: 400, title: "分镜 #3", initialData: { sceneNumber: 3, description: "高潮时刻", cameraMovement: "zoom-in",  duration: 4 } },
+      { type: "storyboard", dx: 570,  dy: 400, title: "分镜 #4", initialData: { sceneNumber: 4, description: "结尾画面", cameraMovement: "static",  duration: 4 } },
       { type: "image_gen",  dx: -570, dy: 780, title: "图像 1" },
       { type: "image_gen",  dx: -190, dy: 780, title: "图像 2" },
       { type: "image_gen",  dx: 190,  dy: 780, title: "图像 3" },
@@ -174,20 +174,21 @@ const TEMPLATES: Template[] = [
   {
     id: "short-film",
     name: "短片制作流程",
-    desc: "脚本 → 3 分镖 → 3 图像 → 3 视频，完整短片工作流",
+    desc: "脚本 → 3 分镜 → 3 图像 → 3 视频 → 合并，完整短片工作流",
     icon: "Video",
     category: "video",
     nodes: [
       { type: "script",     dx: 0,    dy: 0,    title: "故事脚本" },
-      { type: "storyboard", dx: -420, dy: 400,  title: "分镖 #1", initialData: { sceneNumber: 1, description: "开场", cameraMovement: "static",   duration: 5 } },
-      { type: "storyboard", dx: 0,    dy: 400,  title: "分镖 #2", initialData: { sceneNumber: 2, description: "主体", cameraMovement: "pan-right", duration: 5 } },
-      { type: "storyboard", dx: 420,  dy: 400,  title: "分镖 #3", initialData: { sceneNumber: 3, description: "结尾", cameraMovement: "zoom-out",  duration: 5 } },
+      { type: "storyboard", dx: -420, dy: 400,  title: "分镜 #1", initialData: { sceneNumber: 1, description: "开场", cameraMovement: "static",   duration: 5 } },
+      { type: "storyboard", dx: 0,    dy: 400,  title: "分镜 #2", initialData: { sceneNumber: 2, description: "主体", cameraMovement: "pan-right", duration: 5 } },
+      { type: "storyboard", dx: 420,  dy: 400,  title: "分镜 #3", initialData: { sceneNumber: 3, description: "结尾", cameraMovement: "zoom-out",  duration: 5 } },
       { type: "image_gen",  dx: -420, dy: 780,  title: "图像 1" },
       { type: "image_gen",  dx: 0,    dy: 780,  title: "图像 2" },
       { type: "image_gen",  dx: 420,  dy: 780,  title: "图像 3" },
       { type: "video_task", dx: -420, dy: 1160, title: "视频 1" },
       { type: "video_task", dx: 0,    dy: 1160, title: "视频 2" },
       { type: "video_task", dx: 420,  dy: 1160, title: "视频 3" },
+      { type: "merge",      dx: 0,    dy: 1540, title: "合并剪辑" },
     ],
     edgeSpecs: [
       { fromIndex: 0, toIndex: 1 },
@@ -199,6 +200,9 @@ const TEMPLATES: Template[] = [
       { fromIndex: 4, toIndex: 7 },
       { fromIndex: 5, toIndex: 8 },
       { fromIndex: 6, toIndex: 9 },
+      { fromIndex: 7, toIndex: 10 },
+      { fromIndex: 8, toIndex: 10 },
+      { fromIndex: 9, toIndex: 10 },
     ],
   },
   {
@@ -226,7 +230,7 @@ const TEMPLATES: Template[] = [
   {
     id: "ad-film",
     name: "广告片工作流",
-    desc: "AI 剧本 → 角色/场景 → 4 分镖 → 图像 → 视频 → 合并，完整广告片制作流程",
+    desc: "AI 剧本 → 角色/场景 → 4 分镜 → 图像 → 视频 → 合并，完整广告片制作流程",
     icon: "Megaphone",
     category: "video",
     nodes: [
@@ -279,7 +283,7 @@ const TEMPLATES: Template[] = [
   {
     id: "vlog",
     name: "Vlog 制作流程",
-    desc: "脚本 → 配音旁白 → 背景音乐 → 多镖视频 → 合并，适合日常 Vlog",
+    desc: "脚本 → 配音旁白 → 背景音乐 → 多段视频 → 合并，适合日常 Vlog",
     icon: "Mic",
     category: "video",
     nodes: [
@@ -325,7 +329,7 @@ const TEMPLATES: Template[] = [
   {
     id: "product-promo",
     name: "产品介绍视频",
-    desc: "产品角色 + 场景 → 3 角度分镖 → 图像参考 → 视频，适合电商/发布会",
+    desc: "产品角色 + 场景 → 3 角度分镜 → 图像参考 → 视频，适合电商/发布会",
     icon: "ShoppingBag",
     category: "video",
     nodes: [
@@ -371,15 +375,15 @@ const TEMPLATES: Template[] = [
   {
     id: "ai-scriptwriter",
     name: "AI 剧本创作",
-    desc: "AI 对话生成故事结构，自动扩展为分镖板",
+    desc: "AI 对话生成故事结构，自动扩展为分镜板",
     icon: "Bot",
     category: "ai",
     nodes: [
       { type: "ai_chat",    dx: 0,    dy: 0,   title: "AI 编剧助手", initialData: { systemPrompt: "你是专业电影编剧，帮助构思故事结构、对话和视觉场景描述。用中文回答，内容简洁有力。" } },
       { type: "script",     dx: 0,    dy: 420, title: "故事脚本" },
-      { type: "storyboard", dx: -420, dy: 800, title: "分镖 #1", initialData: { sceneNumber: 1, cameraMovement: "static",   duration: 5 } },
-      { type: "storyboard", dx: 0,    dy: 800, title: "分镖 #2", initialData: { sceneNumber: 2, cameraMovement: "pan-right", duration: 5 } },
-      { type: "storyboard", dx: 420,  dy: 800, title: "分镖 #3", initialData: { sceneNumber: 3, cameraMovement: "zoom-in",  duration: 5 } },
+      { type: "storyboard", dx: -420, dy: 800, title: "分镜 #1", initialData: { sceneNumber: 1, cameraMovement: "static",   duration: 5 } },
+      { type: "storyboard", dx: 0,    dy: 800, title: "分镜 #2", initialData: { sceneNumber: 2, cameraMovement: "pan-right", duration: 5 } },
+      { type: "storyboard", dx: 420,  dy: 800, title: "分镜 #3", initialData: { sceneNumber: 3, cameraMovement: "zoom-in",  duration: 5 } },
     ],
     edgeSpecs: [
       { fromIndex: 0, toIndex: 1 },
@@ -391,21 +395,22 @@ const TEMPLATES: Template[] = [
   {
     id: "ai-full-pipeline",
     name: "AI 全流程制作",
-    desc: "从 AI 对话到最终视频，完整 AI 辅助创作管线",
+    desc: "从 AI 对话到最终合并视频，完整 AI 辅助创作管线",
     icon: "Rocket",
     category: "ai",
     nodes: [
-      { type: "ai_chat",    dx: 0,    dy: 0,    title: "AI 创作助手", initialData: { systemPrompt: "你是专业视频制作顾问，帮助从创意到分镖板到最终视频的全流程制作。" } },
+      { type: "ai_chat",    dx: 0,    dy: 0,    title: "AI 创作助手", initialData: { systemPrompt: "你是专业视频制作顾问，帮助从创意到分镜板到最终视频的全流程制作。" } },
       { type: "script",     dx: 0,    dy: 420,  title: "故事脚本" },
-      { type: "storyboard", dx: -420, dy: 820,  title: "分镖 #1", initialData: { sceneNumber: 1, cameraMovement: "static",   duration: 5 } },
-      { type: "storyboard", dx: 0,    dy: 820,  title: "分镖 #2", initialData: { sceneNumber: 2, cameraMovement: "pan-right", duration: 5 } },
-      { type: "storyboard", dx: 420,  dy: 820,  title: "分镖 #3", initialData: { sceneNumber: 3, cameraMovement: "zoom-in",  duration: 5 } },
+      { type: "storyboard", dx: -420, dy: 820,  title: "分镜 #1", initialData: { sceneNumber: 1, cameraMovement: "static",   duration: 5 } },
+      { type: "storyboard", dx: 0,    dy: 820,  title: "分镜 #2", initialData: { sceneNumber: 2, cameraMovement: "pan-right", duration: 5 } },
+      { type: "storyboard", dx: 420,  dy: 820,  title: "分镜 #3", initialData: { sceneNumber: 3, cameraMovement: "zoom-in",  duration: 5 } },
       { type: "image_gen",  dx: -420, dy: 1200, title: "图像 1" },
       { type: "image_gen",  dx: 0,    dy: 1200, title: "图像 2" },
       { type: "image_gen",  dx: 420,  dy: 1200, title: "图像 3" },
       { type: "video_task", dx: -420, dy: 1580, title: "视频 1" },
       { type: "video_task", dx: 0,    dy: 1580, title: "视频 2" },
       { type: "video_task", dx: 420,  dy: 1580, title: "视频 3" },
+      { type: "merge",      dx: 0,    dy: 1960, title: "合并剪辑" },
     ],
     edgeSpecs: [
       { fromIndex: 0, toIndex: 1 },
@@ -418,6 +423,9 @@ const TEMPLATES: Template[] = [
       { fromIndex: 5, toIndex: 8 },
       { fromIndex: 6, toIndex: 9 },
       { fromIndex: 7, toIndex: 10 },
+      { fromIndex: 8,  toIndex: 11 },
+      { fromIndex: 9,  toIndex: 11 },
+      { fromIndex: 10, toIndex: 11 },
     ],
   },
 
@@ -539,11 +547,12 @@ const NODE_DOT_COLORS: Partial<Record<NodeType, string>> = {
   clip:         "oklch(0.68 0.20 55)",
   merge:        "oklch(0.62 0.20 270)",
   subtitle:     "oklch(0.65 0.18 170)",
+  overlay:      "oklch(0.68 0.18 75)",
 };
 
 const NODE_TYPE_LABELS: Partial<Record<NodeType, string>> = {
   script:       "脚本",
-  storyboard:   "分镖",
+  storyboard:   "分镜",
   prompt:       "提示词",
   image_gen:    "图像生成",
   asset:        "素材",
@@ -557,6 +566,7 @@ const NODE_TYPE_LABELS: Partial<Record<NodeType, string>> = {
   clip:         "剪辑",
   merge:        "视频合并",
   subtitle:     "字幕",
+  overlay:      "叠加特效",
 };
 
 // ── Custom template localStorage ──────────────────────────────────────────────
