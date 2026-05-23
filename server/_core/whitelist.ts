@@ -18,34 +18,23 @@ async function isWhitelistEnabled(): Promise<boolean> {
   if (_cachedEnabled !== null && now < _cacheExpiry) return _cachedEnabled;
 
   const gen = _cacheGeneration;
-  let freshGen: number | undefined;
   try {
     const settings = await db.getWhitelistSettings();
-    // Only write to cache if no invalidation happened while we were awaiting the DB.
+    // Only write to cache if no invalidation happened while awaiting the DB.
+    // If generation changed, skip the write — the next caller will re-read and pick up the
+    // fresh value; a second eager read here would cause an unbounded concurrent query storm.
     if (_cacheGeneration === gen) {
       _cachedEnabled = settings?.enabled ?? false;
       _cacheExpiry = now + 30_000;
-      return _cachedEnabled;
     }
-    // Cache was invalidated while our read was in-flight — fetch once more to get
-    // the post-invalidation value rather than returning the now-stale DB result.
-    freshGen = _cacheGeneration;
-    const fresh = await db.getWhitelistSettings();
-    // Only cache if no further invalidation happened during this second read
-    if (_cacheGeneration === freshGen) {
-      _cachedEnabled = fresh?.enabled ?? false;
-      _cacheExpiry = Date.now() + 30_000;
-    }
-    return fresh?.enabled ?? false;
+    return settings?.enabled ?? false;
   } catch (err) {
     console.error("[Whitelist] DB error in isWhitelistEnabled, treating as disabled:", err);
-    // Use the most recent generation snapshot (freshGen if we reached the second read, gen
-    // otherwise) so the fail-open throttle cache is set regardless of which DB call failed.
-    const latestGen = freshGen ?? gen;
-    if (_cacheGeneration === latestGen) {
-      _cachedEnabled = false;
-      _cacheExpiry = now + 5_000;
-    }
+    // Always write the throttle cache (no generation check) so every caller backs off for
+    // 5 s regardless of concurrent invalidations — prevents hammering a downed DB.
+    // Use Date.now() here (not the stale `now`) so the TTL is always 5 s from now.
+    _cachedEnabled = false;
+    _cacheExpiry = Date.now() + 5_000;
     return false;
   }
 }
