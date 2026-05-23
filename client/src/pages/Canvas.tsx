@@ -1976,7 +1976,7 @@ function CanvasInner({ projectId }: { projectId: number }) {
 
       {/* ── Run workflow confirmation dialog ── */}
       {showRunConfirm && (() => {
-        const aiNodeTypes = ["script", "storyboard", "video_task", "image_gen", "audio", "subtitle", "ai_chat", "prompt"];
+        const aiNodeTypes: string[] = ["storyboard", "prompt", "image_gen", "video_task", "clip", "merge", "subtitle", "overlay"];
         const aiNodes = nodes.filter(n => aiNodeTypes.includes(n.data.nodeType));
         const totalNodes = nodes.length;
         const startLabel = pendingRunNodeId
