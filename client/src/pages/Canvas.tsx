@@ -1159,34 +1159,6 @@ function CanvasInner({ projectId }: { projectId: number }) {
 
           {/* Divider */}
           <div className="w-px h-4 mx-1" style={{ background: "var(--c-bd2)" }} />
-
-          {/* Run workflow */}
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <button
-                onClick={() => handleRunRequest(null)}
-                disabled={runState.running || nodes.length === 0}
-                className="flex items-center gap-1.5 h-7 px-2.5 rounded-lg text-xs font-semibold transition-all"
-                style={{
-                  background: runState.running
-                    ? "oklch(0.72 0.22 142 / 0.12)"
-                    : "oklch(0.72 0.22 142 / 0.15)",
-                  border: `1px solid oklch(0.72 0.22 142 / ${runState.running ? "0.5" : "0.35"})`,
-                  color: runState.running ? "oklch(0.75 0.20 142)" : "oklch(0.72 0.22 142)",
-                  cursor: runState.running || nodes.length === 0 ? "not-allowed" : "pointer",
-                  opacity: nodes.length === 0 ? 0.5 : 1,
-                }}
-              >
-                {runState.running
-                  ? <><span className="animate-spin" style={{ display: "inline-block" }}>⟳</span> 运行中</>
-                  : <>▶ 运行</>}
-              </button>
-            </TooltipTrigger>
-            <TooltipContent side="bottom" className="text-xs">运行工作流 (Shift+R)</TooltipContent>
-          </Tooltip>
-
-          {/* Divider */}
-          <div className="w-px h-4 mx-1" style={{ background: "var(--c-bd2)" }} />
           {/* Logout */}
           <Tooltip>
             <TooltipTrigger asChild>
