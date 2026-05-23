@@ -39,6 +39,21 @@ import { trimVideo, getVideoDuration, mergeVideos, burnSubtitles, generateSRT, o
 import { transcribeAudio } from "../_core/voiceTranscription";
 import { VIDEO_PROVIDERS } from "../../shared/types";
 import type { SubtitleEntry } from "../../shared/types";
+import { assertWhitelisted } from "../_core/whitelist";
+import { writeAuditLog, truncate } from "../_core/auditLog";
+
+// ── Ownership helpers ─────────────────────────────────────────────────────────
+
+async function assertProjectOwner(projectId: number, userId: number) {
+  const project = await getProjectById(projectId, userId);
+  if (!project) throw new TRPCError({ code: "FORBIDDEN", message: "Access denied" });
+}
+
+async function assertTaskOwner(taskId: number, userId: number) {
+  const task = await getVideoTask(taskId);
+  if (!task || task.userId !== userId) throw new TRPCError({ code: "FORBIDDEN", message: "Access denied" });
+  return task;
+}
 
 // ── Ownership helpers ─────────────────────────────────────────────────────────
 
@@ -269,13 +284,14 @@ export const videoTasksRouter = router({
         projectId: z.number(),
         nodeId: z.string(),
         provider: z.enum([...VIDEO_PROVIDERS] as [string, ...string[]]),
-        prompt: z.string(),
-        negativePrompt: z.string().optional(),
+        prompt: z.string().max(4000),
+        negativePrompt: z.string().max(1000).optional(),
         referenceImageUrl: z.string().optional(),
         params: z.record(z.string(), z.unknown()).optional(),
       })
     )
     .mutation(async ({ ctx, input }) => {
+      await assertWhitelisted(ctx);
       await assertProjectOwner(input.projectId, ctx.user.id);
 
       // Create DB record first so the task is tracked even if provider submission fails
@@ -293,8 +309,8 @@ export const videoTasksRouter = router({
       if (!task) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "Failed to create video task" });
 
       // Submit to external provider; on failure the task stays "pending" for the poller to retry
+      let externalTaskId: string | undefined;
       try {
-        let externalTaskId: string | undefined;
         if (isPoyoVideoProvider(input.provider)) {
           const result = await submitPoyoVideo({
             provider: input.provider,
@@ -316,10 +332,26 @@ export const videoTasksRouter = router({
         }
         if (externalTaskId) {
           await updateVideoTask(task.id, { status: "processing", externalTaskId });
-          return { ...task, status: "processing" as const, externalTaskId };
         }
       } catch (err) {
         console.error(`[videoTasks.create] provider submission failed, task ${task.id} left as pending for poller retry:`, err instanceof Error ? err.message : String(err));
+      }
+
+      // Always audit the generation attempt so failed/retried submissions are visible
+      writeAuditLog({
+        ctx,
+        action: "video_gen",
+        detail: {
+          provider: input.provider,
+          prompt: truncate(input.prompt),
+          taskId: task.id,
+          nodeId: input.nodeId,
+          submitted: !!externalTaskId,
+        },
+      });
+
+      if (externalTaskId) {
+        return { ...task, status: "processing" as const, externalTaskId };
       }
       return task;
     }),
@@ -449,6 +481,7 @@ export const aiChatRouter = router({
       })
     )
     .mutation(async ({ ctx, input }) => {
+      await assertWhitelisted(ctx);
       await assertProjectOwner(input.projectId, ctx.user.id);
       // Build messages for LLM (user message included inline — not saved to DB yet)
       const history = await getChatMessages(input.nodeId, input.projectId);
@@ -520,6 +553,7 @@ export const imageGenRouter = router({
       })
     )
     .mutation(async ({ ctx, input }) => {
+      await assertWhitelisted(ctx);
       if (input.projectId != null) {
         await assertProjectOwner(input.projectId, ctx.user.id);
       }
@@ -574,6 +608,16 @@ export const imageGenRouter = router({
         } : {}),
       });
 
+      writeAuditLog({
+        ctx,
+        action: "image_gen",
+        detail: {
+          model: input.model ?? "default",
+          prompt: truncate(input.prompt),
+          resultUrl: result.url ?? result.urls?.[0] ?? null,
+          resultCount: result.urls?.length ?? (result.url ? 1 : 0),
+        },
+      });
       return { url: result.url, urls: result.urls };
     }),
 });
@@ -590,7 +634,8 @@ export const scriptsRouter = router({
         model: z.string().optional(),
       })
     )
-    .mutation(async ({ input }) => {
+    .mutation(async ({ ctx, input }) => {
+      await assertWhitelisted(ctx);
       const systemPrompt = `You are a professional film director and storyboard artist.
 Given a script, break it into exactly ${input.count} visual storyboard scenes.
 Output ONLY a valid JSON array with no markdown fences, no explanation.
@@ -640,7 +685,8 @@ Each element must have these fields:
         model: z.string().optional(),
       })
     )
-    .mutation(async ({ input }) => {
+    .mutation(async ({ ctx, input }) => {
+      await assertWhitelisted(ctx);
       const MODEL_PROMPT_GUIDES: Record<string, string> = {
         kling: "Kling (Kuaishou): Excellent precise camera control. Use detailed camera moves: push-in, dolly, orbital pan, crane shot. Rich motion expression with emotional narrative. Describe subject actions precisely.",
         veo: "Veo 3.1 (Google): Natural language understanding. Use flowing natural English. Emphasize realistic physics, human emotions, complex interactions. Write like a film scene description. No keyword lists.",
@@ -734,6 +780,7 @@ export const audioGenRouter = router({
       })
     )
     .mutation(async ({ ctx, input }) => {
+      await assertWhitelisted(ctx);
       if (input.projectId != null) await assertProjectOwner(input.projectId, ctx.user.id);
       const result = await submitAndPollPoyoMusic({
         model: input.model as PoyoMusicModel,
@@ -742,6 +789,11 @@ export const audioGenRouter = router({
         durationSeconds: input.durationSeconds,
         instrumental: input.instrumental,
         negativePrompt: input.negativePrompt,
+      });
+      writeAuditLog({
+        ctx,
+        action: "audio_music",
+        detail: { model: input.model, prompt: truncate(input.prompt), resultUrl: result.url, duration: result.duration },
       });
       return { url: result.url, duration: result.duration };
     }),
@@ -757,12 +809,18 @@ export const audioGenRouter = router({
       })
     )
     .mutation(async ({ ctx, input }) => {
+      await assertWhitelisted(ctx);
       if (input.projectId != null) await assertProjectOwner(input.projectId, ctx.user.id);
       const result = await submitAndPollPoyoTTS({
         model: input.model as PoyoTTSModel,
         text: input.text,
         voice: input.voice,
         speed: input.speed,
+      });
+      writeAuditLog({
+        ctx,
+        action: "audio_dubbing",
+        detail: { model: input.model, text: truncate(input.text), voice: input.voice ?? null, resultUrl: result.url, duration: result.duration },
       });
       return { url: result.url, duration: result.duration };
     }),
@@ -821,7 +879,8 @@ export const subtitleRouter = router({
         language: z.string().optional(),
       })
     )
-    .mutation(async ({ input }) => {
+    .mutation(async ({ ctx, input }) => {
+      await assertWhitelisted(ctx);
       const result = await transcribeAudio({ audioUrl: input.audioUrl, language: input.language });
       if ("error" in result) {
         throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: result.error });
@@ -831,6 +890,11 @@ export const subtitleRouter = router({
         end: s.end,
         text: s.text.trim(),
       }));
+      writeAuditLog({
+        ctx,
+        action: "subtitle_transcribe",
+        detail: { audioUrl: truncate(input.audioUrl, 200), language: result.language, segmentCount: entries.length },
+      });
       return { entries, fullText: result.text, language: result.language };
     }),
 
@@ -838,7 +902,7 @@ export const subtitleRouter = router({
     .input(
       z.object({
         videoUrl: z.string().url(),
-        entries: z.array(z.object({ start: z.number(), end: z.number(), text: z.string() })),
+        entries: z.array(z.object({ start: z.number(), end: z.number(), text: z.string().max(500) })).max(2000),
         fontSize: z.number().int().min(8).max(48).optional(),
         fontColor: z.string().optional(),
       })
@@ -854,7 +918,7 @@ export const subtitleRouter = router({
   exportSRT: protectedProcedure
     .input(
       z.object({
-        entries: z.array(z.object({ start: z.number(), end: z.number(), text: z.string() })),
+        entries: z.array(z.object({ start: z.number(), end: z.number(), text: z.string().max(500) })).max(2000),
       })
     )
     .mutation(({ input }) => {
@@ -900,7 +964,8 @@ export const aiEnhanceRouter = router({
         model: z.string().optional(),
       })
     )
-    .mutation(async ({ input }) => {
+    .mutation(async ({ ctx, input }) => {
+      await assertWhitelisted(ctx);
       const systemPrompts: Record<string, string> = {
         expand: `You are a creative writing assistant specializing in AI video generation prompts.
 Expand the given text into a rich, detailed description with sensory details, atmosphere, lighting, composition, and cinematic qualities.

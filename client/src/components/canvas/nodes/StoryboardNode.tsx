@@ -158,6 +158,12 @@ export const StoryboardNode = memo(function StoryboardNode({ id, selected, data 
     [id, updateNodeData]
   );
 
+  useEffect(() => {
+    if (payload.duration === undefined) {
+      updateNodeData(id, { duration: 5 });
+    }
+  }, [id]); // eslint-disable-line react-hooks/exhaustive-deps
+
   const handleGenerate = () => {
     if (!payload.promptText?.trim()) { toast.error("请先填写提示词"); return; }
     setGenerating(true);
@@ -387,22 +393,16 @@ export const StoryboardNode = memo(function StoryboardNode({ id, selected, data 
         >
         {/* ── Scene meta ── */}
         <div className="flex gap-1.5">
-          {[
-            { placeholder: "场景#", type: "number", field: "sceneNumber" as keyof StoryboardNodeData, width: 52 },
-            { placeholder: "时长(s)", type: "number", field: "duration" as keyof StoryboardNodeData, width: 56 },
-          ].map(({ placeholder, type, field, width }) => (
-            <input
-              key={field}
-              type={type}
-              placeholder={placeholder}
-              value={(payload[field] as string | number) ?? ""}
-              onChange={(e) => handleChange(field, type === "number" ? (e.target.value === "" ? undefined : Number(e.target.value)) : e.target.value)}
-              className="nodrag"
-              style={{ ...fieldStyle, width }}
-              onFocus={onFocus}
-              onBlur={onBlur}
-            />
-          ))}
+          <input
+            type="number"
+            placeholder="场景#"
+            value={payload.sceneNumber ?? ""}
+            onChange={(e) => handleChange("sceneNumber", e.target.value === "" ? undefined : Number(e.target.value))}
+            className="nodrag"
+            style={{ ...fieldStyle, width: 52 }}
+            onFocus={onFocus}
+            onBlur={onBlur}
+          />
           <input
             placeholder="运镜方式"
             value={payload.cameraMovement ?? ""}
@@ -411,6 +411,23 @@ export const StoryboardNode = memo(function StoryboardNode({ id, selected, data 
             style={fieldStyle}
             onFocus={onFocus}
             onBlur={onBlur}
+          />
+        </div>
+        {/* ── Duration slider ── */}
+        <div>
+          <div className="flex items-center justify-between" style={{ marginBottom: 5 }}>
+            <label style={{ fontSize: 11, color: "var(--c-t3)", marginBottom: 0 }}>时长</label>
+            <span style={{ fontSize: 11, color: "var(--c-t3)", fontVariantNumeric: "tabular-nums" }}>{payload.duration ?? 5}秒</span>
+          </div>
+          <input
+            type="range"
+            min={1}
+            max={30}
+            step={1}
+            value={payload.duration ?? 5}
+            onChange={(e) => handleChange("duration", Number(e.target.value))}
+            className="nodrag w-full"
+            style={{ accentColor: "oklch(0.65 0.20 160)" }}
           />
         </div>
 

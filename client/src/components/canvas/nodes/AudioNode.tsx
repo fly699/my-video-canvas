@@ -370,18 +370,19 @@ export const AudioNode = memo(function AudioNode({ id, selected, data }: Props) 
             </div>
             {/* Duration */}
             <div>
-              <label style={labelStyle}>时长（秒）</label>
+              <div className="flex items-center justify-between" style={{ marginBottom: 5 }}>
+                <label style={{ ...labelStyle, marginBottom: 0 }}>时长</label>
+                <span style={{ fontSize: 11, color: "var(--c-t3)", fontVariantNumeric: "tabular-nums" }}>{payload.musicDuration ?? 30}秒</span>
+              </div>
               <input
-                type="number"
+                type="range"
                 min={10}
                 max={240}
                 step={5}
                 value={payload.musicDuration ?? 30}
                 onChange={(e) => update("musicDuration", Number(e.target.value))}
-                className="nodrag"
-                style={{ ...fieldStyle, width: 80 }}
-                onFocus={(e) => { e.currentTarget.style.borderColor = BORDER_ACCENT; }}
-                onBlur={(e) => { e.currentTarget.style.borderColor = BORDER_DEFAULT; }}
+                className="nodrag w-full"
+                style={{ accentColor: accent }}
               />
             </div>
             <GenerateBtn
@@ -484,18 +485,19 @@ export const AudioNode = memo(function AudioNode({ id, selected, data }: Props) 
               />
             </div>
             <div>
-              <label style={labelStyle}>时长（秒）</label>
+              <div className="flex items-center justify-between" style={{ marginBottom: 5 }}>
+                <label style={{ ...labelStyle, marginBottom: 0 }}>时长</label>
+                <span style={{ fontSize: 11, color: "var(--c-t3)", fontVariantNumeric: "tabular-nums" }}>{payload.sfxDuration ?? 5}秒</span>
+              </div>
               <input
-                type="number"
+                type="range"
                 min={1}
                 max={22}
                 step={1}
                 value={payload.sfxDuration ?? 5}
                 onChange={(e) => update("sfxDuration", Number(e.target.value))}
-                className="nodrag"
-                style={{ ...fieldStyle, width: 80 }}
-                onFocus={(e) => { e.currentTarget.style.borderColor = BORDER_ACCENT; }}
-                onBlur={(e) => { e.currentTarget.style.borderColor = BORDER_DEFAULT; }}
+                className="nodrag w-full"
+                style={{ accentColor: accent }}
               />
             </div>
             <GenerateBtn disabled={!payload.sfxPrompt?.trim()} loading={false} onClick={handleGenerateSFXStub} label="生成音效（即将上线）" />

@@ -24,11 +24,13 @@ function isAllowedUrl(rawUrl: string): boolean {
     const u = new URL(rawUrl);
     // Only allow HTTPS
     if (u.protocol !== "https:") return false;
+    // URL.hostname wraps IPv6 in brackets (e.g. "[::1]") — strip them before matching.
+    const rawHost = u.hostname.toLowerCase();
+    const host = rawHost.startsWith("[") && rawHost.endsWith("]") ? rawHost.slice(1, -1) : rawHost;
     // Block internal/private hosts
-    const host = u.hostname.toLowerCase();
     if (BLOCKED_HOSTS.some((b) => host === b || host.endsWith(`.${b}`))) return false;
-    // Block private IP ranges
-    if (/^10\.|^172\.(1[6-9]|2\d|3[01])\.|^192\.168\./.test(host)) return false;
+    // Block private IP ranges (including IPv4-mapped IPv6 ::ffff:)
+    if (/^10\.|^172\.(1[6-9]|2\d|3[01])\.|^192\.168\.|^::ffff:/i.test(host)) return false;
     return true;
   } catch {
     return false;
@@ -61,7 +63,13 @@ export function registerVideoProxy(app: Express) {
       return;
     }
 
+    const MAX_VIDEO_BYTES = 500 * 1024 * 1024; // 500 MB
+    const FETCH_TIMEOUT_MS = 60_000;
+
     try {
+      const controller = new AbortController();
+      const timer = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS);
+
       const headers: Record<string, string> = {
         "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
         "Accept": "video/webm,video/mp4,video/*,*/*;q=0.9",
@@ -76,7 +84,23 @@ export function registerVideoProxy(app: Express) {
       const upstream = await fetch(decodedUrl, {
         headers,
         redirect: "follow",
+        signal: controller.signal,
       });
+      clearTimeout(timer);
+
+      // Validate final URL after redirect chain to prevent SSRF via open redirect
+      if (!isAllowedUrl(upstream.url)) {
+        res.status(403).send("URL not allowed after redirect");
+        return;
+      }
+
+      // Reject oversized responses before streaming; ignore non-numeric / negative Content-Length
+      const contentLengthRaw = upstream.headers.get("content-length");
+      const contentLengthNum = contentLengthRaw !== null ? parseInt(contentLengthRaw, 10) : null;
+      if (contentLengthNum !== null && !isNaN(contentLengthNum) && contentLengthNum > MAX_VIDEO_BYTES) {
+        res.status(413).send("Video too large");
+        return;
+      }
 
       // Forward relevant response headers
       const forwardHeaders: Record<string, string> = {
@@ -84,14 +108,19 @@ export function registerVideoProxy(app: Express) {
         "Access-Control-Allow-Methods": "GET, HEAD, OPTIONS",
         "Access-Control-Allow-Headers": "Range",
         "Access-Control-Expose-Headers": "Content-Length, Content-Range, Accept-Ranges",
+        "X-Content-Type-Options": "nosniff",
       };
 
       const contentType = upstream.headers.get("content-type");
-      if (contentType) forwardHeaders["Content-Type"] = contentType;
-      else forwardHeaders["Content-Type"] = "video/mp4";
+      const safeVideoTypes = ["video/", "audio/", "application/octet-stream"];
+      forwardHeaders["Content-Type"] =
+        contentType && safeVideoTypes.some((t) => contentType.startsWith(t))
+          ? contentType
+          : "video/mp4";
 
-      const contentLength = upstream.headers.get("content-length");
-      if (contentLength) forwardHeaders["Content-Length"] = contentLength;
+      if (contentLengthNum !== null && !isNaN(contentLengthNum) && contentLengthNum >= 0) {
+        forwardHeaders["Content-Length"] = String(contentLengthNum);
+      }
 
       const contentRange = upstream.headers.get("content-range");
       if (contentRange) forwardHeaders["Content-Range"] = contentRange;
@@ -106,7 +135,9 @@ export function registerVideoProxy(app: Express) {
       // If download=1 is set, add Content-Disposition to trigger browser download
       if (req.query.download === "1") {
         const urlPath = new URL(decodedUrl).pathname;
-        const filename = urlPath.split("/").pop() || "video.mp4";
+        const rawName = urlPath.split("/").pop() || "video.mp4";
+        // Strip characters unsafe in Content-Disposition filename (quotes, CR, LF, semicolons, null bytes)
+        const filename = rawName.replace(/["\r\n;\\%\x00]/g, "_");
         forwardHeaders["Content-Disposition"] = `attachment; filename="${filename}"`;
       }
 
@@ -124,8 +155,9 @@ export function registerVideoProxy(app: Express) {
         return;
       }
 
-      // Stream the body
+      // Stream the body with a hard byte limit
       const reader = upstream.body.getReader();
+      let bytesReceived = 0;
       const pump = async () => {
         while (true) {
           const { done, value } = await reader.read();
@@ -133,9 +165,24 @@ export function registerVideoProxy(app: Express) {
             res.end();
             break;
           }
+          bytesReceived += value.byteLength;
+          if (bytesReceived > MAX_VIDEO_BYTES) {
+            reader.cancel();
+            res.destroy();
+            break;
+          }
           const canContinue = res.write(value);
           if (!canContinue) {
-            await new Promise<void>((resolve) => res.once("drain", resolve));
+            // Wait for backpressure to clear. Also listen for 'close' so the
+            // Promise resolves immediately if the client disconnects mid-stream
+            // instead of hanging forever waiting for a drain that never fires.
+            const drained = await new Promise<boolean>((resolve) => {
+              const onDrain = () => { res.removeListener("close", onClose); resolve(true); };
+              const onClose = () => { res.removeListener("drain", onDrain); resolve(false); };
+              res.once("drain", onDrain);
+              res.once("close", onClose);
+            });
+            if (!drained) break;
           }
         }
       };

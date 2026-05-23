@@ -78,13 +78,11 @@ export const AIChatNode = memo(function AIChatNode({ id, selected, data }: Props
   const lastSavedRef = useRef(JSON.stringify((data.payload as typeof payload).messages ?? []));
 
   useEffect(() => {
-    const current = localMessages.map(({ _id: _, ...m }) => m);
-    const serialized = JSON.stringify(current);
-    if (lastSavedRef.current !== serialized) {
-      lastSavedRef.current = serialized;
-      updateNodeData(id, { messages: current }, true);
+    const stored = (data.payload as typeof payload).messages;
+    if (stored !== localMessages) {
+      updateNodeData(id, { messages: localMessages.map(({ _id: _, ...m }) => m) });
     }
-  }, [localMessages, id, updateNodeData]);
+  }, [localMessages, id, updateNodeData, data.payload]);
   useEffect(() => {
     if (scrollRef.current) scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
   }, [localMessages]);

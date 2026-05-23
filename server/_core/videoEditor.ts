@@ -21,6 +21,8 @@ export function assertSafeUrl(url: string): void {
   if (protocol !== "https:" && protocol !== "http:") {
     throw new Error(`Unsupported URL scheme: ${protocol}`);
   }
+  // URL.hostname wraps IPv6 addresses in brackets (e.g. "[::1]") — strip them before pattern matching.
+  const host = hostname.startsWith("[") && hostname.endsWith("]") ? hostname.slice(1, -1) : hostname;
   const privatePatterns = [
     /^localhost$/i,
     /^127\./,
@@ -29,9 +31,11 @@ export function assertSafeUrl(url: string): void {
     /^192\.168\./,
     /^169\.254\./,
     /^::1$/,
+    /^::ffff:/i,
     /^0\./,
+    /^fd[0-9a-f]{2}:/i,
   ];
-  if (privatePatterns.some((p) => p.test(hostname))) {
+  if (privatePatterns.some((p) => p.test(host))) {
     throw new Error(`Access to private/local hosts is not allowed: ${hostname}`);
   }
 }
@@ -389,10 +393,11 @@ export async function burnSubtitles(
   try {
     await fs.writeFile(srtPath, generateSRT(entries), "utf8");
 
-    // FFmpeg filtergraph escaping: backslash → \\, colon → \:, single-quote → \'
+    // FFmpeg filtergraph escaping: backslash → \\, colon → \:, comma → \,, single-quote → \'
     const escapedSrtPath = srtPath
       .replace(/\\/g, "\\\\")
       .replace(/:/g, "\\:")
+      .replace(/,/g, "\\,")
       .replace(/'/g, "\\'");
     const subsFilter = `subtitles='${escapedSrtPath}':force_style='FontSize=${fontSize},PrimaryColour=&H${cssColorToASSHex(fontColor)}&'`;
     const args = [

@@ -4,6 +4,7 @@ import { createServer } from "http";
 import net from "net";
 import { createExpressMiddleware } from "@trpc/server/adapters/express";
 import { registerOAuthRoutes } from "./oauth";
+import { registerEmailAuthRoutes } from "./emailAuth";
 import { registerStorageProxy } from "./storageProxy";
 import { registerVideoProxy } from "./videoProxy";
 import { registerImageProxy } from "./imageProxy";
@@ -34,6 +35,10 @@ async function startServer() {
   const app = express();
   const server = createServer(app);
 
+  // Trust the first proxy hop so req.ip reflects the real client IP from X-Forwarded-For.
+  // This prevents IP spoofing via direct connections while supporting reverse-proxy deployments.
+  app.set("trust proxy", 1);
+
   // Configure body parser with larger size limit for file uploads
   app.use(express.json({ limit: "50mb" }));
   app.use(express.urlencoded({ limit: "50mb", extended: true }));
@@ -42,6 +47,7 @@ async function startServer() {
   registerVideoProxy(app);
   registerImageProxy(app);
   registerOAuthRoutes(app);
+  registerEmailAuthRoutes(app);
 
   // tRPC API
   app.use(

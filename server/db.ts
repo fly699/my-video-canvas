@@ -1,4 +1,4 @@
-import { eq, and, desc } from "drizzle-orm";
+import { eq, and, desc, sql } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/mysql2";
 import {
   InsertUser,
@@ -9,17 +9,26 @@ import {
   assets,
   videoTasks,
   chatMessages,
+  whitelistSettings,
+  whitelistEntries,
+  auditLogs,
   InsertProject,
   InsertCanvasNode,
   InsertCanvasEdge,
   InsertAsset,
   InsertVideoTask,
   InsertChatMessage,
+  InsertAuditLog,
 } from "../drizzle/schema";
 import { ENV } from "./_core/env";
 import * as dev from "./_core/devStore";
 
-const DEV_MODE = process.env.NODE_ENV === "development" && !process.env.DATABASE_URL;
+// Dev-mode whitelist state
+const devWhitelistSettings = { id: 1, enabled: false, updatedAt: new Date() };
+const devWhitelistEntries: Array<{ id: number; type: "ip" | "user"; value: string; note: string | null; createdBy: number | null; createdAt: Date }> = [];
+let devNextWhitelistId = 1;
+
+const DEV_MODE = process.env.NODE_ENV === "development" && !process.env.DATABASE_URL && !process.env.OAUTH_SERVER_URL;
 
 let _db: ReturnType<typeof drizzle> | null = null;
 
@@ -45,7 +54,7 @@ export async function upsertUser(user: InsertUser): Promise<void> {
   const values: InsertUser = { openId: user.openId };
   const updateSet: Record<string, unknown> = {};
 
-  const textFields = ["name", "email", "loginMethod"] as const;
+  const textFields = ["name", "email", "loginMethod", "passwordHash"] as const;
   textFields.forEach((field) => {
     const value = user[field];
     if (value === undefined) return;
@@ -61,9 +70,19 @@ export async function upsertUser(user: InsertUser): Promise<void> {
   if (user.role !== undefined) {
     values.role = user.role;
     updateSet.role = user.role;
-  } else if (user.openId === ENV.ownerOpenId) {
-    values.role = "admin";
-    updateSet.role = "admin";
+  } else {
+    // Promote to admin if openId or email matches the configured owner.
+    // Email-match only counts for OAuth accounts (loginMethod !== "email") to
+    // prevent someone from registering the owner address via the email-auth form.
+    const isOwnerById = ENV.ownerOpenId && user.openId === ENV.ownerOpenId;
+    const isOwnerByEmail =
+      ENV.ownerEmail &&
+      user.email?.toLowerCase() === ENV.ownerEmail.toLowerCase() &&
+      user.loginMethod !== "email";
+    if (isOwnerById || isOwnerByEmail) {
+      values.role = "admin";
+      updateSet.role = "admin";
+    }
   }
 
   if (!values.lastSignedIn) values.lastSignedIn = new Date();
@@ -333,4 +352,120 @@ export async function clearChatMessages(nodeId: string, projectId: number) {
   await db
     .delete(chatMessages)
     .where(and(eq(chatMessages.nodeId, nodeId), eq(chatMessages.projectId, projectId)));
+}
+
+// ── Whitelist ─────────────────────────────────────────────────────────────────
+
+export async function getWhitelistSettings() {
+  const db = await getDb();
+  if (!db) return devWhitelistSettings;
+  const rows = await db.select().from(whitelistSettings).limit(1);
+  return rows[0] ?? null;
+}
+
+export async function setWhitelistEnabled(enabled: boolean): Promise<void> {
+  const db = await getDb();
+  if (!db) { devWhitelistSettings.enabled = enabled; return; }
+  // Upsert row id=1 atomically — avoids TOCTOU race and ensures WHERE clause is always scoped.
+  await db.insert(whitelistSettings).values({ id: 1, enabled })
+    .onDuplicateKeyUpdate({ set: { enabled } });
+}
+
+export async function getWhitelistEntries() {
+  const db = await getDb();
+  if (!db) return [...devWhitelistEntries];
+  return db.select().from(whitelistEntries).orderBy(whitelistEntries.createdAt);
+}
+
+export async function addWhitelistEntry(
+  type: "ip" | "user",
+  value: string,
+  note: string | null,
+  createdBy: number | null,
+): Promise<void> {
+  const db = await getDb();
+  if (!db) {
+    const id = devNextWhitelistId++;
+    devWhitelistEntries.push({ id, type, value, note, createdBy, createdAt: new Date() });
+    return;
+  }
+  // On duplicate (type, value) — preserve the existing entry unchanged (no-op update)
+  await db.insert(whitelistEntries).values({ type, value, note, createdBy })
+    .onDuplicateKeyUpdate({ set: { id: sql`id` } });
+}
+
+export async function removeWhitelistEntry(id: number): Promise<boolean> {
+  const db = await getDb();
+  if (!db) {
+    const idx = devWhitelistEntries.findIndex(e => e.id === id);
+    if (idx !== -1) { devWhitelistEntries.splice(idx, 1); return true; }
+    return false;
+  }
+  const [result] = await db.delete(whitelistEntries).where(eq(whitelistEntries.id, id));
+  return (result as { affectedRows?: number }).affectedRows !== 0;
+}
+
+export async function isWhitelisted(type: "ip" | "user", value: string): Promise<boolean> {
+  const db = await getDb();
+  if (!db) return devWhitelistEntries.some(e => e.type === type && e.value === value);
+  const rows = await db.select().from(whitelistEntries)
+    .where(and(eq(whitelistEntries.type, type), eq(whitelistEntries.value, value)))
+    .limit(1);
+  return rows.length > 0;
+}
+
+// ── Audit Logs ────────────────────────────────────────────────────────────────
+
+// Dev-mode in-memory audit log (typed with id so UI keys work correctly)
+type DevAuditLog = typeof auditLogs.$inferSelect;
+const devAuditLogs: DevAuditLog[] = [];
+let devAuditLogId = 1;
+
+export async function insertAuditLog(data: InsertAuditLog): Promise<void> {
+  const db = await getDb();
+  if (!db) {
+    devAuditLogs.unshift({ ...data, id: devAuditLogId++, createdAt: new Date() } as DevAuditLog);
+    if (devAuditLogs.length > 500) devAuditLogs.pop();
+    return;
+  }
+  await db.insert(auditLogs).values(data);
+}
+
+export async function getAuditLogs(opts: {
+  limit?: number;
+  offset?: number;
+  action?: string;
+}): Promise<{ rows: typeof auditLogs.$inferSelect[]; total: number }> {
+  const limit = opts.limit ?? 50;
+  const offset = opts.offset ?? 0;
+  const db = await getDb();
+
+  if (!db) {
+    const filtered = opts.action
+      ? devAuditLogs.filter((l) => l.action === opts.action)
+      : devAuditLogs;
+    return {
+      rows: filtered.slice(offset, offset + limit) as typeof auditLogs.$inferSelect[],
+      total: filtered.length,
+    };
+  }
+
+  const where = opts.action ? eq(auditLogs.action, opts.action) : undefined;
+
+  const [rows, countRows] = await Promise.all([
+    db.select().from(auditLogs)
+      .where(where)
+      .orderBy(desc(auditLogs.createdAt))
+      .limit(limit)
+      .offset(offset),
+    db.select({ count: sql<number>`COUNT(*)` }).from(auditLogs).where(where),
+  ]);
+
+  return { rows, total: Number(countRows[0]?.count ?? 0) };
+}
+
+export async function clearAuditLogs(): Promise<void> {
+  const db = await getDb();
+  if (!db) { devAuditLogs.splice(0); return; }
+  await db.delete(auditLogs);
 }

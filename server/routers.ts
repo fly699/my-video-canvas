@@ -19,12 +19,17 @@ import {
   overlayRouter,
 } from "./routers/canvas";
 import { uploadRouter } from "./routers/upload";
+import { adminRouter } from "./routers/admin";
 
 export const appRouter = router({
   system: systemRouter,
 
   auth: router({
-    me: publicProcedure.query((opts) => opts.ctx.user),
+    me: publicProcedure.query((opts) => {
+      if (!opts.ctx.user) return null;
+      const { passwordHash: _omit, ...safeUser } = opts.ctx.user;
+      return safeUser;
+    }),
     logout: publicProcedure.mutation(({ ctx }) => {
       const cookieOptions = getSessionCookieOptions(ctx.req);
       ctx.res.clearCookie(COOKIE_NAME, { ...cookieOptions, maxAge: -1 });
@@ -47,6 +52,7 @@ export const appRouter = router({
   subtitle: subtitleRouter,
   overlay: overlayRouter,
   upload: uploadRouter,
+  admin: adminRouter,
 });
 
 export type AppRouter = typeof appRouter;

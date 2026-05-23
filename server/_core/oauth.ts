@@ -3,6 +3,7 @@ import type { Express, Request, Response } from "express";
 import * as db from "../db";
 import { getSessionCookieOptions } from "./cookies";
 import { sdk } from "./sdk";
+import { writeAuditLog } from "./auditLog";
 
 function getQueryParam(req: Request, key: string): string | undefined {
   const value = req.query[key];
@@ -18,6 +19,34 @@ export function registerOAuthRoutes(app: Express) {
       res.status(400).json({ error: "code and state are required" });
       return;
     }
+
+    // Extract nonce from state and validate against the cookie set at OAuth initiation (CSRF prevention).
+    // State is base64(JSON { redirectUri, nonce }) so sdk.decodeState() can still extract redirectUri.
+    let stateNonce: string | null = null;
+    try {
+      const parsed = JSON.parse(atob(state)) as { nonce?: string };
+      stateNonce = parsed.nonce ?? null;
+    } catch { /* malformed state */ }
+
+    const cookieHeader = req.headers.cookie ?? "";
+    const nonceCookie = cookieHeader
+      .split(";")
+      .map((c) => c.trim())
+      .find((c) => c.startsWith("__oauth_nonce="))
+      ?.slice("__oauth_nonce=".length);
+
+    if (!stateNonce || !nonceCookie || stateNonce !== nonceCookie) {
+      res.status(400).json({ error: "Invalid OAuth state — possible CSRF attempt" });
+      return;
+    }
+
+    // Consume the nonce cookie so it cannot be replayed.
+    // Include Secure when the request arrived over HTTPS so Chrome doesn't ignore the deletion.
+    const secureClear = req.secure ? "; Secure" : "";
+    res.setHeader(
+      "Set-Cookie",
+      `__oauth_nonce=; SameSite=Lax; Path=/api/oauth; max-age=0${secureClear}`,
+    );
 
     try {
       const tokenResponse = await sdk.exchangeCodeForToken(code, state);
@@ -36,6 +65,11 @@ export function registerOAuthRoutes(app: Express) {
         lastSignedIn: new Date(),
       });
 
+      // Fetch the DB record so we have the numeric userId for audit logging.
+      // This is best-effort — don't let a transient DB error break the login flow.
+      let dbUser: Awaited<ReturnType<typeof db.getUserByOpenId>> = undefined;
+      try { dbUser = await db.getUserByOpenId(userInfo.openId); } catch { /* non-fatal */ }
+
       const sessionToken = await sdk.createSessionToken(userInfo.openId, {
         name: userInfo.name || "",
         expiresInMs: ONE_YEAR_MS,
@@ -43,6 +77,16 @@ export function registerOAuthRoutes(app: Express) {
 
       const cookieOptions = getSessionCookieOptions(req);
       res.cookie(COOKIE_NAME, sessionToken, { ...cookieOptions, maxAge: ONE_YEAR_MS });
+
+      const clientIp = req.ip ?? req.socket?.remoteAddress ?? "unknown";
+      writeAuditLog({
+        ip: clientIp,
+        userId: dbUser?.id ?? null,
+        userEmail: userInfo.email ?? null,
+        userName: userInfo.name ?? null,
+        action: "login_oauth",
+        detail: { method: userInfo.loginMethod ?? userInfo.platform ?? "oauth" },
+      });
 
       res.redirect(302, "/");
     } catch (error) {
