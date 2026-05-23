@@ -703,7 +703,7 @@ function CanvasInner({ projectId }: { projectId: number }) {
         saveCanvas();
         if (wasDirty) toast.success("已保存");
       }
-      if (e.key === "Escape") { setContextMenu(null); setShowNodePicker(false); setShowNodeSearch(false); setShowTemplates(false); runConfirmOpenRef.current = false; setShowRunConfirm(false); }
+      if (e.key === "Escape") { setContextMenu(null); setShowNodePicker(false); setShowNodeSearch(false); setShowTemplates(false); runConfirmOpenRef.current = false; setShowRunConfirm(false); setRunConfirmCountdown(5); }
 
       // Cmd+K / Ctrl+K — Node search (skip when typing in an input)
       if (!isEditing && (e.metaKey || e.ctrlKey) && e.key === "k") {
@@ -1989,7 +1989,7 @@ function CanvasInner({ projectId }: { projectId: number }) {
               background: "oklch(0 0 0 / 0.55)",
               display: "flex", alignItems: "center", justifyContent: "center",
             }}
-            onMouseDown={(e) => { if (e.target === e.currentTarget) { runConfirmOpenRef.current = false; setShowRunConfirm(false); } }}
+            onMouseDown={(e) => { if (e.target === e.currentTarget) { runConfirmOpenRef.current = false; setShowRunConfirm(false); setRunConfirmCountdown(5); } }}
           >
             <div style={{
               background: "var(--c-surface)",
@@ -2032,7 +2032,7 @@ function CanvasInner({ projectId }: { projectId: number }) {
               {/* Buttons */}
               <div style={{ display: "flex", gap: 10, justifyContent: "flex-end", marginTop: 4 }}>
                 <button
-                  onClick={() => { runConfirmOpenRef.current = false; setShowRunConfirm(false); }}
+                  onClick={() => { runConfirmOpenRef.current = false; setShowRunConfirm(false); setRunConfirmCountdown(5); }}
                   style={{
                     padding: "7px 18px", borderRadius: 8, fontSize: 13, fontWeight: 600,
                     background: "var(--c-surface-2)", border: "1px solid var(--c-bd2)",

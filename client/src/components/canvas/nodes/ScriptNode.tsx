@@ -124,7 +124,7 @@ export const ScriptNode = memo(function ScriptNode({ id, selected, data }: Props
   const [targetModel, setTargetModel] = useState("");
   const [aspectRatio, setAspectRatio] = useState("16:9");
   const [sceneCount,  setSceneCount]  = useState(5);
-  const initDuration = payload.totalDuration ?? 60;
+  const initDuration = Math.max(10, Math.min(600, Number(payload.totalDuration) || 60));
   const [duration,    setDuration]    = useState(initDuration);
   const [durationText, setDurationText] = useState(String(initDuration));
   const durationInputRef = useRef<HTMLInputElement>(null);
@@ -146,7 +146,7 @@ export const ScriptNode = memo(function ScriptNode({ id, selected, data }: Props
   // Skip if the input is currently focused to avoid overwriting mid-edit text.
   useEffect(() => {
     if (durationInputRef.current !== null && durationInputRef.current === document.activeElement) return;
-    const v = payload.totalDuration ?? 60;
+    const v = Math.max(10, Math.min(600, Number(payload.totalDuration) || 60));
     setDuration(v);
     setDurationText(String(v));
   }, [payload.totalDuration]); // eslint-disable-line react-hooks/exhaustive-deps
