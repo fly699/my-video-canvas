@@ -46,6 +46,7 @@ export type VideoTaskStatus = "pending" | "processing" | "succeeded" | "failed";
 export interface ScriptNodeData {
   content: string;
   synopsis?: string;
+  totalDuration?: number;
 }
 
 export interface StoryboardNodeData {

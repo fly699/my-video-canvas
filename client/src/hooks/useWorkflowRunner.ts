@@ -114,6 +114,7 @@ export function useWorkflowRunner() {
   });
 
   const abortRef = useRef(false);
+  const runningRef = useRef(false);
   useEffect(() => {
     abortRef.current = false;
     return () => { abortRef.current = true; };
@@ -128,6 +129,8 @@ export function useWorkflowRunner() {
   const overlayMutation = trpc.overlay.process.useMutation();
 
   const runWorkflow = useCallback(async (startNodeId: string | null) => {
+    if (runningRef.current) return;
+    runningRef.current = true;
     const { nodes, edges } = useCanvasStore.getState();
 
     // Determine which nodes are runnable
@@ -175,6 +178,7 @@ export function useWorkflowRunner() {
     }
 
     if (runnableIds.length === 0) {
+      runningRef.current = false;
       toast.info("没有可运行的节点");
       return;
     }
@@ -466,6 +470,7 @@ export function useWorkflowRunner() {
       }
     }
 
+    runningRef.current = false;
     if (!abortRef.current) {
       setRunState({
         running: false,

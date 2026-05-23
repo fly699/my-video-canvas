@@ -362,10 +362,11 @@ function CanvasInner({ projectId }: { projectId: number }) {
   const [runConfirmCountdown, setRunConfirmCountdown] = useState(5);
 
   const handleRunRequest = useCallback((startNodeId: string | null) => {
+    if (showRunConfirm) return;
     setPendingRunNodeId(startNodeId);
     setRunConfirmCountdown(5);
     setShowRunConfirm(true);
-  }, []);
+  }, [showRunConfirm]);
 
   useEffect(() => {
     if (!showRunConfirm) return;
@@ -723,6 +724,7 @@ function CanvasInner({ projectId }: { projectId: number }) {
       // Shift+R: run workflow from selected node
       if (!isEditing && e.shiftKey && e.key === "R") {
         e.preventDefault();
+        if (runState.running) return;
         const selected = nodes.find((n) => n.selected);
         handleRunRequest(selected?.id ?? null);
       }
@@ -2036,24 +2038,24 @@ function CanvasInner({ projectId }: { projectId: number }) {
                   取消
                 </button>
                 <button
-                  disabled={runConfirmCountdown > 0}
+                  disabled={runConfirmCountdown > 0 || runState.running}
                   onClick={() => {
                     setShowRunConfirm(false);
                     runWorkflow(pendingRunNodeId);
                   }}
                   style={{
                     padding: "7px 20px", borderRadius: 8, fontSize: 13, fontWeight: 600,
-                    background: runConfirmCountdown > 0
+                    background: (runConfirmCountdown > 0 || runState.running)
                       ? "oklch(0.72 0.22 142 / 0.07)"
                       : "oklch(0.72 0.22 142 / 0.15)",
-                    border: `1px solid oklch(0.72 0.22 142 / ${runConfirmCountdown > 0 ? "0.2" : "0.5"})`,
-                    color: runConfirmCountdown > 0 ? "oklch(0.72 0.22 142 / 0.45)" : "oklch(0.72 0.22 142)",
-                    cursor: runConfirmCountdown > 0 ? "not-allowed" : "pointer",
+                    border: `1px solid oklch(0.72 0.22 142 / ${(runConfirmCountdown > 0 || runState.running) ? "0.2" : "0.5"})`,
+                    color: (runConfirmCountdown > 0 || runState.running) ? "oklch(0.72 0.22 142 / 0.45)" : "oklch(0.72 0.22 142)",
+                    cursor: (runConfirmCountdown > 0 || runState.running) ? "not-allowed" : "pointer",
                     minWidth: 110,
                     transition: "all 0.3s ease",
                   }}
                 >
-                  {runConfirmCountdown > 0 ? `确认执行 (${runConfirmCountdown}s)` : "确认执行"}
+                  {runState.running ? "运行中…" : runConfirmCountdown > 0 ? `确认执行 (${runConfirmCountdown}s)` : "确认执行"}
                 </button>
               </div>
             </div>

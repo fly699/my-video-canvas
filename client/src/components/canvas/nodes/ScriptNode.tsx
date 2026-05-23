@@ -124,8 +124,9 @@ export const ScriptNode = memo(function ScriptNode({ id, selected, data }: Props
   const [targetModel, setTargetModel] = useState("");
   const [aspectRatio, setAspectRatio] = useState("16:9");
   const [sceneCount,  setSceneCount]  = useState(5);
-  const [duration,    setDuration]    = useState(60);
-  const [durationText, setDurationText] = useState("60");
+  const initDuration = payload.totalDuration ?? 60;
+  const [duration,    setDuration]    = useState(initDuration);
+  const [durationText, setDurationText] = useState(String(initDuration));
 
   const handleChange = useCallback(
     (field: keyof ScriptNodeData, value: string) => {
@@ -133,6 +134,12 @@ export const ScriptNode = memo(function ScriptNode({ id, selected, data }: Props
     },
     [id, updateNodeData]
   );
+
+  const applyDuration = useCallback((v: number) => {
+    setDuration(v);
+    setDurationText(String(v));
+    updateNodeData(id, { totalDuration: v });
+  }, [id, updateNodeData]);
 
   // ── Existing mutations ────────────────────────────────────────────────────
 
@@ -394,9 +401,10 @@ export const ScriptNode = memo(function ScriptNode({ id, selected, data }: Props
                   <div className="flex items-center gap-1.5">
                     <button
                       onClick={() => {
-                        const step = duration < 30 ? 5 : duration < 120 ? 15 : duration < 300 ? 30 : 60;
-                        const v = Math.max(10, duration - step);
-                        setDuration(v); setDurationText(String(v));
+                        const committed = parseInt(durationText, 10);
+                        const base = isNaN(committed) ? duration : Math.max(10, Math.min(600, committed));
+                        const step = base < 30 ? 5 : base < 120 ? 15 : base < 300 ? 30 : 60;
+                        applyDuration(Math.max(10, base - step));
                       }}
                       className="nodrag w-6 h-6 flex items-center justify-center rounded-md transition-all"
                       style={{ background: "var(--c-surface)", border: "1px solid var(--c-bd2)", color: "var(--c-t2)", cursor: "pointer" }}
@@ -410,8 +418,7 @@ export const ScriptNode = memo(function ScriptNode({ id, selected, data }: Props
                       onChange={(e) => setDurationText(e.target.value)}
                       onBlur={() => {
                         const v = parseInt(durationText, 10);
-                        const clamped = isNaN(v) ? duration : Math.max(10, Math.min(600, v));
-                        setDuration(clamped); setDurationText(String(clamped));
+                        applyDuration(isNaN(v) ? duration : Math.max(10, Math.min(600, v)));
                       }}
                       onKeyDown={(e) => { if (e.key === "Enter") e.currentTarget.blur(); }}
                       className="nodrag"
@@ -426,9 +433,10 @@ export const ScriptNode = memo(function ScriptNode({ id, selected, data }: Props
                     />
                     <button
                       onClick={() => {
-                        const step = duration < 30 ? 5 : duration < 120 ? 15 : duration < 300 ? 30 : 60;
-                        const v = Math.min(600, duration + step);
-                        setDuration(v); setDurationText(String(v));
+                        const committed = parseInt(durationText, 10);
+                        const base = isNaN(committed) ? duration : Math.max(10, Math.min(600, committed));
+                        const step = base < 30 ? 5 : base < 120 ? 15 : base < 300 ? 30 : 60;
+                        applyDuration(Math.min(600, base + step));
                       }}
                       className="nodrag w-6 h-6 flex items-center justify-center rounded-md transition-all"
                       style={{ background: "var(--c-surface)", border: "1px solid var(--c-bd2)", color: "var(--c-t2)", cursor: "pointer" }}
