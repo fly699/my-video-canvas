@@ -753,7 +753,7 @@ function CanvasInner({ projectId }: { projectId: number }) {
     };
     window.addEventListener("keydown", handler);
     return () => window.removeEventListener("keydown", handler);
-  }, [saveCanvas, undo, redo, runWorkflow, nodes]);
+  }, [saveCanvas, undo, redo, runWorkflow, nodes, handleRunRequest]);
 
   const collaboratorList = Array.from(collaborators.values());
 

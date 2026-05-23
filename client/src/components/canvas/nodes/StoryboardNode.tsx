@@ -59,7 +59,7 @@ export const StoryboardNode = memo(function StoryboardNode({ id, selected, data 
   // Close lightbox on Escape
   useEffect(() => {
     if (!zoomUrl) return;
-    const handler = (e: KeyboardEvent) => { if (e.key === "Escape") setZoomUrl(null); };
+    const handler = (e: KeyboardEvent) => { if (e.key === "Escape") { e.stopPropagation(); setZoomUrl(null); } };
     document.addEventListener("keydown", handler);
     return () => document.removeEventListener("keydown", handler);
   }, [zoomUrl]);
