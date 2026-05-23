@@ -905,7 +905,7 @@ export const subtitleRouter = router({
   exportSRT: protectedProcedure
     .input(
       z.object({
-        entries: z.array(z.object({ start: z.number(), end: z.number(), text: z.string() })),
+        entries: z.array(z.object({ start: z.number(), end: z.number(), text: z.string().max(500) })).max(2000),
       })
     )
     .mutation(({ input }) => {

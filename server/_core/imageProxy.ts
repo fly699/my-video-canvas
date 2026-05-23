@@ -82,9 +82,10 @@ export function registerImageProxy(app: Express) {
         return;
       }
 
-      // Reject oversized responses before streaming
+      // Reject oversized responses before streaming; ignore non-numeric / negative Content-Length
       const contentLengthRaw = upstream.headers.get("content-length");
-      if (contentLengthRaw && parseInt(contentLengthRaw, 10) > MAX_IMAGE_BYTES) {
+      const contentLengthNum = contentLengthRaw !== null ? parseInt(contentLengthRaw, 10) : null;
+      if (contentLengthNum !== null && !isNaN(contentLengthNum) && contentLengthNum > MAX_IMAGE_BYTES) {
         res.status(413).send("Image too large");
         return;
       }
@@ -103,7 +104,9 @@ export function registerImageProxy(app: Express) {
           ? contentType
           : "image/png";
 
-      if (contentLengthRaw) forwardHeaders["Content-Length"] = contentLengthRaw;
+      if (contentLengthNum !== null && !isNaN(contentLengthNum) && contentLengthNum >= 0) {
+        forwardHeaders["Content-Length"] = String(contentLengthNum);
+      }
 
       // Trigger browser download if download=1
       if (req.query.download === "1") {

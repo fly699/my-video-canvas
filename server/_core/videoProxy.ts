@@ -94,9 +94,10 @@ export function registerVideoProxy(app: Express) {
         return;
       }
 
-      // Reject oversized responses before streaming
-      const contentLength = upstream.headers.get("content-length");
-      if (contentLength && parseInt(contentLength, 10) > MAX_VIDEO_BYTES) {
+      // Reject oversized responses before streaming; ignore non-numeric / negative Content-Length
+      const contentLengthRaw = upstream.headers.get("content-length");
+      const contentLengthNum = contentLengthRaw !== null ? parseInt(contentLengthRaw, 10) : null;
+      if (contentLengthNum !== null && !isNaN(contentLengthNum) && contentLengthNum > MAX_VIDEO_BYTES) {
         res.status(413).send("Video too large");
         return;
       }
@@ -117,7 +118,9 @@ export function registerVideoProxy(app: Express) {
           ? contentType
           : "video/mp4";
 
-      if (contentLength) forwardHeaders["Content-Length"] = contentLength;
+      if (contentLengthNum !== null && !isNaN(contentLengthNum) && contentLengthNum >= 0) {
+        forwardHeaders["Content-Length"] = String(contentLengthNum);
+      }
 
       const contentRange = upstream.headers.get("content-range");
       if (contentRange) forwardHeaders["Content-Range"] = contentRange;
