@@ -20,7 +20,7 @@ interface Props {
 
 // ── Static data ───────────────────────────────────────────────────────────────
 
-const GENRES  = ["短视频", "广告片", "短剧", "纪录片", "MV", "宣传片", "微电影", "动画"];
+const GENRES  = ["短视频", "电影", "动作片", "广告片", "短剧", "纪录片", "MV", "宣传片", "微电影", "动画"];
 const STYLES  = ["电影感", "写实", "动漫", "复古胶片", "赛博朋克", "史诗", "极简", "梦幻"];
 const MOODS   = ["温暖治愈", "紧张刺激", "浪漫唯美", "神秘悬疑", "壮阔震撼", "轻松幽默"];
 const RATIOS  = ["16:9", "9:16", "1:1", "4:3", "2.35:1"];
@@ -125,6 +125,7 @@ export const ScriptNode = memo(function ScriptNode({ id, selected, data }: Props
   const [aspectRatio, setAspectRatio] = useState("16:9");
   const [sceneCount,  setSceneCount]  = useState(5);
   const [duration,    setDuration]    = useState(60);
+  const [durationText, setDurationText] = useState("60");
 
   const handleChange = useCallback(
     (field: keyof ScriptNodeData, value: string) => {
@@ -391,11 +392,47 @@ export const ScriptNode = memo(function ScriptNode({ id, selected, data }: Props
                     总时长（秒）
                   </span>
                   <div className="flex items-center gap-1.5">
-                    <button onClick={() => setDuration((n) => Math.max(10, n - 15))} className="nodrag w-6 h-6 flex items-center justify-center rounded-md transition-all" style={{ background: "var(--c-surface)", border: "1px solid var(--c-bd2)", color: "var(--c-t2)", cursor: "pointer" }}>
+                    <button
+                      onClick={() => {
+                        const step = duration < 30 ? 5 : duration < 120 ? 15 : duration < 300 ? 30 : 60;
+                        const v = Math.max(10, duration - step);
+                        setDuration(v); setDurationText(String(v));
+                      }}
+                      className="nodrag w-6 h-6 flex items-center justify-center rounded-md transition-all"
+                      style={{ background: "var(--c-surface)", border: "1px solid var(--c-bd2)", color: "var(--c-t2)", cursor: "pointer" }}
+                    >
                       <Minus style={{ width: 10, height: 10 }} />
                     </button>
-                    <span style={{ fontSize: 13, fontWeight: 700, color: PANEL_ACCENT, minWidth: 28, textAlign: "center" }}>{duration}s</span>
-                    <button onClick={() => setDuration((n) => Math.min(600, n + 15))} className="nodrag w-6 h-6 flex items-center justify-center rounded-md transition-all" style={{ background: "var(--c-surface)", border: "1px solid var(--c-bd2)", color: "var(--c-t2)", cursor: "pointer" }}>
+                    <input
+                      type="text"
+                      inputMode="numeric"
+                      value={durationText}
+                      onChange={(e) => setDurationText(e.target.value)}
+                      onBlur={() => {
+                        const v = parseInt(durationText, 10);
+                        const clamped = isNaN(v) ? duration : Math.max(10, Math.min(600, v));
+                        setDuration(clamped); setDurationText(String(clamped));
+                      }}
+                      onKeyDown={(e) => { if (e.key === "Enter") e.currentTarget.blur(); }}
+                      className="nodrag"
+                      style={{
+                        fontSize: 13, fontWeight: 700, color: PANEL_ACCENT,
+                        width: 40, textAlign: "center",
+                        background: "var(--c-surface)",
+                        border: "1px solid var(--c-bd2)",
+                        borderRadius: 6, outline: "none",
+                        padding: "1px 4px",
+                      }}
+                    />
+                    <button
+                      onClick={() => {
+                        const step = duration < 30 ? 5 : duration < 120 ? 15 : duration < 300 ? 30 : 60;
+                        const v = Math.min(600, duration + step);
+                        setDuration(v); setDurationText(String(v));
+                      }}
+                      className="nodrag w-6 h-6 flex items-center justify-center rounded-md transition-all"
+                      style={{ background: "var(--c-surface)", border: "1px solid var(--c-bd2)", color: "var(--c-t2)", cursor: "pointer" }}
+                    >
                       <Plus style={{ width: 10, height: 10 }} />
                     </button>
                   </div>
