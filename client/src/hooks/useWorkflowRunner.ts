@@ -471,14 +471,14 @@ export function useWorkflowRunner() {
     }
 
     runningRef.current = false;
-    setRunState({
-      running: false,
-      currentNodeId: null,
-      completedIds: completed,
-      failedIds: failed,
-      runnableCount: 0,
-    });
     if (!abortRef.current) {
+      setRunState({
+        running: false,
+        currentNodeId: null,
+        completedIds: completed,
+        failedIds: failed,
+        runnableCount: 0,
+      });
       const ok = completed.length;
       const ko = failed.length;
       const { nodes: finalNodes } = useCanvasStore.getState();

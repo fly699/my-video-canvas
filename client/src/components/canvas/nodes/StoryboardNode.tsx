@@ -56,6 +56,13 @@ export const StoryboardNode = memo(function StoryboardNode({ id, selected, data 
   const [batchCount, setBatchCount] = useState<1 | 2 | 4>(([1, 2, 4].includes(payload.batchSize as number) ? payload.batchSize : 1) as 1 | 2 | 4);
   const [zoomUrl, setZoomUrl] = useState<string | null>(null);
 
+  // Sync batchCount when payload.batchSize changes externally (collab / undo-redo)
+  useEffect(() => {
+    if ([1, 2, 4].includes(payload.batchSize as number)) {
+      setBatchCount(payload.batchSize as 1 | 2 | 4);
+    }
+  }, [payload.batchSize]); // eslint-disable-line react-hooks/exhaustive-deps
+
   // Auto-collapse inputs when deselected, expand when selected
   useEffect(() => {
     setInputExpanded(!!selected);
@@ -282,7 +289,7 @@ export const StoryboardNode = memo(function StoryboardNode({ id, selected, data 
                     {generating ? "生成中..." : "重新生成"}
                   </button>
                   <button
-                    onClick={(e) => { e.stopPropagation(); setZoomUrl(payload.imageUrl!); }}
+                    onClick={(e) => { e.stopPropagation(); setZoomUrl(payload.imageUrl ?? null); }}
                     className="nodrag flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs font-medium transition-all"
                     style={{
                       background: "oklch(0.68 0.18 220 / 0.20)",
