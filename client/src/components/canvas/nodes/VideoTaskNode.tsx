@@ -49,6 +49,7 @@ const PROVIDERS: { value: VideoProvider; label: string; group: string }[] = [
 type ParamDef =
   | { type: "select"; key: string; label: string; options: { value: string | number; label: string }[]; default?: string | number }
   | { type: "number"; key: string; label: string; min: number; max: number; step: number; default?: number }
+  | { type: "range";  key: string; label: string; min: number; max: number; step: number; default?: number; unit?: string }
   | { type: "toggle"; key: string; label: string; default?: boolean };
 
 const HF_DOP_PARAMS: ParamDef[] = [
@@ -59,7 +60,7 @@ const HF_DOP_PARAMS: ParamDef[] = [
 const KLING_O3_PARAMS: ParamDef[] = [
   { type: "select", key: "aspect_ratio", label: "宽高比", default: "16:9",
     options: [{ value: "16:9", label: "16:9 横屏" }, { value: "9:16", label: "9:16 竖屏" }, { value: "1:1", label: "1:1 方形" }] },
-  { type: "number", key: "duration", label: "时长（秒）", min: 3, max: 15, step: 1, default: 5 },
+  { type: "range", key: "duration", label: "时长（秒）", min: 3, max: 15, step: 1, default: 5, unit: "s" },
 ];
 
 const HF_SEEDANCE_PARAMS: ParamDef[] = [
@@ -71,7 +72,7 @@ const HF_SEEDANCE_PARAMS: ParamDef[] = [
     ]},
   { type: "select", key: "resolution", label: "分辨率", default: "720p",
     options: [{ value: "480p", label: "480p" }, { value: "720p", label: "720p" }, { value: "1080p", label: "1080p" }] },
-  { type: "number", key: "duration", label: "时长（秒）", min: 2, max: 12, step: 1, default: 5 },
+  { type: "range",  key: "duration", label: "时长（秒）", min: 2, max: 12, step: 1, default: 5, unit: "s" },
   { type: "toggle", key: "camera_fixed", label: "固定镜头", default: false },
 ];
 
@@ -91,13 +92,13 @@ const PROVIDER_PARAMS: Record<string, ParamDef[]> = {
       ]},
     { type: "select", key: "resolution", label: "分辨率", default: "720p",
       options: [{ value: "480p", label: "480p" }, { value: "720p", label: "720p" }, { value: "1080p", label: "1080p" }] },
-    { type: "number", key: "duration", label: "时长（秒）", min: 2, max: 12, step: 1, default: 5 },
+    { type: "range",  key: "duration", label: "时长（秒）", min: 2, max: 12, step: 1, default: 5, unit: "s" },
     { type: "toggle", key: "camera_fixed", label: "固定镜头", default: false },
   ],
   poyo_veo: [
     { type: "select", key: "aspect_ratio", label: "宽高比", default: "16:9",
       options: [{ value: "16:9", label: "16:9 横屏" }, { value: "9:16", label: "9:16 竖屏" }, { value: "1:1", label: "1:1 方形" }] },
-    { type: "number", key: "duration", label: "时长（秒）", min: 5, max: 30, step: 5, default: 5 },
+    { type: "range",  key: "duration", label: "时长（秒）", min: 5, max: 30, step: 5, default: 5, unit: "s" },
   ],
   hf_dop_standard: HF_DOP_PARAMS,
   hf_dop_preview:  HF_DOP_PARAMS,
@@ -108,7 +109,7 @@ const PROVIDER_PARAMS: Record<string, ParamDef[]> = {
       options: [{ value: 5, label: "5 秒" }, { value: 10, label: "10 秒" }] },
     { type: "select", key: "aspect_ratio", label: "宽高比", default: "16:9",
       options: [{ value: "16:9", label: "16:9 横屏" }, { value: "9:16", label: "9:16 竖屏" }, { value: "1:1", label: "1:1 方形" }] },
-    { type: "number", key: "cfg_scale", label: "引导强度（0-1）", min: 0, max: 1, step: 0.1, default: 0.5 },
+    { type: "range",  key: "cfg_scale", label: "引导强度", min: 0, max: 1, step: 0.1, default: 0.5 },
   ],
   hf_seedance_pro: HF_SEEDANCE_PARAMS,
   poyo_kling26: [
@@ -124,12 +125,12 @@ const PROVIDER_PARAMS: Record<string, ParamDef[]> = {
   poyo_wan25_t2v: [
     { type: "select", key: "aspect_ratio", label: "宽高比", default: "16:9",
       options: [{ value: "16:9", label: "16:9 横屏" }, { value: "9:16", label: "9:16 竖屏" }, { value: "1:1", label: "1:1 方形" }] },
-    { type: "number", key: "duration", label: "时长（秒）", min: 3, max: 10, step: 1, default: 5 },
+    { type: "range",  key: "duration", label: "时长（秒）", min: 3, max: 10, step: 1, default: 5, unit: "s" },
   ],
   poyo_wan25_i2v: [
     { type: "select", key: "aspect_ratio", label: "宽高比", default: "16:9",
       options: [{ value: "16:9", label: "16:9 横屏" }, { value: "9:16", label: "9:16 竖屏" }, { value: "1:1", label: "1:1 方形" }] },
-    { type: "number", key: "duration", label: "时长（秒）", min: 3, max: 10, step: 1, default: 5 },
+    { type: "range",  key: "duration", label: "时长（秒）", min: 3, max: 10, step: 1, default: 5, unit: "s" },
   ],
   poyo_runway45: [
     { type: "select", key: "aspect_ratio", label: "宽高比", default: "16:9",
@@ -143,7 +144,7 @@ const PROVIDER_PARAMS: Record<string, ParamDef[]> = {
       options: [{ value: 5, label: "5 秒" }, { value: 10, label: "10 秒" }] },
     { type: "select", key: "aspect_ratio", label: "宽高比", default: "16:9",
       options: [{ value: "16:9", label: "16:9 横屏" }, { value: "9:16", label: "9:16 竖屏" }, { value: "1:1", label: "1:1 方形" }] },
-    { type: "number", key: "cfg_scale", label: "引导强度（0-1）", min: 0, max: 1, step: 0.1, default: 0.5 },
+    { type: "range",  key: "cfg_scale", label: "引导强度", min: 0, max: 1, step: 0.1, default: 0.5 },
   ],
   mock: [],
 };
@@ -754,6 +755,29 @@ export const VideoTaskNode = memo(function VideoTaskNode({ id, selected, data }:
                       style={{ ...fieldStyle, opacity: isLocked ? 0.5 : 1 }}
                       onFocus={onFocusMid}
                       onBlur={onBlurDefault}
+                    />
+                  </div>
+                );
+              }
+              if (def.type === "range") {
+                const val = curVal !== undefined ? Number(curVal) : (def.default ?? def.min);
+                const displayVal = def.unit === "s" ? `${val}秒` : def.key === "cfg_scale" ? val.toFixed(1) : String(val);
+                return (
+                  <div key={def.key} className="col-span-2">
+                    <div className="flex items-center justify-between" style={{ marginBottom: 4 }}>
+                      <label style={{ ...labelStyle, marginBottom: 0 }}>{def.label}</label>
+                      <span style={{ fontSize: 11, color: "var(--c-t3)", fontVariantNumeric: "tabular-nums" }}>{displayVal}</span>
+                    </div>
+                    <input
+                      type="range"
+                      min={def.min}
+                      max={def.max}
+                      step={def.step}
+                      value={val}
+                      onChange={(e) => handleParamChange(def.key, Number(e.target.value))}
+                      disabled={isLocked}
+                      className="nodrag w-full"
+                      style={{ accentColor: accentColor, opacity: isLocked ? 0.5 : 1 }}
                     />
                   </div>
                 );

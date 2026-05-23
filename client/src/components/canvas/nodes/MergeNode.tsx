@@ -213,13 +213,16 @@ export const MergeNode = memo(function MergeNode({ id, selected, data }: Props) 
         {/* Transition duration (only when not "none") */}
         {payload.transition !== "none" && payload.transition && (
           <div>
-            <label style={labelStyle}>转场时长（秒）</label>
+            <div className="flex items-center justify-between" style={{ marginBottom: 5 }}>
+              <label style={{ ...labelStyle, marginBottom: 0 }}>转场时长</label>
+              <span style={{ fontSize: 11, color: "var(--c-t3)", fontVariantNumeric: "tabular-nums" }}>{(payload.transitionDuration ?? 0.5).toFixed(1)}秒</span>
+            </div>
             <input
-              type="number" min={0.1} max={2.0} step={0.1}
+              type="range" min={0.1} max={2.0} step={0.1}
               value={payload.transitionDuration ?? 0.5}
               onChange={(e) => update({ transitionDuration: Number(e.target.value) })}
-              className="nodrag"
-              style={{ ...fieldStyle, width: 80 }}
+              className="nodrag w-full"
+              style={{ accentColor: accent }}
             />
           </div>
         )}
