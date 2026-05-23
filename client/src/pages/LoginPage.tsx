@@ -309,6 +309,13 @@ export default function LoginPage() {
           </>
         )}
       </div>
+      <div style={{
+        position: "absolute", bottom: "20px", left: 0, right: 0,
+        textAlign: "center", color: "rgba(255,255,255,0.25)", fontSize: "12px", lineHeight: 1.6,
+        pointerEvents: "none", userSelect: "none",
+      }}>
+        © {new Date().getFullYear()} 金泰智算 · KingTai Smart
+      </div>
     </div>
   );
 }
