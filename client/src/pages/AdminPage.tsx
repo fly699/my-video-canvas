@@ -133,7 +133,13 @@ function WhitelistPanel() {
       await addEntryMut.mutateAsync({ type: entryType, value: entryValue.trim(), note: entryNote.trim() || undefined });
       setEntryValue(""); setEntryNote("");
     } catch (err: unknown) {
-      setAddError(err instanceof Error ? err.message : "添加失败");
+      // tRPC Zod errors come back as JSON-array strings — extract the first human-readable message.
+      let msg = err instanceof Error ? err.message : "添加失败";
+      try {
+        const parsed = JSON.parse(msg);
+        if (Array.isArray(parsed) && parsed[0]?.message) msg = parsed[0].message;
+      } catch { /* not JSON, use as-is */ }
+      setAddError(msg);
     }
   }
 

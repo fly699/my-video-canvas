@@ -22,9 +22,11 @@ function isAllowedUrl(rawUrl: string): boolean {
   try {
     const u = new URL(rawUrl);
     if (u.protocol !== "https:") return false;
-    const host = u.hostname.toLowerCase();
+    // URL.hostname wraps IPv6 in brackets (e.g. "[::1]") — strip them before matching.
+    const rawHost = u.hostname.toLowerCase();
+    const host = rawHost.startsWith("[") && rawHost.endsWith("]") ? rawHost.slice(1, -1) : rawHost;
     if (BLOCKED_HOSTS.some((b) => host === b || host.endsWith(`.${b}`))) return false;
-    if (/^10\.|^172\.(1[6-9]|2\d|3[01])\.|^192\.168\./.test(host)) return false;
+    if (/^10\.|^172\.(1[6-9]|2\d|3[01])\.|^192\.168\.|^::ffff:/i.test(host)) return false;
     return true;
   } catch {
     return false;
@@ -81,7 +83,9 @@ export function registerImageProxy(app: Express) {
       // Trigger browser download if download=1
       if (req.query.download === "1") {
         const urlPath = new URL(decodedUrl).pathname;
-        const filename = urlPath.split("/").pop() || "image.png";
+        const rawName = urlPath.split("/").pop() || "image.png";
+        // Strip characters unsafe in Content-Disposition filename (quotes, CR, LF, semicolons)
+        const filename = rawName.replace(/["\r\n;\\]/g, "_");
         forwardHeaders["Content-Disposition"] = `attachment; filename="${filename}"`;
       }
 

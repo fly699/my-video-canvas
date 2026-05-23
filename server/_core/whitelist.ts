@@ -4,19 +4,37 @@ import type { TrpcContext } from "./context";
 
 let _cachedEnabled: boolean | null = null;
 let _cacheExpiry = 0;
+// Incremented on every invalidation so in-flight DB reads don't overwrite with stale data.
+let _cacheGeneration = 0;
 
 export function invalidateWhitelistCache(): void {
   _cachedEnabled = null;
   _cacheExpiry = 0;
+  _cacheGeneration++;
 }
 
 async function isWhitelistEnabled(): Promise<boolean> {
   const now = Date.now();
   if (_cachedEnabled !== null && now < _cacheExpiry) return _cachedEnabled;
-  const settings = await db.getWhitelistSettings();
-  _cachedEnabled = settings?.enabled ?? false;
-  _cacheExpiry = now + 30_000;
-  return _cachedEnabled;
+
+  const gen = _cacheGeneration;
+  try {
+    const settings = await db.getWhitelistSettings();
+    // Only write to cache if no invalidation happened while we were awaiting the DB.
+    if (_cacheGeneration === gen) {
+      _cachedEnabled = settings?.enabled ?? false;
+      _cacheExpiry = now + 30_000;
+    }
+    return settings?.enabled ?? false;
+  } catch (err) {
+    console.error("[Whitelist] DB error in isWhitelistEnabled, treating as disabled:", err);
+    // Fail-open with a short retry window so we don't hammer a downed DB.
+    if (_cacheGeneration === gen) {
+      _cachedEnabled = false;
+      _cacheExpiry = now + 5_000;
+    }
+    return false;
+  }
 }
 
 export async function assertWhitelisted(ctx: TrpcContext): Promise<void> {

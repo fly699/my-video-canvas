@@ -24,11 +24,13 @@ function isAllowedUrl(rawUrl: string): boolean {
     const u = new URL(rawUrl);
     // Only allow HTTPS
     if (u.protocol !== "https:") return false;
+    // URL.hostname wraps IPv6 in brackets (e.g. "[::1]") — strip them before matching.
+    const rawHost = u.hostname.toLowerCase();
+    const host = rawHost.startsWith("[") && rawHost.endsWith("]") ? rawHost.slice(1, -1) : rawHost;
     // Block internal/private hosts
-    const host = u.hostname.toLowerCase();
     if (BLOCKED_HOSTS.some((b) => host === b || host.endsWith(`.${b}`))) return false;
-    // Block private IP ranges
-    if (/^10\.|^172\.(1[6-9]|2\d|3[01])\.|^192\.168\./.test(host)) return false;
+    // Block private IP ranges (including IPv4-mapped IPv6 ::ffff:)
+    if (/^10\.|^172\.(1[6-9]|2\d|3[01])\.|^192\.168\.|^::ffff:/i.test(host)) return false;
     return true;
   } catch {
     return false;
@@ -106,7 +108,9 @@ export function registerVideoProxy(app: Express) {
       // If download=1 is set, add Content-Disposition to trigger browser download
       if (req.query.download === "1") {
         const urlPath = new URL(decodedUrl).pathname;
-        const filename = urlPath.split("/").pop() || "video.mp4";
+        const rawName = urlPath.split("/").pop() || "video.mp4";
+        // Strip characters unsafe in Content-Disposition filename (quotes, CR, LF, semicolons)
+        const filename = rawName.replace(/["\r\n;\\]/g, "_");
         forwardHeaders["Content-Disposition"] = `attachment; filename="${filename}"`;
       }
 
