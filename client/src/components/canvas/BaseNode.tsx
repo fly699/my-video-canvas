@@ -87,8 +87,8 @@ export const BaseNode = memo(function BaseNode({
 
   // Shared base styles for all handles
   const handleShared: React.CSSProperties = {
-    width: 12,
-    height: 12,
+    width: 14,
+    height: 14,
     border: `2px solid var(--c-canvas)`,
     transition: "opacity 150ms ease, transform 150ms ease, box-shadow 150ms ease",
     zIndex: 10,
@@ -99,7 +99,7 @@ export const BaseNode = memo(function BaseNode({
     ...handleShared,
     borderRadius: 3,                                       // square = input
     background: `${config.color}90`,                       // slightly transparent
-    opacity: isHovered || selected ? 1 : 0.25,            // more visible at rest than before
+    opacity: isHovered || selected ? 1 : 0.40,
     transform: isHovered || selected ? "scale(1.1)" : "scale(0.85)",
     boxShadow: isHovered || selected ? `0 0 0 3px ${config.color}22` : "none",
   };
@@ -109,7 +109,7 @@ export const BaseNode = memo(function BaseNode({
     ...handleShared,
     borderRadius: "50%",                                   // circle = output
     background: config.color,                              // fully colored
-    opacity: isHovered || selected ? 1 : 0.30,            // slightly more visible at rest
+    opacity: isHovered || selected ? 1 : 0.45,
     transform: isHovered || selected ? "scale(1.1)" : "scale(0.85)",
     boxShadow: isHovered || selected ? `0 0 0 4px ${config.color}30` : "none",
   };
@@ -393,8 +393,8 @@ export const BaseNode = memo(function BaseNode({
       {/* ── Connection Handles ── */}
       {showHandles && (
         <>
-          <Handle type="target" position={Position.Left}   id="input"  style={{ ...targetHandle, top: "50%", left: -6 }} />
-          <Handle type="source" position={Position.Right}  id="output" style={{ ...sourceHandle, top: "50%", right: -6 }} />
+          <Handle type="target" position={Position.Left}   id="input"  style={{ ...targetHandle, top: "50%", left: -7 }} />
+          <Handle type="source" position={Position.Right}  id="output" style={{ ...sourceHandle, top: "50%", right: -7 }} />
           <Handle type="target" position={Position.Top}    id="top"    style={{ ...targetHandle, left: "50%", top: -6 }} />
           <Handle type="source" position={Position.Bottom} id="bottom" style={{ ...sourceHandle, left: "50%", bottom: -6 }} />
         </>
