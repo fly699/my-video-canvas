@@ -69,9 +69,14 @@ export async function upsertUser(user: InsertUser): Promise<void> {
     values.role = user.role;
     updateSet.role = user.role;
   } else {
-    // Promote to admin if openId or email matches the configured owner
+    // Promote to admin if openId or email matches the configured owner.
+    // Email-match only counts for OAuth accounts (loginMethod !== "email") to
+    // prevent someone from registering the owner address via the email-auth form.
     const isOwnerById = ENV.ownerOpenId && user.openId === ENV.ownerOpenId;
-    const isOwnerByEmail = ENV.ownerEmail && user.email?.toLowerCase() === ENV.ownerEmail.toLowerCase();
+    const isOwnerByEmail =
+      ENV.ownerEmail &&
+      user.email?.toLowerCase() === ENV.ownerEmail.toLowerCase() &&
+      user.loginMethod !== "email";
     if (isOwnerById || isOwnerByEmail) {
       values.role = "admin";
       updateSet.role = "admin";
