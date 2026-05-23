@@ -235,7 +235,7 @@ export const useCanvasStore = create<CanvasStore>((set, get) => ({
         position: { x: sourcePosition.x + i * (nodeWidth + 40), y: sourcePosition.y + 500 },
         data: {
           nodeType: "storyboard" as const,
-          title: config.defaultTitle,
+          title: `分镜 #${i + 1}`,
           payload: {
             description: scene.description ?? "",
             promptText: scene.promptText ?? "",
