@@ -108,6 +108,7 @@ function WhitelistPanel() {
   });
   const removeEntryMut = trpc.admin.whitelist.removeEntry.useMutation({
     onSuccess: () => utils.admin.whitelist.listEntries.invalidate(),
+    onError: (err) => alert(`删除失败：${err.message}`),
   });
 
   const [entryType, setEntryType] = useState<EntryType>("ip");

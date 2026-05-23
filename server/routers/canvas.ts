@@ -826,7 +826,8 @@ export const clipRouter = router({
         audioVolume: z.number().min(0).max(2.0).optional(),
       }).refine(d => d.endTime > d.startTime, { message: "出点必须大于入点", path: ["endTime"] })
     )
-    .mutation(async ({ input }) => {
+    .mutation(async ({ ctx, input }) => {
+      await assertWhitelisted(ctx);
       const result = await trimVideo(input);
       return { url: result.url, duration: result.duration };
     }),
@@ -851,7 +852,8 @@ export const mergeRouter = router({
         bgMusicVolume: z.number().min(0).max(1).optional(),
       })
     )
-    .mutation(async ({ input }) => {
+    .mutation(async ({ ctx, input }) => {
+      await assertWhitelisted(ctx);
       const result = await mergeVideos(input);
       return { url: result.url, duration: result.duration };
     }),
@@ -894,7 +896,8 @@ export const subtitleRouter = router({
         fontColor: z.string().optional(),
       })
     )
-    .mutation(async ({ input }) => {
+    .mutation(async ({ ctx, input }) => {
+      await assertWhitelisted(ctx);
       const result = await burnSubtitles(input.videoUrl, input.entries as SubtitleEntry[], {
         fontSize: input.fontSize,
         fontColor: input.fontColor,
@@ -935,7 +938,8 @@ export const overlayRouter = router({
         saturation: z.number().min(0).max(3).optional(),
       })
     )
-    .mutation(async ({ input }) => {
+    .mutation(async ({ ctx, input }) => {
+      await assertWhitelisted(ctx);
       const result = await overlayVideo(input);
       return { url: result.url };
     }),

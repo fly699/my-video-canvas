@@ -67,8 +67,8 @@ export const adminRouter = router({
         (d) => d.type !== "user" || /^\d+$/.test(d.value),
         { message: "用户类型白名单的 value 必须为纯数字用户 ID", path: ["value"] }
       ).refine(
-        (d) => d.type !== "ip" || /^[\d.:a-fA-F]+$/.test(d.value),
-        { message: "IP 类型白名单的 value 必须为合法的 IPv4 或 IPv6 地址（不支持 CIDR 子网段）", path: ["value"] }
+        (d) => d.type !== "ip" || /^(\d{1,3}\.){3}\d{1,3}$|^[0-9a-fA-F:]{2,39}$/.test(d.value),
+        { message: "IP 类型白名单的 value 必须为合法的 IPv4（如 1.2.3.4）或 IPv6 地址", path: ["value"] }
       ))
       .mutation(async ({ ctx, input }) => {
         await db.addWhitelistEntry(input.type, input.value, input.note ?? null, ctx.user.id);
