@@ -7,6 +7,7 @@ export type TrpcContext = {
   req: CreateExpressContextOptions["req"];
   res: CreateExpressContextOptions["res"];
   user: User | null;
+  clientIp: string;
 };
 
 // Dev-only: auto-login when neither OAuth nor DB is configured (local testing without external services)
@@ -16,6 +17,7 @@ const DEV_USER: User = {
   name: "Dev User",
   email: "dev@localhost",
   loginMethod: "dev",
+  passwordHash: null,
   role: "user",
   createdAt: new Date("2024-01-01"),
   updatedAt: new Date("2024-01-01"),
@@ -43,8 +45,14 @@ export async function createContext(
 ): Promise<TrpcContext> {
   let user: User | null = null;
 
+  const clientIp =
+    (opts.req.headers["x-forwarded-for"] as string)?.split(",")[0]?.trim() ??
+    opts.req.socket?.remoteAddress ??
+    "unknown";
+
   if (isDevBypass) {
     user = DEV_USER;
+    return { req: opts.req, res: opts.res, user, clientIp: "127.0.0.1" };
   } else {
     try {
       user = await sdk.authenticateRequest(opts.req);
@@ -58,5 +66,6 @@ export async function createContext(
     req: opts.req,
     res: opts.res,
     user,
+    clientIp,
   };
 }

@@ -9,6 +9,8 @@ import {
   assets,
   videoTasks,
   chatMessages,
+  whitelistSettings,
+  whitelistEntries,
   InsertProject,
   InsertCanvasNode,
   InsertCanvasEdge,
@@ -18,6 +20,11 @@ import {
 } from "../drizzle/schema";
 import { ENV } from "./_core/env";
 import * as dev from "./_core/devStore";
+
+// Dev-mode whitelist state
+const devWhitelistSettings = { id: 1, enabled: false, updatedAt: new Date() };
+const devWhitelistEntries: Array<{ id: number; type: "ip" | "user"; value: string; note: string | null; createdBy: number | null; createdAt: Date }> = [];
+let devNextWhitelistId = 1;
 
 const DEV_MODE = process.env.NODE_ENV === "development" && !process.env.DATABASE_URL;
 
@@ -45,7 +52,7 @@ export async function upsertUser(user: InsertUser): Promise<void> {
   const values: InsertUser = { openId: user.openId };
   const updateSet: Record<string, unknown> = {};
 
-  const textFields = ["name", "email", "loginMethod"] as const;
+  const textFields = ["name", "email", "loginMethod", "passwordHash"] as const;
   textFields.forEach((field) => {
     const value = user[field];
     if (value === undefined) return;
@@ -333,4 +340,62 @@ export async function clearChatMessages(nodeId: string, projectId: number) {
   await db
     .delete(chatMessages)
     .where(and(eq(chatMessages.nodeId, nodeId), eq(chatMessages.projectId, projectId)));
+}
+
+// ── Whitelist ─────────────────────────────────────────────────────────────────
+
+export async function getWhitelistSettings() {
+  const db = await getDb();
+  if (!db) return devWhitelistSettings;
+  const rows = await db.select().from(whitelistSettings).limit(1);
+  return rows[0] ?? null;
+}
+
+export async function setWhitelistEnabled(enabled: boolean): Promise<void> {
+  const db = await getDb();
+  if (!db) { devWhitelistSettings.enabled = enabled; return; }
+  const rows = await db.select().from(whitelistSettings).limit(1);
+  if (rows.length === 0) {
+    await db.insert(whitelistSettings).values({ enabled });
+  } else {
+    await db.update(whitelistSettings).set({ enabled });
+  }
+}
+
+export async function getWhitelistEntries() {
+  const db = await getDb();
+  if (!db) return [...devWhitelistEntries];
+  return db.select().from(whitelistEntries).orderBy(whitelistEntries.createdAt);
+}
+
+export async function addWhitelistEntry(
+  type: "ip" | "user",
+  value: string,
+  note: string | null,
+  createdBy: number | null,
+): Promise<void> {
+  const db = await getDb();
+  if (!db) {
+    const id = devNextWhitelistId++;
+    devWhitelistEntries.push({ id, type, value, note, createdBy, createdAt: new Date() });
+    return;
+  }
+  await db.insert(whitelistEntries).values({ type, value, note, createdBy }).catch(() => {
+    // ignore duplicate key
+  });
+}
+
+export async function removeWhitelistEntry(id: number): Promise<void> {
+  const db = await getDb();
+  if (!db) { devWhitelistEntries.splice(devWhitelistEntries.findIndex(e => e.id === id), 1); return; }
+  await db.delete(whitelistEntries).where(eq(whitelistEntries.id, id));
+}
+
+export async function isWhitelisted(type: "ip" | "user", value: string): Promise<boolean> {
+  const db = await getDb();
+  if (!db) return devWhitelistEntries.some(e => e.type === type && e.value === value);
+  const rows = await db.select().from(whitelistEntries)
+    .where(and(eq(whitelistEntries.type, type), eq(whitelistEntries.value, value)))
+    .limit(1);
+  return rows.length > 0;
 }

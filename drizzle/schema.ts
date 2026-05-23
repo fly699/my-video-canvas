@@ -17,6 +17,7 @@ export const users = mysqlTable("users", {
   name: text("name"),
   email: varchar("email", { length: 320 }),
   loginMethod: varchar("loginMethod", { length: 64 }),
+  passwordHash: varchar("passwordHash", { length: 255 }),
   role: mysqlEnum("role", ["user", "admin"]).default("user").notNull(),
   createdAt: timestamp("createdAt").defaultNow().notNull(),
   updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
@@ -154,3 +155,23 @@ export const chatMessages = mysqlTable("chat_messages", {
 
 export type ChatMessage = typeof chatMessages.$inferSelect;
 export type InsertChatMessage = typeof chatMessages.$inferInsert;
+
+// ── Whitelist ─────────────────────────────────────────────────────────────────
+
+export const whitelistSettings = mysqlTable("whitelistSettings", {
+  id: int("id").autoincrement().primaryKey(),
+  enabled: boolean("enabled").notNull().default(false),
+  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+});
+
+export const whitelistEntries = mysqlTable("whitelistEntries", {
+  id: int("id").autoincrement().primaryKey(),
+  type: mysqlEnum("type", ["ip", "user"]).notNull(),
+  value: varchar("value", { length: 320 }).notNull(),
+  note: text("note"),
+  createdBy: int("createdBy"),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+});
+
+export type WhitelistEntry = typeof whitelistEntries.$inferSelect;
+export type InsertWhitelistEntry = typeof whitelistEntries.$inferInsert;
