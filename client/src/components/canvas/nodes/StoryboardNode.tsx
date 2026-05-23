@@ -1,4 +1,5 @@
 import { memo, useCallback, useEffect, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import { BaseNode } from "../BaseNode";
 import { useCanvasStore } from "../../../hooks/useCanvasStore";
 import type { StoryboardNodeData } from "../../../../../shared/types";
@@ -52,7 +53,7 @@ export const StoryboardNode = memo(function StoryboardNode({ id, selected, data 
   const [inputExpanded, setInputExpanded] = useState(!!selected);
   const [llmModel, setLlmModel] = useState<LLMModelId>("gemini-2.5-flash");
   const [showHistory, setShowHistory] = useState(false);
-  const [batchCount, setBatchCount] = useState<1 | 2 | 4>(1);
+  const [batchCount, setBatchCount] = useState<1 | 2 | 4>(([1, 2, 4].includes(payload.batchSize as number) ? payload.batchSize : 1) as 1 | 2 | 4);
   const [zoomUrl, setZoomUrl] = useState<string | null>(null);
 
   // Auto-collapse inputs when deselected, expand when selected
@@ -237,6 +238,7 @@ export const StoryboardNode = memo(function StoryboardNode({ id, selected, data 
   })();
 
   return (
+    <>
     <BaseNode id={id} selected={selected} nodeType="storyboard" title={data.title} minHeight={280} heroMedia={heroMedia}>
       <div className="flex flex-col h-full p-3.5 gap-3">
 
@@ -683,7 +685,7 @@ export const StoryboardNode = memo(function StoryboardNode({ id, selected, data 
             {([1, 2, 4] as const).map((n) => (
               <button
                 key={n}
-                onClick={() => setBatchCount(n)}
+                onClick={() => { setBatchCount(n); updateNodeData(id, { batchSize: n }); }}
                 className="nodrag"
                 style={{
                   width: 28, height: 22, borderRadius: 6, fontSize: 11, fontWeight: 700,
@@ -705,8 +707,10 @@ export const StoryboardNode = memo(function StoryboardNode({ id, selected, data 
 
       </div>
 
-      {/* ── Image lightbox ── */}
-      {zoomUrl && (
+    </BaseNode>
+
+      {/* ── Image lightbox (portal to body — avoids React Flow event interception) ── */}
+      {zoomUrl && createPortal(
         <div
           style={{
             position: "fixed", inset: 0, zIndex: 99999,
@@ -724,20 +728,30 @@ export const StoryboardNode = memo(function StoryboardNode({ id, selected, data 
             />
             {/* Top-right controls */}
             <div style={{ position: "absolute", top: -12, right: -12, display: "flex", gap: 8 }}>
-              <a
-                href={zoomUrl}
-                download
-                target="_blank"
-                rel="noreferrer"
+              <button
+                onClick={async () => {
+                  try {
+                    const res = await fetch(zoomUrl);
+                    const blob = await res.blob();
+                    const a = document.createElement("a");
+                    const objectUrl = URL.createObjectURL(blob);
+                    a.href = objectUrl;
+                    a.download = "storyboard.png";
+                    a.click();
+                    setTimeout(() => URL.revokeObjectURL(objectUrl), 10_000);
+                  } catch {
+                    window.open(zoomUrl, "_blank");
+                  }
+                }}
                 style={{
                   width: 32, height: 32, borderRadius: "50%", display: "flex", alignItems: "center", justifyContent: "center",
                   background: "oklch(0.72 0.18 160 / 0.20)", border: "1px solid oklch(0.72 0.18 160 / 0.5)",
-                  color: "oklch(0.80 0.16 160)", textDecoration: "none",
+                  color: "oklch(0.80 0.16 160)", cursor: "pointer",
                 }}
                 title="下载图片"
               >
                 <Download style={{ width: 14, height: 14 }} />
-              </a>
+              </button>
               <button
                 onClick={() => setZoomUrl(null)}
                 style={{
@@ -750,8 +764,9 @@ export const StoryboardNode = memo(function StoryboardNode({ id, selected, data 
               </button>
             </div>
           </div>
-        </div>
+        </div>,
+        document.body
       )}
-    </BaseNode>
+    </>
   );
 });

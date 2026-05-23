@@ -360,13 +360,15 @@ function CanvasInner({ projectId }: { projectId: number }) {
   const [showRunConfirm, setShowRunConfirm] = useState(false);
   const [pendingRunNodeId, setPendingRunNodeId] = useState<string | null>(null);
   const [runConfirmCountdown, setRunConfirmCountdown] = useState(5);
+  const runConfirmOpenRef = useRef(false);
 
   const handleRunRequest = useCallback((startNodeId: string | null) => {
-    if (showRunConfirm) return;
+    if (runConfirmOpenRef.current) return;
+    runConfirmOpenRef.current = true;
     setPendingRunNodeId(startNodeId);
     setRunConfirmCountdown(5);
     setShowRunConfirm(true);
-  }, [showRunConfirm]);
+  }, []);
 
   useEffect(() => {
     if (!showRunConfirm) return;
@@ -1985,7 +1987,7 @@ function CanvasInner({ projectId }: { projectId: number }) {
               background: "oklch(0 0 0 / 0.55)",
               display: "flex", alignItems: "center", justifyContent: "center",
             }}
-            onMouseDown={(e) => { if (e.target === e.currentTarget) setShowRunConfirm(false); }}
+            onMouseDown={(e) => { if (e.target === e.currentTarget) { runConfirmOpenRef.current = false; setShowRunConfirm(false); } }}
           >
             <div style={{
               background: "var(--c-surface)",
@@ -2028,7 +2030,7 @@ function CanvasInner({ projectId }: { projectId: number }) {
               {/* Buttons */}
               <div style={{ display: "flex", gap: 10, justifyContent: "flex-end", marginTop: 4 }}>
                 <button
-                  onClick={() => setShowRunConfirm(false)}
+                  onClick={() => { runConfirmOpenRef.current = false; setShowRunConfirm(false); }}
                   style={{
                     padding: "7px 18px", borderRadius: 8, fontSize: 13, fontWeight: 600,
                     background: "var(--c-surface-2)", border: "1px solid var(--c-bd2)",
@@ -2040,6 +2042,7 @@ function CanvasInner({ projectId }: { projectId: number }) {
                 <button
                   disabled={runConfirmCountdown > 0 || runState.running}
                   onClick={() => {
+                    runConfirmOpenRef.current = false;
                     setShowRunConfirm(false);
                     runWorkflow(pendingRunNodeId);
                   }}

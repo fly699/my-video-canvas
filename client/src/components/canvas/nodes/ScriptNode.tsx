@@ -1,4 +1,4 @@
-import { memo, useCallback, useState } from "react";
+import { memo, useCallback, useEffect, useRef, useState } from "react";
 import { BaseNode } from "../BaseNode";
 import { useCanvasStore } from "../../../hooks/useCanvasStore";
 import type { ScriptNodeData } from "../../../../../shared/types";
@@ -127,6 +127,7 @@ export const ScriptNode = memo(function ScriptNode({ id, selected, data }: Props
   const initDuration = payload.totalDuration ?? 60;
   const [duration,    setDuration]    = useState(initDuration);
   const [durationText, setDurationText] = useState(String(initDuration));
+  const durationInputRef = useRef<HTMLInputElement>(null);
 
   const handleChange = useCallback(
     (field: keyof ScriptNodeData, value: string) => {
@@ -140,6 +141,15 @@ export const ScriptNode = memo(function ScriptNode({ id, selected, data }: Props
     setDurationText(String(v));
     updateNodeData(id, { totalDuration: v });
   }, [id, updateNodeData]);
+
+  // Sync local state when payload.totalDuration changes externally (collab / undo-redo)
+  // Skip if the input is currently focused to avoid overwriting mid-edit text.
+  useEffect(() => {
+    if (durationInputRef.current !== null && durationInputRef.current === document.activeElement) return;
+    const v = payload.totalDuration ?? 60;
+    setDuration(v);
+    setDurationText(String(v));
+  }, [payload.totalDuration]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // ── Existing mutations ────────────────────────────────────────────────────
 
@@ -412,6 +422,7 @@ export const ScriptNode = memo(function ScriptNode({ id, selected, data }: Props
                       <Minus style={{ width: 10, height: 10 }} />
                     </button>
                     <input
+                      ref={durationInputRef}
                       type="text"
                       inputMode="numeric"
                       value={durationText}
