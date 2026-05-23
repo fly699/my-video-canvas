@@ -582,10 +582,9 @@ button:active:not(:disabled) {
 
 /* Handles — managed via inline styles in BaseNode; CSS fallback */
 .react-flow__handle {
-  position: relative !important;
   transition: all 150ms ease !important;
 }
-/* Expand transparent hit area so users don't need pixel-perfect cursor placement */
+/* Expand transparent hit area — works because handles are outside the node's overflow:hidden wrapper */
 .react-flow__handle::before {
   content: '';
   position: absolute;

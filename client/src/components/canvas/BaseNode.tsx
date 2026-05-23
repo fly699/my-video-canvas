@@ -153,7 +153,7 @@ export const BaseNode = memo(function BaseNode({
 
   return (
     <div
-      className={`group/node relative flex flex-col${runStatus === "running" ? " node-run-pulse" : ""}`}
+      className={`group/node relative${runStatus === "running" ? " node-run-pulse" : ""}`}
       data-selected={selected ? "true" : "false"}
       data-has-hero={hasHero ? "true" : "false"}
       style={{
@@ -168,12 +168,13 @@ export const BaseNode = memo(function BaseNode({
         backdropFilter: isLight ? "none" : "blur(4px)",
         opacity: entered ? 1 : 0,
         transform: entered ? "scale(1) translateY(0)" : "scale(0.96) translateY(6px)",
-        overflow: "hidden",
+        // overflow is intentionally NOT set here so handle ::before hit-area expansions
+        // can extend beyond the node edge without being clipped
       }}
       onMouseEnter={() => setIsHovered(true)}
       onMouseLeave={() => setIsHovered(false)}
     >
-      {/* Resize handles — only when selected AND resizable */}
+      {/* Resize handles — outside overflow:hidden so corner grips aren't clipped */}
       <NodeResizer
         minWidth={minWidth}
         minHeight={minHeight}
@@ -193,6 +194,9 @@ export const BaseNode = memo(function BaseNode({
           opacity: 1,
         }}
       />
+
+    {/* Inner content wrapper clips visual content to the rounded corners */}
+    <div className="flex flex-col" style={{ overflow: "hidden", borderRadius: "inherit", width: "100%" }}>
 
       {/* ── Color accent strip at top ── */}
       <div
@@ -390,13 +394,15 @@ export const BaseNode = memo(function BaseNode({
         </div>
       </NodeSelectedContext.Provider>
 
-      {/* ── Connection Handles ── */}
+      </div>{/* end inner overflow:hidden content wrapper */}
+
+      {/* ── Connection Handles — outside overflow:hidden so ::before hit-area works ── */}
       {showHandles && (
         <>
           <Handle type="target" position={Position.Left}   id="input"  style={{ ...targetHandle, top: "50%", left: -7 }} />
           <Handle type="source" position={Position.Right}  id="output" style={{ ...sourceHandle, top: "50%", right: -7 }} />
-          <Handle type="target" position={Position.Top}    id="top"    style={{ ...targetHandle, left: "50%", top: -6 }} />
-          <Handle type="source" position={Position.Bottom} id="bottom" style={{ ...sourceHandle, left: "50%", bottom: -6 }} />
+          <Handle type="target" position={Position.Top}    id="top"    style={{ ...targetHandle, left: "50%", top: -7 }} />
+          <Handle type="source" position={Position.Bottom} id="bottom" style={{ ...sourceHandle, left: "50%", bottom: -7 }} />
         </>
       )}
     </div>

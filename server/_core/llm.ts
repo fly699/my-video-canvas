@@ -225,6 +225,12 @@ const resolveApiUrl = (model?: string) => {
 
 const getApiKey = (model?: string) => {
   if (ENV.poyoApiKey && isGptModel(model)) return ENV.poyoApiKey;
+  // When a custom forge URL is configured, require the forge key — don't fall through to poyoApiKey
+  // which would send the wrong credentials to the custom proxy.
+  if (ENV.forgeApiUrl?.trim()) {
+    if (!ENV.forgeApiKey) throw new Error("BUILT_IN_FORGE_API_URL is set but BUILT_IN_FORGE_API_KEY is missing");
+    return ENV.forgeApiKey;
+  }
   const key = ENV.forgeApiKey || ENV.poyoApiKey;
   if (!key) throw new Error("No AI API key configured (POYO_API_KEY or BUILT_IN_FORGE_API_KEY)");
   return key;

@@ -1344,8 +1344,8 @@ function CanvasInner({ projectId }: { projectId: number }) {
                   const onMove = (me: MouseEvent) => {
                     if (!mmDragRef.current) return;
                     setMmPos({
-                      bottom: mmDragRef.current.sb - (me.clientY - mmDragRef.current.sy),
-                      right: mmDragRef.current.sr - (me.clientX - mmDragRef.current.sx),
+                      bottom: Math.max(4, Math.min(window.innerHeight - 80, mmDragRef.current.sb - (me.clientY - mmDragRef.current.sy))),
+                      right: Math.max(4, Math.min(window.innerWidth - 100, mmDragRef.current.sr - (me.clientX - mmDragRef.current.sx))),
                     });
                   };
                   const onUp = () => { mmDragRef.current = null; window.removeEventListener("mousemove", onMove); window.removeEventListener("mouseup", onUp); };
@@ -1409,8 +1409,9 @@ function CanvasInner({ projectId }: { projectId: number }) {
               const onMove = (mv: MouseEvent) => {
                 if (!barDragRef.current) return;
                 setBarOffset({
-                  x: barDragRef.current.initX + mv.clientX - barDragRef.current.startX,
-                  y: barDragRef.current.initY + mv.clientY - barDragRef.current.startY,
+                  x: Math.max(-400, Math.min(400, barDragRef.current.initX + mv.clientX - barDragRef.current.startX)),
+                  // Y inverted: drag up (clientY decreases) → y increases → bottom increases → bar moves up
+                  y: Math.max(-40, Math.min(400, barDragRef.current.initY - (mv.clientY - barDragRef.current.startY))),
                 });
               };
               const onUp = () => { barDragRef.current = null; window.removeEventListener("mousemove", onMove); window.removeEventListener("mouseup", onUp); };
@@ -1418,10 +1419,10 @@ function CanvasInner({ projectId }: { projectId: number }) {
               window.addEventListener("mouseup", onUp);
             }}
             style={{
-              bottom: `calc(20px - ${barOffset.y}px)`,
+              bottom: `calc(20px + ${barOffset.y}px)`,
               left: `calc(50% + ${barOffset.x}px)`,
               transform: "translateX(-50%)",
-              cursor: "grab",
+              cursor: "default",
               background: "color-mix(in oklch, var(--c-base) 95%, transparent)",
               backdropFilter: "blur(24px)",
               border: "1px solid var(--c-bd2)",
