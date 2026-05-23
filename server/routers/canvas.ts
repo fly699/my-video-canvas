@@ -55,6 +55,19 @@ async function assertTaskOwner(taskId: number, userId: number) {
   return task;
 }
 
+// ── Ownership helpers ─────────────────────────────────────────────────────────
+
+async function assertProjectOwner(projectId: number, userId: number) {
+  const project = await getProjectById(projectId, userId);
+  if (!project) throw new TRPCError({ code: "FORBIDDEN", message: "Access denied" });
+}
+
+async function assertTaskOwner(taskId: number, userId: number) {
+  const task = await getVideoTask(taskId);
+  if (!task || task.userId !== userId) throw new TRPCError({ code: "FORBIDDEN", message: "Access denied" });
+  return task;
+}
+
 // ── Projects ──────────────────────────────────────────────────────────────────
 
 export const projectsRouter = router({
