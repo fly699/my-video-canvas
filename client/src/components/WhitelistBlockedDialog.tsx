@@ -109,7 +109,11 @@ export function WhitelistBlockedDialog() {
           </p>
 
           {/* User identity info for copying */}
-          {userId != null && (
+          {meQuery.isLoading ? (
+            <div style={{ textAlign: "center", padding: "8px 0" }}>
+              <span style={{ fontSize: 12, color: "var(--c-t3, rgba(255,255,255,0.45))" }}>加载中…</span>
+            </div>
+          ) : userId != null ? (
             <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
               <IdentityRow
                 label="我的账户 ID"
@@ -119,7 +123,7 @@ export function WhitelistBlockedDialog() {
                 onCopy={() => copyText(String(userId), "id")}
               />
             </div>
-          )}
+          ) : null}
         </div>
 
         {/* Close button */}

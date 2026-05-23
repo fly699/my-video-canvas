@@ -32,6 +32,9 @@ export function registerEmailAuthRoutes(app: Express) {
       if (!email?.trim() || !password) {
         res.status(400).json({ error: "邮箱和密码不能为空" }); return;
       }
+      if (typeof password !== "string") {
+        res.status(400).json({ error: "密码格式不正确" }); return;
+      }
       if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
         res.status(400).json({ error: "邮箱格式不正确" }); return;
       }
@@ -86,6 +89,9 @@ export function registerEmailAuthRoutes(app: Express) {
     try {
       const { email, password } = req.body as { email?: string; password?: string };
       if (!email?.trim() || !password) {
+        res.status(401).json({ error: "邮箱或密码错误" }); return;
+      }
+      if (typeof password !== "string") {
         res.status(401).json({ error: "邮箱或密码错误" }); return;
       }
       const openId = `email:${email.toLowerCase()}`;

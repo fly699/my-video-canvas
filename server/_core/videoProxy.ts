@@ -80,17 +80,27 @@ export function registerVideoProxy(app: Express) {
         redirect: "follow",
       });
 
+      // Validate final URL after redirect chain to prevent SSRF via open redirect
+      if (!isAllowedUrl(upstream.url)) {
+        res.status(403).send("URL not allowed after redirect");
+        return;
+      }
+
       // Forward relevant response headers
       const forwardHeaders: Record<string, string> = {
         "Access-Control-Allow-Origin": "*",
         "Access-Control-Allow-Methods": "GET, HEAD, OPTIONS",
         "Access-Control-Allow-Headers": "Range",
         "Access-Control-Expose-Headers": "Content-Length, Content-Range, Accept-Ranges",
+        "X-Content-Type-Options": "nosniff",
       };
 
       const contentType = upstream.headers.get("content-type");
-      if (contentType) forwardHeaders["Content-Type"] = contentType;
-      else forwardHeaders["Content-Type"] = "video/mp4";
+      const safeVideoTypes = ["video/", "audio/", "application/octet-stream"];
+      forwardHeaders["Content-Type"] =
+        contentType && safeVideoTypes.some((t) => contentType.startsWith(t))
+          ? contentType
+          : "video/mp4";
 
       const contentLength = upstream.headers.get("content-length");
       if (contentLength) forwardHeaders["Content-Length"] = contentLength;

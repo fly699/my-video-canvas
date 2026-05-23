@@ -68,14 +68,25 @@ export function registerImageProxy(app: Express) {
         redirect: "follow",
       });
 
+      // Validate final URL after redirect chain to prevent SSRF via open redirect
+      if (!isAllowedUrl(upstream.url)) {
+        res.status(403).send("URL not allowed after redirect");
+        return;
+      }
+
       const forwardHeaders: Record<string, string> = {
         "Access-Control-Allow-Origin": "*",
         "Access-Control-Allow-Methods": "GET, HEAD, OPTIONS",
         "Cache-Control": "public, max-age=3600",
+        "X-Content-Type-Options": "nosniff",
       };
 
       const contentType = upstream.headers.get("content-type");
-      forwardHeaders["Content-Type"] = contentType ?? "image/png";
+      const safeImageTypes = ["image/", "application/octet-stream"];
+      forwardHeaders["Content-Type"] =
+        contentType && safeImageTypes.some((t) => contentType.startsWith(t))
+          ? contentType
+          : "image/png";
 
       const contentLength = upstream.headers.get("content-length");
       if (contentLength) forwardHeaders["Content-Length"] = contentLength;
