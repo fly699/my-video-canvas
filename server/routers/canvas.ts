@@ -294,16 +294,6 @@ export const videoTasksRouter = router({
         status: "pending",
       });
       if (!task) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "Failed to create video task" });
-      writeAuditLog({
-        ctx,
-        action: "video_gen",
-        detail: {
-          provider: input.provider,
-          prompt: truncate(input.prompt),
-          taskId: task.id,
-          nodeId: input.nodeId,
-        },
-      });
 
       // Submit to external provider; on failure the task stays "pending" for the poller to retry
       try {
@@ -329,6 +319,16 @@ export const videoTasksRouter = router({
         }
         if (externalTaskId) {
           await updateVideoTask(task.id, { status: "processing", externalTaskId });
+          writeAuditLog({
+            ctx,
+            action: "video_gen",
+            detail: {
+              provider: input.provider,
+              prompt: truncate(input.prompt),
+              taskId: task.id,
+              nodeId: input.nodeId,
+            },
+          });
           return { ...task, status: "processing" as const, externalTaskId };
         }
       } catch (err) {

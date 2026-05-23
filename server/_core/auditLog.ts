@@ -13,10 +13,13 @@ interface GeoResult {
 const geoCache = new Map<string, { geo: GeoResult; expiry: number }>();
 const GEO_TTL_MS = 60 * 60 * 1000; // 1 hour
 
-const PRIVATE_IP = /^(127\.|10\.|172\.(1[6-9]|2\d|3[01])\.|192\.168\.|::1$|^localhost$|^unknown$|^$)/;
+const PRIVATE_IP = /^(127\.|10\.|172\.(1[6-9]|2\d|3[01])\.|192\.168\.|::1$|::ffff:|localhost$|unknown$|^$)/;
+// Only allow characters that appear in valid IPv4/IPv6 addresses to prevent path/query injection
+const VALID_IP_CHARS = /^[0-9a-fA-F.:]{3,45}$/;
 
 async function lookupGeo(ip: string): Promise<GeoResult> {
   if (PRIVATE_IP.test(ip)) return { country: "内网", region: "", city: "" };
+  if (!VALID_IP_CHARS.test(ip)) return {};
 
   const hit = geoCache.get(ip);
   if (hit && Date.now() < hit.expiry) return hit.geo;

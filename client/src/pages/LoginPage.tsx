@@ -3,6 +3,22 @@ import { Film } from "lucide-react";
 
 type Mode = "login" | "register";
 
+function getOAuthUrl(): string | null {
+  const oauthPortalUrl = import.meta.env.VITE_OAUTH_PORTAL_URL;
+  if (!oauthPortalUrl) return null;
+  const appId = import.meta.env.VITE_APP_ID;
+  const redirectUri = `${window.location.origin}/api/oauth/callback`;
+  const state = btoa(redirectUri);
+  const url = new URL(`${oauthPortalUrl}/app-auth`);
+  url.searchParams.set("appId", appId);
+  url.searchParams.set("redirectUri", redirectUri);
+  url.searchParams.set("state", state);
+  url.searchParams.set("type", "signIn");
+  return url.toString();
+}
+
+const oauthUrl = getOAuthUrl();
+
 export default function LoginPage() {
   const [mode, setMode] = useState<Mode>("login");
   const [email, setEmail] = useState("");
@@ -249,6 +265,39 @@ export default function LoginPage() {
             {loading ? "处理中…" : mode === "login" ? "登录" : "注册"}
           </button>
         </form>
+
+        {/* OAuth divider + button */}
+        {oauthUrl && (
+          <>
+            <div style={{ display: "flex", alignItems: "center", gap: "10px", margin: "20px 0 0" }}>
+              <div style={{ flex: 1, height: "1px", background: "rgba(255,255,255,0.07)" }} />
+              <span style={{ fontSize: "12px", color: "var(--c-t2, rgba(255,255,255,0.3))" }}>或</span>
+              <div style={{ flex: 1, height: "1px", background: "rgba(255,255,255,0.07)" }} />
+            </div>
+            <a
+              href={oauthUrl}
+              style={{
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                gap: "8px",
+                marginTop: "12px",
+                padding: "11px 0",
+                border: "1px solid rgba(255,255,255,0.1)",
+                borderRadius: "8px",
+                background: "rgba(255,255,255,0.04)",
+                color: "var(--c-t1, #f0f0f4)",
+                fontSize: "14px",
+                fontWeight: 500,
+                textDecoration: "none",
+                transition: "all 0.15s",
+                cursor: "pointer",
+              }}
+            >
+              第三方登录（Google / OAuth）
+            </a>
+          </>
+        )}
       </div>
     </div>
   );

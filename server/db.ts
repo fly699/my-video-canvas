@@ -366,12 +366,9 @@ export async function getWhitelistSettings() {
 export async function setWhitelistEnabled(enabled: boolean): Promise<void> {
   const db = await getDb();
   if (!db) { devWhitelistSettings.enabled = enabled; return; }
-  const rows = await db.select().from(whitelistSettings).limit(1);
-  if (rows.length === 0) {
-    await db.insert(whitelistSettings).values({ enabled });
-  } else {
-    await db.update(whitelistSettings).set({ enabled });
-  }
+  // Upsert row id=1 atomically — avoids TOCTOU race and ensures WHERE clause is always scoped.
+  await db.insert(whitelistSettings).values({ id: 1, enabled })
+    .onDuplicateKeyUpdate({ set: { enabled } });
 }
 
 export async function getWhitelistEntries() {
@@ -392,9 +389,8 @@ export async function addWhitelistEntry(
     devWhitelistEntries.push({ id, type, value, note, createdBy, createdAt: new Date() });
     return;
   }
-  await db.insert(whitelistEntries).values({ type, value, note, createdBy }).catch(() => {
-    // ignore duplicate key
-  });
+  await db.insert(whitelistEntries).values({ type, value, note, createdBy })
+    .onDuplicateKeyUpdate({ set: { note, createdBy } });
 }
 
 export async function removeWhitelistEntry(id: number): Promise<void> {

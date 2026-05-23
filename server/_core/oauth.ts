@@ -37,6 +37,9 @@ export function registerOAuthRoutes(app: Express) {
         lastSignedIn: new Date(),
       });
 
+      // Fetch the DB record so we have the numeric userId for audit logging
+      const dbUser = await db.getUserByOpenId(userInfo.openId);
+
       const sessionToken = await sdk.createSessionToken(userInfo.openId, {
         name: userInfo.name || "",
         expiresInMs: ONE_YEAR_MS,
@@ -49,6 +52,7 @@ export function registerOAuthRoutes(app: Express) {
         ?? req.socket?.remoteAddress ?? "unknown";
       writeAuditLog({
         ip: clientIp,
+        userId: dbUser?.id ?? null,
         userEmail: userInfo.email ?? null,
         userName: userInfo.name ?? null,
         action: "login_oauth",
