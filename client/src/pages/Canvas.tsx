@@ -357,6 +357,10 @@ function CanvasInner({ projectId }: { projectId: number }) {
 
   // Workflow runner
   const { runState, runWorkflow } = useWorkflowRunner();
+  const handleRunRequest = useCallback((startNodeId: string | null) => {
+    setPendingRunNodeId(startNodeId);
+    setShowRunConfirm(true);
+  }, []);
 
   const socketRef = useRef<Socket | null>(null);
   const [socketConnected, setSocketConnected] = useState(false);
@@ -367,6 +371,8 @@ function CanvasInner({ projectId }: { projectId: number }) {
   const barDragRef = useRef<{ startX: number; startY: number; initX: number; initY: number } | null>(null);
   const [mmPos, setMmPos] = useState({ bottom: 80, right: 8 });
   const [mmSize, setMmSize] = useState({ w: 200, h: 140 });
+  const [showRunConfirm, setShowRunConfirm] = useState(false);
+  const [pendingRunNodeId, setPendingRunNodeId] = useState<string | null>(null);
   const mmDragRef = useRef<{ sx: number; sy: number; sb: number; sr: number } | null>(null);
   const mmResizeRef = useRef<{ sx: number; sy: number; sw: number; sh: number } | null>(null);
   const [renamingProject, setRenamingProject] = useState(false);
@@ -708,7 +714,7 @@ function CanvasInner({ projectId }: { projectId: number }) {
       if (!isEditing && e.shiftKey && e.key === "R") {
         e.preventDefault();
         const selected = nodes.find((n) => n.selected);
-        runWorkflow(selected?.id ?? null);
+        handleRunRequest(selected?.id ?? null);
       }
 
       // Undo: Cmd+Z / Ctrl+Z
@@ -1517,7 +1523,7 @@ function CanvasInner({ projectId }: { projectId: number }) {
             <Tooltip>
               <TooltipTrigger asChild>
                 <button
-                  onClick={() => runWorkflow(null)}
+                  onClick={() => handleRunRequest(null)}
                   disabled={runState.running || nodes.length === 0}
                   className="flex items-center gap-1.5 h-8 px-3 rounded-xl text-xs font-semibold transition-all"
                   style={{
@@ -1938,7 +1944,7 @@ function CanvasInner({ projectId }: { projectId: number }) {
             emitCollabEvent("node:delete", { id: nid });
           } : undefined}
           onDuplicateNode={contextMenu.nodeId ? () => duplicateNode(contextMenu.nodeId!) : undefined}
-          onRunWorkflow={contextMenu.nodeId ? () => runWorkflow(contextMenu.nodeId ?? null) : undefined}
+          onRunWorkflow={contextMenu.nodeId ? () => handleRunRequest(contextMenu.nodeId ?? null) : undefined}
         />
       )}
 
@@ -1951,6 +1957,93 @@ function CanvasInner({ projectId }: { projectId: number }) {
       {showPresentation && (
         <PresentationMode nodes={nodes} onClose={() => setShowPresentation(false)} />
       )}
+
+      {/* ── Run workflow confirmation dialog ── */}
+      {showRunConfirm && (() => {
+        const aiNodeTypes = ["script", "storyboard", "video", "image", "audio", "subtitle", "chat", "prompt"];
+        const aiNodes = nodes.filter(n => aiNodeTypes.includes(n.data.nodeType));
+        const totalNodes = nodes.length;
+        const startLabel = pendingRunNodeId
+          ? `从节点「${nodes.find(n => n.id === pendingRunNodeId)?.data.title ?? pendingRunNodeId}」开始执行`
+          : "从头执行全部流程";
+        return (
+          <div
+            style={{
+              position: "fixed", inset: 0, zIndex: 9999,
+              background: "oklch(0 0 0 / 0.55)",
+              display: "flex", alignItems: "center", justifyContent: "center",
+            }}
+            onMouseDown={(e) => { if (e.target === e.currentTarget) setShowRunConfirm(false); }}
+          >
+            <div style={{
+              background: "var(--c-surface)",
+              border: "1px solid var(--c-bd2)",
+              borderRadius: 16,
+              padding: "28px 32px",
+              width: 380,
+              boxShadow: "0 24px 64px oklch(0 0 0 / 0.4)",
+              display: "flex", flexDirection: "column", gap: 16,
+            }}>
+              {/* Header */}
+              <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                <span style={{ fontSize: 22 }}>▶</span>
+                <span style={{ fontSize: 16, fontWeight: 700, color: "var(--c-text)" }}>确认执行工作流</span>
+              </div>
+
+              {/* Info */}
+              <div style={{ fontSize: 13, color: "var(--c-text-2)", lineHeight: 1.65 }}>
+                <div>{startLabel}</div>
+                <div style={{ marginTop: 8 }}>
+                  共 <b style={{ color: "var(--c-text)" }}>{totalNodes}</b> 个节点，
+                  其中 <b style={{ color: "oklch(0.72 0.22 142)" }}>{aiNodes.length}</b> 个 AI 节点将调用大模型接口，消耗相应算力额度。
+                </div>
+              </div>
+
+              {/* Warning */}
+              <div style={{
+                background: "oklch(0.78 0.18 60 / 0.1)",
+                border: "1px solid oklch(0.78 0.18 60 / 0.3)",
+                borderRadius: 8,
+                padding: "8px 12px",
+                fontSize: 12,
+                color: "oklch(0.78 0.18 60)",
+                lineHeight: 1.6,
+              }}>
+                ⚠️ 执行过程中将按实际调用次数计费，请确认后再继续。
+              </div>
+
+              {/* Buttons */}
+              <div style={{ display: "flex", gap: 10, justifyContent: "flex-end", marginTop: 4 }}>
+                <button
+                  onClick={() => setShowRunConfirm(false)}
+                  style={{
+                    padding: "7px 18px", borderRadius: 8, fontSize: 13, fontWeight: 600,
+                    background: "var(--c-surface-2)", border: "1px solid var(--c-bd2)",
+                    color: "var(--c-text-2)", cursor: "pointer",
+                  }}
+                >
+                  取消
+                </button>
+                <button
+                  onClick={() => {
+                    setShowRunConfirm(false);
+                    runWorkflow(pendingRunNodeId);
+                  }}
+                  style={{
+                    padding: "7px 20px", borderRadius: 8, fontSize: 13, fontWeight: 600,
+                    background: "oklch(0.72 0.22 142 / 0.15)",
+                    border: "1px solid oklch(0.72 0.22 142 / 0.5)",
+                    color: "oklch(0.72 0.22 142)",
+                    cursor: "pointer",
+                  }}
+                >
+                  确认执行
+                </button>
+              </div>
+            </div>
+          </div>
+        );
+      })()}
     </div>
   );
 }
