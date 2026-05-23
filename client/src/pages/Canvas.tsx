@@ -378,11 +378,17 @@ function CanvasInner({ projectId }: { projectId: number }) {
     { projectId }, { enabled: !!projectId && isAuthenticated }
   );
 
+  const utils = trpc.useUtils();
   const batchUpsertNodes = trpc.nodes.batchUpsert.useMutation();
   const upsertEdge = trpc.edges.upsert.useMutation();
   const deleteNodeMutation = trpc.nodes.delete.useMutation();
   const deleteEdgeMutation = trpc.edges.delete.useMutation();
-  const updateProject = trpc.projects.update.useMutation();
+  const updateProject = trpc.projects.update.useMutation({
+    onSuccess: () => {
+      utils.projects.get.invalidate({ id: projectId });
+      utils.projects.list.invalidate();
+    },
+  });
 
   // Reset canvas store on unmount to prevent stale nodes polluting next canvas
   useEffect(() => {
