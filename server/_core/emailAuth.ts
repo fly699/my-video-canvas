@@ -10,6 +10,23 @@ import { writeAuditLog } from "./auditLog";
 
 const scryptAsync = promisify(scrypt);
 
+// Simple in-memory rate limiter: max attempts per window per IP
+const _rateBuckets = new Map<string, { count: number; resetAt: number }>();
+const RATE_LIMIT_MAX = 10;        // max attempts
+const RATE_LIMIT_WINDOW_MS = 60_000; // per 60 seconds
+
+function checkRateLimit(ip: string): boolean {
+  const now = Date.now();
+  const bucket = _rateBuckets.get(ip);
+  if (!bucket || now > bucket.resetAt) {
+    _rateBuckets.set(ip, { count: 1, resetAt: now + RATE_LIMIT_WINDOW_MS });
+    return true;
+  }
+  if (bucket.count >= RATE_LIMIT_MAX) return false;
+  bucket.count++;
+  return true;
+}
+
 async function hashPassword(password: string): Promise<string> {
   const salt = randomBytes(16).toString("hex");
   const buf = (await scryptAsync(password, salt, 64)) as Buffer;
@@ -27,6 +44,10 @@ async function verifyPassword(password: string, stored: string): Promise<boolean
 
 export function registerEmailAuthRoutes(app: Express) {
   app.post("/api/auth/register", async (req: Request, res: Response) => {
+    const ip = req.ip ?? req.socket?.remoteAddress ?? "unknown";
+    if (!checkRateLimit(ip)) {
+      res.status(429).json({ error: "请求过于频繁，请稍后再试" }); return;
+    }
     try {
       const { email, password, name } = req.body as { email?: string; password?: string; name?: string };
       if (!email?.trim() || !password) {
@@ -95,6 +116,10 @@ export function registerEmailAuthRoutes(app: Express) {
   });
 
   app.post("/api/auth/login", async (req: Request, res: Response) => {
+    const ip = req.ip ?? req.socket?.remoteAddress ?? "unknown";
+    if (!checkRateLimit(ip)) {
+      res.status(429).json({ error: "请求过于频繁，请稍后再试" }); return;
+    }
     try {
       const { email, password } = req.body as { email?: string; password?: string };
       if (!email?.trim() || !password) {

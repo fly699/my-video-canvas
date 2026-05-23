@@ -834,7 +834,9 @@ export const clipRouter = router({
 
   getVideoDuration: protectedProcedure
     .input(z.object({ url: z.string().url() }))
-    .query(async ({ input }) => {
+    .query(async ({ ctx, input }) => {
+      await assertWhitelisted(ctx);
+      assertSafeUrl(input.url);
       const duration = await getVideoDuration(input.url);
       return { duration };
     }),
@@ -911,7 +913,8 @@ export const subtitleRouter = router({
         entries: z.array(z.object({ start: z.number(), end: z.number(), text: z.string().max(500) })).max(2000),
       })
     )
-    .mutation(({ input }) => {
+    .mutation(async ({ ctx, input }) => {
+      await assertWhitelisted(ctx);
       return { srt: generateSRT(input.entries as SubtitleEntry[]) };
     }),
 });
