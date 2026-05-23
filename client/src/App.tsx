@@ -7,6 +7,8 @@ import { ThemeProvider } from "./contexts/ThemeContext";
 import { CanvasModeProvider } from "./contexts/CanvasModeContext";
 import Home from "./pages/Home";
 import Canvas from "./pages/Canvas";
+import LoginPage from "./pages/LoginPage";
+import AdminPage from "./pages/AdminPage";
 import { useParams } from "wouter";
 
 function CanvasWithKey() {
@@ -19,6 +21,8 @@ function Router() {
     <Switch>
       <Route path="/" component={Home} />
       <Route path="/canvas/:projectId" component={CanvasWithKey} />
+      <Route path="/login" component={LoginPage} />
+      <Route path="/admin" component={AdminPage} />
       <Route path="/404" component={NotFound} />
       <Route component={NotFound} />
     </Switch>

@@ -39,6 +39,7 @@ import { trimVideo, getVideoDuration, mergeVideos, burnSubtitles, generateSRT, o
 import { transcribeAudio } from "../_core/voiceTranscription";
 import { VIDEO_PROVIDERS } from "../../shared/types";
 import type { SubtitleEntry } from "../../shared/types";
+import { assertWhitelisted } from "../_core/whitelist";
 
 // ── Ownership helpers ─────────────────────────────────────────────────────────
 
@@ -276,6 +277,7 @@ export const videoTasksRouter = router({
       })
     )
     .mutation(async ({ ctx, input }) => {
+      await assertWhitelisted(ctx);
       await assertProjectOwner(input.projectId, ctx.user.id);
 
       // Create DB record first so the task is tracked even if provider submission fails
@@ -520,6 +522,7 @@ export const imageGenRouter = router({
       })
     )
     .mutation(async ({ ctx, input }) => {
+      await assertWhitelisted(ctx);
       if (input.projectId != null) {
         await assertProjectOwner(input.projectId, ctx.user.id);
       }
@@ -734,6 +737,7 @@ export const audioGenRouter = router({
       })
     )
     .mutation(async ({ ctx, input }) => {
+      await assertWhitelisted(ctx);
       if (input.projectId != null) await assertProjectOwner(input.projectId, ctx.user.id);
       const result = await submitAndPollPoyoMusic({
         model: input.model as PoyoMusicModel,
@@ -757,6 +761,7 @@ export const audioGenRouter = router({
       })
     )
     .mutation(async ({ ctx, input }) => {
+      await assertWhitelisted(ctx);
       if (input.projectId != null) await assertProjectOwner(input.projectId, ctx.user.id);
       const result = await submitAndPollPoyoTTS({
         model: input.model as PoyoTTSModel,
@@ -821,7 +826,8 @@ export const subtitleRouter = router({
         language: z.string().optional(),
       })
     )
-    .mutation(async ({ input }) => {
+    .mutation(async ({ ctx, input }) => {
+      await assertWhitelisted(ctx);
       const result = await transcribeAudio({ audioUrl: input.audioUrl, language: input.language });
       if ("error" in result) {
         throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: result.error });

@@ -19,6 +19,7 @@ import {
   overlayRouter,
 } from "./routers/canvas";
 import { uploadRouter } from "./routers/upload";
+import { adminRouter } from "./routers/admin";
 
 export const appRouter = router({
   system: systemRouter,
@@ -47,6 +48,7 @@ export const appRouter = router({
   subtitle: subtitleRouter,
   overlay: overlayRouter,
   upload: uploadRouter,
+  admin: adminRouter,
 });
 
 export type AppRouter = typeof appRouter;
