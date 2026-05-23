@@ -9,6 +9,7 @@ import Home from "./pages/Home";
 import Canvas from "./pages/Canvas";
 import LoginPage from "./pages/LoginPage";
 import AdminPage from "./pages/AdminPage";
+import { WhitelistBlockedDialog } from "./components/WhitelistBlockedDialog";
 import { useParams } from "wouter";
 
 function CanvasWithKey() {
@@ -46,6 +47,7 @@ function App() {
             }}
           />
           <Router />
+          <WhitelistBlockedDialog />
         </TooltipProvider>
         </CanvasModeProvider>
       </ThemeProvider>

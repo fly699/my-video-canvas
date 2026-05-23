@@ -4,6 +4,7 @@ import { useCanvasStore, type CanvasNode } from "./useCanvasStore";
 import { toast } from "sonner";
 import type { NodeType } from "../../../shared/types";
 import { VIDEO_PROVIDERS } from "../../../shared/types";
+import { handleWhitelistError } from "./useWhitelistBlocked";
 
 export interface WorkflowRunState {
   running: boolean;
@@ -440,9 +441,11 @@ export function useWorkflowRunner() {
         }
 
         return "fail";
-      } catch {
+      } catch (err) {
         failed.push(nodeId);
-        toast.error(`节点 "${node.data.title}" 执行失败`);
+        if (!handleWhitelistError(err)) {
+          toast.error(`节点 "${node.data.title}" 执行失败`);
+        }
         return "fail";
       }
     };
