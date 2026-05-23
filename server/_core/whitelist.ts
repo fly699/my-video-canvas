@@ -62,7 +62,9 @@ export async function assertWhitelisted(ctx: TrpcContext): Promise<void> {
 
   const userId = ctx.user?.id;
   if (userId != null && (await db.isWhitelisted("user", String(userId)))) return;
-  if (ctx.clientIp && (await db.isWhitelisted("ip", ctx.clientIp))) return;
+  // Only do IP whitelist lookup for real IP addresses; "unknown" can never be a valid whitelist entry
+  const VALID_IP = /^[0-9a-fA-F.:]+$/;
+  if (ctx.clientIp && ctx.clientIp !== "unknown" && VALID_IP.test(ctx.clientIp) && (await db.isWhitelisted("ip", ctx.clientIp))) return;
 
   throw new TRPCError({
     code: "FORBIDDEN",
