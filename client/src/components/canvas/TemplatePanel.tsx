@@ -438,9 +438,9 @@ const TEMPLATES: Template[] = [
     category: "video",
     nodes: [
       { type: "script",     dx: -680, dy: 0,    title: "脚本" },
-      { type: "storyboard", dx: -320, dy: -180, title: "分镜1", initialData: { aspectRatio: "9:16", sceneNumber: 1, description: "前3秒钩子，视觉冲击抓住注意力", cameraMovement: "static",   colorTone: "高饱和，吸睛" } },
-      { type: "storyboard", dx: -320, dy: 0,    title: "分镜2", initialData: { aspectRatio: "9:16", sceneNumber: 2, description: "核心内容展示，信息密集节奏快",   cameraMovement: "tracking",  colorTone: "自然明亮"     } },
-      { type: "storyboard", dx: -320, dy: 180,  title: "分镜3", initialData: { aspectRatio: "9:16", sceneNumber: 3, description: "收尾引导互动，引导点赞关注评论", cameraMovement: "zoom-out",  colorTone: "温暖明亮"     } },
+      { type: "storyboard", dx: -320, dy: -180, title: "分镜1", initialData: { sceneNumber: 1, description: "前3秒钩子，视觉冲击抓住注意力", cameraMovement: "static",   colorTone: "高饱和，吸睛", duration: 3 } },
+      { type: "storyboard", dx: -320, dy: 0,    title: "分镜2", initialData: { sceneNumber: 2, description: "核心内容展示，信息密集节奏快",   cameraMovement: "tracking",  colorTone: "自然明亮",     duration: 5 } },
+      { type: "storyboard", dx: -320, dy: 180,  title: "分镜3", initialData: { sceneNumber: 3, description: "收尾引导互动，引导点赞关注评论", cameraMovement: "zoom-out",  colorTone: "温暖明亮",     duration: 3 } },
       { type: "video_task", dx: 60,   dy: -180, title: "视频1" },
       { type: "video_task", dx: 60,   dy: 0,    title: "视频2" },
       { type: "video_task", dx: 60,   dy: 180,  title: "视频3" },

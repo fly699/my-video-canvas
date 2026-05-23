@@ -105,7 +105,7 @@ export const MergeNode = memo(function MergeNode({ id, selected, data }: Props) 
     mergeMutation.mutate({
       inputUrls: urls,
       transition: payload.transition,
-      transitionDuration: payload.transitionDuration,
+      transitionDuration: payload.transition !== "none" ? payload.transitionDuration : undefined,
       bgMusicUrl: payload.bgMusicUrl || undefined,
       bgMusicVolume: payload.bgMusicVolume,
     });

@@ -158,6 +158,12 @@ export const StoryboardNode = memo(function StoryboardNode({ id, selected, data 
     [id, updateNodeData]
   );
 
+  useEffect(() => {
+    if (payload.duration === undefined) {
+      updateNodeData(id, { duration: 5 });
+    }
+  }, [id]); // eslint-disable-line react-hooks/exhaustive-deps
+
   const handleGenerate = () => {
     if (!payload.promptText?.trim()) { toast.error("请先填写提示词"); return; }
     setGenerating(true);
