@@ -357,10 +357,22 @@ function CanvasInner({ projectId }: { projectId: number }) {
 
   // Workflow runner
   const { runState, runWorkflow } = useWorkflowRunner();
+  const [showRunConfirm, setShowRunConfirm] = useState(false);
+  const [pendingRunNodeId, setPendingRunNodeId] = useState<string | null>(null);
+  const [runConfirmCountdown, setRunConfirmCountdown] = useState(5);
+
   const handleRunRequest = useCallback((startNodeId: string | null) => {
     setPendingRunNodeId(startNodeId);
+    setRunConfirmCountdown(5);
     setShowRunConfirm(true);
   }, []);
+
+  useEffect(() => {
+    if (!showRunConfirm) return;
+    if (runConfirmCountdown <= 0) return;
+    const t = setTimeout(() => setRunConfirmCountdown((c) => c - 1), 1000);
+    return () => clearTimeout(t);
+  }, [showRunConfirm, runConfirmCountdown]);
 
   const socketRef = useRef<Socket | null>(null);
   const [socketConnected, setSocketConnected] = useState(false);
@@ -371,8 +383,6 @@ function CanvasInner({ projectId }: { projectId: number }) {
   const barDragRef = useRef<{ startX: number; startY: number; initX: number; initY: number } | null>(null);
   const [mmPos, setMmPos] = useState({ bottom: 80, right: 8 });
   const [mmSize, setMmSize] = useState({ w: 200, h: 140 });
-  const [showRunConfirm, setShowRunConfirm] = useState(false);
-  const [pendingRunNodeId, setPendingRunNodeId] = useState<string | null>(null);
   const mmDragRef = useRef<{ sx: number; sy: number; sb: number; sr: number } | null>(null);
   const mmResizeRef = useRef<{ sx: number; sy: number; sw: number; sh: number } | null>(null);
   const [renamingProject, setRenamingProject] = useState(false);
@@ -1146,6 +1156,34 @@ function CanvasInner({ projectId }: { projectId: number }) {
               </div>
             )}
           </div>
+
+          {/* Divider */}
+          <div className="w-px h-4 mx-1" style={{ background: "var(--c-bd2)" }} />
+
+          {/* Run workflow */}
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <button
+                onClick={() => handleRunRequest(null)}
+                disabled={runState.running || nodes.length === 0}
+                className="flex items-center gap-1.5 h-7 px-2.5 rounded-lg text-xs font-semibold transition-all"
+                style={{
+                  background: runState.running
+                    ? "oklch(0.72 0.22 142 / 0.12)"
+                    : "oklch(0.72 0.22 142 / 0.15)",
+                  border: `1px solid oklch(0.72 0.22 142 / ${runState.running ? "0.5" : "0.35"})`,
+                  color: runState.running ? "oklch(0.75 0.20 142)" : "oklch(0.72 0.22 142)",
+                  cursor: runState.running || nodes.length === 0 ? "not-allowed" : "pointer",
+                  opacity: nodes.length === 0 ? 0.5 : 1,
+                }}
+              >
+                {runState.running
+                  ? <><span className="animate-spin" style={{ display: "inline-block" }}>⟳</span> 运行中</>
+                  : <>▶ 运行</>}
+              </button>
+            </TooltipTrigger>
+            <TooltipContent side="bottom" className="text-xs">运行工作流 (Shift+R)</TooltipContent>
+          </Tooltip>
 
           {/* Divider */}
           <div className="w-px h-4 mx-1" style={{ background: "var(--c-bd2)" }} />
@@ -2007,9 +2045,10 @@ function CanvasInner({ projectId }: { projectId: number }) {
                 padding: "8px 12px",
                 fontSize: 12,
                 color: "oklch(0.78 0.18 60)",
-                lineHeight: 1.6,
+                lineHeight: 1.7,
               }}>
-                ⚠️ 执行过程中将按实际调用次数计费，请确认后再继续。
+                <div>⚠️ 执行过程中将按实际调用次数计费，请确认后再继续。</div>
+                <div style={{ marginTop: 4 }}>📋 请确认所有节点 AI 模型选择正确，避免使用错误模型造成额度浪费。</div>
               </div>
 
               {/* Buttons */}
@@ -2025,19 +2064,24 @@ function CanvasInner({ projectId }: { projectId: number }) {
                   取消
                 </button>
                 <button
+                  disabled={runConfirmCountdown > 0}
                   onClick={() => {
                     setShowRunConfirm(false);
                     runWorkflow(pendingRunNodeId);
                   }}
                   style={{
                     padding: "7px 20px", borderRadius: 8, fontSize: 13, fontWeight: 600,
-                    background: "oklch(0.72 0.22 142 / 0.15)",
-                    border: "1px solid oklch(0.72 0.22 142 / 0.5)",
-                    color: "oklch(0.72 0.22 142)",
-                    cursor: "pointer",
+                    background: runConfirmCountdown > 0
+                      ? "oklch(0.72 0.22 142 / 0.07)"
+                      : "oklch(0.72 0.22 142 / 0.15)",
+                    border: `1px solid oklch(0.72 0.22 142 / ${runConfirmCountdown > 0 ? "0.2" : "0.5"})`,
+                    color: runConfirmCountdown > 0 ? "oklch(0.72 0.22 142 / 0.45)" : "oklch(0.72 0.22 142)",
+                    cursor: runConfirmCountdown > 0 ? "not-allowed" : "pointer",
+                    minWidth: 110,
+                    transition: "all 0.3s ease",
                   }}
                 >
-                  确认执行
+                  {runConfirmCountdown > 0 ? `确认执行 (${runConfirmCountdown}s)` : "确认执行"}
                 </button>
               </div>
             </div>
