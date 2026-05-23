@@ -365,6 +365,10 @@ function CanvasInner({ projectId }: { projectId: number }) {
   const [viewport, setViewport] = useState({ x: 0, y: 0, zoom: 1 });
   const [barOffset, setBarOffset] = useState({ x: 0, y: 0 });
   const barDragRef = useRef<{ startX: number; startY: number; initX: number; initY: number } | null>(null);
+  const [mmPos, setMmPos] = useState({ bottom: 80, right: 8 });
+  const [mmSize, setMmSize] = useState({ w: 200, h: 140 });
+  const mmDragRef = useRef<{ sx: number; sy: number; sb: number; sr: number } | null>(null);
+  const mmResizeRef = useRef<{ sx: number; sy: number; sw: number; sh: number } | null>(null);
   const [renamingProject, setRenamingProject] = useState(false);
   const [renameValue, setRenameValue] = useState("");
   const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -1298,15 +1302,91 @@ function CanvasInner({ projectId }: { projectId: number }) {
             <MiniMap
               position="bottom-right"
               nodeColor={(n) => getNodeConfig((n.data as { nodeType: NodeType }).nodeType)?.color ?? "var(--c-bd3)"}
-              maskColor="oklch(0.09 0.006 260 / 0.85)"
+              maskColor="oklch(0.09 0.006 260 / 0.55)"
               style={{
-                background: "var(--c-base)",
+                background: "oklch(0.09 0.006 260 / 0.38)",
+                backdropFilter: "blur(6px)",
                 border: "1px solid var(--c-bd2)",
                 borderRadius: 12,
-                marginBottom: 72,
-                marginRight: 8,
+                bottom: mmPos.bottom,
+                right: mmPos.right,
+                margin: 0,
+                width: mmSize.w,
+                height: mmSize.h,
               }}
             />
+            {/* Minimap drag handle + resize grip — transparent overlay */}
+            <div
+              style={{
+                position: "absolute",
+                bottom: mmPos.bottom,
+                right: mmPos.right,
+                width: mmSize.w,
+                height: mmSize.h,
+                zIndex: 6,
+                pointerEvents: "none",
+                borderRadius: 12,
+              }}
+            >
+              {/* Drag handle — top strip (doesn't block minimap click-to-navigate below) */}
+              <div
+                style={{
+                  position: "absolute",
+                  top: 0, left: 0, right: 0,
+                  height: 20,
+                  cursor: "grab",
+                  pointerEvents: "all",
+                  borderRadius: "12px 12px 0 0",
+                }}
+                onMouseDown={(e) => {
+                  e.stopPropagation();
+                  mmDragRef.current = { sx: e.clientX, sy: e.clientY, sb: mmPos.bottom, sr: mmPos.right };
+                  const onMove = (me: MouseEvent) => {
+                    if (!mmDragRef.current) return;
+                    setMmPos({
+                      bottom: mmDragRef.current.sb - (me.clientY - mmDragRef.current.sy),
+                      right: mmDragRef.current.sr - (me.clientX - mmDragRef.current.sx),
+                    });
+                  };
+                  const onUp = () => { mmDragRef.current = null; window.removeEventListener("mousemove", onMove); window.removeEventListener("mouseup", onUp); };
+                  window.addEventListener("mousemove", onMove);
+                  window.addEventListener("mouseup", onUp);
+                }}
+              />
+              {/* Resize grip — top-left corner (drag toward top-left to enlarge) */}
+              <div
+                style={{
+                  position: "absolute",
+                  top: 4, left: 4,
+                  width: 14, height: 14,
+                  cursor: "nw-resize",
+                  pointerEvents: "all",
+                  opacity: 0.4,
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                }}
+                onMouseDown={(e) => {
+                  e.stopPropagation();
+                  mmResizeRef.current = { sx: e.clientX, sy: e.clientY, sw: mmSize.w, sh: mmSize.h };
+                  const onMove = (me: MouseEvent) => {
+                    if (!mmResizeRef.current) return;
+                    setMmSize({
+                      w: Math.max(120, Math.min(420, mmResizeRef.current.sw - (me.clientX - mmResizeRef.current.sx))),
+                      h: Math.max(80, Math.min(320, mmResizeRef.current.sh - (me.clientY - mmResizeRef.current.sy))),
+                    });
+                  };
+                  const onUp = () => { mmResizeRef.current = null; window.removeEventListener("mousemove", onMove); window.removeEventListener("mouseup", onUp); };
+                  window.addEventListener("mousemove", onMove);
+                  window.addEventListener("mouseup", onUp);
+                }}
+              >
+                <svg width="9" height="9" viewBox="0 0 9 9" fill="none">
+                  <line x1="0.5" y1="8.5" x2="8.5" y2="0.5" stroke="white" strokeWidth="1.5" strokeLinecap="round"/>
+                  <line x1="0.5" y1="4.5" x2="4.5" y2="0.5" stroke="white" strokeWidth="1.5" strokeLinecap="round"/>
+                </svg>
+              </div>
+            </div>
           </ReactFlow>
           </WorkflowRunProvider>
 

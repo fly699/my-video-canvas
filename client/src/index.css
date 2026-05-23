@@ -619,6 +619,12 @@ button:active:not(:disabled) {
   opacity: 0.25 !important;
 }
 
+/* Minimap SVG fills its panel container so CSS width/height control the display size */
+.react-flow__minimap svg {
+  width: 100% !important;
+  height: 100% !important;
+}
+
 /* Hide default ReactFlow controls — we use custom ones */
 .react-flow__controls {
   display: none !important;
