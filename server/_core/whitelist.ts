@@ -24,8 +24,12 @@ async function isWhitelistEnabled(): Promise<boolean> {
     if (_cacheGeneration === gen) {
       _cachedEnabled = settings?.enabled ?? false;
       _cacheExpiry = now + 30_000;
+      return _cachedEnabled;
     }
-    return settings?.enabled ?? false;
+    // Cache was invalidated while our read was in-flight — fetch once more to get
+    // the post-invalidation value rather than returning the now-stale DB result.
+    const fresh = await db.getWhitelistSettings();
+    return fresh?.enabled ?? false;
   } catch (err) {
     console.error("[Whitelist] DB error in isWhitelistEnabled, treating as disabled:", err);
     // Fail-open with a short retry window so we don't hammer a downed DB.

@@ -3,25 +3,28 @@ import { Film } from "lucide-react";
 
 type Mode = "login" | "register";
 
-function getOAuthUrl(): string | null {
+// OAuth is available only when both env vars are set
+const oauthAvailable = !!(import.meta.env.VITE_OAUTH_PORTAL_URL && import.meta.env.VITE_APP_ID);
+
+function startOAuth(): void {
   const oauthPortalUrl = import.meta.env.VITE_OAUTH_PORTAL_URL;
   const appId = import.meta.env.VITE_APP_ID;
-  if (!oauthPortalUrl || !appId) return null;
+  if (!oauthPortalUrl || !appId) return;
   try {
     const redirectUri = `${window.location.origin}/api/oauth/callback`;
-    const state = btoa(redirectUri);
+    // Generate a per-click random nonce. Store it in a SameSite=Lax cookie so
+    // the server-side callback can verify it — preventing CSRF on the OAuth flow.
+    const nonce = crypto.randomUUID();
+    const secure = location.protocol === "https:" ? "; Secure" : "";
+    document.cookie = `__oauth_nonce=${nonce}; SameSite=Lax; Path=/api/oauth; max-age=600${secure}`;
     const url = new URL(`${oauthPortalUrl}/app-auth`);
     url.searchParams.set("appId", appId);
     url.searchParams.set("redirectUri", redirectUri);
-    url.searchParams.set("state", state);
+    url.searchParams.set("state", nonce);
     url.searchParams.set("type", "signIn");
-    return url.toString();
-  } catch {
-    return null;
-  }
+    window.location.href = url.toString();
+  } catch { /* ignore */ }
 }
-
-const oauthUrl = getOAuthUrl();
 
 export default function LoginPage() {
   const [mode, setMode] = useState<Mode>("login");
@@ -271,15 +274,16 @@ export default function LoginPage() {
         </form>
 
         {/* OAuth divider + button */}
-        {oauthUrl && (
+        {oauthAvailable && (
           <>
             <div style={{ display: "flex", alignItems: "center", gap: "10px", margin: "20px 0 0" }}>
               <div style={{ flex: 1, height: "1px", background: "rgba(255,255,255,0.07)" }} />
               <span style={{ fontSize: "12px", color: "var(--c-t2, rgba(255,255,255,0.3))" }}>或</span>
               <div style={{ flex: 1, height: "1px", background: "rgba(255,255,255,0.07)" }} />
             </div>
-            <a
-              href={oauthUrl}
+            <button
+              type="button"
+              onClick={startOAuth}
               style={{
                 display: "flex",
                 alignItems: "center",
@@ -287,19 +291,19 @@ export default function LoginPage() {
                 gap: "8px",
                 marginTop: "12px",
                 padding: "11px 0",
+                width: "100%",
                 border: "1px solid rgba(255,255,255,0.1)",
                 borderRadius: "8px",
                 background: "rgba(255,255,255,0.04)",
                 color: "var(--c-t1, #f0f0f4)",
                 fontSize: "14px",
                 fontWeight: 500,
-                textDecoration: "none",
-                transition: "all 0.15s",
                 cursor: "pointer",
+                transition: "all 0.15s",
               }}
             >
               第三方登录（Google / OAuth）
-            </a>
+            </button>
           </>
         )}
       </div>

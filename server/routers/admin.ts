@@ -8,6 +8,7 @@ const AUDIT_ACTIONS = [
   "image_gen", "video_gen",
   "audio_music", "audio_dubbing",
   "subtitle_transcribe",
+  "logs_cleared",
 ] as const;
 
 export const adminRouter = router({
@@ -22,8 +23,18 @@ export const adminRouter = router({
         return db.getAuditLogs({ limit: input.limit, offset: input.offset, action: input.action });
       }),
 
-    clear: adminProcedure.mutation(async () => {
+    clear: adminProcedure.mutation(async ({ ctx }) => {
       await db.clearAuditLogs();
+      // Write a sentinel so the next log review shows when and who cleared
+      await db.insertAuditLog({
+        userId: ctx.user.id,
+        userEmail: ctx.user.email ?? null,
+        userName: ctx.user.name ?? null,
+        ip: ctx.clientIp ?? "unknown",
+        country: null, region: null, city: null,
+        action: "logs_cleared",
+        detail: null,
+      });
       return { success: true };
     }),
   }),
@@ -64,6 +75,7 @@ export const adminRouter = router({
       .input(z.object({ id: z.number().int() }))
       .mutation(async ({ input }) => {
         await db.removeWhitelistEntry(input.id);
+        invalidateWhitelistCache();
         return { success: true };
       }),
   }),

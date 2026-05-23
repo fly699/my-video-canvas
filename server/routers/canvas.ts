@@ -296,8 +296,8 @@ export const videoTasksRouter = router({
       if (!task) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "Failed to create video task" });
 
       // Submit to external provider; on failure the task stays "pending" for the poller to retry
+      let externalTaskId: string | undefined;
       try {
-        let externalTaskId: string | undefined;
         if (isPoyoVideoProvider(input.provider)) {
           const result = await submitPoyoVideo({
             provider: input.provider,
@@ -319,20 +319,26 @@ export const videoTasksRouter = router({
         }
         if (externalTaskId) {
           await updateVideoTask(task.id, { status: "processing", externalTaskId });
-          writeAuditLog({
-            ctx,
-            action: "video_gen",
-            detail: {
-              provider: input.provider,
-              prompt: truncate(input.prompt),
-              taskId: task.id,
-              nodeId: input.nodeId,
-            },
-          });
-          return { ...task, status: "processing" as const, externalTaskId };
         }
       } catch (err) {
         console.error(`[videoTasks.create] provider submission failed, task ${task.id} left as pending for poller retry:`, err instanceof Error ? err.message : String(err));
+      }
+
+      // Always audit the generation attempt so failed/retried submissions are visible
+      writeAuditLog({
+        ctx,
+        action: "video_gen",
+        detail: {
+          provider: input.provider,
+          prompt: truncate(input.prompt),
+          taskId: task.id,
+          nodeId: input.nodeId,
+          submitted: !!externalTaskId,
+        },
+      });
+
+      if (externalTaskId) {
+        return { ...task, status: "processing" as const, externalTaskId };
       }
       return task;
     }),

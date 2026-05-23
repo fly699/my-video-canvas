@@ -12,6 +12,7 @@ interface GeoResult {
 
 const geoCache = new Map<string, { geo: GeoResult; expiry: number }>();
 const GEO_TTL_MS = 60 * 60 * 1000; // 1 hour
+const GEO_CACHE_MAX = 2_000; // prevent unbounded growth from scanner traffic
 
 const PRIVATE_IP = /^(127\.|10\.|172\.(1[6-9]|2\d|3[01])\.|192\.168\.|::1$|::ffff:|localhost$|unknown$|^$)/;
 // Only allow characters that appear in valid IPv4/IPv6 addresses to prevent path/query injection
@@ -32,6 +33,18 @@ async function lookupGeo(ip: string): Promise<GeoResult> {
     if (data?.status === "success") {
       const geo: GeoResult = { country: data.country, region: data.regionName, city: data.city };
       geoCache.set(ip, { geo, expiry: Date.now() + GEO_TTL_MS });
+      // Evict expired entries first; if still over cap, remove oldest insertion
+      if (geoCache.size > GEO_CACHE_MAX) {
+        const now = Date.now();
+        Array.from(geoCache.entries()).some(([k, v]) => {
+          if (v.expiry < now) geoCache.delete(k);
+          return geoCache.size <= GEO_CACHE_MAX;
+        });
+        if (geoCache.size > GEO_CACHE_MAX) {
+          const oldest = geoCache.keys().next().value;
+          if (oldest !== undefined) geoCache.delete(oldest);
+        }
+      }
       return geo;
     }
   } catch { /* network error — return empty */ }
@@ -48,7 +61,8 @@ export type AuditAction =
   | "video_gen"
   | "audio_music"
   | "audio_dubbing"
-  | "subtitle_transcribe";
+  | "subtitle_transcribe"
+  | "logs_cleared";
 
 export interface AuditOpts {
   ctx?: TrpcContext;

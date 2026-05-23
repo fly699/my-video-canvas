@@ -389,8 +389,9 @@ export async function addWhitelistEntry(
     devWhitelistEntries.push({ id, type, value, note, createdBy, createdAt: new Date() });
     return;
   }
+  // On duplicate (type, value) — preserve the existing entry unchanged (no-op update)
   await db.insert(whitelistEntries).values({ type, value, note, createdBy })
-    .onDuplicateKeyUpdate({ set: { note, createdBy } });
+    .onDuplicateKeyUpdate({ set: { id: sql`id` } });
 }
 
 export async function removeWhitelistEntry(id: number): Promise<void> {

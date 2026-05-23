@@ -62,6 +62,14 @@ export function registerEmailAuthRoutes(app: Express) {
         passwordHash,
         lastSignedIn: new Date(),
       });
+
+      // Fetch back the new user's numeric ID for the audit log
+      let newUserId: number | null = null;
+      try {
+        const newUser = await db.getUserByOpenId(openId);
+        newUserId = newUser?.id ?? null;
+      } catch { /* non-fatal */ }
+
       const sessionToken = await sdk.createSessionToken(openId, {
         name: name?.trim() || email.split("@")[0],
         expiresInMs: ONE_YEAR_MS,
@@ -72,6 +80,7 @@ export function registerEmailAuthRoutes(app: Express) {
       const clientIp = req.ip ?? req.socket?.remoteAddress ?? "unknown";
       writeAuditLog({
         ip: clientIp,
+        userId: newUserId,
         userEmail: email.toLowerCase(),
         userName: name?.trim() || email.split("@")[0],
         action: "login_email",

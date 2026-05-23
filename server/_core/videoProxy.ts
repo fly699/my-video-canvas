@@ -120,7 +120,7 @@ export function registerVideoProxy(app: Express) {
         const urlPath = new URL(decodedUrl).pathname;
         const rawName = urlPath.split("/").pop() || "video.mp4";
         // Strip characters unsafe in Content-Disposition filename (quotes, CR, LF, semicolons)
-        const filename = rawName.replace(/["\r\n;\\]/g, "_");
+        const filename = rawName.replace(/["\r\n;\\%]/g, "_");
         forwardHeaders["Content-Disposition"] = `attachment; filename="${filename}"`;
       }
 

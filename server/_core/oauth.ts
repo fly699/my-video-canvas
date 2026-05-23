@@ -20,6 +20,25 @@ export function registerOAuthRoutes(app: Express) {
       return;
     }
 
+    // Validate the state against the nonce cookie set at OAuth initiation to prevent CSRF.
+    const cookieHeader = req.headers.cookie ?? "";
+    const nonceCookie = cookieHeader
+      .split(";")
+      .map((c) => c.trim())
+      .find((c) => c.startsWith("__oauth_nonce="))
+      ?.slice("__oauth_nonce=".length);
+
+    if (!nonceCookie || state !== nonceCookie) {
+      res.status(400).json({ error: "Invalid OAuth state — possible CSRF attempt" });
+      return;
+    }
+
+    // Consume the nonce cookie so it cannot be replayed
+    res.setHeader(
+      "Set-Cookie",
+      "__oauth_nonce=; SameSite=Lax; Path=/api/oauth; max-age=0; HttpOnly",
+    );
+
     try {
       const tokenResponse = await sdk.exchangeCodeForToken(code, state);
       const userInfo = await sdk.getUserInfo(tokenResponse.accessToken);
