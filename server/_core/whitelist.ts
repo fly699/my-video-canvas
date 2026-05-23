@@ -18,27 +18,36 @@ async function isWhitelistEnabled(): Promise<boolean> {
   if (_cachedEnabled !== null && now < _cacheExpiry) return _cachedEnabled;
 
   const gen = _cacheGeneration;
-  const priorCached = _cachedEnabled; // snapshot before any await, used in error path
+  const priorCached = _cachedEnabled;
+  const priorExpiry = _cacheExpiry;
+  let postInvalidationGen: number | undefined;
   try {
     const settings = await db.getWhitelistSettings();
-    // Only write to cache if no invalidation happened while awaiting the DB.
+    // Only write cache if no invalidation happened while awaiting.
     if (_cacheGeneration === gen) {
       _cachedEnabled = settings?.enabled ?? false;
       _cacheExpiry = now + 30_000;
       return _cachedEnabled;
     }
-    // Generation changed while awaiting — our read may be stale. Re-read once to get
-    // the post-invalidation value. Don't cache the result so the first caller that
-    // sees a stable generation will populate the cache normally.
-    return (await db.getWhitelistSettings())?.enabled ?? false;
+    // Generation changed — re-read once for the post-invalidation value and cache it
+    // so subsequent callers hit the fast-path rather than repeating this round-trip.
+    postInvalidationGen = _cacheGeneration;
+    const fresh = await db.getWhitelistSettings();
+    if (_cacheGeneration === postInvalidationGen) {
+      _cachedEnabled = fresh?.enabled ?? false;
+      _cacheExpiry = Date.now() + 30_000;
+    }
+    return fresh?.enabled ?? false;
   } catch (err) {
     console.error("[Whitelist] DB error in isWhitelistEnabled, treating as disabled:", err);
-    // Only write the error-throttle cache if no concurrent sibling has already populated
-    // it: guard both the generation (no admin invalidation) and the prior cache value
-    // (no concurrent successful read wrote a valid true). This prevents a slow-failing
-    // call from overwriting a fast-succeeding sibling's valid cached true with false.
-    // Use Date.now() so the TTL is always 5 s from the moment of failure.
-    if (_cachedEnabled === priorCached && _cacheGeneration === gen) {
+    // Write the 5-second error-throttle only when:
+    //   1. latestGen matches _cacheGeneration (no further invalidation since our last snapshot)
+    //   2. _cachedEnabled === priorCached (no concurrent sibling changed the boolean value)
+    //   3. _cacheExpiry === priorExpiry (no concurrent sibling refreshed the TTL)
+    // Guards 2+3 together prevent the false===false edge case where a sibling wrote the same
+    // boolean but a fresh 30-second expiry — without the expiry check we'd overwrite it with 5 s.
+    const latestGen = postInvalidationGen ?? gen;
+    if (_cacheGeneration === latestGen && _cachedEnabled === priorCached && _cacheExpiry === priorExpiry) {
       _cachedEnabled = false;
       _cacheExpiry = Date.now() + 5_000;
     }
