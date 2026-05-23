@@ -394,14 +394,15 @@ export async function addWhitelistEntry(
     .onDuplicateKeyUpdate({ set: { id: sql`id` } });
 }
 
-export async function removeWhitelistEntry(id: number): Promise<void> {
+export async function removeWhitelistEntry(id: number): Promise<boolean> {
   const db = await getDb();
   if (!db) {
     const idx = devWhitelistEntries.findIndex(e => e.id === id);
-    if (idx !== -1) devWhitelistEntries.splice(idx, 1);
-    return;
+    if (idx !== -1) { devWhitelistEntries.splice(idx, 1); return true; }
+    return false;
   }
-  await db.delete(whitelistEntries).where(eq(whitelistEntries.id, id));
+  const [result] = await db.delete(whitelistEntries).where(eq(whitelistEntries.id, id));
+  return (result as { affectedRows?: number }).affectedRows !== 0;
 }
 
 export async function isWhitelisted(type: "ip" | "user", value: string): Promise<boolean> {

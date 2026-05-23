@@ -143,7 +143,16 @@ export function registerImageProxy(app: Express) {
         }
         const canContinue = res.write(value);
         if (!canContinue) {
-          await new Promise<void>((resolve) => res.once("drain", resolve));
+          // Wait for backpressure to clear. Also listen for 'close' so the
+          // Promise resolves immediately if the client disconnects mid-stream
+          // instead of hanging forever waiting for a drain that never fires.
+          const drained = await new Promise<boolean>((resolve) => {
+            const onDrain = () => { res.removeListener("close", onClose); resolve(true); };
+            const onClose = () => { res.removeListener("drain", onDrain); resolve(false); };
+            res.once("drain", onDrain);
+            res.once("close", onClose);
+          });
+          if (!drained) break;
         }
       }
     } catch (err) {

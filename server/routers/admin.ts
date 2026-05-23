@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { TRPCError } from "@trpc/server";
 import { adminProcedure, router } from "../_core/trpc";
 import * as db from "../db";
 import { invalidateWhitelistCache } from "../_core/whitelist";
@@ -78,7 +79,8 @@ export const adminRouter = router({
     removeEntry: adminProcedure
       .input(z.object({ id: z.number().int() }))
       .mutation(async ({ input }) => {
-        await db.removeWhitelistEntry(input.id);
+        const deleted = await db.removeWhitelistEntry(input.id);
+        if (!deleted) throw new TRPCError({ code: "NOT_FOUND", message: "白名单条目不存在" });
         invalidateWhitelistCache();
         return { success: true };
       }),

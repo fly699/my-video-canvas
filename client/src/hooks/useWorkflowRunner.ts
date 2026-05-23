@@ -92,12 +92,13 @@ function getLayers(
     current = next;
   }
 
-  // Nodes that never reached inDegree=0 form a cycle — warn and include as a final layer.
+  // Nodes that never reached inDegree=0 form a cycle — warn and run them one
+  // at a time (each as a single-element layer) to avoid concurrent state mutations.
   const placed = new Set(layers.flat());
   const cyclic = runnableIds.filter((id) => !placed.has(id));
   if (cyclic.length > 0) {
-    toast.warning(`检测到节点循环依赖，将单独执行（${cyclic.length} 个节点）`);
-    layers.push(cyclic);
+    toast.warning(`检测到节点循环依赖，将逐个顺序执行（${cyclic.length} 个节点）`);
+    cyclic.forEach((id) => layers.push([id]));
   }
 
   return layers;

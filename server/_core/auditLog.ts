@@ -98,7 +98,8 @@ export function writeAuditLog(opts: AuditOpts): void {
         detail: opts.detail ?? null,
       })
     )
-    .catch((err) => console.error("[AuditLog] write failed:", err));
+    .catch((err) => console.error("[AuditLog] write failed — action=%s userId=%s ip=%s err=%s",
+      opts.action, userId, ip, err instanceof Error ? err.message : String(err)));
 }
 
 /** Truncate long strings for detail fields (keep prompts readable but short) */
