@@ -59,8 +59,8 @@ const TEMPLATES: Template[] = [
     category: "starter",
     nodes: [
       { type: "script",     dx: 0,    dy: 0,    title: "脚本" },
-      { type: "storyboard", dx: 0,    dy: 380,  title: "分镜 #1", initialData: { description: "描述这个场景的视觉内容", duration: 5, cameraMovement: "static" } },
-      { type: "image_gen",  dx: 0,    dy: 730,  title: "图像生成" },
+      { type: "storyboard", dx: 0,    dy: 380,  title: "分镜 #1", initialData: { description: "描述这个场景的视觉内容", duration: 5, cameraMovement: "static", lens: "标准 50mm", colorTone: "自然真实" } },
+      { type: "image_gen",  dx: 0,    dy: 730,  title: "图像生成", initialData: { aspectRatio: "16:9" } },
       { type: "video_task", dx: 0,    dy: 1080, title: "视频生成" },
     ],
     edgeSpecs: [
@@ -92,9 +92,9 @@ const TEMPLATES: Template[] = [
     icon: "Sparkles",
     category: "starter",
     nodes: [
-      { type: "prompt",    dx: 0,   dy: 0,   title: "提示词", initialData: { positivePrompt: "高质量摄影，电影级光线，专业构图" } },
-      { type: "image_gen", dx: -200, dy: 380, title: "图像 A" },
-      { type: "image_gen", dx: 220,  dy: 380, title: "图像 B" },
+      { type: "prompt",    dx: 0,    dy: 0,   title: "提示词", initialData: { positivePrompt: "高质量摄影，电影级光线，专业构图", negativePrompt: "模糊，失真，噪点，低质量", aspectRatio: "16:9" } },
+      { type: "image_gen", dx: -200, dy: 380, title: "图像 A", initialData: { aspectRatio: "16:9" } },
+      { type: "image_gen", dx: 220,  dy: 380, title: "图像 B", initialData: { aspectRatio: "16:9" } },
     ],
     edgeSpecs: [
       { fromIndex: 0, toIndex: 1 },
@@ -110,11 +110,11 @@ const TEMPLATES: Template[] = [
     icon: "LayoutGrid",
     category: "image",
     nodes: [
-      { type: "prompt",    dx: 0,    dy: 0,   title: "主提示词" },
-      { type: "image_gen", dx: -570, dy: 380, title: "图像 1" },
-      { type: "image_gen", dx: -190, dy: 380, title: "图像 2" },
-      { type: "image_gen", dx: 190,  dy: 380, title: "图像 3" },
-      { type: "image_gen", dx: 570,  dy: 380, title: "图像 4" },
+      { type: "prompt",    dx: 0,    dy: 0,   title: "主提示词", initialData: { positivePrompt: "高质量摄影，电影级光线，专业构图", negativePrompt: "模糊，失真，低质量", aspectRatio: "16:9" } },
+      { type: "image_gen", dx: -570, dy: 380, title: "图像 1", initialData: { aspectRatio: "16:9" } },
+      { type: "image_gen", dx: -190, dy: 380, title: "图像 2", initialData: { aspectRatio: "16:9" } },
+      { type: "image_gen", dx: 190,  dy: 380, title: "图像 3", initialData: { aspectRatio: "16:9" } },
+      { type: "image_gen", dx: 570,  dy: 380, title: "图像 4", initialData: { aspectRatio: "16:9" } },
     ],
     edgeSpecs: [
       { fromIndex: 0, toIndex: 1 },
@@ -131,10 +131,10 @@ const TEMPLATES: Template[] = [
     category: "image",
     nodes: [
       { type: "script",     dx: 0,    dy: 0,   title: "故事脚本" },
-      { type: "storyboard", dx: -570, dy: 400, title: "分镜 #1", initialData: { sceneNumber: 1, description: "开场镜头", cameraMovement: "static",  duration: 4 } },
-      { type: "storyboard", dx: -190, dy: 400, title: "分镜 #2", initialData: { sceneNumber: 2, description: "情节发展", cameraMovement: "pan-right", duration: 4 } },
-      { type: "storyboard", dx: 190,  dy: 400, title: "分镜 #3", initialData: { sceneNumber: 3, description: "高潮时刻", cameraMovement: "zoom-in",  duration: 4 } },
-      { type: "storyboard", dx: 570,  dy: 400, title: "分镜 #4", initialData: { sceneNumber: 4, description: "结尾画面", cameraMovement: "static",  duration: 4 } },
+      { type: "storyboard", dx: -570, dy: 400, title: "分镜 #1", initialData: { sceneNumber: 1, description: "开场镜头，建立场景氛围", cameraMovement: "static",   duration: 4, colorTone: "冷色调，蓝灰",   lens: "广角 24mm" } },
+      { type: "storyboard", dx: -190, dy: 400, title: "分镜 #2", initialData: { sceneNumber: 2, description: "情节发展，推进故事",   cameraMovement: "pan-right", duration: 4, colorTone: "自然真实",       lens: "标准 50mm" } },
+      { type: "storyboard", dx: 190,  dy: 400, title: "分镜 #3", initialData: { sceneNumber: 3, description: "高潮时刻，情感爆发",   cameraMovement: "zoom-in",   duration: 4, colorTone: "高饱和，鲜艳",   lens: "标准 50mm" } },
+      { type: "storyboard", dx: 570,  dy: 400, title: "分镜 #4", initialData: { sceneNumber: 4, description: "结尾画面，留有余韵",   cameraMovement: "static",    duration: 4, colorTone: "低饱和，电影感", lens: "长焦 85mm" } },
       { type: "image_gen",  dx: -570, dy: 780, title: "图像 1" },
       { type: "image_gen",  dx: -190, dy: 780, title: "图像 2" },
       { type: "image_gen",  dx: 190,  dy: 780, title: "图像 3" },
@@ -160,7 +160,7 @@ const TEMPLATES: Template[] = [
     icon: "Play",
     category: "video",
     nodes: [
-      { type: "image_gen",  dx: 0,    dy: 0,   title: "参考图生成" },
+      { type: "image_gen",  dx: 0,    dy: 0,   title: "参考图生成", initialData: { aspectRatio: "16:9" } },
       { type: "video_task", dx: -420, dy: 380, title: "视频 A" },
       { type: "video_task", dx: 0,    dy: 380, title: "视频 B" },
       { type: "video_task", dx: 420,  dy: 380, title: "视频 C" },
@@ -179,16 +179,16 @@ const TEMPLATES: Template[] = [
     category: "video",
     nodes: [
       { type: "script",     dx: 0,    dy: 0,    title: "故事脚本" },
-      { type: "storyboard", dx: -420, dy: 400,  title: "分镜 #1", initialData: { sceneNumber: 1, description: "开场", cameraMovement: "static",   duration: 5 } },
-      { type: "storyboard", dx: 0,    dy: 400,  title: "分镜 #2", initialData: { sceneNumber: 2, description: "主体", cameraMovement: "pan-right", duration: 5 } },
-      { type: "storyboard", dx: 420,  dy: 400,  title: "分镜 #3", initialData: { sceneNumber: 3, description: "结尾", cameraMovement: "zoom-out",  duration: 5 } },
+      { type: "storyboard", dx: -420, dy: 400,  title: "分镜 #1", initialData: { sceneNumber: 1, description: "开场，建立故事世界观与氛围", cameraMovement: "static",   duration: 5, lens: "广角 24mm", colorTone: "冷色调，蓝灰"   } },
+      { type: "storyboard", dx: 0,    dy: 400,  title: "分镜 #2", initialData: { sceneNumber: 2, description: "主体，情节推进与冲突展开",   cameraMovement: "pan-right", duration: 5, lens: "标准 50mm", colorTone: "自然真实"       } },
+      { type: "storyboard", dx: 420,  dy: 400,  title: "分镜 #3", initialData: { sceneNumber: 3, description: "结尾，情感收束与余韵留白",   cameraMovement: "zoom-out",  duration: 5, lens: "长焦 85mm", colorTone: "暖色调，橙金"   } },
       { type: "image_gen",  dx: -420, dy: 780,  title: "图像 1" },
       { type: "image_gen",  dx: 0,    dy: 780,  title: "图像 2" },
       { type: "image_gen",  dx: 420,  dy: 780,  title: "图像 3" },
       { type: "video_task", dx: -420, dy: 1160, title: "视频 1" },
       { type: "video_task", dx: 0,    dy: 1160, title: "视频 2" },
       { type: "video_task", dx: 420,  dy: 1160, title: "视频 3" },
-      { type: "merge",      dx: 0,    dy: 1540, title: "合并剪辑" },
+      { type: "merge",      dx: 0,    dy: 1540, title: "合并剪辑", initialData: { transition: "fade", bgMusicVolume: 0.25 } },
     ],
     edgeSpecs: [
       { fromIndex: 0, toIndex: 1 },
@@ -212,8 +212,8 @@ const TEMPLATES: Template[] = [
     icon: "Scale",
     category: "video",
     nodes: [
-      { type: "prompt",     dx: 0,    dy: 0,   title: "视频提示词", initialData: { positivePrompt: "电影级动态镜头，高质量画面" } },
-      { type: "image_gen",  dx: 0,    dy: 380, title: "参考图" },
+      { type: "prompt",     dx: 0,    dy: 0,   title: "视频提示词", initialData: { positivePrompt: "电影级动态镜头，高质量画面", negativePrompt: "模糊，抖动，失真，低质量", aspectRatio: "16:9" } },
+      { type: "image_gen",  dx: 0,    dy: 380, title: "参考图", initialData: { aspectRatio: "16:9" } },
       { type: "video_task", dx: -420, dy: 760, title: "视频 · 模型 A" },
       { type: "video_task", dx: 0,    dy: 760, title: "视频 · 模型 B" },
       { type: "video_task", dx: 420,  dy: 760, title: "视频 · 模型 C" },
@@ -235,13 +235,13 @@ const TEMPLATES: Template[] = [
     category: "video",
     nodes: [
       { type: "script",     dx: 0,    dy: 0,    title: "广告脚本" },                                                                // 0
-      { type: "character",  dx: -420, dy: 380,  title: "品牌角色", initialData: { characterKind: "person", role: "品牌代言人" } },  // 1
-      { type: "character",  dx: 0,    dy: 380,  title: "主场景",   initialData: { characterKind: "scene", locationType: "室内" } }, // 2
-      { type: "audio",      dx: 420,  dy: 380,  title: "背景音乐", initialData: { audioCategory: "music" } },                       // 3
-      { type: "storyboard", dx: -630, dy: 760,  title: "开场钩子", initialData: { sceneNumber: 1, description: "产品展示，吸引眼球", cameraMovement: "zoom-in",   duration: 4 } }, // 4
-      { type: "storyboard", dx: -210, dy: 760,  title: "问题场景", initialData: { sceneNumber: 2, description: "展示用户痛点",       cameraMovement: "static",    duration: 5 } }, // 5
-      { type: "storyboard", dx: 210,  dy: 760,  title: "解决方案", initialData: { sceneNumber: 3, description: "产品解决问题",       cameraMovement: "pan-right", duration: 5 } }, // 6
-      { type: "storyboard", dx: 630,  dy: 760,  title: "行动号召", initialData: { sceneNumber: 4, description: "CTA 结尾画面",      cameraMovement: "zoom-out",  duration: 3 } }, // 7
+      { type: "character",  dx: -420, dy: 380,  title: "品牌角色", initialData: { characterKind: "person", role: "品牌代言人", gender: "女", age: "25-35", appearance: "专业、时尚、亲切，着品牌色服装", personality: "自信、活力、值得信赖" } }, // 1
+      { type: "character",  dx: 0,    dy: 380,  title: "主场景",   initialData: { characterKind: "scene", locationType: "室内", sceneDescription: "现代简洁的室内空间，配合品牌色调，高端质感", atmosphere: "明亮", timeOfDay: "上午" } }, // 2
+      { type: "audio",      dx: 420,  dy: 380,  title: "背景音乐", initialData: { audioCategory: "music", musicPrompt: "充满活力的现代商业配乐，节奏感强，积极向上，适合品牌广告", musicDuration: 60, musicStyle: "流行" } }, // 3
+      { type: "storyboard", dx: -630, dy: 760,  title: "开场钩子", initialData: { sceneNumber: 1, description: "产品特写镜头，3秒内抓住眼球，突出视觉冲击力",  cameraMovement: "zoom-in",   duration: 4, lens: "广角 24mm", colorTone: "高饱和，品牌主色" } }, // 4
+      { type: "storyboard", dx: -210, dy: 760,  title: "问题场景", initialData: { sceneNumber: 2, description: "真实场景展示用户痛点，引发目标受众共鸣",         cameraMovement: "static",    duration: 5, lens: "标准 50mm", colorTone: "冷色调，偏灰" } }, // 5
+      { type: "storyboard", dx: 210,  dy: 760,  title: "解决方案", initialData: { sceneNumber: 3, description: "产品介入解决问题，用户表情由困惑转为满意",       cameraMovement: "pan-right", duration: 5, lens: "标准 50mm", colorTone: "暖色调，温暖明亮" } }, // 6
+      { type: "storyboard", dx: 630,  dy: 760,  title: "行动号召", initialData: { sceneNumber: 4, description: "产品Logo+口号特写，CTA文字入画，引导点击购买",  cameraMovement: "zoom-out",  duration: 3, lens: "长焦 85mm", colorTone: "高饱和，品牌主色" } }, // 7
       { type: "image_gen",  dx: -630, dy: 1140, title: "图像 1" },   // 8
       { type: "image_gen",  dx: -210, dy: 1140, title: "图像 2" },   // 9
       { type: "image_gen",  dx: 210,  dy: 1140, title: "图像 3" },   // 10
@@ -250,7 +250,7 @@ const TEMPLATES: Template[] = [
       { type: "video_task", dx: -210, dy: 1520, title: "视频片段 2" }, // 13
       { type: "video_task", dx: 210,  dy: 1520, title: "视频片段 3" }, // 14
       { type: "video_task", dx: 630,  dy: 1520, title: "视频片段 4" }, // 15
-      { type: "merge",      dx: 0,    dy: 1900, title: "合并剪辑" },  // 16
+      { type: "merge",      dx: 0,    dy: 1900, title: "合并剪辑", initialData: { transition: "fade", bgMusicVolume: 0.3 } }, // 16
     ],
     edgeSpecs: [
       { fromIndex: 0, toIndex: 4 },   // 脚本 → 4 个分镜
@@ -288,12 +288,12 @@ const TEMPLATES: Template[] = [
     category: "video",
     nodes: [
       { type: "script",     dx: 0,    dy: 0,    title: "Vlog 脚本", initialData: { content: "今天我来分享..." } },             // 0
-      { type: "audio",      dx: -300, dy: 380,  title: "旁白配音",  initialData: { audioCategory: "dubbing" } },               // 1
-      { type: "audio",      dx: 300,  dy: 380,  title: "背景音乐",  initialData: { audioCategory: "music", musicStyle: "轻音乐" } }, // 2
-      { type: "storyboard", dx: -450, dy: 760,  title: "片段 #1",  initialData: { sceneNumber: 1, description: "开场自我介绍",  cameraMovement: "static",   duration: 8  } }, // 3
-      { type: "storyboard", dx: -150, dy: 760,  title: "片段 #2",  initialData: { sceneNumber: 2, description: "主要内容展示", cameraMovement: "tracking",  duration: 10 } }, // 4
-      { type: "storyboard", dx: 150,  dy: 760,  title: "片段 #3",  initialData: { sceneNumber: 3, description: "细节特写",    cameraMovement: "zoom-in",   duration: 6  } }, // 5
-      { type: "storyboard", dx: 450,  dy: 760,  title: "片段 #4",  initialData: { sceneNumber: 4, description: "结尾总结",    cameraMovement: "zoom-out",  duration: 5  } }, // 6
+      { type: "audio",      dx: -300, dy: 380,  title: "旁白配音",  initialData: { audioCategory: "dubbing", ttsSpeed: 1.0 } },  // 1
+      { type: "audio",      dx: 300,  dy: 380,  title: "背景音乐",  initialData: { audioCategory: "music", musicStyle: "轻音乐", musicPrompt: "轻松愉快的治愈系轻音乐，日常Vlog风格，清新自然", musicDuration: 120 } }, // 2
+      { type: "storyboard", dx: -450, dy: 760,  title: "片段 #1",  initialData: { sceneNumber: 1, description: "开场自我介绍，镜头前轻松打招呼，建立亲切感", cameraMovement: "static",   duration: 8,  lens: "广角 24mm", colorTone: "温暖明亮" } }, // 3
+      { type: "storyboard", dx: -150, dy: 760,  title: "片段 #2",  initialData: { sceneNumber: 2, description: "主要内容展示，跟拍或手持拍摄，真实感强",     cameraMovement: "tracking",  duration: 10, lens: "标准 50mm", colorTone: "自然真实" } }, // 4
+      { type: "storyboard", dx: 150,  dy: 760,  title: "片段 #3",  initialData: { sceneNumber: 3, description: "细节特写，突出重点物品或表情细节",           cameraMovement: "zoom-in",   duration: 6,  lens: "微距/长焦", colorTone: "清晰细节" } }, // 5
+      { type: "storyboard", dx: 450,  dy: 760,  title: "片段 #4",  initialData: { sceneNumber: 4, description: "结尾总结，面向镜头总结并引导关注",           cameraMovement: "zoom-out",  duration: 5,  lens: "广角 24mm", colorTone: "温暖明亮" } }, // 6
       { type: "image_gen",  dx: -450, dy: 1140, title: "图像 1" }, // 7
       { type: "image_gen",  dx: -150, dy: 1140, title: "图像 2" }, // 8
       { type: "image_gen",  dx: 150,  dy: 1140, title: "图像 3" }, // 9
@@ -302,7 +302,7 @@ const TEMPLATES: Template[] = [
       { type: "video_task", dx: -150, dy: 1520, title: "Vlog 片段 2" }, // 12
       { type: "video_task", dx: 150,  dy: 1520, title: "Vlog 片段 3" }, // 13
       { type: "video_task", dx: 450,  dy: 1520, title: "Vlog 片段 4" }, // 14
-      { type: "merge",      dx: 0,    dy: 1900, title: "合并剪辑" },    // 15
+      { type: "merge",      dx: 0,    dy: 1900, title: "合并剪辑", initialData: { transition: "dissolve", bgMusicVolume: 0.35 } }, // 15
     ],
     edgeSpecs: [
       { fromIndex: 0, toIndex: 1 },   // 脚本 → 旁白配音（TTS 输入）
@@ -333,8 +333,8 @@ const TEMPLATES: Template[] = [
     icon: "ShoppingBag",
     category: "video",
     nodes: [
-      { type: "character",  dx: -300, dy: 0,    title: "产品主体",  initialData: { characterKind: "person", role: "产品展示" } },                                                     // 0
-      { type: "character",  dx: 300,  dy: 0,    title: "展示场景",  initialData: { characterKind: "scene", locationType: "白色摄影棚", atmosphere: "干净简洁" } },                    // 1
+      { type: "character",  dx: -300, dy: 0,    title: "产品主体",  initialData: { characterKind: "person", role: "产品展示", appearance: "产品外观精致，设计感强，材质质感优良", notes: "重点展示产品核心功能与设计亮点，突出差异化卖点" } }, // 0
+      { type: "character",  dx: 300,  dy: 0,    title: "展示场景",  initialData: { characterKind: "scene", locationType: "室内", sceneDescription: "简洁明亮的白色摄影棚，突出产品质感与轮廓", atmosphere: "明亮", timeOfDay: "正午" } }, // 1
       { type: "prompt",     dx: 0,    dy: 0,    title: "产品提示词", initialData: { positivePrompt: "professional product photography, studio lighting, white background, 8K quality", negativePrompt: "blurry, dark" } }, // 2
       { type: "storyboard", dx: -420, dy: 380,  title: "正面全景",   initialData: { sceneNumber: 1, description: "产品正面静态展示", cameraMovement: "static",   duration: 5 } },     // 3
       { type: "storyboard", dx: 0,    dy: 380,  title: "360°旋转",   initialData: { sceneNumber: 2, description: "产品旋转展示细节", cameraMovement: "pan-right", duration: 6 } },    // 4
@@ -345,8 +345,8 @@ const TEMPLATES: Template[] = [
       { type: "video_task", dx: -420, dy: 1140, title: "产品视频 1" }, // 9
       { type: "video_task", dx: 0,    dy: 1140, title: "产品视频 2" }, // 10
       { type: "video_task", dx: 420,  dy: 1140, title: "产品视频 3" }, // 11
-      { type: "audio",      dx: 0,    dy: 1520, title: "产品音乐",  initialData: { audioCategory: "music", musicStyle: "流行" } }, // 12
-      { type: "merge",      dx: 0,    dy: 1900, title: "合并剪辑" }, // 13
+      { type: "audio",      dx: 0,    dy: 1520, title: "产品音乐",  initialData: { audioCategory: "music", musicStyle: "流行", musicPrompt: "简洁现代的商业配乐，品质感强，适合高端产品发布", musicDuration: 90 } }, // 12
+      { type: "merge",      dx: 0,    dy: 1900, title: "合并剪辑", initialData: { transition: "none", bgMusicVolume: 0.4 } }, // 13
     ],
     edgeSpecs: [
       { fromIndex: 0, toIndex: 3 },   // 产品主体 → 所有分镜
@@ -381,9 +381,9 @@ const TEMPLATES: Template[] = [
     nodes: [
       { type: "ai_chat",    dx: 0,    dy: 0,   title: "AI 编剧助手", initialData: { systemPrompt: "你是专业电影编剧，帮助构思故事结构、对话和视觉场景描述。用中文回答，内容简洁有力。" } },
       { type: "script",     dx: 0,    dy: 420, title: "故事脚本" },
-      { type: "storyboard", dx: -420, dy: 800, title: "分镜 #1", initialData: { sceneNumber: 1, cameraMovement: "static",   duration: 5 } },
-      { type: "storyboard", dx: 0,    dy: 800, title: "分镜 #2", initialData: { sceneNumber: 2, cameraMovement: "pan-right", duration: 5 } },
-      { type: "storyboard", dx: 420,  dy: 800, title: "分镜 #3", initialData: { sceneNumber: 3, cameraMovement: "zoom-in",  duration: 5 } },
+      { type: "storyboard", dx: -420, dy: 800, title: "分镜 #1", initialData: { sceneNumber: 1, description: "视觉化故事开场，建立场景和氛围", cameraMovement: "static",   duration: 5 } },
+      { type: "storyboard", dx: 0,    dy: 800, title: "分镜 #2", initialData: { sceneNumber: 2, description: "情节推进，主角行动或冲突展开",   cameraMovement: "pan-right", duration: 5 } },
+      { type: "storyboard", dx: 420,  dy: 800, title: "分镜 #3", initialData: { sceneNumber: 3, description: "高潮或结局，情感升华收束",       cameraMovement: "zoom-in",  duration: 5 } },
     ],
     edgeSpecs: [
       { fromIndex: 0, toIndex: 1 },
@@ -401,16 +401,16 @@ const TEMPLATES: Template[] = [
     nodes: [
       { type: "ai_chat",    dx: 0,    dy: 0,    title: "AI 创作助手", initialData: { systemPrompt: "你是专业视频制作顾问，帮助从创意到分镜板到最终视频的全流程制作。" } },
       { type: "script",     dx: 0,    dy: 420,  title: "故事脚本" },
-      { type: "storyboard", dx: -420, dy: 820,  title: "分镜 #1", initialData: { sceneNumber: 1, cameraMovement: "static",   duration: 5 } },
-      { type: "storyboard", dx: 0,    dy: 820,  title: "分镜 #2", initialData: { sceneNumber: 2, cameraMovement: "pan-right", duration: 5 } },
-      { type: "storyboard", dx: 420,  dy: 820,  title: "分镜 #3", initialData: { sceneNumber: 3, cameraMovement: "zoom-in",  duration: 5 } },
+      { type: "storyboard", dx: -420, dy: 820,  title: "分镜 #1", initialData: { sceneNumber: 1, description: "视觉化故事开场，建立场景氛围", cameraMovement: "static",   duration: 5 } },
+      { type: "storyboard", dx: 0,    dy: 820,  title: "分镜 #2", initialData: { sceneNumber: 2, description: "情节推进，核心内容展示",         cameraMovement: "pan-right", duration: 5 } },
+      { type: "storyboard", dx: 420,  dy: 820,  title: "分镜 #3", initialData: { sceneNumber: 3, description: "高潮与结局，情感升华收束",       cameraMovement: "zoom-in",  duration: 5 } },
       { type: "image_gen",  dx: -420, dy: 1200, title: "图像 1" },
       { type: "image_gen",  dx: 0,    dy: 1200, title: "图像 2" },
       { type: "image_gen",  dx: 420,  dy: 1200, title: "图像 3" },
       { type: "video_task", dx: -420, dy: 1580, title: "视频 1" },
       { type: "video_task", dx: 0,    dy: 1580, title: "视频 2" },
       { type: "video_task", dx: 420,  dy: 1580, title: "视频 3" },
-      { type: "merge",      dx: 0,    dy: 1960, title: "合并剪辑" },
+      { type: "merge",      dx: 0,    dy: 1960, title: "合并剪辑", initialData: { transition: "fade", bgMusicVolume: 0.25 } },
     ],
     edgeSpecs: [
       { fromIndex: 0, toIndex: 1 },
@@ -438,14 +438,14 @@ const TEMPLATES: Template[] = [
     category: "video",
     nodes: [
       { type: "script",     dx: -680, dy: 0,    title: "脚本" },
-      { type: "storyboard", dx: -320, dy: -180, title: "分镜1", initialData: { aspectRatio: "9:16", sceneNumber: 1 } },
-      { type: "storyboard", dx: -320, dy: 0,    title: "分镜2", initialData: { aspectRatio: "9:16", sceneNumber: 2 } },
-      { type: "storyboard", dx: -320, dy: 180,  title: "分镜3", initialData: { aspectRatio: "9:16", sceneNumber: 3 } },
+      { type: "storyboard", dx: -320, dy: -180, title: "分镜1", initialData: { aspectRatio: "9:16", sceneNumber: 1, description: "前3秒钩子，视觉冲击抓住注意力", cameraMovement: "static",   colorTone: "高饱和，吸睛" } },
+      { type: "storyboard", dx: -320, dy: 0,    title: "分镜2", initialData: { aspectRatio: "9:16", sceneNumber: 2, description: "核心内容展示，信息密集节奏快",   cameraMovement: "tracking",  colorTone: "自然明亮"     } },
+      { type: "storyboard", dx: -320, dy: 180,  title: "分镜3", initialData: { aspectRatio: "9:16", sceneNumber: 3, description: "收尾引导互动，引导点赞关注评论", cameraMovement: "zoom-out",  colorTone: "温暖明亮"     } },
       { type: "video_task", dx: 60,   dy: -180, title: "视频1" },
       { type: "video_task", dx: 60,   dy: 0,    title: "视频2" },
       { type: "video_task", dx: 60,   dy: 180,  title: "视频3" },
-      { type: "merge",      dx: 420,  dy: 0,    title: "合并剪辑" },
-      { type: "subtitle",   dx: 700,  dy: 0,    title: "字幕烧录" },
+      { type: "merge",      dx: 420,  dy: 0,    title: "合并剪辑", initialData: { transition: "none" } },
+      { type: "subtitle",   dx: 700,  dy: 0,    title: "字幕烧录", initialData: { burnInEnabled: true, fontSize: 22, fontColor: "white", language: "zh" } },
     ],
     edgeSpecs: [
       { fromIndex: 0, toIndex: 1 },
@@ -470,9 +470,9 @@ const TEMPLATES: Template[] = [
       { type: "asset",    dx: -560, dy: -160, title: "素材1" },
       { type: "asset",    dx: -560, dy: 0,    title: "素材2" },
       { type: "asset",    dx: -560, dy: 160,  title: "素材3" },
-      { type: "merge",    dx: -160, dy: 0,    title: "合并" },
-      { type: "overlay",  dx: 160,  dy: 0,    title: "水印叠加" },
-      { type: "subtitle", dx: 460,  dy: 0,    title: "字幕" },
+      { type: "merge",    dx: -160, dy: 0,    title: "合并", initialData: { transition: "none" } },
+      { type: "overlay",  dx: 160,  dy: 0,    title: "水印叠加", initialData: { mode: "watermark", overlayPosition: "bottom-right", overlayScale: 0.12, overlayOpacity: 0.8 } },
+      { type: "subtitle", dx: 460,  dy: 0,    title: "字幕", initialData: { burnInEnabled: true, fontSize: 20, fontColor: "white" } },
     ],
     edgeSpecs: [
       { fromIndex: 0, toIndex: 3 },
@@ -491,14 +491,14 @@ const TEMPLATES: Template[] = [
     nodes: [
       { type: "ai_chat",    dx: -900, dy: 0,    title: "AI 创作" },                          // 0
       { type: "script",     dx: -600, dy: 0,    title: "脚本" },                              // 1
-      { type: "storyboard", dx: -280, dy: -140, title: "分镜1", initialData: { sceneNumber: 1 } }, // 2
-      { type: "storyboard", dx: -280, dy: 140,  title: "分镜2", initialData: { sceneNumber: 2 } }, // 3
+      { type: "storyboard", dx: -280, dy: -140, title: "分镜1", initialData: { sceneNumber: 1, description: "第一段视觉场景，与配音前半段对应", cameraMovement: "static"   } }, // 2
+      { type: "storyboard", dx: -280, dy: 140,  title: "分镜2", initialData: { sceneNumber: 2, description: "第二段视觉场景，与配音后半段对应", cameraMovement: "pan-right" } }, // 3
       { type: "image_gen",  dx: 40,   dy: -140, title: "图像1" },  // 4
       { type: "image_gen",  dx: 40,   dy: 140,  title: "图像2" },  // 5
       { type: "video_task", dx: 360,  dy: -140, title: "视频1" },  // 6
       { type: "video_task", dx: 360,  dy: 140,  title: "视频2" },  // 7
-      { type: "audio",      dx: 360,  dy: 380,  title: "配音",    initialData: { audioCategory: "dubbing" } }, // 8
-      { type: "merge",      dx: 660,  dy: 0,    title: "合并" },   // 9
+      { type: "audio",      dx: 360,  dy: 380,  title: "配音",    initialData: { audioCategory: "dubbing", ttsSpeed: 1.0 } }, // 8
+      { type: "merge",      dx: 660,  dy: 0,    title: "合并",    initialData: { transition: "fade" } },            // 9
     ],
     edgeSpecs: [
       { fromIndex: 0, toIndex: 1 },  // AI → 脚本
