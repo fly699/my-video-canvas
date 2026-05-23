@@ -50,8 +50,7 @@ export function registerOAuthRoutes(app: Express) {
       const cookieOptions = getSessionCookieOptions(req);
       res.cookie(COOKIE_NAME, sessionToken, { ...cookieOptions, maxAge: ONE_YEAR_MS });
 
-      const clientIp = (req.headers["x-forwarded-for"] as string)?.split(",")[0]?.trim()
-        ?? req.socket?.remoteAddress ?? "unknown";
+      const clientIp = req.ip ?? req.socket?.remoteAddress ?? "unknown";
       writeAuditLog({
         ip: clientIp,
         userId: dbUser?.id ?? null,

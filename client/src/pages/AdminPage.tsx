@@ -118,6 +118,13 @@ function WhitelistPanel() {
   const enabled = settingsQuery.data?.enabled ?? false;
   const entries = entriesQuery.data ?? [];
 
+  if (settingsQuery.isError || entriesQuery.isError) {
+    return <div style={{ padding: "32px", color: "#f87171", fontSize: "14px" }}>加载白名单数据失败，请刷新页面重试。</div>;
+  }
+  if (settingsQuery.isLoading || entriesQuery.isLoading) {
+    return <div style={{ padding: "32px", color: "var(--c-t2, rgba(255,255,255,0.4))", fontSize: "14px" }}>加载中…</div>;
+  }
+
   async function handleAddEntry(e: React.FormEvent) {
     e.preventDefault();
     setAddError(null);

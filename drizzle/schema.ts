@@ -1,5 +1,7 @@
 import {
   int,
+  index,
+  uniqueIndex,
   mysqlEnum,
   mysqlTable,
   text,
@@ -171,7 +173,9 @@ export const whitelistEntries = mysqlTable("whitelistEntries", {
   note: text("note"),
   createdBy: int("createdBy"),
   createdAt: timestamp("createdAt").defaultNow().notNull(),
-});
+}, (t) => ({
+  typeValueUniq: uniqueIndex("whitelistEntries_type_value_unique").on(t.type, t.value),
+}));
 
 export type WhitelistEntry = typeof whitelistEntries.$inferSelect;
 export type InsertWhitelistEntry = typeof whitelistEntries.$inferInsert;
@@ -190,7 +194,11 @@ export const auditLogs = mysqlTable("auditLogs", {
   action: varchar("action", { length: 64 }).notNull(),
   detail: json("detail"),
   createdAt: timestamp("createdAt").defaultNow().notNull(),
-});
+}, (t) => ({
+  userIdIdx: index("auditLogs_userId_idx").on(t.userId),
+  actionIdx: index("auditLogs_action_idx").on(t.action),
+  createdAtIdx: index("auditLogs_createdAt_idx").on(t.createdAt),
+}));
 
 export type AuditLog = typeof auditLogs.$inferSelect;
 export type InsertAuditLog = typeof auditLogs.$inferInsert;

@@ -35,6 +35,10 @@ async function startServer() {
   const app = express();
   const server = createServer(app);
 
+  // Trust the first proxy hop so req.ip reflects the real client IP from X-Forwarded-For.
+  // This prevents IP spoofing via direct connections while supporting reverse-proxy deployments.
+  app.set("trust proxy", 1);
+
   // Configure body parser with larger size limit for file uploads
   app.use(express.json({ limit: "50mb" }));
   app.use(express.urlencoded({ limit: "50mb", extended: true }));

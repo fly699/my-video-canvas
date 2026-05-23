@@ -395,7 +395,11 @@ export async function addWhitelistEntry(
 
 export async function removeWhitelistEntry(id: number): Promise<void> {
   const db = await getDb();
-  if (!db) { devWhitelistEntries.splice(devWhitelistEntries.findIndex(e => e.id === id), 1); return; }
+  if (!db) {
+    const idx = devWhitelistEntries.findIndex(e => e.id === id);
+    if (idx !== -1) devWhitelistEntries.splice(idx, 1);
+    return;
+  }
   await db.delete(whitelistEntries).where(eq(whitelistEntries.id, id));
 }
 
@@ -410,13 +414,15 @@ export async function isWhitelisted(type: "ip" | "user", value: string): Promise
 
 // ── Audit Logs ────────────────────────────────────────────────────────────────
 
-// Dev-mode in-memory audit log
-const devAuditLogs: InsertAuditLog[] = [];
+// Dev-mode in-memory audit log (typed with id so UI keys work correctly)
+type DevAuditLog = typeof auditLogs.$inferSelect;
+const devAuditLogs: DevAuditLog[] = [];
+let devAuditLogId = 1;
 
 export async function insertAuditLog(data: InsertAuditLog): Promise<void> {
   const db = await getDb();
   if (!db) {
-    devAuditLogs.unshift({ ...data, createdAt: new Date() } as InsertAuditLog);
+    devAuditLogs.unshift({ ...data, id: devAuditLogId++, createdAt: new Date() } as DevAuditLog);
     if (devAuditLogs.length > 500) devAuditLogs.pop();
     return;
   }

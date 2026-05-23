@@ -45,10 +45,9 @@ export async function createContext(
 ): Promise<TrpcContext> {
   let user: User | null = null;
 
-  const clientIp =
-    (opts.req.headers["x-forwarded-for"] as string)?.split(",")[0]?.trim() ??
-    opts.req.socket?.remoteAddress ??
-    "unknown";
+  // req.ip is set by Express respecting the "trust proxy" setting configured in index.ts.
+  // It correctly handles X-Forwarded-For from trusted proxies and falls back to socket IP.
+  const clientIp = opts.req.ip ?? opts.req.socket?.remoteAddress ?? "unknown";
 
   if (isDevBypass) {
     user = DEV_USER;

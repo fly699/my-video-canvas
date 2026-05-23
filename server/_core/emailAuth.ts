@@ -38,6 +38,9 @@ export function registerEmailAuthRoutes(app: Express) {
       if (password.length < 8) {
         res.status(400).json({ error: "密码至少需要 8 位" }); return;
       }
+      if (password.length > 72) {
+        res.status(400).json({ error: "密码不能超过 72 位" }); return;
+      }
       // Block registration with the owner email — that account must log in via OAuth only
       if (ENV.ownerEmail && email.toLowerCase() === ENV.ownerEmail.toLowerCase()) {
         res.status(403).json({ error: "该邮箱不允许通过密码注册，请使用第三方登录" }); return;
@@ -63,8 +66,7 @@ export function registerEmailAuthRoutes(app: Express) {
       const cookieOptions = getSessionCookieOptions(req);
       res.cookie(COOKIE_NAME, sessionToken, { ...cookieOptions, maxAge: ONE_YEAR_MS });
 
-      const clientIp = (req.headers["x-forwarded-for"] as string)?.split(",")[0]?.trim()
-        ?? req.socket?.remoteAddress ?? "unknown";
+      const clientIp = req.ip ?? req.socket?.remoteAddress ?? "unknown";
       writeAuditLog({
         ip: clientIp,
         userEmail: email.toLowerCase(),
@@ -103,8 +105,7 @@ export function registerEmailAuthRoutes(app: Express) {
       const cookieOptions = getSessionCookieOptions(req);
       res.cookie(COOKIE_NAME, sessionToken, { ...cookieOptions, maxAge: ONE_YEAR_MS });
 
-      const clientIp = (req.headers["x-forwarded-for"] as string)?.split(",")[0]?.trim()
-        ?? req.socket?.remoteAddress ?? "unknown";
+      const clientIp = req.ip ?? req.socket?.remoteAddress ?? "unknown";
       writeAuditLog({
         ip: clientIp,
         userId: user.id,
