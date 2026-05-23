@@ -12,15 +12,17 @@ function startOAuth(): void {
   if (!oauthPortalUrl || !appId) return;
   try {
     const redirectUri = `${window.location.origin}/api/oauth/callback`;
-    // Generate a per-click random nonce. Store it in a SameSite=Lax cookie so
-    // the server-side callback can verify it — preventing CSRF on the OAuth flow.
+    // Embed a random nonce in the state so the server-side callback can validate CSRF.
+    // State must remain valid base64 because sdk.ts decodes it with atob() to recover redirectUri.
     const nonce = crypto.randomUUID();
     const secure = location.protocol === "https:" ? "; Secure" : "";
     document.cookie = `__oauth_nonce=${nonce}; SameSite=Lax; Path=/api/oauth; max-age=600${secure}`;
+    // Pack redirectUri + nonce together, base64-encoded so sdk.decodeState() can still extract redirectUri
+    const state = btoa(JSON.stringify({ redirectUri, nonce }));
     const url = new URL(`${oauthPortalUrl}/app-auth`);
     url.searchParams.set("appId", appId);
     url.searchParams.set("redirectUri", redirectUri);
-    url.searchParams.set("state", nonce);
+    url.searchParams.set("state", state);
     url.searchParams.set("type", "signIn");
     window.location.href = url.toString();
   } catch { /* ignore */ }

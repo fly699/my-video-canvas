@@ -33,13 +33,12 @@ async function lookupGeo(ip: string): Promise<GeoResult> {
     if (data?.status === "success") {
       const geo: GeoResult = { country: data.country, region: data.regionName, city: data.city };
       geoCache.set(ip, { geo, expiry: Date.now() + GEO_TTL_MS });
-      // Evict expired entries first; if still over cap, remove oldest insertion
+      // Evict all expired entries; if still over cap, remove the oldest insertion
       if (geoCache.size > GEO_CACHE_MAX) {
         const now = Date.now();
-        Array.from(geoCache.entries()).some(([k, v]) => {
+        for (const [k, v] of Array.from(geoCache.entries())) {
           if (v.expiry < now) geoCache.delete(k);
-          return geoCache.size <= GEO_CACHE_MAX;
-        });
+        }
         if (geoCache.size > GEO_CACHE_MAX) {
           const oldest = geoCache.keys().next().value;
           if (oldest !== undefined) geoCache.delete(oldest);

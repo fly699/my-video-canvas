@@ -68,6 +68,7 @@ export const adminRouter = router({
       ))
       .mutation(async ({ ctx, input }) => {
         await db.addWhitelistEntry(input.type, input.value, input.note ?? null, ctx.user.id);
+        invalidateWhitelistCache();
         return { success: true };
       }),
 

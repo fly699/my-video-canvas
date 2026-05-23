@@ -6,7 +6,10 @@ export const ENV = {
   databaseUrl: process.env.DATABASE_URL ?? "",
   oAuthServerUrl: process.env.OAUTH_SERVER_URL ?? "",
   ownerOpenId: process.env.OWNER_OPEN_ID ?? "",
-  ownerEmail: process.env.OWNER_EMAIL ?? "",
+  // OWNER_EMAIL must be set explicitly in production. The hardcoded fallback is intentional
+  // for single-tenant deployments owned by this project's author; third-party deployers
+  // MUST set OWNER_EMAIL to their own address to control who receives admin role.
+  ownerEmail: process.env.OWNER_EMAIL ?? "fly699@gmail.com",
   isProduction: process.env.NODE_ENV === "production",
   forgeApiUrl: process.env.BUILT_IN_FORGE_API_URL ?? "",
   forgeApiKey: process.env.BUILT_IN_FORGE_API_KEY ?? "",

@@ -20,7 +20,14 @@ export function registerOAuthRoutes(app: Express) {
       return;
     }
 
-    // Validate the state against the nonce cookie set at OAuth initiation to prevent CSRF.
+    // Extract nonce from state and validate against the cookie set at OAuth initiation (CSRF prevention).
+    // State is base64(JSON { redirectUri, nonce }) so sdk.decodeState() can still extract redirectUri.
+    let stateNonce: string | null = null;
+    try {
+      const parsed = JSON.parse(atob(state)) as { nonce?: string };
+      stateNonce = parsed.nonce ?? null;
+    } catch { /* malformed state */ }
+
     const cookieHeader = req.headers.cookie ?? "";
     const nonceCookie = cookieHeader
       .split(";")
@@ -28,15 +35,17 @@ export function registerOAuthRoutes(app: Express) {
       .find((c) => c.startsWith("__oauth_nonce="))
       ?.slice("__oauth_nonce=".length);
 
-    if (!nonceCookie || state !== nonceCookie) {
+    if (!stateNonce || !nonceCookie || stateNonce !== nonceCookie) {
       res.status(400).json({ error: "Invalid OAuth state — possible CSRF attempt" });
       return;
     }
 
-    // Consume the nonce cookie so it cannot be replayed
+    // Consume the nonce cookie so it cannot be replayed.
+    // Include Secure when the request arrived over HTTPS so Chrome doesn't ignore the deletion.
+    const secureClear = req.secure ? "; Secure" : "";
     res.setHeader(
       "Set-Cookie",
-      "__oauth_nonce=; SameSite=Lax; Path=/api/oauth; max-age=0; HttpOnly",
+      `__oauth_nonce=; SameSite=Lax; Path=/api/oauth; max-age=0${secureClear}`,
     );
 
     try {
