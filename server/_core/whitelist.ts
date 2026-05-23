@@ -18,6 +18,7 @@ async function isWhitelistEnabled(): Promise<boolean> {
   if (_cachedEnabled !== null && now < _cacheExpiry) return _cachedEnabled;
 
   const gen = _cacheGeneration;
+  const priorCached = _cachedEnabled; // snapshot before any await, used in error path
   try {
     const settings = await db.getWhitelistSettings();
     // Only write to cache if no invalidation happened while awaiting the DB.
@@ -32,11 +33,15 @@ async function isWhitelistEnabled(): Promise<boolean> {
     return (await db.getWhitelistSettings())?.enabled ?? false;
   } catch (err) {
     console.error("[Whitelist] DB error in isWhitelistEnabled, treating as disabled:", err);
-    // Always write the throttle cache (no generation check) so every caller backs off for
-    // 5 s regardless of concurrent invalidations — prevents hammering a downed DB.
-    // Use Date.now() here (not the stale `now`) so the TTL is always 5 s from now.
-    _cachedEnabled = false;
-    _cacheExpiry = Date.now() + 5_000;
+    // Only write the error-throttle cache if no concurrent sibling has already populated
+    // it: guard both the generation (no admin invalidation) and the prior cache value
+    // (no concurrent successful read wrote a valid true). This prevents a slow-failing
+    // call from overwriting a fast-succeeding sibling's valid cached true with false.
+    // Use Date.now() so the TTL is always 5 s from the moment of failure.
+    if (_cachedEnabled === priorCached && _cacheGeneration === gen) {
+      _cachedEnabled = false;
+      _cacheExpiry = Date.now() + 5_000;
+    }
     return false;
   }
 }
