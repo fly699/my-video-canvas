@@ -4,7 +4,7 @@ import { useCanvasStore } from "../../../hooks/useCanvasStore";
 import type { StoryboardNodeData } from "../../../../../shared/types";
 import { trpc } from "@/lib/trpc";
 import { toast } from "sonner";
-import { Sparkles, ImageIcon, Loader2, RefreshCw, ChevronDown, Upload, X, Wand2, History, Languages, Film } from "lucide-react";
+import { Sparkles, ImageIcon, Loader2, RefreshCw, ChevronDown, Upload, X, Wand2, History, Languages, Film, ZoomIn, Download } from "lucide-react";
 import { IMAGE_MODELS, type ImageModelId } from "@/lib/models";
 import { makeImageProxyFallback } from "@/lib/utils";
 import { LLMModelPicker, type LLMModelId } from "../LLMModelPicker";
@@ -52,6 +52,8 @@ export const StoryboardNode = memo(function StoryboardNode({ id, selected, data 
   const [inputExpanded, setInputExpanded] = useState(!!selected);
   const [llmModel, setLlmModel] = useState<LLMModelId>("gemini-2.5-flash");
   const [showHistory, setShowHistory] = useState(false);
+  const [batchCount, setBatchCount] = useState<1 | 2 | 4>(1);
+  const [zoomUrl, setZoomUrl] = useState<string | null>(null);
 
   // Auto-collapse inputs when deselected, expand when selected
   useEffect(() => {
@@ -91,13 +93,14 @@ export const StoryboardNode = memo(function StoryboardNode({ id, selected, data 
 
   const genImageMutation = trpc.imageGen.generate.useMutation({
     onSuccess: (result) => {
-      const imageUrl = result.url ?? result.urls?.[0];
-      if (!imageUrl) { setGenerating(false); toast.error("生成完成但未返回图像"); return; }
+      const newUrls = (result.urls?.length ? result.urls : result.url ? [result.url] : []).filter(Boolean) as string[];
+      if (!newUrls.length) { setGenerating(false); toast.error("生成完成但未返回图像"); return; }
+      const imageUrl = newUrls[0];
       const currentHistory = (useCanvasStore.getState().nodes.find(n => n.id === id)?.data.payload as StoryboardNodeData)?.imageHistory ?? [];
-      const newHistory = [imageUrl, ...currentHistory].filter((u): u is string => !!u).slice(0, 5);
+      const newHistory = [...newUrls, ...currentHistory].filter((u): u is string => !!u).slice(0, 12);
       updateNodeData(id, { imageUrl, imageHistory: newHistory });
       setGenerating(false);
-      toast.success("分镜图像已生成");
+      toast.success(newUrls.length > 1 ? `已生成 ${newUrls.length} 张，可在历史中切换` : "分镜图像已生成");
     },
     onError: (err) => {
       setGenerating(false);
@@ -192,6 +195,7 @@ export const StoryboardNode = memo(function StoryboardNode({ id, selected, data 
       style: payload.colorTone,
       referenceImageUrl: charRefUrl,
       model,
+      batchSize: batchCount > 1 ? batchCount : undefined,
     });
   };
 
@@ -260,21 +264,34 @@ export const StoryboardNode = memo(function StoryboardNode({ id, selected, data 
                 className="absolute inset-0 opacity-0 hover:opacity-100 transition-opacity flex flex-col items-center justify-center gap-1"
                 style={{ background: "oklch(0 0 0 / 0.55)" }}
               >
-                <button
-                  onClick={handleGenerate}
-                  disabled={generating}
-                  className="nodrag flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-all"
-                  style={{
-                    background: "oklch(0.65 0.20 160 / 0.20)",
-                    borderWidth: 1,
-                    borderStyle: "solid",
-                    borderColor: "oklch(0.65 0.20 160 / 0.5)",
-                    color: "oklch(0.75 0.18 160)",
-                  }}
-                >
-                  {generating ? <Loader2 className="w-3 h-3 animate-spin" /> : <RefreshCw className="w-3 h-3" />}
-                  {generating ? "生成中..." : "重新生成"}
-                </button>
+                <div className="flex items-center gap-1.5">
+                  <button
+                    onClick={handleGenerate}
+                    disabled={generating}
+                    className="nodrag flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-all"
+                    style={{
+                      background: "oklch(0.65 0.20 160 / 0.20)",
+                      borderWidth: 1, borderStyle: "solid",
+                      borderColor: "oklch(0.65 0.20 160 / 0.5)",
+                      color: "oklch(0.75 0.18 160)",
+                    }}
+                  >
+                    {generating ? <Loader2 className="w-3 h-3 animate-spin" /> : <RefreshCw className="w-3 h-3" />}
+                    {generating ? "生成中..." : "重新生成"}
+                  </button>
+                  <button
+                    onClick={(e) => { e.stopPropagation(); setZoomUrl(payload.imageUrl!); }}
+                    className="nodrag flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs font-medium transition-all"
+                    style={{
+                      background: "oklch(0.68 0.18 220 / 0.20)",
+                      borderWidth: 1, borderStyle: "solid",
+                      borderColor: "oklch(0.68 0.18 220 / 0.5)",
+                      color: "oklch(0.75 0.15 220)",
+                    }}
+                  >
+                    <ZoomIn className="w-3 h-3" />
+                  </button>
+                </div>
                 {(payload.imageHistory?.length ?? 0) > 0 && (
                   <button
                     onClick={(e) => { e.stopPropagation(); setShowHistory((v) => !v); }}
@@ -657,10 +674,84 @@ export const StoryboardNode = memo(function StoryboardNode({ id, selected, data 
             </div>
           )}
         </div>
+        {/* ── Batch count ── */}
+        <div className="flex items-center justify-between">
+          <span style={{ fontSize: 10, fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.07em", color: "var(--c-t4)" }}>
+            抽卡次数
+          </span>
+          <div className="flex gap-1">
+            {([1, 2, 4] as const).map((n) => (
+              <button
+                key={n}
+                onClick={() => setBatchCount(n)}
+                className="nodrag"
+                style={{
+                  width: 28, height: 22, borderRadius: 6, fontSize: 11, fontWeight: 700,
+                  border: `1px solid ${batchCount === n ? "oklch(0.65 0.20 160 / 0.6)" : "var(--c-bd2)"}`,
+                  background: batchCount === n ? "oklch(0.65 0.20 160 / 0.15)" : "var(--c-input)",
+                  color: batchCount === n ? "oklch(0.72 0.18 160)" : "var(--c-t3)",
+                  cursor: "pointer",
+                  transition: "all 120ms",
+                }}
+              >
+                {n}
+              </button>
+            ))}
+          </div>
+        </div>
+
         {/* End collapsible inputs */}
         </div>
 
       </div>
+
+      {/* ── Image lightbox ── */}
+      {zoomUrl && (
+        <div
+          style={{
+            position: "fixed", inset: 0, zIndex: 99999,
+            background: "oklch(0 0 0 / 0.85)",
+            display: "flex", alignItems: "center", justifyContent: "center",
+          }}
+          onMouseDown={(e) => { if (e.target === e.currentTarget) setZoomUrl(null); }}
+        >
+          <div style={{ position: "relative", maxWidth: "90vw", maxHeight: "90vh" }}>
+            <img
+              src={zoomUrl}
+              alt="分镜大图"
+              style={{ maxWidth: "90vw", maxHeight: "85vh", objectFit: "contain", borderRadius: 8, display: "block" }}
+              onError={makeImageProxyFallback(zoomUrl)}
+            />
+            {/* Top-right controls */}
+            <div style={{ position: "absolute", top: -12, right: -12, display: "flex", gap: 8 }}>
+              <a
+                href={zoomUrl}
+                download
+                target="_blank"
+                rel="noreferrer"
+                style={{
+                  width: 32, height: 32, borderRadius: "50%", display: "flex", alignItems: "center", justifyContent: "center",
+                  background: "oklch(0.72 0.18 160 / 0.20)", border: "1px solid oklch(0.72 0.18 160 / 0.5)",
+                  color: "oklch(0.80 0.16 160)", textDecoration: "none",
+                }}
+                title="下载图片"
+              >
+                <Download style={{ width: 14, height: 14 }} />
+              </a>
+              <button
+                onClick={() => setZoomUrl(null)}
+                style={{
+                  width: 32, height: 32, borderRadius: "50%", display: "flex", alignItems: "center", justifyContent: "center",
+                  background: "oklch(0.55 0.0 0 / 0.5)", border: "1px solid rgba(255,255,255,0.15)",
+                  color: "white", cursor: "pointer",
+                }}
+              >
+                <X style={{ width: 14, height: 14 }} />
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </BaseNode>
   );
 });

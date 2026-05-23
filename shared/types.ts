@@ -63,6 +63,7 @@ export interface StoryboardNodeData {
   colorTone?: string;
   imageModel?: ImageGenModel;
   referenceImageUrl?: string;
+  batchSize?: number;
 }
 
 export interface PromptNodeData {

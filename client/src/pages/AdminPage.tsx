@@ -371,7 +371,8 @@ function DetailCell({ detail }: { detail: Record<string, unknown> | null }) {
 // ── Styles ────────────────────────────────────────────────────────────────────
 
 const pageStyle: React.CSSProperties = {
-  minHeight: "100vh", display: "flex", flexDirection: "column", alignItems: "center",
+  height: "100vh", overflowY: "auto",
+  display: "flex", flexDirection: "column", alignItems: "center",
   justifyContent: "flex-start", padding: "48px 24px", background: "var(--color-background, #0d0d10)",
 };
 
