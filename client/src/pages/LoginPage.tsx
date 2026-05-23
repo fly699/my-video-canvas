@@ -5,8 +5,8 @@ type Mode = "login" | "register";
 
 function getOAuthUrl(): string | null {
   const oauthPortalUrl = import.meta.env.VITE_OAUTH_PORTAL_URL;
-  if (!oauthPortalUrl) return null;
   const appId = import.meta.env.VITE_APP_ID;
+  if (!oauthPortalUrl || !appId) return null;
   const redirectUri = `${window.location.origin}/api/oauth/callback`;
   const state = btoa(redirectUri);
   const url = new URL(`${oauthPortalUrl}/app-auth`);

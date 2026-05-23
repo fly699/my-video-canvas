@@ -463,6 +463,14 @@ export default function Home() {
         {/* User */}
         {user && (
           <div className="flex items-center gap-2.5">
+            {user.role === "admin" && (
+              <a
+                href="/admin"
+                className="text-xs text-white/40 hover:text-white/70 transition-colors px-2 py-1 rounded-md hover:bg-white/5"
+              >
+                管理后台
+              </a>
+            )}
             <span className="text-xs text-white/40">{user.name ?? user.email}</span>
             <div
               className="w-7 h-7 rounded-full flex items-center justify-center text-xs font-semibold text-white"

@@ -37,8 +37,10 @@ export function registerOAuthRoutes(app: Express) {
         lastSignedIn: new Date(),
       });
 
-      // Fetch the DB record so we have the numeric userId for audit logging
-      const dbUser = await db.getUserByOpenId(userInfo.openId);
+      // Fetch the DB record so we have the numeric userId for audit logging.
+      // This is best-effort — don't let a transient DB error break the login flow.
+      let dbUser: Awaited<ReturnType<typeof db.getUserByOpenId>> = undefined;
+      try { dbUser = await db.getUserByOpenId(userInfo.openId); } catch { /* non-fatal */ }
 
       const sessionToken = await sdk.createSessionToken(userInfo.openId, {
         name: userInfo.name || "",
