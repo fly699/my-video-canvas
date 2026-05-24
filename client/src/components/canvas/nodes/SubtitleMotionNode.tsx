@@ -62,12 +62,15 @@ export const SubtitleMotionNode = memo(function SubtitleMotionNode({ id, selecte
 
   const update = useCallback((patch: Partial<SubtitleMotionNodeData>) => updateNodeData(id, patch), [id, updateNodeData]);
 
+  const VIDEO_SOURCE_TYPES = new Set(["video_task", "clip", "merge", "overlay", "asset", "subtitle", "subtitle_motion", "smart_cut"]);
+
   const findSourceVideoUrl = (): string | undefined => {
     const inEdges = edges.filter((e) => e.target === id);
     for (const edge of inEdges) {
       const src = nodes.find((n) => n.id === edge.source);
-      if (!src) continue;
+      if (!src || !VIDEO_SOURCE_TYPES.has(src.data.nodeType)) continue;
       const p = src.data.payload as Record<string, unknown>;
+      if (src.data.nodeType === "asset" && (p.mimeType as string | undefined)?.startsWith("audio/")) continue;
       const url = (p.resultVideoUrl ?? p.outputUrl ?? p.url) as string | undefined;
       if (url) return url;
     }
@@ -84,7 +87,7 @@ export const SubtitleMotionNode = memo(function SubtitleMotionNode({ id, selecte
 
   const burnMutation = trpc.subtitleMotion.burnMotion.useMutation({
     onSuccess: (result) => {
-      update({ outputUrl: result.url, status: "done" });
+      update({ outputUrl: result.url, status: "done", errorMessage: undefined });
       toast.success("动态字幕烧录完成");
     },
     onError: (err) => { update({ status: "failed", errorMessage: err.message }); toast.error("烧录失败：" + err.message); },

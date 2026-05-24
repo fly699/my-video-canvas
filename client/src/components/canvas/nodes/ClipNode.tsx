@@ -288,7 +288,7 @@ export const ClipNode = memo(function ClipNode({ id, selected, data }: Props) {
   };
 
   const handleReset = () => {
-    updateNodeData(id, { status: "idle", outputUrl: undefined, outputDuration: undefined });
+    updateNodeData(id, { status: "idle", outputUrl: undefined, outputDuration: undefined, errorMessage: undefined });
     setPreviewMode("source");
   };
 

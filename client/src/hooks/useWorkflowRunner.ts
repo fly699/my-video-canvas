@@ -27,6 +27,15 @@ function getNodeVideoUrl(payload: Record<string, unknown>): string | undefined {
   return (payload.resultVideoUrl ?? payload.outputUrl ?? payload.url) as string | undefined;
 }
 
+/** Return false for audio-mime asset nodes so they never feed into video pipelines. */
+function isVideoAsset(nodeType: string, payload: Record<string, unknown>): boolean {
+  if (nodeType === "asset") {
+    const mt = payload.mimeType as string | undefined;
+    if (mt?.startsWith("audio/")) return false;
+  }
+  return true;
+}
+
 /** Auto-detect the first available video URL from nodes connected into targetId. */
 function autoDetectInputVideo(
   targetId: string,
@@ -37,7 +46,9 @@ function autoDetectInputVideo(
     if (edge.target !== targetId) continue;
     const src = nodes.find((n) => n.id === edge.source);
     if (!src || !VIDEO_SOURCE_TYPES.has(src.data.nodeType)) continue;
-    const url = getNodeVideoUrl(src.data.payload as Record<string, unknown>);
+    const payload = src.data.payload as Record<string, unknown>;
+    if (!isVideoAsset(src.data.nodeType, payload)) continue;
+    const url = getNodeVideoUrl(payload);
     if (url) return url;
   }
   return undefined;
@@ -76,7 +87,9 @@ function collectInputVideoUrls(
     if (edge.target !== targetId) continue;
     const src = nodes.find((n) => n.id === edge.source);
     if (!src || !VIDEO_SOURCE_TYPES.has(src.data.nodeType)) continue;
-    const url = getNodeVideoUrl(src.data.payload as Record<string, unknown>);
+    const payload = src.data.payload as Record<string, unknown>;
+    if (!isVideoAsset(src.data.nodeType, payload)) continue;
+    const url = getNodeVideoUrl(payload);
     if (url) urls.push(url);
   }
   return urls;
@@ -349,12 +362,14 @@ export function useWorkflowRunner() {
             failed.push(nodeId);
             return "fail";
           }
+          // Fall back to edge-connected audio node when inputAudioUrl is not stored in payload
+          const audioUrl = (p.inputAudioUrl as string) || detectBgMusicUrl(nodeId, es, ns) || undefined;
           const result = await clipMutation.mutateAsync({
             inputUrl,
             startTime,
             endTime,
             speed: typeof p.speed === "number" && Math.abs(p.speed - 1.0) > 0.01 ? p.speed : undefined,
-            audioUrl: (p.inputAudioUrl as string) || undefined,
+            audioUrl,
             audioVolume: typeof p.audioVolume === "number" ? p.audioVolume : undefined,
           });
           useCanvasStore.getState().updateNodeData(nodeId, {
@@ -429,9 +444,10 @@ export function useWorkflowRunner() {
             useCanvasStore.getState().updateNodeData(nodeId, {
               outputUrl: burnResult.url,
               status: "done",
+              errorMessage: undefined,
             }, true);
           } else {
-            useCanvasStore.getState().updateNodeData(nodeId, { status: "done" }, true);
+            useCanvasStore.getState().updateNodeData(nodeId, { status: "done", errorMessage: undefined }, true);
           }
           completed.push(nodeId);
           return "ok";
@@ -535,6 +551,7 @@ export function useWorkflowRunner() {
           useCanvasStore.getState().updateNodeData(nodeId, {
             outputUrl: burnResult.url,
             status: "done",
+            errorMessage: undefined,
           }, true);
           completed.push(nodeId);
           return "ok";

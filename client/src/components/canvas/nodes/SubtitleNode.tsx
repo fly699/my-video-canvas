@@ -68,13 +68,16 @@ export const SubtitleNode = memo(function SubtitleNode({ id, selected, data }: P
 
   const update = useCallback((patch: Partial<SubtitleNodeData>) => updateNodeData(id, patch), [id, updateNodeData]);
 
-  // Find connected video URL from source nodes
+  const VIDEO_SOURCE_TYPES = new Set(["video_task", "clip", "merge", "overlay", "asset", "subtitle", "subtitle_motion", "smart_cut"]);
+
+  // Find connected video URL from source nodes (excludes audio nodes and audio-mime assets)
   const findSourceVideoUrl = (): string | undefined => {
     const inEdges = edges.filter((e) => e.target === id);
     for (const edge of inEdges) {
       const src = nodes.find((n) => n.id === edge.source);
-      if (!src) continue;
+      if (!src || !VIDEO_SOURCE_TYPES.has(src.data.nodeType)) continue;
       const p = src.data.payload as Record<string, unknown>;
+      if (src.data.nodeType === "asset" && (p.mimeType as string | undefined)?.startsWith("audio/")) continue;
       const url = (p.resultVideoUrl ?? p.outputUrl ?? p.url) as string | undefined;
       if (url) return url;
     }
@@ -99,7 +102,7 @@ export const SubtitleNode = memo(function SubtitleNode({ id, selected, data }: P
 
   const burnMutation = trpc.subtitle.burnIn.useMutation({
     onSuccess: (result) => {
-      update({ outputUrl: result.url, status: "done" });
+      update({ outputUrl: result.url, status: "done", errorMessage: undefined });
       toast.success("字幕烧录完成");
     },
     onError: (err) => {
