@@ -230,6 +230,9 @@ export const VideoTaskNode = memo(function VideoTaskNode({ id, selected, data }:
   const [parallelResults, setParallelResults] = useState<Record<string, { status: "pending" | "processing" | "done" | "failed"; videoUrl?: string; taskId?: number }>>({});
   // Track all in-flight parallel poll timers so we can fully clean them up when leaving parallel mode
   const parallelPollRefs = useRef<Map<string, ReturnType<typeof setInterval>>>(new Map());
+  // Generation counter — incremented on parallel-mode close so stale per-mutate callbacks
+  // (still in flight at close time) won't reintroduce entries into parallelResults
+  const parallelGenRef = useRef(0);
 
   const createTaskMutation = trpc.videoTasks.create.useMutation({
     onSuccess: (task) => {
@@ -512,9 +515,13 @@ export const VideoTaskNode = memo(function VideoTaskNode({ id, selected, data }:
           </span>
           <button
             onClick={() => {
-              // Stop and clear all parallel poll intervals before resetting state
+              // Stop polls, reset the in-flight counter (so a stranded count from in-flight mutates
+              // won't suppress future single-mode onSuccess writes), bump the generation token
+              // (so stale per-mutate callbacks no-op), and clear state
               parallelPollRefs.current.forEach(clearInterval);
               parallelPollRefs.current.clear();
+              parallelInFlightRef.current = 0;
+              parallelGenRef.current += 1;
               setParallelMode((v) => !v);
               setParallelProviders([]);
               setParallelResults({});
@@ -590,6 +597,9 @@ export const VideoTaskNode = memo(function VideoTaskNode({ id, selected, data }:
                     toast.error("已选择的图生视频模型需要参考图 URL"); return;
                   }
                   toast.info(`正在并行提交 ${parallelProviders.length} 个任务...`);
+                  // Capture generation token for this batch — per-mutate callbacks compare against
+                  // the latest token and no-op if the user has closed parallel mode since
+                  const gen = parallelGenRef.current;
                   // Increment counter ONCE per mutate call so global onSuccess/onError can correctly suppress payload writes
                   parallelInFlightRef.current += parallelProviders.length;
                   parallelProviders.forEach(provider => {
@@ -600,9 +610,11 @@ export const VideoTaskNode = memo(function VideoTaskNode({ id, selected, data }:
                       { nodeId: id, projectId: data.projectId, provider, prompt: payload.prompt!, negativePrompt: payload.negativePrompt, referenceImageUrl: payload.referenceImageUrl },
                       {
                         onSuccess: (result) => {
+                          if (parallelGenRef.current !== gen) return; // stale — user closed parallel mode
                           setParallelResults(prev => ({ ...prev, [provider]: { status: "processing", taskId: result.id } }));
                         },
                         onError: (err) => {
+                          if (parallelGenRef.current !== gen) return; // stale — user closed parallel mode
                           setParallelResults(prev => ({ ...prev, [provider]: { status: "failed" } }));
                           toast.error(`${provider} 失败: ${err.message}`);
                         },
