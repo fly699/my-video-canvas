@@ -298,7 +298,11 @@ export async function submitHiggsfieldVideo(
 
   if (!res.ok) {
     const text = await res.text().catch(() => "");
-    throw new Error(`Higgsfield video submit failed (${res.status}): ${text}`);
+    // 404 通常意味着 Higgsfield 平台已下架或重命名了该模型
+    if (res.status === 404) {
+      throw new Error(`Higgsfield 视频提交失败 (404): 模型 "${modelPath}" 在 Higgsfield 平台不存在或已下架。请换一个模型再试。原始响应: ${text}`);
+    }
+    throw new Error(`Higgsfield 视频提交失败 (${res.status}, 模型 ${modelPath}): ${text}`);
   }
 
   const data = (await res.json()) as { request_id?: string; id?: string };
