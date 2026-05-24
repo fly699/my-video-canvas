@@ -321,7 +321,7 @@ export const ScriptNode = memo(function ScriptNode({ id, selected, data }: Props
       aspectRatio,
       model: llmModel,
     });
-  }, [payload.synopsis, payload.content, commitDuration, genre, style, mood, sceneCount, targetModel, aspectRatio, llmModel, fullScriptMutation.mutate]);
+  }, [anyPending, payload.synopsis, payload.content, commitDuration, genre, style, mood, sceneCount, targetModel, aspectRatio, llmModel, fullScriptMutation.mutate]);
 
   const handleCopy = useCallback(async () => {
     const text = payload.content?.trim();

@@ -92,6 +92,7 @@ export const MergeNode = memo(function MergeNode({ id, selected, data }: Props) 
   };
 
   const handleMerge = () => {
+    if (mergeMutation.isPending || payload.status === "processing") return;
     const urls = payload.inputVideoUrls?.length
       ? payload.inputVideoUrls
       : collectInputUrls();

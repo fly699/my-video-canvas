@@ -194,10 +194,11 @@ export const StoryboardNode = memo(function StoryboardNode({ id, selected, data 
   });
 
   const handleExpandPrompt = useCallback(() => {
+    if (aiExpandMutation.isPending || expandingPrompt) return;
     if (!payload.description?.trim()) { toast.error("请先填写场景描述"); return; }
     setExpandingPrompt(true);
     aiExpandMutation.mutate({ text: payload.description.slice(0, 8000), mode: "storyboard_prompt", model: llmModel });
-  }, [payload.description, aiExpandMutation.mutate, llmModel]);
+  }, [payload.description, aiExpandMutation, expandingPrompt, llmModel]);
 
   const handleChange = useCallback(
     (field: keyof StoryboardNodeData, value: string | number | undefined) => {
@@ -213,7 +214,9 @@ export const StoryboardNode = memo(function StoryboardNode({ id, selected, data 
   }, [id]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const handleGenerate = () => {
-    if (generating) return;
+    // Double guard — local state is async (could be stale on rapid double-click) so
+    // also check the mutation's own isPending which tRPC flips synchronously
+    if (generating || genImageMutation.isPending) return;
     if (!payload.promptText?.trim()) { toast.error("请先填写提示词"); return; }
     setGenerating(true);
 
@@ -514,6 +517,7 @@ export const StoryboardNode = memo(function StoryboardNode({ id, selected, data 
           <LLMModelPicker value={llmModel} onChange={setLlmModel} disabled={expandingDesc || expandingPrompt || translating} />
           <button
             onClick={() => {
+              if (expandingDesc || expandingPrompt || translating || aiExpandDescMutation.isPending) return;
               if (!payload.description?.trim()) { toast.error("请先填写场景描述"); return; }
               setExpandingDesc(true);
               aiExpandDescMutation.mutate({ text: payload.description.slice(0, 8000), mode: "expand", model: llmModel });
@@ -579,6 +583,7 @@ export const StoryboardNode = memo(function StoryboardNode({ id, selected, data 
           </button>
           <button
             onClick={() => {
+              if (translating || expandingDesc || expandingPrompt || aiTranslateMutation.isPending) return;
               const text = payload.description?.trim() || payload.promptText?.trim();
               if (!text) { toast.error("请先填写场景描述或提示词"); return; }
               setTranslating(true);
