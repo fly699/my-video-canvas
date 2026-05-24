@@ -387,8 +387,8 @@ function CanvasInner({ projectId }: { projectId: number }) {
   const nodesRef = useRef(nodes);
   nodesRef.current = nodes;
   const [viewport, setViewport] = useState({ x: 0, y: 0, zoom: 1 });
-  const [barOffset, setBarOffset] = useState({ x: 0, y: 0 });
-  const barDragRef = useRef<{ startX: number; startY: number; initX: number; initY: number } | null>(null);
+  const [barEdge, setBarEdge] = useState<"bottom" | "top" | "left" | "right">("bottom");
+  const [barAlong, setBarAlong] = useState(0); // px offset along the anchor edge (centered = 0)
   const [mmPos, setMmPos] = useState({ bottom: 80, right: 8 });
   const [mmSize, setMmSize] = useState({ w: 200, h: 140 });
   const mmDragRef = useRef<{ sx: number; sy: number; sb: number; sr: number } | null>(null);
@@ -1420,31 +1420,49 @@ function CanvasInner({ projectId }: { projectId: number }) {
           />
           <BeginnerGuide />
 
-          {/* ── Bottom floating toolbar ── */}
+          {/* ── Floating toolbar — snaps to viewport edge; vertical when on left/right ── */}
           <div
-            className="canvas-bottombar absolute z-20 flex items-center gap-1.5 px-2.5 py-1.5 rounded-2xl"
+            className={`canvas-bottombar absolute z-20 flex items-center gap-1.5 px-2.5 py-1.5 rounded-2xl ${barEdge === "left" || barEdge === "right" ? "flex-col" : ""}`}
+            data-bar-edge={barEdge}
             onClick={(e) => e.stopPropagation()}
             onMouseDown={(e) => {
               // 只响应直接在工具栏背景上的拖拽（不拦截按钮点击）
               if ((e.target as HTMLElement).closest("button,input,select")) return;
               e.preventDefault();
-              barDragRef.current = { startX: e.clientX, startY: e.clientY, initX: barOffset.x, initY: barOffset.y };
+              const startX = e.clientX, startY = e.clientY;
+              let dragged = false;
               const onMove = (mv: MouseEvent) => {
-                if (!barDragRef.current) return;
-                setBarOffset({
-                  x: Math.max(-400, Math.min(400, barDragRef.current.initX + mv.clientX - barDragRef.current.startX)),
-                  // Y inverted: drag up (clientY decreases) → y increases → bottom increases → bar moves up
-                  y: Math.max(-40, Math.min(400, barDragRef.current.initY - (mv.clientY - barDragRef.current.startY))),
-                });
+                // require 5px movement before snapping (avoid accidental snap on click)
+                if (!dragged && Math.hypot(mv.clientX - startX, mv.clientY - startY) < 5) return;
+                dragged = true;
+                const cx = mv.clientX, cy = mv.clientY;
+                const W = window.innerWidth, H = window.innerHeight;
+                // Distance to each edge
+                const dT = cy, dB = H - cy, dL = cx, dR = W - cx;
+                const minD = Math.min(dT, dB, dL, dR);
+                if (minD === dB) {
+                  setBarEdge("bottom");
+                  setBarAlong(Math.max(-400, Math.min(400, cx - W / 2)));
+                } else if (minD === dT) {
+                  setBarEdge("top");
+                  setBarAlong(Math.max(-400, Math.min(400, cx - W / 2)));
+                } else if (minD === dL) {
+                  setBarEdge("left");
+                  setBarAlong(Math.max(-300, Math.min(300, cy - H / 2)));
+                } else {
+                  setBarEdge("right");
+                  setBarAlong(Math.max(-300, Math.min(300, cy - H / 2)));
+                }
               };
-              const onUp = () => { barDragRef.current = null; window.removeEventListener("mousemove", onMove); window.removeEventListener("mouseup", onUp); };
+              const onUp = () => { window.removeEventListener("mousemove", onMove); window.removeEventListener("mouseup", onUp); };
               window.addEventListener("mousemove", onMove);
               window.addEventListener("mouseup", onUp);
             }}
             style={{
-              bottom: `calc(20px + ${barOffset.y}px)`,
-              left: `calc(50% + ${barOffset.x}px)`,
-              transform: "translateX(-50%)",
+              ...(barEdge === "bottom" && { bottom: 20, left: `calc(50% + ${barAlong}px)`, transform: "translateX(-50%)" }),
+              ...(barEdge === "top" && { top: 20, left: `calc(50% + ${barAlong}px)`, transform: "translateX(-50%)" }),
+              ...(barEdge === "left" && { left: 20, top: `calc(50% + ${barAlong}px)`, transform: "translateY(-50%)" }),
+              ...(barEdge === "right" && { right: 20, top: `calc(50% + ${barAlong}px)`, transform: "translateY(-50%)" }),
               cursor: "default",
               background: "color-mix(in oklch, var(--c-base) 95%, transparent)",
               backdropFilter: "blur(24px)",
