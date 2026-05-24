@@ -218,7 +218,7 @@ export const BaseNode = memo(function BaseNode({
           background: isCreative
             ? `${config.color}0a`
             : `linear-gradient(180deg, ${config.color}0e 0%, transparent 100%)`,
-          borderBottom: `1px solid ${isCreative ? "var(--c-bd1)" : "oklch(0.20 0.008 260 / 0.60)"}`,
+          borderBottom: `1px solid ${(isCreative || isLight) ? "var(--c-bd1)" : "oklch(0.20 0.008 260 / 0.60)"}`,
           minHeight: isCreative ? 40 : 44,
         }}
       >

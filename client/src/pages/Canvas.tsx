@@ -31,6 +31,7 @@ import { BeginnerGuide, ConnectionHintsPanel } from "../components/canvas/Beginn
 import { ThemeSwitcher } from "../components/canvas/ThemeSwitcher";
 import { CanvasBgPicker, loadCanvasBg, type CanvasBg } from "../components/canvas/CanvasBgPicker";
 import { useCanvasMode } from "../contexts/CanvasModeContext";
+import { useTheme } from "../contexts/ThemeContext";
 import { trpc } from "@/lib/trpc";
 import { useAuth } from "@/_core/hooks/useAuth";
 import { useIsMobile } from "@/hooks/useMobile";
@@ -348,6 +349,8 @@ function CanvasInner({ projectId }: { projectId: number }) {
   const [showRatioPicker, setShowRatioPicker] = useState(false);
   const [showConnectionHints, setShowConnectionHints] = useState(false);
   const { mode: canvasMode, setMode: setCanvasMode } = useCanvasMode();
+  const { theme } = useTheme();
+  const isLight = theme === "light" || theme === "warm" || canvasMode === "creative";
   // Auto-show filmstrip when entering creative mode, hide when leaving
   useEffect(() => {
     if (canvasMode === "creative") setShowFilmstrip(true);
@@ -797,9 +800,7 @@ function CanvasInner({ projectId }: { projectId: number }) {
       <header
         className="canvas-topbar h-11 flex items-center px-3 gap-2 flex-shrink-0 z-20"
         style={{
-          background: canvasMode === "creative"
-            ? "oklch(1.00 0 0 / 0.94)"
-            : "color-mix(in oklch, var(--c-base) 95%, transparent)",
+          background: "color-mix(in oklch, var(--c-base) 95%, transparent)",
           backdropFilter: "blur(20px)",
           borderBottom: "1px solid var(--c-bd1)",
         }}
@@ -1193,9 +1194,9 @@ function CanvasInner({ projectId }: { projectId: number }) {
             onClick={(e) => e.stopPropagation()}
             style={{
               transform: "translateX(-50%)",
-              background: "oklch(0.11 0.007 260 / 0.98)",
+              background: "var(--c-base)",
               border: "1px solid var(--c-bd2)",
-              boxShadow: "0 20px 80px oklch(0 0 0 / 0.75), 0 4px 16px oklch(0 0 0 / 0.40), 0 0 0 1px oklch(0.22 0.008 260 / 0.5)",
+              boxShadow: "0 20px 80px oklch(0 0 0 / 0.40), 0 4px 16px oklch(0 0 0 / 0.20), 0 0 0 1px var(--c-bd2)",
               backdropFilter: "blur(32px)",
               width: 520,
             }}
@@ -1324,9 +1325,9 @@ function CanvasInner({ projectId }: { projectId: number }) {
             <MiniMap
               position="bottom-right"
               nodeColor={(n) => getNodeConfig((n.data as { nodeType: NodeType }).nodeType)?.color ?? "var(--c-bd3)"}
-              maskColor="oklch(0.09 0.006 260 / 0.55)"
+              maskColor={isLight ? "oklch(0.95 0.004 255 / 0.55)" : "oklch(0.09 0.006 260 / 0.55)"}
               style={{
-                background: "oklch(0.09 0.006 260 / 0.38)",
+                background: isLight ? "oklch(0.95 0.004 255 / 0.38)" : "oklch(0.09 0.006 260 / 0.38)",
                 backdropFilter: "blur(6px)",
                 border: "1px solid var(--c-bd2)",
                 borderRadius: 12,
@@ -1754,10 +1755,10 @@ function CanvasInner({ projectId }: { projectId: number }) {
             <div
               className="absolute top-3 right-3 rounded-xl p-3 min-w-[180px] z-20 animate-scale-in"
               style={{
-                background: "oklch(0.12 0.007 260 / 0.95)",
+                background: "color-mix(in oklch, var(--c-base) 95%, transparent)",
                 backdropFilter: "blur(20px)",
                 border: "1px solid var(--c-bd2)",
-                boxShadow: "0 8px 32px oklch(0 0 0 / 0.5)",
+                boxShadow: "0 8px 32px oklch(0 0 0 / 0.3)",
               }}
             >
               <p className="text-[10px] font-medium uppercase tracking-wider mb-2.5" style={{ color: "var(--c-t4)" }}>
@@ -1810,7 +1811,7 @@ function CanvasInner({ projectId }: { projectId: number }) {
           <div
             className="w-64 flex flex-col flex-shrink-0 animate-slide-down"
             style={{
-              background: "oklch(0.09 0.006 260 / 0.95)",
+              background: "color-mix(in oklch, var(--c-base) 95%, transparent)",
               backdropFilter: "blur(20px)",
               borderLeft: "1px solid var(--c-bd1)",
             }}
@@ -1918,7 +1919,7 @@ function CanvasInner({ projectId }: { projectId: number }) {
         <div
           className="fixed bottom-0 left-0 right-0 z-40 flex items-center gap-3 px-4 py-2"
           style={{
-            background: "oklch(0.10 0.007 260 / 0.95)",
+            background: "color-mix(in oklch, var(--c-base) 95%, transparent)",
             backdropFilter: "blur(20px)",
             borderTop: "1px solid var(--c-bd2)",
           }}

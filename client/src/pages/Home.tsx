@@ -116,10 +116,20 @@ function ProjectCard({
 
   return (
     <div
-      className="group relative flex flex-col rounded-xl border border-white/8 bg-white/[0.03] hover:bg-white/[0.055] hover:border-white/14 transition-all duration-200 cursor-pointer overflow-hidden"
+      className="group relative flex flex-col rounded-xl border transition-all duration-200 cursor-pointer overflow-hidden"
       onClick={() => !menuOpen && !renaming && onOpen()}
       style={{
-        boxShadow: "0 1px 2px oklch(0 0 0 / 0.4), 0 4px 16px oklch(0 0 0 / 0.2)",
+        borderColor: "var(--c-bd1)",
+        background: "var(--c-surface)",
+        boxShadow: "0 1px 2px oklch(0 0 0 / 0.2), 0 4px 16px oklch(0 0 0 / 0.1)",
+      }}
+      onMouseEnter={(e) => {
+        (e.currentTarget as HTMLElement).style.background = "var(--c-elevated)";
+        (e.currentTarget as HTMLElement).style.borderColor = "var(--c-bd2)";
+      }}
+      onMouseLeave={(e) => {
+        (e.currentTarget as HTMLElement).style.background = "var(--c-surface)";
+        (e.currentTarget as HTMLElement).style.borderColor = "var(--c-bd1)";
       }}
     >
       {/* Thumbnail area */}
@@ -131,12 +141,12 @@ function ProjectCard({
       >
         {/* Decorative nodes preview */}
         <div className="absolute inset-0 opacity-20">
-          <div className="absolute top-4 left-6 w-16 h-8 rounded-md border border-white/20 bg-white/5" />
-          <div className="absolute top-8 left-28 w-20 h-8 rounded-md border border-white/20 bg-white/5" />
-          <div className="absolute top-16 left-12 w-24 h-8 rounded-md border border-white/20 bg-white/5" />
-          <svg className="absolute inset-0 w-full h-full" style={{ overflow: "visible" }}>
-            <line x1="88" y1="28" x2="112" y2="32" stroke="white" strokeWidth="1" strokeDasharray="3 2" opacity="0.3" />
-            <line x1="148" y1="36" x2="120" y2="52" stroke="white" strokeWidth="1" strokeDasharray="3 2" opacity="0.3" />
+          <div className="absolute top-4 left-6 w-16 h-8 rounded-md" style={{ border: "1px solid var(--c-bd3)", background: "var(--c-surface)" }} />
+          <div className="absolute top-8 left-28 w-20 h-8 rounded-md" style={{ border: "1px solid var(--c-bd3)", background: "var(--c-surface)" }} />
+          <div className="absolute top-16 left-12 w-24 h-8 rounded-md" style={{ border: "1px solid var(--c-bd3)", background: "var(--c-surface)" }} />
+          <svg className="absolute inset-0 w-full h-full" style={{ overflow: "visible", color: "var(--c-bd3)" }}>
+            <line x1="88" y1="28" x2="112" y2="32" stroke="currentColor" strokeWidth="1" strokeDasharray="3 2" opacity="0.8" />
+            <line x1="148" y1="36" x2="120" y2="52" stroke="currentColor" strokeWidth="1" strokeDasharray="3 2" opacity="0.8" />
           </svg>
         </div>
 
@@ -169,19 +179,24 @@ function ProjectCard({
                 }
                 if (e.key === "Escape") setRenaming(false);
               }}
-              className="flex-1 bg-white/8 border border-white/16 rounded-md px-2 py-1 text-sm text-white outline-none focus:border-brand"
-              style={{ borderColor: "oklch(0.68 0.22 285 / 0.5)" }}
+              className="flex-1 rounded-md px-2 py-1 text-sm outline-none"
+              style={{ background: "var(--c-surface)", border: "1px solid oklch(0.68 0.22 285 / 0.5)", color: "var(--c-t1)" }}
               autoFocus
             />
             <button
               onClick={() => { onRename(renameVal); setRenaming(false); }}
-              className="p-1 rounded hover:bg-white/10 text-green-400"
+              className="p-1 rounded text-green-400"
+              onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.background = "var(--c-overlay)"; }}
+              onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.background = "transparent"; }}
             >
               <Check className="w-3.5 h-3.5" />
             </button>
             <button
               onClick={() => setRenaming(false)}
-              className="p-1 rounded hover:bg-white/10 text-white/40"
+              className="p-1 rounded"
+              style={{ color: "var(--c-t4)" }}
+              onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.background = "var(--c-overlay)"; }}
+              onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.background = "transparent"; }}
             >
               <X className="w-3.5 h-3.5" />
             </button>
@@ -205,7 +220,10 @@ function ProjectCard({
       >
         <button
           onClick={() => setMenuOpen(!menuOpen)}
-          className="w-7 h-7 rounded-lg flex items-center justify-center opacity-0 group-hover:opacity-100 transition-all hover:bg-white/10 text-white/50 hover:text-white"
+          className="w-7 h-7 rounded-lg flex items-center justify-center opacity-0 group-hover:opacity-100 transition-all"
+          style={{ color: "var(--c-t3)" }}
+          onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.background = "var(--c-overlay)"; (e.currentTarget as HTMLElement).style.color = "var(--c-t1)"; }}
+          onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.background = "transparent"; (e.currentTarget as HTMLElement).style.color = "var(--c-t3)"; }}
         >
           <MoreHorizontal className="w-4 h-4" />
         </button>
@@ -325,14 +343,17 @@ export default function Home() {
             >
               <Film className="w-4 h-4 text-white" />
             </div>
-            <span className="text-sm font-semibold text-white/90 tracking-tight">
+            <span className="text-sm font-semibold tracking-tight" style={{ color: "var(--c-t1)" }}>
               AI Video Canvas
             </span>
           </div>
 
           <a
             href={getLoginUrl()}
-            className="inline-flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium text-white/90 hover:text-white transition-all duration-150 border border-white/10 hover:border-white/20 hover:bg-white/5"
+            className="inline-flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-all duration-150"
+            style={{ color: "var(--c-t2)", borderWidth: 1, borderStyle: "solid", borderColor: "var(--c-bd2)" }}
+            onMouseEnter={(e) => { const el = e.currentTarget as HTMLElement; el.style.color = "var(--c-t1)"; el.style.borderColor = "var(--c-bd3)"; el.style.background = "var(--c-overlay)"; }}
+            onMouseLeave={(e) => { const el = e.currentTarget as HTMLElement; el.style.color = "var(--c-t2)"; el.style.borderColor = "var(--c-bd2)"; el.style.background = "transparent"; }}
           >
             登录
             <ArrowRight className="w-3.5 h-3.5" />
@@ -371,8 +392,8 @@ export default function Home() {
 
           {/* Sub */}
           <p
-            className="max-w-lg text-base text-white/40 leading-relaxed mb-10 animate-slide-up"
-            style={{ animationDelay: "120ms" }}
+            className="max-w-lg text-base leading-relaxed mb-10 animate-slide-up"
+            style={{ color: "var(--c-t4)", animationDelay: "120ms" }}
           >
             在无限画布上编排脚本、分镜、提示词与视频生成任务。
             <br />
@@ -424,7 +445,8 @@ export default function Home() {
             ].map((f) => (
               <div
                 key={f.title}
-                className="p-4 rounded-xl border border-white/6 bg-white/[0.025]"
+                className="p-4 rounded-xl"
+                style={{ border: "1px solid var(--c-bd1)", background: "var(--c-surface)" }}
               >
                 <div
                   className="w-8 h-8 rounded-lg flex items-center justify-center mb-3"
@@ -435,8 +457,8 @@ export default function Home() {
                 >
                   <f.icon className="w-4 h-4" style={{ color: "oklch(0.75 0.18 285)" }} />
                 </div>
-                <h3 className="text-sm font-semibold text-white/80 mb-1">{f.title}</h3>
-                <p className="text-xs text-white/35 leading-relaxed">{f.desc}</p>
+                <h3 className="text-sm font-semibold mb-1" style={{ color: "var(--c-t2)" }}>{f.title}</h3>
+                <p className="text-xs leading-relaxed" style={{ color: "var(--c-t4)" }}>{f.desc}</p>
               </div>
             ))}
           </div>
