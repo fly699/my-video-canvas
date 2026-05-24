@@ -106,7 +106,7 @@ export const SubtitleMotionNode = memo(function SubtitleMotionNode({ id, selecte
     update({ status: "burning" });
     burnMutation.mutate({
       videoUrl,
-      entries: payload.entries,
+      entries: payload.entries!,
       motionStyle: payload.motionStyle ?? "fade",
       fontSize: payload.fontSize,
       fontColor: payload.fontColor,

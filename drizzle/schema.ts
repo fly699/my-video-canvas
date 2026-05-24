@@ -66,6 +66,12 @@ export const canvasNodes = mysqlTable("canvas_nodes", {
     "merge",
     "subtitle",
     "overlay",
+    "subtitle_motion",
+    "smart_cut",
+    "pose_control",
+    "voice_clone",
+    "lip_sync",
+    "avatar",
   ]).notNull(),
   title: varchar("title", { length: 255 }),
   /** Node-type-specific data (content, promptText, imageUrl, etc.) */
