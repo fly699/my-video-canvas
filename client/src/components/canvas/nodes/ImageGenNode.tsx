@@ -158,6 +158,7 @@ export const ImageGenNode = memo(function ImageGenNode({ id, selected, data }: P
 
   const handleGenerate = () => {
     if (genMutation.isPending) return;
+    if (uploading) { toast.error("参考图正在上传中，请稍候"); return; }
     if (!payload.prompt?.trim()) { toast.error("请先填写提示词"); return; }
     const isPoyo = payload.model === "poyo_flux" || payload.model === "poyo_sdxl" || payload.model === "poyo_gpt_image" ||
                    payload.model === "poyo_seedream" || payload.model === "poyo_grok_image" || payload.model === "poyo_wan_image";
@@ -262,8 +263,14 @@ export const ImageGenNode = memo(function ImageGenNode({ id, selected, data }: P
   const isSeedreamV4 = payload.model === "hf_seedream_v4";
   const isFluxPro = payload.model === "hf_flux_pro";
   const isGptImage = payload.model === "poyo_gpt_image";
+  const isManus = payload.model === "manus_forge";
   // Models that use the collapsible params panel
   const isReveLike = isReve || isSeedreamV4 || isFluxPro;
+
+  // Collapse the params panel when switching model — old expansion state doesn't apply to a new param set
+  useEffect(() => {
+    setParamsExpanded(false);
+  }, [payload.model]);
 
   const heroMedia = hasMultiple ? (
     <div
@@ -581,21 +588,24 @@ export const ImageGenNode = memo(function ImageGenNode({ id, selected, data }: P
                   {STYLES.map((s) => <option key={s} value={s}>{s}</option>)}
                 </select>
               </div>
-              <div style={{ width: 80 }}>
-                <label style={labelStyle}>比例</label>
-                <select
-                  value={payload.aspectRatio ?? ""}
-                  onChange={(e) => update("aspectRatio", e.target.value)}
-                  className="nodrag"
-                  style={{ ...fieldBase, cursor: "pointer" }}
-                >
-                  {/* Restrict options to the model's whitelist when it's a Poyo model; otherwise allow the broader Manus list */}
-                  {(payload.model && (payload.model === "poyo_flux" || payload.model === "poyo_sdxl" || payload.model === "poyo_gpt_image" || payload.model === "poyo_seedream" || payload.model === "poyo_grok_image" || payload.model === "poyo_wan_image")
-                    ? (POYO_ASPECT_RATIOS as readonly string[])
-                    : (RATIOS as readonly string[])
-                  ).map((r) => <option key={r} value={r}>{r}</option>)}
-                </select>
-              </div>
+              {/* Manus Forge ignores aspect ratio server-side — hide the picker to avoid misleading users */}
+              {!isManus && (
+                <div style={{ width: 80 }}>
+                  <label style={labelStyle}>比例</label>
+                  <select
+                    value={payload.aspectRatio ?? ""}
+                    onChange={(e) => update("aspectRatio", e.target.value)}
+                    className="nodrag"
+                    style={{ ...fieldBase, cursor: "pointer" }}
+                  >
+                    {/* Restrict options to the Poyo whitelist (server-validated); fallback to RATIOS for other non-Manus paths */}
+                    {(payload.model && (payload.model === "poyo_flux" || payload.model === "poyo_sdxl" || payload.model === "poyo_gpt_image" || payload.model === "poyo_seedream" || payload.model === "poyo_grok_image" || payload.model === "poyo_wan_image")
+                      ? (POYO_ASPECT_RATIOS as readonly string[])
+                      : (RATIOS as readonly string[])
+                    ).map((r) => <option key={r} value={r}>{r}</option>)}
+                  </select>
+                </div>
+              )}
             </div>
             {/* GPT Image 2 quality selector */}
             {isGptImage && (
