@@ -33,6 +33,7 @@ export function assertSafeUrl(url: string): void {
     /^::1$/,
     /^::ffff:/i,
     /^0\./,
+    /^100\.(6[4-9]|[7-9]\d|1[01]\d|12[0-7])\./, // RFC 6598 CGNAT 100.64.0.0/10
     /^f[cd][0-9a-f]{2}:/i,  // fc00::/7 ULA (fc and fd prefix)
     /^fe[89ab][0-9a-f]:/i,  // fe80::/10 link-local
   ];
