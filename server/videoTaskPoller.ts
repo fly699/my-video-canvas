@@ -2,6 +2,71 @@ import type { Server as SocketIOServer } from "socket.io";
 import { getPendingVideoTasks, updateVideoTask } from "./db";
 import { isPoyoVideoProvider, submitPoyoVideo, checkPoyoVideoStatus } from "./_core/poyoVideo";
 import { isHiggsfieldVideoProvider, submitHiggsfieldVideo, checkHiggsfieldVideoStatus } from "./_core/higgsfield";
+import { storagePut } from "./storage";
+
+const MAX_PERSIST_VIDEO_BYTES = 500 * 1024 * 1024; // 500 MB hard cap
+const PERSIST_FETCH_TIMEOUT_MS = 180_000; // 3 min — large videos can be slow
+
+/**
+ * Best-effort: download the upstream video and store it in our own S3 via
+ * storagePut(), returning a stable `/manus-storage/...` URL.
+ *
+ * Why: Poyo file_url expires after 24h (per official docs) and Higgsfield's
+ * CDN URLs have similar TTLs. Without re-hosting, every generated video
+ * becomes a dead link a day later.
+ *
+ * Failure mode: returns the original upstream URL so the user can at least
+ * view it within the 24h window. We log the failure but never block the
+ * task from being marked succeeded — the worst case is a video that
+ * expires in 24h, which matches the previous behaviour.
+ */
+async function persistVideoOrFallback(upstreamUrl: string, provider: string): Promise<string> {
+  try {
+    const res = await fetch(upstreamUrl, { signal: AbortSignal.timeout(PERSIST_FETCH_TIMEOUT_MS) });
+    if (!res.ok) {
+      console.warn(`[videoTaskPoller] persist fetch ${res.status} for ${provider}, falling back to upstream URL`);
+      return upstreamUrl;
+    }
+    // Pre-flight Content-Length check — skip persistence for huge files
+    const declared = res.headers.get("content-length");
+    if (declared) {
+      const n = parseInt(declared, 10);
+      if (!isNaN(n) && n > MAX_PERSIST_VIDEO_BYTES) {
+        console.warn(`[videoTaskPoller] video too large (${n} bytes) for ${provider}, keeping upstream URL`);
+        return upstreamUrl;
+      }
+    }
+    // Streaming reader with running byte-count cap — protects against
+    // chunked responses without Content-Length sneaking past the pre-check.
+    if (!res.body) return upstreamUrl;
+    const reader = res.body.getReader();
+    const chunks: Uint8Array[] = [];
+    let total = 0;
+    try {
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        total += value.byteLength;
+        if (total > MAX_PERSIST_VIDEO_BYTES) {
+          await reader.cancel();
+          console.warn(`[videoTaskPoller] video stream exceeded ${MAX_PERSIST_VIDEO_BYTES} bytes for ${provider}, keeping upstream URL`);
+          return upstreamUrl;
+        }
+        chunks.push(value);
+      }
+    } finally {
+      try { reader.releaseLock(); } catch { /* ignore */ }
+    }
+    const buf = Buffer.concat(chunks.map((c) => Buffer.from(c)));
+    const mime = res.headers.get("content-type") ?? "video/mp4";
+    const ext = mime.includes("webm") ? "webm" : mime.includes("quicktime") ? "mov" : "mp4";
+    const { url } = await storagePut(`generated-videos/${provider}-${Date.now()}.${ext}`, buf, mime);
+    return url;
+  } catch (err) {
+    console.warn(`[videoTaskPoller] persist video failed for ${provider}, keeping upstream URL:`, err instanceof Error ? err.message : String(err));
+    return upstreamUrl;
+  }
+}
 
 // ── Video Provider Adapters ───────────────────────────────────────────────────
 
@@ -94,7 +159,11 @@ export function setupVideoTaskPoller(io: SocketIOServer) {
             const upstream = await checkPoyoVideoStatus(task.externalTaskId);
             if (upstream.status === "finished") {
               if (upstream.resultVideoUrl) {
-                result = { status: "succeeded", resultVideoUrl: upstream.resultVideoUrl };
+                // Re-host so the URL doesn't die after Poyo's 24h CDN TTL.
+                // Falls back to upstream URL on any failure (user can still
+                // view within the 24h window).
+                const persisted = await persistVideoOrFallback(upstream.resultVideoUrl, task.provider);
+                result = { status: "succeeded", resultVideoUrl: persisted };
               } else {
                 result = { status: "failed", errorMessage: "生成完成但无视频 URL" };
               }
@@ -107,7 +176,9 @@ export function setupVideoTaskPoller(io: SocketIOServer) {
             // Higgsfield status check
             const upstream = await checkHiggsfieldVideoStatus(task.externalTaskId);
             if (upstream.status === "succeeded" && upstream.resultVideoUrl) {
-              result = { status: "succeeded", resultVideoUrl: upstream.resultVideoUrl };
+              // Higgsfield CDN URLs are also temporary — re-host to our own storage.
+              const persisted = await persistVideoOrFallback(upstream.resultVideoUrl, task.provider);
+              result = { status: "succeeded", resultVideoUrl: persisted };
             } else if (upstream.status === "succeeded" && !upstream.resultVideoUrl) {
               result = { status: "failed", errorMessage: "任务完成但未返回视频 URL" };
             } else if (upstream.status === "failed") {
