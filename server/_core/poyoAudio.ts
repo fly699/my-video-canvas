@@ -5,6 +5,13 @@ const POYO_BASE = "https://api.poyo.ai";
 const POLL_INTERVAL_MS = 4000;
 const POLL_MAX_ATTEMPTS = 60; // 4 min max
 
+// Statuses that mean "task is still progressing" — anything else terminal that
+// isn't an explicit "finished" should surface immediately rather than wait out
+// the 4-minute timeout. Without this, cancelled / expired / timeout / unknown
+// statuses look identical to in-progress and hide the real failure for the
+// full poll window.
+const IN_PROGRESS_STATUSES = new Set(["queued", "pending", "processing", "running", "submitted", "in_progress", "started"]);
+
 export type PoyoMusicModel =
   | "suno-v4.5"
   | "suno-v5"
@@ -99,9 +106,11 @@ export async function submitAndPollPoyoMusic(
       return { url: file.file_url, duration: file.duration };
     }
 
-    if (d.status === "failed") {
-      throw new Error(`Poyo audio generation failed: ${d.error_message ?? "unknown error"}`);
+    if (IN_PROGRESS_STATUSES.has(d.status)) {
+      continue;
     }
+    // Any other status (failed / cancelled / expired / unknown) is terminal — surface immediately
+    throw new Error(`Poyo audio status="${d.status}": ${d.error_message ?? "no detail"}`);
   }
 
   throw new Error("Poyo audio generation timed out");

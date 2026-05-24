@@ -60,6 +60,15 @@ const MUSIC_MODELS = [
   { value: "minimax-music-02", label: "MiniMax Music-02",desc: "多模态 · 精准",   group: "MiniMax" },
 ];
 
+// Per-model maximum music duration (seconds). UI range slider clamps to this.
+// Source: each provider's documented duration limit.
+const MUSIC_MAX_DURATION: Record<string, number> = {
+  "suno-v4.5":         240, // 4 min
+  "suno-v5":           480, // 8 min — flagship
+  "mureka":            240,
+  "minimax-music-02":  180,
+};
+
 // Dubbing/TTS — coming soon; no Poyo TTS endpoint confirmed
 const DUBBING_MODELS = [
   { value: "openai_tts_hd",    label: "OpenAI TTS-HD",   desc: "高清 · 自然",     group: "OpenAI" },
@@ -68,13 +77,25 @@ const DUBBING_MODELS = [
   { value: "cosyvoice_2",      label: "CosyVoice 2.0",   desc: "阿里 · 中文优化", group: "Alibaba" },
 ];
 
+// Per-model TTS text limit (characters). Submitting more than this either errors
+// at the provider or is silently truncated — in both cases the user pays.
+const TTS_TEXT_LIMIT: Record<string, number> = {
+  openai_tts_hd: 4096,
+  openai_tts:    4096,
+  elevenlabs_v3: 5000,
+  cosyvoice_2:   2000,
+};
+
 // SFX — coming soon
 const SFX_MODELS = [
   { value: "elevenlabs_sfx",   label: "ElevenLabs SFX",  desc: "音效 · 精准",     group: "ElevenLabs" },
   { value: "audiogen",         label: "AudioGen",        desc: "Meta · 开源",     group: "Meta" },
 ];
 
-const TTS_VOICES = [
+// Voice options vary by provider. Sending an OpenAI voice ID like "alloy" to
+// ElevenLabs/CosyVoice causes upstream errors or silent default-voice fallback —
+// both cases still bill the user. Pick a per-model list and reset on switch.
+const OPENAI_VOICES = [
   { value: "alloy",   label: "Alloy",   desc: "中性" },
   { value: "echo",    label: "Echo",    desc: "男声" },
   { value: "fable",   label: "Fable",   desc: "英式" },
@@ -82,8 +103,55 @@ const TTS_VOICES = [
   { value: "nova",    label: "Nova",    desc: "女声" },
   { value: "shimmer", label: "Shimmer", desc: "柔和" },
 ];
+const ELEVENLABS_VOICES = [
+  { value: "21m00Tcm4TlvDq8ikWAM", label: "Rachel",  desc: "女声 · 美式" },
+  { value: "AZnzlk1XvdvUeBnXmlld", label: "Domi",    desc: "女声 · 自信" },
+  { value: "EXAVITQu4vr4xnSDxMaL", label: "Bella",   desc: "女声 · 柔和" },
+  { value: "ErXwobaYiN019PkySvjV", label: "Antoni",  desc: "男声 · 温暖" },
+  { value: "VR6AewLTigWG4xSOukaG", label: "Arnold",  desc: "男声 · 深沉" },
+  { value: "pNInz6obpgDQGcFmaJgB", label: "Adam",    desc: "男声 · 旁白" },
+];
+const COSYVOICE_VOICES = [
+  { value: "中文女", label: "中文女", desc: "标准 · 女声" },
+  { value: "中文男", label: "中文男", desc: "标准 · 男声" },
+  { value: "英文女", label: "英文女", desc: "English · F" },
+  { value: "英文男", label: "英文男", desc: "English · M" },
+  { value: "日语男", label: "日语男", desc: "日本語 · M" },
+  { value: "粤语女", label: "粤语女", desc: "广东话 · F" },
+];
 
-const MUSIC_STYLES = ["流行", "摇滚", "爵士", "古典", "电子", "嘻哈", "氛围", "史诗", "轻音乐", "中国风"];
+function voicesForModel(model?: string): { value: string; label: string; desc: string }[] {
+  if (model === "elevenlabs_v3") return ELEVENLABS_VOICES;
+  if (model === "cosyvoice_2") return COSYVOICE_VOICES;
+  return OPENAI_VOICES; // default for openai_tts / openai_tts_hd / unknown
+}
+
+// ElevenLabs uses voice_settings (stability/style) for pacing, not a `speed` field.
+// Server still accepts speed, but for elevenlabs we hide the slider so users don't
+// expect it to take effect (and don't waste credits tuning a no-op).
+function modelSupportsSpeed(model?: string): boolean {
+  return model !== "elevenlabs_v3";
+}
+
+// Suno/Poyo style tags expect English genre keywords. Submitting raw Chinese
+// labels like "流行" gets ignored or treated as prompt noise → user pays for a
+// generation whose style barely matches the picked tag.
+const MUSIC_STYLE_MAP: { zh: string; en: string }[] = [
+  { zh: "流行",   en: "pop" },
+  { zh: "摇滚",   en: "rock" },
+  { zh: "爵士",   en: "jazz" },
+  { zh: "古典",   en: "classical" },
+  { zh: "电子",   en: "electronic" },
+  { zh: "嘻哈",   en: "hip-hop" },
+  { zh: "氛围",   en: "ambient" },
+  { zh: "史诗",   en: "epic cinematic" },
+  { zh: "轻音乐", en: "easy listening" },
+  { zh: "中国风", en: "traditional chinese" },
+];
+const MUSIC_STYLES_ZH = MUSIC_STYLE_MAP.map(s => s.zh);
+const MUSIC_STYLE_ZH_TO_EN: Record<string, string> = Object.fromEntries(
+  MUSIC_STYLE_MAP.map(s => [s.zh, s.en]),
+);
 
 const CATEGORIES: { id: AudioCategory; label: string; icon: React.ReactNode }[] = [
   { id: "music",   label: "配乐",   icon: <Music style={{ width: 11, height: 11 }} /> },
@@ -231,12 +299,21 @@ export const AudioNode = memo(function AudioNode({ id, selected, data }: Props) 
     const validMusic = MUSIC_MODELS.map((m) => m.value);
     const raw = payload.musicModel ?? payload.aiModel ?? "suno-v4.5";
     const modelVal = (validMusic.includes(raw) ? raw : "suno-v4.5") as "suno-v4.5" | "suno-v5" | "mureka" | "minimax-music-02";
+    // Clamp duration to the picked model's actual max (UI also clamps, but if
+    // payload.musicDuration was set under a different model we'd otherwise send
+    // a too-large value that the provider would either reject or silently cap).
+    const maxDur = MUSIC_MAX_DURATION[modelVal] ?? 240;
+    const durationSeconds = Math.min(payload.musicDuration ?? 30, maxDur);
+    // Translate Chinese style tag to English — Suno/Poyo expect English genre
+    // keywords; raw Chinese gets ignored or treated as prompt noise.
+    const styleEn = payload.musicStyle ? (MUSIC_STYLE_ZH_TO_EN[payload.musicStyle] ?? payload.musicStyle) : undefined;
     musicMutation.mutate({
       model: modelVal,
       prompt: payload.musicPrompt,
-      style: payload.musicStyle,
-      durationSeconds: payload.musicDuration ?? 30,
-      instrumental: true,
+      style: styleEn,
+      durationSeconds,
+      instrumental: payload.musicInstrumental ?? true,
+      negativePrompt: payload.musicNegativeTags || undefined,
       projectId: data.projectId,
     });
   };
@@ -247,11 +324,25 @@ export const AudioNode = memo(function AudioNode({ id, selected, data }: Props) 
     const validTTS = DUBBING_MODELS.map((m) => m.value);
     const rawTTS = payload.ttsModel ?? payload.aiModel ?? "openai_tts";
     const model = (validTTS.includes(rawTTS) ? rawTTS : "openai_tts") as "openai_tts_hd" | "openai_tts" | "elevenlabs_v3" | "cosyvoice_2";
+    // Reject overlong text early — the provider would charge for the prefix and
+    // truncate (or reject) the rest. Better to surface the limit before submit.
+    const limit = TTS_TEXT_LIMIT[model] ?? 4096;
+    if (payload.ttsText.length > limit) {
+      toast.error(`${model} 单次配音上限 ${limit} 字，当前 ${payload.ttsText.length} 字，请截断`);
+      return;
+    }
+    // Voice IDs differ per provider; refuse an OpenAI voice id under ElevenLabs etc.
+    const allowedVoices = voicesForModel(model).map(v => v.value);
+    const voice = payload.ttsVoice && allowedVoices.includes(payload.ttsVoice)
+      ? payload.ttsVoice
+      : allowedVoices[0];
+    // ElevenLabs v3 doesn't honour `speed`; don't send it (the field is meaningful only for OpenAI/CosyVoice).
+    const speed = modelSupportsSpeed(model) ? payload.ttsSpeed : undefined;
     ttsMutation.mutate({
       model,
       text: payload.ttsText,
-      voice: payload.ttsVoice,
-      speed: payload.ttsSpeed,
+      voice,
+      speed,
       projectId: data.projectId,
     });
   };
@@ -333,7 +424,16 @@ export const AudioNode = memo(function AudioNode({ id, selected, data }: Props) 
             <ModelSelect
               models={MUSIC_MODELS}
               value={payload.musicModel ?? (MUSIC_MODELS.find(m => m.value === payload.aiModel) ? payload.aiModel : undefined)}
-              onChange={(v) => update("musicModel", v)}
+              onChange={(v) => {
+                // Clamp existing duration to the new model's cap so the slider doesn't display a value above its max
+                const newMax = MUSIC_MAX_DURATION[v] ?? 240;
+                const cur = payload.musicDuration ?? 30;
+                if (cur > newMax) {
+                  updateNodeData(id, { musicModel: v, musicDuration: newMax });
+                } else {
+                  update("musicModel", v);
+                }
+              }}
             />
             <div>
               <label style={labelStyle}>音乐描述</label>
@@ -352,7 +452,7 @@ export const AudioNode = memo(function AudioNode({ id, selected, data }: Props) 
             <div>
               <label style={labelStyle}>风格标签</label>
               <div className="flex flex-wrap gap-1">
-                {MUSIC_STYLES.map((s) => (
+                {MUSIC_STYLES_ZH.map((s) => (
                   <button
                     key={s}
                     onClick={() => update("musicStyle", payload.musicStyle === s ? undefined : s)}
@@ -370,21 +470,63 @@ export const AudioNode = memo(function AudioNode({ id, selected, data }: Props) 
                 ))}
               </div>
             </div>
-            {/* Duration */}
+            {/* Duration — slider max varies per model (suno-v5 supports up to 480s) */}
             <div>
               <div className="flex items-center justify-between" style={{ marginBottom: 5 }}>
                 <label style={{ ...labelStyle, marginBottom: 0 }}>时长</label>
                 <span style={{ fontSize: 11, color: "var(--c-t3)", fontVariantNumeric: "tabular-nums" }}>{payload.musicDuration ?? 30}秒</span>
               </div>
+              {(() => {
+                const cur = (payload.musicModel ?? payload.aiModel ?? "suno-v4.5") as string;
+                const maxDur = MUSIC_MAX_DURATION[cur] ?? 240;
+                return (
+                  <input
+                    type="range"
+                    min={10}
+                    max={maxDur}
+                    step={5}
+                    value={Math.min(payload.musicDuration ?? 30, maxDur)}
+                    onChange={(e) => update("musicDuration", Number(e.target.value))}
+                    className="nodrag w-full"
+                    style={{ accentColor: accent }}
+                  />
+                );
+              })()}
+            </div>
+            {/* Instrumental toggle — previously hard-coded true, hiding the vocal-music capability */}
+            <div className="flex items-center justify-between">
+              <label style={{ ...labelStyle, marginBottom: 0 }}>纯器乐</label>
+              <button
+                onClick={() => update("musicInstrumental", !(payload.musicInstrumental ?? true))}
+                className="nodrag relative flex-shrink-0"
+                style={{
+                  width: 32, height: 18, borderRadius: 9,
+                  background: (payload.musicInstrumental ?? true) ? accentA(0.5) : "var(--c-bd1)",
+                  border: `1px solid ${(payload.musicInstrumental ?? true) ? accentA(0.5) : "var(--c-bd3)"}`,
+                  cursor: "pointer",
+                  transition: "background 150ms ease",
+                }}
+              >
+                <span style={{
+                  position: "absolute", top: 2,
+                  left: (payload.musicInstrumental ?? true) ? 14 : 2,
+                  width: 12, height: 12, borderRadius: "50%",
+                  background: "var(--c-t1)",
+                  transition: "left 150ms ease",
+                }} />
+              </button>
+            </div>
+            {/* Negative tags — exclude unwanted elements */}
+            <div>
+              <label style={labelStyle}>排除元素（可选）</label>
               <input
-                type="range"
-                min={10}
-                max={240}
-                step={5}
-                value={payload.musicDuration ?? 30}
-                onChange={(e) => update("musicDuration", Number(e.target.value))}
-                className="nodrag w-full"
-                style={{ accentColor: accent }}
+                placeholder="例如：drums, vocals, distortion"
+                value={payload.musicNegativeTags ?? ""}
+                onChange={(e) => update("musicNegativeTags", e.target.value)}
+                className="nodrag"
+                style={fieldStyle}
+                onFocus={(e) => { e.currentTarget.style.borderColor = BORDER_ACCENT; }}
+                onBlur={(e) => { e.currentTarget.style.borderColor = BORDER_DEFAULT; }}
               />
             </div>
             <GenerateBtn
@@ -398,15 +540,38 @@ export const AudioNode = memo(function AudioNode({ id, selected, data }: Props) 
         )}
 
         {/* ── 配音 Dubbing ── */}
-        {category === "dubbing" && (
+        {category === "dubbing" && (() => {
+          const ttsModel = (payload.ttsModel ?? (DUBBING_MODELS.find(m => m.value === payload.aiModel) ? payload.aiModel : undefined) ?? "openai_tts") as string;
+          const voices = voicesForModel(ttsModel);
+          const textLimit = TTS_TEXT_LIMIT[ttsModel] ?? 4096;
+          const supportsSpeed = modelSupportsSpeed(ttsModel);
+          const textLen = (payload.ttsText ?? "").length;
+          return (
           <>
             <ModelSelect
               models={DUBBING_MODELS}
               value={payload.ttsModel ?? (DUBBING_MODELS.find(m => m.value === payload.aiModel) ? payload.aiModel : undefined)}
-              onChange={(v) => update("ttsModel", v)}
+              onChange={(v) => {
+                // Reset voice when the picked model doesn't recognize the previously chosen one
+                const allowed = voicesForModel(v).map(x => x.value);
+                if (payload.ttsVoice && !allowed.includes(payload.ttsVoice)) {
+                  updateNodeData(id, { ttsModel: v, ttsVoice: allowed[0] });
+                } else {
+                  update("ttsModel", v);
+                }
+              }}
             />
             <div>
-              <label style={labelStyle}>配音文本</label>
+              <div className="flex items-center justify-between" style={{ marginBottom: 5 }}>
+                <label style={{ ...labelStyle, marginBottom: 0 }}>配音文本</label>
+                <span style={{
+                  fontSize: 10,
+                  fontVariantNumeric: "tabular-nums",
+                  color: textLen > textLimit ? "oklch(0.62 0.20 25)" : "var(--c-t4)",
+                }}>
+                  {textLen} / {textLimit}
+                </span>
+              </div>
               <textarea
                 placeholder="输入要转换为语音的文字..."
                 value={payload.ttsText ?? ""}
@@ -418,11 +583,11 @@ export const AudioNode = memo(function AudioNode({ id, selected, data }: Props) 
                 onBlur={(e) => { e.currentTarget.style.borderColor = BORDER_DEFAULT; }}
               />
             </div>
-            {/* Voice selector */}
+            {/* Voice selector — varies per provider */}
             <div>
               <label style={labelStyle}>音色</label>
               <div className="flex flex-wrap gap-1">
-                {TTS_VOICES.map((v) => (
+                {voices.map((v) => (
                   <button
                     key={v.value}
                     onClick={() => update("ttsVoice", v.value)}
@@ -441,29 +606,37 @@ export const AudioNode = memo(function AudioNode({ id, selected, data }: Props) 
                 ))}
               </div>
             </div>
-            {/* Speed */}
-            <div>
-              <label style={labelStyle}>语速</label>
-              <div className="flex items-center gap-2">
-                <input
-                  type="range"
-                  min={0.5}
-                  max={2.0}
-                  step={0.1}
-                  value={payload.ttsSpeed ?? 1.0}
-                  onChange={(e) => update("ttsSpeed", Number(e.target.value))}
-                  className="nodrag flex-1"
-                  style={{ accentColor: accent }}
-                />
-                <span style={{ fontSize: 11, color: "var(--c-t3)", width: 30, textAlign: "right" }}>
-                  {(payload.ttsSpeed ?? 1.0).toFixed(1)}x
-                </span>
+            {/* Speed slider — ElevenLabs v3 doesn't honour this; hide rather than mislead */}
+            {supportsSpeed && (
+              <div>
+                <label style={labelStyle}>语速</label>
+                <div className="flex items-center gap-2">
+                  <input
+                    type="range"
+                    min={0.5}
+                    max={2.0}
+                    step={0.1}
+                    value={payload.ttsSpeed ?? 1.0}
+                    onChange={(e) => update("ttsSpeed", Number(e.target.value))}
+                    className="nodrag flex-1"
+                    style={{ accentColor: accent }}
+                  />
+                  <span style={{ fontSize: 11, color: "var(--c-t3)", width: 30, textAlign: "right" }}>
+                    {(payload.ttsSpeed ?? 1.0).toFixed(1)}x
+                  </span>
+                </div>
               </div>
-            </div>
-            <GenerateBtn disabled={!payload.ttsText?.trim()} loading={ttsMutation.isPending} onClick={handleGenerateTTS} label="生成配音" />
+            )}
+            <GenerateBtn
+              disabled={!payload.ttsText?.trim() || textLen > textLimit}
+              loading={ttsMutation.isPending}
+              onClick={handleGenerateTTS}
+              label="生成配音"
+            />
             {audioPlayer}
           </>
-        )}
+          );
+        })()}
 
         {/* ── 音效 SFX ── */}
         {category === "sfx" && (

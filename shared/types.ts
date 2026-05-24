@@ -172,6 +172,8 @@ export interface AudioNodeData {
   musicPrompt?: string;
   musicDuration?: number;
   musicStyle?: string;
+  musicInstrumental?: boolean;  // false = generate with vocals
+  musicNegativeTags?: string;   // comma-separated keywords to exclude
   // Dubbing / TTS (配音)
   ttsText?: string;
   ttsVoice?: string;

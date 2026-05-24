@@ -824,12 +824,23 @@ export const audioGenRouter = router({
     .mutation(async ({ ctx, input }) => {
       await assertWhitelisted(ctx);
       if (input.projectId != null) await assertProjectOwner(input.projectId, ctx.user.id);
+      // Per-model text limits — submitting beyond a provider's limit gets the prefix
+      // billed and the rest truncated/rejected; reject upfront so the user isn't charged.
+      const TEXT_LIMIT: Record<string, number> = {
+        openai_tts_hd: 4096, openai_tts: 4096, elevenlabs_v3: 5000, cosyvoice_2: 2000,
+      };
+      const limit = TEXT_LIMIT[input.model] ?? 4096;
+      if (input.text.length > limit) {
+        throw new TRPCError({ code: "BAD_REQUEST", message: `${input.model} 单次配音上限 ${limit} 字（当前 ${input.text.length}）` });
+      }
+      // ElevenLabs v3 doesn't honour a `speed` field; drop it silently rather than pass a no-op.
+      const effectiveSpeed = input.model === "elevenlabs_v3" ? undefined : input.speed;
       return dedupe("audioGen.generateDubbing", ctx.user.id, input, async () => {
         const result = await submitAndPollPoyoTTS({
           model: input.model as PoyoTTSModel,
           text: input.text,
           voice: input.voice,
-          speed: input.speed,
+          speed: effectiveSpeed,
         });
         writeAuditLog({
           ctx,
