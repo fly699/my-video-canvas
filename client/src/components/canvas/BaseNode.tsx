@@ -1,6 +1,7 @@
 import { memo, useState, useRef, useCallback, useEffect } from "react";
 import { Handle, Position, NodeResizer } from "@xyflow/react";
 import { getNodeConfig } from "../../lib/nodeConfig";
+import { CONNECTION_HINTS } from "../../lib/connectionRules";
 import type { NodeType } from "../../../../shared/types";
 import { useCanvasStore } from "../../hooks/useCanvasStore";
 import { NodeSelectedContext } from "../../contexts/NodeSelectedContext";
@@ -425,14 +426,19 @@ export const BaseNode = memo(function BaseNode({
       </div>{/* end inner overflow:hidden content wrapper */}
 
       {/* ── Connection Handles — outside overflow:hidden so ::before hit-area works ── */}
-      {showHandles && (
-        <>
-          <Handle type="target" position={Position.Left}   id="input"  style={{ ...targetHandle, top: "50%", left: -7 }} />
-          <Handle type="source" position={Position.Right}  id="output" style={{ ...sourceHandle, top: "50%", right: -7 }} />
-          <Handle type="target" position={Position.Top}    id="top"    style={{ ...targetHandle, left: "50%", top: -7 }} />
-          <Handle type="source" position={Position.Bottom} id="bottom" style={{ ...sourceHandle, left: "50%", bottom: -7 }} />
-        </>
-      )}
+      {showHandles && (() => {
+        const hint = CONNECTION_HINTS[nodeType];
+        const inTitle = hint ? `${hint.label} 输入  ${hint.incoming}` : "输入";
+        const outTitle = hint ? `${hint.label} 输出  ${hint.outgoing}` : "输出";
+        return (
+          <>
+            <Handle type="target" position={Position.Left}   id="input"  style={{ ...targetHandle, top: "50%", left: -7 }} title={inTitle} />
+            <Handle type="source" position={Position.Right}  id="output" style={{ ...sourceHandle, top: "50%", right: -7 }} title={outTitle} />
+            <Handle type="target" position={Position.Top}    id="top"    style={{ ...targetHandle, left: "50%", top: -7 }} title={inTitle} />
+            <Handle type="source" position={Position.Bottom} id="bottom" style={{ ...sourceHandle, left: "50%", bottom: -7 }} title={outTitle} />
+          </>
+        );
+      })()}
     </div>
   );
 });
