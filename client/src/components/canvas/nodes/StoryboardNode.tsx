@@ -1,5 +1,6 @@
 import { memo, useCallback, useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
+import { TRPCClientError } from "@trpc/client";
 import { BaseNode } from "../BaseNode";
 import { useCanvasStore } from "../../../hooks/useCanvasStore";
 import type { StoryboardNodeData } from "../../../../../shared/types";
@@ -24,6 +25,16 @@ interface Props {
 
 const BORDER_DEFAULT = "var(--c-bd2)";
 const BORDER_FOCUS   = "oklch(0.65 0.20 160 / 0.6)";
+
+function formatAIError(err: unknown): string {
+  if (err instanceof TRPCClientError) {
+    if (err.data?.zodError) return "输入内容不符合要求，请检查字段长度";
+    if (err.data?.httpStatus === 500) return "服务器处理失败，请稍后重试";
+    if (err.message?.includes("fetch") || err.message?.includes("network")) return "网络连接失败，请检查网络后重试";
+    return err.message ?? "请求失败，请重试";
+  }
+  return "未知错误，请重试";
+}
 
 const fieldStyle: React.CSSProperties = {
   width: "100%",
@@ -152,7 +163,7 @@ export const StoryboardNode = memo(function StoryboardNode({ id, selected, data 
     },
     onError: (err) => {
       setExpandingPrompt(false);
-      toast.error("AI 扩写失败：" + err.message);
+      toast.error("AI 扩写失败：" + formatAIError(err));
     },
   });
 
@@ -165,7 +176,7 @@ export const StoryboardNode = memo(function StoryboardNode({ id, selected, data 
     },
     onError: (err) => {
       setExpandingDesc(false);
-      toast.error("AI 扩写失败：" + err.message);
+      toast.error("AI 扩写失败：" + formatAIError(err));
     },
   });
 
@@ -178,7 +189,7 @@ export const StoryboardNode = memo(function StoryboardNode({ id, selected, data 
     },
     onError: (err) => {
       setTranslating(false);
-      toast.error("翻译失败：" + err.message);
+      toast.error("翻译失败：" + formatAIError(err));
     },
   });
 
@@ -503,13 +514,13 @@ export const StoryboardNode = memo(function StoryboardNode({ id, selected, data 
               setExpandingDesc(true);
               aiExpandDescMutation.mutate({ text: payload.description.slice(0, 8000), mode: "expand", model: llmModel });
             }}
-            disabled={expandingDesc}
+            disabled={expandingDesc || expandingPrompt || translating}
             className="nodrag flex items-center gap-1 px-1.5 py-0.5 rounded-md text-[9px] font-medium transition-all"
             style={{
-              background: expandingDesc ? "var(--c-surface)" : "oklch(0.65 0.20 160 / 0.10)",
-              border: `1px solid ${expandingDesc ? "var(--c-bd2)" : "oklch(0.65 0.20 160 / 0.35)"}`,
-              color: expandingDesc ? "var(--c-t4)" : "oklch(0.65 0.20 160)",
-              cursor: expandingDesc ? "not-allowed" : "pointer",
+              background: (expandingDesc || expandingPrompt || translating) ? "var(--c-surface)" : "oklch(0.65 0.20 160 / 0.10)",
+              border: `1px solid ${(expandingDesc || expandingPrompt || translating) ? "var(--c-bd2)" : "oklch(0.65 0.20 160 / 0.35)"}`,
+              color: (expandingDesc || expandingPrompt || translating) ? "var(--c-t4)" : "oklch(0.65 0.20 160)",
+              cursor: (expandingDesc || expandingPrompt || translating) ? "not-allowed" : "pointer",
             }}
           >
             {expandingDesc ? <Loader2 className="w-2.5 h-2.5 animate-spin" /> : <Sparkles className="w-2.5 h-2.5" />}
@@ -565,17 +576,18 @@ export const StoryboardNode = memo(function StoryboardNode({ id, selected, data 
           <button
             onClick={() => {
               const text = payload.description?.trim() || payload.promptText?.trim();
-              if (!text) { toast.error("请先填写场景描述"); return; }
+              if (!text) { toast.error("请先填写场景描述或提示词"); return; }
               setTranslating(true);
               aiTranslateMutation.mutate({ text, mode: "translate_en", model: llmModel });
             }}
-            disabled={translating}
+            disabled={translating || expandingDesc || expandingPrompt}
+            title="将场景描述翻译为英文，结果写入提示词"
             className="nodrag flex items-center gap-1 px-1.5 py-0.5 rounded-md text-[9px] font-medium transition-all"
             style={{
-              background: translating ? "var(--c-surface)" : "oklch(0.68 0.22 300 / 0.10)",
-              border: `1px solid ${translating ? "var(--c-bd2)" : "oklch(0.68 0.22 300 / 0.35)"}`,
-              color: translating ? "var(--c-t4)" : "oklch(0.72 0.18 300)",
-              cursor: translating ? "not-allowed" : "pointer",
+              background: (translating || expandingDesc || expandingPrompt) ? "var(--c-surface)" : "oklch(0.68 0.22 300 / 0.10)",
+              border: `1px solid ${(translating || expandingDesc || expandingPrompt) ? "var(--c-bd2)" : "oklch(0.68 0.22 300 / 0.35)"}`,
+              color: (translating || expandingDesc || expandingPrompt) ? "var(--c-t4)" : "oklch(0.72 0.18 300)",
+              cursor: (translating || expandingDesc || expandingPrompt) ? "not-allowed" : "pointer",
             }}
           >
             {translating ? <Loader2 className="w-2.5 h-2.5 animate-spin" /> : <Languages className="w-2.5 h-2.5" />}
@@ -618,39 +630,53 @@ export const StoryboardNode = memo(function StoryboardNode({ id, selected, data 
         </div>
 
         {/* ── Reference image upload ── */}
-        <div className="flex items-center gap-1.5">
-          <input
-            ref={refInputRef}
-            type="file"
-            accept="image/*"
-            className="hidden"
-            onChange={handleRefUpload}
-          />
-          <button
-            onClick={() => refInputRef.current?.click()}
-            disabled={uploadingRef}
-            className="nodrag flex items-center gap-1 px-2 py-1 rounded text-[10px] transition-all flex-1"
-            style={{
-              background: "var(--c-input)",
-              borderWidth: 1,
-              borderStyle: "solid",
-              borderColor: "var(--c-bd2)",
-              color: "var(--c-t3)",
-              cursor: uploadingRef ? "not-allowed" : "pointer",
-            }}
-          >
-            {uploadingRef ? <Loader2 className="w-3 h-3 animate-spin" /> : <Upload className="w-3 h-3" />}
-            {payload.referenceImageUrl ? "更换参考图" : "上传参考图"}
-          </button>
-          {payload.referenceImageUrl && (
+        <div className="flex flex-col gap-1">
+          <div className="flex items-center gap-1.5">
+            <input
+              ref={refInputRef}
+              type="file"
+              accept="image/*"
+              className="hidden"
+              onChange={handleRefUpload}
+            />
             <button
-              onClick={() => updateNodeData(id, { referenceImageUrl: undefined })}
-              className="nodrag p-1 rounded transition-all"
-              style={{ background: "var(--c-input)", borderWidth: 1, borderStyle: "solid", borderColor: "var(--c-bd2)", color: "var(--c-t3)" }}
-              title="清除参考图"
+              onClick={() => refInputRef.current?.click()}
+              disabled={uploadingRef}
+              className="nodrag flex items-center gap-1 px-2 py-1 rounded text-[10px] transition-all flex-1"
+              style={{
+                background: "var(--c-input)",
+                borderWidth: 1,
+                borderStyle: "solid",
+                borderColor: "var(--c-bd2)",
+                color: "var(--c-t3)",
+                cursor: uploadingRef ? "not-allowed" : "pointer",
+              }}
             >
-              <X className="w-3 h-3" />
+              {uploadingRef ? <Loader2 className="w-3 h-3 animate-spin" /> : <Upload className="w-3 h-3" />}
+              {payload.referenceImageUrl ? "更换参考图" : "上传参考图"}
             </button>
+            {payload.referenceImageUrl && (
+              <button
+                onClick={() => updateNodeData(id, { referenceImageUrl: undefined })}
+                className="nodrag p-1 rounded transition-all"
+                style={{ background: "var(--c-input)", borderWidth: 1, borderStyle: "solid", borderColor: "var(--c-bd2)", color: "var(--c-t3)" }}
+                title="清除参考图"
+              >
+                <X className="w-3 h-3" />
+              </button>
+            )}
+          </div>
+          {/* Priority hint: when this node has its own referenceImageUrl, CharacterNode's ref is silently ignored */}
+          {connectedCharWithRef && payload.referenceImageUrl && (
+            <p style={{ fontSize: 9.5, color: "oklch(0.72 0.18 55)", lineHeight: 1.4, margin: 0 }}>
+              本节点参考图优先：已连接角色节点的参考图不会用于生图
+            </p>
+          )}
+          {/* Hint: when no local ref but CharacterNode has one, show it will be used */}
+          {connectedCharWithRef && !payload.referenceImageUrl && (
+            <p style={{ fontSize: 9.5, color: "var(--c-t4)", lineHeight: 1.4, margin: 0 }}>
+              将使用已连接角色节点的参考图
+            </p>
           )}
         </div>
 
