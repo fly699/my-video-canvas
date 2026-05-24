@@ -1,4 +1,4 @@
-import { memo, useCallback, useRef, useState } from "react";
+import { memo, useCallback, useEffect, useRef, useState } from "react";
 import { Handle, Position } from "@xyflow/react";
 import { BaseNode } from "../BaseNode";
 import { useCanvasStore } from "../../../hooks/useCanvasStore";
@@ -62,6 +62,11 @@ const SOUL_SIZES = [
   "1024x1280", "1024x1536", "1280x1024", "1536x1024",
 ];
 
+// Per-model aspect ratio whitelists — protect downstream APIs from cross-model contamination
+const POYO_ASPECT_RATIOS = ["1:1", "16:9", "9:16", "4:3", "3:4", "21:9"] as const;
+const REVE_ASPECT_RATIOS = ["21:9", "16:9", "4:3", "3:2", "1:1", "2:3", "3:4", "9:16", "9:21"] as const;
+const FLUX_PRO_ASPECT_RATIOS = ["16:9", "4:3", "1:1", "3:4", "9:16"] as const;
+
 const MODELS = IMAGE_MODELS as unknown as { value: ImageGenModel; label: string; desc: string; group: string }[];
 
 export const ImageGenNode = memo(function ImageGenNode({ id, selected, data }: Props) {
@@ -70,14 +75,24 @@ export const ImageGenNode = memo(function ImageGenNode({ id, selected, data }: P
   const [uploading, setUploading] = useState(false);
   const [lightboxIndex, setLightboxIndex] = useState<number | null>(null);
   const [paramsExpanded, setParamsExpanded] = useState(false);
-  const [seedLocked, setSeedLocked] = useState(payload.seed != null);
+  // Derived, not local state — stays in sync with collaboration/undo updates
+  const seedLocked = payload.seed != null;
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   // Determine if we are in batch/grid mode
   const hasMultiple = (payload.imageUrls?.length ?? 0) > 1;
 
+  // Reset lightbox when image data shape changes (avoids out-of-bounds index after batch→single switch)
+  useEffect(() => {
+    if (lightboxIndex === null) return;
+    const len = hasMultiple ? (payload.imageUrls?.length ?? 0) : (payload.imageUrl ? 1 : 0);
+    if (lightboxIndex >= len) setLightboxIndex(null);
+  }, [hasMultiple, payload.imageUrls, payload.imageUrl, lightboxIndex]);
+
   const genMutation = trpc.imageGen.generate.useMutation({
     onSuccess: (result) => {
+      // Guard: node may have been deleted while generation was in flight
+      if (!useCanvasStore.getState().nodes.some((n) => n.id === id)) return;
       if (result.urls && result.urls.length > 1) {
         updateNodeData(id, { imageUrls: result.urls, imageUrl: result.urls[0] });
         toast.success(`批量生成完成，共 ${result.urls.length} 张图像`);
@@ -95,8 +110,10 @@ export const ImageGenNode = memo(function ImageGenNode({ id, selected, data }: P
 
   const uploadMutation = trpc.upload.uploadImage.useMutation({
     onSuccess: (result) => {
-      updateNodeData(id, { referenceImageUrl: result.url });
       setUploading(false);
+      // Guard: node may have been deleted while upload was in flight
+      if (!useCanvasStore.getState().nodes.some((n) => n.id === id)) return;
+      updateNodeData(id, { referenceImageUrl: result.url });
       toast.success("参考图上传成功");
     },
     onError: (err) => {
@@ -133,17 +150,24 @@ export const ImageGenNode = memo(function ImageGenNode({ id, selected, data }: P
   }, [id, payload.seed]);
 
   const handleGenerate = () => {
+    if (genMutation.isPending) return;
     if (!payload.prompt?.trim()) { toast.error("请先填写提示词"); return; }
+    const isPoyo = payload.model === "poyo_flux" || payload.model === "poyo_sdxl" || payload.model === "poyo_gpt_image" ||
+                   payload.model === "poyo_seedream" || payload.model === "poyo_grok_image" || payload.model === "poyo_wan_image";
+    const isReveOrSeedream = payload.model === "hf_reve" || payload.model === "hf_seedream_v4" || payload.model === "hf_flux_pro";
+    const poyoAspect = (POYO_ASPECT_RATIOS as readonly string[]).includes(payload.aspectRatio ?? "") ? payload.aspectRatio : undefined;
+    const reveAspectAllowed: readonly string[] = payload.model === "hf_flux_pro" ? FLUX_PRO_ASPECT_RATIOS : REVE_ASPECT_RATIOS;
+    const reveAspect = reveAspectAllowed.includes(payload.reveAspectRatio ?? "") ? payload.reveAspectRatio : undefined;
+    const fluxNum = ([1, 2, 3, 4] as number[]).includes(payload.fluxNumImages as number) ? (payload.fluxNumImages as 1 | 2 | 3 | 4) : undefined;
     genMutation.mutate({
       prompt: payload.prompt,
       negativePrompt: payload.negativePrompt,
       style: payload.style,
       referenceImageUrl: payload.referenceImageUrl,
-      model: payload.model,
+      model: payload.model || undefined,
       // Poyo image model params
-      ...((payload.model === "poyo_flux" || payload.model === "poyo_sdxl" || payload.model === "poyo_gpt_image" ||
-           payload.model === "poyo_seedream" || payload.model === "poyo_grok_image" || payload.model === "poyo_wan_image") ? {
-        poyoAspectRatio: payload.aspectRatio,
+      ...(isPoyo ? {
+        poyoAspectRatio: poyoAspect,
         ...(payload.model === "poyo_gpt_image" ? { poyoQuality: payload.poyoQuality } : {}),
       } : {}),
       // Soul Standard specific params
@@ -155,15 +179,15 @@ export const ImageGenNode = memo(function ImageGenNode({ id, selected, data }: P
         enhancePrompt: payload.enhancePrompt,
       } : {}),
       // Reve / Seedream v4 / Flux Pro aspect ratio
-      ...(payload.model === "hf_reve" || payload.model === "hf_seedream_v4" || payload.model === "hf_flux_pro" ? {
-        reveAspectRatio: payload.reveAspectRatio,
+      ...(isReveOrSeedream ? {
+        reveAspectRatio: reveAspect,
         ...(payload.model === "hf_reve" ? { reveResolution: payload.reveResolution } : {}),
       } : {}),
       // Flux Pro Kontext extra params
       ...(payload.model === "hf_flux_pro" ? {
         fluxGuidanceScale: payload.fluxGuidanceScale,
         fluxSeed: payload.fluxSeed,
-        fluxNumImages: payload.fluxNumImages,
+        fluxNumImages: fluxNum,
       } : {}),
       projectId: data.projectId,
     });
@@ -172,13 +196,15 @@ export const ImageGenNode = memo(function ImageGenNode({ id, selected, data }: P
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
-    if (file.size > 16 * 1024 * 1024) { toast.error("文件不能超过 16 MB"); return; }
+    if (!file.type.startsWith("image/")) { toast.error("请选择图片文件"); e.target.value = ""; return; }
+    if (file.size > 16 * 1024 * 1024) { toast.error("文件不能超过 16 MB"); e.target.value = ""; return; }
     setUploading(true);
     const reader = new FileReader();
     reader.onload = () => {
       const base64 = (reader.result as string).split(",")[1];
       uploadMutation.mutate({ base64, mimeType: file.type, filename: file.name });
     };
+    reader.onerror = () => { setUploading(false); toast.error("文件读取失败"); };
     reader.readAsDataURL(file);
     e.target.value = "";
   };
@@ -204,16 +230,14 @@ export const ImageGenNode = memo(function ImageGenNode({ id, selected, data }: P
     if (!url) return;
     const a = document.createElement("a");
     const filename = `generated-${Date.now()}.png`;
-    // For same-origin storage paths (/manus-storage/...), download directly
-    if (url.startsWith("/") || url.startsWith(window.location.origin)) {
-      a.href = url;
-      a.download = filename;
-    } else {
-      // For external HTTPS URLs, route through image-proxy
-      a.href = `/api/image-proxy?url=${encodeURIComponent(url)}&download=1`;
-      a.download = filename;
-    }
+    // Same-origin check: must start with single "/" (not protocol-relative "//host/...") or origin prefix
+    const isSameOrigin = (url.startsWith("/") && !url.startsWith("//")) || url.startsWith(window.location.origin);
+    a.href = isSameOrigin ? url : `/api/image-proxy?url=${encodeURIComponent(url)}&download=1`;
+    a.download = filename;
+    // Firefox requires <a> in DOM for download to trigger
+    document.body.appendChild(a);
     a.click();
+    document.body.removeChild(a);
   };
 
   const handleDownloadSelected = () => handleDownloadImage(payload.imageUrl ?? "");
@@ -419,7 +443,7 @@ export const ImageGenNode = memo(function ImageGenNode({ id, selected, data }: P
                 <button
                   onClick={() => setLightboxIndex(0)}
                   className="nodrag flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-medium"
-                  style={{ background: "oklch(0.14 0.007 260 / 0.8)  /* alpha – intentional */", borderWidth: 1, borderStyle: "solid", borderColor: "var(--c-bd3)", color: "var(--c-t2)" }}
+                  style={{ background: "oklch(0.14 0.007 260 / 0.8)", borderWidth: 1, borderStyle: "solid", borderColor: "var(--c-bd3)", color: "var(--c-t2)" }}
                 >
                   <ZoomIn className="w-3 h-3" />
                   放大
@@ -427,7 +451,7 @@ export const ImageGenNode = memo(function ImageGenNode({ id, selected, data }: P
                 <button
                   onClick={handleDownloadSelected}
                   className="nodrag flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-medium"
-                  style={{ background: "oklch(0.14 0.007 260 / 0.8)  /* alpha – intentional */", borderWidth: 1, borderStyle: "solid", borderColor: "var(--c-bd3)", color: "var(--c-t2)" }}
+                  style={{ background: "oklch(0.14 0.007 260 / 0.8)", borderWidth: 1, borderStyle: "solid", borderColor: "var(--c-bd3)", color: "var(--c-t2)" }}
                 >
                   <Download className="w-3 h-3" />
                   下载
@@ -642,12 +666,10 @@ export const ImageGenNode = memo(function ImageGenNode({ id, selected, data }: P
                   <button
                     onClick={() => {
                       if (seedLocked) {
-                        setSeedLocked(false);
                         update("seed", undefined);
                       } else {
                         const randomSeed = Math.floor(Math.random() * 2147483647);
                         update("seed", randomSeed);
-                        setSeedLocked(true);
                       }
                     }}
                     className="nodrag flex items-center gap-0.5 px-1.5 py-0.5 rounded text-[9px] transition-all"
@@ -896,16 +918,20 @@ export const ImageGenNode = memo(function ImageGenNode({ id, selected, data }: P
       />
 
       {/* Lightbox */}
-      {lightboxIndex !== null && (
-        <ImageLightbox
-          images={hasMultiple ? payload.imageUrls! : [payload.imageUrl!]}
-          currentIndex={lightboxIndex}
-          selectedUrl={payload.imageUrl}
-          onClose={() => setLightboxIndex(null)}
-          onNavigate={(idx) => setLightboxIndex(idx)}
-          onSelect={(url) => { handleSelectImage(url); setLightboxIndex(null); }}
-        />
-      )}
+      {lightboxIndex !== null && (() => {
+        const images = hasMultiple ? (payload.imageUrls ?? []) : (payload.imageUrl ? [payload.imageUrl] : []);
+        if (images.length === 0 || lightboxIndex >= images.length) return null;
+        return (
+          <ImageLightbox
+            images={images}
+            currentIndex={lightboxIndex}
+            selectedUrl={payload.imageUrl}
+            onClose={() => setLightboxIndex(null)}
+            onNavigate={(idx) => setLightboxIndex(idx)}
+            onSelect={(url) => { handleSelectImage(url); setLightboxIndex(null); }}
+          />
+        );
+      })()}
     </BaseNode>
   );
 });
