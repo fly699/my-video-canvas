@@ -131,7 +131,7 @@ function ToolBtn({
       <TooltipContent side="right" className="text-xs">
         <span>{label}</span>
         {kbd && (
-          <kbd className="ml-2 px-1.5 py-0.5 rounded text-[10px] bg-white/10 font-mono">
+          <kbd className="ml-2 px-1.5 py-0.5 rounded text-[10px] bg-[var(--c-elevated)] font-mono">
             {kbd}
           </kbd>
         )}
@@ -142,7 +142,7 @@ function ToolBtn({
 
 // ── Divider ───────────────────────────────────────────────────────────────────
 function ToolDivider() {
-  return <div className="w-5 h-px bg-white/8 mx-auto my-1" />;
+  return <div className="w-5 h-px mx-auto my-1" style={{ background: "var(--c-bd1)" }} />;
 }
 
 // ── Snapshot panel ────────────────────────────────────────────────────────────
@@ -929,7 +929,7 @@ function CanvasInner({ projectId }: { projectId: number }) {
               </button>
             </TooltipTrigger>
             <TooltipContent side="bottom" className="text-xs">
-              快速模板 <kbd className="ml-1 px-1 py-0.5 rounded text-[10px] bg-white/10 font-mono">⌘T</kbd>
+              快速模板 <kbd className="ml-1 px-1 py-0.5 rounded text-[10px] bg-[var(--c-elevated)] font-mono">⌘T</kbd>
             </TooltipContent>
           </Tooltip>
 
@@ -944,7 +944,7 @@ function CanvasInner({ projectId }: { projectId: number }) {
               </button>
             </TooltipTrigger>
             <TooltipContent side="bottom" className="text-xs">
-              搜索节点 <kbd className="ml-1 px-1 py-0.5 rounded text-[10px] bg-white/10 font-mono">⌘K</kbd>
+              搜索节点 <kbd className="ml-1 px-1 py-0.5 rounded text-[10px] bg-[var(--c-elevated)] font-mono">⌘K</kbd>
             </TooltipContent>
           </Tooltip>
 
@@ -1038,7 +1038,7 @@ function CanvasInner({ projectId }: { projectId: number }) {
               </button>
             </TooltipTrigger>
             <TooltipContent side="bottom" className="text-xs">
-              撤销 <kbd className="ml-1 px-1 py-0.5 rounded text-[10px] bg-white/10 font-mono">⌘Z</kbd>
+              撤销 <kbd className="ml-1 px-1 py-0.5 rounded text-[10px] bg-[var(--c-elevated)] font-mono">⌘Z</kbd>
             </TooltipContent>
           </Tooltip>
 
@@ -1054,7 +1054,7 @@ function CanvasInner({ projectId }: { projectId: number }) {
               </button>
             </TooltipTrigger>
             <TooltipContent side="bottom" className="text-xs">
-              重做 <kbd className="ml-1 px-1 py-0.5 rounded text-[10px] bg-white/10 font-mono">⌘⇧Z</kbd>
+              重做 <kbd className="ml-1 px-1 py-0.5 rounded text-[10px] bg-[var(--c-elevated)] font-mono">⌘⇧Z</kbd>
             </TooltipContent>
           </Tooltip>
 
@@ -1069,7 +1069,7 @@ function CanvasInner({ projectId }: { projectId: number }) {
               </button>
             </TooltipTrigger>
             <TooltipContent side="bottom" className="text-xs">
-              保存 <kbd className="ml-1 px-1 py-0.5 rounded text-[10px] bg-white/10 font-mono">⌘S</kbd>
+              保存 <kbd className="ml-1 px-1 py-0.5 rounded text-[10px] bg-[var(--c-elevated)] font-mono">⌘S</kbd>
             </TooltipContent>
           </Tooltip>
 
@@ -1404,9 +1404,9 @@ function CanvasInner({ projectId }: { projectId: number }) {
                   window.addEventListener("mouseup", onUp);
                 }}
               >
-                <svg width="9" height="9" viewBox="0 0 9 9" fill="none">
-                  <line x1="0.5" y1="8.5" x2="8.5" y2="0.5" stroke="white" strokeWidth="1.5" strokeLinecap="round"/>
-                  <line x1="0.5" y1="4.5" x2="4.5" y2="0.5" stroke="white" strokeWidth="1.5" strokeLinecap="round"/>
+                <svg width="9" height="9" viewBox="0 0 9 9" fill="none" style={{ color: "var(--c-t3)" }}>
+                  <line x1="0.5" y1="8.5" x2="8.5" y2="0.5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/>
+                  <line x1="0.5" y1="4.5" x2="4.5" y2="0.5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/>
                 </svg>
               </div>
             </div>
@@ -1567,7 +1567,7 @@ function CanvasInner({ projectId }: { projectId: number }) {
                 </button>
               </TooltipTrigger>
               <TooltipContent side="top" className="text-xs">
-                运行工作流 <kbd className="ml-1 px-1 py-0.5 rounded text-[10px] bg-white/10 font-mono">Shift+R</kbd>
+                运行工作流 <kbd className="ml-1 px-1 py-0.5 rounded text-[10px] bg-[var(--c-elevated)] font-mono">Shift+R</kbd>
               </TooltipContent>
             </Tooltip>
 

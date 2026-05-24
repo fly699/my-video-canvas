@@ -99,7 +99,7 @@ export function TimelinePanel({ onClose }: TimelinePanelProps) {
         left: 0,
         right: 0,
         height: 148,
-        background: "oklch(0.09 0.006 260 / 0.97)",
+        background: "color-mix(in oklch, var(--c-base) 97%, transparent)",
         borderTop: "1px solid var(--c-bd1)",
         backdropFilter: "blur(20px)",
         display: "flex",

@@ -249,7 +249,7 @@ export const CustomEdge = memo(function CustomEdge({
                 display: "flex",
                 alignItems: "center",
                 gap: 2,
-                background: "oklch(0.13 0.007 260 / 0.95)",
+                background: "var(--c-base)",
                 border: `1px solid ${selected ? "oklch(0.68 0.22 285 / 0.45)" : "var(--c-bd3)"}`,
                 borderRadius: 20,
                 padding: "3px 6px",
@@ -314,7 +314,7 @@ export const CustomEdge = memo(function CustomEdge({
           ) : hasLabel ? (
             <div
               style={{
-                background: "oklch(0.12 0.007 260 / 0.90)",
+                background: "var(--c-base)",
                 border: "1px solid var(--c-bd2)",
                 borderRadius: 20,
                 padding: "2px 8px",
