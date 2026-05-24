@@ -37,8 +37,11 @@ const ThemeContext = createContext<ThemeContextType | undefined>(undefined);
 export function ThemeProvider({ children }: { children: React.ReactNode }) {
   const [theme, setThemeState] = useState<Theme>(() => {
     const legacy = localStorage.getItem("theme");
-    if (legacy) { localStorage.setItem("avc:theme", legacy); localStorage.removeItem("theme"); }
-    return (localStorage.getItem("avc:theme") as Theme) || "dark";
+    if (legacy && !localStorage.getItem("avc:theme")) {
+      try { localStorage.setItem("avc:theme", legacy); localStorage.removeItem("theme"); } catch { /* quota */ }
+    }
+    const stored = localStorage.getItem("avc:theme") as Theme;
+    return THEMES.some((t) => t.id === stored) ? stored : "dark";
   });
 
   useEffect(() => {

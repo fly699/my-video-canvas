@@ -7,6 +7,19 @@
       name="viewport"
       content="width=device-width, initial-scale=1.0, maximum-scale=1" />
     <title>AI Video Canvas</title>
+  <script>
+    (function() {
+      try {
+        var t = localStorage.getItem("avc:theme") || localStorage.getItem("theme") || "dark";
+        var valid = ["dark","dim","midnight","forest","rose","ocean","light","warm"];
+        if (valid.indexOf(t) === -1) t = "dark";
+        document.documentElement.setAttribute("data-theme", t);
+        if (t !== "light" && t !== "warm") document.documentElement.classList.add("dark");
+        var m = localStorage.getItem("avc:canvas-mode") || "professional";
+        document.documentElement.setAttribute("data-canvas-mode", m === "creative" ? "creative" : "professional");
+      } catch(e) {}
+    })();
+  </script>
   </head>
 
   <body>

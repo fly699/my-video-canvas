@@ -41,7 +41,7 @@ export const BaseNode = memo(function BaseNode({
   const { mode: canvasMode } = useCanvasMode();
   const { theme } = useTheme();
   const isCreative = canvasMode === "creative";
-  const isLight = theme === "light" || isCreative;
+  const isLight = theme === "light" || theme === "warm" || isCreative;
   const hasHero = heroMedia != null;
 
   // Workflow run status
@@ -76,8 +76,8 @@ export const BaseNode = memo(function BaseNode({
     if (e.key === "Escape") cancelTitleEdit();
   }, [handleTitleSave, cancelTitleEdit]);
 
-  // Sync title when prop changes
-  useEffect(() => { setTitleValue(title); }, [title]);
+  // Sync title when prop changes (guard: don't overwrite in-progress edits)
+  useEffect(() => { if (!editingTitle) setTitleValue(title); }, [title, editingTitle]);
 
   // Entry animation
   const [entered, setEntered] = useState(false);

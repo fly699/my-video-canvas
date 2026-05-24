@@ -18,6 +18,8 @@ export function ThemeSwitcher() {
             key={t.id}
             onClick={() => setTheme(t.id)}
             title={t.label}
+            aria-label={t.label}
+            aria-pressed={isActive}
             style={{
               width: 26,
               height: 26,

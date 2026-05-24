@@ -1448,7 +1448,7 @@ function CanvasInner({ projectId }: { projectId: number }) {
               background: "color-mix(in oklch, var(--c-base) 95%, transparent)",
               backdropFilter: "blur(24px)",
               border: "1px solid var(--c-bd2)",
-              boxShadow: "0 8px 40px oklch(0 0 0 / 0.60), 0 2px 8px oklch(0 0 0 / 0.40), 0 0 0 1px oklch(0.20 0.008 260 / 0.5)",
+              boxShadow: "var(--c-node-shadow-hover), 0 0 0 1px var(--c-bd2)",
             }}
           >
             {/* Add node — primary action */}
