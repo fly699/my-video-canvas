@@ -216,9 +216,11 @@ export const VideoTaskNode = memo(function VideoTaskNode({ id, selected, data }:
   const updateNodeData = useCanvasStore((s) => s.updateNodeData);
   const payload = data.payload;
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
-  // Track whether the next createTaskMutation success should also write the node payload
-  // (single-mode submits should; parallel-mode submits should NOT — they update parallelResults only)
-  const writePayloadOnNextSuccessRef = useRef(true);
+  // Count of parallel-mode createTaskMutation calls currently in flight.
+  // When > 0, the shared mutation's global onSuccess/onError must NOT write to payload —
+  // the per-mutate handler updates parallelResults instead. A single counter (vs. boolean
+  // flag) correctly handles 2+ concurrent parallel submits whose globals fire in arbitrary order.
+  const parallelInFlightRef = useRef(0);
   // Auto-collapse params when node is deselected; expand when selected
   const [paramsExpanded, setParamsExpanded] = useState(!!selected);
   useEffect(() => { setParamsExpanded(!!selected); }, [selected]);
@@ -231,19 +233,23 @@ export const VideoTaskNode = memo(function VideoTaskNode({ id, selected, data }:
 
   const createTaskMutation = trpc.videoTasks.create.useMutation({
     onSuccess: (task) => {
-      // Guard: node may have been deleted while mutation was in flight
-      if (!useCanvasStore.getState().nodes.some((n) => n.id === id)) return;
-      // In parallel mode the per-mutate onSuccess writes to parallelResults; don't pollute node payload
-      if (!writePayloadOnNextSuccessRef.current) {
-        writePayloadOnNextSuccessRef.current = true;
+      // If any parallel submit is in flight, suppress global payload write for this call.
+      // Decrement the counter so subsequent globals know when all parallel submits are done.
+      if (parallelInFlightRef.current > 0) {
+        parallelInFlightRef.current -= 1;
         return;
       }
+      // Guard: node may have been deleted while mutation was in flight
+      if (!useCanvasStore.getState().nodes.some((n) => n.id === id)) return;
       updateNodeData(id, { status: "processing", taskId: task.id, externalTaskId: task.externalTaskId ?? undefined });
       toast.success("视频任务已提交");
     },
     onError: (err) => {
-      // Reset flag so next submit isn't stuck in parallel-skip mode
-      writePayloadOnNextSuccessRef.current = true;
+      if (parallelInFlightRef.current > 0) {
+        parallelInFlightRef.current -= 1;
+        // Per-call onError is responsible for surfacing the failure in parallelResults
+        return;
+      }
       toast.error("提交失败：" + err.message);
     },
   });
@@ -360,7 +366,6 @@ export const VideoTaskNode = memo(function VideoTaskNode({ id, selected, data }:
     if (payload.referenceImageUrl && !isSafeMediaUrl(payload.referenceImageUrl)) {
       toast.error("参考图 URL 仅支持 http(s) 或相对路径"); return;
     }
-    writePayloadOnNextSuccessRef.current = true;
     createTaskMutation.mutate({
       projectId: data.projectId, nodeId: id,
       provider: payload.provider, prompt: payload.prompt,
@@ -585,12 +590,14 @@ export const VideoTaskNode = memo(function VideoTaskNode({ id, selected, data }:
                     toast.error("已选择的图生视频模型需要参考图 URL"); return;
                   }
                   toast.info(`正在并行提交 ${parallelProviders.length} 个任务...`);
+                  // Increment counter ONCE per mutate call so global onSuccess/onError can correctly suppress payload writes
+                  parallelInFlightRef.current += parallelProviders.length;
                   parallelProviders.forEach(provider => {
                     setParallelResults(prev => ({ ...prev, [provider]: { status: "processing" } }));
-                    // Suppress global onSuccess payload write for this parallel mutate
-                    writePayloadOnNextSuccessRef.current = false;
                     createTaskMutation.mutate(
-                      { nodeId: id, projectId: data.projectId, provider, prompt: payload.prompt!, negativePrompt: payload.negativePrompt, referenceImageUrl: payload.referenceImageUrl, params: payload.params },
+                      // Send only prompt/negative/refImage in parallel mode — per-provider params
+                      // diverge enough that sharing one params bag tends to break some providers
+                      { nodeId: id, projectId: data.projectId, provider, prompt: payload.prompt!, negativePrompt: payload.negativePrompt, referenceImageUrl: payload.referenceImageUrl },
                       {
                         onSuccess: (result) => {
                           setParallelResults(prev => ({ ...prev, [provider]: { status: "processing", taskId: result.id } }));
@@ -679,7 +686,11 @@ export const VideoTaskNode = memo(function VideoTaskNode({ id, selected, data }:
           </div>
           <select
             value={payload.provider}
-            onChange={(e) => handleChange("provider", e.target.value as VideoProvider)}
+            onChange={(e) => {
+              // Reset params on provider change — they're tightly bound to the previous provider's
+              // param schema and would otherwise leak across submits to a model that doesn't understand them
+              updateNodeData(id, { provider: e.target.value as VideoProvider, params: {} });
+            }}
             disabled={isLocked}
             className="nodrag"
             style={{ ...fieldStyle, cursor: isLocked ? "not-allowed" : "pointer", opacity: isLocked ? 0.5 : 1 }}
