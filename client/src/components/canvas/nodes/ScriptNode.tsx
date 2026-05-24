@@ -941,7 +941,7 @@ export const ScriptNode = memo(function ScriptNode({ id, selected, data }: Props
                     }}
                     disabled={anyPending || !payload.content?.trim()}
                     className="nodrag flex items-center justify-center gap-1.5 w-full py-2 rounded-lg text-xs font-medium transition-all"
-                    style={{ background: styleTransferMutation.isPending ? "var(--c-surface)" : ADV_ACCENT_A(0.12), border: `1px solid ${anyPending ? BORDER_DEFAULT : ADV_ACCENT_A(0.4)}`, color: anyPending || !payload.content?.trim() ? "var(--c-t4)" : ADV_ACCENT, cursor: anyPending || !payload.content?.trim() ? "not-allowed" : "pointer" }}
+                    style={{ background: anyPending ? "var(--c-surface)" : ADV_ACCENT_A(0.12), border: `1px solid ${anyPending ? BORDER_DEFAULT : ADV_ACCENT_A(0.4)}`, color: anyPending || !payload.content?.trim() ? "var(--c-t4)" : ADV_ACCENT, cursor: anyPending || !payload.content?.trim() ? "not-allowed" : "pointer" }}
                   >
                     {styleTransferMutation.isPending ? <Loader2 className="w-3 h-3 animate-spin" /> : <Layers2 className="w-3 h-3" />}
                     {styleTransferMutation.isPending ? `迁移为「${selectedStyle}」风格中...` : `迁移为「${selectedStyle}」风格`}

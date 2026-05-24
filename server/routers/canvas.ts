@@ -57,6 +57,12 @@ async function assertTaskOwner(taskId: number, userId: number) {
   return task;
 }
 
+function guardUrl(url: string): void {
+  try { assertSafeUrl(url); } catch {
+    throw new TRPCError({ code: "BAD_REQUEST", message: "不允许访问私有/本地主机" });
+  }
+}
+
 // ── Projects ──────────────────────────────────────────────────────────────────
 
 export const projectsRouter = router({
@@ -557,11 +563,7 @@ export const imageGenRouter = router({
       if (input.projectId != null) {
         await assertProjectOwner(input.projectId, ctx.user.id);
       }
-      if (input.referenceImageUrl) {
-        try { assertSafeUrl(input.referenceImageUrl); } catch {
-          throw new TRPCError({ code: "BAD_REQUEST", message: "referenceImageUrl 不允许指向私有地址" });
-        }
-      }
+      if (input.referenceImageUrl) guardUrl(input.referenceImageUrl);
       // Server-side idempotency: collapse concurrent identical submits (e.g. devtools
       // replay, browser retries) into a single external image-gen call & charge.
       return dedupe("imageGen", ctx.user.id, input, async () => {
@@ -1070,8 +1072,8 @@ export const clipRouter = router({
     )
     .mutation(async ({ ctx, input }) => {
       await assertWhitelisted(ctx);
-      assertSafeUrl(input.inputUrl);
-      if (input.audioUrl) assertSafeUrl(input.audioUrl);
+      guardUrl(input.inputUrl);
+      if (input.audioUrl) guardUrl(input.audioUrl);
       const result = await trimVideo(input);
       return { url: result.url, duration: result.duration };
     }),
@@ -1080,7 +1082,7 @@ export const clipRouter = router({
     .input(z.object({ url: z.string().url() }))
     .query(async ({ ctx, input }) => {
       await assertWhitelisted(ctx);
-      assertSafeUrl(input.url);
+      guardUrl(input.url);
       const duration = await getVideoDuration(input.url);
       return { duration };
     }),
@@ -1094,7 +1096,7 @@ export const clipRouter = router({
     }))
     .mutation(async ({ ctx, input }) => {
       await assertWhitelisted(ctx);
-      assertSafeUrl(input.inputUrl);
+      guardUrl(input.inputUrl);
       return dedupe("clip.smartCut", ctx.user.id, input, async () => {
         const transcription = await transcribeAudio({ audioUrl: input.inputUrl });
         if ("error" in transcription) {
@@ -1134,7 +1136,12 @@ export const clipRouter = router({
         if (keepSegments.length === 0) throw new TRPCError({ code: "UNPROCESSABLE_CONTENT", message: "AI 未找到可保留片段，请调低激进度后重试" });
         const originalDuration = segments.length > 0 ? Math.max(...segments.map((s) => s.end)) : 0;
         const result = await smartCutVideo({ inputUrl: input.inputUrl, keepSegments });
-        return { url: result.url, outputDuration: result.outputDuration, originalDuration };
+        // Clamp outputDuration: AI may return end times beyond actual video EOF;
+        // FFmpeg silently trims to EOF so the true output is shorter than the summed segment durations.
+        const outputDuration = originalDuration > 0
+          ? Math.min(result.outputDuration, originalDuration)
+          : result.outputDuration;
+        return { url: result.url, outputDuration, originalDuration };
       });
     }),
 
@@ -1146,7 +1153,7 @@ export const clipRouter = router({
     }))
     .mutation(async ({ ctx, input }) => {
       await assertWhitelisted(ctx);
-      assertSafeUrl(input.referenceImageUrl);
+      guardUrl(input.referenceImageUrl);
       return dedupe("clip.poseControl", ctx.user.id, input, async () => {
         const result = await generateImage({
           prompt: input.prompt,
@@ -1173,8 +1180,8 @@ export const mergeRouter = router({
     )
     .mutation(async ({ ctx, input }) => {
       await assertWhitelisted(ctx);
-      for (const url of input.inputUrls) assertSafeUrl(url);
-      if (input.bgMusicUrl) assertSafeUrl(input.bgMusicUrl);
+      for (const url of input.inputUrls) guardUrl(url);
+      if (input.bgMusicUrl) guardUrl(input.bgMusicUrl);
       const result = await mergeVideos(input);
       return { url: result.url, duration: result.duration };
     }),
@@ -1193,7 +1200,7 @@ export const subtitleRouter = router({
       await assertWhitelisted(ctx);
       // (audioUrl, language) deterministically map to a Whisper transcription, so
       // dedupe by that pair — repeated submits during the long Whisper call collapse.
-      assertSafeUrl(input.audioUrl);
+      guardUrl(input.audioUrl);
       return dedupe("subtitle.transcribe", ctx.user.id, input, async () => {
         const result = await transcribeAudio({ audioUrl: input.audioUrl, language: input.language });
         if ("error" in result) {
@@ -1224,7 +1231,7 @@ export const subtitleRouter = router({
     )
     .mutation(async ({ ctx, input }) => {
       await assertWhitelisted(ctx);
-      assertSafeUrl(input.videoUrl);
+      guardUrl(input.videoUrl);
       const result = await burnSubtitles(input.videoUrl, input.entries as SubtitleEntry[], {
         fontSize: input.fontSize,
         fontColor: input.fontColor,
@@ -1250,7 +1257,7 @@ export const subtitleMotionRouter = router({
     .input(z.object({ audioUrl: z.string().url(), language: z.string().optional() }))
     .mutation(async ({ ctx, input }) => {
       await assertWhitelisted(ctx);
-      assertSafeUrl(input.audioUrl);
+      guardUrl(input.audioUrl);
       return dedupe("subtitleMotion.transcribe", ctx.user.id, input, async () => {
         const result = await transcribeAudio({ audioUrl: input.audioUrl, language: input.language });
         if ("error" in result) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: result.error });
@@ -1269,7 +1276,7 @@ export const subtitleMotionRouter = router({
     }))
     .mutation(async ({ ctx, input }) => {
       await assertWhitelisted(ctx);
-      assertSafeUrl(input.videoUrl);
+      guardUrl(input.videoUrl);
       return dedupe("subtitleMotion.burnMotion", ctx.user.id, input, async () => {
         const result = await burnAssSubtitles(
           input.videoUrl,
@@ -1334,9 +1341,9 @@ export const overlayRouter = router({
     )
     .mutation(async ({ ctx, input }) => {
       await assertWhitelisted(ctx);
-      assertSafeUrl(input.inputUrl);
-      if (input.overlayImageUrl) assertSafeUrl(input.overlayImageUrl);
-      if (input.pipVideoUrl) assertSafeUrl(input.pipVideoUrl);
+      guardUrl(input.inputUrl);
+      if (input.overlayImageUrl) guardUrl(input.overlayImageUrl);
+      if (input.pipVideoUrl) guardUrl(input.pipVideoUrl);
       const result = await overlayVideo(input);
       return { url: result.url };
     }),
