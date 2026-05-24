@@ -954,7 +954,7 @@ export const aiEnhanceRouter = router({
     .input(
       z.object({
         text: z.string().min(1).max(8000),
-        mode: z.enum(["expand", "translate_en", "polish", "storyboard_prompt", "translate_zh"]),
+        mode: z.enum(["expand", "translate_en", "polish", "storyboard_prompt", "translate_zh", "condense", "summarize"]),
         model: z.string().optional(),
       })
     )
@@ -978,6 +978,8 @@ Respond in the same language as the input. Output ONLY the polished text.`,
 Convert the given scene description into a detailed visual prompt for AI video/image generation.
 Include: camera angle, lens type, lighting setup, composition, color palette, atmosphere, action.
 Output an optimized English prompt under 80 words. Output ONLY the prompt text.`,
+        condense: `You are a professional script editor. Condense the given script to approximately 60% of its original length while preserving all key story beats, character names, plot points, and dramatic tension. Maintain the original writing style and language. Output ONLY the condensed text, nothing else.`,
+        summarize: `You are a professional story analyst. Extract a compelling one-to-two sentence synopsis from the given script or story content. Capture the core conflict, main characters, setting, and emotional tone. If the input is in Chinese, respond in Chinese. Output ONLY the synopsis, no labels or extra text.`,
       };
       const response = await invokeLLM({
         messages: [

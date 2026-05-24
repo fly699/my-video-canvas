@@ -4,7 +4,10 @@ import { useCanvasStore } from "../../../hooks/useCanvasStore";
 import type { ScriptNodeData } from "../../../../../shared/types";
 import { trpc } from "@/lib/trpc";
 import { toast } from "sonner";
-import { Sparkles, Loader2, ChevronDown, Clapperboard, Minus, Plus } from "lucide-react";
+import {
+  Sparkles, Loader2, ChevronDown, Clapperboard,
+  Minus, Plus, Copy, FileText, Check,
+} from "lucide-react";
 import { LLMModelPicker, type LLMModelId } from "../LLMModelPicker";
 
 interface Props {
@@ -32,6 +35,11 @@ const TARGET_MODELS = [
   { value: "wan",      label: "WAN 2.5",  desc: "阿里·结构化" },
   { value: "seedance", label: "Seedance", desc: "字节·写实" },
   { value: "dop",      label: "DoP",      desc: "Higgsfield·电影级" },
+];
+
+const POLISH_MODES = [
+  { value: "polish",   label: "润色" },
+  { value: "condense", label: "精简" },
 ];
 
 // ── Sub-components ────────────────────────────────────────────────────────────
@@ -113,19 +121,39 @@ export const ScriptNode = memo(function ScriptNode({ id, selected, data }: Props
   const { updateNodeData } = useCanvasStore();
   const payload = data.payload;
 
-  // LLM model (shared by all AI operations)
-  const [llmModel, setLlmModel] = useState<LLMModelId>("claude-sonnet-4-6");
+  // LLM model — persisted to payload
+  const [llmModel, setLlmModel] = useState<LLMModelId>((payload.aiLlmModel as LLMModelId) ?? "claude-sonnet-4-6");
+  const handleLlmModelChange = useCallback((m: LLMModelId) => {
+    setLlmModel(m);
+    updateNodeData(id, { aiLlmModel: m });
+  }, [id, updateNodeData]);
 
-  // AI 剧本创作 panel state
+  // AI 剧本创作 panel state — all persisted to payload
   const [showAiPanel, setShowAiPanel] = useState(false);
-  const [genre,       setGenre]       = useState(GENRES[0]);
-  const [style,       setStyle]       = useState(STYLES[0]);
-  const [mood,        setMood]        = useState(MOODS[0]);
-  const [targetModel, setTargetModel] = useState("");
-  const [aspectRatio, setAspectRatio] = useState("16:9");
-  const [sceneCount,  setSceneCount]  = useState(5);
+  const [genre,       setGenre]       = useState(payload.aiGenre       ?? GENRES[0]);
+  const [style,       setStyle]       = useState(payload.aiStyle       ?? STYLES[0]);
+  const [mood,        setMood]        = useState(payload.aiMood        ?? MOODS[0]);
+  const [targetModel, setTargetModel] = useState(payload.aiTargetModel ?? "");
+  const [aspectRatio, setAspectRatio] = useState(payload.aiAspectRatio ?? "16:9");
+  const [sceneCount,  setSceneCount]  = useState(Math.max(2, Math.min(12, payload.aiSceneCount ?? 5)));
+
+  // Polish mode selector
+  const [polishMode, setPolishMode] = useState<"polish" | "condense">("polish");
+
+  // Copy-to-clipboard state
+  const [copied, setCopied] = useState(false);
+
+  // Helpers to update AI panel param both locally and in payload
+  const setAndSaveGenre       = (v: string) => { setGenre(v);       updateNodeData(id, { aiGenre: v }); };
+  const setAndSaveStyle       = (v: string) => { setStyle(v);       updateNodeData(id, { aiStyle: v }); };
+  const setAndSaveMood        = (v: string) => { setMood(v);        updateNodeData(id, { aiMood: v }); };
+  const setAndSaveTargetModel = (v: string) => { setTargetModel(v); updateNodeData(id, { aiTargetModel: v }); };
+  const setAndSaveAspectRatio = (v: string) => { setAspectRatio(v); updateNodeData(id, { aiAspectRatio: v }); };
+  const setAndSaveSceneCount  = (v: number) => { setSceneCount(v);  updateNodeData(id, { aiSceneCount: v }); };
+
+  // Duration state — persisted to payload.totalDuration
   const initDuration = Math.max(10, Math.min(600, Number(payload.totalDuration) || 60));
-  const [duration,    setDuration]    = useState(initDuration);
+  const [duration,     setDuration]    = useState(initDuration);
   const [durationText, setDurationText] = useState(String(initDuration));
   const durationInputRef = useRef<HTMLInputElement>(null);
 
@@ -142,8 +170,7 @@ export const ScriptNode = memo(function ScriptNode({ id, selected, data }: Props
     updateNodeData(id, { totalDuration: v });
   }, [id, updateNodeData]);
 
-  // Sync local state when payload.totalDuration changes externally (collab / undo-redo)
-  // Skip if the input is currently focused to avoid overwriting mid-edit text.
+  // Sync duration when payload changes externally (collab / undo-redo)
   useEffect(() => {
     if (durationInputRef.current !== null && durationInputRef.current === document.activeElement) return;
     const v = Math.max(10, Math.min(600, Number(payload.totalDuration) || 60));
@@ -151,7 +178,20 @@ export const ScriptNode = memo(function ScriptNode({ id, selected, data }: Props
     setDurationText(String(v));
   }, [payload.totalDuration]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // ── Existing mutations ────────────────────────────────────────────────────
+  // Sync AI panel params when payload changes externally
+  useEffect(() => { if (payload.aiGenre)       setGenre(payload.aiGenre); },       [payload.aiGenre]);
+  useEffect(() => { if (payload.aiStyle)       setStyle(payload.aiStyle); },       [payload.aiStyle]);
+  useEffect(() => { if (payload.aiMood)        setMood(payload.aiMood); },         [payload.aiMood]);
+  useEffect(() => { if (payload.aiTargetModel !== undefined) setTargetModel(payload.aiTargetModel); }, [payload.aiTargetModel]);
+  useEffect(() => { if (payload.aiAspectRatio) setAspectRatio(payload.aiAspectRatio); }, [payload.aiAspectRatio]);
+  useEffect(() => {
+    if (typeof payload.aiSceneCount === "number") setSceneCount(Math.max(2, Math.min(12, payload.aiSceneCount)));
+  }, [payload.aiSceneCount]);
+  useEffect(() => {
+    if (payload.aiLlmModel) setLlmModel(payload.aiLlmModel as LLMModelId);
+  }, [payload.aiLlmModel]);
+
+  // ── Mutations ─────────────────────────────────────────────────────────────
 
   const generateMutation = trpc.scripts.generateStoryboards.useMutation({
     onSuccess: (result) => {
@@ -170,27 +210,29 @@ export const ScriptNode = memo(function ScriptNode({ id, selected, data }: Props
   const polishMutation = trpc.aiEnhance.enhance.useMutation({
     onSuccess: (result) => {
       updateNodeData(id, { content: result.result });
-      toast.success("脚本已润色");
+      toast.success(polishMode === "condense" ? "脚本已精简" : "脚本已润色");
     },
-    onError: (err) => { toast.error("AI 润色失败：" + err.message); },
+    onError: (err) => { toast.error("AI 操作失败：" + err.message); },
   });
 
-  // ── New: full script generation ───────────────────────────────────────────
+  // AI 提取梗概
+  const summarizeMutation = trpc.aiEnhance.enhance.useMutation({
+    onSuccess: (result) => {
+      updateNodeData(id, { synopsis: result.result });
+      toast.success("梗概已提取");
+    },
+    onError: (err) => { toast.error("AI 提取梗概失败：" + err.message); },
+  });
 
   const fullScriptMutation = trpc.scripts.generateFullScript.useMutation({
     onSuccess: (result) => {
-      // Fill script text area
       if (result.scriptText) {
         updateNodeData(id, { content: result.scriptText });
       }
-      // Auto-create storyboard nodes
       let nodesCreated = 0;
       if (result.scenes.length > 0) {
         const { nodes: currentNodes, batchAddSceneNodes, projectId } = useCanvasStore.getState();
-        if (!projectId) {
-          toast.error("画布尚未加载，分镜节点创建失败");
-          return;
-        }
+        if (!projectId) { toast.error("画布尚未加载，分镜节点创建失败"); return; }
         const ownPos = currentNodes.find((n) => n.id === id)?.position ?? { x: 0, y: 0 };
         batchAddSceneNodes(result.scenes, id, ownPos);
         nodesCreated = result.scenes.length;
@@ -203,7 +245,8 @@ export const ScriptNode = memo(function ScriptNode({ id, selected, data }: Props
     onError: (err) => { toast.error("AI 剧本生成失败：" + err.message); },
   });
 
-  const anyPending = generateMutation.isPending || polishMutation.isPending || fullScriptMutation.isPending;
+  const anyPending = generateMutation.isPending || polishMutation.isPending
+    || fullScriptMutation.isPending || summarizeMutation.isPending;
 
   const handleFullGenerate = () => {
     const synopsis = payload.synopsis?.trim() || payload.content?.trim();
@@ -221,20 +264,65 @@ export const ScriptNode = memo(function ScriptNode({ id, selected, data }: Props
     });
   };
 
+  const handleCopy = async () => {
+    const text = payload.content?.trim();
+    if (!text) { toast.error("脚本内容为空"); return; }
+    try {
+      await navigator.clipboard.writeText(text);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+      toast.success("已复制到剪贴板");
+    } catch {
+      toast.error("复制失败，请手动选中文字复制");
+    }
+  };
+
+  const handleSummarize = () => {
+    const text = payload.content?.trim();
+    if (!text) { toast.error("请先填写脚本内容"); return; }
+    summarizeMutation.mutate({ text, mode: "summarize", model: llmModel });
+  };
+
+  // ── Per-scene duration estimate ───────────────────────────────────────────
+  const perSceneSecs = Math.round(duration / sceneCount);
+  const charCount = (payload.content ?? "").length;
+
   return (
     <BaseNode id={id} selected={selected} nodeType="script" title={data.title} minHeight={200} resizable>
       <div className="flex flex-col h-full p-3.5 gap-3">
 
-        {/* Synopsis */}
-        <input
-          placeholder="故事梗概（一句话概括，也是 AI 剧本创作的核心素材）"
-          value={payload.synopsis ?? ""}
-          onChange={(e) => handleChange("synopsis", e.target.value)}
-          className="nodrag"
-          style={inputStyle}
-          onFocus={onFocus}
-          onBlur={onBlur}
-        />
+        {/* Synopsis row */}
+        <div className="flex gap-1.5 items-center">
+          <input
+            placeholder="故事梗概（一句话概括，也是 AI 剧本创作的核心素材）"
+            value={payload.synopsis ?? ""}
+            onChange={(e) => handleChange("synopsis", e.target.value)}
+            className="nodrag"
+            style={{ ...inputStyle, flex: 1 }}
+            onFocus={onFocus}
+            onBlur={onBlur}
+          />
+          <button
+            onClick={handleSummarize}
+            disabled={anyPending || !payload.content?.trim()}
+            title="从脚本内容 AI 提取梗概"
+            className="nodrag flex-shrink-0 flex items-center gap-1 px-2 py-1.5 rounded-lg transition-all"
+            style={{
+              fontSize: 10, fontWeight: 600,
+              background: summarizeMutation.isPending ? "var(--c-surface)" : "oklch(0.68 0.20 160 / 0.12)",
+              border: `1px solid oklch(0.68 0.20 160 / ${summarizeMutation.isPending ? "0.15" : "0.35"})`,
+              color: anyPending ? "var(--c-t4)" : "oklch(0.72 0.18 160)",
+              cursor: anyPending || !payload.content?.trim() ? "not-allowed" : "pointer",
+              whiteSpace: "nowrap",
+            }}
+          >
+            {summarizeMutation.isPending
+              ? <Loader2 style={{ width: 10, height: 10 }} className="animate-spin" />
+              : <FileText style={{ width: 10, height: 10 }} />
+            }
+            提取梗概
+          </button>
+        </div>
 
         {/* Script content */}
         <textarea
@@ -249,26 +337,70 @@ export const ScriptNode = memo(function ScriptNode({ id, selected, data }: Props
 
         {/* Quick AI buttons row */}
         <div className="flex items-center gap-1 flex-wrap">
-          <LLMModelPicker value={llmModel} onChange={setLlmModel} disabled={anyPending} />
+          <LLMModelPicker value={llmModel} onChange={handleLlmModelChange} disabled={anyPending} />
+
+          {/* Polish mode segmented control */}
+          <div className="flex rounded-md overflow-hidden nodrag" style={{ border: "1px solid var(--c-bd2)" }}>
+            {POLISH_MODES.map((m) => (
+              <button
+                key={m.value}
+                onClick={() => setPolishMode(m.value as "polish" | "condense")}
+                className="nodrag px-1.5 py-0.5 transition-all"
+                style={{
+                  fontSize: 9, fontWeight: polishMode === m.value ? 700 : 400,
+                  background: polishMode === m.value ? `${ACCENT}18` : "transparent",
+                  border: "none",
+                  color: polishMode === m.value ? ACCENT : "var(--c-t4)",
+                  cursor: "pointer",
+                }}
+              >
+                {m.label}
+              </button>
+            ))}
+          </div>
+
           <button
             onClick={() => {
               if (!payload.content?.trim()) { toast.error("请先填写脚本内容"); return; }
-              polishMutation.mutate({ text: payload.content ?? "", mode: "polish", model: llmModel });
+              polishMutation.mutate({ text: payload.content ?? "", mode: polishMode, model: llmModel });
             }}
             disabled={anyPending}
             className="nodrag flex items-center gap-1 px-1.5 py-0.5 rounded-md text-[9px] font-medium transition-all"
             style={{
               background: polishMutation.isPending ? "var(--c-surface)" : `${ACCENT}18`,
               border: `1px solid ${polishMutation.isPending ? BORDER_DEFAULT : `${ACCENT}40`}`,
-              color: anyPending ? "var(--c-t4)" : `${ACCENT}`,
+              color: anyPending ? "var(--c-t4)" : ACCENT,
               cursor: anyPending ? "not-allowed" : "pointer",
             }}
           >
             {polishMutation.isPending ? <Loader2 className="w-2.5 h-2.5 animate-spin" /> : <Sparkles className="w-2.5 h-2.5" />}
-            AI 润色
+            AI {POLISH_MODES.find(m => m.value === polishMode)?.label ?? "润色"}
           </button>
+
+          {/* Copy button */}
+          <button
+            onClick={handleCopy}
+            disabled={!payload.content?.trim()}
+            title="复制脚本内容"
+            className="nodrag flex items-center gap-0.5 px-1.5 py-0.5 rounded-md transition-all"
+            style={{
+              fontSize: 9, fontWeight: 500,
+              background: "transparent",
+              border: "1px solid var(--c-bd2)",
+              color: copied ? "oklch(0.72 0.18 160)" : "var(--c-t4)",
+              cursor: payload.content?.trim() ? "pointer" : "not-allowed",
+            }}
+          >
+            {copied
+              ? <Check style={{ width: 9, height: 9 }} />
+              : <Copy style={{ width: 9, height: 9 }} />
+            }
+            {copied ? "已复制" : "复制"}
+          </button>
+
+          {/* Character count + duration */}
           <span style={{ fontSize: 10, color: "var(--c-t4)", marginLeft: "auto" }}>
-            {(payload.content ?? "").length} 字
+            {charCount} 字 · {duration}s 视频
           </span>
         </div>
 
@@ -329,37 +461,35 @@ export const ScriptNode = memo(function ScriptNode({ id, selected, data }: Props
           {showAiPanel && (
             <div className="flex flex-col gap-3 px-3 pb-3 pt-2" style={{ borderTop: `1px solid ${PANEL_ACCENT}20` }}>
 
-              <ChipRow label="视频类型" options={GENRES} value={genre} onChange={setGenre} color={PANEL_ACCENT} />
-              <ChipRow label="画面风格" options={STYLES} value={style} onChange={setStyle} color="oklch(0.68 0.18 280)" />
-              <ChipRow label="情感基调" options={MOODS}  value={mood}  onChange={setMood}  color="oklch(0.68 0.18 340)" />
+              <ChipRow label="视频类型" options={GENRES} value={genre} onChange={setAndSaveGenre} color={PANEL_ACCENT} />
+              <ChipRow label="画面风格" options={STYLES} value={style} onChange={setAndSaveStyle} color="oklch(0.68 0.18 280)" />
+              <ChipRow label="情感基调" options={MOODS}  value={mood}  onChange={setAndSaveMood}  color="oklch(0.68 0.18 340)" />
 
-              {/* Target model + Aspect ratio */}
-              <div className="flex gap-2 items-start">
-                <div className="flex flex-col gap-1 flex-1">
-                  <span style={{ fontSize: 9, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.07em", color: "var(--c-t4)" }}>
-                    目标视频模型
-                  </span>
-                  <select
-                    value={targetModel}
-                    onChange={(e) => setTargetModel(e.target.value)}
-                    className="nodrag"
-                    style={{
-                      fontSize: 10,
-                      background: "var(--c-base)",
-                      border: "1px solid var(--c-bd2)",
-                      borderRadius: 7,
-                      color: "var(--c-t2)",
-                      padding: "4px 6px",
-                      outline: "none",
-                      cursor: "pointer",
-                      width: "100%",
-                    }}
-                  >
-                    {TARGET_MODELS.map((m) => (
-                      <option key={m.value} value={m.value}>{m.label} — {m.desc}</option>
-                    ))}
-                  </select>
-                </div>
+              {/* Target model */}
+              <div className="flex flex-col gap-1">
+                <span style={{ fontSize: 9, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.07em", color: "var(--c-t4)" }}>
+                  目标视频模型
+                </span>
+                <select
+                  value={targetModel}
+                  onChange={(e) => setAndSaveTargetModel(e.target.value)}
+                  className="nodrag"
+                  style={{
+                    fontSize: 10,
+                    background: "var(--c-base)",
+                    border: "1px solid var(--c-bd2)",
+                    borderRadius: 7,
+                    color: "var(--c-t2)",
+                    padding: "4px 6px",
+                    outline: "none",
+                    cursor: "pointer",
+                    width: "100%",
+                  }}
+                >
+                  {TARGET_MODELS.map((m) => (
+                    <option key={m.value} value={m.value}>{m.label} — {m.desc}</option>
+                  ))}
+                </select>
               </div>
 
               {/* Aspect ratio chips */}
@@ -371,7 +501,7 @@ export const ScriptNode = memo(function ScriptNode({ id, selected, data }: Props
                   {RATIOS.map((r) => (
                     <button
                       key={r}
-                      onClick={() => setAspectRatio(r)}
+                      onClick={() => setAndSaveAspectRatio(r)}
                       className="nodrag px-2 py-0.5 rounded-md transition-all"
                       style={{
                         fontSize: 9,
@@ -393,13 +523,24 @@ export const ScriptNode = memo(function ScriptNode({ id, selected, data }: Props
                 <div className="flex flex-col gap-1 flex-1">
                   <span style={{ fontSize: 9, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.07em", color: "var(--c-t4)" }}>
                     场景数量
+                    <span style={{ fontWeight: 400, marginLeft: 4, color: "var(--c-t4)", textTransform: "none" }}>
+                      ≈ {perSceneSecs}s/场景
+                    </span>
                   </span>
                   <div className="flex items-center gap-1.5">
-                    <button onClick={() => setSceneCount((n) => Math.max(2, n - 1))} className="nodrag w-6 h-6 flex items-center justify-center rounded-md transition-all" style={{ background: "var(--c-surface)", border: "1px solid var(--c-bd2)", color: "var(--c-t2)", cursor: "pointer" }}>
+                    <button
+                      onClick={() => setAndSaveSceneCount(Math.max(2, sceneCount - 1))}
+                      className="nodrag w-6 h-6 flex items-center justify-center rounded-md transition-all"
+                      style={{ background: "var(--c-surface)", border: "1px solid var(--c-bd2)", color: "var(--c-t2)", cursor: "pointer" }}
+                    >
                       <Minus style={{ width: 10, height: 10 }} />
                     </button>
                     <span style={{ fontSize: 13, fontWeight: 700, color: PANEL_ACCENT, minWidth: 20, textAlign: "center" }}>{sceneCount}</span>
-                    <button onClick={() => setSceneCount((n) => Math.min(12, n + 1))} className="nodrag w-6 h-6 flex items-center justify-center rounded-md transition-all" style={{ background: "var(--c-surface)", border: "1px solid var(--c-bd2)", color: "var(--c-t2)", cursor: "pointer" }}>
+                    <button
+                      onClick={() => setAndSaveSceneCount(Math.min(12, sceneCount + 1))}
+                      className="nodrag w-6 h-6 flex items-center justify-center rounded-md transition-all"
+                      style={{ background: "var(--c-surface)", border: "1px solid var(--c-bd2)", color: "var(--c-t2)", cursor: "pointer" }}
+                    >
                       <Plus style={{ width: 10, height: 10 }} />
                     </button>
                   </div>
@@ -460,7 +601,7 @@ export const ScriptNode = memo(function ScriptNode({ id, selected, data }: Props
 
               {/* Model picker + Generate button */}
               <div className="flex items-center gap-1.5 mt-0.5">
-                <LLMModelPicker value={llmModel} onChange={setLlmModel} disabled={anyPending} />
+                <LLMModelPicker value={llmModel} onChange={handleLlmModelChange} disabled={anyPending} />
                 <button
                   onClick={handleFullGenerate}
                   disabled={anyPending}
@@ -482,7 +623,8 @@ export const ScriptNode = memo(function ScriptNode({ id, selected, data }: Props
               </div>
 
               <p style={{ fontSize: 9, color: "var(--c-t4)", lineHeight: 1.5 }}>
-                将根据上方梗概及参数，生成完整中文剧本并自动创建 {sceneCount} 个针对{" "}
+                将根据上方梗概及参数，生成完整中文剧本并自动创建 {sceneCount} 个（约{" "}
+                {perSceneSecs}s/场景）针对{" "}
                 {TARGET_MODELS.find((m) => m.value === targetModel)?.label ?? "通用"}{" "}
                 优化的分镜节点
               </p>

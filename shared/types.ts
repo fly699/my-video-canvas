@@ -47,6 +47,14 @@ export interface ScriptNodeData {
   content: string;
   synopsis?: string;
   totalDuration?: number;
+  // AI panel params — persisted so settings survive remount / project reload
+  aiGenre?: string;
+  aiStyle?: string;
+  aiMood?: string;
+  aiTargetModel?: string;
+  aiAspectRatio?: string;
+  aiSceneCount?: number;
+  aiLlmModel?: string;
 }
 
 export interface StoryboardNodeData {
