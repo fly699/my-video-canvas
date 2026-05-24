@@ -106,8 +106,16 @@ export function ContextMenu({
             scrollbarWidth: "thin",
             scrollbarColor: "var(--c-bd3) transparent",
           }}>
-            {NODE_TYPE_LIST.map((config) => {
+            {/* ComfyUI nodes pinned to the top — same sort policy as NodePicker */}
+            {[...NODE_TYPE_LIST].sort((a, b) => {
+              const aIsComfy = a.type === "comfyui_image" || a.type === "comfyui_video";
+              const bIsComfy = b.type === "comfyui_image" || b.type === "comfyui_video";
+              if (aIsComfy && !bIsComfy) return -1;
+              if (!aIsComfy && bIsComfy) return 1;
+              return 0;
+            }).map((config) => {
               const Icon = NODE_ICONS[config.icon] ?? FileText;
+              const showSubtitle = config.defaultTitle !== config.label;
               return (
                 <button
                   key={config.type}
@@ -149,7 +157,9 @@ export function ContextMenu({
                   </div>
                   <div>
                     <div style={{ fontWeight: 500, lineHeight: 1.2 }}>{config.label}</div>
-                    <div style={{ fontSize: 10, color: "var(--c-t4)", marginTop: 1 }}>{config.defaultTitle}</div>
+                    {showSubtitle && (
+                      <div style={{ fontSize: 10, color: "var(--c-t4)", marginTop: 1 }}>{config.defaultTitle}</div>
+                    )}
                   </div>
                 </button>
               );
