@@ -47,14 +47,11 @@ const PROVIDERS: { value: VideoProvider; label: string; group: string }[] = [
   { value: "poyo_wan25_t2v",      label: "Wan 2.5 文生视频",    group: "Poyo" },
   { value: "poyo_wan25_i2v",      label: "Wan 2.5 图生视频",    group: "Poyo" },
   { value: "poyo_runway45",       label: "Runway Gen 4.5",      group: "Poyo" },
+  // Higgsfield 公共 API 仅支持 DoP 3 个变体（其他 Kling/Seedance/Veo 模型
+  // 只在 cloud.higgsfield.ai 私有后端，第三方无法调用）。
   { value: "hf_dop_standard",     label: "DoP Standard",        group: "Higgsfield" },
-  { value: "hf_dop_preview",      label: "DoP Preview",         group: "Higgsfield" },
   { value: "hf_dop_lite",         label: "DoP Lite",            group: "Higgsfield" },
   { value: "hf_dop_turbo",        label: "DoP Turbo",           group: "Higgsfield" },
-  { value: "hf_kling_21_pro",     label: "Kling 2.1 Pro",       group: "Higgsfield" },
-  { value: "hf_kling_30",         label: "Kling 3.0 Pro",       group: "Higgsfield" },
-  { value: "hf_seedance_pro",     label: "Seedance 1.0 Pro",    group: "Higgsfield" },
-  { value: "hf_seedance_20",      label: "Seedance 2.0 Pro",    group: "Higgsfield" },
   { value: "mock",                label: "Mock 测试",           group: "Dev" },
 ];
 
@@ -75,21 +72,7 @@ const KLING_O3_PARAMS: ParamDef[] = [
   { type: "range", key: "duration", label: "时长（秒）", min: 3, max: 15, step: 1, default: 5, unit: "s" },
 ];
 
-const HF_SEEDANCE_PARAMS: ParamDef[] = [
-  { type: "select", key: "aspect_ratio", label: "宽高比", default: "16:9",
-    options: [
-      { value: "21:9", label: "21:9 超宽" }, { value: "16:9", label: "16:9 横屏" },
-      { value: "4:3", label: "4:3 标准" }, { value: "1:1", label: "1:1 方形" },
-      { value: "3:4", label: "3:4 竖屏" }, { value: "9:16", label: "9:16 竖屏" }, { value: "auto", label: "自动" },
-    ]},
-  { type: "select", key: "resolution", label: "分辨率", default: "720p",
-    options: [{ value: "480p", label: "480p" }, { value: "720p", label: "720p" }, { value: "1080p", label: "1080p" }] },
-  { type: "range",  key: "duration", label: "时长（秒）", min: 2, max: 12, step: 1, default: 5, unit: "s" },
-  { type: "toggle", key: "camera_fixed", label: "固定镜头", default: false },
-];
-
 const SUPPORTS_NEGATIVE_PROMPT = new Set<string>([
-  "hf_kling_21_pro", "hf_kling_30",
   "poyo_seedance", "poyo_veo",
   "poyo_kling26", "poyo_kling_o3_std", "poyo_kling_o3_pro", "poyo_kling_o3_4k",
 ]);
@@ -113,17 +96,8 @@ const PROVIDER_PARAMS: Record<string, ParamDef[]> = {
     { type: "range",  key: "duration", label: "时长（秒）", min: 5, max: 30, step: 5, default: 5, unit: "s" },
   ],
   hf_dop_standard: HF_DOP_PARAMS,
-  hf_dop_preview:  HF_DOP_PARAMS,
   hf_dop_lite:     HF_DOP_PARAMS,
   hf_dop_turbo:    HF_DOP_PARAMS,
-  hf_kling_21_pro: [
-    { type: "select", key: "duration", label: "时长（秒）", default: 5,
-      options: [{ value: 5, label: "5 秒" }, { value: 10, label: "10 秒" }] },
-    { type: "select", key: "aspect_ratio", label: "宽高比", default: "16:9",
-      options: [{ value: "16:9", label: "16:9 横屏" }, { value: "9:16", label: "9:16 竖屏" }, { value: "1:1", label: "1:1 方形" }] },
-    { type: "range",  key: "cfg_scale", label: "引导强度", min: 0, max: 1, step: 0.1, default: 0.5 },
-  ],
-  hf_seedance_pro: HF_SEEDANCE_PARAMS,
   poyo_kling26: [
     { type: "select", key: "aspect_ratio", label: "宽高比", default: "16:9",
       options: [{ value: "16:9", label: "16:9 横屏" }, { value: "9:16", label: "9:16 竖屏" }, { value: "1:1", label: "1:1 方形" }] },
@@ -150,14 +124,6 @@ const PROVIDER_PARAMS: Record<string, ParamDef[]> = {
     { type: "select", key: "duration", label: "时长（秒）", default: 5,
       options: [{ value: 5, label: "5 秒" }, { value: 10, label: "10 秒" }] },
   ],
-  hf_seedance_20:    HF_SEEDANCE_PARAMS,
-  hf_kling_30: [
-    { type: "select", key: "duration", label: "时长（秒）", default: 5,
-      options: [{ value: 5, label: "5 秒" }, { value: 10, label: "10 秒" }] },
-    { type: "select", key: "aspect_ratio", label: "宽高比", default: "16:9",
-      options: [{ value: "16:9", label: "16:9 横屏" }, { value: "9:16", label: "9:16 竖屏" }, { value: "1:1", label: "1:1 方形" }] },
-    { type: "range",  key: "cfg_scale", label: "引导强度", min: 0, max: 1, step: 0.1, default: 0.5 },
-  ],
   mock: [],
 };
 
@@ -176,13 +142,8 @@ const PROVIDER_COST: Record<string, { label: string; color: string }> = {
   poyo_wan25_i2v:    { label: "~3积分", color: "oklch(0.72 0.18 155)" },
   poyo_runway45:     { label: "~10积分", color: "oklch(0.65 0.18 60)" },
   hf_dop_standard:   { label: "~8积分", color: "oklch(0.65 0.18 60)" },
-  hf_dop_preview:    { label: "~5积分", color: "oklch(0.72 0.18 155)" },
   hf_dop_lite:       { label: "~3积分", color: "oklch(0.72 0.18 155)" },
   hf_dop_turbo:      { label: "~2积分", color: "oklch(0.72 0.18 155)" },
-  hf_kling_21_pro:   { label: "~6积分", color: "oklch(0.72 0.18 155)" },
-  hf_kling_30:       { label: "~10积分", color: "oklch(0.65 0.18 60)" },
-  hf_seedance_pro:   { label: "~4积分", color: "oklch(0.72 0.18 155)" },
-  hf_seedance_20:    { label: "~5积分", color: "oklch(0.72 0.18 155)" },
   mock:              { label: "免费", color: "oklch(0.55 0.08 260)" },
 };
 

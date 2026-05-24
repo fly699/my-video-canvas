@@ -38,13 +38,8 @@ export const VIDEO_PROVIDERS = [
   "poyo_wan25_i2v",
   "poyo_runway45",
   "hf_dop_standard",
-  "hf_dop_preview",
   "hf_dop_lite",
   "hf_dop_turbo",
-  "hf_kling_21_pro",
-  "hf_kling_30",
-  "hf_seedance_pro",
-  "hf_seedance_20",
 ] as const;
 export type VideoProvider = (typeof VIDEO_PROVIDERS)[number];
 export type VideoTaskStatus = "pending" | "processing" | "succeeded" | "failed";
