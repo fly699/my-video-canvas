@@ -1,3 +1,8 @@
+if (process.env.NODE_ENV === "production" && !process.env.JWT_SECRET) {
+  console.error("[FATAL] JWT_SECRET must be set in production. Refusing to start with the insecure dev fallback.");
+  process.exit(1);
+}
+
 export const ENV = {
   appId: process.env.VITE_APP_ID ?? "",
   // Use a deterministic dev-only secret when JWT_SECRET is unset — prevents "zero-length key" crash
