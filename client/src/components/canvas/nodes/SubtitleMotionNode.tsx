@@ -1,5 +1,4 @@
 import { memo, useState, useCallback } from "react";
-import { Handle, Position } from "@xyflow/react";
 import { BaseNode } from "../BaseNode";
 import { useCanvasStore } from "../../../hooks/useCanvasStore";
 import type { SubtitleMotionNodeData, SubtitleEntry } from "../../../../../shared/types";
@@ -144,8 +143,7 @@ export const SubtitleMotionNode = memo(function SubtitleMotionNode({ id, selecte
   const isBurning = payload.status === "burning" || burnMutation.isPending;
 
   return (
-    <BaseNode id={id} selected={selected} nodeType="subtitle_motion" title={data.title} minHeight={240} resizable showHandles={false}>
-      <Handle type="target" position={Position.Top} id="input" style={{ background: accent }} />
+    <BaseNode id={id} selected={selected} nodeType="subtitle_motion" title={data.title} minHeight={240} resizable>
 
       <div className="flex flex-col gap-3 p-3.5">
 
@@ -306,7 +304,6 @@ export const SubtitleMotionNode = memo(function SubtitleMotionNode({ id, selecte
         )}
       </div>
 
-      <Handle type="source" position={Position.Bottom} id="output" style={{ background: accent }} />
     </BaseNode>
   );
 });
