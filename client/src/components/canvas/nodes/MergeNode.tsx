@@ -79,7 +79,7 @@ export const MergeNode = memo(function MergeNode({ id, selected, data }: Props) 
   // Collect video URLs from connected source nodes (video-producing types only).
   // AudioNode is explicitly excluded — if a user connects an audio source it should
   // populate `bgMusicUrl` instead of being treated as a video track (would crash FFmpeg).
-  const VIDEO_SOURCE_TYPES = new Set(["video_task", "clip", "merge", "overlay", "asset", "subtitle"]);
+  const VIDEO_SOURCE_TYPES = new Set(["video_task", "clip", "merge", "overlay", "asset", "subtitle", "subtitle_motion", "smart_cut"]);
   const collectInputUrls = (): string[] => {
     const incomingEdges = edges.filter((e) => e.target === id);
     const urls: string[] = [];

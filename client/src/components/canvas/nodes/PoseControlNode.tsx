@@ -54,7 +54,7 @@ export const PoseControlNode = memo(function PoseControlNode({ id, selected, dat
 
   const poseControlMutation = trpc.clip.poseControl.useMutation({
     onSuccess: (result) => {
-      update({ outputImageUrl: result.url, status: "done" });
+      update({ outputImageUrl: result.url, outputUrl: result.url, status: "done" });
       toast.success("构图控制图像已生成");
     },
     onError: (err) => { update({ status: "failed", errorMessage: err.message }); toast.error("生成失败：" + err.message); },
@@ -153,7 +153,7 @@ export const PoseControlNode = memo(function PoseControlNode({ id, selected, dat
               style={{ background: accentA(0.08), border: `1px solid ${accentA(0.25)}`, color: accent, textDecoration: "none" }}>
               <Download style={{ width: 10, height: 10 }} /> 下载图像
             </a>
-            <button onClick={() => update({ outputImageUrl: undefined, status: "idle", errorMessage: undefined })}
+            <button onClick={() => update({ outputImageUrl: undefined, outputUrl: undefined, status: "idle", errorMessage: undefined })}
               disabled={isProcessing}
               className="nodrag flex items-center justify-center gap-1 py-1.5 rounded-lg text-[10px]"
               style={{ background: "var(--c-surface)", border: "1px solid var(--c-bd2)", color: "var(--c-t4)", cursor: isProcessing ? "not-allowed" : "pointer", opacity: isProcessing ? 0.5 : 1 }}>

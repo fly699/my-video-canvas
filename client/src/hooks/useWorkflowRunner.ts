@@ -20,7 +20,7 @@ const RUNNABLE_TYPES: NodeType[] = [
   "subtitle_motion", "smart_cut",
 ];
 
-const VIDEO_SOURCE_TYPES = new Set(["video_task", "clip", "merge", "overlay", "asset", "subtitle"]);
+const VIDEO_SOURCE_TYPES = new Set(["video_task", "clip", "merge", "overlay", "asset", "subtitle", "subtitle_motion", "smart_cut"]);
 
 /** Pick the video output URL from a node's payload regardless of which field it uses. */
 function getNodeVideoUrl(payload: Record<string, unknown>): string | undefined {

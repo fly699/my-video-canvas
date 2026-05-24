@@ -340,6 +340,7 @@ export interface PoseControlNodeData {
   prompt?: string;
   guidanceScale?: number;
   outputImageUrl?: string;
+  outputUrl?: string; // alias written alongside outputImageUrl so getNodeVideoUrl / downstream nodes can read it
   outputStorageKey?: string;
   status?: "idle" | "processing" | "done" | "failed";
   errorMessage?: string;

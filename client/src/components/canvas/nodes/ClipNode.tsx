@@ -171,9 +171,9 @@ export const ClipNode = memo(function ClipNode({ id, selected, data }: Props) {
         const node = s.nodes.find(n => n.id === edge.source);
         if (!node) continue;
         const p = node.data.payload as Record<string, unknown>;
-        if (p.resultVideoUrl) return p.resultVideoUrl as string;
-        if (p.url && (p.type === "video" || node.data.nodeType === "video_task"))
-          return p.url as string;
+        // Covers: video_task (resultVideoUrl), clip/merge/overlay/subtitle/subtitle_motion/smart_cut (outputUrl), asset (url)
+        const url = (p.resultVideoUrl ?? p.outputUrl ?? (p.type === "video" ? p.url : undefined)) as string | undefined;
+        if (url) return url;
       }
       return null;
     }, [id]),
