@@ -153,9 +153,10 @@ export const PoseControlNode = memo(function PoseControlNode({ id, selected, dat
               style={{ background: accentA(0.08), border: `1px solid ${accentA(0.25)}`, color: accent, textDecoration: "none" }}>
               <Download style={{ width: 10, height: 10 }} /> 下载图像
             </a>
-            <button onClick={() => update({ outputImageUrl: undefined, status: "idle" })}
+            <button onClick={() => update({ outputImageUrl: undefined, status: "idle", errorMessage: undefined })}
+              disabled={isProcessing}
               className="nodrag flex items-center justify-center gap-1 py-1.5 rounded-lg text-[10px]"
-              style={{ background: "var(--c-surface)", border: "1px solid var(--c-bd2)", color: "var(--c-t4)", cursor: "pointer" }}>
+              style={{ background: "var(--c-surface)", border: "1px solid var(--c-bd2)", color: "var(--c-t4)", cursor: isProcessing ? "not-allowed" : "pointer", opacity: isProcessing ? 0.5 : 1 }}>
               <RotateCcw style={{ width: 9, height: 9 }} /> 重置
             </button>
           </div>

@@ -523,6 +523,7 @@ export async function burnAssSubtitles(
   const outPath = path.join(os.tmpdir(), outName);
 
   try {
+    const hasAudio = await hasAudioTrack(videoPath);
     await fs.writeFile(assPath, generateASS(entries, style, fontSize, fontColor), "utf8");
 
     const escapedAssPath = assPath
@@ -534,7 +535,7 @@ export async function burnAssSubtitles(
       "-i", videoPath,
       "-vf", `ass='${escapedAssPath}'`,
       "-c:v", "libx264", "-preset", "fast",
-      "-c:a", "copy",
+      ...(hasAudio ? ["-c:a", "copy"] : []),
       "-movflags", "+faststart",
       "-y", outPath,
     ];

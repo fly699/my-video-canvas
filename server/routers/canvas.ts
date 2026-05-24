@@ -1070,6 +1070,8 @@ export const clipRouter = router({
     )
     .mutation(async ({ ctx, input }) => {
       await assertWhitelisted(ctx);
+      assertSafeUrl(input.inputUrl);
+      if (input.audioUrl) assertSafeUrl(input.audioUrl);
       const result = await trimVideo(input);
       return { url: result.url, duration: result.duration };
     }),
@@ -1105,10 +1107,13 @@ export const clipRouter = router({
 
         const AGGRESSIVE_THRESHOLDS: Record<string, number> = { low: 0.20, medium: 0.40, high: 0.65 };
         const removeThreshold = AGGRESSIVE_THRESHOLDS[input.aggressiveness];
+        const targetHint = input.targetDuration
+          ? `\n目标剪辑后总时长：约 ${input.targetDuration} 秒，请优先选取最有价值的片段使保留片段总时长接近此目标。`
+          : "";
 
         const systemPrompt = `你是专业视频剪辑师。给定视频转录片段，决定哪些片段应该保留。
 移除标准（移除值越高越激进）：无意义停顿、重复内容、低信息密度片段、口误填充词（"嗯"、"呃"等）。
-当前移除激进度：${input.aggressiveness}（${Math.round(removeThreshold * 100)}% 截止阈值）。
+当前移除激进度：${input.aggressiveness}（${Math.round(removeThreshold * 100)}% 截止阈值）。${targetHint}
 仅输出合法 JSON，无 markdown：{"keep":[{"start":0.5,"end":5.2},{"start":8.1,"end":15.0}]}`;
 
         const transcriptJson = JSON.stringify(segments.map((s) => ({ s: s.start, e: s.end, t: s.text, ns: s.no_speech_prob })));
@@ -1168,6 +1173,8 @@ export const mergeRouter = router({
     )
     .mutation(async ({ ctx, input }) => {
       await assertWhitelisted(ctx);
+      for (const url of input.inputUrls) assertSafeUrl(url);
+      if (input.bgMusicUrl) assertSafeUrl(input.bgMusicUrl);
       const result = await mergeVideos(input);
       return { url: result.url, duration: result.duration };
     }),
@@ -1186,6 +1193,7 @@ export const subtitleRouter = router({
       await assertWhitelisted(ctx);
       // (audioUrl, language) deterministically map to a Whisper transcription, so
       // dedupe by that pair — repeated submits during the long Whisper call collapse.
+      assertSafeUrl(input.audioUrl);
       return dedupe("subtitle.transcribe", ctx.user.id, input, async () => {
         const result = await transcribeAudio({ audioUrl: input.audioUrl, language: input.language });
         if ("error" in result) {
@@ -1216,6 +1224,7 @@ export const subtitleRouter = router({
     )
     .mutation(async ({ ctx, input }) => {
       await assertWhitelisted(ctx);
+      assertSafeUrl(input.videoUrl);
       const result = await burnSubtitles(input.videoUrl, input.entries as SubtitleEntry[], {
         fontSize: input.fontSize,
         fontColor: input.fontColor,
@@ -1241,6 +1250,7 @@ export const subtitleMotionRouter = router({
     .input(z.object({ audioUrl: z.string().url(), language: z.string().optional() }))
     .mutation(async ({ ctx, input }) => {
       await assertWhitelisted(ctx);
+      assertSafeUrl(input.audioUrl);
       return dedupe("subtitleMotion.transcribe", ctx.user.id, input, async () => {
         const result = await transcribeAudio({ audioUrl: input.audioUrl, language: input.language });
         if ("error" in result) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: result.error });
@@ -1324,6 +1334,9 @@ export const overlayRouter = router({
     )
     .mutation(async ({ ctx, input }) => {
       await assertWhitelisted(ctx);
+      assertSafeUrl(input.inputUrl);
+      if (input.overlayImageUrl) assertSafeUrl(input.overlayImageUrl);
+      if (input.pipVideoUrl) assertSafeUrl(input.pipVideoUrl);
       const result = await overlayVideo(input);
       return { url: result.url };
     }),
