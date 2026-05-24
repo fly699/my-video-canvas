@@ -792,13 +792,23 @@ export const audioGenRouter = router({
     .mutation(async ({ ctx, input }) => {
       await assertWhitelisted(ctx);
       if (input.projectId != null) await assertProjectOwner(input.projectId, ctx.user.id);
+      // Defense in depth: each model has a different actual max duration; the client
+      // clamps but a bypassed client could send any value up to the Zod max(480).
+      // Clamp here too so e.g. minimax (180s cap) doesn't silently truncate paid output.
+      const MUSIC_MAX_DURATION: Record<string, number> = {
+        "suno-v4.5": 240, "suno-v5": 480, "mureka": 240, "minimax-music-02": 180,
+      };
+      const maxDur = MUSIC_MAX_DURATION[input.model] ?? 240;
+      const durationSeconds = input.durationSeconds !== undefined
+        ? Math.min(input.durationSeconds, maxDur)
+        : undefined;
       // Long-poll generation (~30s-2min) is when client-side retries are most likely.
       return dedupe("audioGen.generateMusic", ctx.user.id, input, async () => {
         const result = await submitAndPollPoyoMusic({
           model: input.model as PoyoMusicModel,
           prompt: input.prompt,
           style: input.style,
-          durationSeconds: input.durationSeconds,
+          durationSeconds,
           instrumental: input.instrumental,
           negativePrompt: input.negativePrompt,
         });

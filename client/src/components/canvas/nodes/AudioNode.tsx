@@ -271,14 +271,28 @@ export const AudioNode = memo(function AudioNode({ id, selected, data }: Props) 
   const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
-    if (file.size > 50 * 1024 * 1024) { toast.error("文件不能超过 50MB"); return; }
+    // accept="audio/*" is only an MIME hint; check the actual file type before sending bytes
+    if (!file.type.startsWith("audio/")) {
+      toast.error("请选择音频文件");
+      e.target.value = "";
+      return;
+    }
+    // Match the server's 16 MB hard cap in upload.ts so the user doesn't pay the
+    // upload latency on a file that's going to be rejected anyway
+    if (file.size > 16 * 1024 * 1024) { toast.error("文件不能超过 16MB"); e.target.value = ""; return; }
     setUploading(true);
     const reader = new FileReader();
     reader.onload = () => {
       const base64 = (reader.result as string).split(",")[1];
+      // Write metadata only after the read succeeds so a failed read can't leave
+      // the node showing stale name/size with no actual URL
+      updateNodeData(id, { name: file.name, mimeType: file.type, size: file.size });
       uploadMutation.mutate({ base64, mimeType: file.type, filename: file.name });
     };
-    updateNodeData(id, { name: file.name, mimeType: file.type, size: file.size });
+    reader.onerror = () => {
+      setUploading(false);
+      toast.error("文件读取失败");
+    };
     reader.readAsDataURL(file);
     e.target.value = "";
   };

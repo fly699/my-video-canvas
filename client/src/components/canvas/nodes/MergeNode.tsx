@@ -76,7 +76,9 @@ export const MergeNode = memo(function MergeNode({ id, selected, data }: Props) 
 
   const update = (patch: Partial<MergeNodeData>) => updateNodeData(id, patch);
 
-  // Collect video URLs from connected source nodes (video-producing types only)
+  // Collect video URLs from connected source nodes (video-producing types only).
+  // AudioNode is explicitly excluded — if a user connects an audio source it should
+  // populate `bgMusicUrl` instead of being treated as a video track (would crash FFmpeg).
   const VIDEO_SOURCE_TYPES = new Set(["video_task", "clip", "merge", "overlay", "asset", "subtitle"]);
   const collectInputUrls = (): string[] => {
     const incomingEdges = edges.filter((e) => e.target === id);
@@ -84,12 +86,36 @@ export const MergeNode = memo(function MergeNode({ id, selected, data }: Props) 
     for (const edge of incomingEdges) {
       const srcNode = nodes.find((n) => n.id === edge.source);
       if (!srcNode || !VIDEO_SOURCE_TYPES.has(srcNode.data.nodeType)) continue;
+      // asset nodes can hold any mime type — exclude pure audio assets
+      if (srcNode.data.nodeType === "asset") {
+        const mt = (srcNode.data.payload as { mimeType?: string }).mimeType;
+        if (mt && mt.startsWith("audio/")) continue;
+      }
       const p = srcNode.data.payload as Record<string, unknown>;
       const url = (p.resultVideoUrl ?? p.outputUrl ?? p.url) as string | undefined;
       if (url) urls.push(url);
     }
     return urls;
   };
+
+  // Auto-detect a connected AudioNode (or audio-mime asset) for background music
+  const detectedBgMusicUrl = (() => {
+    const incomingEdges = edges.filter((e) => e.target === id);
+    for (const edge of incomingEdges) {
+      const srcNode = nodes.find((n) => n.id === edge.source);
+      if (!srcNode) continue;
+      if (srcNode.data.nodeType === "audio") {
+        const u = (srcNode.data.payload as { url?: string }).url;
+        if (u) return u;
+      }
+      if (srcNode.data.nodeType === "asset") {
+        const p = srcNode.data.payload as { mimeType?: string; url?: string };
+        if (p.mimeType?.startsWith("audio/") && p.url) return p.url;
+      }
+    }
+    return undefined;
+  })();
+  const effectiveBgMusicUrl = payload.bgMusicUrl || detectedBgMusicUrl;
 
   const handleMerge = () => {
     if (mergeMutation.isPending || payload.status === "processing") return;
@@ -107,7 +133,7 @@ export const MergeNode = memo(function MergeNode({ id, selected, data }: Props) 
       inputUrls: urls,
       transition: payload.transition,
       transitionDuration: payload.transition !== "none" ? payload.transitionDuration : undefined,
-      bgMusicUrl: payload.bgMusicUrl || undefined,
+      bgMusicUrl: effectiveBgMusicUrl || undefined,
       bgMusicVolume: payload.bgMusicVolume,
     });
   };
@@ -252,13 +278,18 @@ export const MergeNode = memo(function MergeNode({ id, selected, data }: Props) 
               <label style={labelStyle}>音频 URL</label>
               <input
                 className="nodrag"
-                placeholder="https://..."
+                placeholder={detectedBgMusicUrl ? "已自动检测连接的音频节点" : "https://..."}
                 value={payload.bgMusicUrl ?? ""}
                 onChange={(e) => update({ bgMusicUrl: e.target.value })}
                 style={{ ...fieldStyle }}
                 onFocus={(e) => { e.currentTarget.style.borderColor = accentA(0.6); }}
                 onBlur={(e) => { e.currentTarget.style.borderColor = BORDER_DEFAULT; }}
               />
+              {!payload.bgMusicUrl && detectedBgMusicUrl && (
+                <p style={{ fontSize: 10, color: "var(--c-t4)", marginTop: 3 }}>
+                  使用已连接的音频节点（手动填写 URL 可覆盖）
+                </p>
+              )}
             </div>
             <div>
               <div className="flex items-center justify-between" style={{ marginBottom: 5 }}>

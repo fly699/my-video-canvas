@@ -199,9 +199,11 @@ export async function submitAndPollPoyoTTS(opts: SubmitPoyoTTSOptions): Promise<
       return { url: file.file_url, duration: file.duration };
     }
 
-    if (d.status === "failed") {
-      throw new Error(`Poyo TTS generation failed: ${d.error_message ?? "unknown error"}`);
+    if (IN_PROGRESS_STATUSES.has(d.status)) {
+      continue;
     }
+    // Any other status (failed / cancelled / expired / unknown) is terminal — surface immediately
+    throw new Error(`Poyo TTS status="${d.status}": ${d.error_message ?? "no detail"}`);
   }
 
   throw new Error("Poyo TTS generation timed out");
