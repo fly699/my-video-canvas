@@ -1,10 +1,10 @@
 import { useState } from "react";
 import { trpc } from "@/lib/trpc";
 import { useAuth } from "@/_core/hooks/useAuth";
-import { Shield, Trash2, Plus, ToggleLeft, ToggleRight, ClipboardList, RefreshCw } from "lucide-react";
+import { Shield, Trash2, Plus, ToggleLeft, ToggleRight, ClipboardList, RefreshCw, HardDrive } from "lucide-react";
 
 type EntryType = "ip" | "user";
-type Tab = "whitelist" | "logs";
+type Tab = "whitelist" | "logs" | "storage";
 
 const ACTION_LABELS: Record<string, string> = {
   login_email: "邮箱登录",
@@ -65,7 +65,7 @@ export default function AdminPage() {
 
         {/* Tabs */}
         <div style={{ display: "flex", gap: "4px", marginBottom: "20px", borderBottom: "1px solid rgba(255,255,255,0.06)", paddingBottom: "0" }}>
-          {([["whitelist", "白名单管理"], ["logs", "操作日志"]] as [Tab, string][]).map(([tab, label]) => (
+          {([["whitelist", "白名单管理"], ["logs", "操作日志"], ["storage", "存储设置"]] as [Tab, string][]).map(([tab, label]) => (
             <button
               key={tab}
               onClick={() => setActiveTab(tab)}
@@ -87,13 +87,124 @@ export default function AdminPage() {
           ))}
         </div>
 
-        {activeTab === "whitelist" ? <WhitelistPanel /> : <LogsPanel />}
+        {activeTab === "whitelist" && <WhitelistPanel />}
+        {activeTab === "logs" && <LogsPanel />}
+        {activeTab === "storage" && <StoragePanel />}
       </div>
     </div>
   );
 }
 
 // ── Whitelist Panel ───────────────────────────────────────────────────────────
+
+// ── Storage Panel ─────────────────────────────────────────────────────────────
+
+function StoragePanel() {
+  const settingsQuery = trpc.admin.storage.getSettings.useQuery();
+  const utils = trpc.useUtils();
+  const setMut = trpc.admin.storage.setPersist.useMutation({
+    onSuccess: () => utils.admin.storage.getSettings.invalidate(),
+  });
+
+  const settings = settingsQuery.data;
+  const loading = settingsQuery.isLoading;
+
+  const handleToggle = (kind: "persistAudio" | "persistVideo") => {
+    if (!settings) return;
+    const newValue = !settings[kind];
+    if (!newValue) {
+      const confirmed = confirm(
+        kind === "persistAudio"
+          ? "确定关闭音频持久化？\n\n新生成的音频将直接使用 Poyo 上游 URL，约 24 小时后过期。已存在的音频不受影响。"
+          : "确定关闭视频持久化？\n\n新生成的视频将直接使用上游 CDN URL（Poyo/Higgsfield），约 24 小时后过期。已存在的视频不受影响。"
+      );
+      if (!confirmed) return;
+    }
+    setMut.mutate({ [kind]: newValue });
+  };
+
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+      <div style={{ ...cardStyle, alignItems: "stretch", padding: "16px 20px" }}>
+        <div style={{ display: "flex", alignItems: "flex-start", gap: 12, marginBottom: 8 }}>
+          <HardDrive style={{ width: 18, height: 18, color: "oklch(0.72 0.2 285)", flexShrink: 0, marginTop: 2 }} />
+          <div>
+            <h3 style={{ margin: 0, fontSize: 15, fontWeight: 600, color: "var(--c-t1, #f0f0f4)" }}>
+              Manus S3 存储持久化
+            </h3>
+            <p style={{ margin: "4px 0 0", fontSize: 12, color: "var(--c-t2, rgba(255,255,255,0.55))", lineHeight: 1.5 }}>
+              开启后系统会自动把生成的音频/视频下载并存到 Manus S3，URL 永久可用。<br />
+              关闭后节点降级为直接使用模型提供商的上游 URL（Poyo: 24h 后过期；Higgsfield: 临时 CDN）。<br />
+              图像生成不受此开关影响（始终持久化）。
+            </p>
+          </div>
+        </div>
+      </div>
+
+      {loading && (
+        <div style={{ color: "var(--c-t2)", fontSize: 13, padding: 12 }}>加载中...</div>
+      )}
+
+      {settings && (
+        <>
+          <ToggleRow
+            label="持久化音频"
+            description="音乐生成 / 配音 / TTS 输出"
+            enabled={settings.persistAudio}
+            disabled={setMut.isPending}
+            onClick={() => handleToggle("persistAudio")}
+          />
+          <ToggleRow
+            label="持久化视频"
+            description="Poyo / Higgsfield 视频生成输出"
+            enabled={settings.persistVideo}
+            disabled={setMut.isPending}
+            onClick={() => handleToggle("persistVideo")}
+          />
+        </>
+      )}
+    </div>
+  );
+}
+
+function ToggleRow({ label, description, enabled, disabled, onClick }: {
+  label: string;
+  description: string;
+  enabled: boolean;
+  disabled?: boolean;
+  onClick: () => void;
+}) {
+  const Icon = enabled ? ToggleRight : ToggleLeft;
+  return (
+    <div style={{
+      display: "flex", alignItems: "center", justifyContent: "space-between",
+      padding: "14px 18px", background: "var(--c-surface, rgba(255,255,255,0.03))",
+      border: "1px solid var(--c-bd1, rgba(255,255,255,0.06))", borderRadius: 10,
+    }}>
+      <div>
+        <div style={{ fontSize: 14, fontWeight: 500, color: "var(--c-t1, #f0f0f4)" }}>{label}</div>
+        <div style={{ fontSize: 11, color: "var(--c-t3, rgba(255,255,255,0.4))", marginTop: 3 }}>{description}</div>
+        <div style={{ fontSize: 11, color: enabled ? "oklch(0.7 0.18 145)" : "oklch(0.65 0.18 25)", marginTop: 4, fontWeight: 600 }}>
+          状态：{enabled ? "已开启（永久存储）" : "已关闭（24h 后过期）"}
+        </div>
+      </div>
+      <button
+        onClick={onClick}
+        disabled={disabled}
+        style={{
+          background: "none", border: "none", cursor: disabled ? "wait" : "pointer",
+          padding: 4, opacity: disabled ? 0.5 : 1,
+        }}
+        title={enabled ? "点击关闭" : "点击开启"}
+      >
+        <Icon style={{
+          width: 36, height: 36,
+          color: enabled ? "oklch(0.7 0.18 145)" : "var(--c-t3, rgba(255,255,255,0.4))",
+        }} />
+      </button>
+    </div>
+  );
+}
 
 function WhitelistPanel() {
   const settingsQuery = trpc.admin.whitelist.getSettings.useQuery();

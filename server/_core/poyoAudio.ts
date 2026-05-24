@@ -1,5 +1,6 @@
 import { ENV } from "./env";
 import { storagePut } from "../storage";
+import { isAudioPersistenceEnabled } from "./storageConfig";
 
 const POYO_BASE = "https://api.poyo.ai";
 const POLL_INTERVAL_MS = 4000;
@@ -92,6 +93,11 @@ export async function submitAndPollPoyoMusic(
       const file = d.files?.[0];
       if (!file?.file_url) throw new Error("Poyo audio: finished but no file URL");
 
+      // Admin-controlled toggle: when audio persistence is disabled,
+      // skip the storagePut step and return the upstream URL (24h TTL).
+      if (!(await isAudioPersistenceEnabled())) {
+        return { url: file.file_url, duration: file.duration };
+      }
       // Download and re-upload to own storage for persistence
       try {
         const audioRes = await fetch(file.file_url);

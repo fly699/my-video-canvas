@@ -3,6 +3,7 @@ import { getPendingVideoTasks, updateVideoTask } from "./db";
 import { isPoyoVideoProvider, submitPoyoVideo, checkPoyoVideoStatus } from "./_core/poyoVideo";
 import { isHiggsfieldVideoProvider, submitHiggsfieldVideo, checkHiggsfieldVideoStatus } from "./_core/higgsfield";
 import { storagePut } from "./storage";
+import { isVideoPersistenceEnabled } from "./_core/storageConfig";
 
 const MAX_PERSIST_VIDEO_BYTES = 500 * 1024 * 1024; // 500 MB hard cap
 const PERSIST_FETCH_TIMEOUT_MS = 180_000; // 3 min — large videos can be slow
@@ -21,6 +22,11 @@ const PERSIST_FETCH_TIMEOUT_MS = 180_000; // 3 min — large videos can be slow
  * expires in 24h, which matches the previous behaviour.
  */
 async function persistVideoOrFallback(upstreamUrl: string, provider: string): Promise<string> {
+  // Admin-controlled toggle: when video persistence is disabled, skip the
+  // download entirely and return the upstream URL straight through.
+  if (!(await isVideoPersistenceEnabled())) {
+    return upstreamUrl;
+  }
   try {
     const res = await fetch(upstreamUrl, { signal: AbortSignal.timeout(PERSIST_FETCH_TIMEOUT_MS) });
     if (!res.ok) {

@@ -11,6 +11,7 @@ import {
   chatMessages,
   whitelistSettings,
   whitelistEntries,
+  storageSettings,
   auditLogs,
   InsertProject,
   InsertCanvasNode,
@@ -25,6 +26,7 @@ import * as dev from "./_core/devStore";
 
 // Dev-mode whitelist state
 const devWhitelistSettings = { id: 1, enabled: false, updatedAt: new Date() };
+const devStorageSettings = { id: 1, persistAudio: true, persistVideo: true, updatedAt: new Date() };
 const devWhitelistEntries: Array<{ id: number; type: "ip" | "user"; value: string; note: string | null; createdBy: number | null; createdAt: Date }> = [];
 let devNextWhitelistId = 1;
 
@@ -399,6 +401,40 @@ export async function getWhitelistEntries() {
   const db = await getDb();
   if (!db) return [...devWhitelistEntries];
   return db.select().from(whitelistEntries).orderBy(whitelistEntries.createdAt);
+}
+
+// ── Storage persistence settings ────────────────────────────────────────────
+
+export async function getStorageSettings(): Promise<{ persistAudio: boolean; persistVideo: boolean }> {
+  const db = await getDb();
+  if (!db) return { persistAudio: devStorageSettings.persistAudio, persistVideo: devStorageSettings.persistVideo };
+  const rows = await db.select().from(storageSettings).limit(1);
+  const row = rows[0];
+  return {
+    persistAudio: row?.persistAudio ?? true,
+    persistVideo: row?.persistVideo ?? true,
+  };
+}
+
+export async function setStorageSettings(patch: { persistAudio?: boolean; persistVideo?: boolean }): Promise<void> {
+  const db = await getDb();
+  if (!db) {
+    if (patch.persistAudio !== undefined) devStorageSettings.persistAudio = patch.persistAudio;
+    if (patch.persistVideo !== undefined) devStorageSettings.persistVideo = patch.persistVideo;
+    return;
+  }
+  // Upsert singleton row id=1
+  const current = await getStorageSettings();
+  await db.insert(storageSettings).values({
+    id: 1,
+    persistAudio: patch.persistAudio ?? current.persistAudio,
+    persistVideo: patch.persistVideo ?? current.persistVideo,
+  }).onDuplicateKeyUpdate({
+    set: {
+      ...(patch.persistAudio !== undefined ? { persistAudio: patch.persistAudio } : {}),
+      ...(patch.persistVideo !== undefined ? { persistVideo: patch.persistVideo } : {}),
+    },
+  });
 }
 
 export async function addWhitelistEntry(
