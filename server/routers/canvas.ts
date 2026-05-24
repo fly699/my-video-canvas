@@ -1134,13 +1134,15 @@ export const clipRouter = router({
     .mutation(async ({ ctx, input }) => {
       await assertWhitelisted(ctx);
       assertSafeUrl(input.referenceImageUrl);
-      const result = await generateImage({
-        prompt: input.prompt,
-        model: "hf_flux_pro",
-        originalImages: [{ url: input.referenceImageUrl }],
-        fluxGuidanceScale: input.guidanceScale,
+      return dedupe("clip.poseControl", ctx.user.id, input, async () => {
+        const result = await generateImage({
+          prompt: input.prompt,
+          model: "hf_flux_pro",
+          originalImages: [{ url: input.referenceImageUrl }],
+          fluxGuidanceScale: input.guidanceScale,
+        });
+        return { url: result.url };
       });
-      return { url: result.url };
     }),
 });
 
@@ -1249,12 +1251,14 @@ export const subtitleMotionRouter = router({
     }))
     .mutation(async ({ ctx, input }) => {
       await assertWhitelisted(ctx);
-      const result = await burnAssSubtitles(
-        input.videoUrl,
-        input.entries as SubtitleEntry[],
-        { motionStyle: input.motionStyle, fontSize: input.fontSize, fontColor: input.fontColor },
-      );
-      return { url: result.url };
+      return dedupe("subtitleMotion.burnMotion", ctx.user.id, input, async () => {
+        const result = await burnAssSubtitles(
+          input.videoUrl,
+          input.entries as SubtitleEntry[],
+          { motionStyle: input.motionStyle, fontSize: input.fontSize, fontColor: input.fontColor },
+        );
+        return { url: result.url };
+      });
     }),
 });
 

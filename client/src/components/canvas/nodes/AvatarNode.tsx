@@ -18,7 +18,7 @@ const accentA = (a: number) => `oklch(0.65 0.20 290 / ${a})`;
 
 export const AvatarNode = memo(function AvatarNode({ id, selected, data }: Props) {
   return (
-    <BaseNode id={id} selected={selected} nodeType="avatar" title={data.title} minHeight={120}>
+    <BaseNode id={id} selected={selected} nodeType="avatar" title={data.title} minHeight={120} showHandles={false}>
       <div className="flex flex-col items-center gap-3 p-4 text-center">
         <div className="flex items-center justify-center w-10 h-10 rounded-full" style={{ background: accentA(0.12), border: `1px solid ${accentA(0.4)}` }}>
           <PersonStanding style={{ width: 18, height: 18, color: accent }} />

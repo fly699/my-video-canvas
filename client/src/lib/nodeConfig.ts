@@ -2,13 +2,13 @@ import type { NodeType } from "../../../shared/types";
 import {
   ScrollText, Film, Wand2, ImagePlus, Package, Video, Bot, StickyNote,
   AudioWaveform, SlidersHorizontal, Folder, UserRound, Scissors, Merge, Captions, Blend,
-  Clapperboard, Zap, Layers, Mic, Scan, PersonStanding,
+  Zap, Layers, Mic, Scan, PersonStanding,
 } from "lucide-react";
 
 export const NODE_ICONS: Record<string, React.ComponentType<{ className?: string; style?: React.CSSProperties }>> = {
   ScrollText, Film, Wand2, ImagePlus, Package, Video, Bot, StickyNote,
   AudioWaveform, SlidersHorizontal, Folder, UserRound, Scissors, Merge, Captions, Blend,
-  Clapperboard, Zap, Layers, Mic, Scan, PersonStanding,
+  Zap, Layers, Mic, Scan, PersonStanding,
 };
 
 export interface NodeConfig {
@@ -189,7 +189,7 @@ export const NODE_CONFIGS: Record<NodeType, NodeConfig> = {
   subtitle_motion: {
     type: "subtitle_motion",
     label: "动态字幕",
-    icon: "Clapperboard",
+    icon: "Captions",
     color: "oklch(0.68 0.20 175)",
     bgColor: "oklch(0.68 0.20 175 / 0.08)",
     borderColor: "oklch(0.68 0.20 175 / 0.4)",

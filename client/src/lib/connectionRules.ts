@@ -1,13 +1,13 @@
 import type { NodeType } from "../../../shared/types";
 
 export const CONNECTION_MATRIX: Partial<Record<NodeType, NodeType[]>> = {
-  script: ["storyboard", "prompt", "ai_chat", "character"],
+  script: ["storyboard", "prompt", "ai_chat", "character", "avatar"],
   storyboard: ["image_gen", "video_task", "prompt"],
   prompt: ["image_gen", "video_task", "storyboard", "script"],
   character: ["storyboard", "image_gen", "video_task", "prompt"],
   image_gen: ["video_task", "asset", "clip", "pose_control"],
   video_task: ["clip", "asset", "overlay", "merge", "subtitle", "subtitle_motion", "smart_cut", "lip_sync"],
-  audio: ["clip", "lip_sync"],
+  audio: ["clip", "lip_sync", "avatar"],
   asset: ["image_gen", "video_task", "clip", "merge", "subtitle", "subtitle_motion", "smart_cut", "pose_control"],
   ai_chat: ["script", "storyboard", "prompt"],
   clip: ["asset", "overlay", "merge", "subtitle", "subtitle_motion", "smart_cut"],
@@ -17,7 +17,7 @@ export const CONNECTION_MATRIX: Partial<Record<NodeType, NodeType[]>> = {
   subtitle_motion: ["asset"],
   smart_cut: ["asset", "merge"],
   pose_control: ["image_gen", "asset"],
-  voice_clone: ["asset", "clip"],
+  voice_clone: ["asset", "clip", "lip_sync"],
   lip_sync: ["asset"],
   avatar: ["asset", "clip"],
   merge: ["asset"],
@@ -86,7 +86,7 @@ export const CONNECTION_HINTS: Record<
   },
   video_task: {
     label: "视频任务",
-    outgoing: "→ 剪辑 / 素材",
+    outgoing: "→ 剪辑 / 素材 / 叠加 / 合并 / 字幕 / 动态字幕 / 智能剪辑 / 唇形同步",
     incoming: "← 图像生成 / 分镜 / 提示词",
   },
   audio: {
@@ -156,7 +156,7 @@ export const CONNECTION_HINTS: Record<
   },
   voice_clone: {
     label: "声音克隆",
-    outgoing: "→ 素材 / 剪辑",
+    outgoing: "→ 素材 / 剪辑 / 唇形同步",
     incoming: "无上游连接",
   },
   lip_sync: {
@@ -167,6 +167,6 @@ export const CONNECTION_HINTS: Record<
   avatar: {
     label: "数字人",
     outgoing: "→ 素材 / 剪辑",
-    incoming: "无上游连接",
+    incoming: "← 脚本 / 音频",
   },
 };
