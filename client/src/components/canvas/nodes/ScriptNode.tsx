@@ -8,7 +8,7 @@ import {
   Sparkles, Loader2, ChevronDown, Clapperboard,
   Minus, Plus, Copy, FileText, Check,
 } from "lucide-react";
-import { LLMModelPicker, type LLMModelId } from "../LLMModelPicker";
+import { LLMModelPicker, LLM_MODELS, type LLMModelId } from "../LLMModelPicker";
 
 interface Props {
   id: string;
@@ -121,8 +121,9 @@ export const ScriptNode = memo(function ScriptNode({ id, selected, data }: Props
   const { updateNodeData } = useCanvasStore();
   const payload = data.payload;
 
-  // LLM model — persisted to payload
-  const [llmModel, setLlmModel] = useState<LLMModelId>((payload.aiLlmModel as LLMModelId) ?? "claude-sonnet-4-6");
+  // LLM model — persisted to payload; validate against known IDs to handle stale/removed model IDs
+  const _validLlmModel = LLM_MODELS.some((m) => m.id === payload.aiLlmModel) ? (payload.aiLlmModel as LLMModelId) : "claude-sonnet-4-6";
+  const [llmModel, setLlmModel] = useState<LLMModelId>(_validLlmModel);
   const handleLlmModelChange = useCallback((m: LLMModelId) => {
     setLlmModel(m);
     updateNodeData(id, { aiLlmModel: m });
@@ -175,7 +176,7 @@ export const ScriptNode = memo(function ScriptNode({ id, selected, data }: Props
   }, [id, updateNodeData]);
 
   // Duration state — persisted to payload.totalDuration
-  const initDuration = Math.max(10, Math.min(600, Number(payload.totalDuration) || 60));
+  const initDuration = payload.totalDuration !== undefined ? Math.max(10, Math.min(600, Number(payload.totalDuration))) : 60;
   const [duration,     setDuration]    = useState(initDuration);
   const [durationText, setDurationText] = useState(String(initDuration));
   const durationInputRef = useRef<HTMLInputElement>(null);
@@ -207,7 +208,7 @@ export const ScriptNode = memo(function ScriptNode({ id, selected, data }: Props
   // Sync duration when payload changes externally (collab / undo-redo)
   useEffect(() => {
     if (durationInputRef.current !== null && durationInputRef.current === document.activeElement) return;
-    const v = Math.max(10, Math.min(600, Number(payload.totalDuration) || 60));
+    const v = payload.totalDuration !== undefined ? Math.max(10, Math.min(600, Number(payload.totalDuration))) : 60;
     setDuration(v);
     setDurationText(String(v));
   }, [payload.totalDuration]); // eslint-disable-line react-hooks/exhaustive-deps
@@ -272,10 +273,13 @@ export const ScriptNode = memo(function ScriptNode({ id, selected, data }: Props
       let nodesCreated = 0;
       if (result.scenes.length > 0) {
         const { nodes: currentNodes, batchAddSceneNodes, projectId } = useCanvasStore.getState();
-        if (!projectId) { toast.error("画布尚未加载，分镜节点创建失败"); return; }
-        const ownPos = currentNodes.find((n) => n.id === id)?.position ?? { x: 0, y: 0 };
-        batchAddSceneNodes(result.scenes, id, ownPos);
-        nodesCreated = result.scenes.length;
+        if (projectId) {
+          const ownPos = currentNodes.find((n) => n.id === id)?.position ?? { x: 0, y: 0 };
+          batchAddSceneNodes(result.scenes, id, ownPos);
+          nodesCreated = result.scenes.length;
+        } else {
+          toast.error("画布尚未加载，分镜节点创建失败");
+        }
       }
       toast.success("AI 剧本已生成", {
         description: nodesCreated > 0 ? `剧本已填入，${nodesCreated} 个分镜节点已创建` : "剧本已填入",
@@ -289,8 +293,12 @@ export const ScriptNode = memo(function ScriptNode({ id, selected, data }: Props
     || fullScriptMutation.isPending || summarizeMutation.isPending;
 
   const handleFullGenerate = useCallback(() => {
-    const synopsis = payload.synopsis?.trim() || payload.content?.trim();
+    let synopsis = (payload.synopsis?.trim() || payload.content?.trim()) ?? "";
     if (!synopsis) { toast.error("请先填写故事梗概或脚本内容"); return; }
+    if (synopsis.length > 2000) {
+      synopsis = synopsis.slice(0, 2000);
+      toast.warning("梗概过长，已自动截断至 2000 字");
+    }
     // Commit any pending text in duration input before reading the value
     const committedDuration = commitDuration();
     fullScriptMutation.mutate({
@@ -327,7 +335,7 @@ export const ScriptNode = memo(function ScriptNode({ id, selected, data }: Props
   }, [payload.content, llmModel, summarizeMutation]);
 
   // ── Per-scene duration estimate ───────────────────────────────────────────
-  const perSceneSecs = Math.round(duration / sceneCount);
+  const perSceneSecs = Math.round(duration / Math.max(1, sceneCount));
   const charCount = (payload.content ?? "").length;
   // Actual cap for generateStoryboards (server max is 8)
   const storyboardCount = Math.min(sceneCount, 8);
@@ -373,7 +381,7 @@ export const ScriptNode = memo(function ScriptNode({ id, selected, data }: Props
         {/* Script content */}
         <textarea
           placeholder={"在此输入或粘贴脚本内容...\n\n也可直接使用下方「AI 剧本创作」一键生成。"}
-          value={payload.content}
+          value={payload.content ?? ""}
           onChange={(e) => handleChange("content", e.target.value)}
           className="nodrag flex-1"
           style={textareaStyle}
@@ -618,7 +626,7 @@ export const ScriptNode = memo(function ScriptNode({ id, selected, data }: Props
                         const v = parseInt(durationText, 10);
                         applyDuration(isNaN(v) ? duration : Math.max(10, Math.min(600, v)));
                       }}
-                      onKeyDown={(e) => { if (e.key === "Enter") e.currentTarget.blur(); }}
+                      onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); e.currentTarget.blur(); } }}
                       className="nodrag"
                       style={{
                         fontSize: 13, fontWeight: 700, color: PANEL_ACCENT,
