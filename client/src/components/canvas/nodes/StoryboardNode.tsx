@@ -59,9 +59,9 @@ export const StoryboardNode = memo(function StoryboardNode({ id, selected, data 
   // Close lightbox on Escape
   useEffect(() => {
     if (!zoomUrl) return;
-    const handler = (e: KeyboardEvent) => { if (e.key === "Escape") { e.stopPropagation(); setZoomUrl(null); } };
-    document.addEventListener("keydown", handler);
-    return () => document.removeEventListener("keydown", handler);
+    const handler = (e: KeyboardEvent) => { if (e.key === "Escape") { e.stopImmediatePropagation(); setZoomUrl(null); } };
+    document.addEventListener("keydown", handler, true);
+    return () => document.removeEventListener("keydown", handler, true);
   }, [zoomUrl]);
 
   // Sync batchCount when payload.batchSize changes externally (collab / undo-redo)
@@ -82,6 +82,8 @@ export const StoryboardNode = memo(function StoryboardNode({ id, selected, data 
 
   const [uploadingRef, setUploadingRef] = useState(false);
   const refInputRef = useRef<HTMLInputElement>(null);
+  const modelBtnRef = useRef<HTMLButtonElement>(null);
+  const [modelPickerRect, setModelPickerRect] = useState<DOMRect | null>(null);
 
   const uploadRefMutation = trpc.upload.uploadImage.useMutation({
     onSuccess: (result) => {
