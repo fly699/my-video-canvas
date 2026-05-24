@@ -108,12 +108,14 @@ export const BaseNode = memo(function BaseNode({
   };
 
   // Target (input) handle: SQUARE with slight rounding — receives data
+  // NOTE: avoid transform:scale on idle — CSS transform also scales the ::before
+  // hit-area, shrinking the clickable zone. Use opacity-only for the idle fade.
   const targetHandle: React.CSSProperties = {
     ...handleShared,
     borderRadius: 3,                                       // square = input
     background: `${config.color}90`,                       // slightly transparent
     opacity: isHovered || selected ? 1 : 0.40,
-    transform: isHovered || selected ? "scale(1.1)" : "scale(0.85)",
+    transform: isHovered || selected ? "scale(1.1)" : "scale(1)",
     boxShadow: isHovered || selected ? `0 0 0 3px ${config.color}22` : "none",
   };
 
@@ -123,7 +125,7 @@ export const BaseNode = memo(function BaseNode({
     borderRadius: "50%",                                   // circle = output
     background: config.color,                              // fully colored
     opacity: isHovered || selected ? 1 : 0.45,
-    transform: isHovered || selected ? "scale(1.1)" : "scale(0.85)",
+    transform: isHovered || selected ? "scale(1.1)" : "scale(1)",
     boxShadow: isHovered || selected ? `0 0 0 4px ${config.color}30` : "none",
   };
 
