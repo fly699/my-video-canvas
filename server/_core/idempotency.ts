@@ -26,7 +26,11 @@ import { createHash } from "node:crypto";
 type Entry = { promise: Promise<unknown>; expiresAt: number };
 
 const cache = new Map<string, Entry>();
-const MAX_TTL_MS = 5 * 60 * 1000; // hard upper bound — long enough for slow Suno/Veo runs
+// Hard upper bound — must exceed the longest in-flight mutation we run, otherwise
+// concurrent duplicate requests after expiry will both start and double-charge.
+// ComfyUI video workflows can poll up to ~10 min (POLL_MAX_ATTEMPTS_VIDEO × 3 s);
+// 15 min gives slack for slow Suno/Veo runs and network jitter.
+const MAX_TTL_MS = 15 * 60 * 1000;
 
 function hashKey(bucket: string, userId: number, keyInput: unknown): string {
   const h = createHash("sha256").update(JSON.stringify(keyInput)).digest("hex");

@@ -1365,7 +1365,7 @@ export const comfyuiRouter = router({
       z.object({
         nodeId: z.string(),
         projectId: z.number(),
-        customBaseUrl: z.string().optional(),
+        customBaseUrl: z.string().max(2048).optional(),
         workflowTemplate: z.enum(["txt2img", "img2img"]),
         prompt: z.string().min(1).max(2000),
         negPrompt: z.string().max(2000).optional(),
@@ -1416,7 +1416,7 @@ export const comfyuiRouter = router({
       z.object({
         nodeId: z.string(),
         projectId: z.number(),
-        customBaseUrl: z.string().optional(),
+        customBaseUrl: z.string().max(2048).optional(),
         workflowTemplate: z.enum(["animatediff", "svd"]),
         prompt: z.string().min(1).max(2000),
         negPrompt: z.string().max(2000).optional(),
@@ -1463,8 +1463,12 @@ export const comfyuiRouter = router({
     }),
 
   fetchModels: protectedProcedure
-    .input(z.object({ customBaseUrl: z.string().optional() }))
-    .query(async ({ input }) => {
+    .input(z.object({ customBaseUrl: z.string().max(2048).optional() }))
+    .query(async ({ ctx, input }) => {
+      // Whitelist check: fetchModels can be used as an SSRF probe via customBaseUrl
+      // (the server fetches whatever URL the client supplies). Treat with the same
+      // gate as the paid generate endpoints.
+      await assertWhitelisted(ctx);
       const baseUrl = input.customBaseUrl?.trim() || ENV.comfyuiBaseUrl;
       if (!baseUrl) return { ckpts: [], loras: [], samplers: [], motionModules: [] };
       try {

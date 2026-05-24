@@ -439,15 +439,35 @@ function CanvasInner({ projectId }: { projectId: number }) {
   }, [dbNodes]);
 
   useEffect(() => {
-    if (!dbEdges) return;
-    const flowEdges: CanvasEdge[] = dbEdges.map((e) => ({
-      id: e.id, type: "custom",
-      source: e.sourceNodeId, target: e.targetNodeId,
-      sourceHandle: e.sourcePort ?? "output", targetHandle: e.targetPort ?? "input",
-      label: e.label ?? undefined,
-    }));
+    if (!dbEdges || !dbNodes) return;
+    // Migration: 5 processing nodes (merge / subtitle / subtitle_motion /
+    // pose_control / smart_cut) previously rendered `input` at Position.Top and
+    // `output` at Position.Bottom via showHandles={false}. They now use
+    // BaseNode's default handles where `input` is at Left and `top` is at Top.
+    // Rewrite legacy `input`/`output` ports on edges that target/source these
+    // node types so existing projects keep their visual top→bottom wiring.
+    const LEGACY_VERTICAL_NODES = new Set([
+      "merge", "subtitle", "subtitle_motion", "pose_control", "smart_cut",
+    ]);
+    const nodeTypeById = new Map(dbNodes.map((n) => [n.id, n.type as string]));
+    const flowEdges: CanvasEdge[] = dbEdges.map((e) => {
+      let targetHandle = e.targetPort ?? "input";
+      let sourceHandle = e.sourcePort ?? "output";
+      if (targetHandle === "input" && LEGACY_VERTICAL_NODES.has(nodeTypeById.get(e.targetNodeId) ?? "")) {
+        targetHandle = "top";
+      }
+      if (sourceHandle === "output" && LEGACY_VERTICAL_NODES.has(nodeTypeById.get(e.sourceNodeId) ?? "")) {
+        sourceHandle = "bottom";
+      }
+      return {
+        id: e.id, type: "custom",
+        source: e.sourceNodeId, target: e.targetNodeId,
+        sourceHandle, targetHandle,
+        label: e.label ?? undefined,
+      };
+    });
     setEdges(flowEdges);
-  }, [dbEdges]);
+  }, [dbEdges, dbNodes]);
 
   useEffect(() => {
     if (project?.viewportState) {

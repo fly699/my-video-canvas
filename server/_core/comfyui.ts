@@ -17,9 +17,19 @@ const POLL_MAX_ATTEMPTS_VIDEO = 200; // ~10 min — video workflows are slower
 // ── URL validation ────────────────────────────────────────────────────────────
 
 function normalizeBaseUrl(raw: string): string {
+  // Length cap — anything beyond 2048 chars is hostile input, not a real URL.
+  if (raw.length > 2048) {
+    throw new Error("ComfyUI URL 过长（最大 2048 字符）");
+  }
   const url = new URL(raw);
   if (url.protocol !== "http:" && url.protocol !== "https:") {
     throw new Error(`ComfyUI URL 协议必须是 http 或 https，当前为 ${url.protocol}`);
+  }
+  // Reject userinfo (`user:pass@host`) — fetch would otherwise leak credentials
+  // as Basic Auth to whatever host the user typed. Internal ComfyUI servers
+  // should not require credentials; if they do, use a reverse proxy with token auth.
+  if (url.username || url.password) {
+    throw new Error("ComfyUI URL 不允许包含用户名/密码（user:pass@host）");
   }
   // Strip trailing slash for consistent path joining.
   return url.origin + url.pathname.replace(/\/+$/, "");
@@ -89,39 +99,51 @@ interface SubstitutionMap {
   fps?: number;
 }
 
-/** Escape a string for safe embedding inside a JSON string literal. */
-function jsonEscape(s: string): string {
-  // JSON.stringify wraps in quotes & escapes special chars; slice off the outer quotes.
-  return JSON.stringify(s).slice(1, -1);
-}
-
 function applyTemplate(template: unknown, subs: SubstitutionMap): unknown {
-  let json = JSON.stringify(template);
-  // Numeric replacements: replace `"__name__"` (with quotes) so the result is a raw number
-  const numericKeys: Array<[string, number | undefined]> = [
-    ["__seed__", subs.seed ?? Math.floor(Math.random() * 2_147_483_647)],
-    ["__steps__", subs.steps ?? 20],
-    ["__cfg__", subs.cfg ?? 7],
-    ["__width__", subs.width ?? 512],
-    ["__height__", subs.height ?? 512],
-    ["__frames__", subs.frames ?? 16],
-    ["__fps__", subs.fps ?? 8],
-  ];
-  for (const [key, val] of numericKeys) {
-    json = json.split(`"${key}"`).join(String(val));
-  }
-  // String replacements: replace the placeholder INSIDE the quoted string with escaped value
-  const stringKeys: Array<[string, string | undefined]> = [
-    ["__ckpt__", subs.ckpt ?? ""],
-    ["__prompt__", subs.prompt ?? ""],
-    ["__negPrompt__", subs.negPrompt ?? ""],
-    ["__refImageName__", subs.refImageName ?? ""],
-    ["__motionModule__", subs.motionModule ?? ""],
-  ];
-  for (const [key, val] of stringKeys) {
-    json = json.split(key).join(jsonEscape(val ?? ""));
-  }
-  return JSON.parse(json);
+  // Walk the deep-cloned template tree and replace any string value that exactly
+  // matches a placeholder with the corresponding substitution. This avoids the
+  // string-replace-on-stringified-JSON approach which is unsafe when user-supplied
+  // values (prompt / ckpt name) happen to contain placeholder tokens or characters
+  // that break JSON parsing.
+  const numeric: Record<string, number> = {
+    __seed__: subs.seed ?? Math.floor(Math.random() * 2_147_483_647),
+    __steps__: subs.steps ?? 20,
+    __cfg__: subs.cfg ?? 7,
+    __width__: subs.width ?? 512,
+    __height__: subs.height ?? 512,
+    __frames__: subs.frames ?? 16,
+    __fps__: subs.fps ?? 8,
+  };
+  const stringy: Record<string, string> = {
+    __ckpt__: subs.ckpt ?? "",
+    __prompt__: subs.prompt ?? "",
+    __negPrompt__: subs.negPrompt ?? "",
+    __refImageName__: subs.refImageName ?? "",
+    __motionModule__: subs.motionModule ?? "",
+  };
+
+  const walk = (node: unknown): unknown => {
+    if (typeof node === "string") {
+      // Only exact-match placeholders get substituted — user values are never
+      // interpreted as placeholders even if they happen to equal a token.
+      if (Object.prototype.hasOwnProperty.call(numeric, node)) return numeric[node];
+      if (Object.prototype.hasOwnProperty.call(stringy, node)) return stringy[node];
+      return node;
+    }
+    if (Array.isArray(node)) return node.map(walk);
+    if (node !== null && typeof node === "object") {
+      const out: Record<string, unknown> = {};
+      for (const [k, v] of Object.entries(node as Record<string, unknown>)) {
+        out[k] = walk(v);
+      }
+      return out;
+    }
+    return node;
+  };
+
+  // Deep-clone via JSON round-trip first to avoid mutating the template constant,
+  // then walk to substitute.
+  return walk(JSON.parse(JSON.stringify(template)));
 }
 
 // ── ComfyUI HTTP API ──────────────────────────────────────────────────────────
@@ -159,6 +181,11 @@ async function submitWorkflow(baseUrl: string, workflow: unknown): Promise<strin
 }
 
 async function pollHistory(baseUrl: string, promptId: string, maxAttempts: number): Promise<HistoryEntry> {
+  // Early exit when the server keeps refusing connections (down / unreachable) —
+  // bail after 5 consecutive transient failures (~15s) instead of waiting the full
+  // 5/10-minute timeout.
+  const MAX_CONSECUTIVE_NET_ERRORS = 5;
+  let consecutiveNetErrors = 0;
   for (let i = 0; i < maxAttempts; i++) {
     await new Promise((r) => setTimeout(r, POLL_INTERVAL_MS));
     try {
@@ -166,9 +193,16 @@ async function pollHistory(baseUrl: string, promptId: string, maxAttempts: numbe
         signal: AbortSignal.timeout(10_000),
       });
       if (!res.ok) {
-        if (res.status === 404 || res.status >= 500) continue;
+        if (res.status === 404 || res.status >= 500) {
+          consecutiveNetErrors++;
+          if (consecutiveNetErrors >= MAX_CONSECUTIVE_NET_ERRORS) {
+            throw new Error(`ComfyUI 服务器持续无响应 (HTTP ${res.status} × ${consecutiveNetErrors} 次)`);
+          }
+          continue;
+        }
         throw new Error(`ComfyUI 状态查询失败 (${res.status})`);
       }
+      consecutiveNetErrors = 0;
       const data = (await res.json()) as Record<string, HistoryEntry>;
       const entry = data[promptId];
       if (entry && entry.status?.completed) return entry;
@@ -176,8 +210,11 @@ async function pollHistory(baseUrl: string, promptId: string, maxAttempts: numbe
         throw new Error(`ComfyUI 执行失败: ${JSON.stringify(entry.status.messages ?? []).slice(0, 500)}`);
       }
     } catch (err) {
-      // Tolerate transient network errors; rethrow only if it's clearly fatal
-      if (err instanceof Error && err.message.startsWith("ComfyUI 执行失败")) throw err;
+      if (err instanceof Error && (err.message.startsWith("ComfyUI 执行失败") || err.message.startsWith("ComfyUI 服务器持续无响应"))) throw err;
+      consecutiveNetErrors++;
+      if (consecutiveNetErrors >= MAX_CONSECUTIVE_NET_ERRORS) {
+        throw new Error(`ComfyUI 服务器不可达 (连续 ${consecutiveNetErrors} 次连接失败): ${err instanceof Error ? err.message : String(err)}`);
+      }
     }
   }
   throw new Error("ComfyUI 任务超时");

@@ -591,17 +591,22 @@ export function useWorkflowRunner() {
             height: typeof p.height === "number" ? p.height : 512,
             referenceImageUrl: refUrl,
           });
+          // Guard against the node having been deleted while the long-running
+          // mutation was in flight — writing back would resurrect a ghost node.
+          const { nodes: nodesAtSuccess, edges: currentEdges } = useCanvasStore.getState();
+          if (!nodesAtSuccess.some((n) => n.id === nodeId)) {
+            return "ok";
+          }
           useCanvasStore.getState().updateNodeData(nodeId, {
             imageUrl: result.url,
             status: "done",
             errorMessage: undefined,
           }, true);
           // Propagate to downstream video nodes that consume reference image
-          const { edges: currentEdges, nodes: currentNodes } = useCanvasStore.getState();
           const downstreamUpdates = currentEdges
             .filter((e) => e.source === nodeId)
             .flatMap((edge) => {
-              const target = currentNodes.find((n) => n.id === edge.target);
+              const target = nodesAtSuccess.find((n) => n.id === edge.target);
               const tt = target?.data.nodeType;
               return (tt === "video_task" || tt === "comfyui_video") && result.url
                 ? [{ id: edge.target, payload: { referenceImageUrl: result.url } }]
@@ -651,6 +656,10 @@ export function useWorkflowRunner() {
             fps: typeof p.fps === "number" ? p.fps : 8,
             referenceImageUrl: refUrl,
           });
+          // Guard against the node having been deleted during the long mutation.
+          if (!useCanvasStore.getState().nodes.some((n) => n.id === nodeId)) {
+            return "ok";
+          }
           useCanvasStore.getState().updateNodeData(nodeId, {
             resultVideoUrl: result.url,
             status: "done",
