@@ -92,9 +92,8 @@ export const StoryboardNode = memo(function StoryboardNode({ id, selected, data 
     }
   }, [payload.batchSize]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Expand when first selected; don't auto-collapse when focus moves away
   useEffect(() => {
-    if (selected) setInputExpanded(true);
+    setInputExpanded(!!selected);
   }, [selected]);
   const model: ImageModelId = IMAGE_MODELS.some(m => m.value === payload.imageModel)
     ? (payload.imageModel as ImageModelId)
