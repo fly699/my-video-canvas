@@ -46,6 +46,15 @@ export type VideoTaskStatus = "pending" | "processing" | "succeeded" | "failed";
 export interface ScriptNodeData {
   content: string;
   synopsis?: string;
+  totalDuration?: number;
+  // AI panel params — persisted so settings survive remount / project reload
+  aiGenre?: string;
+  aiStyle?: string;
+  aiMood?: string;
+  aiTargetModel?: string;
+  aiAspectRatio?: string;
+  aiSceneCount?: number;
+  aiLlmModel?: string;
 }
 
 export interface StoryboardNodeData {
@@ -62,6 +71,7 @@ export interface StoryboardNodeData {
   colorTone?: string;
   imageModel?: ImageGenModel;
   referenceImageUrl?: string;
+  batchSize?: number;
 }
 
 export interface PromptNodeData {
@@ -162,6 +172,8 @@ export interface AudioNodeData {
   musicPrompt?: string;
   musicDuration?: number;
   musicStyle?: string;
+  musicInstrumental?: boolean;  // false = generate with vocals
+  musicNegativeTags?: string;   // comma-separated keywords to exclude
   // Dubbing / TTS (配音)
   ttsText?: string;
   ttsVoice?: string;

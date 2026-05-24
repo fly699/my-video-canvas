@@ -27,10 +27,10 @@ function GridBackground() {
   return (
     <div className="fixed inset-0 pointer-events-none overflow-hidden" aria-hidden>
       {/* Dot grid */}
-      <svg className="absolute inset-0 w-full h-full opacity-[0.035]" xmlns="http://www.w3.org/2000/svg">
+      <svg className="absolute inset-0 w-full h-full opacity-[0.6]" xmlns="http://www.w3.org/2000/svg" style={{ color: "var(--c-bd2)" }}>
         <defs>
           <pattern id="dot-grid" x="0" y="0" width="32" height="32" patternUnits="userSpaceOnUse">
-            <circle cx="1" cy="1" r="1" fill="white" />
+            <circle cx="1" cy="1" r="1" fill="currentColor" />
           </pattern>
         </defs>
         <rect width="100%" height="100%" fill="url(#dot-grid)" />
@@ -49,7 +49,7 @@ function GridBackground() {
       <div
         className="absolute bottom-0 left-0 right-0 h-64"
         style={{
-          background: "linear-gradient(to top, var(--color-background), transparent)",
+          background: "linear-gradient(to top, var(--c-canvas), transparent)",
         }}
       />
     </div>
@@ -59,8 +59,8 @@ function GridBackground() {
 // ── Feature pill ─────────────────────────────────────────────────────────────
 function FeaturePill({ icon: Icon, label }: { icon: React.ComponentType<{ className?: string }>; label: string }) {
   return (
-    <div className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full border border-white/8 bg-white/4 text-xs text-white/50 font-medium">
-      <Icon className="w-3 h-3 text-white/40" />
+    <div className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-medium" style={{ border: "1px solid var(--c-bd2)", background: "var(--c-surface)", color: "var(--c-t3)" }}>
+      <Icon className="w-3 h-3" />
       {label}
     </div>
   );
@@ -116,10 +116,20 @@ function ProjectCard({
 
   return (
     <div
-      className="group relative flex flex-col rounded-xl border border-white/8 bg-white/[0.03] hover:bg-white/[0.055] hover:border-white/14 transition-all duration-200 cursor-pointer overflow-hidden"
+      className="group relative flex flex-col rounded-xl border transition-all duration-200 cursor-pointer overflow-hidden"
       onClick={() => !menuOpen && !renaming && onOpen()}
       style={{
-        boxShadow: "0 1px 2px oklch(0 0 0 / 0.4), 0 4px 16px oklch(0 0 0 / 0.2)",
+        borderColor: "var(--c-bd1)",
+        background: "var(--c-surface)",
+        boxShadow: "0 1px 2px oklch(0 0 0 / 0.2), 0 4px 16px oklch(0 0 0 / 0.1)",
+      }}
+      onMouseEnter={(e) => {
+        (e.currentTarget as HTMLElement).style.background = "var(--c-elevated)";
+        (e.currentTarget as HTMLElement).style.borderColor = "var(--c-bd2)";
+      }}
+      onMouseLeave={(e) => {
+        (e.currentTarget as HTMLElement).style.background = "var(--c-surface)";
+        (e.currentTarget as HTMLElement).style.borderColor = "var(--c-bd1)";
       }}
     >
       {/* Thumbnail area */}
@@ -131,12 +141,12 @@ function ProjectCard({
       >
         {/* Decorative nodes preview */}
         <div className="absolute inset-0 opacity-20">
-          <div className="absolute top-4 left-6 w-16 h-8 rounded-md border border-white/20 bg-white/5" />
-          <div className="absolute top-8 left-28 w-20 h-8 rounded-md border border-white/20 bg-white/5" />
-          <div className="absolute top-16 left-12 w-24 h-8 rounded-md border border-white/20 bg-white/5" />
-          <svg className="absolute inset-0 w-full h-full" style={{ overflow: "visible" }}>
-            <line x1="88" y1="28" x2="112" y2="32" stroke="white" strokeWidth="1" strokeDasharray="3 2" opacity="0.3" />
-            <line x1="148" y1="36" x2="120" y2="52" stroke="white" strokeWidth="1" strokeDasharray="3 2" opacity="0.3" />
+          <div className="absolute top-4 left-6 w-16 h-8 rounded-md" style={{ border: "1px solid var(--c-bd3)", background: "var(--c-surface)" }} />
+          <div className="absolute top-8 left-28 w-20 h-8 rounded-md" style={{ border: "1px solid var(--c-bd3)", background: "var(--c-surface)" }} />
+          <div className="absolute top-16 left-12 w-24 h-8 rounded-md" style={{ border: "1px solid var(--c-bd3)", background: "var(--c-surface)" }} />
+          <svg className="absolute inset-0 w-full h-full" style={{ overflow: "visible", color: "var(--c-bd3)" }}>
+            <line x1="88" y1="28" x2="112" y2="32" stroke="currentColor" strokeWidth="1" strokeDasharray="3 2" opacity="0.8" />
+            <line x1="148" y1="36" x2="120" y2="52" stroke="currentColor" strokeWidth="1" strokeDasharray="3 2" opacity="0.8" />
           </svg>
         </div>
 
@@ -152,7 +162,7 @@ function ProjectCard({
         </div>
 
         {/* Hover overlay */}
-        <div className="absolute inset-0 bg-white/[0.02] opacity-0 group-hover:opacity-100 transition-opacity" />
+        <div className="absolute inset-0 opacity-0 group-hover:opacity-100 transition-opacity" style={{ background: "var(--c-overlay)" }} />
       </div>
 
       {/* Content */}
@@ -169,29 +179,34 @@ function ProjectCard({
                 }
                 if (e.key === "Escape") setRenaming(false);
               }}
-              className="flex-1 bg-white/8 border border-white/16 rounded-md px-2 py-1 text-sm text-white outline-none focus:border-brand"
-              style={{ borderColor: "oklch(0.68 0.22 285 / 0.5)" }}
+              className="flex-1 rounded-md px-2 py-1 text-sm outline-none"
+              style={{ background: "var(--c-surface)", border: "1px solid oklch(0.68 0.22 285 / 0.5)", color: "var(--c-t1)" }}
               autoFocus
             />
             <button
               onClick={() => { onRename(renameVal); setRenaming(false); }}
-              className="p-1 rounded hover:bg-white/10 text-green-400"
+              className="p-1 rounded text-green-400"
+              onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.background = "var(--c-overlay)"; }}
+              onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.background = "transparent"; }}
             >
               <Check className="w-3.5 h-3.5" />
             </button>
             <button
               onClick={() => setRenaming(false)}
-              className="p-1 rounded hover:bg-white/10 text-white/40"
+              className="p-1 rounded"
+              style={{ color: "var(--c-t4)" }}
+              onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.background = "var(--c-overlay)"; }}
+              onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.background = "transparent"; }}
             >
               <X className="w-3.5 h-3.5" />
             </button>
           </div>
         ) : (
-          <h3 className="text-sm font-semibold text-white/90 truncate leading-snug">
+          <h3 className="text-sm font-semibold truncate leading-snug" style={{ color: "var(--c-t1)" }}>
             {project.name}
           </h3>
         )}
-        <div className="flex items-center gap-1 text-xs text-white/30">
+        <div className="flex items-center gap-1 text-xs" style={{ color: "var(--c-t4)" }}>
           <Clock className="w-3 h-3" />
           <span>{timeAgo(project.updatedAt)}</span>
         </div>
@@ -205,30 +220,41 @@ function ProjectCard({
       >
         <button
           onClick={() => setMenuOpen(!menuOpen)}
-          className="w-7 h-7 rounded-lg flex items-center justify-center opacity-0 group-hover:opacity-100 transition-all hover:bg-white/10 text-white/50 hover:text-white"
+          aria-label="项目操作"
+          title="重命名或删除"
+          className="w-7 h-7 rounded-lg flex items-center justify-center opacity-0 group-hover:opacity-100 transition-all"
+          style={{ color: "var(--c-t3)" }}
+          onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.background = "var(--c-overlay)"; (e.currentTarget as HTMLElement).style.color = "var(--c-t1)"; }}
+          onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.background = "transparent"; (e.currentTarget as HTMLElement).style.color = "var(--c-t3)"; }}
         >
           <MoreHorizontal className="w-4 h-4" />
         </button>
 
         {menuOpen && (
           <div
-            className="absolute top-8 right-0 w-40 rounded-xl border border-white/10 overflow-hidden z-50 animate-scale-in"
+            className="absolute top-8 right-0 w-40 rounded-xl overflow-hidden z-50 animate-scale-in"
             style={{
-              background: "var(--c-surface)",
-              boxShadow: "0 8px 32px oklch(0 0 0 / 0.6), 0 0 0 1px oklch(0.22 0.008 260 / 0.5)",
+              background: "var(--c-elevated)",
+              border: "1px solid var(--c-bd2)",
+              boxShadow: "var(--c-node-shadow-hover)",
             }}
           >
             <button
               onClick={() => { setRenaming(true); setMenuOpen(false); }}
-              className="w-full flex items-center gap-2.5 px-3 py-2.5 text-xs text-white/70 hover:text-white hover:bg-white/6 transition-colors"
+              className="w-full flex items-center gap-2.5 px-3 py-2.5 text-xs transition-colors"
+              style={{ color: "var(--c-t2)" }}
+              onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.background = "var(--c-surface)"; }}
+              onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.background = ""; }}
             >
               <Pencil className="w-3.5 h-3.5" />
               重命名
             </button>
-            <div className="h-px bg-white/8 mx-2" />
+            <div className="h-px mx-2" style={{ background: "var(--c-bd1)" }} />
             <button
               onClick={() => { onDelete(); setMenuOpen(false); }}
-              className="w-full flex items-center gap-2.5 px-3 py-2.5 text-xs text-red-400/80 hover:text-red-400 hover:bg-red-400/8 transition-colors"
+              className="w-full flex items-center gap-2.5 px-3 py-2.5 text-xs text-red-400/80 hover:text-red-400 transition-colors"
+              onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.background = "oklch(0.55 0.18 20 / 0.08)"; }}
+              onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.background = ""; }}
             >
               <Trash2 className="w-3.5 h-3.5" />
               删除项目
@@ -245,7 +271,10 @@ function NewProjectCard({ onClick }: { onClick: () => void }) {
   return (
     <button
       onClick={onClick}
-      className="group relative flex flex-col items-center justify-center rounded-xl border border-dashed border-white/12 hover:border-white/24 bg-transparent hover:bg-white/[0.025] transition-all duration-200 h-full min-h-[220px]"
+      className="group relative flex flex-col items-center justify-center rounded-xl border border-dashed transition-all duration-200 h-full min-h-[220px]"
+      style={{ borderColor: "var(--c-bd2)", background: "transparent" }}
+      onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.background = "var(--c-surface)"; }}
+      onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.background = "transparent"; }}
     >
       <div
         className="w-10 h-10 rounded-xl flex items-center justify-center mb-3 transition-all duration-200 group-hover:scale-110"
@@ -256,7 +285,7 @@ function NewProjectCard({ onClick }: { onClick: () => void }) {
       >
         <Plus className="w-5 h-5" style={{ color: "oklch(0.68 0.22 285)" }} />
       </div>
-      <span className="text-sm font-medium text-white/40 group-hover:text-white/60 transition-colors">
+      <span className="text-sm font-medium transition-colors" style={{ color: "var(--c-t3)" }}>
         新建项目
       </span>
     </button>
@@ -316,14 +345,17 @@ export default function Home() {
             >
               <Film className="w-4 h-4 text-white" />
             </div>
-            <span className="text-sm font-semibold text-white/90 tracking-tight">
+            <span className="text-sm font-semibold tracking-tight" style={{ color: "var(--c-t1)" }}>
               AI Video Canvas
             </span>
           </div>
 
           <a
             href={getLoginUrl()}
-            className="inline-flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium text-white/90 hover:text-white transition-all duration-150 border border-white/10 hover:border-white/20 hover:bg-white/5"
+            className="inline-flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-all duration-150"
+            style={{ color: "var(--c-t2)", borderWidth: 1, borderStyle: "solid", borderColor: "var(--c-bd2)" }}
+            onMouseEnter={(e) => { const el = e.currentTarget as HTMLElement; el.style.color = "var(--c-t1)"; el.style.borderColor = "var(--c-bd3)"; el.style.background = "var(--c-overlay)"; }}
+            onMouseLeave={(e) => { const el = e.currentTarget as HTMLElement; el.style.color = "var(--c-t2)"; el.style.borderColor = "var(--c-bd2)"; el.style.background = "transparent"; }}
           >
             登录
             <ArrowRight className="w-3.5 h-3.5" />
@@ -362,8 +394,8 @@ export default function Home() {
 
           {/* Sub */}
           <p
-            className="max-w-lg text-base text-white/40 leading-relaxed mb-10 animate-slide-up"
-            style={{ animationDelay: "120ms" }}
+            className="max-w-lg text-base leading-relaxed mb-10 animate-slide-up"
+            style={{ color: "var(--c-t4)", animationDelay: "120ms" }}
           >
             在无限画布上编排脚本、分镜、提示词与视频生成任务。
             <br />
@@ -415,7 +447,8 @@ export default function Home() {
             ].map((f) => (
               <div
                 key={f.title}
-                className="p-4 rounded-xl border border-white/6 bg-white/[0.025]"
+                className="p-4 rounded-xl"
+                style={{ border: "1px solid var(--c-bd1)", background: "var(--c-surface)" }}
               >
                 <div
                   className="w-8 h-8 rounded-lg flex items-center justify-center mb-3"
@@ -426,8 +459,8 @@ export default function Home() {
                 >
                   <f.icon className="w-4 h-4" style={{ color: "oklch(0.75 0.18 285)" }} />
                 </div>
-                <h3 className="text-sm font-semibold text-white/80 mb-1">{f.title}</h3>
-                <p className="text-xs text-white/35 leading-relaxed">{f.desc}</p>
+                <h3 className="text-sm font-semibold mb-1" style={{ color: "var(--c-t2)" }}>{f.title}</h3>
+                <p className="text-xs leading-relaxed" style={{ color: "var(--c-t4)" }}>{f.desc}</p>
               </div>
             ))}
           </div>
@@ -443,8 +476,8 @@ export default function Home() {
 
       {/* Nav */}
       <nav
-        className="relative z-10 flex items-center justify-between px-6 py-4 border-b border-white/6"
-        style={{ background: "oklch(0.07 0.005 260 / 0.95)", backdropFilter: "blur(20px)" }}
+        className="relative z-10 flex items-center justify-between px-6 py-4 border-b"
+        style={{ background: "color-mix(in oklch, var(--c-base) 92%, transparent)", backdropFilter: "blur(20px)", borderColor: "var(--c-bd1)" }}
       >
         <div className="flex items-center gap-2.5">
           <div
@@ -455,7 +488,7 @@ export default function Home() {
           >
             <Film className="w-4 h-4 text-white" />
           </div>
-          <span className="text-sm font-semibold text-white/90 tracking-tight">
+          <span className="text-sm font-semibold tracking-tight" style={{ color: "var(--c-t1)" }}>
             AI Video Canvas
           </span>
         </div>
@@ -466,12 +499,13 @@ export default function Home() {
             {user.role === "admin" && (
               <a
                 href="/admin"
-                className="text-xs text-white/40 hover:text-white/70 transition-colors px-2 py-1 rounded-md hover:bg-white/5"
+                className="text-xs transition-colors px-2 py-1 rounded-md"
+                style={{ color: "var(--c-t3)" }}
               >
                 管理后台
               </a>
             )}
-            <span className="text-xs text-white/40">{user.name ?? user.email}</span>
+            <span className="text-xs" style={{ color: "var(--c-t3)" }}>{user.name ?? user.email}</span>
             <div
               className="w-7 h-7 rounded-full flex items-center justify-center text-xs font-semibold text-white"
               style={{
@@ -515,10 +549,10 @@ export default function Home() {
           {/* Header */}
           <div className="flex items-center justify-between mb-8">
             <div>
-              <h1 className="text-xl font-semibold text-white/90 tracking-tight">
+              <h1 className="text-xl font-semibold tracking-tight" style={{ color: "var(--c-t1)" }}>
                 我的项目
               </h1>
-              <p className="text-xs text-white/35 mt-0.5">
+              <p className="text-xs mt-0.5" style={{ color: "var(--c-t4)" }}>
                 {projects?.length ?? 0} 个项目
               </p>
             </div>
@@ -544,7 +578,8 @@ export default function Home() {
               {[...Array(4)].map((_, i) => (
                 <div
                   key={i}
-                  className="rounded-xl border border-white/6 bg-white/[0.025] h-[220px] animate-pulse"
+                  className="rounded-xl h-[220px] animate-pulse"
+                  style={{ border: "1px solid var(--c-bd1)", background: "var(--c-surface)" }}
                 />
               ))}
             </div>
@@ -575,8 +610,8 @@ export default function Home() {
               >
                 <Film className="w-7 h-7" style={{ color: "oklch(0.68 0.22 285)" }} />
               </div>
-              <h3 className="text-base font-semibold text-white/70 mb-2">还没有项目</h3>
-              <p className="text-sm text-white/30 mb-6">创建你的第一个 AI 视频创作工作流</p>
+              <h3 className="text-base font-semibold mb-2" style={{ color: "var(--c-t2)" }}>还没有项目</h3>
+              <p className="text-sm mb-6" style={{ color: "var(--c-t4)" }}>创建你的第一个 AI 视频创作工作流</p>
               <button
                 onClick={handleCreate}
                 className="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl text-sm font-medium text-white"
@@ -592,6 +627,7 @@ export default function Home() {
             </div>
           )}
         </div>
+
       </main>
     </div>
   );

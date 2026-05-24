@@ -7,6 +7,18 @@ import { toast } from "sonner";
 import { Handle, Position } from "@xyflow/react";
 import { Play, Loader2, CheckCircle2, XCircle, Clock, RefreshCw, AlertCircle, Download, ChevronDown, ChevronRight, Layers } from "lucide-react";
 
+// Providers that require a reference image (image-to-video)
+const REQUIRES_REFERENCE_IMAGE = new Set<string>([
+  "poyo_wan25_i2v",
+]);
+
+// Heuristic: only allow http(s) / same-origin paths to render. Reject data:/blob:/javascript:.
+function isSafeMediaUrl(url: string | undefined): boolean {
+  if (!url) return false;
+  if (url.startsWith("/") && !url.startsWith("//")) return true;
+  return /^https?:\/\//i.test(url);
+}
+
 interface Props {
   id: string;
   selected?: boolean;
@@ -200,9 +212,15 @@ const labelStyle: React.CSSProperties = {
 };
 
 export const VideoTaskNode = memo(function VideoTaskNode({ id, selected, data }: Props) {
-  const { updateNodeData } = useCanvasStore();
+  // Use selector to avoid re-rendering on every store change (other nodes' updates)
+  const updateNodeData = useCanvasStore((s) => s.updateNodeData);
   const payload = data.payload;
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  // Count of parallel-mode createTaskMutation calls currently in flight.
+  // When > 0, the shared mutation's global onSuccess/onError must NOT write to payload —
+  // the per-mutate handler updates parallelResults instead. A single counter (vs. boolean
+  // flag) correctly handles 2+ concurrent parallel submits whose globals fire in arbitrary order.
+  const parallelInFlightRef = useRef(0);
   // Auto-collapse params when node is deselected; expand when selected
   const [paramsExpanded, setParamsExpanded] = useState(!!selected);
   useEffect(() => { setParamsExpanded(!!selected); }, [selected]);
@@ -210,17 +228,38 @@ export const VideoTaskNode = memo(function VideoTaskNode({ id, selected, data }:
   const [parallelMode, setParallelMode] = useState(false);
   const [parallelProviders, setParallelProviders] = useState<VideoProvider[]>([]);
   const [parallelResults, setParallelResults] = useState<Record<string, { status: "pending" | "processing" | "done" | "failed"; videoUrl?: string; taskId?: number }>>({});
+  // Track all in-flight parallel poll timers so we can fully clean them up when leaving parallel mode
+  const parallelPollRefs = useRef<Map<string, ReturnType<typeof setInterval>>>(new Map());
+  // Generation counter — incremented on parallel-mode close so stale per-mutate callbacks
+  // (still in flight at close time) won't reintroduce entries into parallelResults
+  const parallelGenRef = useRef(0);
 
   const createTaskMutation = trpc.videoTasks.create.useMutation({
     onSuccess: (task) => {
+      // If any parallel submit is in flight, suppress global payload write for this call.
+      // Decrement the counter so subsequent globals know when all parallel submits are done.
+      if (parallelInFlightRef.current > 0) {
+        parallelInFlightRef.current -= 1;
+        return;
+      }
+      // Guard: node may have been deleted while mutation was in flight
+      if (!useCanvasStore.getState().nodes.some((n) => n.id === id)) return;
       updateNodeData(id, { status: "processing", taskId: task.id, externalTaskId: task.externalTaskId ?? undefined });
       toast.success("视频任务已提交");
     },
-    onError: (err) => toast.error("提交失败：" + err.message),
+    onError: (err) => {
+      if (parallelInFlightRef.current > 0) {
+        parallelInFlightRef.current -= 1;
+        // Per-call onError is responsible for surfacing the failure in parallelResults
+        return;
+      }
+      toast.error("提交失败：" + err.message);
+    },
   });
 
   const resetTaskMutation = trpc.videoTasks.reset.useMutation({
     onSuccess: () => {
+      if (!useCanvasStore.getState().nodes.some((n) => n.id === id)) return;
       updateNodeData(id, {
         status: "pending",
         taskId: undefined,
@@ -231,6 +270,7 @@ export const VideoTaskNode = memo(function VideoTaskNode({ id, selected, data }:
       toast.success("已重置，可重新提交");
     },
     onError: (err) => {
+      if (!useCanvasStore.getState().nodes.some((n) => n.id === id)) return;
       updateNodeData(id, {
         status: "pending",
         taskId: undefined,
@@ -239,6 +279,7 @@ export const VideoTaskNode = memo(function VideoTaskNode({ id, selected, data }:
         errorMessage: undefined,
       });
       console.warn("Reset task DB error (ignored):", err.message);
+      toast.warning("已本地重置；服务端同步失败：" + err.message);
     },
   });
 
@@ -248,7 +289,6 @@ export const VideoTaskNode = memo(function VideoTaskNode({ id, selected, data }:
   const utils = trpc.useUtils();
 
   // Poll parallel task IDs — intervals keyed by provider string
-  const parallelPollRefs = useRef<Map<string, ReturnType<typeof setInterval>>>(new Map());
   useEffect(() => {
     Object.entries(parallelResults).forEach(([provider, entry]) => {
       if (entry.status === "processing" && entry.taskId != null && !parallelPollRefs.current.has(provider)) {
@@ -280,11 +320,17 @@ export const VideoTaskNode = memo(function VideoTaskNode({ id, selected, data }:
 
   useEffect(() => {
     if (!(payload.status === "processing" && payload.taskId)) return;
+    // Tolerate transient poll failures — the server-side task is still running and credits
+    // are already spent. Marking the node "failed" on a single network blip would tempt the user
+    // to re-submit and double-charge. Only flip to failed after several consecutive failures.
+    let consecutiveFailures = 0;
+    const MAX_POLL_FAILURES = 5;
     const timerId = setInterval(async () => {
       try {
         const result = await pollQueryRef.current.refetch();
         if (result.error) throw result.error;
         if (result.data) {
+          consecutiveFailures = 0;
           const task = result.data;
           if (task.status === "succeeded" || task.status === "failed") {
             updateNodeData(id, {
@@ -296,9 +342,14 @@ export const VideoTaskNode = memo(function VideoTaskNode({ id, selected, data }:
           }
         }
       } catch (err) {
-        updateNodeData(id, { status: "failed", errorMessage: String(err) }, true);
-        clearInterval(timerId);
-        toast.error("轮询失败：" + String(err));
+        consecutiveFailures += 1;
+        const msg = err instanceof Error ? err.message : typeof err === "string" ? err : "未知错误";
+        if (consecutiveFailures >= MAX_POLL_FAILURES) {
+          updateNodeData(id, { status: "failed", errorMessage: `轮询持续失败：${msg}` }, true);
+          clearInterval(timerId);
+          toast.error("轮询持续失败，任务可能仍在服务端运行；如需重新提交请先在服务端确认");
+        }
+        // Otherwise: silent retry on next tick
       }
     }, 5000);
     pollRef.current = timerId;
@@ -319,7 +370,15 @@ export const VideoTaskNode = memo(function VideoTaskNode({ id, selected, data }:
   );
 
   const handleSubmit = () => {
+    if (createTaskMutation.isPending) return;
+    if (payload.status === "processing") return;
     if (!payload.prompt?.trim()) { toast.error("请填写提示词"); return; }
+    if (REQUIRES_REFERENCE_IMAGE.has(payload.provider) && !payload.referenceImageUrl?.trim()) {
+      toast.error("该模型需要参考图 URL"); return;
+    }
+    if (payload.referenceImageUrl && !isSafeMediaUrl(payload.referenceImageUrl)) {
+      toast.error("参考图 URL 仅支持 http(s) 或相对路径"); return;
+    }
     createTaskMutation.mutate({
       projectId: data.projectId, nodeId: id,
       provider: payload.provider, prompt: payload.prompt,
@@ -351,15 +410,18 @@ export const VideoTaskNode = memo(function VideoTaskNode({ id, selected, data }:
   const onFocusMid    = (e: React.FocusEvent<HTMLElement>) => { e.currentTarget.style.borderColor = "var(--c-t4)"; };
   const onBlurDefault = (e: React.FocusEvent<HTMLElement>) => { e.currentTarget.style.borderColor = BORDER_DEFAULT; };
 
-  const videoSrc = payload.resultVideoUrl?.startsWith("http")
-    ? `/api/video-proxy?url=${encodeURIComponent(payload.resultVideoUrl)}`
-    : payload.resultVideoUrl;
+  // Only accept http(s) (route through proxy) or same-origin relative paths; reject data:/blob:/javascript:
+  const videoSrc = !isSafeMediaUrl(payload.resultVideoUrl)
+    ? undefined
+    : payload.resultVideoUrl!.startsWith("http")
+      ? `/api/video-proxy?url=${encodeURIComponent(payload.resultVideoUrl!)}`
+      : payload.resultVideoUrl;
 
   // Get param defs for current provider
   const paramDefs = PROVIDER_PARAMS[payload.provider] ?? [];
   const params = payload.params ?? {};
 
-  const heroMedia = payload.status === "succeeded" && payload.resultVideoUrl ? (
+  const heroMedia = payload.status === "succeeded" && videoSrc ? (
     <video
       src={videoSrc}
       controls
@@ -367,11 +429,12 @@ export const VideoTaskNode = memo(function VideoTaskNode({ id, selected, data }:
       preload="metadata"
       style={{ display: "block", maxHeight: 240 }}
     />
-  ) : payload.referenceImageUrl ? (
+  ) : isSafeMediaUrl(payload.referenceImageUrl) ? (
     <img
       src={payload.referenceImageUrl}
       style={{ width: "100%", maxHeight: 220, objectFit: "cover", display: "block" }}
       draggable={false}
+      onError={(e) => { (e.currentTarget as HTMLImageElement).style.display = "none"; }}
     />
   ) : null;
 
@@ -440,7 +503,7 @@ export const VideoTaskNode = memo(function VideoTaskNode({ id, selected, data }:
         {payload.status === "failed" && payload.errorMessage && (
           <div className="flex items-start gap-2 p-2 rounded-lg flex-shrink-0" style={{ background: STATUS.failed.bg, borderWidth: 1, borderStyle: "solid", borderColor: STATUS.failed.borderColor }}>
             <AlertCircle className="w-3.5 h-3.5 flex-shrink-0 mt-0.5" style={{ color: STATUS.failed.accent }} />
-            <p className="text-[11px] leading-relaxed" style={{ color: STATUS.failed.accent }}>{payload.errorMessage}</p>
+            <p className="text-[11px] leading-relaxed" style={{ color: STATUS.failed.accent, wordBreak: "break-word", overflowWrap: "anywhere", minWidth: 0, flex: 1 }}>{payload.errorMessage}</p>
           </div>
         )}
 
@@ -461,7 +524,18 @@ export const VideoTaskNode = memo(function VideoTaskNode({ id, selected, data }:
             {parallelMode ? "并行对比模式" : "单模型模式"}
           </span>
           <button
-            onClick={() => { setParallelMode((v) => !v); setParallelProviders([]); setParallelResults({}); }}
+            onClick={() => {
+              // Stop polls, reset the in-flight counter (so a stranded count from in-flight mutates
+              // won't suppress future single-mode onSuccess writes), bump the generation token
+              // (so stale per-mutate callbacks no-op), and clear state
+              parallelPollRefs.current.forEach(clearInterval);
+              parallelPollRefs.current.clear();
+              parallelInFlightRef.current = 0;
+              parallelGenRef.current += 1;
+              setParallelMode((v) => !v);
+              setParallelProviders([]);
+              setParallelResults({});
+            }}
             className="nodrag flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] transition-all"
             style={{
               background: parallelMode ? "oklch(0.68 0.22 285 / 0.15)" : "var(--c-surface)",
@@ -526,20 +600,31 @@ export const VideoTaskNode = memo(function VideoTaskNode({ id, selected, data }:
             {parallelProviders.length > 0 && (
               <button
                 onClick={() => {
+                  if (createTaskMutation.isPending) return;
                   if (!(payload.prompt?.trim())) { toast.error("请先填写提示词"); return; }
+                  // Block submit if any selected parallel provider requires a reference image but none is set
+                  if (!payload.referenceImageUrl?.trim() && parallelProviders.some((p) => REQUIRES_REFERENCE_IMAGE.has(p))) {
+                    toast.error("已选择的图生视频模型需要参考图 URL"); return;
+                  }
                   toast.info(`正在并行提交 ${parallelProviders.length} 个任务...`);
+                  // Capture generation token for this batch — per-mutate callbacks compare against
+                  // the latest token and no-op if the user has closed parallel mode since
+                  const gen = parallelGenRef.current;
+                  // Increment counter ONCE per mutate call so global onSuccess/onError can correctly suppress payload writes
+                  parallelInFlightRef.current += parallelProviders.length;
                   parallelProviders.forEach(provider => {
                     setParallelResults(prev => ({ ...prev, [provider]: { status: "processing" } }));
                     createTaskMutation.mutate(
-                      { nodeId: id, projectId: data.projectId, provider, prompt: payload.prompt!, negativePrompt: payload.negativePrompt, referenceImageUrl: payload.referenceImageUrl, params: payload.params },
+                      // Send only prompt/negative/refImage in parallel mode — per-provider params
+                      // diverge enough that sharing one params bag tends to break some providers
+                      { nodeId: id, projectId: data.projectId, provider, prompt: payload.prompt!, negativePrompt: payload.negativePrompt, referenceImageUrl: payload.referenceImageUrl },
                       {
                         onSuccess: (result) => {
-                          // Task was just created and is still processing — resultVideoUrl is
-                          // always null at this point. Keep status as "processing"; the socket
-                          // event from the poller will update the node payload when done.
+                          if (parallelGenRef.current !== gen) return; // stale — user closed parallel mode
                           setParallelResults(prev => ({ ...prev, [provider]: { status: "processing", taskId: result.id } }));
                         },
                         onError: (err) => {
+                          if (parallelGenRef.current !== gen) return; // stale — user closed parallel mode
                           setParallelResults(prev => ({ ...prev, [provider]: { status: "failed" } }));
                           toast.error(`${provider} 失败: ${err.message}`);
                         },
@@ -574,8 +659,13 @@ export const VideoTaskNode = memo(function VideoTaskNode({ id, selected, data }:
                         border: `1px solid ${result.status === "done" ? "oklch(0.65 0.18 155 / 0.35)" : "var(--c-bd2)"}`,
                       }}
                     >
-                      {result.status === "done" && result.videoUrl ? (
-                        <video src={result.videoUrl} controls className="w-full nodrag" style={{ maxHeight: 80, display: "block" }} />
+                      {result.status === "done" && isSafeMediaUrl(result.videoUrl) ? (
+                        <video
+                          src={result.videoUrl!.startsWith("http") ? `/api/video-proxy?url=${encodeURIComponent(result.videoUrl!)}` : result.videoUrl}
+                          controls
+                          className="w-full nodrag"
+                          style={{ maxHeight: 80, display: "block" }}
+                        />
                       ) : (
                         <div className="flex items-center justify-center" style={{ height: 60 }}>
                           {result.status === "processing" ? (
@@ -618,7 +708,11 @@ export const VideoTaskNode = memo(function VideoTaskNode({ id, selected, data }:
           </div>
           <select
             value={payload.provider}
-            onChange={(e) => handleChange("provider", e.target.value as VideoProvider)}
+            onChange={(e) => {
+              // Reset params on provider change — they're tightly bound to the previous provider's
+              // param schema and would otherwise leak across submits to a model that doesn't understand them
+              updateNodeData(id, { provider: e.target.value as VideoProvider, params: {} });
+            }}
             disabled={isLocked}
             className="nodrag"
             style={{ ...fieldStyle, cursor: isLocked ? "not-allowed" : "pointer", opacity: isLocked ? 0.5 : 1 }}

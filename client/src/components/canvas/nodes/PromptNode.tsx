@@ -138,6 +138,7 @@ export const PromptNode = memo(function PromptNode({ id, selected, data }: Props
   );
 
   const handleGenerate = () => {
+    if (genImageMutation.isPending) return;
     if (!payload.positivePrompt?.trim()) { toast.error("请先填写正向提示词"); return; }
     genImageMutation.mutate({
       prompt: payload.positivePrompt,
@@ -148,7 +149,7 @@ export const PromptNode = memo(function PromptNode({ id, selected, data }: Props
       ...((model === "poyo_flux" || model === "poyo_sdxl") ? {
         poyoAspectRatio: payload.aspectRatio,
       } : {}),
-      ...(model === "hf_soul_standard" && batchMode ? { batchSize: 2 } : {}),
+      ...(model === "hf_soul_standard" && batchMode ? { batchSize: 4 as const } : {}),
       projectId: data.projectId,
     });
   };
@@ -280,6 +281,7 @@ export const PromptNode = memo(function PromptNode({ id, selected, data }: Props
             <LLMModelPicker value={llmModel} onChange={setLlmModel} disabled={expandingPrompt || translating} />
             <button
               onClick={() => {
+                if (expandingPrompt || translating || aiExpandMutation.isPending) return;
                 if (!payload.positivePrompt?.trim()) { toast.error("请先填写提示词"); return; }
                 setExpandingPrompt(true);
                 aiExpandMutation.mutate({ text: payload.positivePrompt, mode: "expand", model: llmModel });
@@ -298,6 +300,7 @@ export const PromptNode = memo(function PromptNode({ id, selected, data }: Props
             </button>
             <button
               onClick={() => {
+                if (translating || expandingPrompt || aiTranslateMutation.isPending) return;
                 if (!payload.positivePrompt?.trim()) { toast.error("请先填写提示词"); return; }
                 setTranslating(true);
                 aiTranslateMutation.mutate({ text: payload.positivePrompt, mode: "translate_en", model: llmModel });
@@ -475,7 +478,7 @@ export const PromptNode = memo(function PromptNode({ id, selected, data }: Props
               color: batchMode ? accentColor : "var(--c-t4)",
               cursor: "pointer",
             }}
-            title={batchMode ? "当前：生成2图 A/B对比" : "点击开启A/B对比模式"}
+            title={batchMode ? "当前：生成4图 A/B对比" : "点击开启A/B对比模式"}
           >
             <Grid2X2 className="w-3 h-3" />
             {batchMode ? "A/B" : "1图"}
@@ -500,7 +503,7 @@ export const PromptNode = memo(function PromptNode({ id, selected, data }: Props
             }}
           >
             {genImageMutation.isPending ? <Loader2 className="w-3 h-3 animate-spin" /> : <Sparkles className="w-3 h-3" />}
-            {genImageMutation.isPending ? "生成中..." : batchMode ? "生成 2 图" : "AI 生成图像"}
+            {genImageMutation.isPending ? "生成中..." : batchMode ? "生成 4 图" : "AI 生成图像"}
           </button>
         </div>
       </div>

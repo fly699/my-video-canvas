@@ -283,6 +283,30 @@ export async function getVideoTasksByProject(projectId: number) {
   return db.select().from(videoTasks).where(eq(videoTasks.projectId, projectId)).orderBy(desc(videoTasks.createdAt));
 }
 
+/**
+ * Find an in-flight (pending or processing) video task for a given (userId, projectId, nodeId).
+ * Used as a server-side idempotency check so a bypassed client can't double-charge by
+ * submitting two `videoTasks.create` calls for the same node while one is still running.
+ */
+export async function findInFlightVideoTask(userId: number, projectId: number, nodeId: string) {
+  const db = await getDb();
+  if (!db) return DEV_MODE ? dev.devFindInFlightVideoTask(userId, projectId, nodeId) : undefined;
+  const rows = await db
+    .select()
+    .from(videoTasks)
+    .where(
+      and(
+        eq(videoTasks.userId, userId),
+        eq(videoTasks.projectId, projectId),
+        eq(videoTasks.nodeId, nodeId),
+        sql`${videoTasks.status} in ('pending', 'processing')`
+      )
+    )
+    .orderBy(desc(videoTasks.createdAt))
+    .limit(1);
+  return rows[0];
+}
+
 export async function updateVideoTask(id: number, data: Partial<InsertVideoTask>) {
   const db = await getDb();
   if (!db) { if (DEV_MODE) { dev.devUpdateVideoTask(id, data); return; } throw new Error("DB unavailable"); }

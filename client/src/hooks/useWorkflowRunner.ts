@@ -114,6 +114,7 @@ export function useWorkflowRunner() {
   });
 
   const abortRef = useRef(false);
+  const runningRef = useRef(false);
   useEffect(() => {
     abortRef.current = false;
     return () => { abortRef.current = true; };
@@ -128,6 +129,8 @@ export function useWorkflowRunner() {
   const overlayMutation = trpc.overlay.process.useMutation();
 
   const runWorkflow = useCallback(async (startNodeId: string | null) => {
+    if (runningRef.current) return;
+    runningRef.current = true;
     const { nodes, edges } = useCanvasStore.getState();
 
     // Determine which nodes are runnable
@@ -175,6 +178,7 @@ export function useWorkflowRunner() {
     }
 
     if (runnableIds.length === 0) {
+      runningRef.current = false;
       toast.info("没有可运行的节点");
       return;
     }
@@ -238,15 +242,24 @@ export function useWorkflowRunner() {
             style: (p.style as string) || undefined,
             model: (VALID_IMAGE_MODELS.has(rawModel) ? rawModel : undefined) as Parameters<typeof imageGenMutation.mutateAsync>[0]["model"],
             seed: typeof p.seed === "number" ? p.seed : undefined,
-            batchSize: typeof p.batchSize === "number" ? p.batchSize : undefined,
+            batchSize: ([1, 4] as number[]).includes(p.batchSize as number) ? (p.batchSize as 1 | 4) : undefined,
             referenceImageUrl: (p.referenceImageUrl as string) || undefined,
             projectId: node.data.projectId,
           });
           const bestUrl = result.url ?? result.urls?.[0];
-          useCanvasStore.getState().updateNodeData(nodeId, {
-            imageUrl: bestUrl,
-            ...(result.urls?.length ? { imageUrls: result.urls } : {}),
-          }, true);
+          if (!bestUrl) throw new Error("图像生成未返回 URL");
+          if (nodeType === "storyboard") {
+            // StoryboardNodeData uses imageHistory (not imageUrls)
+            const existingHistory = ((useCanvasStore.getState().nodes.find(n => n.id === nodeId)?.data.payload) as Record<string, unknown> | undefined)?.imageHistory as string[] | undefined ?? [];
+            const newUrls = result.urls?.length ? result.urls : [bestUrl];
+            const newHistory = [...newUrls, ...existingHistory].filter(Boolean).slice(0, 12);
+            useCanvasStore.getState().updateNodeData(nodeId, { imageUrl: bestUrl, imageHistory: newHistory }, true);
+          } else {
+            useCanvasStore.getState().updateNodeData(nodeId, {
+              imageUrl: bestUrl,
+              ...(result.urls?.length ? { imageUrls: result.urls } : {}),
+            }, true);
+          }
 
           // Propagate image URL to connected video_task nodes
           const { edges: currentEdges, nodes: currentNodes } = useCanvasStore.getState();
@@ -441,6 +454,8 @@ export function useWorkflowRunner() {
           return "ok";
         }
 
+        // Unrecognized runnable node type — mark as failed
+        failed.push(nodeId);
         return "fail";
       } catch (err) {
         failed.push(nodeId);
@@ -466,6 +481,7 @@ export function useWorkflowRunner() {
       }
     }
 
+    runningRef.current = false;
     if (!abortRef.current) {
       setRunState({
         running: false,
@@ -492,6 +508,7 @@ export function useWorkflowRunner() {
   }, [imageGenMutation, videoTaskMutation, clipMutation, mergeMutation, subtitleTranscribeMutation, subtitleBurnMutation, overlayMutation]);
 
   const reset = useCallback(() => {
+    runningRef.current = false;
     setRunState({
       running: false,
       currentNodeId: null,

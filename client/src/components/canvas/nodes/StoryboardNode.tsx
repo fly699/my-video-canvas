@@ -1,10 +1,12 @@
 import { memo, useCallback, useEffect, useRef, useState } from "react";
+import { createPortal } from "react-dom";
+import { TRPCClientError } from "@trpc/client";
 import { BaseNode } from "../BaseNode";
 import { useCanvasStore } from "../../../hooks/useCanvasStore";
 import type { StoryboardNodeData } from "../../../../../shared/types";
 import { trpc } from "@/lib/trpc";
 import { toast } from "sonner";
-import { Sparkles, ImageIcon, Loader2, RefreshCw, ChevronDown, Upload, X, Wand2, History, Languages, Film } from "lucide-react";
+import { Sparkles, ImageIcon, Loader2, RefreshCw, ChevronDown, Upload, X, Wand2, History, Languages, Film, ZoomIn, Download } from "lucide-react";
 import { IMAGE_MODELS, type ImageModelId } from "@/lib/models";
 import { makeImageProxyFallback } from "@/lib/utils";
 import { LLMModelPicker, type LLMModelId } from "../LLMModelPicker";
@@ -23,6 +25,16 @@ interface Props {
 
 const BORDER_DEFAULT = "var(--c-bd2)";
 const BORDER_FOCUS   = "oklch(0.65 0.20 160 / 0.6)";
+
+function formatAIError(err: unknown): string {
+  if (err instanceof TRPCClientError) {
+    if (err.data?.zodError) return "输入内容不符合要求，请检查字段长度";
+    if (err.data?.httpStatus === 500) return "服务器处理失败，请稍后重试";
+    if (err.message?.toLowerCase().includes("fetch") || err.message?.toLowerCase().includes("network")) return "网络连接失败，请检查网络后重试";
+    return err.message ?? "请求失败，请重试";
+  }
+  return "未知错误，请重试";
+}
 
 const fieldStyle: React.CSSProperties = {
   width: "100%",
@@ -44,6 +56,16 @@ const onBlur  = (e: React.FocusEvent<HTMLElement>) => { e.currentTarget.style.bo
 
 export const StoryboardNode = memo(function StoryboardNode({ id, selected, data }: Props) {
   const { updateNodeData } = useCanvasStore();
+  // Detect connected CharacterNodes that have their own referenceImageUrl
+  const connectedCharWithRef = useCanvasStore((s) => {
+    const incomingEdges = s.edges.filter((e) => e.target === id);
+    return incomingEdges.some((edge) => {
+      const srcNode = s.nodes.find((n) => n.id === edge.source);
+      if (srcNode?.data.nodeType !== "character") return false;
+      const cp = srcNode.data.payload as import("../../../../../shared/types").CharacterNodeData;
+      return !!cp.referenceImageUrl;
+    });
+  });
   const { mode: canvasMode } = useCanvasMode();
   const isCreative = canvasMode === "creative";
   const payload = data.payload;
@@ -52,16 +74,37 @@ export const StoryboardNode = memo(function StoryboardNode({ id, selected, data 
   const [inputExpanded, setInputExpanded] = useState(!!selected);
   const [llmModel, setLlmModel] = useState<LLMModelId>("gemini-2.5-flash");
   const [showHistory, setShowHistory] = useState(false);
+  const [batchCount, setBatchCount] = useState<1 | 4>(([1, 4].includes(payload.batchSize as number) ? payload.batchSize : 1) as 1 | 4);
+  const [zoomUrl, setZoomUrl] = useState<string | null>(null);
 
-  // Auto-collapse inputs when deselected, expand when selected
+  // Close lightbox on Escape
   useEffect(() => {
-    setInputExpanded(!!selected);
+    if (!zoomUrl) return;
+    const handler = (e: KeyboardEvent) => { if (e.key === "Escape") { e.stopImmediatePropagation(); setZoomUrl(null); } };
+    document.addEventListener("keydown", handler, true);
+    return () => document.removeEventListener("keydown", handler, true);
+  }, [zoomUrl]);
+
+  // Sync batchCount when payload.batchSize changes externally (collab / undo-redo)
+  useEffect(() => {
+    if ([1, 4].includes(payload.batchSize as number)) {
+      setBatchCount(payload.batchSize as 1 | 4);
+    }
+  }, [payload.batchSize]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Expand when first selected; don't auto-collapse when focus moves away
+  useEffect(() => {
+    if (selected) setInputExpanded(true);
   }, [selected]);
-  const model: ImageModelId = (payload.imageModel as ImageModelId) ?? "manus_forge";
+  const model: ImageModelId = IMAGE_MODELS.some(m => m.value === payload.imageModel)
+    ? (payload.imageModel as ImageModelId)
+    : "manus_forge";
   const setModel = (m: ImageModelId) => { updateNodeData(id, { imageModel: m }); };
 
   const [uploadingRef, setUploadingRef] = useState(false);
   const refInputRef = useRef<HTMLInputElement>(null);
+  const modelBtnRef = useRef<HTMLButtonElement>(null);
+  const [modelPickerRect, setModelPickerRect] = useState<DOMRect | null>(null);
 
   const uploadRefMutation = trpc.upload.uploadImage.useMutation({
     onSuccess: (result) => {
@@ -85,19 +128,24 @@ export const StoryboardNode = memo(function StoryboardNode({ id, selected, data 
       const base64 = (reader.result as string).split(",")[1];
       uploadRefMutation.mutate({ base64, mimeType: file.type, filename: file.name });
     };
+    reader.onerror = () => { setUploadingRef(false); toast.error("文件读取失败"); };
     reader.readAsDataURL(file);
     e.target.value = "";
   };
 
   const genImageMutation = trpc.imageGen.generate.useMutation({
     onSuccess: (result) => {
-      const imageUrl = result.url ?? result.urls?.[0];
-      if (!imageUrl) { setGenerating(false); toast.error("生成完成但未返回图像"); return; }
+      // Guard: node may have been deleted while generation was in flight
+      if (!useCanvasStore.getState().nodes.some(n => n.id === id)) return;
+      const newUrls = (result.urls?.length ? result.urls : result.url ? [result.url] : []).filter(Boolean) as string[];
+      if (!newUrls.length) { setGenerating(false); toast.error("生成完成但未返回图像"); return; }
+      const imageUrl = newUrls[0];
       const currentHistory = (useCanvasStore.getState().nodes.find(n => n.id === id)?.data.payload as StoryboardNodeData)?.imageHistory ?? [];
-      const newHistory = [imageUrl, ...currentHistory].filter((u): u is string => !!u).slice(0, 5);
+      const newHistory = [...newUrls, ...currentHistory].filter((u): u is string => !!u).slice(0, 12);
       updateNodeData(id, { imageUrl, imageHistory: newHistory });
       setGenerating(false);
-      toast.success("分镜图像已生成");
+      if (newUrls.length > 1) setShowHistory(true);
+      toast.success(newUrls.length > 1 ? `已生成 ${newUrls.length} 张，可在历史中切换` : "分镜图像已生成");
     },
     onError: (err) => {
       setGenerating(false);
@@ -115,7 +163,7 @@ export const StoryboardNode = memo(function StoryboardNode({ id, selected, data 
     },
     onError: (err) => {
       setExpandingPrompt(false);
-      toast.error("AI 扩写失败：" + err.message);
+      toast.error("AI 扩写失败：" + formatAIError(err));
     },
   });
 
@@ -128,7 +176,7 @@ export const StoryboardNode = memo(function StoryboardNode({ id, selected, data 
     },
     onError: (err) => {
       setExpandingDesc(false);
-      toast.error("AI 扩写失败：" + err.message);
+      toast.error("AI 扩写失败：" + formatAIError(err));
     },
   });
 
@@ -141,15 +189,16 @@ export const StoryboardNode = memo(function StoryboardNode({ id, selected, data 
     },
     onError: (err) => {
       setTranslating(false);
-      toast.error("翻译失败：" + err.message);
+      toast.error("翻译失败：" + formatAIError(err));
     },
   });
 
   const handleExpandPrompt = useCallback(() => {
+    if (aiExpandMutation.isPending || expandingPrompt) return;
     if (!payload.description?.trim()) { toast.error("请先填写场景描述"); return; }
     setExpandingPrompt(true);
-    aiExpandMutation.mutate({ text: payload.description, mode: "storyboard_prompt", model: llmModel });
-  }, [payload.description, aiExpandMutation, llmModel]);
+    aiExpandMutation.mutate({ text: payload.description.slice(0, 8000), mode: "storyboard_prompt", model: llmModel });
+  }, [payload.description, aiExpandMutation, expandingPrompt, llmModel]);
 
   const handleChange = useCallback(
     (field: keyof StoryboardNodeData, value: string | number | undefined) => {
@@ -165,6 +214,9 @@ export const StoryboardNode = memo(function StoryboardNode({ id, selected, data 
   }, [id]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const handleGenerate = () => {
+    // Double guard — local state is async (could be stale on rapid double-click) so
+    // also check the mutation's own isPending which tRPC flips synchronously
+    if (generating || genImageMutation.isPending) return;
     if (!payload.promptText?.trim()) { toast.error("请先填写提示词"); return; }
     setGenerating(true);
 
@@ -182,9 +234,12 @@ export const StoryboardNode = memo(function StoryboardNode({ id, selected, data 
         if (cp.characterKind === "scene" && cp.sceneDescription) charDescParts.push(cp.sceneDescription);
       }
     }
-    const enhancedPrompt = charDescParts.length
+    const rawPrompt = charDescParts.length
       ? `${payload.promptText}, ${charDescParts.join(", ")}`
       : payload.promptText;
+    const enhancedPrompt = Array.from(rawPrompt).length > 2000
+      ? Array.from(rawPrompt).slice(0, 2000).join("")
+      : rawPrompt;
 
     genImageMutation.mutate({
       prompt: enhancedPrompt,
@@ -192,6 +247,7 @@ export const StoryboardNode = memo(function StoryboardNode({ id, selected, data 
       style: payload.colorTone,
       referenceImageUrl: charRefUrl,
       model,
+      batchSize: model === "hf_soul_standard" && batchCount > 1 ? batchCount : undefined,
     });
   };
 
@@ -222,9 +278,10 @@ export const StoryboardNode = memo(function StoryboardNode({ id, selected, data 
           }}
         >
           <p style={{ fontSize: 12, color: "var(--c-t2)", lineHeight: 1.6, margin: 0 }}>
-            {payload.description.length > 120
-              ? payload.description.slice(0, 120) + "…"
-              : payload.description}
+            {(() => {
+              const chars = Array.from(payload.description);
+              return chars.length > 120 ? chars.slice(0, 120).join("") + "…" : payload.description;
+            })()}
           </p>
         </div>
       );
@@ -233,6 +290,7 @@ export const StoryboardNode = memo(function StoryboardNode({ id, selected, data 
   })();
 
   return (
+    <>
     <BaseNode id={id} selected={selected} nodeType="storyboard" title={data.title} minHeight={280} heroMedia={heroMedia}>
       <div className="flex flex-col h-full p-3.5 gap-3">
 
@@ -260,21 +318,34 @@ export const StoryboardNode = memo(function StoryboardNode({ id, selected, data 
                 className="absolute inset-0 opacity-0 hover:opacity-100 transition-opacity flex flex-col items-center justify-center gap-1"
                 style={{ background: "oklch(0 0 0 / 0.55)" }}
               >
-                <button
-                  onClick={handleGenerate}
-                  disabled={generating}
-                  className="nodrag flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-all"
-                  style={{
-                    background: "oklch(0.65 0.20 160 / 0.20)",
-                    borderWidth: 1,
-                    borderStyle: "solid",
-                    borderColor: "oklch(0.65 0.20 160 / 0.5)",
-                    color: "oklch(0.75 0.18 160)",
-                  }}
-                >
-                  {generating ? <Loader2 className="w-3 h-3 animate-spin" /> : <RefreshCw className="w-3 h-3" />}
-                  {generating ? "生成中..." : "重新生成"}
-                </button>
+                <div className="flex items-center gap-1.5">
+                  <button
+                    onClick={handleGenerate}
+                    disabled={generating}
+                    className="nodrag flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-all"
+                    style={{
+                      background: "oklch(0.65 0.20 160 / 0.20)",
+                      borderWidth: 1, borderStyle: "solid",
+                      borderColor: "oklch(0.65 0.20 160 / 0.5)",
+                      color: "oklch(0.75 0.18 160)",
+                    }}
+                  >
+                    {generating ? <Loader2 className="w-3 h-3 animate-spin" /> : <RefreshCw className="w-3 h-3" />}
+                    {generating ? "生成中..." : "重新生成"}
+                  </button>
+                  <button
+                    onClick={(e) => { e.stopPropagation(); setZoomUrl(payload.imageUrl || null); }}
+                    className="nodrag flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs font-medium transition-all"
+                    style={{
+                      background: "oklch(0.68 0.18 220 / 0.20)",
+                      borderWidth: 1, borderStyle: "solid",
+                      borderColor: "oklch(0.68 0.18 220 / 0.5)",
+                      color: "oklch(0.75 0.15 220)",
+                    }}
+                  >
+                    <ZoomIn className="w-3 h-3" />
+                  </button>
+                </div>
                 {(payload.imageHistory?.length ?? 0) > 0 && (
                   <button
                     onClick={(e) => { e.stopPropagation(); setShowHistory((v) => !v); }}
@@ -287,7 +358,7 @@ export const StoryboardNode = memo(function StoryboardNode({ id, selected, data 
                     }}
                   >
                     <History className="w-3 h-3" />
-                    历史 ({payload.imageHistory!.length})
+                    历史 ({payload.imageHistory?.length ?? 0})
                   </button>
                 )}
               </div>
@@ -352,7 +423,7 @@ export const StoryboardNode = memo(function StoryboardNode({ id, selected, data 
               </button>
             </div>
             <div style={{ display: "flex", gap: 6, overflowX: "auto" }}>
-              {payload.imageHistory!.map((url, i) => (
+              {(payload.imageHistory ?? []).map((url, i) => (
                 <button
                   key={i}
                   onClick={() => { updateNodeData(id, { imageUrl: url }); setShowHistory(false); }}
@@ -446,17 +517,18 @@ export const StoryboardNode = memo(function StoryboardNode({ id, selected, data 
           <LLMModelPicker value={llmModel} onChange={setLlmModel} disabled={expandingDesc || expandingPrompt || translating} />
           <button
             onClick={() => {
+              if (expandingDesc || expandingPrompt || translating || aiExpandDescMutation.isPending) return;
               if (!payload.description?.trim()) { toast.error("请先填写场景描述"); return; }
               setExpandingDesc(true);
-              aiExpandDescMutation.mutate({ text: payload.description, mode: "expand", model: llmModel });
+              aiExpandDescMutation.mutate({ text: payload.description.slice(0, 8000), mode: "expand", model: llmModel });
             }}
-            disabled={expandingDesc}
+            disabled={expandingDesc || expandingPrompt || translating}
             className="nodrag flex items-center gap-1 px-1.5 py-0.5 rounded-md text-[9px] font-medium transition-all"
             style={{
-              background: expandingDesc ? "var(--c-surface)" : "oklch(0.65 0.20 160 / 0.10)",
-              border: `1px solid ${expandingDesc ? "var(--c-bd2)" : "oklch(0.65 0.20 160 / 0.35)"}`,
-              color: expandingDesc ? "var(--c-t4)" : "oklch(0.65 0.20 160)",
-              cursor: expandingDesc ? "not-allowed" : "pointer",
+              background: (expandingDesc || expandingPrompt || translating) ? "var(--c-surface)" : "oklch(0.65 0.20 160 / 0.10)",
+              border: `1px solid ${(expandingDesc || expandingPrompt || translating) ? "var(--c-bd2)" : "oklch(0.65 0.20 160 / 0.35)"}`,
+              color: (expandingDesc || expandingPrompt || translating) ? "var(--c-t4)" : "oklch(0.65 0.20 160)",
+              cursor: (expandingDesc || expandingPrompt || translating) ? "not-allowed" : "pointer",
             }}
           >
             {expandingDesc ? <Loader2 className="w-2.5 h-2.5 animate-spin" /> : <Sparkles className="w-2.5 h-2.5" />}
@@ -489,21 +561,21 @@ export const StoryboardNode = memo(function StoryboardNode({ id, selected, data 
           </div>
           <button
             onClick={handleExpandPrompt}
-            disabled={expandingPrompt || !payload.description?.trim()}
+            disabled={expandingPrompt || expandingDesc || translating || !payload.description?.trim()}
             className="nodrag flex items-center gap-1 px-2 py-1 rounded text-[10px] transition-all self-start"
             style={{
-              background: expandingPrompt || !payload.description?.trim()
+              background: expandingPrompt || expandingDesc || translating || !payload.description?.trim()
                 ? "var(--c-surface)"
                 : "oklch(0.65 0.20 160 / 0.12)",
               borderWidth: 1,
               borderStyle: "solid",
-              borderColor: expandingPrompt || !payload.description?.trim()
+              borderColor: expandingPrompt || expandingDesc || translating || !payload.description?.trim()
                 ? "var(--c-bd2)"
                 : "oklch(0.65 0.20 160 / 0.35)",
-              color: expandingPrompt || !payload.description?.trim()
+              color: expandingPrompt || expandingDesc || translating || !payload.description?.trim()
                 ? "var(--c-t4)"
                 : "oklch(0.65 0.20 160)",
-              cursor: expandingPrompt || !payload.description?.trim() ? "not-allowed" : "pointer",
+              cursor: expandingPrompt || expandingDesc || translating || !payload.description?.trim() ? "not-allowed" : "pointer",
             }}
           >
             {expandingPrompt ? <Loader2 className="w-3 h-3 animate-spin" /> : <Wand2 className="w-3 h-3" />}
@@ -511,24 +583,38 @@ export const StoryboardNode = memo(function StoryboardNode({ id, selected, data 
           </button>
           <button
             onClick={() => {
-              const text = payload.promptText?.trim() || payload.description?.trim();
-              if (!text) { toast.error("请先填写内容"); return; }
+              if (translating || expandingDesc || expandingPrompt || aiTranslateMutation.isPending) return;
+              const text = payload.description?.trim() || payload.promptText?.trim();
+              if (!text) { toast.error("请先填写场景描述或提示词"); return; }
               setTranslating(true);
               aiTranslateMutation.mutate({ text, mode: "translate_en", model: llmModel });
             }}
-            disabled={translating}
+            disabled={translating || expandingDesc || expandingPrompt}
+            title="将场景描述翻译为英文，结果写入提示词"
             className="nodrag flex items-center gap-1 px-1.5 py-0.5 rounded-md text-[9px] font-medium transition-all"
             style={{
-              background: translating ? "var(--c-surface)" : "oklch(0.68 0.22 300 / 0.10)",
-              border: `1px solid ${translating ? "var(--c-bd2)" : "oklch(0.68 0.22 300 / 0.35)"}`,
-              color: translating ? "var(--c-t4)" : "oklch(0.72 0.18 300)",
-              cursor: translating ? "not-allowed" : "pointer",
+              background: (translating || expandingDesc || expandingPrompt) ? "var(--c-surface)" : "oklch(0.68 0.22 300 / 0.10)",
+              border: `1px solid ${(translating || expandingDesc || expandingPrompt) ? "var(--c-bd2)" : "oklch(0.68 0.22 300 / 0.35)"}`,
+              color: (translating || expandingDesc || expandingPrompt) ? "var(--c-t4)" : "oklch(0.72 0.18 300)",
+              cursor: (translating || expandingDesc || expandingPrompt) ? "not-allowed" : "pointer",
             }}
           >
             {translating ? <Loader2 className="w-2.5 h-2.5 animate-spin" /> : <Languages className="w-2.5 h-2.5" />}
             翻译英文
           </button>
         </div>
+
+        {/* ── Negative prompt ── */}
+        <textarea
+          placeholder="负面提示词（可选，描述不希望出现的内容）..."
+          value={payload.negativePrompt ?? ""}
+          onChange={(e) => handleChange("negativePrompt", e.target.value)}
+          className="nodrag"
+          rows={2}
+          style={{ ...fieldStyle, resize: "none", lineHeight: 1.6 }}
+          onFocus={onFocus}
+          onBlur={onBlur}
+        />
 
         {/* ── Style row ── */}
         <div className="flex gap-1.5">
@@ -553,46 +639,64 @@ export const StoryboardNode = memo(function StoryboardNode({ id, selected, data 
         </div>
 
         {/* ── Reference image upload ── */}
-        <div className="flex items-center gap-1.5">
-          <input
-            ref={refInputRef}
-            type="file"
-            accept="image/*"
-            className="hidden"
-            onChange={handleRefUpload}
-          />
-          <button
-            onClick={() => refInputRef.current?.click()}
-            disabled={uploadingRef}
-            className="nodrag flex items-center gap-1 px-2 py-1 rounded text-[10px] transition-all flex-1"
-            style={{
-              background: "var(--c-input)",
-              borderWidth: 1,
-              borderStyle: "solid",
-              borderColor: "var(--c-bd2)",
-              color: "var(--c-t3)",
-              cursor: uploadingRef ? "not-allowed" : "pointer",
-            }}
-          >
-            {uploadingRef ? <Loader2 className="w-3 h-3 animate-spin" /> : <Upload className="w-3 h-3" />}
-            {payload.referenceImageUrl ? "更换参考图" : "上传参考图"}
-          </button>
-          {payload.referenceImageUrl && (
+        <div className="flex flex-col gap-1">
+          <div className="flex items-center gap-1.5">
+            <input
+              ref={refInputRef}
+              type="file"
+              accept="image/*"
+              className="hidden"
+              onChange={handleRefUpload}
+            />
             <button
-              onClick={() => updateNodeData(id, { referenceImageUrl: undefined })}
-              className="nodrag p-1 rounded transition-all"
-              style={{ background: "var(--c-input)", borderWidth: 1, borderStyle: "solid", borderColor: "var(--c-bd2)", color: "var(--c-t3)" }}
-              title="清除参考图"
+              onClick={() => refInputRef.current?.click()}
+              disabled={uploadingRef}
+              className="nodrag flex items-center gap-1 px-2 py-1 rounded text-[10px] transition-all flex-1"
+              style={{
+                background: "var(--c-input)",
+                borderWidth: 1,
+                borderStyle: "solid",
+                borderColor: "var(--c-bd2)",
+                color: "var(--c-t3)",
+                cursor: uploadingRef ? "not-allowed" : "pointer",
+              }}
             >
-              <X className="w-3 h-3" />
+              {uploadingRef ? <Loader2 className="w-3 h-3 animate-spin" /> : <Upload className="w-3 h-3" />}
+              {payload.referenceImageUrl ? "更换参考图" : "上传参考图"}
             </button>
+            {payload.referenceImageUrl && (
+              <button
+                onClick={() => updateNodeData(id, { referenceImageUrl: undefined })}
+                className="nodrag p-1 rounded transition-all"
+                style={{ background: "var(--c-input)", borderWidth: 1, borderStyle: "solid", borderColor: "var(--c-bd2)", color: "var(--c-t3)" }}
+                title="清除参考图"
+              >
+                <X className="w-3 h-3" />
+              </button>
+            )}
+          </div>
+          {/* Priority hint: when this node has its own referenceImageUrl, CharacterNode's ref is silently ignored */}
+          {connectedCharWithRef && payload.referenceImageUrl && (
+            <p style={{ fontSize: 9.5, color: "oklch(0.72 0.18 55)", lineHeight: 1.4, margin: 0 }}>
+              本节点参考图优先：已连接角色节点的参考图不会用于生图
+            </p>
+          )}
+          {/* Hint: when no local ref but CharacterNode has one, show it will be used */}
+          {connectedCharWithRef && !payload.referenceImageUrl && (
+            <p style={{ fontSize: 9.5, color: "var(--c-t4)", lineHeight: 1.4, margin: 0 }}>
+              将使用已连接角色节点的参考图
+            </p>
           )}
         </div>
 
         {/* ── Model selector ── */}
-        <div className="relative nodrag">
+        <div className="nodrag">
           <button
-            onClick={() => setShowModelPicker((v) => !v)}
+            ref={modelBtnRef}
+            onClick={() => {
+              if (modelBtnRef.current) setModelPickerRect(modelBtnRef.current.getBoundingClientRect());
+              setShowModelPicker((v) => !v);
+            }}
             className="nodrag flex items-center justify-between w-full px-2.5 py-1.5 rounded-lg text-xs transition-all"
             style={{
               background: "var(--c-input)",
@@ -614,53 +718,177 @@ export const StoryboardNode = memo(function StoryboardNode({ id, selected, data 
             </span>
             <ChevronDown className="w-3 h-3 opacity-60" style={{ transform: showModelPicker ? "rotate(180deg)" : "none", transition: "transform 150ms" }} />
           </button>
-
-          {showModelPicker && (
-            <div
-              className="absolute bottom-full left-0 right-0 mb-1 rounded-lg overflow-hidden z-50"
-              style={{
-                background: "var(--c-surface)",
-                borderWidth: 1,
-                borderStyle: "solid",
-                borderColor: "var(--c-bd2)",
-                boxShadow: "0 8px 24px oklch(0 0 0 / 0.5)",
-              }}
-            >
-              {["Manus", "Poyo", "Higgsfield"].map((group) => (
-                <div key={group}>
-                  <div className="px-2.5 py-1" style={{ fontSize: 9, fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.08em", color: "var(--c-t4)", borderBottom: "1px solid var(--c-bd2)" }}>
-                    {group}
-                  </div>
-                  {IMAGE_MODELS.filter((m) => m.group === group).map((m) => (
-                    <button
-                      key={m.value}
-                      className="nodrag flex items-center justify-between w-full px-2.5 py-2 text-xs transition-colors"
-                      style={{
-                        background: model === m.value ? "oklch(0.65 0.20 160 / 0.10)" : "transparent",
-                        color: model === m.value ? "oklch(0.72 0.18 160)" : "var(--c-t2)",
-                      }}
-                      onClick={() => { setModel(m.value); setShowModelPicker(false); }}
-                      onMouseEnter={(e) => { if (model !== m.value) (e.currentTarget as HTMLElement).style.background = "var(--c-elevated)"; }}
-                      onMouseLeave={(e) => { if (model !== m.value) (e.currentTarget as HTMLElement).style.background = "transparent"; }}
-                    >
-                      <span>{m.label}</span>
-                      <span
-                        className="px-1 py-0.5 rounded text-[9px] font-semibold"
-                        style={{ background: "oklch(0.65 0.20 160 / 0.12)", color: "oklch(0.55 0.15 160)" }}
-                      >
-                        {m.desc}
-                      </span>
-                    </button>
-                  ))}
-                </div>
+        </div>
+        {/* ── Batch count (only effective for hf_soul_standard) ── */}
+        <div className="flex flex-col gap-1">
+          <div className="flex items-center justify-between">
+            <span style={{ fontSize: 10, fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.07em", color: "var(--c-t4)" }}>
+              抽卡次数
+            </span>
+            <div className="flex gap-1">
+              {([1, 4] as const).map((n) => (
+                <button
+                  key={n}
+                  onClick={() => { setBatchCount(n); updateNodeData(id, { batchSize: n }); }}
+                  className="nodrag"
+                  style={{
+                    width: 28, height: 22, borderRadius: 6, fontSize: 11, fontWeight: 700,
+                    border: `1px solid ${batchCount === n ? "oklch(0.65 0.20 160 / 0.6)" : "var(--c-bd2)"}`,
+                    background: batchCount === n ? "oklch(0.65 0.20 160 / 0.15)" : "var(--c-input)",
+                    color: batchCount === n ? "oklch(0.72 0.18 160)" : "var(--c-t3)",
+                    cursor: "pointer",
+                    transition: "all 120ms",
+                  }}
+                >
+                  {n}
+                </button>
               ))}
             </div>
+          </div>
+          {batchCount > 1 && model !== "hf_soul_standard" && (
+            <p style={{ fontSize: 9.5, color: "var(--c-t4)" }}>
+              当前模型仅支持单张，请选择 Soul Standard 以启用抽卡
+            </p>
           )}
         </div>
+
         {/* End collapsible inputs */}
         </div>
 
       </div>
+
     </BaseNode>
+
+      {/* ── Image model picker portal (avoids overflow:hidden clipping from BaseNode inner wrapper) ── */}
+      {showModelPicker && modelPickerRect && createPortal(
+        <>
+          {/* Backdrop to close on outside click — skip if mousedown target is the toggle button itself */}
+          <div
+            style={{ position: "fixed", inset: 0, zIndex: 99990 }}
+            onMouseDown={(e) => {
+              if (modelBtnRef.current?.contains(e.target as Node)) return;
+              setShowModelPicker(false);
+            }}
+          />
+          <div
+            className="rounded-lg overflow-hidden"
+            style={{
+              position: "fixed",
+              zIndex: 99991,
+              bottom: window.innerHeight - modelPickerRect.top + 4,
+              left: modelPickerRect.left,
+              width: modelPickerRect.width,
+              background: "var(--c-surface)",
+              borderWidth: 1,
+              borderStyle: "solid",
+              borderColor: "var(--c-bd2)",
+              boxShadow: "0 8px 24px oklch(0 0 0 / 0.5)",
+            }}
+          >
+            {["Manus", "Poyo", "Higgsfield"].map((group) => (
+              <div key={group}>
+                <div className="px-2.5 py-1" style={{ fontSize: 9, fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.08em", color: "var(--c-t4)", borderBottom: "1px solid var(--c-bd2)" }}>
+                  {group}
+                </div>
+                {IMAGE_MODELS.filter((m) => m.group === group).map((m) => (
+                  <button
+                    key={m.value}
+                    className="nodrag flex items-center justify-between w-full px-2.5 py-2 text-xs transition-colors"
+                    style={{
+                      background: model === m.value ? "oklch(0.65 0.20 160 / 0.10)" : "transparent",
+                      color: model === m.value ? "oklch(0.72 0.18 160)" : "var(--c-t2)",
+                    }}
+                    onMouseDown={(e) => { e.stopPropagation(); setModel(m.value); setShowModelPicker(false); }}
+                    onMouseEnter={(e) => { if (model !== m.value) (e.currentTarget as HTMLElement).style.background = "var(--c-elevated)"; }}
+                    onMouseLeave={(e) => { if (model !== m.value) (e.currentTarget as HTMLElement).style.background = "transparent"; }}
+                  >
+                    <span>{m.label}</span>
+                    <span
+                      className="px-1 py-0.5 rounded text-[9px] font-semibold"
+                      style={{ background: "oklch(0.65 0.20 160 / 0.12)", color: "oklch(0.55 0.15 160)" }}
+                    >
+                      {m.desc}
+                    </span>
+                  </button>
+                ))}
+              </div>
+            ))}
+          </div>
+        </>,
+        document.body
+      )}
+
+      {/* ── Image lightbox (portal to body — avoids React Flow event interception) ── */}
+      {zoomUrl && createPortal(
+        <div
+          style={{
+            position: "fixed", inset: 0, zIndex: 99999,
+            background: "oklch(0 0 0 / 0.85)",
+            display: "flex", alignItems: "center", justifyContent: "center",
+          }}
+          onMouseDown={(e) => { if (e.target === e.currentTarget) setZoomUrl(null); }}
+        >
+          <div style={{ position: "relative", maxWidth: "90vw", maxHeight: "90vh" }}>
+            <img
+              src={zoomUrl}
+              alt="分镜大图"
+              style={{ maxWidth: "90vw", maxHeight: "85vh", objectFit: "contain", borderRadius: 8, display: "block" }}
+              onError={makeImageProxyFallback(zoomUrl)}
+            />
+            {/* Top-right controls */}
+            <div style={{ position: "absolute", top: -12, right: -12, display: "flex", gap: 8 }}>
+              <button
+                onClick={async () => {
+                  try {
+                    const res = await fetch(zoomUrl);
+                    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+                    const blob = await res.blob();
+                    const ext = blob.type.includes("jpeg") || blob.type.includes("jpg") ? "jpg"
+                      : blob.type.includes("webp") ? "webp"
+                      : "png";
+                    const a = document.createElement("a");
+                    const objectUrl = URL.createObjectURL(blob);
+                    a.href = objectUrl;
+                    a.download = `storyboard.${ext}`;
+                    document.body.appendChild(a);
+                    a.click();
+                    document.body.removeChild(a);
+                    setTimeout(() => URL.revokeObjectURL(objectUrl), 10_000);
+                  } catch (err) {
+                    // Only fall back to window.open for CORS/network errors (TypeError),
+                    // not for HTTP errors (403, 404) where opening a new tab is unhelpful
+                    if (err instanceof TypeError && /^https?:\/\//i.test(zoomUrl)) {
+                      toast.info("直接下载失败，将尝试在新标签页打开");
+                      window.open(zoomUrl, "_blank");
+                    } else {
+                      toast.error("下载失败，图片无法访问");
+                    }
+                  }
+                }}
+                style={{
+                  width: 32, height: 32, borderRadius: "50%", display: "flex", alignItems: "center", justifyContent: "center",
+                  background: "oklch(0.72 0.18 160 / 0.20)", border: "1px solid oklch(0.72 0.18 160 / 0.5)",
+                  color: "oklch(0.80 0.16 160)", cursor: "pointer",
+                }}
+                title="下载图片"
+              >
+                <Download style={{ width: 14, height: 14 }} />
+              </button>
+              <button
+                onClick={() => setZoomUrl(null)}
+                style={{
+                  width: 32, height: 32, borderRadius: "50%", display: "flex", alignItems: "center", justifyContent: "center",
+                  background: "oklch(0.55 0.0 0 / 0.5)", border: "1px solid rgba(255,255,255,0.15)",
+                  color: "white", cursor: "pointer",
+                }}
+              >
+                <X style={{ width: 14, height: 14 }} />
+              </button>
+            </div>
+          </div>
+        </div>,
+        document.body
+      )}
+    </>
   );
 });

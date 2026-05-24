@@ -85,6 +85,7 @@ export const OverlayNode = memo(function OverlayNode({ id, selected, data }: Pro
   const effectiveInputUrl = payload.inputVideoUrl ?? autoDetectedVideoUrl;
 
   const handleProcess = () => {
+    if (overlayMutation.isPending || payload.status === "processing") return;
     if (!effectiveInputUrl) {
       toast.error("请先连接视频源节点或填写输入视频 URL");
       return;

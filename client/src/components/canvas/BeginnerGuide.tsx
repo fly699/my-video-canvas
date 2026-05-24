@@ -12,7 +12,7 @@ const STORAGE_KEY = "avc:guide-seen";
 
 const FLOW_STEPS: { type: NodeType; label: string }[] = [
   { type: "script", label: "脚本" },
-  { type: "storyboard", label: "分镖" },
+  { type: "storyboard", label: "分镜" },
   { type: "image_gen", label: "图像" },
   { type: "video_task", label: "视频" },
 ];
@@ -77,7 +77,7 @@ function WelcomeModal({ onClose }: { onClose: () => void }) {
               icon: <Sparkles size={15} />,
               color: "oklch(0.62 0.14 145)",
               title: "生成素材",
-              desc: "连接分镖 → 图像生成 → 视频任务，AI 自动生成画面",
+              desc: "连接分镜 → 图像生成 → 视频任务，AI 自动生成画面",
             },
             {
               icon: <Scissors size={15} />,
@@ -200,7 +200,7 @@ function WelcomeModal({ onClose }: { onClose: () => void }) {
               borderRadius: 8,
               border: "none",
               backgroundColor: "oklch(0.68 0.22 285)",
-              color: "var(--c-t1)",
+              color: "white",
               fontSize: 14,
               fontWeight: 600,
               cursor: "pointer",
@@ -254,7 +254,7 @@ export function ConnectionHintsPanel({
         zIndex: 100,
         transform: visible ? "translateX(0)" : "translateX(260px)",
         transition: "transform 0.22s cubic-bezier(0.4, 0, 0.2, 1)",
-        backgroundColor: "oklch(0.10 0.007 260 / 0.97)",
+        backgroundColor: "color-mix(in oklch, var(--c-base) 97%, transparent)",
         border: "1px solid var(--c-bd2)",
         borderRadius: 10,
         backdropFilter: "blur(12px)",

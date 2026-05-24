@@ -2,6 +2,7 @@ import path from "path";
 import { z } from "zod";
 import { router, protectedProcedure } from "../_core/trpc";
 import { storagePut } from "../storage";
+import { assertWhitelisted } from "../_core/whitelist";
 
 const ALLOWED_MIME_TYPES = [
   "image/jpeg", "image/png", "image/webp", "image/gif",
@@ -24,6 +25,7 @@ export const uploadRouter = router({
       })
     )
     .mutation(async ({ ctx, input }) => {
+      await assertWhitelisted(ctx);
       const buf = Buffer.from(input.base64, "base64");
 
       // Enforce 16 MB limit

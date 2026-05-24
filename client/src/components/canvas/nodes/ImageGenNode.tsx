@@ -1,4 +1,4 @@
-import { memo, useCallback, useRef, useState } from "react";
+import { memo, useCallback, useEffect, useRef, useState } from "react";
 import { Handle, Position } from "@xyflow/react";
 import { BaseNode } from "../BaseNode";
 import { useCanvasStore } from "../../../hooks/useCanvasStore";
@@ -62,22 +62,44 @@ const SOUL_SIZES = [
   "1024x1280", "1024x1536", "1280x1024", "1536x1024",
 ];
 
+// Per-model aspect ratio whitelists — protect downstream APIs from cross-model contamination
+// Also used to drive UI <option> rendering so users cannot select a value the server will silently drop
+const POYO_ASPECT_RATIOS = ["1:1", "16:9", "9:16", "4:3", "3:4", "21:9"] as const;
+const REVE_ASPECT_RATIOS = ["21:9", "16:9", "4:3", "3:2", "1:1", "2:3", "3:4", "9:16", "9:21"] as const;
+const FLUX_PRO_ASPECT_RATIOS = ["16:9", "4:3", "1:1", "3:4", "9:16"] as const;
+const POYO_QUALITIES = ["low", "medium", "high"] as const;
+const SOUL_QUALITIES = ["720p", "1080p"] as const;
+const REVE_RESOLUTIONS = ["720p", "1080p"] as const;
+
+const MAX_SEED = 2147483647;
+
 const MODELS = IMAGE_MODELS as unknown as { value: ImageGenModel; label: string; desc: string; group: string }[];
 
 export const ImageGenNode = memo(function ImageGenNode({ id, selected, data }: Props) {
-  const { updateNodeData } = useCanvasStore();
+  // Use selector to avoid re-rendering on every store change (other nodes' updates)
+  const updateNodeData = useCanvasStore((s) => s.updateNodeData);
   const payload = data.payload;
   const [uploading, setUploading] = useState(false);
   const [lightboxIndex, setLightboxIndex] = useState<number | null>(null);
   const [paramsExpanded, setParamsExpanded] = useState(false);
-  const [seedLocked, setSeedLocked] = useState(payload.seed != null);
+  // Derived, not local state — stays in sync with collaboration/undo updates
+  const seedLocked = payload.seed != null;
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   // Determine if we are in batch/grid mode
   const hasMultiple = (payload.imageUrls?.length ?? 0) > 1;
 
+  // Reset lightbox when image data shape changes (avoids out-of-bounds index after batch→single switch)
+  useEffect(() => {
+    if (lightboxIndex === null) return;
+    const len = hasMultiple ? (payload.imageUrls?.length ?? 0) : (payload.imageUrl ? 1 : 0);
+    if (lightboxIndex >= len) setLightboxIndex(null);
+  }, [hasMultiple, payload.imageUrls, payload.imageUrl, lightboxIndex]);
+
   const genMutation = trpc.imageGen.generate.useMutation({
     onSuccess: (result) => {
+      // Guard: node may have been deleted while generation was in flight
+      if (!useCanvasStore.getState().nodes.some((n) => n.id === id)) return;
       if (result.urls && result.urls.length > 1) {
         updateNodeData(id, { imageUrls: result.urls, imageUrl: result.urls[0] });
         toast.success(`批量生成完成，共 ${result.urls.length} 张图像`);
@@ -95,8 +117,10 @@ export const ImageGenNode = memo(function ImageGenNode({ id, selected, data }: P
 
   const uploadMutation = trpc.upload.uploadImage.useMutation({
     onSuccess: (result) => {
-      updateNodeData(id, { referenceImageUrl: result.url });
       setUploading(false);
+      // Guard: node may have been deleted while upload was in flight
+      if (!useCanvasStore.getState().nodes.some((n) => n.id === id)) return;
+      updateNodeData(id, { referenceImageUrl: result.url });
       toast.success("参考图上传成功");
     },
     onError: (err) => {
@@ -119,51 +143,69 @@ export const ImageGenNode = memo(function ImageGenNode({ id, selected, data }: P
         const target = allNodes.find(n => n.id === edge.target);
         if (!target) return [];
         const nt = target.data.nodeType;
-        if (nt === "storyboard" || nt === "image_gen" || nt === "video_task") {
-          return [{ id: edge.target, payload: { seed: payload.seed } }];
-        }
-        return [];
+        if (nt !== "storyboard" && nt !== "image_gen" && nt !== "video_task") return [];
+        // Skip targets that already hold the same seed — avoid store churn
+        // and misleading "propagated to N nodes" toasts when nothing changed
+        const currentSeed = (target.data.payload as { seed?: number }).seed;
+        if (currentSeed === payload.seed) return [];
+        return [{ id: edge.target, payload: { seed: payload.seed } }];
       });
     if (updates.length > 0) {
       batchUpdateNodeData(updates);
       toast.success(`种子 ${payload.seed} 已传播到 ${updates.length} 个节点`);
     } else {
-      toast.error("没有支持种子的下游节点");
+      toast.info("下游节点种子已是最新或没有支持种子的下游节点");
     }
   }, [id, payload.seed]);
 
   const handleGenerate = () => {
+    if (genMutation.isPending) return;
+    if (uploading) { toast.error("参考图正在上传中，请稍候"); return; }
     if (!payload.prompt?.trim()) { toast.error("请先填写提示词"); return; }
+    const isPoyo = payload.model === "poyo_flux" || payload.model === "poyo_sdxl" || payload.model === "poyo_gpt_image" ||
+                   payload.model === "poyo_seedream" || payload.model === "poyo_grok_image" || payload.model === "poyo_wan_image";
+    const isReveOrSeedream = payload.model === "hf_reve" || payload.model === "hf_seedream_v4" || payload.model === "hf_flux_pro";
+    const poyoAspect = (POYO_ASPECT_RATIOS as readonly string[]).includes(payload.aspectRatio ?? "") ? payload.aspectRatio : undefined;
+    const reveAspectAllowed: readonly string[] = payload.model === "hf_flux_pro" ? FLUX_PRO_ASPECT_RATIOS : REVE_ASPECT_RATIOS;
+    const reveAspect = reveAspectAllowed.includes(payload.reveAspectRatio ?? "") ? payload.reveAspectRatio : undefined;
+    const fluxNum = ([1, 2, 3, 4] as number[]).includes(payload.fluxNumImages as number) ? (payload.fluxNumImages as 1 | 2 | 3 | 4) : undefined;
+    const poyoQuality = (POYO_QUALITIES as readonly string[]).includes(payload.poyoQuality ?? "") ? payload.poyoQuality : undefined;
+    const soulQuality = (SOUL_QUALITIES as readonly string[]).includes(payload.soulQuality ?? "") ? payload.soulQuality : undefined;
+    const reveResolution = (REVE_RESOLUTIONS as readonly string[]).includes(payload.reveResolution ?? "") ? payload.reveResolution : undefined;
+    const widthAndHeight = (SOUL_SIZES as readonly string[]).includes(payload.widthAndHeight ?? "") ? payload.widthAndHeight : undefined;
+    const validSeed = (s: number | undefined) =>
+      typeof s === "number" && Number.isInteger(s) && s >= 0 && s <= MAX_SEED ? s : undefined;
+    const validGuidance = (g: number | undefined) =>
+      typeof g === "number" && Number.isFinite(g) && g >= 1 && g <= 20 ? g : undefined;
     genMutation.mutate({
       prompt: payload.prompt,
       negativePrompt: payload.negativePrompt,
       style: payload.style,
       referenceImageUrl: payload.referenceImageUrl,
-      model: payload.model,
+      model: payload.model || undefined,
       // Poyo image model params
-      ...((payload.model === "poyo_flux" || payload.model === "poyo_sdxl" || payload.model === "poyo_gpt_image" ||
-           payload.model === "poyo_seedream" || payload.model === "poyo_grok_image" || payload.model === "poyo_wan_image") ? {
-        poyoAspectRatio: payload.aspectRatio,
-        ...(payload.model === "poyo_gpt_image" ? { poyoQuality: payload.poyoQuality } : {}),
+      ...(isPoyo ? {
+        poyoAspectRatio: poyoAspect,
+        ...(payload.model === "poyo_gpt_image" ? { poyoQuality } : {}),
       } : {}),
       // Soul Standard specific params
       ...(payload.model === "hf_soul_standard" ? {
-        widthAndHeight: payload.widthAndHeight,
-        quality: payload.soulQuality,
-        batchSize: payload.batchSize,
-        seed: payload.seed,
+        widthAndHeight,
+        quality: soulQuality,
+        batchSize: ([1, 4] as number[]).includes(payload.batchSize as number) ? (payload.batchSize as 1 | 4) : undefined,
+        seed: validSeed(payload.seed),
         enhancePrompt: payload.enhancePrompt,
       } : {}),
       // Reve / Seedream v4 / Flux Pro aspect ratio
-      ...(payload.model === "hf_reve" || payload.model === "hf_seedream_v4" || payload.model === "hf_flux_pro" ? {
-        reveAspectRatio: payload.reveAspectRatio,
-        ...(payload.model === "hf_reve" ? { reveResolution: payload.reveResolution } : {}),
+      ...(isReveOrSeedream ? {
+        reveAspectRatio: reveAspect,
+        ...(payload.model === "hf_reve" ? { reveResolution } : {}),
       } : {}),
       // Flux Pro Kontext extra params
       ...(payload.model === "hf_flux_pro" ? {
-        fluxGuidanceScale: payload.fluxGuidanceScale,
-        fluxSeed: payload.fluxSeed,
-        fluxNumImages: payload.fluxNumImages,
+        fluxGuidanceScale: validGuidance(payload.fluxGuidanceScale),
+        fluxSeed: validSeed(payload.fluxSeed),
+        fluxNumImages: fluxNum,
       } : {}),
       projectId: data.projectId,
     });
@@ -172,13 +214,15 @@ export const ImageGenNode = memo(function ImageGenNode({ id, selected, data }: P
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
-    if (file.size > 16 * 1024 * 1024) { toast.error("文件不能超过 16 MB"); return; }
+    if (!file.type.startsWith("image/")) { toast.error("请选择图片文件"); e.target.value = ""; return; }
+    if (file.size > 16 * 1024 * 1024) { toast.error("文件不能超过 16 MB"); e.target.value = ""; return; }
     setUploading(true);
     const reader = new FileReader();
     reader.onload = () => {
       const base64 = (reader.result as string).split(",")[1];
       uploadMutation.mutate({ base64, mimeType: file.type, filename: file.name });
     };
+    reader.onerror = () => { setUploading(false); toast.error("文件读取失败"); };
     reader.readAsDataURL(file);
     e.target.value = "";
   };
@@ -204,16 +248,14 @@ export const ImageGenNode = memo(function ImageGenNode({ id, selected, data }: P
     if (!url) return;
     const a = document.createElement("a");
     const filename = `generated-${Date.now()}.png`;
-    // For same-origin storage paths (/manus-storage/...), download directly
-    if (url.startsWith("/") || url.startsWith(window.location.origin)) {
-      a.href = url;
-      a.download = filename;
-    } else {
-      // For external HTTPS URLs, route through image-proxy
-      a.href = `/api/image-proxy?url=${encodeURIComponent(url)}&download=1`;
-      a.download = filename;
-    }
+    // Same-origin check: must start with single "/" (not protocol-relative "//host/...") or origin prefix
+    const isSameOrigin = (url.startsWith("/") && !url.startsWith("//")) || url.startsWith(window.location.origin);
+    a.href = isSameOrigin ? url : `/api/image-proxy?url=${encodeURIComponent(url)}&download=1`;
+    a.download = filename;
+    // Firefox requires <a> in DOM for download to trigger
+    document.body.appendChild(a);
     a.click();
+    document.body.removeChild(a);
   };
 
   const handleDownloadSelected = () => handleDownloadImage(payload.imageUrl ?? "");
@@ -223,15 +265,21 @@ export const ImageGenNode = memo(function ImageGenNode({ id, selected, data }: P
   const isSeedreamV4 = payload.model === "hf_seedream_v4";
   const isFluxPro = payload.model === "hf_flux_pro";
   const isGptImage = payload.model === "poyo_gpt_image";
+  const isManus = payload.model === "manus_forge";
   // Models that use the collapsible params panel
   const isReveLike = isReve || isSeedreamV4 || isFluxPro;
 
-  const heroMedia = payload.imageUrls && payload.imageUrls.length > 0 ? (
+  // Collapse the params panel when switching model — old expansion state doesn't apply to a new param set
+  useEffect(() => {
+    setParamsExpanded(false);
+  }, [payload.model]);
+
+  const heroMedia = hasMultiple ? (
     <div
       className="grid gap-1 p-2"
-      style={{ gridTemplateColumns: payload.imageUrls.length === 4 ? "1fr 1fr" : `repeat(${Math.min(payload.imageUrls.length, 3)}, 1fr)` }}
+      style={{ gridTemplateColumns: payload.imageUrls!.length === 4 ? "1fr 1fr" : `repeat(${Math.min(payload.imageUrls!.length, 3)}, 1fr)` }}
     >
-      {payload.imageUrls.map((url, idx) => {
+      {payload.imageUrls!.map((url, idx) => {
         const isSelected = url === payload.imageUrl;
         return (
           <div key={idx} className="relative rounded-lg overflow-hidden" style={{ aspectRatio: "1/1", background: "var(--c-canvas)" }}>
@@ -419,7 +467,7 @@ export const ImageGenNode = memo(function ImageGenNode({ id, selected, data }: P
                 <button
                   onClick={() => setLightboxIndex(0)}
                   className="nodrag flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-medium"
-                  style={{ background: "oklch(0.14 0.007 260 / 0.8)  /* alpha – intentional */", borderWidth: 1, borderStyle: "solid", borderColor: "var(--c-bd3)", color: "var(--c-t2)" }}
+                  style={{ background: "oklch(0.14 0.007 260 / 0.8)", borderWidth: 1, borderStyle: "solid", borderColor: "var(--c-bd3)", color: "var(--c-t2)" }}
                 >
                   <ZoomIn className="w-3 h-3" />
                   放大
@@ -427,7 +475,7 @@ export const ImageGenNode = memo(function ImageGenNode({ id, selected, data }: P
                 <button
                   onClick={handleDownloadSelected}
                   className="nodrag flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-medium"
-                  style={{ background: "oklch(0.14 0.007 260 / 0.8)  /* alpha – intentional */", borderWidth: 1, borderStyle: "solid", borderColor: "var(--c-bd3)", color: "var(--c-t2)" }}
+                  style={{ background: "oklch(0.14 0.007 260 / 0.8)", borderWidth: 1, borderStyle: "solid", borderColor: "var(--c-bd3)", color: "var(--c-t2)" }}
                 >
                   <Download className="w-3 h-3" />
                   下载
@@ -542,17 +590,24 @@ export const ImageGenNode = memo(function ImageGenNode({ id, selected, data }: P
                   {STYLES.map((s) => <option key={s} value={s}>{s}</option>)}
                 </select>
               </div>
-              <div style={{ width: 80 }}>
-                <label style={labelStyle}>比例</label>
-                <select
-                  value={payload.aspectRatio ?? ""}
-                  onChange={(e) => update("aspectRatio", e.target.value)}
-                  className="nodrag"
-                  style={{ ...fieldBase, cursor: "pointer" }}
-                >
-                  {RATIOS.map((r) => <option key={r} value={r}>{r}</option>)}
-                </select>
-              </div>
+              {/* Manus Forge ignores aspect ratio server-side — hide the picker to avoid misleading users */}
+              {!isManus && (
+                <div style={{ width: 80 }}>
+                  <label style={labelStyle}>比例</label>
+                  <select
+                    value={payload.aspectRatio ?? ""}
+                    onChange={(e) => update("aspectRatio", e.target.value)}
+                    className="nodrag"
+                    style={{ ...fieldBase, cursor: "pointer" }}
+                  >
+                    {/* Restrict options to the Poyo whitelist (server-validated); fallback to RATIOS for other non-Manus paths */}
+                    {(payload.model && (payload.model === "poyo_flux" || payload.model === "poyo_sdxl" || payload.model === "poyo_gpt_image" || payload.model === "poyo_seedream" || payload.model === "poyo_grok_image" || payload.model === "poyo_wan_image")
+                      ? (POYO_ASPECT_RATIOS as readonly string[])
+                      : (RATIOS as readonly string[])
+                    ).map((r) => <option key={r} value={r}>{r}</option>)}
+                  </select>
+                </div>
+              )}
             </div>
             {/* GPT Image 2 quality selector */}
             {isGptImage && (
@@ -642,12 +697,10 @@ export const ImageGenNode = memo(function ImageGenNode({ id, selected, data }: P
                   <button
                     onClick={() => {
                       if (seedLocked) {
-                        setSeedLocked(false);
                         update("seed", undefined);
                       } else {
                         const randomSeed = Math.floor(Math.random() * 2147483647);
                         update("seed", randomSeed);
-                        setSeedLocked(true);
                       }
                     }}
                     className="nodrag flex items-center gap-0.5 px-1.5 py-0.5 rounded text-[9px] transition-all"
@@ -717,15 +770,10 @@ export const ImageGenNode = memo(function ImageGenNode({ id, selected, data }: P
                           onFocus={(e) => { e.currentTarget.style.borderColor = BORDER_ACCENT; }}
                           onBlur={(e) => { e.currentTarget.style.borderColor = BORDER_DEFAULT; }}
                         >
-                          <option value="21:9">21:9 超宽</option>
-                          <option value="16:9">16:9 横屏</option>
-                          <option value="4:3">4:3 标准</option>
-                          <option value="3:2">3:2 标准宽</option>
-                          <option value="1:1">1:1 方形</option>
-                          <option value="2:3">2:3 竖向</option>
-                          <option value="3:4">3:4 竖屏</option>
-                          <option value="9:16">9:16 竖屏</option>
-                          <option value="9:21">9:21 超竖</option>
+                          {/* Flux Pro Kontext only supports a subset of ratios — keep UI options in sync with the server-side whitelist */}
+                          {(isFluxPro ? (FLUX_PRO_ASPECT_RATIOS as readonly string[]) : (REVE_ASPECT_RATIOS as readonly string[])).map((r) => (
+                            <option key={r} value={r}>{r}</option>
+                          ))}
                         </select>
                       </div>
                       {isReve && (
@@ -872,9 +920,13 @@ export const ImageGenNode = memo(function ImageGenNode({ id, selected, data }: P
           }}
         >
           {genMutation.isPending ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Sparkles className="w-3.5 h-3.5" />}
-          {genMutation.isPending
-            ? (isSoul && (payload.batchSize ?? 1) > 1 ? `批量生成中 (${payload.batchSize} 张)...` : "AI 生成中...")
-            : (isSoul && (payload.batchSize ?? 1) > 1 ? `批量生成 ${payload.batchSize} 张` : "生成图像")}
+          {(() => {
+            const batch = isSoul && (payload.batchSize ?? 1) > 1 ? (payload.batchSize ?? 1)
+                        : isFluxPro && (payload.fluxNumImages ?? 1) > 1 ? (payload.fluxNumImages ?? 1)
+                        : 1;
+            if (genMutation.isPending) return batch > 1 ? `批量生成中 (${batch} 张)...` : "AI 生成中...";
+            return batch > 1 ? `批量生成 ${batch} 张` : "生成图像";
+          })()}
         </button>
 
         </div>{/* end input collapse wrapper */}
@@ -896,16 +948,20 @@ export const ImageGenNode = memo(function ImageGenNode({ id, selected, data }: P
       />
 
       {/* Lightbox */}
-      {lightboxIndex !== null && (
-        <ImageLightbox
-          images={hasMultiple ? payload.imageUrls! : [payload.imageUrl!]}
-          currentIndex={lightboxIndex}
-          selectedUrl={payload.imageUrl}
-          onClose={() => setLightboxIndex(null)}
-          onNavigate={(idx) => setLightboxIndex(idx)}
-          onSelect={(url) => { handleSelectImage(url); setLightboxIndex(null); }}
-        />
-      )}
+      {lightboxIndex !== null && (() => {
+        const images = hasMultiple ? (payload.imageUrls ?? []) : (payload.imageUrl ? [payload.imageUrl] : []);
+        if (images.length === 0 || lightboxIndex >= images.length) return null;
+        return (
+          <ImageLightbox
+            images={images}
+            currentIndex={lightboxIndex}
+            selectedUrl={payload.imageUrl}
+            onClose={() => setLightboxIndex(null)}
+            onNavigate={(idx) => setLightboxIndex(idx)}
+            onSelect={(url) => { handleSelectImage(url); setLightboxIndex(null); }}
+          />
+        );
+      })()}
     </BaseNode>
   );
 });

@@ -42,6 +42,7 @@ vi.mock("./db", () => ({
   createAsset: vi.fn().mockResolvedValue({}),
   deleteAsset: vi.fn().mockResolvedValue({}),
   getVideoTasksByProject: vi.fn().mockResolvedValue([]),
+  findInFlightVideoTask: vi.fn().mockResolvedValue(undefined),
   createVideoTask: vi.fn().mockResolvedValue({}),
   getVideoTask: vi.fn().mockResolvedValue({
     id: 1,

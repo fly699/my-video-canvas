@@ -210,19 +210,33 @@ const normalizeToolChoice = (
   return toolChoice;
 };
 
-const resolveApiUrl = () => {
-  if (ENV.poyoApiKey) return "https://api.poyo.ai/v1/chat/completions";
+const isGptModel = (model?: string) => !!model && /^gpt/i.test(model);
+
+const resolveApiUrl = (model?: string) => {
+  // GPT models → Poyo API when key is available
+  if (ENV.poyoApiKey && isGptModel(model)) return "https://api.poyo.ai/v1/chat/completions";
+  // Non-GPT models (Gemini, Claude, etc.) → Forge/Manus API
   if (ENV.forgeApiUrl?.trim()) return `${ENV.forgeApiUrl.replace(/\/$/, "")}/v1/chat/completions`;
+  if (ENV.forgeApiKey) return "https://forge.manus.im/v1/chat/completions";
+  // Fallback: Poyo for any model if it's the only key configured
+  if (ENV.poyoApiKey) return "https://api.poyo.ai/v1/chat/completions";
   return "https://forge.manus.im/v1/chat/completions";
 };
 
-const getApiKey = () => {
-  const key = ENV.poyoApiKey || ENV.forgeApiKey;
+const getApiKey = (model?: string) => {
+  if (ENV.poyoApiKey && isGptModel(model)) return ENV.poyoApiKey;
+  // When a custom forge URL is configured, require the forge key — don't fall through to poyoApiKey
+  // which would send the wrong credentials to the custom proxy.
+  if (ENV.forgeApiUrl?.trim()) {
+    if (!ENV.forgeApiKey) throw new Error("BUILT_IN_FORGE_API_URL is set but BUILT_IN_FORGE_API_KEY is missing");
+    return ENV.forgeApiKey;
+  }
+  const key = ENV.forgeApiKey || ENV.poyoApiKey;
   if (!key) throw new Error("No AI API key configured (POYO_API_KEY or BUILT_IN_FORGE_API_KEY)");
   return key;
 };
 
-const assertApiKey = () => { getApiKey(); };
+const assertApiKey = (model?: string) => { getApiKey(model); };
 
 const normalizeResponseFormat = ({
   responseFormat,
@@ -287,8 +301,6 @@ export function extractTextContent(response: InvokeResult): string {
 }
 
 export async function invokeLLM(params: InvokeParams): Promise<InvokeResult> {
-  assertApiKey();
-
   const {
     messages,
     model,
@@ -301,8 +313,11 @@ export async function invokeLLM(params: InvokeParams): Promise<InvokeResult> {
     response_format,
   } = params;
 
+  const resolvedModel = model ?? DEFAULT_MODEL;
+  assertApiKey(resolvedModel);
+
   const payload: Record<string, unknown> = {
-    model: model ?? DEFAULT_MODEL,
+    model: resolvedModel,
     messages: messages.map(normalizeMessage),
   };
 
@@ -331,11 +346,11 @@ export async function invokeLLM(params: InvokeParams): Promise<InvokeResult> {
     payload.response_format = normalizedResponseFormat;
   }
 
-  const response = await fetch(resolveApiUrl(), {
+  const response = await fetch(resolveApiUrl(resolvedModel), {
     method: "POST",
     headers: {
       "content-type": "application/json",
-      authorization: `Bearer ${getApiKey()}`,
+      authorization: `Bearer ${getApiKey(resolvedModel)}`,
     },
     body: JSON.stringify(payload),
     signal: AbortSignal.timeout(120_000),

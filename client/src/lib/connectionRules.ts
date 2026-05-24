@@ -55,33 +55,33 @@ export const CONNECTION_HINTS: Record<
 > = {
   script: {
     label: "脚本",
-    outgoing: "→ 分镖 / 提示词 / AI对话 / 角色",
+    outgoing: "→ 分镜 / 提示词 / AI对话 / 角色",
     incoming: "← AI对话 / 提示词",
   },
   storyboard: {
-    label: "分镖",
+    label: "分镜",
     outgoing: "→ 图像生成 / 视频任务 / 提示词",
     incoming: "← 脚本 / 提示词 / 角色 / AI对话",
   },
   prompt: {
     label: "提示词",
-    outgoing: "→ 图像生成 / 视频任务 / 分镖 / 脚本",
-    incoming: "← 脚本 / 分镖 / 角色 / AI对话",
+    outgoing: "→ 图像生成 / 视频任务 / 分镜 / 脚本",
+    incoming: "← 脚本 / 分镜 / 角色 / AI对话",
   },
   character: {
     label: "角色/场景",
-    outgoing: "→ 分镖 / 图像生成 / 视频任务 / 提示词",
+    outgoing: "→ 分镜 / 图像生成 / 视频任务 / 提示词",
     incoming: "← 脚本",
   },
   image_gen: {
     label: "图像生成",
     outgoing: "→ 视频任务 / 素材 / 剪辑",
-    incoming: "← 分镖 / 提示词 / 角色 / 素材",
+    incoming: "← 分镜 / 提示词 / 角色 / 素材",
   },
   video_task: {
     label: "视频任务",
     outgoing: "→ 剪辑 / 素材",
-    incoming: "← 图像生成 / 分镖 / 提示词",
+    incoming: "← 图像生成 / 分镜 / 提示词",
   },
   audio: {
     label: "音频",
@@ -95,7 +95,7 @@ export const CONNECTION_HINTS: Record<
   },
   ai_chat: {
     label: "AI对话",
-    outgoing: "→ 脚本 / 分镖 / 提示词",
+    outgoing: "→ 脚本 / 分镜 / 提示词",
     incoming: "← 脚本",
   },
   clip: {

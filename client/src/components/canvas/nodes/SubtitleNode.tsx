@@ -126,6 +126,8 @@ export const SubtitleNode = memo(function SubtitleNode({ id, selected, data }: P
   });
 
   const handleTranscribe = () => {
+    if (transcribeMutation.isPending || burnMutation.isPending) return;
+    if (payload.status === "transcribing" || payload.status === "burning") return;
     const videoUrl = payload.inputVideoUrl || findSourceVideoUrl();
     if (!videoUrl) { toast.error("请先连接一个视频节点或填写视频 URL"); return; }
     update({ status: "transcribing" });
@@ -133,6 +135,8 @@ export const SubtitleNode = memo(function SubtitleNode({ id, selected, data }: P
   };
 
   const handleBurnIn = () => {
+    if (burnMutation.isPending || transcribeMutation.isPending) return;
+    if (payload.status === "transcribing" || payload.status === "burning") return;
     const videoUrl = payload.inputVideoUrl || findSourceVideoUrl();
     if (!videoUrl) { toast.error("请先填写视频 URL"); return; }
     if (!payload.entries?.length) { toast.error("没有字幕数据，请先转录或手动添加字幕"); return; }

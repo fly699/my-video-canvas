@@ -31,6 +31,7 @@ import { BeginnerGuide, ConnectionHintsPanel } from "../components/canvas/Beginn
 import { ThemeSwitcher } from "../components/canvas/ThemeSwitcher";
 import { CanvasBgPicker, loadCanvasBg, type CanvasBg } from "../components/canvas/CanvasBgPicker";
 import { useCanvasMode } from "../contexts/CanvasModeContext";
+import { useTheme } from "../contexts/ThemeContext";
 import { trpc } from "@/lib/trpc";
 import { useAuth } from "@/_core/hooks/useAuth";
 import { useIsMobile } from "@/hooks/useMobile";
@@ -130,7 +131,7 @@ function ToolBtn({
       <TooltipContent side="right" className="text-xs">
         <span>{label}</span>
         {kbd && (
-          <kbd className="ml-2 px-1.5 py-0.5 rounded text-[10px] bg-white/10 font-mono">
+          <kbd className="ml-2 px-1.5 py-0.5 rounded text-[10px] bg-[var(--c-elevated)] font-mono">
             {kbd}
           </kbd>
         )}
@@ -141,7 +142,7 @@ function ToolBtn({
 
 // ── Divider ───────────────────────────────────────────────────────────────────
 function ToolDivider() {
-  return <div className="w-5 h-px bg-white/8 mx-auto my-1" />;
+  return <div className="w-5 h-px mx-auto my-1" style={{ background: "var(--c-bd1)" }} />;
 }
 
 // ── Snapshot panel ────────────────────────────────────────────────────────────
@@ -348,6 +349,8 @@ function CanvasInner({ projectId }: { projectId: number }) {
   const [showRatioPicker, setShowRatioPicker] = useState(false);
   const [showConnectionHints, setShowConnectionHints] = useState(false);
   const { mode: canvasMode, setMode: setCanvasMode } = useCanvasMode();
+  const { theme } = useTheme();
+  const isLight = theme === "light" || theme === "warm" || canvasMode === "creative";
   // Auto-show filmstrip when entering creative mode, hide when leaving
   useEffect(() => {
     if (canvasMode === "creative") setShowFilmstrip(true);
@@ -357,12 +360,39 @@ function CanvasInner({ projectId }: { projectId: number }) {
 
   // Workflow runner
   const { runState, runWorkflow } = useWorkflowRunner();
+  const [showRunConfirm, setShowRunConfirm] = useState(false);
+  const [pendingRunNodeId, setPendingRunNodeId] = useState<string | null>(null);
+  const [runConfirmCountdown, setRunConfirmCountdown] = useState(5);
+  const runConfirmOpenRef = useRef(false);
+  const runStateRunningRef = useRef(false);
+  runStateRunningRef.current = runState.running;
+
+  const handleRunRequest = useCallback((startNodeId: string | null) => {
+    if (runConfirmOpenRef.current) return;
+    runConfirmOpenRef.current = true;
+    setPendingRunNodeId(startNodeId);
+    setRunConfirmCountdown(5);
+    setShowRunConfirm(true);
+  }, []);
+
+  useEffect(() => {
+    if (!showRunConfirm) return;
+    if (runConfirmCountdown <= 0) return;
+    const t = setTimeout(() => setRunConfirmCountdown((c) => c - 1), 1000);
+    return () => clearTimeout(t);
+  }, [showRunConfirm, runConfirmCountdown]);
 
   const socketRef = useRef<Socket | null>(null);
   const [socketConnected, setSocketConnected] = useState(false);
   const nodesRef = useRef(nodes);
   nodesRef.current = nodes;
   const [viewport, setViewport] = useState({ x: 0, y: 0, zoom: 1 });
+  const [barOffset, setBarOffset] = useState({ x: 0, y: 0 });
+  const barDragRef = useRef<{ startX: number; startY: number; initX: number; initY: number } | null>(null);
+  const [mmPos, setMmPos] = useState({ bottom: 80, right: 8 });
+  const [mmSize, setMmSize] = useState({ w: 200, h: 140 });
+  const mmDragRef = useRef<{ sx: number; sy: number; sb: number; sr: number } | null>(null);
+  const mmResizeRef = useRef<{ sx: number; sy: number; sw: number; sh: number } | null>(null);
   const [renamingProject, setRenamingProject] = useState(false);
   const [renameValue, setRenameValue] = useState("");
   const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -378,11 +408,17 @@ function CanvasInner({ projectId }: { projectId: number }) {
     { projectId }, { enabled: !!projectId && isAuthenticated }
   );
 
+  const utils = trpc.useUtils();
   const batchUpsertNodes = trpc.nodes.batchUpsert.useMutation();
   const upsertEdge = trpc.edges.upsert.useMutation();
   const deleteNodeMutation = trpc.nodes.delete.useMutation();
   const deleteEdgeMutation = trpc.edges.delete.useMutation();
-  const updateProject = trpc.projects.update.useMutation();
+  const updateProject = trpc.projects.update.useMutation({
+    onSuccess: () => {
+      utils.projects.get.invalidate({ id: projectId });
+      utils.projects.list.invalidate();
+    },
+  });
 
   // Reset canvas store on unmount to prevent stale nodes polluting next canvas
   useEffect(() => {
@@ -670,7 +706,7 @@ function CanvasInner({ projectId }: { projectId: number }) {
         saveCanvas();
         if (wasDirty) toast.success("已保存");
       }
-      if (e.key === "Escape") { setContextMenu(null); setShowNodePicker(false); setShowNodeSearch(false); setShowTemplates(false); }
+      if (e.key === "Escape") { setContextMenu(null); setShowNodePicker(false); setShowNodeSearch(false); setShowTemplates(false); runConfirmOpenRef.current = false; setShowRunConfirm(false); setRunConfirmCountdown(5); }
 
       // Cmd+K / Ctrl+K — Node search (skip when typing in an input)
       if (!isEditing && (e.metaKey || e.ctrlKey) && e.key === "k") {
@@ -695,8 +731,9 @@ function CanvasInner({ projectId }: { projectId: number }) {
       // Shift+R: run workflow from selected node
       if (!isEditing && e.shiftKey && e.key === "R") {
         e.preventDefault();
+        if (runStateRunningRef.current) return;
         const selected = nodes.find((n) => n.selected);
-        runWorkflow(selected?.id ?? null);
+        handleRunRequest(selected?.id ?? null);
       }
 
       // Undo: Cmd+Z / Ctrl+Z
@@ -719,7 +756,7 @@ function CanvasInner({ projectId }: { projectId: number }) {
     };
     window.addEventListener("keydown", handler);
     return () => window.removeEventListener("keydown", handler);
-  }, [saveCanvas, undo, redo, runWorkflow, nodes]);
+  }, [saveCanvas, undo, redo, runWorkflow, nodes, handleRunRequest]);
 
   const collaboratorList = Array.from(collaborators.values());
 
@@ -763,9 +800,7 @@ function CanvasInner({ projectId }: { projectId: number }) {
       <header
         className="canvas-topbar h-11 flex items-center px-3 gap-2 flex-shrink-0 z-20"
         style={{
-          background: canvasMode === "creative"
-            ? "oklch(1.00 0 0 / 0.94)"
-            : "oklch(0.09 0.006 260 / 0.95)",
+          background: "color-mix(in oklch, var(--c-base) 95%, transparent)",
           backdropFilter: "blur(20px)",
           borderBottom: "1px solid var(--c-bd1)",
         }}
@@ -894,7 +929,7 @@ function CanvasInner({ projectId }: { projectId: number }) {
               </button>
             </TooltipTrigger>
             <TooltipContent side="bottom" className="text-xs">
-              快速模板 <kbd className="ml-1 px-1 py-0.5 rounded text-[10px] bg-white/10 font-mono">⌘T</kbd>
+              快速模板 <kbd className="ml-1 px-1 py-0.5 rounded text-[10px] bg-[var(--c-elevated)] font-mono">⌘T</kbd>
             </TooltipContent>
           </Tooltip>
 
@@ -909,7 +944,7 @@ function CanvasInner({ projectId }: { projectId: number }) {
               </button>
             </TooltipTrigger>
             <TooltipContent side="bottom" className="text-xs">
-              搜索节点 <kbd className="ml-1 px-1 py-0.5 rounded text-[10px] bg-white/10 font-mono">⌘K</kbd>
+              搜索节点 <kbd className="ml-1 px-1 py-0.5 rounded text-[10px] bg-[var(--c-elevated)] font-mono">⌘K</kbd>
             </TooltipContent>
           </Tooltip>
 
@@ -1003,7 +1038,7 @@ function CanvasInner({ projectId }: { projectId: number }) {
               </button>
             </TooltipTrigger>
             <TooltipContent side="bottom" className="text-xs">
-              撤销 <kbd className="ml-1 px-1 py-0.5 rounded text-[10px] bg-white/10 font-mono">⌘Z</kbd>
+              撤销 <kbd className="ml-1 px-1 py-0.5 rounded text-[10px] bg-[var(--c-elevated)] font-mono">⌘Z</kbd>
             </TooltipContent>
           </Tooltip>
 
@@ -1019,7 +1054,7 @@ function CanvasInner({ projectId }: { projectId: number }) {
               </button>
             </TooltipTrigger>
             <TooltipContent side="bottom" className="text-xs">
-              重做 <kbd className="ml-1 px-1 py-0.5 rounded text-[10px] bg-white/10 font-mono">⌘⇧Z</kbd>
+              重做 <kbd className="ml-1 px-1 py-0.5 rounded text-[10px] bg-[var(--c-elevated)] font-mono">⌘⇧Z</kbd>
             </TooltipContent>
           </Tooltip>
 
@@ -1034,7 +1069,7 @@ function CanvasInner({ projectId }: { projectId: number }) {
               </button>
             </TooltipTrigger>
             <TooltipContent side="bottom" className="text-xs">
-              保存 <kbd className="ml-1 px-1 py-0.5 rounded text-[10px] bg-white/10 font-mono">⌘S</kbd>
+              保存 <kbd className="ml-1 px-1 py-0.5 rounded text-[10px] bg-[var(--c-elevated)] font-mono">⌘S</kbd>
             </TooltipContent>
           </Tooltip>
 
@@ -1159,9 +1194,9 @@ function CanvasInner({ projectId }: { projectId: number }) {
             onClick={(e) => e.stopPropagation()}
             style={{
               transform: "translateX(-50%)",
-              background: "oklch(0.11 0.007 260 / 0.98)",
+              background: "var(--c-base)",
               border: "1px solid var(--c-bd2)",
-              boxShadow: "0 20px 80px oklch(0 0 0 / 0.75), 0 4px 16px oklch(0 0 0 / 0.40), 0 0 0 1px oklch(0.22 0.008 260 / 0.5)",
+              boxShadow: "0 20px 80px oklch(0 0 0 / 0.40), 0 4px 16px oklch(0 0 0 / 0.20), 0 0 0 1px var(--c-bd2)",
               backdropFilter: "blur(32px)",
               width: 520,
             }}
@@ -1290,15 +1325,91 @@ function CanvasInner({ projectId }: { projectId: number }) {
             <MiniMap
               position="bottom-right"
               nodeColor={(n) => getNodeConfig((n.data as { nodeType: NodeType }).nodeType)?.color ?? "var(--c-bd3)"}
-              maskColor="oklch(0.09 0.006 260 / 0.85)"
+              maskColor={isLight ? "oklch(0.95 0.004 255 / 0.55)" : "oklch(0.09 0.006 260 / 0.55)"}
               style={{
-                background: "var(--c-base)",
+                background: isLight ? "oklch(0.95 0.004 255 / 0.38)" : "oklch(0.09 0.006 260 / 0.38)",
+                backdropFilter: "blur(6px)",
                 border: "1px solid var(--c-bd2)",
                 borderRadius: 12,
-                marginBottom: 72,
-                marginRight: 8,
+                bottom: mmPos.bottom,
+                right: mmPos.right,
+                margin: 0,
+                width: mmSize.w,
+                height: mmSize.h,
               }}
             />
+            {/* Minimap drag handle + resize grip — transparent overlay */}
+            <div
+              style={{
+                position: "absolute",
+                bottom: mmPos.bottom,
+                right: mmPos.right,
+                width: mmSize.w,
+                height: mmSize.h,
+                zIndex: 6,
+                pointerEvents: "none",
+                borderRadius: 12,
+              }}
+            >
+              {/* Drag handle — top strip (doesn't block minimap click-to-navigate below) */}
+              <div
+                style={{
+                  position: "absolute",
+                  top: 0, left: 0, right: 0,
+                  height: 20,
+                  cursor: "grab",
+                  pointerEvents: "all",
+                  borderRadius: "12px 12px 0 0",
+                }}
+                onMouseDown={(e) => {
+                  e.stopPropagation();
+                  mmDragRef.current = { sx: e.clientX, sy: e.clientY, sb: mmPos.bottom, sr: mmPos.right };
+                  const onMove = (me: MouseEvent) => {
+                    if (!mmDragRef.current) return;
+                    setMmPos({
+                      bottom: Math.max(4, Math.min(window.innerHeight - 80, mmDragRef.current.sb - (me.clientY - mmDragRef.current.sy))),
+                      right: Math.max(4, Math.min(window.innerWidth - 100, mmDragRef.current.sr - (me.clientX - mmDragRef.current.sx))),
+                    });
+                  };
+                  const onUp = () => { mmDragRef.current = null; window.removeEventListener("mousemove", onMove); window.removeEventListener("mouseup", onUp); };
+                  window.addEventListener("mousemove", onMove);
+                  window.addEventListener("mouseup", onUp);
+                }}
+              />
+              {/* Resize grip — top-left corner (drag toward top-left to enlarge) */}
+              <div
+                style={{
+                  position: "absolute",
+                  top: 4, left: 4,
+                  width: 14, height: 14,
+                  cursor: "nw-resize",
+                  pointerEvents: "all",
+                  opacity: 0.4,
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                }}
+                onMouseDown={(e) => {
+                  e.stopPropagation();
+                  mmResizeRef.current = { sx: e.clientX, sy: e.clientY, sw: mmSize.w, sh: mmSize.h };
+                  const onMove = (me: MouseEvent) => {
+                    if (!mmResizeRef.current) return;
+                    setMmSize({
+                      w: Math.max(120, Math.min(420, mmResizeRef.current.sw - (me.clientX - mmResizeRef.current.sx))),
+                      h: Math.max(80, Math.min(320, mmResizeRef.current.sh - (me.clientY - mmResizeRef.current.sy))),
+                    });
+                  };
+                  const onUp = () => { mmResizeRef.current = null; window.removeEventListener("mousemove", onMove); window.removeEventListener("mouseup", onUp); };
+                  window.addEventListener("mousemove", onMove);
+                  window.addEventListener("mouseup", onUp);
+                }}
+              >
+                <svg width="9" height="9" viewBox="0 0 9 9" fill="none" style={{ color: "var(--c-t3)" }}>
+                  <line x1="0.5" y1="8.5" x2="8.5" y2="0.5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/>
+                  <line x1="0.5" y1="4.5" x2="4.5" y2="0.5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/>
+                </svg>
+              </div>
+            </div>
           </ReactFlow>
           </WorkflowRunProvider>
 
@@ -1311,14 +1422,34 @@ function CanvasInner({ projectId }: { projectId: number }) {
 
           {/* ── Bottom floating toolbar ── */}
           <div
-            className="canvas-bottombar absolute bottom-5 left-1/2 z-20 flex items-center gap-1.5 px-2.5 py-1.5 rounded-2xl"
+            className="canvas-bottombar absolute z-20 flex items-center gap-1.5 px-2.5 py-1.5 rounded-2xl"
             onClick={(e) => e.stopPropagation()}
+            onMouseDown={(e) => {
+              // 只响应直接在工具栏背景上的拖拽（不拦截按钮点击）
+              if ((e.target as HTMLElement).closest("button,input,select")) return;
+              e.preventDefault();
+              barDragRef.current = { startX: e.clientX, startY: e.clientY, initX: barOffset.x, initY: barOffset.y };
+              const onMove = (mv: MouseEvent) => {
+                if (!barDragRef.current) return;
+                setBarOffset({
+                  x: Math.max(-400, Math.min(400, barDragRef.current.initX + mv.clientX - barDragRef.current.startX)),
+                  // Y inverted: drag up (clientY decreases) → y increases → bottom increases → bar moves up
+                  y: Math.max(-40, Math.min(400, barDragRef.current.initY - (mv.clientY - barDragRef.current.startY))),
+                });
+              };
+              const onUp = () => { barDragRef.current = null; window.removeEventListener("mousemove", onMove); window.removeEventListener("mouseup", onUp); };
+              window.addEventListener("mousemove", onMove);
+              window.addEventListener("mouseup", onUp);
+            }}
             style={{
+              bottom: `calc(20px + ${barOffset.y}px)`,
+              left: `calc(50% + ${barOffset.x}px)`,
               transform: "translateX(-50%)",
-              background: "oklch(0.10 0.007 260 / 0.95)",
+              cursor: "default",
+              background: "color-mix(in oklch, var(--c-base) 95%, transparent)",
               backdropFilter: "blur(24px)",
               border: "1px solid var(--c-bd2)",
-              boxShadow: "0 8px 40px oklch(0 0 0 / 0.60), 0 2px 8px oklch(0 0 0 / 0.40), 0 0 0 1px oklch(0.20 0.008 260 / 0.5)",
+              boxShadow: "var(--c-node-shadow-hover), 0 0 0 1px var(--c-bd2)",
             }}
           >
             {/* Add node — primary action */}
@@ -1409,7 +1540,7 @@ function CanvasInner({ projectId }: { projectId: number }) {
             <Tooltip>
               <TooltipTrigger asChild>
                 <button
-                  onClick={() => runWorkflow(null)}
+                  onClick={() => handleRunRequest(null)}
                   disabled={runState.running || nodes.length === 0}
                   className="flex items-center gap-1.5 h-8 px-3 rounded-xl text-xs font-semibold transition-all"
                   style={{
@@ -1436,7 +1567,7 @@ function CanvasInner({ projectId }: { projectId: number }) {
                 </button>
               </TooltipTrigger>
               <TooltipContent side="top" className="text-xs">
-                运行工作流 <kbd className="ml-1 px-1 py-0.5 rounded text-[10px] bg-white/10 font-mono">Shift+R</kbd>
+                运行工作流 <kbd className="ml-1 px-1 py-0.5 rounded text-[10px] bg-[var(--c-elevated)] font-mono">Shift+R</kbd>
               </TooltipContent>
             </Tooltip>
 
@@ -1469,7 +1600,7 @@ function CanvasInner({ projectId }: { projectId: number }) {
                   className="absolute bottom-12 right-0 rounded-2xl p-4 z-40 animate-scale-in"
                   style={{
                     width: 280,
-                    background: "oklch(0.10 0.007 260 / 0.97)",
+                    background: "color-mix(in oklch, var(--c-base) 97%, transparent)",
                     backdropFilter: "blur(24px)",
                     border: "1px solid var(--c-bd2)",
                     boxShadow: "0 16px 48px oklch(0 0 0 / 0.70), 0 4px 12px oklch(0 0 0 / 0.40)",
@@ -1624,10 +1755,10 @@ function CanvasInner({ projectId }: { projectId: number }) {
             <div
               className="absolute top-3 right-3 rounded-xl p-3 min-w-[180px] z-20 animate-scale-in"
               style={{
-                background: "oklch(0.12 0.007 260 / 0.95)",
+                background: "color-mix(in oklch, var(--c-base) 95%, transparent)",
                 backdropFilter: "blur(20px)",
                 border: "1px solid var(--c-bd2)",
-                boxShadow: "0 8px 32px oklch(0 0 0 / 0.5)",
+                boxShadow: "0 8px 32px oklch(0 0 0 / 0.3)",
               }}
             >
               <p className="text-[10px] font-medium uppercase tracking-wider mb-2.5" style={{ color: "var(--c-t4)" }}>
@@ -1680,7 +1811,7 @@ function CanvasInner({ projectId }: { projectId: number }) {
           <div
             className="w-64 flex flex-col flex-shrink-0 animate-slide-down"
             style={{
-              background: "oklch(0.09 0.006 260 / 0.95)",
+              background: "color-mix(in oklch, var(--c-base) 95%, transparent)",
               backdropFilter: "blur(20px)",
               borderLeft: "1px solid var(--c-bd1)",
             }}
@@ -1788,7 +1919,7 @@ function CanvasInner({ projectId }: { projectId: number }) {
         <div
           className="fixed bottom-0 left-0 right-0 z-40 flex items-center gap-3 px-4 py-2"
           style={{
-            background: "oklch(0.10 0.007 260 / 0.95)",
+            background: "color-mix(in oklch, var(--c-base) 95%, transparent)",
             backdropFilter: "blur(20px)",
             borderTop: "1px solid var(--c-bd2)",
           }}
@@ -1830,7 +1961,7 @@ function CanvasInner({ projectId }: { projectId: number }) {
             emitCollabEvent("node:delete", { id: nid });
           } : undefined}
           onDuplicateNode={contextMenu.nodeId ? () => duplicateNode(contextMenu.nodeId!) : undefined}
-          onRunWorkflow={contextMenu.nodeId ? () => runWorkflow(contextMenu.nodeId ?? null) : undefined}
+          onRunWorkflow={contextMenu.nodeId ? () => handleRunRequest(contextMenu.nodeId ?? null) : undefined}
         />
       )}
 
@@ -1843,6 +1974,100 @@ function CanvasInner({ projectId }: { projectId: number }) {
       {showPresentation && (
         <PresentationMode nodes={nodes} onClose={() => setShowPresentation(false)} />
       )}
+
+      {/* ── Run workflow confirmation dialog ── */}
+      {showRunConfirm && (() => {
+        const aiNodeTypes: string[] = ["storyboard", "prompt", "image_gen", "video_task", "clip", "merge", "subtitle", "overlay"];
+        const aiNodes = nodes.filter(n => aiNodeTypes.includes(n.data.nodeType));
+        const totalNodes = nodes.length;
+        const startLabel = pendingRunNodeId
+          ? `从节点「${nodes.find(n => n.id === pendingRunNodeId)?.data.title ?? pendingRunNodeId}」开始执行`
+          : "从头执行全部流程";
+        return (
+          <div
+            style={{
+              position: "fixed", inset: 0, zIndex: 9999,
+              background: "oklch(0 0 0 / 0.55)",
+              display: "flex", alignItems: "center", justifyContent: "center",
+            }}
+            onMouseDown={(e) => { if (e.target === e.currentTarget) { runConfirmOpenRef.current = false; setShowRunConfirm(false); setRunConfirmCountdown(5); } }}
+          >
+            <div style={{
+              background: "var(--c-surface)",
+              border: "1px solid var(--c-bd2)",
+              borderRadius: 16,
+              padding: "28px 32px",
+              width: 380,
+              boxShadow: "0 24px 64px oklch(0 0 0 / 0.4)",
+              display: "flex", flexDirection: "column", gap: 16,
+            }}>
+              {/* Header */}
+              <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                <span style={{ fontSize: 22 }}>▶</span>
+                <span style={{ fontSize: 16, fontWeight: 700, color: "var(--c-text)" }}>确认执行工作流</span>
+              </div>
+
+              {/* Info */}
+              <div style={{ fontSize: 13, color: "var(--c-text-2)", lineHeight: 1.65 }}>
+                <div>{startLabel}</div>
+                <div style={{ marginTop: 8 }}>
+                  共 <b style={{ color: "var(--c-text)" }}>{totalNodes}</b> 个节点，
+                  其中 <b style={{ color: "oklch(0.72 0.22 142)" }}>{aiNodes.length}</b> 个 AI 节点将调用大模型接口，消耗相应算力额度。
+                </div>
+              </div>
+
+              {/* Warning */}
+              <div style={{
+                background: "oklch(0.78 0.18 60 / 0.1)",
+                border: "1px solid oklch(0.78 0.18 60 / 0.3)",
+                borderRadius: 8,
+                padding: "8px 12px",
+                fontSize: 12,
+                color: "oklch(0.78 0.18 60)",
+                lineHeight: 1.7,
+              }}>
+                <div>⚠️ 执行过程中将按实际调用次数计费，请确认后再继续。</div>
+                <div style={{ marginTop: 4 }}>📋 请确认所有节点 AI 模型选择正确，避免使用错误模型造成额度浪费。</div>
+              </div>
+
+              {/* Buttons */}
+              <div style={{ display: "flex", gap: 10, justifyContent: "flex-end", marginTop: 4 }}>
+                <button
+                  onClick={() => { runConfirmOpenRef.current = false; setShowRunConfirm(false); setRunConfirmCountdown(5); }}
+                  style={{
+                    padding: "7px 18px", borderRadius: 8, fontSize: 13, fontWeight: 600,
+                    background: "var(--c-surface-2)", border: "1px solid var(--c-bd2)",
+                    color: "var(--c-text-2)", cursor: "pointer",
+                  }}
+                >
+                  取消
+                </button>
+                <button
+                  disabled={runConfirmCountdown > 0 || runState.running}
+                  onClick={() => {
+                    runConfirmOpenRef.current = false;
+                    setShowRunConfirm(false);
+                    runWorkflow(pendingRunNodeId);
+                  }}
+                  style={{
+                    padding: "7px 20px", borderRadius: 8, fontSize: 13, fontWeight: 600,
+                    background: (runConfirmCountdown > 0 || runState.running)
+                      ? "oklch(0.72 0.22 142 / 0.07)"
+                      : "oklch(0.72 0.22 142 / 0.15)",
+                    border: `1px solid oklch(0.72 0.22 142 / ${(runConfirmCountdown > 0 || runState.running) ? "0.2" : "0.5"})`,
+                    color: (runConfirmCountdown > 0 || runState.running) ? "oklch(0.72 0.22 142 / 0.45)" : "oklch(0.72 0.22 142)",
+                    cursor: (runConfirmCountdown > 0 || runState.running) ? "not-allowed" : "pointer",
+                    minWidth: 110,
+                    transition: "all 0.3s ease",
+                  }}
+                >
+                  {runState.running ? "运行中…" : runConfirmCountdown > 0 ? `确认执行 (${runConfirmCountdown}s)` : "确认执行"}
+                </button>
+              </div>
+            </div>
+          </div>
+        );
+      })()}
     </div>
   );
 }

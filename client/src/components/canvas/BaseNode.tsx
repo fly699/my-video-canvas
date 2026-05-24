@@ -41,7 +41,7 @@ export const BaseNode = memo(function BaseNode({
   const { mode: canvasMode } = useCanvasMode();
   const { theme } = useTheme();
   const isCreative = canvasMode === "creative";
-  const isLight = theme === "light" || isCreative;
+  const isLight = theme === "light" || theme === "warm" || isCreative;
   const hasHero = heroMedia != null;
 
   // Workflow run status
@@ -76,8 +76,8 @@ export const BaseNode = memo(function BaseNode({
     if (e.key === "Escape") cancelTitleEdit();
   }, [handleTitleSave, cancelTitleEdit]);
 
-  // Sync title when prop changes
-  useEffect(() => { setTitleValue(title); }, [title]);
+  // Sync title when prop changes (guard: don't overwrite in-progress edits)
+  useEffect(() => { if (!editingTitle) setTitleValue(title); }, [title, editingTitle]);
 
   // Entry animation
   const [entered, setEntered] = useState(false);
@@ -87,8 +87,8 @@ export const BaseNode = memo(function BaseNode({
 
   // Shared base styles for all handles
   const handleShared: React.CSSProperties = {
-    width: 12,
-    height: 12,
+    width: 14,
+    height: 14,
     border: `2px solid var(--c-canvas)`,
     transition: "opacity 150ms ease, transform 150ms ease, box-shadow 150ms ease",
     zIndex: 10,
@@ -99,7 +99,7 @@ export const BaseNode = memo(function BaseNode({
     ...handleShared,
     borderRadius: 3,                                       // square = input
     background: `${config.color}90`,                       // slightly transparent
-    opacity: isHovered || selected ? 1 : 0.25,            // more visible at rest than before
+    opacity: isHovered || selected ? 1 : 0.40,
     transform: isHovered || selected ? "scale(1.1)" : "scale(0.85)",
     boxShadow: isHovered || selected ? `0 0 0 3px ${config.color}22` : "none",
   };
@@ -109,7 +109,7 @@ export const BaseNode = memo(function BaseNode({
     ...handleShared,
     borderRadius: "50%",                                   // circle = output
     background: config.color,                              // fully colored
-    opacity: isHovered || selected ? 1 : 0.30,            // slightly more visible at rest
+    opacity: isHovered || selected ? 1 : 0.45,
     transform: isHovered || selected ? "scale(1.1)" : "scale(0.85)",
     boxShadow: isHovered || selected ? `0 0 0 4px ${config.color}30` : "none",
   };
@@ -153,7 +153,7 @@ export const BaseNode = memo(function BaseNode({
 
   return (
     <div
-      className={`group/node relative flex flex-col${runStatus === "running" ? " node-run-pulse" : ""}`}
+      className={`group/node relative${runStatus === "running" ? " node-run-pulse" : ""}`}
       data-selected={selected ? "true" : "false"}
       data-has-hero={hasHero ? "true" : "false"}
       style={{
@@ -168,12 +168,13 @@ export const BaseNode = memo(function BaseNode({
         backdropFilter: isLight ? "none" : "blur(4px)",
         opacity: entered ? 1 : 0,
         transform: entered ? "scale(1) translateY(0)" : "scale(0.96) translateY(6px)",
-        overflow: "hidden",
+        // overflow is intentionally NOT set here so handle ::before hit-area expansions
+        // can extend beyond the node edge without being clipped
       }}
       onMouseEnter={() => setIsHovered(true)}
       onMouseLeave={() => setIsHovered(false)}
     >
-      {/* Resize handles — only when selected AND resizable */}
+      {/* Resize handles — outside overflow:hidden so corner grips aren't clipped */}
       <NodeResizer
         minWidth={minWidth}
         minHeight={minHeight}
@@ -193,6 +194,9 @@ export const BaseNode = memo(function BaseNode({
           opacity: 1,
         }}
       />
+
+    {/* Inner content wrapper clips visual content to the rounded corners */}
+    <div className="flex flex-col" style={{ overflow: "hidden", borderRadius: "inherit", width: "100%" }}>
 
       {/* ── Color accent strip at top ── */}
       <div
@@ -214,7 +218,7 @@ export const BaseNode = memo(function BaseNode({
           background: isCreative
             ? `${config.color}0a`
             : `linear-gradient(180deg, ${config.color}0e 0%, transparent 100%)`,
-          borderBottom: `1px solid ${isCreative ? "var(--c-bd1)" : "oklch(0.20 0.008 260 / 0.60)"}`,
+          borderBottom: `1px solid ${(isCreative || isLight) ? "var(--c-bd1)" : "oklch(0.20 0.008 260 / 0.60)"}`,
           minHeight: isCreative ? 40 : 44,
         }}
       >
@@ -390,13 +394,15 @@ export const BaseNode = memo(function BaseNode({
         </div>
       </NodeSelectedContext.Provider>
 
-      {/* ── Connection Handles ── */}
+      </div>{/* end inner overflow:hidden content wrapper */}
+
+      {/* ── Connection Handles — outside overflow:hidden so ::before hit-area works ── */}
       {showHandles && (
         <>
-          <Handle type="target" position={Position.Left}   id="input"  style={{ ...targetHandle, top: "50%", left: -6 }} />
-          <Handle type="source" position={Position.Right}  id="output" style={{ ...sourceHandle, top: "50%", right: -6 }} />
-          <Handle type="target" position={Position.Top}    id="top"    style={{ ...targetHandle, left: "50%", top: -6 }} />
-          <Handle type="source" position={Position.Bottom} id="bottom" style={{ ...sourceHandle, left: "50%", bottom: -6 }} />
+          <Handle type="target" position={Position.Left}   id="input"  style={{ ...targetHandle, top: "50%", left: -7 }} />
+          <Handle type="source" position={Position.Right}  id="output" style={{ ...sourceHandle, top: "50%", right: -7 }} />
+          <Handle type="target" position={Position.Top}    id="top"    style={{ ...targetHandle, left: "50%", top: -7 }} />
+          <Handle type="source" position={Position.Bottom} id="bottom" style={{ ...sourceHandle, left: "50%", bottom: -7 }} />
         </>
       )}
     </div>

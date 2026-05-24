@@ -272,6 +272,7 @@ export const ClipNode = memo(function ClipNode({ id, selected, data }: Props) {
   });
 
   const handleTrim = () => {
+    if (trimMutation.isPending || payload.status === "processing") return;
     if (!activeVideoUrl) { toast.error("请先连接视频节点"); return; }
     if (endTime <= startTime) { toast.error("出点必须大于入点"); return; }
 

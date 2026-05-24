@@ -29,11 +29,6 @@ export function CanvasModeProvider({ children }: { children: React.ReactNode }) 
     try { localStorage.setItem("avc:canvas-mode", mode); } catch { /* restricted environment */ }
   }, [mode]);
 
-  // Apply persisted value to DOM before first paint (avoids FOUC)
-  useEffect(() => {
-    document.documentElement.setAttribute("data-canvas-mode", readStoredMode());
-  }, []);
-
   return (
     <CanvasModeContext.Provider value={{ mode, setMode: setModeState }}>
       {children}

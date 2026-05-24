@@ -86,9 +86,9 @@ export function NodeSearch({ onClose }: Props) {
       <div
         className="w-full max-w-md rounded-2xl overflow-hidden animate-scale-in"
         style={{
-          background: "oklch(0.11 0.007 260 / 0.98)",
+          background: "var(--c-base)",
           border: "1px solid var(--c-bd2)",
-          boxShadow: "0 24px 80px oklch(0 0 0 / 0.70), 0 4px 16px oklch(0 0 0 / 0.40)",
+          boxShadow: "0 24px 80px oklch(0 0 0 / 0.40), 0 4px 16px oklch(0 0 0 / 0.20)",
           backdropFilter: "blur(24px)",
         }}
       >

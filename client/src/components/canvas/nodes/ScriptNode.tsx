@@ -1,11 +1,14 @@
-import { memo, useCallback, useState } from "react";
+import { memo, useCallback, useEffect, useRef, useState } from "react";
 import { BaseNode } from "../BaseNode";
 import { useCanvasStore } from "../../../hooks/useCanvasStore";
 import type { ScriptNodeData } from "../../../../../shared/types";
 import { trpc } from "@/lib/trpc";
 import { toast } from "sonner";
-import { Sparkles, Loader2, ChevronDown, Clapperboard, Minus, Plus } from "lucide-react";
-import { LLMModelPicker, type LLMModelId } from "../LLMModelPicker";
+import {
+  Sparkles, Loader2, ChevronDown, Clapperboard,
+  Minus, Plus, Copy, FileText, Check,
+} from "lucide-react";
+import { LLMModelPicker, LLM_MODELS, type LLMModelId } from "../LLMModelPicker";
 
 interface Props {
   id: string;
@@ -20,7 +23,7 @@ interface Props {
 
 // ── Static data ───────────────────────────────────────────────────────────────
 
-const GENRES  = ["短视频", "广告片", "短剧", "纪录片", "MV", "宣传片", "微电影", "动画"];
+const GENRES  = ["短视频", "电影", "动作片", "广告片", "短剧", "纪录片", "MV", "宣传片", "微电影", "动画"];
 const STYLES  = ["电影感", "写实", "动漫", "复古胶片", "赛博朋克", "史诗", "极简", "梦幻"];
 const MOODS   = ["温暖治愈", "紧张刺激", "浪漫唯美", "神秘悬疑", "壮阔震撼", "轻松幽默"];
 const RATIOS  = ["16:9", "9:16", "1:1", "4:3", "2.35:1"];
@@ -33,6 +36,11 @@ const TARGET_MODELS = [
   { value: "seedance", label: "Seedance", desc: "字节·写实" },
   { value: "dop",      label: "DoP",      desc: "Higgsfield·电影级" },
 ];
+
+const POLISH_MODES = [
+  { value: "polish",   label: "润色" },
+  { value: "condense", label: "精简" },
+] as const;
 
 // ── Sub-components ────────────────────────────────────────────────────────────
 
@@ -113,18 +121,66 @@ export const ScriptNode = memo(function ScriptNode({ id, selected, data }: Props
   const { updateNodeData } = useCanvasStore();
   const payload = data.payload;
 
-  // LLM model (shared by all AI operations)
-  const [llmModel, setLlmModel] = useState<LLMModelId>("claude-sonnet-4-6");
+  // LLM model — persisted to payload; validate against known IDs to handle stale/removed model IDs
+  const _validLlmModel = LLM_MODELS.some((m) => m.id === payload.aiLlmModel) ? (payload.aiLlmModel as LLMModelId) : "claude-sonnet-4-6";
+  const [llmModel, setLlmModel] = useState<LLMModelId>(_validLlmModel);
+  const handleLlmModelChange = useCallback((m: LLMModelId) => {
+    setLlmModel(m);
+    updateNodeData(id, { aiLlmModel: m });
+  }, [id, updateNodeData]);
 
-  // AI 剧本创作 panel state
+  // AI 剧本创作 panel state — all persisted to payload
   const [showAiPanel, setShowAiPanel] = useState(false);
-  const [genre,       setGenre]       = useState(GENRES[0]);
-  const [style,       setStyle]       = useState(STYLES[0]);
-  const [mood,        setMood]        = useState(MOODS[0]);
-  const [targetModel, setTargetModel] = useState("");
-  const [aspectRatio, setAspectRatio] = useState("16:9");
-  const [sceneCount,  setSceneCount]  = useState(5);
-  const [duration,    setDuration]    = useState(60);
+  const [genre,       setGenre]       = useState(payload.aiGenre       ?? GENRES[0]);
+  const [style,       setStyle]       = useState(payload.aiStyle       ?? STYLES[0]);
+  const [mood,        setMood]        = useState(payload.aiMood        ?? MOODS[0]);
+  const [targetModel, setTargetModel] = useState(payload.aiTargetModel ?? "");
+  const [aspectRatio, setAspectRatio] = useState(payload.aiAspectRatio ?? "16:9");
+  const [sceneCount,  setSceneCount]  = useState(Math.max(2, Math.min(12, payload.aiSceneCount ?? 5)));
+
+  // Polish mode selector
+  const [polishMode, setPolishMode] = useState<"polish" | "condense">("polish");
+
+  // Copy-to-clipboard state with unmount-safe timer
+  const [copied, setCopied] = useState(false);
+  const copyTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  useEffect(() => () => { if (copyTimerRef.current) clearTimeout(copyTimerRef.current); }, []);
+
+  // Refs for synopsis input focus guard
+  const synopsisInputRef = useRef<HTMLInputElement>(null);
+
+  // Helpers to update AI panel param both locally and in payload — all memoized
+  const setAndSaveGenre = useCallback((v: string) => {
+    setGenre(v); updateNodeData(id, { aiGenre: v });
+  }, [id, updateNodeData]);
+  const setAndSaveStyle = useCallback((v: string) => {
+    setStyle(v); updateNodeData(id, { aiStyle: v });
+  }, [id, updateNodeData]);
+  const setAndSaveMood = useCallback((v: string) => {
+    setMood(v); updateNodeData(id, { aiMood: v });
+  }, [id, updateNodeData]);
+  const setAndSaveTargetModel = useCallback((v: string) => {
+    setTargetModel(v); updateNodeData(id, { aiTargetModel: v });
+  }, [id, updateNodeData]);
+  const setAndSaveAspectRatio = useCallback((v: string) => {
+    setAspectRatio(v); updateNodeData(id, { aiAspectRatio: v });
+  }, [id, updateNodeData]);
+
+  // Scene count with functional updater to prevent stale closure on rapid clicks
+  const handleSceneCountChange = useCallback((delta: 1 | -1) => {
+    setSceneCount((prev) => {
+      const next = Math.max(2, Math.min(12, prev + delta));
+      updateNodeData(id, { aiSceneCount: next });
+      return next;
+    });
+  }, [id, updateNodeData]);
+
+  // Duration state — persisted to payload.totalDuration
+  const _durNum = Number(payload.totalDuration);
+  const initDuration = (payload.totalDuration !== undefined && !isNaN(_durNum)) ? Math.max(10, Math.min(600, _durNum)) : 60;
+  const [duration,     setDuration]    = useState(initDuration);
+  const [durationText, setDurationText] = useState(String(initDuration));
+  const durationInputRef = useRef<HTMLInputElement>(null);
 
   const handleChange = useCallback(
     (field: keyof ScriptNodeData, value: string) => {
@@ -133,7 +189,50 @@ export const ScriptNode = memo(function ScriptNode({ id, selected, data }: Props
     [id, updateNodeData]
   );
 
-  // ── Existing mutations ────────────────────────────────────────────────────
+  const applyDuration = useCallback((v: number) => {
+    setDuration(v);
+    setDurationText(String(v));
+    updateNodeData(id, { totalDuration: v });
+  }, [id, updateNodeData]);
+
+  // Commit pending durationText and return the clamped value (for use before mutation)
+  const commitDuration = useCallback((): number => {
+    const parsed = parseInt(durationText, 10);
+    if (!isNaN(parsed)) {
+      const clamped = Math.max(10, Math.min(600, parsed));
+      if (clamped !== duration) applyDuration(clamped);
+      return clamped;
+    }
+    return duration;
+  }, [duration, durationText, applyDuration]);
+
+  // Sync duration when payload changes externally (collab / undo-redo)
+  useEffect(() => {
+    if (durationInputRef.current !== null && durationInputRef.current === document.activeElement) return;
+    const _n = Number(payload.totalDuration);
+    const v = (payload.totalDuration !== undefined && !isNaN(_n)) ? Math.max(10, Math.min(600, _n)) : 60;
+    setDuration(v);
+    setDurationText(String(v));
+  }, [payload.totalDuration]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Sync AI panel params when payload changes externally (collab / undo-redo)
+  // Use !== undefined so empty-string resets propagate correctly
+  useEffect(() => { if (payload.aiGenre       !== undefined) setGenre(payload.aiGenre       || GENRES[0]);  }, [payload.aiGenre]);
+  useEffect(() => { if (payload.aiStyle       !== undefined) setStyle(payload.aiStyle       || STYLES[0]);  }, [payload.aiStyle]);
+  useEffect(() => { if (payload.aiMood        !== undefined) setMood(payload.aiMood         || MOODS[0]);   }, [payload.aiMood]);
+  useEffect(() => { if (payload.aiTargetModel !== undefined) setTargetModel(payload.aiTargetModel); },          [payload.aiTargetModel]);
+  useEffect(() => { if (payload.aiAspectRatio !== undefined) setAspectRatio(payload.aiAspectRatio || "16:9"); }, [payload.aiAspectRatio]);
+  useEffect(() => {
+    if (typeof payload.aiSceneCount === "number") setSceneCount(Math.max(2, Math.min(12, payload.aiSceneCount)));
+  }, [payload.aiSceneCount]);
+  useEffect(() => {
+    if (payload.aiLlmModel !== undefined) {
+      const isValid = LLM_MODELS.some((m) => m.id === payload.aiLlmModel);
+      setLlmModel(isValid ? (payload.aiLlmModel as LLMModelId) : "claude-sonnet-4-6");
+    }
+  }, [payload.aiLlmModel]);
+
+  // ── Mutations ─────────────────────────────────────────────────────────────
 
   const generateMutation = trpc.scripts.generateStoryboards.useMutation({
     onSuccess: (result) => {
@@ -149,79 +248,152 @@ export const ScriptNode = memo(function ScriptNode({ id, selected, data }: Props
     onError: (err) => { toast.error("AI 生成分镜失败：" + err.message); },
   });
 
+  // Use variables.mode (the actual sent mode) for the toast, not the closure value
   const polishMutation = trpc.aiEnhance.enhance.useMutation({
-    onSuccess: (result) => {
+    onSuccess: (result, variables) => {
       updateNodeData(id, { content: result.result });
-      toast.success("脚本已润色");
+      toast.success(variables.mode === "condense" ? "脚本已精简" : "脚本已润色");
     },
-    onError: (err) => { toast.error("AI 润色失败：" + err.message); },
+    onError: (err) => { toast.error("AI 操作失败：" + err.message); },
   });
 
-  // ── New: full script generation ───────────────────────────────────────────
+  // AI 提取梗概 — guarded against clobbering mid-edit synopsis
+  const summarizeMutation = trpc.aiEnhance.enhance.useMutation({
+    onSuccess: (result) => {
+      if (synopsisInputRef.current !== null && synopsisInputRef.current === document.activeElement) {
+        toast.warning("梗概已提取，但检测到输入框正在编辑，未自动填入，请手动粘贴：\n" + result.result, { duration: 8000 });
+        return;
+      }
+      updateNodeData(id, { synopsis: result.result });
+      toast.success("梗概已提取");
+    },
+    onError: (err) => { toast.error("AI 提取梗概失败：" + err.message); },
+  });
 
   const fullScriptMutation = trpc.scripts.generateFullScript.useMutation({
     onSuccess: (result) => {
-      // Fill script text area
-      if (result.scriptText) {
+      const scriptFilled = !!result.scriptText;
+      if (scriptFilled) {
         updateNodeData(id, { content: result.scriptText });
       }
-      // Auto-create storyboard nodes
       let nodesCreated = 0;
       if (result.scenes.length > 0) {
         const { nodes: currentNodes, batchAddSceneNodes, projectId } = useCanvasStore.getState();
-        if (!projectId) {
+        if (projectId) {
+          const ownPos = currentNodes.find((n) => n.id === id)?.position ?? { x: 0, y: 0 };
+          batchAddSceneNodes(result.scenes, id, ownPos);
+          nodesCreated = result.scenes.length;
+        } else {
           toast.error("画布尚未加载，分镜节点创建失败");
-          return;
         }
-        const ownPos = currentNodes.find((n) => n.id === id)?.position ?? { x: 0, y: 0 };
-        batchAddSceneNodes(result.scenes, id, ownPos);
-        nodesCreated = result.scenes.length;
       }
       toast.success("AI 剧本已生成", {
-        description: nodesCreated > 0 ? `剧本已填入，${nodesCreated} 个分镜节点已创建` : "剧本已填入",
+        description: nodesCreated > 0
+          ? `${scriptFilled ? "剧本已填入，" : ""}${nodesCreated} 个分镜节点已创建`
+          : scriptFilled ? "剧本已填入" : "分镜节点已创建",
         duration: 5000,
       });
     },
     onError: (err) => { toast.error("AI 剧本生成失败：" + err.message); },
   });
 
-  const anyPending = generateMutation.isPending || polishMutation.isPending || fullScriptMutation.isPending;
+  const anyPending = generateMutation.isPending || polishMutation.isPending
+    || fullScriptMutation.isPending || summarizeMutation.isPending;
 
-  const handleFullGenerate = () => {
-    const synopsis = payload.synopsis?.trim() || payload.content?.trim();
+  const handleFullGenerate = useCallback(() => {
+    if (anyPending) return;
+    let synopsis = (payload.synopsis?.trim() || payload.content?.trim()) ?? "";
     if (!synopsis) { toast.error("请先填写故事梗概或脚本内容"); return; }
+    if (synopsis.length > 2000) {
+      synopsis = synopsis.slice(0, 2000);
+      toast.warning("梗概过长，已自动截断至 2000 字");
+    }
+    // Commit any pending text in duration input before reading the value
+    const committedDuration = commitDuration();
     fullScriptMutation.mutate({
       synopsis,
       genre,
       style,
       mood,
       sceneCount,
-      totalDuration: duration,
+      totalDuration: committedDuration,
       targetVideoModel: targetModel || undefined,
       aspectRatio,
       model: llmModel,
     });
-  };
+  }, [anyPending, payload.synopsis, payload.content, commitDuration, genre, style, mood, sceneCount, targetModel, aspectRatio, llmModel, fullScriptMutation.mutate]);
+
+  const handleCopy = useCallback(async () => {
+    const text = payload.content?.trim();
+    if (!text) { toast.error("脚本内容为空"); return; }
+    try {
+      await navigator.clipboard.writeText(text);
+      setCopied(true);
+      if (copyTimerRef.current) clearTimeout(copyTimerRef.current);
+      copyTimerRef.current = setTimeout(() => setCopied(false), 2000);
+      toast.success("已复制到剪贴板");
+    } catch {
+      toast.error("复制失败，请手动选中文字复制");
+    }
+  }, [payload.content]);
+
+  const handleSummarize = useCallback(() => {
+    if (anyPending) return;
+    const text = payload.content?.trim();
+    if (!text) { toast.error("请先填写脚本内容"); return; }
+    const safeText = text.length > 8000 ? text.slice(0, 8000) : text;
+    if (text.length > 8000) toast.warning("脚本过长，已截断至 8000 字进行梗概提取");
+    summarizeMutation.mutate({ text: safeText, mode: "summarize", model: llmModel });
+  }, [anyPending, payload.content, llmModel, summarizeMutation.mutate]);
+
+  // ── Per-scene duration estimate ───────────────────────────────────────────
+  const perSceneSecs = Math.round(duration / Math.max(1, sceneCount));
+  const charCount = (payload.content ?? "").length;
+  // Actual cap for generateStoryboards (server max is 8)
+  const storyboardCount = Math.min(sceneCount, 8);
 
   return (
     <BaseNode id={id} selected={selected} nodeType="script" title={data.title} minHeight={200} resizable>
       <div className="flex flex-col h-full p-3.5 gap-3">
 
-        {/* Synopsis */}
-        <input
-          placeholder="故事梗概（一句话概括，也是 AI 剧本创作的核心素材）"
-          value={payload.synopsis ?? ""}
-          onChange={(e) => handleChange("synopsis", e.target.value)}
-          className="nodrag"
-          style={inputStyle}
-          onFocus={onFocus}
-          onBlur={onBlur}
-        />
+        {/* Synopsis row */}
+        <div className="flex gap-1.5 items-center">
+          <input
+            ref={synopsisInputRef}
+            placeholder="故事梗概（一句话概括，也是 AI 剧本创作的核心素材）"
+            value={payload.synopsis ?? ""}
+            onChange={(e) => handleChange("synopsis", e.target.value)}
+            className="nodrag"
+            style={{ ...inputStyle, flex: 1 }}
+            onFocus={onFocus}
+            onBlur={onBlur}
+          />
+          <button
+            onClick={handleSummarize}
+            disabled={anyPending || !payload.content?.trim()}
+            title="从脚本内容 AI 提取梗概"
+            className="nodrag flex-shrink-0 flex items-center gap-1 px-2 py-1.5 rounded-lg transition-all"
+            style={{
+              fontSize: 10, fontWeight: 600,
+              background: summarizeMutation.isPending ? "var(--c-surface)" : "oklch(0.68 0.20 160 / 0.12)",
+              border: `1px solid oklch(0.68 0.20 160 / ${summarizeMutation.isPending ? "0.15" : "0.35"})`,
+              color: anyPending ? "var(--c-t4)" : "oklch(0.72 0.18 160)",
+              cursor: anyPending || !payload.content?.trim() ? "not-allowed" : "pointer",
+              whiteSpace: "nowrap",
+            }}
+          >
+            {summarizeMutation.isPending
+              ? <Loader2 style={{ width: 10, height: 10 }} className="animate-spin" />
+              : <FileText style={{ width: 10, height: 10 }} />
+            }
+            提取梗概
+          </button>
+        </div>
 
         {/* Script content */}
         <textarea
           placeholder={"在此输入或粘贴脚本内容...\n\n也可直接使用下方「AI 剧本创作」一键生成。"}
-          value={payload.content}
+          value={payload.content ?? ""}
           onChange={(e) => handleChange("content", e.target.value)}
           className="nodrag flex-1"
           style={textareaStyle}
@@ -231,34 +403,83 @@ export const ScriptNode = memo(function ScriptNode({ id, selected, data }: Props
 
         {/* Quick AI buttons row */}
         <div className="flex items-center gap-1 flex-wrap">
-          <LLMModelPicker value={llmModel} onChange={setLlmModel} disabled={anyPending} />
+          <LLMModelPicker value={llmModel} onChange={handleLlmModelChange} disabled={anyPending} />
+
+          {/* Polish mode segmented control */}
+          <div className="flex rounded-md overflow-hidden nodrag" style={{ border: "1px solid var(--c-bd2)" }}>
+            {POLISH_MODES.map((m) => (
+              <button
+                key={m.value}
+                onClick={() => setPolishMode(m.value)}
+                className="nodrag px-1.5 py-0.5 transition-all"
+                style={{
+                  fontSize: 9, fontWeight: polishMode === m.value ? 700 : 400,
+                  background: polishMode === m.value ? `${ACCENT}18` : "transparent",
+                  border: "none",
+                  color: polishMode === m.value ? ACCENT : "var(--c-t4)",
+                  cursor: "pointer",
+                }}
+              >
+                {m.label}
+              </button>
+            ))}
+          </div>
+
           <button
             onClick={() => {
+              if (anyPending) return;
               if (!payload.content?.trim()) { toast.error("请先填写脚本内容"); return; }
-              polishMutation.mutate({ text: payload.content ?? "", mode: "polish", model: llmModel });
+              const rawText = payload.content ?? "";
+              const text = rawText.length > 8000 ? rawText.slice(0, 8000) : rawText;
+              if (rawText.length > 8000) toast.warning("脚本过长，已截断至 8000 字进行润色");
+              polishMutation.mutate({ text, mode: polishMode, model: llmModel });
             }}
             disabled={anyPending}
             className="nodrag flex items-center gap-1 px-1.5 py-0.5 rounded-md text-[9px] font-medium transition-all"
             style={{
               background: polishMutation.isPending ? "var(--c-surface)" : `${ACCENT}18`,
               border: `1px solid ${polishMutation.isPending ? BORDER_DEFAULT : `${ACCENT}40`}`,
-              color: anyPending ? "var(--c-t4)" : `${ACCENT}`,
+              color: anyPending ? "var(--c-t4)" : ACCENT,
               cursor: anyPending ? "not-allowed" : "pointer",
             }}
           >
             {polishMutation.isPending ? <Loader2 className="w-2.5 h-2.5 animate-spin" /> : <Sparkles className="w-2.5 h-2.5" />}
-            AI 润色
+            AI {POLISH_MODES.find(m => m.value === polishMode)?.label ?? "润色"}
           </button>
+
+          {/* Copy button */}
+          <button
+            onClick={handleCopy}
+            disabled={!payload.content?.trim()}
+            title="复制脚本内容"
+            className="nodrag flex items-center gap-0.5 px-1.5 py-0.5 rounded-md transition-all"
+            style={{
+              fontSize: 9, fontWeight: 500,
+              background: "transparent",
+              border: "1px solid var(--c-bd2)",
+              color: copied ? "oklch(0.72 0.18 160)" : "var(--c-t4)",
+              cursor: payload.content?.trim() ? "pointer" : "not-allowed",
+            }}
+          >
+            {copied
+              ? <Check style={{ width: 9, height: 9 }} />
+              : <Copy style={{ width: 9, height: 9 }} />
+            }
+            {copied ? "已复制" : "复制"}
+          </button>
+
+          {/* Character count + duration */}
           <span style={{ fontSize: 10, color: "var(--c-t4)", marginLeft: "auto" }}>
-            {(payload.content ?? "").length} 字
+            {charCount} 字 · {duration}s 视频
           </span>
         </div>
 
-        {/* Generate storyboards from existing script */}
+        {/* Generate storyboards from existing script — shows actual capped count */}
         <button
           onClick={() => {
+            if (anyPending) return;
             if (!payload.content?.trim()) { toast.error("请先填写脚本内容"); return; }
-            generateMutation.mutate({ content: payload.content ?? "", synopsis: payload.synopsis, model: llmModel, count: Math.min(sceneCount, 8) });
+            generateMutation.mutate({ content: payload.content ?? "", synopsis: payload.synopsis, model: llmModel, count: storyboardCount });
           }}
           disabled={anyPending}
           className="nodrag flex items-center justify-center gap-1.5 w-full py-1.5 rounded-lg text-xs font-medium transition-all"
@@ -270,7 +491,7 @@ export const ScriptNode = memo(function ScriptNode({ id, selected, data }: Props
           }}
         >
           {generateMutation.isPending ? <Loader2 className="w-3 h-3 animate-spin" /> : <Sparkles className="w-3 h-3" />}
-          {generateMutation.isPending ? "AI 生成分镜中..." : "AI 生成分镜（从现有脚本）"}
+          {generateMutation.isPending ? "AI 生成分镜中..." : `AI 生成分镜（从现有脚本，共 ${storyboardCount} 个）`}
         </button>
 
         {/* ── AI 剧本创作 panel ── */}
@@ -311,37 +532,35 @@ export const ScriptNode = memo(function ScriptNode({ id, selected, data }: Props
           {showAiPanel && (
             <div className="flex flex-col gap-3 px-3 pb-3 pt-2" style={{ borderTop: `1px solid ${PANEL_ACCENT}20` }}>
 
-              <ChipRow label="视频类型" options={GENRES} value={genre} onChange={setGenre} color={PANEL_ACCENT} />
-              <ChipRow label="画面风格" options={STYLES} value={style} onChange={setStyle} color="oklch(0.68 0.18 280)" />
-              <ChipRow label="情感基调" options={MOODS}  value={mood}  onChange={setMood}  color="oklch(0.68 0.18 340)" />
+              <ChipRow label="视频类型" options={GENRES} value={genre} onChange={setAndSaveGenre} color={PANEL_ACCENT} />
+              <ChipRow label="画面风格" options={STYLES} value={style} onChange={setAndSaveStyle} color="oklch(0.68 0.18 280)" />
+              <ChipRow label="情感基调" options={MOODS}  value={mood}  onChange={setAndSaveMood}  color="oklch(0.68 0.18 340)" />
 
-              {/* Target model + Aspect ratio */}
-              <div className="flex gap-2 items-start">
-                <div className="flex flex-col gap-1 flex-1">
-                  <span style={{ fontSize: 9, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.07em", color: "var(--c-t4)" }}>
-                    目标视频模型
-                  </span>
-                  <select
-                    value={targetModel}
-                    onChange={(e) => setTargetModel(e.target.value)}
-                    className="nodrag"
-                    style={{
-                      fontSize: 10,
-                      background: "var(--c-base)",
-                      border: "1px solid var(--c-bd2)",
-                      borderRadius: 7,
-                      color: "var(--c-t2)",
-                      padding: "4px 6px",
-                      outline: "none",
-                      cursor: "pointer",
-                      width: "100%",
-                    }}
-                  >
-                    {TARGET_MODELS.map((m) => (
-                      <option key={m.value} value={m.value}>{m.label} — {m.desc}</option>
-                    ))}
-                  </select>
-                </div>
+              {/* Target model */}
+              <div className="flex flex-col gap-1">
+                <span style={{ fontSize: 9, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.07em", color: "var(--c-t4)" }}>
+                  目标视频模型
+                </span>
+                <select
+                  value={targetModel}
+                  onChange={(e) => setAndSaveTargetModel(e.target.value)}
+                  className="nodrag"
+                  style={{
+                    fontSize: 10,
+                    background: "var(--c-base)",
+                    border: "1px solid var(--c-bd2)",
+                    borderRadius: 7,
+                    color: "var(--c-t2)",
+                    padding: "4px 6px",
+                    outline: "none",
+                    cursor: "pointer",
+                    width: "100%",
+                  }}
+                >
+                  {TARGET_MODELS.map((m) => (
+                    <option key={m.value} value={m.value}>{m.label} — {m.desc}</option>
+                  ))}
+                </select>
               </div>
 
               {/* Aspect ratio chips */}
@@ -353,7 +572,7 @@ export const ScriptNode = memo(function ScriptNode({ id, selected, data }: Props
                   {RATIOS.map((r) => (
                     <button
                       key={r}
-                      onClick={() => setAspectRatio(r)}
+                      onClick={() => setAndSaveAspectRatio(r)}
                       className="nodrag px-2 py-0.5 rounded-md transition-all"
                       style={{
                         fontSize: 9,
@@ -375,13 +594,24 @@ export const ScriptNode = memo(function ScriptNode({ id, selected, data }: Props
                 <div className="flex flex-col gap-1 flex-1">
                   <span style={{ fontSize: 9, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.07em", color: "var(--c-t4)" }}>
                     场景数量
+                    <span style={{ fontWeight: 400, marginLeft: 4, color: "var(--c-t4)", textTransform: "none" }}>
+                      ≈ {perSceneSecs}s/场景
+                    </span>
                   </span>
                   <div className="flex items-center gap-1.5">
-                    <button onClick={() => setSceneCount((n) => Math.max(2, n - 1))} className="nodrag w-6 h-6 flex items-center justify-center rounded-md transition-all" style={{ background: "var(--c-surface)", border: "1px solid var(--c-bd2)", color: "var(--c-t2)", cursor: "pointer" }}>
+                    <button
+                      onClick={() => handleSceneCountChange(-1)}
+                      className="nodrag w-6 h-6 flex items-center justify-center rounded-md transition-all"
+                      style={{ background: "var(--c-surface)", border: "1px solid var(--c-bd2)", color: "var(--c-t2)", cursor: "pointer" }}
+                    >
                       <Minus style={{ width: 10, height: 10 }} />
                     </button>
                     <span style={{ fontSize: 13, fontWeight: 700, color: PANEL_ACCENT, minWidth: 20, textAlign: "center" }}>{sceneCount}</span>
-                    <button onClick={() => setSceneCount((n) => Math.min(12, n + 1))} className="nodrag w-6 h-6 flex items-center justify-center rounded-md transition-all" style={{ background: "var(--c-surface)", border: "1px solid var(--c-bd2)", color: "var(--c-t2)", cursor: "pointer" }}>
+                    <button
+                      onClick={() => handleSceneCountChange(1)}
+                      className="nodrag w-6 h-6 flex items-center justify-center rounded-md transition-all"
+                      style={{ background: "var(--c-surface)", border: "1px solid var(--c-bd2)", color: "var(--c-t2)", cursor: "pointer" }}
+                    >
                       <Plus style={{ width: 10, height: 10 }} />
                     </button>
                   </div>
@@ -391,11 +621,49 @@ export const ScriptNode = memo(function ScriptNode({ id, selected, data }: Props
                     总时长（秒）
                   </span>
                   <div className="flex items-center gap-1.5">
-                    <button onClick={() => setDuration((n) => Math.max(10, n - 15))} className="nodrag w-6 h-6 flex items-center justify-center rounded-md transition-all" style={{ background: "var(--c-surface)", border: "1px solid var(--c-bd2)", color: "var(--c-t2)", cursor: "pointer" }}>
+                    <button
+                      onClick={() => {
+                        const committed = parseInt(durationText, 10);
+                        const base = isNaN(committed) ? duration : Math.max(10, Math.min(600, committed));
+                        const step = base < 30 ? 5 : base < 120 ? 15 : base < 300 ? 30 : 60;
+                        applyDuration(Math.max(10, base - step));
+                      }}
+                      className="nodrag w-6 h-6 flex items-center justify-center rounded-md transition-all"
+                      style={{ background: "var(--c-surface)", border: "1px solid var(--c-bd2)", color: "var(--c-t2)", cursor: "pointer" }}
+                    >
                       <Minus style={{ width: 10, height: 10 }} />
                     </button>
-                    <span style={{ fontSize: 13, fontWeight: 700, color: PANEL_ACCENT, minWidth: 28, textAlign: "center" }}>{duration}s</span>
-                    <button onClick={() => setDuration((n) => Math.min(600, n + 15))} className="nodrag w-6 h-6 flex items-center justify-center rounded-md transition-all" style={{ background: "var(--c-surface)", border: "1px solid var(--c-bd2)", color: "var(--c-t2)", cursor: "pointer" }}>
+                    <input
+                      ref={durationInputRef}
+                      type="text"
+                      inputMode="numeric"
+                      value={durationText}
+                      onChange={(e) => setDurationText(e.target.value)}
+                      onBlur={() => {
+                        const v = parseInt(durationText, 10);
+                        applyDuration(isNaN(v) ? duration : Math.max(10, Math.min(600, v)));
+                      }}
+                      onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); e.currentTarget.blur(); } }}
+                      className="nodrag"
+                      style={{
+                        fontSize: 13, fontWeight: 700, color: PANEL_ACCENT,
+                        width: 40, textAlign: "center",
+                        background: "var(--c-surface)",
+                        border: "1px solid var(--c-bd2)",
+                        borderRadius: 6, outline: "none",
+                        padding: "1px 4px",
+                      }}
+                    />
+                    <button
+                      onClick={() => {
+                        const committed = parseInt(durationText, 10);
+                        const base = isNaN(committed) ? duration : Math.max(10, Math.min(600, committed));
+                        const step = base < 30 ? 5 : base < 120 ? 15 : base < 300 ? 30 : 60;
+                        applyDuration(Math.min(600, base + step));
+                      }}
+                      className="nodrag w-6 h-6 flex items-center justify-center rounded-md transition-all"
+                      style={{ background: "var(--c-surface)", border: "1px solid var(--c-bd2)", color: "var(--c-t2)", cursor: "pointer" }}
+                    >
                       <Plus style={{ width: 10, height: 10 }} />
                     </button>
                   </div>
@@ -404,7 +672,7 @@ export const ScriptNode = memo(function ScriptNode({ id, selected, data }: Props
 
               {/* Model picker + Generate button */}
               <div className="flex items-center gap-1.5 mt-0.5">
-                <LLMModelPicker value={llmModel} onChange={setLlmModel} disabled={anyPending} />
+                <LLMModelPicker value={llmModel} onChange={handleLlmModelChange} disabled={anyPending} />
                 <button
                   onClick={handleFullGenerate}
                   disabled={anyPending}
@@ -426,7 +694,8 @@ export const ScriptNode = memo(function ScriptNode({ id, selected, data }: Props
               </div>
 
               <p style={{ fontSize: 9, color: "var(--c-t4)", lineHeight: 1.5 }}>
-                将根据上方梗概及参数，生成完整中文剧本并自动创建 {sceneCount} 个针对{" "}
+                将根据上方梗概及参数，生成完整中文剧本并自动创建 {sceneCount} 个（约{" "}
+                {perSceneSecs}s/场景）针对{" "}
                 {TARGET_MODELS.find((m) => m.value === targetModel)?.label ?? "通用"}{" "}
                 优化的分镜节点
               </p>

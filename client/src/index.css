@@ -138,30 +138,6 @@
     color-scheme: dark;
   }
 
-  /* ── Creative Mode — LibTV-inspired whiteboard canvas ─────────────────────── */
-  /* Overrides theme tokens. Must appear AFTER theme sections to win specificity. */
-  :root[data-canvas-mode="creative"] {
-    --c-canvas:   oklch(0.968 0.006 85);    /* warm paper */
-    --c-base:     oklch(0.998 0.003 80);    /* warm white panels */
-    --c-surface:  oklch(0.998 0.003 80);    /* warm white cards */
-    --c-elevated: oklch(0.986 0.005 80);    /* slightly deeper warm */
-    --c-overlay:  oklch(0.975 0.005 80);    /* panel overlays */
-    --c-input:    oklch(0.962 0.006 80);    /* input bg — warm gray */
-    --c-bd1:      oklch(0.910 0.006 80);    /* subtlest divider */
-    --c-bd2:      oklch(0.862 0.008 80);    /* standard border */
-    --c-bd3:      oklch(0.760 0.010 80);    /* stronger border */
-    --c-t1:       oklch(0.130 0.012 60);    /* primary text — warm dark */
-    --c-t2:       oklch(0.315 0.010 60);    /* secondary text */
-    --c-t3:       oklch(0.510 0.008 60);    /* muted text */
-    --c-t4:       oklch(0.655 0.006 60);    /* placeholder / disabled */
-    --c-node-bg:  oklch(0.998 0.003 80);    /* warm white cards */
-    --c-node-shadow-rest:     0 1px 3px oklch(0.50 0.04 80 / 0.06), 0 3px 12px oklch(0.50 0.04 80 / 0.07);
-    --c-node-shadow-hover:    0 4px 18px oklch(0.50 0.04 80 / 0.10), 0 1px 4px oklch(0.50 0.04 80 / 0.06);
-    --c-node-shadow-selected: 0 8px 28px oklch(0.50 0.04 80 / 0.13), 0 2px 6px oklch(0.50 0.04 80 / 0.08);
-    --c-node-shadow-run:      0 6px 20px oklch(0.50 0.04 80 / 0.10);
-    color-scheme: light;
-  }
-
   :root[data-theme="midnight"] {
     --c-canvas:   oklch(0.07 0.012 260);
     --c-base:     oklch(0.10 0.014 260);
@@ -273,6 +249,30 @@
     --c-node-shadow-hover:    0 3px 14px oklch(0 0 0 / 0.11), 0 1px 4px oklch(0 0 0 / 0.08);
     --c-node-shadow-selected: 0 6px 24px oklch(0 0 0 / 0.14), 0 2px 8px oklch(0 0 0 / 0.09);
     --c-node-shadow-run:      0 6px 20px oklch(0 0 0 / 0.13);
+    color-scheme: light;
+  }
+
+  /* ── Creative Mode — LibTV-inspired whiteboard canvas ─────────────────────── */
+  /* MUST appear after all theme blocks to win equal-specificity (0-2-0) cascade. */
+  :root[data-canvas-mode="creative"] {
+    --c-canvas:   oklch(0.968 0.006 85);    /* warm paper */
+    --c-base:     oklch(0.998 0.003 80);    /* warm white panels */
+    --c-surface:  oklch(0.998 0.003 80);    /* warm white cards */
+    --c-elevated: oklch(0.986 0.005 80);    /* slightly deeper warm */
+    --c-overlay:  oklch(0.975 0.005 80);    /* panel overlays */
+    --c-input:    oklch(0.962 0.006 80);    /* input bg — warm gray */
+    --c-bd1:      oklch(0.910 0.006 80);    /* subtlest divider */
+    --c-bd2:      oklch(0.862 0.008 80);    /* standard border */
+    --c-bd3:      oklch(0.760 0.010 80);    /* stronger border */
+    --c-t1:       oklch(0.130 0.012 60);    /* primary text — warm dark */
+    --c-t2:       oklch(0.315 0.010 60);    /* secondary text */
+    --c-t3:       oklch(0.510 0.008 60);    /* muted text */
+    --c-t4:       oklch(0.655 0.006 60);    /* placeholder / disabled */
+    --c-node-bg:  oklch(0.998 0.003 80);    /* warm white cards */
+    --c-node-shadow-rest:     0 1px 3px oklch(0.50 0.04 80 / 0.06), 0 3px 12px oklch(0.50 0.04 80 / 0.07);
+    --c-node-shadow-hover:    0 4px 18px oklch(0.50 0.04 80 / 0.10), 0 1px 4px oklch(0.50 0.04 80 / 0.06);
+    --c-node-shadow-selected: 0 8px 28px oklch(0.50 0.04 80 / 0.13), 0 2px 6px oklch(0.50 0.04 80 / 0.08);
+    --c-node-shadow-run:      0 6px 20px oklch(0.50 0.04 80 / 0.10);
     color-scheme: light;
   }
 
@@ -584,6 +584,12 @@ button:active:not(:disabled) {
 .react-flow__handle {
   transition: all 150ms ease !important;
 }
+/* Expand transparent hit area — works because handles are outside the node's overflow:hidden wrapper */
+.react-flow__handle::before {
+  content: '';
+  position: absolute;
+  inset: -10px;
+}
 .react-flow__handle:hover,
 .react-flow__handle.connectingfrom,
 .react-flow__handle.connectingto {
@@ -610,6 +616,12 @@ button:active:not(:disabled) {
   box-shadow: none !important;
   transform: scale(0.65) !important;
   opacity: 0.25 !important;
+}
+
+/* Minimap SVG fills its panel container so CSS width/height control the display size */
+.react-flow__minimap svg {
+  width: 100% !important;
+  height: 100% !important;
 }
 
 /* Hide default ReactFlow controls — we use custom ones */

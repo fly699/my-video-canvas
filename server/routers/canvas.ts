@@ -23,6 +23,7 @@ import {
   createVideoTask,
   updateVideoTask,
   getVideoTask,
+  findInFlightVideoTask,
   getChatMessages,
   addChatMessage,
   addChatMessagePair,
@@ -41,6 +42,7 @@ import { VIDEO_PROVIDERS } from "../../shared/types";
 import type { SubtitleEntry } from "../../shared/types";
 import { assertWhitelisted } from "../_core/whitelist";
 import { writeAuditLog, truncate } from "../_core/auditLog";
+import { dedupe } from "../_core/idempotency";
 
 // ── Ownership helpers ─────────────────────────────────────────────────────────
 
@@ -280,6 +282,16 @@ export const videoTasksRouter = router({
     .mutation(async ({ ctx, input }) => {
       await assertWhitelisted(ctx);
       await assertProjectOwner(input.projectId, ctx.user.id);
+
+      // Idempotency: if this node already has a pending/processing task, return it
+      // instead of creating a new one. Prevents double-charges when the client is
+      // bypassed (devtools, scripts, retried requests) — the in-app flow already
+      // guards against this client-side, but server enforcement is the last line
+      // of defence for paid external API calls.
+      const existing = await findInFlightVideoTask(ctx.user.id, input.projectId, input.nodeId);
+      if (existing) {
+        return existing;
+      }
 
       // Create DB record first so the task is tracked even if provider submission fails
       const task = await createVideoTask({
@@ -526,7 +538,7 @@ export const imageGenRouter = router({
         poyoQuality: z.enum(["low", "medium", "high"]).optional(),
         widthAndHeight: z.string().optional(),
         quality: z.enum(["720p", "1080p"]).optional(),
-        batchSize: z.number().int().min(1).max(4).optional(),
+        batchSize: z.union([z.literal(1), z.literal(4)]).optional(),
         seed: z.number().int().optional(),
         enhancePrompt: z.boolean().optional(),
         // Reve specific params
@@ -549,6 +561,9 @@ export const imageGenRouter = router({
           throw new TRPCError({ code: "BAD_REQUEST", message: "referenceImageUrl 不允许指向私有地址" });
         }
       }
+      // Server-side idempotency: collapse concurrent identical submits (e.g. devtools
+      // replay, browser retries) into a single external image-gen call & charge.
+      return dedupe("imageGen", ctx.user.id, input, async () => {
       const isHfModel = input.model?.startsWith("hf_");
 
       // For Higgsfield models, keep prompt clean and pass negativePrompt separately.
@@ -606,6 +621,7 @@ export const imageGenRouter = router({
         },
       });
       return { url: result.url, urls: result.urls };
+      });
     }),
 });
 
@@ -623,6 +639,7 @@ export const scriptsRouter = router({
     )
     .mutation(async ({ ctx, input }) => {
       await assertWhitelisted(ctx);
+      return dedupe("scripts.generateStoryboards", ctx.user.id, input, async () => {
       const systemPrompt = `You are a professional film director and storyboard artist.
 Given a script, break it into exactly ${input.count} visual storyboard scenes.
 Output ONLY a valid JSON array with no markdown fences, no explanation.
@@ -656,6 +673,7 @@ Each element must have these fields:
         throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "JSON 解析失败" });
       }
       return { scenes: scenes.slice(0, input.count) };
+      });
     }),
 
   generateFullScript: protectedProcedure
@@ -674,6 +692,10 @@ Each element must have these fields:
     )
     .mutation(async ({ ctx, input }) => {
       await assertWhitelisted(ctx);
+      // P0 dedupe: single most expensive mutation (claude-sonnet-4-6 + 8k maxTokens).
+      // Long latency (20-40s) makes user-driven retry probable; we collapse identical
+      // concurrent submits into one external LLM call & charge.
+      return dedupe("scripts.generateFullScript", ctx.user.id, input, async () => {
       const MODEL_PROMPT_GUIDES: Record<string, string> = {
         kling: "Kling (Kuaishou): Excellent precise camera control. Use detailed camera moves: push-in, dolly, orbital pan, crane shot. Rich motion expression with emotional narrative. Describe subject actions precisely.",
         veo: "Veo 3.1 (Google): Natural language understanding. Use flowing natural English. Emphasize realistic physics, human emotions, complex interactions. Write like a film scene description. No keyword lists.",
@@ -748,6 +770,7 @@ Rules:
         scriptText: parsed.scriptText ?? "",
         scenes: (parsed.scenes ?? []).slice(0, input.sceneCount),
       };
+      });
     }),
 });
 
@@ -769,20 +792,33 @@ export const audioGenRouter = router({
     .mutation(async ({ ctx, input }) => {
       await assertWhitelisted(ctx);
       if (input.projectId != null) await assertProjectOwner(input.projectId, ctx.user.id);
-      const result = await submitAndPollPoyoMusic({
-        model: input.model as PoyoMusicModel,
-        prompt: input.prompt,
-        style: input.style,
-        durationSeconds: input.durationSeconds,
-        instrumental: input.instrumental,
-        negativePrompt: input.negativePrompt,
+      // Defense in depth: each model has a different actual max duration; the client
+      // clamps but a bypassed client could send any value up to the Zod max(480).
+      // Clamp here too so e.g. minimax (180s cap) doesn't silently truncate paid output.
+      const MUSIC_MAX_DURATION: Record<string, number> = {
+        "suno-v4.5": 240, "suno-v5": 480, "mureka": 240, "minimax-music-02": 180,
+      };
+      const maxDur = MUSIC_MAX_DURATION[input.model] ?? 240;
+      const durationSeconds = input.durationSeconds !== undefined
+        ? Math.min(input.durationSeconds, maxDur)
+        : undefined;
+      // Long-poll generation (~30s-2min) is when client-side retries are most likely.
+      return dedupe("audioGen.generateMusic", ctx.user.id, input, async () => {
+        const result = await submitAndPollPoyoMusic({
+          model: input.model as PoyoMusicModel,
+          prompt: input.prompt,
+          style: input.style,
+          durationSeconds,
+          instrumental: input.instrumental,
+          negativePrompt: input.negativePrompt,
+        });
+        writeAuditLog({
+          ctx,
+          action: "audio_music",
+          detail: { model: input.model, prompt: truncate(input.prompt), resultUrl: result.url, duration: result.duration },
+        });
+        return { url: result.url, duration: result.duration };
       });
-      writeAuditLog({
-        ctx,
-        action: "audio_music",
-        detail: { model: input.model, prompt: truncate(input.prompt), resultUrl: result.url, duration: result.duration },
-      });
-      return { url: result.url, duration: result.duration };
     }),
 
   generateDubbing: protectedProcedure
@@ -798,18 +834,31 @@ export const audioGenRouter = router({
     .mutation(async ({ ctx, input }) => {
       await assertWhitelisted(ctx);
       if (input.projectId != null) await assertProjectOwner(input.projectId, ctx.user.id);
-      const result = await submitAndPollPoyoTTS({
-        model: input.model as PoyoTTSModel,
-        text: input.text,
-        voice: input.voice,
-        speed: input.speed,
+      // Per-model text limits — submitting beyond a provider's limit gets the prefix
+      // billed and the rest truncated/rejected; reject upfront so the user isn't charged.
+      const TEXT_LIMIT: Record<string, number> = {
+        openai_tts_hd: 4096, openai_tts: 4096, elevenlabs_v3: 5000, cosyvoice_2: 2000,
+      };
+      const limit = TEXT_LIMIT[input.model] ?? 4096;
+      if (input.text.length > limit) {
+        throw new TRPCError({ code: "BAD_REQUEST", message: `${input.model} 单次配音上限 ${limit} 字（当前 ${input.text.length}）` });
+      }
+      // ElevenLabs v3 doesn't honour a `speed` field; drop it silently rather than pass a no-op.
+      const effectiveSpeed = input.model === "elevenlabs_v3" ? undefined : input.speed;
+      return dedupe("audioGen.generateDubbing", ctx.user.id, input, async () => {
+        const result = await submitAndPollPoyoTTS({
+          model: input.model as PoyoTTSModel,
+          text: input.text,
+          voice: input.voice,
+          speed: effectiveSpeed,
+        });
+        writeAuditLog({
+          ctx,
+          action: "audio_dubbing",
+          detail: { model: input.model, text: truncate(input.text), voice: input.voice ?? null, resultUrl: result.url, duration: result.duration },
+        });
+        return { url: result.url, duration: result.duration };
       });
-      writeAuditLog({
-        ctx,
-        action: "audio_dubbing",
-        detail: { model: input.model, text: truncate(input.text), voice: input.voice ?? null, resultUrl: result.url, duration: result.duration },
-      });
-      return { url: result.url, duration: result.duration };
     }),
 });
 
@@ -834,7 +883,9 @@ export const clipRouter = router({
 
   getVideoDuration: protectedProcedure
     .input(z.object({ url: z.string().url() }))
-    .query(async ({ input }) => {
+    .query(async ({ ctx, input }) => {
+      await assertWhitelisted(ctx);
+      assertSafeUrl(input.url);
       const duration = await getVideoDuration(input.url);
       return { duration };
     }),
@@ -870,21 +921,25 @@ export const subtitleRouter = router({
     )
     .mutation(async ({ ctx, input }) => {
       await assertWhitelisted(ctx);
-      const result = await transcribeAudio({ audioUrl: input.audioUrl, language: input.language });
-      if ("error" in result) {
-        throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: result.error });
-      }
-      const entries: SubtitleEntry[] = result.segments.map((s) => ({
-        start: s.start,
-        end: s.end,
-        text: s.text.trim(),
-      }));
-      writeAuditLog({
-        ctx,
-        action: "subtitle_transcribe",
-        detail: { audioUrl: truncate(input.audioUrl, 200), language: result.language, segmentCount: entries.length },
+      // (audioUrl, language) deterministically map to a Whisper transcription, so
+      // dedupe by that pair — repeated submits during the long Whisper call collapse.
+      return dedupe("subtitle.transcribe", ctx.user.id, input, async () => {
+        const result = await transcribeAudio({ audioUrl: input.audioUrl, language: input.language });
+        if ("error" in result) {
+          throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: result.error });
+        }
+        const entries: SubtitleEntry[] = result.segments.map((s) => ({
+          start: s.start,
+          end: s.end,
+          text: s.text.trim(),
+        }));
+        writeAuditLog({
+          ctx,
+          action: "subtitle_transcribe",
+          detail: { audioUrl: truncate(input.audioUrl, 200), language: result.language, segmentCount: entries.length },
+        });
+        return { entries, fullText: result.text, language: result.language };
       });
-      return { entries, fullText: result.text, language: result.language };
     }),
 
   burnIn: protectedProcedure
@@ -911,7 +966,8 @@ export const subtitleRouter = router({
         entries: z.array(z.object({ start: z.number(), end: z.number(), text: z.string().max(500) })).max(2000),
       })
     )
-    .mutation(({ input }) => {
+    .mutation(async ({ ctx, input }) => {
+      await assertWhitelisted(ctx);
       return { srt: generateSRT(input.entries as SubtitleEntry[]) };
     }),
 });
@@ -951,7 +1007,7 @@ export const aiEnhanceRouter = router({
     .input(
       z.object({
         text: z.string().min(1).max(8000),
-        mode: z.enum(["expand", "translate_en", "polish", "storyboard_prompt", "translate_zh"]),
+        mode: z.enum(["expand", "translate_en", "polish", "storyboard_prompt", "translate_zh", "condense", "summarize"]),
         model: z.string().optional(),
       })
     )
@@ -975,6 +1031,8 @@ Respond in the same language as the input. Output ONLY the polished text.`,
 Convert the given scene description into a detailed visual prompt for AI video/image generation.
 Include: camera angle, lens type, lighting setup, composition, color palette, atmosphere, action.
 Output an optimized English prompt under 80 words. Output ONLY the prompt text.`,
+        condense: `You are a professional script editor. Condense the given script to approximately 60% of its original length while preserving all key story beats, character names, plot points, and dramatic tension. Maintain the original writing style and language. Output ONLY the condensed text, nothing else.`,
+        summarize: `You are a professional story analyst. Extract a compelling one-to-two sentence synopsis from the given script or story content. Capture the core conflict, main characters, setting, and emotional tone. If the input is in Chinese, respond in Chinese. Output ONLY the synopsis, no labels or extra text.`,
       };
       const response = await invokeLLM({
         messages: [
