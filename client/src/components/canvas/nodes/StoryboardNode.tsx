@@ -45,6 +45,16 @@ const onBlur  = (e: React.FocusEvent<HTMLElement>) => { e.currentTarget.style.bo
 
 export const StoryboardNode = memo(function StoryboardNode({ id, selected, data }: Props) {
   const { updateNodeData } = useCanvasStore();
+  // Detect connected CharacterNodes that have their own referenceImageUrl
+  const connectedCharWithRef = useCanvasStore((s) => {
+    const incomingEdges = s.edges.filter((e) => e.target === id);
+    return incomingEdges.some((edge) => {
+      const srcNode = s.nodes.find((n) => n.id === edge.source);
+      if (srcNode?.data.nodeType !== "character") return false;
+      const cp = srcNode.data.payload as import("../../../../../shared/types").CharacterNodeData;
+      return !!cp.referenceImageUrl;
+    });
+  });
   const { mode: canvasMode } = useCanvasMode();
   const isCreative = canvasMode === "creative";
   const payload = data.payload;
@@ -645,9 +655,13 @@ export const StoryboardNode = memo(function StoryboardNode({ id, selected, data 
         </div>
 
         {/* ── Model selector ── */}
-        <div className="relative nodrag">
+        <div className="nodrag">
           <button
-            onClick={() => setShowModelPicker((v) => !v)}
+            ref={modelBtnRef}
+            onClick={() => {
+              if (modelBtnRef.current) setModelPickerRect(modelBtnRef.current.getBoundingClientRect());
+              setShowModelPicker((v) => !v);
+            }}
             className="nodrag flex items-center justify-between w-full px-2.5 py-1.5 rounded-lg text-xs transition-all"
             style={{
               background: "var(--c-input)",
@@ -669,48 +683,6 @@ export const StoryboardNode = memo(function StoryboardNode({ id, selected, data 
             </span>
             <ChevronDown className="w-3 h-3 opacity-60" style={{ transform: showModelPicker ? "rotate(180deg)" : "none", transition: "transform 150ms" }} />
           </button>
-
-          {showModelPicker && (
-            <div
-              className="absolute bottom-full left-0 right-0 mb-1 rounded-lg overflow-hidden z-50"
-              style={{
-                background: "var(--c-surface)",
-                borderWidth: 1,
-                borderStyle: "solid",
-                borderColor: "var(--c-bd2)",
-                boxShadow: "0 8px 24px oklch(0 0 0 / 0.5)",
-              }}
-            >
-              {["Manus", "Poyo", "Higgsfield"].map((group) => (
-                <div key={group}>
-                  <div className="px-2.5 py-1" style={{ fontSize: 9, fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.08em", color: "var(--c-t4)", borderBottom: "1px solid var(--c-bd2)" }}>
-                    {group}
-                  </div>
-                  {IMAGE_MODELS.filter((m) => m.group === group).map((m) => (
-                    <button
-                      key={m.value}
-                      className="nodrag flex items-center justify-between w-full px-2.5 py-2 text-xs transition-colors"
-                      style={{
-                        background: model === m.value ? "oklch(0.65 0.20 160 / 0.10)" : "transparent",
-                        color: model === m.value ? "oklch(0.72 0.18 160)" : "var(--c-t2)",
-                      }}
-                      onClick={() => { setModel(m.value); setShowModelPicker(false); }}
-                      onMouseEnter={(e) => { if (model !== m.value) (e.currentTarget as HTMLElement).style.background = "var(--c-elevated)"; }}
-                      onMouseLeave={(e) => { if (model !== m.value) (e.currentTarget as HTMLElement).style.background = "transparent"; }}
-                    >
-                      <span>{m.label}</span>
-                      <span
-                        className="px-1 py-0.5 rounded text-[9px] font-semibold"
-                        style={{ background: "oklch(0.65 0.20 160 / 0.12)", color: "oklch(0.55 0.15 160)" }}
-                      >
-                        {m.desc}
-                      </span>
-                    </button>
-                  ))}
-                </div>
-              ))}
-            </div>
-          )}
         </div>
         {/* ── Batch count (only effective for hf_soul_standard) ── */}
         <div className="flex flex-col gap-1">
@@ -751,6 +723,62 @@ export const StoryboardNode = memo(function StoryboardNode({ id, selected, data 
       </div>
 
     </BaseNode>
+
+      {/* ── Image model picker portal (avoids overflow:hidden clipping from BaseNode inner wrapper) ── */}
+      {showModelPicker && modelPickerRect && createPortal(
+        <>
+          {/* Backdrop to close on outside click */}
+          <div
+            style={{ position: "fixed", inset: 0, zIndex: 99990 }}
+            onMouseDown={() => setShowModelPicker(false)}
+          />
+          <div
+            className="rounded-lg overflow-hidden"
+            style={{
+              position: "fixed",
+              zIndex: 99991,
+              bottom: window.innerHeight - modelPickerRect.top + 4,
+              left: modelPickerRect.left,
+              width: modelPickerRect.width,
+              background: "var(--c-surface)",
+              borderWidth: 1,
+              borderStyle: "solid",
+              borderColor: "var(--c-bd2)",
+              boxShadow: "0 8px 24px oklch(0 0 0 / 0.5)",
+            }}
+          >
+            {["Manus", "Poyo", "Higgsfield"].map((group) => (
+              <div key={group}>
+                <div className="px-2.5 py-1" style={{ fontSize: 9, fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.08em", color: "var(--c-t4)", borderBottom: "1px solid var(--c-bd2)" }}>
+                  {group}
+                </div>
+                {IMAGE_MODELS.filter((m) => m.group === group).map((m) => (
+                  <button
+                    key={m.value}
+                    className="nodrag flex items-center justify-between w-full px-2.5 py-2 text-xs transition-colors"
+                    style={{
+                      background: model === m.value ? "oklch(0.65 0.20 160 / 0.10)" : "transparent",
+                      color: model === m.value ? "oklch(0.72 0.18 160)" : "var(--c-t2)",
+                    }}
+                    onMouseDown={(e) => { e.stopPropagation(); setModel(m.value); setShowModelPicker(false); }}
+                    onMouseEnter={(e) => { if (model !== m.value) (e.currentTarget as HTMLElement).style.background = "var(--c-elevated)"; }}
+                    onMouseLeave={(e) => { if (model !== m.value) (e.currentTarget as HTMLElement).style.background = "transparent"; }}
+                  >
+                    <span>{m.label}</span>
+                    <span
+                      className="px-1 py-0.5 rounded text-[9px] font-semibold"
+                      style={{ background: "oklch(0.65 0.20 160 / 0.12)", color: "oklch(0.55 0.15 160)" }}
+                    >
+                      {m.desc}
+                    </span>
+                  </button>
+                ))}
+              </div>
+            ))}
+          </div>
+        </>,
+        document.body
+      )}
 
       {/* ── Image lightbox (portal to body — avoids React Flow event interception) ── */}
       {zoomUrl && createPortal(
