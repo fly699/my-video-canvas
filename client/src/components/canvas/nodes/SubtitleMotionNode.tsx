@@ -103,10 +103,17 @@ export const SubtitleMotionNode = memo(function SubtitleMotionNode({ id, selecte
     const videoUrl = payload.inputVideoUrl || findSourceVideoUrl();
     if (!videoUrl) { toast.error("请先填写视频 URL"); return; }
     if (!payload.entries?.length) { toast.error("没有字幕数据，请先转录或手动添加"); return; }
+    // Filter out zero-duration entries (e.g. boundary artifacts from Whisper transcription)
+    // to prevent server-side refine from rejecting the entire batch.
+    const validEntries = payload.entries.filter((e) => e.end > e.start);
+    if (!validEntries.length) { toast.error("所有字幕条目的结束时间必须大于开始时间"); return; }
+    if (validEntries.length < payload.entries.length) {
+      toast.warning(`已过滤 ${payload.entries.length - validEntries.length} 条无效条目（结束时间 ≤ 开始时间）`);
+    }
     update({ status: "burning" });
     burnMutation.mutate({
       videoUrl,
-      entries: payload.entries!,
+      entries: validEntries,
       motionStyle: payload.motionStyle ?? "fade",
       fontSize: payload.fontSize,
       fontColor: payload.fontColor,

@@ -933,15 +933,15 @@ export const ScriptNode = memo(function ScriptNode({ id, selected, data }: Props
                   </div>
                   <button
                     onClick={() => {
-                      if (styleTransferMutation.isPending) return;
+                      if (anyPending) return;
                       const text = payload.content?.trim();
                       if (!text) { toast.error("请先填写脚本内容"); return; }
                       if (!window.confirm(`确认将脚本内容迁移为「${selectedStyle}」风格？此操作将覆盖当前内容，不可撤销。`)) return;
                       styleTransferMutation.mutate({ scriptText: text.slice(0, 8000), style: selectedStyle, model: llmModel });
                     }}
-                    disabled={styleTransferMutation.isPending || !payload.content?.trim()}
+                    disabled={anyPending || !payload.content?.trim()}
                     className="nodrag flex items-center justify-center gap-1.5 w-full py-2 rounded-lg text-xs font-medium transition-all"
-                    style={{ background: styleTransferMutation.isPending ? "var(--c-surface)" : ADV_ACCENT_A(0.12), border: `1px solid ${styleTransferMutation.isPending ? BORDER_DEFAULT : ADV_ACCENT_A(0.4)}`, color: styleTransferMutation.isPending || !payload.content?.trim() ? "var(--c-t4)" : ADV_ACCENT, cursor: styleTransferMutation.isPending || !payload.content?.trim() ? "not-allowed" : "pointer" }}
+                    style={{ background: styleTransferMutation.isPending ? "var(--c-surface)" : ADV_ACCENT_A(0.12), border: `1px solid ${anyPending ? BORDER_DEFAULT : ADV_ACCENT_A(0.4)}`, color: anyPending || !payload.content?.trim() ? "var(--c-t4)" : ADV_ACCENT, cursor: anyPending || !payload.content?.trim() ? "not-allowed" : "pointer" }}
                   >
                     {styleTransferMutation.isPending ? <Loader2 className="w-3 h-3 animate-spin" /> : <Layers2 className="w-3 h-3" />}
                     {styleTransferMutation.isPending ? `迁移为「${selectedStyle}」风格中...` : `迁移为「${selectedStyle}」风格`}
