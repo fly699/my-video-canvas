@@ -71,11 +71,13 @@ export const StoryboardNode = memo(function StoryboardNode({ id, selected, data 
     }
   }, [payload.batchSize]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Auto-collapse inputs when deselected, expand when selected
+  // Expand when first selected; don't auto-collapse when focus moves away
   useEffect(() => {
-    setInputExpanded(!!selected);
+    if (selected) setInputExpanded(true);
   }, [selected]);
-  const model: ImageModelId = (payload.imageModel as ImageModelId) ?? "manus_forge";
+  const model: ImageModelId = IMAGE_MODELS.some(m => m.value === payload.imageModel)
+    ? (payload.imageModel as ImageModelId)
+    : "manus_forge";
   const setModel = (m: ImageModelId) => { updateNodeData(id, { imageModel: m }); };
 
   const [uploadingRef, setUploadingRef] = useState(false);
@@ -110,6 +112,8 @@ export const StoryboardNode = memo(function StoryboardNode({ id, selected, data 
 
   const genImageMutation = trpc.imageGen.generate.useMutation({
     onSuccess: (result) => {
+      // Guard: node may have been deleted while generation was in flight
+      if (!useCanvasStore.getState().nodes.some(n => n.id === id)) return;
       const newUrls = (result.urls?.length ? result.urls : result.url ? [result.url] : []).filter(Boolean) as string[];
       if (!newUrls.length) { setGenerating(false); toast.error("生成完成但未返回图像"); return; }
       const imageUrl = newUrls[0];
@@ -169,8 +173,8 @@ export const StoryboardNode = memo(function StoryboardNode({ id, selected, data 
   const handleExpandPrompt = useCallback(() => {
     if (!payload.description?.trim()) { toast.error("请先填写场景描述"); return; }
     setExpandingPrompt(true);
-    aiExpandMutation.mutate({ text: payload.description, mode: "storyboard_prompt", model: llmModel });
-  }, [payload.description, aiExpandMutation, llmModel]);
+    aiExpandMutation.mutate({ text: payload.description.slice(0, 8000), mode: "storyboard_prompt", model: llmModel });
+  }, [payload.description, aiExpandMutation.mutate, llmModel]);
 
   const handleChange = useCallback(
     (field: keyof StoryboardNodeData, value: string | number | undefined) => {
@@ -244,9 +248,10 @@ export const StoryboardNode = memo(function StoryboardNode({ id, selected, data 
           }}
         >
           <p style={{ fontSize: 12, color: "var(--c-t2)", lineHeight: 1.6, margin: 0 }}>
-            {payload.description.length > 120
-              ? payload.description.slice(0, 120) + "…"
-              : payload.description}
+            {(() => {
+              const chars = Array.from(payload.description);
+              return chars.length > 120 ? chars.slice(0, 120).join("") + "…" : payload.description;
+            })()}
           </p>
         </div>
       );
@@ -323,7 +328,7 @@ export const StoryboardNode = memo(function StoryboardNode({ id, selected, data 
                     }}
                   >
                     <History className="w-3 h-3" />
-                    历史 ({payload.imageHistory!.length})
+                    历史 ({payload.imageHistory?.length ?? 0})
                   </button>
                 )}
               </div>
@@ -388,7 +393,7 @@ export const StoryboardNode = memo(function StoryboardNode({ id, selected, data 
               </button>
             </div>
             <div style={{ display: "flex", gap: 6, overflowX: "auto" }}>
-              {payload.imageHistory!.map((url, i) => (
+              {(payload.imageHistory ?? []).map((url, i) => (
                 <button
                   key={i}
                   onClick={() => { updateNodeData(id, { imageUrl: url }); setShowHistory(false); }}
@@ -484,7 +489,7 @@ export const StoryboardNode = memo(function StoryboardNode({ id, selected, data 
             onClick={() => {
               if (!payload.description?.trim()) { toast.error("请先填写场景描述"); return; }
               setExpandingDesc(true);
-              aiExpandDescMutation.mutate({ text: payload.description, mode: "expand", model: llmModel });
+              aiExpandDescMutation.mutate({ text: payload.description.slice(0, 8000), mode: "expand", model: llmModel });
             }}
             disabled={expandingDesc}
             className="nodrag flex items-center gap-1 px-1.5 py-0.5 rounded-md text-[9px] font-medium transition-all"
@@ -547,8 +552,8 @@ export const StoryboardNode = memo(function StoryboardNode({ id, selected, data 
           </button>
           <button
             onClick={() => {
-              const text = payload.promptText?.trim() || payload.description?.trim();
-              if (!text) { toast.error("请先填写内容"); return; }
+              const text = payload.description?.trim() || payload.promptText?.trim();
+              if (!text) { toast.error("请先填写场景描述"); return; }
               setTranslating(true);
               aiTranslateMutation.mutate({ text, mode: "translate_en", model: llmModel });
             }}
@@ -565,6 +570,18 @@ export const StoryboardNode = memo(function StoryboardNode({ id, selected, data 
             翻译英文
           </button>
         </div>
+
+        {/* ── Negative prompt ── */}
+        <textarea
+          placeholder="负面提示词（可选，描述不希望出现的内容）..."
+          value={payload.negativePrompt ?? ""}
+          onChange={(e) => handleChange("negativePrompt", e.target.value)}
+          className="nodrag"
+          rows={2}
+          style={{ ...fieldStyle, resize: "none", lineHeight: 1.6 }}
+          onFocus={onFocus}
+          onBlur={onBlur}
+        />
 
         {/* ── Style row ── */}
         <div className="flex gap-1.5">
@@ -693,30 +710,37 @@ export const StoryboardNode = memo(function StoryboardNode({ id, selected, data 
             </div>
           )}
         </div>
-        {/* ── Batch count ── */}
-        <div className="flex items-center justify-between">
-          <span style={{ fontSize: 10, fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.07em", color: "var(--c-t4)" }}>
-            抽卡次数
-          </span>
-          <div className="flex gap-1">
-            {([1, 4] as const).map((n) => (
-              <button
-                key={n}
-                onClick={() => { setBatchCount(n); updateNodeData(id, { batchSize: n }); }}
-                className="nodrag"
-                style={{
-                  width: 28, height: 22, borderRadius: 6, fontSize: 11, fontWeight: 700,
-                  border: `1px solid ${batchCount === n ? "oklch(0.65 0.20 160 / 0.6)" : "var(--c-bd2)"}`,
-                  background: batchCount === n ? "oklch(0.65 0.20 160 / 0.15)" : "var(--c-input)",
-                  color: batchCount === n ? "oklch(0.72 0.18 160)" : "var(--c-t3)",
-                  cursor: "pointer",
-                  transition: "all 120ms",
-                }}
-              >
-                {n}
-              </button>
-            ))}
+        {/* ── Batch count (only effective for hf_soul_standard) ── */}
+        <div className="flex flex-col gap-1">
+          <div className="flex items-center justify-between">
+            <span style={{ fontSize: 10, fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.07em", color: "var(--c-t4)" }}>
+              抽卡次数
+            </span>
+            <div className="flex gap-1">
+              {([1, 4] as const).map((n) => (
+                <button
+                  key={n}
+                  onClick={() => { setBatchCount(n); updateNodeData(id, { batchSize: n }); }}
+                  className="nodrag"
+                  style={{
+                    width: 28, height: 22, borderRadius: 6, fontSize: 11, fontWeight: 700,
+                    border: `1px solid ${batchCount === n ? "oklch(0.65 0.20 160 / 0.6)" : "var(--c-bd2)"}`,
+                    background: batchCount === n ? "oklch(0.65 0.20 160 / 0.15)" : "var(--c-input)",
+                    color: batchCount === n ? "oklch(0.72 0.18 160)" : "var(--c-t3)",
+                    cursor: "pointer",
+                    transition: "all 120ms",
+                  }}
+                >
+                  {n}
+                </button>
+              ))}
+            </div>
           </div>
+          {batchCount > 1 && model !== "hf_soul_standard" && (
+            <p style={{ fontSize: 9.5, color: "var(--c-t4)" }}>
+              当前模型仅支持单张，请选择 Soul Standard 以启用抽卡
+            </p>
+          )}
         </div>
 
         {/* End collapsible inputs */}
@@ -751,20 +775,25 @@ export const StoryboardNode = memo(function StoryboardNode({ id, selected, data 
                     const res = await fetch(zoomUrl);
                     if (!res.ok) throw new Error(`HTTP ${res.status}`);
                     const blob = await res.blob();
+                    const ext = blob.type.includes("jpeg") || blob.type.includes("jpg") ? "jpg"
+                      : blob.type.includes("webp") ? "webp"
+                      : "png";
                     const a = document.createElement("a");
                     const objectUrl = URL.createObjectURL(blob);
                     a.href = objectUrl;
-                    a.download = "storyboard.png";
+                    a.download = `storyboard.${ext}`;
                     document.body.appendChild(a);
                     a.click();
                     document.body.removeChild(a);
                     setTimeout(() => URL.revokeObjectURL(objectUrl), 10_000);
-                  } catch {
-                    if (/^https?:\/\//i.test(zoomUrl)) {
+                  } catch (err) {
+                    // Only fall back to window.open for CORS/network errors (TypeError),
+                    // not for HTTP errors (403, 404) where opening a new tab is unhelpful
+                    if (err instanceof TypeError && /^https?:\/\//i.test(zoomUrl)) {
                       toast.info("直接下载失败，将尝试在新标签页打开");
                       window.open(zoomUrl, "_blank");
                     } else {
-                      toast.error("下载失败，图片链接无效");
+                      toast.error("下载失败，图片无法访问");
                     }
                   }
                 }}
