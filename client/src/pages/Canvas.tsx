@@ -1235,8 +1235,18 @@ function CanvasInner({ projectId }: { projectId: number }) {
               <p className="text-[10px]" style={{ color: "var(--c-t4)" }}>点击添加到画布中心</p>
             </div>
             <div className="p-2.5 grid grid-cols-4 gap-1.5">
-              {NODE_TYPE_LIST.map((config) => {
+              {/* Sort: ComfyUI nodes pinned to the top (newest/most-prominent),
+                  rest follow their NODE_TYPE_LIST order. */}
+              {[...NODE_TYPE_LIST].sort((a, b) => {
+                const aIsComfy = a.type === "comfyui_image" || a.type === "comfyui_video";
+                const bIsComfy = b.type === "comfyui_image" || b.type === "comfyui_video";
+                if (aIsComfy && !bIsComfy) return -1;
+                if (!aIsComfy && bIsComfy) return 1;
+                return 0;
+              }).map((config) => {
                 const Icon = NODE_ICONS[config.icon] ?? FileText;
+                // Hide duplicate subtitle when defaultTitle equals label (e.g. "提示词 / 提示词")
+                const showSubtitle = config.defaultTitle !== config.label;
                 return (
                   <button
                     key={config.type}
@@ -1268,9 +1278,11 @@ function CanvasInner({ projectId }: { projectId: number }) {
                       <p className="text-[11px] font-semibold leading-none" style={{ letterSpacing: "-0.01em" }}>
                         {config.label}
                       </p>
-                      <p className="text-[9px] leading-none" style={{ color: "var(--c-t4)" }}>
-                        {config.defaultTitle}
-                      </p>
+                      {showSubtitle && (
+                        <p className="text-[9px] leading-none" style={{ color: "var(--c-t4)" }}>
+                          {config.defaultTitle}
+                        </p>
+                      )}
                     </div>
                   </button>
                 );
