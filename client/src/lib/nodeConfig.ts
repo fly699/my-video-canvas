@@ -189,7 +189,7 @@ export const NODE_CONFIGS: Record<NodeType, NodeConfig> = {
   subtitle_motion: {
     type: "subtitle_motion",
     label: "动态字幕",
-    icon: "Captions",
+    icon: "Layers",
     color: "oklch(0.68 0.20 175)",
     bgColor: "oklch(0.68 0.20 175 / 0.08)",
     borderColor: "oklch(0.68 0.20 175 / 0.4)",

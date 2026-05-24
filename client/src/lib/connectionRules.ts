@@ -91,7 +91,7 @@ export const CONNECTION_HINTS: Record<
   },
   audio: {
     label: "音频",
-    outgoing: "→ 剪辑（混音）",
+    outgoing: "→ 剪辑 / 唇形同步 / 数字人",
     incoming: "无上游连接",
   },
   asset: {
@@ -162,7 +162,7 @@ export const CONNECTION_HINTS: Record<
   lip_sync: {
     label: "唇形同步",
     outgoing: "→ 素材（保存）",
-    incoming: "← 视频任务 / 音频",
+    incoming: "← 视频任务 / 音频 / 声音克隆",
   },
   avatar: {
     label: "数字人",

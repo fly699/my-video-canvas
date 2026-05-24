@@ -162,7 +162,7 @@ export const nodesRouter = router({
           height: z.number(),
           zIndex: z.number(),
         })
-      )
+      ).max(500)
     )
     .mutation(async ({ ctx, input }) => {
       const projectIds = Array.from(new Set(input.map((n) => n.projectId)));
@@ -224,11 +224,12 @@ export const assetsRouter = router({
         type: z.enum(["image", "video", "audio", "other"]),
         mimeType: z.string(),
         size: z.number(),
-        base64: z.string(),
+        base64: z.string().max(20_000_000), // ~15 MB file limit
         projectId: z.number().optional(),
       })
     )
     .mutation(async ({ ctx, input }) => {
+      await assertWhitelisted(ctx);
       const buffer = Buffer.from(input.base64, "base64");
       const key = `assets/${ctx.user.id}/${nanoid()}-${input.name}`;
       const { url } = await storagePut(key, buffer, input.mimeType);
@@ -473,9 +474,9 @@ export const aiChatRouter = router({
       z.object({
         nodeId: z.string(),
         projectId: z.number(),
-        message: z.string().min(1),
-        systemPrompt: z.string().optional(),
-        contextContent: z.string().optional(),
+        message: z.string().min(1).max(10_000),
+        systemPrompt: z.string().max(2_000).optional(),
+        contextContent: z.string().max(8_000).optional(),
         model: z.string().optional(),
       })
     )
@@ -781,18 +782,20 @@ Rules:
     }))
     .mutation(async ({ ctx, input }) => {
       await assertWhitelisted(ctx);
-      const systemPrompt = `你是专业编剧，负责优化单个场景描述。根据用户意图，改写或精化场景文字，保持原有叙事方向。只输出改写后的场景文字，不加任何说明。`;
-      const userContent = input.intent
-        ? `意图：${input.intent}\n\n原场景：\n${input.sceneText}`
-        : `请优化以下场景：\n${input.sceneText}`;
-      const response = await invokeLLM({
-        messages: [
-          { role: "system" as const, content: systemPrompt },
-          { role: "user" as const, content: userContent },
-        ],
-        model: input.model ?? "gemini-2.5-flash",
+      return dedupe("scripts.refineScene", ctx.user.id, input, async () => {
+        const systemPrompt = `你是专业编剧，负责优化单个场景描述。根据用户意图，改写或精化场景文字，保持原有叙事方向。只输出改写后的场景文字，不加任何说明。`;
+        const userContent = input.intent
+          ? `意图：${input.intent}\n\n原场景：\n${input.sceneText}`
+          : `请优化以下场景：\n${input.sceneText}`;
+        const response = await invokeLLM({
+          messages: [
+            { role: "system" as const, content: systemPrompt },
+            { role: "user" as const, content: userContent },
+          ],
+          model: input.model ?? "gemini-2.5-flash",
+        });
+        return { result: extractTextContent(response).trim() };
       });
-      return { result: extractTextContent(response).trim() };
     }),
 
   reviewScript: protectedProcedure
@@ -862,18 +865,20 @@ score 为 0-100 整数，issues 数组最多 8 条，每条包含 type/line/sugg
     }))
     .mutation(async ({ ctx, input }) => {
       await assertWhitelisted(ctx);
-      const systemPrompt = `你是专业对话编剧，擅长优化剧本对白的节奏、语气和自然度。只输出改写后的对白文本，不加任何说明。`;
-      const userContent = input.intent
-        ? `优化要求：${input.intent}\n\n原对白：\n${input.dialogueText}`
-        : `请优化以下对白，使其更自然流畅：\n${input.dialogueText}`;
-      const response = await invokeLLM({
-        messages: [
-          { role: "system" as const, content: systemPrompt },
-          { role: "user" as const, content: userContent },
-        ],
-        model: input.model ?? "gemini-2.5-flash",
+      return dedupe("scripts.refineConversation", ctx.user.id, input, async () => {
+        const systemPrompt = `你是专业对话编剧，擅长优化剧本对白的节奏、语气和自然度。只输出改写后的对白文本，不加任何说明。`;
+        const userContent = input.intent
+          ? `优化要求：${input.intent}\n\n原对白：\n${input.dialogueText}`
+          : `请优化以下对白，使其更自然流畅：\n${input.dialogueText}`;
+        const response = await invokeLLM({
+          messages: [
+            { role: "system" as const, content: systemPrompt },
+            { role: "user" as const, content: userContent },
+          ],
+          model: input.model ?? "gemini-2.5-flash",
+        });
+        return { result: extractTextContent(response).trim() };
       });
-      return { result: extractTextContent(response).trim() };
     }),
 
   applyStyleTransfer: protectedProcedure

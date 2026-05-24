@@ -224,8 +224,9 @@ export const SubtitleMotionNode = memo(function SubtitleMotionNode({ id, selecte
               </div>
             )}
 
-            <button onClick={handleAddEntry} className="nodrag flex items-center justify-center gap-1.5 w-full py-1.5 rounded-lg text-[10px] transition-all"
-              style={{ background: "var(--c-surface)", border: "1px solid var(--c-bd2)", color: "var(--c-t3)", cursor: "pointer" }}>
+            <button onClick={handleAddEntry} disabled={isTranscribing || isBurning}
+              className="nodrag flex items-center justify-center gap-1.5 w-full py-1.5 rounded-lg text-[10px] transition-all"
+              style={{ background: "var(--c-surface)", border: "1px solid var(--c-bd2)", color: isTranscribing || isBurning ? "var(--c-t4)" : "var(--c-t3)", cursor: isTranscribing || isBurning ? "not-allowed" : "pointer" }}>
               <Plus style={{ width: 10, height: 10 }} /> 手动添加字幕条目
             </button>
           </>
@@ -282,7 +283,7 @@ export const SubtitleMotionNode = memo(function SubtitleMotionNode({ id, selecte
                   style={{ background: accentA(0.08), border: `1px solid ${accentA(0.25)}`, color: accent, textDecoration: "none" }}>
                   <Download style={{ width: 10, height: 10 }} /> 下载带字幕视频
                 </a>
-                <button onClick={() => update({ outputUrl: undefined, status: "done" })}
+                <button onClick={() => update({ outputUrl: undefined, status: "idle", errorMessage: undefined })}
                   className="nodrag flex items-center justify-center gap-1 py-1.5 rounded-lg text-[10px]"
                   style={{ background: "var(--c-surface)", border: "1px solid var(--c-bd2)", color: "var(--c-t4)", cursor: "pointer" }}>
                   <RotateCcw style={{ width: 9, height: 9 }} /> 重置

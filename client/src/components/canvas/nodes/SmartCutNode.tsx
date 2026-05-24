@@ -152,7 +152,7 @@ export const SmartCutNode = memo(function SmartCutNode({ id, selected, data }: P
               style={{ background: accentA(0.08), border: `1px solid ${accentA(0.25)}`, color: accent, textDecoration: "none" }}>
               <Download style={{ width: 10, height: 10 }} /> 下载智能剪辑视频
             </a>
-            <button onClick={() => update({ outputUrl: undefined, status: "idle" })}
+            <button onClick={() => update({ outputUrl: undefined, status: "idle", errorMessage: undefined, outputDuration: undefined, originalDuration: undefined })}
               className="nodrag flex items-center justify-center gap-1 py-1.5 rounded-lg text-[10px]"
               style={{ background: "var(--c-surface)", border: "1px solid var(--c-bd2)", color: "var(--c-t4)", cursor: "pointer" }}>
               <RotateCcw style={{ width: 9, height: 9 }} /> 重置
