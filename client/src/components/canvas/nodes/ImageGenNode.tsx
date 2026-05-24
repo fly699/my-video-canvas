@@ -63,14 +63,21 @@ const SOUL_SIZES = [
 ];
 
 // Per-model aspect ratio whitelists — protect downstream APIs from cross-model contamination
+// Also used to drive UI <option> rendering so users cannot select a value the server will silently drop
 const POYO_ASPECT_RATIOS = ["1:1", "16:9", "9:16", "4:3", "3:4", "21:9"] as const;
 const REVE_ASPECT_RATIOS = ["21:9", "16:9", "4:3", "3:2", "1:1", "2:3", "3:4", "9:16", "9:21"] as const;
 const FLUX_PRO_ASPECT_RATIOS = ["16:9", "4:3", "1:1", "3:4", "9:16"] as const;
+const POYO_QUALITIES = ["low", "medium", "high"] as const;
+const SOUL_QUALITIES = ["720p", "1080p"] as const;
+const REVE_RESOLUTIONS = ["720p", "1080p"] as const;
+
+const MAX_SEED = 2147483647;
 
 const MODELS = IMAGE_MODELS as unknown as { value: ImageGenModel; label: string; desc: string; group: string }[];
 
 export const ImageGenNode = memo(function ImageGenNode({ id, selected, data }: Props) {
-  const { updateNodeData } = useCanvasStore();
+  // Use selector to avoid re-rendering on every store change (other nodes' updates)
+  const updateNodeData = useCanvasStore((s) => s.updateNodeData);
   const payload = data.payload;
   const [uploading, setUploading] = useState(false);
   const [lightboxIndex, setLightboxIndex] = useState<number | null>(null);
@@ -159,6 +166,14 @@ export const ImageGenNode = memo(function ImageGenNode({ id, selected, data }: P
     const reveAspectAllowed: readonly string[] = payload.model === "hf_flux_pro" ? FLUX_PRO_ASPECT_RATIOS : REVE_ASPECT_RATIOS;
     const reveAspect = reveAspectAllowed.includes(payload.reveAspectRatio ?? "") ? payload.reveAspectRatio : undefined;
     const fluxNum = ([1, 2, 3, 4] as number[]).includes(payload.fluxNumImages as number) ? (payload.fluxNumImages as 1 | 2 | 3 | 4) : undefined;
+    const poyoQuality = (POYO_QUALITIES as readonly string[]).includes(payload.poyoQuality ?? "") ? payload.poyoQuality : undefined;
+    const soulQuality = (SOUL_QUALITIES as readonly string[]).includes(payload.soulQuality ?? "") ? payload.soulQuality : undefined;
+    const reveResolution = (REVE_RESOLUTIONS as readonly string[]).includes(payload.reveResolution ?? "") ? payload.reveResolution : undefined;
+    const widthAndHeight = (SOUL_SIZES as readonly string[]).includes(payload.widthAndHeight ?? "") ? payload.widthAndHeight : undefined;
+    const validSeed = (s: number | undefined) =>
+      typeof s === "number" && Number.isInteger(s) && s >= 0 && s <= MAX_SEED ? s : undefined;
+    const validGuidance = (g: number | undefined) =>
+      typeof g === "number" && Number.isFinite(g) && g >= 1 && g <= 20 ? g : undefined;
     genMutation.mutate({
       prompt: payload.prompt,
       negativePrompt: payload.negativePrompt,
@@ -168,25 +183,25 @@ export const ImageGenNode = memo(function ImageGenNode({ id, selected, data }: P
       // Poyo image model params
       ...(isPoyo ? {
         poyoAspectRatio: poyoAspect,
-        ...(payload.model === "poyo_gpt_image" ? { poyoQuality: payload.poyoQuality } : {}),
+        ...(payload.model === "poyo_gpt_image" ? { poyoQuality } : {}),
       } : {}),
       // Soul Standard specific params
       ...(payload.model === "hf_soul_standard" ? {
-        widthAndHeight: payload.widthAndHeight,
-        quality: payload.soulQuality,
+        widthAndHeight,
+        quality: soulQuality,
         batchSize: ([1, 4] as number[]).includes(payload.batchSize as number) ? (payload.batchSize as 1 | 4) : undefined,
-        seed: payload.seed,
+        seed: validSeed(payload.seed),
         enhancePrompt: payload.enhancePrompt,
       } : {}),
       // Reve / Seedream v4 / Flux Pro aspect ratio
       ...(isReveOrSeedream ? {
         reveAspectRatio: reveAspect,
-        ...(payload.model === "hf_reve" ? { reveResolution: payload.reveResolution } : {}),
+        ...(payload.model === "hf_reve" ? { reveResolution } : {}),
       } : {}),
       // Flux Pro Kontext extra params
       ...(payload.model === "hf_flux_pro" ? {
-        fluxGuidanceScale: payload.fluxGuidanceScale,
-        fluxSeed: payload.fluxSeed,
+        fluxGuidanceScale: validGuidance(payload.fluxGuidanceScale),
+        fluxSeed: validSeed(payload.fluxSeed),
         fluxNumImages: fluxNum,
       } : {}),
       projectId: data.projectId,
@@ -250,12 +265,12 @@ export const ImageGenNode = memo(function ImageGenNode({ id, selected, data }: P
   // Models that use the collapsible params panel
   const isReveLike = isReve || isSeedreamV4 || isFluxPro;
 
-  const heroMedia = payload.imageUrls && payload.imageUrls.length > 0 ? (
+  const heroMedia = hasMultiple ? (
     <div
       className="grid gap-1 p-2"
-      style={{ gridTemplateColumns: payload.imageUrls.length === 4 ? "1fr 1fr" : `repeat(${Math.min(payload.imageUrls.length, 3)}, 1fr)` }}
+      style={{ gridTemplateColumns: payload.imageUrls!.length === 4 ? "1fr 1fr" : `repeat(${Math.min(payload.imageUrls!.length, 3)}, 1fr)` }}
     >
-      {payload.imageUrls.map((url, idx) => {
+      {payload.imageUrls!.map((url, idx) => {
         const isSelected = url === payload.imageUrl;
         return (
           <div key={idx} className="relative rounded-lg overflow-hidden" style={{ aspectRatio: "1/1", background: "var(--c-canvas)" }}>
@@ -574,7 +589,11 @@ export const ImageGenNode = memo(function ImageGenNode({ id, selected, data }: P
                   className="nodrag"
                   style={{ ...fieldBase, cursor: "pointer" }}
                 >
-                  {RATIOS.map((r) => <option key={r} value={r}>{r}</option>)}
+                  {/* Restrict options to the model's whitelist when it's a Poyo model; otherwise allow the broader Manus list */}
+                  {(payload.model && (payload.model === "poyo_flux" || payload.model === "poyo_sdxl" || payload.model === "poyo_gpt_image" || payload.model === "poyo_seedream" || payload.model === "poyo_grok_image" || payload.model === "poyo_wan_image")
+                    ? (POYO_ASPECT_RATIOS as readonly string[])
+                    : (RATIOS as readonly string[])
+                  ).map((r) => <option key={r} value={r}>{r}</option>)}
                 </select>
               </div>
             </div>
@@ -739,15 +758,10 @@ export const ImageGenNode = memo(function ImageGenNode({ id, selected, data }: P
                           onFocus={(e) => { e.currentTarget.style.borderColor = BORDER_ACCENT; }}
                           onBlur={(e) => { e.currentTarget.style.borderColor = BORDER_DEFAULT; }}
                         >
-                          <option value="21:9">21:9 超宽</option>
-                          <option value="16:9">16:9 横屏</option>
-                          <option value="4:3">4:3 标准</option>
-                          <option value="3:2">3:2 标准宽</option>
-                          <option value="1:1">1:1 方形</option>
-                          <option value="2:3">2:3 竖向</option>
-                          <option value="3:4">3:4 竖屏</option>
-                          <option value="9:16">9:16 竖屏</option>
-                          <option value="9:21">9:21 超竖</option>
+                          {/* Flux Pro Kontext only supports a subset of ratios — keep UI options in sync with the server-side whitelist */}
+                          {(isFluxPro ? (FLUX_PRO_ASPECT_RATIOS as readonly string[]) : (REVE_ASPECT_RATIOS as readonly string[])).map((r) => (
+                            <option key={r} value={r}>{r}</option>
+                          ))}
                         </select>
                       </div>
                       {isReve && (
@@ -894,9 +908,13 @@ export const ImageGenNode = memo(function ImageGenNode({ id, selected, data }: P
           }}
         >
           {genMutation.isPending ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Sparkles className="w-3.5 h-3.5" />}
-          {genMutation.isPending
-            ? (isSoul && (payload.batchSize ?? 1) > 1 ? `批量生成中 (${payload.batchSize} 张)...` : "AI 生成中...")
-            : (isSoul && (payload.batchSize ?? 1) > 1 ? `批量生成 ${payload.batchSize} 张` : "生成图像")}
+          {(() => {
+            const batch = isSoul && (payload.batchSize ?? 1) > 1 ? (payload.batchSize ?? 1)
+                        : isFluxPro && (payload.fluxNumImages ?? 1) > 1 ? (payload.fluxNumImages ?? 1)
+                        : 1;
+            if (genMutation.isPending) return batch > 1 ? `批量生成中 (${batch} 张)...` : "AI 生成中...";
+            return batch > 1 ? `批量生成 ${batch} 张` : "生成图像";
+          })()}
         </button>
 
         </div>{/* end input collapse wrapper */}
