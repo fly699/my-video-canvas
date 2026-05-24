@@ -282,14 +282,14 @@ export const videoTasksRouter = router({
         provider: z.enum([...VIDEO_PROVIDERS] as [string, ...string[]]),
         prompt: z.string().max(4000),
         negativePrompt: z.string().max(1000).optional(),
-        referenceImageUrl: z.string().url().optional(),
+        referenceImageUrl: z.string().optional(),
         params: z.record(z.string(), z.unknown()).optional(),
       })
     )
     .mutation(async ({ ctx, input }) => {
       await assertWhitelisted(ctx);
       await assertProjectOwner(input.projectId, ctx.user.id);
-      if (input.referenceImageUrl) guardUrl(input.referenceImageUrl);
+      if (input.referenceImageUrl?.match(/^https?:\/\//)) guardUrl(input.referenceImageUrl);
 
       // Idempotency: if this node already has a pending/processing task, return it
       // instead of creating a new one. Prevents double-charges when the client is

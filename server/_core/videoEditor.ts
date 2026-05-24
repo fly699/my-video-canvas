@@ -292,7 +292,6 @@ export async function mergeVideos(opts: MergeOptions): Promise<MergeResult> {
     } else {
       const n = inputPaths.length;
       inputPaths.forEach((p) => { args.push("-i", p); });
-      if (bgMusicPath) args.push("-i", bgMusicPath);
 
       const durations: number[] = [];
       for (const p of inputPaths) {
@@ -322,8 +321,11 @@ export async function mergeVideos(opts: MergeOptions): Promise<MergeResult> {
       const hasAudioFlags = await Promise.all(inputPaths.map((p) => hasAudioTrack(p)));
       const allHaveAudio = hasAudioFlags.every(Boolean);
 
+      // bgMusicPath is pushed as an input only here, after the audio check, so the
+      // input index (n or n+1) is known and the stream is always referenced.
       let audioFilter = "";
       if (allHaveAudio) {
+        if (bgMusicPath) args.push("-i", bgMusicPath);
         const audioInputs = inputPaths.map((_, i) => `[${i}:a]`).join("");
         if (bgMusicPath) {
           const bgIdx = n;
@@ -331,10 +333,15 @@ export async function mergeVideos(opts: MergeOptions): Promise<MergeResult> {
         } else {
           audioFilter = `;${audioInputs}concat=n=${n}:v=0:a=1[aout]`;
         }
+      } else if (bgMusicPath) {
+        // Videos have no audio — use bgMusic as the sole audio track.
+        args.push("-i", bgMusicPath);
+        const bgIdx = n;
+        audioFilter = `;[${bgIdx}:a]aresample=async=1[aout]`;
       }
 
       args.push("-filter_complex", filterStr + audioFilter);
-      if (allHaveAudio) {
+      if (allHaveAudio || bgMusicPath) {
         args.push("-map", "[vout]", "-map", "[aout]");
         args.push("-c:v", "libx264", "-preset", "fast", "-c:a", "aac");
       } else {
