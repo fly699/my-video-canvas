@@ -28,6 +28,7 @@ import { FilmstripPanel } from "../components/canvas/FilmstripPanel";
 import { TimelinePanel } from "../components/canvas/TimelinePanel";
 import { isConnectionValid } from "../lib/connectionRules";
 import { BeginnerGuide, ConnectionHintsPanel } from "../components/canvas/BeginnerGuide";
+import { WorkflowStatusPanel } from "../components/canvas/WorkflowStatusPanel";
 import { ThemeSwitcher } from "../components/canvas/ThemeSwitcher";
 import { CanvasBgPicker, loadCanvasBg, type CanvasBg } from "../components/canvas/CanvasBgPicker";
 import { useCanvasMode } from "../contexts/CanvasModeContext";
@@ -359,7 +360,7 @@ function CanvasInner({ projectId }: { projectId: number }) {
   const [connectingFromType, setConnectingFromType] = useState<NodeType | null>(null);
 
   // Workflow runner
-  const { runState, runWorkflow } = useWorkflowRunner();
+  const { runState, runWorkflow, reset: resetWorkflowRun } = useWorkflowRunner();
   const [showRunConfirm, setShowRunConfirm] = useState(false);
   const [pendingRunNodeId, setPendingRunNodeId] = useState<string | null>(null);
   const [runConfirmCountdown, setRunConfirmCountdown] = useState(5);
@@ -1438,6 +1439,7 @@ function CanvasInner({ projectId }: { projectId: number }) {
             selectedNodeType={connectingFromType}
             onClose={() => setShowConnectionHints(false)}
           />
+          <WorkflowStatusPanel runState={runState} onReset={resetWorkflowRun} />
           <BeginnerGuide />
 
           {/* ── Floating toolbar — snaps to viewport edge; vertical when on left/right ── */}
