@@ -42,6 +42,7 @@ import { VIDEO_PROVIDERS } from "../../shared/types";
 import type { SubtitleEntry } from "../../shared/types";
 import { assertWhitelisted } from "../_core/whitelist";
 import { writeAuditLog, truncate } from "../_core/auditLog";
+import { dedupe } from "../_core/idempotency";
 
 // ── Ownership helpers ─────────────────────────────────────────────────────────
 
@@ -560,6 +561,9 @@ export const imageGenRouter = router({
           throw new TRPCError({ code: "BAD_REQUEST", message: "referenceImageUrl 不允许指向私有地址" });
         }
       }
+      // Server-side idempotency: collapse concurrent identical submits (e.g. devtools
+      // replay, browser retries) into a single external image-gen call & charge.
+      return dedupe("imageGen", ctx.user.id, input, async () => {
       const isHfModel = input.model?.startsWith("hf_");
 
       // For Higgsfield models, keep prompt clean and pass negativePrompt separately.
@@ -617,6 +621,7 @@ export const imageGenRouter = router({
         },
       });
       return { url: result.url, urls: result.urls };
+      });
     }),
 });
 
@@ -634,6 +639,7 @@ export const scriptsRouter = router({
     )
     .mutation(async ({ ctx, input }) => {
       await assertWhitelisted(ctx);
+      return dedupe("scripts.generateStoryboards", ctx.user.id, input, async () => {
       const systemPrompt = `You are a professional film director and storyboard artist.
 Given a script, break it into exactly ${input.count} visual storyboard scenes.
 Output ONLY a valid JSON array with no markdown fences, no explanation.
@@ -667,6 +673,7 @@ Each element must have these fields:
         throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "JSON 解析失败" });
       }
       return { scenes: scenes.slice(0, input.count) };
+      });
     }),
 
   generateFullScript: protectedProcedure
@@ -685,6 +692,10 @@ Each element must have these fields:
     )
     .mutation(async ({ ctx, input }) => {
       await assertWhitelisted(ctx);
+      // P0 dedupe: single most expensive mutation (claude-sonnet-4-6 + 8k maxTokens).
+      // Long latency (20-40s) makes user-driven retry probable; we collapse identical
+      // concurrent submits into one external LLM call & charge.
+      return dedupe("scripts.generateFullScript", ctx.user.id, input, async () => {
       const MODEL_PROMPT_GUIDES: Record<string, string> = {
         kling: "Kling (Kuaishou): Excellent precise camera control. Use detailed camera moves: push-in, dolly, orbital pan, crane shot. Rich motion expression with emotional narrative. Describe subject actions precisely.",
         veo: "Veo 3.1 (Google): Natural language understanding. Use flowing natural English. Emphasize realistic physics, human emotions, complex interactions. Write like a film scene description. No keyword lists.",
@@ -759,6 +770,7 @@ Rules:
         scriptText: parsed.scriptText ?? "",
         scenes: (parsed.scenes ?? []).slice(0, input.sceneCount),
       };
+      });
     }),
 });
 
@@ -780,20 +792,23 @@ export const audioGenRouter = router({
     .mutation(async ({ ctx, input }) => {
       await assertWhitelisted(ctx);
       if (input.projectId != null) await assertProjectOwner(input.projectId, ctx.user.id);
-      const result = await submitAndPollPoyoMusic({
-        model: input.model as PoyoMusicModel,
-        prompt: input.prompt,
-        style: input.style,
-        durationSeconds: input.durationSeconds,
-        instrumental: input.instrumental,
-        negativePrompt: input.negativePrompt,
+      // Long-poll generation (~30s-2min) is when client-side retries are most likely.
+      return dedupe("audioGen.generateMusic", ctx.user.id, input, async () => {
+        const result = await submitAndPollPoyoMusic({
+          model: input.model as PoyoMusicModel,
+          prompt: input.prompt,
+          style: input.style,
+          durationSeconds: input.durationSeconds,
+          instrumental: input.instrumental,
+          negativePrompt: input.negativePrompt,
+        });
+        writeAuditLog({
+          ctx,
+          action: "audio_music",
+          detail: { model: input.model, prompt: truncate(input.prompt), resultUrl: result.url, duration: result.duration },
+        });
+        return { url: result.url, duration: result.duration };
       });
-      writeAuditLog({
-        ctx,
-        action: "audio_music",
-        detail: { model: input.model, prompt: truncate(input.prompt), resultUrl: result.url, duration: result.duration },
-      });
-      return { url: result.url, duration: result.duration };
     }),
 
   generateDubbing: protectedProcedure
@@ -809,18 +824,20 @@ export const audioGenRouter = router({
     .mutation(async ({ ctx, input }) => {
       await assertWhitelisted(ctx);
       if (input.projectId != null) await assertProjectOwner(input.projectId, ctx.user.id);
-      const result = await submitAndPollPoyoTTS({
-        model: input.model as PoyoTTSModel,
-        text: input.text,
-        voice: input.voice,
-        speed: input.speed,
+      return dedupe("audioGen.generateDubbing", ctx.user.id, input, async () => {
+        const result = await submitAndPollPoyoTTS({
+          model: input.model as PoyoTTSModel,
+          text: input.text,
+          voice: input.voice,
+          speed: input.speed,
+        });
+        writeAuditLog({
+          ctx,
+          action: "audio_dubbing",
+          detail: { model: input.model, text: truncate(input.text), voice: input.voice ?? null, resultUrl: result.url, duration: result.duration },
+        });
+        return { url: result.url, duration: result.duration };
       });
-      writeAuditLog({
-        ctx,
-        action: "audio_dubbing",
-        detail: { model: input.model, text: truncate(input.text), voice: input.voice ?? null, resultUrl: result.url, duration: result.duration },
-      });
-      return { url: result.url, duration: result.duration };
     }),
 });
 
@@ -883,21 +900,25 @@ export const subtitleRouter = router({
     )
     .mutation(async ({ ctx, input }) => {
       await assertWhitelisted(ctx);
-      const result = await transcribeAudio({ audioUrl: input.audioUrl, language: input.language });
-      if ("error" in result) {
-        throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: result.error });
-      }
-      const entries: SubtitleEntry[] = result.segments.map((s) => ({
-        start: s.start,
-        end: s.end,
-        text: s.text.trim(),
-      }));
-      writeAuditLog({
-        ctx,
-        action: "subtitle_transcribe",
-        detail: { audioUrl: truncate(input.audioUrl, 200), language: result.language, segmentCount: entries.length },
+      // (audioUrl, language) deterministically map to a Whisper transcription, so
+      // dedupe by that pair — repeated submits during the long Whisper call collapse.
+      return dedupe("subtitle.transcribe", ctx.user.id, input, async () => {
+        const result = await transcribeAudio({ audioUrl: input.audioUrl, language: input.language });
+        if ("error" in result) {
+          throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: result.error });
+        }
+        const entries: SubtitleEntry[] = result.segments.map((s) => ({
+          start: s.start,
+          end: s.end,
+          text: s.text.trim(),
+        }));
+        writeAuditLog({
+          ctx,
+          action: "subtitle_transcribe",
+          detail: { audioUrl: truncate(input.audioUrl, 200), language: result.language, segmentCount: entries.length },
+        });
+        return { entries, fullText: result.text, language: result.language };
       });
-      return { entries, fullText: result.text, language: result.language };
     }),
 
   burnIn: protectedProcedure

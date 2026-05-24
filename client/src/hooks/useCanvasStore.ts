@@ -322,11 +322,22 @@ export const useCanvasStore = create<CanvasStore>((set, get) => ({
     const node = get().nodes.find((n) => n.id === id);
     if (!node) return;
     const newId = nanoid();
+    // Strip runtime/output fields when cloning so the duplicate doesn't claim it
+    // already finished generating, and doesn't reuse the original node's taskId
+    // (which would make both the source and the duplicate poll the same task and
+    // appear to "succeed" together — confusing and a vector for accidental re-submits).
+    const RUNTIME_FIELDS = [
+      "imageUrl", "imageStorageKey", "imageHistory", "imageUrls", "selectedImageIndex",
+      "resultVideoUrl", "errorMessage", "progress", "taskId", "externalTaskId",
+      "status", "messages", "url", "storageKey", "outputUrl", "outputDuration",
+    ];
+    const clonedPayload = JSON.parse(JSON.stringify(node.data.payload)) as Record<string, unknown>;
+    for (const k of RUNTIME_FIELDS) delete clonedPayload[k];
     const newNode: CanvasNode = {
       ...node,
       id: newId,
       position: { x: node.position.x + 40, y: node.position.y + 40 },
-      data: { ...node.data, payload: JSON.parse(JSON.stringify(node.data.payload)) },
+      data: { ...node.data, payload: clonedPayload as typeof node.data.payload },
       selected: false,
     };
     set((state) => ({
