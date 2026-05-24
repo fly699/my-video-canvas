@@ -2,13 +2,13 @@ import type { NodeType } from "../../../shared/types";
 
 export const CONNECTION_MATRIX: Partial<Record<NodeType, NodeType[]>> = {
   script: ["storyboard", "prompt", "ai_chat", "character", "avatar"],
-  storyboard: ["image_gen", "video_task", "prompt"],
-  prompt: ["image_gen", "video_task", "storyboard", "script"],
-  character: ["storyboard", "image_gen", "video_task", "prompt"],
-  image_gen: ["video_task", "asset", "clip", "pose_control"],
+  storyboard: ["image_gen", "video_task", "prompt", "comfyui_image", "comfyui_video"],
+  prompt: ["image_gen", "video_task", "storyboard", "script", "comfyui_image", "comfyui_video"],
+  character: ["storyboard", "image_gen", "video_task", "prompt", "comfyui_image", "comfyui_video"],
+  image_gen: ["video_task", "asset", "clip", "pose_control", "comfyui_video"],
   video_task: ["clip", "asset", "overlay", "merge", "subtitle", "subtitle_motion", "smart_cut", "lip_sync"],
   audio: ["clip", "lip_sync", "avatar"],
-  asset: ["image_gen", "video_task", "clip", "merge", "subtitle", "subtitle_motion", "smart_cut", "pose_control"],
+  asset: ["image_gen", "video_task", "clip", "merge", "subtitle", "subtitle_motion", "smart_cut", "pose_control", "comfyui_image", "comfyui_video"],
   ai_chat: ["script", "storyboard", "prompt"],
   clip: ["asset", "overlay", "merge", "subtitle", "subtitle_motion", "smart_cut"],
   post_process: ["video_task", "image_gen", "asset"],
@@ -21,6 +21,8 @@ export const CONNECTION_MATRIX: Partial<Record<NodeType, NodeType[]>> = {
   lip_sync: ["asset"],
   avatar: ["asset", "clip"],
   merge: ["asset"],
+  comfyui_image: ["video_task", "asset", "clip", "pose_control", "comfyui_video"],
+  comfyui_video: ["clip", "asset", "overlay", "merge", "subtitle", "subtitle_motion", "smart_cut", "lip_sync"],
   note: [],
   group: [],
 };
@@ -168,5 +170,15 @@ export const CONNECTION_HINTS: Record<
     label: "数字人",
     outgoing: "→ 素材 / 剪辑",
     incoming: "← 脚本 / 音频",
+  },
+  comfyui_image: {
+    label: "ComfyUI 图像",
+    outgoing: "→ 视频任务 / 素材 / 剪辑 / 构图控制 / ComfyUI 视频",
+    incoming: "← 分镜 / 提示词 / 角色 / 素材",
+  },
+  comfyui_video: {
+    label: "ComfyUI 视频",
+    outgoing: "→ 剪辑 / 素材 / 叠加 / 合并 / 字幕 / 动态字幕 / 智能剪辑 / 唇形同步",
+    incoming: "← 分镜 / 提示词 / 角色 / 素材 / 图像生成 / ComfyUI 图像",
   },
 };

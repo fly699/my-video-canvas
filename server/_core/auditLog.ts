@@ -61,7 +61,9 @@ export type AuditAction =
   | "audio_music"
   | "audio_dubbing"
   | "subtitle_transcribe"
-  | "logs_cleared";
+  | "logs_cleared"
+  | "comfyui_image_gen"
+  | "comfyui_video_gen";
 
 export interface AuditOpts {
   ctx?: TrpcContext;
