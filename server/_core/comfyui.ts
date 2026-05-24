@@ -9,10 +9,15 @@
 // - 4 built-in templates: txt2img / img2img / animatediff / svd.
 
 import { storagePut } from "server/storage";
+import { assertSafeUrl } from "./videoEditor";
 
 const POLL_INTERVAL_MS = 3_000;
 const POLL_MAX_ATTEMPTS_IMAGE = 100; // ~5 min
 const POLL_MAX_ATTEMPTS_VIDEO = 200; // ~10 min — video workflows are slower
+// Hard size caps on anything we suck into RAM via arrayBuffer().
+// A misbehaving / malicious ComfyUI server could otherwise OOM the Node process.
+const MAX_COMFY_OUTPUT_BYTES = 200 * 1024 * 1024; // 200 MB — generous for 10s video
+const MAX_REF_IMAGE_BYTES = 30 * 1024 * 1024;     // 30 MB — sane upper bound for source image
 
 // ── URL validation ────────────────────────────────────────────────────────────
 
@@ -228,21 +233,44 @@ function downloadUrl(baseUrl: string, filename: string, subfolder: string, type:
   return u.toString();
 }
 
+/** Pre-flight Content-Length check + post-read length verification — protects against
+ * a malicious / misconfigured server returning a multi-GB response that would OOM Node.
+ * Returns the buffer or throws. */
+async function fetchWithSizeLimit(url: string, maxBytes: number, timeoutMs: number, label: string): Promise<{ buf: Buffer; contentType: string | null }> {
+  const res = await fetch(url, { signal: AbortSignal.timeout(timeoutMs) });
+  if (!res.ok) throw new Error(`${label} 失败 (${res.status})`);
+  const declared = res.headers.get("content-length");
+  if (declared) {
+    const n = parseInt(declared, 10);
+    if (!isNaN(n) && n > maxBytes) {
+      throw new Error(`${label} 文件过大 (${n} bytes，上限 ${maxBytes} bytes)`);
+    }
+  }
+  const ab = await res.arrayBuffer();
+  if (ab.byteLength > maxBytes) {
+    throw new Error(`${label} 文件过大 (${ab.byteLength} bytes，上限 ${maxBytes} bytes)`);
+  }
+  return { buf: Buffer.from(ab), contentType: res.headers.get("content-type") };
+}
+
 async function downloadAndStore(downloadUrlStr: string, ext: string, mimeType: string): Promise<{ url: string; key: string }> {
-  const res = await fetch(downloadUrlStr, { signal: AbortSignal.timeout(120_000) });
-  if (!res.ok) throw new Error(`下载 ComfyUI 输出失败 (${res.status})`);
-  const buf = Buffer.from(await res.arrayBuffer());
-  const ct = res.headers.get("content-type") ?? mimeType;
+  const { buf, contentType } = await fetchWithSizeLimit(downloadUrlStr, MAX_COMFY_OUTPUT_BYTES, 120_000, "下载 ComfyUI 输出");
+  const ct = contentType ?? mimeType;
   return await storagePut(`comfyui/${Date.now()}.${ext}`, buf, ct);
 }
 
 // ── Image upload (for img2img / SVD) ──────────────────────────────────────────
 
 async function uploadImageToComfy(baseUrl: string, sourceUrl: string): Promise<string> {
-  const imgRes = await fetch(sourceUrl, { signal: AbortSignal.timeout(60_000) });
-  if (!imgRes.ok) throw new Error(`下载参考图失败 (${imgRes.status})`);
-  const buf = Buffer.from(await imgRes.arrayBuffer());
-  const ct = imgRes.headers.get("content-type") ?? "image/png";
+  // SSRF protection: the source URL is user-supplied (referenceImageUrl).
+  // Unlike ComfyUI's own URL — which is internal by design — the reference image
+  // URL must point to a real public/persistent asset and never an internal address.
+  // Skip the check for our own storage proxy paths (relative) which are trusted.
+  if (/^https?:\/\//i.test(sourceUrl)) {
+    assertSafeUrl(sourceUrl);
+  }
+  const { buf, contentType } = await fetchWithSizeLimit(sourceUrl, MAX_REF_IMAGE_BYTES, 60_000, "下载参考图");
+  const ct = contentType ?? "image/png";
   const ext = ct.includes("jpeg") ? "jpg" : ct.includes("webp") ? "webp" : "png";
   const filename = `comfy_input_${Date.now()}.${ext}`;
 

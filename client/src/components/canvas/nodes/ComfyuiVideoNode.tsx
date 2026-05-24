@@ -552,20 +552,8 @@ export const ComfyuiVideoNode = memo(function ComfyuiVideoNode({ id, selected, d
         title="参考图输入"
       />
 
-      {/* Output handle — sends generated video */}
-      <Handle
-        type="source"
-        position={Position.Right}
-        id="video-out"
-        style={{
-          width: 12, height: 12,
-          borderRadius: "50%",
-          background: accent,
-          border: `2px solid var(--c-canvas)`,
-          right: -6,
-        }}
-        title="视频输出"
-      />
+      {/* Output handle — provided by BaseNode default (id="output" on Position.Right);
+          no custom handle to avoid overlapping with the default. */}
     </BaseNode>
   );
 });

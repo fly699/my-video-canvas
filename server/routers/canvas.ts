@@ -1376,8 +1376,11 @@ export const comfyuiRouter = router({
         seed: z.number().int().default(-1),
         width: z.number().int().min(64).max(2048).default(512),
         height: z.number().int().min(64).max(2048).default(512),
-        referenceImageUrl: z.string().optional(),
-      })
+        referenceImageUrl: z.string().max(2048).optional(),
+      }).refine(
+        (v) => v.workflowTemplate !== "img2img" || (v.referenceImageUrl && v.referenceImageUrl.trim().length > 0),
+        { message: "img2img 模板必须提供 referenceImageUrl", path: ["referenceImageUrl"] }
+      )
     )
     .mutation(async ({ ctx, input }) => {
       await assertWhitelisted(ctx);
@@ -1427,8 +1430,14 @@ export const comfyuiRouter = router({
         seed: z.number().int().default(-1),
         frames: z.number().int().min(1).max(256).default(16),
         fps: z.number().int().min(1).max(60).default(8),
-        referenceImageUrl: z.string().optional(),
-      })
+        referenceImageUrl: z.string().max(2048).optional(),
+      }).refine(
+        (v) => v.workflowTemplate !== "animatediff" || (v.motionModule && v.motionModule.trim().length > 0),
+        { message: "AnimateDiff 模板必须提供 motionModule", path: ["motionModule"] }
+      ).refine(
+        (v) => v.workflowTemplate !== "svd" || (v.referenceImageUrl && v.referenceImageUrl.trim().length > 0),
+        { message: "SVD 模板必须提供 referenceImageUrl", path: ["referenceImageUrl"] }
+      )
     )
     .mutation(async ({ ctx, input }) => {
       await assertWhitelisted(ctx);

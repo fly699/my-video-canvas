@@ -309,7 +309,9 @@ export function useWorkflowRunner() {
             .filter((e) => e.source === nodeId)
             .flatMap((edge) => {
               const target = currentNodes.find((n) => n.id === edge.target);
-              return target?.data.nodeType === "video_task" && bestUrl
+              const tt = target?.data.nodeType;
+              // Propagate to any downstream that consumes a reference image
+              return (tt === "video_task" || tt === "comfyui_video" || tt === "comfyui_image") && bestUrl
                 ? [{ id: edge.target, payload: { referenceImageUrl: bestUrl } }]
                 : [];
             });
