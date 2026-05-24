@@ -494,7 +494,6 @@ export const aiChatRouter = router({
       })
     )
     .mutation(async ({ ctx, input }) => {
-      await assertWhitelisted(ctx);
       await assertProjectOwner(input.projectId, ctx.user.id);
       // Build messages for LLM (user message included inline — not saved to DB yet)
       const history = await getChatMessages(input.nodeId, input.projectId);
@@ -654,7 +653,6 @@ export const scriptsRouter = router({
       })
     )
     .mutation(async ({ ctx, input }) => {
-      await assertWhitelisted(ctx);
       return dedupe("scripts.generateStoryboards", ctx.user.id, input, async () => {
       const systemPrompt = `You are a professional film director and storyboard artist.
 Given a script, break it into exactly ${input.count} visual storyboard scenes.
@@ -707,7 +705,6 @@ Each element must have these fields:
       })
     )
     .mutation(async ({ ctx, input }) => {
-      await assertWhitelisted(ctx);
       // P0 dedupe: single most expensive mutation (claude-sonnet-4-6 + 8k maxTokens).
       // Long latency (20-40s) makes user-driven retry probable; we collapse identical
       // concurrent submits into one external LLM call & charge.
@@ -796,7 +793,6 @@ Rules:
       model: z.string().optional(),
     }))
     .mutation(async ({ ctx, input }) => {
-      await assertWhitelisted(ctx);
       return dedupe("scripts.refineScene", ctx.user.id, input, async () => {
         const systemPrompt = `你是专业编剧，负责优化单个场景描述。根据用户意图，改写或精化场景文字，保持原有叙事方向。只输出改写后的场景文字，不加任何说明。`;
         const userContent = input.intent
@@ -819,7 +815,6 @@ Rules:
       model: z.string().optional(),
     }))
     .mutation(async ({ ctx, input }) => {
-      await assertWhitelisted(ctx);
       return dedupe("scripts.reviewScript", ctx.user.id, input, async () => {
       const systemPrompt = `你是专业剧本审稿人。分析剧本的结构、节奏、人物塑造和对白质量。
 仅输出合法 JSON，无 markdown 代码块，无额外文字：
@@ -851,7 +846,6 @@ score 为 0-100 整数，issues 数组最多 8 条，每条包含 type/line/sugg
       model: z.string().optional(),
     }))
     .mutation(async ({ ctx, input }) => {
-      await assertWhitelisted(ctx);
       return dedupe("scripts.generateVariants", ctx.user.id, input, async () => {
       const systemPrompt = `你是专业编剧。根据相同的故事梗概，生成风格各异的剧本开场段落（不超过200字/版本）。
 仅输出合法 JSON 数组，无 markdown 代码块：[{"label":"版本A","text":"..."},{"label":"版本B","text":"..."}]`;
@@ -879,7 +873,6 @@ score 为 0-100 整数，issues 数组最多 8 条，每条包含 type/line/sugg
       model: z.string().optional(),
     }))
     .mutation(async ({ ctx, input }) => {
-      await assertWhitelisted(ctx);
       return dedupe("scripts.refineConversation", ctx.user.id, input, async () => {
         const systemPrompt = `你是专业对话编剧，擅长优化剧本对白的节奏、语气和自然度。只输出改写后的对白文本，不加任何说明。`;
         const userContent = input.intent
@@ -903,7 +896,6 @@ score 为 0-100 整数，issues 数组最多 8 条，每条包含 type/line/sugg
       model: z.string().optional(),
     }))
     .mutation(async ({ ctx, input }) => {
-      await assertWhitelisted(ctx);
       return dedupe("scripts.applyStyleTransfer", ctx.user.id, input, async () => {
       const STYLE_GUIDES: Record<string, string> = {
         硬派: "简练有力，动作描写精准，对白克制，整体风格硬朗紧张",
@@ -932,7 +924,6 @@ score 为 0-100 整数，issues 数组最多 8 条，每条包含 type/line/sugg
       model: z.string().optional(),
     }))
     .mutation(async ({ ctx, input }) => {
-      await assertWhitelisted(ctx);
       return dedupe("scripts.extractDialogue", ctx.user.id, input, async () => {
         const systemPrompt = `你是剧本分析师。从剧本中提取所有对白，格式化为清单：每行一条，格式为"角色名：台词内容"。若无明确角色名则用"旁白"。只输出对白清单，不加任何说明。`;
         const response = await invokeLLM({
@@ -952,7 +943,6 @@ score 为 0-100 整数，issues 数组最多 8 条，每条包含 type/line/sugg
       model: z.string().optional(),
     }))
     .mutation(async ({ ctx, input }) => {
-      await assertWhitelisted(ctx);
       return dedupe("scripts.generateMoodBoard", ctx.user.id, input, async () => {
       const systemPrompt = `你是AI视频导演，负责将剧本场景转化为图像生成提示词。
 为每个主要场景生成一条英文视觉提示词（cinematic prompt）和一条负面提示词。
@@ -1373,7 +1363,6 @@ export const aiEnhanceRouter = router({
       })
     )
     .mutation(async ({ ctx, input }) => {
-      await assertWhitelisted(ctx);
       const systemPrompts: Record<string, string> = {
         expand: `You are a creative writing assistant specializing in AI video generation prompts.
 Expand the given text into a rich, detailed description with sensory details, atmosphere, lighting, composition, and cinematic qualities.
