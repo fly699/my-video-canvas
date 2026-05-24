@@ -463,6 +463,24 @@ function getDefaultPayload(type: NodeType): NodeData {
       return { entries: [], fontSize: 22, fontColor: "white", burnInEnabled: false, status: "idle" };
     case "overlay":
       return { mode: "watermark", status: "idle" };
+    case "subtitle_motion":
+      return { entries: [], motionStyle: "fade", fontSize: 28, fontColor: "white", status: "idle" };
+    case "smart_cut":
+      return { aggressiveness: "medium", status: "idle" };
+    case "pose_control":
+      return { prompt: "", guidanceScale: 3.5, status: "idle" };
+    case "voice_clone":
+      return { text: "", status: "idle" };
+    case "lip_sync":
+      return { status: "idle" };
+    case "avatar":
+      return { script: "", status: "idle" };
+    case "group":
+      return { label: "分组" };
+    case "comfyui_image":
+      return { workflowTemplate: "txt2img", prompt: "", ckpt: "", steps: 20, cfg: 7, seed: -1, width: 512, height: 512, status: "idle" };
+    case "comfyui_video":
+      return { workflowTemplate: "animatediff", prompt: "", ckpt: "", steps: 20, cfg: 7, seed: -1, frames: 16, fps: 8, status: "idle" };
     default:
       return {} as NodeData;
   }

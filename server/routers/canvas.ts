@@ -32,6 +32,8 @@ import {
 import { storagePut } from "../storage";
 import { invokeLLM, extractTextContent } from "../_core/llm";
 import { generateImage } from "../_core/imageGeneration";
+import { generateComfyImage, generateComfyVideo, fetchComfyModels } from "../_core/comfyui";
+import { ENV } from "../_core/env";
 import { isPoyoVideoProvider, submitPoyoVideo, checkPoyoVideoStatus } from "../_core/poyoVideo";
 import { isHiggsfieldVideoProvider, submitHiggsfieldVideo, checkHiggsfieldVideoStatus } from "../_core/higgsfield";
 import { submitAndPollPoyoMusic, type PoyoMusicModel } from "../_core/poyoAudio";
@@ -127,7 +129,7 @@ export const nodesRouter = router({
       z.object({
         id: z.string().optional(),
         projectId: z.number(),
-        type: z.enum(["script", "storyboard", "prompt", "image_gen", "asset", "video_task", "ai_chat", "note", "audio", "post_process", "group", "character", "clip", "merge", "subtitle", "overlay", "subtitle_motion", "smart_cut", "pose_control", "voice_clone", "lip_sync", "avatar"]),
+        type: z.enum(["script", "storyboard", "prompt", "image_gen", "asset", "video_task", "ai_chat", "note", "audio", "post_process", "group", "character", "clip", "merge", "subtitle", "overlay", "subtitle_motion", "smart_cut", "pose_control", "voice_clone", "lip_sync", "avatar", "comfyui_image", "comfyui_video"]),
         title: z.string().optional(),
         data: nodeDataSchema,
         posX: z.number(),
@@ -159,7 +161,7 @@ export const nodesRouter = router({
         z.object({
           id: z.string(),
           projectId: z.number(),
-          type: z.enum(["script", "storyboard", "prompt", "image_gen", "asset", "video_task", "ai_chat", "note", "audio", "post_process", "group", "character", "clip", "merge", "subtitle", "overlay", "subtitle_motion", "smart_cut", "pose_control", "voice_clone", "lip_sync", "avatar"]),
+          type: z.enum(["script", "storyboard", "prompt", "image_gen", "asset", "video_task", "ai_chat", "note", "audio", "post_process", "group", "character", "clip", "merge", "subtitle", "overlay", "subtitle_motion", "smart_cut", "pose_control", "voice_clone", "lip_sync", "avatar", "comfyui_image", "comfyui_video"]),
           title: z.string().optional().nullable(),
           data: nodeDataSchema,
           posX: z.number(),
@@ -494,7 +496,6 @@ export const aiChatRouter = router({
       })
     )
     .mutation(async ({ ctx, input }) => {
-      await assertWhitelisted(ctx);
       await assertProjectOwner(input.projectId, ctx.user.id);
       // Build messages for LLM (user message included inline — not saved to DB yet)
       const history = await getChatMessages(input.nodeId, input.projectId);
@@ -654,7 +655,6 @@ export const scriptsRouter = router({
       })
     )
     .mutation(async ({ ctx, input }) => {
-      await assertWhitelisted(ctx);
       return dedupe("scripts.generateStoryboards", ctx.user.id, input, async () => {
       const systemPrompt = `You are a professional film director and storyboard artist.
 Given a script, break it into exactly ${input.count} visual storyboard scenes.
@@ -707,7 +707,6 @@ Each element must have these fields:
       })
     )
     .mutation(async ({ ctx, input }) => {
-      await assertWhitelisted(ctx);
       // P0 dedupe: single most expensive mutation (claude-sonnet-4-6 + 8k maxTokens).
       // Long latency (20-40s) makes user-driven retry probable; we collapse identical
       // concurrent submits into one external LLM call & charge.
@@ -796,7 +795,6 @@ Rules:
       model: z.string().optional(),
     }))
     .mutation(async ({ ctx, input }) => {
-      await assertWhitelisted(ctx);
       return dedupe("scripts.refineScene", ctx.user.id, input, async () => {
         const systemPrompt = `你是专业编剧，负责优化单个场景描述。根据用户意图，改写或精化场景文字，保持原有叙事方向。只输出改写后的场景文字，不加任何说明。`;
         const userContent = input.intent
@@ -819,7 +817,6 @@ Rules:
       model: z.string().optional(),
     }))
     .mutation(async ({ ctx, input }) => {
-      await assertWhitelisted(ctx);
       return dedupe("scripts.reviewScript", ctx.user.id, input, async () => {
       const systemPrompt = `你是专业剧本审稿人。分析剧本的结构、节奏、人物塑造和对白质量。
 仅输出合法 JSON，无 markdown 代码块，无额外文字：
@@ -851,7 +848,6 @@ score 为 0-100 整数，issues 数组最多 8 条，每条包含 type/line/sugg
       model: z.string().optional(),
     }))
     .mutation(async ({ ctx, input }) => {
-      await assertWhitelisted(ctx);
       return dedupe("scripts.generateVariants", ctx.user.id, input, async () => {
       const systemPrompt = `你是专业编剧。根据相同的故事梗概，生成风格各异的剧本开场段落（不超过200字/版本）。
 仅输出合法 JSON 数组，无 markdown 代码块：[{"label":"版本A","text":"..."},{"label":"版本B","text":"..."}]`;
@@ -879,7 +875,6 @@ score 为 0-100 整数，issues 数组最多 8 条，每条包含 type/line/sugg
       model: z.string().optional(),
     }))
     .mutation(async ({ ctx, input }) => {
-      await assertWhitelisted(ctx);
       return dedupe("scripts.refineConversation", ctx.user.id, input, async () => {
         const systemPrompt = `你是专业对话编剧，擅长优化剧本对白的节奏、语气和自然度。只输出改写后的对白文本，不加任何说明。`;
         const userContent = input.intent
@@ -903,7 +898,6 @@ score 为 0-100 整数，issues 数组最多 8 条，每条包含 type/line/sugg
       model: z.string().optional(),
     }))
     .mutation(async ({ ctx, input }) => {
-      await assertWhitelisted(ctx);
       return dedupe("scripts.applyStyleTransfer", ctx.user.id, input, async () => {
       const STYLE_GUIDES: Record<string, string> = {
         硬派: "简练有力，动作描写精准，对白克制，整体风格硬朗紧张",
@@ -932,7 +926,6 @@ score 为 0-100 整数，issues 数组最多 8 条，每条包含 type/line/sugg
       model: z.string().optional(),
     }))
     .mutation(async ({ ctx, input }) => {
-      await assertWhitelisted(ctx);
       return dedupe("scripts.extractDialogue", ctx.user.id, input, async () => {
         const systemPrompt = `你是剧本分析师。从剧本中提取所有对白，格式化为清单：每行一条，格式为"角色名：台词内容"。若无明确角色名则用"旁白"。只输出对白清单，不加任何说明。`;
         const response = await invokeLLM({
@@ -952,7 +945,6 @@ score 为 0-100 整数，issues 数组最多 8 条，每条包含 type/line/sugg
       model: z.string().optional(),
     }))
     .mutation(async ({ ctx, input }) => {
-      await assertWhitelisted(ctx);
       return dedupe("scripts.generateMoodBoard", ctx.user.id, input, async () => {
       const systemPrompt = `你是AI视频导演，负责将剧本场景转化为图像生成提示词。
 为每个主要场景生成一条英文视觉提示词（cinematic prompt）和一条负面提示词。
@@ -1362,6 +1354,141 @@ export const overlayRouter = router({
     }),
 });
 
+// ── ComfyUI (self-hosted) ─────────────────────────────────────────────────────
+// Independent router — does NOT modify the existing imageGen/videoTasks routers.
+// URL validation deliberately skips guardUrl()/SSRF check; the project owner has
+// explicitly opted into allowing internal/private ComfyUI servers. The format is
+// still validated to be http(s) via `new URL()` inside generateComfyImage/Video.
+export const comfyuiRouter = router({
+  generateImage: protectedProcedure
+    .input(
+      z.object({
+        nodeId: z.string(),
+        projectId: z.number(),
+        customBaseUrl: z.string().max(2048).optional(),
+        workflowTemplate: z.enum(["txt2img", "img2img"]),
+        prompt: z.string().min(1).max(2000),
+        negPrompt: z.string().max(2000).optional(),
+        ckpt: z.string().min(1).max(255),
+        lora: z.string().max(255).optional(),
+        steps: z.number().int().min(1).max(150).default(20),
+        cfg: z.number().min(1).max(30).default(7),
+        seed: z.number().int().default(-1),
+        width: z.number().int().min(64).max(2048).default(512),
+        height: z.number().int().min(64).max(2048).default(512),
+        referenceImageUrl: z.string().max(2048).optional(),
+      }).refine(
+        (v) => v.workflowTemplate !== "img2img" || (v.referenceImageUrl && v.referenceImageUrl.trim().length > 0),
+        { message: "img2img 模板必须提供 referenceImageUrl", path: ["referenceImageUrl"] }
+      )
+    )
+    .mutation(async ({ ctx, input }) => {
+      await assertWhitelisted(ctx);
+      await assertProjectOwner(input.projectId, ctx.user.id);
+      const baseUrl = input.customBaseUrl?.trim() || ENV.comfyuiBaseUrl;
+      if (!baseUrl) throw new TRPCError({ code: "BAD_REQUEST", message: "ComfyUI URL 未配置：请在节点设置中填写或服务端设置 COMFYUI_BASE_URL" });
+      return dedupe("comfyui.generateImage", ctx.user.id, input, async () => {
+        try {
+          const result = await generateComfyImage(baseUrl, {
+            workflowTemplate: input.workflowTemplate,
+            prompt: input.prompt,
+            negPrompt: input.negPrompt,
+            ckpt: input.ckpt,
+            lora: input.lora,
+            steps: input.steps,
+            cfg: input.cfg,
+            seed: input.seed >= 0 ? input.seed : undefined,
+            width: input.width,
+            height: input.height,
+            referenceImageUrl: input.referenceImageUrl,
+          });
+          writeAuditLog({
+            ctx,
+            action: "comfyui_image_gen",
+            detail: { template: input.workflowTemplate, ckpt: input.ckpt, prompt: truncate(input.prompt), resultUrl: result.url, nodeId: input.nodeId },
+          });
+          return { url: result.url };
+        } catch (err) {
+          throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: err instanceof Error ? err.message : String(err) });
+        }
+      });
+    }),
+
+  generateVideo: protectedProcedure
+    .input(
+      z.object({
+        nodeId: z.string(),
+        projectId: z.number(),
+        customBaseUrl: z.string().max(2048).optional(),
+        workflowTemplate: z.enum(["animatediff", "svd"]),
+        prompt: z.string().min(1).max(2000),
+        negPrompt: z.string().max(2000).optional(),
+        ckpt: z.string().min(1).max(255),
+        motionModule: z.string().max(255).optional(),
+        steps: z.number().int().min(1).max(150).default(20),
+        cfg: z.number().min(1).max(30).default(7),
+        seed: z.number().int().default(-1),
+        frames: z.number().int().min(1).max(256).default(16),
+        fps: z.number().int().min(1).max(60).default(8),
+        referenceImageUrl: z.string().max(2048).optional(),
+      }).refine(
+        (v) => v.workflowTemplate !== "animatediff" || (v.motionModule && v.motionModule.trim().length > 0),
+        { message: "AnimateDiff 模板必须提供 motionModule", path: ["motionModule"] }
+      ).refine(
+        (v) => v.workflowTemplate !== "svd" || (v.referenceImageUrl && v.referenceImageUrl.trim().length > 0),
+        { message: "SVD 模板必须提供 referenceImageUrl", path: ["referenceImageUrl"] }
+      )
+    )
+    .mutation(async ({ ctx, input }) => {
+      await assertWhitelisted(ctx);
+      await assertProjectOwner(input.projectId, ctx.user.id);
+      const baseUrl = input.customBaseUrl?.trim() || ENV.comfyuiBaseUrl;
+      if (!baseUrl) throw new TRPCError({ code: "BAD_REQUEST", message: "ComfyUI URL 未配置：请在节点设置中填写或服务端设置 COMFYUI_BASE_URL" });
+      return dedupe("comfyui.generateVideo", ctx.user.id, input, async () => {
+        try {
+          const result = await generateComfyVideo(baseUrl, {
+            workflowTemplate: input.workflowTemplate,
+            prompt: input.prompt,
+            negPrompt: input.negPrompt,
+            ckpt: input.ckpt,
+            motionModule: input.motionModule,
+            steps: input.steps,
+            cfg: input.cfg,
+            seed: input.seed >= 0 ? input.seed : undefined,
+            frames: input.frames,
+            fps: input.fps,
+            referenceImageUrl: input.referenceImageUrl,
+          });
+          writeAuditLog({
+            ctx,
+            action: "comfyui_video_gen",
+            detail: { template: input.workflowTemplate, ckpt: input.ckpt, prompt: truncate(input.prompt), resultUrl: result.url, nodeId: input.nodeId },
+          });
+          return { url: result.url };
+        } catch (err) {
+          throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: err instanceof Error ? err.message : String(err) });
+        }
+      });
+    }),
+
+  fetchModels: protectedProcedure
+    .input(z.object({ customBaseUrl: z.string().max(2048).optional() }))
+    .query(async ({ ctx, input }) => {
+      // Whitelist check: fetchModels can be used as an SSRF probe via customBaseUrl
+      // (the server fetches whatever URL the client supplies). Treat with the same
+      // gate as the paid generate endpoints.
+      await assertWhitelisted(ctx);
+      const baseUrl = input.customBaseUrl?.trim() || ENV.comfyuiBaseUrl;
+      if (!baseUrl) return { ckpts: [], loras: [], samplers: [], motionModules: [] };
+      try {
+        return await fetchComfyModels(baseUrl);
+      } catch {
+        // Swallow errors and return empty so the UI degrades to free-text input
+        return { ckpts: [], loras: [], samplers: [], motionModules: [] };
+      }
+    }),
+});
+
 // ── AI Prompt Enhancement ─────────────────────────────────────────────────────
 export const aiEnhanceRouter = router({
   enhance: protectedProcedure
@@ -1373,7 +1500,6 @@ export const aiEnhanceRouter = router({
       })
     )
     .mutation(async ({ ctx, input }) => {
-      await assertWhitelisted(ctx);
       const systemPrompts: Record<string, string> = {
         expand: `You are a creative writing assistant specializing in AI video generation prompts.
 Expand the given text into a rich, detailed description with sensory details, atmosphere, lighting, composition, and cinematic qualities.

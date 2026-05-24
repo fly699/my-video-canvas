@@ -1,6 +1,7 @@
 import { memo, useState, useRef, useCallback, useEffect } from "react";
 import { Handle, Position, NodeResizer } from "@xyflow/react";
 import { getNodeConfig } from "../../lib/nodeConfig";
+import { CONNECTION_HINTS } from "../../lib/connectionRules";
 import type { NodeType } from "../../../../shared/types";
 import { useCanvasStore } from "../../hooks/useCanvasStore";
 import { NodeSelectedContext } from "../../contexts/NodeSelectedContext";
@@ -9,7 +10,7 @@ import { useWorkflowRunState } from "../../contexts/WorkflowRunContext";
 import { useCanvasMode } from "../../contexts/CanvasModeContext";
 import { useTheme } from "../../contexts/ThemeContext";
 import {
-  Trash2, Copy, GripVertical, Check, X, Loader2, FileText,
+  Trash2, Copy, GripVertical, Check, X, Loader2, FileText, AlertTriangle,
 } from "lucide-react";
 import { NODE_ICONS } from "../../lib/nodeConfig";
 
@@ -37,6 +38,19 @@ export const BaseNode = memo(function BaseNode({
   const config = getNodeConfig(nodeType);
   const Icon = NODE_ICONS[config.icon] ?? FileText;
   const { deleteNode, duplicateNode, updateNodeTitle, projectId } = useCanvasStore();
+  // Detect ambiguous dual-target connection: when both `input` (left) and `top` handles
+  // receive edges, the workflow runner only uses one — warn the user.
+  const dualTargetConflict = useCanvasStore((s) => {
+    if (!showHandles) return false;
+    let hasInput = false, hasTop = false;
+    for (const e of s.edges) {
+      if (e.target !== id) continue;
+      if (e.targetHandle === "input") hasInput = true;
+      else if (e.targetHandle === "top") hasTop = true;
+      if (hasInput && hasTop) return true;
+    }
+    return false;
+  });
   const deleteNodeMutation = trpc.nodes.delete.useMutation();
   const { mode: canvasMode } = useCanvasMode();
   const { theme } = useTheme();
@@ -292,6 +306,21 @@ export const BaseNode = memo(function BaseNode({
           )}
         </div>
 
+        {dualTargetConflict && (
+          <div
+            title="左侧和顶部输入都已连接 — 运行时只会使用第一个匹配的输入，另一个会被忽略。请只保留一条输入连线。"
+            style={{
+              width: 20, height: 20, borderRadius: 5,
+              background: "oklch(0.70 0.16 65 / 0.18)",
+              border: "1px solid oklch(0.70 0.16 65 / 0.5)",
+              display: "flex", alignItems: "center", justifyContent: "center",
+              cursor: "help", flexShrink: 0,
+            }}
+          >
+            <AlertTriangle size={12} style={{ color: "oklch(0.78 0.16 65)" }} />
+          </div>
+        )}
+
         {headerRight && <div className="flex-shrink-0">{headerRight}</div>}
 
         {/* Type badge */}
@@ -397,14 +426,19 @@ export const BaseNode = memo(function BaseNode({
       </div>{/* end inner overflow:hidden content wrapper */}
 
       {/* ── Connection Handles — outside overflow:hidden so ::before hit-area works ── */}
-      {showHandles && (
-        <>
-          <Handle type="target" position={Position.Left}   id="input"  style={{ ...targetHandle, top: "50%", left: -7 }} />
-          <Handle type="source" position={Position.Right}  id="output" style={{ ...sourceHandle, top: "50%", right: -7 }} />
-          <Handle type="target" position={Position.Top}    id="top"    style={{ ...targetHandle, left: "50%", top: -7 }} />
-          <Handle type="source" position={Position.Bottom} id="bottom" style={{ ...sourceHandle, left: "50%", bottom: -7 }} />
-        </>
-      )}
+      {showHandles && (() => {
+        const hint = CONNECTION_HINTS[nodeType];
+        const inTitle = hint ? `${hint.label} 输入  ${hint.incoming}` : "输入";
+        const outTitle = hint ? `${hint.label} 输出  ${hint.outgoing}` : "输出";
+        return (
+          <>
+            <Handle type="target" position={Position.Left}   id="input"  style={{ ...targetHandle, top: "50%", left: -7 }} title={inTitle} />
+            <Handle type="source" position={Position.Right}  id="output" style={{ ...sourceHandle, top: "50%", right: -7 }} title={outTitle} />
+            <Handle type="target" position={Position.Top}    id="top"    style={{ ...targetHandle, left: "50%", top: -7 }} title={inTitle} />
+            <Handle type="source" position={Position.Bottom} id="bottom" style={{ ...sourceHandle, left: "50%", bottom: -7 }} title={outTitle} />
+          </>
+        );
+      })()}
     </div>
   );
 });

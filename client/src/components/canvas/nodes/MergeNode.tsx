@@ -1,5 +1,4 @@
 import { memo, useState } from "react";
-import { Handle, Position } from "@xyflow/react";
 import { BaseNode } from "../BaseNode";
 import { useCanvasStore } from "../../../hooks/useCanvasStore";
 import type { MergeNodeData, MergeTransition } from "../../../../../shared/types";
@@ -147,8 +146,7 @@ export const MergeNode = memo(function MergeNode({ id, selected, data }: Props) 
   const isFailed = payload.status === "failed";
 
   return (
-    <BaseNode id={id} selected={selected} nodeType="merge" title={data.title} minHeight={200} showHandles={false}>
-      <Handle type="target" position={Position.Top} id="input" style={{ background: accent }} />
+    <BaseNode id={id} selected={selected} nodeType="merge" title={data.title} minHeight={200}>
 
       <div className="flex flex-col gap-3 p-3.5">
 
@@ -327,7 +325,6 @@ export const MergeNode = memo(function MergeNode({ id, selected, data }: Props) 
 
       </div>
 
-      <Handle type="source" position={Position.Bottom} id="output" style={{ background: accent }} />
     </BaseNode>
   );
 });

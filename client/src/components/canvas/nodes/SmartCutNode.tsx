@@ -1,5 +1,4 @@
 import { memo, useCallback } from "react";
-import { Handle, Position } from "@xyflow/react";
 import { BaseNode } from "../BaseNode";
 import { useCanvasStore } from "../../../hooks/useCanvasStore";
 import type { SmartCutNodeData } from "../../../../../shared/types";
@@ -85,8 +84,7 @@ export const SmartCutNode = memo(function SmartCutNode({ id, selected, data }: P
   const aggressiveness = payload.aggressiveness ?? "medium";
 
   return (
-    <BaseNode id={id} selected={selected} nodeType="smart_cut" title={data.title} minHeight={200} resizable showHandles={false}>
-      <Handle type="target" position={Position.Top} id="input" style={{ background: accent }} />
+    <BaseNode id={id} selected={selected} nodeType="smart_cut" title={data.title} minHeight={200} resizable>
 
       <div className="flex flex-col gap-3 p-3.5">
 
@@ -177,7 +175,6 @@ export const SmartCutNode = memo(function SmartCutNode({ id, selected, data }: P
         </p>
       </div>
 
-      <Handle type="source" position={Position.Bottom} id="output" style={{ background: accent }} />
     </BaseNode>
   );
 });

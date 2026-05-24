@@ -2,13 +2,13 @@ import type { NodeType } from "../../../shared/types";
 import {
   ScrollText, Film, Wand2, ImagePlus, Package, Video, Bot, StickyNote,
   AudioWaveform, SlidersHorizontal, Folder, UserRound, Scissors, Merge, Captions, Blend,
-  Zap, Layers, Mic, Scan, PersonStanding,
+  Zap, Layers, Mic, Scan, PersonStanding, Boxes,
 } from "lucide-react";
 
 export const NODE_ICONS: Record<string, React.ComponentType<{ className?: string; style?: React.CSSProperties }>> = {
   ScrollText, Film, Wand2, ImagePlus, Package, Video, Bot, StickyNote,
   AudioWaveform, SlidersHorizontal, Folder, UserRound, Scissors, Merge, Captions, Blend,
-  Zap, Layers, Mic, Scan, PersonStanding,
+  Zap, Layers, Mic, Scan, PersonStanding, Boxes,
 };
 
 export interface NodeConfig {
@@ -245,6 +245,26 @@ export const NODE_CONFIGS: Record<NodeType, NodeConfig> = {
     borderColor: "oklch(0.65 0.20 290 / 0.4)",
     defaultWidth: 380,
     defaultTitle: "数字人",
+  },
+  comfyui_image: {
+    type: "comfyui_image",
+    label: "ComfyUI 图像",
+    icon: "Boxes",
+    color: "oklch(0.68 0.20 100)",
+    bgColor: "oklch(0.68 0.20 100 / 0.08)",
+    borderColor: "oklch(0.68 0.20 100 / 0.4)",
+    defaultWidth: 380,
+    defaultTitle: "ComfyUI 图像",
+  },
+  comfyui_video: {
+    type: "comfyui_video",
+    label: "ComfyUI 视频",
+    icon: "Boxes",
+    color: "oklch(0.62 0.22 50)",
+    bgColor: "oklch(0.62 0.22 50 / 0.08)",
+    borderColor: "oklch(0.62 0.22 50 / 0.4)",
+    defaultWidth: 400,
+    defaultTitle: "ComfyUI 视频",
   },
 };
 

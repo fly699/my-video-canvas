@@ -14,13 +14,14 @@ export interface WorkflowRunState {
   runnableCount: number; // set on start, 0 when not running
 }
 
-const RUNNABLE_TYPES: NodeType[] = [
+export const RUNNABLE_TYPES: NodeType[] = [
   "storyboard", "prompt", "image_gen", "video_task",
   "clip", "merge", "subtitle", "overlay",
   "subtitle_motion", "smart_cut",
+  "comfyui_image", "comfyui_video",
 ];
 
-const VIDEO_SOURCE_TYPES = new Set(["video_task", "clip", "merge", "overlay", "asset", "subtitle", "subtitle_motion", "smart_cut"]);
+const VIDEO_SOURCE_TYPES = new Set(["video_task", "clip", "merge", "overlay", "asset", "subtitle", "subtitle_motion", "smart_cut", "comfyui_video"]);
 
 /** Pick the video output URL from a node's payload regardless of which field it uses. */
 function getNodeVideoUrl(payload: Record<string, unknown>): string | undefined {
@@ -166,6 +167,8 @@ export function useWorkflowRunner() {
   const smartCutMutation = trpc.clip.smartCut.useMutation();
   const subtitleMotionTranscribeMutation = trpc.subtitleMotion.transcribe.useMutation();
   const subtitleMotionBurnMutation = trpc.subtitleMotion.burnMotion.useMutation();
+  const comfyuiImageMutation = trpc.comfyui.generateImage.useMutation();
+  const comfyuiVideoMutation = trpc.comfyui.generateVideo.useMutation();
 
   const runWorkflow = useCallback(async (startNodeId: string | null) => {
     if (runningRef.current) return;
@@ -306,7 +309,9 @@ export function useWorkflowRunner() {
             .filter((e) => e.source === nodeId)
             .flatMap((edge) => {
               const target = currentNodes.find((n) => n.id === edge.target);
-              return target?.data.nodeType === "video_task" && bestUrl
+              const tt = target?.data.nodeType;
+              // Propagate to any downstream that consumes a reference image
+              return (tt === "video_task" || tt === "comfyui_video" || tt === "comfyui_image") && bestUrl
                 ? [{ id: edge.target, payload: { referenceImageUrl: bestUrl } }]
                 : [];
             });
@@ -555,6 +560,115 @@ export function useWorkflowRunner() {
           }, true);
           completed.push(nodeId);
           return "ok";
+
+        // ── ComfyUI Image ────────────────────────────────────────────────────
+        } else if (nodeType === "comfyui_image") {
+          const prompt = (p.prompt as string) || "";
+          const ckpt = (p.ckpt as string) || "";
+          if (!prompt.trim() || !ckpt.trim()) {
+            toast.error(`节点 "${node.data.title}"：提示词和 Checkpoint 必填`);
+            failed.push(nodeId);
+            return "fail";
+          }
+          const template = ((p.workflowTemplate as string) === "img2img") ? "img2img" : "txt2img";
+          const refUrl = (p.referenceImageUrl as string) || undefined;
+          if (template === "img2img" && !refUrl) {
+            toast.error(`节点 "${node.data.title}"：img2img 模板需要参考图`);
+            failed.push(nodeId);
+            return "fail";
+          }
+          const result = await comfyuiImageMutation.mutateAsync({
+            nodeId,
+            projectId: node.data.projectId,
+            customBaseUrl: ((p.customBaseUrl as string) || "").trim() || undefined,
+            workflowTemplate: template,
+            prompt,
+            negPrompt: (p.negPrompt as string) || undefined,
+            ckpt,
+            lora: (p.lora as string) || undefined,
+            steps: typeof p.steps === "number" ? p.steps : 20,
+            cfg: typeof p.cfg === "number" ? p.cfg : 7,
+            seed: typeof p.seed === "number" ? p.seed : -1,
+            width: typeof p.width === "number" ? p.width : 512,
+            height: typeof p.height === "number" ? p.height : 512,
+            referenceImageUrl: refUrl,
+          });
+          // Guard against the node having been deleted while the long-running
+          // mutation was in flight — writing back would resurrect a ghost node.
+          const { nodes: nodesAtSuccess, edges: currentEdges } = useCanvasStore.getState();
+          if (!nodesAtSuccess.some((n) => n.id === nodeId)) {
+            return "ok";
+          }
+          useCanvasStore.getState().updateNodeData(nodeId, {
+            imageUrl: result.url,
+            status: "done",
+            errorMessage: undefined,
+          }, true);
+          // Propagate to downstream video nodes that consume reference image
+          const downstreamUpdates = currentEdges
+            .filter((e) => e.source === nodeId)
+            .flatMap((edge) => {
+              const target = nodesAtSuccess.find((n) => n.id === edge.target);
+              const tt = target?.data.nodeType;
+              return (tt === "video_task" || tt === "comfyui_video") && result.url
+                ? [{ id: edge.target, payload: { referenceImageUrl: result.url } }]
+                : [];
+            });
+          if (downstreamUpdates.length > 0) {
+            useCanvasStore.getState().batchUpdateNodeData(downstreamUpdates);
+          }
+          completed.push(nodeId);
+          return "ok";
+
+        // ── ComfyUI Video ────────────────────────────────────────────────────
+        } else if (nodeType === "comfyui_video") {
+          const prompt = (p.prompt as string) || "";
+          const ckpt = (p.ckpt as string) || "";
+          if (!prompt.trim() || !ckpt.trim()) {
+            toast.error(`节点 "${node.data.title}"：提示词和 Checkpoint 必填`);
+            failed.push(nodeId);
+            return "fail";
+          }
+          const template = ((p.workflowTemplate as string) === "svd") ? "svd" : "animatediff";
+          const refUrl = (p.referenceImageUrl as string) || undefined;
+          if (template === "svd" && !refUrl) {
+            toast.error(`节点 "${node.data.title}"：SVD 模板需要参考图`);
+            failed.push(nodeId);
+            return "fail";
+          }
+          const motionModule = (p.motionModule as string) || undefined;
+          if (template === "animatediff" && !motionModule) {
+            toast.error(`节点 "${node.data.title}"：AnimateDiff 需要 Motion Module`);
+            failed.push(nodeId);
+            return "fail";
+          }
+          const result = await comfyuiVideoMutation.mutateAsync({
+            nodeId,
+            projectId: node.data.projectId,
+            customBaseUrl: ((p.customBaseUrl as string) || "").trim() || undefined,
+            workflowTemplate: template,
+            prompt,
+            negPrompt: (p.negPrompt as string) || undefined,
+            ckpt,
+            motionModule,
+            steps: typeof p.steps === "number" ? p.steps : 20,
+            cfg: typeof p.cfg === "number" ? p.cfg : 7,
+            seed: typeof p.seed === "number" ? p.seed : -1,
+            frames: typeof p.frames === "number" ? p.frames : 16,
+            fps: typeof p.fps === "number" ? p.fps : 8,
+            referenceImageUrl: refUrl,
+          });
+          // Guard against the node having been deleted during the long mutation.
+          if (!useCanvasStore.getState().nodes.some((n) => n.id === nodeId)) {
+            return "ok";
+          }
+          useCanvasStore.getState().updateNodeData(nodeId, {
+            resultVideoUrl: result.url,
+            status: "done",
+            errorMessage: undefined,
+          }, true);
+          completed.push(nodeId);
+          return "ok";
         }
 
         // Unrecognized runnable node type — mark as failed
@@ -608,7 +722,7 @@ export function useWorkflowRunner() {
         });
       }
     }
-  }, [imageGenMutation, videoTaskMutation, clipMutation, mergeMutation, subtitleTranscribeMutation, subtitleBurnMutation, overlayMutation, smartCutMutation, subtitleMotionTranscribeMutation, subtitleMotionBurnMutation]);
+  }, [imageGenMutation, videoTaskMutation, clipMutation, mergeMutation, subtitleTranscribeMutation, subtitleBurnMutation, overlayMutation, smartCutMutation, subtitleMotionTranscribeMutation, subtitleMotionBurnMutation, comfyuiImageMutation, comfyuiVideoMutation]);
 
   const reset = useCallback(() => {
     runningRef.current = false;

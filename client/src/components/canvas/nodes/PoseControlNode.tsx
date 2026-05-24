@@ -1,5 +1,4 @@
 import { memo, useCallback, useMemo } from "react";
-import { Handle, Position } from "@xyflow/react";
 import { BaseNode } from "../BaseNode";
 import { useCanvasStore } from "../../../hooks/useCanvasStore";
 import type { PoseControlNodeData } from "../../../../../shared/types";
@@ -76,8 +75,7 @@ export const PoseControlNode = memo(function PoseControlNode({ id, selected, dat
   const isProcessing = payload.status === "processing" || poseControlMutation.isPending;
 
   return (
-    <BaseNode id={id} selected={selected} nodeType="pose_control" title={data.title} minHeight={200} resizable showHandles={false}>
-      <Handle type="target" position={Position.Top} id="input" style={{ background: accent }} />
+    <BaseNode id={id} selected={selected} nodeType="pose_control" title={data.title} minHeight={200} resizable>
 
       <div className="flex flex-col gap-3 p-3.5">
 
@@ -175,7 +173,6 @@ export const PoseControlNode = memo(function PoseControlNode({ id, selected, dat
         </p>
       </div>
 
-      <Handle type="source" position={Position.Bottom} id="output" style={{ background: accent }} />
     </BaseNode>
   );
 });

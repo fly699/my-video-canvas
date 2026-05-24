@@ -22,7 +22,9 @@ export type NodeType =
   | "pose_control"
   | "voice_clone"
   | "lip_sync"
-  | "avatar";
+  | "avatar"
+  | "comfyui_image"
+  | "comfyui_video";
 
 export const VIDEO_PROVIDERS = [
   "mock",
@@ -370,6 +372,57 @@ export interface AvatarNodeData {
   errorMessage?: string;
 }
 
+// ── ComfyUI ────────────────────────────────────────────────────────────────────
+export type ComfyuiImageTemplate = "txt2img" | "img2img";
+export interface ComfyuiImageNodeData {
+  // Connection
+  customBaseUrl?: string;       // empty = use server-side global default
+  workflowTemplate: ComfyuiImageTemplate;
+  // Prompts
+  prompt: string;
+  negPrompt?: string;
+  // Models
+  ckpt?: string;
+  lora?: string;
+  // Sampling
+  steps?: number;
+  cfg?: number;
+  seed?: number;
+  width?: number;
+  height?: number;
+  // I/O
+  referenceImageUrl?: string;
+  imageUrl?: string;
+  imageStorageKey?: string;
+  status?: "idle" | "processing" | "done" | "failed";
+  errorMessage?: string;
+}
+
+export type ComfyuiVideoTemplate = "animatediff" | "svd";
+export interface ComfyuiVideoNodeData {
+  // Connection
+  customBaseUrl?: string;
+  workflowTemplate: ComfyuiVideoTemplate;
+  // Prompts
+  prompt: string;
+  negPrompt?: string;
+  // Models
+  ckpt?: string;
+  motionModule?: string;
+  // Sampling
+  steps?: number;
+  cfg?: number;
+  seed?: number;
+  frames?: number;
+  fps?: number;
+  // I/O
+  referenceImageUrl?: string;
+  resultVideoUrl?: string;
+  resultStorageKey?: string;
+  status?: "idle" | "processing" | "done" | "failed";
+  errorMessage?: string;
+}
+
 export type NodeData =
   | ScriptNodeData
   | StoryboardNodeData
@@ -392,7 +445,9 @@ export type NodeData =
   | PoseControlNodeData
   | VoiceCloneNodeData
   | LipSyncNodeData
-  | AvatarNodeData;
+  | AvatarNodeData
+  | ComfyuiImageNodeData
+  | ComfyuiVideoNodeData;
 
 // ── Canvas Node ───────────────────────────────────────────────────────────────
 
