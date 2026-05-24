@@ -465,12 +465,12 @@ function buildASSDialogue(entry: SubtitleEntry, style: SubtitleMotionStyle): str
       effectTags = "{\\an2\\move(1920,1050,960,1050,0,400)\\fad(0,300)}";
       break;
     case "karaoke": {
-      const words = text.split(/\s+/).filter(Boolean);
-      if (words.length === 0) { effectTags = "{\\fad(200,200)}"; break; }
+      // Split on the original text BEFORE escaping so that \n boundaries become word boundaries.
+      const rawWords = entry.text.split(/[\s\n]+/).filter(Boolean);
+      if (rawWords.length === 0) { effectTags = "{\\fad(200,200)}"; break; }
       const durMs = (entry.end - entry.start) * 1000;
-      const csPerWord = Math.max(1, Math.round((durMs / 10) / words.length));
-      // text is already escaped; karaoke tags are inside {}, not user content
-      return `Dialogue: 0,${formatASSTime(entry.start)},${formatASSTime(entry.end)},Default,,0,0,0,,${words.map((w) => `{\\kf${csPerWord}}${w}`).join(" ")}`;
+      const csPerWord = Math.max(1, Math.round((durMs / 10) / rawWords.length));
+      return `Dialogue: 0,${formatASSTime(entry.start)},${formatASSTime(entry.end)},Default,,0,0,0,,${rawWords.map((w) => `{\\kf${csPerWord}}${escapeASSText(w)}`).join(" ")}`;
     }
     case "bounce":
       // Pop in with scale bounce then fade out
@@ -602,30 +602,39 @@ export async function smartCutVideo(opts: SmartCutOptions): Promise<SmartCutResu
     const n = opts.keepSegments.length;
     const filterParts: string[] = [];
 
-    // FFmpeg stream labels can only be used as filter input once.
-    // Use split/asplit to create N independent copies before trimming.
-    const vSplitOutputs = Array.from({ length: n }, (_, i) => `[vs${i}]`).join("");
-    filterParts.push(`[0:v]split=${n}${vSplitOutputs}`);
-    if (hasAudio) {
-      const aSplitOutputs = Array.from({ length: n }, (_, i) => `[as${i}]`).join("");
-      filterParts.push(`[0:a]asplit=${n}${aSplitOutputs}`);
-    }
-
-    let concatInputs = "";
-    for (let i = 0; i < n; i++) {
-      const { start, end } = opts.keepSegments[i];
-      filterParts.push(`[vs${i}]trim=start=${start}:end=${end},setpts=PTS-STARTPTS[v${i}]`);
+    if (n === 1) {
+      // split=1 and concat=n=1 are both invalid in FFmpeg — handle single-segment as direct trim.
+      const { start, end } = opts.keepSegments[0];
+      filterParts.push(`[0:v]trim=start=${start}:end=${end},setpts=PTS-STARTPTS[outv]`);
       if (hasAudio) {
-        filterParts.push(`[as${i}]atrim=start=${start}:end=${end},asetpts=PTS-STARTPTS[a${i}]`);
-        concatInputs += `[v${i}][a${i}]`;
-      } else {
-        concatInputs += `[v${i}]`;
+        filterParts.push(`[0:a]atrim=start=${start}:end=${end},asetpts=PTS-STARTPTS[outa]`);
       }
-    }
-    if (hasAudio) {
-      filterParts.push(`${concatInputs}concat=n=${n}:v=1:a=1[outv][outa]`);
     } else {
-      filterParts.push(`${concatInputs}concat=n=${n}:v=1:a=0[outv]`);
+      // FFmpeg stream labels can only be used as filter input once.
+      // Use split/asplit to fan out N independent copies before trimming.
+      const vSplitOutputs = Array.from({ length: n }, (_, i) => `[vs${i}]`).join("");
+      filterParts.push(`[0:v]split=${n}${vSplitOutputs}`);
+      if (hasAudio) {
+        const aSplitOutputs = Array.from({ length: n }, (_, i) => `[as${i}]`).join("");
+        filterParts.push(`[0:a]asplit=${n}${aSplitOutputs}`);
+      }
+
+      let concatInputs = "";
+      for (let i = 0; i < n; i++) {
+        const { start, end } = opts.keepSegments[i];
+        filterParts.push(`[vs${i}]trim=start=${start}:end=${end},setpts=PTS-STARTPTS[v${i}]`);
+        if (hasAudio) {
+          filterParts.push(`[as${i}]atrim=start=${start}:end=${end},asetpts=PTS-STARTPTS[a${i}]`);
+          concatInputs += `[v${i}][a${i}]`;
+        } else {
+          concatInputs += `[v${i}]`;
+        }
+      }
+      if (hasAudio) {
+        filterParts.push(`${concatInputs}concat=n=${n}:v=1:a=1[outv][outa]`);
+      } else {
+        filterParts.push(`${concatInputs}concat=n=${n}:v=1:a=0[outv]`);
+      }
     }
 
     const args = [

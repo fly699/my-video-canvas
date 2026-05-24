@@ -162,7 +162,7 @@ export const nodesRouter = router({
           height: z.number(),
           zIndex: z.number(),
         })
-      ).max(500)
+      ).max(2000)
     )
     .mutation(async ({ ctx, input }) => {
       const projectIds = Array.from(new Set(input.map((n) => n.projectId)));
@@ -918,15 +918,17 @@ score 为 0-100 整数，issues 数组最多 8 条，每条包含 type/line/sugg
     }))
     .mutation(async ({ ctx, input }) => {
       await assertWhitelisted(ctx);
-      const systemPrompt = `你是剧本分析师。从剧本中提取所有对白，格式化为清单：每行一条，格式为"角色名：台词内容"。若无明确角色名则用"旁白"。只输出对白清单，不加任何说明。`;
-      const response = await invokeLLM({
-        messages: [
-          { role: "system" as const, content: systemPrompt },
-          { role: "user" as const, content: input.scriptText },
-        ],
-        model: input.model ?? "gemini-2.5-flash",
+      return dedupe("scripts.extractDialogue", ctx.user.id, input, async () => {
+        const systemPrompt = `你是剧本分析师。从剧本中提取所有对白，格式化为清单：每行一条，格式为"角色名：台词内容"。若无明确角色名则用"旁白"。只输出对白清单，不加任何说明。`;
+        const response = await invokeLLM({
+          messages: [
+            { role: "system" as const, content: systemPrompt },
+            { role: "user" as const, content: input.scriptText },
+          ],
+          model: input.model ?? "gemini-2.5-flash",
+        });
+        return { result: extractTextContent(response).trim() };
       });
-      return { result: extractTextContent(response).trim() };
     }),
 
   generateMoodBoard: protectedProcedure
@@ -1090,6 +1092,7 @@ export const clipRouter = router({
     }))
     .mutation(async ({ ctx, input }) => {
       await assertWhitelisted(ctx);
+      assertSafeUrl(input.inputUrl);
       return dedupe("clip.smartCut", ctx.user.id, input, async () => {
         const transcription = await transcribeAudio({ audioUrl: input.inputUrl });
         if ("error" in transcription) {
@@ -1256,6 +1259,7 @@ export const subtitleMotionRouter = router({
     }))
     .mutation(async ({ ctx, input }) => {
       await assertWhitelisted(ctx);
+      assertSafeUrl(input.videoUrl);
       return dedupe("subtitleMotion.burnMotion", ctx.user.id, input, async () => {
         const result = await burnAssSubtitles(
           input.videoUrl,
