@@ -560,6 +560,19 @@ export interface SmartCutResult {
   outputDuration: number;
 }
 
+async function hasAudioTrack(videoPath: string): Promise<boolean> {
+  try {
+    const { stdout } = await execFileAsync("ffprobe", [
+      "-v", "quiet", "-print_format", "json", "-show_streams",
+      "-select_streams", "a", videoPath,
+    ]);
+    const probe = JSON.parse(stdout) as { streams?: unknown[] };
+    return Array.isArray(probe.streams) && probe.streams.length > 0;
+  } catch {
+    return false;
+  }
+}
+
 export async function smartCutVideo(opts: SmartCutOptions): Promise<SmartCutResult> {
   if (opts.keepSegments.length === 0) throw new Error("keepSegments 不能为空");
 
@@ -568,24 +581,32 @@ export async function smartCutVideo(opts: SmartCutOptions): Promise<SmartCutResu
   const outPath = path.join(os.tmpdir(), outName);
 
   try {
+    const hasAudio = await hasAudioTrack(videoPath);
     const n = opts.keepSegments.length;
     const filterParts: string[] = [];
     let concatInputs = "";
     for (let i = 0; i < n; i++) {
       const { start, end } = opts.keepSegments[i];
       filterParts.push(`[0:v]trim=start=${start}:end=${end},setpts=PTS-STARTPTS[v${i}]`);
-      filterParts.push(`[0:a]atrim=start=${start}:end=${end},asetpts=PTS-STARTPTS[a${i}]`);
-      concatInputs += `[v${i}][a${i}]`;
+      if (hasAudio) {
+        filterParts.push(`[0:a]atrim=start=${start}:end=${end},asetpts=PTS-STARTPTS[a${i}]`);
+        concatInputs += `[v${i}][a${i}]`;
+      } else {
+        concatInputs += `[v${i}]`;
+      }
     }
-    filterParts.push(`${concatInputs}concat=n=${n}:v=1:a=1[outv][outa]`);
+    if (hasAudio) {
+      filterParts.push(`${concatInputs}concat=n=${n}:v=1:a=1[outv][outa]`);
+    } else {
+      filterParts.push(`${concatInputs}concat=n=${n}:v=1:a=0[outv]`);
+    }
 
     const args = [
       "-i", videoPath,
       "-filter_complex", filterParts.join(";"),
       "-map", "[outv]",
-      "-map", "[outa]",
+      ...(hasAudio ? ["-map", "[outa]", "-c:a", "aac"] : []),
       "-c:v", "libx264", "-preset", "fast",
-      "-c:a", "aac",
       "-movflags", "+faststart",
       "-y", outPath,
     ];

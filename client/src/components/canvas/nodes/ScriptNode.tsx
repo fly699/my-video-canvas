@@ -335,6 +335,7 @@ export const ScriptNode = memo(function ScriptNode({ id, selected, data }: Props
 
   const styleTransferMutation = trpc.scripts.applyStyleTransfer.useMutation({
     onSuccess: (result) => {
+      if (!window.confirm(`确认将脚本内容迁移为「${selectedStyle}」风格？此操作将覆盖当前内容，不可撤销。`)) return;
       updateNodeData(id, { content: result.result });
       toast.success(`文风已迁移为「${selectedStyle}」`);
     },
@@ -360,8 +361,9 @@ export const ScriptNode = memo(function ScriptNode({ id, selected, data }: Props
   const anyAdvancedPending = reviewMutation.isPending || variantsMutation.isPending
     || styleTransferMutation.isPending || extractDialogueMutation.isPending || moodBoardMutation.isPending;
 
+  // Only core content-writing mutations block the quick-action buttons; advanced panel mutations run independently.
   const anyPending = generateMutation.isPending || polishMutation.isPending
-    || fullScriptMutation.isPending || summarizeMutation.isPending || anyAdvancedPending;
+    || fullScriptMutation.isPending || summarizeMutation.isPending;
 
   const handleFullGenerate = useCallback(() => {
     if (anyPending) return;

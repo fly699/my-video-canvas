@@ -121,7 +121,7 @@ export const nodesRouter = router({
       z.object({
         id: z.string().optional(),
         projectId: z.number(),
-        type: z.enum(["script", "storyboard", "prompt", "image_gen", "asset", "video_task", "ai_chat", "note", "audio", "post_process", "group", "character", "clip", "merge", "subtitle", "overlay"]),
+        type: z.enum(["script", "storyboard", "prompt", "image_gen", "asset", "video_task", "ai_chat", "note", "audio", "post_process", "group", "character", "clip", "merge", "subtitle", "overlay", "subtitle_motion", "smart_cut", "pose_control", "voice_clone", "lip_sync", "avatar"]),
         title: z.string().optional(),
         data: nodeDataSchema,
         posX: z.number(),
@@ -153,7 +153,7 @@ export const nodesRouter = router({
         z.object({
           id: z.string(),
           projectId: z.number(),
-          type: z.enum(["script", "storyboard", "prompt", "image_gen", "asset", "video_task", "ai_chat", "note", "audio", "post_process", "group", "character", "clip", "merge", "subtitle", "overlay"]),
+          type: z.enum(["script", "storyboard", "prompt", "image_gen", "asset", "video_task", "ai_chat", "note", "audio", "post_process", "group", "character", "clip", "merge", "subtitle", "overlay", "subtitle_motion", "smart_cut", "pose_control", "voice_clone", "lip_sync", "avatar"]),
           title: z.string().optional().nullable(),
           data: nodeDataSchema,
           posX: z.number(),
@@ -820,7 +820,9 @@ score 为 0-100 整数，issues 数组最多 8 条，每条包含 type/line/sugg
       if (!jsonMatch) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "AI 未返回有效 JSON" });
       let parsed: { score: number; issues: Array<{ type: string; line: string; suggestion: string }> };
       try { parsed = JSON.parse(jsonMatch[0]); } catch { throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "JSON 解析失败" }); }
-      return { score: parsed.score ?? 0, issues: parsed.issues ?? [] };
+      const score = Number.isFinite(Number(parsed.score)) ? Math.round(Number(parsed.score)) : 0;
+      const issues = Array.isArray(parsed.issues) ? parsed.issues : [];
+      return { score, issues };
       });
     }),
 
@@ -945,8 +947,14 @@ score 为 0-100 整数，issues 数组最多 8 条，每条包含 type/line/sugg
       const text = extractTextContent(response);
       const jsonMatch = text.match(/\[[\s\S]*\]/);
       if (!jsonMatch) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "AI 未返回有效 JSON" });
-      let scenes: Array<{ sceneIndex: number; sceneTitle: string; prompt: string; negPrompt?: string }>;
-      try { scenes = JSON.parse(jsonMatch[0]); } catch { throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "JSON 解析失败" }); }
+      let rawScenes: Array<{ sceneIndex?: number; sceneTitle?: string; prompt?: string; negPrompt?: string }>;
+      try { rawScenes = JSON.parse(jsonMatch[0]); } catch { throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "JSON 解析失败" }); }
+      const scenes = rawScenes.map((s, idx) => ({
+        sceneIndex: typeof s.sceneIndex === "number" ? s.sceneIndex : idx + 1,
+        sceneTitle: s.sceneTitle ?? `场景 ${idx + 1}`,
+        prompt: s.prompt ?? "",
+        negPrompt: s.negPrompt,
+      }));
       return { scenes };
       });
     }),
@@ -1078,7 +1086,6 @@ export const clipRouter = router({
     .mutation(async ({ ctx, input }) => {
       await assertWhitelisted(ctx);
       return dedupe("clip.smartCut", ctx.user.id, input, async () => {
-        const { transcribeAudio } = await import("../_core/voiceTranscription");
         const transcription = await transcribeAudio({ audioUrl: input.inputUrl });
         if ("error" in transcription) {
           throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: `转录失败：${transcription.error}` });
@@ -1110,7 +1117,7 @@ export const clipRouter = router({
         if (!jsonMatch) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "AI 未返回有效 JSON" });
         let parsed: { keep: Array<{ start: number; end: number }> };
         try { parsed = JSON.parse(jsonMatch[0]); } catch { throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "JSON 解析失败" }); }
-        const keepSegments = (parsed.keep ?? []).filter((seg) => seg.end > seg.start);
+        const keepSegments = Array.isArray(parsed.keep) ? parsed.keep.filter((seg) => typeof seg.start === "number" && typeof seg.end === "number" && seg.end > seg.start) : [];
         if (keepSegments.length === 0) throw new TRPCError({ code: "UNPROCESSABLE_CONTENT", message: "AI 未找到可保留片段，请调低激进度后重试" });
         const result = await smartCutVideo({ inputUrl: input.inputUrl, keepSegments });
         return { url: result.url, outputDuration: result.outputDuration };
@@ -1125,7 +1132,7 @@ export const clipRouter = router({
     }))
     .mutation(async ({ ctx, input }) => {
       await assertWhitelisted(ctx);
-      const { generateImage } = await import("../_core/imageGeneration");
+      assertSafeUrl(input.referenceImageUrl);
       const result = await generateImage({
         prompt: input.prompt,
         model: "hf_flux_pro",
@@ -1224,7 +1231,6 @@ export const subtitleMotionRouter = router({
     .mutation(async ({ ctx, input }) => {
       await assertWhitelisted(ctx);
       return dedupe("subtitleMotion.transcribe", ctx.user.id, input, async () => {
-        const { transcribeAudio } = await import("../_core/voiceTranscription");
         const result = await transcribeAudio({ audioUrl: input.audioUrl, language: input.language });
         if ("error" in result) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: result.error });
         const entries: SubtitleEntry[] = result.segments.map((s) => ({ start: s.start, end: s.end, text: s.text.trim() }));
@@ -1256,7 +1262,8 @@ export const subtitleMotionRouter = router({
 export const voiceCloneRouter = router({
   clone: protectedProcedure
     .input(z.object({ referenceAudioUrl: z.string().url().optional(), text: z.string().min(1).max(5000) }))
-    .mutation(async () => {
+    .mutation(async ({ ctx }) => {
+      await assertWhitelisted(ctx);
       throw new TRPCError({ code: "METHOD_NOT_SUPPORTED", message: "声音克隆功能暂未启用，需要配置 ElevenLabs API Key" });
     }),
 });
@@ -1264,7 +1271,8 @@ export const voiceCloneRouter = router({
 export const lipSyncRouter = router({
   sync: protectedProcedure
     .input(z.object({ videoUrl: z.string().url(), audioUrl: z.string().url() }))
-    .mutation(async () => {
+    .mutation(async ({ ctx }) => {
+      await assertWhitelisted(ctx);
       throw new TRPCError({ code: "METHOD_NOT_SUPPORTED", message: "唇形同步功能暂未启用，需要配置 Sync.so API Key" });
     }),
 });
@@ -1272,7 +1280,8 @@ export const lipSyncRouter = router({
 export const avatarRouter = router({
   generate: protectedProcedure
     .input(z.object({ avatarDescription: z.string().min(1).max(500), script: z.string().min(1).max(5000) }))
-    .mutation(async () => {
+    .mutation(async ({ ctx }) => {
+      await assertWhitelisted(ctx);
       throw new TRPCError({ code: "METHOD_NOT_SUPPORTED", message: "数字人功能暂未启用，需要配置 D-ID API Key" });
     }),
 });

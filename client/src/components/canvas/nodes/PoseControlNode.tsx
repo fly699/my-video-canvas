@@ -1,4 +1,4 @@
-import { memo, useCallback } from "react";
+import { memo, useCallback, useMemo } from "react";
 import { Handle, Position } from "@xyflow/react";
 import { BaseNode } from "../BaseNode";
 import { useCanvasStore } from "../../../hooks/useCanvasStore";
@@ -40,7 +40,7 @@ export const PoseControlNode = memo(function PoseControlNode({ id, selected, dat
 
   const update = useCallback((patch: Partial<PoseControlNodeData>) => updateNodeData(id, patch), [id, updateNodeData]);
 
-  const findSourceImageUrl = (): string | undefined => {
+  const sourceImageUrl = useMemo(() => {
     const inEdges = edges.filter((e) => e.target === id);
     for (const edge of inEdges) {
       const src = nodes.find((n) => n.id === edge.source);
@@ -50,7 +50,7 @@ export const PoseControlNode = memo(function PoseControlNode({ id, selected, dat
       if (url) return url;
     }
     return undefined;
-  };
+  }, [edges, nodes, id]);
 
   const poseControlMutation = trpc.clip.poseControl.useMutation({
     onSuccess: (result) => {
@@ -62,7 +62,7 @@ export const PoseControlNode = memo(function PoseControlNode({ id, selected, dat
 
   const handleRun = () => {
     if (poseControlMutation.isPending) return;
-    const refUrl = payload.referenceImageUrl || findSourceImageUrl();
+    const refUrl = payload.referenceImageUrl || sourceImageUrl;
     if (!refUrl) { toast.error("请先连接图像节点或填写参考图 URL"); return; }
     if (!payload.prompt?.trim()) { toast.error("请填写图像描述提示词"); return; }
     update({ status: "processing", errorMessage: undefined });
@@ -104,9 +104,9 @@ export const PoseControlNode = memo(function PoseControlNode({ id, selected, dat
         </div>
 
         {/* Reference image preview */}
-        {(payload.referenceImageUrl || findSourceImageUrl()) && (
+        {(payload.referenceImageUrl || sourceImageUrl) && (
           <img
-            src={payload.referenceImageUrl || findSourceImageUrl()}
+            src={payload.referenceImageUrl || sourceImageUrl}
             alt="参考构图"
             className="w-full rounded-lg nodrag"
             style={{ maxHeight: 100, objectFit: "cover", border: `1px solid ${accentA(0.3)}` }}
