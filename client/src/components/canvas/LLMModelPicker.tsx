@@ -58,16 +58,19 @@ export function LLMModelPicker({ value, onChange, disabled }: Props) {
 
       {open && btnRect && createPortal(
         <>
-          {/* Backdrop to close on outside click */}
+          {/* Backdrop to close on outside click — skip if mousedown target is the toggle button itself */}
           <div
-            style={{ position: "fixed", inset: 0, zIndex: 99990 }}
-            onMouseDown={() => setOpen(false)}
+            style={{ position: "fixed", inset: 0, zIndex: 99980 }}
+            onMouseDown={(e) => {
+              if (btnRef.current?.contains(e.target as Node)) return;
+              setOpen(false);
+            }}
           />
           <div
             className="nodrag rounded-xl overflow-hidden"
             style={{
               position: "fixed",
-              zIndex: 99991,
+              zIndex: 99981,
               bottom: window.innerHeight - btnRect.top + 6,
               left: btnRect.left,
               background: "var(--c-base)",

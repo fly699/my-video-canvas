@@ -30,7 +30,7 @@ function formatAIError(err: unknown): string {
   if (err instanceof TRPCClientError) {
     if (err.data?.zodError) return "输入内容不符合要求，请检查字段长度";
     if (err.data?.httpStatus === 500) return "服务器处理失败，请稍后重试";
-    if (err.message?.includes("fetch") || err.message?.includes("network")) return "网络连接失败，请检查网络后重试";
+    if (err.message?.toLowerCase().includes("fetch") || err.message?.toLowerCase().includes("network")) return "网络连接失败，请检查网络后重试";
     return err.message ?? "请求失败，请重试";
   }
   return "未知错误，请重试";
@@ -213,6 +213,7 @@ export const StoryboardNode = memo(function StoryboardNode({ id, selected, data 
   }, [id]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const handleGenerate = () => {
+    if (generating) return;
     if (!payload.promptText?.trim()) { toast.error("请先填写提示词"); return; }
     setGenerating(true);
 
@@ -230,9 +231,12 @@ export const StoryboardNode = memo(function StoryboardNode({ id, selected, data 
         if (cp.characterKind === "scene" && cp.sceneDescription) charDescParts.push(cp.sceneDescription);
       }
     }
-    const enhancedPrompt = charDescParts.length
+    const rawPrompt = charDescParts.length
       ? `${payload.promptText}, ${charDescParts.join(", ")}`
       : payload.promptText;
+    const enhancedPrompt = Array.from(rawPrompt).length > 2000
+      ? Array.from(rawPrompt).slice(0, 2000).join("")
+      : rawPrompt;
 
     genImageMutation.mutate({
       prompt: enhancedPrompt,
@@ -240,7 +244,7 @@ export const StoryboardNode = memo(function StoryboardNode({ id, selected, data 
       style: payload.colorTone,
       referenceImageUrl: charRefUrl,
       model,
-      batchSize: batchCount > 1 ? batchCount : undefined,
+      batchSize: model === "hf_soul_standard" && batchCount > 1 ? batchCount : undefined,
     });
   };
 
@@ -553,21 +557,21 @@ export const StoryboardNode = memo(function StoryboardNode({ id, selected, data 
           </div>
           <button
             onClick={handleExpandPrompt}
-            disabled={expandingPrompt || !payload.description?.trim()}
+            disabled={expandingPrompt || expandingDesc || translating || !payload.description?.trim()}
             className="nodrag flex items-center gap-1 px-2 py-1 rounded text-[10px] transition-all self-start"
             style={{
-              background: expandingPrompt || !payload.description?.trim()
+              background: expandingPrompt || expandingDesc || translating || !payload.description?.trim()
                 ? "var(--c-surface)"
                 : "oklch(0.65 0.20 160 / 0.12)",
               borderWidth: 1,
               borderStyle: "solid",
-              borderColor: expandingPrompt || !payload.description?.trim()
+              borderColor: expandingPrompt || expandingDesc || translating || !payload.description?.trim()
                 ? "var(--c-bd2)"
                 : "oklch(0.65 0.20 160 / 0.35)",
-              color: expandingPrompt || !payload.description?.trim()
+              color: expandingPrompt || expandingDesc || translating || !payload.description?.trim()
                 ? "var(--c-t4)"
                 : "oklch(0.65 0.20 160)",
-              cursor: expandingPrompt || !payload.description?.trim() ? "not-allowed" : "pointer",
+              cursor: expandingPrompt || expandingDesc || translating || !payload.description?.trim() ? "not-allowed" : "pointer",
             }}
           >
             {expandingPrompt ? <Loader2 className="w-3 h-3 animate-spin" /> : <Wand2 className="w-3 h-3" />}
@@ -753,10 +757,13 @@ export const StoryboardNode = memo(function StoryboardNode({ id, selected, data 
       {/* ── Image model picker portal (avoids overflow:hidden clipping from BaseNode inner wrapper) ── */}
       {showModelPicker && modelPickerRect && createPortal(
         <>
-          {/* Backdrop to close on outside click */}
+          {/* Backdrop to close on outside click — skip if mousedown target is the toggle button itself */}
           <div
             style={{ position: "fixed", inset: 0, zIndex: 99990 }}
-            onMouseDown={() => setShowModelPicker(false)}
+            onMouseDown={(e) => {
+              if (modelBtnRef.current?.contains(e.target as Node)) return;
+              setShowModelPicker(false);
+            }}
           />
           <div
             className="rounded-lg overflow-hidden"
