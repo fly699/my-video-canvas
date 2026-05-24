@@ -33,7 +33,8 @@ export function assertSafeUrl(url: string): void {
     /^::1$/,
     /^::ffff:/i,
     /^0\./,
-    /^fd[0-9a-f]{2}:/i,
+    /^f[cd][0-9a-f]{2}:/i,  // fc00::/7 ULA (fc and fd prefix)
+    /^fe[89ab][0-9a-f]:/i,  // fe80::/10 link-local
   ];
   if (privatePatterns.some((p) => p.test(host))) {
     throw new Error(`Access to private/local hosts is not allowed: ${hostname}`);
@@ -315,18 +316,31 @@ export async function mergeVideos(opts: MergeOptions): Promise<MergeResult> {
       if (n === 1) filterStr = "[0:v]copy[vout];";
       filterStr = filterStr.replace(/;$/, "");
 
+      // Only build audio filter when all inputs have an audio track.
+      // hasAudioTrack returns true on ffprobe failure (conservative), so a single
+      // silent video in the mix will cause FFmpeg to fail on [i:a] reference.
+      const hasAudioFlags = await Promise.all(inputPaths.map((p) => hasAudioTrack(p)));
+      const allHaveAudio = hasAudioFlags.every(Boolean);
+
       let audioFilter = "";
-      const audioInputs = inputPaths.map((_, i) => `[${i}:a]`).join("");
-      if (bgMusicPath) {
-        const bgIdx = n;
-        audioFilter = `;${audioInputs}concat=n=${n}:v=0:a=1[acat];[acat][${bgIdx}:a]amix=inputs=2:weights=1|${bgVol.toFixed(4)}[aout]`;
-      } else {
-        audioFilter = `;${audioInputs}concat=n=${n}:v=0:a=1[aout]`;
+      if (allHaveAudio) {
+        const audioInputs = inputPaths.map((_, i) => `[${i}:a]`).join("");
+        if (bgMusicPath) {
+          const bgIdx = n;
+          audioFilter = `;${audioInputs}concat=n=${n}:v=0:a=1[acat];[acat][${bgIdx}:a]amix=inputs=2:weights=1|${bgVol.toFixed(4)}[aout]`;
+        } else {
+          audioFilter = `;${audioInputs}concat=n=${n}:v=0:a=1[aout]`;
+        }
       }
 
       args.push("-filter_complex", filterStr + audioFilter);
-      args.push("-map", "[vout]", "-map", "[aout]");
-      args.push("-c:v", "libx264", "-preset", "fast", "-c:a", "aac");
+      if (allHaveAudio) {
+        args.push("-map", "[vout]", "-map", "[aout]");
+        args.push("-c:v", "libx264", "-preset", "fast", "-c:a", "aac");
+      } else {
+        args.push("-map", "[vout]");
+        args.push("-c:v", "libx264", "-preset", "fast");
+      }
       args.push("-movflags", "+faststart", "-y", outPath);
 
       try {
@@ -391,6 +405,7 @@ export async function burnSubtitles(
   const outPath = path.join(os.tmpdir(), outName);
 
   try {
+    const hasAudio = await hasAudioTrack(videoPath);
     await fs.writeFile(srtPath, generateSRT(entries), "utf8");
 
     // FFmpeg filtergraph escaping: backslash → \\, colon → \:, comma → \,, single-quote → \'
@@ -404,7 +419,7 @@ export async function burnSubtitles(
       "-i", videoPath,
       "-vf", subsFilter,
       "-c:v", "libx264", "-preset", "fast",
-      "-c:a", "copy",
+      ...(hasAudio ? ["-c:a", "copy"] : []),
       "-movflags", "+faststart",
       "-y", outPath,
     ];

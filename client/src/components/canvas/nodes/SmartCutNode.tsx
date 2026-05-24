@@ -153,8 +153,9 @@ export const SmartCutNode = memo(function SmartCutNode({ id, selected, data }: P
               <Download style={{ width: 10, height: 10 }} /> 下载智能剪辑视频
             </a>
             <button onClick={() => update({ outputUrl: undefined, status: "idle", errorMessage: undefined, outputDuration: undefined, originalDuration: undefined })}
+              disabled={isProcessing}
               className="nodrag flex items-center justify-center gap-1 py-1.5 rounded-lg text-[10px]"
-              style={{ background: "var(--c-surface)", border: "1px solid var(--c-bd2)", color: "var(--c-t4)", cursor: "pointer" }}>
+              style={{ background: "var(--c-surface)", border: "1px solid var(--c-bd2)", color: "var(--c-t4)", cursor: isProcessing ? "not-allowed" : "pointer", opacity: isProcessing ? 0.5 : 1 }}>
               <RotateCcw style={{ width: 9, height: 9 }} /> 重置
             </button>
           </div>

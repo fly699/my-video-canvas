@@ -96,8 +96,8 @@ export const CONNECTION_HINTS: Record<
   },
   asset: {
     label: "素材",
-    outgoing: "→ 图像生成 / 视频任务 / 剪辑",
-    incoming: "← 图像生成 / 视频任务 / 剪辑",
+    outgoing: "→ 图像生成 / 视频任务 / 剪辑 / 合并 / 字幕 / 动态字幕 / 智能剪辑 / 构图控制",
+    incoming: "← 图像生成 / 视频任务 / 剪辑 / 叠加 / 字幕 / 动态字幕 / 智能剪辑 / 声音克隆 / 唇形同步 / 数字人 / 合并",
   },
   ai_chat: {
     label: "AI对话",

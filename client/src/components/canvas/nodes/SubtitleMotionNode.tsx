@@ -196,8 +196,9 @@ export const SubtitleMotionNode = memo(function SubtitleMotionNode({ id, selecte
               <div className="flex flex-col gap-1.5">
                 <div className="flex items-center justify-between">
                   <label style={{ ...labelStyle, marginBottom: 0 }}>字幕条目（{payload.entries!.length}条）</label>
-                  <button onClick={() => update({ entries: [] })} className="nodrag flex items-center gap-1 text-[9px] px-1.5 py-0.5 rounded"
-                    style={{ background: "var(--c-surface)", border: "1px solid var(--c-bd2)", color: "var(--c-t4)", cursor: "pointer" }}>
+                  <button onClick={() => update({ entries: [] })} disabled={isTranscribing || isBurning}
+                    className="nodrag flex items-center gap-1 text-[9px] px-1.5 py-0.5 rounded"
+                    style={{ background: "var(--c-surface)", border: "1px solid var(--c-bd2)", color: "var(--c-t4)", cursor: isTranscribing || isBurning ? "not-allowed" : "pointer", opacity: isTranscribing || isBurning ? 0.5 : 1 }}>
                     <X style={{ width: 8, height: 8 }} /> 清空
                   </button>
                 </div>
