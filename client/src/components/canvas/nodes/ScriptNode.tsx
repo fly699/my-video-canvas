@@ -176,7 +176,8 @@ export const ScriptNode = memo(function ScriptNode({ id, selected, data }: Props
   }, [id, updateNodeData]);
 
   // Duration state — persisted to payload.totalDuration
-  const initDuration = payload.totalDuration !== undefined ? Math.max(10, Math.min(600, Number(payload.totalDuration))) : 60;
+  const _durNum = Number(payload.totalDuration);
+  const initDuration = (payload.totalDuration !== undefined && !isNaN(_durNum)) ? Math.max(10, Math.min(600, _durNum)) : 60;
   const [duration,     setDuration]    = useState(initDuration);
   const [durationText, setDurationText] = useState(String(initDuration));
   const durationInputRef = useRef<HTMLInputElement>(null);
@@ -208,7 +209,8 @@ export const ScriptNode = memo(function ScriptNode({ id, selected, data }: Props
   // Sync duration when payload changes externally (collab / undo-redo)
   useEffect(() => {
     if (durationInputRef.current !== null && durationInputRef.current === document.activeElement) return;
-    const v = payload.totalDuration !== undefined ? Math.max(10, Math.min(600, Number(payload.totalDuration))) : 60;
+    const _n = Number(payload.totalDuration);
+    const v = (payload.totalDuration !== undefined && !isNaN(_n)) ? Math.max(10, Math.min(600, _n)) : 60;
     setDuration(v);
     setDurationText(String(v));
   }, [payload.totalDuration]); // eslint-disable-line react-hooks/exhaustive-deps
@@ -224,7 +226,10 @@ export const ScriptNode = memo(function ScriptNode({ id, selected, data }: Props
     if (typeof payload.aiSceneCount === "number") setSceneCount(Math.max(2, Math.min(12, payload.aiSceneCount)));
   }, [payload.aiSceneCount]);
   useEffect(() => {
-    if (payload.aiLlmModel) setLlmModel(payload.aiLlmModel as LLMModelId);
+    if (payload.aiLlmModel !== undefined) {
+      const isValid = LLM_MODELS.some((m) => m.id === payload.aiLlmModel);
+      setLlmModel(isValid ? (payload.aiLlmModel as LLMModelId) : "claude-sonnet-4-6");
+    }
   }, [payload.aiLlmModel]);
 
   // ── Mutations ─────────────────────────────────────────────────────────────
@@ -267,7 +272,8 @@ export const ScriptNode = memo(function ScriptNode({ id, selected, data }: Props
 
   const fullScriptMutation = trpc.scripts.generateFullScript.useMutation({
     onSuccess: (result) => {
-      if (result.scriptText) {
+      const scriptFilled = !!result.scriptText;
+      if (scriptFilled) {
         updateNodeData(id, { content: result.scriptText });
       }
       let nodesCreated = 0;
@@ -282,7 +288,9 @@ export const ScriptNode = memo(function ScriptNode({ id, selected, data }: Props
         }
       }
       toast.success("AI 剧本已生成", {
-        description: nodesCreated > 0 ? `剧本已填入，${nodesCreated} 个分镜节点已创建` : "剧本已填入",
+        description: nodesCreated > 0
+          ? `${scriptFilled ? "剧本已填入，" : ""}${nodesCreated} 个分镜节点已创建`
+          : scriptFilled ? "剧本已填入" : "分镜节点已创建",
         duration: 5000,
       });
     },
@@ -312,7 +320,7 @@ export const ScriptNode = memo(function ScriptNode({ id, selected, data }: Props
       aspectRatio,
       model: llmModel,
     });
-  }, [payload.synopsis, payload.content, commitDuration, genre, style, mood, sceneCount, targetModel, aspectRatio, llmModel, fullScriptMutation]);
+  }, [payload.synopsis, payload.content, commitDuration, genre, style, mood, sceneCount, targetModel, aspectRatio, llmModel, fullScriptMutation.mutate]);
 
   const handleCopy = useCallback(async () => {
     const text = payload.content?.trim();
@@ -331,8 +339,10 @@ export const ScriptNode = memo(function ScriptNode({ id, selected, data }: Props
   const handleSummarize = useCallback(() => {
     const text = payload.content?.trim();
     if (!text) { toast.error("请先填写脚本内容"); return; }
-    summarizeMutation.mutate({ text, mode: "summarize", model: llmModel });
-  }, [payload.content, llmModel, summarizeMutation]);
+    const safeText = text.length > 8000 ? text.slice(0, 8000) : text;
+    if (text.length > 8000) toast.warning("脚本过长，已截断至 8000 字进行梗概提取");
+    summarizeMutation.mutate({ text: safeText, mode: "summarize", model: llmModel });
+  }, [payload.content, llmModel, summarizeMutation.mutate]);
 
   // ── Per-scene duration estimate ───────────────────────────────────────────
   const perSceneSecs = Math.round(duration / Math.max(1, sceneCount));
@@ -416,7 +426,10 @@ export const ScriptNode = memo(function ScriptNode({ id, selected, data }: Props
           <button
             onClick={() => {
               if (!payload.content?.trim()) { toast.error("请先填写脚本内容"); return; }
-              polishMutation.mutate({ text: payload.content ?? "", mode: polishMode, model: llmModel });
+              const rawText = payload.content ?? "";
+              const text = rawText.length > 8000 ? rawText.slice(0, 8000) : rawText;
+              if (rawText.length > 8000) toast.warning("脚本过长，已截断至 8000 字进行润色");
+              polishMutation.mutate({ text, mode: polishMode, model: llmModel });
             }}
             disabled={anyPending}
             className="nodrag flex items-center gap-1 px-1.5 py-0.5 rounded-md text-[9px] font-medium transition-all"
