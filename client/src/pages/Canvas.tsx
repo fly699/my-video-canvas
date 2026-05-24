@@ -1507,7 +1507,7 @@ function CanvasInner({ projectId }: { projectId: number }) {
                   }}
                 >
                   <Plus className="w-3.5 h-3.5" />
-                  添加
+                  <span data-toolbar-label>添加</span>
                 </button>
               </TooltipTrigger>
               <TooltipContent side="top" className="text-xs">添加节点</TooltipContent>
@@ -1596,12 +1596,12 @@ function CanvasInner({ projectId }: { projectId: number }) {
                   {runState.running ? (
                     <>
                       <Loader2 className="w-3 h-3 animate-spin" />
-                      运行中 {runState.completedIds.length + runState.failedIds.length}/{runState.runnableCount || nodes.length}
+                      <span data-toolbar-label>运行中 {runState.completedIds.length + runState.failedIds.length}/{runState.runnableCount || nodes.length}</span>
                     </>
                   ) : (
                     <>
                       <Play className="w-3 h-3" />
-                      运行
+                      <span data-toolbar-label>运行</span>
                     </>
                   )}
                 </button>
@@ -1749,7 +1749,7 @@ function CanvasInner({ projectId }: { projectId: number }) {
                   }}
                 >
                   <Palette className="w-3.5 h-3.5" />
-                  <span>{canvasMode === "creative" ? "创意" : "专业"}</span>
+                  <span data-toolbar-label>{canvasMode === "creative" ? "创意" : "专业"}</span>
                 </button>
               </TooltipTrigger>
               <TooltipContent side="top" className="text-xs">

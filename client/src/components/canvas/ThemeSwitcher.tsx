@@ -20,7 +20,7 @@ export function ThemeSwitcher() {
   const hiddenThemes = THEMES.filter((t) => !visibleIds.includes(t.id));
 
   return (
-    <div style={{ position: "relative", display: "flex", alignItems: "center", gap: 3 }}>
+    <div data-theme-swatches style={{ position: "relative", display: "flex", alignItems: "center", gap: 3 }}>
       {/* Always-visible 3 swatches */}
       {visibleThemes.map((t) => (
         <Swatch
