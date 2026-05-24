@@ -17,11 +17,90 @@ const FLOW_STEPS: { type: NodeType; label: string }[] = [
   { type: "video_task", label: "视频" },
 ];
 
+// 药丸组件
+function NodePill({ label, color }: { label: string; color: string }) {
+  return (
+    <span
+      style={{
+        fontSize: 11,
+        padding: "2px 8px",
+        borderRadius: 99,
+        border: `1px solid ${color.replace(")", " / 0.3)")}`,
+        background: color.replace(")", " / 0.1)"),
+        color: color,
+        whiteSpace: "nowrap" as const,
+      }}
+    >
+      {label}
+    </span>
+  );
+}
+
 function WelcomeModal({ onClose }: { onClose: () => void }) {
   function handleClose() {
     localStorage.setItem(STORAGE_KEY, "1");
     onClose();
   }
+
+  const coreFlow = [
+    { label: "脚本", color: "oklch(0.62 0.18 240)" },
+    { label: "分镜", color: "oklch(0.65 0.20 160)" },
+    { label: "图像生成", color: "oklch(0.72 0.20 330)" },
+    { label: "视频任务", color: "oklch(0.62 0.20 25)" },
+    { label: "剪辑", color: "oklch(0.68 0.20 55)" },
+  ];
+
+  const nodeCategories = [
+    {
+      title: "创作层",
+      nodes: [
+        { label: "脚本", color: "oklch(0.62 0.18 240)" },
+        { label: "分镜", color: "oklch(0.65 0.20 160)" },
+        { label: "提示词", color: "oklch(0.68 0.22 300)" },
+        { label: "AI对话", color: "oklch(0.70 0.18 200)" },
+        { label: "便签", color: "oklch(0.60 0.10 90)" },
+        { label: "角色/场景", color: "oklch(0.66 0.18 140)" },
+      ],
+    },
+    {
+      title: "生成层",
+      nodes: [
+        { label: "图像生成", color: "oklch(0.72 0.20 330)" },
+        { label: "视频任务", color: "oklch(0.62 0.20 25)" },
+        { label: "素材", color: "oklch(0.65 0.18 60)" },
+        { label: "音频", color: "oklch(0.68 0.20 340)" },
+        { label: "构图控制", color: "oklch(0.65 0.20 310)" },
+      ],
+    },
+    {
+      title: "后期层",
+      nodes: [
+        { label: "剪辑", color: "oklch(0.68 0.20 55)" },
+        { label: "合并", color: "oklch(0.62 0.20 270)" },
+        { label: "叠加", color: "oklch(0.65 0.18 30)" },
+        { label: "字幕", color: "oklch(0.65 0.18 170)" },
+        { label: "动态字幕", color: "oklch(0.68 0.20 175)" },
+        { label: "智能剪辑", color: "oklch(0.68 0.22 65)" },
+        { label: "后处理", color: "oklch(0.65 0.18 190)" },
+      ],
+    },
+    {
+      title: "高级层",
+      nodes: [
+        { label: "声音克隆", color: "oklch(0.65 0.18 350)" },
+        { label: "唇形同步", color: "oklch(0.62 0.20 220)" },
+        { label: "数字人", color: "oklch(0.65 0.20 290)" },
+      ],
+    },
+  ];
+
+  const shortcuts = [
+    { action: "添加节点", key: '点击"添加"按钮' },
+    { action: "连接节点", key: "拖拽连接点" },
+    { action: "撤销重做", key: "Ctrl+Z / Y" },
+    { action: "搜索节点", key: "Ctrl+K" },
+    { action: "运行工作流", key: '点击"运行"' },
+  ];
 
   return (
     <div
@@ -38,158 +117,216 @@ function WelcomeModal({ onClose }: { onClose: () => void }) {
     >
       <div
         style={{
-          width: 480,
+          width: 580,
+          maxHeight: "80vh",
           backgroundColor: "var(--c-base)",
           border: "1px solid var(--c-bd2)",
           borderRadius: 16,
-          padding: "32px 36px",
           display: "flex",
           flexDirection: "column",
-          gap: 24,
           boxShadow: "0 24px 64px oklch(0 0 0 / 0.6)",
+          overflow: "hidden",
         }}
       >
-        <div style={{ textAlign: "center" }}>
-          <div
-            style={{
-              fontSize: 26,
-              fontWeight: 700,
-              color: "var(--c-t1)",
-              marginBottom: 6,
-            }}
-          >
-            欢迎使用 AI 视频画布
-          </div>
-          <div style={{ fontSize: 14, color: "var(--c-t3)" }}>
-            三步掌握工作流
-          </div>
-        </div>
-
-        <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-          {[
-            {
-              icon: <PenLine size={15} />,
-              color: "oklch(0.62 0.14 250)",
-              title: "创作内容",
-              desc: "添加脚本节点，写下你的视频创意或故事",
-            },
-            {
-              icon: <Sparkles size={15} />,
-              color: "oklch(0.62 0.14 145)",
-              title: "生成素材",
-              desc: "连接分镜 → 图像生成 → 视频任务，AI 自动生成画面",
-            },
-            {
-              icon: <Scissors size={15} />,
-              color: "oklch(0.62 0.16 30)",
-              title: "剪辑输出",
-              desc: "用剪辑节点修剪时长、调整速度、混合音频",
-            },
-          ].map((step, i) => (
-            <div
-              key={i}
-              style={{
-                display: "flex",
-                gap: 14,
-                alignItems: "flex-start",
-                backgroundColor: "var(--c-surface)",
-                border: "1px solid var(--c-bd2)",
-                borderRadius: 10,
-                padding: "12px 16px",
-              }}
-            >
-              <div
-                style={{
-                  width: 30,
-                  height: 30,
-                  borderRadius: 8,
-                  background: `${step.color.replace(")", " / 0.12)")}`,
-                  border: `1px solid ${step.color.replace(")", " / 0.28)")}`,
-                  display: "flex",
-                  alignItems: "center",
-                  justifyContent: "center",
-                  color: step.color,
-                  flexShrink: 0,
-                }}
-              >
-                {step.icon}
-              </div>
-              <div>
-                <div
-                  style={{
-                    fontSize: 14,
-                    fontWeight: 600,
-                    color: "var(--c-t1)",
-                    marginBottom: 3,
-                  }}
-                >
-                  {step.title}
-                </div>
-                <div style={{ fontSize: 13, color: "var(--c-t3)" }}>
-                  {step.desc}
-                </div>
-              </div>
-            </div>
-          ))}
-        </div>
-
+        {/* Hero 区 */}
         <div
           style={{
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "center",
-            gap: 6,
-            flexWrap: "wrap",
-          }}
-        >
-          {FLOW_STEPS.map((step, i) => {
-            const cfg = getNodeConfig(step.type);
-            return (
-              <div
-                key={step.type}
-                style={{ display: "flex", alignItems: "center", gap: 6 }}
-              >
-                <div
-                  style={{
-                    width: 44,
-                    height: 44,
-                    borderRadius: "50%",
-                    backgroundColor: `color-mix(in oklch, ${cfg.color} 14%, transparent)`,
-                    border: `1.5px solid color-mix(in oklch, ${cfg.color} 40%, transparent)`,
-                    display: "flex",
-                    alignItems: "center",
-                    justifyContent: "center",
-                    fontSize: 11,
-                    fontWeight: 600,
-                    color: cfg.color,
-                    textAlign: "center",
-                    lineHeight: 1.2,
-                  }}
-                >
-                  {step.label}
-                </div>
-                {i < FLOW_STEPS.length - 1 && (
-                  <div
-                    style={{
-                      fontSize: 18,
-                      color: "var(--c-t4)",
-                      lineHeight: 1,
-                    }}
-                  >
-                    →
-                  </div>
-                )}
-              </div>
-            );
-          })}
-        </div>
-
-        <div
-          style={{
+            height: 80,
+            background: "linear-gradient(135deg, oklch(0.68 0.22 285 / 0.18), oklch(0.60 0.20 310 / 0.12))",
+            borderBottom: "1px solid var(--c-bd2)",
             display: "flex",
             flexDirection: "column",
-            gap: 10,
             alignItems: "center",
+            justifyContent: "center",
+            gap: 4,
+            flexShrink: 0,
+          }}
+        >
+          <div
+            style={{
+              fontSize: 20,
+              fontWeight: 700,
+              color: "var(--c-t1)",
+            }}
+          >
+            AI 视频画布
+          </div>
+          <div style={{ fontSize: 12, color: "var(--c-t3)" }}>
+            21 种节点 · 全流程可视化创作
+          </div>
+        </div>
+
+        {/* 主体内容（可滚动） */}
+        <div
+          style={{
+            flex: 1,
+            overflowY: "auto",
+            padding: "24px 28px",
+            display: "flex",
+            flexDirection: "column",
+            gap: 20,
+          }}
+        >
+          {/* 核心工作流 */}
+          <div>
+            <div
+              style={{
+                fontSize: 11,
+                fontWeight: 600,
+                color: "var(--c-t3)",
+                textTransform: "uppercase",
+                letterSpacing: "0.08em",
+                marginBottom: 12,
+              }}
+            >
+              核心工作流
+            </div>
+            <div
+              style={{
+                display: "flex",
+                alignItems: "center",
+                gap: 6,
+                flexWrap: "wrap",
+              }}
+            >
+              {coreFlow.map((step, i) => (
+                <div
+                  key={step.label}
+                  style={{ display: "flex", alignItems: "center", gap: 6 }}
+                >
+                  <div
+                    style={{
+                      width: 44,
+                      height: 44,
+                      borderRadius: "50%",
+                      backgroundColor: step.color.replace(")", " / 0.12)"),
+                      border: `1.5px solid ${step.color.replace(")", " / 0.35)")}`,
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "center",
+                      fontSize: 11,
+                      fontWeight: 600,
+                      color: step.color,
+                      textAlign: "center",
+                      lineHeight: 1.2,
+                    }}
+                  >
+                    {step.label}
+                  </div>
+                  {i < coreFlow.length - 1 && (
+                    <div style={{ fontSize: 16, color: "var(--c-t4)", lineHeight: 1 }}>
+                      →
+                    </div>
+                  )}
+                </div>
+              ))}
+            </div>
+          </div>
+
+          {/* 全部节点 */}
+          <div>
+            <div
+              style={{
+                fontSize: 11,
+                fontWeight: 600,
+                color: "var(--c-t3)",
+                textTransform: "uppercase",
+                letterSpacing: "0.08em",
+                marginBottom: 12,
+              }}
+            >
+              全部节点
+            </div>
+            <div
+              style={{
+                display: "grid",
+                gridTemplateColumns: "1fr 1fr",
+                gap: 10,
+              }}
+            >
+              {nodeCategories.map((cat) => (
+                <div
+                  key={cat.title}
+                  style={{
+                    background: "var(--c-surface)",
+                    border: "1px solid var(--c-bd1)",
+                    borderRadius: 10,
+                    padding: "12px 14px",
+                  }}
+                >
+                  <div
+                    style={{
+                      fontSize: 12,
+                      fontWeight: 600,
+                      color: "var(--c-t2)",
+                      marginBottom: 8,
+                    }}
+                  >
+                    {cat.title}
+                  </div>
+                  <div style={{ display: "flex", flexWrap: "wrap", gap: 5 }}>
+                    {cat.nodes.map((node) => (
+                      <NodePill key={node.label} label={node.label} color={node.color} />
+                    ))}
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+
+          {/* 快捷键提示 */}
+          <div>
+            <div
+              style={{
+                fontSize: 11,
+                fontWeight: 600,
+                color: "var(--c-t3)",
+                textTransform: "uppercase",
+                letterSpacing: "0.08em",
+                marginBottom: 10,
+              }}
+            >
+              快捷键提示
+            </div>
+            <div
+              style={{
+                display: "grid",
+                gridTemplateColumns: "1fr 1fr 1fr",
+                gap: 6,
+              }}
+            >
+              {shortcuts.map((s) => (
+                <div
+                  key={s.action}
+                  style={{
+                    background: "var(--c-surface)",
+                    border: "1px solid var(--c-bd1)",
+                    borderRadius: 8,
+                    padding: "8px 10px",
+                  }}
+                >
+                  <div style={{ fontSize: 11, color: "var(--c-t3)", marginBottom: 2 }}>
+                    {s.action}
+                  </div>
+                  <div style={{ fontSize: 11, fontWeight: 500, color: "var(--c-t2)" }}>
+                    {s.key}
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+
+        {/* 底部按钮区 */}
+        <div
+          style={{
+            borderTop: "1px solid var(--c-bd2)",
+            padding: "16px 28px",
+            display: "flex",
+            flexDirection: "column",
+            gap: 8,
+            alignItems: "center",
+            flexShrink: 0,
           }}
         >
           <button
