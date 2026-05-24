@@ -40,7 +40,7 @@ const TARGET_MODELS = [
 const POLISH_MODES = [
   { value: "polish",   label: "润色" },
   { value: "condense", label: "精简" },
-];
+] as const;
 
 // ── Sub-components ────────────────────────────────────────────────────────────
 
@@ -140,16 +140,39 @@ export const ScriptNode = memo(function ScriptNode({ id, selected, data }: Props
   // Polish mode selector
   const [polishMode, setPolishMode] = useState<"polish" | "condense">("polish");
 
-  // Copy-to-clipboard state
+  // Copy-to-clipboard state with unmount-safe timer
   const [copied, setCopied] = useState(false);
+  const copyTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  useEffect(() => () => { if (copyTimerRef.current) clearTimeout(copyTimerRef.current); }, []);
 
-  // Helpers to update AI panel param both locally and in payload
-  const setAndSaveGenre       = (v: string) => { setGenre(v);       updateNodeData(id, { aiGenre: v }); };
-  const setAndSaveStyle       = (v: string) => { setStyle(v);       updateNodeData(id, { aiStyle: v }); };
-  const setAndSaveMood        = (v: string) => { setMood(v);        updateNodeData(id, { aiMood: v }); };
-  const setAndSaveTargetModel = (v: string) => { setTargetModel(v); updateNodeData(id, { aiTargetModel: v }); };
-  const setAndSaveAspectRatio = (v: string) => { setAspectRatio(v); updateNodeData(id, { aiAspectRatio: v }); };
-  const setAndSaveSceneCount  = (v: number) => { setSceneCount(v);  updateNodeData(id, { aiSceneCount: v }); };
+  // Refs for synopsis input focus guard
+  const synopsisInputRef = useRef<HTMLInputElement>(null);
+
+  // Helpers to update AI panel param both locally and in payload — all memoized
+  const setAndSaveGenre = useCallback((v: string) => {
+    setGenre(v); updateNodeData(id, { aiGenre: v });
+  }, [id, updateNodeData]);
+  const setAndSaveStyle = useCallback((v: string) => {
+    setStyle(v); updateNodeData(id, { aiStyle: v });
+  }, [id, updateNodeData]);
+  const setAndSaveMood = useCallback((v: string) => {
+    setMood(v); updateNodeData(id, { aiMood: v });
+  }, [id, updateNodeData]);
+  const setAndSaveTargetModel = useCallback((v: string) => {
+    setTargetModel(v); updateNodeData(id, { aiTargetModel: v });
+  }, [id, updateNodeData]);
+  const setAndSaveAspectRatio = useCallback((v: string) => {
+    setAspectRatio(v); updateNodeData(id, { aiAspectRatio: v });
+  }, [id, updateNodeData]);
+
+  // Scene count with functional updater to prevent stale closure on rapid clicks
+  const handleSceneCountChange = useCallback((delta: 1 | -1) => {
+    setSceneCount((prev) => {
+      const next = Math.max(2, Math.min(12, prev + delta));
+      updateNodeData(id, { aiSceneCount: next });
+      return next;
+    });
+  }, [id, updateNodeData]);
 
   // Duration state — persisted to payload.totalDuration
   const initDuration = Math.max(10, Math.min(600, Number(payload.totalDuration) || 60));
@@ -170,6 +193,17 @@ export const ScriptNode = memo(function ScriptNode({ id, selected, data }: Props
     updateNodeData(id, { totalDuration: v });
   }, [id, updateNodeData]);
 
+  // Commit pending durationText and return the clamped value (for use before mutation)
+  const commitDuration = useCallback((): number => {
+    const parsed = parseInt(durationText, 10);
+    if (!isNaN(parsed)) {
+      const clamped = Math.max(10, Math.min(600, parsed));
+      if (clamped !== duration) applyDuration(clamped);
+      return clamped;
+    }
+    return duration;
+  }, [duration, durationText, applyDuration]);
+
   // Sync duration when payload changes externally (collab / undo-redo)
   useEffect(() => {
     if (durationInputRef.current !== null && durationInputRef.current === document.activeElement) return;
@@ -178,12 +212,13 @@ export const ScriptNode = memo(function ScriptNode({ id, selected, data }: Props
     setDurationText(String(v));
   }, [payload.totalDuration]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Sync AI panel params when payload changes externally
-  useEffect(() => { if (payload.aiGenre)       setGenre(payload.aiGenre); },       [payload.aiGenre]);
-  useEffect(() => { if (payload.aiStyle)       setStyle(payload.aiStyle); },       [payload.aiStyle]);
-  useEffect(() => { if (payload.aiMood)        setMood(payload.aiMood); },         [payload.aiMood]);
-  useEffect(() => { if (payload.aiTargetModel !== undefined) setTargetModel(payload.aiTargetModel); }, [payload.aiTargetModel]);
-  useEffect(() => { if (payload.aiAspectRatio) setAspectRatio(payload.aiAspectRatio); }, [payload.aiAspectRatio]);
+  // Sync AI panel params when payload changes externally (collab / undo-redo)
+  // Use !== undefined so empty-string resets propagate correctly
+  useEffect(() => { if (payload.aiGenre       !== undefined) setGenre(payload.aiGenre       || GENRES[0]);  }, [payload.aiGenre]);
+  useEffect(() => { if (payload.aiStyle       !== undefined) setStyle(payload.aiStyle       || STYLES[0]);  }, [payload.aiStyle]);
+  useEffect(() => { if (payload.aiMood        !== undefined) setMood(payload.aiMood         || MOODS[0]);   }, [payload.aiMood]);
+  useEffect(() => { if (payload.aiTargetModel !== undefined) setTargetModel(payload.aiTargetModel); },          [payload.aiTargetModel]);
+  useEffect(() => { if (payload.aiAspectRatio !== undefined) setAspectRatio(payload.aiAspectRatio || "16:9"); }, [payload.aiAspectRatio]);
   useEffect(() => {
     if (typeof payload.aiSceneCount === "number") setSceneCount(Math.max(2, Math.min(12, payload.aiSceneCount)));
   }, [payload.aiSceneCount]);
@@ -207,17 +242,22 @@ export const ScriptNode = memo(function ScriptNode({ id, selected, data }: Props
     onError: (err) => { toast.error("AI 生成分镜失败：" + err.message); },
   });
 
+  // Use variables.mode (the actual sent mode) for the toast, not the closure value
   const polishMutation = trpc.aiEnhance.enhance.useMutation({
-    onSuccess: (result) => {
+    onSuccess: (result, variables) => {
       updateNodeData(id, { content: result.result });
-      toast.success(polishMode === "condense" ? "脚本已精简" : "脚本已润色");
+      toast.success(variables.mode === "condense" ? "脚本已精简" : "脚本已润色");
     },
     onError: (err) => { toast.error("AI 操作失败：" + err.message); },
   });
 
-  // AI 提取梗概
+  // AI 提取梗概 — guarded against clobbering mid-edit synopsis
   const summarizeMutation = trpc.aiEnhance.enhance.useMutation({
     onSuccess: (result) => {
+      if (synopsisInputRef.current !== null && synopsisInputRef.current === document.activeElement) {
+        toast.warning("梗概已提取，但检测到输入框正在编辑，未自动填入，请手动粘贴：\n" + result.result, { duration: 8000 });
+        return;
+      }
       updateNodeData(id, { synopsis: result.result });
       toast.success("梗概已提取");
     },
@@ -248,44 +288,49 @@ export const ScriptNode = memo(function ScriptNode({ id, selected, data }: Props
   const anyPending = generateMutation.isPending || polishMutation.isPending
     || fullScriptMutation.isPending || summarizeMutation.isPending;
 
-  const handleFullGenerate = () => {
+  const handleFullGenerate = useCallback(() => {
     const synopsis = payload.synopsis?.trim() || payload.content?.trim();
     if (!synopsis) { toast.error("请先填写故事梗概或脚本内容"); return; }
+    // Commit any pending text in duration input before reading the value
+    const committedDuration = commitDuration();
     fullScriptMutation.mutate({
       synopsis,
       genre,
       style,
       mood,
       sceneCount,
-      totalDuration: duration,
+      totalDuration: committedDuration,
       targetVideoModel: targetModel || undefined,
       aspectRatio,
       model: llmModel,
     });
-  };
+  }, [payload.synopsis, payload.content, commitDuration, genre, style, mood, sceneCount, targetModel, aspectRatio, llmModel, fullScriptMutation]);
 
-  const handleCopy = async () => {
+  const handleCopy = useCallback(async () => {
     const text = payload.content?.trim();
     if (!text) { toast.error("脚本内容为空"); return; }
     try {
       await navigator.clipboard.writeText(text);
       setCopied(true);
-      setTimeout(() => setCopied(false), 2000);
+      if (copyTimerRef.current) clearTimeout(copyTimerRef.current);
+      copyTimerRef.current = setTimeout(() => setCopied(false), 2000);
       toast.success("已复制到剪贴板");
     } catch {
       toast.error("复制失败，请手动选中文字复制");
     }
-  };
+  }, [payload.content]);
 
-  const handleSummarize = () => {
+  const handleSummarize = useCallback(() => {
     const text = payload.content?.trim();
     if (!text) { toast.error("请先填写脚本内容"); return; }
     summarizeMutation.mutate({ text, mode: "summarize", model: llmModel });
-  };
+  }, [payload.content, llmModel, summarizeMutation]);
 
   // ── Per-scene duration estimate ───────────────────────────────────────────
   const perSceneSecs = Math.round(duration / sceneCount);
   const charCount = (payload.content ?? "").length;
+  // Actual cap for generateStoryboards (server max is 8)
+  const storyboardCount = Math.min(sceneCount, 8);
 
   return (
     <BaseNode id={id} selected={selected} nodeType="script" title={data.title} minHeight={200} resizable>
@@ -294,6 +339,7 @@ export const ScriptNode = memo(function ScriptNode({ id, selected, data }: Props
         {/* Synopsis row */}
         <div className="flex gap-1.5 items-center">
           <input
+            ref={synopsisInputRef}
             placeholder="故事梗概（一句话概括，也是 AI 剧本创作的核心素材）"
             value={payload.synopsis ?? ""}
             onChange={(e) => handleChange("synopsis", e.target.value)}
@@ -344,7 +390,7 @@ export const ScriptNode = memo(function ScriptNode({ id, selected, data }: Props
             {POLISH_MODES.map((m) => (
               <button
                 key={m.value}
-                onClick={() => setPolishMode(m.value as "polish" | "condense")}
+                onClick={() => setPolishMode(m.value)}
                 className="nodrag px-1.5 py-0.5 transition-all"
                 style={{
                   fontSize: 9, fontWeight: polishMode === m.value ? 700 : 400,
@@ -404,11 +450,11 @@ export const ScriptNode = memo(function ScriptNode({ id, selected, data }: Props
           </span>
         </div>
 
-        {/* Generate storyboards from existing script */}
+        {/* Generate storyboards from existing script — shows actual capped count */}
         <button
           onClick={() => {
             if (!payload.content?.trim()) { toast.error("请先填写脚本内容"); return; }
-            generateMutation.mutate({ content: payload.content ?? "", synopsis: payload.synopsis, model: llmModel, count: Math.min(sceneCount, 8) });
+            generateMutation.mutate({ content: payload.content ?? "", synopsis: payload.synopsis, model: llmModel, count: storyboardCount });
           }}
           disabled={anyPending}
           className="nodrag flex items-center justify-center gap-1.5 w-full py-1.5 rounded-lg text-xs font-medium transition-all"
@@ -420,7 +466,7 @@ export const ScriptNode = memo(function ScriptNode({ id, selected, data }: Props
           }}
         >
           {generateMutation.isPending ? <Loader2 className="w-3 h-3 animate-spin" /> : <Sparkles className="w-3 h-3" />}
-          {generateMutation.isPending ? "AI 生成分镜中..." : "AI 生成分镜（从现有脚本）"}
+          {generateMutation.isPending ? "AI 生成分镜中..." : `AI 生成分镜（从现有脚本，共 ${storyboardCount} 个）`}
         </button>
 
         {/* ── AI 剧本创作 panel ── */}
@@ -529,7 +575,7 @@ export const ScriptNode = memo(function ScriptNode({ id, selected, data }: Props
                   </span>
                   <div className="flex items-center gap-1.5">
                     <button
-                      onClick={() => setAndSaveSceneCount(Math.max(2, sceneCount - 1))}
+                      onClick={() => handleSceneCountChange(-1)}
                       className="nodrag w-6 h-6 flex items-center justify-center rounded-md transition-all"
                       style={{ background: "var(--c-surface)", border: "1px solid var(--c-bd2)", color: "var(--c-t2)", cursor: "pointer" }}
                     >
@@ -537,7 +583,7 @@ export const ScriptNode = memo(function ScriptNode({ id, selected, data }: Props
                     </button>
                     <span style={{ fontSize: 13, fontWeight: 700, color: PANEL_ACCENT, minWidth: 20, textAlign: "center" }}>{sceneCount}</span>
                     <button
-                      onClick={() => setAndSaveSceneCount(Math.min(12, sceneCount + 1))}
+                      onClick={() => handleSceneCountChange(1)}
                       className="nodrag w-6 h-6 flex items-center justify-center rounded-md transition-all"
                       style={{ background: "var(--c-surface)", border: "1px solid var(--c-bd2)", color: "var(--c-t2)", cursor: "pointer" }}
                     >
