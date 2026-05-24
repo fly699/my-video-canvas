@@ -977,6 +977,7 @@ export const VideoTaskNode = memo(function VideoTaskNode({ id, selected, data }:
           background: "oklch(0.68 0.22 285 / 0.85)",
           border: "2px solid var(--c-canvas)",
           left: -6,
+          top: "25%",
         }}
         title="参考图输入 ← 连接图像生成节点"
       />
