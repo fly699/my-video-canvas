@@ -233,12 +233,13 @@ function downloadUrl(baseUrl: string, filename: string, subfolder: string, type:
   return u.toString();
 }
 
-/** Pre-flight Content-Length check + post-read length verification — protects against
- * a malicious / misconfigured server returning a multi-GB response that would OOM Node.
- * Returns the buffer or throws. */
+/** Pre-flight Content-Length check + STREAMING read with running byte-count cap.
+ * Protects against a malicious server using chunked transfer (no Content-Length)
+ * to stream multi-GB responses that arrayBuffer() would happily swallow into RAM. */
 async function fetchWithSizeLimit(url: string, maxBytes: number, timeoutMs: number, label: string): Promise<{ buf: Buffer; contentType: string | null }> {
   const res = await fetch(url, { signal: AbortSignal.timeout(timeoutMs) });
   if (!res.ok) throw new Error(`${label} 失败 (${res.status})`);
+  const contentType = res.headers.get("content-type");
   const declared = res.headers.get("content-length");
   if (declared) {
     const n = parseInt(declared, 10);
@@ -246,11 +247,30 @@ async function fetchWithSizeLimit(url: string, maxBytes: number, timeoutMs: numb
       throw new Error(`${label} 文件过大 (${n} bytes，上限 ${maxBytes} bytes)`);
     }
   }
-  const ab = await res.arrayBuffer();
-  if (ab.byteLength > maxBytes) {
-    throw new Error(`${label} 文件过大 (${ab.byteLength} bytes，上限 ${maxBytes} bytes)`);
+  // Stream the body, aborting the reader the instant we cross the byte cap.
+  // This protects against chunked / no-Content-Length responses that could
+  // otherwise bypass the pre-flight check.
+  if (!res.body) throw new Error(`${label} 失败：响应无 body`);
+  const reader = res.body.getReader();
+  const chunks: Uint8Array[] = [];
+  let total = 0;
+  try {
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      total += value.byteLength;
+      if (total > maxBytes) {
+        await reader.cancel();
+        throw new Error(`${label} 文件过大（流式累计超过 ${maxBytes} bytes 时已中断）`);
+      }
+      chunks.push(value);
+    }
+  } finally {
+    // Ensure the reader is released even on error paths.
+    try { reader.releaseLock(); } catch { /* already released */ }
   }
-  return { buf: Buffer.from(ab), contentType: res.headers.get("content-type") };
+  const buf = Buffer.concat(chunks.map((c) => Buffer.from(c)));
+  return { buf, contentType };
 }
 
 async function downloadAndStore(downloadUrlStr: string, ext: string, mimeType: string): Promise<{ url: string; key: string }> {
@@ -263,11 +283,13 @@ async function downloadAndStore(downloadUrlStr: string, ext: string, mimeType: s
 
 async function uploadImageToComfy(baseUrl: string, sourceUrl: string): Promise<string> {
   // SSRF protection: the source URL is user-supplied (referenceImageUrl).
-  // Unlike ComfyUI's own URL — which is internal by design — the reference image
-  // URL must point to a real public/persistent asset and never an internal address.
-  // Skip the check for our own storage proxy paths (relative) which are trusted.
+  // Accept either absolute http(s) URLs (subject to assertSafeUrl) or our own
+  // storage proxy paths (must start with `/manus-storage/` — trusted prefix).
+  // Reject everything else including relative paths that could be re-resolved.
   if (/^https?:\/\//i.test(sourceUrl)) {
     assertSafeUrl(sourceUrl);
+  } else if (!sourceUrl.startsWith("/manus-storage/")) {
+    throw new Error("参考图 URL 协议不受支持，仅允许 http/https 或 /manus-storage/ 相对路径");
   }
   const { buf, contentType } = await fetchWithSizeLimit(sourceUrl, MAX_REF_IMAGE_BYTES, 60_000, "下载参考图");
   const ct = contentType ?? "image/png";

@@ -14,7 +14,7 @@ import {
 import "@xyflow/react/dist/style.css";
 import { useCanvasStore, type CanvasNode, type CanvasEdge } from "../hooks/useCanvasStore";
 import { useShallow } from "zustand/react/shallow";
-import { useWorkflowRunner } from "../hooks/useWorkflowRunner";
+import { useWorkflowRunner, RUNNABLE_TYPES } from "../hooks/useWorkflowRunner";
 import { WorkflowRunProvider } from "../contexts/WorkflowRunContext";
 import { CustomNode } from "../components/canvas/CustomNode";
 import { CustomEdge } from "../components/canvas/CustomEdge";
@@ -2015,12 +2015,11 @@ function CanvasInner({ projectId }: { projectId: number }) {
 
       {/* ── Run workflow confirmation dialog ── */}
       {showRunConfirm && (() => {
-        const aiNodeTypes: string[] = [
-          "storyboard", "prompt", "image_gen", "video_task", "clip", "merge",
-          "subtitle", "overlay", "subtitle_motion", "smart_cut", "pose_control",
-          "voice_clone", "lip_sync", "avatar", "comfyui_image", "comfyui_video",
-        ];
-        const aiNodes = nodes.filter(n => aiNodeTypes.includes(n.data.nodeType));
+        // Single source of truth — what the workflow runner will actually execute.
+        // Keeping this in sync with RUNNABLE_TYPES prevents the dialog from claiming
+        // "N AI nodes will run" for stub/manual-only nodes (pose_control / voice_clone /
+        // lip_sync / avatar) that runWorkflow() refuses to dispatch.
+        const aiNodes = nodes.filter(n => RUNNABLE_TYPES.includes(n.data.nodeType as NodeType));
         const totalNodes = nodes.length;
         const startLabel = pendingRunNodeId
           ? `从节点「${nodes.find(n => n.id === pendingRunNodeId)?.data.title ?? pendingRunNodeId}」开始执行`

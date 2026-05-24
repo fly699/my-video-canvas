@@ -1,4 +1,4 @@
-import { memo, useCallback, useRef, useState } from "react";
+import { memo, useCallback, useEffect, useRef, useState } from "react";
 import { Handle, Position } from "@xyflow/react";
 import { BaseNode } from "../BaseNode";
 import { useCanvasStore } from "../../../hooks/useCanvasStore";
@@ -62,9 +62,16 @@ export const ComfyuiImageNode = memo(function ComfyuiImageNode({ id, selected, d
   const [paramsExpanded, setParamsExpanded] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  // Pull ckpt/lora suggestions from ComfyUI via /object_info (best-effort, no-throw)
+  // Pull ckpt/lora suggestions from ComfyUI via /object_info (best-effort, no-throw).
+  // Debounce the URL so each keystroke in the COMFYUI_BASE_URL field doesn't
+  // fire a fresh assertWhitelisted DB query + outbound HTTP probe.
+  const [debouncedUrl, setDebouncedUrl] = useState(payload.customBaseUrl?.trim() || undefined);
+  useEffect(() => {
+    const t = setTimeout(() => setDebouncedUrl(payload.customBaseUrl?.trim() || undefined), 600);
+    return () => clearTimeout(t);
+  }, [payload.customBaseUrl]);
   const modelsQuery = trpc.comfyui.fetchModels.useQuery(
-    { customBaseUrl: payload.customBaseUrl?.trim() || undefined },
+    { customBaseUrl: debouncedUrl },
     { staleTime: 60_000, retry: false }
   );
 

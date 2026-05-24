@@ -476,7 +476,7 @@ function getDefaultPayload(type: NodeType): NodeData {
     case "avatar":
       return { script: "", status: "idle" };
     case "group":
-      return { name: "分组" };
+      return { label: "分组" };
     case "comfyui_image":
       return { workflowTemplate: "txt2img", prompt: "", ckpt: "", steps: 20, cfg: 7, seed: -1, width: 512, height: 512, status: "idle" };
     case "comfyui_video":

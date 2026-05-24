@@ -14,7 +14,7 @@ export interface WorkflowRunState {
   runnableCount: number; // set on start, 0 when not running
 }
 
-const RUNNABLE_TYPES: NodeType[] = [
+export const RUNNABLE_TYPES: NodeType[] = [
   "storyboard", "prompt", "image_gen", "video_task",
   "clip", "merge", "subtitle", "overlay",
   "subtitle_motion", "smart_cut",

@@ -1,4 +1,4 @@
-import { memo, useCallback, useRef, useState } from "react";
+import { memo, useCallback, useEffect, useRef, useState } from "react";
 import { Handle, Position } from "@xyflow/react";
 import { BaseNode } from "../BaseNode";
 import { useCanvasStore } from "../../../hooks/useCanvasStore";
@@ -65,8 +65,14 @@ export const ComfyuiVideoNode = memo(function ComfyuiVideoNode({ id, selected, d
   const [paramsExpanded, setParamsExpanded] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
+  // Debounce customBaseUrl to avoid one outbound probe per keystroke.
+  const [debouncedUrl, setDebouncedUrl] = useState(payload.customBaseUrl?.trim() || undefined);
+  useEffect(() => {
+    const t = setTimeout(() => setDebouncedUrl(payload.customBaseUrl?.trim() || undefined), 600);
+    return () => clearTimeout(t);
+  }, [payload.customBaseUrl]);
   const modelsQuery = trpc.comfyui.fetchModels.useQuery(
-    { customBaseUrl: payload.customBaseUrl?.trim() || undefined },
+    { customBaseUrl: debouncedUrl },
     { staleTime: 60_000, retry: false }
   );
 

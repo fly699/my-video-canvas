@@ -32,8 +32,24 @@ const cache = new Map<string, Entry>();
 // 15 min gives slack for slow Suno/Veo runs and network jitter.
 const MAX_TTL_MS = 15 * 60 * 1000;
 
+/** Recursively sort object keys so that equivalent inputs hash identically
+ * regardless of property insertion order (different code paths construct the
+ * same logical request with fields in different orders — without canonical
+ * serialization those would dedupe-miss and double-charge). */
+function canonicalize(v: unknown): unknown {
+  if (Array.isArray(v)) return v.map(canonicalize);
+  if (v && typeof v === "object") {
+    const out: Record<string, unknown> = {};
+    for (const k of Object.keys(v as Record<string, unknown>).sort()) {
+      out[k] = canonicalize((v as Record<string, unknown>)[k]);
+    }
+    return out;
+  }
+  return v;
+}
+
 function hashKey(bucket: string, userId: number, keyInput: unknown): string {
-  const h = createHash("sha256").update(JSON.stringify(keyInput)).digest("hex");
+  const h = createHash("sha256").update(JSON.stringify(canonicalize(keyInput))).digest("hex");
   return `${bucket}:${userId}:${h}`;
 }
 
