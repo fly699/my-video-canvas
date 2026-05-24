@@ -16,7 +16,13 @@ export type NodeType =
   | "clip"
   | "merge"
   | "subtitle"
-  | "overlay";
+  | "overlay"
+  | "subtitle_motion"
+  | "smart_cut"
+  | "pose_control"
+  | "voice_clone"
+  | "lip_sync"
+  | "avatar";
 
 export const VIDEO_PROVIDERS = [
   "mock",
@@ -303,6 +309,67 @@ export interface OverlayNodeData {
   errorMessage?: string;
 }
 
+export type SubtitleMotionStyle = "fade" | "roll" | "karaoke" | "bounce";
+
+export interface SubtitleMotionNodeData {
+  inputVideoUrl?: string;
+  entries?: SubtitleEntry[];
+  language?: string;
+  motionStyle?: SubtitleMotionStyle;
+  fontSize?: number;
+  fontColor?: string;
+  outputUrl?: string;
+  status?: "idle" | "transcribing" | "burning" | "done" | "failed";
+  errorMessage?: string;
+}
+
+export interface SmartCutNodeData {
+  inputVideoUrl?: string;
+  aggressiveness?: "low" | "medium" | "high";
+  targetDuration?: number;
+  originalDuration?: number;
+  outputDuration?: number;
+  outputUrl?: string;
+  status?: "idle" | "processing" | "done" | "failed";
+  errorMessage?: string;
+}
+
+export interface PoseControlNodeData {
+  referenceImageUrl?: string;
+  referenceStorageKey?: string;
+  prompt?: string;
+  guidanceScale?: number;
+  outputImageUrl?: string;
+  outputUrl?: string; // alias written alongside outputImageUrl so getNodeVideoUrl / downstream nodes can read it
+  outputStorageKey?: string;
+  status?: "idle" | "processing" | "done" | "failed";
+  errorMessage?: string;
+}
+
+export interface VoiceCloneNodeData {
+  referenceAudioUrl?: string;
+  text?: string;
+  outputUrl?: string;
+  status?: "idle" | "processing" | "done" | "failed";
+  errorMessage?: string;
+}
+
+export interface LipSyncNodeData {
+  inputVideoUrl?: string;
+  inputAudioUrl?: string;
+  outputUrl?: string;
+  status?: "idle" | "processing" | "done" | "failed";
+  errorMessage?: string;
+}
+
+export interface AvatarNodeData {
+  avatarDescription?: string;
+  script?: string;
+  outputUrl?: string;
+  status?: "idle" | "processing" | "done" | "failed";
+  errorMessage?: string;
+}
+
 export type NodeData =
   | ScriptNodeData
   | StoryboardNodeData
@@ -319,7 +386,13 @@ export type NodeData =
   | ClipNodeData
   | MergeNodeData
   | SubtitleNodeData
-  | OverlayNodeData;
+  | OverlayNodeData
+  | SubtitleMotionNodeData
+  | SmartCutNodeData
+  | PoseControlNodeData
+  | VoiceCloneNodeData
+  | LipSyncNodeData
+  | AvatarNodeData;
 
 // ── Canvas Node ───────────────────────────────────────────────────────────────
 

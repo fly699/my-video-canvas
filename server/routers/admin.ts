@@ -67,7 +67,7 @@ export const adminRouter = router({
         (d) => d.type !== "user" || /^\d+$/.test(d.value),
         { message: "用户类型白名单的 value 必须为纯数字用户 ID", path: ["value"] }
       ).refine(
-        (d) => d.type !== "ip" || /^(\d{1,3}\.){3}\d{1,3}$|^[0-9a-fA-F:]{2,39}$/.test(d.value),
+        (d) => d.type !== "ip" || /^(25[0-5]|2[0-4]\d|1\d{2}|[1-9]?\d)(\.(25[0-5]|2[0-4]\d|1\d{2}|[1-9]?\d)){3}$|^[0-9a-fA-F]{0,4}(:[0-9a-fA-F]{0,4}){2,7}$/.test(d.value),
         { message: "IP 类型白名单的 value 必须为合法的 IPv4（如 1.2.3.4）或 IPv6 地址", path: ["value"] }
       ))
       .mutation(async ({ ctx, input }) => {

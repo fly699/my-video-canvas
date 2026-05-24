@@ -2,11 +2,13 @@ import type { NodeType } from "../../../shared/types";
 import {
   ScrollText, Film, Wand2, ImagePlus, Package, Video, Bot, StickyNote,
   AudioWaveform, SlidersHorizontal, Folder, UserRound, Scissors, Merge, Captions, Blend,
+  Zap, Layers, Mic, Scan, PersonStanding,
 } from "lucide-react";
 
 export const NODE_ICONS: Record<string, React.ComponentType<{ className?: string; style?: React.CSSProperties }>> = {
   ScrollText, Film, Wand2, ImagePlus, Package, Video, Bot, StickyNote,
   AudioWaveform, SlidersHorizontal, Folder, UserRound, Scissors, Merge, Captions, Blend,
+  Zap, Layers, Mic, Scan, PersonStanding,
 };
 
 export interface NodeConfig {
@@ -183,6 +185,66 @@ export const NODE_CONFIGS: Record<NodeType, NodeConfig> = {
     borderColor: "oklch(0.65 0.18 30 / 0.4)",
     defaultWidth: 400,
     defaultTitle: "视频叠加",
+  },
+  subtitle_motion: {
+    type: "subtitle_motion",
+    label: "动态字幕",
+    icon: "Layers",
+    color: "oklch(0.68 0.20 175)",
+    bgColor: "oklch(0.68 0.20 175 / 0.08)",
+    borderColor: "oklch(0.68 0.20 175 / 0.4)",
+    defaultWidth: 400,
+    defaultTitle: "动态字幕",
+  },
+  smart_cut: {
+    type: "smart_cut",
+    label: "智能剪辑",
+    icon: "Zap",
+    color: "oklch(0.68 0.22 65)",
+    bgColor: "oklch(0.68 0.22 65 / 0.08)",
+    borderColor: "oklch(0.68 0.22 65 / 0.4)",
+    defaultWidth: 360,
+    defaultTitle: "智能剪辑",
+  },
+  pose_control: {
+    type: "pose_control",
+    label: "构图控制",
+    icon: "Layers",
+    color: "oklch(0.65 0.20 310)",
+    bgColor: "oklch(0.65 0.20 310 / 0.08)",
+    borderColor: "oklch(0.65 0.20 310 / 0.4)",
+    defaultWidth: 360,
+    defaultTitle: "构图控制",
+  },
+  voice_clone: {
+    type: "voice_clone",
+    label: "声音克隆",
+    icon: "Mic",
+    color: "oklch(0.65 0.18 350)",
+    bgColor: "oklch(0.65 0.18 350 / 0.08)",
+    borderColor: "oklch(0.65 0.18 350 / 0.4)",
+    defaultWidth: 340,
+    defaultTitle: "声音克隆",
+  },
+  lip_sync: {
+    type: "lip_sync",
+    label: "唇形同步",
+    icon: "Scan",
+    color: "oklch(0.62 0.20 220)",
+    bgColor: "oklch(0.62 0.20 220 / 0.08)",
+    borderColor: "oklch(0.62 0.20 220 / 0.4)",
+    defaultWidth: 360,
+    defaultTitle: "唇形同步",
+  },
+  avatar: {
+    type: "avatar",
+    label: "数字人",
+    icon: "PersonStanding",
+    color: "oklch(0.65 0.20 290)",
+    bgColor: "oklch(0.65 0.20 290 / 0.08)",
+    borderColor: "oklch(0.65 0.20 290 / 0.4)",
+    defaultWidth: 380,
+    defaultTitle: "数字人",
   },
 };
 

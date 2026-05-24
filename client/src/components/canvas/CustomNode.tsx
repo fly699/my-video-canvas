@@ -16,6 +16,12 @@ import { ClipNode } from "./nodes/ClipNode";
 import { MergeNode } from "./nodes/MergeNode";
 import { SubtitleNode } from "./nodes/SubtitleNode";
 import { OverlayNode } from "./nodes/OverlayNode";
+import { SubtitleMotionNode } from "./nodes/SubtitleMotionNode";
+import { SmartCutNode } from "./nodes/SmartCutNode";
+import { PoseControlNode } from "./nodes/PoseControlNode";
+import { VoiceCloneNode } from "./nodes/VoiceCloneNode";
+import { LipSyncNode } from "./nodes/LipSyncNode";
+import { AvatarNode } from "./nodes/AvatarNode";
 import type { NodeType } from "../../../../shared/types";
 
 interface CustomNodeData {
@@ -65,6 +71,18 @@ export const CustomNode = memo(function CustomNode(props: NodeProps) {
       return <SubtitleNode {...(props as unknown as AnyNodeProps)} />;
     case "overlay":
       return <OverlayNode {...(props as unknown as AnyNodeProps)} />;
+    case "subtitle_motion":
+      return <SubtitleMotionNode {...(props as unknown as AnyNodeProps)} />;
+    case "smart_cut":
+      return <SmartCutNode {...(props as unknown as AnyNodeProps)} />;
+    case "pose_control":
+      return <PoseControlNode {...(props as unknown as AnyNodeProps)} />;
+    case "voice_clone":
+      return <VoiceCloneNode {...(props as unknown as AnyNodeProps)} />;
+    case "lip_sync":
+      return <LipSyncNode {...(props as unknown as AnyNodeProps)} />;
+    case "avatar":
+      return <AvatarNode {...(props as unknown as AnyNodeProps)} />;
     default:
       return null;
   }

@@ -17,13 +17,23 @@ export interface WorkflowRunState {
 const RUNNABLE_TYPES: NodeType[] = [
   "storyboard", "prompt", "image_gen", "video_task",
   "clip", "merge", "subtitle", "overlay",
+  "subtitle_motion", "smart_cut",
 ];
 
-const VIDEO_SOURCE_TYPES = new Set(["video_task", "clip", "merge", "overlay", "asset", "subtitle"]);
+const VIDEO_SOURCE_TYPES = new Set(["video_task", "clip", "merge", "overlay", "asset", "subtitle", "subtitle_motion", "smart_cut"]);
 
 /** Pick the video output URL from a node's payload regardless of which field it uses. */
 function getNodeVideoUrl(payload: Record<string, unknown>): string | undefined {
   return (payload.resultVideoUrl ?? payload.outputUrl ?? payload.url) as string | undefined;
+}
+
+/** Return false for audio-mime asset nodes so they never feed into video pipelines. */
+function isVideoAsset(nodeType: string, payload: Record<string, unknown>): boolean {
+  if (nodeType === "asset") {
+    const mt = payload.mimeType as string | undefined;
+    if (mt?.startsWith("audio/")) return false;
+  }
+  return true;
 }
 
 /** Auto-detect the first available video URL from nodes connected into targetId. */
@@ -36,8 +46,32 @@ function autoDetectInputVideo(
     if (edge.target !== targetId) continue;
     const src = nodes.find((n) => n.id === edge.source);
     if (!src || !VIDEO_SOURCE_TYPES.has(src.data.nodeType)) continue;
-    const url = getNodeVideoUrl(src.data.payload as Record<string, unknown>);
+    const payload = src.data.payload as Record<string, unknown>;
+    if (!isVideoAsset(src.data.nodeType, payload)) continue;
+    const url = getNodeVideoUrl(payload);
     if (url) return url;
+  }
+  return undefined;
+}
+
+/** Auto-detect a connected audio node (AudioNode or audio-mime AssetNode) for bgMusic. */
+function detectBgMusicUrl(
+  targetId: string,
+  edges: { source: string; target: string }[],
+  nodes: CanvasNode[],
+): string | undefined {
+  for (const edge of edges) {
+    if (edge.target !== targetId) continue;
+    const src = nodes.find((n) => n.id === edge.source);
+    if (!src) continue;
+    if (src.data.nodeType === "audio") {
+      const u = (src.data.payload as { url?: string }).url;
+      if (u) return u;
+    }
+    if (src.data.nodeType === "asset") {
+      const p = src.data.payload as { mimeType?: string; url?: string };
+      if (p.mimeType?.startsWith("audio/") && p.url) return p.url;
+    }
   }
   return undefined;
 }
@@ -53,7 +87,9 @@ function collectInputVideoUrls(
     if (edge.target !== targetId) continue;
     const src = nodes.find((n) => n.id === edge.source);
     if (!src || !VIDEO_SOURCE_TYPES.has(src.data.nodeType)) continue;
-    const url = getNodeVideoUrl(src.data.payload as Record<string, unknown>);
+    const payload = src.data.payload as Record<string, unknown>;
+    if (!isVideoAsset(src.data.nodeType, payload)) continue;
+    const url = getNodeVideoUrl(payload);
     if (url) urls.push(url);
   }
   return urls;
@@ -127,6 +163,9 @@ export function useWorkflowRunner() {
   const subtitleTranscribeMutation = trpc.subtitle.transcribe.useMutation();
   const subtitleBurnMutation = trpc.subtitle.burnIn.useMutation();
   const overlayMutation = trpc.overlay.process.useMutation();
+  const smartCutMutation = trpc.clip.smartCut.useMutation();
+  const subtitleMotionTranscribeMutation = trpc.subtitleMotion.transcribe.useMutation();
+  const subtitleMotionBurnMutation = trpc.subtitleMotion.burnMotion.useMutation();
 
   const runWorkflow = useCallback(async (startNodeId: string | null) => {
     if (runningRef.current) return;
@@ -323,12 +362,14 @@ export function useWorkflowRunner() {
             failed.push(nodeId);
             return "fail";
           }
+          // Fall back to edge-connected audio node when inputAudioUrl is not stored in payload
+          const audioUrl = (p.inputAudioUrl as string) || detectBgMusicUrl(nodeId, es, ns) || undefined;
           const result = await clipMutation.mutateAsync({
             inputUrl,
             startTime,
             endTime,
             speed: typeof p.speed === "number" && Math.abs(p.speed - 1.0) > 0.01 ? p.speed : undefined,
-            audioUrl: (p.inputAudioUrl as string) || undefined,
+            audioUrl,
             audioVolume: typeof p.audioVolume === "number" ? p.audioVolume : undefined,
           });
           useCanvasStore.getState().updateNodeData(nodeId, {
@@ -354,7 +395,7 @@ export function useWorkflowRunner() {
             inputUrls,
             transition: (p.transition as "none" | "fade" | "dissolve") || undefined,
             transitionDuration: typeof p.transitionDuration === "number" ? p.transitionDuration : undefined,
-            bgMusicUrl: (p.bgMusicUrl as string) || undefined,
+            bgMusicUrl: (p.bgMusicUrl as string) || detectBgMusicUrl(nodeId, es, ns) || undefined,
             bgMusicVolume: typeof p.bgMusicVolume === "number" ? p.bgMusicVolume : undefined,
           });
           useCanvasStore.getState().updateNodeData(nodeId, {
@@ -403,9 +444,10 @@ export function useWorkflowRunner() {
             useCanvasStore.getState().updateNodeData(nodeId, {
               outputUrl: burnResult.url,
               status: "done",
+              errorMessage: undefined,
             }, true);
           } else {
-            useCanvasStore.getState().updateNodeData(nodeId, { status: "done" }, true);
+            useCanvasStore.getState().updateNodeData(nodeId, { status: "done", errorMessage: undefined }, true);
           }
           completed.push(nodeId);
           return "ok";
@@ -449,6 +491,67 @@ export function useWorkflowRunner() {
           useCanvasStore.getState().updateNodeData(nodeId, {
             outputUrl: result.url,
             status: "done",
+          }, true);
+          completed.push(nodeId);
+          return "ok";
+
+        // ── Smart Cut ────────────────────────────────────────────────────────
+        } else if (nodeType === "smart_cut") {
+          const { nodes: ns, edges: es } = useCanvasStore.getState();
+          const inputUrl = (p.inputVideoUrl as string) || autoDetectInputVideo(nodeId, es, ns);
+          if (!inputUrl) {
+            toast.error(`节点 "${node.data.title}"：未找到视频输入`);
+            failed.push(nodeId);
+            return "fail";
+          }
+          const result = await smartCutMutation.mutateAsync({
+            inputUrl,
+            aggressiveness: (p.aggressiveness as "low" | "medium" | "high") || undefined,
+            targetDuration: typeof p.targetDuration === "number" ? p.targetDuration : undefined,
+          });
+          useCanvasStore.getState().updateNodeData(nodeId, {
+            outputUrl: result.url,
+            outputDuration: result.outputDuration,
+            originalDuration: result.originalDuration,
+            status: "done",
+          }, true);
+          completed.push(nodeId);
+          return "ok";
+
+        // ── Subtitle Motion ──────────────────────────────────────────────────
+        } else if (nodeType === "subtitle_motion") {
+          const { nodes: ns, edges: es } = useCanvasStore.getState();
+          const videoUrl = (p.inputVideoUrl as string) || autoDetectInputVideo(nodeId, es, ns);
+          if (!videoUrl) {
+            toast.error(`节点 "${node.data.title}"：未找到视频输入`);
+            failed.push(nodeId);
+            return "fail";
+          }
+          let entries = p.entries as Array<{ start: number; end: number; text: string }> | undefined;
+          if (!entries?.length) {
+            const transcribeResult = await subtitleMotionTranscribeMutation.mutateAsync({
+              audioUrl: videoUrl,
+              language: (p.language as string) || undefined,
+            });
+            entries = transcribeResult.entries;
+            useCanvasStore.getState().updateNodeData(nodeId, { entries }, true);
+          }
+          if (!entries?.length) {
+            toast.error(`节点 "${node.data.title}"：未能获取字幕条目`);
+            failed.push(nodeId);
+            return "fail";
+          }
+          const burnResult = await subtitleMotionBurnMutation.mutateAsync({
+            videoUrl,
+            entries,
+            motionStyle: (p.motionStyle as "fade" | "roll" | "karaoke" | "bounce") || undefined,
+            fontSize: typeof p.fontSize === "number" ? p.fontSize : undefined,
+            fontColor: (p.fontColor as string) || undefined,
+          });
+          useCanvasStore.getState().updateNodeData(nodeId, {
+            outputUrl: burnResult.url,
+            status: "done",
+            errorMessage: undefined,
           }, true);
           completed.push(nodeId);
           return "ok";
@@ -505,7 +608,7 @@ export function useWorkflowRunner() {
         });
       }
     }
-  }, [imageGenMutation, videoTaskMutation, clipMutation, mergeMutation, subtitleTranscribeMutation, subtitleBurnMutation, overlayMutation]);
+  }, [imageGenMutation, videoTaskMutation, clipMutation, mergeMutation, subtitleTranscribeMutation, subtitleBurnMutation, overlayMutation, smartCutMutation, subtitleMotionTranscribeMutation, subtitleMotionBurnMutation]);
 
   const reset = useCallback(() => {
     runningRef.current = false;

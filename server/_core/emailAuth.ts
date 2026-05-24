@@ -24,6 +24,11 @@ function checkRateLimit(ip: string): boolean {
   }
   if (bucket.count >= RATE_LIMIT_MAX) return false;
   bucket.count++;
+  // When the limit is exhausted, extend the window from now — prevents the classic
+  // fixed-window boundary burst where an attacker consumes 2× the limit across a reset.
+  if (bucket.count >= RATE_LIMIT_MAX) {
+    bucket.resetAt = now + RATE_LIMIT_WINDOW_MS;
+  }
   return true;
 }
 

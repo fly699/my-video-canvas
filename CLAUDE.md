@@ -61,6 +61,93 @@ DATABASE_URL="" OAUTH_SERVER_URL="" NODE_ENV=development pnpm dev
 
 ---
 
+## 浏览器点击测试方法
+
+### 环境依赖
+
+```bash
+# puppeteer-core（已安装在 /tmp/node_modules）
+cd /tmp && npm install puppeteer-core
+
+# Chromium 二进制：/opt/chromium/chromium（v131，系统预装）
+# 注意：/usr/bin/chromium-browser 是 snap 存根，不可用
+```
+
+### 标准测试脚本模板
+
+```js
+const puppeteer = require('puppeteer-core');
+const sleep = ms => new Promise(r => setTimeout(r, ms));
+
+(async () => {
+  const browser = await puppeteer.launch({
+    executablePath: '/opt/chromium/chromium',
+    args: ['--no-sandbox','--disable-dev-shm-usage','--disable-gpu','--disable-setuid-sandbox'],
+    headless: true
+  });
+  const page = await browser.newPage();
+  await page.setViewport({ width: 1440, height: 900 });
+  const errs = [];
+  page.on('console', msg => { if (msg.type()==='error') errs.push(msg.text()); });
+
+  // 1. 首页 → 新建项目（进入画布）
+  await page.goto('http://localhost:3000', { waitUntil: 'networkidle2', timeout: 30000 });
+  await page.evaluate(() => {
+    const b = [...document.querySelectorAll('button')].find(b => b.innerText.includes('新建项目'));
+    if (b) b.click();
+  });
+  await sleep(3000); // 等待画布加载
+
+  // 2. 关闭欢迎提示
+  await page.evaluate(() => {
+    const b = [...document.querySelectorAll('button')].find(b =>
+      b.innerText.includes('不再显示') || b.innerText.includes('开始使用'));
+    if (b) b.click();
+  });
+  await sleep(500);
+
+  // 3. 通过文字查找并点击按钮
+  const clicked = await page.evaluate((txt) => {
+    const b = [...document.querySelectorAll('button')].find(b => b.innerText.trim() === txt);
+    if (b) { b.click(); return true; }
+    return false;
+  }, '添加');
+
+  // 4. 截图
+  await page.screenshot({ path: '/tmp/screenshot.png' });
+
+  // 5. 错误汇总（过滤无关噪声）
+  const relErr = errs.filter(e => !/favicon|403|VITE|analytics|ERR_NAME_NOT_RESOLVED/.test(e));
+  console.log('JS错误:', relErr.length);
+
+  await browser.close();
+})().catch(e => { console.error('FATAL:', e.message); process.exit(1); });
+```
+
+### 关键注意事项
+
+- **Puppeteer v25 API 变更**：`page.$x()`（XPath）、`page.waitForTimeout()`、`page.mouse.dblclick()` 已移除
+  - XPath → 改用 `page.evaluate()` 手动查找
+  - 等待 → 用 `const sleep = ms => new Promise(r => setTimeout(r, ms))`
+  - 双击 → 用 `page.mouse.click(x, y, { clickCount: 2 })`
+- **NodePicker vs NodeSearch**：
+  - `添加` 按钮 → `setShowNodePicker` → 添加新节点到画布（正确入口）
+  - `Ctrl+K` → `setShowNodeSearch` → 搜索**现有**画布节点（不能新增）
+- **导航流程**：首页没有 `a[href*="/canvas/"]` 链接，必须点击"新建项目"按钮跳转到画布
+- **截图路径**：写到 `/tmp/*.png`，用 Read 工具查看图像内容
+
+### 运行方式
+
+```bash
+# 先确保开发服务器已启动
+DATABASE_URL="" OAUTH_SERVER_URL="" NODE_ENV=development pnpm dev &
+
+# 在 /tmp 目录运行测试（因为 node_modules 在 /tmp）
+cd /tmp && node my_test.js 2>&1
+```
+
+---
+
 ## 第 13 轮更新说明（2026-05-23）
 
 **提交**：`cccdc2b` — `fix: add IP format validation and use fresh timestamp for whitelist cache TTL`

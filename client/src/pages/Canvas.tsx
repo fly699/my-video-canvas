@@ -464,7 +464,7 @@ function CanvasInner({ projectId }: { projectId: number }) {
       if (nodes.length > 0) {
         await batchUpsertNodes.mutateAsync(nodes.map((n) => ({
           id: n.id, projectId,
-          type: n.data.nodeType as "script" | "storyboard" | "prompt" | "image_gen" | "asset" | "video_task" | "ai_chat" | "note" | "audio" | "post_process" | "group" | "character" | "clip" | "merge" | "subtitle" | "overlay",
+          type: n.data.nodeType,
           title: n.data.title,
           data: n.data.payload as Record<string, unknown>,
           posX: n.position.x, posY: n.position.y,

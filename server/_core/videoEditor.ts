@@ -33,7 +33,9 @@ export function assertSafeUrl(url: string): void {
     /^::1$/,
     /^::ffff:/i,
     /^0\./,
-    /^fd[0-9a-f]{2}:/i,
+    /^100\.(6[4-9]|[7-9]\d|1[01]\d|12[0-7])\./, // RFC 6598 CGNAT 100.64.0.0/10
+    /^f[cd][0-9a-f]{2}:/i,  // fc00::/7 ULA (fc and fd prefix)
+    /^fe[89ab][0-9a-f]:/i,  // fe80::/10 link-local
   ];
   if (privatePatterns.some((p) => p.test(host))) {
     throw new Error(`Access to private/local hosts is not allowed: ${hostname}`);
@@ -291,7 +293,6 @@ export async function mergeVideos(opts: MergeOptions): Promise<MergeResult> {
     } else {
       const n = inputPaths.length;
       inputPaths.forEach((p) => { args.push("-i", p); });
-      if (bgMusicPath) args.push("-i", bgMusicPath);
 
       const durations: number[] = [];
       for (const p of inputPaths) {
@@ -315,18 +316,39 @@ export async function mergeVideos(opts: MergeOptions): Promise<MergeResult> {
       if (n === 1) filterStr = "[0:v]copy[vout];";
       filterStr = filterStr.replace(/;$/, "");
 
+      // Only build audio filter when all inputs have an audio track.
+      // hasAudioTrack returns true on ffprobe failure (conservative), so a single
+      // silent video in the mix will cause FFmpeg to fail on [i:a] reference.
+      const hasAudioFlags = await Promise.all(inputPaths.map((p) => hasAudioTrack(p)));
+      const allHaveAudio = hasAudioFlags.every(Boolean);
+
+      // bgMusicPath is pushed as an input only here, after the audio check, so the
+      // input index (n or n+1) is known and the stream is always referenced.
       let audioFilter = "";
-      const audioInputs = inputPaths.map((_, i) => `[${i}:a]`).join("");
-      if (bgMusicPath) {
+      if (allHaveAudio) {
+        if (bgMusicPath) args.push("-i", bgMusicPath);
+        const audioInputs = inputPaths.map((_, i) => `[${i}:a]`).join("");
+        if (bgMusicPath) {
+          const bgIdx = n;
+          audioFilter = `;${audioInputs}concat=n=${n}:v=0:a=1[acat];[acat][${bgIdx}:a]amix=inputs=2:weights=1|${bgVol.toFixed(4)}[aout]`;
+        } else {
+          audioFilter = `;${audioInputs}concat=n=${n}:v=0:a=1[aout]`;
+        }
+      } else if (bgMusicPath) {
+        // Videos have no audio — use bgMusic as the sole audio track.
+        args.push("-i", bgMusicPath);
         const bgIdx = n;
-        audioFilter = `;${audioInputs}concat=n=${n}:v=0:a=1[acat];[acat][${bgIdx}:a]amix=inputs=2:weights=1|${bgVol.toFixed(4)}[aout]`;
-      } else {
-        audioFilter = `;${audioInputs}concat=n=${n}:v=0:a=1[aout]`;
+        audioFilter = `;[${bgIdx}:a]aresample=async=1[aout]`;
       }
 
       args.push("-filter_complex", filterStr + audioFilter);
-      args.push("-map", "[vout]", "-map", "[aout]");
-      args.push("-c:v", "libx264", "-preset", "fast", "-c:a", "aac");
+      if (allHaveAudio || bgMusicPath) {
+        args.push("-map", "[vout]", "-map", "[aout]");
+        args.push("-c:v", "libx264", "-preset", "fast", "-c:a", "aac");
+      } else {
+        args.push("-map", "[vout]");
+        args.push("-c:v", "libx264", "-preset", "fast");
+      }
       args.push("-movflags", "+faststart", "-y", outPath);
 
       try {
@@ -391,6 +413,7 @@ export async function burnSubtitles(
   const outPath = path.join(os.tmpdir(), outName);
 
   try {
+    const hasAudio = await hasAudioTrack(videoPath);
     await fs.writeFile(srtPath, generateSRT(entries), "utf8");
 
     // FFmpeg filtergraph escaping: backslash → \\, colon → \:, comma → \,, single-quote → \'
@@ -404,7 +427,7 @@ export async function burnSubtitles(
       "-i", videoPath,
       "-vf", subsFilter,
       "-c:v", "libx264", "-preset", "fast",
-      "-c:a", "copy",
+      ...(hasAudio ? ["-c:a", "copy"] : []),
       "-movflags", "+faststart",
       "-y", outPath,
     ];
@@ -432,6 +455,237 @@ function cssColorToASSHex(color: string): string {
     green: "00FF00", black: "000000", orange: "0080FF",
   };
   return MAP[color.toLowerCase()] ?? "FFFFFF";
+}
+
+// ── ASS Motion Subtitles ──────────────────────────────────────────────────────
+
+export type SubtitleMotionStyle = "fade" | "roll" | "karaoke" | "bounce";
+
+function formatASSTime(seconds: number): string {
+  const h = Math.floor(seconds / 3600);
+  const m = Math.floor((seconds % 3600) / 60);
+  const s = Math.floor(seconds % 60);
+  // Math.round can produce 100 for values like 0.999999; clamp to 99 to keep 2-digit ASS format
+  const cs = Math.min(99, Math.round((seconds % 1) * 100));
+  return `${h}:${String(m).padStart(2, "0")}:${String(s).padStart(2, "0")}.${String(cs).padStart(2, "0")}`;
+}
+
+function escapeASSText(raw: string): string {
+  // In ASS Dialogue text fields, { } delimit override tag blocks.
+  // Escape { and } so user text cannot inject ASS control tags.
+  return raw.replace(/\\/g, "\\\\").replace(/\{/g, "\\{").replace(/\}/g, "\\}").replace(/\n/g, "\\N");
+}
+
+function buildASSDialogue(entry: SubtitleEntry, style: SubtitleMotionStyle): string {
+  const text = escapeASSText(entry.text);
+  let effectTags: string;
+  switch (style) {
+    case "fade":
+      effectTags = "{\\fad(250,250)}";
+      break;
+    case "roll":
+      // Slide in from right (off-screen) to resting position in 400ms, fade out
+      effectTags = "{\\an2\\move(1920,1050,960,1050,0,400)\\fad(0,300)}";
+      break;
+    case "karaoke": {
+      // Split on the original text BEFORE escaping so that \n boundaries become word boundaries.
+      const rawWords = entry.text.split(/[\s\n]+/).filter(Boolean);
+      if (rawWords.length === 0) { effectTags = "{\\fad(200,200)}"; break; }
+      const durMs = (entry.end - entry.start) * 1000;
+      const csPerWord = Math.max(1, Math.round((durMs / 10) / rawWords.length));
+      return `Dialogue: 0,${formatASSTime(entry.start)},${formatASSTime(entry.end)},Default,,0,0,0,,${rawWords.map((w) => `{\\kf${csPerWord}}${escapeASSText(w)}`).join(" ")}`;
+    }
+    case "bounce":
+      // Pop in with scale bounce then fade out
+      effectTags = "{\\fad(0,200)\\t(0,200,\\fscx120\\fscy120)\\t(200,400,\\fscx100\\fscy100)}";
+      break;
+    default:
+      effectTags = "{\\fad(200,200)}";
+  }
+  return `Dialogue: 0,${formatASSTime(entry.start)},${formatASSTime(entry.end)},Default,,0,0,0,,${effectTags}${text}`;
+}
+
+function generateASS(entries: SubtitleEntry[], style: SubtitleMotionStyle, fontSize: number, fontColor: string): string {
+  const assHex = cssColorToASSHex(fontColor);
+  const header = [
+    "[Script Info]",
+    "ScriptType: v4.00+",
+    "PlayResX: 1920",
+    "PlayResY: 1080",
+    "ScaledBorderAndShadow: yes",
+    "",
+    "[V4+ Styles]",
+    "Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding",
+    `Style: Default,Arial,${fontSize},&H00${assHex},&H000000FF,&H00000000,&H80000000,-1,0,0,0,100,100,0,0,1,2.5,1.5,2,10,10,40,1`,
+    "",
+    "[Events]",
+    "Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text",
+  ].join("\n");
+  return header + "\n" + entries.map((e) => buildASSDialogue(e, style)).join("\n");
+}
+
+export interface BurnMotionSubtitleOptions {
+  motionStyle?: SubtitleMotionStyle;
+  fontSize?: number;
+  fontColor?: string;
+}
+
+export async function burnAssSubtitles(
+  videoUrl: string,
+  entries: SubtitleEntry[],
+  opts?: BurnMotionSubtitleOptions,
+): Promise<{ url: string }> {
+  const style = opts?.motionStyle ?? "fade";
+  const fontSize = opts?.fontSize ?? 22;
+  const fontColor = opts?.fontColor ?? "white";
+
+  const videoPath = await downloadToTemp(videoUrl, "mp4");
+  const assName = `subs-ass-${Date.now()}-${Math.random().toString(36).slice(2)}.ass`;
+  const assPath = path.join(os.tmpdir(), assName);
+  const outName = `ffmpeg-motion-${Date.now()}-${Math.random().toString(36).slice(2)}.mp4`;
+  const outPath = path.join(os.tmpdir(), outName);
+
+  try {
+    const hasAudio = await hasAudioTrack(videoPath);
+    await fs.writeFile(assPath, generateASS(entries, style, fontSize, fontColor), "utf8");
+
+    const escapedAssPath = assPath
+      .replace(/\\/g, "\\\\")
+      .replace(/:/g, "\\:")
+      .replace(/,/g, "\\,")
+      .replace(/'/g, "\\'");
+    const args = [
+      "-i", videoPath,
+      "-vf", `ass='${escapedAssPath}'`,
+      "-c:v", "libx264", "-preset", "fast",
+      ...(hasAudio ? ["-c:a", "copy"] : []),
+      "-movflags", "+faststart",
+      "-y", outPath,
+    ];
+
+    try {
+      await execFileAsync("ffmpeg", args);
+    } catch (err: unknown) {
+      const e = err as { stderr?: string; message?: string };
+      throw new Error(`FFmpeg ASS burn failed:\n${e.stderr || e.message || String(err)}`);
+    }
+
+    const outBuffer = await fs.readFile(outPath);
+    const { url } = await storagePut(`generated/motion-sub-${Date.now()}.mp4`, outBuffer, "video/mp4");
+    return { url };
+  } finally {
+    await fs.unlink(videoPath).catch(() => undefined);
+    await fs.unlink(assPath).catch(() => undefined);
+    await fs.unlink(outPath).catch(() => undefined);
+  }
+}
+
+// ── Smart Cut (multi-segment extraction) ──────────────────────────────────────
+
+export interface SmartCutOptions {
+  inputUrl: string;
+  keepSegments: Array<{ start: number; end: number }>;
+}
+
+export interface SmartCutResult {
+  url: string;
+  outputDuration: number;
+}
+
+async function hasAudioTrack(videoPath: string): Promise<boolean> {
+  let stdout: string;
+  try {
+    ({ stdout } = await execFileAsync("ffprobe", [
+      "-v", "quiet", "-print_format", "json", "-show_streams",
+      "-select_streams", "a", videoPath,
+    ]));
+  } catch {
+    // ffprobe unavailable or crashed — assume audio exists so the audio
+    // filter path is attempted; FFmpeg will fail with a clear error if the
+    // video truly has no audio track, which is preferable to silently
+    // dropping the audio track when probing fails.
+    return true;
+  }
+  try {
+    const probe = JSON.parse(stdout) as { streams?: unknown[] };
+    return Array.isArray(probe.streams) && probe.streams.length > 0;
+  } catch {
+    return true;
+  }
+}
+
+export async function smartCutVideo(opts: SmartCutOptions): Promise<SmartCutResult> {
+  if (opts.keepSegments.length === 0) throw new Error("keepSegments 不能为空");
+
+  const videoPath = await downloadToTemp(opts.inputUrl, "mp4");
+  const outName = `ffmpeg-smartcut-${Date.now()}-${Math.random().toString(36).slice(2)}.mp4`;
+  const outPath = path.join(os.tmpdir(), outName);
+
+  try {
+    const hasAudio = await hasAudioTrack(videoPath);
+    const n = opts.keepSegments.length;
+    const filterParts: string[] = [];
+
+    if (n === 1) {
+      // split=1 and concat=n=1 are both invalid in FFmpeg — handle single-segment as direct trim.
+      const { start, end } = opts.keepSegments[0];
+      filterParts.push(`[0:v]trim=start=${start}:end=${end},setpts=PTS-STARTPTS[outv]`);
+      if (hasAudio) {
+        filterParts.push(`[0:a]atrim=start=${start}:end=${end},asetpts=PTS-STARTPTS[outa]`);
+      }
+    } else {
+      // FFmpeg stream labels can only be used as filter input once.
+      // Use split/asplit to fan out N independent copies before trimming.
+      const vSplitOutputs = Array.from({ length: n }, (_, i) => `[vs${i}]`).join("");
+      filterParts.push(`[0:v]split=${n}${vSplitOutputs}`);
+      if (hasAudio) {
+        const aSplitOutputs = Array.from({ length: n }, (_, i) => `[as${i}]`).join("");
+        filterParts.push(`[0:a]asplit=${n}${aSplitOutputs}`);
+      }
+
+      let concatInputs = "";
+      for (let i = 0; i < n; i++) {
+        const { start, end } = opts.keepSegments[i];
+        filterParts.push(`[vs${i}]trim=start=${start}:end=${end},setpts=PTS-STARTPTS[v${i}]`);
+        if (hasAudio) {
+          filterParts.push(`[as${i}]atrim=start=${start}:end=${end},asetpts=PTS-STARTPTS[a${i}]`);
+          concatInputs += `[v${i}][a${i}]`;
+        } else {
+          concatInputs += `[v${i}]`;
+        }
+      }
+      if (hasAudio) {
+        filterParts.push(`${concatInputs}concat=n=${n}:v=1:a=1[outv][outa]`);
+      } else {
+        filterParts.push(`${concatInputs}concat=n=${n}:v=1:a=0[outv]`);
+      }
+    }
+
+    const args = [
+      "-i", videoPath,
+      "-filter_complex", filterParts.join(";"),
+      "-map", "[outv]",
+      ...(hasAudio ? ["-map", "[outa]", "-c:a", "aac"] : []),
+      "-c:v", "libx264", "-preset", "fast",
+      "-movflags", "+faststart",
+      "-y", outPath,
+    ];
+
+    try {
+      await execFileAsync("ffmpeg", args);
+    } catch (err: unknown) {
+      const e = err as { stderr?: string; message?: string };
+      throw new Error(`FFmpeg smart cut failed:\n${e.stderr || e.message || String(err)}`);
+    }
+
+    const outBuffer = await fs.readFile(outPath);
+    const { url } = await storagePut(`generated/smartcut-${Date.now()}.mp4`, outBuffer, "video/mp4");
+    const outputDuration = opts.keepSegments.reduce((sum, seg) => sum + (seg.end - seg.start), 0);
+    return { url, outputDuration };
+  } finally {
+    await fs.unlink(videoPath).catch(() => undefined);
+    await fs.unlink(outPath).catch(() => undefined);
+  }
 }
 
 // ── Overlay ───────────────────────────────────────────────────────────────────

@@ -6,7 +6,8 @@ import { trpc } from "@/lib/trpc";
 import { toast } from "sonner";
 import {
   Sparkles, Loader2, ChevronDown, Clapperboard,
-  Minus, Plus, Copy, FileText, Check,
+  Minus, Plus, Copy, FileText, Check, Wand2, MessageSquare,
+  Search, Layers2, GitBranch, Image,
 } from "lucide-react";
 import { LLMModelPicker, LLM_MODELS, type LLMModelId } from "../LLMModelPicker";
 
@@ -82,10 +83,15 @@ function ChipRow({ label, options, value, onChange, color }: {
 
 // ── Styles ────────────────────────────────────────────────────────────────────
 
-const BORDER_DEFAULT = "var(--c-bd2)";
-const BORDER_FOCUS   = "oklch(0.62 0.18 240 / 0.6)";
-const ACCENT         = "oklch(0.62 0.18 240)";
-const PANEL_ACCENT   = "oklch(0.72 0.20 55)";
+const BORDER_DEFAULT  = "var(--c-bd2)";
+const BORDER_FOCUS    = "oklch(0.62 0.18 240 / 0.6)";
+const ACCENT          = "oklch(0.62 0.18 240)";
+const PANEL_ACCENT    = "oklch(0.72 0.20 55)";
+const ADV_ACCENT      = "oklch(0.65 0.20 295)";
+const ADV_ACCENT_A    = (a: number) => `oklch(0.65 0.20 295 / ${a})`;
+
+const SCRIPT_STYLES = ["硬派", "文艺", "商业", "悬疑", "温情", "幽默"] as const;
+type ScriptStyle = typeof SCRIPT_STYLES[number];
 
 const inputStyle: React.CSSProperties = {
   width: "100%",
@@ -131,6 +137,17 @@ export const ScriptNode = memo(function ScriptNode({ id, selected, data }: Props
 
   // AI 剧本创作 panel state — all persisted to payload
   const [showAiPanel, setShowAiPanel] = useState(false);
+
+  // Advanced panel state
+  const [showAdvancedPanel, setShowAdvancedPanel] = useState(false);
+  const [advTab, setAdvTab] = useState<"review" | "variants" | "style" | "dialogue" | "moodboard">("review");
+  const [variantCount, setVariantCount] = useState(3);
+  const [variantResults, setVariantResults] = useState<Array<{ label: string; text: string }>>([]);
+  const [selectedVariant, setSelectedVariant] = useState(0);
+  const [reviewResult, setReviewResult] = useState<{ score: number; issues: Array<{ type: string; line: string; suggestion: string }> } | null>(null);
+  const [selectedStyle, setSelectedStyle] = useState<ScriptStyle>("文艺");
+  const [dialogueResult, setDialogueResult] = useState<string>("");
+  const [moodBoardResult, setMoodBoardResult] = useState<Array<{ sceneIndex: number; sceneTitle: string; prompt: string; negPrompt?: string }>>([]);
   const [genre,       setGenre]       = useState(payload.aiGenre       ?? GENRES[0]);
   const [style,       setStyle]       = useState(payload.aiStyle       ?? STYLES[0]);
   const [mood,        setMood]        = useState(payload.aiMood        ?? MOODS[0]);
@@ -297,8 +314,56 @@ export const ScriptNode = memo(function ScriptNode({ id, selected, data }: Props
     onError: (err) => { toast.error("AI 剧本生成失败：" + err.message); },
   });
 
+  // ── Advanced panel mutations ──────────────────────────────────────────────
+
+  const reviewMutation = trpc.scripts.reviewScript.useMutation({
+    onSuccess: (result) => {
+      setReviewResult(result);
+      toast.success(`剧本审查完成，评分 ${result.score}/100`);
+    },
+    onError: (err) => { toast.error("剧本审查失败：" + err.message); },
+  });
+
+  const variantsMutation = trpc.scripts.generateVariants.useMutation({
+    onSuccess: (result) => {
+      setVariantResults(result.variants);
+      setSelectedVariant(0);
+      toast.success(`已生成 ${result.variants.length} 个剧本变体`);
+    },
+    onError: (err) => { toast.error("变体生成失败：" + err.message); },
+  });
+
+  const styleTransferMutation = trpc.scripts.applyStyleTransfer.useMutation({
+    onSuccess: (result) => {
+      updateNodeData(id, { content: result.result });
+      toast.success(`文风已迁移为「${selectedStyle}」`);
+    },
+    onError: (err) => { toast.error("文风迁移失败：" + err.message); },
+  });
+
+  const extractDialogueMutation = trpc.scripts.extractDialogue.useMutation({
+    onSuccess: (result) => {
+      setDialogueResult(result.result);
+      toast.success("对白提取完成");
+    },
+    onError: (err) => { toast.error("对白提取失败：" + err.message); },
+  });
+
+  const moodBoardMutation = trpc.scripts.generateMoodBoard.useMutation({
+    onSuccess: (result) => {
+      setMoodBoardResult(result.scenes);
+      toast.success(`Mood Board 已生成，共 ${result.scenes.length} 个场景提示词`);
+    },
+    onError: (err) => { toast.error("Mood Board 生成失败：" + err.message); },
+  });
+
+  const anyAdvancedPending = reviewMutation.isPending || variantsMutation.isPending
+    || styleTransferMutation.isPending || extractDialogueMutation.isPending || moodBoardMutation.isPending;
+
+  // styleTransfer writes to payload.content — it must block polish/generate to prevent concurrent overwrites.
+  // Other advanced mutations (review, variants, dialogue, moodboard) only read or write separate state.
   const anyPending = generateMutation.isPending || polishMutation.isPending
-    || fullScriptMutation.isPending || summarizeMutation.isPending;
+    || fullScriptMutation.isPending || summarizeMutation.isPending || styleTransferMutation.isPending;
 
   const handleFullGenerate = useCallback(() => {
     if (anyPending) return;
@@ -702,6 +767,282 @@ export const ScriptNode = memo(function ScriptNode({ id, selected, data }: Props
             </div>
           )}
         </div>
+
+        {/* ── 高级功能 panel ── */}
+        <div
+          className="rounded-xl overflow-hidden"
+          style={{ border: `1px solid ${showAdvancedPanel ? `${ADV_ACCENT_A(0.45)}` : "var(--c-bd2)"}`, transition: "border-color 200ms ease" }}
+        >
+          {/* Panel header */}
+          <button
+            onClick={() => setShowAdvancedPanel((v) => !v)}
+            className="nodrag flex items-center gap-2 w-full px-3 py-2 transition-all"
+            style={{ background: showAdvancedPanel ? ADV_ACCENT_A(0.10) : "var(--c-base)", border: "none", cursor: "pointer", textAlign: "left" }}
+          >
+            <Wand2 style={{ width: 12, height: 12, color: ADV_ACCENT, flexShrink: 0 }} />
+            <span style={{ fontSize: 10.5, fontWeight: 700, color: showAdvancedPanel ? ADV_ACCENT : "var(--c-t3)", flex: 1, letterSpacing: "0.02em" }}>
+              高级功能
+            </span>
+            <span style={{ fontSize: 9, color: "var(--c-t4)" }}>
+              {showAdvancedPanel ? "" : "审查 · 变体 · 文风 · 对白 · Mood Board"}
+            </span>
+            <ChevronDown style={{ width: 10, height: 10, color: "var(--c-t4)", transform: showAdvancedPanel ? "rotate(180deg)" : "none", transition: "transform 200ms ease", flexShrink: 0 }} />
+          </button>
+
+          {/* Panel body */}
+          {showAdvancedPanel && (
+            <div className="flex flex-col gap-3 px-3 pb-3 pt-2" style={{ borderTop: `1px solid ${ADV_ACCENT_A(0.20)}` }}>
+
+              {/* Tab bar */}
+              <div className="flex gap-0.5 p-0.5 rounded-lg overflow-x-auto nodrag" style={{ background: "var(--c-input)", border: "1px solid var(--c-bd1)", scrollbarWidth: "none" }}>
+                {([
+                  { key: "review",   label: "审查",   Icon: Search },
+                  { key: "variants", label: "变体",   Icon: GitBranch },
+                  { key: "style",    label: "文风",   Icon: Layers2 },
+                  { key: "dialogue", label: "对白",   Icon: MessageSquare },
+                  { key: "moodboard",label: "Mood",   Icon: Image },
+                ] as const).map(({ key, label, Icon }) => (
+                  <button
+                    key={key}
+                    onClick={() => setAdvTab(key)}
+                    className="nodrag flex items-center gap-1 flex-shrink-0 px-2 py-1.5 rounded-md transition-all"
+                    style={{ background: advTab === key ? ADV_ACCENT_A(0.18) : "transparent", border: `1px solid ${advTab === key ? ADV_ACCENT_A(0.40) : "transparent"}`, color: advTab === key ? ADV_ACCENT : "var(--c-t3)", cursor: "pointer", fontSize: 9.5, fontWeight: advTab === key ? 700 : 500 }}
+                  >
+                    <Icon style={{ width: 9, height: 9 }} />
+                    {label}
+                  </button>
+                ))}
+              </div>
+
+              {/* ── 审查 tab ── */}
+              {advTab === "review" && (
+                <div className="flex flex-col gap-2">
+                  <p style={{ fontSize: 10, color: "var(--c-t3)" }}>AI 分析剧本结构、节奏和对白质量，给出评分和优化建议。</p>
+                  <button
+                    onClick={() => {
+                      if (reviewMutation.isPending) return;
+                      const text = payload.content?.trim();
+                      if (!text) { toast.error("请先填写脚本内容"); return; }
+                      reviewMutation.mutate({ scriptText: text.slice(0, 8000), model: llmModel });
+                    }}
+                    disabled={reviewMutation.isPending || !payload.content?.trim()}
+                    className="nodrag flex items-center justify-center gap-1.5 w-full py-2 rounded-lg text-xs font-medium transition-all"
+                    style={{ background: reviewMutation.isPending ? "var(--c-surface)" : ADV_ACCENT_A(0.12), border: `1px solid ${reviewMutation.isPending ? BORDER_DEFAULT : ADV_ACCENT_A(0.4)}`, color: reviewMutation.isPending || !payload.content?.trim() ? "var(--c-t4)" : ADV_ACCENT, cursor: reviewMutation.isPending || !payload.content?.trim() ? "not-allowed" : "pointer" }}
+                  >
+                    {reviewMutation.isPending ? <Loader2 className="w-3 h-3 animate-spin" /> : <Search className="w-3 h-3" />}
+                    {reviewMutation.isPending ? "AI 审查中..." : "开始剧本审查"}
+                  </button>
+                  {reviewResult && (
+                    <div className="flex flex-col gap-2">
+                      <div className="flex items-center gap-2 px-3 py-2 rounded-lg" style={{ background: ADV_ACCENT_A(0.08), border: `1px solid ${ADV_ACCENT_A(0.3)}` }}>
+                        <span style={{ fontSize: 10, color: "var(--c-t3)" }}>综合评分</span>
+                        <span style={{ fontSize: 16, fontWeight: 800, color: ADV_ACCENT, marginLeft: "auto" }}>{reviewResult.score}<span style={{ fontSize: 10 }}>/100</span></span>
+                      </div>
+                      {reviewResult.issues.length > 0 && (
+                        <div className="flex flex-col gap-1.5">
+                          {reviewResult.issues.map((issue, i) => (
+                            <div key={i} className="px-2.5 py-2 rounded-lg" style={{ background: "var(--c-input)", border: "1px solid var(--c-bd1)" }}>
+                              <div className="flex items-center gap-1.5 mb-1">
+                                <span className="px-1.5 py-0.5 rounded text-[9px] font-semibold" style={{ background: ADV_ACCENT_A(0.15), color: ADV_ACCENT }}>{issue.type}</span>
+                                <span style={{ fontSize: 9, color: "var(--c-t4)" }}>{issue.line}</span>
+                              </div>
+                              <p style={{ fontSize: 10, color: "var(--c-t2)", lineHeight: 1.5 }}>{issue.suggestion}</p>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                      {reviewResult.issues.length === 0 && (
+                        <p style={{ fontSize: 10, color: "var(--c-t3)", textAlign: "center" }}>无明显问题，剧本质量良好！</p>
+                      )}
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {/* ── 变体 tab ── */}
+              {advTab === "variants" && (
+                <div className="flex flex-col gap-2">
+                  <p style={{ fontSize: 10, color: "var(--c-t3)" }}>基于相同梗概生成多个风格各异的开场段落版本。</p>
+                  <div className="flex items-center gap-2">
+                    <span style={{ fontSize: 10, color: "var(--c-t3)" }}>版本数量</span>
+                    <div className="flex items-center gap-1 ml-auto">
+                      {[2, 3, 4].map((n) => (
+                        <button key={n} onClick={() => setVariantCount(n)} className="nodrag w-6 h-6 flex items-center justify-center rounded-md transition-all"
+                          style={{ fontSize: 10, fontWeight: variantCount === n ? 700 : 400, background: variantCount === n ? ADV_ACCENT_A(0.15) : "var(--c-surface)", border: `1px solid ${variantCount === n ? ADV_ACCENT_A(0.5) : "var(--c-bd2)"}`, color: variantCount === n ? ADV_ACCENT : "var(--c-t3)", cursor: "pointer" }}>
+                          {n}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                  <button
+                    onClick={() => {
+                      if (variantsMutation.isPending) return;
+                      const synopsis = (payload.synopsis?.trim() || payload.content?.trim())?.slice(0, 2000);
+                      if (!synopsis) { toast.error("请先填写故事梗概或脚本内容"); return; }
+                      variantsMutation.mutate({ synopsis, variantCount, model: llmModel });
+                    }}
+                    disabled={variantsMutation.isPending || !(payload.synopsis?.trim() || payload.content?.trim())}
+                    className="nodrag flex items-center justify-center gap-1.5 w-full py-2 rounded-lg text-xs font-medium transition-all"
+                    style={{ background: variantsMutation.isPending ? "var(--c-surface)" : ADV_ACCENT_A(0.12), border: `1px solid ${variantsMutation.isPending ? BORDER_DEFAULT : ADV_ACCENT_A(0.4)}`, color: variantsMutation.isPending || !(payload.synopsis?.trim() || payload.content?.trim()) ? "var(--c-t4)" : ADV_ACCENT, cursor: variantsMutation.isPending || !(payload.synopsis?.trim() || payload.content?.trim()) ? "not-allowed" : "pointer" }}
+                  >
+                    {variantsMutation.isPending ? <Loader2 className="w-3 h-3 animate-spin" /> : <GitBranch className="w-3 h-3" />}
+                    {variantsMutation.isPending ? "AI 生成变体中..." : `生成 ${variantCount} 个版本`}
+                  </button>
+                  {variantResults.length > 0 && (
+                    <div className="flex flex-col gap-2">
+                      <div className="flex gap-1 flex-wrap">
+                        {variantResults.map((v, i) => (
+                          <button key={i} onClick={() => setSelectedVariant(i)} className="nodrag px-2 py-0.5 rounded-full text-[9px] font-medium transition-all"
+                            style={{ background: selectedVariant === i ? ADV_ACCENT_A(0.18) : "var(--c-surface)", border: `1px solid ${selectedVariant === i ? ADV_ACCENT_A(0.5) : "var(--c-bd2)"}`, color: selectedVariant === i ? ADV_ACCENT : "var(--c-t3)", cursor: "pointer" }}>
+                            {v.label}
+                          </button>
+                        ))}
+                      </div>
+                      {variantResults[selectedVariant] && (
+                        <div className="flex flex-col gap-1.5 p-2.5 rounded-lg" style={{ background: "var(--c-input)", border: "1px solid var(--c-bd1)" }}>
+                          <p style={{ fontSize: 10.5, color: "var(--c-t1)", lineHeight: 1.7, whiteSpace: "pre-wrap" }}>{variantResults[selectedVariant].text}</p>
+                          <button
+                            onClick={() => {
+                              updateNodeData(id, { content: variantResults[selectedVariant].text });
+                              toast.success(`已应用「${variantResults[selectedVariant].label}」版本`);
+                            }}
+                            className="nodrag flex items-center justify-center gap-1 py-1.5 rounded-md text-[10px] font-medium w-full transition-all"
+                            style={{ background: ADV_ACCENT_A(0.12), border: `1px solid ${ADV_ACCENT_A(0.4)}`, color: ADV_ACCENT, cursor: "pointer" }}
+                          >
+                            <Check className="w-2.5 h-2.5" />
+                            应用此版本
+                          </button>
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {/* ── 文风 tab ── */}
+              {advTab === "style" && (
+                <div className="flex flex-col gap-2">
+                  <p style={{ fontSize: 10, color: "var(--c-t3)" }}>保留故事框架，将整本剧本迁移为指定写作风格。</p>
+                  <div className="flex gap-1 flex-wrap">
+                    {SCRIPT_STYLES.map((s) => (
+                      <button key={s} onClick={() => setSelectedStyle(s)} className="nodrag px-2 py-0.5 rounded-full text-[9px] font-medium transition-all"
+                        style={{ background: selectedStyle === s ? ADV_ACCENT_A(0.18) : "var(--c-surface)", border: `1px solid ${selectedStyle === s ? ADV_ACCENT_A(0.5) : "var(--c-bd2)"}`, color: selectedStyle === s ? ADV_ACCENT : "var(--c-t3)", cursor: "pointer" }}>
+                        {s}
+                      </button>
+                    ))}
+                  </div>
+                  <button
+                    onClick={() => {
+                      if (anyPending) return;
+                      const text = payload.content?.trim();
+                      if (!text) { toast.error("请先填写脚本内容"); return; }
+                      if (!window.confirm(`确认将脚本内容迁移为「${selectedStyle}」风格？此操作将覆盖当前内容，不可撤销。`)) return;
+                      styleTransferMutation.mutate({ scriptText: text.slice(0, 8000), style: selectedStyle, model: llmModel });
+                    }}
+                    disabled={anyPending || !payload.content?.trim()}
+                    className="nodrag flex items-center justify-center gap-1.5 w-full py-2 rounded-lg text-xs font-medium transition-all"
+                    style={{ background: anyPending ? "var(--c-surface)" : ADV_ACCENT_A(0.12), border: `1px solid ${anyPending ? BORDER_DEFAULT : ADV_ACCENT_A(0.4)}`, color: anyPending || !payload.content?.trim() ? "var(--c-t4)" : ADV_ACCENT, cursor: anyPending || !payload.content?.trim() ? "not-allowed" : "pointer" }}
+                  >
+                    {styleTransferMutation.isPending ? <Loader2 className="w-3 h-3 animate-spin" /> : <Layers2 className="w-3 h-3" />}
+                    {styleTransferMutation.isPending ? `迁移为「${selectedStyle}」风格中...` : `迁移为「${selectedStyle}」风格`}
+                  </button>
+                  <p style={{ fontSize: 9, color: "var(--c-t4)", lineHeight: 1.5 }}>
+                    此操作将直接覆盖脚本内容，建议先备份原文。
+                  </p>
+                </div>
+              )}
+
+              {/* ── 对白 tab ── */}
+              {advTab === "dialogue" && (
+                <div className="flex flex-col gap-2">
+                  <p style={{ fontSize: 10, color: "var(--c-t3)" }}>从剧本中提取所有对白，格式化为「角色：台词」清单。</p>
+                  <button
+                    onClick={() => {
+                      if (extractDialogueMutation.isPending) return;
+                      const text = payload.content?.trim();
+                      if (!text) { toast.error("请先填写脚本内容"); return; }
+                      extractDialogueMutation.mutate({ scriptText: text.slice(0, 8000), model: llmModel });
+                    }}
+                    disabled={extractDialogueMutation.isPending || !payload.content?.trim()}
+                    className="nodrag flex items-center justify-center gap-1.5 w-full py-2 rounded-lg text-xs font-medium transition-all"
+                    style={{ background: extractDialogueMutation.isPending ? "var(--c-surface)" : ADV_ACCENT_A(0.12), border: `1px solid ${extractDialogueMutation.isPending ? BORDER_DEFAULT : ADV_ACCENT_A(0.4)}`, color: extractDialogueMutation.isPending || !payload.content?.trim() ? "var(--c-t4)" : ADV_ACCENT, cursor: extractDialogueMutation.isPending || !payload.content?.trim() ? "not-allowed" : "pointer" }}
+                  >
+                    {extractDialogueMutation.isPending ? <Loader2 className="w-3 h-3 animate-spin" /> : <MessageSquare className="w-3 h-3" />}
+                    {extractDialogueMutation.isPending ? "AI 提取对白中..." : "提取对白清单"}
+                  </button>
+                  {dialogueResult && (
+                    <div className="flex flex-col gap-1.5">
+                      <pre style={{ fontSize: 10, color: "var(--c-t1)", lineHeight: 1.7, whiteSpace: "pre-wrap", fontFamily: "inherit", background: "var(--c-input)", border: "1px solid var(--c-bd1)", borderRadius: 8, padding: "8px 10px", maxHeight: 160, overflowY: "auto" }}>
+                        {dialogueResult}
+                      </pre>
+                      <button
+                        onClick={async () => {
+                          try {
+                            await navigator.clipboard.writeText(dialogueResult);
+                            toast.success("对白清单已复制到剪贴板");
+                          } catch { toast.error("复制失败"); }
+                        }}
+                        className="nodrag flex items-center justify-center gap-1 py-1.5 rounded-md text-[10px] font-medium w-full transition-all"
+                        style={{ background: ADV_ACCENT_A(0.08), border: `1px solid ${ADV_ACCENT_A(0.3)}`, color: ADV_ACCENT, cursor: "pointer" }}
+                      >
+                        <Copy className="w-2.5 h-2.5" /> 复制对白清单
+                      </button>
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {/* ── Mood Board tab ── */}
+              {advTab === "moodboard" && (
+                <div className="flex flex-col gap-2">
+                  <p style={{ fontSize: 10, color: "var(--c-t3)" }}>将剧本每个场景提炼为 AI 图像生成提示词，便于快速创建视觉参考板。</p>
+                  <button
+                    onClick={() => {
+                      if (moodBoardMutation.isPending) return;
+                      const text = payload.content?.trim();
+                      if (!text) { toast.error("请先填写脚本内容"); return; }
+                      moodBoardMutation.mutate({ scriptText: text.slice(0, 8000), model: llmModel });
+                    }}
+                    disabled={moodBoardMutation.isPending || !payload.content?.trim()}
+                    className="nodrag flex items-center justify-center gap-1.5 w-full py-2 rounded-lg text-xs font-medium transition-all"
+                    style={{ background: moodBoardMutation.isPending ? "var(--c-surface)" : ADV_ACCENT_A(0.12), border: `1px solid ${moodBoardMutation.isPending ? BORDER_DEFAULT : ADV_ACCENT_A(0.4)}`, color: moodBoardMutation.isPending || !payload.content?.trim() ? "var(--c-t4)" : ADV_ACCENT, cursor: moodBoardMutation.isPending || !payload.content?.trim() ? "not-allowed" : "pointer" }}
+                  >
+                    {moodBoardMutation.isPending ? <Loader2 className="w-3 h-3 animate-spin" /> : <Image className="w-3 h-3" />}
+                    {moodBoardMutation.isPending ? "AI 生成 Mood Board 中..." : "生成场景 Mood Board"}
+                  </button>
+                  {moodBoardResult.length > 0 && (
+                    <div className="flex flex-col gap-1.5 max-h-56 overflow-y-auto nodrag">
+                      {moodBoardResult.map((scene, i) => (
+                        <div key={`${scene.sceneIndex}-${i}`} className="p-2.5 rounded-lg" style={{ background: "var(--c-input)", border: "1px solid var(--c-bd1)" }}>
+                          <div className="flex items-center gap-1.5 mb-1.5">
+                            <span className="px-1.5 py-0.5 rounded text-[9px] font-semibold" style={{ background: ADV_ACCENT_A(0.15), color: ADV_ACCENT }}>场景{scene.sceneIndex}</span>
+                            <span style={{ fontSize: 10, fontWeight: 600, color: "var(--c-t2)" }}>{scene.sceneTitle}</span>
+                          </div>
+                          <p style={{ fontSize: 9.5, color: "var(--c-t1)", lineHeight: 1.6, fontFamily: "monospace", marginBottom: 4 }}>{scene.prompt}</p>
+                          {scene.negPrompt && <p style={{ fontSize: 9, color: "var(--c-t4)", lineHeight: 1.5 }}>−{scene.negPrompt}</p>}
+                          <button
+                            onClick={async () => {
+                              try {
+                                await navigator.clipboard.writeText(scene.prompt);
+                                toast.success(`场景 ${scene.sceneIndex} 提示词已复制`);
+                              } catch { toast.error("复制失败"); }
+                            }}
+                            className="nodrag flex items-center gap-1 px-2 py-0.5 rounded text-[9px] mt-1"
+                            style={{ background: ADV_ACCENT_A(0.08), border: `1px solid ${ADV_ACCENT_A(0.25)}`, color: ADV_ACCENT, cursor: "pointer" }}
+                          >
+                            <Copy style={{ width: 8, height: 8 }} /> 复制提示词
+                          </button>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              )}
+
+            </div>
+          )}
+        </div>
+
       </div>
     </BaseNode>
   );

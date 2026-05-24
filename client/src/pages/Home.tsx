@@ -626,6 +626,112 @@ export default function Home() {
               </button>
             </div>
           )}
+
+          {/* Feature overview */}
+          <div className="mt-12 pt-8 border-t" style={{ borderColor: "var(--c-bd1)" }}>
+            <h2 className="text-base font-semibold mb-1" style={{ color: "var(--c-t1)" }}>
+              21 种节点 · 全功能概览
+            </h2>
+            <p className="text-xs mb-6" style={{ color: "var(--c-t4)" }}>
+              连接不同节点构建你的 AI 视频创作流水线
+            </p>
+
+            <div className="grid grid-cols-2 gap-4">
+              {[
+                {
+                  title: "创作层",
+                  accentColor: "oklch(0.62 0.18 240)",
+                  nodes: [
+                    { label: "脚本", color: "oklch(0.62 0.18 240)" },
+                    { label: "分镜", color: "oklch(0.65 0.20 160)" },
+                    { label: "提示词", color: "oklch(0.68 0.22 300)" },
+                    { label: "AI对话", color: "oklch(0.70 0.18 200)" },
+                    { label: "便签", color: "oklch(0.60 0.10 90)" },
+                    { label: "角色/场景", color: "oklch(0.66 0.18 140)" },
+                  ],
+                },
+                {
+                  title: "生成层",
+                  accentColor: "oklch(0.72 0.20 330)",
+                  nodes: [
+                    { label: "图像生成", color: "oklch(0.72 0.20 330)" },
+                    { label: "视频任务", color: "oklch(0.62 0.20 25)" },
+                    { label: "素材", color: "oklch(0.65 0.18 60)" },
+                    { label: "音频", color: "oklch(0.68 0.20 340)" },
+                    { label: "构图控制", color: "oklch(0.65 0.20 310)" },
+                  ],
+                },
+                {
+                  title: "后期层",
+                  accentColor: "oklch(0.68 0.20 55)",
+                  nodes: [
+                    { label: "剪辑", color: "oklch(0.68 0.20 55)" },
+                    { label: "合并", color: "oklch(0.62 0.20 270)" },
+                    { label: "叠加", color: "oklch(0.65 0.18 30)" },
+                    { label: "字幕", color: "oklch(0.65 0.18 170)" },
+                    { label: "动态字幕", color: "oklch(0.68 0.20 175)" },
+                    { label: "智能剪辑", color: "oklch(0.68 0.22 65)" },
+                    { label: "后处理", color: "oklch(0.65 0.18 190)" },
+                  ],
+                },
+                {
+                  title: "高级层",
+                  accentColor: "oklch(0.65 0.18 350)",
+                  nodes: [
+                    { label: "声音克隆", color: "oklch(0.65 0.18 350)" },
+                    { label: "唇形同步", color: "oklch(0.62 0.20 220)" },
+                    { label: "数字人", color: "oklch(0.65 0.20 290)" },
+                  ],
+                },
+              ].map((cat) => (
+                <div
+                  key={cat.title}
+                  style={{
+                    border: "1px solid var(--c-bd1)",
+                    background: "var(--c-surface)",
+                    borderRadius: 12,
+                    padding: 20,
+                  }}
+                >
+                  <div className="flex items-center gap-2 mb-3">
+                    <div
+                      style={{
+                        width: 8,
+                        height: 8,
+                        borderRadius: 2,
+                        background: cat.accentColor,
+                        flexShrink: 0,
+                      }}
+                    />
+                    <span className="text-sm font-semibold" style={{ color: "var(--c-t2)" }}>
+                      {cat.title}
+                    </span>
+                    <span className="text-xs" style={{ color: "var(--c-t4)" }}>
+                      ({cat.nodes.length})
+                    </span>
+                  </div>
+                  <div className="flex flex-wrap gap-1.5 mt-3">
+                    {cat.nodes.map((node) => (
+                      <span
+                        key={node.label}
+                        style={{
+                          fontSize: 11,
+                          padding: "2px 8px",
+                          borderRadius: 99,
+                          border: `1px solid ${node.color.replace(")", " / 0.3)")}`,
+                          background: node.color.replace(")", " / 0.1)"),
+                          color: node.color,
+                          whiteSpace: "nowrap",
+                        }}
+                      >
+                        {node.label}
+                      </span>
+                    ))}
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
         </div>
 
       </main>
