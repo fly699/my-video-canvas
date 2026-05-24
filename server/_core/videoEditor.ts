@@ -434,6 +434,179 @@ function cssColorToASSHex(color: string): string {
   return MAP[color.toLowerCase()] ?? "FFFFFF";
 }
 
+// ── ASS Motion Subtitles ──────────────────────────────────────────────────────
+
+export type SubtitleMotionStyle = "fade" | "roll" | "karaoke" | "bounce";
+
+function formatASSTime(seconds: number): string {
+  const h = Math.floor(seconds / 3600);
+  const m = Math.floor((seconds % 3600) / 60);
+  const s = Math.floor(seconds % 60);
+  const cs = Math.round((seconds % 1) * 100);
+  return `${h}:${String(m).padStart(2, "0")}:${String(s).padStart(2, "0")}.${String(cs).padStart(2, "0")}`;
+}
+
+function buildASSDialogue(entry: SubtitleEntry, style: SubtitleMotionStyle): string {
+  const text = entry.text.replace(/\n/g, "\\N");
+  let effectTags: string;
+  switch (style) {
+    case "fade":
+      effectTags = "{\\fad(250,250)}";
+      break;
+    case "roll":
+      // Slide in from right (off-screen) to resting position in 400ms, fade out
+      effectTags = "{\\an2\\move(1920,1050,960,1050,0,400)\\fad(0,300)}";
+      break;
+    case "karaoke": {
+      const words = text.split(/\s+/).filter(Boolean);
+      if (words.length === 0) { effectTags = "{\\fad(200,200)}"; break; }
+      const durMs = (entry.end - entry.start) * 1000;
+      const csPerWord = Math.max(1, Math.round((durMs / 10) / words.length));
+      return `Dialogue: 0,${formatASSTime(entry.start)},${formatASSTime(entry.end)},Default,,0,0,0,,${words.map((w) => `{\\kf${csPerWord}}${w}`).join(" ")}`;
+    }
+    case "bounce":
+      // Pop in with scale bounce then fade out
+      effectTags = "{\\fad(0,200)\\t(0,200,\\fscx120\\fscy120)\\t(200,400,\\fscx100\\fscy100)}";
+      break;
+    default:
+      effectTags = "{\\fad(200,200)}";
+  }
+  return `Dialogue: 0,${formatASSTime(entry.start)},${formatASSTime(entry.end)},Default,,0,0,0,,${effectTags}${text}`;
+}
+
+function generateASS(entries: SubtitleEntry[], style: SubtitleMotionStyle, fontSize: number, fontColor: string): string {
+  const assHex = cssColorToASSHex(fontColor);
+  const header = [
+    "[Script Info]",
+    "ScriptType: v4.00+",
+    "PlayResX: 1920",
+    "PlayResY: 1080",
+    "ScaledBorderAndShadow: yes",
+    "",
+    "[V4+ Styles]",
+    "Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding",
+    `Style: Default,Arial,${fontSize},&H00${assHex},&H000000FF,&H00000000,&H80000000,-1,0,0,0,100,100,0,0,1,2.5,1.5,2,10,10,40,1`,
+    "",
+    "[Events]",
+    "Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text",
+  ].join("\n");
+  return header + "\n" + entries.map((e) => buildASSDialogue(e, style)).join("\n");
+}
+
+export interface BurnMotionSubtitleOptions {
+  motionStyle?: SubtitleMotionStyle;
+  fontSize?: number;
+  fontColor?: string;
+}
+
+export async function burnAssSubtitles(
+  videoUrl: string,
+  entries: SubtitleEntry[],
+  opts?: BurnMotionSubtitleOptions,
+): Promise<{ url: string }> {
+  const style = opts?.motionStyle ?? "fade";
+  const fontSize = opts?.fontSize ?? 22;
+  const fontColor = opts?.fontColor ?? "white";
+
+  const videoPath = await downloadToTemp(videoUrl, "mp4");
+  const assName = `subs-ass-${Date.now()}-${Math.random().toString(36).slice(2)}.ass`;
+  const assPath = path.join(os.tmpdir(), assName);
+  const outName = `ffmpeg-motion-${Date.now()}-${Math.random().toString(36).slice(2)}.mp4`;
+  const outPath = path.join(os.tmpdir(), outName);
+
+  try {
+    await fs.writeFile(assPath, generateASS(entries, style, fontSize, fontColor), "utf8");
+
+    const escapedAssPath = assPath
+      .replace(/\\/g, "\\\\")
+      .replace(/:/g, "\\:")
+      .replace(/,/g, "\\,")
+      .replace(/'/g, "\\'");
+    const args = [
+      "-i", videoPath,
+      "-vf", `ass='${escapedAssPath}'`,
+      "-c:v", "libx264", "-preset", "fast",
+      "-c:a", "copy",
+      "-movflags", "+faststart",
+      "-y", outPath,
+    ];
+
+    try {
+      await execFileAsync("ffmpeg", args);
+    } catch (err: unknown) {
+      const e = err as { stderr?: string; message?: string };
+      throw new Error(`FFmpeg ASS burn failed:\n${e.stderr || e.message || String(err)}`);
+    }
+
+    const outBuffer = await fs.readFile(outPath);
+    const { url } = await storagePut(`generated/motion-sub-${Date.now()}.mp4`, outBuffer, "video/mp4");
+    return { url };
+  } finally {
+    await fs.unlink(videoPath).catch(() => undefined);
+    await fs.unlink(assPath).catch(() => undefined);
+    await fs.unlink(outPath).catch(() => undefined);
+  }
+}
+
+// ── Smart Cut (multi-segment extraction) ──────────────────────────────────────
+
+export interface SmartCutOptions {
+  inputUrl: string;
+  keepSegments: Array<{ start: number; end: number }>;
+}
+
+export interface SmartCutResult {
+  url: string;
+  outputDuration: number;
+}
+
+export async function smartCutVideo(opts: SmartCutOptions): Promise<SmartCutResult> {
+  if (opts.keepSegments.length === 0) throw new Error("keepSegments 不能为空");
+
+  const videoPath = await downloadToTemp(opts.inputUrl, "mp4");
+  const outName = `ffmpeg-smartcut-${Date.now()}-${Math.random().toString(36).slice(2)}.mp4`;
+  const outPath = path.join(os.tmpdir(), outName);
+
+  try {
+    const n = opts.keepSegments.length;
+    const filterParts: string[] = [];
+    let concatInputs = "";
+    for (let i = 0; i < n; i++) {
+      const { start, end } = opts.keepSegments[i];
+      filterParts.push(`[0:v]trim=start=${start}:end=${end},setpts=PTS-STARTPTS[v${i}]`);
+      filterParts.push(`[0:a]atrim=start=${start}:end=${end},asetpts=PTS-STARTPTS[a${i}]`);
+      concatInputs += `[v${i}][a${i}]`;
+    }
+    filterParts.push(`${concatInputs}concat=n=${n}:v=1:a=1[outv][outa]`);
+
+    const args = [
+      "-i", videoPath,
+      "-filter_complex", filterParts.join(";"),
+      "-map", "[outv]",
+      "-map", "[outa]",
+      "-c:v", "libx264", "-preset", "fast",
+      "-c:a", "aac",
+      "-movflags", "+faststart",
+      "-y", outPath,
+    ];
+
+    try {
+      await execFileAsync("ffmpeg", args);
+    } catch (err: unknown) {
+      const e = err as { stderr?: string; message?: string };
+      throw new Error(`FFmpeg smart cut failed:\n${e.stderr || e.message || String(err)}`);
+    }
+
+    const outBuffer = await fs.readFile(outPath);
+    const { url } = await storagePut(`generated/smartcut-${Date.now()}.mp4`, outBuffer, "video/mp4");
+    const outputDuration = opts.keepSegments.reduce((sum, seg) => sum + (seg.end - seg.start), 0);
+    return { url, outputDuration };
+  } finally {
+    await fs.unlink(videoPath).catch(() => undefined);
+    await fs.unlink(outPath).catch(() => undefined);
+  }
+}
+
 // ── Overlay ───────────────────────────────────────────────────────────────────
 
 type OverlayMode = "watermark" | "pip" | "color_correction";

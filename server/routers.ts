@@ -17,6 +17,10 @@ import {
   mergeRouter,
   subtitleRouter,
   overlayRouter,
+  subtitleMotionRouter,
+  voiceCloneRouter,
+  lipSyncRouter,
+  avatarRouter,
 } from "./routers/canvas";
 import { uploadRouter } from "./routers/upload";
 import { adminRouter } from "./routers/admin";
@@ -51,6 +55,10 @@ export const appRouter = router({
   merge: mergeRouter,
   subtitle: subtitleRouter,
   overlay: overlayRouter,
+  subtitleMotion: subtitleMotionRouter,
+  voiceClone: voiceCloneRouter,
+  lipSync: lipSyncRouter,
+  avatar: avatarRouter,
   upload: uploadRouter,
   admin: adminRouter,
 });

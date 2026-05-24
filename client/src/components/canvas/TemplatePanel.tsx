@@ -546,8 +546,14 @@ const NODE_DOT_COLORS: Partial<Record<NodeType, string>> = {
   character:    "oklch(0.66 0.18 140)",
   clip:         "oklch(0.68 0.20 55)",
   merge:        "oklch(0.62 0.20 270)",
-  subtitle:     "oklch(0.65 0.18 170)",
-  overlay:      "oklch(0.68 0.18 75)",
+  subtitle:        "oklch(0.65 0.18 170)",
+  overlay:         "oklch(0.68 0.18 75)",
+  subtitle_motion: "oklch(0.68 0.20 175)",
+  smart_cut:       "oklch(0.68 0.22 65)",
+  pose_control:    "oklch(0.65 0.20 310)",
+  voice_clone:     "oklch(0.65 0.18 350)",
+  lip_sync:        "oklch(0.62 0.20 220)",
+  avatar:          "oklch(0.65 0.20 290)",
 };
 
 const NODE_TYPE_LABELS: Partial<Record<NodeType, string>> = {
@@ -565,8 +571,14 @@ const NODE_TYPE_LABELS: Partial<Record<NodeType, string>> = {
   character:    "角色/场景",
   clip:         "剪辑",
   merge:        "视频合并",
-  subtitle:     "字幕",
-  overlay:      "叠加特效",
+  subtitle:        "字幕",
+  overlay:         "叠加特效",
+  subtitle_motion: "动态字幕",
+  smart_cut:       "智能剪辑",
+  pose_control:    "构图控制",
+  voice_clone:     "声音克隆",
+  lip_sync:        "唇形同步",
+  avatar:          "数字人",
 };
 
 // ── Custom template localStorage ──────────────────────────────────────────────

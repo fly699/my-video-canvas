@@ -36,7 +36,7 @@ import { isPoyoVideoProvider, submitPoyoVideo, checkPoyoVideoStatus } from "../_
 import { isHiggsfieldVideoProvider, submitHiggsfieldVideo, checkHiggsfieldVideoStatus } from "../_core/higgsfield";
 import { submitAndPollPoyoMusic, type PoyoMusicModel } from "../_core/poyoAudio";
 import { submitAndPollPoyoTTS, type PoyoTTSModel } from "../_core/poyoAudio";
-import { trimVideo, getVideoDuration, mergeVideos, burnSubtitles, generateSRT, overlayVideo, assertSafeUrl } from "../_core/videoEditor";
+import { trimVideo, getVideoDuration, mergeVideos, burnSubtitles, generateSRT, overlayVideo, assertSafeUrl, burnAssSubtitles, smartCutVideo } from "../_core/videoEditor";
 import { transcribeAudio } from "../_core/voiceTranscription";
 import { VIDEO_PROVIDERS } from "../../shared/types";
 import type { SubtitleEntry } from "../../shared/types";
@@ -772,6 +772,184 @@ Rules:
       };
       });
     }),
+
+  refineScene: protectedProcedure
+    .input(z.object({
+      sceneText: z.string().min(1).max(2000),
+      intent: z.string().max(500).optional(),
+      model: z.string().optional(),
+    }))
+    .mutation(async ({ ctx, input }) => {
+      await assertWhitelisted(ctx);
+      const systemPrompt = `你是专业编剧，负责优化单个场景描述。根据用户意图，改写或精化场景文字，保持原有叙事方向。只输出改写后的场景文字，不加任何说明。`;
+      const userContent = input.intent
+        ? `意图：${input.intent}\n\n原场景：\n${input.sceneText}`
+        : `请优化以下场景：\n${input.sceneText}`;
+      const response = await invokeLLM({
+        messages: [
+          { role: "system" as const, content: systemPrompt },
+          { role: "user" as const, content: userContent },
+        ],
+        model: input.model ?? "gemini-2.5-flash",
+      });
+      return { result: extractTextContent(response).trim() };
+    }),
+
+  reviewScript: protectedProcedure
+    .input(z.object({
+      scriptText: z.string().min(1).max(8000),
+      model: z.string().optional(),
+    }))
+    .mutation(async ({ ctx, input }) => {
+      await assertWhitelisted(ctx);
+      return dedupe("scripts.reviewScript", ctx.user.id, input, async () => {
+      const systemPrompt = `你是专业剧本审稿人。分析剧本的结构、节奏、人物塑造和对白质量。
+仅输出合法 JSON，无 markdown 代码块，无额外文字：
+{"score":85,"issues":[{"type":"节奏","line":"场景二","suggestion":"节奏过快，建议增加过渡描写"},{"type":"对白","line":"第15行","suggestion":"对白生硬，可改为自然口语"}]}
+score 为 0-100 整数，issues 数组最多 8 条，每条包含 type/line/suggestion 字段。`;
+      const response = await invokeLLM({
+        messages: [
+          { role: "system" as const, content: systemPrompt },
+          { role: "user" as const, content: input.scriptText },
+        ],
+        model: input.model ?? "claude-sonnet-4-6",
+        maxTokens: 2000,
+      });
+      const text = extractTextContent(response);
+      const jsonMatch = text.match(/\{[\s\S]*\}/);
+      if (!jsonMatch) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "AI 未返回有效 JSON" });
+      let parsed: { score: number; issues: Array<{ type: string; line: string; suggestion: string }> };
+      try { parsed = JSON.parse(jsonMatch[0]); } catch { throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "JSON 解析失败" }); }
+      return { score: parsed.score ?? 0, issues: parsed.issues ?? [] };
+      });
+    }),
+
+  generateVariants: protectedProcedure
+    .input(z.object({
+      synopsis: z.string().min(1).max(2000),
+      variantCount: z.number().int().min(2).max(4).default(3),
+      model: z.string().optional(),
+    }))
+    .mutation(async ({ ctx, input }) => {
+      await assertWhitelisted(ctx);
+      return dedupe("scripts.generateVariants", ctx.user.id, input, async () => {
+      const systemPrompt = `你是专业编剧。根据相同的故事梗概，生成风格各异的剧本开场段落（不超过200字/版本）。
+仅输出合法 JSON 数组，无 markdown 代码块：[{"label":"版本A","text":"..."},{"label":"版本B","text":"..."}]`;
+      const response = await invokeLLM({
+        messages: [
+          { role: "system" as const, content: systemPrompt },
+          { role: "user" as const, content: `梗概：${input.synopsis}\n\n请生成 ${input.variantCount} 个风格不同的开场版本。` },
+        ],
+        model: input.model ?? "claude-sonnet-4-6",
+        maxTokens: 4000,
+      });
+      const text = extractTextContent(response);
+      const jsonMatch = text.match(/\[[\s\S]*\]/);
+      if (!jsonMatch) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "AI 未返回有效 JSON" });
+      let variants: Array<{ label: string; text: string }>;
+      try { variants = JSON.parse(jsonMatch[0]); } catch { throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "JSON 解析失败" }); }
+      return { variants: variants.slice(0, input.variantCount) };
+      });
+    }),
+
+  refineConversation: protectedProcedure
+    .input(z.object({
+      dialogueText: z.string().min(1).max(4000),
+      intent: z.string().max(500).optional(),
+      model: z.string().optional(),
+    }))
+    .mutation(async ({ ctx, input }) => {
+      await assertWhitelisted(ctx);
+      const systemPrompt = `你是专业对话编剧，擅长优化剧本对白的节奏、语气和自然度。只输出改写后的对白文本，不加任何说明。`;
+      const userContent = input.intent
+        ? `优化要求：${input.intent}\n\n原对白：\n${input.dialogueText}`
+        : `请优化以下对白，使其更自然流畅：\n${input.dialogueText}`;
+      const response = await invokeLLM({
+        messages: [
+          { role: "system" as const, content: systemPrompt },
+          { role: "user" as const, content: userContent },
+        ],
+        model: input.model ?? "gemini-2.5-flash",
+      });
+      return { result: extractTextContent(response).trim() };
+    }),
+
+  applyStyleTransfer: protectedProcedure
+    .input(z.object({
+      scriptText: z.string().min(1).max(8000),
+      style: z.enum(["硬派", "文艺", "商业", "悬疑", "温情", "幽默"]),
+      model: z.string().optional(),
+    }))
+    .mutation(async ({ ctx, input }) => {
+      await assertWhitelisted(ctx);
+      return dedupe("scripts.applyStyleTransfer", ctx.user.id, input, async () => {
+      const STYLE_GUIDES: Record<string, string> = {
+        硬派: "简练有力，动作描写精准，对白克制，整体风格硬朗紧张",
+        文艺: "意象丰富，语言诗意，节奏舒缓，注重内心情感流动",
+        商业: "节奏明快，视觉冲击强，情节清晰，带商业爆米花感",
+        悬疑: "氛围紧绷，信息克制，设置悬念，多用留白与伏笔",
+        温情: "细腻温暖，情感真实，强调人物关系，语言柔和",
+        幽默: "轻松诙谐，妙语连珠，多用反转和对比制造喜感",
+      };
+      const systemPrompt = `你是专业编剧，负责将剧本改写为特定风格。风格要求：${STYLE_GUIDES[input.style]}。保留原故事框架和角色，只改变文风。只输出改写后的剧本，不加任何说明。`;
+      const response = await invokeLLM({
+        messages: [
+          { role: "system" as const, content: systemPrompt },
+          { role: "user" as const, content: input.scriptText },
+        ],
+        model: input.model ?? "claude-sonnet-4-6",
+        maxTokens: 8000,
+      });
+      return { result: extractTextContent(response).trim() };
+      });
+    }),
+
+  extractDialogue: protectedProcedure
+    .input(z.object({
+      scriptText: z.string().min(1).max(8000),
+      model: z.string().optional(),
+    }))
+    .mutation(async ({ ctx, input }) => {
+      await assertWhitelisted(ctx);
+      const systemPrompt = `你是剧本分析师。从剧本中提取所有对白，格式化为清单：每行一条，格式为"角色名：台词内容"。若无明确角色名则用"旁白"。只输出对白清单，不加任何说明。`;
+      const response = await invokeLLM({
+        messages: [
+          { role: "system" as const, content: systemPrompt },
+          { role: "user" as const, content: input.scriptText },
+        ],
+        model: input.model ?? "gemini-2.5-flash",
+      });
+      return { result: extractTextContent(response).trim() };
+    }),
+
+  generateMoodBoard: protectedProcedure
+    .input(z.object({
+      scriptText: z.string().min(1).max(8000),
+      model: z.string().optional(),
+    }))
+    .mutation(async ({ ctx, input }) => {
+      await assertWhitelisted(ctx);
+      return dedupe("scripts.generateMoodBoard", ctx.user.id, input, async () => {
+      const systemPrompt = `你是AI视频导演，负责将剧本场景转化为图像生成提示词。
+为每个主要场景生成一条英文视觉提示词（cinematic prompt）和一条负面提示词。
+仅输出合法 JSON 数组，无 markdown 代码块：
+[{"sceneIndex":1,"sceneTitle":"场景名称（中文）","prompt":"English cinematic prompt for AI image generation","negPrompt":"blurry, low quality, text"}]`;
+      const response = await invokeLLM({
+        messages: [
+          { role: "system" as const, content: systemPrompt },
+          { role: "user" as const, content: input.scriptText },
+        ],
+        model: input.model ?? "claude-sonnet-4-6",
+        maxTokens: 4000,
+      });
+      const text = extractTextContent(response);
+      const jsonMatch = text.match(/\[[\s\S]*\]/);
+      if (!jsonMatch) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "AI 未返回有效 JSON" });
+      let scenes: Array<{ sceneIndex: number; sceneTitle: string; prompt: string; negPrompt?: string }>;
+      try { scenes = JSON.parse(jsonMatch[0]); } catch { throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "JSON 解析失败" }); }
+      return { scenes };
+      });
+    }),
 });
 
 // ── Audio Generation ──────────────────────────────────────────────────────────
@@ -889,6 +1067,73 @@ export const clipRouter = router({
       const duration = await getVideoDuration(input.url);
       return { duration };
     }),
+
+  smartCut: protectedProcedure
+    .input(z.object({
+      inputUrl: z.string().url(),
+      aggressiveness: z.enum(["low", "medium", "high"]).default("medium"),
+      targetDuration: z.number().min(5).max(3600).optional(),
+      model: z.string().optional(),
+    }))
+    .mutation(async ({ ctx, input }) => {
+      await assertWhitelisted(ctx);
+      return dedupe("clip.smartCut", ctx.user.id, input, async () => {
+        const { transcribeAudio } = await import("../_core/voiceTranscription");
+        const transcription = await transcribeAudio({ audioUrl: input.inputUrl });
+        if ("error" in transcription) {
+          throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: `转录失败：${transcription.error}` });
+        }
+        const segments = transcription.segments.map((s) => ({
+          start: s.start, end: s.end, text: s.text.trim(),
+          no_speech_prob: s.no_speech_prob ?? 0,
+        }));
+
+        const AGGRESSIVE_THRESHOLDS: Record<string, number> = { low: 0.20, medium: 0.40, high: 0.65 };
+        const removeThreshold = AGGRESSIVE_THRESHOLDS[input.aggressiveness];
+
+        const systemPrompt = `你是专业视频剪辑师。给定视频转录片段，决定哪些片段应该保留。
+移除标准（移除值越高越激进）：无意义停顿、重复内容、低信息密度片段、口误填充词（"嗯"、"呃"等）。
+当前移除激进度：${input.aggressiveness}（${Math.round(removeThreshold * 100)}% 截止阈值）。
+仅输出合法 JSON，无 markdown：{"keep":[{"start":0.5,"end":5.2},{"start":8.1,"end":15.0}]}`;
+
+        const transcriptJson = JSON.stringify(segments.map((s) => ({ s: s.start, e: s.end, t: s.text, ns: s.no_speech_prob })));
+        const response = await invokeLLM({
+          messages: [
+            { role: "system" as const, content: systemPrompt },
+            { role: "user" as const, content: `片段列表（JSON）：\n${transcriptJson}` },
+          ],
+          model: input.model ?? "gemini-2.5-flash",
+          maxTokens: 2000,
+        });
+        const text = extractTextContent(response);
+        const jsonMatch = text.match(/\{[\s\S]*\}/);
+        if (!jsonMatch) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "AI 未返回有效 JSON" });
+        let parsed: { keep: Array<{ start: number; end: number }> };
+        try { parsed = JSON.parse(jsonMatch[0]); } catch { throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "JSON 解析失败" }); }
+        const keepSegments = (parsed.keep ?? []).filter((seg) => seg.end > seg.start);
+        if (keepSegments.length === 0) throw new TRPCError({ code: "UNPROCESSABLE_CONTENT", message: "AI 未找到可保留片段，请调低激进度后重试" });
+        const result = await smartCutVideo({ inputUrl: input.inputUrl, keepSegments });
+        return { url: result.url, outputDuration: result.outputDuration };
+      });
+    }),
+
+  poseControl: protectedProcedure
+    .input(z.object({
+      referenceImageUrl: z.string().url(),
+      prompt: z.string().min(1).max(1000),
+      guidanceScale: z.number().min(1).max(10).optional(),
+    }))
+    .mutation(async ({ ctx, input }) => {
+      await assertWhitelisted(ctx);
+      const { generateImage } = await import("../_core/imageGeneration");
+      const result = await generateImage({
+        prompt: input.prompt,
+        model: "hf_flux_pro",
+        originalImages: [{ url: input.referenceImageUrl }],
+        fluxGuidanceScale: input.guidanceScale,
+      });
+      return { url: result.url };
+    }),
 });
 
 // ── Video Merge ───────────────────────────────────────────────────────────────
@@ -969,6 +1214,66 @@ export const subtitleRouter = router({
     .mutation(async ({ ctx, input }) => {
       await assertWhitelisted(ctx);
       return { srt: generateSRT(input.entries as SubtitleEntry[]) };
+    }),
+});
+
+// ── Motion Subtitles ──────────────────────────────────────────────────────────
+export const subtitleMotionRouter = router({
+  transcribe: protectedProcedure
+    .input(z.object({ audioUrl: z.string().url(), language: z.string().optional() }))
+    .mutation(async ({ ctx, input }) => {
+      await assertWhitelisted(ctx);
+      return dedupe("subtitleMotion.transcribe", ctx.user.id, input, async () => {
+        const { transcribeAudio } = await import("../_core/voiceTranscription");
+        const result = await transcribeAudio({ audioUrl: input.audioUrl, language: input.language });
+        if ("error" in result) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: result.error });
+        const entries: SubtitleEntry[] = result.segments.map((s) => ({ start: s.start, end: s.end, text: s.text.trim() }));
+        return { entries, fullText: result.text, language: result.language };
+      });
+    }),
+
+  burnMotion: protectedProcedure
+    .input(z.object({
+      videoUrl: z.string().url(),
+      entries: z.array(z.object({ start: z.number(), end: z.number(), text: z.string().max(500) })).min(1).max(2000),
+      motionStyle: z.enum(["fade", "roll", "karaoke", "bounce"]).optional(),
+      fontSize: z.number().int().min(8).max(48).optional(),
+      fontColor: z.string().optional(),
+    }))
+    .mutation(async ({ ctx, input }) => {
+      await assertWhitelisted(ctx);
+      const result = await burnAssSubtitles(
+        input.videoUrl,
+        input.entries as SubtitleEntry[],
+        { motionStyle: input.motionStyle, fontSize: input.fontSize, fontColor: input.fontColor },
+      );
+      return { url: result.url };
+    }),
+});
+
+// ── Deferred node routers (require third-party API keys) ──────────────────────
+
+export const voiceCloneRouter = router({
+  clone: protectedProcedure
+    .input(z.object({ referenceAudioUrl: z.string().url().optional(), text: z.string().min(1).max(5000) }))
+    .mutation(async () => {
+      throw new TRPCError({ code: "METHOD_NOT_SUPPORTED", message: "声音克隆功能暂未启用，需要配置 ElevenLabs API Key" });
+    }),
+});
+
+export const lipSyncRouter = router({
+  sync: protectedProcedure
+    .input(z.object({ videoUrl: z.string().url(), audioUrl: z.string().url() }))
+    .mutation(async () => {
+      throw new TRPCError({ code: "METHOD_NOT_SUPPORTED", message: "唇形同步功能暂未启用，需要配置 Sync.so API Key" });
+    }),
+});
+
+export const avatarRouter = router({
+  generate: protectedProcedure
+    .input(z.object({ avatarDescription: z.string().min(1).max(500), script: z.string().min(1).max(5000) }))
+    .mutation(async () => {
+      throw new TRPCError({ code: "METHOD_NOT_SUPPORTED", message: "数字人功能暂未启用，需要配置 D-ID API Key" });
     }),
 });
 
