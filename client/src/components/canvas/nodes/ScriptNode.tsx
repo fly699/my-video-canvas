@@ -301,6 +301,7 @@ export const ScriptNode = memo(function ScriptNode({ id, selected, data }: Props
     || fullScriptMutation.isPending || summarizeMutation.isPending;
 
   const handleFullGenerate = useCallback(() => {
+    if (anyPending) return;
     let synopsis = (payload.synopsis?.trim() || payload.content?.trim()) ?? "";
     if (!synopsis) { toast.error("请先填写故事梗概或脚本内容"); return; }
     if (synopsis.length > 2000) {
@@ -337,12 +338,13 @@ export const ScriptNode = memo(function ScriptNode({ id, selected, data }: Props
   }, [payload.content]);
 
   const handleSummarize = useCallback(() => {
+    if (anyPending) return;
     const text = payload.content?.trim();
     if (!text) { toast.error("请先填写脚本内容"); return; }
     const safeText = text.length > 8000 ? text.slice(0, 8000) : text;
     if (text.length > 8000) toast.warning("脚本过长，已截断至 8000 字进行梗概提取");
     summarizeMutation.mutate({ text: safeText, mode: "summarize", model: llmModel });
-  }, [payload.content, llmModel, summarizeMutation.mutate]);
+  }, [anyPending, payload.content, llmModel, summarizeMutation.mutate]);
 
   // ── Per-scene duration estimate ───────────────────────────────────────────
   const perSceneSecs = Math.round(duration / Math.max(1, sceneCount));
@@ -425,6 +427,7 @@ export const ScriptNode = memo(function ScriptNode({ id, selected, data }: Props
 
           <button
             onClick={() => {
+              if (anyPending) return;
               if (!payload.content?.trim()) { toast.error("请先填写脚本内容"); return; }
               const rawText = payload.content ?? "";
               const text = rawText.length > 8000 ? rawText.slice(0, 8000) : rawText;
@@ -474,6 +477,7 @@ export const ScriptNode = memo(function ScriptNode({ id, selected, data }: Props
         {/* Generate storyboards from existing script — shows actual capped count */}
         <button
           onClick={() => {
+            if (anyPending) return;
             if (!payload.content?.trim()) { toast.error("请先填写脚本内容"); return; }
             generateMutation.mutate({ content: payload.content ?? "", synopsis: payload.synopsis, model: llmModel, count: storyboardCount });
           }}

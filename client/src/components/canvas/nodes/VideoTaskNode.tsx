@@ -320,11 +320,17 @@ export const VideoTaskNode = memo(function VideoTaskNode({ id, selected, data }:
 
   useEffect(() => {
     if (!(payload.status === "processing" && payload.taskId)) return;
+    // Tolerate transient poll failures — the server-side task is still running and credits
+    // are already spent. Marking the node "failed" on a single network blip would tempt the user
+    // to re-submit and double-charge. Only flip to failed after several consecutive failures.
+    let consecutiveFailures = 0;
+    const MAX_POLL_FAILURES = 5;
     const timerId = setInterval(async () => {
       try {
         const result = await pollQueryRef.current.refetch();
         if (result.error) throw result.error;
         if (result.data) {
+          consecutiveFailures = 0;
           const task = result.data;
           if (task.status === "succeeded" || task.status === "failed") {
             updateNodeData(id, {
@@ -336,10 +342,14 @@ export const VideoTaskNode = memo(function VideoTaskNode({ id, selected, data }:
           }
         }
       } catch (err) {
+        consecutiveFailures += 1;
         const msg = err instanceof Error ? err.message : typeof err === "string" ? err : "未知错误";
-        updateNodeData(id, { status: "failed", errorMessage: msg }, true);
-        clearInterval(timerId);
-        toast.error("轮询失败：" + msg);
+        if (consecutiveFailures >= MAX_POLL_FAILURES) {
+          updateNodeData(id, { status: "failed", errorMessage: `轮询持续失败：${msg}` }, true);
+          clearInterval(timerId);
+          toast.error("轮询持续失败，任务可能仍在服务端运行；如需重新提交请先在服务端确认");
+        }
+        // Otherwise: silent retry on next tick
       }
     }, 5000);
     pollRef.current = timerId;

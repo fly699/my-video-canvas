@@ -143,16 +143,18 @@ export const ImageGenNode = memo(function ImageGenNode({ id, selected, data }: P
         const target = allNodes.find(n => n.id === edge.target);
         if (!target) return [];
         const nt = target.data.nodeType;
-        if (nt === "storyboard" || nt === "image_gen" || nt === "video_task") {
-          return [{ id: edge.target, payload: { seed: payload.seed } }];
-        }
-        return [];
+        if (nt !== "storyboard" && nt !== "image_gen" && nt !== "video_task") return [];
+        // Skip targets that already hold the same seed — avoid store churn
+        // and misleading "propagated to N nodes" toasts when nothing changed
+        const currentSeed = (target.data.payload as { seed?: number }).seed;
+        if (currentSeed === payload.seed) return [];
+        return [{ id: edge.target, payload: { seed: payload.seed } }];
       });
     if (updates.length > 0) {
       batchUpdateNodeData(updates);
       toast.success(`种子 ${payload.seed} 已传播到 ${updates.length} 个节点`);
     } else {
-      toast.error("没有支持种子的下游节点");
+      toast.info("下游节点种子已是最新或没有支持种子的下游节点");
     }
   }, [id, payload.seed]);
 

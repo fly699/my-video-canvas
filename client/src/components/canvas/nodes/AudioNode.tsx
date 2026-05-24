@@ -226,6 +226,7 @@ export const AudioNode = memo(function AudioNode({ id, selected, data }: Props) 
   }, []);
 
   const handleGenerateMusic = () => {
+    if (musicMutation.isPending) return;
     if (!payload.musicPrompt?.trim()) { toast.error("请先输入音乐描述"); return; }
     const validMusic = MUSIC_MODELS.map((m) => m.value);
     const raw = payload.musicModel ?? payload.aiModel ?? "suno-v4.5";
@@ -241,6 +242,7 @@ export const AudioNode = memo(function AudioNode({ id, selected, data }: Props) 
   };
 
   const handleGenerateTTS = () => {
+    if (ttsMutation.isPending) return;
     if (!payload.ttsText?.trim()) { toast.error("请先输入配音文本"); return; }
     const validTTS = DUBBING_MODELS.map((m) => m.value);
     const rawTTS = payload.ttsModel ?? payload.aiModel ?? "openai_tts";

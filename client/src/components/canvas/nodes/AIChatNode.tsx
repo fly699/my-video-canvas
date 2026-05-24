@@ -78,11 +78,15 @@ export const AIChatNode = memo(function AIChatNode({ id, selected, data }: Props
   const lastSavedRef = useRef(JSON.stringify((data.payload as typeof payload).messages ?? []));
 
   useEffect(() => {
-    const stored = (data.payload as typeof payload).messages;
-    if (stored !== localMessages) {
-      updateNodeData(id, { messages: localMessages.map(({ _id: _, ...m }) => m) });
-    }
-  }, [localMessages, id, updateNodeData, data.payload]);
+    // Persist localMessages → store only when content actually changes.
+    // Comparing via JSON avoids the loop where every render of the parent gives us a
+    // new `data.payload` reference even when nothing relevant changed.
+    const stripped = localMessages.map(({ _id: _, ...m }) => m);
+    const serialized = JSON.stringify(stripped);
+    if (serialized === lastSavedRef.current) return;
+    lastSavedRef.current = serialized;
+    updateNodeData(id, { messages: stripped });
+  }, [localMessages, id, updateNodeData]);
   useEffect(() => {
     if (scrollRef.current) scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
   }, [localMessages]);

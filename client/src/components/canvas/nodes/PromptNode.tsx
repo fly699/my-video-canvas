@@ -138,6 +138,7 @@ export const PromptNode = memo(function PromptNode({ id, selected, data }: Props
   );
 
   const handleGenerate = () => {
+    if (genImageMutation.isPending) return;
     if (!payload.positivePrompt?.trim()) { toast.error("请先填写正向提示词"); return; }
     genImageMutation.mutate({
       prompt: payload.positivePrompt,
@@ -280,6 +281,7 @@ export const PromptNode = memo(function PromptNode({ id, selected, data }: Props
             <LLMModelPicker value={llmModel} onChange={setLlmModel} disabled={expandingPrompt || translating} />
             <button
               onClick={() => {
+                if (expandingPrompt || translating || aiExpandMutation.isPending) return;
                 if (!payload.positivePrompt?.trim()) { toast.error("请先填写提示词"); return; }
                 setExpandingPrompt(true);
                 aiExpandMutation.mutate({ text: payload.positivePrompt, mode: "expand", model: llmModel });
@@ -298,6 +300,7 @@ export const PromptNode = memo(function PromptNode({ id, selected, data }: Props
             </button>
             <button
               onClick={() => {
+                if (translating || expandingPrompt || aiTranslateMutation.isPending) return;
                 if (!payload.positivePrompt?.trim()) { toast.error("请先填写提示词"); return; }
                 setTranslating(true);
                 aiTranslateMutation.mutate({ text: payload.positivePrompt, mode: "translate_en", model: llmModel });
