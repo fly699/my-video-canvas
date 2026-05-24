@@ -1241,7 +1241,7 @@ export const subtitleMotionRouter = router({
   burnMotion: protectedProcedure
     .input(z.object({
       videoUrl: z.string().url(),
-      entries: z.array(z.object({ start: z.number(), end: z.number(), text: z.string().max(500) })).min(1).max(2000),
+      entries: z.array(z.object({ start: z.number().min(0), end: z.number().min(0), text: z.string().max(500) })).min(1).max(2000).refine((arr) => arr.every((e) => e.end > e.start), { message: "每条字幕的 end 必须大于 start" }),
       motionStyle: z.enum(["fade", "roll", "karaoke", "bounce"]).optional(),
       fontSize: z.number().int().min(8).max(48).optional(),
       fontColor: z.string().optional(),

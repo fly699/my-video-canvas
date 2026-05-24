@@ -335,7 +335,6 @@ export const ScriptNode = memo(function ScriptNode({ id, selected, data }: Props
 
   const styleTransferMutation = trpc.scripts.applyStyleTransfer.useMutation({
     onSuccess: (result) => {
-      if (!window.confirm(`确认将脚本内容迁移为「${selectedStyle}」风格？此操作将覆盖当前内容，不可撤销。`)) return;
       updateNodeData(id, { content: result.result });
       toast.success(`文风已迁移为「${selectedStyle}」`);
     },
@@ -936,6 +935,7 @@ export const ScriptNode = memo(function ScriptNode({ id, selected, data }: Props
                       if (styleTransferMutation.isPending) return;
                       const text = payload.content?.trim();
                       if (!text) { toast.error("请先填写脚本内容"); return; }
+                      if (!window.confirm(`确认将脚本内容迁移为「${selectedStyle}」风格？此操作将覆盖当前内容，不可撤销。`)) return;
                       styleTransferMutation.mutate({ scriptText: text.slice(0, 8000), style: selectedStyle, model: llmModel });
                     }}
                     disabled={styleTransferMutation.isPending || !payload.content?.trim()}

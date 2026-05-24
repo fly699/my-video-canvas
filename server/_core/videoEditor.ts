@@ -446,8 +446,14 @@ function formatASSTime(seconds: number): string {
   return `${h}:${String(m).padStart(2, "0")}:${String(s).padStart(2, "0")}.${String(cs).padStart(2, "0")}`;
 }
 
+function escapeASSText(raw: string): string {
+  // In ASS Dialogue text fields, { } delimit override tag blocks.
+  // Escape { and } so user text cannot inject ASS control tags.
+  return raw.replace(/\\/g, "\\\\").replace(/\{/g, "\\{").replace(/\}/g, "\\}").replace(/\n/g, "\\N");
+}
+
 function buildASSDialogue(entry: SubtitleEntry, style: SubtitleMotionStyle): string {
-  const text = entry.text.replace(/\n/g, "\\N");
+  const text = escapeASSText(entry.text);
   let effectTags: string;
   switch (style) {
     case "fade":
@@ -462,6 +468,7 @@ function buildASSDialogue(entry: SubtitleEntry, style: SubtitleMotionStyle): str
       if (words.length === 0) { effectTags = "{\\fad(200,200)}"; break; }
       const durMs = (entry.end - entry.start) * 1000;
       const csPerWord = Math.max(1, Math.round((durMs / 10) / words.length));
+      // text is already escaped; karaoke tags are inside {}, not user content
       return `Dialogue: 0,${formatASSTime(entry.start)},${formatASSTime(entry.end)},Default,,0,0,0,,${words.map((w) => `{\\kf${csPerWord}}${w}`).join(" ")}`;
     }
     case "bounce":
@@ -561,15 +568,24 @@ export interface SmartCutResult {
 }
 
 async function hasAudioTrack(videoPath: string): Promise<boolean> {
+  let stdout: string;
   try {
-    const { stdout } = await execFileAsync("ffprobe", [
+    ({ stdout } = await execFileAsync("ffprobe", [
       "-v", "quiet", "-print_format", "json", "-show_streams",
       "-select_streams", "a", videoPath,
-    ]);
+    ]));
+  } catch {
+    // ffprobe unavailable or crashed — assume audio exists so the audio
+    // filter path is attempted; FFmpeg will fail with a clear error if the
+    // video truly has no audio track, which is preferable to silently
+    // dropping the audio track when probing fails.
+    return true;
+  }
+  try {
     const probe = JSON.parse(stdout) as { streams?: unknown[] };
     return Array.isArray(probe.streams) && probe.streams.length > 0;
   } catch {
-    return false;
+    return true;
   }
 }
 
@@ -584,12 +600,22 @@ export async function smartCutVideo(opts: SmartCutOptions): Promise<SmartCutResu
     const hasAudio = await hasAudioTrack(videoPath);
     const n = opts.keepSegments.length;
     const filterParts: string[] = [];
+
+    // FFmpeg stream labels can only be used as filter input once.
+    // Use split/asplit to create N independent copies before trimming.
+    const vSplitOutputs = Array.from({ length: n }, (_, i) => `[vs${i}]`).join("");
+    filterParts.push(`[0:v]split=${n}${vSplitOutputs}`);
+    if (hasAudio) {
+      const aSplitOutputs = Array.from({ length: n }, (_, i) => `[as${i}]`).join("");
+      filterParts.push(`[0:a]asplit=${n}${aSplitOutputs}`);
+    }
+
     let concatInputs = "";
     for (let i = 0; i < n; i++) {
       const { start, end } = opts.keepSegments[i];
-      filterParts.push(`[0:v]trim=start=${start}:end=${end},setpts=PTS-STARTPTS[v${i}]`);
+      filterParts.push(`[vs${i}]trim=start=${start}:end=${end},setpts=PTS-STARTPTS[v${i}]`);
       if (hasAudio) {
-        filterParts.push(`[0:a]atrim=start=${start}:end=${end},asetpts=PTS-STARTPTS[a${i}]`);
+        filterParts.push(`[as${i}]atrim=start=${start}:end=${end},asetpts=PTS-STARTPTS[a${i}]`);
         concatInputs += `[v${i}][a${i}]`;
       } else {
         concatInputs += `[v${i}]`;
