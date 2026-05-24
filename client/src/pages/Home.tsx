@@ -220,6 +220,8 @@ function ProjectCard({
       >
         <button
           onClick={() => setMenuOpen(!menuOpen)}
+          aria-label="项目操作"
+          title="重命名或删除"
           className="w-7 h-7 rounded-lg flex items-center justify-center opacity-0 group-hover:opacity-100 transition-all"
           style={{ color: "var(--c-t3)" }}
           onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.background = "var(--c-overlay)"; (e.currentTarget as HTMLElement).style.color = "var(--c-t1)"; }}

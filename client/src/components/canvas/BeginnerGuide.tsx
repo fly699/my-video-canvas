@@ -12,7 +12,7 @@ const STORAGE_KEY = "avc:guide-seen";
 
 const FLOW_STEPS: { type: NodeType; label: string }[] = [
   { type: "script", label: "脚本" },
-  { type: "storyboard", label: "分镖" },
+  { type: "storyboard", label: "分镜" },
   { type: "image_gen", label: "图像" },
   { type: "video_task", label: "视频" },
 ];
@@ -77,7 +77,7 @@ function WelcomeModal({ onClose }: { onClose: () => void }) {
               icon: <Sparkles size={15} />,
               color: "oklch(0.62 0.14 145)",
               title: "生成素材",
-              desc: "连接分镖 → 图像生成 → 视频任务，AI 自动生成画面",
+              desc: "连接分镜 → 图像生成 → 视频任务，AI 自动生成画面",
             },
             {
               icon: <Scissors size={15} />,
