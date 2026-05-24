@@ -23,6 +23,7 @@ import {
   createVideoTask,
   updateVideoTask,
   getVideoTask,
+  findInFlightVideoTask,
   getChatMessages,
   addChatMessage,
   addChatMessagePair,
@@ -280,6 +281,16 @@ export const videoTasksRouter = router({
     .mutation(async ({ ctx, input }) => {
       await assertWhitelisted(ctx);
       await assertProjectOwner(input.projectId, ctx.user.id);
+
+      // Idempotency: if this node already has a pending/processing task, return it
+      // instead of creating a new one. Prevents double-charges when the client is
+      // bypassed (devtools, scripts, retried requests) — the in-app flow already
+      // guards against this client-side, but server enforcement is the last line
+      // of defence for paid external API calls.
+      const existing = await findInFlightVideoTask(ctx.user.id, input.projectId, input.nodeId);
+      if (existing) {
+        return existing;
+      }
 
       // Create DB record first so the task is tracked even if provider submission fails
       const task = await createVideoTask({

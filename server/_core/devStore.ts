@@ -186,6 +186,17 @@ export function devGetVideoTasksByProject(projectId: number): VideoTask[] {
     .sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime());
 }
 
+export function devFindInFlightVideoTask(userId: number, projectId: number, nodeId: string): VideoTask | undefined {
+  return Array.from(videoTasksMap.values())
+    .filter((t) =>
+      t.userId === userId &&
+      t.projectId === projectId &&
+      t.nodeId === nodeId &&
+      (t.status === "pending" || t.status === "processing")
+    )
+    .sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime())[0];
+}
+
 export function devUpdateVideoTask(id: number, data: Partial<InsertVideoTask>) {
   const t = videoTasksMap.get(id);
   if (!t) return;
