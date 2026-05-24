@@ -360,9 +360,10 @@ export const ScriptNode = memo(function ScriptNode({ id, selected, data }: Props
   const anyAdvancedPending = reviewMutation.isPending || variantsMutation.isPending
     || styleTransferMutation.isPending || extractDialogueMutation.isPending || moodBoardMutation.isPending;
 
-  // Only core content-writing mutations block the quick-action buttons; advanced panel mutations run independently.
+  // styleTransfer writes to payload.content — it must block polish/generate to prevent concurrent overwrites.
+  // Other advanced mutations (review, variants, dialogue, moodboard) only read or write separate state.
   const anyPending = generateMutation.isPending || polishMutation.isPending
-    || fullScriptMutation.isPending || summarizeMutation.isPending;
+    || fullScriptMutation.isPending || summarizeMutation.isPending || styleTransferMutation.isPending;
 
   const handleFullGenerate = useCallback(() => {
     if (anyPending) return;

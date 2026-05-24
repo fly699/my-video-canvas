@@ -442,7 +442,8 @@ function formatASSTime(seconds: number): string {
   const h = Math.floor(seconds / 3600);
   const m = Math.floor((seconds % 3600) / 60);
   const s = Math.floor(seconds % 60);
-  const cs = Math.round((seconds % 1) * 100);
+  // Math.round can produce 100 for values like 0.999999; clamp to 99 to keep 2-digit ASS format
+  const cs = Math.min(99, Math.round((seconds % 1) * 100));
   return `${h}:${String(m).padStart(2, "0")}:${String(s).padStart(2, "0")}.${String(cs).padStart(2, "0")}`;
 }
 

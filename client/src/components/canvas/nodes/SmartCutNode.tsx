@@ -131,11 +131,11 @@ export const SmartCutNode = memo(function SmartCutNode({ id, selected, data }: P
               <span style={{ fontSize: 9, color: "var(--c-t4)" }}>输出时长</span>
               <span style={{ fontSize: 13, fontWeight: 700, color: accent }}>{payload.outputDuration.toFixed(1)}s</span>
             </div>
-            {payload.originalDuration != null && (
+            {payload.originalDuration != null && payload.originalDuration > 0 && (
               <div className="flex flex-col">
                 <span style={{ fontSize: 9, color: "var(--c-t4)" }}>压缩比</span>
                 <span style={{ fontSize: 13, fontWeight: 700, color: accent }}>
-                  {Math.round((1 - payload.outputDuration / payload.originalDuration) * 100)}%↓
+                  {Math.round((1 - (payload.outputDuration ?? 0) / payload.originalDuration) * 100)}%↓
                 </span>
               </div>
             )}
