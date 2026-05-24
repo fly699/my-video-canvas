@@ -60,7 +60,7 @@ export const SmartCutNode = memo(function SmartCutNode({ id, selected, data }: P
 
   const smartCutMutation = trpc.clip.smartCut.useMutation({
     onSuccess: (result) => {
-      update({ outputUrl: result.url, outputDuration: result.outputDuration, status: "done" });
+      update({ outputUrl: result.url, outputDuration: result.outputDuration, originalDuration: result.originalDuration, status: "done" });
       toast.success(`智能剪辑完成，输出时长约 ${result.outputDuration.toFixed(1)}s`);
     },
     onError: (err) => { update({ status: "failed", errorMessage: err.message }); toast.error("智能剪辑失败：" + err.message); },

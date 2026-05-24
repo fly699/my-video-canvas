@@ -1119,8 +1119,9 @@ export const clipRouter = router({
         try { parsed = JSON.parse(jsonMatch[0]); } catch { throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "JSON 解析失败" }); }
         const keepSegments = Array.isArray(parsed.keep) ? parsed.keep.filter((seg) => typeof seg.start === "number" && typeof seg.end === "number" && seg.end > seg.start) : [];
         if (keepSegments.length === 0) throw new TRPCError({ code: "UNPROCESSABLE_CONTENT", message: "AI 未找到可保留片段，请调低激进度后重试" });
+        const originalDuration = segments.length > 0 ? Math.max(...segments.map((s) => s.end)) : 0;
         const result = await smartCutVideo({ inputUrl: input.inputUrl, keepSegments });
-        return { url: result.url, outputDuration: result.outputDuration };
+        return { url: result.url, outputDuration: result.outputDuration, originalDuration };
       });
     }),
 
