@@ -612,14 +612,31 @@ export async function analyzeWorkflow(
   let hasVideo = false;
 
   // Pre-scan: identify which CLIPTextEncode nodes are wired to KSampler's negative input.
-  // Relying on text content heuristics ("negative" keyword) misclassifies legitimate
-  // positive prompts that happen to contain the word (e.g. "negative space composition").
+  // Walk the conditioning graph recursively so that intermediate nodes such as
+  // ConditioningCombine / ConditioningSetMask are transparent. Also accepts numeric
+  // node IDs (some exporters emit [7,0] rather than ["7",0]).
+  const COND_PASSTHROUGH = new Set([
+    "ConditioningCombine", "ConditioningConcat", "ConditioningSetMask",
+    "ConditioningSetTimestepRange", "ConditioningSetArea", "ConditioningSetAreaPercentage",
+    "ConditioningZeroOut", "ConditioningAverage",
+  ]);
   const negativeClipNodeIds = new Set<string>();
+  function collectNegClip(nodeId: string, visited: Set<string>): void {
+    if (visited.has(nodeId)) return;
+    visited.add(nodeId);
+    const n = (workflow as Record<string, unknown>)[nodeId] as Record<string, unknown> | undefined;
+    if (!n?.class_type) return;
+    if (n.class_type === "CLIPTextEncode") { negativeClipNodeIds.add(nodeId); return; }
+    if (!COND_PASSTHROUGH.has(n.class_type as string)) return;
+    for (const v of Object.values((n.inputs as Record<string, unknown>) ?? {})) {
+      if (Array.isArray(v) && v[0] != null) collectNegClip(String(v[0]), visited);
+    }
+  }
   for (const [, n] of Object.entries(workflow)) {
     if (typeof n !== "object" || !n.class_type) continue;
     if (n.class_type === "KSampler" || n.class_type === "KSamplerAdvanced") {
       const negRef = (n.inputs ?? {}).negative;
-      if (Array.isArray(negRef) && typeof negRef[0] === "string") negativeClipNodeIds.add(negRef[0]);
+      if (Array.isArray(negRef) && negRef[0] != null) collectNegClip(String(negRef[0]), new Set());
     }
   }
 

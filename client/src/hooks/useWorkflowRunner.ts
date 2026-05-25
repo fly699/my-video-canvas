@@ -662,6 +662,7 @@ export function useWorkflowRunner() {
             imageUrls: result.urls,
             status: "done",
             errorMessage: undefined,
+            progress: undefined,
           }, true);
           // Propagate to downstream nodes that consume reference image
           const downstreamUpdates = currentEdges
@@ -732,6 +733,7 @@ export function useWorkflowRunner() {
             resultVideoUrl: result.url,
             status: "done",
             errorMessage: undefined,
+            progress: undefined,
           }, true);
           completed.push(nodeId);
           return "ok";

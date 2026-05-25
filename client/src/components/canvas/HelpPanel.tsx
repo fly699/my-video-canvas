@@ -508,6 +508,14 @@ export function HelpPanel({ open, onClose, activeNodeType, onAddNode }: HelpPane
     ? HELP_SECTIONS.find((s) => s.id === activeSectionId)
     : null;
 
+  // Reset transient state when the panel closes so it opens fresh next time.
+  useEffect(() => {
+    if (!open) {
+      setSearchQuery("");
+      setActiveSectionId(null);
+    }
+  }, [open]);
+
   // Auto-jump to node section when panel opens / node selection changes
   useEffect(() => {
     if (!open || !activeNodeType) return;
