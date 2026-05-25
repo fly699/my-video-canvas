@@ -43,7 +43,7 @@ function WelcomeModal({ onClose }: { onClose: () => void }) {
   const [dontShow, setDontShow] = useState(false);
 
   function handleDismiss() {
-    if (dontShow) localStorage.setItem(STORAGE_KEY, "1");
+    localStorage.setItem(STORAGE_KEY, "1");
     onClose();
   }
 

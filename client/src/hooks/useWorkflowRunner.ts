@@ -762,6 +762,7 @@ export function useWorkflowRunner() {
             outputUrls: result.urls,
             status: "done",
             errorMessage: undefined,
+            progress: undefined,
           }, true);
           // Propagate image output to downstream nodes that accept referenceImageUrl
           if (result.outputType === "image" && firstUrl) {

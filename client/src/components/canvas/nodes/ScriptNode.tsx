@@ -114,6 +114,7 @@ const textareaStyle: React.CSSProperties = {
   lineHeight: 1.75,
   flex: 1,
   minHeight: 100,
+  overflowY: "auto",
   fontFamily: "'JetBrains Mono', 'Fira Code', monospace",
   fontSize: 12,
 };

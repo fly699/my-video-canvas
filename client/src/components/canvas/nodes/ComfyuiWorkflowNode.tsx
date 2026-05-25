@@ -199,8 +199,8 @@ export const ComfyuiWorkflowNode = memo(function ComfyuiWorkflowNode({ id, selec
     try {
       const res = await uploadImageMutation.mutateAsync({ projectId: data.projectId, customBaseUrl: baseUrl, sourceUrl });
       update({ paramValues: { ...payload.paramValues, [`${binding.nodeId}.${binding.fieldPath}`]: res.comfyFilename } });
-    } catch {
-      // Fall back to storing URL directly
+    } catch (err) {
+      toast.error("上传至 ComfyUI 失败，将使用原始链接：" + (err instanceof Error ? err.message : "未知错误").slice(0, 80));
       update({ paramValues: { ...payload.paramValues, [`${binding.nodeId}.${binding.fieldPath}`]: sourceUrl } });
     }
   }, [data.projectId, payload.customBaseUrl, payload.paramValues, update, uploadImageMutation]);

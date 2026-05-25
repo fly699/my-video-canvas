@@ -452,7 +452,8 @@ export async function generateComfyImage(rawBaseUrl: string, options: GenerateCo
     height: options.height,
     sampler: options.sampler,
     scheduler: options.scheduler,
-    denoise: options.denoise,
+    // img2img needs denoise < 1.0 to retain the reference image; 0.75 is the practical default
+    denoise: options.workflowTemplate === "img2img" ? (options.denoise ?? 0.75) : options.denoise,
     vae: options.vae,
     batchSize: options.batchSize,
     refImageName,
@@ -531,7 +532,8 @@ export async function generateComfyVideo(rawBaseUrl: string, options: GenerateCo
     frames: options.frames,
     fps: options.fps,
     sampler: options.sampler,
-    scheduler: options.scheduler,
+    // SVD requires karras scheduler to produce coherent frames; "normal" causes artifacts
+    scheduler: options.workflowTemplate === "svd" ? (options.scheduler ?? "karras") : options.scheduler,
     denoise: options.denoise,
     vae: options.vae,
     refImageName,
@@ -614,7 +616,7 @@ export async function analyzeWorkflow(
     const inputs = node.inputs ?? {};
 
     if (ct === "CLIPTextEncode") {
-      const isPositive = String(inputs.text ?? "").length > 0 || true;
+      const isPositive = !String(inputs.text ?? "").toLowerCase().includes("negative");
       detectedParams.push({
         nodeId, fieldPath: "inputs.text",
         label: isPositive ? "提示词" : "负向提示词",
