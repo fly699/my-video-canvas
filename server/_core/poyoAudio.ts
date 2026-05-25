@@ -159,7 +159,11 @@ export async function submitAndPollPoyoTTS(opts: SubmitPoyoTTSOptions): Promise<
 
   if (!submitRes.ok) {
     const text = await submitRes.text().catch(() => "");
-    throw new Error(`Poyo TTS submit failed (${submitRes.status}): ${text}`);
+    // 404 通常意味着 Poyo 平台已下架或重命名了该 TTS 模型
+    if (submitRes.status === 404) {
+      throw new Error(`Poyo TTS 提交失败 (404): 模型 "${poyoModel}"（来自 "${opts.model}"）在 Poyo 平台不存在或已下架。原始响应: ${text}`);
+    }
+    throw new Error(`Poyo TTS 提交失败 (${submitRes.status}, 模型 ${poyoModel}): ${text}`);
   }
 
   const submitData = (await submitRes.json()) as { code?: number; message?: string; data?: { task_id?: string } };
