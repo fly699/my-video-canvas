@@ -1,5 +1,8 @@
 import { useState, useEffect } from "react";
-import { X, PenLine, Sparkles, Scissors } from "lucide-react";
+import {
+  X, Sparkles, Layers, Wand2, Video, Boxes, Bot, Users, ScrollText, Activity,
+  Shield, ArrowRight,
+} from "lucide-react";
 import type { NodeType } from "../../../../shared/types";
 import { getNodeConfig } from "../../lib/nodeConfig";
 import {
@@ -37,69 +40,34 @@ function NodePill({ label, color }: { label: string; color: string }) {
 }
 
 function WelcomeModal({ onClose }: { onClose: () => void }) {
-  function handleClose() {
-    localStorage.setItem(STORAGE_KEY, "1");
+  const [dontShow, setDontShow] = useState(false);
+
+  function handleDismiss() {
+    if (dontShow) localStorage.setItem(STORAGE_KEY, "1");
     onClose();
   }
 
-  const coreFlow = [
-    { label: "脚本", color: "oklch(0.62 0.18 240)" },
-    { label: "分镜", color: "oklch(0.65 0.20 160)" },
-    { label: "图像生成", color: "oklch(0.72 0.20 330)" },
-    { label: "视频任务", color: "oklch(0.62 0.20 25)" },
-    { label: "剪辑", color: "oklch(0.68 0.20 55)" },
-  ];
-
-  const nodeCategories = [
-    {
-      title: "创作层",
-      nodes: [
-        { label: "脚本", color: "oklch(0.62 0.18 240)" },
-        { label: "分镜", color: "oklch(0.65 0.20 160)" },
-        { label: "提示词", color: "oklch(0.68 0.22 300)" },
-        { label: "AI对话", color: "oklch(0.70 0.18 200)" },
-        { label: "便签", color: "oklch(0.60 0.10 90)" },
-        { label: "角色/场景", color: "oklch(0.66 0.18 140)" },
-      ],
-    },
-    {
-      title: "生成层",
-      nodes: [
-        { label: "图像生成", color: "oklch(0.72 0.20 330)" },
-        { label: "视频任务", color: "oklch(0.62 0.20 25)" },
-        { label: "素材", color: "oklch(0.65 0.18 60)" },
-        { label: "音频", color: "oklch(0.68 0.20 340)" },
-        { label: "构图控制", color: "oklch(0.65 0.20 310)" },
-      ],
-    },
-    {
-      title: "后期层",
-      nodes: [
-        { label: "剪辑", color: "oklch(0.68 0.20 55)" },
-        { label: "合并", color: "oklch(0.62 0.20 270)" },
-        { label: "叠加", color: "oklch(0.65 0.18 30)" },
-        { label: "字幕", color: "oklch(0.65 0.18 170)" },
-        { label: "动态字幕", color: "oklch(0.68 0.20 175)" },
-        { label: "智能剪辑", color: "oklch(0.68 0.22 65)" },
-        { label: "后处理", color: "oklch(0.65 0.18 190)" },
-      ],
-    },
-    {
-      title: "高级层",
-      nodes: [
-        { label: "声音克隆", color: "oklch(0.65 0.18 350)" },
-        { label: "唇形同步", color: "oklch(0.62 0.20 220)" },
-        { label: "数字人", color: "oklch(0.65 0.20 290)" },
-      ],
-    },
-  ];
-
-  const shortcuts = [
-    { action: "添加节点", key: '点击"添加"按钮' },
-    { action: "连接节点", key: "拖拽连接点" },
-    { action: "撤销重做", key: "Ctrl+Z / Y" },
-    { action: "搜索节点", key: "Ctrl+K" },
-    { action: "运行工作流", key: '点击"运行"' },
+  // 8 大核心工具（2 列 × 4 行布局，呼应图1）
+  const features = [
+    { Icon: Layers, color: "oklch(0.68 0.22 285)",
+      title: "节点式工作流", desc: "脚本 / 分镜 / 提示词 / 图像 / 视频 / 剪辑节点自由编排，可视化连线" },
+    { Icon: Wand2, color: "oklch(0.72 0.20 330)",
+      title: "AI 图像生成", desc: "Manus Forge、Poyo、Higgsfield Soul / Flux Pro / Seedream 多模型支持" },
+    { Icon: Video, color: "oklch(0.62 0.20 25)",
+      title: "AI 视频生成", desc: "Higgsfield DoP、Poyo Seedance / Veo / Kling / Wan / Runway 等 12+ 模型" },
+    { Icon: Boxes, color: "oklch(0.68 0.20 100)",
+      title: "ComfyUI 自建集成", desc: "对接自建 ComfyUI 服务器，txt2img / img2img / AnimateDiff / SVD",
+      badge: "NEW" },
+    { Icon: Bot, color: "oklch(0.70 0.18 200)",
+      title: "大模型对话", desc: "Claude Sonnet 4.6、Gemini 2.5、GPT-5.2，写脚本 / 润色 / 审查 / 多版本" },
+    { Icon: ScrollText, color: "oklch(0.62 0.18 240)",
+      title: "ScriptNode 高级 AI", desc: "场景细化、剧本审查、多版本生成、对白提取、Mood Board 等 7 项工具",
+      badge: "PRO" },
+    { Icon: Activity, color: "oklch(0.65 0.20 160)",
+      title: "工作流状态面板", desc: "一键运行整条工作流，右侧面板实时展示每个节点进度、耗时、错误",
+      badge: "NEW" },
+    { Icon: Users, color: "oklch(0.66 0.18 140)",
+      title: "多人实时协作", desc: "多用户同时编辑，节点变更秒同步，协作者光标可见" },
   ];
 
   return (
@@ -113,12 +81,14 @@ function WelcomeModal({ onClose }: { onClose: () => void }) {
         justifyContent: "center",
         backdropFilter: "blur(8px)",
         backgroundColor: "oklch(0.05 0.007 260 / 0.7)",
+        padding: 16,
       }}
     >
       <div
         style={{
-          width: 580,
-          maxHeight: "80vh",
+          width: 660,
+          maxWidth: "100%",
+          maxHeight: "92vh",
           backgroundColor: "var(--c-base)",
           border: "1px solid var(--c-bd2)",
           borderRadius: 16,
@@ -128,239 +98,266 @@ function WelcomeModal({ onClose }: { onClose: () => void }) {
           overflow: "hidden",
         }}
       >
-        {/* Hero 区 */}
+        {/* ── Hero banner ────────────────────────────────────────────── */}
         <div
           style={{
-            height: 80,
-            background: "linear-gradient(135deg, oklch(0.68 0.22 285 / 0.18), oklch(0.60 0.20 310 / 0.12))",
+            position: "relative",
+            padding: "20px 24px 24px",
+            background: "linear-gradient(135deg, oklch(0.12 0.025 285) 0%, oklch(0.08 0.012 285) 100%)",
             borderBottom: "1px solid var(--c-bd2)",
-            display: "flex",
-            flexDirection: "column",
-            alignItems: "center",
-            justifyContent: "center",
-            gap: 4,
             flexShrink: 0,
+            overflow: "hidden",
           }}
         >
+          {/* Decorative glow */}
           <div
             style={{
-              fontSize: 20,
-              fontWeight: 700,
-              color: "var(--c-t1)",
+              position: "absolute", top: -80, right: -80, width: 240, height: 240,
+              borderRadius: "50%", pointerEvents: "none",
+              background: "radial-gradient(circle, oklch(0.68 0.22 285 / 0.25) 0%, transparent 70%)",
             }}
+          />
+          {/* Close button */}
+          <button
+            onClick={handleDismiss}
+            aria-label="关闭"
+            style={{
+              position: "absolute", top: 12, right: 12, zIndex: 2,
+              width: 28, height: 28, borderRadius: 6, border: "none",
+              background: "transparent", color: "var(--c-t3)",
+              cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center",
+            }}
+            onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.background = "var(--c-overlay)"; }}
+            onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.background = "transparent"; }}
           >
-            AI 视频画布
+            <X size={16} />
+          </button>
+
+          <div style={{ position: "relative", display: "flex", gap: 14, alignItems: "flex-start" }}>
+            {/* Brand logo */}
+            <div
+              style={{
+                width: 56, height: 56, borderRadius: 12, flexShrink: 0,
+                background: "linear-gradient(135deg, oklch(0.68 0.22 285), oklch(0.60 0.20 310))",
+                display: "flex", alignItems: "center", justifyContent: "center",
+                boxShadow: "0 6px 20px oklch(0.68 0.22 285 / 0.4)",
+              }}
+            >
+              <Sparkles size={26} color="white" strokeWidth={2.2} />
+            </div>
+
+            {/* Title block */}
+            <div style={{ flex: 1, minWidth: 0 }}>
+              <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 6, flexWrap: "wrap" }}>
+                <h1 style={{ margin: 0, fontSize: 22, fontWeight: 700, color: "var(--c-t1)", letterSpacing: "-0.01em" }}>
+                  AI 视频画布
+                </h1>
+                <span
+                  style={{
+                    display: "inline-flex", alignItems: "center", gap: 4,
+                    padding: "2px 8px", borderRadius: 6,
+                    fontSize: 11, fontWeight: 600,
+                    background: "oklch(0.68 0.22 285 / 0.18)",
+                    color: "oklch(0.82 0.16 285)",
+                    border: "1px solid oklch(0.68 0.22 285 / 0.35)",
+                  }}
+                >
+                  <Sparkles size={11} />
+                  v1.0 · 全新发布
+                </span>
+              </div>
+              <div style={{ fontSize: 12, color: "var(--c-t3)", marginBottom: 10 }}>
+                专业 · AI 影视创作工作流 · 由 AI Video Canvas 出品
+              </div>
+              <p style={{ margin: 0, fontSize: 13, lineHeight: 1.7, color: "var(--c-t2)" }}>
+                支持 <Hl>23+ 种专业节点</Hl>、覆盖<Hl>脚本创作</Hl>、<Hl>AI 图像生成</Hl>、
+                <Hl>视频任务</Hl>、<Hl>智能剪辑</Hl> 全流程，全新集成{" "}
+                <Hl strong>ComfyUI 自建服务器</Hl> 与{" "}
+                <Hl strong>多模型并行对比</Hl> 正式上线。
+              </p>
+            </div>
           </div>
+        </div>
+
+        {/* ── 8 core tools grid ──────────────────────────────────────── */}
+        <div
+          style={{
+            flex: 1, overflowY: "auto",
+            padding: "18px 24px 16px",
+            display: "flex", flexDirection: "column", gap: 12,
+          }}
+        >
           <div style={{ fontSize: 12, color: "var(--c-t3)" }}>
-            21 种节点 · 全流程可视化创作
+            核心功能 · <span style={{ color: "var(--c-t2)", fontWeight: 600 }}>8 大工具</span>
           </div>
-        </div>
 
-        {/* 主体内容（可滚动） */}
-        <div
-          style={{
-            flex: 1,
-            overflowY: "auto",
-            padding: "24px 28px",
-            display: "flex",
-            flexDirection: "column",
-            gap: 20,
-          }}
-        >
-          {/* 核心工作流 */}
-          <div>
-            <div
-              style={{
-                fontSize: 11,
-                fontWeight: 600,
-                color: "var(--c-t3)",
-                textTransform: "uppercase",
-                letterSpacing: "0.08em",
-                marginBottom: 12,
-              }}
-            >
-              核心工作流
-            </div>
-            <div
-              style={{
-                display: "flex",
-                alignItems: "center",
-                gap: 6,
-                flexWrap: "wrap",
-              }}
-            >
-              {coreFlow.map((step, i) => (
-                <div
-                  key={step.label}
-                  style={{ display: "flex", alignItems: "center", gap: 6 }}
-                >
-                  <div
+          <div
+            style={{
+              display: "grid",
+              gridTemplateColumns: "1fr 1fr",
+              gap: 10,
+            }}
+          >
+            {features.map((f) => (
+              <div
+                key={f.title}
+                style={{
+                  position: "relative",
+                  padding: "12px 14px",
+                  background: "var(--c-surface)",
+                  border: "1px solid var(--c-bd1)",
+                  borderRadius: 10,
+                  transition: "border-color 150ms ease, background 150ms ease",
+                }}
+                onMouseEnter={(e) => {
+                  (e.currentTarget as HTMLElement).style.borderColor = `${f.color}50`;
+                  (e.currentTarget as HTMLElement).style.background = "var(--c-elevated)";
+                }}
+                onMouseLeave={(e) => {
+                  (e.currentTarget as HTMLElement).style.borderColor = "var(--c-bd1)";
+                  (e.currentTarget as HTMLElement).style.background = "var(--c-surface)";
+                }}
+              >
+                {f.badge && (
+                  <span
                     style={{
-                      width: 44,
-                      height: 44,
-                      borderRadius: "50%",
-                      backgroundColor: step.color.replace(")", " / 0.12)"),
-                      border: `1.5px solid ${step.color.replace(")", " / 0.35)")}`,
-                      display: "flex",
-                      alignItems: "center",
-                      justifyContent: "center",
-                      fontSize: 11,
-                      fontWeight: 600,
-                      color: step.color,
-                      textAlign: "center",
-                      lineHeight: 1.2,
+                      position: "absolute", top: 10, right: 10,
+                      padding: "1px 6px", borderRadius: 4,
+                      fontSize: 9, fontWeight: 700, letterSpacing: "0.04em",
+                      background: `${f.color}26`,
+                      color: f.color,
+                      border: `1px solid ${f.color}48`,
                     }}
                   >
-                    {step.label}
+                    {f.badge}
+                  </span>
+                )}
+                <div style={{ display: "flex", alignItems: "flex-start", gap: 10 }}>
+                  <div
+                    style={{
+                      width: 34, height: 34, borderRadius: 8, flexShrink: 0,
+                      background: `${f.color}18`,
+                      border: `1px solid ${f.color}32`,
+                      display: "flex", alignItems: "center", justifyContent: "center",
+                    }}
+                  >
+                    <f.Icon size={16} color={f.color} />
                   </div>
-                  {i < coreFlow.length - 1 && (
-                    <div style={{ fontSize: 16, color: "var(--c-t4)", lineHeight: 1 }}>
-                      →
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div style={{ fontSize: 13, fontWeight: 600, color: "var(--c-t1)", marginBottom: 3 }}>
+                      {f.title}
                     </div>
-                  )}
+                    <div style={{ fontSize: 11, lineHeight: 1.55, color: "var(--c-t4)" }}>
+                      {f.desc}
+                    </div>
+                  </div>
                 </div>
-              ))}
-            </div>
+              </div>
+            ))}
           </div>
 
-          {/* 全部节点 */}
-          <div>
-            <div
-              style={{
-                fontSize: 11,
-                fontWeight: 600,
-                color: "var(--c-t3)",
-                textTransform: "uppercase",
-                letterSpacing: "0.08em",
-                marginBottom: 12,
-              }}
-            >
-              全部节点
-            </div>
-            <div
-              style={{
-                display: "grid",
-                gridTemplateColumns: "1fr 1fr",
-                gap: 10,
-              }}
-            >
-              {nodeCategories.map((cat) => (
-                <div
-                  key={cat.title}
-                  style={{
-                    background: "var(--c-surface)",
-                    border: "1px solid var(--c-bd1)",
-                    borderRadius: 10,
-                    padding: "12px 14px",
-                  }}
-                >
-                  <div
-                    style={{
-                      fontSize: 12,
-                      fontWeight: 600,
-                      color: "var(--c-t2)",
-                      marginBottom: 8,
-                    }}
-                  >
-                    {cat.title}
-                  </div>
-                  <div style={{ display: "flex", flexWrap: "wrap", gap: 5 }}>
-                    {cat.nodes.map((node) => (
-                      <NodePill key={node.label} label={node.label} color={node.color} />
-                    ))}
-                  </div>
-                </div>
-              ))}
-            </div>
-          </div>
-
-          {/* 快捷键提示 */}
-          <div>
-            <div
-              style={{
-                fontSize: 11,
-                fontWeight: 600,
-                color: "var(--c-t3)",
-                textTransform: "uppercase",
-                letterSpacing: "0.08em",
-                marginBottom: 10,
-              }}
-            >
-              快捷键提示
-            </div>
-            <div
-              style={{
-                display: "grid",
-                gridTemplateColumns: "1fr 1fr 1fr",
-                gap: 6,
-              }}
-            >
-              {shortcuts.map((s) => (
-                <div
-                  key={s.action}
-                  style={{
-                    background: "var(--c-surface)",
-                    border: "1px solid var(--c-bd1)",
-                    borderRadius: 8,
-                    padding: "8px 10px",
-                  }}
-                >
-                  <div style={{ fontSize: 11, color: "var(--c-t3)", marginBottom: 2 }}>
-                    {s.action}
-                  </div>
-                  <div style={{ fontSize: 11, fontWeight: 500, color: "var(--c-t2)" }}>
-                    {s.key}
-                  </div>
-                </div>
-              ))}
-            </div>
+          {/* ── Copyright block (style from reference image 2) ────────── */}
+          <div
+            style={{
+              display: "flex", gap: 10, alignItems: "flex-start",
+              padding: "12px 14px",
+              background: "oklch(0.65 0.20 160 / 0.06)",
+              border: "1px solid oklch(0.65 0.20 160 / 0.30)",
+              borderRadius: 10,
+              marginTop: 6,
+            }}
+          >
+            <Shield size={16} color="oklch(0.70 0.18 160)" style={{ flexShrink: 0, marginTop: 2 }} />
+            <p style={{ margin: 0, fontSize: 11, lineHeight: 1.7, color: "var(--c-t3)" }}>
+              <span style={{ color: "oklch(0.78 0.16 160)", fontWeight: 700 }}>
+                © AI Video Canvas（AI 视频画布）
+              </span>{" "}
+              版权所有。本工具由 AI Video Canvas 团队自主研发，所有模板、预设库及界面设计均受版权保护。
+              未经授权，禁止复制或商业使用。
+            </p>
           </div>
         </div>
 
-        {/* 底部按钮区 */}
+        {/* ── Footer: checkbox + dual buttons ────────────────────────── */}
         <div
           style={{
+            display: "flex", alignItems: "center", justifyContent: "space-between",
+            padding: "14px 24px",
             borderTop: "1px solid var(--c-bd2)",
-            padding: "16px 28px",
-            display: "flex",
-            flexDirection: "column",
-            gap: 8,
-            alignItems: "center",
+            background: "var(--c-base)",
             flexShrink: 0,
+            gap: 12,
+            flexWrap: "wrap",
           }}
         >
-          <button
-            onClick={handleClose}
+          <label
             style={{
-              width: "100%",
-              padding: "11px 0",
-              borderRadius: 8,
-              border: "none",
-              backgroundColor: "oklch(0.68 0.22 285)",
-              color: "white",
-              fontSize: 14,
-              fontWeight: 600,
-              cursor: "pointer",
+              display: "inline-flex", alignItems: "center", gap: 6,
+              fontSize: 12, color: "var(--c-t3)", cursor: "pointer",
+              userSelect: "none",
             }}
           >
-            开始使用
-          </button>
-          <button
-            onClick={handleClose}
-            style={{
-              background: "none",
-              border: "none",
-              color: "var(--c-t3)",
-              fontSize: 12,
-              cursor: "pointer",
-              padding: "2px 8px",
-            }}
-          >
-            不再显示
-          </button>
+            <input
+              type="checkbox"
+              checked={dontShow}
+              onChange={(e) => setDontShow(e.target.checked)}
+              style={{ cursor: "pointer", accentColor: "oklch(0.68 0.22 285)" }}
+            />
+            不再显示此欢迎页
+          </label>
+
+          <div style={{ display: "flex", gap: 8 }}>
+            <button
+              onClick={handleDismiss}
+              style={{
+                display: "inline-flex", alignItems: "center", gap: 5,
+                padding: "8px 14px", borderRadius: 8,
+                background: "var(--c-surface)",
+                border: "1px solid var(--c-bd2)",
+                color: "var(--c-t2)",
+                fontSize: 13, fontWeight: 500,
+                cursor: "pointer",
+              }}
+              onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.background = "var(--c-elevated)"; }}
+              onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.background = "var(--c-surface)"; }}
+            >
+              查看新功能
+              <ArrowRight size={12} />
+            </button>
+            <button
+              onClick={handleDismiss}
+              style={{
+                display: "inline-flex", alignItems: "center", gap: 6,
+                padding: "8px 18px", borderRadius: 8,
+                background: "linear-gradient(135deg, oklch(0.68 0.22 285), oklch(0.60 0.20 310))",
+                border: "none",
+                color: "white",
+                fontSize: 13, fontWeight: 600,
+                cursor: "pointer",
+                boxShadow: "0 0 0 1px oklch(0.68 0.22 285 / 0.4), 0 4px 16px oklch(0.68 0.22 285 / 0.3)",
+              }}
+            >
+              <Sparkles size={13} />
+              开始创作
+            </button>
+          </div>
         </div>
       </div>
     </div>
+  );
+}
+
+// Inline highlight for hero text — orange for plain, purple-strong for big features
+function Hl({ children, strong }: { children: React.ReactNode; strong?: boolean }) {
+  return (
+    <span
+      style={{
+        color: strong ? "oklch(0.82 0.16 285)" : "oklch(0.80 0.18 65)",
+        fontWeight: 600,
+      }}
+    >
+      {children}
+    </span>
   );
 }
 
