@@ -79,12 +79,12 @@ export const ComfyuiVideoNode = memo(function ComfyuiVideoNode({ id, selected, d
   const genMutation = trpc.comfyui.generateVideo.useMutation({
     onSuccess: (result) => {
       if (!useCanvasStore.getState().nodes.some((n) => n.id === id)) return;
-      updateNodeData(id, { resultVideoUrl: result.url, status: "done", errorMessage: undefined });
+      updateNodeData(id, { resultVideoUrl: result.url, status: "done", errorMessage: undefined, progress: undefined });
       toast.success("ComfyUI 视频生成成功");
     },
     onError: (err) => {
       if (!useCanvasStore.getState().nodes.some((n) => n.id === id)) return;
-      updateNodeData(id, { status: "failed", errorMessage: err.message });
+      updateNodeData(id, { status: "failed", errorMessage: err.message, progress: undefined });
       toast.error("ComfyUI 视频生成失败：" + err.message);
     },
   });
@@ -120,7 +120,7 @@ export const ComfyuiVideoNode = memo(function ComfyuiVideoNode({ id, selected, d
     if (!isSvd && !payload.motionModule?.trim()) {
       toast.error("AnimateDiff 模板需要 Motion Module 名称"); return;
     }
-    updateNodeData(id, { status: "processing", errorMessage: undefined });
+    updateNodeData(id, { status: "processing", errorMessage: undefined, progress: 0 });
     genMutation.mutate({
       nodeId: id,
       projectId: data.projectId,
@@ -135,6 +135,13 @@ export const ComfyuiVideoNode = memo(function ComfyuiVideoNode({ id, selected, d
       seed: typeof payload.seed === "number" ? payload.seed : -1,
       frames: payload.frames ?? 16,
       fps: payload.fps ?? 8,
+      width: payload.width || undefined,
+      height: payload.height || undefined,
+      sampler: payload.sampler || undefined,
+      scheduler: payload.scheduler || undefined,
+      denoise: typeof payload.denoise === "number" ? payload.denoise : undefined,
+      vae: payload.vae || undefined,
+      batchSize: payload.batchSize ?? 1,
       referenceImageUrl: payload.referenceImageUrl,
     });
   };
@@ -446,6 +453,83 @@ export const ComfyuiVideoNode = memo(function ComfyuiVideoNode({ id, selected, d
                   className="nodrag" style={fieldBase}
                 />
               </div>
+              {/* Width / Height */}
+              <div>
+                <label style={labelStyle}>宽度</label>
+                <input
+                  type="number" min={64} max={2048} step={8}
+                  placeholder="默认"
+                  value={payload.width ?? ""}
+                  onChange={(e) => update("width", e.target.value ? Number(e.target.value) : undefined)}
+                  className="nodrag" style={fieldBase}
+                />
+              </div>
+              <div>
+                <label style={labelStyle}>高度</label>
+                <input
+                  type="number" min={64} max={2048} step={8}
+                  placeholder="默认"
+                  value={payload.height ?? ""}
+                  onChange={(e) => update("height", e.target.value ? Number(e.target.value) : undefined)}
+                  className="nodrag" style={fieldBase}
+                />
+              </div>
+              {/* Sampler */}
+              <div>
+                <label style={labelStyle}>采样器</label>
+                <input
+                  list={`comfyui-vid-samplers-${id}`}
+                  placeholder="euler"
+                  value={payload.sampler ?? ""}
+                  onChange={(e) => update("sampler", e.target.value || undefined)}
+                  className="nodrag" style={fieldBase}
+                />
+                <datalist id={`comfyui-vid-samplers-${id}`}>
+                  {(modelsQuery.data?.samplers ?? []).map((s) => <option key={s} value={s} />)}
+                </datalist>
+              </div>
+              {/* Scheduler */}
+              <div>
+                <label style={labelStyle}>调度器</label>
+                <input
+                  list={`comfyui-vid-schedulers-${id}`}
+                  placeholder="normal"
+                  value={payload.scheduler ?? ""}
+                  onChange={(e) => update("scheduler", e.target.value || undefined)}
+                  className="nodrag" style={fieldBase}
+                />
+                <datalist id={`comfyui-vid-schedulers-${id}`}>
+                  {(modelsQuery.data?.schedulers ?? ["normal", "karras", "exponential", "sgm_uniform", "simple"]).map((s) => <option key={s} value={s} />)}
+                </datalist>
+              </div>
+              {/* Denoise */}
+              <div className="col-span-2">
+                <label style={labelStyle}>
+                  Denoise &nbsp;
+                  <span style={{ fontWeight: 400, color: "var(--c-t3)" }}>{(payload.denoise ?? 1.0).toFixed(2)}</span>
+                </label>
+                <input
+                  type="range" min={0} max={1} step={0.01}
+                  value={payload.denoise ?? 1.0}
+                  onChange={(e) => update("denoise", Number(e.target.value))}
+                  className="nodrag" style={{ width: "100%", accentColor: accent }}
+                />
+              </div>
+              {/* VAE */}
+              <div className="col-span-2">
+                <label style={labelStyle}>VAE（留空用 Checkpoint 内置）</label>
+                <input
+                  list={`comfyui-vid-vaes-${id}`}
+                  placeholder="ae.safetensors"
+                  value={payload.vae ?? ""}
+                  onChange={(e) => update("vae", e.target.value || undefined)}
+                  className="nodrag" style={fieldBase}
+                />
+                <datalist id={`comfyui-vid-vaes-${id}`}>
+                  {(modelsQuery.data?.vaes ?? []).map((v) => <option key={v} value={v} />)}
+                </datalist>
+              </div>
+              {/* Seed */}
               <div className="col-span-2">
                 <label style={labelStyle}>Seed（-1 随机）</label>
                 <input
@@ -511,6 +595,16 @@ export const ComfyuiVideoNode = memo(function ComfyuiVideoNode({ id, selected, d
             onChange={handleFileChange}
           />
         </div>
+
+        {/* ── Progress bar ── */}
+        {payload.status === "processing" && payload.progress != null && (
+          <div style={{ marginBottom: 4 }}>
+            <div style={{ height: 4, borderRadius: 2, background: "var(--c-bd2)", overflow: "hidden" }}>
+              <div style={{ height: "100%", width: `${payload.progress}%`, background: accent, transition: "width 300ms ease", borderRadius: 2 }} />
+            </div>
+            <span style={{ fontSize: 10, color: "var(--c-t4)", marginTop: 2, display: "block" }}>{payload.progress}%</span>
+          </div>
+        )}
 
         {/* ── Action button ── */}
         <button

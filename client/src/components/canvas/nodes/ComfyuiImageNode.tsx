@@ -78,12 +78,12 @@ export const ComfyuiImageNode = memo(function ComfyuiImageNode({ id, selected, d
   const genMutation = trpc.comfyui.generateImage.useMutation({
     onSuccess: (result) => {
       if (!useCanvasStore.getState().nodes.some((n) => n.id === id)) return;
-      updateNodeData(id, { imageUrl: result.url, status: "done", errorMessage: undefined });
+      updateNodeData(id, { imageUrl: result.url, imageUrls: result.urls, status: "done", errorMessage: undefined, progress: undefined });
       toast.success("ComfyUI 图像生成成功");
     },
     onError: (err) => {
       if (!useCanvasStore.getState().nodes.some((n) => n.id === id)) return;
-      updateNodeData(id, { status: "failed", errorMessage: err.message });
+      updateNodeData(id, { status: "failed", errorMessage: err.message, progress: undefined });
       toast.error("ComfyUI 图像生成失败：" + err.message);
     },
   });
@@ -114,7 +114,7 @@ export const ComfyuiImageNode = memo(function ComfyuiImageNode({ id, selected, d
     if (payload.workflowTemplate === "img2img" && !payload.referenceImageUrl) {
       toast.error("img2img 模板需要参考图"); return;
     }
-    updateNodeData(id, { status: "processing", errorMessage: undefined });
+    updateNodeData(id, { status: "processing", errorMessage: undefined, progress: 0 });
     genMutation.mutate({
       nodeId: id,
       projectId: data.projectId,
@@ -129,6 +129,12 @@ export const ComfyuiImageNode = memo(function ComfyuiImageNode({ id, selected, d
       seed: typeof payload.seed === "number" ? payload.seed : -1,
       width: payload.width ?? 512,
       height: payload.height ?? 512,
+      sampler: payload.sampler || undefined,
+      scheduler: payload.scheduler || undefined,
+      denoise: typeof payload.denoise === "number" ? payload.denoise : undefined,
+      vae: payload.vae || undefined,
+      loraStrength: typeof payload.loraStrength === "number" ? payload.loraStrength : undefined,
+      batchSize: payload.batchSize ?? 1,
       referenceImageUrl: payload.referenceImageUrl,
     });
   };
@@ -193,8 +199,48 @@ export const ComfyuiImageNode = memo(function ComfyuiImageNode({ id, selected, d
     <BaseNode id={id} selected={selected} nodeType="comfyui_image" title={data.title} minHeight={320} heroMedia={heroMedia}>
       <div className="flex flex-col h-full p-3.5 gap-3 overflow-auto">
 
-        {/* ── Result image ── */}
+        {/* ── Result image(s) ── */}
         {payload.imageUrl ? (
+          (payload.imageUrls && payload.imageUrls.length > 1) ? (
+            // Multi-image grid
+            <div className="flex-shrink-0 grid gap-1.5" style={{ gridTemplateColumns: payload.imageUrls.length >= 2 ? "1fr 1fr" : "1fr" }}>
+              {payload.imageUrls.map((url, i) => (
+                <div
+                  key={url + i}
+                  className="relative rounded-lg overflow-hidden"
+                  style={{ aspectRatio: "1/1", borderWidth: 1, borderStyle: "solid", borderColor: BORDER_DEFAULT, background: "var(--c-canvas)" }}
+                >
+                  <img
+                    src={url}
+                    alt={`generated-${i}`}
+                    className="w-full h-full object-cover"
+                    draggable={false}
+                    onError={makeImageProxyFallback(url)}
+                  />
+                  <div
+                    className="absolute inset-0 opacity-0 hover:opacity-100 transition-opacity flex items-center justify-center gap-1"
+                    style={{ background: "oklch(0 0 0 / 0.55)" }}
+                  >
+                    <button
+                      onClick={() => { updateNodeData(id, { imageUrl: url }, true); setLightboxOpen(true); }}
+                      className="nodrag flex items-center gap-1 px-2 py-1 rounded text-xs"
+                      style={{ background: "oklch(0.14 0.007 260 / 0.8)", borderWidth: 1, borderStyle: "solid", borderColor: "var(--c-bd3)", color: "var(--c-t2)" }}
+                    >
+                      <ZoomIn className="w-3 h-3" />
+                    </button>
+                    <button
+                      onClick={() => handleDownload(url)}
+                      className="nodrag flex items-center gap-1 px-2 py-1 rounded text-xs"
+                      style={{ background: "oklch(0.14 0.007 260 / 0.8)", borderWidth: 1, borderStyle: "solid", borderColor: "var(--c-bd3)", color: "var(--c-t2)" }}
+                    >
+                      <Download className="w-3 h-3" />
+                    </button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          ) : (
+          // Single image
           <div
             className="relative rounded-lg overflow-hidden flex-shrink-0"
             style={{ aspectRatio: "16/9", borderWidth: 1, borderStyle: "solid", borderColor: BORDER_DEFAULT, background: "var(--c-canvas)" }}
@@ -228,6 +274,7 @@ export const ComfyuiImageNode = memo(function ComfyuiImageNode({ id, selected, d
               </button>
             </div>
           </div>
+          )
         ) : (
           <div
             className="rounded-lg flex items-center justify-center flex-shrink-0"
@@ -409,63 +456,127 @@ export const ComfyuiImageNode = memo(function ComfyuiImageNode({ id, selected, d
               <div>
                 <label style={labelStyle}>Steps</label>
                 <input
-                  type="number"
-                  min={1}
-                  max={150}
+                  type="number" min={1} max={150}
                   value={payload.steps ?? 20}
                   onChange={(e) => update("steps", e.target.value ? Number(e.target.value) : undefined)}
-                  className="nodrag"
-                  style={fieldBase}
+                  className="nodrag" style={fieldBase}
                 />
               </div>
               <div>
                 <label style={labelStyle}>CFG</label>
                 <input
-                  type="number"
-                  min={1}
-                  max={30}
-                  step={0.5}
+                  type="number" min={1} max={30} step={0.5}
                   value={payload.cfg ?? 7}
                   onChange={(e) => update("cfg", e.target.value ? Number(e.target.value) : undefined)}
-                  className="nodrag"
-                  style={fieldBase}
+                  className="nodrag" style={fieldBase}
                 />
               </div>
               <div>
                 <label style={labelStyle}>宽度</label>
                 <input
-                  type="number"
-                  min={64}
-                  max={2048}
-                  step={8}
+                  type="number" min={64} max={2048} step={8}
                   value={payload.width ?? 512}
                   onChange={(e) => update("width", e.target.value ? Number(e.target.value) : undefined)}
-                  className="nodrag"
-                  style={fieldBase}
+                  className="nodrag" style={fieldBase}
                 />
               </div>
               <div>
                 <label style={labelStyle}>高度</label>
                 <input
-                  type="number"
-                  min={64}
-                  max={2048}
-                  step={8}
+                  type="number" min={64} max={2048} step={8}
                   value={payload.height ?? 512}
                   onChange={(e) => update("height", e.target.value ? Number(e.target.value) : undefined)}
-                  className="nodrag"
-                  style={fieldBase}
+                  className="nodrag" style={fieldBase}
                 />
               </div>
+              {/* Sampler */}
+              <div>
+                <label style={labelStyle}>采样器</label>
+                <input
+                  list={`comfyui-samplers-${id}`}
+                  placeholder="euler"
+                  value={payload.sampler ?? ""}
+                  onChange={(e) => update("sampler", e.target.value || undefined)}
+                  className="nodrag" style={fieldBase}
+                />
+                <datalist id={`comfyui-samplers-${id}`}>
+                  {(modelsQuery.data?.samplers ?? []).map((s) => <option key={s} value={s} />)}
+                </datalist>
+              </div>
+              {/* Scheduler */}
+              <div>
+                <label style={labelStyle}>调度器</label>
+                <input
+                  list={`comfyui-schedulers-${id}`}
+                  placeholder="normal"
+                  value={payload.scheduler ?? ""}
+                  onChange={(e) => update("scheduler", e.target.value || undefined)}
+                  className="nodrag" style={fieldBase}
+                />
+                <datalist id={`comfyui-schedulers-${id}`}>
+                  {(modelsQuery.data?.schedulers ?? ["normal", "karras", "exponential", "sgm_uniform", "simple", "ddim_uniform"]).map((s) => <option key={s} value={s} />)}
+                </datalist>
+              </div>
+              {/* Denoise */}
               <div className="col-span-2">
+                <label style={labelStyle}>
+                  Denoise &nbsp;
+                  <span style={{ fontWeight: 400, color: "var(--c-t3)" }}>{(payload.denoise ?? 1.0).toFixed(2)}</span>
+                </label>
+                <input
+                  type="range" min={0} max={1} step={0.01}
+                  value={payload.denoise ?? 1.0}
+                  onChange={(e) => update("denoise", Number(e.target.value))}
+                  className="nodrag" style={{ width: "100%", accentColor: accent }}
+                />
+              </div>
+              {/* VAE */}
+              <div className="col-span-2">
+                <label style={labelStyle}>VAE（留空用 Checkpoint 内置）</label>
+                <input
+                  list={`comfyui-vaes-${id}`}
+                  placeholder="ae.safetensors"
+                  value={payload.vae ?? ""}
+                  onChange={(e) => update("vae", e.target.value || undefined)}
+                  className="nodrag" style={fieldBase}
+                />
+                <datalist id={`comfyui-vaes-${id}`}>
+                  {(modelsQuery.data?.vaes ?? []).map((v) => <option key={v} value={v} />)}
+                </datalist>
+              </div>
+              {/* LoRA strength (only when lora is set) */}
+              {payload.lora && (
+                <div className="col-span-2">
+                  <label style={labelStyle}>
+                    LoRA 强度 &nbsp;
+                    <span style={{ fontWeight: 400, color: "var(--c-t3)" }}>{(payload.loraStrength ?? 1.0).toFixed(2)}</span>
+                  </label>
+                  <input
+                    type="range" min={0} max={2} step={0.05}
+                    value={payload.loraStrength ?? 1.0}
+                    onChange={(e) => update("loraStrength", Number(e.target.value))}
+                    className="nodrag" style={{ width: "100%", accentColor: accent }}
+                  />
+                </div>
+              )}
+              {/* Batch size */}
+              <div>
+                <label style={labelStyle}>批量数量</label>
+                <input
+                  type="number" min={1} max={8}
+                  value={payload.batchSize ?? 1}
+                  onChange={(e) => update("batchSize", e.target.value ? Math.min(8, Math.max(1, Number(e.target.value))) : 1)}
+                  className="nodrag" style={fieldBase}
+                />
+              </div>
+              {/* Seed */}
+              <div>
                 <label style={labelStyle}>Seed（-1 随机）</label>
                 <input
-                  type="number"
-                  placeholder="-1"
+                  type="number" placeholder="-1"
                   value={payload.seed ?? ""}
                   onChange={(e) => update("seed", e.target.value === "" ? undefined : Number(e.target.value))}
-                  className="nodrag"
-                  style={fieldBase}
+                  className="nodrag" style={fieldBase}
                 />
               </div>
             </div>
@@ -525,6 +636,16 @@ export const ComfyuiImageNode = memo(function ComfyuiImageNode({ id, selected, d
           </div>
         )}
 
+        {/* ── Progress bar ── */}
+        {payload.status === "processing" && payload.progress != null && (
+          <div style={{ marginBottom: 4 }}>
+            <div style={{ height: 4, borderRadius: 2, background: "var(--c-bd2)", overflow: "hidden" }}>
+              <div style={{ height: "100%", width: `${payload.progress}%`, background: accent, transition: "width 300ms ease", borderRadius: 2 }} />
+            </div>
+            <span style={{ fontSize: 10, color: "var(--c-t4)", marginTop: 2, display: "block" }}>{payload.progress}%</span>
+          </div>
+        )}
+
         {/* ── Generate button ── */}
         <button
           onClick={handleGenerate}
@@ -572,12 +693,12 @@ export const ComfyuiImageNode = memo(function ComfyuiImageNode({ id, selected, d
       {/* Lightbox */}
       {lightboxOpen && payload.imageUrl && (
         <ImageLightbox
-          images={[payload.imageUrl]}
+          images={payload.imageUrls && payload.imageUrls.length > 1 ? payload.imageUrls : [payload.imageUrl]}
           currentIndex={0}
           selectedUrl={payload.imageUrl}
           onClose={() => setLightboxOpen(false)}
-          onNavigate={() => { /* single image */ }}
-          onSelect={() => { /* no-op: single image */ }}
+          onNavigate={() => { /* multi-image navigation handled by lightbox */ }}
+          onSelect={() => { /* no-op */ }}
         />
       )}
     </BaseNode>
