@@ -52,18 +52,32 @@ const labelStyle: React.CSSProperties = {
 
 // ── Model lists ───────────────────────────────────────────────────────────────
 
-// Real Poyo-backed music models
+// Real Poyo-backed music models. Suno is confirmed live via the
+// `generate-music` endpoint with input.mv ∈ {V3.5, V4, V4.5, V4.5PLUS, V5}.
+// Mureka / MiniMax / Eleven Music are referenced by Poyo marketing but their
+// concrete `model` endpoint names are not yet published; they're kept here as
+// disabled options with ⚠ markers (same pattern as VideoTaskNode legacy
+// Higgsfield providers and AudioNode TTS legacy ids).
 const MUSIC_MODELS = [
-  { value: "suno-v4.5",       label: "Suno v4.5",       desc: "旗舰 · 全风格",   group: "Suno" },
-  { value: "suno-v5",         label: "Suno v5",         desc: "8 分钟 · 最高质量",group: "Suno" },
-  { value: "mureka",           label: "Mureka",          desc: "昆仑 · 中文友好", group: "Mureka" },
-  { value: "minimax-music-02", label: "MiniMax Music-02",desc: "多模态 · 精准",   group: "MiniMax" },
+  // ── Live (Suno via generate-music endpoint) ───
+  { value: "suno-v5",          label: "Suno v5",          desc: "8 分钟 · 最高质量",     group: "Suno" },
+  { value: "suno-v4.5plus",    label: "Suno v4.5 PLUS",   desc: "增强版",                group: "Suno" },
+  { value: "suno-v4.5",        label: "Suno v4.5",        desc: "旗舰 · 全风格",         group: "Suno" },
+  { value: "suno-v4",          label: "Suno v4",          desc: "稳定 · 经典",           group: "Suno" },
+  { value: "suno-v3.5",        label: "Suno v3.5",        desc: "初代 · 快速",           group: "Suno" },
+  // ── Pending (endpoint name not yet confirmed in Poyo docs) ───
+  { value: "mureka",           label: "Mureka ⚠ 待接入",         desc: "Poyo 端点名待确认",  group: "待接入" },
+  { value: "minimax-music-02", label: "MiniMax Music-02 ⚠ 待接入", desc: "Poyo 端点名待确认",  group: "待接入" },
 ];
 
+const LEGACY_MUSIC_MODELS = new Set(["mureka", "minimax-music-02"]);
+
 // Per-model maximum music duration (seconds). UI range slider clamps to this.
-// Source: each provider's documented duration limit.
 const MUSIC_MAX_DURATION: Record<string, number> = {
+  "suno-v3.5":         240,
+  "suno-v4":           240,
   "suno-v4.5":         240, // 4 min
+  "suno-v4.5plus":     240,
   "suno-v5":           480, // 8 min — flagship
   "mureka":            240,
   "minimax-music-02":  180,
@@ -325,8 +339,15 @@ export const AudioNode = memo(function AudioNode({ id, selected, data }: Props) 
     if (musicMutation.isPending) return;
     if (!payload.musicPrompt?.trim()) { toast.error("请先输入音乐描述"); return; }
     const validMusic = MUSIC_MODELS.map((m) => m.value);
-    const raw = payload.musicModel ?? payload.aiModel ?? "suno-v4.5";
-    const modelVal = (validMusic.includes(raw) ? raw : "suno-v4.5") as "suno-v4.5" | "suno-v5" | "mureka" | "minimax-music-02";
+    const raw = payload.musicModel ?? payload.aiModel ?? "suno-v5";
+    const modelVal = (validMusic.includes(raw) ? raw : "suno-v5") as
+      | "suno-v3.5" | "suno-v4" | "suno-v4.5" | "suno-v4.5plus" | "suno-v5"
+      | "mureka" | "minimax-music-02";
+    // Block submit early for not-yet-integrated providers (Mureka / MiniMax).
+    if (LEGACY_MUSIC_MODELS.has(modelVal)) {
+      toast.error(`"${modelVal}" 尚未接入（Poyo 端点名待确认），请改用 Suno 系列`);
+      return;
+    }
     // Clamp duration to the picked model's actual max (UI also clamps, but if
     // payload.musicDuration was set under a different model we'd otherwise send
     // a too-large value that the provider would either reject or silently cap).

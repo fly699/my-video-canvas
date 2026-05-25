@@ -13,11 +13,30 @@ const POLL_MAX_ATTEMPTS = 60; // 4 min max
 // full poll window.
 const IN_PROGRESS_STATUSES = new Set(["queued", "pending", "processing", "running", "submitted", "in_progress", "started"]);
 
+// User-facing music model identifiers. Internally all Suno variants share the
+// `generate-music` endpoint and differ only by an `input.mv` value (V3.5 / V4 /
+// V4.5 / V4.5PLUS / V5) — Poyo's API design is "endpoint + sub-params", not
+// "one model id per version". Mureka / MiniMax / ElevenLabs endpoints are not
+// yet confirmed in public docs; router rejects them until verified.
 export type PoyoMusicModel =
+  | "suno-v3.5"
+  | "suno-v4"
   | "suno-v4.5"
+  | "suno-v4.5plus"
   | "suno-v5"
+  // Below: legacy ids kept for backward compat with saved nodes; router will
+  // reject with clear migration message until proper Poyo endpoint names are
+  // confirmed (see openaiTTS commit for the same pattern).
   | "mureka"
   | "minimax-music-02";
+
+const SUNO_MV_MAP: Record<string, string> = {
+  "suno-v3.5":     "V3.5",
+  "suno-v4":       "V4",
+  "suno-v4.5":     "V4.5",
+  "suno-v4.5plus": "V4.5PLUS",
+  "suno-v5":       "V5",
+};
 
 export interface SubmitPoyoMusicOptions {
   model: PoyoMusicModel;
@@ -38,8 +57,19 @@ export async function submitAndPollPoyoMusic(
 ): Promise<PoyoMusicResult> {
   if (!ENV.poyoApiKey) throw new Error("POYO_API_KEY is not configured");
 
+  // Suno models → generate-music endpoint + mv parameter
+  const mv = SUNO_MV_MAP[opts.model];
+  if (!mv) {
+    // Mureka / MiniMax / ElevenLabs — Poyo endpoint names not yet confirmed in docs
+    throw new Error(
+      `Poyo 模型 "${opts.model}" 暂未接入（端点名待 Poyo 官方文档确认）。当前可用：Suno V3.5 / V4 / V4.5 / V4.5PLUS / V5。`
+    );
+  }
+
   const input: Record<string, unknown> = {
     prompt: opts.prompt,
+    mv,
+    custom_mode: false,
   };
   if (opts.style) input.style = opts.style;
   if (opts.durationSeconds !== undefined) input.duration_seconds = opts.durationSeconds;
@@ -52,13 +82,16 @@ export async function submitAndPollPoyoMusic(
       "Content-Type": "application/json",
       Authorization: `Bearer ${ENV.poyoApiKey}`,
     },
-    body: JSON.stringify({ model: opts.model, input }),
+    body: JSON.stringify({ model: "generate-music", input }),
     signal: AbortSignal.timeout(15_000),
   });
 
   if (!submitRes.ok) {
     const text = await submitRes.text().catch(() => "");
-    throw new Error(`Poyo audio submit failed (${submitRes.status}): ${text}`);
+    if (submitRes.status === 404) {
+      throw new Error(`Poyo 音乐生成失败 (404): generate-music 端点不存在或已下架，请联系 Poyo 客服。原始响应: ${text}`);
+    }
+    throw new Error(`Poyo 音乐生成失败 (${submitRes.status}, mv=${mv}): ${text}`);
   }
 
   const submitData = (await submitRes.json()) as { code?: number; message?: string; data?: { task_id?: string } };

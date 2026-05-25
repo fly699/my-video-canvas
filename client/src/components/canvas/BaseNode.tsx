@@ -51,6 +51,13 @@ export const BaseNode = memo(function BaseNode({
     }
     return false;
   });
+
+  // Pinned state — when true, child collapsible regions stay expanded
+  // regardless of `selected`. Toggled via the right-click context menu.
+  const pinned = useCanvasStore((s) => {
+    const node = s.nodes.find((n) => n.id === id);
+    return Boolean((node?.data.payload as Record<string, unknown> | undefined)?.pinned);
+  });
   const deleteNodeMutation = trpc.nodes.delete.useMutation();
   const { mode: canvasMode } = useCanvasMode();
   const { theme } = useTheme();
@@ -417,7 +424,7 @@ export const BaseNode = memo(function BaseNode({
       )}
 
       {/* ── Content area (collapsible in creative mode when hero exists) ── */}
-      <NodeSelectedContext.Provider value={!!selected}>
+      <NodeSelectedContext.Provider value={!!selected || pinned}>
         <div className="node-body-wrap">
           <div className="overflow-visible nopan">{children}</div>
         </div>

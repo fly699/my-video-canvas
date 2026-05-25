@@ -997,7 +997,10 @@ export const audioGenRouter = router({
   generateMusic: protectedProcedure
     .input(
       z.object({
-        model: z.enum(["suno-v4.5", "suno-v5", "mureka", "minimax-music-02"]),
+        model: z.enum([
+          "suno-v3.5", "suno-v4", "suno-v4.5", "suno-v4.5plus", "suno-v5",
+          "mureka", "minimax-music-02",
+        ]),
         prompt: z.string().min(1),
         style: z.string().optional(),
         durationSeconds: z.number().int().min(10).max(480).optional(),
