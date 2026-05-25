@@ -667,11 +667,22 @@ export const VideoTaskNode = memo(function VideoTaskNode({ id, selected, data }:
               </span>
             )}
           </div>
+          {/* Legacy migration: some historical providers (hf_dop_preview / hf_kling_* /
+              hf_seedance_*) were removed when Higgsfield video API was rewritten. If a
+              stored node still has one of those values, render a deprecation notice and
+              keep an inert option in the dropdown so the <select> isn't blank. */}
+          {!PROVIDERS.some((p) => p.value === payload.provider) && (
+            <div style={{
+              marginBottom: 6, padding: "6px 10px", fontSize: 11, lineHeight: 1.5,
+              color: "oklch(0.75 0.18 25)", background: "oklch(0.62 0.20 25 / 0.10)",
+              border: "1px solid oklch(0.62 0.20 25 / 0.30)", borderRadius: 6,
+            }}>
+              ⚠️ 当前模型 <code style={{ fontFamily: "monospace" }}>{payload.provider}</code> 已下线（Higgsfield 公共 API 不再支持）。请重新选择。
+            </div>
+          )}
           <select
             value={payload.provider}
             onChange={(e) => {
-              // Reset params on provider change — they're tightly bound to the previous provider's
-              // param schema and would otherwise leak across submits to a model that doesn't understand them
               updateNodeData(id, { provider: e.target.value as VideoProvider, params: {} });
             }}
             disabled={isLocked}
@@ -680,6 +691,12 @@ export const VideoTaskNode = memo(function VideoTaskNode({ id, selected, data }:
             onFocus={onFocusAccent}
             onBlur={onBlurDefault}
           >
+            {/* Stub option so legacy provider value renders something instead of blank */}
+            {!PROVIDERS.some((p) => p.value === payload.provider) && (
+              <option value={payload.provider} disabled style={{ background: "var(--c-surface)" }}>
+                ⚠ 已下线: {payload.provider}
+              </option>
+            )}
             {["Poyo", "Higgsfield", "Dev"].map((group) => (
               <optgroup key={group} label={`── ${group} ──`} style={{ background: "var(--c-surface)" }}>
                 {PROVIDERS.filter((p) => p.group === group).map((p) => (

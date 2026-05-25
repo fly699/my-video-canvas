@@ -36,6 +36,7 @@ import { generateComfyImage, generateComfyVideo, fetchComfyModels } from "../_co
 import { ENV } from "../_core/env";
 import { isPoyoVideoProvider, submitPoyoVideo, checkPoyoVideoStatus } from "../_core/poyoVideo";
 import { isHiggsfieldVideoProvider, submitHiggsfieldVideo, checkHiggsfieldVideoStatus } from "../_core/higgsfield";
+import { persistVideoOrFallback } from "../_core/persistVideo";
 import { submitAndPollPoyoMusic, type PoyoMusicModel } from "../_core/poyoAudio";
 import { submitAndPollPoyoTTS, type PoyoTTSModel } from "../_core/poyoAudio";
 import { trimVideo, getVideoDuration, mergeVideos, burnSubtitles, generateSRT, overlayVideo, assertSafeUrl, burnAssSubtitles, smartCutVideo } from "../_core/videoEditor";
@@ -298,6 +299,15 @@ export const videoTasksRouter = router({
           throw new TRPCError({ code: "BAD_REQUEST", message: "不支持的 URL 协议，仅允许 http/https 或相对路径" });
         }
       }
+      // Higgsfield DoP is strictly image-to-video — fail fast at the API edge
+      // so the user sees an immediate "需要参考图" error instead of waiting
+      // for the background poller to retry 10 times (~100s) before failing.
+      if (input.provider.startsWith("hf_dop_") && !input.referenceImageUrl?.trim()) {
+        throw new TRPCError({
+          code: "BAD_REQUEST",
+          message: "Higgsfield DoP 视频模型必须提供参考图（image-to-video 模式）。请连接一个图像节点或填写 referenceImageUrl。",
+        });
+      }
 
       // Idempotency: if this node already has a pending/processing task, return it
       // instead of creating a new one. Prevents double-charges when the client is
@@ -393,7 +403,11 @@ export const videoTasksRouter = router({
                 await updateVideoTask(task.id, update);
                 return { ...task, ...update };
               }
-              const update = { status: "succeeded" as const, resultVideoUrl: upstream.resultVideoUrl };
+              // CRITICAL: same persistence step as the background poller —
+              // without this, client-driven poll wins the race against the
+              // background poller and the upstream 24h URL ends up in DB.
+              const persisted = await persistVideoOrFallback(upstream.resultVideoUrl, task.provider);
+              const update = { status: "succeeded" as const, resultVideoUrl: persisted };
               await updateVideoTask(task.id, update);
               return { ...task, ...update };
             }
@@ -420,7 +434,9 @@ export const videoTasksRouter = router({
             const upstream = await checkHiggsfieldVideoStatus(task.externalTaskId);
             if (upstream.status === "succeeded" && upstream.resultVideoUrl) {
               pollLastCheck.delete(task.externalTaskId);
-              const update = { status: "succeeded" as const, resultVideoUrl: upstream.resultVideoUrl };
+              // Same persistence step as background poller (see comment above).
+              const persisted = await persistVideoOrFallback(upstream.resultVideoUrl, task.provider);
+              const update = { status: "succeeded" as const, resultVideoUrl: persisted };
               await updateVideoTask(task.id, update);
               return { ...task, ...update };
             }
