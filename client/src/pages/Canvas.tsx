@@ -576,6 +576,12 @@ function CanvasInner({ projectId }: { projectId: number }) {
         removeCollaborator(event.userId);
       }
     });
+    socket.on("comfyui:progress", (event: { nodeId: string; type: string; value?: number; max?: number }) => {
+      if (event.type === "progress" && event.value != null && event.max != null && event.max > 0) {
+        const pct = Math.round((event.value / event.max) * 100);
+        useCanvasStore.getState().updateNodeData(event.nodeId, { progress: pct }, true);
+      }
+    });
     socketRef.current = socket;
     return () => { socket.emit("leave-project", { projectId, userId: user.id }); socket.disconnect(); };
   }, [isAuthenticated, user, projectId]);
@@ -1254,8 +1260,8 @@ function CanvasInner({ projectId }: { projectId: number }) {
               {/* Sort: ComfyUI nodes pinned to the top (newest/most-prominent),
                   rest follow their NODE_TYPE_LIST order. */}
               {[...NODE_TYPE_LIST].sort((a, b) => {
-                const aIsComfy = a.type === "comfyui_image" || a.type === "comfyui_video";
-                const bIsComfy = b.type === "comfyui_image" || b.type === "comfyui_video";
+                const aIsComfy = a.type === "comfyui_image" || a.type === "comfyui_video" || a.type === "comfyui_workflow";
+                const bIsComfy = b.type === "comfyui_image" || b.type === "comfyui_video" || b.type === "comfyui_workflow";
                 if (aIsComfy && !bIsComfy) return -1;
                 if (!aIsComfy && bIsComfy) return 1;
                 return 0;

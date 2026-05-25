@@ -266,6 +266,16 @@ export const NODE_CONFIGS: Record<NodeType, NodeConfig> = {
     defaultWidth: 400,
     defaultTitle: "ComfyUI 视频",
   },
+  comfyui_workflow: {
+    type: "comfyui_workflow",
+    label: "ComfyUI 自定义",
+    icon: "Workflow",
+    color: "oklch(0.65 0.20 140)",
+    bgColor: "oklch(0.65 0.20 140 / 0.08)",
+    borderColor: "oklch(0.65 0.20 140 / 0.4)",
+    defaultWidth: 420,
+    defaultTitle: "ComfyUI 自定义工作流",
+  },
 };
 
 export const NODE_TYPE_LIST = Object.values(NODE_CONFIGS);

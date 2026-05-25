@@ -74,6 +74,7 @@ export const canvasNodes = mysqlTable("canvas_nodes", {
     "avatar",
     "comfyui_image",
     "comfyui_video",
+    "comfyui_workflow",
   ]).notNull(),
   title: varchar("title", { length: 255 }),
   /** Node-type-specific data (content, promptText, imageUrl, etc.) */

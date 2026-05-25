@@ -32,7 +32,7 @@ import {
 import { storagePut } from "../storage";
 import { invokeLLM, extractTextContent } from "../_core/llm";
 import { generateImage } from "../_core/imageGeneration";
-import { generateComfyImage, generateComfyVideo, fetchComfyModels } from "../_core/comfyui";
+import { generateComfyImage, generateComfyVideo, fetchComfyModels, analyzeWorkflow, executeCustomWorkflow, uploadImageForWorkflow } from "../_core/comfyui";
 import { ENV } from "../_core/env";
 import { isPoyoVideoProvider, submitPoyoVideo, checkPoyoVideoStatus } from "../_core/poyoVideo";
 import { isHiggsfieldVideoProvider, submitHiggsfieldVideo, checkHiggsfieldVideoStatus } from "../_core/higgsfield";
@@ -131,7 +131,7 @@ export const nodesRouter = router({
       z.object({
         id: z.string().optional(),
         projectId: z.number(),
-        type: z.enum(["script", "storyboard", "prompt", "image_gen", "asset", "video_task", "ai_chat", "note", "audio", "post_process", "group", "character", "clip", "merge", "subtitle", "overlay", "subtitle_motion", "smart_cut", "pose_control", "voice_clone", "lip_sync", "avatar", "comfyui_image", "comfyui_video"]),
+        type: z.enum(["script", "storyboard", "prompt", "image_gen", "asset", "video_task", "ai_chat", "note", "audio", "post_process", "group", "character", "clip", "merge", "subtitle", "overlay", "subtitle_motion", "smart_cut", "pose_control", "voice_clone", "lip_sync", "avatar", "comfyui_image", "comfyui_video", "comfyui_workflow"]),
         title: z.string().optional(),
         data: nodeDataSchema,
         posX: z.number(),
@@ -163,7 +163,7 @@ export const nodesRouter = router({
         z.object({
           id: z.string(),
           projectId: z.number(),
-          type: z.enum(["script", "storyboard", "prompt", "image_gen", "asset", "video_task", "ai_chat", "note", "audio", "post_process", "group", "character", "clip", "merge", "subtitle", "overlay", "subtitle_motion", "smart_cut", "pose_control", "voice_clone", "lip_sync", "avatar", "comfyui_image", "comfyui_video"]),
+          type: z.enum(["script", "storyboard", "prompt", "image_gen", "asset", "video_task", "ai_chat", "note", "audio", "post_process", "group", "character", "clip", "merge", "subtitle", "overlay", "subtitle_motion", "smart_cut", "pose_control", "voice_clone", "lip_sync", "avatar", "comfyui_image", "comfyui_video", "comfyui_workflow"]),
           title: z.string().optional().nullable(),
           data: nodeDataSchema,
           posX: z.number(),
@@ -1422,6 +1422,12 @@ export const comfyuiRouter = router({
         seed: z.number().int().default(-1),
         width: z.number().int().min(64).max(2048).default(512),
         height: z.number().int().min(64).max(2048).default(512),
+        sampler: z.string().max(64).optional(),
+        scheduler: z.string().max(64).optional(),
+        denoise: z.number().min(0).max(1).optional(),
+        vae: z.string().max(255).optional(),
+        loraStrength: z.number().min(0).max(2).optional(),
+        batchSize: z.number().int().min(1).max(8).default(1),
         referenceImageUrl: z.string().max(2048).optional(),
       }).refine(
         (v) => v.workflowTemplate !== "img2img" || (v.referenceImageUrl && v.referenceImageUrl.trim().length > 0),
@@ -1446,14 +1452,22 @@ export const comfyuiRouter = router({
             seed: input.seed >= 0 ? input.seed : undefined,
             width: input.width,
             height: input.height,
+            sampler: input.sampler,
+            scheduler: input.scheduler,
+            denoise: input.denoise,
+            vae: input.vae,
+            loraStrength: input.loraStrength,
+            batchSize: input.batchSize,
             referenceImageUrl: input.referenceImageUrl,
+            projectId: input.projectId,
+            nodeId: input.nodeId,
           });
           writeAuditLog({
             ctx,
             action: "comfyui_image_gen",
             detail: { template: input.workflowTemplate, ckpt: input.ckpt, prompt: truncate(input.prompt), resultUrl: result.url, nodeId: input.nodeId },
           });
-          return { url: result.url };
+          return { url: result.url, urls: result.urls };
         } catch (err) {
           throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: err instanceof Error ? err.message : String(err) });
         }
@@ -1476,6 +1490,13 @@ export const comfyuiRouter = router({
         seed: z.number().int().default(-1),
         frames: z.number().int().min(1).max(256).default(16),
         fps: z.number().int().min(1).max(60).default(8),
+        width: z.number().int().min(64).max(2048).optional(),
+        height: z.number().int().min(64).max(2048).optional(),
+        sampler: z.string().max(64).optional(),
+        scheduler: z.string().max(64).optional(),
+        denoise: z.number().min(0).max(1).optional(),
+        vae: z.string().max(255).optional(),
+        batchSize: z.number().int().min(1).max(8).default(1),
         referenceImageUrl: z.string().max(2048).optional(),
       }).refine(
         (v) => v.workflowTemplate !== "animatediff" || (v.motionModule && v.motionModule.trim().length > 0),
@@ -1503,7 +1524,16 @@ export const comfyuiRouter = router({
             seed: input.seed >= 0 ? input.seed : undefined,
             frames: input.frames,
             fps: input.fps,
+            width: input.width,
+            height: input.height,
+            sampler: input.sampler,
+            scheduler: input.scheduler,
+            denoise: input.denoise,
+            vae: input.vae,
+            batchSize: input.batchSize,
             referenceImageUrl: input.referenceImageUrl,
+            projectId: input.projectId,
+            nodeId: input.nodeId,
           });
           writeAuditLog({
             ctx,
@@ -1525,13 +1555,84 @@ export const comfyuiRouter = router({
       // gate as the paid generate endpoints.
       await assertWhitelisted(ctx);
       const baseUrl = input.customBaseUrl?.trim() || ENV.comfyuiBaseUrl;
-      if (!baseUrl) return { ckpts: [], loras: [], samplers: [], motionModules: [] };
+      if (!baseUrl) return { ckpts: [], loras: [], samplers: [], schedulers: [], vaes: [], motionModules: [] };
       try {
         return await fetchComfyModels(baseUrl);
       } catch {
         // Swallow errors and return empty so the UI degrades to free-text input
-        return { ckpts: [], loras: [], samplers: [], motionModules: [] };
+        return { ckpts: [], loras: [], samplers: [], schedulers: [], vaes: [], motionModules: [] };
       }
+    }),
+
+  analyzeWorkflow: protectedProcedure
+    .input(z.object({
+      customBaseUrl: z.string().max(2048).optional(),
+      workflowJson: z.string().max(500_000),
+    }))
+    .mutation(async ({ ctx, input }) => {
+      await assertWhitelisted(ctx);
+      const baseUrl = input.customBaseUrl?.trim() || ENV.comfyuiBaseUrl || undefined;
+      try {
+        return await analyzeWorkflow(input.workflowJson, baseUrl);
+      } catch (err) {
+        throw new TRPCError({ code: "BAD_REQUEST", message: err instanceof Error ? err.message : String(err) });
+      }
+    }),
+
+  uploadWorkflowImage: protectedProcedure
+    .input(z.object({
+      projectId: z.number(),
+      customBaseUrl: z.string().max(2048).optional(),
+      sourceUrl: z.string().max(2048),
+    }))
+    .mutation(async ({ ctx, input }) => {
+      await assertWhitelisted(ctx);
+      await assertProjectOwner(input.projectId, ctx.user.id);
+      const baseUrl = input.customBaseUrl?.trim() || ENV.comfyuiBaseUrl;
+      if (!baseUrl) throw new TRPCError({ code: "BAD_REQUEST", message: "ComfyUI URL 未配置" });
+      try {
+        const comfyFilename = await uploadImageForWorkflow(baseUrl, input.sourceUrl);
+        return { comfyFilename };
+      } catch (err) {
+        throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: err instanceof Error ? err.message : String(err) });
+      }
+    }),
+
+  executeWorkflow: protectedProcedure
+    .input(z.object({
+      nodeId: z.string(),
+      projectId: z.number(),
+      customBaseUrl: z.string().max(2048).optional(),
+      workflowJson: z.string().max(500_000),
+      paramValues: z.record(z.string(), z.unknown()),
+      outputNodeIds: z.array(z.string()).optional(),
+      outputType: z.enum(["image", "video", "auto"]).default("auto"),
+    }))
+    .mutation(async ({ ctx, input }) => {
+      await assertWhitelisted(ctx);
+      await assertProjectOwner(input.projectId, ctx.user.id);
+      const baseUrl = input.customBaseUrl?.trim() || ENV.comfyuiBaseUrl;
+      if (!baseUrl) throw new TRPCError({ code: "BAD_REQUEST", message: "ComfyUI URL 未配置：请在节点设置中填写或服务端设置 COMFYUI_BASE_URL" });
+      return dedupe("comfyui.executeWorkflow", ctx.user.id, input, async () => {
+        try {
+          const result = await executeCustomWorkflow(baseUrl, {
+            workflowJson: input.workflowJson,
+            paramValues: input.paramValues,
+            outputNodeIds: input.outputNodeIds,
+            outputType: input.outputType === "auto" ? undefined : input.outputType,
+            projectId: input.projectId,
+            nodeId: input.nodeId,
+          });
+          writeAuditLog({
+            ctx,
+            action: "comfyui_workflow_exec",
+            detail: { nodeId: input.nodeId, outputType: result.outputType, count: result.urls.length },
+          });
+          return result;
+        } catch (err) {
+          throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: err instanceof Error ? err.message : String(err) });
+        }
+      });
     }),
 });
 

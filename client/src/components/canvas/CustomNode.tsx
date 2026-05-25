@@ -24,6 +24,7 @@ import { LipSyncNode } from "./nodes/LipSyncNode";
 import { AvatarNode } from "./nodes/AvatarNode";
 import { ComfyuiImageNode } from "./nodes/ComfyuiImageNode";
 import { ComfyuiVideoNode } from "./nodes/ComfyuiVideoNode";
+import { ComfyuiWorkflowNode } from "./nodes/ComfyuiWorkflowNode";
 import type { NodeType } from "../../../../shared/types";
 
 interface CustomNodeData {
@@ -89,6 +90,8 @@ export const CustomNode = memo(function CustomNode(props: NodeProps) {
       return <ComfyuiImageNode {...(props as unknown as AnyNodeProps)} />;
     case "comfyui_video":
       return <ComfyuiVideoNode {...(props as unknown as AnyNodeProps)} />;
+    case "comfyui_workflow":
+      return <ComfyuiWorkflowNode {...(props as unknown as AnyNodeProps)} />;
     default:
       return null;
   }

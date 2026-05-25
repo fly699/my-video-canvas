@@ -13,6 +13,7 @@ import { createContext } from "./context";
 import { serveStatic, setupVite } from "./vite";
 import { Server as SocketIOServer } from "socket.io";
 import { setupVideoTaskPoller } from "../videoTaskPoller";
+import { setComfySocketIO } from "./comfyui";
 
 function isPortAvailable(port: number): Promise<boolean> {
   return new Promise((resolve) => {
@@ -139,6 +140,9 @@ async function startServer() {
       }
     });
   });
+
+  // ── ComfyUI progress relay ────────────────────────────────────────────────
+  setComfySocketIO(io);
 
   // ── Video task background poller ───────────────────────────────────────────
   setupVideoTaskPoller(io);

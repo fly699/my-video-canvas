@@ -63,7 +63,8 @@ export type AuditAction =
   | "subtitle_transcribe"
   | "logs_cleared"
   | "comfyui_image_gen"
-  | "comfyui_video_gen";
+  | "comfyui_video_gen"
+  | "comfyui_workflow_exec";
 
 export interface AuditOpts {
   ctx?: TrpcContext;

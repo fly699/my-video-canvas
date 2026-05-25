@@ -31,7 +31,7 @@ export const RUNNABLE_TYPES: NodeType[] = [
   "storyboard", "prompt", "image_gen", "video_task",
   "clip", "merge", "subtitle", "overlay",
   "subtitle_motion", "smart_cut",
-  "comfyui_image", "comfyui_video",
+  "comfyui_image", "comfyui_video", "comfyui_workflow",
 ];
 
 const VIDEO_SOURCE_TYPES = new Set(["video_task", "clip", "merge", "overlay", "asset", "subtitle", "subtitle_motion", "smart_cut", "comfyui_video"]);
@@ -183,6 +183,7 @@ export function useWorkflowRunner() {
   const subtitleMotionBurnMutation = trpc.subtitleMotion.burnMotion.useMutation();
   const comfyuiImageMutation = trpc.comfyui.generateImage.useMutation();
   const comfyuiVideoMutation = trpc.comfyui.generateVideo.useMutation();
+  const comfyuiWorkflowMutation = trpc.comfyui.executeWorkflow.useMutation();
 
   const runWorkflow = useCallback(async (startNodeId: string | null) => {
     if (runningRef.current) return;
@@ -720,6 +721,35 @@ export function useWorkflowRunner() {
           }, true);
           completed.push(nodeId);
           return "ok";
+
+        // ── ComfyUI Custom Workflow ───────────────────────────────────────────
+        } else if (nodeType === "comfyui_workflow") {
+          const workflowJson = (p.workflowJson as string) || "";
+          if (!workflowJson.trim()) {
+            toast.error(`节点 "${node.data.title}"：请先粘贴 Workflow JSON`);
+            failed.push(nodeId);
+            return "fail";
+          }
+          const paramValues = (p.paramValues as Record<string, unknown>) || {};
+          const result = await comfyuiWorkflowMutation.mutateAsync({
+            nodeId,
+            projectId: node.data.projectId,
+            customBaseUrl: ((p.customBaseUrl as string) || "").trim() || undefined,
+            workflowJson,
+            paramValues,
+            outputNodeIds: (p.outputNodeIds as string[]) || undefined,
+            outputType: ((p.outputType as string) || "auto") as "image" | "video" | "auto",
+          });
+          if (!useCanvasStore.getState().nodes.some((n) => n.id === nodeId)) return "ok";
+          const firstUrl = result.urls[0] ?? "";
+          useCanvasStore.getState().updateNodeData(nodeId, {
+            outputUrl: firstUrl,
+            outputUrls: result.urls,
+            status: "done",
+            errorMessage: undefined,
+          }, true);
+          completed.push(nodeId);
+          return "ok";
         }
 
         // Unrecognized runnable node type — mark as failed
@@ -776,7 +806,7 @@ export function useWorkflowRunner() {
         });
       }
     }
-  }, [imageGenMutation, videoTaskMutation, clipMutation, mergeMutation, subtitleTranscribeMutation, subtitleBurnMutation, overlayMutation, smartCutMutation, subtitleMotionTranscribeMutation, subtitleMotionBurnMutation, comfyuiImageMutation, comfyuiVideoMutation]);
+  }, [imageGenMutation, videoTaskMutation, clipMutation, mergeMutation, subtitleTranscribeMutation, subtitleBurnMutation, overlayMutation, smartCutMutation, subtitleMotionTranscribeMutation, subtitleMotionBurnMutation, comfyuiImageMutation, comfyuiVideoMutation, comfyuiWorkflowMutation]);
 
   const reset = useCallback(() => {
     runningRef.current = false;
