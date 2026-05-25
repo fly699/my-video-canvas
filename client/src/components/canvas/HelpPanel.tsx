@@ -167,7 +167,11 @@ const TOC_GROUPS = [
   },
   {
     label: "ComfyUI 集成",
-    ids: ["node-comfyui-image", "node-comfyui-video", "node-comfyui-workflow", "comfyui-setup"],
+    ids: ["node-comfyui-image", "node-comfyui-video", "node-comfyui-workflow", "comfyui-setup", "comfyui-params-reference", "comfyui-workflow-advanced", "comfyui-troubleshoot"],
+  },
+  {
+    label: "系统配置",
+    ids: ["server-env-config", "admin-guide", "api-interface-config"],
   },
   {
     label: "进阶指南",

@@ -686,6 +686,292 @@ python main.py --port 8191 --cuda-device 3` },
       { type: "tip", text: "复杂工作流建议先用「版本历史」保存一个基础版本，再逐步添加节点，便于回滚。" },
     ],
   },
+
+  // ── ComfyUI 参数完整参考 ────────────────────────────────────────────────────
+  {
+    id: "comfyui-params-reference",
+    title: "ComfyUI 参数完整参考",
+    emoji: "📊",
+    content: [
+      { type: "h3", text: "图像节点所有参数" },
+      { type: "kv", rows: [
+        ["服务器地址 customBaseUrl", "ComfyUI HTTP 地址，如 http://192.168.1.100:8188，留空=使用全局环境变量"],
+        ["工作流模板", "txt2img（文生图）或 img2img（图生图）"],
+        ["模型 ckpt", "Checkpoint 文件名，必填，从「刷新模型」列表选择"],
+        ["LoRA lora", "附加 LoRA 文件名（可选），同样从列表选择"],
+        ["LoRA 强度 loraStrength", "0.0–2.0，推荐 0.5–1.0，影响 LoRA 风格的融合程度"],
+        ["提示词 prompt", "正向提示词，1–2000 字符，英文效果最佳（必填）"],
+        ["负向提示词 negPrompt", "不想要的内容，≤2000 字符（可选）"],
+        ["步数 steps", "1–150，推荐 20–30；越高质量越好但越慢"],
+        ["CFG cfg", "1–30，推荐 7–8；越高越严格遵循提示词，过高会产生伪影"],
+        ["宽 width", "64–2048，SDXL 推荐 1024，SD1.5 推荐 512，需为 8 的倍数"],
+        ["高 height", "64–2048，规则同宽"],
+        ["批量 batchSize", "1–8，一次生成多张，结果以网格展示"],
+        ["种子 seed", "整数或 -1（随机），相同种子+参数=相同结果（可复现）"],
+        ["采样器 sampler", "euler_a（推荐速度）/ dpmpp_2m（推荐质量）/ ddim / uni_pc 等"],
+        ["调度器 scheduler", "karras（推荐）/ exponential / normal / sgm_uniform 等"],
+        ["去噪 denoise", "0.0–1.0，仅 img2img 有效；0=保留原图，1=完全重绘，0.6–0.8 常用"],
+        ["VAE vae", "图像解码器文件名，留空=使用 checkpoint 内置 VAE"],
+        ["参考图 referenceImageUrl", "img2img 模式必填，可连接上游图像节点或粘贴 URL"],
+      ]},
+      { type: "h3", text: "视频节点特有参数" },
+      { type: "kv", rows: [
+        ["模板 workflowTemplate", "animatediff（文生视频）或 svd（图生视频）"],
+        ["动态模块 motionModule", "AnimateDiff 必填，如 mm_sd_v15_v2.ckpt，放入 animatediff_models/ 目录"],
+        ["帧数 frames", "1–256；AnimateDiff 推荐 16/24/32，SVD 固定 25"],
+        ["帧率 fps", "1–60；推荐 8（AnimateDiff）或 6–12（SVD），影响视频播放速度"],
+        ["视频宽 width", "可选，不填=模板默认；AnimateDiff 推荐 512，SVD 推荐 1024"],
+        ["视频高 height", "可选，不填=模板默认；AnimateDiff 推荐 512，SVD 推荐 576"],
+        ["参考图 referenceImageUrl", "SVD 必填；AnimateDiff 可选（用于 img2vid 风格）"],
+      ]},
+      { type: "h3", text: "内置模板 → 节点类型对应" },
+      { type: "kv", rows: [
+        ["txt2img", "ComfyUI 图像节点，纯文字生成图像"],
+        ["img2img", "ComfyUI 图像节点，参考图+文字生成图像"],
+        ["animatediff", "ComfyUI 视频节点，文字/图像生成动态视频"],
+        ["svd", "ComfyUI 视频节点，单张参考图生成写实短视频"],
+      ]},
+      { type: "h3", text: "自动检测参数的 ComfyUI 节点类型" },
+      { type: "kv", rows: [
+        ["CLIPTextEncode", "→ 提示词（type: text）"],
+        ["KSampler / KSamplerAdvanced", "→ seed, steps, cfg, sampler_name, scheduler, denoise（type: number/select）"],
+        ["CheckpointLoaderSimple", "→ ckpt_name（type: select，从服务器拉取模型列表）"],
+        ["UNETLoader / ImageOnlyCheckpointLoader", "→ unet_name / ckpt_name（type: select）"],
+        ["LoraLoader / LoraLoaderModelOnly", "→ lora_name, strength_model（type: select/number）"],
+        ["LoadImage", "→ image（type: image，上传参考图）"],
+        ["EmptyLatentImage / EmptySD3LatentImage", "→ width, height, batch_size（type: number）"],
+        ["VHS_VideoCombine", "→ frame_rate（type: number）；标记为视频输出节点"],
+        ["SaveImage / PreviewImage", "→ 标记为图像输出节点，收集最终图像"],
+      ]},
+      { type: "tip", text: "自定义工作流节点中，如果某个参数没有被自动检测到，可以在阶段 B 手动填写 nodeId（数字 ID）和 fieldPath（如 inputs.text）来添加绑定。" },
+    ],
+  },
+
+  // ── 自定义工作流高级技巧 ────────────────────────────────────────────────────
+  {
+    id: "comfyui-workflow-advanced",
+    title: "自定义工作流高级技巧",
+    emoji: "🔬",
+    content: [
+      { type: "h3", text: "参数路径（fieldPath）格式" },
+      { type: "p", text: "fieldPath 使用点号分隔路径，对应 workflow JSON 中节点的字段位置：" },
+      { type: "kv", rows: [
+        ["inputs.text", "节点 inputs 对象下的 text 字段（最常见）"],
+        ["inputs.ckpt_name", "模型选择字段"],
+        ["inputs.seed", "种子字段"],
+        ["inputs.width", "宽度字段"],
+        ["inputs.strength_model", "LoRA 强度字段"],
+        ["inputs.frame_rate", "帧率字段"],
+      ]},
+      { type: "h3", text: "手动添加参数绑定示例" },
+      { type: "p", text: "如果 workflow 中节点 ID 为 \"42\" 的 FluxGuidance 节点有 guidance 字段需要配置：" },
+      { type: "code", text: `nodeId:   42
+fieldPath: inputs.guidance
+label:     引导强度 (Guidance)
+type:      number
+min:       1
+max:       30
+defaultValue: 3.5` },
+      { type: "h3", text: "输出节点 ID 配置" },
+      { type: "p", text: "留空=系统自动检测（推荐）。如果自动检测遗漏了输出，可以手动填写节点 ID（在 ComfyUI API JSON 中，key 就是节点 ID）。" },
+      { type: "h3", text: "输出类型设置" },
+      { type: "kv", rows: [
+        ["auto（推荐）", "自动判断：含 VHS_VideoCombine=视频，含 SaveImage=图像"],
+        ["image", "强制收集 SaveImage 输出（即使工作流同时有视频节点）"],
+        ["video", "强制收集 VHS_VideoCombine 输出"],
+      ]},
+      { type: "h3", text: "多节点同类型参数处理" },
+      { type: "p", text: "如果 workflow 有多个 CLIPTextEncode 节点（如正向+负向提示词分开），阶段 B 会生成多个绑定，各自有独立的 nodeId，可以分别修改 label 为「正向提示词」和「负向提示词」加以区分。" },
+      { type: "h3", text: "Flux 工作流特殊说明" },
+      { type: "p", text: "Flux 使用独立的 UNETLoader + CLIPLoader + VAELoader 代替 CheckpointLoaderSimple，且通常使用 FluxGuidance 节点替代 CFG Scale，cfg 参数固定为 1 或 0。KSampler 中的 scheduler 推荐 simple。" },
+      { type: "tip", text: "遇到复杂工作流（如 IPAdapter + ControlNet 组合），建议先在 ComfyUI Web 界面测试通过后，再导出 API JSON 粘贴到本节点。" },
+    ],
+  },
+
+  // ── ComfyUI 故障排查 ────────────────────────────────────────────────────────
+  {
+    id: "comfyui-troubleshoot",
+    title: "ComfyUI 故障排查",
+    emoji: "🔧",
+    content: [
+      { type: "h3", text: "无法连接服务器" },
+      { type: "kv", rows: [
+        ["刷新模型显示「连接失败」", "检查 COMFYUI_BASE_URL 环境变量或节点「服务器地址」字段是否正确"],
+        ["可以访问 ComfyUI Web 界面但应用无法连接", "ComfyUI 仅监听 127.0.0.1，需加 --listen 0.0.0.0 重启"],
+        ["局域网地址无法访问", "检查防火墙是否放行对应端口（8188/8189等）"],
+      ]},
+      { type: "h3", text: "模型列表为空" },
+      { type: "kv", rows: [
+        ["ckpts / loras 列表为空", "检查模型文件是否放置在 ComfyUI/models/checkpoints/ 目录"],
+        ["motion modules 为空", "文件需放在 ComfyUI/models/animatediff_models/ 目录"],
+        ["VAE 列表为空", "文件需放在 ComfyUI/models/vae/ 目录"],
+      ]},
+      { type: "h3", text: "生成失败" },
+      { type: "kv", rows: [
+        ["CUDA out of memory", "降低分辨率（width/height）或减少批量数量（batchSize）"],
+        ["节点不存在 (Missing node type)", "ComfyUI 缺少对应自定义节点，用 ComfyUI Manager 安装"],
+        ["超时（timeout）", "视频生成超过 10 分钟会超时；检查 GPU 是否正常工作"],
+        ["Checkpoint 加载失败", "确认模型文件完整（不是损坏的下载文件），重新下载"],
+        ["KSampler 报错", "检查采样器名称是否正确，不同版本 ComfyUI 支持的采样器可能不同"],
+      ]},
+      { type: "h3", text: "进度条不更新" },
+      { type: "p", text: "WebSocket 连接到 ComfyUI 服务器失败时，进度条不会实时更新，但任务仍在后台执行。生成完成后结果会正常显示。检查：" },
+      { type: "steps", items: [
+        "ComfyUI 服务器是否支持 WebSocket（标准安装均支持）",
+        "网络中是否有代理/反向代理阻断了 WebSocket 连接",
+        "任务最终会通过轮询（每 3 秒）检查结果，所以即使 WS 失败也能完成",
+      ]},
+      { type: "h3", text: "自定义工作流分析结果为空" },
+      { type: "steps", items: [
+        "确认粘贴的是 API Format JSON（不是 workflow 界面保存的普通 JSON）",
+        "API Format JSON 的结构是以节点 ID 为 key 的对象，如 {\"1\": {\"class_type\": \"KSampler\", \"inputs\": {...}}}",
+        "如果格式正确但仍无检测结果，检查节点 class_type 是否是支持的类型（见参数参考章节）",
+        "手动添加参数绑定作为补充",
+      ]},
+      { type: "warn", text: "生成任务一旦提交到 ComfyUI 就无法取消（ComfyUI 不支持中途取消队列中的任务）。如果需要停止，需要在 ComfyUI Web 界面的队列管理器中手动清除。" },
+    ],
+  },
+
+  // ── 服务器环境变量配置 ──────────────────────────────────────────────────────
+  {
+    id: "server-env-config",
+    title: "服务器环境变量配置",
+    emoji: "⚙️",
+    content: [
+      { type: "p", text: "所有环境变量在服务器启动前通过 .env 文件或系统环境设置。" },
+      { type: "h3", text: "必填（生产环境）" },
+      { type: "kv", rows: [
+        ["DATABASE_URL", "MySQL 连接字符串，如 mysql://user:pass@host:3306/dbname"],
+        ["JWT_SECRET", "JWT 签名密钥，随机字符串，生产必须设置（留空会拒绝启动）"],
+        ["OAUTH_SERVER_URL", "OAuth 认证服务地址（使用 OAuth 登录时必填）"],
+      ]},
+      { type: "h3", text: "ComfyUI 连接" },
+      { type: "kv", rows: [
+        ["COMFYUI_BASE_URL", "ComfyUI 服务器地址，如 http://192.168.1.100:8188（所有 ComfyUI 节点的默认服务器）"],
+      ]},
+      { type: "h3", text: "视频生成 API（按需配置）" },
+      { type: "kv", rows: [
+        ["POYO_API_KEY", "Poyo.ai API 密钥，用于 Kling / Hailuo 等视频生成"],
+        ["HIGGSFIELD_API_KEY", "Higgsfield API 密钥，用于 Higgsfield 视频生成"],
+        ["HIGGSFIELD_API_SECRET", "配套 Higgsfield API Secret"],
+      ]},
+      { type: "h3", text: "AI 功能 API" },
+      { type: "kv", rows: [
+        ["OPENAI_API_KEY", "OpenAI API 密钥，用于 TTS 语音合成和 GPT 文本生成"],
+        ["BUILT_IN_FORGE_API_URL", "内置 Stable Diffusion WebUI (Forge) 地址，用于图像生成节点"],
+        ["BUILT_IN_FORGE_API_KEY", "内置 Forge API 密钥"],
+      ]},
+      { type: "h3", text: "应用配置" },
+      { type: "kv", rows: [
+        ["NODE_ENV", "运行环境：development（开发，无需数据库和 OAuth）/ production（生产）"],
+        ["OWNER_EMAIL", "管理员邮箱，默认值需在生产环境替换"],
+        ["OWNER_OPEN_ID", "管理员 OpenID（OAuth 场景）"],
+        ["VITE_APP_ID", "前端应用 ID，用于 OAuth 和分析等"],
+      ]},
+      { type: "h3", text: "开发模式快速启动" },
+      { type: "code", text: `DATABASE_URL="" OAUTH_SERVER_URL="" NODE_ENV=development pnpm dev` },
+      { type: "p", text: "开发模式下自动以 Dev User（id=1）登录，使用内存存储，无需真实数据库和 OAuth 服务，适用于本地调试。" },
+      { type: "h3", text: ".env 文件示例（生产环境）" },
+      { type: "code", text: `DATABASE_URL=mysql://root:password@localhost:3306/aicanvas
+JWT_SECRET=your_random_64_char_secret_here
+OAUTH_SERVER_URL=https://your-oauth-server.com
+COMFYUI_BASE_URL=http://192.168.1.100:8188
+POYO_API_KEY=pk_xxxxxxxxxxxxxxxxxxxx
+OPENAI_API_KEY=sk-xxxxxxxxxxxxxxxxxxxx
+NODE_ENV=production` },
+      { type: "tip", text: "环境变量修改后需要重启服务器才能生效。" },
+    ],
+  },
+
+  // ── 管理员配置指南 ──────────────────────────────────────────────────────────
+  {
+    id: "admin-guide",
+    title: "管理员配置指南",
+    emoji: "🛡️",
+    content: [
+      { type: "p", text: "管理员后台（访问路径：/admin）提供三大功能：白名单管理、操作日志、存储设置。仅具有 admin 角色的用户可访问。" },
+      { type: "h3", text: "一、白名单管理" },
+      { type: "p", text: "白名单开启后，只有列表中的 IP 地址或用户 ID 才能访问本应用。适用于限制访问权限的私有部署场景。" },
+      { type: "steps", items: [
+        "进入 /admin → 白名单管理标签页",
+        "点击「启用白名单」开关（开启后立即生效，未在白名单中的请求将被拒绝）",
+        "点击「添加条目」，选择类型（IP / 用户）并填写值",
+        "IP 类型：填写 IPv4（如 192.168.1.1）或 IPv6 地址",
+        "用户类型：填写用户的数字 ID（在用户管理中查看）",
+        "添加可选备注说明该条目用途",
+        "点击条目旁的删除按钮可随时移除",
+      ]},
+      { type: "warn", text: "开启白名单前，务必确认已将自己的 IP 或用户 ID 加入白名单，否则会将自己锁在系统外。如需紧急恢复，可以直接在数据库中修改 whitelistSettings.enabled = false。" },
+      { type: "kv", rows: [
+        ["IP 条目格式", "纯 IPv4 或 IPv6 地址，不支持 CIDR 段（如 192.168.1.0/24）"],
+        ["用户条目格式", "纯数字的用户 ID，如 42"],
+        ["「未知」IP 处理", "客户端 IP 无法确定时，IP 白名单不会放行（安全兜底）"],
+      ]},
+      { type: "h3", text: "二、存储设置" },
+      { type: "p", text: "控制 AI 生成的媒体文件是否持久化存储到 S3（Manus 存储）。" },
+      { type: "kv", rows: [
+        ["持久化音频（persistAudio）", "开启：生成的音频文件上传到 S3，URL 永久有效。关闭：直接使用提供商临时 URL（约 24 小时后失效）"],
+        ["持久化视频（persistVideo）", "开启：生成视频上传到 S3。关闭：使用 Poyo/Higgsfield 的临时 CDN URL"],
+        ["图像", "图像始终持久化，不受此设置影响"],
+      ]},
+      { type: "tip", text: "在开发/预览环境中关闭持久化可以节省 S3 存储费用，但 24 小时后生成结果将失效。生产环境建议保持开启。" },
+      { type: "h3", text: "三、操作日志（审计日志）" },
+      { type: "p", text: "记录所有用户的关键操作，用于安全审计和使用统计。" },
+      { type: "kv", rows: [
+        ["login_email", "邮箱密码登录"],
+        ["login_oauth", "OAuth 登录"],
+        ["image_gen", "图像生成（包含模型、提示词摘要）"],
+        ["video_gen", "视频生成（包含提供商、时长）"],
+        ["audio_music", "音乐生成"],
+        ["audio_dubbing", "AI 配音/TTS"],
+        ["subtitle_transcribe", "语音转字幕"],
+        ["comfyui_workflow_exec", "ComfyUI 自定义工作流执行"],
+        ["logs_cleared", "管理员清空日志记录"],
+      ]},
+      { type: "p", text: "日志包含用户信息（ID/邮箱/姓名）、操作时间、IP 地址及地理位置（国家/地区/城市）、操作详情。可按操作类型过滤查看，每次最多加载 200 条。" },
+    ],
+  },
+
+  // ── 前端接口配置说明 ────────────────────────────────────────────────────────
+  {
+    id: "api-interface-config",
+    title: "前端接口配置说明",
+    emoji: "🔌",
+    content: [
+      { type: "p", text: "本应用前后端通过 tRPC v11 进行类型安全的通信，所有接口均需登录认证。以下是 ComfyUI 相关接口的完整说明。" },
+      { type: "h3", text: "ComfyUI 接口清单" },
+      { type: "kv", rows: [
+        ["comfyui.fetchModels", "获取 ComfyUI 服务器的可用模型、LoRA、采样器、VAE 列表（每个节点「刷新模型」按钮触发）"],
+        ["comfyui.generateImage", "执行图像生成（txt2img / img2img），返回图像 URL 或多张 URL 列表"],
+        ["comfyui.generateVideo", "执行视频生成（animatediff / svd），返回视频 URL"],
+        ["comfyui.analyzeWorkflow", "分析 API Format Workflow JSON，返回自动检测的参数绑定列表"],
+        ["comfyui.uploadWorkflowImage", "将图像上传到 ComfyUI 服务器（自定义工作流中 image 类型参数使用）"],
+        ["comfyui.executeWorkflow", "执行自定义工作流，支持任意 JSON 和参数注入，返回输出 URL 列表"],
+      ]},
+      { type: "h3", text: "请求限制" },
+      { type: "kv", rows: [
+        ["Workflow JSON 大小", "≤ 500 KB（超过会被拒绝）"],
+        ["参考图大小", "≤ 30 MB（上传到 ComfyUI 前的大小限制）"],
+        ["输出文件大小", "≤ 200 MB（单个输出文件大小上限）"],
+        ["图像任务超时", "约 5 分钟（100 次 × 3 秒轮询）"],
+        ["视频任务超时", "约 10 分钟（200 次 × 3 秒轮询）"],
+        ["提示词长度", "≤ 2000 字符（正向/负向各自限制）"],
+        ["模型名长度", "≤ 255 字符"],
+        ["URL 长度", "≤ 2048 字符（服务器地址/参考图 URL）"],
+      ]},
+      { type: "h3", text: "实时进度推送（WebSocket）" },
+      { type: "p", text: "生成任务运行时，进度通过 Socket.IO 实时推送到前端，更新节点的进度条（0–100%）。推送路径：" },
+      { type: "code", text: `ComfyUI WS (/ws) → 本应用服务器 → Socket.IO room: "project:{projectId}"
+→ 前端 Canvas 监听 "comfyui:progress" 事件
+→ 更新对应 nodeId 的 progress 字段（不持久化）` },
+      { type: "p", text: "多节点同时生成时，每个任务使用独立的 WS 连接，互不干扰，可以同时显示多个进度条。" },
+      { type: "h3", text: "去重保护（Dedupe）" },
+      { type: "p", text: "所有生成接口都有去重保护：同一用户+同一节点 ID 的并发请求会被合并为一次实际调用，防止重复提交（例如快速双击运行按钮）。" },
+      { type: "h3", text: "多 GPU 负载均衡策略" },
+      { type: "p", text: "当前实现为手动分流：在每个节点的「服务器地址」字段填写不同的 ComfyUI 实例地址（:8188、:8189 等）。系统不自动负载均衡，需要用户根据 GPU 空闲情况手动选择目标实例。" },
+      { type: "tip", text: "可以在不同节点中设置不同的 customBaseUrl，同时运行的任务会分别发送到对应的 GPU 实例，实现并行生成。" },
+    ],
+  },
 ];
 
 export function getHelpSectionById(id: string): HelpSection | undefined {
@@ -696,4 +982,12 @@ export function getHelpSectionByNodeType(nodeType: NodeType): HelpSection | unde
   return HELP_SECTIONS.find((s) => s.nodeType === nodeType);
 }
 
-export const COMFYUI_SECTION_IDS = ["node-comfyui-image", "node-comfyui-video", "node-comfyui-workflow", "comfyui-setup"];
+export const COMFYUI_SECTION_IDS = [
+  "node-comfyui-image",
+  "node-comfyui-video",
+  "node-comfyui-workflow",
+  "comfyui-setup",
+  "comfyui-params-reference",
+  "comfyui-workflow-advanced",
+  "comfyui-troubleshoot",
+];
