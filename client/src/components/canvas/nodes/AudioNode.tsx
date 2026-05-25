@@ -268,13 +268,13 @@ export const AudioNode = memo(function AudioNode({ id, selected, data }: Props) 
     onSuccess: (result) => {
       audioRef.current?.pause();
       setIsPlaying(false);
-      // OpenAI TTS returns no duration (sync mp3, no probe). Only write
-      // duration when defined so the <audio onLoadedMetadata> path can fill
-      // it in — otherwise we'd overwrite an existing value with undefined
-      // and the UI would show "--:--" until the user plays the file.
+      // Always write duration (undefined for OpenAI TTS). The brief "--:--"
+      // window until <audio onLoadedMetadata> fires is the correct UX —
+      // preserving a stale duration from a previous run (e.g. music
+      // 30s → TTS 5s on the same node) would actively lie about the new clip.
       updateNodeData(id, {
         url: result.url,
-        ...(result.duration !== undefined ? { duration: result.duration } : {}),
+        duration: result.duration,
         name: `配音 · ${(payload.ttsVoice ?? "alloy")} · ${payload.ttsText?.slice(0, 16) ?? ""}`,
       });
       toast.success("配音生成完成");

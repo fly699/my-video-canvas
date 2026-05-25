@@ -232,7 +232,10 @@ export const ImageGenNode = memo(function ImageGenNode({ id, selected, data }: P
     update("imageUrl", url);
     const { edges, nodes, batchUpdateNodeData } = useCanvasStore.getState();
     const updates = edges
-      .filter(e => e.source === id && e.sourceHandle === "image-out" && e.targetHandle === "ref-image-in")
+      // Accept both the dedicated `image-out` and BaseNode's default `output`
+      // — onConnect was widened to allow either, so re-selection must too,
+      // or new images stop propagating over default-handle connections.
+      .filter(e => e.source === id && (e.sourceHandle === "image-out" || e.sourceHandle === "output") && e.targetHandle === "ref-image-in")
       .flatMap(edge => {
         const target = nodes.find(n => n.id === edge.target);
         return target?.data.nodeType === "video_task" ? [{ id: edge.target, payload: { referenceImageUrl: url } }] : [];

@@ -110,18 +110,24 @@ export async function synthesizeOpenAITTS(opts: SynthesizeOpenAITTSOptions): Pro
   const reader = res.body.getReader();
   const chunks: Uint8Array[] = [];
   let total = 0;
+  let completed = false;
   try {
     while (true) {
       const { done, value } = await reader.read();
-      if (done) break;
+      if (done) { completed = true; break; }
       total += value.byteLength;
       if (total > MAX_TTS_BYTES) {
-        await reader.cancel();
         throw new Error(`OpenAI TTS 响应超出 ${MAX_TTS_BYTES} 字节上限，已中止`);
       }
       chunks.push(value);
     }
   } finally {
+    // Cancel on any non-completion exit (byte-cap, network error) so the
+    // underlying HTTP connection is released back to the pool. Without
+    // this, generic stream errors leave the socket held until GC.
+    if (!completed) {
+      try { await reader.cancel(); } catch { /* ignore */ }
+    }
     try { reader.releaseLock(); } catch { /* ignore */ }
   }
   const buf = Buffer.concat(chunks, total);

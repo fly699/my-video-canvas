@@ -28,14 +28,17 @@ const PERSIST_FETCH_TIMEOUT_MS = 180_000; // 3 min — large videos can be slow
 const _inflight = new Map<string, Promise<string>>();
 
 export async function persistVideoOrFallback(upstreamUrl: string, provider: string): Promise<string> {
-  // Admin-controlled toggle: when video persistence is disabled, skip the
-  // download entirely and return the upstream URL straight through.
-  if (!(await isVideoPersistenceEnabled())) {
-    return upstreamUrl;
-  }
+  // Dedupe BEFORE any await so two concurrent callers can't both pass the
+  // toggle check and both start the 100 MB download. Toggle check goes
+  // inside the IIFE so it's part of the shared inflight Promise.
   const existing = _inflight.get(upstreamUrl);
   if (existing) return existing;
-  const p = persistImpl(upstreamUrl, provider).finally(() => {
+  const p = (async () => {
+    if (!(await isVideoPersistenceEnabled())) {
+      return upstreamUrl;
+    }
+    return persistImpl(upstreamUrl, provider);
+  })().finally(() => {
     _inflight.delete(upstreamUrl);
   });
   _inflight.set(upstreamUrl, p);

@@ -615,7 +615,9 @@ function CanvasInner({ projectId }: { projectId: number }) {
   // (addOffsetRef declared above with handleCanvasContextMenu so it can be reset on open.)
   const handleAddNode = useCallback((type: NodeType) => {
     const base = contextMenu?.canvasPos ?? { x: 200, y: 200 };
-    const i = addOffsetRef.current++;
+    // Wrap the diagonal stagger every 8 adds (28*8 ≈ 224px) so a long
+    // batch from a pinned menu doesn't drift unboundedly off-screen.
+    const i = addOffsetRef.current++ % 8;
     const pos = i === 0 ? base : { x: base.x + i * 28, y: base.y + i * 28 };
     try {
       const newNode = addNode(type, pos);
