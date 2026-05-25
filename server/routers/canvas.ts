@@ -39,6 +39,7 @@ import { isHiggsfieldVideoProvider, submitHiggsfieldVideo, checkHiggsfieldVideoS
 import { persistVideoOrFallback } from "../_core/persistVideo";
 import { submitAndPollPoyoMusic, type PoyoMusicModel } from "../_core/poyoAudio";
 import { submitAndPollPoyoTTS, type PoyoTTSModel } from "../_core/poyoAudio";
+import { synthesizeOpenAITTS, type OpenAITTSModel } from "../_core/openaiTTS";
 import { trimVideo, getVideoDuration, mergeVideos, burnSubtitles, generateSRT, overlayVideo, assertSafeUrl, burnAssSubtitles, smartCutVideo } from "../_core/videoEditor";
 import { transcribeAudio } from "../_core/voiceTranscription";
 import { VIDEO_PROVIDERS } from "../../shared/types";
@@ -1040,7 +1041,20 @@ export const audioGenRouter = router({
   generateDubbing: protectedProcedure
     .input(
       z.object({
-        model: z.enum(["openai_tts_hd", "openai_tts", "elevenlabs_v3", "cosyvoice_2"]),
+        // New OpenAI-direct models + legacy Poyo aliases (latter are rejected
+        // at runtime with a clear error so old saved nodes don't 404 silently).
+        model: z.enum([
+          // Live (OpenAI direct)
+          "openai_tts_real",
+          "openai_tts_hd_real",
+          "openai_gpt4o_mini_tts",
+          // Deprecated (kept in schema so existing nodes don't fail validation
+          // before the user sees the migration message)
+          "openai_tts_hd",
+          "openai_tts",
+          "elevenlabs_v3",
+          "cosyvoice_2",
+        ]),
         text: z.string().min(1).max(5000),
         voice: z.string().optional(),
         speed: z.number().min(0.5).max(2.0).optional(),
@@ -1050,28 +1064,41 @@ export const audioGenRouter = router({
     .mutation(async ({ ctx, input }) => {
       await assertWhitelisted(ctx);
       if (input.projectId != null) await assertProjectOwner(input.projectId, ctx.user.id);
-      // Per-model text limits — submitting beyond a provider's limit gets the prefix
-      // billed and the rest truncated/rejected; reject upfront so the user isn't charged.
+
+      // Legacy Poyo TTS aliases — Poyo platform does NOT actually offer TTS,
+      // these 4 ids always 404'd upstream. Refuse at the router so the user
+      // sees a clear migration message instead of a confusing provider error.
+      const LEGACY_POYO_TTS = new Set(["openai_tts_hd", "openai_tts", "elevenlabs_v3", "cosyvoice_2"]);
+      if (LEGACY_POYO_TTS.has(input.model)) {
+        throw new TRPCError({
+          code: "BAD_REQUEST",
+          message: `TTS 模型 "${input.model}" 已下线（Poyo 平台不提供 TTS）。请改用 OpenAI TTS 系列（openai_tts_real / openai_tts_hd_real / openai_gpt4o_mini_tts）。`,
+        });
+      }
+
+      // Per-model text limits — applies to live OpenAI models only.
+      // OpenAI TTS supports up to 4096 chars per request.
       const TEXT_LIMIT: Record<string, number> = {
-        openai_tts_hd: 4096, openai_tts: 4096, elevenlabs_v3: 5000, cosyvoice_2: 2000,
+        openai_tts_real:       4096,
+        openai_tts_hd_real:    4096,
+        openai_gpt4o_mini_tts: 4096,
       };
       const limit = TEXT_LIMIT[input.model] ?? 4096;
       if (input.text.length > limit) {
         throw new TRPCError({ code: "BAD_REQUEST", message: `${input.model} 单次配音上限 ${limit} 字（当前 ${input.text.length}）` });
       }
-      // ElevenLabs v3 doesn't honour a `speed` field; drop it silently rather than pass a no-op.
-      const effectiveSpeed = input.model === "elevenlabs_v3" ? undefined : input.speed;
+
       return dedupe("audioGen.generateDubbing", ctx.user.id, input, async () => {
-        const result = await submitAndPollPoyoTTS({
-          model: input.model as PoyoTTSModel,
+        const result = await synthesizeOpenAITTS({
+          model: input.model as OpenAITTSModel,
           text: input.text,
           voice: input.voice,
-          speed: effectiveSpeed,
+          speed: input.speed,
         });
         writeAuditLog({
           ctx,
           action: "audio_dubbing",
-          detail: { model: input.model, text: truncate(input.text), voice: input.voice ?? null, resultUrl: result.url, duration: result.duration },
+          detail: { model: input.model, text: truncate(input.text), voice: input.voice ?? null, resultUrl: result.url, duration: result.duration ?? null },
         });
         return { url: result.url, duration: result.duration };
       });

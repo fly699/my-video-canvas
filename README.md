@@ -102,6 +102,7 @@ Available pre-defined system envs:
 - `BUILT_IN_FORGE_API_KEY`: Bearer token used by Manus built-in apis (server-side)
 - `VITE_FRONTEND_FORGE_API_KEY`: Bearer token for frontend access to Manus built-in apis
 - `VITE_FRONTEND_FORGE_API_URL`: Manus built-in apis URL for frontend
+- `OPENAI_API_KEY`: OpenAI API key for TTS (text-to-speech) feature on the AudioNode dubbing tab. Get one at https://platform.openai.com/api-keys. Without this, dubbing requests will fail with "OPENAI_API_KEY 未配置"; music generation and other features are unaffected.
 
 Do not edit these directly in code or commit `.env` files.
 The envs above are system envs, when use env in website code, refer `server/_core/env.ts` for available list.

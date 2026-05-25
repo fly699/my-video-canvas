@@ -21,5 +21,6 @@ export const ENV = {
   poyoApiKey: process.env.POYO_API_KEY ?? "",
   higgsfieldApiKey: process.env.HIGGSFIELD_API_KEY ?? "",
   higgsfieldApiSecret: process.env.HIGGSFIELD_API_SECRET ?? "",
+  openaiApiKey: process.env.OPENAI_API_KEY ?? "",
   comfyuiBaseUrl: process.env.COMFYUI_BASE_URL ?? "",
 };

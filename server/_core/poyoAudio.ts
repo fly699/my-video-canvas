@@ -122,6 +122,13 @@ export async function submitAndPollPoyoMusic(
   throw new Error("Poyo audio generation timed out");
 }
 
+/**
+ * @deprecated Poyo platform does not actually provide TTS — these 4 model IDs were
+ * speculative and Poyo returns 404 "Model not found" for all of them. New code
+ * should use `synthesizeOpenAITTS` from `./openaiTTS`. Kept here only so the
+ * legacy task-status poll path (for any in-flight tasks created before the
+ * switch) still compiles. The router rejects new submits for these ids.
+ */
 export type PoyoTTSModel = "openai_tts_hd" | "openai_tts" | "elevenlabs_v3" | "cosyvoice_2";
 
 // Map internal model IDs to Poyo API model names

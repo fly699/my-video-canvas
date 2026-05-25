@@ -69,17 +69,31 @@ const MUSIC_MAX_DURATION: Record<string, number> = {
   "minimax-music-02":  180,
 };
 
-// Dubbing/TTS — coming soon; no Poyo TTS endpoint confirmed
+// Dubbing/TTS models. The "openai_*_real" entries hit OpenAI's /v1/audio/speech
+// directly (live). The other 4 are kept for backward compat with saved nodes —
+// Poyo platform doesn't actually offer TTS, so submitting them now returns a
+// router-level error guiding the user to a live model.
 const DUBBING_MODELS = [
-  { value: "openai_tts_hd",    label: "OpenAI TTS-HD",   desc: "高清 · 自然",     group: "OpenAI" },
-  { value: "openai_tts",       label: "OpenAI TTS",      desc: "标准 · 快速",     group: "OpenAI" },
-  { value: "elevenlabs_v3",    label: "ElevenLabs v3",   desc: "拟真 · 多语言",   group: "ElevenLabs" },
-  { value: "cosyvoice_2",      label: "CosyVoice 2.0",   desc: "阿里 · 中文优化", group: "Alibaba" },
+  // ── Live (OpenAI direct) ───
+  { value: "openai_tts_real",       label: "OpenAI TTS",       desc: "标准 · $0.015/1k 字符",  group: "OpenAI" },
+  { value: "openai_tts_hd_real",    label: "OpenAI TTS-HD",    desc: "高清 · $0.030/1k 字符",  group: "OpenAI" },
+  { value: "openai_gpt4o_mini_tts", label: "GPT-4o Mini TTS",  desc: "新 · 支持 instructions", group: "OpenAI" },
+  // ── Deprecated (Poyo platform doesn't actually provide TTS) ───
+  { value: "openai_tts_hd",    label: "OpenAI TTS-HD ⚠ 已下线",   desc: "请改用 OpenAI TTS-HD", group: "已下线" },
+  { value: "openai_tts",       label: "OpenAI TTS ⚠ 已下线",      desc: "请改用 OpenAI TTS",    group: "已下线" },
+  { value: "elevenlabs_v3",    label: "ElevenLabs v3 ⚠ 已下线",   desc: "未接入",               group: "已下线" },
+  { value: "cosyvoice_2",      label: "CosyVoice 2.0 ⚠ 已下线",   desc: "未接入",               group: "已下线" },
 ];
+
+// Set of legacy TTS model ids that no longer work — gating render + submit.
+const LEGACY_TTS_MODELS = new Set(["openai_tts_hd", "openai_tts", "elevenlabs_v3", "cosyvoice_2"]);
 
 // Per-model TTS text limit (characters). Submitting more than this either errors
 // at the provider or is silently truncated — in both cases the user pays.
 const TTS_TEXT_LIMIT: Record<string, number> = {
+  openai_tts_real:       4096,
+  openai_tts_hd_real:    4096,
+  openai_gpt4o_mini_tts: 4096,
   openai_tts_hd: 4096,
   openai_tts:    4096,
   elevenlabs_v3: 5000,
@@ -336,8 +350,16 @@ export const AudioNode = memo(function AudioNode({ id, selected, data }: Props) 
     if (ttsMutation.isPending) return;
     if (!payload.ttsText?.trim()) { toast.error("请先输入配音文本"); return; }
     const validTTS = DUBBING_MODELS.map((m) => m.value);
-    const rawTTS = payload.ttsModel ?? payload.aiModel ?? "openai_tts";
-    const model = (validTTS.includes(rawTTS) ? rawTTS : "openai_tts") as "openai_tts_hd" | "openai_tts" | "elevenlabs_v3" | "cosyvoice_2";
+    const rawTTS = payload.ttsModel ?? payload.aiModel ?? "openai_tts_real";
+    const model = (validTTS.includes(rawTTS) ? rawTTS : "openai_tts_real") as
+      | "openai_tts_real" | "openai_tts_hd_real" | "openai_gpt4o_mini_tts"
+      | "openai_tts_hd" | "openai_tts" | "elevenlabs_v3" | "cosyvoice_2";
+    // Block submit early for deprecated models — server would reject anyway,
+    // but a clear toast is friendlier than a TRPC error popover.
+    if (LEGACY_TTS_MODELS.has(model)) {
+      toast.error(`"${model}" 已下线，请改用 OpenAI TTS / TTS-HD / GPT-4o Mini TTS`);
+      return;
+    }
     // Reject overlong text early — the provider would charge for the prefix and
     // truncate (or reject) the rest. Better to surface the limit before submit.
     const limit = TTS_TEXT_LIMIT[model] ?? 4096;
@@ -555,13 +577,29 @@ export const AudioNode = memo(function AudioNode({ id, selected, data }: Props) 
 
         {/* ── 配音 Dubbing ── */}
         {category === "dubbing" && (() => {
-          const ttsModel = (payload.ttsModel ?? (DUBBING_MODELS.find(m => m.value === payload.aiModel) ? payload.aiModel : undefined) ?? "openai_tts") as string;
+          const ttsModel = (payload.ttsModel ?? (DUBBING_MODELS.find(m => m.value === payload.aiModel) ? payload.aiModel : undefined) ?? "openai_tts_real") as string;
           const voices = voicesForModel(ttsModel);
           const textLimit = TTS_TEXT_LIMIT[ttsModel] ?? 4096;
           const supportsSpeed = modelSupportsSpeed(ttsModel);
           const textLen = (payload.ttsText ?? "").length;
+          const isLegacyModel = LEGACY_TTS_MODELS.has(ttsModel);
           return (
           <>
+            {/* Migration warning for nodes saved with the dead Poyo TTS aliases */}
+            {isLegacyModel && (
+              <div style={{
+                padding: "8px 10px",
+                background: "oklch(0.70 0.16 65 / 0.10)",
+                border: "1px solid oklch(0.70 0.16 65 / 0.35)",
+                borderRadius: 6,
+                fontSize: 11,
+                lineHeight: 1.5,
+                color: "oklch(0.80 0.16 65)",
+              }}>
+                ⚠ 模型 <code style={{ fontFamily: "monospace" }}>{ttsModel}</code> 已下线（Poyo 平台不提供 TTS）。
+                请改用 <strong>OpenAI TTS</strong> / <strong>TTS-HD</strong> / <strong>GPT-4o Mini TTS</strong>。
+              </div>
+            )}
             <ModelSelect
               models={DUBBING_MODELS}
               value={payload.ttsModel ?? (DUBBING_MODELS.find(m => m.value === payload.aiModel) ? payload.aiModel : undefined)}
@@ -642,10 +680,10 @@ export const AudioNode = memo(function AudioNode({ id, selected, data }: Props) 
               </div>
             )}
             <GenerateBtn
-              disabled={!payload.ttsText?.trim() || textLen > textLimit}
+              disabled={!payload.ttsText?.trim() || textLen > textLimit || isLegacyModel}
               loading={ttsMutation.isPending}
               onClick={handleGenerateTTS}
-              label="生成配音"
+              label={isLegacyModel ? "请先换用 OpenAI TTS" : "生成配音"}
             />
             {audioPlayer}
           </>
