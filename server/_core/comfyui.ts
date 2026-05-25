@@ -532,8 +532,9 @@ export async function generateComfyVideo(rawBaseUrl: string, options: GenerateCo
     frames: options.frames,
     fps: options.fps,
     sampler: options.sampler,
-    // SVD requires karras scheduler to produce coherent frames; "normal" causes artifacts
-    scheduler: options.workflowTemplate === "svd" ? (options.scheduler ?? "karras") : options.scheduler,
+    // SVD requires karras scheduler to produce coherent frames; "normal" causes artifacts.
+    // Use || (not ??) so that an empty string also falls back to "karras".
+    scheduler: options.workflowTemplate === "svd" ? (options.scheduler || "karras") : options.scheduler,
     denoise: options.denoise,
     vae: options.vae,
     refImageName,
@@ -610,13 +611,25 @@ export async function analyzeWorkflow(
   let hasImage = false;
   let hasVideo = false;
 
+  // Pre-scan: identify which CLIPTextEncode nodes are wired to KSampler's negative input.
+  // Relying on text content heuristics ("negative" keyword) misclassifies legitimate
+  // positive prompts that happen to contain the word (e.g. "negative space composition").
+  const negativeClipNodeIds = new Set<string>();
+  for (const [, n] of Object.entries(workflow)) {
+    if (typeof n !== "object" || !n.class_type) continue;
+    if (n.class_type === "KSampler" || n.class_type === "KSamplerAdvanced") {
+      const negRef = (n.inputs ?? {}).negative;
+      if (Array.isArray(negRef) && typeof negRef[0] === "string") negativeClipNodeIds.add(negRef[0]);
+    }
+  }
+
   for (const [nodeId, node] of Object.entries(workflow)) {
     if (typeof node !== "object" || !node.class_type) continue;
     const ct = node.class_type;
     const inputs = node.inputs ?? {};
 
     if (ct === "CLIPTextEncode") {
-      const isPositive = !String(inputs.text ?? "").toLowerCase().includes("negative");
+      const isPositive = !negativeClipNodeIds.has(nodeId);
       detectedParams.push({
         nodeId, fieldPath: "inputs.text",
         label: isPositive ? "提示词" : "负向提示词",

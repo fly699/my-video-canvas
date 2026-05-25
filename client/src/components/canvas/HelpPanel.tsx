@@ -40,7 +40,7 @@ function CopyBtn({ text, label = "复制" }: { text: string; label?: string }) {
     navigator.clipboard.writeText(text).then(() => {
       setCopied(true);
       setTimeout(() => setCopied(false), 2000);
-    });
+    }).catch(() => { /* clipboard unavailable (HTTP / permission denied) — fail silently */ });
   }, [text]);
   return (
     <button
@@ -450,7 +450,7 @@ function nodeTypeHue(nodeType: NodeType): number {
 
 const TOC_GROUPS = [
   { label: "画布基础", ids: ["canvas-basics", "workflow-runner", "connection-rules"] },
-  { label: "内容创作节点", ids: ["node-script", "node-storyboard", "node-prompt", "node-image-gen", "node-asset", "node-note", "node-character"] },
+  { label: "内容创作节点", ids: ["node-script", "node-storyboard", "node-prompt", "node-image-gen", "node-asset", "node-note", "node-character", "node-group"] },
   { label: "AI 生成节点", ids: ["node-video-task", "node-ai-chat", "node-audio", "node-voice-clone", "node-lip-sync", "node-avatar"] },
   { label: "视频处理节点", ids: ["node-clip", "node-merge", "node-subtitle", "node-overlay", "node-subtitle-motion", "node-smart-cut", "node-post-process", "node-pose-control"] },
   { label: "ComfyUI 集成", ids: ["node-comfyui-image", "node-comfyui-video", "node-comfyui-workflow", "comfyui-setup", "comfyui-params-reference", "comfyui-workflow-advanced", "comfyui-troubleshoot"] },
@@ -513,6 +513,7 @@ export function HelpPanel({ open, onClose, activeNodeType, onAddNode }: HelpPane
     if (!open || !activeNodeType) return;
     const section = getHelpSectionByNodeType(activeNodeType);
     if (section) setActiveSectionId(section.id);
+    else setActiveSectionId(null); // no help entry for this node type — return to ToC
   }, [activeNodeType, open]);
 
   // Search filter
