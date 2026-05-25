@@ -51,6 +51,8 @@ const monoStyle: React.CSSProperties = {
 export const PromptNode = memo(function PromptNode({ id, selected, data }: Props) {
   const { updateNodeData } = useCanvasStore();
   const payload = data.payload;
+  // Pinned via right-click menu — keeps input panel expanded across selection changes.
+  const expanded = Boolean(selected) || Boolean((payload as { pinned?: boolean }).pinned);
   const [showModelPicker, setShowModelPicker] = useState(false);
   const [batchMode, setBatchMode] = useState(false);
   const model = (payload.imageModel as string) ?? IMAGE_MODELS[0].value;
@@ -266,8 +268,8 @@ export const PromptNode = memo(function PromptNode({ id, selected, data }: Props
         <div
           style={{
             overflow: "hidden",
-            maxHeight: selected ? "9999px" : "0px",
-            transition: selected
+            maxHeight: expanded ? "9999px" : "0px",
+            transition: expanded
               ? "max-height 220ms cubic-bezier(0.23, 1, 0.32, 1)"
               : "max-height 160ms cubic-bezier(0.77, 0, 0.175, 1)",
           }}

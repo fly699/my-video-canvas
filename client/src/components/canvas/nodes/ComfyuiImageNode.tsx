@@ -54,6 +54,7 @@ const labelStyle: React.CSSProperties = {
 };
 
 export const ComfyuiImageNode = memo(function ComfyuiImageNode({ id, selected, data }: Props) {
+  const expanded = Boolean(selected) || Boolean((data.payload as { pinned?: boolean }).pinned);
   const updateNodeData = useCanvasStore((s) => s.updateNodeData);
   const payload = data.payload;
   const [uploading, setUploading] = useState(false);
@@ -257,8 +258,8 @@ export const ComfyuiImageNode = memo(function ComfyuiImageNode({ id, selected, d
         <div
           style={{
             overflow: "hidden",
-            maxHeight: selected ? "9999px" : "0px",
-            transition: selected
+            maxHeight: expanded ? "9999px" : "0px",
+            transition: expanded
               ? "max-height 220ms cubic-bezier(0.23, 1, 0.32, 1)"
               : "max-height 160ms cubic-bezier(0.77, 0, 0.175, 1)",
           }}

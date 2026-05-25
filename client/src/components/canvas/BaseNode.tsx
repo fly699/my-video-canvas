@@ -10,7 +10,7 @@ import { useWorkflowRunState } from "../../contexts/WorkflowRunContext";
 import { useCanvasMode } from "../../contexts/CanvasModeContext";
 import { useTheme } from "../../contexts/ThemeContext";
 import {
-  Trash2, Copy, GripVertical, Check, X, Loader2, FileText, AlertTriangle,
+  Trash2, Copy, GripVertical, Check, X, Loader2, FileText, AlertTriangle, Pin,
 } from "lucide-react";
 import { NODE_ICONS } from "../../lib/nodeConfig";
 
@@ -326,6 +326,24 @@ export const BaseNode = memo(function BaseNode({
           >
             <AlertTriangle size={12} style={{ color: "oklch(0.78 0.16 65)" }} />
           </div>
+        )}
+
+        {/* Pinned indicator — small pin icon shown when the user explicitly
+            kept this node's input panel expanded via the right-click menu. */}
+        {pinned && (
+          <span
+            title="已固定（右键菜单可取消）"
+            style={{
+              display: "inline-flex", alignItems: "center", justifyContent: "center",
+              width: 18, height: 18, borderRadius: 4,
+              background: "oklch(0.68 0.22 285 / 0.15)",
+              color: "oklch(0.78 0.16 285)",
+              border: "1px solid oklch(0.68 0.22 285 / 0.35)",
+              flexShrink: 0,
+            }}
+          >
+            <Pin size={10} />
+          </span>
         )}
 
         {headerRight && <div className="flex-shrink-0">{headerRight}</div>}

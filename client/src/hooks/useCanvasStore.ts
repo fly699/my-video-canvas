@@ -86,7 +86,11 @@ interface CanvasStore {
     sourceNodeId: string,
     sourcePosition: { x: number; y: number }
   ) => void;
-  updateNodeData: (id: string, payload: Partial<NodeData>, silent?: boolean) => void;
+  // payload allows an extra `pinned?: boolean` field — a transient UI flag stored
+  // on every node payload (no DB schema change) controlling whether the node's
+  // input panel stays expanded regardless of `selected`. Toggled from the
+  // right-click context menu.
+  updateNodeData: (id: string, payload: Partial<NodeData> & { pinned?: boolean }, silent?: boolean) => void;
   batchUpdateNodeData: (updates: { id: string; payload: Partial<NodeData> }[]) => void;
   updateNodeTitle: (id: string, title: string) => void;
   deleteNode: (id: string) => void;

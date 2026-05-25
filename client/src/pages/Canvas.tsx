@@ -297,7 +297,7 @@ function CanvasInner({ projectId }: { projectId: number }) {
   const {
     nodes, edges, setNodes, setEdges,
     onNodesChange, onEdgesChange, onConnect,
-    addNode, deleteNode, duplicateNode,
+    addNode, deleteNode, duplicateNode, updateNodeData,
     setProjectId, isDirty, markClean, markDirty,
     setCollaborator, removeCollaborator, collaborators, resetCanvas,
     undo, redo, past, future,
@@ -313,6 +313,7 @@ function CanvasInner({ projectId }: { projectId: number }) {
     addNode: s.addNode,
     deleteNode: s.deleteNode,
     duplicateNode: s.duplicateNode,
+    updateNodeData: s.updateNodeData,
     setProjectId: s.setProjectId,
     isDirty: s.isDirty,
     markClean: s.markClean,
@@ -2000,22 +2001,39 @@ function CanvasInner({ projectId }: { projectId: number }) {
       )}
 
       {/* ── Context menu ── */}
-      {contextMenu && (
-        <ContextMenu
-          x={contextMenu.x} y={contextMenu.y}
-          type={contextMenu.type} nodeId={contextMenu.nodeId}
-          onClose={() => setContextMenu(null)}
-          onAddNode={handleAddNode}
-          onDeleteNode={contextMenu.nodeId ? () => {
-            const nid = contextMenu.nodeId!;
-            deleteNode(nid);
-            deleteNodeMutation.mutate({ id: nid, projectId });
-            emitCollabEvent("node:delete", { id: nid });
-          } : undefined}
-          onDuplicateNode={contextMenu.nodeId ? () => duplicateNode(contextMenu.nodeId!) : undefined}
-          onRunWorkflow={contextMenu.nodeId ? () => handleRunRequest(contextMenu.nodeId ?? null) : undefined}
-        />
-      )}
+      {contextMenu && (() => {
+        const ctxNode = contextMenu.nodeId ? nodes.find((n) => n.id === contextMenu.nodeId) : undefined;
+        const ctxPinned = Boolean((ctxNode?.data.payload as { pinned?: boolean } | undefined)?.pinned);
+        return (
+          <ContextMenu
+            x={contextMenu.x} y={contextMenu.y}
+            type={contextMenu.type} nodeId={contextMenu.nodeId}
+            nodePinned={ctxPinned}
+            onClose={() => setContextMenu(null)}
+            onAddNode={handleAddNode}
+            onDeleteNode={contextMenu.nodeId ? () => {
+              const nid = contextMenu.nodeId!;
+              deleteNode(nid);
+              deleteNodeMutation.mutate({ id: nid, projectId });
+              emitCollabEvent("node:delete", { id: nid });
+            } : undefined}
+            onDuplicateNode={contextMenu.nodeId ? () => duplicateNode(contextMenu.nodeId!) : undefined}
+            onRunWorkflow={contextMenu.nodeId ? () => handleRunRequest(contextMenu.nodeId ?? null) : undefined}
+            // Pin: toggle payload.pinned so the node's input area stays expanded
+            // even when the user clicks elsewhere on the canvas.
+            onTogglePin={contextMenu.nodeId ? () => {
+              updateNodeData(contextMenu.nodeId!, { pinned: !ctxPinned });
+            } : undefined}
+            // Collapse: clear pinned + deselect the node so it returns to its
+            // compact preview-only height.
+            onCollapse={contextMenu.nodeId ? () => {
+              const nid = contextMenu.nodeId!;
+              updateNodeData(nid, { pinned: false });
+              setNodes(nodes.map((n) => n.id === nid ? { ...n, selected: false } : n));
+            } : undefined}
+          />
+        );
+      })()}
 
       {/* ── Node search ── */}
       {showNodeSearch && (

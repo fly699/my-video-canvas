@@ -78,6 +78,7 @@ const MODELS = IMAGE_MODELS as unknown as { value: ImageGenModel; label: string;
 export const ImageGenNode = memo(function ImageGenNode({ id, selected, data }: Props) {
   // Use selector to avoid re-rendering on every store change (other nodes' updates)
   const updateNodeData = useCanvasStore((s) => s.updateNodeData);
+  const expanded = Boolean(selected) || Boolean((data.payload as { pinned?: boolean }).pinned);
   const payload = data.payload;
   const [uploading, setUploading] = useState(false);
   const [lightboxIndex, setLightboxIndex] = useState<number | null>(null);
@@ -504,12 +505,12 @@ export const ImageGenNode = memo(function ImageGenNode({ id, selected, data }: P
           )
         )}
 
-        {/* ── Input area (collapsed when not selected) ── */}
+        {/* ── Input area (collapsed when not selected, kept open if pinned) ── */}
         <div
           style={{
             overflow: "hidden",
-            maxHeight: selected ? "9999px" : "0px",
-            transition: selected
+            maxHeight: expanded ? "9999px" : "0px",
+            transition: expanded
               ? "max-height 220ms cubic-bezier(0.23, 1, 0.32, 1)"
               : "max-height 160ms cubic-bezier(0.77, 0, 0.175, 1)",
           }}

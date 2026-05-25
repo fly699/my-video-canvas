@@ -92,9 +92,11 @@ export const StoryboardNode = memo(function StoryboardNode({ id, selected, data 
     }
   }, [payload.batchSize]); // eslint-disable-line react-hooks/exhaustive-deps
 
+  // Pinned via right-click menu — keeps input panel expanded regardless of selection.
+  const pinned = Boolean((payload as { pinned?: boolean }).pinned);
   useEffect(() => {
-    setInputExpanded(!!selected);
-  }, [selected]);
+    setInputExpanded(!!selected || pinned);
+  }, [selected, pinned]);
   const model: ImageModelId = IMAGE_MODELS.some(m => m.value === payload.imageModel)
     ? (payload.imageModel as ImageModelId)
     : "manus_forge";

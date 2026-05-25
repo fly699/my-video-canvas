@@ -2,7 +2,7 @@ import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { NODE_TYPE_LIST } from "../../lib/nodeConfig";
 import type { NodeType } from "../../../../shared/types";
 import {
-  FileText, Copy, Trash2, Plus, Play,
+  FileText, Copy, Trash2, Plus, Play, Pin, PinOff, ChevronUp,
 } from "lucide-react";
 import { NODE_ICONS } from "../../lib/nodeConfig";
 
@@ -11,16 +11,20 @@ interface ContextMenuProps {
   y: number;
   type: "canvas" | "node";
   nodeId?: string;
+  nodePinned?: boolean;
   onClose: () => void;
   onAddNode?: (type: NodeType) => void;
   onDeleteNode?: () => void;
   onDuplicateNode?: () => void;
   onRunWorkflow?: () => void;
+  onTogglePin?: () => void;
+  onCollapse?: () => void;
 }
 
 export function ContextMenu({
-  x, y, type, nodeId,
+  x, y, type, nodeId, nodePinned,
   onClose, onAddNode, onDeleteNode, onDuplicateNode, onRunWorkflow,
+  onTogglePin, onCollapse,
 }: ContextMenuProps) {
   const menuRef = useRef<HTMLDivElement>(null);
   const [pos, setPos] = useState<{ left: number; top: number; maxHeight: number } | null>(null);
@@ -185,7 +189,51 @@ export function ContextMenu({
               从此节点运行工作流
             </button>
           )}
-          {onRunWorkflow && (onDuplicateNode || onDeleteNode) && (
+          {onRunWorkflow && (onTogglePin || onCollapse) && (
+            <div style={{ height: 1, background: "var(--c-bd1)", margin: "3px 6px" }} />
+          )}
+          {/* Pin / Unpin — keeps the node's input panel expanded regardless of selection.
+              Useful when you want to watch several nodes' output side by side without
+              having to keep clicking them. */}
+          {onTogglePin && (
+            <button
+              onClick={() => { onTogglePin(); onClose(); }}
+              style={{
+                display: "flex", alignItems: "center", gap: 10,
+                width: "100%", padding: "7px 8px", fontSize: 12,
+                cursor: "pointer", background: "transparent", border: "none",
+                textAlign: "left",
+                color: nodePinned ? "oklch(0.72 0.20 285)" : "var(--c-t2)",
+                borderRadius: 8,
+                transition: "all 120ms ease",
+              }}
+              onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.background = "var(--c-elevated)"; }}
+              onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.background = "transparent"; }}
+            >
+              {nodePinned ? <PinOff className="w-3.5 h-3.5" /> : <Pin className="w-3.5 h-3.5" />}
+              {nodePinned ? "取消固定（恢复自动折叠）" : "固定显示（始终展开）"}
+            </button>
+          )}
+          {/* Collapse — quick "fold this node now". Clears pin and de-selects so the
+              node returns to its compact preview-only state. */}
+          {onCollapse && (
+            <button
+              onClick={() => { onCollapse(); onClose(); }}
+              style={{
+                display: "flex", alignItems: "center", gap: 10,
+                width: "100%", padding: "7px 8px", fontSize: 12,
+                cursor: "pointer", background: "transparent", border: "none",
+                textAlign: "left", color: "var(--c-t2)", borderRadius: 8,
+                transition: "all 120ms ease",
+              }}
+              onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.background = "var(--c-elevated)"; }}
+              onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.background = "transparent"; }}
+            >
+              <ChevronUp className="w-3.5 h-3.5" style={{ color: "var(--c-t3)" }} />
+              立即折叠
+            </button>
+          )}
+          {(onTogglePin || onCollapse) && (onDuplicateNode || onDeleteNode) && (
             <div style={{ height: 1, background: "var(--c-bd1)", margin: "3px 6px" }} />
           )}
           {onDuplicateNode && (
