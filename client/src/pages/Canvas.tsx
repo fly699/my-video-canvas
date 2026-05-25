@@ -1497,6 +1497,7 @@ function CanvasInner({ projectId }: { projectId: number }) {
             open={showHelp}
             onClose={() => setShowHelp(false)}
             activeNodeType={nodes.find((n) => n.selected)?.data.nodeType ?? null}
+            onAddNode={(nodeType) => { addNodeAtCenter(nodeType); setShowHelp(false); }}
           />
 
           {/* ── Floating toolbar — snaps to viewport edge; vertical when on left/right ── */}
