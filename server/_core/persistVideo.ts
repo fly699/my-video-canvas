@@ -20,12 +20,29 @@ import { isVideoPersistenceEnabled } from "./storageConfig";
 const MAX_PERSIST_VIDEO_BYTES = 500 * 1024 * 1024; // 500 MB hard cap
 const PERSIST_FETCH_TIMEOUT_MS = 180_000; // 3 min — large videos can be slow
 
+// In-flight dedupe: client-driven videoTasks.poll and the server-side
+// background videoTaskPoller can both observe upstream "finished" within
+// the same second. Without coalescing they'd each fetch ~100 MB and
+// storagePut to different S3 keys, leaving an orphan and racing on which
+// URL ends up in DB. Key by upstream URL since that's the unique resource.
+const _inflight = new Map<string, Promise<string>>();
+
 export async function persistVideoOrFallback(upstreamUrl: string, provider: string): Promise<string> {
   // Admin-controlled toggle: when video persistence is disabled, skip the
   // download entirely and return the upstream URL straight through.
   if (!(await isVideoPersistenceEnabled())) {
     return upstreamUrl;
   }
+  const existing = _inflight.get(upstreamUrl);
+  if (existing) return existing;
+  const p = persistImpl(upstreamUrl, provider).finally(() => {
+    _inflight.delete(upstreamUrl);
+  });
+  _inflight.set(upstreamUrl, p);
+  return p;
+}
+
+async function persistImpl(upstreamUrl: string, provider: string): Promise<string> {
   try {
     const res = await fetch(upstreamUrl, { signal: AbortSignal.timeout(PERSIST_FETCH_TIMEOUT_MS) });
     if (!res.ok) {

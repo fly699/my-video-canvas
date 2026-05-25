@@ -167,10 +167,14 @@ export const useCanvasStore = create<CanvasStore>((set, get) => ({
       if (connection.source && connection.target) {
         const sourceNode = state.nodes.find((n) => n.id === connection.source);
         const targetNode = state.nodes.find((n) => n.id === connection.target);
+        // ImageGenNode exposes two source handles: the BaseNode default
+        // `output` (top:50%) and the dedicated `image-out` (top:75%). Accept
+        // either when wiring into video_task's ref-image-in so users dragging
+        // from the default dot still get auto-fill instead of a silent miss.
         if (
           sourceNode?.data.nodeType === "image_gen" &&
           targetNode?.data.nodeType === "video_task" &&
-          connection.sourceHandle === "image-out" &&
+          (connection.sourceHandle === "image-out" || connection.sourceHandle === "output") &&
           connection.targetHandle === "ref-image-in"
         ) {
           const imageUrl = (sourceNode.data.payload as { imageUrl?: string }).imageUrl;

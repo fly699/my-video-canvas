@@ -31,6 +31,12 @@ const MODEL_MAP: Record<OpenAITTSModel, string> = {
 // of these strings and let OpenAI reject invalid ones for that model.
 export const OPENAI_TTS_VOICES = ["alloy", "echo", "fable", "onyx", "nova", "shimmer", "ash", "coral", "sage"] as const;
 
+// Hard cap on response body bytes. OpenAI TTS normally returns ~30 KB/s of
+// mp3, so even ~10 min of audio is <20 MB. 50 MB is well beyond any legit
+// response and protects us from a runaway / MITM-injected body draining
+// memory before we notice (no Content-Length is sent by the API).
+const MAX_TTS_BYTES = 50 * 1024 * 1024;
+
 export interface SynthesizeOpenAITTSOptions {
   model: OpenAITTSModel;
   text: string;
@@ -97,7 +103,28 @@ export async function synthesizeOpenAITTS(opts: SynthesizeOpenAITTSOptions): Pro
     throw new Error(`OpenAI TTS 失败 (${res.status}, 模型 ${apiModel}): ${errText.slice(0, 500)}`);
   }
 
-  const buf = Buffer.from(await res.arrayBuffer());
+  // Stream-read with byte cap so a runaway body can't OOM the process.
+  if (!res.body) {
+    throw new Error("OpenAI TTS 响应无 body");
+  }
+  const reader = res.body.getReader();
+  const chunks: Uint8Array[] = [];
+  let total = 0;
+  try {
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      total += value.byteLength;
+      if (total > MAX_TTS_BYTES) {
+        await reader.cancel();
+        throw new Error(`OpenAI TTS 响应超出 ${MAX_TTS_BYTES} 字节上限，已中止`);
+      }
+      chunks.push(value);
+    }
+  } finally {
+    try { reader.releaseLock(); } catch { /* ignore */ }
+  }
+  const buf = Buffer.concat(chunks, total);
   console.log(`[OpenAI TTS] synthesized ${buf.length} bytes (model=${apiModel}, voice=${body.voice}, text=${opts.text.length}ch)`);
 
   const { url } = await storagePut(

@@ -591,9 +591,13 @@ function CanvasInner({ projectId }: { projectId: number }) {
   }, [user, projectId, viewport]);
 
   // ── Context menu ────────────────────────────────────────────────────────────
+  // Counter for stacking-offset on repeated adds from the same pinned menu;
+  // declared before the right-click handler so it can be reset on each open.
+  const addOffsetRef = useRef(0);
   const handleCanvasContextMenu = useCallback((e: React.MouseEvent) => {
     e.preventDefault();
     const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
+    addOffsetRef.current = 0;
     setContextMenu({
       x: e.clientX, y: e.clientY, type: "canvas",
       canvasPos: { x: (e.clientX - rect.left - viewport.x) / viewport.zoom, y: (e.clientY - rect.top - viewport.y) / viewport.zoom },
@@ -605,8 +609,14 @@ function CanvasInner({ projectId }: { projectId: number }) {
     setContextMenu({ x: e.clientX, y: e.clientY, type: "node", nodeId: node.id });
   }, []);
 
+  // When the canvas right-click menu is pinned, the user can add several nodes
+  // in a row from the same anchor — without a per-add offset they all stack at
+  // the exact same canvas coords and only the topmost is visible.
+  // (addOffsetRef declared above with handleCanvasContextMenu so it can be reset on open.)
   const handleAddNode = useCallback((type: NodeType) => {
-    const pos = contextMenu?.canvasPos ?? { x: 200, y: 200 };
+    const base = contextMenu?.canvasPos ?? { x: 200, y: 200 };
+    const i = addOffsetRef.current++;
+    const pos = i === 0 ? base : { x: base.x + i * 28, y: base.y + i * 28 };
     try {
       const newNode = addNode(type, pos);
       emitCollabEvent("node:add", newNode);

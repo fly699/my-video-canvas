@@ -33,7 +33,14 @@ export function ContextMenu({
   // open on canvas as a floating palette. The per-node menu doesn't need these.
   const [persistent, setPersistent] = useState(false);
   const [dragPos, setDragPos] = useState<{ left: number; top: number } | null>(null);
-  const dragRef = useRef<{ startX: number; startY: number; initLeft: number; initTop: number } | null>(null);
+  const dragRef = useRef<{
+    startX: number;
+    startY: number;
+    initLeft: number;
+    initTop: number;
+    onMove: (e: MouseEvent) => void;
+    onUp: () => void;
+  } | null>(null);
 
   // Close on outside click / Escape — but skip when canvas menu is persistent
   useEffect(() => {
@@ -52,19 +59,25 @@ export function ContextMenu({
 
   // Drag the menu by its header. Only matters when persistent — but allowed
   // always so user can reposition before pinning.
+  // Track the active mousemove/mouseup pair on the dragRef itself so we can
+  // detach them from a useEffect cleanup if the menu unmounts mid-drag
+  // (e.g. user presses Escape while holding the mouse button).
   const startDrag = (e: React.MouseEvent) => {
     if (!menuRef.current) return;
     // Don't start drag when clicking the pin / close buttons inside the header
     if ((e.target as HTMLElement).closest("button")) return;
     e.preventDefault();
     const rect = menuRef.current.getBoundingClientRect();
-    dragRef.current = { startX: e.clientX, startY: e.clientY, initLeft: rect.left, initTop: rect.top };
+    const menuW = rect.width;
+    const menuH = rect.height;
     const onMove = (mv: MouseEvent) => {
       if (!dragRef.current) return;
-      // Clamp to viewport so the menu can't be lost off-screen.
+      // Clamp using the menu's actual rendered size so it can't be dragged
+      // mostly off-screen (was hardcoded 100/60, which let a 210-wide menu
+      // hang off the right with its close button outside the viewport).
       const next = {
-        left: Math.max(0, Math.min(window.innerWidth - 100, dragRef.current.initLeft + mv.clientX - dragRef.current.startX)),
-        top:  Math.max(0, Math.min(window.innerHeight - 60, dragRef.current.initTop  + mv.clientY - dragRef.current.startY)),
+        left: Math.max(0, Math.min(window.innerWidth - menuW, dragRef.current.initLeft + mv.clientX - dragRef.current.startX)),
+        top:  Math.max(0, Math.min(window.innerHeight - menuH, dragRef.current.initTop  + mv.clientY - dragRef.current.startY)),
       };
       setDragPos(next);
     };
@@ -73,9 +86,26 @@ export function ContextMenu({
       window.removeEventListener("mousemove", onMove);
       window.removeEventListener("mouseup", onUp);
     };
+    dragRef.current = {
+      startX: e.clientX, startY: e.clientY,
+      initLeft: rect.left, initTop: rect.top,
+      onMove, onUp,
+    };
     window.addEventListener("mousemove", onMove);
     window.addEventListener("mouseup", onUp);
   };
+
+  // Cleanup any in-flight drag listeners on unmount so they don't leak +
+  // setState on the unmounted component.
+  useEffect(() => {
+    return () => {
+      if (dragRef.current) {
+        window.removeEventListener("mousemove", dragRef.current.onMove);
+        window.removeEventListener("mouseup", dragRef.current.onUp);
+        dragRef.current = null;
+      }
+    };
+  }, []);
 
   // Measure actual rendered size, then compute smart position
   useLayoutEffect(() => {
