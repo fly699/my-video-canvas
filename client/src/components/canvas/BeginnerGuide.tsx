@@ -167,7 +167,7 @@ function WelcomeModal({ onClose }: { onClose: () => void }) {
                 </span>
               </div>
               <div style={{ fontSize: 12, color: "var(--c-t3)", marginBottom: 10 }}>
-                专业 · AI 影视创作工作流 · 由 AI Video Canvas 出品
+                专业 · AI 影视创作工作流 · 由 金泰智算（KingTai Smart）出品
               </div>
               <p style={{ margin: 0, fontSize: 13, lineHeight: 1.7, color: "var(--c-t2)" }}>
                 支持 <Hl>23+ 种专业节点</Hl>、覆盖<Hl>脚本创作</Hl>、<Hl>AI 图像生成</Hl>、
@@ -270,9 +270,9 @@ function WelcomeModal({ onClose }: { onClose: () => void }) {
             <Shield size={16} color="oklch(0.70 0.18 160)" style={{ flexShrink: 0, marginTop: 2 }} />
             <p style={{ margin: 0, fontSize: 11, lineHeight: 1.7, color: "var(--c-t3)" }}>
               <span style={{ color: "oklch(0.78 0.16 160)", fontWeight: 700 }}>
-                © AI Video Canvas（AI 视频画布）
+                © 金泰智算（KingTai Smart）
               </span>{" "}
-              版权所有。本工具由 AI Video Canvas 团队自主研发，所有模板、预设库及界面设计均受版权保护。
+              版权所有。本工具由 金泰智算 自主研发，所有模板、预设库及界面设计均受版权保护。
               未经授权，禁止复制或商业使用。
             </p>
           </div>
