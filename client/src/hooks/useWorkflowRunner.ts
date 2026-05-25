@@ -6,12 +6,25 @@ import type { NodeType } from "../../../shared/types";
 import { VIDEO_PROVIDERS } from "../../../shared/types";
 import { handleWhitelistError } from "./useWhitelistBlocked";
 
+export type NodeRunPhase = "pending" | "running" | "done" | "failed" | "skipped";
+
+export interface NodeRunStatus {
+  phase: NodeRunPhase;
+  startedAt?: number;
+  completedAt?: number;
+  errorMessage?: string;
+}
+
 export interface WorkflowRunState {
   running: boolean;
   currentNodeId: string | null;
   completedIds: string[];
   failedIds: string[];
   runnableCount: number; // set on start, 0 when not running
+  // Per-node detailed status — populated for nodes participating in the run,
+  // preserved after run completes so the status panel keeps its history until
+  // the next run starts or user resets.
+  nodeStates: Record<string, NodeRunStatus>;
 }
 
 export const RUNNABLE_TYPES: NodeType[] = [
@@ -148,6 +161,7 @@ export function useWorkflowRunner() {
     completedIds: [],
     failedIds: [],
     runnableCount: 0,
+    nodeStates: {},
   });
 
   const abortRef = useRef(false);
@@ -225,12 +239,17 @@ export function useWorkflowRunner() {
       return;
     }
 
+    // Initialize per-node states: all participating nodes start as "pending"
+    const initialNodeStates: Record<string, NodeRunStatus> = {};
+    for (const id of runnableIds) initialNodeStates[id] = { phase: "pending" };
+
     setRunState({
       running: true,
       currentNodeId: null,
       completedIds: [],
       failedIds: [],
       runnableCount: runnableIds.length,
+      nodeStates: initialNodeStates,
     });
 
     const completed: string[] = [];
@@ -239,7 +258,39 @@ export function useWorkflowRunner() {
     // Build dependency layers for parallel execution
     const layers = getLayers(runnableIds, edges);
 
+    // Wrapper around the inner runner — records per-node start/done/failed
+    // status so the run-status panel can show progress, duration, errors.
     const runSingleNode = async (nodeId: string): Promise<"ok" | "fail"> => {
+      const startedAt = Date.now();
+      setRunState((s) => ({
+        ...s,
+        nodeStates: { ...s.nodeStates, [nodeId]: { ...s.nodeStates[nodeId], phase: "running", startedAt } },
+      }));
+      let result: "ok" | "fail" = "fail";
+      let errorMessage: string | undefined;
+      try {
+        result = await runSingleNodeImpl(nodeId);
+      } catch (err) {
+        errorMessage = err instanceof Error ? err.message : String(err);
+      }
+      // If inner returned "fail" without throwing, try to recover the error
+      // message from the node's payload (set by individual mutation onError).
+      if (result === "fail" && !errorMessage) {
+        const node = useCanvasStore.getState().nodes.find((n) => n.id === nodeId);
+        const em = (node?.data.payload as Record<string, unknown> | undefined)?.errorMessage;
+        if (typeof em === "string" && em) errorMessage = em;
+      }
+      setRunState((s) => ({
+        ...s,
+        nodeStates: {
+          ...s.nodeStates,
+          [nodeId]: { phase: result === "ok" ? "done" : "failed", startedAt, completedAt: Date.now(), errorMessage },
+        },
+      }));
+      return result;
+    };
+
+    const runSingleNodeImpl = async (nodeId: string): Promise<"ok" | "fail"> => {
       if (abortRef.current) return "fail";
 
       // Skip if any direct upstream dependency already failed — avoids wasting
@@ -700,13 +751,16 @@ export function useWorkflowRunner() {
 
     runningRef.current = false;
     if (!abortRef.current) {
-      setRunState({
+      // Preserve nodeStates so the status panel keeps showing the last run's
+      // per-node results until the next run starts or user clicks reset.
+      setRunState((s) => ({
+        ...s,
         running: false,
         currentNodeId: null,
         completedIds: completed,
         failedIds: failed,
         runnableCount: 0,
-      });
+      }));
       const ok = completed.length;
       const ko = failed.length;
       const { nodes: finalNodes } = useCanvasStore.getState();
@@ -732,6 +786,7 @@ export function useWorkflowRunner() {
       completedIds: [],
       failedIds: [],
       runnableCount: 0,
+      nodeStates: {},
     });
   }, []);
 

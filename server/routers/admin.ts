@@ -3,6 +3,7 @@ import { TRPCError } from "@trpc/server";
 import { adminProcedure, router } from "../_core/trpc";
 import * as db from "../db";
 import { invalidateWhitelistCache } from "../_core/whitelist";
+import { invalidateStorageSettingsCache } from "../_core/storageConfig";
 
 const AUDIT_ACTIONS = [
   "login_email", "login_oauth",
@@ -82,6 +83,26 @@ export const adminRouter = router({
         const deleted = await db.removeWhitelistEntry(input.id);
         if (!deleted) throw new TRPCError({ code: "NOT_FOUND", message: "白名单条目不存在" });
         invalidateWhitelistCache();
+        return { success: true };
+      }),
+  }),
+
+  storage: router({
+    getSettings: adminProcedure.query(async () => {
+      return db.getStorageSettings();
+    }),
+
+    setPersist: adminProcedure
+      .input(z.object({
+        persistAudio: z.boolean().optional(),
+        persistVideo: z.boolean().optional(),
+      }))
+      .mutation(async ({ input }) => {
+        if (input.persistAudio === undefined && input.persistVideo === undefined) {
+          throw new TRPCError({ code: "BAD_REQUEST", message: "至少需要指定 persistAudio 或 persistVideo 其中一项" });
+        }
+        await db.setStorageSettings(input);
+        invalidateStorageSettingsCache();
         return { success: true };
       }),
   }),

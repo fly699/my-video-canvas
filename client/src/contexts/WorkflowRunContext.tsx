@@ -9,6 +9,7 @@ const WorkflowRunContext = createContext<WorkflowRunState>({
   completedIds: [],
   failedIds: [],
   runnableCount: 0,
+  nodeStates: {},
 });
 
 export const WorkflowRunProvider = WorkflowRunContext.Provider;

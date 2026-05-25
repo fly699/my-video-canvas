@@ -75,9 +75,34 @@ const MAX_SEED = 2147483647;
 
 const MODELS = IMAGE_MODELS as unknown as { value: ImageGenModel; label: string; desc: string; group: string }[];
 
+// Push a freshly chosen / generated image URL out to every downstream node
+// that consumes a reference image (video_task / comfyui_video / comfyui_image).
+// Kept in sync with useWorkflowRunner's post-generation propagation and
+// useCanvasStore's onConnect pre-populate. Returns how many nodes were
+// updated so callers can toast meaningfully.
+function propagateImageUrl(sourceId: string, url: string): number {
+  const { edges, nodes, batchUpdateNodeData } = useCanvasStore.getState();
+  const updates = edges
+    .filter(e =>
+      e.source === sourceId &&
+      (e.sourceHandle === "image-out" || e.sourceHandle === "output") &&
+      e.targetHandle === "ref-image-in"
+    )
+    .flatMap(edge => {
+      const target = nodes.find(n => n.id === edge.target);
+      const tt = target?.data.nodeType;
+      return (tt === "video_task" || tt === "comfyui_video" || tt === "comfyui_image")
+        ? [{ id: edge.target, payload: { referenceImageUrl: url } }]
+        : [];
+    });
+  if (updates.length > 0) batchUpdateNodeData(updates);
+  return updates.length;
+}
+
 export const ImageGenNode = memo(function ImageGenNode({ id, selected, data }: Props) {
   // Use selector to avoid re-rendering on every store change (other nodes' updates)
   const updateNodeData = useCanvasStore((s) => s.updateNodeData);
+  const expanded = Boolean(selected) || Boolean((data.payload as { pinned?: boolean }).pinned);
   const payload = data.payload;
   const [uploading, setUploading] = useState(false);
   const [lightboxIndex, setLightboxIndex] = useState<number | null>(null);
@@ -102,11 +127,13 @@ export const ImageGenNode = memo(function ImageGenNode({ id, selected, data }: P
       if (!useCanvasStore.getState().nodes.some((n) => n.id === id)) return;
       if (result.urls && result.urls.length > 1) {
         updateNodeData(id, { imageUrls: result.urls, imageUrl: result.urls[0] });
+        propagateImageUrl(id, result.urls[0]);
         toast.success(`批量生成完成，共 ${result.urls.length} 张图像`);
       } else {
         const imageUrl = result.url ?? result.urls?.[0];
         if (!imageUrl) { toast.error("生成完成但未返回图像"); return; }
         updateNodeData(id, { imageUrl, imageUrls: undefined });
+        propagateImageUrl(id, imageUrl);
         toast.success("图像生成成功");
       }
     },
@@ -229,15 +256,8 @@ export const ImageGenNode = memo(function ImageGenNode({ id, selected, data }: P
 
   const handleSelectImage = (url: string) => {
     update("imageUrl", url);
-    const { edges, nodes, batchUpdateNodeData } = useCanvasStore.getState();
-    const updates = edges
-      .filter(e => e.source === id && e.sourceHandle === "image-out" && e.targetHandle === "ref-image-in")
-      .flatMap(edge => {
-        const target = nodes.find(n => n.id === edge.target);
-        return target?.data.nodeType === "video_task" ? [{ id: edge.target, payload: { referenceImageUrl: url } }] : [];
-      });
-    if (updates.length > 0) batchUpdateNodeData(updates);
-    toast.success(updates.length > 0 ? `已选择图像并更新 ${updates.length} 个视频节点` : "已选择此图像");
+    const n = propagateImageUrl(id, url);
+    toast.success(n > 0 ? `已选择图像并更新 ${n} 个下游节点` : "已选择此图像");
   };
 
   const handleClearBatch = () => {
@@ -504,12 +524,12 @@ export const ImageGenNode = memo(function ImageGenNode({ id, selected, data }: P
           )
         )}
 
-        {/* ── Input area (collapsed when not selected) ── */}
+        {/* ── Input area (collapsed when not selected, kept open if pinned) ── */}
         <div
           style={{
             overflow: "hidden",
-            maxHeight: selected ? "9999px" : "0px",
-            transition: selected
+            maxHeight: expanded ? "9999px" : "0px",
+            transition: expanded
               ? "max-height 220ms cubic-bezier(0.23, 1, 0.32, 1)"
               : "max-height 160ms cubic-bezier(0.77, 0, 0.175, 1)",
           }}
@@ -932,7 +952,12 @@ export const ImageGenNode = memo(function ImageGenNode({ id, selected, data }: P
         </div>{/* end input collapse wrapper */}
       </div>
 
-      {/* Output handle — source/circle = sends image to VideoTaskNode */}
+      {/* Image-specific output handle — kept separate from BaseNode's default
+          `output` (at top:50%) so the two right-side dots don't visually collide.
+          Position at top:75% mirrors the asymmetric layout used by VideoTaskNode's
+          ref-image-in (top:25%). Legacy edges with sourceHandle="image-out" remain
+          functional, plus useCanvasStore's onConnect auto-fill for image_gen →
+          video_task still finds this handle. */}
       <Handle
         type="source"
         position={Position.Right}
@@ -943,6 +968,7 @@ export const ImageGenNode = memo(function ImageGenNode({ id, selected, data }: P
           background: accent,
           border: `2px solid var(--c-canvas)`,
           right: -6,
+          top: "75%",
         }}
         title="图像输出 → 连接到视频任务参考图"
       />

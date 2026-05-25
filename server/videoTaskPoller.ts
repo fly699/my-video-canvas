@@ -2,6 +2,8 @@ import type { Server as SocketIOServer } from "socket.io";
 import { getPendingVideoTasks, updateVideoTask } from "./db";
 import { isPoyoVideoProvider, submitPoyoVideo, checkPoyoVideoStatus } from "./_core/poyoVideo";
 import { isHiggsfieldVideoProvider, submitHiggsfieldVideo, checkHiggsfieldVideoStatus } from "./_core/higgsfield";
+import { persistVideoOrFallback } from "./_core/persistVideo";
+
 
 // ── Video Provider Adapters ───────────────────────────────────────────────────
 
@@ -94,7 +96,11 @@ export function setupVideoTaskPoller(io: SocketIOServer) {
             const upstream = await checkPoyoVideoStatus(task.externalTaskId);
             if (upstream.status === "finished") {
               if (upstream.resultVideoUrl) {
-                result = { status: "succeeded", resultVideoUrl: upstream.resultVideoUrl };
+                // Re-host so the URL doesn't die after Poyo's 24h CDN TTL.
+                // Falls back to upstream URL on any failure (user can still
+                // view within the 24h window).
+                const persisted = await persistVideoOrFallback(upstream.resultVideoUrl, task.provider);
+                result = { status: "succeeded", resultVideoUrl: persisted };
               } else {
                 result = { status: "failed", errorMessage: "生成完成但无视频 URL" };
               }
@@ -107,7 +113,9 @@ export function setupVideoTaskPoller(io: SocketIOServer) {
             // Higgsfield status check
             const upstream = await checkHiggsfieldVideoStatus(task.externalTaskId);
             if (upstream.status === "succeeded" && upstream.resultVideoUrl) {
-              result = { status: "succeeded", resultVideoUrl: upstream.resultVideoUrl };
+              // Higgsfield CDN URLs are also temporary — re-host to our own storage.
+              const persisted = await persistVideoOrFallback(upstream.resultVideoUrl, task.provider);
+              result = { status: "succeeded", resultVideoUrl: persisted };
             } else if (upstream.status === "succeeded" && !upstream.resultVideoUrl) {
               result = { status: "failed", errorMessage: "任务完成但未返回视频 URL" };
             } else if (upstream.status === "failed") {

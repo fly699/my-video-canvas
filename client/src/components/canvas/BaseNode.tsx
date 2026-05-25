@@ -10,7 +10,7 @@ import { useWorkflowRunState } from "../../contexts/WorkflowRunContext";
 import { useCanvasMode } from "../../contexts/CanvasModeContext";
 import { useTheme } from "../../contexts/ThemeContext";
 import {
-  Trash2, Copy, GripVertical, Check, X, Loader2, FileText, AlertTriangle,
+  Trash2, Copy, GripVertical, Check, X, Loader2, FileText, AlertTriangle, Pin,
 } from "lucide-react";
 import { NODE_ICONS } from "../../lib/nodeConfig";
 
@@ -50,6 +50,13 @@ export const BaseNode = memo(function BaseNode({
       if (hasInput && hasTop) return true;
     }
     return false;
+  });
+
+  // Pinned state — when true, child collapsible regions stay expanded
+  // regardless of `selected`. Toggled via the right-click context menu.
+  const pinned = useCanvasStore((s) => {
+    const node = s.nodes.find((n) => n.id === id);
+    return Boolean((node?.data.payload as Record<string, unknown> | undefined)?.pinned);
   });
   const deleteNodeMutation = trpc.nodes.delete.useMutation();
   const { mode: canvasMode } = useCanvasMode();
@@ -321,6 +328,24 @@ export const BaseNode = memo(function BaseNode({
           </div>
         )}
 
+        {/* Pinned indicator — small pin icon shown when the user explicitly
+            kept this node's input panel expanded via the right-click menu. */}
+        {pinned && (
+          <span
+            title="已固定（右键菜单可取消）"
+            style={{
+              display: "inline-flex", alignItems: "center", justifyContent: "center",
+              width: 18, height: 18, borderRadius: 4,
+              background: "oklch(0.68 0.22 285 / 0.15)",
+              color: "oklch(0.78 0.16 285)",
+              border: "1px solid oklch(0.68 0.22 285 / 0.35)",
+              flexShrink: 0,
+            }}
+          >
+            <Pin size={10} />
+          </span>
+        )}
+
         {headerRight && <div className="flex-shrink-0">{headerRight}</div>}
 
         {/* Type badge */}
@@ -417,7 +442,7 @@ export const BaseNode = memo(function BaseNode({
       )}
 
       {/* ── Content area (collapsible in creative mode when hero exists) ── */}
-      <NodeSelectedContext.Provider value={!!selected}>
+      <NodeSelectedContext.Provider value={!!selected || pinned}>
         <div className="node-body-wrap">
           <div className="overflow-visible nopan">{children}</div>
         </div>

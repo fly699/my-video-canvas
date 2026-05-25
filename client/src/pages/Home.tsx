@@ -20,6 +20,10 @@ import {
   Clock,
   ChevronRight,
   LogOut,
+  Sparkles,
+  Video,
+  Boxes,
+  Bot,
 } from "lucide-react";
 
 // ── Animated background grid ─────────────────────────────────────────────────
@@ -52,16 +56,6 @@ function GridBackground() {
           background: "linear-gradient(to top, var(--c-canvas), transparent)",
         }}
       />
-    </div>
-  );
-}
-
-// ── Feature pill ─────────────────────────────────────────────────────────────
-function FeaturePill({ icon: Icon, label }: { icon: React.ComponentType<{ className?: string }>; label: string }) {
-  return (
-    <div className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-medium" style={{ border: "1px solid var(--c-bd2)", background: "var(--c-surface)", color: "var(--c-t3)" }}>
-      <Icon className="w-3 h-3" />
-      {label}
     </div>
   );
 }
@@ -362,109 +356,288 @@ export default function Home() {
           </a>
         </nav>
 
-        {/* Hero */}
-        <main className="relative z-10 flex-1 flex flex-col items-center justify-center px-6 text-center" style={{ paddingTop: "6vh", paddingBottom: "12vh" }}>
-          {/* Badge */}
-          <div className="mb-8 animate-fade-in">
-            <span
-              className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-medium"
+        {/* Main landing — Banner / Stats / Feature grid / Showcase */}
+        <main className="relative z-10 flex-1 px-6 pb-16">
+          <div className="max-w-5xl mx-auto flex flex-col gap-8">
+
+            {/* ── Banner card ────────────────────────────────────────────── */}
+            <div
+              className="relative rounded-2xl p-6 sm:p-8 animate-fade-in overflow-hidden"
               style={{
-                background: "oklch(0.68 0.22 285 / 0.12)",
-                border: "1px solid oklch(0.68 0.22 285 / 0.30)",
-                color: "oklch(0.80 0.15 285)",
+                background: "linear-gradient(135deg, oklch(0.10 0.025 285) 0%, oklch(0.07 0.012 285) 100%)",
+                border: "1px solid oklch(0.68 0.22 285 / 0.25)",
+                boxShadow: "0 0 0 1px oklch(0.68 0.22 285 / 0.10), 0 12px 48px oklch(0.68 0.22 285 / 0.18)",
               }}
             >
-              <span
-                className="w-1.5 h-1.5 rounded-full"
-                style={{ background: "oklch(0.68 0.22 285)", boxShadow: "0 0 6px oklch(0.68 0.22 285)" }}
-              />
-              AI-Powered Visual Workflow
-            </span>
-          </div>
-
-          {/* Headline */}
-          <h1
-            className="text-display text-gradient mb-6 animate-slide-up"
-            style={{ animationDelay: "60ms" }}
-          >
-            无限画布
-            <br />
-            影视创作工作流
-          </h1>
-
-          {/* Sub */}
-          <p
-            className="max-w-lg text-base leading-relaxed mb-10 animate-slide-up"
-            style={{ color: "var(--c-t4)", animationDelay: "120ms" }}
-          >
-            在无限画布上编排脚本、分镜、提示词与视频生成任务。
-            <br />
-            连接 AI 大模型，实现从创意到成片的全流程可视化协作。
-          </p>
-
-          {/* CTA */}
-          <div
-            className="flex items-center gap-3 animate-slide-up"
-            style={{ animationDelay: "180ms" }}
-          >
-            <a
-              href={getLoginUrl()}
-              className="group inline-flex items-center gap-2 px-6 py-3 rounded-xl text-sm font-semibold text-white transition-all duration-200"
-              style={{
-                background: "linear-gradient(135deg, oklch(0.68 0.22 285), oklch(0.60 0.20 310))",
-                boxShadow: "0 0 0 1px oklch(0.68 0.22 285 / 0.4), 0 4px 24px oklch(0.68 0.22 285 / 0.3)",
-              }}
-            >
-              开始创作
-              <ArrowRight className="w-4 h-4 transition-transform group-hover:translate-x-0.5" />
-            </a>
-          </div>
-
-          {/* Feature pills */}
-          <div
-            className="flex flex-wrap items-center justify-center gap-2 mt-12 animate-fade-in"
-            style={{ animationDelay: "280ms" }}
-          >
-            <FeaturePill icon={Layers} label="节点式工作流" />
-            <FeaturePill icon={Wand2} label="AI 图像生成" />
-            <FeaturePill icon={Film} label="视频任务对接" />
-            <FeaturePill icon={Users} label="多人实时协作" />
-            <FeaturePill icon={Zap} label="大模型对话" />
-          </div>
-        </main>
-
-        {/* Feature cards row */}
-        <div
-          className="relative z-10 px-8 pb-16 animate-fade-in"
-          style={{ animationDelay: "320ms" }}
-        >
-          <div className="grid grid-cols-4 gap-3 max-w-4xl mx-auto">
-            {[
-              { icon: Layers, title: "节点式工作流", desc: "脚本、分镜、提示词节点自由编排，可视化连线" },
-              { icon: Wand2, title: "AI 创作助手", desc: "内嵌大模型对话，扩写脚本、生成提示词、分镜图像一键生成" },
-              { icon: Film, title: "视频生成任务", desc: "对接 Higgsfield、Poyo 等主流 AI 视频 API，任务状态实时追踪" },
-              { icon: Users, title: "多人实时协作", desc: "多用户同时编辑，节点变更时同步，协作者光标可见" },
-            ].map((f) => (
+              {/* Decorative glow */}
               <div
-                key={f.title}
-                className="p-4 rounded-xl"
-                style={{ border: "1px solid var(--c-bd1)", background: "var(--c-surface)" }}
-              >
-                <div
-                  className="w-8 h-8 rounded-lg flex items-center justify-center mb-3"
+                className="absolute -top-32 -right-32 w-80 h-80 rounded-full pointer-events-none"
+                style={{ background: "radial-gradient(circle, oklch(0.68 0.22 285 / 0.20) 0%, transparent 70%)" }}
+              />
+              <div className="relative z-10">
+                <div className="flex items-center justify-between mb-5 flex-wrap gap-2">
+                  <div className="flex items-center gap-2.5">
+                    <div
+                      className="w-9 h-9 rounded-xl flex items-center justify-center"
+                      style={{
+                        background: "linear-gradient(135deg, oklch(0.68 0.22 285), oklch(0.60 0.20 310))",
+                        boxShadow: "0 4px 16px oklch(0.68 0.22 285 / 0.35)",
+                      }}
+                    >
+                      <Film className="w-5 h-5 text-white" />
+                    </div>
+                    <span className="text-sm font-bold tracking-tight" style={{ color: "var(--c-t1)" }}>
+                      AI Video Canvas
+                    </span>
+                  </div>
+                  <span
+                    className="inline-flex items-center gap-1 px-2.5 py-1 rounded-md text-[11px] font-semibold"
+                    style={{
+                      background: "oklch(0.68 0.22 285 / 0.15)",
+                      border: "1px solid oklch(0.68 0.22 285 / 0.35)",
+                      color: "oklch(0.80 0.15 285)",
+                    }}
+                  >
+                    <Sparkles className="w-3 h-3" />
+                    v1.0 · 全新发布
+                  </span>
+                </div>
+
+                <h1
+                  className="text-2xl sm:text-3xl font-bold mb-3 tracking-tight"
                   style={{
-                    background: "oklch(0.68 0.22 285 / 0.12)",
-                    border: "1px solid oklch(0.68 0.22 285 / 0.20)",
+                    background: "linear-gradient(135deg, oklch(0.95 0 0) 0%, oklch(0.78 0.16 285) 100%)",
+                    WebkitBackgroundClip: "text",
+                    WebkitTextFillColor: "transparent",
+                    backgroundClip: "text",
                   }}
                 >
-                  <f.icon className="w-4 h-4" style={{ color: "oklch(0.75 0.18 285)" }} />
+                  无限画布 · 影视创作工作流
+                </h1>
+
+                <p className="text-sm leading-relaxed mb-6 max-w-2xl" style={{ color: "var(--c-t3)" }}>
+                  在无限画布上编排脚本、分镜、提示词与视频生成任务。
+                  支持 23 种专业节点、12+ 主流 AI 模型，集成 ComfyUI 自建服务器，
+                  实现从创意到成片的全流程可视化协作。
+                </p>
+
+                <div className="flex items-center gap-3 flex-wrap">
+                  <a
+                    href={getLoginUrl()}
+                    className="group inline-flex items-center gap-2 px-5 py-2.5 rounded-xl text-sm font-semibold text-white transition-all duration-200"
+                    style={{
+                      background: "linear-gradient(135deg, oklch(0.68 0.22 285), oklch(0.60 0.20 310))",
+                      boxShadow: "0 0 0 1px oklch(0.68 0.22 285 / 0.4), 0 4px 24px oklch(0.68 0.22 285 / 0.3)",
+                    }}
+                  >
+                    <Sparkles className="w-4 h-4" />
+                    开始创作
+                    <ArrowRight className="w-4 h-4 transition-transform group-hover:translate-x-0.5" />
+                  </a>
+                  <a
+                    href="#features"
+                    className="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl text-sm font-medium transition-all duration-200"
+                    style={{
+                      color: "var(--c-t2)",
+                      border: "1px solid var(--c-bd2)",
+                      background: "var(--c-surface)",
+                    }}
+                    onMouseEnter={(e) => { const el = e.currentTarget as HTMLElement; el.style.borderColor = "var(--c-bd3)"; el.style.background = "var(--c-elevated)"; }}
+                    onMouseLeave={(e) => { const el = e.currentTarget as HTMLElement; el.style.borderColor = "var(--c-bd2)"; el.style.background = "var(--c-surface)"; }}
+                  >
+                    <Layers className="w-4 h-4" />
+                    了解节点系统
+                  </a>
                 </div>
-                <h3 className="text-sm font-semibold mb-1" style={{ color: "var(--c-t2)" }}>{f.title}</h3>
-                <p className="text-xs leading-relaxed" style={{ color: "var(--c-t4)" }}>{f.desc}</p>
               </div>
-            ))}
+            </div>
+
+            {/* ── Stats row ──────────────────────────────────────────────── */}
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 animate-fade-in" style={{ animationDelay: "60ms" }}>
+              {[
+                { value: "23+", label: "专业节点", sub: "Node Types" },
+                { value: "12+", label: "AI 模型", sub: "AI Models" },
+                { value: "4", label: "视频提供商", sub: "Video Providers" },
+                { value: "8", label: "界面主题", sub: "UI Themes" },
+              ].map((s) => (
+                <div
+                  key={s.label}
+                  className="rounded-xl p-4 text-center"
+                  style={{
+                    background: "var(--c-surface)",
+                    border: "1px solid var(--c-bd1)",
+                  }}
+                >
+                  <div
+                    className="text-2xl font-bold tracking-tight mb-1"
+                    style={{ color: "oklch(0.78 0.16 285)" }}
+                  >
+                    {s.value}
+                  </div>
+                  <div className="text-xs font-medium mb-0.5" style={{ color: "var(--c-t2)" }}>
+                    {s.label}
+                  </div>
+                  <div className="text-[10px]" style={{ color: "var(--c-t4)" }}>
+                    {s.sub}
+                  </div>
+                </div>
+              ))}
+            </div>
+
+            {/* ── Feature entries grid ───────────────────────────────────── */}
+            <div id="features" className="animate-fade-in" style={{ animationDelay: "120ms" }}>
+              <div className="flex items-center justify-between mb-3">
+                <h2 className="text-sm font-semibold" style={{ color: "var(--c-t1)" }}>功能入口</h2>
+                <span className="text-[11px]" style={{ color: "var(--c-t4)" }}>Features</span>
+              </div>
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+                {[
+                  {
+                    icon: Layers, color: "oklch(0.68 0.22 285)",
+                    title: "节点式工作流",
+                    desc: "脚本 / 分镜 / 提示词 / 图像 / 视频 / 剪辑节点可视化连线",
+                    badge: null,
+                  },
+                  {
+                    icon: Wand2, color: "oklch(0.72 0.20 330)",
+                    title: "AI 图像生成",
+                    desc: "Manus Forge · Poyo · Higgsfield Soul / Flux Pro / Seedream / Reve",
+                    badge: null,
+                  },
+                  {
+                    icon: Video, color: "oklch(0.62 0.20 25)",
+                    title: "AI 视频生成",
+                    desc: "Higgsfield DoP · Poyo Seedance / Veo / Kling / Wan / Runway",
+                    badge: null,
+                  },
+                  {
+                    icon: Boxes, color: "oklch(0.68 0.20 100)",
+                    title: "ComfyUI 自建集成",
+                    desc: "接入自建 ComfyUI 服务器，txt2img / img2img / AnimateDiff / SVD",
+                    badge: "NEW",
+                  },
+                  {
+                    icon: Bot, color: "oklch(0.70 0.18 200)",
+                    title: "大模型对话",
+                    desc: "Claude Sonnet 4.6 · Gemini 2.5 Flash · GPT-5.2，写脚本 / 润色 / 审查",
+                    badge: null,
+                  },
+                  {
+                    icon: Users, color: "oklch(0.66 0.18 140)",
+                    title: "多人实时协作",
+                    desc: "多用户同时编辑，节点变更秒同步，协作者光标可见",
+                    badge: null,
+                  },
+                ].map((f) => (
+                  <div
+                    key={f.title}
+                    className="relative p-4 rounded-xl transition-all duration-200"
+                    style={{
+                      background: "var(--c-surface)",
+                      border: "1px solid var(--c-bd1)",
+                    }}
+                    onMouseEnter={(e) => { const el = e.currentTarget as HTMLElement; el.style.borderColor = `${f.color}50`; el.style.background = "var(--c-elevated)"; }}
+                    onMouseLeave={(e) => { const el = e.currentTarget as HTMLElement; el.style.borderColor = "var(--c-bd1)"; el.style.background = "var(--c-surface)"; }}
+                  >
+                    {f.badge && (
+                      <span
+                        className="absolute top-3 right-3 px-1.5 py-0.5 rounded text-[9px] font-bold tracking-wide"
+                        style={{
+                          background: `${f.color}24`,
+                          color: f.color,
+                          border: `1px solid ${f.color}45`,
+                        }}
+                      >
+                        {f.badge}
+                      </span>
+                    )}
+                    <div
+                      className="w-9 h-9 rounded-lg flex items-center justify-center mb-3"
+                      style={{
+                        background: `${f.color}18`,
+                        border: `1px solid ${f.color}30`,
+                      }}
+                    >
+                      <f.icon className="w-4 h-4" style={{ color: f.color }} />
+                    </div>
+                    <h3 className="text-sm font-semibold mb-1" style={{ color: "var(--c-t1)" }}>{f.title}</h3>
+                    <p className="text-xs leading-relaxed" style={{ color: "var(--c-t4)" }}>{f.desc}</p>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            {/* ── Workflow showcase ──────────────────────────────────────── */}
+            <div
+              className="rounded-xl p-5 animate-fade-in"
+              style={{
+                background: "var(--c-surface)",
+                border: "1px solid var(--c-bd1)",
+                animationDelay: "180ms",
+              }}
+            >
+              <div className="flex items-center justify-between mb-4">
+                <div className="flex items-center gap-2">
+                  <Zap className="w-4 h-4" style={{ color: "oklch(0.68 0.22 285)" }} />
+                  <h2 className="text-sm font-semibold" style={{ color: "var(--c-t1)" }}>典型工作流</h2>
+                </div>
+                <span className="text-[11px]" style={{ color: "var(--c-t4)" }}>Workflow Examples</span>
+              </div>
+              <div className="flex flex-col gap-2.5">
+                {[
+                  {
+                    title: "短视频脚本 → 成片",
+                    nodes: ["脚本", "AI生成分镜", "图像生成", "视频任务", "字幕", "合并"],
+                    desc: "从一段创意描述到含字幕的完整短视频，全部 AI 自动化",
+                  },
+                  {
+                    title: "图生视频",
+                    nodes: ["素材/图像生成", "ComfyUI 图像", "视频任务 (DoP)", "剪辑"],
+                    desc: "上传/生成参考图，用 DoP 或 Kling 转视频，自动剪辑",
+                  },
+                  {
+                    title: "智能字幕配音",
+                    nodes: ["音频", "智能剪辑", "字幕转录", "动态字幕", "叠加"],
+                    desc: "Whisper 语音转录 + AI 删减冗余 + 卡拉OK 风格动态字幕",
+                  },
+                ].map((w) => (
+                  <div
+                    key={w.title}
+                    className="flex items-center gap-3 p-3 rounded-lg"
+                    style={{
+                      background: "var(--c-base)",
+                      border: "1px solid var(--c-bd1)",
+                    }}
+                  >
+                    <div className="flex-1 min-w-0">
+                      <div className="text-xs font-semibold mb-1.5" style={{ color: "var(--c-t1)" }}>{w.title}</div>
+                      <div className="flex flex-wrap gap-1 mb-1.5">
+                        {w.nodes.map((n, i) => (
+                          <span key={i} className="inline-flex items-center gap-1">
+                            <span
+                              className="text-[10px] px-1.5 py-0.5 rounded font-medium"
+                              style={{
+                                background: "oklch(0.68 0.22 285 / 0.10)",
+                                color: "oklch(0.80 0.15 285)",
+                                border: "1px solid oklch(0.68 0.22 285 / 0.20)",
+                              }}
+                            >
+                              {n}
+                            </span>
+                            {i < w.nodes.length - 1 && (
+                              <span className="text-[9px]" style={{ color: "var(--c-t4)" }}>→</span>
+                            )}
+                          </span>
+                        ))}
+                      </div>
+                      <p className="text-[10.5px]" style={{ color: "var(--c-t4)" }}>{w.desc}</p>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
           </div>
-        </div>
+        </main>
       </div>
     );
   }

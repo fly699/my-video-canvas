@@ -85,8 +85,19 @@ export const PostProcessNode = memo(function PostProcessNode({ id, selected, dat
     updateNodeData(id, { selectedEffects: [], effectIntensities: {}, generatedPrompt: "" });
   }, [id, updateNodeData]);
 
+  const expanded = Boolean(selected) || Boolean((payload as { pinned?: boolean }).pinned);
+
   return (
     <BaseNode id={id} selected={selected} nodeType="post_process" title={data.title} minHeight={320} resizable>
+      <div
+        style={{
+          overflow: "hidden",
+          maxHeight: expanded ? "9999px" : "0px",
+          transition: expanded
+            ? "max-height 220ms cubic-bezier(0.23, 1, 0.32, 1)"
+            : "max-height 160ms cubic-bezier(0.77, 0, 0.175, 1)",
+        }}
+      >
       <div className="flex flex-col nodrag" style={{ userSelect: "none" }}>
 
         {/* ── Category tab bar ── */}
@@ -282,6 +293,7 @@ export const PostProcessNode = memo(function PostProcessNode({ id, selected, dat
           )}
         </div>
       </div>
+      </div>{/* end collapse wrapper */}
     </BaseNode>
   );
 });

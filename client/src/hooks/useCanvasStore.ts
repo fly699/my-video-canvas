@@ -86,7 +86,11 @@ interface CanvasStore {
     sourceNodeId: string,
     sourcePosition: { x: number; y: number }
   ) => void;
-  updateNodeData: (id: string, payload: Partial<NodeData>, silent?: boolean) => void;
+  // payload allows an extra `pinned?: boolean` field — a transient UI flag stored
+  // on every node payload (no DB schema change) controlling whether the node's
+  // input panel stays expanded regardless of `selected`. Toggled from the
+  // right-click context menu.
+  updateNodeData: (id: string, payload: Partial<NodeData> & { pinned?: boolean }, silent?: boolean) => void;
   batchUpdateNodeData: (updates: { id: string; payload: Partial<NodeData> }[]) => void;
   updateNodeTitle: (id: string, title: string) => void;
   deleteNode: (id: string) => void;
@@ -163,10 +167,19 @@ export const useCanvasStore = create<CanvasStore>((set, get) => ({
       if (connection.source && connection.target) {
         const sourceNode = state.nodes.find((n) => n.id === connection.source);
         const targetNode = state.nodes.find((n) => n.id === connection.target);
+        // ImageGenNode exposes two source handles: the BaseNode default
+        // `output` (top:50%) and the dedicated `image-out` (top:75%). Accept
+        // either when wiring into any node with a `ref-image-in` handle so
+        // users dragging from the default dot still get auto-fill instead of
+        // a silent miss. useWorkflowRunner propagates to the same three
+        // target types, so keep them in sync here.
+        const targetType = targetNode?.data.nodeType;
+        const targetAcceptsRefImage =
+          targetType === "video_task" || targetType === "comfyui_video" || targetType === "comfyui_image";
         if (
           sourceNode?.data.nodeType === "image_gen" &&
-          targetNode?.data.nodeType === "video_task" &&
-          connection.sourceHandle === "image-out" &&
+          targetAcceptsRefImage &&
+          (connection.sourceHandle === "image-out" || connection.sourceHandle === "output") &&
           connection.targetHandle === "ref-image-in"
         ) {
           const imageUrl = (sourceNode.data.payload as { imageUrl?: string }).imageUrl;
@@ -197,13 +210,32 @@ export const useCanvasStore = create<CanvasStore>((set, get) => ({
     const projectId = get().projectId;
     if (!projectId) throw new Error("Cannot add node before project is loaded");
 
+    // Auto-number duplicate-type nodes so users can tell them apart:
+    //   first one    → config.defaultTitle (unchanged, e.g. '提示词' or '分镜 #1')
+    //   subsequent  → '{base} #N' where base = defaultTitle stripped of any
+    //                 trailing '#N' suffix, and N = max(existing #) + 1.
+    //                 Picks max(existing) instead of count so deleting middle
+    //                 nodes doesn't produce duplicate numbers on re-add.
+    const sameType = get().nodes.filter((n) => n.data.nodeType === type);
+    const stripNum = /\s*#\d+$/;
+    const base = config.defaultTitle.replace(stripNum, "");
+    let title = config.defaultTitle;
+    if (sameType.length > 0) {
+      const maxNum = sameType.reduce((max, n) => {
+        const m = n.data.title.match(/#(\d+)$/);
+        // Untrailed titles count as #1, so the next one becomes #2 (not #1 again).
+        return m ? Math.max(max, parseInt(m[1], 10)) : Math.max(max, 1);
+      }, 0);
+      title = `${base} #${maxNum + 1}`;
+    }
+
     const newNode: CanvasNode = {
       id,
       type: "custom",
       position,
       data: {
         nodeType: type,
-        title: config.defaultTitle,
+        title,
         payload: getDefaultPayload(type),
         projectId,
       },

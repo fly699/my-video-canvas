@@ -1,5 +1,6 @@
 import { ENV } from "./env";
 import { storagePut } from "../storage";
+import { isAudioPersistenceEnabled } from "./storageConfig";
 
 const POYO_BASE = "https://api.poyo.ai";
 const POLL_INTERVAL_MS = 4000;
@@ -12,11 +13,30 @@ const POLL_MAX_ATTEMPTS = 60; // 4 min max
 // full poll window.
 const IN_PROGRESS_STATUSES = new Set(["queued", "pending", "processing", "running", "submitted", "in_progress", "started"]);
 
+// User-facing music model identifiers. Internally all Suno variants share the
+// `generate-music` endpoint and differ only by an `input.mv` value (V3.5 / V4 /
+// V4.5 / V4.5PLUS / V5) — Poyo's API design is "endpoint + sub-params", not
+// "one model id per version". Mureka / MiniMax / ElevenLabs endpoints are not
+// yet confirmed in public docs; router rejects them until verified.
 export type PoyoMusicModel =
+  | "suno-v3.5"
+  | "suno-v4"
   | "suno-v4.5"
+  | "suno-v4.5plus"
   | "suno-v5"
+  // Below: legacy ids kept for backward compat with saved nodes; router will
+  // reject with clear migration message until proper Poyo endpoint names are
+  // confirmed (see openaiTTS commit for the same pattern).
   | "mureka"
   | "minimax-music-02";
+
+const SUNO_MV_MAP: Record<string, string> = {
+  "suno-v3.5":     "V3.5",
+  "suno-v4":       "V4",
+  "suno-v4.5":     "V4.5",
+  "suno-v4.5plus": "V4.5PLUS",
+  "suno-v5":       "V5",
+};
 
 export interface SubmitPoyoMusicOptions {
   model: PoyoMusicModel;
@@ -37,8 +57,19 @@ export async function submitAndPollPoyoMusic(
 ): Promise<PoyoMusicResult> {
   if (!ENV.poyoApiKey) throw new Error("POYO_API_KEY is not configured");
 
+  // Suno models → generate-music endpoint + mv parameter
+  const mv = SUNO_MV_MAP[opts.model];
+  if (!mv) {
+    // Mureka / MiniMax / ElevenLabs — Poyo endpoint names not yet confirmed in docs
+    throw new Error(
+      `Poyo 模型 "${opts.model}" 暂未接入（端点名待 Poyo 官方文档确认）。当前可用：Suno V3.5 / V4 / V4.5 / V4.5PLUS / V5。`
+    );
+  }
+
   const input: Record<string, unknown> = {
     prompt: opts.prompt,
+    mv,
+    custom_mode: false,
   };
   if (opts.style) input.style = opts.style;
   if (opts.durationSeconds !== undefined) input.duration_seconds = opts.durationSeconds;
@@ -51,13 +82,16 @@ export async function submitAndPollPoyoMusic(
       "Content-Type": "application/json",
       Authorization: `Bearer ${ENV.poyoApiKey}`,
     },
-    body: JSON.stringify({ model: opts.model, input }),
+    body: JSON.stringify({ model: "generate-music", input }),
     signal: AbortSignal.timeout(15_000),
   });
 
   if (!submitRes.ok) {
     const text = await submitRes.text().catch(() => "");
-    throw new Error(`Poyo audio submit failed (${submitRes.status}): ${text}`);
+    if (submitRes.status === 404) {
+      throw new Error(`Poyo 音乐生成失败 (404): generate-music 端点不存在或已下架，请联系 Poyo 客服。原始响应: ${text}`);
+    }
+    throw new Error(`Poyo 音乐生成失败 (${submitRes.status}, mv=${mv}): ${text}`);
   }
 
   const submitData = (await submitRes.json()) as { code?: number; message?: string; data?: { task_id?: string } };
@@ -92,6 +126,11 @@ export async function submitAndPollPoyoMusic(
       const file = d.files?.[0];
       if (!file?.file_url) throw new Error("Poyo audio: finished but no file URL");
 
+      // Admin-controlled toggle: when audio persistence is disabled,
+      // skip the storagePut step and return the upstream URL (24h TTL).
+      if (!(await isAudioPersistenceEnabled())) {
+        return { url: file.file_url, duration: file.duration };
+      }
       // Download and re-upload to own storage for persistence
       try {
         const audioRes = await fetch(file.file_url);
@@ -116,6 +155,13 @@ export async function submitAndPollPoyoMusic(
   throw new Error("Poyo audio generation timed out");
 }
 
+/**
+ * @deprecated Poyo platform does not actually provide TTS — these 4 model IDs were
+ * speculative and Poyo returns 404 "Model not found" for all of them. New code
+ * should use `synthesizeOpenAITTS` from `./openaiTTS`. Kept here only so the
+ * legacy task-status poll path (for any in-flight tasks created before the
+ * switch) still compiles. The router rejects new submits for these ids.
+ */
 export type PoyoTTSModel = "openai_tts_hd" | "openai_tts" | "elevenlabs_v3" | "cosyvoice_2";
 
 // Map internal model IDs to Poyo API model names
@@ -153,7 +199,11 @@ export async function submitAndPollPoyoTTS(opts: SubmitPoyoTTSOptions): Promise<
 
   if (!submitRes.ok) {
     const text = await submitRes.text().catch(() => "");
-    throw new Error(`Poyo TTS submit failed (${submitRes.status}): ${text}`);
+    // 404 通常意味着 Poyo 平台已下架或重命名了该 TTS 模型
+    if (submitRes.status === 404) {
+      throw new Error(`Poyo TTS 提交失败 (404): 模型 "${poyoModel}"（来自 "${opts.model}"）在 Poyo 平台不存在或已下架。原始响应: ${text}`);
+    }
+    throw new Error(`Poyo TTS 提交失败 (${submitRes.status}, 模型 ${poyoModel}): ${text}`);
   }
 
   const submitData = (await submitRes.json()) as { code?: number; message?: string; data?: { task_id?: string } };

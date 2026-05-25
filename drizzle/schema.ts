@@ -174,6 +174,17 @@ export const whitelistSettings = mysqlTable("whitelistSettings", {
   updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
 });
 
+// Storage persistence toggles — when persistAudio/persistVideo is false,
+// generated media is left at the upstream provider's CDN URL (Poyo: 24h TTL,
+// Higgsfield: temporary CDN). Useful to save Manus S3 quota on dev/preview
+// deployments. Defaults: persistence ON (matches previous behaviour).
+export const storageSettings = mysqlTable("storageSettings", {
+  id: int("id").autoincrement().primaryKey(),
+  persistAudio: boolean("persistAudio").notNull().default(true),
+  persistVideo: boolean("persistVideo").notNull().default(true),
+  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+});
+
 export const whitelistEntries = mysqlTable("whitelistEntries", {
   id: int("id").autoincrement().primaryKey(),
   type: mysqlEnum("type", ["ip", "user"]).notNull(),

@@ -8,13 +8,11 @@ const POLL_MAX_ATTEMPTS = 60; // 4 min max
 // ── Auth helper ───────────────────────────────────────────────────────────────
 
 function getAuthHeader(): string {
-  if (!ENV.higgsfieldApiKey) throw new Error("HIGGSFIELD_API_KEY is not configured");
-  // If both access key and secret are stored separately, combine them for the API call.
-  // Set HIGGSFIELD_API_KEY = your access key and HIGGSFIELD_API_SECRET = your secret key.
-  const token = ENV.higgsfieldApiSecret
-    ? `${ENV.higgsfieldApiKey}:${ENV.higgsfieldApiSecret}`
-    : ENV.higgsfieldApiKey;
-  return `Key ${token}`;
+  // Higgsfield's official auth format is `Authorization: Key <KEY_ID>:<KEY_SECRET>`
+  // (per platform.higgsfield.ai docs + official SDK). Both parts are required.
+  if (!ENV.higgsfieldApiKey) throw new Error("HIGGSFIELD_API_KEY 未配置");
+  if (!ENV.higgsfieldApiSecret) throw new Error("HIGGSFIELD_API_SECRET 未配置（官方要求 KEY_ID:KEY_SECRET 两段）");
+  return `Key ${ENV.higgsfieldApiKey}:${ENV.higgsfieldApiSecret}`;
 }
 
 // ── Image Generation ──────────────────────────────────────────────────────────
@@ -110,7 +108,13 @@ async function pollHiggsfieldRequest(requestId: string): Promise<{ fileUrl: stri
 export async function generateHiggsfieldImage(
   opts: HiggsfieldImageOptions
 ): Promise<HiggsfieldImageResult> {
-  const endpoint = `${HIGGSFIELD_BASE}/${opts.model}`;
+  // Soul image uses a versioned endpoint path /v1/text2image/soul — different
+  // convention from the slug-style flux-pro/reve/seedream endpoints.
+  // (Per official higgsfield-js SDK src/v2/types.ts & README endpoint examples.)
+  const endpoint =
+    opts.model === "higgsfield-ai/soul/standard"
+      ? `${HIGGSFIELD_BASE}/v1/text2image/soul`
+      : `${HIGGSFIELD_BASE}/${opts.model}`;
 
   const body: Record<string, unknown> = {
     prompt: opts.prompt,
@@ -188,48 +192,40 @@ export async function generateHiggsfieldImage(
 }
 
 // ── Video Generation ──────────────────────────────────────────────────────────
+//
+// Official platform.higgsfield.ai API exposes a SINGLE video endpoint:
+//   POST /v1/image2video/dop  with body { model: "dop-standard" | "dop-turbo" | "dop-lite", ... }
+//
+// Kling / Seedance / Veo / Sora models are NOT available on the public API —
+// they only exist on Higgsfield's private cloud.higgsfield.ai web backend which
+// requires a Clerk JWT and is explicitly not third-party callable.
+//
+// Previous code mistakenly treated the model slug as a URL path and listed 5
+// non-existent variants. Removed.
 
-export type HiggsfieldVideoModel =
-  | "higgsfield-ai/dop/standard"
-  | "higgsfield-ai/dop/preview"
-  | "higgsfield-ai/dop/lite"
-  | "higgsfield-ai/dop/turbo"
-  | "kling-video/v2.1/pro/image-to-video"
-  | "bytedance/seedance/v1/pro/image-to-video"
-  | "bytedance/seedance/v2/pro/image-to-video"
-  | "kling-video/v3.0/pro/image-to-video";
+export type HiggsfieldDopModel = "dop-standard" | "dop-turbo" | "dop-lite";
 
-export const HIGGSFIELD_VIDEO_MODELS: { value: HiggsfieldVideoModel; label: string; desc: string }[] = [
-  { value: "higgsfield-ai/dop/standard",               label: "DoP Standard",       desc: "高质量 · 电影级" },
-  { value: "higgsfield-ai/dop/preview",                label: "DoP Preview",        desc: "预览版 · 快速" },
-  { value: "higgsfield-ai/dop/lite",                   label: "DoP Lite",           desc: "轻量版 · 高速" },
-  { value: "higgsfield-ai/dop/turbo",                  label: "DoP Turbo",          desc: "极速版" },
-  { value: "kling-video/v2.1/pro/image-to-video",      label: "Kling 2.1 Pro",      desc: "高级动态动画" },
-  { value: "bytedance/seedance/v1/pro/image-to-video", label: "Seedance 1.0 Pro",   desc: "专业级视频生成" },
-  { value: "bytedance/seedance/v2/pro/image-to-video", label: "Seedance 2.0 Pro",   desc: "Seedance 最新版" },
-  { value: "kling-video/v3.0/pro/image-to-video",      label: "Kling 3.0 Pro",      desc: "Kling 最新旗舰" },
+export const HIGGSFIELD_VIDEO_MODELS: { value: string; label: string; desc: string }[] = [
+  { value: "hf_dop_standard", label: "DoP Standard", desc: "高质量 · 电影级（Higgsfield 公共 API）" },
+  { value: "hf_dop_turbo",    label: "DoP Turbo",    desc: "极速版（Higgsfield 公共 API）" },
+  { value: "hf_dop_lite",     label: "DoP Lite",     desc: "轻量版 · 高速（Higgsfield 公共 API）" },
 ];
 
 export function isHiggsfieldVideoProvider(provider: string): boolean {
   return provider.startsWith("hf_");
 }
 
-// Map internal provider key → Higgsfield model path
-export const HIGGSFIELD_PROVIDER_MAP: Record<string, HiggsfieldVideoModel> = {
-  hf_dop_standard:  "higgsfield-ai/dop/standard",
-  hf_dop_preview:   "higgsfield-ai/dop/preview",
-  hf_dop_lite:      "higgsfield-ai/dop/lite",
-  hf_dop_turbo:     "higgsfield-ai/dop/turbo",
-  hf_kling_21_pro:  "kling-video/v2.1/pro/image-to-video",
-  hf_seedance_pro:  "bytedance/seedance/v1/pro/image-to-video",
-  hf_seedance_20:   "bytedance/seedance/v2/pro/image-to-video",
-  hf_kling_30:      "kling-video/v3.0/pro/image-to-video",
+// Map internal provider key → official body.model value
+export const HIGGSFIELD_PROVIDER_MAP: Record<string, HiggsfieldDopModel> = {
+  hf_dop_standard: "dop-standard",
+  hf_dop_turbo:    "dop-turbo",
+  hf_dop_lite:     "dop-lite",
 };
 
 export interface SubmitHiggsfieldVideoOptions {
   provider: string; // one of the hf_* keys
   prompt: string;
-  negativePrompt?: string;
+  negativePrompt?: string;  // unused for DoP — kept for API compat
   referenceImageUrl?: string;
   params?: Record<string, unknown>;
 }
@@ -241,49 +237,29 @@ export interface HiggsfieldVideoSubmitResult {
 export async function submitHiggsfieldVideo(
   opts: SubmitHiggsfieldVideoOptions
 ): Promise<HiggsfieldVideoSubmitResult> {
-  const modelPath = HIGGSFIELD_PROVIDER_MAP[opts.provider];
-  if (!modelPath) throw new Error(`Unknown Higgsfield provider: ${opts.provider}`);
+  const dopModel = HIGGSFIELD_PROVIDER_MAP[opts.provider];
+  if (!dopModel) {
+    throw new Error(
+      `Higgsfield 公共 API 不支持 provider "${opts.provider}"。仅支持 hf_dop_standard / hf_dop_turbo / hf_dop_lite。`
+    );
+  }
+  // DoP is image-to-video — reference image is REQUIRED.
+  if (!opts.referenceImageUrl) {
+    throw new Error("Higgsfield DoP 视频模型必须提供参考图（reference image）");
+  }
 
-  const endpoint = `${HIGGSFIELD_BASE}/${modelPath}`;
+  const endpoint = `${HIGGSFIELD_BASE}/v1/image2video/dop`;
   const p = opts.params ?? {};
 
   const body: Record<string, unknown> = {
+    model: dopModel,
     prompt: opts.prompt,
+    input_images: [{ type: "image_url", image_url: opts.referenceImageUrl }],
   };
-
-  if (opts.referenceImageUrl) body.image_url = opts.referenceImageUrl;
-
-  // ── DoP models: seed, enhance_prompt ──────────────────────────────────────
-  if (
-    opts.provider === "hf_dop_standard" ||
-    opts.provider === "hf_dop_preview" ||
-    opts.provider === "hf_dop_lite" ||
-    opts.provider === "hf_dop_turbo"
-  ) {
-    if (p.seed !== undefined) body.seed = p.seed;
-    if (p.enhance_prompt !== undefined) body.enhance_prompt = p.enhance_prompt;
-  }
-
-  if (opts.provider === "hf_kling_21_pro") {
-    body.duration = p.duration ?? 5;
-    body.aspect_ratio = p.aspect_ratio ?? "16:9";
-    if (p.cfg_scale !== undefined) body.cfg_scale = p.cfg_scale;
-    if (opts.negativePrompt) body.negative_prompt = opts.negativePrompt;
-  }
-
-  if (opts.provider === "hf_seedance_pro" || opts.provider === "hf_seedance_20") {
-    body.aspect_ratio = p.aspect_ratio ?? "16:9";
-    body.resolution = p.resolution ?? "720p";
-    body.duration = p.duration ?? 5;
-    if (p.camera_fixed !== undefined) body.camera_fixed = p.camera_fixed;
-  }
-
-  if (opts.provider === "hf_kling_30") {
-    body.duration = p.duration ?? 5;
-    body.aspect_ratio = p.aspect_ratio ?? "16:9";
-    if (p.cfg_scale !== undefined) body.cfg_scale = p.cfg_scale;
-    if (opts.negativePrompt) body.negative_prompt = opts.negativePrompt;
-  }
+  if (p.seed !== undefined) body.seed = p.seed;
+  if (p.enhance_prompt !== undefined) body.enhance_prompt = p.enhance_prompt;
+  // Optional camera motion presets: [{ id: string, strength: number }]
+  if (Array.isArray(p.motions)) body.motions = p.motions;
 
   const res = await fetch(endpoint, {
     method: "POST",
@@ -298,18 +274,19 @@ export async function submitHiggsfieldVideo(
 
   if (!res.ok) {
     const text = await res.text().catch(() => "");
-    // 404 通常意味着 Higgsfield 平台已下架或重命名了该模型
     if (res.status === 404) {
-      throw new Error(`Higgsfield 视频提交失败 (404): 模型 "${modelPath}" 在 Higgsfield 平台不存在或已下架。请换一个模型再试。原始响应: ${text}`);
+      throw new Error(`Higgsfield 视频提交失败 (404): /v1/image2video/dop 不存在。可能 API 路径已变。原始响应: ${text}`);
     }
-    throw new Error(`Higgsfield 视频提交失败 (${res.status}, 模型 ${modelPath}): ${text}`);
+    if (res.status === 401 || res.status === 403) {
+      throw new Error(`Higgsfield 鉴权失败 (${res.status}): 检查 HIGGSFIELD_API_KEY / HIGGSFIELD_API_SECRET 是否正确。响应: ${text}`);
+    }
+    throw new Error(`Higgsfield 视频提交失败 (${res.status}, 模型 ${dopModel}): ${text}`);
   }
 
-  const data = (await res.json()) as { request_id?: string; id?: string };
-  const requestId = data.request_id ?? data.id;
-  if (!requestId) throw new Error("Higgsfield video: no request_id returned");
+  const data = (await res.json()) as { request_id?: string };
+  if (!data.request_id) throw new Error("Higgsfield 视频提交：响应未返回 request_id");
 
-  return { externalTaskId: requestId };
+  return { externalTaskId: data.request_id };
 }
 
 export interface HiggsfieldVideoStatus {
@@ -331,34 +308,31 @@ export async function checkHiggsfieldVideoStatus(
     throw new Error(`Higgsfield status check failed (${res.status})`);
   }
 
+  // Official V2Response shape (per higgsfield-js SDK src/v2/types.ts):
+  //   { status: "queued"|"in_progress"|"completed"|"failed"|"nsfw",
+  //     video?: { url: string },                  // singular object for video
+  //     images?: Array<{ url: string }>,          // array for image jobs
+  //     detail?: string }                         // error message on 4xx/5xx
   const body = (await res.json()) as {
-    status?: string;
-    state?: string;
-    output?: string | string[];
-    outputs?: string[];
-    file_url?: string;
-    images?: Array<{ url: string }>;
-    videos?: Array<{ url: string }>;
-    error?: string;
+    status?: "queued" | "in_progress" | "completed" | "failed" | "nsfw";
+    video?: { url?: string };
+    images?: Array<{ url?: string }>;
+    detail?: string;
   };
 
-  const rawStatus = body.status ?? body.state ?? "processing";
+  const status = body.status;
 
-  if (rawStatus === "failed" || rawStatus === "error") {
-    return { status: "failed", errorMessage: body.error ?? "生成失败" };
+  if (status === "failed") {
+    return { status: "failed", errorMessage: body.detail ?? "Higgsfield 任务失败" };
   }
-
-  if (rawStatus === "completed" || rawStatus === "succeeded" || rawStatus === "done") {
-    // New API format: videos/images array
-    const fileUrl =
-      (Array.isArray(body.videos) && body.videos[0]?.url ? body.videos[0].url : undefined) ??
-      (Array.isArray(body.images) && body.images[0]?.url ? body.images[0].url : undefined) ??
-      body.file_url ??
-      (Array.isArray(body.outputs) ? body.outputs[0] : undefined) ??
-      (Array.isArray(body.output) ? body.output[0] : typeof body.output === "string" ? body.output : undefined);
+  if (status === "nsfw") {
+    return { status: "failed", errorMessage: "Higgsfield 内容审核拒绝（NSFW）" };
+  }
+  if (status === "completed") {
+    const fileUrl = body.video?.url ?? body.images?.[0]?.url;
     if (fileUrl) return { status: "succeeded", resultVideoUrl: fileUrl };
-    return { status: "failed", errorMessage: "生成完成但无视频 URL" };
+    return { status: "failed", errorMessage: "Higgsfield 完成但响应未含 video.url" };
   }
-
+  // queued / in_progress / unknown — keep polling
   return { status: "processing" };
 }

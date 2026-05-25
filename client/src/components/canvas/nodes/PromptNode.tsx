@@ -51,6 +51,8 @@ const monoStyle: React.CSSProperties = {
 export const PromptNode = memo(function PromptNode({ id, selected, data }: Props) {
   const { updateNodeData } = useCanvasStore();
   const payload = data.payload;
+  // Pinned via right-click menu — keeps input panel expanded across selection changes.
+  const expanded = Boolean(selected) || Boolean((payload as { pinned?: boolean }).pinned);
   const [showModelPicker, setShowModelPicker] = useState(false);
   const [batchMode, setBatchMode] = useState(false);
   const model = (payload.imageModel as string) ?? IMAGE_MODELS[0].value;
@@ -261,6 +263,18 @@ export const PromptNode = memo(function PromptNode({ id, selected, data }: Props
             </div>
           </div>
         ) : null}
+
+        {/* ── Input area (collapsed when not selected, mirrors ImageGenNode UX) ── */}
+        <div
+          style={{
+            overflow: "hidden",
+            maxHeight: expanded ? "9999px" : "0px",
+            transition: expanded
+              ? "max-height 220ms cubic-bezier(0.23, 1, 0.32, 1)"
+              : "max-height 160ms cubic-bezier(0.77, 0, 0.175, 1)",
+          }}
+        >
+        <div className="flex flex-col gap-3">
 
         {/* Positive prompt */}
         <div>
@@ -506,6 +520,8 @@ export const PromptNode = memo(function PromptNode({ id, selected, data }: Props
             {genImageMutation.isPending ? "生成中..." : batchMode ? "生成 4 图" : "AI 生成图像"}
           </button>
         </div>
+        </div>{/* end inner gap-3 */}
+        </div>{/* end input collapse wrapper */}
       </div>
     </BaseNode>
   );

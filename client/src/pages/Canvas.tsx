@@ -28,6 +28,7 @@ import { FilmstripPanel } from "../components/canvas/FilmstripPanel";
 import { TimelinePanel } from "../components/canvas/TimelinePanel";
 import { isConnectionValid } from "../lib/connectionRules";
 import { BeginnerGuide, ConnectionHintsPanel } from "../components/canvas/BeginnerGuide";
+import { WorkflowStatusPanel } from "../components/canvas/WorkflowStatusPanel";
 import { ThemeSwitcher } from "../components/canvas/ThemeSwitcher";
 import { CanvasBgPicker, loadCanvasBg, type CanvasBg } from "../components/canvas/CanvasBgPicker";
 import { useCanvasMode } from "../contexts/CanvasModeContext";
@@ -296,7 +297,7 @@ function CanvasInner({ projectId }: { projectId: number }) {
   const {
     nodes, edges, setNodes, setEdges,
     onNodesChange, onEdgesChange, onConnect,
-    addNode, deleteNode, duplicateNode,
+    addNode, deleteNode, duplicateNode, updateNodeData,
     setProjectId, isDirty, markClean, markDirty,
     setCollaborator, removeCollaborator, collaborators, resetCanvas,
     undo, redo, past, future,
@@ -312,6 +313,7 @@ function CanvasInner({ projectId }: { projectId: number }) {
     addNode: s.addNode,
     deleteNode: s.deleteNode,
     duplicateNode: s.duplicateNode,
+    updateNodeData: s.updateNodeData,
     setProjectId: s.setProjectId,
     isDirty: s.isDirty,
     markClean: s.markClean,
@@ -359,7 +361,7 @@ function CanvasInner({ projectId }: { projectId: number }) {
   const [connectingFromType, setConnectingFromType] = useState<NodeType | null>(null);
 
   // Workflow runner
-  const { runState, runWorkflow } = useWorkflowRunner();
+  const { runState, runWorkflow, reset: resetWorkflowRun } = useWorkflowRunner();
   const [showRunConfirm, setShowRunConfirm] = useState(false);
   const [pendingRunNodeId, setPendingRunNodeId] = useState<string | null>(null);
   const [runConfirmCountdown, setRunConfirmCountdown] = useState(5);
@@ -589,9 +591,13 @@ function CanvasInner({ projectId }: { projectId: number }) {
   }, [user, projectId, viewport]);
 
   // ── Context menu ────────────────────────────────────────────────────────────
+  // Counter for stacking-offset on repeated adds from the same pinned menu;
+  // declared before the right-click handler so it can be reset on each open.
+  const addOffsetRef = useRef(0);
   const handleCanvasContextMenu = useCallback((e: React.MouseEvent) => {
     e.preventDefault();
     const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
+    addOffsetRef.current = 0;
     setContextMenu({
       x: e.clientX, y: e.clientY, type: "canvas",
       canvasPos: { x: (e.clientX - rect.left - viewport.x) / viewport.zoom, y: (e.clientY - rect.top - viewport.y) / viewport.zoom },
@@ -603,8 +609,19 @@ function CanvasInner({ projectId }: { projectId: number }) {
     setContextMenu({ x: e.clientX, y: e.clientY, type: "node", nodeId: node.id });
   }, []);
 
+  // When the canvas right-click menu is pinned, the user can add several nodes
+  // in a row from the same anchor — without a per-add offset they all stack at
+  // the exact same canvas coords and only the topmost is visible.
+  // (addOffsetRef declared above with handleCanvasContextMenu so it can be reset on open.)
   const handleAddNode = useCallback((type: NodeType) => {
-    const pos = contextMenu?.canvasPos ?? { x: 200, y: 200 };
+    const base = contextMenu?.canvasPos ?? { x: 200, y: 200 };
+    // Stagger 0..7 diagonally (28*7 ≈ 196px) so a batch stays near the
+    // anchor; after wrap add random jitter so add #9 doesn't land exactly
+    // on top of add #1 at the base position.
+    const c = addOffsetRef.current++;
+    const i = c % 8;
+    const jitter = c >= 8 ? Math.floor(Math.random() * 40 - 20) : 0;
+    const pos = (i === 0 && jitter === 0) ? base : { x: base.x + i * 28 + jitter, y: base.y + i * 28 + jitter };
     try {
       const newNode = addNode(type, pos);
       emitCollabEvent("node:add", newNode);
@@ -1234,8 +1251,18 @@ function CanvasInner({ projectId }: { projectId: number }) {
               <p className="text-[10px]" style={{ color: "var(--c-t4)" }}>点击添加到画布中心</p>
             </div>
             <div className="p-2.5 grid grid-cols-4 gap-1.5">
-              {NODE_TYPE_LIST.map((config) => {
+              {/* Sort: ComfyUI nodes pinned to the top (newest/most-prominent),
+                  rest follow their NODE_TYPE_LIST order. */}
+              {[...NODE_TYPE_LIST].sort((a, b) => {
+                const aIsComfy = a.type === "comfyui_image" || a.type === "comfyui_video";
+                const bIsComfy = b.type === "comfyui_image" || b.type === "comfyui_video";
+                if (aIsComfy && !bIsComfy) return -1;
+                if (!aIsComfy && bIsComfy) return 1;
+                return 0;
+              }).map((config) => {
                 const Icon = NODE_ICONS[config.icon] ?? FileText;
+                // Hide duplicate subtitle when defaultTitle equals label (e.g. "提示词 / 提示词")
+                const showSubtitle = config.defaultTitle !== config.label;
                 return (
                   <button
                     key={config.type}
@@ -1267,9 +1294,11 @@ function CanvasInner({ projectId }: { projectId: number }) {
                       <p className="text-[11px] font-semibold leading-none" style={{ letterSpacing: "-0.01em" }}>
                         {config.label}
                       </p>
-                      <p className="text-[9px] leading-none" style={{ color: "var(--c-t4)" }}>
-                        {config.defaultTitle}
-                      </p>
+                      {showSubtitle && (
+                        <p className="text-[9px] leading-none" style={{ color: "var(--c-t4)" }}>
+                          {config.defaultTitle}
+                        </p>
+                      )}
                     </div>
                   </button>
                 );
@@ -1438,6 +1467,7 @@ function CanvasInner({ projectId }: { projectId: number }) {
             selectedNodeType={connectingFromType}
             onClose={() => setShowConnectionHints(false)}
           />
+          <WorkflowStatusPanel runState={runState} onReset={resetWorkflowRun} />
           <BeginnerGuide />
 
           {/* ── Floating toolbar — snaps to viewport edge; vertical when on left/right ── */}
@@ -1505,7 +1535,7 @@ function CanvasInner({ projectId }: { projectId: number }) {
                   }}
                 >
                   <Plus className="w-3.5 h-3.5" />
-                  添加
+                  <span data-toolbar-label>添加</span>
                 </button>
               </TooltipTrigger>
               <TooltipContent side="top" className="text-xs">添加节点</TooltipContent>
@@ -1594,12 +1624,12 @@ function CanvasInner({ projectId }: { projectId: number }) {
                   {runState.running ? (
                     <>
                       <Loader2 className="w-3 h-3 animate-spin" />
-                      运行中 {runState.completedIds.length + runState.failedIds.length}/{runState.runnableCount || nodes.length}
+                      <span data-toolbar-label>运行中 {runState.completedIds.length + runState.failedIds.length}/{runState.runnableCount || nodes.length}</span>
                     </>
                   ) : (
                     <>
                       <Play className="w-3 h-3" />
-                      运行
+                      <span data-toolbar-label>运行</span>
                     </>
                   )}
                 </button>
@@ -1747,7 +1777,7 @@ function CanvasInner({ projectId }: { projectId: number }) {
                   }}
                 >
                   <Palette className="w-3.5 h-3.5" />
-                  <span>{canvasMode === "creative" ? "创意" : "专业"}</span>
+                  <span data-toolbar-label>{canvasMode === "creative" ? "创意" : "专业"}</span>
                 </button>
               </TooltipTrigger>
               <TooltipContent side="top" className="text-xs">
@@ -1986,22 +2016,39 @@ function CanvasInner({ projectId }: { projectId: number }) {
       )}
 
       {/* ── Context menu ── */}
-      {contextMenu && (
-        <ContextMenu
-          x={contextMenu.x} y={contextMenu.y}
-          type={contextMenu.type} nodeId={contextMenu.nodeId}
-          onClose={() => setContextMenu(null)}
-          onAddNode={handleAddNode}
-          onDeleteNode={contextMenu.nodeId ? () => {
-            const nid = contextMenu.nodeId!;
-            deleteNode(nid);
-            deleteNodeMutation.mutate({ id: nid, projectId });
-            emitCollabEvent("node:delete", { id: nid });
-          } : undefined}
-          onDuplicateNode={contextMenu.nodeId ? () => duplicateNode(contextMenu.nodeId!) : undefined}
-          onRunWorkflow={contextMenu.nodeId ? () => handleRunRequest(contextMenu.nodeId ?? null) : undefined}
-        />
-      )}
+      {contextMenu && (() => {
+        const ctxNode = contextMenu.nodeId ? nodes.find((n) => n.id === contextMenu.nodeId) : undefined;
+        const ctxPinned = Boolean((ctxNode?.data.payload as { pinned?: boolean } | undefined)?.pinned);
+        return (
+          <ContextMenu
+            x={contextMenu.x} y={contextMenu.y}
+            type={contextMenu.type} nodeId={contextMenu.nodeId}
+            nodePinned={ctxPinned}
+            onClose={() => setContextMenu(null)}
+            onAddNode={handleAddNode}
+            onDeleteNode={contextMenu.nodeId ? () => {
+              const nid = contextMenu.nodeId!;
+              deleteNode(nid);
+              deleteNodeMutation.mutate({ id: nid, projectId });
+              emitCollabEvent("node:delete", { id: nid });
+            } : undefined}
+            onDuplicateNode={contextMenu.nodeId ? () => duplicateNode(contextMenu.nodeId!) : undefined}
+            onRunWorkflow={contextMenu.nodeId ? () => handleRunRequest(contextMenu.nodeId ?? null) : undefined}
+            // Pin: toggle payload.pinned so the node's input area stays expanded
+            // even when the user clicks elsewhere on the canvas.
+            onTogglePin={contextMenu.nodeId ? () => {
+              updateNodeData(contextMenu.nodeId!, { pinned: !ctxPinned });
+            } : undefined}
+            // Collapse: clear pinned + deselect the node so it returns to its
+            // compact preview-only height.
+            onCollapse={contextMenu.nodeId ? () => {
+              const nid = contextMenu.nodeId!;
+              updateNodeData(nid, { pinned: false });
+              setNodes(nodes.map((n) => n.id === nid ? { ...n, selected: false } : n));
+            } : undefined}
+          />
+        );
+      })()}
 
       {/* ── Node search ── */}
       {showNodeSearch && (

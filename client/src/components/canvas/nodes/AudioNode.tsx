@@ -52,34 +52,62 @@ const labelStyle: React.CSSProperties = {
 
 // ── Model lists ───────────────────────────────────────────────────────────────
 
-// Real Poyo-backed music models
+// Real Poyo-backed music models. Suno is confirmed live via the
+// `generate-music` endpoint with input.mv ∈ {V3.5, V4, V4.5, V4.5PLUS, V5}.
+// Mureka / MiniMax / Eleven Music are referenced by Poyo marketing but their
+// concrete `model` endpoint names are not yet published; they're kept here as
+// disabled options with ⚠ markers (same pattern as VideoTaskNode legacy
+// Higgsfield providers and AudioNode TTS legacy ids).
 const MUSIC_MODELS = [
-  { value: "suno-v4.5",       label: "Suno v4.5",       desc: "旗舰 · 全风格",   group: "Suno" },
-  { value: "suno-v5",         label: "Suno v5",         desc: "8 分钟 · 最高质量",group: "Suno" },
-  { value: "mureka",           label: "Mureka",          desc: "昆仑 · 中文友好", group: "Mureka" },
-  { value: "minimax-music-02", label: "MiniMax Music-02",desc: "多模态 · 精准",   group: "MiniMax" },
+  // ── Live (Suno via generate-music endpoint) ───
+  { value: "suno-v5",          label: "Suno v5",          desc: "8 分钟 · 最高质量",     group: "Suno" },
+  { value: "suno-v4.5plus",    label: "Suno v4.5 PLUS",   desc: "增强版",                group: "Suno" },
+  { value: "suno-v4.5",        label: "Suno v4.5",        desc: "旗舰 · 全风格",         group: "Suno" },
+  { value: "suno-v4",          label: "Suno v4",          desc: "稳定 · 经典",           group: "Suno" },
+  { value: "suno-v3.5",        label: "Suno v3.5",        desc: "初代 · 快速",           group: "Suno" },
+  // ── Pending (endpoint name not yet confirmed in Poyo docs) ───
+  { value: "mureka",           label: "Mureka ⚠ 待接入",         desc: "Poyo 端点名待确认",  group: "待接入" },
+  { value: "minimax-music-02", label: "MiniMax Music-02 ⚠ 待接入", desc: "Poyo 端点名待确认",  group: "待接入" },
 ];
 
+const LEGACY_MUSIC_MODELS = new Set(["mureka", "minimax-music-02"]);
+
 // Per-model maximum music duration (seconds). UI range slider clamps to this.
-// Source: each provider's documented duration limit.
 const MUSIC_MAX_DURATION: Record<string, number> = {
+  "suno-v3.5":         240,
+  "suno-v4":           240,
   "suno-v4.5":         240, // 4 min
+  "suno-v4.5plus":     240,
   "suno-v5":           480, // 8 min — flagship
   "mureka":            240,
   "minimax-music-02":  180,
 };
 
-// Dubbing/TTS — coming soon; no Poyo TTS endpoint confirmed
+// Dubbing/TTS models. The "openai_*_real" entries hit OpenAI's /v1/audio/speech
+// directly (live). The other 4 are kept for backward compat with saved nodes —
+// Poyo platform doesn't actually offer TTS, so submitting them now returns a
+// router-level error guiding the user to a live model.
 const DUBBING_MODELS = [
-  { value: "openai_tts_hd",    label: "OpenAI TTS-HD",   desc: "高清 · 自然",     group: "OpenAI" },
-  { value: "openai_tts",       label: "OpenAI TTS",      desc: "标准 · 快速",     group: "OpenAI" },
-  { value: "elevenlabs_v3",    label: "ElevenLabs v3",   desc: "拟真 · 多语言",   group: "ElevenLabs" },
-  { value: "cosyvoice_2",      label: "CosyVoice 2.0",   desc: "阿里 · 中文优化", group: "Alibaba" },
+  // ── Live (OpenAI direct) ───
+  { value: "openai_tts_real",       label: "OpenAI TTS",       desc: "标准 · $0.015/1k 字符",  group: "OpenAI" },
+  { value: "openai_tts_hd_real",    label: "OpenAI TTS-HD",    desc: "高清 · $0.030/1k 字符",  group: "OpenAI" },
+  { value: "openai_gpt4o_mini_tts", label: "GPT-4o Mini TTS",  desc: "新 · 支持 instructions", group: "OpenAI" },
+  // ── Deprecated (Poyo platform doesn't actually provide TTS) ───
+  { value: "openai_tts_hd",    label: "OpenAI TTS-HD ⚠ 已下线",   desc: "请改用 OpenAI TTS-HD", group: "已下线" },
+  { value: "openai_tts",       label: "OpenAI TTS ⚠ 已下线",      desc: "请改用 OpenAI TTS",    group: "已下线" },
+  { value: "elevenlabs_v3",    label: "ElevenLabs v3 ⚠ 已下线",   desc: "未接入",               group: "已下线" },
+  { value: "cosyvoice_2",      label: "CosyVoice 2.0 ⚠ 已下线",   desc: "未接入",               group: "已下线" },
 ];
+
+// Set of legacy TTS model ids that no longer work — gating render + submit.
+const LEGACY_TTS_MODELS = new Set(["openai_tts_hd", "openai_tts", "elevenlabs_v3", "cosyvoice_2"]);
 
 // Per-model TTS text limit (characters). Submitting more than this either errors
 // at the provider or is silently truncated — in both cases the user pays.
 const TTS_TEXT_LIMIT: Record<string, number> = {
+  openai_tts_real:       4096,
+  openai_tts_hd_real:    4096,
+  openai_gpt4o_mini_tts: 4096,
   openai_tts_hd: 4096,
   openai_tts:    4096,
   elevenlabs_v3: 5000,
@@ -240,6 +268,10 @@ export const AudioNode = memo(function AudioNode({ id, selected, data }: Props) 
     onSuccess: (result) => {
       audioRef.current?.pause();
       setIsPlaying(false);
+      // Always write duration (undefined for OpenAI TTS). The brief "--:--"
+      // window until <audio onLoadedMetadata> fires is the correct UX —
+      // preserving a stale duration from a previous run (e.g. music
+      // 30s → TTS 5s on the same node) would actively lie about the new clip.
       updateNodeData(id, {
         url: result.url,
         duration: result.duration,
@@ -311,8 +343,15 @@ export const AudioNode = memo(function AudioNode({ id, selected, data }: Props) 
     if (musicMutation.isPending) return;
     if (!payload.musicPrompt?.trim()) { toast.error("请先输入音乐描述"); return; }
     const validMusic = MUSIC_MODELS.map((m) => m.value);
-    const raw = payload.musicModel ?? payload.aiModel ?? "suno-v4.5";
-    const modelVal = (validMusic.includes(raw) ? raw : "suno-v4.5") as "suno-v4.5" | "suno-v5" | "mureka" | "minimax-music-02";
+    const raw = payload.musicModel ?? payload.aiModel ?? "suno-v5";
+    const modelVal = (validMusic.includes(raw) ? raw : "suno-v5") as
+      | "suno-v3.5" | "suno-v4" | "suno-v4.5" | "suno-v4.5plus" | "suno-v5"
+      | "mureka" | "minimax-music-02";
+    // Block submit early for not-yet-integrated providers (Mureka / MiniMax).
+    if (LEGACY_MUSIC_MODELS.has(modelVal)) {
+      toast.error(`"${modelVal}" 尚未接入（Poyo 端点名待确认），请改用 Suno 系列`);
+      return;
+    }
     // Clamp duration to the picked model's actual max (UI also clamps, but if
     // payload.musicDuration was set under a different model we'd otherwise send
     // a too-large value that the provider would either reject or silently cap).
@@ -336,8 +375,16 @@ export const AudioNode = memo(function AudioNode({ id, selected, data }: Props) 
     if (ttsMutation.isPending) return;
     if (!payload.ttsText?.trim()) { toast.error("请先输入配音文本"); return; }
     const validTTS = DUBBING_MODELS.map((m) => m.value);
-    const rawTTS = payload.ttsModel ?? payload.aiModel ?? "openai_tts";
-    const model = (validTTS.includes(rawTTS) ? rawTTS : "openai_tts") as "openai_tts_hd" | "openai_tts" | "elevenlabs_v3" | "cosyvoice_2";
+    const rawTTS = payload.ttsModel ?? payload.aiModel ?? "openai_tts_real";
+    const model = (validTTS.includes(rawTTS) ? rawTTS : "openai_tts_real") as
+      | "openai_tts_real" | "openai_tts_hd_real" | "openai_gpt4o_mini_tts"
+      | "openai_tts_hd" | "openai_tts" | "elevenlabs_v3" | "cosyvoice_2";
+    // Block submit early for deprecated models — server would reject anyway,
+    // but a clear toast is friendlier than a TRPC error popover.
+    if (LEGACY_TTS_MODELS.has(model)) {
+      toast.error(`"${model}" 已下线，请改用 OpenAI TTS / TTS-HD / GPT-4o Mini TTS`);
+      return;
+    }
     // Reject overlong text early — the provider would charge for the prefix and
     // truncate (or reject) the rest. Better to surface the limit before submit.
     const limit = TTS_TEXT_LIMIT[model] ?? 4096;
@@ -405,8 +452,19 @@ export const AudioNode = memo(function AudioNode({ id, selected, data }: Props) 
     </div>
   ) : null;
 
+  const expanded = Boolean(selected) || Boolean((payload as { pinned?: boolean }).pinned);
+
   return (
     <BaseNode id={id} selected={selected} nodeType="audio" title={data.title} minHeight={160} resizable>
+      <div
+        style={{
+          overflow: "hidden",
+          maxHeight: expanded ? "9999px" : "0px",
+          transition: expanded
+            ? "max-height 220ms cubic-bezier(0.23, 1, 0.32, 1)"
+            : "max-height 160ms cubic-bezier(0.77, 0, 0.175, 1)",
+        }}
+      >
       <div className="flex flex-col gap-3 p-3.5">
 
         {/* Category tabs */}
@@ -555,13 +613,29 @@ export const AudioNode = memo(function AudioNode({ id, selected, data }: Props) 
 
         {/* ── 配音 Dubbing ── */}
         {category === "dubbing" && (() => {
-          const ttsModel = (payload.ttsModel ?? (DUBBING_MODELS.find(m => m.value === payload.aiModel) ? payload.aiModel : undefined) ?? "openai_tts") as string;
+          const ttsModel = (payload.ttsModel ?? (DUBBING_MODELS.find(m => m.value === payload.aiModel) ? payload.aiModel : undefined) ?? "openai_tts_real") as string;
           const voices = voicesForModel(ttsModel);
           const textLimit = TTS_TEXT_LIMIT[ttsModel] ?? 4096;
           const supportsSpeed = modelSupportsSpeed(ttsModel);
           const textLen = (payload.ttsText ?? "").length;
+          const isLegacyModel = LEGACY_TTS_MODELS.has(ttsModel);
           return (
           <>
+            {/* Migration warning for nodes saved with the dead Poyo TTS aliases */}
+            {isLegacyModel && (
+              <div style={{
+                padding: "8px 10px",
+                background: "oklch(0.70 0.16 65 / 0.10)",
+                border: "1px solid oklch(0.70 0.16 65 / 0.35)",
+                borderRadius: 6,
+                fontSize: 11,
+                lineHeight: 1.5,
+                color: "oklch(0.80 0.16 65)",
+              }}>
+                ⚠ 模型 <code style={{ fontFamily: "monospace" }}>{ttsModel}</code> 已下线（Poyo 平台不提供 TTS）。
+                请改用 <strong>OpenAI TTS</strong> / <strong>TTS-HD</strong> / <strong>GPT-4o Mini TTS</strong>。
+              </div>
+            )}
             <ModelSelect
               models={DUBBING_MODELS}
               value={payload.ttsModel ?? (DUBBING_MODELS.find(m => m.value === payload.aiModel) ? payload.aiModel : undefined)}
@@ -642,10 +716,10 @@ export const AudioNode = memo(function AudioNode({ id, selected, data }: Props) 
               </div>
             )}
             <GenerateBtn
-              disabled={!payload.ttsText?.trim() || textLen > textLimit}
+              disabled={!payload.ttsText?.trim() || textLen > textLimit || isLegacyModel}
               loading={ttsMutation.isPending}
               onClick={handleGenerateTTS}
-              label="生成配音"
+              label={isLegacyModel ? "请先换用 OpenAI TTS" : "生成配音"}
             />
             {audioPlayer}
           </>
@@ -739,6 +813,7 @@ export const AudioNode = memo(function AudioNode({ id, selected, data }: Props) 
         )}
 
       </div>
+      </div>{/* end collapse wrapper */}
     </BaseNode>
   );
 });
