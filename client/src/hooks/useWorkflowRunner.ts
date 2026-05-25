@@ -34,7 +34,7 @@ export const RUNNABLE_TYPES: NodeType[] = [
   "comfyui_image", "comfyui_video", "comfyui_workflow",
 ];
 
-const VIDEO_SOURCE_TYPES = new Set(["video_task", "clip", "merge", "overlay", "asset", "subtitle", "subtitle_motion", "smart_cut", "comfyui_video"]);
+const VIDEO_SOURCE_TYPES = new Set(["video_task", "clip", "merge", "overlay", "asset", "subtitle", "subtitle_motion", "smart_cut", "comfyui_video", "comfyui_workflow"]);
 
 /** Pick the video output URL from a node's payload regardless of which field it uses. */
 function getNodeVideoUrl(payload: Record<string, unknown>): string | undefined {
@@ -643,6 +643,12 @@ export function useWorkflowRunner() {
             seed: typeof p.seed === "number" ? p.seed : -1,
             width: typeof p.width === "number" ? p.width : 512,
             height: typeof p.height === "number" ? p.height : 512,
+            sampler: (p.sampler as string) || undefined,
+            scheduler: (p.scheduler as string) || undefined,
+            denoise: typeof p.denoise === "number" ? p.denoise : undefined,
+            vae: (p.vae as string) || undefined,
+            loraStrength: typeof p.loraStrength === "number" ? p.loraStrength : undefined,
+            batchSize: typeof p.batchSize === "number" ? p.batchSize : 1,
             referenceImageUrl: refUrl,
           });
           // Guard against the node having been deleted while the long-running
@@ -653,16 +659,17 @@ export function useWorkflowRunner() {
           }
           useCanvasStore.getState().updateNodeData(nodeId, {
             imageUrl: result.url,
+            imageUrls: result.urls,
             status: "done",
             errorMessage: undefined,
           }, true);
-          // Propagate to downstream video nodes that consume reference image
+          // Propagate to downstream nodes that consume reference image
           const downstreamUpdates = currentEdges
             .filter((e) => e.source === nodeId)
             .flatMap((edge) => {
               const target = nodesAtSuccess.find((n) => n.id === edge.target);
               const tt = target?.data.nodeType;
-              return (tt === "video_task" || tt === "comfyui_video") && result.url
+              return (tt === "video_task" || tt === "comfyui_video" || tt === "comfyui_workflow") && result.url
                 ? [{ id: edge.target, payload: { referenceImageUrl: result.url } }]
                 : [];
             });
@@ -708,6 +715,13 @@ export function useWorkflowRunner() {
             seed: typeof p.seed === "number" ? p.seed : -1,
             frames: typeof p.frames === "number" ? p.frames : 16,
             fps: typeof p.fps === "number" ? p.fps : 8,
+            width: typeof p.width === "number" ? p.width : undefined,
+            height: typeof p.height === "number" ? p.height : undefined,
+            sampler: (p.sampler as string) || undefined,
+            scheduler: (p.scheduler as string) || undefined,
+            denoise: typeof p.denoise === "number" ? p.denoise : undefined,
+            vae: (p.vae as string) || undefined,
+            batchSize: typeof p.batchSize === "number" ? p.batchSize : 1,
             referenceImageUrl: refUrl,
           });
           // Guard against the node having been deleted during the long mutation.
@@ -740,7 +754,8 @@ export function useWorkflowRunner() {
             outputNodeIds: (p.outputNodeIds as string[]) || undefined,
             outputType: ((p.outputType as string) || "auto") as "image" | "video" | "auto",
           });
-          if (!useCanvasStore.getState().nodes.some((n) => n.id === nodeId)) return "ok";
+          const { nodes: wfNodes, edges: wfEdges } = useCanvasStore.getState();
+          if (!wfNodes.some((n) => n.id === nodeId)) return "ok";
           const firstUrl = result.urls[0] ?? "";
           useCanvasStore.getState().updateNodeData(nodeId, {
             outputUrl: firstUrl,
@@ -748,6 +763,19 @@ export function useWorkflowRunner() {
             status: "done",
             errorMessage: undefined,
           }, true);
+          // Propagate image output to downstream nodes that accept referenceImageUrl
+          if (result.outputType === "image" && firstUrl) {
+            const wfDownstream = wfEdges
+              .filter((e) => e.source === nodeId)
+              .flatMap((edge) => {
+                const target = wfNodes.find((n) => n.id === edge.target);
+                const tt = target?.data.nodeType;
+                return (tt === "video_task" || tt === "comfyui_video" || tt === "comfyui_image")
+                  ? [{ id: edge.target, payload: { referenceImageUrl: firstUrl } }]
+                  : [];
+              });
+            if (wfDownstream.length > 0) useCanvasStore.getState().batchUpdateNodeData(wfDownstream);
+          }
           completed.push(nodeId);
           return "ok";
         }
