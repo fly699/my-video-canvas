@@ -2,7 +2,7 @@ import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { NODE_TYPE_LIST } from "../../lib/nodeConfig";
 import type { NodeType } from "../../../../shared/types";
 import {
-  FileText, Copy, Trash2, Plus, Play, Pin, PinOff, ChevronUp,
+  FileText, Copy, Trash2, Plus, Play, Pin, PinOff, ChevronUp, X, GripHorizontal,
 } from "lucide-react";
 import { NODE_ICONS } from "../../lib/nodeConfig";
 
@@ -29,9 +29,16 @@ export function ContextMenu({
   const menuRef = useRef<HTMLDivElement>(null);
   const [pos, setPos] = useState<{ left: number; top: number; maxHeight: number } | null>(null);
 
-  // Close on outside click / Escape
+  // Canvas (node picker) only: persist + drag controls so the picker can stay
+  // open on canvas as a floating palette. The per-node menu doesn't need these.
+  const [persistent, setPersistent] = useState(false);
+  const [dragPos, setDragPos] = useState<{ left: number; top: number } | null>(null);
+  const dragRef = useRef<{ startX: number; startY: number; initLeft: number; initTop: number } | null>(null);
+
+  // Close on outside click / Escape — but skip when canvas menu is persistent
   useEffect(() => {
     const handleClick = (e: MouseEvent) => {
+      if (persistent) return; // pinned menu doesn't auto-close
       if (menuRef.current && !menuRef.current.contains(e.target as Node)) onClose();
     };
     const handleEsc = (e: KeyboardEvent) => { if (e.key === "Escape") onClose(); };
@@ -41,7 +48,34 @@ export function ContextMenu({
       document.removeEventListener("mousedown", handleClick);
       document.removeEventListener("keydown", handleEsc);
     };
-  }, [onClose]);
+  }, [onClose, persistent]);
+
+  // Drag the menu by its header. Only matters when persistent — but allowed
+  // always so user can reposition before pinning.
+  const startDrag = (e: React.MouseEvent) => {
+    if (!menuRef.current) return;
+    // Don't start drag when clicking the pin / close buttons inside the header
+    if ((e.target as HTMLElement).closest("button")) return;
+    e.preventDefault();
+    const rect = menuRef.current.getBoundingClientRect();
+    dragRef.current = { startX: e.clientX, startY: e.clientY, initLeft: rect.left, initTop: rect.top };
+    const onMove = (mv: MouseEvent) => {
+      if (!dragRef.current) return;
+      // Clamp to viewport so the menu can't be lost off-screen.
+      const next = {
+        left: Math.max(0, Math.min(window.innerWidth - 100, dragRef.current.initLeft + mv.clientX - dragRef.current.startX)),
+        top:  Math.max(0, Math.min(window.innerHeight - 60, dragRef.current.initTop  + mv.clientY - dragRef.current.startY)),
+      };
+      setDragPos(next);
+    };
+    const onUp = () => {
+      dragRef.current = null;
+      window.removeEventListener("mousemove", onMove);
+      window.removeEventListener("mouseup", onUp);
+    };
+    window.addEventListener("mousemove", onMove);
+    window.addEventListener("mouseup", onUp);
+  };
 
   // Measure actual rendered size, then compute smart position
   useLayoutEffect(() => {
@@ -71,16 +105,18 @@ export function ContextMenu({
   return (
     <div
       ref={menuRef}
-      className="animate-scale-in"
+      className={persistent ? undefined : "animate-scale-in"}
       style={{
         position: "fixed",
-        left: pos?.left ?? x,
-        top: pos?.top ?? y,
+        left: dragPos?.left ?? pos?.left ?? x,
+        top: dragPos?.top ?? pos?.top ?? y,
         zIndex: 9999,
         background: "var(--c-base)",
-        border: "1px solid var(--c-bd2)",
+        border: `1px solid ${persistent ? "oklch(0.68 0.22 285 / 0.45)" : "var(--c-bd2)"}`,
         borderRadius: 12,
-        boxShadow: "0 8px 40px oklch(0 0 0 / 0.65), 0 2px 8px oklch(0 0 0 / 0.4)",
+        boxShadow: persistent
+          ? "0 8px 40px oklch(0 0 0 / 0.65), 0 0 0 1px oklch(0.68 0.22 285 / 0.25)"
+          : "0 8px 40px oklch(0 0 0 / 0.65), 0 2px 8px oklch(0 0 0 / 0.4)",
         minWidth: menuWidth,
         overflow: "hidden",
         // Before measurement: invisible to avoid position flash
@@ -89,19 +125,56 @@ export function ContextMenu({
     >
       {type === "canvas" ? (
         <>
+          {/* Header — draggable when persistent; hosts pin + close buttons */}
           <div
+            onMouseDown={startDrag}
             style={{
-              padding: "8px 10px 6px",
+              padding: "6px 6px 6px 10px",
               borderBottom: "1px solid var(--c-bd1)",
               display: "flex",
               alignItems: "center",
               gap: 6,
+              cursor: persistent ? "move" : "default",
+              userSelect: "none",
+              background: persistent ? "oklch(0.68 0.22 285 / 0.08)" : "transparent",
             }}
           >
-            <Plus className="w-3 h-3" style={{ color: "var(--c-t4)" }} />
-            <span style={{ fontSize: 10, fontWeight: 500, textTransform: "uppercase", letterSpacing: "0.06em", color: "var(--c-t4)" }}>
-              添加节点
+            {persistent && <GripHorizontal className="w-3 h-3" style={{ color: "oklch(0.78 0.16 285)" }} />}
+            {!persistent && <Plus className="w-3 h-3" style={{ color: "var(--c-t4)" }} />}
+            <span style={{
+              fontSize: 10, fontWeight: 500, textTransform: "uppercase", letterSpacing: "0.06em",
+              color: persistent ? "oklch(0.82 0.16 285)" : "var(--c-t4)",
+              flex: 1,
+            }}>
+              {persistent ? "添加节点（已固定）" : "添加节点"}
             </span>
+            <button
+              onClick={() => setPersistent((v) => !v)}
+              title={persistent ? "取消固定 — 关闭后将自动隐藏" : "固定显示 — 保持菜单在画布上，可拖拽位置"}
+              style={{
+                background: "none", border: "none", padding: 3, borderRadius: 4,
+                cursor: "pointer",
+                color: persistent ? "oklch(0.82 0.16 285)" : "var(--c-t3)",
+                display: "flex", alignItems: "center", justifyContent: "center",
+              }}
+              onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.background = "var(--c-elevated)"; }}
+              onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.background = "transparent"; }}
+            >
+              {persistent ? <PinOff size={11} /> : <Pin size={11} />}
+            </button>
+            <button
+              onClick={onClose}
+              title="关闭"
+              style={{
+                background: "none", border: "none", padding: 3, borderRadius: 4,
+                cursor: "pointer", color: "var(--c-t3)",
+                display: "flex", alignItems: "center", justifyContent: "center",
+              }}
+              onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.background = "var(--c-elevated)"; (e.currentTarget as HTMLElement).style.color = "var(--c-t1)"; }}
+              onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.background = "transparent"; (e.currentTarget as HTMLElement).style.color = "var(--c-t3)"; }}
+            >
+              <X size={12} />
+            </button>
           </div>
           <div style={{
             padding: "4px",
@@ -123,7 +196,7 @@ export function ContextMenu({
               return (
                 <button
                   key={config.type}
-                  onClick={() => { onAddNode?.(config.type); onClose(); }}
+                  onClick={() => { onAddNode?.(config.type); if (!persistent) onClose(); }}
                   style={{
                     display: "flex",
                     alignItems: "center",

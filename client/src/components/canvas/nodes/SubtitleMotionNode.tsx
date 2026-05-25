@@ -142,9 +142,19 @@ export const SubtitleMotionNode = memo(function SubtitleMotionNode({ id, selecte
   const isTranscribing = payload.status === "transcribing" || transcribeMutation.isPending;
   const isBurning = payload.status === "burning" || burnMutation.isPending;
 
+  const expanded = Boolean(selected) || Boolean((payload as { pinned?: boolean }).pinned);
+
   return (
     <BaseNode id={id} selected={selected} nodeType="subtitle_motion" title={data.title} minHeight={240} resizable>
-
+      <div
+        style={{
+          overflow: "hidden",
+          maxHeight: expanded ? "9999px" : "0px",
+          transition: expanded
+            ? "max-height 220ms cubic-bezier(0.23, 1, 0.32, 1)"
+            : "max-height 160ms cubic-bezier(0.77, 0, 0.175, 1)",
+        }}
+      >
       <div className="flex flex-col gap-3 p-3.5">
 
         {/* Tab bar */}
@@ -303,7 +313,7 @@ export const SubtitleMotionNode = memo(function SubtitleMotionNode({ id, selecte
           </>
         )}
       </div>
-
+      </div>{/* end collapse wrapper */}
     </BaseNode>
   );
 });
