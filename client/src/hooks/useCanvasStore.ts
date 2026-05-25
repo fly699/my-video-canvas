@@ -197,13 +197,32 @@ export const useCanvasStore = create<CanvasStore>((set, get) => ({
     const projectId = get().projectId;
     if (!projectId) throw new Error("Cannot add node before project is loaded");
 
+    // Auto-number duplicate-type nodes so users can tell them apart:
+    //   first one    → config.defaultTitle (unchanged, e.g. '提示词' or '分镜 #1')
+    //   subsequent  → '{base} #N' where base = defaultTitle stripped of any
+    //                 trailing '#N' suffix, and N = max(existing #) + 1.
+    //                 Picks max(existing) instead of count so deleting middle
+    //                 nodes doesn't produce duplicate numbers on re-add.
+    const sameType = get().nodes.filter((n) => n.data.nodeType === type);
+    const stripNum = /\s*#\d+$/;
+    const base = config.defaultTitle.replace(stripNum, "");
+    let title = config.defaultTitle;
+    if (sameType.length > 0) {
+      const maxNum = sameType.reduce((max, n) => {
+        const m = n.data.title.match(/#(\d+)$/);
+        // Untrailed titles count as #1, so the next one becomes #2 (not #1 again).
+        return m ? Math.max(max, parseInt(m[1], 10)) : Math.max(max, 1);
+      }, 0);
+      title = `${base} #${maxNum + 1}`;
+    }
+
     const newNode: CanvasNode = {
       id,
       type: "custom",
       position,
       data: {
         nodeType: type,
-        title: config.defaultTitle,
+        title,
         payload: getDefaultPayload(type),
         projectId,
       },
