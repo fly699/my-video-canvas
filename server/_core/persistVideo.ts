@@ -64,21 +64,30 @@ async function persistImpl(upstreamUrl: string, provider: string): Promise<strin
     const reader = res.body.getReader();
     const chunks: Uint8Array[] = [];
     let total = 0;
+    let completed = false;
+    let overflowed = false;
     try {
       while (true) {
         const { done, value } = await reader.read();
-        if (done) break;
+        if (done) { completed = true; break; }
         total += value.byteLength;
         if (total > MAX_PERSIST_VIDEO_BYTES) {
-          await reader.cancel();
+          overflowed = true;
           console.warn(`[persistVideo] video stream exceeded ${MAX_PERSIST_VIDEO_BYTES} bytes for ${provider}, keeping upstream URL`);
-          return upstreamUrl;
+          break;
         }
         chunks.push(value);
       }
     } finally {
+      // Cancel on any non-completion exit (byte-cap, network error mid-stream)
+      // so the underlying HTTP/TCP socket is released to the connection pool;
+      // without this, bursty concurrent persistence can starve the pool.
+      if (!completed) {
+        try { await reader.cancel(); } catch { /* ignore */ }
+      }
       try { reader.releaseLock(); } catch { /* ignore */ }
     }
+    if (overflowed) return upstreamUrl;
     // Buffer.concat accepts Uint8Array[] directly — no need for an extra
     // chunks.map(Buffer.from) pass (was doubling peak memory ~2x).
     const buf = Buffer.concat(chunks, total);

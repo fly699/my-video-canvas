@@ -169,11 +169,16 @@ export const useCanvasStore = create<CanvasStore>((set, get) => ({
         const targetNode = state.nodes.find((n) => n.id === connection.target);
         // ImageGenNode exposes two source handles: the BaseNode default
         // `output` (top:50%) and the dedicated `image-out` (top:75%). Accept
-        // either when wiring into video_task's ref-image-in so users dragging
-        // from the default dot still get auto-fill instead of a silent miss.
+        // either when wiring into any node with a `ref-image-in` handle so
+        // users dragging from the default dot still get auto-fill instead of
+        // a silent miss. useWorkflowRunner propagates to the same three
+        // target types, so keep them in sync here.
+        const targetType = targetNode?.data.nodeType;
+        const targetAcceptsRefImage =
+          targetType === "video_task" || targetType === "comfyui_video" || targetType === "comfyui_image";
         if (
           sourceNode?.data.nodeType === "image_gen" &&
-          targetNode?.data.nodeType === "video_task" &&
+          targetAcceptsRefImage &&
           (connection.sourceHandle === "image-out" || connection.sourceHandle === "output") &&
           connection.targetHandle === "ref-image-in"
         ) {
