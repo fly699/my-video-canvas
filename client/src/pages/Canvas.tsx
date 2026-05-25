@@ -28,6 +28,7 @@ import { FilmstripPanel } from "../components/canvas/FilmstripPanel";
 import { TimelinePanel } from "../components/canvas/TimelinePanel";
 import { isConnectionValid } from "../lib/connectionRules";
 import { BeginnerGuide, ConnectionHintsPanel } from "../components/canvas/BeginnerGuide";
+import { HelpPanel } from "../components/canvas/HelpPanel";
 import { WorkflowStatusPanel } from "../components/canvas/WorkflowStatusPanel";
 import { ThemeSwitcher } from "../components/canvas/ThemeSwitcher";
 import { CanvasBgPicker, loadCanvasBg, type CanvasBg } from "../components/canvas/CanvasBgPicker";
@@ -71,6 +72,7 @@ import {
   BookmarkPlus,
   Palette,
   ListVideo,
+  HelpCircle,
 } from "lucide-react";
 import { loadNamedSnapshots, type NamedSnapshot } from "../hooks/useCanvasStore";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
@@ -350,6 +352,7 @@ function CanvasInner({ projectId }: { projectId: number }) {
   const [globalAspectRatio, setGlobalAspectRatio] = useState<string | null>(null);
   const [showRatioPicker, setShowRatioPicker] = useState(false);
   const [showConnectionHints, setShowConnectionHints] = useState(false);
+  const [showHelp, setShowHelp] = useState(false);
   const { mode: canvasMode, setMode: setCanvasMode } = useCanvasMode();
   const { theme } = useTheme();
   const isLight = theme === "light" || theme === "warm" || canvasMode === "creative";
@@ -749,7 +752,7 @@ function CanvasInner({ projectId }: { projectId: number }) {
         saveCanvas();
         if (wasDirty) toast.success("已保存");
       }
-      if (e.key === "Escape") { setContextMenu(null); setShowNodePicker(false); setShowNodeSearch(false); setShowTemplates(false); runConfirmOpenRef.current = false; setShowRunConfirm(false); setRunConfirmCountdown(5); }
+      if (e.key === "Escape") { setContextMenu(null); setShowNodePicker(false); setShowNodeSearch(false); setShowTemplates(false); runConfirmOpenRef.current = false; setShowRunConfirm(false); setRunConfirmCountdown(5); setShowHelp(false); }
 
       // Cmd+K / Ctrl+K — Node search (skip when typing in an input)
       if (!isEditing && (e.metaKey || e.ctrlKey) && e.key === "k") {
@@ -945,6 +948,21 @@ function CanvasInner({ projectId }: { projectId: number }) {
             <Users className="w-3.5 h-3.5" />
             {collaboratorList.length > 0 && <span>{collaboratorList.length}</span>}
           </button>
+
+          {/* Help guide */}
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <button
+                onClick={() => setShowHelp((v) => !v)}
+                className="topbar-btn"
+                data-active={showHelp ? "true" : undefined}
+                style={showHelp ? { background: "oklch(0.68 0.22 285 / 0.12)", border: "1px solid oklch(0.68 0.22 285 / 0.3)", color: "oklch(0.68 0.22 285)" } : undefined}
+              >
+                <HelpCircle className="w-3.5 h-3.5" />
+              </button>
+            </TooltipTrigger>
+            <TooltipContent side="bottom" className="text-xs">操作指南</TooltipContent>
+          </Tooltip>
 
           {/* Presentation mode */}
           <Tooltip>
@@ -1475,6 +1493,11 @@ function CanvasInner({ projectId }: { projectId: number }) {
           />
           <WorkflowStatusPanel runState={runState} onReset={resetWorkflowRun} />
           <BeginnerGuide />
+          <HelpPanel
+            open={showHelp}
+            onClose={() => setShowHelp(false)}
+            activeNodeType={nodes.find((n) => n.selected)?.data.nodeType ?? null}
+          />
 
           {/* ── Floating toolbar — snaps to viewport edge; vertical when on left/right ── */}
           <div
