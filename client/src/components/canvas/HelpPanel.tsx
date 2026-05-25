@@ -283,7 +283,7 @@ function CollapsibleGroup({
           overflow: "hidden",
           maxHeight: open ? 9999 : 0,
           opacity: open ? 1 : 0,
-          transition: "opacity 200ms ease",
+          transition: "max-height 200ms ease, opacity 200ms ease",
           paddingLeft: heading ? 16 : 0,
         }}
       >
