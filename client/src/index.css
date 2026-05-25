@@ -805,34 +805,6 @@ button:active:not(:disabled) {
   height: 1px !important;
 }
 
-/* Vertical mode: hide text labels in buttons so toolbar stays narrow.
- * Icons-only with their existing Tooltip provides identical functionality. */
-.canvas-bottombar[data-bar-edge="left"] [data-toolbar-label],
-.canvas-bottombar[data-bar-edge="right"] [data-toolbar-label] {
-  display: none !important;
-}
-
-/* Vertical mode: zoom display can drop the min-width since it has no text label to fit */
-.canvas-bottombar[data-bar-edge="left"] button[style*="min-width: 44px"],
-.canvas-bottombar[data-bar-edge="right"] button[style*="min-width: 44px"] {
-  min-width: 0 !important;
-  padding-left: 6px !important;
-  padding-right: 6px !important;
-}
-
-/* Vertical mode: shrink primary buttons' horizontal padding to match icon-only width */
-.canvas-bottombar[data-bar-edge="left"] button.gap-1\.5,
-.canvas-bottombar[data-bar-edge="right"] button.gap-1\.5 {
-  padding-left: 8px !important;
-  padding-right: 8px !important;
-}
-
-/* Vertical mode: stack ThemeSwitcher swatches vertically too */
-.canvas-bottombar[data-bar-edge="left"] [data-theme-swatches],
-.canvas-bottombar[data-bar-edge="right"] [data-theme-swatches] {
-  flex-direction: column !important;
-}
-
 /* Creative mode edge lines */
 :root[data-canvas-mode="creative"] .react-flow__edge-path {
   stroke-width: 1 !important;
