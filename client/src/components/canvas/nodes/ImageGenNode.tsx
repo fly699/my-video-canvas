@@ -932,7 +932,12 @@ export const ImageGenNode = memo(function ImageGenNode({ id, selected, data }: P
         </div>{/* end input collapse wrapper */}
       </div>
 
-      {/* Output handle — source/circle = sends image to VideoTaskNode */}
+      {/* Image-specific output handle — kept separate from BaseNode's default
+          `output` (at top:50%) so the two right-side dots don't visually collide.
+          Position at top:75% mirrors the asymmetric layout used by VideoTaskNode's
+          ref-image-in (top:25%). Legacy edges with sourceHandle="image-out" remain
+          functional, plus useCanvasStore's onConnect auto-fill for image_gen →
+          video_task still finds this handle. */}
       <Handle
         type="source"
         position={Position.Right}
@@ -943,6 +948,7 @@ export const ImageGenNode = memo(function ImageGenNode({ id, selected, data }: P
           background: accent,
           border: `2px solid var(--c-canvas)`,
           right: -6,
+          top: "75%",
         }}
         title="图像输出 → 连接到视频任务参考图"
       />
