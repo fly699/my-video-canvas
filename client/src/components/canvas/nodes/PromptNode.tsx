@@ -262,6 +262,18 @@ export const PromptNode = memo(function PromptNode({ id, selected, data }: Props
           </div>
         ) : null}
 
+        {/* ── Input area (collapsed when not selected, mirrors ImageGenNode UX) ── */}
+        <div
+          style={{
+            overflow: "hidden",
+            maxHeight: selected ? "9999px" : "0px",
+            transition: selected
+              ? "max-height 220ms cubic-bezier(0.23, 1, 0.32, 1)"
+              : "max-height 160ms cubic-bezier(0.77, 0, 0.175, 1)",
+          }}
+        >
+        <div className="flex flex-col gap-3">
+
         {/* Positive prompt */}
         <div>
           <label style={{ fontSize: 10.5, fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.06em", color: "var(--c-t4)", display: "block", marginBottom: 5 }}>
@@ -506,6 +518,8 @@ export const PromptNode = memo(function PromptNode({ id, selected, data }: Props
             {genImageMutation.isPending ? "生成中..." : batchMode ? "生成 4 图" : "AI 生成图像"}
           </button>
         </div>
+        </div>{/* end inner gap-3 */}
+        </div>{/* end input collapse wrapper */}
       </div>
     </BaseNode>
   );
