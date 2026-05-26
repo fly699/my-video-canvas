@@ -251,15 +251,32 @@ export async function submitHiggsfieldVideo(
   const endpoint = `${HIGGSFIELD_BASE}/v1/image2video/dop`;
   const p = opts.params ?? {};
 
+  // Build nested `params` object (required by Higgsfield DoP API — Pydantic enforces its presence)
+  const innerParams: Record<string, unknown> = {
+    enhance_prompt: p.enhance_prompt ?? false,
+  };
+  // Duration: dop-standard supports 4 or 8s; turbo/lite only support 4s
+  if (p.duration !== undefined) innerParams.duration = Number(p.duration);
+  // Resolution: "480p" | "720p" | "1080p"
+  if (p.resolution !== undefined) innerParams.resolution = String(p.resolution);
+  // Seed (optional — omit rather than send null/undefined)
+  if (p.seed !== undefined && p.seed !== null && String(p.seed) !== "") {
+    innerParams.seed = Number(p.seed);
+  }
+  // Camera motion: build object from two flat UI params
+  if (p.camera_motion_type && String(p.camera_motion_type) !== "none") {
+    innerParams.camera_motion = {
+      type: String(p.camera_motion_type),
+      speed: String(p.camera_motion_speed ?? "normal"),
+    };
+  }
+
   const body: Record<string, unknown> = {
     model: dopModel,
     prompt: opts.prompt,
     input_images: [{ type: "image_url", image_url: opts.referenceImageUrl }],
+    params: innerParams,
   };
-  if (p.seed !== undefined) body.seed = p.seed;
-  if (p.enhance_prompt !== undefined) body.enhance_prompt = p.enhance_prompt;
-  // Optional camera motion presets: [{ id: string, strength: number }]
-  if (Array.isArray(p.motions)) body.motions = p.motions;
 
   const res = await fetch(endpoint, {
     method: "POST",

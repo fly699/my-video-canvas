@@ -66,6 +66,15 @@ export const StoryboardNode = memo(function StoryboardNode({ id, selected, data 
       return !!cp.referenceImageUrl;
     });
   });
+
+  // Outgoing edges → connected video_task node IDs (for prompt push button)
+  const connectedVideoNodeIds = useCanvasStore((s) => {
+    const outgoingEdges = s.edges.filter((e) => e.source === id);
+    return outgoingEdges
+      .map((edge) => s.nodes.find((n) => n.id === edge.target && n.data.nodeType === "video_task"))
+      .filter(Boolean)
+      .map((n) => n!.id as string);
+  });
   const { mode: canvasMode } = useCanvasMode();
   const isCreative = canvasMode === "creative";
   const payload = data.payload;
@@ -558,6 +567,37 @@ export const StoryboardNode = memo(function StoryboardNode({ id, selected, data 
               {(payload.promptText ?? "").length} 字
             </span>
           </div>
+          {connectedVideoNodeIds.length > 0 && (
+            <button
+              onClick={() => {
+                if (!payload.promptText?.trim()) { toast.error("请先填写提示词再发送"); return; }
+                const { updateNodeData: updateStore } = useCanvasStore.getState();
+                connectedVideoNodeIds.forEach((videoNodeId) => {
+                  updateStore(videoNodeId, {
+                    prompt: payload.promptText,
+                    ...(payload.imageUrl ? { referenceImageUrl: payload.imageUrl } : {}),
+                  });
+                });
+                toast.success(
+                  connectedVideoNodeIds.length === 1
+                    ? "提示词已发送到视频节点"
+                    : `提示词已发送至 ${connectedVideoNodeIds.length} 个视频节点`
+                );
+              }}
+              className="nodrag flex items-center gap-1 px-2 py-1 rounded text-[10px] transition-all self-start"
+              style={{
+                background: "oklch(0.62 0.20 25 / 0.12)",
+                borderWidth: 1,
+                borderStyle: "solid",
+                borderColor: "oklch(0.62 0.20 25 / 0.35)",
+                color: "oklch(0.68 0.18 25)",
+                cursor: "pointer",
+              }}
+            >
+              <Film className="w-3 h-3" />
+              发送到视频节点
+            </button>
+          )}
           <button
             onClick={handleExpandPrompt}
             disabled={expandingPrompt || expandingDesc || translating || !payload.description?.trim()}
