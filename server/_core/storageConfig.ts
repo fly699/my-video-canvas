@@ -1,10 +1,10 @@
 /**
  * In-memory 30s cache of the admin-controlled storage persistence toggles
- * (`persistAudio`, `persistVideo`).
+ * (`persistAudio`, `persistVideo`, `persistImage`).
  *
- * Why cache: every generated audio/video clip would otherwise add a DB query
- * in the hot path. 30s staleness is acceptable — admin actions to flip a
- * switch propagate within at most 30s, which is fine for a billing-cost
+ * Why cache: every generated audio/video/image clip would otherwise add a DB
+ * query in the hot path. 30s staleness is acceptable — admin actions to flip
+ * a switch propagate within at most 30s, which is fine for a billing-cost
  * toggle (no security implication).
  *
  * Invalidated immediately when the admin mutation runs via
@@ -12,7 +12,7 @@
  */
 import * as db from "../db";
 
-type Cached = { persistAudio: boolean; persistVideo: boolean };
+type Cached = { persistAudio: boolean; persistVideo: boolean; persistImage: boolean };
 
 let _cached: Cached | null = null;
 let _expiresAt = 0;
@@ -44,7 +44,7 @@ export async function getCachedStorageSettings(): Promise<Cached> {
       // that DB outages can't silently bypass the admin's explicit "off"
       // intent and burn S3 quota.
       if (_cached) return _cached;
-      return { persistAudio: false, persistVideo: false };
+      return { persistAudio: false, persistVideo: false, persistImage: false };
     } finally {
       _inflight = null;
     }
@@ -58,4 +58,8 @@ export async function isAudioPersistenceEnabled(): Promise<boolean> {
 
 export async function isVideoPersistenceEnabled(): Promise<boolean> {
   return (await getCachedStorageSettings()).persistVideo;
+}
+
+export async function isImagePersistenceEnabled(): Promise<boolean> {
+  return (await getCachedStorageSettings()).persistImage;
 }

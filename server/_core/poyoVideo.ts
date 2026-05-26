@@ -1,4 +1,5 @@
 import { ENV } from "./env";
+import { resolveToAbsoluteUrl } from "../storage";
 
 const POYO_BASE = "https://api.poyo.ai";
 
@@ -36,10 +37,17 @@ export async function submitPoyoVideo(opts: {
   const model = POYO_PROVIDER_MAP[opts.provider];
   if (!model) throw new Error(`Unknown poyo provider: ${opts.provider}`);
 
+  // Poyo's API fetches the reference image from upstream — relative paths
+  // like `/manus-storage/{key}` aren't resolvable on their side, so convert
+  // to an absolute presigned S3 URL before submitting.
+  const refImageAbsoluteUrl = opts.referenceImageUrl
+    ? await resolveToAbsoluteUrl(opts.referenceImageUrl)
+    : undefined;
+
   const input: Record<string, unknown> = {
     prompt: opts.prompt,
     ...(opts.negativePrompt ? { negative_prompt: opts.negativePrompt } : {}),
-    ...(opts.referenceImageUrl ? { reference_image_url: opts.referenceImageUrl } : {}),
+    ...(refImageAbsoluteUrl ? { reference_image_url: refImageAbsoluteUrl } : {}),
   };
 
   if (model === "seedance-2") {

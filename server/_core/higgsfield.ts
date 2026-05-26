@@ -1,5 +1,6 @@
 import { ENV } from "./env";
-import { storagePut } from "../storage";
+import { storagePut, resolveToAbsoluteUrl } from "../storage";
+import { isImagePersistenceEnabled } from "./storageConfig";
 
 const HIGGSFIELD_BASE = "https://platform.higgsfield.ai";
 const POLL_INTERVAL_MS = 4000;
@@ -123,6 +124,14 @@ async function pollHiggsfieldRequest(requestId: string): Promise<{ fileUrl: stri
 export async function generateHiggsfieldImage(
   opts: HiggsfieldImageOptions
 ): Promise<HiggsfieldImageResult> {
+  // Higgsfield's API rejects relative URLs like `/manus-storage/{key}` with
+  // 422 "Input should be a valid URL, relative URL without a base". Resolve
+  // our internal proxy paths to a short-lived absolute S3 presigned URL
+  // BEFORE we hand the reference off to upstream.
+  const refImageAbsoluteUrl = opts.referenceImageUrl
+    ? await resolveToAbsoluteUrl(opts.referenceImageUrl)
+    : undefined;
+
   // Soul image uses a versioned endpoint path /v1/text2image/soul — different
   // convention from the slug-style flux-pro/reve/seedream endpoints.
   // (Per official higgsfield-js SDK src/v2/types.ts & README endpoint examples.)
@@ -168,10 +177,10 @@ export async function generateHiggsfieldImage(
     fields.batch_size = opts.batchSize ?? 1;   // required: 1 | 4
     if (opts.enhancePrompt !== undefined) fields.enhance_prompt = opts.enhancePrompt;
     if (opts.seed !== undefined) fields.seed = opts.seed;
-    if (opts.referenceImageUrl) {
+    if (refImageAbsoluteUrl) {
       // Soul image-to-image uses `image_reference` (NOT `input_images` — that
       // form is DoP-video specific). Per SoulText2ImageInput type definition.
-      fields.image_reference = { type: "image_url", image_url: opts.referenceImageUrl };
+      fields.image_reference = { type: "image_url", image_url: refImageAbsoluteUrl };
     }
   } else if (
     opts.model === "reve/text-to-image" ||
@@ -192,10 +201,10 @@ export async function generateHiggsfieldImage(
     //   resolution:   "1K" / "2K" / "4K"
     if (opts.aspectRatio) fields.aspect_ratio = opts.aspectRatio;
     if (opts.resolution) fields.resolution = opts.resolution;
-    if (opts.referenceImageUrl) {
+    if (refImageAbsoluteUrl) {
       // Verified: v2 image models accept ref as a plain `image_url` string
       // (not the `{type, image_url}` object form Soul uses).
-      fields.image_url = opts.referenceImageUrl;
+      fields.image_url = refImageAbsoluteUrl;
     }
   }
 
@@ -243,7 +252,12 @@ export async function generateHiggsfieldImage(
   const { fileUrl, fileUrls } = await pollHiggsfieldRequest(requestId);
   const allFileUrls = fileUrls ?? [fileUrl];
 
-  // Download and re-upload all images to own storage for persistence
+  // Re-host to Manus S3 so the URL doesn't die after Higgsfield's temp CDN
+  // expires. Admin can disable via the StoragePanel persistImage toggle.
+  const persistEnabled = await isImagePersistenceEnabled();
+  if (!persistEnabled) {
+    return { url: allFileUrls[0], urls: allFileUrls.length > 1 ? allFileUrls : undefined };
+  }
   const storedUrls: string[] = [];
   for (const fUrl of allFileUrls) {
     try {
@@ -256,7 +270,7 @@ export async function generateHiggsfieldImage(
         continue;
       }
     } catch { /* fall through */ }
-    storedUrls.push(fUrl); // fallback to original URL
+    storedUrls.push(fUrl); // fallback to original URL on per-image failure
   }
 
   return { url: storedUrls[0], urls: storedUrls.length > 1 ? storedUrls : undefined };
@@ -326,6 +340,13 @@ export async function submitHiggsfieldVideo(
   if (!opts.referenceImageUrl) {
     throw new Error("Higgsfield DoP 视频模型必须提供参考图（reference image）");
   }
+  // Resolve our internal proxy path to an absolute presigned S3 URL — the
+  // upstream API rejects relative paths with 422 "Input should be a valid
+  // URL, relative URL without a base". User reproduced via storyboard →
+  // video task hand-off where the storyboard's `imageUrl` (form
+  // `/manus-storage/generated/hf-…png`) flowed directly into DoP's
+  // `input_images[0].image_url`.
+  const refImageAbsoluteUrl = await resolveToAbsoluteUrl(opts.referenceImageUrl);
 
   const endpoint = `${HIGGSFIELD_BASE}/v1/image2video/dop`;
   const p = opts.params ?? {};
@@ -341,7 +362,7 @@ export async function submitHiggsfieldVideo(
   const innerParams: Record<string, unknown> = {
     model: dopModel,
     prompt: opts.prompt,
-    input_images: [{ type: "image_url", image_url: opts.referenceImageUrl }],
+    input_images: [{ type: "image_url", image_url: refImageAbsoluteUrl }],
     enhance_prompt: p.enhance_prompt ?? false,
   };
   // Duration: dop-turbo and dop-lite only support 4s; dop-preview supports 4 or 8s

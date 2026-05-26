@@ -1,7 +1,8 @@
 import { useState } from "react";
+import { useLocation } from "wouter";
 import { trpc } from "@/lib/trpc";
 import { useAuth } from "@/_core/hooks/useAuth";
-import { Shield, Trash2, Plus, ToggleLeft, ToggleRight, ClipboardList, RefreshCw, HardDrive } from "lucide-react";
+import { Shield, Trash2, Plus, ToggleLeft, ToggleRight, ClipboardList, RefreshCw, HardDrive, ArrowLeft } from "lucide-react";
 
 type EntryType = "ip" | "user";
 type Tab = "whitelist" | "logs" | "storage";
@@ -29,6 +30,17 @@ const ACTION_COLORS: Record<string, string> = {
 export default function AdminPage() {
   const { user, loading: authLoading } = useAuth();
   const [activeTab, setActiveTab] = useState<Tab>("whitelist");
+  const [, navigate] = useLocation();
+  // History.back() handles "I came from a project" / "I came via direct URL"
+  // both correctly. If there's no history entry (e.g. direct deep link), fall
+  // back to the home page so the user is never trapped on this screen.
+  const handleBack = () => {
+    if (typeof window !== "undefined" && window.history.length > 1) {
+      window.history.back();
+    } else {
+      navigate("/");
+    }
+  };
 
   if (authLoading) {
     return (
@@ -55,8 +67,32 @@ export default function AdminPage() {
   return (
     <div style={pageStyle}>
       <div style={{ width: "100%", maxWidth: "900px" }}>
-        {/* Header */}
+        {/* Header — back button + title */}
         <div style={{ display: "flex", alignItems: "center", gap: "10px", marginBottom: "24px" }}>
+          <button
+            onClick={handleBack}
+            title="返回上一页"
+            style={{
+              width: 32, height: 32, padding: 0,
+              display: "flex", alignItems: "center", justifyContent: "center",
+              borderRadius: 8,
+              background: "var(--c-surface, rgba(255,255,255,0.04))",
+              border: "1px solid var(--c-bd2, rgba(255,255,255,0.08))",
+              color: "var(--c-t2, rgba(255,255,255,0.65))",
+              cursor: "pointer",
+              transition: "background 150ms ease, color 150ms ease",
+            }}
+            onMouseEnter={(e) => {
+              (e.currentTarget as HTMLElement).style.background = "var(--c-elevated, rgba(255,255,255,0.08))";
+              (e.currentTarget as HTMLElement).style.color = "var(--c-t1, #f0f0f4)";
+            }}
+            onMouseLeave={(e) => {
+              (e.currentTarget as HTMLElement).style.background = "var(--c-surface, rgba(255,255,255,0.04))";
+              (e.currentTarget as HTMLElement).style.color = "var(--c-t2, rgba(255,255,255,0.65))";
+            }}
+          >
+            <ArrowLeft style={{ width: 16, height: 16 }} />
+          </button>
           <Shield style={{ width: "22px", height: "22px", color: "oklch(0.72 0.2 285)" }} />
           <h1 style={{ margin: 0, fontSize: "20px", fontWeight: 700, color: "var(--c-t1, #f0f0f4)" }}>
             管理后台
@@ -109,15 +145,16 @@ function StoragePanel() {
   const settings = settingsQuery.data;
   const loading = settingsQuery.isLoading;
 
-  const handleToggle = (kind: "persistAudio" | "persistVideo") => {
+  const handleToggle = (kind: "persistAudio" | "persistVideo" | "persistImage") => {
     if (!settings) return;
     const newValue = !settings[kind];
     if (!newValue) {
-      const confirmed = confirm(
-        kind === "persistAudio"
-          ? "确定关闭音频持久化？\n\n新生成的音频将直接使用 Poyo 上游 URL，约 24 小时后过期。已存在的音频不受影响。"
-          : "确定关闭视频持久化？\n\n新生成的视频将直接使用上游 CDN URL（Poyo/Higgsfield），约 24 小时后过期。已存在的视频不受影响。"
-      );
+      const messages: Record<typeof kind, string> = {
+        persistAudio: "确定关闭音频持久化？\n\n新生成的音频将直接使用 Poyo 上游 URL，约 24 小时后过期。已存在的音频不受影响。",
+        persistVideo: "确定关闭视频持久化？\n\n新生成的视频将直接使用上游 CDN URL（Poyo/Higgsfield），约 24 小时后过期。已存在的视频不受影响。",
+        persistImage: "确定关闭图像持久化？\n\n新生成的图像将直接使用上游 CDN URL（Poyo 24h / Higgsfield 临时），过期后画布上的缩略图、分镜参考图都会断图。\n\n注意：Forge 内置图像后端始终持久化（不受此开关影响）。已存在的图像不受影响。",
+      };
+      const confirmed = confirm(messages[kind]);
       if (!confirmed) return;
     }
     setMut.mutate({ [kind]: newValue });
@@ -133,9 +170,9 @@ function StoragePanel() {
               Manus S3 存储持久化
             </h3>
             <p style={{ margin: "4px 0 0", fontSize: 12, color: "var(--c-t2, rgba(255,255,255,0.55))", lineHeight: 1.5 }}>
-              开启后系统会自动把生成的音频/视频下载并存到 Manus S3，URL 永久可用。<br />
+              开启后系统会自动把生成的音频/视频/图像下载并存到 Manus S3，URL 永久可用。<br />
               关闭后节点降级为直接使用模型提供商的上游 URL（Poyo: 24h 后过期；Higgsfield: 临时 CDN）。<br />
-              图像生成不受此开关影响（始终持久化）。
+              注：Forge 内置图像后端始终持久化（base64 返回无法走上游降级）。
             </p>
           </div>
         </div>
@@ -147,6 +184,13 @@ function StoragePanel() {
 
       {settings && (
         <>
+          <ToggleRow
+            label="持久化图像"
+            description="Poyo / Higgsfield 图像生成输出（Forge 不受影响）"
+            enabled={settings.persistImage}
+            disabled={setMut.isPending}
+            onClick={() => handleToggle("persistImage")}
+          />
           <ToggleRow
             label="持久化音频"
             description="音乐生成 / 配音 / TTS 输出"

@@ -78,6 +78,41 @@ export async function storageGet(relKey: string): Promise<{ key: string; url: st
   return { key, url: `/manus-storage/${key}` };
 }
 
+/**
+ * Resolve a media URL (which may be an absolute http(s) URL or our internal
+ * `/manus-storage/{key}` proxy path) into an ABSOLUTE URL that external
+ * services can fetch. Used when handing a reference image off to upstream
+ * APIs (Higgsfield, Poyo, …) that cannot resolve relative paths against
+ * our domain — they returned 422 with "Input should be a valid URL,
+ * relative URL without a base" when we passed `/manus-storage/...` directly.
+ *
+ * Absolute http(s) URLs pass through unchanged. Internal paths are resolved
+ * to a short-lived S3 presigned URL via the same Forge endpoint the proxy
+ * uses; the upstream API has minutes (typical signed-URL TTL) to fetch
+ * before it expires.
+ */
+export async function resolveToAbsoluteUrl(urlOrRelPath: string): Promise<string> {
+  if (/^https?:\/\//i.test(urlOrRelPath)) return urlOrRelPath;
+  if (!urlOrRelPath.startsWith("/manus-storage/")) {
+    throw new Error(`无法解析为绝对 URL：${urlOrRelPath.slice(0, 80)}`);
+  }
+  const key = urlOrRelPath.slice("/manus-storage/".length);
+  const { forgeUrl, forgeKey } = getForgeConfig();
+  const presignUrl = new URL("v1/storage/presign/get", forgeUrl + "/");
+  presignUrl.searchParams.set("path", key);
+  const resp = await fetch(presignUrl, {
+    headers: { Authorization: `Bearer ${forgeKey}` },
+    signal: AbortSignal.timeout(10_000),
+  });
+  if (!resp.ok) {
+    const msg = await resp.text().catch(() => resp.statusText);
+    throw new Error(`Storage presign GET failed (${resp.status}): ${msg.slice(0, 200)}`);
+  }
+  const { url } = (await resp.json()) as { url: string };
+  if (!url) throw new Error("Forge returned empty signed GET URL");
+  return url;
+}
+
 export async function storageGetSignedUrl(relKey: string): Promise<string> {
   const { forgeUrl, forgeKey } = getForgeConfig();
   const key = normalizeKey(relKey);
