@@ -1,4 +1,5 @@
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
+import { usePersistentState } from "../../hooks/usePersistentState";
 import { NODE_TYPE_LIST } from "../../lib/nodeConfig";
 import type { NodeType } from "../../../../shared/types";
 import {
@@ -31,8 +32,36 @@ export function ContextMenu({
 
   // Canvas (node picker) only: persist + drag controls so the picker can stay
   // open on canvas as a floating palette. The per-node menu doesn't need these.
-  const [persistent, setPersistent] = useState(false);
-  const [dragPos, setDragPos] = useState<{ left: number; top: number } | null>(null);
+  //
+  // All three pieces (pinned, drag offset, size) survive page reload via
+  // localStorage so users don't have to re-pin and re-resize after every
+  // refresh. Drag position uses absolute viewport coords with bounds-checking
+  // on mount (see useLayoutEffect below) so a saved position outside the
+  // current viewport (smaller screen / different monitor) snaps back into
+  // view rather than rendering off-screen.
+  const [persistent, setPersistent] = usePersistentState<boolean>(
+    "ui:ctxmenu:pinned:v1",
+    false,
+    { validate: (v) => (typeof v === "boolean" ? v : null) },
+  );
+  const [dragPos, setDragPos] = usePersistentState<{ left: number; top: number } | null>(
+    "ui:ctxmenu:pos:v1",
+    null,
+    { validate: (v) => {
+      if (v === null) return null as unknown as { left: number; top: number } | null;
+      if (!v || typeof v !== "object") return null;
+      const o = v as { left?: unknown; top?: unknown };
+      if (typeof o.left !== "number" || typeof o.top !== "number") return null;
+      // Reject positions outside the current viewport (e.g. saved on a bigger
+      // monitor, opened on a laptop). Returning null falls back to the
+      // default `null`, which makes the menu open at its anchor (x,y) prop.
+      if (typeof window !== "undefined") {
+        if (o.left < 0 || o.left > window.innerWidth - 80) return null;
+        if (o.top < 0 || o.top > window.innerHeight - 60) return null;
+      }
+      return { left: o.left, top: o.top };
+    } },
+  );
   const dragRef = useRef<{
     startX: number;
     startY: number;
@@ -45,7 +74,17 @@ export function ContextMenu({
   // Resize state — only active when persistent
   const MIN_W = 180;
   const MIN_H = 160;
-  const [panelSize, setPanelSize] = useState<{ w: number; h: number | null }>({ w: 210, h: null });
+  const [panelSize, setPanelSize] = usePersistentState<{ w: number; h: number | null }>(
+    "ui:ctxmenu:size:v1",
+    { w: 210, h: null },
+    { validate: (v) => {
+      if (!v || typeof v !== "object") return null;
+      const o = v as { w?: unknown; h?: unknown };
+      if (typeof o.w !== "number" || o.w < MIN_W) return null;
+      if (o.h !== null && (typeof o.h !== "number" || o.h < MIN_H)) return null;
+      return { w: o.w, h: o.h as number | null };
+    } },
+  );
   const resizeRef = useRef<{
     startX: number;
     startY: number;
@@ -55,7 +94,10 @@ export function ContextMenu({
     onUp: () => void;
   } | null>(null);
 
-  // Reset size when unpinned; cancel any in-flight resize drag to avoid listener leak
+  // Cancel any in-flight resize drag when unpinned to avoid listener leak.
+  // Don't reset panelSize — we now persist size, and clobbering it on every
+  // unpin would force the user to re-resize after each toggle. The size
+  // remains active only while persistent=true (see render logic below).
   useEffect(() => {
     if (!persistent) {
       if (resizeRef.current) {
@@ -63,7 +105,6 @@ export function ContextMenu({
         window.removeEventListener("mouseup", resizeRef.current.onUp);
         resizeRef.current = null;
       }
-      setPanelSize({ w: 210, h: null });
     }
   }, [persistent]);
 

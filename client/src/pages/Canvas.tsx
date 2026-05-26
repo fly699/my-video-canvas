@@ -13,6 +13,7 @@ import {
 } from "@xyflow/react";
 import "@xyflow/react/dist/style.css";
 import { useCanvasStore, type CanvasNode, type CanvasEdge } from "../hooks/useCanvasStore";
+import { usePersistentState } from "../hooks/usePersistentState";
 import { useShallow } from "zustand/react/shallow";
 import { useWorkflowRunner, RUNNABLE_TYPES } from "../hooks/useWorkflowRunner";
 import { WorkflowRunProvider } from "../contexts/WorkflowRunContext";
@@ -392,10 +393,42 @@ function CanvasInner({ projectId }: { projectId: number }) {
   const nodesRef = useRef(nodes);
   nodesRef.current = nodes;
   const [viewport, setViewport] = useState({ x: 0, y: 0, zoom: 1 });
-  const [barEdge, setBarEdge] = useState<"bottom" | "top" | "left" | "right">("bottom");
-  const [barAlong, setBarAlong] = useState(0); // px offset along the anchor edge (centered = 0)
-  const [mmPos, setMmPos] = useState({ bottom: 80, right: 8 });
-  const [mmSize, setMmSize] = useState({ w: 200, h: 140 });
+  // Toolbar & minimap layout persists across reloads. Keys are namespaced
+  // `ui:*` so the localStorage admin can grep for them. The validate fn
+  // discards corrupted payloads (e.g. partial migrations) rather than
+  // crashing the app — falls back to the default.
+  const [barEdge, setBarEdge] = usePersistentState<"bottom" | "top" | "left" | "right">(
+    "ui:toolbar:edge:v1",
+    "bottom",
+    { validate: (v) => (v === "bottom" || v === "top" || v === "left" || v === "right" ? v : null) },
+  );
+  const [barAlong, setBarAlong] = usePersistentState<number>(
+    "ui:toolbar:along:v1",
+    0,
+    { validate: (v) => (typeof v === "number" && Number.isFinite(v) ? v : null) },
+  );
+  const [mmPos, setMmPos] = usePersistentState<{ bottom: number; right: number }>(
+    "ui:minimap:pos:v1",
+    { bottom: 80, right: 8 },
+    { validate: (v) => {
+      if (!v || typeof v !== "object") return null;
+      const o = v as { bottom?: unknown; right?: unknown };
+      return typeof o.bottom === "number" && typeof o.right === "number"
+        ? { bottom: o.bottom, right: o.right }
+        : null;
+    } },
+  );
+  const [mmSize, setMmSize] = usePersistentState<{ w: number; h: number }>(
+    "ui:minimap:size:v1",
+    { w: 200, h: 140 },
+    { validate: (v) => {
+      if (!v || typeof v !== "object") return null;
+      const o = v as { w?: unknown; h?: unknown };
+      return typeof o.w === "number" && typeof o.h === "number" && o.w > 50 && o.h > 30
+        ? { w: o.w, h: o.h }
+        : null;
+    } },
+  );
   const mmDragRef = useRef<{ sx: number; sy: number; sb: number; sr: number } | null>(null);
   const mmResizeRef = useRef<{ sx: number; sy: number; sw: number; sh: number } | null>(null);
   const [renamingProject, setRenamingProject] = useState(false);
