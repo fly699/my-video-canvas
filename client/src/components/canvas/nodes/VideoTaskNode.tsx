@@ -1,13 +1,22 @@
 import { memo, useCallback, useEffect, useRef, useState } from "react";
 import { BaseNode } from "../BaseNode";
 import { useCanvasStore } from "../../../hooks/useCanvasStore";
-import type { VideoTaskNodeData, VideoProvider } from "../../../../../shared/types";
+import type { VideoTaskNodeData, VideoProvider, CharacterNodeData } from "../../../../../shared/types";
+import { mergeCharactersIntoPrompt } from "../../../lib/characterPrompt";
 import { trpc } from "@/lib/trpc";
 import { toast } from "sonner";
 import { Handle, Position } from "@xyflow/react";
-import { Play, Loader2, CheckCircle2, XCircle, Clock, RefreshCw, AlertCircle, Download, ChevronDown, ChevronRight, Layers, Plus, X as XIcon } from "lucide-react";
+import { Play, Loader2, CheckCircle2, XCircle, Clock, RefreshCw, AlertCircle, Download, ChevronDown, ChevronRight, Layers, Plus, X as XIcon, Film } from "lucide-react";
 import { listCustomPresets, saveCustomPreset, deleteCustomPreset, type CustomVideoPreset } from "@/lib/customPresets";
 import { ensureNotificationPermission, showCompletionNotification } from "@/lib/notify";
+import { CinematographyPicker } from "../CinematographyPicker";
+import {
+  applyCinematographyToPrompt,
+  clearCinematographyFromPrompt,
+  detectActiveCinematography,
+  applyCinematographyParams,
+  getTemplateById,
+} from "@/lib/cinematographyTemplates";
 
 // Providers that require a reference image (image-to-video)
 const REQUIRES_REFERENCE_IMAGE = new Set<string>([
@@ -471,12 +480,36 @@ export const VideoTaskNode = memo(function VideoTaskNode({ id, selected, data }:
     // Fire-and-forget — first submit prompts the user to allow notifications
     // so the completion alert can reach them on backgrounded tabs.
     void ensureNotificationPermission();
+
+    // Pull connected character nodes and synthesize a profile-augmented
+    // prompt on submit (the user's payload.prompt stays untouched so the
+    // textarea reflects only what they typed). Camera-marker markers from
+    // the cinematography template — embedded in payload.prompt — are kept
+    // verbatim; mergeCharactersIntoPrompt only prepends character blocks.
+    const { nodes: allNodes, edges: allEdges } = useCanvasStore.getState();
+    const connectedCharacters: CharacterNodeData[] = [];
+    let charRefFallback: string | undefined = undefined;
+    for (const e of allEdges) {
+      if (e.target !== id) continue;
+      const src = allNodes.find((n) => n.id === e.source);
+      if (src?.data.nodeType === "character") {
+        const cp = src.data.payload as CharacterNodeData;
+        connectedCharacters.push(cp);
+        if (!charRefFallback && cp.referenceImageUrl) charRefFallback = cp.referenceImageUrl;
+      }
+    }
+    const finalPrompt = mergeCharactersIntoPrompt(payload.prompt ?? "", connectedCharacters);
+    // If user didn't paste a reference image URL but a connected character
+    // node has one, use it — matches StoryboardNode's behavior so character
+    // continuity is automatic across the workflow.
+    const finalRefImage = payload.referenceImageUrl?.trim() || charRefFallback;
+
     createTaskMutation.mutate({
       projectId: data.projectId, nodeId: id,
-      provider: payload.provider, prompt: payload.prompt,
+      provider: payload.provider, prompt: finalPrompt,
       // Only send negativePrompt for providers that actually support it
       negativePrompt: SUPPORTS_NEGATIVE_PROMPT.has(payload.provider) ? payload.negativePrompt : undefined,
-      referenceImageUrl: payload.referenceImageUrl,
+      referenceImageUrl: finalRefImage,
       params: payload.params,
     });
   };
@@ -569,6 +602,32 @@ export const VideoTaskNode = memo(function VideoTaskNode({ id, selected, data }:
     setCustomPresets((prev) => prev.filter((p) => p.id !== presetId));
     toast.success(`已删除预设「${label}」`);
   };
+
+  // ── Cinematography template picker ──────────────────────────────────────
+  // The picker is a modal opened from the params panel header. Applying a
+  // template (a) injects/replaces the camera-marker block in prompt and
+  // (b) sets provider-native camera_motion params when supported.
+  const [pickerOpen, setPickerOpen] = useState(false);
+  const activeCameraTemplateId = detectActiveCinematography(payload.prompt ?? "");
+  const activeCameraTemplate = activeCameraTemplateId ? getTemplateById(activeCameraTemplateId) : undefined;
+  const handlePickCinematography = useCallback(
+    (template: ReturnType<typeof getTemplateById> & object) => {
+      if (!template) return;
+      const newPrompt = applyCinematographyToPrompt(payload.prompt ?? "", template);
+      const providerPatch = applyCinematographyParams(payload.provider, template);
+      updateNodeData(id, {
+        prompt: newPrompt,
+        params: { ...(payload.params ?? {}), ...providerPatch },
+      });
+      toast.success(`已应用运镜：${template.label}`);
+    },
+    [id, updateNodeData, payload.prompt, payload.params, payload.provider],
+  );
+  const handleClearCinematography = useCallback(() => {
+    const newPrompt = clearCinematographyFromPrompt(payload.prompt ?? "");
+    updateNodeData(id, { prompt: newPrompt });
+    toast.success("已清除运镜模板");
+  }, [id, updateNodeData, payload.prompt]);
 
   // ── Browser notification on task completion ─────────────────────────────
   const prevStatusRef = useRef(payload.status);
@@ -1065,6 +1124,38 @@ export const VideoTaskNode = memo(function VideoTaskNode({ id, selected, data }:
                 : <ChevronRight className="w-3 h-3" style={{ color: "var(--c-t4)" }} />
               }
             </button>
+            {/* ── Cinematography template launcher (always available regardless
+                 of params panel state — sits between collapse header and the
+                 quick-presets row) ── */}
+            {paramsExpanded && (
+              <div className="px-3 pt-2 pb-1">
+                <button
+                  onClick={() => { if (!isLocked) setPickerOpen(true); }}
+                  disabled={isLocked}
+                  className="nodrag flex items-center justify-between w-full"
+                  title="运镜模板库（30+ 电影级运镜）"
+                  style={{
+                    padding: "6px 10px",
+                    fontSize: 11, fontWeight: 500,
+                    background: activeCameraTemplate ? "oklch(0.68 0.22 285 / 0.10)" : "var(--c-surface)",
+                    border: `1px solid ${activeCameraTemplate ? "oklch(0.68 0.22 285 / 0.40)" : "var(--c-bd2)"}`,
+                    borderRadius: 8,
+                    color: activeCameraTemplate ? "oklch(0.78 0.18 285)" : "var(--c-t3)",
+                    cursor: isLocked ? "not-allowed" : "pointer",
+                  }}
+                >
+                  <span className="flex items-center gap-1.5">
+                    <Film style={{ width: 12, height: 12 }} />
+                    {activeCameraTemplate
+                      ? <>运镜：<strong>{activeCameraTemplate.label}</strong> {activeCameraTemplate.emoji}</>
+                      : "🎬 运镜模板库"}
+                  </span>
+                  <span style={{ fontSize: 10, color: "var(--c-t4)" }}>
+                    {activeCameraTemplate ? "点击切换" : "30+ 种"}
+                  </span>
+                </button>
+              </div>
+            )}
             {/* ── Quick presets row ── */}
             {paramsExpanded && (presets.length > 0 || customPresets.length > 0 || paramDefs.length > 0) && (
               <div className="px-3 pt-2 pb-2">
@@ -1437,6 +1528,15 @@ export const VideoTaskNode = memo(function VideoTaskNode({ id, selected, data }:
         }}
         title="参考图输入 ← 连接图像生成节点"
       />
+      {pickerOpen && (
+        <CinematographyPicker
+          provider={payload.provider}
+          activeTemplateId={activeCameraTemplateId}
+          onSelect={handlePickCinematography}
+          onClear={handleClearCinematography}
+          onClose={() => setPickerOpen(false)}
+        />
+      )}
     </BaseNode>
   );
 });

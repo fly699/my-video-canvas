@@ -8,6 +8,7 @@ import type { StoryboardNodeData } from "../../../../../shared/types";
 import { trpc } from "@/lib/trpc";
 import { toast } from "sonner";
 import { Sparkles, ImageIcon, Loader2, RefreshCw, ChevronDown, Upload, X, Wand2, History, Languages, Film, ZoomIn, Download, Copy } from "lucide-react";
+import { mergeCharactersIntoPrompt } from "../../../lib/characterPrompt";
 import { IMAGE_MODELS, type ImageModelId } from "@/lib/models";
 import { makeImageProxyFallback } from "@/lib/utils";
 import { LLMModelPicker, type LLMModelId } from "../LLMModelPicker";
@@ -275,23 +276,25 @@ export const StoryboardNode = memo(function StoryboardNode({ id, selected, data 
     if (!payload.promptText?.trim()) { toast.error("请先填写提示词"); return; }
     setGenerating(true);
 
-    // Character consistency: inject reference image + appearance from connected CharacterNodes
+    // Character consistency: inject reference image + FULL character profile
+    // from connected CharacterNodes. Previously only appearance / sceneDescription
+    // were used; mergeCharactersIntoPrompt now renders the whole profile
+    // (name / role / outfit / signature / atmosphere / …) via the same
+    // template engine used by VideoTaskNode + PromptNode, so all three node
+    // types produce consistent injected prompts from a shared CharacterNode.
     const { nodes: allNodes, edges: allEdges } = useCanvasStore.getState();
     const incomingEdges = allEdges.filter((e) => e.target === id);
     let charRefUrl: string | undefined = payload.referenceImageUrl;
-    const charDescParts: string[] = [];
+    const connectedCharacters: import("../../../../../shared/types").CharacterNodeData[] = [];
     for (const edge of incomingEdges) {
       const srcNode = allNodes.find((n) => n.id === edge.source);
       if (srcNode?.data.nodeType === "character") {
         const cp = srcNode.data.payload as import("../../../../../shared/types").CharacterNodeData;
         if (cp.referenceImageUrl && !charRefUrl) charRefUrl = cp.referenceImageUrl;
-        if (cp.characterKind === "person" && cp.appearance) charDescParts.push(cp.appearance);
-        if (cp.characterKind === "scene" && cp.sceneDescription) charDescParts.push(cp.sceneDescription);
+        connectedCharacters.push(cp);
       }
     }
-    const rawPrompt = charDescParts.length
-      ? `${payload.promptText}, ${charDescParts.join(", ")}`
-      : payload.promptText;
+    const rawPrompt = mergeCharactersIntoPrompt(payload.promptText, connectedCharacters);
     const enhancedPrompt = Array.from(rawPrompt).length > 2000
       ? Array.from(rawPrompt).slice(0, 2000).join("")
       : rawPrompt;
