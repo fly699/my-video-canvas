@@ -185,6 +185,7 @@ export const BaseNode = memo(function BaseNode({
         minWidth: isCreative ? Math.round(minWidth * 1.25) : minWidth,
         minHeight,
         width: "100%",
+        height: "100%",
         transition: "border-color 150ms ease, box-shadow 180ms ease, opacity 180ms ease, transform 180ms ease",
         backdropFilter: isLight ? "none" : "blur(4px)",
         opacity: entered ? 1 : 0,
@@ -217,7 +218,7 @@ export const BaseNode = memo(function BaseNode({
       />
 
     {/* Inner content wrapper clips visual content to the rounded corners */}
-    <div className="flex flex-col" style={{ overflow: "hidden", borderRadius: "inherit", width: "100%" }}>
+    <div className="flex flex-col" style={{ overflow: "hidden", borderRadius: "inherit", width: "100%", height: "100%" }}>
 
       {/* ── Color accent strip at top ── */}
       <div
@@ -444,7 +445,7 @@ export const BaseNode = memo(function BaseNode({
       {/* ── Content area (collapsible in creative mode when hero exists) ── */}
       <NodeSelectedContext.Provider value={!!selected || pinned}>
         <div className="node-body-wrap">
-          <div className="overflow-visible nopan">{children}</div>
+          <div className="overflow-visible nopan" style={{ flex: 1, minHeight: 0 }}>{children}</div>
         </div>
       </NodeSelectedContext.Provider>
 

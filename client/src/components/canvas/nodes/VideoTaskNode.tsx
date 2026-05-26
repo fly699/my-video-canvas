@@ -10,6 +10,7 @@ import { Play, Loader2, CheckCircle2, XCircle, Clock, RefreshCw, AlertCircle, Do
 // Providers that require a reference image (image-to-video)
 const REQUIRES_REFERENCE_IMAGE = new Set<string>([
   "poyo_wan25_i2v",
+  "hf_dop_standard", "hf_dop_lite", "hf_dop_turbo",
 ]);
 
 // Heuristic: only allow http(s) / same-origin paths to render. Reject data:/blob:/javascript:.
@@ -44,8 +45,8 @@ const PROVIDERS: { value: VideoProvider; label: string; group: string }[] = [
   { value: "poyo_kling_o3_std",   label: "Kling O3 Standard",   group: "Poyo" },
   { value: "poyo_kling_o3_pro",   label: "Kling O3 Pro",        group: "Poyo" },
   { value: "poyo_kling_o3_4k",    label: "Kling O3 4K",         group: "Poyo" },
-  { value: "poyo_wan25_t2v",      label: "Wan 2.5 文生视频",    group: "Poyo" },
-  { value: "poyo_wan25_i2v",      label: "Wan 2.5 图生视频",    group: "Poyo" },
+  { value: "poyo_wan25_t2v",      label: "Wan 2.6 文生视频",    group: "Poyo" },
+  { value: "poyo_wan25_i2v",      label: "Wan 2.6 图生视频",    group: "Poyo" },
   { value: "poyo_runway45",       label: "Runway Gen 4.5",      group: "Poyo" },
   // Higgsfield 公共 API 仅支持 DoP 3 个变体（其他 Kling/Seedance/Veo 模型
   // 只在 cloud.higgsfield.ai 私有后端，第三方无法调用）。
@@ -61,7 +62,40 @@ type ParamDef =
   | { type: "range";  key: string; label: string; min: number; max: number; step: number; default?: number; unit?: string }
   | { type: "toggle"; key: string; label: string; default?: boolean };
 
-const HF_DOP_PARAMS: ParamDef[] = [
+const HF_CAMERA_MOTION_OPTIONS = [
+  { value: "none",       label: "无镜头运动" },
+  { value: "zoom_in",    label: "推镜（Zoom In）" },
+  { value: "zoom_out",   label: "拉镜（Zoom Out）" },
+  { value: "pan_left",   label: "左移（Pan Left）" },
+  { value: "pan_right",  label: "右移（Pan Right）" },
+  { value: "tilt_up",    label: "上倾（Tilt Up）" },
+  { value: "tilt_down",  label: "下倾（Tilt Down）" },
+  { value: "orbit",      label: "环绕（Orbit）" },
+  { value: "static",     label: "固定（Static）" },
+];
+
+const HF_DOP_STANDARD_PARAMS: ParamDef[] = [
+  { type: "select", key: "duration", label: "时长（秒）", default: 4,
+    options: [{ value: 4, label: "4 秒" }, { value: 8, label: "8 秒" }] },
+  { type: "select", key: "resolution", label: "分辨率", default: "720p",
+    options: [{ value: "480p", label: "480p" }, { value: "720p", label: "720p" }, { value: "1080p", label: "1080p" }] },
+  { type: "select", key: "camera_motion_type", label: "镜头运动", default: "none",
+    options: HF_CAMERA_MOTION_OPTIONS },
+  { type: "select", key: "camera_motion_speed", label: "运动速度", default: "normal",
+    options: [{ value: "slow", label: "慢速" }, { value: "normal", label: "正常" }, { value: "fast", label: "快速" }] },
+  { type: "toggle", key: "enhance_prompt", label: "AI 增强提示词", default: false },
+  { type: "number", key: "seed", label: "随机种子（可选）", min: 0, max: 2147483647, step: 1 },
+];
+
+const HF_DOP_FAST_PARAMS: ParamDef[] = [
+  { type: "select", key: "duration", label: "时长（秒）", default: 4,
+    options: [{ value: 4, label: "4 秒" }] },
+  { type: "select", key: "resolution", label: "分辨率", default: "720p",
+    options: [{ value: "480p", label: "480p" }, { value: "720p", label: "720p" }] },
+  { type: "select", key: "camera_motion_type", label: "镜头运动", default: "none",
+    options: HF_CAMERA_MOTION_OPTIONS },
+  { type: "select", key: "camera_motion_speed", label: "运动速度", default: "normal",
+    options: [{ value: "slow", label: "慢速" }, { value: "normal", label: "正常" }, { value: "fast", label: "快速" }] },
   { type: "toggle", key: "enhance_prompt", label: "AI 增强提示词", default: false },
   { type: "number", key: "seed", label: "随机种子（可选）", min: 0, max: 2147483647, step: 1 },
 ];
@@ -70,11 +104,12 @@ const KLING_O3_PARAMS: ParamDef[] = [
   { type: "select", key: "aspect_ratio", label: "宽高比", default: "16:9",
     options: [{ value: "16:9", label: "16:9 横屏" }, { value: "9:16", label: "9:16 竖屏" }, { value: "1:1", label: "1:1 方形" }] },
   { type: "range", key: "duration", label: "时长（秒）", min: 3, max: 15, step: 1, default: 5, unit: "s" },
+  { type: "number", key: "seed", label: "随机种子（可选）", min: 0, max: 2147483647, step: 1 },
 ];
 
 const SUPPORTS_NEGATIVE_PROMPT = new Set<string>([
-  "poyo_seedance", "poyo_veo",
-  "poyo_kling26", "poyo_kling_o3_std", "poyo_kling_o3_pro", "poyo_kling_o3_4k",
+  "poyo_seedance",
+  "poyo_kling_o3_std", "poyo_kling_o3_pro", "poyo_kling_o3_4k",
 ]);
 
 const PROVIDER_PARAMS: Record<string, ParamDef[]> = {
@@ -83,21 +118,29 @@ const PROVIDER_PARAMS: Record<string, ParamDef[]> = {
       options: [
         { value: "21:9", label: "21:9 超宽" }, { value: "16:9", label: "16:9 横屏" },
         { value: "4:3", label: "4:3 标准" }, { value: "1:1", label: "1:1 方形" },
-        { value: "3:4", label: "3:4 竖屏" }, { value: "9:16", label: "9:16 竖屏" }, { value: "auto", label: "自动" },
+        { value: "3:4", label: "3:4 竖屏" }, { value: "9:16", label: "9:16 竖屏" },
       ]},
     { type: "select", key: "resolution", label: "分辨率", default: "720p",
       options: [{ value: "480p", label: "480p" }, { value: "720p", label: "720p" }, { value: "1080p", label: "1080p" }] },
-    { type: "range",  key: "duration", label: "时长（秒）", min: 2, max: 12, step: 1, default: 5, unit: "s" },
+    { type: "range",  key: "duration", label: "时长（秒）", min: 4, max: 15, step: 1, default: 5, unit: "s" },
     { type: "toggle", key: "camera_fixed", label: "固定镜头", default: false },
+    { type: "toggle", key: "generate_audio", label: "AI 生成音频", default: false },
+    { type: "number", key: "seed", label: "随机种子（可选）", min: 0, max: 2147483647, step: 1 },
   ],
   poyo_veo: [
     { type: "select", key: "aspect_ratio", label: "宽高比", default: "16:9",
-      options: [{ value: "16:9", label: "16:9 横屏" }, { value: "9:16", label: "9:16 竖屏" }, { value: "1:1", label: "1:1 方形" }] },
-    { type: "range",  key: "duration", label: "时长（秒）", min: 5, max: 30, step: 5, default: 5, unit: "s" },
+      options: [{ value: "16:9", label: "16:9 横屏" }, { value: "9:16", label: "9:16 竖屏" }] },
+    // Veo 3.1 only supports fixed 8-second duration per API docs
+    { type: "select", key: "duration", label: "时长（秒）", default: 8,
+      options: [{ value: 8, label: "8 秒（固定）" }] },
+    { type: "select", key: "resolution", label: "分辨率", default: "720p",
+      options: [{ value: "720p", label: "720p" }, { value: "1080p", label: "1080p" }, { value: "4k", label: "4K" }] },
+    { type: "select", key: "generation_type", label: "生成模式", default: "reference",
+      options: [{ value: "reference", label: "参考图风格" }, { value: "frame", label: "首帧约束" }] },
   ],
-  hf_dop_standard: HF_DOP_PARAMS,
-  hf_dop_lite:     HF_DOP_PARAMS,
-  hf_dop_turbo:    HF_DOP_PARAMS,
+  hf_dop_standard: HF_DOP_STANDARD_PARAMS,
+  hf_dop_lite:     HF_DOP_FAST_PARAMS,
+  hf_dop_turbo:    HF_DOP_FAST_PARAMS,
   poyo_kling26: [
     { type: "select", key: "aspect_ratio", label: "宽高比", default: "16:9",
       options: [{ value: "16:9", label: "16:9 横屏" }, { value: "9:16", label: "9:16 竖屏" }, { value: "1:1", label: "1:1 方形" }] },
@@ -109,20 +152,26 @@ const PROVIDER_PARAMS: Record<string, ParamDef[]> = {
   poyo_kling_o3_pro: KLING_O3_PARAMS,
   poyo_kling_o3_4k:  KLING_O3_PARAMS,
   poyo_wan25_t2v: [
-    { type: "select", key: "aspect_ratio", label: "宽高比", default: "16:9",
-      options: [{ value: "16:9", label: "16:9 横屏" }, { value: "9:16", label: "9:16 竖屏" }, { value: "1:1", label: "1:1 方形" }] },
-    { type: "range",  key: "duration", label: "时长（秒）", min: 3, max: 10, step: 1, default: 5, unit: "s" },
+    // Wan 2.6 API does not document aspect_ratio; resolution and multi_shots replace it
+    { type: "select", key: "resolution", label: "分辨率", default: "720p",
+      options: [{ value: "720p", label: "720p" }, { value: "1080p", label: "1080p" }] },
+    { type: "select", key: "duration", label: "时长（秒）", default: 5,
+      options: [{ value: 5, label: "5 秒" }, { value: 10, label: "10 秒" }, { value: 15, label: "15 秒" }] },
+    { type: "toggle", key: "multi_shots", label: "多镜头模式", default: false },
   ],
   poyo_wan25_i2v: [
-    { type: "select", key: "aspect_ratio", label: "宽高比", default: "16:9",
-      options: [{ value: "16:9", label: "16:9 横屏" }, { value: "9:16", label: "9:16 竖屏" }, { value: "1:1", label: "1:1 方形" }] },
-    { type: "range",  key: "duration", label: "时长（秒）", min: 3, max: 10, step: 1, default: 5, unit: "s" },
+    { type: "select", key: "resolution", label: "分辨率", default: "720p",
+      options: [{ value: "720p", label: "720p" }, { value: "1080p", label: "1080p" }] },
+    { type: "select", key: "duration", label: "时长（秒）", default: 5,
+      options: [{ value: 5, label: "5 秒" }, { value: 10, label: "10 秒" }, { value: 15, label: "15 秒" }] },
+    { type: "toggle", key: "multi_shots", label: "多镜头模式", default: false },
   ],
   poyo_runway45: [
     { type: "select", key: "aspect_ratio", label: "宽高比", default: "16:9",
       options: [{ value: "16:9", label: "16:9 横屏" }, { value: "9:16", label: "9:16 竖屏" }] },
     { type: "select", key: "duration", label: "时长（秒）", default: 5,
       options: [{ value: 5, label: "5 秒" }, { value: 10, label: "10 秒" }] },
+    { type: "number", key: "seed", label: "随机种子（可选）", min: 0, max: 2147483647, step: 1 },
   ],
   mock: [],
 };
@@ -138,7 +187,7 @@ const PROVIDER_COST: Record<string, { label: string; color: string }> = {
   poyo_kling_o3_std: { label: "~6积分", color: "oklch(0.72 0.18 155)" },
   poyo_kling_o3_pro: { label: "~12积分", color: "oklch(0.65 0.18 60)" },
   poyo_kling_o3_4k:  { label: "~30积分", color: "oklch(0.62 0.20 25)" },
-  poyo_wan25_t2v:    { label: "~2积分", color: "oklch(0.72 0.18 155)" },
+  poyo_wan25_t2v:    { label: "~3积分", color: "oklch(0.72 0.18 155)" },
   poyo_wan25_i2v:    { label: "~3积分", color: "oklch(0.72 0.18 155)" },
   poyo_runway45:     { label: "~10积分", color: "oklch(0.65 0.18 60)" },
   hf_dop_standard:   { label: "~8积分", color: "oklch(0.65 0.18 60)" },
@@ -338,13 +387,22 @@ export const VideoTaskNode = memo(function VideoTaskNode({ id, selected, data }:
     if (REQUIRES_REFERENCE_IMAGE.has(payload.provider) && !payload.referenceImageUrl?.trim()) {
       toast.error("该模型需要参考图 URL"); return;
     }
+    // Veo 3.1 首帧约束模式需要参考图
+    if (payload.provider === "poyo_veo" && payload.params?.generation_type === "frame" && !payload.referenceImageUrl?.trim()) {
+      toast.error("Veo 3.1 首帧约束模式需要提供参考图 URL"); return;
+    }
     if (payload.referenceImageUrl && !isSafeMediaUrl(payload.referenceImageUrl)) {
       toast.error("参考图 URL 仅支持 http(s) 或相对路径"); return;
     }
+    // If parallel mode was closed while requests were in-flight, the counter may
+    // be stuck at a non-zero value and would suppress this single-mode callback.
+    if (!parallelMode) parallelInFlightRef.current = 0;
     createTaskMutation.mutate({
       projectId: data.projectId, nodeId: id,
       provider: payload.provider, prompt: payload.prompt,
-      negativePrompt: payload.negativePrompt, referenceImageUrl: payload.referenceImageUrl,
+      // Only send negativePrompt for providers that actually support it
+      negativePrompt: SUPPORTS_NEGATIVE_PROMPT.has(payload.provider) ? payload.negativePrompt : undefined,
+      referenceImageUrl: payload.referenceImageUrl,
       params: payload.params,
     });
   };
@@ -579,7 +637,7 @@ export const VideoTaskNode = memo(function VideoTaskNode({ id, selected, data }:
                     createTaskMutation.mutate(
                       // Send only prompt/negative/refImage in parallel mode — per-provider params
                       // diverge enough that sharing one params bag tends to break some providers
-                      { nodeId: id, projectId: data.projectId, provider, prompt: payload.prompt!, negativePrompt: payload.negativePrompt, referenceImageUrl: payload.referenceImageUrl },
+                      { nodeId: id, projectId: data.projectId, provider, prompt: payload.prompt!, negativePrompt: SUPPORTS_NEGATIVE_PROMPT.has(provider) ? payload.negativePrompt : undefined, referenceImageUrl: payload.referenceImageUrl },
                       {
                         onSuccess: (result) => {
                           if (parallelGenRef.current !== gen) return; // stale — user closed parallel mode
@@ -684,7 +742,13 @@ export const VideoTaskNode = memo(function VideoTaskNode({ id, selected, data }:
           <select
             value={payload.provider}
             onChange={(e) => {
-              updateNodeData(id, { provider: e.target.value as VideoProvider, params: {} });
+              const newProvider = e.target.value as VideoProvider;
+              updateNodeData(id, {
+                provider: newProvider,
+                params: {},
+                // Clear stale negative prompt when switching to a provider that doesn't support it
+                ...(!SUPPORTS_NEGATIVE_PROMPT.has(newProvider) ? { negativePrompt: undefined } : {}),
+              });
             }}
             disabled={isLocked}
             className="nodrag"
@@ -779,6 +843,11 @@ export const VideoTaskNode = memo(function VideoTaskNode({ id, selected, data }:
             {/* 2-column grid for compact layout */}
             {paramsExpanded && <div className="grid grid-cols-2 gap-x-2.5 gap-y-2.5 px-3 pb-3">
             {paramDefs.map((def) => {
+              // camera_motion_speed is irrelevant for "none" (no motion) and "static" (fixed camera)
+              if (def.key === "camera_motion_speed") {
+                const motionType = params.camera_motion_type ?? "none";
+                if (motionType === "none" || motionType === "static") return null;
+              }
               const curVal = params[def.key] ?? def.default;
               // toggle spans full width for readability
               const isToggle = def.type === "toggle";

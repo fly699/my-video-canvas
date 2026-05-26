@@ -251,15 +251,39 @@ export async function submitHiggsfieldVideo(
   const endpoint = `${HIGGSFIELD_BASE}/v1/image2video/dop`;
   const p = opts.params ?? {};
 
+  // Build nested `params` object (required by Higgsfield DoP API — Pydantic enforces its presence)
+  const innerParams: Record<string, unknown> = {
+    enhance_prompt: p.enhance_prompt ?? false,
+  };
+  // Duration: dop-turbo and dop-lite only support 4s; dop-standard supports 4 or 8s
+  if (p.duration !== undefined) {
+    const rawDur = Math.trunc(Number(p.duration));
+    innerParams.duration = (dopModel === "dop-lite" || dopModel === "dop-turbo")
+      ? 4
+      : rawDur;
+  }
+  // Resolution: "480p" | "720p" | "1080p"
+  if (p.resolution !== undefined) innerParams.resolution = String(p.resolution);
+  // Seed (optional — omit unless a valid finite integer)
+  if (p.seed !== undefined && p.seed !== null && String(p.seed) !== "") {
+    const seedNum = Number(p.seed);
+    if (Number.isFinite(seedNum)) innerParams.seed = Math.trunc(seedNum);
+  }
+  // Camera motion: build object from two flat UI params.
+  // "static" means fixed camera — only send type, not speed (speed is irrelevant for static).
+  if (p.camera_motion_type && String(p.camera_motion_type) !== "none") {
+    const motionType = String(p.camera_motion_type);
+    innerParams.camera_motion = motionType === "static"
+      ? { type: motionType }
+      : { type: motionType, speed: String(p.camera_motion_speed ?? "normal") };
+  }
+
   const body: Record<string, unknown> = {
     model: dopModel,
     prompt: opts.prompt,
     input_images: [{ type: "image_url", image_url: opts.referenceImageUrl }],
+    params: innerParams,
   };
-  if (p.seed !== undefined) body.seed = p.seed;
-  if (p.enhance_prompt !== undefined) body.enhance_prompt = p.enhance_prompt;
-  // Optional camera motion presets: [{ id: string, strength: number }]
-  if (Array.isArray(p.motions)) body.motions = p.motions;
 
   const res = await fetch(endpoint, {
     method: "POST",

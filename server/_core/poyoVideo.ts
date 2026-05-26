@@ -2,7 +2,7 @@ import { ENV } from "./env";
 
 const POYO_BASE = "https://api.poyo.ai";
 
-export type PoyoVideoModel = "seedance-2" | "veo-3.1" | "kling-2.6" | "kling-o3-standard" | "kling-o3-pro" | "kling-o3-4k" | "wan2.5-text-to-video" | "wan2.5-image-to-video" | "runway-gen-4.5";
+export type PoyoVideoModel = "seedance-2" | "veo-3.1" | "kling-2.6" | "kling-o3-standard" | "kling-o3-pro" | "kling-o3-4k" | "wan2.6-text-to-video" | "wan2.6-image-to-video" | "runway-gen-4.5";
 
 export const POYO_PROVIDER_MAP: Record<string, PoyoVideoModel> = {
   poyo_seedance:     "seedance-2",
@@ -11,8 +11,8 @@ export const POYO_PROVIDER_MAP: Record<string, PoyoVideoModel> = {
   poyo_kling_o3_std: "kling-o3-standard",
   poyo_kling_o3_pro: "kling-o3-pro",
   poyo_kling_o3_4k:  "kling-o3-4k",
-  poyo_wan25_t2v:    "wan2.5-text-to-video",
-  poyo_wan25_i2v:    "wan2.5-image-to-video",
+  poyo_wan25_t2v:    "wan2.6-text-to-video",
+  poyo_wan25_i2v:    "wan2.6-image-to-video",
   poyo_runway45:     "runway-gen-4.5",
 };
 
@@ -43,29 +43,45 @@ export async function submitPoyoVideo(opts: {
   };
 
   if (model === "seedance-2") {
-    // seedance-2 uses resolution (720p/1080p) + aspect_ratio separately
+    // resolution and aspect_ratio are both required by the Seedance 2 API
     input.resolution = (opts.params?.resolution as string) ?? "720p";
     input.aspect_ratio = (opts.params?.aspect_ratio as string) ?? "16:9";
     input.duration = (opts.params?.duration as number) ?? 5;
     if (opts.params?.camera_fixed !== undefined) {
       input.camera_fixed = Boolean(opts.params.camera_fixed);
     }
+    if (opts.params?.generate_audio !== undefined) {
+      input.generate_audio = Boolean(opts.params.generate_audio);
+    }
   } else if (model === "kling-2.6") {
     input.aspect_ratio = (opts.params?.aspect_ratio as string) ?? "16:9";
     input.duration = (opts.params?.duration as number) ?? 5;
-    if (opts.params?.sound !== undefined) input.sound = Boolean(opts.params.sound);
+    // sound is required per Kling 2.6 API docs; always send it
+    input.sound = Boolean(opts.params?.sound ?? false);
   } else if (model === "kling-o3-standard" || model === "kling-o3-pro" || model === "kling-o3-4k") {
     input.aspect_ratio = (opts.params?.aspect_ratio as string) ?? "16:9";
     input.duration = (opts.params?.duration as number) ?? 5;
   } else if (model === "veo-3.1") {
+    // Only 16:9 and 9:16 are valid; duration is always 8 seconds
     input.aspect_ratio = (opts.params?.aspect_ratio as string) ?? "16:9";
+    input.duration = 8;
+    if (opts.params?.resolution) input.resolution = String(opts.params.resolution);
+    if (opts.params?.generation_type) input.generation_type = String(opts.params.generation_type);
+  } else if (model === "wan2.6-text-to-video" || model === "wan2.6-image-to-video") {
+    // aspect_ratio is not documented in Wan 2.6 API; omit to avoid unexpected errors
     input.duration = (opts.params?.duration as number) ?? 5;
-  } else if (model === "wan2.5-text-to-video" || model === "wan2.5-image-to-video") {
-    input.aspect_ratio = (opts.params?.aspect_ratio as string) ?? "16:9";
-    input.duration = (opts.params?.duration as number) ?? 5;
+    if (opts.params?.resolution) input.resolution = String(opts.params.resolution);
+    if (opts.params?.multi_shots !== undefined) input.multi_shots = Boolean(opts.params.multi_shots);
   } else if (model === "runway-gen-4.5") {
     input.aspect_ratio = (opts.params?.aspect_ratio as string) ?? "16:9";
     input.duration = (opts.params?.duration as number) ?? 5;
+  }
+
+  // Seed — optional; omit unless a valid finite integer (Number("") is 0, not NaN,
+  // but non-numeric strings like "abc" produce NaN which serializes to null in JSON)
+  if (opts.params?.seed !== undefined && opts.params.seed !== null && String(opts.params.seed) !== "") {
+    const seedNum = Number(opts.params.seed);
+    if (Number.isFinite(seedNum)) input.seed = Math.trunc(seedNum);
   }
 
   const res = await fetch(`${POYO_BASE}/api/generate/submit`, {
@@ -128,7 +144,14 @@ export async function checkPoyoVideoStatus(externalTaskId: string): Promise<Poyo
   }
 
   const d = body.data;
-  const status = d.status as PoyoTaskStatus["status"];
+  const KNOWN_STATUSES = new Set(["not_started", "running", "finished", "failed"]);
+  const rawStatus = d.status;
+  if (!KNOWN_STATUSES.has(rawStatus)) {
+    // Unknown intermediate status from upstream — treat as still running so the
+    // poller keeps checking rather than silently looping or crashing
+    console.warn(`[checkPoyoVideoStatus] Unknown status "${rawStatus}" for task ${externalTaskId}; treating as running`);
+  }
+  const status = (KNOWN_STATUSES.has(rawStatus) ? rawStatus : "running") as PoyoTaskStatus["status"];
   const resultVideoUrl = d.files?.find((f) => f.file_type === "video")?.file_url
     ?? d.files?.[0]?.file_url;
 

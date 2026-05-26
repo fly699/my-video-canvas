@@ -24,7 +24,8 @@ export type NodeType =
   | "lip_sync"
   | "avatar"
   | "comfyui_image"
-  | "comfyui_video";
+  | "comfyui_video"
+  | "comfyui_workflow";
 
 export const VIDEO_PROVIDERS = [
   "mock",
@@ -385,10 +386,18 @@ export interface ComfyuiImageNodeData {
   seed?: number;
   width?: number;
   height?: number;
+  sampler?: string;
+  scheduler?: string;
+  denoise?: number;
+  vae?: string;
+  loraStrength?: number;
+  batchSize?: number;
   // I/O
   referenceImageUrl?: string;
   imageUrl?: string;
   imageStorageKey?: string;
+  imageUrls?: string[];
+  progress?: number;
   status?: "idle" | "processing" | "done" | "failed";
   errorMessage?: string;
 }
@@ -410,10 +419,45 @@ export interface ComfyuiVideoNodeData {
   seed?: number;
   frames?: number;
   fps?: number;
+  width?: number;
+  height?: number;
+  sampler?: string;
+  scheduler?: string;
+  denoise?: number;
+  vae?: string;
+  batchSize?: number;
   // I/O
   referenceImageUrl?: string;
   resultVideoUrl?: string;
   resultStorageKey?: string;
+  progress?: number;
+  status?: "idle" | "processing" | "done" | "failed";
+  errorMessage?: string;
+}
+
+export interface WorkflowParamBinding {
+  nodeId: string;
+  fieldPath: string;
+  label: string;
+  type: "text" | "number" | "select" | "image" | "boolean";
+  defaultValue?: unknown;
+  options?: string[];
+  min?: number;
+  max?: number;
+  step?: number;
+}
+
+export interface ComfyuiWorkflowNodeData {
+  customBaseUrl?: string;
+  workflowJson?: string;
+  workflowName?: string;
+  paramBindings?: WorkflowParamBinding[];
+  paramValues?: Record<string, unknown>;
+  outputNodeIds?: string[];
+  outputType?: "image" | "video" | "auto";
+  outputUrl?: string;
+  outputUrls?: string[];
+  progress?: number;
   status?: "idle" | "processing" | "done" | "failed";
   errorMessage?: string;
 }
@@ -442,7 +486,8 @@ export type NodeData =
   | LipSyncNodeData
   | AvatarNodeData
   | ComfyuiImageNodeData
-  | ComfyuiVideoNodeData;
+  | ComfyuiVideoNodeData
+  | ComfyuiWorkflowNodeData;
 
 // ── Canvas Node ───────────────────────────────────────────────────────────────
 
