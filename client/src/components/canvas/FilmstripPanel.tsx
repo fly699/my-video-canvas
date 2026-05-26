@@ -1,5 +1,6 @@
 import { useReactFlow } from "@xyflow/react";
-import { X, Film, ImageOff } from "lucide-react";
+import { useEffect, useRef, useState } from "react";
+import { X, Film, ImageOff, GripHorizontal } from "lucide-react";
 import { useCanvasStore } from "../../hooks/useCanvasStore";
 import { getNodeConfig } from "../../lib/nodeConfig";
 import type { NodeType } from "../../../../shared/types";
@@ -8,9 +9,58 @@ interface FilmstripPanelProps {
   onClose: () => void;
 }
 
+const FILMSTRIP_HEIGHT_KEY = "filmstrip:height:v1";
+const MIN_HEIGHT = 84;   // header + a few px so frames are still scannable
+const MAX_HEIGHT = 360;  // never eat more than ~1/3 of a typical viewport
+const DEFAULT_HEIGHT = 140;
+
+function loadHeight(): number {
+  if (typeof window === "undefined") return DEFAULT_HEIGHT;
+  try {
+    const raw = window.localStorage.getItem(FILMSTRIP_HEIGHT_KEY);
+    if (!raw) return DEFAULT_HEIGHT;
+    const n = parseInt(raw, 10);
+    if (!Number.isFinite(n)) return DEFAULT_HEIGHT;
+    return Math.max(MIN_HEIGHT, Math.min(MAX_HEIGHT, n));
+  } catch { return DEFAULT_HEIGHT; }
+}
+
+function persistHeight(h: number): void {
+  if (typeof window === "undefined") return;
+  try { window.localStorage.setItem(FILMSTRIP_HEIGHT_KEY, String(h)); } catch { /* ignore */ }
+}
+
 export function FilmstripPanel({ onClose }: FilmstripPanelProps) {
   const { nodes } = useCanvasStore();
   const reactFlow = useReactFlow();
+  const [height, setHeight] = useState<number>(loadHeight);
+  const dragRef = useRef<{ startY: number; startHeight: number } | null>(null);
+
+  // Drag the grip at the top edge upward to expand, downward to collapse.
+  // Vertical-only drag bound to window so the user can release outside the panel.
+  const startResize = (e: React.MouseEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    dragRef.current = { startY: e.clientY, startHeight: height };
+    const onMove = (mv: MouseEvent) => {
+      if (!dragRef.current) return;
+      // Top edge moves up → panel grows: delta = startY - currentY
+      const delta = dragRef.current.startY - mv.clientY;
+      const next = Math.max(MIN_HEIGHT, Math.min(MAX_HEIGHT, dragRef.current.startHeight + delta));
+      setHeight(next);
+    };
+    const onUp = () => {
+      window.removeEventListener("mousemove", onMove);
+      window.removeEventListener("mouseup", onUp);
+      if (dragRef.current) persistHeight(height);
+      dragRef.current = null;
+    };
+    window.addEventListener("mousemove", onMove);
+    window.addEventListener("mouseup", onUp);
+  };
+
+  // Save height when component unmounts mid-drag or on user-driven close
+  useEffect(() => () => { persistHeight(height); }, [height]);
 
   // Filter nodes that have an imageUrl, resultVideoUrl, or imageUrls in payload
   const mediaNodes = nodes.filter((node) => {
@@ -36,19 +86,51 @@ export function FilmstripPanel({ onClose }: FilmstripPanelProps) {
     <div
       className="canvas-filmstrip"
       style={{
+        // Pinned to the very bottom so the panel feels grounded; z-index sits
+        // BELOW the floating bottom toolbar (z-20) so the toolbar visually
+        // floats on top of the filmstrip and stays clickable. Previous value
+        // (z-25) caused the filmstrip to occlude the toolbar.
         position: "absolute",
-        bottom: 72,
+        bottom: 0,
         left: 0,
         right: 0,
-        height: 140,
+        height,
         background: "var(--c-base)",
         backdropFilter: "blur(16px)",
         borderTop: "1px solid var(--c-bd1)",
         display: "flex",
         flexDirection: "column",
-        zIndex: 25,
+        zIndex: 15,
       }}
     >
+      {/* Drag grip — sits flush with the top edge; cursor row-resize on the
+          handle itself, all other clicks pass through to header content. */}
+      <div
+        onMouseDown={startResize}
+        title="拖动调整胶片条高度"
+        style={{
+          position: "absolute",
+          top: -3,
+          left: 0,
+          right: 0,
+          height: 6,
+          cursor: "row-resize",
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "center",
+          zIndex: 1,
+        }}
+      >
+        <GripHorizontal
+          style={{
+            width: 24, height: 10,
+            color: "var(--c-bd3)",
+            opacity: 0.6,
+            transition: "opacity 150ms ease, color 150ms ease",
+            pointerEvents: "none",
+          }}
+        />
+      </div>
       {/* Header */}
       <div
         style={{
