@@ -42,6 +42,24 @@ export function ContextMenu({
     onUp: () => void;
   } | null>(null);
 
+  // Resize state — only active when persistent
+  const MIN_W = 180;
+  const MIN_H = 160;
+  const [panelSize, setPanelSize] = useState<{ w: number; h: number | null }>({ w: 210, h: null });
+  const resizeRef = useRef<{
+    startX: number;
+    startY: number;
+    initW: number;
+    initH: number;
+    onMove: (e: MouseEvent) => void;
+    onUp: () => void;
+  } | null>(null);
+
+  // Reset size when unpinned
+  useEffect(() => {
+    if (!persistent) setPanelSize({ w: 210, h: null });
+  }, [persistent]);
+
   // Close on outside click / Escape — but skip when canvas menu is persistent
   useEffect(() => {
     const handleClick = (e: MouseEvent) => {
@@ -59,9 +77,6 @@ export function ContextMenu({
 
   // Drag the menu by its header. Only matters when persistent — but allowed
   // always so user can reposition before pinning.
-  // Track the active mousemove/mouseup pair on the dragRef itself so we can
-  // detach them from a useEffect cleanup if the menu unmounts mid-drag
-  // (e.g. user presses Escape while holding the mouse button).
   const startDrag = (e: React.MouseEvent) => {
     if (!menuRef.current) return;
     // Don't start drag when clicking the pin / close buttons inside the header
@@ -72,9 +87,6 @@ export function ContextMenu({
     const menuH = rect.height;
     const onMove = (mv: MouseEvent) => {
       if (!dragRef.current) return;
-      // Clamp using the menu's actual rendered size so it can't be dragged
-      // mostly off-screen (was hardcoded 100/60, which let a 210-wide menu
-      // hang off the right with its close button outside the viewport).
       const next = {
         left: Math.max(0, Math.min(window.innerWidth - menuW, dragRef.current.initLeft + mv.clientX - dragRef.current.startX)),
         top:  Math.max(0, Math.min(window.innerHeight - menuH, dragRef.current.initTop  + mv.clientY - dragRef.current.startY)),
@@ -95,14 +107,45 @@ export function ContextMenu({
     window.addEventListener("mouseup", onUp);
   };
 
-  // Cleanup any in-flight drag listeners on unmount so they don't leak +
-  // setState on the unmounted component.
+  // Resize the panel from the bottom-right handle (persistent only).
+  const startResize = (e: React.MouseEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    if (!menuRef.current) return;
+    const rect = menuRef.current.getBoundingClientRect();
+    const onMove = (mv: MouseEvent) => {
+      if (!resizeRef.current) return;
+      setPanelSize({
+        w: Math.max(MIN_W, resizeRef.current.initW + mv.clientX - resizeRef.current.startX),
+        h: Math.max(MIN_H, resizeRef.current.initH + mv.clientY - resizeRef.current.startY),
+      });
+    };
+    const onUp = () => {
+      resizeRef.current = null;
+      window.removeEventListener("mousemove", onMove);
+      window.removeEventListener("mouseup", onUp);
+    };
+    resizeRef.current = {
+      startX: e.clientX, startY: e.clientY,
+      initW: rect.width, initH: rect.height,
+      onMove, onUp,
+    };
+    window.addEventListener("mousemove", onMove);
+    window.addEventListener("mouseup", onUp);
+  };
+
+  // Cleanup any in-flight drag/resize listeners on unmount.
   useEffect(() => {
     return () => {
       if (dragRef.current) {
         window.removeEventListener("mousemove", dragRef.current.onMove);
         window.removeEventListener("mouseup", dragRef.current.onUp);
         dragRef.current = null;
+      }
+      if (resizeRef.current) {
+        window.removeEventListener("mousemove", resizeRef.current.onMove);
+        window.removeEventListener("mouseup", resizeRef.current.onUp);
+        resizeRef.current = null;
       }
     };
   }, []);
@@ -116,11 +159,9 @@ export function ContextMenu({
     const vh = window.innerHeight;
     const gap = 8;
 
-    // Horizontal: prefer right of cursor, flip left if needed
     let left = x;
     if (x + width + gap > vw) left = Math.max(gap, x - width);
 
-    // Vertical: prefer below cursor, flip above if needed
     let top = y;
     const maxHeight = Math.min(height, vh - gap * 2);
     if (y + maxHeight + gap > vh) {
@@ -131,8 +172,13 @@ export function ContextMenu({
   }, [x, y]);
 
   const menuWidth = 210;
+  // When persistent and user has set a size, use it; otherwise fall back to menuWidth
+  const currentW = persistent ? panelSize.w : menuWidth;
+  const currentH = persistent && panelSize.h != null ? panelSize.h : null;
 
   return (
+    // Outer shell: handles position + size. overflow:visible so the resize handle
+    // is not clipped. Visual styling (border-radius, clip) is on the inner shell.
     <div
       ref={menuRef}
       className={persistent ? undefined : "animate-scale-in"}
@@ -141,241 +187,282 @@ export function ContextMenu({
         left: dragPos?.left ?? pos?.left ?? x,
         top: dragPos?.top ?? pos?.top ?? y,
         zIndex: 9999,
-        background: "var(--c-base)",
-        border: `1px solid ${persistent ? "oklch(0.68 0.22 285 / 0.45)" : "var(--c-bd2)"}`,
-        borderRadius: 12,
-        boxShadow: persistent
-          ? "0 8px 40px oklch(0 0 0 / 0.65), 0 0 0 1px oklch(0.68 0.22 285 / 0.25)"
-          : "0 8px 40px oklch(0 0 0 / 0.65), 0 2px 8px oklch(0 0 0 / 0.4)",
-        minWidth: menuWidth,
-        overflow: "hidden",
-        // Before measurement: invisible to avoid position flash
+        width: currentW,
+        ...(currentH != null ? { height: currentH } : {}),
+        minWidth: MIN_W,
+        ...(persistent ? { minHeight: MIN_H } : {}),
         visibility: pos ? "visible" : "hidden",
       }}
     >
-      {type === "canvas" ? (
-        <>
-          {/* Header — draggable when persistent; hosts pin + close buttons */}
-          <div
-            onMouseDown={startDrag}
-            style={{
-              padding: "6px 6px 6px 10px",
-              borderBottom: "1px solid var(--c-bd1)",
-              display: "flex",
-              alignItems: "center",
-              gap: 6,
-              cursor: persistent ? "move" : "default",
-              userSelect: "none",
-              background: persistent ? "oklch(0.68 0.22 285 / 0.08)" : "transparent",
-            }}
-          >
-            {persistent && <GripHorizontal className="w-3 h-3" style={{ color: "oklch(0.78 0.16 285)" }} />}
-            {!persistent && <Plus className="w-3 h-3" style={{ color: "var(--c-t4)" }} />}
-            <span style={{
-              fontSize: 10, fontWeight: 500, textTransform: "uppercase", letterSpacing: "0.06em",
-              color: persistent ? "oklch(0.82 0.16 285)" : "var(--c-t4)",
-              flex: 1,
+      {/* Inner shell: carries all visual styles + clips content to border-radius */}
+      <div
+        style={{
+          width: "100%",
+          height: currentH != null ? "100%" : undefined,
+          background: "var(--c-base)",
+          border: `1px solid ${persistent ? "oklch(0.68 0.22 285 / 0.45)" : "var(--c-bd2)"}`,
+          borderRadius: 12,
+          boxShadow: persistent
+            ? "0 8px 40px oklch(0 0 0 / 0.65), 0 0 0 1px oklch(0.68 0.22 285 / 0.25)"
+            : "0 8px 40px oklch(0 0 0 / 0.65), 0 2px 8px oklch(0 0 0 / 0.4)",
+          overflow: "hidden",
+          display: "flex",
+          flexDirection: "column",
+        }}
+      >
+        {type === "canvas" ? (
+          <>
+            {/* Header — draggable when persistent; hosts pin + close buttons */}
+            <div
+              onMouseDown={startDrag}
+              style={{
+                padding: "6px 6px 6px 10px",
+                borderBottom: "1px solid var(--c-bd1)",
+                display: "flex",
+                alignItems: "center",
+                gap: 6,
+                cursor: persistent ? "move" : "default",
+                userSelect: "none",
+                background: persistent ? "oklch(0.68 0.22 285 / 0.08)" : "transparent",
+                flexShrink: 0,
+              }}
+            >
+              {persistent && <GripHorizontal className="w-3 h-3" style={{ color: "oklch(0.78 0.16 285)" }} />}
+              {!persistent && <Plus className="w-3 h-3" style={{ color: "var(--c-t4)" }} />}
+              <span style={{
+                fontSize: 10, fontWeight: 500, textTransform: "uppercase", letterSpacing: "0.06em",
+                color: persistent ? "oklch(0.82 0.16 285)" : "var(--c-t4)",
+                flex: 1,
+              }}>
+                {persistent ? "添加节点（已固定）" : "添加节点"}
+              </span>
+              <button
+                onClick={() => setPersistent((v) => !v)}
+                title={persistent ? "取消固定 — 关闭后将自动隐藏" : "固定显示 — 保持菜单在画布上，可拖拽位置"}
+                style={{
+                  background: "none", border: "none", padding: 3, borderRadius: 4,
+                  cursor: "pointer",
+                  color: persistent ? "oklch(0.82 0.16 285)" : "var(--c-t3)",
+                  display: "flex", alignItems: "center", justifyContent: "center",
+                }}
+                onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.background = "var(--c-elevated)"; }}
+                onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.background = "transparent"; }}
+              >
+                {persistent ? <PinOff size={11} /> : <Pin size={11} />}
+              </button>
+              <button
+                onClick={onClose}
+                title="关闭"
+                style={{
+                  background: "none", border: "none", padding: 3, borderRadius: 4,
+                  cursor: "pointer", color: "var(--c-t3)",
+                  display: "flex", alignItems: "center", justifyContent: "center",
+                }}
+                onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.background = "var(--c-elevated)"; (e.currentTarget as HTMLElement).style.color = "var(--c-t1)"; }}
+                onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.background = "transparent"; (e.currentTarget as HTMLElement).style.color = "var(--c-t3)"; }}
+              >
+                <X size={12} />
+              </button>
+            </div>
+            <div style={{
+              padding: "4px",
+              overflowY: "auto",
+              // When height is user-controlled via resize, fill remaining space;
+              // otherwise cap at viewport-aware maxHeight from initial measurement.
+              flex: currentH != null ? 1 : undefined,
+              maxHeight: currentH != null ? undefined : (pos ? pos.maxHeight - 40 : "none"),
+              scrollbarWidth: "thin",
+              scrollbarColor: "var(--c-bd3) transparent",
             }}>
-              {persistent ? "添加节点（已固定）" : "添加节点"}
-            </span>
-            <button
-              onClick={() => setPersistent((v) => !v)}
-              title={persistent ? "取消固定 — 关闭后将自动隐藏" : "固定显示 — 保持菜单在画布上，可拖拽位置"}
-              style={{
-                background: "none", border: "none", padding: 3, borderRadius: 4,
-                cursor: "pointer",
-                color: persistent ? "oklch(0.82 0.16 285)" : "var(--c-t3)",
-                display: "flex", alignItems: "center", justifyContent: "center",
-              }}
-              onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.background = "var(--c-elevated)"; }}
-              onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.background = "transparent"; }}
-            >
-              {persistent ? <PinOff size={11} /> : <Pin size={11} />}
-            </button>
-            <button
-              onClick={onClose}
-              title="关闭"
-              style={{
-                background: "none", border: "none", padding: 3, borderRadius: 4,
-                cursor: "pointer", color: "var(--c-t3)",
-                display: "flex", alignItems: "center", justifyContent: "center",
-              }}
-              onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.background = "var(--c-elevated)"; (e.currentTarget as HTMLElement).style.color = "var(--c-t1)"; }}
-              onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.background = "transparent"; (e.currentTarget as HTMLElement).style.color = "var(--c-t3)"; }}
-            >
-              <X size={12} />
-            </button>
-          </div>
-          <div style={{
-            padding: "4px",
-            overflowY: "auto",
-            maxHeight: pos ? pos.maxHeight - 40 : "none",
-            scrollbarWidth: "thin",
-            scrollbarColor: "var(--c-bd3) transparent",
-          }}>
-            {/* ComfyUI nodes pinned to the top — same sort policy as NodePicker */}
-            {[...NODE_TYPE_LIST].sort((a, b) => {
-              const aIsComfy = a.type === "comfyui_image" || a.type === "comfyui_video";
-              const bIsComfy = b.type === "comfyui_image" || b.type === "comfyui_video";
-              if (aIsComfy && !bIsComfy) return -1;
-              if (!aIsComfy && bIsComfy) return 1;
-              return 0;
-            }).map((config) => {
-              const Icon = NODE_ICONS[config.icon] ?? FileText;
-              const showSubtitle = config.defaultTitle !== config.label;
-              return (
-                <button
-                  key={config.type}
-                  onClick={() => { onAddNode?.(config.type); if (!persistent) onClose(); }}
-                  style={{
-                    display: "flex",
-                    alignItems: "center",
-                    gap: 10,
-                    width: "100%",
-                    padding: "7px 8px",
-                    fontSize: 12,
-                    cursor: "pointer",
-                    background: "transparent",
-                    border: "none",
-                    textAlign: "left",
-                    color: "var(--c-t2)",
-                    borderRadius: 8,
-                    transition: "all 120ms ease",
-                  }}
-                  onMouseEnter={(e) => {
-                    (e.currentTarget as HTMLElement).style.background = "var(--c-elevated)";
-                    (e.currentTarget as HTMLElement).style.color = "var(--c-t1)";
-                  }}
-                  onMouseLeave={(e) => {
-                    (e.currentTarget as HTMLElement).style.background = "transparent";
-                    (e.currentTarget as HTMLElement).style.color = "var(--c-t2)";
-                  }}
-                >
-                  <div
+              {/* ComfyUI nodes pinned to the top — same sort policy as NodePicker */}
+              {[...NODE_TYPE_LIST].sort((a, b) => {
+                const aIsComfy = a.type === "comfyui_image" || a.type === "comfyui_video";
+                const bIsComfy = b.type === "comfyui_image" || b.type === "comfyui_video";
+                if (aIsComfy && !bIsComfy) return -1;
+                if (!aIsComfy && bIsComfy) return 1;
+                return 0;
+              }).map((config) => {
+                const Icon = NODE_ICONS[config.icon] ?? FileText;
+                const showSubtitle = config.defaultTitle !== config.label;
+                return (
+                  <button
+                    key={config.type}
+                    onClick={() => { onAddNode?.(config.type); if (!persistent) onClose(); }}
                     style={{
-                      width: 22, height: 22, borderRadius: 6,
-                      display: "flex", alignItems: "center", justifyContent: "center",
-                      background: `${config.color}18`,
-                      border: `1px solid ${config.color}35`,
-                      flexShrink: 0,
+                      display: "flex",
+                      alignItems: "center",
+                      gap: 10,
+                      width: "100%",
+                      padding: "7px 8px",
+                      fontSize: 12,
+                      cursor: "pointer",
+                      background: "transparent",
+                      border: "none",
+                      textAlign: "left",
+                      color: "var(--c-t2)",
+                      borderRadius: 8,
+                      transition: "all 120ms ease",
+                    }}
+                    onMouseEnter={(e) => {
+                      (e.currentTarget as HTMLElement).style.background = "var(--c-elevated)";
+                      (e.currentTarget as HTMLElement).style.color = "var(--c-t1)";
+                    }}
+                    onMouseLeave={(e) => {
+                      (e.currentTarget as HTMLElement).style.background = "transparent";
+                      (e.currentTarget as HTMLElement).style.color = "var(--c-t2)";
                     }}
                   >
-                    <Icon className="w-3 h-3" style={{ color: config.color }} />
-                  </div>
-                  <div>
-                    <div style={{ fontWeight: 500, lineHeight: 1.2 }}>{config.label}</div>
-                    {showSubtitle && (
-                      <div style={{ fontSize: 10, color: "var(--c-t4)", marginTop: 1 }}>{config.defaultTitle}</div>
-                    )}
-                  </div>
-                </button>
-              );
-            })}
+                    <div
+                      style={{
+                        width: 22, height: 22, borderRadius: 6,
+                        display: "flex", alignItems: "center", justifyContent: "center",
+                        background: `${config.color}18`,
+                        border: `1px solid ${config.color}35`,
+                        flexShrink: 0,
+                      }}
+                    >
+                      <Icon className="w-3 h-3" style={{ color: config.color }} />
+                    </div>
+                    <div>
+                      <div style={{ fontWeight: 500, lineHeight: 1.2 }}>{config.label}</div>
+                      {showSubtitle && (
+                        <div style={{ fontSize: 10, color: "var(--c-t4)", marginTop: 1 }}>{config.defaultTitle}</div>
+                      )}
+                    </div>
+                  </button>
+                );
+              })}
+            </div>
+          </>
+        ) : (
+          <div style={{ padding: "4px" }}>
+            {onRunWorkflow && (
+              <button
+                onClick={() => { onRunWorkflow(); onClose(); }}
+                style={{
+                  display: "flex", alignItems: "center", gap: 10,
+                  width: "100%", padding: "7px 8px", fontSize: 12,
+                  cursor: "pointer", background: "transparent", border: "none",
+                  textAlign: "left", color: "oklch(0.72 0.22 142)", borderRadius: 8,
+                  transition: "all 120ms ease",
+                }}
+                onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.background = "oklch(0.72 0.22 142 / 0.10)"; (e.currentTarget as HTMLElement).style.color = "oklch(0.80 0.22 142)"; }}
+                onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.background = "transparent"; (e.currentTarget as HTMLElement).style.color = "oklch(0.72 0.22 142)"; }}
+              >
+                <Play className="w-3.5 h-3.5" />
+                从此节点运行工作流
+              </button>
+            )}
+            {onRunWorkflow && (onTogglePin || onCollapse) && (
+              <div style={{ height: 1, background: "var(--c-bd1)", margin: "3px 6px" }} />
+            )}
+            {onTogglePin && (
+              <button
+                onClick={() => { onTogglePin(); onClose(); }}
+                style={{
+                  display: "flex", alignItems: "center", gap: 10,
+                  width: "100%", padding: "7px 8px", fontSize: 12,
+                  cursor: "pointer", background: "transparent", border: "none",
+                  textAlign: "left",
+                  color: nodePinned ? "oklch(0.72 0.20 285)" : "var(--c-t2)",
+                  borderRadius: 8,
+                  transition: "all 120ms ease",
+                }}
+                onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.background = "var(--c-elevated)"; }}
+                onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.background = "transparent"; }}
+              >
+                {nodePinned ? <PinOff className="w-3.5 h-3.5" /> : <Pin className="w-3.5 h-3.5" />}
+                {nodePinned ? "取消固定（恢复自动折叠）" : "固定显示（始终展开）"}
+              </button>
+            )}
+            {onCollapse && (
+              <button
+                onClick={() => { onCollapse(); onClose(); }}
+                style={{
+                  display: "flex", alignItems: "center", gap: 10,
+                  width: "100%", padding: "7px 8px", fontSize: 12,
+                  cursor: "pointer", background: "transparent", border: "none",
+                  textAlign: "left", color: "var(--c-t2)", borderRadius: 8,
+                  transition: "all 120ms ease",
+                }}
+                onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.background = "var(--c-elevated)"; }}
+                onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.background = "transparent"; }}
+              >
+                <ChevronUp className="w-3.5 h-3.5" style={{ color: "var(--c-t3)" }} />
+                立即折叠
+              </button>
+            )}
+            {(onTogglePin || onCollapse) && (onDuplicateNode || onDeleteNode) && (
+              <div style={{ height: 1, background: "var(--c-bd1)", margin: "3px 6px" }} />
+            )}
+            {onDuplicateNode && (
+              <button
+                onClick={() => { onDuplicateNode(); onClose(); }}
+                style={{
+                  display: "flex", alignItems: "center", gap: 10,
+                  width: "100%", padding: "7px 8px", fontSize: 12,
+                  cursor: "pointer", background: "transparent", border: "none",
+                  textAlign: "left", color: "var(--c-t2)", borderRadius: 8,
+                  transition: "all 120ms ease",
+                }}
+                onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.background = "var(--c-elevated)"; (e.currentTarget as HTMLElement).style.color = "var(--c-t1)"; }}
+                onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.background = "transparent"; (e.currentTarget as HTMLElement).style.color = "var(--c-t2)"; }}
+              >
+                <Copy className="w-3.5 h-3.5" style={{ color: "var(--c-t3)" }} />
+                复制节点
+              </button>
+            )}
+            {onDuplicateNode && onDeleteNode && (
+              <div style={{ height: 1, background: "var(--c-bd1)", margin: "3px 6px" }} />
+            )}
+            {onDeleteNode && (
+              <button
+                onClick={() => { onDeleteNode(); onClose(); }}
+                style={{
+                  display: "flex", alignItems: "center", gap: 10,
+                  width: "100%", padding: "7px 8px", fontSize: 12,
+                  cursor: "pointer", background: "transparent", border: "none",
+                  textAlign: "left", color: "oklch(0.62 0.20 25)", borderRadius: 8,
+                  transition: "all 120ms ease",
+                }}
+                onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.background = "oklch(0.62 0.20 25 / 0.10)"; (e.currentTarget as HTMLElement).style.color = "oklch(0.70 0.22 25)"; }}
+                onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.background = "transparent"; (e.currentTarget as HTMLElement).style.color = "oklch(0.62 0.20 25)"; }}
+              >
+                <Trash2 className="w-3.5 h-3.5" />
+                删除节点
+              </button>
+            )}
           </div>
-        </>
-      ) : (
-        <div style={{ padding: "4px" }}>
-          {onRunWorkflow && (
-            <button
-              onClick={() => { onRunWorkflow(); onClose(); }}
-              style={{
-                display: "flex", alignItems: "center", gap: 10,
-                width: "100%", padding: "7px 8px", fontSize: 12,
-                cursor: "pointer", background: "transparent", border: "none",
-                textAlign: "left", color: "oklch(0.72 0.22 142)", borderRadius: 8,
-                transition: "all 120ms ease",
-              }}
-              onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.background = "oklch(0.72 0.22 142 / 0.10)"; (e.currentTarget as HTMLElement).style.color = "oklch(0.80 0.22 142)"; }}
-              onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.background = "transparent"; (e.currentTarget as HTMLElement).style.color = "oklch(0.72 0.22 142)"; }}
-            >
-              <Play className="w-3.5 h-3.5" />
-              从此节点运行工作流
-            </button>
-          )}
-          {onRunWorkflow && (onTogglePin || onCollapse) && (
-            <div style={{ height: 1, background: "var(--c-bd1)", margin: "3px 6px" }} />
-          )}
-          {/* Pin / Unpin — keeps the node's input panel expanded regardless of selection.
-              Useful when you want to watch several nodes' output side by side without
-              having to keep clicking them. */}
-          {onTogglePin && (
-            <button
-              onClick={() => { onTogglePin(); onClose(); }}
-              style={{
-                display: "flex", alignItems: "center", gap: 10,
-                width: "100%", padding: "7px 8px", fontSize: 12,
-                cursor: "pointer", background: "transparent", border: "none",
-                textAlign: "left",
-                color: nodePinned ? "oklch(0.72 0.20 285)" : "var(--c-t2)",
-                borderRadius: 8,
-                transition: "all 120ms ease",
-              }}
-              onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.background = "var(--c-elevated)"; }}
-              onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.background = "transparent"; }}
-            >
-              {nodePinned ? <PinOff className="w-3.5 h-3.5" /> : <Pin className="w-3.5 h-3.5" />}
-              {nodePinned ? "取消固定（恢复自动折叠）" : "固定显示（始终展开）"}
-            </button>
-          )}
-          {/* Collapse — quick "fold this node now". Clears pin and de-selects so the
-              node returns to its compact preview-only state. */}
-          {onCollapse && (
-            <button
-              onClick={() => { onCollapse(); onClose(); }}
-              style={{
-                display: "flex", alignItems: "center", gap: 10,
-                width: "100%", padding: "7px 8px", fontSize: 12,
-                cursor: "pointer", background: "transparent", border: "none",
-                textAlign: "left", color: "var(--c-t2)", borderRadius: 8,
-                transition: "all 120ms ease",
-              }}
-              onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.background = "var(--c-elevated)"; }}
-              onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.background = "transparent"; }}
-            >
-              <ChevronUp className="w-3.5 h-3.5" style={{ color: "var(--c-t3)" }} />
-              立即折叠
-            </button>
-          )}
-          {(onTogglePin || onCollapse) && (onDuplicateNode || onDeleteNode) && (
-            <div style={{ height: 1, background: "var(--c-bd1)", margin: "3px 6px" }} />
-          )}
-          {onDuplicateNode && (
-            <button
-              onClick={() => { onDuplicateNode(); onClose(); }}
-              style={{
-                display: "flex", alignItems: "center", gap: 10,
-                width: "100%", padding: "7px 8px", fontSize: 12,
-                cursor: "pointer", background: "transparent", border: "none",
-                textAlign: "left", color: "var(--c-t2)", borderRadius: 8,
-                transition: "all 120ms ease",
-              }}
-              onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.background = "var(--c-elevated)"; (e.currentTarget as HTMLElement).style.color = "var(--c-t1)"; }}
-              onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.background = "transparent"; (e.currentTarget as HTMLElement).style.color = "var(--c-t2)"; }}
-            >
-              <Copy className="w-3.5 h-3.5" style={{ color: "var(--c-t3)" }} />
-              复制节点
-            </button>
-          )}
-          {onDuplicateNode && onDeleteNode && (
-            <div style={{ height: 1, background: "var(--c-bd1)", margin: "3px 6px" }} />
-          )}
-          {onDeleteNode && (
-            <button
-              onClick={() => { onDeleteNode(); onClose(); }}
-              style={{
-                display: "flex", alignItems: "center", gap: 10,
-                width: "100%", padding: "7px 8px", fontSize: 12,
-                cursor: "pointer", background: "transparent", border: "none",
-                textAlign: "left", color: "oklch(0.62 0.20 25)", borderRadius: 8,
-                transition: "all 120ms ease",
-              }}
-              onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.background = "oklch(0.62 0.20 25 / 0.10)"; (e.currentTarget as HTMLElement).style.color = "oklch(0.70 0.22 25)"; }}
-              onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.background = "transparent"; (e.currentTarget as HTMLElement).style.color = "oklch(0.62 0.20 25)"; }}
-            >
-              <Trash2 className="w-3.5 h-3.5" />
-              删除节点
-            </button>
-          )}
+        )}
+      </div>
+
+      {/* Resize handle — only shown when the canvas menu is pinned.
+          Lives on the outer shell (overflow:visible) so it's not clipped
+          by the inner shell's overflow:hidden + border-radius. */}
+      {persistent && type === "canvas" && (
+        <div
+          onMouseDown={startResize}
+          title="拖拽调整大小"
+          style={{
+            position: "absolute",
+            right: 0,
+            bottom: 0,
+            width: 18,
+            height: 18,
+            cursor: "nwse-resize",
+            display: "flex",
+            alignItems: "flex-end",
+            justifyContent: "flex-end",
+            padding: "3px",
+            zIndex: 1,
+          }}
+        >
+          {/* Three-dot diagonal resize indicator */}
+          <svg width="9" height="9" viewBox="0 0 9 9" fill="none" style={{ opacity: 0.45 }}>
+            <circle cx="1.5" cy="7.5" r="1" fill="oklch(0.78 0.16 285)" />
+            <circle cx="4.5" cy="4.5" r="1" fill="oklch(0.78 0.16 285)" />
+            <circle cx="7.5" cy="1.5" r="1" fill="oklch(0.78 0.16 285)" />
+          </svg>
         </div>
       )}
     </div>
