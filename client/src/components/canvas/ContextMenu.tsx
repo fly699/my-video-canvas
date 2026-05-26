@@ -55,9 +55,16 @@ export function ContextMenu({
     onUp: () => void;
   } | null>(null);
 
-  // Reset size when unpinned
+  // Reset size when unpinned; cancel any in-flight resize drag to avoid listener leak
   useEffect(() => {
-    if (!persistent) setPanelSize({ w: 210, h: null });
+    if (!persistent) {
+      if (resizeRef.current) {
+        window.removeEventListener("mousemove", resizeRef.current.onMove);
+        window.removeEventListener("mouseup", resizeRef.current.onUp);
+        resizeRef.current = null;
+      }
+      setPanelSize({ w: 210, h: null });
+    }
   }, [persistent]);
 
   // Close on outside click / Escape — but skip when canvas menu is persistent

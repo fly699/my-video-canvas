@@ -259,9 +259,10 @@ export async function submitHiggsfieldVideo(
   if (p.duration !== undefined) innerParams.duration = Number(p.duration);
   // Resolution: "480p" | "720p" | "1080p"
   if (p.resolution !== undefined) innerParams.resolution = String(p.resolution);
-  // Seed (optional — omit rather than send null/undefined)
+  // Seed (optional — omit unless a valid finite integer)
   if (p.seed !== undefined && p.seed !== null && String(p.seed) !== "") {
-    innerParams.seed = Number(p.seed);
+    const seedNum = Number(p.seed);
+    if (Number.isFinite(seedNum)) innerParams.seed = Math.trunc(seedNum);
   }
   // Camera motion: build object from two flat UI params
   if (p.camera_motion_type && String(p.camera_motion_type) !== "none") {
