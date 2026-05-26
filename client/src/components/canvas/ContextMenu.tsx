@@ -288,16 +288,25 @@ export function ContextMenu({
               scrollbarWidth: "thin",
               scrollbarColor: "var(--c-bd3) transparent",
             }}>
-              {/* ComfyUI nodes pinned to the top — same sort policy as NodePicker */}
-              {[...NODE_TYPE_LIST].sort((a, b) => {
-                const aIsComfy = a.type === "comfyui_image" || a.type === "comfyui_video";
-                const bIsComfy = b.type === "comfyui_image" || b.type === "comfyui_video";
-                if (aIsComfy && !bIsComfy) return -1;
-                if (!aIsComfy && bIsComfy) return 1;
-                return 0;
-              }).map((config) => {
+              {/* ComfyUI nodes pinned to the top in a fixed order:
+                  1. ComfyUI 图像
+                  2. ComfyUI 视频
+                  3. ComfyUI 自定义 (custom workflow)
+                  …rest preserves the source order from NODE_CONFIGS. */}
+              {(() => {
+                const COMFY_ORDER: Record<string, number> = {
+                  comfyui_image: 0,
+                  comfyui_video: 1,
+                  comfyui_workflow: 2,
+                };
+                return [...NODE_TYPE_LIST].sort((a, b) => {
+                  const ai = COMFY_ORDER[a.type] ?? Infinity;
+                  const bi = COMFY_ORDER[b.type] ?? Infinity;
+                  if (ai !== bi) return ai - bi;
+                  return 0;
+                });
+              })().map((config) => {
                 const Icon = NODE_ICONS[config.icon] ?? FileText;
-                const showSubtitle = config.defaultTitle !== config.label;
                 return (
                   <button
                     key={config.type}
@@ -339,9 +348,6 @@ export function ContextMenu({
                     </div>
                     <div>
                       <div style={{ fontWeight: 500, lineHeight: 1.2 }}>{config.label}</div>
-                      {showSubtitle && (
-                        <div style={{ fontSize: 10, color: "var(--c-t4)", marginTop: 1 }}>{config.defaultTitle}</div>
-                      )}
                     </div>
                   </button>
                 );

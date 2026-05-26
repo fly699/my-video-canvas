@@ -159,14 +159,17 @@ const PROVIDER_PARAMS: Record<string, ParamDef[]> = {
       options: [{ value: "720p", label: "720p" }, { value: "1080p", label: "1080p" }] },
     { type: "select", key: "duration", label: "时长（秒）", default: 5,
       options: [{ value: 5, label: "5 秒" }, { value: 10, label: "10 秒" }, { value: 15, label: "15 秒" }] },
-    { type: "toggle", key: "multi_shots", label: "多镜头模式", default: false },
+    // ⚠️ multi_shots: true causes Poyo to generate 3 separate video shots and
+    // bills each separately (~3x credit cost). Default off; label spells this
+    // out so users can't enable it without seeing the cost.
+    { type: "toggle", key: "multi_shots", label: "多镜头模式（⚠ 生成 3 段，3x 计费）", default: false },
   ],
   poyo_wan25_i2v: [
     { type: "select", key: "resolution", label: "分辨率", default: "720p",
       options: [{ value: "720p", label: "720p" }, { value: "1080p", label: "1080p" }] },
     { type: "select", key: "duration", label: "时长（秒）", default: 5,
       options: [{ value: 5, label: "5 秒" }, { value: 10, label: "10 秒" }, { value: 15, label: "15 秒" }] },
-    { type: "toggle", key: "multi_shots", label: "多镜头模式", default: false },
+    { type: "toggle", key: "multi_shots", label: "多镜头模式（⚠ 生成 3 段，3x 计费）", default: false },
   ],
   poyo_runway45: [
     { type: "select", key: "aspect_ratio", label: "宽高比", default: "16:9",
@@ -200,7 +203,10 @@ const HF_DOP_FAST_PRESETS: ParamPreset[] = [
 
 const WAN26_PRESETS: ParamPreset[] = [
   { id: "quick",   label: "快速预览", params: { duration: 5,  resolution: "720p",  multi_shots: false } },
-  { id: "multi",   label: "多镜头",  params: { duration: 10, resolution: "720p",  multi_shots: true  } },
+  // ⚠️ Wan 2.6 `multi_shots: true` produces 3 separate shots and bills 3x.
+  // Users must opt-in via the toggle (which carries an explicit warning label)
+  // instead of getting it bundled into a preset whose name doesn't telegraph cost.
+  { id: "medium",  label: "中等时长", params: { duration: 10, resolution: "720p",  multi_shots: false } },
   { id: "long_hd", label: "高清长片", params: { duration: 15, resolution: "1080p", multi_shots: false } },
 ];
 
@@ -475,7 +481,24 @@ export const VideoTaskNode = memo(function VideoTaskNode({ id, selected, data }:
     });
   };
 
+  // [CHARGED] / [CHARGED?] are server-side markers that indicate the upstream
+  // provider has (almost certainly / possibly) already billed for this task,
+  // even though our code path observed a failure. Resetting and resubmitting
+  // would create a brand-new paid request — we surface a confirm() prompt so
+  // the user has to acknowledge that risk explicitly. Without this gate, the
+  // most natural UX (see failure → click retry) silently doubled their cost.
+  const errMsg = payload.errorMessage ?? "";
+  const isCharged = errMsg.startsWith("[CHARGED]");
+  const isMaybeCharged = errMsg.startsWith("[CHARGED?]");
+  const isPossiblyBilled = isCharged || isMaybeCharged;
+
   const handleReset = () => {
+    if (isPossiblyBilled) {
+      const msg = isCharged
+        ? "上游确认本任务已生成并已扣点数。继续重置会清除当前结果，重新提交将再次扣费——除非你已确认结果丢失或不可用。\n\n确认重置？"
+        : "本任务的提交结果未确认，上游可能已经接收到请求并扣费。点击「确定」会重置任务并允许重新提交——若上游确实已扣费，会再次扣费。\n\n确认重置？";
+      if (typeof window !== "undefined" && !window.confirm(msg)) return;
+    }
     if (payload.taskId) {
       resetTaskMutation.mutate({ id: payload.taskId });
     } else {
@@ -498,12 +521,25 @@ export const VideoTaskNode = memo(function VideoTaskNode({ id, selected, data }:
   const onFocusMid    = (e: React.FocusEvent<HTMLElement>) => { e.currentTarget.style.borderColor = "var(--c-t4)"; };
   const onBlurDefault = (e: React.FocusEvent<HTMLElement>) => { e.currentTarget.style.borderColor = BORDER_DEFAULT; };
 
+  // Backend serializes multi-shot (Wan 2.6 multi_shots=true) results as
+  // newline-joined URLs inside the existing text column. Split here so the
+  // UI can render a grid of all generated clips instead of choking on the
+  // joined string when fed to <video src=...>.
+  const allResultUrls: string[] = (() => {
+    const raw = payload.resultVideoUrl;
+    if (!raw) return [];
+    if (!raw.includes("\n")) return [raw];
+    return raw.split("\n").map((u) => u.trim()).filter((u) => u.length > 0);
+  })();
+  const safeResultUrls = allResultUrls.filter(isSafeMediaUrl);
+  // Hero / primary video — first URL (used for legacy single-video UI paths
+  // like heroMedia and the download link).
+  const primaryUrl: string | undefined = safeResultUrls[0];
+  const toProxiedSrc = (u: string): string =>
+    u.startsWith("http") ? `/api/video-proxy?url=${encodeURIComponent(u)}` : u;
   // Only accept http(s) (route through proxy) or same-origin relative paths; reject data:/blob:/javascript:
-  const videoSrc = !isSafeMediaUrl(payload.resultVideoUrl)
-    ? undefined
-    : payload.resultVideoUrl!.startsWith("http")
-      ? `/api/video-proxy?url=${encodeURIComponent(payload.resultVideoUrl!)}`
-      : payload.resultVideoUrl;
+  const videoSrc = primaryUrl ? toProxiedSrc(primaryUrl) : undefined;
+  const hasMultiResults = safeResultUrls.length > 1;
 
   // Get param defs for current provider
   const paramDefs = PROVIDER_PARAMS[payload.provider] ?? [];
@@ -589,50 +625,130 @@ export const VideoTaskNode = memo(function VideoTaskNode({ id, selected, data }:
           )}
         </div>
 
-        {/* ── Result video ── */}
-        {payload.status === "succeeded" && payload.resultVideoUrl && videoSrc && (
+        {/* ── Result video(s) ──
+            Single result: full-width player.
+            Multi-shot result (Wan 2.6 multi_shots=true → 3 clips):
+            2-column grid showing all clips; each gets its own download link. */}
+        {payload.status === "succeeded" && videoSrc && (
           <div className="flex-shrink-0">
-            <div className="rounded-lg overflow-hidden" style={{ borderWidth: 1, borderStyle: "solid", borderColor: STATUS.succeeded.borderColor }}>
-              <video
-                key={videoSrc}
-                src={videoSrc}
-                controls
-                className="w-full nodrag"
-                style={{ maxHeight: 140, display: "block" }}
-                preload="metadata"
-                onError={(e) => {
-                  const target = e.currentTarget;
-                  console.error("[VideoTaskNode] Video load error:", target.error?.message, "src:", target.src);
-                }}
-              />
-            </div>
-            {/* Download button */}
-            <a
-              href={`/api/video-proxy?url=${encodeURIComponent(payload.resultVideoUrl)}&download=1`}
-              download
-              className="nodrag mt-1.5 flex items-center justify-center gap-1.5 w-full py-1.5 rounded-lg text-xs font-medium transition-all"
-              style={{
-                background: "oklch(0.72 0.18 155 / 0.10)",
-                borderWidth: 1, borderStyle: "solid",
-                borderColor: "oklch(0.72 0.18 155 / 0.30)",
-                color: "oklch(0.72 0.18 155)",
-                textDecoration: "none",
-                display: "flex",
-              }}
-              onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.background = "oklch(0.72 0.18 155 / 0.18)"; }}
-              onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.background = "oklch(0.72 0.18 155 / 0.10)"; }}
-            >
-              <Download className="w-3 h-3" />
-              下载视频
-            </a>
+            {hasMultiResults && (
+              <div style={{ fontSize: 10, color: "var(--c-t3)", marginBottom: 4 }}>
+                生成了 {safeResultUrls.length} 段视频（多镜头模式）
+              </div>
+            )}
+            {hasMultiResults ? (
+              <div className="grid gap-1.5" style={{ gridTemplateColumns: "1fr 1fr" }}>
+                {safeResultUrls.map((u, idx) => {
+                  const src = toProxiedSrc(u);
+                  return (
+                    <div key={u}>
+                      <div className="rounded-lg overflow-hidden" style={{ borderWidth: 1, borderStyle: "solid", borderColor: STATUS.succeeded.borderColor }}>
+                        <video
+                          src={src}
+                          controls
+                          className="w-full nodrag"
+                          style={{ maxHeight: 110, display: "block" }}
+                          preload="metadata"
+                          onError={(e) => { console.error("[VideoTaskNode] shot", idx, "load error:", (e.currentTarget as HTMLVideoElement).error?.message); }}
+                        />
+                      </div>
+                      <a
+                        href={u.startsWith("http") ? `/api/video-proxy?url=${encodeURIComponent(u)}&download=1` : u}
+                        download
+                        className="nodrag mt-1 flex items-center justify-center gap-1 w-full py-1 rounded text-[10px] font-medium"
+                        style={{
+                          background: "oklch(0.72 0.18 155 / 0.10)",
+                          border: "1px solid oklch(0.72 0.18 155 / 0.30)",
+                          color: "oklch(0.72 0.18 155)",
+                          textDecoration: "none",
+                        }}
+                      >
+                        <Download className="w-2.5 h-2.5" /> 第 {idx + 1} 段
+                      </a>
+                    </div>
+                  );
+                })}
+              </div>
+            ) : (
+              <>
+                <div className="rounded-lg overflow-hidden" style={{ borderWidth: 1, borderStyle: "solid", borderColor: STATUS.succeeded.borderColor }}>
+                  <video
+                    key={videoSrc}
+                    src={videoSrc}
+                    controls
+                    className="w-full nodrag"
+                    style={{ maxHeight: 140, display: "block" }}
+                    preload="metadata"
+                    onError={(e) => {
+                      const target = e.currentTarget;
+                      console.error("[VideoTaskNode] Video load error:", target.error?.message, "src:", target.src);
+                    }}
+                  />
+                </div>
+                {/* Download button (primary URL — works for single-shot results) */}
+                {primaryUrl && (
+                  <a
+                    href={primaryUrl.startsWith("http") ? `/api/video-proxy?url=${encodeURIComponent(primaryUrl)}&download=1` : primaryUrl}
+                    download
+                    className="nodrag mt-1.5 flex items-center justify-center gap-1.5 w-full py-1.5 rounded-lg text-xs font-medium transition-all"
+                    style={{
+                      background: "oklch(0.72 0.18 155 / 0.10)",
+                      borderWidth: 1, borderStyle: "solid",
+                      borderColor: "oklch(0.72 0.18 155 / 0.30)",
+                      color: "oklch(0.72 0.18 155)",
+                      textDecoration: "none",
+                      display: "flex",
+                    }}
+                    onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.background = "oklch(0.72 0.18 155 / 0.18)"; }}
+                    onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.background = "oklch(0.72 0.18 155 / 0.10)"; }}
+                  >
+                    <Download className="w-3 h-3" />
+                    下载视频
+                  </a>
+                )}
+              </>
+            )}
           </div>
         )}
 
-        {/* ── Error ── */}
+        {/* ── Error ──
+            When errorMessage carries the server-side [CHARGED] / [CHARGED?]
+            marker we render a stronger amber banner with an explicit "积分已扣"
+            badge — same coloring as a financial warning, distinguishable
+            from the standard red "task failed" banner. */}
         {payload.status === "failed" && payload.errorMessage && (
-          <div className="flex items-start gap-2 p-2 rounded-lg flex-shrink-0" style={{ background: STATUS.failed.bg, borderWidth: 1, borderStyle: "solid", borderColor: STATUS.failed.borderColor }}>
-            <AlertCircle className="w-3.5 h-3.5 flex-shrink-0 mt-0.5" style={{ color: STATUS.failed.accent }} />
-            <p className="text-[11px] leading-relaxed" style={{ color: STATUS.failed.accent, wordBreak: "break-word", overflowWrap: "anywhere", minWidth: 0, flex: 1 }}>{payload.errorMessage}</p>
+          <div
+            className="flex items-start gap-2 p-2 rounded-lg flex-shrink-0"
+            style={{
+              background: isPossiblyBilled ? "oklch(0.65 0.18 60 / 0.08)" : STATUS.failed.bg,
+              borderWidth: 1, borderStyle: "solid",
+              borderColor: isPossiblyBilled ? "oklch(0.65 0.18 60 / 0.4)" : STATUS.failed.borderColor,
+            }}
+          >
+            <AlertCircle
+              className="w-3.5 h-3.5 flex-shrink-0 mt-0.5"
+              style={{ color: isPossiblyBilled ? "oklch(0.72 0.18 60)" : STATUS.failed.accent }}
+            />
+            <div className="flex flex-col gap-1" style={{ minWidth: 0, flex: 1 }}>
+              {isPossiblyBilled && (
+                <span style={{
+                  alignSelf: "flex-start",
+                  fontSize: 9.5, fontWeight: 700, letterSpacing: "0.04em",
+                  padding: "1px 6px", borderRadius: 99,
+                  background: "oklch(0.72 0.18 60 / 0.15)",
+                  border: "1px solid oklch(0.72 0.18 60 / 0.4)",
+                  color: "oklch(0.78 0.18 60)",
+                }}>
+                  {isCharged ? "⚠ 积分已扣" : "⚠ 积分可能已扣"}
+                </span>
+              )}
+              <p className="text-[11px] leading-relaxed" style={{
+                color: isPossiblyBilled ? "oklch(0.78 0.18 60)" : STATUS.failed.accent,
+                wordBreak: "break-word", overflowWrap: "anywhere",
+              }}>
+                {payload.errorMessage}
+              </p>
+            </div>
           </div>
         )}
 

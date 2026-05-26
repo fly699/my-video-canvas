@@ -1,8 +1,8 @@
 import type { Server as SocketIOServer } from "socket.io";
-import { getPendingVideoTasks, updateVideoTask } from "./db";
+import { getPendingVideoTasks, updateVideoTask, claimVideoTaskForSubmit } from "./db";
 import { isPoyoVideoProvider, submitPoyoVideo, checkPoyoVideoStatus } from "./_core/poyoVideo";
 import { isHiggsfieldVideoProvider, submitHiggsfieldVideo, checkHiggsfieldVideoStatus } from "./_core/higgsfield";
-import { persistVideoOrFallback } from "./_core/persistVideo";
+import { persistVideoOrFallback, persistVideosOrFallback } from "./_core/persistVideo";
 
 
 // ── Video Provider Adapters ───────────────────────────────────────────────────
@@ -50,39 +50,67 @@ export function setupVideoTaskPoller(io: SocketIOServer) {
           let result: PollResult;
 
           // ── Submit if still pending ──────────────────────────────────────
+          // CRITICAL: claim atomically (pending → processing) BEFORE the
+          // upstream call. Two paths race for the same row — the router's
+          // `videoTasks.create` and this poller — and without the lock, a
+          // single dropped DB update after a successful paid submit would
+          // cause this poller cycle to re-charge the user every 10 seconds.
+          // The production incident burned 6×160 credits in 60s on a single
+          // user click before the previous error-counter ceiling intervened.
           if (task.status === "pending") {
-            let submitResult: SubmitResult;
-
-            if (isPoyoVideoProvider(task.provider)) {
-              // Poyo.ai: Seedance 2 / Veo 3.1
-              submitResult = await submitPoyoVideo({
-                provider: task.provider,
-                prompt: task.prompt ?? "",
-                negativePrompt: task.negativePrompt ?? undefined,
-                referenceImageUrl: task.referenceImageUrl ?? undefined,
-                params: (task.params as Record<string, unknown>) ?? undefined,
-              });
-            } else if (isHiggsfieldVideoProvider(task.provider)) {
-              // Higgsfield: DoP / Kling / Seedance
-              submitResult = await submitHiggsfieldVideo({
-                provider: task.provider,
-                prompt: task.prompt ?? "",
-                negativePrompt: task.negativePrompt ?? undefined,
-                referenceImageUrl: task.referenceImageUrl ?? undefined,
-                params: (task.params as Record<string, unknown>) ?? undefined,
-              });
-            } else if (task.provider === "mock") {
-              submitResult = await submitMockTask();
-            } else {
-              await updateVideoTask(task.id, {
-                status: "failed",
-                errorMessage: `Unknown provider: ${task.provider}`,
-              });
+            const claimed = await claimVideoTaskForSubmit(task.id);
+            if (!claimed) {
+              // Lost the race to the router (or a parallel poller); skip — the
+              // winner is responsible for completing the submit.
               continue;
             }
-
+            let submitResult: SubmitResult;
+            try {
+              if (isPoyoVideoProvider(task.provider)) {
+                // Poyo.ai: Seedance 2 / Veo 3.1 / Wan 2.6 / etc.
+                submitResult = await submitPoyoVideo({
+                  provider: task.provider,
+                  prompt: task.prompt ?? "",
+                  negativePrompt: task.negativePrompt ?? undefined,
+                  referenceImageUrl: task.referenceImageUrl ?? undefined,
+                  params: (task.params as Record<string, unknown>) ?? undefined,
+                });
+              } else if (isHiggsfieldVideoProvider(task.provider)) {
+                submitResult = await submitHiggsfieldVideo({
+                  provider: task.provider,
+                  prompt: task.prompt ?? "",
+                  negativePrompt: task.negativePrompt ?? undefined,
+                  referenceImageUrl: task.referenceImageUrl ?? undefined,
+                  params: (task.params as Record<string, unknown>) ?? undefined,
+                });
+              } else if (task.provider === "mock") {
+                submitResult = await submitMockTask();
+              } else {
+                await updateVideoTask(task.id, {
+                  status: "failed",
+                  errorMessage: `Unknown provider: ${task.provider}`,
+                });
+                continue;
+              }
+            } catch (submitErr) {
+              // Upstream submit threw — mark failed (we don't know whether
+              // the upstream actually received the request, but retrying
+              // risks double-billing). Surface the error to the client.
+              const msg = submitErr instanceof Error ? submitErr.message : String(submitErr);
+              console.error(`[VideoPoller] submit failed for task ${task.id}, marking failed: ${msg}`);
+              await updateVideoTask(task.id, {
+                status: "failed",
+                errorMessage: `[CHARGED?] 提交失败: ${msg.slice(0, 200)}`,
+              }).catch(() => { /* best-effort — task is in 'processing' state, no further submit will happen */ });
+              pollErrorCounts.delete(task.id);
+              continue;
+            }
+            // Submit succeeded — save the external id. If this update fails,
+            // the task is stuck in 'processing' without an externalTaskId.
+            // The poll loop's `if (!task.externalTaskId) continue` guard
+            // prevents the duplicate-submit credit burn; credits leak ONCE on
+            // this single attempt but never compound.
             await updateVideoTask(task.id, {
-              status: "processing",
               externalTaskId: submitResult.externalTaskId,
             });
             continue;
@@ -95,14 +123,20 @@ export function setupVideoTaskPoller(io: SocketIOServer) {
             // Poyo.ai status check
             const upstream = await checkPoyoVideoStatus(task.externalTaskId);
             if (upstream.status === "finished") {
-              if (upstream.resultVideoUrl) {
+              const urls = upstream.resultVideoUrls ?? (upstream.resultVideoUrl ? [upstream.resultVideoUrl] : []);
+              if (urls.length > 0) {
                 // Re-host so the URL doesn't die after Poyo's 24h CDN TTL.
-                // Falls back to upstream URL on any failure (user can still
-                // view within the 24h window).
-                const persisted = await persistVideoOrFallback(upstream.resultVideoUrl, task.provider);
-                result = { status: "succeeded", resultVideoUrl: persisted };
+                // Multi-shot Wan 2.6 jobs return 3 URLs; persist each then
+                // newline-join to store inside the existing text column.
+                const persistedList = await persistVideosOrFallback(urls, task.provider);
+                result = { status: "succeeded", resultVideoUrl: persistedList.join("\n") };
               } else {
-                result = { status: "failed", errorMessage: "生成完成但无视频 URL" };
+                // Upstream said "finished" but we couldn't extract any video
+                // URL — credits ARE spent but our parser missed the response
+                // field. Flag with [CHARGED] so the UI can block one-click
+                // resubmit (the previous behavior of marking failed silently
+                // led users to retry and double-charge).
+                result = { status: "failed", errorMessage: "[CHARGED] 视频已在上游生成完成，但本系统未识别 URL（积分已扣，请勿重试；联系管理员查看 Poyo 控制台）" };
               }
             } else if (upstream.status === "failed") {
               result = { status: "failed", errorMessage: upstream.errorMessage ?? "生成失败" };
@@ -117,7 +151,8 @@ export function setupVideoTaskPoller(io: SocketIOServer) {
               const persisted = await persistVideoOrFallback(upstream.resultVideoUrl, task.provider);
               result = { status: "succeeded", resultVideoUrl: persisted };
             } else if (upstream.status === "succeeded" && !upstream.resultVideoUrl) {
-              result = { status: "failed", errorMessage: "任务完成但未返回视频 URL" };
+              // Higgsfield 已扣费但 URL 解析失败 — 同上加 [CHARGED] 标识
+              result = { status: "failed", errorMessage: "[CHARGED] 视频已在 Higgsfield 生成完成，但本系统未识别 URL（积分已扣，请勿重试）" };
             } else if (upstream.status === "failed") {
               result = { status: "failed", errorMessage: upstream.errorMessage ?? "生成失败" };
             } else {

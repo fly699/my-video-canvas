@@ -22,6 +22,7 @@ import {
   getVideoTasksByProject,
   createVideoTask,
   updateVideoTask,
+  claimVideoTaskForSubmit,
   getVideoTask,
   findInFlightVideoTask,
   getChatMessages,
@@ -36,7 +37,7 @@ import { generateComfyImage, generateComfyVideo, fetchComfyModels, analyzeWorkfl
 import { ENV } from "../_core/env";
 import { isPoyoVideoProvider, submitPoyoVideo, checkPoyoVideoStatus } from "../_core/poyoVideo";
 import { isHiggsfieldVideoProvider, submitHiggsfieldVideo, checkHiggsfieldVideoStatus } from "../_core/higgsfield";
-import { persistVideoOrFallback } from "../_core/persistVideo";
+import { persistVideoOrFallback, persistVideosOrFallback } from "../_core/persistVideo";
 import { submitAndPollPoyoMusic, type PoyoMusicModel } from "../_core/poyoAudio";
 import { submitAndPollPoyoTTS, type PoyoTTSModel } from "../_core/poyoAudio";
 import { synthesizeOpenAITTS, type OpenAITTSModel } from "../_core/openaiTTS";
@@ -334,33 +335,70 @@ export const videoTasksRouter = router({
       });
       if (!task) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "Failed to create video task" });
 
-      // Submit to external provider; on failure the task stays "pending" for the poller to retry
+      // ── Submit to external provider ──────────────────────────────────────────
+      // CRITICAL: claim the task atomically (pending → processing) BEFORE the
+      // upstream call. This prevents a credit-burn loop that occurred in
+      // production: if the upstream submit succeeded but a transient DB write
+      // failure left the row in `pending`, the background poller would see it
+      // every 10s and submit again, charging the user repeatedly until the
+      // pollErrorCounts ceiling tripped (and even then 6+ duplicate paid jobs
+      // had already been created upstream).
+      //
+      // After this claim:
+      // - If we crash/fail before saving externalTaskId, the task is `processing`
+      //   without an externalTaskId. The poller's `if (!externalTaskId) continue`
+      //   guard skips it forever — credits leak ONCE but no duplicate burn.
+      // - If submit itself throws, we explicitly mark `failed` so the leak is
+      //   visible to the user and the poller stops touching it.
       let externalTaskId: string | undefined;
-      try {
-        if (isPoyoVideoProvider(input.provider)) {
-          const result = await submitPoyoVideo({
-            provider: input.provider,
-            prompt: input.prompt,
-            negativePrompt: input.negativePrompt,
-            referenceImageUrl: input.referenceImageUrl,
-            params: input.params as Record<string, unknown>,
-          });
-          externalTaskId = result.externalTaskId;
-        } else if (isHiggsfieldVideoProvider(input.provider)) {
-          const result = await submitHiggsfieldVideo({
-            provider: input.provider,
-            prompt: input.prompt,
-            negativePrompt: input.negativePrompt,
-            referenceImageUrl: input.referenceImageUrl,
-            params: input.params as Record<string, unknown>,
-          });
-          externalTaskId = result.externalTaskId;
+      let submitFailed = false;
+      const claimed = await claimVideoTaskForSubmit(task.id);
+      if (!claimed) {
+        // Effectively unreachable for a freshly-created row (poll interval is
+        // 10s, the row is microseconds old), but if a parallel worker did
+        // claim it, return the task as processing — the winner is responsible
+        // for the upstream submit and the client should poll for its result.
+        console.warn(`[videoTasks.create] task ${task.id} already claimed by another worker; deferring to it`);
+        return { ...task, status: "processing" as const };
+      } else {
+        try {
+          if (isPoyoVideoProvider(input.provider)) {
+            const result = await submitPoyoVideo({
+              provider: input.provider,
+              prompt: input.prompt,
+              negativePrompt: input.negativePrompt,
+              referenceImageUrl: input.referenceImageUrl,
+              params: input.params as Record<string, unknown>,
+            });
+            externalTaskId = result.externalTaskId;
+          } else if (isHiggsfieldVideoProvider(input.provider)) {
+            const result = await submitHiggsfieldVideo({
+              provider: input.provider,
+              prompt: input.prompt,
+              negativePrompt: input.negativePrompt,
+              referenceImageUrl: input.referenceImageUrl,
+              params: input.params as Record<string, unknown>,
+            });
+            externalTaskId = result.externalTaskId;
+          }
+          if (externalTaskId) {
+            await updateVideoTask(task.id, { externalTaskId });
+          }
+        } catch (err) {
+          // Upstream submit threw before we got an external task ID. Mark
+          // failed so the poller doesn't retry — even though a transient
+          // network error here could mean upstream actually received the
+          // request, retrying without confirmation risks double-billing.
+          const msg = err instanceof Error ? err.message : String(err);
+          console.error(`[videoTasks.create] submit failed for task ${task.id}: ${msg}`);
+          submitFailed = true;
+          // The submit threw — could be a pre-API error (auth/validation) OR
+          // a post-API network timeout (upstream received the request and is
+          // already running). We can't distinguish; [CHARGED?] tells the UI
+          // to require explicit confirmation before any retry to avoid
+          // double-billing in the latter case.
+          await updateVideoTask(task.id, { status: "failed", errorMessage: `[CHARGED?] 提交失败: ${msg.slice(0, 200)}` }).catch(() => {});
         }
-        if (externalTaskId) {
-          await updateVideoTask(task.id, { status: "processing", externalTaskId });
-        }
-      } catch (err) {
-        console.error(`[videoTasks.create] provider submission failed, task ${task.id} left as pending for poller retry:`, err instanceof Error ? err.message : String(err));
       }
 
       // Always audit the generation attempt so failed/retried submissions are visible
@@ -379,7 +417,13 @@ export const videoTasksRouter = router({
       if (externalTaskId) {
         return { ...task, status: "processing" as const, externalTaskId };
       }
-      return task;
+      if (submitFailed) {
+        return { ...task, status: "failed" as const };
+      }
+      // Claim succeeded but no provider matched (unknown provider — shouldn't
+      // happen given the enum validator) and no submit attempt was made.
+      // Task is now `processing` with no externalTaskId; poller will skip it.
+      return { ...task, status: "processing" as const };
     }),
 
   poll: protectedProcedure
@@ -399,15 +443,23 @@ export const videoTasksRouter = router({
             const upstream = await checkPoyoVideoStatus(task.externalTaskId);
             if (upstream.status === "finished") {
               pollLastCheck.delete(task.externalTaskId);
-              if (!upstream.resultVideoUrl) {
-                const update = { status: "failed" as const, errorMessage: "生成完成但无视频文件" };
+              const urls = upstream.resultVideoUrls ?? (upstream.resultVideoUrl ? [upstream.resultVideoUrl] : []);
+              if (urls.length === 0) {
+                // Credits already spent upstream. The [CHARGED] prefix lets
+                // the UI block one-click resubmit so the user isn't tricked
+                // into re-paying for our parser miss.
+                const update = { status: "failed" as const, errorMessage: "[CHARGED] 视频已在上游生成完成，但本系统未识别 URL（积分已扣，请勿重试；联系管理员查看 Poyo 控制台）" };
                 await updateVideoTask(task.id, update);
                 return { ...task, ...update };
               }
               // CRITICAL: same persistence step as the background poller —
               // without this, client-driven poll wins the race against the
               // background poller and the upstream 24h URL ends up in DB.
-              const persisted = await persistVideoOrFallback(upstream.resultVideoUrl, task.provider);
+              // Multi-shot Wan 2.6 jobs return 3 URLs; persist each and
+              // serialize the list as newline-joined text (URLs can't contain
+              // \n) so we don't need a schema migration.
+              const persistedList = await persistVideosOrFallback(urls, task.provider);
+              const persisted = persistedList.join("\n");
               const update = { status: "succeeded" as const, resultVideoUrl: persisted };
               await updateVideoTask(task.id, update);
               return { ...task, ...update };
@@ -443,7 +495,8 @@ export const videoTasksRouter = router({
             }
             if (upstream.status === "succeeded" && !upstream.resultVideoUrl) {
               pollLastCheck.delete(task.externalTaskId);
-              const update = { status: "failed" as const, errorMessage: "任务完成但未返回视频 URL" };
+              // Credits spent; [CHARGED] blocks UI from one-click resubmit.
+              const update = { status: "failed" as const, errorMessage: "[CHARGED] 视频已在 Higgsfield 生成完成，但本系统未识别 URL（积分已扣，请勿重试）" };
               await updateVideoTask(task.id, update);
               return { ...task, ...update };
             }

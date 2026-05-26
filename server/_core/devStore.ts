@@ -213,6 +213,13 @@ export function devGetPendingVideoTasks(): VideoTask[] {
   );
 }
 
+export function devClaimVideoTaskForSubmit(id: number): boolean {
+  const t = videoTasksMap.get(id);
+  if (!t || t.status !== "pending") return false;
+  videoTasksMap.set(id, { ...t, status: "processing", updatedAt: now() });
+  return true;
+}
+
 // ── Chat Messages ─────────────────────────────────────────────────────────────
 export function devGetChatMessages(nodeId: string, projectId: number): ChatMessage[] {
   return chatMessagesArr

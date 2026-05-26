@@ -124,7 +124,7 @@ export async function submitAndPollPoyoMusic(
 
     if (d.status === "finished") {
       const file = d.files?.[0];
-      if (!file?.file_url) throw new Error("Poyo audio: finished but no file URL");
+      if (!file?.file_url) throw new Error("[CHARGED] Poyo 音频生成完成但响应未含 file URL（积分已扣，请勿重试）");
 
       // Admin-controlled toggle: when audio persistence is disabled,
       // skip the storagePut step and return the upstream URL (24h TTL).
@@ -235,7 +235,7 @@ export async function submitAndPollPoyoTTS(opts: SubmitPoyoTTSOptions): Promise<
 
     if (d.status === "finished") {
       const file = d.files?.[0];
-      if (!file?.file_url) throw new Error("Poyo TTS: finished but no file URL");
+      if (!file?.file_url) throw new Error("[CHARGED] Poyo TTS 生成完成但响应未含 file URL（积分已扣，请勿重试）");
       try {
         const audioRes = await fetch(file.file_url);
         if (audioRes.ok) {

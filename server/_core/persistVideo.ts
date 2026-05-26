@@ -27,6 +27,21 @@ const PERSIST_FETCH_TIMEOUT_MS = 180_000; // 3 min — large videos can be slow
 // URL ends up in DB. Key by upstream URL since that's the unique resource.
 const _inflight = new Map<string, Promise<string>>();
 
+/** Batch variant — preserves order and de-dupes upstream URLs. Used by
+ * multi-shot providers (Wan 2.6 `multi_shots: true`) that return multiple
+ * video files for a single task. Each URL gets its own persistence attempt
+ * (or fallback to upstream) and the resulting array is the same length as
+ * the input, minus duplicates. */
+export async function persistVideosOrFallback(upstreamUrls: string[], provider: string): Promise<string[]> {
+  const unique: string[] = [];
+  for (const u of upstreamUrls) {
+    if (typeof u === "string" && u && !unique.includes(u)) unique.push(u);
+  }
+  // Run in parallel — _inflight dedupe inside persistVideoOrFallback already
+  // coalesces concurrent calls for the same URL.
+  return Promise.all(unique.map((u) => persistVideoOrFallback(u, provider)));
+}
+
 export async function persistVideoOrFallback(upstreamUrl: string, provider: string): Promise<string> {
   // Dedupe BEFORE any await so two concurrent callers can't both pass the
   // toggle check and both start the 100 MB download. Toggle check goes

@@ -315,6 +315,42 @@ export async function updateVideoTask(id: number, data: Partial<InsertVideoTask>
   await db.update(videoTasks).set(data).where(eq(videoTasks.id, id));
 }
 
+/**
+ * Atomically transition a task from `pending` → `processing`, returning true
+ * iff this caller successfully claimed the task. Used as a mutex around
+ * upstream provider submission to prevent duplicate paid submissions:
+ *
+ * - The router's `videoTasks.create` and the background poller both submit
+ *   `pending` tasks. Without locking, a transient DB-write failure after a
+ *   successful upstream submit (e.g. brief connection blip while saving the
+ *   external task id) would leave the task in `pending`, causing the next
+ *   poller cycle 10s later to call `submitPoyoVideo` again — burning credits
+ *   on a duplicate job, repeatedly, every 10s until the row finally updates.
+ *
+ * - With the claim: only one caller can transition pending→processing. The
+ *   loser sees `false` and skips, even if the row hasn't yet had its
+ *   externalTaskId saved by the winner.
+ *
+ * Implementation: conditional UPDATE WHERE status='pending'. MySQL returns
+ * affectedRows=1 if the row matched, 0 otherwise. drizzle/mysql2 exposes
+ * affectedRows on the result header.
+ */
+export async function claimVideoTaskForSubmit(id: number): Promise<boolean> {
+  const db = await getDb();
+  if (!db) {
+    if (DEV_MODE) return dev.devClaimVideoTaskForSubmit(id);
+    throw new Error("DB unavailable");
+  }
+  const result = await db
+    .update(videoTasks)
+    .set({ status: "processing" })
+    .where(and(eq(videoTasks.id, id), eq(videoTasks.status, "pending")));
+  // mysql2 wraps the result; affectedRows lives on either the array head or the OkPacket
+  const header = Array.isArray(result) ? result[0] : result;
+  const affected = (header as { affectedRows?: number })?.affectedRows ?? 0;
+  return affected === 1;
+}
+
 export async function deleteVideoTask(id: number) {
   const db = await getDb();
   if (!db) { if (DEV_MODE) { dev.devDeleteVideoTask(id); return; } throw new Error("DB unavailable"); }
