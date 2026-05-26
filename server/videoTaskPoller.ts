@@ -2,7 +2,7 @@ import type { Server as SocketIOServer } from "socket.io";
 import { getPendingVideoTasks, updateVideoTask } from "./db";
 import { isPoyoVideoProvider, submitPoyoVideo, checkPoyoVideoStatus } from "./_core/poyoVideo";
 import { isHiggsfieldVideoProvider, submitHiggsfieldVideo, checkHiggsfieldVideoStatus } from "./_core/higgsfield";
-import { persistVideoOrFallback } from "./_core/persistVideo";
+import { persistVideoOrFallback, persistVideosOrFallback } from "./_core/persistVideo";
 
 
 // ── Video Provider Adapters ───────────────────────────────────────────────────
@@ -95,12 +95,13 @@ export function setupVideoTaskPoller(io: SocketIOServer) {
             // Poyo.ai status check
             const upstream = await checkPoyoVideoStatus(task.externalTaskId);
             if (upstream.status === "finished") {
-              if (upstream.resultVideoUrl) {
+              const urls = upstream.resultVideoUrls ?? (upstream.resultVideoUrl ? [upstream.resultVideoUrl] : []);
+              if (urls.length > 0) {
                 // Re-host so the URL doesn't die after Poyo's 24h CDN TTL.
-                // Falls back to upstream URL on any failure (user can still
-                // view within the 24h window).
-                const persisted = await persistVideoOrFallback(upstream.resultVideoUrl, task.provider);
-                result = { status: "succeeded", resultVideoUrl: persisted };
+                // Multi-shot Wan 2.6 jobs return 3 URLs; persist each then
+                // newline-join to store inside the existing text column.
+                const persistedList = await persistVideosOrFallback(urls, task.provider);
+                result = { status: "succeeded", resultVideoUrl: persistedList.join("\n") };
               } else {
                 result = { status: "failed", errorMessage: "生成完成但无视频 URL" };
               }

@@ -36,7 +36,7 @@ import { generateComfyImage, generateComfyVideo, fetchComfyModels, analyzeWorkfl
 import { ENV } from "../_core/env";
 import { isPoyoVideoProvider, submitPoyoVideo, checkPoyoVideoStatus } from "../_core/poyoVideo";
 import { isHiggsfieldVideoProvider, submitHiggsfieldVideo, checkHiggsfieldVideoStatus } from "../_core/higgsfield";
-import { persistVideoOrFallback } from "../_core/persistVideo";
+import { persistVideoOrFallback, persistVideosOrFallback } from "../_core/persistVideo";
 import { submitAndPollPoyoMusic, type PoyoMusicModel } from "../_core/poyoAudio";
 import { submitAndPollPoyoTTS, type PoyoTTSModel } from "../_core/poyoAudio";
 import { synthesizeOpenAITTS, type OpenAITTSModel } from "../_core/openaiTTS";
@@ -399,7 +399,8 @@ export const videoTasksRouter = router({
             const upstream = await checkPoyoVideoStatus(task.externalTaskId);
             if (upstream.status === "finished") {
               pollLastCheck.delete(task.externalTaskId);
-              if (!upstream.resultVideoUrl) {
+              const urls = upstream.resultVideoUrls ?? (upstream.resultVideoUrl ? [upstream.resultVideoUrl] : []);
+              if (urls.length === 0) {
                 const update = { status: "failed" as const, errorMessage: "生成完成但无视频文件" };
                 await updateVideoTask(task.id, update);
                 return { ...task, ...update };
@@ -407,7 +408,11 @@ export const videoTasksRouter = router({
               // CRITICAL: same persistence step as the background poller —
               // without this, client-driven poll wins the race against the
               // background poller and the upstream 24h URL ends up in DB.
-              const persisted = await persistVideoOrFallback(upstream.resultVideoUrl, task.provider);
+              // Multi-shot Wan 2.6 jobs return 3 URLs; persist each and
+              // serialize the list as newline-joined text (URLs can't contain
+              // \n) so we don't need a schema migration.
+              const persistedList = await persistVideosOrFallback(urls, task.provider);
+              const persisted = persistedList.join("\n");
               const update = { status: "succeeded" as const, resultVideoUrl: persisted };
               await updateVideoTask(task.id, update);
               return { ...task, ...update };

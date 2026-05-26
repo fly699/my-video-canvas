@@ -112,7 +112,13 @@ export async function submitPoyoVideo(opts: {
 export interface PoyoTaskStatus {
   status: "not_started" | "running" | "finished" | "failed";
   progress?: number;
+  /** Primary (first) video URL — kept for backward compatibility */
   resultVideoUrl?: string;
+  /** All video URLs returned by the API. For single-shot generations this is
+   * a one-element array; for `multi_shots: true` Wan 2.6 jobs the API returns
+   * one URL per shot (3 by default). Always populated when `resultVideoUrl`
+   * is, so callers can iterate without nullish-checking both. */
+  resultVideoUrls?: string[];
   errorMessage?: string;
 }
 
@@ -136,6 +142,11 @@ export async function checkPoyoVideoStatus(externalTaskId: string): Promise<Poyo
       progress?: number;
       files?: Array<{ file_url: string; file_type: string }>;
       error_message?: string;
+      // Wan 2.6 multi_shots mode and some newer providers nest results under
+      // `shots`, `videos`, or `outputs` instead of `files`. Accept any of them.
+      shots?: Array<{ file_url?: string; url?: string }>;
+      videos?: Array<{ file_url?: string; url?: string }>;
+      outputs?: Array<{ file_url?: string; url?: string }>;
     };
   };
 
@@ -152,13 +163,51 @@ export async function checkPoyoVideoStatus(externalTaskId: string): Promise<Poyo
     console.warn(`[checkPoyoVideoStatus] Unknown status "${rawStatus}" for task ${externalTaskId}; treating as running`);
   }
   const status = (KNOWN_STATUSES.has(rawStatus) ? rawStatus : "running") as PoyoTaskStatus["status"];
-  const resultVideoUrl = d.files?.find((f) => f.file_type === "video")?.file_url
-    ?? d.files?.[0]?.file_url;
+
+  // Collect every video-ish URL we can find. Some providers/modes return:
+  //   - `files: [{file_type: "video", file_url: ...}]`              (standard)
+  //   - `files: [{file_type: "video_shot_1", ...}, ...]`            (per-shot file types)
+  //   - `shots: [{file_url: ...}]` / `videos: [...]` / `outputs:`   (multi-shot variants)
+  // Matching by both "video" prefix in file_type and `.mp4/.webm/.mov` URL
+  // suffix avoids missing results when the field shape differs from the docs.
+  const urls: string[] = [];
+  const pushIf = (u: string | undefined) => {
+    if (typeof u !== "string" || !u) return;
+    if (urls.includes(u)) return;
+    urls.push(u);
+  };
+  if (Array.isArray(d.files)) {
+    for (const f of d.files) {
+      const ft = typeof f.file_type === "string" ? f.file_type.toLowerCase() : "";
+      const url = f.file_url;
+      const looksLikeVideo = ft.includes("video") || /\.(mp4|webm|mov|m4v)(?:$|\?)/i.test(url ?? "");
+      if (looksLikeVideo) pushIf(url);
+    }
+    // If nothing matched but files exist, fall through to first item as a
+    // best-effort — matches the original behavior for unknown formats.
+    if (urls.length === 0 && d.files.length > 0) pushIf(d.files[0]?.file_url);
+  }
+  if (Array.isArray(d.shots)) for (const s of d.shots) pushIf(s.file_url ?? s.url);
+  if (Array.isArray(d.videos)) for (const v of d.videos) pushIf(v.file_url ?? v.url);
+  if (Array.isArray(d.outputs)) for (const o of d.outputs) pushIf(o.file_url ?? o.url);
+
+  // Diagnostic log when the task is reported finished but we found no URL.
+  // The raw payload helps identify yet-unknown field names without leaking
+  // the URL itself (which may contain signed query tokens).
+  if (status === "finished" && urls.length === 0) {
+    const fieldKeys = Object.keys(d).sort().join(",");
+    const fileTypes = Array.isArray(d.files) ? d.files.map((f) => f.file_type).join("|") : "(no-files)";
+    console.warn(
+      `[checkPoyoVideoStatus] finished but no video URL for task ${externalTaskId}. ` +
+      `data keys=[${fieldKeys}], file_types=[${fileTypes}], files.length=${d.files?.length ?? 0}`,
+    );
+  }
 
   return {
     status,
     progress: d.progress,
-    resultVideoUrl,
+    resultVideoUrl: urls[0],
+    resultVideoUrls: urls.length > 0 ? urls : undefined,
     errorMessage: d.error_message,
   };
 }
