@@ -5,7 +5,9 @@ import type { VideoTaskNodeData, VideoProvider } from "../../../../../shared/typ
 import { trpc } from "@/lib/trpc";
 import { toast } from "sonner";
 import { Handle, Position } from "@xyflow/react";
-import { Play, Loader2, CheckCircle2, XCircle, Clock, RefreshCw, AlertCircle, Download, ChevronDown, ChevronRight, Layers } from "lucide-react";
+import { Play, Loader2, CheckCircle2, XCircle, Clock, RefreshCw, AlertCircle, Download, ChevronDown, ChevronRight, Layers, Plus, X as XIcon } from "lucide-react";
+import { listCustomPresets, saveCustomPreset, deleteCustomPreset, type CustomVideoPreset } from "@/lib/customPresets";
+import { ensureNotificationPermission, showCompletionNotification } from "@/lib/notify";
 
 // Providers that require a reference image (image-to-video)
 const REQUIRES_REFERENCE_IMAGE = new Set<string>([
@@ -460,6 +462,9 @@ export const VideoTaskNode = memo(function VideoTaskNode({ id, selected, data }:
     // If parallel mode was closed while requests were in-flight, the counter may
     // be stuck at a non-zero value and would suppress this single-mode callback.
     if (!parallelMode) parallelInFlightRef.current = 0;
+    // Fire-and-forget — first submit prompts the user to allow notifications
+    // so the completion alert can reach them on backgrounded tabs.
+    void ensureNotificationPermission();
     createTaskMutation.mutate({
       projectId: data.projectId, nodeId: id,
       provider: payload.provider, prompt: payload.prompt,
@@ -504,6 +509,46 @@ export const VideoTaskNode = memo(function VideoTaskNode({ id, selected, data }:
   const paramDefs = PROVIDER_PARAMS[payload.provider] ?? [];
   const params = payload.params ?? {};
   const presets = PROVIDER_PRESETS[payload.provider] ?? [];
+
+  // ── Custom presets (localStorage-backed) ────────────────────────────────
+  const [customPresets, setCustomPresets] = useState<CustomVideoPreset[]>([]);
+  useEffect(() => { setCustomPresets(listCustomPresets(payload.provider)); }, [payload.provider]);
+  const [savingPreset, setSavingPreset] = useState(false);
+  const [newPresetLabel, setNewPresetLabel] = useState("");
+  const handleSavePreset = () => {
+    const created = saveCustomPreset(
+      payload.provider,
+      newPresetLabel,
+      params,
+      SUPPORTS_NEGATIVE_PROMPT.has(payload.provider) ? payload.negativePrompt : undefined,
+    );
+    if (!created) { toast.error("预设名为空或已超数量上限"); return; }
+    setCustomPresets((prev) => [...prev, created]);
+    setNewPresetLabel("");
+    setSavingPreset(false);
+    toast.success(`已保存预设「${created.label}」`);
+  };
+  const handleDeletePreset = (presetId: string, label: string) => {
+    deleteCustomPreset(payload.provider, presetId);
+    setCustomPresets((prev) => prev.filter((p) => p.id !== presetId));
+    toast.success(`已删除预设「${label}」`);
+  };
+
+  // ── Browser notification on task completion ─────────────────────────────
+  const prevStatusRef = useRef(payload.status);
+  useEffect(() => {
+    const prev = prevStatusRef.current;
+    prevStatusRef.current = payload.status;
+    if (prev !== "processing") return;
+    if (payload.status !== "succeeded" && payload.status !== "failed") return;
+    const providerLabel = PROVIDERS.find((p) => p.value === payload.provider)?.label ?? payload.provider;
+    const promptSnippet = (payload.prompt ?? "").slice(0, 60);
+    showCompletionNotification({
+      title: payload.status === "succeeded" ? `视频生成完成 · ${providerLabel}` : `视频生成失败 · ${providerLabel}`,
+      body: promptSnippet || undefined,
+      tag: `video-task-${id}`,
+    });
+  }, [payload.status, payload.provider, payload.prompt, id]);
 
   const heroMedia = payload.status === "succeeded" && videoSrc ? (
     <video
@@ -905,11 +950,71 @@ export const VideoTaskNode = memo(function VideoTaskNode({ id, selected, data }:
               }
             </button>
             {/* ── Quick presets row ── */}
-            {paramsExpanded && presets.length > 0 && (
+            {paramsExpanded && (presets.length > 0 || customPresets.length > 0 || paramDefs.length > 0) && (
               <div className="px-3 pt-2 pb-2">
-                <div style={{ fontSize: 9.5, fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.06em", color: "var(--c-t4)", marginBottom: 6 }}>
-                  快速预设
+                <div className="flex items-center justify-between" style={{ marginBottom: 6 }}>
+                  <div style={{ fontSize: 9.5, fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.06em", color: "var(--c-t4)" }}>
+                    快速预设
+                  </div>
+                  {!savingPreset && paramDefs.length > 0 && (
+                    <button
+                      onClick={() => { if (!isLocked) setSavingPreset(true); }}
+                      disabled={isLocked}
+                      className="nodrag flex items-center gap-1"
+                      title="保存当前参数为自定义预设"
+                      style={{
+                        padding: "1px 7px", fontSize: 10, borderRadius: 99,
+                        background: "transparent", border: "1px dashed var(--c-bd3)",
+                        color: "var(--c-t4)",
+                        cursor: isLocked ? "not-allowed" : "pointer",
+                      }}
+                      onMouseEnter={(e) => { if (!isLocked) { (e.currentTarget as HTMLElement).style.borderColor = "oklch(0.62 0.20 25 / 0.6)"; (e.currentTarget as HTMLElement).style.color = accentColor; } }}
+                      onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.borderColor = "var(--c-bd3)"; (e.currentTarget as HTMLElement).style.color = "var(--c-t4)"; }}
+                    >
+                      <Plus style={{ width: 9, height: 9 }} /> 保存当前
+                    </button>
+                  )}
                 </div>
+                {savingPreset && (
+                  <div className="flex gap-1.5 nodrag" style={{ marginBottom: 8 }}>
+                    <input
+                      autoFocus
+                      placeholder="预设名称（如：抖音横屏）"
+                      value={newPresetLabel}
+                      onChange={(e) => setNewPresetLabel(e.target.value.slice(0, 24))}
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter") handleSavePreset();
+                        else if (e.key === "Escape") { setSavingPreset(false); setNewPresetLabel(""); }
+                      }}
+                      maxLength={24}
+                      className="nodrag"
+                      style={{ ...fieldStyle, fontSize: 11, padding: "4px 8px", flex: 1 }}
+                      onFocus={onFocusAccent}
+                      onBlur={onBlurDefault}
+                    />
+                    <button
+                      onClick={handleSavePreset}
+                      disabled={!newPresetLabel.trim()}
+                      className="nodrag"
+                      style={{
+                        padding: "2px 10px", fontSize: 10.5, borderRadius: 6,
+                        background: newPresetLabel.trim() ? "oklch(0.62 0.20 25 / 0.18)" : "var(--c-surface)",
+                        border: `1px solid ${newPresetLabel.trim() ? "oklch(0.62 0.20 25 / 0.4)" : "var(--c-bd2)"}`,
+                        color: newPresetLabel.trim() ? accentColor : "var(--c-t4)",
+                        cursor: newPresetLabel.trim() ? "pointer" : "not-allowed",
+                      }}
+                    >保存</button>
+                    <button
+                      onClick={() => { setSavingPreset(false); setNewPresetLabel(""); }}
+                      className="nodrag"
+                      style={{
+                        padding: "2px 8px", fontSize: 10.5, borderRadius: 6,
+                        background: "var(--c-surface)", border: "1px solid var(--c-bd2)",
+                        color: "var(--c-t3)", cursor: "pointer",
+                      }}
+                    >取消</button>
+                  </div>
+                )}
                 <div className="flex flex-wrap gap-1.5">
                   {presets.map((preset) => {
                     const isActive = Object.entries(preset.params).every(
@@ -955,6 +1060,69 @@ export const VideoTaskNode = memo(function VideoTaskNode({ id, selected, data }:
                       >
                         {preset.label}
                       </button>
+                    );
+                  })}
+                  {customPresets.map((preset) => {
+                    const isActive = Object.entries(preset.params).every(
+                      ([k, v]) => String(params[k]) === String(v)
+                    );
+                    return (
+                      <div
+                        key={preset.id}
+                        className="group/preset nodrag relative"
+                        style={{ display: "inline-flex" }}
+                      >
+                        <button
+                          onClick={() => {
+                            if (isLocked) return;
+                            updateNodeData(id, {
+                              params: { ...params, ...preset.params },
+                              ...(preset.negativePrompt !== undefined && SUPPORTS_NEGATIVE_PROMPT.has(payload.provider)
+                                ? { negativePrompt: preset.negativePrompt }
+                                : {}),
+                            });
+                          }}
+                          disabled={isLocked}
+                          title={`自定义 · ${preset.label}`}
+                          style={{
+                            padding: "2px 18px 2px 9px",  // extra right padding for X
+                            fontSize: 10.5,
+                            borderRadius: 99,
+                            // Distinct accent (purple) so users can spot their own presets
+                            background: isActive ? "oklch(0.68 0.22 285 / 0.18)" : "oklch(0.68 0.22 285 / 0.08)",
+                            border: `1px solid ${isActive ? "oklch(0.68 0.22 285 / 0.50)" : "oklch(0.68 0.22 285 / 0.30)"}`,
+                            color: isActive ? "oklch(0.75 0.18 285)" : "oklch(0.65 0.16 285)",
+                            cursor: isLocked ? "not-allowed" : "pointer",
+                            fontWeight: isActive ? 600 : 400,
+                          }}
+                        >
+                          {preset.label}
+                        </button>
+                        <button
+                          onClick={(e) => { e.stopPropagation(); handleDeletePreset(preset.id, preset.label); }}
+                          className="nodrag"
+                          title="删除该预设"
+                          style={{
+                            position: "absolute", right: 3, top: "50%", transform: "translateY(-50%)",
+                            width: 13, height: 13, padding: 0,
+                            borderRadius: "50%",
+                            background: "transparent", border: "none",
+                            color: "oklch(0.65 0.16 285 / 0.7)",
+                            cursor: "pointer",
+                            display: "flex", alignItems: "center", justifyContent: "center",
+                          }}
+                          onMouseEnter={(e) => {
+                            (e.currentTarget as HTMLElement).style.background = "oklch(0.62 0.20 25 / 0.2)";
+                            (e.currentTarget as HTMLElement).style.color = "oklch(0.68 0.22 25)";
+                          }}
+                          onMouseLeave={(e) => {
+                            (e.currentTarget as HTMLElement).style.background = "transparent";
+                            (e.currentTarget as HTMLElement).style.color = "oklch(0.65 0.16 285 / 0.7)";
+                          }}
+                        >
+                          <XIcon style={{ width: 8, height: 8 }} />
+                        </button>
+                      </div>
                     );
                   })}
                 </div>

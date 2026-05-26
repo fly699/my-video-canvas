@@ -7,7 +7,7 @@ import { useShallow } from "zustand/react/shallow";
 import type { StoryboardNodeData } from "../../../../../shared/types";
 import { trpc } from "@/lib/trpc";
 import { toast } from "sonner";
-import { Sparkles, ImageIcon, Loader2, RefreshCw, ChevronDown, Upload, X, Wand2, History, Languages, Film, ZoomIn, Download } from "lucide-react";
+import { Sparkles, ImageIcon, Loader2, RefreshCw, ChevronDown, Upload, X, Wand2, History, Languages, Film, ZoomIn, Download, Copy } from "lucide-react";
 import { IMAGE_MODELS, type ImageModelId } from "@/lib/models";
 import { makeImageProxyFallback } from "@/lib/utils";
 import { LLMModelPicker, type LLMModelId } from "../LLMModelPicker";
@@ -113,6 +113,31 @@ export const StoryboardNode = memo(function StoryboardNode({ id, selected, data 
     ? (payload.imageModel as ImageModelId)
     : "manus_forge";
   const setModel = (m: ImageModelId) => { updateNodeData(id, { imageModel: m }); };
+
+  // Sync key shared settings (model / color tone / batch / negative prompt)
+  // from this storyboard to ALL other storyboard nodes on the canvas.
+  // Helps users keep a consistent style across an entire sequence without
+  // hand-editing every scene.
+  const syncToAllStoryboards = useCallback(() => {
+    const { nodes: allNodes, batchUpdateNodeData } = useCanvasStore.getState();
+    const targets = allNodes.filter(
+      (n) => n.data.nodeType === "storyboard" && n.id !== id,
+    );
+    if (targets.length === 0) {
+      toast.info("当前画布只有这一个分镜节点");
+      return;
+    }
+    const patch: Partial<StoryboardNodeData> = {
+      imageModel: payload.imageModel,
+      colorTone: payload.colorTone,
+      batchSize: payload.batchSize,
+      negativePrompt: payload.negativePrompt,
+      cameraMovement: payload.cameraMovement,
+      lens: payload.lens,
+    };
+    batchUpdateNodeData(targets.map((t) => ({ id: t.id, payload: patch })));
+    toast.success(`已同步设置到 ${targets.length} 个分镜节点`);
+  }, [id, payload.imageModel, payload.colorTone, payload.batchSize, payload.negativePrompt, payload.cameraMovement, payload.lens]);
 
   const [uploadingRef, setUploadingRef] = useState(false);
   const refInputRef = useRef<HTMLInputElement>(null);
@@ -735,15 +760,15 @@ export const StoryboardNode = memo(function StoryboardNode({ id, selected, data 
           )}
         </div>
 
-        {/* ── Model selector ── */}
-        <div className="nodrag">
+        {/* ── Model selector + sync-all-storyboards ── */}
+        <div className="nodrag flex items-stretch gap-1.5">
           <button
             ref={modelBtnRef}
             onClick={() => {
               if (modelBtnRef.current) setModelPickerRect(modelBtnRef.current.getBoundingClientRect());
               setShowModelPicker((v) => !v);
             }}
-            className="nodrag flex items-center justify-between w-full px-2.5 py-1.5 rounded-lg text-xs transition-all"
+            className="nodrag flex items-center justify-between flex-1 px-2.5 py-1.5 rounded-lg text-xs transition-all"
             style={{
               background: "var(--c-input)",
               borderWidth: 1,
@@ -763,6 +788,23 @@ export const StoryboardNode = memo(function StoryboardNode({ id, selected, data 
               </span>
             </span>
             <ChevronDown className="w-3 h-3 opacity-60" style={{ transform: showModelPicker ? "rotate(180deg)" : "none", transition: "transform 150ms" }} />
+          </button>
+          <button
+            onClick={syncToAllStoryboards}
+            title="把当前模型 / 色调 / 抽卡次数 / 反向提示词等参数同步到画布中所有其他分镜节点"
+            className="nodrag flex items-center gap-1 px-2 rounded-lg text-[10.5px] transition-all"
+            style={{
+              background: "oklch(0.65 0.20 160 / 0.08)",
+              border: "1px dashed oklch(0.65 0.20 160 / 0.4)",
+              color: "oklch(0.72 0.18 160)",
+              cursor: "pointer",
+              flexShrink: 0,
+            }}
+            onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.background = "oklch(0.65 0.20 160 / 0.16)"; }}
+            onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.background = "oklch(0.65 0.20 160 / 0.08)"; }}
+          >
+            <Copy className="w-3 h-3" />
+            同步到全部
           </button>
         </div>
         {/* ── Batch count (only effective for hf_soul_standard) ── */}
