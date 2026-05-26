@@ -10,6 +10,7 @@ import { Play, Loader2, CheckCircle2, XCircle, Clock, RefreshCw, AlertCircle, Do
 // Providers that require a reference image (image-to-video)
 const REQUIRES_REFERENCE_IMAGE = new Set<string>([
   "poyo_wan25_i2v",
+  "hf_dop_standard", "hf_dop_lite", "hf_dop_turbo",
 ]);
 
 // Heuristic: only allow http(s) / same-origin paths to render. Reject data:/blob:/javascript:.
@@ -732,7 +733,13 @@ export const VideoTaskNode = memo(function VideoTaskNode({ id, selected, data }:
           <select
             value={payload.provider}
             onChange={(e) => {
-              updateNodeData(id, { provider: e.target.value as VideoProvider, params: {} });
+              const newProvider = e.target.value as VideoProvider;
+              updateNodeData(id, {
+                provider: newProvider,
+                params: {},
+                // Clear stale negative prompt when switching to a provider that doesn't support it
+                ...(!SUPPORTS_NEGATIVE_PROMPT.has(newProvider) ? { negativePrompt: undefined } : {}),
+              });
             }}
             disabled={isLocked}
             className="nodrag"
@@ -827,10 +834,10 @@ export const VideoTaskNode = memo(function VideoTaskNode({ id, selected, data }:
             {/* 2-column grid for compact layout */}
             {paramsExpanded && <div className="grid grid-cols-2 gap-x-2.5 gap-y-2.5 px-3 pb-3">
             {paramDefs.map((def) => {
-              // camera_motion_speed is only relevant when a motion type is selected
+              // camera_motion_speed is irrelevant for "none" (no motion) and "static" (fixed camera)
               if (def.key === "camera_motion_speed") {
                 const motionType = params.camera_motion_type ?? "none";
-                if (motionType === "none") return null;
+                if (motionType === "none" || motionType === "static") return null;
               }
               const curVal = params[def.key] ?? def.default;
               // toggle spans full width for readability

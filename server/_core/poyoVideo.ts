@@ -77,9 +77,11 @@ export async function submitPoyoVideo(opts: {
     input.duration = (opts.params?.duration as number) ?? 5;
   }
 
-  // Seed — optional for most Poyo video models; omit rather than send null/undefined
+  // Seed — optional; omit unless a valid finite integer (Number("") is 0, not NaN,
+  // but non-numeric strings like "abc" produce NaN which serializes to null in JSON)
   if (opts.params?.seed !== undefined && opts.params.seed !== null && String(opts.params.seed) !== "") {
-    input.seed = Number(opts.params.seed);
+    const seedNum = Number(opts.params.seed);
+    if (Number.isFinite(seedNum)) input.seed = Math.trunc(seedNum);
   }
 
   const res = await fetch(`${POYO_BASE}/api/generate/submit`, {
