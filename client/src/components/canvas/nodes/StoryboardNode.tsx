@@ -443,18 +443,11 @@ export const StoryboardNode = memo(function StoryboardNode({ id, selected, data 
                   </button>
                 )}
               </div>
-              {payload.sceneNumber && (
-                <div
-                  className="absolute top-2 left-2 px-1.5 py-0.5 rounded text-[10px] font-semibold"
-                  style={{
-                    background: "oklch(0 0 0 / 0.65)",
-                    color: "oklch(0.75 0.18 160)",
-                    backdropFilter: "blur(4px)",
-                  }}
-                >
-                  #{payload.sceneNumber}
-                </div>
-              )}
+              <SceneNumberBadge
+                value={payload.sceneNumber}
+                onChange={(n) => updateNodeData(id, { sceneNumber: n })}
+              />
+
             </>
           ) : (
             <div className="w-full h-full flex flex-col items-center justify-center gap-3">
@@ -588,7 +581,7 @@ export const StoryboardNode = memo(function StoryboardNode({ id, selected, data 
           placeholder="场景描述..."
           value={payload.description ?? ""}
           onChange={(e) => handleChange("description", e.target.value)}
-          className="nodrag"
+          className="nodrag nowheel"
           rows={2}
           style={{ ...fieldStyle, resize: "none", lineHeight: 1.6 }}
           onFocus={onFocus}
@@ -623,7 +616,7 @@ export const StoryboardNode = memo(function StoryboardNode({ id, selected, data 
             placeholder="正向提示词（用于 AI 生图）..."
             value={payload.promptText ?? ""}
             onChange={(e) => handleChange("promptText", e.target.value)}
-            className="nodrag"
+            className="nodrag nowheel"
             rows={2}
             style={{
               ...fieldStyle,
@@ -723,7 +716,7 @@ export const StoryboardNode = memo(function StoryboardNode({ id, selected, data 
           placeholder="负面提示词（可选，描述不希望出现的内容）..."
           value={payload.negativePrompt ?? ""}
           onChange={(e) => handleChange("negativePrompt", e.target.value)}
-          className="nodrag"
+          className="nodrag nowheel"
           rows={2}
           style={{ ...fieldStyle, resize: "none", lineHeight: 1.6 }}
           onFocus={onFocus}
@@ -1119,3 +1112,83 @@ export const StoryboardNode = memo(function StoryboardNode({ id, selected, data 
     </>
   );
 });
+
+// Editable scene-number badge: click to edit, Enter / blur to save, Esc cancels.
+// Lives separately from the BaseNode title (which carries "分镜 #N") so users
+// can renumber a shot independent of the panel title — useful when re-ordering
+// scenes after AI generation.
+function SceneNumberBadge({ value, onChange }: { value?: number; onChange: (n: number | undefined) => void }) {
+  const [editing, setEditing] = useState(false);
+  const [draft, setDraft] = useState<string>(value != null ? String(value) : "");
+  useEffect(() => { setDraft(value != null ? String(value) : ""); }, [value]);
+
+  const commit = () => {
+    setEditing(false);
+    const trimmed = draft.trim();
+    if (!trimmed) { onChange(undefined); return; }
+    const n = parseInt(trimmed, 10);
+    if (Number.isFinite(n) && n >= 0) onChange(n);
+    else setDraft(value != null ? String(value) : "");
+  };
+
+  if (editing) {
+    return (
+      <div
+        className="absolute top-2 left-2 nodrag"
+        style={{
+          background: "oklch(0 0 0 / 0.85)",
+          backdropFilter: "blur(4px)",
+          borderRadius: 4,
+          display: "flex", alignItems: "center",
+          padding: "1px 4px",
+          gap: 2,
+        }}
+        onClick={(e) => e.stopPropagation()}
+      >
+        <span style={{ color: "oklch(0.75 0.18 160)", fontSize: 10, fontWeight: 600 }}>#</span>
+        <input
+          autoFocus
+          type="text"
+          inputMode="numeric"
+          value={draft}
+          onChange={(e) => setDraft(e.target.value.replace(/[^\d]/g, "").slice(0, 4))}
+          onBlur={commit}
+          onKeyDown={(e) => {
+            if (e.key === "Enter") commit();
+            else if (e.key === "Escape") { setDraft(value != null ? String(value) : ""); setEditing(false); }
+          }}
+          style={{
+            width: 28,
+            padding: 0,
+            fontSize: 10,
+            fontWeight: 600,
+            background: "transparent",
+            border: "none",
+            outline: "none",
+            color: "oklch(0.75 0.18 160)",
+            textAlign: "left",
+          }}
+        />
+      </div>
+    );
+  }
+
+  // Show the badge even when value is undefined (so users can click to ASSIGN
+  // a number to a scene that's missing one). Subtle "+" placeholder hint.
+  return (
+    <div
+      className="absolute top-2 left-2 px-1.5 py-0.5 rounded text-[10px] font-semibold nodrag"
+      onClick={(e) => { e.stopPropagation(); setEditing(true); }}
+      title="点击编辑场景编号"
+      style={{
+        background: "oklch(0 0 0 / 0.65)",
+        color: "oklch(0.75 0.18 160)",
+        backdropFilter: "blur(4px)",
+        cursor: "pointer",
+        userSelect: "none",
+      }}
+    >
+      {value != null ? `#${value}` : "#?"}
+    </div>
+  );
+}

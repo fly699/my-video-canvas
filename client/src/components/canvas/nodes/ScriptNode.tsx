@@ -457,11 +457,11 @@ export const ScriptNode = memo(function ScriptNode({ id, selected, data }: Props
         </div>
 
         {/* Script content */}
-        <textarea
+        <textarea className="nodrag nowheel flex-1 nowheel"
           placeholder={"在此输入或粘贴脚本内容...\n\n也可直接使用下方「AI 剧本创作」一键生成。"}
           value={payload.content ?? ""}
           onChange={(e) => handleChange("content", e.target.value)}
-          className="nodrag flex-1"
+          
           style={textareaStyle}
           onFocus={onFocus}
           onBlur={onBlur}

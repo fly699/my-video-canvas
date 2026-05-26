@@ -282,12 +282,12 @@ export const CharacterNode = memo(function CharacterNode({ id, selected, data }:
             </div>
             <div>
               <label style={labelStyle}>外貌特征</label>
-              <textarea
+              <textarea className="nodrag nowheel"
                 placeholder="身高、发色、眼神、服装风格..."
                 value={payload.appearance ?? ""}
                 onChange={(e) => update("appearance", e.target.value)}
                 rows={2}
-                className="nodrag"
+                
                 style={{ ...fieldStyle, resize: "none", lineHeight: 1.6 }}
                 onFocus={(e) => { e.currentTarget.style.borderColor = BORDER_ACCENT; }}
                 onBlur={(e) => { e.currentTarget.style.borderColor = BORDER_DEFAULT; }}
@@ -295,12 +295,12 @@ export const CharacterNode = memo(function CharacterNode({ id, selected, data }:
             </div>
             <div>
               <label style={labelStyle}>性格特征</label>
-              <textarea
+              <textarea className="nodrag nowheel"
                 placeholder="开朗、内敛、冷静、热情..."
                 value={payload.personality ?? ""}
                 onChange={(e) => update("personality", e.target.value)}
                 rows={2}
-                className="nodrag"
+                
                 style={{ ...fieldStyle, resize: "none", lineHeight: 1.6 }}
                 onFocus={(e) => { e.currentTarget.style.borderColor = BORDER_ACCENT; }}
                 onBlur={(e) => { e.currentTarget.style.borderColor = BORDER_DEFAULT; }}
@@ -345,12 +345,12 @@ export const CharacterNode = memo(function CharacterNode({ id, selected, data }:
             />
             <div>
               <label style={labelStyle}>场景描述</label>
-              <textarea
+              <textarea className="nodrag nowheel"
                 placeholder="详细描述场景的视觉元素、光线、质感..."
                 value={payload.sceneDescription ?? ""}
                 onChange={(e) => update("sceneDescription", e.target.value)}
                 rows={3}
-                className="nodrag"
+                
                 style={{ ...fieldStyle, resize: "none", lineHeight: 1.6 }}
                 onFocus={(e) => { e.currentTarget.style.borderColor = BORDER_ACCENT; }}
                 onBlur={(e) => { e.currentTarget.style.borderColor = BORDER_DEFAULT; }}
@@ -363,12 +363,12 @@ export const CharacterNode = memo(function CharacterNode({ id, selected, data }:
         {selected && (
           <div>
             <label style={labelStyle}>补充备注</label>
-            <textarea
+            <textarea className="nodrag nowheel"
               placeholder="其他需要记录的信息..."
               value={payload.notes ?? ""}
               onChange={(e) => update("notes", e.target.value)}
               rows={2}
-              className="nodrag"
+              
               style={{ ...fieldStyle, resize: "none", lineHeight: 1.6 }}
               onFocus={(e) => { e.currentTarget.style.borderColor = BORDER_ACCENT; }}
               onBlur={(e) => { e.currentTarget.style.borderColor = BORDER_DEFAULT; }}

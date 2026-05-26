@@ -46,11 +46,11 @@ export const NoteNode = memo(function NoteNode({ id, selected, data }: Props) {
     <BaseNode id={id} selected={selected} nodeType="note" title={data.title} minHeight={120} resizable>
       <div className="p-3.5 h-full" style={{ minHeight: 80 }}>
         {selected ? (
-          <textarea
+          <textarea className="nodrag w-full h-full nowheel"
             placeholder={"在此记录想法...\n\n支持 Markdown：# 标题  **粗体**  `代码`  - 列表  - [ ] 待办"}
             value={payload.content ?? ""}
             onChange={(e) => handleChange(e.target.value)}
-            className="nodrag w-full h-full"
+            
             style={{
               resize: "none",
               fontSize: 12,

@@ -115,7 +115,7 @@ export const PoseControlNode = memo(function PoseControlNode({ id, selected, dat
         <div>
           <label style={labelStyle}>图像描述提示词（英文效果更佳）</label>
           <textarea
-            className="nodrag"
+            className="nodrag nowheel"
             placeholder="Describe the new image content while maintaining the reference composition..."
             value={payload.prompt ?? ""}
             onChange={(e) => update({ prompt: e.target.value })}

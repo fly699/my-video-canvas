@@ -279,7 +279,7 @@ export const ComfyuiWorkflowNode = memo(function ComfyuiWorkflowNode({ id, selec
             </div>
 
             <label style={labelStyle}>粘贴 API-format Workflow JSON</label>
-            <textarea
+            <textarea className="nowheel nowheel"
               style={{ ...fieldBase, minHeight: 120, resize: "vertical", fontFamily: "var(--font-mono, monospace)", fontSize: 11 }}
               placeholder={'{\n  "3": { "class_type": "KSampler", ... },\n  ...\n}'}
               value={localJson}
@@ -456,7 +456,7 @@ export const ComfyuiWorkflowNode = memo(function ComfyuiWorkflowNode({ id, selec
                     <div key={key}>
                       <label style={labelStyle}>{b.label}</label>
                       {b.type === "text" && (
-                        <textarea
+                        <textarea 
                           style={{ ...fieldBase, minHeight: 56, resize: "vertical" }}
                           value={String(value)}
                           onChange={(e) => setParamValue(key, e.target.value)}

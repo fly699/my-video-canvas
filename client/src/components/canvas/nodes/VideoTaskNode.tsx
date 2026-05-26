@@ -1006,7 +1006,7 @@ export const VideoTaskNode = memo(function VideoTaskNode({ id, selected, data }:
             onChange={(e) => handleChange("prompt", e.target.value)}
             rows={3}
             disabled={isLocked}
-            className="nodrag"
+            className="nodrag nowheel"
             style={{ ...fieldStyle, resize: "none", lineHeight: 1.65, fontFamily: "'JetBrains Mono', monospace", fontSize: 10.5, opacity: isLocked ? 0.5 : 1 }}
             onFocus={onFocusAccent}
             onBlur={onBlurDefault}

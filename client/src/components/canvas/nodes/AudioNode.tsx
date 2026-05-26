@@ -509,12 +509,12 @@ export const AudioNode = memo(function AudioNode({ id, selected, data }: Props) 
             />
             <div>
               <label style={labelStyle}>音乐描述</label>
-              <textarea
+              <textarea className="nodrag nowheel"
                 placeholder="描述你想要的配乐风格、氛围、节奏..."
                 value={payload.musicPrompt ?? ""}
                 onChange={(e) => update("musicPrompt", e.target.value)}
                 rows={3}
-                className="nodrag"
+                
                 style={{ ...fieldStyle, resize: "none", lineHeight: 1.6 }}
                 onFocus={(e) => { e.currentTarget.style.borderColor = BORDER_ACCENT; }}
                 onBlur={(e) => { e.currentTarget.style.borderColor = BORDER_DEFAULT; }}
@@ -660,12 +660,12 @@ export const AudioNode = memo(function AudioNode({ id, selected, data }: Props) 
                   {textLen} / {textLimit}
                 </span>
               </div>
-              <textarea
+              <textarea className="nodrag nowheel"
                 placeholder="输入要转换为语音的文字..."
                 value={payload.ttsText ?? ""}
                 onChange={(e) => update("ttsText", e.target.value)}
                 rows={4}
-                className="nodrag"
+                
                 style={{ ...fieldStyle, resize: "none", lineHeight: 1.6 }}
                 onFocus={(e) => { e.currentTarget.style.borderColor = BORDER_ACCENT; }}
                 onBlur={(e) => { e.currentTarget.style.borderColor = BORDER_DEFAULT; }}
@@ -736,12 +736,12 @@ export const AudioNode = memo(function AudioNode({ id, selected, data }: Props) 
             />
             <div>
               <label style={labelStyle}>音效描述</label>
-              <textarea
+              <textarea className="nodrag nowheel"
                 placeholder="描述需要的音效，例如：雨声、脚步声、爆炸声..."
                 value={payload.sfxPrompt ?? ""}
                 onChange={(e) => update("sfxPrompt", e.target.value)}
                 rows={3}
-                className="nodrag"
+                
                 style={{ ...fieldStyle, resize: "none", lineHeight: 1.6 }}
                 onFocus={(e) => { e.currentTarget.style.borderColor = BORDER_ACCENT; }}
                 onBlur={(e) => { e.currentTarget.style.borderColor = BORDER_DEFAULT; }}
