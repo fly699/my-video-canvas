@@ -68,6 +68,11 @@ export async function submitPoyoVideo(opts: {
     input.duration = (opts.params?.duration as number) ?? 5;
   }
 
+  // Seed — optional for most Poyo video models; omit rather than send null/undefined
+  if (opts.params?.seed !== undefined && opts.params.seed !== null && String(opts.params.seed) !== "") {
+    input.seed = Number(opts.params.seed);
+  }
+
   const res = await fetch(`${POYO_BASE}/api/generate/submit`, {
     method: "POST",
     headers: {

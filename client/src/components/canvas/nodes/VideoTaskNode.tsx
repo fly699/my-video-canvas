@@ -103,6 +103,7 @@ const KLING_O3_PARAMS: ParamDef[] = [
   { type: "select", key: "aspect_ratio", label: "宽高比", default: "16:9",
     options: [{ value: "16:9", label: "16:9 横屏" }, { value: "9:16", label: "9:16 竖屏" }, { value: "1:1", label: "1:1 方形" }] },
   { type: "range", key: "duration", label: "时长（秒）", min: 3, max: 15, step: 1, default: 5, unit: "s" },
+  { type: "number", key: "seed", label: "随机种子（可选）", min: 0, max: 2147483647, step: 1 },
 ];
 
 const SUPPORTS_NEGATIVE_PROMPT = new Set<string>([
@@ -122,11 +123,14 @@ const PROVIDER_PARAMS: Record<string, ParamDef[]> = {
       options: [{ value: "480p", label: "480p" }, { value: "720p", label: "720p" }, { value: "1080p", label: "1080p" }] },
     { type: "range",  key: "duration", label: "时长（秒）", min: 2, max: 12, step: 1, default: 5, unit: "s" },
     { type: "toggle", key: "camera_fixed", label: "固定镜头", default: false },
+    { type: "number", key: "seed", label: "随机种子（可选）", min: 0, max: 2147483647, step: 1 },
   ],
   poyo_veo: [
     { type: "select", key: "aspect_ratio", label: "宽高比", default: "16:9",
       options: [{ value: "16:9", label: "16:9 横屏" }, { value: "9:16", label: "9:16 竖屏" }, { value: "1:1", label: "1:1 方形" }] },
-    { type: "range",  key: "duration", label: "时长（秒）", min: 5, max: 30, step: 5, default: 5, unit: "s" },
+    // Veo 3.1 generates clips of approx 5–8 s; Poyo API accepts integers in this range
+    { type: "range",  key: "duration", label: "时长（秒）", min: 5, max: 8, step: 1, default: 8, unit: "s" },
+    { type: "number", key: "seed", label: "随机种子（可选）", min: 0, max: 2147483647, step: 1 },
   ],
   hf_dop_standard: HF_DOP_STANDARD_PARAMS,
   hf_dop_lite:     HF_DOP_FAST_PARAMS,
@@ -137,25 +141,37 @@ const PROVIDER_PARAMS: Record<string, ParamDef[]> = {
     { type: "select", key: "duration", label: "时长（秒）", default: 5,
       options: [{ value: 5, label: "5 秒" }, { value: 10, label: "10 秒" }] },
     { type: "toggle", key: "sound", label: "AI 生成音效", default: false },
+    { type: "number", key: "seed", label: "随机种子（可选）", min: 0, max: 2147483647, step: 1 },
   ],
   poyo_kling_o3_std: KLING_O3_PARAMS,
   poyo_kling_o3_pro: KLING_O3_PARAMS,
   poyo_kling_o3_4k:  KLING_O3_PARAMS,
   poyo_wan25_t2v: [
     { type: "select", key: "aspect_ratio", label: "宽高比", default: "16:9",
-      options: [{ value: "16:9", label: "16:9 横屏" }, { value: "9:16", label: "9:16 竖屏" }, { value: "1:1", label: "1:1 方形" }] },
+      options: [
+        { value: "16:9", label: "16:9 横屏" }, { value: "4:3", label: "4:3 标准" },
+        { value: "1:1", label: "1:1 方形" }, { value: "3:4", label: "3:4 竖屏" },
+        { value: "9:16", label: "9:16 竖屏" },
+      ]},
     { type: "range",  key: "duration", label: "时长（秒）", min: 3, max: 10, step: 1, default: 5, unit: "s" },
+    { type: "number", key: "seed", label: "随机种子（可选）", min: 0, max: 2147483647, step: 1 },
   ],
   poyo_wan25_i2v: [
     { type: "select", key: "aspect_ratio", label: "宽高比", default: "16:9",
-      options: [{ value: "16:9", label: "16:9 横屏" }, { value: "9:16", label: "9:16 竖屏" }, { value: "1:1", label: "1:1 方形" }] },
+      options: [
+        { value: "16:9", label: "16:9 横屏" }, { value: "4:3", label: "4:3 标准" },
+        { value: "1:1", label: "1:1 方形" }, { value: "3:4", label: "3:4 竖屏" },
+        { value: "9:16", label: "9:16 竖屏" },
+      ]},
     { type: "range",  key: "duration", label: "时长（秒）", min: 3, max: 10, step: 1, default: 5, unit: "s" },
+    { type: "number", key: "seed", label: "随机种子（可选）", min: 0, max: 2147483647, step: 1 },
   ],
   poyo_runway45: [
     { type: "select", key: "aspect_ratio", label: "宽高比", default: "16:9",
       options: [{ value: "16:9", label: "16:9 横屏" }, { value: "9:16", label: "9:16 竖屏" }] },
     { type: "select", key: "duration", label: "时长（秒）", default: 5,
       options: [{ value: 5, label: "5 秒" }, { value: 10, label: "10 秒" }] },
+    { type: "number", key: "seed", label: "随机种子（可选）", min: 0, max: 2147483647, step: 1 },
   ],
   mock: [],
 };
