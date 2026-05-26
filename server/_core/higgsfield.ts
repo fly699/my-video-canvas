@@ -116,37 +116,47 @@ export async function generateHiggsfieldImage(
       ? `${HIGGSFIELD_BASE}/v1/text2image/soul`
       : `${HIGGSFIELD_BASE}/${opts.model}`;
 
-  const body: Record<string, unknown> = {
-    prompt: opts.prompt,
-  };
+  // Higgsfield image API uses the same Pydantic-schema pattern as DoP video:
+  // a required top-level `params` object holds all model-specific knobs.
+  // Sending them at the top level returns 422 with detail:
+  //   {"type":"missing","loc":["body","params"],"msg":"Field required"}
+  // Top-level fields are limited to `prompt` and the multimodal input ref
+  // (analogous to `input_images` for DoP). Everything else goes into params.
+  const innerParams: Record<string, unknown> = {};
 
   if (opts.model === "higgsfield-ai/soul/standard") {
     // Soul Standard specific params (from official SDK types.d.ts)
-    if (opts.widthAndHeight) body.width_and_height = opts.widthAndHeight;
-    else body.width_and_height = "1024x1024"; // default
-    if (opts.quality) body.quality = opts.quality;
-    if (opts.batchSize !== undefined) body.batch_size = opts.batchSize;
-    if (opts.enhancePrompt !== undefined) body.enhance_prompt = opts.enhancePrompt;
-    if (opts.seed !== undefined) body.seed = opts.seed;
-    if (opts.negativePrompt) body.negative_prompt = opts.negativePrompt;
-    if (opts.referenceImageUrl) body.image_url = opts.referenceImageUrl;
+    innerParams.width_and_height = opts.widthAndHeight ?? "1024x1024";
+    if (opts.quality) innerParams.quality = opts.quality;
+    if (opts.batchSize !== undefined) innerParams.batch_size = opts.batchSize;
+    if (opts.enhancePrompt !== undefined) innerParams.enhance_prompt = opts.enhancePrompt;
+    if (opts.seed !== undefined) innerParams.seed = opts.seed;
+    if (opts.negativePrompt) innerParams.negative_prompt = opts.negativePrompt;
   } else if (opts.model === "reve/text-to-image") {
     // Reve specific params
-    if (opts.aspectRatio) body.aspect_ratio = opts.aspectRatio;
-    if (opts.resolution) body.resolution = opts.resolution;
-    if (opts.negativePrompt) body.negative_prompt = opts.negativePrompt;
-    if (opts.referenceImageUrl) body.image_url = opts.referenceImageUrl;
+    if (opts.aspectRatio) innerParams.aspect_ratio = opts.aspectRatio;
+    if (opts.resolution) innerParams.resolution = opts.resolution;
+    if (opts.negativePrompt) innerParams.negative_prompt = opts.negativePrompt;
   } else if (opts.model === "bytedance/seedream/v4/text-to-image") {
-    if (opts.aspectRatio) body.aspect_ratio = opts.aspectRatio;
-    if (opts.negativePrompt) body.negative_prompt = opts.negativePrompt;
-    if (opts.referenceImageUrl) body.image_url = opts.referenceImageUrl;
+    if (opts.aspectRatio) innerParams.aspect_ratio = opts.aspectRatio;
+    if (opts.negativePrompt) innerParams.negative_prompt = opts.negativePrompt;
   } else if (opts.model === "flux-pro/kontext/max/text-to-image") {
-    if (opts.aspectRatio) body.aspect_ratio = opts.aspectRatio;
-    if (opts.negativePrompt) body.negative_prompt = opts.negativePrompt;
-    if (opts.referenceImageUrl) body.image_url = opts.referenceImageUrl;
-    if (opts.guidanceScale !== undefined) body.guidance_scale = opts.guidanceScale;
-    if (opts.numImages !== undefined) body.num_images = opts.numImages;
-    if (opts.fluxSeed !== undefined) body.seed = opts.fluxSeed;
+    if (opts.aspectRatio) innerParams.aspect_ratio = opts.aspectRatio;
+    if (opts.negativePrompt) innerParams.negative_prompt = opts.negativePrompt;
+    if (opts.guidanceScale !== undefined) innerParams.guidance_scale = opts.guidanceScale;
+    if (opts.numImages !== undefined) innerParams.num_images = opts.numImages;
+    if (opts.fluxSeed !== undefined) innerParams.seed = opts.fluxSeed;
+  }
+
+  const body: Record<string, unknown> = {
+    prompt: opts.prompt,
+    params: innerParams,
+  };
+  // Reference image goes at the top level alongside prompt (mirrors DoP's
+  // `input_images` placement — multimodal inputs are siblings of `prompt`,
+  // not nested model params).
+  if (opts.referenceImageUrl) {
+    body.input_images = [{ type: "image_url", image_url: opts.referenceImageUrl }];
   }
 
   const res = await fetch(endpoint, {
