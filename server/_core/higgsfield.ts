@@ -413,10 +413,26 @@ export async function submitHiggsfieldVideo(
     throw new Error(`Higgsfield 视频提交失败 (${res.status}, 模型 ${dopModel}): ${text}`);
   }
 
-  const data = (await res.json()) as { request_id?: string };
-  if (!data.request_id) throw new Error("Higgsfield 视频提交：响应未返回 request_id");
-
-  return { externalTaskId: data.request_id };
+  // The /v1/image2video/dop endpoint can return either a v2-style envelope
+  //   { request_id, status, status_url, ... }
+  // or a v1 JobSet shape
+  //   { id, jobs: [{ id, status }] }
+  // depending on how the server routes the v2 Authorization: Key header
+  // against the /v1/... path. Accept both and reuse the existing pollers.
+  const data = (await res.json()) as {
+    request_id?: string;
+    id?: string;
+    jobs?: Array<{ id?: string }>;
+  };
+  // Prefer request_id (v2). Fall back to top-level id (JobSet), then to the
+  // first job's id (some deployments wrap further).
+  const externalTaskId = data.request_id ?? data.id ?? data.jobs?.[0]?.id;
+  if (!externalTaskId) {
+    throw new Error(
+      `Higgsfield 视频提交：响应缺少 request_id / id 字段。原始响应: ${JSON.stringify(data).slice(0, 300)}`,
+    );
+  }
+  return { externalTaskId };
 }
 
 export interface HiggsfieldVideoStatus {
@@ -428,44 +444,63 @@ export interface HiggsfieldVideoStatus {
 export async function checkHiggsfieldVideoStatus(
   requestId: string
 ): Promise<HiggsfieldVideoStatus> {
-  const res = await fetch(`${HIGGSFIELD_BASE}/requests/${requestId}/status`, {
+  // Try v2 polling first: /requests/{id}/status
+  // (V2Response per src/v2/types.ts: status / video / images / detail)
+  const v2Res = await fetch(`${HIGGSFIELD_BASE}/requests/${requestId}/status`, {
     headers: { Authorization: getAuthHeader(), Accept: "application/json" },
     signal: AbortSignal.timeout(10_000),
   });
 
-  if (!res.ok) {
-    if (res.status === 404) return { status: "processing" };
-    throw new Error(`Higgsfield status check failed (${res.status})`);
+  if (v2Res.ok) {
+    const body = (await v2Res.json()) as {
+      status?: "queued" | "in_progress" | "completed" | "failed" | "nsfw";
+      video?: { url?: string };
+      images?: Array<{ url?: string }>;
+      detail?: string;
+    };
+    const status = body.status;
+    if (status === "failed") return { status: "failed", errorMessage: body.detail ?? "Higgsfield 任务失败" };
+    if (status === "nsfw") return { status: "failed", errorMessage: "Higgsfield 内容审核拒绝（NSFW）" };
+    if (status === "completed") {
+      const fileUrl = body.video?.url ?? body.images?.[0]?.url;
+      if (fileUrl) return { status: "succeeded", resultVideoUrl: fileUrl };
+      return { status: "failed", errorMessage: "[CHARGED] Higgsfield 完成但响应未含 video.url（积分已扣，请勿重试）" };
+    }
+    if (status === "queued" || status === "in_progress") return { status: "processing" };
+    // Unknown status → fall through to v1 attempt
+  } else if (v2Res.status !== 404) {
+    // Non-404 v2 error: surface it (likely 5xx/auth)
+    throw new Error(`Higgsfield v2 status check failed (${v2Res.status})`);
   }
 
-  // Official V2Response shape (per higgsfield-js SDK src/v2/types.ts):
-  //   { status: "queued"|"in_progress"|"completed"|"failed"|"nsfw",
-  //     video?: { url: string },                  // singular object for video
-  //     images?: Array<{ url: string }>,          // array for image jobs
-  //     detail?: string }                         // error message on 4xx/5xx
-  const body = (await res.json()) as {
-    status?: "queued" | "in_progress" | "completed" | "failed" | "nsfw";
-    video?: { url?: string };
-    images?: Array<{ url?: string }>;
-    detail?: string;
+  // 404 from v2 OR unknown v2 status → submit may have returned a v1 JobSet
+  // ({ id, jobs }) instead of v2 envelope. Try /v1/job-sets/{id}.
+  const v1Res = await fetch(`${HIGGSFIELD_BASE}/v1/job-sets/${requestId}`, {
+    headers: { Authorization: getAuthHeader(), Accept: "application/json" },
+    signal: AbortSignal.timeout(10_000),
+  });
+  if (!v1Res.ok) {
+    if (v1Res.status === 404) return { status: "processing" }; // neither endpoint knows yet
+    throw new Error(`Higgsfield v1 job-set check failed (${v1Res.status})`);
+  }
+  // JobSet shape (src/types.ts JobSetData): { id, jobs: [{ status, results: { raw: {url}, min: {url} } }] }
+  const v1Body = (await v1Res.json()) as {
+    id?: string;
+    jobs?: Array<{
+      status?: string;
+      results?: { raw?: { url?: string }; min?: { url?: string } } | null;
+    }>;
   };
-
-  const status = body.status;
-
-  if (status === "failed") {
-    return { status: "failed", errorMessage: body.detail ?? "Higgsfield 任务失败" };
+  const job = v1Body.jobs?.[0];
+  const jobStatus = job?.status;
+  if (jobStatus === "failed") return { status: "failed", errorMessage: "Higgsfield 任务失败（v1 JobSet）" };
+  if (jobStatus === "nsfw") return { status: "failed", errorMessage: "Higgsfield 内容审核拒绝（NSFW）" };
+  if (jobStatus === "canceled") return { status: "failed", errorMessage: "任务已取消" };
+  if (jobStatus === "completed") {
+    const url = job?.results?.raw?.url ?? job?.results?.min?.url;
+    if (url) return { status: "succeeded", resultVideoUrl: url };
+    return { status: "failed", errorMessage: "[CHARGED] Higgsfield 完成但 v1 JobSet 无 results.url（积分已扣，请勿重试）" };
   }
-  if (status === "nsfw") {
-    return { status: "failed", errorMessage: "Higgsfield 内容审核拒绝（NSFW）" };
-  }
-  if (status === "completed") {
-    const fileUrl = body.video?.url ?? body.images?.[0]?.url;
-    if (fileUrl) return { status: "succeeded", resultVideoUrl: fileUrl };
-    // Upstream confirms completion (credits spent) but response body lacks
-    // the expected url field. Surface with [CHARGED] so the caller doesn't
-    // present this as a retry-friendly failure.
-    return { status: "failed", errorMessage: "[CHARGED] Higgsfield 完成但响应未含 video.url（积分已扣，请勿重试）" };
-  }
-  // queued / in_progress / unknown — keep polling
+  // queued / in_progress / unknown
   return { status: "processing" };
 }
