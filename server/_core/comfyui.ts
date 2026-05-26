@@ -566,7 +566,7 @@ export async function generateComfyVideo(rawBaseUrl: string, options: GenerateCo
     }
     // Fallback: some templates expose video via images array
     const img = nodeOutput.images?.[0];
-    if (img && /\.(mp4|webm|gif)$/i.test(img.filename)) {
+    if (img && /\.(mp4|webm|gif|webp)$/i.test(img.filename)) {
       const dlUrl = downloadUrl(baseUrl, img.filename, img.subfolder, img.type);
       const ext = img.filename.split(".").pop() || "mp4";
       const stored = await downloadAndStore(dlUrl, ext, "video/mp4");
