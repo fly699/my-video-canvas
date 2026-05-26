@@ -116,48 +116,75 @@ export async function generateHiggsfieldImage(
       ? `${HIGGSFIELD_BASE}/v1/text2image/soul`
       : `${HIGGSFIELD_BASE}/${opts.model}`;
 
-  // Higgsfield image API uses the same Pydantic-schema pattern as DoP video:
-  // a required top-level `params` object holds all model-specific knobs.
-  // Sending them at the top level returns 422 with detail:
+  // Higgsfield runs two distinct request-body schemas on platform.higgsfield.ai:
+  //
+  // - v1 endpoints (path prefix `/v1/…` e.g. `/v1/text2image/soul`):
+  //   POST body = `{ params: { <ALL_FIELDS_HERE incl. prompt> } }`
+  //   (per official SDK src/client.ts line ~79: `requestBody = { params }`)
+  //
+  // - v2 endpoints (slug paths e.g. `flux-pro/kontext/max/text-to-image`):
+  //   POST body = `{ <ALL_FIELDS_FLAT> }` — input fields spread at top level
+  //   (per official SDK src/v2/client.ts line ~270: `requestBody = { ...input }`)
+  //
+  // User-reported 422 confirmed v1 schema:
   //   {"type":"missing","loc":["body","params"],"msg":"Field required"}
-  // Top-level fields are limited to `prompt` and the multimodal input ref
-  // (analogous to `input_images` for DoP). Everything else goes into params.
-  const innerParams: Record<string, unknown> = {};
+  //
+  // Field names for each model are taken from the v1/v2 SDK type definitions:
+  //   - Soul Standard:  src/v2/types.ts SoulText2ImageInput
+  //   - DoP video:      src/v2/types.ts DoPImage2VideoInput
+  //   - v2 models:      schema files / README examples
+  const isV1Endpoint = opts.model === "higgsfield-ai/soul/standard";
+  const fields: Record<string, unknown> = { prompt: opts.prompt };
 
   if (opts.model === "higgsfield-ai/soul/standard") {
-    // Soul Standard specific params (from official SDK types.d.ts)
-    innerParams.width_and_height = opts.widthAndHeight ?? "1024x1024";
-    if (opts.quality) innerParams.quality = opts.quality;
-    if (opts.batchSize !== undefined) innerParams.batch_size = opts.batchSize;
-    if (opts.enhancePrompt !== undefined) innerParams.enhance_prompt = opts.enhancePrompt;
-    if (opts.seed !== undefined) innerParams.seed = opts.seed;
-    if (opts.negativePrompt) innerParams.negative_prompt = opts.negativePrompt;
+    // Soul Standard /v1/text2image/soul — required fields per SDK type:
+    //   prompt, width_and_height, quality, batch_size
+    // Optional: image_reference (object), enhance_prompt, seed, style_id,
+    //           style_strength, custom_reference_id, custom_reference_strength
+    fields.width_and_height = opts.widthAndHeight ?? "1024x1024";
+    fields.quality = opts.quality ?? "1080p";  // required: '720p' | '1080p'
+    fields.batch_size = opts.batchSize ?? 1;   // required: 1 | 4
+    if (opts.enhancePrompt !== undefined) fields.enhance_prompt = opts.enhancePrompt;
+    if (opts.seed !== undefined) fields.seed = opts.seed;
+    if (opts.referenceImageUrl) {
+      // Soul image-to-image uses `image_reference` (NOT `input_images` — that's
+      // for DoP video). Per SoulText2ImageInput type.
+      fields.image_reference = { type: "image_url", image_url: opts.referenceImageUrl };
+    }
+    // negative_prompt is NOT in the public SoulText2ImageInput type — omit
+    // to avoid sending an unknown field that may trigger another validation
+    // error. If the API later documents it, re-add.
   } else if (opts.model === "reve/text-to-image") {
-    // Reve specific params
-    if (opts.aspectRatio) innerParams.aspect_ratio = opts.aspectRatio;
-    if (opts.resolution) innerParams.resolution = opts.resolution;
-    if (opts.negativePrompt) innerParams.negative_prompt = opts.negativePrompt;
+    // v2 endpoint — flat schema. Fields per SDK examples / dynamic schema.
+    if (opts.aspectRatio) fields.aspect_ratio = opts.aspectRatio;
+    if (opts.resolution) fields.resolution = opts.resolution;
+    if (opts.negativePrompt) fields.negative_prompt = opts.negativePrompt;
+    if (opts.seed !== undefined) fields.seed = opts.seed;
+    if (opts.referenceImageUrl) {
+      // v2 image-input convention (mirrors DoP's input_images at top level).
+      fields.input_images = [{ type: "image_url", image_url: opts.referenceImageUrl }];
+    }
   } else if (opts.model === "bytedance/seedream/v4/text-to-image") {
-    if (opts.aspectRatio) innerParams.aspect_ratio = opts.aspectRatio;
-    if (opts.negativePrompt) innerParams.negative_prompt = opts.negativePrompt;
+    if (opts.aspectRatio) fields.aspect_ratio = opts.aspectRatio;
+    if (opts.negativePrompt) fields.negative_prompt = opts.negativePrompt;
+    if (opts.seed !== undefined) fields.seed = opts.seed;
+    if (opts.referenceImageUrl) {
+      fields.input_images = [{ type: "image_url", image_url: opts.referenceImageUrl }];
+    }
   } else if (opts.model === "flux-pro/kontext/max/text-to-image") {
-    if (opts.aspectRatio) innerParams.aspect_ratio = opts.aspectRatio;
-    if (opts.negativePrompt) innerParams.negative_prompt = opts.negativePrompt;
-    if (opts.guidanceScale !== undefined) innerParams.guidance_scale = opts.guidanceScale;
-    if (opts.numImages !== undefined) innerParams.num_images = opts.numImages;
-    if (opts.fluxSeed !== undefined) innerParams.seed = opts.fluxSeed;
+    // Per v2 README example: aspect_ratio, prompt, safety_tolerance, seed
+    if (opts.aspectRatio) fields.aspect_ratio = opts.aspectRatio;
+    if (opts.fluxSeed !== undefined) fields.seed = opts.fluxSeed;
+    if (opts.guidanceScale !== undefined) fields.guidance_scale = opts.guidanceScale;
+    if (opts.numImages !== undefined) fields.num_images = opts.numImages;
+    if (opts.referenceImageUrl) {
+      fields.input_images = [{ type: "image_url", image_url: opts.referenceImageUrl }];
+    }
   }
 
-  const body: Record<string, unknown> = {
-    prompt: opts.prompt,
-    params: innerParams,
-  };
-  // Reference image goes at the top level alongside prompt (mirrors DoP's
-  // `input_images` placement — multimodal inputs are siblings of `prompt`,
-  // not nested model params).
-  if (opts.referenceImageUrl) {
-    body.input_images = [{ type: "image_url", image_url: opts.referenceImageUrl }];
-  }
+  // v1 endpoints wrap the entire field set inside `{ params: ... }`.
+  // v2 endpoints send fields directly at top level.
+  const body: Record<string, unknown> = isV1Endpoint ? { params: fields } : fields;
 
   const res = await fetch(endpoint, {
     method: "POST",
@@ -172,7 +199,24 @@ export async function generateHiggsfieldImage(
 
   if (!res.ok) {
     const text = await res.text().catch(() => "");
-    throw new Error(`Higgsfield image submit failed (${res.status}): ${text}`);
+    // Diagnostic: when the API rejects our schema (validation 400/422), log
+    // the EXACT request shape we sent so the next mismatch can be fixed
+    // without guessing. Logs only field NAMES at the top level + inside
+    // `params`, never values (prompts can be sensitive; image URLs may carry
+    // signed tokens). The upstream response body is already in the thrown
+    // message and surfaces in the UI.
+    if (res.status === 400 || res.status === 422) {
+      const topLevelKeys = Object.keys(body).sort().join(",");
+      const paramsKeys = body.params && typeof body.params === "object"
+        ? Object.keys(body.params as Record<string, unknown>).sort().join(",")
+        : "(no params)";
+      console.warn(
+        `[generateHiggsfieldImage] ${res.status} schema mismatch for model=${opts.model} endpoint=${endpoint}\n` +
+        `  request body top-level keys: [${topLevelKeys}]\n` +
+        `  request body.params keys:    [${paramsKeys}]`,
+      );
+    }
+    throw new Error(`Higgsfield image submit failed (${res.status}, model=${opts.model}): ${text}`);
   }
 
   const data = (await res.json()) as { request_id?: string; id?: string };
@@ -261,8 +305,18 @@ export async function submitHiggsfieldVideo(
   const endpoint = `${HIGGSFIELD_BASE}/v1/image2video/dop`;
   const p = opts.params ?? {};
 
-  // Build nested `params` object (required by Higgsfield DoP API — Pydantic enforces its presence)
+  // Per official higgsfield-js v1 SDK README + src/client.ts line 79:
+  //   client.generate('/v1/image2video/dop', { model, prompt, input_images, ... })
+  // wraps the entire payload as `{ params: <THAT_OBJECT> }`. So all fields —
+  // including model / prompt / input_images — sit inside `params`. The
+  // previous "half-nested" shape (model/prompt at top level, rest inside
+  // params) was silently accepted by the server but with extra fields
+  // ignored, which is why DoP videos still generated but with default
+  // duration/resolution/camera_motion regardless of the user's choice.
   const innerParams: Record<string, unknown> = {
+    model: dopModel,
+    prompt: opts.prompt,
+    input_images: [{ type: "image_url", image_url: opts.referenceImageUrl }],
     enhance_prompt: p.enhance_prompt ?? false,
   };
   // Duration: dop-turbo and dop-lite only support 4s; dop-standard supports 4 or 8s
@@ -288,12 +342,7 @@ export async function submitHiggsfieldVideo(
       : { type: motionType, speed: String(p.camera_motion_speed ?? "normal") };
   }
 
-  const body: Record<string, unknown> = {
-    model: dopModel,
-    prompt: opts.prompt,
-    input_images: [{ type: "image_url", image_url: opts.referenceImageUrl }],
-    params: innerParams,
-  };
+  const body: Record<string, unknown> = { params: innerParams };
 
   const res = await fetch(endpoint, {
     method: "POST",
