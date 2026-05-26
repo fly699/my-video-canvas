@@ -1,6 +1,7 @@
-import { storagePut } from "server/storage";
+import { storagePut, resolveToAbsoluteUrl } from "server/storage";
 import { ENV } from "./env";
 import { generateHiggsfieldImage, type HiggsfieldImageModel } from "./higgsfield";
+import { isImagePersistenceEnabled } from "./storageConfig";
 
 export type GenerateImageOptions = {
   prompt: string;
@@ -51,7 +52,9 @@ async function generateImagePoyo(options: GenerateImageOptions): Promise<Generat
   }
 
   if (options.originalImages?.[0]?.url) {
-    input.reference_image_url = options.originalImages[0].url;
+    // Upstream Poyo can't fetch our internal `/manus-storage/{key}` paths;
+    // hand them an absolute presigned S3 URL.
+    input.reference_image_url = await resolveToAbsoluteUrl(options.originalImages[0].url);
   }
 
   // Submit task
@@ -114,17 +117,21 @@ async function generateImagePoyo(options: GenerateImageOptions): Promise<Generat
         throw new Error("[CHARGED] Poyo 图像生成完成但响应未含 file URL（积分已扣，请勿重试）");
       }
 
-      // Download and re-upload to own storage for persistence
-      try {
-        const imgRes = await fetch(fileUrl);
-        if (imgRes.ok) {
-          const buf = Buffer.from(await imgRes.arrayBuffer());
-          const mimeType = imgRes.headers.get("content-type") ?? "image/png";
-          const { url } = await storagePut(`generated/${Date.now()}.png`, buf, mimeType);
-          return { url };
+      // Re-host to Manus S3 so the URL doesn't die after Poyo's 24h CDN TTL.
+      // Admin can disable via the StoragePanel persistImage toggle (saves S3
+      // quota at the cost of upstream URL expiry).
+      if (await isImagePersistenceEnabled()) {
+        try {
+          const imgRes = await fetch(fileUrl);
+          if (imgRes.ok) {
+            const buf = Buffer.from(await imgRes.arrayBuffer());
+            const mimeType = imgRes.headers.get("content-type") ?? "image/png";
+            const { url } = await storagePut(`generated/${Date.now()}.png`, buf, mimeType);
+            return { url };
+          }
+        } catch {
+          // If download fails, return poyo URL directly (expires in 24h per docs)
         }
-      } catch {
-        // If download fails, return poyo URL directly (expires in 24h per docs)
       }
       return { url: fileUrl };
     }
@@ -165,6 +172,9 @@ async function generateImageForge(options: GenerateImageOptions): Promise<Genera
 
   const result = (await response.json()) as { image: { b64Json: string; mimeType: string } };
   const buffer = Buffer.from(result.image.b64Json, "base64");
+  // NOTE: Forge returns base64-inline (no upstream URL), so the persistImage
+  // admin toggle does NOT apply here — we always have to put to S3 or the
+  // frontend has no URL to render. Saving the toggle for Poyo/Higgsfield only.
   const { url } = await storagePut(`generated/${Date.now()}.png`, buffer, result.image.mimeType);
   return { url };
 }

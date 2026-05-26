@@ -96,10 +96,11 @@ export const adminRouter = router({
       .input(z.object({
         persistAudio: z.boolean().optional(),
         persistVideo: z.boolean().optional(),
+        persistImage: z.boolean().optional(),
       }))
       .mutation(async ({ input }) => {
-        if (input.persistAudio === undefined && input.persistVideo === undefined) {
-          throw new TRPCError({ code: "BAD_REQUEST", message: "至少需要指定 persistAudio 或 persistVideo 其中一项" });
+        if (input.persistAudio === undefined && input.persistVideo === undefined && input.persistImage === undefined) {
+          throw new TRPCError({ code: "BAD_REQUEST", message: "至少需要指定 persistAudio / persistVideo / persistImage 其中一项" });
         }
         await db.setStorageSettings(input);
         invalidateStorageSettingsCache();

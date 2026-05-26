@@ -175,10 +175,18 @@ export const whitelistSettings = mysqlTable("whitelistSettings", {
   updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
 });
 
-// Storage persistence toggles — when persistAudio/persistVideo is false,
-// generated media is left at the upstream provider's CDN URL (Poyo: 24h TTL,
-// Higgsfield: temporary CDN). Useful to save Manus S3 quota on dev/preview
-// deployments. Defaults: persistence ON (matches previous behaviour).
+// Storage persistence toggles — when persistAudio/persistVideo/persistImage
+// is false, generated media is left at the upstream provider's CDN URL
+// (Poyo: 24h TTL, Higgsfield: temporary CDN). Useful to save Manus S3
+// quota on dev/preview deployments. Defaults: persistence ON.
+//
+// IMPORTANT: persistImage is INTENTIONALLY omitted from the drizzle column
+// list even though migration 0017 adds it. Manus deployments that haven't
+// yet run `pnpm db:push` would otherwise hit "unknown column persistImage"
+// on every SELECT/INSERT — bricking the entire storage settings panel.
+// All reads/writes of persistImage go through raw SQL inside db.ts so the
+// missing-column case can be handled gracefully (defaults to true, write
+// surfaces a clear migration-required error).
 export const storageSettings = mysqlTable("storageSettings", {
   id: int("id").autoincrement().primaryKey(),
   persistAudio: boolean("persistAudio").notNull().default(true),
