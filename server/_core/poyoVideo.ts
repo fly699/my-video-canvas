@@ -144,7 +144,14 @@ export async function checkPoyoVideoStatus(externalTaskId: string): Promise<Poyo
   }
 
   const d = body.data;
-  const status = d.status as PoyoTaskStatus["status"];
+  const KNOWN_STATUSES = new Set(["not_started", "running", "finished", "failed"]);
+  const rawStatus = d.status;
+  if (!KNOWN_STATUSES.has(rawStatus)) {
+    // Unknown intermediate status from upstream — treat as still running so the
+    // poller keeps checking rather than silently looping or crashing
+    console.warn(`[checkPoyoVideoStatus] Unknown status "${rawStatus}" for task ${externalTaskId}; treating as running`);
+  }
+  const status = (KNOWN_STATUSES.has(rawStatus) ? rawStatus : "running") as PoyoTaskStatus["status"];
   const resultVideoUrl = d.files?.find((f) => f.file_type === "video")?.file_url
     ?? d.files?.[0]?.file_url;
 

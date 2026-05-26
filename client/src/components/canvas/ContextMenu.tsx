@@ -157,7 +157,10 @@ export function ContextMenu({
     };
   }, []);
 
-  // Measure actual rendered size, then compute smart position
+  // Measure actual rendered size, then compute smart position.
+  // Also re-runs on panelSize.w change so widening the menu re-checks
+  // horizontal overflow and shifts pos if needed (dragPos takes priority
+  // over pos for display, so this only matters when the user hasn't dragged).
   useLayoutEffect(() => {
     if (!menuRef.current) return;
     const el = menuRef.current;
@@ -176,7 +179,7 @@ export function ContextMenu({
     }
 
     setPos({ left, top, maxHeight });
-  }, [x, y]);
+  }, [x, y, panelSize.w]);
 
   const menuWidth = 210;
   // When persistent and user has set a size, use it; otherwise fall back to menuWidth
