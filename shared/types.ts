@@ -76,6 +76,16 @@ export interface StoryboardNodeData {
   imageModel?: ImageGenModel;
   referenceImageUrl?: string;
   batchSize?: number;
+  // ── Image-gen sizing/quality knobs (mirror ImageGenNodeData) ──
+  // Stored here so each storyboard scene can override aspect ratio and
+  // resolution independently. Field names match the imageGen.generate
+  // tRPC input — the mutation accepts them as-is per model.
+  widthAndHeight?: string;            // Soul Standard 13-value enum
+  soulQuality?: "720p" | "1080p";     // Soul Standard only
+  reveAspectRatio?: string;           // Reve / Seedream / Flux Pro
+  reveResolution?: "1K" | "2K" | "4K";// Reve / Seedream / Flux Pro
+  poyoAspectRatio?: string;           // Poyo image models
+  poyoQuality?: "low" | "medium" | "high"; // Poyo image models
 }
 
 export interface PromptNodeData {

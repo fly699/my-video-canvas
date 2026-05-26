@@ -83,7 +83,22 @@ async function pollHiggsfieldRequest(requestId: string): Promise<{ fileUrl: stri
 
     const status = body.status ?? body.state ?? "";
     if (status === "failed" || status === "error") {
-      throw new Error(`Higgsfield generation failed: ${body.error ?? "unknown error"}`);
+      // Surface ALL fields the server returned. Reve was reported failing
+      // with only "Generation failed" — useless for diagnosis. Walking the
+      // body shows whether there's a nested `detail` / `reason` / `message`
+      // / `errors[]` worth promoting, and prints the raw object for the
+      // server-side log to help next debug round.
+      const fullBody = JSON.stringify(body).slice(0, 400);
+      console.warn(`[pollHiggsfieldRequest] generation failed for request ${requestId}: ${fullBody}`);
+      // Pick the most specific message we can find; many providers stuff
+      // useful text in detail/message/reason rather than `error`.
+      const b = body as Record<string, unknown>;
+      const detail = typeof b.detail === "string" ? b.detail : undefined;
+      const message = typeof b.message === "string" ? b.message : undefined;
+      const reason = typeof b.reason === "string" ? b.reason : undefined;
+      const errors = Array.isArray(b.errors) ? JSON.stringify(b.errors).slice(0, 200) : undefined;
+      const best = body.error ?? detail ?? message ?? reason ?? errors ?? `unknown error (raw: ${fullBody})`;
+      throw new Error(`[CHARGED] Higgsfield 生成失败: ${best}`);
     }
 
     // Completed — extract file URL(s)
@@ -250,7 +265,8 @@ export async function generateHiggsfieldImage(
 // ── Video Generation ──────────────────────────────────────────────────────────
 //
 // Official platform.higgsfield.ai API exposes a SINGLE video endpoint:
-//   POST /v1/image2video/dop  with body { model: "dop-standard" | "dop-turbo" | "dop-lite", ... }
+//   POST /v1/image2video/dop  with body { model: "dop-preview" | "dop-turbo" | "dop-lite", ... }
+//   (renamed from "dop-standard"; confirmed by 422 enum-error response)
 //
 // Kling / Seedance / Veo / Sora models are NOT available on the public API —
 // they only exist on Higgsfield's private cloud.higgsfield.ai web backend which
@@ -259,7 +275,7 @@ export async function generateHiggsfieldImage(
 // Previous code mistakenly treated the model slug as a URL path and listed 5
 // non-existent variants. Removed.
 
-export type HiggsfieldDopModel = "dop-standard" | "dop-turbo" | "dop-lite";
+export type HiggsfieldDopModel = "dop-preview" | "dop-turbo" | "dop-lite";
 
 export const HIGGSFIELD_VIDEO_MODELS: { value: string; label: string; desc: string }[] = [
   { value: "hf_dop_standard", label: "DoP Standard", desc: "高质量 · 电影级（Higgsfield 公共 API）" },
@@ -272,8 +288,15 @@ export function isHiggsfieldVideoProvider(provider: string): boolean {
 }
 
 // Map internal provider key → official body.model value
+// User-reported 422 confirms the real DoP model enum is { dop-preview,
+// dop-turbo, dop-lite } — no "dop-standard" despite the SDK helpers.ts
+// `DoPModel.STANDARD = 'dop-standard'` constant (SDK is outdated). The
+// frontend provider key `hf_dop_standard` is kept stable (it's in the
+// VIDEO_PROVIDERS enum / user DB rows / labels), but maps to the actual
+// upstream value `dop-preview`. Effectively `hf_dop_standard` is just a
+// historical alias for what Higgsfield now calls "preview".
 export const HIGGSFIELD_PROVIDER_MAP: Record<string, HiggsfieldDopModel> = {
-  hf_dop_standard: "dop-standard",
+  hf_dop_standard: "dop-preview",
   hf_dop_turbo:    "dop-turbo",
   hf_dop_lite:     "dop-lite",
 };
@@ -321,7 +344,8 @@ export async function submitHiggsfieldVideo(
     input_images: [{ type: "image_url", image_url: opts.referenceImageUrl }],
     enhance_prompt: p.enhance_prompt ?? false,
   };
-  // Duration: dop-turbo and dop-lite only support 4s; dop-standard supports 4 or 8s
+  // Duration: dop-turbo and dop-lite only support 4s; dop-preview supports 4 or 8s
+  // (previously documented as "dop-standard" before the API rename)
   if (p.duration !== undefined) {
     const rawDur = Math.trunc(Number(p.duration));
     innerParams.duration = (dopModel === "dop-lite" || dopModel === "dop-turbo")
