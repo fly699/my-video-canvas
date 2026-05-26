@@ -22,6 +22,7 @@ import {
   getVideoTasksByProject,
   createVideoTask,
   updateVideoTask,
+  claimVideoTaskForSubmit,
   getVideoTask,
   findInFlightVideoTask,
   getChatMessages,
@@ -334,33 +335,65 @@ export const videoTasksRouter = router({
       });
       if (!task) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "Failed to create video task" });
 
-      // Submit to external provider; on failure the task stays "pending" for the poller to retry
+      // ── Submit to external provider ──────────────────────────────────────────
+      // CRITICAL: claim the task atomically (pending → processing) BEFORE the
+      // upstream call. This prevents a credit-burn loop that occurred in
+      // production: if the upstream submit succeeded but a transient DB write
+      // failure left the row in `pending`, the background poller would see it
+      // every 10s and submit again, charging the user repeatedly until the
+      // pollErrorCounts ceiling tripped (and even then 6+ duplicate paid jobs
+      // had already been created upstream).
+      //
+      // After this claim:
+      // - If we crash/fail before saving externalTaskId, the task is `processing`
+      //   without an externalTaskId. The poller's `if (!externalTaskId) continue`
+      //   guard skips it forever — credits leak ONCE but no duplicate burn.
+      // - If submit itself throws, we explicitly mark `failed` so the leak is
+      //   visible to the user and the poller stops touching it.
       let externalTaskId: string | undefined;
-      try {
-        if (isPoyoVideoProvider(input.provider)) {
-          const result = await submitPoyoVideo({
-            provider: input.provider,
-            prompt: input.prompt,
-            negativePrompt: input.negativePrompt,
-            referenceImageUrl: input.referenceImageUrl,
-            params: input.params as Record<string, unknown>,
-          });
-          externalTaskId = result.externalTaskId;
-        } else if (isHiggsfieldVideoProvider(input.provider)) {
-          const result = await submitHiggsfieldVideo({
-            provider: input.provider,
-            prompt: input.prompt,
-            negativePrompt: input.negativePrompt,
-            referenceImageUrl: input.referenceImageUrl,
-            params: input.params as Record<string, unknown>,
-          });
-          externalTaskId = result.externalTaskId;
+      let submitFailed = false;
+      const claimed = await claimVideoTaskForSubmit(task.id);
+      if (!claimed) {
+        // Effectively unreachable for a freshly-created row (poll interval is
+        // 10s, the row is microseconds old), but if a parallel worker did
+        // claim it, return the task as processing — the winner is responsible
+        // for the upstream submit and the client should poll for its result.
+        console.warn(`[videoTasks.create] task ${task.id} already claimed by another worker; deferring to it`);
+        return { ...task, status: "processing" as const };
+      } else {
+        try {
+          if (isPoyoVideoProvider(input.provider)) {
+            const result = await submitPoyoVideo({
+              provider: input.provider,
+              prompt: input.prompt,
+              negativePrompt: input.negativePrompt,
+              referenceImageUrl: input.referenceImageUrl,
+              params: input.params as Record<string, unknown>,
+            });
+            externalTaskId = result.externalTaskId;
+          } else if (isHiggsfieldVideoProvider(input.provider)) {
+            const result = await submitHiggsfieldVideo({
+              provider: input.provider,
+              prompt: input.prompt,
+              negativePrompt: input.negativePrompt,
+              referenceImageUrl: input.referenceImageUrl,
+              params: input.params as Record<string, unknown>,
+            });
+            externalTaskId = result.externalTaskId;
+          }
+          if (externalTaskId) {
+            await updateVideoTask(task.id, { externalTaskId });
+          }
+        } catch (err) {
+          // Upstream submit threw before we got an external task ID. Mark
+          // failed so the poller doesn't retry — even though a transient
+          // network error here could mean upstream actually received the
+          // request, retrying without confirmation risks double-billing.
+          const msg = err instanceof Error ? err.message : String(err);
+          console.error(`[videoTasks.create] submit failed for task ${task.id}: ${msg}`);
+          submitFailed = true;
+          await updateVideoTask(task.id, { status: "failed", errorMessage: `提交失败: ${msg.slice(0, 200)}` }).catch(() => {});
         }
-        if (externalTaskId) {
-          await updateVideoTask(task.id, { status: "processing", externalTaskId });
-        }
-      } catch (err) {
-        console.error(`[videoTasks.create] provider submission failed, task ${task.id} left as pending for poller retry:`, err instanceof Error ? err.message : String(err));
       }
 
       // Always audit the generation attempt so failed/retried submissions are visible
@@ -379,7 +412,13 @@ export const videoTasksRouter = router({
       if (externalTaskId) {
         return { ...task, status: "processing" as const, externalTaskId };
       }
-      return task;
+      if (submitFailed) {
+        return { ...task, status: "failed" as const };
+      }
+      // Claim succeeded but no provider matched (unknown provider — shouldn't
+      // happen given the enum validator) and no submit attempt was made.
+      // Task is now `processing` with no externalTaskId; poller will skip it.
+      return { ...task, status: "processing" as const };
     }),
 
   poll: protectedProcedure

@@ -54,6 +54,7 @@ vi.mock("./db", () => ({
     updatedAt: new Date(),
   }),
   updateVideoTask: vi.fn().mockResolvedValue({}),
+  claimVideoTaskForSubmit: vi.fn().mockResolvedValue(true),
   getPendingVideoTasks: vi.fn().mockResolvedValue([]),
   getChatMessages: vi.fn().mockResolvedValue([]),
   addChatMessage: vi.fn().mockResolvedValue({}),
