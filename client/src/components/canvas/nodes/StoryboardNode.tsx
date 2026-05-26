@@ -1117,7 +1117,13 @@ export const StoryboardNode = memo(function StoryboardNode({ id, selected, data 
 // Lives separately from the BaseNode title (which carries "分镜 #N") so users
 // can renumber a shot independent of the panel title — useful when re-ordering
 // scenes after AI generation.
-function SceneNumberBadge({ value, onChange }: { value?: number; onChange: (n: number | undefined) => void }) {
+function SceneNumberBadge({
+  value,
+  onChange,
+}: {
+  value?: number | string;
+  onChange: (v: number | string | undefined) => void;
+}) {
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState<string>(value != null ? String(value) : "");
   useEffect(() => { setDraft(value != null ? String(value) : ""); }, [value]);
@@ -1126,15 +1132,23 @@ function SceneNumberBadge({ value, onChange }: { value?: number; onChange: (n: n
     setEditing(false);
     const trimmed = draft.trim();
     if (!trimmed) { onChange(undefined); return; }
-    const n = parseInt(trimmed, 10);
-    if (Number.isFinite(n) && n >= 0) onChange(n);
-    else setDraft(value != null ? String(value) : "");
+    // Preserve numeric type when input is purely digits (keeps backward
+    // compatibility with templates / AI generation that emit Number values).
+    // Anything else (letters, mixed, symbols) is stored as the user's string
+    // verbatim — supports labels like "开场", "S1", "插曲#3".
+    const asNumber = /^\d+$/.test(trimmed) ? Number(trimmed) : null;
+    if (asNumber !== null && Number.isFinite(asNumber)) onChange(asNumber);
+    else onChange(trimmed);
   };
+
+  // Width grows with content so a long label like "开场镜头" doesn't get
+  // clipped while still keeping the badge tight for short numbers.
+  const measuredWidth = Math.max(28, Math.min(160, draft.length * 7 + 14));
 
   if (editing) {
     return (
       <div
-        className="absolute top-2 left-2 nodrag"
+        className="absolute top-2 left-2 nodrag nowheel"
         style={{
           background: "oklch(0 0 0 / 0.85)",
           backdropFilter: "blur(4px)",
@@ -1149,16 +1163,16 @@ function SceneNumberBadge({ value, onChange }: { value?: number; onChange: (n: n
         <input
           autoFocus
           type="text"
-          inputMode="numeric"
           value={draft}
-          onChange={(e) => setDraft(e.target.value.replace(/[^\d]/g, "").slice(0, 4))}
+          maxLength={24}
+          onChange={(e) => setDraft(e.target.value.slice(0, 24))}
           onBlur={commit}
           onKeyDown={(e) => {
             if (e.key === "Enter") commit();
             else if (e.key === "Escape") { setDraft(value != null ? String(value) : ""); setEditing(false); }
           }}
           style={{
-            width: 28,
+            width: measuredWidth,
             padding: 0,
             fontSize: 10,
             fontWeight: 600,
@@ -1173,22 +1187,24 @@ function SceneNumberBadge({ value, onChange }: { value?: number; onChange: (n: n
     );
   }
 
-  // Show the badge even when value is undefined (so users can click to ASSIGN
-  // a number to a scene that's missing one). Subtle "+" placeholder hint.
   return (
     <div
       className="absolute top-2 left-2 px-1.5 py-0.5 rounded text-[10px] font-semibold nodrag"
       onClick={(e) => { e.stopPropagation(); setEditing(true); }}
-      title="点击编辑场景编号"
+      title="点击编辑场景编号（任意字符，最多 24 字）"
       style={{
         background: "oklch(0 0 0 / 0.65)",
         color: "oklch(0.75 0.18 160)",
         backdropFilter: "blur(4px)",
         cursor: "pointer",
         userSelect: "none",
+        maxWidth: 180,
+        whiteSpace: "nowrap",
+        overflow: "hidden",
+        textOverflow: "ellipsis",
       }}
     >
-      {value != null ? `#${value}` : "#?"}
+      {value != null && value !== "" ? `#${value}` : "#?"}
     </div>
   );
 }
