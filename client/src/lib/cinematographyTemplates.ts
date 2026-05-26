@@ -591,6 +591,27 @@ function escapeRegExp(str: string): string {
 //
 // 把模板的 providerParams 转成 VideoTaskNode 的 params patch。
 // 不支持 native camera_motion 的 provider 返回空对象（仅靠 prompt 注入）。
+//
+// All param keys any cinematography template might write — used by callers
+// to clear stale values before applying a new template. Without this, when
+// the user switches from a template that sets {type, speed} to one that
+// only sets {type}, the previous `speed` value lingers. Same when clearing
+// a template entirely: marker is wiped from prompt but params still carry
+// the old camera_motion_*.
+export const CAMERA_PARAM_KEYS: readonly string[] = [
+  "camera_motion_type",
+  "camera_motion_speed",
+  "camera_fixed",
+];
+
+/** Returns a params patch that clears every camera_motion_* field (sets each
+ * to undefined). Spread it into payload.params BEFORE the template's own
+ * patch to guarantee clean slate. */
+export function clearCinematographyParamsPatch(): Record<string, undefined> {
+  const patch: Record<string, undefined> = {};
+  for (const k of CAMERA_PARAM_KEYS) patch[k] = undefined;
+  return patch;
+}
 
 export function applyCinematographyParams(
   provider: string,

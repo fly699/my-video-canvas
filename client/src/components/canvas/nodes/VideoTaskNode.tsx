@@ -15,6 +15,7 @@ import {
   clearCinematographyFromPrompt,
   detectActiveCinematography,
   applyCinematographyParams,
+  clearCinematographyParamsPatch,
   getTemplateById,
 } from "@/lib/cinematographyTemplates";
 
@@ -481,11 +482,31 @@ export const VideoTaskNode = memo(function VideoTaskNode({ id, selected, data }:
     // so the completion alert can reach them on backgrounded tabs.
     void ensureNotificationPermission();
 
-    // Pull connected character nodes and synthesize a profile-augmented
-    // prompt on submit (the user's payload.prompt stays untouched so the
-    // textarea reflects only what they typed). Camera-marker markers from
-    // the cinematography template — embedded in payload.prompt — are kept
-    // verbatim; mergeCharactersIntoPrompt only prepends character blocks.
+    const { prompt: finalPrompt, referenceImageUrl: finalRefImage } = composeSubmissionContext();
+
+    createTaskMutation.mutate({
+      projectId: data.projectId, nodeId: id,
+      provider: payload.provider, prompt: finalPrompt,
+      // Only send negativePrompt for providers that actually support it
+      negativePrompt: SUPPORTS_NEGATIVE_PROMPT.has(payload.provider) ? payload.negativePrompt : undefined,
+      referenceImageUrl: finalRefImage,
+      params: payload.params,
+    });
+  };
+
+  /**
+   * Pull connected character nodes and synthesize a profile-augmented prompt
+   * + reference-image fallback. Shared between single-mode handleSubmit and
+   * parallel-mode submit — previously parallel mode used payload.prompt
+   * verbatim, silently skipping character injection.
+   * The user's payload.prompt stays untouched so the textarea still reflects
+   * only what they typed. Cinematography markers embedded in payload.prompt
+   * are preserved verbatim since mergeCharactersIntoPrompt only prepends.
+   */
+  const composeSubmissionContext = useCallback((): {
+    prompt: string;
+    referenceImageUrl: string | undefined;
+  } => {
     const { nodes: allNodes, edges: allEdges } = useCanvasStore.getState();
     const connectedCharacters: CharacterNodeData[] = [];
     let charRefFallback: string | undefined = undefined;
@@ -498,21 +519,11 @@ export const VideoTaskNode = memo(function VideoTaskNode({ id, selected, data }:
         if (!charRefFallback && cp.referenceImageUrl) charRefFallback = cp.referenceImageUrl;
       }
     }
-    const finalPrompt = mergeCharactersIntoPrompt(payload.prompt ?? "", connectedCharacters);
-    // If user didn't paste a reference image URL but a connected character
-    // node has one, use it — matches StoryboardNode's behavior so character
-    // continuity is automatic across the workflow.
-    const finalRefImage = payload.referenceImageUrl?.trim() || charRefFallback;
-
-    createTaskMutation.mutate({
-      projectId: data.projectId, nodeId: id,
-      provider: payload.provider, prompt: finalPrompt,
-      // Only send negativePrompt for providers that actually support it
-      negativePrompt: SUPPORTS_NEGATIVE_PROMPT.has(payload.provider) ? payload.negativePrompt : undefined,
-      referenceImageUrl: finalRefImage,
-      params: payload.params,
-    });
-  };
+    return {
+      prompt: mergeCharactersIntoPrompt(payload.prompt ?? "", connectedCharacters),
+      referenceImageUrl: payload.referenceImageUrl?.trim() || charRefFallback,
+    };
+  }, [id, payload.prompt, payload.referenceImageUrl]);
 
   // [CHARGED] / [CHARGED?] are server-side markers that indicate the upstream
   // provider has (almost certainly / possibly) already billed for this task,
@@ -614,10 +625,19 @@ export const VideoTaskNode = memo(function VideoTaskNode({ id, selected, data }:
     (template: ReturnType<typeof getTemplateById> & object) => {
       if (!template) return;
       const newPrompt = applyCinematographyToPrompt(payload.prompt ?? "", template);
+      // CRITICAL: clear every camera_motion_* field FIRST, then layer the new
+      // template's patch on top. Without this, switching from a template that
+      // sets {type, speed} to one that only sets {type} leaves the previous
+      // speed value lingering — Higgsfield DoP keeps generating with the wrong
+      // motion. Same trap when the new template has no native mapping at all.
       const providerPatch = applyCinematographyParams(payload.provider, template);
       updateNodeData(id, {
         prompt: newPrompt,
-        params: { ...(payload.params ?? {}), ...providerPatch },
+        params: {
+          ...(payload.params ?? {}),
+          ...clearCinematographyParamsPatch(),
+          ...providerPatch,
+        },
       });
       toast.success(`已应用运镜：${template.label}`);
     },
@@ -625,9 +645,15 @@ export const VideoTaskNode = memo(function VideoTaskNode({ id, selected, data }:
   );
   const handleClearCinematography = useCallback(() => {
     const newPrompt = clearCinematographyFromPrompt(payload.prompt ?? "");
-    updateNodeData(id, { prompt: newPrompt });
+    // Also wipe params — otherwise the marker disappears from the prompt but
+    // Higgsfield DoP keeps running with the previously-applied
+    // camera_motion_type / speed, producing inconsistent state.
+    updateNodeData(id, {
+      prompt: newPrompt,
+      params: { ...(payload.params ?? {}), ...clearCinematographyParamsPatch() },
+    });
     toast.success("已清除运镜模板");
-  }, [id, updateNodeData, payload.prompt]);
+  }, [id, updateNodeData, payload.prompt, payload.params]);
 
   // ── Browser notification on task completion ─────────────────────────────
   const prevStatusRef = useRef(payload.status);
@@ -916,12 +942,18 @@ export const VideoTaskNode = memo(function VideoTaskNode({ id, selected, data }:
                   const gen = parallelGenRef.current;
                   // Increment counter ONCE per mutate call so global onSuccess/onError can correctly suppress payload writes
                   parallelInFlightRef.current += parallelProviders.length;
+                  // Compose ONCE so all parallel providers see the same
+                  // character-augmented prompt. Previously this branch sent
+                  // payload.prompt verbatim, silently skipping connected
+                  // character nodes — parallel mode produced different prompts
+                  // than single mode for the same node configuration.
+                  const submission = composeSubmissionContext();
                   parallelProviders.forEach(provider => {
                     setParallelResults(prev => ({ ...prev, [provider]: { status: "processing" } }));
                     createTaskMutation.mutate(
                       // Send only prompt/negative/refImage in parallel mode — per-provider params
                       // diverge enough that sharing one params bag tends to break some providers
-                      { nodeId: id, projectId: data.projectId, provider, prompt: payload.prompt!, negativePrompt: SUPPORTS_NEGATIVE_PROMPT.has(provider) ? payload.negativePrompt : undefined, referenceImageUrl: payload.referenceImageUrl },
+                      { nodeId: id, projectId: data.projectId, provider, prompt: submission.prompt, negativePrompt: SUPPORTS_NEGATIVE_PROMPT.has(provider) ? payload.negativePrompt : undefined, referenceImageUrl: submission.referenceImageUrl },
                       {
                         onSuccess: (result) => {
                           if (parallelGenRef.current !== gen) return; // stale — user closed parallel mode

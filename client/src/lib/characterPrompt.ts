@@ -46,7 +46,11 @@ function applyPlaceholders(template: string, char: CharacterNodeData): string {
     const v = char[k];
     return typeof v === "string" ? v.trim() : "";
   };
-  return template.replace(/\{([a-zA-Z]+)\}/g, (_, key) => get(key as keyof CharacterNodeData));
+  // Match standard identifier syntax — letters, digits, underscore — so
+  // user-authored templates can use `{name_field}` / `{appearance2}` etc.
+  // Previously [a-zA-Z]+ silently ignored those, leaving the literal
+  // `{name_field}` text in the rendered prompt.
+  return template.replace(/\{([a-zA-Z_][a-zA-Z0-9_]*)\}/g, (_, key) => get(key as keyof CharacterNodeData));
 }
 
 /** Collapse multi-separator runs and dangling separators left over after
