@@ -281,12 +281,12 @@ export const PromptNode = memo(function PromptNode({ id, selected, data }: Props
           <label style={{ fontSize: 10.5, fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.06em", color: "var(--c-t4)", display: "block", marginBottom: 5 }}>
             正向提示词
           </label>
-          <textarea
+          <textarea className="nodrag nowheel"
             placeholder="masterpiece, best quality, cinematic lighting..."
             value={payload.positivePrompt ?? ""}
             onChange={(e) => handleChange("positivePrompt", e.target.value)}
             rows={3}
-            className="nodrag"
+            
             style={{ ...monoStyle, borderColor: accentA(0.3) }}
             onFocus={onFocusAccent}
             onBlur={onBlurAccent}
@@ -339,12 +339,12 @@ export const PromptNode = memo(function PromptNode({ id, selected, data }: Props
           <label style={{ fontSize: 10, fontWeight: 500, textTransform: "uppercase", letterSpacing: "0.05em", color: "var(--c-t4)", display: "block", marginBottom: 4 }}>
             反向提示词
           </label>
-          <textarea
+          <textarea className="nodrag nowheel"
             placeholder="blurry, low quality, distorted..."
             value={payload.negativePrompt ?? ""}
             onChange={(e) => handleChange("negativePrompt", e.target.value)}
             rows={2}
-            className="nodrag"
+            
             style={monoStyle}
             onFocus={onFocusNeg}
             onBlur={onBlurDefault}

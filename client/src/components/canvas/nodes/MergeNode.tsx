@@ -204,7 +204,7 @@ export const MergeNode = memo(function MergeNode({ id, selected, data }: Props) 
         <div>
           <label style={labelStyle}>视频 URL（自动从连接节点读取，可手动覆盖）</label>
           <textarea
-            className="nodrag"
+            className="nodrag nowheel"
             placeholder={"每行一个视频 URL\nhttps://...\nhttps://..."}
             value={(payload.inputVideoUrls ?? []).join("\n")}
             onChange={(e) => {

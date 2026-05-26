@@ -62,7 +62,10 @@ export interface ScriptNodeData {
 }
 
 export interface StoryboardNodeData {
-  sceneNumber?: number;
+  // Free-form scene label — historically populated as a number (1, 2, 3…)
+  // by templates and AI generation, but the user can edit to any string
+  // ("开场", "S1-A", "插曲#3") via the SceneNumberBadge inline editor.
+  sceneNumber?: number | string;
   description: string;
   imageUrl?: string;
   imageStorageKey?: string;

@@ -578,12 +578,12 @@ export const ImageGenNode = memo(function ImageGenNode({ id, selected, data }: P
         {/* Prompt */}
         <div>
           <label style={labelStyle}>提示词 *</label>
-          <textarea
+          <textarea className="nodrag nowheel"
             placeholder="描述你想生成的图像..."
             value={payload.prompt ?? ""}
             onChange={(e) => update("prompt", e.target.value)}
             rows={3}
-            className="nodrag"
+            
             style={{ ...fieldBase, resize: "none", lineHeight: 1.6 }}
             onFocus={(e) => { e.currentTarget.style.borderColor = BORDER_ACCENT; }}
             onBlur={(e) => { e.currentTarget.style.borderColor = BORDER_DEFAULT; }}
@@ -593,12 +593,12 @@ export const ImageGenNode = memo(function ImageGenNode({ id, selected, data }: P
         {/* Negative prompt */}
         <div>
           <label style={labelStyle}>反向提示词</label>
-          <textarea
+          <textarea className="nodrag nowheel"
             placeholder="blurry, low quality..."
             value={payload.negativePrompt ?? ""}
             onChange={(e) => update("negativePrompt", e.target.value)}
             rows={2}
-            className="nodrag"
+            
             style={{ ...fieldBase, resize: "none", lineHeight: 1.6, fontFamily: "var(--font-mono)", fontSize: 10.5 }}
             onFocus={(e) => { e.currentTarget.style.borderColor = "var(--c-t4)"; }}
             onBlur={(e) => { e.currentTarget.style.borderColor = BORDER_DEFAULT; }}

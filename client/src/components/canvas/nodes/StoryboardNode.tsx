@@ -443,18 +443,11 @@ export const StoryboardNode = memo(function StoryboardNode({ id, selected, data 
                   </button>
                 )}
               </div>
-              {payload.sceneNumber && (
-                <div
-                  className="absolute top-2 left-2 px-1.5 py-0.5 rounded text-[10px] font-semibold"
-                  style={{
-                    background: "oklch(0 0 0 / 0.65)",
-                    color: "oklch(0.75 0.18 160)",
-                    backdropFilter: "blur(4px)",
-                  }}
-                >
-                  #{payload.sceneNumber}
-                </div>
-              )}
+              <SceneNumberBadge
+                value={payload.sceneNumber}
+                onChange={(n) => updateNodeData(id, { sceneNumber: n })}
+              />
+
             </>
           ) : (
             <div className="w-full h-full flex flex-col items-center justify-center gap-3">
@@ -588,7 +581,7 @@ export const StoryboardNode = memo(function StoryboardNode({ id, selected, data 
           placeholder="场景描述..."
           value={payload.description ?? ""}
           onChange={(e) => handleChange("description", e.target.value)}
-          className="nodrag"
+          className="nodrag nowheel"
           rows={2}
           style={{ ...fieldStyle, resize: "none", lineHeight: 1.6 }}
           onFocus={onFocus}
@@ -623,7 +616,7 @@ export const StoryboardNode = memo(function StoryboardNode({ id, selected, data 
             placeholder="正向提示词（用于 AI 生图）..."
             value={payload.promptText ?? ""}
             onChange={(e) => handleChange("promptText", e.target.value)}
-            className="nodrag"
+            className="nodrag nowheel"
             rows={2}
             style={{
               ...fieldStyle,
@@ -723,7 +716,7 @@ export const StoryboardNode = memo(function StoryboardNode({ id, selected, data 
           placeholder="负面提示词（可选，描述不希望出现的内容）..."
           value={payload.negativePrompt ?? ""}
           onChange={(e) => handleChange("negativePrompt", e.target.value)}
-          className="nodrag"
+          className="nodrag nowheel"
           rows={2}
           style={{ ...fieldStyle, resize: "none", lineHeight: 1.6 }}
           onFocus={onFocus}
@@ -1119,3 +1112,99 @@ export const StoryboardNode = memo(function StoryboardNode({ id, selected, data 
     </>
   );
 });
+
+// Editable scene-number badge: click to edit, Enter / blur to save, Esc cancels.
+// Lives separately from the BaseNode title (which carries "分镜 #N") so users
+// can renumber a shot independent of the panel title — useful when re-ordering
+// scenes after AI generation.
+function SceneNumberBadge({
+  value,
+  onChange,
+}: {
+  value?: number | string;
+  onChange: (v: number | string | undefined) => void;
+}) {
+  const [editing, setEditing] = useState(false);
+  const [draft, setDraft] = useState<string>(value != null ? String(value) : "");
+  useEffect(() => { setDraft(value != null ? String(value) : ""); }, [value]);
+
+  const commit = () => {
+    setEditing(false);
+    const trimmed = draft.trim();
+    if (!trimmed) { onChange(undefined); return; }
+    // Preserve numeric type when input is purely digits (keeps backward
+    // compatibility with templates / AI generation that emit Number values).
+    // Anything else (letters, mixed, symbols) is stored as the user's string
+    // verbatim — supports labels like "开场", "S1", "插曲#3".
+    const asNumber = /^\d+$/.test(trimmed) ? Number(trimmed) : null;
+    if (asNumber !== null && Number.isFinite(asNumber)) onChange(asNumber);
+    else onChange(trimmed);
+  };
+
+  // Width grows with content so a long label like "开场镜头" doesn't get
+  // clipped while still keeping the badge tight for short numbers.
+  const measuredWidth = Math.max(28, Math.min(160, draft.length * 7 + 14));
+
+  if (editing) {
+    return (
+      <div
+        className="absolute top-2 left-2 nodrag nowheel"
+        style={{
+          background: "oklch(0 0 0 / 0.85)",
+          backdropFilter: "blur(4px)",
+          borderRadius: 4,
+          display: "flex", alignItems: "center",
+          padding: "1px 4px",
+          gap: 2,
+        }}
+        onClick={(e) => e.stopPropagation()}
+      >
+        <span style={{ color: "oklch(0.75 0.18 160)", fontSize: 10, fontWeight: 600 }}>#</span>
+        <input
+          autoFocus
+          type="text"
+          value={draft}
+          maxLength={24}
+          onChange={(e) => setDraft(e.target.value.slice(0, 24))}
+          onBlur={commit}
+          onKeyDown={(e) => {
+            if (e.key === "Enter") commit();
+            else if (e.key === "Escape") { setDraft(value != null ? String(value) : ""); setEditing(false); }
+          }}
+          style={{
+            width: measuredWidth,
+            padding: 0,
+            fontSize: 10,
+            fontWeight: 600,
+            background: "transparent",
+            border: "none",
+            outline: "none",
+            color: "oklch(0.75 0.18 160)",
+            textAlign: "left",
+          }}
+        />
+      </div>
+    );
+  }
+
+  return (
+    <div
+      className="absolute top-2 left-2 px-1.5 py-0.5 rounded text-[10px] font-semibold nodrag"
+      onClick={(e) => { e.stopPropagation(); setEditing(true); }}
+      title="点击编辑场景编号（任意字符，最多 24 字）"
+      style={{
+        background: "oklch(0 0 0 / 0.65)",
+        color: "oklch(0.75 0.18 160)",
+        backdropFilter: "blur(4px)",
+        cursor: "pointer",
+        userSelect: "none",
+        maxWidth: 180,
+        whiteSpace: "nowrap",
+        overflow: "hidden",
+        textOverflow: "ellipsis",
+      }}
+    >
+      {value != null && value !== "" ? `#${value}` : "#?"}
+    </div>
+  );
+}

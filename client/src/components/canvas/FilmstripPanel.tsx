@@ -225,8 +225,10 @@ export function FilmstripPanel({ onClose }: FilmstripPanelProps) {
             const videoUrl = payload.resultVideoUrl as string | undefined;
             const isVideo = !!videoUrl && !mediaUrl;
             const isStoryboard = node.data.nodeType === "storyboard";
+            // sceneNumber accepts either number or string ("开场" / "S1-A" / 7);
+            // FilmFrame coerces to string for display.
             const sceneNumber = isStoryboard
-              ? (payload.sceneNumber as number | undefined)
+              ? (payload.sceneNumber as number | string | undefined)
               : undefined;
             const config = getNodeConfig(node.data.nodeType as NodeType);
             const accentColor = config.color;
@@ -259,7 +261,7 @@ interface FilmFrameProps {
   videoUrl?: string;
   isVideo: boolean;
   title: string;
-  sceneNumber?: number;
+  sceneNumber?: number | string;
   accentColor: string;
   isSelected: boolean;
   onClick: () => void;

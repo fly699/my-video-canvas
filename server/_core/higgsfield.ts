@@ -262,14 +262,21 @@ export async function generateHiggsfieldImage(
   for (const fUrl of allFileUrls) {
     try {
       const imgRes = await fetch(fUrl);
-      if (imgRes.ok) {
+      if (!imgRes.ok) {
+        console.warn(`[hf-image] persist skipped for shard ${storedUrls.length}: upstream fetch ${imgRes.status} ${imgRes.statusText}`);
+      } else {
         const buf = Buffer.from(await imgRes.arrayBuffer());
         const mimeType = imgRes.headers.get("content-type") ?? "image/png";
         const { url } = await storagePut(`generated/hf-${Date.now()}-${storedUrls.length}.png`, buf, mimeType);
         storedUrls.push(url);
         continue;
       }
-    } catch { /* fall through */ }
+    } catch (err) {
+      // Audit log so the admin doesn't have to guess why the URL is still
+      // an Higgsfield CDN host after toggling the persistence switch on.
+      const msg = err instanceof Error ? err.message : String(err);
+      console.warn(`[hf-image] persist FAILED for shard ${storedUrls.length}, using upstream URL: ${msg.slice(0, 300)}`);
+    }
     storedUrls.push(fUrl); // fallback to original URL on per-image failure
   }
 

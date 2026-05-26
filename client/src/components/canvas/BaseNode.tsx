@@ -10,7 +10,7 @@ import { useWorkflowRunState } from "../../contexts/WorkflowRunContext";
 import { useCanvasMode } from "../../contexts/CanvasModeContext";
 import { useTheme } from "../../contexts/ThemeContext";
 import {
-  Trash2, Copy, GripVertical, Check, X, Loader2, FileText, AlertTriangle, Pin,
+  Trash2, Copy, GripVertical, Check, X, Loader2, FileText, AlertTriangle, Pin, Pencil,
 } from "lucide-react";
 import { NODE_ICONS } from "../../lib/nodeConfig";
 
@@ -298,19 +298,49 @@ export const BaseNode = memo(function BaseNode({
               </button>
             </div>
           ) : (
-            <span
-              className="text-xs font-semibold truncate block"
-              style={{
-                color: "var(--c-t1)",
-                cursor: "text",
-                letterSpacing: "-0.01em",
-                transition: "color 150ms ease",
-              }}
-              onDoubleClick={() => { setEditingTitle(true); setTitleValue(title); }}
-              title={`双击编辑标题: ${title}`}
-            >
-              {title}
-            </span>
+            // Show a faint pencil icon on hover so users discover the title
+            // (including the auto-generated "#N" suffix) is editable. Both
+            // single-click on the pencil and double-click on the text enter
+            // edit mode — single-click on the text alone still propagates to
+            // React Flow's node-select behavior (preserved on purpose).
+            <div className="flex items-center gap-1 min-w-0 flex-1 group/title">
+              <span
+                className="text-xs font-semibold truncate"
+                style={{
+                  color: "var(--c-t1)",
+                  cursor: "text",
+                  letterSpacing: "-0.01em",
+                  transition: "color 150ms ease",
+                }}
+                onDoubleClick={() => { setEditingTitle(true); setTitleValue(title); }}
+                title={`双击编辑标题: ${title}`}
+              >
+                {title}
+              </span>
+              <button
+                onClick={(e) => { e.stopPropagation(); setEditingTitle(true); setTitleValue(title); }}
+                title="编辑标题（含编号）"
+                className="opacity-0 group-hover/title:opacity-100 transition-opacity flex-shrink-0"
+                style={{
+                  width: 18, height: 18, padding: 0,
+                  border: "none", background: "transparent",
+                  display: "flex", alignItems: "center", justifyContent: "center",
+                  borderRadius: 4,
+                  color: "var(--c-t4)",
+                  cursor: "pointer",
+                }}
+                onMouseEnter={(e) => {
+                  (e.currentTarget as HTMLElement).style.background = "var(--c-elevated)";
+                  (e.currentTarget as HTMLElement).style.color = "var(--c-t2)";
+                }}
+                onMouseLeave={(e) => {
+                  (e.currentTarget as HTMLElement).style.background = "transparent";
+                  (e.currentTarget as HTMLElement).style.color = "var(--c-t4)";
+                }}
+              >
+                <Pencil style={{ width: 10, height: 10 }} />
+              </button>
+            </div>
           )}
         </div>
 

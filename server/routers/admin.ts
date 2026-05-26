@@ -4,6 +4,8 @@ import { adminProcedure, router } from "../_core/trpc";
 import * as db from "../db";
 import { invalidateWhitelistCache } from "../_core/whitelist";
 import { invalidateStorageSettingsCache } from "../_core/storageConfig";
+import { storagePut } from "../storage";
+import { ENV } from "../_core/env";
 
 const AUDIT_ACTIONS = [
   "login_email", "login_oauth",
@@ -106,5 +108,47 @@ export const adminRouter = router({
         invalidateStorageSettingsCache();
         return { success: true };
       }),
+
+    // Active health check — uploads a tiny test object to Manus S3 and
+    // returns the result. Lets the admin verify that storagePut actually
+    // works rather than guessing from "the URL still looks like upstream"
+    // (which can be caused by Forge config missing, S3 quota, network, etc.).
+    test: adminProcedure.mutation(async () => {
+      const t0 = Date.now();
+      // Cheap config check first so the error message points at the actual
+      // root cause rather than a downstream symptom.
+      if (!ENV.forgeApiUrl || !ENV.forgeApiKey) {
+        return {
+          ok: false as const,
+          ms: Date.now() - t0,
+          stage: "config" as const,
+          error: "BUILT_IN_FORGE_API_URL / BUILT_IN_FORGE_API_KEY 未设置 — Manus 部署需要在环境变量配置这两个值，storagePut 才能工作。",
+        };
+      }
+      try {
+        const probeBytes = Buffer.from(`persistence-probe-${Date.now()}`, "utf8");
+        const { url } = await storagePut(`probe/probe-${Date.now()}.txt`, probeBytes, "text/plain");
+        return {
+          ok: true as const,
+          ms: Date.now() - t0,
+          url,
+        };
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : String(err);
+        // Stage classification helps the admin act: "config" → check env,
+        // "presign" → Forge backend up but rejecting auth, "upload" → S3
+        // reachable but PUT failed (quota / permission).
+        let stage: "config" | "presign" | "upload" | "unknown" = "unknown";
+        if (/Storage config missing/i.test(msg)) stage = "config";
+        else if (/presign/i.test(msg)) stage = "presign";
+        else if (/upload/i.test(msg) || /S3/i.test(msg)) stage = "upload";
+        return {
+          ok: false as const,
+          ms: Date.now() - t0,
+          stage,
+          error: msg.slice(0, 500),
+        };
+      }
+    }),
   }),
 });
