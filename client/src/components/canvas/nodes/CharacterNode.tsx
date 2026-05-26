@@ -74,22 +74,35 @@ export const CharacterNode = memo(function CharacterNode({ id, selected, data }:
   const kind: CharacterKind = payload.characterKind ?? "person";
 
   // ── Connected storyboards with generated images (downstream of this character)
-  // useShallow keeps Zustand subscription stable when array contents are equal.
-  const connectedStoryboards = useCanvasStore(
+  // Select FLAT tuples (id, imageUrl, sceneNumber) — useShallow uses Object.is
+  // element-wise, so primitives stay equal across renders. Selecting an array
+  // of fresh `{id, imageUrl, sceneNumber}` literals (the obvious shape) defeats
+  // useShallow because each object literal has a new reference every call.
+  // Rebuild the object form inside useMemo gated on the tuple array.
+  const connectedTuples = useCanvasStore(
     useShallow((s) => {
       const outgoing = s.edges.filter((e) => e.source === id);
-      const out: Array<{ id: string; imageUrl: string; sceneNumber?: number | string }> = [];
+      const flat: Array<string | number | undefined> = [];
       for (const edge of outgoing) {
         const t = s.nodes.find((n) => n.id === edge.target && n.data.nodeType === "storyboard");
         if (!t) continue;
         const p = t.data.payload as StoryboardNodeData;
-        if (p.imageUrl) {
-          out.push({ id: t.id, imageUrl: p.imageUrl, sceneNumber: p.sceneNumber });
-        }
+        if (p.imageUrl) flat.push(t.id, p.imageUrl, p.sceneNumber);
       }
-      return out;
+      return flat;
     }),
   );
+  const connectedStoryboards = useMemo(() => {
+    const out: Array<{ id: string; imageUrl: string; sceneNumber?: number | string }> = [];
+    for (let i = 0; i < connectedTuples.length; i += 3) {
+      out.push({
+        id: connectedTuples[i] as string,
+        imageUrl: connectedTuples[i + 1] as string,
+        sceneNumber: connectedTuples[i + 2] as number | string | undefined,
+      });
+    }
+    return out;
+  }, [connectedTuples]);
 
   const [consistencyOpen, setConsistencyOpen] = useState(false);
   const [consistencyResult, setConsistencyResult] = useState<ConsistencyResult | null>(null);

@@ -1,5 +1,6 @@
 import { useMemo, useState } from "react";
 import { createPortal } from "react-dom";
+import { useShallow } from "zustand/react/shallow";
 import { X, Check, Film, ChevronRight, AlertTriangle } from "lucide-react";
 import { toast } from "sonner";
 import {
@@ -51,27 +52,44 @@ export function NarrativeArcPicker({ onClose }: Props) {
   const [scope, setScope] = useState<ScopeMode>("all");
   const [syncToVideoTasks, setSyncToVideoTasks] = useState(true);
 
-  // Scan storyboard nodes from store; sort by sceneNumber
-  const allScenes = useCanvasStore((s) => {
-    const sbs = s.nodes.filter((n) => n.data.nodeType === "storyboard");
-    const list: Array<{ id: string; sceneNumber?: number | string; description?: string; selected: boolean }> = sbs.map((n) => {
-      const p = n.data.payload as StoryboardNodeData;
-      return {
-        id: n.id,
-        sceneNumber: p.sceneNumber,
-        description: p.description,
-        selected: !!n.selected,
-      };
-    });
+  // Subscribe via a flat-tuple selector — Zustand uses Object.is element-wise
+  // under useShallow, so flattening to primitives keeps the subscription stable
+  // when storyboard fields haven't actually changed. Rebuild the object form
+  // (and apply the 4-bucket sort) inside useMemo gated on those tuples.
+  const storyboardTuples = useCanvasStore(
+    useShallow((s) => {
+      const sbs = s.nodes.filter((n) => n.data.nodeType === "storyboard");
+      const flat: Array<string | number | boolean | undefined> = [];
+      for (const n of sbs) {
+        const p = n.data.payload as StoryboardNodeData;
+        flat.push(n.id, p.sceneNumber, p.description, !!n.selected);
+      }
+      return flat;
+    }),
+  );
+
+  const allScenes = useMemo(() => {
+    const list: Array<{ id: string; sceneNumber?: number | string; description?: string; selected: boolean }> = [];
+    for (let i = 0; i < storyboardTuples.length; i += 4) {
+      list.push({
+        id: storyboardTuples[i] as string,
+        sceneNumber: storyboardTuples[i + 1] as number | string | undefined,
+        description: storyboardTuples[i + 2] as string | undefined,
+        selected: storyboardTuples[i + 3] as boolean,
+      });
+    }
     return sortStoryboardsBySceneNumber(list);
-  });
+  }, [storyboardTuples]);
 
   const selectedScenes = useMemo(
     () => allScenes.filter((s) => s.selected),
     [allScenes],
   );
 
-  const targetScenes: SceneItem[] = scope === "selected" && selectedScenes.length > 0 ? selectedScenes : allScenes;
+  // If the user picked "scope=selected" but selected nothing, target NOTHING
+  // (not silently fall back to all scenes — that produces a misleading preview
+  // showing rows the disabled Apply button would not execute).
+  const targetScenes: SceneItem[] = scope === "selected" ? selectedScenes : allScenes;
 
   const filteredArcs = NARRATIVE_ARCS.filter((a) => a.category === activeCategory);
   const selectedArc = selectedArcId ? NARRATIVE_ARCS.find((a) => a.id === selectedArcId) : null;
@@ -91,7 +109,15 @@ export function NarrativeArcPicker({ onClose }: Props) {
     const store = useCanvasStore.getState();
     const allNodes = store.nodes;
     const allEdges = store.edges;
-    const updates: Array<{ id: string; payload: Record<string, unknown> }> = [];
+
+    // Dedupe per node id BEFORE submitting to batchUpdateNodeData (which uses
+    // `new Map(updates.map(u => [u.id, u.payload]))` — duplicate ids silently
+    // collapse to the last entry). Storyboards never duplicate (one beat per
+    // scene), but downstream video_tasks CAN if multiple selected storyboards
+    // converge onto a single video_task (fan-in pattern). For those conflicts
+    // we collect them and warn the user rather than silently picking a winner.
+    const updateMap = new Map<string, Record<string, unknown>>();
+    const vtFanInConflicts = new Map<string, string[]>();  // vtId → [sceneIds...]
 
     for (const m of preview) {
       const tpl = getTemplateById(m.beat.templateId);
@@ -100,34 +126,45 @@ export function NarrativeArcPicker({ onClose }: Props) {
       if (!sceneNode) continue;
       const sbPayload = sceneNode.data.payload as StoryboardNodeData;
       const newPrompt = applyCinematographyToPrompt(sbPayload.promptText ?? "", tpl);
-      updates.push({ id: m.sceneId, payload: { promptText: newPrompt } });
+      updateMap.set(m.sceneId, { promptText: newPrompt });
 
       if (syncToVideoTasks) {
-        // Apply to every downstream video_task this scene feeds
         const outgoing = allEdges.filter((e) => e.source === m.sceneId);
         for (const edge of outgoing) {
           const vt = allNodes.find((n) => n.id === edge.target && n.data.nodeType === "video_task");
           if (!vt) continue;
+          if (updateMap.has(vt.id)) {
+            // Already wrote a patch for this video_task from an earlier scene
+            const list = vtFanInConflicts.get(vt.id) ?? [];
+            list.push(m.sceneId);
+            vtFanInConflicts.set(vt.id, list);
+            continue;  // First writer wins — deterministic by sceneNumber order
+          }
           const vtPayload = vt.data.payload as VideoTaskNodeData;
           const provider = vtPayload.provider;
           const cameraPatch = applyCinematographyParams(provider, tpl);
           const vtPrompt = applyCinematographyToPrompt(vtPayload.prompt ?? "", tpl);
-          updates.push({
-            id: vt.id,
-            payload: {
-              prompt: vtPrompt,
-              params: {
-                ...(vtPayload.params ?? {}),
-                ...clearCinematographyParamsPatch(),
-                ...cameraPatch,
-              },
+          updateMap.set(vt.id, {
+            prompt: vtPrompt,
+            params: {
+              ...(vtPayload.params ?? {}),
+              ...clearCinematographyParamsPatch(),
+              ...cameraPatch,
             },
           });
         }
       }
     }
+
+    const updates = Array.from(updateMap.entries()).map(([id, payload]) => ({ id, payload }));
     store.batchUpdateNodeData(updates);
     toast.success(`已应用「${selectedArc.label}」到 ${preview.length} 个分镜`);
+    if (vtFanInConflicts.size > 0) {
+      toast.warning(
+        `${vtFanInConflicts.size} 个 video_task 节点存在多入度（多个分镜汇入同一节点），已采用首个分镜的运镜参数。请手动调整。`,
+        { duration: 8000 },
+      );
+    }
     onClose();
   };
 

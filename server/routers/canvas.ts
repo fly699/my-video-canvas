@@ -985,7 +985,9 @@ score 为 0-100 整数，issues 数组最多 8 条，每条包含 type/line/sugg
             },
           ],
           model: input.model ?? "claude-sonnet-4-6",
-          maxTokens: 1500,
+          maxTokens: 3000,  // Chinese descriptions encode ~2 tok/char; 8 issues
+          // + 5 recs + 100-char summary worst-case ≈ 1470 tokens — at the
+          // previous 1500 ceiling responses got truncated and JSON.parse failed.
         });
         const text = extractTextContent(response);
         const jsonMatch = text.match(/\{[\s\S]*\}/);
@@ -1002,10 +1004,15 @@ score 为 0-100 整数，issues 数组最多 8 条，每条包含 type/line/sugg
           throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "JSON 解析失败" });
         }
         // Normalize — survive minor LLM schema drift (sceneIndex vs sceneIndices,
-        // numeric strings, missing fields).
-        const overallScore = Number.isFinite(Number(parsed.overallScore))
-          ? Math.max(0, Math.min(100, Math.round(Number(parsed.overallScore))))
-          : 0;
+        // numeric strings, missing fields). overallScore distinguishes
+        // "missing field" (-1, surfaced as "未评分") from a legitimate 0,
+        // so the UI can warn instead of silently rendering "0 = terrible".
+        const rawScore = parsed.overallScore;
+        const overallScore = typeof rawScore === "number" && Number.isFinite(rawScore)
+          ? Math.max(0, Math.min(100, Math.round(rawScore)))
+          : typeof rawScore === "string" && /^-?\d+(?:\.\d+)?$/.test(rawScore.trim())
+            ? Math.max(0, Math.min(100, Math.round(Number(rawScore))))
+            : -1;  // sentinel: LLM omitted the field
         const summary = typeof parsed.summary === "string" ? parsed.summary.slice(0, 400) : "";
         const rawIssues = Array.isArray(parsed.issues) ? parsed.issues : [];
         const issues = rawIssues.slice(0, 8).map((it) => {

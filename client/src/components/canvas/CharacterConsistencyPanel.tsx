@@ -1,3 +1,4 @@
+import { useEffect } from "react";
 import { createPortal } from "react-dom";
 import { useReactFlow } from "@xyflow/react";
 import { X, Sparkles, AlertCircle, AlertTriangle, Info, Target, ImageOff } from "lucide-react";
@@ -44,6 +45,7 @@ const SEVERITY_STYLE: Record<string, { color: string; bg: string; label: string;
 };
 
 function scoreColor(score: number): { color: string; bg: string; label: string } {
+  if (score < 0)   return { color: "var(--c-t3)",         bg: "var(--c-input)",              label: "未评分" };
   if (score >= 85) return { color: "oklch(0.72 0.18 155)", bg: "oklch(0.72 0.18 155 / 0.12)", label: "优秀" };
   if (score >= 70) return { color: "oklch(0.72 0.16 95)",  bg: "oklch(0.72 0.16 95 / 0.12)",  label: "良好" };
   if (score >= 50) return { color: "oklch(0.72 0.18 65)",  bg: "oklch(0.72 0.18 65 / 0.12)",  label: "尚可" };
@@ -63,6 +65,22 @@ export function CharacterConsistencyPanel({
 }: Props) {
   const reactFlow = useReactFlow();
   const scoreStyle = scoreColor(result.overallScore);
+
+  // Sibling modals (CinematographyPicker, NarrativeArcPicker, NodeSearch, etc.)
+  // all close on Escape. The global handler in Canvas.tsx cannot reach this
+  // modal's local `consistencyOpen` state (it lives inside CharacterNode), so
+  // we listen here. Capture-phase + stopImmediatePropagation prevents the
+  // global handler from also acting on the same keystroke.
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => {
+      if (e.key === "Escape") {
+        e.stopImmediatePropagation();
+        onClose();
+      }
+    };
+    document.addEventListener("keydown", handler, true);
+    return () => document.removeEventListener("keydown", handler, true);
+  }, [onClose]);
 
   const focusScenes = (sceneIndices: number[]) => {
     const nodeIds = sceneIndices
@@ -150,7 +168,7 @@ export function CharacterConsistencyPanel({
           >
             <div style={{ textAlign: "center", minWidth: 80 }}>
               <div style={{ fontSize: 40, fontWeight: 800, color: scoreStyle.color, lineHeight: 1 }}>
-                {result.overallScore}
+                {result.overallScore < 0 ? "—" : result.overallScore}
               </div>
               <div style={{ fontSize: 10.5, color: scoreStyle.color, marginTop: 2, fontWeight: 600 }}>
                 {scoreStyle.label}

@@ -238,19 +238,22 @@ export function resolveBeats(arc: NarrativeArc): Array<{
 
 /**
  * Map an arc's beats onto an ordered list of scene IDs (storyboard nodes).
- * Returns one assignment per scene, distributing beats across scenes so
- * every scene gets exactly one beat:
+ * Returns one assignment per scene; every scene gets exactly one beat.
  *
- *   - scenes.length === beats.length → 1:1 mapping
- *   - scenes.length < beats.length   → sample beats at evenly-spaced
- *     positions (e.g. 4 scenes from 7-beat arc picks positions
- *     0, 2, 4, 6 — keeps head & tail beats)
- *   - scenes.length > beats.length   → spread beats: floor(i * B / N) so
- *     consecutive scenes share a beat (e.g. 6 scenes from 4-beat arc:
- *     [0,0,1,2,2,3])
+ * Formula: round(i * (B-1) / (N-1)) — this preserves both head AND tail
+ * beats in every distribution, which is critical because narrative arcs
+ * are head/tail-loaded (opening + climax/closing). Examples:
  *
- * If sceneIds is empty, returns []. If the arc has zero beats (defensive),
- * returns sceneIds mapped to a no-op beat (skipped by callers).
+ *   - N=B: 1:1 mapping
+ *   - N=4, B=7 → [0, 2, 5, 6]  (climactic beat 6 always picked)
+ *   - N=6, B=4 → [0, 1, 2, 2, 3, 3]  (final beat covers tail scenes)
+ *   - N=1: single beat (always the head, beat 0)
+ *
+ * Note: an earlier version used floor((i*B)/N) which silently dropped the
+ * tail beat whenever N<B (4 scenes from a 7-beat arc picked 0,1,3,5 —
+ * never beat 6). The doc claimed "0,2,4,6" but the code didn't match.
+ *
+ * If sceneIds is empty or arc.beats is empty, returns [].
  */
 export function mapArcToScenes(
   arc: NarrativeArc,
@@ -261,9 +264,9 @@ export function mapArcToScenes(
   const N = sceneIds.length;
   const B = arc.beats.length;
   for (let i = 0; i < N; i++) {
-    // floor((i * B) / N) gives the standard "stretch B beats over N slots"
-    // — works correctly in both N<B and N>B directions.
-    const bi = Math.min(Math.floor((i * B) / N), B - 1);
+    const bi = N === 1
+      ? 0
+      : Math.min(B - 1, Math.max(0, Math.round((i * (B - 1)) / (N - 1))));
     result.push({ sceneId: sceneIds[i], beat: arc.beats[bi], beatIndex: bi });
   }
   return result;
