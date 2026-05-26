@@ -788,6 +788,11 @@ export function useWorkflowRunner() {
         return "fail";
       } catch (err) {
         failed.push(nodeId);
+        // ComfyUI nodes show status/progress in their UI — reset to failed on error
+        if (nodeType === "comfyui_image" || nodeType === "comfyui_video" || nodeType === "comfyui_workflow") {
+          const errMsg = err instanceof Error ? err.message : String(err);
+          useCanvasStore.getState().updateNodeData(nodeId, { status: "failed", errorMessage: errMsg, progress: undefined }, true);
+        }
         if (!handleWhitelistError(err)) {
           toast.error(`节点 "${node.data.title}" 执行失败`);
         }

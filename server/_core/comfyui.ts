@@ -401,7 +401,7 @@ export function subscribeComfyProgress(
       } catch { /* malformed message */ }
     });
 
-    ws.addEventListener("error", () => { done(); });
+    ws.addEventListener("error", () => { clearTimeout(timer); done(); });
     ws.addEventListener("close", () => { clearTimeout(timer); done(); });
   });
 }
@@ -827,7 +827,7 @@ export async function executeCustomWorkflow(
 
     // Image outputs
     for (const img of nodeOutput.images ?? []) {
-      if (/\.(mp4|webm|gif)$/i.test(img.filename)) {
+      if (/\.(mp4|webm|gif|webp)$/i.test(img.filename)) {
         const dlUrl = downloadUrl(baseUrl, img.filename, img.subfolder, img.type);
         const ext = img.filename.split(".").pop() || "mp4";
         const stored = await downloadAndStore(dlUrl, ext, "video/mp4");

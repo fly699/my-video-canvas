@@ -58,6 +58,7 @@ export const ComfyuiImageNode = memo(function ComfyuiImageNode({ id, selected, d
   const payload = data.payload;
   const [uploading, setUploading] = useState(false);
   const [lightboxOpen, setLightboxOpen] = useState(false);
+  const [lightboxUrl, setLightboxUrl] = useState<string | null>(null);
   const [urlExpanded, setUrlExpanded] = useState(false);
   const [paramsExpanded, setParamsExpanded] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -222,7 +223,7 @@ export const ComfyuiImageNode = memo(function ComfyuiImageNode({ id, selected, d
                     style={{ background: "oklch(0 0 0 / 0.55)" }}
                   >
                     <button
-                      onClick={() => { updateNodeData(id, { imageUrl: url }, true); setLightboxOpen(true); }}
+                      onClick={() => { setLightboxUrl(url); setLightboxOpen(true); }}
                       className="nodrag flex items-center gap-1 px-2 py-1 rounded text-xs"
                       style={{ background: "oklch(0.14 0.007 260 / 0.8)", borderWidth: 1, borderStyle: "solid", borderColor: "var(--c-bd3)", color: "var(--c-t2)" }}
                     >
@@ -705,12 +706,12 @@ export const ComfyuiImageNode = memo(function ComfyuiImageNode({ id, selected, d
           consume payload.imageUrl directly via useWorkflowRunner's edge traversal. */}
 
       {/* Lightbox */}
-      {lightboxOpen && payload.imageUrl && (
+      {lightboxOpen && (lightboxUrl ?? payload.imageUrl) && (
         <ImageLightbox
-          images={payload.imageUrls && payload.imageUrls.length > 1 ? payload.imageUrls : [payload.imageUrl]}
+          images={payload.imageUrls && payload.imageUrls.length > 1 ? payload.imageUrls : [lightboxUrl ?? payload.imageUrl ?? ""]}
           currentIndex={0}
-          selectedUrl={payload.imageUrl}
-          onClose={() => setLightboxOpen(false)}
+          selectedUrl={lightboxUrl ?? payload.imageUrl ?? ""}
+          onClose={() => { setLightboxOpen(false); setLightboxUrl(null); }}
           onNavigate={() => { /* multi-image navigation handled by lightbox */ }}
           onSelect={() => { /* no-op */ }}
         />
