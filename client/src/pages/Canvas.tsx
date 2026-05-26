@@ -433,13 +433,29 @@ function CanvasInner({ projectId }: { projectId: number }) {
 
   useEffect(() => {
     if (!dbNodes) return;
-    const flowNodes: CanvasNode[] = dbNodes.map((n) => ({
-      id: n.id, type: "custom",
-      position: { x: n.posX, y: n.posY },
-      data: { nodeType: n.type as NodeType, title: n.title ?? getNodeConfig(n.type as NodeType).defaultTitle, payload: (n.data as Record<string, unknown>) ?? {}, projectId },
-      style: { width: n.width, height: n.height },
-      zIndex: n.zIndex,
-    }));
+    const flowNodes: CanvasNode[] = dbNodes.map((n) => {
+      const cfg = getNodeConfig(n.type as NodeType);
+      // Decide whether to apply the stored height to React Flow's style.
+      // For content-driven node types (no `defaultHeight` in config), addNode
+      // omits style.height so content drives node size. Auto-save stores 0
+      // as a sentinel for "no explicit height" (new path), but legacy rows
+      // saved before the fix carry height=200 (the historical fallback) —
+      // applying 200 would lock the node at 200px and break expansion. Treat
+      // both 0 and 200 as "no explicit height" for content-driven types.
+      const isLegacyFallback = n.height === 200;
+      const useStoredHeight =
+        cfg.defaultHeight !== undefined ||
+        (n.height > 0 && !isLegacyFallback);
+      const style: React.CSSProperties = { width: n.width };
+      if (useStoredHeight) style.height = n.height;
+      return {
+        id: n.id, type: "custom",
+        position: { x: n.posX, y: n.posY },
+        data: { nodeType: n.type as NodeType, title: n.title ?? cfg.defaultTitle, payload: (n.data as Record<string, unknown>) ?? {}, projectId },
+        style,
+        zIndex: n.zIndex,
+      };
+    });
     setNodes(flowNodes);
   }, [dbNodes]);
 
@@ -493,7 +509,12 @@ function CanvasInner({ projectId }: { projectId: number }) {
           title: n.data.title,
           data: n.data.payload as Record<string, unknown>,
           posX: n.position.x, posY: n.position.y,
-          width: (n.style?.width as number) ?? 320, height: (n.style?.height as number) ?? 200, zIndex: n.zIndex ?? 0,
+          width: (n.style?.width as number) ?? 320,
+          // 0 = "no explicit height" sentinel — load logic treats this as
+          // content-driven (matches addNode behavior). Real user-resized
+          // values are positive and are preserved across reload.
+          height: (n.style?.height as number | undefined) ?? 0,
+          zIndex: n.zIndex ?? 0,
         })));
       }
       for (const edge of edges) {
