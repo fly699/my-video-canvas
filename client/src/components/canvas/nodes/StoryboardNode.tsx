@@ -114,6 +114,23 @@ export const StoryboardNode = memo(function StoryboardNode({ id, selected, data 
     : "manus_forge";
   const setModel = (m: ImageModelId) => { updateNodeData(id, { imageModel: m }); };
 
+  // ── Per-model sizing controls ──
+  // Mirror the option lists used by ImageGenNode so a scene can be tuned
+  // independently without forcing the user to round-trip via ImageGenNode.
+  const isSoul = model === "hf_soul_standard";
+  const isV2HF = model === "hf_reve" || model === "hf_seedream_v4" || model === "hf_flux_pro";
+  const isPoyoImg = model === "poyo_flux" || model === "poyo_sdxl" || model === "poyo_gpt_image" ||
+                    model === "poyo_seedream" || model === "poyo_grok_image" || model === "poyo_wan_image";
+  const SOUL_SIZES_LIST = [
+    "2048x1152", "2048x1536", "2016x1344", "1696x960", "1632x1088",
+    "1152x2048", "1536x2048", "1344x2016", "960x1696", "1088x1632",
+    "1536x1536", "1536x1152", "1152x1536",
+  ] as const;
+  const V2_ASPECT_RATIOS = ["1:1", "2:3", "3:2", "3:4", "4:3", "4:5", "5:4", "9:16", "16:9", "21:9"] as const;
+  const V2_RESOLUTIONS = ["1K", "2K", "4K"] as const;
+  const POYO_ASPECTS = ["1:1", "16:9", "9:16", "4:3", "3:4", "21:9"] as const;
+  const POYO_QUALITIES_LIST = ["low", "medium", "high"] as const;
+
   // Sync key shared settings (model / color tone / batch / negative prompt)
   // from this storyboard to ALL other storyboard nodes on the canvas.
   // Helps users keep a consistent style across an entire sequence without
@@ -279,6 +296,31 @@ export const StoryboardNode = memo(function StoryboardNode({ id, selected, data 
       ? Array.from(rawPrompt).slice(0, 2000).join("")
       : rawPrompt;
 
+    // Per-model sizing: pass only the fields the chosen model actually
+    // consumes. The imageGen.generate tRPC procedure validates each field
+    // against its own zod enum; mismatched-model fields are dropped server-
+    // side, but staying clean here keeps the request small and obvious.
+    const sizingFields: Record<string, unknown> = {};
+    if (isSoul) {
+      if (SOUL_SIZES_LIST.includes(payload.widthAndHeight as (typeof SOUL_SIZES_LIST)[number])) {
+        sizingFields.widthAndHeight = payload.widthAndHeight;
+      }
+      if (payload.soulQuality) sizingFields.quality = payload.soulQuality;
+    } else if (isV2HF) {
+      if (V2_ASPECT_RATIOS.includes(payload.reveAspectRatio as (typeof V2_ASPECT_RATIOS)[number])) {
+        sizingFields.reveAspectRatio = payload.reveAspectRatio;
+      }
+      if (V2_RESOLUTIONS.includes(payload.reveResolution as (typeof V2_RESOLUTIONS)[number])) {
+        sizingFields.reveResolution = payload.reveResolution;
+      }
+    } else if (isPoyoImg) {
+      if (POYO_ASPECTS.includes(payload.poyoAspectRatio as (typeof POYO_ASPECTS)[number])) {
+        sizingFields.poyoAspectRatio = payload.poyoAspectRatio;
+      }
+      if (POYO_QUALITIES_LIST.includes(payload.poyoQuality as (typeof POYO_QUALITIES_LIST)[number])) {
+        sizingFields.poyoQuality = payload.poyoQuality;
+      }
+    }
     genImageMutation.mutate({
       prompt: enhancedPrompt,
       negativePrompt: payload.negativePrompt,
@@ -286,6 +328,7 @@ export const StoryboardNode = memo(function StoryboardNode({ id, selected, data 
       referenceImageUrl: charRefUrl,
       model,
       batchSize: model === "hf_soul_standard" && batchCount > 1 ? batchCount : undefined,
+      ...sizingFields,
     });
   };
 
@@ -807,6 +850,102 @@ export const StoryboardNode = memo(function StoryboardNode({ id, selected, data 
             同步到全部
           </button>
         </div>
+        {/* ── Sizing controls (per-model) ── */}
+        {(isSoul || isV2HF || isPoyoImg) && (
+          <div className="flex gap-1.5 nodrag">
+            {isSoul && (
+              <>
+                <div style={{ flex: 1 }}>
+                  <label style={{ fontSize: 10, fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.07em", color: "var(--c-t4)", display: "block", marginBottom: 4 }}>
+                    画布尺寸
+                  </label>
+                  <select
+                    value={payload.widthAndHeight ?? "1536x1536"}
+                    onChange={(e) => updateNodeData(id, { widthAndHeight: e.target.value })}
+                    className="nodrag"
+                    style={{ width: "100%", padding: "6px 8px", fontSize: 11, background: "var(--c-input)", border: "1px solid var(--c-bd2)", borderRadius: 6, color: "var(--c-t1)", cursor: "pointer" }}
+                  >
+                    {SOUL_SIZES_LIST.map((s) => <option key={s} value={s}>{s}</option>)}
+                  </select>
+                </div>
+                <div style={{ width: 90 }}>
+                  <label style={{ fontSize: 10, fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.07em", color: "var(--c-t4)", display: "block", marginBottom: 4 }}>
+                    画质
+                  </label>
+                  <select
+                    value={payload.soulQuality ?? "1080p"}
+                    onChange={(e) => updateNodeData(id, { soulQuality: e.target.value as "720p" | "1080p" })}
+                    className="nodrag"
+                    style={{ width: "100%", padding: "6px 8px", fontSize: 11, background: "var(--c-input)", border: "1px solid var(--c-bd2)", borderRadius: 6, color: "var(--c-t1)", cursor: "pointer" }}
+                  >
+                    <option value="720p">720p</option>
+                    <option value="1080p">1080p</option>
+                  </select>
+                </div>
+              </>
+            )}
+            {isV2HF && (
+              <>
+                <div style={{ flex: 1 }}>
+                  <label style={{ fontSize: 10, fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.07em", color: "var(--c-t4)", display: "block", marginBottom: 4 }}>
+                    宽高比
+                  </label>
+                  <select
+                    value={payload.reveAspectRatio ?? "2:3"}
+                    onChange={(e) => updateNodeData(id, { reveAspectRatio: e.target.value })}
+                    className="nodrag"
+                    style={{ width: "100%", padding: "6px 8px", fontSize: 11, background: "var(--c-input)", border: "1px solid var(--c-bd2)", borderRadius: 6, color: "var(--c-t1)", cursor: "pointer" }}
+                  >
+                    {V2_ASPECT_RATIOS.map((r) => <option key={r} value={r}>{r}</option>)}
+                  </select>
+                </div>
+                <div style={{ width: 90 }}>
+                  <label style={{ fontSize: 10, fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.07em", color: "var(--c-t4)", display: "block", marginBottom: 4 }}>
+                    分辨率
+                  </label>
+                  <select
+                    value={payload.reveResolution ?? "2K"}
+                    onChange={(e) => updateNodeData(id, { reveResolution: e.target.value as "1K" | "2K" | "4K" })}
+                    className="nodrag"
+                    style={{ width: "100%", padding: "6px 8px", fontSize: 11, background: "var(--c-input)", border: "1px solid var(--c-bd2)", borderRadius: 6, color: "var(--c-t1)", cursor: "pointer" }}
+                  >
+                    {V2_RESOLUTIONS.map((r) => <option key={r} value={r}>{r}</option>)}
+                  </select>
+                </div>
+              </>
+            )}
+            {isPoyoImg && (
+              <>
+                <div style={{ flex: 1 }}>
+                  <label style={{ fontSize: 10, fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.07em", color: "var(--c-t4)", display: "block", marginBottom: 4 }}>
+                    宽高比
+                  </label>
+                  <select
+                    value={payload.poyoAspectRatio ?? "16:9"}
+                    onChange={(e) => updateNodeData(id, { poyoAspectRatio: e.target.value })}
+                    className="nodrag"
+                    style={{ width: "100%", padding: "6px 8px", fontSize: 11, background: "var(--c-input)", border: "1px solid var(--c-bd2)", borderRadius: 6, color: "var(--c-t1)", cursor: "pointer" }}
+                  >
+                    {POYO_ASPECTS.map((r) => <option key={r} value={r}>{r}</option>)}
+                  </select>
+                </div>
+                <div style={{ width: 90 }}>
+                  <label style={{ fontSize: 10, fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.07em", color: "var(--c-t4)", display: "block", marginBottom: 4 }}>
+                    画质
+                  </label>
+                  <select
+                    value={payload.poyoQuality ?? "medium"}
+                    onChange={(e) => updateNodeData(id, { poyoQuality: e.target.value as "low" | "medium" | "high" })}
+                    className="nodrag"
+                    style={{ width: "100%", padding: "6px 8px", fontSize: 11, background: "var(--c-input)", border: "1px solid var(--c-bd2)", borderRadius: 6, color: "var(--c-t1)", cursor: "pointer" }}
+                  >
+                    {POYO_QUALITIES_LIST.map((q) => <option key={q} value={q}>{q}</option>)}
+                  </select>
+                </div>
+              </>
+            )}
+          </div>
+        )}
         {/* ── Batch count (only effective for hf_soul_standard) ── */}
         <div className="flex flex-col gap-1">
           <div className="flex items-center justify-between">
