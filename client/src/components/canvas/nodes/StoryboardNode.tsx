@@ -3,6 +3,7 @@ import { createPortal } from "react-dom";
 import { TRPCClientError } from "@trpc/client";
 import { BaseNode } from "../BaseNode";
 import { useCanvasStore } from "../../../hooks/useCanvasStore";
+import { useShallow } from "zustand/react/shallow";
 import type { StoryboardNodeData } from "../../../../../shared/types";
 import { trpc } from "@/lib/trpc";
 import { toast } from "sonner";
@@ -68,13 +69,17 @@ export const StoryboardNode = memo(function StoryboardNode({ id, selected, data 
   });
 
   // Outgoing edges → connected video_task node IDs (for prompt push button)
-  const connectedVideoNodeIds = useCanvasStore((s) => {
-    const outgoingEdges = s.edges.filter((e) => e.source === id);
-    return outgoingEdges
-      .map((edge) => s.nodes.find((n) => n.id === edge.target && n.data.nodeType === "video_task"))
-      .filter(Boolean)
-      .map((n) => n!.id as string);
-  });
+  // useShallow prevents infinite Zustand re-subscription when the returned array has
+  // the same elements but a different reference (React error #185).
+  const connectedVideoNodeIds = useCanvasStore(
+    useShallow((s) => {
+      const outgoingEdges = s.edges.filter((e) => e.source === id);
+      return outgoingEdges
+        .map((edge) => s.nodes.find((n) => n.id === edge.target && n.data.nodeType === "video_task"))
+        .filter(Boolean)
+        .map((n) => n!.id as string);
+    }),
+  );
   const { mode: canvasMode } = useCanvasMode();
   const isCreative = canvasMode === "creative";
   const payload = data.payload;

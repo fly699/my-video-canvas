@@ -176,6 +176,69 @@ const PROVIDER_PARAMS: Record<string, ParamDef[]> = {
   mock: [],
 };
 
+interface ParamPreset {
+  id: string;
+  label: string;
+  params: Record<string, unknown>;
+  negativePrompt?: string;
+}
+
+const KLING_O3_PRESETS: ParamPreset[] = [
+  { id: "cinematic",  label: "电影横屏", params: { aspect_ratio: "16:9", duration: 10 } },
+  { id: "portrait",   label: "竖屏短片", params: { aspect_ratio: "9:16", duration: 8 } },
+  { id: "square",     label: "方形社交", params: { aspect_ratio: "1:1", duration: 5 } },
+  { id: "anime",      label: "动漫风格", params: { aspect_ratio: "16:9", duration: 5 }, negativePrompt: "realistic, photo, 3d render, photography" },
+];
+
+const HF_DOP_FAST_PRESETS: ParamPreset[] = [
+  { id: "zoom",   label: "推镜特写", params: { camera_motion_type: "zoom_in",  camera_motion_speed: "slow",   resolution: "720p" } },
+  { id: "orbit",  label: "环绕运镜", params: { camera_motion_type: "orbit",    camera_motion_speed: "normal", resolution: "720p" } },
+  { id: "static", label: "固定镜头", params: { camera_motion_type: "static",                                  resolution: "720p" } },
+];
+
+const WAN26_PRESETS: ParamPreset[] = [
+  { id: "quick",   label: "快速预览", params: { duration: 5,  resolution: "720p",  multi_shots: false } },
+  { id: "multi",   label: "多镜头",  params: { duration: 10, resolution: "720p",  multi_shots: true  } },
+  { id: "long_hd", label: "高清长片", params: { duration: 15, resolution: "1080p", multi_shots: false } },
+];
+
+const PROVIDER_PRESETS: Record<string, ParamPreset[]> = {
+  poyo_seedance: [
+    { id: "cinematic",  label: "电影宽屏", params: { aspect_ratio: "16:9", duration: 10, camera_fixed: true,  resolution: "1080p" } },
+    { id: "portrait",   label: "竖屏短片", params: { aspect_ratio: "9:16", duration: 5,  resolution: "720p"  } },
+    { id: "ultrawide",  label: "超宽景观", params: { aspect_ratio: "21:9", duration: 8,  resolution: "1080p" } },
+    { id: "audio",      label: "带音效",  params: { aspect_ratio: "16:9", duration: 5,  generate_audio: true, resolution: "720p" } },
+  ],
+  poyo_veo: [
+    { id: "hd_ref",      label: "高清参考", params: { resolution: "1080p", generation_type: "reference", aspect_ratio: "16:9" } },
+    { id: "4k",          label: "4K 旗舰", params: { resolution: "4k",    generation_type: "reference", aspect_ratio: "16:9" } },
+    { id: "portrait",    label: "竖屏",   params: { resolution: "1080p", generation_type: "reference", aspect_ratio: "9:16" } },
+    { id: "first_frame", label: "首帧约束", params: { resolution: "720p",  generation_type: "frame",     aspect_ratio: "16:9" } },
+  ],
+  poyo_kling26: [
+    { id: "cinematic", label: "电影横屏", params: { aspect_ratio: "16:9", duration: 10, sound: false } },
+    { id: "portrait",  label: "竖屏短片", params: { aspect_ratio: "9:16", duration: 5,  sound: false } },
+    { id: "sound_fx",  label: "带音效",  params: { aspect_ratio: "16:9", duration: 5,  sound: true  } },
+  ],
+  poyo_kling_o3_std: KLING_O3_PRESETS,
+  poyo_kling_o3_pro: KLING_O3_PRESETS,
+  poyo_kling_o3_4k:  KLING_O3_PRESETS,
+  poyo_wan25_t2v:    WAN26_PRESETS,
+  poyo_wan25_i2v:    WAN26_PRESETS,
+  poyo_runway45: [
+    { id: "cinematic", label: "电影横屏", params: { aspect_ratio: "16:9", duration: 10 } },
+    { id: "portrait",  label: "竖屏短片", params: { aspect_ratio: "9:16", duration: 5  } },
+  ],
+  hf_dop_standard: [
+    { id: "zoom_slow",  label: "推镜特写", params: { camera_motion_type: "zoom_in",  camera_motion_speed: "slow",   duration: 8, resolution: "1080p" } },
+    { id: "orbit",      label: "环绕运镜", params: { camera_motion_type: "orbit",    camera_motion_speed: "normal", duration: 8, resolution: "720p"  } },
+    { id: "static_hd",  label: "固定高清", params: { camera_motion_type: "static",                                  duration: 8, resolution: "1080p" } },
+    { id: "tilt_slow",  label: "上倾慢镜", params: { camera_motion_type: "tilt_up",  camera_motion_speed: "slow",   duration: 8, resolution: "720p"  } },
+  ],
+  hf_dop_lite:   HF_DOP_FAST_PRESETS,
+  hf_dop_turbo:  HF_DOP_FAST_PRESETS,
+};
+
 const BORDER_DEFAULT = "var(--c-bd2)";
 const accentColor = "oklch(0.62 0.20 25)";
 
@@ -440,6 +503,7 @@ export const VideoTaskNode = memo(function VideoTaskNode({ id, selected, data }:
   // Get param defs for current provider
   const paramDefs = PROVIDER_PARAMS[payload.provider] ?? [];
   const params = payload.params ?? {};
+  const presets = PROVIDER_PRESETS[payload.provider] ?? [];
 
   const heroMedia = payload.status === "succeeded" && videoSrc ? (
     <video
@@ -840,6 +904,66 @@ export const VideoTaskNode = memo(function VideoTaskNode({ id, selected, data }:
                 : <ChevronRight className="w-3 h-3" style={{ color: "var(--c-t4)" }} />
               }
             </button>
+            {/* ── Quick presets row ── */}
+            {paramsExpanded && presets.length > 0 && (
+              <div className="px-3 pt-2 pb-2">
+                <div style={{ fontSize: 9.5, fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.06em", color: "var(--c-t4)", marginBottom: 6 }}>
+                  快速预设
+                </div>
+                <div className="flex flex-wrap gap-1.5">
+                  {presets.map((preset) => {
+                    const isActive = Object.entries(preset.params).every(
+                      ([k, v]) => String(params[k]) === String(v)
+                    );
+                    return (
+                      <button
+                        key={preset.id}
+                        onClick={() => {
+                          if (isLocked) return;
+                          updateNodeData(id, {
+                            params: { ...params, ...preset.params },
+                            ...(preset.negativePrompt !== undefined && SUPPORTS_NEGATIVE_PROMPT.has(payload.provider)
+                              ? { negativePrompt: preset.negativePrompt }
+                              : {}),
+                          });
+                        }}
+                        disabled={isLocked}
+                        className="nodrag"
+                        style={{
+                          padding: "2px 9px",
+                          fontSize: 10.5,
+                          borderRadius: 99,
+                          background: isActive ? "oklch(0.62 0.20 25 / 0.15)" : "var(--c-surface)",
+                          border: `1px solid ${isActive ? "oklch(0.62 0.20 25 / 0.40)" : "var(--c-bd2)"}`,
+                          color: isActive ? accentColor : "var(--c-t3)",
+                          cursor: isLocked ? "not-allowed" : "pointer",
+                          fontWeight: isActive ? 600 : 400,
+                          transition: "background 120ms ease, border-color 120ms ease, color 120ms ease",
+                        }}
+                        onMouseEnter={(e) => {
+                          if (!isLocked && !isActive) {
+                            (e.currentTarget as HTMLElement).style.borderColor = "var(--c-t4)";
+                            (e.currentTarget as HTMLElement).style.color = "var(--c-t2)";
+                          }
+                        }}
+                        onMouseLeave={(e) => {
+                          if (!isLocked && !isActive) {
+                            (e.currentTarget as HTMLElement).style.borderColor = "var(--c-bd2)";
+                            (e.currentTarget as HTMLElement).style.color = "var(--c-t3)";
+                          }
+                        }}
+                      >
+                        {preset.label}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
+            {/* divider between presets and params */}
+            {paramsExpanded && presets.length > 0 && paramDefs.length > 0 && (
+              <div style={{ height: 1, background: "var(--c-bd1)", marginLeft: 12, marginRight: 12, marginBottom: 4 }} />
+            )}
             {/* 2-column grid for compact layout */}
             {paramsExpanded && <div className="grid grid-cols-2 gap-x-2.5 gap-y-2.5 px-3 pb-3">
             {paramDefs.map((def) => {
