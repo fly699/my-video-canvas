@@ -55,21 +55,34 @@ const STYLES = ["写实", "动漫", "插画", "3D渲染", "水彩", "油画", "�
 const RATIOS = ["1:1", "16:9", "9:16", "4:3", "3:4", "2:1"];
 
 // Soul Standard supported sizes (from official SDK)
+// Soul Standard — server enforces a 13-value enum for `width_and_height`.
+// Source: official higgsfield-js SDK src/helpers.ts SoulSize constant; also
+// echoed in the 422 error response when an invalid value is sent. Picking
+// anything outside this list (e.g. "1024x1024") returns Pydantic literal_error.
 const SOUL_SIZES = [
-  "512x512", "512x768", "512x1024",
-  "768x512", "768x768", "768x1024",
-  "1024x512", "1024x768", "1024x1024",
-  "1024x1280", "1024x1536", "1280x1024", "1536x1024",
-];
+  // Landscape
+  "2048x1152", "2048x1536", "2016x1344", "1696x960", "1632x1088",
+  // Portrait
+  "1152x2048", "1536x2048", "1344x2016", "960x1696", "1088x1632",
+  // Square / mixed
+  "1536x1536", "1536x1152", "1152x1536",
+] as const;
+
+// Reve / Seedream / Flux Pro aspect_ratio enum — verified against the
+// third-party reference impl (jeremieLouvaert/ComfyUI-Higgsfield-Direct).
+// All v2 image endpoints share this set.
+const REVE_ASPECT_RATIOS = ["1:1", "2:3", "3:2", "3:4", "4:3", "4:5", "5:4", "9:16", "16:9", "21:9"] as const;
+const FLUX_PRO_ASPECT_RATIOS = REVE_ASPECT_RATIOS;
+
+// v2 endpoints expect resolution as "1K" / "2K" / "4K", NOT "720p"/"1080p".
+// Soul Standard (v1) is the only model that uses the px-based "720p"/"1080p".
+const REVE_RESOLUTIONS = ["1K", "2K", "4K"] as const;
+const SOUL_QUALITIES = ["720p", "1080p"] as const;
 
 // Per-model aspect ratio whitelists — protect downstream APIs from cross-model contamination
 // Also used to drive UI <option> rendering so users cannot select a value the server will silently drop
 const POYO_ASPECT_RATIOS = ["1:1", "16:9", "9:16", "4:3", "3:4", "21:9"] as const;
-const REVE_ASPECT_RATIOS = ["21:9", "16:9", "4:3", "3:2", "1:1", "2:3", "3:4", "9:16", "9:21"] as const;
-const FLUX_PRO_ASPECT_RATIOS = ["16:9", "4:3", "1:1", "3:4", "9:16"] as const;
 const POYO_QUALITIES = ["low", "medium", "high"] as const;
-const SOUL_QUALITIES = ["720p", "1080p"] as const;
-const REVE_RESOLUTIONS = ["720p", "1080p"] as const;
 
 const MAX_SEED = 2147483647;
 
@@ -796,19 +809,20 @@ export const ImageGenNode = memo(function ImageGenNode({ id, selected, data }: P
                           ))}
                         </select>
                       </div>
-                      {isReve && (
+                      {isReveLike && (
                         <div style={{ width: 80 }}>
                           <label style={labelStyle}>分辨率</label>
                           <select
-                            value={payload.reveResolution ?? "720p"}
-                            onChange={(e) => update("reveResolution", e.target.value as "720p" | "1080p")}
+                            value={payload.reveResolution ?? "2K"}
+                            onChange={(e) => update("reveResolution", e.target.value)}
                             className="nodrag"
                             style={{ ...fieldBase, cursor: "pointer" }}
                             onFocus={(e) => { e.currentTarget.style.borderColor = BORDER_ACCENT; }}
                             onBlur={(e) => { e.currentTarget.style.borderColor = BORDER_DEFAULT; }}
                           >
-                            <option value="720p">720p</option>
-                            <option value="1080p">1080p</option>
+                            {REVE_RESOLUTIONS.map((r) => (
+                              <option key={r} value={r}>{r}</option>
+                            ))}
                           </select>
                         </div>
                       )}
