@@ -7,7 +7,7 @@ import { trpc } from "@/lib/trpc";
 import { toast } from "sonner";
 import {
   Sparkles, Loader2, RefreshCw, Upload, X, Cpu, Download, ZoomIn,
-  ChevronDown, ChevronRight, Server, Boxes,
+  ChevronDown, ChevronRight, Server, Boxes, ImageIcon,
 } from "lucide-react";
 import { ImageLightbox } from "../ImageLightbox";
 import { makeImageProxyFallback } from "@/lib/utils";
@@ -234,6 +234,14 @@ export const ComfyuiImageNode = memo(function ComfyuiImageNode({ id, selected, d
                       style={{ background: "oklch(0.14 0.007 260 / 0.8)", borderWidth: 1, borderStyle: "solid", borderColor: "var(--c-bd3)", color: "var(--c-t2)" }}
                     >
                       <Download className="w-3 h-3" />
+                    </button>
+                    <button
+                      onClick={() => update("referenceImageUrl", url)}
+                      className="nodrag flex items-center gap-1 px-2 py-1 rounded text-xs"
+                      style={{ background: "oklch(0.14 0.007 260 / 0.8)", borderWidth: 1, borderStyle: "solid", borderColor: "var(--c-bd3)", color: "var(--c-t2)" }}
+                      title="设为参考图（img2img）"
+                    >
+                      <ImageIcon className="w-3 h-3" />
                     </button>
                   </div>
                 </div>

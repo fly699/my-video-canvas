@@ -634,7 +634,8 @@ export async function analyzeWorkflow(
   }
   for (const [, n] of Object.entries(workflow)) {
     if (typeof n !== "object" || !n.class_type) continue;
-    if (n.class_type === "KSampler" || n.class_type === "KSamplerAdvanced") {
+    // KSampler/KSamplerAdvanced: standard conditioning; CFGGuider: used with SamplerCustomAdvanced
+    if (n.class_type === "KSampler" || n.class_type === "KSamplerAdvanced" || n.class_type === "CFGGuider") {
       const negRef = (n.inputs ?? {}).negative;
       if (Array.isArray(negRef) && negRef[0] != null) collectNegClip(String(negRef[0]), new Set());
     }
