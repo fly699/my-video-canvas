@@ -120,11 +120,15 @@ export function ContextMenu({
     e.stopPropagation();
     if (!menuRef.current) return;
     const rect = menuRef.current.getBoundingClientRect();
+    // Compute max dimensions from the menu's current position so the menu
+    // can't be dragged past the viewport's right/bottom edge.
+    const maxW = window.innerWidth - rect.left - 8;
+    const maxH = window.innerHeight - rect.top - 8;
     const onMove = (mv: MouseEvent) => {
       if (!resizeRef.current) return;
       setPanelSize({
-        w: Math.max(MIN_W, resizeRef.current.initW + mv.clientX - resizeRef.current.startX),
-        h: Math.max(MIN_H, resizeRef.current.initH + mv.clientY - resizeRef.current.startY),
+        w: Math.min(maxW, Math.max(MIN_W, resizeRef.current.initW + mv.clientX - resizeRef.current.startX)),
+        h: Math.min(maxH, Math.max(MIN_H, resizeRef.current.initH + mv.clientY - resizeRef.current.startY)),
       });
     };
     const onUp = () => {
@@ -179,7 +183,7 @@ export function ContextMenu({
     }
 
     setPos({ left, top, maxHeight });
-  }, [x, y, panelSize.w]);
+  }, [x, y, panelSize.w, panelSize.h]);
 
   const menuWidth = 210;
   // When persistent and user has set a size, use it; otherwise fall back to menuWidth

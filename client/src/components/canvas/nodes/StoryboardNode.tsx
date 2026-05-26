@@ -575,7 +575,9 @@ export const StoryboardNode = memo(function StoryboardNode({ id, selected, data 
                 connectedVideoNodeIds.forEach((videoNodeId) => {
                   updateStore(videoNodeId, {
                     prompt: payload.promptText,
-                    ...(payload.imageUrl ? { referenceImageUrl: payload.imageUrl } : {}),
+                    // Always sync referenceImageUrl — explicitly clear it (undefined)
+                    // when the storyboard has no image so stale URLs don't linger
+                    referenceImageUrl: payload.imageUrl || undefined,
                   });
                 });
                 toast.success(

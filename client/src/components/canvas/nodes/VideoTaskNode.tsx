@@ -387,13 +387,22 @@ export const VideoTaskNode = memo(function VideoTaskNode({ id, selected, data }:
     if (REQUIRES_REFERENCE_IMAGE.has(payload.provider) && !payload.referenceImageUrl?.trim()) {
       toast.error("该模型需要参考图 URL"); return;
     }
+    // Veo 3.1 首帧约束模式需要参考图
+    if (payload.provider === "poyo_veo" && payload.params?.generation_type === "frame" && !payload.referenceImageUrl?.trim()) {
+      toast.error("Veo 3.1 首帧约束模式需要提供参考图 URL"); return;
+    }
     if (payload.referenceImageUrl && !isSafeMediaUrl(payload.referenceImageUrl)) {
       toast.error("参考图 URL 仅支持 http(s) 或相对路径"); return;
     }
+    // If parallel mode was closed while requests were in-flight, the counter may
+    // be stuck at a non-zero value and would suppress this single-mode callback.
+    if (!parallelMode) parallelInFlightRef.current = 0;
     createTaskMutation.mutate({
       projectId: data.projectId, nodeId: id,
       provider: payload.provider, prompt: payload.prompt,
-      negativePrompt: payload.negativePrompt, referenceImageUrl: payload.referenceImageUrl,
+      // Only send negativePrompt for providers that actually support it
+      negativePrompt: SUPPORTS_NEGATIVE_PROMPT.has(payload.provider) ? payload.negativePrompt : undefined,
+      referenceImageUrl: payload.referenceImageUrl,
       params: payload.params,
     });
   };
@@ -628,7 +637,7 @@ export const VideoTaskNode = memo(function VideoTaskNode({ id, selected, data }:
                     createTaskMutation.mutate(
                       // Send only prompt/negative/refImage in parallel mode — per-provider params
                       // diverge enough that sharing one params bag tends to break some providers
-                      { nodeId: id, projectId: data.projectId, provider, prompt: payload.prompt!, negativePrompt: payload.negativePrompt, referenceImageUrl: payload.referenceImageUrl },
+                      { nodeId: id, projectId: data.projectId, provider, prompt: payload.prompt!, negativePrompt: SUPPORTS_NEGATIVE_PROMPT.has(provider) ? payload.negativePrompt : undefined, referenceImageUrl: payload.referenceImageUrl },
                       {
                         onSuccess: (result) => {
                           if (parallelGenRef.current !== gen) return; // stale — user closed parallel mode

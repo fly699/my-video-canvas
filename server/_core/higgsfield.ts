@@ -257,7 +257,7 @@ export async function submitHiggsfieldVideo(
   };
   // Duration: dop-turbo and dop-lite only support 4s; dop-standard supports 4 or 8s
   if (p.duration !== undefined) {
-    const rawDur = Number(p.duration);
+    const rawDur = Math.trunc(Number(p.duration));
     innerParams.duration = (dopModel === "dop-lite" || dopModel === "dop-turbo")
       ? 4
       : rawDur;
