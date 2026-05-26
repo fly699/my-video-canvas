@@ -100,7 +100,7 @@ export function setupVideoTaskPoller(io: SocketIOServer) {
               console.error(`[VideoPoller] submit failed for task ${task.id}, marking failed: ${msg}`);
               await updateVideoTask(task.id, {
                 status: "failed",
-                errorMessage: `提交失败: ${msg.slice(0, 200)}`,
+                errorMessage: `[CHARGED?] 提交失败: ${msg.slice(0, 200)}`,
               }).catch(() => { /* best-effort — task is in 'processing' state, no further submit will happen */ });
               pollErrorCounts.delete(task.id);
               continue;
@@ -131,7 +131,12 @@ export function setupVideoTaskPoller(io: SocketIOServer) {
                 const persistedList = await persistVideosOrFallback(urls, task.provider);
                 result = { status: "succeeded", resultVideoUrl: persistedList.join("\n") };
               } else {
-                result = { status: "failed", errorMessage: "生成完成但无视频 URL" };
+                // Upstream said "finished" but we couldn't extract any video
+                // URL — credits ARE spent but our parser missed the response
+                // field. Flag with [CHARGED] so the UI can block one-click
+                // resubmit (the previous behavior of marking failed silently
+                // led users to retry and double-charge).
+                result = { status: "failed", errorMessage: "[CHARGED] 视频已在上游生成完成，但本系统未识别 URL（积分已扣，请勿重试；联系管理员查看 Poyo 控制台）" };
               }
             } else if (upstream.status === "failed") {
               result = { status: "failed", errorMessage: upstream.errorMessage ?? "生成失败" };
@@ -146,7 +151,8 @@ export function setupVideoTaskPoller(io: SocketIOServer) {
               const persisted = await persistVideoOrFallback(upstream.resultVideoUrl, task.provider);
               result = { status: "succeeded", resultVideoUrl: persisted };
             } else if (upstream.status === "succeeded" && !upstream.resultVideoUrl) {
-              result = { status: "failed", errorMessage: "任务完成但未返回视频 URL" };
+              // Higgsfield 已扣费但 URL 解析失败 — 同上加 [CHARGED] 标识
+              result = { status: "failed", errorMessage: "[CHARGED] 视频已在 Higgsfield 生成完成，但本系统未识别 URL（积分已扣，请勿重试）" };
             } else if (upstream.status === "failed") {
               result = { status: "failed", errorMessage: upstream.errorMessage ?? "生成失败" };
             } else {

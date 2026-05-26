@@ -99,8 +99,20 @@ async function generateImagePoyo(options: GenerateImageOptions): Promise<Generat
     const d = statusData.data;
 
     if (d.status === "finished") {
-      const fileUrl = d.files?.[0]?.file_url;
-      if (!fileUrl) throw new Error("Poyo image: finished but no file URL");
+      // Look for any file with image MIME type or image-extension URL; older
+      // matching by index can miss multi-output responses (e.g. Soul Standard
+      // batches). Falls back to first file on no-match so we don't regress.
+      const isImageLike = (f: { file_type?: string; file_url?: string }): boolean => {
+        const ft = (f.file_type ?? "").toLowerCase();
+        const url = f.file_url ?? "";
+        return ft.includes("image") || /\.(png|jpe?g|webp|gif|bmp)(?:$|\?)/i.test(url);
+      };
+      const fileUrl = d.files?.find(isImageLike)?.file_url ?? d.files?.[0]?.file_url;
+      if (!fileUrl) {
+        // Credits spent upstream; [CHARGED] prefix lets the frontend warn the
+        // user instead of letting them click "generate" again and re-pay.
+        throw new Error("[CHARGED] Poyo 图像生成完成但响应未含 file URL（积分已扣，请勿重试）");
+      }
 
       // Download and re-upload to own storage for persistence
       try {

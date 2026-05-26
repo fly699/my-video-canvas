@@ -481,7 +481,24 @@ export const VideoTaskNode = memo(function VideoTaskNode({ id, selected, data }:
     });
   };
 
+  // [CHARGED] / [CHARGED?] are server-side markers that indicate the upstream
+  // provider has (almost certainly / possibly) already billed for this task,
+  // even though our code path observed a failure. Resetting and resubmitting
+  // would create a brand-new paid request — we surface a confirm() prompt so
+  // the user has to acknowledge that risk explicitly. Without this gate, the
+  // most natural UX (see failure → click retry) silently doubled their cost.
+  const errMsg = payload.errorMessage ?? "";
+  const isCharged = errMsg.startsWith("[CHARGED]");
+  const isMaybeCharged = errMsg.startsWith("[CHARGED?]");
+  const isPossiblyBilled = isCharged || isMaybeCharged;
+
   const handleReset = () => {
+    if (isPossiblyBilled) {
+      const msg = isCharged
+        ? "上游确认本任务已生成并已扣点数。继续重置会清除当前结果，重新提交将再次扣费——除非你已确认结果丢失或不可用。\n\n确认重置？"
+        : "本任务的提交结果未确认，上游可能已经接收到请求并扣费。点击「确定」会重置任务并允许重新提交——若上游确实已扣费，会再次扣费。\n\n确认重置？";
+      if (typeof window !== "undefined" && !window.confirm(msg)) return;
+    }
     if (payload.taskId) {
       resetTaskMutation.mutate({ id: payload.taskId });
     } else {
@@ -694,11 +711,44 @@ export const VideoTaskNode = memo(function VideoTaskNode({ id, selected, data }:
           </div>
         )}
 
-        {/* ── Error ── */}
+        {/* ── Error ──
+            When errorMessage carries the server-side [CHARGED] / [CHARGED?]
+            marker we render a stronger amber banner with an explicit "积分已扣"
+            badge — same coloring as a financial warning, distinguishable
+            from the standard red "task failed" banner. */}
         {payload.status === "failed" && payload.errorMessage && (
-          <div className="flex items-start gap-2 p-2 rounded-lg flex-shrink-0" style={{ background: STATUS.failed.bg, borderWidth: 1, borderStyle: "solid", borderColor: STATUS.failed.borderColor }}>
-            <AlertCircle className="w-3.5 h-3.5 flex-shrink-0 mt-0.5" style={{ color: STATUS.failed.accent }} />
-            <p className="text-[11px] leading-relaxed" style={{ color: STATUS.failed.accent, wordBreak: "break-word", overflowWrap: "anywhere", minWidth: 0, flex: 1 }}>{payload.errorMessage}</p>
+          <div
+            className="flex items-start gap-2 p-2 rounded-lg flex-shrink-0"
+            style={{
+              background: isPossiblyBilled ? "oklch(0.65 0.18 60 / 0.08)" : STATUS.failed.bg,
+              borderWidth: 1, borderStyle: "solid",
+              borderColor: isPossiblyBilled ? "oklch(0.65 0.18 60 / 0.4)" : STATUS.failed.borderColor,
+            }}
+          >
+            <AlertCircle
+              className="w-3.5 h-3.5 flex-shrink-0 mt-0.5"
+              style={{ color: isPossiblyBilled ? "oklch(0.72 0.18 60)" : STATUS.failed.accent }}
+            />
+            <div className="flex flex-col gap-1" style={{ minWidth: 0, flex: 1 }}>
+              {isPossiblyBilled && (
+                <span style={{
+                  alignSelf: "flex-start",
+                  fontSize: 9.5, fontWeight: 700, letterSpacing: "0.04em",
+                  padding: "1px 6px", borderRadius: 99,
+                  background: "oklch(0.72 0.18 60 / 0.15)",
+                  border: "1px solid oklch(0.72 0.18 60 / 0.4)",
+                  color: "oklch(0.78 0.18 60)",
+                }}>
+                  {isCharged ? "⚠ 积分已扣" : "⚠ 积分可能已扣"}
+                </span>
+              )}
+              <p className="text-[11px] leading-relaxed" style={{
+                color: isPossiblyBilled ? "oklch(0.78 0.18 60)" : STATUS.failed.accent,
+                wordBreak: "break-word", overflowWrap: "anywhere",
+              }}>
+                {payload.errorMessage}
+              </p>
+            </div>
           </div>
         )}
 

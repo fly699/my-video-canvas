@@ -355,7 +355,10 @@ export async function checkHiggsfieldVideoStatus(
   if (status === "completed") {
     const fileUrl = body.video?.url ?? body.images?.[0]?.url;
     if (fileUrl) return { status: "succeeded", resultVideoUrl: fileUrl };
-    return { status: "failed", errorMessage: "Higgsfield 完成但响应未含 video.url" };
+    // Upstream confirms completion (credits spent) but response body lacks
+    // the expected url field. Surface with [CHARGED] so the caller doesn't
+    // present this as a retry-friendly failure.
+    return { status: "failed", errorMessage: "[CHARGED] Higgsfield 完成但响应未含 video.url（积分已扣，请勿重试）" };
   }
   // queued / in_progress / unknown — keep polling
   return { status: "processing" };

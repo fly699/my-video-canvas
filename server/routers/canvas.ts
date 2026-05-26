@@ -392,7 +392,12 @@ export const videoTasksRouter = router({
           const msg = err instanceof Error ? err.message : String(err);
           console.error(`[videoTasks.create] submit failed for task ${task.id}: ${msg}`);
           submitFailed = true;
-          await updateVideoTask(task.id, { status: "failed", errorMessage: `提交失败: ${msg.slice(0, 200)}` }).catch(() => {});
+          // The submit threw — could be a pre-API error (auth/validation) OR
+          // a post-API network timeout (upstream received the request and is
+          // already running). We can't distinguish; [CHARGED?] tells the UI
+          // to require explicit confirmation before any retry to avoid
+          // double-billing in the latter case.
+          await updateVideoTask(task.id, { status: "failed", errorMessage: `[CHARGED?] 提交失败: ${msg.slice(0, 200)}` }).catch(() => {});
         }
       }
 
@@ -440,7 +445,10 @@ export const videoTasksRouter = router({
               pollLastCheck.delete(task.externalTaskId);
               const urls = upstream.resultVideoUrls ?? (upstream.resultVideoUrl ? [upstream.resultVideoUrl] : []);
               if (urls.length === 0) {
-                const update = { status: "failed" as const, errorMessage: "生成完成但无视频文件" };
+                // Credits already spent upstream. The [CHARGED] prefix lets
+                // the UI block one-click resubmit so the user isn't tricked
+                // into re-paying for our parser miss.
+                const update = { status: "failed" as const, errorMessage: "[CHARGED] 视频已在上游生成完成，但本系统未识别 URL（积分已扣，请勿重试；联系管理员查看 Poyo 控制台）" };
                 await updateVideoTask(task.id, update);
                 return { ...task, ...update };
               }
@@ -487,7 +495,8 @@ export const videoTasksRouter = router({
             }
             if (upstream.status === "succeeded" && !upstream.resultVideoUrl) {
               pollLastCheck.delete(task.externalTaskId);
-              const update = { status: "failed" as const, errorMessage: "任务完成但未返回视频 URL" };
+              // Credits spent; [CHARGED] blocks UI from one-click resubmit.
+              const update = { status: "failed" as const, errorMessage: "[CHARGED] 视频已在 Higgsfield 生成完成，但本系统未识别 URL（积分已扣，请勿重试）" };
               await updateVideoTask(task.id, update);
               return { ...task, ...update };
             }
