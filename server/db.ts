@@ -450,10 +450,25 @@ export async function getStorageSettings(): Promise<{ persistAudio: boolean; per
   };
   const rows = await db.select().from(storageSettings).limit(1);
   const row = rows[0];
+  // persistImage lives outside the drizzle column list (see schema.ts note)
+  // so it can be read with graceful fallback when the column doesn't yet
+  // exist on the deployed DB (migration 0017 not yet applied).
+  let persistImage = true;
+  try {
+    const result = (await db.execute(
+      sql`SELECT persistImage FROM storageSettings WHERE id = 1 LIMIT 1`,
+    )) as unknown as Array<Array<{ persistImage?: number | boolean | null }>>;
+    const r = Array.isArray(result?.[0]) ? result[0][0] : undefined;
+    if (r && r.persistImage != null) persistImage = Boolean(r.persistImage);
+  } catch {
+    // Column doesn't exist (migration not run) — default to ON, matching
+    // pre-feature behavior of always persisting images.
+    persistImage = true;
+  }
   return {
     persistAudio: row?.persistAudio ?? true,
     persistVideo: row?.persistVideo ?? true,
-    persistImage: row?.persistImage ?? true,
+    persistImage,
   };
 }
 
@@ -465,20 +480,41 @@ export async function setStorageSettings(patch: { persistAudio?: boolean; persis
     if (patch.persistImage !== undefined) devStorageSettings.persistImage = patch.persistImage;
     return;
   }
-  // Upsert singleton row id=1
-  const current = await getStorageSettings();
-  await db.insert(storageSettings).values({
-    id: 1,
-    persistAudio: patch.persistAudio ?? current.persistAudio,
-    persistVideo: patch.persistVideo ?? current.persistVideo,
-    persistImage: patch.persistImage ?? current.persistImage,
-  }).onDuplicateKeyUpdate({
-    set: {
-      ...(patch.persistAudio !== undefined ? { persistAudio: patch.persistAudio } : {}),
-      ...(patch.persistVideo !== undefined ? { persistVideo: patch.persistVideo } : {}),
-      ...(patch.persistImage !== undefined ? { persistImage: patch.persistImage } : {}),
-    },
-  });
+
+  // Write audio/video via drizzle ORM (these columns always exist).
+  if (patch.persistAudio !== undefined || patch.persistVideo !== undefined) {
+    const current = await getStorageSettings();
+    await db.insert(storageSettings).values({
+      id: 1,
+      persistAudio: patch.persistAudio ?? current.persistAudio,
+      persistVideo: patch.persistVideo ?? current.persistVideo,
+    }).onDuplicateKeyUpdate({
+      set: {
+        ...(patch.persistAudio !== undefined ? { persistAudio: patch.persistAudio } : {}),
+        ...(patch.persistVideo !== undefined ? { persistVideo: patch.persistVideo } : {}),
+      },
+    });
+  }
+
+  // Write persistImage via raw SQL so it doesn't poison the drizzle INSERT
+  // path. If the column doesn't exist (migration 0017 not run), surface a
+  // clear "please run pnpm db:push" message instead of MySQL's cryptic
+  // "Unknown column 'persistImage' in 'field list'".
+  if (patch.persistImage !== undefined) {
+    try {
+      await db.execute(
+        sql`UPDATE storageSettings SET persistImage = ${patch.persistImage} WHERE id = 1`,
+      );
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      if (/unknown column/i.test(msg) || /persistImage/.test(msg)) {
+        throw new Error(
+          "持久化图像列尚未创建。请先在服务端执行 `pnpm db:push` 应用 migration 0017_add_persist_image.sql。",
+        );
+      }
+      throw err;
+    }
+  }
 }
 
 export async function addWhitelistEntry(
