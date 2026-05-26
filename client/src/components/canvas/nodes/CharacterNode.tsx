@@ -1,16 +1,18 @@
-import { memo, useCallback, useRef, useState } from "react";
+import { memo, useCallback, useMemo, useRef, useState } from "react";
+import { useShallow } from "zustand/react/shallow";
 import { BaseNode } from "../BaseNode";
 import { useCanvasStore } from "../../../hooks/useCanvasStore";
-import type { CharacterNodeData, CharacterKind } from "../../../../../shared/types";
+import type { CharacterNodeData, CharacterKind, StoryboardNodeData } from "../../../../../shared/types";
 import { trpc } from "@/lib/trpc";
 import { toast } from "sonner";
-import { User, Mountain, Upload, X, Image as ImageIcon, Loader2, Plus } from "lucide-react";
+import { User, Mountain, Upload, X, Image as ImageIcon, Loader2, Plus, Search } from "lucide-react";
 import {
   characterToPromptInjection,
   CHARACTER_PLACEHOLDERS,
   DEFAULT_PERSON_TEMPLATE,
   DEFAULT_SCENE_TEMPLATE,
 } from "../../../lib/characterPrompt";
+import { CharacterConsistencyPanel, type ConsistencyResult } from "../CharacterConsistencyPanel";
 
 interface Props {
   id: string;
@@ -70,6 +72,67 @@ export const CharacterNode = memo(function CharacterNode({ id, selected, data }:
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const kind: CharacterKind = payload.characterKind ?? "person";
+
+  // ── Connected storyboards with generated images (downstream of this character)
+  // useShallow keeps Zustand subscription stable when array contents are equal.
+  const connectedStoryboards = useCanvasStore(
+    useShallow((s) => {
+      const outgoing = s.edges.filter((e) => e.source === id);
+      const out: Array<{ id: string; imageUrl: string; sceneNumber?: number | string }> = [];
+      for (const edge of outgoing) {
+        const t = s.nodes.find((n) => n.id === edge.target && n.data.nodeType === "storyboard");
+        if (!t) continue;
+        const p = t.data.payload as StoryboardNodeData;
+        if (p.imageUrl) {
+          out.push({ id: t.id, imageUrl: p.imageUrl, sceneNumber: p.sceneNumber });
+        }
+      }
+      return out;
+    }),
+  );
+
+  const [consistencyOpen, setConsistencyOpen] = useState(false);
+  const [consistencyResult, setConsistencyResult] = useState<ConsistencyResult | null>(null);
+  const [consistencyScenes, setConsistencyScenes] = useState<{ ids: string[]; urls: string[] }>({ ids: [], urls: [] });
+
+  const consistencyMut = trpc.scripts.checkCharacterConsistency.useMutation({
+    onSuccess: (result) => {
+      setConsistencyResult(result as ConsistencyResult);
+      setConsistencyOpen(true);
+    },
+    onError: (err) => {
+      toast.error("一致性审查失败：" + err.message);
+    },
+  });
+
+  const profileText = useMemo(() => characterToPromptInjection(payload), [payload]);
+
+  const handleCheckConsistency = () => {
+    if (connectedStoryboards.length < 2) {
+      toast.error("至少需要连接 2 个已生成图像的分镜节点");
+      return;
+    }
+    // Sort by sceneNumber so the LLM sees them in narrative order
+    const sorted = [...connectedStoryboards].sort((a, b) => {
+      const sa = a.sceneNumber;
+      const sb = b.sceneNumber;
+      if (typeof sa === "number" && typeof sb === "number") return sa - sb;
+      if (typeof sa === "number") return -1;
+      if (typeof sb === "number") return 1;
+      return String(sa ?? "").localeCompare(String(sb ?? ""));
+    });
+    const ids = sorted.map((s) => s.id);
+    const urls = sorted.map((s) => s.imageUrl).slice(0, 10);
+    setConsistencyScenes({ ids: ids.slice(0, 10), urls });
+    consistencyMut.mutate({
+      characterName: payload.name || payload.sceneName || undefined,
+      characterKind: kind,
+      profileText: profileText.length > 0 ? profileText : undefined,
+      imageUrls: urls,
+    });
+  };
+
+  const canCheck = connectedStoryboards.length >= 2;
 
   const update = useCallback(
     (key: keyof CharacterNodeData, value: unknown) => updateNodeData(id, { [key]: value }),
@@ -140,6 +203,15 @@ export const CharacterNode = memo(function CharacterNode({ id, selected, data }:
 
   return (
     <BaseNode id={id} selected={selected} nodeType="character" title={data.title} minHeight={160} resizable heroMedia={heroMedia}>
+      {consistencyOpen && consistencyResult && (
+        <CharacterConsistencyPanel
+          characterName={payload.name || payload.sceneName}
+          sceneNodeIds={consistencyScenes.ids}
+          imageUrls={consistencyScenes.urls}
+          result={consistencyResult}
+          onClose={() => setConsistencyOpen(false)}
+        />
+      )}
       <div className="flex flex-col gap-3 p-3.5">
 
         {/* Kind toggle */}
@@ -412,6 +484,47 @@ export const CharacterNode = memo(function CharacterNode({ id, selected, data }:
             payload={payload}
             onChange={(template) => update("customPromptTemplate", template || undefined)}
           />
+        )}
+
+        {/* ── Character Consistency Validator ──
+            Surface only when at least 2 downstream storyboards have generated
+            images. Calls a vision LLM (claude-sonnet-4-6) to score
+            facial/hairstyle/outfit/age/signature consistency. */}
+        {selected && (
+          <div>
+            <button
+              onClick={handleCheckConsistency}
+              disabled={!canCheck || consistencyMut.isPending}
+              className="nodrag flex items-center justify-center gap-2 w-full py-2 rounded-lg transition-all"
+              style={{
+                background: canCheck && !consistencyMut.isPending ? accentA(0.18) : "var(--c-input)",
+                border: `1px solid ${canCheck && !consistencyMut.isPending ? accentA(0.45) : "var(--c-bd2)"}`,
+                color: canCheck && !consistencyMut.isPending ? accent : "var(--c-t4)",
+                cursor: canCheck && !consistencyMut.isPending ? "pointer" : "not-allowed",
+                fontSize: 12,
+                fontWeight: 600,
+              }}
+              title={canCheck
+                ? `检查 ${connectedStoryboards.length} 个分镜的视觉一致性`
+                : "请先把此角色连接到至少 2 个已生成图像的分镜节点"}
+            >
+              {consistencyMut.isPending ? (
+                <Loader2 style={{ width: 13, height: 13 }} className="animate-spin" />
+              ) : (
+                <Search style={{ width: 13, height: 13 }} />
+              )}
+              {consistencyMut.isPending
+                ? "AI 审查中…"
+                : canCheck
+                  ? `🔍 检查一致性（${connectedStoryboards.length} 个分镜）`
+                  : "🔍 检查一致性（需 ≥2 个分镜）"}
+            </button>
+            {!canCheck && (
+              <p style={{ margin: "6px 0 0", fontSize: 10.5, color: "var(--c-t4)", lineHeight: 1.5 }}>
+                把此角色节点连接到多个 storyboard 分镜并生成图像，AI 会分析五官 / 发型 / 服装 / 年龄 / 标志性特征的连贯性
+              </p>
+            )}
+          </div>
         )}
 
         {/* Notes (shared) */}
