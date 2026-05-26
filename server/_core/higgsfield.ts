@@ -139,46 +139,48 @@ export async function generateHiggsfieldImage(
   if (opts.model === "higgsfield-ai/soul/standard") {
     // Soul Standard /v1/text2image/soul — required fields per SDK type:
     //   prompt, width_and_height, quality, batch_size
-    // Optional: image_reference (object), enhance_prompt, seed, style_id,
-    //           style_strength, custom_reference_id, custom_reference_strength
-    fields.width_and_height = opts.widthAndHeight ?? "1024x1024";
+    // Optional: image_reference (object), enhance_prompt, seed, style_id, ...
+    //
+    // CRITICAL: width_and_height is NOT free-form — server validates against
+    // a 13-value enum. User-reported 422 listed the allowed set; the SDK's
+    // SoulSize helper enumerates the same:
+    //   2048x1152, 2048x1536, 2016x1344, 1696x960, 1632x1088,    (landscape)
+    //   1152x2048, 1536x2048, 1344x2016, 960x1696, 1088x1632,   (portrait)
+    //   1536x1536, 1536x1152, 1152x1536                          (square/mixed)
+    // The previous default "1024x1024" was outside this set → 422.
+    fields.width_and_height = opts.widthAndHeight ?? "1536x1536";  // default 1:1 1080p
     fields.quality = opts.quality ?? "1080p";  // required: '720p' | '1080p'
     fields.batch_size = opts.batchSize ?? 1;   // required: 1 | 4
     if (opts.enhancePrompt !== undefined) fields.enhance_prompt = opts.enhancePrompt;
     if (opts.seed !== undefined) fields.seed = opts.seed;
     if (opts.referenceImageUrl) {
-      // Soul image-to-image uses `image_reference` (NOT `input_images` — that's
-      // for DoP video). Per SoulText2ImageInput type.
+      // Soul image-to-image uses `image_reference` (NOT `input_images` — that
+      // form is DoP-video specific). Per SoulText2ImageInput type definition.
       fields.image_reference = { type: "image_url", image_url: opts.referenceImageUrl };
     }
-    // negative_prompt is NOT in the public SoulText2ImageInput type — omit
-    // to avoid sending an unknown field that may trigger another validation
-    // error. If the API later documents it, re-add.
-  } else if (opts.model === "reve/text-to-image") {
-    // v2 endpoint — flat schema. Fields per SDK examples / dynamic schema.
+  } else if (
+    opts.model === "reve/text-to-image" ||
+    opts.model === "bytedance/seedream/v4/text-to-image" ||
+    opts.model === "flux-pro/kontext/max/text-to-image"
+  ) {
+    // v2 endpoints — flat schema. Verified field set from third-party
+    // reference implementation (jeremieLouvaert/ComfyUI-Higgsfield-Direct
+    // higgsfield_nodes.py:232):
+    //   { prompt, aspect_ratio, resolution, image_url? }
+    // Only these four fields are reliably accepted across reve / seedream /
+    // flux-pro. The previous code sent `negative_prompt`, `input_images`,
+    // `guidance_scale`, `num_images` etc. which the dynamic v2 schema
+    // doesn't define — at best ignored, at worst silently fails the job
+    // (Reve's "Generation failed" symptom).
+    //   aspect_ratio: one of "1:1" / "2:3" / "3:2" / "3:4" / "4:3" /
+    //                        "4:5" / "5:4" / "9:16" / "16:9" / "21:9"
+    //   resolution:   "1K" / "2K" / "4K"
     if (opts.aspectRatio) fields.aspect_ratio = opts.aspectRatio;
     if (opts.resolution) fields.resolution = opts.resolution;
-    if (opts.negativePrompt) fields.negative_prompt = opts.negativePrompt;
-    if (opts.seed !== undefined) fields.seed = opts.seed;
     if (opts.referenceImageUrl) {
-      // v2 image-input convention (mirrors DoP's input_images at top level).
-      fields.input_images = [{ type: "image_url", image_url: opts.referenceImageUrl }];
-    }
-  } else if (opts.model === "bytedance/seedream/v4/text-to-image") {
-    if (opts.aspectRatio) fields.aspect_ratio = opts.aspectRatio;
-    if (opts.negativePrompt) fields.negative_prompt = opts.negativePrompt;
-    if (opts.seed !== undefined) fields.seed = opts.seed;
-    if (opts.referenceImageUrl) {
-      fields.input_images = [{ type: "image_url", image_url: opts.referenceImageUrl }];
-    }
-  } else if (opts.model === "flux-pro/kontext/max/text-to-image") {
-    // Per v2 README example: aspect_ratio, prompt, safety_tolerance, seed
-    if (opts.aspectRatio) fields.aspect_ratio = opts.aspectRatio;
-    if (opts.fluxSeed !== undefined) fields.seed = opts.fluxSeed;
-    if (opts.guidanceScale !== undefined) fields.guidance_scale = opts.guidanceScale;
-    if (opts.numImages !== undefined) fields.num_images = opts.numImages;
-    if (opts.referenceImageUrl) {
-      fields.input_images = [{ type: "image_url", image_url: opts.referenceImageUrl }];
+      // Verified: v2 image models accept ref as a plain `image_url` string
+      // (not the `{type, image_url}` object form Soul uses).
+      fields.image_url = opts.referenceImageUrl;
     }
   }
 

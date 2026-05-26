@@ -628,7 +628,9 @@ export const imageGenRouter = router({
         enhancePrompt: z.boolean().optional(),
         // Reve specific params
         reveAspectRatio: z.string().optional(),
-        reveResolution: z.enum(["720p", "1080p"]).optional(),
+        // v2 image endpoints (reve / seedream / flux-pro) use coarse K-tier
+        // labels rather than px-based 720p/1080p (those are Soul-only).
+        reveResolution: z.enum(["1K", "2K", "4K"]).optional(),
         // Flux Pro Kontext extra params
         fluxGuidanceScale: z.number().min(1).max(20).optional(),
         fluxSeed: z.number().int().optional(),
@@ -684,16 +686,13 @@ export const imageGenRouter = router({
           seed: input.seed,
           enhancePrompt: input.enhancePrompt,
         } : {}),
-        // Reve/Seedream v4/Flux Pro aspect ratio
+        // All three v2 image endpoints (reve / seedream / flux-pro) share the
+        // same flat schema: { prompt, aspect_ratio, resolution, image_url? }.
+        // Resolution was previously only forwarded for hf_reve, leaving
+        // seedream/flux-pro to fall back to upstream defaults.
         ...(input.model === "hf_reve" || input.model === "hf_seedream_v4" || input.model === "hf_flux_pro" ? {
           reveAspectRatio: input.reveAspectRatio,
-          ...(input.model === "hf_reve" ? { reveResolution: input.reveResolution } : {}),
-        } : {}),
-        // Flux Pro Kontext extra params
-        ...(input.model === "hf_flux_pro" ? {
-          fluxGuidanceScale: input.fluxGuidanceScale,
-          fluxSeed: input.fluxSeed,
-          fluxNumImages: input.fluxNumImages,
+          reveResolution: input.reveResolution,
         } : {}),
       });
 

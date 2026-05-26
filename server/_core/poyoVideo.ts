@@ -100,13 +100,23 @@ export async function submitPoyoVideo(opts: {
   }
 
   const data = (await res.json()) as { code: number; message?: string; data: { task_id: string } };
-  if (data.code !== undefined && data.code !== 0) {
+  // Poyo's success code is 200 (HTTP-style), NOT 0 — production bug:
+  // submitting wan2.6-text-to-video returned `{"code":200,"data":{...,"task_id":"Y64Qi6YN…","status":"not_started"}}`,
+  // we treated code!=0 as error, threw "[CHARGED?] 提交失败", but Poyo
+  // had ACCEPTED the job (visible as "Processing" with 360 credits charged
+  // in the upstream dashboard). Result: user saw a misleading failure
+  // banner and could not pull the video.
+  //
+  // Defensive: accept (0, 200, undefined) as success, and additionally
+  // fall through to task_id presence — if Poyo returns a real task_id we
+  // got accepted no matter what `code` value they use.
+  const externalTaskId = data.data?.task_id;
+  if (externalTaskId) return { externalTaskId };
+  const isErrorCode = data.code !== undefined && data.code !== 0 && data.code !== 200;
+  if (isErrorCode) {
     throw new Error(`Poyo video submit error (code ${data.code}): ${data.message ?? JSON.stringify(data)}`);
   }
-  const externalTaskId = data.data?.task_id;
-  if (!externalTaskId) throw new Error("Poyo video submit: no task_id returned");
-
-  return { externalTaskId };
+  throw new Error("Poyo video submit: no task_id returned");
 }
 
 export interface PoyoTaskStatus {
@@ -150,7 +160,9 @@ export async function checkPoyoVideoStatus(externalTaskId: string): Promise<Poyo
     };
   };
 
-  if (body.code !== undefined && body.code !== 0) {
+  // Poyo's success code is either 0 or 200 (HTTP-style). Treat anything else
+  // as error — see submit() above for the production bug this prevents.
+  if (body.code !== undefined && body.code !== 0 && body.code !== 200) {
     throw new Error(`Poyo status check error (code ${body.code}): ${body.message ?? JSON.stringify(body)}`);
   }
 

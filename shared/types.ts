@@ -142,7 +142,7 @@ export interface ImageGenNodeData {
   enhancePrompt?: boolean;
   // Reve / Seedream v4 / Flux Pro aspect ratio
   reveAspectRatio?: string;
-  reveResolution?: "720p" | "1080p";
+  reveResolution?: "1K" | "2K" | "4K";
   // Flux Pro Kontext specific params
   fluxGuidanceScale?: number;
   fluxSeed?: number;

@@ -95,7 +95,8 @@ export async function submitAndPollPoyoMusic(
   }
 
   const submitData = (await submitRes.json()) as { code?: number; message?: string; data?: { task_id?: string } };
-  if (submitData.code !== undefined && submitData.code !== 0) {
+  // Poyo's success code is either 0 or 200 (HTTP-style). Anything else = error.
+  if (submitData.code !== undefined && submitData.code !== 0 && submitData.code !== 200) {
     throw new Error(`Poyo audio submit error (code ${submitData.code}): ${submitData.message ?? JSON.stringify(submitData)}`);
   }
   const taskId = submitData.data?.task_id;
@@ -207,7 +208,8 @@ export async function submitAndPollPoyoTTS(opts: SubmitPoyoTTSOptions): Promise<
   }
 
   const submitData = (await submitRes.json()) as { code?: number; message?: string; data?: { task_id?: string } };
-  if (submitData.code !== undefined && submitData.code !== 0) {
+  // Poyo's success code is either 0 or 200 (HTTP-style). Anything else = error.
+  if (submitData.code !== undefined && submitData.code !== 0 && submitData.code !== 200) {
     throw new Error(`Poyo TTS submit error (code ${submitData.code}): ${submitData.message ?? JSON.stringify(submitData)}`);
   }
   const taskId = submitData.data?.task_id;
