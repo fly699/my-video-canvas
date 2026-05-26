@@ -2,7 +2,7 @@ import { useState } from "react";
 import { useLocation } from "wouter";
 import { trpc } from "@/lib/trpc";
 import { useAuth } from "@/_core/hooks/useAuth";
-import { Shield, Trash2, Plus, ToggleLeft, ToggleRight, ClipboardList, RefreshCw, HardDrive, ArrowLeft } from "lucide-react";
+import { Shield, Trash2, Plus, ToggleLeft, ToggleRight, ClipboardList, RefreshCw, HardDrive, ArrowLeft, Loader2, CheckCircle2, XCircle } from "lucide-react";
 
 type EntryType = "ip" | "user";
 type Tab = "whitelist" | "logs" | "storage";
@@ -141,6 +141,12 @@ function StoragePanel() {
   const setMut = trpc.admin.storage.setPersist.useMutation({
     onSuccess: () => utils.admin.storage.getSettings.invalidate(),
   });
+  // Active probe: uploads a small object via storagePut to confirm the S3
+  // pipeline really works. Without this, the admin can flip toggles to ON
+  // but generated assets still come back as upstream URLs because of a
+  // silent Forge config / S3 issue. Result is shown inline with the
+  // failing pipeline stage so the fix is obvious.
+  const testMut = trpc.admin.storage.test.useMutation();
 
   const settings = settingsQuery.data;
   const loading = settingsQuery.isLoading;
@@ -165,7 +171,7 @@ function StoragePanel() {
       <div style={{ ...cardStyle, alignItems: "stretch", padding: "16px 20px" }}>
         <div style={{ display: "flex", alignItems: "flex-start", gap: 12, marginBottom: 8 }}>
           <HardDrive style={{ width: 18, height: 18, color: "oklch(0.72 0.2 285)", flexShrink: 0, marginTop: 2 }} />
-          <div>
+          <div style={{ flex: 1 }}>
             <h3 style={{ margin: 0, fontSize: 15, fontWeight: 600, color: "var(--c-t1, #f0f0f4)" }}>
               Manus S3 存储持久化
             </h3>
@@ -174,6 +180,50 @@ function StoragePanel() {
               关闭后节点降级为直接使用模型提供商的上游 URL（Poyo: 24h 后过期；Higgsfield: 临时 CDN）。<br />
               注：Forge 内置图像后端始终持久化（base64 返回无法走上游降级）。
             </p>
+            <div style={{ marginTop: 12, display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
+              <button
+                onClick={() => testMut.mutate()}
+                disabled={testMut.isPending}
+                style={{
+                  display: "flex", alignItems: "center", gap: 6,
+                  padding: "6px 12px", fontSize: 12, fontWeight: 500,
+                  background: "oklch(0.68 0.22 285 / 0.12)",
+                  border: "1px solid oklch(0.68 0.22 285 / 0.35)",
+                  borderRadius: 6,
+                  color: "oklch(0.78 0.18 285)",
+                  cursor: testMut.isPending ? "not-allowed" : "pointer",
+                }}
+              >
+                {testMut.isPending
+                  ? <Loader2 className="animate-spin" style={{ width: 12, height: 12 }} />
+                  : <RefreshCw style={{ width: 12, height: 12 }} />}
+                测试存储连通性
+              </button>
+              {testMut.data?.ok && (
+                <div style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 12 }}>
+                  <CheckCircle2 style={{ width: 14, height: 14, color: "oklch(0.7 0.18 145)" }} />
+                  <span style={{ color: "oklch(0.7 0.18 145)" }}>
+                    正常（{testMut.data.ms}ms）
+                  </span>
+                  <code style={{ fontSize: 10, color: "var(--c-t3)", background: "var(--c-surface)", padding: "1px 5px", borderRadius: 4 }}>
+                    {testMut.data.url}
+                  </code>
+                </div>
+              )}
+              {testMut.data && !testMut.data.ok && (
+                <div style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 12, flex: "1 1 100%" }}>
+                  <XCircle style={{ width: 14, height: 14, color: "oklch(0.65 0.18 25)", flexShrink: 0 }} />
+                  <span style={{ color: "oklch(0.78 0.18 25)" }}>
+                    失败（{testMut.data.stage}, {testMut.data.ms}ms）：{testMut.data.error}
+                  </span>
+                </div>
+              )}
+              {testMut.error && !testMut.data && (
+                <span style={{ fontSize: 12, color: "oklch(0.65 0.18 25)" }}>
+                  请求失败: {testMut.error.message}
+                </span>
+              )}
+            </div>
           </div>
         </div>
       </div>

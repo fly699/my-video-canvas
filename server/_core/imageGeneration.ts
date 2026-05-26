@@ -123,14 +123,20 @@ async function generateImagePoyo(options: GenerateImageOptions): Promise<Generat
       if (await isImagePersistenceEnabled()) {
         try {
           const imgRes = await fetch(fileUrl);
-          if (imgRes.ok) {
+          if (!imgRes.ok) {
+            console.warn(`[poyo-image] persist skipped: upstream fetch ${imgRes.status} ${imgRes.statusText}; returning upstream URL (expires in 24h)`);
+          } else {
             const buf = Buffer.from(await imgRes.arrayBuffer());
             const mimeType = imgRes.headers.get("content-type") ?? "image/png";
             const { url } = await storagePut(`generated/${Date.now()}.png`, buf, mimeType);
             return { url };
           }
-        } catch {
-          // If download fails, return poyo URL directly (expires in 24h per docs)
+        } catch (err) {
+          // Audit log: which step broke. Without this the admin sees "开关打开
+          // 了但没存" with no clue whether it's a Forge config issue, network
+          // issue, or S3 quota issue.
+          const msg = err instanceof Error ? err.message : String(err);
+          console.warn(`[poyo-image] persist FAILED, falling back to upstream URL (expires in 24h): ${msg.slice(0, 300)}`);
         }
       }
       return { url: fileUrl };
