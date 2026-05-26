@@ -632,10 +632,16 @@ export async function analyzeWorkflow(
       if (Array.isArray(v) && v[0] != null) collectNegClip(String(v[0]), visited);
     }
   }
+  // Samplers/guiders that expose a direct `negative` conditioning input:
+  //   KSampler / KSamplerAdvanced  — standard sampling
+  //   CFGGuider / DualCFGGuider    — paired with SamplerCustomAdvanced
+  //   SamplerCustom                — direct positive/negative on the sampler itself
+  const NEG_INPUT_SAMPLERS = new Set([
+    "KSampler", "KSamplerAdvanced", "CFGGuider", "DualCFGGuider", "SamplerCustom",
+  ]);
   for (const [, n] of Object.entries(workflow)) {
     if (typeof n !== "object" || !n.class_type) continue;
-    // KSampler/KSamplerAdvanced: standard conditioning; CFGGuider: used with SamplerCustomAdvanced
-    if (n.class_type === "KSampler" || n.class_type === "KSamplerAdvanced" || n.class_type === "CFGGuider") {
+    if (NEG_INPUT_SAMPLERS.has(n.class_type as string)) {
       const negRef = (n.inputs ?? {}).negative;
       if (Array.isArray(negRef) && negRef[0] != null) collectNegClip(String(negRef[0]), new Set());
     }

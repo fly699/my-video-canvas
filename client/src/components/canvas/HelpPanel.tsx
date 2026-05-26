@@ -503,6 +503,11 @@ export function HelpPanel({ open, onClose, activeNodeType, onAddNode }: HelpPane
   const [activeSectionId, setActiveSectionId] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState("");
   const searchRef = useRef<HTMLInputElement>(null);
+  // Tracks the section id that the auto-jump effect set, so we only reset on a
+  // no-help node when the user hasn't manually navigated away from it.
+  const autoJumpedSectionRef = useRef<string | null>(null);
+  const activeSectionIdRef = useRef<string | null>(null);
+  useEffect(() => { activeSectionIdRef.current = activeSectionId; }, [activeSectionId]);
 
   const activeSection = activeSectionId
     ? HELP_SECTIONS.find((s) => s.id === activeSectionId)
@@ -513,6 +518,7 @@ export function HelpPanel({ open, onClose, activeNodeType, onAddNode }: HelpPane
     if (!open) {
       setSearchQuery("");
       setActiveSectionId(null);
+      autoJumpedSectionRef.current = null;
     }
   }, [open]);
 
@@ -520,8 +526,16 @@ export function HelpPanel({ open, onClose, activeNodeType, onAddNode }: HelpPane
   useEffect(() => {
     if (!open || !activeNodeType) return;
     const section = getHelpSectionByNodeType(activeNodeType);
-    if (section) setActiveSectionId(section.id);
-    else setActiveSectionId(null); // no help entry for this node type — return to ToC
+    if (section) {
+      setActiveSectionId(section.id);
+      autoJumpedSectionRef.current = section.id;
+    } else if (activeSectionIdRef.current !== null && activeSectionIdRef.current === autoJumpedSectionRef.current) {
+      // The current view was set by a prior auto-jump and the new node has no
+      // help entry — fall back to ToC. If the user has manually navigated since
+      // the last auto-jump, preserve their reading position.
+      setActiveSectionId(null);
+      autoJumpedSectionRef.current = null;
+    }
   }, [activeNodeType, open]);
 
   // Search filter

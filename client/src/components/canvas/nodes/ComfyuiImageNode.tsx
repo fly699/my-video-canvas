@@ -236,10 +236,16 @@ export const ComfyuiImageNode = memo(function ComfyuiImageNode({ id, selected, d
                       <Download className="w-3 h-3" />
                     </button>
                     <button
-                      onClick={() => update("referenceImageUrl", url)}
+                      onClick={() => {
+                        // Set the reference image AND switch the template to img2img;
+                        // the server only honours referenceImageUrl when workflowTemplate
+                        // === "img2img", so updating one without the other is a no-op.
+                        updateNodeData(id, { referenceImageUrl: url, workflowTemplate: "img2img" });
+                        toast.success("已设为参考图并切换至 img2img 模式");
+                      }}
                       className="nodrag flex items-center gap-1 px-2 py-1 rounded text-xs"
                       style={{ background: "oklch(0.14 0.007 260 / 0.8)", borderWidth: 1, borderStyle: "solid", borderColor: "var(--c-bd3)", color: "var(--c-t2)" }}
-                      title="设为参考图（img2img）"
+                      title="设为参考图并切换 img2img 模式"
                     >
                       <ImageIcon className="w-3 h-3" />
                     </button>
