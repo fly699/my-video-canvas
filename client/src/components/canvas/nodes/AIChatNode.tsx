@@ -1,10 +1,10 @@
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { BaseNode } from "../BaseNode";
 import { useCanvasStore } from "../../../hooks/useCanvasStore";
-import type { AIChatNodeData, NodeType } from "../../../../../shared/types";
+import type { AIChatNodeData, ChatAttachment, NodeType } from "../../../../../shared/types";
 import { trpc } from "@/lib/trpc";
 import { toast } from "sonner";
-import { Send, Loader2, Trash2, Bot, User, Sparkles, ChevronDown, ArrowRight, Copy, BookOpen, Clapperboard, LayoutGrid, Wand2, ScrollText, UserRound } from "lucide-react";
+import { Send, Loader2, Trash2, Bot, User, Sparkles, ChevronDown, ArrowRight, Copy, BookOpen, Clapperboard, LayoutGrid, Wand2, ScrollText, UserRound, Paperclip, ImageIcon, FileText, X } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 import { CHAT_MODELS } from "@/lib/models";
 // Streamdown removed — replaced with safe inline markdown renderer to avoid ReactFlow DOM conflicts
@@ -63,14 +63,19 @@ export const AIChatNode = memo(function AIChatNode({ id, selected, data }: Props
   const [input, setInput] = useState("");
   // Seed from payload.messages; when the node remounts, prefer the store's
   // persisted messages over the stale payload snapshot captured at mount time.
-  const [localMessages, setLocalMessages] = useState<Array<{ role: "user" | "assistant"; content: string; _id: string }>>(
+  const [localMessages, setLocalMessages] = useState<Array<{ role: "user" | "assistant"; content: string; attachments?: ChatAttachment[]; _id: string }>>(
     () => ((data.payload as typeof payload).messages ?? []).map(m => ({ ...m, _id: crypto.randomUUID() }))
   );
   const [model, setModel] = useState<string>(payload.model ?? "gemini-2.5-flash");
   const [showModelPicker, setShowModelPicker] = useState(false);
   const [showTemplates, setShowTemplates] = useState(false);
+  // Attachments currently composed for the *next* user message. Cleared on send.
+  const [pendingAttachments, setPendingAttachments] = useState<ChatAttachment[]>([]);
+  const [isUploadingAttachment, setIsUploadingAttachment] = useState(false);
+  const [isDraggingOver, setIsDraggingOver] = useState(false);
   const scrollRef = useRef<HTMLDivElement>(null);
-  const inputRef = useRef<HTMLInputElement>(null);
+  const inputRef = useRef<HTMLTextAreaElement>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
   const modelPickerRef = useRef<HTMLDivElement>(null);
   const templateRef = useRef<HTMLDivElement>(null);
   // Track what we last persisted so we can detect real changes without
@@ -112,6 +117,7 @@ export const AIChatNode = memo(function AIChatNode({ id, selected, data }: Props
   }, [showTemplates]);
 
   const utils = trpc.useUtils();
+  const uploadMutation = trpc.upload.uploadImage.useMutation();
   const sendMutation = trpc.aiChat.sendMessage.useMutation({
     onSuccess: (result) => {
       setLocalMessages((prev) => [...prev, { role: "assistant", content: result.content, _id: crypto.randomUUID() }]);
@@ -124,7 +130,12 @@ export const AIChatNode = memo(function AIChatNode({ id, selected, data }: Props
       utils.aiChat.getMessages.fetch({ nodeId: id, projectId: data.projectId })
         .then((msgs) => {
           if (msgs.length > 0) {
-            const synced = msgs.map((m) => ({ role: m.role as "user" | "assistant", content: m.content, _id: crypto.randomUUID() }));
+            const synced = msgs.map((m) => ({
+              role: m.role as "user" | "assistant",
+              content: m.content,
+              attachments: (m.attachments as ChatAttachment[] | null) ?? undefined,
+              _id: crypto.randomUUID(),
+            }));
             setLocalMessages(synced);
           }
         })
@@ -178,18 +189,119 @@ export const AIChatNode = memo(function AIChatNode({ id, selected, data }: Props
 
   const handleSend = () => {
     const msg = input.trim();
-    if (!msg || sendMutation.isPending) return;
+    if ((!msg && pendingAttachments.length === 0) || sendMutation.isPending) return;
     setInput("");
-    setLocalMessages((prev) => [...prev, { role: "user", content: msg, _id: crypto.randomUUID() }]);
-    sendMutation.mutate({ nodeId: id, projectId: data.projectId, message: msg, systemPrompt: payload.systemPrompt, contextContent: buildContext(), model });
+    const attachmentsToSend = pendingAttachments;
+    setPendingAttachments([]);
+    setLocalMessages((prev) => [...prev, {
+      role: "user",
+      content: msg,
+      attachments: attachmentsToSend.length > 0 ? attachmentsToSend : undefined,
+      _id: crypto.randomUUID(),
+    }]);
+    sendMutation.mutate({
+      nodeId: id,
+      projectId: data.projectId,
+      message: msg,
+      systemPrompt: payload.systemPrompt,
+      contextContent: buildContext(),
+      model,
+      attachments: attachmentsToSend.length > 0 ? attachmentsToSend : undefined,
+    });
   };
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
     if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); handleSend(); }
   };
 
-  const onFocusInput = (e: React.FocusEvent<HTMLInputElement>) => { e.currentTarget.style.borderColor = BORDER_FOCUS; };
-  const onBlurInput  = (e: React.FocusEvent<HTMLInputElement>) => { e.currentTarget.style.borderColor = BORDER_DEFAULT; };
+  // ── Attachment handling ─────────────────────────────────────────────────
+  const fileToBase64 = (file: File): Promise<string> => new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => {
+      const result = reader.result as string;
+      resolve(result.split(",")[1] ?? "");
+    };
+    reader.onerror = () => reject(reader.error);
+    reader.readAsDataURL(file);
+  });
+
+  const fileToText = (file: File): Promise<string> => new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(String(reader.result ?? ""));
+    reader.onerror = () => reject(reader.error);
+    reader.readAsText(file);
+  });
+
+  const attachFiles = useCallback(async (files: FileList | File[]) => {
+    if (pendingAttachments.length + files.length > 8) {
+      toast.error("最多 8 个附件");
+      return;
+    }
+    setIsUploadingAttachment(true);
+    try {
+      const additions: ChatAttachment[] = [];
+      for (const file of Array.from(files)) {
+        if (file.size > 10 * 1024 * 1024) {
+          toast.error(`${file.name} 超过 10MB`);
+          continue;
+        }
+        if (file.type.startsWith("image/")) {
+          const base64 = await fileToBase64(file);
+          const { url } = await uploadMutation.mutateAsync({
+            base64,
+            mimeType: file.type,
+            filename: file.name,
+          });
+          additions.push({ type: "image", url, mimeType: file.type, name: file.name });
+        } else if (
+          file.type.startsWith("text/") ||
+          /\.(md|txt|json|csv|tsv|log)$/i.test(file.name) ||
+          !file.type // browser unknown — try as text
+        ) {
+          const text = await fileToText(file);
+          if (text.length > 50_000) {
+            toast.error(`${file.name} 超过 50K 字符`);
+            continue;
+          }
+          additions.push({ type: "file", url: "", mimeType: file.type || "text/plain", name: file.name, textContent: text });
+        } else {
+          toast.error(`不支持的文件类型：${file.type || file.name}`);
+        }
+      }
+      if (additions.length > 0) {
+        setPendingAttachments((prev) => [...prev, ...additions]);
+        toast.success(`已添加 ${additions.length} 个附件`);
+      }
+    } catch (e) {
+      toast.error("附件上传失败：" + (e instanceof Error ? e.message : String(e)));
+    } finally {
+      setIsUploadingAttachment(false);
+    }
+  }, [pendingAttachments.length, uploadMutation]);
+
+  const handlePaste = useCallback(async (e: React.ClipboardEvent) => {
+    const items = Array.from(e.clipboardData.items);
+    const files = items
+      .filter((i) => i.kind === "file")
+      .map((i) => i.getAsFile())
+      .filter((f): f is File => f != null);
+    if (files.length > 0) {
+      e.preventDefault();
+      await attachFiles(files);
+    }
+  }, [attachFiles]);
+
+  const handleDrop = useCallback(async (e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setIsDraggingOver(false);
+    const files = Array.from(e.dataTransfer.files);
+    if (files.length > 0) await attachFiles(files);
+  }, [attachFiles]);
+
+  const removeAttachment = (idx: number) => {
+    setPendingAttachments((prev) => prev.filter((_, i) => i !== idx));
+  };
 
   return (
     <BaseNode id={id} selected={selected} nodeType="ai_chat" title={data.title} minHeight={320} resizable>
@@ -386,10 +498,17 @@ export const AIChatNode = memo(function AIChatNode({ id, selected, data }: Props
                         color: "var(--c-t1)",
                       }}
                     >
+                      {msg.attachments && msg.attachments.length > 0 && (
+                        <div className="flex flex-wrap gap-1 mb-1.5">
+                          {msg.attachments.map((att, i) => (
+                            <AttachmentChip key={i} att={att} />
+                          ))}
+                        </div>
+                      )}
                       {msg.role === "assistant" ? (
                         <SimpleMarkdown>{msg.content}</SimpleMarkdown>
                       ) : (
-                        <span>{msg.content}</span>
+                        msg.content ? <span>{msg.content}</span> : null
                       )}
                     </div>
                     {msg.role === "assistant" && (
@@ -440,16 +559,71 @@ export const AIChatNode = memo(function AIChatNode({ id, selected, data }: Props
 
         {/* ── Input bar ── */}
         <div
-          className="px-3.5 pb-3.5 pt-2.5 flex gap-2 flex-shrink-0"
-          style={{ borderTopWidth: 1, borderTopStyle: "solid", borderTopColor: "var(--c-bd1)" }}
+          className="px-3.5 pb-3.5 pt-2 flex flex-col gap-1.5 flex-shrink-0 relative"
+          style={{
+            borderTopWidth: 1, borderTopStyle: "solid", borderTopColor: "var(--c-bd1)",
+            background: isDraggingOver ? accentA(0.06) : "transparent",
+            transition: "background 120ms ease",
+          }}
+          onDragOver={(e) => { e.preventDefault(); e.stopPropagation(); setIsDraggingOver(true); }}
+          onDragLeave={(e) => { e.preventDefault(); e.stopPropagation(); setIsDraggingOver(false); }}
+          onDrop={handleDrop}
         >
+          {isDraggingOver && (
+            <div
+              className="absolute inset-0 flex items-center justify-center text-xs pointer-events-none z-10"
+              style={{ background: accentA(0.10), border: `2px dashed ${accentA(0.45)}`, color: accentColor, borderRadius: 8 }}
+            >
+              松开以添加附件
+            </div>
+          )}
+
+          {/* Pending attachments preview */}
+          {pendingAttachments.length > 0 && (
+            <div className="flex flex-wrap gap-1.5">
+              {pendingAttachments.map((att, i) => (
+                <PendingAttachmentChip key={i} att={att} onRemove={() => removeAttachment(i)} />
+              ))}
+            </div>
+          )}
+
+          <div className="flex items-end gap-2">
           <input
+            type="file"
+            ref={fileInputRef}
+            multiple
+            accept="image/*,text/*,.md,.txt,.json,.csv,.tsv,.log"
+            style={{ display: "none" }}
+            onChange={(e) => {
+              if (e.target.files) {
+                attachFiles(e.target.files);
+                e.target.value = "";
+              }
+            }}
+          />
+          <button
+            onClick={() => fileInputRef.current?.click()}
+            disabled={sendMutation.isPending || isUploadingAttachment}
+            className="nodrag w-8 h-8 rounded-lg flex items-center justify-center transition-all flex-shrink-0"
+            style={{
+              background: "transparent",
+              border: "1px solid var(--c-bd2)",
+              color: "var(--c-t3)",
+              cursor: sendMutation.isPending ? "not-allowed" : "pointer",
+            }}
+            title="添加附件（图片/文本文件，可粘贴/拖入）"
+          >
+            {isUploadingAttachment ? <Loader2 className="w-3 h-3 animate-spin" /> : <Paperclip className="w-3 h-3" />}
+          </button>
+          <textarea
             ref={inputRef}
-            placeholder="发送消息... (Enter 发送)"
+            placeholder={pendingAttachments.length > 0 ? "添加说明（可选）" : "发送消息或粘贴图片… (Enter 发送 / Shift+Enter 换行)"}
             value={input}
             onChange={(e) => setInput(e.target.value)}
             onKeyDown={handleKeyDown}
+            onPaste={handlePaste}
             disabled={sendMutation.isPending}
+            rows={1}
             className="nodrag flex-1"
             style={{
               fontSize: 12,
@@ -462,27 +636,31 @@ export const AIChatNode = memo(function AIChatNode({ id, selected, data }: Props
               color: "var(--c-t1)",
               outline: "none",
               transition: "border-color 150ms ease",
+              resize: "none",
+              maxHeight: 100,
+              minHeight: 32,
+              fontFamily: "inherit",
             }}
-            onFocus={onFocusInput}
-            onBlur={onBlurInput}
+            onFocus={(e) => { e.currentTarget.style.borderColor = BORDER_FOCUS; }}
+            onBlur={(e) => { e.currentTarget.style.borderColor = BORDER_DEFAULT; }}
           />
           <button
             onClick={handleSend}
-            disabled={!input.trim() || sendMutation.isPending}
+            disabled={(!input.trim() && pendingAttachments.length === 0) || sendMutation.isPending}
             className="nodrag w-8 h-8 rounded-lg flex items-center justify-center transition-all flex-shrink-0"
             style={{
-              background: !input.trim() || sendMutation.isPending
+              background: (!input.trim() && pendingAttachments.length === 0) || sendMutation.isPending
                 ? "var(--c-surface)"
                 : accentA(0.18),
               borderWidth: 1,
               borderStyle: "solid",
-              borderColor: !input.trim() || sendMutation.isPending
+              borderColor: (!input.trim() && pendingAttachments.length === 0) || sendMutation.isPending
                 ? BORDER_DEFAULT
                 : accentA(0.4),
-              color: !input.trim() || sendMutation.isPending
+              color: (!input.trim() && pendingAttachments.length === 0) || sendMutation.isPending
                 ? "var(--c-t4)"
                 : accentColor,
-              cursor: !input.trim() || sendMutation.isPending ? "not-allowed" : "pointer",
+              cursor: (!input.trim() && pendingAttachments.length === 0) || sendMutation.isPending ? "not-allowed" : "pointer",
             }}
           >
             {sendMutation.isPending ? <Loader2 className="w-3 h-3 animate-spin" /> : <Send className="w-3 h-3" />}
@@ -527,8 +705,77 @@ export const AIChatNode = memo(function AIChatNode({ id, selected, data }: Props
               <ArrowRight className="w-3 h-3" />
             </button>
           )}
+          </div>
         </div>
       </div>
     </BaseNode>
   );
 });
+
+// ── Attachment rendering helpers ─────────────────────────────────────────
+function AttachmentChip({ att }: { att: ChatAttachment }) {
+  if (att.type === "image") {
+    return (
+      <a
+        href={att.url}
+        target="_blank"
+        rel="noreferrer"
+        className="block rounded overflow-hidden"
+        style={{ width: 80, height: 80, border: "1px solid var(--c-bd2)" }}
+        title={att.name}
+        onClick={(e) => e.stopPropagation()}
+      >
+        <img src={att.url} alt={att.name} style={{ width: "100%", height: "100%", objectFit: "cover" }} />
+      </a>
+    );
+  }
+  return (
+    <div
+      className="inline-flex items-center gap-1 px-2 py-1 rounded"
+      style={{ fontSize: 10, background: "var(--c-surface)", border: "1px solid var(--c-bd2)", color: "var(--c-t2)" }}
+      title={att.name}
+    >
+      <FileText style={{ width: 10, height: 10 }} />
+      <span style={{ maxWidth: 120, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{att.name}</span>
+    </div>
+  );
+}
+
+function PendingAttachmentChip({ att, onRemove }: { att: ChatAttachment; onRemove: () => void }) {
+  if (att.type === "image") {
+    return (
+      <div className="relative rounded overflow-hidden" style={{ width: 56, height: 56, border: "1px solid var(--c-bd2)" }}>
+        <img src={att.url} alt={att.name} style={{ width: "100%", height: "100%", objectFit: "cover" }} />
+        <button
+          onClick={onRemove}
+          className="nodrag absolute top-0.5 right-0.5 w-4 h-4 rounded-full flex items-center justify-center"
+          style={{ background: "oklch(0 0 0 / 0.65)", color: "white" }}
+          title="移除"
+        >
+          <X style={{ width: 9, height: 9 }} />
+        </button>
+      </div>
+    );
+  }
+  return (
+    <div
+      className="inline-flex items-center gap-1 pl-2 pr-1 py-1 rounded"
+      style={{ fontSize: 10, background: "var(--c-surface)", border: "1px solid var(--c-bd2)", color: "var(--c-t2)" }}
+    >
+      <FileText style={{ width: 10, height: 10 }} />
+      <span style={{ maxWidth: 120, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{att.name}</span>
+      <span style={{ color: "var(--c-t4)", fontSize: 9 }}>{((att.textContent?.length ?? 0) / 1000).toFixed(1)}K</span>
+      <button
+        onClick={onRemove}
+        className="nodrag w-4 h-4 rounded flex items-center justify-center ml-0.5"
+        style={{ color: "var(--c-t4)" }}
+        title="移除"
+      >
+        <X style={{ width: 9, height: 9 }} />
+      </button>
+    </div>
+  );
+}
+
+// Suppress unused imports warning for icons reserved for future use
+void ImageIcon;

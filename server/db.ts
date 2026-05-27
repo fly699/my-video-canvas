@@ -587,18 +587,19 @@ export async function addChatMessagePair(
   projectId: number,
   userContent: string,
   assistantContent: string,
+  userAttachments?: unknown,
 ) {
   const db = await getDb();
   if (!db) {
     if (DEV_MODE) {
-      await dev.devAddChatMessage({ nodeId, projectId, role: "user", content: userContent });
+      await dev.devAddChatMessage({ nodeId, projectId, role: "user", content: userContent, attachments: userAttachments ?? null });
       await dev.devAddChatMessage({ nodeId, projectId, role: "assistant", content: assistantContent });
       return;
     }
     throw new Error("DB unavailable");
   }
   await db.transaction(async (tx) => {
-    await tx.insert(chatMessages).values({ nodeId, projectId, role: "user", content: userContent });
+    await tx.insert(chatMessages).values({ nodeId, projectId, role: "user", content: userContent, attachments: userAttachments ?? null });
     await tx.insert(chatMessages).values({ nodeId, projectId, role: "assistant", content: assistantContent });
   });
 }

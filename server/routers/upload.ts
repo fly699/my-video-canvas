@@ -39,7 +39,19 @@ export const uploadRouter = router({
       // Namespace by userId so different users' same-named files don't collide
       const key = `reference-images/${ctx.user.id}/${filename}`;
 
-      const { url } = await storagePut(key, buf, input.mimeType);
-      return { url, storageKey: key };
+      try {
+        const { url } = await storagePut(key, buf, input.mimeType);
+        return { url, storageKey: key };
+      } catch (e) {
+        // Dev fallback: when Forge/S3 isn't configured (local dev bypass), return
+        // the upload as an inline data: URL so downstream flows (LLM image input,
+        // previews) keep working without storage configured.
+        const msg = e instanceof Error ? e.message : String(e);
+        if (/Storage config missing|BUILT_IN_FORGE/.test(msg)) {
+          const dataUrl = `data:${input.mimeType};base64,${input.base64}`;
+          return { url: dataUrl, storageKey: key };
+        }
+        throw e;
+      }
     }),
 });

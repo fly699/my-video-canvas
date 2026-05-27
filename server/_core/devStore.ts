@@ -241,6 +241,7 @@ export function devAddChatMessage(data: InsertChatMessage): ChatMessage {
     projectId: data.projectId!,
     role: data.role,
     content: data.content,
+    attachments: (data.attachments as ChatMessage["attachments"]) ?? null,
     createdAt: now(),
   };
   chatMessagesArr.push(msg);

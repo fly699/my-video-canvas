@@ -207,6 +207,8 @@ export const chatMessages = mysqlTable("chat_messages", {
   projectId: int("projectId").notNull(),
   role: mysqlEnum("role", ["user", "assistant", "system"]).notNull(),
   content: text("content").notNull(),
+  /** Multimodal attachments: Array<{ type, url, mimeType, name }>. NULL = legacy text-only message. */
+  attachments: json("attachments"),
   createdAt: timestamp("createdAt").defaultNow().notNull(),
 });
 

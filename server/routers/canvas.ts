@@ -592,15 +592,27 @@ export const aiChatRouter = router({
       z.object({
         nodeId: z.string(),
         projectId: z.number(),
-        message: z.string().min(1).max(10_000),
+        message: z.string().max(10_000),
         systemPrompt: z.string().max(2_000).optional(),
         contextContent: z.string().max(8_000).optional(),
         model: z.string().optional(),
+        // Multimodal attachments. Images keep `url` (already uploaded via upload.uploadImage).
+        // Text files include `textContent` to be inlined into the user message.
+        attachments: z.array(z.object({
+          type: z.enum(["image", "file"]),
+          url: z.string().max(2048),
+          mimeType: z.string().max(128),
+          name: z.string().max(255),
+          textContent: z.string().max(50_000).optional(),
+        })).max(8).optional(),
       })
     )
     .mutation(async ({ ctx, input }) => {
       await assertProjectAccess(input.projectId, ctx.user.id, "editor");
-      // Build messages for LLM (user message included inline — not saved to DB yet)
+      // Allow empty message when there's at least one attachment — image-only prompts are valid.
+      if (!input.message.trim() && !(input.attachments?.length ?? 0)) {
+        throw new TRPCError({ code: "BAD_REQUEST", message: "消息内容不能为空" });
+      }
       const history = await getChatMessages(input.nodeId, input.projectId);
       const systemContent = [
         input.systemPrompt ?? "You are a professional film and content creation assistant. Help with scripts, storyboards, prompts, and creative direction.",
@@ -609,10 +621,42 @@ export const aiChatRouter = router({
         .filter(Boolean)
         .join("");
 
+      // Compose the current user message: text + optional inline file content +
+      // image_url parts. Text files are spliced into the text body; images
+      // become structured content parts the model can see.
+      const fileBlocks = (input.attachments ?? [])
+        .filter((a) => a.type === "file" && a.textContent)
+        .map((a) => `\n\n[Attached file: ${a.name}]\n${a.textContent}`)
+        .join("");
+      const userText = (input.message + fileBlocks).trim() || "请分析附带的内容。";
+      const imageParts = (input.attachments ?? [])
+        .filter((a) => a.type === "image")
+        .map((a) => ({ type: "image_url" as const, image_url: { url: a.url } }));
+
+      const userContent = imageParts.length > 0
+        ? [{ type: "text" as const, text: userText }, ...imageParts]
+        : userText;
+
+      // Reconstruct historical messages with their original attachments so the
+      // model retains visual context across turns.
+      const historyMessages = history.map((m) => {
+        const att = (m.attachments as Array<{ type: string; url: string }> | null) ?? null;
+        if (m.role === "user" && att && att.length > 0) {
+          const imgs = att.filter((a) => a.type === "image").map((a) => ({ type: "image_url" as const, image_url: { url: a.url } }));
+          return {
+            role: "user" as const,
+            content: imgs.length > 0
+              ? [{ type: "text" as const, text: m.content }, ...imgs]
+              : m.content,
+          };
+        }
+        return { role: m.role as "user" | "assistant", content: m.content };
+      });
+
       const messages = [
         { role: "system" as const, content: systemContent },
-        ...history.map((m) => ({ role: m.role as "user" | "assistant", content: m.content })),
-        { role: "user" as const, content: input.message },
+        ...historyMessages,
+        { role: "user" as const, content: userContent },
       ];
 
       let assistantContent: string;
@@ -626,8 +670,14 @@ export const aiChatRouter = router({
         });
       }
 
-      // Save both messages in a single transaction — prevents partially-persisted pairs
-      await addChatMessagePair(input.nodeId, input.projectId, input.message, assistantContent);
+      // Persist user message (with attachments) and assistant reply atomically.
+      await addChatMessagePair(
+        input.nodeId,
+        input.projectId,
+        input.message,
+        assistantContent,
+        input.attachments?.length ? input.attachments : undefined,
+      );
 
       return { content: assistantContent };
     }),
