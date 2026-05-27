@@ -158,38 +158,7 @@ export async function getProjectByIdRaw(id: number) {
   const db = await getDb();
   if (!db) return DEV_MODE ? dev.devGetProjectByIdRaw(id) : undefined;
   const result = await db.select().from(projects).where(eq(projects.id, id)).limit(1);
-  if (!result[0]) return undefined;
-  // publicReadAccess is read out-of-band so the schema can stay backward
-  // compatible with deployments that haven't run migration 0018 yet —
-  // see the note on projects in drizzle/schema.ts.
-  const publicReadAccess = await readPublicReadAccess(db, id);
-  return { ...result[0], publicReadAccess };
-}
-
-/** True when MySQL reports a missing-table / missing-column situation that
- *  indicates the deployment hasn't applied recent migrations. */
-function isMissingSchemaError(e: unknown): boolean {
-  const msg = e instanceof Error ? e.message : String(e ?? "");
-  return /Unknown column|doesn'?t exist|no such table|Table .* doesn'?t exist|ER_NO_SUCH_TABLE|ER_BAD_FIELD_ERROR/i.test(msg);
-}
-
-/** Read publicReadAccess via raw SQL so a missing column on a stale deploy
- *  doesn't break the entire projects.list / projects.get query. */
-async function readPublicReadAccess(
-  db: NonNullable<Awaited<ReturnType<typeof getDb>>>,
-  projectId: number,
-): Promise<boolean> {
-  try {
-    const res = await db.execute(
-      sql`SELECT publicReadAccess FROM projects WHERE id = ${projectId} LIMIT 1`,
-    ) as unknown as Array<{ publicReadAccess?: number | boolean }>;
-    const rows = Array.isArray(res) ? res : (res as unknown as { rows?: typeof res })?.rows ?? [];
-    const row = Array.isArray(rows) ? rows[0] : undefined;
-    return !!row?.publicReadAccess;
-  } catch (err) {
-    if (isMissingSchemaError(err)) return false;
-    throw err;
-  }
+  return result[0];
 }
 
 export type EffectiveRole = "owner" | "admin" | "editor" | "viewer";
@@ -219,16 +188,7 @@ export async function getProjectAccess(projectId: number, userId: number): Promi
 export async function setProjectPublicAccess(id: number, publicReadAccess: boolean) {
   const db = await getDb();
   if (!db) { if (DEV_MODE) { dev.devSetProjectPublicAccess(id, publicReadAccess); return; } throw new Error("DB unavailable"); }
-  try {
-    await db.execute(
-      sql`UPDATE projects SET publicReadAccess = ${publicReadAccess} WHERE id = ${id}`,
-    );
-  } catch (err) {
-    if (isMissingSchemaError(err)) {
-      throw new Error("公开访问功能需要先在服务端执行 `pnpm db:push` 应用 migration 0018_collaboration.sql。");
-    }
-    throw err;
-  }
+  await db.update(projects).set({ publicReadAccess }).where(eq(projects.id, id));
 }
 
 /** Projects where user is a collaborator (not owner). */
@@ -681,30 +641,15 @@ export async function addChatMessagePair(
   const db = await getDb();
   if (!db) {
     if (DEV_MODE) {
-      await dev.devAddChatMessage({ nodeId, projectId, role: "user", content: userContent }, userAttachments ?? null);
+      await dev.devAddChatMessage({ nodeId, projectId, role: "user", content: userContent, attachments: userAttachments ?? null });
       await dev.devAddChatMessage({ nodeId, projectId, role: "assistant", content: assistantContent });
       return;
     }
     throw new Error("DB unavailable");
   }
-  // attachments column is intentionally kept out of the drizzle schema
-  // (so SELECT * doesn't fail on stale deploys missing migration 0019).
-  // Insert via drizzle without attachments, then UPDATE the row via raw
-  // SQL — graceful fallback when the column doesn't exist.
   await db.transaction(async (tx) => {
-    const [userResult] = await tx.insert(chatMessages).values({ nodeId, projectId, role: "user", content: userContent });
+    await tx.insert(chatMessages).values({ nodeId, projectId, role: "user", content: userContent, attachments: userAttachments ?? null });
     await tx.insert(chatMessages).values({ nodeId, projectId, role: "assistant", content: assistantContent });
-    if (userAttachments != null) {
-      const insertId = (userResult as unknown as { insertId: number }).insertId;
-      try {
-        await tx.execute(
-          sql`UPDATE chat_messages SET attachments = ${JSON.stringify(userAttachments)} WHERE id = ${insertId}`,
-        );
-      } catch (err) {
-        if (!isMissingSchemaError(err)) throw err;
-        // migration 0019 not applied — silently drop attachments rather than fail
-      }
-    }
   });
 }
 
