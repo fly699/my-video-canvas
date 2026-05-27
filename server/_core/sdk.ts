@@ -309,6 +309,16 @@ class SDKServer {
       throw ForbiddenError("User not found");
     }
 
+    // Claim any pending email invitations addressed to this user — on every
+    // successful auth, not just first signup. Edge cases this catches:
+    // (1) invite arrives after user already exists but with a different-case
+    //     email at first signup; (2) email column was NULL at first signup
+    //     and got populated on a later login. The UPDATE is idempotent and
+    //     scoped by email + userId IS NULL, so steady-state cost is ~1ms.
+    if (user.email) {
+      try { await db.claimPendingInvitations(user.email.toLowerCase(), user.id); } catch { /* non-fatal */ }
+    }
+
     await db.upsertUser({
       openId: user.openId,
       lastSignedIn: signedInAt,

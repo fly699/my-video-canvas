@@ -193,10 +193,9 @@ export function devGetVideoTasksByProject(projectId: number): VideoTask[] {
     .sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime());
 }
 
-export function devFindInFlightVideoTask(userId: number, projectId: number, nodeId: string): VideoTask | undefined {
+export function devFindInFlightVideoTask(projectId: number, nodeId: string): VideoTask | undefined {
   return Array.from(videoTasksMap.values())
     .filter((t) =>
-      t.userId === userId &&
       t.projectId === projectId &&
       t.nodeId === nodeId &&
       (t.status === "pending" || t.status === "processing")
@@ -384,10 +383,15 @@ export function devGetShareLinkByToken(token: string): ProjectShareLink | undefi
   return Array.from(shareLinksMap.values()).find((l) => l.token === token);
 }
 
-export function devIncrementShareLinkUses(id: number) {
+/** Atomic equivalent of the prod conditional UPDATE — single-thread so just check then increment. */
+export function devConsumeShareLink(id: number): boolean {
   const l = shareLinksMap.get(id);
-  if (!l) return;
+  if (!l) return false;
+  if (l.revokedAt) return false;
+  if (l.expiresAt.getTime() <= Date.now()) return false;
+  if (l.usesCount >= l.maxUses) return false;
   shareLinksMap.set(id, { ...l, usesCount: l.usesCount + 1 });
+  return true;
 }
 
 export function devRevokeShareLink(id: number) {

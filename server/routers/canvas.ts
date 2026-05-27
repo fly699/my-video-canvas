@@ -7,7 +7,6 @@ import {
   getProjectsSharedWithUser,
   getProjectById,
   getProjectAccess,
-  type EffectiveRole,
   createProject,
   updateProject,
   deleteProject,
@@ -51,33 +50,19 @@ import type { SubtitleEntry } from "../../shared/types";
 import { assertWhitelisted } from "../_core/whitelist";
 import { writeAuditLog, truncate } from "../_core/auditLog";
 import { dedupe } from "../_core/idempotency";
+import { assertProjectAccess, assertProjectOwner } from "../_core/permissions";
 
-// ── Access-control helpers ────────────────────────────────────────────────────
-
-const ROLE_RANK: Record<EffectiveRole, number> = { viewer: 0, editor: 1, admin: 2, owner: 3 };
-
-/** Ensure the user has at least `minRole` on the project. Returns the effective role. */
-async function assertProjectAccess(
-  projectId: number,
-  userId: number,
-  minRole: EffectiveRole,
-): Promise<EffectiveRole> {
-  const access = await getProjectAccess(projectId, userId);
-  if (!access) throw new TRPCError({ code: "FORBIDDEN", message: "Access denied" });
-  if (ROLE_RANK[access.role] < ROLE_RANK[minRole]) {
-    throw new TRPCError({ code: "FORBIDDEN", message: `需要 ${minRole} 权限` });
-  }
-  return access.role;
-}
-
-// Kept for use sites that strictly require the owner (delete project, etc.).
-async function assertProjectOwner(projectId: number, userId: number) {
-  await assertProjectAccess(projectId, userId, "owner");
-}
-
-async function assertTaskOwner(taskId: number, userId: number) {
+/**
+ * Resolve a video task and verify the caller has editor+ access to its
+ * project. Replaces the old "task.userId === caller" check, which broke
+ * once any editor (not just the project owner) could create tasks —
+ * tasks would become orphaned the moment the creator was removed or
+ * the owner tried to poll/cancel.
+ */
+async function assertTaskAccess(taskId: number, userId: number) {
   const task = await getVideoTask(taskId);
-  if (!task || task.userId !== userId) throw new TRPCError({ code: "FORBIDDEN", message: "Access denied" });
+  if (!task) throw new TRPCError({ code: "NOT_FOUND", message: "任务不存在" });
+  await assertProjectAccess(task.projectId, userId, "editor");
   return task;
 }
 
@@ -129,10 +114,7 @@ export const projectsRouter = router({
     .mutation(async ({ ctx, input }) => {
       const { id, ...data } = input;
       // Editor+ may rename / change thumbnail / save viewport
-      const access = await getProjectAccess(id, ctx.user.id);
-      if (!access || ROLE_RANK[access.role] < ROLE_RANK["editor"]) {
-        throw new TRPCError({ code: "FORBIDDEN", message: "需要 editor 权限" });
-      }
+      const access = await assertProjectAccess(id, ctx.user.id, "editor");
       // updateProject uses (id, userId) WHERE clause on owner; route through raw helper
       await updateProject(id, access.project.userId, data as Parameters<typeof updateProject>[2]);
       return { success: true };
@@ -274,6 +256,12 @@ export const assetsRouter = router({
     )
     .mutation(async ({ ctx, input }) => {
       await assertWhitelisted(ctx);
+      // When projectId is supplied, the caller must have editor+ access on
+      // that project — otherwise editors could attach assets to arbitrary
+      // projects they don't belong to (IDOR).
+      if (input.projectId != null) {
+        await assertProjectAccess(input.projectId, ctx.user.id, "editor");
+      }
       const buffer = Buffer.from(input.base64, "base64");
       const key = `assets/${ctx.user.id}/${nanoid()}-${input.name}`;
       const { url } = await storagePut(key, buffer, input.mimeType);
@@ -349,7 +337,7 @@ export const videoTasksRouter = router({
       // bypassed (devtools, scripts, retried requests) — the in-app flow already
       // guards against this client-side, but server enforcement is the last line
       // of defence for paid external API calls.
-      const existing = await findInFlightVideoTask(ctx.user.id, input.projectId, input.nodeId);
+      const existing = await findInFlightVideoTask(input.projectId, input.nodeId);
       if (existing) {
         return existing;
       }
@@ -464,7 +452,10 @@ export const videoTasksRouter = router({
     .query(async ({ ctx, input }) => {
       const task = await getVideoTask(input.id);
       if (!task) return null;
-      if (task.userId !== ctx.user.id) throw new TRPCError({ code: "FORBIDDEN", message: "Access denied" });
+      // Project-level access (editor+). Previously hard-checked task.userId,
+      // which broke once any editor (not just owner) could create tasks —
+      // the owner could see the task in the UI but couldn't poll it.
+      await assertProjectAccess(task.projectId, ctx.user.id, "editor");
 
       // For poyo.ai tasks still processing, sync status from upstream (throttled)
       if (task.status === "processing" && task.externalTaskId && isPoyoVideoProvider(task.provider)) {
@@ -561,7 +552,7 @@ export const videoTasksRouter = router({
       })
     )
     .mutation(async ({ ctx, input }) => {
-      await assertTaskOwner(input.id, ctx.user.id);
+      await assertTaskAccess(input.id, ctx.user.id);
       const { id, ...data } = input;
       await updateVideoTask(id, data);
       return { success: true };
@@ -571,7 +562,7 @@ export const videoTasksRouter = router({
   reset: protectedProcedure
     .input(z.object({ id: z.number() }))
     .mutation(async ({ ctx, input }) => {
-      await assertTaskOwner(input.id, ctx.user.id);
+      await assertTaskAccess(input.id, ctx.user.id);
       await deleteVideoTask(input.id);
       return { success: true };
     }),
@@ -583,7 +574,9 @@ export const aiChatRouter = router({
   getMessages: protectedProcedure
     .input(z.object({ nodeId: z.string(), projectId: z.number() }))
     .query(async ({ ctx, input }) => {
-      await assertProjectAccess(input.projectId, ctx.user.id, "editor");
+      // Chat history is part of canvas state viewers are allowed to read,
+      // even though only editors can append (sendMessage) or clear.
+      await assertProjectAccess(input.projectId, ctx.user.id, "viewer");
       return getChatMessages(input.nodeId, input.projectId);
     }),
 
@@ -608,6 +601,11 @@ export const aiChatRouter = router({
       })
     )
     .mutation(async ({ ctx, input }) => {
+      // Gate on whitelist before access check so banned users get a uniform
+      // "not whitelisted" error rather than a project FORBIDDEN; this also
+      // closes the gap that let an editor invoke the LLM without any
+      // platform-side limit (all other AI mutations call assertWhitelisted).
+      await assertWhitelisted(ctx);
       await assertProjectAccess(input.projectId, ctx.user.id, "editor");
       // Allow empty message when there's at least one attachment — image-only prompts are valid.
       if (!input.message.trim() && !(input.attachments?.length ?? 0)) {
@@ -639,15 +637,27 @@ export const aiChatRouter = router({
 
       // Reconstruct historical messages with their original attachments so the
       // model retains visual context across turns.
+      //
+      // SKIP data: URLs in history — when storage isn't configured (dev fallback
+      // returns the entire base64 inline), replaying those URLs in every
+      // subsequent turn balloons the prompt by ~1 MB per image per turn and
+      // can blow past provider request-size limits. Mention the attachment
+      // textually instead so the model has context without the payload.
       const historyMessages = history.map((m) => {
-        const att = (m.attachments as Array<{ type: string; url: string }> | null) ?? null;
+        const att = (m.attachments as Array<{ type: string; url: string; name?: string }> | null) ?? null;
         if (m.role === "user" && att && att.length > 0) {
-          const imgs = att.filter((a) => a.type === "image").map((a) => ({ type: "image_url" as const, image_url: { url: a.url } }));
+          const imgs = att
+            .filter((a) => a.type === "image" && !a.url.startsWith("data:"))
+            .map((a) => ({ type: "image_url" as const, image_url: { url: a.url } }));
+          const skippedDataUrlImgs = att.filter((a) => a.type === "image" && a.url.startsWith("data:"));
+          const skippedNote = skippedDataUrlImgs.length > 0
+            ? `\n\n[Earlier turn included ${skippedDataUrlImgs.length} image attachment(s) not re-sent.]`
+            : "";
           return {
             role: "user" as const,
             content: imgs.length > 0
-              ? [{ type: "text" as const, text: m.content }, ...imgs]
-              : m.content,
+              ? [{ type: "text" as const, text: m.content + skippedNote }, ...imgs]
+              : m.content + skippedNote,
           };
         }
         return { role: m.role as "user" | "assistant", content: m.content };

@@ -64,7 +64,11 @@ export async function upsertUser(user: InsertUser): Promise<void> {
   textFields.forEach((field) => {
     const value = user[field];
     if (value === undefined) return;
-    const normalized = value ?? null;
+    // Lowercase the email at write time so eq() lookups match regardless of
+    // the MySQL collation (default ci collation hides this; binary collation
+    // would expose the case-sensitivity bug — make it consistent at the
+    // application layer rather than relying on a server config).
+    const normalized = field === "email" && typeof value === "string" ? value.toLowerCase() : value ?? null;
     values[field] = normalized;
     updateSet[field] = normalized;
   });
@@ -312,13 +316,38 @@ export async function getShareLinkByToken(token: string) {
   return rows[0];
 }
 
-export async function incrementShareLinkUses(id: number) {
+/**
+ * Atomically consume one slot on a share link. Returns true only if the row
+ * was updated (i.e. the caller "won" the race against concurrent acceptances).
+ * Guards against TOCTOU on usesCount/expiresAt/revokedAt in one DB roundtrip.
+ */
+export async function consumeShareLink(id: number): Promise<boolean> {
   const db = await getDb();
-  if (!db) { if (DEV_MODE) { dev.devIncrementShareLinkUses(id); return; } throw new Error("DB unavailable"); }
-  await db
+  if (!db) {
+    if (DEV_MODE) return dev.devConsumeShareLink(id);
+    throw new Error("DB unavailable");
+  }
+  const result = await db
     .update(projectShareLinks)
     .set({ usesCount: sql`${projectShareLinks.usesCount} + 1` })
-    .where(eq(projectShareLinks.id, id));
+    .where(and(
+      eq(projectShareLinks.id, id),
+      isNull(projectShareLinks.revokedAt),
+      gt(projectShareLinks.expiresAt, new Date()),
+      sql`${projectShareLinks.usesCount} < ${projectShareLinks.maxUses}`,
+    ));
+  // drizzle/mysql2 returns [ResultSetHeader, FieldPacket[]] from an UPDATE.
+  // If the driver tuple shape ever drifts (drizzle minor bump, planetscale,
+  // etc.) we'd silently get 0 here and reject every valid invite. Throw
+  // loudly instead so the regression is obvious in production logs.
+  if (!Array.isArray(result) || typeof result[0] !== "object" || result[0] === null) {
+    throw new Error("consumeShareLink: unexpected drizzle UPDATE result shape");
+  }
+  const header = result[0] as { affectedRows?: number };
+  if (typeof header.affectedRows !== "number") {
+    throw new Error("consumeShareLink: drizzle result missing affectedRows");
+  }
+  return header.affectedRows > 0;
 }
 
 export async function revokeShareLink(id: number) {
@@ -485,15 +514,17 @@ export async function getVideoTasksByProject(projectId: number) {
  * Used as a server-side idempotency check so a bypassed client can't double-charge by
  * submitting two `videoTasks.create` calls for the same node while one is still running.
  */
-export async function findInFlightVideoTask(userId: number, projectId: number, nodeId: string) {
+export async function findInFlightVideoTask(projectId: number, nodeId: string) {
   const db = await getDb();
-  if (!db) return DEV_MODE ? dev.devFindInFlightVideoTask(userId, projectId, nodeId) : undefined;
+  if (!db) return DEV_MODE ? dev.devFindInFlightVideoTask(projectId, nodeId) : undefined;
+  // Project-scoped (not user-scoped): any editor's in-flight task on this
+  // node blocks new submissions, so the project owner can't double-charge
+  // on top of a collaborator's pending task and vice versa.
   const rows = await db
     .select()
     .from(videoTasks)
     .where(
       and(
-        eq(videoTasks.userId, userId),
         eq(videoTasks.projectId, projectId),
         eq(videoTasks.nodeId, nodeId),
         sql`${videoTasks.status} in ('pending', 'processing')`

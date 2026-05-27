@@ -1,7 +1,7 @@
 import path from "path";
 import { z } from "zod";
 import { router, protectedProcedure } from "../_core/trpc";
-import { storagePut } from "../storage";
+import { storagePut, isStorageConfigured } from "../storage";
 import { assertWhitelisted } from "../_core/whitelist";
 
 const ALLOWED_MIME_TYPES = [
@@ -18,8 +18,12 @@ export const uploadRouter = router({
   uploadImage: protectedProcedure
     .input(
       z.object({
-        // base64-encoded file content (without data: prefix)
-        base64: z.string(),
+        // base64-encoded file content (no data: prefix — the schema rejects it
+        // so the dev fallback doesn't end up producing a malformed nested
+        // `data:...,data:...` URL when the caller pre-prefixes).
+        base64: z.string().refine((s) => !s.startsWith("data:"), {
+          message: "base64 must not include a data: prefix; strip it client-side",
+        }),
         mimeType: z.string().refine((t) => (ALLOWED_MIME_TYPES as readonly string[]).includes(t), { message: "Unsupported MIME type" }).default("image/jpeg"),
         filename: z.string().optional(),
       })
@@ -39,19 +43,17 @@ export const uploadRouter = router({
       // Namespace by userId so different users' same-named files don't collide
       const key = `reference-images/${ctx.user.id}/${filename}`;
 
-      try {
-        const { url } = await storagePut(key, buf, input.mimeType);
-        return { url, storageKey: key };
-      } catch (e) {
-        // Dev fallback: when Forge/S3 isn't configured (local dev bypass), return
-        // the upload as an inline data: URL so downstream flows (LLM image input,
-        // previews) keep working without storage configured.
-        const msg = e instanceof Error ? e.message : String(e);
-        if (/Storage config missing|BUILT_IN_FORGE/.test(msg)) {
-          const dataUrl = `data:${input.mimeType};base64,${input.base64}`;
-          return { url: dataUrl, storageKey: key };
-        }
-        throw e;
+      // Dev fallback: when Forge/S3 isn't configured (local dev bypass), return
+      // the upload as an inline data: URL so downstream flows (LLM image input,
+      // previews) keep working without storage configured. The check is on
+      // env presence, NOT on storagePut's error string — that string match
+      // used to mask production storage outages (expired creds, rate-limit
+      // errors, etc.) as if they were a dev-mode signal.
+      if (!isStorageConfigured()) {
+        const dataUrl = `data:${input.mimeType};base64,${input.base64}`;
+        return { url: dataUrl, storageKey: key };
       }
+      const { url } = await storagePut(key, buf, input.mimeType);
+      return { url, storageKey: key };
     }),
 });

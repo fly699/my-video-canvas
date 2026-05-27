@@ -3,31 +3,47 @@ import { appRouter } from "./routers";
 import type { TrpcContext } from "./_core/context";
 
 // ── Mock DB helpers ───────────────────────────────────────────────────────────
-vi.mock("./db", () => ({
-  upsertUser: vi.fn(),
-  getUserByOpenId: vi.fn(),
-  getProjectsByUser: vi.fn().mockResolvedValue([
-    {
-      id: 1,
-      userId: 1,
-      name: "Test Project",
-      description: null,
-      thumbnail: null,
-      viewportState: null,
-      createdAt: new Date("2024-01-01"),
-      updatedAt: new Date("2024-01-01"),
-    },
-  ]),
-  getProjectById: vi.fn().mockResolvedValue({
+// NOTE: vi.mock is hoisted to the top of the file, so any const referenced
+// inside the factory must be inlined.
+vi.mock("./db", () => {
+  const MOCK_PROJECT = {
     id: 1,
     userId: 1,
     name: "Test Project",
     description: null,
     thumbnail: null,
     viewportState: null,
+    publicReadAccess: false,
     createdAt: new Date("2024-01-01"),
     updatedAt: new Date("2024-01-01"),
+  };
+  return ({
+  upsertUser: vi.fn(),
+  getUserByOpenId: vi.fn(),
+  getProjectsByUser: vi.fn().mockResolvedValue([MOCK_PROJECT]),
+  getProjectsSharedWithUser: vi.fn().mockResolvedValue([]),
+  getProjectById: vi.fn().mockResolvedValue(MOCK_PROJECT),
+  getProjectByIdRaw: vi.fn().mockResolvedValue(MOCK_PROJECT),
+  // Mock the access resolver — test user (id=1) is the owner of MOCK_PROJECT
+  getProjectAccess: vi.fn().mockResolvedValue({
+    project: MOCK_PROJECT,
+    role: "owner",
+    source: "owner",
   }),
+  setProjectPublicAccess: vi.fn().mockResolvedValue(undefined),
+  listCollaborators: vi.fn().mockResolvedValue([]),
+  findCollaboratorByUserId: vi.fn().mockResolvedValue(undefined),
+  findCollaboratorByEmail: vi.fn().mockResolvedValue(undefined),
+  upsertCollaborator: vi.fn().mockResolvedValue({}),
+  updateCollaboratorRole: vi.fn().mockResolvedValue(undefined),
+  removeCollaborator: vi.fn().mockResolvedValue(undefined),
+  claimPendingInvitations: vi.fn().mockResolvedValue(undefined),
+  createShareLink: vi.fn().mockResolvedValue({}),
+  listShareLinks: vi.fn().mockResolvedValue([]),
+  getShareLinkByToken: vi.fn().mockResolvedValue(undefined),
+  consumeShareLink: vi.fn().mockResolvedValue(true),
+  revokeShareLink: vi.fn().mockResolvedValue(undefined),
+  findUserByEmail: vi.fn().mockResolvedValue(undefined),
   createProject: vi.fn().mockResolvedValue({}),
   updateProject: vi.fn().mockResolvedValue({}),
   deleteProject: vi.fn().mockResolvedValue({}),
@@ -47,6 +63,8 @@ vi.mock("./db", () => ({
   getVideoTask: vi.fn().mockResolvedValue({
     id: 1,
     userId: 1,
+    projectId: 1,
+    nodeId: "test-node",
     status: "pending",
     provider: "mock",
     prompt: "test",
@@ -63,7 +81,8 @@ vi.mock("./db", () => ({
   getWhitelistSettings: vi.fn().mockResolvedValue({ id: 1, enabled: false, updatedAt: new Date() }),
   isWhitelisted: vi.fn().mockResolvedValue(false),
   insertAuditLog: vi.fn().mockResolvedValue(undefined),
-}));
+  });
+});
 
 // ── Mock LLM ──────────────────────────────────────────────────────────────────
 vi.mock("./_core/llm", () => ({
@@ -129,8 +148,11 @@ describe("projects router", () => {
 
   it("lists projects for authenticated user", async () => {
     const result = await caller.projects.list();
-    expect(Array.isArray(result)).toBe(true);
-    expect(result[0].name).toBe("Test Project");
+    // New shape: { owned: Project[], shared: Project[] } — split because
+    // a project the user collaborates on is rendered separately from their own.
+    expect(Array.isArray(result.owned)).toBe(true);
+    expect(Array.isArray(result.shared)).toBe(true);
+    expect(result.owned[0].name).toBe("Test Project");
   });
 
   it("gets a specific project by id", async () => {

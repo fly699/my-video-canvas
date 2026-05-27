@@ -18,6 +18,7 @@ import { sdk } from "./sdk";
 import { ENV } from "./env";
 import { getProjectAccess } from "../db";
 import type { User } from "../../drizzle/schema";
+import { collabBus } from "./collabBus";
 
 function isPortAvailable(port: number): Promise<boolean> {
   return new Promise((resolve) => {
@@ -113,10 +114,22 @@ async function startServer() {
   io.on("connection", (socket) => {
     const user = (socket.data as { user: User }).user;
     let currentProjectId: number | null = null;
-    const currentUserId: number = user.id;
+    // Cache the user's effective role per joined project so the high-frequency
+    // node:move stream doesn't run a DB query per event. The cache is
+    // invalidated reactively via collabBus when an admin mutation changes
+    // membership (role update / removal / link revocation), so a demoted
+    // editor stops being able to broadcast mutating events within the same
+    // session — not just on reconnect.
+    const projectRoles = new Map<number, "viewer" | "editor" | "admin" | "owner">();
+    const unsubscribeBus = collabBus.onRoleInvalidated(({ projectId, userId }) => {
+      if (userId != null && userId !== user.id) return;
+      projectRoles.delete(projectId);
+      // Best-effort: tell the client to re-derive UI state. Client may
+      // refetch listMembers / projects.get to learn the new role.
+      socket.emit("role-invalidated", { projectId });
+    });
 
     socket.on("join-project", async (data: { projectId: number; userName: string; color: string }) => {
-      // Verify the user has access to the project they're joining.
       try {
         const access = await getProjectAccess(data.projectId, user.id);
         if (!access) {
@@ -124,6 +137,7 @@ async function startServer() {
           return;
         }
         currentProjectId = data.projectId;
+        projectRoles.set(data.projectId, access.role);
         const room = `project:${data.projectId}`;
         socket.join(room);
 
@@ -135,7 +149,6 @@ async function startServer() {
           color: data.color,
         });
 
-        // Notify others
         socket.to(room).emit("collaboration-event", {
           type: "user:join",
           userId: user.id,
@@ -153,6 +166,7 @@ async function startServer() {
       const room = `project:${data.projectId}`;
       socket.leave(room);
       projectUsers.get(data.projectId)?.delete(user.id);
+      projectRoles.delete(data.projectId);
 
       socket.to(room).emit("collaboration-event", {
         type: "user:leave",
@@ -164,7 +178,7 @@ async function startServer() {
       });
     });
 
-    socket.on("collaboration-event", async (event: {
+    socket.on("collaboration-event", (event: {
       type: string;
       userId: number;
       userName: string;
@@ -172,29 +186,29 @@ async function startServer() {
       projectId: number;
       payload: unknown;
     }) => {
-      // Server-side identity & room check: forbid forging userId or
-      // broadcasting to projects the client hasn't joined / lacks access to.
+      // Reject mismatched identity (server uses the verified id, not client claim).
       if (event.userId !== user.id) return;
       const room = `project:${event.projectId}`;
       if (!socket.rooms.has(room)) return;
-      // For state-mutating events, require editor+.
+      const role = projectRoles.get(event.projectId);
+      if (!role) return; // not joined / no cached access
+      // For state-mutating events, require editor+. cursor:move and other
+      // ephemeral events pass through without the role gate.
       const mutating = event.type === "node:move" || event.type === "node:add" ||
                        event.type === "node:delete" || event.type === "node:update" ||
                        event.type === "edge:add" || event.type === "edge:delete";
-      if (mutating) {
-        const access = await getProjectAccess(event.projectId, user.id);
-        if (!access || (access.role === "viewer")) return;
-      }
+      if (mutating && role === "viewer") return;
       socket.to(room).emit("collaboration-event", { ...event, userId: user.id });
     });
 
     socket.on("disconnect", () => {
+      unsubscribeBus();
       if (currentProjectId !== null) {
         const room = `project:${currentProjectId}`;
-        projectUsers.get(currentProjectId)?.delete(currentUserId);
+        projectUsers.get(currentProjectId)?.delete(user.id);
         socket.to(room).emit("collaboration-event", {
           type: "user:leave",
-          userId: currentUserId,
+          userId: user.id,
           userName: user.name ?? "",
           color: "",
           projectId: currentProjectId,

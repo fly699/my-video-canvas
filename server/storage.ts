@@ -4,6 +4,13 @@
 
 import { ENV } from "./_core/env";
 
+/** Whether persistent storage (Forge / S3) is configured for this deployment.
+ *  Callers use this to branch between "real upload" and "inline fallback"
+ *  rather than relying on storagePut() error-string matching. */
+export function isStorageConfigured(): boolean {
+  return Boolean(ENV.forgeApiUrl && ENV.forgeApiKey);
+}
+
 function getForgeConfig() {
   const forgeUrl = ENV.forgeApiUrl;
   const forgeKey = ENV.forgeApiKey;

@@ -77,28 +77,44 @@ export const AIChatNode = memo(function AIChatNode({ id, selected, data }: Props
   // ── Floating mode (per-tab, not synced via payload to keep each user's
   //    chat window position independent). Persisted to sessionStorage so the
   //    state survives node remounts (e.g. when scrolling out of viewport).
+  //    One object key per node — earlier we used three separate keys, which
+  //    produced three race windows on tab close and three partial-restore
+  //    states if one key was cleared.
   const floatKey = `avc:chat-float:${id}`;
-  const [floating, setFloating] = useState<boolean>(() => {
-    try { return sessionStorage.getItem(floatKey) === "1"; } catch { return false; }
-  });
-  const [floatPos, setFloatPos] = useState<{ x: number; y: number }>(() => {
+  interface FloatState { floating: boolean; pos: { x: number; y: number }; size: { w: number; h: number } }
+  const [floatState, setFloatState] = useState<FloatState>(() => {
+    const defaults: FloatState = {
+      floating: false,
+      pos: { x: typeof window !== "undefined" ? Math.max(40, window.innerWidth - 460) : 800, y: 80 },
+      size: { w: 420, h: 560 },
+    };
     try {
-      const raw = sessionStorage.getItem(`${floatKey}:pos`);
-      if (raw) return JSON.parse(raw);
-    } catch { /* ignore */ }
-    // Default: top-right, leaving room for the toolbar
-    return { x: typeof window !== "undefined" ? Math.max(40, window.innerWidth - 460) : 800, y: 80 };
+      const raw = sessionStorage.getItem(floatKey);
+      if (!raw) return defaults;
+      const parsed = JSON.parse(raw) as Partial<FloatState>;
+      return {
+        floating: typeof parsed.floating === "boolean" ? parsed.floating : defaults.floating,
+        pos: parsed.pos && typeof parsed.pos.x === "number" ? parsed.pos as FloatState["pos"] : defaults.pos,
+        size: parsed.size && typeof parsed.size.w === "number" ? parsed.size as FloatState["size"] : defaults.size,
+      };
+    } catch { return defaults; }
   });
-  const [floatSize, setFloatSize] = useState<{ w: number; h: number }>(() => {
-    try {
-      const raw = sessionStorage.getItem(`${floatKey}:size`);
-      if (raw) return JSON.parse(raw);
-    } catch { /* ignore */ }
-    return { w: 420, h: 560 };
-  });
-  useEffect(() => { try { sessionStorage.setItem(floatKey, floating ? "1" : "0"); } catch { /* ignore */ } }, [floating, floatKey]);
-  useEffect(() => { try { sessionStorage.setItem(`${floatKey}:pos`, JSON.stringify(floatPos)); } catch { /* ignore */ } }, [floatPos, floatKey]);
-  useEffect(() => { try { sessionStorage.setItem(`${floatKey}:size`, JSON.stringify(floatSize)); } catch { /* ignore */ } }, [floatSize, floatKey]);
+  const floating = floatState.floating;
+  const floatPos = floatState.pos;
+  const floatSize = floatState.size;
+  const setFloating = (v: boolean | ((p: boolean) => boolean)) =>
+    setFloatState((s) => ({ ...s, floating: typeof v === "function" ? v(s.floating) : v }));
+  const setFloatPos = (v: { x: number; y: number }) => setFloatState((s) => ({ ...s, pos: v }));
+  const setFloatSize = (v: { w: number; h: number }) => setFloatState((s) => ({ ...s, size: v }));
+  // Debounce sessionStorage writes so a 60fps drag stream doesn't spam
+  // JSON.stringify + setItem on every mousemove. Float toggle, drag-end,
+  // resize-end all get flushed via the trailing 200ms timer.
+  useEffect(() => {
+    const t = setTimeout(() => {
+      try { sessionStorage.setItem(floatKey, JSON.stringify(floatState)); } catch { /* ignore */ }
+    }, 200);
+    return () => clearTimeout(t);
+  }, [floatState, floatKey]);
 
   // Drag state — pointer offset relative to window origin at drag start
   const dragOffsetRef = useRef<{ dx: number; dy: number } | null>(null);
