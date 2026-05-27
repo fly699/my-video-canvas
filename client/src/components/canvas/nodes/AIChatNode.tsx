@@ -379,8 +379,31 @@ export const AIChatNode = memo(function AIChatNode({ id, selected, data }: Props
     e.stopPropagation();
     setIsDraggingOver(false);
     const files = Array.from(e.dataTransfer.files);
-    if (files.length > 0) await attachFiles(files);
-  }, [attachFiles]);
+    if (files.length > 0) {
+      await attachFiles(files);
+      return;
+    }
+    // Drop from the filmstrip/timeline (or any image URL) — they expose a
+    // structured payload via dataTransfer instead of a File. Treat the URL
+    // as an already-uploaded image attachment (no need to re-upload).
+    const structured = e.dataTransfer.getData("application/x-avc-attachment");
+    if (structured) {
+      try {
+        const parsed = JSON.parse(structured) as ChatAttachment;
+        if (pendingAttachments.length >= 8) { toast.error("最多 8 个附件"); return; }
+        setPendingAttachments((prev) => [...prev, parsed]);
+        toast.success("已添加 1 个附件");
+        return;
+      } catch { /* fall through to plain URL */ }
+    }
+    const url = e.dataTransfer.getData("text/uri-list") || e.dataTransfer.getData("text/plain");
+    if (url && /^(https?:|data:|\/)/i.test(url)) {
+      if (pendingAttachments.length >= 8) { toast.error("最多 8 个附件"); return; }
+      const name = url.startsWith("data:") ? "image" : (url.split("/").pop()?.split("?")[0] || "image");
+      setPendingAttachments((prev) => [...prev, { type: "image", url, mimeType: "image/*", name }]);
+      toast.success("已添加 1 个附件");
+    }
+  }, [attachFiles, pendingAttachments.length]);
 
   const removeAttachment = (idx: number) => {
     setPendingAttachments((prev) => prev.filter((_, i) => i !== idx));
@@ -403,7 +426,28 @@ export const AIChatNode = memo(function AIChatNode({ id, selected, data }: Props
   );
 
   const chatBody = (
-    <div className="flex flex-col h-full" style={{ minHeight: 280 }}>
+    <div
+      className="flex flex-col h-full"
+      style={{ minHeight: 280 }}
+      // Whole-node drop target so users can drag from the filmstrip /
+      // timeline straight onto any part of the chat node, not just the
+      // input strip at the bottom.
+      onDragOver={(e) => {
+        // Only accept if drag has a file or our structured payload — otherwise
+        // let ReactFlow handle the event (e.g. canvas pan).
+        const t = e.dataTransfer.types;
+        if (t && (t.includes("Files") || t.includes("application/x-avc-attachment") || t.includes("text/uri-list"))) {
+          e.preventDefault();
+          e.stopPropagation();
+          setIsDraggingOver(true);
+        }
+      }}
+      onDragLeave={(e) => {
+        // Only flip off when leaving the outer container, not crossing into children
+        if (e.currentTarget === e.target) setIsDraggingOver(false);
+      }}
+      onDrop={handleDrop}
+    >
 
         {/* ── System prompt ── */}
         <div

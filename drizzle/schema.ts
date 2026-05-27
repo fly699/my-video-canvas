@@ -38,8 +38,6 @@ export const projects = mysqlTable("projects", {
   thumbnail: text("thumbnail"),
   /** Viewport state: { x, y, scale } */
   viewportState: json("viewportState"),
-  /** When true, any authenticated user with the URL can view (read-only). */
-  publicReadAccess: boolean("publicReadAccess").notNull().default(false),
   createdAt: timestamp("createdAt").defaultNow().notNull(),
   updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
 });
@@ -207,8 +205,6 @@ export const chatMessages = mysqlTable("chat_messages", {
   projectId: int("projectId").notNull(),
   role: mysqlEnum("role", ["user", "assistant", "system"]).notNull(),
   content: text("content").notNull(),
-  /** Multimodal attachments: Array<{ type, url, mimeType, name }>. NULL = legacy text-only message. */
-  attachments: json("attachments"),
   createdAt: timestamp("createdAt").defaultNow().notNull(),
 });
 

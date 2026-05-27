@@ -252,8 +252,27 @@ interface TimelineClipProps {
 function TimelineClip({ index, clip, isPlaying, videoRef, proxySrc, onNavigate, onPlay, onEnded }: TimelineClipProps) {
   const { isLocal, blobUrl, downloadedAt } = useLocalMedia(clip.videoUrl);
 
+  // Drag-to-attach: dropping a clip on an AI chat node attaches it as
+  // a video reference (the chat node consumes the URL without re-upload).
+  const dragUrl = blobUrl ?? clip.videoUrl;
+  const onDragStart = (e: React.DragEvent) => {
+    if (!dragUrl) return;
+    const payload = {
+      type: "image" as const, // AIChatNode treats video URLs the same as image attachments
+      url: dragUrl,
+      mimeType: "video/*",
+      name: clip.title || "video",
+    };
+    e.dataTransfer.setData("application/x-avc-attachment", JSON.stringify(payload));
+    e.dataTransfer.setData("text/uri-list", dragUrl);
+    e.dataTransfer.setData("text/plain", dragUrl);
+    e.dataTransfer.effectAllowed = "copy";
+  };
+
   return (
     <div
+      draggable={!!dragUrl}
+      onDragStart={onDragStart}
       style={{
         width: 120,
         height: 112,
