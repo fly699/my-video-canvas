@@ -559,7 +559,7 @@ export function HelpPanel({ open, onClose, activeNodeType, onAddNode }: HelpPane
 
   return (
     <div
-      className="absolute top-0 right-0 h-full z-40 flex flex-col"
+      className="fixed top-0 right-0 h-full z-40 flex flex-col"
       style={{
         width: 340,
         background: "color-mix(in oklch, var(--c-base) 97%, transparent)",
