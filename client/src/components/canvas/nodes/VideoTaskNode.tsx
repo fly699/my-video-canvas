@@ -6,7 +6,9 @@ import { mergeCharactersIntoPrompt } from "../../../lib/characterPrompt";
 import { trpc } from "@/lib/trpc";
 import { toast } from "sonner";
 import { Handle, Position } from "@xyflow/react";
-import { Play, Loader2, CheckCircle2, XCircle, Clock, RefreshCw, AlertCircle, Download, ChevronDown, ChevronRight, Layers, Plus, X as XIcon, Film } from "lucide-react";
+import { Play, Loader2, CheckCircle2, XCircle, Clock, RefreshCw, AlertCircle, Download, ChevronDown, ChevronRight, Layers, Plus, X as XIcon, Film, HardDriveDownload } from "lucide-react";
+import { useLocalMedia } from "@/lib/useLocalMedia";
+import { cacheMedia, getCachedMedia } from "@/lib/mediaCache";
 import { listCustomPresets, saveCustomPreset, deleteCustomPreset, type CustomVideoPreset } from "@/lib/customPresets";
 import { ensureNotificationPermission, showCompletionNotification } from "@/lib/notify";
 import { CinematographyPicker } from "../CinematographyPicker";
@@ -30,6 +32,75 @@ function isSafeMediaUrl(url: string | undefined): boolean {
   if (!url) return false;
   if (url.startsWith("/") && !url.startsWith("//")) return true;
   return /^https?:\/\//i.test(url);
+}
+
+function toProxiedSrc(u: string): string {
+  return u.startsWith("http") ? `/api/video-proxy?url=${encodeURIComponent(u)}` : u;
+}
+
+function LocalCacheBadge({ downloadedAt }: { downloadedAt: number }) {
+  return (
+    <div
+      title={`已缓存到本地（${new Date(downloadedAt).toLocaleString("zh-CN")}）`}
+      className="absolute top-1.5 left-1.5 z-10 w-2.5 h-2.5 rounded-full pointer-events-none"
+      style={{ background: "oklch(0.72 0.18 155)", boxShadow: "0 0 0 2.5px oklch(0.72 0.18 155 / 0.35)" }}
+    />
+  );
+}
+
+function ShotItem({ u, idx }: { u: string; idx: number }) {
+  const { isLocal, blobUrl, downloadedAt, refresh } = useLocalMedia(u);
+  const [caching, setCaching] = useState(false);
+  const [cacheProgress, setCacheProgress] = useState(0);
+  const src = blobUrl ?? toProxiedSrc(u);
+  const handleCache = async () => {
+    if (caching) return;
+    setCaching(true); setCacheProgress(0);
+    try {
+      await cacheMedia(u, "video", (loaded, total) => {
+        if (total > 0) setCacheProgress(Math.round(loaded / total * 100));
+      });
+      refresh();
+      toast.success("已缓存到本地");
+    } catch (e) {
+      toast.error("缓存失败：" + (e instanceof Error ? e.message : String(e)));
+    } finally { setCaching(false); }
+  };
+  return (
+    <div>
+      <div className="relative rounded-lg overflow-hidden" style={{ borderWidth: 1, borderStyle: "solid", borderColor: "oklch(0.72 0.18 155 / 0.30)" }}>
+        {isLocal && <LocalCacheBadge downloadedAt={downloadedAt} />}
+        <video
+          src={src}
+          controls
+          className="w-full nodrag"
+          style={{ maxHeight: 110, display: "block" }}
+          preload="metadata"
+          onError={(e) => { console.error("[VideoTaskNode] shot", idx, "load error:", (e.currentTarget as HTMLVideoElement).error?.message); }}
+        />
+      </div>
+      <a
+        href={u.startsWith("http") ? `/api/video-proxy?url=${encodeURIComponent(u)}&download=1` : u}
+        download
+        className="nodrag mt-1 flex items-center justify-center gap-1 w-full py-1 rounded text-[10px] font-medium"
+        style={{ background: "oklch(0.72 0.18 155 / 0.10)", border: "1px solid oklch(0.72 0.18 155 / 0.30)", color: "oklch(0.72 0.18 155)", textDecoration: "none" }}
+      >
+        <Download className="w-2.5 h-2.5" /> 第 {idx + 1} 段
+      </a>
+      {!isLocal && (
+        <button
+          onClick={handleCache}
+          disabled={caching}
+          className="nodrag mt-0.5 flex items-center justify-center gap-1 w-full py-1 rounded text-[10px] font-medium"
+          style={{ background: "transparent", border: "1px solid var(--c-bd2)", color: "var(--c-t3)", cursor: caching ? "not-allowed" : "pointer" }}
+        >
+          {caching
+            ? <><Loader2 className="w-2.5 h-2.5 animate-spin" />{cacheProgress > 0 ? ` ${cacheProgress}%` : " 缓存中..."}</>
+            : <><HardDriveDownload className="w-2.5 h-2.5" /> 缓存</>}
+        </button>
+      )}
+    </div>
+  );
 }
 
 interface Props {
@@ -579,9 +650,6 @@ export const VideoTaskNode = memo(function VideoTaskNode({ id, selected, data }:
   // Hero / primary video — first URL (used for legacy single-video UI paths
   // like heroMedia and the download link).
   const primaryUrl: string | undefined = safeResultUrls[0];
-  const toProxiedSrc = (u: string): string =>
-    u.startsWith("http") ? `/api/video-proxy?url=${encodeURIComponent(u)}` : u;
-  // Only accept http(s) (route through proxy) or same-origin relative paths; reject data:/blob:/javascript:
   const videoSrc = primaryUrl ? toProxiedSrc(primaryUrl) : undefined;
   const hasMultiResults = safeResultUrls.length > 1;
 
@@ -671,9 +739,44 @@ export const VideoTaskNode = memo(function VideoTaskNode({ id, selected, data }:
     });
   }, [payload.status, payload.provider, payload.prompt, id]);
 
+  // ── Local media cache (IndexedDB) ────────────────────────────────────────
+  const { isLocal, blobUrl, downloadedAt, refresh: refreshLocalCache } = useLocalMedia(primaryUrl);
+  const [caching, setCaching] = useState(false);
+  const [cacheProgress, setCacheProgress] = useState(0);
+  const [fallbackSrc, setFallbackSrc] = useState<string | null>(null);
+  const fallbackBlobRef = useRef<string | null>(null);
+  const handleVideoError = useCallback((e: React.SyntheticEvent<HTMLVideoElement>) => {
+    const target = e.currentTarget;
+    console.error("[VideoTaskNode] Video load error:", target.error?.message, "src:", target.src);
+    if (!blobUrl && primaryUrl) {
+      getCachedMedia(primaryUrl).then((entry) => {
+        if (entry) {
+          if (fallbackBlobRef.current) URL.revokeObjectURL(fallbackBlobRef.current);
+          const objUrl = URL.createObjectURL(entry.blob);
+          fallbackBlobRef.current = objUrl;
+          setFallbackSrc(objUrl);
+          toast.info("在线地址失效，已切换到本地缓存");
+        }
+      }).catch(() => {});
+    }
+  }, [blobUrl, primaryUrl]);
+  const handleCache = async () => {
+    if (!primaryUrl || caching) return;
+    setCaching(true); setCacheProgress(0);
+    try {
+      await cacheMedia(primaryUrl, "video", (loaded, total) => {
+        if (total > 0) setCacheProgress(Math.round(loaded / total * 100));
+      });
+      refreshLocalCache();
+      toast.success("已缓存到本地");
+    } catch (e) {
+      toast.error("缓存失败：" + (e instanceof Error ? e.message : String(e)));
+    } finally { setCaching(false); }
+  };
+
   const heroMedia = payload.status === "succeeded" && videoSrc ? (
     <video
-      src={videoSrc}
+      src={fallbackSrc ?? blobUrl ?? videoSrc}
       controls
       className="w-full"
       preload="metadata"
@@ -723,51 +826,22 @@ export const VideoTaskNode = memo(function VideoTaskNode({ id, selected, data }:
             )}
             {hasMultiResults ? (
               <div className="grid gap-1.5" style={{ gridTemplateColumns: "1fr 1fr" }}>
-                {safeResultUrls.map((u, idx) => {
-                  const src = toProxiedSrc(u);
-                  return (
-                    <div key={u}>
-                      <div className="rounded-lg overflow-hidden" style={{ borderWidth: 1, borderStyle: "solid", borderColor: STATUS.succeeded.borderColor }}>
-                        <video
-                          src={src}
-                          controls
-                          className="w-full nodrag"
-                          style={{ maxHeight: 110, display: "block" }}
-                          preload="metadata"
-                          onError={(e) => { console.error("[VideoTaskNode] shot", idx, "load error:", (e.currentTarget as HTMLVideoElement).error?.message); }}
-                        />
-                      </div>
-                      <a
-                        href={u.startsWith("http") ? `/api/video-proxy?url=${encodeURIComponent(u)}&download=1` : u}
-                        download
-                        className="nodrag mt-1 flex items-center justify-center gap-1 w-full py-1 rounded text-[10px] font-medium"
-                        style={{
-                          background: "oklch(0.72 0.18 155 / 0.10)",
-                          border: "1px solid oklch(0.72 0.18 155 / 0.30)",
-                          color: "oklch(0.72 0.18 155)",
-                          textDecoration: "none",
-                        }}
-                      >
-                        <Download className="w-2.5 h-2.5" /> 第 {idx + 1} 段
-                      </a>
-                    </div>
-                  );
-                })}
+                {safeResultUrls.map((u, idx) => (
+                  <ShotItem key={u} u={u} idx={idx} />
+                ))}
               </div>
             ) : (
               <>
-                <div className="rounded-lg overflow-hidden" style={{ borderWidth: 1, borderStyle: "solid", borderColor: STATUS.succeeded.borderColor }}>
+                <div className="relative rounded-lg overflow-hidden" style={{ borderWidth: 1, borderStyle: "solid", borderColor: STATUS.succeeded.borderColor }}>
+                  {isLocal && <LocalCacheBadge downloadedAt={downloadedAt} />}
                   <video
-                    key={videoSrc}
-                    src={videoSrc}
+                    key={fallbackSrc ?? blobUrl ?? videoSrc}
+                    src={fallbackSrc ?? blobUrl ?? videoSrc}
                     controls
                     className="w-full nodrag"
                     style={{ maxHeight: 140, display: "block" }}
                     preload="metadata"
-                    onError={(e) => {
-                      const target = e.currentTarget;
-                      console.error("[VideoTaskNode] Video load error:", target.error?.message, "src:", target.src);
-                    }}
+                    onError={handleVideoError}
                   />
                 </div>
                 {/* Download button (primary URL — works for single-shot results) */}
@@ -790,6 +864,24 @@ export const VideoTaskNode = memo(function VideoTaskNode({ id, selected, data }:
                     <Download className="w-3 h-3" />
                     下载视频
                   </a>
+                )}
+                {/* Cache to local button */}
+                {!isLocal && primaryUrl && (
+                  <button
+                    onClick={handleCache}
+                    disabled={caching}
+                    className="nodrag mt-1 flex items-center justify-center gap-1.5 w-full py-1.5 rounded-lg text-xs font-medium"
+                    style={{
+                      background: "transparent",
+                      borderWidth: 1, borderStyle: "solid", borderColor: "var(--c-bd2)",
+                      color: "var(--c-t3)",
+                      cursor: caching ? "not-allowed" : "pointer",
+                    }}
+                  >
+                    {caching
+                      ? <><Loader2 className="w-3 h-3 animate-spin" />{cacheProgress > 0 ? ` ${cacheProgress}%` : " 缓存中..."}</>
+                      : <><HardDriveDownload className="w-3 h-3" /> 缓存到本地</>}
+                  </button>
                 )}
               </>
             )}

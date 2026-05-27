@@ -7,8 +7,10 @@ import { trpc } from "@/lib/trpc";
 import { toast } from "sonner";
 import {
   Sparkles, Loader2, RefreshCw, Upload, X, Cpu, Download, ZoomIn,
-  ChevronDown, ChevronRight, Server, Boxes, ImageIcon,
+  ChevronDown, ChevronRight, Server, Boxes, ImageIcon, HardDriveDownload,
 } from "lucide-react";
+import { useLocalMedia } from "@/lib/useLocalMedia";
+import { cacheMedia } from "@/lib/mediaCache";
 import { ImageLightbox } from "../ImageLightbox";
 import { makeImageProxyFallback } from "@/lib/utils";
 
@@ -169,10 +171,29 @@ export const ComfyuiImageNode = memo(function ComfyuiImageNode({ id, selected, d
 
   const isImg2Img = payload.workflowTemplate === "img2img";
 
+  // ── Local media cache (IndexedDB) ────────────────────────────────────────
+  const { isLocal: imgIsLocal, blobUrl: imgBlobUrl, downloadedAt: imgDownloadedAt, refresh: refreshImgCache } = useLocalMedia(payload.imageUrl);
+  const [imgCaching, setImgCaching] = useState(false);
+  const [imgCacheProgress, setImgCacheProgress] = useState(0);
+  const handleImgCache = async (e: React.MouseEvent) => {
+    e.stopPropagation();
+    if (!payload.imageUrl || imgCaching) return;
+    setImgCaching(true); setImgCacheProgress(0);
+    try {
+      await cacheMedia(payload.imageUrl, "image", (loaded, total) => {
+        if (total > 0) setImgCacheProgress(Math.round(loaded / total * 100));
+      });
+      refreshImgCache();
+      toast.success("已缓存到本地");
+    } catch (err) {
+      toast.error("缓存失败：" + (err instanceof Error ? err.message : String(err)));
+    } finally { setImgCaching(false); }
+  };
+
   const heroMedia = payload.imageUrl ? (
     <div className="relative overflow-hidden group" style={{ width: "100%" }}>
       <img
-        src={payload.imageUrl}
+        src={imgBlobUrl ?? payload.imageUrl}
         alt="comfyui-generated"
         className="w-full h-full object-cover"
         draggable={false}
@@ -260,8 +281,15 @@ export const ComfyuiImageNode = memo(function ComfyuiImageNode({ id, selected, d
             className="relative rounded-lg overflow-hidden flex-shrink-0"
             style={{ aspectRatio: "16/9", borderWidth: 1, borderStyle: "solid", borderColor: BORDER_DEFAULT, background: "var(--c-canvas)" }}
           >
+            {imgIsLocal && (
+              <div
+                title={`已缓存到本地（${new Date(imgDownloadedAt).toLocaleString("zh-CN")}）`}
+                className="absolute top-1.5 left-1.5 z-10 w-2.5 h-2.5 rounded-full pointer-events-none"
+                style={{ background: "oklch(0.72 0.18 155)", boxShadow: "0 0 0 2.5px oklch(0.72 0.18 155 / 0.35)" }}
+              />
+            )}
             <img
-              src={payload.imageUrl}
+              src={imgBlobUrl ?? payload.imageUrl}
               alt="generated"
               className="w-full h-full object-contain"
               draggable={false}
@@ -287,6 +315,18 @@ export const ComfyuiImageNode = memo(function ComfyuiImageNode({ id, selected, d
                 <Download className="w-3 h-3" />
                 下载
               </button>
+              {!imgIsLocal && (
+                <button
+                  onClick={handleImgCache}
+                  disabled={imgCaching}
+                  className="nodrag flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-medium"
+                  style={{ background: "oklch(0.14 0.007 260 / 0.8)", borderWidth: 1, borderStyle: "solid", borderColor: "var(--c-bd3)", color: "oklch(0.72 0.18 155)" }}
+                  title={imgCaching ? `缓存中 ${imgCacheProgress}%` : "缓存到本地"}
+                >
+                  {imgCaching ? <Loader2 className="w-3 h-3 animate-spin" /> : <HardDriveDownload className="w-3 h-3" />}
+                  {imgCaching ? (imgCacheProgress > 0 ? `${imgCacheProgress}%` : "缓存中") : "缓存"}
+                </button>
+              )}
             </div>
           </div>
           )

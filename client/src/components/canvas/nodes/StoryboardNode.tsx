@@ -7,7 +7,9 @@ import { useShallow } from "zustand/react/shallow";
 import type { StoryboardNodeData } from "../../../../../shared/types";
 import { trpc } from "@/lib/trpc";
 import { toast } from "sonner";
-import { Sparkles, ImageIcon, Loader2, RefreshCw, ChevronDown, Upload, X, Wand2, History, Languages, Film, ZoomIn, Download, Copy } from "lucide-react";
+import { Sparkles, ImageIcon, Loader2, RefreshCw, ChevronDown, Upload, X, Wand2, History, Languages, Film, ZoomIn, Download, Copy, HardDriveDownload } from "lucide-react";
+import { useLocalMedia } from "@/lib/useLocalMedia";
+import { cacheMedia } from "@/lib/mediaCache";
 import { mergeCharactersIntoPrompt } from "../../../lib/characterPrompt";
 import { IMAGE_MODELS, type ImageModelId } from "@/lib/models";
 import { makeImageProxyFallback } from "@/lib/utils";
@@ -337,11 +339,30 @@ export const StoryboardNode = memo(function StoryboardNode({ id, selected, data 
 
   const currentModel = IMAGE_MODELS.find((m) => m.value === model) ?? IMAGE_MODELS[0];
 
+  // ── Local media cache (IndexedDB) ────────────────────────────────────────
+  const { isLocal: imgIsLocal, blobUrl: imgBlobUrl, downloadedAt: imgDownloadedAt, refresh: refreshImgCache } = useLocalMedia(payload.imageUrl);
+  const [imgCaching, setImgCaching] = useState(false);
+  const [imgCacheProgress, setImgCacheProgress] = useState(0);
+  const handleImgCache = async (e: React.MouseEvent) => {
+    e.stopPropagation();
+    if (!payload.imageUrl || imgCaching) return;
+    setImgCaching(true); setImgCacheProgress(0);
+    try {
+      await cacheMedia(payload.imageUrl, "image", (loaded, total) => {
+        if (total > 0) setImgCacheProgress(Math.round(loaded / total * 100));
+      });
+      refreshImgCache();
+      toast.success("已缓存到本地");
+    } catch (err) {
+      toast.error("缓存失败：" + (err instanceof Error ? err.message : String(err)));
+    } finally { setImgCaching(false); }
+  };
+
   const heroMedia = (() => {
     if (payload.imageUrl) {
       return (
         <img
-          src={payload.imageUrl}
+          src={imgBlobUrl ?? payload.imageUrl}
           style={{ width: "100%", objectFit: "cover", display: "block" }}
           draggable={false}
           onError={makeImageProxyFallback(payload.imageUrl)}
@@ -391,8 +412,15 @@ export const StoryboardNode = memo(function StoryboardNode({ id, selected, data 
         >
           {payload.imageUrl ? (
             <>
+              {imgIsLocal && (
+                <div
+                  title={`已缓存到本地（${new Date(imgDownloadedAt).toLocaleString("zh-CN")}）`}
+                  className="absolute top-1.5 left-1.5 z-10 w-2.5 h-2.5 rounded-full pointer-events-none"
+                  style={{ background: "oklch(0.72 0.18 155)", boxShadow: "0 0 0 2.5px oklch(0.72 0.18 155 / 0.35)" }}
+                />
+              )}
               <img
-                src={payload.imageUrl}
+                src={imgBlobUrl ?? payload.imageUrl}
                 alt="分镜"
                 className="w-full h-full object-cover"
                 draggable={false}
@@ -429,6 +457,23 @@ export const StoryboardNode = memo(function StoryboardNode({ id, selected, data 
                   >
                     <ZoomIn className="w-3 h-3" />
                   </button>
+                  {!imgIsLocal && (
+                    <button
+                      onClick={handleImgCache}
+                      disabled={imgCaching}
+                      className="nodrag flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs font-medium transition-all"
+                      style={{
+                        background: "oklch(0.62 0.16 200 / 0.20)",
+                        borderWidth: 1, borderStyle: "solid",
+                        borderColor: "oklch(0.62 0.16 200 / 0.5)",
+                        color: "oklch(0.72 0.14 200)",
+                        cursor: imgCaching ? "not-allowed" : "pointer",
+                      }}
+                      title={imgCaching ? `缓存中 ${imgCacheProgress}%` : "缓存到本地"}
+                    >
+                      {imgCaching ? <Loader2 className="w-3 h-3 animate-spin" /> : <HardDriveDownload className="w-3 h-3" />}
+                    </button>
+                  )}
                 </div>
                 {(payload.imageHistory?.length ?? 0) > 0 && (
                   <button

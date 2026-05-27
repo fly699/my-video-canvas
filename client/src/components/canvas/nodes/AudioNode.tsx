@@ -5,8 +5,10 @@ import type { AudioNodeData, AudioCategory } from "../../../../../shared/types";
 import { trpc } from "@/lib/trpc";
 import { toast } from "sonner";
 import {
-  Music, Upload, Mic, Loader2, Play, Pause, X, Volume2, Zap, Wind,
+  Music, Upload, Mic, Loader2, Play, Pause, X, Volume2, Zap, Wind, HardDriveDownload,
 } from "lucide-react";
+import { useLocalMedia } from "@/lib/useLocalMedia";
+import { cacheMedia } from "@/lib/mediaCache";
 
 interface Props {
   id: string;
@@ -415,13 +417,39 @@ export const AudioNode = memo(function AudioNode({ id, selected, data }: Props) 
   const formatDuration = (s?: number) =>
     s != null ? `${Math.floor(s / 60)}:${String(Math.floor(s % 60)).padStart(2, "0")}` : "--:--";
 
+  // ── Local media cache (IndexedDB) ──────────────────────────────────────────
+  const { isLocal: audioIsLocal, blobUrl: audioBlobUrl, downloadedAt: audioDownloadedAt, refresh: refreshAudioCache } = useLocalMedia(payload.url);
+  const [audioCaching, setAudioCaching] = useState(false);
+  const [audioCacheProgress, setAudioCacheProgress] = useState(0);
+  const handleAudioCache = async () => {
+    if (!payload.url || audioCaching) return;
+    setAudioCaching(true); setAudioCacheProgress(0);
+    try {
+      await cacheMedia(payload.url, "audio", (loaded, total) => {
+        if (total > 0) setAudioCacheProgress(Math.round(loaded / total * 100));
+      });
+      refreshAudioCache();
+      toast.success("已缓存到本地");
+    } catch (e) {
+      toast.error("缓存失败：" + (e instanceof Error ? e.message : String(e)));
+    } finally { setAudioCaching(false); }
+  };
+
   // ── Audio player (shared across modes) ──────────────────────────────────────
   const audioPlayer = payload.url ? (
     <div
       className="flex items-center gap-2 rounded-lg px-2.5 py-2"
       style={{ background: "var(--c-input)", border: `1px solid ${accentA(0.25)}` }}
     >
-      <Volume2 style={{ width: 13, height: 13, color: accent, flexShrink: 0 }} />
+      <div style={{ position: "relative", flexShrink: 0 }}>
+        <Volume2 style={{ width: 13, height: 13, color: audioIsLocal ? "oklch(0.72 0.18 155)" : accent }} />
+        {audioIsLocal && (
+          <div
+            title={`已缓存到本地（${new Date(audioDownloadedAt).toLocaleString("zh-CN")}）`}
+            style={{ position: "absolute", top: -2, right: -2, width: 6, height: 6, borderRadius: "50%", background: "oklch(0.72 0.18 155)", boxShadow: "0 0 0 1.5px oklch(0.72 0.18 155 / 0.35)" }}
+          />
+        )}
+      </div>
       <div className="flex-1 min-w-0">
         <p className="truncate" style={{ fontSize: 11, color: "var(--c-t2)" }}>
           {payload.name ?? "音频"}
@@ -435,6 +463,17 @@ export const AudioNode = memo(function AudioNode({ id, selected, data }: Props) 
       >
         {isPlaying ? <Pause style={{ width: 11, height: 11 }} /> : <Play style={{ width: 11, height: 11 }} />}
       </button>
+      {!audioIsLocal && (
+        <button
+          onClick={handleAudioCache}
+          disabled={audioCaching}
+          className="nodrag p-1.5 rounded transition-all"
+          style={{ background: "var(--c-surface)", border: "1px solid var(--c-bd2)", color: "var(--c-t4)", cursor: audioCaching ? "not-allowed" : "pointer" }}
+          title={audioCaching ? `缓存中 ${audioCacheProgress}%` : "缓存到本地"}
+        >
+          {audioCaching ? <Loader2 style={{ width: 10, height: 10 }} className="animate-spin" /> : <HardDriveDownload style={{ width: 10, height: 10 }} />}
+        </button>
+      )}
       <button
         onClick={() => updateNodeData(id, { url: undefined, name: undefined, duration: undefined, storageKey: undefined })}
         className="nodrag p-1.5 rounded transition-all"
@@ -444,7 +483,7 @@ export const AudioNode = memo(function AudioNode({ id, selected, data }: Props) 
       </button>
       <audio
         ref={audioRef}
-        src={payload.url}
+        src={audioBlobUrl ?? payload.url}
         onEnded={() => setIsPlaying(false)}
         onLoadedMetadata={(e) => update("duration", (e.target as HTMLAudioElement).duration)}
         style={{ display: "none" }}
