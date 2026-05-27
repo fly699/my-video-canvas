@@ -1,10 +1,18 @@
-import { memo, useCallback, useRef, useState } from "react";
+import { memo, useCallback, useMemo, useRef, useState } from "react";
+import { useShallow } from "zustand/react/shallow";
 import { BaseNode } from "../BaseNode";
 import { useCanvasStore } from "../../../hooks/useCanvasStore";
-import type { CharacterNodeData, CharacterKind } from "../../../../../shared/types";
+import type { CharacterNodeData, CharacterKind, StoryboardNodeData } from "../../../../../shared/types";
 import { trpc } from "@/lib/trpc";
 import { toast } from "sonner";
-import { User, Mountain, Upload, X, Image as ImageIcon, Loader2 } from "lucide-react";
+import { User, Mountain, Upload, X, Image as ImageIcon, Loader2, Plus, Search } from "lucide-react";
+import {
+  characterToPromptInjection,
+  CHARACTER_PLACEHOLDERS,
+  DEFAULT_PERSON_TEMPLATE,
+  DEFAULT_SCENE_TEMPLATE,
+} from "../../../lib/characterPrompt";
+import { CharacterConsistencyPanel, type ConsistencyResult } from "../CharacterConsistencyPanel";
 
 interface Props {
   id: string;
@@ -64,6 +72,80 @@ export const CharacterNode = memo(function CharacterNode({ id, selected, data }:
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const kind: CharacterKind = payload.characterKind ?? "person";
+
+  // ── Connected storyboards with generated images (downstream of this character)
+  // Select FLAT tuples (id, imageUrl, sceneNumber) — useShallow uses Object.is
+  // element-wise, so primitives stay equal across renders. Selecting an array
+  // of fresh `{id, imageUrl, sceneNumber}` literals (the obvious shape) defeats
+  // useShallow because each object literal has a new reference every call.
+  // Rebuild the object form inside useMemo gated on the tuple array.
+  const connectedTuples = useCanvasStore(
+    useShallow((s) => {
+      const outgoing = s.edges.filter((e) => e.source === id);
+      const flat: Array<string | number | undefined> = [];
+      for (const edge of outgoing) {
+        const t = s.nodes.find((n) => n.id === edge.target && n.data.nodeType === "storyboard");
+        if (!t) continue;
+        const p = t.data.payload as StoryboardNodeData;
+        if (p.imageUrl) flat.push(t.id, p.imageUrl, p.sceneNumber);
+      }
+      return flat;
+    }),
+  );
+  const connectedStoryboards = useMemo(() => {
+    const out: Array<{ id: string; imageUrl: string; sceneNumber?: number | string }> = [];
+    for (let i = 0; i < connectedTuples.length; i += 3) {
+      out.push({
+        id: connectedTuples[i] as string,
+        imageUrl: connectedTuples[i + 1] as string,
+        sceneNumber: connectedTuples[i + 2] as number | string | undefined,
+      });
+    }
+    return out;
+  }, [connectedTuples]);
+
+  const [consistencyOpen, setConsistencyOpen] = useState(false);
+  const [consistencyResult, setConsistencyResult] = useState<ConsistencyResult | null>(null);
+  const [consistencyScenes, setConsistencyScenes] = useState<{ ids: string[]; urls: string[] }>({ ids: [], urls: [] });
+
+  const consistencyMut = trpc.scripts.checkCharacterConsistency.useMutation({
+    onSuccess: (result) => {
+      setConsistencyResult(result as ConsistencyResult);
+      setConsistencyOpen(true);
+    },
+    onError: (err) => {
+      toast.error("一致性审查失败：" + err.message);
+    },
+  });
+
+  const profileText = useMemo(() => characterToPromptInjection(payload), [payload]);
+
+  const handleCheckConsistency = () => {
+    if (connectedStoryboards.length < 2) {
+      toast.error("至少需要连接 2 个已生成图像的分镜节点");
+      return;
+    }
+    // Sort by sceneNumber so the LLM sees them in narrative order
+    const sorted = [...connectedStoryboards].sort((a, b) => {
+      const sa = a.sceneNumber;
+      const sb = b.sceneNumber;
+      if (typeof sa === "number" && typeof sb === "number") return sa - sb;
+      if (typeof sa === "number") return -1;
+      if (typeof sb === "number") return 1;
+      return String(sa ?? "").localeCompare(String(sb ?? ""));
+    });
+    const ids = sorted.map((s) => s.id);
+    const urls = sorted.map((s) => s.imageUrl).slice(0, 10);
+    setConsistencyScenes({ ids: ids.slice(0, 10), urls });
+    consistencyMut.mutate({
+      characterName: payload.name || payload.sceneName || undefined,
+      characterKind: kind,
+      profileText: profileText.length > 0 ? profileText : undefined,
+      imageUrls: urls,
+    });
+  };
+
+  const canCheck = connectedStoryboards.length >= 2;
 
   const update = useCallback(
     (key: keyof CharacterNodeData, value: unknown) => updateNodeData(id, { [key]: value }),
@@ -134,6 +216,15 @@ export const CharacterNode = memo(function CharacterNode({ id, selected, data }:
 
   return (
     <BaseNode id={id} selected={selected} nodeType="character" title={data.title} minHeight={160} resizable heroMedia={heroMedia}>
+      {consistencyOpen && consistencyResult && (
+        <CharacterConsistencyPanel
+          characterName={payload.name || payload.sceneName}
+          sceneNodeIds={consistencyScenes.ids}
+          imageUrls={consistencyScenes.urls}
+          result={consistencyResult}
+          onClose={() => setConsistencyOpen(false)}
+        />
+      )}
       <div className="flex flex-col gap-3 p-3.5">
 
         {/* Kind toggle */}
@@ -300,8 +391,34 @@ export const CharacterNode = memo(function CharacterNode({ id, selected, data }:
                 value={payload.personality ?? ""}
                 onChange={(e) => update("personality", e.target.value)}
                 rows={2}
-                
+
                 style={{ ...fieldStyle, resize: "none", lineHeight: 1.6 }}
+                onFocus={(e) => { e.currentTarget.style.borderColor = BORDER_ACCENT; }}
+                onBlur={(e) => { e.currentTarget.style.borderColor = BORDER_DEFAULT; }}
+              />
+            </div>
+            {/* ── New: outfit & signature (Character Bible essentials) ── */}
+            <div>
+              <label style={labelStyle}>服装 (Outfit)</label>
+              <textarea className="nodrag nowheel"
+                placeholder="黑色西装 + 红色领带 / 米色风衣 + 牛仔裤..."
+                value={payload.outfit ?? ""}
+                onChange={(e) => update("outfit", e.target.value)}
+                rows={2}
+                style={{ ...fieldStyle, resize: "none", lineHeight: 1.6 }}
+                onFocus={(e) => { e.currentTarget.style.borderColor = BORDER_ACCENT; }}
+                onBlur={(e) => { e.currentTarget.style.borderColor = BORDER_DEFAULT; }}
+              />
+            </div>
+            <div>
+              <label style={labelStyle}>标志性 / 特征物件</label>
+              <input
+                type="text"
+                placeholder="银怀表、左眼疤痕、铜色头发、墨镜..."
+                value={payload.signature ?? ""}
+                onChange={(e) => update("signature", e.target.value)}
+                className="nodrag"
+                style={fieldStyle}
                 onFocus={(e) => { e.currentTarget.style.borderColor = BORDER_ACCENT; }}
                 onBlur={(e) => { e.currentTarget.style.borderColor = BORDER_DEFAULT; }}
               />
@@ -359,6 +476,70 @@ export const CharacterNode = memo(function CharacterNode({ id, selected, data }:
           </>
         )}
 
+        {/* ── Additional reference images (multi-view) ──
+            Up to 4 alternate views for better identity preservation. They're
+            stored for forward compatibility with multi-image conditioning;
+            downstream nodes consume only the primary referenceImageUrl today. */}
+        {selected && (
+          <AdditionalImagesSection
+            urls={payload.additionalImageUrls ?? []}
+            onChange={(urls) => update("additionalImageUrls", urls.length > 0 ? urls : undefined)}
+            accent={accent}
+          />
+        )}
+
+        {/* ── Live prompt preview + customizable template ──
+            Shows exactly what gets injected into downstream nodes. Users who
+            want fine-grained control can override the default template with
+            their own placeholder string. */}
+        {selected && (
+          <PromptPreviewSection
+            payload={payload}
+            onChange={(template) => update("customPromptTemplate", template || undefined)}
+          />
+        )}
+
+        {/* ── Character Consistency Validator ──
+            Surface only when at least 2 downstream storyboards have generated
+            images. Calls a vision LLM (claude-sonnet-4-6) to score
+            facial/hairstyle/outfit/age/signature consistency. */}
+        {selected && (
+          <div>
+            <button
+              onClick={handleCheckConsistency}
+              disabled={!canCheck || consistencyMut.isPending}
+              className="nodrag flex items-center justify-center gap-2 w-full py-2 rounded-lg transition-all"
+              style={{
+                background: canCheck && !consistencyMut.isPending ? accentA(0.18) : "var(--c-input)",
+                border: `1px solid ${canCheck && !consistencyMut.isPending ? accentA(0.45) : "var(--c-bd2)"}`,
+                color: canCheck && !consistencyMut.isPending ? accent : "var(--c-t4)",
+                cursor: canCheck && !consistencyMut.isPending ? "pointer" : "not-allowed",
+                fontSize: 12,
+                fontWeight: 600,
+              }}
+              title={canCheck
+                ? `检查 ${connectedStoryboards.length} 个分镜的视觉一致性`
+                : "请先把此角色连接到至少 2 个已生成图像的分镜节点"}
+            >
+              {consistencyMut.isPending ? (
+                <Loader2 style={{ width: 13, height: 13 }} className="animate-spin" />
+              ) : (
+                <Search style={{ width: 13, height: 13 }} />
+              )}
+              {consistencyMut.isPending
+                ? "AI 审查中…"
+                : canCheck
+                  ? `🔍 检查一致性（${connectedStoryboards.length} 个分镜）`
+                  : "🔍 检查一致性（需 ≥2 个分镜）"}
+            </button>
+            {!canCheck && (
+              <p style={{ margin: "6px 0 0", fontSize: 10.5, color: "var(--c-t4)", lineHeight: 1.5 }}>
+                把此角色节点连接到多个 storyboard 分镜并生成图像，AI 会分析五官 / 发型 / 服装 / 年龄 / 标志性特征的连贯性
+              </p>
+            )}
+          </div>
+        )}
+
         {/* Notes (shared) */}
         {selected && (
           <div>
@@ -368,7 +549,7 @@ export const CharacterNode = memo(function CharacterNode({ id, selected, data }:
               value={payload.notes ?? ""}
               onChange={(e) => update("notes", e.target.value)}
               rows={2}
-              
+
               style={{ ...fieldStyle, resize: "none", lineHeight: 1.6 }}
               onFocus={(e) => { e.currentTarget.style.borderColor = BORDER_ACCENT; }}
               onBlur={(e) => { e.currentTarget.style.borderColor = BORDER_DEFAULT; }}
@@ -380,3 +561,246 @@ export const CharacterNode = memo(function CharacterNode({ id, selected, data }:
     </BaseNode>
   );
 });
+
+// ── Additional reference images (multi-view) ───────────────────────────
+// Up to 4 alternate views. Each slot is a square with thumbnail + delete X
+// on hover; an empty slot opens a file picker. Uploads reuse the same
+// trpc.upload.uploadImage mutation as the primary reference image.
+const MAX_ADDITIONAL_IMAGES = 4;
+function AdditionalImagesSection({
+  urls,
+  onChange,
+  accent,
+}: {
+  urls: string[];
+  onChange: (urls: string[]) => void;
+  accent: string;
+}) {
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const [uploadingIdx, setUploadingIdx] = useState<number | null>(null);
+  const uploadMut = trpc.upload.uploadImage.useMutation({
+    onSuccess: (result) => {
+      if (uploadingIdx === null) return;
+      const next = urls.slice();
+      next[uploadingIdx] = result.url;
+      onChange(next);
+      setUploadingIdx(null);
+    },
+    onError: (err) => {
+      toast.error(`备用视角上传失败：${err.message}`);
+      setUploadingIdx(null);
+    },
+  });
+  const handlePick = (slotIdx: number) => {
+    setUploadingIdx(slotIdx);
+    fileInputRef.current?.click();
+  };
+  const handleFile = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) { setUploadingIdx(null); return; }
+    if (file.size > 16 * 1024 * 1024) {
+      toast.error("图片不能超过 16MB");
+      setUploadingIdx(null);
+      return;
+    }
+    const reader = new FileReader();
+    reader.onload = () => {
+      const base64 = (reader.result as string).split(",")[1];
+      uploadMut.mutate({ base64, mimeType: file.type, filename: file.name });
+    };
+    reader.readAsDataURL(file);
+    e.target.value = "";
+  };
+  const handleRemove = (slotIdx: number) => {
+    const next = urls.slice();
+    next.splice(slotIdx, 1);
+    onChange(next);
+  };
+  return (
+    <div>
+      <label style={{ fontSize: 10.5, fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.06em", color: "var(--c-t4)", display: "block", marginBottom: 5 }}>
+        备用视角参考图 ({urls.length}/{MAX_ADDITIONAL_IMAGES})
+      </label>
+      <div className="grid grid-cols-4 gap-1.5 nodrag">
+        {Array.from({ length: MAX_ADDITIONAL_IMAGES }).map((_, idx) => {
+          const url = urls[idx];
+          const isLoading = uploadingIdx === idx && uploadMut.isPending;
+          if (url) {
+            return (
+              <div
+                key={idx}
+                className="group/slot relative"
+                style={{
+                  aspectRatio: "1",
+                  borderRadius: 6,
+                  overflow: "hidden",
+                  border: `1px solid ${accent}30`,
+                  background: "var(--c-input)",
+                }}
+              >
+                <img
+                  src={url.startsWith("http") ? `/api/image-proxy?url=${encodeURIComponent(url)}` : url}
+                  alt={`视角 ${idx + 1}`}
+                  style={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }}
+                  onError={(e) => { (e.currentTarget as HTMLImageElement).style.opacity = "0.3"; }}
+                />
+                <button
+                  onClick={() => handleRemove(idx)}
+                  className="opacity-0 group-hover/slot:opacity-100"
+                  style={{
+                    position: "absolute", top: 2, right: 2,
+                    width: 16, height: 16, padding: 0, borderRadius: "50%",
+                    background: "oklch(0 0 0 / 0.6)", border: "none",
+                    color: "white", cursor: "pointer", transition: "opacity 150ms ease",
+                    display: "flex", alignItems: "center", justifyContent: "center",
+                  }}
+                >
+                  <X style={{ width: 9, height: 9 }} />
+                </button>
+              </div>
+            );
+          }
+          // Empty slot — click to upload (only the next-available slot is enabled
+          // to keep the gallery dense)
+          const isNextSlot = idx === urls.length;
+          return (
+            <button
+              key={idx}
+              onClick={() => isNextSlot && handlePick(urls.length)}
+              disabled={!isNextSlot || isLoading}
+              style={{
+                aspectRatio: "1",
+                borderRadius: 6,
+                background: isNextSlot ? "var(--c-input)" : "transparent",
+                border: `1px dashed ${isNextSlot ? "var(--c-bd3)" : "var(--c-bd1)"}`,
+                cursor: isNextSlot ? "pointer" : "not-allowed",
+                opacity: isNextSlot ? 1 : 0.4,
+                display: "flex", alignItems: "center", justifyContent: "center",
+                color: "var(--c-t4)",
+                transition: "border-color 150ms ease",
+              }}
+              onMouseEnter={(e) => {
+                if (isNextSlot) (e.currentTarget as HTMLElement).style.borderColor = accent;
+              }}
+              onMouseLeave={(e) => {
+                if (isNextSlot) (e.currentTarget as HTMLElement).style.borderColor = "var(--c-bd3)";
+              }}
+            >
+              {isLoading
+                ? <Loader2 className="animate-spin" style={{ width: 14, height: 14 }} />
+                : <Plus style={{ width: 14, height: 14 }} />}
+            </button>
+          );
+        })}
+      </div>
+      <input
+        ref={fileInputRef}
+        type="file"
+        accept="image/*"
+        style={{ display: "none" }}
+        onChange={handleFile}
+      />
+    </div>
+  );
+}
+
+// ── Live prompt preview + customizable template ───────────────────────
+// Shows users exactly what's injected into downstream prompts (the result of
+// characterToPromptInjection on the current payload). A collapsible advanced
+// editor lets power users override the template with placeholders.
+function PromptPreviewSection({
+  payload,
+  onChange,
+}: {
+  payload: CharacterNodeData;
+  onChange: (template: string) => void;
+}) {
+  const [editing, setEditing] = useState(false);
+  const preview = characterToPromptInjection(payload);
+  const kind = payload.characterKind ?? "person";
+  const defaultTemplate = kind === "scene" ? DEFAULT_SCENE_TEMPLATE : DEFAULT_PERSON_TEMPLATE;
+  const usingCustom = !!payload.customPromptTemplate;
+  return (
+    <div>
+      <div className="flex items-center justify-between" style={{ marginBottom: 5 }}>
+        <label style={{ fontSize: 10.5, fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.06em", color: "var(--c-t4)" }}>
+          Prompt 注入预览
+        </label>
+        <button
+          onClick={() => setEditing((v) => !v)}
+          className="nodrag"
+          style={{
+            padding: "1px 7px", fontSize: 10, borderRadius: 99,
+            background: "transparent", border: "1px solid var(--c-bd2)",
+            color: usingCustom ? "oklch(0.78 0.18 285)" : "var(--c-t4)",
+            cursor: "pointer",
+          }}
+        >
+          {editing ? "完成" : (usingCustom ? "自定义模板" : "默认模板")}
+        </button>
+      </div>
+      <div
+        style={{
+          padding: "8px 10px",
+          fontSize: 11,
+          lineHeight: 1.55,
+          background: "var(--c-input)",
+          border: "1px dashed var(--c-bd2)",
+          borderRadius: 6,
+          color: preview.length > 0 ? "var(--c-t2)" : "var(--c-t4)",
+          fontFamily: "'JetBrains Mono', monospace",
+          fontStyle: preview.length === 0 ? "italic" : "normal",
+          whiteSpace: "pre-wrap",
+          wordBreak: "break-word",
+        }}
+      >
+        {preview.length > 0 ? `[${preview}]` : "(填写字段后将显示注入到下游的 prompt 块)"}
+      </div>
+      {editing && (
+        <div className="nodrag" style={{ marginTop: 6 }}>
+          <textarea
+            className="nodrag nowheel"
+            placeholder={defaultTemplate}
+            value={payload.customPromptTemplate ?? ""}
+            onChange={(e) => onChange(e.target.value)}
+            rows={3}
+            style={{
+              width: "100%",
+              padding: "7px 10px",
+              fontSize: 11,
+              background: "var(--c-input)",
+              border: "1px solid var(--c-bd2)",
+              borderRadius: 6,
+              color: "var(--c-t1)",
+              outline: "none",
+              fontFamily: "'JetBrains Mono', monospace",
+              lineHeight: 1.5,
+              resize: "vertical",
+            }}
+          />
+          <div style={{ fontSize: 10, color: "var(--c-t4)", marginTop: 4, lineHeight: 1.5 }}>
+            可用占位符（未填字段会被自动 trim）：
+            <div style={{ display: "flex", flexWrap: "wrap", gap: 4, marginTop: 3 }}>
+              {CHARACTER_PLACEHOLDERS.map((p) => (
+                <code
+                  key={p}
+                  onClick={() => onChange((payload.customPromptTemplate ?? "") + `{${p}}`)}
+                  style={{
+                    fontSize: 10,
+                    padding: "1px 5px",
+                    borderRadius: 3,
+                    background: "var(--c-surface)",
+                    color: "var(--c-t3)",
+                    cursor: "pointer",
+                  }}
+                >
+                  {`{${p}}`}
+                </code>
+              ))}
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}

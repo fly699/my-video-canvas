@@ -30,7 +30,7 @@ import {
   addChatMessagePair,
   clearChatMessages,
 } from "../db";
-import { storagePut } from "../storage";
+import { storagePut, resolveToAbsoluteUrl } from "../storage";
 import { invokeLLM, extractTextContent } from "../_core/llm";
 import { generateImage } from "../_core/imageGeneration";
 import { generateComfyImage, generateComfyVideo, fetchComfyModels, analyzeWorkflow, executeCustomWorkflow, uploadImageForWorkflow } from "../_core/comfyui";
@@ -907,6 +907,144 @@ score 为 0-100 整数，issues 数组最多 8 条，每条包含 type/line/sugg
       const score = Number.isFinite(Number(parsed.score)) ? Math.round(Number(parsed.score)) : 0;
       const issues = Array.isArray(parsed.issues) ? parsed.issues : [];
       return { score, issues };
+      });
+    }),
+
+  /**
+   * Character consistency check — given a CharacterNode's profile + a set
+   * of generated storyboard images, ask a vision-capable LLM to score how
+   * consistent the same character looks across them and surface specific
+   * differences (hairstyle / outfit / facial features / age / other).
+   *
+   * Returns structured JSON the client renders as an inline review panel:
+   * - overallScore: 0-100
+   * - summary: one-paragraph human-readable verdict
+   * - issues[]: per-scene problems with sceneIndex (0-based into imageUrls)
+   *   so the client can highlight the offending storyboard node
+   * - recommendations[]: actionable bullets the user can follow up on
+   */
+  checkCharacterConsistency: protectedProcedure
+    .input(z.object({
+      characterName: z.string().max(120).optional(),
+      characterKind: z.enum(["person", "scene"]).default("person"),
+      profileText: z.string().max(1500).optional(),  // pre-rendered profile, see lib/characterPrompt.ts
+      imageUrls: z.array(z.string().min(1).max(2048)).min(2).max(10),
+      model: z.string().optional(),
+    }))
+    .mutation(async ({ ctx, input }) => {
+      await assertWhitelisted(ctx);
+      return dedupe("scripts.checkCharacterConsistency", ctx.user.id, input, async () => {
+        // LLM providers (Anthropic / OpenAI / Gemini) require absolute HTTPS
+        // URLs in image_url fields; our internal /manus-storage/{key} proxy
+        // paths are server-relative and would return 422. Resolve up front.
+        const absoluteUrls: string[] = [];
+        for (const u of input.imageUrls) {
+          try {
+            absoluteUrls.push(await resolveToAbsoluteUrl(u));
+          } catch (err) {
+            throw new TRPCError({
+              code: "BAD_REQUEST",
+              message: `图像 URL 无法解析为绝对路径：${u.slice(0, 80)}（${err instanceof Error ? err.message : "未知错误"}）`,
+            });
+          }
+        }
+
+        const subjectLabel = input.characterKind === "scene" ? "场景" : "角色";
+        const profile = input.profileText?.trim()
+          ? `\n\n${subjectLabel}档案：\n${input.profileText.trim()}`
+          : "";
+
+        const systemPrompt = `你是专业的电影连贯性审查员。给你 ${absoluteUrls.length} 张分镜画面，按顺序索引 0 到 ${absoluteUrls.length - 1}。`
+          + `你需要审查同一${subjectLabel}"${input.characterName ?? "(未命名)"}"在这些画面中的视觉一致性。${profile}\n\n`
+          + `检查维度（按重要性）：\n`
+          + `1. 五官/面部特征（脸型、眼睛、鼻子、嘴）\n`
+          + `2. 发型（长度、颜色、风格）\n`
+          + `3. 服装（颜色、款式、配饰）\n`
+          + `4. 年龄/体型\n`
+          + `5. 标志性特征（疤痕、眼镜、纹身等）\n\n`
+          + `仅输出合法 JSON，无 markdown 代码块，无解释文字：\n`
+          + `{"overallScore":78,"summary":"主角整体形象保持一致，但分镜 3 中发型有明显变化","issues":[{"sceneIndices":[2],"aspect":"hairstyle","severity":"medium","description":"分镜 3 中头发从长发变成了短发"},{"sceneIndices":[1,4],"aspect":"outfit","severity":"low","description":"分镜 2 和 5 的领带颜色不同"}],"recommendations":["重新生成分镜 3，prompt 中明确指定『长发』","在 prompt 中固定服装『黑色西装+红色领带』"]}\n\n`
+          + `约束：\n`
+          + `- overallScore 0-100 整数（100=完全一致）\n`
+          + `- summary 一段话，不超 100 字\n`
+          + `- issues 至多 8 条；sceneIndices 是 0-based 数组（指向输入图片顺序）；aspect 取值 hairstyle/outfit/facial/age/signature/other；severity 取值 low/medium/high\n`
+          + `- recommendations 至多 5 条，每条具体可操作`;
+
+        const response = await invokeLLM({
+          messages: [
+            { role: "system" as const, content: systemPrompt },
+            {
+              role: "user" as const,
+              content: [
+                { type: "text" as const, text: `请审查以下 ${absoluteUrls.length} 张分镜，按索引 0..${absoluteUrls.length - 1} 顺序：` },
+                ...absoluteUrls.map((url) => ({
+                  type: "image_url" as const,
+                  image_url: { url, detail: "high" as const },
+                })),
+              ],
+            },
+          ],
+          model: input.model ?? "claude-sonnet-4-6",
+          maxTokens: 3000,  // Chinese descriptions encode ~2 tok/char; 8 issues
+          // + 5 recs + 100-char summary worst-case ≈ 1470 tokens — at the
+          // previous 1500 ceiling responses got truncated and JSON.parse failed.
+        });
+        const text = extractTextContent(response);
+        const jsonMatch = text.match(/\{[\s\S]*\}/);
+        if (!jsonMatch) {
+          throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "AI 未返回有效 JSON" });
+        }
+        let parsed: {
+          overallScore?: unknown;
+          summary?: unknown;
+          issues?: unknown;
+          recommendations?: unknown;
+        };
+        try { parsed = JSON.parse(jsonMatch[0]); } catch {
+          throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "JSON 解析失败" });
+        }
+        // Normalize — survive minor LLM schema drift (sceneIndex vs sceneIndices,
+        // numeric strings, missing fields). overallScore distinguishes
+        // "missing field" (-1, surfaced as "未评分") from a legitimate 0,
+        // so the UI can warn instead of silently rendering "0 = terrible".
+        const rawScore = parsed.overallScore;
+        const overallScore = typeof rawScore === "number" && Number.isFinite(rawScore)
+          ? Math.max(0, Math.min(100, Math.round(rawScore)))
+          : typeof rawScore === "string" && /^-?\d+(?:\.\d+)?$/.test(rawScore.trim())
+            ? Math.max(0, Math.min(100, Math.round(Number(rawScore))))
+            : -1;  // sentinel: LLM omitted the field
+        const summary = typeof parsed.summary === "string" ? parsed.summary.slice(0, 400) : "";
+        const rawIssues = Array.isArray(parsed.issues) ? parsed.issues : [];
+        const issues = rawIssues.slice(0, 8).map((it) => {
+          const obj = it as Record<string, unknown>;
+          // Accept both sceneIndices (array) and sceneIndex (single number) for resilience
+          const idxs = Array.isArray(obj.sceneIndices)
+            ? obj.sceneIndices
+            : typeof obj.sceneIndex === "number" ? [obj.sceneIndex] : [];
+          const sceneIndices = idxs
+            .map((x) => Number(x))
+            .filter((n) => Number.isInteger(n) && n >= 0 && n < absoluteUrls.length);
+          const aspect = typeof obj.aspect === "string" ? obj.aspect : "other";
+          const sev = typeof obj.severity === "string" ? obj.severity : "medium";
+          return {
+            sceneIndices,
+            aspect: ["hairstyle", "outfit", "facial", "age", "signature", "other"].includes(aspect) ? aspect : "other",
+            severity: ["low", "medium", "high"].includes(sev) ? sev : "medium",
+            description: typeof obj.description === "string" ? obj.description.slice(0, 300) : "",
+          };
+        }).filter((it) => it.sceneIndices.length > 0 && it.description.length > 0);
+        const rawRecs = Array.isArray(parsed.recommendations) ? parsed.recommendations : [];
+        const recommendations = rawRecs.slice(0, 5)
+          .filter((x): x is string => typeof x === "string" && x.trim().length > 0)
+          .map((x) => x.slice(0, 300));
+
+        writeAuditLog({
+          ctx,
+          action: "image_gen",  // closest existing audit kind (vision LLM call)
+          detail: { kind: "character_consistency", imageCount: absoluteUrls.length, score: overallScore },
+        });
+
+        return { overallScore, summary, issues, recommendations };
       });
     }),
 
