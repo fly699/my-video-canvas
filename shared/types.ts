@@ -212,6 +212,8 @@ export interface CharacterNodeData {
   age?: string;
   appearance?: string;
   personality?: string;
+  outfit?: string;             // 服装（如：黑色西装 + 红色领带）
+  signature?: string;          // 标志性物件 / 特征（如：银怀表 / 左眼疤痕）
   // Scene (场景)
   sceneName?: string;
   locationType?: string;
@@ -222,6 +224,21 @@ export interface CharacterNodeData {
   referenceImageUrl?: string;
   referenceStorageKey?: string;
   notes?: string;
+  /**
+   * Multi-angle reference images. Beyond the main referenceImageUrl, users
+   * can attach up to 4 alternate views (side / back / close-up / outfit
+   * detail) — Higgsfield Soul / IP-Adapter-style models can use the extra
+   * views for better identity preservation. Downstream nodes only consume
+   * referenceImageUrl today; the extras are passed through for forward
+   * compatibility with multi-image conditioning.
+   */
+  additionalImageUrls?: string[];
+  /**
+   * Optional user-authored template that overrides the auto-generated
+   * prompt injection. Supports the same `{name}`, `{outfit}` etc.
+   * placeholders documented in lib/characterPrompt.ts.
+   */
+  customPromptTemplate?: string;
 }
 
 export type PostProcessOp = "upscale2x" | "upscale4x" | "denoise" | "sharpen" | "fps2x";

@@ -1,10 +1,12 @@
 import { memo, useRef, useState } from "react";
 import { BaseNode } from "../BaseNode";
 import type { AssetNodeData } from "../../../../../shared/types";
-import { FileVideo, FileImage, FileAudio, File, ExternalLink, Upload, RefreshCw, Loader2 } from "lucide-react";
+import { FileVideo, FileImage, FileAudio, File, ExternalLink, Upload, RefreshCw, Loader2, HardDriveDownload } from "lucide-react";
 import { useCanvasStore } from "../../../hooks/useCanvasStore";
 import { trpc } from "@/lib/trpc";
 import { toast } from "sonner";
+import { useLocalMedia } from "@/lib/useLocalMedia";
+import { cacheMedia } from "@/lib/mediaCache";
 
 interface Props {
   id: string;
@@ -51,6 +53,26 @@ export const AssetNode = memo(function AssetNode({ id, selected, data }: Props) 
     reader.readAsDataURL(file);
   };
 
+  // ── Local media cache (IndexedDB) ────────────────────────────────────────
+  const mediaType = payload.type === "video" ? "video" : payload.type === "audio" ? "audio" : "image";
+  const { isLocal, blobUrl, downloadedAt, refresh: refreshLocalCache } = useLocalMedia(payload.url);
+  const [assetCaching, setAssetCaching] = useState(false);
+  const [assetCacheProgress, setAssetCacheProgress] = useState(0);
+  const handleAssetCache = async (e: React.MouseEvent) => {
+    e.preventDefault(); e.stopPropagation();
+    if (!payload.url || assetCaching) return;
+    setAssetCaching(true); setAssetCacheProgress(0);
+    try {
+      await cacheMedia(payload.url, mediaType, (loaded, total) => {
+        if (total > 0) setAssetCacheProgress(Math.round(loaded / total * 100));
+      });
+      refreshLocalCache();
+      toast.success("已缓存到本地");
+    } catch (err) {
+      toast.error("缓存失败：" + (err instanceof Error ? err.message : String(err)));
+    } finally { setAssetCaching(false); }
+  };
+
   const renderPreview = () => {
     if (!payload.url) {
       return (
@@ -74,11 +96,29 @@ export const AssetNode = memo(function AssetNode({ id, selected, data }: Props) 
           className="relative rounded-lg overflow-hidden group/img"
           style={{ height: 140, border: "1px solid var(--c-bd2)" }}
         >
-          <img src={payload.url} alt={payload.name} className="w-full h-full object-cover" draggable={false} />
+          {isLocal && (
+            <div
+              title={`已缓存到本地（${new Date(downloadedAt).toLocaleString("zh-CN")}）`}
+              className="absolute top-1.5 left-1.5 z-10 w-2.5 h-2.5 rounded-full pointer-events-none"
+              style={{ background: "oklch(0.72 0.18 155)", boxShadow: "0 0 0 2.5px oklch(0.72 0.18 155 / 0.35)" }}
+            />
+          )}
+          <img src={blobUrl ?? payload.url} alt={payload.name} className="w-full h-full object-cover" draggable={false} />
           <div
             className="absolute inset-0 opacity-0 group-hover/img:opacity-100 transition-opacity flex items-end justify-end p-2"
             style={{ background: "oklch(0 0 0 / 0.40)" }}
           >
+            {!isLocal && (
+              <button
+                onClick={handleAssetCache}
+                disabled={assetCaching}
+                className="nodrag w-6 h-6 rounded-md flex items-center justify-center mr-1"
+                style={{ background: "oklch(0 0 0 / 0.60)", color: "oklch(0.72 0.18 155)" }}
+                title={assetCaching ? `缓存中 ${assetCacheProgress}%` : "缓存到本地"}
+              >
+                {assetCaching ? <Loader2 className="w-3 h-3 animate-spin" /> : <HardDriveDownload className="w-3 h-3" />}
+              </button>
+            )}
             <button
               onClick={(e) => { e.preventDefault(); e.stopPropagation(); fileInputRef.current?.click(); }}
               disabled={uploading}
@@ -105,10 +145,27 @@ export const AssetNode = memo(function AssetNode({ id, selected, data }: Props) 
     if (payload.type === "video") {
       return (
         <div
-          className="rounded-lg overflow-hidden"
+          className="relative rounded-lg overflow-hidden"
           style={{ border: "1px solid var(--c-bd2)" }}
         >
-          <video src={payload.url} controls className="w-full nodrag" style={{ maxHeight: 160, display: "block" }} />
+          {isLocal && (
+            <div
+              title={`已缓存到本地（${new Date(downloadedAt).toLocaleString("zh-CN")}）`}
+              className="absolute top-1.5 left-1.5 z-10 w-2.5 h-2.5 rounded-full pointer-events-none"
+              style={{ background: "oklch(0.72 0.18 155)", boxShadow: "0 0 0 2.5px oklch(0.72 0.18 155 / 0.35)" }}
+            />
+          )}
+          <video src={blobUrl ?? payload.url} controls className="w-full nodrag" style={{ maxHeight: 160, display: "block" }} />
+          {!isLocal && (
+            <button
+              onClick={handleAssetCache}
+              disabled={assetCaching}
+              className="nodrag absolute bottom-1.5 right-1.5 flex items-center gap-1 px-2 py-1 rounded text-[10px] font-medium"
+              style={{ background: "oklch(0 0 0 / 0.65)", border: "1px solid oklch(0.72 0.18 155 / 0.4)", color: "oklch(0.72 0.18 155)" }}
+            >
+              {assetCaching ? <><Loader2 className="w-2.5 h-2.5 animate-spin" />{assetCacheProgress > 0 ? ` ${assetCacheProgress}%` : " 缓存中"}</> : <><HardDriveDownload className="w-2.5 h-2.5" /> 缓存</>}
+            </button>
+          )}
         </div>
       );
     }
@@ -133,6 +190,22 @@ export const AssetNode = memo(function AssetNode({ id, selected, data }: Props) 
             </p>
           )}
         </div>
+        {!isLocal ? (
+          <button
+            onClick={handleAssetCache}
+            disabled={assetCaching}
+            className="nodrag"
+            title={assetCaching ? `缓存中 ${assetCacheProgress}%` : "缓存到本地"}
+            style={{ background: "none", border: "none", padding: 0, cursor: assetCaching ? "not-allowed" : "pointer" }}
+          >
+            {assetCaching ? <Loader2 className="w-3.5 h-3.5 animate-spin" style={{ color: "var(--c-t4)" }} /> : <HardDriveDownload className="w-3.5 h-3.5" style={{ color: "var(--c-t4)" }} />}
+          </button>
+        ) : (
+          <div
+            title={`已缓存到本地（${new Date(downloadedAt).toLocaleString("zh-CN")}）`}
+            style={{ width: 8, height: 8, borderRadius: "50%", background: "oklch(0.72 0.18 155)", boxShadow: "0 0 0 2px oklch(0.72 0.18 155 / 0.35)", flexShrink: 0 }}
+          />
+        )}
         <a href={payload.url} target="_blank" rel="noopener noreferrer" className="nodrag">
           <ExternalLink className="w-3.5 h-3.5" style={{ color: "var(--c-t4)" }} />
         </a>
@@ -149,7 +222,7 @@ export const AssetNode = memo(function AssetNode({ id, selected, data }: Props) 
     if (payload.url && payload.type === "image") {
       return (
         <img
-          src={payload.url}
+          src={blobUrl ?? payload.url}
           style={{ width: "100%", maxHeight: 240, objectFit: "cover", display: "block" }}
           draggable={false}
           alt={payload.name}
@@ -159,7 +232,7 @@ export const AssetNode = memo(function AssetNode({ id, selected, data }: Props) 
     if (payload.url && payload.type === "video") {
       return (
         <video
-          src={payload.url}
+          src={blobUrl ?? payload.url}
           controls
           style={{ width: "100%", maxHeight: 200, display: "block" }}
           className="nodrag"

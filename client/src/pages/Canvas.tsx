@@ -30,6 +30,7 @@ import { TimelinePanel } from "../components/canvas/TimelinePanel";
 import { isConnectionValid } from "../lib/connectionRules";
 import { BeginnerGuide, ConnectionHintsPanel } from "../components/canvas/BeginnerGuide";
 import { HelpPanel } from "../components/canvas/HelpPanel";
+import { NarrativeArcPicker } from "../components/canvas/NarrativeArcPicker";
 import { WorkflowStatusPanel } from "../components/canvas/WorkflowStatusPanel";
 import { ThemeSwitcher } from "../components/canvas/ThemeSwitcher";
 import { CanvasBgPicker, loadCanvasBg, type CanvasBg } from "../components/canvas/CanvasBgPicker";
@@ -74,6 +75,7 @@ import {
   Palette,
   ListVideo,
   HelpCircle,
+  Clapperboard,
 } from "lucide-react";
 import { loadNamedSnapshots, type NamedSnapshot } from "../hooks/useCanvasStore";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
@@ -354,6 +356,7 @@ function CanvasInner({ projectId }: { projectId: number }) {
   const [showRatioPicker, setShowRatioPicker] = useState(false);
   const [showConnectionHints, setShowConnectionHints] = useState(false);
   const [showHelp, setShowHelp] = useState(false);
+  const [showArcPicker, setShowArcPicker] = useState(false);
   const { mode: canvasMode, setMode: setCanvasMode } = useCanvasMode();
   const { theme } = useTheme();
   const isLight = theme === "light" || theme === "warm" || canvasMode === "creative";
@@ -806,7 +809,7 @@ function CanvasInner({ projectId }: { projectId: number }) {
         saveCanvas();
         if (wasDirty) toast.success("已保存");
       }
-      if (e.key === "Escape") { setContextMenu(null); setShowNodePicker(false); setShowNodeSearch(false); setShowTemplates(false); runConfirmOpenRef.current = false; setShowRunConfirm(false); setRunConfirmCountdown(5); setShowHelp(false); }
+      if (e.key === "Escape") { setContextMenu(null); setShowNodePicker(false); setShowNodeSearch(false); setShowTemplates(false); runConfirmOpenRef.current = false; setShowRunConfirm(false); setRunConfirmCountdown(5); setShowHelp(false); setShowArcPicker(false); }
 
       // Cmd+K / Ctrl+K — Node search (skip when typing in an input)
       if (!isEditing && (e.metaKey || e.ctrlKey) && e.key === "k") {
@@ -1121,6 +1124,20 @@ function CanvasInner({ projectId }: { projectId: number }) {
               </button>
             </TooltipTrigger>
             <TooltipContent side="bottom" className="text-xs">时间轴预览</TooltipContent>
+          </Tooltip>
+
+          {/* Narrative arc picker */}
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <button
+                onClick={() => setShowArcPicker(true)}
+                className="topbar-btn"
+                style={{ color: "oklch(0.72 0.18 45)" }}
+              >
+                <Clapperboard className="w-3.5 h-3.5" />
+              </button>
+            </TooltipTrigger>
+            <TooltipContent side="bottom" className="text-xs">叙事弧线编排器</TooltipContent>
           </Tooltip>
 
           {/* ── Version history ── */}
@@ -1554,6 +1571,9 @@ function CanvasInner({ projectId }: { projectId: number }) {
             activeNodeType={nodes.find((n) => n.selected)?.data.nodeType ?? null}
             onAddNode={(nodeType) => { addNodeAtCenter(nodeType); setShowHelp(false); }}
           />
+          {showArcPicker && (
+            <NarrativeArcPicker onClose={() => setShowArcPicker(false)} />
+          )}
 
           {/* ── Floating toolbar — snaps to viewport edge; vertical when on left/right ── */}
           <div
