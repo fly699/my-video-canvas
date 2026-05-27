@@ -22,10 +22,10 @@ import { assertProjectAccess, ROLE_RANK } from "../_core/permissions";
 import { collabBus } from "../_core/collabBus";
 
 const roleSchema = z.enum(["viewer", "editor", "admin"]);
-// Normalize email at the edge so case mismatches between invite and claim
-// (signup lowercases, but inviteByEmail used to store raw input) can never
-// orphan a pending invite.
-const emailSchema = z.string().email().max(320).transform((s) => s.toLowerCase());
+// Normalize email at the edge so case + whitespace mismatches between invite
+// and claim (signup lowercases + trims, but inviteByEmail used to store raw
+// input) can never orphan a pending invite.
+const emailSchema = z.string().email().max(320).transform((s) => s.trim().toLowerCase());
 
 export const collaborationRouter = router({
   // ── Member listing ───────────────────────────────────────────────────────
@@ -235,6 +235,11 @@ export const collaborationRouter = router({
         linkId: link.id,
         role: link.role,
       } });
+      // If this user already had a socket connected (e.g. they were a
+      // public-read viewer or already a collaborator with a lower role),
+      // their cached socket role would stay stale until reconnect — drop
+      // the cache so the next mutating event re-derives access from the DB.
+      collabBus.emitRoleInvalidated({ projectId: link.projectId, userId: ctx.user.id });
       return { projectId: link.projectId, alreadyMember: !!existing };
     }),
 });

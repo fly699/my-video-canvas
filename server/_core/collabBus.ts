@@ -29,6 +29,8 @@ class CollabBus extends EventEmitter {
 }
 
 export const collabBus = new CollabBus();
-// Disable listener warning — one listener per Socket.IO connection is expected
-// to add up under heavy concurrent collaboration.
-collabBus.setMaxListeners(0);
+// One listener per active Socket.IO connection. Allow a sensible cap that
+// covers heavy concurrent collaboration but still surfaces real leaks (the
+// disconnect handler in _core/index.ts unsubscribes; if it ever fails, the
+// warning at 2000 lets us see it before memory grows unbounded).
+collabBus.setMaxListeners(2000);

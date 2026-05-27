@@ -18,10 +18,11 @@ export const uploadRouter = router({
   uploadImage: protectedProcedure
     .input(
       z.object({
-        // base64-encoded file content (no data: prefix — the schema rejects it
-        // so the dev fallback doesn't end up producing a malformed nested
+        // base64-encoded file content (no data: prefix — the schema rejects
+        // any case-insensitive match including leading whitespace so the dev
+        // fallback doesn't end up producing a malformed nested
         // `data:...,data:...` URL when the caller pre-prefixes).
-        base64: z.string().refine((s) => !s.startsWith("data:"), {
+        base64: z.string().refine((s) => !/^\s*data:/i.test(s), {
           message: "base64 must not include a data: prefix; strip it client-side",
         }),
         mimeType: z.string().refine((t) => (ALLOWED_MIME_TYPES as readonly string[]).includes(t), { message: "Unsupported MIME type" }).default("image/jpeg"),

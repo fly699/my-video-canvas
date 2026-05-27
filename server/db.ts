@@ -1,4 +1,4 @@
-import { eq, and, desc, sql, or, gt, inArray, isNull } from "drizzle-orm";
+import { eq, and, desc, sql, or, inArray, isNull } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/mysql2";
 import {
   InsertUser,
@@ -64,11 +64,14 @@ export async function upsertUser(user: InsertUser): Promise<void> {
   textFields.forEach((field) => {
     const value = user[field];
     if (value === undefined) return;
-    // Lowercase the email at write time so eq() lookups match regardless of
-    // the MySQL collation (default ci collation hides this; binary collation
-    // would expose the case-sensitivity bug — make it consistent at the
-    // application layer rather than relying on a server config).
-    const normalized = field === "email" && typeof value === "string" ? value.toLowerCase() : value ?? null;
+    // Lowercase AND trim email at write time so eq() lookups match regardless
+    // of MySQL collation. Trim guards against IdP-provided emails with stray
+    // whitespace (some providers append a newline) leaving claim-pending rows
+    // orphaned when invites store the trimmed form (Zod's z.string().email()
+    // is strict but our path here is upsertUser from OAuth-provided values).
+    const normalized = field === "email" && typeof value === "string"
+      ? value.trim().toLowerCase()
+      : value ?? null;
     values[field] = normalized;
     updateSet[field] = normalized;
   });
@@ -280,10 +283,23 @@ export async function removeCollaborator(id: number) {
   await db.delete(projectCollaborators).where(eq(projectCollaborators.id, id));
 }
 
-/** Claim pending email invites for a user that just registered/logged in. */
+/** Claim pending email invites for a user that just registered/logged in.
+ *  Called on every authenticated request, so the common case (zero pending
+ *  rows) takes a cheap indexed SELECT and skips the UPDATE entirely —
+ *  avoiding per-request write locks / binlog noise on the hot auth path. */
 export async function claimPendingInvitations(email: string, userId: number) {
   const db = await getDb();
   if (!db) { if (DEV_MODE) { dev.devClaimPendingCollaboratorsByEmail(email, userId); return; } return; }
+  // Fast path: avoid an UPDATE write transaction when there's nothing to claim.
+  const candidate = await db
+    .select({ id: projectCollaborators.id })
+    .from(projectCollaborators)
+    .where(and(
+      eq(projectCollaborators.email, email),
+      isNull(projectCollaborators.userId),
+    ))
+    .limit(1);
+  if (candidate.length === 0) return;
   await db
     .update(projectCollaborators)
     .set({ userId, status: "active" })
@@ -327,13 +343,15 @@ export async function consumeShareLink(id: number): Promise<boolean> {
     if (DEV_MODE) return dev.devConsumeShareLink(id);
     throw new Error("DB unavailable");
   }
+  // Use DB-side NOW() rather than the app-server clock to avoid clock-skew
+  // false positives/negatives between the API server and MySQL host.
   const result = await db
     .update(projectShareLinks)
     .set({ usesCount: sql`${projectShareLinks.usesCount} + 1` })
     .where(and(
       eq(projectShareLinks.id, id),
       isNull(projectShareLinks.revokedAt),
-      gt(projectShareLinks.expiresAt, new Date()),
+      sql`${projectShareLinks.expiresAt} > NOW()`,
       sql`${projectShareLinks.usesCount} < ${projectShareLinks.maxUses}`,
     ));
   // drizzle/mysql2 returns [ResultSetHeader, FieldPacket[]] from an UPDATE.
