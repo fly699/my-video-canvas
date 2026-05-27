@@ -96,6 +96,12 @@ export function registerEmailAuthRoutes(app: Express) {
         newUserId = newUser?.id ?? null;
       } catch { /* non-fatal */ }
 
+      // Claim any pending collaboration invites addressed to this email.
+      // Best-effort: registration must succeed even if the claim query fails.
+      if (newUserId) {
+        try { await db.claimPendingInvitations(email.toLowerCase(), newUserId); } catch { /* non-fatal */ }
+      }
+
       const sessionToken = await sdk.createSessionToken(openId, {
         name: name?.trim() || email.split("@")[0],
         expiresInMs: ONE_YEAR_MS,

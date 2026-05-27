@@ -62,7 +62,7 @@ export const BaseNode = memo(function BaseNode({
   const { mode: canvasMode } = useCanvasMode();
   const { theme } = useTheme();
   const isCreative = canvasMode === "creative";
-  const isLight = theme === "light" || theme === "warm" || isCreative;
+  const isLight = theme === "light" || theme === "warm" || theme === "mint" || theme === "lavender" || isCreative;
   const hasHero = heroMedia != null;
 
   // Workflow run status

@@ -30,6 +30,7 @@ import { TimelinePanel } from "../components/canvas/TimelinePanel";
 import { isConnectionValid } from "../lib/connectionRules";
 import { BeginnerGuide, ConnectionHintsPanel } from "../components/canvas/BeginnerGuide";
 import { HelpPanel } from "../components/canvas/HelpPanel";
+import { CollaborationPanel } from "../components/canvas/CollaborationPanel";
 import { NarrativeArcPicker } from "../components/canvas/NarrativeArcPicker";
 import { WorkflowStatusPanel } from "../components/canvas/WorkflowStatusPanel";
 import { ThemeSwitcher } from "../components/canvas/ThemeSwitcher";
@@ -344,6 +345,7 @@ function CanvasInner({ projectId }: { projectId: number }) {
   const [showTemplates, setShowTemplates] = useState(false);
   const [showNodeSearch, setShowNodeSearch] = useState(false);
   const [showCollaborators, setShowCollaborators] = useState(false);
+  const [showCollaboratorPanel, setShowCollaboratorPanel] = useState(false);
   const [showNodePicker, setShowNodePicker] = useState(false);
   const [showPresentation, setShowPresentation] = useState(false);
   const [showShortcuts, setShowShortcuts] = useState(false);
@@ -359,7 +361,7 @@ function CanvasInner({ projectId }: { projectId: number }) {
   const [showArcPicker, setShowArcPicker] = useState(false);
   const { mode: canvasMode, setMode: setCanvasMode } = useCanvasMode();
   const { theme } = useTheme();
-  const isLight = theme === "light" || theme === "warm" || canvasMode === "creative";
+  const isLight = theme === "light" || theme === "warm" || theme === "mint" || theme === "lavender" || canvasMode === "creative";
   // Auto-show filmstrip when entering creative mode, hide when leaving
   useEffect(() => {
     if (canvasMode === "creative") setShowFilmstrip(true);
@@ -442,6 +444,8 @@ function CanvasInner({ projectId }: { projectId: number }) {
   const { data: project, isLoading: projectLoading, isError: projectError } = trpc.projects.get.useQuery(
     { id: projectId }, { enabled: !!projectId && isAuthenticated, retry: false }
   );
+  const effectiveRole = (project as { role?: "owner" | "viewer" | "editor" | "admin" } | undefined)?.role ?? "viewer";
+  const isReadOnly = effectiveRole === "viewer";
   const { data: dbNodes } = trpc.nodes.list.useQuery(
     { projectId }, { enabled: !!projectId && isAuthenticated }
   );
@@ -587,12 +591,21 @@ function CanvasInner({ projectId }: { projectId: number }) {
 
   useEffect(() => {
     if (!isAuthenticated || !user) return;
-    const socket = io("/", { path: "/api/socket", transports: ["websocket", "polling"] });
+    const socket = io("/", { path: "/api/socket", transports: ["websocket", "polling"], withCredentials: true });
     socket.on("connect", () => {
       setSocketConnected(true);
-      socket.emit("join-project", { projectId, userId: user.id, userName: user.name ?? "匿名", color: COLLABORATOR_COLORS[user.id % COLLABORATOR_COLORS.length] });
+      socket.emit("join-project", { projectId, userName: user.name ?? "匿名", color: COLLABORATOR_COLORS[user.id % COLLABORATOR_COLORS.length] });
     });
     socket.on("disconnect", () => setSocketConnected(false));
+    socket.on("connect_error", (err) => {
+      setSocketConnected(false);
+      if (err.message === "unauthenticated") {
+        console.warn("[Socket] Authentication failed — collaboration disabled");
+      }
+    });
+    socket.on("auth-error", (e: { code: string; projectId: number }) => {
+      console.warn("[Socket] auth-error", e);
+    });
     socket.on("collaboration-event", (event: { type: string; userId: number; userName: string; color: string; payload: unknown }) => {
       if (event.userId === user.id) return;
       if (event.type === "cursor:move") {
@@ -643,7 +656,7 @@ function CanvasInner({ projectId }: { projectId: number }) {
       }
     });
     socketRef.current = socket;
-    return () => { socket.emit("leave-project", { projectId, userId: user.id }); socket.disconnect(); };
+    return () => { socket.emit("leave-project", { projectId }); socket.disconnect(); };
   }, [isAuthenticated, user, projectId]);
 
   const handleMouseMove = useCallback((e: React.MouseEvent) => {
@@ -1411,6 +1424,20 @@ function CanvasInner({ projectId }: { projectId: number }) {
           onMouseMove={handleMouseMove}
           onClick={() => { setShowNodePicker(false); }}
         >
+          {isReadOnly && (
+            <div
+              className="absolute top-3 left-1/2 z-20 flex items-center gap-2 px-3 py-1.5 rounded-full text-xs"
+              style={{
+                transform: "translateX(-50%)",
+                background: "oklch(0.72 0.18 45 / 0.10)",
+                border: "1px solid oklch(0.72 0.18 45 / 0.30)",
+                color: "oklch(0.72 0.18 45)",
+                pointerEvents: "none",
+              }}
+            >
+              只读模式 — 你以查看者身份打开了此项目
+            </div>
+          )}
           <WorkflowRunProvider value={runState}>
           <ReactFlow
             nodes={nodes}
@@ -1436,6 +1463,10 @@ function CanvasInner({ projectId }: { projectId: number }) {
               emitCollabEvent("edge:delete", { id: e.id });
             })}
             onMoveEnd={(_, vp) => { setViewport(vp); markDirty(); }}
+            nodesDraggable={!isReadOnly}
+            nodesConnectable={!isReadOnly}
+            edgesFocusable={!isReadOnly}
+            elementsSelectable
             selectionMode={SelectionMode.Partial}
             selectionOnDrag
             panOnDrag={[1, 2]}
@@ -1966,7 +1997,24 @@ function CanvasInner({ projectId }: { projectId: number }) {
               {collaboratorList.length === 0 && (
                 <p className="text-xs mt-1" style={{ color: "var(--c-t4)" }}>暂无其他协作者</p>
               )}
+              <div className="h-px my-2" style={{ background: "var(--c-bd1)" }} />
+              <button
+                onClick={() => { setShowCollaboratorPanel(true); setShowCollaborators(false); }}
+                className="w-full mt-1 px-2 py-1.5 rounded-md text-xs font-medium"
+                style={{ background: "var(--c-surface)", border: "1px solid var(--c-bd2)", color: "var(--c-t2)" }}
+              >
+                管理协作 / 邀请成员
+              </button>
             </div>
+          )}
+
+          {showCollaboratorPanel && project && (
+            <CollaborationPanel
+              projectId={projectId}
+              currentUserRole={(project as { role?: "owner" | "viewer" | "editor" | "admin" }).role ?? "viewer"}
+              publicReadAccess={(project as { publicReadAccess?: boolean }).publicReadAccess ?? false}
+              onClose={() => setShowCollaboratorPanel(false)}
+            />
           )}
         </div>
 
