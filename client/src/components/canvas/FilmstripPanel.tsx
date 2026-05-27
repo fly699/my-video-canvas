@@ -4,6 +4,7 @@ import { X, Film, ImageOff, GripHorizontal } from "lucide-react";
 import { useCanvasStore } from "../../hooks/useCanvasStore";
 import { getNodeConfig } from "../../lib/nodeConfig";
 import type { NodeType } from "../../../../shared/types";
+import { useLocalMedia } from "../../lib/useLocalMedia";
 
 interface FilmstripPanelProps {
   onClose: () => void;
@@ -278,6 +279,9 @@ function FilmFrame({
   isSelected,
   onClick,
 }: FilmFrameProps) {
+  const mediaUrl = isVideo ? videoUrl : imageUrl;
+  const { isLocal, blobUrl, downloadedAt } = useLocalMedia(mediaUrl);
+
   return (
     <button
       onClick={onClick}
@@ -322,14 +326,14 @@ function FilmFrame({
       <div style={{ width: "100%", height: 100, position: "relative", overflow: "hidden", flexShrink: 0 }}>
         {isVideo && videoUrl ? (
           <video
-            src={videoUrl}
+            src={blobUrl ?? videoUrl}
             style={{ width: "100%", height: "100%", objectFit: "cover" }}
             muted
             preload="metadata"
           />
         ) : (
           <img
-            src={imageUrl}
+            src={blobUrl ?? imageUrl}
             alt={title}
             style={{
               width: "100%",
@@ -338,6 +342,23 @@ function FilmFrame({
               display: "block",
             }}
             loading="lazy"
+          />
+        )}
+        {isLocal && (
+          <div
+            title={`已缓存到本地（${new Date(downloadedAt).toLocaleString("zh-CN")}）`}
+            style={{
+              position: "absolute",
+              top: 4,
+              right: 4,
+              width: 7,
+              height: 7,
+              borderRadius: "50%",
+              background: "oklch(0.72 0.18 155)",
+              boxShadow: "0 0 0 2px oklch(0.72 0.18 155 / 0.35)",
+              pointerEvents: "none",
+              zIndex: 3,
+            }}
           />
         )}
 

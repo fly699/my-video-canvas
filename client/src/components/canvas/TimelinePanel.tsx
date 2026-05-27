@@ -4,6 +4,7 @@ import { X, Play, Pause, Clock, Film } from "lucide-react";
 import { useCanvasStore } from "../../hooks/useCanvasStore";
 import { getNodeConfig } from "../../lib/nodeConfig";
 import type { NodeType } from "../../../../shared/types";
+import { useLocalMedia } from "../../lib/useLocalMedia";
 
 interface TimelinePanelProps {
   onClose: () => void;
@@ -249,6 +250,8 @@ interface TimelineClipProps {
 }
 
 function TimelineClip({ index, clip, isPlaying, videoRef, proxySrc, onNavigate, onPlay, onEnded }: TimelineClipProps) {
+  const { isLocal, blobUrl, downloadedAt } = useLocalMedia(clip.videoUrl);
+
   return (
     <div
       style={{
@@ -304,12 +307,29 @@ function TimelineClip({ index, clip, isPlaying, videoRef, proxySrc, onNavigate, 
       >
         <video
           ref={videoRef}
-          src={proxySrc(clip.videoUrl)}
+          src={blobUrl ?? proxySrc(clip.videoUrl)}
           style={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }}
           preload="metadata"
           onEnded={onEnded}
           onError={(e) => console.error("[TimelinePanel] Video load error:", (e.currentTarget as HTMLVideoElement).error?.message)}
         />
+        {isLocal && (
+          <div
+            title={`已缓存到本地（${new Date(downloadedAt).toLocaleString("zh-CN")}）`}
+            style={{
+              position: "absolute",
+              top: 4,
+              right: 4,
+              width: 7,
+              height: 7,
+              borderRadius: "50%",
+              background: "oklch(0.72 0.18 155)",
+              boxShadow: "0 0 0 2px oklch(0.72 0.18 155 / 0.35)",
+              pointerEvents: "none",
+              zIndex: 3,
+            }}
+          />
+        )}
 
         {/* Duration badge */}
         {clip.duration !== undefined && clip.duration > 0 && (
