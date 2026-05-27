@@ -76,45 +76,53 @@ export const CustomEdge = memo(function CustomEdge({
   const hasLabel = typeof label === "string" && label.trim().length > 0;
   const showControls = hovered || selected;
 
+  // Stronger color presence — bumped alpha on the type-tinted idle state and
+  // boosted hover/selected saturation so the line is easier to follow visually.
   const strokeColor = sourceCompleted
-    ? (isCreative ? "oklch(0.58 0.18 155 / 0.70)" : "oklch(0.60 0.18 155 / 0.85)")
+    ? (isCreative ? "oklch(0.58 0.20 155 / 0.85)" : "oklch(0.62 0.20 155 / 0.95)")
     : sourceFailed
-      ? (isCreative ? "oklch(0.55 0.18 25 / 0.60)" : "oklch(0.55 0.18 25 / 0.75)")
+      ? (isCreative ? "oklch(0.57 0.20 25 / 0.80)" : "oklch(0.60 0.22 25 / 0.90)")
       : selected
-        ? (isCreative ? `${typeColor ?? "oklch(0.68 0.22 285)"}cc` : "oklch(0.68 0.22 285)")
+        ? (isCreative ? `${typeColor ?? "oklch(0.68 0.22 285)"}` : "oklch(0.68 0.22 285)")
         : hovered
-          ? (isCreative ? "var(--c-bd3)" : "var(--c-bd3)")
+          ? (typeColor ? `${typeColor}d0` : "var(--c-bd3)")
           : isCreative
-            ? (typeColor ? `${typeColor}40` : "oklch(0.78 0.005 260)")
+            ? (typeColor ? `${typeColor}88` : "oklch(0.65 0.04 260)")
             : typeColor
-              ? `${typeColor}55`
-              : "var(--c-bd3)";
+              ? `${typeColor}bb`
+              : "oklch(0.62 0.06 260 / 0.85)";
 
+  // Thicker default strokes. Creative mode stays subtler but still 1 thicker.
   const strokeWidth = isCreative
-    ? selected ? 2 : hovered ? 1.5 : 1
-    : selected ? 3 : hovered ? 2.5 : 2;
+    ? selected ? 3 : hovered ? 2.5 : 1.75
+    : selected ? 4.5 : hovered ? 4 : 3;
 
   // ── Particle flow ───────────────────────────────────────────────────────────
   const svgPathId = `pp-${id.replace(/[^a-zA-Z0-9_-]/g, "_")}`;
 
-  const durSeconds = sourceRunning ? 0.75 : isCreative ? 3.5 : 2.8;
-  const particleR = sourceRunning ? (isCreative ? 2.5 : 3) : isCreative ? 1.4 : 1.8;
+  const durSeconds = sourceRunning ? 0.75 : isCreative ? 3.5 : 2.6;
+  // Bigger, brighter particles — idle state especially since it's the most-seen.
+  const particleR = sourceRunning ? (isCreative ? 3 : 4) : isCreative ? 2 : 2.8;
   const particleColor = sourceRunning
-    ? "oklch(0.88 0.26 142)"
+    ? "oklch(0.92 0.28 142)"
     : sourceCompleted
-      ? "oklch(0.72 0.18 155)"
+      ? "oklch(0.78 0.22 155)"
       : sourceFailed
-        ? "oklch(0.70 0.18 25)"
+        ? "oklch(0.74 0.22 25)"
         : isCreative
-          ? (typeColor ?? "oklch(0.60 0.10 260)")
-          : (typeColor ?? "oklch(0.65 0.06 260)");
+          ? (typeColor ?? "oklch(0.68 0.16 260)")
+          : (typeColor ?? "oklch(0.72 0.14 260)");
   const particleOpacity = sourceRunning
-    ? 0.95
-    : sourceCompleted ? (isCreative ? 0.55 : 0.65)
-    : sourceFailed ? 0.50
-    : isCreative ? 0.28 : 0.38;
-  const glowR = particleR * 2.5;
-  const glowOpacity = sourceRunning ? 0.28 : isCreative ? 0.06 : 0.10;
+    ? 1.0
+    : sourceCompleted ? (isCreative ? 0.78 : 0.88)
+    : sourceFailed ? 0.78
+    : isCreative ? 0.55 : 0.78;
+  // Larger glow halo with a stronger baseline so the flow direction reads at-a-glance.
+  const glowR = particleR * 3.2;
+  const glowOpacity = sourceRunning ? 0.42 : isCreative ? 0.16 : 0.24;
+  // A second, larger soft halo for extra depth (renders behind core).
+  const outerGlowR = particleR * 5.5;
+  const outerGlowOpacity = sourceRunning ? 0.18 : isCreative ? 0.05 : 0.08;
 
   return (
     <>
@@ -141,21 +149,41 @@ export const CustomEdge = memo(function CustomEdge({
         style={{
           stroke: strokeColor,
           strokeWidth,
+          // Persistent soft glow on every edge so colored lines feel luminous,
+          // upgraded for selected / completed / failed states.
           filter: selected
-            ? "drop-shadow(0 0 4px oklch(0.68 0.22 285 / 0.40))"
+            ? "drop-shadow(0 0 6px oklch(0.68 0.22 285 / 0.55))"
             : sourceCompleted
-              ? "drop-shadow(0 0 3px oklch(0.65 0.18 155 / 0.35))"
-              : undefined,
+              ? "drop-shadow(0 0 5px oklch(0.65 0.20 155 / 0.45))"
+              : sourceFailed
+                ? "drop-shadow(0 0 5px oklch(0.62 0.22 25 / 0.45))"
+                : sourceRunning
+                  ? "drop-shadow(0 0 6px oklch(0.85 0.26 142 / 0.55))"
+                  : typeColor
+                    ? `drop-shadow(0 0 3px ${typeColor}55)`
+                    : undefined,
           transition: "stroke 300ms ease, stroke-width 140ms ease, filter 300ms ease",
           pointerEvents: "none",
         }}
       />
 
-      {/* Flowing particles — always visible, indicating data direction */}
+      {/* Flowing particles — always visible, indicating data direction.
+          Three layers per particle: outer soft halo (largest, faintest),
+          inner glow halo (medium), and bright core. */}
       {Array.from({ length: PARTICLE_COUNT }, (_, i) => {
         const beginOffset = -((i / PARTICLE_COUNT) * durSeconds);
         return (
           <g key={i}>
+            {/* Outer soft halo */}
+            <circle r={outerGlowR} fill={particleColor} opacity={outerGlowOpacity}>
+              <animateMotion
+                dur={`${durSeconds}s`}
+                begin={`${beginOffset}s`}
+                repeatCount="indefinite"
+              >
+                <mpath href={`#${svgPathId}`} />
+              </animateMotion>
+            </circle>
             {/* Glow halo */}
             <circle r={glowR} fill={particleColor} opacity={glowOpacity}>
               <animateMotion
@@ -180,11 +208,11 @@ export const CustomEdge = memo(function CustomEdge({
         );
       })}
 
-      {/* Arrowhead at target end */}
+      {/* Arrowhead at target end — slightly larger to match the thicker strokes */}
       <polygon
-        points={arrowPoints(targetX, targetY, targetPosition, isCreative ? 7 : 9, isCreative ? 3.5 : 5)}
+        points={arrowPoints(targetX, targetY, targetPosition, isCreative ? 8 : 11, isCreative ? 4 : 6)}
         fill={strokeColor}
-        opacity={isCreative ? 0.65 : 0.9}
+        opacity={isCreative ? 0.80 : 1.0}
         pointerEvents="none"
       />
 
