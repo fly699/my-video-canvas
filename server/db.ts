@@ -158,12 +158,7 @@ export async function getProjectByIdRaw(id: number) {
   const db = await getDb();
   if (!db) return DEV_MODE ? dev.devGetProjectByIdRaw(id) : undefined;
   const result = await db.select().from(projects).where(eq(projects.id, id)).limit(1);
-  if (!result[0]) return undefined;
-  // publicReadAccess is read out-of-band so the schema can stay backward
-  // compatible with deployments that haven't run migration 0018 yet —
-  // see the note on projects.publicReadAccess in drizzle/schema.ts.
-  const publicReadAccess = await readPublicReadAccess(db, id);
-  return { ...result[0], publicReadAccess };
+  return result[0];
 }
 
 export type EffectiveRole = "owner" | "admin" | "editor" | "viewer";
@@ -193,109 +188,51 @@ export async function getProjectAccess(projectId: number, userId: number): Promi
 export async function setProjectPublicAccess(id: number, publicReadAccess: boolean) {
   const db = await getDb();
   if (!db) { if (DEV_MODE) { dev.devSetProjectPublicAccess(id, publicReadAccess); return; } throw new Error("DB unavailable"); }
-  try {
-    await db.execute(
-      sql`UPDATE projects SET publicReadAccess = ${publicReadAccess} WHERE id = ${id}`,
-    );
-  } catch (err) {
-    if (isMissingSchemaError(err)) {
-      throw new Error("公开访问功能需要先在服务端执行 `pnpm db:push` 应用 migration 0018_collaboration.sql。");
-    }
-    throw err;
-  }
+  await db.update(projects).set({ publicReadAccess }).where(eq(projects.id, id));
 }
 
-/** True when MySQL reports a missing-table / missing-column situation that
- *  indicates the deployment hasn't applied recent migrations. */
-function isMissingSchemaError(e: unknown): boolean {
-  const msg = e instanceof Error ? e.message : String(e ?? "");
-  return /Unknown column|doesn'?t exist|no such table|Table .* doesn'?t exist|ER_NO_SUCH_TABLE|ER_BAD_FIELD_ERROR/i.test(msg);
-}
-
-/** Read publicReadAccess via raw SQL so a missing column on a stale deploy
- *  doesn't break the entire projects.list / projects.get query. */
-async function readPublicReadAccess(
-  db: NonNullable<Awaited<ReturnType<typeof getDb>>>,
-  projectId: number,
-): Promise<boolean> {
-  try {
-    const res = await db.execute(
-      sql`SELECT publicReadAccess FROM projects WHERE id = ${projectId} LIMIT 1`,
-    ) as unknown as Array<{ publicReadAccess?: number | boolean }>;
-    const rows = Array.isArray(res) ? res : (res as unknown as { rows?: typeof res })?.rows ?? [];
-    const row = Array.isArray(rows) ? rows[0] : undefined;
-    return !!row?.publicReadAccess;
-  } catch (err) {
-    if (isMissingSchemaError(err)) return false;
-    throw err;
-  }
-}
-
-/** Projects where user is a collaborator (not owner). Tolerates the
- *  project_collaborators table being absent on deployments that haven't
- *  yet applied migration 0018 — returns an empty list rather than throwing,
- *  so projects.list keeps working for solo users on stale deployments. */
+/** Projects where user is a collaborator (not owner). */
 export async function getProjectsSharedWithUser(userId: number) {
   const db = await getDb();
   if (!db) return DEV_MODE ? dev.devGetProjectsByCollaborator(userId) : [];
-  try {
-    const rows = await db
-      .select({ project: projects })
-      .from(projectCollaborators)
-      .innerJoin(projects, eq(projects.id, projectCollaborators.projectId))
-      .where(and(
-        eq(projectCollaborators.userId, userId),
-        eq(projectCollaborators.status, "active"),
-      ))
-      .orderBy(desc(projects.updatedAt));
-    return rows.map((r) => r.project).filter((p) => p.userId !== userId);
-  } catch (err) {
-    if (isMissingSchemaError(err)) return [];
-    throw err;
-  }
+  const rows = await db
+    .select({ project: projects })
+    .from(projectCollaborators)
+    .innerJoin(projects, eq(projects.id, projectCollaborators.projectId))
+    .where(and(
+      eq(projectCollaborators.userId, userId),
+      eq(projectCollaborators.status, "active"),
+    ))
+    .orderBy(desc(projects.updatedAt));
+  return rows.map((r) => r.project).filter((p) => p.userId !== userId);
 }
 
 // ── Project Collaborators ───────────────────────────────────────────────────
-// All of these tolerate a missing project_collaborators table (migration 0018
-// not yet applied). They return empty results rather than throwing so legacy
-// owner-only flows keep working on stale deployments.
 export async function listCollaborators(projectId: number) {
   const db = await getDb();
   if (!db) return DEV_MODE ? dev.devListCollaborators(projectId) : [];
-  try {
-    return await db.select().from(projectCollaborators).where(eq(projectCollaborators.projectId, projectId));
-  } catch (err) {
-    if (isMissingSchemaError(err)) return [];
-    throw err;
-  }
+  return db.select().from(projectCollaborators).where(eq(projectCollaborators.projectId, projectId));
 }
 
 export async function findCollaboratorByUserId(projectId: number, userId: number) {
   const db = await getDb();
   if (!db) return DEV_MODE ? dev.devFindCollaborator(projectId, userId) : undefined;
-  try {
-    const rows = await db
-      .select()
-      .from(projectCollaborators)
-      .where(and(
-        eq(projectCollaborators.projectId, projectId),
-        eq(projectCollaborators.userId, userId),
-        eq(projectCollaborators.status, "active"),
-      ))
-      .limit(1);
-    return rows[0];
-  } catch (err) {
-    if (isMissingSchemaError(err)) return undefined;
-    throw err;
-  }
+  const rows = await db
+    .select()
+    .from(projectCollaborators)
+    .where(and(
+      eq(projectCollaborators.projectId, projectId),
+      eq(projectCollaborators.userId, userId),
+      eq(projectCollaborators.status, "active"),
+    ))
+    .limit(1);
+  return rows[0];
 }
 
 export async function findCollaboratorByEmail(projectId: number, email: string) {
   const db = await getDb();
   if (!db) return DEV_MODE ? dev.devFindCollaboratorByEmail(projectId, email) : undefined;
-  let rows;
-  try {
-    rows = await db
+  const rows = await db
     .select()
     .from(projectCollaborators)
     .where(and(
@@ -303,10 +240,6 @@ export async function findCollaboratorByEmail(projectId: number, email: string) 
       eq(projectCollaborators.email, email),
     ))
     .limit(1);
-  } catch (err) {
-    if (isMissingSchemaError(err)) return undefined;
-    throw err;
-  }
   return rows[0];
 }
 
@@ -353,33 +286,27 @@ export async function removeCollaborator(id: number) {
 /** Claim pending email invites for a user that just registered/logged in.
  *  Called on every authenticated request, so the common case (zero pending
  *  rows) takes a cheap indexed SELECT and skips the UPDATE entirely —
- *  avoiding per-request write locks / binlog noise on the hot auth path.
- *  Tolerates the project_collaborators table being absent on stale
- *  deployments — best-effort, must never block login. */
+ *  avoiding per-request write locks / binlog noise on the hot auth path. */
 export async function claimPendingInvitations(email: string, userId: number) {
   const db = await getDb();
   if (!db) { if (DEV_MODE) { dev.devClaimPendingCollaboratorsByEmail(email, userId); return; } return; }
-  try {
-    const candidate = await db
-      .select({ id: projectCollaborators.id })
-      .from(projectCollaborators)
-      .where(and(
-        eq(projectCollaborators.email, email),
-        isNull(projectCollaborators.userId),
-      ))
-      .limit(1);
-    if (candidate.length === 0) return;
-    await db
-      .update(projectCollaborators)
-      .set({ userId, status: "active" })
-      .where(and(
-        eq(projectCollaborators.email, email),
-        isNull(projectCollaborators.userId),
-      ));
-  } catch (err) {
-    if (isMissingSchemaError(err)) return; // migration 0018 not yet applied
-    throw err;
-  }
+  // Fast path: avoid an UPDATE write transaction when there's nothing to claim.
+  const candidate = await db
+    .select({ id: projectCollaborators.id })
+    .from(projectCollaborators)
+    .where(and(
+      eq(projectCollaborators.email, email),
+      isNull(projectCollaborators.userId),
+    ))
+    .limit(1);
+  if (candidate.length === 0) return;
+  await db
+    .update(projectCollaborators)
+    .set({ userId, status: "active" })
+    .where(and(
+      eq(projectCollaborators.email, email),
+      isNull(projectCollaborators.userId),
+    ));
 }
 
 // ── Project Share Links ─────────────────────────────────────────────────────
@@ -395,24 +322,14 @@ export async function createShareLink(data: InsertProjectShareLink) {
 export async function listShareLinks(projectId: number) {
   const db = await getDb();
   if (!db) return DEV_MODE ? dev.devListShareLinks(projectId) : [];
-  try {
-    return await db.select().from(projectShareLinks).where(eq(projectShareLinks.projectId, projectId)).orderBy(desc(projectShareLinks.createdAt));
-  } catch (err) {
-    if (isMissingSchemaError(err)) return [];
-    throw err;
-  }
+  return db.select().from(projectShareLinks).where(eq(projectShareLinks.projectId, projectId)).orderBy(desc(projectShareLinks.createdAt));
 }
 
 export async function getShareLinkByToken(token: string) {
   const db = await getDb();
   if (!db) return DEV_MODE ? dev.devGetShareLinkByToken(token) : undefined;
-  try {
-    const rows = await db.select().from(projectShareLinks).where(eq(projectShareLinks.token, token)).limit(1);
-    return rows[0];
-  } catch (err) {
-    if (isMissingSchemaError(err)) return undefined; // table doesn't exist yet
-    throw err;
-  }
+  const rows = await db.select().from(projectShareLinks).where(eq(projectShareLinks.token, token)).limit(1);
+  return rows[0];
 }
 
 /**
@@ -700,26 +617,11 @@ export async function getPendingVideoTasks() {
 export async function getChatMessages(nodeId: string, projectId: number) {
   const db = await getDb();
   if (!db) return DEV_MODE ? dev.devGetChatMessages(nodeId, projectId) : [];
-  const base = await db
+  return db
     .select()
     .from(chatMessages)
     .where(and(eq(chatMessages.nodeId, nodeId), eq(chatMessages.projectId, projectId)))
     .orderBy(chatMessages.createdAt);
-  // Attempt to enrich with the attachments JSON column (migration 0019).
-  // If the column doesn't exist yet, return the base rows with attachments=null.
-  try {
-    const ids = base.map((m) => m.id);
-    if (ids.length === 0) return base.map((m) => ({ ...m, attachments: null as unknown }));
-    const enriched = await db.execute(
-      sql`SELECT id, attachments FROM chat_messages WHERE id IN (${sql.join(ids.map((i) => sql`${i}`), sql`, `)})`,
-    ) as unknown as Array<{ id: number; attachments: unknown }>;
-    const rows = Array.isArray(enriched) ? enriched : [];
-    const map = new Map(rows.map((r) => [r.id, r.attachments]));
-    return base.map((m) => ({ ...m, attachments: map.get(m.id) ?? null }));
-  } catch (err) {
-    if (isMissingSchemaError(err)) return base.map((m) => ({ ...m, attachments: null as unknown }));
-    throw err;
-  }
 }
 
 export async function addChatMessage(data: InsertChatMessage) {
@@ -739,30 +641,15 @@ export async function addChatMessagePair(
   const db = await getDb();
   if (!db) {
     if (DEV_MODE) {
-      await dev.devAddChatMessage({ nodeId, projectId, role: "user", content: userContent }, userAttachments ?? null);
+      await dev.devAddChatMessage({ nodeId, projectId, role: "user", content: userContent, attachments: userAttachments ?? null });
       await dev.devAddChatMessage({ nodeId, projectId, role: "assistant", content: assistantContent });
       return;
     }
     throw new Error("DB unavailable");
   }
   await db.transaction(async (tx) => {
-    // Insert without attachments via drizzle (attachments removed from schema
-    // for backward compat). If the user message has attachments, do a
-    // best-effort UPDATE to set them via raw SQL — failure to set them
-    // (column missing on stale deploy) shouldn't break the message itself.
-    const [userResult] = await tx.insert(chatMessages).values({ nodeId, projectId, role: "user", content: userContent });
+    await tx.insert(chatMessages).values({ nodeId, projectId, role: "user", content: userContent, attachments: userAttachments ?? null });
     await tx.insert(chatMessages).values({ nodeId, projectId, role: "assistant", content: assistantContent });
-    if (userAttachments != null) {
-      const insertId = (userResult as unknown as { insertId: number }).insertId;
-      try {
-        await tx.execute(
-          sql`UPDATE chat_messages SET attachments = ${JSON.stringify(userAttachments)} WHERE id = ${insertId}`,
-        );
-      } catch (err) {
-        if (!isMissingSchemaError(err)) throw err;
-        // migration 0019 not applied — silently drop attachments
-      }
-    }
   });
 }
 
