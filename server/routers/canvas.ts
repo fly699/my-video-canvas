@@ -4,7 +4,9 @@ import { nanoid } from "nanoid";
 import { protectedProcedure, router } from "../_core/trpc";
 import {
   getProjectsByUser,
+  getProjectsSharedWithUser,
   getProjectById,
+  getProjectAccess,
   createProject,
   updateProject,
   deleteProject,
@@ -48,17 +50,19 @@ import type { SubtitleEntry } from "../../shared/types";
 import { assertWhitelisted } from "../_core/whitelist";
 import { writeAuditLog, truncate } from "../_core/auditLog";
 import { dedupe } from "../_core/idempotency";
+import { assertProjectAccess, assertProjectOwner } from "../_core/permissions";
 
-// ── Ownership helpers ─────────────────────────────────────────────────────────
-
-async function assertProjectOwner(projectId: number, userId: number) {
-  const project = await getProjectById(projectId, userId);
-  if (!project) throw new TRPCError({ code: "FORBIDDEN", message: "Access denied" });
-}
-
-async function assertTaskOwner(taskId: number, userId: number) {
+/**
+ * Resolve a video task and verify the caller has editor+ access to its
+ * project. Replaces the old "task.userId === caller" check, which broke
+ * once any editor (not just the project owner) could create tasks —
+ * tasks would become orphaned the moment the creator was removed or
+ * the owner tried to poll/cancel.
+ */
+async function assertTaskAccess(taskId: number, userId: number) {
   const task = await getVideoTask(taskId);
-  if (!task || task.userId !== userId) throw new TRPCError({ code: "FORBIDDEN", message: "Access denied" });
+  if (!task) throw new TRPCError({ code: "NOT_FOUND", message: "任务不存在" });
+  await assertProjectAccess(task.projectId, userId, "editor");
   return task;
 }
 
@@ -71,14 +75,20 @@ function guardUrl(url: string): void {
 // ── Projects ──────────────────────────────────────────────────────────────────
 
 export const projectsRouter = router({
-  list: protectedProcedure.query(({ ctx }) => getProjectsByUser(ctx.user.id)),
+  list: protectedProcedure.query(async ({ ctx }) => {
+    const [owned, shared] = await Promise.all([
+      getProjectsByUser(ctx.user.id),
+      getProjectsSharedWithUser(ctx.user.id),
+    ]);
+    return { owned, shared };
+  }),
 
   get: protectedProcedure
     .input(z.object({ id: z.number() }))
     .query(async ({ ctx, input }) => {
-      const project = await getProjectById(input.id, ctx.user.id);
-      if (!project) throw new TRPCError({ code: "NOT_FOUND" });
-      return project;
+      const access = await getProjectAccess(input.id, ctx.user.id);
+      if (!access) throw new TRPCError({ code: "NOT_FOUND" });
+      return { ...access.project, role: access.role, source: access.source };
     }),
 
   create: protectedProcedure
@@ -103,13 +113,18 @@ export const projectsRouter = router({
     )
     .mutation(async ({ ctx, input }) => {
       const { id, ...data } = input;
-      await updateProject(id, ctx.user.id, data as Parameters<typeof updateProject>[2]);
+      // Editor+ may rename / change thumbnail / save viewport
+      const access = await assertProjectAccess(id, ctx.user.id, "editor");
+      // updateProject uses (id, userId) WHERE clause on owner; route through raw helper
+      await updateProject(id, access.project.userId, data as Parameters<typeof updateProject>[2]);
       return { success: true };
     }),
 
   delete: protectedProcedure
     .input(z.object({ id: z.number() }))
     .mutation(async ({ ctx, input }) => {
+      // Only the owner can delete the project itself
+      await assertProjectOwner(input.id, ctx.user.id);
       await deleteProject(input.id, ctx.user.id);
       return { success: true };
     }),
@@ -123,7 +138,7 @@ export const nodesRouter = router({
   list: protectedProcedure
     .input(z.object({ projectId: z.number() }))
     .query(async ({ ctx, input }) => {
-      await assertProjectOwner(input.projectId, ctx.user.id);
+      await assertProjectAccess(input.projectId, ctx.user.id, "viewer");
       return getNodesByProject(input.projectId);
     }),
 
@@ -143,7 +158,7 @@ export const nodesRouter = router({
       })
     )
     .mutation(async ({ ctx, input }) => {
-      await assertProjectOwner(input.projectId, ctx.user.id);
+      await assertProjectAccess(input.projectId, ctx.user.id, "editor");
       const id = input.id ?? nanoid();
       const { id: _id, ...rest } = { ...input, id };
       await upsertNode({ ...rest, id, data: input.data as Record<string, unknown> });
@@ -153,7 +168,7 @@ export const nodesRouter = router({
   delete: protectedProcedure
     .input(z.object({ id: z.string(), projectId: z.number() }))
     .mutation(async ({ ctx, input }) => {
-      await assertProjectOwner(input.projectId, ctx.user.id);
+      await assertProjectAccess(input.projectId, ctx.user.id, "editor");
       await deleteNode(input.id, input.projectId);
       return { success: true };
     }),
@@ -177,7 +192,7 @@ export const nodesRouter = router({
     )
     .mutation(async ({ ctx, input }) => {
       const projectIds = Array.from(new Set(input.map((n) => n.projectId)));
-      await Promise.all(projectIds.map((pid) => assertProjectOwner(pid, ctx.user.id)));
+      await Promise.all(projectIds.map((pid) => assertProjectAccess(pid, ctx.user.id, "editor")));
       await batchUpsertNodes(input.map((n) => ({ ...n, data: n.data as Record<string, unknown> })));
       return { success: true };
     }),
@@ -189,7 +204,7 @@ export const edgesRouter = router({
   list: protectedProcedure
     .input(z.object({ projectId: z.number() }))
     .query(async ({ ctx, input }) => {
-      await assertProjectOwner(input.projectId, ctx.user.id);
+      await assertProjectAccess(input.projectId, ctx.user.id, "viewer");
       return getEdgesByProject(input.projectId);
     }),
 
@@ -206,7 +221,7 @@ export const edgesRouter = router({
       })
     )
     .mutation(async ({ ctx, input }) => {
-      await assertProjectOwner(input.projectId, ctx.user.id);
+      await assertProjectAccess(input.projectId, ctx.user.id, "editor");
       const id = input.id ?? nanoid();
       await upsertEdge({ ...input, id });
       return { id };
@@ -215,7 +230,7 @@ export const edgesRouter = router({
   delete: protectedProcedure
     .input(z.object({ id: z.string(), projectId: z.number() }))
     .mutation(async ({ ctx, input }) => {
-      await assertProjectOwner(input.projectId, ctx.user.id);
+      await assertProjectAccess(input.projectId, ctx.user.id, "editor");
       await deleteEdge(input.id, input.projectId);
       return { success: true };
     }),
@@ -241,6 +256,12 @@ export const assetsRouter = router({
     )
     .mutation(async ({ ctx, input }) => {
       await assertWhitelisted(ctx);
+      // When projectId is supplied, the caller must have editor+ access on
+      // that project — otherwise editors could attach assets to arbitrary
+      // projects they don't belong to (IDOR).
+      if (input.projectId != null) {
+        await assertProjectAccess(input.projectId, ctx.user.id, "editor");
+      }
       const buffer = Buffer.from(input.base64, "base64");
       const key = `assets/${ctx.user.id}/${nanoid()}-${input.name}`;
       const { url } = await storagePut(key, buffer, input.mimeType);
@@ -275,7 +296,7 @@ export const videoTasksRouter = router({
   list: protectedProcedure
     .input(z.object({ projectId: z.number() }))
     .query(async ({ ctx, input }) => {
-      await assertProjectOwner(input.projectId, ctx.user.id);
+      await assertProjectAccess(input.projectId, ctx.user.id, "viewer");
       return getVideoTasksByProject(input.projectId);
     }),
 
@@ -293,7 +314,7 @@ export const videoTasksRouter = router({
     )
     .mutation(async ({ ctx, input }) => {
       await assertWhitelisted(ctx);
-      await assertProjectOwner(input.projectId, ctx.user.id);
+      await assertProjectAccess(input.projectId, ctx.user.id, "editor");
       if (input.referenceImageUrl) {
         if (input.referenceImageUrl.match(/^https?:\/\//)) {
           guardUrl(input.referenceImageUrl);
@@ -316,7 +337,7 @@ export const videoTasksRouter = router({
       // bypassed (devtools, scripts, retried requests) — the in-app flow already
       // guards against this client-side, but server enforcement is the last line
       // of defence for paid external API calls.
-      const existing = await findInFlightVideoTask(ctx.user.id, input.projectId, input.nodeId);
+      const existing = await findInFlightVideoTask(input.projectId, input.nodeId);
       if (existing) {
         return existing;
       }
@@ -431,7 +452,10 @@ export const videoTasksRouter = router({
     .query(async ({ ctx, input }) => {
       const task = await getVideoTask(input.id);
       if (!task) return null;
-      if (task.userId !== ctx.user.id) throw new TRPCError({ code: "FORBIDDEN", message: "Access denied" });
+      // Project-level access (editor+). Previously hard-checked task.userId,
+      // which broke once any editor (not just owner) could create tasks —
+      // the owner could see the task in the UI but couldn't poll it.
+      await assertProjectAccess(task.projectId, ctx.user.id, "editor");
 
       // For poyo.ai tasks still processing, sync status from upstream (throttled)
       if (task.status === "processing" && task.externalTaskId && isPoyoVideoProvider(task.provider)) {
@@ -528,7 +552,7 @@ export const videoTasksRouter = router({
       })
     )
     .mutation(async ({ ctx, input }) => {
-      await assertTaskOwner(input.id, ctx.user.id);
+      await assertTaskAccess(input.id, ctx.user.id);
       const { id, ...data } = input;
       await updateVideoTask(id, data);
       return { success: true };
@@ -538,7 +562,7 @@ export const videoTasksRouter = router({
   reset: protectedProcedure
     .input(z.object({ id: z.number() }))
     .mutation(async ({ ctx, input }) => {
-      await assertTaskOwner(input.id, ctx.user.id);
+      await assertTaskAccess(input.id, ctx.user.id);
       await deleteVideoTask(input.id);
       return { success: true };
     }),
@@ -550,7 +574,9 @@ export const aiChatRouter = router({
   getMessages: protectedProcedure
     .input(z.object({ nodeId: z.string(), projectId: z.number() }))
     .query(async ({ ctx, input }) => {
-      await assertProjectOwner(input.projectId, ctx.user.id);
+      // Chat history is part of canvas state viewers are allowed to read,
+      // even though only editors can append (sendMessage) or clear.
+      await assertProjectAccess(input.projectId, ctx.user.id, "viewer");
       return getChatMessages(input.nodeId, input.projectId);
     }),
 
@@ -559,15 +585,32 @@ export const aiChatRouter = router({
       z.object({
         nodeId: z.string(),
         projectId: z.number(),
-        message: z.string().min(1).max(10_000),
+        message: z.string().max(10_000),
         systemPrompt: z.string().max(2_000).optional(),
         contextContent: z.string().max(8_000).optional(),
         model: z.string().optional(),
+        // Multimodal attachments. Images keep `url` (already uploaded via upload.uploadImage).
+        // Text files include `textContent` to be inlined into the user message.
+        attachments: z.array(z.object({
+          type: z.enum(["image", "file"]),
+          url: z.string().max(2048),
+          mimeType: z.string().max(128),
+          name: z.string().max(255),
+          textContent: z.string().max(50_000).optional(),
+        })).max(8).optional(),
       })
     )
     .mutation(async ({ ctx, input }) => {
-      await assertProjectOwner(input.projectId, ctx.user.id);
-      // Build messages for LLM (user message included inline — not saved to DB yet)
+      // Gate on whitelist before access check so banned users get a uniform
+      // "not whitelisted" error rather than a project FORBIDDEN; this also
+      // closes the gap that let an editor invoke the LLM without any
+      // platform-side limit (all other AI mutations call assertWhitelisted).
+      await assertWhitelisted(ctx);
+      await assertProjectAccess(input.projectId, ctx.user.id, "editor");
+      // Allow empty message when there's at least one attachment — image-only prompts are valid.
+      if (!input.message.trim() && !(input.attachments?.length ?? 0)) {
+        throw new TRPCError({ code: "BAD_REQUEST", message: "消息内容不能为空" });
+      }
       const history = await getChatMessages(input.nodeId, input.projectId);
       const systemContent = [
         input.systemPrompt ?? "You are a professional film and content creation assistant. Help with scripts, storyboards, prompts, and creative direction.",
@@ -576,10 +619,54 @@ export const aiChatRouter = router({
         .filter(Boolean)
         .join("");
 
+      // Compose the current user message: text + optional inline file content +
+      // image_url parts. Text files are spliced into the text body; images
+      // become structured content parts the model can see.
+      const fileBlocks = (input.attachments ?? [])
+        .filter((a) => a.type === "file" && a.textContent)
+        .map((a) => `\n\n[Attached file: ${a.name}]\n${a.textContent}`)
+        .join("");
+      const userText = (input.message + fileBlocks).trim() || "请分析附带的内容。";
+      const imageParts = (input.attachments ?? [])
+        .filter((a) => a.type === "image")
+        .map((a) => ({ type: "image_url" as const, image_url: { url: a.url } }));
+
+      const userContent = imageParts.length > 0
+        ? [{ type: "text" as const, text: userText }, ...imageParts]
+        : userText;
+
+      // Reconstruct historical messages with their original attachments so the
+      // model retains visual context across turns.
+      //
+      // SKIP data: URLs in history — when storage isn't configured (dev fallback
+      // returns the entire base64 inline), replaying those URLs in every
+      // subsequent turn balloons the prompt by ~1 MB per image per turn and
+      // can blow past provider request-size limits. Mention the attachment
+      // textually instead so the model has context without the payload.
+      const historyMessages = history.map((m) => {
+        const att = (m.attachments as Array<{ type: string; url: string; name?: string }> | null) ?? null;
+        if (m.role === "user" && att && att.length > 0) {
+          const imgs = att
+            .filter((a) => a.type === "image" && !a.url.startsWith("data:"))
+            .map((a) => ({ type: "image_url" as const, image_url: { url: a.url } }));
+          const skippedDataUrlImgs = att.filter((a) => a.type === "image" && a.url.startsWith("data:"));
+          const skippedNote = skippedDataUrlImgs.length > 0
+            ? `\n\n[Earlier turn included ${skippedDataUrlImgs.length} image attachment(s) not re-sent.]`
+            : "";
+          return {
+            role: "user" as const,
+            content: imgs.length > 0
+              ? [{ type: "text" as const, text: m.content + skippedNote }, ...imgs]
+              : m.content + skippedNote,
+          };
+        }
+        return { role: m.role as "user" | "assistant", content: m.content };
+      });
+
       const messages = [
         { role: "system" as const, content: systemContent },
-        ...history.map((m) => ({ role: m.role as "user" | "assistant", content: m.content })),
-        { role: "user" as const, content: input.message },
+        ...historyMessages,
+        { role: "user" as const, content: userContent },
       ];
 
       let assistantContent: string;
@@ -593,8 +680,14 @@ export const aiChatRouter = router({
         });
       }
 
-      // Save both messages in a single transaction — prevents partially-persisted pairs
-      await addChatMessagePair(input.nodeId, input.projectId, input.message, assistantContent);
+      // Persist user message (with attachments) and assistant reply atomically.
+      await addChatMessagePair(
+        input.nodeId,
+        input.projectId,
+        input.message,
+        assistantContent,
+        input.attachments?.length ? input.attachments : undefined,
+      );
 
       return { content: assistantContent };
     }),
@@ -602,7 +695,7 @@ export const aiChatRouter = router({
   clearMessages: protectedProcedure
     .input(z.object({ nodeId: z.string(), projectId: z.number() }))
     .mutation(async ({ ctx, input }) => {
-      await assertProjectOwner(input.projectId, ctx.user.id);
+      await assertProjectAccess(input.projectId, ctx.user.id, "editor");
       await clearChatMessages(input.nodeId, input.projectId);
       return { success: true };
     }),
@@ -641,7 +734,7 @@ export const imageGenRouter = router({
     .mutation(async ({ ctx, input }) => {
       await assertWhitelisted(ctx);
       if (input.projectId != null) {
-        await assertProjectOwner(input.projectId, ctx.user.id);
+        await assertProjectAccess(input.projectId, ctx.user.id, "editor");
       }
       if (input.referenceImageUrl) {
         if (input.referenceImageUrl.match(/^https?:\/\//)) {
@@ -1201,7 +1294,7 @@ export const audioGenRouter = router({
     )
     .mutation(async ({ ctx, input }) => {
       await assertWhitelisted(ctx);
-      if (input.projectId != null) await assertProjectOwner(input.projectId, ctx.user.id);
+      if (input.projectId != null) await assertProjectAccess(input.projectId, ctx.user.id, "editor");
       // Defense in depth: each model has a different actual max duration; the client
       // clamps but a bypassed client could send any value up to the Zod max(480).
       // Clamp here too so e.g. minimax (180s cap) doesn't silently truncate paid output.
@@ -1256,7 +1349,7 @@ export const audioGenRouter = router({
     )
     .mutation(async ({ ctx, input }) => {
       await assertWhitelisted(ctx);
-      if (input.projectId != null) await assertProjectOwner(input.projectId, ctx.user.id);
+      if (input.projectId != null) await assertProjectAccess(input.projectId, ctx.user.id, "editor");
 
       // Legacy Poyo TTS aliases — Poyo platform does NOT actually offer TTS,
       // these 4 ids always 404'd upstream. Refuse at the router so the user
@@ -1626,7 +1719,7 @@ export const comfyuiRouter = router({
     )
     .mutation(async ({ ctx, input }) => {
       await assertWhitelisted(ctx);
-      await assertProjectOwner(input.projectId, ctx.user.id);
+      await assertProjectAccess(input.projectId, ctx.user.id, "editor");
       const baseUrl = input.customBaseUrl?.trim() || ENV.comfyuiBaseUrl;
       if (!baseUrl) throw new TRPCError({ code: "BAD_REQUEST", message: "ComfyUI URL 未配置：请在节点设置中填写或服务端设置 COMFYUI_BASE_URL" });
       return dedupe("comfyui.generateImage", ctx.user.id, input, async () => {
@@ -1698,7 +1791,7 @@ export const comfyuiRouter = router({
     )
     .mutation(async ({ ctx, input }) => {
       await assertWhitelisted(ctx);
-      await assertProjectOwner(input.projectId, ctx.user.id);
+      await assertProjectAccess(input.projectId, ctx.user.id, "editor");
       const baseUrl = input.customBaseUrl?.trim() || ENV.comfyuiBaseUrl;
       if (!baseUrl) throw new TRPCError({ code: "BAD_REQUEST", message: "ComfyUI URL 未配置：请在节点设置中填写或服务端设置 COMFYUI_BASE_URL" });
       return dedupe("comfyui.generateVideo", ctx.user.id, input, async () => {
@@ -1777,7 +1870,7 @@ export const comfyuiRouter = router({
     }))
     .mutation(async ({ ctx, input }) => {
       await assertWhitelisted(ctx);
-      await assertProjectOwner(input.projectId, ctx.user.id);
+      await assertProjectAccess(input.projectId, ctx.user.id, "editor");
       const baseUrl = input.customBaseUrl?.trim() || ENV.comfyuiBaseUrl;
       if (!baseUrl) throw new TRPCError({ code: "BAD_REQUEST", message: "ComfyUI URL 未配置" });
       try {
@@ -1800,7 +1893,7 @@ export const comfyuiRouter = router({
     }))
     .mutation(async ({ ctx, input }) => {
       await assertWhitelisted(ctx);
-      await assertProjectOwner(input.projectId, ctx.user.id);
+      await assertProjectAccess(input.projectId, ctx.user.id, "editor");
       const baseUrl = input.customBaseUrl?.trim() || ENV.comfyuiBaseUrl;
       if (!baseUrl) throw new TRPCError({ code: "BAD_REQUEST", message: "ComfyUI URL 未配置：请在节点设置中填写或服务端设置 COMFYUI_BASE_URL" });
       return dedupe("comfyui.executeWorkflow", ctx.user.id, input, async () => {

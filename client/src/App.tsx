@@ -9,6 +9,7 @@ import Home from "./pages/Home";
 import Canvas from "./pages/Canvas";
 import LoginPage from "./pages/LoginPage";
 import AdminPage from "./pages/AdminPage";
+import AcceptInvite from "./pages/AcceptInvite";
 import { WhitelistBlockedDialog } from "./components/WhitelistBlockedDialog";
 import { useParams } from "wouter";
 
@@ -24,6 +25,7 @@ function Router() {
       <Route path="/canvas/:projectId" component={CanvasWithKey} />
       <Route path="/login" component={LoginPage} />
       <Route path="/admin" component={AdminPage} />
+      <Route path="/invite/:token" component={AcceptInvite} />
       <Route path="/404" component={NotFound} />
       <Route component={NotFound} />
     </Switch>

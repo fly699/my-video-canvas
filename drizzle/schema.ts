@@ -38,12 +38,58 @@ export const projects = mysqlTable("projects", {
   thumbnail: text("thumbnail"),
   /** Viewport state: { x, y, scale } */
   viewportState: json("viewportState"),
+  /** When true, any authenticated user with the URL can view (read-only). */
+  publicReadAccess: boolean("publicReadAccess").notNull().default(false),
   createdAt: timestamp("createdAt").defaultNow().notNull(),
   updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
 });
 
 export type Project = typeof projects.$inferSelect;
 export type InsertProject = typeof projects.$inferInsert;
+
+// ── Project Collaborators ────────────────────────────────────────────────────
+// One row per (project, member). userId is nullable when the invite targets
+// an email that has not registered yet — at signup time we claim those rows.
+// The project owner is NOT stored here; it lives in projects.userId.
+export const projectCollaborators = mysqlTable("project_collaborators", {
+  id: int("id").autoincrement().primaryKey(),
+  projectId: int("projectId").notNull(),
+  userId: int("userId"),
+  email: varchar("email", { length: 320 }),
+  role: mysqlEnum("role", ["viewer", "editor", "admin"]).notNull(),
+  invitedBy: int("invitedBy").notNull(),
+  status: mysqlEnum("status", ["pending", "active"]).notNull().default("active"),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+}, (t) => ({
+  projectUserIdx: index("project_collab_project_user_idx").on(t.projectId, t.userId),
+  emailIdx: index("project_collab_email_idx").on(t.email),
+}));
+
+export type ProjectCollaborator = typeof projectCollaborators.$inferSelect;
+export type InsertProjectCollaborator = typeof projectCollaborators.$inferInsert;
+
+// ── Project Share Links ──────────────────────────────────────────────────────
+// One-time / multi-use invite tokens. When a link is "consumed", the consumer
+// is added to project_collaborators as an active member with the link's role.
+// Anti-replay via usesCount < maxUses AND expiresAt > now.
+export const projectShareLinks = mysqlTable("project_share_links", {
+  id: int("id").autoincrement().primaryKey(),
+  token: varchar("token", { length: 64 }).notNull().unique(),
+  projectId: int("projectId").notNull(),
+  role: mysqlEnum("role", ["viewer", "editor", "admin"]).notNull(),
+  maxUses: int("maxUses").notNull().default(1),
+  usesCount: int("usesCount").notNull().default(0),
+  expiresAt: timestamp("expiresAt").notNull(),
+  createdBy: int("createdBy").notNull(),
+  revokedAt: timestamp("revokedAt"),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+}, (t) => ({
+  projectIdx: index("share_links_project_idx").on(t.projectId),
+}));
+
+export type ProjectShareLink = typeof projectShareLinks.$inferSelect;
+export type InsertProjectShareLink = typeof projectShareLinks.$inferInsert;
 
 // ── Canvas Nodes ─────────────────────────────────────────────────────────────
 export const canvasNodes = mysqlTable("canvas_nodes", {
@@ -161,6 +207,8 @@ export const chatMessages = mysqlTable("chat_messages", {
   projectId: int("projectId").notNull(),
   role: mysqlEnum("role", ["user", "assistant", "system"]).notNull(),
   content: text("content").notNull(),
+  /** Multimodal attachments: Array<{ type, url, mimeType, name }>. NULL = legacy text-only message. */
+  attachments: json("attachments"),
   createdAt: timestamp("createdAt").defaultNow().notNull(),
 });
 

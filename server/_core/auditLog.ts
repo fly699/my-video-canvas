@@ -64,7 +64,15 @@ export type AuditAction =
   | "logs_cleared"
   | "comfyui_image_gen"
   | "comfyui_video_gen"
-  | "comfyui_workflow_exec";
+  | "comfyui_workflow_exec"
+  | "collab:invite_email"
+  | "collab:update_role"
+  | "collab:remove"
+  | "collab:leave"
+  | "collab:public_toggle"
+  | "collab:create_link"
+  | "collab:revoke_link"
+  | "collab:accept_link";
 
 export interface AuditOpts {
   ctx?: TrpcContext;

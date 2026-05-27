@@ -128,10 +128,19 @@ export interface VideoTaskNodeData {
   params?: Record<string, unknown>;
 }
 
+export interface ChatAttachment {
+  type: "image" | "file";
+  url: string;
+  mimeType: string;
+  name: string;
+  /** For text/markdown files only — the body inlined into the prompt. */
+  textContent?: string;
+}
+
 export interface AIChatNodeData {
   systemPrompt?: string;
   contextNodeIds?: string[];
-  messages?: Array<{ role: "user" | "assistant"; content: string }>;
+  messages?: Array<{ role: "user" | "assistant"; content: string; attachments?: ChatAttachment[] }>;
   model?: string;
 }
 
