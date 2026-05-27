@@ -23,6 +23,10 @@ export function useLocalMedia(url: string | undefined): LocalMediaState & { refr
     let cancelled = false;
     let localBlobUrl: string | null = null;
 
+    // Synchronously clear stale state so the revoked blobUrl isn't used as src
+    // while the new async lookup is in flight.
+    setState(EMPTY);
+
     getCachedMedia(url)
       .then((entry) => {
         if (cancelled) return;

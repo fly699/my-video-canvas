@@ -8,7 +8,7 @@ import { toast } from "sonner";
 import { Handle, Position } from "@xyflow/react";
 import { Play, Loader2, CheckCircle2, XCircle, Clock, RefreshCw, AlertCircle, Download, ChevronDown, ChevronRight, Layers, Plus, X as XIcon, Film, HardDriveDownload } from "lucide-react";
 import { useLocalMedia } from "@/lib/useLocalMedia";
-import { cacheMedia, getCachedMedia } from "@/lib/mediaCache";
+import { cacheMedia } from "@/lib/mediaCache";
 import { listCustomPresets, saveCustomPreset, deleteCustomPreset, type CustomVideoPreset } from "@/lib/customPresets";
 import { ensureNotificationPermission, showCompletionNotification } from "@/lib/notify";
 import { CinematographyPicker } from "../CinematographyPicker";
@@ -743,23 +743,6 @@ export const VideoTaskNode = memo(function VideoTaskNode({ id, selected, data }:
   const { isLocal, blobUrl, downloadedAt, refresh: refreshLocalCache } = useLocalMedia(primaryUrl);
   const [caching, setCaching] = useState(false);
   const [cacheProgress, setCacheProgress] = useState(0);
-  const [fallbackSrc, setFallbackSrc] = useState<string | null>(null);
-  const fallbackBlobRef = useRef<string | null>(null);
-  const handleVideoError = useCallback((e: React.SyntheticEvent<HTMLVideoElement>) => {
-    const target = e.currentTarget;
-    console.error("[VideoTaskNode] Video load error:", target.error?.message, "src:", target.src);
-    if (!blobUrl && primaryUrl) {
-      getCachedMedia(primaryUrl).then((entry) => {
-        if (entry) {
-          if (fallbackBlobRef.current) URL.revokeObjectURL(fallbackBlobRef.current);
-          const objUrl = URL.createObjectURL(entry.blob);
-          fallbackBlobRef.current = objUrl;
-          setFallbackSrc(objUrl);
-          toast.info("在线地址失效，已切换到本地缓存");
-        }
-      }).catch(() => {});
-    }
-  }, [blobUrl, primaryUrl]);
   const handleCache = async () => {
     if (!primaryUrl || caching) return;
     setCaching(true); setCacheProgress(0);
@@ -776,7 +759,7 @@ export const VideoTaskNode = memo(function VideoTaskNode({ id, selected, data }:
 
   const heroMedia = payload.status === "succeeded" && videoSrc ? (
     <video
-      src={fallbackSrc ?? blobUrl ?? videoSrc}
+      src={blobUrl ?? videoSrc}
       controls
       className="w-full"
       preload="metadata"
@@ -835,13 +818,12 @@ export const VideoTaskNode = memo(function VideoTaskNode({ id, selected, data }:
                 <div className="relative rounded-lg overflow-hidden" style={{ borderWidth: 1, borderStyle: "solid", borderColor: STATUS.succeeded.borderColor }}>
                   {isLocal && <LocalCacheBadge downloadedAt={downloadedAt} />}
                   <video
-                    key={fallbackSrc ?? blobUrl ?? videoSrc}
-                    src={fallbackSrc ?? blobUrl ?? videoSrc}
+                    key={videoSrc}
+                    src={blobUrl ?? videoSrc}
                     controls
                     className="w-full nodrag"
                     style={{ maxHeight: 140, display: "block" }}
                     preload="metadata"
-                    onError={handleVideoError}
                   />
                 </div>
                 {/* Download button (primary URL — works for single-shot results) */}

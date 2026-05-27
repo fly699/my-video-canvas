@@ -485,6 +485,7 @@ export const AudioNode = memo(function AudioNode({ id, selected, data }: Props) 
         ref={audioRef}
         src={audioBlobUrl ?? payload.url}
         onEnded={() => setIsPlaying(false)}
+        onEmptied={() => setIsPlaying(false)}
         onLoadedMetadata={(e) => update("duration", (e.target as HTMLAudioElement).duration)}
         style={{ display: "none" }}
       />
