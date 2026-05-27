@@ -8,7 +8,7 @@ import { toast } from "sonner";
 import { Handle, Position } from "@xyflow/react";
 import { Play, Loader2, CheckCircle2, XCircle, Clock, RefreshCw, AlertCircle, Download, ChevronDown, ChevronRight, Layers, Plus, X as XIcon, Film, HardDriveDownload } from "lucide-react";
 import { useLocalMedia } from "@/lib/useLocalMedia";
-import { cacheMedia } from "@/lib/mediaCache";
+import { cacheMedia, getCachedMedia } from "@/lib/mediaCache";
 import { listCustomPresets, saveCustomPreset, deleteCustomPreset, type CustomVideoPreset } from "@/lib/customPresets";
 import { ensureNotificationPermission, showCompletionNotification } from "@/lib/notify";
 import { CinematographyPicker } from "../CinematographyPicker";
@@ -743,6 +743,19 @@ export const VideoTaskNode = memo(function VideoTaskNode({ id, selected, data }:
   const { isLocal, blobUrl, downloadedAt, refresh: refreshLocalCache } = useLocalMedia(primaryUrl);
   const [caching, setCaching] = useState(false);
   const [cacheProgress, setCacheProgress] = useState(0);
+  // On network video error, notify the user once when a local cache exists —
+  // useLocalMedia self-heals by updating blobUrl, so no fallback state machine needed.
+  const errorToastedRef = useRef<string | null>(null);
+  const handleVideoError = useCallback(() => {
+    if (!primaryUrl || errorToastedRef.current === primaryUrl) return;
+    const urlAtError = primaryUrl;
+    getCachedMedia(urlAtError).then((entry) => {
+      if (entry && errorToastedRef.current !== urlAtError) {
+        errorToastedRef.current = urlAtError;
+        toast.info("在线地址失效，已切换到本地缓存");
+      }
+    }).catch(() => {});
+  }, [primaryUrl]);
   const handleCache = async () => {
     if (!primaryUrl || caching) return;
     setCaching(true); setCacheProgress(0);
@@ -824,6 +837,7 @@ export const VideoTaskNode = memo(function VideoTaskNode({ id, selected, data }:
                     className="w-full nodrag"
                     style={{ maxHeight: 140, display: "block" }}
                     preload="metadata"
+                    onError={handleVideoError}
                   />
                 </div>
                 {/* Download button (primary URL — works for single-shot results) */}

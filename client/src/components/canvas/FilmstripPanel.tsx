@@ -333,7 +333,7 @@ function FilmFrame({
           />
         ) : (
           <img
-            src={blobUrl ?? imageUrl ?? ""}
+            src={blobUrl ?? imageUrl}
             alt={title}
             style={{
               width: "100%",
