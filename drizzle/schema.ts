@@ -30,6 +30,17 @@ export type User = typeof users.$inferSelect;
 export type InsertUser = typeof users.$inferInsert;
 
 // ── Canvas Projects ──────────────────────────────────────────────────────────
+// IMPORTANT: the `publicReadAccess` column added by migration 0018 is
+// INTENTIONALLY omitted from drizzle's column list — same pattern as
+// storageSettings.persistImage (see note further down). Deployments that
+// haven't yet run `pnpm db:push` would otherwise hit "Unknown column
+// 'publicReadAccess'" on every SELECT * from projects — making every
+// `projects.list` and `projects.get` call fail and giving users the
+// impression their projects vanished.
+// All reads/writes of publicReadAccess go through raw SQL inside db.ts
+// (readPublicReadAccess / writePublicReadAccess) with graceful fallback
+// when the column doesn't exist (defaults to false on read; surfaces a
+// clear "please run pnpm db:push" error on write).
 export const projects = mysqlTable("projects", {
   id: int("id").autoincrement().primaryKey(),
   userId: int("userId").notNull(),
@@ -38,8 +49,6 @@ export const projects = mysqlTable("projects", {
   thumbnail: text("thumbnail"),
   /** Viewport state: { x, y, scale } */
   viewportState: json("viewportState"),
-  /** When true, any authenticated user with the URL can view (read-only). */
-  publicReadAccess: boolean("publicReadAccess").notNull().default(false),
   createdAt: timestamp("createdAt").defaultNow().notNull(),
   updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
 });
@@ -201,14 +210,20 @@ export type VideoTask = typeof videoTasks.$inferSelect;
 export type InsertVideoTask = typeof videoTasks.$inferInsert;
 
 // ── AI Chat Messages ──────────────────────────────────────────────────────────
+// IMPORTANT: the `attachments` JSON column added by migration 0019 is
+// INTENTIONALLY omitted from drizzle's column list (same pattern as
+// projects.publicReadAccess + storageSettings.persistImage). Deployments
+// that haven't yet applied 0019 would otherwise hit "Unknown column
+// 'attachments'" on every getChatMessages, breaking the entire AI chat
+// node for everyone.
+// Attachments are read/written via raw SQL inside db.ts with graceful
+// fallback when the column doesn't exist (null on read).
 export const chatMessages = mysqlTable("chat_messages", {
   id: int("id").autoincrement().primaryKey(),
   nodeId: varchar("nodeId", { length: 64 }).notNull(),
   projectId: int("projectId").notNull(),
   role: mysqlEnum("role", ["user", "assistant", "system"]).notNull(),
   content: text("content").notNull(),
-  /** Multimodal attachments: Array<{ type, url, mimeType, name }>. NULL = legacy text-only message. */
-  attachments: json("attachments"),
   createdAt: timestamp("createdAt").defaultNow().notNull(),
 });
 
