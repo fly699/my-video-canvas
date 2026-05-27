@@ -27,11 +27,7 @@ const newId = () => nextId++;
 const now = () => new Date();
 
 // ── Storage maps ──────────────────────────────────────────────────────────────
-// Dev-mode projects also carry publicReadAccess so the access resolver can
-// inspect it. The prod path keeps this field out of the drizzle schema (see
-// drizzle/schema.ts) and reads/writes it via raw SQL.
-type DevProject = Project & { publicReadAccess: boolean };
-const projectsMap = new Map<number, DevProject>();
+const projectsMap = new Map<number, Project>();
 const nodesMap = new Map<string, CanvasNode>();
 const edgesMap = new Map<string, CanvasEdge>();
 const assetsMap = new Map<number, Asset>();
@@ -41,9 +37,9 @@ const collaboratorsMap = new Map<number, ProjectCollaborator>();
 const shareLinksMap = new Map<number, ProjectShareLink>();
 
 // ── Projects ──────────────────────────────────────────────────────────────────
-export function devCreateProject(data: InsertProject & { publicReadAccess?: boolean }): DevProject {
+export function devCreateProject(data: InsertProject): Project {
   const id = newId();
-  const project: DevProject = {
+  const project: Project = {
     id,
     userId: data.userId!,
     name: data.name,
@@ -231,30 +227,24 @@ export function devClaimVideoTaskForSubmit(id: number): boolean {
 }
 
 // ── Chat Messages ─────────────────────────────────────────────────────────────
-/** Dev-mode chat messages carry attachments as a side field since the
- *  prod schema no longer includes it (raw SQL handles it in prod). */
-type DevChatMessage = ChatMessage & { attachments: unknown };
-const _devChatAttachments = new WeakMap<ChatMessage, unknown>();
-
-export function devGetChatMessages(nodeId: string, projectId: number): DevChatMessage[] {
+export function devGetChatMessages(nodeId: string, projectId: number): ChatMessage[] {
   return chatMessagesArr
     .filter((m) => m.nodeId === nodeId && m.projectId === projectId)
-    .sort((a, b) => a.createdAt.getTime() - b.createdAt.getTime())
-    .map((m) => ({ ...m, attachments: _devChatAttachments.get(m) ?? null }));
+    .sort((a, b) => a.createdAt.getTime() - b.createdAt.getTime());
 }
 
-export function devAddChatMessage(data: InsertChatMessage, attachments: unknown = null): DevChatMessage {
+export function devAddChatMessage(data: InsertChatMessage): ChatMessage {
   const msg: ChatMessage = {
     id: newId(),
     nodeId: data.nodeId,
     projectId: data.projectId!,
     role: data.role,
     content: data.content,
+    attachments: (data.attachments as ChatMessage["attachments"]) ?? null,
     createdAt: now(),
   };
   chatMessagesArr.push(msg);
-  _devChatAttachments.set(msg, attachments);
-  return { ...msg, attachments };
+  return msg;
 }
 
 export function devClearChatMessages(nodeId: string, projectId: number) {
@@ -271,7 +261,7 @@ export function devGetUserByOpenId(_openId: string): User | undefined {
 }
 
 // ── Project Collaborators ─────────────────────────────────────────────────────
-export function devGetProjectByIdRaw(id: number): DevProject | undefined {
+export function devGetProjectByIdRaw(id: number): Project | undefined {
   return projectsMap.get(id);
 }
 

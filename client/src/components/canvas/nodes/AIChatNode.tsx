@@ -5,7 +5,8 @@ import { useCanvasStore } from "../../../hooks/useCanvasStore";
 import type { AIChatNodeData, ChatAttachment, NodeType } from "../../../../../shared/types";
 import { trpc } from "@/lib/trpc";
 import { toast } from "sonner";
-import { Send, Loader2, Trash2, Bot, User, Sparkles, ChevronDown, ArrowRight, Copy, BookOpen, Paperclip, ImageIcon, FileText, X, PictureInPicture2, ChevronsRight, GripHorizontal, Download, Layers, Slash } from "lucide-react";
+import { Send, Loader2, Trash2, Bot, User, Sparkles, ChevronDown, ArrowRight, Copy, BookOpen, Clapperboard, LayoutGrid, Wand2, ScrollText, UserRound, Paperclip, ImageIcon, FileText, X, PictureInPicture2, ChevronsRight, GripHorizontal } from "lucide-react";
+import type { LucideIcon } from "lucide-react";
 import { CHAT_MODELS } from "@/lib/models";
 // Streamdown removed — replaced with safe inline markdown renderer to avoid ReactFlow DOM conflicts
 function SimpleMarkdown({ children }: { children: string }) {
@@ -46,10 +47,15 @@ const FIELD_MAP: Partial<Record<NodeType, string>> = {
   note: "content",
 };
 
-// Templates are organized by category and imported from a dedicated module so
-// the picker can stay rich without bloating this component file. See
-// client/src/lib/aiAssistantTemplates.ts for the actual definitions.
-import { AI_TEMPLATE_CATEGORIES, type AITemplate } from "@/lib/aiAssistantTemplates";
+const SYSTEM_PROMPT_TEMPLATES = [
+  { label: "导演助手", icon: "Clapperboard", prompt: "你是一位专业的电影导演助手，擅长分析剧本、提出视觉化建议和分镜构思。请用简洁专业的中文回答。" },
+  { label: "分镜生成", icon: "LayoutGrid", prompt: "你是专业的分镜师。根据场景描述，生成详细的分镜描述，包括：镜头类型、运镜方式、景深、灯光氛围、构图要点。每个分镜用编号列出。" },
+  { label: "提示词优化", icon: "Wand2", prompt: "你是专业的 AI 图像提示词工程师。用户输入中文描述，你将其转化为高质量的英文 Stable Diffusion 提示词（100词以内），聚焦于视觉细节、光影、风格、构图。只输出提示词，无需解释。" },
+  { label: "视频脚本", icon: "ScrollText", prompt: "你是专业的视频脚本创作者。根据主题创作简洁有力的视频脚本，包括旁白文字、配乐建议和镜头切换节奏。" },
+  { label: "角色设计", icon: "UserRound", prompt: "你是角色设计专家。根据描述生成详细的角色外观描述，包括：年龄体型、服装风格、表情神态、标志性特征，用于 AI 图像生成。" },
+] as const;
+
+const PRESET_ICONS: Record<string, LucideIcon> = { Clapperboard, LayoutGrid, Wand2, ScrollText, UserRound };
 
 export const AIChatNode = memo(function AIChatNode({ id, selected, data }: Props) {
   const { updateNodeData } = useCanvasStore();
@@ -64,7 +70,6 @@ export const AIChatNode = memo(function AIChatNode({ id, selected, data }: Props
   const [model, setModel] = useState<string>(payload.model ?? "gemini-2.5-flash");
   const [showModelPicker, setShowModelPicker] = useState(false);
   const [showTemplates, setShowTemplates] = useState(false);
-  const [showSlashMenu, setShowSlashMenu] = useState(false);
   // Attachments currently composed for the *next* user message. Cleared on send.
   const [pendingAttachments, setPendingAttachments] = useState<ChatAttachment[]>([]);
   const [isUploadingAttachment, setIsUploadingAttachment] = useState(false);
@@ -211,10 +216,7 @@ export const AIChatNode = memo(function AIChatNode({ id, selected, data }: Props
             const synced = msgs.map((m) => ({
               role: m.role as "user" | "assistant",
               content: m.content,
-              // attachments is enriched server-side via raw SQL (see
-              // db.getChatMessages) and may not appear on the inferred
-              // schema type, so widen via cast.
-              attachments: ((m as unknown as { attachments?: ChatAttachment[] | null }).attachments) ?? undefined,
+              attachments: (m.attachments as ChatAttachment[] | null) ?? undefined,
               _id: crypto.randomUUID(),
             }));
             setLocalMessages(synced);
@@ -268,96 +270,15 @@ export const AIChatNode = memo(function AIChatNode({ id, selected, data }: Props
     return parts.join("\n\n") || undefined;
   }, [id, payload.contextNodeIds]);
 
-  // ── Slash commands ─────────────────────────────────────────────────────
-  // Type `/<cmd> <text>` to wrap the message in a known prompt template.
-  // Aliases (English / Chinese) so the same command is callable in either.
-  const SLASH_COMMANDS: Array<{ id: string; aliases: string[]; label: string; wrap: (rest: string) => string }> = useMemo(() => [
-    { id: "translate-en", aliases: ["翻译", "translate", "en"],
-      label: "翻译为英文 prompt",
-      wrap: (s) => `请把以下内容翻译为适合 AI 图像/视频生成的英文 prompt（自然语言段落，80-120 词，无 markdown，无前后解释）：\n\n${s}` },
-    { id: "translate-cn", aliases: ["中译", "zh", "cn"],
-      label: "翻译为中文",
-      wrap: (s) => `请把以下内容翻译为简洁的中文（保留专业术语）：\n\n${s}` },
-    { id: "rewrite", aliases: ["重写", "rewrite"],
-      label: "更简洁地重写",
-      wrap: (s) => `请用更简洁、有力的方式重写以下内容，保持原意：\n\n${s}` },
-    { id: "expand", aliases: ["扩展", "expand"],
-      label: "扩写为更详细版本",
-      wrap: (s) => `请把以下内容扩展为更详细丰富的版本，加上具体细节、画面感、感官描述：\n\n${s}` },
-    { id: "summarize", aliases: ["总结", "summarize", "summary", "tldr"],
-      label: "总结要点",
-      wrap: (s) => `请总结以下内容的核心要点（用项目符号列表，每点 ≤15 字）：\n\n${s}` },
-    { id: "json", aliases: ["JSON", "json"],
-      label: "转换为 JSON",
-      wrap: (s) => `请把以下内容转换为结构化 JSON（推断合理的字段名，输出代码块）：\n\n${s}` },
-    { id: "critique", aliases: ["批评", "评审", "critique", "review"],
-      label: "挑剔评审",
-      wrap: (s) => `请用挑剔的眼光评审以下内容，列出 3-5 个最严重的问题及改进建议：\n\n${s}` },
-    { id: "improve", aliases: ["改进", "improve", "enhance"],
-      label: "给出改进版",
-      wrap: (s) => `请改进以下内容并直接给出改进后版本（保留原始结构）：\n\n${s}` },
-    { id: "explain", aliases: ["解释", "explain"],
-      label: "深入解释",
-      wrap: (s) => `请深入解释以下概念/词语/术语（适合创作者理解）：\n\n${s}` },
-    { id: "canvas-context", aliases: ["画布", "canvas", "ctx"],
-      label: "注入整个画布摘要",
-      wrap: (s) => `${buildCanvasSummary()}\n\n基于以上画布内容，请回答以下问题：\n\n${s || "请审查这个工作流的合理性，指出问题与改进建议。"}` },
-  ], []); // eslint-disable-line react-hooks/exhaustive-deps
-
-  /** Build a compact text snapshot of the current canvas for context injection. */
-  const buildCanvasSummary = useCallback((): string => {
-    const { nodes, edges } = useCanvasStore.getState();
-    const lines: string[] = ["# 当前画布摘要", ""];
-    lines.push(`节点 ${nodes.length} 个，连线 ${edges.length} 条。`);
-    lines.push("");
-    lines.push("## 节点");
-    for (const n of nodes) {
-      const p = n.data.payload as Record<string, unknown>;
-      const summary: string[] = [];
-      if (typeof p.prompt === "string" && p.prompt) summary.push(`prompt="${(p.prompt as string).slice(0, 60)}…"`);
-      if (typeof p.positivePrompt === "string" && p.positivePrompt) summary.push(`prompt="${(p.positivePrompt as string).slice(0, 60)}…"`);
-      if (typeof p.content === "string" && p.content) summary.push(`content="${(p.content as string).slice(0, 60)}…"`);
-      if (typeof p.imageUrl === "string" && p.imageUrl) summary.push("[已生成图]");
-      if (typeof p.resultVideoUrl === "string" && p.resultVideoUrl) summary.push("[已生成视频]");
-      if (typeof p.url === "string" && p.url) summary.push(`url=${(p.url as string).slice(0, 30)}…`);
-      if (typeof p.provider === "string") summary.push(`provider=${p.provider}`);
-      if (typeof p.model === "string") summary.push(`model=${p.model}`);
-      lines.push(`- [${n.id.slice(0, 6)}] ${n.data.nodeType} "${n.data.title ?? ""}"  ${summary.join("  ")}`);
-    }
-    if (edges.length > 0) {
-      lines.push("");
-      lines.push("## 连接");
-      for (const e of edges) {
-        lines.push(`- ${e.source.slice(0, 6)} → ${e.target.slice(0, 6)}`);
-      }
-    }
-    return lines.join("\n");
-  }, []);
-
-  /** Detect leading `/<cmd>` in the input and expand to its prompt wrapper. */
-  const expandSlashCommand = (raw: string): string => {
-    const m = raw.match(/^\/(\S+)\s*([\s\S]*)$/);
-    if (!m) return raw;
-    const [, name, rest] = m;
-    const cmd = SLASH_COMMANDS.find((c) =>
-      c.aliases.some((a) => a.toLowerCase() === name.toLowerCase()),
-    );
-    if (!cmd) return raw;
-    return cmd.wrap(rest.trim());
-  };
-
   const handleSend = () => {
-    const msgRaw = input.trim();
-    if ((!msgRaw && pendingAttachments.length === 0) || sendMutation.isPending) return;
-    const msg = expandSlashCommand(msgRaw);
+    const msg = input.trim();
+    if ((!msg && pendingAttachments.length === 0) || sendMutation.isPending) return;
     setInput("");
     const attachmentsToSend = pendingAttachments;
     setPendingAttachments([]);
     setLocalMessages((prev) => [...prev, {
       role: "user",
-      // Preserve what the user typed (`/翻译 ...`) in the visible message
-      // but send the expanded version to the LLM.
-      content: msgRaw,
+      content: msg,
       attachments: attachmentsToSend.length > 0 ? attachmentsToSend : undefined,
       _id: crypto.randomUUID(),
     }]);
@@ -458,31 +379,8 @@ export const AIChatNode = memo(function AIChatNode({ id, selected, data }: Props
     e.stopPropagation();
     setIsDraggingOver(false);
     const files = Array.from(e.dataTransfer.files);
-    if (files.length > 0) {
-      await attachFiles(files);
-      return;
-    }
-    // Drop from the filmstrip/timeline (or any image URL) — they expose a
-    // structured payload via dataTransfer instead of a File. Treat the URL
-    // as an already-uploaded image attachment (no need to re-upload).
-    const structured = e.dataTransfer.getData("application/x-avc-attachment");
-    if (structured) {
-      try {
-        const parsed = JSON.parse(structured) as ChatAttachment;
-        if (pendingAttachments.length >= 8) { toast.error("最多 8 个附件"); return; }
-        setPendingAttachments((prev) => [...prev, parsed]);
-        toast.success("已添加 1 个附件");
-        return;
-      } catch { /* fall through to plain URL */ }
-    }
-    const url = e.dataTransfer.getData("text/uri-list") || e.dataTransfer.getData("text/plain");
-    if (url && /^(https?:|data:|\/)/i.test(url)) {
-      if (pendingAttachments.length >= 8) { toast.error("最多 8 个附件"); return; }
-      const name = url.startsWith("data:") ? "image" : (url.split("/").pop()?.split("?")[0] || "image");
-      setPendingAttachments((prev) => [...prev, { type: "image", url, mimeType: "image/*", name }]);
-      toast.success("已添加 1 个附件");
-    }
-  }, [attachFiles, pendingAttachments.length]);
+    if (files.length > 0) await attachFiles(files);
+  }, [attachFiles]);
 
   const removeAttachment = (idx: number) => {
     setPendingAttachments((prev) => prev.filter((_, i) => i !== idx));
@@ -505,37 +403,7 @@ export const AIChatNode = memo(function AIChatNode({ id, selected, data }: Props
   );
 
   const chatBody = (
-    <div
-      className="flex flex-col h-full nodrag nopan nowheel"
-      style={{ minHeight: 280 }}
-      // Whole-node drop target so users can drag from the filmstrip /
-      // timeline straight onto any part of the chat node, not just the
-      // input strip at the bottom.
-      //
-      // Always preventDefault on dragover — without it, the browser refuses
-      // to fire the subsequent drop event, no matter what we set on
-      // dataTransfer. The earlier "only preventDefault for recognized
-      // payloads" gate was the reason drops from filmstrip / timeline
-      // weren't landing on the chat node.
-      onDragOver={(e) => {
-        e.preventDefault();
-        e.stopPropagation();
-        // Visual highlight only when we recognize something attachable.
-        const types = e.dataTransfer.types;
-        const recognized = !!types && (
-          types.includes("Files") ||
-          types.includes("application/x-avc-attachment") ||
-          types.includes("text/uri-list") ||
-          types.includes("text/plain")
-        );
-        if (recognized) setIsDraggingOver(true);
-      }}
-      onDragLeave={(e) => {
-        // Only flip off when leaving the outer container, not crossing into children
-        if (e.currentTarget === e.target) setIsDraggingOver(false);
-      }}
-      onDrop={handleDrop}
-    >
+    <div className="flex flex-col h-full" style={{ minHeight: 280 }}>
 
         {/* ── System prompt ── */}
         <div
@@ -573,57 +441,36 @@ export const AIChatNode = memo(function AIChatNode({ id, selected, data }: Props
           </button>
           {showTemplates && (
             <div
-              className="absolute left-0 right-0 z-50 rounded-xl overflow-hidden nodrag nopan nowheel"
+              className="absolute left-0 right-0 z-50 rounded-xl overflow-hidden"
               style={{
                 top: "calc(100% + 4px)",
                 background: "var(--c-base)",
                 border: "1px solid var(--c-bd2)",
                 boxShadow: "0 8px 32px oklch(0 0 0 / 0.55)",
-                maxHeight: 380,
-                overflowY: "auto",
               }}
             >
-              {AI_TEMPLATE_CATEGORIES.map((cat, idx) => (
-                <div key={cat.id}>
-                  <div
-                    className="px-3 py-1.5 sticky top-0 z-10"
-                    style={{
-                      fontSize: 10,
-                      fontWeight: 600,
-                      letterSpacing: "0.04em",
-                      color: "var(--c-t3)",
-                      background: "color-mix(in oklch, var(--c-base) 92%, transparent)",
-                      backdropFilter: "blur(8px)",
-                      borderTop: idx > 0 ? "1px solid var(--c-bd1)" : "none",
-                      borderBottom: "1px solid var(--c-bd1)",
-                    }}
-                  >
-                    {cat.label}
+              {SYSTEM_PROMPT_TEMPLATES.map((t) => (
+                <button
+                  key={t.label}
+                  className="nodrag w-full flex items-center gap-2 px-3 py-2 transition-all text-left"
+                  style={{
+                    borderBottom: "1px solid var(--c-bd1)",
+                    cursor: "pointer",
+                  }}
+                  onClick={() => {
+                    updateNodeData(id, { systemPrompt: t.prompt });
+                    setShowTemplates(false);
+                    toast.success(`已应用模板：${t.label}`);
+                  }}
+                  onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.background = "var(--c-elevated)"; }}
+                  onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.background = "transparent"; }}
+                >
+                  {(() => { const I = PRESET_ICONS[t.icon]; return I ? <I className="w-3.5 h-3.5 flex-shrink-0" /> : null; })()}
+                  <div className="flex flex-col flex-1 min-w-0">
+                    <span style={{ fontSize: 11, fontWeight: 500, color: "var(--c-t1)" }}>{t.label}</span>
+                    <span style={{ fontSize: 9.5, color: "var(--c-t4)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{t.prompt.slice(0, 50)}...</span>
                   </div>
-                  {cat.templates.map((t: AITemplate) => {
-                    const Icon = t.icon;
-                    return (
-                      <button
-                        key={t.id}
-                        className="nodrag w-full flex items-center gap-2 px-3 py-2 transition-all text-left"
-                        style={{ borderBottom: "1px solid var(--c-bd1)", cursor: "pointer" }}
-                        onClick={() => {
-                          updateNodeData(id, { systemPrompt: t.prompt });
-                          setShowTemplates(false);
-                          toast.success(`已应用模板：${t.label}`);
-                        }}
-                        onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.background = "var(--c-elevated)"; }}
-                        onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.background = "transparent"; }}
-                      >
-                        <Icon className="w-3.5 h-3.5 flex-shrink-0" style={{ color: accentColor }} />
-                        <div className="flex flex-col flex-1 min-w-0">
-                          <span style={{ fontSize: 11, fontWeight: 500, color: "var(--c-t1)" }}>{t.label}</span>
-                          <span style={{ fontSize: 9.5, color: "var(--c-t4)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{t.blurb}</span>
-                        </div>
-                      </button>
-                    );
-                  })}
-                </div>
+                </button>
               ))}
             </div>
           )}
@@ -866,33 +713,6 @@ export const AIChatNode = memo(function AIChatNode({ id, selected, data }: Props
           >
             {isUploadingAttachment ? <Loader2 className="w-3 h-3 animate-spin" /> : <Paperclip className="w-3 h-3" />}
           </button>
-          {/* Slash commands popup trigger */}
-          <button
-            onClick={() => setShowSlashMenu((v) => !v)}
-            disabled={sendMutation.isPending}
-            className="nodrag w-8 h-8 rounded-lg flex items-center justify-center transition-all flex-shrink-0"
-            style={{
-              background: showSlashMenu ? accentA(0.18) : "transparent",
-              border: `1px solid ${showSlashMenu ? accentA(0.4) : "var(--c-bd2)"}`,
-              color: showSlashMenu ? accentColor : "var(--c-t3)",
-            }}
-            title="斜杠命令（/翻译 /重写 /扩展 /JSON 等）"
-          >
-            <Slash className="w-3 h-3" />
-          </button>
-          {/* Inject whole-canvas summary */}
-          <button
-            onClick={() => {
-              setInput((cur) => (cur.startsWith("/画布") ? cur : `/画布 ${cur}`).trimEnd() + " ");
-              inputRef.current?.focus();
-            }}
-            disabled={sendMutation.isPending}
-            className="nodrag w-8 h-8 rounded-lg flex items-center justify-center transition-all flex-shrink-0"
-            style={{ background: "transparent", border: "1px solid var(--c-bd2)", color: "var(--c-t3)" }}
-            title="注入整个画布摘要作为上下文"
-          >
-            <Layers className="w-3 h-3" />
-          </button>
           <textarea
             ref={inputRef}
             placeholder={pendingAttachments.length > 0 ? "添加说明（可选）" : "发送消息或粘贴图片… (Enter 发送 / Shift+Enter 换行)"}
@@ -968,42 +788,6 @@ export const AIChatNode = memo(function AIChatNode({ id, selected, data }: Props
           >
             <Trash2 className="w-3 h-3" />
           </button>
-          {/* Export conversation to markdown */}
-          {localMessages.length > 0 && (
-            <button
-              onClick={() => {
-                const lines: string[] = [
-                  `# AI 对话导出 — ${data.title || "未命名"}`,
-                  `_导出时间：${new Date().toLocaleString("zh-CN")}_`,
-                  "",
-                  payload.systemPrompt ? `> **系统提示词**：${payload.systemPrompt}\n` : "",
-                ];
-                for (const m of localMessages) {
-                  lines.push(`## ${m.role === "user" ? "🧑 用户" : "🤖 助手"}\n`);
-                  if (m.attachments && m.attachments.length > 0) {
-                    lines.push(m.attachments.map((a) => `![${a.name}](${a.url})`).join("\n"));
-                    lines.push("");
-                  }
-                  lines.push(m.content || "_(无文本)_");
-                  lines.push("");
-                }
-                const blob = new Blob([lines.join("\n")], { type: "text/markdown;charset=utf-8" });
-                const url = URL.createObjectURL(blob);
-                const a = document.createElement("a");
-                a.href = url; a.download = `${data.title || "ai-chat"}-${Date.now()}.md`;
-                a.click();
-                URL.revokeObjectURL(url);
-                toast.success("已导出对话为 Markdown");
-              }}
-              className="nodrag w-8 h-8 rounded-lg flex items-center justify-center transition-all flex-shrink-0"
-              title="导出对话为 Markdown"
-              style={{ background: "transparent", border: "1px solid transparent", color: "var(--c-t4)" }}
-              onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.background = "var(--c-elevated)"; (e.currentTarget as HTMLElement).style.color = "var(--c-t1)"; }}
-              onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.background = "transparent"; (e.currentTarget as HTMLElement).style.color = "var(--c-t4)"; }}
-            >
-              <Download className="w-3 h-3" />
-            </button>
-          )}
           {hasDownstream && localMessages.some(m => m.role === "assistant") && (
             <button
               onClick={() => {
@@ -1020,38 +804,6 @@ export const AIChatNode = memo(function AIChatNode({ id, selected, data }: Props
             </button>
           )}
           </div>
-
-          {/* Slash command picker popup */}
-          {showSlashMenu && (
-            <div
-              className="absolute left-3 right-3 bottom-full mb-1 rounded-xl overflow-hidden z-40 nodrag nopan nowheel"
-              style={{
-                background: "var(--c-base)",
-                border: "1px solid var(--c-bd2)",
-                boxShadow: "0 8px 32px oklch(0 0 0 / 0.55)",
-                maxHeight: 280,
-                overflowY: "auto",
-              }}
-            >
-              {SLASH_COMMANDS.map((c) => (
-                <button
-                  key={c.id}
-                  className="nodrag w-full flex items-center gap-2 px-3 py-2 text-left transition-all"
-                  style={{ borderBottom: "1px solid var(--c-bd1)", cursor: "pointer" }}
-                  onClick={() => {
-                    setInput((cur) => `/${c.aliases[0]} ${cur}`.trim() + " ");
-                    setShowSlashMenu(false);
-                    inputRef.current?.focus();
-                  }}
-                  onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.background = "var(--c-elevated)"; }}
-                  onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.background = "transparent"; }}
-                >
-                  <span style={{ fontSize: 10, fontFamily: "monospace", color: accentColor, minWidth: 70 }}>/{c.aliases[0]}</span>
-                  <span style={{ fontSize: 11, color: "var(--c-t2)", flex: 1 }}>{c.label}</span>
-                </button>
-              ))}
-            </div>
-          )}
         </div>
       </div>
   );
