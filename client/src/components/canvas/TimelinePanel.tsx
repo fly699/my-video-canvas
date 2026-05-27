@@ -71,7 +71,19 @@ export function TimelinePanel({ onClose }: TimelinePanelProps) {
   }, [videoClips, playingId]);
 
   const handleFrameClick = (nodeId: string) => {
-    reactFlow.fitView({ nodes: [{ id: nodeId }], padding: 0.5, duration: 400 });
+    // Use the store's authoritative node position rather than fitView's
+    // `nodes: [{ id }]` filter (which silently no-ops when React Flow's
+    // internal node measurement hasn't completed). setCenter is direct.
+    const node = nodes.find((n) => n.id === nodeId);
+    if (!node) return;
+    const w = (node.measured?.width ?? node.width ?? 320) as number;
+    const h = (node.measured?.height ?? node.height ?? 200) as number;
+    const cx = node.position.x + w / 2;
+    const cy = node.position.y + h / 2;
+    reactFlow.setCenter(cx, cy, { zoom: 1, duration: 400 });
+    reactFlow.setNodes((curr) =>
+      curr.map((n) => ({ ...n, selected: n.id === nodeId })),
+    );
   };
 
   const handlePlay = (nodeId: string) => {
