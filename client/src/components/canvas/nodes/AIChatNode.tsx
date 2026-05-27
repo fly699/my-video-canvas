@@ -216,7 +216,10 @@ export const AIChatNode = memo(function AIChatNode({ id, selected, data }: Props
             const synced = msgs.map((m) => ({
               role: m.role as "user" | "assistant",
               content: m.content,
-              attachments: (m.attachments as ChatAttachment[] | null) ?? undefined,
+              // attachments is enriched server-side via raw SQL (see
+              // db.getChatMessages) and may not appear on the inferred
+              // schema type, so widen via cast.
+              attachments: ((m as unknown as { attachments?: ChatAttachment[] | null }).attachments) ?? undefined,
               _id: crypto.randomUUID(),
             }));
             setLocalMessages(synced);
@@ -427,20 +430,29 @@ export const AIChatNode = memo(function AIChatNode({ id, selected, data }: Props
 
   const chatBody = (
     <div
-      className="flex flex-col h-full"
+      className="flex flex-col h-full nodrag nopan nowheel"
       style={{ minHeight: 280 }}
       // Whole-node drop target so users can drag from the filmstrip /
       // timeline straight onto any part of the chat node, not just the
       // input strip at the bottom.
+      //
+      // Always preventDefault on dragover — without it, the browser refuses
+      // to fire the subsequent drop event, no matter what we set on
+      // dataTransfer. The earlier "only preventDefault for recognized
+      // payloads" gate was the reason drops from filmstrip / timeline
+      // weren't landing on the chat node.
       onDragOver={(e) => {
-        // Only accept if drag has a file or our structured payload — otherwise
-        // let ReactFlow handle the event (e.g. canvas pan).
-        const t = e.dataTransfer.types;
-        if (t && (t.includes("Files") || t.includes("application/x-avc-attachment") || t.includes("text/uri-list"))) {
-          e.preventDefault();
-          e.stopPropagation();
-          setIsDraggingOver(true);
-        }
+        e.preventDefault();
+        e.stopPropagation();
+        // Visual highlight only when we recognize something attachable.
+        const types = e.dataTransfer.types;
+        const recognized = !!types && (
+          types.includes("Files") ||
+          types.includes("application/x-avc-attachment") ||
+          types.includes("text/uri-list") ||
+          types.includes("text/plain")
+        );
+        if (recognized) setIsDraggingOver(true);
       }}
       onDragLeave={(e) => {
         // Only flip off when leaving the outer container, not crossing into children

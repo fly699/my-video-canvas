@@ -644,7 +644,10 @@ export const aiChatRouter = router({
       // can blow past provider request-size limits. Mention the attachment
       // textually instead so the model has context without the payload.
       const historyMessages = history.map((m) => {
-        const att = (m.attachments as Array<{ type: string; url: string; name?: string }> | null) ?? null;
+        // attachments may or may not be present depending on whether
+        // migration 0019 has been applied — see db.getChatMessages for the
+        // raw-SQL enrichment that adds it back as a side field.
+        const att = ((m as unknown as { attachments?: Array<{ type: string; url: string; name?: string }> | null }).attachments) ?? null;
         if (m.role === "user" && att && att.length > 0) {
           const imgs = att
             .filter((a) => a.type === "image" && !a.url.startsWith("data:"))
