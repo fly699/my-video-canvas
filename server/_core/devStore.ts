@@ -10,12 +10,16 @@ import type {
   Asset,
   VideoTask,
   ChatMessage,
+  ProjectCollaborator,
+  ProjectShareLink,
   InsertProject,
   InsertCanvasNode,
   InsertCanvasEdge,
   InsertAsset,
   InsertVideoTask,
   InsertChatMessage,
+  InsertProjectCollaborator,
+  InsertProjectShareLink,
 } from "../../drizzle/schema";
 
 let nextId = 100;
@@ -29,6 +33,8 @@ const edgesMap = new Map<string, CanvasEdge>();
 const assetsMap = new Map<number, Asset>();
 const videoTasksMap = new Map<number, VideoTask>();
 const chatMessagesArr: ChatMessage[] = [];
+const collaboratorsMap = new Map<number, ProjectCollaborator>();
+const shareLinksMap = new Map<number, ProjectShareLink>();
 
 // ── Projects ──────────────────────────────────────────────────────────────────
 export function devCreateProject(data: InsertProject): Project {
@@ -40,6 +46,7 @@ export function devCreateProject(data: InsertProject): Project {
     description: data.description ?? null,
     thumbnail: data.thumbnail ?? null,
     viewportState: (data.viewportState as Project["viewportState"]) ?? null,
+    publicReadAccess: data.publicReadAccess ?? false,
     createdAt: now(),
     updatedAt: now(),
   };
@@ -251,4 +258,139 @@ export function devClearChatMessages(nodeId: string, projectId: number) {
 // ── User ──────────────────────────────────────────────────────────────────────
 export function devGetUserByOpenId(_openId: string): User | undefined {
   return undefined;
+}
+
+// ── Project Collaborators ─────────────────────────────────────────────────────
+export function devGetProjectByIdRaw(id: number): Project | undefined {
+  return projectsMap.get(id);
+}
+
+export function devSetProjectPublicAccess(id: number, publicReadAccess: boolean) {
+  const p = projectsMap.get(id);
+  if (!p) return;
+  projectsMap.set(id, { ...p, publicReadAccess, updatedAt: now() });
+}
+
+export function devListCollaborators(projectId: number): ProjectCollaborator[] {
+  return Array.from(collaboratorsMap.values())
+    .filter((c) => c.projectId === projectId)
+    .sort((a, b) => a.createdAt.getTime() - b.createdAt.getTime());
+}
+
+export function devFindCollaborator(projectId: number, userId: number): ProjectCollaborator | undefined {
+  return Array.from(collaboratorsMap.values()).find(
+    (c) => c.projectId === projectId && c.userId === userId && c.status === "active",
+  );
+}
+
+export function devFindCollaboratorByEmail(projectId: number, email: string): ProjectCollaborator | undefined {
+  return Array.from(collaboratorsMap.values()).find(
+    (c) => c.projectId === projectId && c.email?.toLowerCase() === email.toLowerCase(),
+  );
+}
+
+export function devUpsertCollaborator(data: InsertProjectCollaborator): ProjectCollaborator {
+  // Update existing match on (projectId, userId) or (projectId, email)
+  const existing = Array.from(collaboratorsMap.values()).find((c) =>
+    c.projectId === data.projectId &&
+    ((data.userId != null && c.userId === data.userId) ||
+     (data.email != null && c.email?.toLowerCase() === data.email.toLowerCase())),
+  );
+  if (existing) {
+    const updated: ProjectCollaborator = {
+      ...existing,
+      role: data.role,
+      userId: data.userId ?? existing.userId,
+      email: data.email ?? existing.email,
+      status: data.status ?? existing.status,
+      invitedBy: data.invitedBy,
+      updatedAt: now(),
+    };
+    collaboratorsMap.set(existing.id, updated);
+    return updated;
+  }
+  const id = newId();
+  const created: ProjectCollaborator = {
+    id,
+    projectId: data.projectId,
+    userId: data.userId ?? null,
+    email: data.email ?? null,
+    role: data.role,
+    invitedBy: data.invitedBy,
+    status: data.status ?? "active",
+    createdAt: now(),
+    updatedAt: now(),
+  };
+  collaboratorsMap.set(id, created);
+  return created;
+}
+
+export function devUpdateCollaboratorRole(id: number, role: "viewer" | "editor" | "admin") {
+  const c = collaboratorsMap.get(id);
+  if (!c) return;
+  collaboratorsMap.set(id, { ...c, role, updatedAt: now() });
+}
+
+export function devRemoveCollaborator(id: number) {
+  collaboratorsMap.delete(id);
+}
+
+export function devClaimPendingCollaboratorsByEmail(email: string, userId: number) {
+  Array.from(collaboratorsMap.values()).forEach((c) => {
+    if (c.email?.toLowerCase() === email.toLowerCase() && c.userId == null) {
+      collaboratorsMap.set(c.id, { ...c, userId, status: "active", updatedAt: now() });
+    }
+  });
+}
+
+export function devGetProjectsByCollaborator(userId: number): Project[] {
+  const ids = new Set(
+    Array.from(collaboratorsMap.values())
+      .filter((c) => c.userId === userId && c.status === "active")
+      .map((c) => c.projectId),
+  );
+  return Array.from(projectsMap.values())
+    .filter((p) => ids.has(p.id) && p.userId !== userId)
+    .sort((a, b) => b.updatedAt.getTime() - a.updatedAt.getTime());
+}
+
+// ── Project Share Links ───────────────────────────────────────────────────────
+export function devCreateShareLink(data: InsertProjectShareLink): ProjectShareLink {
+  const id = newId();
+  const link: ProjectShareLink = {
+    id,
+    token: data.token,
+    projectId: data.projectId,
+    role: data.role,
+    maxUses: data.maxUses ?? 1,
+    usesCount: data.usesCount ?? 0,
+    expiresAt: data.expiresAt,
+    createdBy: data.createdBy,
+    revokedAt: data.revokedAt ?? null,
+    createdAt: now(),
+  };
+  shareLinksMap.set(id, link);
+  return link;
+}
+
+export function devListShareLinks(projectId: number): ProjectShareLink[] {
+  return Array.from(shareLinksMap.values())
+    .filter((l) => l.projectId === projectId)
+    .sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime());
+}
+
+export function devGetShareLinkByToken(token: string): ProjectShareLink | undefined {
+  return Array.from(shareLinksMap.values()).find((l) => l.token === token);
+}
+
+export function devIncrementShareLinkUses(id: number) {
+  const l = shareLinksMap.get(id);
+  if (!l) return;
+  shareLinksMap.set(id, { ...l, usesCount: l.usesCount + 1 });
+}
+
+export function devRevokeShareLink(id: number) {
+  const l = shareLinksMap.get(id);
+  if (!l) return;
+  shareLinksMap.set(id, { ...l, revokedAt: now() });
 }

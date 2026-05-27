@@ -1,4 +1,4 @@
-import { eq, and, desc, sql } from "drizzle-orm";
+import { eq, and, desc, sql, or, gt, inArray, isNull } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/mysql2";
 import {
   InsertUser,
@@ -13,6 +13,8 @@ import {
   whitelistEntries,
   storageSettings,
   auditLogs,
+  projectCollaborators,
+  projectShareLinks,
   InsertProject,
   InsertCanvasNode,
   InsertCanvasEdge,
@@ -20,6 +22,8 @@ import {
   InsertVideoTask,
   InsertChatMessage,
   InsertAuditLog,
+  InsertProjectCollaborator,
+  InsertProjectShareLink,
 } from "../drizzle/schema";
 import { ENV } from "./_core/env";
 import * as dev from "./_core/devStore";
@@ -138,6 +142,197 @@ export async function deleteProject(id: number, userId: number) {
   const db = await getDb();
   if (!db) { if (DEV_MODE) { dev.devDeleteProject(id, userId); return; } throw new Error("DB unavailable"); }
   await db.delete(projects).where(and(eq(projects.id, id), eq(projects.userId, userId)));
+}
+
+// ── Project Access ──────────────────────────────────────────────────────────
+// Returns the raw project regardless of ownership. Use for access-check helpers
+// that need to inspect publicReadAccess, owner, etc.
+export async function getProjectByIdRaw(id: number) {
+  const db = await getDb();
+  if (!db) return DEV_MODE ? dev.devGetProjectByIdRaw(id) : undefined;
+  const result = await db.select().from(projects).where(eq(projects.id, id)).limit(1);
+  return result[0];
+}
+
+export type EffectiveRole = "owner" | "admin" | "editor" | "viewer";
+
+export interface ProjectAccess {
+  project: NonNullable<Awaited<ReturnType<typeof getProjectByIdRaw>>>;
+  role: EffectiveRole;
+  source: "owner" | "collaborator" | "public";
+}
+
+/** Resolve the user's effective role on a project, or null if no access. */
+export async function getProjectAccess(projectId: number, userId: number): Promise<ProjectAccess | null> {
+  const project = await getProjectByIdRaw(projectId);
+  if (!project) return null;
+  if (project.userId === userId) return { project, role: "owner", source: "owner" };
+
+  // Collaborator?
+  const member = await findCollaboratorByUserId(projectId, userId);
+  if (member) return { project, role: member.role, source: "collaborator" };
+
+  // Public read?
+  if (project.publicReadAccess) return { project, role: "viewer", source: "public" };
+
+  return null;
+}
+
+export async function setProjectPublicAccess(id: number, publicReadAccess: boolean) {
+  const db = await getDb();
+  if (!db) { if (DEV_MODE) { dev.devSetProjectPublicAccess(id, publicReadAccess); return; } throw new Error("DB unavailable"); }
+  await db.update(projects).set({ publicReadAccess }).where(eq(projects.id, id));
+}
+
+/** Projects where user is a collaborator (not owner). */
+export async function getProjectsSharedWithUser(userId: number) {
+  const db = await getDb();
+  if (!db) return DEV_MODE ? dev.devGetProjectsByCollaborator(userId) : [];
+  const rows = await db
+    .select({ project: projects })
+    .from(projectCollaborators)
+    .innerJoin(projects, eq(projects.id, projectCollaborators.projectId))
+    .where(and(
+      eq(projectCollaborators.userId, userId),
+      eq(projectCollaborators.status, "active"),
+    ))
+    .orderBy(desc(projects.updatedAt));
+  return rows.map((r) => r.project).filter((p) => p.userId !== userId);
+}
+
+// ── Project Collaborators ───────────────────────────────────────────────────
+export async function listCollaborators(projectId: number) {
+  const db = await getDb();
+  if (!db) return DEV_MODE ? dev.devListCollaborators(projectId) : [];
+  return db.select().from(projectCollaborators).where(eq(projectCollaborators.projectId, projectId));
+}
+
+export async function findCollaboratorByUserId(projectId: number, userId: number) {
+  const db = await getDb();
+  if (!db) return DEV_MODE ? dev.devFindCollaborator(projectId, userId) : undefined;
+  const rows = await db
+    .select()
+    .from(projectCollaborators)
+    .where(and(
+      eq(projectCollaborators.projectId, projectId),
+      eq(projectCollaborators.userId, userId),
+      eq(projectCollaborators.status, "active"),
+    ))
+    .limit(1);
+  return rows[0];
+}
+
+export async function findCollaboratorByEmail(projectId: number, email: string) {
+  const db = await getDb();
+  if (!db) return DEV_MODE ? dev.devFindCollaboratorByEmail(projectId, email) : undefined;
+  const rows = await db
+    .select()
+    .from(projectCollaborators)
+    .where(and(
+      eq(projectCollaborators.projectId, projectId),
+      eq(projectCollaborators.email, email),
+    ))
+    .limit(1);
+  return rows[0];
+}
+
+export async function upsertCollaborator(data: InsertProjectCollaborator) {
+  const db = await getDb();
+  if (!db) { if (DEV_MODE) return dev.devUpsertCollaborator(data); throw new Error("DB unavailable"); }
+  // Try userId first, fall back to email
+  const existing = data.userId
+    ? await findCollaboratorByUserId(data.projectId, data.userId)
+    : data.email
+    ? await findCollaboratorByEmail(data.projectId, data.email)
+    : undefined;
+  if (existing) {
+    await db
+      .update(projectCollaborators)
+      .set({
+        role: data.role,
+        userId: data.userId ?? existing.userId,
+        email: data.email ?? existing.email,
+        status: data.status ?? existing.status,
+      })
+      .where(eq(projectCollaborators.id, existing.id));
+    const rows = await db.select().from(projectCollaborators).where(eq(projectCollaborators.id, existing.id));
+    return rows[0];
+  }
+  const [header] = await db.insert(projectCollaborators).values(data);
+  const insertId = (header as unknown as { insertId: number }).insertId;
+  const rows = await db.select().from(projectCollaborators).where(eq(projectCollaborators.id, insertId));
+  return rows[0];
+}
+
+export async function updateCollaboratorRole(id: number, role: "viewer" | "editor" | "admin") {
+  const db = await getDb();
+  if (!db) { if (DEV_MODE) { dev.devUpdateCollaboratorRole(id, role); return; } throw new Error("DB unavailable"); }
+  await db.update(projectCollaborators).set({ role }).where(eq(projectCollaborators.id, id));
+}
+
+export async function removeCollaborator(id: number) {
+  const db = await getDb();
+  if (!db) { if (DEV_MODE) { dev.devRemoveCollaborator(id); return; } throw new Error("DB unavailable"); }
+  await db.delete(projectCollaborators).where(eq(projectCollaborators.id, id));
+}
+
+/** Claim pending email invites for a user that just registered/logged in. */
+export async function claimPendingInvitations(email: string, userId: number) {
+  const db = await getDb();
+  if (!db) { if (DEV_MODE) { dev.devClaimPendingCollaboratorsByEmail(email, userId); return; } return; }
+  await db
+    .update(projectCollaborators)
+    .set({ userId, status: "active" })
+    .where(and(
+      eq(projectCollaborators.email, email),
+      isNull(projectCollaborators.userId),
+    ));
+}
+
+// ── Project Share Links ─────────────────────────────────────────────────────
+export async function createShareLink(data: InsertProjectShareLink) {
+  const db = await getDb();
+  if (!db) { if (DEV_MODE) return dev.devCreateShareLink(data); throw new Error("DB unavailable"); }
+  const [header] = await db.insert(projectShareLinks).values(data);
+  const insertId = (header as unknown as { insertId: number }).insertId;
+  const rows = await db.select().from(projectShareLinks).where(eq(projectShareLinks.id, insertId));
+  return rows[0];
+}
+
+export async function listShareLinks(projectId: number) {
+  const db = await getDb();
+  if (!db) return DEV_MODE ? dev.devListShareLinks(projectId) : [];
+  return db.select().from(projectShareLinks).where(eq(projectShareLinks.projectId, projectId)).orderBy(desc(projectShareLinks.createdAt));
+}
+
+export async function getShareLinkByToken(token: string) {
+  const db = await getDb();
+  if (!db) return DEV_MODE ? dev.devGetShareLinkByToken(token) : undefined;
+  const rows = await db.select().from(projectShareLinks).where(eq(projectShareLinks.token, token)).limit(1);
+  return rows[0];
+}
+
+export async function incrementShareLinkUses(id: number) {
+  const db = await getDb();
+  if (!db) { if (DEV_MODE) { dev.devIncrementShareLinkUses(id); return; } throw new Error("DB unavailable"); }
+  await db
+    .update(projectShareLinks)
+    .set({ usesCount: sql`${projectShareLinks.usesCount} + 1` })
+    .where(eq(projectShareLinks.id, id));
+}
+
+export async function revokeShareLink(id: number) {
+  const db = await getDb();
+  if (!db) { if (DEV_MODE) { dev.devRevokeShareLink(id); return; } throw new Error("DB unavailable"); }
+  await db.update(projectShareLinks).set({ revokedAt: new Date() }).where(eq(projectShareLinks.id, id));
+}
+
+/** Find a user by email (case-insensitive). Returns undefined if not found. */
+export async function findUserByEmail(email: string) {
+  const db = await getDb();
+  if (!db) return undefined; // dev mode: only DEV_USER exists
+  const rows = await db.select().from(users).where(eq(users.email, email)).limit(1);
+  return rows[0];
 }
 
 // ── Canvas Nodes ──────────────────────────────────────────────────────────────

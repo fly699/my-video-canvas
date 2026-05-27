@@ -73,11 +73,13 @@ function ProjectCard({
   onOpen,
   onDelete,
   onRename,
+  readOnly = false,
 }: {
   project: Project;
   onOpen: () => void;
   onDelete: () => void;
   onRename: (name: string) => void;
+  readOnly?: boolean;
 }) {
   const [menuOpen, setMenuOpen] = useState(false);
   const [renaming, setRenaming] = useState(false);
@@ -207,7 +209,7 @@ function ProjectCard({
       </div>
 
       {/* Menu button */}
-      <div
+      {!readOnly && <div
         ref={menuRef}
         className="absolute top-3 right-3"
         onClick={(e) => e.stopPropagation()}
@@ -255,7 +257,7 @@ function ProjectCard({
             </button>
           </div>
         )}
-      </div>
+      </div>}
     </div>
   );
 }
@@ -726,7 +728,10 @@ export default function Home() {
                 我的项目
               </h1>
               <p className="text-xs mt-0.5" style={{ color: "var(--c-t4)" }}>
-                {projects?.length ?? 0} 个项目
+                {projects?.owned.length ?? 0} 个项目
+                {(projects?.shared.length ?? 0) > 0 && (
+                  <span style={{ marginLeft: 8 }}>· 协作中 {projects!.shared.length} 个</span>
+                )}
               </p>
             </div>
 
@@ -757,22 +762,41 @@ export default function Home() {
               ))}
             </div>
           ) : (
-            <div className="grid grid-cols-4 gap-4">
-              <NewProjectCard onClick={handleCreate} />
-              {(projects ?? []).map((project: { id: number; name: string; description?: string | null; updatedAt: Date }) => (
-                <ProjectCard
-                  key={project.id}
-                  project={project}
-                  onOpen={() => navigate(`/canvas/${project.id}`)}
-                  onDelete={() => deleteProject.mutate({ id: project.id })}
-                  onRename={(name) => updateProject.mutate({ id: project.id, name })}
-                />
-              ))}
-            </div>
+            <>
+              <div className="grid grid-cols-4 gap-4">
+                <NewProjectCard onClick={handleCreate} />
+                {(projects?.owned ?? []).map((project: { id: number; name: string; description?: string | null; updatedAt: Date }) => (
+                  <ProjectCard
+                    key={project.id}
+                    project={project}
+                    onOpen={() => navigate(`/canvas/${project.id}`)}
+                    onDelete={() => deleteProject.mutate({ id: project.id })}
+                    onRename={(name) => updateProject.mutate({ id: project.id, name })}
+                  />
+                ))}
+              </div>
+              {(projects?.shared ?? []).length > 0 && (
+                <div className="mt-10">
+                  <h2 className="text-base font-semibold mb-3" style={{ color: "var(--c-t2)" }}>协作项目</h2>
+                  <div className="grid grid-cols-4 gap-4">
+                    {projects!.shared.map((project: { id: number; name: string; description?: string | null; updatedAt: Date }) => (
+                      <ProjectCard
+                        key={project.id}
+                        project={project}
+                        onOpen={() => navigate(`/canvas/${project.id}`)}
+                        onDelete={() => { /* non-owner cannot delete */ }}
+                        onRename={() => { /* non-owner rename restricted */ }}
+                        readOnly
+                      />
+                    ))}
+                  </div>
+                </div>
+              )}
+            </>
           )}
 
           {/* Empty state */}
-          {!loading && (projects ?? []).length === 0 && (
+          {!loading && (projects?.owned.length ?? 0) === 0 && (projects?.shared.length ?? 0) === 0 && (
             <div className="flex flex-col items-center justify-center py-20 text-center animate-fade-in">
               <div
                 className="w-14 h-14 rounded-2xl flex items-center justify-center mb-4"

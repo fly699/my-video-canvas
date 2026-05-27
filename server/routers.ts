@@ -25,6 +25,7 @@ import {
 } from "./routers/canvas";
 import { uploadRouter } from "./routers/upload";
 import { adminRouter } from "./routers/admin";
+import { collaborationRouter } from "./routers/collaboration";
 
 export const appRouter = router({
   system: systemRouter,
@@ -63,6 +64,7 @@ export const appRouter = router({
   comfyui: comfyuiRouter,
   upload: uploadRouter,
   admin: adminRouter,
+  collaboration: collaborationRouter,
 });
 
 export type AppRouter = typeof appRouter;

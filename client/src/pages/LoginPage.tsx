@@ -62,7 +62,10 @@ export default function LoginPage() {
         return;
       }
 
-      window.location.href = "/";
+      // Honor ?next=… for share-link / invite flows
+      const nextParam = new URLSearchParams(window.location.search).get("next");
+      const safeNext = nextParam && nextParam.startsWith("/") && !nextParam.startsWith("//") ? nextParam : "/";
+      window.location.href = safeNext;
     } catch {
       setError("网络错误，请检查连接后重试");
     } finally {

@@ -14,6 +14,10 @@ import { serveStatic, setupVite } from "./vite";
 import { Server as SocketIOServer } from "socket.io";
 import { setupVideoTaskPoller } from "../videoTaskPoller";
 import { setComfySocketIO } from "./comfyui";
+import { sdk } from "./sdk";
+import { ENV } from "./env";
+import { getProjectAccess } from "../db";
+import type { User } from "../../drizzle/schema";
 
 function isPortAvailable(port: number): Promise<boolean> {
   return new Promise((resolve) => {
@@ -66,54 +70,101 @@ async function startServer() {
     transports: ["websocket", "polling"],
   });
 
+  // Authenticate every socket via the session cookie sent in the upgrade
+  // request. Dev bypass mirrors createContext: when no OAuth + no DB are
+  // configured, every connection is the dev user.
+  const isDevBypass =
+    process.env.NODE_ENV === "development" && !ENV.oAuthServerUrl && !process.env.DATABASE_URL;
+
+  const DEV_USER_FOR_SOCKET: User = {
+    id: 1,
+    openId: "dev_user_local",
+    name: "Dev User",
+    email: "dev@localhost",
+    loginMethod: "dev",
+    passwordHash: null,
+    role: "user",
+    createdAt: new Date("2024-01-01"),
+    updatedAt: new Date("2024-01-01"),
+    lastSignedIn: new Date(),
+  };
+
+  io.use(async (socket, next) => {
+    try {
+      if (isDevBypass) {
+        (socket.data as { user: User }).user = DEV_USER_FOR_SOCKET;
+        return next();
+      }
+      // socket.request is a Node IncomingMessage; sdk.authenticateRequest only
+      // touches the cookie header, so the shape matches Express's Request enough.
+      const user = await sdk.authenticateRequest(
+        socket.request as unknown as Parameters<typeof sdk.authenticateRequest>[0],
+      );
+      (socket.data as { user: User }).user = user;
+      next();
+    } catch {
+      next(new Error("unauthenticated"));
+    }
+  });
+
   // Track users per project room
   const projectUsers = new Map<number, Map<number, { userName: string; color: string }>>();
 
   io.on("connection", (socket) => {
+    const user = (socket.data as { user: User }).user;
     let currentProjectId: number | null = null;
-    let currentUserId: number | null = null;
+    const currentUserId: number = user.id;
 
-    socket.on("join-project", (data: { projectId: number; userId: number; userName: string; color: string }) => {
-      currentProjectId = data.projectId;
-      currentUserId = data.userId;
-      const room = `project:${data.projectId}`;
-      socket.join(room);
+    socket.on("join-project", async (data: { projectId: number; userName: string; color: string }) => {
+      // Verify the user has access to the project they're joining.
+      try {
+        const access = await getProjectAccess(data.projectId, user.id);
+        if (!access) {
+          socket.emit("auth-error", { code: "forbidden", projectId: data.projectId });
+          return;
+        }
+        currentProjectId = data.projectId;
+        const room = `project:${data.projectId}`;
+        socket.join(room);
 
-      if (!projectUsers.has(data.projectId)) {
-        projectUsers.set(data.projectId, new Map());
+        if (!projectUsers.has(data.projectId)) {
+          projectUsers.set(data.projectId, new Map());
+        }
+        projectUsers.get(data.projectId)!.set(user.id, {
+          userName: data.userName,
+          color: data.color,
+        });
+
+        // Notify others
+        socket.to(room).emit("collaboration-event", {
+          type: "user:join",
+          userId: user.id,
+          userName: data.userName,
+          color: data.color,
+          projectId: data.projectId,
+          payload: { role: access.role },
+        });
+      } catch (err) {
+        console.error("[Socket] join-project error", err);
       }
-      projectUsers.get(data.projectId)!.set(data.userId, {
-        userName: data.userName,
-        color: data.color,
-      });
-
-      // Notify others
-      socket.to(room).emit("collaboration-event", {
-        type: "user:join",
-        userId: data.userId,
-        userName: data.userName,
-        color: data.color,
-        projectId: data.projectId,
-        payload: {},
-      });
     });
 
-    socket.on("leave-project", (data: { projectId: number; userId: number }) => {
+    socket.on("leave-project", (data: { projectId: number }) => {
       const room = `project:${data.projectId}`;
       socket.leave(room);
-      projectUsers.get(data.projectId)?.delete(data.userId);
+      projectUsers.get(data.projectId)?.delete(user.id);
 
       socket.to(room).emit("collaboration-event", {
         type: "user:leave",
-        userId: data.userId,
-        userName: "",
+        userId: user.id,
+        userName: user.name ?? "",
         color: "",
         projectId: data.projectId,
         payload: {},
       });
     });
 
-    socket.on("collaboration-event", (event: {
+    socket.on("collaboration-event", async (event: {
       type: string;
       userId: number;
       userName: string;
@@ -121,18 +172,30 @@ async function startServer() {
       projectId: number;
       payload: unknown;
     }) => {
+      // Server-side identity & room check: forbid forging userId or
+      // broadcasting to projects the client hasn't joined / lacks access to.
+      if (event.userId !== user.id) return;
       const room = `project:${event.projectId}`;
-      socket.to(room).emit("collaboration-event", event);
+      if (!socket.rooms.has(room)) return;
+      // For state-mutating events, require editor+.
+      const mutating = event.type === "node:move" || event.type === "node:add" ||
+                       event.type === "node:delete" || event.type === "node:update" ||
+                       event.type === "edge:add" || event.type === "edge:delete";
+      if (mutating) {
+        const access = await getProjectAccess(event.projectId, user.id);
+        if (!access || (access.role === "viewer")) return;
+      }
+      socket.to(room).emit("collaboration-event", { ...event, userId: user.id });
     });
 
     socket.on("disconnect", () => {
-      if (currentProjectId !== null && currentUserId !== null) {
+      if (currentProjectId !== null) {
         const room = `project:${currentProjectId}`;
         projectUsers.get(currentProjectId)?.delete(currentUserId);
         socket.to(room).emit("collaboration-event", {
           type: "user:leave",
           userId: currentUserId,
-          userName: "",
+          userName: user.name ?? "",
           color: "",
           projectId: currentProjectId,
           payload: {},
