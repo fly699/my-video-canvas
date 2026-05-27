@@ -7,9 +7,10 @@ import { toast } from "sonner";
 import {
   Sparkles, Loader2, ChevronDown, Clapperboard,
   Minus, Plus, Copy, FileText, Check, Wand2, MessageSquare,
-  Search, Layers2, GitBranch, Image,
+  Search, Layers2, GitBranch, Image, BookOpen, X,
 } from "lucide-react";
 import { LLMModelPicker, LLM_MODELS, type LLMModelId } from "../LLMModelPicker";
+import { SCRIPT_TEMPLATE_CATEGORIES, getScriptTemplate, type ScriptTemplate } from "@/lib/scriptCreationTemplates";
 
 interface Props {
   id: string;
@@ -138,6 +139,8 @@ export const ScriptNode = memo(function ScriptNode({ id, selected, data }: Props
 
   // AI 剧本创作 panel state — all persisted to payload
   const [showAiPanel, setShowAiPanel] = useState(false);
+  const [showTemplatePicker, setShowTemplatePicker] = useState(false);
+  const templatePickerRef = useRef<HTMLDivElement>(null);
 
   // Advanced panel state
   const [showAdvancedPanel, setShowAdvancedPanel] = useState(false);
@@ -183,6 +186,51 @@ export const ScriptNode = memo(function ScriptNode({ id, selected, data }: Props
   const setAndSaveAspectRatio = useCallback((v: string) => {
     setAspectRatio(v); updateNodeData(id, { aiAspectRatio: v });
   }, [id, updateNodeData]);
+
+  // One-click template apply: fills genre/style/mood/targetModel/aspectRatio/
+  // sceneCount/duration/llmModel + records the template id so generate calls
+  // can attach its systemPromptAddon. Replaces existing values (no opt-in
+  // merge) since the picker is an explicit user action.
+  const applyScriptTemplate = useCallback((t: ScriptTemplate) => {
+    const patch: Record<string, unknown> = { aiScriptTemplate: t.id };
+    if (t.presets.genre !== undefined) { setGenre(t.presets.genre); patch.aiGenre = t.presets.genre; }
+    if (t.presets.style !== undefined) { setStyle(t.presets.style); patch.aiStyle = t.presets.style; }
+    if (t.presets.mood !== undefined) { setMood(t.presets.mood); patch.aiMood = t.presets.mood; }
+    if (t.presets.targetVideoModel !== undefined) {
+      setTargetModel(t.presets.targetVideoModel); patch.aiTargetModel = t.presets.targetVideoModel;
+    }
+    if (t.presets.aspectRatio !== undefined) {
+      setAspectRatio(t.presets.aspectRatio); patch.aiAspectRatio = t.presets.aspectRatio;
+    }
+    if (t.presets.sceneCount !== undefined) {
+      setSceneCount(t.presets.sceneCount); patch.aiSceneCount = t.presets.sceneCount;
+    }
+    if (t.presets.totalDuration !== undefined) {
+      setDuration(t.presets.totalDuration); setDurationText(String(t.presets.totalDuration));
+      patch.totalDuration = t.presets.totalDuration;
+    }
+    // Switch LLM to the recommended one — central to the feature value.
+    const recommendedLlm = LLM_MODELS.some((m) => m.id === t.recommendedLlm)
+      ? (t.recommendedLlm as LLMModelId)
+      : null;
+    if (recommendedLlm) { setLlmModel(recommendedLlm); patch.aiLlmModel = recommendedLlm; }
+    updateNodeData(id, patch);
+    setShowTemplatePicker(false);
+    const llmLabel = LLM_MODELS.find((m) => m.id === t.recommendedLlm)?.label ?? t.recommendedLlm;
+    toast.success(`已套用：${t.label}（写作模型 → ${llmLabel}）`);
+  }, [id, updateNodeData]);
+
+  // Close template picker on outside click
+  useEffect(() => {
+    if (!showTemplatePicker) return;
+    const handler = (e: MouseEvent) => {
+      if (templatePickerRef.current && !templatePickerRef.current.contains(e.target as Node)) {
+        setShowTemplatePicker(false);
+      }
+    };
+    document.addEventListener("mousedown", handler);
+    return () => document.removeEventListener("mousedown", handler);
+  }, [showTemplatePicker]);
 
   // Scene count with functional updater to prevent stale closure on rapid clicks
   const handleSceneCountChange = useCallback((delta: 1 | -1) => {
@@ -376,6 +424,7 @@ export const ScriptNode = memo(function ScriptNode({ id, selected, data }: Props
     }
     // Commit any pending text in duration input before reading the value
     const committedDuration = commitDuration();
+    const appliedTemplate = getScriptTemplate(payload.aiScriptTemplate);
     fullScriptMutation.mutate({
       synopsis,
       genre,
@@ -386,8 +435,9 @@ export const ScriptNode = memo(function ScriptNode({ id, selected, data }: Props
       targetVideoModel: targetModel || undefined,
       aspectRatio,
       model: llmModel,
+      templatePromptOverride: appliedTemplate?.systemPromptAddon,
     });
-  }, [anyPending, payload.synopsis, payload.content, commitDuration, genre, style, mood, sceneCount, targetModel, aspectRatio, llmModel, fullScriptMutation.mutate]);
+  }, [anyPending, payload.synopsis, payload.content, payload.aiScriptTemplate, commitDuration, genre, style, mood, sceneCount, targetModel, aspectRatio, llmModel, fullScriptMutation.mutate]);
 
   const handleCopy = useCallback(async () => {
     const text = payload.content?.trim();
@@ -597,6 +647,120 @@ export const ScriptNode = memo(function ScriptNode({ id, selected, data }: Props
           {/* Panel body */}
           {showAiPanel && (
             <div className="flex flex-col gap-3 px-3 pb-3 pt-2" style={{ borderTop: `1px solid ${PANEL_ACCENT}20` }}>
+
+              {/* ── Template apply ── */}
+              <div ref={templatePickerRef} className="relative">
+                <div className="flex items-center gap-2">
+                  <span style={{ fontSize: 9, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.07em", color: "var(--c-t4)", minWidth: 56 }}>
+                    模板
+                  </span>
+                  <button
+                    onClick={() => setShowTemplatePicker((v) => !v)}
+                    className="nodrag flex-1 flex items-center gap-1.5 px-2.5 py-1.5 rounded-md transition-all text-left"
+                    style={{
+                      fontSize: 11,
+                      background: showTemplatePicker ? `${PANEL_ACCENT}14` : "var(--c-surface)",
+                      border: `1px solid ${showTemplatePicker ? `${PANEL_ACCENT}55` : "var(--c-bd2)"}`,
+                      color: payload.aiScriptTemplate ? PANEL_ACCENT : "var(--c-t3)",
+                      cursor: "pointer",
+                    }}
+                  >
+                    <BookOpen style={{ width: 11, height: 11, flexShrink: 0 }} />
+                    <span style={{ flex: 1 }}>
+                      {payload.aiScriptTemplate
+                        ? `已套用：${getScriptTemplate(payload.aiScriptTemplate)?.label ?? payload.aiScriptTemplate}`
+                        : "选择专业模板（一键填充参数 + 切换推荐 LLM）"}
+                    </span>
+                    <ChevronDown style={{ width: 10, height: 10, transform: showTemplatePicker ? "rotate(180deg)" : "none", transition: "transform 180ms" }} />
+                  </button>
+                  {payload.aiScriptTemplate && (
+                    <button
+                      onClick={() => updateNodeData(id, { aiScriptTemplate: undefined })}
+                      className="nodrag w-6 h-6 rounded flex items-center justify-center"
+                      style={{ color: "var(--c-t4)", border: "1px solid var(--c-bd2)" }}
+                      title="清除已套用模板"
+                    >
+                      <X style={{ width: 10, height: 10 }} />
+                    </button>
+                  )}
+                </div>
+
+                {showTemplatePicker && (
+                  <div
+                    className="absolute left-0 right-0 z-50 rounded-xl overflow-hidden nodrag nopan nowheel"
+                    style={{
+                      top: "calc(100% + 4px)",
+                      background: "var(--c-base)",
+                      border: "1px solid var(--c-bd2)",
+                      boxShadow: "0 8px 32px oklch(0 0 0 / 0.55)",
+                      maxHeight: 360,
+                      overflowY: "auto",
+                    }}
+                  >
+                    {SCRIPT_TEMPLATE_CATEGORIES.map((cat, idx) => (
+                      <div key={cat.id}>
+                        <div
+                          className="px-3 py-1.5 sticky top-0 z-10"
+                          style={{
+                            fontSize: 10,
+                            fontWeight: 700,
+                            letterSpacing: "0.04em",
+                            color: "var(--c-t3)",
+                            background: "color-mix(in oklch, var(--c-base) 92%, transparent)",
+                            backdropFilter: "blur(8px)",
+                            borderTop: idx > 0 ? "1px solid var(--c-bd1)" : "none",
+                            borderBottom: "1px solid var(--c-bd1)",
+                          }}
+                        >
+                          {cat.label}
+                        </div>
+                        {cat.templates.map((t) => {
+                          const Icon = t.icon;
+                          const llmLabel = LLM_MODELS.find((m) => m.id === t.recommendedLlm)?.label ?? t.recommendedLlm;
+                          const llmMatches = llmModel === t.recommendedLlm;
+                          const isApplied = payload.aiScriptTemplate === t.id;
+                          return (
+                            <button
+                              key={t.id}
+                              className="nodrag w-full flex items-center gap-2 px-3 py-2 text-left transition-all"
+                              style={{
+                                borderBottom: "1px solid var(--c-bd1)",
+                                cursor: "pointer",
+                                background: isApplied ? `${PANEL_ACCENT}10` : "transparent",
+                              }}
+                              onClick={() => applyScriptTemplate(t)}
+                              onMouseEnter={(e) => { if (!isApplied) (e.currentTarget as HTMLElement).style.background = "var(--c-elevated)"; }}
+                              onMouseLeave={(e) => { if (!isApplied) (e.currentTarget as HTMLElement).style.background = "transparent"; }}
+                            >
+                              <Icon className="w-3.5 h-3.5 flex-shrink-0" style={{ color: PANEL_ACCENT }} />
+                              <div className="flex flex-col flex-1 min-w-0">
+                                <span style={{ fontSize: 11, fontWeight: 500, color: "var(--c-t1)" }}>{t.label}</span>
+                                <span style={{ fontSize: 9.5, color: "var(--c-t4)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{t.blurb}</span>
+                              </div>
+                              <span
+                                style={{
+                                  fontSize: 9,
+                                  fontWeight: 600,
+                                  padding: "2px 6px",
+                                  borderRadius: 99,
+                                  background: llmMatches ? "oklch(0.72 0.18 155 / 0.18)" : "var(--c-input)",
+                                  color: llmMatches ? "oklch(0.72 0.18 155)" : "var(--c-t3)",
+                                  border: `1px solid ${llmMatches ? "oklch(0.72 0.18 155 / 0.4)" : "var(--c-bd2)"}`,
+                                  whiteSpace: "nowrap",
+                                  flexShrink: 0,
+                                }}
+                              >
+                                {llmMatches && <Check style={{ width: 8, height: 8, display: "inline", marginRight: 2 }} />}
+                                {llmLabel}
+                              </span>
+                            </button>
+                          );
+                        })}
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
 
               <ChipRow label="视频类型" options={GENRES} value={genre} onChange={setAndSaveGenre} color={PANEL_ACCENT} />
               <ChipRow label="画面风格" options={STYLES} value={style} onChange={setAndSaveStyle} color="oklch(0.68 0.18 280)" />

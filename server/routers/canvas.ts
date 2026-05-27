@@ -644,7 +644,10 @@ export const aiChatRouter = router({
       // can blow past provider request-size limits. Mention the attachment
       // textually instead so the model has context without the payload.
       const historyMessages = history.map((m) => {
-        const att = (m.attachments as Array<{ type: string; url: string; name?: string }> | null) ?? null;
+        // attachments may or may not be present depending on whether
+        // migration 0019 has been applied — see db.getChatMessages for the
+        // raw-SQL enrichment that adds it back as a side field.
+        const att = ((m as unknown as { attachments?: Array<{ type: string; url: string; name?: string }> | null }).attachments) ?? null;
         if (m.role === "user" && att && att.length > 0) {
           const imgs = att
             .filter((a) => a.type === "image" && !a.url.startsWith("data:"))
@@ -866,6 +869,12 @@ Each element must have these fields:
         targetVideoModel: z.string().optional(),
         aspectRatio: z.string().default("16:9"),
         model: z.string().optional(),
+        /** scriptCreationTemplates.ts → systemPromptAddon when a template is applied.
+         *  Appended to the default system prompt instead of replacing it so the
+         *  output JSON schema and core rules are preserved while the LLM gets
+         *  template-specific writing instructions (pacing, sentence length,
+         *  per-model technique guidance). */
+        templatePromptOverride: z.string().max(4000).optional(),
       })
     )
     .mutation(async ({ ctx, input }) => {
@@ -887,6 +896,10 @@ Each element must have these fields:
         : "General cinematic: descriptive English prompts with visual details, lighting, camera information, and mood.";
 
       const avgDuration = Math.round(input.totalDuration / input.sceneCount);
+
+      const templateAddon = input.templatePromptOverride?.trim()
+        ? `\n\n## Template-specific writing instructions (apply ON TOP of the default rules)\n${input.templatePromptOverride.trim()}\n`
+        : "";
 
       const systemPrompt = `You are a professional screenwriter and AI video director creating multi-modal storyboard scripts optimized for AI video generation.
 
@@ -918,7 +931,7 @@ Rules:
 2. scriptText must be cohesive Chinese narrative covering all scenes
 3. Each promptText MUST follow the target model's style guide
 4. Duration values should total approximately ${input.totalDuration} seconds
-5. Create compelling visual storytelling appropriate for the genre and mood`;
+5. Create compelling visual storytelling appropriate for the genre and mood${templateAddon}`;
 
       const response = await invokeLLM({
         messages: [

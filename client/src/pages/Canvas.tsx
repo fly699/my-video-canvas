@@ -1176,8 +1176,9 @@ function CanvasInner({ projectId }: { projectId: number }) {
             <TooltipTrigger asChild>
               <button
                 onClick={() => { undo(); toast.info("已撤销", { duration: 1200 }); }}
-                disabled={past.length === 0}
+                disabled={past.length === 0 || isReadOnly}
                 className="topbar-btn"
+                title={isReadOnly ? "只读模式下不可编辑" : undefined}
               >
                 <Undo2 className="w-3.5 h-3.5" />
               </button>
@@ -1192,8 +1193,9 @@ function CanvasInner({ projectId }: { projectId: number }) {
             <TooltipTrigger asChild>
               <button
                 onClick={() => { redo(); toast.info("已重做", { duration: 1200 }); }}
-                disabled={future.length === 0}
+                disabled={future.length === 0 || isReadOnly}
                 className="topbar-btn"
+                title={isReadOnly ? "只读模式下不可编辑" : undefined}
               >
                 <Redo2 className="w-3.5 h-3.5" />
               </button>
@@ -1209,6 +1211,8 @@ function CanvasInner({ projectId }: { projectId: number }) {
               <button
                 onClick={() => { saveCanvas(); toast.success("已保存"); }}
                 className="topbar-btn"
+                disabled={isReadOnly}
+                title={isReadOnly ? "只读模式下不可编辑" : undefined}
               >
                 <Save className="w-3.5 h-3.5" />
               </button>
@@ -1656,8 +1660,8 @@ function CanvasInner({ projectId }: { projectId: number }) {
               boxShadow: "var(--c-node-shadow-hover), 0 0 0 1px var(--c-bd2)",
             }}
           >
-            {/* Add node — primary action */}
-            <Tooltip>
+            {/* Add node — primary action (hidden for viewers) */}
+            {!isReadOnly && <Tooltip>
               <TooltipTrigger asChild>
                 <button
                   onClick={() => setShowNodePicker(!showNodePicker)}
@@ -1675,10 +1679,10 @@ function CanvasInner({ projectId }: { projectId: number }) {
                 </button>
               </TooltipTrigger>
               <TooltipContent side="top" className="text-xs">添加节点</TooltipContent>
-            </Tooltip>
+            </Tooltip>}
 
-            {/* Divider */}
-            <div style={{ width: 1, height: 18, background: "var(--c-bd2)", flexShrink: 0 }} />
+            {/* Divider (only when add button is shown) */}
+            {!isReadOnly && <div style={{ width: 1, height: 18, background: "var(--c-bd2)", flexShrink: 0 }} />}
 
             {/* Zoom controls */}
             <Tooltip>
@@ -1740,8 +1744,8 @@ function CanvasInner({ projectId }: { projectId: number }) {
             {/* Divider */}
             <div style={{ width: 1, height: 18, background: "var(--c-bd2)", flexShrink: 0 }} />
 
-            {/* Run workflow button */}
-            <Tooltip>
+            {/* Run workflow button (hidden for viewers — running consumes paid credits) */}
+            {!isReadOnly && <Tooltip>
               <TooltipTrigger asChild>
                 <button
                   onClick={() => handleRunRequest(null)}
@@ -1773,10 +1777,10 @@ function CanvasInner({ projectId }: { projectId: number }) {
               <TooltipContent side="top" className="text-xs">
                 运行工作流 <kbd className="ml-1 px-1 py-0.5 rounded text-[10px] bg-[var(--c-elevated)] font-mono">Shift+R</kbd>
               </TooltipContent>
-            </Tooltip>
+            </Tooltip>}
 
-            {/* Divider */}
-            <div style={{ width: 1, height: 18, background: "var(--c-bd2)", flexShrink: 0 }} />
+            {/* Divider (only when run button shown) */}
+            {!isReadOnly && <div style={{ width: 1, height: 18, background: "var(--c-bd2)", flexShrink: 0 }} />}
 
             {/* Shortcut help button */}
             <div className="relative">
