@@ -1,10 +1,11 @@
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import { BaseNode } from "../BaseNode";
 import { useCanvasStore } from "../../../hooks/useCanvasStore";
 import type { AIChatNodeData, ChatAttachment, NodeType } from "../../../../../shared/types";
 import { trpc } from "@/lib/trpc";
 import { toast } from "sonner";
-import { Send, Loader2, Trash2, Bot, User, Sparkles, ChevronDown, ArrowRight, Copy, BookOpen, Clapperboard, LayoutGrid, Wand2, ScrollText, UserRound, Paperclip, ImageIcon, FileText, X } from "lucide-react";
+import { Send, Loader2, Trash2, Bot, User, Sparkles, ChevronDown, ArrowRight, Copy, BookOpen, Clapperboard, LayoutGrid, Wand2, ScrollText, UserRound, Paperclip, ImageIcon, FileText, X, PictureInPicture2, ChevronsRight, GripHorizontal } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 import { CHAT_MODELS } from "@/lib/models";
 // Streamdown removed — replaced with safe inline markdown renderer to avoid ReactFlow DOM conflicts
@@ -73,6 +74,72 @@ export const AIChatNode = memo(function AIChatNode({ id, selected, data }: Props
   const [pendingAttachments, setPendingAttachments] = useState<ChatAttachment[]>([]);
   const [isUploadingAttachment, setIsUploadingAttachment] = useState(false);
   const [isDraggingOver, setIsDraggingOver] = useState(false);
+  // ── Floating mode (per-tab, not synced via payload to keep each user's
+  //    chat window position independent). Persisted to sessionStorage so the
+  //    state survives node remounts (e.g. when scrolling out of viewport).
+  const floatKey = `avc:chat-float:${id}`;
+  const [floating, setFloating] = useState<boolean>(() => {
+    try { return sessionStorage.getItem(floatKey) === "1"; } catch { return false; }
+  });
+  const [floatPos, setFloatPos] = useState<{ x: number; y: number }>(() => {
+    try {
+      const raw = sessionStorage.getItem(`${floatKey}:pos`);
+      if (raw) return JSON.parse(raw);
+    } catch { /* ignore */ }
+    // Default: top-right, leaving room for the toolbar
+    return { x: typeof window !== "undefined" ? Math.max(40, window.innerWidth - 460) : 800, y: 80 };
+  });
+  const [floatSize, setFloatSize] = useState<{ w: number; h: number }>(() => {
+    try {
+      const raw = sessionStorage.getItem(`${floatKey}:size`);
+      if (raw) return JSON.parse(raw);
+    } catch { /* ignore */ }
+    return { w: 420, h: 560 };
+  });
+  useEffect(() => { try { sessionStorage.setItem(floatKey, floating ? "1" : "0"); } catch { /* ignore */ } }, [floating, floatKey]);
+  useEffect(() => { try { sessionStorage.setItem(`${floatKey}:pos`, JSON.stringify(floatPos)); } catch { /* ignore */ } }, [floatPos, floatKey]);
+  useEffect(() => { try { sessionStorage.setItem(`${floatKey}:size`, JSON.stringify(floatSize)); } catch { /* ignore */ } }, [floatSize, floatKey]);
+
+  // Drag state — pointer offset relative to window origin at drag start
+  const dragOffsetRef = useRef<{ dx: number; dy: number } | null>(null);
+  const onFloatHeaderMouseDown = (e: React.MouseEvent) => {
+    if ((e.target as HTMLElement).closest("button")) return; // ignore clicks on header buttons
+    e.preventDefault();
+    dragOffsetRef.current = { dx: e.clientX - floatPos.x, dy: e.clientY - floatPos.y };
+    const onMove = (ev: MouseEvent) => {
+      if (!dragOffsetRef.current) return;
+      const nx = Math.min(window.innerWidth - 120, Math.max(0, ev.clientX - dragOffsetRef.current.dx));
+      const ny = Math.min(window.innerHeight - 60, Math.max(0, ev.clientY - dragOffsetRef.current.dy));
+      setFloatPos({ x: nx, y: ny });
+    };
+    const onUp = () => {
+      dragOffsetRef.current = null;
+      window.removeEventListener("mousemove", onMove);
+      window.removeEventListener("mouseup", onUp);
+    };
+    window.addEventListener("mousemove", onMove);
+    window.addEventListener("mouseup", onUp);
+  };
+  // Resize handle (bottom-right corner)
+  const resizeRef = useRef<{ sw: number; sh: number; sx: number; sy: number } | null>(null);
+  const onFloatResizeMouseDown = (e: React.MouseEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    resizeRef.current = { sw: floatSize.w, sh: floatSize.h, sx: e.clientX, sy: e.clientY };
+    const onMove = (ev: MouseEvent) => {
+      if (!resizeRef.current) return;
+      const w = Math.max(320, Math.min(900, resizeRef.current.sw + (ev.clientX - resizeRef.current.sx)));
+      const h = Math.max(360, Math.min(900, resizeRef.current.sh + (ev.clientY - resizeRef.current.sy)));
+      setFloatSize({ w, h });
+    };
+    const onUp = () => {
+      resizeRef.current = null;
+      window.removeEventListener("mousemove", onMove);
+      window.removeEventListener("mouseup", onUp);
+    };
+    window.addEventListener("mousemove", onMove);
+    window.addEventListener("mouseup", onUp);
+  };
   const scrollRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -303,9 +370,24 @@ export const AIChatNode = memo(function AIChatNode({ id, selected, data }: Props
     setPendingAttachments((prev) => prev.filter((_, i) => i !== idx));
   };
 
-  return (
-    <BaseNode id={id} selected={selected} nodeType="ai_chat" title={data.title} minHeight={320} resizable>
-      <div className="flex flex-col h-full" style={{ minHeight: 280 }}>
+  // The floating-mode toggle in the header. Visible in both canvas and float modes.
+  const floatToggle = (
+    <button
+      onClick={(e) => { e.stopPropagation(); setFloating((v) => !v); }}
+      className="nodrag w-6 h-6 rounded flex items-center justify-center transition-all"
+      style={{
+        background: floating ? accentA(0.18) : "transparent",
+        border: `1px solid ${floating ? accentA(0.45) : "transparent"}`,
+        color: floating ? accentColor : "var(--c-t4)",
+      }}
+      title={floating ? "收回到画布" : "悬浮窗口（始终可见，可拖动）"}
+    >
+      <PictureInPicture2 style={{ width: 12, height: 12 }} />
+    </button>
+  );
+
+  const chatBody = (
+    <div className="flex flex-col h-full" style={{ minHeight: 280 }}>
 
         {/* ── System prompt ── */}
         <div
@@ -708,7 +790,101 @@ export const AIChatNode = memo(function AIChatNode({ id, selected, data }: Props
           </div>
         </div>
       </div>
-    </BaseNode>
+  );
+
+  return (
+    <>
+      <BaseNode
+        id={id}
+        selected={selected}
+        nodeType="ai_chat"
+        title={data.title}
+        minHeight={floating ? 120 : 320}
+        resizable={!floating}
+        headerRight={floatToggle}
+      >
+        {floating ? (
+          <div className="flex flex-col items-center justify-center gap-2 p-6 text-center">
+            <PictureInPicture2 className="w-5 h-5" style={{ color: accentColor }} />
+            <p className="text-xs" style={{ color: "var(--c-t2)" }}>
+              已悬浮 — 浮窗中查看对话
+            </p>
+            <button
+              onClick={() => setFloating(false)}
+              className="nodrag mt-1 px-3 py-1.5 rounded-lg text-[11px] font-medium"
+              style={{
+                background: accentA(0.10),
+                border: `1px solid ${accentA(0.40)}`,
+                color: accentColor,
+              }}
+            >
+              收回到画布
+            </button>
+          </div>
+        ) : chatBody}
+      </BaseNode>
+
+      {floating && createPortal(
+        <div
+          className="fixed z-[60] flex flex-col rounded-xl overflow-hidden"
+          style={{
+            left: floatPos.x,
+            top: floatPos.y,
+            width: floatSize.w,
+            height: floatSize.h,
+            background: "var(--c-base)",
+            border: `1px solid ${accentA(0.45)}`,
+            boxShadow: "0 24px 80px oklch(0 0 0 / 0.40), 0 0 0 1px " + accentA(0.20),
+          }}
+          onClick={(e) => e.stopPropagation()}
+          onWheel={(e) => e.stopPropagation()}
+        >
+          <div
+            onMouseDown={onFloatHeaderMouseDown}
+            className="flex items-center gap-2 px-3 py-2 flex-shrink-0 select-none"
+            style={{
+              cursor: "move",
+              background: accentA(0.08),
+              borderBottom: `1px solid ${accentA(0.25)}`,
+            }}
+          >
+            <GripHorizontal style={{ width: 14, height: 14, color: accentColor }} />
+            <span className="text-xs font-medium flex-1" style={{ color: "var(--c-t1)" }}>
+              {data.title || "AI 助手"} · 悬浮
+            </span>
+            <button
+              onClick={(e) => { e.stopPropagation(); setFloating(false); }}
+              className="w-6 h-6 rounded flex items-center justify-center"
+              style={{ color: "var(--c-t3)" }}
+              title="收回到画布"
+            >
+              <ChevronsRight style={{ width: 12, height: 12 }} />
+            </button>
+            <button
+              onClick={(e) => { e.stopPropagation(); setFloating(false); }}
+              className="w-6 h-6 rounded flex items-center justify-center"
+              style={{ color: "var(--c-t3)" }}
+              title="关闭浮窗（节点保留）"
+            >
+              <X style={{ width: 12, height: 12 }} />
+            </button>
+          </div>
+          <div className="flex-1 overflow-hidden">{chatBody}</div>
+          <div
+            onMouseDown={onFloatResizeMouseDown}
+            className="absolute bottom-1 right-1 w-3 h-3 cursor-se-resize"
+            style={{ color: "var(--c-t4)" }}
+            title="拖动调整大小"
+          >
+            <svg width="12" height="12" viewBox="0 0 12 12">
+              <line x1="2" y1="11" x2="11" y2="2" stroke="currentColor" strokeWidth="1.2" />
+              <line x1="6" y1="11" x2="11" y2="6" stroke="currentColor" strokeWidth="1.2" />
+            </svg>
+          </div>
+        </div>,
+        document.body,
+      )}
+    </>
   );
 });
 

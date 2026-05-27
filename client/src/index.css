@@ -255,6 +255,57 @@
     color-scheme: light;
   }
 
+  /* ── Mint — cool seafoam light, fresh / refreshing ────────────────────────── */
+  /* Strongly differentiated from light (neutral) and warm (yellow):
+     hue 165 (green-cyan), higher chroma than the other light themes to make
+     the green tint obvious. Text picks up a complementary cool dark green. */
+  :root[data-theme="mint"] {
+    --c-canvas:   oklch(0.910 0.048 165);   /* fresh seafoam canvas */
+    --c-base:     oklch(0.992 0.014 165);   /* pale mint panels */
+    --c-surface:  oklch(0.952 0.026 165);   /* perceptibly tinted */
+    --c-elevated: oklch(0.992 0.014 165);
+    --c-overlay:  oklch(0.928 0.032 165);
+    --c-input:    oklch(0.930 0.028 165);
+    --c-bd1:      oklch(0.842 0.038 165);
+    --c-bd2:      oklch(0.755 0.044 165);
+    --c-bd3:      oklch(0.620 0.052 165);
+    --c-t1:       oklch(0.155 0.040 175);   /* deep cool green-near-black */
+    --c-t2:       oklch(0.305 0.034 175);
+    --c-t3:       oklch(0.455 0.026 175);
+    --c-t4:       oklch(0.575 0.018 175);
+    --c-node-bg:  oklch(1.000 0.000 0);     /* white cards stand out on mint */
+    --c-node-shadow-rest:     0 1px 3px oklch(0.20 0.05 165 / 0.10), 0 3px 14px oklch(0.20 0.05 165 / 0.07);
+    --c-node-shadow-hover:    0 4px 18px oklch(0.20 0.05 165 / 0.14), 0 1px 5px oklch(0.20 0.05 165 / 0.10);
+    --c-node-shadow-selected: 0 8px 30px oklch(0.20 0.05 165 / 0.18), 0 2px 10px oklch(0.20 0.05 165 / 0.12);
+    --c-node-shadow-run:      0 8px 24px oklch(0.20 0.05 165 / 0.16);
+    color-scheme: light;
+  }
+
+  /* ── Lavender — soft lilac light, calm / creative ────────────────────────── */
+  /* Hue 295 (violet) — completes the light-theme palette: light = neutral,
+     warm = yellow, mint = green-cyan, lavender = purple. */
+  :root[data-theme="lavender"] {
+    --c-canvas:   oklch(0.910 0.045 295);   /* dusty lilac canvas */
+    --c-base:     oklch(0.992 0.013 295);   /* pale lavender panels */
+    --c-surface:  oklch(0.950 0.024 295);
+    --c-elevated: oklch(0.992 0.013 295);
+    --c-overlay:  oklch(0.928 0.030 295);
+    --c-input:    oklch(0.930 0.028 295);
+    --c-bd1:      oklch(0.840 0.038 295);
+    --c-bd2:      oklch(0.752 0.044 295);
+    --c-bd3:      oklch(0.620 0.050 295);
+    --c-t1:       oklch(0.155 0.038 295);   /* deep violet-near-black */
+    --c-t2:       oklch(0.305 0.032 295);
+    --c-t3:       oklch(0.455 0.026 295);
+    --c-t4:       oklch(0.575 0.018 295);
+    --c-node-bg:  oklch(1.000 0.000 0);     /* white cards stand out on lavender */
+    --c-node-shadow-rest:     0 1px 3px oklch(0.22 0.05 295 / 0.11), 0 3px 14px oklch(0.22 0.05 295 / 0.08);
+    --c-node-shadow-hover:    0 4px 18px oklch(0.22 0.05 295 / 0.15), 0 1px 5px oklch(0.22 0.05 295 / 0.10);
+    --c-node-shadow-selected: 0 8px 30px oklch(0.22 0.05 295 / 0.19), 0 2px 10px oklch(0.22 0.05 295 / 0.13);
+    --c-node-shadow-run:      0 8px 24px oklch(0.22 0.05 295 / 0.17);
+    color-scheme: light;
+  }
+
   /* ── Creative Mode — LibTV-inspired whiteboard canvas ─────────────────────── */
   /* MUST appear after all theme blocks to win equal-specificity (0-2-0) cascade. */
   :root[data-canvas-mode="creative"] {
