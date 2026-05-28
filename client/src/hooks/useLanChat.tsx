@@ -1,12 +1,23 @@
-import { createContext, useCallback, useContext, useEffect, useRef, useState, type ReactNode } from "react";
+import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { io, type Socket } from "socket.io-client";
 import { trpc } from "@/lib/trpc";
 import { usePersistentState } from "./usePersistentState";
 import { useLanFingerprint } from "./useLanFingerprint";
+import { usePeerMesh, type MeshPeer } from "./usePeerMesh";
+import { appendMessage as historyAppend, loadRecentMessages } from "@/lib/localChatHistory";
 import type { LanChatMessage, LanChatOnlineUser, LanChatRoom, ChatAttachment } from "../../../shared/types";
 
 const SESSION_KEY = "lan-chat:session:v1";
 const ACTIVE_ROOM_KEY = "lan-chat:active-room:v1";
+
+/** Convert a uuid string into a numeric id for React key compat with the
+ *  legacy LanChatMessage shape (id was a server-issued auto-increment).
+ *  Simple djb2 hash — collisions don't matter beyond React key stability. */
+function hashId(s: string): number {
+  let h = 5381;
+  for (let i = 0; i < s.length; i++) h = ((h << 5) + h + s.charCodeAt(i)) | 0;
+  return h >>> 0;
+}
 
 interface SessionInfo {
   sessionId: string;
@@ -28,6 +39,9 @@ interface LanChatContextValue {
   createRoom: (name: string) => Promise<LanChatRoom | undefined>;
   messages: LanChatMessage[];
   online: LanChatOnlineUser[];
+  /** WebRTC peer connection state — UI can display "N/M peers ready"
+   *  so the user knows whose messages they will (and won't) see. */
+  peers: MeshPeer[];
   typing: string[];
   connected: boolean;
   send: (content: string, attachments?: ChatAttachment[]) => Promise<void>;
@@ -73,6 +87,31 @@ export function LanChatProvider({ children }: { children: ReactNode }) {
 
   const socketRef = useRef<Socket | null>(null);
   const utils = trpc.useUtils();
+
+  // Local message history (IndexedDB) — server-side message storage was
+  // dropped when we switched to E2E P2P, so each peer keeps its own.
+  useEffect(() => {
+    if (!session || fingerprint.state !== "ready") return;
+    let cancelled = false;
+    loadRecentMessages(fingerprint.groupId).then((rows) => {
+      if (cancelled) return;
+      setMessages(rows.map((r) => ({
+        id: hashId(r.id),
+        roomId: 1, // unused in P2P phase 1
+        nickname: r.nickname,
+        color: r.color,
+        content: r.content,
+        attachments: r.attachments ? r.attachments.map((a) => ({
+          type: a.type,
+          url: a.url,
+          mimeType: a.mimeType,
+          name: a.name,
+        })) : null,
+        createdAt: new Date(r.createdAt).toISOString(),
+      })));
+    });
+    return () => { cancelled = true; };
+  }, [session, fingerprint]);
 
   const joinMu = trpc.lanChat.joinSession.useMutation();
   const sendMu = trpc.lanChat.sendMessage.useMutation();
@@ -123,10 +162,10 @@ export function LanChatProvider({ children }: { children: ReactNode }) {
       if (/session-not-found/i.test(err.message)) setSessionState(null);
       setConnected(false);
     });
-    socket.on("lan-chat:message", (msg: LanChatMessage) => {
-      if (!isLive()) return;
-      setMessages((prev) => (prev.some((m) => m.id === msg.id) ? prev : [...prev, msg]));
-    });
+    // lan-chat:message (server-broadcast text) is no longer emitted in
+    // the P2P architecture — text now flows over WebRTC DataChannel.
+    // Listener kept as a no-op so a future stray emit doesn't error.
+    socket.on("lan-chat:message", () => { /* deprecated path — ignored */ });
     socket.on("lan-chat:presence", ({ roomId, online: list }: { roomId: number; online: LanChatOnlineUser[] }) => {
       if (!isLive()) return;
       if (roomId === activeRoomIdRef.current) setOnline(list);
@@ -211,15 +250,81 @@ export function LanChatProvider({ children }: { children: ReactNode }) {
     return res;
   }, [joinMu, setSessionState, fingerprint]);
 
-  const send = useCallback(async (content: string, attachments?: ChatAttachment[]) => {
-    if (!session) return;
-    await sendMu.mutateAsync({
-      sessionId: session.sessionId,
-      roomId: activeRoomId,
+  // ── WebRTC mesh wiring ────────────────────────────────────────────────
+  // Peer list = the same `online` list the server reports, minus self.
+  // Server only knows who's connected via socket presence — it does NOT
+  // see message content.
+  const desiredPeers = useMemo(() => (session
+    ? online.filter((u) => u.sessionId !== session.sessionId)
+    : []
+  ), [online, session]);
+
+  const handlePeerMessage = useCallback((msg: { fromSessionId: string; fromNickname: string; fromColor: string; payload: unknown }) => {
+    const p = msg.payload as { kind?: string; content?: string; attachments?: ChatAttachment[]; createdAt?: number; id?: string };
+    if (!p || p.kind !== "chat" || typeof p.content !== "string") return;
+    const id = p.id ?? crypto.randomUUID();
+    const content: string = p.content;
+    const createdAt = typeof p.createdAt === "number" ? p.createdAt : Date.now();
+    historyAppend({
+      id,
+      groupId: fingerprint.state === "ready" ? fingerprint.groupId : "unknown",
+      nickname: msg.fromNickname,
+      color: msg.fromColor,
       content,
-      attachments,
+      attachments: p.attachments,
+      createdAt,
+      ownByMe: false,
     });
-  }, [session, activeRoomId, sendMu]);
+    setMessages((prev) => [...prev, {
+      id: hashId(id),
+      roomId: 1,
+      nickname: msg.fromNickname,
+      color: msg.fromColor,
+      content,
+      attachments: p.attachments ?? null,
+      createdAt: new Date(createdAt).toISOString(),
+    }]);
+  }, [fingerprint]);
+
+  const mesh = usePeerMesh({
+    socket: socketRef.current,
+    mySessionId: session?.sessionId ?? null,
+    myNickname: session?.nickname ?? "",
+    desiredPeers,
+    onMessage: handlePeerMessage,
+  });
+
+  const send = useCallback(async (content: string, attachments?: ChatAttachment[]) => {
+    if (!session || fingerprint.state !== "ready") return;
+    const id = crypto.randomUUID();
+    const createdAt = Date.now();
+    // 1. Persist locally (each peer keeps own history)
+    historyAppend({
+      id,
+      groupId: fingerprint.groupId,
+      nickname: session.nickname,
+      color: session.color,
+      content,
+      attachments: attachments?.map((a) => ({ type: a.type, url: a.url, name: a.name, mimeType: a.mimeType })),
+      createdAt,
+      ownByMe: true,
+    });
+    // 2. Render in own UI immediately
+    setMessages((prev) => [...prev, {
+      id: hashId(id),
+      roomId: 1,
+      nickname: session.nickname,
+      color: session.color,
+      content,
+      attachments: attachments ?? null,
+      createdAt: new Date(createdAt).toISOString(),
+    }]);
+    // 3. Broadcast to connected peers via DataChannel — server never sees it.
+    mesh.broadcast({ kind: "chat", id, content, attachments, createdAt });
+    // sendMu intentionally NOT called — the server-side path is deprecated
+    // by the E2E architecture.
+    void sendMu;
+  }, [session, fingerprint, mesh, sendMu]);
 
   const sendTyping = useCallback(() => {
     socketRef.current?.emit("lan-chat:typing", { roomId: activeRoomId });
@@ -265,6 +370,7 @@ export function LanChatProvider({ children }: { children: ReactNode }) {
     createRoom,
     messages,
     online,
+    peers: mesh.peers,
     typing,
     connected,
     send,
