@@ -49,11 +49,24 @@ export function registerLanChatBroadcaster(fn: (roomId: number, msg: LanChatMess
   broadcaster = fn;
 }
 
-/** Resolve the network group for the current request. clientIp is the
- *  server's view of the user — for users behind a NAT this is the gateway's
- *  outbound public IP, so everyone in the same office/home shares it. */
-function networkGroupFromCtx(ctx: { clientIp: string }): string {
-  return ctx.clientIp || "unknown";
+/** Resolve the network group for the current request.
+ *
+ *  EARLIER DESIGN: used ctx.clientIp to group users behind the same NAT
+ *  gateway. In practice this didn't work for the user's actual use case
+ *  (colleagues on different ISPs / Manus's reverse-proxy giving each
+ *  request a distinct IP) — every user ended up alone in their own
+ *  "network", couldn't see each other's messages, online count stuck at 1.
+ *
+ *  CURRENT DESIGN: a single global "public" group. All authenticated chat
+ *  participants share the same rooms. The networkGroupId column stays in
+ *  the schema as a forward-compat hook for future invite-code-based
+ *  private groups; for now we just always write/read "public".
+ *
+ *  Audit/moderation still differentiates users via the per-message
+ *  clientIp column (lan_chat_messages.clientIp) so admins can spot
+ *  abuse even though everyone is in the same chat. */
+function networkGroupFromCtx(_ctx: { clientIp: string }): string {
+  return "public";
 }
 
 /** Ensure every network has a "大厅" room — auto-created lazily on the
