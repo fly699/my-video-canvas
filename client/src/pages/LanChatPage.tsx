@@ -32,7 +32,12 @@ export default function LanChatPage() {
           >
             <span style={{ fontSize: 14 }}>💬</span>
           </div>
-          <span className="text-sm font-semibold" style={{ color: "var(--c-t1)" }}>局域网聊天</span>
+          <div className="flex flex-col">
+            <span className="text-sm font-semibold" style={{ color: "var(--c-t1)" }}>局域网聊天</span>
+            <span className="text-[10px]" style={{ color: "oklch(0.70 0.20 50)" }}>
+              ⚠ 非加密通讯，严禁传输版权素材
+            </span>
+          </div>
         </div>
         <span className="ml-auto text-[11px] px-2 py-0.5 rounded" style={{
           background: session.color + "22",
