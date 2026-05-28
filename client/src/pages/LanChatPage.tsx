@@ -35,7 +35,7 @@ export default function LanChatPage() {
           <div className="flex flex-col">
             <span className="text-sm font-semibold" style={{ color: "var(--c-t1)" }}>局域网聊天</span>
             <span className="text-[10px]" style={{ color: "oklch(0.70 0.20 50)" }}>
-              ⚠ 非加密通讯，严禁传输版权素材
+              端到端加密 · 支持内网直传 · 文件上限 32MB
             </span>
           </div>
         </div>
