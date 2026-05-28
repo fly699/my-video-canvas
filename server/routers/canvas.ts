@@ -644,10 +644,7 @@ export const aiChatRouter = router({
       // can blow past provider request-size limits. Mention the attachment
       // textually instead so the model has context without the payload.
       const historyMessages = history.map((m) => {
-        // attachments may or may not be present depending on whether
-        // migration 0019 has been applied — see db.getChatMessages for the
-        // raw-SQL enrichment that adds it back as a side field.
-        const att = ((m as unknown as { attachments?: Array<{ type: string; url: string; name?: string }> | null }).attachments) ?? null;
+        const att = (m.attachments as Array<{ type: string; url: string; name?: string }> | null) ?? null;
         if (m.role === "user" && att && att.length > 0) {
           const imgs = att
             .filter((a) => a.type === "image" && !a.url.startsWith("data:"))
@@ -869,11 +866,9 @@ Each element must have these fields:
         targetVideoModel: z.string().optional(),
         aspectRatio: z.string().default("16:9"),
         model: z.string().optional(),
-        /** scriptCreationTemplates.ts → systemPromptAddon when a template is applied.
-         *  Appended to the default system prompt instead of replacing it so the
-         *  output JSON schema and core rules are preserved while the LLM gets
-         *  template-specific writing instructions (pacing, sentence length,
-         *  per-model technique guidance). */
+        /** Optional template-specific writing instructions appended to the
+         *  system prompt. Sourced from client/src/lib/scriptCreationTemplates.ts
+         *  by id (UI passes `systemPromptAddon` of the applied template). */
         templatePromptOverride: z.string().max(4000).optional(),
       })
     )
@@ -896,10 +891,6 @@ Each element must have these fields:
         : "General cinematic: descriptive English prompts with visual details, lighting, camera information, and mood.";
 
       const avgDuration = Math.round(input.totalDuration / input.sceneCount);
-
-      const templateAddon = input.templatePromptOverride?.trim()
-        ? `\n\n## Template-specific writing instructions (apply ON TOP of the default rules)\n${input.templatePromptOverride.trim()}\n`
-        : "";
 
       const systemPrompt = `You are a professional screenwriter and AI video director creating multi-modal storyboard scripts optimized for AI video generation.
 
@@ -931,11 +922,19 @@ Rules:
 2. scriptText must be cohesive Chinese narrative covering all scenes
 3. Each promptText MUST follow the target model's style guide
 4. Duration values should total approximately ${input.totalDuration} seconds
-5. Create compelling visual storytelling appropriate for the genre and mood${templateAddon}`;
+5. Create compelling visual storytelling appropriate for the genre and mood`;
+
+      // When a template is selected client-side, its systemPromptAddon is
+      // appended here. Doesn't replace the base prompt — adds extra context-
+      // specific writing instructions on top (e.g. "open with a 3-second
+      // hook" for short-video templates).
+      const fullSystemPrompt = input.templatePromptOverride
+        ? `${systemPrompt}\n\n## Template-specific writing instructions\n${input.templatePromptOverride}`
+        : systemPrompt;
 
       const response = await invokeLLM({
         messages: [
-          { role: "system" as const, content: systemPrompt },
+          { role: "system" as const, content: fullSystemPrompt },
           { role: "user" as const, content: `Story Synopsis:\n${input.synopsis}` },
         ],
         model: input.model ?? "claude-sonnet-4-6",

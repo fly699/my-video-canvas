@@ -1,4 +1,4 @@
-import { eq, and, desc, sql, or, inArray, isNull } from "drizzle-orm";
+import { eq, and, desc, sql, inArray, isNull } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/mysql2";
 import {
   InsertUser,
@@ -24,6 +24,12 @@ import {
   InsertAuditLog,
   InsertProjectCollaborator,
   InsertProjectShareLink,
+  lanChatRooms,
+  lanChatMessages,
+  type LanChatRoomRow,
+  type LanChatMessageRow,
+  type InsertLanChatRoom,
+  type InsertLanChatMessage,
 } from "../drizzle/schema";
 import { ENV } from "./_core/env";
 import * as dev from "./_core/devStore";
@@ -158,38 +164,7 @@ export async function getProjectByIdRaw(id: number) {
   const db = await getDb();
   if (!db) return DEV_MODE ? dev.devGetProjectByIdRaw(id) : undefined;
   const result = await db.select().from(projects).where(eq(projects.id, id)).limit(1);
-  if (!result[0]) return undefined;
-  // publicReadAccess is read out-of-band so the schema can stay backward
-  // compatible with deployments that haven't run migration 0018 yet —
-  // see the note on projects in drizzle/schema.ts.
-  const publicReadAccess = await readPublicReadAccess(db, id);
-  return { ...result[0], publicReadAccess };
-}
-
-/** True when MySQL reports a missing-table / missing-column situation that
- *  indicates the deployment hasn't applied recent migrations. */
-function isMissingSchemaError(e: unknown): boolean {
-  const msg = e instanceof Error ? e.message : String(e ?? "");
-  return /Unknown column|doesn'?t exist|no such table|Table .* doesn'?t exist|ER_NO_SUCH_TABLE|ER_BAD_FIELD_ERROR/i.test(msg);
-}
-
-/** Read publicReadAccess via raw SQL so a missing column on a stale deploy
- *  doesn't break the entire projects.list / projects.get query. */
-async function readPublicReadAccess(
-  db: NonNullable<Awaited<ReturnType<typeof getDb>>>,
-  projectId: number,
-): Promise<boolean> {
-  try {
-    const res = await db.execute(
-      sql`SELECT publicReadAccess FROM projects WHERE id = ${projectId} LIMIT 1`,
-    ) as unknown as Array<{ publicReadAccess?: number | boolean }>;
-    const rows = Array.isArray(res) ? res : (res as unknown as { rows?: typeof res })?.rows ?? [];
-    const row = Array.isArray(rows) ? rows[0] : undefined;
-    return !!row?.publicReadAccess;
-  } catch (err) {
-    if (isMissingSchemaError(err)) return false;
-    throw err;
-  }
+  return result[0];
 }
 
 export type EffectiveRole = "owner" | "admin" | "editor" | "viewer";
@@ -219,16 +194,7 @@ export async function getProjectAccess(projectId: number, userId: number): Promi
 export async function setProjectPublicAccess(id: number, publicReadAccess: boolean) {
   const db = await getDb();
   if (!db) { if (DEV_MODE) { dev.devSetProjectPublicAccess(id, publicReadAccess); return; } throw new Error("DB unavailable"); }
-  try {
-    await db.execute(
-      sql`UPDATE projects SET publicReadAccess = ${publicReadAccess} WHERE id = ${id}`,
-    );
-  } catch (err) {
-    if (isMissingSchemaError(err)) {
-      throw new Error("公开访问功能需要先在服务端执行 `pnpm db:push` 应用 migration 0018_collaboration.sql。");
-    }
-    throw err;
-  }
+  await db.update(projects).set({ publicReadAccess }).where(eq(projects.id, id));
 }
 
 /** Projects where user is a collaborator (not owner). */
@@ -369,6 +335,16 @@ export async function getShareLinkByToken(token: string) {
   const db = await getDb();
   if (!db) return DEV_MODE ? dev.devGetShareLinkByToken(token) : undefined;
   const rows = await db.select().from(projectShareLinks).where(eq(projectShareLinks.token, token)).limit(1);
+  return rows[0];
+}
+
+/** Lookup by primary key — used by the short-link route which encodes
+ *  {id}.{tokenPrefix} into the URL. Callers must still verify the prefix
+ *  against the returned row's full token before accepting the invite. */
+export async function getShareLinkById(id: number) {
+  const db = await getDb();
+  if (!db) return DEV_MODE ? dev.devGetShareLinkById(id) : undefined;
+  const rows = await db.select().from(projectShareLinks).where(eq(projectShareLinks.id, id)).limit(1);
   return rows[0];
 }
 
@@ -644,7 +620,6 @@ export async function deleteVideoTask(id: number) {
 export async function getPendingVideoTasks() {
   const db = await getDb();
   if (!db) return DEV_MODE ? dev.devGetPendingVideoTasks() : [];
-  const { inArray } = await import("drizzle-orm");
   return db
     .select()
     .from(videoTasks)
@@ -681,30 +656,15 @@ export async function addChatMessagePair(
   const db = await getDb();
   if (!db) {
     if (DEV_MODE) {
-      await dev.devAddChatMessage({ nodeId, projectId, role: "user", content: userContent }, userAttachments ?? null);
+      await dev.devAddChatMessage({ nodeId, projectId, role: "user", content: userContent, attachments: userAttachments ?? null });
       await dev.devAddChatMessage({ nodeId, projectId, role: "assistant", content: assistantContent });
       return;
     }
     throw new Error("DB unavailable");
   }
-  // attachments column is intentionally kept out of the drizzle schema
-  // (so SELECT * doesn't fail on stale deploys missing migration 0019).
-  // Insert via drizzle without attachments, then UPDATE the row via raw
-  // SQL — graceful fallback when the column doesn't exist.
   await db.transaction(async (tx) => {
-    const [userResult] = await tx.insert(chatMessages).values({ nodeId, projectId, role: "user", content: userContent });
+    await tx.insert(chatMessages).values({ nodeId, projectId, role: "user", content: userContent, attachments: userAttachments ?? null });
     await tx.insert(chatMessages).values({ nodeId, projectId, role: "assistant", content: assistantContent });
-    if (userAttachments != null) {
-      const insertId = (userResult as unknown as { insertId: number }).insertId;
-      try {
-        await tx.execute(
-          sql`UPDATE chat_messages SET attachments = ${JSON.stringify(userAttachments)} WHERE id = ${insertId}`,
-        );
-      } catch (err) {
-        if (!isMissingSchemaError(err)) throw err;
-        // migration 0019 not applied — silently drop attachments rather than fail
-      }
-    }
   });
 }
 
@@ -741,31 +701,6 @@ export async function getWhitelistEntries() {
 
 // ── Storage persistence settings ────────────────────────────────────────────
 
-// In-memory probe: whether the persistImage column exists on the deployed
-// DB. Probed lazily on first read and cached for the process lifetime so a
-// missing column doesn't trigger a DB error on every getStorageSettings()
-// call. Reset to null if you want to re-probe (e.g. after running migration).
-let _persistImageColumnExists: boolean | null = null;
-
-async function probePersistImageColumn(db: NonNullable<Awaited<ReturnType<typeof getDb>>>): Promise<boolean> {
-  if (_persistImageColumnExists !== null) return _persistImageColumnExists;
-  try {
-    // INFORMATION_SCHEMA is the cheapest, safest way to ask "does this column
-    // exist?" without triggering a SELECT/UPDATE that errors out.
-    const rows = await db
-      .select({ name: sql<string>`COLUMN_NAME` })
-      .from(sql`INFORMATION_SCHEMA.COLUMNS`)
-      .where(sql`TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'storageSettings' AND COLUMN_NAME = 'persistImage'`);
-    _persistImageColumnExists = Array.isArray(rows) && rows.length > 0;
-  } catch (err) {
-    // Don't cache failure — connection may recover later; just assume missing
-    // for this call and re-probe next time.
-    console.warn("[storageSettings] probePersistImageColumn failed:", err instanceof Error ? err.message : err);
-    return false;
-  }
-  return _persistImageColumnExists;
-}
-
 export async function getStorageSettings(): Promise<{ persistAudio: boolean; persistVideo: boolean; persistImage: boolean }> {
   const db = await getDb();
   if (!db) return {
@@ -775,28 +710,10 @@ export async function getStorageSettings(): Promise<{ persistAudio: boolean; per
   };
   const rows = await db.select().from(storageSettings).limit(1);
   const row = rows[0];
-
-  // Read persistImage only if the column exists. Default to ON otherwise —
-  // matches the pre-feature behaviour of always persisting images.
-  let persistImage = true;
-  if (await probePersistImageColumn(db)) {
-    try {
-      const result = await db
-        .select({ persistImage: sql<number | boolean>`persistImage` })
-        .from(storageSettings)
-        .where(eq(storageSettings.id, 1))
-        .limit(1);
-      const v = result[0]?.persistImage;
-      if (v != null) persistImage = Boolean(v);
-    } catch (err) {
-      console.warn("[storageSettings] read persistImage failed:", err instanceof Error ? err.message : err);
-    }
-  }
-
   return {
     persistAudio: row?.persistAudio ?? true,
     persistVideo: row?.persistVideo ?? true,
-    persistImage,
+    persistImage: row?.persistImage ?? true,
   };
 }
 
@@ -808,48 +725,12 @@ export async function setStorageSettings(patch: { persistAudio?: boolean; persis
     if (patch.persistImage !== undefined) devStorageSettings.persistImage = patch.persistImage;
     return;
   }
-
-  // Write audio/video via drizzle ORM (these columns always exist).
-  // The previous shape used INSERT … ON DUPLICATE KEY UPDATE which re-reads
-  // current settings — that path was broken when persistImage read threw,
-  // bricking audio/video toggles too. Now both branches are isolated and
-  // audio/video uses a plain UPDATE against the seeded singleton (id=1).
-  if (patch.persistAudio !== undefined || patch.persistVideo !== undefined) {
-    await db.update(storageSettings).set({
-      ...(patch.persistAudio !== undefined ? { persistAudio: patch.persistAudio } : {}),
-      ...(patch.persistVideo !== undefined ? { persistVideo: patch.persistVideo } : {}),
-    }).where(eq(storageSettings.id, 1));
-  }
-
-  // Write persistImage via raw SQL only if the column exists. If not, surface
-  // a clear "please run pnpm db:push" message instead of MySQL's cryptic
-  // "Unknown column 'persistImage' in 'field list'".
-  if (patch.persistImage !== undefined) {
-    if (!(await probePersistImageColumn(db))) {
-      throw new Error(
-        "持久化图像功能需要先在服务端执行 `pnpm db:push`（应用 migration 0017_add_persist_image.sql）。",
-      );
-    }
-    try {
-      // The column isn't in the drizzle schema (we deliberately omit it for
-      // backward compat — see schema.ts note), so .update().set() can't
-      // express it. db.execute with a raw SQL template is the supported way.
-      await db.execute(
-        sql`UPDATE storageSettings SET persistImage = ${patch.persistImage} WHERE id = 1`,
-      );
-    } catch (err) {
-      const msg = err instanceof Error ? err.message : String(err);
-      if (/unknown column/i.test(msg) || /persistImage/.test(msg)) {
-        // Probe said the column exists but write failed with column error —
-        // re-probe next call in case it was a transient miscount.
-        _persistImageColumnExists = null;
-        throw new Error(
-          "持久化图像列尚未创建。请先在服务端执行 `pnpm db:push` 应用 migration 0017_add_persist_image.sql。",
-        );
-      }
-      throw err;
-    }
-  }
+  const set: Record<string, boolean> = {};
+  if (patch.persistAudio !== undefined) set.persistAudio = patch.persistAudio;
+  if (patch.persistVideo !== undefined) set.persistVideo = patch.persistVideo;
+  if (patch.persistImage !== undefined) set.persistImage = patch.persistImage;
+  if (Object.keys(set).length === 0) return;
+  await db.update(storageSettings).set(set).where(eq(storageSettings.id, 1));
 }
 
 export async function addWhitelistEntry(
@@ -887,6 +768,47 @@ export async function isWhitelisted(type: "ip" | "user", value: string): Promise
     .where(and(eq(whitelistEntries.type, type), eq(whitelistEntries.value, value)))
     .limit(1);
   return rows.length > 0;
+}
+
+// ── LAN Chat ─────────────────────────────────────────────────────────────────
+
+export async function listLanChatRooms(): Promise<LanChatRoomRow[]> {
+  const db = await getDb();
+  if (!db) return DEV_MODE ? dev.devListLanChatRooms() : [];
+  return db.select().from(lanChatRooms).orderBy(lanChatRooms.id);
+}
+
+export async function createLanChatRoom(name: string): Promise<LanChatRoomRow | null> {
+  const db = await getDb();
+  if (!db) { if (DEV_MODE) return dev.devCreateLanChatRoom(name); throw new Error("DB unavailable"); }
+  // INSERT IGNORE so callers can use createRoom as an "ensure exists" path.
+  await db.insert(lanChatRooms).values({ name }).onDuplicateKeyUpdate({ set: { name: sql`name` } });
+  const rows = await db.select().from(lanChatRooms).where(eq(lanChatRooms.name, name)).limit(1);
+  return rows[0] ?? null;
+}
+
+export async function insertLanChatMessage(data: InsertLanChatMessage): Promise<LanChatMessageRow | null> {
+  const db = await getDb();
+  if (!db) { if (DEV_MODE) return dev.devInsertLanChatMessage(data); throw new Error("DB unavailable"); }
+  const [header] = await db.insert(lanChatMessages).values(data);
+  const insertId = (header as unknown as { insertId: number }).insertId;
+  const rows = await db.select().from(lanChatMessages).where(eq(lanChatMessages.id, insertId)).limit(1);
+  return rows[0] ?? null;
+}
+
+/** Fetch the most recent N messages in a room, or messages strictly older
+ *  than `beforeId` when paginating up. Returns newest-first; the client
+ *  reverses for display. */
+export async function getLanChatMessages(roomId: number, opts: { beforeId?: number; limit: number }): Promise<LanChatMessageRow[]> {
+  const db = await getDb();
+  if (!db) return DEV_MODE ? dev.devGetLanChatMessages(roomId, opts) : [];
+  const where = opts.beforeId
+    ? and(eq(lanChatMessages.roomId, roomId), sql`${lanChatMessages.id} < ${opts.beforeId}`)
+    : eq(lanChatMessages.roomId, roomId);
+  return db.select().from(lanChatMessages)
+    .where(where)
+    .orderBy(desc(lanChatMessages.id))
+    .limit(opts.limit);
 }
 
 // ── Audit Logs ────────────────────────────────────────────────────────────────

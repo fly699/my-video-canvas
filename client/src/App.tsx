@@ -10,6 +10,8 @@ import Canvas from "./pages/Canvas";
 import LoginPage from "./pages/LoginPage";
 import AdminPage from "./pages/AdminPage";
 import AcceptInvite from "./pages/AcceptInvite";
+import LanChatPage from "./pages/LanChatPage";
+import { LanChatProvider } from "./hooks/useLanChat";
 import { WhitelistBlockedDialog } from "./components/WhitelistBlockedDialog";
 import { useParams } from "wouter";
 
@@ -26,6 +28,8 @@ function Router() {
       <Route path="/login" component={LoginPage} />
       <Route path="/admin" component={AdminPage} />
       <Route path="/invite/:token" component={AcceptInvite} />
+      <Route path="/i/:code" component={AcceptInvite} />
+      <Route path="/lan-chat" component={LanChatPage} />
       <Route path="/404" component={NotFound} />
       <Route component={NotFound} />
     </Switch>
@@ -37,6 +41,7 @@ function App() {
     <ErrorBoundary>
       <ThemeProvider>
         <CanvasModeProvider>
+        <LanChatProvider>
         <TooltipProvider delayDuration={400}>
           <Toaster
             position="bottom-right"
@@ -51,6 +56,7 @@ function App() {
           <Router />
           <WhitelistBlockedDialog />
         </TooltipProvider>
+        </LanChatProvider>
         </CanvasModeProvider>
       </ThemeProvider>
     </ErrorBoundary>

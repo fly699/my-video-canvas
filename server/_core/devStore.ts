@@ -20,6 +20,9 @@ import type {
   InsertChatMessage,
   InsertProjectCollaborator,
   InsertProjectShareLink,
+  LanChatRoomRow,
+  LanChatMessageRow,
+  InsertLanChatMessage,
 } from "../../drizzle/schema";
 
 let nextId = 100;
@@ -27,11 +30,7 @@ const newId = () => nextId++;
 const now = () => new Date();
 
 // ── Storage maps ──────────────────────────────────────────────────────────────
-// Dev-mode projects also carry publicReadAccess so the access resolver can
-// inspect it. The prod path keeps this field out of the drizzle schema (see
-// drizzle/schema.ts) and reads/writes it via raw SQL.
-type DevProject = Project & { publicReadAccess: boolean };
-const projectsMap = new Map<number, DevProject>();
+const projectsMap = new Map<number, Project>();
 const nodesMap = new Map<string, CanvasNode>();
 const edgesMap = new Map<string, CanvasEdge>();
 const assetsMap = new Map<number, Asset>();
@@ -41,9 +40,9 @@ const collaboratorsMap = new Map<number, ProjectCollaborator>();
 const shareLinksMap = new Map<number, ProjectShareLink>();
 
 // ── Projects ──────────────────────────────────────────────────────────────────
-export function devCreateProject(data: InsertProject & { publicReadAccess?: boolean }): DevProject {
+export function devCreateProject(data: InsertProject): Project {
   const id = newId();
-  const project: DevProject = {
+  const project: Project = {
     id,
     userId: data.userId!,
     name: data.name,
@@ -231,30 +230,24 @@ export function devClaimVideoTaskForSubmit(id: number): boolean {
 }
 
 // ── Chat Messages ─────────────────────────────────────────────────────────────
-/** Dev-mode chat messages carry attachments as a side field since the
- *  prod schema no longer includes it (raw SQL handles it in prod). */
-type DevChatMessage = ChatMessage & { attachments: unknown };
-const _devChatAttachments = new WeakMap<ChatMessage, unknown>();
-
-export function devGetChatMessages(nodeId: string, projectId: number): DevChatMessage[] {
+export function devGetChatMessages(nodeId: string, projectId: number): ChatMessage[] {
   return chatMessagesArr
     .filter((m) => m.nodeId === nodeId && m.projectId === projectId)
-    .sort((a, b) => a.createdAt.getTime() - b.createdAt.getTime())
-    .map((m) => ({ ...m, attachments: _devChatAttachments.get(m) ?? null }));
+    .sort((a, b) => a.createdAt.getTime() - b.createdAt.getTime());
 }
 
-export function devAddChatMessage(data: InsertChatMessage, attachments: unknown = null): DevChatMessage {
+export function devAddChatMessage(data: InsertChatMessage): ChatMessage {
   const msg: ChatMessage = {
     id: newId(),
     nodeId: data.nodeId,
     projectId: data.projectId!,
     role: data.role,
     content: data.content,
+    attachments: (data.attachments as ChatMessage["attachments"]) ?? null,
     createdAt: now(),
   };
   chatMessagesArr.push(msg);
-  _devChatAttachments.set(msg, attachments);
-  return { ...msg, attachments };
+  return msg;
 }
 
 export function devClearChatMessages(nodeId: string, projectId: number) {
@@ -271,7 +264,7 @@ export function devGetUserByOpenId(_openId: string): User | undefined {
 }
 
 // ── Project Collaborators ─────────────────────────────────────────────────────
-export function devGetProjectByIdRaw(id: number): DevProject | undefined {
+export function devGetProjectByIdRaw(id: number): Project | undefined {
   return projectsMap.get(id);
 }
 
@@ -393,6 +386,10 @@ export function devGetShareLinkByToken(token: string): ProjectShareLink | undefi
   return Array.from(shareLinksMap.values()).find((l) => l.token === token);
 }
 
+export function devGetShareLinkById(id: number): ProjectShareLink | undefined {
+  return shareLinksMap.get(id);
+}
+
 /** Atomic equivalent of the prod conditional UPDATE — single-thread so just check then increment. */
 export function devConsumeShareLink(id: number): boolean {
   const l = shareLinksMap.get(id);
@@ -408,4 +405,48 @@ export function devRevokeShareLink(id: number) {
   const l = shareLinksMap.get(id);
   if (!l) return;
   shareLinksMap.set(id, { ...l, revokedAt: now() });
+}
+
+// ── LAN Chat (dev) ───────────────────────────────────────────────────────────
+// Single in-memory store keyed by row id. Seeded with the "大厅" lobby that
+// production gets via the 0016 migration INSERT IGNORE.
+const lanRoomsMap = new Map<number, LanChatRoomRow>([
+  [1, { id: 1, name: "大厅", createdAt: now() }],
+]);
+const lanMessagesMap = new Map<number, LanChatMessageRow>();
+let lanNextRoomId = 2;
+let lanNextMessageId = 1;
+
+export function devListLanChatRooms(): LanChatRoomRow[] {
+  return Array.from(lanRoomsMap.values()).sort((a, b) => a.id - b.id);
+}
+
+export function devCreateLanChatRoom(name: string): LanChatRoomRow {
+  const existing = Array.from(lanRoomsMap.values()).find((r) => r.name === name);
+  if (existing) return existing;
+  const row: LanChatRoomRow = { id: lanNextRoomId++, name, createdAt: now() };
+  lanRoomsMap.set(row.id, row);
+  return row;
+}
+
+export function devInsertLanChatMessage(data: InsertLanChatMessage): LanChatMessageRow {
+  const row: LanChatMessageRow = {
+    id: lanNextMessageId++,
+    roomId: data.roomId,
+    nickname: data.nickname,
+    color: data.color,
+    content: data.content,
+    attachments: (data.attachments as LanChatMessageRow["attachments"]) ?? null,
+    clientIp: data.clientIp,
+    createdAt: now(),
+  };
+  lanMessagesMap.set(row.id, row);
+  return row;
+}
+
+export function devGetLanChatMessages(roomId: number, opts: { beforeId?: number; limit: number }): LanChatMessageRow[] {
+  return Array.from(lanMessagesMap.values())
+    .filter((m) => m.roomId === roomId && (opts.beforeId == null || m.id < opts.beforeId))
+    .sort((a, b) => b.id - a.id)
+    .slice(0, opts.limit);
 }

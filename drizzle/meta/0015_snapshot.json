@@ -1,7 +1,7 @@
 {
   "version": "5",
   "dialect": "mysql",
-  "id": "11f771c1-dc7c-4aff-b42f-4965ff75ea8b",
+  "id": "6ad01825-55d3-4b5c-b4b6-a81857f88b48",
   "prevId": "0bbe0d51-01ac-4705-be31-b2e2289f123c",
   "tables": {
     "assets": {
@@ -777,6 +777,14 @@
         },
         "persistVideo": {
           "name": "persistVideo",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": true
+        },
+        "persistImage": {
+          "name": "persistImage",
           "type": "boolean",
           "primaryKey": false,
           "notNull": true,
