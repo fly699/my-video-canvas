@@ -273,6 +273,43 @@ async function startServer() {
       });
     });
 
+    // ── WebRTC signaling (P2P E2E chat) ───────────────────────────────────
+    // Server only relays SDP/ICE between peers — never sees DataChannel
+    // payload (encrypted DTLS-SRTP between browsers). Peers in the same
+    // group find each other via the existing presence map; once
+    // RTCPeerConnection is established they exchange chat messages
+    // peer-to-peer.
+    //
+    // Event shapes (all addressed by targetSessionId so the server just
+    // forwards):
+    //   webrtc:offer    { to: sessionId, sdp }
+    //   webrtc:answer   { to: sessionId, sdp }
+    //   webrtc:ice      { to: sessionId, candidate }
+    //
+    // Forwarded as the same event name to the target's socket(s) with
+    // `from` populated.
+    const relayToPeer = (event: string, to: string, payload: Record<string, unknown>) => {
+      // Each sessionId may have multiple sockets (browser tabs). Walk
+      // the namespace and forward to any socket whose session matches.
+      lanNs.sockets.forEach((s) => {
+        if ((s.data as { sessionId?: string }).sessionId === to) {
+          s.emit(event, { ...payload, from: sessionId });
+        }
+      });
+    };
+    socket.on("webrtc:offer", (d: { to: string; sdp: string }) => {
+      if (!d?.to || typeof d.sdp !== "string") return;
+      relayToPeer("webrtc:offer", d.to, { sdp: d.sdp });
+    });
+    socket.on("webrtc:answer", (d: { to: string; sdp: string }) => {
+      if (!d?.to || typeof d.sdp !== "string") return;
+      relayToPeer("webrtc:answer", d.to, { sdp: d.sdp });
+    });
+    socket.on("webrtc:ice", (d: { to: string; candidate: unknown }) => {
+      if (!d?.to) return;
+      relayToPeer("webrtc:ice", d.to, { candidate: d.candidate });
+    });
+
     socket.on("disconnect", () => {
       // Don't delete the session itself — the user may have multiple tabs;
       // just leave the rooms this socket had joined. The bus's reapStale
