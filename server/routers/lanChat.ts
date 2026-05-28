@@ -2,7 +2,6 @@ import path from "path";
 import { z } from "zod";
 import { TRPCError } from "@trpc/server";
 import { router, publicProcedure } from "../_core/trpc";
-import { assertLanOnly } from "../_core/lanGate";
 import { lanChatBus } from "../_core/lanChatBus";
 import { storagePut, isStorageConfigured } from "../storage";
 import {
@@ -50,21 +49,38 @@ export function registerLanChatBroadcaster(fn: (roomId: number, msg: LanChatMess
   broadcaster = fn;
 }
 
+/** Resolve the network group for the current request. clientIp is the
+ *  server's view of the user — for users behind a NAT this is the gateway's
+ *  outbound public IP, so everyone in the same office/home shares it. */
+function networkGroupFromCtx(ctx: { clientIp: string }): string {
+  return ctx.clientIp || "unknown";
+}
+
+/** Ensure every network has a "大厅" room — auto-created lazily on the
+ *  first joinSession from that network. Avoids the cold-start "no rooms"
+ *  experience when a brand-new IP arrives. */
+async function ensureLobby(networkGroupId: string): Promise<void> {
+  await createLanChatRoom(networkGroupId, "大厅");
+}
+
 export const lanChatRouter = router({
   // Nickname → sessionId. Caller stores sessionId in localStorage and passes
   // it on every subsequent call (also as socket.io `auth.sessionId`).
+  // No LAN-IP gate — anyone can join; chat is auto-scoped to people who
+  // share their outbound IP (NAT gateway). Two unrelated networks see
+  // separate chats without any explicit setup.
   joinSession: publicProcedure
     .input(z.object({ nickname: z.string().trim().min(1).max(20) }))
-    .mutation(({ ctx, input }) => {
-      assertLanOnly(ctx);
-      const res = lanChatBus.joinSession(input.nickname, ctx.clientIp);
+    .mutation(async ({ ctx, input }) => {
+      const networkGroupId = networkGroupFromCtx(ctx);
+      await ensureLobby(networkGroupId);
+      const res = lanChatBus.joinSession(input.nickname, networkGroupId);
       return res;
     }),
 
-  // Rooms
   listRooms: publicProcedure.query(async ({ ctx }) => {
-    assertLanOnly(ctx);
-    const rows = await listLanChatRooms();
+    const networkGroupId = networkGroupFromCtx(ctx);
+    const rows = await listLanChatRooms(networkGroupId);
     return rows.map((r) => ({ id: r.id, name: r.name }));
   }),
 
@@ -74,10 +90,13 @@ export const lanChatRouter = router({
       name: z.string().trim().min(1).max(80),
     }))
     .mutation(async ({ ctx, input }) => {
-      assertLanOnly(ctx);
       const sess = lanChatBus.getSession(input.sessionId);
       if (!sess) throw new TRPCError({ code: "UNAUTHORIZED", message: "请先输入昵称" });
-      const row = await createLanChatRoom(input.name);
+      // Server side uses ctx.clientIp as the network — ignores the
+      // session's stored value so a user can't carry a sessionId across
+      // networks to leak into someone else's chat.
+      const networkGroupId = networkGroupFromCtx(ctx);
+      const row = await createLanChatRoom(networkGroupId, input.name);
       if (!row) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "创建房间失败" });
       return { id: row.id, name: row.name };
     }),
@@ -90,7 +109,13 @@ export const lanChatRouter = router({
       limit: z.number().int().min(1).max(100).default(50),
     }))
     .query(async ({ ctx, input }) => {
-      assertLanOnly(ctx);
+      const networkGroupId = networkGroupFromCtx(ctx);
+      // Defense in depth: verify the requested room belongs to this
+      // network before returning its history.
+      const rooms = await listLanChatRooms(networkGroupId);
+      if (!rooms.some((r) => r.id === input.roomId)) {
+        throw new TRPCError({ code: "NOT_FOUND", message: "房间不存在" });
+      }
       const rows = await getLanChatMessages(input.roomId, { beforeId: input.beforeId, limit: input.limit });
       return rows.map(rowToWire);
     }),
@@ -106,11 +131,17 @@ export const lanChatRouter = router({
       attachments: z.array(attachmentSchema).max(8).optional(),
     }))
     .mutation(async ({ ctx, input }) => {
-      assertLanOnly(ctx);
       const sess = lanChatBus.getSession(input.sessionId);
       if (!sess) throw new TRPCError({ code: "UNAUTHORIZED", message: "请先输入昵称" });
       if (!input.content.trim() && !(input.attachments?.length ?? 0)) {
         throw new TRPCError({ code: "BAD_REQUEST", message: "消息内容不能为空" });
+      }
+      // Network-scope check: the room must belong to the requester's
+      // current network. Same protection as getMessages above.
+      const networkGroupId = networkGroupFromCtx(ctx);
+      const rooms = await listLanChatRooms(networkGroupId);
+      if (!rooms.some((r) => r.id === input.roomId)) {
+        throw new TRPCError({ code: "FORBIDDEN", message: "不能向其他网络的房间发消息" });
       }
       const row = await insertLanChatMessage({
         roomId: input.roomId,
@@ -126,8 +157,6 @@ export const lanChatRouter = router({
       return wire;
     }),
 
-  // Media upload — LAN-only variant of upload.uploadImage. We accept video
-  // MIME types too (image: shown inline, video: link reference).
   uploadMedia: publicProcedure
     .input(z.object({
       sessionId: z.string().min(1),
@@ -139,8 +168,7 @@ export const lanChatRouter = router({
       }),
       filename: z.string().max(255).optional(),
     }))
-    .mutation(async ({ ctx, input }) => {
-      assertLanOnly(ctx);
+    .mutation(async ({ input }) => {
       const sess = lanChatBus.getSession(input.sessionId);
       if (!sess) throw new TRPCError({ code: "UNAUTHORIZED", message: "请先输入昵称" });
       const buf = Buffer.from(input.base64, "base64");

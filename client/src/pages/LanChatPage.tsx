@@ -8,18 +8,7 @@ import { NicknamePicker } from "@/components/lan-chat/NicknamePicker";
  * even loads externally — when we reach this component the user is on LAN.
  */
 export default function LanChatPage() {
-  const { session, join, lanForbidden } = useLanChat();
-
-  if (lanForbidden) {
-    return (
-      <div className="w-screen h-screen flex flex-col items-center justify-center gap-3 px-6" style={{ background: "var(--c-base)" }}>
-        <h1 className="text-lg font-semibold" style={{ color: "var(--c-t1)" }}>局域网专用</h1>
-        <p className="text-sm text-center" style={{ color: "var(--c-t3)", maxWidth: 360 }}>
-          此聊天工具仅在同一局域网内可用。当前请求来自公网地址，已被服务端拒绝。
-        </p>
-      </div>
-    );
-  }
+  const { session, join } = useLanChat();
 
   if (!session) {
     return <NicknamePicker onSubmit={async (n) => { await join(n); }} />;

@@ -120,6 +120,13 @@
       "when": 1779943325072,
       "tag": "0016_lan_chat",
       "breakpoints": true
+    },
+    {
+      "idx": 17,
+      "version": "5",
+      "when": 1779949702896,
+      "tag": "0017_lan_chat_network_group",
+      "breakpoints": true
     }
   ]
 }

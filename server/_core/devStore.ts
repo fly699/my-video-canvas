@@ -408,23 +408,25 @@ export function devRevokeShareLink(id: number) {
 }
 
 // ── LAN Chat (dev) ───────────────────────────────────────────────────────────
-// Single in-memory store keyed by row id. Seeded with the "大厅" lobby that
-// production gets via the 0016 migration INSERT IGNORE.
-const lanRoomsMap = new Map<number, LanChatRoomRow>([
-  [1, { id: 1, name: "大厅", createdAt: now() }],
-]);
+// Rooms scoped by networkGroupId — each unique clientIp gets its own
+// auto-created "大厅" on first joinSession. No production seed needed
+// in dev because devListLanChatRooms only returns same-network rooms.
+const lanRoomsMap = new Map<number, LanChatRoomRow>();
 const lanMessagesMap = new Map<number, LanChatMessageRow>();
-let lanNextRoomId = 2;
+let lanNextRoomId = 1;
 let lanNextMessageId = 1;
 
-export function devListLanChatRooms(): LanChatRoomRow[] {
-  return Array.from(lanRoomsMap.values()).sort((a, b) => a.id - b.id);
+export function devListLanChatRooms(networkGroupId: string): LanChatRoomRow[] {
+  return Array.from(lanRoomsMap.values())
+    .filter((r) => r.networkGroupId === networkGroupId)
+    .sort((a, b) => a.id - b.id);
 }
 
-export function devCreateLanChatRoom(name: string): LanChatRoomRow {
-  const existing = Array.from(lanRoomsMap.values()).find((r) => r.name === name);
+export function devCreateLanChatRoom(networkGroupId: string, name: string): LanChatRoomRow {
+  const existing = Array.from(lanRoomsMap.values())
+    .find((r) => r.networkGroupId === networkGroupId && r.name === name);
   if (existing) return existing;
-  const row: LanChatRoomRow = { id: lanNextRoomId++, name, createdAt: now() };
+  const row: LanChatRoomRow = { id: lanNextRoomId++, networkGroupId, name, createdAt: now() };
   lanRoomsMap.set(row.id, row);
   return row;
 }

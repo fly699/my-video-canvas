@@ -772,18 +772,24 @@ export async function isWhitelisted(type: "ip" | "user", value: string): Promise
 
 // ── LAN Chat ─────────────────────────────────────────────────────────────────
 
-export async function listLanChatRooms(): Promise<LanChatRoomRow[]> {
+export async function listLanChatRooms(networkGroupId: string): Promise<LanChatRoomRow[]> {
   const db = await getDb();
-  if (!db) return DEV_MODE ? dev.devListLanChatRooms() : [];
-  return db.select().from(lanChatRooms).orderBy(lanChatRooms.id);
+  if (!db) return DEV_MODE ? dev.devListLanChatRooms(networkGroupId) : [];
+  return db.select().from(lanChatRooms)
+    .where(eq(lanChatRooms.networkGroupId, networkGroupId))
+    .orderBy(lanChatRooms.id);
 }
 
-export async function createLanChatRoom(name: string): Promise<LanChatRoomRow | null> {
+export async function createLanChatRoom(networkGroupId: string, name: string): Promise<LanChatRoomRow | null> {
   const db = await getDb();
-  if (!db) { if (DEV_MODE) return dev.devCreateLanChatRoom(name); throw new Error("DB unavailable"); }
+  if (!db) { if (DEV_MODE) return dev.devCreateLanChatRoom(networkGroupId, name); throw new Error("DB unavailable"); }
   // INSERT IGNORE so callers can use createRoom as an "ensure exists" path.
-  await db.insert(lanChatRooms).values({ name }).onDuplicateKeyUpdate({ set: { name: sql`name` } });
-  const rows = await db.select().from(lanChatRooms).where(eq(lanChatRooms.name, name)).limit(1);
+  // Composite (networkGroupId, name) uniqueness key is enforced by the DB.
+  await db.insert(lanChatRooms).values({ networkGroupId, name })
+    .onDuplicateKeyUpdate({ set: { name: sql`name` } });
+  const rows = await db.select().from(lanChatRooms)
+    .where(and(eq(lanChatRooms.networkGroupId, networkGroupId), eq(lanChatRooms.name, name)))
+    .limit(1);
   return rows[0] ?? null;
 }
 

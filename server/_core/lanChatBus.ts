@@ -14,6 +14,10 @@ export interface LanSession {
   nickname: string;
   color: string;
   clientIp: string;
+  /** Outbound NAT gateway IP — used to group users behind the same router
+   *  into a shared "LAN" namespace. For this server clientIp IS the
+   *  networkGroupId (server's view of the user is always the gateway). */
+  networkGroupId: string;
   lastSeen: number;
 }
 
@@ -21,6 +25,7 @@ interface JoinResult {
   sessionId: string;
   nickname: string;
   color: string;
+  networkGroupId: string;
 }
 
 class LanChatBus {
@@ -52,7 +57,12 @@ class LanChatBus {
     );
     if (existing) {
       existing.lastSeen = Date.now();
-      return { sessionId: existing.id, nickname: existing.nickname, color: existing.color };
+      return {
+        sessionId: existing.id,
+        nickname: existing.nickname,
+        color: existing.color,
+        networkGroupId: existing.networkGroupId,
+      };
     }
     const sessionId = randomBytes(16).toString("base64url");
     const color = this.pickColor(trimmed);
@@ -61,9 +71,10 @@ class LanChatBus {
       nickname: trimmed,
       color,
       clientIp,
+      networkGroupId: clientIp,
       lastSeen: Date.now(),
     });
-    return { sessionId, nickname: trimmed, color };
+    return { sessionId, nickname: trimmed, color, networkGroupId: clientIp };
   }
 
   getSession(sessionId: string): LanSession | undefined {

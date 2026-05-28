@@ -1,4 +1,4 @@
-import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { createContext, useCallback, useContext, useEffect, useRef, useState, type ReactNode } from "react";
 import { io, type Socket } from "socket.io-client";
 import { trpc } from "@/lib/trpc";
 import { usePersistentState } from "./usePersistentState";
@@ -28,7 +28,6 @@ interface LanChatContextValue {
   send: (content: string, attachments?: ChatAttachment[]) => Promise<void>;
   sendTyping: () => void;
   uploadMedia: (file: File) => Promise<{ url: string; type: "image" | "file"; mimeType: string; name: string } | null>;
-  lanForbidden: boolean;
 }
 
 const LanChatContext = createContext<LanChatContextValue | null>(null);
@@ -76,10 +75,6 @@ export function LanChatProvider({ children }: { children: ReactNode }) {
     retry: false,
     staleTime: 60_000,
   });
-  const lanForbidden = useMemo(
-    () => !!(roomsQ.error && /lan|403|forbidden/i.test(roomsQ.error.message)),
-    [roomsQ.error],
-  );
 
   // Establish socket when session changes. Guard against stale handlers
   // from a prior effect run (strict-mode double-invoke) writing state
@@ -223,7 +218,6 @@ export function LanChatProvider({ children }: { children: ReactNode }) {
     send,
     sendTyping,
     uploadMedia,
-    lanForbidden,
   };
 
   return <LanChatContext.Provider value={value}>{children}</LanChatContext.Provider>;
