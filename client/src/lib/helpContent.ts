@@ -143,7 +143,7 @@ export const HELP_SECTIONS: HelpSection[] = [
     title: "局域网聊天（匿名群聊）",
     emoji: "💬",
     content: [
-      { type: "p", text: "无需注册的实时群聊工具。所有用户共用一个全局聊天空间，输入昵称即可开聊。消息持久化到数据库，重启不丢；管理员可在 /admin → LAN 聊天记录 查看全部历史。" },
+      { type: "p", text: "无需注册的实时群聊工具。按浏览器**出口公网 IP**严格分组：同一办公室/家庭网络（共享一个 NAT 出口）的人自动互相可见；不同网络的用户**永不互通**，无 public 兜底池。拿不到公网 IP（断网/拦截）时直接禁止加入，不会被错误地归入陌生人池。消息持久化到数据库，管理员可在 /admin → LAN 聊天记录 查看全部历史。" },
       { type: "h3", text: "入口" },
       { type: "kv", rows: [
         ["顶栏 💬 按钮", "依次切换：隐藏 → 气泡 → 浮窗 → 隐藏"],
@@ -170,7 +170,8 @@ export const HELP_SECTIONS: HelpSection[] = [
         ["气泡拖动", "调整气泡位置；松开如未发生拖动则展开为浮窗"],
         ["Esc 键", "从浮窗收回到气泡"],
       ]},
-      { type: "warn", text: "所有人共用一个全局聊天空间 — 任何能访问本应用的用户都能看到你的消息。请勿发送敏感信息；需要私密讨论请用画布协作的邮箱邀请。" },
+      { type: "warn", text: "公网 4G/5G 因运营商 CGNAT 多个用户共享同一出口 IP，可能与陌生人意外同组。切勿在公网移动网络下发敏感信息。" },
+      { type: "tip", text: "跨 LAN 团队（远程办公）请用 /lan-chat#g=你的团队代号 邀请链接共享同一 groupId，绕过 IP 检测。" },
       { type: "tip", text: "数据库表为 lan_chat_rooms + lan_chat_messages，无外键到 users/projects；想清空聊天历史，DROP 这两张表即可（数据库迁移会按需重建）。" },
     ],
   },

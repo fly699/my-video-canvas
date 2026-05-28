@@ -4,6 +4,7 @@ import { TRPCError } from "@trpc/server";
 import { router, publicProcedure } from "../_core/trpc";
 import { lanChatBus } from "../_core/lanChatBus";
 import { storagePut, isStorageConfigured } from "../storage";
+import { writeAuditLog } from "../_core/auditLog";
 import {
   listLanChatRooms,
   createLanChatRoom,
@@ -76,11 +77,38 @@ export const lanChatRouter = router({
   joinSession: publicProcedure
     .input(z.object({
       nickname: z.string().trim().min(1).max(20),
-      groupId: groupIdSchema.default("public"),
+      // No default — client must supply a real groupId derived from
+      // browser-detected public IP or URL-hash invite code. We reject
+      // the legacy "public" pool here so old clients can't slip back
+      // into the global free-for-all.
+      groupId: groupIdSchema,
     }))
-    .mutation(async ({ input }) => {
+    .mutation(async ({ ctx, input }) => {
+      if (input.groupId === "public") {
+        throw new TRPCError({
+          code: "BAD_REQUEST",
+          message: "需要获取公网 IP 后才能加入聊天（请刷新或使用 /lan-chat#g=代号 邀请链接）",
+        });
+      }
       await ensureLobby(input.groupId);
       const res = lanChatBus.joinSession(input.nickname, input.groupId);
+      // Audit log — record both the client-reported IP (extracted from
+      // groupId when source is "ip-…") and the server-observed clientIp.
+      // Mismatch tells admins the user is behind a reverse proxy / VPN
+      // where the two diverge; not necessarily fraud, but worth noting.
+      const reportedIp = input.groupId.startsWith("ip-") ? input.groupId.slice(3) : null;
+      writeAuditLog({
+        ctx,
+        action: "lan_chat:join",
+        detail: { nickname: res.nickname, groupId: input.groupId, reportedIp, serverIp: ctx.clientIp },
+      });
+      if (reportedIp && reportedIp !== ctx.clientIp) {
+        writeAuditLog({
+          ctx,
+          action: "lan_chat:ip_mismatch",
+          detail: { reportedIp, serverIp: ctx.clientIp, nickname: res.nickname },
+        });
+      }
       return res;
     }),
 
