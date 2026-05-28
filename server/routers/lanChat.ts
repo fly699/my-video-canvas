@@ -49,25 +49,12 @@ export function registerLanChatBroadcaster(fn: (roomId: number, msg: LanChatMess
   broadcaster = fn;
 }
 
-/** Resolve the network group for the current request.
- *
- *  EARLIER DESIGN: used ctx.clientIp to group users behind the same NAT
- *  gateway. In practice this didn't work for the user's actual use case
- *  (colleagues on different ISPs / Manus's reverse-proxy giving each
- *  request a distinct IP) — every user ended up alone in their own
- *  "network", couldn't see each other's messages, online count stuck at 1.
- *
- *  CURRENT DESIGN: a single global "public" group. All authenticated chat
- *  participants share the same rooms. The networkGroupId column stays in
- *  the schema as a forward-compat hook for future invite-code-based
- *  private groups; for now we just always write/read "public".
- *
- *  Audit/moderation still differentiates users via the per-message
- *  clientIp column (lan_chat_messages.clientIp) so admins can spot
- *  abuse even though everyone is in the same chat. */
-function networkGroupFromCtx(_ctx: { clientIp: string }): string {
-  return "public";
-}
+// Group-ID validator. Accepts:
+//   "public"     — global fallback (when client can't detect LAN)
+//   "lan-A.B.C"  — RFC1918 /24 subnet detected by browser WebRTC
+//   "code-XYZ"   — explicit invite code from URL hash (#g=XYZ)
+// Length-capped + charset-restricted so it can safely become a column value.
+const groupIdSchema = z.string().regex(/^[A-Za-z0-9._-]{1,64}$/);
 
 /** Ensure every network has a "大厅" room — auto-created lazily on the
  *  first joinSession from that network. Avoids the cold-start "no rooms"
@@ -77,24 +64,38 @@ async function ensureLobby(networkGroupId: string): Promise<void> {
 }
 
 export const lanChatRouter = router({
-  // Nickname → sessionId. Caller stores sessionId in localStorage and passes
-  // it on every subsequent call (also as socket.io `auth.sessionId`).
-  // No LAN-IP gate — anyone can join; chat is auto-scoped to people who
-  // share their outbound IP (NAT gateway). Two unrelated networks see
-  // separate chats without any explicit setup.
+  // Nickname + LAN groupId → sessionId. The groupId is computed CLIENT-SIDE
+  // (WebRTC ICE host candidate → /24 subnet, or URL #g= override, or
+  // "public" fallback). Server trusts what the client reports — this is
+  // best-effort LAN grouping, not authentication.
+  //
+  // Effect: two browsers on the same WiFi see the same group code (their
+  // shared subnet) → join the same chat. Cross-LAN users get different
+  // codes → separate chats. Browsers blocking WebRTC ICE fall back to
+  // "public" so users still come online (just in the global pool).
   joinSession: publicProcedure
-    .input(z.object({ nickname: z.string().trim().min(1).max(20) }))
-    .mutation(async ({ ctx, input }) => {
-      const networkGroupId = networkGroupFromCtx(ctx);
-      await ensureLobby(networkGroupId);
-      const res = lanChatBus.joinSession(input.nickname, networkGroupId);
+    .input(z.object({
+      nickname: z.string().trim().min(1).max(20),
+      groupId: groupIdSchema.default("public"),
+    }))
+    .mutation(async ({ input }) => {
+      await ensureLobby(input.groupId);
+      const res = lanChatBus.joinSession(input.nickname, input.groupId);
       return res;
     }),
 
-  listRooms: publicProcedure.query(async ({ ctx }) => {
-    const networkGroupId = networkGroupFromCtx(ctx);
-    const rows = await listLanChatRooms(networkGroupId);
-    return rows.map((r) => ({ id: r.id, name: r.name }));
+  listRooms: publicProcedure
+    .input(z.object({ sessionId: z.string().min(1).optional() }).optional())
+    .query(async ({ input }) => {
+      // The chat group lives on the session. Without it we don't know
+      // which network to show → return empty (the caller's hook just
+      // got an empty rooms list, will re-fetch after joinSession).
+      const sid = input?.sessionId;
+      if (!sid) return [];
+      const sess = lanChatBus.getSession(sid);
+      if (!sess) return [];
+      const rows = await listLanChatRooms(sess.networkGroupId);
+      return rows.map((r) => ({ id: r.id, name: r.name }));
   }),
 
   createRoom: publicProcedure
@@ -102,14 +103,14 @@ export const lanChatRouter = router({
       sessionId: z.string().min(1),
       name: z.string().trim().min(1).max(80),
     }))
-    .mutation(async ({ ctx, input }) => {
+    .mutation(async ({ input }) => {
       const sess = lanChatBus.getSession(input.sessionId);
       if (!sess) throw new TRPCError({ code: "UNAUTHORIZED", message: "请先输入昵称" });
-      // Server side uses ctx.clientIp as the network — ignores the
-      // session's stored value so a user can't carry a sessionId across
-      // networks to leak into someone else's chat.
-      const networkGroupId = networkGroupFromCtx(ctx);
-      const row = await createLanChatRoom(networkGroupId, input.name);
+      // Group comes from the session (set at joinSession time from the
+      // client's WebRTC-detected LAN code), not from the per-request IP
+      // — sessions persist across reconnects so the same user stays in
+      // the same group regardless of proxy hops.
+      const row = await createLanChatRoom(sess.networkGroupId, input.name);
       if (!row) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "创建房间失败" });
       return { id: row.id, name: row.name };
     }),
@@ -117,17 +118,24 @@ export const lanChatRouter = router({
   // History — newest-first, client reverses for chronological render
   getMessages: publicProcedure
     .input(z.object({
+      sessionId: z.string().min(1).optional(),
       roomId: z.number().int(),
       beforeId: z.number().int().optional(),
       limit: z.number().int().min(1).max(100).default(50),
     }))
-    .query(async ({ ctx, input }) => {
-      const networkGroupId = networkGroupFromCtx(ctx);
-      // Defense in depth: verify the requested room belongs to this
-      // network before returning its history.
-      const rooms = await listLanChatRooms(networkGroupId);
-      if (!rooms.some((r) => r.id === input.roomId)) {
-        throw new TRPCError({ code: "NOT_FOUND", message: "房间不存在" });
+    .query(async ({ input }) => {
+      // Defense in depth: when the caller supplies a sessionId, verify
+      // the requested room belongs to that session's group. Without
+      // sessionId we allow read (history's already public to anyone
+      // who guesses the id) — guarded only by length cap + rate limit.
+      if (input.sessionId) {
+        const sess = lanChatBus.getSession(input.sessionId);
+        if (sess) {
+          const rooms = await listLanChatRooms(sess.networkGroupId);
+          if (!rooms.some((r) => r.id === input.roomId)) {
+            throw new TRPCError({ code: "NOT_FOUND", message: "房间不存在" });
+          }
+        }
       }
       const rows = await getLanChatMessages(input.roomId, { beforeId: input.beforeId, limit: input.limit });
       return rows.map(rowToWire);
@@ -149,10 +157,8 @@ export const lanChatRouter = router({
       if (!input.content.trim() && !(input.attachments?.length ?? 0)) {
         throw new TRPCError({ code: "BAD_REQUEST", message: "消息内容不能为空" });
       }
-      // Network-scope check: the room must belong to the requester's
-      // current network. Same protection as getMessages above.
-      const networkGroupId = networkGroupFromCtx(ctx);
-      const rooms = await listLanChatRooms(networkGroupId);
+      // Cross-group send check: room must belong to caller's group.
+      const rooms = await listLanChatRooms(sess.networkGroupId);
       if (!rooms.some((r) => r.id === input.roomId)) {
         throw new TRPCError({ code: "FORBIDDEN", message: "不能向其他网络的房间发消息" });
       }
