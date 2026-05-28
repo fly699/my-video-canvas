@@ -89,6 +89,11 @@ export function LanChatProvider({ children }: { children: ReactNode }) {
   const [typing, setTyping] = useState<string[]>([]);
 
   const socketRef = useRef<Socket | null>(null);
+  // socketState mirrors socketRef but is proper React state so usePeerMesh
+  // receives the real socket object after the connection effect runs.
+  // socketRef alone won't work: React doesn't re-render on ref mutation, so
+  // usePeerMesh would always see null and never establish DataChannels.
+  const [socketState, setSocketState] = useState<Socket | null>(null);
   const utils = trpc.useUtils();
 
   // Local message history (IndexedDB) — server-side message storage was
@@ -157,6 +162,7 @@ export function LanChatProvider({ children }: { children: ReactNode }) {
       auth: { sessionId: session.sessionId },
     });
     socketRef.current = socket;
+    setSocketState(socket);
     const isLive = () => socketRef.current === socket;
 
     socket.on("connect", () => { if (isLive()) setConnected(true); });
@@ -187,6 +193,7 @@ export function LanChatProvider({ children }: { children: ReactNode }) {
       socket.disconnect();
       if (socketRef.current === socket) {
         socketRef.current = null;
+        setSocketState(null);
         setConnected(false);
       }
     };
@@ -372,7 +379,7 @@ export function LanChatProvider({ children }: { children: ReactNode }) {
   }, [fingerprint]);
 
   const mesh = usePeerMesh({
-    socket: socketRef.current,
+    socket: socketState,
     mySessionId: session?.sessionId ?? null,
     myNickname: session?.nickname ?? "",
     desiredPeers,
