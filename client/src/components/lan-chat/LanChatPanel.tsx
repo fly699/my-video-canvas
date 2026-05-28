@@ -204,14 +204,27 @@ export function LanChatPanel({ visible, compact = false }: LanChatPanelProps) {
 
       {/* Messages area */}
       <div className="flex-1 flex flex-col min-w-0 relative">
-        {/* Active room header (compact mode shows room name + online count) */}
+        {/* Active room header. Compact mode (canvas widget) shows a room
+            dropdown + create-room control inline since the sidebar is hidden. */}
         <div
           className="flex items-center px-3 py-2 gap-2"
           style={{ borderBottom: "1px solid var(--c-bd1)", flexShrink: 0 }}
         >
-          <span className="text-xs font-semibold" style={{ color: "var(--c-t1)" }}>
-            # {rooms.find((r) => r.id === activeRoomId)?.name ?? "大厅"}
-          </span>
+          {compact ? (
+            <CompactRoomPicker
+              rooms={rooms}
+              activeRoomId={activeRoomId}
+              onSelect={setActiveRoomId}
+              onCreate={async (name) => {
+                const room = await createRoom(name);
+                if (room) setActiveRoomId(room.id);
+              }}
+            />
+          ) : (
+            <span className="text-xs font-semibold" style={{ color: "var(--c-t1)" }}>
+              # {rooms.find((r) => r.id === activeRoomId)?.name ?? "大厅"}
+            </span>
+          )}
           <button
             onClick={() => setShowOnline((v) => !v)}
             className="ml-auto flex items-center gap-1 px-2 py-0.5 rounded text-[10px]"
@@ -445,4 +458,105 @@ function formatTime(iso: string): string {
   const hh = String(d.getHours()).padStart(2, "0");
   const mm = String(d.getMinutes()).padStart(2, "0");
   return `${hh}:${mm}`;
+}
+
+// Inline room dropdown + create-room popover for the canvas widget where
+// there's no left sidebar. Renders the current room as a button; clicking
+// opens a small menu with all rooms + a + 新房间 input.
+function CompactRoomPicker({
+  rooms,
+  activeRoomId,
+  onSelect,
+  onCreate,
+}: {
+  rooms: Array<{ id: number; name: string }>;
+  activeRoomId: number;
+  onSelect: (id: number) => void;
+  onCreate: (name: string) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const [newName, setNewName] = useState("");
+  const current = rooms.find((r) => r.id === activeRoomId);
+  return (
+    <div className="relative">
+      <button
+        onClick={() => setOpen((v) => !v)}
+        className="flex items-center gap-1 px-1.5 py-0.5 rounded text-xs font-semibold"
+        style={{ color: "var(--c-t1)", background: open ? "var(--c-elevated)" : "transparent" }}
+      >
+        # {current?.name ?? "大厅"}
+        <span style={{ fontSize: 9, opacity: 0.6 }}>▾</span>
+      </button>
+      {open && (
+        <div
+          className="absolute left-0 top-7 z-30 rounded-lg p-1 min-w-[180px]"
+          style={{
+            background: "var(--c-base)",
+            border: "1px solid var(--c-bd2)",
+            boxShadow: "0 8px 32px oklch(0 0 0 / 0.45)",
+          }}
+          onMouseLeave={() => setOpen(false)}
+        >
+          <div className="max-h-[180px] overflow-y-auto">
+            {rooms.map((r) => (
+              <button
+                key={r.id}
+                onClick={() => { onSelect(r.id); setOpen(false); }}
+                className="w-full text-left px-2 py-1 rounded text-xs"
+                style={{
+                  background: r.id === activeRoomId ? "oklch(0.68 0.22 285 / 0.15)" : "transparent",
+                  color: r.id === activeRoomId ? "oklch(0.82 0.20 285)" : "var(--c-t2)",
+                }}
+              >
+                # {r.name}
+              </button>
+            ))}
+            {rooms.length === 0 && (
+              <p className="text-[10px] px-2 py-2 text-center" style={{ color: "var(--c-t4)" }}>
+                无房间
+              </p>
+            )}
+          </div>
+          <div
+            className="flex items-center gap-1 mt-1 px-1 pt-1"
+            style={{ borderTop: "1px solid var(--c-bd1)" }}
+          >
+            <input
+              value={newName}
+              maxLength={80}
+              onChange={(e) => setNewName(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter" && newName.trim()) {
+                  onCreate(newName.trim());
+                  setNewName("");
+                  setOpen(false);
+                }
+              }}
+              placeholder="+ 新房间"
+              className="flex-1 px-2 py-1 rounded text-[11px]"
+              style={{ background: "var(--c-input)", border: "1px solid var(--c-bd2)", color: "var(--c-t1)" }}
+            />
+            <button
+              onClick={() => {
+                if (!newName.trim()) return;
+                onCreate(newName.trim());
+                setNewName("");
+                setOpen(false);
+              }}
+              disabled={!newName.trim()}
+              className="px-2 py-1 rounded text-[10px]"
+              style={{
+                background: newName.trim() ? "oklch(0.68 0.22 285 / 0.20)" : "transparent",
+                color: newName.trim() ? "oklch(0.82 0.20 285)" : "var(--c-t4)",
+                border: "1px solid var(--c-bd2)",
+                cursor: newName.trim() ? "pointer" : "not-allowed",
+              }}
+            >
+              建
+            </button>
+          </div>
+        </div>
+      )}
+    </div>
+  );
 }

@@ -5,7 +5,7 @@ import { useAuth } from "@/_core/hooks/useAuth";
 import { Shield, Trash2, Plus, ToggleLeft, ToggleRight, ClipboardList, RefreshCw, HardDrive, ArrowLeft, Loader2, CheckCircle2, XCircle } from "lucide-react";
 
 type EntryType = "ip" | "user";
-type Tab = "whitelist" | "logs" | "storage";
+type Tab = "whitelist" | "logs" | "storage" | "lanchat";
 
 const ACTION_LABELS: Record<string, string> = {
   login_email: "邮箱登录",
@@ -101,7 +101,7 @@ export default function AdminPage() {
 
         {/* Tabs */}
         <div style={{ display: "flex", gap: "4px", marginBottom: "20px", borderBottom: "1px solid rgba(255,255,255,0.06)", paddingBottom: "0" }}>
-          {([["whitelist", "白名单管理"], ["logs", "操作日志"], ["storage", "存储设置"]] as [Tab, string][]).map(([tab, label]) => (
+          {([["whitelist", "白名单管理"], ["logs", "操作日志"], ["storage", "存储设置"], ["lanchat", "LAN 聊天记录"]] as [Tab, string][]).map(([tab, label]) => (
             <button
               key={tab}
               onClick={() => setActiveTab(tab)}
@@ -126,6 +126,7 @@ export default function AdminPage() {
         {activeTab === "whitelist" && <WhitelistPanel />}
         {activeTab === "logs" && <LogsPanel />}
         {activeTab === "storage" && <StoragePanel />}
+        {activeTab === "lanchat" && <LanChatLogsPanel />}
       </div>
     </div>
   );
@@ -573,6 +574,176 @@ function DetailCell({ detail }: { detail: Record<string, unknown> | null }) {
   return <span title={parts.join(" | ")}>{parts.slice(0, 2).join(" | ")}{parts.length > 2 ? " …" : ""}</span>;
 }
 
+// ── LAN chat logs ────────────────────────────────────────────────────────────
+
+function LanChatLogsPanel() {
+  const [selectedRoom, setSelectedRoom] = useState<number | "">("");
+  const [search, setSearch] = useState("");
+  const [offset, setOffset] = useState(0);
+  const LIMIT = 50;
+
+  const roomsQuery = trpc.admin.lanChat.listRooms.useQuery();
+  const msgsQuery = trpc.admin.lanChat.listMessages.useQuery({
+    roomId: selectedRoom === "" ? undefined : selectedRoom,
+    search: search || undefined,
+    limit: LIMIT,
+    offset,
+  });
+
+  const roomNameById = (id: number) => roomsQuery.data?.find((r) => r.id === id)?.name ?? `#${id}`;
+  const networkById = (id: number) => roomsQuery.data?.find((r) => r.id === id)?.networkGroupId ?? "?";
+
+  return (
+    <div style={cardStyle}>
+      <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 16, flexWrap: "wrap" }}>
+        <ClipboardList size={18} style={{ color: "var(--c-t2, rgba(255,255,255,0.6))" }} />
+        <span style={{ fontSize: 14, fontWeight: 600, color: "var(--c-t1, #f0f0f4)" }}>LAN 聊天记录</span>
+        <span style={{ fontSize: 11, color: "var(--c-t3, rgba(255,255,255,0.4))" }}>
+          跨网络全部消息 · 仅管理员可见
+        </span>
+        <button
+          onClick={() => msgsQuery.refetch()}
+          disabled={msgsQuery.isFetching}
+          style={{
+            marginLeft: "auto", padding: "4px 10px", borderRadius: 6, border: "1px solid var(--c-bd2)",
+            background: "transparent", color: "var(--c-t2, rgba(255,255,255,0.6))", fontSize: 11, cursor: "pointer",
+            display: "flex", alignItems: "center", gap: 4,
+          }}
+        >
+          {msgsQuery.isFetching ? <Loader2 size={11} className="animate-spin" /> : <RefreshCw size={11} />}
+          刷新
+        </button>
+      </div>
+
+      {/* Filters */}
+      <div style={{ display: "flex", gap: 8, marginBottom: 12, flexWrap: "wrap" }}>
+        <select
+          value={selectedRoom === "" ? "" : String(selectedRoom)}
+          onChange={(e) => { setSelectedRoom(e.target.value === "" ? "" : Number(e.target.value)); setOffset(0); }}
+          style={{
+            padding: "6px 10px", borderRadius: 6, border: "1px solid var(--c-bd2)",
+            background: "var(--c-input, rgba(255,255,255,0.05))", color: "var(--c-t1, #f0f0f4)",
+            fontSize: 12, minWidth: 200,
+          }}
+        >
+          <option value="">全部房间</option>
+          {(roomsQuery.data ?? []).map((r) => (
+            <option key={r.id} value={r.id}>
+              #{r.id} {r.name} ({r.networkGroupId})
+            </option>
+          ))}
+        </select>
+        <input
+          value={search}
+          onChange={(e) => { setSearch(e.target.value); setOffset(0); }}
+          placeholder="搜索消息内容..."
+          style={{
+            flex: 1, minWidth: 200, padding: "6px 10px", borderRadius: 6, border: "1px solid var(--c-bd2)",
+            background: "var(--c-input, rgba(255,255,255,0.05))", color: "var(--c-t1, #f0f0f4)", fontSize: 12,
+          }}
+        />
+        {(selectedRoom !== "" || search) && (
+          <button
+            onClick={() => { setSelectedRoom(""); setSearch(""); setOffset(0); }}
+            style={{
+              padding: "6px 10px", borderRadius: 6, border: "1px solid var(--c-bd2)",
+              background: "transparent", color: "var(--c-t3, rgba(255,255,255,0.4))", fontSize: 11, cursor: "pointer",
+            }}
+          >
+            清除筛选
+          </button>
+        )}
+      </div>
+
+      {/* Messages table */}
+      <div style={{ border: "1px solid var(--c-bd1)", borderRadius: 8, overflow: "hidden" }}>
+        <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 11 }}>
+          <thead>
+            <tr style={{ background: "var(--c-elevated, rgba(255,255,255,0.03))" }}>
+              <th style={thStyle}>时间</th>
+              <th style={thStyle}>房间</th>
+              <th style={thStyle}>昵称</th>
+              <th style={thStyle}>来源 IP</th>
+              <th style={thStyle}>内容</th>
+            </tr>
+          </thead>
+          <tbody>
+            {(msgsQuery.data?.rows ?? []).map((m) => (
+              <tr key={m.id} style={{ borderTop: "1px solid var(--c-bd1)" }}>
+                <td style={tdStyle}>
+                  <span style={{ fontVariantNumeric: "tabular-nums", color: "var(--c-t3, rgba(255,255,255,0.4))" }}>
+                    {new Date(m.createdAt).toLocaleString("zh-CN")}
+                  </span>
+                </td>
+                <td style={tdStyle}>
+                  <span style={{ color: "var(--c-t2, rgba(255,255,255,0.6))" }}>
+                    #{m.roomId} {roomNameById(m.roomId)}
+                  </span>
+                  <br />
+                  <span style={{ fontSize: 9, color: "var(--c-t4, rgba(255,255,255,0.3))", fontFamily: "monospace" }}>
+                    {networkById(m.roomId)}
+                  </span>
+                </td>
+                <td style={tdStyle}>
+                  <span style={{ color: m.color, fontWeight: 600 }}>{m.nickname}</span>
+                </td>
+                <td style={{ ...tdStyle, fontFamily: "monospace", fontSize: 10, color: "var(--c-t4, rgba(255,255,255,0.3))" }}>
+                  {m.clientIp}
+                </td>
+                <td style={{ ...tdStyle, color: "var(--c-t1, #f0f0f4)", maxWidth: 400, wordBreak: "break-word" }}>
+                  {m.content}
+                  {Array.isArray(m.attachments) && (m.attachments as unknown[]).length > 0 && (
+                    <span style={{ marginLeft: 6, fontSize: 10, color: "var(--c-t4)" }}>
+                      📎 {(m.attachments as unknown[]).length} 个附件
+                    </span>
+                  )}
+                </td>
+              </tr>
+            ))}
+            {!msgsQuery.isLoading && (msgsQuery.data?.rows.length ?? 0) === 0 && (
+              <tr>
+                <td colSpan={5} style={{ padding: 24, textAlign: "center", color: "var(--c-t4, rgba(255,255,255,0.3))", fontSize: 12 }}>
+                  无聊天记录
+                </td>
+              </tr>
+            )}
+          </tbody>
+        </table>
+      </div>
+
+      {/* Pagination */}
+      {(msgsQuery.data?.total ?? 0) > LIMIT && (
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginTop: 12 }}>
+          <span style={{ fontSize: 11, color: "var(--c-t3, rgba(255,255,255,0.4))" }}>
+            共 {msgsQuery.data?.total} 条 · 第 {Math.floor(offset / LIMIT) + 1} / {Math.ceil((msgsQuery.data?.total ?? 0) / LIMIT)} 页
+          </span>
+          <div style={{ display: "flex", gap: 6 }}>
+            <button
+              onClick={() => setOffset(Math.max(0, offset - LIMIT))}
+              disabled={offset === 0}
+              style={{
+                padding: "4px 10px", borderRadius: 6, border: "1px solid var(--c-bd2)",
+                background: "transparent", color: "var(--c-t2, rgba(255,255,255,0.6))", fontSize: 11,
+                cursor: offset === 0 ? "not-allowed" : "pointer", opacity: offset === 0 ? 0.4 : 1,
+              }}
+            >上一页</button>
+            <button
+              onClick={() => setOffset(offset + LIMIT)}
+              disabled={(offset + LIMIT) >= (msgsQuery.data?.total ?? 0)}
+              style={{
+                padding: "4px 10px", borderRadius: 6, border: "1px solid var(--c-bd2)",
+                background: "transparent", color: "var(--c-t2, rgba(255,255,255,0.6))", fontSize: 11,
+                cursor: (offset + LIMIT) >= (msgsQuery.data?.total ?? 0) ? "not-allowed" : "pointer",
+                opacity: (offset + LIMIT) >= (msgsQuery.data?.total ?? 0) ? 0.4 : 1,
+              }}
+            >下一页</button>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ── Styles ────────────────────────────────────────────────────────────────────
 
 const pageStyle: React.CSSProperties = {
@@ -601,6 +772,11 @@ const inputStyle: React.CSSProperties = {
 };
 
 const tdStyle: React.CSSProperties = { padding: "9px 10px", color: "var(--c-t1, #f0f0f4)" };
+const thStyle: React.CSSProperties = {
+  padding: "8px 10px", textAlign: "left", fontWeight: 600,
+  color: "var(--c-t3, rgba(255,255,255,0.5))", fontSize: 10, textTransform: "uppercase",
+  letterSpacing: "0.06em", borderBottom: "1px solid var(--c-bd1)",
+};
 
 const iconBtn: React.CSSProperties = {
   display: "inline-flex", alignItems: "center", justifyContent: "center",

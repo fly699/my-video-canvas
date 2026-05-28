@@ -151,4 +151,50 @@ export const adminRouter = router({
       }
     }),
   }),
+
+  // ── LAN chat audit (admin-only cross-network read) ─────────────────────
+  // The user-facing lanChatRouter enforces per-network isolation. Admins
+  // need to see EVERYTHING across networks for moderation / audit. These
+  // endpoints intentionally bypass the network filter — they are behind
+  // adminProcedure so only the configured owner can call them.
+  lanChat: router({
+    listRooms: adminProcedure.query(async () => {
+      const rooms = await db.listAllLanChatRooms();
+      return rooms.map((r) => ({
+        id: r.id,
+        name: r.name,
+        networkGroupId: r.networkGroupId,
+        createdAt: r.createdAt,
+      }));
+    }),
+
+    listMessages: adminProcedure
+      .input(z.object({
+        roomId: z.number().int().optional(),
+        search: z.string().max(200).optional(),
+        limit: z.number().int().min(1).max(200).default(50),
+        offset: z.number().int().min(0).default(0),
+      }))
+      .query(async ({ input }) => {
+        const { rows, total } = await db.getAllLanChatMessages({
+          roomId: input.roomId,
+          search: input.search,
+          limit: input.limit,
+          offset: input.offset,
+        });
+        return {
+          rows: rows.map((r) => ({
+            id: r.id,
+            roomId: r.roomId,
+            nickname: r.nickname,
+            color: r.color,
+            content: r.content,
+            attachments: r.attachments,
+            clientIp: r.clientIp,
+            createdAt: r.createdAt,
+          })),
+          total,
+        };
+      }),
+  }),
 });
