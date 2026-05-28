@@ -232,7 +232,7 @@ export function LanChatWidget({ state, onStateChange }: LanChatWidgetProps) {
             局域网聊天
           </span>
           <span className="text-[9px] truncate" style={{ color: "oklch(0.70 0.20 50)" }}>
-            端到端加密 · 内网传输 · 文件上限 32MB
+            端到端加密 · 支持内网直传 · 文件上限 32MB
           </span>
         </div>
         {session && (
