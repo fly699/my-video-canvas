@@ -145,6 +145,21 @@ export function LanChatProvider({ children }: { children: ReactNode }) {
     // — we re-run the emit when `connected` flips true below).
   }, [activeRoomId, session, utils]);
 
+  // Auto-correct activeRoomId when the persisted value isn't in this
+  // network's room list. Why this matters: usePersistentState seeds
+  // activeRoomId=1, but after the 0017 network-group refactor a user's
+  // own "大厅" gets a freshly-allocated id (likely > 1). If we don't
+  // snap to a valid room, getMessages + sendMessage both server-reject
+  // ("房间不存在" / "不能向其他网络的房间发消息") and the chat appears
+  // to silently swallow every message the user sends.
+  useEffect(() => {
+    const rooms = roomsQ.data;
+    if (!rooms || rooms.length === 0) return;
+    if (!rooms.some((r) => r.id === activeRoomId)) {
+      setActiveRoomId(rooms[0].id);
+    }
+  }, [roomsQ.data, activeRoomId, setActiveRoomId]);
+
   // After the socket connects (or reconnects), re-emit enter-room so the
   // server's presence map gets us back in.
   useEffect(() => {

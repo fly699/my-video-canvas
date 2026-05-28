@@ -817,6 +817,40 @@ export async function getLanChatMessages(roomId: number, opts: { beforeId?: numb
     .limit(opts.limit);
 }
 
+// ── LAN Chat — admin audit helpers ───────────────────────────────────────────
+// Cross-network reads (no networkGroupId filter) for the admin page only.
+// These bypass the per-network isolation that the user-facing router enforces,
+// so they MUST stay behind adminProcedure.
+
+export async function listAllLanChatRooms(): Promise<LanChatRoomRow[]> {
+  const db = await getDb();
+  if (!db) return DEV_MODE ? dev.devListAllLanChatRooms() : [];
+  return db.select().from(lanChatRooms).orderBy(desc(lanChatRooms.id));
+}
+
+export async function getAllLanChatMessages(opts: {
+  roomId?: number;
+  search?: string;
+  limit: number;
+  offset: number;
+}): Promise<{ rows: LanChatMessageRow[]; total: number }> {
+  const db = await getDb();
+  if (!db) return DEV_MODE ? dev.devGetAllLanChatMessages(opts) : { rows: [], total: 0 };
+  const conds: ReturnType<typeof eq>[] = [];
+  if (opts.roomId != null) conds.push(eq(lanChatMessages.roomId, opts.roomId));
+  if (opts.search) conds.push(sql`${lanChatMessages.content} LIKE ${"%" + opts.search + "%"}`);
+  const where = conds.length === 0 ? undefined : conds.length === 1 ? conds[0] : and(...conds);
+  const [rows, countRows] = await Promise.all([
+    db.select().from(lanChatMessages)
+      .where(where)
+      .orderBy(desc(lanChatMessages.id))
+      .limit(opts.limit)
+      .offset(opts.offset),
+    db.select({ count: sql<number>`COUNT(*)` }).from(lanChatMessages).where(where),
+  ]);
+  return { rows, total: Number(countRows[0]?.count ?? 0) };
+}
+
 // ── Audit Logs ────────────────────────────────────────────────────────────────
 
 // Dev-mode in-memory audit log (typed with id so UI keys work correctly)

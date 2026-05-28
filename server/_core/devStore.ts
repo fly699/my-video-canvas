@@ -452,3 +452,27 @@ export function devGetLanChatMessages(roomId: number, opts: { beforeId?: number;
     .sort((a, b) => b.id - a.id)
     .slice(0, opts.limit);
 }
+
+// Admin-scoped dev helpers (no networkGroupId filter — used by admin page).
+export function devListAllLanChatRooms(): LanChatRoomRow[] {
+  return Array.from(lanRoomsMap.values()).sort((a, b) => b.id - a.id);
+}
+
+export function devGetAllLanChatMessages(opts: {
+  roomId?: number;
+  search?: string;
+  limit: number;
+  offset: number;
+}): { rows: LanChatMessageRow[]; total: number } {
+  let all = Array.from(lanMessagesMap.values());
+  if (opts.roomId != null) all = all.filter((m) => m.roomId === opts.roomId);
+  if (opts.search) {
+    const s = opts.search.toLowerCase();
+    all = all.filter((m) => m.content.toLowerCase().includes(s));
+  }
+  const total = all.length;
+  const rows = all
+    .sort((a, b) => b.id - a.id)
+    .slice(opts.offset, opts.offset + opts.limit);
+  return { rows, total };
+}
