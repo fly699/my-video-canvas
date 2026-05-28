@@ -11,6 +11,7 @@ import LoginPage from "./pages/LoginPage";
 import AdminPage from "./pages/AdminPage";
 import AcceptInvite from "./pages/AcceptInvite";
 import LanChatPage from "./pages/LanChatPage";
+import { LanChatProvider } from "./hooks/useLanChat";
 import { WhitelistBlockedDialog } from "./components/WhitelistBlockedDialog";
 import { useParams } from "wouter";
 
@@ -40,6 +41,7 @@ function App() {
     <ErrorBoundary>
       <ThemeProvider>
         <CanvasModeProvider>
+        <LanChatProvider>
         <TooltipProvider delayDuration={400}>
           <Toaster
             position="bottom-right"
@@ -54,6 +56,7 @@ function App() {
           <Router />
           <WhitelistBlockedDialog />
         </TooltipProvider>
+        </LanChatProvider>
         </CanvasModeProvider>
       </ThemeProvider>
     </ErrorBoundary>

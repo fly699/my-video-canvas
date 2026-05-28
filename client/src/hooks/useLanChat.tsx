@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { io, type Socket } from "socket.io-client";
 import { trpc } from "@/lib/trpc";
 import { usePersistentState } from "./usePersistentState";
@@ -13,13 +13,35 @@ interface SessionInfo {
   color: string;
 }
 
+interface LanChatContextValue {
+  session: SessionInfo | null;
+  join: (nickname: string) => Promise<SessionInfo>;
+  clearSession: () => void;
+  rooms: LanChatRoom[];
+  activeRoomId: number;
+  setActiveRoomId: (id: number) => void;
+  createRoom: (name: string) => Promise<LanChatRoom | undefined>;
+  messages: LanChatMessage[];
+  online: LanChatOnlineUser[];
+  typing: string[];
+  connected: boolean;
+  send: (content: string, attachments?: ChatAttachment[]) => Promise<void>;
+  sendTyping: () => void;
+  uploadMedia: (file: File) => Promise<{ url: string; type: "image" | "file"; mimeType: string; name: string } | null>;
+  lanForbidden: boolean;
+}
+
+const LanChatContext = createContext<LanChatContextValue | null>(null);
+
 /**
- * Centralized state + IO for LAN chat. Both the canvas widget and the
- * standalone /lan-chat page consume this hook so they stay in lockstep on
- * the same socket connection.
+ * Singleton-ish chat state: the canvas widget and the standalone /lan-chat
+ * page both render under `<LanChatProvider>` (mounted at the App root) so
+ * they share one socket, one session, and one message list. Without this
+ * shared layer, mounting two `useLanChat()` consumers on the same page
+ * would open two sockets and race the React state updates.
  */
-export function useLanChat() {
-  const [session, setSession] = usePersistentState<SessionInfo | null>(
+export function LanChatProvider({ children }: { children: ReactNode }) {
+  const [session, setSessionState] = usePersistentState<SessionInfo | null>(
     SESSION_KEY,
     null,
     {
@@ -59,7 +81,9 @@ export function useLanChat() {
     [roomsQ.error],
   );
 
-  // Establish + tear down socket when session changes.
+  // Establish socket when session changes. Guard against stale handlers
+  // from a prior effect run (strict-mode double-invoke) writing state
+  // after a newer socket has taken over.
   useEffect(() => {
     if (!session) return;
     const socket = io("/lan-chat", {
@@ -68,29 +92,25 @@ export function useLanChat() {
       auth: { sessionId: session.sessionId },
     });
     socketRef.current = socket;
+    const isLive = () => socketRef.current === socket;
 
-    socket.on("connect", () => setConnected(true));
-    socket.on("disconnect", () => setConnected(false));
+    socket.on("connect", () => { if (isLive()) setConnected(true); });
+    socket.on("disconnect", () => { if (isLive()) setConnected(false); });
     socket.on("connect_error", (err) => {
-      // Likely stale sessionId after a server restart — drop it so the
-      // user picks a nickname again on next interaction.
-      if (/session-not-found/i.test(err.message)) setSession(null);
+      if (!isLive()) return;
+      if (/session-not-found/i.test(err.message)) setSessionState(null);
       setConnected(false);
     });
-
     socket.on("lan-chat:message", (msg: LanChatMessage) => {
-      setMessages((prev) => {
-        // De-dupe in case the same message comes through via REST + WS race.
-        if (prev.some((m) => m.id === msg.id)) return prev;
-        return [...prev, msg];
-      });
+      if (!isLive()) return;
+      setMessages((prev) => (prev.some((m) => m.id === msg.id) ? prev : [...prev, msg]));
     });
     socket.on("lan-chat:presence", ({ roomId, online: list }: { roomId: number; online: LanChatOnlineUser[] }) => {
-      // Only apply presence updates for the room we're currently viewing.
-      // The server emits to all rooms the user is in, so filter client-side.
-      setOnline((prev) => (roomId === activeRoomIdRef.current ? list : prev));
+      if (!isLive()) return;
+      if (roomId === activeRoomIdRef.current) setOnline(list);
     });
     socket.on("lan-chat:typing", ({ nickname, roomId }: { nickname: string; roomId: number }) => {
+      if (!isLive()) return;
       if (roomId !== activeRoomIdRef.current) return;
       setTyping((prev) => (prev.includes(nickname) ? prev : [...prev, nickname]));
       window.setTimeout(() => {
@@ -100,17 +120,17 @@ export function useLanChat() {
 
     return () => {
       socket.disconnect();
-      socketRef.current = null;
-      setConnected(false);
+      if (socketRef.current === socket) {
+        socketRef.current = null;
+        setConnected(false);
+      }
     };
-  }, [session, setSession]);
+  }, [session, setSessionState]);
 
-  // Keep a ref of the active room so socket handlers always see the latest
-  // value without re-binding listeners on every room switch.
   const activeRoomIdRef = useRef(activeRoomId);
   useEffect(() => { activeRoomIdRef.current = activeRoomId; }, [activeRoomId]);
 
-  // On room change: leave previous room, enter new room, load history.
+  // Room switching — leave previous room, enter new, load history.
   const prevRoomRef = useRef<number | null>(null);
   useEffect(() => {
     if (!session || !socketRef.current) return;
@@ -121,23 +141,29 @@ export function useLanChat() {
     }
     socket.emit("lan-chat:enter-room", { roomId: activeRoomId });
     prevRoomRef.current = activeRoomId;
-
-    // Load recent history
     setMessages([]);
     utils.lanChat.getMessages.fetch({ roomId: activeRoomId, limit: 50 })
-      .then((rows) => {
-        // Server returns newest-first; chronological for display.
-        setMessages([...rows].reverse());
-      })
-      .catch(() => { /* swallow — UI shows empty state */ });
+      .then((rows) => setMessages([...rows].reverse()))
+      .catch(() => { /* swallow */ });
+    // Wait for socket to be connected before emitting (in strict-mode the
+    // first render may run this before the socket effect's socket connects
+    // — we re-run the emit when `connected` flips true below).
   }, [activeRoomId, session, utils]);
+
+  // After the socket connects (or reconnects), re-emit enter-room so the
+  // server's presence map gets us back in.
+  useEffect(() => {
+    if (connected && socketRef.current) {
+      socketRef.current.emit("lan-chat:enter-room", { roomId: activeRoomIdRef.current });
+    }
+  }, [connected]);
 
   // ── Actions ────────────────────────────────────────────────────────────────
   const join = useCallback(async (nickname: string) => {
     const res = await joinMu.mutateAsync({ nickname });
-    setSession(res);
+    setSessionState(res);
     return res;
-  }, [joinMu, setSession]);
+  }, [joinMu, setSessionState]);
 
   const send = useCallback(async (content: string, attachments?: ChatAttachment[]) => {
     if (!session) return;
@@ -180,9 +206,9 @@ export function useLanChat() {
     };
   }, [session, uploadMu]);
 
-  const clearSession = useCallback(() => setSession(null), [setSession]);
+  const clearSession = useCallback(() => setSessionState(null), [setSessionState]);
 
-  return {
+  const value: LanChatContextValue = {
     session,
     join,
     clearSession,
@@ -199,4 +225,14 @@ export function useLanChat() {
     uploadMedia,
     lanForbidden,
   };
+
+  return <LanChatContext.Provider value={value}>{children}</LanChatContext.Provider>;
+}
+
+export function useLanChat(): LanChatContextValue {
+  const ctx = useContext(LanChatContext);
+  if (!ctx) {
+    throw new Error("useLanChat must be used within <LanChatProvider>");
+  }
+  return ctx;
 }
