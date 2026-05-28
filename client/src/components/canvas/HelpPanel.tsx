@@ -450,6 +450,7 @@ function nodeTypeHue(nodeType: NodeType): number {
 
 const TOC_GROUPS = [
   { label: "画布基础", ids: ["canvas-basics", "workflow-runner", "connection-rules"] },
+  { label: "界面与协作", ids: ["ui-panels", "collaboration", "lan-chat"] },
   { label: "内容创作节点", ids: ["node-script", "node-storyboard", "node-prompt", "node-image-gen", "node-asset", "node-note", "node-character", "node-group"] },
   { label: "AI 生成节点", ids: ["node-video-task", "node-ai-chat", "node-audio", "node-voice-clone", "node-lip-sync", "node-avatar"] },
   { label: "视频处理节点", ids: ["node-clip", "node-merge", "node-subtitle", "node-overlay", "node-subtitle-motion", "node-smart-cut", "node-post-process", "node-pose-control"] },

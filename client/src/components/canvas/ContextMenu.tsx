@@ -239,8 +239,8 @@ export function ContextMenu({
       className={persistent ? undefined : "animate-scale-in"}
       style={{
         position: "fixed",
-        left: dragPos?.left ?? pos?.left ?? x,
-        top: dragPos?.top ?? pos?.top ?? y,
+        left: persistent ? (dragPos?.left ?? pos?.left ?? x) : (pos?.left ?? x),
+        top: persistent ? (dragPos?.top ?? pos?.top ?? y) : (pos?.top ?? y),
         zIndex: 9999,
         width: currentW,
         ...(currentH != null ? { height: currentH } : {}),

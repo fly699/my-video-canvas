@@ -5,28 +5,39 @@ import { useAuth } from "@/_core/hooks/useAuth";
 import { Loader2, CheckCircle2, XCircle } from "lucide-react";
 
 /**
- * /invite/:token — landing for one-time / multi-use share links.
- * Unauthenticated visitors are redirected to /login?next=/invite/:token; on
- * return we call acceptShareLink and forward to the project canvas.
+ * /invite/:token — landing for one-time / multi-use share links (long form).
+ * /i/:code     — same flow via the short form ({id}.{tokenPrefix}).
+ *
+ * Unauthenticated visitors are redirected to /login?next=…; on return we
+ * call the corresponding accept mutation and forward to the project canvas.
  */
 export default function AcceptInvite() {
-  const params = useParams<{ token: string }>();
+  // wouter passes whichever named param the route declared. Either token or
+  // code will be set on `params` depending on which route matched.
+  const params = useParams<{ token?: string; code?: string }>();
+  const isShort = !!params.code;
+  const tokenOrCode = params.code ?? params.token ?? "";
   const [, navigate] = useLocation();
   const { isAuthenticated, loading } = useAuth();
   const [status, setStatus] = useState<"loading" | "ok" | "error">("loading");
   const [errMsg, setErrMsg] = useState<string>("");
 
-  const acceptMutation = trpc.collaboration.acceptShareLink.useMutation();
+  const acceptLong = trpc.collaboration.acceptShareLink.useMutation();
+  const acceptShort = trpc.collaboration.acceptShareLinkShort.useMutation();
 
   useEffect(() => {
     if (loading) return;
     if (!isAuthenticated) {
-      navigate(`/login?next=${encodeURIComponent(`/invite/${params.token}`)}`);
+      const path = isShort ? `/i/${tokenOrCode}` : `/invite/${tokenOrCode}`;
+      navigate(`/login?next=${encodeURIComponent(path)}`);
       return;
     }
-    if (!params.token) return;
+    if (!tokenOrCode) return;
     let cancelled = false;
-    acceptMutation.mutateAsync({ token: params.token })
+    const promise = isShort
+      ? acceptShort.mutateAsync({ code: tokenOrCode })
+      : acceptLong.mutateAsync({ token: tokenOrCode });
+    promise
       .then((res) => {
         if (cancelled) return;
         setStatus("ok");
@@ -39,7 +50,7 @@ export default function AcceptInvite() {
       });
     return () => { cancelled = true; };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isAuthenticated, loading, params.token]);
+  }, [isAuthenticated, loading, tokenOrCode, isShort]);
 
   return (
     <div className="w-screen h-screen flex flex-col items-center justify-center gap-4" style={{ background: "var(--c-base)" }}>

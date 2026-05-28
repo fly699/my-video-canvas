@@ -30,17 +30,6 @@ export type User = typeof users.$inferSelect;
 export type InsertUser = typeof users.$inferInsert;
 
 // ── Canvas Projects ──────────────────────────────────────────────────────────
-// IMPORTANT: the `publicReadAccess` column added by migration 0018 is
-// INTENTIONALLY omitted from drizzle's column list — same pattern as
-// storageSettings.persistImage (see note further down). Deployments that
-// haven't yet run `pnpm db:push` would otherwise hit "Unknown column
-// 'publicReadAccess'" on every SELECT * from projects — making every
-// `projects.list` and `projects.get` call fail and giving users the
-// impression their projects vanished.
-// All reads/writes of publicReadAccess go through raw SQL inside db.ts
-// (readPublicReadAccess / writePublicReadAccess) with graceful fallback
-// when the column doesn't exist (defaults to false on read; surfaces a
-// clear "please run pnpm db:push" error on write).
 export const projects = mysqlTable("projects", {
   id: int("id").autoincrement().primaryKey(),
   userId: int("userId").notNull(),
@@ -49,6 +38,8 @@ export const projects = mysqlTable("projects", {
   thumbnail: text("thumbnail"),
   /** Viewport state: { x, y, scale } */
   viewportState: json("viewportState"),
+  /** When true, any authenticated user with the URL can view (read-only). */
+  publicReadAccess: boolean("publicReadAccess").notNull().default(false),
   createdAt: timestamp("createdAt").defaultNow().notNull(),
   updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
 });
@@ -210,25 +201,53 @@ export type VideoTask = typeof videoTasks.$inferSelect;
 export type InsertVideoTask = typeof videoTasks.$inferInsert;
 
 // ── AI Chat Messages ──────────────────────────────────────────────────────────
-// IMPORTANT: the `attachments` JSON column added by migration 0019 is
-// INTENTIONALLY omitted from drizzle's column list (same pattern as
-// projects.publicReadAccess + storageSettings.persistImage). Deployments
-// that haven't yet applied 0019 would otherwise hit "Unknown column
-// 'attachments'" on every getChatMessages, breaking the entire AI chat
-// node for everyone.
-// Attachments are read/written via raw SQL inside db.ts with graceful
-// fallback when the column doesn't exist (null on read).
 export const chatMessages = mysqlTable("chat_messages", {
   id: int("id").autoincrement().primaryKey(),
   nodeId: varchar("nodeId", { length: 64 }).notNull(),
   projectId: int("projectId").notNull(),
   role: mysqlEnum("role", ["user", "assistant", "system"]).notNull(),
   content: text("content").notNull(),
+  /** Multimodal attachments: Array<{ type, url, mimeType, name }>. NULL = legacy text-only message. */
+  attachments: json("attachments"),
   createdAt: timestamp("createdAt").defaultNow().notNull(),
 });
 
 export type ChatMessage = typeof chatMessages.$inferSelect;
 export type InsertChatMessage = typeof chatMessages.$inferInsert;
+
+// ── LAN Chat ──────────────────────────────────────────────────────────────────
+// Lightweight nickname-only group chat scoped to the local network. No coupling
+// to users/projects — content lives entirely in these two tables so the feature
+// can be uninstalled without touching the rest of the schema.
+
+export const lanChatRooms = mysqlTable("lan_chat_rooms", {
+  id: int("id").autoincrement().primaryKey(),
+  name: varchar("name", { length: 80 }).notNull().unique(),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+});
+
+export type LanChatRoomRow = typeof lanChatRooms.$inferSelect;
+export type InsertLanChatRoom = typeof lanChatRooms.$inferInsert;
+
+// Messages carry a snapshot of the sender's nickname + color so historical
+// reads still render the right author/badge even after the in-memory session
+// expires. clientIp is captured for audit + same-IP nickname reuse — kept
+// short (IPv6 max 39 chars) and never exposed to the client.
+export const lanChatMessages = mysqlTable("lan_chat_messages", {
+  id: int("id").autoincrement().primaryKey(),
+  roomId: int("roomId").notNull(),
+  nickname: varchar("nickname", { length: 64 }).notNull(),
+  color: varchar("color", { length: 16 }).notNull(),
+  content: text("content").notNull(),
+  attachments: json("attachments"),
+  clientIp: varchar("clientIp", { length: 64 }).notNull(),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+}, (t) => ({
+  roomCreatedIdx: index("lan_chat_msgs_room_created_idx").on(t.roomId, t.createdAt),
+}));
+
+export type LanChatMessageRow = typeof lanChatMessages.$inferSelect;
+export type InsertLanChatMessage = typeof lanChatMessages.$inferInsert;
 
 // ── Whitelist ─────────────────────────────────────────────────────────────────
 
@@ -242,18 +261,11 @@ export const whitelistSettings = mysqlTable("whitelistSettings", {
 // is false, generated media is left at the upstream provider's CDN URL
 // (Poyo: 24h TTL, Higgsfield: temporary CDN). Useful to save Manus S3
 // quota on dev/preview deployments. Defaults: persistence ON.
-//
-// IMPORTANT: persistImage is INTENTIONALLY omitted from the drizzle column
-// list even though migration 0017 adds it. Manus deployments that haven't
-// yet run `pnpm db:push` would otherwise hit "unknown column persistImage"
-// on every SELECT/INSERT — bricking the entire storage settings panel.
-// All reads/writes of persistImage go through raw SQL inside db.ts so the
-// missing-column case can be handled gracefully (defaults to true, write
-// surfaces a clear migration-required error).
 export const storageSettings = mysqlTable("storageSettings", {
   id: int("id").autoincrement().primaryKey(),
   persistAudio: boolean("persistAudio").notNull().default(true),
   persistVideo: boolean("persistVideo").notNull().default(true),
+  persistImage: boolean("persistImage").notNull().default(true),
   updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
 });
 
