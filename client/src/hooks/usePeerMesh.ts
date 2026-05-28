@@ -57,9 +57,17 @@ interface UsePeerMeshOpts {
 }
 
 const RTC_CONFIG: RTCConfiguration = {
-  // No STUN/TURN — same-LAN only by user's product choice. Host
-  // candidates suffice when both peers are on the same subnet.
-  iceServers: [],
+  // Public STUN gives peers their NAT'd reflexive IP so ICE can pair
+  // even when two browsers behind the same office NAT are on different
+  // /24 subnets (multi-VLAN office WiFi, double-NAT, etc). STUN does
+  // NOT relay traffic — it just helps peers learn their own external
+  // address. The actual DataChannel still goes peer↔peer; no TURN, so
+  // truly cross-LAN scenarios (different ISPs) will still fail
+  // gracefully (channel never opens, broadcast becomes a no-op).
+  iceServers: [
+    { urls: "stun:stun.l.google.com:19302" },
+    { urls: "stun:stun1.l.google.com:19302" },
+  ],
 };
 
 export function usePeerMesh({ socket, mySessionId, myNickname, desiredPeers, onMessage }: UsePeerMeshOpts) {
@@ -111,10 +119,19 @@ export function usePeerMesh({ socket, mySessionId, myNickname, desiredPeers, onM
 
     pc.onconnectionstatechange = () => {
       entry.state = pc.connectionState;
+      console.debug("[mesh] pc state ->", peerInfo.sessionId, pc.connectionState);
       publishState();
-      if (pc.connectionState === "failed" || pc.connectionState === "closed") {
+      // Only tear down on "failed". "closed" is the terminal state after we
+      // ourselves called pc.close(), and "disconnected" is a transient state
+      // that often recovers on its own — tearing down here turns a momentary
+      // ICE blip into a permanent drop and prevents the DataChannel from
+      // re-opening once connectivity returns.
+      if (pc.connectionState === "failed") {
         dropPeer(peerInfo.sessionId);
       }
+    };
+    pc.oniceconnectionstatechange = () => {
+      console.debug("[mesh] ice state ->", peerInfo.sessionId, pc.iceConnectionState);
     };
     pc.onicecandidate = (e) => {
       if (e.candidate && socket) {
@@ -122,6 +139,7 @@ export function usePeerMesh({ socket, mySessionId, myNickname, desiredPeers, onM
       }
     };
     pc.ondatachannel = (e) => {
+      console.debug("[mesh] ondatachannel from", peerInfo.sessionId);
       attachDc(peerInfo.sessionId, e.channel);
     };
 
@@ -133,10 +151,12 @@ export function usePeerMesh({ socket, mySessionId, myNickname, desiredPeers, onM
     if (!entry) return;
     entry.dc = dc;
     dc.onopen = () => {
+      console.debug("[mesh] dc open ->", sessionId);
       entry.ready = true;
       publishState();
     };
     dc.onclose = () => {
+      console.debug("[mesh] dc close ->", sessionId);
       entry.ready = false;
       publishState();
     };
@@ -190,8 +210,14 @@ export function usePeerMesh({ socket, mySessionId, myNickname, desiredPeers, onM
   useEffect(() => {
     if (!socket) return;
     const onOffer = async (d: { from: string; sdp: string }) => {
-      const peerInfo = desiredPeers.find((p) => p.sessionId === d.from);
-      if (!peerInfo) return; // unknown peer
+      // Race: a peer's offer can arrive before our presence snapshot lists
+      // them in desiredPeers (server fans out offers immediately; the periodic
+      // presence broadcast may be slightly delayed). Falling back to a stub
+      // peerInfo so we still set up the connection — nickname/color will be
+      // overwritten the next time desiredPeers refreshes.
+      const peerInfo = desiredPeers.find((p) => p.sessionId === d.from)
+        ?? { sessionId: d.from, nickname: "…", color: "oklch(0.6 0.05 270)" };
+      console.debug("[mesh] received offer from", d.from);
       const entry = ensurePeer(peerInfo);
       try {
         await entry.pc.setRemoteDescription({ type: "offer", sdp: d.sdp });
@@ -245,11 +271,16 @@ export function usePeerMesh({ socket, mySessionId, myNickname, desiredPeers, onM
    *  for arbitrary-sized binary. */
   const broadcast = useCallback((payload: unknown) => {
     const json = JSON.stringify(payload);
+    let sent = 0;
+    let pending = 0;
     peersRef.current.forEach((entry) => {
       if (entry.dc && entry.dc.readyState === "open") {
-        try { entry.dc.send(json); } catch { /* drop */ }
+        try { entry.dc.send(json); sent++; } catch { /* drop */ }
+      } else {
+        pending++;
       }
     });
+    console.debug("[mesh] broadcast — sent:", sent, "pending:", pending);
   }, []);
 
   /** Broadcast a binary file as chunked DataChannel messages. The
