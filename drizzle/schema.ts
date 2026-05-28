@@ -233,6 +233,11 @@ export const lanChatRooms = mysqlTable("lan_chat_rooms", {
    *  reach the server from this address to see it. */
   networkGroupId: varchar("networkGroupId", { length: 64 }).notNull(),
   name: varchar("name", { length: 80 }).notNull(),
+  /** scrypt(password, salt) hash for private rooms. Null = public room.
+   *  Set at createRoom time; verified at enterRoom time. Wrong password
+   *  → server refuses to add the session to the room's presence map,
+   *  so the requester can't see the room's mesh peers and vice versa. */
+  passwordHash: varchar("passwordHash", { length: 255 }),
   createdAt: timestamp("createdAt").defaultNow().notNull(),
 }, (t) => ({
   networkNameUniq: uniqueIndex("lan_rooms_network_name_uniq").on(t.networkGroupId, t.name),

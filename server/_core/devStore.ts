@@ -422,13 +422,17 @@ export function devListLanChatRooms(networkGroupId: string): LanChatRoomRow[] {
     .sort((a, b) => a.id - b.id);
 }
 
-export function devCreateLanChatRoom(networkGroupId: string, name: string): LanChatRoomRow {
+export function devCreateLanChatRoom(networkGroupId: string, name: string, passwordHash: string | null = null): LanChatRoomRow {
   const existing = Array.from(lanRoomsMap.values())
     .find((r) => r.networkGroupId === networkGroupId && r.name === name);
   if (existing) return existing;
-  const row: LanChatRoomRow = { id: lanNextRoomId++, networkGroupId, name, createdAt: now() };
+  const row: LanChatRoomRow = { id: lanNextRoomId++, networkGroupId, name, passwordHash, createdAt: now() };
   lanRoomsMap.set(row.id, row);
   return row;
+}
+
+export function devGetLanChatRoomById(roomId: number): LanChatRoomRow | undefined {
+  return lanRoomsMap.get(roomId);
 }
 
 export function devInsertLanChatMessage(data: InsertLanChatMessage): LanChatMessageRow {

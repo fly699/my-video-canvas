@@ -20,7 +20,7 @@ interface LanChatPanelProps {
 export function LanChatPanel({ visible, compact = false }: LanChatPanelProps) {
   const chat = useLanChat();
   const {
-    session, rooms, activeRoomId, setActiveRoomId, createRoom,
+    session, rooms, activeRoomId, setActiveRoomId, createRoom, enterRoom,
     messages, online, typing, connected,
     send, sendTyping, uploadMedia,
   } = chat;
@@ -39,6 +39,7 @@ export function LanChatPanel({ visible, compact = false }: LanChatPanelProps) {
   const [uploading, setUploading] = useState(false);
   const [draggingOver, setDraggingOver] = useState(false);
   const [newRoomName, setNewRoomName] = useState("");
+  const [newRoomPassword, setNewRoomPassword] = useState("");
   const [showOnline, setShowOnline] = useState(false);
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -157,47 +158,63 @@ export function LanChatPanel({ visible, compact = false }: LanChatPanelProps) {
             {rooms.map((r) => (
               <button
                 key={r.id}
-                onClick={() => setActiveRoomId(r.id)}
-                className="w-full px-2 py-1.5 rounded text-left text-xs"
+                onClick={async () => {
+                  if (r.isPrivate && r.id !== activeRoomId) {
+                    const pw = window.prompt(`房间「${r.name}」需要密码：`);
+                    if (!pw) return;
+                    const ok = await enterRoom(r.id, pw);
+                    if (!ok) { window.alert("密码错误"); return; }
+                  }
+                  setActiveRoomId(r.id);
+                }}
+                className="w-full px-2 py-1.5 rounded text-left text-xs flex items-center gap-1"
                 style={{
                   background: r.id === activeRoomId ? "oklch(0.68 0.22 285 / 0.15)" : "transparent",
                   color: r.id === activeRoomId ? "oklch(0.82 0.20 285)" : "var(--c-t2)",
                   fontWeight: r.id === activeRoomId ? 600 : 400,
                 }}
               >
-                # {r.name}
+                {r.isPrivate ? "🔒" : "#"} {r.name}
               </button>
             ))}
           </div>
-          <div className="px-2 py-2 flex items-center gap-1" style={{ borderTop: "1px solid var(--c-bd1)" }}>
-            <input
-              value={newRoomName}
-              maxLength={80}
-              onChange={(e) => setNewRoomName(e.target.value)}
-              onKeyDown={(e) => {
-                if (e.key === "Enter" && newRoomName.trim()) {
-                  createRoom(newRoomName.trim()).then((room) => {
-                    if (room) { setActiveRoomId(room.id); setNewRoomName(""); }
+          <div className="px-2 py-2 flex flex-col gap-1" style={{ borderTop: "1px solid var(--c-bd1)" }}>
+            <div className="flex items-center gap-1">
+              <input
+                value={newRoomName}
+                maxLength={80}
+                onChange={(e) => setNewRoomName(e.target.value)}
+                placeholder="+ 新房间名"
+                className="flex-1 px-2 py-1 rounded text-[11px]"
+                style={{ background: "var(--c-input)", border: "1px solid var(--c-bd2)", color: "var(--c-t1)" }}
+              />
+              <button
+                onClick={() => {
+                  if (!newRoomName.trim()) return;
+                  createRoom(newRoomName.trim(), newRoomPassword.trim() || undefined).then((room) => {
+                    if (room) {
+                      setActiveRoomId(room.id);
+                      setNewRoomName("");
+                      setNewRoomPassword("");
+                    }
                   });
-                }
-              }}
-              placeholder="+ 新房间"
-              className="flex-1 px-2 py-1 rounded text-[11px]"
+                }}
+                disabled={!newRoomName.trim()}
+                className="w-6 h-6 rounded flex items-center justify-center"
+                style={{ background: "var(--c-surface)", border: "1px solid var(--c-bd2)", color: "var(--c-t3)" }}
+              >
+                <Plus style={{ width: 11, height: 11 }} />
+              </button>
+            </div>
+            <input
+              type="password"
+              value={newRoomPassword}
+              maxLength={128}
+              onChange={(e) => setNewRoomPassword(e.target.value)}
+              placeholder="🔒 密码（可选，留空为公开）"
+              className="px-2 py-1 rounded text-[10px]"
               style={{ background: "var(--c-input)", border: "1px solid var(--c-bd2)", color: "var(--c-t1)" }}
             />
-            <button
-              onClick={() => {
-                if (!newRoomName.trim()) return;
-                createRoom(newRoomName.trim()).then((room) => {
-                  if (room) { setActiveRoomId(room.id); setNewRoomName(""); }
-                });
-              }}
-              disabled={!newRoomName.trim()}
-              className="w-6 h-6 rounded flex items-center justify-center"
-              style={{ background: "var(--c-surface)", border: "1px solid var(--c-bd2)", color: "var(--c-t3)" }}
-            >
-              <Plus style={{ width: 11, height: 11 }} />
-            </button>
           </div>
         </div>
       )}
@@ -214,9 +231,18 @@ export function LanChatPanel({ visible, compact = false }: LanChatPanelProps) {
             <CompactRoomPicker
               rooms={rooms}
               activeRoomId={activeRoomId}
-              onSelect={setActiveRoomId}
-              onCreate={async (name) => {
-                const room = await createRoom(name);
+              onSelect={async (id) => {
+                const r = rooms.find((x) => x.id === id);
+                if (r?.isPrivate && id !== activeRoomId) {
+                  const pw = window.prompt(`房间「${r.name}」需要密码：`);
+                  if (!pw) return;
+                  const ok = await enterRoom(id, pw);
+                  if (!ok) { window.alert("密码错误"); return; }
+                }
+                setActiveRoomId(id);
+              }}
+              onCreate={async (name, password) => {
+                const room = await createRoom(name, password);
                 if (room) setActiveRoomId(room.id);
               }}
             />
@@ -469,13 +495,14 @@ function CompactRoomPicker({
   onSelect,
   onCreate,
 }: {
-  rooms: Array<{ id: number; name: string }>;
+  rooms: Array<{ id: number; name: string; isPrivate?: boolean }>;
   activeRoomId: number;
   onSelect: (id: number) => void;
-  onCreate: (name: string) => void;
+  onCreate: (name: string, password?: string) => void;
 }) {
   const [open, setOpen] = useState(false);
   const [newName, setNewName] = useState("");
+  const [newPassword, setNewPassword] = useState("");
   const current = rooms.find((r) => r.id === activeRoomId);
   return (
     <div className="relative">
@@ -484,12 +511,12 @@ function CompactRoomPicker({
         className="flex items-center gap-1 px-1.5 py-0.5 rounded text-xs font-semibold"
         style={{ color: "var(--c-t1)", background: open ? "var(--c-elevated)" : "transparent" }}
       >
-        # {current?.name ?? "大厅"}
+        {current?.isPrivate ? "🔒" : "#"} {current?.name ?? "大厅"}
         <span style={{ fontSize: 9, opacity: 0.6 }}>▾</span>
       </button>
       {open && (
         <div
-          className="absolute left-0 top-7 z-30 rounded-lg p-1 min-w-[180px]"
+          className="absolute left-0 top-7 z-30 rounded-lg p-1 min-w-[200px]"
           style={{
             background: "var(--c-base)",
             border: "1px solid var(--c-bd2)",
@@ -502,13 +529,13 @@ function CompactRoomPicker({
               <button
                 key={r.id}
                 onClick={() => { onSelect(r.id); setOpen(false); }}
-                className="w-full text-left px-2 py-1 rounded text-xs"
+                className="w-full text-left px-2 py-1 rounded text-xs flex items-center gap-1"
                 style={{
                   background: r.id === activeRoomId ? "oklch(0.68 0.22 285 / 0.15)" : "transparent",
                   color: r.id === activeRoomId ? "oklch(0.82 0.20 285)" : "var(--c-t2)",
                 }}
               >
-                # {r.name}
+                {r.isPrivate ? "🔒" : "#"} {r.name}
               </button>
             ))}
             {rooms.length === 0 && (
@@ -518,42 +545,47 @@ function CompactRoomPicker({
             )}
           </div>
           <div
-            className="flex items-center gap-1 mt-1 px-1 pt-1"
+            className="flex flex-col gap-1 mt-1 px-1 pt-1"
             style={{ borderTop: "1px solid var(--c-bd1)" }}
           >
-            <input
-              value={newName}
-              maxLength={80}
-              onChange={(e) => setNewName(e.target.value)}
-              onKeyDown={(e) => {
-                if (e.key === "Enter" && newName.trim()) {
-                  onCreate(newName.trim());
+            <div className="flex items-center gap-1">
+              <input
+                value={newName}
+                maxLength={80}
+                onChange={(e) => setNewName(e.target.value)}
+                placeholder="+ 新房间名"
+                className="flex-1 px-2 py-1 rounded text-[11px]"
+                style={{ background: "var(--c-input)", border: "1px solid var(--c-bd2)", color: "var(--c-t1)" }}
+              />
+              <button
+                onClick={() => {
+                  if (!newName.trim()) return;
+                  onCreate(newName.trim(), newPassword.trim() || undefined);
                   setNewName("");
+                  setNewPassword("");
                   setOpen(false);
-                }
-              }}
-              placeholder="+ 新房间"
-              className="flex-1 px-2 py-1 rounded text-[11px]"
+                }}
+                disabled={!newName.trim()}
+                className="px-2 py-1 rounded text-[10px]"
+                style={{
+                  background: newName.trim() ? "oklch(0.68 0.22 285 / 0.20)" : "transparent",
+                  color: newName.trim() ? "oklch(0.82 0.20 285)" : "var(--c-t4)",
+                  border: "1px solid var(--c-bd2)",
+                  cursor: newName.trim() ? "pointer" : "not-allowed",
+                }}
+              >
+                建
+              </button>
+            </div>
+            <input
+              type="password"
+              value={newPassword}
+              maxLength={128}
+              onChange={(e) => setNewPassword(e.target.value)}
+              placeholder="🔒 密码（可选）"
+              className="px-2 py-1 rounded text-[10px]"
               style={{ background: "var(--c-input)", border: "1px solid var(--c-bd2)", color: "var(--c-t1)" }}
             />
-            <button
-              onClick={() => {
-                if (!newName.trim()) return;
-                onCreate(newName.trim());
-                setNewName("");
-                setOpen(false);
-              }}
-              disabled={!newName.trim()}
-              className="px-2 py-1 rounded text-[10px]"
-              style={{
-                background: newName.trim() ? "oklch(0.68 0.22 285 / 0.20)" : "transparent",
-                color: newName.trim() ? "oklch(0.82 0.20 285)" : "var(--c-t4)",
-                border: "1px solid var(--c-bd2)",
-                cursor: newName.trim() ? "pointer" : "not-allowed",
-              }}
-            >
-              建
-            </button>
           </div>
         </div>
       )}

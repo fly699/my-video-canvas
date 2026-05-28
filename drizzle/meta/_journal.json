@@ -127,6 +127,13 @@
       "when": 1779949702896,
       "tag": "0017_lan_chat_network_group",
       "breakpoints": true
+    },
+    {
+      "idx": 18,
+      "version": "5",
+      "when": 1779960502525,
+      "tag": "0018_lan_chat_room_password",
+      "breakpoints": true
     }
   ]
 }

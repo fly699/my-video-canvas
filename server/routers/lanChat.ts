@@ -5,6 +5,7 @@ import { router, publicProcedure } from "../_core/trpc";
 import { lanChatBus } from "../_core/lanChatBus";
 import { storagePut, isStorageConfigured } from "../storage";
 import { writeAuditLog } from "../_core/auditLog";
+import { hashPassword } from "../_core/scrypt";
 import {
   listLanChatRooms,
   createLanChatRoom,
@@ -123,24 +124,24 @@ export const lanChatRouter = router({
       const sess = lanChatBus.getSession(sid);
       if (!sess) return [];
       const rows = await listLanChatRooms(sess.networkGroupId);
-      return rows.map((r) => ({ id: r.id, name: r.name }));
+      return rows.map((r) => ({ id: r.id, name: r.name, isPrivate: !!r.passwordHash }));
   }),
 
   createRoom: publicProcedure
     .input(z.object({
       sessionId: z.string().min(1),
       name: z.string().trim().min(1).max(80),
+      /** Optional — when set, room is private; enterRoom requires the
+       *  same password. Stored as scrypt hash, never in cleartext. */
+      password: z.string().min(1).max(128).optional(),
     }))
     .mutation(async ({ input }) => {
       const sess = lanChatBus.getSession(input.sessionId);
       if (!sess) throw new TRPCError({ code: "UNAUTHORIZED", message: "请先输入昵称" });
-      // Group comes from the session (set at joinSession time from the
-      // client's WebRTC-detected LAN code), not from the per-request IP
-      // — sessions persist across reconnects so the same user stays in
-      // the same group regardless of proxy hops.
-      const row = await createLanChatRoom(sess.networkGroupId, input.name);
+      const passwordHash = input.password ? await hashPassword(input.password) : null;
+      const row = await createLanChatRoom(sess.networkGroupId, input.name, passwordHash);
       if (!row) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "创建房间失败" });
-      return { id: row.id, name: row.name };
+      return { id: row.id, name: row.name, isPrivate: !!passwordHash };
     }),
 
   // History — newest-first, client reverses for chronological render

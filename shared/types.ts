@@ -148,6 +148,10 @@ export interface ChatAttachment {
 export interface LanChatRoom {
   id: number;
   name: string;
+  /** True when the room has a passwordHash set. Clients must call the
+   *  enterRoom socket event with the password before they're added to
+   *  the room's presence map (server gate). */
+  isPrivate?: boolean;
 }
 
 export interface LanChatMessage {

@@ -780,16 +780,34 @@ export async function listLanChatRooms(networkGroupId: string): Promise<LanChatR
     .orderBy(lanChatRooms.id);
 }
 
-export async function createLanChatRoom(networkGroupId: string, name: string): Promise<LanChatRoomRow | null> {
+export async function createLanChatRoom(
+  networkGroupId: string,
+  name: string,
+  passwordHash?: string | null,
+): Promise<LanChatRoomRow | null> {
   const db = await getDb();
-  if (!db) { if (DEV_MODE) return dev.devCreateLanChatRoom(networkGroupId, name); throw new Error("DB unavailable"); }
+  if (!db) {
+    if (DEV_MODE) return dev.devCreateLanChatRoom(networkGroupId, name, passwordHash ?? null);
+    throw new Error("DB unavailable");
+  }
   // INSERT IGNORE so callers can use createRoom as an "ensure exists" path.
   // Composite (networkGroupId, name) uniqueness key is enforced by the DB.
-  await db.insert(lanChatRooms).values({ networkGroupId, name })
+  // NOTE: re-creating a room with the same name does NOT overwrite the
+  // existing passwordHash — protects against an attacker re-creating
+  // a known-name private room to bypass its password.
+  await db.insert(lanChatRooms).values({ networkGroupId, name, passwordHash: passwordHash ?? null })
     .onDuplicateKeyUpdate({ set: { name: sql`name` } });
   const rows = await db.select().from(lanChatRooms)
     .where(and(eq(lanChatRooms.networkGroupId, networkGroupId), eq(lanChatRooms.name, name)))
     .limit(1);
+  return rows[0] ?? null;
+}
+
+/** Fetch a single room (used by enterRoom to read passwordHash). */
+export async function getLanChatRoomById(roomId: number): Promise<LanChatRoomRow | null> {
+  const db = await getDb();
+  if (!db) return DEV_MODE ? dev.devGetLanChatRoomById(roomId) ?? null : null;
+  const rows = await db.select().from(lanChatRooms).where(eq(lanChatRooms.id, roomId)).limit(1);
   return rows[0] ?? null;
 }
 

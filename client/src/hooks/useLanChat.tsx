@@ -36,7 +36,10 @@ interface LanChatContextValue {
   rooms: LanChatRoom[];
   activeRoomId: number;
   setActiveRoomId: (id: number) => void;
-  createRoom: (name: string) => Promise<LanChatRoom | undefined>;
+  createRoom: (name: string, password?: string) => Promise<LanChatRoom | undefined>;
+  /** Enter a (possibly private) room — for private rooms the password
+   *  is required. Returns true on success, false if server denied. */
+  enterRoom: (roomId: number, password?: string) => Promise<boolean>;
   messages: LanChatMessage[];
   online: LanChatOnlineUser[];
   /** WebRTC peer connection state — UI can display "N/M peers ready"
@@ -123,9 +126,10 @@ export function LanChatProvider({ children }: { children: ReactNode }) {
       // setActiveRoomId(newRoom.id) → auto-correct doesn't find it →
       // snaps back to rooms[0]. Bug: "新建的房间不能进入".
       if (session) {
+        const next = { id: room.id, name: room.name, isPrivate: room.isPrivate };
         utils.lanChat.listRooms.setData(
           { sessionId: session.sessionId },
-          (prev) => prev ? [...prev, { id: room.id, name: room.name }] : [{ id: room.id, name: room.name }],
+          (prev) => prev ? [...prev, next] : [next],
         );
       }
       utils.lanChat.listRooms.invalidate();
@@ -259,31 +263,112 @@ export function LanChatProvider({ children }: { children: ReactNode }) {
     : []
   ), [online, session]);
 
+  // In-flight inbound file transfers from peers. Keyed by transferId; each
+  // entry collects chunks until a "file-end" marker arrives, then assembles
+  // a Blob → objectURL → fires a synthetic chat message with the attachment.
+  const fileTransfersRef = useRef<Map<string, {
+    name: string;
+    mimeType: string;
+    size: number;
+    chunks: Uint8Array[];
+    received: number;
+    fromNickname: string;
+    fromColor: string;
+  }>>(new Map());
+
   const handlePeerMessage = useCallback((msg: { fromSessionId: string; fromNickname: string; fromColor: string; payload: unknown }) => {
-    const p = msg.payload as { kind?: string; content?: string; attachments?: ChatAttachment[]; createdAt?: number; id?: string };
-    if (!p || p.kind !== "chat" || typeof p.content !== "string") return;
-    const id = p.id ?? crypto.randomUUID();
-    const content: string = p.content;
-    const createdAt = typeof p.createdAt === "number" ? p.createdAt : Date.now();
-    historyAppend({
-      id,
-      groupId: fingerprint.state === "ready" ? fingerprint.groupId : "unknown",
-      nickname: msg.fromNickname,
-      color: msg.fromColor,
-      content,
-      attachments: p.attachments,
-      createdAt,
-      ownByMe: false,
-    });
-    setMessages((prev) => [...prev, {
-      id: hashId(id),
-      roomId: 1,
-      nickname: msg.fromNickname,
-      color: msg.fromColor,
-      content,
-      attachments: p.attachments ?? null,
-      createdAt: new Date(createdAt).toISOString(),
-    }]);
+    const p = msg.payload as { kind?: string; [k: string]: unknown };
+    if (!p?.kind) return;
+
+    // Text chat message
+    if (p.kind === "chat" && typeof p.content === "string") {
+      const id = (typeof p.id === "string" ? p.id : null) ?? crypto.randomUUID();
+      const content = p.content as string;
+      const createdAt = typeof p.createdAt === "number" ? p.createdAt : Date.now();
+      const attachments = Array.isArray(p.attachments) ? (p.attachments as ChatAttachment[]) : undefined;
+      historyAppend({
+        id,
+        groupId: fingerprint.state === "ready" ? fingerprint.groupId : "unknown",
+        nickname: msg.fromNickname,
+        color: msg.fromColor,
+        content,
+        attachments,
+        createdAt,
+        ownByMe: false,
+      });
+      setMessages((prev) => [...prev, {
+        id: hashId(id),
+        roomId: 1,
+        nickname: msg.fromNickname,
+        color: msg.fromColor,
+        content,
+        attachments: attachments ?? null,
+        createdAt: new Date(createdAt).toISOString(),
+      }]);
+      return;
+    }
+
+    // File transfer protocol — three frames per file:
+    //   file-meta  { transferId, name, mimeType, size }
+    //   file-chunk { transferId, seq, data (base64) }   (many)
+    //   file-end   { transferId }
+    if (p.kind === "file-meta" && typeof p.transferId === "string") {
+      fileTransfersRef.current.set(p.transferId, {
+        name: String(p.name ?? "file"),
+        mimeType: String(p.mimeType ?? "application/octet-stream"),
+        size: Number(p.size ?? 0),
+        chunks: [],
+        received: 0,
+        fromNickname: msg.fromNickname,
+        fromColor: msg.fromColor,
+      });
+      return;
+    }
+    if (p.kind === "file-chunk" && typeof p.transferId === "string" && typeof p.data === "string") {
+      const entry = fileTransfersRef.current.get(p.transferId);
+      if (!entry) return;
+      const bin = atob(p.data);
+      const arr = new Uint8Array(bin.length);
+      for (let i = 0; i < bin.length; i++) arr[i] = bin.charCodeAt(i);
+      entry.chunks.push(arr);
+      entry.received += arr.length;
+      return;
+    }
+    if (p.kind === "file-end" && typeof p.transferId === "string") {
+      const entry = fileTransfersRef.current.get(p.transferId);
+      if (!entry) return;
+      fileTransfersRef.current.delete(p.transferId);
+      const blob = new Blob(entry.chunks as BlobPart[], { type: entry.mimeType });
+      const url = URL.createObjectURL(blob);
+      const isImage = entry.mimeType.startsWith("image/");
+      const attachment: ChatAttachment = {
+        type: isImage ? "image" : "file",
+        url,
+        mimeType: entry.mimeType,
+        name: entry.name,
+      };
+      const id = crypto.randomUUID();
+      const createdAt = Date.now();
+      historyAppend({
+        id,
+        groupId: fingerprint.state === "ready" ? fingerprint.groupId : "unknown",
+        nickname: entry.fromNickname,
+        color: entry.fromColor,
+        content: "",
+        attachments: [attachment],
+        createdAt,
+        ownByMe: false,
+      });
+      setMessages((prev) => [...prev, {
+        id: hashId(id),
+        roomId: 1,
+        nickname: entry.fromNickname,
+        color: entry.fromColor,
+        content: "",
+        attachments: [attachment],
+        createdAt: new Date(createdAt).toISOString(),
+      }]);
+    }
   }, [fingerprint]);
 
   const mesh = usePeerMesh({
@@ -330,32 +415,71 @@ export function LanChatProvider({ children }: { children: ReactNode }) {
     socketRef.current?.emit("lan-chat:typing", { roomId: activeRoomId });
   }, [activeRoomId]);
 
-  const createRoom = useCallback(async (name: string): Promise<LanChatRoom | undefined> => {
+  const createRoom = useCallback(async (name: string, password?: string): Promise<LanChatRoom | undefined> => {
     if (!session) return undefined;
-    const room = await createRoomMu.mutateAsync({ sessionId: session.sessionId, name });
+    const room = await createRoomMu.mutateAsync({
+      sessionId: session.sessionId,
+      name,
+      password: password || undefined,
+    });
     return room;
   }, [session, createRoomMu]);
 
+  // Wire up enter-room ack/deny socket events so callers know whether
+  // the password they supplied was accepted. Resolves true on
+  // lan-chat:enter-granted, false on lan-chat:enter-denied, timeouts
+  // after 4 s (fail closed — caller should re-prompt).
+  const enterRoom = useCallback((roomId: number, password?: string): Promise<boolean> => {
+    if (!socketRef.current) return Promise.resolve(false);
+    const socket = socketRef.current;
+    return new Promise<boolean>((resolve) => {
+      let done = false;
+      const onGranted = (d: { roomId: number }) => { if (d.roomId === roomId && !done) { done = true; cleanup(); resolve(true); } };
+      const onDenied = (d: { roomId: number }) => { if (d.roomId === roomId && !done) { done = true; cleanup(); resolve(false); } };
+      const cleanup = () => {
+        socket.off("lan-chat:enter-granted", onGranted);
+        socket.off("lan-chat:enter-denied", onDenied);
+      };
+      socket.on("lan-chat:enter-granted", onGranted);
+      socket.on("lan-chat:enter-denied", onDenied);
+      socket.emit("lan-chat:enter-room", { roomId, password });
+      window.setTimeout(() => { if (!done) { done = true; cleanup(); resolve(false); } }, 4000);
+    });
+  }, []);
+
+  /** P2P file send: chunks the file via DataChannel, server never sees it.
+   *  The receiver assembles chunks → Blob → objectURL → renders as an
+   *  attachment (handled in handlePeerMessage above). Locally we also
+   *  render an "own" attachment immediately so the sender sees their
+   *  own upload in the message stream.
+   *
+   *  The returned shape matches the legacy server-upload shape so
+   *  existing UI (PendingAttachmentChip, etc.) keeps working unchanged
+   *  — the `url` is a same-origin blob: URL valid only in the sender's
+   *  tab. Receivers create their own blob URL on assembly. */
   const uploadMedia = useCallback(async (file: File): Promise<{ url: string; type: "image" | "file"; mimeType: string; name: string } | null> => {
     if (!session) return null;
-    const buf = await file.arrayBuffer();
-    let binary = "";
-    const bytes = new Uint8Array(buf);
-    for (let i = 0; i < bytes.byteLength; i++) binary += String.fromCharCode(bytes[i]);
-    const base64 = btoa(binary);
-    const res = await uploadMu.mutateAsync({
-      sessionId: session.sessionId,
-      base64,
-      mimeType: file.type,
-      filename: file.name,
-    });
+    if (file.size > 32 * 1024 * 1024) {
+      throw new Error("文件超过 32 MB，P2P 传输已拒绝（避免阻塞通道）");
+    }
+    const transferId = crypto.randomUUID();
+    // Fire the chunked broadcast to peers — non-blocking; we don't await
+    // because UI can show progress / completion independently.
+    mesh.broadcastChunked(
+      transferId,
+      { kind: "file-meta", name: file.name, mimeType: file.type, size: file.size },
+      file,
+    ).catch((err) => console.warn("[lan-chat] file broadcast failed:", err));
+    // Local self-preview URL.
+    const localUrl = URL.createObjectURL(file);
+    void uploadMu; // server upload path retired
     return {
-      url: res.url,
+      url: localUrl,
       type: file.type.startsWith("image/") ? "image" : "file",
       mimeType: file.type,
       name: file.name,
     };
-  }, [session, uploadMu]);
+  }, [session, mesh, uploadMu]);
 
   const clearSession = useCallback(() => setSessionState(null), [setSessionState]);
 
@@ -368,6 +492,7 @@ export function LanChatProvider({ children }: { children: ReactNode }) {
     activeRoomId,
     setActiveRoomId,
     createRoom,
+    enterRoom,
     messages,
     online,
     peers: mesh.peers,

@@ -16,7 +16,8 @@ import { setupVideoTaskPoller } from "../videoTaskPoller";
 import { setComfySocketIO } from "./comfyui";
 import { sdk } from "./sdk";
 import { ENV } from "./env";
-import { getProjectAccess } from "../db";
+import { getProjectAccess, getLanChatRoomById } from "../db";
+import { verifyPassword } from "./scrypt";
 import type { User } from "../../drizzle/schema";
 import { lanChatBus } from "./lanChatBus";
 import { registerLanChatBroadcaster } from "../routers/lanChat";
@@ -242,8 +243,25 @@ async function startServer() {
     const sessionId = (socket.data as { sessionId: string }).sessionId;
     const joinedRooms = new Set<number>();
 
-    socket.on("lan-chat:enter-room", ({ roomId }: { roomId: number }) => {
+    socket.on("lan-chat:enter-room", async (
+      { roomId, password }: { roomId: number; password?: string },
+    ) => {
       if (typeof roomId !== "number") return;
+      // Password gate for private rooms. Wrong password = silently refuse
+      // (no presence update, peer mesh stays empty for this user).
+      try {
+        const room = await getLanChatRoomById(roomId);
+        if (room?.passwordHash) {
+          if (!password || !(await verifyPassword(password, room.passwordHash))) {
+            socket.emit("lan-chat:enter-denied", { roomId, reason: "wrong-password" });
+            return;
+          }
+        }
+      } catch (err) {
+        console.warn("[lan-chat] enterRoom check failed:", err);
+        socket.emit("lan-chat:enter-denied", { roomId, reason: "lookup-failed" });
+        return;
+      }
       lanChatBus.enterRoom(sessionId, roomId);
       socket.join(`lan-room:${roomId}`);
       joinedRooms.add(roomId);
@@ -251,6 +269,9 @@ async function startServer() {
         roomId,
         online: lanChatBus.listOnline(roomId),
       });
+      // Confirm to the requester so the client UI can flip from "joining"
+      // to "joined" state.
+      socket.emit("lan-chat:enter-granted", { roomId });
     });
 
     socket.on("lan-chat:leave-room", ({ roomId }: { roomId: number }) => {

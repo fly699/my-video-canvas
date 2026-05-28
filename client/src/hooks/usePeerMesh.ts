@@ -239,7 +239,10 @@ export function usePeerMesh({ socket, mySessionId, myNickname, desiredPeers, onM
     };
   }, [dropPeer]);
 
-  /** Broadcast a JSON-serializable payload to every connected peer. */
+  /** Broadcast a JSON-serializable payload to every connected peer.
+   *  Caller is responsible for chunking large payloads — DataChannel
+   *  message size cap on Chromium is ~64 KB. Use `broadcastChunked`
+   *  for arbitrary-sized binary. */
   const broadcast = useCallback((payload: unknown) => {
     const json = JSON.stringify(payload);
     peersRef.current.forEach((entry) => {
@@ -249,6 +252,48 @@ export function usePeerMesh({ socket, mySessionId, myNickname, desiredPeers, onM
     });
   }, []);
 
+  /** Broadcast a binary file as chunked DataChannel messages. The
+   *  receiver pieces it back together by transferId. Respects
+   *  bufferedAmount backpressure so we don't overflow the channel. */
+  const broadcastChunked = useCallback(async (
+    transferId: string,
+    meta: { name: string; mimeType: string; size: number; kind: "file-meta" },
+    blob: Blob,
+    onProgress?: (sentBytes: number) => void,
+  ) => {
+    // 1. Announce metadata so receivers can prep state + UI.
+    broadcast({ ...meta, transferId });
+    // 2. Stream chunks. Chromium SCTP recommends ≤16 KB per message
+    //    even though the spec allows 64 KB. Stay safe.
+    const CHUNK = 16 * 1024;
+    const HIGH_WATER = 512 * 1024;
+    const buf = new Uint8Array(await blob.arrayBuffer());
+    let offset = 0;
+    let seq = 0;
+    while (offset < buf.length) {
+      const slice = buf.slice(offset, offset + CHUNK);
+      // base64 — DataChannel.send() supports ArrayBuffer too, but
+      // JSON-wrapping keeps message dispatch uniform with text messages.
+      let bin = "";
+      for (let i = 0; i < slice.length; i++) bin += String.fromCharCode(slice[i]);
+      const b64 = btoa(bin);
+      const msg = JSON.stringify({ kind: "file-chunk", transferId, seq, data: b64 });
+      await Promise.all(Array.from(peersRef.current.values()).map(async (entry) => {
+        if (!entry.dc || entry.dc.readyState !== "open") return;
+        // Backpressure: wait if buffer is getting full.
+        while (entry.dc.bufferedAmount > HIGH_WATER) {
+          await new Promise((r) => setTimeout(r, 20));
+        }
+        try { entry.dc.send(msg); } catch { /* drop */ }
+      }));
+      offset += CHUNK;
+      seq++;
+      onProgress?.(Math.min(offset, buf.length));
+    }
+    // 3. Send completion marker.
+    broadcast({ kind: "file-end", transferId });
+  }, [broadcast]);
+
   void myNickname; // kept for potential identity payload — unused here
-  return { peers, broadcast };
+  return { peers, broadcast, broadcastChunked };
 }
