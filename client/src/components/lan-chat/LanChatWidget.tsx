@@ -227,9 +227,14 @@ export function LanChatWidget({ state, onStateChange }: LanChatWidgetProps) {
         style={{ borderBottom: "1px solid var(--c-bd1)", cursor: "move", userSelect: "none" }}
       >
         <MessageSquare style={{ width: 13, height: 13, color: "oklch(0.78 0.20 285)" }} />
-        <span className="text-xs font-semibold flex-1" style={{ color: "var(--c-t1)" }}>
-          局域网聊天
-        </span>
+        <div className="flex flex-col flex-1 min-w-0">
+          <span className="text-xs font-semibold" style={{ color: "var(--c-t1)" }}>
+            局域网聊天
+          </span>
+          <span className="text-[9px] truncate" style={{ color: "oklch(0.70 0.20 50)" }}>
+            ⚠ 非加密通讯，严禁传输版权素材
+          </span>
+        </div>
         {session && (
           <span className="text-[10px] px-1.5 py-0.5 rounded" style={{
             background: session.color + "22",

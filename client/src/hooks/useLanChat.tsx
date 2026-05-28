@@ -77,7 +77,20 @@ export function LanChatProvider({ children }: { children: ReactNode }) {
   const joinMu = trpc.lanChat.joinSession.useMutation();
   const sendMu = trpc.lanChat.sendMessage.useMutation();
   const createRoomMu = trpc.lanChat.createRoom.useMutation({
-    onSuccess: () => utils.lanChat.listRooms.invalidate(),
+    onSuccess: (room) => {
+      // Inject the new room into the cache synchronously so the
+      // auto-correct effect (which watches roomsQ.data) sees it before
+      // any refetch lands. Without this the user clicks create → we
+      // setActiveRoomId(newRoom.id) → auto-correct doesn't find it →
+      // snaps back to rooms[0]. Bug: "新建的房间不能进入".
+      if (session) {
+        utils.lanChat.listRooms.setData(
+          { sessionId: session.sessionId },
+          (prev) => prev ? [...prev, { id: room.id, name: room.name }] : [{ id: room.id, name: room.name }],
+        );
+      }
+      utils.lanChat.listRooms.invalidate();
+    },
   });
   const uploadMu = trpc.lanChat.uploadMedia.useMutation();
 
@@ -169,10 +182,16 @@ export function LanChatProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     const rooms = roomsQ.data;
     if (!rooms || rooms.length === 0) return;
+    // CRITICAL: skip while a refetch is in flight. Otherwise immediately
+    // after createRoom, the cache still shows the OLD list (without the
+    // new room), and we'd snap activeRoomId back to rooms[0] — bug:
+    // "newly created room can't be entered" because the user landed in
+    // the wrong room before the refetch finished.
+    if (roomsQ.isFetching) return;
     if (!rooms.some((r) => r.id === activeRoomId)) {
       setActiveRoomId(rooms[0].id);
     }
-  }, [roomsQ.data, activeRoomId, setActiveRoomId]);
+  }, [roomsQ.data, roomsQ.isFetching, activeRoomId, setActiveRoomId]);
 
   // After the socket connects (or reconnects), re-emit enter-room so the
   // server's presence map gets us back in.
