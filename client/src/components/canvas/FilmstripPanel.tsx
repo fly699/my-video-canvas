@@ -172,10 +172,30 @@ export function FilmstripPanel({ onClose }: FilmstripPanelProps) {
     });
   };
 
-  // Resolve current rect from layout: docked → full-width bottom-pinned,
-  // floating → use the persisted left/top/width.
+  // Auto-width in docked mode: compute panel width from clip count so few
+  // frames render a compact panel and many frames grow it (clamped at the
+  // viewport via CSS maxWidth so the horizontal scroll inside keeps working
+  // past the cap). Floating mode uses the user's persisted width.
+  const FRAME_W = 100;
+  const FRAME_GAP = 8;
+  const SIDE_PADDING = 24; // 12px each side of the scroll row
+  const HEADER_MIN = 320;
+  const dockedAutoWidth = Math.max(
+    HEADER_MIN,
+    sortedNodes.length === 0
+      ? HEADER_MIN
+      : sortedNodes.length * (FRAME_W + FRAME_GAP) - FRAME_GAP + SIDE_PADDING,
+  );
   const rectStyle = layout.docked
-    ? { left: 0, right: 0, bottom: 0, width: undefined, top: undefined }
+    ? {
+        left: "50%" as const,
+        transform: "translateX(-50%)",
+        bottom: 0,
+        right: undefined,
+        top: undefined,
+        width: dockedAutoWidth,
+        maxWidth: "calc(100vw - 16px)",
+      }
     : { left: layout.left, top: layout.top, right: undefined, bottom: undefined, width: layout.width };
 
   return (

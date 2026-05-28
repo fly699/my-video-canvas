@@ -688,6 +688,22 @@ function CanvasInner({ projectId }: { projectId: number }) {
     setContextMenu({ x: e.clientX, y: e.clientY, type: "node", nodeId: node.id });
   }, []);
 
+  // Mobile/tablet have no right-click; double-tap (== double-click) opens the
+  // same canvas context menu so users can still add nodes from empty space.
+  // Skip when the gesture lands on a node, edge, or any interactive widget so
+  // existing dblclick behaviors (e.g. inline title edits) keep working.
+  const handleCanvasDoubleClick = useCallback((e: React.MouseEvent) => {
+    const t = e.target as HTMLElement;
+    if (
+      t.closest(".react-flow__node") ||
+      t.closest(".react-flow__edge") ||
+      t.closest(".react-flow__controls") ||
+      t.closest(".react-flow__minimap") ||
+      t.closest("button, input, textarea, [contenteditable='true']")
+    ) return;
+    handleCanvasContextMenu(e);
+  }, [handleCanvasContextMenu]);
+
   // When the canvas right-click menu is pinned, the user can add several nodes
   // in a row from the same anchor — without a per-add offset they all stack at
   // the exact same canvas coords and only the topmost is visible.
@@ -1421,6 +1437,7 @@ function CanvasInner({ projectId }: { projectId: number }) {
           className="flex-1 relative canvas-vignette"
           style={{ background: canvasBg.bgColor }}
           onContextMenu={handleCanvasContextMenu}
+          onDoubleClick={handleCanvasDoubleClick}
           onMouseMove={handleMouseMove}
           onClick={() => { setShowNodePicker(false); }}
         >
@@ -1474,6 +1491,7 @@ function CanvasInner({ projectId }: { projectId: number }) {
             panOnScrollMode={PanOnScrollMode.Free}
             zoomOnScroll={false}
             zoomOnPinch
+            zoomOnDoubleClick={false}
             zoomActivationKeyCode="Control"
             fitView={!project?.viewportState}
             fitViewOptions={{ padding: 0.2 }}
@@ -1516,7 +1534,7 @@ function CanvasInner({ projectId }: { projectId: number }) {
             />
             {/* Minimap drag handle + resize grip — transparent overlay.
                 z-index: 31 so it stays just above .react-flow__minimap (30)
-                and clears the filmstrip (15) / timeline (25) panels. */}
+                and clears the filmstrip (15) / timeline (18) panels. */}
             <div
               style={{
                 position: "absolute",

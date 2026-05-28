@@ -222,8 +222,29 @@ export function TimelinePanel({ onClose }: TimelinePanelProps) {
   const proxySrc = (url: string) =>
     url.startsWith("http") ? `/api/video-proxy?url=${encodeURIComponent(url)}` : url;
 
+  // Docked auto-width: panel grows with clip count, capped at viewport width
+  // (horizontal scroll inside takes over past the cap). Floating mode uses
+  // the user's persisted width.
+  const CLIP_W = 120;
+  const CLIP_GAP = 8;
+  const SIDE_PADDING = 24;
+  const HEADER_MIN = 360;
+  const dockedAutoWidth = Math.max(
+    HEADER_MIN,
+    videoClips.length === 0
+      ? HEADER_MIN
+      : videoClips.length * (CLIP_W + CLIP_GAP) - CLIP_GAP + SIDE_PADDING,
+  );
   const rectStyle = layout.docked
-    ? { left: 0, right: 0, bottom: TL_DOCK_BOTTOM, width: undefined, top: undefined }
+    ? {
+        left: "50%" as const,
+        transform: "translateX(-50%)",
+        bottom: TL_DOCK_BOTTOM,
+        right: undefined,
+        top: undefined,
+        width: dockedAutoWidth,
+        maxWidth: "calc(100vw - 16px)",
+      }
     : { left: layout.left, top: layout.top, right: undefined, bottom: undefined, width: layout.width };
 
   return (
@@ -240,7 +261,9 @@ export function TimelinePanel({ onClose }: TimelinePanelProps) {
         backdropFilter: "blur(20px)",
         display: "flex",
         flexDirection: "column",
-        zIndex: 25,
+        // z-index 18 sits between filmstrip (15) and the bottom toolbar (20),
+        // so toolbar popups (theme picker, etc.) render above the timeline.
+        zIndex: 18,
       }}
     >
       {/* Top-edge grip: height resize */}
