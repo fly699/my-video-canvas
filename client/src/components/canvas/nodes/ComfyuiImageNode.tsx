@@ -387,17 +387,42 @@ export const ComfyuiImageNode = memo(function ComfyuiImageNode({ id, selected, d
           </button>
           {urlExpanded && (
             <div className="px-3 pb-3">
-              <input
-                placeholder="http://127.0.0.1:8188（留空使用全局默认）"
-                value={payload.customBaseUrl ?? ""}
-                onChange={(e) => update("customBaseUrl", e.target.value)}
-                className="nodrag"
-                style={fieldBase}
-                onFocus={(e) => { e.currentTarget.style.borderColor = BORDER_ACCENT; }}
-                onBlur={(e) => { e.currentTarget.style.borderColor = BORDER_DEFAULT; }}
+              <div className="flex items-center gap-1.5">
+                <input
+                  placeholder="http://127.0.0.1:8188（留空使用全局默认）"
+                  value={payload.customBaseUrl ?? ""}
+                  onChange={(e) => update("customBaseUrl", e.target.value)}
+                  className="nodrag flex-1"
+                  style={fieldBase}
+                  onFocus={(e) => { e.currentTarget.style.borderColor = BORDER_ACCENT; }}
+                  onBlur={(e) => { e.currentTarget.style.borderColor = BORDER_DEFAULT; }}
+                />
+                <button
+                  onClick={() => { modelsQuery.refetch(); }}
+                  disabled={modelsQuery.isFetching}
+                  className="nodrag flex-shrink-0 flex items-center justify-center rounded-md"
+                  title="刷新模型列表（拉取 ComfyUI 服务端已安装的 checkpoint / lora 等）"
+                  style={{
+                    width: 30, height: 30,
+                    background: "var(--c-surface)",
+                    border: "1px solid var(--c-bd2)",
+                    color: modelsQuery.isFetching ? "var(--c-t4)" : accent,
+                    cursor: modelsQuery.isFetching ? "wait" : "pointer",
+                  }}
+                >
+                  <RefreshCw className={modelsQuery.isFetching ? "w-3 h-3 animate-spin" : "w-3 h-3"} />
+                </button>
+              </div>
+              {/* Connection / model count status */}
+              <ComfyConnectionStatus
+                isFetching={modelsQuery.isFetching}
+                isError={modelsQuery.isError}
+                errorMessage={modelsQuery.error?.message}
+                ckptCount={modelsQuery.data?.ckpts.length ?? 0}
+                loraCount={modelsQuery.data?.loras.length ?? 0}
               />
               <p style={{ fontSize: 10, color: "var(--c-t4)", marginTop: 4 }}>
-                每个节点独立配置，仅 http(s) 协议。
+                每个节点独立配置，仅 http(s) 协议。ComfyUI 端需用 <code>--listen 0.0.0.0</code> 启动；本应用服务器必须能通过网络到达此地址。
               </p>
             </div>
           )}
@@ -759,3 +784,48 @@ export const ComfyuiImageNode = memo(function ComfyuiImageNode({ id, selected, d
     </BaseNode>
   );
 });
+
+function ComfyConnectionStatus({
+  isFetching,
+  isError,
+  errorMessage,
+  ckptCount,
+  loraCount,
+}: {
+  isFetching: boolean;
+  isError: boolean;
+  errorMessage?: string;
+  ckptCount: number;
+  loraCount: number;
+}) {
+  if (isFetching) {
+    return (
+      <div className="flex items-center gap-1.5 mt-1.5 text-[10px]" style={{ color: "var(--c-t4)" }}>
+        <Loader2 className="w-2.5 h-2.5 animate-spin" />
+        正在拉取模型列表…
+      </div>
+    );
+  }
+  // Empty list AFTER a successful fetch usually means the server couldn't
+  // reach ComfyUI (fetchModels server-side swallows errors). Surface a
+  // diagnostic hint instead of leaving the user wondering why no models.
+  const failed = isError || ckptCount === 0;
+  if (failed) {
+    return (
+      <div className="flex items-start gap-1.5 mt-1.5 text-[10px]" style={{ color: "oklch(0.62 0.20 25)" }}>
+        <span>⚠️</span>
+        <span>
+          未拉到模型 — 本应用服务器无法访问该 ComfyUI 地址。检查：① ComfyUI 用 --listen 0.0.0.0 启动；② 本服务器到该 IP 的网络可达；③ 端口防火墙；④ COMFYUI_BASE_URL 环境变量。
+          {errorMessage ? <span style={{ display: "block", marginTop: 2, opacity: 0.7 }}>{errorMessage}</span> : null}
+        </span>
+      </div>
+    );
+  }
+  return (
+    <div className="flex items-center gap-1.5 mt-1.5 text-[10px]" style={{ color: "oklch(0.65 0.18 145)" }}>
+      <span>●</span>
+      已连接 — {ckptCount} 个 checkpoint{loraCount > 0 ? `、${loraCount} 个 LoRA` : ""}
+    </div>
+  );
+}
+
