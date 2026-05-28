@@ -13,6 +13,7 @@ import {
   createShareLink,
   listShareLinks,
   getShareLinkByToken,
+  getShareLinkById,
   consumeShareLink,
   revokeShareLink,
   findUserByEmail,
@@ -20,8 +21,27 @@ import {
 import { writeAuditLog } from "../_core/auditLog";
 import { assertProjectAccess, ROLE_RANK } from "../_core/permissions";
 import { collabBus } from "../_core/collabBus";
+import type { TrpcContext } from "../_core/context";
+import type { User } from "../../drizzle/schema";
 
 const roleSchema = z.enum(["viewer", "editor", "admin"]);
+
+/** Format the short alias: {id}.{first6CharsOfToken}. The dot separator
+ *  is safe in URL paths and unambiguous because the token is base64url
+ *  (only A–Z, a–z, 0–9, -, _) — no dots in the token itself. */
+function buildShortCode(id: number, token: string): string {
+  return `${id}.${token.slice(0, 6)}`;
+}
+
+/** Parse {id}.{prefix}. Returns null on malformed input rather than
+ *  throwing — callers convert to NOT_FOUND for consistency with token. */
+function parseShortCode(code: string): { id: number; prefix: string } | null {
+  const m = /^(\d+)\.([A-Za-z0-9_-]{4,32})$/.exec(code);
+  if (!m) return null;
+  const id = Number(m[1]);
+  if (!Number.isFinite(id) || id <= 0) return null;
+  return { id, prefix: m[2] };
+}
 // Normalize email at the edge so case + whitespace mismatches between invite
 // and claim (signup lowercases + trims, but inviteByEmail used to store raw
 // input) can never orphan a pending invite.
@@ -146,6 +166,11 @@ export const collaborationRouter = router({
       return all.map((l) => ({
         ...l,
         active: !l.revokedAt && l.usesCount < l.maxUses && l.expiresAt.getTime() > now,
+        // Short alias: {id}.{first6CharsOfToken}. Combined with the row's id
+        // lookup, the 6-char prefix gives ~36 bits of extra entropy — enough
+        // to defeat brute-force on time-limited share links while keeping
+        // the URL ~3× shorter than the full /invite/{token} form.
+        shortCode: buildShortCode(l.id, l.token),
       }));
     }),
 
@@ -175,7 +200,7 @@ export const collaborationRouter = router({
         maxUses: input.maxUses,
         expiresInDays: input.expiresInDays,
       } });
-      return link;
+      return { ...link, shortCode: buildShortCode(link.id, link.token) };
     }),
 
   revokeShareLink: protectedProcedure
@@ -200,46 +225,61 @@ export const collaborationRouter = router({
     .mutation(async ({ ctx, input }) => {
       const link = await getShareLinkByToken(input.token);
       if (!link) throw new TRPCError({ code: "NOT_FOUND", message: "邀请链接无效" });
+      return acceptLinkRow(ctx, link);
+    }),
 
-      // Cheap owner shortcut — owners don't need to claim a slot
-      const access = await getProjectAccess(link.projectId, ctx.user.id);
-      if (access?.source === "owner") {
-        return { projectId: link.projectId, alreadyMember: true };
+  // Short-link variant: code = "{id}.{tokenPrefix6}". The id lookup + 6-char
+  // prefix check is enough to authenticate without exposing the full token
+  // in places where URL length matters (SMS, WeChat, QR codes).
+  acceptShareLinkShort: protectedProcedure
+    .input(z.object({ code: z.string().min(3).max(64) }))
+    .mutation(async ({ ctx, input }) => {
+      const parsed = parseShortCode(input.code);
+      if (!parsed) throw new TRPCError({ code: "NOT_FOUND", message: "邀请链接无效" });
+      const link = await getShareLinkById(parsed.id);
+      if (!link || !link.token.startsWith(parsed.prefix)) {
+        throw new TRPCError({ code: "NOT_FOUND", message: "邀请链接无效" });
       }
-      // Re-using an already-granted role doesn't burn a slot either
-      const existing = access?.source === "collaborator" ? access : null;
-      if (existing && ROLE_RANK[existing.role] >= ROLE_RANK[link.role]) {
-        return { projectId: link.projectId, alreadyMember: true };
-      }
-
-      // Atomic gate: only the row that wins the conditional UPDATE proceeds.
-      const consumed = await consumeShareLink(link.id);
-      if (!consumed) {
-        // Some other request raced us, or the link expired / was revoked / hit limit
-        const fresh = await getShareLinkByToken(input.token);
-        if (!fresh || fresh.revokedAt) throw new TRPCError({ code: "FORBIDDEN", message: "邀请链接已撤销" });
-        if (fresh.expiresAt.getTime() <= Date.now()) throw new TRPCError({ code: "FORBIDDEN", message: "邀请链接已过期" });
-        throw new TRPCError({ code: "FORBIDDEN", message: "邀请链接已达使用上限" });
-      }
-
-      await upsertCollaborator({
-        projectId: link.projectId,
-        userId: ctx.user.id,
-        email: ctx.user.email ?? null,
-        role: link.role,
-        invitedBy: link.createdBy,
-        status: "active",
-      });
-      writeAuditLog({ ctx, action: "collab:accept_link", detail: {
-        projectId: link.projectId,
-        linkId: link.id,
-        role: link.role,
-      } });
-      // If this user already had a socket connected (e.g. they were a
-      // public-read viewer or already a collaborator with a lower role),
-      // their cached socket role would stay stale until reconnect — drop
-      // the cache so the next mutating event re-derives access from the DB.
-      collabBus.emitRoleInvalidated({ projectId: link.projectId, userId: ctx.user.id });
-      return { projectId: link.projectId, alreadyMember: !!existing };
+      return acceptLinkRow(ctx, link);
     }),
 });
+
+// Shared body — extracted so the long-token and short-code procedures stay
+// in sync on the race-safe consume / owner shortcut / upsert flow.
+async function acceptLinkRow(
+  ctx: TrpcContext & { user: User },
+  link: NonNullable<Awaited<ReturnType<typeof getShareLinkByToken>>>,
+) {
+  const access = await getProjectAccess(link.projectId, ctx.user.id);
+  if (access?.source === "owner") {
+    return { projectId: link.projectId, alreadyMember: true };
+  }
+  const existing = access?.source === "collaborator" ? access : null;
+  if (existing && ROLE_RANK[existing.role] >= ROLE_RANK[link.role]) {
+    return { projectId: link.projectId, alreadyMember: true };
+  }
+
+  const consumed = await consumeShareLink(link.id);
+  if (!consumed) {
+    const fresh = await getShareLinkById(link.id);
+    if (!fresh || fresh.revokedAt) throw new TRPCError({ code: "FORBIDDEN", message: "邀请链接已撤销" });
+    if (fresh.expiresAt.getTime() <= Date.now()) throw new TRPCError({ code: "FORBIDDEN", message: "邀请链接已过期" });
+    throw new TRPCError({ code: "FORBIDDEN", message: "邀请链接已达使用上限" });
+  }
+
+  await upsertCollaborator({
+    projectId: link.projectId,
+    userId: ctx.user.id,
+    email: ctx.user.email ?? null,
+    role: link.role,
+    invitedBy: link.createdBy,
+    status: "active",
+  });
+  writeAuditLog({ ctx, action: "collab:accept_link", detail: {
+    projectId: link.projectId,
+    linkId: link.id,
+    role: link.role,
+  } });
+  collabBus.emitRoleInvalidated({ projectId: link.projectId, userId: ctx.user.id });
+  return { projectId: link.projectId, alreadyMember: !!existing };
+}

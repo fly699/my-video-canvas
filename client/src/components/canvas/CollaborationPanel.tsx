@@ -234,9 +234,14 @@ export function CollaborationPanel({ projectId, currentUserRole, publicReadAcces
                   <ShareLinkRow
                     key={l.id}
                     link={l}
-                    onCopy={() => {
+                    onCopyLong={() => {
                       const url = `${window.location.origin}/invite/${l.token}`;
-                      navigator.clipboard.writeText(url).then(() => toast.success("链接已复制"));
+                      navigator.clipboard.writeText(url).then(() => toast.success("完整链接已复制"));
+                    }}
+                    onCopyShort={() => {
+                      if (!l.shortCode) return;
+                      const url = `${window.location.origin}/i/${l.shortCode}`;
+                      navigator.clipboard.writeText(url).then(() => toast.success("短链接已复制"));
                     }}
                     onRevoke={() => revokeLinkMu.mutate({ projectId, linkId: l.id })}
                   />
@@ -366,12 +371,14 @@ interface ShareLinkRowProps {
     maxUses: number;
     usesCount: number;
     expiresAt: Date;
+    shortCode?: string;
   };
-  onCopy: () => void;
+  onCopyLong: () => void;
+  onCopyShort: () => void;
   onRevoke: () => void;
 }
 
-function ShareLinkRow({ link, onCopy, onRevoke }: ShareLinkRowProps) {
+function ShareLinkRow({ link, onCopyLong, onCopyShort, onRevoke }: ShareLinkRowProps) {
   const remaining = link.maxUses - link.usesCount;
   const daysLeft = Math.max(0, Math.ceil((new Date(link.expiresAt).getTime() - Date.now()) / 86400_000));
   return (
@@ -385,9 +392,14 @@ function ShareLinkRow({ link, onCopy, onRevoke }: ShareLinkRowProps) {
           {ROLE_LABEL[link.role]} · 剩 {remaining} 次 · {daysLeft}天
         </p>
       </div>
-      <button onClick={onCopy} className="w-6 h-6 rounded flex items-center justify-center" style={{ color: "var(--c-t3)" }} title="复制链接">
-        <Copy style={{ width: 12, height: 12 }} />
+      <button onClick={onCopyLong} className="px-2 h-6 rounded flex items-center gap-1 text-[10px]" style={{ color: "var(--c-t3)", border: "1px solid var(--c-bd2)" }} title="复制完整链接">
+        <Copy style={{ width: 11, height: 11 }} />长
       </button>
+      {link.shortCode && (
+        <button onClick={onCopyShort} className="px-2 h-6 rounded flex items-center gap-1 text-[10px]" style={{ color: "oklch(0.72 0.18 285)", border: "1px solid oklch(0.68 0.22 285 / 0.4)" }} title="复制短链接（适合 SMS / WeChat / QR 码）">
+          <Copy style={{ width: 11, height: 11 }} />短
+        </button>
+      )}
       <button onClick={onRevoke} className="w-6 h-6 rounded flex items-center justify-center" style={{ color: "oklch(0.62 0.20 25)" }} title="撤销链接">
         <Trash2 style={{ width: 12, height: 12 }} />
       </button>

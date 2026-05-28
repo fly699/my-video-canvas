@@ -426,9 +426,39 @@ function FilmFrame({
   const mediaUrl = isVideo ? videoUrl : imageUrl;
   const { isLocal, blobUrl, downloadedAt } = useLocalMedia(mediaUrl);
 
+  // Drag-to-attach into an AI chat node. Images go as multimodal image_url
+  // parts the LLM can actually see; videos go as a text "file" attachment
+  // describing the clip (LLMs can't decode video URLs as images, so sending
+  // them as type:"image" used to render a broken thumbnail + silently fail
+  // on the model side).
+  const dragUrl = blobUrl ?? mediaUrl;
+  const onDragStart = (e: React.DragEvent) => {
+    if (!dragUrl) return;
+    const payload = isVideo
+      ? {
+          type: "file" as const,
+          url: "",
+          mimeType: "video/mp4",
+          name: title || "video",
+          textContent: `[Video reference] title="${title}" url="${dragUrl}"`,
+        }
+      : {
+          type: "image" as const,
+          url: dragUrl,
+          mimeType: "image/*",
+          name: title || "image",
+        };
+    e.dataTransfer.setData("application/x-avc-attachment", JSON.stringify(payload));
+    e.dataTransfer.setData("text/uri-list", dragUrl);
+    e.dataTransfer.setData("text/plain", dragUrl);
+    e.dataTransfer.effectAllowed = "copy";
+  };
+
   return (
     <button
       onClick={onClick}
+      draggable={!!dragUrl}
+      onDragStart={onDragStart}
       style={{
         width: 100,
         height: 122,

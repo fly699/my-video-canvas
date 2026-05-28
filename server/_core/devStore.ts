@@ -383,6 +383,10 @@ export function devGetShareLinkByToken(token: string): ProjectShareLink | undefi
   return Array.from(shareLinksMap.values()).find((l) => l.token === token);
 }
 
+export function devGetShareLinkById(id: number): ProjectShareLink | undefined {
+  return shareLinksMap.get(id);
+}
+
 /** Atomic equivalent of the prod conditional UPDATE — single-thread so just check then increment. */
 export function devConsumeShareLink(id: number): boolean {
   const l = shareLinksMap.get(id);

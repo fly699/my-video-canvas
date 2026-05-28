@@ -378,9 +378,54 @@ export const AIChatNode = memo(function AIChatNode({ id, selected, data }: Props
     e.preventDefault();
     e.stopPropagation();
     setIsDraggingOver(false);
+
+    // Priority 1 — OS-level file drop (Finder/Explorer): upload via attachFiles
     const files = Array.from(e.dataTransfer.files);
-    if (files.length > 0) await attachFiles(files);
-  }, [attachFiles]);
+    if (files.length > 0) {
+      await attachFiles(files);
+      return;
+    }
+
+    // Priority 2 — structured payload from filmstrip/timeline (the source sets
+    // application/x-avc-attachment with the resolved type). Use it as-is so
+    // the source can decide whether the media should go in as image (visible
+    // to multimodal LLMs) or file (text reference).
+    const structured = e.dataTransfer.getData("application/x-avc-attachment");
+    if (structured) {
+      try {
+        const parsed = JSON.parse(structured) as ChatAttachment;
+        if (pendingAttachments.length >= 8) { toast.error("最多 8 个附件"); return; }
+        setPendingAttachments((prev) => [...prev, parsed]);
+        toast.success("已添加 1 个附件");
+        return;
+      } catch { /* fall through */ }
+    }
+
+    // Priority 3 — bare URL (img dragged from elsewhere in the page). Only
+    // treat as image when extension looks like one; videos must use the
+    // structured payload above to avoid silently sending a video URL to the
+    // LLM as image_url (which produces broken thumbnails + blank model
+    // responses).
+    const url = e.dataTransfer.getData("text/uri-list") || e.dataTransfer.getData("text/plain");
+    if (!url || !/^(https?:|data:|\/)/i.test(url)) return;
+    const isImageUrl = /\.(jpe?g|png|gif|webp|bmp|svg|avif)(\?|#|$)/i.test(url) || url.startsWith("data:image/");
+    const isVideoUrl = /\.(mp4|mov|webm|m4v|avi|mkv)(\?|#|$)/i.test(url) || url.startsWith("data:video/");
+    if (pendingAttachments.length >= 8) { toast.error("最多 8 个附件"); return; }
+    const name = url.startsWith("data:") ? "media" : (url.split("/").pop()?.split("?")[0] || "media");
+    if (isVideoUrl) {
+      // Attach as text reference so LLM gets context without choking on the URL.
+      setPendingAttachments((prev) => [...prev, {
+        type: "file", url: "", mimeType: "video/mp4", name,
+        textContent: `[Video reference] url="${url}"`,
+      }]);
+      toast.success("已添加视频引用（文本形式）");
+    } else if (isImageUrl) {
+      setPendingAttachments((prev) => [...prev, { type: "image", url, mimeType: "image/*", name }]);
+      toast.success("已添加 1 个附件");
+    } else {
+      toast.error("仅支持图片或视频拖入");
+    }
+  }, [attachFiles, pendingAttachments.length]);
 
   const removeAttachment = (idx: number) => {
     setPendingAttachments((prev) => prev.filter((_, i) => i !== idx));
@@ -403,7 +448,24 @@ export const AIChatNode = memo(function AIChatNode({ id, selected, data }: Props
   );
 
   const chatBody = (
-    <div className="flex flex-col h-full" style={{ minHeight: 280 }}>
+    <div
+      className="flex flex-col h-full"
+      style={{ minHeight: 280 }}
+      // Whole-node drop target — users can drag a filmstrip/timeline frame
+      // anywhere on the node, not just the input strip. Only intercept the
+      // event when the drag carries something we know how to consume so
+      // ReactFlow can still pan the canvas through this area otherwise.
+      onDragOver={(e) => {
+        const t = e.dataTransfer.types;
+        if (t && (t.includes("Files") || t.includes("application/x-avc-attachment") || t.includes("text/uri-list"))) {
+          e.preventDefault();
+          e.stopPropagation();
+          setIsDraggingOver(true);
+        }
+      }}
+      onDragLeave={(e) => { if (e.currentTarget === e.target) setIsDraggingOver(false); }}
+      onDrop={handleDrop}
+    >
 
         {/* ── System prompt ── */}
         <div

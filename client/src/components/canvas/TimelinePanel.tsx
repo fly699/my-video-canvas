@@ -453,8 +453,29 @@ interface TimelineClipProps {
 function TimelineClip({ index, clip, isPlaying, videoRef, proxySrc, onNavigate, onPlay, onEnded }: TimelineClipProps) {
   const { isLocal, blobUrl, downloadedAt } = useLocalMedia(clip.videoUrl);
 
+  // Drag-to-attach: timeline clips are always videos, which LLMs can't read
+  // as images. Attach them as a text-file reference so the chat node shows a
+  // clean chip and the model gets the clip title/URL as written context.
+  const dragUrl = blobUrl ?? clip.videoUrl;
+  const onDragStart = (e: React.DragEvent) => {
+    if (!dragUrl) return;
+    const payload = {
+      type: "file" as const,
+      url: "",
+      mimeType: "video/mp4",
+      name: clip.title || "video",
+      textContent: `[Video reference] title="${clip.title}" url="${dragUrl}"`,
+    };
+    e.dataTransfer.setData("application/x-avc-attachment", JSON.stringify(payload));
+    e.dataTransfer.setData("text/uri-list", dragUrl);
+    e.dataTransfer.setData("text/plain", dragUrl);
+    e.dataTransfer.effectAllowed = "copy";
+  };
+
   return (
     <div
+      draggable={!!dragUrl}
+      onDragStart={onDragStart}
       style={{
         width: 120,
         height: 112,

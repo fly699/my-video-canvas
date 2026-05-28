@@ -26,6 +26,7 @@ function Router() {
       <Route path="/login" component={LoginPage} />
       <Route path="/admin" component={AdminPage} />
       <Route path="/invite/:token" component={AcceptInvite} />
+      <Route path="/i/:code" component={AcceptInvite} />
       <Route path="/404" component={NotFound} />
       <Route component={NotFound} />
     </Switch>

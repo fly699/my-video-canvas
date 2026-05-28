@@ -332,6 +332,16 @@ export async function getShareLinkByToken(token: string) {
   return rows[0];
 }
 
+/** Lookup by primary key — used by the short-link route which encodes
+ *  {id}.{tokenPrefix} into the URL. Callers must still verify the prefix
+ *  against the returned row's full token before accepting the invite. */
+export async function getShareLinkById(id: number) {
+  const db = await getDb();
+  if (!db) return DEV_MODE ? dev.devGetShareLinkById(id) : undefined;
+  const rows = await db.select().from(projectShareLinks).where(eq(projectShareLinks.id, id)).limit(1);
+  return rows[0];
+}
+
 /**
  * Atomically consume one slot on a share link. Returns true only if the row
  * was updated (i.e. the caller "won" the race against concurrent acceptances).
