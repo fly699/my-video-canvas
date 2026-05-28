@@ -216,15 +216,27 @@ export type ChatMessage = typeof chatMessages.$inferSelect;
 export type InsertChatMessage = typeof chatMessages.$inferInsert;
 
 // ── LAN Chat ──────────────────────────────────────────────────────────────────
-// Lightweight nickname-only group chat scoped to the local network. No coupling
-// to users/projects — content lives entirely in these two tables so the feature
-// can be uninstalled without touching the rest of the schema.
+// Anonymous nickname-only group chat. Users behind the same NAT gateway
+// (same outbound public IP as seen by this server) auto-share a "network
+// group" and can chat with each other — exactly like a LAN chat where
+// everyone in the same office sees the same rooms. Across-network
+// isolation is enforced by filtering rooms + messages on networkGroupId
+// (= the requesting user's clientIp).
+//
+// No coupling to users/projects — content lives entirely in these two
+// tables so the feature can be uninstalled without touching the rest of
+// the schema.
 
 export const lanChatRooms = mysqlTable("lan_chat_rooms", {
   id: int("id").autoincrement().primaryKey(),
-  name: varchar("name", { length: 80 }).notNull().unique(),
+  /** The shared NAT gateway IP that owns this room. All members must
+   *  reach the server from this address to see it. */
+  networkGroupId: varchar("networkGroupId", { length: 64 }).notNull(),
+  name: varchar("name", { length: 80 }).notNull(),
   createdAt: timestamp("createdAt").defaultNow().notNull(),
-});
+}, (t) => ({
+  networkNameUniq: uniqueIndex("lan_rooms_network_name_uniq").on(t.networkGroupId, t.name),
+}));
 
 export type LanChatRoomRow = typeof lanChatRooms.$inferSelect;
 export type InsertLanChatRoom = typeof lanChatRooms.$inferInsert;

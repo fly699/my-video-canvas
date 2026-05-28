@@ -18,7 +18,6 @@ import { sdk } from "./sdk";
 import { ENV } from "./env";
 import { getProjectAccess } from "../db";
 import type { User } from "../../drizzle/schema";
-import { isLanIp, normalizeIp } from "./lanGate";
 import { lanChatBus } from "./lanChatBus";
 import { registerLanChatBroadcaster } from "../routers/lanChat";
 import type { LanChatMessage } from "../../shared/types";
@@ -224,12 +223,13 @@ async function startServer() {
 
   // ── LAN chat socket namespace ──────────────────────────────────────────────
   // Isolated namespace (/lan-chat) so the cookie-auth middleware above doesn't
-  // apply. Auth here is by sessionId + LAN-IP gate.
+  // apply. Auth here is by sessionId only — the "LAN" semantics are enforced
+  // at the room layer (rooms scoped to the user's networkGroupId = their
+  // clientIp), so users behind different NATs see independent chats even
+  // though they all connect through the same global socket.
   const lanNs = io.of("/lan-chat");
 
   lanNs.use((socket, next) => {
-    const addr = normalizeIp(socket.handshake.address);
-    if (!isLanIp(addr)) return next(new Error("lan-only"));
     const sid = (socket.handshake.auth as { sessionId?: string } | undefined)?.sessionId;
     if (!sid) return next(new Error("session-required"));
     const sess = lanChatBus.getSession(sid);
@@ -298,19 +298,6 @@ async function startServer() {
 
   // ── Video task background poller ───────────────────────────────────────────
   setupVideoTaskPoller(io);
-
-  // LAN-chat HTML gate — refuse to even render the SPA shell for /lan-chat
-  // when the request comes from a non-LAN address. The API + socket layers
-  // already gate, but stopping at the HTML keeps probes from learning the
-  // feature exists.
-  app.use("/lan-chat", (req, res, next) => {
-    const ip = req.ip ?? req.socket?.remoteAddress ?? "";
-    if (!isLanIp(ip)) {
-      res.status(403).type("text/plain").send("局域网聊天仅限内网访问");
-      return;
-    }
-    next();
-  });
 
   // Development or production static
   if (process.env.NODE_ENV === "development") {

@@ -90,7 +90,7 @@ export function NicknamePicker({ onSubmit, busy }: NicknamePickerProps) {
           {busy ? "加入中…" : "进入聊天"}
         </button>
         <p className="text-[9px] mt-2 leading-relaxed" style={{ color: "var(--c-t4)" }}>
-          本功能仅限同一局域网内使用；公网访问会被服务端拒绝。消息持久化保存到服务端数据库。
+          按你的出口公网 IP 自动分组：同一办公室/家里（同一 NAT 网关）的人能互相聊天，其他网络看不到。消息持久化保存到服务端。
         </p>
       </form>
     </div>

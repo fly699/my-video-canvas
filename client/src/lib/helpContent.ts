@@ -143,7 +143,7 @@ export const HELP_SECTIONS: HelpSection[] = [
     title: "局域网聊天（匿名群聊）",
     emoji: "💬",
     content: [
-      { type: "p", text: "团队内部一个无需注册的实时群聊工具，仅在同一局域网内可用。消息持久化保存到数据库，重启不丢；公网访问会被服务端拒绝。" },
+      { type: "p", text: "团队内部无需注册的实时群聊工具。服务端按每位用户的**出口公网 IP**（NAT 网关）自动分组：在同一办公室/家里（共用一个网关）的人会自动归入同一聊天空间，彼此可见；其他网络的用户看到的是各自独立的聊天，互不打扰。消息持久化到数据库，重启不丢。" },
       { type: "h3", text: "入口" },
       { type: "kv", rows: [
         ["顶栏 💬 按钮", "依次切换：隐藏 → 气泡 → 浮窗 → 隐藏"],
@@ -170,7 +170,7 @@ export const HELP_SECTIONS: HelpSection[] = [
         ["气泡拖动", "调整气泡位置；松开如未发生拖动则展开为浮窗"],
         ["Esc 键", "从浮窗收回到气泡"],
       ]},
-      { type: "warn", text: "本聊天严格 LAN-only：服务端 Express 中间件 + tRPC + socket.io 三层校验客户端 IP。公网用户访问 /lan-chat 直接返回 403，不会渲染 SPA。" },
+      { type: "warn", text: "分组按出口公网 IP 识别 — 这是大多数办公室/家庭 NAT 网络的合理近似，但**不是密码学意义上的隔离**。两个走相同企业 VPN / 共用代理出口的不同部门会被认作同一组，互相可见；移动 4G 用户因运营商 CGNAT 也可能与陌生人同组。需要严格隔离请用画布协作的邮箱邀请。" },
       { type: "tip", text: "数据库表为 lan_chat_rooms + lan_chat_messages，无外键到 users/projects；想清空聊天历史，DROP 这两张表即可（数据库迁移会按需重建）。" },
     ],
   },
