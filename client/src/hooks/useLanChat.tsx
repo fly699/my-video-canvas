@@ -2,6 +2,7 @@ import { createContext, useCallback, useContext, useEffect, useRef, useState, ty
 import { io, type Socket } from "socket.io-client";
 import { trpc } from "@/lib/trpc";
 import { usePersistentState } from "./usePersistentState";
+import { useLanFingerprint } from "./useLanFingerprint";
 import type { LanChatMessage, LanChatOnlineUser, LanChatRoom, ChatAttachment } from "../../../shared/types";
 
 const SESSION_KEY = "lan-chat:session:v1";
@@ -40,6 +41,10 @@ const LanChatContext = createContext<LanChatContextValue | null>(null);
  * would open two sockets and race the React state updates.
  */
 export function LanChatProvider({ children }: { children: ReactNode }) {
+  // Best-effort LAN detection — WebRTC ICE gathering or URL hash override.
+  // Same-LAN browsers resolve to the same /24 subnet → same group code.
+  const { groupId } = useLanFingerprint();
+
   const [session, setSessionState] = usePersistentState<SessionInfo | null>(
     SESSION_KEY,
     null,
@@ -71,10 +76,14 @@ export function LanChatProvider({ children }: { children: ReactNode }) {
   });
   const uploadMu = trpc.lanChat.uploadMedia.useMutation();
 
-  const roomsQ = trpc.lanChat.listRooms.useQuery(undefined, {
-    retry: false,
-    staleTime: 60_000,
-  });
+  const roomsQ = trpc.lanChat.listRooms.useQuery(
+    session ? { sessionId: session.sessionId } : undefined,
+    {
+      retry: false,
+      staleTime: 60_000,
+      enabled: !!session, // wait until joinSession finishes
+    },
+  );
 
   // Establish socket when session changes. Guard against stale handlers
   // from a prior effect run (strict-mode double-invoke) writing state
@@ -137,7 +146,7 @@ export function LanChatProvider({ children }: { children: ReactNode }) {
     socket.emit("lan-chat:enter-room", { roomId: activeRoomId });
     prevRoomRef.current = activeRoomId;
     setMessages([]);
-    utils.lanChat.getMessages.fetch({ roomId: activeRoomId, limit: 50 })
+    utils.lanChat.getMessages.fetch({ sessionId: session.sessionId, roomId: activeRoomId, limit: 50 })
       .then((rows) => setMessages([...rows].reverse()))
       .catch(() => { /* swallow */ });
     // Wait for socket to be connected before emitting (in strict-mode the
@@ -170,10 +179,13 @@ export function LanChatProvider({ children }: { children: ReactNode }) {
 
   // ── Actions ────────────────────────────────────────────────────────────────
   const join = useCallback(async (nickname: string) => {
-    const res = await joinMu.mutateAsync({ nickname });
+    // groupId is computed client-side from WebRTC LAN subnet detection
+    // (see useLanFingerprint). Server trusts the client's report — this
+    // is best-effort grouping, not authentication. Same LAN = same code.
+    const res = await joinMu.mutateAsync({ nickname, groupId });
     setSessionState(res);
     return res;
-  }, [joinMu, setSessionState]);
+  }, [joinMu, setSessionState, groupId]);
 
   const send = useCallback(async (content: string, attachments?: ChatAttachment[]) => {
     if (!session) return;
