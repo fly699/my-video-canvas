@@ -1556,6 +1556,10 @@ function CanvasInner({ projectId }: { projectId: number }) {
                 margin: 0,
                 width: mmSize.w,
                 height: mmSize.h,
+                // Force above filmstrip (15) / timeline (18) / bottom toolbar
+                // (20). Inline so it wins against the lib's .react-flow__panel
+                // baseline z-index 5 regardless of CSS load order.
+                zIndex: 30,
               }}
             />
             {/* Minimap drag handle + resize grip — transparent overlay.
