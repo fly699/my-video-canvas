@@ -23,6 +23,11 @@ import type {
   LanChatRoomRow,
   LanChatMessageRow,
   InsertLanChatMessage,
+  LanChatInviteRow,
+  LanChatIpWhitelistRow,
+  LanChatSettingsRow,
+  InsertLanChatInvite,
+  InsertLanChatIpWhitelist,
 } from "../../drizzle/schema";
 
 let nextId = 100;
@@ -479,4 +484,75 @@ export function devGetAllLanChatMessages(opts: {
     .sort((a, b) => b.id - a.id)
     .slice(opts.offset, opts.offset + opts.limit);
   return { rows, total };
+}
+
+// ── LAN Chat — Phase 2B dev fallbacks ───────────────────────────────────────
+
+const lanInvitesMap = new Map<number, LanChatInviteRow>();
+let lanNextInviteId = 1;
+
+export function devCreateLanChatInvite(data: InsertLanChatInvite): LanChatInviteRow {
+  const row: LanChatInviteRow = {
+    id: lanNextInviteId++,
+    code: data.code,
+    groupId: data.groupId,
+    expiresAt: data.expiresAt instanceof Date ? data.expiresAt : new Date(String(data.expiresAt)),
+    usedAt: null,
+    usedByNickname: null,
+    usedByIp: null,
+    createdAt: now(),
+  };
+  lanInvitesMap.set(row.id, row);
+  return row;
+}
+
+export function devListLanChatInvites(): LanChatInviteRow[] {
+  return Array.from(lanInvitesMap.values()).sort((a, b) => b.id - a.id);
+}
+
+export function devRedeemLanChatInvite(code: string, by: { nickname: string; ip: string }): LanChatInviteRow | null {
+  const row = Array.from(lanInvitesMap.values()).find((r) => r.code === code);
+  if (!row) return null;
+  if (row.usedAt) return null;
+  if (row.expiresAt.getTime() <= Date.now()) return null;
+  const updated = { ...row, usedAt: now(), usedByNickname: by.nickname, usedByIp: by.ip };
+  lanInvitesMap.set(row.id, updated);
+  return updated;
+}
+
+const lanIpWhitelistMap = new Map<number, LanChatIpWhitelistRow>();
+let lanNextWhitelistId = 1;
+let lanIpWhitelistEnabledDev = false;
+
+export function devGetLanChatSettings(): LanChatSettingsRow {
+  return { id: 1, ipWhitelistEnabled: lanIpWhitelistEnabledDev, updatedAt: now() };
+}
+
+export function devSetLanChatIpWhitelistEnabled(enabled: boolean): void {
+  lanIpWhitelistEnabledDev = enabled;
+}
+
+export function devListLanChatIpWhitelist(): LanChatIpWhitelistRow[] {
+  return Array.from(lanIpWhitelistMap.values()).sort((a, b) => b.id - a.id);
+}
+
+export function devAddLanChatIpWhitelist(data: InsertLanChatIpWhitelist): LanChatIpWhitelistRow {
+  const existing = Array.from(lanIpWhitelistMap.values()).find((r) => r.ip === data.ip);
+  if (existing) return existing;
+  const row: LanChatIpWhitelistRow = {
+    id: lanNextWhitelistId++,
+    ip: data.ip,
+    note: data.note ?? null,
+    createdAt: now(),
+  };
+  lanIpWhitelistMap.set(row.id, row);
+  return row;
+}
+
+export function devRemoveLanChatIpWhitelist(id: number): boolean {
+  return lanIpWhitelistMap.delete(id);
+}
+
+export function devIsIpInLanChatWhitelist(ip: string): boolean {
+  return Array.from(lanIpWhitelistMap.values()).some((r) => r.ip === ip);
 }

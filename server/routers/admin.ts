@@ -6,6 +6,7 @@ import { invalidateWhitelistCache } from "../_core/whitelist";
 import { invalidateStorageSettingsCache } from "../_core/storageConfig";
 import { storagePut } from "../storage";
 import { ENV } from "../_core/env";
+import { randomBytes } from "crypto";
 
 const AUDIT_ACTIONS = [
   "login_email", "login_oauth",
@@ -194,6 +195,102 @@ export const adminRouter = router({
             createdAt: r.createdAt,
           })),
           total,
+        };
+      }),
+
+    // ── Invite codes ───────────────────────────────────────────────────
+    listInvites: adminProcedure.query(async () => {
+      const rows = await db.listLanChatInvites();
+      return rows.map((r) => ({
+        id: r.id,
+        code: r.code,
+        groupId: r.groupId,
+        expiresAt: r.expiresAt,
+        usedAt: r.usedAt,
+        usedByNickname: r.usedByNickname,
+        usedByIp: r.usedByIp,
+        createdAt: r.createdAt,
+      }));
+    }),
+
+    createInvite: adminProcedure
+      .input(z.object({
+        /** The group to grant access to. Can be any valid groupId; usually
+         *  starts with "code-" (server-coined) for the invite path. */
+        groupId: z.string().regex(/^[A-Za-z0-9._-]{1,64}$/).default(""),
+        expiresInDays: z.number().int().min(1).max(90).default(7),
+      }))
+      .mutation(async ({ input }) => {
+        // Auto-generate a unique group prefix if admin didn't supply one,
+        // so invitees land in a fresh sandbox not colliding with any IP group.
+        const code = randomBytes(12).toString("base64url");
+        const groupId = input.groupId || `code-${randomBytes(6).toString("base64url")}`;
+        const expiresAt = new Date(Date.now() + input.expiresInDays * 86400_000);
+        const row = await db.createLanChatInvite({ code, groupId, expiresAt });
+        if (!row) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "邀请码创建失败" });
+        return { id: row.id, code: row.code, groupId: row.groupId, expiresAt: row.expiresAt };
+      }),
+
+    // ── IP whitelist ────────────────────────────────────────────────────
+    getIpWhitelistSettings: adminProcedure.query(async () => {
+      const settings = await db.getLanChatSettings();
+      const ips = await db.listLanChatIpWhitelist();
+      return {
+        enabled: settings.ipWhitelistEnabled,
+        ips: ips.map((r) => ({ id: r.id, ip: r.ip, note: r.note, createdAt: r.createdAt })),
+      };
+    }),
+
+    setIpWhitelistEnabled: adminProcedure
+      .input(z.object({ enabled: z.boolean() }))
+      .mutation(async ({ input }) => {
+        await db.setLanChatIpWhitelistEnabled(input.enabled);
+        return { success: true };
+      }),
+
+    addIpToWhitelist: adminProcedure
+      .input(z.object({
+        // Same charset guard as the app-wide whitelist (admin.ts: prevent
+        // "unknown" / strings that would bypass the IP gate).
+        ip: z.string().min(1).max(64).refine(
+          (v) => /^[\d.:a-fA-F/]+$/.test(v),
+          { message: "IP 格式无效（仅允许数字、点、冒号、十六进制、斜杠）" },
+        ),
+        note: z.string().max(200).optional(),
+      }))
+      .mutation(async ({ input }) => {
+        const row = await db.addLanChatIpWhitelist({ ip: input.ip, note: input.note ?? null });
+        if (!row) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "添加失败" });
+        return { id: row.id, ip: row.ip, note: row.note };
+      }),
+
+    removeIpFromWhitelist: adminProcedure
+      .input(z.object({ id: z.number().int() }))
+      .mutation(async ({ input }) => {
+        const ok = await db.removeLanChatIpWhitelist(input.id);
+        if (!ok) throw new TRPCError({ code: "NOT_FOUND", message: "条目不存在" });
+        return { success: true };
+      }),
+
+    // ── Connection metadata audit ───────────────────────────────────────
+    // Replaces the deprecated message-content audit (P2P E2E means server
+    // has no message content). Reads from audit_logs filtered to lan_chat
+    // events.
+    listJoinEvents: adminProcedure
+      .input(z.object({
+        limit: z.number().int().min(1).max(200).default(50),
+        offset: z.number().int().min(0).default(0),
+      }))
+      .query(async ({ input }) => {
+        // Reuse the existing audit log infrastructure — action prefix
+        // "lan_chat:" was added in earlier rounds; here we surface them.
+        // No dedicated action filter in getAuditLogs, so fetch broad then
+        // filter in JS. Since admin page is low-traffic, fine.
+        const all = await db.getAuditLogs({ limit: 200, offset: 0 });
+        const filtered = all.rows.filter((r) => r.action.startsWith("lan_chat:"));
+        return {
+          rows: filtered.slice(input.offset, input.offset + input.limit),
+          total: filtered.length,
         };
       }),
   }),

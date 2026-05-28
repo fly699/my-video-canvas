@@ -11,6 +11,9 @@ import {
   createLanChatRoom,
   insertLanChatMessage,
   getLanChatMessages,
+  redeemLanChatInvite,
+  getLanChatSettings,
+  isIpInLanChatWhitelist,
 } from "../db";
 import type { LanChatMessage, ChatAttachment } from "../../shared/types";
 
@@ -90,6 +93,18 @@ export const lanChatRouter = router({
           code: "BAD_REQUEST",
           message: "需要获取公网 IP 后才能加入聊天（请刷新或使用 /lan-chat#g=代号 邀请链接）",
         });
+      }
+      // Admin-controlled public-IP whitelist. When enabled, only IPs in
+      // lan_chat_ip_whitelist may join. Invite-code groups (starts with
+      // "code-") bypass this — admin has explicitly given those out.
+      const settings = await getLanChatSettings();
+      if (settings.ipWhitelistEnabled && !input.groupId.startsWith("code-")) {
+        if (!(await isIpInLanChatWhitelist(ctx.clientIp))) {
+          throw new TRPCError({
+            code: "FORBIDDEN",
+            message: "本应用聊天功能已启用 IP 白名单，您的 IP 未在允许列表",
+          });
+        }
       }
       await ensureLobby(input.groupId);
       const res = lanChatBus.joinSession(input.nickname, input.groupId);
@@ -235,5 +250,24 @@ export const lanChatRouter = router({
       }
       const { url } = await storagePut(key, buf, input.mimeType);
       return { url, storageKey: key };
+    }),
+
+  // Redeem a one-time invite code. Atomic single-use — concurrent
+  // redemptions only let one through; rest get NOT_FOUND. Caller then
+  // calls joinSession with the returned groupId.
+  redeemInvite: publicProcedure
+    .input(z.object({
+      code: z.string().regex(/^[A-Za-z0-9_-]{4,64}$/),
+      nickname: z.string().trim().min(1).max(20).optional(),
+    }))
+    .mutation(async ({ ctx, input }) => {
+      const row = await redeemLanChatInvite(input.code, {
+        nickname: input.nickname ?? "",
+        ip: ctx.clientIp,
+      });
+      if (!row) {
+        throw new TRPCError({ code: "NOT_FOUND", message: "邀请码无效、已使用或已过期" });
+      }
+      return { groupId: row.groupId, expiresAt: row.expiresAt.toISOString() };
     }),
 });
