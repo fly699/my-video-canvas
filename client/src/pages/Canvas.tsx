@@ -1514,7 +1514,9 @@ function CanvasInner({ projectId }: { projectId: number }) {
                 height: mmSize.h,
               }}
             />
-            {/* Minimap drag handle + resize grip — transparent overlay */}
+            {/* Minimap drag handle + resize grip — transparent overlay.
+                z-index: 31 so it stays just above .react-flow__minimap (30)
+                and clears the filmstrip (15) / timeline (25) panels. */}
             <div
               style={{
                 position: "absolute",
@@ -1522,7 +1524,7 @@ function CanvasInner({ projectId }: { projectId: number }) {
                 right: mmPos.right,
                 width: mmSize.w,
                 height: mmSize.h,
-                zIndex: 6,
+                zIndex: 31,
                 pointerEvents: "none",
                 borderRadius: 12,
               }}

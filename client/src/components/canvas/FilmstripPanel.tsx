@@ -1,67 +1,156 @@
 import { useReactFlow } from "@xyflow/react";
-import { useEffect, useRef, useState } from "react";
-import { X, Film, ImageOff, GripHorizontal } from "lucide-react";
+import { useRef } from "react";
+import { X, Film, ImageOff, GripHorizontal, Pin } from "lucide-react";
 import { useCanvasStore } from "../../hooks/useCanvasStore";
 import { getNodeConfig } from "../../lib/nodeConfig";
 import type { NodeType } from "../../../../shared/types";
 import { useLocalMedia } from "../../lib/useLocalMedia";
+import { usePersistentState } from "../../hooks/usePersistentState";
 
 interface FilmstripPanelProps {
   onClose: () => void;
 }
 
-const FILMSTRIP_HEIGHT_KEY = "filmstrip:height:v1";
-const MIN_HEIGHT = 84;   // header + a few px so frames are still scannable
-const MAX_HEIGHT = 360;  // never eat more than ~1/3 of a typical viewport
-const DEFAULT_HEIGHT = 140;
-
-function loadHeight(): number {
-  if (typeof window === "undefined") return DEFAULT_HEIGHT;
-  try {
-    const raw = window.localStorage.getItem(FILMSTRIP_HEIGHT_KEY);
-    if (!raw) return DEFAULT_HEIGHT;
-    const n = parseInt(raw, 10);
-    if (!Number.isFinite(n)) return DEFAULT_HEIGHT;
-    return Math.max(MIN_HEIGHT, Math.min(MAX_HEIGHT, n));
-  } catch { return DEFAULT_HEIGHT; }
+// Layout state lives entirely in one persisted record. When `docked` is true,
+// the panel ignores left/width and pins to the bottom edge spanning full
+// viewport width — the legacy behavior. The user enters floating mode by
+// dragging the header; the pin button snaps back to docked.
+interface FilmstripLayout {
+  docked: boolean;
+  left: number;   // floating only
+  top: number;    // floating only
+  width: number;  // floating only
+  height: number; // both modes
 }
 
-function persistHeight(h: number): void {
-  if (typeof window === "undefined") return;
-  try { window.localStorage.setItem(FILMSTRIP_HEIGHT_KEY, String(h)); } catch { /* ignore */ }
+const MIN_WIDTH = 240;
+const MIN_HEIGHT = 84;
+const MAX_HEIGHT = 360;
+const DEFAULT_HEIGHT = 140;
+
+const DEFAULT_LAYOUT: FilmstripLayout = {
+  docked: true,
+  left: 80,
+  top: 200,
+  width: 720,
+  height: DEFAULT_HEIGHT,
+};
+
+function validateLayout(v: unknown): FilmstripLayout | null {
+  if (!v || typeof v !== "object") return null;
+  const o = v as Partial<FilmstripLayout>;
+  if (typeof o.docked !== "boolean") return null;
+  if (typeof o.height !== "number" || o.height < MIN_HEIGHT || o.height > MAX_HEIGHT) return null;
+  if (typeof o.left !== "number" || typeof o.top !== "number") return null;
+  if (typeof o.width !== "number" || o.width < MIN_WIDTH) return null;
+  return { docked: o.docked, left: o.left, top: o.top, width: o.width, height: o.height };
 }
 
 export function FilmstripPanel({ onClose }: FilmstripPanelProps) {
   const { nodes } = useCanvasStore();
   const reactFlow = useReactFlow();
-  const [height, setHeight] = useState<number>(loadHeight);
-  const dragRef = useRef<{ startY: number; startHeight: number } | null>(null);
+  const [layout, setLayout] = usePersistentState<FilmstripLayout>(
+    "ui:filmstrip:layout:v2",
+    DEFAULT_LAYOUT,
+    { validate: validateLayout },
+  );
+  const dragRef = useRef<{
+    mode: "move" | "resize-height" | "resize-corner";
+    startX: number; startY: number;
+    initLeft: number; initTop: number; initW: number; initH: number;
+  } | null>(null);
 
-  // Drag the grip at the top edge upward to expand, downward to collapse.
-  // Vertical-only drag bound to window so the user can release outside the panel.
-  const startResize = (e: React.MouseEvent) => {
+  // Top-edge grip: vertical-only resize (grow panel upward by dragging up).
+  // Works in both docked and floating modes.
+  const startTopResize = (e: React.MouseEvent) => {
     e.preventDefault();
     e.stopPropagation();
-    dragRef.current = { startY: e.clientY, startHeight: height };
+    dragRef.current = {
+      mode: "resize-height",
+      startX: e.clientX, startY: e.clientY,
+      initLeft: layout.left, initTop: layout.top, initW: layout.width, initH: layout.height,
+    };
     const onMove = (mv: MouseEvent) => {
-      if (!dragRef.current) return;
-      // Top edge moves up → panel grows: delta = startY - currentY
-      const delta = dragRef.current.startY - mv.clientY;
-      const next = Math.max(MIN_HEIGHT, Math.min(MAX_HEIGHT, dragRef.current.startHeight + delta));
-      setHeight(next);
+      const d = dragRef.current;
+      if (!d) return;
+      const delta = d.startY - mv.clientY;
+      const next = Math.max(MIN_HEIGHT, Math.min(MAX_HEIGHT, d.initH + delta));
+      setLayout((cur) => ({
+        ...cur,
+        height: next,
+        // In floating mode, anchor the top to follow the bottom edge so the
+        // panel grows upward (matches docked-mode expectation).
+        top: cur.docked ? cur.top : d.initTop - (next - d.initH),
+      }));
     };
     const onUp = () => {
+      dragRef.current = null;
       window.removeEventListener("mousemove", onMove);
       window.removeEventListener("mouseup", onUp);
-      if (dragRef.current) persistHeight(height);
-      dragRef.current = null;
     };
     window.addEventListener("mousemove", onMove);
     window.addEventListener("mouseup", onUp);
   };
 
-  // Save height when component unmounts mid-drag or on user-driven close
-  useEffect(() => () => { persistHeight(height); }, [height]);
+  // Header drag → move panel. If currently docked, snap to floating mode
+  // using the panel's current viewport rect as the floating origin.
+  const startHeaderDrag = (e: React.MouseEvent) => {
+    if ((e.target as HTMLElement).closest("button")) return;
+    e.preventDefault();
+    const initLeft = layout.docked ? 0 : layout.left;
+    const initTop = layout.docked ? window.innerHeight - layout.height : layout.top;
+    const initW = layout.docked ? window.innerWidth : layout.width;
+    if (layout.docked) {
+      setLayout((cur) => ({ ...cur, docked: false, left: initLeft, top: initTop, width: initW }));
+    }
+    dragRef.current = {
+      mode: "move",
+      startX: e.clientX, startY: e.clientY,
+      initLeft, initTop, initW, initH: layout.height,
+    };
+    const onMove = (mv: MouseEvent) => {
+      const d = dragRef.current;
+      if (!d) return;
+      const nextLeft = Math.max(0, Math.min(window.innerWidth - d.initW, d.initLeft + (mv.clientX - d.startX)));
+      const nextTop = Math.max(0, Math.min(window.innerHeight - d.initH, d.initTop + (mv.clientY - d.startY)));
+      setLayout((cur) => ({ ...cur, left: nextLeft, top: nextTop }));
+    };
+    const onUp = () => {
+      dragRef.current = null;
+      window.removeEventListener("mousemove", onMove);
+      window.removeEventListener("mouseup", onUp);
+    };
+    window.addEventListener("mousemove", onMove);
+    window.addEventListener("mouseup", onUp);
+  };
+
+  // Bottom-right corner resize — width + height. Floating only (docked is
+  // always full-width by design). When docked, only top-edge resize applies.
+  const startCornerResize = (e: React.MouseEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    dragRef.current = {
+      mode: "resize-corner",
+      startX: e.clientX, startY: e.clientY,
+      initLeft: layout.left, initTop: layout.top, initW: layout.width, initH: layout.height,
+    };
+    const onMove = (mv: MouseEvent) => {
+      const d = dragRef.current;
+      if (!d) return;
+      const nextW = Math.max(MIN_WIDTH, Math.min(window.innerWidth - d.initLeft, d.initW + (mv.clientX - d.startX)));
+      const nextH = Math.max(MIN_HEIGHT, Math.min(MAX_HEIGHT, d.initH + (mv.clientY - d.startY)));
+      setLayout((cur) => ({ ...cur, width: nextW, height: nextH }));
+    };
+    const onUp = () => {
+      dragRef.current = null;
+      window.removeEventListener("mousemove", onMove);
+      window.removeEventListener("mouseup", onUp);
+    };
+    window.addEventListener("mousemove", onMove);
+    window.addEventListener("mouseup", onUp);
+  };
+
+  const redock = () => setLayout((cur) => ({ ...cur, docked: true }));
 
   // Filter nodes that have an imageUrl, resultVideoUrl, or imageUrls in payload
   const mediaNodes = nodes.filter((node) => {
@@ -83,31 +172,36 @@ export function FilmstripPanel({ onClose }: FilmstripPanelProps) {
     });
   };
 
+  // Resolve current rect from layout: docked → full-width bottom-pinned,
+  // floating → use the persisted left/top/width.
+  const rectStyle = layout.docked
+    ? { left: 0, right: 0, bottom: 0, width: undefined, top: undefined }
+    : { left: layout.left, top: layout.top, right: undefined, bottom: undefined, width: layout.width };
+
   return (
     <div
       className="canvas-filmstrip"
       style={{
-        // Pinned to the very bottom so the panel feels grounded; z-index sits
-        // BELOW the floating bottom toolbar (z-20) so the toolbar visually
-        // floats on top of the filmstrip and stays clickable. Previous value
-        // (z-25) caused the filmstrip to occlude the toolbar.
+        // z-index 15 keeps the panel above the canvas but below the floating
+        // toolbar (z-20). The minimap (z-30) and timeline (z-25) intentionally
+        // sit higher so the overview/timeline stay reachable.
         position: "absolute",
-        bottom: 0,
-        left: 0,
-        right: 0,
-        height,
+        ...rectStyle,
+        height: layout.height,
         background: "var(--c-base)",
         backdropFilter: "blur(16px)",
-        borderTop: "1px solid var(--c-bd1)",
+        border: layout.docked ? undefined : "1px solid var(--c-bd1)",
+        borderTop: layout.docked ? "1px solid var(--c-bd1)" : undefined,
+        borderRadius: layout.docked ? 0 : 10,
+        boxShadow: layout.docked ? undefined : "0 8px 32px oklch(0 0 0 / 0.45)",
         display: "flex",
         flexDirection: "column",
         zIndex: 15,
       }}
     >
-      {/* Drag grip — sits flush with the top edge; cursor row-resize on the
-          handle itself, all other clicks pass through to header content. */}
+      {/* Top-edge grip: vertical resize (drag up to grow). Works in both modes. */}
       <div
-        onMouseDown={startResize}
+        onMouseDown={startTopResize}
         title="拖动调整胶片条高度"
         style={{
           position: "absolute",
@@ -132,8 +226,9 @@ export function FilmstripPanel({ onClose }: FilmstripPanelProps) {
           }}
         />
       </div>
-      {/* Header */}
+      {/* Header — drag to move (auto-detaches from docked) */}
       <div
+        onMouseDown={startHeaderDrag}
         style={{
           height: 28,
           display: "flex",
@@ -143,6 +238,8 @@ export function FilmstripPanel({ onClose }: FilmstripPanelProps) {
           paddingRight: 8,
           flexShrink: 0,
           borderBottom: "1px solid var(--c-bd1)",
+          cursor: "move",
+          userSelect: "none",
         }}
       >
         <div style={{ display: "flex", alignItems: "center", gap: 5 }}>
@@ -159,32 +256,35 @@ export function FilmstripPanel({ onClose }: FilmstripPanelProps) {
             胶片条 · {mediaNodes.length} 帧
           </span>
         </div>
-        <button
-          onClick={onClose}
-          style={{
-            width: 22,
-            height: 22,
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "center",
-            borderRadius: 6,
-            border: "none",
-            background: "transparent",
-            cursor: "pointer",
-            color: "var(--c-t4)",
-            transition: "all 150ms ease",
-          }}
-          onMouseEnter={(e) => {
-            (e.currentTarget as HTMLElement).style.background = "var(--c-bd1)";
-            (e.currentTarget as HTMLElement).style.color = "var(--c-t2)";
-          }}
-          onMouseLeave={(e) => {
-            (e.currentTarget as HTMLElement).style.background = "transparent";
-            (e.currentTarget as HTMLElement).style.color = "var(--c-t4)";
-          }}
-        >
-          <X style={{ width: 13, height: 13 }} />
-        </button>
+        <div style={{ display: "flex", alignItems: "center", gap: 2 }}>
+          {!layout.docked && (
+            <button
+              onClick={redock}
+              title="吸附到底部"
+              style={{
+                width: 22, height: 22, display: "flex", alignItems: "center", justifyContent: "center",
+                borderRadius: 6, border: "none", background: "transparent", cursor: "pointer",
+                color: "var(--c-t4)", transition: "all 150ms ease",
+              }}
+              onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.background = "var(--c-bd1)"; (e.currentTarget as HTMLElement).style.color = "var(--c-t2)"; }}
+              onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.background = "transparent"; (e.currentTarget as HTMLElement).style.color = "var(--c-t4)"; }}
+            >
+              <Pin style={{ width: 12, height: 12 }} />
+            </button>
+          )}
+          <button
+            onClick={onClose}
+            style={{
+              width: 22, height: 22, display: "flex", alignItems: "center", justifyContent: "center",
+              borderRadius: 6, border: "none", background: "transparent", cursor: "pointer",
+              color: "var(--c-t4)", transition: "all 150ms ease",
+            }}
+            onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.background = "var(--c-bd1)"; (e.currentTarget as HTMLElement).style.color = "var(--c-t2)"; }}
+            onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.background = "transparent"; (e.currentTarget as HTMLElement).style.color = "var(--c-t4)"; }}
+          >
+            <X style={{ width: 13, height: 13 }} />
+          </button>
+        </div>
       </div>
 
       {/* Filmstrip scroll area */}
@@ -252,6 +352,30 @@ export function FilmstripPanel({ onClose }: FilmstripPanelProps) {
           })
         )}
       </div>
+
+      {/* Bottom-right corner — width + height resize. Floating mode only:
+          docked panels span full width by definition. */}
+      {!layout.docked && (
+        <div
+          onMouseDown={startCornerResize}
+          title="拖动调整大小"
+          style={{
+            position: "absolute",
+            right: 0, bottom: 0,
+            width: 16, height: 16,
+            cursor: "nwse-resize",
+            zIndex: 2,
+            display: "flex", alignItems: "flex-end", justifyContent: "flex-end",
+            padding: 2,
+          }}
+        >
+          <svg width="9" height="9" viewBox="0 0 9 9" fill="none" style={{ opacity: 0.45 }}>
+            <circle cx="1.5" cy="7.5" r="1" fill="var(--c-t3)" />
+            <circle cx="4.5" cy="4.5" r="1" fill="var(--c-t3)" />
+            <circle cx="7.5" cy="1.5" r="1" fill="var(--c-t3)" />
+          </svg>
+        </div>
+      )}
     </div>
   );
 }

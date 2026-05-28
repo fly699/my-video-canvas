@@ -1,13 +1,49 @@
 import { useState, useRef, useEffect } from "react";
 import { useReactFlow } from "@xyflow/react";
-import { X, Play, Pause, Clock, Film } from "lucide-react";
+import { X, Play, Pause, Clock, Film, Pin, GripHorizontal } from "lucide-react";
 import { useCanvasStore } from "../../hooks/useCanvasStore";
 import { getNodeConfig } from "../../lib/nodeConfig";
 import type { NodeType } from "../../../../shared/types";
 import { useLocalMedia } from "../../lib/useLocalMedia";
+import { usePersistentState } from "../../hooks/usePersistentState";
 
 interface TimelinePanelProps {
   onClose: () => void;
+}
+
+// Floating panel layout — mirrors FilmstripPanel's pattern. Docked mode pins
+// to bottom (above the toolbar gap, matching legacy behavior); floating mode
+// uses absolute left/top/width.
+interface TimelineLayout {
+  docked: boolean;
+  left: number;
+  top: number;
+  width: number;
+  height: number;
+}
+
+const TL_MIN_W = 240;
+const TL_MIN_H = 96;
+const TL_MAX_H = 360;
+const TL_DEFAULT_H = 148;
+const TL_DOCK_BOTTOM = 72; // matches the legacy bottom offset that clears the toolbar
+
+const TL_DEFAULT_LAYOUT: TimelineLayout = {
+  docked: true,
+  left: 80,
+  top: 220,
+  width: 760,
+  height: TL_DEFAULT_H,
+};
+
+function validateTimelineLayout(v: unknown): TimelineLayout | null {
+  if (!v || typeof v !== "object") return null;
+  const o = v as Partial<TimelineLayout>;
+  if (typeof o.docked !== "boolean") return null;
+  if (typeof o.height !== "number" || o.height < TL_MIN_H || o.height > TL_MAX_H) return null;
+  if (typeof o.left !== "number" || typeof o.top !== "number") return null;
+  if (typeof o.width !== "number" || o.width < TL_MIN_W) return null;
+  return { docked: o.docked, left: o.left, top: o.top, width: o.width, height: o.height };
 }
 
 interface VideoClip {
@@ -25,6 +61,100 @@ export function TimelinePanel({ onClose }: TimelinePanelProps) {
   const reactFlow = useReactFlow();
   const [playingId, setPlayingId] = useState<string | null>(null);
   const videoRefs = useRef<Record<string, HTMLVideoElement | null>>({});
+  const [layout, setLayout] = usePersistentState<TimelineLayout>(
+    "ui:timeline:layout:v1",
+    TL_DEFAULT_LAYOUT,
+    { validate: validateTimelineLayout },
+  );
+  const dragRef = useRef<{
+    mode: "move" | "resize-height" | "resize-corner";
+    startX: number; startY: number;
+    initLeft: number; initTop: number; initW: number; initH: number;
+  } | null>(null);
+
+  const startTopResize = (e: React.MouseEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    dragRef.current = {
+      mode: "resize-height",
+      startX: e.clientX, startY: e.clientY,
+      initLeft: layout.left, initTop: layout.top, initW: layout.width, initH: layout.height,
+    };
+    const onMove = (mv: MouseEvent) => {
+      const d = dragRef.current;
+      if (!d) return;
+      const delta = d.startY - mv.clientY;
+      const next = Math.max(TL_MIN_H, Math.min(TL_MAX_H, d.initH + delta));
+      setLayout((cur) => ({
+        ...cur,
+        height: next,
+        top: cur.docked ? cur.top : d.initTop - (next - d.initH),
+      }));
+    };
+    const onUp = () => {
+      dragRef.current = null;
+      window.removeEventListener("mousemove", onMove);
+      window.removeEventListener("mouseup", onUp);
+    };
+    window.addEventListener("mousemove", onMove);
+    window.addEventListener("mouseup", onUp);
+  };
+
+  const startHeaderDrag = (e: React.MouseEvent) => {
+    if ((e.target as HTMLElement).closest("button")) return;
+    e.preventDefault();
+    const initLeft = layout.docked ? 0 : layout.left;
+    const initTop = layout.docked ? window.innerHeight - layout.height - TL_DOCK_BOTTOM : layout.top;
+    const initW = layout.docked ? window.innerWidth : layout.width;
+    if (layout.docked) {
+      setLayout((cur) => ({ ...cur, docked: false, left: initLeft, top: initTop, width: initW }));
+    }
+    dragRef.current = {
+      mode: "move",
+      startX: e.clientX, startY: e.clientY,
+      initLeft, initTop, initW, initH: layout.height,
+    };
+    const onMove = (mv: MouseEvent) => {
+      const d = dragRef.current;
+      if (!d) return;
+      const nextLeft = Math.max(0, Math.min(window.innerWidth - d.initW, d.initLeft + (mv.clientX - d.startX)));
+      const nextTop = Math.max(0, Math.min(window.innerHeight - d.initH, d.initTop + (mv.clientY - d.startY)));
+      setLayout((cur) => ({ ...cur, left: nextLeft, top: nextTop }));
+    };
+    const onUp = () => {
+      dragRef.current = null;
+      window.removeEventListener("mousemove", onMove);
+      window.removeEventListener("mouseup", onUp);
+    };
+    window.addEventListener("mousemove", onMove);
+    window.addEventListener("mouseup", onUp);
+  };
+
+  const startCornerResize = (e: React.MouseEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    dragRef.current = {
+      mode: "resize-corner",
+      startX: e.clientX, startY: e.clientY,
+      initLeft: layout.left, initTop: layout.top, initW: layout.width, initH: layout.height,
+    };
+    const onMove = (mv: MouseEvent) => {
+      const d = dragRef.current;
+      if (!d) return;
+      const nextW = Math.max(TL_MIN_W, Math.min(window.innerWidth - d.initLeft, d.initW + (mv.clientX - d.startX)));
+      const nextH = Math.max(TL_MIN_H, Math.min(TL_MAX_H, d.initH + (mv.clientY - d.startY)));
+      setLayout((cur) => ({ ...cur, width: nextW, height: nextH }));
+    };
+    const onUp = () => {
+      dragRef.current = null;
+      window.removeEventListener("mousemove", onMove);
+      window.removeEventListener("mouseup", onUp);
+    };
+    window.addEventListener("mousemove", onMove);
+    window.addEventListener("mouseup", onUp);
+  };
+
+  const redock = () => setLayout((cur) => ({ ...cur, docked: true }));
 
   const videoClips: VideoClip[] = nodes
     .filter((node) => {
@@ -92,24 +222,44 @@ export function TimelinePanel({ onClose }: TimelinePanelProps) {
   const proxySrc = (url: string) =>
     url.startsWith("http") ? `/api/video-proxy?url=${encodeURIComponent(url)}` : url;
 
+  const rectStyle = layout.docked
+    ? { left: 0, right: 0, bottom: TL_DOCK_BOTTOM, width: undefined, top: undefined }
+    : { left: layout.left, top: layout.top, right: undefined, bottom: undefined, width: layout.width };
+
   return (
     <div
       style={{
         position: "absolute",
-        bottom: 72,
-        left: 0,
-        right: 0,
-        height: 148,
+        ...rectStyle,
+        height: layout.height,
         background: "color-mix(in oklch, var(--c-base) 97%, transparent)",
-        borderTop: "1px solid var(--c-bd1)",
+        border: layout.docked ? undefined : "1px solid var(--c-bd1)",
+        borderTop: layout.docked ? "1px solid var(--c-bd1)" : undefined,
+        borderRadius: layout.docked ? 0 : 10,
+        boxShadow: layout.docked ? undefined : "0 8px 32px oklch(0 0 0 / 0.45)",
         backdropFilter: "blur(20px)",
         display: "flex",
         flexDirection: "column",
         zIndex: 25,
       }}
     >
-      {/* Header */}
+      {/* Top-edge grip: height resize */}
       <div
+        onMouseDown={startTopResize}
+        title="拖动调整时间轴高度"
+        style={{
+          position: "absolute",
+          top: -3, left: 0, right: 0, height: 6,
+          cursor: "row-resize",
+          display: "flex", alignItems: "center", justifyContent: "center",
+          zIndex: 1,
+        }}
+      >
+        <GripHorizontal style={{ width: 24, height: 10, color: "var(--c-bd3)", opacity: 0.6, pointerEvents: "none" }} />
+      </div>
+      {/* Header — drag to move */}
+      <div
+        onMouseDown={startHeaderDrag}
         style={{
           height: 28,
           display: "flex",
@@ -119,6 +269,8 @@ export function TimelinePanel({ onClose }: TimelinePanelProps) {
           paddingRight: 8,
           flexShrink: 0,
           borderBottom: "1px solid var(--c-bd1)",
+          cursor: "move",
+          userSelect: "none",
         }}
       >
         <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
@@ -162,32 +314,35 @@ export function TimelinePanel({ onClose }: TimelinePanelProps) {
             </div>
           )}
         </div>
-        <button
-          onClick={onClose}
-          style={{
-            width: 22,
-            height: 22,
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "center",
-            borderRadius: 6,
-            border: "none",
-            background: "transparent",
-            cursor: "pointer",
-            color: "var(--c-t4)",
-            transition: "all 150ms ease",
-          }}
-          onMouseEnter={(e) => {
-            (e.currentTarget as HTMLElement).style.background = "var(--c-bd1)";
-            (e.currentTarget as HTMLElement).style.color = "var(--c-t2)";
-          }}
-          onMouseLeave={(e) => {
-            (e.currentTarget as HTMLElement).style.background = "transparent";
-            (e.currentTarget as HTMLElement).style.color = "var(--c-t4)";
-          }}
-        >
-          <X style={{ width: 13, height: 13 }} />
-        </button>
+        <div style={{ display: "flex", alignItems: "center", gap: 2 }}>
+          {!layout.docked && (
+            <button
+              onClick={redock}
+              title="吸附到底部"
+              style={{
+                width: 22, height: 22, display: "flex", alignItems: "center", justifyContent: "center",
+                borderRadius: 6, border: "none", background: "transparent", cursor: "pointer",
+                color: "var(--c-t4)", transition: "all 150ms ease",
+              }}
+              onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.background = "var(--c-bd1)"; (e.currentTarget as HTMLElement).style.color = "var(--c-t2)"; }}
+              onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.background = "transparent"; (e.currentTarget as HTMLElement).style.color = "var(--c-t4)"; }}
+            >
+              <Pin style={{ width: 12, height: 12 }} />
+            </button>
+          )}
+          <button
+            onClick={onClose}
+            style={{
+              width: 22, height: 22, display: "flex", alignItems: "center", justifyContent: "center",
+              borderRadius: 6, border: "none", background: "transparent", cursor: "pointer",
+              color: "var(--c-t4)", transition: "all 150ms ease",
+            }}
+            onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.background = "var(--c-bd1)"; (e.currentTarget as HTMLElement).style.color = "var(--c-t2)"; }}
+            onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.background = "transparent"; (e.currentTarget as HTMLElement).style.color = "var(--c-t4)"; }}
+          >
+            <X style={{ width: 13, height: 13 }} />
+          </button>
+        </div>
       </div>
 
       {/* Scroll area */}
@@ -234,6 +389,29 @@ export function TimelinePanel({ onClose }: TimelinePanelProps) {
           ))
         )}
       </div>
+
+      {/* Corner resize — floating only */}
+      {!layout.docked && (
+        <div
+          onMouseDown={startCornerResize}
+          title="拖动调整大小"
+          style={{
+            position: "absolute",
+            right: 0, bottom: 0,
+            width: 16, height: 16,
+            cursor: "nwse-resize",
+            zIndex: 2,
+            display: "flex", alignItems: "flex-end", justifyContent: "flex-end",
+            padding: 2,
+          }}
+        >
+          <svg width="9" height="9" viewBox="0 0 9 9" fill="none" style={{ opacity: 0.45 }}>
+            <circle cx="1.5" cy="7.5" r="1" fill="var(--c-t3)" />
+            <circle cx="4.5" cy="4.5" r="1" fill="var(--c-t3)" />
+            <circle cx="7.5" cy="1.5" r="1" fill="var(--c-t3)" />
+          </svg>
+        </div>
+      )}
     </div>
   );
 }

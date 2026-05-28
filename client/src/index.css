@@ -683,13 +683,15 @@ button:active:not(:disabled) {
   display: none !important;
 }
 
-/* Minimap */
+/* Minimap — z-index above filmstrip (15) and timeline (25) so the overview
+   stays accessible when bottom panels are open. */
 .react-flow__minimap {
   background: var(--c-base) !important;
   border: 1px solid var(--c-bd1) !important;
   border-radius: 12px !important;
   overflow: hidden !important;
   box-shadow: 0 4px 20px oklch(0 0 0 / 0.45) !important;
+  z-index: 30 !important;
 }
 .react-flow__minimap-mask {
   fill: oklch(0.68 0.22 285 / 0.10) !important;
