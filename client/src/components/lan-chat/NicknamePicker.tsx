@@ -47,7 +47,9 @@ export function NicknamePicker({ onSubmit, busy, fingerprint }: NicknamePickerPr
   const ready = fingerprint.state === "ready";
   const disabled = !ready || busy || !value.trim();
   const sourceBadge = ready
-    ? fingerprint.source === "hash"
+    ? fingerprint.source === "invite"
+      ? { label: "一次性邀请", color: "oklch(0.70 0.20 290)" }
+      : fingerprint.source === "hash"
       ? { label: "邀请链接", color: "oklch(0.72 0.18 50)" }
       : { label: `公网 IP · ${fingerprint.groupId.slice(3)}`, color: "oklch(0.65 0.18 145)" }
     : null;

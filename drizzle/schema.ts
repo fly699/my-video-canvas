@@ -246,6 +246,47 @@ export const lanChatRooms = mysqlTable("lan_chat_rooms", {
 export type LanChatRoomRow = typeof lanChatRooms.$inferSelect;
 export type InsertLanChatRoom = typeof lanChatRooms.$inferInsert;
 
+/** One-time DB-backed invite codes for the LAN chat. Each row, when
+ *  redeemed, grants the bearer membership in `groupId` regardless of
+ *  their actual outbound public IP. Atomic UPDATE WHERE usedAt IS NULL
+ *  AND expiresAt > NOW() ensures concurrent redemptions can't both win. */
+export const lanChatInvites = mysqlTable("lan_chat_invites", {
+  id: int("id").autoincrement().primaryKey(),
+  code: varchar("code", { length: 64 }).notNull().unique(),
+  groupId: varchar("groupId", { length: 64 }).notNull(),
+  expiresAt: timestamp("expiresAt").notNull(),
+  usedAt: timestamp("usedAt"),
+  usedByNickname: varchar("usedByNickname", { length: 64 }),
+  usedByIp: varchar("usedByIp", { length: 64 }),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+});
+
+export type LanChatInviteRow = typeof lanChatInvites.$inferSelect;
+export type InsertLanChatInvite = typeof lanChatInvites.$inferInsert;
+
+/** Admin-managed public-IP whitelist for the LAN chat. When the
+ *  corresponding setting toggle is on, joinSession refuses any IP
+ *  not listed here. App-wide whitelist (whitelistEntries) is left
+ *  alone — LAN chat is its own scope. */
+export const lanChatIpWhitelist = mysqlTable("lan_chat_ip_whitelist", {
+  id: int("id").autoincrement().primaryKey(),
+  ip: varchar("ip", { length: 64 }).notNull().unique(),
+  note: text("note"),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+});
+
+export type LanChatIpWhitelistRow = typeof lanChatIpWhitelist.$inferSelect;
+export type InsertLanChatIpWhitelist = typeof lanChatIpWhitelist.$inferInsert;
+
+/** Single-row settings table (id always 1). */
+export const lanChatSettings = mysqlTable("lan_chat_settings", {
+  id: int("id").autoincrement().primaryKey(),
+  ipWhitelistEnabled: boolean("ipWhitelistEnabled").notNull().default(false),
+  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+});
+
+export type LanChatSettingsRow = typeof lanChatSettings.$inferSelect;
+
 // Messages carry a snapshot of the sender's nickname + color so historical
 // reads still render the right author/badge even after the in-memory session
 // expires. clientIp is captured for audit + same-IP nickname reuse — kept

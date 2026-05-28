@@ -577,165 +577,282 @@ function DetailCell({ detail }: { detail: Record<string, unknown> | null }) {
 // ── LAN chat logs ────────────────────────────────────────────────────────────
 
 function LanChatLogsPanel() {
-  const [selectedRoom, setSelectedRoom] = useState<number | "">("");
-  const [search, setSearch] = useState("");
-  const [offset, setOffset] = useState(0);
-  const LIMIT = 50;
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+      <LanChatInvitesPanel />
+      <LanChatIpWhitelistPanel />
+      <LanChatJoinEventsPanel />
+    </div>
+  );
+}
 
-  const roomsQuery = trpc.admin.lanChat.listRooms.useQuery();
-  const msgsQuery = trpc.admin.lanChat.listMessages.useQuery({
-    roomId: selectedRoom === "" ? undefined : selectedRoom,
-    search: search || undefined,
-    limit: LIMIT,
-    offset,
+function LanChatInvitesPanel() {
+  const utils = trpc.useUtils();
+  const invitesQuery = trpc.admin.lanChat.listInvites.useQuery();
+  const createMu = trpc.admin.lanChat.createInvite.useMutation({
+    onSuccess: () => utils.admin.lanChat.listInvites.invalidate(),
   });
+  const [groupId, setGroupId] = useState("");
+  const [days, setDays] = useState(7);
 
-  const roomNameById = (id: number) => roomsQuery.data?.find((r) => r.id === id)?.name ?? `#${id}`;
-  const networkById = (id: number) => roomsQuery.data?.find((r) => r.id === id)?.networkGroupId ?? "?";
+  const inviteUrl = (code: string) => {
+    if (typeof window === "undefined") return `?invite=${code}`;
+    return `${window.location.origin}/lan-chat?invite=${code}`;
+  };
 
   return (
     <div style={cardStyle}>
-      <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 16, flexWrap: "wrap" }}>
-        <ClipboardList size={18} style={{ color: "var(--c-t2, rgba(255,255,255,0.6))" }} />
-        <span style={{ fontSize: 14, fontWeight: 600, color: "var(--c-t1, #f0f0f4)" }}>LAN 聊天记录</span>
+      <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 12 }}>
+        <span style={{ fontSize: 14, fontWeight: 600, color: "var(--c-t1, #f0f0f4)" }}>一次性邀请码</span>
         <span style={{ fontSize: 11, color: "var(--c-t3, rgba(255,255,255,0.4))" }}>
-          跨网络全部消息 · 仅管理员可见
+          单次使用 · 过期失效 · 接收者无需公网 IP 探测
         </span>
-        <button
-          onClick={() => msgsQuery.refetch()}
-          disabled={msgsQuery.isFetching}
-          style={{
-            marginLeft: "auto", padding: "4px 10px", borderRadius: 6, border: "1px solid var(--c-bd2)",
-            background: "transparent", color: "var(--c-t2, rgba(255,255,255,0.6))", fontSize: 11, cursor: "pointer",
-            display: "flex", alignItems: "center", gap: 4,
-          }}
-        >
-          {msgsQuery.isFetching ? <Loader2 size={11} className="animate-spin" /> : <RefreshCw size={11} />}
-          刷新
-        </button>
       </div>
-
-      {/* Filters */}
-      <div style={{ display: "flex", gap: 8, marginBottom: 12, flexWrap: "wrap" }}>
-        <select
-          value={selectedRoom === "" ? "" : String(selectedRoom)}
-          onChange={(e) => { setSelectedRoom(e.target.value === "" ? "" : Number(e.target.value)); setOffset(0); }}
-          style={{
-            padding: "6px 10px", borderRadius: 6, border: "1px solid var(--c-bd2)",
-            background: "var(--c-input, rgba(255,255,255,0.05))", color: "var(--c-t1, #f0f0f4)",
-            fontSize: 12, minWidth: 200,
-          }}
-        >
-          <option value="">全部房间</option>
-          {(roomsQuery.data ?? []).map((r) => (
-            <option key={r.id} value={r.id}>
-              #{r.id} {r.name} ({r.networkGroupId})
-            </option>
-          ))}
-        </select>
+      <div style={{ display: "flex", gap: 8, marginBottom: 12, flexWrap: "wrap", alignItems: "center" }}>
         <input
-          value={search}
-          onChange={(e) => { setSearch(e.target.value); setOffset(0); }}
-          placeholder="搜索消息内容..."
+          value={groupId}
+          onChange={(e) => setGroupId(e.target.value)}
+          placeholder="目标 groupId（留空自动生成 code-xxx）"
           style={{
-            flex: 1, minWidth: 200, padding: "6px 10px", borderRadius: 6, border: "1px solid var(--c-bd2)",
-            background: "var(--c-input, rgba(255,255,255,0.05))", color: "var(--c-t1, #f0f0f4)", fontSize: 12,
+            flex: 1, minWidth: 220, padding: "6px 10px", borderRadius: 6,
+            border: "1px solid var(--c-bd2)", background: "var(--c-input, rgba(255,255,255,0.05))",
+            color: "var(--c-t1, #f0f0f4)", fontSize: 12,
           }}
         />
-        {(selectedRoom !== "" || search) && (
-          <button
-            onClick={() => { setSelectedRoom(""); setSearch(""); setOffset(0); }}
-            style={{
-              padding: "6px 10px", borderRadius: 6, border: "1px solid var(--c-bd2)",
-              background: "transparent", color: "var(--c-t3, rgba(255,255,255,0.4))", fontSize: 11, cursor: "pointer",
-            }}
-          >
-            清除筛选
-          </button>
-        )}
+        <input
+          type="number"
+          value={days}
+          min={1} max={90}
+          onChange={(e) => setDays(Number(e.target.value) || 7)}
+          style={{
+            width: 90, padding: "6px 10px", borderRadius: 6,
+            border: "1px solid var(--c-bd2)", background: "var(--c-input, rgba(255,255,255,0.05))",
+            color: "var(--c-t1, #f0f0f4)", fontSize: 12,
+          }}
+          title="过期天数 (1-90)"
+        />
+        <button
+          onClick={() => createMu.mutate({ groupId: groupId || "", expiresInDays: days })}
+          disabled={createMu.isPending}
+          style={{
+            padding: "6px 14px", borderRadius: 6, border: "1px solid oklch(0.68 0.22 285 / 0.4)",
+            background: "oklch(0.68 0.22 285 / 0.18)", color: "oklch(0.82 0.20 285)", fontSize: 11, cursor: "pointer",
+          }}
+        >
+          {createMu.isPending ? "生成中..." : "+ 生成邀请码"}
+        </button>
       </div>
+      <div style={{ border: "1px solid var(--c-bd1)", borderRadius: 8, overflow: "hidden" }}>
+        <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 11 }}>
+          <thead>
+            <tr style={{ background: "var(--c-elevated, rgba(255,255,255,0.03))" }}>
+              <th style={thStyle}>邀请链接</th>
+              <th style={thStyle}>目标 groupId</th>
+              <th style={thStyle}>过期</th>
+              <th style={thStyle}>状态</th>
+            </tr>
+          </thead>
+          <tbody>
+            {(invitesQuery.data ?? []).map((iv) => {
+              const used = !!iv.usedAt;
+              const expired = new Date(iv.expiresAt).getTime() < Date.now();
+              const status = used ? `已用：${iv.usedByNickname ?? ""} (${iv.usedByIp ?? ""})` : expired ? "已过期" : "可用";
+              const url = inviteUrl(iv.code);
+              return (
+                <tr key={iv.id} style={{ borderTop: "1px solid var(--c-bd1)" }}>
+                  <td style={tdStyle}>
+                    <code style={{ fontSize: 10, color: "var(--c-t2, rgba(255,255,255,0.6))" }}>{url}</code>
+                    <button
+                      onClick={() => navigator.clipboard.writeText(url)}
+                      style={{ marginLeft: 6, fontSize: 9, padding: "1px 5px", borderRadius: 3, border: "1px solid var(--c-bd2)", background: "transparent", color: "var(--c-t3)", cursor: "pointer" }}
+                    >复制</button>
+                  </td>
+                  <td style={{ ...tdStyle, fontFamily: "monospace", fontSize: 10 }}>{iv.groupId}</td>
+                  <td style={tdStyle}>{new Date(iv.expiresAt).toLocaleString("zh-CN")}</td>
+                  <td style={{ ...tdStyle, color: used || expired ? "var(--c-t4)" : "oklch(0.70 0.18 145)" }}>
+                    {status}
+                  </td>
+                </tr>
+              );
+            })}
+            {(invitesQuery.data?.length ?? 0) === 0 && (
+              <tr><td colSpan={4} style={{ padding: 24, textAlign: "center", color: "var(--c-t4)", fontSize: 12 }}>暂无邀请码</td></tr>
+            )}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  );
+}
 
-      {/* Messages table */}
+function LanChatIpWhitelistPanel() {
+  const utils = trpc.useUtils();
+  const settingsQuery = trpc.admin.lanChat.getIpWhitelistSettings.useQuery();
+  const setEnabledMu = trpc.admin.lanChat.setIpWhitelistEnabled.useMutation({
+    onSuccess: () => utils.admin.lanChat.getIpWhitelistSettings.invalidate(),
+  });
+  const addMu = trpc.admin.lanChat.addIpToWhitelist.useMutation({
+    onSuccess: () => utils.admin.lanChat.getIpWhitelistSettings.invalidate(),
+  });
+  const removeMu = trpc.admin.lanChat.removeIpFromWhitelist.useMutation({
+    onSuccess: () => utils.admin.lanChat.getIpWhitelistSettings.invalidate(),
+  });
+  const [newIp, setNewIp] = useState("");
+  const [newNote, setNewNote] = useState("");
+  const enabled = settingsQuery.data?.enabled ?? false;
+
+  return (
+    <div style={cardStyle}>
+      <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 12 }}>
+        <span style={{ fontSize: 14, fontWeight: 600, color: "var(--c-t1, #f0f0f4)" }}>公网 IP 白名单</span>
+        <span style={{ fontSize: 11, color: "var(--c-t3, rgba(255,255,255,0.4))" }}>
+          启用后只有白名单 IP 可加入聊天（邀请码绕过此限制）
+        </span>
+        <button
+          onClick={() => setEnabledMu.mutate({ enabled: !enabled })}
+          disabled={setEnabledMu.isPending}
+          style={{
+            marginLeft: "auto", padding: "5px 14px", borderRadius: 6,
+            border: `1px solid ${enabled ? "oklch(0.70 0.18 145 / 0.4)" : "var(--c-bd2)"}`,
+            background: enabled ? "oklch(0.70 0.18 145 / 0.18)" : "transparent",
+            color: enabled ? "oklch(0.80 0.18 145)" : "var(--c-t3)", fontSize: 11, cursor: "pointer",
+            display: "flex", alignItems: "center", gap: 5,
+          }}
+        >
+          {enabled ? <ToggleRight size={14} /> : <ToggleLeft size={14} />}
+          {enabled ? "已启用" : "已停用"}
+        </button>
+      </div>
+      <div style={{ display: "flex", gap: 8, marginBottom: 12, flexWrap: "wrap" }}>
+        <input
+          value={newIp}
+          onChange={(e) => setNewIp(e.target.value)}
+          placeholder="IP（如 218.249.42.7）"
+          style={{
+            flex: 1, minWidth: 180, padding: "6px 10px", borderRadius: 6,
+            border: "1px solid var(--c-bd2)", background: "var(--c-input, rgba(255,255,255,0.05))",
+            color: "var(--c-t1, #f0f0f4)", fontSize: 12,
+          }}
+        />
+        <input
+          value={newNote}
+          onChange={(e) => setNewNote(e.target.value)}
+          placeholder="备注（可选）"
+          style={{
+            flex: 1, minWidth: 180, padding: "6px 10px", borderRadius: 6,
+            border: "1px solid var(--c-bd2)", background: "var(--c-input, rgba(255,255,255,0.05))",
+            color: "var(--c-t1, #f0f0f4)", fontSize: 12,
+          }}
+        />
+        <button
+          onClick={() => {
+            if (!newIp.trim()) return;
+            addMu.mutate({ ip: newIp.trim(), note: newNote.trim() || undefined }, {
+              onSuccess: () => { setNewIp(""); setNewNote(""); },
+            });
+          }}
+          disabled={!newIp.trim() || addMu.isPending}
+          style={{
+            padding: "6px 14px", borderRadius: 6, border: "1px solid oklch(0.68 0.22 285 / 0.4)",
+            background: "oklch(0.68 0.22 285 / 0.18)", color: "oklch(0.82 0.20 285)", fontSize: 11, cursor: "pointer",
+          }}
+        >+ 添加</button>
+      </div>
+      <div style={{ border: "1px solid var(--c-bd1)", borderRadius: 8, overflow: "hidden" }}>
+        <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 11 }}>
+          <thead>
+            <tr style={{ background: "var(--c-elevated, rgba(255,255,255,0.03))" }}>
+              <th style={thStyle}>IP</th>
+              <th style={thStyle}>备注</th>
+              <th style={thStyle}>添加时间</th>
+              <th style={thStyle}>操作</th>
+            </tr>
+          </thead>
+          <tbody>
+            {(settingsQuery.data?.ips ?? []).map((row) => (
+              <tr key={row.id} style={{ borderTop: "1px solid var(--c-bd1)" }}>
+                <td style={{ ...tdStyle, fontFamily: "monospace", fontSize: 11 }}>{row.ip}</td>
+                <td style={tdStyle}>{row.note ?? ""}</td>
+                <td style={{ ...tdStyle, color: "var(--c-t3)", fontSize: 10 }}>
+                  {new Date(row.createdAt).toLocaleString("zh-CN")}
+                </td>
+                <td style={tdStyle}>
+                  <button
+                    onClick={() => removeMu.mutate({ id: row.id })}
+                    style={{ fontSize: 10, padding: "2px 7px", borderRadius: 4, border: "1px solid oklch(0.62 0.20 25 / 0.40)", background: "transparent", color: "oklch(0.70 0.22 25)", cursor: "pointer" }}
+                  ><Trash2 size={10} /></button>
+                </td>
+              </tr>
+            ))}
+            {(settingsQuery.data?.ips.length ?? 0) === 0 && (
+              <tr><td colSpan={4} style={{ padding: 24, textAlign: "center", color: "var(--c-t4)", fontSize: 12 }}>白名单为空</td></tr>
+            )}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  );
+}
+
+function LanChatJoinEventsPanel() {
+  const [offset, setOffset] = useState(0);
+  const LIMIT = 50;
+  const eventsQuery = trpc.admin.lanChat.listJoinEvents.useQuery({ limit: LIMIT, offset });
+
+  return (
+    <div style={cardStyle}>
+      <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 12 }}>
+        <span style={{ fontSize: 14, fontWeight: 600, color: "var(--c-t1, #f0f0f4)" }}>连接事件审计</span>
+        <span style={{ fontSize: 11, color: "var(--c-t3, rgba(255,255,255,0.4))" }}>
+          P2P E2E 后服务器看不到消息内容；仅记录 join / IP 不一致 / 邀请使用等元数据
+        </span>
+      </div>
       <div style={{ border: "1px solid var(--c-bd1)", borderRadius: 8, overflow: "hidden" }}>
         <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 11 }}>
           <thead>
             <tr style={{ background: "var(--c-elevated, rgba(255,255,255,0.03))" }}>
               <th style={thStyle}>时间</th>
-              <th style={thStyle}>房间</th>
-              <th style={thStyle}>昵称</th>
+              <th style={thStyle}>事件</th>
               <th style={thStyle}>来源 IP</th>
-              <th style={thStyle}>内容</th>
+              <th style={thStyle}>详情</th>
             </tr>
           </thead>
           <tbody>
-            {(msgsQuery.data?.rows ?? []).map((m) => (
-              <tr key={m.id} style={{ borderTop: "1px solid var(--c-bd1)" }}>
-                <td style={tdStyle}>
-                  <span style={{ fontVariantNumeric: "tabular-nums", color: "var(--c-t3, rgba(255,255,255,0.4))" }}>
-                    {new Date(m.createdAt).toLocaleString("zh-CN")}
-                  </span>
+            {(eventsQuery.data?.rows ?? []).map((r) => (
+              <tr key={r.id} style={{ borderTop: "1px solid var(--c-bd1)" }}>
+                <td style={{ ...tdStyle, fontVariantNumeric: "tabular-nums", color: "var(--c-t3)", whiteSpace: "nowrap" }}>
+                  {new Date(r.createdAt).toLocaleString("zh-CN")}
                 </td>
                 <td style={tdStyle}>
-                  <span style={{ color: "var(--c-t2, rgba(255,255,255,0.6))" }}>
-                    #{m.roomId} {roomNameById(m.roomId)}
-                  </span>
-                  <br />
-                  <span style={{ fontSize: 9, color: "var(--c-t4, rgba(255,255,255,0.3))", fontFamily: "monospace" }}>
-                    {networkById(m.roomId)}
-                  </span>
+                  <code style={{ fontSize: 10, color: r.action === "lan_chat:ip_mismatch" ? "oklch(0.70 0.22 25)" : "oklch(0.80 0.20 285)" }}>
+                    {r.action}
+                  </code>
                 </td>
-                <td style={tdStyle}>
-                  <span style={{ color: m.color, fontWeight: 600 }}>{m.nickname}</span>
+                <td style={{ ...tdStyle, fontFamily: "monospace", fontSize: 10, color: "var(--c-t4)" }}>
+                  {r.ip}
                 </td>
-                <td style={{ ...tdStyle, fontFamily: "monospace", fontSize: 10, color: "var(--c-t4, rgba(255,255,255,0.3))" }}>
-                  {m.clientIp}
-                </td>
-                <td style={{ ...tdStyle, color: "var(--c-t1, #f0f0f4)", maxWidth: 400, wordBreak: "break-word" }}>
-                  {m.content}
-                  {Array.isArray(m.attachments) && (m.attachments as unknown[]).length > 0 && (
-                    <span style={{ marginLeft: 6, fontSize: 10, color: "var(--c-t4)" }}>
-                      📎 {(m.attachments as unknown[]).length} 个附件
-                    </span>
-                  )}
+                <td style={{ ...tdStyle, color: "var(--c-t2)", maxWidth: 400, wordBreak: "break-word", fontSize: 10 }}>
+                  <code>{r.detail ? JSON.stringify(r.detail) : ""}</code>
                 </td>
               </tr>
             ))}
-            {!msgsQuery.isLoading && (msgsQuery.data?.rows.length ?? 0) === 0 && (
-              <tr>
-                <td colSpan={5} style={{ padding: 24, textAlign: "center", color: "var(--c-t4, rgba(255,255,255,0.3))", fontSize: 12 }}>
-                  无聊天记录
-                </td>
-              </tr>
+            {(eventsQuery.data?.rows.length ?? 0) === 0 && (
+              <tr><td colSpan={4} style={{ padding: 24, textAlign: "center", color: "var(--c-t4)", fontSize: 12 }}>无事件</td></tr>
             )}
           </tbody>
         </table>
       </div>
-
-      {/* Pagination */}
-      {(msgsQuery.data?.total ?? 0) > LIMIT && (
+      {(eventsQuery.data?.total ?? 0) > LIMIT && (
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginTop: 12 }}>
-          <span style={{ fontSize: 11, color: "var(--c-t3, rgba(255,255,255,0.4))" }}>
-            共 {msgsQuery.data?.total} 条 · 第 {Math.floor(offset / LIMIT) + 1} / {Math.ceil((msgsQuery.data?.total ?? 0) / LIMIT)} 页
+          <span style={{ fontSize: 11, color: "var(--c-t3)" }}>
+            共 {eventsQuery.data?.total} 条
           </span>
           <div style={{ display: "flex", gap: 6 }}>
-            <button
-              onClick={() => setOffset(Math.max(0, offset - LIMIT))}
-              disabled={offset === 0}
-              style={{
-                padding: "4px 10px", borderRadius: 6, border: "1px solid var(--c-bd2)",
-                background: "transparent", color: "var(--c-t2, rgba(255,255,255,0.6))", fontSize: 11,
-                cursor: offset === 0 ? "not-allowed" : "pointer", opacity: offset === 0 ? 0.4 : 1,
-              }}
+            <button onClick={() => setOffset(Math.max(0, offset - LIMIT))} disabled={offset === 0}
+              style={{ padding: "4px 10px", borderRadius: 6, border: "1px solid var(--c-bd2)", background: "transparent", color: "var(--c-t2)", fontSize: 11, cursor: offset === 0 ? "not-allowed" : "pointer", opacity: offset === 0 ? 0.4 : 1 }}
             >上一页</button>
-            <button
-              onClick={() => setOffset(offset + LIMIT)}
-              disabled={(offset + LIMIT) >= (msgsQuery.data?.total ?? 0)}
-              style={{
-                padding: "4px 10px", borderRadius: 6, border: "1px solid var(--c-bd2)",
-                background: "transparent", color: "var(--c-t2, rgba(255,255,255,0.6))", fontSize: 11,
-                cursor: (offset + LIMIT) >= (msgsQuery.data?.total ?? 0) ? "not-allowed" : "pointer",
-                opacity: (offset + LIMIT) >= (msgsQuery.data?.total ?? 0) ? 0.4 : 1,
-              }}
+            <button onClick={() => setOffset(offset + LIMIT)} disabled={(offset + LIMIT) >= (eventsQuery.data?.total ?? 0)}
+              style={{ padding: "4px 10px", borderRadius: 6, border: "1px solid var(--c-bd2)", background: "transparent", color: "var(--c-t2)", fontSize: 11, cursor: (offset + LIMIT) >= (eventsQuery.data?.total ?? 0) ? "not-allowed" : "pointer", opacity: (offset + LIMIT) >= (eventsQuery.data?.total ?? 0) ? 0.4 : 1 }}
             >下一页</button>
           </div>
         </div>

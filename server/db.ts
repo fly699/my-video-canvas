@@ -26,10 +26,18 @@ import {
   InsertProjectShareLink,
   lanChatRooms,
   lanChatMessages,
+  lanChatInvites,
+  lanChatIpWhitelist,
+  lanChatSettings,
   type LanChatRoomRow,
   type LanChatMessageRow,
+  type LanChatInviteRow,
+  type LanChatIpWhitelistRow,
+  type LanChatSettingsRow,
   type InsertLanChatRoom,
   type InsertLanChatMessage,
+  type InsertLanChatInvite,
+  type InsertLanChatIpWhitelist,
 } from "../drizzle/schema";
 import { ENV } from "./_core/env";
 import * as dev from "./_core/devStore";
@@ -867,6 +875,90 @@ export async function getAllLanChatMessages(opts: {
     db.select({ count: sql<number>`COUNT(*)` }).from(lanChatMessages).where(where),
   ]);
   return { rows, total: Number(countRows[0]?.count ?? 0) };
+}
+
+// ── LAN Chat — invites ──────────────────────────────────────────────────────
+
+export async function createLanChatInvite(data: InsertLanChatInvite): Promise<LanChatInviteRow | null> {
+  const db = await getDb();
+  if (!db) { if (DEV_MODE) return dev.devCreateLanChatInvite(data); throw new Error("DB unavailable"); }
+  await db.insert(lanChatInvites).values(data);
+  const rows = await db.select().from(lanChatInvites).where(eq(lanChatInvites.code, data.code)).limit(1);
+  return rows[0] ?? null;
+}
+
+export async function listLanChatInvites(): Promise<LanChatInviteRow[]> {
+  const db = await getDb();
+  if (!db) return DEV_MODE ? dev.devListLanChatInvites() : [];
+  return db.select().from(lanChatInvites).orderBy(desc(lanChatInvites.id));
+}
+
+/** Atomic single-use redeem. Returns the row iff the UPDATE actually
+ *  flipped `usedAt` from NULL → NOW(). Concurrent redemptions on the
+ *  same code: only the first one's UPDATE matches, the rest get null. */
+export async function redeemLanChatInvite(
+  code: string,
+  by: { nickname: string; ip: string },
+): Promise<LanChatInviteRow | null> {
+  const db = await getDb();
+  if (!db) { if (DEV_MODE) return dev.devRedeemLanChatInvite(code, by); throw new Error("DB unavailable"); }
+  const result = await db
+    .update(lanChatInvites)
+    .set({ usedAt: new Date(), usedByNickname: by.nickname, usedByIp: by.ip })
+    .where(and(
+      eq(lanChatInvites.code, code),
+      isNull(lanChatInvites.usedAt),
+      sql`${lanChatInvites.expiresAt} > NOW()`,
+    ));
+  const header = Array.isArray(result) ? result[0] : result;
+  const affected = (header as { affectedRows?: number })?.affectedRows ?? 0;
+  if (affected === 0) return null;
+  const rows = await db.select().from(lanChatInvites).where(eq(lanChatInvites.code, code)).limit(1);
+  return rows[0] ?? null;
+}
+
+// ── LAN Chat — IP whitelist + settings ──────────────────────────────────────
+
+export async function getLanChatSettings(): Promise<LanChatSettingsRow> {
+  const db = await getDb();
+  if (!db) return DEV_MODE ? dev.devGetLanChatSettings() : { id: 1, ipWhitelistEnabled: false, updatedAt: new Date() };
+  const rows = await db.select().from(lanChatSettings).where(eq(lanChatSettings.id, 1)).limit(1);
+  return rows[0] ?? { id: 1, ipWhitelistEnabled: false, updatedAt: new Date() };
+}
+
+export async function setLanChatIpWhitelistEnabled(enabled: boolean): Promise<void> {
+  const db = await getDb();
+  if (!db) { if (DEV_MODE) dev.devSetLanChatIpWhitelistEnabled(enabled); return; }
+  await db.insert(lanChatSettings).values({ id: 1, ipWhitelistEnabled: enabled })
+    .onDuplicateKeyUpdate({ set: { ipWhitelistEnabled: enabled } });
+}
+
+export async function listLanChatIpWhitelist(): Promise<LanChatIpWhitelistRow[]> {
+  const db = await getDb();
+  if (!db) return DEV_MODE ? dev.devListLanChatIpWhitelist() : [];
+  return db.select().from(lanChatIpWhitelist).orderBy(desc(lanChatIpWhitelist.id));
+}
+
+export async function addLanChatIpWhitelist(data: InsertLanChatIpWhitelist): Promise<LanChatIpWhitelistRow | null> {
+  const db = await getDb();
+  if (!db) { if (DEV_MODE) return dev.devAddLanChatIpWhitelist(data); throw new Error("DB unavailable"); }
+  await db.insert(lanChatIpWhitelist).values(data).onDuplicateKeyUpdate({ set: { ip: sql`ip` } });
+  const rows = await db.select().from(lanChatIpWhitelist).where(eq(lanChatIpWhitelist.ip, data.ip)).limit(1);
+  return rows[0] ?? null;
+}
+
+export async function removeLanChatIpWhitelist(id: number): Promise<boolean> {
+  const db = await getDb();
+  if (!db) return DEV_MODE ? dev.devRemoveLanChatIpWhitelist(id) : false;
+  const [result] = await db.delete(lanChatIpWhitelist).where(eq(lanChatIpWhitelist.id, id));
+  return (result as { affectedRows?: number }).affectedRows !== 0;
+}
+
+export async function isIpInLanChatWhitelist(ip: string): Promise<boolean> {
+  const db = await getDb();
+  if (!db) return DEV_MODE ? dev.devIsIpInLanChatWhitelist(ip) : false;
+  const rows = await db.select().from(lanChatIpWhitelist).where(eq(lanChatIpWhitelist.ip, ip)).limit(1);
+  return rows.length > 0;
 }
 
 // ── Audit Logs ────────────────────────────────────────────────────────────────
