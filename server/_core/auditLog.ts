@@ -72,7 +72,9 @@ export type AuditAction =
   | "collab:public_toggle"
   | "collab:create_link"
   | "collab:revoke_link"
-  | "collab:accept_link";
+  | "collab:accept_link"
+  | "lan_chat:join"
+  | "lan_chat:ip_mismatch";
 
 export interface AuditOpts {
   ctx?: TrpcContext;

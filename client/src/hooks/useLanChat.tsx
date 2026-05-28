@@ -15,6 +15,10 @@ interface SessionInfo {
 }
 
 interface LanChatContextValue {
+  /** Public-IP fingerprint state — UI must check this BEFORE letting
+   *  the user join. "loading" → show spinner; "error" → show diagnostic
+   *  card; "ready" → unlock the nickname form. */
+  fingerprint: ReturnType<typeof useLanFingerprint>;
   session: SessionInfo | null;
   join: (nickname: string) => Promise<SessionInfo>;
   clearSession: () => void;
@@ -41,9 +45,10 @@ const LanChatContext = createContext<LanChatContextValue | null>(null);
  * would open two sockets and race the React state updates.
  */
 export function LanChatProvider({ children }: { children: ReactNode }) {
-  // Best-effort LAN detection — WebRTC ICE gathering or URL hash override.
-  // Same-LAN browsers resolve to the same /24 subnet → same group code.
-  const { groupId } = useLanFingerprint();
+  // Public-IP-based grouping (or URL hash override). Three states:
+  // loading / ready (with groupId) / error. join() refuses to run until
+  // state === "ready" — there is no "public" fallback by design.
+  const fingerprint = useLanFingerprint();
 
   const [session, setSessionState] = usePersistentState<SessionInfo | null>(
     SESSION_KEY,
@@ -179,13 +184,13 @@ export function LanChatProvider({ children }: { children: ReactNode }) {
 
   // ── Actions ────────────────────────────────────────────────────────────────
   const join = useCallback(async (nickname: string) => {
-    // groupId is computed client-side from WebRTC LAN subnet detection
-    // (see useLanFingerprint). Server trusts the client's report — this
-    // is best-effort grouping, not authentication. Same LAN = same code.
-    const res = await joinMu.mutateAsync({ nickname, groupId });
+    if (fingerprint.state !== "ready") {
+      throw new Error("公网 IP 未就绪，无法加入聊天");
+    }
+    const res = await joinMu.mutateAsync({ nickname, groupId: fingerprint.groupId });
     setSessionState(res);
     return res;
-  }, [joinMu, setSessionState, groupId]);
+  }, [joinMu, setSessionState, fingerprint]);
 
   const send = useCallback(async (content: string, attachments?: ChatAttachment[]) => {
     if (!session) return;
@@ -231,6 +236,7 @@ export function LanChatProvider({ children }: { children: ReactNode }) {
   const clearSession = useCallback(() => setSessionState(null), [setSessionState]);
 
   const value: LanChatContextValue = {
+    fingerprint,
     session,
     join,
     clearSession,

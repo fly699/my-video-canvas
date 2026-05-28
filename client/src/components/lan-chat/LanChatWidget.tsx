@@ -35,7 +35,7 @@ interface LanChatWidgetProps {
  */
 export function LanChatWidget({ state, onStateChange }: LanChatWidgetProps) {
   const chat = useLanChat();
-  const { session, join, messages } = chat;
+  const { session, join, messages, fingerprint } = chat;
 
   const [layout, setLayout] = usePersistentState<FloatLayout>(
     "ui:lan-chat:layout:v1",
@@ -281,7 +281,7 @@ export function LanChatWidget({ state, onStateChange }: LanChatWidgetProps) {
       {/* Nickname picker overlay if no session */}
       {!session && (
         <div className="flex-1 relative">
-          <NicknamePicker onSubmit={async (n) => { await join(n); }} />
+          <NicknamePicker fingerprint={fingerprint} onSubmit={async (n) => { await join(n); }} />
         </div>
       )}
       {session && (

@@ -8,10 +8,15 @@ import { NicknamePicker } from "@/components/lan-chat/NicknamePicker";
  * even loads externally — when we reach this component the user is on LAN.
  */
 export default function LanChatPage() {
-  const { session, join } = useLanChat();
+  const { session, join, fingerprint } = useLanChat();
 
   if (!session) {
-    return <NicknamePicker onSubmit={async (n) => { await join(n); }} />;
+    return (
+      <NicknamePicker
+        fingerprint={fingerprint}
+        onSubmit={async (n) => { await join(n); }}
+      />
+    );
   }
 
   return (
