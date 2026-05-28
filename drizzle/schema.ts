@@ -215,6 +215,40 @@ export const chatMessages = mysqlTable("chat_messages", {
 export type ChatMessage = typeof chatMessages.$inferSelect;
 export type InsertChatMessage = typeof chatMessages.$inferInsert;
 
+// ── LAN Chat ──────────────────────────────────────────────────────────────────
+// Lightweight nickname-only group chat scoped to the local network. No coupling
+// to users/projects — content lives entirely in these two tables so the feature
+// can be uninstalled without touching the rest of the schema.
+
+export const lanChatRooms = mysqlTable("lan_chat_rooms", {
+  id: int("id").autoincrement().primaryKey(),
+  name: varchar("name", { length: 80 }).notNull().unique(),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+});
+
+export type LanChatRoomRow = typeof lanChatRooms.$inferSelect;
+export type InsertLanChatRoom = typeof lanChatRooms.$inferInsert;
+
+// Messages carry a snapshot of the sender's nickname + color so historical
+// reads still render the right author/badge even after the in-memory session
+// expires. clientIp is captured for audit + same-IP nickname reuse — kept
+// short (IPv6 max 39 chars) and never exposed to the client.
+export const lanChatMessages = mysqlTable("lan_chat_messages", {
+  id: int("id").autoincrement().primaryKey(),
+  roomId: int("roomId").notNull(),
+  nickname: varchar("nickname", { length: 64 }).notNull(),
+  color: varchar("color", { length: 16 }).notNull(),
+  content: text("content").notNull(),
+  attachments: json("attachments"),
+  clientIp: varchar("clientIp", { length: 64 }).notNull(),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+}, (t) => ({
+  roomCreatedIdx: index("lan_chat_msgs_room_created_idx").on(t.roomId, t.createdAt),
+}));
+
+export type LanChatMessageRow = typeof lanChatMessages.$inferSelect;
+export type InsertLanChatMessage = typeof lanChatMessages.$inferInsert;
+
 // ── Whitelist ─────────────────────────────────────────────────────────────────
 
 export const whitelistSettings = mysqlTable("whitelistSettings", {

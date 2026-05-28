@@ -137,6 +137,31 @@ export interface ChatAttachment {
   textContent?: string;
 }
 
+// ── LAN Chat ────────────────────────────────────────────────────────────────
+// Shared shapes so client + server agree on socket payloads. Mirrors the DB
+// rows but uses Date as ISO string for JSON-safe transport.
+
+export interface LanChatRoom {
+  id: number;
+  name: string;
+}
+
+export interface LanChatMessage {
+  id: number;
+  roomId: number;
+  nickname: string;
+  color: string;
+  content: string;
+  attachments?: ChatAttachment[] | null;
+  createdAt: string; // ISO
+}
+
+export interface LanChatOnlineUser {
+  sessionId: string;
+  nickname: string;
+  color: string;
+}
+
 export interface AIChatNodeData {
   systemPrompt?: string;
   contextNodeIds?: string[];

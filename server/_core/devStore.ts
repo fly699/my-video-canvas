@@ -20,6 +20,9 @@ import type {
   InsertChatMessage,
   InsertProjectCollaborator,
   InsertProjectShareLink,
+  LanChatRoomRow,
+  LanChatMessageRow,
+  InsertLanChatMessage,
 } from "../../drizzle/schema";
 
 let nextId = 100;
@@ -402,4 +405,48 @@ export function devRevokeShareLink(id: number) {
   const l = shareLinksMap.get(id);
   if (!l) return;
   shareLinksMap.set(id, { ...l, revokedAt: now() });
+}
+
+// ── LAN Chat (dev) ───────────────────────────────────────────────────────────
+// Single in-memory store keyed by row id. Seeded with the "大厅" lobby that
+// production gets via the 0016 migration INSERT IGNORE.
+const lanRoomsMap = new Map<number, LanChatRoomRow>([
+  [1, { id: 1, name: "大厅", createdAt: now() }],
+]);
+const lanMessagesMap = new Map<number, LanChatMessageRow>();
+let lanNextRoomId = 2;
+let lanNextMessageId = 1;
+
+export function devListLanChatRooms(): LanChatRoomRow[] {
+  return Array.from(lanRoomsMap.values()).sort((a, b) => a.id - b.id);
+}
+
+export function devCreateLanChatRoom(name: string): LanChatRoomRow {
+  const existing = Array.from(lanRoomsMap.values()).find((r) => r.name === name);
+  if (existing) return existing;
+  const row: LanChatRoomRow = { id: lanNextRoomId++, name, createdAt: now() };
+  lanRoomsMap.set(row.id, row);
+  return row;
+}
+
+export function devInsertLanChatMessage(data: InsertLanChatMessage): LanChatMessageRow {
+  const row: LanChatMessageRow = {
+    id: lanNextMessageId++,
+    roomId: data.roomId,
+    nickname: data.nickname,
+    color: data.color,
+    content: data.content,
+    attachments: (data.attachments as LanChatMessageRow["attachments"]) ?? null,
+    clientIp: data.clientIp,
+    createdAt: now(),
+  };
+  lanMessagesMap.set(row.id, row);
+  return row;
+}
+
+export function devGetLanChatMessages(roomId: number, opts: { beforeId?: number; limit: number }): LanChatMessageRow[] {
+  return Array.from(lanMessagesMap.values())
+    .filter((m) => m.roomId === roomId && (opts.beforeId == null || m.id < opts.beforeId))
+    .sort((a, b) => b.id - a.id)
+    .slice(0, opts.limit);
 }

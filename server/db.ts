@@ -24,6 +24,12 @@ import {
   InsertAuditLog,
   InsertProjectCollaborator,
   InsertProjectShareLink,
+  lanChatRooms,
+  lanChatMessages,
+  type LanChatRoomRow,
+  type LanChatMessageRow,
+  type InsertLanChatRoom,
+  type InsertLanChatMessage,
 } from "../drizzle/schema";
 import { ENV } from "./_core/env";
 import * as dev from "./_core/devStore";
@@ -762,6 +768,47 @@ export async function isWhitelisted(type: "ip" | "user", value: string): Promise
     .where(and(eq(whitelistEntries.type, type), eq(whitelistEntries.value, value)))
     .limit(1);
   return rows.length > 0;
+}
+
+// ── LAN Chat ─────────────────────────────────────────────────────────────────
+
+export async function listLanChatRooms(): Promise<LanChatRoomRow[]> {
+  const db = await getDb();
+  if (!db) return DEV_MODE ? dev.devListLanChatRooms() : [];
+  return db.select().from(lanChatRooms).orderBy(lanChatRooms.id);
+}
+
+export async function createLanChatRoom(name: string): Promise<LanChatRoomRow | null> {
+  const db = await getDb();
+  if (!db) { if (DEV_MODE) return dev.devCreateLanChatRoom(name); throw new Error("DB unavailable"); }
+  // INSERT IGNORE so callers can use createRoom as an "ensure exists" path.
+  await db.insert(lanChatRooms).values({ name }).onDuplicateKeyUpdate({ set: { name: sql`name` } });
+  const rows = await db.select().from(lanChatRooms).where(eq(lanChatRooms.name, name)).limit(1);
+  return rows[0] ?? null;
+}
+
+export async function insertLanChatMessage(data: InsertLanChatMessage): Promise<LanChatMessageRow | null> {
+  const db = await getDb();
+  if (!db) { if (DEV_MODE) return dev.devInsertLanChatMessage(data); throw new Error("DB unavailable"); }
+  const [header] = await db.insert(lanChatMessages).values(data);
+  const insertId = (header as unknown as { insertId: number }).insertId;
+  const rows = await db.select().from(lanChatMessages).where(eq(lanChatMessages.id, insertId)).limit(1);
+  return rows[0] ?? null;
+}
+
+/** Fetch the most recent N messages in a room, or messages strictly older
+ *  than `beforeId` when paginating up. Returns newest-first; the client
+ *  reverses for display. */
+export async function getLanChatMessages(roomId: number, opts: { beforeId?: number; limit: number }): Promise<LanChatMessageRow[]> {
+  const db = await getDb();
+  if (!db) return DEV_MODE ? dev.devGetLanChatMessages(roomId, opts) : [];
+  const where = opts.beforeId
+    ? and(eq(lanChatMessages.roomId, roomId), sql`${lanChatMessages.id} < ${opts.beforeId}`)
+    : eq(lanChatMessages.roomId, roomId);
+  return db.select().from(lanChatMessages)
+    .where(where)
+    .orderBy(desc(lanChatMessages.id))
+    .limit(opts.limit);
 }
 
 // ── Audit Logs ────────────────────────────────────────────────────────────────

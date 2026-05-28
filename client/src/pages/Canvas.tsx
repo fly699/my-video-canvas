@@ -77,7 +77,9 @@ import {
   ListVideo,
   HelpCircle,
   Clapperboard,
+  MessageSquare,
 } from "lucide-react";
+import { LanChatWidget } from "../components/lan-chat/LanChatWidget";
 import { loadNamedSnapshots, type NamedSnapshot } from "../hooks/useCanvasStore";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 
@@ -358,6 +360,11 @@ function CanvasInner({ projectId }: { projectId: number }) {
   const [showRatioPicker, setShowRatioPicker] = useState(false);
   const [showConnectionHints, setShowConnectionHints] = useState(false);
   const [showHelp, setShowHelp] = useState(false);
+  const [lanChatState, setLanChatState] = usePersistentState<"hidden" | "bubble" | "open">(
+    "ui:lan-chat:state:v1",
+    "hidden",
+    { validate: (v) => (v === "hidden" || v === "bubble" || v === "open") ? v : null },
+  );
   const [showArcPicker, setShowArcPicker] = useState(false);
   const { mode: canvasMode, setMode: setCanvasMode } = useCanvasMode();
   const { theme } = useTheme();
@@ -1034,6 +1041,21 @@ function CanvasInner({ projectId }: { projectId: number }) {
             <Users className="w-3.5 h-3.5" />
             {collaboratorList.length > 0 && <span>{collaboratorList.length}</span>}
           </button>
+
+          {/* LAN chat widget toggle */}
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <button
+                onClick={() => setLanChatState((s) => (s === "hidden" ? "bubble" : s === "bubble" ? "open" : "hidden"))}
+                className="topbar-btn"
+                data-active={lanChatState !== "hidden" ? "true" : undefined}
+                style={lanChatState !== "hidden" ? { background: "oklch(0.68 0.22 285 / 0.12)", border: "1px solid oklch(0.68 0.22 285 / 0.3)", color: "oklch(0.68 0.22 285)" } : undefined}
+              >
+                <MessageSquare className="w-3.5 h-3.5" />
+              </button>
+            </TooltipTrigger>
+            <TooltipContent side="bottom" className="text-xs">局域网聊天（匿名群聊）</TooltipContent>
+          </Tooltip>
 
           {/* Help guide */}
           <Tooltip>
@@ -2329,6 +2351,9 @@ function CanvasInner({ projectId }: { projectId: number }) {
           </div>
         );
       })()}
+
+      {/* ── LAN chat widget (bubble / floating panel) ── */}
+      <LanChatWidget state={lanChatState} onStateChange={setLanChatState} />
     </div>
   );
 }

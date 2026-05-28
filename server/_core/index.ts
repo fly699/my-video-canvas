@@ -18,6 +18,10 @@ import { sdk } from "./sdk";
 import { ENV } from "./env";
 import { getProjectAccess } from "../db";
 import type { User } from "../../drizzle/schema";
+import { isLanIp, normalizeIp } from "./lanGate";
+import { lanChatBus } from "./lanChatBus";
+import { registerLanChatBroadcaster } from "../routers/lanChat";
+import type { LanChatMessage } from "../../shared/types";
 import { collabBus } from "./collabBus";
 
 function isPortAvailable(port: number): Promise<boolean> {
@@ -218,11 +222,95 @@ async function startServer() {
     });
   });
 
+  // ── LAN chat socket namespace ──────────────────────────────────────────────
+  // Isolated namespace (/lan-chat) so the cookie-auth middleware above doesn't
+  // apply. Auth here is by sessionId + LAN-IP gate.
+  const lanNs = io.of("/lan-chat");
+
+  lanNs.use((socket, next) => {
+    const addr = normalizeIp(socket.handshake.address);
+    if (!isLanIp(addr)) return next(new Error("lan-only"));
+    const sid = (socket.handshake.auth as { sessionId?: string } | undefined)?.sessionId;
+    if (!sid) return next(new Error("session-required"));
+    const sess = lanChatBus.getSession(sid);
+    if (!sess) return next(new Error("session-not-found"));
+    (socket.data as { sessionId: string }).sessionId = sid;
+    next();
+  });
+
+  lanNs.on("connection", (socket) => {
+    const sessionId = (socket.data as { sessionId: string }).sessionId;
+    const joinedRooms = new Set<number>();
+
+    socket.on("lan-chat:enter-room", ({ roomId }: { roomId: number }) => {
+      if (typeof roomId !== "number") return;
+      lanChatBus.enterRoom(sessionId, roomId);
+      socket.join(`lan-room:${roomId}`);
+      joinedRooms.add(roomId);
+      lanNs.to(`lan-room:${roomId}`).emit("lan-chat:presence", {
+        roomId,
+        online: lanChatBus.listOnline(roomId),
+      });
+    });
+
+    socket.on("lan-chat:leave-room", ({ roomId }: { roomId: number }) => {
+      lanChatBus.leaveRoom(sessionId, roomId);
+      socket.leave(`lan-room:${roomId}`);
+      joinedRooms.delete(roomId);
+      lanNs.to(`lan-room:${roomId}`).emit("lan-chat:presence", {
+        roomId,
+        online: lanChatBus.listOnline(roomId),
+      });
+    });
+
+    socket.on("lan-chat:typing", ({ roomId }: { roomId: number }) => {
+      const sess = lanChatBus.getSession(sessionId);
+      if (!sess) return;
+      socket.to(`lan-room:${roomId}`).emit("lan-chat:typing", {
+        sessionId: sess.id,
+        nickname: sess.nickname,
+        roomId,
+      });
+    });
+
+    socket.on("disconnect", () => {
+      // Don't delete the session itself — the user may have multiple tabs;
+      // just leave the rooms this socket had joined. The bus's reapStale
+      // will GC truly idle sessions later.
+      Array.from(joinedRooms).forEach((r) => {
+        lanChatBus.leaveRoom(sessionId, r);
+        lanNs.to(`lan-room:${r}`).emit("lan-chat:presence", {
+          roomId: r,
+          online: lanChatBus.listOnline(r),
+        });
+      });
+    });
+  });
+
+  // tRPC sendMessage handler broadcasts via this wired-up function — avoids
+  // routers/lanChat.ts having to import index.ts (cycle).
+  registerLanChatBroadcaster((roomId: number, msg: LanChatMessage) => {
+    lanNs.to(`lan-room:${roomId}`).emit("lan-chat:message", msg);
+  });
+
   // ── ComfyUI progress relay ────────────────────────────────────────────────
   setComfySocketIO(io);
 
   // ── Video task background poller ───────────────────────────────────────────
   setupVideoTaskPoller(io);
+
+  // LAN-chat HTML gate — refuse to even render the SPA shell for /lan-chat
+  // when the request comes from a non-LAN address. The API + socket layers
+  // already gate, but stopping at the HTML keeps probes from learning the
+  // feature exists.
+  app.use("/lan-chat", (req, res, next) => {
+    const ip = req.ip ?? req.socket?.remoteAddress ?? "";
+    if (!isLanIp(ip)) {
+      res.status(403).type("text/plain").send("局域网聊天仅限内网访问");
+      return;
+    }
+    next();
+  });
 
   // Development or production static
   if (process.env.NODE_ENV === "development") {
