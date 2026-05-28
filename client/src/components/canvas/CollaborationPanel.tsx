@@ -46,12 +46,29 @@ export function CollaborationPanel({ projectId, currentUserRole, publicReadAcces
     onSuccess: () => { toast.success("已移除"); membersQ.refetch(); },
     onError: (e) => toast.error(e.message),
   });
+  // Optimistic update so the toggle visually flips the instant the user
+  // clicks — without it, the bg color only updates after the projects.get
+  // refetch completes (~500ms+), which reads to users as "click did nothing".
   const setPublicMu = trpc.collaboration.setPublicAccess.useMutation({
-    onSuccess: () => {
-      utils.projects.get.invalidate({ id: projectId });
-      toast.success("已更新");
+    onMutate: async (vars) => {
+      await utils.projects.get.cancel({ id: vars.projectId });
+      const prev = utils.projects.get.getData({ id: vars.projectId });
+      if (prev) {
+        utils.projects.get.setData(
+          { id: vars.projectId },
+          { ...prev, publicReadAccess: vars.publicReadAccess },
+        );
+      }
+      return { prev };
     },
-    onError: (e) => toast.error(e.message),
+    onError: (e, vars, ctx) => {
+      if (ctx?.prev) utils.projects.get.setData({ id: vars.projectId }, ctx.prev);
+      toast.error(e.message);
+    },
+    onSettled: (_data, _err, vars) => {
+      utils.projects.get.invalidate({ id: vars.projectId });
+    },
+    onSuccess: () => { toast.success("已更新"); },
   });
   const leaveMu = trpc.collaboration.leaveProject.useMutation({
     onSuccess: () => {
