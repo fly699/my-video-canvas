@@ -619,6 +619,32 @@ export const aiChatRouter = router({
         .filter(Boolean)
         .join("");
 
+      // Resolve every attachment URL into something the LLM provider can
+      // actually fetch:
+      //  - blob:  — tab-scoped IndexedDB cache reference, unreachable from
+      //            anyone but the originating browser. SKIP.
+      //  - data:  — already inline base64; pass through.
+      //  - http(s) — absolute, pass through.
+      //  - /manus-storage/{key} — internal proxy path. Resolve via Forge
+      //                           presign to a short-lived absolute S3 URL.
+      // Without this step, dragged-in images silently fail at the model
+      // side because OpenAI/Anthropic/Manus get a relative or blob: URL
+      // they can't fetch and return "我看不到你的图片" instead of analysis.
+      async function imageUrlForLLM(url: string): Promise<string | null> {
+        if (!url) return null;
+        if (url.startsWith("blob:")) return null;
+        if (url.startsWith("data:")) return url;
+        if (/^https?:\/\//i.test(url)) return url;
+        if (url.startsWith("/manus-storage/")) {
+          try { return await resolveToAbsoluteUrl(url); }
+          catch (err) {
+            console.warn("[aiChat] resolveToAbsoluteUrl failed:", err instanceof Error ? err.message : err);
+            return null;
+          }
+        }
+        return null;
+      }
+
       // Compose the current user message: text + optional inline file content +
       // image_url parts. Text files are spliced into the text body; images
       // become structured content parts the model can see.
@@ -627,28 +653,31 @@ export const aiChatRouter = router({
         .map((a) => `\n\n[Attached file: ${a.name}]\n${a.textContent}`)
         .join("");
       const userText = (input.message + fileBlocks).trim() || "请分析附带的内容。";
-      const imageParts = (input.attachments ?? [])
-        .filter((a) => a.type === "image")
-        .map((a) => ({ type: "image_url" as const, image_url: { url: a.url } }));
+      const imageAttachments = (input.attachments ?? []).filter((a) => a.type === "image");
+      const resolvedImages = await Promise.all(imageAttachments.map((a) => imageUrlForLLM(a.url)));
+      const imageParts = resolvedImages
+        .filter((u): u is string => !!u)
+        .map((url) => ({ type: "image_url" as const, image_url: { url } }));
+      const skippedCount = imageAttachments.length - imageParts.length;
+      const skipNote = skippedCount > 0
+        ? `\n\n[${skippedCount} 张图片因 URL 不可达被跳过 — 请直接粘贴图片或重新上传]`
+        : "";
 
       const userContent = imageParts.length > 0
-        ? [{ type: "text" as const, text: userText }, ...imageParts]
-        : userText;
+        ? [{ type: "text" as const, text: userText + skipNote }, ...imageParts]
+        : (skippedCount > 0 ? userText + skipNote : userText);
 
       // Reconstruct historical messages with their original attachments so the
-      // model retains visual context across turns.
-      //
-      // SKIP data: URLs in history — when storage isn't configured (dev fallback
-      // returns the entire base64 inline), replaying those URLs in every
-      // subsequent turn balloons the prompt by ~1 MB per image per turn and
-      // can blow past provider request-size limits. Mention the attachment
-      // textually instead so the model has context without the payload.
-      const historyMessages = history.map((m) => {
+      // model retains visual context across turns. Same URL resolution as
+      // above. SKIP data: URLs in history — they bloat each turn by ~1 MB.
+      const historyMessages = await Promise.all(history.map(async (m) => {
         const att = (m.attachments as Array<{ type: string; url: string; name?: string }> | null) ?? null;
         if (m.role === "user" && att && att.length > 0) {
-          const imgs = att
-            .filter((a) => a.type === "image" && !a.url.startsWith("data:"))
-            .map((a) => ({ type: "image_url" as const, image_url: { url: a.url } }));
+          const imgAtts = att.filter((a) => a.type === "image" && !a.url.startsWith("data:"));
+          const resolved = await Promise.all(imgAtts.map((a) => imageUrlForLLM(a.url)));
+          const imgs = resolved
+            .filter((u): u is string => !!u)
+            .map((url) => ({ type: "image_url" as const, image_url: { url } }));
           const skippedDataUrlImgs = att.filter((a) => a.type === "image" && a.url.startsWith("data:"));
           const skippedNote = skippedDataUrlImgs.length > 0
             ? `\n\n[Earlier turn included ${skippedDataUrlImgs.length} image attachment(s) not re-sent.]`
@@ -661,7 +690,7 @@ export const aiChatRouter = router({
           };
         }
         return { role: m.role as "user" | "assistant", content: m.content };
-      });
+      }));
 
       const messages = [
         { role: "system" as const, content: systemContent },

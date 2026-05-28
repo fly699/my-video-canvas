@@ -434,33 +434,38 @@ function FilmFrame({
   // describing the clip (LLMs can't decode video URLs as images, so sending
   // them as type:"image" used to render a broken thumbnail + silently fail
   // on the model side).
-  const dragUrl = blobUrl ?? mediaUrl;
+  //
+  // CRITICAL: always use the NETWORK URL (mediaUrl) for dataTransfer, never
+  // the local blob: URL. The blob URL is a tab-scoped reference to the
+  // IndexedDB cache and is unfetchable from the LLM provider's server.
+  // Sending it produces the "我看不到你的图" failure mode the user reported.
+  const networkUrl = mediaUrl;
   const onDragStart = (e: React.DragEvent) => {
-    if (!dragUrl) return;
+    if (!networkUrl) return;
     const payload = isVideo
       ? {
           type: "file" as const,
           url: "",
           mimeType: "video/mp4",
           name: title || "video",
-          textContent: `[Video reference] title="${title}" url="${dragUrl}"`,
+          textContent: `[Video reference] title="${title}" url="${networkUrl}"`,
         }
       : {
           type: "image" as const,
-          url: dragUrl,
+          url: networkUrl,
           mimeType: "image/*",
           name: title || "image",
         };
     e.dataTransfer.setData("application/x-avc-attachment", JSON.stringify(payload));
-    e.dataTransfer.setData("text/uri-list", dragUrl);
-    e.dataTransfer.setData("text/plain", dragUrl);
+    e.dataTransfer.setData("text/uri-list", networkUrl);
+    e.dataTransfer.setData("text/plain", networkUrl);
     e.dataTransfer.effectAllowed = "copy";
   };
 
   return (
     <button
       onClick={onClick}
-      draggable={!!dragUrl}
+      draggable={!!networkUrl}
       onDragStart={onDragStart}
       style={{
         width: 100,
