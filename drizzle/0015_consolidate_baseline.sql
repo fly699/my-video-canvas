@@ -7,6 +7,20 @@
 --   * existing production where the columns/tables were added manually
 --     via raw ALTER/CREATE (becomes a no-op per column/table)
 
+-- Ensure canvas_nodes.type includes every node kind the codebase now uses.
+-- MODIFY COLUMN with the full enum list is idempotent — running it when the
+-- column already has all values is a no-op. This fixes installs that were
+-- created before comfyui_workflow / smart_cut / pose_control / etc. were
+-- ever added to the enum (hand-written migrations 0008-0016 added them but
+-- were never tracked by drizzle-kit, so fresh DBs created from snapshot
+-- 0014 alone would lack them).
+ALTER TABLE `canvas_nodes` MODIFY COLUMN `type` ENUM(
+  'script','storyboard','prompt','image_gen','asset','video_task','ai_chat','note',
+  'audio','post_process','group','character','clip','merge','subtitle','overlay',
+  'subtitle_motion','smart_cut','pose_control','voice_clone','lip_sync','avatar',
+  'comfyui_image','comfyui_video','comfyui_workflow'
+) NOT NULL;
+--> statement-breakpoint
 CREATE TABLE IF NOT EXISTS `project_collaborators` (
 	`id` int AUTO_INCREMENT NOT NULL,
 	`projectId` int NOT NULL,
