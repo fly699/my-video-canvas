@@ -175,17 +175,20 @@ export function FilmstripPanel({ onClose }: FilmstripPanelProps) {
   // Auto-width in docked mode: compute panel width from clip count so few
   // frames render a compact panel and many frames grow it (clamped at the
   // viewport via CSS maxWidth so the horizontal scroll inside keeps working
-  // past the cap). Floating mode uses the user's persisted width.
+  // past the cap). Floating mode uses max(user's manual width, autoWidth) so
+  // adding more clips keeps growing the panel even after the user resized —
+  // the manual width acts as a baseline, not a ceiling.
   const FRAME_W = 100;
   const FRAME_GAP = 8;
   const SIDE_PADDING = 24; // 12px each side of the scroll row
   const HEADER_MIN = 320;
-  const dockedAutoWidth = Math.max(
+  const autoWidth = Math.max(
     HEADER_MIN,
     sortedNodes.length === 0
       ? HEADER_MIN
       : sortedNodes.length * (FRAME_W + FRAME_GAP) - FRAME_GAP + SIDE_PADDING,
   );
+  const floatingWidth = Math.max(layout.width, autoWidth);
   const rectStyle = layout.docked
     ? {
         left: "50%" as const,
@@ -193,10 +196,10 @@ export function FilmstripPanel({ onClose }: FilmstripPanelProps) {
         bottom: 0,
         right: undefined,
         top: undefined,
-        width: dockedAutoWidth,
+        width: autoWidth,
         maxWidth: "calc(100vw - 16px)",
       }
-    : { left: layout.left, top: layout.top, right: undefined, bottom: undefined, width: layout.width };
+    : { left: layout.left, top: layout.top, right: undefined, bottom: undefined, width: floatingWidth };
 
   return (
     <div
