@@ -59,6 +59,10 @@ export interface ScriptNodeData {
   aiAspectRatio?: string;
   aiSceneCount?: number;
   aiLlmModel?: string;
+  /** id of the currently-applied template from scriptCreationTemplates.ts.
+   *  Used both to render "已套用: XXX" in the UI and to look up the
+   *  systemPromptAddon to send with the next generate call. */
+  aiScriptTemplate?: string;
 }
 
 export interface StoryboardNodeData {

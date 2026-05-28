@@ -866,6 +866,10 @@ Each element must have these fields:
         targetVideoModel: z.string().optional(),
         aspectRatio: z.string().default("16:9"),
         model: z.string().optional(),
+        /** Optional template-specific writing instructions appended to the
+         *  system prompt. Sourced from client/src/lib/scriptCreationTemplates.ts
+         *  by id (UI passes `systemPromptAddon` of the applied template). */
+        templatePromptOverride: z.string().max(4000).optional(),
       })
     )
     .mutation(async ({ ctx, input }) => {
@@ -920,9 +924,17 @@ Rules:
 4. Duration values should total approximately ${input.totalDuration} seconds
 5. Create compelling visual storytelling appropriate for the genre and mood`;
 
+      // When a template is selected client-side, its systemPromptAddon is
+      // appended here. Doesn't replace the base prompt — adds extra context-
+      // specific writing instructions on top (e.g. "open with a 3-second
+      // hook" for short-video templates).
+      const fullSystemPrompt = input.templatePromptOverride
+        ? `${systemPrompt}\n\n## Template-specific writing instructions\n${input.templatePromptOverride}`
+        : systemPrompt;
+
       const response = await invokeLLM({
         messages: [
-          { role: "system" as const, content: systemPrompt },
+          { role: "system" as const, content: fullSystemPrompt },
           { role: "user" as const, content: `Story Synopsis:\n${input.synopsis}` },
         ],
         model: input.model ?? "claude-sonnet-4-6",
