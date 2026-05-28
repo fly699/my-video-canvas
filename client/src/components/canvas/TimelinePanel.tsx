@@ -229,12 +229,15 @@ export function TimelinePanel({ onClose }: TimelinePanelProps) {
   const CLIP_GAP = 8;
   const SIDE_PADDING = 24;
   const HEADER_MIN = 360;
-  const dockedAutoWidth = Math.max(
+  const autoWidth = Math.max(
     HEADER_MIN,
     videoClips.length === 0
       ? HEADER_MIN
       : videoClips.length * (CLIP_W + CLIP_GAP) - CLIP_GAP + SIDE_PADDING,
   );
+  // Floating mode: manual resize sets the baseline; auto-width can still
+  // push it wider as clips are added — never narrower than what the user set.
+  const floatingWidth = Math.max(layout.width, autoWidth);
   const rectStyle = layout.docked
     ? {
         left: "50%" as const,
@@ -242,10 +245,10 @@ export function TimelinePanel({ onClose }: TimelinePanelProps) {
         bottom: TL_DOCK_BOTTOM,
         right: undefined,
         top: undefined,
-        width: dockedAutoWidth,
+        width: autoWidth,
         maxWidth: "calc(100vw - 16px)",
       }
-    : { left: layout.left, top: layout.top, right: undefined, bottom: undefined, width: layout.width };
+    : { left: layout.left, top: layout.top, right: undefined, bottom: undefined, width: floatingWidth };
 
   return (
     <div

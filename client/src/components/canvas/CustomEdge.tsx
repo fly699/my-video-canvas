@@ -92,17 +92,19 @@ export const CustomEdge = memo(function CustomEdge({
               ? `${typeColor}bb`
               : "oklch(0.62 0.06 260 / 0.85)";
 
-  // Thicker default strokes. Creative mode stays subtler but still 1 thicker.
+  // Slim default strokes — user explicitly asked for thin edges. Hover /
+  // selection nudge up slightly so interactivity stays legible.
   const strokeWidth = isCreative
-    ? selected ? 3 : hovered ? 2.5 : 1.75
-    : selected ? 4.5 : hovered ? 4 : 3;
+    ? selected ? 2 : hovered ? 1.5 : 1
+    : selected ? 2.5 : hovered ? 2 : 1.5;
 
   // ── Particle flow ───────────────────────────────────────────────────────────
   const svgPathId = `pp-${id.replace(/[^a-zA-Z0-9_-]/g, "_")}`;
 
   const durSeconds = sourceRunning ? 0.75 : isCreative ? 3.5 : 2.6;
-  // Bigger, brighter particles — idle state especially since it's the most-seen.
-  const particleR = sourceRunning ? (isCreative ? 3 : 4) : isCreative ? 2 : 2.8;
+  // Smaller particles — visible but not chunky. Running state stays slightly
+  // bigger so the user can tell at a glance that something is in flight.
+  const particleR = sourceRunning ? (isCreative ? 2 : 2.4) : isCreative ? 1.3 : 1.6;
   const particleColor = sourceRunning
     ? "oklch(0.92 0.28 142)"
     : sourceCompleted
@@ -117,11 +119,11 @@ export const CustomEdge = memo(function CustomEdge({
     : sourceCompleted ? (isCreative ? 0.78 : 0.88)
     : sourceFailed ? 0.78
     : isCreative ? 0.55 : 0.78;
-  // Larger glow halo with a stronger baseline so the flow direction reads at-a-glance.
-  const glowR = particleR * 3.2;
-  const glowOpacity = sourceRunning ? 0.42 : isCreative ? 0.16 : 0.24;
+  // Modest glow halo — visible direction cue without dominating the canvas.
+  const glowR = particleR * 2.4;
+  const glowOpacity = sourceRunning ? 0.36 : isCreative ? 0.12 : 0.18;
   // A second, larger soft halo for extra depth (renders behind core).
-  const outerGlowR = particleR * 5.5;
+  const outerGlowR = particleR * 3.8;
   const outerGlowOpacity = sourceRunning ? 0.18 : isCreative ? 0.05 : 0.08;
 
   return (
