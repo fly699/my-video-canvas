@@ -30,6 +30,8 @@ interface ChatContextValue {
   joinRoom: (id: number, password?: string) => Promise<void>;
   deleteRoom: (id: number) => Promise<void>;
   leaveRoom: (id: number) => Promise<void>;
+  openDm: (userId: number) => Promise<void>;
+  createGroupWith: (title: string, userIds: number[]) => Promise<void>;
   messages: ChatWireMessage[];
   presence: ChatPresenceUser[];
   typingUsers: string[];
@@ -71,6 +73,9 @@ export function ChatProvider({ children }: { children: React.ReactNode }) {
   const joinRoomMut = trpc.chat.joinRoom.useMutation();
   const deleteRoomMut = trpc.chat.deleteRoom.useMutation();
   const leaveRoomMut = trpc.chat.leaveRoom.useMutation();
+  const startDmMut = trpc.chat.startDm.useMutation();
+  const createRoomMut2 = trpc.chat.createRoom.useMutation();
+  const inviteMut = trpc.chat.inviteToRoom.useMutation();
 
   const [activeId, setActiveId] = useState<number | null>(null);
   const [messages, setMessages] = useState<ChatWireMessage[]>([]);
@@ -461,10 +466,26 @@ export function ChatProvider({ children }: { children: React.ReactNode }) {
     await Promise.all([convQuery.refetch(), joinableQuery.refetch()]);
   }, [leaveRoomMut, convQuery, joinableQuery]);
 
+  const openDm = useCallback(async (userId: number) => {
+    const res = await startDmMut.mutateAsync({ targetUserId: userId });
+    await convQuery.refetch();
+    selectConversation(res.id);
+  }, [startDmMut, convQuery, selectConversation]);
+
+  const createGroupWith = useCallback(async (title: string, userIds: number[]) => {
+    const res = await createRoomMut2.mutateAsync({ title, mode: "server" });
+    for (const uid of userIds) {
+      try { await inviteMut.mutateAsync({ conversationId: res.id, targetUserId: uid }); } catch { /* skip */ }
+    }
+    await Promise.all([convQuery.refetch(), joinableQuery.refetch()]);
+    selectConversation(res.id);
+  }, [createRoomMut2, inviteMut, convQuery, joinableQuery, selectConversation]);
+
   const value: ChatContextValue = {
     conversations, refetchConversations: () => { convQuery.refetch(); joinableQuery.refetch(); },
     joinableRooms, myUserId,
     activeId, activeConv, selectConversation, joinRoom, deleteRoom, leaveRoom,
+    openDm, createGroupWith,
     messages, presence, typingUsers,
     connected, sendText, sendFile, emitTyping, loadingMessages,
     maxFileMb, serverlessAllowed,

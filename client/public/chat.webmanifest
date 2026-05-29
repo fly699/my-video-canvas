@@ -1,0 +1,19 @@
+{
+  "name": "AI 视频画布 · 聊天",
+  "short_name": "聊天",
+  "description": "服务器 / 端到端加密双模聊天与文件传输",
+  "start_url": "/chat",
+  "scope": "/",
+  "display": "standalone",
+  "orientation": "portrait-primary",
+  "background_color": "#0d0d10",
+  "theme_color": "#15131c",
+  "icons": [
+    {
+      "src": "/chat-icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ]
+}
