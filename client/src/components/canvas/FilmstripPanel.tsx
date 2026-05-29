@@ -165,11 +165,20 @@ export function FilmstripPanel({ onClose }: FilmstripPanelProps) {
   });
 
   const handleFrameClick = (nodeId: string) => {
-    reactFlow.fitView({
-      nodes: [{ id: nodeId }],
-      padding: 0.5,
-      duration: 400,
-    });
+    const node = reactFlow.getNode(nodeId);
+    if (!node) { reactFlow.fitView({ nodes: [{ id: nodeId }], padding: 0.5, duration: 400 }); return; }
+    // Center the viewport on the node (absolute position handles grouped nodes).
+    const internal = reactFlow.getInternalNode(nodeId);
+    const pos = internal?.internals.positionAbsolute ?? node.position;
+    const w = node.measured?.width ?? 240;
+    const h = node.measured?.height ?? 160;
+    reactFlow.setCenter(pos.x + w / 2, pos.y + h / 2, { zoom: Math.max(reactFlow.getZoom(), 1), duration: 500 });
+    // Highlight: select this node, deselect the rest (via the canvas store).
+    const store = useCanvasStore.getState();
+    const changes = store.nodes
+      .filter((n) => n.selected || n.id === nodeId)
+      .map((n) => ({ id: n.id, type: "select" as const, selected: n.id === nodeId }));
+    if (changes.length) store.onNodesChange(changes);
   };
 
   // Auto-width in docked mode: compute panel width from clip count so few

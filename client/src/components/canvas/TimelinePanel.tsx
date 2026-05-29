@@ -201,7 +201,18 @@ export function TimelinePanel({ onClose }: TimelinePanelProps) {
   }, [videoClips, playingId]);
 
   const handleFrameClick = (nodeId: string) => {
-    reactFlow.fitView({ nodes: [{ id: nodeId }], padding: 0.5, duration: 400 });
+    const node = reactFlow.getNode(nodeId);
+    if (!node) { reactFlow.fitView({ nodes: [{ id: nodeId }], padding: 0.5, duration: 400 }); return; }
+    const internal = reactFlow.getInternalNode(nodeId);
+    const pos = internal?.internals.positionAbsolute ?? node.position;
+    const w = node.measured?.width ?? 240;
+    const h = node.measured?.height ?? 160;
+    reactFlow.setCenter(pos.x + w / 2, pos.y + h / 2, { zoom: Math.max(reactFlow.getZoom(), 1), duration: 500 });
+    const store = useCanvasStore.getState();
+    const changes = store.nodes
+      .filter((n) => n.selected || n.id === nodeId)
+      .map((n) => ({ id: n.id, type: "select" as const, selected: n.id === nodeId }));
+    if (changes.length) store.onNodesChange(changes);
   };
 
   const handlePlay = (nodeId: string) => {
