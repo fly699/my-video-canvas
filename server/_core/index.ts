@@ -20,7 +20,7 @@ import { getProjectAccess, getLanChatRoomById } from "../db";
 import { verifyPassword } from "./scrypt";
 import type { User } from "../../drizzle/schema";
 import { lanChatBus } from "./lanChatBus";
-import { registerLanChatBroadcaster } from "../routers/lanChat";
+import { registerLanChatBroadcaster, registerLanChatGroupBroadcaster } from "../routers/lanChat";
 import type { LanChatMessage } from "../../shared/types";
 import { collabBus } from "./collabBus";
 
@@ -243,6 +243,11 @@ async function startServer() {
     const sessionId = (socket.data as { sessionId: string }).sessionId;
     const joinedRooms = new Set<number>();
 
+    // Join a per-network-group socket room so group-wide events (e.g. a new
+    // room was created) can reach everyone behind the same NAT/group.
+    const sess = lanChatBus.getSession(sessionId);
+    if (sess) socket.join(`lan-group:${sess.networkGroupId}`);
+
     socket.on("lan-chat:enter-room", async (
       { roomId, password }: { roomId: number; password?: string },
     ) => {
@@ -350,6 +355,9 @@ async function startServer() {
   // routers/lanChat.ts having to import index.ts (cycle).
   registerLanChatBroadcaster((roomId: number, msg: LanChatMessage) => {
     lanNs.to(`lan-room:${roomId}`).emit("lan-chat:message", msg);
+  });
+  registerLanChatGroupBroadcaster((groupId: string, event: string, payload: unknown) => {
+    lanNs.to(`lan-group:${groupId}`).emit(event, payload);
   });
 
   // ── ComfyUI progress relay ────────────────────────────────────────────────

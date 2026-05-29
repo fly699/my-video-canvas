@@ -333,7 +333,7 @@ export function usePeerMesh({ socket, mySessionId, myNickname, desiredPeers, onM
    *  Each peer sends independently — a slow peer doesn't block others. */
   const broadcastChunked = useCallback(async (
     transferId: string,
-    meta: { name: string; mimeType: string; size: number; kind: "file-meta" },
+    meta: { name: string; mimeType: string; size: number; kind: "file-meta"; roomId: number },
     blob: Blob,
     onProgress?: (sentBytes: number) => void,
   ) => {

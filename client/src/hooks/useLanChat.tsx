@@ -137,7 +137,9 @@ export function LanChatProvider({ children }: { children: ReactNode }) {
       if (cancelled) return;
       setMessages(rows.map((r) => ({
         id: hashId(r.id),
-        roomId: 1, // unused in P2P phase 1
+        // Legacy rows (pre-room-isolation) have no roomId — fall back to the
+        // currently active room so they remain visible somewhere.
+        roomId: typeof r.roomId === "number" ? r.roomId : activeRoomIdRef.current,
         nickname: r.nickname,
         color: r.color,
         content: r.content,
@@ -232,6 +234,12 @@ export function LanChatProvider({ children }: { children: ReactNode }) {
         setTyping((prev) => prev.filter((n) => n !== nickname));
       }, 3000);
     });
+    // Someone in our group created a room — refresh the list so it appears
+    // in everyone's sidebar without a page reload.
+    socket.on("lan-chat:room-created", () => {
+      if (!isLive()) return;
+      utils.lanChat.listRooms.invalidate();
+    });
 
     return () => {
       if (offlineTimerRef.current) { clearTimeout(offlineTimerRef.current); offlineTimerRef.current = null; }
@@ -325,6 +333,7 @@ export function LanChatProvider({ children }: { children: ReactNode }) {
     name: string;
     mimeType: string;
     size: number;
+    roomId: number;
     chunks: Uint8Array[];
     received: number;
     fromNickname: string;
@@ -352,9 +361,14 @@ export function LanChatProvider({ children }: { children: ReactNode }) {
       const content = p.content as string;
       const createdAt = typeof p.createdAt === "number" ? p.createdAt : Date.now();
       const attachments = Array.isArray(p.attachments) ? (p.attachments as ChatAttachment[]) : undefined;
+      // Peers are group-wide, so a message can arrive for any room. Tag it
+      // with the sender's roomId; the UI only shows messages for the room
+      // the user is currently viewing.
+      const roomId = typeof p.roomId === "number" ? p.roomId : activeRoomIdRef.current;
       historyAppend({
         id,
         groupId: fingerprint.state === "ready" ? fingerprint.groupId : "unknown",
+        roomId,
         nickname: msg.fromNickname,
         color: msg.fromColor,
         content,
@@ -364,7 +378,7 @@ export function LanChatProvider({ children }: { children: ReactNode }) {
       });
       setMessages((prev) => [...prev, {
         id: hashId(id),
-        roomId: 1,
+        roomId,
         nickname: msg.fromNickname,
         color: msg.fromColor,
         content,
@@ -390,6 +404,7 @@ export function LanChatProvider({ children }: { children: ReactNode }) {
         name: String(p.name ?? "file"),
         mimeType: String(p.mimeType ?? "application/octet-stream"),
         size: declaredSize,
+        roomId: typeof p.roomId === "number" ? p.roomId : activeRoomIdRef.current,
         chunks: [],
         received: 0,
         fromNickname: msg.fromNickname,
@@ -433,6 +448,7 @@ export function LanChatProvider({ children }: { children: ReactNode }) {
       historyAppend({
         id,
         groupId: fingerprint.state === "ready" ? fingerprint.groupId : "unknown",
+        roomId: entry.roomId,
         nickname: entry.fromNickname,
         color: entry.fromColor,
         content: "",
@@ -442,7 +458,7 @@ export function LanChatProvider({ children }: { children: ReactNode }) {
       });
       setMessages((prev) => [...prev, {
         id: hashId(id),
-        roomId: 1,
+        roomId: entry.roomId,
         nickname: entry.fromNickname,
         color: entry.fromColor,
         content: "",
@@ -465,6 +481,7 @@ export function LanChatProvider({ children }: { children: ReactNode }) {
   const send = useCallback(async (content: string, attachments?: PendingAttachment[]) => {
     if (!session || fingerprint.state !== "ready") return;
     const groupId = fingerprint.groupId;
+    const roomId = activeRoomIdRef.current;
 
     // File attachments (have a backing File) travel as their own message
     // via the separate file-meta/chunk/end frames — the blob: URL is only
@@ -481,18 +498,18 @@ export function LanChatProvider({ children }: { children: ReactNode }) {
       const createdAt = Date.now();
       const localAtt: ChatAttachment = { type: att.type, url: att.url, name: att.name, mimeType: att.mimeType };
       historyAppend({
-        id, groupId, nickname: session.nickname, color: session.color,
+        id, groupId, roomId, nickname: session.nickname, color: session.color,
         content: "", attachments: [localAtt], createdAt, ownByMe: true,
       });
       setMessages((prev) => [...prev, {
-        id: hashId(id), roomId: 1, nickname: session.nickname, color: session.color,
+        id: hashId(id), roomId, nickname: session.nickname, color: session.color,
         content: "", attachments: [localAtt], createdAt: new Date(createdAt).toISOString(), ownByMe: true,
       }]);
       // Now actually transmit the file — only on send, never on select.
       const transferId = crypto.randomUUID();
       mesh.broadcastChunked(
         transferId,
-        { kind: "file-meta", name: att.file!.name, mimeType: att.file!.type, size: att.file!.size },
+        { kind: "file-meta", name: att.file!.name, mimeType: att.file!.type, size: att.file!.size, roomId },
         att.file!,
       ).catch((err) => console.warn("[lan-chat] file broadcast failed:", err));
     }
@@ -504,14 +521,14 @@ export function LanChatProvider({ children }: { children: ReactNode }) {
       const createdAt = Date.now();
       const cleanUrlAtts: ChatAttachment[] = urlAtts.map((a) => ({ type: a.type, url: a.url, name: a.name, mimeType: a.mimeType }));
       historyAppend({
-        id, groupId, nickname: session.nickname, color: session.color,
+        id, groupId, roomId, nickname: session.nickname, color: session.color,
         content: text, attachments: cleanUrlAtts.length ? cleanUrlAtts : undefined, createdAt, ownByMe: true,
       });
       setMessages((prev) => [...prev, {
-        id: hashId(id), roomId: 1, nickname: session.nickname, color: session.color,
+        id: hashId(id), roomId, nickname: session.nickname, color: session.color,
         content: text, attachments: cleanUrlAtts.length ? cleanUrlAtts : null, createdAt: new Date(createdAt).toISOString(), ownByMe: true,
       }]);
-      mesh.broadcast({ kind: "chat", id, content: text, attachments: cleanUrlAtts.length ? cleanUrlAtts : undefined, createdAt });
+      mesh.broadcast({ kind: "chat", id, content: text, roomId, attachments: cleanUrlAtts.length ? cleanUrlAtts : undefined, createdAt });
     }
   }, [session, fingerprint, mesh]);
 
@@ -575,6 +592,13 @@ export function LanChatProvider({ children }: { children: ReactNode }) {
 
   const clearSession = useCallback(() => setSessionState(null), [setSessionState]);
 
+  // Messages are isolated per room: peers are group-wide so `messages` holds
+  // every room's traffic, but the UI only shows the active room's.
+  const visibleMessages = useMemo(
+    () => messages.filter((m) => m.roomId === activeRoomId),
+    [messages, activeRoomId],
+  );
+
   const value: LanChatContextValue = {
     fingerprint,
     session,
@@ -585,7 +609,7 @@ export function LanChatProvider({ children }: { children: ReactNode }) {
     setActiveRoomId,
     createRoom,
     enterRoom,
-    messages,
+    messages: visibleMessages,
     online,
     peers: mesh.peers,
     typing,

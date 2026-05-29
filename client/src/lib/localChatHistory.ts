@@ -16,6 +16,10 @@ const STORE = "messages";
 export interface LocalChatMessage {
   id: string;            // crypto.randomUUID() — generated client-side, no server-side id
   groupId: string;
+  /** Room/channel id within a group. Messages are isolated per-room: the UI
+   *  only shows those matching the active room. Optional for legacy rows
+   *  written before room isolation existed. */
+  roomId?: number;
   roomName?: string;     // optional room/channel within a group
   nickname: string;
   color: string;

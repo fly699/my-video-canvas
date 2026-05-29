@@ -54,6 +54,15 @@ export function registerLanChatBroadcaster(fn: (roomId: number, msg: LanChatMess
   broadcaster = fn;
 }
 
+// Group-level broadcaster — push an event to every socket in a networkGroup
+// (e.g. "a new room was created") so peers update without a manual refresh.
+let groupBroadcaster: ((groupId: string, event: string, payload: unknown) => void) | null = null;
+export function registerLanChatGroupBroadcaster(
+  fn: (groupId: string, event: string, payload: unknown) => void,
+): void {
+  groupBroadcaster = fn;
+}
+
 // Group-ID validator. Accepts:
 //   "public"     — global fallback (when client can't detect LAN)
 //   "lan-A.B.C"  — RFC1918 /24 subnet detected by browser WebRTC
@@ -179,6 +188,11 @@ export const lanChatRouter = router({
       const passwordHash = input.password ? await hashPassword(input.password) : null;
       const row = await createLanChatRoom(sess.networkGroupId, input.name, passwordHash);
       if (!row) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "创建房间失败" });
+      // Notify everyone in the same network group so the new room appears
+      // in their sidebar without a page refresh.
+      groupBroadcaster?.(sess.networkGroupId, "lan-chat:room-created", {
+        id: row.id, name: row.name, isPrivate: !!passwordHash,
+      });
       return { id: row.id, name: row.name, isPrivate: !!passwordHash };
     }),
 
