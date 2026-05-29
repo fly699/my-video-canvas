@@ -172,10 +172,12 @@ export const chatRouter = router({
     .input(z.object({ conversationId: z.number() }))
     .mutation(async ({ ctx, input }) => {
       const conv = await getConversationById(input.conversationId);
-      if (!conv || conv.type !== "group") throw new TRPCError({ code: "BAD_REQUEST", message: "只能删除群聊" });
+      if (!conv || conv.type === "lobby") throw new TRPCError({ code: "BAD_REQUEST", message: "大厅不可删除" });
       const members = await listChatMembers(conv.id);
       const me = members.find((m) => m.userId === ctx.user.id);
-      if (me?.role !== "owner" && conv.createdBy !== ctx.user.id) {
+      if (!me) throw new TRPCError({ code: "FORBIDDEN", message: "你不在该会话中" });
+      // Group: owner only. DM: either participant may delete the private chat.
+      if (conv.type === "group" && me.role !== "owner" && conv.createdBy !== ctx.user.id) {
         throw new TRPCError({ code: "FORBIDDEN", message: "仅群主可删除房间" });
       }
       // Notify members (so their lists refresh and active view closes) before deleting.
