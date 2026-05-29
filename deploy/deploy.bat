@@ -1,14 +1,13 @@
 @echo off
-chcp 65001 >nul
-title ai-video-canvas 一键部署
+title ai-video-canvas deploy
 echo ============================================================
-echo   ai-video-canvas  Windows 一键部署
-echo   即将调用 deploy.ps1 完成全部步骤...
+echo   ai-video-canvas  Windows one-click deploy
+echo   Launching deploy.ps1 (will request admin via UAC)...
 echo ============================================================
 echo.
 powershell -NoProfile -ExecutionPolicy Bypass -File "%~dp0deploy.ps1" %*
 echo.
 echo ============================================================
-echo   脚本已结束。按任意键关闭窗口。
+echo   Script finished. Press any key to close this window.
 echo ============================================================
 pause >nul
