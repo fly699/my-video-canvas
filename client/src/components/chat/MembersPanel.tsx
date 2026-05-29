@@ -79,7 +79,7 @@ export function MembersPanel() {
               </span>
               {!me && (
                 <button onClick={() => openDm(r.userId).catch((e) => toast.error(e instanceof Error ? e.message : "无法私聊"))}
-                        title="发起私聊" style={{ display: "inline-flex", width: 30, height: 30, alignItems: "center", justifyContent: "center", borderRadius: 8, border: `1px solid ${C.border}`, background: "rgba(255,255,255,0.04)", color: C.t2, cursor: "pointer", flexShrink: 0 }}>
+                        title="发起私聊" style={{ display: "inline-flex", width: 30, height: 30, alignItems: "center", justifyContent: "center", borderRadius: 8, border: `1px solid ${C.border}`, background: "var(--c-elevated, rgba(128,128,128,0.10))", color: C.t2, cursor: "pointer", flexShrink: 0 }}>
                   <MessageSquare size={15} />
                 </button>
               )}

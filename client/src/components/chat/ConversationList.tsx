@@ -35,7 +35,7 @@ export function ConversationList() {
       <div style={{ padding: "12px 14px", display: "flex", alignItems: "center", gap: 8, borderBottom: `1px solid ${C.border}` }}>
         <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="搜索会话…" style={{
           flex: 1, padding: "8px 12px", borderRadius: 10, fontSize: 13, outline: "none",
-          border: `1px solid ${C.border}`, background: "rgba(255,255,255,0.04)", color: C.t1,
+          border: `1px solid ${C.border}`, background: "var(--c-elevated, rgba(128,128,128,0.10))", color: C.t1,
         }} />
         <button onClick={() => setDialogOpen(true)} title="新建会话 / 私聊" style={{
           display: "inline-flex", alignItems: "center", justifyContent: "center", width: 34, height: 34,

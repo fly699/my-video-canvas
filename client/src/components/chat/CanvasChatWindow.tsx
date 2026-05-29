@@ -1,5 +1,5 @@
 import { useRef } from "react";
-import { GripHorizontal, PanelLeft, Users, Pin, PinOff, X, ExternalLink } from "lucide-react";
+import { GripHorizontal, PanelLeft, Users, Pin, PinOff, X, ExternalLink, ZoomIn, ZoomOut } from "lucide-react";
 import { usePersistentState } from "@/hooks/usePersistentState";
 import { useState } from "react";
 import { ChatProvider } from "@/hooks/useChat";
@@ -26,6 +26,10 @@ export function CanvasChatWindow({ onClose }: { onClose: () => void }) {
   const [members, setMembers] = useState(false);
   const dragRef = useRef<{ mx: number; my: number; x: number; y: number } | null>(null);
   const rezRef = useRef<{ mx: number; my: number; w: number; h: number } | null>(null);
+  // UI scale (zoom) of the window content — independent of window size.
+  const [scale, setScale] = usePersistentState<number>("ui:chat-window:scale:v1", 1,
+    { validate: (p) => (typeof p === "number" && p >= 0.6 && p <= 1.6 ? p : null) });
+  const bumpScale = (d: number) => setScale((s) => Math.round(clamp(s + d, 0.6, 1.6) * 100) / 100);
 
   function onHeaderDown(e: React.MouseEvent) {
     if (pinned) return;
@@ -67,6 +71,9 @@ export function CanvasChatWindow({ onClose }: { onClose: () => void }) {
           <img src="/chat-icon.svg" width={18} height={18} alt="" style={{ borderRadius: 5 }} />
           <span style={{ fontWeight: 700, fontSize: 13, color: C.accent }}>聊天</span>
           <div style={{ marginLeft: "auto", display: "flex", alignItems: "center", gap: 4 }}>
+            <Btn title="缩小界面" onClick={() => bumpScale(-0.1)}><ZoomOut size={15} /></Btn>
+            <span title="界面缩放比例" onMouseDown={(e) => e.stopPropagation()} onClick={() => setScale(1)} style={{ fontSize: 11, color: C.t3, minWidth: 30, textAlign: "center", cursor: "pointer", userSelect: "none" }}>{Math.round(scale * 100)}%</span>
+            <Btn title="放大界面" onClick={() => bumpScale(0.1)}><ZoomIn size={15} /></Btn>
             <Btn title={sidebar ? "隐藏会话栏" : "显示会话栏"} active={sidebar} onClick={() => setSidebar((v) => !v)}><PanelLeft size={15} /></Btn>
             <Btn title="成员/在线" active={members} onClick={() => setMembers((v) => !v)}><Users size={15} /></Btn>
             <Btn title={pinned ? "已固定（点解锁可拖动）" : "固定窗口"} active={pinned} onClick={() => setPinned((v) => !v)}>{pinned ? <Pin size={15} /> : <PinOff size={15} />}</Btn>
@@ -75,8 +82,8 @@ export function CanvasChatWindow({ onClose }: { onClose: () => void }) {
           </div>
         </div>
 
-        {/* body */}
-        <div style={{ flex: 1, display: "flex", minHeight: 0, position: "relative" }}>
+        {/* body (UI scaled via CSS zoom; window chrome stays unscaled) */}
+        <div style={{ flex: 1, display: "flex", minHeight: 0, position: "relative", zoom: scale } as React.CSSProperties}>
           {sidebar && <Drawer side="left" onClose={() => setSidebar(false)}><ConversationList /></Drawer>}
           <ChatView />
           {members && <Drawer side="right" onClose={() => setMembers(false)}><MembersPanel /></Drawer>}

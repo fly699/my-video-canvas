@@ -97,16 +97,16 @@ export function ChatView({ membersOpen: _m }: { membersOpen?: boolean }) {
           </div>
         </div>
         <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-          <button onClick={() => setShowFiles(true)} title="文件" style={{ ...pill, border: `1px solid ${C.borderStrong}`, background: "rgba(255,255,255,0.05)", color: C.t1 }}><FolderOpen size={14} /> 文件</button>
+          <button onClick={() => setShowFiles(true)} title="文件" style={{ ...pill, border: `1px solid ${C.borderStrong}`, background: "var(--c-elevated, rgba(128,128,128,0.10))", color: C.t1 }}><FolderOpen size={14} /> 文件</button>
           {activeConv.type === "group" && (isOwner
             ? <button onClick={onDelete} title="删除群聊（群主）" style={{ ...pill, border: `1px solid rgba(239,68,68,0.3)`, background: C.dangerSoft, color: C.danger }}><Trash2 size={14} /> 删除</button>
-            : <button onClick={onLeave} title="退出群聊" style={{ ...pill, border: `1px solid ${C.borderStrong}`, background: "rgba(255,255,255,0.05)", color: C.t1 }}><LogOut size={14} /> 退出</button>
+            : <button onClick={onLeave} title="退出群聊" style={{ ...pill, border: `1px solid ${C.borderStrong}`, background: "var(--c-elevated, rgba(128,128,128,0.10))", color: C.t1 }}><LogOut size={14} /> 退出</button>
           )}
           {activeConv.type === "dm" && (
             <button onClick={onDeleteDm} title="删除该私聊" style={{ ...pill, border: `1px solid rgba(239,68,68,0.3)`, background: C.dangerSoft, color: C.danger }}><Trash2 size={14} /> 删除</button>
           )}
           {activeConv.type !== "lobby" && (
-            <button onClick={toggleMode} title="切换工作模式" style={{ ...pill, border: `1px solid ${activeConv.mode === "serverless" ? C.accent : C.borderStrong}`, background: activeConv.mode === "serverless" ? C.accentSoft : "rgba(255,255,255,0.05)", color: activeConv.mode === "serverless" ? C.accent : C.t1 }}>
+            <button onClick={toggleMode} title="切换工作模式" style={{ ...pill, border: `1px solid ${activeConv.mode === "serverless" ? C.accent : C.borderStrong}`, background: activeConv.mode === "serverless" ? C.accentSoft : "var(--c-elevated, rgba(128,128,128,0.10))", color: activeConv.mode === "serverless" ? C.accent : C.t1 }}>
               {activeConv.mode === "serverless" ? <><ShieldCheck size={14} /> 端到端加密</> : <>服务器模式</>}
             </button>
           )}
@@ -141,7 +141,7 @@ export function ChatView({ membersOpen: _m }: { membersOpen?: boolean }) {
         <textarea value={text} onChange={(e) => { setText(e.target.value); emitTyping(); }}
           onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); void doSend(); } }}
           placeholder="输入消息，Enter 发送，Shift+Enter 换行，可拖拽文件到此" rows={1}
-          style={{ flex: 1, resize: "none", maxHeight: 140, padding: "10px 14px", borderRadius: 12, border: `1px solid ${C.border}`, background: "rgba(255,255,255,0.05)", color: C.t1, fontSize: 14, outline: "none", fontFamily: "inherit" }} />
+          style={{ flex: 1, resize: "none", maxHeight: 140, padding: "10px 14px", borderRadius: 12, border: `1px solid ${C.border}`, background: "var(--c-elevated, rgba(128,128,128,0.10))", color: C.t1, fontSize: 14, outline: "none", fontFamily: "inherit" }} />
         <button onClick={() => doSend()} disabled={busy || (!text.trim() && staged.length === 0)} title="发送"
           style={{ ...iconBtn, width: 40, height: 40, background: C.accentSoft, color: C.accent, border: `1px solid ${C.accent}`, opacity: busy || (!text.trim() && staged.length === 0) ? 0.5 : 1 }}>
           <Send size={18} />
@@ -162,7 +162,7 @@ export function ChatView({ membersOpen: _m }: { membersOpen?: boolean }) {
             <div style={{ fontWeight: 800, fontSize: 16, marginBottom: 8 }}>大文件传输方式</div>
             <div style={{ fontSize: 13, color: C.t2, lineHeight: 1.6, marginBottom: 18 }}>有文件超过 100MB。端到端加密会逐块加密、较慢；也可<strong>不加密直传</strong>显著提速（明文经服务器中转，仍不落库）。</div>
             <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-              <button onClick={() => { setAskEncrypt(false); void doSend(true); }} style={{ padding: "11px 0", border: `1px solid ${C.borderStrong}`, borderRadius: 10, background: "rgba(255,255,255,0.05)", color: C.t1, fontWeight: 700, cursor: "pointer" }}>🔒 加密发送（安全，较慢）</button>
+              <button onClick={() => { setAskEncrypt(false); void doSend(true); }} style={{ padding: "11px 0", border: `1px solid ${C.borderStrong}`, borderRadius: 10, background: "var(--c-elevated, rgba(128,128,128,0.10))", color: C.t1, fontWeight: 700, cursor: "pointer" }}>🔒 加密发送（安全，较慢）</button>
               <button onClick={() => { setAskEncrypt(false); void doSend(false); }} style={{ padding: "11px 0", border: "none", borderRadius: 10, background: C.accentSoft, color: C.accent, fontWeight: 700, cursor: "pointer" }}>⚡ 不加密快速发送</button>
             </div>
           </div>
@@ -183,10 +183,10 @@ export function ChatView({ membersOpen: _m }: { membersOpen?: boolean }) {
                   ? <div style={{ fontSize: 13, color: C.t3 }}>暂无文件</div>
                   : <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill,minmax(120px,1fr))", gap: 10 }}>
                       {filesQuery.data?.map((f) => (
-                        <a key={f.id} href={f.url} download={f.name} target="_blank" rel="noreferrer" style={{ display: "flex", flexDirection: "column", gap: 4, padding: 8, borderRadius: 10, border: `1px solid ${C.border}`, background: "rgba(255,255,255,0.03)", color: C.t1, textDecoration: "none" }}>
+                        <a key={f.id} href={f.url} download={f.name} target="_blank" rel="noreferrer" style={{ display: "flex", flexDirection: "column", gap: 4, padding: 8, borderRadius: 10, border: `1px solid ${C.border}`, background: "var(--c-elevated, rgba(128,128,128,0.10))", color: C.t1, textDecoration: "none" }}>
                           {f.kind === "image"
                             ? <img src={f.url} alt={f.name} style={{ width: "100%", height: 80, objectFit: "cover", borderRadius: 7 }} />
-                            : <span style={{ height: 80, display: "flex", alignItems: "center", justifyContent: "center", color: C.t2, background: "rgba(255,255,255,0.04)", borderRadius: 7 }}>{f.kind === "video" ? <Film size={26} /> : <FileIcon size={26} />}</span>}
+                            : <span style={{ height: 80, display: "flex", alignItems: "center", justifyContent: "center", color: C.t2, background: "var(--c-elevated, rgba(128,128,128,0.10))", borderRadius: 7 }}>{f.kind === "video" ? <Film size={26} /> : <FileIcon size={26} />}</span>}
                           <span style={{ fontSize: 12, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{f.name}</span>
                           <span style={{ fontSize: 11, color: C.t3, display: "flex", alignItems: "center", gap: 4 }}><Download size={11} /> {Math.round(f.size / 1024)} KB</span>
                         </a>
@@ -205,14 +205,14 @@ function StagedChip({ file, onRemove }: { file: File; onRemove: () => void }) {
   useEffect(() => { if (isImg) { const u = URL.createObjectURL(file); setUrl(u); return () => URL.revokeObjectURL(u); } }, [file, isImg]);
   const Icon = file.type.startsWith("video/") ? Film : file.type.startsWith("image/") ? ImageIcon : FileIcon;
   return (
-    <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "6px 8px 6px 6px", borderRadius: 10, border: `1px solid ${C.border}`, background: "rgba(255,255,255,0.04)", maxWidth: 220 }}>
+    <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "6px 8px 6px 6px", borderRadius: 10, border: `1px solid ${C.border}`, background: "var(--c-elevated, rgba(128,128,128,0.10))", maxWidth: 220 }}>
       {url ? <img src={url} alt="" style={{ width: 34, height: 34, borderRadius: 7, objectFit: "cover" }} />
-           : <span style={{ width: 34, height: 34, borderRadius: 7, background: "rgba(255,255,255,0.06)", display: "inline-flex", alignItems: "center", justifyContent: "center", color: C.t2 }}><Icon size={17} /></span>}
+           : <span style={{ width: 34, height: 34, borderRadius: 7, background: "var(--c-elevated, rgba(128,128,128,0.10))", display: "inline-flex", alignItems: "center", justifyContent: "center", color: C.t2 }}><Icon size={17} /></span>}
       <div style={{ minWidth: 0 }}>
         <div style={{ fontSize: 12, color: C.t1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", maxWidth: 130 }}>{file.name}</div>
         <div style={{ fontSize: 11, color: C.t3 }}>{(file.size / 1024 / 1024).toFixed(1)}MB</div>
       </div>
-      <button onClick={onRemove} title="移除" style={{ marginLeft: "auto", width: 22, height: 22, borderRadius: 6, border: "none", background: "rgba(255,255,255,0.06)", color: C.t2, cursor: "pointer", display: "inline-flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}><X size={13} /></button>
+      <button onClick={onRemove} title="移除" style={{ marginLeft: "auto", width: 22, height: 22, borderRadius: 6, border: "none", background: "var(--c-elevated, rgba(128,128,128,0.10))", color: C.t2, cursor: "pointer", display: "inline-flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}><X size={13} /></button>
     </div>
   );
 }
@@ -247,4 +247,4 @@ function Attachment({ a, mine }: { a: ChatFileRef; mine: boolean }) {
 }
 
 const pill: React.CSSProperties = { display: "inline-flex", alignItems: "center", gap: 6, fontSize: 12, fontWeight: 700, padding: "7px 12px", borderRadius: 10, cursor: "pointer" };
-const iconBtn: React.CSSProperties = { display: "inline-flex", alignItems: "center", justifyContent: "center", width: 40, height: 40, borderRadius: 11, border: `1px solid ${C.border}`, background: "rgba(255,255,255,0.05)", color: C.t1, cursor: "pointer", flexShrink: 0 };
+const iconBtn: React.CSSProperties = { display: "inline-flex", alignItems: "center", justifyContent: "center", width: 40, height: 40, borderRadius: 11, border: `1px solid ${C.border}`, background: "var(--c-elevated, rgba(128,128,128,0.10))", color: C.t1, cursor: "pointer", flexShrink: 0 };
