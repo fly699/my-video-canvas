@@ -10,6 +10,7 @@ import {
   wrapRoomKeyForMember, unwrapRoomKey, type Encrypted,
 } from "@/lib/chatCrypto";
 import { loadPrivateKeyJwk, savePrivateKeyJwk, loadLocalHistory, appendLocalHistory } from "@/lib/chatKeyStore";
+import { Lightbox } from "@/components/chat/chatLightbox";
 
 export interface ConversationSummary {
   id: number; type: string; mode: string; title: string | null;
@@ -44,7 +45,13 @@ interface ChatContextValue {
   maxFileMb: number;
   /** Whether the admin allows serverless (E2E) mode. */
   serverlessAllowed: boolean;
+  /** Whether the browser can do E2E crypto (requires HTTPS or localhost / secure context). */
+  e2eAvailable: boolean;
 }
+
+// Web Crypto's subtle API is only available in a secure context (HTTPS or
+// localhost). Over plain-HTTP LAN it is undefined, so E2E mode cannot work.
+const E2E_AVAILABLE = typeof crypto !== "undefined" && !!crypto.subtle;
 
 /** Serverless files above this size prompt the user to optionally skip encryption for speed. */
 export const SERVERLESS_ENCRYPT_PROMPT_BYTES = 100 * 1024 * 1024;
@@ -103,6 +110,7 @@ export function ChatProvider({ children }: { children: React.ReactNode }) {
 
   // ── identity key bootstrap ────────────────────────────────────────────────
   useEffect(() => {
+    if (!E2E_AVAILABLE) return; // no Web Crypto (insecure context) — skip E2E setup
     (async () => {
       try {
         let jwk = await loadPrivateKeyJwk();
@@ -357,7 +365,7 @@ export function ChatProvider({ children }: { children: React.ReactNode }) {
     const conv = conversations.find((c) => c.id === id);
     if (conv?.mode === "serverless") {
       const key = await getConversationKey(id, conv.type);
-      if (!key) throw new Error("加密密钥未就绪");
+      if (!key) throw new Error(E2E_AVAILABLE ? "加密密钥未就绪，请稍候重试" : "端到端加密需在 HTTPS 或 localhost 环境下使用");
       const enc: Encrypted = await encryptText(key, text);
       const payload: ChatRelayPayload = {
         conversationId: id, senderId: 0, senderName: "",
@@ -389,7 +397,7 @@ export function ChatProvider({ children }: { children: React.ReactNode }) {
     if (conv?.mode === "serverless") {
       const encrypt = opts?.encrypt !== false; // default: encrypt
       const key = encrypt ? await getConversationKey(id, conv.type) : null;
-      if (encrypt && !key) throw new Error("加密密钥未就绪");
+      if (encrypt && !key) throw new Error(E2E_AVAILABLE ? "加密密钥未就绪，请稍候重试" : "端到端加密需在 HTTPS 或 localhost 环境下使用");
       const transferId = crypto.randomUUID();
       const meta: ChatFileRef = { name: file.name, mimeType: file.type || "application/octet-stream", size: file.size, url: "", kind };
       const total = Math.ceil(file.size / CHUNK) || 1;
@@ -488,9 +496,9 @@ export function ChatProvider({ children }: { children: React.ReactNode }) {
     openDm, createGroupWith,
     messages, presence, typingUsers,
     connected, sendText, sendFile, emitTyping, loadingMessages,
-    maxFileMb, serverlessAllowed,
+    maxFileMb, serverlessAllowed, e2eAvailable: E2E_AVAILABLE,
   };
-  return <ChatContext.Provider value={value}>{children}</ChatContext.Provider>;
+  return <ChatContext.Provider value={value}>{children}<Lightbox /></ChatContext.Provider>;
 }
 
 function fileToBase64(file: File): Promise<string> {

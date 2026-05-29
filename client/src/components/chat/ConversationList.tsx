@@ -39,8 +39,8 @@ export function ConversationList() {
         }} />
         <button onClick={() => setDialogOpen(true)} title="新建会话 / 私聊" style={{
           display: "inline-flex", alignItems: "center", justifyContent: "center", width: 34, height: 34,
-          borderRadius: 10, border: "none", cursor: "pointer", background: C.accentGrad, color: "#1a1205",
-          boxShadow: "0 4px 14px rgba(245,158,11,0.25)", flexShrink: 0,
+          borderRadius: 10, border: `1px solid ${C.accent}`, cursor: "pointer", background: C.accentSoft, color: C.accent,
+          flexShrink: 0,
         }}><Plus size={18} /></button>
       </div>
       <div style={{ flex: 1, overflowY: "auto", padding: "10px 8px" }}>
@@ -103,7 +103,7 @@ function ConvRow({ c, active, onClick }: { c: ConversationSummary; active: boole
   return (
     <button onClick={onClick} style={{
       ...rowBase,
-      background: active ? "linear-gradient(90deg, rgba(245,158,11,0.16), rgba(245,158,11,0.04))" : "transparent",
+      background: active ? C.accentSoft : "transparent",
       boxShadow: active ? `inset 2px 0 0 ${C.accent}` : "none",
     }}>
       <Avatar seed={seed} label={title} icon={icon} />
@@ -116,7 +116,7 @@ function ConvRow({ c, active, onClick }: { c: ConversationSummary; active: boole
         )}
       </span>
       {c.mode === "serverless" && <ShieldCheck size={13} style={{ color: C.t4, flexShrink: 0 }} />}
-      {c.unread > 0 && <span style={{ fontSize: 11, fontWeight: 800, background: C.accentGrad, color: "#1a1205", borderRadius: 10, padding: "1px 7px", flexShrink: 0 }}>{c.unread}</span>}
+      {c.unread > 0 && <span style={{ fontSize: 11, fontWeight: 800, background: C.accentSoft, color: C.accent, borderRadius: 10, padding: "1px 7px", flexShrink: 0 }}>{c.unread}</span>}
     </button>
   );
 }
