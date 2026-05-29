@@ -40,4 +40,3 @@ PREPARE stmt FROM @sql;
 EXECUTE stmt;
 --> statement-breakpoint
 DEALLOCATE PREPARE stmt;
---> statement-breakpoint
