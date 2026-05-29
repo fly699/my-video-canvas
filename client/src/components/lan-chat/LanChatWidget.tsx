@@ -292,7 +292,7 @@ export function LanChatWidget({ state, onStateChange }: LanChatWidgetProps) {
       {/* Nickname picker overlay if no session */}
       {!session && (
         <div className="flex-1 relative">
-          <NicknamePicker fingerprint={fingerprint} onSubmit={async (n) => { await join(n); }} />
+          <NicknamePicker fingerprint={fingerprint} onSubmit={async (n, gid) => { await join(n, gid); }} />
         </div>
       )}
       {session && (

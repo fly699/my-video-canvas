@@ -252,11 +252,19 @@ async function startServer() {
       { roomId, password }: { roomId: number; password?: string },
     ) => {
       if (typeof roomId !== "number") return;
-      // Password gate for private rooms. Wrong password = silently refuse
-      // (no presence update, peer mesh stays empty for this user).
+      const sess = lanChatBus.getSession(sessionId);
+      if (!sess) return;
+      // Verify room exists and belongs to this user's network group, then
+      // check the password gate. Silently deny on any failure so the client
+      // can't enumerate foreign rooms by probing enter-room with arbitrary IDs.
       try {
         const room = await getLanChatRoomById(roomId);
-        if (room?.passwordHash) {
+        // Room must exist and belong to the caller's network group.
+        if (!room || room.networkGroupId !== sess.networkGroupId) {
+          socket.emit("lan-chat:enter-denied", { roomId, reason: "not-found" });
+          return;
+        }
+        if (room.passwordHash) {
           if (!password || !(await verifyPassword(password, room.passwordHash))) {
             socket.emit("lan-chat:enter-denied", { roomId, reason: "wrong-password" });
             return;
