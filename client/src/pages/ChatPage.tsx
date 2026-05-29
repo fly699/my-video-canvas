@@ -52,7 +52,7 @@ export default function ChatPage() {
         <header style={{
           position: "relative", display: "flex", alignItems: "center", justifyContent: "space-between",
           padding: "10px 16px", flexShrink: 0, borderBottom: `1px solid ${C.border}`,
-          background: "radial-gradient(120% 180% at 0% 0%, rgba(245,158,11,0.10), transparent 60%), #0c0c10",
+          background: C.bg2,
         }}>
           <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
             <button onClick={() => navigate("/")} title="返回" style={iconBtn}><ArrowLeft size={18} /></button>
@@ -61,7 +61,7 @@ export default function ChatPage() {
             </button>
             <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
               <img src="/chat-icon.svg" width={26} height={26} alt="" style={{ borderRadius: 7 }} />
-              <span style={{ fontWeight: 800, fontSize: 16, letterSpacing: "-0.3px", background: C.accentGradText, WebkitBackgroundClip: "text", backgroundClip: "text", color: "transparent" }}>聊天工作室</span>
+              <span style={{ fontWeight: 800, fontSize: 16, letterSpacing: "-0.3px", color: C.accent }}>聊天工作室</span>
             </div>
           </div>
           <div style={{ display: "flex", alignItems: "center", gap: 8 }}>

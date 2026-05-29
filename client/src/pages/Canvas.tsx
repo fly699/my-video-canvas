@@ -17,6 +17,7 @@ import { usePersistentState } from "../hooks/usePersistentState";
 import { useShallow } from "zustand/react/shallow";
 import { useWorkflowRunner, RUNNABLE_TYPES } from "../hooks/useWorkflowRunner";
 import { WorkflowRunProvider } from "../contexts/WorkflowRunContext";
+import { CanvasChatWindow } from "../components/chat/CanvasChatWindow";
 import { CustomNode } from "../components/canvas/CustomNode";
 import { CustomEdge } from "../components/canvas/CustomEdge";
 import { ContextMenu } from "../components/canvas/ContextMenu";
@@ -366,6 +367,7 @@ function CanvasInner({ projectId }: { projectId: number }) {
   const [showRatioPicker, setShowRatioPicker] = useState(false);
   const [showConnectionHints, setShowConnectionHints] = useState(false);
   const [showHelp, setShowHelp] = useState(false);
+  const [chatOpen, setChatOpen] = useState(false);
   const [showArcPicker, setShowArcPicker] = useState(false);
   const { mode: canvasMode, setMode: setCanvasMode } = useCanvasMode();
   const { theme } = useTheme();
@@ -1043,17 +1045,19 @@ function CanvasInner({ projectId }: { projectId: number }) {
             {collaboratorList.length > 0 && <span>{collaboratorList.length}</span>}
           </button>
 
-          {/* Chat (opens the full chat page) */}
+          {/* Chat (floating in-canvas window) */}
           <Tooltip>
             <TooltipTrigger asChild>
               <button
-                onClick={() => window.open("/chat", "_blank")}
+                onClick={() => setChatOpen((v) => !v)}
                 className="topbar-btn"
+                data-active={chatOpen ? "true" : undefined}
+                style={chatOpen ? { background: "oklch(0.68 0.22 285 / 0.12)", border: "1px solid oklch(0.68 0.22 285 / 0.3)", color: "oklch(0.68 0.22 285)" } : undefined}
               >
                 <MessageSquare className="w-3.5 h-3.5" />
               </button>
             </TooltipTrigger>
-            <TooltipContent side="bottom" className="text-xs">聊天</TooltipContent>
+            <TooltipContent side="bottom" className="text-xs">聊天（悬浮窗）</TooltipContent>
           </Tooltip>
 
           {/* Help guide */}
@@ -2359,6 +2363,7 @@ function CanvasInner({ projectId }: { projectId: number }) {
         );
       })()}
 
+      {chatOpen && <CanvasChatWindow onClose={() => setChatOpen(false)} />}
     </div>
   );
 }

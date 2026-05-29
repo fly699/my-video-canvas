@@ -134,8 +134,8 @@ const inputStyle: React.CSSProperties = {
   color: "var(--c-t1, #f0f0f4)", fontSize: 14, outline: "none",
 };
 const primaryBtn: React.CSSProperties = {
-  padding: "10px 0", border: "none", borderRadius: 8, background: "linear-gradient(135deg,#f59e0b,#fb7185)",
-  color: "#fff", fontSize: 14, fontWeight: 600, cursor: "pointer", marginTop: 4,
+  padding: "10px 0", border: "1px solid #f59e0b", borderRadius: 8, background: "rgba(245,158,11,0.12)",
+  color: "#f59e0b", fontSize: 14, fontWeight: 600, cursor: "pointer", marginTop: 4,
 };
 const iconBtn: React.CSSProperties = {
   display: "inline-flex", alignItems: "center", justifyContent: "center", width: 28, height: 28,

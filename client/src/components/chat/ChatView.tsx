@@ -6,9 +6,10 @@ import type { ChatWireMessage, ChatFileRef } from "@shared/types";
 import { toast } from "sonner";
 import { C, avatarGrad, initials } from "./chatTheme";
 import { MessageContent } from "./MessageContent";
+import { openLightbox } from "./chatLightbox";
 
 export function ChatView({ membersOpen: _m }: { membersOpen?: boolean }) {
-  const { activeConv, messages, presence, typingUsers, sendText, sendFile, emitTyping, connected, loadingMessages, maxFileMb, serverlessAllowed, myUserId, deleteRoom, leaveRoom } = useChat();
+  const { activeConv, messages, presence, typingUsers, sendText, sendFile, emitTyping, connected, loadingMessages, maxFileMb, serverlessAllowed, e2eAvailable, myUserId, deleteRoom, leaveRoom } = useChat();
   const [text, setText] = useState("");
   const [staged, setStaged] = useState<File[]>([]);
   const [busy, setBusy] = useState(false);
@@ -65,6 +66,7 @@ export function ChatView({ membersOpen: _m }: { membersOpen?: boolean }) {
     if (activeConv!.type === "lobby") { toast.error("大厅模式不可更改"); return; }
     const next = activeConv!.mode === "server" ? "serverless" : "server";
     if (next === "serverless" && !serverlessAllowed) { toast.error("管理员已禁用端到端加密模式"); return; }
+    if (next === "serverless" && !e2eAvailable) { toast.error("端到端加密需在 HTTPS 或 localhost 环境下使用"); return; }
     try {
       await setModeMut.mutateAsync({ conversationId: activeConv!.id, mode: next });
       utils.chat.listConversations.invalidate();
@@ -80,7 +82,7 @@ export function ChatView({ membersOpen: _m }: { membersOpen?: boolean }) {
          onDragLeave={(e) => { if (e.currentTarget === e.target) setDragOver(false); }}
          onDrop={(e) => { e.preventDefault(); setDragOver(false); if (e.dataTransfer.files.length) addFiles(e.dataTransfer.files); }}>
       {/* header */}
-      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "12px 18px", borderBottom: `1px solid ${C.border}`, flexShrink: 0, background: "radial-gradient(120% 200% at 100% 0%, rgba(245,158,11,0.06), transparent 55%)" }}>
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "12px 18px", borderBottom: `1px solid ${C.border}`, flexShrink: 0 }}>
         <div style={{ minWidth: 0, display: "flex", alignItems: "center", gap: 11 }}>
           <span style={{ width: 38, height: 38, borderRadius: 11, background: avatarGrad(activeConv.type === "dm" ? `u${activeConv.peer?.id}` : `c${activeConv.id}`), color: "#fff", display: "inline-flex", alignItems: "center", justifyContent: "center", fontWeight: 700, flexShrink: 0 }}>{initials(title)}</span>
           <div style={{ minWidth: 0 }}>
@@ -109,22 +111,15 @@ export function ChatView({ membersOpen: _m }: { membersOpen?: boolean }) {
 
       {/* messages */}
       <div ref={scrollRef} style={{ flex: 1, overflowY: "auto", padding: "16px 18px", display: "flex", flexDirection: "column", gap: 12 }}>
-        {activeConv.mode === "serverless" && (
-          <div style={{ alignSelf: "center", fontSize: 12, color: C.accent, background: C.accentSoft, padding: "6px 14px", borderRadius: 20, border: `1px solid ${C.accent}33` }}>
-            🔒 端到端加密会话 · 消息不在服务器留存，历史仅保存在本机
-          </div>
-        )}
         {loadingMessages && <div style={{ alignSelf: "center", color: C.t3, fontSize: 13 }}>加载中…</div>}
         {!loadingMessages && messages.length === 0 && <div style={{ alignSelf: "center", color: C.t4, fontSize: 13 }}>还没有消息，发送第一条吧</div>}
         {messages.map((m) => <Bubble key={`${m.id}-${m.createdAt}`} msg={m} mine={m.senderId === -1 || m.senderId === myUserId} />)}
         {typingUsers.length > 0 && <div style={{ fontSize: 12, color: C.t3 }}>{typingUsers.join("、")} 正在输入…</div>}
       </div>
 
-      {/* limit / mode hint */}
+      {/* limit hint */}
       <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "4px 16px 0", fontSize: 11, color: C.t3, flexWrap: "wrap" }}>
-        <span>单文件 ≤ <strong style={{ color: C.t2 }}>{maxFileMb}MB</strong></span><span>·</span>
-        <span>{activeConv.mode === "serverless" ? "🔒 端到端加密，内容不留存、仅本机历史" : "服务器模式，消息与文件留存、管理员可审计"}</span>
-        {activeConv.mode === "serverless" && <><span>·</span><span>大文件可选不加密提速</span></>}
+        <span>单文件 ≤ <strong style={{ color: C.t2 }}>{maxFileMb}MB</strong></span>
         {!serverlessAllowed && <><span>·</span><span>管理员已禁用端到端模式</span></>}
       </div>
 
@@ -144,7 +139,7 @@ export function ChatView({ membersOpen: _m }: { membersOpen?: boolean }) {
           placeholder="输入消息，Enter 发送，Shift+Enter 换行，可拖拽文件到此" rows={1}
           style={{ flex: 1, resize: "none", maxHeight: 140, padding: "10px 14px", borderRadius: 12, border: `1px solid ${C.border}`, background: "rgba(255,255,255,0.05)", color: C.t1, fontSize: 14, outline: "none", fontFamily: "inherit" }} />
         <button onClick={() => doSend()} disabled={busy || (!text.trim() && staged.length === 0)} title="发送"
-          style={{ ...iconBtn, width: 40, height: 40, background: C.accentGrad, color: "#1a1205", border: "none", boxShadow: "0 4px 14px rgba(245,158,11,0.25)", opacity: busy || (!text.trim() && staged.length === 0) ? 0.5 : 1 }}>
+          style={{ ...iconBtn, width: 40, height: 40, background: C.accentSoft, color: C.accent, border: `1px solid ${C.accent}`, opacity: busy || (!text.trim() && staged.length === 0) ? 0.5 : 1 }}>
           <Send size={18} />
         </button>
       </div>
@@ -164,7 +159,7 @@ export function ChatView({ membersOpen: _m }: { membersOpen?: boolean }) {
             <div style={{ fontSize: 13, color: C.t2, lineHeight: 1.6, marginBottom: 18 }}>有文件超过 100MB。端到端加密会逐块加密、较慢；也可<strong>不加密直传</strong>显著提速（明文经服务器中转，仍不落库）。</div>
             <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
               <button onClick={() => { setAskEncrypt(false); void doSend(true); }} style={{ padding: "11px 0", border: `1px solid ${C.borderStrong}`, borderRadius: 10, background: "rgba(255,255,255,0.05)", color: C.t1, fontWeight: 700, cursor: "pointer" }}>🔒 加密发送（安全，较慢）</button>
-              <button onClick={() => { setAskEncrypt(false); void doSend(false); }} style={{ padding: "11px 0", border: "none", borderRadius: 10, background: C.accentGrad, color: "#1a1205", fontWeight: 700, cursor: "pointer" }}>⚡ 不加密快速发送</button>
+              <button onClick={() => { setAskEncrypt(false); void doSend(false); }} style={{ padding: "11px 0", border: "none", borderRadius: 10, background: C.accentSoft, color: C.accent, fontWeight: 700, cursor: "pointer" }}>⚡ 不加密快速发送</button>
             </div>
           </div>
         </div>
@@ -225,8 +220,8 @@ function Bubble({ msg, mine }: { msg: ChatWireMessage; mine: boolean }) {
       <div style={{ display: "flex", flexDirection: "column", alignItems: mine ? "flex-end" : "flex-start", gap: 3, maxWidth: "72%" }}>
         {!mine && <span style={{ fontSize: 11, color: C.t3, paddingLeft: 2 }}>{msg.senderName}</span>}
         <div style={{ padding: "9px 13px", borderRadius: 14, fontSize: 14, lineHeight: 1.55, wordBreak: "break-word",
-          background: mine ? C.accentGrad : C.surfaceFlat, color: mine ? "#1a1205" : C.t1,
-          border: mine ? "none" : `1px solid ${C.border}`, borderTopRightRadius: mine ? 4 : 14, borderTopLeftRadius: mine ? 14 : 4 }}>
+          background: mine ? C.accentSoft : C.surfaceFlat, color: C.t1,
+          border: `1px solid ${mine ? "rgba(245,158,11,0.30)" : C.border}`, borderTopRightRadius: mine ? 4 : 14, borderTopLeftRadius: mine ? 14 : 4 }}>
           <MessageContent content={msg.content} />
           {msg.attachments?.map((a, i) => <Attachment key={i} a={a} mine={mine} />)}
         </div>
@@ -237,11 +232,11 @@ function Bubble({ msg, mine }: { msg: ChatWireMessage; mine: boolean }) {
 }
 
 function Attachment({ a, mine }: { a: ChatFileRef; mine: boolean }) {
-  if (a.kind === "image") return <img src={a.url} alt={a.name} style={{ maxWidth: 240, maxHeight: 240, borderRadius: 10, marginTop: 6, display: "block" }} />;
+  if (a.kind === "image") return <img src={a.url} alt={a.name} onClick={() => openLightbox(a.url)} style={{ maxWidth: 240, maxHeight: 240, borderRadius: 10, marginTop: 6, display: "block", cursor: "zoom-in" }} />;
   if (a.kind === "video") return <video src={a.url} controls style={{ maxWidth: 280, borderRadius: 10, marginTop: 6, display: "block" }} />;
   if (a.mimeType.startsWith("audio/")) return <audio src={a.url} controls style={{ marginTop: 6, width: 240 }} />;
   return (
-    <a href={a.url} download={a.name} target="_blank" rel="noreferrer" style={{ display: "inline-flex", alignItems: "center", gap: 6, marginTop: 6, color: mine ? "#1a1205" : C.accent2, textDecoration: "underline", fontSize: 13 }}>
+    <a href={a.url} download={a.name} target="_blank" rel="noreferrer" style={{ display: "inline-flex", alignItems: "center", gap: 6, marginTop: 6, color: C.accent2, textDecoration: "underline", fontSize: 13 }}>
       <Paperclip size={13} /> {a.name} ({Math.round(a.size / 1024)} KB)
     </a>
   );

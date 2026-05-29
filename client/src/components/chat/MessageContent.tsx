@@ -1,4 +1,5 @@
 import { C } from "./chatTheme";
+import { openLightbox } from "./chatLightbox";
 
 // 解析消息正文中的网址：渲染为可点链接；图片/音频/视频/YouTube 以内嵌播放器展示。
 const URL_RE = /(https?:\/\/[^\s<]+)/gi;
@@ -27,7 +28,7 @@ export function MessageContent({ content }: { content: string }) {
     last = m.index + url.length;
     const yt = youtubeId(url);
     if (IMG_EXT.test(url)) {
-      embeds.push(<img key={`e${i}`} src={url} alt="" style={embedImg} />);
+      embeds.push(<img key={`e${i}`} src={url} alt="" onClick={() => openLightbox(url)} style={{ ...embedImg, cursor: "zoom-in" }} />);
     } else if (VID_EXT.test(url)) {
       embeds.push(<video key={`e${i}`} src={url} controls style={embedMedia} />);
     } else if (AUD_EXT.test(url)) {

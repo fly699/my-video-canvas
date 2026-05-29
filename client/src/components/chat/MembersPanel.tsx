@@ -90,7 +90,7 @@ export function MembersPanel() {
 
       {selected.size > 0 && (
         <div style={{ padding: 12, borderTop: `1px solid ${C.border}` }}>
-          <button onClick={makeGroup} style={{ width: "100%", padding: "10px 0", border: "none", borderRadius: 10, cursor: "pointer", background: C.accentGrad, color: "#1a1205", fontWeight: 700, boxShadow: "0 4px 14px rgba(245,158,11,0.25)" }}>
+          <button onClick={makeGroup} style={{ width: "100%", padding: "10px 0", border: `1px solid ${C.accent}`, borderRadius: 10, cursor: "pointer", background: C.accentSoft, color: C.accent, fontWeight: 700 }}>
             组建群聊（已选 {selected.size} 人）
           </button>
         </div>
