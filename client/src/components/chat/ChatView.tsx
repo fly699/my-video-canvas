@@ -75,6 +75,7 @@ export function ChatView({ membersOpen: _m }: { membersOpen?: boolean }) {
   }
   async function onDelete() { if (confirm("确定删除该群聊？所有消息将被清除，且对所有成员生效。")) { try { await deleteRoom(activeConv!.id); toast.success("群聊已删除"); } catch (e) { toast.error(e instanceof Error ? e.message : "删除失败"); } } }
   async function onLeave() { if (confirm("确定退出该群聊？")) { try { await leaveRoom(activeConv!.id); toast.success("已退出群聊"); } catch (e) { toast.error(e instanceof Error ? e.message : "退出失败"); } } }
+  async function onDeleteDm() { if (confirm("确定删除该私聊？将清除聊天记录，且对双方生效。")) { try { await deleteRoom(activeConv!.id); toast.success("私聊已删除"); } catch (e) { toast.error(e instanceof Error ? e.message : "删除失败"); } } }
 
   return (
     <div style={{ flex: 1, display: "flex", flexDirection: "column", minWidth: 0, background: C.bg, position: "relative" }}
@@ -100,6 +101,9 @@ export function ChatView({ membersOpen: _m }: { membersOpen?: boolean }) {
           {activeConv.type === "group" && (isOwner
             ? <button onClick={onDelete} title="删除群聊（群主）" style={{ ...pill, border: `1px solid rgba(239,68,68,0.3)`, background: C.dangerSoft, color: C.danger }}><Trash2 size={14} /> 删除</button>
             : <button onClick={onLeave} title="退出群聊" style={{ ...pill, border: `1px solid ${C.borderStrong}`, background: "rgba(255,255,255,0.05)", color: C.t1 }}><LogOut size={14} /> 退出</button>
+          )}
+          {activeConv.type === "dm" && (
+            <button onClick={onDeleteDm} title="删除该私聊" style={{ ...pill, border: `1px solid rgba(239,68,68,0.3)`, background: C.dangerSoft, color: C.danger }}><Trash2 size={14} /> 删除</button>
           )}
           {activeConv.type !== "lobby" && (
             <button onClick={toggleMode} title="切换工作模式" style={{ ...pill, border: `1px solid ${activeConv.mode === "serverless" ? C.accent : C.borderStrong}`, background: activeConv.mode === "serverless" ? C.accentSoft : "rgba(255,255,255,0.05)", color: activeConv.mode === "serverless" ? C.accent : C.t1 }}>
