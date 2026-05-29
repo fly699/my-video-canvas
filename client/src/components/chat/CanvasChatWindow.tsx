@@ -48,7 +48,11 @@ export function CanvasChatWindow({ onClose }: { onClose: () => void }) {
     rezRef.current = { mx: e.clientX, my: e.clientY, w: box.w, h: box.h };
     const move = (ev: MouseEvent) => {
       const r = rezRef.current; if (!r) return;
-      setBox((b) => ({ ...b, w: clamp(r.w + ev.clientX - r.mx, 340, window.innerWidth - b.x), h: clamp(r.h + ev.clientY - r.my, 360, window.innerHeight - b.y) }));
+      // Window is rendered scaled, so convert cursor delta (screen px) to the
+      // window's own (unscaled) coordinates by dividing by the scale factor.
+      const dx = (ev.clientX - r.mx) / scale;
+      const dy = (ev.clientY - r.my) / scale;
+      setBox((b) => ({ ...b, w: clamp(r.w + dx, 340, window.innerWidth - b.x), h: clamp(r.h + dy, 360, window.innerHeight - b.y) }));
     };
     const up = () => { rezRef.current = null; window.removeEventListener("mousemove", move); window.removeEventListener("mouseup", up); };
     window.addEventListener("mousemove", move); window.addEventListener("mouseup", up);
@@ -61,6 +65,9 @@ export function CanvasChatWindow({ onClose }: { onClose: () => void }) {
         background: C.bg, border: `1px solid ${C.borderStrong}`, borderRadius: 14, overflow: "hidden",
         display: "flex", flexDirection: "column", boxShadow: "0 18px 50px rgba(0,0,0,0.55)", color: C.t1,
         fontFamily: "system-ui, -apple-system, 'Segoe UI', sans-serif",
+        // Scale the WHOLE window (chrome + body) from its top-left corner so its
+        // anchored position doesn't shift when zooming.
+        transform: `scale(${scale})`, transformOrigin: "top left",
       }}>
         {/* window chrome / drag handle */}
         <div onMouseDown={onHeaderDown} style={{
@@ -82,8 +89,8 @@ export function CanvasChatWindow({ onClose }: { onClose: () => void }) {
           </div>
         </div>
 
-        {/* body (UI scaled via CSS zoom; window chrome stays unscaled) */}
-        <div style={{ flex: 1, display: "flex", minHeight: 0, position: "relative", zoom: scale } as React.CSSProperties}>
+        {/* body */}
+        <div style={{ flex: 1, display: "flex", minHeight: 0, position: "relative" }}>
           {sidebar && <Drawer side="left" onClose={() => setSidebar(false)}><ConversationList /></Drawer>}
           <ChatView />
           {members && <Drawer side="right" onClose={() => setMembers(false)}><MembersPanel /></Drawer>}

@@ -2,11 +2,14 @@ import type { CSSProperties } from "react";
 
 // ── 扁平配色：跟随应用主题（CSS 变量），仅强调色固定为琥珀橙 ───────────────────
 // 这样 /chat 页面与画布内悬浮窗都会随页面 10 套主题切换；无渐变、无大面积彩填。
+// NOTE: do NOT use var(--c-canvas) — the canvas page overrides it to the user's
+// background-color picker value, which would hijack the chat window's bg. Use
+// the theme surface vars (like nodes do) so the chat follows the theme proper.
 export const C = {
-  bg: "var(--c-canvas, #0e0e11)",
-  bg2: "var(--c-surface, #121216)",
-  surface: "var(--c-surface, #16161b)",
-  surfaceFlat: "var(--c-elevated, #16161b)",
+  bg: "var(--c-surface, #16161b)",
+  bg2: "var(--c-surface, #14141a)",
+  surface: "var(--c-elevated, #1b1b22)",
+  surfaceFlat: "var(--c-elevated, #1b1b22)",
   elevated: "var(--c-elevated, #1c1c22)",
   border: "var(--c-bd2, rgba(128,128,128,0.18))",
   borderStrong: "var(--c-bd3, rgba(128,128,128,0.32))",
