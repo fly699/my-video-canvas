@@ -42,6 +42,12 @@ git config user.name  >nul 2>nul || git config user.name  "fly699"
 rem ---- 1) pull latest code (--no-edit: don't open an editor for merge commits) ----
 echo [*] git pull...
 git pull --no-edit
+if errorlevel 1 (
+  echo [!] 拉取失败（多为本地 deploy 脚本被本地改动挡住）。丢弃 deploy 下脚本改动后重试...
+  rem .env 已被 .gitignore，不受影响；deploy 脚本以仓库版本为准。
+  git checkout -- deploy/ 2>nul
+  git pull --no-edit
+)
 if errorlevel 1 goto fail
 echo [OK] code updated.
 
