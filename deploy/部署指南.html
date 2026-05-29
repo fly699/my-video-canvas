@@ -87,7 +87,7 @@
 
   <header>
     <h1>🎬 <span class="g">ai-video-canvas</span> · Windows 部署指南</h1>
-    <p>方案 B：本地正式部署（MySQL 持久化）　·　跟着勾选，一步步搞定</p>
+    <p>方案 B：Docker + MySQL 持久化 · 局域网访问　·　脚本全自动，跟着勾选即可</p>
   </header>
 
   <div class="progress-bar">
@@ -108,87 +108,71 @@
     <div class="card">
       <div class="step-head" onclick="toggle(this)">
         <div class="num">★</div>
-        <div class="step-title">最快路线：双击或一行命令<small>脚本会自动完成「检测环境→起 MySQL→生成配置→装依赖→建表→构建→启动」</small></div>
+        <div class="step-title">脚本会自动帮你做这些事<small>你基本只需要「拿到代码 → 双击运行」两步</small></div>
         <span class="toggle">▶</span>
       </div>
       <div class="step-body"><div class="step-body-inner">
-        <p>把项目下载/克隆到本地后，<b>在项目根目录</b> 用以下任一方式运行：</p>
-        <p><span class="pill">方式一 · 双击</span> 进入 <code>deploy</code> 文件夹，双击 <b>一键部署.bat</b></p>
-        <p><span class="pill">方式二 · 命令</span> 在项目根目录打开 PowerShell：</p>
-        <pre><code>powershell -ExecutionPolicy Bypass -File .\deploy\deploy.ps1</code></pre>
-        <p>常用参数（可选）：</p>
-        <pre><code>.\deploy\deploy.ps1 -OwnerEmail "you@mail.com" -Port 3000
-.\deploy\deploy.ps1 -DbPassword "myStrongPass"   # 自定义数据库密码
-.\deploy\deploy.ps1 -SkipBuild                   # 已构建过，跳过构建快速重启
-.\deploy\deploy.ps1 -Reset                       # 重建数据库容器（清空数据）</code></pre>
-        <div class="note">完成后浏览器访问 <a href="http://localhost:3000" target="_blank"><b>http://localhost:3000</b></a>。用 <code>OWNER_EMAIL</code> 对应邮箱注册的账号即为管理员。</div>
-        <div class="note warn">脚本需要 <b>Node.js 20+</b> 和 <b>Docker Desktop</b>。若未安装，请先看下面前置条件清单。</div>
+        <ul class="clean">
+          <li>🔐 <b>自动申请管理员权限</b>（弹一次 UAC 授权框，点「是」）</li>
+          <li>📦 <b>自动安装 Node.js</b>（用 Windows 自带的 winget，无需你手动下载）</li>
+          <li>🐳 <b>自动安装 Docker Desktop</b> 并启动引擎</li>
+          <li>🗄 <b>自动起 MySQL 容器</b>（设了开机自启，数据持久化）</li>
+          <li>⚙️ <b>自动生成 .env</b>（随机安全密钥）、装依赖、建表、构建</li>
+          <li>🔥 <b>自动开防火墙端口</b>，并显示<b>局域网访问地址</b></li>
+        </ul>
+        <div class="note warn"><b>唯一可能需要你手动做的：</b>如果是第一次装 Docker，Windows 需要<b>重启一次电脑</b>（开启 WSL2）。脚本会提示你，重启后<b>再双击运行一次</b>即可自动续上——已完成的步骤不会重做。</div>
+        <div class="note">前置要求很低：<b>Windows 10 (1809+) 或 Windows 11</b>（自带 winget 即可）。无需手动装任何东西。</div>
       </div></div>
     </div>
 
     <div class="card" data-step="pre1">
       <div class="step-head" onclick="toggle(this)">
         <div class="num">1</div>
-        <div class="step-title">安装 Node.js 20+<small>JavaScript 运行环境，项目运行的基础</small></div>
+        <div class="step-title">获取项目代码<small>放到本地任意目录</small></div>
         <input type="checkbox" class="chk" onclick="event.stopPropagation();mark(this)">
         <span class="toggle">▶</span>
       </div>
       <div class="step-body"><div class="step-body-inner">
-        <ul class="clean">
-          <li>打开 <a href="https://nodejs.org/" target="_blank">nodejs.org</a>，下载 <b>LTS 版（20 或更高）</b> 的 Windows 安装包，一路下一步。</li>
-          <li>装完<b>重开</b> PowerShell，验证：</li>
-        </ul>
-        <pre><code>node -v
-npm -v</code></pre>
-        <div class="note">看到形如 <code>v20.x.x</code> 即成功。脚本会自动通过 corepack 启用 pnpm，无需手动装。</div>
+        <p>已装 Git：</p>
+        <pre><code>git clone &lt;仓库地址&gt; ai-video-canvas</code></pre>
+        <p>没装 Git 也行：GitHub 页面点 <b>Code → Download ZIP</b>，解压到任意文件夹即可。</p>
       </div></div>
     </div>
 
     <div class="card" data-step="pre2">
       <div class="step-head" onclick="toggle(this)">
         <div class="num">2</div>
-        <div class="step-title">安装 Docker Desktop<small>用来一键运行 MySQL 数据库，免去手动安装配置</small></div>
+        <div class="step-title">双击运行 🚀<small>进入 deploy 文件夹，双击「一键部署.bat」</small></div>
         <input type="checkbox" class="chk" onclick="event.stopPropagation();mark(this)">
         <span class="toggle">▶</span>
       </div>
       <div class="step-body"><div class="step-body-inner">
-        <ul class="clean">
-          <li>下载 <a href="https://www.docker.com/products/docker-desktop/" target="_blank">Docker Desktop for Windows</a> 并安装（首次安装可能需开启 WSL2，按提示操作并重启）。</li>
-          <li><b>启动 Docker Desktop</b>，等待左下角变成绿色「Engine running」。</li>
-          <li>验证：</li>
-        </ul>
-        <pre><code>docker -v</code></pre>
-        <div class="note warn">不想用 Docker？也可自行安装 MySQL 8，并在脚本生成的 <code>.env</code> 里把 <code>DATABASE_URL</code> 改成你的真实连接串。</div>
+        <p><span class="pill">方式一 · 双击</span> 打开项目里的 <code>deploy</code> 文件夹，双击 <b>一键部署.bat</b>，在弹出的 UAC 框点「是」。</p>
+        <p><span class="pill">方式二 · 命令</span> 在项目根目录打开 PowerShell：</p>
+        <pre><code>powershell -ExecutionPolicy Bypass -File .\deploy\deploy.ps1</code></pre>
+        <p>常用参数（可选）：</p>
+        <pre><code>.\deploy\deploy.ps1 -OwnerEmail "you@mail.com"   # 指定管理员邮箱
+.\deploy\deploy.ps1 -DbPassword "myPass"         # 自定义数据库密码
+.\deploy\deploy.ps1 -SkipBuild                   # 已构建过，加速重启
+.\deploy\deploy.ps1 -NoFirewall                  # 只本机访问，不开防火墙
+.\deploy\deploy.ps1 -Reset                       # 重建数据库容器（清空数据）</code></pre>
+        <div class="note warn">若提示「Docker 已安装，请重启电脑」：重启后<b>再双击运行一次</b>即可，脚本会自动从上次的地方继续。</div>
       </div></div>
     </div>
 
     <div class="card" data-step="pre3">
       <div class="step-head" onclick="toggle(this)">
         <div class="num">3</div>
-        <div class="step-title">获取项目代码<small>把仓库放到本地任意目录</small></div>
+        <div class="step-title">完成，开始访问 🎉<small>本机 + 局域网都能开</small></div>
         <input type="checkbox" class="chk" onclick="event.stopPropagation();mark(this)">
         <span class="toggle">▶</span>
       </div>
       <div class="step-body"><div class="step-body-inner">
-        <p>已安装 Git 的话：</p>
-        <pre><code>git clone &lt;仓库地址&gt; ai-video-canvas
-cd ai-video-canvas</code></pre>
-        <p>没装 Git 也行：在 GitHub 页面点 <b>Code → Download ZIP</b>，解压即可。</p>
-      </div></div>
-    </div>
-
-    <div class="card" data-step="pre4">
-      <div class="step-head" onclick="toggle(this)">
-        <div class="num">4</div>
-        <div class="step-title">运行一键脚本 🚀<small>万事俱备，启动！</small></div>
-        <input type="checkbox" class="chk" onclick="event.stopPropagation();mark(this)">
-        <span class="toggle">▶</span>
-      </div>
-      <div class="step-body"><div class="step-body-inner">
-        <pre><code>powershell -ExecutionPolicy Bypass -File .\deploy\deploy.ps1</code></pre>
-        <p>看到绿色的「部署完成！」并提示访问地址后，打开浏览器访问：</p>
-        <pre><code>http://localhost:3000</code></pre>
-        <div class="note danger">服务运行时<b>请勿关闭</b>该 PowerShell 窗口；要停止服务在窗口里按 <b>Ctrl+C</b>。下次启动可加 <code>-SkipBuild</code> 加速。</div>
+        <p>看到绿色「部署完成！」后，脚本会直接打印两个地址：</p>
+        <pre><code>本机访问:   http://localhost:3000
+局域网访问: http://本机IP:3000   （同一WiFi/网线下的手机、电脑都能开）</code></pre>
+        <p>用 <code>.env</code> 里 <code>OWNER_EMAIL</code> 对应的邮箱注册账号，即成为<b>管理员</b>。</p>
+        <div class="note danger">服务运行时<b>请勿关闭</b>那个 PowerShell 窗口；停止服务按 <b>Ctrl+C</b>。下次启动加 <code>-SkipBuild</code> 更快。想后台常驻见「手动分步」里的 PM2 方案。</div>
       </div></div>
     </div>
 
@@ -306,6 +290,11 @@ pm2 startup   # 按提示设置开机自启</code></pre>
     <div class="card"><div class="step-body-inner" style="padding-top:0">
       <table>
         <tr><th>现象</th><th>原因 / 解决</th></tr>
+        <tr><td>提示需要重启电脑（装完 Docker）</td><td>正常现象，WSL2 首次启用需重启。重启后<b>再运行一次脚本</b>即可自动续上</td></tr>
+        <tr><td>UAC 授权框点了「否」</td><td>脚本需管理员权限装软件/开防火墙。重新运行并点「是」，或右键 PowerShell『以管理员身份运行』</td></tr>
+        <tr><td>'winget' 不是内部命令</td><td>系统太旧（早于 Win10 1809）。请到 Microsoft Store 更新「应用安装程序」，或手动装 Node.js + Docker 后加 <code>-SkipDeps</code> 重跑</td></tr>
+        <tr><td>winget 装完仍提示找不到 node</td><td>PATH 未刷新。关闭窗口、重开 PowerShell 再运行一次脚本即可</td></tr>
+        <tr><td>局域网内其他设备打不开</td><td>确认未加 <code>-NoFirewall</code>；两台设备在同一网络；用脚本打印的「局域网访问」IP；部分公司网络隔离了客户端互访</td></tr>
         <tr><td>无法加载脚本，禁止运行</td><td>PowerShell 执行策略限制。改用：<code>powershell -ExecutionPolicy Bypass -File .\deploy\deploy.ps1</code>，或先运行 <code>Set-ExecutionPolicy -Scope CurrentUser RemoteSigned</code></td></tr>
         <tr><td>'pnpm' / 'node' 不是内部命令</td><td>未安装或没重开终端。装好 Node.js 后<b>重新打开</b> PowerShell；pnpm 用 <code>corepack enable</code> 或 <code>npm i -g pnpm</code></td></tr>
         <tr><td>Docker 报 "engine not running"</td><td>先打开 Docker Desktop，等左下角变绿再跑脚本</td></tr>
