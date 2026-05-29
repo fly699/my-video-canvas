@@ -153,145 +153,167 @@ export const adminRouter = router({
     }),
   }),
 
-  // ── LAN chat audit (admin-only cross-network read) ─────────────────────
-  // The user-facing lanChatRouter enforces per-network isolation. Admins
-  // need to see EVERYTHING across networks for moderation / audit. These
-  // endpoints intentionally bypass the network filter — they are behind
-  // adminProcedure so only the configured owner can call them.
-  lanChat: router({
-    listRooms: adminProcedure.query(async () => {
-      const rooms = await db.listAllLanChatRooms();
-      return rooms.map((r) => ({
-        id: r.id,
-        name: r.name,
-        networkGroupId: r.networkGroupId,
-        createdAt: r.createdAt,
-      }));
-    }),
-
-    listMessages: adminProcedure
+  // ── Chat administration (cross-user moderation + history) ──────────────
+  // Admin-only. Server-mode conversations expose full plaintext history;
+  // serverless (E2E) conversations expose metadata only — the server never
+  // had their content.
+  chat: router({
+    listConversations: adminProcedure
       .input(z.object({
-        roomId: z.number().int().optional(),
-        search: z.string().max(200).optional(),
+        type: z.enum(["lobby", "group", "dm"]).optional(),
+        mode: z.enum(["server", "serverless"]).optional(),
         limit: z.number().int().min(1).max(200).default(50),
         offset: z.number().int().min(0).default(0),
       }))
       .query(async ({ input }) => {
-        const { rows, total } = await db.getAllLanChatMessages({
-          roomId: input.roomId,
-          search: input.search,
+        const { rows, total } = await db.adminListConversations(input);
+        const enriched = await Promise.all(rows.map(async (c) => {
+          const members = await db.listChatMembers(c.id);
+          return {
+            id: c.id, type: c.type, mode: c.mode, title: c.title,
+            isPrivate: !!c.passwordHash, memberCount: members.length,
+            createdBy: c.createdBy, createdAt: c.createdAt,
+          };
+        }));
+        return { rows: enriched, total };
+      }),
+
+    getConversation: adminProcedure
+      .input(z.object({ conversationId: z.number().int() }))
+      .query(async ({ input }) => {
+        const conv = await db.getConversationById(input.conversationId);
+        if (!conv) throw new TRPCError({ code: "NOT_FOUND" });
+        const members = await db.listChatMembers(conv.id);
+        const membersWithNames = await Promise.all(members.map(async (m) => {
+          const u = await db.getUserById(m.userId);
+          return { userId: m.userId, name: u?.name ?? `用户${m.userId}`, role: m.role };
+        }));
+        return { id: conv.id, type: conv.type, mode: conv.mode, title: conv.title, members: membersWithNames };
+      }),
+
+    searchMessages: adminProcedure
+      .input(z.object({
+        userId: z.number().int().optional(),
+        conversationId: z.number().int().optional(),
+        keyword: z.string().max(200).optional(),
+        dateFrom: z.string().optional(),
+        dateTo: z.string().optional(),
+        limit: z.number().int().min(1).max(200).default(50),
+        offset: z.number().int().min(0).default(0),
+      }))
+      .query(async ({ input }) => {
+        // If filtering by a specific conversation that is serverless, return
+        // metadata-only (no content ever existed server-side).
+        if (input.conversationId) {
+          const conv = await db.getConversationById(input.conversationId);
+          if (conv && conv.mode === "serverless") {
+            return { rows: [], total: 0, encrypted: true as const };
+          }
+        }
+        const { rows, total } = await db.adminSearchMessages({
+          userId: input.userId,
+          conversationId: input.conversationId,
+          keyword: input.keyword,
+          dateFrom: input.dateFrom ? new Date(input.dateFrom) : undefined,
+          dateTo: input.dateTo ? new Date(input.dateTo) : undefined,
           limit: input.limit,
           offset: input.offset,
         });
         return {
           rows: rows.map((r) => ({
-            id: r.id,
-            roomId: r.roomId,
-            nickname: r.nickname,
-            color: r.color,
-            content: r.content,
-            attachments: r.attachments,
-            clientIp: r.clientIp,
+            id: r.id, conversationId: r.conversationId, senderId: r.senderId,
+            senderName: r.senderName, content: r.content, attachments: r.attachments,
             createdAt: r.createdAt,
+          })),
+          total,
+          encrypted: false as const,
+        };
+      }),
+
+    listFiles: adminProcedure
+      .input(z.object({
+        conversationId: z.number().int().optional(),
+        limit: z.number().int().min(1).max(200).default(50),
+        offset: z.number().int().min(0).default(0),
+      }))
+      .query(async ({ input }) => {
+        const { rows, total } = await db.adminListAttachments(input);
+        return {
+          rows: rows.map((a) => ({
+            id: a.id, conversationId: a.conversationId, uploaderId: a.uploaderId,
+            name: a.name, url: a.url, mimeType: a.mimeType, size: a.size, kind: a.kind,
+            createdAt: a.createdAt,
           })),
           total,
         };
       }),
 
-    // ── Invite codes ───────────────────────────────────────────────────
-    listInvites: adminProcedure.query(async () => {
-      const rows = await db.listLanChatInvites();
-      return rows.map((r) => ({
-        id: r.id,
-        code: r.code,
-        groupId: r.groupId,
-        expiresAt: r.expiresAt,
-        usedAt: r.usedAt,
-        usedByNickname: r.usedByNickname,
-        usedByIp: r.usedByIp,
-        createdAt: r.createdAt,
+    deleteMessage: adminProcedure
+      .input(z.object({ messageId: z.number().int() }))
+      .mutation(async ({ input }) => {
+        await db.deleteConversationMessage(input.messageId);
+        return { success: true };
+      }),
+
+    deleteConversation: adminProcedure
+      .input(z.object({ conversationId: z.number().int() }))
+      .mutation(async ({ input }) => {
+        await db.deleteConversation(input.conversationId);
+        return { success: true };
+      }),
+
+    banUser: adminProcedure
+      .input(z.object({
+        userId: z.number().int(),
+        scope: z.enum(["global", "conversation"]),
+        conversationId: z.number().int().optional(),
+        reason: z.string().max(255).optional(),
+      }))
+      .mutation(async ({ ctx, input }) => {
+        if (input.scope === "conversation" && input.conversationId == null) {
+          throw new TRPCError({ code: "BAD_REQUEST", message: "会话封禁需指定会话" });
+        }
+        const row = await db.addChatBan({
+          userId: input.userId, scope: input.scope,
+          conversationId: input.scope === "conversation" ? input.conversationId : null,
+          reason: input.reason ?? null, bannedBy: ctx.user.id,
+        });
+        if (!row) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR" });
+        return { id: row.id };
+      }),
+
+    unbanUser: adminProcedure
+      .input(z.object({ id: z.number().int() }))
+      .mutation(async ({ input }) => {
+        await db.removeChatBan(input.id);
+        return { success: true };
+      }),
+
+    listBans: adminProcedure.query(async () => {
+      const rows = await db.listChatBans();
+      return Promise.all(rows.map(async (b) => {
+        const u = await db.getUserById(b.userId);
+        return {
+          id: b.id, userId: b.userId, userName: u?.name ?? `用户${b.userId}`,
+          scope: b.scope, conversationId: b.conversationId, reason: b.reason, createdAt: b.createdAt,
+        };
       }));
     }),
 
-    createInvite: adminProcedure
-      .input(z.object({
-        /** The group to grant access to. Can be any valid groupId; usually
-         *  starts with "code-" (server-coined) for the invite path. */
-        groupId: z.string().regex(/^[A-Za-z0-9._-]{1,64}$/).default(""),
-        expiresInDays: z.number().int().min(1).max(90).default(7),
-      }))
-      .mutation(async ({ input }) => {
-        // Auto-generate a unique group prefix if admin didn't supply one,
-        // so invitees land in a fresh sandbox not colliding with any IP group.
-        const code = randomBytes(12).toString("base64url");
-        const groupId = input.groupId || `code-${randomBytes(6).toString("base64url")}`;
-        const expiresAt = new Date(Date.now() + input.expiresInDays * 86400_000);
-        const row = await db.createLanChatInvite({ code, groupId, expiresAt });
-        if (!row) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "邀请码创建失败" });
-        return { id: row.id, code: row.code, groupId: row.groupId, expiresAt: row.expiresAt };
-      }),
-
-    // ── IP whitelist ────────────────────────────────────────────────────
-    getIpWhitelistSettings: adminProcedure.query(async () => {
-      const settings = await db.getLanChatSettings();
-      const ips = await db.listLanChatIpWhitelist();
-      return {
-        enabled: settings.ipWhitelistEnabled,
-        ips: ips.map((r) => ({ id: r.id, ip: r.ip, note: r.note, createdAt: r.createdAt })),
-      };
+    getSettings: adminProcedure.query(async () => {
+      const s = await db.getChatSettings();
+      return { serverlessAllowed: s.serverlessAllowed, lobbyEnabled: s.lobbyEnabled, maxFileMb: s.maxFileMb };
     }),
 
-    setIpWhitelistEnabled: adminProcedure
-      .input(z.object({ enabled: z.boolean() }))
-      .mutation(async ({ input }) => {
-        await db.setLanChatIpWhitelistEnabled(input.enabled);
-        return { success: true };
-      }),
-
-    addIpToWhitelist: adminProcedure
+    setSettings: adminProcedure
       .input(z.object({
-        // Same charset guard as the app-wide whitelist (admin.ts: prevent
-        // "unknown" / strings that would bypass the IP gate).
-        ip: z.string().min(1).max(64).refine(
-          (v) => /^[\d.:a-fA-F/]+$/.test(v),
-          { message: "IP 格式无效（仅允许数字、点、冒号、十六进制、斜杠）" },
-        ),
-        note: z.string().max(200).optional(),
+        serverlessAllowed: z.boolean().optional(),
+        lobbyEnabled: z.boolean().optional(),
+        maxFileMb: z.number().int().min(1).max(512).optional(),
       }))
       .mutation(async ({ input }) => {
-        const row = await db.addLanChatIpWhitelist({ ip: input.ip, note: input.note ?? null });
-        if (!row) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "添加失败" });
-        return { id: row.id, ip: row.ip, note: row.note };
-      }),
-
-    removeIpFromWhitelist: adminProcedure
-      .input(z.object({ id: z.number().int() }))
-      .mutation(async ({ input }) => {
-        const ok = await db.removeLanChatIpWhitelist(input.id);
-        if (!ok) throw new TRPCError({ code: "NOT_FOUND", message: "条目不存在" });
-        return { success: true };
-      }),
-
-    // ── Connection metadata audit ───────────────────────────────────────
-    // Replaces the deprecated message-content audit (P2P E2E means server
-    // has no message content). Reads from audit_logs filtered to lan_chat
-    // events.
-    listJoinEvents: adminProcedure
-      .input(z.object({
-        limit: z.number().int().min(1).max(200).default(50),
-        offset: z.number().int().min(0).default(0),
-      }))
-      .query(async ({ input }) => {
-        // Reuse the existing audit log infrastructure — action prefix
-        // "lan_chat:" was added in earlier rounds; here we surface them.
-        // No dedicated action filter in getAuditLogs, so fetch broad then
-        // filter in JS. Since admin page is low-traffic, fine.
-        const all = await db.getAuditLogs({ limit: 200, offset: 0 });
-        const filtered = all.rows.filter((r) => r.action.startsWith("lan_chat:"));
-        return {
-          rows: filtered.slice(input.offset, input.offset + input.limit),
-          total: filtered.length,
-        };
+        const s = await db.setChatSettings(input);
+        return { serverlessAllowed: s.serverlessAllowed, lobbyEnabled: s.lobbyEnabled, maxFileMb: s.maxFileMb };
       }),
   }),
 });

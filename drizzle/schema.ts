@@ -307,6 +307,138 @@ export const lanChatMessages = mysqlTable("lan_chat_messages", {
 export type LanChatMessageRow = typeof lanChatMessages.$inferSelect;
 export type InsertLanChatMessage = typeof lanChatMessages.$inferInsert;
 
+// ── Account-based Chat (server/serverless rewrite) ──────────────────────────────
+// Real user-account chat replacing the old anonymous LAN chat. Two modes per
+// conversation:
+//   - "server":     messages + files persisted here as plaintext → full history,
+//                   admin-queryable.
+//   - "serverless": end-to-end encrypted; the server only relays ciphertext over
+//                   Socket.IO and NEVER persists it (no rows in
+//                   conversation_messages). History lives only on each client.
+// Conversation forms: global "lobby", multi-user "group" rooms (optional
+// password), and 1:1 "dm".
+
+export const chatConversations = mysqlTable("chat_conversations", {
+  id: int("id").autoincrement().primaryKey(),
+  type: mysqlEnum("type", ["lobby", "group", "dm"]).notNull(),
+  mode: mysqlEnum("mode", ["server", "serverless"]).notNull().default("server"),
+  /** Display title. Null for dm/lobby (derived client-side from members). */
+  title: varchar("title", { length: 120 }),
+  /** scrypt hash for password-protected group rooms. Null = open room. */
+  passwordHash: varchar("passwordHash", { length: 255 }),
+  /** users.id of the creator. Null for the system lobby. */
+  createdBy: int("createdBy"),
+  /** Dedup key for DMs: "dm:<minUserId>:<maxUserId>". Null for lobby/group. */
+  dmKey: varchar("dmKey", { length: 64 }),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+}, (t) => ({
+  typeModeIdx: index("chat_conv_type_mode_idx").on(t.type, t.mode),
+  dmKeyUniq: uniqueIndex("chat_conv_dmkey_uniq").on(t.dmKey),
+}));
+
+export type ChatConversation = typeof chatConversations.$inferSelect;
+export type InsertChatConversation = typeof chatConversations.$inferInsert;
+
+export const chatMembers = mysqlTable("chat_members", {
+  id: int("id").autoincrement().primaryKey(),
+  conversationId: int("conversationId").notNull(),
+  userId: int("userId").notNull(),
+  role: mysqlEnum("role", ["owner", "member"]).notNull().default("member"),
+  /** Highest message id this member has read — drives unread counts (server mode). */
+  lastReadMessageId: int("lastReadMessageId").notNull().default(0),
+  joinedAt: timestamp("joinedAt").defaultNow().notNull(),
+}, (t) => ({
+  convUserUniq: uniqueIndex("chat_members_conv_user_uniq").on(t.conversationId, t.userId),
+  userIdx: index("chat_members_user_idx").on(t.userId),
+}));
+
+export type ChatMember = typeof chatMembers.$inferSelect;
+export type InsertChatMember = typeof chatMembers.$inferInsert;
+
+// NOTE: table is named "conversation_messages" (NOT chat_messages) to avoid
+// colliding with the existing canvas AI-chat table above. Rows here ONLY exist
+// for server-mode conversations; serverless content is never written.
+export const conversationMessages = mysqlTable("conversation_messages", {
+  id: int("id").autoincrement().primaryKey(),
+  conversationId: int("conversationId").notNull(),
+  senderId: int("senderId").notNull(),
+  /** Snapshot of sender display name at send time. */
+  senderName: varchar("senderName", { length: 120 }).notNull(),
+  content: text("content").notNull(),
+  /** Array<{ attachmentId, name, mimeType, size, url, kind }>. Null = text only. */
+  attachments: json("attachments"),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+}, (t) => ({
+  convCreatedIdx: index("conv_msgs_conv_created_idx").on(t.conversationId, t.createdAt),
+  convIdIdx: index("conv_msgs_conv_id_idx").on(t.conversationId, t.id),
+}));
+
+export type ConversationMessage = typeof conversationMessages.$inferSelect;
+export type InsertConversationMessage = typeof conversationMessages.$inferInsert;
+
+// Server-mode file metadata. Binary lives in storage (storagePut); this row
+// records the reference so file history is queryable. Uploaded first (messageId
+// null), then linked when the message row is created.
+export const chatAttachments = mysqlTable("chat_attachments", {
+  id: int("id").autoincrement().primaryKey(),
+  conversationId: int("conversationId").notNull(),
+  messageId: int("messageId"),
+  uploaderId: int("uploaderId").notNull(),
+  storageKey: varchar("storageKey", { length: 512 }).notNull(),
+  url: text("url").notNull(),
+  name: varchar("name", { length: 255 }).notNull(),
+  mimeType: varchar("mimeType", { length: 128 }).notNull(),
+  size: int("size").notNull(),
+  kind: mysqlEnum("kind", ["image", "video", "file"]).notNull(),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+}, (t) => ({
+  convIdx: index("chat_attach_conv_idx").on(t.conversationId),
+  msgIdx: index("chat_attach_msg_idx").on(t.messageId),
+}));
+
+export type ChatAttachment = typeof chatAttachments.$inferSelect;
+export type InsertChatAttachment = typeof chatAttachments.$inferInsert;
+
+// E2E public keys (serverless mode). One active ECDH P-256 public key per user,
+// stored as JWK. The matching private key NEVER leaves the client (IndexedDB).
+export const chatUserKeys = mysqlTable("chat_user_keys", {
+  userId: int("userId").primaryKey(),
+  publicKeyJwk: json("publicKeyJwk").notNull(),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+});
+
+export type ChatUserKey = typeof chatUserKeys.$inferSelect;
+export type InsertChatUserKey = typeof chatUserKeys.$inferInsert;
+
+export const chatBans = mysqlTable("chat_bans", {
+  id: int("id").autoincrement().primaryKey(),
+  userId: int("userId").notNull(),
+  scope: mysqlEnum("scope", ["global", "conversation"]).notNull(),
+  /** Null when scope = global. */
+  conversationId: int("conversationId"),
+  reason: varchar("reason", { length: 255 }),
+  bannedBy: int("bannedBy").notNull(),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+}, (t) => ({
+  banUniq: uniqueIndex("chat_bans_user_scope_conv_uniq").on(t.userId, t.scope, t.conversationId),
+}));
+
+export type ChatBan = typeof chatBans.$inferSelect;
+export type InsertChatBan = typeof chatBans.$inferInsert;
+
+/** Single-row settings table (id always 1). */
+export const chatSettings = mysqlTable("chat_settings", {
+  id: int("id").autoincrement().primaryKey(),
+  serverlessAllowed: boolean("serverlessAllowed").notNull().default(true),
+  lobbyEnabled: boolean("lobbyEnabled").notNull().default(true),
+  maxFileMb: int("maxFileMb").notNull().default(16),
+  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+});
+
+export type ChatSettingsRow = typeof chatSettings.$inferSelect;
+
 // ── Whitelist ─────────────────────────────────────────────────────────────────
 
 export const whitelistSettings = mysqlTable("whitelistSettings", {

@@ -26,7 +26,7 @@ import {
 import { uploadRouter } from "./routers/upload";
 import { adminRouter } from "./routers/admin";
 import { collaborationRouter } from "./routers/collaboration";
-import { lanChatRouter } from "./routers/lanChat";
+import { chatRouter } from "./routers/chat";
 
 export const appRouter = router({
   system: systemRouter,
@@ -66,7 +66,7 @@ export const appRouter = router({
   upload: uploadRouter,
   admin: adminRouter,
   collaboration: collaborationRouter,
-  lanChat: lanChatRouter,
+  chat: chatRouter,
 });
 
 export type AppRouter = typeof appRouter;

@@ -17,12 +17,14 @@ import { setupVideoTaskPoller } from "../videoTaskPoller";
 import { setComfySocketIO } from "./comfyui";
 import { sdk } from "./sdk";
 import { ENV } from "./env";
-import { getProjectAccess, getLanChatRoomById } from "../db";
-import { verifyPassword } from "./scrypt";
+import { getProjectAccess, isChatMember } from "../db";
 import type { User } from "../../drizzle/schema";
-import { lanChatBus } from "./lanChatBus";
-import { registerLanChatBroadcaster, registerLanChatGroupBroadcaster } from "../routers/lanChat";
-import type { LanChatMessage } from "../../shared/types";
+import {
+  registerChatBroadcaster,
+  registerChatEventBroadcaster,
+  registerChatUserBroadcaster,
+} from "../routers/chat";
+import type { ChatWireMessage, ChatRelayPayload, ChatPresenceUser } from "../../shared/types";
 import { collabBus } from "./collabBus";
 
 function isPortAvailable(port: number): Promise<boolean> {
@@ -233,150 +235,114 @@ async function startServer() {
     });
   });
 
-  // ── LAN chat socket namespace ──────────────────────────────────────────────
-  // Isolated namespace (/lan-chat) so the cookie-auth middleware above doesn't
-  // apply. Auth here is by sessionId only — the "LAN" semantics are enforced
-  // at the room layer (rooms scoped to the user's networkGroupId = their
-  // clientIp), so users behind different NATs see independent chats even
-  // though they all connect through the same global socket.
-  const lanNs = io.of("/lan-chat");
+  // ── Account-based Chat namespace (/chat) ───────────────────────────────────
+  // Replaces the old /lan-chat namespace. Authenticated with the SAME cookie
+  // middleware as the main namespace (resolves socket.data.user). Handles both
+  // modes:
+  //   - server mode: messages persist via tRPC then broadcast here as
+  //     "chat:message:new".
+  //   - serverless mode: clients emit "chat:relay" (E2E ciphertext) and
+  //     "chat:file-chunk"; the server forwards to room peers WITHOUT persisting.
+  const chatNs = io.of("/chat");
 
-  lanNs.use((socket, next) => {
-    const sid = (socket.handshake.auth as { sessionId?: string } | undefined)?.sessionId;
-    if (!sid) return next(new Error("session-required"));
-    const sess = lanChatBus.getSession(sid);
-    if (!sess) return next(new Error("session-not-found"));
-    (socket.data as { sessionId: string }).sessionId = sid;
-    next();
+  chatNs.use(async (socket, next) => {
+    try {
+      if (isDevBypass) {
+        // Allow a second dev identity for multi-user testing: ?devUser=2.
+        const devUserParam = (socket.handshake.auth as { devUser?: number } | undefined)?.devUser;
+        const u = { ...DEV_USER_FOR_SOCKET };
+        if (devUserParam === 2) { u.id = 2; u.name = "Dev User 2"; u.openId = "dev_user_local_2"; }
+        (socket.data as { user: User }).user = u;
+        return next();
+      }
+      const user = await sdk.authenticateRequest(
+        socket.request as unknown as Parameters<typeof sdk.authenticateRequest>[0],
+      );
+      (socket.data as { user: User }).user = user;
+      next();
+    } catch {
+      next(new Error("unauthenticated"));
+    }
   });
 
-  lanNs.on("connection", (socket) => {
-    const sessionId = (socket.data as { sessionId: string }).sessionId;
-    const joinedRooms = new Set<number>();
+  // conversationId -> Map<userId, name> of online members (across sockets/tabs).
+  const chatPresence = new Map<number, Map<number, string>>();
+  const presenceList = (convId: number): ChatPresenceUser[] =>
+    Array.from(chatPresence.get(convId)?.entries() ?? []).map(([userId, name]) => ({ userId, name }));
 
-    // Join a per-network-group socket room so group-wide events (e.g. a new
-    // room was created) can reach everyone behind the same NAT/group.
-    const sess = lanChatBus.getSession(sessionId);
-    if (sess) socket.join(`lan-group:${sess.networkGroupId}`);
+  chatNs.on("connection", (socket) => {
+    const user = (socket.data as { user: User }).user;
+    const joined = new Set<number>();
+    // Personal room for new-DM / invite notifications.
+    socket.join(`chat:user:${user.id}`);
 
-    socket.on("lan-chat:enter-room", async (
-      { roomId, password }: { roomId: number; password?: string },
-    ) => {
-      if (typeof roomId !== "number") return;
-      const sess = lanChatBus.getSession(sessionId);
-      if (!sess) return;
-      // Verify room exists and belongs to this user's network group, then
-      // check the password gate. Silently deny on any failure so the client
-      // can't enumerate foreign rooms by probing enter-room with arbitrary IDs.
+    socket.on("chat:join", async ({ conversationId }: { conversationId: number }) => {
+      if (typeof conversationId !== "number") return;
       try {
-        const room = await getLanChatRoomById(roomId);
-        // Room must exist and belong to the caller's network group.
-        if (!room || room.networkGroupId !== sess.networkGroupId) {
-          socket.emit("lan-chat:enter-denied", { roomId, reason: "not-found" });
-          return;
-        }
-        if (room.passwordHash) {
-          if (!password || !(await verifyPassword(password, room.passwordHash))) {
-            socket.emit("lan-chat:enter-denied", { roomId, reason: "wrong-password" });
-            return;
-          }
-        }
-      } catch (err) {
-        console.warn("[lan-chat] enterRoom check failed:", err);
-        socket.emit("lan-chat:enter-denied", { roomId, reason: "lookup-failed" });
-        return;
+        if (!(await isChatMember(conversationId, user.id))) return;
+      } catch { return; }
+      socket.join(`chat:conv:${conversationId}`);
+      joined.add(conversationId);
+      let m = chatPresence.get(conversationId);
+      if (!m) { m = new Map(); chatPresence.set(conversationId, m); }
+      m.set(user.id, user.name ?? `用户${user.id}`);
+      chatNs.to(`chat:conv:${conversationId}`).emit("chat:presence", { conversationId, online: presenceList(conversationId) });
+    });
+
+    socket.on("chat:leave", ({ conversationId }: { conversationId: number }) => {
+      socket.leave(`chat:conv:${conversationId}`);
+      joined.delete(conversationId);
+      // Only drop presence if no other socket of this user is still in the room.
+      const stillHere = Array.from(chatNs.sockets.values()).some(
+        (s) => s.id !== socket.id && (s.data as { user?: User }).user?.id === user.id && s.rooms.has(`chat:conv:${conversationId}`),
+      );
+      if (!stillHere) chatPresence.get(conversationId)?.delete(user.id);
+      chatNs.to(`chat:conv:${conversationId}`).emit("chat:presence", { conversationId, online: presenceList(conversationId) });
+    });
+
+    socket.on("chat:typing", ({ conversationId }: { conversationId: number }) => {
+      if (!joined.has(conversationId)) return;
+      socket.to(`chat:conv:${conversationId}`).emit("chat:typing", { conversationId, userId: user.id, name: user.name ?? `用户${user.id}` });
+    });
+
+    // Serverless E2E relay — server forwards opaque ciphertext, never persists.
+    socket.on("chat:relay", async (payload: ChatRelayPayload) => {
+      if (!payload || typeof payload.conversationId !== "number") return;
+      if (!joined.has(payload.conversationId)) {
+        if (!(await isChatMember(payload.conversationId, user.id).catch(() => false))) return;
       }
-      lanChatBus.enterRoom(sessionId, roomId);
-      socket.join(`lan-room:${roomId}`);
-      joinedRooms.add(roomId);
-      lanNs.to(`lan-room:${roomId}`).emit("lan-chat:presence", {
-        roomId,
-        online: lanChatBus.listOnline(roomId),
-      });
-      // Confirm to the requester so the client UI can flip from "joining"
-      // to "joined" state.
-      socket.emit("lan-chat:enter-granted", { roomId });
+      socket.to(`chat:conv:${payload.conversationId}`).emit("chat:relay", { ...payload, senderId: user.id, senderName: user.name ?? `用户${user.id}` });
     });
 
-    socket.on("lan-chat:leave-room", ({ roomId }: { roomId: number }) => {
-      lanChatBus.leaveRoom(sessionId, roomId);
-      socket.leave(`lan-room:${roomId}`);
-      joinedRooms.delete(roomId);
-      lanNs.to(`lan-room:${roomId}`).emit("lan-chat:presence", {
-        roomId,
-        online: lanChatBus.listOnline(roomId),
-      });
-    });
-
-    socket.on("lan-chat:typing", ({ roomId }: { roomId: number }) => {
-      if (!joinedRooms.has(roomId)) return;
-      const sess = lanChatBus.getSession(sessionId);
-      if (!sess) return;
-      socket.to(`lan-room:${roomId}`).emit("lan-chat:typing", {
-        sessionId: sess.id,
-        nickname: sess.nickname,
-        roomId,
-      });
-    });
-
-    // ── WebRTC signaling (P2P E2E chat) ───────────────────────────────────
-    // Server only relays SDP/ICE between peers — never sees DataChannel
-    // payload (encrypted DTLS-SRTP between browsers). Peers in the same
-    // group find each other via the existing presence map; once
-    // RTCPeerConnection is established they exchange chat messages
-    // peer-to-peer.
-    //
-    // Event shapes (all addressed by targetSessionId so the server just
-    // forwards):
-    //   webrtc:offer    { to: sessionId, sdp }
-    //   webrtc:answer   { to: sessionId, sdp }
-    //   webrtc:ice      { to: sessionId, candidate }
-    //
-    // Forwarded as the same event name to the target's socket(s) with
-    // `from` populated.
-    const relayToPeer = (event: string, to: string, payload: Record<string, unknown>) => {
-      // Each sessionId may have multiple sockets (browser tabs). Walk
-      // the namespace and forward to any socket whose session matches.
-      lanNs.sockets.forEach((s) => {
-        if ((s.data as { sessionId?: string }).sessionId === to) {
-          s.emit(event, { ...payload, from: sessionId });
-        }
-      });
-    };
-    socket.on("webrtc:offer", (d: { to: string; sdp: string }) => {
-      if (!d?.to || typeof d.sdp !== "string") return;
-      relayToPeer("webrtc:offer", d.to, { sdp: d.sdp });
-    });
-    socket.on("webrtc:answer", (d: { to: string; sdp: string }) => {
-      if (!d?.to || typeof d.sdp !== "string") return;
-      relayToPeer("webrtc:answer", d.to, { sdp: d.sdp });
-    });
-    socket.on("webrtc:ice", (d: { to: string; candidate: unknown }) => {
-      if (!d?.to) return;
-      relayToPeer("webrtc:ice", d.to, { candidate: d.candidate });
+    // Serverless file chunks — relayed, not stored.
+    socket.on("chat:file-chunk", (frame: { conversationId: number; transferId: string; seq: number; last: boolean; data: string; meta?: unknown }) => {
+      if (!frame || typeof frame.conversationId !== "number") return;
+      if (!joined.has(frame.conversationId)) return;
+      socket.to(`chat:conv:${frame.conversationId}`).emit("chat:file-chunk", { ...frame, senderId: user.id });
     });
 
     socket.on("disconnect", () => {
-      // Don't delete the session itself — the user may have multiple tabs;
-      // just leave the rooms this socket had joined. The bus's reapStale
-      // will GC truly idle sessions later.
-      Array.from(joinedRooms).forEach((r) => {
-        lanChatBus.leaveRoom(sessionId, r);
-        lanNs.to(`lan-room:${r}`).emit("lan-chat:presence", {
-          roomId: r,
-          online: lanChatBus.listOnline(r),
-        });
-      });
+      for (const convId of Array.from(joined)) {
+        const stillHere = Array.from(chatNs.sockets.values()).some(
+          (s) => s.id !== socket.id && (s.data as { user?: User }).user?.id === user.id && s.rooms.has(`chat:conv:${convId}`),
+        );
+        if (!stillHere) {
+          chatPresence.get(convId)?.delete(user.id);
+          chatNs.to(`chat:conv:${convId}`).emit("chat:presence", { conversationId: convId, online: presenceList(convId) });
+        }
+      }
     });
   });
 
-  // tRPC sendMessage handler broadcasts via this wired-up function — avoids
-  // routers/lanChat.ts having to import index.ts (cycle).
-  registerLanChatBroadcaster((roomId: number, msg: LanChatMessage) => {
-    lanNs.to(`lan-room:${roomId}`).emit("lan-chat:message", msg);
+  // Wire tRPC → socket broadcasters (avoids routers/chat.ts importing index.ts).
+  registerChatBroadcaster((conversationId: number, msg: ChatWireMessage) => {
+    chatNs.to(`chat:conv:${conversationId}`).emit("chat:message:new", msg);
   });
-  registerLanChatGroupBroadcaster((groupId: string, event: string, payload: unknown) => {
-    lanNs.to(`lan-group:${groupId}`).emit(event, payload);
+  registerChatEventBroadcaster((conversationId: number, event: string, payload: unknown) => {
+    chatNs.to(`chat:conv:${conversationId}`).emit(event, payload);
+  });
+  registerChatUserBroadcaster((userId: number, event: string, payload: unknown) => {
+    chatNs.to(`chat:user:${userId}`).emit(event, payload);
   });
 
   // ── ComfyUI progress relay ────────────────────────────────────────────────

@@ -141,6 +141,13 @@
       "when": 1779961346807,
       "tag": "0019_lan_chat_invites_whitelist",
       "breakpoints": true
+    },
+    {
+      "idx": 20,
+      "version": "5",
+      "when": 1780046033615,
+      "tag": "0020_adorable_shinko_yamashiro",
+      "breakpoints": true
     }
   ]
 }

@@ -38,6 +38,23 @@ import {
   type InsertLanChatMessage,
   type InsertLanChatInvite,
   type InsertLanChatIpWhitelist,
+  chatConversations,
+  chatMembers,
+  conversationMessages,
+  chatAttachments,
+  chatUserKeys,
+  chatBans,
+  chatSettings,
+  type ChatConversation,
+  type InsertChatConversation,
+  type ChatMember,
+  type ConversationMessage,
+  type InsertConversationMessage,
+  type ChatAttachment,
+  type InsertChatAttachment,
+  type ChatBan,
+  type InsertChatBan,
+  type ChatSettingsRow,
 } from "../drizzle/schema";
 import { ENV } from "./_core/env";
 import * as dev from "./_core/devStore";
@@ -121,6 +138,20 @@ export async function getUserByOpenId(openId: string) {
   const db = await getDb();
   if (!db) return undefined;
   const result = await db.select().from(users).where(eq(users.openId, openId)).limit(1);
+  return result[0];
+}
+
+export async function getUserById(id: number) {
+  const db = await getDb();
+  if (!db) {
+    if (DEV_MODE) {
+      // Dev: synthesize the two well-known dev users.
+      if (id === 1) return { id: 1, name: "Dev User", email: "dev@localhost", role: "user" } as unknown as Awaited<ReturnType<typeof getUserByOpenId>>;
+      if (id === 2) return { id: 2, name: "Dev User 2", email: "dev2@localhost", role: "user" } as unknown as Awaited<ReturnType<typeof getUserByOpenId>>;
+    }
+    return undefined;
+  }
+  const result = await db.select().from(users).where(eq(users.id, id)).limit(1);
   return result[0];
 }
 
@@ -1022,4 +1053,271 @@ export async function clearAuditLogs(): Promise<void> {
   const db = await getDb();
   if (!db) { devAuditLogs.splice(0); return; }
   await db.delete(auditLogs);
+}
+
+// ── Account-based Chat (rewrite) ────────────────────────────────────────────────
+
+export async function getOrCreateLobby(): Promise<ChatConversation> {
+  const db = await getDb();
+  if (!db) { if (DEV_MODE) return dev.devGetOrCreateLobby(); throw new Error("DB unavailable"); }
+  const existing = await db.select().from(chatConversations).where(eq(chatConversations.type, "lobby")).limit(1);
+  if (existing[0]) return existing[0];
+  const [header] = await db.insert(chatConversations).values({ type: "lobby", mode: "server", title: "大厅" });
+  const insertId = (header as unknown as { insertId: number }).insertId;
+  const rows = await db.select().from(chatConversations).where(eq(chatConversations.id, insertId)).limit(1);
+  return rows[0]!;
+}
+
+export async function createConversation(data: InsertChatConversation): Promise<ChatConversation> {
+  const db = await getDb();
+  if (!db) { if (DEV_MODE) return dev.devCreateConversation(data); throw new Error("DB unavailable"); }
+  const [header] = await db.insert(chatConversations).values(data);
+  const insertId = (header as unknown as { insertId: number }).insertId;
+  const rows = await db.select().from(chatConversations).where(eq(chatConversations.id, insertId)).limit(1);
+  return rows[0]!;
+}
+
+export async function getConversationById(id: number): Promise<ChatConversation | undefined> {
+  const db = await getDb();
+  if (!db) return DEV_MODE ? dev.devGetConversationById(id) : undefined;
+  const rows = await db.select().from(chatConversations).where(eq(chatConversations.id, id)).limit(1);
+  return rows[0];
+}
+
+export async function getConversationByDmKey(dmKey: string): Promise<ChatConversation | undefined> {
+  const db = await getDb();
+  if (!db) return DEV_MODE ? dev.devGetConversationByDmKey(dmKey) : undefined;
+  const rows = await db.select().from(chatConversations).where(eq(chatConversations.dmKey, dmKey)).limit(1);
+  return rows[0];
+}
+
+export async function updateConversation(id: number, patch: Partial<InsertChatConversation>): Promise<void> {
+  const db = await getDb();
+  if (!db) { if (DEV_MODE) dev.devUpdateConversation(id, patch as Partial<ChatConversation>); return; }
+  await db.update(chatConversations).set(patch).where(eq(chatConversations.id, id));
+}
+
+export async function deleteConversation(id: number): Promise<void> {
+  const db = await getDb();
+  if (!db) { if (DEV_MODE) dev.devDeleteConversation(id); return; }
+  await db.delete(conversationMessages).where(eq(conversationMessages.conversationId, id));
+  await db.delete(chatAttachments).where(eq(chatAttachments.conversationId, id));
+  await db.delete(chatMembers).where(eq(chatMembers.conversationId, id));
+  await db.delete(chatConversations).where(eq(chatConversations.id, id));
+}
+
+export async function addChatMember(conversationId: number, userId: number, role: "owner" | "member"): Promise<void> {
+  const db = await getDb();
+  if (!db) { if (DEV_MODE) dev.devAddMember(conversationId, userId, role); return; }
+  // Idempotent insert: ignore if (conversationId,userId) already exists.
+  await db.insert(chatMembers).values({ conversationId, userId, role })
+    .onDuplicateKeyUpdate({ set: { role } });
+}
+
+export async function removeChatMember(conversationId: number, userId: number): Promise<void> {
+  const db = await getDb();
+  if (!db) { if (DEV_MODE) dev.devRemoveMember(conversationId, userId); return; }
+  await db.delete(chatMembers).where(and(eq(chatMembers.conversationId, conversationId), eq(chatMembers.userId, userId)));
+}
+
+export async function listChatMembers(conversationId: number): Promise<ChatMember[]> {
+  const db = await getDb();
+  if (!db) return DEV_MODE ? dev.devListMembers(conversationId) : [];
+  return db.select().from(chatMembers).where(eq(chatMembers.conversationId, conversationId));
+}
+
+export async function isChatMember(conversationId: number, userId: number): Promise<boolean> {
+  const db = await getDb();
+  if (!db) return DEV_MODE ? dev.devIsMember(conversationId, userId) : false;
+  const conv = await getConversationById(conversationId);
+  if (conv?.type === "lobby") return true;
+  const rows = await db.select().from(chatMembers)
+    .where(and(eq(chatMembers.conversationId, conversationId), eq(chatMembers.userId, userId))).limit(1);
+  return !!rows[0];
+}
+
+export async function listConversationsForUser(userId: number): Promise<ChatConversation[]> {
+  const db = await getDb();
+  if (!db) return DEV_MODE ? dev.devListConversationsForUser(userId) : [];
+  const memberRows = await db.select({ conversationId: chatMembers.conversationId }).from(chatMembers).where(eq(chatMembers.userId, userId));
+  const ids = memberRows.map((r) => r.conversationId);
+  const lobby = await db.select().from(chatConversations).where(eq(chatConversations.type, "lobby"));
+  const memberConvs = ids.length ? await db.select().from(chatConversations).where(inArray(chatConversations.id, ids)) : [];
+  const merged = new Map<number, ChatConversation>();
+  for (const c of [...lobby, ...memberConvs]) merged.set(c.id, c);
+  return Array.from(merged.values()).sort((a, b) => b.updatedAt.getTime() - a.updatedAt.getTime());
+}
+
+export async function updateLastRead(conversationId: number, userId: number, messageId: number): Promise<void> {
+  const db = await getDb();
+  if (!db) { if (DEV_MODE) dev.devUpdateLastRead(conversationId, userId, messageId); return; }
+  await db.update(chatMembers).set({ lastReadMessageId: messageId })
+    .where(and(eq(chatMembers.conversationId, conversationId), eq(chatMembers.userId, userId), sql`${chatMembers.lastReadMessageId} < ${messageId}`));
+}
+
+export async function insertConversationMessage(data: InsertConversationMessage): Promise<ConversationMessage | null> {
+  const db = await getDb();
+  if (!db) { if (DEV_MODE) return dev.devInsertChatMessage(data); throw new Error("DB unavailable"); }
+  const [header] = await db.insert(conversationMessages).values(data);
+  const insertId = (header as unknown as { insertId: number }).insertId;
+  await db.update(chatConversations).set({ updatedAt: new Date() }).where(eq(chatConversations.id, data.conversationId));
+  const rows = await db.select().from(conversationMessages).where(eq(conversationMessages.id, insertId)).limit(1);
+  return rows[0] ?? null;
+}
+
+export async function getConversationMessages(conversationId: number, opts: { beforeId?: number; limit: number }): Promise<ConversationMessage[]> {
+  const db = await getDb();
+  if (!db) return DEV_MODE ? dev.devGetChatMessagesPage(conversationId, opts) : [];
+  const conds = [eq(conversationMessages.conversationId, conversationId)];
+  if (opts.beforeId != null) conds.push(sql`${conversationMessages.id} < ${opts.beforeId}`);
+  return db.select().from(conversationMessages).where(and(...conds)).orderBy(desc(conversationMessages.id)).limit(opts.limit);
+}
+
+export async function getConversationMessageById(id: number): Promise<ConversationMessage | undefined> {
+  const db = await getDb();
+  if (!db) return DEV_MODE ? dev.devGetChatMessageById(id) : undefined;
+  const rows = await db.select().from(conversationMessages).where(eq(conversationMessages.id, id)).limit(1);
+  return rows[0];
+}
+
+export async function deleteConversationMessage(id: number): Promise<void> {
+  const db = await getDb();
+  if (!db) { if (DEV_MODE) dev.devDeleteChatMessage(id); return; }
+  await db.delete(conversationMessages).where(eq(conversationMessages.id, id));
+}
+
+export async function insertChatAttachment(data: InsertChatAttachment): Promise<ChatAttachment | null> {
+  const db = await getDb();
+  if (!db) { if (DEV_MODE) return dev.devInsertChatAttachment(data); throw new Error("DB unavailable"); }
+  const [header] = await db.insert(chatAttachments).values(data);
+  const insertId = (header as unknown as { insertId: number }).insertId;
+  const rows = await db.select().from(chatAttachments).where(eq(chatAttachments.id, insertId)).limit(1);
+  return rows[0] ?? null;
+}
+
+export async function linkAttachmentsToMessage(messageId: number, attachmentIds: number[]): Promise<void> {
+  if (!attachmentIds.length) return;
+  const db = await getDb();
+  if (!db) { if (DEV_MODE) dev.devLinkAttachments(messageId, attachmentIds); return; }
+  await db.update(chatAttachments).set({ messageId }).where(inArray(chatAttachments.id, attachmentIds));
+}
+
+export async function listConversationAttachments(conversationId: number): Promise<ChatAttachment[]> {
+  const db = await getDb();
+  if (!db) return DEV_MODE ? dev.devListConversationAttachments(conversationId) : [];
+  return db.select().from(chatAttachments).where(eq(chatAttachments.conversationId, conversationId)).orderBy(desc(chatAttachments.id));
+}
+
+export async function upsertUserPublicKey(userId: number, jwk: unknown): Promise<void> {
+  const db = await getDb();
+  if (!db) { if (DEV_MODE) dev.devUpsertUserPublicKey(userId, jwk); return; }
+  await db.insert(chatUserKeys).values({ userId, publicKeyJwk: jwk })
+    .onDuplicateKeyUpdate({ set: { publicKeyJwk: jwk, updatedAt: new Date() } });
+}
+
+export async function getUserPublicKeys(userIds: number[]): Promise<{ userId: number; publicKeyJwk: unknown }[]> {
+  if (!userIds.length) return [];
+  const db = await getDb();
+  if (!db) return DEV_MODE ? dev.devGetUserPublicKeys(userIds) : [];
+  const rows = await db.select().from(chatUserKeys).where(inArray(chatUserKeys.userId, userIds));
+  return rows.map((r) => ({ userId: r.userId, publicKeyJwk: r.publicKeyJwk }));
+}
+
+export async function addChatBan(data: InsertChatBan): Promise<ChatBan | null> {
+  const db = await getDb();
+  if (!db) { if (DEV_MODE) return dev.devAddBan(data); throw new Error("DB unavailable"); }
+  const [header] = await db.insert(chatBans).values(data)
+    .onDuplicateKeyUpdate({ set: { reason: data.reason ?? null, bannedBy: data.bannedBy } });
+  const insertId = (header as unknown as { insertId: number }).insertId;
+  const rows = await db.select().from(chatBans).where(eq(chatBans.id, insertId)).limit(1);
+  return rows[0] ?? null;
+}
+
+export async function removeChatBan(id: number): Promise<void> {
+  const db = await getDb();
+  if (!db) { if (DEV_MODE) dev.devRemoveBan(id); return; }
+  await db.delete(chatBans).where(eq(chatBans.id, id));
+}
+
+export async function listChatBans(): Promise<ChatBan[]> {
+  const db = await getDb();
+  if (!db) return DEV_MODE ? dev.devListBans() : [];
+  return db.select().from(chatBans).orderBy(desc(chatBans.id));
+}
+
+export async function isChatBanned(userId: number, conversationId: number): Promise<boolean> {
+  const db = await getDb();
+  if (!db) return DEV_MODE ? dev.devIsBanned(userId, conversationId) : false;
+  const rows = await db.select().from(chatBans).where(and(
+    eq(chatBans.userId, userId),
+    sql`(${chatBans.scope} = 'global' OR ${chatBans.conversationId} = ${conversationId})`,
+  )).limit(1);
+  return !!rows[0];
+}
+
+export async function adminListConversations(opts: { type?: string; mode?: string; limit: number; offset: number }): Promise<{ rows: ChatConversation[]; total: number }> {
+  const db = await getDb();
+  if (!db) return DEV_MODE ? dev.devListAllConversations(opts) : { rows: [], total: 0 };
+  const conds = [];
+  if (opts.type) conds.push(eq(chatConversations.type, opts.type as ChatConversation["type"]));
+  if (opts.mode) conds.push(eq(chatConversations.mode, opts.mode as ChatConversation["mode"]));
+  const where = conds.length ? and(...conds) : undefined;
+  const rows = await db.select().from(chatConversations).where(where).orderBy(desc(chatConversations.id)).limit(opts.limit).offset(opts.offset);
+  const [{ count }] = await db.select({ count: sql<number>`count(*)` }).from(chatConversations).where(where);
+  return { rows, total: Number(count) };
+}
+
+export async function adminSearchMessages(opts: { userId?: number; conversationId?: number; keyword?: string; dateFrom?: Date; dateTo?: Date; limit: number; offset: number }): Promise<{ rows: ConversationMessage[]; total: number }> {
+  const db = await getDb();
+  if (!db) return DEV_MODE ? dev.devAdminSearchMessages(opts) : { rows: [], total: 0 };
+  const conds = [];
+  if (opts.userId != null) conds.push(eq(conversationMessages.senderId, opts.userId));
+  if (opts.conversationId != null) conds.push(eq(conversationMessages.conversationId, opts.conversationId));
+  if (opts.keyword) conds.push(sql`${conversationMessages.content} LIKE ${"%" + opts.keyword + "%"}`);
+  if (opts.dateFrom) conds.push(sql`${conversationMessages.createdAt} >= ${opts.dateFrom}`);
+  if (opts.dateTo) conds.push(sql`${conversationMessages.createdAt} <= ${opts.dateTo}`);
+  const where = conds.length ? and(...conds) : undefined;
+  const rows = await db.select().from(conversationMessages).where(where).orderBy(desc(conversationMessages.id)).limit(opts.limit).offset(opts.offset);
+  const [{ count }] = await db.select({ count: sql<number>`count(*)` }).from(conversationMessages).where(where);
+  return { rows, total: Number(count) };
+}
+
+export async function adminListAttachments(opts: { conversationId?: number; limit: number; offset: number }): Promise<{ rows: ChatAttachment[]; total: number }> {
+  const db = await getDb();
+  if (!db) return DEV_MODE ? dev.devListAllAttachments(opts) : { rows: [], total: 0 };
+  const where = opts.conversationId != null ? eq(chatAttachments.conversationId, opts.conversationId) : undefined;
+  const rows = await db.select().from(chatAttachments).where(where).orderBy(desc(chatAttachments.id)).limit(opts.limit).offset(opts.offset);
+  const [{ count }] = await db.select({ count: sql<number>`count(*)` }).from(chatAttachments).where(where);
+  return { rows, total: Number(count) };
+}
+
+export async function getChatSettings(): Promise<ChatSettingsRow> {
+  const db = await getDb();
+  if (!db) { if (DEV_MODE) return dev.devGetChatSettings(); throw new Error("DB unavailable"); }
+  const rows = await db.select().from(chatSettings).where(eq(chatSettings.id, 1)).limit(1);
+  if (rows[0]) return rows[0];
+  await db.insert(chatSettings).values({ id: 1 }).onDuplicateKeyUpdate({ set: { id: 1 } });
+  const again = await db.select().from(chatSettings).where(eq(chatSettings.id, 1)).limit(1);
+  return again[0]!;
+}
+
+export async function setChatSettings(patch: Partial<Pick<ChatSettingsRow, "serverlessAllowed" | "lobbyEnabled" | "maxFileMb">>): Promise<ChatSettingsRow> {
+  const db = await getDb();
+  if (!db) { if (DEV_MODE) return dev.devSetChatSettings(patch); throw new Error("DB unavailable"); }
+  await db.insert(chatSettings).values({ id: 1, ...patch }).onDuplicateKeyUpdate({ set: patch });
+  return getChatSettings();
+}
+
+/** Search users by name/email for starting DMs or inviting (capped, excludes self). */
+export async function searchUsersForChat(q: string, excludeUserId: number, limit = 20): Promise<{ id: number; name: string | null; email: string | null }[]> {
+  const db = await getDb();
+  if (!db) {
+    if (DEV_MODE) return [{ id: 2, name: "Dev User 2", email: "dev2@localhost" }].filter((u) => u.id !== excludeUserId && (`${u.name}${u.email}`).toLowerCase().includes(q.toLowerCase()));
+    return [];
+  }
+  const like = "%" + q + "%";
+  const rows = await db.select({ id: users.id, name: users.name, email: users.email }).from(users)
+    .where(and(sql`(${users.name} LIKE ${like} OR ${users.email} LIKE ${like})`, sql`${users.id} <> ${excludeUserId}`))
+    .limit(limit);
+  return rows;
 }
