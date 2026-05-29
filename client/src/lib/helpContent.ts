@@ -988,6 +988,9 @@ defaultValue: 3.5` },
         ["OWNER_EMAIL", "管理员邮箱，默认值需在生产环境替换"],
         ["OWNER_OPEN_ID", "管理员 OpenID（OAuth 场景）"],
         ["VITE_APP_ID", "前端应用 ID，用于 OAuth 和分析等"],
+        ["GOOGLE_CLIENT_ID", "Google OAuth 客户端 ID，设置后登录页显示「使用 Google 登录」"],
+        ["GOOGLE_CLIENT_SECRET", "Google OAuth 客户端密钥"],
+        ["GOOGLE_REDIRECT_URI", "（可选）Google 回调地址，留空时按请求来源自动推导为 <origin>/api/auth/google/callback"],
       ]},
       { type: "h3", text: "开发模式快速启动" },
       { type: "code", text: `DATABASE_URL="" OAUTH_SERVER_URL="" NODE_ENV=development pnpm dev` },
@@ -996,6 +999,8 @@ defaultValue: 3.5` },
       { type: "code", text: `DATABASE_URL=mysql://root:password@localhost:3306/aicanvas
 JWT_SECRET=your_random_64_char_secret_here
 OAUTH_SERVER_URL=https://your-oauth-server.com
+GOOGLE_CLIENT_ID=xxxx.apps.googleusercontent.com
+GOOGLE_CLIENT_SECRET=GOCSPX-xxxxxxxxxxxxxxxx
 COMFYUI_BASE_URL=http://192.168.1.100:8188
 POYO_API_KEY=pk_xxxxxxxxxxxxxxxxxxxx
 OPENAI_API_KEY=sk-xxxxxxxxxxxxxxxxxxxx

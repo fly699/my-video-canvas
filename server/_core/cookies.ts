@@ -39,10 +39,16 @@ export function getSessionCookieOptions(
   //       ? hostname
   //       : undefined;
 
+  // Browsers reject `SameSite=None` cookies that are not also `Secure`, so over
+  // plain HTTP (e.g. LAN / non-TLS deployments) the session cookie would be
+  // silently dropped and the user could never stay logged in. Fall back to
+  // `Lax` — sufficient for our same-origin login navigation — when the request
+  // isn't secure, and keep `None` (for cross-site / iframe embedding) on HTTPS.
+  const secure = isSecureRequest(req);
   return {
     httpOnly: true,
     path: "/",
-    sameSite: "none",
-    secure: isSecureRequest(req),
+    sameSite: secure ? "none" : "lax",
+    secure,
   };
 }

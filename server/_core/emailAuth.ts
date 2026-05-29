@@ -5,7 +5,6 @@ import { promisify } from "util";
 import * as db from "../db";
 import { getSessionCookieOptions } from "./cookies";
 import { sdk } from "./sdk";
-import { ENV } from "./env";
 import { writeAuditLog } from "./auditLog";
 
 const scryptAsync = promisify(scrypt);
@@ -69,10 +68,6 @@ export function registerEmailAuthRoutes(app: Express) {
       }
       if (password.length > 72) {
         res.status(400).json({ error: "密码不能超过 72 位" }); return;
-      }
-      // Block registration with the owner email — that account must log in via OAuth only
-      if (ENV.ownerEmail && email.toLowerCase() === ENV.ownerEmail.toLowerCase()) {
-        res.status(403).json({ error: "该邮箱不允许通过密码注册，请使用第三方登录" }); return;
       }
       const openId = `email:${email.toLowerCase()}`;
       const existing = await db.getUserByOpenId(openId);

@@ -23,4 +23,10 @@ export const ENV = {
   higgsfieldApiSecret: process.env.HIGGSFIELD_API_SECRET ?? "",
   openaiApiKey: process.env.OPENAI_API_KEY ?? "",
   comfyuiBaseUrl: process.env.COMFYUI_BASE_URL ?? "",
+  // Google OAuth (standalone OpenID Connect). Both must be set to enable the
+  // "使用 Google 登录" button. GOOGLE_REDIRECT_URI is optional — when unset the
+  // callback URL is derived from the incoming request origin.
+  googleClientId: process.env.GOOGLE_CLIENT_ID ?? "",
+  googleClientSecret: process.env.GOOGLE_CLIENT_SECRET ?? "",
+  googleRedirectUri: process.env.GOOGLE_REDIRECT_URI ?? "",
 };
