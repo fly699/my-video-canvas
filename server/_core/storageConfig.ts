@@ -11,6 +11,7 @@
  * `invalidateStorageSettingsCache()`.
  */
 import * as db from "../db";
+import { isS3Configured } from "../storage";
 
 type Cached = { persistAudio: boolean; persistVideo: boolean; persistImage: boolean };
 
@@ -52,14 +53,21 @@ export async function getCachedStorageSettings(): Promise<Cached> {
   return _inflight;
 }
 
+// Self-hosted S3/MinIO has no quota concern (local disk), so when it's
+// configured we ALWAYS persist generated media to it — prioritising MinIO over
+// upstream provider URLs (which expire). The admin toggle only gates the
+// limited-quota Forge backend.
 export async function isAudioPersistenceEnabled(): Promise<boolean> {
+  if (isS3Configured()) return true;
   return (await getCachedStorageSettings()).persistAudio;
 }
 
 export async function isVideoPersistenceEnabled(): Promise<boolean> {
+  if (isS3Configured()) return true;
   return (await getCachedStorageSettings()).persistVideo;
 }
 
 export async function isImagePersistenceEnabled(): Promise<boolean> {
+  if (isS3Configured()) return true;
   return (await getCachedStorageSettings()).persistImage;
 }
