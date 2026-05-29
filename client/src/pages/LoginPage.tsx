@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { Film } from "lucide-react";
+import { Film, ShieldCheck } from "lucide-react";
 
 type Mode = "login" | "register";
 
@@ -363,13 +363,18 @@ export default function LoginPage() {
             )}
           </>
         )}
-      </div>
-      <div style={{
-        position: "absolute", bottom: "20px", left: 0, right: 0,
-        textAlign: "center", color: "rgba(255,255,255,0.25)", fontSize: "12px", lineHeight: 1.6,
-        pointerEvents: "none", userSelect: "none",
-      }}>
-        © {new Date().getFullYear()} 金泰智算 · KingTai Smart
+
+        {/* 版权信息 */}
+        <div style={{
+          marginTop: "22px", padding: "10px 12px", borderRadius: "10px",
+          border: "1px solid rgba(34,197,94,0.28)", background: "rgba(34,197,94,0.06)",
+          display: "flex", gap: "8px", alignItems: "flex-start",
+        }}>
+          <ShieldCheck style={{ width: 15, height: 15, color: "#22c55e", flexShrink: 0, marginTop: "2px" }} />
+          <span style={{ fontSize: "11px", lineHeight: 1.6, color: "rgba(180,225,190,0.78)" }}>
+            © {new Date().getFullYear()} 金泰智算（KingTai Smart）版权所有。本工具由金泰智算自主研发，所有模板、预设库与界面设计均受版权保护。未经授权，禁止复制或商业使用。
+          </span>
+        </div>
       </div>
     </div>
   );
