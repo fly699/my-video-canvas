@@ -2,6 +2,7 @@ import { useEffect } from "react";
 import { useLanChat } from "@/hooks/useLanChat";
 import { LanChatPanel } from "@/components/lan-chat/LanChatPanel";
 import { NicknamePicker } from "@/components/lan-chat/NicknamePicker";
+import { ThemeSwitcher } from "@/components/canvas/ThemeSwitcher";
 
 /**
  * Standalone full-screen LAN chat at /lan-chat. The Express layer in
@@ -54,13 +55,19 @@ export default function LanChatPage() {
             </span>
           </div>
         </div>
-        <span className="ml-auto text-[11px] px-2 py-0.5 rounded" style={{
-          background: session.color + "22",
-          color: session.color,
-          border: `1px solid ${session.color}44`,
-        }}>
-          {session.nickname}
-        </span>
+        <div className="ml-auto flex items-center gap-3">
+          {/* Theme picker — lets the popup/standalone window switch to a
+              light theme independently (it's a separate window with its
+              own ThemeProvider). */}
+          <ThemeSwitcher />
+          <span className="text-[11px] px-2 py-0.5 rounded" style={{
+            background: session.color + "22",
+            color: session.color,
+            border: `1px solid ${session.color}44`,
+          }}>
+            {session.nickname}
+          </span>
+        </div>
       </header>
       <div className="flex-1 min-h-0">
         <LanChatPanel visible />

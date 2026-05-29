@@ -40,6 +40,12 @@ interface SessionInfo {
   color: string;
 }
 
+/** A staged attachment carries the original File so the actual P2P
+ *  broadcast can be deferred until the user hits send (selecting a file
+ *  must NOT transmit it). The File is stripped before the chat message is
+ *  broadcast — peers receive the bytes via the separate file-chunk frames. */
+export type PendingAttachment = ChatAttachment & { file?: File };
+
 interface LanChatContextValue {
   /** Public-IP fingerprint state — UI must check this BEFORE letting
    *  the user join. "loading" → show spinner; "error" → show diagnostic
@@ -62,9 +68,13 @@ interface LanChatContextValue {
   peers: MeshPeer[];
   typing: string[];
   connected: boolean;
-  send: (content: string, attachments?: ChatAttachment[]) => Promise<void>;
+  send: (content: string, attachments?: PendingAttachment[]) => Promise<void>;
   sendTyping: () => void;
-  uploadMedia: (file: File) => Promise<{ url: string; type: "image" | "file"; mimeType: string; name: string } | null>;
+  uploadMedia: (file: File) => Promise<PendingAttachment | null>;
+  /** Force-reconnect the signaling socket + rebuild the peer mesh. Bound to
+   *  a manual "refresh" button so a user who looks disconnected can recover
+   *  without reloading the whole page. */
+  reconnect: () => void;
 }
 
 const LanChatContext = createContext<LanChatContextValue | null>(null);
@@ -102,6 +112,13 @@ export function LanChatProvider({ children }: { children: ReactNode }) {
   const [online, setOnline] = useState<LanChatOnlineUser[]>([]);
   const [connected, setConnected] = useState(false);
   const [typing, setTyping] = useState<string[]>([]);
+  // Bump to force a full socket teardown + rebuild (manual reconnect button).
+  const [reconnectNonce, setReconnectNonce] = useState(0);
+  const reconnect = useCallback(() => setReconnectNonce((n) => n + 1), []);
+  // Debounce the "disconnected" UI: socket.io auto-reconnects on transient
+  // network blips, so a brief drop shouldn't flash "离线" — only flip the
+  // badge if we're still down after a short grace period.
+  const offlineTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const socketRef = useRef<Socket | null>(null);
   // socketState mirrors socketRef but is proper React state so usePeerMesh
@@ -181,12 +198,23 @@ export function LanChatProvider({ children }: { children: ReactNode }) {
     setSocketState(socket);
     const isLive = () => socketRef.current === socket;
 
-    socket.on("connect", () => { if (isLive()) setConnected(true); });
-    socket.on("disconnect", () => { if (isLive()) setConnected(false); });
+    socket.on("connect", () => {
+      if (!isLive()) return;
+      if (offlineTimerRef.current) { clearTimeout(offlineTimerRef.current); offlineTimerRef.current = null; }
+      setConnected(true);
+    });
+    socket.on("disconnect", () => {
+      if (!isLive()) return;
+      // Grace period: socket.io is already retrying. Only show 离线 if the
+      // drop persists — avoids the badge flickering on every transient blip.
+      if (offlineTimerRef.current) clearTimeout(offlineTimerRef.current);
+      offlineTimerRef.current = setTimeout(() => { if (isLive()) setConnected(false); }, 2500);
+    });
     socket.on("connect_error", (err) => {
       if (!isLive()) return;
       if (/session-not-found/i.test(err.message)) setSessionState(null);
-      setConnected(false);
+      if (offlineTimerRef.current) clearTimeout(offlineTimerRef.current);
+      offlineTimerRef.current = setTimeout(() => { if (isLive()) setConnected(false); }, 2500);
     });
     // lan-chat:message (server-broadcast text) is no longer emitted in
     // the P2P architecture — text now flows over WebRTC DataChannel.
@@ -206,6 +234,7 @@ export function LanChatProvider({ children }: { children: ReactNode }) {
     });
 
     return () => {
+      if (offlineTimerRef.current) { clearTimeout(offlineTimerRef.current); offlineTimerRef.current = null; }
       socket.disconnect();
       if (socketRef.current === socket) {
         socketRef.current = null;
@@ -213,7 +242,7 @@ export function LanChatProvider({ children }: { children: ReactNode }) {
         setConnected(false);
       }
     };
-  }, [session, setSessionState]);
+  }, [session, setSessionState, reconnectNonce]);
 
   const activeRoomIdRef = useRef(activeRoomId);
   useEffect(() => { activeRoomIdRef.current = activeRoomId; }, [activeRoomId]);
@@ -433,34 +462,57 @@ export function LanChatProvider({ children }: { children: ReactNode }) {
     onPeerDrop: handlePeerDrop,
   });
 
-  const send = useCallback(async (content: string, attachments?: ChatAttachment[]) => {
+  const send = useCallback(async (content: string, attachments?: PendingAttachment[]) => {
     if (!session || fingerprint.state !== "ready") return;
-    const id = crypto.randomUUID();
-    const createdAt = Date.now();
-    // 1. Persist locally (each peer keeps own history)
-    historyAppend({
-      id,
-      groupId: fingerprint.groupId,
-      nickname: session.nickname,
-      color: session.color,
-      content,
-      attachments: attachments?.map((a) => ({ type: a.type, url: a.url, name: a.name, mimeType: a.mimeType })),
-      createdAt,
-      ownByMe: true,
-    });
-    // 2. Render in own UI immediately
-    setMessages((prev) => [...prev, {
-      id: hashId(id),
-      roomId: 1,
-      nickname: session.nickname,
-      color: session.color,
-      content,
-      attachments: attachments ?? null,
-      createdAt: new Date(createdAt).toISOString(),
-      ownByMe: true,
-    }]);
-    // 3. Broadcast to connected peers via DataChannel — server never sees it.
-    mesh.broadcast({ kind: "chat", id, content, attachments, createdAt });
+    const groupId = fingerprint.groupId;
+
+    // File attachments (have a backing File) travel as their own message
+    // via the separate file-meta/chunk/end frames — the blob: URL is only
+    // valid in the sender's tab, so peers reconstruct from the frames. We
+    // mirror that locally so sender and receiver render identically.
+    const fileAtts = (attachments ?? []).filter((a) => a.file);
+    // URL attachments (dragged in from the canvas, no backing File) carry a
+    // shareable http(s)/data URL the receiver can load directly, so they
+    // ride along inside the chat message instead.
+    const urlAtts = (attachments ?? []).filter((a) => !a.file);
+
+    for (const att of fileAtts) {
+      const id = crypto.randomUUID();
+      const createdAt = Date.now();
+      const localAtt: ChatAttachment = { type: att.type, url: att.url, name: att.name, mimeType: att.mimeType };
+      historyAppend({
+        id, groupId, nickname: session.nickname, color: session.color,
+        content: "", attachments: [localAtt], createdAt, ownByMe: true,
+      });
+      setMessages((prev) => [...prev, {
+        id: hashId(id), roomId: 1, nickname: session.nickname, color: session.color,
+        content: "", attachments: [localAtt], createdAt: new Date(createdAt).toISOString(), ownByMe: true,
+      }]);
+      // Now actually transmit the file — only on send, never on select.
+      const transferId = crypto.randomUUID();
+      mesh.broadcastChunked(
+        transferId,
+        { kind: "file-meta", name: att.file!.name, mimeType: att.file!.type, size: att.file!.size },
+        att.file!,
+      ).catch((err) => console.warn("[lan-chat] file broadcast failed:", err));
+    }
+
+    // Text message + any URL attachments (only if there's something to send).
+    const text = content.trim();
+    if (text || urlAtts.length > 0) {
+      const id = crypto.randomUUID();
+      const createdAt = Date.now();
+      const cleanUrlAtts: ChatAttachment[] = urlAtts.map((a) => ({ type: a.type, url: a.url, name: a.name, mimeType: a.mimeType }));
+      historyAppend({
+        id, groupId, nickname: session.nickname, color: session.color,
+        content: text, attachments: cleanUrlAtts.length ? cleanUrlAtts : undefined, createdAt, ownByMe: true,
+      });
+      setMessages((prev) => [...prev, {
+        id: hashId(id), roomId: 1, nickname: session.nickname, color: session.color,
+        content: text, attachments: cleanUrlAtts.length ? cleanUrlAtts : null, createdAt: new Date(createdAt).toISOString(), ownByMe: true,
+      }]);
+      mesh.broadcast({ kind: "chat", id, content: text, attachments: cleanUrlAtts.length ? cleanUrlAtts : undefined, createdAt });
+    }
   }, [session, fingerprint, mesh]);
 
   const sendTyping = useCallback(() => {
@@ -499,30 +551,17 @@ export function LanChatProvider({ children }: { children: ReactNode }) {
     });
   }, []);
 
-  /** P2P file send: chunks the file via DataChannel, server never sees it.
-   *  The receiver assembles chunks → Blob → objectURL → renders as an
-   *  attachment (handled in handlePeerMessage above). Locally we also
-   *  render an "own" attachment immediately so the sender sees their
-   *  own upload in the message stream.
-   *
-   *  The returned shape matches the legacy server-upload shape so
-   *  existing UI (PendingAttachmentChip, etc.) keeps working unchanged
-   *  — the `url` is a same-origin blob: URL valid only in the sender's
-   *  tab. Receivers create their own blob URL on assembly. */
-  const uploadMedia = useCallback(async (file: File): Promise<{ url: string; type: "image" | "file"; mimeType: string; name: string } | null> => {
+  /** Stage a file for sending. This ONLY builds a local preview and keeps
+   *  the original File — it does NOT transmit anything. The actual P2P
+   *  broadcast happens in send(), so selecting a file never sends it on
+   *  its own; the user must hit send/Enter. The `url` is a same-origin
+   *  blob: URL valid only in the sender's tab (for the local preview);
+   *  receivers build their own blob URL when the file frames arrive. */
+  const uploadMedia = useCallback(async (file: File): Promise<PendingAttachment | null> => {
     if (!session) return null;
     if (file.size > MAX_FILE_BYTES) {
       throw new Error("文件超过 256 MB，P2P 传输已拒绝");
     }
-    const transferId = crypto.randomUUID();
-    // Fire the chunked broadcast to peers — non-blocking; we don't await
-    // because UI can show progress / completion independently.
-    mesh.broadcastChunked(
-      transferId,
-      { kind: "file-meta", name: file.name, mimeType: file.type, size: file.size },
-      file,
-    ).catch((err) => console.warn("[lan-chat] file broadcast failed:", err));
-    // Local self-preview URL.
     const localUrl = URL.createObjectURL(file);
     void uploadMu; // server upload path retired
     return {
@@ -530,8 +569,9 @@ export function LanChatProvider({ children }: { children: ReactNode }) {
       type: file.type.startsWith("image/") ? "image" : "file",
       mimeType: file.type,
       name: file.name,
+      file,
     };
-  }, [session, mesh, uploadMu]);
+  }, [session, uploadMu]);
 
   const clearSession = useCallback(() => setSessionState(null), [setSessionState]);
 
@@ -553,6 +593,7 @@ export function LanChatProvider({ children }: { children: ReactNode }) {
     send,
     sendTyping,
     uploadMedia,
+    reconnect,
   };
 
   return <LanChatContext.Provider value={value}>{children}</LanChatContext.Provider>;

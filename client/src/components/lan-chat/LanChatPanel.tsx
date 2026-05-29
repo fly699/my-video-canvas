@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { Send, Paperclip, Plus, X, FileText, Users, Loader2, Download } from "lucide-react";
-import { useLanChat } from "@/hooks/useLanChat";
+import { Send, Paperclip, Plus, X, FileText, Users, Loader2, Download, RefreshCw } from "lucide-react";
+import { useLanChat, type PendingAttachment } from "@/hooks/useLanChat";
 import { useLanChatNotifications } from "@/hooks/useLanChatNotifications";
 import type { ChatAttachment, LanChatMessage } from "../../../../shared/types";
 
@@ -22,7 +22,7 @@ export function LanChatPanel({ visible, compact = false }: LanChatPanelProps) {
   const {
     session, rooms, activeRoomId, setActiveRoomId, createRoom, enterRoom,
     messages, online, typing, connected,
-    send, sendTyping, uploadMedia,
+    send, sendTyping, uploadMedia, reconnect,
   } = chat;
 
   const latestMessage = messages.length > 0 ? messages[messages.length - 1] : null;
@@ -42,7 +42,7 @@ export function LanChatPanel({ visible, compact = false }: LanChatPanelProps) {
   void unread; // exposed for the bubble; not used directly here
 
   const [input, setInput] = useState("");
-  const [pending, setPending] = useState<ChatAttachment[]>([]);
+  const [pending, setPending] = useState<PendingAttachment[]>([]);
   const [uploading, setUploading] = useState(false);
   const [draggingOver, setDraggingOver] = useState(false);
   const [newRoomName, setNewRoomName] = useState("");
@@ -260,8 +260,21 @@ export function LanChatPanel({ visible, compact = false }: LanChatPanelProps) {
             </span>
           )}
           <button
-            onClick={() => { setShowFiles((v) => !v); setShowOnline(false); }}
+            onClick={() => reconnect()}
             className="ml-auto flex items-center gap-1 px-2 py-0.5 rounded text-[10px]"
+            style={{
+              background: connected ? "var(--c-surface)" : "oklch(0.72 0.18 45 / 0.12)",
+              border: `1px solid ${connected ? "var(--c-bd2)" : "oklch(0.72 0.18 45 / 0.35)"}`,
+              color: connected ? "var(--c-t3)" : "oklch(0.72 0.18 45)",
+            }}
+            title={connected ? "已连接 · 点击重新连接" : "未连接 · 点击重新连接"}
+          >
+            <RefreshCw style={{ width: 10, height: 10 }} />
+            {connected ? "在线" : "重连"}
+          </button>
+          <button
+            onClick={() => { setShowFiles((v) => !v); setShowOnline(false); }}
+            className="flex items-center gap-1 px-2 py-0.5 rounded text-[10px]"
             style={{ background: "var(--c-surface)", border: "1px solid var(--c-bd2)", color: "var(--c-t3)" }}
             title="本会话所有收发文件"
           >
