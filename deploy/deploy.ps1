@@ -6,7 +6,7 @@
     自动提权(UAC) → winget 自动装 Node.js → winget 自动装 Docker Desktop
     → 起 MySQL 容器 → 生成 .env → 装依赖 → 建表 → 构建 → 开防火墙 → 启动
 
-  用法（在项目根目录，双击 deploy\一键部署.bat，或运行）：
+  用法（在项目根目录，双击 deploy\deploy.bat，或运行）：
     powershell -ExecutionPolicy Bypass -File .\deploy\deploy.ps1
 
   常用参数：
@@ -126,7 +126,7 @@ if (-not (Have docker)) {
     winget install --id Docker.DockerDesktop -e --silent --accept-source-agreements --accept-package-agreements
     Refresh-Path
     Warn "Docker Desktop 已安装。首次使用 WSL2 通常需要【重启电脑】。"
-    Warn "请现在重启电脑，重启后再次运行本脚本（或双击 一键部署.bat）即可自动继续。"
+    Warn "请现在重启电脑，重启后再次运行本脚本（或双击 deploy.bat）即可自动继续。"
     Write-Host "`n    （脚本是幂等的：已完成的步骤不会重复执行。）`n" -ForegroundColor Yellow
     exit 0
 }
