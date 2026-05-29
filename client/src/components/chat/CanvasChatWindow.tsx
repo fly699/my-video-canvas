@@ -52,7 +52,7 @@ export function CanvasChatWindow({ onClose }: { onClose: () => void }) {
       // window's own (unscaled) coordinates by dividing by the scale factor.
       const dx = (ev.clientX - r.mx) / scale;
       const dy = (ev.clientY - r.my) / scale;
-      setBox((b) => ({ ...b, w: clamp(r.w + dx, 340, window.innerWidth - b.x), h: clamp(r.h + dy, 360, window.innerHeight - b.y) }));
+      setBox((b) => ({ ...b, w: clamp(r.w + dx, 260, window.innerWidth - b.x), h: clamp(r.h + dy, 300, window.innerHeight - b.y) }));
     };
     const up = () => { rezRef.current = null; window.removeEventListener("mousemove", move); window.removeEventListener("mouseup", up); };
     window.addEventListener("mousemove", move); window.addEventListener("mouseup", up);
