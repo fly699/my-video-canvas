@@ -49,7 +49,7 @@ export function NewConversationDialog({ onClose }: { onClose: () => void }) {
           <button onClick={onClose} style={iconBtn}><X size={16} /></button>
         </div>
 
-        <div style={{ display: "flex", gap: 4, background: "rgba(255,255,255,0.04)", borderRadius: 8, padding: 3, marginBottom: 16 }}>
+        <div style={{ display: "flex", gap: 4, background: "var(--c-elevated, rgba(128,128,128,0.10))", borderRadius: 8, padding: 3, marginBottom: 16 }}>
           <TabBtn active={tab === "room"} onClick={() => setTab("room")}><Users size={14} /> 创建群聊</TabBtn>
           <TabBtn active={tab === "dm"} onClick={() => setTab("dm")}><MessageSquare size={14} /> 发起私聊</TabBtn>
         </div>
@@ -108,7 +108,7 @@ function TabBtn({ active, onClick, children }: { active: boolean; onClick: () =>
     <button onClick={onClick} style={{
       flex: 1, display: "inline-flex", alignItems: "center", justifyContent: "center", gap: 6,
       padding: "7px 0", border: "none", borderRadius: 6, cursor: "pointer", fontSize: 13, fontWeight: 500,
-      background: active ? "rgba(255,255,255,0.08)" : "transparent",
+      background: active ? "var(--c-elevated, rgba(128,128,128,0.14))" : "transparent",
       color: active ? "var(--c-t1, #f0f0f4)" : "var(--c-t2, rgba(255,255,255,0.5))",
     }}>{children}</button>
   );
