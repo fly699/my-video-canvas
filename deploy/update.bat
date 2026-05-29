@@ -88,7 +88,17 @@ echo [*] pnpm build...
 call pnpm build
 if errorlevel 1 goto fail
 
-rem ---- 5) ensure pm2 ----
+rem ---- 5) restart: prefer Windows service (AVC-App) if installed, else pm2 ----
+sc query AVC-App >nul 2>nul
+if not errorlevel 1 (
+  echo [*] Restarting Windows service AVC-App ...
+  net stop AVC-App >nul 2>nul
+  net start AVC-App >nul 2>nul
+  echo [OK] service restarted
+  goto donerestart
+)
+
+rem ---- ensure pm2 ----
 where pm2 >nul 2>nul
 if errorlevel 1 (
   echo [*] Installing pm2...
@@ -101,12 +111,13 @@ if errorlevel 1 (
   goto end
 )
 
-rem ---- 6) restart with FRESH env (delete+start guarantees .env changes apply) ----
+rem ---- restart with FRESH env (delete+start guarantees .env changes apply) ----
 echo [*] (Re)starting app in background under pm2 with fresh env...
 call pm2 delete avc >nul 2>nul
 call pm2 start "%ROOT%\dist\index.js" --name avc --cwd "%ROOT%"
 if errorlevel 1 goto fail
 call pm2 save >nul 2>nul
+:donerestart
 
 echo.
 echo ============================================================
