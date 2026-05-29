@@ -1,4 +1,5 @@
 @echo off
+chcp 65001 >nul
 setlocal enableextensions
 title update ai-video-canvas
 
@@ -43,8 +44,9 @@ rem ---- 1) pull latest code (--no-edit: don't open an editor for merge commits)
 echo [*] git pull...
 git pull --no-edit
 if errorlevel 1 (
-  echo [!] 拉取失败（多为本地 deploy 脚本被本地改动挡住）。丢弃 deploy 下脚本改动后重试...
-  rem .env 已被 .gitignore，不受影响；deploy 脚本以仓库版本为准。
+  echo [!] Pull failed (usually local deploy script changes). Resetting deploy scripts and retrying...
+  rem .env is gitignored and unaffected; deploy scripts follow the repo version.
+  git merge --abort 2>nul
   git checkout -- deploy/ 2>nul
   git pull --no-edit
 )
