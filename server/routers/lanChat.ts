@@ -9,6 +9,7 @@ import { hashPassword } from "../_core/scrypt";
 import {
   listLanChatRooms,
   createLanChatRoom,
+  deleteLanChatRoom,
   insertLanChatMessage,
   getLanChatMessages,
   redeemLanChatInvite,
@@ -194,6 +195,26 @@ export const lanChatRouter = router({
         id: row.id, name: row.name, isPrivate: !!passwordHash,
       });
       return { id: row.id, name: row.name, isPrivate: !!passwordHash };
+    }),
+
+  deleteRoom: publicProcedure
+    .input(z.object({
+      sessionId: z.string().min(1),
+      roomId: z.number().int(),
+    }))
+    .mutation(async ({ input }) => {
+      const sess = lanChatBus.getSession(input.sessionId);
+      if (!sess) throw new TRPCError({ code: "UNAUTHORIZED", message: "请先输入昵称" });
+      const rooms = await listLanChatRooms(sess.networkGroupId);
+      if (!rooms.some((r) => r.id === input.roomId)) {
+        throw new TRPCError({ code: "NOT_FOUND", message: "房间不存在" });
+      }
+      if (rooms.length <= 1) {
+        throw new TRPCError({ code: "BAD_REQUEST", message: "不能删除最后一个房间" });
+      }
+      await deleteLanChatRoom(input.roomId);
+      groupBroadcaster?.(sess.networkGroupId, "lan-chat:room-deleted", { id: input.roomId });
+      return { success: true };
     }),
 
   // History — newest-first, client reverses for chronological render

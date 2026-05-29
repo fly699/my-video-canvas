@@ -58,6 +58,7 @@ interface LanChatContextValue {
   activeRoomId: number;
   setActiveRoomId: (id: number) => void;
   createRoom: (name: string, password?: string) => Promise<LanChatRoom | undefined>;
+  deleteRoom: (roomId: number) => Promise<void>;
   /** Enter a (possibly private) room — for private rooms the password
    *  is required. Returns true on success, false if server denied. */
   enterRoom: (roomId: number, password?: string) => Promise<boolean>;
@@ -175,6 +176,17 @@ export function LanChatProvider({ children }: { children: ReactNode }) {
       utils.lanChat.listRooms.invalidate();
     },
   });
+  const deleteRoomMu = trpc.lanChat.deleteRoom.useMutation({
+    onSuccess: (_, vars) => {
+      if (session) {
+        utils.lanChat.listRooms.setData(
+          { sessionId: session.sessionId },
+          (prev) => prev?.filter((r) => r.id !== vars.roomId),
+        );
+      }
+      utils.lanChat.listRooms.invalidate();
+    },
+  });
   const uploadMu = trpc.lanChat.uploadMedia.useMutation();
 
   const roomsQ = trpc.lanChat.listRooms.useQuery(
@@ -238,6 +250,16 @@ export function LanChatProvider({ children }: { children: ReactNode }) {
     // in everyone's sidebar without a page reload.
     socket.on("lan-chat:room-created", () => {
       if (!isLive()) return;
+      utils.lanChat.listRooms.invalidate();
+    });
+    // Someone deleted a room — remove it from the cache immediately so
+    // users don't see a stale entry while the refetch is in flight.
+    socket.on("lan-chat:room-deleted", ({ id }: { id: number }) => {
+      if (!isLive()) return;
+      utils.lanChat.listRooms.setData(
+        session ? { sessionId: session.sessionId } : undefined,
+        (prev) => prev?.filter((r) => r.id !== id),
+      );
       utils.lanChat.listRooms.invalidate();
     });
 
@@ -546,6 +568,11 @@ export function LanChatProvider({ children }: { children: ReactNode }) {
     return room;
   }, [session, createRoomMu]);
 
+  const deleteRoom = useCallback(async (roomId: number) => {
+    if (!session) return;
+    await deleteRoomMu.mutateAsync({ sessionId: session.sessionId, roomId });
+  }, [session, deleteRoomMu]);
+
   // Wire up enter-room ack/deny socket events so callers know whether
   // the password they supplied was accepted. Resolves true on
   // lan-chat:enter-granted, false on lan-chat:enter-denied, timeouts
@@ -608,6 +635,7 @@ export function LanChatProvider({ children }: { children: ReactNode }) {
     activeRoomId,
     setActiveRoomId,
     createRoom,
+    deleteRoom,
     enterRoom,
     messages: visibleMessages,
     online,

@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { Send, Paperclip, Plus, X, FileText, Users, Loader2, Download, RefreshCw, PanelLeftClose, PanelLeftOpen } from "lucide-react";
+import { Send, Paperclip, Plus, X, FileText, Users, Loader2, Download, RefreshCw, PanelLeftClose, PanelLeftOpen, Trash2 } from "lucide-react";
 import { useLanChat, type PendingAttachment } from "@/hooks/useLanChat";
 import { useLanChatNotifications } from "@/hooks/useLanChatNotifications";
 import type { ChatAttachment, LanChatMessage } from "../../../../shared/types";
@@ -20,7 +20,7 @@ interface LanChatPanelProps {
 export function LanChatPanel({ visible, compact = false }: LanChatPanelProps) {
   const chat = useLanChat();
   const {
-    session, rooms, activeRoomId, setActiveRoomId, createRoom, enterRoom,
+    session, rooms, activeRoomId, setActiveRoomId, createRoom, deleteRoom, enterRoom,
     messages, online, typing, connected,
     send, sendTyping, uploadMedia, reconnect,
   } = chat;
@@ -187,26 +187,45 @@ export function LanChatPanel({ visible, compact = false }: LanChatPanelProps) {
           </div>
           <div className="flex-1 overflow-y-auto px-1 py-1.5 space-y-0.5">
             {rooms.map((r) => (
-              <button
-                key={r.id}
-                onClick={async () => {
-                  if (r.isPrivate && r.id !== activeRoomId) {
-                    const pw = window.prompt(`房间「${r.name}」需要密码：`);
-                    if (!pw) return;
-                    const ok = await enterRoom(r.id, pw);
-                    if (!ok) { window.alert("密码错误"); return; }
-                  }
-                  setActiveRoomId(r.id);
-                }}
-                className="w-full px-2 py-1.5 rounded text-left text-xs flex items-center gap-1"
-                style={{
-                  background: r.id === activeRoomId ? "oklch(0.68 0.22 285 / 0.15)" : "transparent",
-                  color: r.id === activeRoomId ? "oklch(0.82 0.20 285)" : "var(--c-t2)",
-                  fontWeight: r.id === activeRoomId ? 600 : 400,
-                }}
-              >
-                {r.isPrivate ? "🔒" : "#"} {r.name}
-              </button>
+              <div key={r.id} className="flex items-center gap-0.5 group">
+                <button
+                  onClick={async () => {
+                    if (r.isPrivate && r.id !== activeRoomId) {
+                      const pw = window.prompt(`房间「${r.name}」需要密码：`);
+                      if (!pw) return;
+                      const ok = await enterRoom(r.id, pw);
+                      if (!ok) { window.alert("密码错误"); return; }
+                    }
+                    setActiveRoomId(r.id);
+                  }}
+                  className="flex-1 px-2 py-1.5 rounded text-left text-xs flex items-center gap-1"
+                  style={{
+                    background: r.id === activeRoomId ? "oklch(0.68 0.22 285 / 0.15)" : "transparent",
+                    color: r.id === activeRoomId ? "oklch(0.82 0.20 285)" : "var(--c-t2)",
+                    fontWeight: r.id === activeRoomId ? 600 : 400,
+                  }}
+                >
+                  {r.isPrivate ? "🔒" : "#"} {r.name}
+                </button>
+                {rooms.length > 1 && (
+                  <button
+                    onClick={async () => {
+                      if (!window.confirm(`确定删除房间「${r.name}」？其中的消息记录将永久清除。`)) return;
+                      // If deleting the active room, switch to another first.
+                      if (r.id === activeRoomId) {
+                        const other = rooms.find((x) => x.id !== r.id);
+                        if (other) setActiveRoomId(other.id);
+                      }
+                      try { await deleteRoom(r.id); } catch { window.alert("删除失败，请重试"); }
+                    }}
+                    className="w-5 h-5 rounded flex items-center justify-center opacity-0 group-hover:opacity-100"
+                    style={{ color: "var(--c-t4)", flexShrink: 0 }}
+                    title={`删除房间「${r.name}」`}
+                  >
+                    <Trash2 style={{ width: 11, height: 11 }} />
+                  </button>
+                )}
+              </div>
             ))}
           </div>
           <div className="px-2 py-2 flex flex-col gap-1" style={{ borderTop: "1px solid var(--c-bd1)" }}>

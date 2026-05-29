@@ -819,6 +819,14 @@ export async function getLanChatRoomById(roomId: number): Promise<LanChatRoomRow
   return rows[0] ?? null;
 }
 
+/** Delete a room and its messages. */
+export async function deleteLanChatRoom(roomId: number): Promise<void> {
+  const db = await getDb();
+  if (!db) { if (DEV_MODE) { dev.devDeleteLanChatRoom(roomId); return; } throw new Error("DB unavailable"); }
+  await db.delete(lanChatMessages).where(eq(lanChatMessages.roomId, roomId));
+  await db.delete(lanChatRooms).where(eq(lanChatRooms.id, roomId));
+}
+
 export async function insertLanChatMessage(data: InsertLanChatMessage): Promise<LanChatMessageRow | null> {
   const db = await getDb();
   if (!db) { if (DEV_MODE) return dev.devInsertLanChatMessage(data); throw new Error("DB unavailable"); }

@@ -440,6 +440,10 @@ export function devGetLanChatRoomById(roomId: number): LanChatRoomRow | undefine
   return lanRoomsMap.get(roomId);
 }
 
+export function devDeleteLanChatRoom(roomId: number): void {
+  lanRoomsMap.delete(roomId);
+}
+
 export function devInsertLanChatMessage(data: InsertLanChatMessage): LanChatMessageRow {
   const row: LanChatMessageRow = {
     id: lanNextMessageId++,

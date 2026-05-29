@@ -154,7 +154,7 @@ export function NicknamePicker({ onSubmit, busy, fingerprint }: NicknamePickerPr
         )}
 
         <p className="text-[9px] mt-2 leading-relaxed" style={{ color: "var(--c-t4)" }}>
-          按你浏览器的公网出口 IP 分组：只有共享同一 NAT 网关（同一办公室/家庭网络）的人能看到你。跨网络用户永不互通；4G/5G 用户因运营商 CGNAT 可能与陌生人同组，请勿发送敏感信息。
+          按你浏览器的公网出口 IP 分组：只有共享同一 NAT 网关（同一办公室/家庭网络）的人能看到你。若同时连接 VPN 与公司网络，分组由加载本页时的出口 IP 决定（重新加入可更新）。跨网络团队请使用 <code style={{ fontFamily: "monospace" }}>/lan-chat#g=团队代号</code> 邀请链接。4G/5G 因运营商 CGNAT 可能与陌生人同组，请勿发送敏感信息。
         </p>
       </form>
     </div>
