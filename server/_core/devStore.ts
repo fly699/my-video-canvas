@@ -28,6 +28,16 @@ import type {
   LanChatSettingsRow,
   InsertLanChatInvite,
   InsertLanChatIpWhitelist,
+  ChatConversation,
+  InsertChatConversation,
+  ChatMember,
+  ConversationMessage,
+  InsertConversationMessage,
+  ChatAttachment,
+  InsertChatAttachment,
+  ChatBan,
+  InsertChatBan,
+  ChatSettingsRow,
 } from "../../drizzle/schema";
 
 let nextId = 100;
@@ -559,4 +569,252 @@ export function devRemoveLanChatIpWhitelist(id: number): boolean {
 
 export function devIsIpInLanChatWhitelist(ip: string): boolean {
   return Array.from(lanIpWhitelistMap.values()).some((r) => r.ip === ip);
+}
+
+// ── Account-based Chat (rewrite) dev fallbacks ──────────────────────────────────
+
+const chatConvMap = new Map<number, ChatConversation>();
+const chatMembersMap = new Map<number, ChatMember>();
+const chatMsgMap = new Map<number, ConversationMessage>();
+const chatAttachMap = new Map<number, ChatAttachment>();
+const chatKeysMap = new Map<number, unknown>(); // userId -> publicKeyJwk
+const chatBansMap = new Map<number, ChatBan>();
+let chatNextConvId = 1;
+let chatNextMemberId = 1;
+let chatNextMsgId = 1;
+let chatNextAttachId = 1;
+let chatNextBanId = 1;
+let chatSettingsDev: ChatSettingsRow = {
+  id: 1, serverlessAllowed: true, lobbyEnabled: true, maxFileMb: 200, updatedAt: now(),
+};
+
+export function devGetOrCreateLobby(): ChatConversation {
+  let lobby = Array.from(chatConvMap.values()).find((c) => c.type === "lobby");
+  if (!lobby) {
+    lobby = {
+      id: chatNextConvId++, type: "lobby", mode: "server", title: "大厅",
+      passwordHash: null, createdBy: null, dmKey: null, createdAt: now(), updatedAt: now(),
+    };
+    chatConvMap.set(lobby.id, lobby);
+  }
+  return lobby;
+}
+
+export function devCreateConversation(data: InsertChatConversation): ChatConversation {
+  const row: ChatConversation = {
+    id: chatNextConvId++,
+    type: data.type,
+    mode: data.mode ?? "server",
+    title: data.title ?? null,
+    passwordHash: data.passwordHash ?? null,
+    createdBy: data.createdBy ?? null,
+    dmKey: data.dmKey ?? null,
+    createdAt: now(),
+    updatedAt: now(),
+  };
+  chatConvMap.set(row.id, row);
+  return row;
+}
+
+export function devGetConversationById(id: number): ChatConversation | undefined {
+  return chatConvMap.get(id);
+}
+
+export function devGetConversationByDmKey(dmKey: string): ChatConversation | undefined {
+  return Array.from(chatConvMap.values()).find((c) => c.dmKey === dmKey);
+}
+
+export function devUpdateConversation(id: number, patch: Partial<ChatConversation>): void {
+  const c = chatConvMap.get(id);
+  if (c) chatConvMap.set(id, { ...c, ...patch, updatedAt: now() });
+}
+
+export function devDeleteConversation(id: number): void {
+  chatConvMap.delete(id);
+  Array.from(chatMembersMap.entries()).forEach(([mid, m]) => { if (m.conversationId === id) chatMembersMap.delete(mid); });
+  Array.from(chatMsgMap.entries()).forEach(([xid, x]) => { if (x.conversationId === id) chatMsgMap.delete(xid); });
+  Array.from(chatAttachMap.entries()).forEach(([aid, a]) => { if (a.conversationId === id) chatAttachMap.delete(aid); });
+}
+
+export function devAddMember(conversationId: number, userId: number, role: "owner" | "member"): ChatMember {
+  const existing = Array.from(chatMembersMap.values())
+    .find((m) => m.conversationId === conversationId && m.userId === userId);
+  if (existing) return existing;
+  const row: ChatMember = {
+    id: chatNextMemberId++, conversationId, userId, role, lastReadMessageId: 0, joinedAt: now(),
+  };
+  chatMembersMap.set(row.id, row);
+  return row;
+}
+
+export function devRemoveMember(conversationId: number, userId: number): void {
+  Array.from(chatMembersMap.entries()).forEach(([id, m]) => {
+    if (m.conversationId === conversationId && m.userId === userId) chatMembersMap.delete(id);
+  });
+}
+
+export function devListMembers(conversationId: number): ChatMember[] {
+  return Array.from(chatMembersMap.values()).filter((m) => m.conversationId === conversationId);
+}
+
+export function devIsMember(conversationId: number, userId: number): boolean {
+  // Lobby is implicitly joinable by everyone in dev.
+  const conv = chatConvMap.get(conversationId);
+  if (conv?.type === "lobby") return true;
+  return Array.from(chatMembersMap.values())
+    .some((m) => m.conversationId === conversationId && m.userId === userId);
+}
+
+export function devListConversationsForUser(userId: number): ChatConversation[] {
+  const memberConvIds = new Set(
+    Array.from(chatMembersMap.values()).filter((m) => m.userId === userId).map((m) => m.conversationId),
+  );
+  return Array.from(chatConvMap.values())
+    .filter((c) => c.type === "lobby" || memberConvIds.has(c.id))
+    .sort((a, b) => b.updatedAt.getTime() - a.updatedAt.getTime());
+}
+
+export function devUpdateLastRead(conversationId: number, userId: number, messageId: number): void {
+  Array.from(chatMembersMap.entries()).forEach(([id, m]) => {
+    if (m.conversationId === conversationId && m.userId === userId)
+      chatMembersMap.set(id, { ...m, lastReadMessageId: Math.max(m.lastReadMessageId, messageId) });
+  });
+}
+
+export function devInsertChatMessage(data: InsertConversationMessage): ConversationMessage {
+  const row: ConversationMessage = {
+    id: chatNextMsgId++,
+    conversationId: data.conversationId,
+    senderId: data.senderId,
+    senderName: data.senderName,
+    content: data.content,
+    attachments: (data.attachments as ConversationMessage["attachments"]) ?? null,
+    createdAt: now(),
+  };
+  chatMsgMap.set(row.id, row);
+  devUpdateConversation(data.conversationId, {});
+  return row;
+}
+
+export function devGetChatMessagesPage(conversationId: number, opts: { beforeId?: number; limit: number }): ConversationMessage[] {
+  return Array.from(chatMsgMap.values())
+    .filter((m) => m.conversationId === conversationId && (opts.beforeId == null || m.id < opts.beforeId))
+    .sort((a, b) => b.id - a.id)
+    .slice(0, opts.limit);
+}
+
+export function devGetChatMessageById(id: number): ConversationMessage | undefined {
+  return chatMsgMap.get(id);
+}
+
+export function devDeleteChatMessage(id: number): void {
+  chatMsgMap.delete(id);
+}
+
+export function devInsertChatAttachment(data: InsertChatAttachment): ChatAttachment {
+  const row: ChatAttachment = {
+    id: chatNextAttachId++,
+    conversationId: data.conversationId,
+    messageId: data.messageId ?? null,
+    uploaderId: data.uploaderId,
+    storageKey: data.storageKey,
+    url: data.url,
+    name: data.name,
+    mimeType: data.mimeType,
+    size: data.size,
+    kind: data.kind,
+    createdAt: now(),
+  };
+  chatAttachMap.set(row.id, row);
+  return row;
+}
+
+export function devLinkAttachments(messageId: number, attachmentIds: number[]): void {
+  for (const aid of attachmentIds) {
+    const a = chatAttachMap.get(aid);
+    if (a) chatAttachMap.set(aid, { ...a, messageId });
+  }
+}
+
+export function devListConversationAttachments(conversationId: number): ChatAttachment[] {
+  return Array.from(chatAttachMap.values())
+    .filter((a) => a.conversationId === conversationId)
+    .sort((a, b) => b.id - a.id);
+}
+
+export function devUpsertUserPublicKey(userId: number, jwk: unknown): void {
+  chatKeysMap.set(userId, jwk);
+}
+
+export function devGetUserPublicKeys(userIds: number[]): { userId: number; publicKeyJwk: unknown }[] {
+  return userIds
+    .filter((id) => chatKeysMap.has(id))
+    .map((id) => ({ userId: id, publicKeyJwk: chatKeysMap.get(id) }));
+}
+
+export function devAddBan(data: InsertChatBan): ChatBan {
+  const row: ChatBan = {
+    id: chatNextBanId++,
+    userId: data.userId,
+    scope: data.scope,
+    conversationId: data.conversationId ?? null,
+    reason: data.reason ?? null,
+    bannedBy: data.bannedBy,
+    createdAt: now(),
+  };
+  chatBansMap.set(row.id, row);
+  return row;
+}
+
+export function devRemoveBan(id: number): void {
+  chatBansMap.delete(id);
+}
+
+export function devListBans(): ChatBan[] {
+  return Array.from(chatBansMap.values()).sort((a, b) => b.id - a.id);
+}
+
+export function devIsBanned(userId: number, conversationId: number): boolean {
+  return Array.from(chatBansMap.values()).some(
+    (b) => b.userId === userId && (b.scope === "global" || b.conversationId === conversationId),
+  );
+}
+
+export function devListAllConversations(opts: { type?: string; mode?: string; limit: number; offset: number }): { rows: ChatConversation[]; total: number } {
+  let all = Array.from(chatConvMap.values());
+  if (opts.type) all = all.filter((c) => c.type === opts.type);
+  if (opts.mode) all = all.filter((c) => c.mode === opts.mode);
+  const total = all.length;
+  const rows = all.sort((a, b) => b.id - a.id).slice(opts.offset, opts.offset + opts.limit);
+  return { rows, total };
+}
+
+export function devAdminSearchMessages(opts: { userId?: number; conversationId?: number; keyword?: string; limit: number; offset: number }): { rows: ConversationMessage[]; total: number } {
+  let all = Array.from(chatMsgMap.values());
+  if (opts.userId != null) all = all.filter((m) => m.senderId === opts.userId);
+  if (opts.conversationId != null) all = all.filter((m) => m.conversationId === opts.conversationId);
+  if (opts.keyword) {
+    const s = opts.keyword.toLowerCase();
+    all = all.filter((m) => m.content.toLowerCase().includes(s));
+  }
+  const total = all.length;
+  const rows = all.sort((a, b) => b.id - a.id).slice(opts.offset, opts.offset + opts.limit);
+  return { rows, total };
+}
+
+export function devListAllAttachments(opts: { conversationId?: number; limit: number; offset: number }): { rows: ChatAttachment[]; total: number } {
+  let all = Array.from(chatAttachMap.values());
+  if (opts.conversationId != null) all = all.filter((a) => a.conversationId === opts.conversationId);
+  const total = all.length;
+  const rows = all.sort((a, b) => b.id - a.id).slice(opts.offset, opts.offset + opts.limit);
+  return { rows, total };
+}
+
+export function devGetChatSettings(): ChatSettingsRow {
+  return chatSettingsDev;
+}
+
+export function devSetChatSettings(patch: Partial<Pick<ChatSettingsRow, "serverlessAllowed" | "lobbyEnabled" | "maxFileMb">>): ChatSettingsRow {
+  chatSettingsDev = { ...chatSettingsDev, ...patch, updatedAt: now() };
+  return chatSettingsDev;
 }

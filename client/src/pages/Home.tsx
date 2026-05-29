@@ -671,6 +671,13 @@ export default function Home() {
         {/* User */}
         {user && (
           <div className="flex items-center gap-2.5">
+            <a
+              href="/chat"
+              className="text-xs transition-colors px-2 py-1 rounded-md"
+              style={{ color: "var(--c-t3)" }}
+            >
+              聊天
+            </a>
             {user.role === "admin" && (
               <a
                 href="/admin"

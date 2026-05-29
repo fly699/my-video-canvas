@@ -141,37 +141,55 @@ export interface ChatAttachment {
   textContent?: string;
 }
 
-// ── LAN Chat ────────────────────────────────────────────────────────────────
+// ── Account-based Chat (rewrite) ──────────────────────────────────────────────
 // Shared shapes so client + server agree on socket payloads. Mirrors the DB
 // rows but uses Date as ISO string for JSON-safe transport.
 
-export interface LanChatRoom {
-  id: number;
+export type ChatConversationType = "lobby" | "group" | "dm";
+export type ChatMode = "server" | "serverless";
+
+export interface ChatFileRef {
+  attachmentId?: number;     // server mode only
   name: string;
-  /** True when the room has a passwordHash set. Clients must call the
-   *  enterRoom socket event with the password before they're added to
-   *  the room's presence map (server gate). */
-  isPrivate?: boolean;
+  mimeType: string;
+  size: number;
+  url: string;               // server mode: storage URL; serverless: local blob URL
+  kind: "image" | "video" | "file";
 }
 
-export interface LanChatMessage {
+/** A server-mode message broadcast over Socket.IO / returned by getMessages. */
+export interface ChatWireMessage {
   id: number;
-  roomId: number;
-  nickname: string;
-  color: string;
+  conversationId: number;
+  senderId: number;
+  senderName: string;
   content: string;
-  attachments?: ChatAttachment[] | null;
-  createdAt: string; // ISO
-  /** True only for messages sent by this device in this session. Preferred
-   *  over nickname comparison because two users on the same LAN may pick
-   *  the same nickname. */
-  ownByMe?: boolean;
+  attachments?: ChatFileRef[] | null;
+  createdAt: string;         // ISO
 }
 
-export interface LanChatOnlineUser {
-  sessionId: string;
-  nickname: string;
-  color: string;
+export interface ChatPresenceUser {
+  userId: number;
+  name: string;
+}
+
+/** Serverless relay envelope — server forwards opaque ciphertext, never reads it. */
+export interface ChatRelayPayload {
+  conversationId: number;
+  senderId: number;
+  senderName: string;
+  /** base64 AES-GCM ciphertext (empty for key-request markers) */
+  ciphertext: string;
+  /** base64 12-byte IV */
+  iv: string;
+  /** logical kind so clients can route key bundles vs chat messages */
+  kind: "message" | "key-bundle" | "key-request";
+  /** client-generated id for local dedup/ordering */
+  clientMsgId: string;
+  /** key-bundle only: the member this wrapped room key is addressed to */
+  target?: number;
+  /** optional attachment metadata for serverless messages (file delivered via chat:file-chunk) */
+  fileMeta?: ChatFileRef | null;
 }
 
 export interface AIChatNodeData {

@@ -5,7 +5,7 @@ import { useAuth } from "@/_core/hooks/useAuth";
 import { Shield, Trash2, Plus, ToggleLeft, ToggleRight, ClipboardList, RefreshCw, HardDrive, ArrowLeft, Loader2, CheckCircle2, XCircle } from "lucide-react";
 
 type EntryType = "ip" | "user";
-type Tab = "whitelist" | "logs" | "storage" | "lanchat";
+type Tab = "whitelist" | "logs" | "storage" | "chat";
 
 const ACTION_LABELS: Record<string, string> = {
   login_email: "邮箱登录",
@@ -101,7 +101,7 @@ export default function AdminPage() {
 
         {/* Tabs */}
         <div style={{ display: "flex", gap: "4px", marginBottom: "20px", borderBottom: "1px solid rgba(255,255,255,0.06)", paddingBottom: "0" }}>
-          {([["whitelist", "白名单管理"], ["logs", "操作日志"], ["storage", "存储设置"], ["lanchat", "LAN 聊天记录"]] as [Tab, string][]).map(([tab, label]) => (
+          {([["whitelist", "白名单管理"], ["logs", "操作日志"], ["storage", "存储设置"], ["chat", "聊天管理"]] as [Tab, string][]).map(([tab, label]) => (
             <button
               key={tab}
               onClick={() => setActiveTab(tab)}
@@ -126,7 +126,7 @@ export default function AdminPage() {
         {activeTab === "whitelist" && <WhitelistPanel />}
         {activeTab === "logs" && <LogsPanel />}
         {activeTab === "storage" && <StoragePanel />}
-        {activeTab === "lanchat" && <LanChatLogsPanel />}
+        {activeTab === "chat" && <ChatAdminPanel />}
       </div>
     </div>
   );
@@ -574,292 +574,171 @@ function DetailCell({ detail }: { detail: Record<string, unknown> | null }) {
   return <span title={parts.join(" | ")}>{parts.slice(0, 2).join(" | ")}{parts.length > 2 ? " …" : ""}</span>;
 }
 
-// ── LAN chat logs ────────────────────────────────────────────────────────────
 
-function LanChatLogsPanel() {
+// ── Chat administration ────────────────────────────────────────────────────────
+
+function ChatAdminPanel() {
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
-      <LanChatInvitesPanel />
-      <LanChatIpWhitelistPanel />
-      <LanChatJoinEventsPanel />
+      <ChatSettingsPanel />
+      <ChatConversationsPanel />
+      <ChatMessageSearchPanel />
+      <ChatBansPanel />
     </div>
   );
 }
 
-function LanChatInvitesPanel() {
+function ChatSettingsPanel() {
   const utils = trpc.useUtils();
-  const invitesQuery = trpc.admin.lanChat.listInvites.useQuery();
-  const createMu = trpc.admin.lanChat.createInvite.useMutation({
-    onSuccess: () => utils.admin.lanChat.listInvites.invalidate(),
-  });
-  const [groupId, setGroupId] = useState("");
-  const [days, setDays] = useState(7);
-
-  const inviteUrl = (code: string) => {
-    if (typeof window === "undefined") return `?invite=${code}`;
-    return `${window.location.origin}/lan-chat?invite=${code}`;
-  };
-
+  const q = trpc.admin.chat.getSettings.useQuery();
+  const mu = trpc.admin.chat.setSettings.useMutation({ onSuccess: () => utils.admin.chat.getSettings.invalidate() });
+  const s = q.data;
   return (
-    <div style={cardStyle}>
-      <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 12 }}>
-        <span style={{ fontSize: 14, fontWeight: 600, color: "var(--c-t1, #f0f0f4)" }}>一次性邀请码</span>
-        <span style={{ fontSize: 11, color: "var(--c-t3, rgba(255,255,255,0.4))" }}>
-          单次使用 · 过期失效 · 接收者无需公网 IP 探测
-        </span>
-      </div>
-      <div style={{ display: "flex", gap: 8, marginBottom: 12, flexWrap: "wrap", alignItems: "center" }}>
-        <input
-          value={groupId}
-          onChange={(e) => setGroupId(e.target.value)}
-          placeholder="目标 groupId（留空自动生成 code-xxx）"
-          style={{
-            flex: 1, minWidth: 220, padding: "6px 10px", borderRadius: 6,
-            border: "1px solid var(--c-bd2)", background: "var(--c-input, rgba(255,255,255,0.05))",
-            color: "var(--c-t1, #f0f0f4)", fontSize: 12,
-          }}
-        />
-        <input
-          type="number"
-          value={days}
-          min={1} max={90}
-          onChange={(e) => setDays(Number(e.target.value) || 7)}
-          style={{
-            width: 90, padding: "6px 10px", borderRadius: 6,
-            border: "1px solid var(--c-bd2)", background: "var(--c-input, rgba(255,255,255,0.05))",
-            color: "var(--c-t1, #f0f0f4)", fontSize: 12,
-          }}
-          title="过期天数 (1-90)"
-        />
-        <button
-          onClick={() => createMu.mutate({ groupId: groupId || "", expiresInDays: days })}
-          disabled={createMu.isPending}
-          style={{
-            padding: "6px 14px", borderRadius: 6, border: "1px solid oklch(0.68 0.22 285 / 0.4)",
-            background: "oklch(0.68 0.22 285 / 0.18)", color: "oklch(0.82 0.20 285)", fontSize: 11, cursor: "pointer",
-          }}
-        >
-          {createMu.isPending ? "生成中..." : "+ 生成邀请码"}
-        </button>
-      </div>
-      <div style={{ border: "1px solid var(--c-bd1)", borderRadius: 8, overflow: "hidden" }}>
-        <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 11 }}>
-          <thead>
-            <tr style={{ background: "var(--c-elevated, rgba(255,255,255,0.03))" }}>
-              <th style={thStyle}>邀请链接</th>
-              <th style={thStyle}>目标 groupId</th>
-              <th style={thStyle}>过期</th>
-              <th style={thStyle}>状态</th>
-            </tr>
-          </thead>
-          <tbody>
-            {(invitesQuery.data ?? []).map((iv) => {
-              const used = !!iv.usedAt;
-              const expired = new Date(iv.expiresAt).getTime() < Date.now();
-              const status = used ? `已用：${iv.usedByNickname ?? ""} (${iv.usedByIp ?? ""})` : expired ? "已过期" : "可用";
-              const url = inviteUrl(iv.code);
-              return (
-                <tr key={iv.id} style={{ borderTop: "1px solid var(--c-bd1)" }}>
-                  <td style={tdStyle}>
-                    <code style={{ fontSize: 10, color: "var(--c-t2, rgba(255,255,255,0.6))" }}>{url}</code>
-                    <button
-                      onClick={() => navigator.clipboard.writeText(url)}
-                      style={{ marginLeft: 6, fontSize: 9, padding: "1px 5px", borderRadius: 3, border: "1px solid var(--c-bd2)", background: "transparent", color: "var(--c-t3)", cursor: "pointer" }}
-                    >复制</button>
-                  </td>
-                  <td style={{ ...tdStyle, fontFamily: "monospace", fontSize: 10 }}>{iv.groupId}</td>
-                  <td style={tdStyle}>{new Date(iv.expiresAt).toLocaleString("zh-CN")}</td>
-                  <td style={{ ...tdStyle, color: used || expired ? "var(--c-t4)" : "oklch(0.70 0.18 145)" }}>
-                    {status}
-                  </td>
-                </tr>
-              );
-            })}
-            {(invitesQuery.data?.length ?? 0) === 0 && (
-              <tr><td colSpan={4} style={{ padding: 24, textAlign: "center", color: "var(--c-t4)", fontSize: 12 }}>暂无邀请码</td></tr>
-            )}
-          </tbody>
-        </table>
-      </div>
-    </div>
-  );
-}
-
-function LanChatIpWhitelistPanel() {
-  const utils = trpc.useUtils();
-  const settingsQuery = trpc.admin.lanChat.getIpWhitelistSettings.useQuery();
-  const setEnabledMu = trpc.admin.lanChat.setIpWhitelistEnabled.useMutation({
-    onSuccess: () => utils.admin.lanChat.getIpWhitelistSettings.invalidate(),
-  });
-  const addMu = trpc.admin.lanChat.addIpToWhitelist.useMutation({
-    onSuccess: () => utils.admin.lanChat.getIpWhitelistSettings.invalidate(),
-  });
-  const removeMu = trpc.admin.lanChat.removeIpFromWhitelist.useMutation({
-    onSuccess: () => utils.admin.lanChat.getIpWhitelistSettings.invalidate(),
-  });
-  const [newIp, setNewIp] = useState("");
-  const [newNote, setNewNote] = useState("");
-  const enabled = settingsQuery.data?.enabled ?? false;
-
-  return (
-    <div style={cardStyle}>
-      <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 12 }}>
-        <span style={{ fontSize: 14, fontWeight: 600, color: "var(--c-t1, #f0f0f4)" }}>公网 IP 白名单</span>
-        <span style={{ fontSize: 11, color: "var(--c-t3, rgba(255,255,255,0.4))" }}>
-          启用后只有白名单 IP 可加入聊天（邀请码绕过此限制）
-        </span>
-        <button
-          onClick={() => setEnabledMu.mutate({ enabled: !enabled })}
-          disabled={setEnabledMu.isPending}
-          style={{
-            marginLeft: "auto", padding: "5px 14px", borderRadius: 6,
-            border: `1px solid ${enabled ? "oklch(0.70 0.18 145 / 0.4)" : "var(--c-bd2)"}`,
-            background: enabled ? "oklch(0.70 0.18 145 / 0.18)" : "transparent",
-            color: enabled ? "oklch(0.80 0.18 145)" : "var(--c-t3)", fontSize: 11, cursor: "pointer",
-            display: "flex", alignItems: "center", gap: 5,
-          }}
-        >
-          {enabled ? <ToggleRight size={14} /> : <ToggleLeft size={14} />}
-          {enabled ? "已启用" : "已停用"}
-        </button>
-      </div>
-      <div style={{ display: "flex", gap: 8, marginBottom: 12, flexWrap: "wrap" }}>
-        <input
-          value={newIp}
-          onChange={(e) => setNewIp(e.target.value)}
-          placeholder="IP（如 218.249.42.7）"
-          style={{
-            flex: 1, minWidth: 180, padding: "6px 10px", borderRadius: 6,
-            border: "1px solid var(--c-bd2)", background: "var(--c-input, rgba(255,255,255,0.05))",
-            color: "var(--c-t1, #f0f0f4)", fontSize: 12,
-          }}
-        />
-        <input
-          value={newNote}
-          onChange={(e) => setNewNote(e.target.value)}
-          placeholder="备注（可选）"
-          style={{
-            flex: 1, minWidth: 180, padding: "6px 10px", borderRadius: 6,
-            border: "1px solid var(--c-bd2)", background: "var(--c-input, rgba(255,255,255,0.05))",
-            color: "var(--c-t1, #f0f0f4)", fontSize: 12,
-          }}
-        />
-        <button
-          onClick={() => {
-            if (!newIp.trim()) return;
-            addMu.mutate({ ip: newIp.trim(), note: newNote.trim() || undefined }, {
-              onSuccess: () => { setNewIp(""); setNewNote(""); },
-            });
-          }}
-          disabled={!newIp.trim() || addMu.isPending}
-          style={{
-            padding: "6px 14px", borderRadius: 6, border: "1px solid oklch(0.68 0.22 285 / 0.4)",
-            background: "oklch(0.68 0.22 285 / 0.18)", color: "oklch(0.82 0.20 285)", fontSize: 11, cursor: "pointer",
-          }}
-        >+ 添加</button>
-      </div>
-      <div style={{ border: "1px solid var(--c-bd1)", borderRadius: 8, overflow: "hidden" }}>
-        <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 11 }}>
-          <thead>
-            <tr style={{ background: "var(--c-elevated, rgba(255,255,255,0.03))" }}>
-              <th style={thStyle}>IP</th>
-              <th style={thStyle}>备注</th>
-              <th style={thStyle}>添加时间</th>
-              <th style={thStyle}>操作</th>
-            </tr>
-          </thead>
-          <tbody>
-            {(settingsQuery.data?.ips ?? []).map((row) => (
-              <tr key={row.id} style={{ borderTop: "1px solid var(--c-bd1)" }}>
-                <td style={{ ...tdStyle, fontFamily: "monospace", fontSize: 11 }}>{row.ip}</td>
-                <td style={tdStyle}>{row.note ?? ""}</td>
-                <td style={{ ...tdStyle, color: "var(--c-t3)", fontSize: 10 }}>
-                  {new Date(row.createdAt).toLocaleString("zh-CN")}
-                </td>
-                <td style={tdStyle}>
-                  <button
-                    onClick={() => removeMu.mutate({ id: row.id })}
-                    style={{ fontSize: 10, padding: "2px 7px", borderRadius: 4, border: "1px solid oklch(0.62 0.20 25 / 0.40)", background: "transparent", color: "oklch(0.70 0.22 25)", cursor: "pointer" }}
-                  ><Trash2 size={10} /></button>
-                </td>
-              </tr>
-            ))}
-            {(settingsQuery.data?.ips.length ?? 0) === 0 && (
-              <tr><td colSpan={4} style={{ padding: 24, textAlign: "center", color: "var(--c-t4)", fontSize: 12 }}>白名单为空</td></tr>
-            )}
-          </tbody>
-        </table>
-      </div>
-    </div>
-  );
-}
-
-function LanChatJoinEventsPanel() {
-  const [offset, setOffset] = useState(0);
-  const LIMIT = 50;
-  const eventsQuery = trpc.admin.lanChat.listJoinEvents.useQuery({ limit: LIMIT, offset });
-
-  return (
-    <div style={cardStyle}>
-      <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 12 }}>
-        <span style={{ fontSize: 14, fontWeight: 600, color: "var(--c-t1, #f0f0f4)" }}>连接事件审计</span>
-        <span style={{ fontSize: 11, color: "var(--c-t3, rgba(255,255,255,0.4))" }}>
-          P2P E2E 后服务器看不到消息内容；仅记录 join / IP 不一致 / 邀请使用等元数据
-        </span>
-      </div>
-      <div style={{ border: "1px solid var(--c-bd1)", borderRadius: 8, overflow: "hidden" }}>
-        <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 11 }}>
-          <thead>
-            <tr style={{ background: "var(--c-elevated, rgba(255,255,255,0.03))" }}>
-              <th style={thStyle}>时间</th>
-              <th style={thStyle}>事件</th>
-              <th style={thStyle}>来源 IP</th>
-              <th style={thStyle}>详情</th>
-            </tr>
-          </thead>
-          <tbody>
-            {(eventsQuery.data?.rows ?? []).map((r) => (
-              <tr key={r.id} style={{ borderTop: "1px solid var(--c-bd1)" }}>
-                <td style={{ ...tdStyle, fontVariantNumeric: "tabular-nums", color: "var(--c-t3)", whiteSpace: "nowrap" }}>
-                  {new Date(r.createdAt).toLocaleString("zh-CN")}
-                </td>
-                <td style={tdStyle}>
-                  <code style={{ fontSize: 10, color: r.action === "lan_chat:ip_mismatch" ? "oklch(0.70 0.22 25)" : "oklch(0.80 0.20 285)" }}>
-                    {r.action}
-                  </code>
-                </td>
-                <td style={{ ...tdStyle, fontFamily: "monospace", fontSize: 10, color: "var(--c-t4)" }}>
-                  {r.ip}
-                </td>
-                <td style={{ ...tdStyle, color: "var(--c-t2)", maxWidth: 400, wordBreak: "break-word", fontSize: 10 }}>
-                  <code>{r.detail ? JSON.stringify(r.detail) : ""}</code>
-                </td>
-              </tr>
-            ))}
-            {(eventsQuery.data?.rows.length ?? 0) === 0 && (
-              <tr><td colSpan={4} style={{ padding: 24, textAlign: "center", color: "var(--c-t4)", fontSize: 12 }}>无事件</td></tr>
-            )}
-          </tbody>
-        </table>
-      </div>
-      {(eventsQuery.data?.total ?? 0) > LIMIT && (
-        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginTop: 12 }}>
-          <span style={{ fontSize: 11, color: "var(--c-t3)" }}>
-            共 {eventsQuery.data?.total} 条
-          </span>
-          <div style={{ display: "flex", gap: 6 }}>
-            <button onClick={() => setOffset(Math.max(0, offset - LIMIT))} disabled={offset === 0}
-              style={{ padding: "4px 10px", borderRadius: 6, border: "1px solid var(--c-bd2)", background: "transparent", color: "var(--c-t2)", fontSize: 11, cursor: offset === 0 ? "not-allowed" : "pointer", opacity: offset === 0 ? 0.4 : 1 }}
-            >上一页</button>
-            <button onClick={() => setOffset(offset + LIMIT)} disabled={(offset + LIMIT) >= (eventsQuery.data?.total ?? 0)}
-              style={{ padding: "4px 10px", borderRadius: 6, border: "1px solid var(--c-bd2)", background: "transparent", color: "var(--c-t2)", fontSize: 11, cursor: (offset + LIMIT) >= (eventsQuery.data?.total ?? 0) ? "not-allowed" : "pointer", opacity: (offset + LIMIT) >= (eventsQuery.data?.total ?? 0) ? 0.4 : 1 }}
-            >下一页</button>
-          </div>
+    <div style={chatCard}>
+      <h3 style={chatCardTitle}>聊天设置</h3>
+      {!s ? <p style={chatDim}>加载中…</p> : (
+        <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+          <label style={chatToggleRow}>
+            <span>允许「无服务器（端到端加密）」模式</span>
+            <input type="checkbox" checked={s.serverlessAllowed} onChange={(e) => mu.mutate({ serverlessAllowed: e.target.checked })} />
+          </label>
+          <label style={chatToggleRow}>
+            <span>启用全局大厅</span>
+            <input type="checkbox" checked={s.lobbyEnabled} onChange={(e) => mu.mutate({ lobbyEnabled: e.target.checked })} />
+          </label>
+          <label style={chatToggleRow}>
+            <span>单文件大小上限 (MB)</span>
+            <input type="number" min={1} max={512} defaultValue={s.maxFileMb} onBlur={(e) => mu.mutate({ maxFileMb: Number(e.target.value) })} style={{ width: 80, ...chatInput }} />
+          </label>
         </div>
       )}
     </div>
   );
 }
+
+function ChatConversationsPanel() {
+  const [type, setType] = useState<"" | "lobby" | "group" | "dm">("");
+  const [mode, setMode] = useState<"" | "server" | "serverless">("");
+  const q = trpc.admin.chat.listConversations.useQuery({
+    type: type || undefined, mode: mode || undefined, limit: 50, offset: 0,
+  });
+  const utils = trpc.useUtils();
+  const delMu = trpc.admin.chat.deleteConversation.useMutation({ onSuccess: () => utils.admin.chat.listConversations.invalidate() });
+  return (
+    <div style={chatCard}>
+      <h3 style={chatCardTitle}>会话列表</h3>
+      <div style={{ display: "flex", gap: 8, marginBottom: 12 }}>
+        <select value={type} onChange={(e) => setType(e.target.value as typeof type)} style={chatInput}>
+          <option value="">全部类型</option><option value="lobby">大厅</option><option value="group">群聊</option><option value="dm">私聊</option>
+        </select>
+        <select value={mode} onChange={(e) => setMode(e.target.value as typeof mode)} style={chatInput}>
+          <option value="">全部模式</option><option value="server">服务器</option><option value="serverless">端到端</option>
+        </select>
+      </div>
+      <table style={chatTable}>
+        <thead><tr><ChatTh>ID</ChatTh><ChatTh>类型</ChatTh><ChatTh>模式</ChatTh><ChatTh>标题</ChatTh><ChatTh>成员</ChatTh><ChatTh>操作</ChatTh></tr></thead>
+        <tbody>
+          {q.data?.rows.map((c) => (
+            <tr key={c.id}>
+              <ChatTd>{c.id}</ChatTd><ChatTd>{c.type}</ChatTd>
+              <ChatTd>{c.mode === "serverless" ? "🔒端到端" : "服务器"}</ChatTd>
+              <ChatTd>{c.title ?? (c.type === "dm" ? "（私聊）" : c.type === "lobby" ? "大厅" : "—")}</ChatTd>
+              <ChatTd>{c.memberCount}</ChatTd>
+              <ChatTd><button onClick={() => { if (confirm("删除该会话及其消息？")) delMu.mutate({ conversationId: c.id }); }} style={chatDanger}>删除</button></ChatTd>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+      {q.data?.rows.length === 0 && <p style={chatDim}>暂无会话</p>}
+    </div>
+  );
+}
+
+function ChatMessageSearchPanel() {
+  const [keyword, setKeyword] = useState("");
+  const [convId, setConvId] = useState("");
+  const [userId, setUserId] = useState("");
+  const [submitted, setSubmitted] = useState<{ keyword?: string; conversationId?: number; userId?: number } | null>(null);
+  const q = trpc.admin.chat.searchMessages.useQuery(
+    { ...submitted, limit: 50, offset: 0 },
+    { enabled: submitted !== null },
+  );
+  return (
+    <div style={chatCard}>
+      <h3 style={chatCardTitle}>消息检索（仅服务器模式可见明文）</h3>
+      <div style={{ display: "flex", gap: 8, marginBottom: 12, flexWrap: "wrap" }}>
+        <input placeholder="关键词" value={keyword} onChange={(e) => setKeyword(e.target.value)} style={chatInput} />
+        <input placeholder="会话ID" value={convId} onChange={(e) => setConvId(e.target.value)} style={{ ...chatInput, width: 100 }} />
+        <input placeholder="用户ID" value={userId} onChange={(e) => setUserId(e.target.value)} style={{ ...chatInput, width: 100 }} />
+        <button onClick={() => setSubmitted({ keyword: keyword || undefined, conversationId: convId ? Number(convId) : undefined, userId: userId ? Number(userId) : undefined })} style={chatPrimarySm}>搜索</button>
+      </div>
+      {q.data?.encrypted && <p style={chatDim}>🔒 该会话为端到端加密，服务器无内容，仅可见元数据。</p>}
+      {q.data && !q.data.encrypted && (
+        <table style={chatTable}>
+          <thead><tr><ChatTh>时间</ChatTh><ChatTh>会话</ChatTh><ChatTh>发送者</ChatTh><ChatTh>内容</ChatTh></tr></thead>
+          <tbody>
+            {q.data.rows.map((m) => (
+              <tr key={m.id}>
+                <ChatTd>{new Date(m.createdAt).toLocaleString()}</ChatTd>
+                <ChatTd>{m.conversationId}</ChatTd>
+                <ChatTd>{m.senderName} (#{m.senderId})</ChatTd>
+                <ChatTd>{m.content || (m.attachments ? "[文件]" : "")}</ChatTd>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      )}
+      {q.data && !q.data.encrypted && q.data.rows.length === 0 && <p style={chatDim}>无匹配消息</p>}
+    </div>
+  );
+}
+
+function ChatBansPanel() {
+  const utils = trpc.useUtils();
+  const q = trpc.admin.chat.listBans.useQuery();
+  const [userId, setUserId] = useState("");
+  const banMu = trpc.admin.chat.banUser.useMutation({ onSuccess: () => { utils.admin.chat.listBans.invalidate(); setUserId(""); } });
+  const unbanMu = trpc.admin.chat.unbanUser.useMutation({ onSuccess: () => utils.admin.chat.listBans.invalidate() });
+  return (
+    <div style={chatCard}>
+      <h3 style={chatCardTitle}>封禁管理</h3>
+      <div style={{ display: "flex", gap: 8, marginBottom: 12 }}>
+        <input placeholder="用户ID" value={userId} onChange={(e) => setUserId(e.target.value)} style={{ ...chatInput, width: 120 }} />
+        <button onClick={() => { if (userId) banMu.mutate({ userId: Number(userId), scope: "global" }); }} style={chatDanger}>全局封禁</button>
+      </div>
+      <table style={chatTable}>
+        <thead><tr><ChatTh>用户</ChatTh><ChatTh>范围</ChatTh><ChatTh>原因</ChatTh><ChatTh>操作</ChatTh></tr></thead>
+        <tbody>
+          {q.data?.map((b) => (
+            <tr key={b.id}>
+              <ChatTd>{b.userName} (#{b.userId})</ChatTd>
+              <ChatTd>{b.scope === "global" ? "全局" : `会话#${b.conversationId}`}</ChatTd>
+              <ChatTd>{b.reason ?? "—"}</ChatTd>
+              <ChatTd><button onClick={() => unbanMu.mutate({ id: b.id })} style={paginBtn}>解封</button></ChatTd>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+      {q.data?.length === 0 && <p style={chatDim}>暂无封禁</p>}
+    </div>
+  );
+}
+
+function ChatTh({ children }: { children: React.ReactNode }) {
+  return <th style={{ textAlign: "left", padding: "6px 8px", fontSize: 12, color: "var(--c-t2, rgba(255,255,255,0.5))", borderBottom: "1px solid var(--c-bd2, rgba(255,255,255,0.08))" }}>{children}</th>;
+}
+function ChatTd({ children }: { children: React.ReactNode }) {
+  return <td style={{ padding: "6px 8px", fontSize: 13, borderBottom: "1px solid var(--c-bd1, rgba(255,255,255,0.04))", maxWidth: 280, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{children}</td>;
+}
+
+const chatCard: React.CSSProperties = { background: "var(--c-surface, #1a1a22)", border: "1px solid var(--c-bd2, rgba(255,255,255,0.08))", borderRadius: 12, padding: 20, width: "100%" };
+const chatCardTitle: React.CSSProperties = { margin: "0 0 14px", fontSize: 15, fontWeight: 600 };
+const chatDim: React.CSSProperties = { fontSize: 13, color: "var(--c-t3, rgba(255,255,255,0.4))" };
+const chatToggleRow: React.CSSProperties = { display: "flex", justifyContent: "space-between", alignItems: "center", fontSize: 14 };
+const chatInput: React.CSSProperties = { padding: "7px 10px", borderRadius: 8, border: "1px solid var(--c-bd2, rgba(255,255,255,0.1))", background: "var(--c-input, rgba(255,255,255,0.04))", color: "var(--c-t1, #f0f0f4)", fontSize: 13, outline: "none" };
+const chatTable: React.CSSProperties = { width: "100%", borderCollapse: "collapse" };
+const chatDanger: React.CSSProperties = { padding: "5px 12px", borderRadius: 7, border: "1px solid rgba(239,68,68,0.3)", background: "rgba(239,68,68,0.12)", color: "#f87171", fontSize: 12, cursor: "pointer" };
+const chatPrimarySm: React.CSSProperties = { padding: "7px 16px", borderRadius: 8, border: "none", background: "oklch(0.58 0.22 285 / 0.9)", color: "#fff", fontSize: 13, fontWeight: 600, cursor: "pointer" };
 
 // ── Styles ────────────────────────────────────────────────────────────────────
 
