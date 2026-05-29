@@ -61,3 +61,11 @@ createRoot(document.getElementById("root")!).render(
     </QueryClientProvider>
   </trpc.Provider>
 );
+
+// Register the PWA service worker so the chat can be installed as an app.
+// Only in production (dev/Vite HMR conflicts with SWs) and secure contexts.
+if (import.meta.env.PROD && "serviceWorker" in navigator) {
+  window.addEventListener("load", () => {
+    navigator.serviceWorker.register("/chat-sw.js").catch(() => { /* non-fatal */ });
+  });
+}

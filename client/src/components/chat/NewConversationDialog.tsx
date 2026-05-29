@@ -118,8 +118,8 @@ function ModeChip({ active, onClick, title, desc, disabled }: { active: boolean;
   return (
     <button onClick={onClick} disabled={disabled} style={{
       flex: 1, textAlign: "left", padding: "8px 10px", borderRadius: 8, cursor: disabled ? "not-allowed" : "pointer",
-      border: `1px solid ${active ? "oklch(0.6 0.2 285)" : "var(--c-bd2, rgba(255,255,255,0.1))"}`,
-      background: active ? "oklch(0.58 0.22 285 / 0.15)" : "var(--c-elevated, rgba(255,255,255,0.04))",
+      border: `1px solid ${active ? "#f59e0b" : "var(--c-bd2, rgba(255,255,255,0.1))"}`,
+      background: active ? "rgba(245,158,11,0.15)" : "var(--c-elevated, rgba(255,255,255,0.04))",
       color: "var(--c-t1, #f0f0f4)", opacity: disabled ? 0.5 : 1,
     }}>
       <div style={{ fontSize: 13, fontWeight: 600 }}>{title}</div>
@@ -134,7 +134,7 @@ const inputStyle: React.CSSProperties = {
   color: "var(--c-t1, #f0f0f4)", fontSize: 14, outline: "none",
 };
 const primaryBtn: React.CSSProperties = {
-  padding: "10px 0", border: "none", borderRadius: 8, background: "oklch(0.58 0.22 285 / 0.9)",
+  padding: "10px 0", border: "none", borderRadius: 8, background: "linear-gradient(135deg,#f59e0b,#fb7185)",
   color: "#fff", fontSize: 14, fontWeight: 600, cursor: "pointer", marginTop: 4,
 };
 const iconBtn: React.CSSProperties = {
