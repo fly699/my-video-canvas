@@ -50,25 +50,62 @@ CREATE TABLE IF NOT EXISTS `project_share_links` (
 );
 --> statement-breakpoint
 SET @col_exists := (SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'chat_messages' AND COLUMN_NAME = 'attachments');
+--> statement-breakpoint
 SET @sql := IF(@col_exists = 0, 'ALTER TABLE `chat_messages` ADD `attachments` json', 'DO 0');
-PREPARE stmt FROM @sql; EXECUTE stmt; DEALLOCATE PREPARE stmt;
+--> statement-breakpoint
+PREPARE stmt FROM @sql;
+--> statement-breakpoint
+EXECUTE stmt;
+--> statement-breakpoint
+DEALLOCATE PREPARE stmt;
 --> statement-breakpoint
 SET @col_exists := (SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'projects' AND COLUMN_NAME = 'publicReadAccess');
+--> statement-breakpoint
 SET @sql := IF(@col_exists = 0, 'ALTER TABLE `projects` ADD `publicReadAccess` boolean DEFAULT false NOT NULL', 'DO 0');
-PREPARE stmt FROM @sql; EXECUTE stmt; DEALLOCATE PREPARE stmt;
+--> statement-breakpoint
+PREPARE stmt FROM @sql;
+--> statement-breakpoint
+EXECUTE stmt;
+--> statement-breakpoint
+DEALLOCATE PREPARE stmt;
 --> statement-breakpoint
 SET @col_exists := (SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'storageSettings' AND COLUMN_NAME = 'persistImage');
+--> statement-breakpoint
 SET @sql := IF(@col_exists = 0, 'ALTER TABLE `storageSettings` ADD `persistImage` boolean DEFAULT true NOT NULL', 'DO 0');
-PREPARE stmt FROM @sql; EXECUTE stmt; DEALLOCATE PREPARE stmt;
+--> statement-breakpoint
+PREPARE stmt FROM @sql;
+--> statement-breakpoint
+EXECUTE stmt;
+--> statement-breakpoint
+DEALLOCATE PREPARE stmt;
 --> statement-breakpoint
 SET @idx_exists := (SELECT COUNT(*) FROM INFORMATION_SCHEMA.STATISTICS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'project_collaborators' AND INDEX_NAME = 'project_collab_project_user_idx');
+--> statement-breakpoint
 SET @sql := IF(@idx_exists = 0, 'CREATE INDEX `project_collab_project_user_idx` ON `project_collaborators` (`projectId`,`userId`)', 'DO 0');
-PREPARE stmt FROM @sql; EXECUTE stmt; DEALLOCATE PREPARE stmt;
+--> statement-breakpoint
+PREPARE stmt FROM @sql;
+--> statement-breakpoint
+EXECUTE stmt;
+--> statement-breakpoint
+DEALLOCATE PREPARE stmt;
 --> statement-breakpoint
 SET @idx_exists := (SELECT COUNT(*) FROM INFORMATION_SCHEMA.STATISTICS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'project_collaborators' AND INDEX_NAME = 'project_collab_email_idx');
+--> statement-breakpoint
 SET @sql := IF(@idx_exists = 0, 'CREATE INDEX `project_collab_email_idx` ON `project_collaborators` (`email`)', 'DO 0');
-PREPARE stmt FROM @sql; EXECUTE stmt; DEALLOCATE PREPARE stmt;
+--> statement-breakpoint
+PREPARE stmt FROM @sql;
+--> statement-breakpoint
+EXECUTE stmt;
+--> statement-breakpoint
+DEALLOCATE PREPARE stmt;
 --> statement-breakpoint
 SET @idx_exists := (SELECT COUNT(*) FROM INFORMATION_SCHEMA.STATISTICS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'project_share_links' AND INDEX_NAME = 'share_links_project_idx');
+--> statement-breakpoint
 SET @sql := IF(@idx_exists = 0, 'CREATE INDEX `share_links_project_idx` ON `project_share_links` (`projectId`)', 'DO 0');
-PREPARE stmt FROM @sql; EXECUTE stmt; DEALLOCATE PREPARE stmt;
+--> statement-breakpoint
+PREPARE stmt FROM @sql;
+--> statement-breakpoint
+EXECUTE stmt;
+--> statement-breakpoint
+DEALLOCATE PREPARE stmt;
+--> statement-breakpoint

@@ -22,8 +22,14 @@ CREATE TABLE IF NOT EXISTS `lan_chat_rooms` (
 );
 --> statement-breakpoint
 SET @idx_exists := (SELECT COUNT(*) FROM INFORMATION_SCHEMA.STATISTICS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'lan_chat_messages' AND INDEX_NAME = 'lan_chat_msgs_room_created_idx');
+--> statement-breakpoint
 SET @sql := IF(@idx_exists = 0, 'CREATE INDEX `lan_chat_msgs_room_created_idx` ON `lan_chat_messages` (`roomId`,`createdAt`)', 'DO 0');
-PREPARE stmt FROM @sql; EXECUTE stmt; DEALLOCATE PREPARE stmt;
+--> statement-breakpoint
+PREPARE stmt FROM @sql;
+--> statement-breakpoint
+EXECUTE stmt;
+--> statement-breakpoint
+DEALLOCATE PREPARE stmt;
 --> statement-breakpoint
 -- Seed the default "大厅" (lobby) room so first-time visitors always land
 -- somewhere — INSERT IGNORE skips on re-runs and on rooms with the same name.
