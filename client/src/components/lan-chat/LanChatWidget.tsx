@@ -246,22 +246,28 @@ export function LanChatWidget({ state, onStateChange }: LanChatWidgetProps) {
         )}
         <button
           onClick={() => {
-            // "popup" features ask the browser to open a chromeless window
-            // (no address bar, no tab strip). Width/height/top/left give it
-            // small-tool-window dimensions. Naming the window ("lan-chat-pop")
-            // means subsequent clicks reuse the same window instead of
-            // spawning duplicates. Browser security forbids hiding the OS
-            // close button — that's the one piece of "cannot be closed"
-            // that's literally impossible from a web page.
-            window.open(
+            // Open a popup window with the minimal chrome a web page is
+            // allowed. `popup` + explicit location/toolbar/menubar=no asks
+            // for a chromeless tool window. NOTE: modern Chrome still draws
+            // a slim, non-editable origin bar on every popup for anti-
+            // phishing — a regular page CANNOT remove it. The only way to a
+            // fully address-bar-free window is to install the chat as a PWA
+            // (browser menu → "安装应用" / "Install"), which launches it in
+            // a standalone app window. We registered a /lan-chat manifest
+            // for exactly that. Naming the window reuses it across clicks.
+            const w = window.open(
               "/lan-chat",
               "lan-chat-pop",
-              "popup,width=420,height=640,top=80,left=80,noopener,noreferrer",
+              "popup=yes,width=420,height=640,top=80,left=80,location=no,toolbar=no,menubar=no,status=no,scrollbars=yes,resizable=yes",
             );
+            // Sever the opener link for security without putting the
+            // non-standard `noreferrer` token in the feature string (which
+            // some browsers treat as a hint to open a full tab instead).
+            if (w) w.opener = null;
           }}
           className="w-6 h-6 rounded flex items-center justify-center"
           style={{ color: "var(--c-t3)" }}
-          title="在独立小窗打开（同昵称同房间）"
+          title="在独立小窗打开（彻底去掉地址栏请用浏览器菜单「安装应用」）"
         >
           <ExternalLink style={{ width: 12, height: 12 }} />
         </button>

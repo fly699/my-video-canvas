@@ -1,0 +1,18 @@
+{
+  "name": "局域网聊天",
+  "short_name": "局域网聊天",
+  "description": "端到端加密的局域网 P2P 聊天与文件直传",
+  "start_url": "/lan-chat",
+  "scope": "/lan-chat",
+  "display": "standalone",
+  "background_color": "#0a0a0c",
+  "theme_color": "#1a1625",
+  "icons": [
+    {
+      "src": "/lan-chat-icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ]
+}

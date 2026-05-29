@@ -1,3 +1,4 @@
+import { useEffect } from "react";
 import { useLanChat } from "@/hooks/useLanChat";
 import { LanChatPanel } from "@/components/lan-chat/LanChatPanel";
 import { NicknamePicker } from "@/components/lan-chat/NicknamePicker";
@@ -9,6 +10,20 @@ import { NicknamePicker } from "@/components/lan-chat/NicknamePicker";
  */
 export default function LanChatPage() {
   const { session, join, fingerprint } = useLanChat();
+
+  // Register a PWA manifest scoped to /lan-chat so the chat can be
+  // "installed" and launched as a standalone app window — that's the only
+  // way to get a truly address-bar-free window (browser security forces a
+  // minimal origin bar on every popup; a web page cannot remove it). We
+  // inject the <link> only here so the main canvas app's install behavior
+  // is untouched. Cleaned up on unmount.
+  useEffect(() => {
+    const link = document.createElement("link");
+    link.rel = "manifest";
+    link.href = "/lan-chat.webmanifest";
+    document.head.appendChild(link);
+    return () => { link.remove(); };
+  }, []);
 
   if (!session) {
     return (

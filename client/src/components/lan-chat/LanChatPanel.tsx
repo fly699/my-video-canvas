@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { Send, Paperclip, Plus, X, FileText, Users, Loader2 } from "lucide-react";
+import { Send, Paperclip, Plus, X, FileText, Users, Loader2, Download } from "lucide-react";
 import { useLanChat } from "@/hooks/useLanChat";
 import { useLanChatNotifications } from "@/hooks/useLanChatNotifications";
 import type { ChatAttachment, LanChatMessage } from "../../../../shared/types";
@@ -26,6 +26,13 @@ export function LanChatPanel({ visible, compact = false }: LanChatPanelProps) {
   } = chat;
 
   const latestMessage = messages.length > 0 ? messages[messages.length - 1] : null;
+  // Every attachment across the session's message history — the in-app
+  // equivalent of a "received/sent files folder". Browsers can't open the
+  // OS download folder from a web page, so we surface all transferred files
+  // here with inline download links instead.
+  const allAttachments = messages.flatMap((m) =>
+    (m.attachments ?? []).map((att) => ({ att, nickname: m.nickname, createdAt: m.createdAt })),
+  );
   const { unread, clearUnread } = useLanChatNotifications({
     latestMessage,
     ownNickname: session?.nickname ?? null,
@@ -41,6 +48,7 @@ export function LanChatPanel({ visible, compact = false }: LanChatPanelProps) {
   const [newRoomName, setNewRoomName] = useState("");
   const [newRoomPassword, setNewRoomPassword] = useState("");
   const [showOnline, setShowOnline] = useState(false);
+  const [showFiles, setShowFiles] = useState(false);
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -252,8 +260,17 @@ export function LanChatPanel({ visible, compact = false }: LanChatPanelProps) {
             </span>
           )}
           <button
-            onClick={() => setShowOnline((v) => !v)}
+            onClick={() => { setShowFiles((v) => !v); setShowOnline(false); }}
             className="ml-auto flex items-center gap-1 px-2 py-0.5 rounded text-[10px]"
+            style={{ background: "var(--c-surface)", border: "1px solid var(--c-bd2)", color: "var(--c-t3)" }}
+            title="本会话所有收发文件"
+          >
+            <FileText style={{ width: 10, height: 10 }} />
+            文件 {allAttachments.length > 0 ? allAttachments.length : ""}
+          </button>
+          <button
+            onClick={() => { setShowOnline((v) => !v); setShowFiles(false); }}
+            className="flex items-center gap-1 px-2 py-0.5 rounded text-[10px]"
             style={{ background: "var(--c-surface)", border: "1px solid var(--c-bd2)", color: "var(--c-t3)" }}
             title="在线成员"
           >
@@ -261,6 +278,61 @@ export function LanChatPanel({ visible, compact = false }: LanChatPanelProps) {
             {online.length}
           </button>
         </div>
+
+        {/* Files popover — all attachments transferred this session. */}
+        {showFiles && (
+          <div
+            className="absolute right-3 top-10 z-20 rounded-lg p-2 w-[280px]"
+            style={{
+              background: "var(--c-base)",
+              border: "1px solid var(--c-bd2)",
+              boxShadow: "0 8px 32px oklch(0 0 0 / 0.45)",
+            }}
+            onMouseLeave={() => setShowFiles(false)}
+          >
+            <p className="text-[10px] uppercase tracking-wider mb-1.5 px-1" style={{ color: "var(--c-t4)" }}>
+              文件 {allAttachments.length}
+            </p>
+            <div className="space-y-1 max-h-[280px] overflow-y-auto">
+              {allAttachments.length === 0 && (
+                <p className="text-[10px] px-1 py-3 text-center" style={{ color: "var(--c-t4)" }}>
+                  本会话还没有收发文件
+                </p>
+              )}
+              {allAttachments.map(({ att, nickname, createdAt }, i) => (
+                <a
+                  key={i}
+                  href={att.url}
+                  download={att.name}
+                  className="flex items-center gap-2 px-1.5 py-1 rounded hover-surface"
+                  style={{ textDecoration: "none", color: "var(--c-t2)" }}
+                  title={`下载 ${att.name}`}
+                >
+                  {att.type === "image" || att.mimeType?.startsWith("image/") ? (
+                    <img src={att.url} alt="" style={{ width: 28, height: 28, objectFit: "cover", borderRadius: 4, flexShrink: 0 }} />
+                  ) : (
+                    <span
+                      className="flex items-center justify-center"
+                      style={{ width: 28, height: 28, borderRadius: 4, background: "var(--c-surface)", flexShrink: 0 }}
+                    >
+                      <FileText style={{ width: 13, height: 13, color: "var(--c-t3)" }} />
+                    </span>
+                  )}
+                  <span className="flex-1 min-w-0">
+                    <span className="block text-[11px] truncate" style={{ color: "var(--c-t1)" }}>{att.name}</span>
+                    <span className="block text-[9px]" style={{ color: "var(--c-t4)" }}>
+                      {nickname} · {formatTime(createdAt)}
+                    </span>
+                  </span>
+                  <Download style={{ width: 11, height: 11, flexShrink: 0, color: "var(--c-t4)" }} />
+                </a>
+              ))}
+            </div>
+            <p className="text-[9px] px-1 pt-1.5 mt-1" style={{ color: "var(--c-t4)", borderTop: "1px solid var(--c-bd1)" }}>
+              文件为内存直传，刷新页面后清空。点击即下载到浏览器下载目录。
+            </p>
+          </div>
+        )}
 
         {/* Online popover */}
         {showOnline && (
@@ -340,7 +412,6 @@ export function LanChatPanel({ visible, compact = false }: LanChatPanelProps) {
             type="file"
             ref={fileInputRef}
             multiple
-            accept="image/*,video/*"
             style={{ display: "none" }}
             onChange={(e) => {
               if (e.target.files) {
@@ -400,6 +471,36 @@ export function LanChatPanel({ visible, compact = false }: LanChatPanelProps) {
   );
 }
 
+// Split plain text into runs, turning http(s):// and www. URLs into
+// clickable links that open in a new tab. Keeps the rest as text so
+// whitespace / line breaks still render via the parent's pre-wrap.
+const URL_RE = /(https?:\/\/[^\s]+|www\.[^\s]+)/gi;
+function renderTextWithLinks(text: string, linkColor: string): React.ReactNode[] {
+  const out: React.ReactNode[] = [];
+  let last = 0;
+  let m: RegExpExecArray | null;
+  URL_RE.lastIndex = 0;
+  while ((m = URL_RE.exec(text)) !== null) {
+    if (m.index > last) out.push(text.slice(last, m.index));
+    const raw = m[0];
+    const href = raw.startsWith("www.") ? `https://${raw}` : raw;
+    out.push(
+      <a
+        key={m.index}
+        href={href}
+        target="_blank"
+        rel="noopener noreferrer"
+        style={{ color: linkColor, textDecoration: "underline", wordBreak: "break-all" }}
+      >
+        {raw}
+      </a>,
+    );
+    last = m.index + raw.length;
+  }
+  if (last < text.length) out.push(text.slice(last));
+  return out;
+}
+
 function MessageRow({ msg, isOwn }: { msg: LanChatMessage; isOwn: boolean }) {
   return (
     <div className="flex flex-col gap-0.5" style={{ alignItems: isOwn ? "flex-end" : "flex-start" }}>
@@ -418,7 +519,7 @@ function MessageRow({ msg, isOwn }: { msg: LanChatMessage; isOwn: boolean }) {
           wordBreak: "break-word",
         }}
       >
-        {msg.content}
+        {renderTextWithLinks(msg.content, isOwn ? "oklch(0.92 0.05 285)" : "oklch(0.62 0.20 285)")}
         {msg.attachments && msg.attachments.length > 0 && (
           <div className="flex flex-wrap gap-1.5 mt-1.5">
             {msg.attachments.map((att, i) => (
@@ -432,21 +533,77 @@ function MessageRow({ msg, isOwn }: { msg: LanChatMessage; isOwn: boolean }) {
 }
 
 function AttachmentTile({ att }: { att: ChatAttachment }) {
-  if (att.type === "image") {
+  // Pick the richest preview the mime type supports. type is only
+  // "image" | "file" but mimeType carries the real kind, so video / audio
+  // get inline players and everything else gets a download link (the blob:
+  // URL is otherwise not openable as a file).
+  const mime = att.mimeType || "";
+  const isImage = att.type === "image" || mime.startsWith("image/");
+  const isVideo = mime.startsWith("video/");
+  const isAudio = mime.startsWith("audio/");
+
+  if (isImage) {
     return (
       <a href={att.url} target="_blank" rel="noopener" className="block rounded overflow-hidden" style={{ maxWidth: 200 }}>
         <img src={att.url} alt={att.name} style={{ maxWidth: "100%", maxHeight: 200, display: "block" }} />
       </a>
     );
   }
+
+  if (isVideo) {
+    return (
+      <div className="rounded overflow-hidden" style={{ maxWidth: 240 }}>
+        <video
+          src={att.url}
+          controls
+          preload="metadata"
+          className="nodrag"
+          style={{ maxWidth: "100%", maxHeight: 240, display: "block", borderRadius: 6 }}
+        />
+        <DownloadRow att={att} />
+      </div>
+    );
+  }
+
+  if (isAudio) {
+    return (
+      <div className="rounded" style={{ maxWidth: 240 }}>
+        <audio src={att.url} controls preload="metadata" className="nodrag" style={{ width: 240, height: 32 }} />
+        <DownloadRow att={att} />
+      </div>
+    );
+  }
+
+  // Generic file → downloadable chip. `download` attr forces save-as
+  // instead of trying to navigate to the blob URL.
   return (
-    <div
-      className="inline-flex items-center gap-1.5 px-2 py-1 rounded text-[10px]"
-      style={{ background: "var(--c-base)", border: "1px solid var(--c-bd2)", color: "var(--c-t2)" }}
+    <a
+      href={att.url}
+      download={att.name}
+      className="inline-flex items-center gap-1.5 px-2 py-1 rounded text-[10px] hover-surface"
+      style={{ background: "var(--c-base)", border: "1px solid var(--c-bd2)", color: "var(--c-t2)", textDecoration: "none" }}
+      title={`下载 ${att.name}`}
     >
       <FileText style={{ width: 10, height: 10 }} />
-      <span>{att.name}</span>
-    </div>
+      <span style={{ maxWidth: 160, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{att.name}</span>
+      <Download style={{ width: 10, height: 10, flexShrink: 0, opacity: 0.7 }} />
+    </a>
+  );
+}
+
+// Small "下载 filename" row shown under video / audio players.
+function DownloadRow({ att }: { att: ChatAttachment }) {
+  return (
+    <a
+      href={att.url}
+      download={att.name}
+      className="flex items-center gap-1 mt-1 text-[10px]"
+      style={{ color: "var(--c-t3)", textDecoration: "none" }}
+      title={`下载 ${att.name}`}
+    >
+      <Download style={{ width: 10, height: 10, flexShrink: 0 }} />
+      <span style={{ maxWidth: 200, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{att.name}</span>
+    </a>
   );
 }
 
