@@ -394,6 +394,23 @@ async function startServer() {
     console.log(`Server running on ${proto}://localhost:${port}/`);
     if (isHttps) console.log(`[HTTPS] self-signed cert active — LAN clients can trust it via ${proto}://<本机IP>:${port}/cert.crt`);
   });
+
+  // When HTTPS is on, run a tiny HTTP listener that 301-redirects to HTTPS so
+  // visitors who type http:// land on https://. Default port 80 (override via
+  // HTTP_REDIRECT_PORT, set 0 to disable). Skips quietly if the port is busy.
+  if (isHttps) {
+    const redirectPort = parseInt(process.env.HTTP_REDIRECT_PORT || "80");
+    if (redirectPort > 0) {
+      const redirector = createServer((req, res) => {
+        const host = (req.headers.host || `localhost:${redirectPort}`).replace(/:\d+$/, "");
+        const target = `https://${host}${port === 443 ? "" : `:${port}`}${req.url || "/"}`;
+        res.writeHead(301, { Location: target });
+        res.end();
+      });
+      redirector.on("error", (e) => console.warn(`[HTTPS] HTTP→HTTPS redirect on :${redirectPort} skipped:`, (e as Error).message));
+      redirector.listen(redirectPort, () => console.log(`[HTTPS] HTTP→HTTPS redirect listening on :${redirectPort}`));
+    }
+  }
 }
 
 startServer().catch(console.error);
