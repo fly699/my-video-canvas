@@ -1,0 +1,390 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>ai-video-canvas · Windows 部署指南</title>
+<style>
+  :root{
+    --bg:#0d1117; --panel:#161b22; --panel2:#1c2230; --border:#30363d;
+    --txt:#e6edf3; --muted:#8b949e; --accent:#58a6ff; --accent2:#7ee787;
+    --warn:#f0b429; --danger:#ff7b72; --code:#0b0f15;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;font-family:"Segoe UI","Microsoft YaHei",system-ui,sans-serif;
+       background:linear-gradient(160deg,#0d1117,#0a0d13);color:var(--txt);line-height:1.6}
+  a{color:var(--accent);text-decoration:none}
+  a:hover{text-decoration:underline}
+  .wrap{max-width:980px;margin:0 auto;padding:32px 20px 80px}
+
+  header{text-align:center;padding:28px 0 10px}
+  header h1{margin:0;font-size:30px;letter-spacing:.5px}
+  header h1 .g{background:linear-gradient(90deg,#58a6ff,#7ee787);-webkit-background-clip:text;background-clip:text;color:transparent}
+  header p{color:var(--muted);margin:8px 0 0}
+
+  /* 进度条 */
+  .progress-bar{position:sticky;top:0;z-index:20;background:rgba(13,17,23,.92);
+    backdrop-filter:blur(6px);border-bottom:1px solid var(--border);padding:12px 20px;margin:0 -20px 24px}
+  .pb-track{height:10px;background:var(--panel2);border-radius:6px;overflow:hidden}
+  .pb-fill{height:100%;width:0;background:linear-gradient(90deg,#58a6ff,#7ee787);transition:width .4s ease}
+  .pb-label{display:flex;justify-content:space-between;font-size:13px;color:var(--muted);margin-top:6px}
+
+  .tabs{display:flex;gap:8px;margin-bottom:20px;flex-wrap:wrap}
+  .tab{padding:8px 16px;border:1px solid var(--border);border-radius:20px;background:var(--panel);
+       cursor:pointer;font-size:14px;color:var(--muted);transition:.2s}
+  .tab.active{background:var(--accent);color:#031022;border-color:var(--accent);font-weight:600}
+
+  .card{background:var(--panel);border:1px solid var(--border);border-radius:14px;
+        padding:20px 22px;margin-bottom:18px;box-shadow:0 4px 18px rgba(0,0,0,.25)}
+  .card.done{border-color:var(--accent2);box-shadow:0 0 0 1px rgba(126,231,135,.25)}
+
+  .step-head{display:flex;align-items:center;gap:14px;cursor:pointer;user-select:none}
+  .num{flex:0 0 auto;width:34px;height:34px;border-radius:50%;background:var(--panel2);
+       display:grid;place-items:center;font-weight:700;color:var(--accent);border:1px solid var(--border)}
+  .done .num{background:var(--accent2);color:#04210a;border-color:var(--accent2)}
+  .step-title{font-size:18px;font-weight:600;flex:1}
+  .step-title small{display:block;font-size:13px;color:var(--muted);font-weight:400;margin-top:2px}
+  .chk{width:22px;height:22px;cursor:pointer;accent-color:var(--accent2)}
+  .toggle{color:var(--muted);font-size:18px;transition:.2s}
+  .open .toggle{transform:rotate(90deg)}
+
+  .step-body{max-height:0;overflow:hidden;transition:max-height .35s ease;}
+  .open .step-body{max-height:3000px}
+  .step-body-inner{padding-top:16px}
+
+  pre{position:relative;background:var(--code);border:1px solid var(--border);border-radius:10px;
+      padding:14px 46px 14px 14px;overflow:auto;font-size:13.5px;margin:10px 0}
+  code{font-family:"Cascadia Code","Consolas",monospace}
+  .copy{position:absolute;top:8px;right:8px;background:var(--panel2);border:1px solid var(--border);
+        color:var(--muted);border-radius:6px;padding:3px 10px;font-size:12px;cursor:pointer;transition:.2s}
+  .copy:hover{background:var(--accent);color:#031022}
+  .copy.copied{background:var(--accent2);color:#04210a}
+
+  .note{border-left:3px solid var(--accent);background:var(--panel2);padding:10px 14px;border-radius:0 8px 8px 0;margin:12px 0;font-size:14px}
+  .note.warn{border-color:var(--warn)}
+  .note.danger{border-color:var(--danger)}
+  .note b{color:var(--txt)}
+
+  ul.clean{margin:8px 0;padding-left:20px}
+  ul.clean li{margin:4px 0}
+
+  table{width:100%;border-collapse:collapse;margin:10px 0;font-size:14px}
+  th,td{border:1px solid var(--border);padding:9px 12px;text-align:left}
+  th{background:var(--panel2)}
+  td code{background:var(--code);padding:2px 6px;border-radius:4px;font-size:12.5px}
+
+  .pill{display:inline-block;padding:1px 9px;border-radius:10px;font-size:12px;border:1px solid var(--border);color:var(--muted)}
+
+  footer{text-align:center;color:var(--muted);font-size:13px;margin-top:30px}
+  .reset-btn{background:none;border:1px solid var(--border);color:var(--muted);border-radius:8px;
+             padding:6px 14px;cursor:pointer;font-size:13px}
+  .reset-btn:hover{border-color:var(--danger);color:var(--danger)}
+  .hidden{display:none}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <header>
+    <h1>🎬 <span class="g">ai-video-canvas</span> · Windows 部署指南</h1>
+    <p>方案 B：本地正式部署（MySQL 持久化）　·　跟着勾选，一步步搞定</p>
+  </header>
+
+  <div class="progress-bar">
+    <div class="pb-track"><div class="pb-fill" id="pbFill"></div></div>
+    <div class="pb-label"><span id="pbText">完成 0 / 0</span>
+      <button class="reset-btn" onclick="resetAll()">↺ 重置进度</button></div>
+  </div>
+
+  <div class="tabs">
+    <div class="tab active" data-view="auto">⚡ 一键脚本（推荐）</div>
+    <div class="tab" data-view="manual">🛠 手动分步</div>
+    <div class="tab" data-view="trouble">🩺 排错手册</div>
+  </div>
+
+  <!-- ========================= 一键脚本视图 ========================= -->
+  <div id="view-auto">
+
+    <div class="card">
+      <div class="step-head" onclick="toggle(this)">
+        <div class="num">★</div>
+        <div class="step-title">最快路线：双击或一行命令<small>脚本会自动完成「检测环境→起 MySQL→生成配置→装依赖→建表→构建→启动」</small></div>
+        <span class="toggle">▶</span>
+      </div>
+      <div class="step-body"><div class="step-body-inner">
+        <p>把项目下载/克隆到本地后，<b>在项目根目录</b> 用以下任一方式运行：</p>
+        <p><span class="pill">方式一 · 双击</span> 进入 <code>deploy</code> 文件夹，双击 <b>一键部署.bat</b></p>
+        <p><span class="pill">方式二 · 命令</span> 在项目根目录打开 PowerShell：</p>
+        <pre><code>powershell -ExecutionPolicy Bypass -File .\deploy\deploy.ps1</code></pre>
+        <p>常用参数（可选）：</p>
+        <pre><code>.\deploy\deploy.ps1 -OwnerEmail "you@mail.com" -Port 3000
+.\deploy\deploy.ps1 -DbPassword "myStrongPass"   # 自定义数据库密码
+.\deploy\deploy.ps1 -SkipBuild                   # 已构建过，跳过构建快速重启
+.\deploy\deploy.ps1 -Reset                       # 重建数据库容器（清空数据）</code></pre>
+        <div class="note">完成后浏览器访问 <a href="http://localhost:3000" target="_blank"><b>http://localhost:3000</b></a>。用 <code>OWNER_EMAIL</code> 对应邮箱注册的账号即为管理员。</div>
+        <div class="note warn">脚本需要 <b>Node.js 20+</b> 和 <b>Docker Desktop</b>。若未安装，请先看下面前置条件清单。</div>
+      </div></div>
+    </div>
+
+    <div class="card" data-step="pre1">
+      <div class="step-head" onclick="toggle(this)">
+        <div class="num">1</div>
+        <div class="step-title">安装 Node.js 20+<small>JavaScript 运行环境，项目运行的基础</small></div>
+        <input type="checkbox" class="chk" onclick="event.stopPropagation();mark(this)">
+        <span class="toggle">▶</span>
+      </div>
+      <div class="step-body"><div class="step-body-inner">
+        <ul class="clean">
+          <li>打开 <a href="https://nodejs.org/" target="_blank">nodejs.org</a>，下载 <b>LTS 版（20 或更高）</b> 的 Windows 安装包，一路下一步。</li>
+          <li>装完<b>重开</b> PowerShell，验证：</li>
+        </ul>
+        <pre><code>node -v
+npm -v</code></pre>
+        <div class="note">看到形如 <code>v20.x.x</code> 即成功。脚本会自动通过 corepack 启用 pnpm，无需手动装。</div>
+      </div></div>
+    </div>
+
+    <div class="card" data-step="pre2">
+      <div class="step-head" onclick="toggle(this)">
+        <div class="num">2</div>
+        <div class="step-title">安装 Docker Desktop<small>用来一键运行 MySQL 数据库，免去手动安装配置</small></div>
+        <input type="checkbox" class="chk" onclick="event.stopPropagation();mark(this)">
+        <span class="toggle">▶</span>
+      </div>
+      <div class="step-body"><div class="step-body-inner">
+        <ul class="clean">
+          <li>下载 <a href="https://www.docker.com/products/docker-desktop/" target="_blank">Docker Desktop for Windows</a> 并安装（首次安装可能需开启 WSL2，按提示操作并重启）。</li>
+          <li><b>启动 Docker Desktop</b>，等待左下角变成绿色「Engine running」。</li>
+          <li>验证：</li>
+        </ul>
+        <pre><code>docker -v</code></pre>
+        <div class="note warn">不想用 Docker？也可自行安装 MySQL 8，并在脚本生成的 <code>.env</code> 里把 <code>DATABASE_URL</code> 改成你的真实连接串。</div>
+      </div></div>
+    </div>
+
+    <div class="card" data-step="pre3">
+      <div class="step-head" onclick="toggle(this)">
+        <div class="num">3</div>
+        <div class="step-title">获取项目代码<small>把仓库放到本地任意目录</small></div>
+        <input type="checkbox" class="chk" onclick="event.stopPropagation();mark(this)">
+        <span class="toggle">▶</span>
+      </div>
+      <div class="step-body"><div class="step-body-inner">
+        <p>已安装 Git 的话：</p>
+        <pre><code>git clone &lt;仓库地址&gt; ai-video-canvas
+cd ai-video-canvas</code></pre>
+        <p>没装 Git 也行：在 GitHub 页面点 <b>Code → Download ZIP</b>，解压即可。</p>
+      </div></div>
+    </div>
+
+    <div class="card" data-step="pre4">
+      <div class="step-head" onclick="toggle(this)">
+        <div class="num">4</div>
+        <div class="step-title">运行一键脚本 🚀<small>万事俱备，启动！</small></div>
+        <input type="checkbox" class="chk" onclick="event.stopPropagation();mark(this)">
+        <span class="toggle">▶</span>
+      </div>
+      <div class="step-body"><div class="step-body-inner">
+        <pre><code>powershell -ExecutionPolicy Bypass -File .\deploy\deploy.ps1</code></pre>
+        <p>看到绿色的「部署完成！」并提示访问地址后，打开浏览器访问：</p>
+        <pre><code>http://localhost:3000</code></pre>
+        <div class="note danger">服务运行时<b>请勿关闭</b>该 PowerShell 窗口；要停止服务在窗口里按 <b>Ctrl+C</b>。下次启动可加 <code>-SkipBuild</code> 加速。</div>
+      </div></div>
+    </div>
+
+  </div>
+
+  <!-- ========================= 手动分步视图 ========================= -->
+  <div id="view-manual" class="hidden">
+
+    <div class="note">如果你想理解每一步在做什么，或脚本失败需要手动排查，按下面顺序逐条执行。所有命令都在<b>项目根目录</b>运行。</div>
+
+    <div class="card" data-step="m1">
+      <div class="step-head" onclick="toggle(this)">
+        <div class="num">1</div>
+        <div class="step-title">启动 MySQL 容器<small>数据持久化保存在 Docker 卷中</small></div>
+        <input type="checkbox" class="chk" onclick="event.stopPropagation();mark(this)">
+        <span class="toggle">▶</span>
+      </div>
+      <div class="step-body"><div class="step-body-inner">
+        <p>把 <code>yourpass</code> 换成你自己的密码：</p>
+        <pre><code>docker run -d --name avc-mysql -p 3306:3306 ^
+  -e MYSQL_ROOT_PASSWORD=yourpass ^
+  -e MYSQL_DATABASE=ai_video_canvas ^
+  -v avc-mysql-data:/var/lib/mysql ^
+  mysql:8</code></pre>
+        <div class="note">PowerShell 里续行符用反引号 <code>`</code>；上面的 <code>^</code> 是 CMD 写法。嫌麻烦就写成一行。</div>
+      </div></div>
+    </div>
+
+    <div class="card" data-step="m2">
+      <div class="step-head" onclick="toggle(this)">
+        <div class="num">2</div>
+        <div class="step-title">创建 .env 配置文件<small>放在项目根目录</small></div>
+        <input type="checkbox" class="chk" onclick="event.stopPropagation();mark(this)">
+        <span class="toggle">▶</span>
+      </div>
+      <div class="step-body"><div class="step-body-inner">
+        <pre><code>NODE_ENV=production
+PORT=3000
+DATABASE_URL=mysql://root:yourpass@localhost:3306/ai_video_canvas
+JWT_SECRET=请粘贴一段32字节随机hex
+OWNER_EMAIL=你的邮箱@example.com</code></pre>
+        <p>生成随机 <code>JWT_SECRET</code>（PowerShell）：</p>
+        <pre><code>-join ((1..32) | % { '{0:x2}' -f (Get-Random -Max 256) })</code></pre>
+        <table>
+          <tr><th>变量</th><th>作用</th></tr>
+          <tr><td><code>DATABASE_URL</code></td><td>MySQL 连接串，密码要和上一步一致</td></tr>
+          <tr><td><code>JWT_SECRET</code></td><td>会话 Cookie 签名密钥，生产必填，泄露需更换</td></tr>
+          <tr><td><code>OWNER_EMAIL</code></td><td>用此邮箱注册的账号自动成为管理员</td></tr>
+          <tr><td><code>PORT</code></td><td>监听端口，默认 3000（被占用会自动顺延）</td></tr>
+        </table>
+      </div></div>
+    </div>
+
+    <div class="card" data-step="m3">
+      <div class="step-head" onclick="toggle(this)">
+        <div class="num">3</div>
+        <div class="step-title">安装依赖<small>pnpm 拉取所有第三方包</small></div>
+        <input type="checkbox" class="chk" onclick="event.stopPropagation();mark(this)">
+        <span class="toggle">▶</span>
+      </div>
+      <div class="step-body"><div class="step-body-inner">
+        <pre><code>corepack enable
+pnpm install</code></pre>
+        <div class="note">若提示找不到 pnpm：<code>npm install -g pnpm</code> 后重试。</div>
+      </div></div>
+    </div>
+
+    <div class="card" data-step="m4">
+      <div class="step-head" onclick="toggle(this)">
+        <div class="num">4</div>
+        <div class="step-title">初始化数据库表<small>drizzle 按 schema 建表</small></div>
+        <input type="checkbox" class="chk" onclick="event.stopPropagation();mark(this)">
+        <span class="toggle">▶</span>
+      </div>
+      <div class="step-body"><div class="step-body-inner">
+        <pre><code>pnpm db:push</code></pre>
+        <div class="note">该命令从 <code>.env</code> 读取 <code>DATABASE_URL</code>。报「DATABASE_URL is required」说明 .env 没被读到，检查文件位置和内容。</div>
+      </div></div>
+    </div>
+
+    <div class="card" data-step="m5">
+      <div class="step-head" onclick="toggle(this)">
+        <div class="num">5</div>
+        <div class="step-title">构建前端与后端<small>产物输出到 dist/</small></div>
+        <input type="checkbox" class="chk" onclick="event.stopPropagation();mark(this)">
+        <span class="toggle">▶</span>
+      </div>
+      <div class="step-body"><div class="step-body-inner">
+        <pre><code>pnpm build</code></pre>
+        <div class="note">Vite 打包前端 + esbuild 把后端打成 <code>dist/index.js</code>。首次较慢属正常。</div>
+      </div></div>
+    </div>
+
+    <div class="card" data-step="m6">
+      <div class="step-head" onclick="toggle(this)">
+        <div class="num">6</div>
+        <div class="step-title">启动服务<small>访问 http://localhost:3000</small></div>
+        <input type="checkbox" class="chk" onclick="event.stopPropagation();mark(this)">
+        <span class="toggle">▶</span>
+      </div>
+      <div class="step-body"><div class="step-body-inner">
+        <pre><code>pnpm start</code></pre>
+        <p>想长期后台运行、开机自启，推荐用 PM2：</p>
+        <pre><code>npm install -g pm2
+pm2 start dist/index.js --name avc
+pm2 save
+pm2 startup   # 按提示设置开机自启</code></pre>
+      </div></div>
+    </div>
+
+  </div>
+
+  <!-- ========================= 排错手册视图 ========================= -->
+  <div id="view-trouble" class="hidden">
+    <div class="card"><div class="step-body-inner" style="padding-top:0">
+      <table>
+        <tr><th>现象</th><th>原因 / 解决</th></tr>
+        <tr><td>无法加载脚本，禁止运行</td><td>PowerShell 执行策略限制。改用：<code>powershell -ExecutionPolicy Bypass -File .\deploy\deploy.ps1</code>，或先运行 <code>Set-ExecutionPolicy -Scope CurrentUser RemoteSigned</code></td></tr>
+        <tr><td>'pnpm' / 'node' 不是内部命令</td><td>未安装或没重开终端。装好 Node.js 后<b>重新打开</b> PowerShell；pnpm 用 <code>corepack enable</code> 或 <code>npm i -g pnpm</code></td></tr>
+        <tr><td>Docker 报 "engine not running"</td><td>先打开 Docker Desktop，等左下角变绿再跑脚本</td></tr>
+        <tr><td>端口 3000 被占用</td><td>脚本/服务会自动顺延到 3001…；也可在 .env 改 <code>PORT</code></td></tr>
+        <tr><td>db:push 报 DATABASE_URL is required</td><td>.env 不在项目根目录或格式有误；确认无多余空格、密码与容器一致</td></tr>
+        <tr><td>MySQL 连接被拒 / ECONNREFUSED</td><td>容器没起来或还没就绪。<code>docker ps</code> 看是否运行，<code>docker logs avc-mysql</code> 看日志</td></tr>
+        <tr><td>登录后不是管理员</td><td>注册用的邮箱要和 .env 里 <code>OWNER_EMAIL</code> 完全一致</td></tr>
+        <tr><td>改了 .env 不生效</td><td>重启服务（Ctrl+C 后重跑 <code>pnpm start</code>）；改 JWT_SECRET 会让已登录用户掉线</td></tr>
+        <tr><td>想彻底重来</td><td><code>.\deploy\deploy.ps1 -Reset</code> 重建数据库容器（清空数据），并删除根目录 <code>.env</code> 重新生成</td></tr>
+      </table>
+      <div class="note">常用排查命令：<code>docker ps</code>　<code>docker logs avc-mysql</code>　<code>docker restart avc-mysql</code></div>
+      <div class="note warn">AI 视频/图像生成功能依赖外部 API Key（OPENAI / Higgsfield / ComfyUI 等）。不填这些 Key 不影响主程序启动，只是对应功能不可用——在 .env 里补上即可。</div>
+    </div></div>
+  </div>
+
+  <footer>
+    ai-video-canvas · 本地部署交互指南　|　进度自动保存在本机浏览器（localStorage）
+  </footer>
+
+</div>
+
+<script>
+  // ---- 视图切换 ----
+  const tabs = document.querySelectorAll('.tab');
+  tabs.forEach(t=>t.addEventListener('click',()=>{
+    tabs.forEach(x=>x.classList.remove('active'));
+    t.classList.add('active');
+    ['auto','manual','trouble'].forEach(v=>{
+      document.getElementById('view-'+v).classList.toggle('hidden', v!==t.dataset.view);
+    });
+  }));
+
+  // ---- 折叠展开 ----
+  function toggle(head){ head.parentElement.classList.toggle('open'); }
+
+  // ---- 复制按钮 ----
+  document.querySelectorAll('pre').forEach(pre=>{
+    const btn=document.createElement('button');
+    btn.className='copy'; btn.textContent='复制';
+    btn.onclick=()=>{
+      const txt=pre.querySelector('code').innerText;
+      navigator.clipboard.writeText(txt).then(()=>{
+        btn.textContent='已复制 ✓'; btn.classList.add('copied');
+        setTimeout(()=>{btn.textContent='复制';btn.classList.remove('copied');},1500);
+      });
+    };
+    pre.appendChild(btn);
+  });
+
+  // ---- 进度持久化 ----
+  const KEY='avc-deploy-progress';
+  const allChecks=[...document.querySelectorAll('.chk')];
+  function save(){
+    const state={};
+    allChecks.forEach((c,i)=>state[i]=c.checked);
+    localStorage.setItem(KEY,JSON.stringify(state));
+  }
+  function refresh(){
+    let done=0;
+    allChecks.forEach(c=>{ if(c.checked){done++; c.closest('.card').classList.add('done');}
+                           else c.closest('.card').classList.remove('done'); });
+    const total=allChecks.length;
+    const pct= total? Math.round(done/total*100):0;
+    document.getElementById('pbFill').style.width=pct+'%';
+    document.getElementById('pbText').textContent=`完成 ${done} / ${total}　(${pct}%)`;
+  }
+  function mark(c){ save(); refresh(); }
+  function resetAll(){ localStorage.removeItem(KEY); allChecks.forEach(c=>c.checked=false); refresh(); }
+
+  (function load(){
+    try{
+      const s=JSON.parse(localStorage.getItem(KEY)||'{}');
+      allChecks.forEach((c,i)=>{ if(s[i]) c.checked=true; });
+    }catch(e){}
+    refresh();
+    // 默认展开「最快路线」首卡
+    const first=document.querySelector('#view-auto .card');
+    if(first) first.classList.add('open');
+  })();
+</script>
+</body>
+</html>
