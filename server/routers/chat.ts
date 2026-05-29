@@ -16,6 +16,7 @@ import {
   listChatMembers,
   isChatMember,
   listConversationsForUser,
+  listJoinableGroups,
   updateLastRead,
   insertConversationMessage,
   getConversationMessages,
@@ -156,6 +157,31 @@ export const chatRouter = router({
       });
       await addChatMember(conv.id, ctx.user.id, "owner");
       return { id: conv.id };
+    }),
+
+  // Discover group rooms the user hasn't joined yet (for the "可加入的房间" list).
+  listJoinableRooms: protectedProcedure.query(async ({ ctx }) => {
+    const rooms = await listJoinableGroups(ctx.user.id);
+    const banned = await Promise.all(rooms.map((r) => isChatBanned(ctx.user.id, r.id)));
+    return rooms
+      .filter((_r, i) => !banned[i])
+      .map((r) => ({ id: r.id, title: r.title, isPrivate: !!r.passwordHash, mode: r.mode }));
+  }),
+
+  deleteRoom: protectedProcedure
+    .input(z.object({ conversationId: z.number() }))
+    .mutation(async ({ ctx, input }) => {
+      const conv = await getConversationById(input.conversationId);
+      if (!conv || conv.type !== "group") throw new TRPCError({ code: "BAD_REQUEST", message: "只能删除群聊" });
+      const members = await listChatMembers(conv.id);
+      const me = members.find((m) => m.userId === ctx.user.id);
+      if (me?.role !== "owner" && conv.createdBy !== ctx.user.id) {
+        throw new TRPCError({ code: "FORBIDDEN", message: "仅群主可删除房间" });
+      }
+      // Notify members (so their lists refresh and active view closes) before deleting.
+      if (eventBroadcaster) eventBroadcaster(conv.id, "conversation:deleted", { conversationId: conv.id });
+      await dbDeleteConversation(conv.id);
+      return { success: true };
     }),
 
   joinRoom: protectedProcedure

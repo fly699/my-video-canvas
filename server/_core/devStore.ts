@@ -674,6 +674,15 @@ export function devListConversationsForUser(userId: number): ChatConversation[] 
     .sort((a, b) => b.updatedAt.getTime() - a.updatedAt.getTime());
 }
 
+export function devListJoinableGroups(userId: number): ChatConversation[] {
+  const memberConvIds = new Set(
+    Array.from(chatMembersMap.values()).filter((m) => m.userId === userId).map((m) => m.conversationId),
+  );
+  return Array.from(chatConvMap.values())
+    .filter((c) => c.type === "group" && !memberConvIds.has(c.id))
+    .sort((a, b) => b.updatedAt.getTime() - a.updatedAt.getTime());
+}
+
 export function devUpdateLastRead(conversationId: number, userId: number, messageId: number): void {
   Array.from(chatMembersMap.entries()).forEach(([id, m]) => {
     if (m.conversationId === conversationId && m.userId === userId)

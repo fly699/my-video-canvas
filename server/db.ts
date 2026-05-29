@@ -1148,6 +1148,16 @@ export async function listConversationsForUser(userId: number): Promise<ChatConv
   return Array.from(merged.values()).sort((a, b) => b.updatedAt.getTime() - a.updatedAt.getTime());
 }
 
+/** Group rooms the user is NOT yet a member of — used for room discovery/join. */
+export async function listJoinableGroups(userId: number): Promise<ChatConversation[]> {
+  const db = await getDb();
+  if (!db) return DEV_MODE ? dev.devListJoinableGroups(userId) : [];
+  const memberRows = await db.select({ conversationId: chatMembers.conversationId }).from(chatMembers).where(eq(chatMembers.userId, userId));
+  const ids = new Set(memberRows.map((r) => r.conversationId));
+  const groups = await db.select().from(chatConversations).where(eq(chatConversations.type, "group"));
+  return groups.filter((g) => !ids.has(g.id)).sort((a, b) => b.updatedAt.getTime() - a.updatedAt.getTime());
+}
+
 export async function updateLastRead(conversationId: number, userId: number, messageId: number): Promise<void> {
   const db = await getDb();
   if (!db) { if (DEV_MODE) dev.devUpdateLastRead(conversationId, userId, messageId); return; }

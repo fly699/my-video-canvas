@@ -1,15 +1,27 @@
 import { useState } from "react";
-import { Hash, Lock, MessageSquare, Plus, Users, Globe } from "lucide-react";
-import { useChat, type ConversationSummary } from "@/hooks/useChat";
+import { Hash, Lock, MessageSquare, Plus, Users, Globe, LogIn } from "lucide-react";
+import { toast } from "sonner";
+import { useChat, type ConversationSummary, type JoinableRoom } from "@/hooks/useChat";
 import { NewConversationDialog } from "./NewConversationDialog";
 
 export function ConversationList() {
-  const { conversations, activeId, selectConversation } = useChat();
+  const { conversations, joinableRooms, activeId, selectConversation, joinRoom } = useChat();
   const [dialogOpen, setDialogOpen] = useState(false);
 
   const lobby = conversations.filter((c) => c.type === "lobby");
   const groups = conversations.filter((c) => c.type === "group");
   const dms = conversations.filter((c) => c.type === "dm");
+
+  async function handleJoin(r: JoinableRoom) {
+    let password: string | undefined;
+    if (r.isPrivate) {
+      const entered = window.prompt(`房间「${r.title ?? "群聊"}」需要密码：`);
+      if (entered == null) return;
+      password = entered;
+    }
+    try { await joinRoom(r.id, password); }
+    catch (e) { toast.error(e instanceof Error ? e.message : "加入失败"); }
+  }
 
   return (
     <aside style={{
@@ -34,6 +46,26 @@ export function ConversationList() {
           {dms.length === 0 && <Empty text="暂无私聊" />}
           {dms.map((c) => <ConvRow key={c.id} c={c} active={c.id === activeId} onClick={() => selectConversation(c.id)} />)}
         </Section>
+        {joinableRooms.length > 0 && (
+          <Section title="可加入的房间" icon={<LogIn size={13} />}>
+            {joinableRooms.map((r) => (
+              <button key={r.id} onClick={() => handleJoin(r)} style={{
+                width: "100%", display: "flex", alignItems: "center", gap: 10, padding: "8px 10px",
+                borderRadius: 8, border: "none", cursor: "pointer", textAlign: "left", marginBottom: 2,
+                background: "transparent", color: "var(--c-t2, rgba(255,255,255,0.6))",
+              }}>
+                <span style={{ display: "inline-flex", color: "var(--c-t3, rgba(255,255,255,0.4))" }}>
+                  {r.isPrivate ? <Lock size={15} /> : <Hash size={15} />}
+                </span>
+                <span style={{ flex: 1, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", fontSize: 14 }}>
+                  {r.title ?? "群聊"}
+                </span>
+                {r.mode === "serverless" && <Lock size={12} style={{ color: "var(--c-t4, rgba(255,255,255,0.3))" }} aria-label="端到端加密" />}
+                <span style={{ fontSize: 11, color: "oklch(0.72 0.2 285)" }}>加入</span>
+              </button>
+            ))}
+          </Section>
+        )}
       </div>
       {dialogOpen && <NewConversationDialog onClose={() => setDialogOpen(false)} />}
     </aside>
