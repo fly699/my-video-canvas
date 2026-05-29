@@ -1,10 +1,17 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Film } from "lucide-react";
 
 type Mode = "login" | "register";
 
-// OAuth is available only when both env vars are set
+// Manus OAuth portal is available only when both build-time env vars are set
 const oauthAvailable = !!(import.meta.env.VITE_OAUTH_PORTAL_URL && import.meta.env.VITE_APP_ID);
+
+// Google login destination — preserves any ?next= for share-link / invite flows.
+function startGoogle(): void {
+  const nextParam = new URLSearchParams(window.location.search).get("next");
+  const safeNext = nextParam && nextParam.startsWith("/") && !nextParam.startsWith("//") ? nextParam : null;
+  window.location.href = "/api/auth/google" + (safeNext ? `?next=${encodeURIComponent(safeNext)}` : "");
+}
 
 function startOAuth(): void {
   const oauthPortalUrl = import.meta.env.VITE_OAUTH_PORTAL_URL;
@@ -35,6 +42,19 @@ export default function LoginPage() {
   const [name, setName] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
+  // Whether the server has Google OAuth configured (runtime probe — no rebuild needed).
+  const [googleAvailable, setGoogleAvailable] = useState(false);
+
+  useEffect(() => {
+    let alive = true;
+    fetch("/api/auth/providers", { credentials: "include" })
+      .then((r) => (r.ok ? r.json() : null))
+      .then((data: { google?: boolean } | null) => {
+        if (alive && data?.google) setGoogleAvailable(true);
+      })
+      .catch(() => { /* providers probe is best-effort */ });
+    return () => { alive = false; };
+  }, []);
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -278,37 +298,69 @@ export default function LoginPage() {
           </button>
         </form>
 
-        {/* OAuth divider + button */}
-        {oauthAvailable && (
+        {/* OAuth divider + buttons */}
+        {(oauthAvailable || googleAvailable) && (
           <>
             <div style={{ display: "flex", alignItems: "center", gap: "10px", margin: "20px 0 0" }}>
               <div style={{ flex: 1, height: "1px", background: "rgba(255,255,255,0.07)" }} />
               <span style={{ fontSize: "12px", color: "var(--c-t2, rgba(255,255,255,0.3))" }}>或</span>
               <div style={{ flex: 1, height: "1px", background: "rgba(255,255,255,0.07)" }} />
             </div>
-            <button
-              type="button"
-              onClick={startOAuth}
-              style={{
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "center",
-                gap: "8px",
-                marginTop: "12px",
-                padding: "11px 0",
-                width: "100%",
-                border: "1px solid rgba(255,255,255,0.1)",
-                borderRadius: "8px",
-                background: "rgba(255,255,255,0.04)",
-                color: "var(--c-t1, #f0f0f4)",
-                fontSize: "14px",
-                fontWeight: 500,
-                cursor: "pointer",
-                transition: "all 0.15s",
-              }}
-            >
-              第三方登录（Google / OAuth）
-            </button>
+
+            {/* Google sign-in */}
+            {googleAvailable && (
+              <button
+                type="button"
+                onClick={startGoogle}
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  gap: "10px",
+                  marginTop: "12px",
+                  padding: "11px 0",
+                  width: "100%",
+                  border: "1px solid rgba(255,255,255,0.12)",
+                  borderRadius: "8px",
+                  background: "#ffffff",
+                  color: "#1f1f1f",
+                  fontSize: "14px",
+                  fontWeight: 600,
+                  cursor: "pointer",
+                  transition: "all 0.15s",
+                }}
+              >
+                <GoogleIcon />
+                使用 Google 登录
+              </button>
+            )}
+
+            {/* Manus OAuth portal */}
+            {oauthAvailable && (
+              <button
+                type="button"
+                onClick={startOAuth}
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  gap: "8px",
+                  marginTop: "12px",
+                  padding: "11px 0",
+                  width: "100%",
+                  border: "1px solid rgba(255,255,255,0.1)",
+                  borderRadius: "8px",
+                  background: "rgba(255,255,255,0.04)",
+                  color: "var(--c-t1, #f0f0f4)",
+                  fontSize: "14px",
+                  fontWeight: 500,
+                  cursor: "pointer",
+                  transition: "all 0.15s",
+                }}
+              >
+                第三方登录（OAuth 门户）
+              </button>
+            )}
           </>
         )}
       </div>
@@ -320,6 +372,17 @@ export default function LoginPage() {
         © {new Date().getFullYear()} 金泰智算 · KingTai Smart
       </div>
     </div>
+  );
+}
+
+function GoogleIcon() {
+  return (
+    <svg width="18" height="18" viewBox="0 0 48 48" aria-hidden="true">
+      <path fill="#EA4335" d="M24 9.5c3.54 0 6.71 1.22 9.21 3.6l6.85-6.85C35.9 2.38 30.47 0 24 0 14.62 0 6.51 5.38 2.56 13.22l7.98 6.19C12.43 13.72 17.74 9.5 24 9.5z" />
+      <path fill="#4285F4" d="M46.98 24.55c0-1.57-.15-3.09-.38-4.55H24v9.02h12.94c-.58 2.96-2.26 5.48-4.78 7.18l7.73 6c4.51-4.18 7.09-10.36 7.09-17.65z" />
+      <path fill="#FBBC05" d="M10.53 28.59c-.48-1.45-.76-2.99-.76-4.59s.27-3.14.76-4.59l-7.98-6.19C.92 16.46 0 20.12 0 24c0 3.88.92 7.54 2.56 10.78l7.97-6.19z" />
+      <path fill="#34A853" d="M24 48c6.48 0 11.93-2.13 15.89-5.81l-7.73-6c-2.15 1.45-4.92 2.3-8.16 2.3-6.26 0-11.57-4.22-13.47-9.91l-7.98 6.19C6.51 42.62 14.62 48 24 48z" />
+    </svg>
   );
 }
 

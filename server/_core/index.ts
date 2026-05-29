@@ -5,6 +5,7 @@ import net from "net";
 import { createExpressMiddleware } from "@trpc/server/adapters/express";
 import { registerOAuthRoutes } from "./oauth";
 import { registerEmailAuthRoutes } from "./emailAuth";
+import { registerGoogleAuthRoutes } from "./googleAuth";
 import { registerStorageProxy } from "./storageProxy";
 import { registerVideoProxy } from "./videoProxy";
 import { registerImageProxy } from "./imageProxy";
@@ -58,6 +59,16 @@ async function startServer() {
   registerImageProxy(app);
   registerOAuthRoutes(app);
   registerEmailAuthRoutes(app);
+  registerGoogleAuthRoutes(app);
+
+  // Runtime auth-provider discovery — lets the login page decide which buttons
+  // to show without baking VITE_* flags in at build time.
+  app.get("/api/auth/providers", (_req, res) => {
+    res.json({
+      google: !!(ENV.googleClientId && ENV.googleClientSecret),
+      manus: !!(ENV.oAuthServerUrl && ENV.appId),
+    });
+  });
 
   // tRPC API
   app.use(
