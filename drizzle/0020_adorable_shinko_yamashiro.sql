@@ -54,7 +54,7 @@ CREATE TABLE IF NOT EXISTS `chat_settings` (
 	`id` int AUTO_INCREMENT NOT NULL,
 	`serverlessAllowed` boolean NOT NULL DEFAULT true,
 	`lobbyEnabled` boolean NOT NULL DEFAULT true,
-	`maxFileMb` int NOT NULL DEFAULT 16,
+	`maxFileMb` int NOT NULL DEFAULT 200,
 	`updatedAt` timestamp NOT NULL DEFAULT (now()) ON UPDATE CURRENT_TIMESTAMP,
 	CONSTRAINT `chat_settings_id` PRIMARY KEY(`id`)
 );
@@ -84,5 +84,5 @@ CREATE INDEX `chat_conv_type_mode_idx` ON `chat_conversations` (`type`,`mode`);-
 CREATE INDEX `chat_members_user_idx` ON `chat_members` (`userId`);--> statement-breakpoint
 CREATE INDEX `conv_msgs_conv_created_idx` ON `conversation_messages` (`conversationId`,`createdAt`);--> statement-breakpoint
 CREATE INDEX `conv_msgs_conv_id_idx` ON `conversation_messages` (`conversationId`,`id`);--> statement-breakpoint
-INSERT IGNORE INTO `chat_settings` (`id`, `serverlessAllowed`, `lobbyEnabled`, `maxFileMb`) VALUES (1, true, true, 16);--> statement-breakpoint
+INSERT IGNORE INTO `chat_settings` (`id`, `serverlessAllowed`, `lobbyEnabled`, `maxFileMb`) VALUES (1, true, true, 200);--> statement-breakpoint
 INSERT IGNORE INTO `chat_conversations` (`id`, `type`, `mode`, `title`) VALUES (1, 'lobby', 'server', '大厅');

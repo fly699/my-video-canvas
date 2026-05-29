@@ -86,6 +86,8 @@ async function startServer() {
     path: "/api/socket",
     cors: { origin: "*", methods: ["GET", "POST"] },
     transports: ["websocket", "polling"],
+    // Allow large serverless chat file chunks (default is only 1MB).
+    maxHttpBufferSize: 8 * 1024 * 1024,
   });
 
   // Authenticate every socket via the session cookie sent in the upgrade

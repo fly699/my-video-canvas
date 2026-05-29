@@ -86,6 +86,32 @@ export async function storageGet(relKey: string): Promise<{ key: string; url: st
 }
 
 /**
+ * Issue a presigned PUT URL so the BROWSER can upload a (potentially huge) file
+ * directly to S3 — bypassing this server's request-body limit and avoiding
+ * base64 memory bloat. Returns the upload URL plus the final hashed key and the
+ * internal `/manus-storage/{key}` path used to serve it afterwards.
+ */
+export async function storagePresignPut(
+  relKey: string,
+): Promise<{ uploadUrl: string; key: string; url: string }> {
+  const { forgeUrl, forgeKey } = getForgeConfig();
+  const key = appendHashSuffix(normalizeKey(relKey));
+  const presignUrl = new URL("v1/storage/presign/put", forgeUrl + "/");
+  presignUrl.searchParams.set("path", key);
+  const resp = await fetch(presignUrl, {
+    headers: { Authorization: `Bearer ${forgeKey}` },
+    signal: AbortSignal.timeout(15_000),
+  });
+  if (!resp.ok) {
+    const msg = await resp.text().catch(() => resp.statusText);
+    throw new Error(`Storage presign failed (${resp.status}): ${msg}`);
+  }
+  const { url: uploadUrl } = (await resp.json()) as { url: string };
+  if (!uploadUrl) throw new Error("Forge returned empty presign URL");
+  return { uploadUrl, key, url: `/manus-storage/${key}` };
+}
+
+/**
  * Resolve a media URL (which may be an absolute http(s) URL or our internal
  * `/manus-storage/{key}` proxy path) into an ABSOLUTE URL that external
  * services can fetch. Used when handing a reference image off to upstream

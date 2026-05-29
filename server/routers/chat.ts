@@ -2,7 +2,7 @@ import path from "path";
 import { z } from "zod";
 import { TRPCError } from "@trpc/server";
 import { router, protectedProcedure } from "../_core/trpc";
-import { storagePut, isStorageConfigured } from "../storage";
+import { storagePut, storagePresignPut, isStorageConfigured } from "../storage";
 import { hashPassword, verifyPassword } from "../_core/scrypt";
 import {
   getOrCreateLobby,
@@ -316,6 +316,57 @@ export const chatRouter = router({
       const att = await insertChatAttachment({
         conversationId: conv.id, uploaderId: ctx.user.id, storageKey, url,
         name: safeName, mimeType: input.mimeType, size: buffer.length, kind: kindFromMime(input.mimeType),
+      });
+      if (!att) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR" });
+      return { attachmentId: att.id, url: att.url, name: att.name, mimeType: att.mimeType, size: att.size, kind: att.kind };
+    }),
+
+  // Direct-to-storage upload for large files: browser PUTs straight to S3,
+  // bypassing the server body limit + base64 bloat. Returns mode "presigned"
+  // (preferred) or "base64" (dev / storage not configured → use uploadFile).
+  createUploadUrl: protectedProcedure
+    .input(z.object({
+      conversationId: z.number(),
+      filename: z.string().max(255),
+      mimeType: z.string().max(128),
+      size: z.number().int().min(1),
+    }))
+    .mutation(async ({ ctx, input }) => {
+      const conv = await getConversationById(input.conversationId);
+      if (!conv) throw new TRPCError({ code: "NOT_FOUND" });
+      if (conv.mode !== "server") throw new TRPCError({ code: "BAD_REQUEST", message: "无服务器会话文件走加密通道" });
+      if (!(await isChatMember(conv.id, ctx.user.id))) throw new TRPCError({ code: "FORBIDDEN" });
+      const settings = await getChatSettings().catch(() => null);
+      const maxBytes = (settings?.maxFileMb ?? 16) * 1024 * 1024;
+      if (input.size > maxBytes) throw new TRPCError({ code: "BAD_REQUEST", message: `文件超过 ${settings?.maxFileMb ?? 16}MB 上限` });
+
+      const safeName = path.basename(input.filename).replace(/[^a-zA-Z0-9._-]/g, "_").slice(0, 120) || "file";
+      const date = new Date().toISOString().slice(0, 10);
+      const relKey = `chat/${conv.id}/${date}/${crypto.randomUUID()}-${safeName}`;
+      if (!isStorageConfigured()) return { mode: "base64" as const };
+      const { uploadUrl, key, url } = await storagePresignPut(relKey);
+      return { mode: "presigned" as const, uploadUrl, key, url, name: safeName, kind: kindFromMime(input.mimeType) };
+    }),
+
+  // Register an attachment AFTER a successful presigned PUT.
+  confirmUpload: protectedProcedure
+    .input(z.object({
+      conversationId: z.number(),
+      key: z.string().max(512),
+      url: z.string().max(1024),
+      name: z.string().max(255),
+      mimeType: z.string().max(128),
+      size: z.number().int().min(1),
+    }))
+    .mutation(async ({ ctx, input }) => {
+      const conv = await getConversationById(input.conversationId);
+      if (!conv) throw new TRPCError({ code: "NOT_FOUND" });
+      if (!(await isChatMember(conv.id, ctx.user.id))) throw new TRPCError({ code: "FORBIDDEN" });
+      // Guard: the key must live under this conversation's namespace.
+      if (!input.key.startsWith(`chat/${conv.id}/`)) throw new TRPCError({ code: "BAD_REQUEST", message: "非法的存储 key" });
+      const att = await insertChatAttachment({
+        conversationId: conv.id, uploaderId: ctx.user.id, storageKey: input.key, url: input.url,
+        name: input.name, mimeType: input.mimeType, size: input.size, kind: kindFromMime(input.mimeType),
       });
       if (!att) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR" });
       return { attachmentId: att.id, url: att.url, name: att.name, mimeType: att.mimeType, size: att.size, kind: att.kind };

@@ -43,8 +43,8 @@ export const useChat = () => {
   return ctx;
 };
 
-const SERVERLESS_FILE_MAX = 64 * 1024 * 1024; // 64MB relayed in chunks
-const CHUNK = 64 * 1024;
+const SERVERLESS_FILE_MAX = 1024 * 1024 * 1024; // 1GB relayed in streamed chunks
+const CHUNK = 256 * 1024; // 256KB per chunk (under the 8MB socket buffer)
 
 export function ChatProvider({ children }: { children: React.ReactNode }) {
   const utils = trpc.useUtils();
@@ -69,6 +69,8 @@ export function ChatProvider({ children }: { children: React.ReactNode }) {
 
   const sendMessageMut = trpc.chat.sendMessage.useMutation();
   const uploadFileMut = trpc.chat.uploadFile.useMutation();
+  const createUploadUrlMut = trpc.chat.createUploadUrl.useMutation();
+  const confirmUploadMut = trpc.chat.confirmUpload.useMutation();
   const publishKeyMut = trpc.chat.publishPublicKey.useMutation();
 
   const activeConv = useMemo(() => conversations.find((c) => c.id === activeId) ?? null, [conversations, activeId]);
@@ -350,16 +352,16 @@ export function ChatProvider({ children }: { children: React.ReactNode }) {
     const kind: ChatFileRef["kind"] = file.type.startsWith("image/") ? "image" : file.type.startsWith("video/") ? "video" : "file";
 
     if (conv?.mode === "serverless") {
-      if (file.size > SERVERLESS_FILE_MAX) throw new Error("文件过大");
+      if (file.size > SERVERLESS_FILE_MAX) throw new Error("文件过大（上限 1GB）");
       const encrypt = opts?.encrypt !== false; // default: encrypt
       const key = encrypt ? await getConversationKey(id, conv.type) : null;
       if (encrypt && !key) throw new Error("加密密钥未就绪");
-      const buf = new Uint8Array(await file.arrayBuffer());
       const transferId = crypto.randomUUID();
       const meta: ChatFileRef = { name: file.name, mimeType: file.type || "application/octet-stream", size: file.size, url: "", kind };
-      const total = Math.ceil(buf.length / CHUNK) || 1;
+      const total = Math.ceil(file.size / CHUNK) || 1;
       for (let seq = 0; seq < total; seq++) {
-        const slice = buf.slice(seq * CHUNK, (seq + 1) * CHUNK);
+        // Stream the file chunk-by-chunk from disk — never hold the whole file in memory.
+        const slice = new Uint8Array(await file.slice(seq * CHUNK, (seq + 1) * CHUNK).arrayBuffer());
         let framed: Uint8Array;
         if (encrypt && key) {
           const iv = crypto.getRandomValues(new Uint8Array(12));
@@ -374,6 +376,8 @@ export function ChatProvider({ children }: { children: React.ReactNode }) {
           conversationId: id, transferId, seq, last: seq === total - 1,
           data: btoa(bin), encrypted: encrypt, meta: seq === 0 ? meta : undefined,
         });
+        // yield to the event loop so the UI stays responsive on big files
+        if (seq % 8 === 7) await new Promise((r) => setTimeout(r, 0));
       }
       const localUrl = URL.createObjectURL(file);
       const wire: ChatWireMessage = {
@@ -383,11 +387,27 @@ export function ChatProvider({ children }: { children: React.ReactNode }) {
       await appendLocalHistory(id, wire);
       setMessages((prev) => [...prev, wire]);
     } else {
-      const base64 = await fileToBase64(file);
-      const att = await uploadFileMut.mutateAsync({ conversationId: id, base64, mimeType: file.type || "application/octet-stream", filename: file.name });
-      await sendMessageMut.mutateAsync({ conversationId: id, content: "", attachmentIds: [att.attachmentId] });
+      // Server mode: prefer direct-to-storage presigned PUT (handles huge files,
+      // bypasses the body limit). Falls back to base64 tRPC when storage is unset.
+      const up = await createUploadUrlMut.mutateAsync({
+        conversationId: id, filename: file.name, mimeType: file.type || "application/octet-stream", size: file.size,
+      });
+      let attachmentId: number;
+      if (up.mode === "presigned") {
+        const putResp = await fetch(up.uploadUrl, { method: "PUT", headers: { "Content-Type": file.type || "application/octet-stream" }, body: file });
+        if (!putResp.ok) throw new Error("上传到存储失败");
+        const att = await confirmUploadMut.mutateAsync({
+          conversationId: id, key: up.key, url: up.url, name: up.name, mimeType: file.type || "application/octet-stream", size: file.size,
+        });
+        attachmentId = att.attachmentId;
+      } else {
+        const base64 = await fileToBase64(file);
+        const att = await uploadFileMut.mutateAsync({ conversationId: id, base64, mimeType: file.type || "application/octet-stream", filename: file.name });
+        attachmentId = att.attachmentId;
+      }
+      await sendMessageMut.mutateAsync({ conversationId: id, content: "", attachmentIds: [attachmentId] });
     }
-  }, [conversations, getConversationKey, uploadFileMut, sendMessageMut]);
+  }, [conversations, getConversationKey, uploadFileMut, createUploadUrlMut, confirmUploadMut, sendMessageMut]);
 
   const emitTyping = useCallback(() => {
     const id = activeIdRef.current;

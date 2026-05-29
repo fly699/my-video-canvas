@@ -309,7 +309,7 @@ export const adminRouter = router({
       .input(z.object({
         serverlessAllowed: z.boolean().optional(),
         lobbyEnabled: z.boolean().optional(),
-        maxFileMb: z.number().int().min(1).max(512).optional(),
+        maxFileMb: z.number().int().min(1).max(5120).optional(),
       }))
       .mutation(async ({ input }) => {
         const s = await db.setChatSettings(input);
