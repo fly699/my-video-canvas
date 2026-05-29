@@ -38,4 +38,8 @@ export const ENV = {
   googleClientId: process.env.GOOGLE_CLIENT_ID ?? "",
   googleClientSecret: process.env.GOOGLE_CLIENT_SECRET ?? "",
   googleRedirectUri: process.env.GOOGLE_REDIRECT_URI ?? "",
+  // HTTPS (self-signed for LAN / to enable end-to-end encryption which needs a
+  // secure context). When both files exist the server serves HTTPS.
+  httpsCertFile: process.env.HTTPS_CERT_FILE ?? "certs/cert.pem",
+  httpsKeyFile: process.env.HTTPS_KEY_FILE ?? "certs/key.pem",
 };

@@ -4,7 +4,7 @@ import { adminProcedure, router } from "../_core/trpc";
 import * as db from "../db";
 import { invalidateWhitelistCache } from "../_core/whitelist";
 import { invalidateStorageSettingsCache } from "../_core/storageConfig";
-import { storagePut } from "../storage";
+import { storagePut, storageBackend, isStorageConfigured } from "../storage";
 import { ENV } from "../_core/env";
 import { randomBytes } from "crypto";
 
@@ -118,12 +118,13 @@ export const adminRouter = router({
       const t0 = Date.now();
       // Cheap config check first so the error message points at the actual
       // root cause rather than a downstream symptom.
-      if (!ENV.forgeApiUrl || !ENV.forgeApiKey) {
+      if (!isStorageConfigured()) {
         return {
           ok: false as const,
           ms: Date.now() - t0,
           stage: "config" as const,
-          error: "BUILT_IN_FORGE_API_URL / BUILT_IN_FORGE_API_KEY 未设置 — Manus 部署需要在环境变量配置这两个值，storagePut 才能工作。",
+          backend: "none" as const,
+          error: "未配置对象存储 — 请设置 S3_ENDPOINT / S3_BUCKET / S3_ACCESS_KEY / S3_SECRET_KEY（自建 MinIO，推荐），或 BUILT_IN_FORGE_API_URL / BUILT_IN_FORGE_API_KEY。可运行 deploy\\setup-minio.bat 一键配置。",
         };
       }
       try {
@@ -132,6 +133,7 @@ export const adminRouter = router({
         return {
           ok: true as const,
           ms: Date.now() - t0,
+          backend: storageBackend(),
           url,
         };
       } catch (err) {
@@ -147,6 +149,7 @@ export const adminRouter = router({
           ok: false as const,
           ms: Date.now() - t0,
           stage,
+          backend: storageBackend(),
           error: msg.slice(0, 500),
         };
       }

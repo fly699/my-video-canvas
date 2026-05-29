@@ -174,12 +174,12 @@ function StoragePanel() {
           <HardDrive style={{ width: 18, height: 18, color: "oklch(0.72 0.2 285)", flexShrink: 0, marginTop: 2 }} />
           <div style={{ flex: 1 }}>
             <h3 style={{ margin: 0, fontSize: 15, fontWeight: 600, color: "var(--c-t1, #f0f0f4)" }}>
-              Manus S3 存储持久化
+              对象存储持久化（MinIO / S3 本地存储）
             </h3>
             <p style={{ margin: "4px 0 0", fontSize: 12, color: "var(--c-t2, rgba(255,255,255,0.55))", lineHeight: 1.5 }}>
-              开启后系统会自动把生成的音频/视频/图像下载并存到 Manus S3，URL 永久可用。<br />
+              开启后系统会自动把生成的音频/视频/图像存到你的对象存储（推荐自建 MinIO，数据不出本机），URL 永久可用。<br />
               关闭后节点降级为直接使用模型提供商的上游 URL（Poyo: 24h 后过期；Higgsfield: 临时 CDN）。<br />
-              注：Forge 内置图像后端始终持久化（base64 返回无法走上游降级）。
+              配置：S3_ENDPOINT / S3_BUCKET / S3_ACCESS_KEY / S3_SECRET_KEY（可运行 deploy\setup-minio.bat 一键配置）。
             </p>
             <div style={{ marginTop: 12, display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
               <button
@@ -204,7 +204,7 @@ function StoragePanel() {
                 <div style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 12 }}>
                   <CheckCircle2 style={{ width: 14, height: 14, color: "oklch(0.7 0.18 145)" }} />
                   <span style={{ color: "oklch(0.7 0.18 145)" }}>
-                    正常（{testMut.data.ms}ms）
+                    正常（{testMut.data.ms}ms · {testMut.data.backend === "s3" ? "MinIO/S3" : testMut.data.backend === "forge" ? "Forge" : "—"}）
                   </span>
                   <code style={{ fontSize: 10, color: "var(--c-t3)", background: "var(--c-surface)", padding: "1px 5px", borderRadius: 4 }}>
                     {testMut.data.url}

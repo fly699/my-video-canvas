@@ -115,3 +115,6 @@ client/public/__manus__/version.json
 
 # 平台生成的本地配置（含真实密钥，禁止入库）
 .project-config.json
+
+# self-signed TLS certs (do not commit private key)
+certs/
