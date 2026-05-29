@@ -39,7 +39,7 @@ export default function ChatPage() {
   }
   async function install() {
     const e = installEvt.current;
-    if (!e) { toast.info("如需安装为应用，请用 Chrome 通过 localhost 或 HTTPS 打开；或点地址栏右侧的「安装」图标。"); return; }
+    if (!e) { toast.info("无法安装：请用普通（非无痕）Chrome 窗口、HTTPS 且证书已受信任（地址栏显示🔒）打开；满足后点地址栏右侧的「安装」图标即可。"); return; }
     e.prompt();
     await e.userChoice.catch(() => {});
     installEvt.current = null; setCanInstall(false);
