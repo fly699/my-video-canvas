@@ -23,14 +23,28 @@ echo   Clone into: %DEST%
 echo ============================================================
 echo.
 
-rem ---- 1) check git ----
+rem ---- 1) ensure git (auto-install via winget if missing) ----
 where git >nul 2>nul
-if errorlevel 1 (
-  echo [X] Git not found. Please install Git for Windows first:
-  echo     https://git-scm.com/download/win
-  echo     ^(or run: winget install Git.Git^) then REOPEN this window.
-  goto end
-)
+if not errorlevel 1 goto gitok
+
+echo [*] Git not found. Trying to auto-install via winget...
+where winget >nul 2>nul
+if errorlevel 1 goto nogit
+winget install --id Git.Git -e --silent --accept-source-agreements --accept-package-agreements
+rem make git visible in THIS window without reopening
+set "PATH=%PATH%;C:\Program Files\Git\cmd;C:\Program Files\Git\bin"
+where git >nul 2>nul
+if not errorlevel 1 goto gitok
+echo [X] Git was installed but not detected in this window.
+echo     Please CLOSE this window and double-click the script again.
+goto end
+
+:nogit
+echo [X] winget not available. Install Git manually, then rerun:
+echo     https://git-scm.com/download/win
+goto end
+
+:gitok
 for /f "delims=" %%v in ('git --version') do echo [OK] %%v
 
 rem ---- 2) target folder must not exist ----
