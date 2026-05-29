@@ -67,6 +67,12 @@ echo [*] Checking out branch %SOURCE_BRANCH% ...
 git checkout %SOURCE_BRANCH%
 if errorlevel 1 goto fail
 
+rem ---- 4b) scrub secret file from this branch's history (GitHub blocks pushes containing secrets) ----
+echo [*] Scrubbing .project-config.json from history...
+set "FILTER_BRANCH_SQUELCH_WARNING=1"
+git filter-branch --force --index-filter "git rm --cached --ignore-unmatch .project-config.json" --prune-empty HEAD
+if errorlevel 1 goto fail
+
 rem ---- 5) rename branch to target, switch remotes ----
 git branch -M %TARGET_BRANCH%
 git remote rename origin upstream

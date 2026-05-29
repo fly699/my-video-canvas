@@ -112,3 +112,6 @@ temp/
 # Manus version file (auto-generated, not part of source)
 client/public/__manus__/version.json
 .claude/
+
+# 平台生成的本地配置（含真实密钥，禁止入库）
+.project-config.json
