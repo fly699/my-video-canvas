@@ -162,6 +162,10 @@ export interface LanChatMessage {
   content: string;
   attachments?: ChatAttachment[] | null;
   createdAt: string; // ISO
+  /** True only for messages sent by this device in this session. Preferred
+   *  over nickname comparison because two users on the same LAN may pick
+   *  the same nickname. */
+  ownByMe?: boolean;
 }
 
 export interface LanChatOnlineUser {

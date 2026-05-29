@@ -9,6 +9,21 @@ import type { LanChatMessage, LanChatOnlineUser, LanChatRoom, ChatAttachment } f
 
 const SESSION_KEY = "lan-chat:session:v1";
 const ACTIVE_ROOM_KEY = "lan-chat:active-room:v1";
+const DEVICE_ID_KEY = "lan-chat:device-id:v1";
+/** Max file size for both sending and receiving — 256 MB.
+ *  P2P DataChannel is limited by browser memory, not network; 256 MB fits
+ *  comfortably in a desktop browser tab and covers most LAN use-cases
+ *  (video clips, design assets, archives). */
+const MAX_FILE_BYTES = 256 * 1024 * 1024;
+
+function getOrCreateDeviceId(): string {
+  let id = localStorage.getItem(DEVICE_ID_KEY);
+  if (!id) {
+    id = crypto.randomUUID();
+    localStorage.setItem(DEVICE_ID_KEY, id);
+  }
+  return id;
+}
 
 /** Convert a uuid string into a numeric id for React key compat with the
  *  legacy LanChatMessage shape (id was a server-issued auto-increment).
@@ -116,6 +131,7 @@ export function LanChatProvider({ children }: { children: ReactNode }) {
           name: a.name,
         })) : null,
         createdAt: new Date(r.createdAt).toISOString(),
+        ownByMe: r.ownByMe,
       })));
     });
     return () => { cancelled = true; };
@@ -213,14 +229,16 @@ export function LanChatProvider({ children }: { children: ReactNode }) {
     }
     socket.emit("lan-chat:enter-room", { roomId: activeRoomId });
     prevRoomRef.current = activeRoomId;
-    setMessages([]);
-    utils.lanChat.getMessages.fetch({ sessionId: session.sessionId, roomId: activeRoomId, limit: 50 })
-      .then((rows) => setMessages([...rows].reverse()))
-      .catch(() => { /* swallow */ });
+    // In P2P mode messages come via DataChannel and are kept in IndexedDB;
+    // the server never stores new messages. Don't clear or replace the
+    // message list here — doing so would wipe messages that arrived via
+    // DataChannel between the setMessages([]) call and the (empty) server
+    // response. IndexedDB history is loaded once on session+fingerprint
+    // ready (the effect above), which is the correct source of truth.
     // Wait for socket to be connected before emitting (in strict-mode the
     // first render may run this before the socket effect's socket connects
     // — we re-run the emit when `connected` flips true below).
-  }, [activeRoomId, session, utils]);
+  }, [activeRoomId, session]);
 
   // Auto-correct activeRoomId when the persisted value isn't in this
   // network's room list. Why this matters: usePersistentState seeds
@@ -256,7 +274,7 @@ export function LanChatProvider({ children }: { children: ReactNode }) {
     if (fingerprint.state !== "ready") {
       throw new Error("公网 IP 未就绪，无法加入聊天");
     }
-    const res = await joinMu.mutateAsync({ nickname, groupId: fingerprint.groupId });
+    const res = await joinMu.mutateAsync({ nickname, groupId: fingerprint.groupId, deviceId: getOrCreateDeviceId() });
     setSessionState(res);
     return res;
   }, [joinMu, setSessionState, fingerprint]);
@@ -270,6 +288,7 @@ export function LanChatProvider({ children }: { children: ReactNode }) {
     : []
   ), [online, session]);
 
+
   // In-flight inbound file transfers from peers. Keyed by transferId; each
   // entry collects chunks until a "file-end" marker arrives, then assembles
   // a Blob → objectURL → fires a synthetic chat message with the attachment.
@@ -281,7 +300,18 @@ export function LanChatProvider({ children }: { children: ReactNode }) {
     received: number;
     fromNickname: string;
     fromColor: string;
+    fromSessionId: string;
   }>>(new Map());
+
+  // Drop all in-flight transfers that originated from a peer that just
+  // disconnected — prevents unbounded memory growth from partial transfers.
+  const handlePeerDrop = useCallback((sessionId: string) => {
+    fileTransfersRef.current.forEach((entry, transferId) => {
+      if (entry.fromSessionId === sessionId) {
+        fileTransfersRef.current.delete(transferId);
+      }
+    });
+  }, []);
 
   const handlePeerMessage = useCallback((msg: { fromSessionId: string; fromNickname: string; fromColor: string; payload: unknown }) => {
     const p = msg.payload as { kind?: string; [k: string]: unknown };
@@ -311,40 +341,55 @@ export function LanChatProvider({ children }: { children: ReactNode }) {
         content,
         attachments: attachments ?? null,
         createdAt: new Date(createdAt).toISOString(),
+        ownByMe: false,
       }]);
       return;
     }
 
     // File transfer protocol — three frames per file:
-    //   file-meta  { transferId, name, mimeType, size }
-    //   file-chunk { transferId, seq, data (base64) }   (many)
-    //   file-end   { transferId }
+    //   text frame  { kind:"file-meta", transferId, name, mimeType, size }
+    //   binary frames  [36-byte UUID][4-byte seq BE][raw data]  × N
+    //     (dispatched as { kind:"file-chunk", transferId, seq, data:Uint8Array }
+    //      by usePeerMesh.ts onmessage binary branch)
+    //   text frame  { kind:"file-end", transferId }
     if (p.kind === "file-meta" && typeof p.transferId === "string") {
+      const declaredSize = Number(p.size ?? 0);
+      // Reject files larger than our receive limit — prevents a malicious
+      // peer from exhausting memory by advertising a huge file.
+      if (declaredSize > MAX_FILE_BYTES) return;
       fileTransfersRef.current.set(p.transferId, {
         name: String(p.name ?? "file"),
         mimeType: String(p.mimeType ?? "application/octet-stream"),
-        size: Number(p.size ?? 0),
+        size: declaredSize,
         chunks: [],
         received: 0,
         fromNickname: msg.fromNickname,
         fromColor: msg.fromColor,
+        fromSessionId: msg.fromSessionId,
       });
       return;
     }
-    if (p.kind === "file-chunk" && typeof p.transferId === "string" && typeof p.data === "string") {
+    // Chunks arrive as Uint8Array (binary DataChannel frame, decoded by
+    // usePeerMesh.ts). Legacy base64-string path is intentionally removed.
+    if (p.kind === "file-chunk" && typeof p.transferId === "string" && p.data instanceof Uint8Array) {
       const entry = fileTransfersRef.current.get(p.transferId);
       if (!entry) return;
-      const bin = atob(p.data);
-      const arr = new Uint8Array(bin.length);
-      for (let i = 0; i < bin.length; i++) arr[i] = bin.charCodeAt(i);
-      entry.chunks.push(arr);
-      entry.received += arr.length;
+      // Abort if this chunk would push us past the declared size (malformed sender).
+      if (entry.received + p.data.length > entry.size + 1) {
+        fileTransfersRef.current.delete(p.transferId);
+        return;
+      }
+      entry.chunks.push(p.data);
+      entry.received += p.data.length;
       return;
     }
     if (p.kind === "file-end" && typeof p.transferId === "string") {
       const entry = fileTransfersRef.current.get(p.transferId);
       if (!entry) return;
       fileTransfersRef.current.delete(p.transferId);
+      // Only assemble if we received a plausible amount of data (>50% of
+      // declared size) — avoids creating a corrupt blob from a partial transfer.
+      if (entry.received < entry.size * 0.5 && entry.size > 0) return;
       const blob = new Blob(entry.chunks as BlobPart[], { type: entry.mimeType });
       const url = URL.createObjectURL(blob);
       const isImage = entry.mimeType.startsWith("image/");
@@ -374,6 +419,7 @@ export function LanChatProvider({ children }: { children: ReactNode }) {
         content: "",
         attachments: [attachment],
         createdAt: new Date(createdAt).toISOString(),
+        ownByMe: false,
       }]);
     }
   }, [fingerprint]);
@@ -384,6 +430,7 @@ export function LanChatProvider({ children }: { children: ReactNode }) {
     myNickname: session?.nickname ?? "",
     desiredPeers,
     onMessage: handlePeerMessage,
+    onPeerDrop: handlePeerDrop,
   });
 
   const send = useCallback(async (content: string, attachments?: ChatAttachment[]) => {
@@ -410,13 +457,11 @@ export function LanChatProvider({ children }: { children: ReactNode }) {
       content,
       attachments: attachments ?? null,
       createdAt: new Date(createdAt).toISOString(),
+      ownByMe: true,
     }]);
     // 3. Broadcast to connected peers via DataChannel — server never sees it.
     mesh.broadcast({ kind: "chat", id, content, attachments, createdAt });
-    // sendMu intentionally NOT called — the server-side path is deprecated
-    // by the E2E architecture.
-    void sendMu;
-  }, [session, fingerprint, mesh, sendMu]);
+  }, [session, fingerprint, mesh]);
 
   const sendTyping = useCallback(() => {
     socketRef.current?.emit("lan-chat:typing", { roomId: activeRoomId });
@@ -466,8 +511,8 @@ export function LanChatProvider({ children }: { children: ReactNode }) {
    *  tab. Receivers create their own blob URL on assembly. */
   const uploadMedia = useCallback(async (file: File): Promise<{ url: string; type: "image" | "file"; mimeType: string; name: string } | null> => {
     if (!session) return null;
-    if (file.size > 32 * 1024 * 1024) {
-      throw new Error("文件超过 32 MB，P2P 传输已拒绝（避免阻塞通道）");
+    if (file.size > MAX_FILE_BYTES) {
+      throw new Error("文件超过 256 MB，P2P 传输已拒绝");
     }
     const transferId = crypto.randomUUID();
     // Fire the chunked broadcast to peers — non-blocking; we don't await

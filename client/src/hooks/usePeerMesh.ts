@@ -12,6 +12,19 @@ import type { Socket } from "socket.io-client";
  *
  * Mesh model: every peer connects to every other peer (N² for N
  * participants). Practical up to ~8–10 peers; UI keeps a soft cap.
+ *
+ * ## Binary frame protocol for file chunks
+ *
+ * Text frames (JSON string): file-meta, file-end, chat, typing, …
+ * Binary frames (ArrayBuffer): file chunk data
+ *
+ * Binary frame layout:
+ *   [0..35]  transferId  — 36 ASCII bytes (UUID)
+ *   [36..39] seq         — Uint32 big-endian chunk sequence number
+ *   [40..]   data        — raw binary payload (up to 64 KB)
+ *
+ * Using ArrayBuffer eliminates the 33% base64 overhead and the O(n)
+ * String.fromCharCode encode/decode loops from the old JSON approach.
  */
 
 export interface MeshPeer {
@@ -54,6 +67,9 @@ interface UsePeerMeshOpts {
    *  reconciles connections against this list — adds new, drops removed. */
   desiredPeers: Array<{ sessionId: string; nickname: string; color: string }>;
   onMessage: (msg: MeshIncomingMessage) => void;
+  /** Called when a peer is dropped (disconnect / leave) so the caller
+   *  can clean up any in-flight state keyed by that sessionId. */
+  onPeerDrop?: (sessionId: string) => void;
 }
 
 const RTC_CONFIG: RTCConfiguration = {
@@ -70,11 +86,13 @@ const RTC_CONFIG: RTCConfiguration = {
   ],
 };
 
-export function usePeerMesh({ socket, mySessionId, myNickname, desiredPeers, onMessage }: UsePeerMeshOpts) {
+export function usePeerMesh({ socket, mySessionId, myNickname, desiredPeers, onMessage, onPeerDrop }: UsePeerMeshOpts) {
   const peersRef = useRef<Map<string, PeerEntry>>(new Map());
   const [peers, setPeers] = useState<MeshPeer[]>([]);
   const onMessageRef = useRef(onMessage);
   useEffect(() => { onMessageRef.current = onMessage; }, [onMessage]);
+  const onPeerDropRef = useRef(onPeerDrop);
+  useEffect(() => { onPeerDropRef.current = onPeerDrop; }, [onPeerDrop]);
 
   const publishState = useCallback(() => {
     const out: MeshPeer[] = [];
@@ -98,6 +116,7 @@ export function usePeerMesh({ socket, mySessionId, myNickname, desiredPeers, onM
     try { entry.pc.close(); } catch { /* ignore */ }
     peersRef.current.delete(sessionId);
     publishState();
+    onPeerDropRef.current?.(sessionId);
   }, [publishState]);
 
   /** Open a new RTCPeerConnection toward the given peer. Sets up the
@@ -150,6 +169,7 @@ export function usePeerMesh({ socket, mySessionId, myNickname, desiredPeers, onM
     const entry = peersRef.current.get(sessionId);
     if (!entry) return;
     entry.dc = dc;
+    dc.binaryType = "arraybuffer";
     dc.onopen = () => {
       console.debug("[mesh] dc open ->", sessionId);
       entry.ready = true;
@@ -161,6 +181,23 @@ export function usePeerMesh({ socket, mySessionId, myNickname, desiredPeers, onM
       publishState();
     };
     dc.onmessage = (ev) => {
+      if (ev.data instanceof ArrayBuffer) {
+        // Binary frame = file chunk.
+        // Layout: [0..35] transferId (36-byte UUID ASCII)
+        //         [36..39] seq (Uint32 BE)
+        //         [40..]   raw data
+        if (ev.data.byteLength < 40) return;
+        const transferId = new TextDecoder().decode(new Uint8Array(ev.data, 0, 36));
+        const seq = new DataView(ev.data).getUint32(36, false);
+        const data = new Uint8Array(ev.data, 40);
+        onMessageRef.current({
+          fromSessionId: sessionId,
+          fromNickname: entry.nickname,
+          fromColor: entry.color,
+          payload: { kind: "file-chunk", transferId, seq, data },
+        });
+        return;
+      }
       try {
         const payload = JSON.parse(ev.data as string);
         onMessageRef.current({
@@ -283,45 +320,75 @@ export function usePeerMesh({ socket, mySessionId, myNickname, desiredPeers, onM
     console.debug("[mesh] broadcast — sent:", sent, "pending:", pending);
   }, []);
 
-  /** Broadcast a binary file as chunked DataChannel messages. The
-   *  receiver pieces it back together by transferId. Respects
-   *  bufferedAmount backpressure so we don't overflow the channel. */
+  /** Broadcast a binary file as chunked DataChannel messages using
+   *  native ArrayBuffer frames — no base64, no JSON wrapping for data.
+   *
+   *  Protocol:
+   *    text frame  { kind:"file-meta", transferId, name, mimeType, size }
+   *    binary frames  [36-byte UUID][4-byte seq BE][raw data]  × N
+   *    text frame  { kind:"file-end", transferId }
+   *
+   *  Sender reads the blob in 64 KB slices (never loads the whole file
+   *  into memory at once) and applies per-peer SCTP backpressure.
+   *  Each peer sends independently — a slow peer doesn't block others. */
   const broadcastChunked = useCallback(async (
     transferId: string,
     meta: { name: string; mimeType: string; size: number; kind: "file-meta" },
     blob: Blob,
     onProgress?: (sentBytes: number) => void,
   ) => {
-    // 1. Announce metadata so receivers can prep state + UI.
     broadcast({ ...meta, transferId });
-    // 2. Stream chunks. Chromium SCTP recommends ≤16 KB per message
-    //    even though the spec allows 64 KB. Stay safe.
-    const CHUNK = 16 * 1024;
-    const HIGH_WATER = 512 * 1024;
-    const buf = new Uint8Array(await blob.arrayBuffer());
-    let offset = 0;
-    let seq = 0;
-    while (offset < buf.length) {
-      const slice = buf.slice(offset, offset + CHUNK);
-      // base64 — DataChannel.send() supports ArrayBuffer too, but
-      // JSON-wrapping keeps message dispatch uniform with text messages.
-      let bin = "";
-      for (let i = 0; i < slice.length; i++) bin += String.fromCharCode(slice[i]);
-      const b64 = btoa(bin);
-      const msg = JSON.stringify({ kind: "file-chunk", transferId, seq, data: b64 });
-      await Promise.all(Array.from(peersRef.current.values()).map(async (entry) => {
-        if (!entry.dc || entry.dc.readyState !== "open") return;
-        // Backpressure: wait if buffer is getting full.
-        while (entry.dc.bufferedAmount > HIGH_WATER) {
-          await new Promise((r) => setTimeout(r, 20));
+
+    // 64 KB chunks: 4× fewer round-trips vs the old 16 KB with no
+    // compatibility risk (Chrome/Firefox tested safe at 64 KB SCTP).
+    const CHUNK = 64 * 1024;
+    // Stay safely below Chrome's 256 KB SCTP send buffer default.
+    const HIGH_WATER = 256 * 1024;
+
+    const idBytes = new TextEncoder().encode(transferId); // 36 ASCII bytes
+
+    // Launch one async sender per peer so a slow peer's backpressure
+    // doesn't stall the faster ones.
+    const peerList = Array.from(peersRef.current.entries());
+
+    let minOffset = 0; // for progress reporting — min across all peers
+    const peerOffsets = new Map(peerList.map(([id]) => [id, 0]));
+
+    const peerTasks = peerList.map(async ([sid, entry]) => {
+      let offset = 0;
+      let seq = 0;
+      while (offset < blob.size) {
+        if (!entry.dc || entry.dc.readyState !== "open") break;
+        // Read one chunk at a time — no full-file arrayBuffer() allocation.
+        const dataLen = Math.min(CHUNK, blob.size - offset);
+        const sliceBuf = new Uint8Array(await blob.slice(offset, offset + dataLen).arrayBuffer());
+
+        // Build binary frame: [transferId(36)][seq(4)][data]
+        const frame = new Uint8Array(40 + dataLen);
+        frame.set(idBytes, 0);
+        new DataView(frame.buffer).setUint32(36, seq, false);
+        frame.set(sliceBuf, 40);
+
+        // Backpressure: spin until SCTP buffer drains below HIGH_WATER.
+        // Re-check readyState in the loop so a channel that closes while
+        // we're waiting doesn't spin forever on a buffer that never drains.
+        while (entry.dc.bufferedAmount > HIGH_WATER && entry.dc.readyState === "open") {
+          await new Promise((r) => setTimeout(r, 10));
         }
-        try { entry.dc.send(msg); } catch { /* drop */ }
-      }));
-      offset += CHUNK;
-      seq++;
-      onProgress?.(Math.min(offset, buf.length));
-    }
-    // 3. Send completion marker.
+        if (entry.dc.readyState !== "open") break;
+        try { entry.dc.send(frame.buffer); } catch { /* channel closed mid-send */ }
+
+        offset += dataLen;
+        seq++;
+
+        // Update progress using the slowest peer's position.
+        peerOffsets.set(sid, offset);
+        minOffset = Math.min(...Array.from(peerOffsets.values()));
+        onProgress?.(minOffset);
+      }
+    });
+
+    await Promise.all(peerTasks);
     broadcast({ kind: "file-end", transferId });
   }, [broadcast]);
 

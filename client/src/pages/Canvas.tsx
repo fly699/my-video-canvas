@@ -355,6 +355,13 @@ function CanvasInner({ projectId }: { projectId: number }) {
   const [showFilmstrip, setShowFilmstrip] = useState(false);
   const [showTimeline, setShowTimeline] = useState(false);
   const [canvasBg, setCanvasBg] = useState<CanvasBg>(() => loadCanvasBg());
+  // Keep --c-canvas in sync with the picker so all components using
+  // var(--c-canvas) (node borders, inset previews, vignette) match the
+  // user-chosen background color.
+  useEffect(() => {
+    document.documentElement.style.setProperty("--c-canvas", canvasBg.bgColor);
+    return () => { document.documentElement.style.removeProperty("--c-canvas"); };
+  }, [canvasBg.bgColor]);
   const [showSnapshots, setShowSnapshots] = useState(false);
   const [globalAspectRatio, setGlobalAspectRatio] = useState<string | null>(null);
   const [showRatioPicker, setShowRatioPicker] = useState(false);

@@ -18,6 +18,10 @@ export interface LanSession {
    *  into a shared "LAN" namespace. For this server clientIp IS the
    *  networkGroupId (server's view of the user is always the gateway). */
   networkGroupId: string;
+  /** Client-generated UUID (localStorage) used to distinguish different
+   *  devices/profiles that share the same nickname and clientIp (e.g. two
+   *  people on the same NAT who both pick "Alice"). */
+  deviceId?: string;
   lastSeen: number;
 }
 
@@ -46,14 +50,18 @@ class LanChatBus {
     return NICKNAME_COLORS[h % NICKNAME_COLORS.length];
   }
 
-  /** Create or reuse a session. Same (nickname, clientIp) returns the
-   *  existing session — refreshing or opening another tab on the same
-   *  machine doesn't create a duplicate "Alice" in the online list. */
-  joinSession(nickname: string, clientIp: string): JoinResult {
+  /** Create or reuse a session. Same (nickname, clientIp, deviceId) returns
+   *  the existing session — refreshing or opening another tab on the same
+   *  device doesn't create a duplicate in the online list. deviceId is a
+   *  client-generated UUID stored in localStorage; including it in the key
+   *  prevents two different users with the same nickname behind the same NAT
+   *  from colliding into one shared sessionId. */
+  joinSession(nickname: string, clientIp: string, deviceId?: string): JoinResult {
     const trimmed = nickname.trim();
     if (!trimmed) throw new Error("nickname required");
     const existing = Array.from(this.sessions.values()).find(
-      (s) => s.nickname === trimmed && s.clientIp === clientIp,
+      (s) => s.nickname === trimmed && s.clientIp === clientIp
+        && (deviceId ? s.deviceId === deviceId : !s.deviceId),
     );
     if (existing) {
       existing.lastSeen = Date.now();
@@ -71,6 +79,7 @@ class LanChatBus {
       nickname: trimmed,
       color,
       clientIp,
+      deviceId,
       networkGroupId: clientIp,
       lastSeen: Date.now(),
     });

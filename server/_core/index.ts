@@ -285,6 +285,7 @@ async function startServer() {
     });
 
     socket.on("lan-chat:typing", ({ roomId }: { roomId: number }) => {
+      if (!joinedRooms.has(roomId)) return;
       const sess = lanChatBus.getSession(sessionId);
       if (!sess) return;
       socket.to(`lan-room:${roomId}`).emit("lan-chat:typing", {

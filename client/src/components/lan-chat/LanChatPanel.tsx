@@ -82,7 +82,7 @@ export function LanChatPanel({ visible, compact = false }: LanChatPanelProps) {
     try {
       const arr = Array.from(files);
       for (const f of arr) {
-        if (f.size > 16 * 1024 * 1024) continue;
+        if (f.size > 256 * 1024 * 1024) continue;
         const result = await uploadMedia(f);
         if (!result) continue;
         setPending((prev) => [...prev, result]);
@@ -298,7 +298,7 @@ export function LanChatPanel({ visible, compact = false }: LanChatPanelProps) {
             </p>
           )}
           {messages.map((msg) => (
-            <MessageRow key={msg.id} msg={msg} isOwn={msg.nickname === session?.nickname} />
+            <MessageRow key={msg.id} msg={msg} isOwn={msg.ownByMe ?? msg.nickname === session?.nickname} />
           ))}
           {typing.length > 0 && (
             <p className="text-[10px] italic" style={{ color: "var(--c-t4)" }}>
@@ -354,7 +354,7 @@ export function LanChatPanel({ visible, compact = false }: LanChatPanelProps) {
             disabled={uploading}
             className="w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0"
             style={{ background: "transparent", border: "1px solid var(--c-bd2)", color: "var(--c-t3)" }}
-            title="上传图片/视频（最大 16 MB）"
+            title="上传文件（最大 256 MB，纯 P2P 内网直传）"
           >
             {uploading ? <Loader2 className="w-3 h-3 animate-spin" /> : <Paperclip className="w-3 h-3" />}
           </button>

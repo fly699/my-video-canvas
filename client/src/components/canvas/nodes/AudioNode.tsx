@@ -647,7 +647,6 @@ export const AudioNode = memo(function AudioNode({ id, selected, data }: Props) 
               onClick={handleGenerateMusic}
               label="生成配乐"
             />
-            {audioPlayer}
           </>
         )}
 
@@ -761,7 +760,6 @@ export const AudioNode = memo(function AudioNode({ id, selected, data }: Props) 
               onClick={handleGenerateTTS}
               label={isLegacyModel ? "请先换用 OpenAI TTS" : "生成配音"}
             />
-            {audioPlayer}
           </>
           );
         })()}
@@ -804,7 +802,6 @@ export const AudioNode = memo(function AudioNode({ id, selected, data }: Props) 
               />
             </div>
             <GenerateBtn disabled={!payload.sfxPrompt?.trim()} loading={false} onClick={handleGenerateSFXStub} label="生成音效（即将上线）" />
-            {audioPlayer}
           </>
         )}
 
@@ -813,7 +810,6 @@ export const AudioNode = memo(function AudioNode({ id, selected, data }: Props) 
           <>
             {payload.url ? (
               <>
-                {audioPlayer}
                 <button
                   onClick={() => fileInputRef.current?.click()}
                   className="nodrag flex items-center justify-center gap-1 w-full py-1.5 rounded-lg text-[10px] transition-all"
@@ -854,6 +850,15 @@ export const AudioNode = memo(function AudioNode({ id, selected, data }: Props) 
 
       </div>
       </div>{/* end collapse wrapper */}
+      {/* Player is rendered outside the collapse wrapper so it stays visible
+          even when the node is not selected — music / dubbing generation can
+          take 10-30 s; users often click elsewhere while waiting, collapsing
+          the node before the result arrives. */}
+      {audioPlayer && (
+        <div className="px-3 pb-3">
+          {audioPlayer}
+        </div>
+      )}
     </BaseNode>
   );
 });

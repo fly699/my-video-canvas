@@ -86,6 +86,11 @@ export const lanChatRouter = router({
       // the legacy "public" pool here so old clients can't slip back
       // into the global free-for-all.
       groupId: groupIdSchema,
+      // Client-generated persistent device fingerprint (UUID stored in
+      // localStorage). Included in the session dedup key so two different
+      // users on the same LAN who pick the same nickname each get their
+      // own session instead of colliding into one shared sessionId.
+      deviceId: z.string().min(1).max(64).optional(),
     }))
     .mutation(async ({ ctx, input }) => {
       if (input.groupId === "public") {
@@ -107,7 +112,7 @@ export const lanChatRouter = router({
         }
       }
       await ensureLobby(input.groupId);
-      const res = lanChatBus.joinSession(input.nickname, input.groupId);
+      const res = lanChatBus.joinSession(input.nickname, input.groupId, input.deviceId);
       // Audit log — record both the client-reported IP (extracted from
       // groupId when source is "ip-…") and the server-observed clientIp.
       // Mismatch tells admins the user is behind a reverse proxy / VPN
