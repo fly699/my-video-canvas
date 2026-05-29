@@ -17,12 +17,19 @@ export interface ConversationSummary {
   unread: number; peer?: { id: number; name: string | null };
 }
 
+export interface JoinableRoom { id: number; title: string | null; isPrivate: boolean; mode: string }
+
 interface ChatContextValue {
   conversations: ConversationSummary[];
   refetchConversations: () => void;
+  joinableRooms: JoinableRoom[];
+  myUserId: number | null;
   activeId: number | null;
   activeConv: ConversationSummary | null;
   selectConversation: (id: number) => void;
+  joinRoom: (id: number, password?: string) => Promise<void>;
+  deleteRoom: (id: number) => Promise<void>;
+  leaveRoom: (id: number) => Promise<void>;
   messages: ChatWireMessage[];
   presence: ChatPresenceUser[];
   typingUsers: string[];
@@ -56,6 +63,14 @@ export function ChatProvider({ children }: { children: React.ReactNode }) {
   const settingsQuery = trpc.chat.getSettings.useQuery(undefined, { refetchOnWindowFocus: false });
   const maxFileMb = settingsQuery.data?.maxFileMb ?? 16;
   const serverlessAllowed = settingsQuery.data?.serverlessAllowed ?? true;
+  const joinableQuery = trpc.chat.listJoinableRooms.useQuery(undefined, { refetchOnWindowFocus: false });
+  const joinableRooms = useMemo(() => (joinableQuery.data as JoinableRoom[] | undefined) ?? [], [joinableQuery.data]);
+  const meQuery = trpc.auth.me.useQuery(undefined, { refetchOnWindowFocus: false });
+  const myUserId = meQuery.data?.id ?? null;
+
+  const joinRoomMut = trpc.chat.joinRoom.useMutation();
+  const deleteRoomMut = trpc.chat.deleteRoom.useMutation();
+  const leaveRoomMut = trpc.chat.leaveRoom.useMutation();
 
   const [activeId, setActiveId] = useState<number | null>(null);
   const [messages, setMessages] = useState<ChatWireMessage[]>([]);
@@ -145,7 +160,12 @@ export function ChatProvider({ children }: { children: React.ReactNode }) {
       }, 3000));
     });
 
-    socket.on("conversation:created", () => utils.chat.listConversations.invalidate());
+    socket.on("conversation:created", () => { utils.chat.listConversations.invalidate(); utils.chat.listJoinableRooms.invalidate(); });
+    socket.on("conversation:deleted", (p: { conversationId: number }) => {
+      if (p.conversationId === activeIdRef.current) { activeIdRef.current = null; setActiveId(null); setMessages([]); }
+      utils.chat.listConversations.invalidate();
+      utils.chat.listJoinableRooms.invalidate();
+    });
     socket.on("conversation:mode-changed", () => {
       utils.chat.listConversations.invalidate();
       if (activeIdRef.current) void reloadMessages(activeIdRef.current);
@@ -423,9 +443,29 @@ export function ChatProvider({ children }: { children: React.ReactNode }) {
     if (id) socketRef.current?.emit("chat:typing", { conversationId: id });
   }, []);
 
+  const joinRoom = useCallback(async (id: number, password?: string) => {
+    await joinRoomMut.mutateAsync({ conversationId: id, password });
+    await Promise.all([convQuery.refetch(), joinableQuery.refetch()]);
+    selectConversation(id);
+  }, [joinRoomMut, convQuery, joinableQuery, selectConversation]);
+
+  const deleteRoom = useCallback(async (id: number) => {
+    await deleteRoomMut.mutateAsync({ conversationId: id });
+    if (activeIdRef.current === id) { activeIdRef.current = null; setActiveId(null); setMessages([]); }
+    await Promise.all([convQuery.refetch(), joinableQuery.refetch()]);
+  }, [deleteRoomMut, convQuery, joinableQuery]);
+
+  const leaveRoom = useCallback(async (id: number) => {
+    await leaveRoomMut.mutateAsync({ conversationId: id });
+    if (activeIdRef.current === id) { activeIdRef.current = null; setActiveId(null); setMessages([]); }
+    await Promise.all([convQuery.refetch(), joinableQuery.refetch()]);
+  }, [leaveRoomMut, convQuery, joinableQuery]);
+
   const value: ChatContextValue = {
-    conversations, refetchConversations: () => convQuery.refetch(),
-    activeId, activeConv, selectConversation, messages, presence, typingUsers,
+    conversations, refetchConversations: () => { convQuery.refetch(); joinableQuery.refetch(); },
+    joinableRooms, myUserId,
+    activeId, activeConv, selectConversation, joinRoom, deleteRoom, leaveRoom,
+    messages, presence, typingUsers,
     connected, sendText, sendFile, emitTyping, loadingMessages,
     maxFileMb, serverlessAllowed,
   };

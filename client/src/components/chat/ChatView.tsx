@@ -1,12 +1,17 @@
 import { useEffect, useRef, useState } from "react";
-import { Lock, Paperclip, Send, ShieldCheck, Users } from "lucide-react";
+import { Lock, Paperclip, Send, ShieldCheck, Users, Trash2, LogOut } from "lucide-react";
 import { useChat, SERVERLESS_ENCRYPT_PROMPT_BYTES } from "@/hooks/useChat";
 import { trpc } from "@/lib/trpc";
 import type { ChatWireMessage, ChatFileRef } from "@shared/types";
 import { toast } from "sonner";
 
 export function ChatView() {
-  const { activeConv, messages, presence, typingUsers, sendText, sendFile, emitTyping, connected, loadingMessages, maxFileMb, serverlessAllowed } = useChat();
+  const { activeConv, messages, presence, typingUsers, sendText, sendFile, emitTyping, connected, loadingMessages, maxFileMb, serverlessAllowed, myUserId, deleteRoom, leaveRoom } = useChat();
+  const detailQuery = trpc.chat.getConversation.useQuery(
+    { conversationId: activeConv?.id ?? 0 },
+    { enabled: !!activeConv && activeConv.type === "group" },
+  );
+  const isOwner = !!detailQuery.data && myUserId != null && detailQuery.data.createdBy === myUserId;
   const [text, setText] = useState("");
   const [sending, setSending] = useState(false);
   const [pendingFile, setPendingFile] = useState<File | null>(null);
@@ -56,6 +61,20 @@ export function ChatView() {
     try { await sendFile(f, { encrypt }); } catch (err) { toast.error(err instanceof Error ? err.message : "文件发送失败"); }
   }
 
+  async function onDelete() {
+    if (!activeConv) return;
+    if (!confirm("确定删除该群聊？所有消息将被清除，且对所有成员生效。")) return;
+    try { await deleteRoom(activeConv.id); toast.success("群聊已删除"); }
+    catch (e) { toast.error(e instanceof Error ? e.message : "删除失败"); }
+  }
+
+  async function onLeave() {
+    if (!activeConv) return;
+    if (!confirm("确定退出该群聊？")) return;
+    try { await leaveRoom(activeConv.id); toast.success("已退出群聊"); }
+    catch (e) { toast.error(e instanceof Error ? e.message : "退出失败"); }
+  }
+
   async function toggleMode() {
     if (activeConv!.type === "lobby") { toast.error("大厅模式不可更改"); return; }
     const next = activeConv!.mode === "server" ? "serverless" : "server";
@@ -80,6 +99,18 @@ export function ChatView() {
             <Users size={12} /> {presence.length} 在线 · {connected ? "已连接" : "连接中…"}
           </div>
         </div>
+        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+        {activeConv.type === "group" && (
+          isOwner ? (
+            <button onClick={onDelete} title="删除群聊（群主）" style={{ display: "inline-flex", alignItems: "center", gap: 6, fontSize: 12, fontWeight: 600, padding: "6px 12px", borderRadius: 8, cursor: "pointer", border: "1px solid rgba(239,68,68,0.3)", background: "rgba(239,68,68,0.12)", color: "#f87171" }}>
+              <Trash2 size={14} /> 删除
+            </button>
+          ) : (
+            <button onClick={onLeave} title="退出群聊" style={{ display: "inline-flex", alignItems: "center", gap: 6, fontSize: 12, fontWeight: 600, padding: "6px 12px", borderRadius: 8, cursor: "pointer", border: "1px solid var(--c-bd2, rgba(255,255,255,0.12))", background: "var(--c-elevated, rgba(255,255,255,0.05))", color: "var(--c-t1, #f0f0f4)" }}>
+              <LogOut size={14} /> 退出
+            </button>
+          )
+        )}
         {activeConv.type !== "lobby" && (
           <button onClick={toggleMode} title="切换工作模式" style={{
             display: "inline-flex", alignItems: "center", gap: 6, fontSize: 12, fontWeight: 600,
@@ -91,6 +122,7 @@ export function ChatView() {
             {activeConv.mode === "serverless" ? <><ShieldCheck size={14} /> 端到端加密</> : <>服务器模式</>}
           </button>
         )}
+        </div>
       </div>
 
       {/* messages */}
