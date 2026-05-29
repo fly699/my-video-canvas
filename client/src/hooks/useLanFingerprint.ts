@@ -12,9 +12,15 @@ import { trpc } from "@/lib/trpc";
  *      would fail on second try). source: "invite".
  *   1. URL hash `#g=<code>` (1–40 chars, alnum/._-) → "code-{code}".
  *      Reusable invite (no expiry, no usage limit).
- *   2. Browser-side public IP via api.ipify.org (IPv4-only) → backup
- *      icanhazip.com (plain text). source: "ip".
- *   3. Both fail → state: "error" — caller must NOT let the user join.
+ *   2. SERVER-observed client IP (lanChat.clientInfo) → "ip-{ip}". This is
+ *      the primary, reliable path: no third-party dependency, works on
+ *      air-gapped LANs, and isn't blocked by ad-blockers / CORS. For a
+ *      cloud server, all browsers behind one office NAT egress through the
+ *      same public IP, so they land in the same group.
+ *   3. Browser-side public IP via api.ipify.org (IPv4-only) → backup
+ *      icanhazip.com (plain text). Only tried if the server couldn't tell
+ *      us our IP. source: "ip".
+ *   4. All fail → state: "error" — caller must NOT let the user join.
  */
 
 export type Fingerprint =
@@ -70,9 +76,16 @@ async function detectPublicIpv4(): Promise<string | null> {
   return null;
 }
 
+/** Turn an IP (v4 or v6) into a charset-safe groupId fragment so it passes
+ *  the server's groupIdSchema (which forbids the `:` in IPv6). */
+function ipToGroupId(ip: string): string {
+  return `ip-${ip.replace(/[^A-Za-z0-9._-]/g, "_")}`;
+}
+
 export function useLanFingerprint(): Fingerprint {
   const [fp, setFp] = useState<Fingerprint>({ state: "loading" });
   const redeemMu = trpc.lanChat.redeemInvite.useMutation();
+  const utils = trpc.useUtils();
 
   useEffect(() => {
     let cancelled = false;
@@ -125,16 +138,27 @@ export function useLanFingerprint(): Fingerprint {
       }
     }
 
-    // 3. Async public IP fetch.
+    // 3. Server-observed IP first (reliable), then browser-side ipify backup.
     (async () => {
-      const ip = await detectPublicIpv4();
+      // 3a. Ask our own server what IP it sees us coming from. No third
+      //     party, works offline-LAN, can't be blocked by ad-blockers.
+      let ip: string | null = null;
+      try {
+        const info = await utils.lanChat.clientInfo.fetch();
+        if (info?.ip) ip = info.ip;
+      } catch { /* server unreachable — fall through to ipify */ }
+
+      // 3b. Fall back to browser-side public-IP services only if the server
+      //     couldn't tell us (e.g. it sees a private/unknown address).
+      if (!ip) ip = await detectPublicIpv4();
+
       if (cancelled) return;
       if (ip) {
-        setFp({ state: "ready", groupId: `ip-${ip}`, source: "ip" });
+        setFp({ state: "ready", groupId: ipToGroupId(ip), source: "ip" });
       } else {
         setFp({
           state: "error",
-          message: "无法获取公网 IP — LAN 聊天不可用。请检查网络后刷新；或访问 /lan-chat#g=代号 用邀请链接跳过 IP 检测。",
+          message: "无法确定网络分组 — LAN 聊天不可用。请检查网络后刷新；或访问 /lan-chat#g=代号 用邀请链接跳过检测。",
         });
       }
     })();

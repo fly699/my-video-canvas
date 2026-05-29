@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { Send, Paperclip, Plus, X, FileText, Users, Loader2, Download, RefreshCw } from "lucide-react";
+import { Send, Paperclip, Plus, X, FileText, Users, Loader2, Download, RefreshCw, PanelLeftClose, PanelLeftOpen } from "lucide-react";
 import { useLanChat, type PendingAttachment } from "@/hooks/useLanChat";
 import { useLanChatNotifications } from "@/hooks/useLanChatNotifications";
 import type { ChatAttachment, LanChatMessage } from "../../../../shared/types";
@@ -49,6 +49,7 @@ export function LanChatPanel({ visible, compact = false }: LanChatPanelProps) {
   const [newRoomPassword, setNewRoomPassword] = useState("");
   const [showOnline, setShowOnline] = useState(false);
   const [showFiles, setShowFiles] = useState(false);
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -144,8 +145,25 @@ export function LanChatPanel({ visible, compact = false }: LanChatPanelProps) {
       onDrop={handleDrop}
       onClick={clearUnread}
     >
-      {/* Sidebar — rooms list (hidden in compact mode) */}
-      {!compact && (
+      {/* Collapsed rail — a thin strip with just an expand button. */}
+      {!compact && sidebarCollapsed && (
+        <div
+          className="flex flex-col flex-shrink-0 items-center py-2"
+          style={{ width: 32, borderRight: "1px solid var(--c-bd1)", background: "color-mix(in oklch, var(--c-base) 96%, transparent)" }}
+        >
+          <button
+            onClick={() => setSidebarCollapsed(false)}
+            className="w-6 h-6 rounded flex items-center justify-center"
+            style={{ color: "var(--c-t3)" }}
+            title="展开房间栏"
+          >
+            <PanelLeftOpen style={{ width: 14, height: 14 }} />
+          </button>
+        </div>
+      )}
+
+      {/* Sidebar — rooms list (hidden in compact mode or when collapsed) */}
+      {!compact && !sidebarCollapsed && (
         <div
           className="flex flex-col flex-shrink-0"
           style={{
@@ -158,9 +176,14 @@ export function LanChatPanel({ visible, compact = false }: LanChatPanelProps) {
             <span className="text-[10px] font-semibold uppercase tracking-wider" style={{ color: "var(--c-t4)" }}>
               房间
             </span>
-            <span className="ml-auto text-[10px]" style={{ color: connected ? "oklch(0.72 0.18 155)" : "var(--c-t4)" }}>
-              {connected ? "● 在线" : "○ 离线"}
-            </span>
+            <button
+              onClick={() => setSidebarCollapsed(true)}
+              className="ml-auto w-5 h-5 rounded flex items-center justify-center"
+              style={{ color: "var(--c-t4)" }}
+              title="折叠房间栏"
+            >
+              <PanelLeftClose style={{ width: 13, height: 13 }} />
+            </button>
           </div>
           <div className="flex-1 overflow-y-auto px-1 py-1.5 space-y-0.5">
             {rooms.map((r) => (
@@ -261,7 +284,7 @@ export function LanChatPanel({ visible, compact = false }: LanChatPanelProps) {
           )}
           <button
             onClick={() => reconnect()}
-            className="ml-auto flex items-center gap-1 px-2 py-0.5 rounded text-[10px]"
+            className="ml-auto flex items-center gap-1.5 px-2 py-0.5 rounded text-[10px]"
             style={{
               background: connected ? "var(--c-surface)" : "oklch(0.72 0.18 45 / 0.12)",
               border: `1px solid ${connected ? "var(--c-bd2)" : "oklch(0.72 0.18 45 / 0.35)"}`,
@@ -269,6 +292,15 @@ export function LanChatPanel({ visible, compact = false }: LanChatPanelProps) {
             }}
             title={connected ? "已连接 · 点击重新连接" : "未连接 · 点击重新连接"}
           >
+            {/* Online indicator light — green when connected, amber otherwise. */}
+            <span
+              className="rounded-full"
+              style={{
+                width: 6, height: 6, flexShrink: 0,
+                background: connected ? "oklch(0.72 0.18 155)" : "oklch(0.72 0.18 45)",
+                boxShadow: connected ? "0 0 0 2px oklch(0.72 0.18 155 / 0.25)" : "none",
+              }}
+            />
             <RefreshCw style={{ width: 10, height: 10 }} />
             {connected ? "在线" : "重连"}
           </button>

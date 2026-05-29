@@ -69,6 +69,24 @@ async function ensureLobby(networkGroupId: string): Promise<void> {
 }
 
 export const lanChatRouter = router({
+  // Server-observed client IP — the reliable, third-party-free way to group
+  // LAN users. For a cloud-hosted server, every browser behind the same
+  // office/home NAT egresses through one public IP, so the server sees the
+  // same clientIp for all of them → same group. This replaces the fragile
+  // browser-side ipify/icanhazip fetch (which fails on rate-limits, CORS,
+  // ad-blockers, or air-gapped LANs and then locks users out entirely).
+  // Returns a normalized IPv4/IPv6 string, or null when the server itself
+  // can't determine it (e.g. "unknown").
+  clientInfo: publicProcedure.query(({ ctx }) => {
+    let ip = ctx.clientIp || "";
+    // Normalize IPv4-mapped IPv6 (::ffff:1.2.3.4) and IPv6 loopback.
+    if (ip.startsWith("::ffff:")) ip = ip.slice(7);
+    if (ip === "::1") ip = "127.0.0.1";
+    const usable = /^[0-9a-fA-F.:]{3,45}$/.test(ip) && ip !== "unknown";
+    return { ip: usable ? ip : null };
+  }),
+
+
   // Nickname + LAN groupId → sessionId. The groupId is computed CLIENT-SIDE
   // (WebRTC ICE host candidate → /24 subnet, or URL #g= override, or
   // "public" fallback). Server trusts what the client reports — this is
