@@ -30,7 +30,7 @@ export default function LanChatPage() {
     return (
       <NicknamePicker
         fingerprint={fingerprint}
-        onSubmit={async (n) => { await join(n); }}
+        onSubmit={async (n, gid) => { await join(n, gid); }}
       />
     );
   }

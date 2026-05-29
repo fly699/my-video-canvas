@@ -38,6 +38,10 @@ interface SessionInfo {
   sessionId: string;
   nickname: string;
   color: string;
+  /** The groupId this session was joined under. Used to detect IP/invite
+   *  changes across page reloads so the old session is evicted and the user
+   *  is prompted to re-join under the new group. */
+  groupId: string;
 }
 
 /** A staged attachment carries the original File so the actual P2P
@@ -52,7 +56,7 @@ interface LanChatContextValue {
    *  card; "ready" → unlock the nickname form. */
   fingerprint: ReturnType<typeof useLanFingerprint>;
   session: SessionInfo | null;
-  join: (nickname: string) => Promise<SessionInfo>;
+  join: (nickname: string, groupId?: string) => Promise<SessionInfo>;
   clearSession: () => void;
   rooms: LanChatRoom[];
   activeRoomId: number;
@@ -100,8 +104,9 @@ export function LanChatProvider({ children }: { children: ReactNode }) {
       validate: (v) => {
         if (!v || typeof v !== "object") return null;
         const o = v as Partial<SessionInfo>;
-        if (typeof o.sessionId !== "string" || typeof o.nickname !== "string" || typeof o.color !== "string") return null;
-        return { sessionId: o.sessionId, nickname: o.nickname, color: o.color };
+        if (typeof o.sessionId !== "string" || typeof o.nickname !== "string" ||
+            typeof o.color !== "string" || typeof o.groupId !== "string") return null;
+        return { sessionId: o.sessionId, nickname: o.nickname, color: o.color, groupId: o.groupId };
       },
     },
   );
@@ -134,7 +139,7 @@ export function LanChatProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     if (!session || fingerprint.state !== "ready") return;
     let cancelled = false;
-    loadRecentMessages(fingerprint.groupId).then((rows) => {
+    loadRecentMessages(session.groupId).then((rows) => {
       if (cancelled) return;
       setMessages(rows.map((r) => ({
         id: hashId(r.id),
@@ -197,6 +202,32 @@ export function LanChatProvider({ children }: { children: ReactNode }) {
       enabled: !!session, // wait until joinSession finishes
     },
   );
+
+  // When the fingerprint resolves and the stored session's groupId is no longer
+  // valid, evict the old session so the nickname picker re-appears.
+  //
+  // Eviction rules by groupId prefix:
+  //   ip-*   → evict if IP changed (not in any detected group)
+  //   code-* → evict only if fingerprint has a hash group that's DIFFERENT
+  //             (i.e. the URL hash changed). If fingerprint has no hash group
+  //             the user manually chose a code — keep the session.
+  //   invite → never auto-evict (sessionStorage and server session handle it)
+  useEffect(() => {
+    if (!session || fingerprint.state !== "ready") return;
+    const knownGroupIds = fingerprint.groups.map((g) => g.groupId);
+    if (knownGroupIds.includes(session.groupId)) return; // still valid
+
+    if (session.groupId.startsWith("ip-")) {
+      // IP changed — evict so user re-picks under the new IP.
+      setSessionState(null);
+    } else if (session.groupId.startsWith("code-")) {
+      // Only evict if the fingerprint now has a different hash-based code group.
+      // If there's no hash group the user typed the code manually — preserve it.
+      const hasHashGroup = fingerprint.groups.some((g) => g.source === "hash");
+      if (hasHashGroup) setSessionState(null);
+    }
+    // invite: never auto-evict
+  }, [session, fingerprint, setSessionState]);
 
   // Establish socket when session changes. Guard against stale handlers
   // from a prior effect run (strict-mode double-invoke) writing state
@@ -329,13 +360,15 @@ export function LanChatProvider({ children }: { children: ReactNode }) {
   }, [connected]);
 
   // ── Actions ────────────────────────────────────────────────────────────────
-  const join = useCallback(async (nickname: string) => {
+  const join = useCallback(async (nickname: string, groupId?: string) => {
     if (fingerprint.state !== "ready") {
       throw new Error("公网 IP 未就绪，无法加入聊天");
     }
-    const res = await joinMu.mutateAsync({ nickname, groupId: fingerprint.groupId, deviceId: getOrCreateDeviceId() });
-    setSessionState(res);
-    return res;
+    const resolvedGroupId = groupId ?? fingerprint.groupId;
+    const res = await joinMu.mutateAsync({ nickname, groupId: resolvedGroupId, deviceId: getOrCreateDeviceId() });
+    const info: SessionInfo = { sessionId: res.sessionId, nickname: res.nickname, color: res.color, groupId: resolvedGroupId };
+    setSessionState(info);
+    return info;
   }, [joinMu, setSessionState, fingerprint]);
 
   // ── WebRTC mesh wiring ────────────────────────────────────────────────
@@ -389,7 +422,7 @@ export function LanChatProvider({ children }: { children: ReactNode }) {
       const roomId = typeof p.roomId === "number" ? p.roomId : activeRoomIdRef.current;
       historyAppend({
         id,
-        groupId: fingerprint.state === "ready" ? fingerprint.groupId : "unknown",
+        groupId: session?.groupId ?? "unknown",
         roomId,
         nickname: msg.fromNickname,
         color: msg.fromColor,
@@ -469,7 +502,7 @@ export function LanChatProvider({ children }: { children: ReactNode }) {
       const createdAt = Date.now();
       historyAppend({
         id,
-        groupId: fingerprint.state === "ready" ? fingerprint.groupId : "unknown",
+        groupId: session?.groupId ?? "unknown",
         roomId: entry.roomId,
         nickname: entry.fromNickname,
         color: entry.fromColor,
@@ -502,7 +535,7 @@ export function LanChatProvider({ children }: { children: ReactNode }) {
 
   const send = useCallback(async (content: string, attachments?: PendingAttachment[]) => {
     if (!session || fingerprint.state !== "ready") return;
-    const groupId = fingerprint.groupId;
+    const groupId = session.groupId;
     const roomId = activeRoomIdRef.current;
 
     // File attachments (have a backing File) travel as their own message

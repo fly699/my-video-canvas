@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { Send, Paperclip, Plus, X, FileText, Users, Loader2, Download, RefreshCw, PanelLeftClose, PanelLeftOpen, Trash2 } from "lucide-react";
+import { Send, Paperclip, Plus, X, FileText, Users, Loader2, Download, RefreshCw, PanelLeftClose, PanelLeftOpen, Trash2, LogOut } from "lucide-react";
 import { useLanChat, type PendingAttachment } from "@/hooks/useLanChat";
 import { useLanChatNotifications } from "@/hooks/useLanChatNotifications";
 import type { ChatAttachment, LanChatMessage } from "../../../../shared/types";
@@ -22,7 +22,7 @@ export function LanChatPanel({ visible, compact = false }: LanChatPanelProps) {
   const {
     session, rooms, activeRoomId, setActiveRoomId, createRoom, deleteRoom, enterRoom,
     messages, online, typing, connected,
-    send, sendTyping, uploadMedia, reconnect,
+    send, sendTyping, uploadMedia, reconnect, clearSession,
   } = chat;
 
   const latestMessage = messages.length > 0 ? messages[messages.length - 1] : null;
@@ -340,6 +340,25 @@ export function LanChatPanel({ visible, compact = false }: LanChatPanelProps) {
           >
             <Users style={{ width: 10, height: 10 }} />
             {online.length}
+          </button>
+          {/* Session switch — nickname chip that clears session on click */}
+          <button
+            onClick={() => clearSession()}
+            className="flex items-center gap-1 px-2 py-0.5 rounded text-[10px] max-w-[96px]"
+            style={{
+              background: "var(--c-surface)",
+              border: "1px solid var(--c-bd2)",
+              color: "var(--c-t3)",
+            }}
+            title={`当前昵称：${session?.nickname ?? ""}  ·  点击切换身份 / 重新加入`}
+          >
+            <span
+              className="truncate"
+              style={{ maxWidth: 60, color: session?.color ?? "var(--c-t2)", fontWeight: 500 }}
+            >
+              {session?.nickname ?? ""}
+            </span>
+            <LogOut style={{ width: 10, height: 10, flexShrink: 0 }} />
           </button>
         </div>
 
