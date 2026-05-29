@@ -1,6 +1,8 @@
 import "dotenv/config";
 import express from "express";
 import { createServer } from "http";
+import { createServer as createHttpsServer } from "https";
+import fs from "fs";
 import net from "net";
 import { createExpressMiddleware } from "@trpc/server/adapters/express";
 import { registerOAuthRoutes } from "./oauth";
@@ -46,7 +48,27 @@ async function findAvailablePort(startPort: number = 3000): Promise<number> {
 
 async function startServer() {
   const app = express();
-  const server = createServer(app);
+
+  // HTTPS when a self-signed (or real) cert pair exists — gives a secure
+  // context so end-to-end encryption + PWA install work on LAN.
+  let httpsCert: Buffer | null = null;
+  let httpsKey: Buffer | null = null;
+  try {
+    if (fs.existsSync(ENV.httpsCertFile) && fs.existsSync(ENV.httpsKeyFile)) {
+      httpsCert = fs.readFileSync(ENV.httpsCertFile);
+      httpsKey = fs.readFileSync(ENV.httpsKeyFile);
+    }
+  } catch (e) { console.warn("[HTTPS] cert read failed, falling back to HTTP:", e); }
+  const isHttps = !!(httpsCert && httpsKey);
+  const server = isHttps ? createHttpsServer({ cert: httpsCert!, key: httpsKey! }, app) : createServer(app);
+
+  // Let LAN clients download the public cert to trust it (no browser warning).
+  app.get("/cert.crt", (_req, res) => {
+    if (!httpsCert) { res.status(404).send("HTTPS not configured"); return; }
+    res.setHeader("Content-Type", "application/x-x509-ca-cert");
+    res.setHeader("Content-Disposition", "attachment; filename=avc-cert.crt");
+    res.send(httpsCert);
+  });
 
   // Trust the first proxy hop so req.ip reflects the real client IP from X-Forwarded-For.
   // This prevents IP spoofing via direct connections while supporting reverse-proxy deployments.
@@ -368,7 +390,9 @@ async function startServer() {
   }
 
   server.listen(port, () => {
-    console.log(`Server running on http://localhost:${port}/`);
+    const proto = isHttps ? "https" : "http";
+    console.log(`Server running on ${proto}://localhost:${port}/`);
+    if (isHttps) console.log(`[HTTPS] self-signed cert active — LAN clients can trust it via ${proto}://<本机IP>:${port}/cert.crt`);
   });
 }
 
