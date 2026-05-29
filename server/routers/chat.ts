@@ -344,7 +344,7 @@ export const chatRouter = router({
       const date = new Date().toISOString().slice(0, 10);
       const relKey = `chat/${conv.id}/${date}/${crypto.randomUUID()}-${safeName}`;
       if (!isStorageConfigured()) return { mode: "base64" as const };
-      const { uploadUrl, key, url } = await storagePresignPut(relKey);
+      const { uploadUrl, key, url } = await storagePresignPut(relKey, input.mimeType);
       return { mode: "presigned" as const, uploadUrl, key, url, name: safeName, kind: kindFromMime(input.mimeType) };
     }),
 
@@ -383,6 +383,18 @@ export const chatRouter = router({
   searchUsers: protectedProcedure
     .input(z.object({ q: z.string().trim().min(1).max(64) }))
     .query(async ({ ctx, input }) => searchUsersForChat(input.q, ctx.user.id)),
+
+  // Public (logged-in) subset of admin settings so the client enforces the same
+  // limits + shows the same warnings the admin configured.
+  getSettings: protectedProcedure.query(async () => {
+    const s = await getChatSettings().catch(() => null);
+    return {
+      maxFileMb: s?.maxFileMb ?? 16,
+      serverlessAllowed: s?.serverlessAllowed ?? true,
+      lobbyEnabled: s?.lobbyEnabled ?? true,
+      storageConfigured: isStorageConfigured(),
+    };
+  }),
 
   // ── E2E key exchange (serverless mode) ──────────────────────────────────────
   publishPublicKey: protectedProcedure

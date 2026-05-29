@@ -31,10 +31,14 @@ interface ChatContextValue {
   sendFile: (file: File, opts?: { encrypt?: boolean }) => Promise<void>;
   emitTyping: () => void;
   loadingMessages: boolean;
+  /** Admin-configured single-file size limit (MB). */
+  maxFileMb: number;
+  /** Whether the admin allows serverless (E2E) mode. */
+  serverlessAllowed: boolean;
 }
 
 /** Serverless files above this size prompt the user to optionally skip encryption for speed. */
-export const SERVERLESS_ENCRYPT_PROMPT_BYTES = 8 * 1024 * 1024;
+export const SERVERLESS_ENCRYPT_PROMPT_BYTES = 100 * 1024 * 1024;
 
 const ChatContext = createContext<ChatContextValue | null>(null);
 export const useChat = () => {
@@ -43,13 +47,15 @@ export const useChat = () => {
   return ctx;
 };
 
-const SERVERLESS_FILE_MAX = 1024 * 1024 * 1024; // 1GB relayed in streamed chunks
 const CHUNK = 256 * 1024; // 256KB per chunk (under the 8MB socket buffer)
 
 export function ChatProvider({ children }: { children: React.ReactNode }) {
   const utils = trpc.useUtils();
   const convQuery = trpc.chat.listConversations.useQuery(undefined, { refetchOnWindowFocus: false });
   const conversations = useMemo(() => (convQuery.data as ConversationSummary[] | undefined) ?? [], [convQuery.data]);
+  const settingsQuery = trpc.chat.getSettings.useQuery(undefined, { refetchOnWindowFocus: false });
+  const maxFileMb = settingsQuery.data?.maxFileMb ?? 16;
+  const serverlessAllowed = settingsQuery.data?.serverlessAllowed ?? true;
 
   const [activeId, setActiveId] = useState<number | null>(null);
   const [messages, setMessages] = useState<ChatWireMessage[]>([]);
@@ -351,8 +357,11 @@ export function ChatProvider({ children }: { children: React.ReactNode }) {
     const conv = conversations.find((c) => c.id === id);
     const kind: ChatFileRef["kind"] = file.type.startsWith("image/") ? "image" : file.type.startsWith("video/") ? "video" : "file";
 
+    // Enforce the admin-configured single-file limit for BOTH modes (single source of truth).
+    const maxBytes = maxFileMb * 1024 * 1024;
+    if (file.size > maxBytes) throw new Error(`文件超过管理员设置的上限 ${maxFileMb}MB`);
+
     if (conv?.mode === "serverless") {
-      if (file.size > SERVERLESS_FILE_MAX) throw new Error("文件过大（上限 1GB）");
       const encrypt = opts?.encrypt !== false; // default: encrypt
       const key = encrypt ? await getConversationKey(id, conv.type) : null;
       if (encrypt && !key) throw new Error("加密密钥未就绪");
@@ -407,7 +416,7 @@ export function ChatProvider({ children }: { children: React.ReactNode }) {
       }
       await sendMessageMut.mutateAsync({ conversationId: id, content: "", attachmentIds: [attachmentId] });
     }
-  }, [conversations, getConversationKey, uploadFileMut, createUploadUrlMut, confirmUploadMut, sendMessageMut]);
+  }, [conversations, getConversationKey, uploadFileMut, createUploadUrlMut, confirmUploadMut, sendMessageMut, maxFileMb]);
 
   const emitTyping = useCallback(() => {
     const id = activeIdRef.current;
@@ -418,6 +427,7 @@ export function ChatProvider({ children }: { children: React.ReactNode }) {
     conversations, refetchConversations: () => convQuery.refetch(),
     activeId, activeConv, selectConversation, messages, presence, typingUsers,
     connected, sendText, sendFile, emitTyping, loadingMessages,
+    maxFileMb, serverlessAllowed,
   };
   return <ChatContext.Provider value={value}>{children}</ChatContext.Provider>;
 }

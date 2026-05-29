@@ -6,7 +6,7 @@ import { toast } from "sonner";
 
 export function NewConversationDialog({ onClose }: { onClose: () => void }) {
   const [tab, setTab] = useState<"room" | "dm">("room");
-  const { refetchConversations, selectConversation } = useChat();
+  const { refetchConversations, selectConversation, serverlessAllowed } = useChat();
 
   // room form
   const [title, setTitle] = useState("");
@@ -65,7 +65,7 @@ export function NewConversationDialog({ onClose }: { onClose: () => void }) {
             <Field label="工作模式">
               <div style={{ display: "flex", gap: 8 }}>
                 <ModeChip active={mode === "server"} onClick={() => setMode("server")} title="服务器模式" desc="保存历史、可检索" />
-                <ModeChip active={mode === "serverless"} onClick={() => setMode("serverless")} title="端到端加密" desc="不留存、仅本机" />
+                <ModeChip active={mode === "serverless"} onClick={() => { if (serverlessAllowed) setMode("serverless"); }} title="端到端加密" desc={serverlessAllowed ? "不留存、仅本机" : "管理员已禁用"} disabled={!serverlessAllowed} />
               </div>
             </Field>
             <button onClick={onCreateRoom} disabled={!title.trim() || createRoom.isPending} style={primaryBtn}>
@@ -114,13 +114,13 @@ function TabBtn({ active, onClick, children }: { active: boolean; onClick: () =>
   );
 }
 
-function ModeChip({ active, onClick, title, desc }: { active: boolean; onClick: () => void; title: string; desc: string }) {
+function ModeChip({ active, onClick, title, desc, disabled }: { active: boolean; onClick: () => void; title: string; desc: string; disabled?: boolean }) {
   return (
-    <button onClick={onClick} style={{
-      flex: 1, textAlign: "left", padding: "8px 10px", borderRadius: 8, cursor: "pointer",
+    <button onClick={onClick} disabled={disabled} style={{
+      flex: 1, textAlign: "left", padding: "8px 10px", borderRadius: 8, cursor: disabled ? "not-allowed" : "pointer",
       border: `1px solid ${active ? "oklch(0.6 0.2 285)" : "var(--c-bd2, rgba(255,255,255,0.1))"}`,
       background: active ? "oklch(0.58 0.22 285 / 0.15)" : "var(--c-elevated, rgba(255,255,255,0.04))",
-      color: "var(--c-t1, #f0f0f4)",
+      color: "var(--c-t1, #f0f0f4)", opacity: disabled ? 0.5 : 1,
     }}>
       <div style={{ fontSize: 13, fontWeight: 600 }}>{title}</div>
       <div style={{ fontSize: 11, color: "var(--c-t3, rgba(255,255,255,0.4))" }}>{desc}</div>

@@ -18,6 +18,15 @@ export const ENV = {
   isProduction: process.env.NODE_ENV === "production",
   forgeApiUrl: process.env.BUILT_IN_FORGE_API_URL ?? "",
   forgeApiKey: process.env.BUILT_IN_FORGE_API_KEY ?? "",
+  // Self-hosted S3-compatible storage (MinIO / Cloudflare R2 / AWS S3).
+  // When S3_ENDPOINT + S3_BUCKET + keys are set, this takes precedence over Forge.
+  // For MinIO set S3_ENDPOINT=http://127.0.0.1:9000 and S3_FORCE_PATH_STYLE=true.
+  s3Endpoint: process.env.S3_ENDPOINT ?? "",
+  s3Region: process.env.S3_REGION ?? "us-east-1",
+  s3Bucket: process.env.S3_BUCKET ?? "",
+  s3AccessKey: process.env.S3_ACCESS_KEY ?? "",
+  s3SecretKey: process.env.S3_SECRET_KEY ?? "",
+  s3ForcePathStyle: (process.env.S3_FORCE_PATH_STYLE ?? "true") !== "false",
   poyoApiKey: process.env.POYO_API_KEY ?? "",
   higgsfieldApiKey: process.env.HIGGSFIELD_API_KEY ?? "",
   higgsfieldApiSecret: process.env.HIGGSFIELD_API_SECRET ?? "",

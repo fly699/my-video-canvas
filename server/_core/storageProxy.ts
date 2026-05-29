@@ -1,5 +1,5 @@
 import type { Express } from "express";
-import { ENV } from "./env";
+import { isStorageConfigured, storagePresignGet } from "../storage";
 
 export function registerStorageProxy(app: Express) {
   app.get("/manus-storage/*", async (req, res) => {
@@ -9,35 +9,18 @@ export function registerStorageProxy(app: Express) {
       return;
     }
 
-    if (!ENV.forgeApiUrl || !ENV.forgeApiKey) {
+    if (!isStorageConfigured()) {
       res.status(500).send("Storage proxy not configured");
       return;
     }
 
     try {
-      const forgeUrl = new URL(
-        "v1/storage/presign/get",
-        ENV.forgeApiUrl.replace(/\/+$/, "") + "/",
-      );
-      forgeUrl.searchParams.set("path", key);
-
-      const forgeResp = await fetch(forgeUrl, {
-        headers: { Authorization: `Bearer ${ENV.forgeApiKey}` },
-      });
-
-      if (!forgeResp.ok) {
-        const body = await forgeResp.text().catch(() => "");
-        console.error(`[StorageProxy] forge error: ${forgeResp.status} ${body}`);
-        res.status(502).send("Storage backend error");
-        return;
-      }
-
-      const { url } = (await forgeResp.json()) as { url: string };
+      // Backend-aware presigned GET (S3/MinIO or Forge), then 307 redirect.
+      const url = await storagePresignGet(key);
       if (!url) {
         res.status(502).send("Empty signed URL from backend");
         return;
       }
-
       res.set("Cache-Control", "no-store");
       res.redirect(307, url);
     } catch (err) {

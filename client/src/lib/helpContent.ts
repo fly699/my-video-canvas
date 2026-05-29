@@ -978,6 +978,24 @@ defaultValue: 3.5` },
         ["GOOGLE_CLIENT_SECRET", "Google OAuth 客户端密钥"],
         ["GOOGLE_REDIRECT_URI", "（可选）Google 回调地址，留空时按请求来源自动推导为 <origin>/api/auth/google/callback"],
       ]},
+      { type: "h3", text: "文件存储（聊天/上传，可选自建 MinIO）" },
+      { type: "p", text: "配置 S3 兼容存储后，聊天文件走预签名直传（支持超大文件、数据存在你自己的存储里）。自建 MinIO 完全免费、数据不出本机。未配置时小文件回退为内联数据，无法传大文件。" },
+      { type: "kv", rows: [
+        ["S3_ENDPOINT", "S3 兼容服务地址；MinIO 本机为 http://127.0.0.1:9000"],
+        ["S3_BUCKET", "存储桶名，如 avc-chat"],
+        ["S3_ACCESS_KEY", "访问密钥（MinIO root user）"],
+        ["S3_SECRET_KEY", "访问密钥（MinIO root password）"],
+        ["S3_REGION", "区域，默认 us-east-1（MinIO 任意填）"],
+        ["S3_FORCE_PATH_STYLE", "默认 true（MinIO 必须 true）；用 AWS S3 可设 false"],
+      ]},
+      { type: "code", text: `# MinIO 自建示例（先 docker run 启动 MinIO，建好桶）
+S3_ENDPOINT=http://127.0.0.1:9000
+S3_BUCKET=avc-chat
+S3_ACCESS_KEY=minioadmin
+S3_SECRET_KEY=minioadmin
+S3_REGION=us-east-1
+S3_FORCE_PATH_STYLE=true` },
+      { type: "tip", text: "单文件大小上限在「管理后台 → 聊天管理 → 聊天设置」配置（默认 200MB，可调至 5GB），客户端会同步显示该上限。" },
       { type: "h3", text: "开发模式快速启动" },
       { type: "code", text: `DATABASE_URL="" OAUTH_SERVER_URL="" NODE_ENV=development pnpm dev` },
       { type: "p", text: "开发模式下自动以 Dev User（id=1）登录，使用内存存储，无需真实数据库和 OAuth 服务，适用于本地调试。" },

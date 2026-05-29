@@ -6,7 +6,7 @@ import type { ChatWireMessage, ChatFileRef } from "@shared/types";
 import { toast } from "sonner";
 
 export function ChatView() {
-  const { activeConv, messages, presence, typingUsers, sendText, sendFile, emitTyping, connected, loadingMessages } = useChat();
+  const { activeConv, messages, presence, typingUsers, sendText, sendFile, emitTyping, connected, loadingMessages, maxFileMb, serverlessAllowed } = useChat();
   const [text, setText] = useState("");
   const [sending, setSending] = useState(false);
   const [pendingFile, setPendingFile] = useState<File | null>(null);
@@ -59,6 +59,7 @@ export function ChatView() {
   async function toggleMode() {
     if (activeConv!.type === "lobby") { toast.error("大厅模式不可更改"); return; }
     const next = activeConv!.mode === "server" ? "serverless" : "server";
+    if (next === "serverless" && !serverlessAllowed) { toast.error("管理员已禁用端到端加密模式"); return; }
     try {
       await setModeMut.mutateAsync({ conversationId: activeConv!.id, mode: next });
       utils.chat.listConversations.invalidate();
@@ -107,10 +108,19 @@ export function ChatView() {
         )}
       </div>
 
+      {/* limit / warning hint (synced with admin settings) */}
+      <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "4px 16px 0", fontSize: 11, color: "var(--c-t3, rgba(255,255,255,0.4))", flexShrink: 0, flexWrap: "wrap" }}>
+        <span>单文件 ≤ <strong>{maxFileMb}MB</strong></span>
+        <span>·</span>
+        <span>{activeConv.mode === "serverless" ? "🔒 端到端加密，内容不留存、仅本机历史" : "服务器模式，消息与文件留存、管理员可审计"}</span>
+        {activeConv.mode === "serverless" && <><span>·</span><span>大文件可选不加密提速</span></>}
+        {!serverlessAllowed && <><span>·</span><span>管理员已禁用端到端模式</span></>}
+      </div>
+
       {/* input */}
-      <div style={{ display: "flex", alignItems: "flex-end", gap: 8, padding: "12px 16px", borderTop: "1px solid var(--c-bd2, rgba(255,255,255,0.08))", flexShrink: 0 }}>
+      <div style={{ display: "flex", alignItems: "flex-end", gap: 8, padding: "8px 16px 12px", borderTop: "none", flexShrink: 0 }}>
         <input ref={fileRef} type="file" hidden onChange={onPickFile} />
-        <button onClick={() => fileRef.current?.click()} title="发送文件" style={iconBtn}><Paperclip size={18} /></button>
+        <button onClick={() => fileRef.current?.click()} title={`发送文件（单文件 ≤ ${maxFileMb}MB${activeConv.mode === "serverless" ? `；>100MB 可选不加密提速` : ""}）`} style={iconBtn}><Paperclip size={18} /></button>
         <textarea
           value={text}
           onChange={(e) => { setText(e.target.value); emitTyping(); }}
@@ -133,7 +143,7 @@ export function ChatView() {
           <div onClick={(e) => e.stopPropagation()} style={{ width: 420, maxWidth: "90vw", background: "var(--c-surface, #1a1a22)", border: "1px solid var(--c-bd2, rgba(255,255,255,0.1))", borderRadius: 14, padding: 22, color: "var(--c-t1, #f0f0f4)" }}>
             <div style={{ fontWeight: 700, fontSize: 16, marginBottom: 8 }}>大文件传输方式</div>
             <div style={{ fontSize: 13, color: "var(--c-t2, rgba(255,255,255,0.55))", lineHeight: 1.6, marginBottom: 18 }}>
-              「{pendingFile.name}」约 {Math.round(pendingFile.size / 1024 / 1024)}MB。端到端加密会逐块加密、速度较慢；你也可以选择<strong>不加密直传</strong>以显著提速（文件内容会以明文经服务器中转，但仍不落库）。
+              「{pendingFile.name}」约 {Math.round(pendingFile.size / 1024 / 1024)}MB（管理员单文件上限 {maxFileMb}MB）。端到端加密会逐块加密、速度较慢；你也可以选择<strong>不加密直传</strong>以显著提速（文件内容会以明文经服务器中转，但仍不落库）。
             </div>
             <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
               <button onClick={() => doSendPending(true)} style={{ padding: "11px 0", border: "1px solid var(--c-bd2, rgba(255,255,255,0.12))", borderRadius: 9, background: "var(--c-elevated, rgba(255,255,255,0.05))", color: "var(--c-t1, #f0f0f4)", fontSize: 14, fontWeight: 600, cursor: "pointer" }}>
