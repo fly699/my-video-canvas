@@ -6,6 +6,9 @@ import { ENV } from "./_core/env";
 import { S3Client, PutObjectCommand, GetObjectCommand } from "@aws-sdk/client-s3";
 import type { Readable } from "node:stream";
 import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
+// NOTE: storageConfig imports isS3Configured from this module; both directions
+// are used only inside functions (call-time), so the cycle resolves safely.
+import { getPresignTtlSec } from "./_core/storageConfig";
 
 /**
  * Whether end-user browsers can reach the storage host directly. MinIO is
@@ -150,7 +153,8 @@ export async function storageGet(relKey: string): Promise<{ key: string; url: st
 export async function storagePresignGet(relKey: string): Promise<string> {
   const key = normalizeKey(relKey);
   if (storageBackend() === "s3") {
-    const signed = await getSignedUrl(getS3(), new GetObjectCommand({ Bucket: ENV.s3Bucket, Key: key }), { expiresIn: 3600 });
+    const expiresIn = await getPresignTtlSec();
+    const signed = await getSignedUrl(getS3(), new GetObjectCommand({ Bucket: ENV.s3Bucket, Key: key }), { expiresIn });
     return applyPublicEndpoint(signed);
   }
   const { forgeUrl, forgeKey } = getForgeConfig();

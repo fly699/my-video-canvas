@@ -61,7 +61,7 @@ import * as dev from "./_core/devStore";
 
 // Dev-mode whitelist state
 const devWhitelistSettings = { id: 1, enabled: false, updatedAt: new Date() };
-const devStorageSettings = { id: 1, persistAudio: true, persistVideo: true, persistImage: true, updatedAt: new Date() };
+const devStorageSettings = { id: 1, persistAudio: true, persistVideo: true, persistImage: true, presignTtlSec: 3600, updatedAt: new Date() };
 const devWhitelistEntries: Array<{ id: number; type: "ip" | "user"; value: string; note: string | null; createdBy: number | null; createdAt: Date }> = [];
 let devNextWhitelistId = 1;
 
@@ -739,12 +739,13 @@ export async function getWhitelistEntries() {
 
 // ── Storage persistence settings ────────────────────────────────────────────
 
-export async function getStorageSettings(): Promise<{ persistAudio: boolean; persistVideo: boolean; persistImage: boolean }> {
+export async function getStorageSettings(): Promise<{ persistAudio: boolean; persistVideo: boolean; persistImage: boolean; presignTtlSec: number }> {
   const db = await getDb();
   if (!db) return {
     persistAudio: devStorageSettings.persistAudio,
     persistVideo: devStorageSettings.persistVideo,
     persistImage: devStorageSettings.persistImage,
+    presignTtlSec: devStorageSettings.presignTtlSec,
   };
   const rows = await db.select().from(storageSettings).limit(1);
   const row = rows[0];
@@ -752,21 +753,24 @@ export async function getStorageSettings(): Promise<{ persistAudio: boolean; per
     persistAudio: row?.persistAudio ?? true,
     persistVideo: row?.persistVideo ?? true,
     persistImage: row?.persistImage ?? true,
+    presignTtlSec: row?.presignTtlSec ?? 3600,
   };
 }
 
-export async function setStorageSettings(patch: { persistAudio?: boolean; persistVideo?: boolean; persistImage?: boolean }): Promise<void> {
+export async function setStorageSettings(patch: { persistAudio?: boolean; persistVideo?: boolean; persistImage?: boolean; presignTtlSec?: number }): Promise<void> {
   const db = await getDb();
   if (!db) {
     if (patch.persistAudio !== undefined) devStorageSettings.persistAudio = patch.persistAudio;
     if (patch.persistVideo !== undefined) devStorageSettings.persistVideo = patch.persistVideo;
     if (patch.persistImage !== undefined) devStorageSettings.persistImage = patch.persistImage;
+    if (patch.presignTtlSec !== undefined) devStorageSettings.presignTtlSec = patch.presignTtlSec;
     return;
   }
-  const set: Record<string, boolean> = {};
+  const set: Record<string, boolean | number> = {};
   if (patch.persistAudio !== undefined) set.persistAudio = patch.persistAudio;
   if (patch.persistVideo !== undefined) set.persistVideo = patch.persistVideo;
   if (patch.persistImage !== undefined) set.persistImage = patch.persistImage;
+  if (patch.presignTtlSec !== undefined) set.presignTtlSec = patch.presignTtlSec;
   if (Object.keys(set).length === 0) return;
   await db.update(storageSettings).set(set).where(eq(storageSettings.id, 1));
 }

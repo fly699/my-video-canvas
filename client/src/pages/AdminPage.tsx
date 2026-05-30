@@ -273,8 +273,68 @@ function StoragePanel() {
             disabled={setMut.isPending}
             onClick={() => handleToggle("persistVideo")}
           />
+          <PresignTtlRow
+            value={settings.presignTtlSec}
+            disabled={setMut.isPending}
+            onSave={(sec) => setMut.mutate({ presignTtlSec: sec })}
+          />
         </>
       )}
+    </div>
+  );
+}
+
+/**
+ * 预签名 GET URL 有效期（自建 MinIO/S3）。越长越方便上游 AI 慢任务拉取，越短泄露暴露窗口越小。
+ * 仅对自建 S3/MinIO 后端生效；Forge 后端的有效期由 Forge 服务端决定。
+ */
+function PresignTtlRow({ value, disabled, onSave }: {
+  value: number;
+  disabled?: boolean;
+  onSave: (sec: number) => void;
+}) {
+  const [mins, setMins] = useState(() => Math.round(value / 60));
+  const dirty = mins * 60 !== value;
+  const valid = Number.isFinite(mins) && mins >= 1 && mins <= 10080; // 1 分 … 7 天
+  return (
+    <div style={{ ...cardStyle, alignItems: "stretch", padding: "14px 20px" }}>
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, flexWrap: "wrap" }}>
+        <div style={{ flex: 1, minWidth: 220 }}>
+          <div style={{ fontSize: 14, fontWeight: 600, color: "var(--c-t1, #f0f0f4)" }}>预签名 URL 有效期</div>
+          <p style={{ margin: "4px 0 0", fontSize: 12, color: "var(--c-t2, rgba(255,255,255,0.55))", lineHeight: 1.5 }}>
+            自建 MinIO/S3 读取链接的有效时长。上游 AI 任务慢时调长，安全优先则调短（1 分钟–7 天，默认 60 分钟）。仅影响新生成的链接。
+          </p>
+        </div>
+        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+          <input
+            type="number"
+            min={1}
+            max={10080}
+            value={Number.isFinite(mins) ? mins : ""}
+            onChange={(e) => setMins(Math.trunc(Number(e.target.value)))}
+            disabled={disabled}
+            style={{
+              width: 90, padding: "6px 8px", fontSize: 13,
+              background: "var(--c-surface)", color: "var(--c-t1)",
+              border: "1px solid var(--c-bd2)", borderRadius: 6, outline: "none",
+            }}
+          />
+          <span style={{ fontSize: 12, color: "var(--c-t3)" }}>分钟</span>
+          <button
+            onClick={() => valid && onSave(mins * 60)}
+            disabled={disabled || !dirty || !valid}
+            style={{
+              padding: "6px 14px", fontSize: 12, fontWeight: 500, borderRadius: 6,
+              background: dirty && valid ? "oklch(0.68 0.22 285 / 0.15)" : "var(--c-surface)",
+              border: `1px solid ${dirty && valid ? "oklch(0.68 0.22 285 / 0.4)" : "var(--c-bd2)"}`,
+              color: dirty && valid ? "oklch(0.78 0.18 285)" : "var(--c-t4)",
+              cursor: disabled || !dirty || !valid ? "not-allowed" : "pointer",
+            }}
+          >
+            保存
+          </button>
+        </div>
+      </div>
     </div>
   );
 }
