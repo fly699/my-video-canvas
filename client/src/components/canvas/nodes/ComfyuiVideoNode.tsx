@@ -7,7 +7,7 @@ import { trpc } from "@/lib/trpc";
 import { toast } from "sonner";
 import {
   Play, Loader2, RefreshCw, Upload, X, Cpu, Download, AlertCircle,
-  ChevronDown, ChevronRight, Server, Boxes, HardDriveDownload,
+  ChevronDown, ChevronRight, Server, Boxes, HardDriveDownload, Languages,
 } from "lucide-react";
 import { useLocalMedia } from "@/lib/useLocalMedia";
 import { cacheMedia } from "@/lib/mediaCache";
@@ -63,6 +63,7 @@ export const ComfyuiVideoNode = memo(function ComfyuiVideoNode({ id, selected, d
   const updateNodeData = useCanvasStore((s) => s.updateNodeData);
   const payload = data.payload;
   const [uploading, setUploading] = useState(false);
+  const [translating, setTranslating] = useState(false);
   const [urlExpanded, setUrlExpanded] = useState(false);
   const [paramsExpanded, setParamsExpanded] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -108,6 +109,26 @@ export const ComfyuiVideoNode = memo(function ComfyuiVideoNode({ id, selected, d
     (field: keyof ComfyuiVideoNodeData, value: unknown) => updateNodeData(id, { [field]: value }),
     [id, updateNodeData]
   );
+
+  const translateMutation = trpc.aiEnhance.enhance.useMutation({
+    onSuccess: (result) => {
+      setTranslating(false);
+      if (!useCanvasStore.getState().nodes.some((n) => n.id === id)) return;
+      updateNodeData(id, { prompt: result.result });
+      toast.success("已翻译为英文");
+    },
+    onError: (err) => {
+      setTranslating(false);
+      toast.error("翻译失败：" + err.message);
+    },
+  });
+
+  const handleTranslate = () => {
+    if (translating || translateMutation.isPending) return;
+    if (!payload.prompt?.trim()) { toast.error("请先填写提示词"); return; }
+    setTranslating(true);
+    translateMutation.mutate({ text: payload.prompt, mode: "translate_en" });
+  };
 
   const isSvd = payload.workflowTemplate === "svd";
 
@@ -408,11 +429,28 @@ export const ComfyuiVideoNode = memo(function ComfyuiVideoNode({ id, selected, d
             value={payload.prompt ?? ""}
             onChange={(e) => update("prompt", e.target.value)}
             rows={3}
-            
+
             style={{ ...fieldBase, resize: "none", lineHeight: 1.6 }}
             onFocus={(e) => { e.currentTarget.style.borderColor = BORDER_ACCENT; }}
             onBlur={(e) => { e.currentTarget.style.borderColor = BORDER_DEFAULT; }}
           />
+          <div className="flex items-center gap-1 mt-1">
+            <button
+              onClick={handleTranslate}
+              disabled={translating}
+              className="nodrag flex items-center gap-1 px-1.5 py-0.5 rounded-md text-[9px] font-medium transition-all"
+              style={{
+                background: translating ? "var(--c-surface)" : "oklch(0.65 0.18 200 / 0.10)",
+                border: `1px solid ${translating ? "var(--c-bd2)" : "oklch(0.65 0.18 200 / 0.35)"}`,
+                color: translating ? "var(--c-t4)" : "oklch(0.70 0.16 200)",
+                cursor: translating ? "not-allowed" : "pointer",
+              }}
+              title="将提示词翻译为英文（ComfyUI / SD 模型对英文提示更友好）"
+            >
+              {translating ? <Loader2 className="w-2.5 h-2.5 animate-spin" /> : <Languages className="w-2.5 h-2.5" />}
+              译为英文
+            </button>
+          </div>
         </div>
 
         {/* ── Negative prompt ── */}
