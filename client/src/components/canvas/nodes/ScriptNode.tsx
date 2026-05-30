@@ -463,16 +463,47 @@ export const ScriptNode = memo(function ScriptNode({ id, selected, data }: Props
   }, [anyPending, payload.synopsis, payload.content, payload.aiScriptTemplate, commitDuration, genre, style, mood, sceneCount, targetModel, aspectRatio, llmModel, promptLang, fullScriptMutation.mutate]);
 
   const handleCopy = useCallback(async () => {
-    const text = payload.content?.trim();
-    if (!text) { toast.error("脚本内容为空"); return; }
-    try {
-      await navigator.clipboard.writeText(text);
+    // Copy the FULL script content — never truncated.
+    const text = payload.content ?? "";
+    if (!text.trim()) { toast.error("脚本内容为空"); return; }
+    const markCopied = () => {
       setCopied(true);
       if (copyTimerRef.current) clearTimeout(copyTimerRef.current);
       copyTimerRef.current = setTimeout(() => setCopied(false), 2000);
-      toast.success("已复制到剪贴板");
+      toast.success(`已复制全部 ${text.length} 字`);
+    };
+    // Preferred path: async Clipboard API (requires a secure context — HTTPS or
+    // localhost). On plain-HTTP / LAN access it's undefined, so fall back below.
+    if (typeof navigator !== "undefined" && navigator.clipboard?.writeText) {
+      try {
+        await navigator.clipboard.writeText(text);
+        markCopied();
+        return;
+      } catch {
+        // fall through to legacy path
+      }
+    }
+    // Legacy fallback: a hidden <textarea> + execCommand('copy') works over
+    // plain HTTP, so the "复制" button reliably copies the whole script even on
+    // a LAN/HTTP deployment.
+    try {
+      const ta = document.createElement("textarea");
+      ta.value = text;
+      ta.setAttribute("readonly", "");
+      ta.style.position = "fixed";
+      ta.style.top = "0";
+      ta.style.left = "0";
+      ta.style.opacity = "0";
+      document.body.appendChild(ta);
+      ta.focus();
+      ta.select();
+      ta.setSelectionRange(0, text.length);
+      const ok = document.execCommand("copy");
+      document.body.removeChild(ta);
+      if (!ok) throw new Error("execCommand copy returned false");
+      markCopied();
     } catch {
-      toast.error("复制失败，请手动选中文字复制");
+      toast.error("复制失败，请手动选中文字复制（提示：HTTP 访问下浏览器限制剪贴板，建议改用 HTTPS）");
     }
   }, [payload.content]);
 
