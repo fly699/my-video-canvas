@@ -89,6 +89,10 @@ echo [*] 注册服务 AVC-App ...
 "%NSSM%" set AVC-App AppDirectory "%ROOT%"
 "%NSSM%" set AVC-App AppEnvironmentExtra NODE_ENV=production
 "%NSSM%" set AVC-App Start SERVICE_AUTO_START
+rem 进程任何退出都自动重启（应用内「一键更新」构建完成后会自我退出以加载新版本）
+"%NSSM%" set AVC-App AppExit Default Restart
+"%NSSM%" set AVC-App AppRestartDelay 2000
+"%NSSM%" set AVC-App AppThrottle 3000
 "%NSSM%" start AVC-App
 echo [OK] AVC-App 已安装并启动
 

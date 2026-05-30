@@ -118,3 +118,6 @@ client/public/__manus__/version.json
 
 # self-signed TLS certs (do not commit private key)
 certs/
+
+# 应用内一键更新生成的日志
+deploy/self-update.log

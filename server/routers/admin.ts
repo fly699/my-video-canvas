@@ -7,6 +7,7 @@ import { invalidateStorageSettingsCache } from "../_core/storageConfig";
 import { storagePut, storageBackend, isStorageConfigured } from "../storage";
 import { ENV } from "../_core/env";
 import { randomBytes } from "crypto";
+import { getUpdateStatus, getVersionInfo, checkRemote, startUpdate } from "../_core/selfUpdate";
 
 const AUDIT_ACTIONS = [
   "login_email", "login_oauth",
@@ -318,5 +319,21 @@ export const adminRouter = router({
         const s = await db.setChatSettings(input);
         return { serverlessAllowed: s.serverlessAllowed, lobbyEnabled: s.lobbyEnabled, maxFileMb: s.maxFileMb };
       }),
+  }),
+
+  // ── 系统更新（应用内一键更新；仅管理员）──
+  update: router({
+    version: adminProcedure.query(async () => {
+      return getVersionInfo();
+    }),
+    check: adminProcedure.mutation(async () => {
+      return checkRemote();
+    }),
+    status: adminProcedure.query(() => {
+      return getUpdateStatus();
+    }),
+    run: adminProcedure.mutation(async () => {
+      return startUpdate();
+    }),
   }),
 });

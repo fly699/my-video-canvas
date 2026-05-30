@@ -2,10 +2,10 @@ import { useState } from "react";
 import { useLocation } from "wouter";
 import { trpc } from "@/lib/trpc";
 import { useAuth } from "@/_core/hooks/useAuth";
-import { Shield, Trash2, Plus, ToggleLeft, ToggleRight, ClipboardList, RefreshCw, HardDrive, ArrowLeft, Loader2, CheckCircle2, XCircle } from "lucide-react";
+import { Shield, Trash2, Plus, ToggleLeft, ToggleRight, ClipboardList, RefreshCw, HardDrive, ArrowLeft, Loader2, CheckCircle2, XCircle, DownloadCloud, RotateCw, GitCommit } from "lucide-react";
 
 type EntryType = "ip" | "user";
-type Tab = "whitelist" | "logs" | "storage" | "chat";
+type Tab = "whitelist" | "logs" | "storage" | "chat" | "system";
 
 const ACTION_LABELS: Record<string, string> = {
   login_email: "邮箱登录",
@@ -101,7 +101,7 @@ export default function AdminPage() {
 
         {/* Tabs */}
         <div style={{ display: "flex", gap: "4px", marginBottom: "20px", borderBottom: "1px solid rgba(255,255,255,0.06)", paddingBottom: "0" }}>
-          {([["whitelist", "白名单管理"], ["logs", "操作日志"], ["storage", "存储设置"], ["chat", "聊天管理"]] as [Tab, string][]).map(([tab, label]) => (
+          {([["whitelist", "白名单管理"], ["logs", "操作日志"], ["storage", "存储设置"], ["chat", "聊天管理"], ["system", "系统更新"]] as [Tab, string][]).map(([tab, label]) => (
             <button
               key={tab}
               onClick={() => setActiveTab(tab)}
@@ -127,6 +127,7 @@ export default function AdminPage() {
         {activeTab === "logs" && <LogsPanel />}
         {activeTab === "storage" && <StoragePanel />}
         {activeTab === "chat" && <ChatAdminPanel />}
+        {activeTab === "system" && <SystemUpdatePanel />}
       </div>
     </div>
   );
@@ -299,6 +300,181 @@ function ToggleRow({ label, description, enabled, disabled, onClick }: {
       </button>
     </div>
   );
+}
+
+// ── System Update Panel ───────────────────────────────────────────────────────
+
+function SystemUpdatePanel() {
+  const utils = trpc.useUtils();
+  const versionQuery = trpc.admin.update.version.useQuery(undefined, { refetchOnWindowFocus: false });
+  const statusQuery = trpc.admin.update.status.useQuery(undefined, {
+    refetchOnWindowFocus: false,
+    // 更新进行中时每 1.5s 轮询进度，否则停止轮询
+    refetchInterval: (q) => (q.state.data?.state === "running" ? 1500 : false),
+  });
+  const checkMut = trpc.admin.update.check.useMutation();
+  const runMut = trpc.admin.update.run.useMutation({
+    onSuccess: () => { void utils.admin.update.status.invalidate(); },
+  });
+
+  const status = statusQuery.data;
+  const running = status?.state === "running";
+  const version = versionQuery.data;
+
+  const handleRun = () => {
+    if (running) return;
+    const ok = confirm(
+      "确定开始更新？\n\n将执行：拉取最新代码 → 安装依赖 → 数据库迁移 → 构建。\n" +
+      "构建成功后服务会自动重启（约 1–3 分钟），期间页面会短暂中断，请稍候刷新。"
+    );
+    if (!ok) return;
+    runMut.mutate();
+  };
+
+  const badge = (() => {
+    switch (status?.state) {
+      case "running": return { text: "更新中", color: "oklch(0.7 0.16 250)" };
+      case "success": return { text: status.willRestart ? "构建完成，正在重启" : "完成", color: "oklch(0.7 0.18 145)" };
+      case "uptodate": return { text: "已是最新版本", color: "oklch(0.7 0.18 145)" };
+      case "error": return { text: "失败", color: "oklch(0.7 0.18 25)" };
+      default: return null;
+    }
+  })();
+
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+      {/* 当前版本 + 操作 */}
+      <div style={{ ...cardStyle, alignItems: "stretch", padding: "16px 20px" }}>
+        <div style={{ display: "flex", alignItems: "flex-start", gap: 12 }}>
+          <DownloadCloud style={{ width: 18, height: 18, color: "oklch(0.72 0.2 285)", flexShrink: 0, marginTop: 2 }} />
+          <div style={{ flex: 1 }}>
+            <h3 style={{ margin: 0, fontSize: 15, fontWeight: 600, color: "var(--c-t1, #f0f0f4)" }}>
+              系统更新（应用内一键更新）
+            </h3>
+            <p style={{ margin: "4px 0 0", fontSize: 12, color: "var(--c-t2, rgba(255,255,255,0.55))", lineHeight: 1.5 }}>
+              在服务器本机执行：拉取最新代码 → 安装依赖 → 数据库迁移 → 构建。<br />
+              构建成功后服务会自动重启以加载新版本（生产环境下由 Windows 服务 / pm2 接管重启）。
+            </p>
+
+            {/* 当前版本信息 */}
+            <div style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 12, fontSize: 12, color: "var(--c-t2)" }}>
+              <GitCommit style={{ width: 14, height: 14, flexShrink: 0 }} />
+              {versionQuery.isLoading ? "读取版本…" : version ? (
+                <span>
+                  当前版本 <code style={{ background: "var(--c-surface)", padding: "1px 6px", borderRadius: 4 }}>{version.commit}</code>
+                  {version.date && <span style={{ color: "var(--c-t3)" }}> · {new Date(version.date).toLocaleString()}</span>}
+                  {version.subject && <span style={{ color: "var(--c-t3)" }}> · {version.subject}</span>}
+                </span>
+              ) : "版本信息不可用（可能不是 git 部署）"}
+            </div>
+
+            {/* 操作按钮 */}
+            <div style={{ marginTop: 14, display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
+              <button
+                onClick={() => checkMut.mutate()}
+                disabled={checkMut.isPending || running}
+                style={btnSecondary(checkMut.isPending || running)}
+              >
+                {checkMut.isPending
+                  ? <Loader2 className="animate-spin" style={{ width: 12, height: 12 }} />
+                  : <RefreshCw style={{ width: 12, height: 12 }} />}
+                检查更新
+              </button>
+
+              <button
+                onClick={handleRun}
+                disabled={running}
+                style={btnPrimary(running)}
+              >
+                {running
+                  ? <Loader2 className="animate-spin" style={{ width: 13, height: 13 }} />
+                  : <RotateCw style={{ width: 13, height: 13 }} />}
+                {running ? "更新中…" : "立即更新"}
+              </button>
+
+              {checkMut.data && (
+                <span style={{ fontSize: 12, color: checkMut.data.behind > 0 ? "oklch(0.78 0.18 60)" : "oklch(0.7 0.18 145)" }}>
+                  {checkMut.data.behind > 0
+                    ? `有 ${checkMut.data.behind} 个新提交待更新${checkMut.data.latest ? `（最新：${checkMut.data.latest}）` : ""}`
+                    : "已是最新版本"}
+                </span>
+              )}
+              {checkMut.error && (
+                <span style={{ fontSize: 12, color: "oklch(0.65 0.18 25)" }}>检查失败：{checkMut.error.message}</span>
+              )}
+              {runMut.error && (
+                <span style={{ fontSize: 12, color: "oklch(0.65 0.18 25)" }}>启动失败：{runMut.error.message}</span>
+              )}
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* 进度 / 状态 */}
+      {status && status.state !== "idle" && (
+        <div style={{ ...cardStyle, alignItems: "stretch", padding: "16px 20px" }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 10 }}>
+            {badge && (
+              <span style={{
+                fontSize: 12, fontWeight: 600, color: badge.color,
+                background: "var(--c-surface, rgba(255,255,255,0.04))",
+                border: `1px solid ${badge.color}`, borderRadius: 6, padding: "3px 10px",
+              }}>
+                {badge.text}
+              </span>
+            )}
+            {status.step && <span style={{ fontSize: 13, color: "var(--c-t1)" }}>{status.step}</span>}
+          </div>
+
+          {status.state === "success" && status.willRestart && (
+            <div style={{ fontSize: 12, color: "oklch(0.78 0.18 60)", marginBottom: 10, lineHeight: 1.5 }}>
+              服务正在重启以加载新版本，约数十秒后完成。完成后请手动刷新页面（若使用已安装的应用窗口，必要时关掉重开）。
+            </div>
+          )}
+          {status.state === "error" && status.error && (
+            <div style={{ fontSize: 12, color: "oklch(0.78 0.18 25)", marginBottom: 10 }}>错误：{status.error}</div>
+          )}
+
+          {/* 日志输出 */}
+          {status.log.length > 0 && (
+            <pre style={{
+              margin: 0, maxHeight: 320, overflow: "auto",
+              fontSize: 11, lineHeight: 1.5,
+              fontFamily: "ui-monospace, SFMono-Regular, Menlo, monospace",
+              color: "var(--c-t2, rgba(255,255,255,0.7))",
+              background: "var(--c-surface, rgba(0,0,0,0.25))",
+              border: "1px solid var(--c-bd1, rgba(255,255,255,0.06))",
+              borderRadius: 8, padding: "10px 12px", whiteSpace: "pre-wrap", wordBreak: "break-all",
+            }}>
+              {status.log.join("\n")}
+            </pre>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function btnPrimary(disabled: boolean): React.CSSProperties {
+  return {
+    display: "flex", alignItems: "center", gap: 7,
+    padding: "8px 16px", fontSize: 13, fontWeight: 600,
+    background: disabled ? "var(--c-surface, rgba(255,255,255,0.06))" : "oklch(0.58 0.22 285 / 0.85)",
+    border: "1px solid oklch(0.68 0.22 285 / 0.4)", borderRadius: 8,
+    color: disabled ? "var(--c-t3, rgba(255,255,255,0.4))" : "#fff",
+    cursor: disabled ? "not-allowed" : "pointer",
+  };
+}
+
+function btnSecondary(disabled: boolean): React.CSSProperties {
+  return {
+    display: "flex", alignItems: "center", gap: 6,
+    padding: "8px 14px", fontSize: 12, fontWeight: 500,
+    background: "oklch(0.68 0.22 285 / 0.12)",
+    border: "1px solid oklch(0.68 0.22 285 / 0.35)", borderRadius: 8,
+    color: "oklch(0.78 0.18 285)",
+    cursor: disabled ? "not-allowed" : "pointer", opacity: disabled ? 0.6 : 1,
+  };
 }
 
 function WhitelistPanel() {
