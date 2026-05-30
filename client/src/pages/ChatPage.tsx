@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { useLocation } from "wouter";
-import { ArrowLeft, PanelLeftClose, PanelLeft, Users, ExternalLink, Download } from "lucide-react";
+import { ArrowLeft, PanelLeftClose, PanelLeft, Users, ExternalLink, Download, Sun, Moon } from "lucide-react";
 import { toast } from "sonner";
 import { ChatProvider } from "@/hooks/useChat";
 import { ConversationList } from "@/components/chat/ConversationList";
@@ -17,6 +17,14 @@ export default function ChatPage() {
   const [membersOpen, setMembersOpen] = useState(typeof window === "undefined" || window.innerWidth >= 1024);
   const installEvt = useRef<BIPEvent | null>(null);
   const [canInstall, setCanInstall] = useState(false);
+  // 专有浅色主题：仅作用于聊天页（含 Chrome 应用），通过 .chat-light 包裹隔离，
+  // 不影响画布主题。持久化在独立的 localStorage key。
+  const [light, setLight] = useState(() => {
+    try { return localStorage.getItem("avc:chat-light") === "1"; } catch { return false; }
+  });
+  useEffect(() => {
+    try { localStorage.setItem("avc:chat-light", light ? "1" : "0"); } catch { /* quota */ }
+  }, [light]);
 
   useEffect(() => {
     const onResize = () => {
@@ -47,7 +55,7 @@ export default function ChatPage() {
 
   return (
     <ChatProvider>
-      <div style={{ height: "100vh", display: "flex", flexDirection: "column", background: C.bg, color: C.t1, fontFamily: "system-ui, -apple-system, 'Segoe UI', sans-serif" }}>
+      <div className={light ? "chat-light" : undefined} style={{ height: "100vh", display: "flex", flexDirection: "column", background: C.bg, color: C.t1, fontFamily: "system-ui, -apple-system, 'Segoe UI', sans-serif" }}>
         {/* glow header */}
         <header style={{
           position: "relative", display: "flex", alignItems: "center", justifyContent: "space-between",
@@ -65,6 +73,9 @@ export default function ChatPage() {
             </div>
           </div>
           <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+            <button onClick={() => setLight((v) => !v)} title={light ? "切换到深色" : "切换到浅色"} style={{ ...iconBtn, ...(light ? { border: `1px solid ${C.accent}`, color: C.accent } : {}) }}>
+              {light ? <Moon size={18} /> : <Sun size={18} />}
+            </button>
             <button onClick={openCompact} title="在精简小窗中打开" style={{ ...ghostBtn, height: 34, padding: narrow ? "0" : "0 12px", width: narrow ? 34 : undefined, fontSize: 13 }}>
               <ExternalLink size={15} />{!narrow && " 精简窗口"}
             </button>
