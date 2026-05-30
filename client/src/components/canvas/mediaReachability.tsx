@@ -1,4 +1,4 @@
-import { useRef, useState, type ReactNode } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 import { AlertTriangle, Link2 } from "lucide-react";
 import { trpc } from "@/lib/trpc";
 import { useCanvasStore } from "../../hooks/useCanvasStore";
@@ -183,23 +183,19 @@ export function useRefImageGuard(): {
 
 // ── C：切换为 AI 平台临时链接 ─────────────────────────────────────────────────
 //
-// 参考图若由 AI 平台（Poyo / Higgsfield）生成，生成时我们已把原始上游 CDN URL 连同时间戳
-// 存到了产出节点（imageUrlSource(s) / imageUrlSourceAt）。当 re-host 到本地存储的副本对
-// 上游不可达时，可在短期内（CDN 仍有效）让用户一键改用该公网临时链接。
-
-// TTL 启发式：Poyo 标称约 24h，取保守 18h；过期后不再提供切换（链接可能已失效）。
-const SOURCE_URL_TTL_MS = 18 * 3600_000;
+// 参考图若由 AI 平台（Poyo / Higgsfield）生成，生成时我们已把原始上游 CDN URL 存到了产出
+// 节点（imageUrlSource(s)）。当 re-host 到本地存储的副本对上游不可达时，可让用户一键改用该
+// 公网临时链接 —— 前提是它**当前仍有效**。链接是否有效用「主动探测」判断，而非时间戳猜测。
 
 /**
  * 在画布图中查找：当前消费节点（nodeId）的 referenceImageUrl 来自哪个上游产出节点，
- * 并取出该产出节点保存的原始 AI 平台 URL + 生成时间戳。
+ * 并取出该产出节点保存的原始 AI 平台 URL（仅当它是外部公网地址时返回）。
  */
 export function useRefImageSource(
   nodeId: string,
   refImageUrl: string | undefined | null,
-): { sourceUrl?: string; sourceAt?: number; usable: boolean } {
-  // 返回打包后的原始字符串（基本类型），避免每次渲染产生新对象导致无谓重渲染。
-  const packed = useCanvasStore((s) => {
+): { sourceUrl?: string } {
+  const sourceUrl = useCanvasStore((s) => {
     if (!refImageUrl) return "";
     for (const e of s.edges) {
       if (e.target !== nodeId) continue;
@@ -210,7 +206,6 @@ export function useRefImageSource(
         imageUrls?: string[];
         imageUrlSource?: string;
         imageUrlSources?: string[];
-        imageUrlSourceAt?: number;
       };
       let su: string | undefined;
       if (p.imageUrl === refImageUrl) su = p.imageUrlSource;
@@ -218,22 +213,56 @@ export function useRefImageSource(
         const idx = p.imageUrls.indexOf(refImageUrl);
         if (idx >= 0) su = p.imageUrlSources?.[idx] ?? p.imageUrlSource;
       }
-      if (su) return `${su}\n${p.imageUrlSourceAt ?? 0}`;
+      if (su && isExternalPublicUrl(su)) return su;
     }
     return "";
   });
-
-  if (!packed) return { usable: false };
-  const [sourceUrl, atStr] = packed.split("\n");
-  const sourceAt = Number(atStr) || undefined;
-  const fresh = sourceAt ? Date.now() - sourceAt < SOURCE_URL_TTL_MS : false;
-  const usable = isExternalPublicUrl(sourceUrl) && fresh;
-  return { sourceUrl, sourceAt, usable };
+  return { sourceUrl: sourceUrl || undefined };
 }
 
 /**
- * "切换为 AI 平台临时链接"按钮。仅当：该次生成会触发警告 + 找到了仍可用（外部公网 + 未过期）
- * 的原始 AI 平台 URL 时显示。点击后把 referenceImageUrl 改为该公网链接，A 的逻辑随即熄灯。
+ * 主动探测一个图片 URL 当前是否仍可用。用 `new Image()` 跨域加载（图片加载无需 CORS）：
+ * onload 成功 = CDN 仍公开服务该图，上游几乎必然也能 fetch；onerror / 超时 = 已失效。
+ * 比时间戳猜测准确得多。
+ */
+type Liveness = "idle" | "checking" | "alive" | "dead";
+export function useImageUrlLiveness(url: string | undefined | null): Liveness {
+  const [state, setState] = useState<Liveness>("idle");
+  useEffect(() => {
+    if (!url || !isExternalPublicUrl(url)) {
+      setState("idle");
+      return;
+    }
+    setState("checking");
+    let settled = false;
+    const img = new Image();
+    const finish = (next: Liveness) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      img.onload = null;
+      img.onerror = null;
+      setState(next);
+    };
+    const timer = setTimeout(() => finish("dead"), 8000);
+    img.onload = () => finish("alive");
+    img.onerror = () => finish("dead");
+    img.src = url;
+    return () => {
+      settled = true;
+      clearTimeout(timer);
+      img.onload = null;
+      img.onerror = null;
+      img.src = "";
+    };
+  }, [url]);
+  return state;
+}
+
+/**
+ * "切换为 AI 平台临时链接"按钮。仅当：该次生成会触发警告 + 找到了原始 AI 平台公网 URL +
+ * 主动探测确认它当前仍可用 时，才显示可点击按钮。探测中显示「检测链接…」，探测失败则不显示。
+ * 点击后把 referenceImageUrl 改为该公网链接，A 的逻辑随即熄灯。
  */
 export function RefImageSwitchButton(props: {
   nodeId: string;
@@ -243,11 +272,27 @@ export function RefImageSwitchButton(props: {
   onSwitch: (sourceUrl: string) => void;
   className?: string;
 }) {
-  const { sourceUrl, usable } = useRefImageSource(props.nodeId, props.refImageUrl);
-  if (!shouldWarnRefImage({ model: props.model, refImageUrl: props.refImageUrl, reachable: props.reachable })) {
-    return null;
+  const { sourceUrl } = useRefImageSource(props.nodeId, props.refImageUrl);
+  const warn = shouldWarnRefImage({ model: props.model, refImageUrl: props.refImageUrl, reachable: props.reachable });
+  // 仅在会警告时才探测，避免无谓加载
+  const liveness = useImageUrlLiveness(warn ? sourceUrl : undefined);
+
+  if (!warn || !sourceUrl) return null;
+
+  if (liveness === "checking") {
+    return (
+      <span
+        className={
+          "inline-flex items-center gap-1 rounded-full bg-muted px-1.5 py-0.5 text-[10px] text-muted-foreground " +
+          (props.className ?? "")
+        }
+      >
+        <Link2 className="h-3 w-3 animate-pulse" /> 检测 AI 平台链接…
+      </span>
+    );
   }
-  if (!usable || !sourceUrl) return null;
+  if (liveness !== "alive") return null; // dead / idle → 不提供切换
+
   return (
     <Tooltip>
       <TooltipTrigger asChild>
@@ -266,7 +311,7 @@ export function RefImageSwitchButton(props: {
         </button>
       </TooltipTrigger>
       <TooltipContent className="max-w-[280px] text-left">
-        检测到该参考图由 AI 平台生成、临时公网链接仍可用（约 18 小时内）。点击改用该链接，上游即可直接读取（注意：该链接可能随时失效）。
+        检测到该参考图由 AI 平台生成、其公网临时链接当前仍可访问。点击改用该链接，上游即可直接读取（链接随时可能失效，失效后此项会自动消失）。
       </TooltipContent>
     </Tooltip>
   );
