@@ -540,6 +540,12 @@ export default function Home() {
                     desc: "多用户同时编辑，节点变更秒同步，协作者光标可见",
                     badge: null,
                   },
+                  {
+                    icon: MessageCircle, color: "oklch(0.70 0.18 285)",
+                    title: "团队聊天 · 桌面应用",
+                    desc: "大厅 / 群聊 / 端到端加密私聊，可装为 Chrome 桌面应用，含专属浅色主题",
+                    badge: "NEW",
+                  },
                 ].map((f) => (
                   <div
                     key={f.title}

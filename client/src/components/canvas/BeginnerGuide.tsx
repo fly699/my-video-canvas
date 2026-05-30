@@ -1,7 +1,7 @@
 import { useState, useEffect } from "react";
 import {
   X, Sparkles, Layers, Wand2, Video, Boxes, Bot, Users, ScrollText, Activity,
-  Shield, ArrowRight,
+  Shield, ArrowRight, MessageCircle,
 } from "lucide-react";
 import type { NodeType } from "../../../../shared/types";
 import { getNodeConfig } from "../../lib/nodeConfig";
@@ -47,7 +47,7 @@ function WelcomeModal({ onClose }: { onClose: () => void }) {
     onClose();
   }
 
-  // 8 大核心工具（2 列 × 4 行布局，呼应图1）
+  // 9 大核心工具（2 列布局，呼应图1）
   const features = [
     { Icon: Layers, color: "oklch(0.68 0.22 285)",
       title: "节点式工作流", desc: "脚本 / 分镜 / 提示词 / 图像 / 视频 / 剪辑节点自由编排，可视化连线" },
@@ -65,6 +65,9 @@ function WelcomeModal({ onClose }: { onClose: () => void }) {
       badge: "PRO" },
     { Icon: Activity, color: "oklch(0.65 0.20 160)",
       title: "工作流状态面板", desc: "一键运行整条工作流，右侧面板实时展示每个节点进度、耗时、错误",
+      badge: "NEW" },
+    { Icon: MessageCircle, color: "oklch(0.70 0.18 285)",
+      title: "团队聊天 · 桌面应用", desc: "大厅/群聊/端到端加密私聊，可安装为 Chrome 桌面应用，支持专属浅色主题",
       badge: "NEW" },
     { Icon: Users, color: "oklch(0.66 0.18 140)",
       title: "多人实时协作", desc: "多用户同时编辑，节点变更秒同步，协作者光标可见" },
@@ -188,7 +191,7 @@ function WelcomeModal({ onClose }: { onClose: () => void }) {
           }}
         >
           <div style={{ fontSize: 12, color: "var(--c-t3)" }}>
-            核心功能 · <span style={{ color: "var(--c-t2)", fontWeight: 600 }}>8 大工具</span>
+            核心功能 · <span style={{ color: "var(--c-t2)", fontWeight: 600 }}>9 大工具</span>
           </div>
 
           <div
