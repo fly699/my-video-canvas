@@ -118,7 +118,7 @@ export function ChatView({ membersOpen: _m }: { membersOpen?: boolean }) {
         <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "8px 18px", background: C.accentSoft, borderBottom: `1px solid ${C.accent}`, flexShrink: 0 }}>
           <Lock size={14} style={{ color: C.accent, flexShrink: 0 }} />
           <span style={{ fontSize: 12, color: C.accent, lineHeight: 1.5 }}>
-            端到端加密模式：消息与文件经服务器中转但<strong>不在服务器留存</strong>，聊天记录仅保存在本设备，清除后无法找回，管理员也无法查看或恢复。
+            聊天记录仅保存在本设备，管理员也无法查看或恢复。
           </span>
         </div>
       )}
