@@ -456,6 +456,10 @@ export const storageSettings = mysqlTable("storageSettings", {
   persistAudio: boolean("persistAudio").notNull().default(true),
   persistVideo: boolean("persistVideo").notNull().default(true),
   persistImage: boolean("persistImage").notNull().default(true),
+  // Presigned GET URL validity (seconds) for self-hosted S3/MinIO. Longer values
+  // help when the URL must stay fetchable by slow upstream AI tasks; shorter
+  // values shrink the leak-exposure window. Default 1h.
+  presignTtlSec: int("presignTtlSec").notNull().default(3600),
   updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
 });
 

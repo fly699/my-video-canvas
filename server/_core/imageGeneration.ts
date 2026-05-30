@@ -31,6 +31,13 @@ export type GenerateImageOptions = {
 export type GenerateImageResponse = {
   url?: string;
   urls?: string[]; // multiple images when batchSize > 1
+  // Original upstream AI-platform URL(s), set when we re-hosted the result to
+  // our own storage. These remain fetchable by other upstream providers for a
+  // short window (e.g. Poyo's ~24h CDN TTL), so the client can offer them as a
+  // fallback reference when our re-hosted copy isn't publicly reachable.
+  sourceUrl?: string;
+  sourceUrls?: string[];
+  sourceAt?: number; // ms epoch when generated
 };
 
 const POYO_BASE = "https://api.poyo.ai";
@@ -129,7 +136,8 @@ async function generateImagePoyo(options: GenerateImageOptions): Promise<Generat
             const buf = Buffer.from(await imgRes.arrayBuffer());
             const mimeType = imgRes.headers.get("content-type") ?? "image/png";
             const { url } = await storagePut(`generated/${Date.now()}.png`, buf, mimeType);
-            return { url };
+            // Keep the original Poyo CDN URL as a short-lived public fallback.
+            return { url, sourceUrl: fileUrl, sourceAt: Date.now() };
           }
         } catch (err) {
           // Audit log: which step broke. Without this the admin sees "开关打开
@@ -223,7 +231,13 @@ export async function generateImage(options: GenerateImageOptions): Promise<Gene
       numImages: options.fluxNumImages,
       fluxSeed: options.fluxSeed,
     });
-    return { url: result.url, urls: result.urls };
+    return {
+      url: result.url,
+      urls: result.urls,
+      sourceUrl: result.sourceUrl,
+      sourceUrls: result.sourceUrls,
+      sourceAt: result.sourceAt,
+    };
   }
   // Default: use poyo if key available, else forge
   if (ENV.poyoApiKey) return generateImagePoyo(options);

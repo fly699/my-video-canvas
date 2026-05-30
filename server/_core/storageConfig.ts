@@ -13,7 +13,7 @@
 import * as db from "../db";
 import { isS3Configured } from "../storage";
 
-type Cached = { persistAudio: boolean; persistVideo: boolean; persistImage: boolean };
+type Cached = { persistAudio: boolean; persistVideo: boolean; persistImage: boolean; presignTtlSec: number };
 
 let _cached: Cached | null = null;
 let _expiresAt = 0;
@@ -45,7 +45,7 @@ export async function getCachedStorageSettings(): Promise<Cached> {
       // that DB outages can't silently bypass the admin's explicit "off"
       // intent and burn S3 quota.
       if (_cached) return _cached;
-      return { persistAudio: false, persistVideo: false, persistImage: false };
+      return { persistAudio: false, persistVideo: false, persistImage: false, presignTtlSec: 3600 };
     } finally {
       _inflight = null;
     }
@@ -70,4 +70,14 @@ export async function isVideoPersistenceEnabled(): Promise<boolean> {
 export async function isImagePersistenceEnabled(): Promise<boolean> {
   if (isS3Configured()) return true;
   return (await getCachedStorageSettings()).persistImage;
+}
+
+/**
+ * Admin-configured presigned GET URL validity (seconds), clamped to a sane
+ * range. Used by self-hosted S3/MinIO presigning. Falls back to 1h.
+ */
+export async function getPresignTtlSec(): Promise<number> {
+  const ttl = (await getCachedStorageSettings()).presignTtlSec;
+  if (!Number.isFinite(ttl)) return 3600;
+  return Math.min(Math.max(Math.trunc(ttl), 60), 604_800); // 1 min … 7 days
 }

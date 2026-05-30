@@ -105,6 +105,9 @@ if exist "%ROOT%\.env" (
     echo S3_SECRET_KEY=%MINIO_PASS%>>"%ROOT%\.env"
     echo S3_REGION=us-east-1>>"%ROOT%\.env"
     echo S3_FORCE_PATH_STYLE=true>>"%ROOT%\.env"
+    echo # 可选：若已为 MinIO 配置公网反代，填其公网地址可让浏览器直传/直下（省服务器带宽）>>"%ROOT%\.env"
+    echo # 留空时聊天文件由 app 服务器中转，远程用户也能正常上传/下载>>"%ROOT%\.env"
+    echo # S3_PUBLIC_ENDPOINT=https://files.example.com>>"%ROOT%\.env"
     echo [OK] 已把 S3_* 配置追加到 %ROOT%\.env
     set "ENV_WRITTEN=1"
   ) else (

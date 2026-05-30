@@ -4,7 +4,39 @@
 
 import { ENV } from "./_core/env";
 import { S3Client, PutObjectCommand, GetObjectCommand } from "@aws-sdk/client-s3";
+import type { Readable } from "node:stream";
 import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
+// NOTE: storageConfig imports isS3Configured from this module; both directions
+// are used only inside functions (call-time), so the cycle resolves safely.
+import { getPresignTtlSec } from "./_core/storageConfig";
+
+/**
+ * Whether end-user browsers can reach the storage host directly. MinIO is
+ * typically bound to a server-local address (127.0.0.1:9000) that remote
+ * browsers cannot connect to — in that case presigned URLs are useless to the
+ * client and we must stream files through the app server instead. Direct access
+ * is only assumed when an explicit public endpoint is configured, or when the
+ * backend is Forge (whose presigned URLs are already public).
+ */
+export function canBrowserReachStorageDirectly(): boolean {
+  if (storageBackend() === "forge") return true;
+  if (storageBackend() === "s3") return Boolean(ENV.s3PublicEndpoint);
+  return false;
+}
+
+/** Rewrite a presigned URL's origin to the public endpoint, when configured. */
+function applyPublicEndpoint(signedUrl: string): string {
+  if (!ENV.s3PublicEndpoint) return signedUrl;
+  try {
+    const pub = new URL(ENV.s3PublicEndpoint);
+    const u = new URL(signedUrl);
+    u.protocol = pub.protocol;
+    u.host = pub.host;
+    return u.toString();
+  } catch {
+    return signedUrl;
+  }
+}
 
 // ── Storage backend selection ───────────────────────────────────────────────
 // Self-hosted S3-compatible (MinIO / R2 / AWS) takes precedence over Forge when
@@ -121,7 +153,9 @@ export async function storageGet(relKey: string): Promise<{ key: string; url: st
 export async function storagePresignGet(relKey: string): Promise<string> {
   const key = normalizeKey(relKey);
   if (storageBackend() === "s3") {
-    return getSignedUrl(getS3(), new GetObjectCommand({ Bucket: ENV.s3Bucket, Key: key }), { expiresIn: 3600 });
+    const expiresIn = await getPresignTtlSec();
+    const signed = await getSignedUrl(getS3(), new GetObjectCommand({ Bucket: ENV.s3Bucket, Key: key }), { expiresIn });
+    return applyPublicEndpoint(signed);
   }
   const { forgeUrl, forgeKey } = getForgeConfig();
   const getUrl = new URL("v1/storage/presign/get", forgeUrl + "/");
@@ -148,12 +182,12 @@ export async function storagePresignPut(
 ): Promise<{ uploadUrl: string; key: string; url: string }> {
   if (storageBackend() === "s3") {
     const key = appendHashSuffix(normalizeKey(relKey));
-    const uploadUrl = await getSignedUrl(
+    const signed = await getSignedUrl(
       getS3(),
       new PutObjectCommand({ Bucket: ENV.s3Bucket, Key: key, ContentType: contentType }),
       { expiresIn: 3600 },
     );
-    return { uploadUrl, key, url: `/manus-storage/${key}` };
+    return { uploadUrl: applyPublicEndpoint(signed), key, url: `/manus-storage/${key}` };
   }
   const { forgeUrl, forgeKey } = getForgeConfig();
   const key = appendHashSuffix(normalizeKey(relKey));
@@ -196,4 +230,36 @@ export async function resolveToAbsoluteUrl(urlOrRelPath: string): Promise<string
 
 export async function storageGetSignedUrl(relKey: string): Promise<string> {
   return storagePresignGet(relKey);
+}
+
+/**
+ * Fetch a stored object so the app server can stream it back to the browser.
+ * Used when the storage host isn't reachable by clients (e.g. MinIO on
+ * 127.0.0.1). For S3/MinIO we read the object directly; for Forge we fetch the
+ * short-lived presigned URL server-side.
+ */
+export async function storageFetchStream(
+  relKey: string,
+): Promise<{ body: Readable; contentType?: string; contentLength?: number }> {
+  const key = normalizeKey(relKey);
+  if (storageBackend() === "s3") {
+    const out = await getS3().send(new GetObjectCommand({ Bucket: ENV.s3Bucket, Key: key }));
+    return {
+      body: out.Body as Readable,
+      contentType: out.ContentType,
+      contentLength: typeof out.ContentLength === "number" ? out.ContentLength : undefined,
+    };
+  }
+  const signed = await storagePresignGet(key);
+  const resp = await fetch(signed, { signal: AbortSignal.timeout(30_000) });
+  if (!resp.ok || !resp.body) {
+    throw new Error(`Storage fetch failed (${resp.status})`);
+  }
+  const { Readable: NodeReadable } = await import("node:stream");
+  const lenHeader = resp.headers.get("content-length");
+  return {
+    body: NodeReadable.fromWeb(resp.body as Parameters<typeof NodeReadable.fromWeb>[0]),
+    contentType: resp.headers.get("content-type") ?? undefined,
+    contentLength: lenHeader ? Number(lenHeader) : undefined,
+  };
 }

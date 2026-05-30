@@ -10,6 +10,13 @@ import {
 import { useLocalMedia } from "@/lib/useLocalMedia";
 import { cacheMedia } from "@/lib/mediaCache";
 
+// Route external CDN URLs (e.g. Poyo audio when persistence is off) through the
+// server proxy so remote browsers can play them; same-origin /manus-storage
+// paths are used directly. The video-proxy handles audio/* content types too.
+function toProxiedAudioSrc(u: string): string {
+  return u.startsWith("http") ? `/api/video-proxy?url=${encodeURIComponent(u)}` : u;
+}
+
 interface Props {
   id: string;
   selected?: boolean;
@@ -483,7 +490,7 @@ export const AudioNode = memo(function AudioNode({ id, selected, data }: Props) 
       </button>
       <audio
         ref={audioRef}
-        src={audioBlobUrl ?? payload.url}
+        src={audioBlobUrl ?? (payload.url ? toProxiedAudioSrc(payload.url) : undefined)}
         onEnded={() => setIsPlaying(false)}
         onEmptied={() => setIsPlaying(false)}
         onLoadedMetadata={(e) => update("duration", (e.target as HTMLAudioElement).duration)}

@@ -53,6 +53,11 @@ export interface HiggsfieldImageOptions {
 export interface HiggsfieldImageResult {
   url: string;
   urls?: string[]; // multiple URLs when batchSize > 1
+  // Original Higgsfield CDN URL(s), kept as a short-lived public fallback when
+  // the re-hosted copy isn't reachable by upstream providers.
+  sourceUrl?: string;
+  sourceUrls?: string[];
+  sourceAt?: number;
 }
 
 async function pollHiggsfieldRequest(requestId: string): Promise<{ fileUrl: string; fileUrls?: string[] }> {
@@ -280,7 +285,15 @@ export async function generateHiggsfieldImage(
     storedUrls.push(fUrl); // fallback to original URL on per-image failure
   }
 
-  return { url: storedUrls[0], urls: storedUrls.length > 1 ? storedUrls : undefined };
+  // Keep the original Higgsfield CDN URL(s), index-aligned with storedUrls, as a
+  // short-lived public fallback reference.
+  return {
+    url: storedUrls[0],
+    urls: storedUrls.length > 1 ? storedUrls : undefined,
+    sourceUrl: allFileUrls[0],
+    sourceUrls: allFileUrls.length > 1 ? allFileUrls : undefined,
+    sourceAt: Date.now(),
+  };
 }
 
 // ── Video Generation ──────────────────────────────────────────────────────────

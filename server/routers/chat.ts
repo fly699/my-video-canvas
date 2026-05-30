@@ -2,7 +2,7 @@ import path from "path";
 import { z } from "zod";
 import { TRPCError } from "@trpc/server";
 import { router, protectedProcedure } from "../_core/trpc";
-import { storagePut, storagePresignPut, isStorageConfigured } from "../storage";
+import { storagePut, storagePresignPut, isStorageConfigured, canBrowserReachStorageDirectly } from "../storage";
 import { hashPassword, verifyPassword } from "../_core/scrypt";
 import {
   getOrCreateLobby,
@@ -371,7 +371,10 @@ export const chatRouter = router({
       const safeName = path.basename(input.filename).replace(/[^a-zA-Z0-9._-]/g, "_").slice(0, 120) || "file";
       const date = new Date().toISOString().slice(0, 10);
       const relKey = `chat/${conv.id}/${date}/${crypto.randomUUID()}-${safeName}`;
-      if (!isStorageConfigured()) return { mode: "base64" as const };
+      // No storage, or storage host unreachable by the browser (e.g. MinIO on
+      // 127.0.0.1) → upload through the app server via base64 instead of a
+      // presigned PUT the client can't reach.
+      if (!isStorageConfigured() || !canBrowserReachStorageDirectly()) return { mode: "base64" as const };
       const { uploadUrl, key, url } = await storagePresignPut(relKey, input.mimeType);
       return { mode: "presigned" as const, uploadUrl, key, url, name: safeName, kind: kindFromMime(input.mimeType) };
     }),

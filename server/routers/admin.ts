@@ -101,10 +101,15 @@ export const adminRouter = router({
         persistAudio: z.boolean().optional(),
         persistVideo: z.boolean().optional(),
         persistImage: z.boolean().optional(),
+        // Presigned GET URL validity for self-hosted S3/MinIO: 1 min … 7 days.
+        presignTtlSec: z.number().int().min(60).max(604_800).optional(),
       }))
       .mutation(async ({ input }) => {
-        if (input.persistAudio === undefined && input.persistVideo === undefined && input.persistImage === undefined) {
-          throw new TRPCError({ code: "BAD_REQUEST", message: "至少需要指定 persistAudio / persistVideo / persistImage 其中一项" });
+        if (
+          input.persistAudio === undefined && input.persistVideo === undefined &&
+          input.persistImage === undefined && input.presignTtlSec === undefined
+        ) {
+          throw new TRPCError({ code: "BAD_REQUEST", message: "至少需要指定 persistAudio / persistVideo / persistImage / presignTtlSec 其中一项" });
         }
         await db.setStorageSettings(input);
         invalidateStorageSettingsCache();
