@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Film, ShieldCheck } from "lucide-react";
 
 type Mode = "login" | "register";
@@ -35,6 +35,18 @@ function startOAuth(): void {
   } catch { /* ignore */ }
 }
 
+// ── 登录记忆（仅本机 localStorage；密码仅 base64 混淆，非加密，自部署/局域网场景）──
+const ACCTS_KEY = "avc:login:accounts:v1";
+const PREFS_KEY = "avc:login:prefs:v1";
+type SavedAccounts = Record<string, { p?: string }>; // key=email, p=base64(password)
+interface LoginPrefs { lastEmail?: string; rememberUser?: boolean; rememberPass?: boolean; autoLogin?: boolean; startWithSystem?: boolean }
+function loadAccounts(): SavedAccounts { try { return JSON.parse(localStorage.getItem(ACCTS_KEY) || "{}"); } catch { return {}; } }
+function saveAccounts(a: SavedAccounts) { try { localStorage.setItem(ACCTS_KEY, JSON.stringify(a)); } catch { /* quota */ } }
+function loadPrefs(): LoginPrefs { try { return JSON.parse(localStorage.getItem(PREFS_KEY) || "{}"); } catch { return {}; } }
+function savePrefs(p: LoginPrefs) { try { localStorage.setItem(PREFS_KEY, JSON.stringify(p)); } catch { /* quota */ } }
+const encPw = (s: string) => { try { return btoa(unescape(encodeURIComponent(s))); } catch { return s; } };
+const decPw = (s: string) => { try { return decodeURIComponent(escape(atob(s))); } catch { return s; } };
+
 export default function LoginPage() {
   const [mode, setMode] = useState<Mode>("login");
   const [email, setEmail] = useState("");
@@ -44,6 +56,90 @@ export default function LoginPage() {
   const [loading, setLoading] = useState(false);
   // Whether the server has Google OAuth configured (runtime probe — no rebuild needed).
   const [googleAvailable, setGoogleAvailable] = useState(false);
+
+  // 登录记忆选项
+  const [rememberUser, setRememberUser] = useState(true);
+  const [rememberPass, setRememberPass] = useState(false);
+  const [autoLogin, setAutoLogin] = useState(false);
+  const [startWithSystem, setStartWithSystem] = useState(false);
+  const [accounts, setAccounts] = useState<SavedAccounts>({});
+  const autoTried = useRef(false);
+
+  // 载入记忆的账号/选项并预填
+  useEffect(() => {
+    const prefs = loadPrefs();
+    const accts = loadAccounts();
+    setAccounts(accts);
+    setRememberUser(prefs.rememberUser ?? true);
+    setRememberPass(prefs.rememberPass ?? false);
+    setAutoLogin(prefs.autoLogin ?? false);
+    setStartWithSystem(prefs.startWithSystem ?? false);
+    const last = prefs.lastEmail;
+    if ((prefs.rememberUser ?? true) && last) {
+      setEmail(last);
+      const p = accts[last]?.p;
+      if (prefs.rememberPass && p) setPassword(decPw(p));
+    }
+  }, []);
+
+  function setEmailWithFill(v: string) {
+    setEmail(v);
+    const p = accounts[v]?.p;
+    if (p) setPassword(decPw(p)); // 选择历史用户时自动填充其密码
+  }
+
+  function persistOnSuccess() {
+    const accts = loadAccounts();
+    if (rememberUser || rememberPass || autoLogin) {
+      const entry = accts[email] ?? {};
+      if (rememberPass || autoLogin) entry.p = encPw(password); else delete entry.p;
+      accts[email] = entry;
+    } else if (accts[email]) {
+      delete accts[email]; // 全不勾 → 移除该账号记忆
+    }
+    saveAccounts(accts);
+    savePrefs({
+      lastEmail: (rememberUser || rememberPass || autoLogin) ? email : undefined,
+      rememberUser, rememberPass: rememberPass || autoLogin, autoLogin, startWithSystem,
+    });
+  }
+
+  async function performAuth() {
+    setError(null);
+    setLoading(true);
+    try {
+      const url = mode === "login" ? "/api/auth/login" : "/api/auth/register";
+      const body: Record<string, string> = { email, password };
+      if (mode === "register" && name.trim()) body.name = name.trim();
+      const res = await fetch(url, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify(body),
+      });
+      const data = await res.json() as { success?: boolean; error?: string };
+      if (!res.ok || !data.success) { setError(data.error ?? "操作失败，请稍后重试"); return; }
+      persistOnSuccess();
+      const nextParam = new URLSearchParams(window.location.search).get("next");
+      const safeNext = nextParam && nextParam.startsWith("/") && !nextParam.startsWith("//") ? nextParam : "/";
+      window.location.href = safeNext;
+    } catch {
+      setError("网络错误，请检查连接后重试");
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  // 下次自动登录：预填完成且开启时，自动提交一次
+  useEffect(() => {
+    if (autoTried.current) return;
+    const prefs = loadPrefs();
+    if (prefs.autoLogin && mode === "login" && email && password) {
+      autoTried.current = true;
+      void performAuth();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [email, password, mode]);
 
   useEffect(() => {
     let alive = true;
@@ -56,41 +152,9 @@ export default function LoginPage() {
     return () => { alive = false; };
   }, []);
 
-  async function handleSubmit(e: React.FormEvent) {
+  function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
-    setError(null);
-    setLoading(true);
-
-    try {
-      const url = mode === "login" ? "/api/auth/login" : "/api/auth/register";
-      const body: Record<string, string> = { email, password };
-      if (mode === "register" && name.trim()) {
-        body.name = name.trim();
-      }
-
-      const res = await fetch(url, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        credentials: "include",
-        body: JSON.stringify(body),
-      });
-
-      const data = await res.json() as { success?: boolean; error?: string };
-
-      if (!res.ok || !data.success) {
-        setError(data.error ?? "操作失败，请稍后重试");
-        return;
-      }
-
-      // Honor ?next=… for share-link / invite flows
-      const nextParam = new URLSearchParams(window.location.search).get("next");
-      const safeNext = nextParam && nextParam.startsWith("/") && !nextParam.startsWith("//") ? nextParam : "/";
-      window.location.href = safeNext;
-    } catch {
-      setError("网络错误，请检查连接后重试");
-    } finally {
-      setLoading(false);
-    }
+    void performAuth();
   }
 
   return (
@@ -236,12 +300,18 @@ export default function LoginPage() {
             <input
               type="email"
               value={email}
-              onChange={(e) => setEmail(e.target.value)}
+              onChange={(e) => setEmailWithFill(e.target.value)}
               placeholder="you@example.com"
               required
               autoComplete="email"
+              list={Object.keys(accounts).length ? "avc-login-emails" : undefined}
               style={inputStyle}
             />
+            {Object.keys(accounts).length > 0 && (
+              <datalist id="avc-login-emails">
+                {Object.keys(accounts).map((e) => <option key={e} value={e} />)}
+              </datalist>
+            )}
           </div>
 
           {/* Password */}
@@ -257,6 +327,37 @@ export default function LoginPage() {
               style={inputStyle}
             />
           </div>
+
+          {/* 登录记忆选项（仅登录模式） */}
+          {mode === "login" && (
+            <div style={{ display: "flex", flexDirection: "column", gap: "8px", padding: "2px" }}>
+              <div style={{ display: "flex", flexWrap: "wrap", gap: "10px 16px" }}>
+                <Check label="记住用户名" checked={rememberUser} onChange={(v) => {
+                  setRememberUser(v);
+                  if (!v) { setRememberPass(false); setAutoLogin(false); }
+                }} />
+                <Check label="记住密码" checked={rememberPass} onChange={(v) => {
+                  setRememberPass(v);
+                  if (v) setRememberUser(true); else setAutoLogin(false);
+                }} />
+                <Check label="下次自动登录" checked={autoLogin} onChange={(v) => {
+                  setAutoLogin(v);
+                  if (v) { setRememberPass(true); setRememberUser(true); }
+                }} />
+                <Check label="随系统启动" checked={startWithSystem} onChange={setStartWithSystem} />
+              </div>
+              {startWithSystem && (
+                <div style={{ fontSize: "11px", color: "rgba(255,255,255,0.4)", lineHeight: 1.5 }}>
+                  「随系统启动」需在桌面端配合：把本应用加入 Windows 启动项（运行 deploy\add-to-startup.bat 一键添加）。配合「下次自动登录」即可开机自动进入。
+                </div>
+              )}
+              {rememberPass && (
+                <div style={{ fontSize: "11px", color: "rgba(245,158,11,0.7)", lineHeight: 1.5 }}>
+                  ⚠️ 记住密码会把密码保存在本机浏览器（仅混淆、非加密）。请仅在私人电脑上使用。
+                </div>
+              )}
+            </div>
+          )}
 
           {/* Error */}
           {error && (
@@ -388,6 +489,15 @@ function GoogleIcon() {
       <path fill="#FBBC05" d="M10.53 28.59c-.48-1.45-.76-2.99-.76-4.59s.27-3.14.76-4.59l-7.98-6.19C.92 16.46 0 20.12 0 24c0 3.88.92 7.54 2.56 10.78l7.97-6.19z" />
       <path fill="#34A853" d="M24 48c6.48 0 11.93-2.13 15.89-5.81l-7.73-6c-2.15 1.45-4.92 2.3-8.16 2.3-6.26 0-11.57-4.22-13.47-9.91l-7.98 6.19C6.51 42.62 14.62 48 24 48z" />
     </svg>
+  );
+}
+
+function Check({ label, checked, onChange }: { label: string; checked: boolean; onChange: (v: boolean) => void }) {
+  return (
+    <label style={{ display: "inline-flex", alignItems: "center", gap: "6px", fontSize: "13px", color: "var(--c-t2, rgba(255,255,255,0.6))", cursor: "pointer", userSelect: "none" }}>
+      <input type="checkbox" checked={checked} onChange={(e) => onChange(e.target.checked)} style={{ accentColor: "oklch(0.62 0.19 285)", width: 15, height: 15, cursor: "pointer" }} />
+      {label}
+    </label>
   );
 }
 
