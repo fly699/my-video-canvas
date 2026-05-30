@@ -1238,7 +1238,7 @@ export const ScriptNode = memo(function ScriptNode({ id, selected, data }: Props
                       if (moodBoardMutation.isPending) return;
                       const text = payload.content?.trim();
                       if (!text) { toast.error("请先填写脚本内容"); return; }
-                      moodBoardMutation.mutate({ scriptText: text.slice(0, 8000), model: llmModel });
+                      moodBoardMutation.mutate({ scriptText: text.slice(0, 8000), model: llmModel, promptLang });
                     }}
                     disabled={moodBoardMutation.isPending || !payload.content?.trim()}
                     className="nodrag flex items-center justify-center gap-1.5 w-full py-2 rounded-lg text-xs font-medium transition-all"

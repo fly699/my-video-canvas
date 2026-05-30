@@ -1293,13 +1293,18 @@ score 为 0-100 整数，issues 数组最多 8 条，每条包含 type/line/sugg
     .input(z.object({
       scriptText: z.string().min(1).max(8000),
       model: z.string().optional(),
+      promptLang: z.enum(["zh", "en"]).default("en"),
     }))
     .mutation(async ({ ctx, input }) => {
       return dedupe("scripts.generateMoodBoard", ctx.user.id, input, async () => {
+      const langName = input.promptLang === "zh" ? "中文" : "英文";
+      const promptExample = input.promptLang === "zh"
+        ? "用于 AI 图像生成的中文电影级提示词"
+        : "English cinematic prompt for AI image generation";
       const systemPrompt = `你是AI视频导演，负责将剧本场景转化为图像生成提示词。
-为每个主要场景生成一条英文视觉提示词（cinematic prompt）和一条负面提示词。
+为每个主要场景生成一条${langName}视觉提示词（cinematic prompt）和一条负面提示词。提示词必须使用${langName}书写。
 仅输出合法 JSON 数组，无 markdown 代码块：
-[{"sceneIndex":1,"sceneTitle":"场景名称（中文）","prompt":"English cinematic prompt for AI image generation","negPrompt":"blurry, low quality, text"}]`;
+[{"sceneIndex":1,"sceneTitle":"场景名称（中文）","prompt":"${promptExample}","negPrompt":"blurry, low quality, text"}]`;
       const response = await invokeLLM({
         messages: [
           { role: "system" as const, content: systemPrompt },
