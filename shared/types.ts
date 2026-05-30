@@ -63,6 +63,9 @@ export interface ScriptNodeData {
    *  Used both to render "已套用: XXX" in the UI and to look up the
    *  systemPromptAddon to send with the next generate call. */
   aiScriptTemplate?: string;
+  /** What kind of downstream node to auto-create from generated scenes:
+   *  "storyboard" (default) or "comfyui_image" (ComfyUI 本地生图节点). */
+  aiStoryboardTarget?: "storyboard" | "comfyui_image";
 }
 
 export interface StoryboardNodeData {

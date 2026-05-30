@@ -186,6 +186,11 @@ export const ScriptNode = memo(function ScriptNode({ id, selected, data }: Props
   const setAndSaveAspectRatio = useCallback((v: string) => {
     setAspectRatio(v); updateNodeData(id, { aiAspectRatio: v });
   }, [id, updateNodeData]);
+  // Which downstream node type to auto-create from generated scenes.
+  const [storyboardTarget, setStoryboardTarget] = useState<"storyboard" | "comfyui_image">(payload.aiStoryboardTarget ?? "storyboard");
+  const setAndSaveStoryboardTarget = useCallback((v: "storyboard" | "comfyui_image") => {
+    setStoryboardTarget(v); updateNodeData(id, { aiStoryboardTarget: v });
+  }, [id, updateNodeData]);
 
   // One-click template apply: fills genre/style/mood/targetModel/aspectRatio/
   // sceneCount/duration/llmModel + records the template id so generate calls
@@ -304,10 +309,12 @@ export const ScriptNode = memo(function ScriptNode({ id, selected, data }: Props
     onSuccess: (result) => {
       const { nodes: currentNodes, batchAddSceneNodes, projectId } = useCanvasStore.getState();
       if (!projectId) { toast.error("画布尚未加载，请稍后重试"); return; }
-      const ownPos = currentNodes.find((n) => n.id === id)?.position ?? { x: 0, y: 0 };
-      batchAddSceneNodes(result.scenes, id, ownPos);
-      toast.success("分镜已生成", {
-        description: `共 ${result.scenes.length} 个场景节点已添加到画布`,
+      const ownNode = currentNodes.find((n) => n.id === id);
+      const ownPos = ownNode?.position ?? { x: 0, y: 0 };
+      const target = (ownNode?.data.payload as ScriptNodeData | undefined)?.aiStoryboardTarget ?? "storyboard";
+      batchAddSceneNodes(result.scenes, id, ownPos, target);
+      toast.success(target === "comfyui_image" ? "ComfyUI 图像节点已生成" : "分镜已生成", {
+        description: `共 ${result.scenes.length} 个${target === "comfyui_image" ? "ComfyUI 图像" : "场景"}节点已添加到画布`,
         duration: 4000,
       });
     },
@@ -346,17 +353,20 @@ export const ScriptNode = memo(function ScriptNode({ id, selected, data }: Props
       if (result.scenes.length > 0) {
         const { nodes: currentNodes, batchAddSceneNodes, projectId } = useCanvasStore.getState();
         if (projectId) {
-          const ownPos = currentNodes.find((n) => n.id === id)?.position ?? { x: 0, y: 0 };
-          batchAddSceneNodes(result.scenes, id, ownPos);
+          const ownNode = currentNodes.find((n) => n.id === id);
+          const ownPos = ownNode?.position ?? { x: 0, y: 0 };
+          const target = (ownNode?.data.payload as ScriptNodeData | undefined)?.aiStoryboardTarget ?? "storyboard";
+          batchAddSceneNodes(result.scenes, id, ownPos, target);
           nodesCreated = result.scenes.length;
         } else {
           toast.error("画布尚未加载，分镜节点创建失败");
         }
       }
+      const tgtLabel = (useCanvasStore.getState().nodes.find((n) => n.id === id)?.data.payload as ScriptNodeData | undefined)?.aiStoryboardTarget === "comfyui_image" ? "ComfyUI 图像" : "分镜";
       toast.success("AI 剧本已生成", {
         description: nodesCreated > 0
-          ? `${scriptFilled ? "剧本已填入，" : ""}${nodesCreated} 个分镜节点已创建`
-          : scriptFilled ? "剧本已填入" : "分镜节点已创建",
+          ? `${scriptFilled ? "剧本已填入，" : ""}${nodesCreated} 个${tgtLabel}节点已创建`
+          : scriptFilled ? "剧本已填入" : `${tgtLabel}节点已创建`,
         duration: 5000,
       });
     },
@@ -587,6 +597,34 @@ export const ScriptNode = memo(function ScriptNode({ id, selected, data }: Props
           {/* Character count + duration */}
           <span style={{ fontSize: 10, color: "var(--c-t4)", marginLeft: "auto" }}>
             {charCount} 字 · {duration}s 视频
+          </span>
+        </div>
+
+        {/* Downstream node type selector — applies to BOTH generate paths below */}
+        <div className="flex items-center gap-1.5" style={{ marginBottom: 2 }}>
+          <span style={{ fontSize: 10, color: "var(--c-t4)", flexShrink: 0 }}>生成为</span>
+          <div className="flex rounded-lg overflow-hidden" style={{ border: `1px solid var(--c-bd2)` }}>
+            {([["storyboard", "分镜节点"], ["comfyui_image", "ComfyUI 图像"]] as const).map(([val, label]) => {
+              const active = storyboardTarget === val;
+              return (
+                <button
+                  key={val}
+                  onClick={() => setAndSaveStoryboardTarget(val)}
+                  className="nodrag"
+                  style={{
+                    padding: "3px 10px", fontSize: 10.5, fontWeight: active ? 600 : 400,
+                    background: active ? `${ACCENT}1e` : "transparent",
+                    color: active ? ACCENT : "var(--c-t3)",
+                    cursor: "pointer", border: "none",
+                  }}
+                >
+                  {label}
+                </button>
+              );
+            })}
+          </div>
+          <span style={{ fontSize: 9.5, color: "var(--c-t4)" }}>
+            {storyboardTarget === "comfyui_image" ? "用本地 ComfyUI 生图" : "默认分镜"}
           </span>
         </div>
 
