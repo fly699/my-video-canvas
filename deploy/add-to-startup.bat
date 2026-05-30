@@ -9,7 +9,7 @@ rem  配合登录页勾选「下次自动登录」即可开机自动进入。
 rem ============================================================
 
 rem ---- 应用地址（按你的实际访问地址修改：https/http、端口、IP）----
-set "APP_URL=https://localhost:3000"
+set "APP_URL=https://172.16.0.114:3000"
 
 set "STARTUP=%APPDATA%\Microsoft\Windows\Start Menu\Programs\Startup"
 set "LNK=%STARTUP%\AI视频画布.url"
