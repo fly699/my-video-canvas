@@ -59,9 +59,9 @@ export default function ChatPage() {
             <button onClick={() => setSidebarOpen((v) => !v)} title={sidebarOpen ? "折叠会话栏" : "展开会话栏"} style={iconBtn}>
               {sidebarOpen ? <PanelLeftClose size={18} /> : <PanelLeft size={18} />}
             </button>
-            <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-              <img src="/chat-icon.svg" width={26} height={26} alt="" style={{ borderRadius: 7 }} />
-              <span style={{ fontWeight: 800, fontSize: 16, letterSpacing: "-0.3px", color: C.accent }}>聊天工作室</span>
+            <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+              <img src="/chat-icon.svg" width={20} height={20} alt="" style={{ borderRadius: 6 }} />
+              <span style={{ fontWeight: 700, fontSize: 14, letterSpacing: "-0.2px", color: C.accent }}>聊天工作室</span>
             </div>
           </div>
           <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
