@@ -113,6 +113,16 @@ export function ChatView({ membersOpen: _m }: { membersOpen?: boolean }) {
         </div>
       </div>
 
+      {/* 端到端加密模式警示 */}
+      {activeConv.mode === "serverless" && (
+        <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "8px 18px", background: C.accentSoft, borderBottom: `1px solid ${C.accent}`, flexShrink: 0 }}>
+          <Lock size={14} style={{ color: C.accent, flexShrink: 0 }} />
+          <span style={{ fontSize: 12, color: C.accent, lineHeight: 1.5 }}>
+            端到端加密模式：消息与文件经服务器中转但<strong>不在服务器留存</strong>，聊天记录仅保存在本设备，清除后无法找回，管理员也无法查看或恢复。
+          </span>
+        </div>
+      )}
+
       {/* messages */}
       <div ref={scrollRef} style={{ flex: 1, overflowY: "auto", padding: "16px 18px", display: "flex", flexDirection: "column", gap: 12 }}>
         {loadingMessages && <div style={{ alignSelf: "center", color: C.t3, fontSize: 13 }}>加载中…</div>}
