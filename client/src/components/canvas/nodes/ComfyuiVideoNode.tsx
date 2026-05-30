@@ -7,7 +7,7 @@ import { trpc } from "@/lib/trpc";
 import { toast } from "sonner";
 import {
   Play, Loader2, RefreshCw, Upload, X, Cpu, Download, AlertCircle,
-  ChevronDown, ChevronRight, Server, Boxes, HardDriveDownload, Languages,
+  ChevronDown, ChevronRight, Server, Boxes, HardDriveDownload, Languages, Copy,
 } from "lucide-react";
 import { useLocalMedia } from "@/lib/useLocalMedia";
 import { cacheMedia } from "@/lib/mediaCache";
@@ -131,6 +131,35 @@ export const ComfyuiVideoNode = memo(function ComfyuiVideoNode({ id, selected, d
     setTranslating(true);
     translateMutation.mutate({ text: payload.prompt, mode: "translate_en", model: llmModel });
   };
+
+  // Sync shared ComfyUI config to ALL other comfyui_video nodes on the canvas.
+  // Per-node fields (prompt / seed / reference image / result) are NOT synced.
+  const syncToAllComfyVideos = useCallback(() => {
+    const { nodes: allNodes, batchUpdateNodeData } = useCanvasStore.getState();
+    const targets = allNodes.filter((n) => n.data.nodeType === "comfyui_video" && n.id !== id);
+    if (targets.length === 0) { toast.info("当前画布只有这一个 ComfyUI 视频节点"); return; }
+    const p = payload;
+    const patch: Partial<ComfyuiVideoNodeData> = {
+      customBaseUrl: p.customBaseUrl,
+      workflowTemplate: p.workflowTemplate,
+      negPrompt: p.negPrompt,
+      ckpt: p.ckpt,
+      motionModule: p.motionModule,
+      steps: p.steps,
+      cfg: p.cfg,
+      frames: p.frames,
+      fps: p.fps,
+      width: p.width,
+      height: p.height,
+      sampler: p.sampler,
+      scheduler: p.scheduler,
+      denoise: p.denoise,
+      vae: p.vae,
+      batchSize: p.batchSize,
+    };
+    batchUpdateNodeData(targets.map((t) => ({ id: t.id, payload: patch })));
+    toast.success(`已同步配置到 ${targets.length} 个 ComfyUI 视频节点`);
+  }, [id, payload]);
 
   const isSvd = payload.workflowTemplate === "svd";
 
@@ -403,6 +432,25 @@ export const ComfyuiVideoNode = memo(function ComfyuiVideoNode({ id, selected, d
             </div>
           )}
         </div>
+
+        {/* ── Sync config to all ComfyUI video nodes ── */}
+        <button
+          onClick={syncToAllComfyVideos}
+          title="把当前服务器地址 / Checkpoint / 运动模块 / 采样参数等配置同步到画布中所有其他 ComfyUI 视频节点（不含提示词、Seed、参考图、结果视频）"
+          className="nodrag flex items-center justify-center gap-1.5 w-full py-1.5 rounded-lg text-[10.5px] transition-all"
+          style={{
+            background: "oklch(0.62 0.22 50 / 0.08)",
+            border: "1px dashed oklch(0.62 0.22 50 / 0.4)",
+            color: accent,
+            cursor: "pointer",
+            marginBottom: 4,
+          }}
+          onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.background = "oklch(0.62 0.22 50 / 0.16)"; }}
+          onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.background = "oklch(0.62 0.22 50 / 0.08)"; }}
+        >
+          <Copy className="w-3 h-3" />
+          同步配置到全部 ComfyUI 视频节点
+        </button>
 
         {/* ── Workflow template ── */}
         <div>

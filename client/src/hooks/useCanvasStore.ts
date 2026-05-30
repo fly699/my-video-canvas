@@ -84,7 +84,8 @@ interface CanvasStore {
   batchAddSceneNodes: (
     scenes: Array<{ description?: string; promptText?: string; cameraMovement?: string; duration?: number }>,
     sourceNodeId: string,
-    sourcePosition: { x: number; y: number }
+    sourcePosition: { x: number; y: number },
+    targetType?: "storyboard" | "comfyui_image"
   ) => void;
   // payload allows an extra `pinned?: boolean` field — a transient UI flag stored
   // on every node payload (no DB schema change) controlling whether the node's
@@ -254,28 +255,40 @@ export const useCanvasStore = create<CanvasStore>((set, get) => ({
     return newNode;
   },
 
-  batchAddSceneNodes: (scenes, sourceNodeId, sourcePosition) => {
+  batchAddSceneNodes: (scenes, sourceNodeId, sourcePosition, targetType = "storyboard") => {
     const storeProjectId = get().projectId;
     if (!storeProjectId) return; // guard: project not loaded yet
     set((state) => {
       const projectId = state.nodes.find((n) => n.id === sourceNodeId)?.data.projectId ?? storeProjectId;
-      const config = getNodeConfig("storyboard");
+      const isComfy = targetType === "comfyui_image";
+      const config = getNodeConfig(isComfy ? "comfyui_image" : "storyboard");
       const nodeWidth = (config.defaultWidth as number) ?? 360;
       const newNodes: CanvasNode[] = scenes.map((scene, i) => ({
         id: nanoid(),
         type: "custom" as const,
         position: { x: sourcePosition.x + i * (nodeWidth + 40), y: sourcePosition.y + 500 },
-        data: {
-          nodeType: "storyboard" as const,
-          title: `分镜 #${i + 1}`,
-          payload: {
-            description: scene.description ?? "",
-            promptText: scene.promptText ?? "",
-            cameraMovement: scene.cameraMovement,
-            duration: scene.duration,
-          },
-          projectId,
-        },
+        data: isComfy
+          ? {
+              nodeType: "comfyui_image" as const,
+              title: `ComfyUI 图像 #${i + 1}`,
+              payload: {
+                // Scene image prompt → ComfyUI prompt; the user fills ckpt/server later.
+                workflowTemplate: "txt2img" as const,
+                prompt: scene.promptText || scene.description || "",
+              },
+              projectId,
+            }
+          : {
+              nodeType: "storyboard" as const,
+              title: `分镜 #${i + 1}`,
+              payload: {
+                description: scene.description ?? "",
+                promptText: scene.promptText ?? "",
+                cameraMovement: scene.cameraMovement,
+                duration: scene.duration,
+              },
+              projectId,
+            },
         style: { width: nodeWidth },
       }));
       const newEdges: CanvasEdge[] = newNodes.map((node) => ({
