@@ -849,16 +849,18 @@ export const scriptsRouter = router({
         synopsis: z.string().optional(),
         count: z.number().int().min(2).max(8).default(4),
         model: z.string().optional(),
+        promptLang: z.enum(["zh", "en"]).default("en"),
       })
     )
     .mutation(async ({ ctx, input }) => {
       return dedupe("scripts.generateStoryboards", ctx.user.id, input, async () => {
+      const promptLangName = input.promptLang === "zh" ? "Chinese (中文)" : "English";
       const systemPrompt = `You are a professional film director and storyboard artist.
 Given a script, break it into exactly ${input.count} visual storyboard scenes.
 Output ONLY a valid JSON array with no markdown fences, no explanation.
 Each element must have these fields:
 - "description": string (2-3 sentences, what the viewer sees)
-- "promptText": string (English, detailed cinematic prompt for image generation)
+- "promptText": string (${promptLangName}, detailed cinematic prompt for image generation — write it in ${promptLangName})
 - "cameraMovement": string (one of: static, pan-left, pan-right, zoom-in, zoom-out, tilt-up, tilt-down, tracking)
 - "duration": number (scene duration in seconds, integer 2-10)`;
 
@@ -901,6 +903,7 @@ Each element must have these fields:
         targetVideoModel: z.string().optional(),
         aspectRatio: z.string().default("16:9"),
         model: z.string().optional(),
+        promptLang: z.enum(["zh", "en"]).default("en"),
         /** Optional template-specific writing instructions appended to the
          *  system prompt. Sourced from client/src/lib/scriptCreationTemplates.ts
          *  by id (UI passes `systemPromptAddon` of the applied template). */
@@ -945,7 +948,7 @@ Your task: Generate a complete storyboard script. Output ONLY a valid JSON objec
   "scenes": [
     {
       "description": "Chinese visual description: what the viewer sees, atmosphere, character actions. 2-3 sentences.",
-      "promptText": "English AI generation prompt optimized for the target model. Follow the prompt style guide above strictly.",
+      "promptText": "${input.promptLang === "zh" ? "Chinese (中文)" : "English"} AI generation prompt optimized for the target model. Follow the prompt style guide above strictly.",
       "cameraMovement": "one of: static|pan-left|pan-right|zoom-in|zoom-out|tilt-up|tilt-down|tracking",
       "duration": ${avgDuration}
     }
@@ -955,7 +958,7 @@ Your task: Generate a complete storyboard script. Output ONLY a valid JSON objec
 Rules:
 1. Generate exactly ${input.sceneCount} scene objects
 2. scriptText must be cohesive Chinese narrative covering all scenes
-3. Each promptText MUST follow the target model's style guide
+3. Each promptText MUST follow the target model's style guide, and MUST be written in ${input.promptLang === "zh" ? "Chinese (中文)" : "English"}
 4. Duration values should total approximately ${input.totalDuration} seconds
 5. Create compelling visual storytelling appropriate for the genre and mood`;
 
