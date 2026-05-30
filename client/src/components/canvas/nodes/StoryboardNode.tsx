@@ -13,6 +13,7 @@ import { cacheMedia } from "@/lib/mediaCache";
 import { mergeCharactersIntoPrompt } from "../../../lib/characterPrompt";
 import { IMAGE_MODELS, type ImageModelId } from "@/lib/models";
 import { makeImageProxyFallback } from "@/lib/utils";
+import { RefImageReachabilityBadge, useRefImageGuard } from "../mediaReachability";
 import { LLMModelPicker, type LLMModelId } from "../LLMModelPicker";
 import { useCanvasMode } from "../../../contexts/CanvasModeContext";
 
@@ -116,6 +117,7 @@ export const StoryboardNode = memo(function StoryboardNode({ id, selected, data 
     ? (payload.imageModel as ImageModelId)
     : "manus_forge";
   const setModel = (m: ImageModelId) => { updateNodeData(id, { imageModel: m }); };
+  const { guard, reachable, dialog: reachabilityDialog } = useRefImageGuard();
 
   // ── Per-model sizing controls ──
   // Mirror the option lists used by ImageGenNode so a scene can be tuned
@@ -276,7 +278,6 @@ export const StoryboardNode = memo(function StoryboardNode({ id, selected, data 
     // also check the mutation's own isPending which tRPC flips synchronously
     if (generating || genImageMutation.isPending) return;
     if (!payload.promptText?.trim()) { toast.error("请先填写提示词"); return; }
-    setGenerating(true);
 
     // Character consistency: inject reference image + FULL character profile
     // from connected CharacterNodes. Previously only appearance / sceneDescription
@@ -326,15 +327,19 @@ export const StoryboardNode = memo(function StoryboardNode({ id, selected, data 
         sizingFields.poyoQuality = payload.poyoQuality;
       }
     }
-    genImageMutation.mutate({
-      prompt: enhancedPrompt,
-      negativePrompt: payload.negativePrompt,
-      style: payload.colorTone,
-      referenceImageUrl: charRefUrl,
-      model,
-      batchSize: model === "hf_soul_standard" && batchCount > 1 ? batchCount : undefined,
-      ...sizingFields,
-    });
+    const submit = () => {
+      setGenerating(true);
+      genImageMutation.mutate({
+        prompt: enhancedPrompt,
+        negativePrompt: payload.negativePrompt,
+        style: payload.colorTone,
+        referenceImageUrl: charRefUrl,
+        model,
+        batchSize: model === "hf_soul_standard" && batchCount > 1 ? batchCount : undefined,
+        ...sizingFields,
+      });
+    };
+    guard({ model, hasRefImage: Boolean(charRefUrl) }, submit);
   };
 
   const currentModel = IMAGE_MODELS.find((m) => m.value === model) ?? IMAGE_MODELS[0];
@@ -829,6 +834,11 @@ export const StoryboardNode = memo(function StoryboardNode({ id, selected, data 
                 <X className="w-3 h-3" />
               </button>
             )}
+            <RefImageReachabilityBadge
+              model={model}
+              hasRefImage={Boolean(payload.referenceImageUrl) || connectedCharWithRef}
+              reachable={reachable}
+            />
           </div>
           {/* Priority hint: when this node has its own referenceImageUrl, CharacterNode's ref is silently ignored */}
           {connectedCharWithRef && payload.referenceImageUrl && (
@@ -1025,6 +1035,7 @@ export const StoryboardNode = memo(function StoryboardNode({ id, selected, data 
 
       </div>
 
+      {reachabilityDialog}
     </BaseNode>
 
       {/* ── Image model picker portal (avoids overflow:hidden clipping from BaseNode inner wrapper) ── */}

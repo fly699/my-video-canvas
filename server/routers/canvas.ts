@@ -32,7 +32,7 @@ import {
   addChatMessagePair,
   clearChatMessages,
 } from "../db";
-import { storagePut, resolveToAbsoluteUrl } from "../storage";
+import { storagePut, resolveToAbsoluteUrl, canBrowserReachStorageDirectly, storageBackend } from "../storage";
 import { invokeLLM, extractTextContent } from "../_core/llm";
 import { generateImage } from "../_core/imageGeneration";
 import { generateComfyImage, generateComfyVideo, fetchComfyModels, analyzeWorkflow, executeCustomWorkflow, uploadImageForWorkflow } from "../_core/comfyui";
@@ -2001,4 +2001,17 @@ Output an optimized English prompt under 80 words. Output ONLY the prompt text.`
       });
       return { result: extractTextContent(response).trim() };
     }),
+});
+
+// ── Deployment config / capability flags ──────────────────────────────────────
+export const configRouter = router({
+  // Whether upstream AI providers (Poyo / Higgsfield) can fetch a reference
+  // image URL we hand them. Equivalent to "is our storage reachable from the
+  // public internet" — true for Forge backend or when S3_PUBLIC_ENDPOINT is
+  // configured. When false, a fully-private deployment can't pass reference
+  // images to URL-only providers, so the frontend warns before spending credits.
+  mediaReachability: protectedProcedure.query(() => ({
+    upstreamCanFetchMedia: canBrowserReachStorageDirectly(),
+    backend: storageBackend(),
+  })),
 });

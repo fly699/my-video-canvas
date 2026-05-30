@@ -12,6 +12,7 @@ import { cacheMedia, getCachedMedia } from "@/lib/mediaCache";
 import { listCustomPresets, saveCustomPreset, deleteCustomPreset, type CustomVideoPreset } from "@/lib/customPresets";
 import { ensureNotificationPermission, showCompletionNotification } from "@/lib/notify";
 import { CinematographyPicker } from "../CinematographyPicker";
+import { RefImageReachabilityBadge, useRefImageGuard, providerNeedsPublicMedia } from "../mediaReachability";
 import {
   applyCinematographyToPrompt,
   clearCinematographyFromPrompt,
@@ -388,6 +389,8 @@ export const VideoTaskNode = memo(function VideoTaskNode({ id, selected, data }:
   const [paramsExpanded, setParamsExpanded] = useState(!!selected);
   useEffect(() => { setParamsExpanded(!!selected); }, [selected]);
 
+  const { guard, reachable, dialog: reachabilityDialog } = useRefImageGuard();
+
   const [parallelMode, setParallelMode] = useState(false);
   const [parallelProviders, setParallelProviders] = useState<VideoProvider[]>([]);
   const [parallelResults, setParallelResults] = useState<Record<string, { status: "pending" | "processing" | "done" | "failed"; videoUrl?: string; taskId?: number }>>({});
@@ -555,7 +558,7 @@ export const VideoTaskNode = memo(function VideoTaskNode({ id, selected, data }:
 
     const { prompt: finalPrompt, referenceImageUrl: finalRefImage } = composeSubmissionContext();
 
-    createTaskMutation.mutate({
+    const submit = () => createTaskMutation.mutate({
       projectId: data.projectId, nodeId: id,
       provider: payload.provider, prompt: finalPrompt,
       // Only send negativePrompt for providers that actually support it
@@ -563,6 +566,7 @@ export const VideoTaskNode = memo(function VideoTaskNode({ id, selected, data }:
       referenceImageUrl: finalRefImage,
       params: payload.params,
     });
+    guard({ model: payload.provider, hasRefImage: Boolean(finalRefImage) }, submit);
   };
 
   /**
@@ -1024,18 +1028,23 @@ export const VideoTaskNode = memo(function VideoTaskNode({ id, selected, data }:
                   if (!payload.referenceImageUrl?.trim() && parallelProviders.some((p) => REQUIRES_REFERENCE_IMAGE.has(p))) {
                     toast.error("已选择的图生视频模型需要参考图 URL"); return;
                   }
-                  toast.info(`正在并行提交 ${parallelProviders.length} 个任务...`);
-                  // Capture generation token for this batch — per-mutate callbacks compare against
-                  // the latest token and no-op if the user has closed parallel mode since
-                  const gen = parallelGenRef.current;
-                  // Increment counter ONCE per mutate call so global onSuccess/onError can correctly suppress payload writes
-                  parallelInFlightRef.current += parallelProviders.length;
                   // Compose ONCE so all parallel providers see the same
                   // character-augmented prompt. Previously this branch sent
                   // payload.prompt verbatim, silently skipping connected
                   // character nodes — parallel mode produced different prompts
                   // than single mode for the same node configuration.
                   const submission = composeSubmissionContext();
+                  // Representative provider for the reachability warning: pick any
+                  // URL-only (poyo_/hf_) provider so the guard fires if ANY of the
+                  // parallel targets can't fetch the reference image.
+                  const warnProvider = parallelProviders.find(providerNeedsPublicMedia) ?? parallelProviders[0];
+                  const runBatch = () => {
+                  toast.info(`正在并行提交 ${parallelProviders.length} 个任务...`);
+                  // Capture generation token for this batch — per-mutate callbacks compare against
+                  // the latest token and no-op if the user has closed parallel mode since
+                  const gen = parallelGenRef.current;
+                  // Increment counter ONCE per mutate call so global onSuccess/onError can correctly suppress payload writes
+                  parallelInFlightRef.current += parallelProviders.length;
                   parallelProviders.forEach(provider => {
                     setParallelResults(prev => ({ ...prev, [provider]: { status: "processing" } }));
                     createTaskMutation.mutate(
@@ -1055,6 +1064,11 @@ export const VideoTaskNode = memo(function VideoTaskNode({ id, selected, data }:
                       }
                     );
                   });
+                  };
+                  guard(
+                    { model: warnProvider, hasRefImage: Boolean(submission.referenceImageUrl) },
+                    runBatch,
+                  );
                 }}
                 className="nodrag flex items-center justify-center gap-1.5 w-full py-2 rounded-lg text-xs font-medium transition-all"
                 style={{
@@ -1211,7 +1225,14 @@ export const VideoTaskNode = memo(function VideoTaskNode({ id, selected, data }:
 
         {/* ── Reference image URL (for all models) ── */}
         <div>
-          <label style={labelStyle}>参考图 URL（可选）</label>
+          <label style={{ ...labelStyle, display: "flex", alignItems: "center", gap: 6 }}>
+            参考图 URL（可选）
+            <RefImageReachabilityBadge
+              model={parallelMode ? (parallelProviders.find(providerNeedsPublicMedia) ?? parallelProviders[0]) : payload.provider}
+              hasRefImage={Boolean(payload.referenceImageUrl?.trim())}
+              reachable={reachable}
+            />
+          </label>
           <input
             placeholder="https://..."
             value={payload.referenceImageUrl ?? ""}
@@ -1657,6 +1678,7 @@ export const VideoTaskNode = memo(function VideoTaskNode({ id, selected, data }:
           onClose={() => setPickerOpen(false)}
         />
       )}
+      {reachabilityDialog}
     </BaseNode>
   );
 });

@@ -8,6 +8,7 @@ import { toast } from "sonner";
 import { Sparkles, Loader2, RefreshCw, ChevronDown, Upload, X, Grid2X2, Check, Languages, Wand2 } from "lucide-react";
 import { makeImageProxyFallback } from "@/lib/utils";
 import { LLMModelPicker, type LLMModelId } from "../LLMModelPicker";
+import { RefImageReachabilityBadge, useRefImageGuard } from "../mediaReachability";
 
 interface Props {
   id: string;
@@ -57,6 +58,7 @@ export const PromptNode = memo(function PromptNode({ id, selected, data }: Props
   const [batchMode, setBatchMode] = useState(false);
   const model = (payload.imageModel as string) ?? IMAGE_MODELS[0].value;
   const setModel = (m: string) => { updateNodeData(id, { imageModel: m as ImageGenModel }); };
+  const { guard, reachable, dialog: reachabilityDialog } = useRefImageGuard();
 
   const [uploadingRef, setUploadingRef] = useState(false);
   const refInputRef = useRef<HTMLInputElement>(null);
@@ -142,7 +144,7 @@ export const PromptNode = memo(function PromptNode({ id, selected, data }: Props
   const handleGenerate = () => {
     if (genImageMutation.isPending) return;
     if (!payload.positivePrompt?.trim()) { toast.error("请先填写正向提示词"); return; }
-    genImageMutation.mutate({
+    const submit = () => genImageMutation.mutate({
       prompt: payload.positivePrompt,
       negativePrompt: payload.negativePrompt,
       style: payload.style,
@@ -154,6 +156,7 @@ export const PromptNode = memo(function PromptNode({ id, selected, data }: Props
       ...(model === "hf_soul_standard" && batchMode ? { batchSize: 4 as const } : {}),
       projectId: data.projectId,
     });
+    guard({ model, hasRefImage: Boolean(payload.referenceImageUrl) }, submit);
   };
 
   const onFocusAccent = (e: React.FocusEvent<HTMLElement>) => { e.currentTarget.style.borderColor = accentA(0.6); };
@@ -386,6 +389,11 @@ export const PromptNode = memo(function PromptNode({ id, selected, data }: Props
               <X className="w-3 h-3" />
             </button>
           )}
+          <RefImageReachabilityBadge
+            model={model}
+            hasRefImage={Boolean(payload.referenceImageUrl)}
+            reachable={reachable}
+          />
         </div>
 
         {/* Style + ratio */}
@@ -523,6 +531,7 @@ export const PromptNode = memo(function PromptNode({ id, selected, data }: Props
         </div>{/* end inner gap-3 */}
         </div>{/* end input collapse wrapper */}
       </div>
+      {reachabilityDialog}
     </BaseNode>
   );
 });

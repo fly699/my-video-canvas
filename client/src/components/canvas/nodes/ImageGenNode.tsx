@@ -11,6 +11,7 @@ import { cacheMedia } from "@/lib/mediaCache";
 import { ImageLightbox } from "../ImageLightbox";
 import { IMAGE_MODELS } from "@/lib/models";
 import { makeImageProxyFallback } from "@/lib/utils";
+import { RefImageReachabilityBadge, useRefImageGuard } from "../mediaReachability";
 
 interface Props {
   id: string;
@@ -117,6 +118,7 @@ function propagateImageUrl(sourceId: string, url: string): number {
 export const ImageGenNode = memo(function ImageGenNode({ id, selected, data }: Props) {
   // Use selector to avoid re-rendering on every store change (other nodes' updates)
   const updateNodeData = useCanvasStore((s) => s.updateNodeData);
+  const { guard, reachable, dialog: reachabilityDialog } = useRefImageGuard();
   const expanded = Boolean(selected) || Boolean((data.payload as { pinned?: boolean }).pinned);
   const payload = data.payload;
   const [uploading, setUploading] = useState(false);
@@ -219,7 +221,7 @@ export const ImageGenNode = memo(function ImageGenNode({ id, selected, data }: P
       typeof s === "number" && Number.isInteger(s) && s >= 0 && s <= MAX_SEED ? s : undefined;
     const validGuidance = (g: number | undefined) =>
       typeof g === "number" && Number.isFinite(g) && g >= 1 && g <= 20 ? g : undefined;
-    genMutation.mutate({
+    const submit = () => genMutation.mutate({
       prompt: payload.prompt,
       negativePrompt: payload.negativePrompt,
       style: payload.style,
@@ -251,6 +253,7 @@ export const ImageGenNode = memo(function ImageGenNode({ id, selected, data }: P
       } : {}),
       projectId: data.projectId,
     });
+    guard({ model: payload.model, hasRefImage: Boolean(payload.referenceImageUrl) }, submit);
   };
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -928,7 +931,14 @@ export const ImageGenNode = memo(function ImageGenNode({ id, selected, data }: P
 
         {/* Reference image upload */}
         <div>
-          <label style={labelStyle}>参考图（可选）</label>
+          <label style={{ ...labelStyle, display: "flex", alignItems: "center", gap: 6 }}>
+            参考图（可选）
+            <RefImageReachabilityBadge
+              model={payload.model}
+              hasRefImage={Boolean(payload.referenceImageUrl)}
+              reachable={reachable}
+            />
+          </label>
           {payload.referenceImageUrl ? (
             <div
               className="relative rounded-lg overflow-hidden"
@@ -1042,6 +1052,8 @@ export const ImageGenNode = memo(function ImageGenNode({ id, selected, data }: P
           />
         );
       })()}
+
+      {reachabilityDialog}
     </BaseNode>
   );
 });
