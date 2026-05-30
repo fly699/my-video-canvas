@@ -66,6 +66,9 @@ export interface ScriptNodeData {
   /** What kind of downstream node to auto-create from generated scenes:
    *  "storyboard" (default) or "comfyui_image" (ComfyUI 本地生图节点). */
   aiStoryboardTarget?: "storyboard" | "comfyui_image";
+  /** When true, after generation each scene's promptText is translated to
+   *  English (using the same LLM) before the downstream nodes are created. */
+  aiTranslateScenes?: boolean;
 }
 
 export interface StoryboardNodeData {

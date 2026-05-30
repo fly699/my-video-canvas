@@ -7,7 +7,7 @@ import { toast } from "sonner";
 import {
   Sparkles, Loader2, ChevronDown, Clapperboard,
   Minus, Plus, Copy, FileText, Check, Wand2, MessageSquare,
-  Search, Layers2, GitBranch, Image, BookOpen, X,
+  Search, Layers2, GitBranch, Image, BookOpen, X, Languages,
 } from "lucide-react";
 import { LLMModelPicker, LLM_MODELS, type LLMModelId } from "../LLMModelPicker";
 import { SCRIPT_TEMPLATE_CATEGORIES, getScriptTemplate, type ScriptTemplate } from "@/lib/scriptCreationTemplates";
@@ -191,6 +191,13 @@ export const ScriptNode = memo(function ScriptNode({ id, selected, data }: Props
   const setAndSaveStoryboardTarget = useCallback((v: "storyboard" | "comfyui_image") => {
     setStoryboardTarget(v); updateNodeData(id, { aiStoryboardTarget: v });
   }, [id, updateNodeData]);
+  // Translate scene prompts to English (via the same LLM) before sending downstream.
+  const [translateScenes, setTranslateScenes] = useState<boolean>(payload.aiTranslateScenes ?? false);
+  const toggleTranslateScenes = useCallback(() => {
+    const next = !translateScenes;
+    setTranslateScenes(next);
+    updateNodeData(id, { aiTranslateScenes: next });
+  }, [id, translateScenes, updateNodeData]);
 
   // One-click template apply: fills genre/style/mood/targetModel/aspectRatio/
   // sceneCount/duration/llmModel + records the template id so generate calls
@@ -305,16 +312,48 @@ export const ScriptNode = memo(function ScriptNode({ id, selected, data }: Props
 
   // ── Mutations ─────────────────────────────────────────────────────────────
 
+  // Imperative translate (used per-scene when the "译为英文" toggle is on).
+  const sceneTranslateMutation = trpc.aiEnhance.enhance.useMutation();
+
+  // Create downstream nodes from generated scenes, optionally translating each
+  // scene's promptText to English first (using the same LLM that wrote the
+  // script). Reads the latest toggle/target from the node payload so the two
+  // generate paths share one code path without stale-closure issues.
+  const addScenesFromResult = useCallback(async (
+    scenes: Array<{ description?: string; promptText?: string; cameraMovement?: string; duration?: number }>,
+  ): Promise<{ count: number; target: "storyboard" | "comfyui_image" }> => {
+    const store = useCanvasStore.getState();
+    const ownNode = store.nodes.find((n) => n.id === id);
+    if (!store.projectId || !ownNode) { toast.error("画布尚未加载，节点创建失败"); return { count: 0, target: "storyboard" }; }
+    const p = ownNode.data.payload as ScriptNodeData;
+    const target = p.aiStoryboardTarget ?? "storyboard";
+    const ownPos = ownNode.position ?? { x: 0, y: 0 };
+
+    let finalScenes = scenes;
+    if (p.aiTranslateScenes) {
+      const tid = toast.loading("正在翻译场景提示词为英文…");
+      finalScenes = await Promise.all(scenes.map(async (s) => {
+        const text = s.promptText?.trim();
+        if (!text) return s;
+        try {
+          const r = await sceneTranslateMutation.mutateAsync({ text, mode: "translate_en", model: llmModel });
+          return { ...s, promptText: r.result?.trim() || s.promptText };
+        } catch {
+          return s; // per-scene fallback: keep original on translate failure
+        }
+      }));
+      toast.dismiss(tid);
+    }
+    useCanvasStore.getState().batchAddSceneNodes(finalScenes, id, ownPos, target);
+    return { count: finalScenes.length, target };
+  }, [id, llmModel, sceneTranslateMutation]);
+
   const generateMutation = trpc.scripts.generateStoryboards.useMutation({
-    onSuccess: (result) => {
-      const { nodes: currentNodes, batchAddSceneNodes, projectId } = useCanvasStore.getState();
-      if (!projectId) { toast.error("画布尚未加载，请稍后重试"); return; }
-      const ownNode = currentNodes.find((n) => n.id === id);
-      const ownPos = ownNode?.position ?? { x: 0, y: 0 };
-      const target = (ownNode?.data.payload as ScriptNodeData | undefined)?.aiStoryboardTarget ?? "storyboard";
-      batchAddSceneNodes(result.scenes, id, ownPos, target);
+    onSuccess: async (result) => {
+      const { count, target } = await addScenesFromResult(result.scenes);
+      if (count === 0) return;
       toast.success(target === "comfyui_image" ? "ComfyUI 图像节点已生成" : "分镜已生成", {
-        description: `共 ${result.scenes.length} 个${target === "comfyui_image" ? "ComfyUI 图像" : "场景"}节点已添加到画布`,
+        description: `共 ${count} 个${target === "comfyui_image" ? "ComfyUI 图像" : "场景"}节点已添加到画布`,
         duration: 4000,
       });
     },
@@ -344,25 +383,19 @@ export const ScriptNode = memo(function ScriptNode({ id, selected, data }: Props
   });
 
   const fullScriptMutation = trpc.scripts.generateFullScript.useMutation({
-    onSuccess: (result) => {
+    onSuccess: async (result) => {
       const scriptFilled = !!result.scriptText;
       if (scriptFilled) {
         updateNodeData(id, { content: result.scriptText });
       }
       let nodesCreated = 0;
+      let target: "storyboard" | "comfyui_image" = "storyboard";
       if (result.scenes.length > 0) {
-        const { nodes: currentNodes, batchAddSceneNodes, projectId } = useCanvasStore.getState();
-        if (projectId) {
-          const ownNode = currentNodes.find((n) => n.id === id);
-          const ownPos = ownNode?.position ?? { x: 0, y: 0 };
-          const target = (ownNode?.data.payload as ScriptNodeData | undefined)?.aiStoryboardTarget ?? "storyboard";
-          batchAddSceneNodes(result.scenes, id, ownPos, target);
-          nodesCreated = result.scenes.length;
-        } else {
-          toast.error("画布尚未加载，分镜节点创建失败");
-        }
+        const res = await addScenesFromResult(result.scenes);
+        nodesCreated = res.count;
+        target = res.target;
       }
-      const tgtLabel = (useCanvasStore.getState().nodes.find((n) => n.id === id)?.data.payload as ScriptNodeData | undefined)?.aiStoryboardTarget === "comfyui_image" ? "ComfyUI 图像" : "分镜";
+      const tgtLabel = target === "comfyui_image" ? "ComfyUI 图像" : "分镜";
       toast.success("AI 剧本已生成", {
         description: nodesCreated > 0
           ? `${scriptFilled ? "剧本已填入，" : ""}${nodesCreated} 个${tgtLabel}节点已创建`
@@ -623,9 +656,22 @@ export const ScriptNode = memo(function ScriptNode({ id, selected, data }: Props
               );
             })}
           </div>
-          <span style={{ fontSize: 9.5, color: "var(--c-t4)" }}>
-            {storyboardTarget === "comfyui_image" ? "用本地 ComfyUI 生图" : "默认分镜"}
-          </span>
+          {/* Translate scene prompts to English before sending downstream */}
+          <button
+            onClick={toggleTranslateScenes}
+            title="打开后，生成的场景提示词会先用同一个 AI 模型翻译为英文，再传给下游节点（图像/视频模型对英文提示更友好）"
+            className="nodrag flex items-center gap-1 px-2 py-0.5 rounded-lg text-[10px] transition-all"
+            style={{
+              marginLeft: "auto",
+              background: translateScenes ? `${ACCENT}1e` : "transparent",
+              border: `1px solid ${translateScenes ? `${ACCENT}55` : "var(--c-bd2)"}`,
+              color: translateScenes ? ACCENT : "var(--c-t4)",
+              cursor: "pointer",
+            }}
+          >
+            <Languages className="w-2.5 h-2.5" />
+            译为英文 {translateScenes ? "开" : "关"}
+          </button>
         </div>
 
         {/* Generate storyboards from existing script — shows actual capped count */}
