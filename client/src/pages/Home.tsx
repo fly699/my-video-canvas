@@ -24,6 +24,7 @@ import {
   Video,
   Boxes,
   Bot,
+  MessageCircle,
 } from "lucide-react";
 
 // ── Animated background grid ─────────────────────────────────────────────────
@@ -682,23 +683,40 @@ export default function Home() {
           <div className="flex items-center gap-2.5">
             <a
               href="/chat"
-              className="text-xs transition-colors px-2 py-1 rounded-md"
-              style={{ color: "var(--c-t3)" }}
+              className="group inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-lg text-xs font-medium transition-all duration-150"
+              style={{
+                color: "oklch(0.78 0.16 285)",
+                border: "1px solid oklch(0.68 0.22 285 / 0.35)",
+                background: "color-mix(in oklch, oklch(0.68 0.22 285 / 0.12) 60%, transparent)",
+                backdropFilter: "blur(10px)",
+                WebkitBackdropFilter: "blur(10px)",
+              }}
+              onMouseEnter={(e) => { const el = e.currentTarget as HTMLElement; el.style.borderColor = "oklch(0.68 0.22 285 / 0.6)"; el.style.background = "oklch(0.68 0.22 285 / 0.20)"; el.style.color = "oklch(0.86 0.12 285)"; }}
+              onMouseLeave={(e) => { const el = e.currentTarget as HTMLElement; el.style.borderColor = "oklch(0.68 0.22 285 / 0.35)"; el.style.background = "color-mix(in oklch, oklch(0.68 0.22 285 / 0.12) 60%, transparent)"; el.style.color = "oklch(0.78 0.16 285)"; }}
             >
+              <MessageCircle className="w-3.5 h-3.5" />
               聊天
             </a>
             {user.role === "admin" && (
               <a
                 href="/admin"
-                className="text-xs transition-colors px-2 py-1 rounded-md relative"
-                style={{ color: "var(--c-t3)" }}
+                className="inline-flex items-center px-3 py-1.5 rounded-lg text-xs font-medium transition-all duration-150 relative"
+                style={{
+                  color: "var(--c-t2)",
+                  border: "1px solid var(--c-bd2)",
+                  background: "color-mix(in oklch, var(--c-base) 55%, transparent)",
+                  backdropFilter: "blur(10px)",
+                  WebkitBackdropFilter: "blur(10px)",
+                }}
                 title={hasUpdate ? `有 ${updateInfo?.behind} 个新版本待更新` : "管理后台"}
+                onMouseEnter={(e) => { const el = e.currentTarget as HTMLElement; el.style.color = "var(--c-t1)"; el.style.borderColor = "var(--c-bd3)"; el.style.background = "var(--c-overlay)"; }}
+                onMouseLeave={(e) => { const el = e.currentTarget as HTMLElement; el.style.color = "var(--c-t2)"; el.style.borderColor = "var(--c-bd2)"; el.style.background = "color-mix(in oklch, var(--c-base) 55%, transparent)"; }}
               >
                 管理后台
                 {hasUpdate && (
                   <span
-                    className="absolute top-0 right-0 w-2 h-2 rounded-full"
-                    style={{ background: "oklch(0.65 0.22 25)", boxShadow: "0 0 0 2px var(--c-bg, #0d0d10)" }}
+                    className="absolute -top-1 -right-1 w-2 h-2 rounded-full"
+                    style={{ background: "oklch(0.65 0.22 25)", boxShadow: "0 0 0 2px var(--c-base)" }}
                   />
                 )}
               </a>
