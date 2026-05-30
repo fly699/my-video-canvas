@@ -6,7 +6,6 @@ import { ChatProvider } from "@/hooks/useChat";
 import { ConversationList } from "@/components/chat/ConversationList";
 import { ChatView } from "@/components/chat/ChatView";
 import { MembersPanel } from "@/components/chat/MembersPanel";
-import { CanvasChatWindow } from "@/components/chat/CanvasChatWindow";
 import { C, iconBtn, ghostBtn } from "@/components/chat/chatTheme";
 
 interface BIPEvent extends Event { prompt: () => void; userChoice: Promise<{ outcome: string }> }
@@ -36,17 +35,8 @@ export default function ChatPage() {
   }, []);
 
   function openCompact() {
-    window.open("/chat?mini=1", "avc-chat", "width=460,height=780,menubar=no,toolbar=no,location=no,status=no,resizable=yes");
+    window.open("/chat", "avc-chat", "width=460,height=780,menubar=no,toolbar=no,location=no,status=no,resizable=yes");
   }
-
-  // 作为已安装的 Chrome 应用(standalone)打开时，默认显示精简的悬浮聊天窗样式。
-  // ?mini=1 强制精简、?mini=0 强制整页（便于浏览器内测试 / 从精简窗回到整页）。
-  const mini = typeof window !== "undefined" ? new URLSearchParams(window.location.search).get("mini") : null;
-  const isStandalone = typeof window !== "undefined" &&
-    (window.matchMedia?.("(display-mode: standalone)").matches ||
-      (window.navigator as unknown as { standalone?: boolean }).standalone === true);
-  const compact = mini === "1" ? true : mini === "0" ? false : isStandalone;
-  if (compact) return <CanvasChatWindow docked onClose={() => navigate("/")} />;
   async function install() {
     const e = installEvt.current;
     if (!e) { toast.info("无法安装：请用普通（非无痕）Chrome 窗口、HTTPS 且证书已受信任（地址栏显示🔒）打开；满足后点地址栏右侧的「安装」图标即可。"); return; }
