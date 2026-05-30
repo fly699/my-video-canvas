@@ -13,6 +13,7 @@ import {
 import { useLocalMedia } from "@/lib/useLocalMedia";
 import { cacheMedia } from "@/lib/mediaCache";
 import { ImageLightbox } from "../ImageLightbox";
+import { LLMModelPicker, type LLMModelId } from "../LLMModelPicker";
 import { makeImageProxyFallback } from "@/lib/utils";
 
 interface Props {
@@ -64,6 +65,9 @@ export const ComfyuiImageNode = memo(function ComfyuiImageNode({ id, selected, d
   // navigation + selection inside the lightbox actually work.
   const [lightboxIndex, setLightboxIndex] = useState<number | null>(null);
   const [translating, setTranslating] = useState(false);
+  // Translation LLM — let the user pick a model that's available in their
+  // deployment (some setups have no Gemini but do have Claude/GPT via Poyo).
+  const [llmModel, setLlmModel] = useState<LLMModelId>("claude-haiku-4-5-20251001");
   const [urlExpanded, setUrlExpanded] = useState(false);
   const [paramsExpanded, setParamsExpanded] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -129,7 +133,7 @@ export const ComfyuiImageNode = memo(function ComfyuiImageNode({ id, selected, d
     if (translating || translateMutation.isPending) return;
     if (!payload.prompt?.trim()) { toast.error("请先填写提示词"); return; }
     setTranslating(true);
-    translateMutation.mutate({ text: payload.prompt, mode: "translate_en" });
+    translateMutation.mutate({ text: payload.prompt, mode: "translate_en", model: llmModel });
   };
 
   // Select which generated image is the node's active output. Also push the new
@@ -522,7 +526,8 @@ export const ComfyuiImageNode = memo(function ComfyuiImageNode({ id, selected, d
             onFocus={(e) => { e.currentTarget.style.borderColor = BORDER_ACCENT; }}
             onBlur={(e) => { e.currentTarget.style.borderColor = BORDER_DEFAULT; }}
           />
-          <div className="flex items-center gap-1 mt-1">
+          <div className="flex items-center gap-1 mt-1 flex-wrap">
+            <LLMModelPicker value={llmModel} onChange={setLlmModel} disabled={translating} />
             <button
               onClick={handleTranslate}
               disabled={translating}
