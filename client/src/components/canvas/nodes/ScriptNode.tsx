@@ -659,7 +659,7 @@ export const ScriptNode = memo(function ScriptNode({ id, selected, data }: Props
           {/* Translate scene prompts to English before sending downstream */}
           <button
             onClick={toggleTranslateScenes}
-            title="打开后，生成的场景提示词会先用同一个 AI 模型翻译为英文，再传给下游节点（图像/视频模型对英文提示更友好）"
+            title="关：直接使用 AI 生成的提示词（系统已要求英文，但模型有时会混入中文）；开：生成后再用同一个模型把提示词强制翻译为英文后下发（图像/视频模型对英文更友好）"
             className="nodrag flex items-center gap-1 px-2 py-0.5 rounded-lg text-[10px] transition-all"
             style={{
               marginLeft: "auto",
