@@ -57,6 +57,23 @@ const labelStyle: React.CSSProperties = {
   marginBottom: 5,
 };
 
+// Push a chosen / generated image URL to every downstream node that consumes a
+// reference image (video_task / comfyui_video / comfyui_image). Mirrors
+// ImageGenNode.propagateImageUrl so manually-wired ComfyUI chains auto-fill.
+function propagateImageUrl(sourceId: string, url: string): void {
+  const { edges, nodes, batchUpdateNodeData } = useCanvasStore.getState();
+  const updates = edges
+    .filter((e) => e.source === sourceId && e.targetHandle === "ref-image-in")
+    .flatMap((edge) => {
+      const t = nodes.find((n) => n.id === edge.target);
+      const tt = t?.data.nodeType;
+      return tt === "video_task" || tt === "comfyui_video" || tt === "comfyui_image"
+        ? [{ id: edge.target, payload: { referenceImageUrl: url } }]
+        : [];
+    });
+  if (updates.length > 0) batchUpdateNodeData(updates);
+}
+
 export const ComfyuiImageNode = memo(function ComfyuiImageNode({ id, selected, data }: Props) {
   const updateNodeData = useCanvasStore((s) => s.updateNodeData);
   const payload = data.payload;
@@ -89,6 +106,7 @@ export const ComfyuiImageNode = memo(function ComfyuiImageNode({ id, selected, d
     onSuccess: (result) => {
       if (!useCanvasStore.getState().nodes.some((n) => n.id === id)) return;
       updateNodeData(id, { imageUrl: result.url, imageUrls: result.urls, status: "done", errorMessage: undefined, progress: undefined });
+      if (result.url) propagateImageUrl(id, result.url);
       toast.success("ComfyUI 图像生成成功");
     },
     onError: (err) => {
@@ -170,17 +188,7 @@ export const ComfyuiImageNode = memo(function ComfyuiImageNode({ id, selected, d
   // URL to connected downstream reference-image consumers (mirrors ImageGenNode).
   const selectImage = useCallback((url: string) => {
     updateNodeData(id, { imageUrl: url });
-    const { edges, nodes, batchUpdateNodeData } = useCanvasStore.getState();
-    const updates = edges
-      .filter((e) => e.source === id && e.targetHandle === "ref-image-in")
-      .flatMap((edge) => {
-        const t = nodes.find((n) => n.id === edge.target);
-        const tt = t?.data.nodeType;
-        return (tt === "video_task" || tt === "comfyui_video" || tt === "comfyui_image")
-          ? [{ id: edge.target, payload: { referenceImageUrl: url } }]
-          : [];
-      });
-    if (updates.length > 0) batchUpdateNodeData(updates);
+    propagateImageUrl(id, url);
   }, [id, updateNodeData]);
 
   const handleGenerate = () => {
@@ -845,6 +853,17 @@ export const ComfyuiImageNode = memo(function ComfyuiImageNode({ id, selected, d
               accept="image/*"
               style={{ display: "none" }}
               onChange={handleFileChange}
+            />
+            {/* 或直接粘贴公网图片 URL */}
+            <input
+              type="url"
+              placeholder="或粘贴公网图片 URL（https://…）"
+              value={payload.referenceImageUrl?.startsWith("http") ? payload.referenceImageUrl : ""}
+              onChange={(e) => update("referenceImageUrl", e.target.value.trim() || undefined)}
+              className="nodrag"
+              style={{ ...fieldBase, marginTop: 6, fontSize: 10.5 }}
+              onFocus={(e) => { e.currentTarget.style.borderColor = BORDER_ACCENT; }}
+              onBlur={(e) => { e.currentTarget.style.borderColor = BORDER_DEFAULT; }}
             />
           </div>
         )}

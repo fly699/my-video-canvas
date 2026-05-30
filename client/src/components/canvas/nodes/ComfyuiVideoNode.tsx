@@ -754,6 +754,17 @@ export const ComfyuiVideoNode = memo(function ComfyuiVideoNode({ id, selected, d
             style={{ display: "none" }}
             onChange={handleFileChange}
           />
+          {/* 或直接粘贴公网图片 URL */}
+          <input
+            type="url"
+            placeholder="或粘贴公网图片 URL（https://…）"
+            value={payload.referenceImageUrl?.startsWith("http") ? payload.referenceImageUrl : ""}
+            onChange={(e) => update("referenceImageUrl", e.target.value.trim() || undefined)}
+            className="nodrag"
+            style={{ ...fieldBase, marginTop: 6, fontSize: 10.5 }}
+            onFocus={(e) => { e.currentTarget.style.borderColor = BORDER_ACCENT; }}
+            onBlur={(e) => { e.currentTarget.style.borderColor = BORDER_DEFAULT; }}
+          />
         </div>
 
         {/* ── Progress bar ── */}
