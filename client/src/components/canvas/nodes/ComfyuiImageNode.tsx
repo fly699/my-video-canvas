@@ -8,6 +8,7 @@ import { toast } from "sonner";
 import {
   Sparkles, Loader2, RefreshCw, Upload, X, Cpu, Download, ZoomIn,
   ChevronDown, ChevronRight, Server, Boxes, ImageIcon, HardDriveDownload,
+  Languages, Check,
 } from "lucide-react";
 import { useLocalMedia } from "@/lib/useLocalMedia";
 import { cacheMedia } from "@/lib/mediaCache";
@@ -59,8 +60,10 @@ export const ComfyuiImageNode = memo(function ComfyuiImageNode({ id, selected, d
   const updateNodeData = useCanvasStore((s) => s.updateNodeData);
   const payload = data.payload;
   const [uploading, setUploading] = useState(false);
-  const [lightboxOpen, setLightboxOpen] = useState(false);
-  const [lightboxUrl, setLightboxUrl] = useState<string | null>(null);
+  // Controlled lightbox index (null = closed). Mirrors ImageGenNode so multi-image
+  // navigation + selection inside the lightbox actually work.
+  const [lightboxIndex, setLightboxIndex] = useState<number | null>(null);
+  const [translating, setTranslating] = useState(false);
   const [urlExpanded, setUrlExpanded] = useState(false);
   const [paramsExpanded, setParamsExpanded] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -104,10 +107,47 @@ export const ComfyuiImageNode = memo(function ComfyuiImageNode({ id, selected, d
     },
   });
 
+  const translateMutation = trpc.aiEnhance.enhance.useMutation({
+    onSuccess: (result) => {
+      setTranslating(false);
+      if (!useCanvasStore.getState().nodes.some((n) => n.id === id)) return;
+      updateNodeData(id, { prompt: result.result });
+      toast.success("已翻译为英文");
+    },
+    onError: (err) => {
+      setTranslating(false);
+      toast.error("翻译失败：" + err.message);
+    },
+  });
+
   const update = useCallback(
     (field: keyof ComfyuiImageNodeData, value: unknown) => updateNodeData(id, { [field]: value }),
     [id, updateNodeData]
   );
+
+  const handleTranslate = () => {
+    if (translating || translateMutation.isPending) return;
+    if (!payload.prompt?.trim()) { toast.error("请先填写提示词"); return; }
+    setTranslating(true);
+    translateMutation.mutate({ text: payload.prompt, mode: "translate_en" });
+  };
+
+  // Select which generated image is the node's active output. Also push the new
+  // URL to connected downstream reference-image consumers (mirrors ImageGenNode).
+  const selectImage = useCallback((url: string) => {
+    updateNodeData(id, { imageUrl: url });
+    const { edges, nodes, batchUpdateNodeData } = useCanvasStore.getState();
+    const updates = edges
+      .filter((e) => e.source === id && e.targetHandle === "ref-image-in")
+      .flatMap((edge) => {
+        const t = nodes.find((n) => n.id === edge.target);
+        const tt = t?.data.nodeType;
+        return (tt === "video_task" || tt === "comfyui_video" || tt === "comfyui_image")
+          ? [{ id: edge.target, payload: { referenceImageUrl: url } }]
+          : [];
+      });
+    if (updates.length > 0) batchUpdateNodeData(updates);
+  }, [id, updateNodeData]);
 
   const handleGenerate = () => {
     if (genMutation.isPending) return;
@@ -226,11 +266,21 @@ export const ComfyuiImageNode = memo(function ComfyuiImageNode({ id, selected, d
           (payload.imageUrls && payload.imageUrls.length > 1) ? (
             // Multi-image grid
             <div className="flex-shrink-0 grid gap-1.5" style={{ gridTemplateColumns: payload.imageUrls.length >= 2 ? "1fr 1fr" : "1fr" }}>
-              {payload.imageUrls.map((url, i) => (
+              {payload.imageUrls.map((url, i) => {
+                const isSelected = url === payload.imageUrl;
+                return (
                 <div
                   key={url + i}
-                  className="relative rounded-lg overflow-hidden"
-                  style={{ aspectRatio: "1/1", borderWidth: 1, borderStyle: "solid", borderColor: BORDER_DEFAULT, background: "var(--c-canvas)" }}
+                  onClick={() => selectImage(url)}
+                  className="nodrag relative rounded-lg overflow-hidden cursor-pointer"
+                  style={{
+                    aspectRatio: "1/1", borderWidth: 2, borderStyle: "solid",
+                    borderColor: isSelected ? accent : BORDER_DEFAULT,
+                    background: "var(--c-canvas)",
+                    opacity: isSelected ? 1 : 0.78,
+                    transition: "border-color 150ms ease, opacity 150ms ease",
+                  }}
+                  title={isSelected ? "当前选中（节点输出）" : "点击选为输出图像"}
                 >
                   <img
                     src={url}
@@ -239,26 +289,37 @@ export const ComfyuiImageNode = memo(function ComfyuiImageNode({ id, selected, d
                     draggable={false}
                     onError={makeImageProxyFallback(url)}
                   />
+                  {isSelected && (
+                    <div
+                      className="absolute top-1 right-1 rounded-full flex items-center justify-center"
+                      style={{ width: 16, height: 16, background: accent }}
+                    >
+                      <Check style={{ width: 10, height: 10, color: "var(--c-canvas)" }} />
+                    </div>
+                  )}
                   <div
                     className="absolute inset-0 opacity-0 hover:opacity-100 transition-opacity flex items-center justify-center gap-1"
                     style={{ background: "oklch(0 0 0 / 0.55)" }}
                   >
                     <button
-                      onClick={() => { setLightboxUrl(url); setLightboxOpen(true); }}
+                      onClick={(e) => { e.stopPropagation(); setLightboxIndex(i); }}
                       className="nodrag flex items-center gap-1 px-2 py-1 rounded text-xs"
                       style={{ background: "oklch(0.14 0.007 260 / 0.8)", borderWidth: 1, borderStyle: "solid", borderColor: "var(--c-bd3)", color: "var(--c-t2)" }}
+                      title="放大"
                     >
                       <ZoomIn className="w-3 h-3" />
                     </button>
                     <button
-                      onClick={() => handleDownload(url)}
+                      onClick={(e) => { e.stopPropagation(); handleDownload(url); }}
                       className="nodrag flex items-center gap-1 px-2 py-1 rounded text-xs"
                       style={{ background: "oklch(0.14 0.007 260 / 0.8)", borderWidth: 1, borderStyle: "solid", borderColor: "var(--c-bd3)", color: "var(--c-t2)" }}
+                      title="下载"
                     >
                       <Download className="w-3 h-3" />
                     </button>
                     <button
-                      onClick={() => {
+                      onClick={(e) => {
+                        e.stopPropagation();
                         // Set the reference image AND switch the template to img2img;
                         // the server only honours referenceImageUrl when workflowTemplate
                         // === "img2img", so updating one without the other is a no-op.
@@ -273,7 +334,8 @@ export const ComfyuiImageNode = memo(function ComfyuiImageNode({ id, selected, d
                     </button>
                   </div>
                 </div>
-              ))}
+                );
+              })}
             </div>
           ) : (
           // Single image
@@ -300,7 +362,7 @@ export const ComfyuiImageNode = memo(function ComfyuiImageNode({ id, selected, d
               style={{ background: "oklch(0 0 0 / 0.55)" }}
             >
               <button
-                onClick={() => setLightboxOpen(true)}
+                onClick={() => setLightboxIndex(0)}
                 className="nodrag flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-medium"
                 style={{ background: "oklch(0.14 0.007 260 / 0.8)", borderWidth: 1, borderStyle: "solid", borderColor: "var(--c-bd3)", color: "var(--c-t2)" }}
               >
@@ -455,11 +517,28 @@ export const ComfyuiImageNode = memo(function ComfyuiImageNode({ id, selected, d
             value={payload.prompt ?? ""}
             onChange={(e) => update("prompt", e.target.value)}
             rows={3}
-            
+
             style={{ ...fieldBase, resize: "none", lineHeight: 1.6 }}
             onFocus={(e) => { e.currentTarget.style.borderColor = BORDER_ACCENT; }}
             onBlur={(e) => { e.currentTarget.style.borderColor = BORDER_DEFAULT; }}
           />
+          <div className="flex items-center gap-1 mt-1">
+            <button
+              onClick={handleTranslate}
+              disabled={translating}
+              className="nodrag flex items-center gap-1 px-1.5 py-0.5 rounded-md text-[9px] font-medium transition-all"
+              style={{
+                background: translating ? "var(--c-surface)" : "oklch(0.65 0.18 200 / 0.10)",
+                border: `1px solid ${translating ? "var(--c-bd2)" : "oklch(0.65 0.18 200 / 0.35)"}`,
+                color: translating ? "var(--c-t4)" : "oklch(0.70 0.16 200)",
+                cursor: translating ? "not-allowed" : "pointer",
+              }}
+              title="将提示词翻译为英文（ComfyUI / SD 模型对英文提示更友好）"
+            >
+              {translating ? <Loader2 className="w-2.5 h-2.5 animate-spin" /> : <Languages className="w-2.5 h-2.5" />}
+              译为英文
+            </button>
+          </div>
         </div>
 
         {/* ── Negative prompt ── */}
@@ -770,17 +849,23 @@ export const ComfyuiImageNode = memo(function ComfyuiImageNode({ id, selected, d
           no custom handle to avoid overlapping with the default. Downstream nodes
           consume payload.imageUrl directly via useWorkflowRunner's edge traversal. */}
 
-      {/* Lightbox */}
-      {lightboxOpen && (lightboxUrl ?? payload.imageUrl) && (
-        <ImageLightbox
-          images={payload.imageUrls && payload.imageUrls.length > 1 ? payload.imageUrls : [lightboxUrl ?? payload.imageUrl ?? ""]}
-          currentIndex={0}
-          selectedUrl={lightboxUrl ?? payload.imageUrl ?? ""}
-          onClose={() => { setLightboxOpen(false); setLightboxUrl(null); }}
-          onNavigate={() => { /* multi-image navigation handled by lightbox */ }}
-          onSelect={() => { /* no-op */ }}
-        />
-      )}
+      {/* Lightbox — controlled index so prev/next navigation and "select" work */}
+      {lightboxIndex !== null && (() => {
+        const images = payload.imageUrls && payload.imageUrls.length > 1
+          ? payload.imageUrls
+          : (payload.imageUrl ? [payload.imageUrl] : []);
+        if (images.length === 0 || lightboxIndex >= images.length) return null;
+        return (
+          <ImageLightbox
+            images={images}
+            currentIndex={lightboxIndex}
+            selectedUrl={payload.imageUrl ?? ""}
+            onClose={() => setLightboxIndex(null)}
+            onNavigate={(idx) => setLightboxIndex(idx)}
+            onSelect={(url) => { selectImage(url); setLightboxIndex(null); }}
+          />
+        );
+      })()}
     </BaseNode>
   );
 });
