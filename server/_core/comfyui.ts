@@ -9,7 +9,7 @@
 // - 4 built-in templates: txt2img / img2img / animatediff / svd.
 
 import type { Server as SocketIOServer } from "socket.io";
-import { storagePut } from "server/storage";
+import { storagePut, resolveToAbsoluteUrl } from "server/storage";
 import { assertSafeUrl } from "./videoEditor";
 import type { WorkflowParamBinding } from "@shared/types";
 
@@ -303,12 +303,20 @@ async function uploadImageToComfy(baseUrl: string, sourceUrl: string): Promise<s
   // Accept either absolute http(s) URLs (subject to assertSafeUrl) or our own
   // storage proxy paths (must start with `/manus-storage/` — trusted prefix).
   // Reject everything else including relative paths that could be re-resolved.
+  let fetchUrl = sourceUrl;
   if (/^https?:\/\//i.test(sourceUrl)) {
     assertSafeUrl(sourceUrl);
-  } else if (!sourceUrl.startsWith("/manus-storage/")) {
+  } else if (sourceUrl.startsWith("/manus-storage/")) {
+    // node fetch() can't parse a relative path ("Failed to parse URL from
+    // /manus-storage/…"). Resolve our trusted internal storage path to an
+    // absolute (presigned) URL the app server can fetch — same as the
+    // Poyo/Higgsfield reference-image handling. assertSafeUrl is intentionally
+    // skipped: this is our own storage, whose host may legitimately be internal.
+    fetchUrl = await resolveToAbsoluteUrl(sourceUrl);
+  } else {
     throw new Error("参考图 URL 协议不受支持，仅允许 http/https 或 /manus-storage/ 相对路径");
   }
-  const { buf, contentType } = await fetchWithSizeLimit(sourceUrl, MAX_REF_IMAGE_BYTES, 60_000, "下载参考图");
+  const { buf, contentType } = await fetchWithSizeLimit(fetchUrl, MAX_REF_IMAGE_BYTES, 60_000, "下载参考图");
   const ct = contentType ?? "image/png";
   const ext = ct.includes("jpeg") ? "jpg" : ct.includes("webp") ? "webp" : "png";
   const filename = `comfy_input_${Date.now()}.${ext}`;
