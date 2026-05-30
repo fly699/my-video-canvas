@@ -21,7 +21,16 @@ export const ENV = {
   // Self-hosted S3-compatible storage (MinIO / Cloudflare R2 / AWS S3).
   // When S3_ENDPOINT + S3_BUCKET + keys are set, this takes precedence over Forge.
   // For MinIO set S3_ENDPOINT=http://127.0.0.1:9000 and S3_FORCE_PATH_STYLE=true.
+  // NOTE: this address is used by the SERVER only. Browser downloads are proxied
+  // through the app server, so a 127.0.0.1 endpoint works for remote users too.
   s3Endpoint: process.env.S3_ENDPOINT ?? "",
+  // PUBLIC endpoint reachable by end-user browsers (e.g. https://files.example.com).
+  // S3_ENDPOINT is often a server-local address (127.0.0.1:9000) that remote
+  // browsers cannot reach — when this is empty, downloads/uploads are streamed
+  // THROUGH the app server instead of redirecting to the storage host. Set this
+  // only when MinIO/S3 is exposed publicly (e.g. behind a reverse proxy) to let
+  // browsers transfer directly and save app-server bandwidth.
+  s3PublicEndpoint: process.env.S3_PUBLIC_ENDPOINT ?? "",
   s3Region: process.env.S3_REGION ?? "us-east-1",
   s3Bucket: process.env.S3_BUCKET ?? "",
   s3AccessKey: process.env.S3_ACCESS_KEY ?? "",
