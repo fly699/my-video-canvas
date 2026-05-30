@@ -828,7 +828,13 @@ export const imageGenRouter = router({
           resultCount: result.urls?.length ?? (result.url ? 1 : 0),
         },
       });
-      return { url: result.url, urls: result.urls };
+      return {
+        url: result.url,
+        urls: result.urls,
+        sourceUrl: result.sourceUrl,
+        sourceUrls: result.sourceUrls,
+        sourceAt: result.sourceAt,
+      };
       });
     }),
 });

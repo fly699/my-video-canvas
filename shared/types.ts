@@ -93,6 +93,9 @@ export interface StoryboardNodeData {
   reveResolution?: "1K" | "2K" | "4K";// Reve / Seedream / Flux Pro
   poyoAspectRatio?: string;           // Poyo image models
   poyoQuality?: "low" | "medium" | "high"; // Poyo image models
+  // Original upstream AI-platform URL for the generated image (see ImageGenNodeData)
+  imageUrlSource?: string;
+  imageUrlSourceAt?: number;
 }
 
 export interface PromptNodeData {
@@ -106,6 +109,10 @@ export interface PromptNodeData {
   referenceImageUrl?: string;
   imageUrls?: string[];
   selectedImageIndex?: number;
+  // Original upstream AI-platform URL(s) (see ImageGenNodeData)
+  imageUrlSource?: string;
+  imageUrlSources?: string[];
+  imageUrlSourceAt?: number;
 }
 
 export interface AssetNodeData {
@@ -226,6 +233,14 @@ export interface ImageGenNodeData {
   fluxNumImages?: number;
   // Batch generation results
   imageUrls?: string[]; // multiple generated images (Soul batchSize=4, etc.)
+  // Original upstream (AI-platform) URL(s) captured at generation time, kept so
+  // that — when the re-hosted /manus-storage copy isn't reachable by upstream —
+  // a downstream node can offer to switch the reference back to the still-valid
+  // (short-lived) AI-platform URL. `imageUrlSource` tracks the selected image;
+  // `imageUrlSources` is index-aligned with `imageUrls` for batch results.
+  imageUrlSource?: string;
+  imageUrlSources?: string[];
+  imageUrlSourceAt?: number; // ms epoch when generated (for TTL heuristics)
 }
 
 export interface NoteNodeData {

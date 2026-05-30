@@ -12,7 +12,7 @@ import { cacheMedia, getCachedMedia } from "@/lib/mediaCache";
 import { listCustomPresets, saveCustomPreset, deleteCustomPreset, type CustomVideoPreset } from "@/lib/customPresets";
 import { ensureNotificationPermission, showCompletionNotification } from "@/lib/notify";
 import { CinematographyPicker } from "../CinematographyPicker";
-import { RefImageReachabilityBadge, useRefImageGuard, providerNeedsPublicMedia } from "../mediaReachability";
+import { RefImageReachabilityBadge, RefImageSwitchButton, useRefImageGuard, providerNeedsPublicMedia } from "../mediaReachability";
 import {
   applyCinematographyToPrompt,
   clearCinematographyFromPrompt,
@@ -566,7 +566,7 @@ export const VideoTaskNode = memo(function VideoTaskNode({ id, selected, data }:
       referenceImageUrl: finalRefImage,
       params: payload.params,
     });
-    guard({ model: payload.provider, hasRefImage: Boolean(finalRefImage) }, submit);
+    guard({ model: payload.provider, refImageUrl: finalRefImage }, submit);
   };
 
   /**
@@ -1066,7 +1066,7 @@ export const VideoTaskNode = memo(function VideoTaskNode({ id, selected, data }:
                   });
                   };
                   guard(
-                    { model: warnProvider, hasRefImage: Boolean(submission.referenceImageUrl) },
+                    { model: warnProvider, refImageUrl: submission.referenceImageUrl },
                     runBatch,
                   );
                 }}
@@ -1225,12 +1225,19 @@ export const VideoTaskNode = memo(function VideoTaskNode({ id, selected, data }:
 
         {/* ── Reference image URL (for all models) ── */}
         <div>
-          <label style={{ ...labelStyle, display: "flex", alignItems: "center", gap: 6 }}>
+          <label style={{ ...labelStyle, display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
             参考图 URL（可选）
             <RefImageReachabilityBadge
               model={parallelMode ? (parallelProviders.find(providerNeedsPublicMedia) ?? parallelProviders[0]) : payload.provider}
-              hasRefImage={Boolean(payload.referenceImageUrl?.trim())}
+              refImageUrl={payload.referenceImageUrl}
               reachable={reachable}
+            />
+            <RefImageSwitchButton
+              nodeId={id}
+              model={parallelMode ? (parallelProviders.find(providerNeedsPublicMedia) ?? parallelProviders[0]) : payload.provider}
+              refImageUrl={payload.referenceImageUrl}
+              reachable={reachable}
+              onSwitch={(u) => handleChange("referenceImageUrl", u)}
             />
           </label>
           <input

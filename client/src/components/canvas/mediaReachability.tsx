@@ -1,6 +1,7 @@
 import { useRef, useState, type ReactNode } from "react";
-import { AlertTriangle } from "lucide-react";
+import { AlertTriangle, Link2 } from "lucide-react";
 import { trpc } from "@/lib/trpc";
+import { useCanvasStore } from "../../hooks/useCanvasStore";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import {
   AlertDialog,
@@ -33,13 +34,40 @@ export function providerNeedsPublicMedia(model: string | undefined | null): bool
   return model.startsWith("poyo") || model.startsWith("hf_");
 }
 
-/** 是否应针对"带参考图"的这次生成给出预警。 */
+/**
+ * 该 URL 是否已是"上游能直接 fetch"的外部公网地址。
+ * `resolveToAbsoluteUrl`（server/storage.ts）对任何 http(s) 绝对地址原样放行，
+ * 所以指向**非本应用源**的 http(s) URL（AI 平台 CDN、用户粘贴的公网链接等）上游能拉，
+ * 无需警告。内部代理路径（`/manus-storage/...`、同源、相对路径）和 `data:` / `blob:`
+ * 则不保证公网可达 —— 这些才需要按部署可达性判断。
+ */
+export function isExternalPublicUrl(url: string | undefined | null): boolean {
+  if (!url) return false;
+  if (!/^https?:\/\//i.test(url)) return false; // 相对路径 / data: / blob:
+  try {
+    const u = new URL(url);
+    if (typeof window !== "undefined" && u.origin === window.location.origin) return false; // 同源 = 走内部代理
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * 是否应针对这次"带参考图"的生成给出预警。
+ * 仅当：模型是 URL-only 上游 + 参考图是内部存储路径（非外部公网）+ 部署存储不可达。
+ */
 export function shouldWarnRefImage(args: {
   model: string | undefined | null;
-  hasRefImage: boolean;
+  refImageUrl: string | undefined | null;
   reachable: boolean;
 }): boolean {
-  return args.hasRefImage && providerNeedsPublicMedia(args.model) && !args.reachable;
+  return (
+    Boolean(args.refImageUrl) &&
+    providerNeedsPublicMedia(args.model) &&
+    !isExternalPublicUrl(args.refImageUrl) &&
+    !args.reachable
+  );
 }
 
 /**
@@ -66,7 +94,7 @@ const WARN_TEXT =
  */
 export function RefImageReachabilityBadge(props: {
   model: string | undefined | null;
-  hasRefImage: boolean;
+  refImageUrl: string | undefined | null;
   reachable: boolean;
   className?: string;
 }) {
@@ -99,7 +127,7 @@ export const REF_IMAGE_UNREACHABLE_CONFIRM = WARN_TEXT + "\n\n仍要继续生成
  */
 export function useRefImageGuard(): {
   reachable: boolean;
-  guard: (args: { model: string | undefined | null; hasRefImage: boolean }, proceed: () => void) => void;
+  guard: (args: { model: string | undefined | null; refImageUrl: string | undefined | null }, proceed: () => void) => void;
   dialog: ReactNode;
 } {
   const { reachable } = useMediaReachability();
@@ -107,10 +135,10 @@ export function useRefImageGuard(): {
   const pendingRef = useRef<(() => void) | null>(null);
 
   const guard = (
-    args: { model: string | undefined | null; hasRefImage: boolean },
+    args: { model: string | undefined | null; refImageUrl: string | undefined | null },
     proceed: () => void,
   ) => {
-    if (shouldWarnRefImage({ model: args.model, hasRefImage: args.hasRefImage, reachable })) {
+    if (shouldWarnRefImage({ model: args.model, refImageUrl: args.refImageUrl, reachable })) {
       pendingRef.current = proceed;
       setOpen(true);
     } else {
@@ -151,4 +179,95 @@ export function useRefImageGuard(): {
   );
 
   return { reachable, guard, dialog };
+}
+
+// ── C：切换为 AI 平台临时链接 ─────────────────────────────────────────────────
+//
+// 参考图若由 AI 平台（Poyo / Higgsfield）生成，生成时我们已把原始上游 CDN URL 连同时间戳
+// 存到了产出节点（imageUrlSource(s) / imageUrlSourceAt）。当 re-host 到本地存储的副本对
+// 上游不可达时，可在短期内（CDN 仍有效）让用户一键改用该公网临时链接。
+
+// TTL 启发式：Poyo 标称约 24h，取保守 18h；过期后不再提供切换（链接可能已失效）。
+const SOURCE_URL_TTL_MS = 18 * 3600_000;
+
+/**
+ * 在画布图中查找：当前消费节点（nodeId）的 referenceImageUrl 来自哪个上游产出节点，
+ * 并取出该产出节点保存的原始 AI 平台 URL + 生成时间戳。
+ */
+export function useRefImageSource(
+  nodeId: string,
+  refImageUrl: string | undefined | null,
+): { sourceUrl?: string; sourceAt?: number; usable: boolean } {
+  // 返回打包后的原始字符串（基本类型），避免每次渲染产生新对象导致无谓重渲染。
+  const packed = useCanvasStore((s) => {
+    if (!refImageUrl) return "";
+    for (const e of s.edges) {
+      if (e.target !== nodeId) continue;
+      const src = s.nodes.find((n) => n.id === e.source);
+      if (!src) continue;
+      const p = src.data.payload as {
+        imageUrl?: string;
+        imageUrls?: string[];
+        imageUrlSource?: string;
+        imageUrlSources?: string[];
+        imageUrlSourceAt?: number;
+      };
+      let su: string | undefined;
+      if (p.imageUrl === refImageUrl) su = p.imageUrlSource;
+      else if (Array.isArray(p.imageUrls)) {
+        const idx = p.imageUrls.indexOf(refImageUrl);
+        if (idx >= 0) su = p.imageUrlSources?.[idx] ?? p.imageUrlSource;
+      }
+      if (su) return `${su}\n${p.imageUrlSourceAt ?? 0}`;
+    }
+    return "";
+  });
+
+  if (!packed) return { usable: false };
+  const [sourceUrl, atStr] = packed.split("\n");
+  const sourceAt = Number(atStr) || undefined;
+  const fresh = sourceAt ? Date.now() - sourceAt < SOURCE_URL_TTL_MS : false;
+  const usable = isExternalPublicUrl(sourceUrl) && fresh;
+  return { sourceUrl, sourceAt, usable };
+}
+
+/**
+ * "切换为 AI 平台临时链接"按钮。仅当：该次生成会触发警告 + 找到了仍可用（外部公网 + 未过期）
+ * 的原始 AI 平台 URL 时显示。点击后把 referenceImageUrl 改为该公网链接，A 的逻辑随即熄灯。
+ */
+export function RefImageSwitchButton(props: {
+  nodeId: string;
+  model: string | undefined | null;
+  refImageUrl: string | undefined | null;
+  reachable: boolean;
+  onSwitch: (sourceUrl: string) => void;
+  className?: string;
+}) {
+  const { sourceUrl, usable } = useRefImageSource(props.nodeId, props.refImageUrl);
+  if (!shouldWarnRefImage({ model: props.model, refImageUrl: props.refImageUrl, reachable: props.reachable })) {
+    return null;
+  }
+  if (!usable || !sourceUrl) return null;
+  return (
+    <Tooltip>
+      <TooltipTrigger asChild>
+        <button
+          type="button"
+          onClick={(e) => {
+            e.stopPropagation();
+            props.onSwitch(sourceUrl);
+          }}
+          className={
+            "nodrag inline-flex items-center gap-1 rounded-full bg-emerald-100 px-1.5 py-0.5 text-[10px] font-medium text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300 " +
+            (props.className ?? "")
+          }
+        >
+          <Link2 className="h-3 w-3" /> 切换为 AI 平台链接
+        </button>
+      </TooltipTrigger>
+      <TooltipContent className="max-w-[280px] text-left">
+        检测到该参考图由 AI 平台生成、临时公网链接仍可用（约 18 小时内）。点击改用该链接，上游即可直接读取（注意：该链接可能随时失效）。
+      </TooltipContent>
+    </Tooltip>
+  );
 }

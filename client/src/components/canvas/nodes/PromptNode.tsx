@@ -8,7 +8,7 @@ import { toast } from "sonner";
 import { Sparkles, Loader2, RefreshCw, ChevronDown, Upload, X, Grid2X2, Check, Languages, Wand2 } from "lucide-react";
 import { makeImageProxyFallback } from "@/lib/utils";
 import { LLMModelPicker, type LLMModelId } from "../LLMModelPicker";
-import { RefImageReachabilityBadge, useRefImageGuard } from "../mediaReachability";
+import { RefImageReachabilityBadge, RefImageSwitchButton, useRefImageGuard } from "../mediaReachability";
 
 interface Props {
   id: string;
@@ -120,12 +120,22 @@ export const PromptNode = memo(function PromptNode({ id, selected, data }: Props
   const genImageMutation = trpc.imageGen.generate.useMutation({
     onSuccess: (result) => {
       if (result.urls && result.urls.length > 1) {
-        updateNodeData(id, { imageUrls: result.urls, imageUrl: result.urls[0], selectedImageIndex: 0 });
+        updateNodeData(id, {
+          imageUrls: result.urls, imageUrl: result.urls[0], selectedImageIndex: 0,
+          imageUrlSources: result.sourceUrls,
+          imageUrlSource: result.sourceUrls?.[0] ?? result.sourceUrl,
+          imageUrlSourceAt: result.sourceAt,
+        });
         toast.success(`${result.urls.length} 张图像已生成`);
       } else {
         const imageUrl = result.url ?? result.urls?.[0];
         if (!imageUrl) { toast.error("生成完成但未返回图像"); return; }
-        updateNodeData(id, { imageUrl, imageUrls: undefined, selectedImageIndex: undefined });
+        updateNodeData(id, {
+          imageUrl, imageUrls: undefined, selectedImageIndex: undefined,
+          imageUrlSource: result.sourceUrl ?? result.sourceUrls?.[0],
+          imageUrlSources: undefined,
+          imageUrlSourceAt: result.sourceAt,
+        });
         toast.success("图像已生成");
       }
     },
@@ -156,7 +166,7 @@ export const PromptNode = memo(function PromptNode({ id, selected, data }: Props
       ...(model === "hf_soul_standard" && batchMode ? { batchSize: 4 as const } : {}),
       projectId: data.projectId,
     });
-    guard({ model, hasRefImage: Boolean(payload.referenceImageUrl) }, submit);
+    guard({ model, refImageUrl: payload.referenceImageUrl }, submit);
   };
 
   const onFocusAccent = (e: React.FocusEvent<HTMLElement>) => { e.currentTarget.style.borderColor = accentA(0.6); };
@@ -391,10 +401,28 @@ export const PromptNode = memo(function PromptNode({ id, selected, data }: Props
           )}
           <RefImageReachabilityBadge
             model={model}
-            hasRefImage={Boolean(payload.referenceImageUrl)}
+            refImageUrl={payload.referenceImageUrl}
             reachable={reachable}
           />
+          <RefImageSwitchButton
+            nodeId={id}
+            model={model}
+            refImageUrl={payload.referenceImageUrl}
+            reachable={reachable}
+            onSwitch={(u) => updateNodeData(id, { referenceImageUrl: u })}
+          />
         </div>
+        {/* 或直接粘贴公网图片 URL */}
+        <input
+          type="url"
+          placeholder="或粘贴公网图片 URL（https://…）"
+          value={payload.referenceImageUrl?.startsWith("http") ? payload.referenceImageUrl : ""}
+          onChange={(e) => updateNodeData(id, { referenceImageUrl: e.target.value.trim() || undefined })}
+          className="nodrag"
+          style={{ ...fieldStyle, fontSize: 10.5 }}
+          onFocus={onFocusAccent}
+          onBlur={onBlurDefault}
+        />
 
         {/* Style + ratio */}
         <div className="flex gap-1.5">

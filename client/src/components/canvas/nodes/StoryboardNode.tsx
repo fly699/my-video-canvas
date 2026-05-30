@@ -13,7 +13,7 @@ import { cacheMedia } from "@/lib/mediaCache";
 import { mergeCharactersIntoPrompt } from "../../../lib/characterPrompt";
 import { IMAGE_MODELS, type ImageModelId } from "@/lib/models";
 import { makeImageProxyFallback } from "@/lib/utils";
-import { RefImageReachabilityBadge, useRefImageGuard } from "../mediaReachability";
+import { RefImageReachabilityBadge, RefImageSwitchButton, useRefImageGuard } from "../mediaReachability";
 import { LLMModelPicker, type LLMModelId } from "../LLMModelPicker";
 import { useCanvasMode } from "../../../contexts/CanvasModeContext";
 
@@ -62,15 +62,17 @@ const onBlur  = (e: React.FocusEvent<HTMLElement>) => { e.currentTarget.style.bo
 export const StoryboardNode = memo(function StoryboardNode({ id, selected, data }: Props) {
   const { updateNodeData } = useCanvasStore();
   // Detect connected CharacterNodes that have their own referenceImageUrl
-  const connectedCharWithRef = useCanvasStore((s) => {
+  const connectedCharRefUrl = useCanvasStore((s) => {
     const incomingEdges = s.edges.filter((e) => e.target === id);
-    return incomingEdges.some((edge) => {
+    for (const edge of incomingEdges) {
       const srcNode = s.nodes.find((n) => n.id === edge.source);
-      if (srcNode?.data.nodeType !== "character") return false;
+      if (srcNode?.data.nodeType !== "character") continue;
       const cp = srcNode.data.payload as import("../../../../../shared/types").CharacterNodeData;
-      return !!cp.referenceImageUrl;
-    });
+      if (cp.referenceImageUrl) return cp.referenceImageUrl;
+    }
+    return undefined;
   });
+  const connectedCharWithRef = Boolean(connectedCharRefUrl);
 
   // Outgoing edges → connected video_task node IDs (for prompt push button)
   // useShallow prevents infinite Zustand re-subscription when the returned array has
@@ -87,6 +89,8 @@ export const StoryboardNode = memo(function StoryboardNode({ id, selected, data 
   const { mode: canvasMode } = useCanvasMode();
   const isCreative = canvasMode === "creative";
   const payload = data.payload;
+  // Effective reference the next generation will use (local overrides character)
+  const effectiveRefUrl = payload.referenceImageUrl?.trim() || connectedCharRefUrl;
   const [generating, setGenerating] = useState(false);
   const [showModelPicker, setShowModelPicker] = useState(false);
   const [inputExpanded, setInputExpanded] = useState(!!selected);
@@ -202,7 +206,11 @@ export const StoryboardNode = memo(function StoryboardNode({ id, selected, data 
       const imageUrl = newUrls[0];
       const currentHistory = (useCanvasStore.getState().nodes.find(n => n.id === id)?.data.payload as StoryboardNodeData)?.imageHistory ?? [];
       const newHistory = [...newUrls, ...currentHistory].filter((u): u is string => !!u).slice(0, 12);
-      updateNodeData(id, { imageUrl, imageHistory: newHistory });
+      updateNodeData(id, {
+        imageUrl, imageHistory: newHistory,
+        imageUrlSource: result.sourceUrl ?? result.sourceUrls?.[0],
+        imageUrlSourceAt: result.sourceAt,
+      });
       setGenerating(false);
       if (newUrls.length > 1) setShowHistory(true);
       toast.success(newUrls.length > 1 ? `已生成 ${newUrls.length} 张，可在历史中切换` : "分镜图像已生成");
@@ -339,7 +347,7 @@ export const StoryboardNode = memo(function StoryboardNode({ id, selected, data 
         ...sizingFields,
       });
     };
-    guard({ model, hasRefImage: Boolean(charRefUrl) }, submit);
+    guard({ model, refImageUrl: charRefUrl }, submit);
   };
 
   const currentModel = IMAGE_MODELS.find((m) => m.value === model) ?? IMAGE_MODELS[0];
@@ -836,10 +844,28 @@ export const StoryboardNode = memo(function StoryboardNode({ id, selected, data 
             )}
             <RefImageReachabilityBadge
               model={model}
-              hasRefImage={Boolean(payload.referenceImageUrl) || connectedCharWithRef}
+              refImageUrl={effectiveRefUrl}
               reachable={reachable}
             />
+            <RefImageSwitchButton
+              nodeId={id}
+              model={model}
+              refImageUrl={effectiveRefUrl}
+              reachable={reachable}
+              onSwitch={(u) => updateNodeData(id, { referenceImageUrl: u })}
+            />
           </div>
+          {/* 或直接粘贴公网图片 URL */}
+          <input
+            type="url"
+            placeholder="或粘贴公网图片 URL（https://…）"
+            value={payload.referenceImageUrl?.startsWith("http") ? payload.referenceImageUrl : ""}
+            onChange={(e) => updateNodeData(id, { referenceImageUrl: e.target.value.trim() || undefined })}
+            className="nodrag"
+            style={{ ...fieldStyle, fontSize: 10.5 }}
+            onFocus={(e) => { e.currentTarget.style.borderColor = "var(--c-t4)"; }}
+            onBlur={(e) => { e.currentTarget.style.borderColor = "var(--c-bd2)"; }}
+          />
           {/* Priority hint: when this node has its own referenceImageUrl, CharacterNode's ref is silently ignored */}
           {connectedCharWithRef && payload.referenceImageUrl && (
             <p style={{ fontSize: 9.5, color: "oklch(0.72 0.18 55)", lineHeight: 1.4, margin: 0 }}>
