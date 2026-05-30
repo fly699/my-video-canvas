@@ -25,6 +25,9 @@ export function useAuth(options?: UseAuthOptions) {
   });
 
   const logout = useCallback(async () => {
+    // 主动退出 → 设置一次性标记，登录页本次跳过「自动登录」，
+    // 否则会立刻又自动登录回去，导致无法切换账号。
+    try { sessionStorage.setItem("avc:login:skipAuto", "1"); } catch { /* ignore */ }
     try {
       await logoutMutation.mutateAsync();
     } catch (error: unknown) {
