@@ -14,7 +14,7 @@ const clamp = (v: number, lo: number, hi: number) => Math.max(lo, Math.min(hi, v
 
 /** Floating, draggable, resizable, pinnable chat window for inside the canvas.
  *  Mirrors the AI-assistant node feel: drag by header, resize from corner, pin. */
-export function CanvasChatWindow({ onClose }: { onClose: () => void }) {
+export function CanvasChatWindow({ onClose, docked = false }: { onClose: () => void; docked?: boolean }) {
   const [box, setBox] = usePersistentState<Box>(
     "ui:chat-window:v2",
     { x: Math.max(24, (typeof window !== "undefined" ? window.innerWidth : 1200) - 460), y: 76, w: 440, h: 620 },
@@ -60,7 +60,12 @@ export function CanvasChatWindow({ onClose }: { onClose: () => void }) {
 
   return (
     <ChatProvider>
-      <div style={{
+      <div style={docked ? {
+        // 作为 Chrome 应用(standalone)默认视图：铺满整个应用窗口，无外框/缩放/阴影
+        position: "fixed", inset: 0, width: "100%", height: "100%", zIndex: 1000,
+        background: C.bg, overflow: "hidden", display: "flex", flexDirection: "column", color: C.t1,
+        fontFamily: "system-ui, -apple-system, 'Segoe UI', sans-serif",
+      } : {
         position: "fixed", left: box.x, top: box.y, width: box.w, height: box.h, zIndex: 1000,
         background: C.bg, border: `1px solid ${C.borderStrong}`, borderRadius: 14, overflow: "hidden",
         display: "flex", flexDirection: "column", boxShadow: "0 18px 50px rgba(0,0,0,0.55)", color: C.t1,
@@ -70,22 +75,22 @@ export function CanvasChatWindow({ onClose }: { onClose: () => void }) {
         transform: `scale(${scale})`, transformOrigin: "top left",
       }}>
         {/* window chrome / drag handle */}
-        <div onMouseDown={onHeaderDown} style={{
+        <div onMouseDown={(e) => { if (!docked) onHeaderDown(e); }} style={{
           display: "flex", alignItems: "center", gap: 8, padding: "8px 10px", flexShrink: 0,
-          borderBottom: `1px solid ${C.border}`, cursor: pinned ? "default" : "move", userSelect: "none", background: C.bg2,
+          borderBottom: `1px solid ${C.border}`, cursor: docked ? "default" : (pinned ? "default" : "move"), userSelect: "none", background: C.bg2,
         }}>
-          <GripHorizontal size={15} style={{ color: C.t4 }} />
+          {!docked && <GripHorizontal size={15} style={{ color: C.t4 }} />}
           <img src="/chat-icon.svg" width={18} height={18} alt="" style={{ borderRadius: 5 }} />
           <span style={{ fontWeight: 700, fontSize: 13, color: C.accent }}>聊天</span>
           <div style={{ marginLeft: "auto", display: "flex", alignItems: "center", gap: 4 }}>
-            <Btn title="缩小界面" onClick={() => bumpScale(-0.1)}><ZoomOut size={15} /></Btn>
-            <span title="界面缩放比例" onMouseDown={(e) => e.stopPropagation()} onClick={() => setScale(1)} style={{ fontSize: 11, color: C.t3, minWidth: 30, textAlign: "center", cursor: "pointer", userSelect: "none" }}>{Math.round(scale * 100)}%</span>
-            <Btn title="放大界面" onClick={() => bumpScale(0.1)}><ZoomIn size={15} /></Btn>
+            {!docked && <Btn title="缩小界面" onClick={() => bumpScale(-0.1)}><ZoomOut size={15} /></Btn>}
+            {!docked && <span title="界面缩放比例" onMouseDown={(e) => e.stopPropagation()} onClick={() => setScale(1)} style={{ fontSize: 11, color: C.t3, minWidth: 30, textAlign: "center", cursor: "pointer", userSelect: "none" }}>{Math.round(scale * 100)}%</span>}
+            {!docked && <Btn title="放大界面" onClick={() => bumpScale(0.1)}><ZoomIn size={15} /></Btn>}
             <Btn title={sidebar ? "隐藏会话栏" : "显示会话栏"} active={sidebar} onClick={() => setSidebar((v) => !v)}><PanelLeft size={15} /></Btn>
             <Btn title="成员/在线" active={members} onClick={() => setMembers((v) => !v)}><Users size={15} /></Btn>
-            <Btn title={pinned ? "已固定（点解锁可拖动）" : "固定窗口"} active={pinned} onClick={() => setPinned((v) => !v)}>{pinned ? <Pin size={15} /> : <PinOff size={15} />}</Btn>
-            <Btn title="在新标签打开完整页面" onClick={() => window.open("/chat", "_blank")}><ExternalLink size={15} /></Btn>
-            <Btn title="关闭" onClick={onClose}><X size={15} /></Btn>
+            {!docked && <Btn title={pinned ? "已固定（点解锁可拖动）" : "固定窗口"} active={pinned} onClick={() => setPinned((v) => !v)}>{pinned ? <Pin size={15} /> : <PinOff size={15} />}</Btn>}
+            <Btn title="在浏览器标签打开完整页面" onClick={() => window.open("/chat?mini=0", "_blank")}><ExternalLink size={15} /></Btn>
+            {!docked && <Btn title="关闭" onClick={onClose}><X size={15} /></Btn>}
           </div>
         </div>
 
@@ -97,10 +102,10 @@ export function CanvasChatWindow({ onClose }: { onClose: () => void }) {
         </div>
 
         {/* resize handle */}
-        <div onMouseDown={onResizeDown} title="拖动调整大小" style={{
+        {!docked && <div onMouseDown={onResizeDown} title="拖动调整大小" style={{
           position: "absolute", right: 0, bottom: 0, width: 18, height: 18, cursor: "nwse-resize",
           background: `linear-gradient(135deg, transparent 50%, ${C.borderStrong} 50%)`,
-        }} />
+        }} />}
       </div>
     </ChatProvider>
   );
