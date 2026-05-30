@@ -130,9 +130,19 @@ export default function LoginPage() {
     }
   }
 
-  // 下次自动登录：预填完成且开启时，自动提交一次
+  // 下次自动登录：预填完成且开启时，自动提交一次。
+  // 但「主动退出登录」后本次跳过（消费一次性标记），以便切换账号。
   useEffect(() => {
     if (autoTried.current) return;
+    let justLoggedOut = false;
+    try {
+      justLoggedOut = sessionStorage.getItem("avc:login:skipAuto") === "1";
+      if (justLoggedOut) sessionStorage.removeItem("avc:login:skipAuto");
+    } catch { /* ignore */ }
+    if (justLoggedOut) {
+      autoTried.current = true; // 本次会话不再自动登录，允许手动换号
+      return;
+    }
     const prefs = loadPrefs();
     if (prefs.autoLogin && mode === "login" && email && password) {
       autoTried.current = true;
