@@ -150,7 +150,7 @@ export function ChatView({ membersOpen: _m }: { membersOpen?: boolean }) {
         <button onClick={() => fileRef.current?.click()} title={`添加文件（单文件 ≤ ${maxFileMb}MB）`} style={iconBtn}><Paperclip size={18} /></button>
         <textarea value={text} onChange={(e) => { setText(e.target.value); emitTyping(); }}
           onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); void doSend(); } }}
-          placeholder="输入消息，Enter 发送，Shift+Enter 换行，可拖拽文件到此" rows={1}
+          placeholder="Enter 发送，Shift+Enter 换行，可拖拽文件到此" rows={1}
           style={{ flex: 1, resize: "none", maxHeight: 140, padding: "10px 14px", borderRadius: 12, border: `1px solid ${C.border}`, background: "var(--c-elevated, rgba(128,128,128,0.10))", color: C.t1, fontSize: 14, outline: "none", fontFamily: "inherit" }} />
         <button onClick={() => doSend()} disabled={busy || (!text.trim() && staged.length === 0)} title="发送"
           style={{ ...iconBtn, width: 40, height: 40, background: C.accentSoft, color: C.accent, border: `1px solid ${C.accent}`, opacity: busy || (!text.trim() && staged.length === 0) ? 0.5 : 1 }}>
