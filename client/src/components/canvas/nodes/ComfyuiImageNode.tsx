@@ -8,7 +8,7 @@ import { toast } from "sonner";
 import {
   Sparkles, Loader2, RefreshCw, Upload, X, Cpu, Download, ZoomIn,
   ChevronDown, ChevronRight, Server, Boxes, ImageIcon, HardDriveDownload,
-  Languages, Check,
+  Languages, Check, Copy,
 } from "lucide-react";
 import { useLocalMedia } from "@/lib/useLocalMedia";
 import { cacheMedia } from "@/lib/mediaCache";
@@ -135,6 +135,36 @@ export const ComfyuiImageNode = memo(function ComfyuiImageNode({ id, selected, d
     setTranslating(true);
     translateMutation.mutate({ text: payload.prompt, mode: "translate_en", model: llmModel });
   };
+
+  // Sync shared ComfyUI config (server / checkpoint / sampling params) from this
+  // node to ALL other comfyui_image nodes on the canvas — handy after the Script
+  // node batch-creates many ComfyUI image nodes: configure one, propagate to all.
+  // Per-node fields (prompt / seed / reference & result images) are NOT synced.
+  const syncToAllComfyImages = useCallback(() => {
+    const { nodes: allNodes, batchUpdateNodeData } = useCanvasStore.getState();
+    const targets = allNodes.filter((n) => n.data.nodeType === "comfyui_image" && n.id !== id);
+    if (targets.length === 0) { toast.info("当前画布只有这一个 ComfyUI 图像节点"); return; }
+    const p = payload;
+    const patch: Partial<ComfyuiImageNodeData> = {
+      customBaseUrl: p.customBaseUrl,
+      workflowTemplate: p.workflowTemplate,
+      negPrompt: p.negPrompt,
+      ckpt: p.ckpt,
+      lora: p.lora,
+      loraStrength: p.loraStrength,
+      steps: p.steps,
+      cfg: p.cfg,
+      width: p.width,
+      height: p.height,
+      sampler: p.sampler,
+      scheduler: p.scheduler,
+      denoise: p.denoise,
+      vae: p.vae,
+      batchSize: p.batchSize,
+    };
+    batchUpdateNodeData(targets.map((t) => ({ id: t.id, payload: patch })));
+    toast.success(`已同步配置到 ${targets.length} 个 ComfyUI 图像节点`);
+  }, [id, payload]);
 
   // Select which generated image is the node's active output. Also push the new
   // URL to connected downstream reference-image consumers (mirrors ImageGenNode).
@@ -493,6 +523,25 @@ export const ComfyuiImageNode = memo(function ComfyuiImageNode({ id, selected, d
             </div>
           )}
         </div>
+
+        {/* ── Sync config to all ComfyUI image nodes ── */}
+        <button
+          onClick={syncToAllComfyImages}
+          title="把当前服务器地址 / Checkpoint / LoRA / 采样参数等配置同步到画布中所有其他 ComfyUI 图像节点（不含提示词、Seed、结果图）"
+          className="nodrag flex items-center justify-center gap-1.5 w-full py-1.5 rounded-lg text-[10.5px] transition-all"
+          style={{
+            background: "oklch(0.68 0.20 100 / 0.08)",
+            border: "1px dashed oklch(0.68 0.20 100 / 0.4)",
+            color: accent,
+            cursor: "pointer",
+            marginBottom: 4,
+          }}
+          onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.background = "oklch(0.68 0.20 100 / 0.16)"; }}
+          onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.background = "oklch(0.68 0.20 100 / 0.08)"; }}
+        >
+          <Copy className="w-3 h-3" />
+          同步配置到全部 ComfyUI 图像节点
+        </button>
 
         {/* ── Workflow template ── */}
         <div>
