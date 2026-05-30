@@ -7,7 +7,7 @@ import { trpc } from "@/lib/trpc";
 import { toast } from "sonner";
 import {
   Play, Loader2, RefreshCw, Upload, X, Cpu, Download, AlertCircle,
-  ChevronDown, ChevronRight, Server, Boxes, HardDriveDownload, Languages, Copy,
+  ChevronDown, ChevronRight, Server, Boxes, HardDriveDownload, Languages, Copy, Lock, Unlock, Ban,
 } from "lucide-react";
 import { useLocalMedia } from "@/lib/useLocalMedia";
 import { cacheMedia } from "@/lib/mediaCache";
@@ -112,11 +112,12 @@ export const ComfyuiVideoNode = memo(function ComfyuiVideoNode({ id, selected, d
     [id, updateNodeData]
   );
 
+  const translateTargetRef = useRef<"prompt" | "negPrompt">("prompt");
   const translateMutation = trpc.aiEnhance.enhance.useMutation({
     onSuccess: (result) => {
       setTranslating(false);
       if (!useCanvasStore.getState().nodes.some((n) => n.id === id)) return;
-      updateNodeData(id, { prompt: result.result });
+      updateNodeData(id, { [translateTargetRef.current]: result.result });
       toast.success("已翻译为英文");
     },
     onError: (err) => {
@@ -125,11 +126,37 @@ export const ComfyuiVideoNode = memo(function ComfyuiVideoNode({ id, selected, d
     },
   });
 
-  const handleTranslate = () => {
+  const handleTranslate = (field: "prompt" | "negPrompt" = "prompt") => {
     if (translating || translateMutation.isPending) return;
-    if (!payload.prompt?.trim()) { toast.error("请先填写提示词"); return; }
+    const text = field === "prompt" ? payload.prompt : payload.negPrompt;
+    if (!text?.trim()) { toast.error(field === "prompt" ? "请先填写提示词" : "请先填写反向提示词"); return; }
+    translateTargetRef.current = field;
     setTranslating(true);
-    translateMutation.mutate({ text: payload.prompt, mode: "translate_en", model: llmModel });
+    translateMutation.mutate({ text, mode: "translate_en", model: llmModel });
+  };
+
+  // Cancel a running ComfyUI job (POST /interrupt).
+  const interruptMutation = trpc.comfyui.interrupt.useMutation({
+    onSuccess: () => toast.success("已发送中断请求"),
+    onError: (err) => toast.error("中断失败：" + err.message),
+  });
+  const handleCancel = () => {
+    interruptMutation.mutate({ customBaseUrl: payload.customBaseUrl?.trim() || undefined });
+  };
+
+  // Recover from a stale "processing" state after a page reload.
+  useEffect(() => {
+    if (payload.status === "processing") {
+      updateNodeData(id, { status: "failed", errorMessage: "生成已中断（页面刷新或连接断开），请重新运行。", progress: undefined });
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // Seed lock (ComfyUI uses -1 for random each run).
+  const seedLocked = typeof payload.seed === "number" && payload.seed >= 0;
+  const toggleSeedLock = () => {
+    if (seedLocked) update("seed", -1);
+    else update("seed", Math.floor(Math.random() * 2147483647));
   };
 
   // Sync shared ComfyUI config to ALL other comfyui_video nodes on the canvas.
@@ -487,7 +514,7 @@ export const ComfyuiVideoNode = memo(function ComfyuiVideoNode({ id, selected, d
           <div className="flex items-center gap-1 mt-1 flex-wrap">
             <LLMModelPicker value={llmModel} onChange={setLlmModel} disabled={translating} />
             <button
-              onClick={handleTranslate}
+              onClick={() => handleTranslate("prompt")}
               disabled={translating}
               className="nodrag flex items-center gap-1 px-1.5 py-0.5 rounded-md text-[9px] font-medium transition-all"
               style={{
@@ -517,6 +544,23 @@ export const ComfyuiVideoNode = memo(function ComfyuiVideoNode({ id, selected, d
             onFocus={(e) => { e.currentTarget.style.borderColor = "var(--c-t4)"; }}
             onBlur={(e) => { e.currentTarget.style.borderColor = BORDER_DEFAULT; }}
           />
+          <div className="flex items-center gap-1 mt-1">
+            <button
+              onClick={() => handleTranslate("negPrompt")}
+              disabled={translating}
+              className="nodrag flex items-center gap-1 px-1.5 py-0.5 rounded-md text-[9px] font-medium transition-all"
+              style={{
+                background: translating ? "var(--c-surface)" : "oklch(0.65 0.18 200 / 0.10)",
+                border: `1px solid ${translating ? "var(--c-bd2)" : "oklch(0.65 0.18 200 / 0.35)"}`,
+                color: translating ? "var(--c-t4)" : "oklch(0.70 0.16 200)",
+                cursor: translating ? "not-allowed" : "pointer",
+              }}
+              title="将反向提示词翻译为英文"
+            >
+              {translating ? <Loader2 className="w-2.5 h-2.5 animate-spin" /> : <Languages className="w-2.5 h-2.5" />}
+              译为英文
+            </button>
+          </div>
         </div>
 
         {/* ── Checkpoint ── */}
@@ -691,7 +735,23 @@ export const ComfyuiVideoNode = memo(function ComfyuiVideoNode({ id, selected, d
               </div>
               {/* Seed */}
               <div className="col-span-2">
-                <label style={labelStyle}>Seed（-1 随机）</label>
+                <div className="flex items-center justify-between mb-[5px]">
+                  <label style={{ ...labelStyle, marginBottom: 0 }}>Seed（-1 随机）</label>
+                  <button
+                    onClick={toggleSeedLock}
+                    className="nodrag flex items-center gap-0.5 px-1.5 py-0.5 rounded text-[9px] transition-all"
+                    style={{
+                      background: seedLocked ? "oklch(0.68 0.22 285 / 0.15)" : "var(--c-surface)",
+                      border: `1px solid ${seedLocked ? "oklch(0.68 0.22 285 / 0.40)" : "var(--c-bd2)"}`,
+                      color: seedLocked ? "oklch(0.72 0.18 285)" : "var(--c-t4)",
+                      cursor: "pointer",
+                    }}
+                    title={seedLocked ? "解锁（改回 -1 每次随机）" : "锁定一个随机种子以复现"}
+                  >
+                    {seedLocked ? <Lock className="w-2.5 h-2.5" /> : <Unlock className="w-2.5 h-2.5" />}
+                    {seedLocked ? "已锁" : "随机"}
+                  </button>
+                </div>
                 <input
                   type="number" placeholder="-1"
                   value={payload.seed ?? ""}
@@ -803,6 +863,25 @@ export const ComfyuiVideoNode = memo(function ComfyuiVideoNode({ id, selected, d
             : (payload.status === "done" ? "重新生成" : "运行 ComfyUI")
           }
         </button>
+
+        {/* Cancel button — interrupt the running ComfyUI job */}
+        {(genMutation.isPending || payload.status === "processing") && (
+          <button
+            onClick={handleCancel}
+            disabled={interruptMutation.isPending}
+            className="nodrag flex items-center justify-center gap-1.5 w-full py-1.5 rounded-lg text-xs font-medium transition-all"
+            style={{
+              marginTop: 6,
+              background: "oklch(0.62 0.20 25 / 0.08)",
+              border: "1px solid oklch(0.62 0.20 25 / 0.35)",
+              color: "oklch(0.66 0.20 25)",
+              cursor: interruptMutation.isPending ? "wait" : "pointer",
+            }}
+          >
+            <Ban className="w-3 h-3" />
+            {interruptMutation.isPending ? "正在取消…" : "取消生成"}
+          </button>
+        )}
 
         </div>{/* end input collapse wrapper */}
       </div>

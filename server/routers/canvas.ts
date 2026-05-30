@@ -35,7 +35,7 @@ import {
 import { storagePut, resolveToAbsoluteUrl, canBrowserReachStorageDirectly, storageBackend } from "../storage";
 import { invokeLLM, extractTextContent } from "../_core/llm";
 import { generateImage } from "../_core/imageGeneration";
-import { generateComfyImage, generateComfyVideo, fetchComfyModels, analyzeWorkflow, executeCustomWorkflow, uploadImageForWorkflow } from "../_core/comfyui";
+import { generateComfyImage, generateComfyVideo, fetchComfyModels, analyzeWorkflow, executeCustomWorkflow, uploadImageForWorkflow, interruptComfy } from "../_core/comfyui";
 import { ENV } from "../_core/env";
 import { isPoyoVideoProvider, submitPoyoVideo, checkPoyoVideoStatus } from "../_core/poyoVideo";
 import { isHiggsfieldVideoProvider, submitHiggsfieldVideo, checkHiggsfieldVideoStatus } from "../_core/higgsfield";
@@ -1883,6 +1883,21 @@ export const comfyuiRouter = router({
           throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: err instanceof Error ? err.message : String(err) });
         }
       });
+    }),
+
+  interrupt: protectedProcedure
+    .input(z.object({ customBaseUrl: z.string().max(2048).optional() }))
+    .mutation(async ({ ctx, input }) => {
+      // Same SSRF gate as the generate endpoints (server POSTs to a client URL).
+      await assertWhitelisted(ctx);
+      const baseUrl = input.customBaseUrl?.trim() || ENV.comfyuiBaseUrl;
+      if (!baseUrl) throw new TRPCError({ code: "BAD_REQUEST", message: "ComfyUI URL 未配置" });
+      try {
+        await interruptComfy(baseUrl);
+        return { ok: true as const };
+      } catch (err) {
+        throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: err instanceof Error ? err.message : String(err) });
+      }
     }),
 
   fetchModels: protectedProcedure
