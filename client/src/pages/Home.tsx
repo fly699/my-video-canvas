@@ -298,6 +298,15 @@ export default function Home() {
     enabled: isAuthenticated,
   });
 
+  // 管理员：检测是否有新版本（带服务端 15 分钟缓存，每 30 分钟轮询一次）
+  const { data: updateInfo } = trpc.admin.update.available.useQuery(undefined, {
+    enabled: isAuthenticated && user?.role === "admin",
+    refetchInterval: 30 * 60 * 1000,
+    refetchOnWindowFocus: false,
+    retry: false,
+  });
+  const hasUpdate = (updateInfo?.behind ?? 0) > 0;
+
   const createProject = trpc.projects.create.useMutation({
     onSuccess: (project: { id: number } | null | undefined) => {
       if (project) navigate(`/canvas/${project.id}`);
@@ -681,10 +690,17 @@ export default function Home() {
             {user.role === "admin" && (
               <a
                 href="/admin"
-                className="text-xs transition-colors px-2 py-1 rounded-md"
+                className="text-xs transition-colors px-2 py-1 rounded-md relative"
                 style={{ color: "var(--c-t3)" }}
+                title={hasUpdate ? `有 ${updateInfo?.behind} 个新版本待更新` : "管理后台"}
               >
                 管理后台
+                {hasUpdate && (
+                  <span
+                    className="absolute top-0 right-0 w-2 h-2 rounded-full"
+                    style={{ background: "oklch(0.65 0.22 25)", boxShadow: "0 0 0 2px var(--c-bg, #0d0d10)" }}
+                  />
+                )}
               </a>
             )}
             <span className="text-xs" style={{ color: "var(--c-t3)" }}>{user.name ?? user.email}</span>

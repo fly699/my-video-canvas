@@ -7,7 +7,7 @@ import { invalidateStorageSettingsCache } from "../_core/storageConfig";
 import { storagePut, storageBackend, isStorageConfigured } from "../storage";
 import { ENV } from "../_core/env";
 import { randomBytes } from "crypto";
-import { getUpdateStatus, getVersionInfo, checkRemote, startUpdate } from "../_core/selfUpdate";
+import { getUpdateStatus, getVersionInfo, getUpdateAvailable, startUpdate } from "../_core/selfUpdate";
 
 const AUDIT_ACTIONS = [
   "login_email", "login_oauth",
@@ -326,8 +326,13 @@ export const adminRouter = router({
     version: adminProcedure.query(async () => {
       return getVersionInfo();
     }),
+    // 红点提醒用：带 15 分钟缓存，频繁查询不会频繁 git fetch
+    available: adminProcedure.query(async () => {
+      return getUpdateAvailable(false);
+    }),
+    // 手动「检查更新」：强制刷新缓存
     check: adminProcedure.mutation(async () => {
-      return checkRemote();
+      return getUpdateAvailable(true);
     }),
     status: adminProcedure.query(() => {
       return getUpdateStatus();

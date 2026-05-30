@@ -143,6 +143,28 @@ function runStepQuiet(cmd: string): Promise<number> {
   });
 }
 
+// ── 远程是否有新版本：带 TTL 缓存，供「红点提醒」频繁查询而不频繁 git fetch ──
+interface RemoteState { behind: number; latest: string; checkedAt: number }
+let remoteCache: RemoteState | null = null;
+const REMOTE_TTL = 15 * 60 * 1000; // 15 分钟
+
+export async function getUpdateAvailable(force = false): Promise<RemoteState> {
+  const now = Date.now();
+  if (!force && remoteCache && now - remoteCache.checkedAt < REMOTE_TTL) return remoteCache;
+  try {
+    const { behind, latest } = await checkRemote();
+    remoteCache = { behind, latest, checkedAt: now };
+  } catch {
+    if (!remoteCache) remoteCache = { behind: 0, latest: "", checkedAt: now };
+  }
+  return remoteCache;
+}
+
+// 更新成功/已最新后清零红点（避免重启前残留提醒）
+function clearRemoteCache() {
+  remoteCache = { behind: 0, latest: "", checkedAt: Date.now() };
+}
+
 // 启动更新（幂等：运行中重复调用直接返回当前状态）
 export async function startUpdate(): Promise<{ started: boolean; reason?: string }> {
   if (status.state === "running") return { started: false, reason: "更新已在进行中" };
@@ -182,6 +204,7 @@ export async function startUpdate(): Promise<{ started: boolean; reason?: string
         status.step = "已是最新版本";
         status.state = "uptodate";
         status.finishedAt = Date.now();
+        clearRemoteCache();
         pushLog("已是最新版本，无需重启。");
         return;
       }
@@ -199,6 +222,7 @@ export async function startUpdate(): Promise<{ started: boolean; reason?: string
       status.step = "完成";
       status.state = "success";
       status.finishedAt = Date.now();
+      clearRemoteCache();
 
       const isProd = process.env.NODE_ENV === "production";
       if (isProd) {

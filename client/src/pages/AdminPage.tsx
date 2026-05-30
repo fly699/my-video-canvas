@@ -31,6 +31,15 @@ export default function AdminPage() {
   const { user, loading: authLoading } = useAuth();
   const [activeTab, setActiveTab] = useState<Tab>("whitelist");
   const [, navigate] = useLocation();
+
+  // 「系统更新」标签红点：是否有新版本（服务端 15 分钟缓存）
+  const { data: updateInfo } = trpc.admin.update.available.useQuery(undefined, {
+    enabled: user?.role === "admin",
+    refetchInterval: 30 * 60 * 1000,
+    refetchOnWindowFocus: false,
+    retry: false,
+  });
+  const hasUpdate = (updateInfo?.behind ?? 0) > 0;
   // History.back() handles "I came from a project" / "I came via direct URL"
   // both correctly. If there's no history entry (e.g. direct deep link), fall
   // back to the home page so the user is never trapped on this screen.
@@ -106,6 +115,7 @@ export default function AdminPage() {
               key={tab}
               onClick={() => setActiveTab(tab)}
               style={{
+                position: "relative",
                 padding: "8px 18px",
                 border: "none",
                 borderBottom: activeTab === tab ? "2px solid oklch(0.72 0.2 285)" : "2px solid transparent",
@@ -119,6 +129,12 @@ export default function AdminPage() {
               }}
             >
               {label}
+              {tab === "system" && hasUpdate && (
+                <span style={{
+                  position: "absolute", top: 4, right: 6, width: 7, height: 7, borderRadius: "50%",
+                  background: "oklch(0.65 0.22 25)",
+                }} />
+              )}
             </button>
           ))}
         </div>
@@ -312,7 +328,10 @@ function SystemUpdatePanel() {
     // 更新进行中时每 1.5s 轮询进度，否则停止轮询
     refetchInterval: (q) => (q.state.data?.state === "running" ? 1500 : false),
   });
-  const checkMut = trpc.admin.update.check.useMutation();
+  const availableQuery = trpc.admin.update.available.useQuery(undefined, { refetchOnWindowFocus: false, retry: false });
+  const checkMut = trpc.admin.update.check.useMutation({
+    onSuccess: () => { void utils.admin.update.available.invalidate(); },
+  });
   const runMut = trpc.admin.update.run.useMutation({
     onSuccess: () => { void utils.admin.update.status.invalidate(); },
   });
@@ -320,6 +339,8 @@ function SystemUpdatePanel() {
   const status = statusQuery.data;
   const running = status?.state === "running";
   const version = versionQuery.data;
+  // 缓存的可用更新信息（打开标签即显示，未手动检查时也可见）
+  const available = checkMut.data ?? availableQuery.data;
 
   const handleRun = () => {
     if (running) return;
@@ -392,10 +413,10 @@ function SystemUpdatePanel() {
                 {running ? "更新中…" : "立即更新"}
               </button>
 
-              {checkMut.data && (
-                <span style={{ fontSize: 12, color: checkMut.data.behind > 0 ? "oklch(0.78 0.18 60)" : "oklch(0.7 0.18 145)" }}>
-                  {checkMut.data.behind > 0
-                    ? `有 ${checkMut.data.behind} 个新提交待更新${checkMut.data.latest ? `（最新：${checkMut.data.latest}）` : ""}`
+              {available && (
+                <span style={{ fontSize: 12, color: available.behind > 0 ? "oklch(0.78 0.18 60)" : "oklch(0.7 0.18 145)" }}>
+                  {available.behind > 0
+                    ? `有 ${available.behind} 个新提交待更新${available.latest ? `（最新：${available.latest}）` : ""}`
                     : "已是最新版本"}
                 </span>
               )}
