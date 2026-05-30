@@ -11,6 +11,7 @@ import {
 } from "lucide-react";
 import { useLocalMedia } from "@/lib/useLocalMedia";
 import { cacheMedia } from "@/lib/mediaCache";
+import { LLMModelPicker, type LLMModelId } from "../LLMModelPicker";
 
 interface Props {
   id: string;
@@ -64,6 +65,7 @@ export const ComfyuiVideoNode = memo(function ComfyuiVideoNode({ id, selected, d
   const payload = data.payload;
   const [uploading, setUploading] = useState(false);
   const [translating, setTranslating] = useState(false);
+  const [llmModel, setLlmModel] = useState<LLMModelId>("claude-haiku-4-5-20251001");
   const [urlExpanded, setUrlExpanded] = useState(false);
   const [paramsExpanded, setParamsExpanded] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -127,7 +129,7 @@ export const ComfyuiVideoNode = memo(function ComfyuiVideoNode({ id, selected, d
     if (translating || translateMutation.isPending) return;
     if (!payload.prompt?.trim()) { toast.error("请先填写提示词"); return; }
     setTranslating(true);
-    translateMutation.mutate({ text: payload.prompt, mode: "translate_en" });
+    translateMutation.mutate({ text: payload.prompt, mode: "translate_en", model: llmModel });
   };
 
   const isSvd = payload.workflowTemplate === "svd";
@@ -434,7 +436,8 @@ export const ComfyuiVideoNode = memo(function ComfyuiVideoNode({ id, selected, d
             onFocus={(e) => { e.currentTarget.style.borderColor = BORDER_ACCENT; }}
             onBlur={(e) => { e.currentTarget.style.borderColor = BORDER_DEFAULT; }}
           />
-          <div className="flex items-center gap-1 mt-1">
+          <div className="flex items-center gap-1 mt-1 flex-wrap">
+            <LLMModelPicker value={llmModel} onChange={setLlmModel} disabled={translating} />
             <button
               onClick={handleTranslate}
               disabled={translating}
