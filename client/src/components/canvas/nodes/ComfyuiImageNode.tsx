@@ -973,7 +973,9 @@ export const ComfyuiImageNode = memo(function ComfyuiImageNode({ id, selected, d
         </div>
 
         </>)}
-        {cfgTab === "advanced" && (<>
+        {/* 参考图归入"基础"页（紧随提示词，img2img/inpaint 常用）；它物理位置在采样之后，
+            故用独立的 basic 片段渲染——basic 激活时此片段会接在上面 basic 内容之后显示。 */}
+        {cfgTab === "basic" && (<>
         {/* ── Reference image upload (img2img / inpaint) ── */}
         {needsRefImage && (
           <div>
@@ -1057,7 +1059,8 @@ export const ComfyuiImageNode = memo(function ComfyuiImageNode({ id, selected, d
             )}
           </div>
         )}
-
+        </>)}
+        {cfgTab === "advanced" && (<>
         {/* ── ControlNet (optional, applies to txt2img & img2img) ── */}
         <div className="rounded-xl" style={{ background: "var(--c-input)", border: "1px solid var(--c-bd1)" }}>
           <button
