@@ -10,9 +10,11 @@ import { useWorkflowRunState } from "../../contexts/WorkflowRunContext";
 import { useCanvasMode } from "../../contexts/CanvasModeContext";
 import { useTheme } from "../../contexts/ThemeContext";
 import {
-  Trash2, Copy, GripVertical, Check, X, Loader2, FileText, AlertTriangle, Pin, Pencil,
+  Trash2, Copy, GripVertical, Check, X, Loader2, FileText, AlertTriangle, Pin, Pencil, Share2,
 } from "lucide-react";
 import { NODE_ICONS } from "../../lib/nodeConfig";
+import { toast } from "sonner";
+import { hasPassableOutput, directPassDownstream } from "../../lib/canvasPassthrough";
 
 interface BaseNodeProps {
   id: string;
@@ -51,6 +53,20 @@ export const BaseNode = memo(function BaseNode({
     }
     return false;
   });
+
+  // "直传" availability: this node has an output AND at least one outgoing edge,
+  // so its current result can be pushed to downstream inputs without a run.
+  const canDirectPass = useCanvasStore((s) => {
+    const node = s.nodes.find((n) => n.id === id);
+    if (!node || !hasPassableOutput(node.data.nodeType, (node.data.payload ?? {}) as Record<string, unknown>)) return false;
+    return s.edges.some((e) => e.source === id);
+  });
+  const handleDirectPass = useCallback(() => {
+    const { updated, skipped } = directPassDownstream(id);
+    if (updated > 0) toast.success(`已直传到 ${updated} 个下游节点`);
+    else if (skipped > 0) toast.info("下游节点不接受此输出类型");
+    else toast.info("没有已连接的下游节点");
+  }, [id]);
 
   // Pinned state — when true, child collapsible regions stay expanded
   // regardless of `selected`. Toggled via the right-click context menu.
@@ -375,6 +391,23 @@ export const BaseNode = memo(function BaseNode({
           >
             <Pin size={10} />
           </span>
+        )}
+
+        {/* 直传 — push current output to downstream inputs without running */}
+        {canDirectPass && (
+          <button
+            onClick={(e) => { e.stopPropagation(); handleDirectPass(); }}
+            title="直传：把当前输出直接传给已连接的下游节点（无需运行）"
+            className="nodrag flex-shrink-0 flex items-center justify-center w-[18px] h-[18px] rounded"
+            style={{
+              background: "oklch(0.65 0.18 200 / 0.15)",
+              color: "oklch(0.72 0.16 200)",
+              border: "1px solid oklch(0.65 0.18 200 / 0.35)",
+              cursor: "pointer",
+            }}
+          >
+            <Share2 size={10} />
+          </button>
         )}
 
         {headerRight && <div className="flex-shrink-0">{headerRight}</div>}
