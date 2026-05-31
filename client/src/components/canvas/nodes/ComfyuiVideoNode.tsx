@@ -2,6 +2,7 @@ import { memo, useCallback, useEffect, useRef, useState } from "react";
 import { Handle, Position } from "@xyflow/react";
 import { BaseNode } from "../BaseNode";
 import { ComfyServerUrlField } from "./ComfyServerUrlField";
+import { SyncConfigDialog } from "../SyncConfigDialog";
 import { useCanvasStore } from "../../../hooks/useCanvasStore";
 import type { ComfyuiVideoNodeData } from "../../../../../shared/types";
 import { trpc } from "@/lib/trpc";
@@ -169,36 +170,7 @@ export const ComfyuiVideoNode = memo(function ComfyuiVideoNode({ id, selected, d
     else update("seed", Math.floor(Math.random() * 2147483647));
   };
 
-  // Sync shared ComfyUI config to ALL other comfyui_video nodes on the canvas.
-  // Per-node fields (prompt / seed / reference image / result) are NOT synced.
-  const syncToAllComfyVideos = useCallback(() => {
-    const { nodes: allNodes, batchUpdateNodeData } = useCanvasStore.getState();
-    const targets = allNodes.filter((n) => n.data.nodeType === "comfyui_video" && n.id !== id);
-    if (targets.length === 0) { toast.info("当前画布只有这一个 ComfyUI 视频节点"); return; }
-    const p = payload;
-    const patch: Partial<ComfyuiVideoNodeData> = {
-      customBaseUrl: p.customBaseUrl,
-      workflowTemplate: p.workflowTemplate,
-      negPrompt: p.negPrompt,
-      ckpt: p.ckpt,
-      motionModule: p.motionModule,
-      clip: p.clip,
-      clipVision: p.clipVision,
-      steps: p.steps,
-      cfg: p.cfg,
-      frames: p.frames,
-      fps: p.fps,
-      width: p.width,
-      height: p.height,
-      sampler: p.sampler,
-      scheduler: p.scheduler,
-      denoise: p.denoise,
-      vae: p.vae,
-      batchSize: p.batchSize,
-    };
-    batchUpdateNodeData(targets.map((t) => ({ id: t.id, payload: patch })));
-    toast.success(`已同步配置到 ${targets.length} 个 ComfyUI 视频节点`);
-  }, [id, payload]);
+  const [syncOpen, setSyncOpen] = useState(false);
 
   const tpl = payload.workflowTemplate ?? "animatediff";
   const isSvd = tpl === "svd";
@@ -469,10 +441,10 @@ export const ComfyuiVideoNode = memo(function ComfyuiVideoNode({ id, selected, d
           )}
         </div>
 
-        {/* ── Sync config to all ComfyUI video nodes ── */}
+        {/* ── Sync config to other ComfyUI video nodes (picker dialog) ── */}
         <button
-          onClick={syncToAllComfyVideos}
-          title="把当前服务器地址 / Checkpoint / 运动模块 / 采样参数等配置同步到画布中所有其他 ComfyUI 视频节点（不含提示词、Seed、参考图、结果视频）"
+          onClick={() => setSyncOpen(true)}
+          title="选择目标节点与参数类别，把当前配置同步到其他 ComfyUI 视频节点（不含提示词、Seed、参考图、结果视频）"
           className="nodrag flex items-center justify-center gap-1.5 w-full py-1.5 rounded-lg text-[10.5px] transition-all"
           style={{
             background: "oklch(0.62 0.22 50 / 0.08)",
@@ -485,8 +457,9 @@ export const ComfyuiVideoNode = memo(function ComfyuiVideoNode({ id, selected, d
           onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.background = "oklch(0.62 0.22 50 / 0.08)"; }}
         >
           <Copy className="w-3 h-3" />
-          同步配置到全部 ComfyUI 视频节点
+          同步配置到其他 ComfyUI 视频节点…
         </button>
+        <SyncConfigDialog open={syncOpen} onOpenChange={setSyncOpen} sourceId={id} nodeType="comfyui_video" accent={accent} />
 
         {/* ── Workflow template ── */}
         <div>

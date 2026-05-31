@@ -17,6 +17,7 @@ import { MaskCanvas } from "./MaskCanvas";
 import { LLMModelPicker, type LLMModelId } from "../LLMModelPicker";
 import { makeImageProxyFallback } from "@/lib/utils";
 import { ComfyServerUrlField } from "./ComfyServerUrlField";
+import { SyncConfigDialog } from "../SyncConfigDialog";
 
 interface Props {
   id: string;
@@ -88,6 +89,7 @@ export const ComfyuiImageNode = memo(function ComfyuiImageNode({ id, selected, d
   // deployment (some setups have no Gemini but do have Claude/GPT via Poyo).
   const [llmModel, setLlmModel] = useState<LLMModelId>("claude-haiku-4-5-20251001");
   const [urlExpanded, setUrlExpanded] = useState(false);
+  const [syncOpen, setSyncOpen] = useState(false);
   const [paramsExpanded, setParamsExpanded] = useState(false);
   const [cnExpanded, setCnExpanded] = useState(false);
   const [ipExpanded, setIpExpanded] = useState(false);
@@ -241,36 +243,6 @@ export const ComfyuiImageNode = memo(function ComfyuiImageNode({ id, selected, d
   // node to ALL other comfyui_image nodes on the canvas — handy after the Script
   // node batch-creates many ComfyUI image nodes: configure one, propagate to all.
   // Per-node fields (prompt / seed / reference & result images) are NOT synced.
-  const syncToAllComfyImages = useCallback(() => {
-    const { nodes: allNodes, batchUpdateNodeData } = useCanvasStore.getState();
-    const targets = allNodes.filter((n) => n.data.nodeType === "comfyui_image" && n.id !== id);
-    if (targets.length === 0) { toast.info("当前画布只有这一个 ComfyUI 图像节点"); return; }
-    const p = payload;
-    const patch: Partial<ComfyuiImageNodeData> = {
-      customBaseUrl: p.customBaseUrl,
-      workflowTemplate: p.workflowTemplate,
-      negPrompt: p.negPrompt,
-      ckpt: p.ckpt,
-      lora: p.lora,
-      loraStrength: p.loraStrength,
-      loras: p.loras,
-      controlnet: p.controlnet,
-      ipadapter: p.ipadapter,
-      upscaleModel: p.upscaleModel,
-      steps: p.steps,
-      cfg: p.cfg,
-      width: p.width,
-      height: p.height,
-      sampler: p.sampler,
-      scheduler: p.scheduler,
-      denoise: p.denoise,
-      vae: p.vae,
-      batchSize: p.batchSize,
-    };
-    batchUpdateNodeData(targets.map((t) => ({ id: t.id, payload: patch })));
-    toast.success(`已同步配置到 ${targets.length} 个 ComfyUI 图像节点`);
-  }, [id, payload]);
-
   // Select which generated image is the node's active output. Also push the new
   // URL to connected downstream reference-image consumers (mirrors ImageGenNode).
   const selectImage = useCallback((url: string) => {
@@ -631,10 +603,10 @@ export const ComfyuiImageNode = memo(function ComfyuiImageNode({ id, selected, d
           )}
         </div>
 
-        {/* ── Sync config to all ComfyUI image nodes ── */}
+        {/* ── Sync config to other ComfyUI image nodes (picker dialog) ── */}
         <button
-          onClick={syncToAllComfyImages}
-          title="把当前服务器地址 / Checkpoint / LoRA / 采样参数等配置同步到画布中所有其他 ComfyUI 图像节点（不含提示词、Seed、结果图）"
+          onClick={() => setSyncOpen(true)}
+          title="选择目标节点与参数类别，把当前配置同步到其他 ComfyUI 图像节点（不含提示词、Seed、结果图）"
           className="nodrag flex items-center justify-center gap-1.5 w-full py-1.5 rounded-lg text-[10.5px] transition-all"
           style={{
             background: "oklch(0.68 0.20 100 / 0.08)",
@@ -647,8 +619,9 @@ export const ComfyuiImageNode = memo(function ComfyuiImageNode({ id, selected, d
           onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.background = "oklch(0.68 0.20 100 / 0.08)"; }}
         >
           <Copy className="w-3 h-3" />
-          同步配置到全部 ComfyUI 图像节点
+          同步配置到其他 ComfyUI 图像节点…
         </button>
+        <SyncConfigDialog open={syncOpen} onOpenChange={setSyncOpen} sourceId={id} nodeType="comfyui_image" accent={accent} />
 
         {/* ── Workflow template ── */}
         <div>
