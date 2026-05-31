@@ -306,6 +306,46 @@
     color-scheme: light;
   }
 
+  /* ── Paper — classic warm-gray light + indigo ink, Notion/Linear inspired ──
+     Distinct from the existing light themes by design:
+       light    = neutral cool gray (hue 255)
+       warm     = obvious cream/yellow (hue 85, chroma ~0.02)
+       mint     = green-cyan;  lavender = violet
+       paper    = near-neutral WARM gray (hue 80, very low chroma ~0.006) so it
+                  reads as refined off-white paper, NOT yellow — paired with a
+                  classic deep INDIGO accent instead of the app's default violet.
+     Unlike the sibling light themes, this one also overrides the brand/accent
+     CSS vars so var(--color-brand)/Tailwind accent usages turn indigo. (A few
+     node components hardcode the violet swatch and are unaffected — a
+     pre-existing app-wide limitation, not specific to this theme.) */
+  :root[data-theme="paper"] {
+    --c-canvas:   oklch(0.928 0.006 80);    /* warm paper gray — makes white cards pop */
+    --c-base:     oklch(1.000 0.000 0);     /* pure white panels/header */
+    --c-surface:  oklch(0.974 0.004 80);    /* faint warm off-white */
+    --c-elevated: oklch(1.000 0.000 0);     /* white */
+    --c-overlay:  oklch(0.940 0.005 80);    /* distinct from base */
+    --c-input:    oklch(0.946 0.005 80);    /* recessed input */
+    --c-bd1:      oklch(0.872 0.006 80);    /* subtle divider */
+    --c-bd2:      oklch(0.792 0.008 80);    /* node borders pop */
+    --c-bd3:      oklch(0.665 0.010 80);    /* strong border */
+    --c-t1:       oklch(0.190 0.012 264);   /* deep indigo-ink near-black */
+    --c-t2:       oklch(0.335 0.011 264);
+    --c-t3:       oklch(0.470 0.009 264);   /* labels readable on white */
+    --c-t4:       oklch(0.582 0.007 264);   /* hints, still legible */
+    --c-node-bg:  oklch(1.000 0.000 0);     /* white cards on warm-gray canvas */
+    --c-node-shadow-rest:     0 1px 3px oklch(0.30 0.03 264 / 0.10), 0 3px 14px oklch(0.30 0.03 264 / 0.07);
+    --c-node-shadow-hover:    0 4px 18px oklch(0.30 0.03 264 / 0.14), 0 1px 5px oklch(0.30 0.03 264 / 0.10);
+    --c-node-shadow-selected: 0 8px 30px oklch(0.45 0.16 264 / 0.22), 0 2px 10px oklch(0.45 0.16 264 / 0.14);
+    --c-node-shadow-run:      0 8px 24px oklch(0.45 0.16 264 / 0.18);
+    /* Classic indigo accent (overrides the global violet brand for this theme) */
+    --color-brand:      oklch(0.50 0.18 264);
+    --color-brand-dim:  oklch(0.42 0.15 264);
+    --color-brand-glow: oklch(0.50 0.18 264 / 0.22);
+    --color-primary:    oklch(0.50 0.18 264);
+    --color-ring:       oklch(0.50 0.18 264);
+    color-scheme: light;
+  }
+
   /* ── Chat app dedicated light theme ───────────────────────────────────────
      Scoped to the .chat-light wrapper (applied on the /chat page root) so the
      Chrome app can toggle a soft light theme WITHOUT touching the global
