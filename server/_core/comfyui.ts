@@ -637,7 +637,10 @@ export async function analyzeWorkflow(
   try {
     workflow = JSON.parse(workflowJson) as WorkflowJson;
   } catch {
-    return { detectedParams: [], outputNodeIds: [], outputType: "image" };
+    throw new Error("Workflow JSON 格式错误，无法解析");
+  }
+  if (!workflow || typeof workflow !== "object" || Array.isArray(workflow)) {
+    throw new Error("Workflow JSON 结构无效：应为 { 节点ID: {...} } 的对象（ComfyUI API 格式，非 UI 导出格式）");
   }
 
   // Optionally fetch object_info to get enum options (best-effort)
@@ -749,6 +752,21 @@ export async function analyzeWorkflow(
         type: "image",
         defaultValue: inputs.image ?? "",
       });
+    } else if (ct === "ControlNetLoader" || ct === "DiffControlNetLoader") {
+      const nets = pickFirstArray(info, ct, "control_net_name");
+      detectedParams.push({ nodeId, fieldPath: "inputs.control_net_name", label: "ControlNet 模型", type: nets.length > 0 ? "select" : "text", defaultValue: inputs.control_net_name ?? "", options: nets.length > 0 ? nets : undefined });
+    } else if (ct === "VAELoader") {
+      const vaes = pickFirstArray(info, "VAELoader", "vae_name");
+      detectedParams.push({ nodeId, fieldPath: "inputs.vae_name", label: "VAE 模型", type: vaes.length > 0 ? "select" : "text", defaultValue: inputs.vae_name ?? "", options: vaes.length > 0 ? vaes : undefined });
+    } else if (ct === "UpscaleModelLoader") {
+      const ups = pickFirstArray(info, "UpscaleModelLoader", "model_name");
+      detectedParams.push({ nodeId, fieldPath: "inputs.model_name", label: "放大模型", type: ups.length > 0 ? "select" : "text", defaultValue: inputs.model_name ?? "", options: ups.length > 0 ? ups : undefined });
+    } else if (ct === "IPAdapterModelLoader") {
+      const ips = pickFirstArray(info, "IPAdapterModelLoader", "ipadapter_file");
+      detectedParams.push({ nodeId, fieldPath: "inputs.ipadapter_file", label: "IPAdapter 模型", type: ips.length > 0 ? "select" : "text", defaultValue: inputs.ipadapter_file ?? "", options: ips.length > 0 ? ips : undefined });
+    } else if (ct === "CLIPVisionLoader") {
+      const cvs = pickFirstArray(info, "CLIPVisionLoader", "clip_name");
+      detectedParams.push({ nodeId, fieldPath: "inputs.clip_name", label: "CLIP Vision", type: cvs.length > 0 ? "select" : "text", defaultValue: inputs.clip_name ?? "", options: cvs.length > 0 ? cvs : undefined });
     } else if (ct === "EmptyLatentImage" || ct === "EmptySD3LatentImage" || ct === "EmptyHunyuanLatentVideo") {
       if ("width" in inputs) detectedParams.push({ nodeId, fieldPath: "inputs.width", label: "宽度", type: "number", defaultValue: inputs.width ?? 512, min: 64, max: 4096, step: 64 });
       if ("height" in inputs) detectedParams.push({ nodeId, fieldPath: "inputs.height", label: "高度", type: "number", defaultValue: inputs.height ?? 512, min: 64, max: 4096, step: 64 });
@@ -912,6 +930,24 @@ export interface ComfyModelList {
   schedulers: string[];
   vaes: string[];
   motionModules: string[];
+  // Extended categories (best-effort; empty when the server has none).
+  unets: string[];          // UNETLoader / diffusion_models
+  controlnets: string[];    // ControlNetLoader
+  upscaleModels: string[];  // UpscaleModelLoader (ESRGAN etc.)
+  clips: string[];          // CLIPLoader / DualCLIPLoader
+  clipVisions: string[];    // CLIPVisionLoader
+  ipadapters: string[];     // IPAdapterModelLoader
+  styleModels: string[];    // StyleModelLoader (e.g. Flux Redux)
+  gligen: string[];         // GLIGENLoader
+  embeddings: string[];     // textual-inversion embeddings (from /embeddings)
+}
+
+export function emptyModelList(): ComfyModelList {
+  return {
+    ckpts: [], loras: [], samplers: [], schedulers: [], vaes: [], motionModules: [],
+    unets: [], controlnets: [], upscaleModels: [], clips: [], clipVisions: [],
+    ipadapters: [], styleModels: [], gligen: [], embeddings: [],
+  };
 }
 
 interface ObjectInfo {
@@ -933,28 +969,97 @@ function pickFirstArray(info: ObjectInfo, nodeName: string, fieldName: string): 
   return [];
 }
 
+/** Merge several (nodeClass, field) sources, de-duplicate, and sort. */
+function collect(info: ObjectInfo, sources: Array<[string, string]>): string[] {
+  const out = new Set<string>();
+  for (const [node, field] of sources) {
+    for (const v of pickFirstArray(info, node, field)) out.add(v);
+  }
+  return Array.from(out).sort((a, b) => a.localeCompare(b));
+}
+
+// Heuristic: scan EVERY node's enum fields whose name matches a known suffix and
+// fold the values into the right category. This catches custom node packs that
+// expose, e.g., `ckpt_name` on a loader class we don't hardcode — so the lists
+// stay useful across the long tail of ComfyUI extensions, not just core nodes.
+function genericScan(info: ObjectInfo, list: ComfyModelList): void {
+  const add = (bucket: string[], vals: string[]) => {
+    const seen = new Set(bucket);
+    for (const v of vals) if (!seen.has(v)) { bucket.push(v); seen.add(v); }
+  };
+  for (const node of Object.values(info)) {
+    const groups = [node?.input?.required, node?.input?.optional];
+    for (const g of groups) {
+      if (!g) continue;
+      for (const [field, slot] of Object.entries(g)) {
+        const first = slot?.[0];
+        if (!Array.isArray(first)) continue;
+        const vals = first.filter((x): x is string => typeof x === "string");
+        if (vals.length === 0) continue;
+        const f = field.toLowerCase();
+        if (f === "ckpt_name") add(list.ckpts, vals);
+        else if (f === "lora_name") add(list.loras, vals);
+        else if (f === "vae_name") add(list.vaes, vals);
+        else if (f === "control_net_name" || f === "controlnet_name") add(list.controlnets, vals);
+        else if (f === "upscale_model_name") add(list.upscaleModels, vals);
+        else if (f === "unet_name") add(list.unets, vals);
+        else if (f === "clip_name" || f === "clip_name1" || f === "clip_name2") add(list.clips, vals);
+        else if (f === "clip_vision_name") add(list.clipVisions, vals);
+        else if (f === "ipadapter_file" || f === "ipadapter_name") add(list.ipadapters, vals);
+        else if (f === "style_model_name") add(list.styleModels, vals);
+        else if (f === "gligen_name") add(list.gligen, vals);
+      }
+    }
+  }
+  // Keep deterministic ordering after merges.
+  for (const key of Object.keys(list) as (keyof ComfyModelList)[]) {
+    list[key] = Array.from(new Set(list[key])).sort((a, b) => a.localeCompare(b));
+  }
+}
+
 export async function fetchComfyModels(rawBaseUrl: string): Promise<ComfyModelList> {
   const baseUrl = normalizeBaseUrl(rawBaseUrl);
   const res = await fetch(`${baseUrl}/object_info`, { signal: AbortSignal.timeout(15_000) });
-  if (!res.ok) throw new Error(`ComfyUI 模型列表查询失败 (${res.status})`);
+  if (!res.ok) throw new Error(`ComfyUI /object_info 查询失败 (${res.status})`);
   const info = (await res.json()) as ObjectInfo;
 
-  const ckpts = Array.from(new Set([
-    ...pickFirstArray(info, "CheckpointLoaderSimple", "ckpt_name"),
-    ...pickFirstArray(info, "ImageOnlyCheckpointLoader", "ckpt_name"),
-  ]));
-  const loras = pickFirstArray(info, "LoraLoader", "lora_name");
-  const samplers = pickFirstArray(info, "KSampler", "sampler_name");
-  const schedulers = pickFirstArray(info, "KSampler", "scheduler");
-  const vaes = pickFirstArray(info, "VAELoader", "vae_name");
-  const motionModules = Array.from(new Set([
-    ...pickFirstArray(info, "ADE_AnimateDiffLoaderGen1", "model_name"),
-    ...pickFirstArray(info, "AnimateDiffLoaderV1", "model_name"),
-    ...pickFirstArray(info, "ADE_LoadAnimateDiffModel", "model_name"),
-  ]));
+  const list: ComfyModelList = emptyModelList();
+  // Known-node mappings first (authoritative for core nodes).
+  list.ckpts = collect(info, [["CheckpointLoaderSimple", "ckpt_name"], ["ImageOnlyCheckpointLoader", "ckpt_name"], ["unCLIPCheckpointLoader", "ckpt_name"]]);
+  list.loras = collect(info, [["LoraLoader", "lora_name"], ["LoraLoaderModelOnly", "lora_name"]]);
+  list.samplers = collect(info, [["KSampler", "sampler_name"], ["KSamplerAdvanced", "sampler_name"]]);
+  list.schedulers = collect(info, [["KSampler", "scheduler"], ["KSamplerAdvanced", "scheduler"]]);
+  list.vaes = collect(info, [["VAELoader", "vae_name"]]);
+  list.motionModules = collect(info, [["ADE_AnimateDiffLoaderGen1", "model_name"], ["AnimateDiffLoaderV1", "model_name"], ["ADE_LoadAnimateDiffModel", "model_name"]]);
+  list.unets = collect(info, [["UNETLoader", "unet_name"]]);
+  list.controlnets = collect(info, [["ControlNetLoader", "control_net_name"], ["DiffControlNetLoader", "control_net_name"]]);
+  list.upscaleModels = collect(info, [["UpscaleModelLoader", "model_name"]]);
+  list.clips = collect(info, [["CLIPLoader", "clip_name"], ["DualCLIPLoader", "clip_name1"], ["DualCLIPLoader", "clip_name2"]]);
+  list.clipVisions = collect(info, [["CLIPVisionLoader", "clip_name"]]);
+  list.ipadapters = collect(info, [["IPAdapterModelLoader", "ipadapter_file"]]);
+  list.styleModels = collect(info, [["StyleModelLoader", "style_model_name"]]);
+  list.gligen = collect(info, [["GLIGENLoader", "gligen_name"]]);
 
-  return { ckpts, loras, samplers, schedulers, vaes, motionModules };
+  // Generic pass: fold in any custom-node fields the hardcoded map missed.
+  genericScan(info, list);
+
+  // Embeddings live behind a dedicated endpoint, not /object_info.
+  try {
+    const embRes = await fetch(`${baseUrl}/embeddings`, { signal: AbortSignal.timeout(8_000) });
+    if (embRes.ok) {
+      const emb = (await embRes.json()) as unknown;
+      if (Array.isArray(emb)) {
+        list.embeddings = emb.filter((x): x is string => typeof x === "string").sort((a, b) => a.localeCompare(b));
+      }
+    }
+  } catch {
+    // Embeddings are optional; ignore failures so the main list still returns.
+  }
+
+  return list;
 }
+
+
 
 // ── Stress-test probe ─────────────────────────────────────────────────────────
 //

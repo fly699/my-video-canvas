@@ -35,7 +35,7 @@ import {
 import { storagePut, resolveToAbsoluteUrl, canBrowserReachStorageDirectly, storageBackend } from "../storage";
 import { invokeLLM, extractTextContent } from "../_core/llm";
 import { generateImage } from "../_core/imageGeneration";
-import { generateComfyImage, generateComfyVideo, fetchComfyModels, analyzeWorkflow, executeCustomWorkflow, uploadImageForWorkflow, interruptComfy } from "../_core/comfyui";
+import { generateComfyImage, generateComfyVideo, fetchComfyModels, analyzeWorkflow, executeCustomWorkflow, uploadImageForWorkflow, interruptComfy, emptyModelList } from "../_core/comfyui";
 import { ENV } from "../_core/env";
 import { isPoyoVideoProvider, submitPoyoVideo, checkPoyoVideoStatus } from "../_core/poyoVideo";
 import { isHiggsfieldVideoProvider, submitHiggsfieldVideo, checkHiggsfieldVideoStatus } from "../_core/higgsfield";
@@ -1933,12 +1933,14 @@ export const comfyuiRouter = router({
       // gate as the paid generate endpoints.
       await assertComfyuiAllowed(ctx);
       const baseUrl = input.customBaseUrl?.trim() || ENV.comfyuiBaseUrl;
-      if (!baseUrl) return { ckpts: [], loras: [], samplers: [], schedulers: [], vaes: [], motionModules: [] };
+      // Not configured is a benign empty state (UI degrades to free-text), not an error.
+      if (!baseUrl) return emptyModelList();
       try {
         return await fetchComfyModels(baseUrl);
-      } catch {
-        // Swallow errors and return empty so the UI degrades to free-text input
-        return { ckpts: [], loras: [], samplers: [], schedulers: [], vaes: [], motionModules: [] };
+      } catch (err) {
+        // Surface the real reason (unreachable / bad status / timeout) so the UI
+        // can distinguish "server has no models" from "couldn't reach server".
+        throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: err instanceof Error ? err.message : String(err) });
       }
     }),
 
