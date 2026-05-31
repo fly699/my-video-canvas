@@ -17,6 +17,7 @@ import { serveStatic, setupVite } from "./vite";
 import { Server as SocketIOServer } from "socket.io";
 import { setupVideoTaskPoller } from "../videoTaskPoller";
 import { setComfySocketIO } from "./comfyui";
+import { setStressSocketIO, STRESS_ROOM } from "./comfyStress";
 import { sdk } from "./sdk";
 import { ENV } from "./env";
 import { getProjectAccess, isChatMember } from "../db";
@@ -169,6 +170,12 @@ async function startServer() {
       // refetch listMembers / projects.get to learn the new role.
       socket.emit("role-invalidated", { projectId });
     });
+
+    // 管理员订阅 ComfyUI 压测进度房间（非管理员忽略）。
+    socket.on("comfystress:subscribe", () => {
+      if (user.role === "admin") socket.join(STRESS_ROOM);
+    });
+    socket.on("comfystress:unsubscribe", () => { socket.leave(STRESS_ROOM); });
 
     socket.on("join-project", async (data: { projectId: number; userName: string; color: string }) => {
       try {
@@ -371,6 +378,7 @@ async function startServer() {
 
   // ── ComfyUI progress relay ────────────────────────────────────────────────
   setComfySocketIO(io);
+  setStressSocketIO(io);
 
   // ── Video task background poller ───────────────────────────────────────────
   setupVideoTaskPoller(io);

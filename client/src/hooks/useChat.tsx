@@ -107,6 +107,7 @@ export function ChatProvider({ children }: { children: React.ReactNode }) {
   const publishKeyMut = trpc.chat.publishPublicKey.useMutation();
 
   const activeConv = useMemo(() => conversations.find((c) => c.id === activeId) ?? null, [conversations, activeId]);
+  const didAutoSelectRef = useRef(false);
 
   // ── identity key bootstrap ────────────────────────────────────────────────
   useEffect(() => {
@@ -357,6 +358,17 @@ export function ChatProvider({ children }: { children: React.ReactNode }) {
     if (socketRef.current) socketRef.current.emit("chat:join", { conversationId: id });
     void reloadMessages(id);
   }, [reloadMessages]);
+
+  // ── 首次进入默认选中大厅 ───────────────────────────────────────────────────
+  useEffect(() => {
+    if (didAutoSelectRef.current) return;
+    if (activeIdRef.current !== null) return; // 用户已手动选择
+    if (conversations.length === 0) return; // 会话尚未加载
+    const lobby = conversations.find((c) => c.type === "lobby");
+    if (!lobby) return; // 大厅未启用
+    didAutoSelectRef.current = true;
+    selectConversation(lobby.id);
+  }, [conversations, selectConversation]);
 
   // ── sending ───────────────────────────────────────────────────────────────
   const sendText = useCallback(async (text: string) => {

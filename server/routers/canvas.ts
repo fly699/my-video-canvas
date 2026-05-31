@@ -47,7 +47,7 @@ import { trimVideo, getVideoDuration, mergeVideos, burnSubtitles, generateSRT, o
 import { transcribeAudio } from "../_core/voiceTranscription";
 import { VIDEO_PROVIDERS } from "../../shared/types";
 import type { SubtitleEntry } from "../../shared/types";
-import { assertWhitelisted } from "../_core/whitelist";
+import { assertWhitelisted, assertComfyuiAllowed } from "../_core/whitelist";
 import { writeAuditLog, truncate } from "../_core/auditLog";
 import { dedupe } from "../_core/idempotency";
 import { assertProjectAccess, assertProjectOwner } from "../_core/permissions";
@@ -1773,7 +1773,7 @@ export const comfyuiRouter = router({
       )
     )
     .mutation(async ({ ctx, input }) => {
-      await assertWhitelisted(ctx);
+      await assertComfyuiAllowed(ctx);
       await assertProjectAccess(input.projectId, ctx.user.id, "editor");
       const baseUrl = input.customBaseUrl?.trim() || ENV.comfyuiBaseUrl;
       if (!baseUrl) throw new TRPCError({ code: "BAD_REQUEST", message: "ComfyUI URL 未配置：请在节点设置中填写或服务端设置 COMFYUI_BASE_URL" });
@@ -1845,7 +1845,7 @@ export const comfyuiRouter = router({
       )
     )
     .mutation(async ({ ctx, input }) => {
-      await assertWhitelisted(ctx);
+      await assertComfyuiAllowed(ctx);
       await assertProjectAccess(input.projectId, ctx.user.id, "editor");
       const baseUrl = input.customBaseUrl?.trim() || ENV.comfyuiBaseUrl;
       if (!baseUrl) throw new TRPCError({ code: "BAD_REQUEST", message: "ComfyUI URL 未配置：请在节点设置中填写或服务端设置 COMFYUI_BASE_URL" });
@@ -1906,7 +1906,7 @@ export const comfyuiRouter = router({
       // Whitelist check: fetchModels can be used as an SSRF probe via customBaseUrl
       // (the server fetches whatever URL the client supplies). Treat with the same
       // gate as the paid generate endpoints.
-      await assertWhitelisted(ctx);
+      await assertComfyuiAllowed(ctx);
       const baseUrl = input.customBaseUrl?.trim() || ENV.comfyuiBaseUrl;
       if (!baseUrl) return { ckpts: [], loras: [], samplers: [], schedulers: [], vaes: [], motionModules: [] };
       try {
@@ -1923,7 +1923,7 @@ export const comfyuiRouter = router({
       workflowJson: z.string().max(500_000),
     }))
     .mutation(async ({ ctx, input }) => {
-      await assertWhitelisted(ctx);
+      await assertComfyuiAllowed(ctx);
       const baseUrl = input.customBaseUrl?.trim() || ENV.comfyuiBaseUrl || undefined;
       try {
         return await analyzeWorkflow(input.workflowJson, baseUrl);
@@ -1939,7 +1939,7 @@ export const comfyuiRouter = router({
       sourceUrl: z.string().max(2048),
     }))
     .mutation(async ({ ctx, input }) => {
-      await assertWhitelisted(ctx);
+      await assertComfyuiAllowed(ctx);
       await assertProjectAccess(input.projectId, ctx.user.id, "editor");
       const baseUrl = input.customBaseUrl?.trim() || ENV.comfyuiBaseUrl;
       if (!baseUrl) throw new TRPCError({ code: "BAD_REQUEST", message: "ComfyUI URL 未配置" });
@@ -1962,7 +1962,7 @@ export const comfyuiRouter = router({
       outputType: z.enum(["image", "video", "auto"]).default("auto"),
     }))
     .mutation(async ({ ctx, input }) => {
-      await assertWhitelisted(ctx);
+      await assertComfyuiAllowed(ctx);
       await assertProjectAccess(input.projectId, ctx.user.id, "editor");
       const baseUrl = input.customBaseUrl?.trim() || ENV.comfyuiBaseUrl;
       if (!baseUrl) throw new TRPCError({ code: "BAD_REQUEST", message: "ComfyUI URL 未配置：请在节点设置中填写或服务端设置 COMFYUI_BASE_URL" });

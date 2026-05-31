@@ -444,6 +444,11 @@ export type ChatSettingsRow = typeof chatSettings.$inferSelect;
 export const whitelistSettings = mysqlTable("whitelistSettings", {
   id: int("id").autoincrement().primaryKey(),
   enabled: boolean("enabled").notNull().default(false),
+  // When true, ComfyUI node procedures bypass the whitelist even while it's
+  // globally enabled — ComfyUI is the user's own self-hosted server (no cloud
+  // quota cost), so admins can free it up independently. Other cloud AI
+  // (Poyo/Higgsfield) stays whitelist-gated. Default false = no behavior change.
+  comfyuiBypass: boolean("comfyuiBypass").notNull().default(false),
   updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
 });
 
