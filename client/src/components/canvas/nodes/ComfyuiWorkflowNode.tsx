@@ -446,7 +446,7 @@ export const ComfyuiWorkflowNode = memo(function ComfyuiWorkflowNode({ id, selec
             </div>
 
             {/* Binding list */}
-            <div style={{ display: "flex", flexDirection: "column", gap: 6, maxHeight: 280, overflowY: "auto" }}>
+            <div className="nowheel nodrag" style={{ display: "flex", flexDirection: "column", gap: 6, maxHeight: 280, overflowY: "auto" }}>
               {localBindings.map((b, i) => (
                 <div key={i} style={{ background: "var(--c-input)", borderRadius: 6, padding: "7px 9px", border: "1px solid var(--c-bd2)" }}>
                   <div style={{ display: "flex", alignItems: "center", gap: 6, justifyContent: "space-between" }}>
@@ -556,9 +556,9 @@ export const ComfyuiWorkflowNode = memo(function ComfyuiWorkflowNode({ id, selec
               </div>
             )}
 
-            {/* Dynamic param form */}
+            {/* Dynamic param form — capped height with internal scroll to keep the node compact */}
             {(payload.paramBindings ?? []).length > 0 && (
-              <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+              <div className="nowheel nodrag" style={{ display: "flex", flexDirection: "column", gap: 8, maxHeight: 420, overflowY: "auto", overflowX: "hidden" }}>
                 {(payload.paramBindings ?? []).map((b) => {
                   const key = `${b.nodeId}.${b.fieldPath}`;
                   const value = payload.paramValues?.[key] ?? b.defaultValue ?? "";

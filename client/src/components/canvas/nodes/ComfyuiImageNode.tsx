@@ -18,6 +18,7 @@ import { LLMModelPicker, type LLMModelId } from "../LLMModelPicker";
 import { makeImageProxyFallback } from "@/lib/utils";
 import { ComfyServerUrlField } from "./ComfyServerUrlField";
 import { SyncConfigDialog } from "../SyncConfigDialog";
+import { NodeConfigTabs } from "../NodeConfigTabs";
 
 interface Props {
   id: string;
@@ -90,6 +91,7 @@ export const ComfyuiImageNode = memo(function ComfyuiImageNode({ id, selected, d
   const [llmModel, setLlmModel] = useState<LLMModelId>("claude-haiku-4-5-20251001");
   const [urlExpanded, setUrlExpanded] = useState(false);
   const [syncOpen, setSyncOpen] = useState(false);
+  const [cfgTab, setCfgTab] = useState("basic");
   const [paramsExpanded, setParamsExpanded] = useState(false);
   const [cnExpanded, setCnExpanded] = useState(false);
   const [ipExpanded, setIpExpanded] = useState(false);
@@ -546,6 +548,18 @@ export const ComfyuiImageNode = memo(function ComfyuiImageNode({ id, selected, d
           }}
         >
 
+        <NodeConfigTabs
+          tabs={[
+            { key: "basic", label: "基础", Icon: Server },
+            { key: "model", label: "模型", Icon: Boxes },
+            { key: "sampling", label: "采样", Icon: Sparkles },
+            { key: "advanced", label: "高级", Icon: Layers },
+          ]}
+          active={cfgTab}
+          onChange={setCfgTab}
+          accent={accent}
+        >
+        {cfgTab === "basic" && (<>
         {/* ── ComfyUI URL (collapsible) ── */}
         <div
           className="rounded-xl"
@@ -708,6 +722,8 @@ export const ComfyuiImageNode = memo(function ComfyuiImageNode({ id, selected, d
           </div>
         </div>
 
+        </>)}
+        {cfgTab === "model" && (<>
         {/* ── Checkpoint with datalist suggestions ── */}
         <div>
           <label style={labelStyle}>Checkpoint *</label>
@@ -789,6 +805,8 @@ export const ComfyuiImageNode = memo(function ComfyuiImageNode({ id, selected, d
           </button>
         </div>
 
+        </>)}
+        {cfgTab === "sampling" && (<>
         {/* ── Advanced params (collapsible) ── */}
         <div
           className="rounded-xl"
@@ -954,6 +972,8 @@ export const ComfyuiImageNode = memo(function ComfyuiImageNode({ id, selected, d
           )}
         </div>
 
+        </>)}
+        {cfgTab === "advanced" && (<>
         {/* ── Reference image upload (img2img / inpaint) ── */}
         {needsRefImage && (
           <div>
@@ -1219,6 +1239,9 @@ export const ComfyuiImageNode = memo(function ComfyuiImageNode({ id, selected, d
             </div>
           )}
         </div>
+
+        </>)}
+        </NodeConfigTabs>
 
         {/* ── Progress bar ── */}
         {payload.status === "processing" && payload.progress != null && (

@@ -3,13 +3,14 @@ import { Handle, Position } from "@xyflow/react";
 import { BaseNode } from "../BaseNode";
 import { ComfyServerUrlField } from "./ComfyServerUrlField";
 import { SyncConfigDialog } from "../SyncConfigDialog";
+import { NodeConfigTabs } from "../NodeConfigTabs";
 import { useCanvasStore } from "../../../hooks/useCanvasStore";
 import type { ComfyuiVideoNodeData } from "../../../../../shared/types";
 import { trpc } from "@/lib/trpc";
 import { toast } from "sonner";
 import {
   Play, Loader2, RefreshCw, Upload, X, Cpu, Download, AlertCircle,
-  ChevronDown, ChevronRight, Server, Boxes, HardDriveDownload, Languages, Copy, Lock, Unlock, Ban,
+  ChevronDown, ChevronRight, Server, Boxes, HardDriveDownload, Languages, Copy, Lock, Unlock, Ban, Sparkles, Layers,
 } from "lucide-react";
 import { useLocalMedia } from "@/lib/useLocalMedia";
 import { cacheMedia } from "@/lib/mediaCache";
@@ -171,6 +172,7 @@ export const ComfyuiVideoNode = memo(function ComfyuiVideoNode({ id, selected, d
   };
 
   const [syncOpen, setSyncOpen] = useState(false);
+  const [cfgTab, setCfgTab] = useState("basic");
 
   const tpl = payload.workflowTemplate ?? "animatediff";
   const isSvd = tpl === "svd";
@@ -385,6 +387,18 @@ export const ComfyuiVideoNode = memo(function ComfyuiVideoNode({ id, selected, d
           }}
         >
 
+        <NodeConfigTabs
+          tabs={[
+            { key: "basic", label: "基础", Icon: Server },
+            { key: "model", label: "模型", Icon: Boxes },
+            { key: "sampling", label: "采样", Icon: Sparkles },
+            { key: "advanced", label: "高级", Icon: Layers },
+          ]}
+          active={cfgTab}
+          onChange={setCfgTab}
+          accent={accent}
+        >
+        {cfgTab === "basic" && (<>
         {/* ── ComfyUI URL ── */}
         <div
           className="rounded-xl"
@@ -559,6 +573,8 @@ export const ComfyuiVideoNode = memo(function ComfyuiVideoNode({ id, selected, d
           </div>
         </div>
 
+        </>)}
+        {cfgTab === "model" && (<>
         {/* ── Main model (Checkpoint or UNET) ── */}
         <div>
           <label style={labelStyle}>{usesClip ? "模型（UNET/Checkpoint）*" : "Checkpoint *"}</label>
@@ -631,6 +647,8 @@ export const ComfyuiVideoNode = memo(function ComfyuiVideoNode({ id, selected, d
           </div>
         )}
 
+        </>)}
+        {cfgTab === "sampling" && (<>
         {/* ── Advanced params ── */}
         <div
           className="rounded-xl"
@@ -793,6 +811,8 @@ export const ComfyuiVideoNode = memo(function ComfyuiVideoNode({ id, selected, d
           )}
         </div>
 
+        </>)}
+        {cfgTab === "advanced" && (<>
         {/* ── Start/reference image (SVD / Wan I2V) ── */}
         {needsRef && (
         <div>
@@ -860,6 +880,9 @@ export const ComfyuiVideoNode = memo(function ComfyuiVideoNode({ id, selected, d
           )}
         </div>
         )}
+
+        </>)}
+        </NodeConfigTabs>
 
         {/* ── Progress bar ── */}
         {payload.status === "processing" && payload.progress != null && (
