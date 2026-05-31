@@ -191,13 +191,11 @@ export const ScriptNode = memo(function ScriptNode({ id, selected, data }: Props
   const setAndSaveStoryboardTarget = useCallback((v: "storyboard" | "comfyui_image") => {
     setStoryboardTarget(v); updateNodeData(id, { aiStoryboardTarget: v });
   }, [id, updateNodeData]);
-  // Translate scene prompts to English (via the same LLM) before sending downstream.
-  const [translateScenes, setTranslateScenes] = useState<boolean>(payload.aiTranslateScenes ?? false);
-  const toggleTranslateScenes = useCallback(() => {
-    const next = !translateScenes;
-    setTranslateScenes(next);
-    updateNodeData(id, { aiTranslateScenes: next });
-  }, [id, translateScenes, updateNodeData]);
+  // Language the downstream scene promptText is generated in.
+  const [promptLang, setPromptLang] = useState<"zh" | "en">(payload.aiPromptLang ?? "en");
+  const setAndSavePromptLang = useCallback((v: "zh" | "en") => {
+    setPromptLang(v); updateNodeData(id, { aiPromptLang: v });
+  }, [id, updateNodeData]);
 
   // One-click template apply: fills genre/style/mood/targetModel/aspectRatio/
   // sceneCount/duration/llmModel + records the template id so generate calls
@@ -312,45 +310,26 @@ export const ScriptNode = memo(function ScriptNode({ id, selected, data }: Props
 
   // ── Mutations ─────────────────────────────────────────────────────────────
 
-  // Imperative translate (used per-scene when the "译为英文" toggle is on).
-  const sceneTranslateMutation = trpc.aiEnhance.enhance.useMutation();
-
-  // Create downstream nodes from generated scenes, optionally translating each
-  // scene's promptText to English first (using the same LLM that wrote the
-  // script). Reads the latest toggle/target from the node payload so the two
-  // generate paths share one code path without stale-closure issues.
-  const addScenesFromResult = useCallback(async (
+  // Create downstream nodes from generated scenes. Reads target type fresh from
+  // the node payload so both generate paths share one code path. The prompt
+  // language is chosen at generation time (server writes promptText in it), so
+  // no client-side translation is needed here.
+  const addScenesFromResult = useCallback((
     scenes: Array<{ description?: string; promptText?: string; cameraMovement?: string; duration?: number }>,
-  ): Promise<{ count: number; target: "storyboard" | "comfyui_image" }> => {
+  ): { count: number; target: "storyboard" | "comfyui_image" } => {
     const store = useCanvasStore.getState();
     const ownNode = store.nodes.find((n) => n.id === id);
     if (!store.projectId || !ownNode) { toast.error("画布尚未加载，节点创建失败"); return { count: 0, target: "storyboard" }; }
     const p = ownNode.data.payload as ScriptNodeData;
     const target = p.aiStoryboardTarget ?? "storyboard";
     const ownPos = ownNode.position ?? { x: 0, y: 0 };
-
-    let finalScenes = scenes;
-    if (p.aiTranslateScenes) {
-      const tid = toast.loading("正在翻译场景提示词为英文…");
-      finalScenes = await Promise.all(scenes.map(async (s) => {
-        const text = s.promptText?.trim();
-        if (!text) return s;
-        try {
-          const r = await sceneTranslateMutation.mutateAsync({ text, mode: "translate_en", model: llmModel });
-          return { ...s, promptText: r.result?.trim() || s.promptText };
-        } catch {
-          return s; // per-scene fallback: keep original on translate failure
-        }
-      }));
-      toast.dismiss(tid);
-    }
-    useCanvasStore.getState().batchAddSceneNodes(finalScenes, id, ownPos, target);
-    return { count: finalScenes.length, target };
-  }, [id, llmModel, sceneTranslateMutation]);
+    store.batchAddSceneNodes(scenes, id, ownPos, target);
+    return { count: scenes.length, target };
+  }, [id]);
 
   const generateMutation = trpc.scripts.generateStoryboards.useMutation({
-    onSuccess: async (result) => {
-      const { count, target } = await addScenesFromResult(result.scenes);
+    onSuccess: (result) => {
+      const { count, target } = addScenesFromResult(result.scenes);
       if (count === 0) return;
       toast.success(target === "comfyui_image" ? "ComfyUI 图像节点已生成" : "分镜已生成", {
         description: `共 ${count} 个${target === "comfyui_image" ? "ComfyUI 图像" : "场景"}节点已添加到画布`,
@@ -383,7 +362,7 @@ export const ScriptNode = memo(function ScriptNode({ id, selected, data }: Props
   });
 
   const fullScriptMutation = trpc.scripts.generateFullScript.useMutation({
-    onSuccess: async (result) => {
+    onSuccess: (result) => {
       const scriptFilled = !!result.scriptText;
       if (scriptFilled) {
         updateNodeData(id, { content: result.scriptText });
@@ -391,7 +370,7 @@ export const ScriptNode = memo(function ScriptNode({ id, selected, data }: Props
       let nodesCreated = 0;
       let target: "storyboard" | "comfyui_image" = "storyboard";
       if (result.scenes.length > 0) {
-        const res = await addScenesFromResult(result.scenes);
+        const res = addScenesFromResult(result.scenes);
         nodesCreated = res.count;
         target = res.target;
       }
@@ -478,21 +457,54 @@ export const ScriptNode = memo(function ScriptNode({ id, selected, data }: Props
       targetVideoModel: targetModel || undefined,
       aspectRatio,
       model: llmModel,
+      promptLang,
       templatePromptOverride: appliedTemplate?.systemPromptAddon,
     });
-  }, [anyPending, payload.synopsis, payload.content, payload.aiScriptTemplate, commitDuration, genre, style, mood, sceneCount, targetModel, aspectRatio, llmModel, fullScriptMutation.mutate]);
+  }, [anyPending, payload.synopsis, payload.content, payload.aiScriptTemplate, commitDuration, genre, style, mood, sceneCount, targetModel, aspectRatio, llmModel, promptLang, fullScriptMutation.mutate]);
 
   const handleCopy = useCallback(async () => {
-    const text = payload.content?.trim();
+    // Copy the full script content (trimmed of leading/trailing whitespace) —
+    // never length-capped.
+    const text = (payload.content ?? "").trim();
     if (!text) { toast.error("脚本内容为空"); return; }
-    try {
-      await navigator.clipboard.writeText(text);
+    const markCopied = () => {
       setCopied(true);
       if (copyTimerRef.current) clearTimeout(copyTimerRef.current);
       copyTimerRef.current = setTimeout(() => setCopied(false), 2000);
-      toast.success("已复制到剪贴板");
+      toast.success(`已复制全部 ${text.length} 字`);
+    };
+    // Preferred path: async Clipboard API (requires a secure context — HTTPS or
+    // localhost). On plain-HTTP / LAN access it's undefined, so fall back below.
+    if (typeof navigator !== "undefined" && navigator.clipboard?.writeText) {
+      try {
+        await navigator.clipboard.writeText(text);
+        markCopied();
+        return;
+      } catch {
+        // fall through to legacy path
+      }
+    }
+    // Legacy fallback: a hidden <textarea> + execCommand('copy') works over
+    // plain HTTP, so the "复制" button reliably copies the whole script even on
+    // a LAN/HTTP deployment.
+    try {
+      const ta = document.createElement("textarea");
+      ta.value = text;
+      ta.setAttribute("readonly", "");
+      ta.style.position = "fixed";
+      ta.style.top = "0";
+      ta.style.left = "0";
+      ta.style.opacity = "0";
+      document.body.appendChild(ta);
+      ta.focus();
+      ta.select();
+      ta.setSelectionRange(0, text.length);
+      const ok = document.execCommand("copy");
+      document.body.removeChild(ta);
+      if (!ok) throw new Error("execCommand copy returned false");
+      markCopied();
     } catch {
-      toast.error("复制失败，请手动选中文字复制");
+      toast.error("复制失败，请手动选中文字复制（提示：HTTP 访问下浏览器限制剪贴板，建议改用 HTTPS）");
     }
   }, [payload.content]);
 
@@ -656,22 +668,30 @@ export const ScriptNode = memo(function ScriptNode({ id, selected, data }: Props
               );
             })}
           </div>
-          {/* Translate scene prompts to English before sending downstream */}
-          <button
-            onClick={toggleTranslateScenes}
-            title="打开后，生成的场景提示词会先用同一个 AI 模型翻译为英文，再传给下游节点（图像/视频模型对英文提示更友好）"
-            className="nodrag flex items-center gap-1 px-2 py-0.5 rounded-lg text-[10px] transition-all"
-            style={{
-              marginLeft: "auto",
-              background: translateScenes ? `${ACCENT}1e` : "transparent",
-              border: `1px solid ${translateScenes ? `${ACCENT}55` : "var(--c-bd2)"}`,
-              color: translateScenes ? ACCENT : "var(--c-t4)",
-              cursor: "pointer",
-            }}
-          >
-            <Languages className="w-2.5 h-2.5" />
-            译为英文 {translateScenes ? "开" : "关"}
-          </button>
+          {/* Downstream prompt language — model writes promptText directly in this language */}
+          <div className="flex items-center gap-1.5" style={{ marginLeft: "auto" }} title="下游节点提示词(promptText)的语言：由生成模型直接按所选语言书写。中文=下发中文提示词，英文=下发英文提示词（图像/视频模型通常对英文更友好）。">
+            <Languages className="w-2.5 h-2.5" style={{ color: "var(--c-t4)" }} />
+            <div className="flex rounded-lg overflow-hidden" style={{ border: `1px solid var(--c-bd2)` }}>
+              {([["zh", "中文"], ["en", "英文"]] as const).map(([val, label]) => {
+                const active = promptLang === val;
+                return (
+                  <button
+                    key={val}
+                    onClick={() => setAndSavePromptLang(val)}
+                    className="nodrag"
+                    style={{
+                      padding: "3px 9px", fontSize: 10.5, fontWeight: active ? 600 : 400,
+                      background: active ? `${ACCENT}1e` : "transparent",
+                      color: active ? ACCENT : "var(--c-t3)",
+                      cursor: "pointer", border: "none",
+                    }}
+                  >
+                    {label}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
         </div>
 
         {/* Generate storyboards from existing script — shows actual capped count */}
@@ -679,7 +699,7 @@ export const ScriptNode = memo(function ScriptNode({ id, selected, data }: Props
           onClick={() => {
             if (anyPending) return;
             if (!payload.content?.trim()) { toast.error("请先填写脚本内容"); return; }
-            generateMutation.mutate({ content: payload.content ?? "", synopsis: payload.synopsis, model: llmModel, count: storyboardCount });
+            generateMutation.mutate({ content: payload.content ?? "", synopsis: payload.synopsis, model: llmModel, count: storyboardCount, promptLang });
           }}
           disabled={anyPending}
           className="nodrag flex items-center justify-center gap-1.5 w-full py-1.5 rounded-lg text-xs font-medium transition-all"
@@ -1250,7 +1270,7 @@ export const ScriptNode = memo(function ScriptNode({ id, selected, data }: Props
                       if (moodBoardMutation.isPending) return;
                       const text = payload.content?.trim();
                       if (!text) { toast.error("请先填写脚本内容"); return; }
-                      moodBoardMutation.mutate({ scriptText: text.slice(0, 8000), model: llmModel });
+                      moodBoardMutation.mutate({ scriptText: text.slice(0, 8000), model: llmModel, promptLang });
                     }}
                     disabled={moodBoardMutation.isPending || !payload.content?.trim()}
                     className="nodrag flex items-center justify-center gap-1.5 w-full py-2 rounded-lg text-xs font-medium transition-all"

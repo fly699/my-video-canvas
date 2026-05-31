@@ -8,7 +8,7 @@ import { toast } from "sonner";
 import {
   Sparkles, Loader2, RefreshCw, Upload, X, Cpu, Download, ZoomIn,
   ChevronDown, ChevronRight, Server, Boxes, ImageIcon, HardDriveDownload,
-  Languages, Check, Copy,
+  Languages, Check, Copy, Lock, Unlock, Ban,
 } from "lucide-react";
 import { useLocalMedia } from "@/lib/useLocalMedia";
 import { cacheMedia } from "@/lib/mediaCache";
@@ -57,6 +57,23 @@ const labelStyle: React.CSSProperties = {
   marginBottom: 5,
 };
 
+// Push a chosen / generated image URL to every downstream node that consumes a
+// reference image (video_task / comfyui_video / comfyui_image). Mirrors
+// ImageGenNode.propagateImageUrl so manually-wired ComfyUI chains auto-fill.
+function propagateImageUrl(sourceId: string, url: string): void {
+  const { edges, nodes, batchUpdateNodeData } = useCanvasStore.getState();
+  const updates = edges
+    .filter((e) => e.source === sourceId && e.targetHandle === "ref-image-in")
+    .flatMap((edge) => {
+      const t = nodes.find((n) => n.id === edge.target);
+      const tt = t?.data.nodeType;
+      return tt === "video_task" || tt === "comfyui_video" || tt === "comfyui_image"
+        ? [{ id: edge.target, payload: { referenceImageUrl: url } }]
+        : [];
+    });
+  if (updates.length > 0) batchUpdateNodeData(updates);
+}
+
 export const ComfyuiImageNode = memo(function ComfyuiImageNode({ id, selected, data }: Props) {
   const updateNodeData = useCanvasStore((s) => s.updateNodeData);
   const payload = data.payload;
@@ -85,14 +102,21 @@ export const ComfyuiImageNode = memo(function ComfyuiImageNode({ id, selected, d
     { staleTime: 60_000, retry: false }
   );
 
+  // Set when the user cancels: the blocking generate request can't be aborted
+  // client-side, so when it eventually settles we skip overwriting the node
+  // (which we've already flipped to a cancelled state for instant feedback).
+  const cancelledRef = useRef(false);
   const genMutation = trpc.comfyui.generateImage.useMutation({
     onSuccess: (result) => {
       if (!useCanvasStore.getState().nodes.some((n) => n.id === id)) return;
+      if (cancelledRef.current) { cancelledRef.current = false; return; }
       updateNodeData(id, { imageUrl: result.url, imageUrls: result.urls, status: "done", errorMessage: undefined, progress: undefined });
+      if (result.url) propagateImageUrl(id, result.url);
       toast.success("ComfyUI 图像生成成功");
     },
     onError: (err) => {
       if (!useCanvasStore.getState().nodes.some((n) => n.id === id)) return;
+      if (cancelledRef.current) { cancelledRef.current = false; return; }
       updateNodeData(id, { status: "failed", errorMessage: err.message, progress: undefined });
       toast.error("ComfyUI 图像生成失败：" + err.message);
     },
@@ -111,11 +135,12 @@ export const ComfyuiImageNode = memo(function ComfyuiImageNode({ id, selected, d
     },
   });
 
+  const translateTargetRef = useRef<"prompt" | "negPrompt">("prompt");
   const translateMutation = trpc.aiEnhance.enhance.useMutation({
     onSuccess: (result) => {
       setTranslating(false);
       if (!useCanvasStore.getState().nodes.some((n) => n.id === id)) return;
-      updateNodeData(id, { prompt: result.result });
+      updateNodeData(id, { [translateTargetRef.current]: result.result });
       toast.success("已翻译为英文");
     },
     onError: (err) => {
@@ -129,11 +154,44 @@ export const ComfyuiImageNode = memo(function ComfyuiImageNode({ id, selected, d
     [id, updateNodeData]
   );
 
-  const handleTranslate = () => {
+  const handleTranslate = (field: "prompt" | "negPrompt" = "prompt") => {
     if (translating || translateMutation.isPending) return;
-    if (!payload.prompt?.trim()) { toast.error("请先填写提示词"); return; }
+    const text = field === "prompt" ? payload.prompt : payload.negPrompt;
+    if (!text?.trim()) { toast.error(field === "prompt" ? "请先填写提示词" : "请先填写反向提示词"); return; }
+    translateTargetRef.current = field;
     setTranslating(true);
-    translateMutation.mutate({ text: payload.prompt, mode: "translate_en", model: llmModel });
+    translateMutation.mutate({ text, mode: "translate_en", model: llmModel });
+  };
+
+  // Cancel a running ComfyUI job (POST /interrupt). The in-flight generate
+  // mutation then fails and the node drops back to a re-runnable state.
+  const interruptMutation = trpc.comfyui.interrupt.useMutation({
+    onSuccess: () => toast.success("已发送中断请求"),
+    onError: (err) => toast.error("中断失败：" + err.message),
+  });
+  const handleCancel = () => {
+    cancelledRef.current = true;
+    interruptMutation.mutate({ customBaseUrl: payload.customBaseUrl?.trim() || undefined });
+    // Instant UI feedback — don't wait for the (possibly slow) server poll to end.
+    updateNodeData(id, { status: "failed", errorMessage: "已取消生成", progress: undefined });
+  };
+
+  // Recover from a stale "processing" state left over from a page reload: a
+  // freshly-mounted node can't have an in-flight mutation (those don't survive
+  // reload), so the blocking generate request was lost — unstick the UI.
+  useEffect(() => {
+    if (payload.status === "processing") {
+      updateNodeData(id, { status: "failed", errorMessage: "生成已中断（页面刷新或连接断开），请重新运行。", progress: undefined });
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // Seed lock: ComfyUI uses -1 for "random each run". "Lock" pins a concrete
+  // random seed for reproducibility; "unlock" returns to -1.
+  const seedLocked = typeof payload.seed === "number" && payload.seed >= 0;
+  const toggleSeedLock = () => {
+    if (seedLocked) update("seed", -1);
+    else update("seed", Math.floor(Math.random() * 2147483647));
   };
 
   // Sync shared ComfyUI config (server / checkpoint / sampling params) from this
@@ -170,17 +228,7 @@ export const ComfyuiImageNode = memo(function ComfyuiImageNode({ id, selected, d
   // URL to connected downstream reference-image consumers (mirrors ImageGenNode).
   const selectImage = useCallback((url: string) => {
     updateNodeData(id, { imageUrl: url });
-    const { edges, nodes, batchUpdateNodeData } = useCanvasStore.getState();
-    const updates = edges
-      .filter((e) => e.source === id && e.targetHandle === "ref-image-in")
-      .flatMap((edge) => {
-        const t = nodes.find((n) => n.id === edge.target);
-        const tt = t?.data.nodeType;
-        return (tt === "video_task" || tt === "comfyui_video" || tt === "comfyui_image")
-          ? [{ id: edge.target, payload: { referenceImageUrl: url } }]
-          : [];
-      });
-    if (updates.length > 0) batchUpdateNodeData(updates);
+    propagateImageUrl(id, url);
   }, [id, updateNodeData]);
 
   const handleGenerate = () => {
@@ -191,6 +239,7 @@ export const ComfyuiImageNode = memo(function ComfyuiImageNode({ id, selected, d
     if (payload.workflowTemplate === "img2img" && !payload.referenceImageUrl) {
       toast.error("img2img 模板需要参考图"); return;
     }
+    cancelledRef.current = false;
     updateNodeData(id, { status: "processing", errorMessage: undefined, progress: 0 });
     genMutation.mutate({
       nodeId: id,
@@ -578,7 +627,7 @@ export const ComfyuiImageNode = memo(function ComfyuiImageNode({ id, selected, d
           <div className="flex items-center gap-1 mt-1 flex-wrap">
             <LLMModelPicker value={llmModel} onChange={setLlmModel} disabled={translating} />
             <button
-              onClick={handleTranslate}
+              onClick={() => handleTranslate("prompt")}
               disabled={translating}
               className="nodrag flex items-center gap-1 px-1.5 py-0.5 rounded-md text-[9px] font-medium transition-all"
               style={{
@@ -603,11 +652,28 @@ export const ComfyuiImageNode = memo(function ComfyuiImageNode({ id, selected, d
             value={payload.negPrompt ?? ""}
             onChange={(e) => update("negPrompt", e.target.value)}
             rows={2}
-            
+
             style={{ ...fieldBase, resize: "none", lineHeight: 1.6, fontFamily: "var(--font-mono)", fontSize: 10.5 }}
             onFocus={(e) => { e.currentTarget.style.borderColor = "var(--c-t4)"; }}
             onBlur={(e) => { e.currentTarget.style.borderColor = BORDER_DEFAULT; }}
           />
+          <div className="flex items-center gap-1 mt-1">
+            <button
+              onClick={() => handleTranslate("negPrompt")}
+              disabled={translating}
+              className="nodrag flex items-center gap-1 px-1.5 py-0.5 rounded-md text-[9px] font-medium transition-all"
+              style={{
+                background: translating ? "var(--c-surface)" : "oklch(0.65 0.18 200 / 0.10)",
+                border: `1px solid ${translating ? "var(--c-bd2)" : "oklch(0.65 0.18 200 / 0.35)"}`,
+                color: translating ? "var(--c-t4)" : "oklch(0.70 0.16 200)",
+                cursor: translating ? "not-allowed" : "pointer",
+              }}
+              title="将反向提示词翻译为英文"
+            >
+              {translating ? <Loader2 className="w-2.5 h-2.5 animate-spin" /> : <Languages className="w-2.5 h-2.5" />}
+              译为英文
+            </button>
+          </div>
         </div>
 
         {/* ── Checkpoint with datalist suggestions ── */}
@@ -784,7 +850,23 @@ export const ComfyuiImageNode = memo(function ComfyuiImageNode({ id, selected, d
               </div>
               {/* Seed */}
               <div>
-                <label style={labelStyle}>Seed（-1 随机）</label>
+                <div className="flex items-center justify-between mb-[5px]">
+                  <label style={{ ...labelStyle, marginBottom: 0 }}>Seed（-1 随机）</label>
+                  <button
+                    onClick={toggleSeedLock}
+                    className="nodrag flex items-center gap-0.5 px-1.5 py-0.5 rounded text-[9px] transition-all"
+                    style={{
+                      background: seedLocked ? "oklch(0.68 0.22 285 / 0.15)" : "var(--c-surface)",
+                      border: `1px solid ${seedLocked ? "oklch(0.68 0.22 285 / 0.40)" : "var(--c-bd2)"}`,
+                      color: seedLocked ? "oklch(0.72 0.18 285)" : "var(--c-t4)",
+                      cursor: "pointer",
+                    }}
+                    title={seedLocked ? "解锁（改回 -1 每次随机）" : "锁定一个随机种子以复现"}
+                  >
+                    {seedLocked ? <Lock className="w-2.5 h-2.5" /> : <Unlock className="w-2.5 h-2.5" />}
+                    {seedLocked ? "已锁" : "随机"}
+                  </button>
+                </div>
                 <input
                   type="number" placeholder="-1"
                   value={payload.seed ?? ""}
@@ -846,6 +928,19 @@ export const ComfyuiImageNode = memo(function ComfyuiImageNode({ id, selected, d
               style={{ display: "none" }}
               onChange={handleFileChange}
             />
+            {/* 或直接粘贴公网图片 URL — 仅在没有本地上传图(非 http 路径)时显示 */}
+            {(!payload.referenceImageUrl || payload.referenceImageUrl.startsWith("http")) && (
+              <input
+                type="url"
+                placeholder="或粘贴公网图片 URL（https://…）"
+                value={payload.referenceImageUrl?.startsWith("http") ? payload.referenceImageUrl : ""}
+                onChange={(e) => update("referenceImageUrl", e.target.value.trim() || undefined)}
+                className="nodrag"
+                style={{ ...fieldBase, marginTop: 6, fontSize: 10.5 }}
+                onFocus={(e) => { e.currentTarget.style.borderColor = BORDER_ACCENT; }}
+                onBlur={(e) => { e.currentTarget.style.borderColor = BORDER_DEFAULT; }}
+              />
+            )}
           </div>
         )}
 
@@ -879,6 +974,26 @@ export const ComfyuiImageNode = memo(function ComfyuiImageNode({ id, selected, d
           {genMutation.isPending ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Sparkles className="w-3.5 h-3.5" />}
           {genMutation.isPending ? "ComfyUI 生成中..." : "运行 ComfyUI"}
         </button>
+
+        {/* Cancel button — interrupt the running ComfyUI job. Keyed off status so
+            it disappears the instant we flip to a cancelled/failed state. */}
+        {payload.status === "processing" && (
+          <button
+            onClick={handleCancel}
+            disabled={interruptMutation.isPending}
+            className="nodrag flex items-center justify-center gap-1.5 w-full py-1.5 rounded-lg text-xs font-medium transition-all"
+            style={{
+              marginTop: 6,
+              background: "oklch(0.62 0.20 25 / 0.08)",
+              border: "1px solid oklch(0.62 0.20 25 / 0.35)",
+              color: "oklch(0.66 0.20 25)",
+              cursor: interruptMutation.isPending ? "wait" : "pointer",
+            }}
+          >
+            <Ban className="w-3 h-3" />
+            {interruptMutation.isPending ? "正在取消…" : "取消生成"}
+          </button>
+        )}
 
         </div>{/* end input collapse wrapper */}
       </div>

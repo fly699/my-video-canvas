@@ -47,6 +47,21 @@ function normalizeBaseUrl(raw: string): string {
   return url.origin + url.pathname.replace(/\/+$/, "");
 }
 
+// ── Interrupt ──────────────────────────────────────────────────────────────────
+
+/** Ask ComfyUI to interrupt the currently-running prompt (POST /interrupt). */
+export async function interruptComfy(rawBaseUrl: string): Promise<void> {
+  const baseUrl = normalizeBaseUrl(rawBaseUrl);
+  const res = await fetch(`${baseUrl}/interrupt`, {
+    method: "POST",
+    signal: AbortSignal.timeout(10_000),
+  });
+  // ComfyUI returns 200 with empty body; tolerate any 2xx.
+  if (!res.ok) {
+    throw new Error(`ComfyUI 中断失败 (${res.status})`);
+  }
+}
+
 // ── Workflow templates ────────────────────────────────────────────────────────
 //
 // Templates use placeholder tokens like "__seed__", "__steps__" that we replace

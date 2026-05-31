@@ -35,7 +35,7 @@ import {
 import { storagePut, resolveToAbsoluteUrl, canBrowserReachStorageDirectly, storageBackend } from "../storage";
 import { invokeLLM, extractTextContent } from "../_core/llm";
 import { generateImage } from "../_core/imageGeneration";
-import { generateComfyImage, generateComfyVideo, fetchComfyModels, analyzeWorkflow, executeCustomWorkflow, uploadImageForWorkflow } from "../_core/comfyui";
+import { generateComfyImage, generateComfyVideo, fetchComfyModels, analyzeWorkflow, executeCustomWorkflow, uploadImageForWorkflow, interruptComfy } from "../_core/comfyui";
 import { ENV } from "../_core/env";
 import { isPoyoVideoProvider, submitPoyoVideo, checkPoyoVideoStatus } from "../_core/poyoVideo";
 import { isHiggsfieldVideoProvider, submitHiggsfieldVideo, checkHiggsfieldVideoStatus } from "../_core/higgsfield";
@@ -849,16 +849,18 @@ export const scriptsRouter = router({
         synopsis: z.string().optional(),
         count: z.number().int().min(2).max(8).default(4),
         model: z.string().optional(),
+        promptLang: z.enum(["zh", "en"]).default("en"),
       })
     )
     .mutation(async ({ ctx, input }) => {
       return dedupe("scripts.generateStoryboards", ctx.user.id, input, async () => {
+      const promptLangName = input.promptLang === "zh" ? "Chinese (中文)" : "English";
       const systemPrompt = `You are a professional film director and storyboard artist.
 Given a script, break it into exactly ${input.count} visual storyboard scenes.
 Output ONLY a valid JSON array with no markdown fences, no explanation.
 Each element must have these fields:
 - "description": string (2-3 sentences, what the viewer sees)
-- "promptText": string (English, detailed cinematic prompt for image generation)
+- "promptText": string (${promptLangName}, detailed cinematic prompt for image generation — write it in ${promptLangName})
 - "cameraMovement": string (one of: static, pan-left, pan-right, zoom-in, zoom-out, tilt-up, tilt-down, tracking)
 - "duration": number (scene duration in seconds, integer 2-10)`;
 
@@ -901,6 +903,7 @@ Each element must have these fields:
         targetVideoModel: z.string().optional(),
         aspectRatio: z.string().default("16:9"),
         model: z.string().optional(),
+        promptLang: z.enum(["zh", "en"]).default("en"),
         /** Optional template-specific writing instructions appended to the
          *  system prompt. Sourced from client/src/lib/scriptCreationTemplates.ts
          *  by id (UI passes `systemPromptAddon` of the applied template). */
@@ -945,7 +948,7 @@ Your task: Generate a complete storyboard script. Output ONLY a valid JSON objec
   "scenes": [
     {
       "description": "Chinese visual description: what the viewer sees, atmosphere, character actions. 2-3 sentences.",
-      "promptText": "English AI generation prompt optimized for the target model. Follow the prompt style guide above strictly.",
+      "promptText": "${input.promptLang === "zh" ? "Chinese (中文)" : "English"} AI generation prompt optimized for the target model. Follow the prompt style guide above strictly.",
       "cameraMovement": "one of: static|pan-left|pan-right|zoom-in|zoom-out|tilt-up|tilt-down|tracking",
       "duration": ${avgDuration}
     }
@@ -955,7 +958,7 @@ Your task: Generate a complete storyboard script. Output ONLY a valid JSON objec
 Rules:
 1. Generate exactly ${input.sceneCount} scene objects
 2. scriptText must be cohesive Chinese narrative covering all scenes
-3. Each promptText MUST follow the target model's style guide
+3. Each promptText MUST follow the target model's style guide, and MUST be written in ${input.promptLang === "zh" ? "Chinese (中文)" : "English"}
 4. Duration values should total approximately ${input.totalDuration} seconds
 5. Create compelling visual storytelling appropriate for the genre and mood`;
 
@@ -1290,13 +1293,18 @@ score 为 0-100 整数，issues 数组最多 8 条，每条包含 type/line/sugg
     .input(z.object({
       scriptText: z.string().min(1).max(8000),
       model: z.string().optional(),
+      promptLang: z.enum(["zh", "en"]).default("en"),
     }))
     .mutation(async ({ ctx, input }) => {
       return dedupe("scripts.generateMoodBoard", ctx.user.id, input, async () => {
+      const langName = input.promptLang === "zh" ? "中文" : "英文";
+      const promptExample = input.promptLang === "zh"
+        ? "用于 AI 图像生成的中文电影级提示词"
+        : "English cinematic prompt for AI image generation";
       const systemPrompt = `你是AI视频导演，负责将剧本场景转化为图像生成提示词。
-为每个主要场景生成一条英文视觉提示词（cinematic prompt）和一条负面提示词。
+为每个主要场景生成一条${langName}视觉提示词（cinematic prompt）和一条负面提示词。提示词必须使用${langName}书写。
 仅输出合法 JSON 数组，无 markdown 代码块：
-[{"sceneIndex":1,"sceneTitle":"场景名称（中文）","prompt":"English cinematic prompt for AI image generation","negPrompt":"blurry, low quality, text"}]`;
+[{"sceneIndex":1,"sceneTitle":"场景名称（中文）","prompt":"${promptExample}","negPrompt":"blurry, low quality, text"}]`;
       const response = await invokeLLM({
         messages: [
           { role: "system" as const, content: systemPrompt },
@@ -1875,6 +1883,23 @@ export const comfyuiRouter = router({
           throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: err instanceof Error ? err.message : String(err) });
         }
       });
+    }),
+
+  interrupt: protectedProcedure
+    .input(z.object({ customBaseUrl: z.string().max(2048).optional() }))
+    .mutation(async ({ ctx, input }) => {
+      // Same SSRF gate as the generate endpoints (server POSTs to a client URL).
+      // Use the ComfyUI-specific gate so cancel stays consistent with generate
+      // when an admin has enabled the ComfyUI whitelist bypass.
+      await assertComfyuiAllowed(ctx);
+      const baseUrl = input.customBaseUrl?.trim() || ENV.comfyuiBaseUrl;
+      if (!baseUrl) throw new TRPCError({ code: "BAD_REQUEST", message: "ComfyUI URL 未配置" });
+      try {
+        await interruptComfy(baseUrl);
+        return { ok: true as const };
+      } catch (err) {
+        throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: err instanceof Error ? err.message : String(err) });
+      }
     }),
 
   fetchModels: protectedProcedure

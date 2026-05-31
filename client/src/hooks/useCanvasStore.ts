@@ -177,8 +177,14 @@ export const useCanvasStore = create<CanvasStore>((set, get) => ({
         const targetType = targetNode?.data.nodeType;
         const targetAcceptsRefImage =
           targetType === "video_task" || targetType === "comfyui_video" || targetType === "comfyui_image";
+        // Any image-producing node (image_gen / comfyui_image / storyboard) can
+        // pre-fill a downstream reference image when wired into a ref-image-in handle.
+        const sourceProducesImage =
+          sourceNode?.data.nodeType === "image_gen" ||
+          sourceNode?.data.nodeType === "comfyui_image" ||
+          sourceNode?.data.nodeType === "storyboard";
         if (
-          sourceNode?.data.nodeType === "image_gen" &&
+          sourceProducesImage &&
           targetAcceptsRefImage &&
           (connection.sourceHandle === "image-out" || connection.sourceHandle === "output") &&
           connection.targetHandle === "ref-image-in"
