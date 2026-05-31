@@ -3,9 +3,10 @@ import { useLocation } from "wouter";
 import { trpc } from "@/lib/trpc";
 import { useAuth } from "@/_core/hooks/useAuth";
 import { Shield, Trash2, Plus, ToggleLeft, ToggleRight, ClipboardList, RefreshCw, HardDrive, ArrowLeft, Loader2, CheckCircle2, XCircle, DownloadCloud, RotateCw, GitCommit } from "lucide-react";
+import { ComfyStressPanel } from "@/components/admin/ComfyStressPanel";
 
 type EntryType = "ip" | "user";
-type Tab = "whitelist" | "logs" | "storage" | "chat" | "system";
+type Tab = "whitelist" | "logs" | "storage" | "chat" | "comfyStress" | "system";
 
 const ACTION_LABELS: Record<string, string> = {
   login_email: "邮箱登录",
@@ -110,7 +111,7 @@ export default function AdminPage() {
 
         {/* Tabs */}
         <div style={{ display: "flex", gap: "4px", marginBottom: "20px", borderBottom: "1px solid rgba(255,255,255,0.06)", paddingBottom: "0" }}>
-          {([["whitelist", "白名单管理"], ["logs", "操作日志"], ["storage", "存储设置"], ["chat", "聊天管理"], ["system", "系统更新"]] as [Tab, string][]).map(([tab, label]) => (
+          {([["whitelist", "白名单管理"], ["logs", "操作日志"], ["storage", "存储设置"], ["chat", "聊天管理"], ["comfyStress", "ComfyUI 压测"], ["system", "系统更新"]] as [Tab, string][]).map(([tab, label]) => (
             <button
               key={tab}
               onClick={() => setActiveTab(tab)}
@@ -143,6 +144,7 @@ export default function AdminPage() {
         {activeTab === "logs" && <LogsPanel />}
         {activeTab === "storage" && <StoragePanel />}
         {activeTab === "chat" && <ChatAdminPanel />}
+        {activeTab === "comfyStress" && <ComfyStressPanel />}
         {activeTab === "system" && <SystemUpdatePanel />}
       </div>
     </div>

@@ -5,8 +5,8 @@
 // 轮询作为可靠兜底）。
 
 import { useState } from "react";
-import { trpc } from "../../lib/trpc";
-import { toast } from "../../lib/toast";
+import { trpc } from "@/lib/trpc";
+import { toast } from "sonner";
 
 const C = {
   card: "#1e293b",
