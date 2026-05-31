@@ -254,6 +254,23 @@ function StoragePanel() {
 
       {settings && (
         <>
+          <div style={{
+            padding: "10px 14px",
+            background: "oklch(0.70 0.16 65 / 0.10)",
+            border: "1px solid oklch(0.70 0.16 65 / 0.35)",
+            borderRadius: 8,
+            fontSize: 12,
+            lineHeight: 1.6,
+            color: "oklch(0.82 0.14 65)",
+          }}>
+            <strong>下列开关仅在未配置 MinIO/S3、回退到 Forge 内置存储时才生效。</strong><br />
+            自有 MinIO/S3 是本地磁盘、无配额成本，因此一旦配置好（S3_ENDPOINT/S3_BUCKET/...），
+            系统对音/视/图<strong>恒为持久化</strong>，以下开关将被忽略。这些开关本质是
+            「Forge 内置存储（有配额计费）」的省钱阀门。<br />
+            关闭后多数媒体降级为模型提供商的上游临时 URL（Poyo 24h / Higgsfield 临时）；
+            但 <strong>OpenAI TTS 例外</strong>——它只返回 mp3 字节流、无可降级的 URL，
+            音频持久化关闭时会<strong>直接拒绝生成</strong>。
+          </div>
           <ToggleRow
             label="持久化图像"
             description="Poyo / Higgsfield 图像生成输出（Forge 不受影响）"
