@@ -15,11 +15,9 @@ import { getPresignTtlSec } from "./_core/storageConfig";
  * typically bound to a server-local address (127.0.0.1:9000) that remote
  * browsers cannot connect to — in that case presigned URLs are useless to the
  * client and we must stream files through the app server instead. Direct access
- * is only assumed when an explicit public endpoint is configured, or when the
- * backend is Forge (whose presigned URLs are already public).
+ * is only assumed when an explicit public endpoint (S3_PUBLIC_ENDPOINT) is set.
  */
 export function canBrowserReachStorageDirectly(): boolean {
-  if (storageBackend() === "forge") return true;
   if (storageBackend() === "s3") return Boolean(ENV.s3PublicEndpoint);
   return false;
 }
@@ -39,17 +37,22 @@ function applyPublicEndpoint(signedUrl: string): string {
 }
 
 // ── Storage backend selection ───────────────────────────────────────────────
-// Self-hosted S3-compatible (MinIO / R2 / AWS) takes precedence over Forge when
-// configured. This keeps file data entirely on your own infrastructure.
+// Object storage is MinIO/S3 ONLY. Forge storage has been intentionally removed
+// as a backend so that NO generated/uploaded file is ever written to Manus's
+// Forge storage — all file data stays on your own MinIO/S3 infrastructure.
+// (Forge is still used for NON-storage features: LLM proxy, transcription,
+// heartbeat, etc. — those read ENV.forge* directly and are unaffected.)
 export function isS3Configured(): boolean {
   return Boolean(ENV.s3Endpoint && ENV.s3Bucket && ENV.s3AccessKey && ENV.s3SecretKey);
 }
 
-export function storageBackend(): "s3" | "forge" | "none" {
+export function storageBackend(): "s3" | "none" {
   if (isS3Configured()) return "s3";
-  if (ENV.forgeApiUrl && ENV.forgeApiKey) return "forge";
   return "none";
 }
+
+const STORAGE_NOT_CONFIGURED_MSG =
+  "对象存储仅支持自建 MinIO/S3，且未配置：请设置 S3_ENDPOINT / S3_BUCKET / S3_ACCESS_KEY / S3_SECRET_KEY。";
 
 /** Whether persistent storage (S3/MinIO or Forge) is configured for this deployment. */
 export function isStorageConfigured(): boolean {
@@ -69,18 +72,6 @@ function getS3(): S3Client {
   return _s3;
 }
 
-function getForgeConfig() {
-  const forgeUrl = ENV.forgeApiUrl;
-  const forgeKey = ENV.forgeApiKey;
-
-  if (!forgeUrl || !forgeKey) {
-    throw new Error(
-      "Storage config missing: set BUILT_IN_FORGE_API_URL and BUILT_IN_FORGE_API_KEY",
-    );
-  }
-
-  return { forgeUrl: forgeUrl.replace(/\/+$/, ""), forgeKey };
-}
 
 function normalizeKey(relKey: string): string {
   return relKey.replace(/^\/+/, "");
@@ -104,44 +95,7 @@ export async function storagePut(
     await getS3().send(new PutObjectCommand({ Bucket: ENV.s3Bucket, Key: key, Body: body, ContentType: contentType }));
     return { key, url: `/manus-storage/${key}` };
   }
-  const { forgeUrl, forgeKey } = getForgeConfig();
-  const key = appendHashSuffix(normalizeKey(relKey));
-
-  // 1. Get presigned PUT URL from Forge
-  const presignUrl = new URL("v1/storage/presign/put", forgeUrl + "/");
-  presignUrl.searchParams.set("path", key);
-
-  const presignResp = await fetch(presignUrl, {
-    headers: { Authorization: `Bearer ${forgeKey}` },
-    signal: AbortSignal.timeout(15_000),
-  });
-
-  if (!presignResp.ok) {
-    const msg = await presignResp.text().catch(() => presignResp.statusText);
-    throw new Error(`Storage presign failed (${presignResp.status}): ${msg}`);
-  }
-
-  const { url: s3Url } = (await presignResp.json()) as { url: string };
-  if (!s3Url) throw new Error("Forge returned empty presign URL");
-
-  // 2. PUT file directly to S3
-  const blob =
-    typeof data === "string"
-      ? new Blob([data], { type: contentType })
-      : new Blob([data as any], { type: contentType });
-
-  const uploadResp = await fetch(s3Url, {
-    method: "PUT",
-    headers: { "Content-Type": contentType },
-    body: blob,
-    signal: AbortSignal.timeout(60_000),
-  });
-
-  if (!uploadResp.ok) {
-    throw new Error(`Storage upload to S3 failed (${uploadResp.status})`);
-  }
-
-  return { key, url: `/manus-storage/${key}` };
+  throw new Error(STORAGE_NOT_CONFIGURED_MSG);
 }
 
 export async function storageGet(relKey: string): Promise<{ key: string; url: string }> {
@@ -157,17 +111,7 @@ export async function storagePresignGet(relKey: string): Promise<string> {
     const signed = await getSignedUrl(getS3(), new GetObjectCommand({ Bucket: ENV.s3Bucket, Key: key }), { expiresIn });
     return applyPublicEndpoint(signed);
   }
-  const { forgeUrl, forgeKey } = getForgeConfig();
-  const getUrl = new URL("v1/storage/presign/get", forgeUrl + "/");
-  getUrl.searchParams.set("path", key);
-  const resp = await fetch(getUrl, { headers: { Authorization: `Bearer ${forgeKey}` }, signal: AbortSignal.timeout(10_000) });
-  if (!resp.ok) {
-    const msg = await resp.text().catch(() => resp.statusText);
-    throw new Error(`Storage presign GET failed (${resp.status}): ${msg.slice(0, 200)}`);
-  }
-  const { url } = (await resp.json()) as { url: string };
-  if (!url) throw new Error("Empty signed GET URL");
-  return url;
+  throw new Error(STORAGE_NOT_CONFIGURED_MSG);
 }
 
 /**
@@ -189,21 +133,7 @@ export async function storagePresignPut(
     );
     return { uploadUrl: applyPublicEndpoint(signed), key, url: `/manus-storage/${key}` };
   }
-  const { forgeUrl, forgeKey } = getForgeConfig();
-  const key = appendHashSuffix(normalizeKey(relKey));
-  const presignUrl = new URL("v1/storage/presign/put", forgeUrl + "/");
-  presignUrl.searchParams.set("path", key);
-  const resp = await fetch(presignUrl, {
-    headers: { Authorization: `Bearer ${forgeKey}` },
-    signal: AbortSignal.timeout(15_000),
-  });
-  if (!resp.ok) {
-    const msg = await resp.text().catch(() => resp.statusText);
-    throw new Error(`Storage presign failed (${resp.status}): ${msg}`);
-  }
-  const { url: uploadUrl } = (await resp.json()) as { url: string };
-  if (!uploadUrl) throw new Error("Forge returned empty presign URL");
-  return { uploadUrl, key, url: `/manus-storage/${key}` };
+  throw new Error(STORAGE_NOT_CONFIGURED_MSG);
 }
 
 /**
