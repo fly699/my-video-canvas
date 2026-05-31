@@ -8,6 +8,7 @@ const RESTRICTED_FEATURES = [
   "视频生成（Video Task 节点）",
   "音乐生成 / 配音（Audio 节点 AI 功能）",
   "语音转录（Subtitle 节点自动转录）",
+  "ComfyUI 节点（生图 / 生视频 / 自定义工作流）",
 ];
 
 export function WhitelistBlockedDialog() {
@@ -106,6 +107,9 @@ export function WhitelistBlockedDialog() {
           <p style={{ margin: "0 0 10px", fontSize: 13, color: "var(--c-t2, rgba(255,255,255,0.7))", lineHeight: 1.6 }}>
             请联系系统管理员，申请将您的<strong>账户 ID</strong> 或<strong> IP 地址</strong>加入白名单。
             管理员可登录后访问 <code style={{ fontSize: 12, background: "rgba(255,255,255,0.08)", padding: "1px 5px", borderRadius: 4 }}>/admin</code> 页面进行管理。
+          </p>
+          <p style={{ margin: "0 0 10px", fontSize: 12.5, color: "var(--c-t3, rgba(255,255,255,0.5))", lineHeight: 1.6 }}>
+            若您使用的是 <strong>ComfyUI 本地服务器</strong>，管理员可在 <code style={{ fontSize: 12, background: "rgba(255,255,255,0.08)", padding: "1px 5px", borderRadius: 4 }}>/admin</code> 白名单设置中单独「豁免 ComfyUI」，即可免白名单使用 ComfyUI 节点。
           </p>
 
           {/* User identity info for copying */}

@@ -25,6 +25,7 @@ import {
   configRouter,
 } from "./routers/canvas";
 import { uploadRouter } from "./routers/upload";
+import { comfyStressRouter } from "./routers/comfyStress";
 import { adminRouter } from "./routers/admin";
 import { collaborationRouter } from "./routers/collaboration";
 import { chatRouter } from "./routers/chat";
@@ -64,6 +65,7 @@ export const appRouter = router({
   lipSync: lipSyncRouter,
   avatar: avatarRouter,
   comfyui: comfyuiRouter,
+  comfyStress: comfyStressRouter,
   config: configRouter,
   upload: uploadRouter,
   admin: adminRouter,
