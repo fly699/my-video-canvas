@@ -249,7 +249,10 @@ async function pollHistory(baseUrl: string, promptId: string, maxAttempts: numbe
       }
     } catch (err) {
       // External abort (立即停止) — propagate immediately, don't treat as a retryable net error.
-      if (signal?.aborted || (err instanceof Error && err.name === "AbortError")) throw new Error("已停止");
+      // Gated on `signal` being present so original node callers (signal === undefined) are
+      // provably unaffected: their AbortSignal.timeout fires a TimeoutError, which must keep
+      // flowing into the consecutiveNetErrors retry path exactly as before.
+      if (signal && (signal.aborted || (err instanceof Error && err.name === "AbortError"))) throw new Error("已停止");
       if (err instanceof Error && (err.message.startsWith("ComfyUI 执行失败") || err.message.startsWith("ComfyUI 服务器持续无响应"))) throw err;
       consecutiveNetErrors++;
       if (consecutiveNetErrors >= MAX_CONSECUTIVE_NET_ERRORS) {
