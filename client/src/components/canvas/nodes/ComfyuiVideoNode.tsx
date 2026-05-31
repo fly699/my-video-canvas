@@ -209,6 +209,7 @@ export const ComfyuiVideoNode = memo(function ComfyuiVideoNode({ id, selected, d
     if (!isSvd && !payload.motionModule?.trim()) {
       toast.error("AnimateDiff 模板需要 Motion Module 名称"); return;
     }
+    cancelledRef.current = false;
     updateNodeData(id, { status: "processing", errorMessage: undefined, progress: 0 });
     genMutation.mutate({
       nodeId: id,

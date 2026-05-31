@@ -239,6 +239,7 @@ export const ComfyuiImageNode = memo(function ComfyuiImageNode({ id, selected, d
     if (payload.workflowTemplate === "img2img" && !payload.referenceImageUrl) {
       toast.error("img2img 模板需要参考图"); return;
     }
+    cancelledRef.current = false;
     updateNodeData(id, { status: "processing", errorMessage: undefined, progress: 0 });
     genMutation.mutate({
       nodeId: id,
