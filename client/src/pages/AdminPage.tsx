@@ -299,22 +299,22 @@ function StoragePanel() {
             音频持久化关闭时会<strong>直接拒绝生成</strong>。
           </div>
           <ToggleRow
-            label="持久化图像"
-            description="Poyo / Higgsfield 图像生成输出（Forge 不受影响）"
+            label="持久化图像（Forge 存储）"
+            description="仅 Forge 存储后端生效（配置 MinIO/S3 后恒持久化、此开关被忽略）。作用对象：Poyo / Higgsfield 图像生成输出。注：manus_forge 内置图像后端始终持久化，不受此开关影响。"
             enabled={settings.persistImage}
             disabled={setMut.isPending}
             onClick={() => handleToggle("persistImage")}
           />
           <ToggleRow
-            label="持久化音频"
-            description="音乐生成 / 配音 / TTS 输出"
+            label="持久化音频（Forge 存储）"
+            description="仅 Forge 存储后端生效（配置 MinIO/S3 后恒持久化、此开关被忽略）。作用对象：音乐生成 / 配音 / TTS 输出。"
             enabled={settings.persistAudio}
             disabled={setMut.isPending}
             onClick={() => handleToggle("persistAudio")}
           />
           <ToggleRow
-            label="持久化视频"
-            description="Poyo / Higgsfield 视频生成输出"
+            label="持久化视频（Forge 存储）"
+            description="仅 Forge 存储后端生效（配置 MinIO/S3 后恒持久化、此开关被忽略）。作用对象：Poyo / Higgsfield 视频生成输出。"
             enabled={settings.persistVideo}
             disabled={setMut.isPending}
             onClick={() => handleToggle("persistVideo")}
