@@ -56,7 +56,7 @@ function WelcomeModal({ onClose }: { onClose: () => void }) {
     { Icon: Video, color: "oklch(0.62 0.20 25)",
       title: "AI 视频生成", desc: "Higgsfield DoP、Poyo Seedance / Veo / Kling / Wan / Runway 等 12+ 模型" },
     { Icon: Boxes, color: "oklch(0.68 0.20 100)",
-      title: "ComfyUI 自建集成", desc: "自建 ComfyUI：多 LoRA + ControlNet、15 类模型自动发现、自定义工作流导入与上下游图像直传",
+      title: "ComfyUI 自建集成", desc: "图像（多 LoRA / ControlNet+预处理 / IPAdapter / Inpaint / 放大）+ 视频（Wan 文生·图生 / LTX）、15 类模型自动发现、自定义工作流导入",
       badge: "NEW" },
     { Icon: Bot, color: "oklch(0.70 0.18 200)",
       title: "大模型对话", desc: "Claude Sonnet 4.6、Gemini 2.5、GPT-5.2，写脚本 / 润色 / 审查 / 多版本" },
