@@ -927,6 +927,9 @@ export async function analyzeWorkflow(
 export interface ExecuteCustomWorkflowOptions {
   workflowJson: string;
   paramValues: Record<string, unknown>;  // key = `${nodeId}.${fieldPath}`, e.g. "3.inputs.seed"
+  // Keys (same format as paramValues) whose value is an image: a URL here is
+  // auto-uploaded to ComfyUI and replaced with the returned input filename.
+  imageParamKeys?: string[];
   outputNodeIds?: string[];
   outputType?: "image" | "video" | "auto";
   projectId?: number;
@@ -952,7 +955,8 @@ export async function executeCustomWorkflow(
   // Inject paramValues into workflow nodes.
   // Key format: "nodeId.inputs.fieldName" (e.g., "3.inputs.seed")
   // or shorter "nodeId.fieldName" (legacy, treated as "nodeId.inputs.fieldName")
-  for (const [key, value] of Object.entries(options.paramValues)) {
+  const imageKeys = new Set(options.imageParamKeys ?? []);
+  for (const [key, rawValue] of Object.entries(options.paramValues)) {
     const parts = key.split(".");
     if (parts.length < 2) continue;
     const [wfNodeId, ...pathParts] = parts;
@@ -963,13 +967,13 @@ export async function executeCustomWorkflow(
     const fieldParts = pathParts[0] === "inputs" ? pathParts.slice(1) : pathParts;
     if (fieldParts.length === 0) continue;
 
-    // Handle image type — upload to ComfyUI first
-    if (typeof value === "string" && (value.startsWith("http") || value.startsWith("/manus-storage/"))) {
-      // Check if this field expects an image (best-effort)
-      const binding = options.paramValues;
-      void binding; // suppress unused warning
-      // We inject the value as-is for non-image fields; for image fields the caller
-      // should have already uploaded and stored the ComfyUI filename in paramValues.
+    // Image params: a URL is not a valid ComfyUI input value (LoadImage expects a
+    // filename already present in ComfyUI's input dir), so upload it first and
+    // substitute the returned filename. This makes both manual URL entry and
+    // upstream-node image feeds work without a separate client upload step.
+    let value = rawValue;
+    if (imageKeys.has(key) && typeof value === "string" && (/^https?:\/\//i.test(value) || value.startsWith("/manus-storage/"))) {
+      value = await uploadImageToComfy(baseUrl, value);
     }
 
     // Walk the path and set the value

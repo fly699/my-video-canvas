@@ -2,8 +2,9 @@ import { useState, useCallback, useRef, useEffect } from "react";
 import { trpc } from "@/lib/trpc";
 import { useCanvasStore, type CanvasNode } from "./useCanvasStore";
 import { toast } from "sonner";
-import type { NodeType } from "../../../shared/types";
+import type { NodeType, WorkflowParamBinding } from "../../../shared/types";
 import { VIDEO_PROVIDERS } from "../../../shared/types";
+import { detectUpstreamImageUrl, resolveWorkflowImageParams } from "../lib/comfyWorkflowParams";
 import { handleWhitelistError } from "./useWhitelistBlocked";
 
 export type NodeRunPhase = "pending" | "running" | "done" | "failed" | "skipped";
@@ -754,13 +755,23 @@ export function useWorkflowRunner() {
             failed.push(nodeId);
             return "fail";
           }
-          const paramValues = (p.paramValues as Record<string, unknown>) || {};
+          // Pull an upstream image into blank image params (mirrors the video
+          // pull model above), then tell the server which keys are images so it
+          // uploads the URL to ComfyUI.
+          const { nodes: preNodes, edges: preEdges } = useCanvasStore.getState();
+          const upstreamImg = detectUpstreamImageUrl(nodeId, preEdges, preNodes);
+          const { paramValues, imageParamKeys } = resolveWorkflowImageParams(
+            p.paramBindings as WorkflowParamBinding[] | undefined,
+            (p.paramValues as Record<string, unknown>) || {},
+            upstreamImg,
+          );
           const result = await comfyuiWorkflowMutation.mutateAsync({
             nodeId,
             projectId: node.data.projectId,
             customBaseUrl: ((p.customBaseUrl as string) || "").trim() || undefined,
             workflowJson,
             paramValues,
+            imageParamKeys: imageParamKeys.length > 0 ? imageParamKeys : undefined,
             outputNodeIds: (p.outputNodeIds as string[]) || undefined,
             outputType: ((p.outputType as string) || "auto") as "image" | "video" | "auto",
           });
@@ -781,6 +792,8 @@ export function useWorkflowRunner() {
               .flatMap((edge) => {
                 const target = wfNodes.find((n) => n.id === edge.target);
                 const tt = target?.data.nodeType;
+                // Downstream comfyui_workflow nodes pull this output at run time
+                // (detectUpstreamImageUrl), so they don't need a referenceImageUrl push.
                 return (tt === "video_task" || tt === "comfyui_video" || tt === "comfyui_image")
                   ? [{ id: edge.target, payload: { referenceImageUrl: firstUrl } }]
                   : [];

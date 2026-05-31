@@ -2001,6 +2001,7 @@ export const comfyuiRouter = router({
       customBaseUrl: z.string().max(2048).optional(),
       workflowJson: z.string().max(500_000),
       paramValues: z.record(z.string(), z.unknown()),
+      imageParamKeys: z.array(z.string().max(512)).max(64).optional(),
       outputNodeIds: z.array(z.string()).optional(),
       outputType: z.enum(["image", "video", "auto"]).default("auto"),
     }))
@@ -2014,6 +2015,7 @@ export const comfyuiRouter = router({
           const result = await executeCustomWorkflow(baseUrl, {
             workflowJson: input.workflowJson,
             paramValues: input.paramValues,
+            imageParamKeys: input.imageParamKeys,
             outputNodeIds: input.outputNodeIds,
             outputType: input.outputType === "auto" ? undefined : input.outputType,
             projectId: input.projectId,
