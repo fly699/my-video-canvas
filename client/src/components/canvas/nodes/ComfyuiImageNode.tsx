@@ -399,7 +399,8 @@ export const ComfyuiImageNode = memo(function ComfyuiImageNode({ id, selected, d
   ) : null;
 
   return (
-    <BaseNode id={id} selected={selected} nodeType="comfyui_image" title={data.title} minHeight={320} heroMedia={heroMedia}>
+    <BaseNode id={id} selected={selected} nodeType="comfyui_image" title={data.title} minHeight={320} heroMedia={heroMedia}
+      onRun={handleGenerate} running={genMutation.isPending} canRun={!!payload.prompt?.trim() && !!payload.ckpt?.trim()} hasResult={!!payload.imageUrl}>
       <div className="flex flex-col h-full p-3.5 gap-3 overflow-auto">
 
         {/* ── Result image(s) ── */}

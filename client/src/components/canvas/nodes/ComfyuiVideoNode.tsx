@@ -304,7 +304,8 @@ export const ComfyuiVideoNode = memo(function ComfyuiVideoNode({ id, selected, d
   ) : null;
 
   return (
-    <BaseNode id={id} selected={selected} nodeType="comfyui_video" title={data.title} minHeight={300} heroMedia={heroMedia}>
+    <BaseNode id={id} selected={selected} nodeType="comfyui_video" title={data.title} minHeight={300} heroMedia={heroMedia}
+      onRun={handleGenerate} running={genMutation.isPending || payload.status === "processing"} canRun={!!payload.prompt?.trim() && !!payload.ckpt?.trim()} hasResult={payload.status === "done" && !!payload.resultVideoUrl}>
       <div className="flex flex-col h-full p-3.5 gap-3 overflow-auto">
 
         {/* ── Status pill ── */}

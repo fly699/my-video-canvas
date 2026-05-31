@@ -315,6 +315,10 @@ export const ComfyuiWorkflowNode = memo(function ComfyuiWorkflowNode({ id, selec
       selected={selected}
       nodeType="comfyui_workflow"
       title={data.title}
+      onRun={handleRun}
+      running={isProcessing}
+      canRun={phase === "run" && !!payload.workflowJson?.trim()}
+      hasResult={!!payload.outputUrls && payload.outputUrls.length > 0}
     >
       {/* ref-image-in (top:30%): feed an upstream image into the first blank image param.
           Generic "in" (top:55%) keeps ordering-only / video-input edges. */}

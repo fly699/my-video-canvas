@@ -10,7 +10,7 @@ import { useWorkflowRunState } from "../../contexts/WorkflowRunContext";
 import { useCanvasMode } from "../../contexts/CanvasModeContext";
 import { useTheme } from "../../contexts/ThemeContext";
 import {
-  Trash2, Copy, GripVertical, Check, X, Loader2, FileText, AlertTriangle, Pin, Pencil, Share2,
+  Trash2, Copy, GripVertical, Check, X, Loader2, FileText, AlertTriangle, Pin, Pencil, Share2, Play, RefreshCw,
 } from "lucide-react";
 import { NODE_ICONS } from "../../lib/nodeConfig";
 import { toast } from "sonner";
@@ -30,11 +30,20 @@ interface BaseNodeProps {
   resizable?: boolean;
   /** 创意模式下显示在标题栏下方的媒体英雄区（图片/视频预览），选中时展开表单控件 */
   heroMedia?: React.ReactNode;
+  /** 标题栏常驻"运行/重新生成"按钮的处理器；提供则渲染按钮（覆盖所有主题/模式）。 */
+  onRun?: () => void;
+  /** 是否允许运行（默认 true）；false 时按钮禁用置灰。 */
+  canRun?: boolean;
+  /** 节点本地运行态（如生成中），优先于全局 runStatus。 */
+  running?: boolean;
+  /** 是否已有结果：true → 图标 RefreshCw + "重新生成"；false → Play + "运行"。 */
+  hasResult?: boolean;
 }
 
 export const BaseNode = memo(function BaseNode({
   id, selected, nodeType, title, children,
   minWidth = 280, minHeight = 140, showHandles = true, headerRight, resizable = false,
+  onRun, canRun = true, running: nodeRunning = false, hasResult = false,
   heroMedia,
 }: BaseNodeProps) {
   const config = getNodeConfig(nodeType);
@@ -407,6 +416,24 @@ export const BaseNode = memo(function BaseNode({
             }}
           >
             <Share2 size={10} />
+          </button>
+        )}
+
+        {/* 标题栏常驻"运行/重新生成"按钮 — 折叠时也能一键运行，覆盖所有主题/模式 */}
+        {onRun && (
+          <button
+            onClick={(e) => { e.stopPropagation(); if (canRun && !nodeRunning) onRun(); }}
+            disabled={!canRun || nodeRunning}
+            title={nodeRunning ? "生成中…" : (hasResult ? "重新生成" : "运行")}
+            className="nodrag flex-shrink-0 flex items-center justify-center w-[18px] h-[18px] rounded"
+            style={{
+              background: !canRun || nodeRunning ? "var(--c-surface)" : `${config.color}22`,
+              color: !canRun || nodeRunning ? "var(--c-t4)" : config.color,
+              border: `1px solid ${!canRun || nodeRunning ? "var(--c-bd2)" : `${config.color}55`}`,
+              cursor: !canRun || nodeRunning ? "not-allowed" : "pointer",
+            }}
+          >
+            {nodeRunning ? <Loader2 size={10} className="animate-spin" /> : (hasResult ? <RefreshCw size={10} /> : <Play size={10} />)}
           </button>
         )}
 

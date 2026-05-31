@@ -403,7 +403,8 @@ export const ImageGenNode = memo(function ImageGenNode({ id, selected, data }: P
   ) : null;
 
   return (
-    <BaseNode id={id} selected={selected} nodeType="image_gen" title={data.title} minHeight={300} heroMedia={heroMedia}>
+    <BaseNode id={id} selected={selected} nodeType="image_gen" title={data.title} minHeight={300} heroMedia={heroMedia}
+      onRun={handleGenerate} running={genMutation.isPending} canRun={!!payload.prompt?.trim()} hasResult={!!payload.imageUrl}>
       <div className="flex flex-col h-full p-3.5 gap-3 overflow-auto">
 
         {/* ── Batch grid result ── */}
@@ -572,15 +573,7 @@ export const ImageGenNode = memo(function ImageGenNode({ id, selected, data }: P
                     {imgCaching ? (imgCacheProgress > 0 ? `${imgCacheProgress}%` : "缓存中") : "缓存"}
                   </button>
                 )}
-                <button
-                  onClick={handleGenerate}
-                  disabled={genMutation.isPending}
-                  className="nodrag flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-medium"
-                  style={{ background: "oklch(0.72 0.20 330 / 0.2)", borderWidth: 1, borderStyle: "solid", borderColor: BORDER_ACCENT, color: accent }}
-                >
-                  {genMutation.isPending ? <Loader2 className="w-3 h-3 animate-spin" /> : <RefreshCw className="w-3 h-3" />}
-                  重新生成
-                </button>
+                {/* 重新生成已移至标题栏常驻按钮，避免与"放大"相邻误点浪费点数 */}
               </div>
             </div>
           ) : (
