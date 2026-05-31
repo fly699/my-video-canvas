@@ -463,9 +463,10 @@ export const ScriptNode = memo(function ScriptNode({ id, selected, data }: Props
   }, [anyPending, payload.synopsis, payload.content, payload.aiScriptTemplate, commitDuration, genre, style, mood, sceneCount, targetModel, aspectRatio, llmModel, promptLang, fullScriptMutation.mutate]);
 
   const handleCopy = useCallback(async () => {
-    // Copy the FULL script content — never truncated.
-    const text = payload.content ?? "";
-    if (!text.trim()) { toast.error("脚本内容为空"); return; }
+    // Copy the full script content (trimmed of leading/trailing whitespace) —
+    // never length-capped.
+    const text = (payload.content ?? "").trim();
+    if (!text) { toast.error("脚本内容为空"); return; }
     const markCopied = () => {
       setCopied(true);
       if (copyTimerRef.current) clearTimeout(copyTimerRef.current);

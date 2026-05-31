@@ -81,14 +81,19 @@ export const ComfyuiVideoNode = memo(function ComfyuiVideoNode({ id, selected, d
     { staleTime: 60_000, retry: false }
   );
 
+  // Set when the user cancels: the blocking generate request can't be aborted
+  // client-side, so skip overwriting the node when it eventually settles.
+  const cancelledRef = useRef(false);
   const genMutation = trpc.comfyui.generateVideo.useMutation({
     onSuccess: (result) => {
       if (!useCanvasStore.getState().nodes.some((n) => n.id === id)) return;
+      if (cancelledRef.current) { cancelledRef.current = false; return; }
       updateNodeData(id, { resultVideoUrl: result.url, status: "done", errorMessage: undefined, progress: undefined });
       toast.success("ComfyUI 视频生成成功");
     },
     onError: (err) => {
       if (!useCanvasStore.getState().nodes.some((n) => n.id === id)) return;
+      if (cancelledRef.current) { cancelledRef.current = false; return; }
       updateNodeData(id, { status: "failed", errorMessage: err.message, progress: undefined });
       toast.error("ComfyUI 视频生成失败：" + err.message);
     },
@@ -141,7 +146,10 @@ export const ComfyuiVideoNode = memo(function ComfyuiVideoNode({ id, selected, d
     onError: (err) => toast.error("中断失败：" + err.message),
   });
   const handleCancel = () => {
+    cancelledRef.current = true;
     interruptMutation.mutate({ customBaseUrl: payload.customBaseUrl?.trim() || undefined });
+    // Instant UI feedback — don't wait for the (possibly slow) server poll to end.
+    updateNodeData(id, { status: "failed", errorMessage: "已取消生成", progress: undefined });
   };
 
   // Recover from a stale "processing" state after a page reload.
@@ -814,17 +822,19 @@ export const ComfyuiVideoNode = memo(function ComfyuiVideoNode({ id, selected, d
             style={{ display: "none" }}
             onChange={handleFileChange}
           />
-          {/* 或直接粘贴公网图片 URL */}
-          <input
-            type="url"
-            placeholder="或粘贴公网图片 URL（https://…）"
-            value={payload.referenceImageUrl?.startsWith("http") ? payload.referenceImageUrl : ""}
-            onChange={(e) => update("referenceImageUrl", e.target.value.trim() || undefined)}
-            className="nodrag"
-            style={{ ...fieldBase, marginTop: 6, fontSize: 10.5 }}
-            onFocus={(e) => { e.currentTarget.style.borderColor = BORDER_ACCENT; }}
-            onBlur={(e) => { e.currentTarget.style.borderColor = BORDER_DEFAULT; }}
-          />
+          {/* 或直接粘贴公网图片 URL — 仅在没有本地上传图(非 http 路径)时显示 */}
+          {(!payload.referenceImageUrl || payload.referenceImageUrl.startsWith("http")) && (
+            <input
+              type="url"
+              placeholder="或粘贴公网图片 URL（https://…）"
+              value={payload.referenceImageUrl?.startsWith("http") ? payload.referenceImageUrl : ""}
+              onChange={(e) => update("referenceImageUrl", e.target.value.trim() || undefined)}
+              className="nodrag"
+              style={{ ...fieldBase, marginTop: 6, fontSize: 10.5 }}
+              onFocus={(e) => { e.currentTarget.style.borderColor = BORDER_ACCENT; }}
+              onBlur={(e) => { e.currentTarget.style.borderColor = BORDER_DEFAULT; }}
+            />
+          )}
         </div>
 
         {/* ── Progress bar ── */}
@@ -864,8 +874,9 @@ export const ComfyuiVideoNode = memo(function ComfyuiVideoNode({ id, selected, d
           }
         </button>
 
-        {/* Cancel button — interrupt the running ComfyUI job */}
-        {(genMutation.isPending || payload.status === "processing") && (
+        {/* Cancel button — interrupt the running ComfyUI job. Keyed off status so
+            it disappears the instant we flip to a cancelled/failed state. */}
+        {payload.status === "processing" && (
           <button
             onClick={handleCancel}
             disabled={interruptMutation.isPending}
