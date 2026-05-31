@@ -300,7 +300,7 @@ function StoragePanel() {
           </div>
           <ToggleRow
             label="持久化图像（Forge 存储）"
-            description="仅 Forge 存储后端生效（配置 MinIO/S3 后恒持久化、此开关被忽略）。作用对象：Poyo / Higgsfield 图像生成输出。注：manus_forge 内置图像后端始终持久化，不受此开关影响。"
+            description="仅 Forge 存储后端生效（配置 MinIO/S3 后恒持久化、此开关被忽略）。作用对象：Poyo / Higgsfield 图像生成输出（它们返回临时 CDN URL，关闭则不转存、直接用 24h 临时链接）。注：manus_forge 图像模型因只返回字节流、无临时 URL，生成图始终落盘（存到当前存储后端：MinIO 或 Forge），不受此开关控制。"
             enabled={settings.persistImage}
             disabled={setMut.isPending}
             onClick={() => handleToggle("persistImage")}
