@@ -445,6 +445,7 @@ export interface ControlNetSpec {
   strength: number;
   startPercent?: number;
   endPercent?: number;
+  preprocessor?: string;   // comfyui_controlnet_aux node class (e.g. CannyEdgePreprocessor)
 }
 
 export interface IPAdapterSpec {
@@ -555,13 +556,20 @@ export function buildImageWorkflow(a: BuildImageWorkflowArgs): Record<string, { 
   if (a.controlnet && a.controlnet.model.trim() && a.controlnet.imageName) {
     wf["30"] = { class_type: "ControlNetLoader", inputs: { control_net_name: a.controlnet.model.trim() } };
     wf["31"] = { class_type: "LoadImage", inputs: { image: a.controlnet.imageName } };
+    // Optional aux preprocessor (canny/depth/openpose…) turns the raw guide image
+    // into the control map before it feeds ControlNetApplyAdvanced.
+    let cnImageRef: NodeRef = ["31", 0];
+    if (a.controlnet.preprocessor && a.controlnet.preprocessor.trim()) {
+      wf["33"] = { class_type: a.controlnet.preprocessor.trim(), inputs: { image: ["31", 0], resolution: 512 } };
+      cnImageRef = ["33", 0];
+    }
     wf["32"] = {
       class_type: "ControlNetApplyAdvanced",
       inputs: {
         positive: positiveRef,
         negative: negativeRef,
         control_net: ["30", 0],
-        image: ["31", 0],
+        image: cnImageRef,
         strength: a.controlnet.strength,
         start_percent: a.controlnet.startPercent ?? 0,
         end_percent: a.controlnet.endPercent ?? 1,
@@ -620,7 +628,7 @@ export interface GenerateComfyImageOptions {
   lora?: string;
   loraStrength?: number;
   loras?: LoraSpec[];
-  controlnet?: { model: string; imageUrl: string; strength?: number; startPercent?: number; endPercent?: number };
+  controlnet?: { model: string; imageUrl: string; strength?: number; startPercent?: number; endPercent?: number; preprocessor?: string };
   ipadapter?: { model: string; imageUrl: string; clipVision?: string; weight?: number };
   upscaleModel?: string;
   steps?: number;
@@ -670,6 +678,7 @@ export async function generateComfyImage(rawBaseUrl: string, options: GenerateCo
       strength: options.controlnet.strength ?? 1.0,
       startPercent: options.controlnet.startPercent ?? 0,
       endPercent: options.controlnet.endPercent ?? 1,
+      preprocessor: options.controlnet.preprocessor,
     };
   }
 

@@ -633,7 +633,7 @@ export const HELP_SECTIONS: HelpSection[] = [
         ["种子 (Seed)", "-1 为随机"],
       ]},
       { type: "h3", text: "ControlNet（可选）" },
-      { type: "p", text: "展开「ControlNet」区可叠加结构控制：选择 ControlNet 模型 + 上传/粘贴控制图像 + 设置强度与生效区间（起始%/结束%）。控制图会在运行时自动上传到 ComfyUI。" },
+      { type: "p", text: "展开「ControlNet」区可叠加结构控制：选择 ControlNet 模型 + 上传/粘贴控制图像 + 设置强度与生效区间（起始%/结束%）。可选预处理器（Canny/深度/OpenPose/线稿等）自动把原图转成控制图（需安装 comfyui_controlnet_aux 节点包）；留空则直接用你提供的控制图。控制图会在运行时自动上传到 ComfyUI。" },
       { type: "h3", text: "IPAdapter（可选·风格/人脸参考）" },
       { type: "p", text: "展开「IPAdapter」区可用一张参考图迁移风格或人脸：选择 IPAdapter 模型 + 上传/粘贴参考图 + 设置权重，可选 CLIP Vision 模型。需 ComfyUI 安装 ComfyUI_IPAdapter_plus 节点包。" },
       { type: "h3", text: "inpaint（蒙版重绘）" },

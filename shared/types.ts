@@ -496,6 +496,8 @@ export interface ComfyuiControlNet {
   strength?: number;
   startPercent?: number;
   endPercent?: number;
+  /** Optional aux preprocessor node class (canny/depth/openpose…). */
+  preprocessor?: string;
 }
 
 export interface ComfyuiIPAdapter {

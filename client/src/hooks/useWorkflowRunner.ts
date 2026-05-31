@@ -652,7 +652,7 @@ export function useWorkflowRunner() {
               ? (p.loras as { name: string; strengthModel: number; strengthClip?: number }[])
               : undefined,
             controlnet: p.controlnet && typeof p.controlnet === "object" && (p.controlnet as { model?: string }).model && (p.controlnet as { imageUrl?: string }).imageUrl
-              ? (p.controlnet as { model: string; imageUrl: string; strength?: number; startPercent?: number; endPercent?: number })
+              ? (p.controlnet as { model: string; imageUrl: string; strength?: number; startPercent?: number; endPercent?: number; preprocessor?: string })
               : undefined,
             ipadapter: p.ipadapter && typeof p.ipadapter === "object" && (p.ipadapter as { model?: string }).model && (p.ipadapter as { imageUrl?: string }).imageUrl
               ? (p.ipadapter as { model: string; imageUrl: string; clipVision?: string; weight?: number })

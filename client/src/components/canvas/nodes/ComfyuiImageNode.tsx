@@ -298,7 +298,7 @@ export const ComfyuiImageNode = memo(function ComfyuiImageNode({ id, selected, d
       lora: payload.lora,
       loras: lorasValue.filter((l) => l.name.trim()).length > 0 ? lorasValue.filter((l) => l.name.trim()) : undefined,
       controlnet: cn?.model?.trim() && cn?.imageUrl
-        ? { model: cn.model.trim(), imageUrl: cn.imageUrl, strength: cn.strength, startPercent: cn.startPercent, endPercent: cn.endPercent }
+        ? { model: cn.model.trim(), imageUrl: cn.imageUrl, strength: cn.strength, startPercent: cn.startPercent, endPercent: cn.endPercent, preprocessor: cn.preprocessor?.trim() || undefined }
         : undefined,
       ipadapter: ip?.model?.trim() && ip?.imageUrl
         ? { model: ip.model.trim(), imageUrl: ip.imageUrl, clipVision: ip.clipVision?.trim() || undefined, weight: ip.weight }
@@ -1100,6 +1100,26 @@ export const ComfyuiImageNode = memo(function ComfyuiImageNode({ id, selected, d
                 />
                 <datalist id={`comfyui-controlnets-${id}`}>
                   {(modelsQuery.data?.controlnets ?? []).map((c) => <option key={c} value={c} />)}
+                </datalist>
+              </div>
+              <div>
+                <label style={labelStyle}>预处理器（可选，需 controlnet_aux 节点包）</label>
+                <input
+                  list={`comfyui-cn-preproc-${id}`}
+                  placeholder="留空＝直接用控制图（已是边缘/深度图）"
+                  value={cn?.preprocessor ?? ""}
+                  onChange={(e) => updateCn({ preprocessor: e.target.value })}
+                  className="nodrag" style={{ ...fieldBase, fontSize: 10.5 }}
+                />
+                <datalist id={`comfyui-cn-preproc-${id}`}>
+                  <option value="CannyEdgePreprocessor">Canny 边缘</option>
+                  <option value="MiDaS-DepthMapPreprocessor">深度 (MiDaS)</option>
+                  <option value="DepthAnythingV2Preprocessor">深度 (DepthAnythingV2)</option>
+                  <option value="OpenposePreprocessor">OpenPose 姿态</option>
+                  <option value="DWPreprocessor">DWPose 姿态</option>
+                  <option value="LineArtPreprocessor">线稿 LineArt</option>
+                  <option value="ScribblePreprocessor">涂鸦 Scribble</option>
+                  <option value="HEDPreprocessor">HED 软边缘</option>
                 </datalist>
               </div>
               <div>

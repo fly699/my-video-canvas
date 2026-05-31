@@ -1791,6 +1791,7 @@ export const comfyuiRouter = router({
           strength: z.number().min(0).max(2).optional(),
           startPercent: z.number().min(0).max(1).optional(),
           endPercent: z.number().min(0).max(1).optional(),
+          preprocessor: z.string().max(128).optional(),
         }).optional(),
         // Optional IPAdapter style/face reference.
         ipadapter: z.object({
