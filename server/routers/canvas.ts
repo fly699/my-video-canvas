@@ -1360,46 +1360,53 @@ export const audioGenRouter = router({
     .input(
       z.object({
         model: z.enum([
-          "suno-v3.5", "suno-v4", "suno-v4.5", "suno-v4.5plus", "suno-v5",
-          "mureka", "minimax-music-02",
+          // Live (Suno via generate-music)
+          "suno-v4", "suno-v4.5", "suno-v4.5plus", "suno-v4.5all", "suno-v5", "suno-v5.5",
+          // Live (MiniMax via status endpoint)
+          "minimax-music-2.6",
+          // Legacy aliases — normalized below
+          "suno-v3.5", "minimax-music-02", "mureka",
         ]),
         prompt: z.string().min(1),
         style: z.string().optional(),
-        durationSeconds: z.number().int().min(10).max(480).optional(),
         instrumental: z.boolean().optional(),
-        negativePrompt: z.string().optional(),
+        negativeTags: z.string().optional(),
+        lyrics: z.string().max(3500).optional(),   // MiniMax only
         projectId: z.number().optional(),
       })
     )
     .mutation(async ({ ctx, input }) => {
       await assertWhitelisted(ctx);
       if (input.projectId != null) await assertProjectAccess(input.projectId, ctx.user.id, "editor");
-      // Defense in depth: each model has a different actual max duration; the client
-      // clamps but a bypassed client could send any value up to the Zod max(480).
-      // Clamp here too so e.g. minimax (180s cap) doesn't silently truncate paid output.
-      const MUSIC_MAX_DURATION: Record<string, number> = {
-        "suno-v4.5": 240, "suno-v5": 480, "mureka": 240, "minimax-music-02": 180,
-      };
-      const maxDur = MUSIC_MAX_DURATION[input.model] ?? 240;
-      const durationSeconds = input.durationSeconds !== undefined
-        ? Math.min(input.durationSeconds, maxDur)
-        : undefined;
-      // Long-poll generation (~30s-2min) is when client-side retries are most likely.
+
+      // Normalize legacy ids to live ones. Mureka has no live equivalent.
+      let model: string = input.model;
+      if (model === "suno-v3.5") model = "suno-v4";
+      else if (model === "minimax-music-02") model = "minimax-music-2.6";
+      else if (model === "mureka") {
+        throw new TRPCError({ code: "BAD_REQUEST", message: "Mureka 暂未接入，请改用 Suno 或 MiniMax Music 2.6。" });
+      }
+
+      // MiniMax requires a prompt of 10-2000 chars.
+      if (model === "minimax-music-2.6" && input.prompt.trim().length < 10) {
+        throw new TRPCError({ code: "BAD_REQUEST", message: "MiniMax Music 2.6 的描述需至少 10 个字符。" });
+      }
+
       return dedupe("audioGen.generateMusic", ctx.user.id, input, async () => {
         const result = await submitAndPollPoyoMusic({
-          model: input.model as PoyoMusicModel,
+          model: model as PoyoMusicModel,
           prompt: input.prompt,
           style: input.style,
-          durationSeconds,
           instrumental: input.instrumental,
-          negativePrompt: input.negativePrompt,
+          negativeTags: input.negativeTags,
+          lyrics: input.lyrics,
         });
         writeAuditLog({
           ctx,
           action: "audio_music",
-          detail: { model: input.model, prompt: truncate(input.prompt), resultUrl: result.url, duration: result.duration },
+          detail: { model, prompt: truncate(input.prompt), resultUrl: result.url, duration: result.duration },
         });
-        return { url: result.url, duration: result.duration };
+        return { url: result.url, duration: result.duration, imageUrl: result.imageUrl };
       });
     }),
 

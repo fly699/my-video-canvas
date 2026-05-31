@@ -237,7 +237,7 @@ const TEMPLATES: Template[] = [
       { type: "script",     dx: 0,    dy: 0,    title: "广告脚本" },                                                                // 0
       { type: "character",  dx: -420, dy: 380,  title: "品牌角色", initialData: { characterKind: "person", role: "品牌代言人", gender: "女", age: "25-35", appearance: "专业、时尚、亲切，着品牌色服装", personality: "自信、活力、值得信赖" } }, // 1
       { type: "character",  dx: 0,    dy: 380,  title: "主场景",   initialData: { characterKind: "scene", locationType: "室内", sceneDescription: "现代简洁的室内空间，配合品牌色调，高端质感", atmosphere: "明亮", timeOfDay: "上午" } }, // 2
-      { type: "audio",      dx: 420,  dy: 380,  title: "背景音乐", initialData: { audioCategory: "music", musicPrompt: "充满活力的现代商业配乐，节奏感强，积极向上，适合品牌广告", musicDuration: 60, musicStyle: "流行" } }, // 3
+      { type: "audio",      dx: 420,  dy: 380,  title: "背景音乐", initialData: { audioCategory: "music", musicPrompt: "充满活力的现代商业配乐，节奏感强，积极向上，适合品牌广告", musicStyle: "流行" } }, // 3
       { type: "storyboard", dx: -630, dy: 760,  title: "开场钩子", initialData: { sceneNumber: 1, description: "产品特写镜头，3秒内抓住眼球，突出视觉冲击力",  cameraMovement: "zoom-in",   duration: 4, lens: "广角 24mm", colorTone: "高饱和，品牌主色" } }, // 4
       { type: "storyboard", dx: -210, dy: 760,  title: "问题场景", initialData: { sceneNumber: 2, description: "真实场景展示用户痛点，引发目标受众共鸣",         cameraMovement: "static",    duration: 5, lens: "标准 50mm", colorTone: "冷色调，偏灰" } }, // 5
       { type: "storyboard", dx: 210,  dy: 760,  title: "解决方案", initialData: { sceneNumber: 3, description: "产品介入解决问题，用户表情由困惑转为满意",       cameraMovement: "pan-right", duration: 5, lens: "标准 50mm", colorTone: "暖色调，温暖明亮" } }, // 6
@@ -289,7 +289,7 @@ const TEMPLATES: Template[] = [
     nodes: [
       { type: "script",     dx: 0,    dy: 0,    title: "Vlog 脚本", initialData: { content: "今天我来分享..." } },             // 0
       { type: "audio",      dx: -300, dy: 380,  title: "旁白配音",  initialData: { audioCategory: "dubbing", ttsSpeed: 1.0 } },  // 1
-      { type: "audio",      dx: 300,  dy: 380,  title: "背景音乐",  initialData: { audioCategory: "music", musicStyle: "轻音乐", musicPrompt: "轻松愉快的治愈系轻音乐，日常Vlog风格，清新自然", musicDuration: 120 } }, // 2
+      { type: "audio",      dx: 300,  dy: 380,  title: "背景音乐",  initialData: { audioCategory: "music", musicStyle: "轻音乐", musicPrompt: "轻松愉快的治愈系轻音乐，日常Vlog风格，清新自然" } }, // 2
       { type: "storyboard", dx: -450, dy: 760,  title: "片段 #1",  initialData: { sceneNumber: 1, description: "开场自我介绍，镜头前轻松打招呼，建立亲切感", cameraMovement: "static",   duration: 8,  lens: "广角 24mm", colorTone: "温暖明亮" } }, // 3
       { type: "storyboard", dx: -150, dy: 760,  title: "片段 #2",  initialData: { sceneNumber: 2, description: "主要内容展示，跟拍或手持拍摄，真实感强",     cameraMovement: "tracking",  duration: 10, lens: "标准 50mm", colorTone: "自然真实" } }, // 4
       { type: "storyboard", dx: 150,  dy: 760,  title: "片段 #3",  initialData: { sceneNumber: 3, description: "细节特写，突出重点物品或表情细节",           cameraMovement: "zoom-in",   duration: 6,  lens: "微距/长焦", colorTone: "清晰细节" } }, // 5
@@ -345,7 +345,7 @@ const TEMPLATES: Template[] = [
       { type: "video_task", dx: -420, dy: 1140, title: "产品视频 1" }, // 9
       { type: "video_task", dx: 0,    dy: 1140, title: "产品视频 2" }, // 10
       { type: "video_task", dx: 420,  dy: 1140, title: "产品视频 3" }, // 11
-      { type: "audio",      dx: 0,    dy: 1520, title: "产品音乐",  initialData: { audioCategory: "music", musicStyle: "流行", musicPrompt: "简洁现代的商业配乐，品质感强，适合高端产品发布", musicDuration: 90 } }, // 12
+      { type: "audio",      dx: 0,    dy: 1520, title: "产品音乐",  initialData: { audioCategory: "music", musicStyle: "流行", musicPrompt: "简洁现代的商业配乐，品质感强，适合高端产品发布" } }, // 12
       { type: "merge",      dx: 0,    dy: 1900, title: "合并剪辑", initialData: { transition: "none", bgMusicVolume: 0.4 } }, // 13
     ],
     edgeSpecs: [

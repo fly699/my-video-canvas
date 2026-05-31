@@ -272,10 +272,11 @@ export interface AudioNodeData {
   aiModel?: string; // legacy fallback
   // Music (配乐)
   musicPrompt?: string;
-  musicDuration?: number;
+  musicDuration?: number;       // @deprecated 时长由模型版本决定，不再使用（旧节点兼容）
   musicStyle?: string;
   musicInstrumental?: boolean;  // false = generate with vocals
-  musicNegativeTags?: string;   // comma-separated keywords to exclude
+  musicNegativeTags?: string;   // comma-separated keywords to exclude (Suno only)
+  musicLyrics?: string;         // MiniMax Music 2.6 lyrics (optional)
   // Dubbing / TTS (配音)
   ttsText?: string;
   ttsVoice?: string;

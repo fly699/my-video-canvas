@@ -61,36 +61,32 @@ const labelStyle: React.CSSProperties = {
 
 // ── Model lists ───────────────────────────────────────────────────────────────
 
-// Real Poyo-backed music models. Suno is confirmed live via the
-// `generate-music` endpoint with input.mv ∈ {V3.5, V4, V4.5, V4.5PLUS, V5}.
-// Mureka / MiniMax / Eleven Music are referenced by Poyo marketing but their
-// concrete `model` endpoint names are not yet published; they're kept here as
-// disabled options with ⚠ markers (same pattern as VideoTaskNode legacy
-// Higgsfield providers and AudioNode TTS legacy ids).
+// Poyo-backed music models. Suno variants route to `generate-music` (mv param);
+// MiniMax Music 2.6 routes to its own model id via the standard status endpoint.
+// Suno track length is determined by the model version — there is no duration param.
 const MUSIC_MODELS = [
-  // ── Live (Suno via generate-music endpoint) ───
-  { value: "suno-v5",          label: "Suno v5",          desc: "8 分钟 · 最高质量",     group: "Suno" },
-  { value: "suno-v4.5plus",    label: "Suno v4.5 PLUS",   desc: "增强版",                group: "Suno" },
-  { value: "suno-v4.5",        label: "Suno v4.5",        desc: "旗舰 · 全风格",         group: "Suno" },
-  { value: "suno-v4",          label: "Suno v4",          desc: "稳定 · 经典",           group: "Suno" },
-  { value: "suno-v3.5",        label: "Suno v3.5",        desc: "初代 · 快速",           group: "Suno" },
-  // ── Pending (endpoint name not yet confirmed in Poyo docs) ───
-  { value: "mureka",           label: "Mureka ⚠ 待接入",         desc: "Poyo 端点名待确认",  group: "待接入" },
-  { value: "minimax-music-02", label: "MiniMax Music-02 ⚠ 待接入", desc: "Poyo 端点名待确认",  group: "待接入" },
+  // ── Suno (generate-music endpoint) ───
+  { value: "suno-v5.5",        label: "Suno v5.5",        desc: "最新",          group: "Suno" },
+  { value: "suno-v5",          label: "Suno v5",          desc: "最高质量",      group: "Suno" },
+  { value: "suno-v4.5plus",    label: "Suno v4.5 PLUS",   desc: "增强版",        group: "Suno" },
+  { value: "suno-v4.5all",     label: "Suno v4.5 ALL",    desc: "全能",          group: "Suno" },
+  { value: "suno-v4.5",        label: "Suno v4.5",        desc: "旗舰 · 全风格", group: "Suno" },
+  { value: "suno-v4",          label: "Suno v4",          desc: "稳定 · 经典",   group: "Suno" },
+  // ── MiniMax (status endpoint) ───
+  { value: "minimax-music-2.6", label: "MiniMax Music 2.6", desc: "歌词 / 器乐", group: "MiniMax" },
 ];
 
-const LEGACY_MUSIC_MODELS = new Set(["mureka", "minimax-music-02"]);
+function musicModelIsMiniMax(m?: string): boolean {
+  return m === "minimax-music-2.6";
+}
 
-// Per-model maximum music duration (seconds). UI range slider clamps to this.
-const MUSIC_MAX_DURATION: Record<string, number> = {
-  "suno-v3.5":         240,
-  "suno-v4":           240,
-  "suno-v4.5":         240, // 4 min
-  "suno-v4.5plus":     240,
-  "suno-v5":           480, // 8 min — flagship
-  "mureka":            240,
-  "minimax-music-02":  180,
-};
+// Normalize legacy saved model ids to a live one (mirrors server-side normalization).
+function normalizeMusicModel(m?: string): string {
+  if (m === "suno-v3.5") return "suno-v4";
+  if (m === "minimax-music-02") return "minimax-music-2.6";
+  if (m && MUSIC_MODELS.some((x) => x.value === m)) return m;
+  return "suno-v5"; // mureka / unknown → default
+}
 
 // Dubbing/TTS models. The "openai_*_real" entries hit OpenAI's /v1/audio/speech
 // directly (live). "elevenlabs-v3-tts" routes to Poyo's ElevenLabs V3 TTS.
@@ -355,31 +351,27 @@ export const AudioNode = memo(function AudioNode({ id, selected, data }: Props) 
   const handleGenerateMusic = () => {
     if (musicMutation.isPending) return;
     if (!payload.musicPrompt?.trim()) { toast.error("请先输入音乐描述"); return; }
-    const validMusic = MUSIC_MODELS.map((m) => m.value);
-    const raw = payload.musicModel ?? payload.aiModel ?? "suno-v5";
-    const modelVal = (validMusic.includes(raw) ? raw : "suno-v5") as
-      | "suno-v3.5" | "suno-v4" | "suno-v4.5" | "suno-v4.5plus" | "suno-v5"
-      | "mureka" | "minimax-music-02";
-    // Block submit early for not-yet-integrated providers (Mureka / MiniMax).
-    if (LEGACY_MUSIC_MODELS.has(modelVal)) {
-      toast.error(`"${modelVal}" 尚未接入（Poyo 端点名待确认），请改用 Suno 系列`);
+    const modelVal = normalizeMusicModel(payload.musicModel ?? payload.aiModel) as
+      | "suno-v4" | "suno-v4.5" | "suno-v4.5plus" | "suno-v4.5all" | "suno-v5" | "suno-v5.5"
+      | "minimax-music-2.6";
+    const isMiniMax = musicModelIsMiniMax(modelVal);
+    // MiniMax requires a prompt of at least 10 chars — block early to avoid a wasted call.
+    if (isMiniMax && payload.musicPrompt.trim().length < 10) {
+      toast.error("MiniMax Music 2.6 的描述需至少 10 个字符，请补充");
       return;
     }
-    // Clamp duration to the picked model's actual max (UI also clamps, but if
-    // payload.musicDuration was set under a different model we'd otherwise send
-    // a too-large value that the provider would either reject or silently cap).
-    const maxDur = MUSIC_MAX_DURATION[modelVal] ?? 240;
-    const durationSeconds = Math.min(payload.musicDuration ?? 30, maxDur);
-    // Translate Chinese style tag to English — Suno/Poyo expect English genre
-    // keywords; raw Chinese gets ignored or treated as prompt noise.
-    const styleEn = payload.musicStyle ? (MUSIC_STYLE_ZH_TO_EN[payload.musicStyle] ?? payload.musicStyle) : undefined;
+    // Translate Chinese style tag to English — Suno expects English genre keywords;
+    // MiniMax has no style param so it's omitted there.
+    const styleEn = (!isMiniMax && payload.musicStyle)
+      ? (MUSIC_STYLE_ZH_TO_EN[payload.musicStyle] ?? payload.musicStyle)
+      : undefined;
     musicMutation.mutate({
       model: modelVal,
       prompt: payload.musicPrompt,
       style: styleEn,
-      durationSeconds,
-      instrumental: payload.musicInstrumental ?? true,
-      negativePrompt: payload.musicNegativeTags || undefined,
+      instrumental: payload.musicInstrumental ?? (isMiniMax ? false : true),
+      negativeTags: !isMiniMax ? (payload.musicNegativeTags || undefined) : undefined,
+      lyrics: isMiniMax ? (payload.musicLyrics || undefined) : undefined,
       projectId: data.projectId,
     });
   };
@@ -543,116 +535,107 @@ export const AudioNode = memo(function AudioNode({ id, selected, data }: Props) 
         </div>
 
         {/* ── 配乐 Music ── */}
-        {category === "music" && (
+        {category === "music" && (() => {
+          const musicModel = normalizeMusicModel(payload.musicModel ?? payload.aiModel);
+          const isMiniMax = musicModelIsMiniMax(musicModel);
+          const instrumentalDefault = isMiniMax ? false : true;
+          return (
           <>
             <ModelSelect
               models={MUSIC_MODELS}
-              value={payload.musicModel ?? (MUSIC_MODELS.find(m => m.value === payload.aiModel) ? payload.aiModel : undefined)}
-              onChange={(v) => {
-                // Clamp existing duration to the new model's cap so the slider doesn't display a value above its max
-                const newMax = MUSIC_MAX_DURATION[v] ?? 240;
-                const cur = payload.musicDuration ?? 30;
-                if (cur > newMax) {
-                  updateNodeData(id, { musicModel: v, musicDuration: newMax });
-                } else {
-                  update("musicModel", v);
-                }
-              }}
+              value={MUSIC_MODELS.some(m => m.value === payload.musicModel) ? payload.musicModel : musicModel}
+              onChange={(v) => update("musicModel", v)}
             />
             <div>
               <label style={labelStyle}>音乐描述</label>
               <textarea className="nodrag nowheel"
-                placeholder="描述你想要的配乐风格、氛围、节奏..."
+                placeholder={isMiniMax ? "描述歌曲主题、情绪、风格（至少 10 字）..." : "描述你想要的配乐风格、氛围、节奏..."}
                 value={payload.musicPrompt ?? ""}
                 onChange={(e) => update("musicPrompt", e.target.value)}
                 rows={3}
-                
+
                 style={{ ...fieldStyle, resize: "none", lineHeight: 1.6 }}
                 onFocus={(e) => { e.currentTarget.style.borderColor = BORDER_ACCENT; }}
                 onBlur={(e) => { e.currentTarget.style.borderColor = BORDER_DEFAULT; }}
               />
             </div>
-            {/* Style tags */}
-            <div>
-              <label style={labelStyle}>风格标签</label>
-              <div className="flex flex-wrap gap-1">
-                {MUSIC_STYLES_ZH.map((s) => (
-                  <button
-                    key={s}
-                    onClick={() => update("musicStyle", payload.musicStyle === s ? undefined : s)}
-                    className="nodrag px-2 py-0.5 rounded text-[10px] transition-all"
-                    style={{
-                      background: payload.musicStyle === s ? accentA(0.15) : "var(--c-input)",
-                      border: `1px solid ${payload.musicStyle === s ? accentA(0.4) : "var(--c-bd2)"}`,
-                      color: payload.musicStyle === s ? accent : "var(--c-t3)",
-                      cursor: "pointer",
-                      fontWeight: payload.musicStyle === s ? 600 : 400,
-                    }}
-                  >
-                    {s}
-                  </button>
-                ))}
+            {/* Style tags — Suno only (MiniMax has no style param) */}
+            {!isMiniMax && (
+              <div>
+                <label style={labelStyle}>风格标签</label>
+                <div className="flex flex-wrap gap-1">
+                  {MUSIC_STYLES_ZH.map((s) => (
+                    <button
+                      key={s}
+                      onClick={() => update("musicStyle", payload.musicStyle === s ? undefined : s)}
+                      className="nodrag px-2 py-0.5 rounded text-[10px] transition-all"
+                      style={{
+                        background: payload.musicStyle === s ? accentA(0.15) : "var(--c-input)",
+                        border: `1px solid ${payload.musicStyle === s ? accentA(0.4) : "var(--c-bd2)"}`,
+                        color: payload.musicStyle === s ? accent : "var(--c-t3)",
+                        cursor: "pointer",
+                        fontWeight: payload.musicStyle === s ? 600 : 400,
+                      }}
+                    >
+                      {s}
+                    </button>
+                  ))}
+                </div>
               </div>
-            </div>
-            {/* Duration — slider max varies per model (suno-v5 supports up to 480s) */}
-            <div>
-              <div className="flex items-center justify-between" style={{ marginBottom: 5 }}>
-                <label style={{ ...labelStyle, marginBottom: 0 }}>时长</label>
-                <span style={{ fontSize: 11, color: "var(--c-t3)", fontVariantNumeric: "tabular-nums" }}>{payload.musicDuration ?? 30}秒</span>
+            )}
+            {/* Lyrics — MiniMax only (optional; empty → model auto-writes lyrics) */}
+            {isMiniMax && (
+              <div>
+                <label style={labelStyle}>歌词（可选）</label>
+                <textarea className="nodrag nowheel"
+                  placeholder="留空则由模型自动生成歌词；纯器乐请打开下方开关"
+                  value={payload.musicLyrics ?? ""}
+                  onChange={(e) => update("musicLyrics", e.target.value)}
+                  rows={3}
+                  style={{ ...fieldStyle, resize: "none", lineHeight: 1.6 }}
+                  onFocus={(e) => { e.currentTarget.style.borderColor = BORDER_ACCENT; }}
+                  onBlur={(e) => { e.currentTarget.style.borderColor = BORDER_DEFAULT; }}
+                />
               </div>
-              {(() => {
-                const cur = (payload.musicModel ?? payload.aiModel ?? "suno-v4.5") as string;
-                const maxDur = MUSIC_MAX_DURATION[cur] ?? 240;
-                return (
-                  <input
-                    type="range"
-                    min={10}
-                    max={maxDur}
-                    step={5}
-                    value={Math.min(payload.musicDuration ?? 30, maxDur)}
-                    onChange={(e) => update("musicDuration", Number(e.target.value))}
-                    className="nodrag w-full"
-                    style={{ accentColor: accent }}
-                  />
-                );
-              })()}
-            </div>
-            {/* Instrumental toggle — previously hard-coded true, hiding the vocal-music capability */}
+            )}
+            {/* Instrumental toggle */}
             <div className="flex items-center justify-between">
               <label style={{ ...labelStyle, marginBottom: 0 }}>纯器乐</label>
               <button
-                onClick={() => update("musicInstrumental", !(payload.musicInstrumental ?? true))}
+                onClick={() => update("musicInstrumental", !(payload.musicInstrumental ?? instrumentalDefault))}
                 className="nodrag relative flex-shrink-0"
                 style={{
                   width: 32, height: 18, borderRadius: 9,
-                  background: (payload.musicInstrumental ?? true) ? accentA(0.5) : "var(--c-bd1)",
-                  border: `1px solid ${(payload.musicInstrumental ?? true) ? accentA(0.5) : "var(--c-bd3)"}`,
+                  background: (payload.musicInstrumental ?? instrumentalDefault) ? accentA(0.5) : "var(--c-bd1)",
+                  border: `1px solid ${(payload.musicInstrumental ?? instrumentalDefault) ? accentA(0.5) : "var(--c-bd3)"}`,
                   cursor: "pointer",
                   transition: "background 150ms ease",
                 }}
               >
                 <span style={{
                   position: "absolute", top: 2,
-                  left: (payload.musicInstrumental ?? true) ? 14 : 2,
+                  left: (payload.musicInstrumental ?? instrumentalDefault) ? 14 : 2,
                   width: 12, height: 12, borderRadius: "50%",
                   background: "var(--c-t1)",
                   transition: "left 150ms ease",
                 }} />
               </button>
             </div>
-            {/* Negative tags — exclude unwanted elements */}
-            <div>
-              <label style={labelStyle}>排除元素（可选）</label>
-              <input
-                placeholder="例如：drums, vocals, distortion"
-                value={payload.musicNegativeTags ?? ""}
-                onChange={(e) => update("musicNegativeTags", e.target.value)}
-                className="nodrag"
-                style={fieldStyle}
-                onFocus={(e) => { e.currentTarget.style.borderColor = BORDER_ACCENT; }}
-                onBlur={(e) => { e.currentTarget.style.borderColor = BORDER_DEFAULT; }}
-              />
-            </div>
+            {/* Negative tags — Suno only (exclude unwanted elements) */}
+            {!isMiniMax && (
+              <div>
+                <label style={labelStyle}>排除元素（可选）</label>
+                <input
+                  placeholder="例如：drums, vocals, distortion"
+                  value={payload.musicNegativeTags ?? ""}
+                  onChange={(e) => update("musicNegativeTags", e.target.value)}
+                  className="nodrag"
+                  style={fieldStyle}
+                  onFocus={(e) => { e.currentTarget.style.borderColor = BORDER_ACCENT; }}
+                  onBlur={(e) => { e.currentTarget.style.borderColor = BORDER_DEFAULT; }}
+                />
+              </div>
+            )}
             <GenerateBtn
               disabled={!payload.musicPrompt?.trim()}
               loading={musicMutation.isPending}
@@ -660,7 +643,8 @@ export const AudioNode = memo(function AudioNode({ id, selected, data }: Props) 
               label="生成配乐"
             />
           </>
-        )}
+          );
+        })()}
 
         {/* ── 配音 Dubbing ── */}
         {category === "dubbing" && (() => {
