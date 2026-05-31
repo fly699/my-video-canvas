@@ -505,7 +505,7 @@ export interface ComfyuiIPAdapter {
   weight?: number;
 }
 
-export type ComfyuiImageTemplate = "txt2img" | "img2img";
+export type ComfyuiImageTemplate = "txt2img" | "img2img" | "inpaint";
 export interface ComfyuiImageNodeData {
   // Connection
   customBaseUrl?: string;       // empty = use server-side global default
@@ -541,6 +541,8 @@ export interface ComfyuiImageNodeData {
   batchSize?: number;
   // I/O
   referenceImageUrl?: string;
+  /** Inpaint mask (white = regenerate). Drawn over the reference image. */
+  maskUrl?: string;
   imageUrl?: string;
   imageStorageKey?: string;
   imageUrls?: string[];

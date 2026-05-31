@@ -618,11 +618,11 @@ export const HELP_SECTIONS: HelpSection[] = [
     emoji: "🖥️",
     nodeType: "comfyui_image",
     content: [
-      { type: "p", text: "使用本地 ComfyUI 服务器生成图像，支持 txt2img 和 img2img 两种模式。" },
+      { type: "p", text: "使用本地 ComfyUI 服务器生成图像，支持 txt2img、img2img、inpaint（蒙版重绘）三种模式。" },
       { type: "h3", text: "基本参数" },
       { type: "kv", rows: [
         ["服务器地址", "ComfyUI HTTP 地址，如 http://192.168.1.100:8188，留空使用全局配置"],
-        ["工作流模板", "txt2img（文生图）/ img2img（图生图）"],
+        ["工作流模板", "txt2img（文生图）/ img2img（图生图）/ inpaint（蒙版局部重绘）"],
         ["模型 (Checkpoint)", "从服务器模型列表选择"],
         ["LoRA（可叠加）", "可添加多个 LoRA 串联，每个独立设置强度（-2~2），最多 8 个"],
         ["提示词", "正向提示词（英文效果最佳）"],
@@ -636,6 +636,8 @@ export const HELP_SECTIONS: HelpSection[] = [
       { type: "p", text: "展开「ControlNet」区可叠加结构控制：选择 ControlNet 模型 + 上传/粘贴控制图像 + 设置强度与生效区间（起始%/结束%）。控制图会在运行时自动上传到 ComfyUI。" },
       { type: "h3", text: "IPAdapter（可选·风格/人脸参考）" },
       { type: "p", text: "展开「IPAdapter」区可用一张参考图迁移风格或人脸：选择 IPAdapter 模型 + 上传/粘贴参考图 + 设置权重，可选 CLIP Vision 模型。需 ComfyUI 安装 ComfyUI_IPAdapter_plus 节点包。" },
+      { type: "h3", text: "inpaint（蒙版重绘）" },
+      { type: "p", text: "模板选 inpaint：上传原图后，在图上用画笔涂抹要重绘的区域（白色＝重绘），可调画笔大小、清除。运行时只重绘涂抹区域，其余保持不变（VAEEncodeForInpaint）。配合提示词描述新内容。" },
       { type: "h3", text: "高级参数" },
       { type: "kv", rows: [
         ["采样器 (Sampler)", "推荐 euler_a / dpmpp_2m"],

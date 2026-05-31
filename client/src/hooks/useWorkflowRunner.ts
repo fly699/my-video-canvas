@@ -623,10 +623,17 @@ export function useWorkflowRunner() {
             failed.push(nodeId);
             return "fail";
           }
-          const template = ((p.workflowTemplate as string) === "img2img") ? "img2img" : "txt2img";
+          const tplRaw = p.workflowTemplate as string;
+          const template = (tplRaw === "img2img" || tplRaw === "inpaint") ? tplRaw : "txt2img";
           const refUrl = (p.referenceImageUrl as string) || undefined;
-          if (template === "img2img" && !refUrl) {
-            toast.error(`节点 "${node.data.title}"：img2img 模板需要参考图`);
+          const maskUrl = (p.maskUrl as string) || undefined;
+          if ((template === "img2img" || template === "inpaint") && !refUrl) {
+            toast.error(`节点 "${node.data.title}"：${template} 模板需要参考图`);
+            failed.push(nodeId);
+            return "fail";
+          }
+          if (template === "inpaint" && !maskUrl) {
+            toast.error(`节点 "${node.data.title}"：inpaint 模板需要蒙版`);
             failed.push(nodeId);
             return "fail";
           }
@@ -663,6 +670,7 @@ export function useWorkflowRunner() {
             loraStrength: typeof p.loraStrength === "number" ? p.loraStrength : undefined,
             batchSize: typeof p.batchSize === "number" ? p.batchSize : 1,
             referenceImageUrl: refUrl,
+            maskUrl,
           });
           // Guard against the node having been deleted while the long-running
           // mutation was in flight — writing back would resurrect a ghost node.

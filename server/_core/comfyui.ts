@@ -455,7 +455,7 @@ export interface IPAdapterSpec {
 }
 
 interface BuildImageWorkflowArgs {
-  template: "txt2img" | "img2img";
+  template: "txt2img" | "img2img" | "inpaint";
   prompt: string;
   negPrompt: string;
   ckpt: string;
@@ -464,7 +464,8 @@ interface BuildImageWorkflowArgs {
   controlnet?: ControlNetSpec;
   ipadapter?: IPAdapterSpec;
   upscaleModel?: string;   // UpscaleModelLoader name; empty = no upscale
-  refImageName?: string;   // img2img reference image filename
+  refImageName?: string;   // img2img / inpaint reference image filename
+  maskName?: string;       // inpaint mask filename (white = regenerate)
   seed: number;
   steps: number;
   cfg: number;
@@ -570,9 +571,15 @@ export function buildImageWorkflow(a: BuildImageWorkflowArgs): Record<string, { 
     negativeRef = ["32", 1];
   }
 
-  // Latent source: empty latent (txt2img) or VAE-encoded reference (img2img).
+  // Latent source: empty latent (txt2img), VAE-encoded reference (img2img), or
+  // mask-aware encode (inpaint: regenerate only the white mask area).
   let latentRef: NodeRef;
-  if (a.template === "img2img") {
+  if (a.template === "inpaint") {
+    wf["11"] = { class_type: "LoadImage", inputs: { image: a.refImageName ?? "" } };
+    wf["12"] = { class_type: "LoadImageMask", inputs: { image: a.maskName ?? "", channel: "red" } };
+    wf["10"] = { class_type: "VAEEncodeForInpaint", inputs: { pixels: ["11", 0], vae: vaeRef, mask: ["12", 0], grow_mask_by: 6 } };
+    latentRef = ["10", 0];
+  } else if (a.template === "img2img") {
     wf["11"] = { class_type: "LoadImage", inputs: { image: a.refImageName ?? "" } };
     wf["10"] = { class_type: "VAEEncode", inputs: { pixels: ["11", 0], vae: vaeRef } };
     latentRef = ["10", 0];
@@ -604,10 +611,11 @@ export function buildImageWorkflow(a: BuildImageWorkflowArgs): Record<string, { 
 }
 
 export interface GenerateComfyImageOptions {
-  workflowTemplate: "txt2img" | "img2img";
+  workflowTemplate: "txt2img" | "img2img" | "inpaint";
   prompt: string;
   negPrompt?: string;
   ckpt: string;
+  maskUrl?: string;
   // Single-LoRA fields kept for backward compatibility; `loras` takes precedence.
   lora?: string;
   loraStrength?: number;
@@ -635,9 +643,14 @@ export async function generateComfyImage(rawBaseUrl: string, options: GenerateCo
   const baseUrl = normalizeBaseUrl(rawBaseUrl);
 
   let refImageName: string | undefined;
-  if (options.workflowTemplate === "img2img") {
-    if (!options.referenceImageUrl) throw new Error("img2img 模板需要参考图");
+  let maskName: string | undefined;
+  if (options.workflowTemplate === "img2img" || options.workflowTemplate === "inpaint") {
+    if (!options.referenceImageUrl) throw new Error(`${options.workflowTemplate} 模板需要参考图`);
     refImageName = await uploadImageToComfy(baseUrl, options.referenceImageUrl);
+  }
+  if (options.workflowTemplate === "inpaint") {
+    if (!options.maskUrl) throw new Error("inpaint 模板需要蒙版");
+    maskName = await uploadImageToComfy(baseUrl, options.maskUrl);
   }
 
   // Normalize LoRA input: prefer the multi-LoRA array, fall back to the legacy
@@ -683,12 +696,14 @@ export async function generateComfyImage(rawBaseUrl: string, options: GenerateCo
     ipadapter,
     upscaleModel: options.upscaleModel,
     refImageName,
+    maskName,
     seed: options.seed ?? Math.floor(Math.random() * 2_147_483_647),
     steps: options.steps ?? 20,
     cfg: options.cfg ?? 7,
     sampler: options.sampler ?? "euler",
     scheduler: options.scheduler ?? "normal",
-    // img2img needs denoise < 1.0 to retain the reference image; 0.75 is the practical default
+    // img2img keeps the reference (denoise < 1.0); inpaint regenerates the masked
+    // area fully (1.0 default); txt2img is always 1.0.
     denoise: options.workflowTemplate === "img2img" ? (options.denoise ?? 0.75) : (options.denoise ?? 1.0),
     width: options.width ?? 512,
     height: options.height ?? 512,

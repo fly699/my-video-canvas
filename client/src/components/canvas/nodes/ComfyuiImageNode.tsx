@@ -13,6 +13,7 @@ import {
 import { useLocalMedia } from "@/lib/useLocalMedia";
 import { cacheMedia } from "@/lib/mediaCache";
 import { ImageLightbox } from "../ImageLightbox";
+import { MaskCanvas } from "./MaskCanvas";
 import { LLMModelPicker, type LLMModelId } from "../LLMModelPicker";
 import { makeImageProxyFallback } from "@/lib/utils";
 
@@ -126,14 +127,16 @@ export const ComfyuiImageNode = memo(function ComfyuiImageNode({ id, selected, d
     },
   });
 
-  // Which slot the in-flight upload targets: img2img reference / ControlNet / IPAdapter.
-  const uploadTargetRef = useRef<"reference" | "controlnet" | "ipadapter">("reference");
+  // Which slot the in-flight upload targets: img2img reference / ControlNet / IPAdapter / inpaint mask.
+  const uploadTargetRef = useRef<"reference" | "controlnet" | "ipadapter" | "mask">("reference");
   const uploadMutation = trpc.upload.uploadImage.useMutation({
     onSuccess: (result) => {
       setUploading(false);
       if (!useCanvasStore.getState().nodes.some((n) => n.id === id)) return;
       const cur = useCanvasStore.getState().nodes.find((n) => n.id === id)?.data as ComfyuiImageNodeData | undefined;
-      if (uploadTargetRef.current === "controlnet") {
+      if (uploadTargetRef.current === "mask") {
+        updateNodeData(id, { maskUrl: result.url });
+      } else if (uploadTargetRef.current === "controlnet") {
         const c = cur?.controlnet;
         updateNodeData(id, { controlnet: { model: c?.model ?? "", strength: c?.strength, startPercent: c?.startPercent, endPercent: c?.endPercent, imageUrl: result.url } });
         toast.success("ControlNet 图像上传成功");
@@ -276,8 +279,11 @@ export const ComfyuiImageNode = memo(function ComfyuiImageNode({ id, selected, d
     if (uploading) { toast.error("参考图正在上传中，请稍候"); return; }
     if (!payload.prompt?.trim()) { toast.error("请先填写提示词"); return; }
     if (!payload.ckpt?.trim()) { toast.error("请先填写 Checkpoint 名称"); return; }
-    if (payload.workflowTemplate === "img2img" && !payload.referenceImageUrl) {
-      toast.error("img2img 模板需要参考图"); return;
+    if ((payload.workflowTemplate === "img2img" || payload.workflowTemplate === "inpaint") && !payload.referenceImageUrl) {
+      toast.error(payload.workflowTemplate === "inpaint" ? "inpaint 模板需要原图" : "img2img 模板需要参考图"); return;
+    }
+    if (payload.workflowTemplate === "inpaint" && !payload.maskUrl) {
+      toast.error("inpaint 模板需要涂抹蒙版"); return;
     }
     cancelledRef.current = false;
     updateNodeData(id, { status: "processing", errorMessage: undefined, progress: 0 });
@@ -310,6 +316,7 @@ export const ComfyuiImageNode = memo(function ComfyuiImageNode({ id, selected, d
       loraStrength: typeof payload.loraStrength === "number" ? payload.loraStrength : undefined,
       batchSize: payload.batchSize ?? 1,
       referenceImageUrl: payload.referenceImageUrl,
+      maskUrl: payload.maskUrl,
     });
   };
 
@@ -342,6 +349,8 @@ export const ComfyuiImageNode = memo(function ComfyuiImageNode({ id, selected, d
   };
 
   const isImg2Img = payload.workflowTemplate === "img2img";
+  const isInpaint = payload.workflowTemplate === "inpaint";
+  const needsRefImage = isImg2Img || isInpaint;
 
   // ── Local media cache (IndexedDB) ────────────────────────────────────────
   const { isLocal: imgIsLocal, blobUrl: imgBlobUrl, downloadedAt: imgDownloadedAt, refresh: refreshImgCache } = useLocalMedia(payload.imageUrl);
@@ -657,7 +666,7 @@ export const ComfyuiImageNode = memo(function ComfyuiImageNode({ id, selected, d
           </label>
           <select
             value={payload.workflowTemplate ?? "txt2img"}
-            onChange={(e) => update("workflowTemplate", e.target.value as "txt2img" | "img2img")}
+            onChange={(e) => update("workflowTemplate", e.target.value as ComfyuiImageNodeData["workflowTemplate"])}
             className="nodrag"
             style={{ ...fieldBase, cursor: "pointer" }}
             onFocus={(e) => { e.currentTarget.style.borderColor = BORDER_ACCENT; }}
@@ -665,6 +674,7 @@ export const ComfyuiImageNode = memo(function ComfyuiImageNode({ id, selected, d
           >
             <option value="txt2img">txt2img — 文生图</option>
             <option value="img2img">img2img — 图生图</option>
+            <option value="inpaint">inpaint — 蒙版重绘</option>
           </select>
         </div>
 
@@ -979,10 +989,10 @@ export const ComfyuiImageNode = memo(function ComfyuiImageNode({ id, selected, d
           )}
         </div>
 
-        {/* ── Reference image upload (img2img only) ── */}
-        {isImg2Img && (
+        {/* ── Reference image upload (img2img / inpaint) ── */}
+        {needsRefImage && (
           <div>
-            <label style={labelStyle}>参考图（img2img 必需） *</label>
+            <label style={labelStyle}>{isInpaint ? "原图（inpaint 必需） *" : "参考图（img2img 必需） *"}</label>
             {payload.referenceImageUrl ? (
               <div
                 className="relative rounded-lg overflow-hidden"
@@ -1041,6 +1051,24 @@ export const ComfyuiImageNode = memo(function ComfyuiImageNode({ id, selected, d
                 onFocus={(e) => { e.currentTarget.style.borderColor = BORDER_ACCENT; }}
                 onBlur={(e) => { e.currentTarget.style.borderColor = BORDER_DEFAULT; }}
               />
+            )}
+            {/* Inpaint mask painter — appears once the reference image is set. */}
+            {isInpaint && payload.referenceImageUrl && (
+              <div style={{ marginTop: 8 }}>
+                <label style={labelStyle}>蒙版（涂抹要重绘的区域） *</label>
+                <MaskCanvas
+                  imageUrl={payload.referenceImageUrl}
+                  accent={accent}
+                  onExport={(dataUrl) => {
+                    if (!dataUrl) { update("maskUrl", undefined); return; }
+                    uploadTargetRef.current = "mask";
+                    const base64 = dataUrl.split(",")[1];
+                    setUploading(true);
+                    uploadMutation.mutate({ base64, mimeType: "image/png", filename: "inpaint-mask.png" });
+                  }}
+                />
+                {payload.maskUrl && <p style={{ fontSize: 9.5, color: "oklch(0.65 0.18 145)", margin: "2px 0 0" }}>✓ 蒙版已就绪</p>}
+              </div>
             )}
           </div>
         )}
