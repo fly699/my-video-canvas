@@ -258,15 +258,18 @@ function StoragePanel() {
               关于 Forge 平台（非存储依赖）
             </h3>
             <p style={{ margin: "4px 0 0", fontSize: 12, color: "var(--c-t2, rgba(255,255,255,0.55))", lineHeight: 1.6 }}>
-              「Forge 内置存储」虽已被 MinIO/S3 取代为回退，但 <strong>Forge 平台（BUILT_IN_FORGE_API_URL / BUILT_IN_FORGE_API_KEY）仍是必需基础设施</strong>，
-              与对象存储配置无关，承担以下子系统：<br />
+              <strong style={{ color: "oklch(0.82 0.14 65)" }}>请区分两层，互不影响：</strong><br />
+              <strong>① 上面的「持久化开关」</strong>：只管"生成的媒体要不要落对象存储"，
+              <strong>不影响</strong>本卡片下列任何非存储功能；关闭它至多让媒体降级为上游临时 URL（配了 MinIO 时甚至被忽略）。<br />
+              <strong>② Forge 凭据（环境变量 BUILT_IN_FORGE_API_URL / BUILT_IN_FORGE_API_KEY）</strong>：是部署层面的整个 Forge 平台开关。
+              「Forge 内置存储」虽已被 MinIO/S3 取代为回退，但该平台仍是必需基础设施，与对象存储配置无关，承担以下子系统：<br />
               • <strong>LLM 代理</strong>：Claude / Gemini 等非 GPT 模型经 Forge `/v1/chat/completions` 调用<br />
               • <strong>图像生成</strong>：`manus_forge` 模型，以及未配 Poyo Key 时的兜底<br />
               • <strong>语音转写</strong>：Whisper（音频转文字）<br />
               • <strong>定时任务</strong>：heartbeat 计划任务<br />
               • <strong>站内通知</strong>：项目所有者通知<br />
               • <strong>Data API / 地图</strong>：YouTube、Google Maps 等外部 API 代理<br />
-              因此<strong>即使存储全部切到 MinIO，也不能移除 Forge 凭据</strong>——否则上述功能不可用。
+              因此让上述功能失效的是<strong>移除环境变量里的 Forge 凭据</strong>（运维操作），而<strong>不是</strong>点上面的持久化开关。即使存储全切 MinIO，也不要删 Forge 凭据。
             </p>
           </div>
         </div>
