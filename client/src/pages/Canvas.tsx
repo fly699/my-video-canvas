@@ -371,7 +371,7 @@ function CanvasInner({ projectId }: { projectId: number }) {
   const [showArcPicker, setShowArcPicker] = useState(false);
   const { mode: canvasMode, setMode: setCanvasMode } = useCanvasMode();
   const { theme } = useTheme();
-  const isLight = theme === "light" || theme === "warm" || theme === "mint" || theme === "lavender" || canvasMode === "creative";
+  const isLight = theme === "light" || theme === "warm" || theme === "mint" || theme === "lavender" || theme === "paper" || canvasMode === "creative";
   // Auto-show filmstrip when entering creative mode, hide when leaving
   useEffect(() => {
     if (canvasMode === "creative") setShowFilmstrip(true);
