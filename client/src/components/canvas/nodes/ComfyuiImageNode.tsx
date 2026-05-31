@@ -2,13 +2,13 @@ import { memo, useCallback, useEffect, useRef, useState } from "react";
 import { Handle, Position } from "@xyflow/react";
 import { BaseNode } from "../BaseNode";
 import { useCanvasStore } from "../../../hooks/useCanvasStore";
-import type { ComfyuiImageNodeData } from "../../../../../shared/types";
+import type { ComfyuiImageNodeData, ComfyuiLoraEntry } from "../../../../../shared/types";
 import { trpc } from "@/lib/trpc";
 import { toast } from "sonner";
 import {
   Sparkles, Loader2, RefreshCw, Upload, X, Cpu, Download, ZoomIn,
   ChevronDown, ChevronRight, Server, Boxes, ImageIcon, HardDriveDownload,
-  Languages, Check, Copy, Lock, Unlock, Ban,
+  Languages, Check, Copy, Lock, Unlock, Ban, Plus, Layers,
 } from "lucide-react";
 import { useLocalMedia } from "@/lib/useLocalMedia";
 import { cacheMedia } from "@/lib/mediaCache";
@@ -87,7 +87,9 @@ export const ComfyuiImageNode = memo(function ComfyuiImageNode({ id, selected, d
   const [llmModel, setLlmModel] = useState<LLMModelId>("claude-haiku-4-5-20251001");
   const [urlExpanded, setUrlExpanded] = useState(false);
   const [paramsExpanded, setParamsExpanded] = useState(false);
+  const [cnExpanded, setCnExpanded] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const cnFileInputRef = useRef<HTMLInputElement>(null);
 
   // Pull ckpt/lora suggestions from ComfyUI via /object_info (best-effort, no-throw).
   // Debounce the URL so each keystroke in the COMFYUI_BASE_URL field doesn't
@@ -122,16 +124,24 @@ export const ComfyuiImageNode = memo(function ComfyuiImageNode({ id, selected, d
     },
   });
 
+  // Which slot the in-flight upload targets: img2img reference or ControlNet guide.
+  const uploadTargetRef = useRef<"reference" | "controlnet">("reference");
   const uploadMutation = trpc.upload.uploadImage.useMutation({
     onSuccess: (result) => {
       setUploading(false);
       if (!useCanvasStore.getState().nodes.some((n) => n.id === id)) return;
-      updateNodeData(id, { referenceImageUrl: result.url });
-      toast.success("参考图上传成功");
+      if (uploadTargetRef.current === "controlnet") {
+        const cn = useCanvasStore.getState().nodes.find((n) => n.id === id)?.data as ComfyuiImageNodeData | undefined;
+        updateNodeData(id, { controlnet: { model: cn?.controlnet?.model ?? "", strength: cn?.controlnet?.strength, startPercent: cn?.controlnet?.startPercent, endPercent: cn?.controlnet?.endPercent, imageUrl: result.url } });
+        toast.success("ControlNet 图像上传成功");
+      } else {
+        updateNodeData(id, { referenceImageUrl: result.url });
+        toast.success("参考图上传成功");
+      }
     },
     onError: (err) => {
       setUploading(false);
-      toast.error("参考图上传失败：" + err.message);
+      toast.error("图像上传失败：" + err.message);
     },
   });
 
@@ -153,6 +163,21 @@ export const ComfyuiImageNode = memo(function ComfyuiImageNode({ id, selected, d
     (field: keyof ComfyuiImageNodeData, value: unknown) => updateNodeData(id, { [field]: value }),
     [id, updateNodeData]
   );
+
+  // Multi-LoRA: `loras` is the source of truth; fall back to the legacy single
+  // `lora`/`loraStrength` for nodes saved before this feature existed.
+  const lorasValue: ComfyuiLoraEntry[] =
+    payload.loras ?? (payload.lora?.trim() ? [{ name: payload.lora.trim(), strengthModel: payload.loraStrength ?? 1.0 }] : []);
+  const setLoras = (next: typeof lorasValue) =>
+    updateNodeData(id, { loras: next, lora: undefined, loraStrength: undefined });
+  const addLora = () => setLoras([...lorasValue, { name: "", strengthModel: 1.0 }]);
+  const updateLora = (i: number, patch: Partial<(typeof lorasValue)[number]>) =>
+    setLoras(lorasValue.map((l, idx) => (idx === i ? { ...l, ...patch } : l)));
+  const removeLora = (i: number) => setLoras(lorasValue.filter((_, idx) => idx !== i));
+
+  const cn = payload.controlnet;
+  const updateCn = (patch: Partial<NonNullable<ComfyuiImageNodeData["controlnet"]>>) =>
+    updateNodeData(id, { controlnet: { model: cn?.model ?? "", imageUrl: cn?.imageUrl ?? "", strength: cn?.strength, startPercent: cn?.startPercent, endPercent: cn?.endPercent, ...patch } });
 
   const handleTranslate = (field: "prompt" | "negPrompt" = "prompt") => {
     if (translating || translateMutation.isPending) return;
@@ -210,6 +235,8 @@ export const ComfyuiImageNode = memo(function ComfyuiImageNode({ id, selected, d
       ckpt: p.ckpt,
       lora: p.lora,
       loraStrength: p.loraStrength,
+      loras: p.loras,
+      controlnet: p.controlnet,
       steps: p.steps,
       cfg: p.cfg,
       width: p.width,
@@ -250,6 +277,10 @@ export const ComfyuiImageNode = memo(function ComfyuiImageNode({ id, selected, d
       negPrompt: payload.negPrompt,
       ckpt: payload.ckpt,
       lora: payload.lora,
+      loras: lorasValue.filter((l) => l.name.trim()).length > 0 ? lorasValue.filter((l) => l.name.trim()) : undefined,
+      controlnet: cn?.model?.trim() && cn?.imageUrl
+        ? { model: cn.model.trim(), imageUrl: cn.imageUrl, strength: cn.strength, startPercent: cn.startPercent, endPercent: cn.endPercent }
+        : undefined,
       steps: payload.steps ?? 20,
       cfg: payload.cfg ?? 7,
       seed: typeof payload.seed === "number" ? payload.seed : -1,
@@ -265,11 +296,12 @@ export const ComfyuiImageNode = memo(function ComfyuiImageNode({ id, selected, d
     });
   };
 
-  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>, target: "reference" | "controlnet" = "reference") => {
     const file = e.target.files?.[0];
     if (!file) return;
     if (!file.type.startsWith("image/")) { toast.error("请选择图片文件"); e.target.value = ""; return; }
     if (file.size > 16 * 1024 * 1024) { toast.error("文件不能超过 16 MB"); e.target.value = ""; return; }
+    uploadTargetRef.current = target;
     setUploading(true);
     const reader = new FileReader();
     reader.onload = () => {
@@ -565,6 +597,13 @@ export const ComfyuiImageNode = memo(function ComfyuiImageNode({ id, selected, d
                 errorMessage={modelsQuery.error?.message}
                 ckptCount={modelsQuery.data?.ckpts.length ?? 0}
                 loraCount={modelsQuery.data?.loras.length ?? 0}
+                extraCounts={[
+                  { label: "VAE", count: modelsQuery.data?.vaes.length ?? 0 },
+                  { label: "ControlNet", count: modelsQuery.data?.controlnets.length ?? 0 },
+                  { label: "UNET", count: modelsQuery.data?.unets.length ?? 0 },
+                  { label: "放大", count: modelsQuery.data?.upscaleModels.length ?? 0 },
+                  { label: "嵌入", count: modelsQuery.data?.embeddings.length ?? 0 },
+                ]}
               />
               <p style={{ fontSize: 10, color: "var(--c-t4)", marginTop: 4 }}>
                 每个节点独立配置，仅 http(s) 协议。ComfyUI 端需用 <code>--listen 0.0.0.0</code> 启动；本应用服务器必须能通过网络到达此地址。
@@ -694,22 +733,67 @@ export const ComfyuiImageNode = memo(function ComfyuiImageNode({ id, selected, d
           </datalist>
         </div>
 
-        {/* ── LoRA ── */}
+        {/* ── LoRA stack (multi) ── */}
         <div>
-          <label style={labelStyle}>LoRA（可选）</label>
-          <input
-            list={`comfyui-loras-${id}`}
-            placeholder="留空表示不使用 LoRA"
-            value={payload.lora ?? ""}
-            onChange={(e) => update("lora", e.target.value)}
-            className="nodrag"
-            style={fieldBase}
-            onFocus={(e) => { e.currentTarget.style.borderColor = "var(--c-t4)"; }}
-            onBlur={(e) => { e.currentTarget.style.borderColor = BORDER_DEFAULT; }}
-          />
+          <label style={{ ...labelStyle, display: "flex", alignItems: "center", gap: 4 }}>
+            <Layers style={{ width: 10, height: 10 }} />
+            LoRA（可叠加多个，可选）
+          </label>
           <datalist id={`comfyui-loras-${id}`}>
             {(modelsQuery.data?.loras ?? []).map((l) => <option key={l} value={l} />)}
           </datalist>
+          {lorasValue.length === 0 && (
+            <p style={{ fontSize: 10, color: "var(--c-t4)", margin: "2px 0 4px" }}>未使用 LoRA</p>
+          )}
+          <div className="flex flex-col gap-1.5">
+            {lorasValue.map((l, i) => (
+              <div key={i} className="flex flex-col gap-1 p-1.5 rounded-lg" style={{ background: "var(--c-input)", border: "1px solid var(--c-bd1)" }}>
+                <div className="flex items-center gap-1">
+                  <input
+                    list={`comfyui-loras-${id}`}
+                    placeholder="lora 文件名"
+                    value={l.name}
+                    onChange={(e) => updateLora(i, { name: e.target.value })}
+                    className="nodrag"
+                    style={{ ...fieldBase, flex: 1 }}
+                    onFocus={(e) => { e.currentTarget.style.borderColor = "var(--c-t4)"; }}
+                    onBlur={(e) => { e.currentTarget.style.borderColor = BORDER_DEFAULT; }}
+                  />
+                  <button
+                    onClick={() => removeLora(i)}
+                    className="nodrag flex items-center justify-center rounded-md"
+                    style={{ width: 24, height: 24, flexShrink: 0, background: "var(--c-surface)", border: "1px solid var(--c-bd2)", color: "var(--c-t4)", cursor: "pointer" }}
+                    title="移除此 LoRA"
+                  >
+                    <X className="w-3 h-3" />
+                  </button>
+                </div>
+                <div className="flex items-center gap-1.5">
+                  <span style={{ fontSize: 9.5, color: "var(--c-t4)", flexShrink: 0 }}>强度 {l.strengthModel.toFixed(2)}</span>
+                  <input
+                    type="range" min={-2} max={2} step={0.05}
+                    value={l.strengthModel}
+                    onChange={(e) => updateLora(i, { strengthModel: Number(e.target.value) })}
+                    className="nodrag" style={{ flex: 1, accentColor: accent }}
+                  />
+                </div>
+              </div>
+            ))}
+          </div>
+          <button
+            onClick={addLora}
+            disabled={lorasValue.length >= 8}
+            className="nodrag flex items-center justify-center gap-1 w-full py-1 mt-1 rounded-lg text-[10px] transition-all"
+            style={{
+              background: "var(--c-input)",
+              border: "1px dashed var(--c-bd2)",
+              color: lorasValue.length >= 8 ? "var(--c-t4)" : accent,
+              cursor: lorasValue.length >= 8 ? "not-allowed" : "pointer",
+            }}
+            title={lorasValue.length >= 8 ? "最多 8 个 LoRA" : "添加一个 LoRA"}
+          >
+            <Plus className="w-3 h-3" /> 添加 LoRA
+          </button>
         </div>
 
         {/* ── Advanced params (collapsible) ── */}
@@ -823,21 +907,6 @@ export const ComfyuiImageNode = memo(function ComfyuiImageNode({ id, selected, d
                   {(modelsQuery.data?.vaes ?? []).map((v) => <option key={v} value={v} />)}
                 </datalist>
               </div>
-              {/* LoRA strength (only when lora is set) */}
-              {payload.lora && (
-                <div className="col-span-2">
-                  <label style={labelStyle}>
-                    LoRA 强度 &nbsp;
-                    <span style={{ fontWeight: 400, color: "var(--c-t3)" }}>{(payload.loraStrength ?? 1.0).toFixed(2)}</span>
-                  </label>
-                  <input
-                    type="range" min={0} max={2} step={0.05}
-                    value={payload.loraStrength ?? 1.0}
-                    onChange={(e) => update("loraStrength", Number(e.target.value))}
-                    className="nodrag" style={{ width: "100%", accentColor: accent }}
-                  />
-                </div>
-              )}
               {/* Batch size */}
               <div>
                 <label style={labelStyle}>批量数量</label>
@@ -944,6 +1013,85 @@ export const ComfyuiImageNode = memo(function ComfyuiImageNode({ id, selected, d
           </div>
         )}
 
+        {/* ── ControlNet (optional, applies to txt2img & img2img) ── */}
+        <div className="rounded-xl" style={{ background: "var(--c-input)", border: "1px solid var(--c-bd1)" }}>
+          <button
+            onClick={() => setCnExpanded((v) => !v)}
+            className="nodrag w-full flex items-center justify-between px-3 py-2 rounded-xl"
+            style={{ cursor: "pointer", background: "transparent" }}
+          >
+            <span style={{ fontSize: 10.5, fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.07em", color: "var(--c-t4)", display: "flex", alignItems: "center", gap: 4 }}>
+              ControlNet{cn?.model?.trim() && cn?.imageUrl ? <span style={{ color: accent }}>●</span> : "（可选）"}
+            </span>
+            {cnExpanded ? <ChevronDown className="w-3 h-3" style={{ color: "var(--c-t4)" }} /> : <ChevronRight className="w-3 h-3" style={{ color: "var(--c-t4)" }} />}
+          </button>
+          {cnExpanded && (
+            <div className="px-3 pb-3 flex flex-col gap-2">
+              <div>
+                <label style={labelStyle}>ControlNet 模型</label>
+                <input
+                  list={`comfyui-controlnets-${id}`}
+                  placeholder="如 control_v11p_sd15_canny.pth"
+                  value={cn?.model ?? ""}
+                  onChange={(e) => updateCn({ model: e.target.value })}
+                  className="nodrag" style={fieldBase}
+                  onFocus={(e) => { e.currentTarget.style.borderColor = BORDER_ACCENT; }}
+                  onBlur={(e) => { e.currentTarget.style.borderColor = BORDER_DEFAULT; }}
+                />
+                <datalist id={`comfyui-controlnets-${id}`}>
+                  {(modelsQuery.data?.controlnets ?? []).map((c) => <option key={c} value={c} />)}
+                </datalist>
+              </div>
+              <div>
+                <label style={labelStyle}>控制图像</label>
+                {cn?.imageUrl ? (
+                  <div className="relative rounded-lg overflow-hidden" style={{ height: 80, border: `1px solid ${BORDER_DEFAULT}`, background: "var(--c-canvas)" }}>
+                    <img src={cn.imageUrl} alt="controlnet" className="w-full h-full object-cover" draggable={false} onError={makeImageProxyFallback(cn.imageUrl)} />
+                    <button onClick={() => updateCn({ imageUrl: "" })} className="nodrag absolute top-1 right-1 p-0.5 rounded-full" style={{ background: "oklch(0 0 0 / 0.7)", color: "var(--c-t1)" }}>
+                      <X style={{ width: 12, height: 12 }} />
+                    </button>
+                  </div>
+                ) : (
+                  <button
+                    onClick={() => cnFileInputRef.current?.click()}
+                    disabled={uploading}
+                    className="nodrag w-full flex items-center justify-center gap-2 py-3 rounded-lg"
+                    style={{ border: "1px dashed var(--c-bd3)", background: "var(--c-input)", color: uploading ? "var(--c-t4)" : "var(--c-t3)", fontSize: 11, cursor: uploading ? "not-allowed" : "pointer" }}
+                  >
+                    {uploading ? <><Loader2 style={{ width: 13, height: 13 }} className="animate-spin" /> 上传中...</> : <><Upload style={{ width: 13, height: 13 }} /> 上传控制图像</>}
+                  </button>
+                )}
+                <input ref={cnFileInputRef} type="file" accept="image/*" style={{ display: "none" }} onChange={(e) => handleFileChange(e, "controlnet")} />
+                {(!cn?.imageUrl || cn.imageUrl.startsWith("http")) && (
+                  <input
+                    type="url"
+                    placeholder="或粘贴公网图片 URL（https://…）"
+                    value={cn?.imageUrl?.startsWith("http") ? cn.imageUrl : ""}
+                    onChange={(e) => updateCn({ imageUrl: e.target.value.trim() })}
+                    className="nodrag" style={{ ...fieldBase, marginTop: 6, fontSize: 10.5 }}
+                    onFocus={(e) => { e.currentTarget.style.borderColor = BORDER_ACCENT; }}
+                    onBlur={(e) => { e.currentTarget.style.borderColor = BORDER_DEFAULT; }}
+                  />
+                )}
+              </div>
+              <div>
+                <label style={labelStyle}>强度 <span style={{ fontWeight: 400, color: "var(--c-t3)" }}>{(cn?.strength ?? 1.0).toFixed(2)}</span></label>
+                <input type="range" min={0} max={2} step={0.05} value={cn?.strength ?? 1.0} onChange={(e) => updateCn({ strength: Number(e.target.value) })} className="nodrag" style={{ width: "100%", accentColor: accent }} />
+              </div>
+              <div className="grid grid-cols-2 gap-2">
+                <div>
+                  <label style={labelStyle}>起始 % <span style={{ fontWeight: 400, color: "var(--c-t3)" }}>{((cn?.startPercent ?? 0) * 100).toFixed(0)}</span></label>
+                  <input type="range" min={0} max={1} step={0.05} value={cn?.startPercent ?? 0} onChange={(e) => updateCn({ startPercent: Number(e.target.value) })} className="nodrag" style={{ width: "100%", accentColor: accent }} />
+                </div>
+                <div>
+                  <label style={labelStyle}>结束 % <span style={{ fontWeight: 400, color: "var(--c-t3)" }}>{((cn?.endPercent ?? 1) * 100).toFixed(0)}</span></label>
+                  <input type="range" min={0} max={1} step={0.05} value={cn?.endPercent ?? 1} onChange={(e) => updateCn({ endPercent: Number(e.target.value) })} className="nodrag" style={{ width: "100%", accentColor: accent }} />
+                </div>
+              </div>
+            </div>
+          )}
+        </div>
+
         {/* ── Progress bar ── */}
         {payload.status === "processing" && payload.progress != null && (
           <div style={{ marginBottom: 4 }}>
@@ -1045,12 +1193,14 @@ function ComfyConnectionStatus({
   errorMessage,
   ckptCount,
   loraCount,
+  extraCounts,
 }: {
   isFetching: boolean;
   isError: boolean;
   errorMessage?: string;
   ckptCount: number;
   loraCount: number;
+  extraCounts?: Array<{ label: string; count: number }>;
 }) {
   if (isFetching) {
     return (
@@ -1075,10 +1225,14 @@ function ComfyConnectionStatus({
       </div>
     );
   }
+  const extras = (extraCounts ?? []).filter((e) => e.count > 0).map((e) => `${e.count} ${e.label}`);
   return (
-    <div className="flex items-center gap-1.5 mt-1.5 text-[10px]" style={{ color: "oklch(0.65 0.18 145)" }}>
+    <div className="flex items-start gap-1.5 mt-1.5 text-[10px]" style={{ color: "oklch(0.65 0.18 145)" }}>
       <span>●</span>
-      已连接 — {ckptCount} 个 checkpoint{loraCount > 0 ? `、${loraCount} 个 LoRA` : ""}
+      <span>
+        已连接 — {ckptCount} 个 checkpoint{loraCount > 0 ? `、${loraCount} 个 LoRA` : ""}
+        {extras.length > 0 ? <span style={{ color: "var(--c-t4)" }}>{`（${extras.join("、")}）`}</span> : null}
+      </span>
     </div>
   );
 }

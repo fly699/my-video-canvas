@@ -35,7 +35,7 @@ import {
 import { storagePut, resolveToAbsoluteUrl, canBrowserReachStorageDirectly, storageBackend } from "../storage";
 import { invokeLLM, extractTextContent } from "../_core/llm";
 import { generateImage } from "../_core/imageGeneration";
-import { generateComfyImage, generateComfyVideo, fetchComfyModels, analyzeWorkflow, executeCustomWorkflow, uploadImageForWorkflow, interruptComfy } from "../_core/comfyui";
+import { generateComfyImage, generateComfyVideo, fetchComfyModels, analyzeWorkflow, executeCustomWorkflow, uploadImageForWorkflow, interruptComfy, emptyModelList } from "../_core/comfyui";
 import { ENV } from "../_core/env";
 import { isPoyoVideoProvider, submitPoyoVideo, checkPoyoVideoStatus } from "../_core/poyoVideo";
 import { isHiggsfieldVideoProvider, submitHiggsfieldVideo, checkHiggsfieldVideoStatus } from "../_core/higgsfield";
@@ -1778,6 +1778,20 @@ export const comfyuiRouter = router({
         negPrompt: z.string().max(2000).optional(),
         ckpt: z.string().min(1).max(255),
         lora: z.string().max(255).optional(),
+        // Multi-LoRA stack (takes precedence over the single `lora`/`loraStrength`).
+        loras: z.array(z.object({
+          name: z.string().min(1).max(255),
+          strengthModel: z.number().min(-10).max(10),
+          strengthClip: z.number().min(-10).max(10).optional(),
+        })).max(8).optional(),
+        // Optional ControlNet guidance (txt2img / img2img).
+        controlnet: z.object({
+          model: z.string().min(1).max(255),
+          imageUrl: z.string().min(1).max(2048),
+          strength: z.number().min(0).max(2).optional(),
+          startPercent: z.number().min(0).max(1).optional(),
+          endPercent: z.number().min(0).max(1).optional(),
+        }).optional(),
         steps: z.number().int().min(1).max(150).default(20),
         cfg: z.number().min(1).max(30).default(7),
         seed: z.number().int().default(-1),
@@ -1808,6 +1822,8 @@ export const comfyuiRouter = router({
             negPrompt: input.negPrompt,
             ckpt: input.ckpt,
             lora: input.lora,
+            loras: input.loras,
+            controlnet: input.controlnet,
             steps: input.steps,
             cfg: input.cfg,
             seed: input.seed >= 0 ? input.seed : undefined,
@@ -1933,12 +1949,14 @@ export const comfyuiRouter = router({
       // gate as the paid generate endpoints.
       await assertComfyuiAllowed(ctx);
       const baseUrl = input.customBaseUrl?.trim() || ENV.comfyuiBaseUrl;
-      if (!baseUrl) return { ckpts: [], loras: [], samplers: [], schedulers: [], vaes: [], motionModules: [] };
+      // Not configured is a benign empty state (UI degrades to free-text), not an error.
+      if (!baseUrl) return emptyModelList();
       try {
         return await fetchComfyModels(baseUrl);
-      } catch {
-        // Swallow errors and return empty so the UI degrades to free-text input
-        return { ckpts: [], loras: [], samplers: [], schedulers: [], vaes: [], motionModules: [] };
+      } catch (err) {
+        // Surface the real reason (unreachable / bad status / timeout) so the UI
+        // can distinguish "server has no models" from "couldn't reach server".
+        throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: err instanceof Error ? err.message : String(err) });
       }
     }),
 
@@ -1983,6 +2001,7 @@ export const comfyuiRouter = router({
       customBaseUrl: z.string().max(2048).optional(),
       workflowJson: z.string().max(500_000),
       paramValues: z.record(z.string(), z.unknown()),
+      imageParamKeys: z.array(z.string().max(512)).max(64).optional(),
       outputNodeIds: z.array(z.string()).optional(),
       outputType: z.enum(["image", "video", "auto"]).default("auto"),
     }))
@@ -1996,6 +2015,7 @@ export const comfyuiRouter = router({
           const result = await executeCustomWorkflow(baseUrl, {
             workflowJson: input.workflowJson,
             paramValues: input.paramValues,
+            imageParamKeys: input.imageParamKeys,
             outputNodeIds: input.outputNodeIds,
             outputType: input.outputType === "auto" ? undefined : input.outputType,
             projectId: input.projectId,

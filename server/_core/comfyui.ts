@@ -68,26 +68,7 @@ export async function interruptComfy(rawBaseUrl: string): Promise<void> {
 // before submission. Numeric placeholders are quoted in JSON so we replace
 // `"__seed__"` (with quotes) and inject the raw number — this preserves JSON validity.
 
-const TXT2IMG_TEMPLATE = {
-  "3": { class_type: "KSampler", inputs: { seed: "__seed__", steps: "__steps__", cfg: "__cfg__", sampler_name: "__sampler__", scheduler: "__scheduler__", denoise: "__denoise__", model: ["4", 0], positive: ["6", 0], negative: ["7", 0], latent_image: ["5", 0] } },
-  "4": { class_type: "CheckpointLoaderSimple", inputs: { ckpt_name: "__ckpt__" } },
-  "5": { class_type: "EmptyLatentImage", inputs: { width: "__width__", height: "__height__", batch_size: "__batchSize__" } },
-  "6": { class_type: "CLIPTextEncode", inputs: { text: "__prompt__", clip: ["4", 1] } },
-  "7": { class_type: "CLIPTextEncode", inputs: { text: "__negPrompt__", clip: ["4", 1] } },
-  "8": { class_type: "VAEDecode", inputs: { samples: ["3", 0], vae: ["4", 2] } },
-  "9": { class_type: "SaveImage", inputs: { filename_prefix: "comfyui_output", images: ["8", 0] } },
-};
-
-const IMG2IMG_TEMPLATE = {
-  "3": { class_type: "KSampler", inputs: { seed: "__seed__", steps: "__steps__", cfg: "__cfg__", sampler_name: "__sampler__", scheduler: "__scheduler__", denoise: "__denoise__", model: ["4", 0], positive: ["6", 0], negative: ["7", 0], latent_image: ["10", 0] } },
-  "4": { class_type: "CheckpointLoaderSimple", inputs: { ckpt_name: "__ckpt__" } },
-  "6": { class_type: "CLIPTextEncode", inputs: { text: "__prompt__", clip: ["4", 1] } },
-  "7": { class_type: "CLIPTextEncode", inputs: { text: "__negPrompt__", clip: ["4", 1] } },
-  "8": { class_type: "VAEDecode", inputs: { samples: ["3", 0], vae: ["4", 2] } },
-  "9": { class_type: "SaveImage", inputs: { filename_prefix: "comfyui_output", images: ["8", 0] } },
-  "10": { class_type: "VAEEncode", inputs: { pixels: ["11", 0], vae: ["4", 2] } },
-  "11": { class_type: "LoadImage", inputs: { image: "__refImageName__" } },
-};
+// txt2img / img2img graphs are built programmatically — see buildImageWorkflow.
 
 const ANIMATEDIFF_TEMPLATE = {
   "3": { class_type: "KSampler", inputs: { seed: "__seed__", steps: "__steps__", cfg: "__cfg__", sampler_name: "__sampler__", scheduler: "__scheduler__", denoise: "__denoise__", model: ["12", 0], positive: ["6", 0], negative: ["7", 0], latent_image: ["5", 0] } },
@@ -452,12 +433,144 @@ export function subscribeComfyProgress(
 
 // ── Public API ────────────────────────────────────────────────────────────────
 
+export interface LoraSpec {
+  name: string;
+  strengthModel: number;
+  strengthClip?: number;
+}
+
+export interface ControlNetSpec {
+  model: string;
+  imageName: string;       // already-uploaded ComfyUI image filename
+  strength: number;
+  startPercent?: number;
+  endPercent?: number;
+}
+
+interface BuildImageWorkflowArgs {
+  template: "txt2img" | "img2img";
+  prompt: string;
+  negPrompt: string;
+  ckpt: string;
+  loras: LoraSpec[];
+  vae?: string;            // VAELoader name; empty = use checkpoint's VAE
+  controlnet?: ControlNetSpec;
+  refImageName?: string;   // img2img reference image filename
+  seed: number;
+  steps: number;
+  cfg: number;
+  sampler: string;
+  scheduler: string;
+  denoise: number;
+  width: number;
+  height: number;
+  batchSize: number;
+}
+
+type NodeRef = [string, number];
+
+/**
+ * Build a ComfyUI prompt graph for txt2img / img2img programmatically so we can
+ * inject a variable number of LoRA loaders, an optional ControlNet chain, and an
+ * optional standalone VAE — none of which a static placeholder template can do.
+ *
+ * Graph shape:
+ *   Checkpoint(4) ──model/clip──▶ [LoraLoader chain] ──▶ KSampler(3) + CLIP encodes(6/7)
+ *   (optional) VAELoader(20) feeds VAEDecode/VAEEncode instead of checkpoint VAE
+ *   (optional) ControlNet: Loader(30)+Image(31) ──▶ ControlNetApplyAdvanced(32)
+ *              rewrites KSampler positive/negative conditioning
+ */
+export function buildImageWorkflow(a: BuildImageWorkflowArgs): Record<string, { class_type: string; inputs: Record<string, unknown> }> {
+  const wf: Record<string, { class_type: string; inputs: Record<string, unknown> }> = {};
+
+  wf["4"] = { class_type: "CheckpointLoaderSimple", inputs: { ckpt_name: a.ckpt } };
+
+  // VAE source: dedicated loader when provided, else the checkpoint's third output.
+  let vaeRef: NodeRef = ["4", 2];
+  if (a.vae && a.vae.trim()) {
+    wf["20"] = { class_type: "VAELoader", inputs: { vae_name: a.vae.trim() } };
+    vaeRef = ["20", 0];
+  }
+
+  // LoRA chain: each loader threads model+clip through, so they stack in order.
+  let modelRef: NodeRef = ["4", 0];
+  let clipRef: NodeRef = ["4", 1];
+  a.loras.forEach((l, i) => {
+    const nid = `lora_${i}`;
+    wf[nid] = {
+      class_type: "LoraLoader",
+      inputs: {
+        lora_name: l.name,
+        strength_model: l.strengthModel,
+        strength_clip: l.strengthClip ?? l.strengthModel,
+        model: modelRef,
+        clip: clipRef,
+      },
+    };
+    modelRef = [nid, 0];
+    clipRef = [nid, 1];
+  });
+
+  wf["6"] = { class_type: "CLIPTextEncode", inputs: { text: a.prompt, clip: clipRef } };
+  wf["7"] = { class_type: "CLIPTextEncode", inputs: { text: a.negPrompt, clip: clipRef } };
+
+  // Conditioning may be rewritten by ControlNet below.
+  let positiveRef: NodeRef = ["6", 0];
+  let negativeRef: NodeRef = ["7", 0];
+  if (a.controlnet && a.controlnet.model.trim() && a.controlnet.imageName) {
+    wf["30"] = { class_type: "ControlNetLoader", inputs: { control_net_name: a.controlnet.model.trim() } };
+    wf["31"] = { class_type: "LoadImage", inputs: { image: a.controlnet.imageName } };
+    wf["32"] = {
+      class_type: "ControlNetApplyAdvanced",
+      inputs: {
+        positive: positiveRef,
+        negative: negativeRef,
+        control_net: ["30", 0],
+        image: ["31", 0],
+        strength: a.controlnet.strength,
+        start_percent: a.controlnet.startPercent ?? 0,
+        end_percent: a.controlnet.endPercent ?? 1,
+      },
+    };
+    positiveRef = ["32", 0];
+    negativeRef = ["32", 1];
+  }
+
+  // Latent source: empty latent (txt2img) or VAE-encoded reference (img2img).
+  let latentRef: NodeRef;
+  if (a.template === "img2img") {
+    wf["11"] = { class_type: "LoadImage", inputs: { image: a.refImageName ?? "" } };
+    wf["10"] = { class_type: "VAEEncode", inputs: { pixels: ["11", 0], vae: vaeRef } };
+    latentRef = ["10", 0];
+  } else {
+    wf["5"] = { class_type: "EmptyLatentImage", inputs: { width: a.width, height: a.height, batch_size: a.batchSize } };
+    latentRef = ["5", 0];
+  }
+
+  wf["3"] = {
+    class_type: "KSampler",
+    inputs: {
+      seed: a.seed, steps: a.steps, cfg: a.cfg,
+      sampler_name: a.sampler, scheduler: a.scheduler, denoise: a.denoise,
+      model: modelRef, positive: positiveRef, negative: negativeRef, latent_image: latentRef,
+    },
+  };
+  wf["8"] = { class_type: "VAEDecode", inputs: { samples: ["3", 0], vae: vaeRef } };
+  wf["9"] = { class_type: "SaveImage", inputs: { filename_prefix: "comfyui_output", images: ["8", 0] } };
+
+  return wf;
+}
+
 export interface GenerateComfyImageOptions {
   workflowTemplate: "txt2img" | "img2img";
   prompt: string;
   negPrompt?: string;
   ckpt: string;
+  // Single-LoRA fields kept for backward compatibility; `loras` takes precedence.
   lora?: string;
+  loraStrength?: number;
+  loras?: LoraSpec[];
+  controlnet?: { model: string; imageUrl: string; strength?: number; startPercent?: number; endPercent?: number };
   steps?: number;
   cfg?: number;
   seed?: number;
@@ -467,7 +580,6 @@ export interface GenerateComfyImageOptions {
   scheduler?: string;
   denoise?: number;
   vae?: string;
-  loraStrength?: number;
   batchSize?: number;
   referenceImageUrl?: string;
   // Progress relay (optional)
@@ -484,23 +596,45 @@ export async function generateComfyImage(rawBaseUrl: string, options: GenerateCo
     refImageName = await uploadImageToComfy(baseUrl, options.referenceImageUrl);
   }
 
-  const template = options.workflowTemplate === "img2img" ? IMG2IMG_TEMPLATE : TXT2IMG_TEMPLATE;
-  const workflow = applyTemplate(template, {
-    prompt: options.prompt,
-    negPrompt: options.negPrompt,
+  // Normalize LoRA input: prefer the multi-LoRA array, fall back to the legacy
+  // single lora/loraStrength pair, and drop entries without a name.
+  const loras: LoraSpec[] = (options.loras && options.loras.length > 0)
+    ? options.loras
+    : (options.lora && options.lora.trim() ? [{ name: options.lora.trim(), strengthModel: options.loraStrength ?? 1.0 }] : []);
+  const cleanLoras = loras.filter((l) => l.name && l.name.trim());
+
+  // Upload the ControlNet guide image (if any) the same way as the img2img ref.
+  let controlnet: ControlNetSpec | undefined;
+  if (options.controlnet && options.controlnet.model.trim() && options.controlnet.imageUrl) {
+    const cnImageName = await uploadImageToComfy(baseUrl, options.controlnet.imageUrl);
+    controlnet = {
+      model: options.controlnet.model.trim(),
+      imageName: cnImageName,
+      strength: options.controlnet.strength ?? 1.0,
+      startPercent: options.controlnet.startPercent ?? 0,
+      endPercent: options.controlnet.endPercent ?? 1,
+    };
+  }
+
+  const workflow = buildImageWorkflow({
+    template: options.workflowTemplate,
+    prompt: options.prompt ?? "",
+    negPrompt: options.negPrompt ?? "",
     ckpt: options.ckpt,
-    steps: options.steps,
-    cfg: options.cfg,
-    seed: options.seed,
-    width: options.width,
-    height: options.height,
-    sampler: options.sampler,
-    scheduler: options.scheduler,
-    // img2img needs denoise < 1.0 to retain the reference image; 0.75 is the practical default
-    denoise: options.workflowTemplate === "img2img" ? (options.denoise ?? 0.75) : options.denoise,
+    loras: cleanLoras,
     vae: options.vae,
-    batchSize: options.batchSize,
+    controlnet,
     refImageName,
+    seed: options.seed ?? Math.floor(Math.random() * 2_147_483_647),
+    steps: options.steps ?? 20,
+    cfg: options.cfg ?? 7,
+    sampler: options.sampler ?? "euler",
+    scheduler: options.scheduler ?? "normal",
+    // img2img needs denoise < 1.0 to retain the reference image; 0.75 is the practical default
+    denoise: options.workflowTemplate === "img2img" ? (options.denoise ?? 0.75) : (options.denoise ?? 1.0),
+    width: options.width ?? 512,
+    height: options.height ?? 512,
+    batchSize: options.batchSize ?? 1,
   });
 
   const promptId = await submitWorkflow(baseUrl, workflow);
@@ -637,7 +771,10 @@ export async function analyzeWorkflow(
   try {
     workflow = JSON.parse(workflowJson) as WorkflowJson;
   } catch {
-    return { detectedParams: [], outputNodeIds: [], outputType: "image" };
+    throw new Error("Workflow JSON 格式错误，无法解析");
+  }
+  if (!workflow || typeof workflow !== "object" || Array.isArray(workflow)) {
+    throw new Error("Workflow JSON 结构无效：应为 { 节点ID: {...} } 的对象（ComfyUI API 格式，非 UI 导出格式）");
   }
 
   // Optionally fetch object_info to get enum options (best-effort)
@@ -749,6 +886,21 @@ export async function analyzeWorkflow(
         type: "image",
         defaultValue: inputs.image ?? "",
       });
+    } else if (ct === "ControlNetLoader" || ct === "DiffControlNetLoader") {
+      const nets = pickFirstArray(info, ct, "control_net_name");
+      detectedParams.push({ nodeId, fieldPath: "inputs.control_net_name", label: "ControlNet 模型", type: nets.length > 0 ? "select" : "text", defaultValue: inputs.control_net_name ?? "", options: nets.length > 0 ? nets : undefined });
+    } else if (ct === "VAELoader") {
+      const vaes = pickFirstArray(info, "VAELoader", "vae_name");
+      detectedParams.push({ nodeId, fieldPath: "inputs.vae_name", label: "VAE 模型", type: vaes.length > 0 ? "select" : "text", defaultValue: inputs.vae_name ?? "", options: vaes.length > 0 ? vaes : undefined });
+    } else if (ct === "UpscaleModelLoader") {
+      const ups = pickFirstArray(info, "UpscaleModelLoader", "model_name");
+      detectedParams.push({ nodeId, fieldPath: "inputs.model_name", label: "放大模型", type: ups.length > 0 ? "select" : "text", defaultValue: inputs.model_name ?? "", options: ups.length > 0 ? ups : undefined });
+    } else if (ct === "IPAdapterModelLoader") {
+      const ips = pickFirstArray(info, "IPAdapterModelLoader", "ipadapter_file");
+      detectedParams.push({ nodeId, fieldPath: "inputs.ipadapter_file", label: "IPAdapter 模型", type: ips.length > 0 ? "select" : "text", defaultValue: inputs.ipadapter_file ?? "", options: ips.length > 0 ? ips : undefined });
+    } else if (ct === "CLIPVisionLoader") {
+      const cvs = pickFirstArray(info, "CLIPVisionLoader", "clip_name");
+      detectedParams.push({ nodeId, fieldPath: "inputs.clip_name", label: "CLIP Vision", type: cvs.length > 0 ? "select" : "text", defaultValue: inputs.clip_name ?? "", options: cvs.length > 0 ? cvs : undefined });
     } else if (ct === "EmptyLatentImage" || ct === "EmptySD3LatentImage" || ct === "EmptyHunyuanLatentVideo") {
       if ("width" in inputs) detectedParams.push({ nodeId, fieldPath: "inputs.width", label: "宽度", type: "number", defaultValue: inputs.width ?? 512, min: 64, max: 4096, step: 64 });
       if ("height" in inputs) detectedParams.push({ nodeId, fieldPath: "inputs.height", label: "高度", type: "number", defaultValue: inputs.height ?? 512, min: 64, max: 4096, step: 64 });
@@ -775,6 +927,9 @@ export async function analyzeWorkflow(
 export interface ExecuteCustomWorkflowOptions {
   workflowJson: string;
   paramValues: Record<string, unknown>;  // key = `${nodeId}.${fieldPath}`, e.g. "3.inputs.seed"
+  // Keys (same format as paramValues) whose value is an image: a URL here is
+  // auto-uploaded to ComfyUI and replaced with the returned input filename.
+  imageParamKeys?: string[];
   outputNodeIds?: string[];
   outputType?: "image" | "video" | "auto";
   projectId?: number;
@@ -800,7 +955,8 @@ export async function executeCustomWorkflow(
   // Inject paramValues into workflow nodes.
   // Key format: "nodeId.inputs.fieldName" (e.g., "3.inputs.seed")
   // or shorter "nodeId.fieldName" (legacy, treated as "nodeId.inputs.fieldName")
-  for (const [key, value] of Object.entries(options.paramValues)) {
+  const imageKeys = new Set(options.imageParamKeys ?? []);
+  for (const [key, rawValue] of Object.entries(options.paramValues)) {
     const parts = key.split(".");
     if (parts.length < 2) continue;
     const [wfNodeId, ...pathParts] = parts;
@@ -811,13 +967,13 @@ export async function executeCustomWorkflow(
     const fieldParts = pathParts[0] === "inputs" ? pathParts.slice(1) : pathParts;
     if (fieldParts.length === 0) continue;
 
-    // Handle image type — upload to ComfyUI first
-    if (typeof value === "string" && (value.startsWith("http") || value.startsWith("/manus-storage/"))) {
-      // Check if this field expects an image (best-effort)
-      const binding = options.paramValues;
-      void binding; // suppress unused warning
-      // We inject the value as-is for non-image fields; for image fields the caller
-      // should have already uploaded and stored the ComfyUI filename in paramValues.
+    // Image params: a URL is not a valid ComfyUI input value (LoadImage expects a
+    // filename already present in ComfyUI's input dir), so upload it first and
+    // substitute the returned filename. This makes both manual URL entry and
+    // upstream-node image feeds work without a separate client upload step.
+    let value = rawValue;
+    if (imageKeys.has(key) && typeof value === "string" && (/^https?:\/\//i.test(value) || value.startsWith("/manus-storage/"))) {
+      value = await uploadImageToComfy(baseUrl, value);
     }
 
     // Walk the path and set the value
@@ -912,6 +1068,24 @@ export interface ComfyModelList {
   schedulers: string[];
   vaes: string[];
   motionModules: string[];
+  // Extended categories (best-effort; empty when the server has none).
+  unets: string[];          // UNETLoader / diffusion_models
+  controlnets: string[];    // ControlNetLoader
+  upscaleModels: string[];  // UpscaleModelLoader (ESRGAN etc.)
+  clips: string[];          // CLIPLoader / DualCLIPLoader
+  clipVisions: string[];    // CLIPVisionLoader
+  ipadapters: string[];     // IPAdapterModelLoader
+  styleModels: string[];    // StyleModelLoader (e.g. Flux Redux)
+  gligen: string[];         // GLIGENLoader
+  embeddings: string[];     // textual-inversion embeddings (from /embeddings)
+}
+
+export function emptyModelList(): ComfyModelList {
+  return {
+    ckpts: [], loras: [], samplers: [], schedulers: [], vaes: [], motionModules: [],
+    unets: [], controlnets: [], upscaleModels: [], clips: [], clipVisions: [],
+    ipadapters: [], styleModels: [], gligen: [], embeddings: [],
+  };
 }
 
 interface ObjectInfo {
@@ -933,28 +1107,97 @@ function pickFirstArray(info: ObjectInfo, nodeName: string, fieldName: string): 
   return [];
 }
 
+/** Merge several (nodeClass, field) sources, de-duplicate, and sort. */
+function collect(info: ObjectInfo, sources: Array<[string, string]>): string[] {
+  const out = new Set<string>();
+  for (const [node, field] of sources) {
+    for (const v of pickFirstArray(info, node, field)) out.add(v);
+  }
+  return Array.from(out).sort((a, b) => a.localeCompare(b));
+}
+
+// Heuristic: scan EVERY node's enum fields whose name matches a known suffix and
+// fold the values into the right category. This catches custom node packs that
+// expose, e.g., `ckpt_name` on a loader class we don't hardcode — so the lists
+// stay useful across the long tail of ComfyUI extensions, not just core nodes.
+function genericScan(info: ObjectInfo, list: ComfyModelList): void {
+  const add = (bucket: string[], vals: string[]) => {
+    const seen = new Set(bucket);
+    for (const v of vals) if (!seen.has(v)) { bucket.push(v); seen.add(v); }
+  };
+  for (const node of Object.values(info)) {
+    const groups = [node?.input?.required, node?.input?.optional];
+    for (const g of groups) {
+      if (!g) continue;
+      for (const [field, slot] of Object.entries(g)) {
+        const first = slot?.[0];
+        if (!Array.isArray(first)) continue;
+        const vals = first.filter((x): x is string => typeof x === "string");
+        if (vals.length === 0) continue;
+        const f = field.toLowerCase();
+        if (f === "ckpt_name") add(list.ckpts, vals);
+        else if (f === "lora_name") add(list.loras, vals);
+        else if (f === "vae_name") add(list.vaes, vals);
+        else if (f === "control_net_name" || f === "controlnet_name") add(list.controlnets, vals);
+        else if (f === "upscale_model_name") add(list.upscaleModels, vals);
+        else if (f === "unet_name") add(list.unets, vals);
+        else if (f === "clip_name" || f === "clip_name1" || f === "clip_name2") add(list.clips, vals);
+        else if (f === "clip_vision_name") add(list.clipVisions, vals);
+        else if (f === "ipadapter_file" || f === "ipadapter_name") add(list.ipadapters, vals);
+        else if (f === "style_model_name") add(list.styleModels, vals);
+        else if (f === "gligen_name") add(list.gligen, vals);
+      }
+    }
+  }
+  // Keep deterministic ordering after merges.
+  for (const key of Object.keys(list) as (keyof ComfyModelList)[]) {
+    list[key] = Array.from(new Set(list[key])).sort((a, b) => a.localeCompare(b));
+  }
+}
+
 export async function fetchComfyModels(rawBaseUrl: string): Promise<ComfyModelList> {
   const baseUrl = normalizeBaseUrl(rawBaseUrl);
   const res = await fetch(`${baseUrl}/object_info`, { signal: AbortSignal.timeout(15_000) });
-  if (!res.ok) throw new Error(`ComfyUI 模型列表查询失败 (${res.status})`);
+  if (!res.ok) throw new Error(`ComfyUI /object_info 查询失败 (${res.status})`);
   const info = (await res.json()) as ObjectInfo;
 
-  const ckpts = Array.from(new Set([
-    ...pickFirstArray(info, "CheckpointLoaderSimple", "ckpt_name"),
-    ...pickFirstArray(info, "ImageOnlyCheckpointLoader", "ckpt_name"),
-  ]));
-  const loras = pickFirstArray(info, "LoraLoader", "lora_name");
-  const samplers = pickFirstArray(info, "KSampler", "sampler_name");
-  const schedulers = pickFirstArray(info, "KSampler", "scheduler");
-  const vaes = pickFirstArray(info, "VAELoader", "vae_name");
-  const motionModules = Array.from(new Set([
-    ...pickFirstArray(info, "ADE_AnimateDiffLoaderGen1", "model_name"),
-    ...pickFirstArray(info, "AnimateDiffLoaderV1", "model_name"),
-    ...pickFirstArray(info, "ADE_LoadAnimateDiffModel", "model_name"),
-  ]));
+  const list: ComfyModelList = emptyModelList();
+  // Known-node mappings first (authoritative for core nodes).
+  list.ckpts = collect(info, [["CheckpointLoaderSimple", "ckpt_name"], ["ImageOnlyCheckpointLoader", "ckpt_name"], ["unCLIPCheckpointLoader", "ckpt_name"]]);
+  list.loras = collect(info, [["LoraLoader", "lora_name"], ["LoraLoaderModelOnly", "lora_name"]]);
+  list.samplers = collect(info, [["KSampler", "sampler_name"], ["KSamplerAdvanced", "sampler_name"]]);
+  list.schedulers = collect(info, [["KSampler", "scheduler"], ["KSamplerAdvanced", "scheduler"]]);
+  list.vaes = collect(info, [["VAELoader", "vae_name"]]);
+  list.motionModules = collect(info, [["ADE_AnimateDiffLoaderGen1", "model_name"], ["AnimateDiffLoaderV1", "model_name"], ["ADE_LoadAnimateDiffModel", "model_name"]]);
+  list.unets = collect(info, [["UNETLoader", "unet_name"]]);
+  list.controlnets = collect(info, [["ControlNetLoader", "control_net_name"], ["DiffControlNetLoader", "control_net_name"]]);
+  list.upscaleModels = collect(info, [["UpscaleModelLoader", "model_name"]]);
+  list.clips = collect(info, [["CLIPLoader", "clip_name"], ["DualCLIPLoader", "clip_name1"], ["DualCLIPLoader", "clip_name2"]]);
+  list.clipVisions = collect(info, [["CLIPVisionLoader", "clip_name"]]);
+  list.ipadapters = collect(info, [["IPAdapterModelLoader", "ipadapter_file"]]);
+  list.styleModels = collect(info, [["StyleModelLoader", "style_model_name"]]);
+  list.gligen = collect(info, [["GLIGENLoader", "gligen_name"]]);
 
-  return { ckpts, loras, samplers, schedulers, vaes, motionModules };
+  // Generic pass: fold in any custom-node fields the hardcoded map missed.
+  genericScan(info, list);
+
+  // Embeddings live behind a dedicated endpoint, not /object_info.
+  try {
+    const embRes = await fetch(`${baseUrl}/embeddings`, { signal: AbortSignal.timeout(8_000) });
+    if (embRes.ok) {
+      const emb = (await embRes.json()) as unknown;
+      if (Array.isArray(emb)) {
+        list.embeddings = emb.filter((x): x is string => typeof x === "string").sort((a, b) => a.localeCompare(b));
+      }
+    }
+  } catch {
+    // Embeddings are optional; ignore failures so the main list still returns.
+  }
+
+  return list;
 }
+
+
 
 // ── Stress-test probe ─────────────────────────────────────────────────────────
 //

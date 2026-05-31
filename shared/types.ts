@@ -484,6 +484,20 @@ export interface AvatarNodeData {
 }
 
 // ── ComfyUI ────────────────────────────────────────────────────────────────────
+export interface ComfyuiLoraEntry {
+  name: string;
+  strengthModel: number;
+  strengthClip?: number;
+}
+
+export interface ComfyuiControlNet {
+  model: string;
+  imageUrl: string;
+  strength?: number;
+  startPercent?: number;
+  endPercent?: number;
+}
+
 export type ComfyuiImageTemplate = "txt2img" | "img2img";
 export interface ComfyuiImageNodeData {
   // Connection
@@ -495,6 +509,14 @@ export interface ComfyuiImageNodeData {
   // Models
   ckpt?: string;
   lora?: string;
+  loraStrength?: number;
+  /**
+   * Multi-LoRA stack. When present and non-empty it takes precedence over the
+   * legacy single `lora`/`loraStrength`. Each entry chains a LoraLoader.
+   */
+  loras?: ComfyuiLoraEntry[];
+  /** Optional ControlNet guidance for txt2img / img2img. */
+  controlnet?: ComfyuiControlNet;
   // Sampling
   steps?: number;
   cfg?: number;
@@ -505,7 +527,6 @@ export interface ComfyuiImageNodeData {
   scheduler?: string;
   denoise?: number;
   vae?: string;
-  loraStrength?: number;
   batchSize?: number;
   // I/O
   referenceImageUrl?: string;

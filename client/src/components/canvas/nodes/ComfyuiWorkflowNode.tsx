@@ -4,6 +4,7 @@ import { BaseNode } from "../BaseNode";
 import { useCanvasStore } from "../../../hooks/useCanvasStore";
 import type { ComfyuiWorkflowNodeData, WorkflowParamBinding } from "../../../../../shared/types";
 import { trpc } from "@/lib/trpc";
+import { detectUpstreamImageUrl, resolveWorkflowImageParams } from "@/lib/comfyWorkflowParams";
 import { toast } from "sonner";
 import {
   Workflow, Loader2, Upload, X, ChevronDown, ChevronRight,
@@ -96,6 +97,8 @@ type Phase = "empty" | "binding" | "run";
 
 export const ComfyuiWorkflowNode = memo(function ComfyuiWorkflowNode({ id, selected, data }: Props) {
   const updateNodeData = useCanvasStore((s) => s.updateNodeData);
+  // Reactively detect an upstream image feeding this node (via any incoming edge).
+  const upstreamImageUrl = useCanvasStore((s) => detectUpstreamImageUrl(id, s.edges, s.nodes));
   const payload = data.payload;
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -153,12 +156,21 @@ export const ComfyuiWorkflowNode = memo(function ComfyuiWorkflowNode({ id, selec
     if (!workflowJson.trim()) { toast.error("请先加载 Workflow JSON"); return; }
     update({ status: "processing", errorMessage: undefined, progress: 0 }, true);
     try {
+      // Pull an image from a connected upstream node into any blank image param.
+      const { nodes, edges } = useCanvasStore.getState();
+      const upstreamImg = detectUpstreamImageUrl(id, edges, nodes);
+      const { paramValues, imageParamKeys } = resolveWorkflowImageParams(
+        payload.paramBindings,
+        payload.paramValues ?? {},
+        upstreamImg,
+      );
       const result = await executeMutation.mutateAsync({
         nodeId: id,
         projectId: data.projectId,
         customBaseUrl: payload.customBaseUrl?.trim() || undefined,
         workflowJson,
-        paramValues: payload.paramValues ?? {},
+        paramValues,
+        imageParamKeys: imageParamKeys.length > 0 ? imageParamKeys : undefined,
         outputNodeIds: payload.outputNodeIds,
         outputType: payload.outputType ?? "auto",
       });
@@ -232,7 +244,10 @@ export const ComfyuiWorkflowNode = memo(function ComfyuiWorkflowNode({ id, selec
       nodeType="comfyui_workflow"
       title={data.title}
     >
-      <Handle type="target" position={Position.Left} id="in" style={{ top: "50%", background: accent, border: "2px solid var(--c-bg)" }} />
+      {/* ref-image-in (top:30%): feed an upstream image into the first blank image param.
+          Generic "in" (top:55%) keeps ordering-only / video-input edges. */}
+      <Handle type="target" position={Position.Left} id="ref-image-in" style={{ top: "30%", background: "oklch(0.7 0.18 145)", border: "2px solid var(--c-bg)" }} />
+      <Handle type="target" position={Position.Left} id="in" style={{ top: "55%", background: accent, border: "2px solid var(--c-bg)" }} />
       <Handle type="source" position={Position.Right} id="out" style={{ top: "50%", background: accent, border: "2px solid var(--c-bg)" }} />
 
       <div style={{ display: "flex", flexDirection: "column", gap: 10, padding: "2px 0" }}>
@@ -446,6 +461,14 @@ export const ComfyuiWorkflowNode = memo(function ComfyuiWorkflowNode({ id, selec
               </div>
             </div>
 
+            {/* Upstream image hint: a connected image node fills blank image params on run. */}
+            {upstreamImageUrl && (payload.paramBindings ?? []).some((b) => b.type === "image") && (
+              <div style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 10.5, color: "oklch(0.7 0.16 145)" }}>
+                <ImageIcon size={11} />
+                已连接上游图片，运行时将自动填入留空的图像参数
+              </div>
+            )}
+
             {/* Dynamic param form */}
             {(payload.paramBindings ?? []).length > 0 && (
               <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
@@ -473,24 +496,29 @@ export const ComfyuiWorkflowNode = memo(function ComfyuiWorkflowNode({ id, selec
                           onChange={(e) => setParamValue(key, parseFloat(e.target.value))}
                         />
                       )}
-                      {b.type === "select" && b.options && b.options.length > 0 && (
-                        <select
-                          style={{ ...fieldBase, cursor: "pointer" }}
-                          value={String(value)}
-                          onChange={(e) => setParamValue(key, e.target.value)}
-                        >
-                          {b.options.map((opt) => (
-                            <option key={opt} value={opt}>{opt}</option>
-                          ))}
-                        </select>
-                      )}
-                      {b.type === "select" && (!b.options || b.options.length === 0) && (
-                        <input
-                          style={fieldBase}
-                          value={String(value)}
-                          onChange={(e) => setParamValue(key, e.target.value)}
-                        />
-                      )}
+                      {b.type === "select" && (() => {
+                        // Searchable combobox: a datalist lets the user type to
+                        // filter long model lists yet still pick from suggestions
+                        // (and free-type a value the server didn't report).
+                        const hasOptions = !!b.options && b.options.length > 0;
+                        const listId = `wf-opts-${key.replace(/[^a-zA-Z0-9_-]/g, "_")}`;
+                        return (
+                          <>
+                            <input
+                              list={hasOptions ? listId : undefined}
+                              style={fieldBase}
+                              value={String(value)}
+                              placeholder={hasOptions ? `输入以搜索（${b.options!.length} 个可选）` : undefined}
+                              onChange={(e) => setParamValue(key, e.target.value)}
+                            />
+                            {hasOptions && (
+                              <datalist id={listId}>
+                                {b.options!.map((opt) => <option key={opt} value={opt} />)}
+                              </datalist>
+                            )}
+                          </>
+                        );
+                      })()}
                       {b.type === "boolean" && (
                         <label style={{ display: "flex", alignItems: "center", gap: 6, cursor: "pointer" }}>
                           <input
