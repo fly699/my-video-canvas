@@ -1874,11 +1874,13 @@ export const comfyuiRouter = router({
         nodeId: z.string(),
         projectId: z.number(),
         customBaseUrl: z.string().max(2048).optional(),
-        workflowTemplate: z.enum(["animatediff", "svd"]),
+        workflowTemplate: z.enum(["animatediff", "svd", "wan_t2v", "wan_i2v", "ltxv"]),
         prompt: z.string().min(1).max(2000),
         negPrompt: z.string().max(2000).optional(),
         ckpt: z.string().min(1).max(255),
         motionModule: z.string().max(255).optional(),
+        clip: z.string().max(255).optional(),
+        clipVision: z.string().max(255).optional(),
         steps: z.number().int().min(1).max(150).default(20),
         cfg: z.number().min(1).max(30).default(7),
         seed: z.number().int().default(-1),
@@ -1896,8 +1898,8 @@ export const comfyuiRouter = router({
         (v) => v.workflowTemplate !== "animatediff" || (v.motionModule && v.motionModule.trim().length > 0),
         { message: "AnimateDiff 模板必须提供 motionModule", path: ["motionModule"] }
       ).refine(
-        (v) => v.workflowTemplate !== "svd" || (v.referenceImageUrl && v.referenceImageUrl.trim().length > 0),
-        { message: "SVD 模板必须提供 referenceImageUrl", path: ["referenceImageUrl"] }
+        (v) => (v.workflowTemplate !== "svd" && v.workflowTemplate !== "wan_i2v") || (v.referenceImageUrl && v.referenceImageUrl.trim().length > 0),
+        { message: "SVD / Wan I2V 模板必须提供起始图", path: ["referenceImageUrl"] }
       )
     )
     .mutation(async ({ ctx, input }) => {
@@ -1913,6 +1915,8 @@ export const comfyuiRouter = router({
             negPrompt: input.negPrompt,
             ckpt: input.ckpt,
             motionModule: input.motionModule,
+            clip: input.clip,
+            clipVision: input.clipVision,
             steps: input.steps,
             cfg: input.cfg,
             seed: input.seed >= 0 ? input.seed : undefined,

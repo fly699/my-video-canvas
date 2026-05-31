@@ -710,10 +710,11 @@ export function useWorkflowRunner() {
             failed.push(nodeId);
             return "fail";
           }
-          const template = ((p.workflowTemplate as string) === "svd") ? "svd" : "animatediff";
+          const vtplRaw = p.workflowTemplate as string;
+          const template = (["svd", "wan_t2v", "wan_i2v", "ltxv"].includes(vtplRaw) ? vtplRaw : "animatediff") as "animatediff" | "svd" | "wan_t2v" | "wan_i2v" | "ltxv";
           const refUrl = (p.referenceImageUrl as string) || undefined;
-          if (template === "svd" && !refUrl) {
-            toast.error(`节点 "${node.data.title}"：SVD 模板需要参考图`);
+          if ((template === "svd" || template === "wan_i2v") && !refUrl) {
+            toast.error(`节点 "${node.data.title}"：该模板需要起始图`);
             failed.push(nodeId);
             return "fail";
           }
@@ -732,6 +733,8 @@ export function useWorkflowRunner() {
             negPrompt: (p.negPrompt as string) || undefined,
             ckpt,
             motionModule,
+            clip: (p.clip as string) || undefined,
+            clipVision: (p.clipVision as string) || undefined,
             steps: typeof p.steps === "number" ? p.steps : 20,
             cfg: typeof p.cfg === "number" ? p.cfg : 7,
             seed: typeof p.seed === "number" ? p.seed : -1,
