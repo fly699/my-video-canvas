@@ -198,7 +198,9 @@ function StoragePanel() {
             <p style={{ margin: "4px 0 0", fontSize: 12, color: "var(--c-t2, rgba(255,255,255,0.55))", lineHeight: 1.5 }}>
               开启后系统会自动把生成的音频/视频/图像存到你的对象存储（推荐自建 MinIO，数据不出本机），URL 永久可用。<br />
               关闭后节点降级为直接使用模型提供商的上游 URL（Poyo: 24h 后过期；Higgsfield: 临时 CDN）。<br />
-              配置：S3_ENDPOINT / S3_BUCKET / S3_ACCESS_KEY / S3_SECRET_KEY（可运行 deploy\setup-minio.bat 一键配置）。
+              配置：S3_ENDPOINT / S3_BUCKET / S3_ACCESS_KEY / S3_SECRET_KEY（可运行 deploy\setup-minio.bat 一键配置）。<br />
+              <strong>存储后端优先级</strong>：配齐 S3_* → 用 <strong>MinIO/S3</strong>（首选）；否则若配了 Forge 凭据 → 回退 <strong>Forge 内置存储</strong>；都没有 → <strong>无持久化</strong>，所有存储操作会失败。
+              <strong>Forge 内置存储现已降级为「未配 S3 时的回退」</strong>，配了 MinIO/S3 后不再走它。
             </p>
             <div style={{ marginTop: 12, display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
               <button
@@ -244,6 +246,28 @@ function StoragePanel() {
                 </span>
               )}
             </div>
+          </div>
+        </div>
+      </div>
+
+      <div style={{ ...cardStyle, alignItems: "stretch", padding: "16px 20px" }}>
+        <div style={{ display: "flex", alignItems: "flex-start", gap: 12 }}>
+          <HardDrive style={{ width: 18, height: 18, color: "oklch(0.72 0.16 65)", flexShrink: 0, marginTop: 2 }} />
+          <div style={{ flex: 1 }}>
+            <h3 style={{ margin: 0, fontSize: 15, fontWeight: 600, color: "var(--c-t1, #f0f0f4)" }}>
+              关于 Forge 平台（非存储依赖）
+            </h3>
+            <p style={{ margin: "4px 0 0", fontSize: 12, color: "var(--c-t2, rgba(255,255,255,0.55))", lineHeight: 1.6 }}>
+              「Forge 内置存储」虽已被 MinIO/S3 取代为回退，但 <strong>Forge 平台（BUILT_IN_FORGE_API_URL / BUILT_IN_FORGE_API_KEY）仍是必需基础设施</strong>，
+              与对象存储配置无关，承担以下子系统：<br />
+              • <strong>LLM 代理</strong>：Claude / Gemini 等非 GPT 模型经 Forge `/v1/chat/completions` 调用<br />
+              • <strong>图像生成</strong>：`manus_forge` 模型，以及未配 Poyo Key 时的兜底<br />
+              • <strong>语音转写</strong>：Whisper（音频转文字）<br />
+              • <strong>定时任务</strong>：heartbeat 计划任务<br />
+              • <strong>站内通知</strong>：项目所有者通知<br />
+              • <strong>Data API / 地图</strong>：YouTube、Google Maps 等外部 API 代理<br />
+              因此<strong>即使存储全部切到 MinIO，也不能移除 Forge 凭据</strong>——否则上述功能不可用。
+            </p>
           </div>
         </div>
       </div>
