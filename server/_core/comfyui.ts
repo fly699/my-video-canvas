@@ -919,3 +919,86 @@ export async function fetchComfyModels(rawBaseUrl: string): Promise<ComfyModelLi
 
   return { ckpts, loras, samplers, schedulers, vaes, motionModules };
 }
+
+// ── Stress-test probe ─────────────────────────────────────────────────────────
+//
+// A single "probe" submits one workflow and measures latency. Used by the
+// stress-test job manager (comfyStress.ts) which drives many probes concurrently.
+//
+// Crucially, seeds are randomized on every probe: ComfyUI caches node outputs, so
+// re-submitting an identical workflow returns almost instantly and would make the
+// stress numbers meaningless. Randomizing `seed`/`noise_seed` forces real work.
+
+/** Replace every `seed` / `noise_seed` input with a fresh random value (in place). */
+function randomizeSeeds(wf: WorkflowJson): void {
+  for (const node of Object.values(wf)) {
+    const inputs = node?.inputs;
+    if (!inputs || typeof inputs !== "object") continue;
+    for (const key of Object.keys(inputs)) {
+      if (key === "seed" || key === "noise_seed") {
+        inputs[key] = Math.floor(Math.random() * 2_147_483_647);
+      }
+    }
+  }
+}
+
+export interface ComfyProbeResult {
+  submitMs: number;   // POST /prompt round-trip — how fast the queue accepts work
+  waitMs: number;     // submit → completion — queue wait + actual GPU execution
+  downloadMs: number; // 0 in lean mode; time to pull (and re-store) outputs in full mode
+  totalMs: number;
+  outputCount: number; // number of output files the workflow produced
+}
+
+export interface ComfyProbeOptions {
+  workflowJson: string;
+  /** full = also download every output via /view and re-store it (matches the real app pipeline). */
+  mode: "lean" | "full";
+  /** Randomize seeds to defeat ComfyUI's result cache. Default true. */
+  randomizeSeed?: boolean;
+  /** Override poll attempt cap (each attempt is POLL_INTERVAL_MS apart). */
+  maxAttempts?: number;
+}
+
+export async function runComfyProbe(rawBaseUrl: string, opts: ComfyProbeOptions): Promise<ComfyProbeResult> {
+  const baseUrl = normalizeBaseUrl(rawBaseUrl);
+
+  let workflow: WorkflowJson;
+  try {
+    workflow = JSON.parse(opts.workflowJson) as WorkflowJson;
+  } catch {
+    throw new Error("Workflow JSON 格式错误，无法解析");
+  }
+  workflow = JSON.parse(JSON.stringify(workflow)) as WorkflowJson; // clone before mutating
+  if (opts.randomizeSeed !== false) randomizeSeeds(workflow);
+
+  const t0 = Date.now();
+  const promptId = await submitWorkflow(baseUrl, workflow);
+  const t1 = Date.now();
+  const entry = await pollHistory(baseUrl, promptId, opts.maxAttempts ?? POLL_MAX_ATTEMPTS_VIDEO);
+  const t2 = Date.now();
+
+  let outputCount = 0;
+  for (const nodeOutput of Object.values(entry.outputs ?? {})) {
+    outputCount += (nodeOutput.images?.length ?? 0) + (nodeOutput.gifs?.length ?? 0);
+  }
+
+  let downloadMs = 0;
+  if (opts.mode === "full") {
+    const td = Date.now();
+    for (const nodeOutput of Object.values(entry.outputs ?? {})) {
+      for (const img of nodeOutput.images ?? []) {
+        const isVideo = /\.(mp4|webm|gif|webp)$/i.test(img.filename);
+        const ext = isVideo ? (img.filename.split(".").pop() || "mp4") : "png";
+        await downloadAndStore(downloadUrl(baseUrl, img.filename, img.subfolder, img.type), ext, isVideo ? "video/mp4" : "image/png");
+      }
+      for (const v of nodeOutput.gifs ?? []) {
+        const ext = v.filename.split(".").pop() || "mp4";
+        await downloadAndStore(downloadUrl(baseUrl, v.filename, v.subfolder, v.type), ext, "video/mp4");
+      }
+    }
+    downloadMs = Date.now() - td;
+  }
+
+  return { submitMs: t1 - t0, waitMs: t2 - t1, downloadMs, totalMs: Date.now() - t0, outputCount };
+}
