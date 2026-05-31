@@ -2,7 +2,7 @@ import path from "path";
 import { z } from "zod";
 import { TRPCError } from "@trpc/server";
 import { router, protectedProcedure } from "../_core/trpc";
-import { storagePut, storagePresignPut, isStorageConfigured, canBrowserReachStorageDirectly } from "../storage";
+import { storagePut, storagePresignPut, isStorageConfigured, canBrowserReachStorageDirectly, assertObjectStorageWritable } from "../storage";
 import { hashPassword, verifyPassword } from "../_core/scrypt";
 import {
   getOrCreateLobby,
@@ -336,6 +336,8 @@ export const chatRouter = router({
       let url: string;
       let storageKey: string;
       if (isStorageConfigured()) {
+        // 「仅允许 MinIO/S3」开关：未配 MinIO/S3 时拒绝写入，不回退 Forge 存储。
+        await assertObjectStorageWritable();
         const res = await storagePut(key, buffer, input.mimeType);
         url = res.url; storageKey = res.key;
       } else {
@@ -375,6 +377,8 @@ export const chatRouter = router({
       // 127.0.0.1) → upload through the app server via base64 instead of a
       // presigned PUT the client can't reach.
       if (!isStorageConfigured() || !canBrowserReachStorageDirectly()) return { mode: "base64" as const };
+      // 「仅允许 MinIO/S3」开关：未配 MinIO/S3 时拒绝直传，不回退 Forge 存储。
+      await assertObjectStorageWritable();
       const { uploadUrl, key, url } = await storagePresignPut(relKey, input.mimeType);
       return { mode: "presigned" as const, uploadUrl, key, url, name: safeName, kind: kindFromMime(input.mimeType) };
     }),

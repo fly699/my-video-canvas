@@ -1,7 +1,7 @@
 import path from "path";
 import { z } from "zod";
 import { router, protectedProcedure } from "../_core/trpc";
-import { storagePut, isStorageConfigured } from "../storage";
+import { storagePut, isStorageConfigured, assertObjectStorageWritable } from "../storage";
 import { assertWhitelisted } from "../_core/whitelist";
 
 const ALLOWED_MIME_TYPES = [
@@ -54,6 +54,8 @@ export const uploadRouter = router({
         const dataUrl = `data:${input.mimeType};base64,${input.base64}`;
         return { url: dataUrl, storageKey: key };
       }
+      // 「仅允许 MinIO/S3」开关：未配 MinIO/S3 时拒绝写入，不回退 Forge 存储。
+      await assertObjectStorageWritable();
       const { url } = await storagePut(key, buf, input.mimeType);
       return { url, storageKey: key };
     }),

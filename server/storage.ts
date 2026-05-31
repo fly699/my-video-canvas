@@ -45,26 +45,31 @@ export function isS3Configured(): boolean {
   return Boolean(ENV.s3Endpoint && ENV.s3Bucket && ENV.s3AccessKey && ENV.s3SecretKey);
 }
 
-// Admin "MinIO/S3 only" mirror. When true, the Forge storage fallback is
-// disabled. Kept as a module-level sync flag (pushed by storageConfig on each
-// settings load) so the sync storageBackend() can consult it without a refactor.
-// Async write paths call refreshStorageSettingsMirror() first to close the
-// cold-start window before deciding where to write.
-let _minioOnly = false;
-export function setMinioOnlyMirror(v: boolean): void { _minioOnly = v; }
-
-/** Refresh the minioOnly mirror from the cached admin settings (best-effort). */
-export async function refreshStorageSettingsMirror(): Promise<void> {
-  try {
-    const { getCachedStorageSettings } = await import("./_core/storageConfig");
-    await getCachedStorageSettings(); // pushes into setMinioOnlyMirror
-  } catch { /* keep last known mirror value */ }
-}
-
 export function storageBackend(): "s3" | "forge" | "none" {
   if (isS3Configured()) return "s3";
-  if (!_minioOnly && ENV.forgeApiUrl && ENV.forgeApiKey) return "forge";
+  if (ENV.forgeApiUrl && ENV.forgeApiKey) return "forge";
   return "none";
+}
+
+// 路径1 写入守卫（用户上传 / 聊天附件 / 画布上传 / 本地剪辑产物）——这些没有
+// 各自的持久化开关。当管理员开启「仅允许 MinIO/S3」且未配置 MinIO/S3 时，
+// 拒绝写入，而不是回退到 Forge 存储。
+// 注意：AI 生成产物（Poyo/Higgsfield/OpenAI）不走此守卫，由 persistAudio/
+// Video/Image 三个开关各自控制。
+export async function assertObjectStorageWritable(): Promise<void> {
+  if (isS3Configured()) return; // 已配 MinIO/S3，永远写本地存储
+  const { isMinioOnlyEnabled } = await import("./_core/storageConfig");
+  if (await isMinioOnlyEnabled()) {
+    throw new Error("仅允许 MinIO/S3：未配置 MinIO/S3，已拒绝写入（不会落 Forge 存储）。请先配置 S3_ENDPOINT/S3_BUCKET/S3_ACCESS_KEY/S3_SECRET_KEY。");
+  }
+}
+
+// ComfyUI 等内网节点产物：永久硬锁 MinIO/S3，无视任何开关。出于内网节点的
+// 安全考量，未配置 MinIO/S3 时一律拒绝写入（绝不落 Forge 存储）。
+export function assertMinioOnlyWrite(): void {
+  if (!isS3Configured()) {
+    throw new Error("ComfyUI 产物仅允许存储到 MinIO/S3（内网节点安全策略）：未配置 MinIO/S3，已拒绝写入。请配置 S3_ENDPOINT/S3_BUCKET/S3_ACCESS_KEY/S3_SECRET_KEY。");
+  }
 }
 
 /** Whether persistent storage (S3/MinIO or Forge) is configured for this deployment. */
