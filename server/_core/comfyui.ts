@@ -68,26 +68,7 @@ export async function interruptComfy(rawBaseUrl: string): Promise<void> {
 // before submission. Numeric placeholders are quoted in JSON so we replace
 // `"__seed__"` (with quotes) and inject the raw number — this preserves JSON validity.
 
-const TXT2IMG_TEMPLATE = {
-  "3": { class_type: "KSampler", inputs: { seed: "__seed__", steps: "__steps__", cfg: "__cfg__", sampler_name: "__sampler__", scheduler: "__scheduler__", denoise: "__denoise__", model: ["4", 0], positive: ["6", 0], negative: ["7", 0], latent_image: ["5", 0] } },
-  "4": { class_type: "CheckpointLoaderSimple", inputs: { ckpt_name: "__ckpt__" } },
-  "5": { class_type: "EmptyLatentImage", inputs: { width: "__width__", height: "__height__", batch_size: "__batchSize__" } },
-  "6": { class_type: "CLIPTextEncode", inputs: { text: "__prompt__", clip: ["4", 1] } },
-  "7": { class_type: "CLIPTextEncode", inputs: { text: "__negPrompt__", clip: ["4", 1] } },
-  "8": { class_type: "VAEDecode", inputs: { samples: ["3", 0], vae: ["4", 2] } },
-  "9": { class_type: "SaveImage", inputs: { filename_prefix: "comfyui_output", images: ["8", 0] } },
-};
-
-const IMG2IMG_TEMPLATE = {
-  "3": { class_type: "KSampler", inputs: { seed: "__seed__", steps: "__steps__", cfg: "__cfg__", sampler_name: "__sampler__", scheduler: "__scheduler__", denoise: "__denoise__", model: ["4", 0], positive: ["6", 0], negative: ["7", 0], latent_image: ["10", 0] } },
-  "4": { class_type: "CheckpointLoaderSimple", inputs: { ckpt_name: "__ckpt__" } },
-  "6": { class_type: "CLIPTextEncode", inputs: { text: "__prompt__", clip: ["4", 1] } },
-  "7": { class_type: "CLIPTextEncode", inputs: { text: "__negPrompt__", clip: ["4", 1] } },
-  "8": { class_type: "VAEDecode", inputs: { samples: ["3", 0], vae: ["4", 2] } },
-  "9": { class_type: "SaveImage", inputs: { filename_prefix: "comfyui_output", images: ["8", 0] } },
-  "10": { class_type: "VAEEncode", inputs: { pixels: ["11", 0], vae: ["4", 2] } },
-  "11": { class_type: "LoadImage", inputs: { image: "__refImageName__" } },
-};
+// txt2img / img2img graphs are built programmatically — see buildImageWorkflow.
 
 const ANIMATEDIFF_TEMPLATE = {
   "3": { class_type: "KSampler", inputs: { seed: "__seed__", steps: "__steps__", cfg: "__cfg__", sampler_name: "__sampler__", scheduler: "__scheduler__", denoise: "__denoise__", model: ["12", 0], positive: ["6", 0], negative: ["7", 0], latent_image: ["5", 0] } },
@@ -452,12 +433,144 @@ export function subscribeComfyProgress(
 
 // ── Public API ────────────────────────────────────────────────────────────────
 
+export interface LoraSpec {
+  name: string;
+  strengthModel: number;
+  strengthClip?: number;
+}
+
+export interface ControlNetSpec {
+  model: string;
+  imageName: string;       // already-uploaded ComfyUI image filename
+  strength: number;
+  startPercent?: number;
+  endPercent?: number;
+}
+
+interface BuildImageWorkflowArgs {
+  template: "txt2img" | "img2img";
+  prompt: string;
+  negPrompt: string;
+  ckpt: string;
+  loras: LoraSpec[];
+  vae?: string;            // VAELoader name; empty = use checkpoint's VAE
+  controlnet?: ControlNetSpec;
+  refImageName?: string;   // img2img reference image filename
+  seed: number;
+  steps: number;
+  cfg: number;
+  sampler: string;
+  scheduler: string;
+  denoise: number;
+  width: number;
+  height: number;
+  batchSize: number;
+}
+
+type NodeRef = [string, number];
+
+/**
+ * Build a ComfyUI prompt graph for txt2img / img2img programmatically so we can
+ * inject a variable number of LoRA loaders, an optional ControlNet chain, and an
+ * optional standalone VAE — none of which a static placeholder template can do.
+ *
+ * Graph shape:
+ *   Checkpoint(4) ──model/clip──▶ [LoraLoader chain] ──▶ KSampler(3) + CLIP encodes(6/7)
+ *   (optional) VAELoader(20) feeds VAEDecode/VAEEncode instead of checkpoint VAE
+ *   (optional) ControlNet: Loader(30)+Image(31) ──▶ ControlNetApplyAdvanced(32)
+ *              rewrites KSampler positive/negative conditioning
+ */
+export function buildImageWorkflow(a: BuildImageWorkflowArgs): Record<string, { class_type: string; inputs: Record<string, unknown> }> {
+  const wf: Record<string, { class_type: string; inputs: Record<string, unknown> }> = {};
+
+  wf["4"] = { class_type: "CheckpointLoaderSimple", inputs: { ckpt_name: a.ckpt } };
+
+  // VAE source: dedicated loader when provided, else the checkpoint's third output.
+  let vaeRef: NodeRef = ["4", 2];
+  if (a.vae && a.vae.trim()) {
+    wf["20"] = { class_type: "VAELoader", inputs: { vae_name: a.vae.trim() } };
+    vaeRef = ["20", 0];
+  }
+
+  // LoRA chain: each loader threads model+clip through, so they stack in order.
+  let modelRef: NodeRef = ["4", 0];
+  let clipRef: NodeRef = ["4", 1];
+  a.loras.forEach((l, i) => {
+    const nid = `lora_${i}`;
+    wf[nid] = {
+      class_type: "LoraLoader",
+      inputs: {
+        lora_name: l.name,
+        strength_model: l.strengthModel,
+        strength_clip: l.strengthClip ?? l.strengthModel,
+        model: modelRef,
+        clip: clipRef,
+      },
+    };
+    modelRef = [nid, 0];
+    clipRef = [nid, 1];
+  });
+
+  wf["6"] = { class_type: "CLIPTextEncode", inputs: { text: a.prompt, clip: clipRef } };
+  wf["7"] = { class_type: "CLIPTextEncode", inputs: { text: a.negPrompt, clip: clipRef } };
+
+  // Conditioning may be rewritten by ControlNet below.
+  let positiveRef: NodeRef = ["6", 0];
+  let negativeRef: NodeRef = ["7", 0];
+  if (a.controlnet && a.controlnet.model.trim() && a.controlnet.imageName) {
+    wf["30"] = { class_type: "ControlNetLoader", inputs: { control_net_name: a.controlnet.model.trim() } };
+    wf["31"] = { class_type: "LoadImage", inputs: { image: a.controlnet.imageName } };
+    wf["32"] = {
+      class_type: "ControlNetApplyAdvanced",
+      inputs: {
+        positive: positiveRef,
+        negative: negativeRef,
+        control_net: ["30", 0],
+        image: ["31", 0],
+        strength: a.controlnet.strength,
+        start_percent: a.controlnet.startPercent ?? 0,
+        end_percent: a.controlnet.endPercent ?? 1,
+      },
+    };
+    positiveRef = ["32", 0];
+    negativeRef = ["32", 1];
+  }
+
+  // Latent source: empty latent (txt2img) or VAE-encoded reference (img2img).
+  let latentRef: NodeRef;
+  if (a.template === "img2img") {
+    wf["11"] = { class_type: "LoadImage", inputs: { image: a.refImageName ?? "" } };
+    wf["10"] = { class_type: "VAEEncode", inputs: { pixels: ["11", 0], vae: vaeRef } };
+    latentRef = ["10", 0];
+  } else {
+    wf["5"] = { class_type: "EmptyLatentImage", inputs: { width: a.width, height: a.height, batch_size: a.batchSize } };
+    latentRef = ["5", 0];
+  }
+
+  wf["3"] = {
+    class_type: "KSampler",
+    inputs: {
+      seed: a.seed, steps: a.steps, cfg: a.cfg,
+      sampler_name: a.sampler, scheduler: a.scheduler, denoise: a.denoise,
+      model: modelRef, positive: positiveRef, negative: negativeRef, latent_image: latentRef,
+    },
+  };
+  wf["8"] = { class_type: "VAEDecode", inputs: { samples: ["3", 0], vae: vaeRef } };
+  wf["9"] = { class_type: "SaveImage", inputs: { filename_prefix: "comfyui_output", images: ["8", 0] } };
+
+  return wf;
+}
+
 export interface GenerateComfyImageOptions {
   workflowTemplate: "txt2img" | "img2img";
   prompt: string;
   negPrompt?: string;
   ckpt: string;
+  // Single-LoRA fields kept for backward compatibility; `loras` takes precedence.
   lora?: string;
+  loraStrength?: number;
+  loras?: LoraSpec[];
+  controlnet?: { model: string; imageUrl: string; strength?: number; startPercent?: number; endPercent?: number };
   steps?: number;
   cfg?: number;
   seed?: number;
@@ -467,7 +580,6 @@ export interface GenerateComfyImageOptions {
   scheduler?: string;
   denoise?: number;
   vae?: string;
-  loraStrength?: number;
   batchSize?: number;
   referenceImageUrl?: string;
   // Progress relay (optional)
@@ -484,23 +596,45 @@ export async function generateComfyImage(rawBaseUrl: string, options: GenerateCo
     refImageName = await uploadImageToComfy(baseUrl, options.referenceImageUrl);
   }
 
-  const template = options.workflowTemplate === "img2img" ? IMG2IMG_TEMPLATE : TXT2IMG_TEMPLATE;
-  const workflow = applyTemplate(template, {
-    prompt: options.prompt,
-    negPrompt: options.negPrompt,
+  // Normalize LoRA input: prefer the multi-LoRA array, fall back to the legacy
+  // single lora/loraStrength pair, and drop entries without a name.
+  const loras: LoraSpec[] = (options.loras && options.loras.length > 0)
+    ? options.loras
+    : (options.lora && options.lora.trim() ? [{ name: options.lora.trim(), strengthModel: options.loraStrength ?? 1.0 }] : []);
+  const cleanLoras = loras.filter((l) => l.name && l.name.trim());
+
+  // Upload the ControlNet guide image (if any) the same way as the img2img ref.
+  let controlnet: ControlNetSpec | undefined;
+  if (options.controlnet && options.controlnet.model.trim() && options.controlnet.imageUrl) {
+    const cnImageName = await uploadImageToComfy(baseUrl, options.controlnet.imageUrl);
+    controlnet = {
+      model: options.controlnet.model.trim(),
+      imageName: cnImageName,
+      strength: options.controlnet.strength ?? 1.0,
+      startPercent: options.controlnet.startPercent ?? 0,
+      endPercent: options.controlnet.endPercent ?? 1,
+    };
+  }
+
+  const workflow = buildImageWorkflow({
+    template: options.workflowTemplate,
+    prompt: options.prompt ?? "",
+    negPrompt: options.negPrompt ?? "",
     ckpt: options.ckpt,
-    steps: options.steps,
-    cfg: options.cfg,
-    seed: options.seed,
-    width: options.width,
-    height: options.height,
-    sampler: options.sampler,
-    scheduler: options.scheduler,
-    // img2img needs denoise < 1.0 to retain the reference image; 0.75 is the practical default
-    denoise: options.workflowTemplate === "img2img" ? (options.denoise ?? 0.75) : options.denoise,
+    loras: cleanLoras,
     vae: options.vae,
-    batchSize: options.batchSize,
+    controlnet,
     refImageName,
+    seed: options.seed ?? Math.floor(Math.random() * 2_147_483_647),
+    steps: options.steps ?? 20,
+    cfg: options.cfg ?? 7,
+    sampler: options.sampler ?? "euler",
+    scheduler: options.scheduler ?? "normal",
+    // img2img needs denoise < 1.0 to retain the reference image; 0.75 is the practical default
+    denoise: options.workflowTemplate === "img2img" ? (options.denoise ?? 0.75) : (options.denoise ?? 1.0),
+    width: options.width ?? 512,
+    height: options.height ?? 512,
+    batchSize: options.batchSize ?? 1,
   });
 
   const promptId = await submitWorkflow(baseUrl, workflow);

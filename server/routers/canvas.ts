@@ -1778,6 +1778,20 @@ export const comfyuiRouter = router({
         negPrompt: z.string().max(2000).optional(),
         ckpt: z.string().min(1).max(255),
         lora: z.string().max(255).optional(),
+        // Multi-LoRA stack (takes precedence over the single `lora`/`loraStrength`).
+        loras: z.array(z.object({
+          name: z.string().min(1).max(255),
+          strengthModel: z.number().min(-10).max(10),
+          strengthClip: z.number().min(-10).max(10).optional(),
+        })).max(8).optional(),
+        // Optional ControlNet guidance (txt2img / img2img).
+        controlnet: z.object({
+          model: z.string().min(1).max(255),
+          imageUrl: z.string().min(1).max(2048),
+          strength: z.number().min(0).max(2).optional(),
+          startPercent: z.number().min(0).max(1).optional(),
+          endPercent: z.number().min(0).max(1).optional(),
+        }).optional(),
         steps: z.number().int().min(1).max(150).default(20),
         cfg: z.number().min(1).max(30).default(7),
         seed: z.number().int().default(-1),
@@ -1808,6 +1822,8 @@ export const comfyuiRouter = router({
             negPrompt: input.negPrompt,
             ckpt: input.ckpt,
             lora: input.lora,
+            loras: input.loras,
+            controlnet: input.controlnet,
             steps: input.steps,
             cfg: input.cfg,
             seed: input.seed >= 0 ? input.seed : undefined,

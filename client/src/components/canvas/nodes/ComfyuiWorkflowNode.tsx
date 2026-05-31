@@ -473,24 +473,29 @@ export const ComfyuiWorkflowNode = memo(function ComfyuiWorkflowNode({ id, selec
                           onChange={(e) => setParamValue(key, parseFloat(e.target.value))}
                         />
                       )}
-                      {b.type === "select" && b.options && b.options.length > 0 && (
-                        <select
-                          style={{ ...fieldBase, cursor: "pointer" }}
-                          value={String(value)}
-                          onChange={(e) => setParamValue(key, e.target.value)}
-                        >
-                          {b.options.map((opt) => (
-                            <option key={opt} value={opt}>{opt}</option>
-                          ))}
-                        </select>
-                      )}
-                      {b.type === "select" && (!b.options || b.options.length === 0) && (
-                        <input
-                          style={fieldBase}
-                          value={String(value)}
-                          onChange={(e) => setParamValue(key, e.target.value)}
-                        />
-                      )}
+                      {b.type === "select" && (() => {
+                        // Searchable combobox: a datalist lets the user type to
+                        // filter long model lists yet still pick from suggestions
+                        // (and free-type a value the server didn't report).
+                        const hasOptions = !!b.options && b.options.length > 0;
+                        const listId = `wf-opts-${key.replace(/[^a-zA-Z0-9_-]/g, "_")}`;
+                        return (
+                          <>
+                            <input
+                              list={hasOptions ? listId : undefined}
+                              style={fieldBase}
+                              value={String(value)}
+                              placeholder={hasOptions ? `输入以搜索（${b.options!.length} 个可选）` : undefined}
+                              onChange={(e) => setParamValue(key, e.target.value)}
+                            />
+                            {hasOptions && (
+                              <datalist id={listId}>
+                                {b.options!.map((opt) => <option key={opt} value={opt} />)}
+                              </datalist>
+                            )}
+                          </>
+                        );
+                      })()}
                       {b.type === "boolean" && (
                         <label style={{ display: "flex", alignItems: "center", gap: 6, cursor: "pointer" }}>
                           <input
