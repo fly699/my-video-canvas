@@ -62,7 +62,7 @@ import * as dev from "./_core/devStore";
 
 // Dev-mode whitelist state
 const devWhitelistSettings = { id: 1, enabled: false, comfyuiBypass: false, updatedAt: new Date() };
-const devStorageSettings = { id: 1, persistAudio: true, persistVideo: true, persistImage: true, presignTtlSec: 3600, poyoUploadFallback: false, updatedAt: new Date() };
+const devStorageSettings = { id: 1, persistAudio: true, persistVideo: true, persistImage: true, presignTtlSec: 3600, poyoUploadFallback: false, minioOnly: false, updatedAt: new Date() };
 const devWhitelistEntries: Array<{ id: number; type: "ip" | "user"; value: string; note: string | null; createdBy: number | null; createdAt: Date }> = [];
 let devNextWhitelistId = 1;
 
@@ -747,7 +747,7 @@ export async function getWhitelistEntries() {
 
 // ── Storage persistence settings ────────────────────────────────────────────
 
-export async function getStorageSettings(): Promise<{ persistAudio: boolean; persistVideo: boolean; persistImage: boolean; presignTtlSec: number; poyoUploadFallback: boolean }> {
+export async function getStorageSettings(): Promise<{ persistAudio: boolean; persistVideo: boolean; persistImage: boolean; presignTtlSec: number; poyoUploadFallback: boolean; minioOnly: boolean }> {
   const db = await getDb();
   if (!db) return {
     persistAudio: devStorageSettings.persistAudio,
@@ -755,6 +755,7 @@ export async function getStorageSettings(): Promise<{ persistAudio: boolean; per
     persistImage: devStorageSettings.persistImage,
     presignTtlSec: devStorageSettings.presignTtlSec,
     poyoUploadFallback: devStorageSettings.poyoUploadFallback,
+    minioOnly: devStorageSettings.minioOnly,
   };
   const rows = await db.select().from(storageSettings).limit(1);
   const row = rows[0];
@@ -764,10 +765,11 @@ export async function getStorageSettings(): Promise<{ persistAudio: boolean; per
     persistImage: row?.persistImage ?? true,
     presignTtlSec: row?.presignTtlSec ?? 3600,
     poyoUploadFallback: row?.poyoUploadFallback ?? false,
+    minioOnly: row?.minioOnly ?? false,
   };
 }
 
-export async function setStorageSettings(patch: { persistAudio?: boolean; persistVideo?: boolean; persistImage?: boolean; presignTtlSec?: number; poyoUploadFallback?: boolean }): Promise<void> {
+export async function setStorageSettings(patch: { persistAudio?: boolean; persistVideo?: boolean; persistImage?: boolean; presignTtlSec?: number; poyoUploadFallback?: boolean; minioOnly?: boolean }): Promise<void> {
   const db = await getDb();
   if (!db) {
     if (patch.persistAudio !== undefined) devStorageSettings.persistAudio = patch.persistAudio;
@@ -775,6 +777,7 @@ export async function setStorageSettings(patch: { persistAudio?: boolean; persis
     if (patch.persistImage !== undefined) devStorageSettings.persistImage = patch.persistImage;
     if (patch.presignTtlSec !== undefined) devStorageSettings.presignTtlSec = patch.presignTtlSec;
     if (patch.poyoUploadFallback !== undefined) devStorageSettings.poyoUploadFallback = patch.poyoUploadFallback;
+    if (patch.minioOnly !== undefined) devStorageSettings.minioOnly = patch.minioOnly;
     return;
   }
   const set: Record<string, boolean | number> = {};
@@ -783,6 +786,7 @@ export async function setStorageSettings(patch: { persistAudio?: boolean; persis
   if (patch.persistImage !== undefined) set.persistImage = patch.persistImage;
   if (patch.presignTtlSec !== undefined) set.presignTtlSec = patch.presignTtlSec;
   if (patch.poyoUploadFallback !== undefined) set.poyoUploadFallback = patch.poyoUploadFallback;
+  if (patch.minioOnly !== undefined) set.minioOnly = patch.minioOnly;
   if (Object.keys(set).length === 0) return;
   await db.update(storageSettings).set(set).where(eq(storageSettings.id, 1));
 }

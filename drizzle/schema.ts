@@ -468,6 +468,11 @@ export const storageSettings = mysqlTable("storageSettings", {
   // When MinIO/S3 is not publicly reachable, route reference images/videos
   // through Poyo's stream-upload endpoint to obtain a public URL for AI models.
   poyoUploadFallback: boolean("poyoUploadFallback").notNull().default(false),
+  // When true, object storage is restricted to MinIO/S3 ONLY — the Forge
+  // storage fallback is disabled, so no file is ever written to Manus/Forge
+  // storage (writes fail if MinIO/S3 isn't configured). Off by default to keep
+  // existing behavior. Does NOT affect Forge non-storage features (LLM, etc.).
+  minioOnly: boolean("minioOnly").notNull().default(false),
   updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
 });
 

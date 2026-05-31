@@ -336,6 +336,19 @@ function StoragePanel() {
             statusOn="已开启（仅在 MinIO/S3 未公网时中转）"
             statusOff="已关闭（不影响原有存储逻辑）"
           />
+          <ToggleRow
+            label="仅允许 MinIO/S3（禁用 Forge 存储回退）"
+            description={
+              "开启后，对象存储被严格限制为自建 MinIO/S3：禁用 Forge 存储回退，任何文件（含上传/聊天附件/剪辑产物，以及 AI 生成再托管）都不会被写入 Manus/Forge 存储。\n" +
+              "影响范围（全局所有写入路径）：未配置 MinIO/S3 时写入将直接失败（而非静默落 Forge）。请务必先配置 S3_ENDPOINT / S3_BUCKET / S3_ACCESS_KEY / S3_SECRET_KEY 再开启。\n" +
+              "注：仅作用于「对象存储」；Forge 的非存储功能（LLM 代理 / 语音转写 / 定时任务 / 通知 / Data API / manus_forge 画图模型）不受影响。读取既有文件不受限。"
+            }
+            enabled={settings.minioOnly}
+            disabled={setMut.isPending}
+            onClick={() => setMut.mutate({ minioOnly: !settings.minioOnly })}
+            statusOn="已开启（仅 MinIO/S3，绝不落 Forge 存储）"
+            statusOff="已关闭（未配 MinIO 时回退 Forge 存储）"
+          />
         </>
       )}
     </div>

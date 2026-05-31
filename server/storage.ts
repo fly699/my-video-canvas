@@ -45,9 +45,25 @@ export function isS3Configured(): boolean {
   return Boolean(ENV.s3Endpoint && ENV.s3Bucket && ENV.s3AccessKey && ENV.s3SecretKey);
 }
 
+// Admin "MinIO/S3 only" mirror. When true, the Forge storage fallback is
+// disabled. Kept as a module-level sync flag (pushed by storageConfig on each
+// settings load) so the sync storageBackend() can consult it without a refactor.
+// Async write paths call refreshStorageSettingsMirror() first to close the
+// cold-start window before deciding where to write.
+let _minioOnly = false;
+export function setMinioOnlyMirror(v: boolean): void { _minioOnly = v; }
+
+/** Refresh the minioOnly mirror from the cached admin settings (best-effort). */
+export async function refreshStorageSettingsMirror(): Promise<void> {
+  try {
+    const { getCachedStorageSettings } = await import("./_core/storageConfig");
+    await getCachedStorageSettings(); // pushes into setMinioOnlyMirror
+  } catch { /* keep last known mirror value */ }
+}
+
 export function storageBackend(): "s3" | "forge" | "none" {
   if (isS3Configured()) return "s3";
-  if (ENV.forgeApiUrl && ENV.forgeApiKey) return "forge";
+  if (!_minioOnly && ENV.forgeApiUrl && ENV.forgeApiKey) return "forge";
   return "none";
 }
 
@@ -98,11 +114,18 @@ export async function storagePut(
   data: Buffer | Uint8Array | string,
   contentType = "application/octet-stream",
 ): Promise<{ key: string; url: string }> {
-  if (storageBackend() === "s3") {
+  await refreshStorageSettingsMirror();
+  const backend = storageBackend();
+  if (backend === "s3") {
     const key = appendHashSuffix(normalizeKey(relKey));
     const body = typeof data === "string" ? Buffer.from(data) : Buffer.from(data as Uint8Array);
     await getS3().send(new PutObjectCommand({ Bucket: ENV.s3Bucket, Key: key, Body: body, ContentType: contentType }));
     return { key, url: `/manus-storage/${key}` };
+  }
+  // backend !== "s3": only reachable as "forge" (minioOnly off). When minioOnly
+  // is on, backend is "none" here → refuse the write (never falls to Forge).
+  if (backend !== "forge") {
+    throw new Error("对象存储未配置或已限制为仅 MinIO/S3：未配置 MinIO/S3 时拒绝写入（不会落 Forge 存储）。");
   }
   const { forgeUrl, forgeKey } = getForgeConfig();
   const key = appendHashSuffix(normalizeKey(relKey));
@@ -180,7 +203,9 @@ export async function storagePresignPut(
   relKey: string,
   contentType = "application/octet-stream",
 ): Promise<{ uploadUrl: string; key: string; url: string }> {
-  if (storageBackend() === "s3") {
+  await refreshStorageSettingsMirror();
+  const backend = storageBackend();
+  if (backend === "s3") {
     const key = appendHashSuffix(normalizeKey(relKey));
     const signed = await getSignedUrl(
       getS3(),
@@ -188,6 +213,9 @@ export async function storagePresignPut(
       { expiresIn: 3600 },
     );
     return { uploadUrl: applyPublicEndpoint(signed), key, url: `/manus-storage/${key}` };
+  }
+  if (backend !== "forge") {
+    throw new Error("对象存储未配置或已限制为仅 MinIO/S3：未配置 MinIO/S3 时拒绝写入（不会落 Forge 存储）。");
   }
   const { forgeUrl, forgeKey } = getForgeConfig();
   const key = appendHashSuffix(normalizeKey(relKey));
