@@ -1889,7 +1889,9 @@ export const comfyuiRouter = router({
     .input(z.object({ customBaseUrl: z.string().max(2048).optional() }))
     .mutation(async ({ ctx, input }) => {
       // Same SSRF gate as the generate endpoints (server POSTs to a client URL).
-      await assertWhitelisted(ctx);
+      // Use the ComfyUI-specific gate so cancel stays consistent with generate
+      // when an admin has enabled the ComfyUI whitelist bypass.
+      await assertComfyuiAllowed(ctx);
       const baseUrl = input.customBaseUrl?.trim() || ENV.comfyuiBaseUrl;
       if (!baseUrl) throw new TRPCError({ code: "BAD_REQUEST", message: "ComfyUI URL 未配置" });
       try {
