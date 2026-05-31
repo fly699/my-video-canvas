@@ -3,7 +3,7 @@ import React, { createContext, useContext, useEffect, useState } from "react";
 export type Theme =
   | "dark" | "dim" | "midnight"
   | "forest" | "rose" | "ocean"
-  | "light" | "warm" | "mint" | "lavender";
+  | "light" | "warm" | "mint" | "lavender" | "paper";
 
 export interface ThemeMeta {
   id: Theme;
@@ -27,6 +27,7 @@ export const THEMES: ThemeMeta[] = [
   { id: "warm",     label: "暖白", canvas: "oklch(0.948 0.020 85)",  surface: "oklch(0.835 0.022 78)",  dark: false },
   { id: "mint",     label: "薄荷", canvas: "oklch(0.928 0.045 165)", surface: "oklch(0.815 0.055 165)", dark: false },
   { id: "lavender", label: "薰衣草", canvas: "oklch(0.925 0.040 295)", surface: "oklch(0.810 0.052 295)", dark: false },
+  { id: "paper",    label: "经典", canvas: "oklch(0.928 0.006 80)",  surface: "oklch(0.792 0.008 80)",  dark: false },
 ];
 
 interface ThemeContextType {
