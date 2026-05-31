@@ -13,6 +13,7 @@ import {
 import { useLocalMedia } from "@/lib/useLocalMedia";
 import { cacheMedia } from "@/lib/mediaCache";
 import { ImageLightbox } from "../ImageLightbox";
+import { MaskCanvas } from "./MaskCanvas";
 import { LLMModelPicker, type LLMModelId } from "../LLMModelPicker";
 import { makeImageProxyFallback } from "@/lib/utils";
 
@@ -88,8 +89,10 @@ export const ComfyuiImageNode = memo(function ComfyuiImageNode({ id, selected, d
   const [urlExpanded, setUrlExpanded] = useState(false);
   const [paramsExpanded, setParamsExpanded] = useState(false);
   const [cnExpanded, setCnExpanded] = useState(false);
+  const [ipExpanded, setIpExpanded] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const cnFileInputRef = useRef<HTMLInputElement>(null);
+  const ipFileInputRef = useRef<HTMLInputElement>(null);
 
   // Pull ckpt/lora suggestions from ComfyUI via /object_info (best-effort, no-throw).
   // Debounce the URL so each keystroke in the COMFYUI_BASE_URL field doesn't
@@ -124,16 +127,23 @@ export const ComfyuiImageNode = memo(function ComfyuiImageNode({ id, selected, d
     },
   });
 
-  // Which slot the in-flight upload targets: img2img reference or ControlNet guide.
-  const uploadTargetRef = useRef<"reference" | "controlnet">("reference");
+  // Which slot the in-flight upload targets: img2img reference / ControlNet / IPAdapter / inpaint mask.
+  const uploadTargetRef = useRef<"reference" | "controlnet" | "ipadapter" | "mask">("reference");
   const uploadMutation = trpc.upload.uploadImage.useMutation({
     onSuccess: (result) => {
       setUploading(false);
       if (!useCanvasStore.getState().nodes.some((n) => n.id === id)) return;
-      if (uploadTargetRef.current === "controlnet") {
-        const cn = useCanvasStore.getState().nodes.find((n) => n.id === id)?.data as ComfyuiImageNodeData | undefined;
-        updateNodeData(id, { controlnet: { model: cn?.controlnet?.model ?? "", strength: cn?.controlnet?.strength, startPercent: cn?.controlnet?.startPercent, endPercent: cn?.controlnet?.endPercent, imageUrl: result.url } });
+      const cur = useCanvasStore.getState().nodes.find((n) => n.id === id)?.data as ComfyuiImageNodeData | undefined;
+      if (uploadTargetRef.current === "mask") {
+        updateNodeData(id, { maskUrl: result.url });
+      } else if (uploadTargetRef.current === "controlnet") {
+        const c = cur?.controlnet;
+        updateNodeData(id, { controlnet: { model: c?.model ?? "", strength: c?.strength, startPercent: c?.startPercent, endPercent: c?.endPercent, imageUrl: result.url } });
         toast.success("ControlNet 图像上传成功");
+      } else if (uploadTargetRef.current === "ipadapter") {
+        const p = cur?.ipadapter;
+        updateNodeData(id, { ipadapter: { model: p?.model ?? "", clipVision: p?.clipVision, weight: p?.weight, imageUrl: result.url } });
+        toast.success("IPAdapter 参考图上传成功");
       } else {
         updateNodeData(id, { referenceImageUrl: result.url });
         toast.success("参考图上传成功");
@@ -178,6 +188,10 @@ export const ComfyuiImageNode = memo(function ComfyuiImageNode({ id, selected, d
   const cn = payload.controlnet;
   const updateCn = (patch: Partial<NonNullable<ComfyuiImageNodeData["controlnet"]>>) =>
     updateNodeData(id, { controlnet: { model: cn?.model ?? "", imageUrl: cn?.imageUrl ?? "", strength: cn?.strength, startPercent: cn?.startPercent, endPercent: cn?.endPercent, ...patch } });
+
+  const ip = payload.ipadapter;
+  const updateIp = (patch: Partial<NonNullable<ComfyuiImageNodeData["ipadapter"]>>) =>
+    updateNodeData(id, { ipadapter: { model: ip?.model ?? "", imageUrl: ip?.imageUrl ?? "", clipVision: ip?.clipVision, weight: ip?.weight, ...patch } });
 
   const handleTranslate = (field: "prompt" | "negPrompt" = "prompt") => {
     if (translating || translateMutation.isPending) return;
@@ -237,6 +251,8 @@ export const ComfyuiImageNode = memo(function ComfyuiImageNode({ id, selected, d
       loraStrength: p.loraStrength,
       loras: p.loras,
       controlnet: p.controlnet,
+      ipadapter: p.ipadapter,
+      upscaleModel: p.upscaleModel,
       steps: p.steps,
       cfg: p.cfg,
       width: p.width,
@@ -263,8 +279,11 @@ export const ComfyuiImageNode = memo(function ComfyuiImageNode({ id, selected, d
     if (uploading) { toast.error("参考图正在上传中，请稍候"); return; }
     if (!payload.prompt?.trim()) { toast.error("请先填写提示词"); return; }
     if (!payload.ckpt?.trim()) { toast.error("请先填写 Checkpoint 名称"); return; }
-    if (payload.workflowTemplate === "img2img" && !payload.referenceImageUrl) {
-      toast.error("img2img 模板需要参考图"); return;
+    if ((payload.workflowTemplate === "img2img" || payload.workflowTemplate === "inpaint") && !payload.referenceImageUrl) {
+      toast.error(payload.workflowTemplate === "inpaint" ? "inpaint 模板需要原图" : "img2img 模板需要参考图"); return;
+    }
+    if (payload.workflowTemplate === "inpaint" && !payload.maskUrl) {
+      toast.error("inpaint 模板需要涂抹蒙版"); return;
     }
     cancelledRef.current = false;
     updateNodeData(id, { status: "processing", errorMessage: undefined, progress: 0 });
@@ -279,8 +298,12 @@ export const ComfyuiImageNode = memo(function ComfyuiImageNode({ id, selected, d
       lora: payload.lora,
       loras: lorasValue.filter((l) => l.name.trim()).length > 0 ? lorasValue.filter((l) => l.name.trim()) : undefined,
       controlnet: cn?.model?.trim() && cn?.imageUrl
-        ? { model: cn.model.trim(), imageUrl: cn.imageUrl, strength: cn.strength, startPercent: cn.startPercent, endPercent: cn.endPercent }
+        ? { model: cn.model.trim(), imageUrl: cn.imageUrl, strength: cn.strength, startPercent: cn.startPercent, endPercent: cn.endPercent, preprocessor: cn.preprocessor?.trim() || undefined }
         : undefined,
+      ipadapter: ip?.model?.trim() && ip?.imageUrl
+        ? { model: ip.model.trim(), imageUrl: ip.imageUrl, clipVision: ip.clipVision?.trim() || undefined, weight: ip.weight }
+        : undefined,
+      upscaleModel: payload.upscaleModel?.trim() || undefined,
       steps: payload.steps ?? 20,
       cfg: payload.cfg ?? 7,
       seed: typeof payload.seed === "number" ? payload.seed : -1,
@@ -293,10 +316,11 @@ export const ComfyuiImageNode = memo(function ComfyuiImageNode({ id, selected, d
       loraStrength: typeof payload.loraStrength === "number" ? payload.loraStrength : undefined,
       batchSize: payload.batchSize ?? 1,
       referenceImageUrl: payload.referenceImageUrl,
+      maskUrl: payload.maskUrl,
     });
   };
 
-  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>, target: "reference" | "controlnet" = "reference") => {
+  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>, target: "reference" | "controlnet" | "ipadapter" = "reference") => {
     const file = e.target.files?.[0];
     if (!file) return;
     if (!file.type.startsWith("image/")) { toast.error("请选择图片文件"); e.target.value = ""; return; }
@@ -325,6 +349,8 @@ export const ComfyuiImageNode = memo(function ComfyuiImageNode({ id, selected, d
   };
 
   const isImg2Img = payload.workflowTemplate === "img2img";
+  const isInpaint = payload.workflowTemplate === "inpaint";
+  const needsRefImage = isImg2Img || isInpaint;
 
   // ── Local media cache (IndexedDB) ────────────────────────────────────────
   const { isLocal: imgIsLocal, blobUrl: imgBlobUrl, downloadedAt: imgDownloadedAt, refresh: refreshImgCache } = useLocalMedia(payload.imageUrl);
@@ -600,6 +626,7 @@ export const ComfyuiImageNode = memo(function ComfyuiImageNode({ id, selected, d
                 extraCounts={[
                   { label: "VAE", count: modelsQuery.data?.vaes.length ?? 0 },
                   { label: "ControlNet", count: modelsQuery.data?.controlnets.length ?? 0 },
+                  { label: "IPAdapter", count: modelsQuery.data?.ipadapters.length ?? 0 },
                   { label: "UNET", count: modelsQuery.data?.unets.length ?? 0 },
                   { label: "放大", count: modelsQuery.data?.upscaleModels.length ?? 0 },
                   { label: "嵌入", count: modelsQuery.data?.embeddings.length ?? 0 },
@@ -639,7 +666,7 @@ export const ComfyuiImageNode = memo(function ComfyuiImageNode({ id, selected, d
           </label>
           <select
             value={payload.workflowTemplate ?? "txt2img"}
-            onChange={(e) => update("workflowTemplate", e.target.value as "txt2img" | "img2img")}
+            onChange={(e) => update("workflowTemplate", e.target.value as ComfyuiImageNodeData["workflowTemplate"])}
             className="nodrag"
             style={{ ...fieldBase, cursor: "pointer" }}
             onFocus={(e) => { e.currentTarget.style.borderColor = BORDER_ACCENT; }}
@@ -647,6 +674,7 @@ export const ComfyuiImageNode = memo(function ComfyuiImageNode({ id, selected, d
           >
             <option value="txt2img">txt2img — 文生图</option>
             <option value="img2img">img2img — 图生图</option>
+            <option value="inpaint">inpaint — 蒙版重绘</option>
           </select>
         </div>
 
@@ -907,6 +935,20 @@ export const ComfyuiImageNode = memo(function ComfyuiImageNode({ id, selected, d
                   {(modelsQuery.data?.vaes ?? []).map((v) => <option key={v} value={v} />)}
                 </datalist>
               </div>
+              {/* Upscale model (放大) */}
+              <div className="col-span-2">
+                <label style={labelStyle}>放大模型（留空不放大）</label>
+                <input
+                  list={`comfyui-upscalers-${id}`}
+                  placeholder="如 4x-UltraSharp.pth"
+                  value={payload.upscaleModel ?? ""}
+                  onChange={(e) => update("upscaleModel", e.target.value || undefined)}
+                  className="nodrag" style={fieldBase}
+                />
+                <datalist id={`comfyui-upscalers-${id}`}>
+                  {(modelsQuery.data?.upscaleModels ?? []).map((u) => <option key={u} value={u} />)}
+                </datalist>
+              </div>
               {/* Batch size */}
               <div>
                 <label style={labelStyle}>批量数量</label>
@@ -947,10 +989,10 @@ export const ComfyuiImageNode = memo(function ComfyuiImageNode({ id, selected, d
           )}
         </div>
 
-        {/* ── Reference image upload (img2img only) ── */}
-        {isImg2Img && (
+        {/* ── Reference image upload (img2img / inpaint) ── */}
+        {needsRefImage && (
           <div>
-            <label style={labelStyle}>参考图（img2img 必需） *</label>
+            <label style={labelStyle}>{isInpaint ? "原图（inpaint 必需） *" : "参考图（img2img 必需） *"}</label>
             {payload.referenceImageUrl ? (
               <div
                 className="relative rounded-lg overflow-hidden"
@@ -1010,6 +1052,24 @@ export const ComfyuiImageNode = memo(function ComfyuiImageNode({ id, selected, d
                 onBlur={(e) => { e.currentTarget.style.borderColor = BORDER_DEFAULT; }}
               />
             )}
+            {/* Inpaint mask painter — appears once the reference image is set. */}
+            {isInpaint && payload.referenceImageUrl && (
+              <div style={{ marginTop: 8 }}>
+                <label style={labelStyle}>蒙版（涂抹要重绘的区域） *</label>
+                <MaskCanvas
+                  imageUrl={payload.referenceImageUrl}
+                  accent={accent}
+                  onExport={(dataUrl) => {
+                    if (!dataUrl) { update("maskUrl", undefined); return; }
+                    uploadTargetRef.current = "mask";
+                    const base64 = dataUrl.split(",")[1];
+                    setUploading(true);
+                    uploadMutation.mutate({ base64, mimeType: "image/png", filename: "inpaint-mask.png" });
+                  }}
+                />
+                {payload.maskUrl && <p style={{ fontSize: 9.5, color: "oklch(0.65 0.18 145)", margin: "2px 0 0" }}>✓ 蒙版已就绪</p>}
+              </div>
+            )}
           </div>
         )}
 
@@ -1040,6 +1100,26 @@ export const ComfyuiImageNode = memo(function ComfyuiImageNode({ id, selected, d
                 />
                 <datalist id={`comfyui-controlnets-${id}`}>
                   {(modelsQuery.data?.controlnets ?? []).map((c) => <option key={c} value={c} />)}
+                </datalist>
+              </div>
+              <div>
+                <label style={labelStyle}>预处理器（可选，需 controlnet_aux 节点包）</label>
+                <input
+                  list={`comfyui-cn-preproc-${id}`}
+                  placeholder="留空＝直接用控制图（已是边缘/深度图）"
+                  value={cn?.preprocessor ?? ""}
+                  onChange={(e) => updateCn({ preprocessor: e.target.value })}
+                  className="nodrag" style={{ ...fieldBase, fontSize: 10.5 }}
+                />
+                <datalist id={`comfyui-cn-preproc-${id}`}>
+                  <option value="CannyEdgePreprocessor">Canny 边缘</option>
+                  <option value="MiDaS-DepthMapPreprocessor">深度 (MiDaS)</option>
+                  <option value="DepthAnythingV2Preprocessor">深度 (DepthAnythingV2)</option>
+                  <option value="OpenposePreprocessor">OpenPose 姿态</option>
+                  <option value="DWPreprocessor">DWPose 姿态</option>
+                  <option value="LineArtPreprocessor">线稿 LineArt</option>
+                  <option value="ScribblePreprocessor">涂鸦 Scribble</option>
+                  <option value="HEDPreprocessor">HED 软边缘</option>
                 </datalist>
               </div>
               <div>
@@ -1088,6 +1168,89 @@ export const ComfyuiImageNode = memo(function ComfyuiImageNode({ id, selected, d
                   <input type="range" min={0} max={1} step={0.05} value={cn?.endPercent ?? 1} onChange={(e) => updateCn({ endPercent: Number(e.target.value) })} className="nodrag" style={{ width: "100%", accentColor: accent }} />
                 </div>
               </div>
+            </div>
+          )}
+        </div>
+
+        {/* ── IPAdapter (optional style/face reference) ── */}
+        <div className="rounded-xl" style={{ background: "var(--c-input)", border: "1px solid var(--c-bd1)" }}>
+          <button
+            onClick={() => setIpExpanded((v) => !v)}
+            className="nodrag w-full flex items-center justify-between px-3 py-2 rounded-xl"
+            style={{ cursor: "pointer", background: "transparent" }}
+          >
+            <span style={{ fontSize: 10.5, fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.07em", color: "var(--c-t4)", display: "flex", alignItems: "center", gap: 4 }}>
+              IPAdapter{ip?.model?.trim() && ip?.imageUrl ? <span style={{ color: accent }}>●</span> : "（风格/人脸参考·可选）"}
+            </span>
+            {ipExpanded ? <ChevronDown className="w-3 h-3" style={{ color: "var(--c-t4)" }} /> : <ChevronRight className="w-3 h-3" style={{ color: "var(--c-t4)" }} />}
+          </button>
+          {ipExpanded && (
+            <div className="px-3 pb-3 flex flex-col gap-2">
+              <div>
+                <label style={labelStyle}>IPAdapter 模型</label>
+                <input
+                  list={`comfyui-ipadapters-${id}`}
+                  placeholder="如 ip-adapter-plus_sdxl_vit-h.safetensors"
+                  value={ip?.model ?? ""}
+                  onChange={(e) => updateIp({ model: e.target.value })}
+                  className="nodrag" style={fieldBase}
+                  onFocus={(e) => { e.currentTarget.style.borderColor = BORDER_ACCENT; }}
+                  onBlur={(e) => { e.currentTarget.style.borderColor = BORDER_DEFAULT; }}
+                />
+                <datalist id={`comfyui-ipadapters-${id}`}>
+                  {(modelsQuery.data?.ipadapters ?? []).map((m) => <option key={m} value={m} />)}
+                </datalist>
+              </div>
+              <div>
+                <label style={labelStyle}>参考图像</label>
+                {ip?.imageUrl ? (
+                  <div className="relative rounded-lg overflow-hidden" style={{ height: 80, border: `1px solid ${BORDER_DEFAULT}`, background: "var(--c-canvas)" }}>
+                    <img src={ip.imageUrl} alt="ipadapter" className="w-full h-full object-cover" draggable={false} onError={makeImageProxyFallback(ip.imageUrl)} />
+                    <button onClick={() => updateIp({ imageUrl: "" })} className="nodrag absolute top-1 right-1 p-0.5 rounded-full" style={{ background: "oklch(0 0 0 / 0.7)", color: "var(--c-t1)" }}>
+                      <X style={{ width: 12, height: 12 }} />
+                    </button>
+                  </div>
+                ) : (
+                  <button
+                    onClick={() => ipFileInputRef.current?.click()}
+                    disabled={uploading}
+                    className="nodrag w-full flex items-center justify-center gap-2 py-3 rounded-lg"
+                    style={{ border: "1px dashed var(--c-bd3)", background: "var(--c-input)", color: uploading ? "var(--c-t4)" : "var(--c-t3)", fontSize: 11, cursor: uploading ? "not-allowed" : "pointer" }}
+                  >
+                    {uploading ? <><Loader2 style={{ width: 13, height: 13 }} className="animate-spin" /> 上传中...</> : <><Upload style={{ width: 13, height: 13 }} /> 上传参考图像</>}
+                  </button>
+                )}
+                <input ref={ipFileInputRef} type="file" accept="image/*" style={{ display: "none" }} onChange={(e) => handleFileChange(e, "ipadapter")} />
+                {(!ip?.imageUrl || ip.imageUrl.startsWith("http")) && (
+                  <input
+                    type="url"
+                    placeholder="或粘贴公网图片 URL（https://…）"
+                    value={ip?.imageUrl?.startsWith("http") ? ip.imageUrl : ""}
+                    onChange={(e) => updateIp({ imageUrl: e.target.value.trim() })}
+                    className="nodrag" style={{ ...fieldBase, marginTop: 6, fontSize: 10.5 }}
+                    onFocus={(e) => { e.currentTarget.style.borderColor = BORDER_ACCENT; }}
+                    onBlur={(e) => { e.currentTarget.style.borderColor = BORDER_DEFAULT; }}
+                  />
+                )}
+              </div>
+              <div>
+                <label style={labelStyle}>权重 <span style={{ fontWeight: 400, color: "var(--c-t3)" }}>{(ip?.weight ?? 1.0).toFixed(2)}</span></label>
+                <input type="range" min={0} max={2} step={0.05} value={ip?.weight ?? 1.0} onChange={(e) => updateIp({ weight: Number(e.target.value) })} className="nodrag" style={{ width: "100%", accentColor: accent }} />
+              </div>
+              <div>
+                <label style={labelStyle}>CLIP Vision（留空用默认）</label>
+                <input
+                  list={`comfyui-clipvisions-${id}`}
+                  placeholder="CLIP-ViT-H-14-laion2B-s32B-b79K.safetensors"
+                  value={ip?.clipVision ?? ""}
+                  onChange={(e) => updateIp({ clipVision: e.target.value })}
+                  className="nodrag" style={{ ...fieldBase, fontSize: 10.5 }}
+                />
+                <datalist id={`comfyui-clipvisions-${id}`}>
+                  {(modelsQuery.data?.clipVisions ?? []).map((m) => <option key={m} value={m} />)}
+                </datalist>
+              </div>
+              <p style={{ fontSize: 9.5, color: "var(--c-t4)", margin: 0 }}>需安装 ComfyUI_IPAdapter_plus 自定义节点包。</p>
             </div>
           )}
         </div>

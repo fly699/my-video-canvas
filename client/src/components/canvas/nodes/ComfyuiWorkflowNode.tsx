@@ -93,6 +93,78 @@ const PRESET_WAN = JSON.stringify({
   "7": { class_type: "VHS_VideoCombine", inputs: { frame_rate: 16, loop_count: 0, filename_prefix: "wan_output", format: "video/h264-mp4", pingpong: false, save_output: true, images: ["6", 0] } },
 }, null, 2);
 
+// Wan 2.2 T2V — ComfyUI native graph (UNETLoader + CLIPLoader type "wan" +
+// EmptyHunyuanLatentVideo + ModelSamplingSD3 shift). Wan2.2 is MoE; this loads
+// the high-noise expert — swap unet_name for your fp8/GGUF build.
+const PRESET_WAN22 = JSON.stringify({
+  "1": { class_type: "UNETLoader", inputs: { unet_name: "wan2.2_t2v_high_noise_14B_fp8_scaled.safetensors", weight_dtype: "default" } },
+  "2": { class_type: "CLIPLoader", inputs: { clip_name: "umt5_xxl_fp8_e4m3fn_scaled.safetensors", type: "wan" } },
+  "3": { class_type: "VAELoader", inputs: { vae_name: "wan_2.1_vae.safetensors" } },
+  "10": { class_type: "ModelSamplingSD3", inputs: { shift: 8.0, model: ["1", 0] } },
+  "6": { class_type: "CLIPTextEncode", inputs: { text: "a cat walking on grass, cinematic", clip: ["2", 0] } },
+  "7": { class_type: "CLIPTextEncode", inputs: { text: "low quality, blurry", clip: ["2", 0] } },
+  "5": { class_type: "EmptyHunyuanLatentVideo", inputs: { width: 832, height: 480, length: 81, batch_size: 1 } },
+  "4": { class_type: "KSampler", inputs: { seed: 42, steps: 30, cfg: 5, sampler_name: "euler", scheduler: "simple", denoise: 1.0, model: ["10", 0], positive: ["6", 0], negative: ["7", 0], latent_image: ["5", 0] } },
+  "8": { class_type: "VAEDecode", inputs: { samples: ["4", 0], vae: ["3", 0] } },
+  "9": { class_type: "VHS_VideoCombine", inputs: { frame_rate: 16, loop_count: 0, filename_prefix: "wan22_output", format: "video/h264-mp4", pingpong: false, save_output: true, images: ["8", 0] } },
+}, null, 2);
+
+// LTX-Video — fast/real-time video (native LTXV nodes).
+const PRESET_LTXV = JSON.stringify({
+  "1": { class_type: "CheckpointLoaderSimple", inputs: { ckpt_name: "ltx-video-2b-v0.9.5.safetensors" } },
+  "2": { class_type: "CLIPLoader", inputs: { clip_name: "t5xxl_fp16.safetensors", type: "ltxv" } },
+  "6": { class_type: "CLIPTextEncode", inputs: { text: "a serene waterfall in a forest", clip: ["2", 0] } },
+  "7": { class_type: "CLIPTextEncode", inputs: { text: "low quality, worst quality, blurry", clip: ["2", 0] } },
+  "8": { class_type: "LTXVConditioning", inputs: { positive: ["6", 0], negative: ["7", 0], frame_rate: 25 } },
+  "5": { class_type: "EmptyLTXVLatentVideo", inputs: { width: 768, height: 512, length: 97, batch_size: 1 } },
+  "3": { class_type: "KSampler", inputs: { seed: 42, steps: 30, cfg: 3, sampler_name: "euler", scheduler: "normal", denoise: 1.0, model: ["1", 0], positive: ["8", 0], negative: ["8", 1], latent_image: ["5", 0] } },
+  "9": { class_type: "VAEDecode", inputs: { samples: ["3", 0], vae: ["1", 2] } },
+  "10": { class_type: "VHS_VideoCombine", inputs: { frame_rate: 25, loop_count: 0, filename_prefix: "ltxv_output", format: "video/h264-mp4", pingpong: false, save_output: true, images: ["9", 0] } },
+}, null, 2);
+
+// Qwen-Image — ComfyUI native (UNETLoader + CLIPLoader type "qwen_image").
+const PRESET_QWEN = JSON.stringify({
+  "1": { class_type: "UNETLoader", inputs: { unet_name: "qwen_image_fp8_e4m3fn.safetensors", weight_dtype: "default" } },
+  "2": { class_type: "CLIPLoader", inputs: { clip_name: "qwen_2.5_vl_7b_fp8_scaled.safetensors", type: "qwen_image" } },
+  "3": { class_type: "VAELoader", inputs: { vae_name: "qwen_image_vae.safetensors" } },
+  "6": { class_type: "CLIPTextEncode", inputs: { text: "a poster with bold typography, vibrant colors", clip: ["2", 0] } },
+  "7": { class_type: "CLIPTextEncode", inputs: { text: "low quality, blurry", clip: ["2", 0] } },
+  "5": { class_type: "EmptySD3LatentImage", inputs: { width: 1328, height: 1328, batch_size: 1 } },
+  "4": { class_type: "KSampler", inputs: { seed: 42, steps: 20, cfg: 2.5, sampler_name: "euler", scheduler: "simple", denoise: 1.0, model: ["1", 0], positive: ["6", 0], negative: ["7", 0], latent_image: ["5", 0] } },
+  "8": { class_type: "VAEDecode", inputs: { samples: ["4", 0], vae: ["3", 0] } },
+  "9": { class_type: "SaveImage", inputs: { filename_prefix: "qwen_output", images: ["8", 0] } },
+}, null, 2);
+
+// Flux.1 Kontext — instruction-based image editing. The input image is scaled,
+// VAE-encoded, and injected into the conditioning via ReferenceLatent.
+const PRESET_FLUX_KONTEXT = JSON.stringify({
+  "1": { class_type: "UNETLoader", inputs: { unet_name: "flux1-dev-kontext_fp8_scaled.safetensors", weight_dtype: "default" } },
+  "2": { class_type: "DualCLIPLoader", inputs: { clip_name1: "t5xxl_fp8_e4m3fn.safetensors", clip_name2: "clip_l.safetensors", type: "flux" } },
+  "3": { class_type: "VAELoader", inputs: { vae_name: "ae.safetensors" } },
+  "10": { class_type: "LoadImage", inputs: { image: "input.png" } },
+  "11": { class_type: "FluxKontextImageScale", inputs: { image: ["10", 0] } },
+  "12": { class_type: "VAEEncode", inputs: { pixels: ["11", 0], vae: ["3", 0] } },
+  "6": { class_type: "CLIPTextEncode", inputs: { text: "change the background to a snowy mountain", clip: ["2", 0] } },
+  "13": { class_type: "FluxGuidance", inputs: { conditioning: ["6", 0], guidance: 2.5 } },
+  "14": { class_type: "ReferenceLatent", inputs: { conditioning: ["13", 0], latent: ["12", 0] } },
+  "15": { class_type: "ConditioningZeroOut", inputs: { conditioning: ["6", 0] } },
+  "4": { class_type: "KSampler", inputs: { seed: 42, steps: 20, cfg: 1, sampler_name: "euler", scheduler: "simple", denoise: 1.0, model: ["1", 0], positive: ["14", 0], negative: ["15", 0], latent_image: ["12", 0] } },
+  "7": { class_type: "VAEDecode", inputs: { samples: ["4", 0], vae: ["3", 0] } },
+  "8": { class_type: "SaveImage", inputs: { filename_prefix: "kontext_output", images: ["7", 0] } },
+}, null, 2);
+
+// Stable Diffusion 3.5 Large — all-in-one checkpoint + ModelSamplingSD3 shift.
+const PRESET_SD35 = JSON.stringify({
+  "4": { class_type: "CheckpointLoaderSimple", inputs: { ckpt_name: "sd3.5_large.safetensors" } },
+  "10": { class_type: "ModelSamplingSD3", inputs: { shift: 3.0, model: ["4", 0] } },
+  "6": { class_type: "CLIPTextEncode", inputs: { text: "a photorealistic portrait, studio lighting", clip: ["4", 1] } },
+  "7": { class_type: "CLIPTextEncode", inputs: { text: "low quality, deformed", clip: ["4", 1] } },
+  "5": { class_type: "EmptySD3LatentImage", inputs: { width: 1024, height: 1024, batch_size: 1 } },
+  "3": { class_type: "KSampler", inputs: { seed: 42, steps: 30, cfg: 4.5, sampler_name: "euler", scheduler: "sgm_uniform", denoise: 1.0, model: ["10", 0], positive: ["6", 0], negative: ["7", 0], latent_image: ["5", 0] } },
+  "8": { class_type: "VAEDecode", inputs: { samples: ["3", 0], vae: ["4", 2] } },
+  "9": { class_type: "SaveImage", inputs: { filename_prefix: "sd35_output", images: ["8", 0] } },
+}, null, 2);
+
 type Phase = "empty" | "binding" | "run";
 
 export const ComfyuiWorkflowNode = memo(function ComfyuiWorkflowNode({ id, selected, data }: Props) {
@@ -273,9 +345,14 @@ export const ComfyuiWorkflowNode = memo(function ComfyuiWorkflowNode({ id, selec
             <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginBottom: 8 }}>
               {[
                 { label: "SDXL 1.0", json: PRESET_SDXL },
+                { label: "SD3.5", json: PRESET_SD35 },
                 { label: "Flux.1-dev", json: PRESET_FLUX },
+                { label: "Flux Kontext", json: PRESET_FLUX_KONTEXT },
+                { label: "Qwen-Image", json: PRESET_QWEN },
                 { label: "HunyuanVideo", json: PRESET_HUNYUAN },
                 { label: "Wan2.1", json: PRESET_WAN },
+                { label: "Wan2.2", json: PRESET_WAN22 },
+                { label: "LTX-Video", json: PRESET_LTXV },
               ].map((p) => (
                 <button
                   key={p.label}

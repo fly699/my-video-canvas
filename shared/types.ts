@@ -496,9 +496,18 @@ export interface ComfyuiControlNet {
   strength?: number;
   startPercent?: number;
   endPercent?: number;
+  /** Optional aux preprocessor node class (canny/depth/openpose…). */
+  preprocessor?: string;
 }
 
-export type ComfyuiImageTemplate = "txt2img" | "img2img";
+export interface ComfyuiIPAdapter {
+  model: string;
+  imageUrl: string;
+  clipVision?: string;
+  weight?: number;
+}
+
+export type ComfyuiImageTemplate = "txt2img" | "img2img" | "inpaint";
 export interface ComfyuiImageNodeData {
   // Connection
   customBaseUrl?: string;       // empty = use server-side global default
@@ -517,6 +526,10 @@ export interface ComfyuiImageNodeData {
   loras?: ComfyuiLoraEntry[];
   /** Optional ControlNet guidance for txt2img / img2img. */
   controlnet?: ComfyuiControlNet;
+  /** Optional IPAdapter style/face reference. */
+  ipadapter?: ComfyuiIPAdapter;
+  /** Optional model-based upscale (UpscaleModelLoader name); empty = none. */
+  upscaleModel?: string;
   // Sampling
   steps?: number;
   cfg?: number;
@@ -530,6 +543,8 @@ export interface ComfyuiImageNodeData {
   batchSize?: number;
   // I/O
   referenceImageUrl?: string;
+  /** Inpaint mask (white = regenerate). Drawn over the reference image. */
+  maskUrl?: string;
   imageUrl?: string;
   imageStorageKey?: string;
   imageUrls?: string[];

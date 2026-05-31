@@ -1773,7 +1773,7 @@ export const comfyuiRouter = router({
         nodeId: z.string(),
         projectId: z.number(),
         customBaseUrl: z.string().max(2048).optional(),
-        workflowTemplate: z.enum(["txt2img", "img2img"]),
+        workflowTemplate: z.enum(["txt2img", "img2img", "inpaint"]),
         prompt: z.string().min(1).max(2000),
         negPrompt: z.string().max(2000).optional(),
         ckpt: z.string().min(1).max(255),
@@ -1791,7 +1791,17 @@ export const comfyuiRouter = router({
           strength: z.number().min(0).max(2).optional(),
           startPercent: z.number().min(0).max(1).optional(),
           endPercent: z.number().min(0).max(1).optional(),
+          preprocessor: z.string().max(128).optional(),
         }).optional(),
+        // Optional IPAdapter style/face reference.
+        ipadapter: z.object({
+          model: z.string().min(1).max(255),
+          imageUrl: z.string().min(1).max(2048),
+          clipVision: z.string().max(255).optional(),
+          weight: z.number().min(0).max(2).optional(),
+        }).optional(),
+        // Optional model-based upscale (UpscaleModelLoader name).
+        upscaleModel: z.string().max(255).optional(),
         steps: z.number().int().min(1).max(150).default(20),
         cfg: z.number().min(1).max(30).default(7),
         seed: z.number().int().default(-1),
@@ -1804,9 +1814,13 @@ export const comfyuiRouter = router({
         loraStrength: z.number().min(0).max(2).optional(),
         batchSize: z.number().int().min(1).max(8).default(1),
         referenceImageUrl: z.string().max(2048).optional(),
+        maskUrl: z.string().max(2048).optional(),
       }).refine(
-        (v) => v.workflowTemplate !== "img2img" || (v.referenceImageUrl && v.referenceImageUrl.trim().length > 0),
-        { message: "img2img 模板必须提供 referenceImageUrl", path: ["referenceImageUrl"] }
+        (v) => (v.workflowTemplate !== "img2img" && v.workflowTemplate !== "inpaint") || (v.referenceImageUrl && v.referenceImageUrl.trim().length > 0),
+        { message: "img2img / inpaint 模板必须提供 referenceImageUrl", path: ["referenceImageUrl"] }
+      ).refine(
+        (v) => v.workflowTemplate !== "inpaint" || (v.maskUrl && v.maskUrl.trim().length > 0),
+        { message: "inpaint 模板必须提供蒙版 maskUrl", path: ["maskUrl"] }
       )
     )
     .mutation(async ({ ctx, input }) => {
@@ -1824,6 +1838,8 @@ export const comfyuiRouter = router({
             lora: input.lora,
             loras: input.loras,
             controlnet: input.controlnet,
+            ipadapter: input.ipadapter,
+            upscaleModel: input.upscaleModel,
             steps: input.steps,
             cfg: input.cfg,
             seed: input.seed >= 0 ? input.seed : undefined,
@@ -1836,6 +1852,7 @@ export const comfyuiRouter = router({
             loraStrength: input.loraStrength,
             batchSize: input.batchSize,
             referenceImageUrl: input.referenceImageUrl,
+            maskUrl: input.maskUrl,
             projectId: input.projectId,
             nodeId: input.nodeId,
           });

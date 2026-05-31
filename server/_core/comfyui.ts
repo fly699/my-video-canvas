@@ -445,17 +445,28 @@ export interface ControlNetSpec {
   strength: number;
   startPercent?: number;
   endPercent?: number;
+  preprocessor?: string;   // comfyui_controlnet_aux node class (e.g. CannyEdgePreprocessor)
+}
+
+export interface IPAdapterSpec {
+  model: string;
+  imageName: string;       // already-uploaded ComfyUI image filename
+  clipVision?: string;     // CLIPVisionLoader name; empty = sensible default
+  weight?: number;
 }
 
 interface BuildImageWorkflowArgs {
-  template: "txt2img" | "img2img";
+  template: "txt2img" | "img2img" | "inpaint";
   prompt: string;
   negPrompt: string;
   ckpt: string;
   loras: LoraSpec[];
   vae?: string;            // VAELoader name; empty = use checkpoint's VAE
   controlnet?: ControlNetSpec;
-  refImageName?: string;   // img2img reference image filename
+  ipadapter?: IPAdapterSpec;
+  upscaleModel?: string;   // UpscaleModelLoader name; empty = no upscale
+  refImageName?: string;   // img2img / inpaint reference image filename
+  maskName?: string;       // inpaint mask filename (white = regenerate)
   seed: number;
   steps: number;
   cfg: number;
@@ -511,6 +522,31 @@ export function buildImageWorkflow(a: BuildImageWorkflowArgs): Record<string, { 
     clipRef = [nid, 1];
   });
 
+  // IPAdapter (optional): a style/face reference image that modulates the model.
+  // Uses the explicit-model variant (IPAdapterModelLoader + CLIPVisionLoader +
+  // IPAdapterAdvanced) which is the most stable across ipadapter-pack versions.
+  if (a.ipadapter && a.ipadapter.model.trim() && a.ipadapter.imageName) {
+    wf["40"] = { class_type: "IPAdapterModelLoader", inputs: { ipadapter_file: a.ipadapter.model.trim() } };
+    wf["41"] = { class_type: "CLIPVisionLoader", inputs: { clip_name: a.ipadapter.clipVision?.trim() || "CLIP-ViT-H-14-laion2B-s32B-b79K.safetensors" } };
+    wf["42"] = { class_type: "LoadImage", inputs: { image: a.ipadapter.imageName } };
+    wf["43"] = {
+      class_type: "IPAdapterAdvanced",
+      inputs: {
+        model: modelRef,
+        ipadapter: ["40", 0],
+        image: ["42", 0],
+        clip_vision: ["41", 0],
+        weight: a.ipadapter.weight ?? 1.0,
+        weight_type: "linear",
+        combine_embeds: "concat",
+        start_at: 0,
+        end_at: 1,
+        embeds_scaling: "V only",
+      },
+    };
+    modelRef = ["43", 0];
+  }
+
   wf["6"] = { class_type: "CLIPTextEncode", inputs: { text: a.prompt, clip: clipRef } };
   wf["7"] = { class_type: "CLIPTextEncode", inputs: { text: a.negPrompt, clip: clipRef } };
 
@@ -520,13 +556,20 @@ export function buildImageWorkflow(a: BuildImageWorkflowArgs): Record<string, { 
   if (a.controlnet && a.controlnet.model.trim() && a.controlnet.imageName) {
     wf["30"] = { class_type: "ControlNetLoader", inputs: { control_net_name: a.controlnet.model.trim() } };
     wf["31"] = { class_type: "LoadImage", inputs: { image: a.controlnet.imageName } };
+    // Optional aux preprocessor (canny/depth/openpose…) turns the raw guide image
+    // into the control map before it feeds ControlNetApplyAdvanced.
+    let cnImageRef: NodeRef = ["31", 0];
+    if (a.controlnet.preprocessor && a.controlnet.preprocessor.trim()) {
+      wf["33"] = { class_type: a.controlnet.preprocessor.trim(), inputs: { image: ["31", 0], resolution: 512 } };
+      cnImageRef = ["33", 0];
+    }
     wf["32"] = {
       class_type: "ControlNetApplyAdvanced",
       inputs: {
         positive: positiveRef,
         negative: negativeRef,
         control_net: ["30", 0],
-        image: ["31", 0],
+        image: cnImageRef,
         strength: a.controlnet.strength,
         start_percent: a.controlnet.startPercent ?? 0,
         end_percent: a.controlnet.endPercent ?? 1,
@@ -536,9 +579,15 @@ export function buildImageWorkflow(a: BuildImageWorkflowArgs): Record<string, { 
     negativeRef = ["32", 1];
   }
 
-  // Latent source: empty latent (txt2img) or VAE-encoded reference (img2img).
+  // Latent source: empty latent (txt2img), VAE-encoded reference (img2img), or
+  // mask-aware encode (inpaint: regenerate only the white mask area).
   let latentRef: NodeRef;
-  if (a.template === "img2img") {
+  if (a.template === "inpaint") {
+    wf["11"] = { class_type: "LoadImage", inputs: { image: a.refImageName ?? "" } };
+    wf["12"] = { class_type: "LoadImageMask", inputs: { image: a.maskName ?? "", channel: "red" } };
+    wf["10"] = { class_type: "VAEEncodeForInpaint", inputs: { pixels: ["11", 0], vae: vaeRef, mask: ["12", 0], grow_mask_by: 6 } };
+    latentRef = ["10", 0];
+  } else if (a.template === "img2img") {
     wf["11"] = { class_type: "LoadImage", inputs: { image: a.refImageName ?? "" } };
     wf["10"] = { class_type: "VAEEncode", inputs: { pixels: ["11", 0], vae: vaeRef } };
     latentRef = ["10", 0];
@@ -556,21 +605,32 @@ export function buildImageWorkflow(a: BuildImageWorkflowArgs): Record<string, { 
     },
   };
   wf["8"] = { class_type: "VAEDecode", inputs: { samples: ["3", 0], vae: vaeRef } };
-  wf["9"] = { class_type: "SaveImage", inputs: { filename_prefix: "comfyui_output", images: ["8", 0] } };
+
+  // Optional model-based upscale (ESRGAN etc.) applied to the decoded image.
+  let imageRef: NodeRef = ["8", 0];
+  if (a.upscaleModel && a.upscaleModel.trim()) {
+    wf["50"] = { class_type: "UpscaleModelLoader", inputs: { model_name: a.upscaleModel.trim() } };
+    wf["51"] = { class_type: "ImageUpscaleWithModel", inputs: { upscale_model: ["50", 0], image: ["8", 0] } };
+    imageRef = ["51", 0];
+  }
+  wf["9"] = { class_type: "SaveImage", inputs: { filename_prefix: "comfyui_output", images: imageRef } };
 
   return wf;
 }
 
 export interface GenerateComfyImageOptions {
-  workflowTemplate: "txt2img" | "img2img";
+  workflowTemplate: "txt2img" | "img2img" | "inpaint";
   prompt: string;
   negPrompt?: string;
   ckpt: string;
+  maskUrl?: string;
   // Single-LoRA fields kept for backward compatibility; `loras` takes precedence.
   lora?: string;
   loraStrength?: number;
   loras?: LoraSpec[];
-  controlnet?: { model: string; imageUrl: string; strength?: number; startPercent?: number; endPercent?: number };
+  controlnet?: { model: string; imageUrl: string; strength?: number; startPercent?: number; endPercent?: number; preprocessor?: string };
+  ipadapter?: { model: string; imageUrl: string; clipVision?: string; weight?: number };
+  upscaleModel?: string;
   steps?: number;
   cfg?: number;
   seed?: number;
@@ -591,9 +651,14 @@ export async function generateComfyImage(rawBaseUrl: string, options: GenerateCo
   const baseUrl = normalizeBaseUrl(rawBaseUrl);
 
   let refImageName: string | undefined;
-  if (options.workflowTemplate === "img2img") {
-    if (!options.referenceImageUrl) throw new Error("img2img 模板需要参考图");
+  let maskName: string | undefined;
+  if (options.workflowTemplate === "img2img" || options.workflowTemplate === "inpaint") {
+    if (!options.referenceImageUrl) throw new Error(`${options.workflowTemplate} 模板需要参考图`);
     refImageName = await uploadImageToComfy(baseUrl, options.referenceImageUrl);
+  }
+  if (options.workflowTemplate === "inpaint") {
+    if (!options.maskUrl) throw new Error("inpaint 模板需要蒙版");
+    maskName = await uploadImageToComfy(baseUrl, options.maskUrl);
   }
 
   // Normalize LoRA input: prefer the multi-LoRA array, fall back to the legacy
@@ -613,6 +678,19 @@ export async function generateComfyImage(rawBaseUrl: string, options: GenerateCo
       strength: options.controlnet.strength ?? 1.0,
       startPercent: options.controlnet.startPercent ?? 0,
       endPercent: options.controlnet.endPercent ?? 1,
+      preprocessor: options.controlnet.preprocessor,
+    };
+  }
+
+  // Upload the IPAdapter reference image (if any).
+  let ipadapter: IPAdapterSpec | undefined;
+  if (options.ipadapter && options.ipadapter.model.trim() && options.ipadapter.imageUrl) {
+    const ipImageName = await uploadImageToComfy(baseUrl, options.ipadapter.imageUrl);
+    ipadapter = {
+      model: options.ipadapter.model.trim(),
+      imageName: ipImageName,
+      clipVision: options.ipadapter.clipVision,
+      weight: options.ipadapter.weight ?? 1.0,
     };
   }
 
@@ -624,13 +702,17 @@ export async function generateComfyImage(rawBaseUrl: string, options: GenerateCo
     loras: cleanLoras,
     vae: options.vae,
     controlnet,
+    ipadapter,
+    upscaleModel: options.upscaleModel,
     refImageName,
+    maskName,
     seed: options.seed ?? Math.floor(Math.random() * 2_147_483_647),
     steps: options.steps ?? 20,
     cfg: options.cfg ?? 7,
     sampler: options.sampler ?? "euler",
     scheduler: options.scheduler ?? "normal",
-    // img2img needs denoise < 1.0 to retain the reference image; 0.75 is the practical default
+    // img2img keeps the reference (denoise < 1.0); inpaint regenerates the masked
+    // area fully (1.0 default); txt2img is always 1.0.
     denoise: options.workflowTemplate === "img2img" ? (options.denoise ?? 0.75) : (options.denoise ?? 1.0),
     width: options.width ?? 512,
     height: options.height ?? 512,
