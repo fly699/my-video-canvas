@@ -525,7 +525,7 @@ export default function Home() {
                   {
                     icon: Boxes, color: "oklch(0.68 0.20 100)",
                     title: "ComfyUI 自建集成",
-                    desc: "接入自建 ComfyUI 服务器，txt2img / img2img / AnimateDiff / SVD",
+                    desc: "自建 ComfyUI：多 LoRA + ControlNet、15 类模型自动发现、自定义工作流导入与上下游图像直传",
                     badge: "NEW",
                   },
                   {
