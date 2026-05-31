@@ -43,6 +43,7 @@ export function ComfyStressPanel() {
   });
   const startMut = trpc.comfyStress.start.useMutation();
   const cancelMut = trpc.comfyStress.cancel.useMutation();
+  const stopMut = trpc.comfyStress.stop.useMutation();
 
   const jobs = listQuery.data ?? [];
   const hasRunning = jobs.some((j) => j.status === "running");
@@ -81,6 +82,16 @@ export function ComfyStressPanel() {
       void listQuery.refetch();
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "取消失败");
+    }
+  }
+
+  async function onStop(id: string) {
+    try {
+      await stopMut.mutateAsync({ id });
+      toast.success("已立即停止（在途请求已中断）");
+      void listQuery.refetch();
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "停止失败");
     }
   }
 
@@ -190,12 +201,22 @@ export function ComfyStressPanel() {
                   </span>
                 </div>
                 {j.status === "running" && (
-                  <button
-                    onClick={() => onCancel(j.id)}
-                    style={{ padding: "4px 12px", borderRadius: 6, border: `1px solid ${C.red}`, background: "transparent", color: C.red, cursor: "pointer", fontSize: 13 }}
-                  >
-                    取消
-                  </button>
+                  <div style={{ display: "flex", gap: 8 }}>
+                    <button
+                      onClick={() => onCancel(j.id)}
+                      title="不再派发新请求，已在途的请求会先跑完"
+                      style={{ padding: "4px 12px", borderRadius: 6, border: `1px solid ${C.border}`, background: "transparent", color: C.sub, cursor: "pointer", fontSize: 13 }}
+                    >
+                      取消
+                    </button>
+                    <button
+                      onClick={() => onStop(j.id)}
+                      title="立即中断所有在途的 ComfyUI 请求，不等其完成"
+                      style={{ padding: "4px 12px", borderRadius: 6, border: "none", background: C.red, color: "#fff", cursor: "pointer", fontSize: 13, fontWeight: 600 }}
+                    >
+                      立即停止
+                    </button>
+                  </div>
                 )}
               </div>
 

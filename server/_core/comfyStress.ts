@@ -72,6 +72,8 @@ interface StressJob extends StressJobView {
   workflowJson: string;
   randomizeSeed: boolean;
   cleanupTimer: ReturnType<typeof setTimeout> | null;
+  // Hard-stop controller: aborting cancels all in-flight ComfyUI fetches immediately.
+  abort: AbortController;
 }
 
 const jobs = new Map<string, StressJob>();
@@ -105,8 +107,8 @@ function recompute(job: StressJob): void {
 }
 
 export function toView(job: StressJob): StressJobView {
-  const { records, cancelRequested, baseUrl, workflowJson, randomizeSeed, cleanupTimer, ...view } = job;
-  void records; void cancelRequested; void baseUrl; void workflowJson; void randomizeSeed; void cleanupTimer;
+  const { records, cancelRequested, baseUrl, workflowJson, randomizeSeed, cleanupTimer, abort, ...view } = job;
+  void records; void cancelRequested; void baseUrl; void workflowJson; void randomizeSeed; void cleanupTimer; void abort;
   return view;
 }
 
@@ -124,10 +126,20 @@ export function listJobs(): StressJobView[] {
     .map(toView);
 }
 
+/** 优雅取消：不再派发新请求，已在途的请求会先跑完。 */
 export function cancelJob(id: string): boolean {
   const job = jobs.get(id);
   if (!job || job.status !== "running") return false;
   job.cancelRequested = true;
+  return true;
+}
+
+/** 立即停止：在优雅取消基础上，abort 所有在途的 ComfyUI HTTP 请求，不等其完成。 */
+export function stopJob(id: string): boolean {
+  const job = jobs.get(id);
+  if (!job || job.status !== "running") return false;
+  job.cancelRequested = true;
+  job.abort.abort();
   return true;
 }
 
@@ -165,6 +177,7 @@ export function startStressTest(opts: StressStartOptions): StressJobView {
     workflowJson: opts.workflowJson,
     randomizeSeed: opts.randomizeSeed,
     cleanupTimer: null,
+    abort: new AbortController(),
   };
   jobs.set(id, job);
 
@@ -183,24 +196,32 @@ async function runPool(job: StressJob): Promise<void> {
       if (dispatched >= job.total) return;
       dispatched++;
       job.inFlight++;
-      let rec: RunRecord;
+      let rec: RunRecord | null;
       try {
         const r: ComfyProbeResult = await runComfyProbe(job.baseUrl, {
           workflowJson: job.workflowJson,
           mode: job.mode,
           randomizeSeed: job.randomizeSeed,
+          signal: job.abort.signal,
         });
         rec = { ok: true, submitMs: r.submitMs, waitMs: r.waitMs, downloadMs: r.downloadMs, totalMs: r.totalMs };
       } catch (err) {
-        const msg = err instanceof Error ? err.message : String(err);
-        rec = { ok: false, error: msg };
-        if (job.errorSamples.length < MAX_ERROR_SAMPLES) job.errorSamples.push(msg);
+        // 立即停止 abort 的在途请求不计入失败统计——它是用户主动中断，不是 ComfyUI 的问题。
+        if (job.abort.signal.aborted) {
+          rec = null;
+        } else {
+          const msg = err instanceof Error ? err.message : String(err);
+          rec = { ok: false, error: msg };
+          if (job.errorSamples.length < MAX_ERROR_SAMPLES) job.errorSamples.push(msg);
+        }
       } finally {
         job.inFlight--;
       }
-      job.records.push(rec);
-      recompute(job);
-      emit(job);
+      if (rec) {
+        job.records.push(rec);
+        recompute(job);
+        emit(job);
+      }
     }
   };
 
@@ -211,7 +232,7 @@ async function runPool(job: StressJob): Promise<void> {
   }
 
   job.finishedAt = Date.now();
-  job.status = job.cancelRequested ? "cancelled" : "completed";
+  job.status = (job.cancelRequested || job.abort.signal.aborted) ? "cancelled" : "completed";
   recompute(job);
   emit(job);
 

@@ -186,12 +186,28 @@ interface HistoryEntry {
   >;
 }
 
-async function submitWorkflow(baseUrl: string, workflow: unknown): Promise<string> {
+// Combine a per-request timeout with an optional external abort signal (used by
+// the stress-test "立即停止" path to cancel in-flight fetches immediately).
+function withTimeout(timeoutMs: number, external?: AbortSignal): AbortSignal {
+  return external ? AbortSignal.any([AbortSignal.timeout(timeoutMs), external]) : AbortSignal.timeout(timeoutMs);
+}
+
+// Sleep that rejects immediately when the external signal aborts, instead of
+// waiting out the full poll interval.
+function abortableSleep(ms: number, signal?: AbortSignal): Promise<void> {
+  return new Promise((resolve, reject) => {
+    if (signal?.aborted) { reject(new DOMException("Aborted", "AbortError")); return; }
+    const t = setTimeout(resolve, ms);
+    signal?.addEventListener("abort", () => { clearTimeout(t); reject(new DOMException("Aborted", "AbortError")); }, { once: true });
+  });
+}
+
+async function submitWorkflow(baseUrl: string, workflow: unknown, signal?: AbortSignal): Promise<string> {
   const res = await fetch(`${baseUrl}/prompt`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ prompt: workflow }),
-    signal: AbortSignal.timeout(30_000),
+    signal: withTimeout(30_000, signal),
   });
   if (!res.ok) {
     const text = await res.text().catch(() => "");
@@ -202,17 +218,17 @@ async function submitWorkflow(baseUrl: string, workflow: unknown): Promise<strin
   return data.prompt_id;
 }
 
-async function pollHistory(baseUrl: string, promptId: string, maxAttempts: number): Promise<HistoryEntry> {
+async function pollHistory(baseUrl: string, promptId: string, maxAttempts: number, signal?: AbortSignal): Promise<HistoryEntry> {
   // Early exit when the server keeps refusing connections (down / unreachable) —
   // bail after 5 consecutive transient failures (~15s) instead of waiting the full
   // 5/10-minute timeout.
   const MAX_CONSECUTIVE_NET_ERRORS = 5;
   let consecutiveNetErrors = 0;
   for (let i = 0; i < maxAttempts; i++) {
-    await new Promise((r) => setTimeout(r, POLL_INTERVAL_MS));
+    await abortableSleep(POLL_INTERVAL_MS, signal);
     try {
       const res = await fetch(`${baseUrl}/history/${promptId}`, {
-        signal: AbortSignal.timeout(10_000),
+        signal: withTimeout(10_000, signal),
       });
       if (!res.ok) {
         if (res.status === 404 || res.status >= 500) {
@@ -232,6 +248,8 @@ async function pollHistory(baseUrl: string, promptId: string, maxAttempts: numbe
         throw new Error(`ComfyUI 执行失败: ${JSON.stringify(entry.status.messages ?? []).slice(0, 500)}`);
       }
     } catch (err) {
+      // External abort (立即停止) — propagate immediately, don't treat as a retryable net error.
+      if (signal?.aborted || (err instanceof Error && err.name === "AbortError")) throw new Error("已停止");
       if (err instanceof Error && (err.message.startsWith("ComfyUI 执行失败") || err.message.startsWith("ComfyUI 服务器持续无响应"))) throw err;
       consecutiveNetErrors++;
       if (consecutiveNetErrors >= MAX_CONSECUTIVE_NET_ERRORS) {
@@ -958,10 +976,13 @@ export interface ComfyProbeOptions {
   randomizeSeed?: boolean;
   /** Override poll attempt cap (each attempt is POLL_INTERVAL_MS apart). */
   maxAttempts?: number;
+  /** External abort signal — when aborted, in-flight fetches are cancelled immediately (立即停止). */
+  signal?: AbortSignal;
 }
 
 export async function runComfyProbe(rawBaseUrl: string, opts: ComfyProbeOptions): Promise<ComfyProbeResult> {
   const baseUrl = normalizeBaseUrl(rawBaseUrl);
+  const signal = opts.signal;
 
   let workflow: WorkflowJson;
   try {
@@ -973,9 +994,9 @@ export async function runComfyProbe(rawBaseUrl: string, opts: ComfyProbeOptions)
   if (opts.randomizeSeed !== false) randomizeSeeds(workflow);
 
   const t0 = Date.now();
-  const promptId = await submitWorkflow(baseUrl, workflow);
+  const promptId = await submitWorkflow(baseUrl, workflow, signal);
   const t1 = Date.now();
-  const entry = await pollHistory(baseUrl, promptId, opts.maxAttempts ?? POLL_MAX_ATTEMPTS_VIDEO);
+  const entry = await pollHistory(baseUrl, promptId, opts.maxAttempts ?? POLL_MAX_ATTEMPTS_VIDEO, signal);
   const t2 = Date.now();
 
   let outputCount = 0;
@@ -987,6 +1008,7 @@ export async function runComfyProbe(rawBaseUrl: string, opts: ComfyProbeOptions)
   if (opts.mode === "full") {
     const td = Date.now();
     for (const nodeOutput of Object.values(entry.outputs ?? {})) {
+      if (signal?.aborted) throw new Error("已停止");
       for (const img of nodeOutput.images ?? []) {
         const isVideo = /\.(mp4|webm|gif|webp)$/i.test(img.filename);
         const ext = isVideo ? (img.filename.split(".").pop() || "mp4") : "png";

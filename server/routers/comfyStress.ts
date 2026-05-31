@@ -7,7 +7,7 @@ import { z } from "zod";
 import { TRPCError } from "@trpc/server";
 import { adminProcedure, router } from "../_core/trpc";
 import { ENV } from "../_core/env";
-import { startStressTest, getJob, listJobs, cancelJob, toView } from "../_core/comfyStress";
+import { startStressTest, getJob, listJobs, cancelJob, stopJob, toView } from "../_core/comfyStress";
 
 export const comfyStressRouter = router({
   // 启动一次压测，立即返回任务概要（含 id）。
@@ -55,12 +55,21 @@ export const comfyStressRouter = router({
   // 列出近期所有任务（按开始时间倒序）。
   list: adminProcedure.query(() => listJobs()),
 
-  // 请求取消正在运行的任务（已派发的在途请求会跑完，不再派发新请求）。
+  // 优雅取消：不再派发新请求，已在途的请求会跑完。
   cancel: adminProcedure
     .input(z.object({ id: z.string().min(1).max(64) }))
     .mutation(({ input }) => {
       const ok = cancelJob(input.id);
       if (!ok) throw new TRPCError({ code: "BAD_REQUEST", message: "任务不存在或已结束，无法取消" });
+      return { success: true };
+    }),
+
+  // 立即停止：abort 所有在途的 ComfyUI 请求，不等其完成。
+  stop: adminProcedure
+    .input(z.object({ id: z.string().min(1).max(64) }))
+    .mutation(({ input }) => {
+      const ok = stopJob(input.id);
+      if (!ok) throw new TRPCError({ code: "BAD_REQUEST", message: "任务不存在或已结束，无法停止" });
       return { success: true };
     }),
 });
