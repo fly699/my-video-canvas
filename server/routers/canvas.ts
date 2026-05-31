@@ -1425,8 +1425,13 @@ export const audioGenRouter = router({
           "openai_gpt4o_mini_tts",
           // Live (Poyo)
           "elevenlabs-v3-tts",
-          // Legacy alias — normalized to "elevenlabs-v3-tts"
+          // Legacy aliases — accepted for backward compat with saved nodes and
+          // normalized below (elevenlabs_v3→live Poyo; the rest→openai_tts_real)
+          // so old payloads don't hit an opaque Zod validation error.
           "elevenlabs_v3",
+          "openai_tts_hd",
+          "openai_tts",
+          "cosyvoice_2",
         ]),
         text: z.string().min(1).max(5000),
         voice: z.string().optional(),
@@ -1443,8 +1448,15 @@ export const audioGenRouter = router({
       await assertWhitelisted(ctx);
       if (input.projectId != null) await assertProjectAccess(input.projectId, ctx.user.id, "editor");
 
-      // Normalize the legacy underscore id to the live Poyo wire value.
-      const model = input.model === "elevenlabs_v3" ? "elevenlabs-v3-tts" : input.model;
+      // Normalize legacy ids: elevenlabs_v3 → live Poyo TTS; the retired
+      // openai_tts/openai_tts_hd/cosyvoice_2 ids → the live OpenAI default.
+      const LEGACY_TO_LIVE: Record<string, string> = {
+        elevenlabs_v3: "elevenlabs-v3-tts",
+        openai_tts_hd: "openai_tts_hd_real",
+        openai_tts: "openai_tts_real",
+        cosyvoice_2: "openai_tts_real",
+      };
+      const model = LEGACY_TO_LIVE[input.model] ?? input.model;
       const isPoyoTTS = model === "elevenlabs-v3-tts";
 
       // Per-model text limits. ElevenLabs V3 allows 5000; OpenAI TTS 4096.

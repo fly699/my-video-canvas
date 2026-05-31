@@ -13,7 +13,8 @@ export function PoyoBalanceDashboard() {
   const [btnRect, setBtnRect] = useState<DOMRect | null>(null);
   const [threshold, setThreshold] = useState<number | null>(() => {
     const v = typeof localStorage !== "undefined" ? localStorage.getItem(THRESHOLD_KEY) : null;
-    return v != null && v !== "" ? Number(v) : null;
+    const n = v != null && v !== "" ? Number(v) : null;
+    return n != null && Number.isFinite(n) ? n : null; // ignore corrupt/NaN stored values
   });
   const alertedRef = useRef<number | null>(null);
 

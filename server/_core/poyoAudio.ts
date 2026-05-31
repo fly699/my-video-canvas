@@ -45,7 +45,6 @@ const SUNO_LIMITS: Record<string, { prompt: number; style: number; title: number
   V5:       { prompt: 5000, style: 1000, title: 100 },
   V5_5:     { prompt: 5000, style: 1000, title: 100 },
 };
-const SIMPLE_PROMPT_LIMIT = 500;
 
 export interface SubmitPoyoMusicOptions {
   model: PoyoMusicModel;
@@ -202,25 +201,26 @@ export async function submitAndPollPoyoMusic(
   }
   const limits = SUNO_LIMITS[mv] ?? { prompt: 5000, style: 1000, title: 100 };
   const instrumental = opts.instrumental ?? true;
-  // custom_mode is required to express style / negative_tags / instrumental.
-  const customMode = !!opts.style || !!opts.negativeTags || instrumental === true;
 
-  let input: Record<string, unknown>;
-  if (!customMode) {
-    input = { custom_mode: false, mv, prompt: opts.prompt.slice(0, SIMPLE_PROMPT_LIMIT) };
-  } else {
-    // Title is auto-derived (UI doesn't collect it). Instrumental custom mode
-    // requires style+title; fall back to "instrumental" when no style picked.
-    const style = (opts.style?.trim() || (instrumental ? "instrumental" : "")).slice(0, limits.style);
-    const title = (opts.style?.trim() || opts.prompt.trim().slice(0, 40) || "Untitled").slice(0, limits.title);
-    input = { custom_mode: true, mv, title, instrumental };
-    if (style) input.style = style;
-    // instrumental:false → prompt (lyrics) required; instrumental:true → omit prompt
-    if (!instrumental) input.prompt = opts.prompt.slice(0, limits.prompt);
-    if (opts.negativeTags) input.negative_tags = opts.negativeTags;
-    if (opts.vocalGender) input.vocal_gender = opts.vocalGender;
-    if (opts.styleWeight !== undefined) input.style_weight = opts.styleWeight;
-  }
+  // The user's "music description" is a freeform style/vibe description (not
+  // lyrics). Per the Poyo docs, custom mode requires style+title (and prompt
+  // when vocals). We ALWAYS use custom mode so both the description AND the
+  // instrumental flag are honored — simple mode can't express instrumental and
+  // would force-drop the description on the default (instrumental) path.
+  const desc = opts.prompt.trim();
+  const styleTag = opts.style?.trim();
+  // Combine the optional English genre tag with the freeform description; both
+  // are "style"-level signals for Suno. Never emit the literal "instrumental".
+  const styleField = ([styleTag, desc].filter(Boolean).join(", ")).slice(0, limits.style)
+    || (instrumental ? "ambient instrumental" : "pop");
+  const title = (styleTag || desc.slice(0, 40) || "Untitled").slice(0, limits.title);
+
+  const input: Record<string, unknown> = { custom_mode: true, mv, title, instrumental, style: styleField };
+  // For vocal tracks, also hand Suno the description as creative/lyric direction.
+  if (!instrumental && desc) input.prompt = desc.slice(0, limits.prompt);
+  if (opts.negativeTags) input.negative_tags = opts.negativeTags;
+  if (opts.vocalGender) input.vocal_gender = opts.vocalGender;
+  if (opts.styleWeight !== undefined) input.style_weight = opts.styleWeight;
   const taskId = await poyoSubmit("generate-music", input);
   return pollPoyoDetailMusic(taskId);
 }
