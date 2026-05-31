@@ -3,11 +3,14 @@
 > 来源：PoYo AI 官方文档（`docs.poyo.ai`）
 > 整理日期：2026-05-31
 >
-> ⚠️ **重要说明**：PoYo 官方文档中**仅少数模型给出了具体点数数字**，
-> 多数模型页只说明"计费维度"（按时长/分辨率/数量等），具体单价指向
-> 模型详情页或定价页（https://poyo.ai/pricing）。本文档**如实区分**：
-> ① 文档中已明确的具体点数；② 仅说明计费规则但无数字的模型；③ 通用计费机制。
-> 实际扣费请以**控制台账单**（https://poyo.ai/dashboard/history）为准。
+> ⚠️ **重要说明**：本文档点数数据来自两个来源：
+> ① **API 文档**（docs.poyo.ai）——仅少数模型给出具体数字；
+> ② **官网模型页 / 搜索抓取**（poyo.ai，2026-05）——补全了主力模型的具体单价与 USD 价格。
+> 实际扣费请以**控制台账单**（https://poyo.ai/dashboard/history）为准，单价可能随上游调整。
+>
+> 💱 **点数与美元换算（多模型交叉验证一致）**：
+> **1 credit = $0.005 USD**，即 **$1 = 200 credits**。
+> 官网说明：credits 永不过期、无订阅制、按量付费。
 
 ---
 
@@ -24,7 +27,53 @@
 
 ---
 
-## 二、✅ 已明确具体点数的模型
+## 二、🌐 官网抓取补全的具体单价（2026-05）
+
+> 以下数据来自 poyo.ai 官网模型页/对比页与搜索结果，**1 credit = $0.005**。
+> 这些是 API 文档里**未列出**、但官网公开的具体单价，供估算参考。
+
+### 视频生成
+
+| 模型 | 点数 | 美元 | 备注 |
+|------|------|------|------|
+| `sora-2-official` | 12 credits/秒 | $0.06/秒 | 4/8/12/16/20s = 48/96/144/192/240 credits |
+| `sora-2-pro`（官方） | 100 credits/次（定额） | $0.50/视频 | ≤25s、1024p，与时长/分辨率无关 |
+| `wan-2.7-video` | 720p 12 / 1080p 18 credits/秒 | $0.06 / $0.09 /秒 | |
+| `seedance-2` 480p | 含视频输入 10 / 无 20 credits/秒 | $0.05 / $0.10 | |
+| `seedance-2` 720p | 含视频输入 20 / 无 40 credits/秒 | $0.10 / $0.20 | |
+| `seedance-2` 1080p | 含视频输入 45 / 无 90 credits/秒 | $0.225 / $0.45 | |
+| `kling-2.6` | 5s 无音频 65 / 10s 无音频 130 | $0.325 / $0.65 | ≈13 credits/秒 |
+| `kling-2.6` 含音频 | 5s 120 / 10s 240 | $0.60 / $1.20 | ≈24 credits/秒 |
+| `kling-2.6-motion-control` | 720p 8 / 1080p 12 credits/秒 | $0.04 / $0.06 /秒 | |
+| `kling-o3/standard` | 10（无音频）/ 13（含音频）credits/秒 | $0.05 / $0.065 /秒 | 文档亦确认 |
+| `kling-o3/pro` | 13 / 16 credits/秒 | $0.065 / $0.08 /秒 | 文档亦确认 |
+| `kling-o3/4K`、`kling-3.0/4K` | 50 credits/秒 | $0.25/秒 | 文档亦确认 |
+
+### 图像生成（每张/每次）
+
+| 模型 | 点数 | 美元 |
+|------|------|------|
+| `nano-banana` | 5 credits | $0.025 |
+| `seedream-5.0-lite` | 5 credits | $0.025 |
+| `seedream-4.5` | 10 credits | $0.05 |
+| `gpt-image-2` | 起 2 credits/次 | 起 $0.01（再乘 1K/2K/4K = 1x/2x/4x 倍率） |
+
+### 音乐 / 语音（每次生成）
+
+| 模型 | 点数 | 美元 |
+|------|------|------|
+| `generate-music`（Suno） | 20 credits | $0.10 |
+| `add-vocals` | 20 credits | $0.10 |
+| `add-instrumental` | 20 credits | $0.10 |
+| `upload-and-cover-audio` | 20 credits | $0.10 |
+| `extend-music` | 20 credits | $0.10 |
+| `generate-music-cover` | 1 credit | $0.005 |
+| `generate-lyrics` | 1 credit | $0.005 |
+| `elevenlabs-v3-tts` | 16 credits / 1000 字符 | $0.08 / 1000 字符 |
+
+---
+
+## 三、✅ API 文档中已明确具体点数的模型
 
 ### 3D 生成
 
@@ -67,7 +116,7 @@
 
 ---
 
-## 三、⚠️ 仅说明计费维度、文档未给具体数字的模型
+## 四、⚠️ 仅说明计费维度、暂无公开数字的模型
 
 > 以下模型文档明确了「按什么计费」，但**未列出具体点数单价**，需查模型页 / 定价页。
 
@@ -100,7 +149,7 @@
 
 ---
 
-## 四、点数消耗速查总表
+## 五、点数消耗速查总表
 
 | 类别 | 模型 | 点数 / 规则 | 来源 |
 |------|------|------------|:---:|
@@ -109,22 +158,31 @@
 | 3D | tripo3d-h3.1 附加 | 精细几何 +30；四边面 +7.5 | 文档 |
 | 3D | tripo3d-p1 | 无纹理 56 / 含纹理 70 | 文档 |
 | 3D | meshy-6 | 未公开数字 | 模型页 |
-| 视频 | kling-o3/standard | 10（无音频）/ 13（含音频）credits/s | 文档 |
-| 视频 | kling-o3/pro | 13 / 16 credits/s | 文档 |
-| 视频 | kling-o3/4K | 50 credits/s | 文档 |
-| 视频 | kling-3.0/4K | 50 credits/s | 文档 |
-| 视频 | sora/veo/kling-avatar/seedance/wan 等 | 按时长×分辨率(±音频)，无数字 | 模型页 |
-| 图像 | gpt-image-2 | 1K=1x / 2K=2x / 4K=4x | 文档 |
+| 视频 | sora-2-official | 12 credits/s（$0.06） | 官网 |
+| 视频 | sora-2-pro | 100 credits/次（$0.50，定额≤25s） | 官网 |
+| 视频 | wan-2.7-video | 720p 12 / 1080p 18 credits/s | 官网 |
+| 视频 | seedance-2 | 480p 10-20 / 720p 20-40 / 1080p 45-90 credits/s | 官网 |
+| 视频 | kling-2.6 | 无音频 65/130；含音频 120/240（5/10s） | 官网 |
+| 视频 | kling-2.6-motion-control | 720p 8 / 1080p 12 credits/s | 官网 |
+| 视频 | kling-o3/standard | 10（无音频）/ 13（含音频）credits/s | 文档+官网 |
+| 视频 | kling-o3/pro | 13 / 16 credits/s | 文档+官网 |
+| 视频 | kling-o3/4K · kling-3.0/4K | 50 credits/s（$0.25） | 文档+官网 |
+| 视频 | veo/kling-avatar/hailuo 等 | 按时长×分辨率(±音频)，暂无数字 | 模型页 |
+| 图像 | nano-banana | 5 credits（$0.025） | 官网 |
+| 图像 | seedream-5.0-lite | 5 credits（$0.025） | 官网 |
+| 图像 | seedream-4.5 | 10 credits（$0.05） | 官网 |
+| 图像 | gpt-image-2 | 起 2 credits/次 × (1K=1x/2K=2x/4K=4x) | 文档+官网 |
 | 图像 | seedream-4 | 基础 × n（不足退款） | 文档 |
-| 图像 | kling-o1 / kling-o3 图像 | 分辨率 × n，无数字 | 文档 |
-| 图像 | flux-kontext 等 | 按模型配置价，无数字 | 模型页 |
-| 音乐 | elevenlabs-v3-tts | 16 credits / 1000 字符 | 文档 |
-| 音乐 | generate-music 等 Suno 系列 | 未公开数字 | 模型页 |
-| LLM | GPT/Claude/Gemini | 按 token（usage 字段），无单价 | 模型页 |
+| 图像 | kling-o1 / kling-o3 图像 | 分辨率 × n | 文档 |
+| 图像 | flux-kontext 等 | 按模型配置价，暂无数字 | 模型页 |
+| 音乐 | generate-music / add-vocals / add-instrumental / cover / extend | 20 credits（$0.10）/次 | 官网 |
+| 音乐 | generate-music-cover / generate-lyrics | 1 credit（$0.005） | 官网 |
+| 音乐 | elevenlabs-v3-tts | 16 credits / 1000 字符（$0.08） | 文档+官网 |
+| LLM | GPT/Claude/Gemini | 按 token（usage 字段），见模型页 | 模型页 |
 
 ---
 
-## 五、计费要点提醒
+## 六、计费要点提醒
 
 1. **失败不扣费**：任务 `failed` 不消耗点数；只为 `finished` 付费。
 2. **退款机制**：如 `seedream-4` 等按 `base × n` 预扣，少出图自动退还差额。
@@ -135,7 +193,7 @@
 
 ---
 
-## 六、相关链接
+## 七、相关链接
 
 - 定价页（权威单价）：https://poyo.ai/pricing
 - 模型列表 / Playground：https://poyo.ai/models
