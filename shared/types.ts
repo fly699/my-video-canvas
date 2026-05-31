@@ -498,6 +498,13 @@ export interface ComfyuiControlNet {
   endPercent?: number;
 }
 
+export interface ComfyuiIPAdapter {
+  model: string;
+  imageUrl: string;
+  clipVision?: string;
+  weight?: number;
+}
+
 export type ComfyuiImageTemplate = "txt2img" | "img2img";
 export interface ComfyuiImageNodeData {
   // Connection
@@ -517,6 +524,10 @@ export interface ComfyuiImageNodeData {
   loras?: ComfyuiLoraEntry[];
   /** Optional ControlNet guidance for txt2img / img2img. */
   controlnet?: ComfyuiControlNet;
+  /** Optional IPAdapter style/face reference. */
+  ipadapter?: ComfyuiIPAdapter;
+  /** Optional model-based upscale (UpscaleModelLoader name); empty = none. */
+  upscaleModel?: string;
   // Sampling
   steps?: number;
   cfg?: number;

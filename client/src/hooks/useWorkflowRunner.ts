@@ -647,6 +647,10 @@ export function useWorkflowRunner() {
             controlnet: p.controlnet && typeof p.controlnet === "object" && (p.controlnet as { model?: string }).model && (p.controlnet as { imageUrl?: string }).imageUrl
               ? (p.controlnet as { model: string; imageUrl: string; strength?: number; startPercent?: number; endPercent?: number })
               : undefined,
+            ipadapter: p.ipadapter && typeof p.ipadapter === "object" && (p.ipadapter as { model?: string }).model && (p.ipadapter as { imageUrl?: string }).imageUrl
+              ? (p.ipadapter as { model: string; imageUrl: string; clipVision?: string; weight?: number })
+              : undefined,
+            upscaleModel: (p.upscaleModel as string) || undefined,
             steps: typeof p.steps === "number" ? p.steps : 20,
             cfg: typeof p.cfg === "number" ? p.cfg : 7,
             seed: typeof p.seed === "number" ? p.seed : -1,

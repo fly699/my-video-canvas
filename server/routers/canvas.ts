@@ -1792,6 +1792,15 @@ export const comfyuiRouter = router({
           startPercent: z.number().min(0).max(1).optional(),
           endPercent: z.number().min(0).max(1).optional(),
         }).optional(),
+        // Optional IPAdapter style/face reference.
+        ipadapter: z.object({
+          model: z.string().min(1).max(255),
+          imageUrl: z.string().min(1).max(2048),
+          clipVision: z.string().max(255).optional(),
+          weight: z.number().min(0).max(2).optional(),
+        }).optional(),
+        // Optional model-based upscale (UpscaleModelLoader name).
+        upscaleModel: z.string().max(255).optional(),
         steps: z.number().int().min(1).max(150).default(20),
         cfg: z.number().min(1).max(30).default(7),
         seed: z.number().int().default(-1),
@@ -1824,6 +1833,8 @@ export const comfyuiRouter = router({
             lora: input.lora,
             loras: input.loras,
             controlnet: input.controlnet,
+            ipadapter: input.ipadapter,
+            upscaleModel: input.upscaleModel,
             steps: input.steps,
             cfg: input.cfg,
             seed: input.seed >= 0 ? input.seed : undefined,

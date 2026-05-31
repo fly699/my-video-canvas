@@ -447,6 +447,13 @@ export interface ControlNetSpec {
   endPercent?: number;
 }
 
+export interface IPAdapterSpec {
+  model: string;
+  imageName: string;       // already-uploaded ComfyUI image filename
+  clipVision?: string;     // CLIPVisionLoader name; empty = sensible default
+  weight?: number;
+}
+
 interface BuildImageWorkflowArgs {
   template: "txt2img" | "img2img";
   prompt: string;
@@ -455,6 +462,8 @@ interface BuildImageWorkflowArgs {
   loras: LoraSpec[];
   vae?: string;            // VAELoader name; empty = use checkpoint's VAE
   controlnet?: ControlNetSpec;
+  ipadapter?: IPAdapterSpec;
+  upscaleModel?: string;   // UpscaleModelLoader name; empty = no upscale
   refImageName?: string;   // img2img reference image filename
   seed: number;
   steps: number;
@@ -511,6 +520,31 @@ export function buildImageWorkflow(a: BuildImageWorkflowArgs): Record<string, { 
     clipRef = [nid, 1];
   });
 
+  // IPAdapter (optional): a style/face reference image that modulates the model.
+  // Uses the explicit-model variant (IPAdapterModelLoader + CLIPVisionLoader +
+  // IPAdapterAdvanced) which is the most stable across ipadapter-pack versions.
+  if (a.ipadapter && a.ipadapter.model.trim() && a.ipadapter.imageName) {
+    wf["40"] = { class_type: "IPAdapterModelLoader", inputs: { ipadapter_file: a.ipadapter.model.trim() } };
+    wf["41"] = { class_type: "CLIPVisionLoader", inputs: { clip_name: a.ipadapter.clipVision?.trim() || "CLIP-ViT-H-14-laion2B-s32B-b79K.safetensors" } };
+    wf["42"] = { class_type: "LoadImage", inputs: { image: a.ipadapter.imageName } };
+    wf["43"] = {
+      class_type: "IPAdapterAdvanced",
+      inputs: {
+        model: modelRef,
+        ipadapter: ["40", 0],
+        image: ["42", 0],
+        clip_vision: ["41", 0],
+        weight: a.ipadapter.weight ?? 1.0,
+        weight_type: "linear",
+        combine_embeds: "concat",
+        start_at: 0,
+        end_at: 1,
+        embeds_scaling: "V only",
+      },
+    };
+    modelRef = ["43", 0];
+  }
+
   wf["6"] = { class_type: "CLIPTextEncode", inputs: { text: a.prompt, clip: clipRef } };
   wf["7"] = { class_type: "CLIPTextEncode", inputs: { text: a.negPrompt, clip: clipRef } };
 
@@ -556,7 +590,15 @@ export function buildImageWorkflow(a: BuildImageWorkflowArgs): Record<string, { 
     },
   };
   wf["8"] = { class_type: "VAEDecode", inputs: { samples: ["3", 0], vae: vaeRef } };
-  wf["9"] = { class_type: "SaveImage", inputs: { filename_prefix: "comfyui_output", images: ["8", 0] } };
+
+  // Optional model-based upscale (ESRGAN etc.) applied to the decoded image.
+  let imageRef: NodeRef = ["8", 0];
+  if (a.upscaleModel && a.upscaleModel.trim()) {
+    wf["50"] = { class_type: "UpscaleModelLoader", inputs: { model_name: a.upscaleModel.trim() } };
+    wf["51"] = { class_type: "ImageUpscaleWithModel", inputs: { upscale_model: ["50", 0], image: ["8", 0] } };
+    imageRef = ["51", 0];
+  }
+  wf["9"] = { class_type: "SaveImage", inputs: { filename_prefix: "comfyui_output", images: imageRef } };
 
   return wf;
 }
@@ -571,6 +613,8 @@ export interface GenerateComfyImageOptions {
   loraStrength?: number;
   loras?: LoraSpec[];
   controlnet?: { model: string; imageUrl: string; strength?: number; startPercent?: number; endPercent?: number };
+  ipadapter?: { model: string; imageUrl: string; clipVision?: string; weight?: number };
+  upscaleModel?: string;
   steps?: number;
   cfg?: number;
   seed?: number;
@@ -616,6 +660,18 @@ export async function generateComfyImage(rawBaseUrl: string, options: GenerateCo
     };
   }
 
+  // Upload the IPAdapter reference image (if any).
+  let ipadapter: IPAdapterSpec | undefined;
+  if (options.ipadapter && options.ipadapter.model.trim() && options.ipadapter.imageUrl) {
+    const ipImageName = await uploadImageToComfy(baseUrl, options.ipadapter.imageUrl);
+    ipadapter = {
+      model: options.ipadapter.model.trim(),
+      imageName: ipImageName,
+      clipVision: options.ipadapter.clipVision,
+      weight: options.ipadapter.weight ?? 1.0,
+    };
+  }
+
   const workflow = buildImageWorkflow({
     template: options.workflowTemplate,
     prompt: options.prompt ?? "",
@@ -624,6 +680,8 @@ export async function generateComfyImage(rawBaseUrl: string, options: GenerateCo
     loras: cleanLoras,
     vae: options.vae,
     controlnet,
+    ipadapter,
+    upscaleModel: options.upscaleModel,
     refImageName,
     seed: options.seed ?? Math.floor(Math.random() * 2_147_483_647),
     steps: options.steps ?? 20,
