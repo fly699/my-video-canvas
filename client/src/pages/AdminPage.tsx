@@ -225,7 +225,7 @@ function StoragePanel() {
                 <div style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 12 }}>
                   <CheckCircle2 style={{ width: 14, height: 14, color: "oklch(0.7 0.18 145)" }} />
                   <span style={{ color: "oklch(0.7 0.18 145)" }}>
-                    正常（{testMut.data.ms}ms · {testMut.data.backend === "s3" ? "MinIO/S3" : "—"}）
+                    正常（{testMut.data.ms}ms · {testMut.data.backend === "s3" ? "MinIO/S3" : testMut.data.backend === "forge" ? "Forge" : "—"}）
                   </span>
                   <code style={{ fontSize: 10, color: "var(--c-t3)", background: "var(--c-surface)", padding: "1px 5px", borderRadius: 4 }}>
                     {testMut.data.url}
