@@ -1,6 +1,7 @@
 import { memo, useCallback, useRef, useState } from "react";
 import { Handle, Position } from "@xyflow/react";
 import { BaseNode } from "../BaseNode";
+import { ComfyServerUrlField } from "./ComfyServerUrlField";
 import { useCanvasStore } from "../../../hooks/useCanvasStore";
 import type { ComfyuiWorkflowNodeData, WorkflowParamBinding } from "../../../../../shared/types";
 import { trpc } from "@/lib/trpc";
@@ -334,11 +335,16 @@ export const ComfyuiWorkflowNode = memo(function ComfyuiWorkflowNode({ id, selec
             <Server size={9} style={{ display: "inline", marginRight: 3 }} />
             ComfyUI 地址（留空用全局默认）
           </label>
-          <input
-            style={fieldBase}
-            placeholder="http://192.168.x.x:8188"
+          <ComfyServerUrlField
+            id={id}
             value={payload.customBaseUrl ?? ""}
-            onChange={(e) => update({ customBaseUrl: e.target.value })}
+            onChange={(v) => update({ customBaseUrl: v })}
+            serverUrls={payload.serverUrls ?? []}
+            onChangeServerUrls={(next) => update({ serverUrls: next })}
+            accent={accent}
+            borderAccent={BORDER_ACCENT}
+            borderDefault={BORDER_DEFAULT}
+            fieldBase={fieldBase}
           />
         </div>
 

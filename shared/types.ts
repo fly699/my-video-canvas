@@ -511,6 +511,7 @@ export type ComfyuiImageTemplate = "txt2img" | "img2img" | "inpaint";
 export interface ComfyuiImageNodeData {
   // Connection
   customBaseUrl?: string;       // empty = use server-side global default
+  serverUrls?: string[];        // saved server addresses for quick selection (persisted on node)
   workflowTemplate: ComfyuiImageTemplate;
   // Prompts
   prompt: string;
@@ -557,6 +558,7 @@ export type ComfyuiVideoTemplate = "animatediff" | "svd" | "wan_t2v" | "wan_i2v"
 export interface ComfyuiVideoNodeData {
   // Connection
   customBaseUrl?: string;
+  serverUrls?: string[];        // saved server addresses for quick selection (persisted on node)
   workflowTemplate: ComfyuiVideoTemplate;
   // Prompts
   prompt: string;
@@ -604,6 +606,7 @@ export interface WorkflowParamBinding {
 
 export interface ComfyuiWorkflowNodeData {
   customBaseUrl?: string;
+  serverUrls?: string[];        // saved server addresses for quick selection (persisted on node)
   workflowJson?: string;
   workflowName?: string;
   paramBindings?: WorkflowParamBinding[];

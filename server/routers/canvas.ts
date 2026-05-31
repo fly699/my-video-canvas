@@ -36,6 +36,7 @@ import { storagePut, resolveToAbsoluteUrl, canBrowserReachStorageDirectly, stora
 import { invokeLLM, extractTextContent } from "../_core/llm";
 import { generateImage } from "../_core/imageGeneration";
 import { generateComfyImage, generateComfyVideo, fetchComfyModels, analyzeWorkflow, executeCustomWorkflow, uploadImageForWorkflow, interruptComfy, emptyModelList } from "../_core/comfyui";
+import type { ComfyModelList } from "../_core/comfyui";
 import { ENV } from "../_core/env";
 import { isPoyoVideoProvider, submitPoyoVideo, checkPoyoVideoStatus } from "../_core/poyoVideo";
 import { isHiggsfieldVideoProvider, submitHiggsfieldVideo, checkHiggsfieldVideoStatus } from "../_core/higgsfield";
@@ -1963,22 +1964,53 @@ export const comfyuiRouter = router({
     }),
 
   fetchModels: protectedProcedure
-    .input(z.object({ customBaseUrl: z.string().max(2048).optional() }))
+    .input(z.object({
+      customBaseUrl: z.string().max(2048).optional(),
+      // Multi-server: refresh the union of models across all saved addresses.
+      customBaseUrls: z.array(z.string().max(2048)).max(20).optional(),
+    }))
     .query(async ({ ctx, input }) => {
       // Whitelist check: fetchModels can be used as an SSRF probe via customBaseUrl
       // (the server fetches whatever URL the client supplies). Treat with the same
       // gate as the paid generate endpoints.
       await assertComfyuiAllowed(ctx);
-      const baseUrl = input.customBaseUrl?.trim() || ENV.comfyuiBaseUrl;
+      // Candidate base URLs: explicit saved list ∪ single field, deduped.
+      const candidates = Array.from(new Set(
+        [...(input.customBaseUrls ?? []), input.customBaseUrl]
+          .map((u) => u?.trim())
+          .filter((u): u is string => !!u),
+      ));
+      const urls = candidates.length > 0 ? candidates : (ENV.comfyuiBaseUrl ? [ENV.comfyuiBaseUrl] : []);
       // Not configured is a benign empty state (UI degrades to free-text), not an error.
-      if (!baseUrl) return emptyModelList();
-      try {
-        return await fetchComfyModels(baseUrl);
-      } catch (err) {
-        // Surface the real reason (unreachable / bad status / timeout) so the UI
-        // can distinguish "server has no models" from "couldn't reach server".
-        throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: err instanceof Error ? err.message : String(err) });
+      if (urls.length === 0) return emptyModelList();
+      // Single URL: preserve original behavior — surface the real reason
+      // (unreachable / bad status / timeout) so the UI can distinguish
+      // "server has no models" from "couldn't reach server".
+      if (urls.length === 1) {
+        try {
+          return await fetchComfyModels(urls[0]);
+        } catch (err) {
+          throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: err instanceof Error ? err.message : String(err) });
+        }
       }
+      // Multiple URLs: best-effort union so one unreachable server doesn't blank
+      // out models from the others.
+      const merged = emptyModelList();
+      const results = await Promise.allSettled(urls.map((u) => fetchComfyModels(u)));
+      let anyOk = false;
+      for (const r of results) {
+        if (r.status !== "fulfilled") continue;
+        anyOk = true;
+        for (const key of Object.keys(merged) as (keyof ComfyModelList)[]) {
+          for (const v of r.value[key]) if (!merged[key].includes(v)) merged[key].push(v);
+        }
+      }
+      if (!anyOk) {
+        const firstErr = results.find((r): r is PromiseRejectedResult => r.status === "rejected");
+        throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: firstErr?.reason instanceof Error ? firstErr.reason.message : "无法连接任何 ComfyUI 服务器" });
+      }
+      for (const key of Object.keys(merged) as (keyof ComfyModelList)[]) merged[key].sort();
+      return merged;
     }),
 
   analyzeWorkflow: protectedProcedure

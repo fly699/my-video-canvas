@@ -1,6 +1,7 @@
 import { memo, useCallback, useEffect, useRef, useState } from "react";
 import { Handle, Position } from "@xyflow/react";
 import { BaseNode } from "../BaseNode";
+import { ComfyServerUrlField } from "./ComfyServerUrlField";
 import { useCanvasStore } from "../../../hooks/useCanvasStore";
 import type { ComfyuiVideoNodeData } from "../../../../../shared/types";
 import { trpc } from "@/lib/trpc";
@@ -76,8 +77,9 @@ export const ComfyuiVideoNode = memo(function ComfyuiVideoNode({ id, selected, d
     const t = setTimeout(() => setDebouncedUrl(payload.customBaseUrl?.trim() || undefined), 600);
     return () => clearTimeout(t);
   }, [payload.customBaseUrl]);
+  const serverUrls = payload.serverUrls ?? [];
   const modelsQuery = trpc.comfyui.fetchModels.useQuery(
-    { customBaseUrl: debouncedUrl },
+    { customBaseUrl: debouncedUrl, customBaseUrls: serverUrls.length > 0 ? serverUrls : undefined },
     { staleTime: 60_000, retry: false }
   );
 
@@ -432,32 +434,19 @@ export const ComfyuiVideoNode = memo(function ComfyuiVideoNode({ id, selected, d
           </button>
           {urlExpanded && (
             <div className="px-3 pb-3">
-              <div className="flex items-center gap-1.5">
-                <input
-                  placeholder="http://127.0.0.1:8188（留空使用全局默认）"
-                  value={payload.customBaseUrl ?? ""}
-                  onChange={(e) => update("customBaseUrl", e.target.value)}
-                  className="nodrag flex-1"
-                  style={fieldBase}
-                  onFocus={(e) => { e.currentTarget.style.borderColor = BORDER_ACCENT; }}
-                  onBlur={(e) => { e.currentTarget.style.borderColor = BORDER_DEFAULT; }}
-                />
-                <button
-                  onClick={() => { modelsQuery.refetch(); }}
-                  disabled={modelsQuery.isFetching}
-                  className="nodrag flex-shrink-0 flex items-center justify-center rounded-md"
-                  title="刷新模型列表"
-                  style={{
-                    width: 30, height: 30,
-                    background: "var(--c-surface)",
-                    border: "1px solid var(--c-bd2)",
-                    color: modelsQuery.isFetching ? "var(--c-t4)" : accent,
-                    cursor: modelsQuery.isFetching ? "wait" : "pointer",
-                  }}
-                >
-                  <RefreshCw className={modelsQuery.isFetching ? "w-3 h-3 animate-spin" : "w-3 h-3"} />
-                </button>
-              </div>
+              <ComfyServerUrlField
+                id={id}
+                value={payload.customBaseUrl ?? ""}
+                onChange={(v) => update("customBaseUrl", v)}
+                serverUrls={serverUrls}
+                onChangeServerUrls={(next) => update("serverUrls", next)}
+                isFetching={modelsQuery.isFetching}
+                onRefresh={() => { modelsQuery.refetch(); }}
+                accent={accent}
+                borderAccent={BORDER_ACCENT}
+                borderDefault={BORDER_DEFAULT}
+                fieldBase={fieldBase}
+              />
               {/* Connection status — visible cue when fetchModels failed */}
               {modelsQuery.isFetching ? (
                 <div className="flex items-center gap-1.5 mt-1.5 text-[10px]" style={{ color: "var(--c-t4)" }}>
