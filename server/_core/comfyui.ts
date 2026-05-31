@@ -90,6 +90,50 @@ const SVD_TEMPLATE = {
   "15": { class_type: "ImageOnlyCheckpointLoader", inputs: { ckpt_name: "__ckpt__" } },
 };
 
+// Wan T2V (native): UNETLoader + CLIPLoader(type wan) + VAELoader + ModelSamplingSD3.
+const WAN_T2V_TEMPLATE = {
+  "1": { class_type: "UNETLoader", inputs: { unet_name: "__ckpt__", weight_dtype: "default" } },
+  "2": { class_type: "CLIPLoader", inputs: { clip_name: "__clip__", type: "wan" } },
+  "3": { class_type: "VAELoader", inputs: { vae_name: "__vae__" } },
+  "10": { class_type: "ModelSamplingSD3", inputs: { shift: 8.0, model: ["1", 0] } },
+  "6": { class_type: "CLIPTextEncode", inputs: { text: "__prompt__", clip: ["2", 0] } },
+  "7": { class_type: "CLIPTextEncode", inputs: { text: "__negPrompt__", clip: ["2", 0] } },
+  "5": { class_type: "EmptyHunyuanLatentVideo", inputs: { width: "__width__", height: "__height__", length: "__frames__", batch_size: 1 } },
+  "4": { class_type: "KSampler", inputs: { seed: "__seed__", steps: "__steps__", cfg: "__cfg__", sampler_name: "__sampler__", scheduler: "__scheduler__", denoise: "__denoise__", model: ["10", 0], positive: ["6", 0], negative: ["7", 0], latent_image: ["5", 0] } },
+  "8": { class_type: "VAEDecode", inputs: { samples: ["4", 0], vae: ["3", 0] } },
+  "13": { class_type: "VHS_VideoCombine", inputs: { frame_rate: "__fps__", loop_count: 0, filename_prefix: "comfyui_wan", format: "video/h264-mp4", pingpong: false, save_output: true, images: ["8", 0] } },
+};
+
+// Wan I2V (native): adds CLIPVisionLoader/Encode + WanImageToVideo from a start frame.
+const WAN_I2V_TEMPLATE = {
+  "1": { class_type: "UNETLoader", inputs: { unet_name: "__ckpt__", weight_dtype: "default" } },
+  "2": { class_type: "CLIPLoader", inputs: { clip_name: "__clip__", type: "wan" } },
+  "3": { class_type: "VAELoader", inputs: { vae_name: "__vae__" } },
+  "9": { class_type: "CLIPVisionLoader", inputs: { clip_name: "__clipVision__" } },
+  "11": { class_type: "LoadImage", inputs: { image: "__refImageName__" } },
+  "12": { class_type: "CLIPVisionEncode", inputs: { clip_vision: ["9", 0], image: ["11", 0], crop: "none" } },
+  "10": { class_type: "ModelSamplingSD3", inputs: { shift: 8.0, model: ["1", 0] } },
+  "6": { class_type: "CLIPTextEncode", inputs: { text: "__prompt__", clip: ["2", 0] } },
+  "7": { class_type: "CLIPTextEncode", inputs: { text: "__negPrompt__", clip: ["2", 0] } },
+  "30": { class_type: "WanImageToVideo", inputs: { positive: ["6", 0], negative: ["7", 0], vae: ["3", 0], clip_vision_output: ["12", 0], start_image: ["11", 0], width: "__width__", height: "__height__", length: "__frames__", batch_size: 1 } },
+  "4": { class_type: "KSampler", inputs: { seed: "__seed__", steps: "__steps__", cfg: "__cfg__", sampler_name: "__sampler__", scheduler: "__scheduler__", denoise: "__denoise__", model: ["10", 0], positive: ["30", 0], negative: ["30", 1], latent_image: ["30", 2] } },
+  "8": { class_type: "VAEDecode", inputs: { samples: ["4", 0], vae: ["3", 0] } },
+  "13": { class_type: "VHS_VideoCombine", inputs: { frame_rate: "__fps__", loop_count: 0, filename_prefix: "comfyui_wan_i2v", format: "video/h264-mp4", pingpong: false, save_output: true, images: ["8", 0] } },
+};
+
+// LTX-Video (native): fast T2V with LTXVConditioning + EmptyLTXVLatentVideo.
+const LTXV_TEMPLATE = {
+  "1": { class_type: "CheckpointLoaderSimple", inputs: { ckpt_name: "__ckpt__" } },
+  "2": { class_type: "CLIPLoader", inputs: { clip_name: "__clip__", type: "ltxv" } },
+  "6": { class_type: "CLIPTextEncode", inputs: { text: "__prompt__", clip: ["2", 0] } },
+  "7": { class_type: "CLIPTextEncode", inputs: { text: "__negPrompt__", clip: ["2", 0] } },
+  "8": { class_type: "LTXVConditioning", inputs: { positive: ["6", 0], negative: ["7", 0], frame_rate: "__fps__" } },
+  "5": { class_type: "EmptyLTXVLatentVideo", inputs: { width: "__width__", height: "__height__", length: "__frames__", batch_size: 1 } },
+  "4": { class_type: "KSampler", inputs: { seed: "__seed__", steps: "__steps__", cfg: "__cfg__", sampler_name: "__sampler__", scheduler: "__scheduler__", denoise: "__denoise__", model: ["1", 0], positive: ["8", 0], negative: ["8", 1], latent_image: ["5", 0] } },
+  "9": { class_type: "VAEDecode", inputs: { samples: ["4", 0], vae: ["1", 2] } },
+  "13": { class_type: "VHS_VideoCombine", inputs: { frame_rate: "__fps__", loop_count: 0, filename_prefix: "comfyui_ltxv", format: "video/h264-mp4", pingpong: false, save_output: true, images: ["9", 0] } },
+};
+
 // ── Placeholder substitution ──────────────────────────────────────────────────
 
 interface SubstitutionMap {
@@ -109,6 +153,8 @@ interface SubstitutionMap {
   scheduler?: string;
   denoise?: number;
   vae?: string;
+  clip?: string;
+  clipVision?: string;
   batchSize?: number;
 }
 
@@ -138,6 +184,8 @@ function applyTemplate(template: unknown, subs: SubstitutionMap): unknown {
     __sampler__: subs.sampler ?? "euler",
     __scheduler__: subs.scheduler ?? "normal",
     __vae__: subs.vae ?? "",
+    __clip__: subs.clip ?? "",
+    __clipVision__: subs.clipVision ?? "",
   };
 
   const walk = (node: unknown): unknown => {
@@ -747,12 +795,16 @@ export async function generateComfyImage(rawBaseUrl: string, options: GenerateCo
   return { url: urls[0], urls };
 }
 
+export type ComfyVideoTemplate = "animatediff" | "svd" | "wan_t2v" | "wan_i2v" | "ltxv";
+
 export interface GenerateComfyVideoOptions {
-  workflowTemplate: "animatediff" | "svd";
+  workflowTemplate: ComfyVideoTemplate;
   prompt: string;
   negPrompt?: string;
   ckpt: string;
   motionModule?: string;
+  clip?: string;
+  clipVision?: string;
   steps?: number;
   cfg?: number;
   seed?: number;
@@ -774,29 +826,49 @@ export interface GenerateComfyVideoOptions {
 export async function generateComfyVideo(rawBaseUrl: string, options: GenerateComfyVideoOptions): Promise<{ url: string }> {
   const baseUrl = normalizeBaseUrl(rawBaseUrl);
 
+  const tpl = options.workflowTemplate;
+  const needsRef = tpl === "svd" || tpl === "wan_i2v";
   let refImageName: string | undefined;
-  if (options.workflowTemplate === "svd") {
-    if (!options.referenceImageUrl) throw new Error("SVD 模板需要参考图");
+  if (needsRef) {
+    if (!options.referenceImageUrl) throw new Error(`${tpl} 模板需要起始图/参考图`);
     refImageName = await uploadImageToComfy(baseUrl, options.referenceImageUrl);
   }
 
-  const template = options.workflowTemplate === "svd" ? SVD_TEMPLATE : ANIMATEDIFF_TEMPLATE;
-  const workflow = applyTemplate(template, {
+  const TEMPLATES: Record<ComfyVideoTemplate, unknown> = {
+    animatediff: ANIMATEDIFF_TEMPLATE,
+    svd: SVD_TEMPLATE,
+    wan_t2v: WAN_T2V_TEMPLATE,
+    wan_i2v: WAN_I2V_TEMPLATE,
+    ltxv: LTXV_TEMPLATE,
+  };
+  const isWan = tpl === "wan_t2v" || tpl === "wan_i2v";
+  // Per-template sensible defaults for the separate CLIP/VAE/CLIP-Vision loaders
+  // and frame/size/sampler conventions, applied only when the user left them blank.
+  const defaults = isWan
+    ? { clip: "umt5_xxl_fp8_e4m3fn_scaled.safetensors", vae: "wan_2.1_vae.safetensors", clipVision: "clip_vision_h.safetensors", frames: 81, fps: 16, width: 832, height: 480, cfg: 6, scheduler: "simple" }
+    : tpl === "ltxv"
+    ? { clip: "t5xxl_fp16.safetensors", vae: "", clipVision: "", frames: 97, fps: 25, width: 768, height: 512, cfg: 3, scheduler: "normal" }
+    : { clip: "", vae: options.vae ?? "", clipVision: "", frames: options.frames ?? 16, fps: options.fps ?? 8, width: options.width ?? 512, height: options.height ?? 512, cfg: options.cfg ?? 7, scheduler: options.scheduler };
+
+  const workflow = applyTemplate(TEMPLATES[tpl], {
     prompt: options.prompt,
     negPrompt: options.negPrompt,
     ckpt: options.ckpt,
     motionModule: options.motionModule,
+    clip: options.clip?.trim() || defaults.clip,
+    clipVision: options.clipVision?.trim() || defaults.clipVision,
     steps: options.steps,
-    cfg: options.cfg,
+    cfg: options.cfg ?? defaults.cfg,
     seed: options.seed,
-    frames: options.frames,
-    fps: options.fps,
+    frames: options.frames ?? defaults.frames,
+    fps: options.fps ?? defaults.fps,
+    width: options.width ?? defaults.width,
+    height: options.height ?? defaults.height,
     sampler: options.sampler,
-    // SVD requires karras scheduler to produce coherent frames; "normal" causes artifacts.
-    // Use || (not ??) so that an empty string also falls back to "karras".
-    scheduler: options.workflowTemplate === "svd" ? (options.scheduler || "karras") : options.scheduler,
+    // SVD needs karras for coherent frames; otherwise use the per-template default.
+    scheduler: tpl === "svd" ? (options.scheduler || "karras") : (options.scheduler || defaults.scheduler),
     denoise: options.denoise,
-    vae: options.vae,
+    vae: options.vae?.trim() || defaults.vae,
     refImageName,
   });
 

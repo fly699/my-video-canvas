@@ -180,6 +180,8 @@ export const ComfyuiVideoNode = memo(function ComfyuiVideoNode({ id, selected, d
       negPrompt: p.negPrompt,
       ckpt: p.ckpt,
       motionModule: p.motionModule,
+      clip: p.clip,
+      clipVision: p.clipVision,
       steps: p.steps,
       cfg: p.cfg,
       frames: p.frames,
@@ -196,17 +198,23 @@ export const ComfyuiVideoNode = memo(function ComfyuiVideoNode({ id, selected, d
     toast.success(`已同步配置到 ${targets.length} 个 ComfyUI 视频节点`);
   }, [id, payload]);
 
-  const isSvd = payload.workflowTemplate === "svd";
+  const tpl = payload.workflowTemplate ?? "animatediff";
+  const isSvd = tpl === "svd";
+  const isWanI2V = tpl === "wan_i2v";
+  const needsRef = isSvd || isWanI2V;
+  const isAnimateDiff = tpl === "animatediff";
+  const usesClip = tpl === "wan_t2v" || tpl === "wan_i2v" || tpl === "ltxv";
+  const usesClipVision = isWanI2V;
 
   const handleGenerate = () => {
     if (genMutation.isPending) return;
     if (uploading) { toast.error("参考图正在上传中，请稍候"); return; }
     if (!payload.prompt?.trim()) { toast.error("请先填写提示词"); return; }
-    if (!payload.ckpt?.trim()) { toast.error("请先填写 Checkpoint 名称"); return; }
-    if (isSvd && !payload.referenceImageUrl) {
-      toast.error("SVD 模板需要参考图"); return;
+    if (!payload.ckpt?.trim()) { toast.error("请先填写模型名称"); return; }
+    if (needsRef && !payload.referenceImageUrl) {
+      toast.error("该模板需要起始图/参考图"); return;
     }
-    if (!isSvd && !payload.motionModule?.trim()) {
+    if (isAnimateDiff && !payload.motionModule?.trim()) {
       toast.error("AnimateDiff 模板需要 Motion Module 名称"); return;
     }
     cancelledRef.current = false;
@@ -220,6 +228,8 @@ export const ComfyuiVideoNode = memo(function ComfyuiVideoNode({ id, selected, d
       negPrompt: payload.negPrompt,
       ckpt: payload.ckpt,
       motionModule: payload.motionModule,
+      clip: payload.clip?.trim() || undefined,
+      clipVision: payload.clipVision?.trim() || undefined,
       steps: payload.steps ?? 20,
       cfg: payload.cfg ?? 7,
       seed: typeof payload.seed === "number" ? payload.seed : -1,
@@ -496,7 +506,18 @@ export const ComfyuiVideoNode = memo(function ComfyuiVideoNode({ id, selected, d
           </label>
           <select
             value={payload.workflowTemplate ?? "animatediff"}
-            onChange={(e) => update("workflowTemplate", e.target.value as "animatediff" | "svd")}
+            onChange={(e) => {
+              // Switching template prefills its recommended frames/fps/size.
+              const t = e.target.value as NonNullable<ComfyuiVideoNodeData["workflowTemplate"]>;
+              const presets: Record<string, { frames: number; fps: number; width: number; height: number }> = {
+                animatediff: { frames: 16, fps: 8, width: 512, height: 512 },
+                svd: { frames: 25, fps: 8, width: 1024, height: 576 },
+                wan_t2v: { frames: 81, fps: 16, width: 832, height: 480 },
+                wan_i2v: { frames: 81, fps: 16, width: 832, height: 480 },
+                ltxv: { frames: 97, fps: 25, width: 768, height: 512 },
+              };
+              updateNodeData(id, { workflowTemplate: t, ...presets[t] });
+            }}
             className="nodrag"
             style={{ ...fieldBase, cursor: "pointer" }}
             onFocus={(e) => { e.currentTarget.style.borderColor = BORDER_ACCENT; }}
@@ -504,6 +525,9 @@ export const ComfyuiVideoNode = memo(function ComfyuiVideoNode({ id, selected, d
           >
             <option value="animatediff">AnimateDiff — 文生视频</option>
             <option value="svd">SVD — 图生视频</option>
+            <option value="wan_t2v">Wan 2.1/2.2 — 文生视频</option>
+            <option value="wan_i2v">Wan 2.1/2.2 — 图生视频</option>
+            <option value="ltxv">LTX-Video — 文生视频（快）</option>
           </select>
         </div>
 
@@ -572,12 +596,12 @@ export const ComfyuiVideoNode = memo(function ComfyuiVideoNode({ id, selected, d
           </div>
         </div>
 
-        {/* ── Checkpoint ── */}
+        {/* ── Main model (Checkpoint or UNET) ── */}
         <div>
-          <label style={labelStyle}>Checkpoint *</label>
+          <label style={labelStyle}>{usesClip ? "模型（UNET/Checkpoint）*" : "Checkpoint *"}</label>
           <input
             list={`comfyui-vid-ckpts-${id}`}
-            placeholder={isSvd ? "如 svd_xt.safetensors" : "如 sd_v1-5_pruned.safetensors"}
+            placeholder={isSvd ? "如 svd_xt.safetensors" : usesClip ? "如 wan2.2_t2v_…fp8.safetensors" : "如 sd_v1-5_pruned.safetensors"}
             value={payload.ckpt ?? ""}
             onChange={(e) => update("ckpt", e.target.value)}
             className="nodrag"
@@ -586,12 +610,46 @@ export const ComfyuiVideoNode = memo(function ComfyuiVideoNode({ id, selected, d
             onBlur={(e) => { e.currentTarget.style.borderColor = BORDER_DEFAULT; }}
           />
           <datalist id={`comfyui-vid-ckpts-${id}`}>
-            {(modelsQuery.data?.ckpts ?? []).map((c) => <option key={c} value={c} />)}
+            {((usesClip && payload.workflowTemplate?.startsWith("wan") ? modelsQuery.data?.unets : modelsQuery.data?.ckpts) ?? []).map((c) => <option key={c} value={c} />)}
           </datalist>
         </div>
 
+        {/* ── CLIP text encoder (Wan / LTX) ── */}
+        {usesClip && (
+          <div>
+            <label style={labelStyle}>CLIP 文本编码器（留空用推荐默认）</label>
+            <input
+              list={`comfyui-vid-clip-${id}`}
+              placeholder={payload.workflowTemplate === "ltxv" ? "t5xxl_fp16.safetensors" : "umt5_xxl_fp8_e4m3fn_scaled.safetensors"}
+              value={payload.clip ?? ""}
+              onChange={(e) => update("clip", e.target.value)}
+              className="nodrag" style={{ ...fieldBase, fontSize: 10.5 }}
+            />
+            <datalist id={`comfyui-vid-clip-${id}`}>
+              {(modelsQuery.data?.clips ?? []).map((c) => <option key={c} value={c} />)}
+            </datalist>
+          </div>
+        )}
+
+        {/* ── CLIP Vision (Wan I2V) ── */}
+        {usesClipVision && (
+          <div>
+            <label style={labelStyle}>CLIP Vision（图生视频，留空用默认）</label>
+            <input
+              list={`comfyui-vid-clipvision-${id}`}
+              placeholder="clip_vision_h.safetensors"
+              value={payload.clipVision ?? ""}
+              onChange={(e) => update("clipVision", e.target.value)}
+              className="nodrag" style={{ ...fieldBase, fontSize: 10.5 }}
+            />
+            <datalist id={`comfyui-vid-clipvision-${id}`}>
+              {(modelsQuery.data?.clipVisions ?? []).map((c) => <option key={c} value={c} />)}
+            </datalist>
+          </div>
+        )}
+
         {/* ── Motion module (AnimateDiff only) ── */}
-        {!isSvd && (
+        {isAnimateDiff && (
           <div>
             <label style={labelStyle}>Motion Module *</label>
             <input
@@ -772,10 +830,11 @@ export const ComfyuiVideoNode = memo(function ComfyuiVideoNode({ id, selected, d
           )}
         </div>
 
-        {/* ── Reference image upload (SVD or optional for AnimateDiff) ── */}
+        {/* ── Start/reference image (SVD / Wan I2V) ── */}
+        {needsRef && (
         <div>
           <label style={labelStyle}>
-            参考图 {isSvd ? "*" : "（可选）"}
+            起始图 *
           </label>
           {payload.referenceImageUrl ? (
             <div
@@ -837,6 +896,7 @@ export const ComfyuiVideoNode = memo(function ComfyuiVideoNode({ id, selected, d
             />
           )}
         </div>
+        )}
 
         {/* ── Progress bar ── */}
         {payload.status === "processing" && payload.progress != null && (

@@ -553,7 +553,7 @@ export interface ComfyuiImageNodeData {
   errorMessage?: string;
 }
 
-export type ComfyuiVideoTemplate = "animatediff" | "svd";
+export type ComfyuiVideoTemplate = "animatediff" | "svd" | "wan_t2v" | "wan_i2v" | "ltxv";
 export interface ComfyuiVideoNodeData {
   // Connection
   customBaseUrl?: string;
@@ -564,6 +564,10 @@ export interface ComfyuiVideoNodeData {
   // Models
   ckpt?: string;
   motionModule?: string;
+  /** CLIP/T5 text encoder (Wan / LTX use a separate CLIPLoader). */
+  clip?: string;
+  /** CLIP Vision model (Wan I2V start-frame encoding). */
+  clipVision?: string;
   // Sampling
   steps?: number;
   cfg?: number;
