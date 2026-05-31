@@ -235,6 +235,8 @@ export const ComfyuiImageNode = memo(function ComfyuiImageNode({ id, selected, d
       ckpt: p.ckpt,
       lora: p.lora,
       loraStrength: p.loraStrength,
+      loras: p.loras,
+      controlnet: p.controlnet,
       steps: p.steps,
       cfg: p.cfg,
       width: p.width,

@@ -638,6 +638,14 @@ export function useWorkflowRunner() {
             negPrompt: (p.negPrompt as string) || undefined,
             ckpt,
             lora: (p.lora as string) || undefined,
+            // Forward the multi-LoRA stack + ControlNet so canvas-wide runs match
+            // the per-node "运行" button (both call comfyui.generateImage).
+            loras: Array.isArray(p.loras) && p.loras.length > 0
+              ? (p.loras as { name: string; strengthModel: number; strengthClip?: number }[])
+              : undefined,
+            controlnet: p.controlnet && typeof p.controlnet === "object" && (p.controlnet as { model?: string }).model && (p.controlnet as { imageUrl?: string }).imageUrl
+              ? (p.controlnet as { model: string; imageUrl: string; strength?: number; startPercent?: number; endPercent?: number })
+              : undefined,
             steps: typeof p.steps === "number" ? p.steps : 20,
             cfg: typeof p.cfg === "number" ? p.cfg : 7,
             seed: typeof p.seed === "number" ? p.seed : -1,
