@@ -2,8 +2,11 @@
 
 > 分支：`claude/trusting-galileo-arfB4`
 > 实施顺序：① 图像节点 → ② 视频节点 → ③ 脚本 + AI 助手节点
-> 交付方式：本文件审批 + 勾选后，连续实现，每步 `pnpm check` + `build` + puppeteer 点击测试 + 提交。
-> 成本来源：`docs/poyo-credits-pricing`（用户提供，2026-05）。**1 credit = $0.005**。失败不扣费。
+> 交付方式：本文件审批后，连续实现，每步 `pnpm check` + `build` + puppeteer 点击测试 + 提交。
+> **范围：所有候选模型全部接入（不再勾选筛选）**——下方候选表全部 `[x]`。
+> 成本来源（双源）：
+> - **Poyo 模型** → 以 `docs/poyo-credits-pricing.md`（官方文档，2026-05-31）为**唯一权威**。**1 credit = $0.005**，失败不扣费。
+> - **Higgsfield 模型** → 以 Higgsfield MCP（`models_explore` / `show_plans_and_credits`）为准（见附录 A）。
 
 ---
 
@@ -32,26 +35,26 @@
 | 勾选 | family | 官方 model（wire） | 模式 | 关键能力 | credits 成本 | 推荐理由 |
 |---|---|---|---|---|---|---|
 | `[x]` | Manus | (内置 Forge) | T2I | 内置·稳定·离线兜底 | **0**（不走外部） | 零成本默认，无 key 也可用 |
-| `[ ]` | Nano | `nano-banana` | T2I/I2I | 预算款·写实 | 5 cr ($0.025) | 同族砍（留 pro+2） |
+| `[x]` | Nano | `nano-banana` | T2I/I2I | 预算款·写实 | 5 cr ($0.025) | 同族砍（留 pro+2） |
 | `[x]` | Seedream | `seedream-5.0-lite` | T2I/I2I | 视觉推理·指令编辑 | 5 cr ($0.025) | 次高档·性价比 |
-| `[ ]` | Z | `z-image` | T2I | 超快·风格化 | 模型页（低） | 批量草图可选 |
-| `[ ]` | GPT | `gpt-image-2` 1K | T2I/I2I | 文字渲染·编辑 | 起 2 cr ×(1K1x/2K2x/4K4x) | [已接] 见 GPT 裁定 |
+| `[x]` | Z | `z-image` | T2I | 超快·风格化 | 模型页（低） | 批量草图可选 |
+| `[x]` | GPT | `gpt-image-2` 1K | T2I/I2I | 文字渲染·编辑 | 起 2 cr ×(1K1x/2K2x/4K4x) | [已接] 见 GPT 裁定 |
 | `[x]` | Seedream | `seedream-4.5` | T2I/I2I | 4K·精确控制 | 10 cr ($0.05) | [已接 poyo_seedream] 最高+次高之「次高」 |
 | `[x]` | Nano | `nano-banana-2` | T2I/I2I | 快·4K·写实 | 模型页（中） | 次高档·性价比主力 |
 | `[x]` | Nano | `nano-banana-pro` | T2I/I2I | 文字/图表·4K·多比例 | 模型页（中-高） | 顶级通用·最高档 |
 | `[x]` | Flux | `flux-2-flex` | T2I | 快速·多风格 | 模型页（低-中） | [已接 poyo_sdxl] flux-2 两档全留 |
 | `[x]` | Flux | `flux-2-pro` | T2I/I2I | 高质量·写实 | 模型页（中） | [已接 poyo_flux] flux-2 两档全留 |
 | `[x]` | GPT | `gpt-image-2` | T2I/I2I | 4K·文字渲染 | 起 2 cr × 倍率 | [已接 poyo_gpt_image] GPT 系列最高档 |
-| `[ ]` | GPT | `gpt-image-1.5` | T2I/I2I | 最佳文字/logo/信息图 | 模型页（中） | GPT 次高档（可选） |
+| `[x]` | GPT | `gpt-image-1.5` | T2I/I2I | 最佳文字/logo/信息图 | 模型页（中） | GPT 次高档（可选） |
 | `[x]` | Grok | `grok-imagine-image` | T2I/I2I | 高对比·表现力 | 模型页（中） | [已接 poyo_grok_image] 单款 |
 | `[x]` | Wan | `wan-2.7-image` | T2I | 思考式生成 | 模型页（中） | [已接 poyo_wan_image] 单款 |
-| `[ ]` | Kling | `kling-o1-image` | T2I/I2I | 写实·21:9 超宽 | 分辨率×n（模型页） | Kling 图像次高（可选） |
+| `[x]` | Kling | `kling-o1-image` | T2I/I2I | 写实·21:9 超宽 | 分辨率×n（模型页） | Kling 图像次高（可选） |
 | `[x]` | Kling | `kling-o3-image` | T2I/I2I | 分辨率×n·编辑 | 分辨率×n（模型页） | Kling 图像最高档 |
 | `[x]` | Flux-Kontext | `flux-kontext-max` | I2I | 上下文编辑·排版 | 模型页（中-高） | [已接 hf_flux_pro] kontext 最高 |
-| `[ ]` | Flux-Kontext | `flux-kontext-pro` | I2I | 上下文编辑 | 模型页（中） | kontext 次高（可选） |
+| `[x]` | Flux-Kontext | `flux-kontext-pro` | I2I | 上下文编辑 | 模型页（中） | kontext 次高（可选） |
 | `[x]` | Higgsfield | `higgsfield-ai/soul/standard` | T2I/Ref | UGC·角色一致·电影级 | (HF 计费) | [已接 hf_soul_standard] 保留 |
 | `[x]` | Higgsfield | `bytedance/seedream/v4/...` | T2I/I2I | 4K | (HF 计费) | [已接 hf_seedream_v4] 保留 |
-| `[ ]` | Higgsfield | `reve/text-to-image` | T2I | 通用·快速 | (HF 计费) | [已接 hf_reve] 评估保留 |
+| `[x]` | Higgsfield | `reve/text-to-image` | T2I | 通用·快速 | (HF 计费) | [已接 hf_reve] 评估保留 |
 
 #### 逐族「高+次高」裁定
 - **Nano**：留 `nano-banana-pro` + `nano-banana-2`，砍 `nano-banana`。
@@ -90,9 +93,9 @@
 
 | 勾选 | family | 官方 model（wire） | 模式 | 关键能力 | credits 成本 | 推荐理由 |
 |---|---|---|---|---|---|---|
-| `[ ]` | Kling | `kling-2.6-motion-control` | I2V | 运动迁移 | 720p 8 / 1080p 12 cr/s | 特殊用途（可选） |
+| `[x]` | Kling | `kling-2.6-motion-control` | I2V | 运动迁移 | 720p 8 / 1080p 12 cr/s | 特殊用途（可选） |
 | `[x]` | Kling | `kling-o3-standard` | I2V | 影院运动 | 10 / 13(音) cr/s | [已接 poyo_kling_o3_std] |
-| `[ ]` | Seedance | `seedance-2`(含视频输入) | I2V/Ref/S·E | 480p 身份一致 | 480p 10 / 720p 20 / 1080p 45 cr/s | [已接 poyo_seedance] 旗舰 |
+| `[x]` | Seedance | `seedance-2`(含视频输入) | I2V/Ref/S·E | 480p 身份一致 | 480p 10 / 720p 20 / 1080p 45 cr/s | [已接 poyo_seedance] 旗舰 |
 | `[x]` | Sora | `sora-2`/`sora-2-official` | T2V/I2V | 音频·影院 | 12 cr/s ($0.06) | 次高档 |
 | `[x]` | Wan | `wan-2.7-video` | I2V/S·E/Ref | 音频同步·角色一致 | 720p 12 / 1080p 18 cr/s | Wan 最高档 |
 | `[x]` | Kling | `kling-o3-pro` | I2V | 影院运动·pro | 13 / 16(音) cr/s | [已接 poyo_kling_o3_pro] |
@@ -101,9 +104,9 @@
 | `[x]` | Seedance | `seedance-2`(无视频输入) | I2V/Ref | 高质量 | 480p 20 / 720p 40 / 1080p 90 cr/s | [已接] 同模型不同档 |
 | `[x]` | Veo | `veo-3.1`(quality) | I2V | 8s·音频·影院级 | 模型页（高） | [已接 poyo_veo] Veo 最高档 |
 | `[x]` | Veo | `veo-3.1`(fast) | I2V/S·E | 720-1080p·预算批量 | 模型页（中，lite/fast 更低） | Veo 次高档 |
-| `[ ]` | Veo | `veo-3.1`(lite) | I2V | 预算 | 模型页（低） | 同族砍（留 quality+fast） |
+| `[x]` | Veo | `veo-3.1`(lite) | I2V | 预算 | 模型页（低） | 同族砍（留 quality+fast） |
 | `[x]` | Hailuo | `hailuo-2.3` | I2V/S·E | 自然物理·面部情绪 | 模型页（中） | Hailuo 最高档 |
-| `[ ]` | Hailuo | `hailuo-02` | I2V | 物理 | 模型页 | Hailuo 次高（可选） |
+| `[x]` | Hailuo | `hailuo-02` | I2V | 物理 | 模型页 | Hailuo 次高（可选） |
 | `[x]` | Wan | `wan-2.6`(t2v/i2v) | T2V/I2V | 风格化 | 模型页（中） | [已接 poyo_wan25_t2v/i2v] Wan 次高 |
 | `[x]` | Grok | `grok-imagine`(video) | T2V/I2V | 文+图生视频 | 模型页（中） | 唯一纯 T2V，建议补 |
 | `[x]` | Runway | `runway-gen-4.5` | I2V/T2V | 现有接入 | 模型页（中-高） | [已接 poyo_runway45] |
