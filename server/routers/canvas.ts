@@ -42,7 +42,7 @@ import { isPoyoVideoProvider, submitPoyoVideo, checkPoyoVideoStatus } from "../_
 import { isHiggsfieldVideoProvider, submitHiggsfieldVideo, checkHiggsfieldVideoStatus } from "../_core/higgsfield";
 import { persistVideoOrFallback, persistVideosOrFallback } from "../_core/persistVideo";
 import { submitAndPollPoyoMusic, type PoyoMusicModel } from "../_core/poyoAudio";
-import { submitAndPollPoyoTTS, type PoyoTTSModel } from "../_core/poyoAudio";
+import { submitAndPollPoyoTTS } from "../_core/poyoAudio";
 import { synthesizeOpenAITTS, type OpenAITTSModel } from "../_core/openaiTTS";
 import { trimVideo, getVideoDuration, mergeVideos, burnSubtitles, generateSRT, overlayVideo, assertSafeUrl, burnAssSubtitles, smartCutVideo } from "../_core/videoEditor";
 import { transcribeAudio } from "../_core/voiceTranscription";
@@ -1406,23 +1406,27 @@ export const audioGenRouter = router({
   generateDubbing: protectedProcedure
     .input(
       z.object({
-        // New OpenAI-direct models + legacy Poyo aliases (latter are rejected
-        // at runtime with a clear error so old saved nodes don't 404 silently).
+        // Live TTS providers: 3 OpenAI-direct (via openaiTTS.ts) + Poyo
+        // ElevenLabs V3. The old "elevenlabs_v3" underscore id is accepted for
+        // backward compat with saved nodes and normalized to the live id below.
         model: z.enum([
           // Live (OpenAI direct)
           "openai_tts_real",
           "openai_tts_hd_real",
           "openai_gpt4o_mini_tts",
-          // Deprecated (kept in schema so existing nodes don't fail validation
-          // before the user sees the migration message)
-          "openai_tts_hd",
-          "openai_tts",
+          // Live (Poyo)
+          "elevenlabs-v3-tts",
+          // Legacy alias — normalized to "elevenlabs-v3-tts"
           "elevenlabs_v3",
-          "cosyvoice_2",
         ]),
         text: z.string().min(1).max(5000),
         voice: z.string().optional(),
-        speed: z.number().min(0.5).max(2.0).optional(),
+        speed: z.number().min(0.5).max(2.0).optional(),          // OpenAI only
+        // ElevenLabs V3 TTS params (per official OpenAPI)
+        stability: z.number().min(0).max(1).optional(),
+        timestamps: z.boolean().optional(),
+        languageCode: z.string().optional(),
+        applyTextNormalization: z.enum(["auto", "on", "off"]).optional(),
         projectId: z.number().optional(),
       })
     )
@@ -1430,42 +1434,56 @@ export const audioGenRouter = router({
       await assertWhitelisted(ctx);
       if (input.projectId != null) await assertProjectAccess(input.projectId, ctx.user.id, "editor");
 
-      // Legacy Poyo TTS aliases — Poyo platform does NOT actually offer TTS,
-      // these 4 ids always 404'd upstream. Refuse at the router so the user
-      // sees a clear migration message instead of a confusing provider error.
-      const LEGACY_POYO_TTS = new Set(["openai_tts_hd", "openai_tts", "elevenlabs_v3", "cosyvoice_2"]);
-      if (LEGACY_POYO_TTS.has(input.model)) {
-        throw new TRPCError({
-          code: "BAD_REQUEST",
-          message: `TTS 模型 "${input.model}" 已下线（Poyo 平台不提供 TTS）。请改用 OpenAI TTS 系列（openai_tts_real / openai_tts_hd_real / openai_gpt4o_mini_tts）。`,
-        });
-      }
+      // Normalize the legacy underscore id to the live Poyo wire value.
+      const model = input.model === "elevenlabs_v3" ? "elevenlabs-v3-tts" : input.model;
+      const isPoyoTTS = model === "elevenlabs-v3-tts";
 
-      // Per-model text limits — applies to live OpenAI models only.
-      // OpenAI TTS supports up to 4096 chars per request.
+      // Per-model text limits. ElevenLabs V3 allows 5000; OpenAI TTS 4096.
       const TEXT_LIMIT: Record<string, number> = {
+        "elevenlabs-v3-tts":   5000,
         openai_tts_real:       4096,
         openai_tts_hd_real:    4096,
         openai_gpt4o_mini_tts: 4096,
       };
-      const limit = TEXT_LIMIT[input.model] ?? 4096;
+      const limit = TEXT_LIMIT[model] ?? 4096;
       if (input.text.length > limit) {
-        throw new TRPCError({ code: "BAD_REQUEST", message: `${input.model} 单次配音上限 ${limit} 字（当前 ${input.text.length}）` });
+        throw new TRPCError({ code: "BAD_REQUEST", message: `${model} 单次配音上限 ${limit} 字（当前 ${input.text.length}）` });
       }
 
       return dedupe("audioGen.generateDubbing", ctx.user.id, input, async () => {
-        const result = await synthesizeOpenAITTS({
-          model: input.model as OpenAITTSModel,
-          text: input.text,
-          voice: input.voice,
-          speed: input.speed,
-        });
+        const result = isPoyoTTS
+          ? await submitAndPollPoyoTTS({
+              model: "elevenlabs-v3-tts",
+              text: input.text,
+              voice: input.voice,
+              stability: input.stability,
+              timestamps: input.timestamps,
+              languageCode: input.languageCode,
+              applyTextNormalization: input.applyTextNormalization,
+            })
+          : await synthesizeOpenAITTS({
+              model: model as OpenAITTSModel,
+              text: input.text,
+              voice: input.voice,
+              speed: input.speed,
+            });
         writeAuditLog({
           ctx,
           action: "audio_dubbing",
-          detail: { model: input.model, text: truncate(input.text), voice: input.voice ?? null, resultUrl: result.url, duration: result.duration ?? null },
+          detail: {
+            model,
+            text: truncate(input.text),
+            voice: input.voice ?? null,
+            resultUrl: result.url,
+            duration: result.duration ?? null,
+            ...(isPoyoTTS ? { stability: input.stability ?? null, timestamps: input.timestamps ?? false } : {}),
+          },
         });
-        return { url: result.url, duration: result.duration };
+        return {
+          url: result.url,
+          duration: result.duration,
+          timestampsUrl: isPoyoTTS ? (result as { timestampsUrl?: string }).timestampsUrl : undefined,
+        };
       });
     }),
 });

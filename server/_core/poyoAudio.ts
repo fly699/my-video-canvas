@@ -50,6 +50,10 @@ export interface SubmitPoyoMusicOptions {
 export interface PoyoMusicResult {
   url: string;
   duration?: number;
+  // ElevenLabs V3 TTS with timestamps enabled returns a second `timestamps.json`
+  // file (file_type:"other"). Surfaced here so the TTS path can hand back a
+  // download URL. The music path never sets this.
+  timestampsUrl?: string;
 }
 
 export async function submitAndPollPoyoMusic(
@@ -157,36 +161,34 @@ export async function submitAndPollPoyoMusic(
 }
 
 /**
- * @deprecated Poyo platform does not actually provide TTS — these 4 model IDs were
- * speculative and Poyo returns 404 "Model not found" for all of them. New code
- * should use `synthesizeOpenAITTS` from `./openaiTTS`. Kept here only so the
- * legacy task-status poll path (for any in-flight tasks created before the
- * switch) still compiles. The router rejects new submits for these ids.
+ * Poyo ElevenLabs V3 TTS. The live model id is `elevenlabs-v3-tts` (this IS the
+ * Poyo wire value — no internal→wire mapping needed). Spec:
+ * POST /api/generate/submit with { model, input: { text, voice?, stability?,
+ * timestamps?, language_code?, apply_text_normalization? } }. There is NO speed
+ * parameter for this model. Results poll the standard status endpoint.
  */
-export type PoyoTTSModel = "openai_tts_hd" | "openai_tts" | "elevenlabs_v3" | "cosyvoice_2";
-
-// Map internal model IDs to Poyo API model names
-const TTS_MODEL_MAP: Record<PoyoTTSModel, string> = {
-  openai_tts_hd: "tts-1-hd",
-  openai_tts:    "tts-1",
-  elevenlabs_v3: "elevenlabs-v3",
-  cosyvoice_2:   "cosyvoice-2",
-};
+export type PoyoTTSModel = "elevenlabs-v3-tts";
 
 export interface SubmitPoyoTTSOptions {
   model: PoyoTTSModel;
-  text: string;
-  voice?: string;
-  speed?: number;
+  text: string;                                  // 1–5000 chars
+  voice?: string;                                // voice name, default "Rachel"
+  stability?: number;                            // 0–1
+  timestamps?: boolean;                          // true → extra timestamps.json file
+  languageCode?: string;                         // ISO 639-1
+  applyTextNormalization?: "auto" | "on" | "off";
 }
 
 export async function submitAndPollPoyoTTS(opts: SubmitPoyoTTSOptions): Promise<PoyoMusicResult> {
   if (!ENV.poyoApiKey) throw new Error("POYO_API_KEY is not configured");
 
-  const poyoModel = TTS_MODEL_MAP[opts.model] ?? opts.model;
+  // input has additionalProperties:false — only send keys we have values for.
   const input: Record<string, unknown> = { text: opts.text };
   if (opts.voice) input.voice = opts.voice;
-  if (opts.speed !== undefined) input.speed = opts.speed;
+  if (opts.stability !== undefined) input.stability = opts.stability;
+  if (opts.timestamps !== undefined) input.timestamps = opts.timestamps;
+  if (opts.languageCode) input.language_code = opts.languageCode;
+  if (opts.applyTextNormalization) input.apply_text_normalization = opts.applyTextNormalization;
 
   const submitRes = await fetch(`${POYO_BASE}/api/generate/submit`, {
     method: "POST",
@@ -194,17 +196,16 @@ export async function submitAndPollPoyoTTS(opts: SubmitPoyoTTSOptions): Promise<
       "Content-Type": "application/json",
       Authorization: `Bearer ${ENV.poyoApiKey}`,
     },
-    body: JSON.stringify({ model: poyoModel, input }),
+    body: JSON.stringify({ model: opts.model, input }),
     signal: AbortSignal.timeout(15_000),
   });
 
   if (!submitRes.ok) {
     const text = await submitRes.text().catch(() => "");
-    // 404 通常意味着 Poyo 平台已下架或重命名了该 TTS 模型
     if (submitRes.status === 404) {
-      throw new Error(`Poyo TTS 提交失败 (404): 模型 "${poyoModel}"（来自 "${opts.model}"）在 Poyo 平台不存在或已下架。原始响应: ${text}`);
+      throw new Error(`Poyo TTS 提交失败 (404): 模型 "${opts.model}" 在 Poyo 平台不存在或已下架。原始响应: ${text}`);
     }
-    throw new Error(`Poyo TTS 提交失败 (${submitRes.status}, 模型 ${poyoModel}): ${text}`);
+    throw new Error(`Poyo TTS 提交失败 (${submitRes.status}, 模型 ${opts.model}): ${text}`);
   }
 
   const submitData = (await submitRes.json()) as { code?: number; message?: string; data?: { task_id?: string } };
@@ -236,19 +237,43 @@ export async function submitAndPollPoyoTTS(opts: SubmitPoyoTTSOptions): Promise<
     if (!d) continue;
 
     if (d.status === "finished") {
-      const file = d.files?.[0];
-      if (!file?.file_url) throw new Error("[CHARGED] Poyo TTS 生成完成但响应未含 file URL（积分已扣，请勿重试）");
-      try {
-        const audioRes = await fetch(file.file_url);
-        if (audioRes.ok) {
-          const buf = Buffer.from(await audioRes.arrayBuffer());
-          const mimeType = audioRes.headers.get("content-type") ?? "audio/mpeg";
-          const ext = mimeType.includes("wav") ? "wav" : "mp3";
-          const { url } = await storagePut(`generated/tts-${Date.now()}.${ext}`, buf, mimeType);
-          return { url, duration: file.duration };
-        }
-      } catch { /* fall through */ }
-      return { url: file.file_url, duration: file.duration };
+      // Select by file_type — with timestamps enabled the array also contains a
+      // file_type:"other" (timestamps.json), so files[0] is not reliably audio.
+      const audioFile = d.files?.find((f) => f.file_type === "audio") ?? d.files?.[0];
+      if (!audioFile?.file_url) throw new Error("[CHARGED] Poyo TTS 生成完成但响应未含 audio file URL（积分已扣，请勿重试）");
+      const tsFile = d.files?.find((f) => f.file_type === "other");
+
+      const persist = await isAudioPersistenceEnabled();
+
+      // Resolve the audio URL (re-host when persistence is on, else upstream).
+      let audioUrl = audioFile.file_url;
+      if (persist) {
+        try {
+          const audioRes = await fetch(audioFile.file_url);
+          if (audioRes.ok) {
+            const buf = Buffer.from(await audioRes.arrayBuffer());
+            const mimeType = audioRes.headers.get("content-type") ?? "audio/mpeg";
+            const ext = mimeType.includes("wav") ? "wav" : "mp3";
+            const { url } = await storagePut(`generated/tts-${Date.now()}.${ext}`, buf, mimeType);
+            audioUrl = url;
+          }
+        } catch { /* fall through to upstream url */ }
+      }
+
+      // Resolve the timestamps URL the same way (re-host when persistence is on).
+      let timestampsUrl: string | undefined = tsFile?.file_url;
+      if (persist && tsFile?.file_url) {
+        try {
+          const tsRes = await fetch(tsFile.file_url);
+          if (tsRes.ok) {
+            const buf = Buffer.from(await tsRes.arrayBuffer());
+            const { url } = await storagePut(`generated/tts-${Date.now()}-timestamps.json`, buf, "application/json");
+            timestampsUrl = url;
+          }
+        } catch { /* fall through to upstream url */ }
+      }
+
+      return { url: audioUrl, duration: audioFile.duration, timestampsUrl };
     }
 
     if (IN_PROGRESS_STATUSES.has(d.status)) {

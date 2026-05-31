@@ -279,7 +279,13 @@ export interface AudioNodeData {
   // Dubbing / TTS (配音)
   ttsText?: string;
   ttsVoice?: string;
-  ttsSpeed?: number;
+  ttsSpeed?: number;                              // OpenAI direct models only
+  // ElevenLabs V3 TTS (Poyo) — per official OpenAPI
+  ttsStability?: number;                          // 0–1
+  ttsTimestamps?: boolean;                        // request word-level timestamps.json
+  ttsLanguageCode?: string;                       // ISO 639-1
+  ttsTextNormalization?: "auto" | "on" | "off";
+  ttsTimestampsUrl?: string;                      // download URL when timestamps returned
   // SFX (音效)
   sfxPrompt?: string;
   sfxDuration?: number;

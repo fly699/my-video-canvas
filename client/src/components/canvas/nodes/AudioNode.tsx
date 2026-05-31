@@ -93,34 +93,23 @@ const MUSIC_MAX_DURATION: Record<string, number> = {
 };
 
 // Dubbing/TTS models. The "openai_*_real" entries hit OpenAI's /v1/audio/speech
-// directly (live). The other 4 are kept for backward compat with saved nodes —
-// Poyo platform doesn't actually offer TTS, so submitting them now returns a
-// router-level error guiding the user to a live model.
+// directly (live). "elevenlabs-v3-tts" routes to Poyo's ElevenLabs V3 TTS.
 const DUBBING_MODELS = [
   // ── Live (OpenAI direct) ───
   { value: "openai_tts_real",       label: "OpenAI TTS",       desc: "标准 · $0.015/1k 字符",  group: "OpenAI" },
   { value: "openai_tts_hd_real",    label: "OpenAI TTS-HD",    desc: "高清 · $0.030/1k 字符",  group: "OpenAI" },
   { value: "openai_gpt4o_mini_tts", label: "GPT-4o Mini TTS",  desc: "新 · 支持 instructions", group: "OpenAI" },
-  // ── Deprecated (Poyo platform doesn't actually provide TTS) ───
-  { value: "openai_tts_hd",    label: "OpenAI TTS-HD ⚠ 已下线",   desc: "请改用 OpenAI TTS-HD", group: "已下线" },
-  { value: "openai_tts",       label: "OpenAI TTS ⚠ 已下线",      desc: "请改用 OpenAI TTS",    group: "已下线" },
-  { value: "elevenlabs_v3",    label: "ElevenLabs v3 ⚠ 已下线",   desc: "未接入",               group: "已下线" },
-  { value: "cosyvoice_2",      label: "CosyVoice 2.0 ⚠ 已下线",   desc: "未接入",               group: "已下线" },
+  // ── Live (Poyo) ───
+  { value: "elevenlabs-v3-tts",     label: "ElevenLabs v3 TTS", desc: "Poyo · 16 积分/1k 字",  group: "ElevenLabs" },
 ];
-
-// Set of legacy TTS model ids that no longer work — gating render + submit.
-const LEGACY_TTS_MODELS = new Set(["openai_tts_hd", "openai_tts", "elevenlabs_v3", "cosyvoice_2"]);
 
 // Per-model TTS text limit (characters). Submitting more than this either errors
 // at the provider or is silently truncated — in both cases the user pays.
 const TTS_TEXT_LIMIT: Record<string, number> = {
+  "elevenlabs-v3-tts":   5000,
   openai_tts_real:       4096,
   openai_tts_hd_real:    4096,
   openai_gpt4o_mini_tts: 4096,
-  openai_tts_hd: 4096,
-  openai_tts:    4096,
-  elevenlabs_v3: 5000,
-  cosyvoice_2:   2000,
 };
 
 // SFX — coming soon
@@ -140,34 +129,46 @@ const OPENAI_VOICES = [
   { value: "nova",    label: "Nova",    desc: "女声" },
   { value: "shimmer", label: "Shimmer", desc: "柔和" },
 ];
+// ElevenLabs V3 voice names (per Poyo OpenAPI). value === the wire name; Rachel
+// is first so it becomes the default selection (matches the spec default).
 const ELEVENLABS_VOICES = [
-  { value: "21m00Tcm4TlvDq8ikWAM", label: "Rachel",  desc: "女声 · 美式" },
-  { value: "AZnzlk1XvdvUeBnXmlld", label: "Domi",    desc: "女声 · 自信" },
-  { value: "EXAVITQu4vr4xnSDxMaL", label: "Bella",   desc: "女声 · 柔和" },
-  { value: "ErXwobaYiN019PkySvjV", label: "Antoni",  desc: "男声 · 温暖" },
-  { value: "VR6AewLTigWG4xSOukaG", label: "Arnold",  desc: "男声 · 深沉" },
-  { value: "pNInz6obpgDQGcFmaJgB", label: "Adam",    desc: "男声 · 旁白" },
-];
-const COSYVOICE_VOICES = [
-  { value: "中文女", label: "中文女", desc: "标准 · 女声" },
-  { value: "中文男", label: "中文男", desc: "标准 · 男声" },
-  { value: "英文女", label: "英文女", desc: "English · F" },
-  { value: "英文男", label: "英文男", desc: "English · M" },
-  { value: "日语男", label: "日语男", desc: "日本語 · M" },
-  { value: "粤语女", label: "粤语女", desc: "广东话 · F" },
+  { value: "Rachel",    label: "Rachel",    desc: "女声 · 旁白" },
+  { value: "Aria",      label: "Aria",      desc: "女声" },
+  { value: "Sarah",     label: "Sarah",     desc: "女声" },
+  { value: "Laura",     label: "Laura",     desc: "女声" },
+  { value: "Charlotte", label: "Charlotte", desc: "女声" },
+  { value: "Alice",     label: "Alice",     desc: "女声" },
+  { value: "Matilda",   label: "Matilda",   desc: "女声" },
+  { value: "Jessica",   label: "Jessica",   desc: "女声" },
+  { value: "Lily",      label: "Lily",      desc: "女声" },
+  { value: "River",     label: "River",     desc: "中性" },
+  { value: "Roger",     label: "Roger",     desc: "男声" },
+  { value: "Charlie",   label: "Charlie",   desc: "男声" },
+  { value: "George",    label: "George",    desc: "男声" },
+  { value: "Callum",    label: "Callum",    desc: "男声" },
+  { value: "Liam",      label: "Liam",      desc: "男声" },
+  { value: "Will",      label: "Will",      desc: "男声" },
+  { value: "Eric",      label: "Eric",      desc: "男声" },
+  { value: "Chris",     label: "Chris",     desc: "男声" },
+  { value: "Brian",     label: "Brian",     desc: "男声" },
+  { value: "Daniel",    label: "Daniel",    desc: "男声" },
+  { value: "Bill",      label: "Bill",      desc: "男声" },
 ];
 
 function voicesForModel(model?: string): { value: string; label: string; desc: string }[] {
-  if (model === "elevenlabs_v3") return ELEVENLABS_VOICES;
-  if (model === "cosyvoice_2") return COSYVOICE_VOICES;
-  return OPENAI_VOICES; // default for openai_tts / openai_tts_hd / unknown
+  if (modelIsElevenLabs(model)) return ELEVENLABS_VOICES;
+  return OPENAI_VOICES; // default for openai_tts_real / *_hd_real / gpt4o-mini / unknown
 }
 
-// ElevenLabs uses voice_settings (stability/style) for pacing, not a `speed` field.
-// Server still accepts speed, but for elevenlabs we hide the slider so users don't
-// expect it to take effect (and don't waste credits tuning a no-op).
+// The Poyo ElevenLabs V3 TTS id (and its legacy underscore alias on old nodes).
+function modelIsElevenLabs(model?: string): boolean {
+  return model === "elevenlabs-v3-tts" || model === "elevenlabs_v3";
+}
+
+// `speed` is only meaningful for OpenAI TTS. ElevenLabs V3 uses `stability`
+// instead, so the speed slider is hidden for it.
 function modelSupportsSpeed(model?: string): boolean {
-  return model !== "elevenlabs_v3";
+  return !modelIsElevenLabs(model);
 }
 
 // Suno/Poyo style tags expect English genre keywords. Submitting raw Chinese
@@ -284,6 +285,9 @@ export const AudioNode = memo(function AudioNode({ id, selected, data }: Props) 
       updateNodeData(id, {
         url: result.url,
         duration: result.duration,
+        // timestampsUrl is only present for ElevenLabs V3 TTS with timestamps on;
+        // clear any stale value from a previous run otherwise.
+        ttsTimestampsUrl: result.timestampsUrl ?? undefined,
         name: `配音 · ${(payload.ttsVoice ?? "alloy")} · ${payload.ttsText?.slice(0, 16) ?? ""}`,
       });
       toast.success("配音生成完成");
@@ -385,35 +389,36 @@ export const AudioNode = memo(function AudioNode({ id, selected, data }: Props) 
     if (!payload.ttsText?.trim()) { toast.error("请先输入配音文本"); return; }
     const validTTS = DUBBING_MODELS.map((m) => m.value);
     const rawTTS = payload.ttsModel ?? payload.aiModel ?? "openai_tts_real";
-    const model = (validTTS.includes(rawTTS) ? rawTTS : "openai_tts_real") as
+    // Old saved nodes may carry the legacy "elevenlabs_v3" id — keep it routable
+    // (server normalizes it); otherwise fall back to the default OpenAI model.
+    const model = (validTTS.includes(rawTTS) || rawTTS === "elevenlabs_v3" ? rawTTS : "openai_tts_real") as
       | "openai_tts_real" | "openai_tts_hd_real" | "openai_gpt4o_mini_tts"
-      | "openai_tts_hd" | "openai_tts" | "elevenlabs_v3" | "cosyvoice_2";
-    // Block submit early for deprecated models — server would reject anyway,
-    // but a clear toast is friendlier than a TRPC error popover.
-    if (LEGACY_TTS_MODELS.has(model)) {
-      toast.error(`"${model}" 已下线，请改用 OpenAI TTS / TTS-HD / GPT-4o Mini TTS`);
-      return;
-    }
+      | "elevenlabs-v3-tts" | "elevenlabs_v3";
     // Reject overlong text early — the provider would charge for the prefix and
     // truncate (or reject) the rest. Better to surface the limit before submit.
-    const limit = TTS_TEXT_LIMIT[model] ?? 4096;
+    const limit = TTS_TEXT_LIMIT[model] ?? (modelIsElevenLabs(model) ? 5000 : 4096);
     if (payload.ttsText.length > limit) {
       toast.error(`${model} 单次配音上限 ${limit} 字，当前 ${payload.ttsText.length} 字，请截断`);
       return;
     }
-    // Voice IDs differ per provider; refuse an OpenAI voice id under ElevenLabs etc.
+    // Voice names differ per provider; refuse a voice not valid for this model.
     const allowedVoices = voicesForModel(model).map(v => v.value);
     const voice = payload.ttsVoice && allowedVoices.includes(payload.ttsVoice)
       ? payload.ttsVoice
       : allowedVoices[0];
-    // ElevenLabs v3 doesn't honour `speed`; don't send it (the field is meaningful only for OpenAI/CosyVoice).
-    const speed = modelSupportsSpeed(model) ? payload.ttsSpeed : undefined;
+    const isEleven = modelIsElevenLabs(model);
     ttsMutation.mutate({
       model,
       text: payload.ttsText,
       voice,
-      speed,
       projectId: data.projectId,
+      // OpenAI-only
+      speed: isEleven ? undefined : (modelSupportsSpeed(model) ? payload.ttsSpeed : undefined),
+      // ElevenLabs V3-only (per official OpenAPI)
+      stability: isEleven ? (payload.ttsStability ?? 0.5) : undefined,
+      timestamps: isEleven ? (payload.ttsTimestamps ?? false) : undefined,
+      languageCode: isEleven ? (payload.ttsLanguageCode || undefined) : undefined,
+      applyTextNormalization: isEleven ? (payload.ttsTextNormalization ?? "auto") : undefined,
     });
   };
 
@@ -661,27 +666,12 @@ export const AudioNode = memo(function AudioNode({ id, selected, data }: Props) 
         {category === "dubbing" && (() => {
           const ttsModel = (payload.ttsModel ?? (DUBBING_MODELS.find(m => m.value === payload.aiModel) ? payload.aiModel : undefined) ?? "openai_tts_real") as string;
           const voices = voicesForModel(ttsModel);
-          const textLimit = TTS_TEXT_LIMIT[ttsModel] ?? 4096;
+          const textLimit = TTS_TEXT_LIMIT[ttsModel] ?? (modelIsElevenLabs(ttsModel) ? 5000 : 4096);
           const supportsSpeed = modelSupportsSpeed(ttsModel);
+          const isEleven = modelIsElevenLabs(ttsModel);
           const textLen = (payload.ttsText ?? "").length;
-          const isLegacyModel = LEGACY_TTS_MODELS.has(ttsModel);
           return (
           <>
-            {/* Migration warning for nodes saved with the dead Poyo TTS aliases */}
-            {isLegacyModel && (
-              <div style={{
-                padding: "8px 10px",
-                background: "oklch(0.70 0.16 65 / 0.10)",
-                border: "1px solid oklch(0.70 0.16 65 / 0.35)",
-                borderRadius: 6,
-                fontSize: 11,
-                lineHeight: 1.5,
-                color: "oklch(0.80 0.16 65)",
-              }}>
-                ⚠ 模型 <code style={{ fontFamily: "monospace" }}>{ttsModel}</code> 已下线（Poyo 平台不提供 TTS）。
-                请改用 <strong>OpenAI TTS</strong> / <strong>TTS-HD</strong> / <strong>GPT-4o Mini TTS</strong>。
-              </div>
-            )}
             <ModelSelect
               models={DUBBING_MODELS}
               value={payload.ttsModel ?? (DUBBING_MODELS.find(m => m.value === payload.aiModel) ? payload.aiModel : undefined)}
@@ -761,11 +751,87 @@ export const AudioNode = memo(function AudioNode({ id, selected, data }: Props) 
                 </div>
               </div>
             )}
+            {/* ── ElevenLabs V3-only controls (per official OpenAPI) ── */}
+            {isEleven && (
+              <>
+                {/* Stability 0–1 */}
+                <div>
+                  <div className="flex items-center justify-between" style={{ marginBottom: 5 }}>
+                    <label style={{ ...labelStyle, marginBottom: 0 }}>稳定性</label>
+                    <span style={{ fontSize: 11, color: "var(--c-t3)", fontVariantNumeric: "tabular-nums" }}>
+                      {(payload.ttsStability ?? 0.5).toFixed(2)}
+                    </span>
+                  </div>
+                  <input
+                    type="range"
+                    min={0}
+                    max={1}
+                    step={0.05}
+                    value={payload.ttsStability ?? 0.5}
+                    onChange={(e) => update("ttsStability", Number(e.target.value))}
+                    className="nodrag w-full"
+                    style={{ accentColor: accent }}
+                  />
+                </div>
+                {/* Timestamps toggle */}
+                <div className="flex items-center justify-between">
+                  <label style={{ ...labelStyle, marginBottom: 0 }}>时间戳 (timestamps.json)</label>
+                  <button
+                    onClick={() => update("ttsTimestamps", !(payload.ttsTimestamps ?? false))}
+                    className="nodrag relative flex-shrink-0"
+                    style={{
+                      width: 32, height: 18, borderRadius: 9,
+                      background: (payload.ttsTimestamps ?? false) ? accentA(0.5) : "var(--c-bd1)",
+                      border: `1px solid ${(payload.ttsTimestamps ?? false) ? accentA(0.5) : "var(--c-bd3)"}`,
+                      cursor: "pointer",
+                      transition: "background 150ms ease",
+                    }}
+                  >
+                    <span style={{
+                      position: "absolute", top: 2,
+                      left: (payload.ttsTimestamps ?? false) ? 14 : 2,
+                      width: 12, height: 12, borderRadius: "50%",
+                      background: "var(--c-t1)",
+                      transition: "left 150ms ease",
+                    }} />
+                  </button>
+                </div>
+                {/* Language code (ISO 639-1, optional) */}
+                <div>
+                  <label style={labelStyle}>语言代码 (ISO 639-1，可选)</label>
+                  <input
+                    placeholder="例如：en / zh / ja"
+                    value={payload.ttsLanguageCode ?? ""}
+                    onChange={(e) => update("ttsLanguageCode", e.target.value)}
+                    className="nodrag"
+                    style={fieldStyle}
+                    onFocus={(e) => { e.currentTarget.style.borderColor = BORDER_ACCENT; }}
+                    onBlur={(e) => { e.currentTarget.style.borderColor = BORDER_DEFAULT; }}
+                  />
+                </div>
+                {/* apply_text_normalization */}
+                <div>
+                  <label style={labelStyle}>文本规范化</label>
+                  <select
+                    value={payload.ttsTextNormalization ?? "auto"}
+                    onChange={(e) => update("ttsTextNormalization", e.target.value)}
+                    className="nodrag"
+                    style={{ ...fieldStyle, cursor: "pointer" }}
+                    onFocus={(e) => { e.currentTarget.style.borderColor = BORDER_ACCENT; }}
+                    onBlur={(e) => { e.currentTarget.style.borderColor = BORDER_DEFAULT; }}
+                  >
+                    <option value="auto" style={{ background: "var(--c-base)" }}>auto（自动）</option>
+                    <option value="on" style={{ background: "var(--c-base)" }}>on（开启）</option>
+                    <option value="off" style={{ background: "var(--c-base)" }}>off（关闭）</option>
+                  </select>
+                </div>
+              </>
+            )}
             <GenerateBtn
-              disabled={!payload.ttsText?.trim() || textLen > textLimit || isLegacyModel}
+              disabled={!payload.ttsText?.trim() || textLen > textLimit}
               loading={ttsMutation.isPending}
               onClick={handleGenerateTTS}
-              label={isLegacyModel ? "请先换用 OpenAI TTS" : "生成配音"}
+              label="生成配音"
             />
           </>
           );
@@ -864,6 +930,20 @@ export const AudioNode = memo(function AudioNode({ id, selected, data }: Props) 
       {audioPlayer && (
         <div className="px-3 pb-3">
           {audioPlayer}
+          {/* ElevenLabs V3 TTS timestamps.json download link */}
+          {payload.ttsTimestampsUrl && (
+            <a
+              href={payload.ttsTimestampsUrl}
+              target="_blank"
+              rel="noopener noreferrer"
+              download
+              className="nodrag flex items-center gap-1 mt-1.5"
+              style={{ fontSize: 10.5, color: accent, textDecoration: "none" }}
+            >
+              <HardDriveDownload style={{ width: 11, height: 11 }} />
+              下载 timestamps.json
+            </a>
+          )}
         </div>
       )}
     </BaseNode>
