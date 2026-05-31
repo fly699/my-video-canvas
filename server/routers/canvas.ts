@@ -929,73 +929,96 @@ Each element must have these fields:
         : "General cinematic: descriptive English prompts with visual details, lighting, camera information, and mood.";
 
       const avgDuration = Math.round(input.totalDuration / input.sceneCount);
+      const promptLangName = input.promptLang === "zh" ? "Chinese (中文)" : "English";
 
-      const systemPrompt = `You are a professional screenwriter and AI video director creating multi-modal storyboard scripts optimized for AI video generation.
+      // ── Plan B: two separate LLM calls ──────────────────────────────────────
+      // Call 1 generates ONLY the Chinese narrative script as plain text, and
+      // Call 2 derives the scene breakdown from it. Splitting fixes two issues of
+      // the old single-JSON call: (a) a long script + many scenes sharing one
+      // 8000-token budget truncated the script mid-JSON, leaving the content box
+      // incomplete; (b) the English prompt-language toggle bleeding into the
+      // narrative. The script call is pure-Chinese with no English field, so the
+      // narrative is always 中文 regardless of the promptLang toggle (which only
+      // affects scene promptText in Call 2).
 
-Target Video Model Prompt Style Guide:
-${modelGuide}
+      // ── Call 1: Chinese narrative script (plain text, full token budget) ──
+      const scriptSystemPrompt = `你是专业编剧和 AI 视频导演。根据故事梗概创作一部完整的中文分镜剧本。
 
-Production Brief:
-- Genre: ${input.genre ?? "general"}
-- Visual Style: ${input.style ?? "cinematic"}
-- Emotional Tone: ${input.mood ?? "neutral"}
-- Aspect Ratio: ${input.aspectRatio}
-- Total Duration: ~${input.totalDuration} seconds across ${input.sceneCount} scenes (avg ${avgDuration}s/scene)
+制作要求：
+- 类型：${input.genre ?? "通用"}
+- 视觉风格：${input.style ?? "电影感"}
+- 情感基调：${input.mood ?? "中性"}
+- 画面比例：${input.aspectRatio}
+- 总时长：约 ${input.totalDuration} 秒，共 ${input.sceneCount} 个场景（平均每场景 ${avgDuration} 秒）
 
-Your task: Generate a complete storyboard script. Output ONLY a valid JSON object with NO markdown fences, NO extra text:
-{
-  "scriptText": "A polished Chinese narrative script with proper scene headings (场景一、二...), vivid action lines, and atmospheric descriptions. Professional screenplay style. Minimum 200 characters.",
-  "scenes": [
-    {
-      "description": "Chinese visual description: what the viewer sees, atmosphere, character actions. 2-3 sentences.",
-      "promptText": "${input.promptLang === "zh" ? "Chinese (中文)" : "English"} AI generation prompt optimized for the target model. Follow the prompt style guide above strictly.",
-      "cameraMovement": "one of: static|pan-left|pan-right|zoom-in|zoom-out|tilt-up|tilt-down|tracking",
-      "duration": ${avgDuration}
-    }
-  ]
-}
+要求：
+1. 全程用中文创作，采用专业剧本格式，包含场景标题（场景一、场景二……）、生动的动作描写和氛围描述。
+2. 叙事连贯，覆盖全部 ${input.sceneCount} 个场景。
+3. 至少 200 字。
+4. 只输出剧本正文，不要 JSON、不要额外说明、不要 markdown 代码块。`;
 
-Rules:
-1. Generate exactly ${input.sceneCount} scene objects
-2. scriptText must be cohesive Chinese narrative covering all scenes
-3. Each promptText MUST follow the target model's style guide, and MUST be written in ${input.promptLang === "zh" ? "Chinese (中文)" : "English"}
-4. Duration values should total approximately ${input.totalDuration} seconds
-5. Create compelling visual storytelling appropriate for the genre and mood`;
+      const fullScriptSystemPrompt = input.templatePromptOverride
+        ? `${scriptSystemPrompt}\n\n## 模板专属写作要求\n${input.templatePromptOverride}`
+        : scriptSystemPrompt;
 
-      // When a template is selected client-side, its systemPromptAddon is
-      // appended here. Doesn't replace the base prompt — adds extra context-
-      // specific writing instructions on top (e.g. "open with a 3-second
-      // hook" for short-video templates).
-      const fullSystemPrompt = input.templatePromptOverride
-        ? `${systemPrompt}\n\n## Template-specific writing instructions\n${input.templatePromptOverride}`
-        : systemPrompt;
-
-      const response = await invokeLLM({
+      const scriptResponse = await invokeLLM({
         messages: [
-          { role: "system" as const, content: fullSystemPrompt },
-          { role: "user" as const, content: `Story Synopsis:\n${input.synopsis}` },
+          { role: "system" as const, content: fullScriptSystemPrompt },
+          { role: "user" as const, content: `故事梗概：\n${input.synopsis}` },
         ],
         model: input.model ?? "claude-sonnet-4-6",
         maxTokens: 8000,
       });
+      const scriptText = extractTextContent(scriptResponse).trim();
 
-      const text = extractTextContent(response);
-      const jsonMatch = text.match(/\{[\s\S]*\}/);
-      if (!jsonMatch) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "AI 未返回有效 JSON" });
+      // ── Call 2: scene breakdown derived from the generated script ──
+      // promptText language follows the toggle; description stays Chinese.
+      const scenesSystemPrompt = `You are a professional film director and storyboard artist.
+Given a Chinese script, break it into exactly ${input.sceneCount} visual storyboard scenes.
 
-      let parsed: {
-        scriptText?: string;
-        scenes?: Array<{ description?: string; promptText?: string; cameraMovement?: string; duration?: number }>;
-      };
-      try {
-        parsed = JSON.parse(jsonMatch[0]);
-      } catch {
-        throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "JSON 解析失败，请重试" });
+Target Video Model Prompt Style Guide:
+${modelGuide}
+
+Output ONLY a valid JSON array with no markdown fences, no explanation.
+Each element must have these fields:
+- "description": string (Chinese 中文, 2-3 sentences, what the viewer sees)
+- "promptText": string (${promptLangName}, detailed cinematic prompt for image generation — write it in ${promptLangName}, follow the style guide above strictly)
+- "cameraMovement": string (one of: static, pan-left, pan-right, zoom-in, zoom-out, tilt-up, tilt-down, tracking)
+- "duration": number (scene duration in seconds, integer, around ${avgDuration})`;
+
+      // Feed the generated script (fallback to synopsis if the model returned
+      // nothing) so scenes match the actual narrative. Cap input to keep the
+      // request bounded.
+      const sceneSource = (scriptText || input.synopsis).slice(0, 8000);
+      const scenesResponse = await invokeLLM({
+        messages: [
+          { role: "system" as const, content: scenesSystemPrompt },
+          { role: "user" as const, content: `Script:\n${sceneSource}` },
+        ],
+        model: input.model ?? "claude-sonnet-4-6",
+        maxTokens: 4000,
+      });
+
+      const scenesText = extractTextContent(scenesResponse);
+      const scenesMatch = scenesText.match(/\[[\s\S]*\]/);
+      let scenes: Array<{ description?: string; promptText?: string; cameraMovement?: string; duration?: number }> = [];
+      if (scenesMatch) {
+        try {
+          scenes = JSON.parse(scenesMatch[0]);
+        } catch {
+          // Tolerate scene-parse failure: the script (the user's main concern)
+          // is already in hand; return it with no scenes rather than failing all.
+          scenes = [];
+        }
+      }
+
+      if (!scriptText && scenes.length === 0) {
+        throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "AI 未返回有效内容，请重试" });
       }
 
       return {
-        scriptText: parsed.scriptText ?? "",
-        scenes: (parsed.scenes ?? []).slice(0, input.sceneCount),
+        scriptText,
+        scenes: scenes.slice(0, input.sceneCount),
       };
       });
     }),
