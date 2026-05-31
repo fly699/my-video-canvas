@@ -11,7 +11,7 @@
  * `invalidateStorageSettingsCache()`.
  */
 import * as db from "../db";
-import { isS3Configured, setMinioOnlyMirror } from "../storage";
+import { isS3Configured } from "../storage";
 
 type Cached = { persistAudio: boolean; persistVideo: boolean; persistImage: boolean; presignTtlSec: number; poyoUploadFallback: boolean; minioOnly: boolean };
 
@@ -36,7 +36,6 @@ export async function getCachedStorageSettings(): Promise<Cached> {
       const settings = await db.getStorageSettings();
       _cached = settings;
       _expiresAt = Date.now() + TTL_MS;
-      setMinioOnlyMirror(settings.minioOnly); // keep storage.ts sync mirror fresh
       return settings;
     } catch (err) {
       console.warn("[storageConfig] DB read failed:", err);
