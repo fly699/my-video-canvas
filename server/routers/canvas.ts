@@ -32,7 +32,7 @@ import {
   addChatMessagePair,
   clearChatMessages,
 } from "../db";
-import { storagePut, resolveToAbsoluteUrl, canBrowserReachStorageDirectly, storageBackend } from "../storage";
+import { storagePut, resolveToAbsoluteUrl, canBrowserReachStorageDirectly, storageBackend, assertObjectStorageWritable } from "../storage";
 import { invokeLLM, extractTextContent } from "../_core/llm";
 import { generateImage } from "../_core/imageGeneration";
 import { generateComfyImage, generateComfyVideo, fetchComfyModels, analyzeWorkflow, executeCustomWorkflow, uploadImageForWorkflow, interruptComfy, emptyModelList } from "../_core/comfyui";
