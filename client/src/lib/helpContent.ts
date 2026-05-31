@@ -681,7 +681,7 @@ export const HELP_SECTIONS: HelpSection[] = [
       { type: "p", text: "导入任意 ComfyUI Workflow JSON 并运行，支持所有 ComfyUI 节点和自定义插件。这是实现「完全不缺失功能」接入 ComfyUI 的核心节点。" },
       { type: "h3", text: "三个阶段" },
       { type: "steps", items: [
-        "阶段 A — 粘贴 Workflow JSON：直接粘贴从 ComfyUI 导出的 API 格式 JSON，或上传 .json 文件，或选择内置预设（SDXL / Flux / HunyuanVideo / Wan2.1）",
+        "阶段 A — 粘贴 Workflow JSON：直接粘贴从 ComfyUI 导出的 API 格式 JSON，或上传 .json 文件，或选择内置预设（SDXL / SD3.5 / Flux / Flux Kontext / Qwen-Image / HunyuanVideo / Wan2.1 / Wan2.2 / LTX-Video）",
         "阶段 B — 配置参数映射：系统自动检测 workflow 中的可配置字段（提示词/模型/步数/尺寸等），可以修改参数标签或手动添加未检测到的参数",
         "阶段 C — 运行工作流：在动态表单中填写参数值，点击运行，查看实时进度条和最终输出结果",
       ]},
@@ -695,9 +695,14 @@ export const HELP_SECTIONS: HelpSection[] = [
       { type: "h3", text: "内置预设" },
       { type: "kv", rows: [
         ["SDXL 1.0", "SDXL 标准文生图（1024×1024）"],
+        ["SD3.5", "Stable Diffusion 3.5 Large 文生图"],
         ["Flux.1-dev", "Flux 高质量文生图（需要 flux1-dev.safetensors）"],
+        ["Flux Kontext", "Flux 指令式图像编辑（需输入图，需 kontext 模型）"],
+        ["Qwen-Image", "通义千问图像生成（擅长文字/海报）"],
         ["HunyuanVideo", "腾讯混元视频生成（需要对应模型）"],
         ["Wan2.1 T2V", "万象文生视频（需要 Wan2 系列模型）"],
+        ["Wan2.2 T2V", "万象 2.2（MoE 架构，原生节点）"],
+        ["LTX-Video", "LTXV 快速/实时视频生成"],
       ]},
       { type: "h3", text: "参数类型" },
       { type: "kv", rows: [
