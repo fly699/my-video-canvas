@@ -13,7 +13,7 @@
 import * as db from "../db";
 import { isS3Configured } from "../storage";
 
-type Cached = { persistAudio: boolean; persistVideo: boolean; persistImage: boolean; presignTtlSec: number };
+type Cached = { persistAudio: boolean; persistVideo: boolean; persistImage: boolean; presignTtlSec: number; poyoUploadFallback: boolean };
 
 let _cached: Cached | null = null;
 let _expiresAt = 0;
@@ -45,7 +45,7 @@ export async function getCachedStorageSettings(): Promise<Cached> {
       // that DB outages can't silently bypass the admin's explicit "off"
       // intent and burn S3 quota.
       if (_cached) return _cached;
-      return { persistAudio: false, persistVideo: false, persistImage: false, presignTtlSec: 3600 };
+      return { persistAudio: false, persistVideo: false, persistImage: false, presignTtlSec: 3600, poyoUploadFallback: false };
     } finally {
       _inflight = null;
     }
@@ -70,6 +70,16 @@ export async function isVideoPersistenceEnabled(): Promise<boolean> {
 export async function isImagePersistenceEnabled(): Promise<boolean> {
   if (isS3Configured()) return true;
   return (await getCachedStorageSettings()).persistImage;
+}
+
+/**
+ * Whether the admin enabled "Poyo stream-upload fallback": when our own
+ * storage isn't publicly reachable, stage reference media on Poyo to obtain a
+ * public URL for AI models. Purely additive — off by default, and when off the
+ * original storage resolution logic is unchanged.
+ */
+export async function isPoyoUploadFallbackEnabled(): Promise<boolean> {
+  return (await getCachedStorageSettings()).poyoUploadFallback;
 }
 
 /**

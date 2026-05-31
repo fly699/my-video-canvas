@@ -225,6 +225,32 @@ export async function resolveToAbsoluteUrl(urlOrRelPath: string): Promise<string
     throw new Error(`无法解析为绝对 URL：${urlOrRelPath.slice(0, 80)}`);
   }
   const key = urlOrRelPath.slice("/manus-storage/".length);
+
+  // ── Additive Poyo stream-upload fallback (off by default) ──
+  // Only when: admin enabled it, our storage is NOT publicly reachable, and a
+  // Poyo key exists. Stages the file on Poyo and returns its public URL so AI
+  // models can fetch it. Any failure falls through to the original behavior —
+  // when the toggle is off this whole block is skipped and logic is unchanged.
+  if (!canBrowserReachStorageDirectly() && ENV.poyoApiKey) {
+    try {
+      const { isPoyoUploadFallbackEnabled } = await import("./_core/storageConfig");
+      if (await isPoyoUploadFallbackEnabled()) {
+        const { uploadStreamToPoyo } = await import("./_core/poyoUpload");
+        const { body, contentType } = await storageFetchStream(key);
+        const chunks: Buffer[] = [];
+        for await (const chunk of body) chunks.push(Buffer.from(chunk));
+        const buf = Buffer.concat(chunks);
+        const ct = contentType ?? "application/octet-stream";
+        const ext = key.split(".").pop() || "bin";
+        const fileName = `ref-${Date.now()}.${ext}`;
+        return await uploadStreamToPoyo(buf, fileName, ct);
+      }
+    } catch (err) {
+      console.warn("[storage] Poyo upload fallback failed, using presigned URL:", err instanceof Error ? err.message : err);
+      // fall through to the original presign behavior
+    }
+  }
+
   return storagePresignGet(key);
 }
 

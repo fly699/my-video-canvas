@@ -18,6 +18,7 @@ import { useShallow } from "zustand/react/shallow";
 import { useWorkflowRunner, RUNNABLE_TYPES } from "../hooks/useWorkflowRunner";
 import { WorkflowRunProvider } from "../contexts/WorkflowRunContext";
 import { CanvasChatWindow } from "../components/chat/CanvasChatWindow";
+import { PoyoBalanceDashboard } from "../components/PoyoBalanceDashboard";
 import { CustomNode } from "../components/canvas/CustomNode";
 import { CustomEdge } from "../components/canvas/CustomEdge";
 import { ContextMenu } from "../components/canvas/ContextMenu";
@@ -1020,6 +1021,8 @@ function CanvasInner({ projectId }: { projectId: number }) {
             未保存
           </div>
         )}
+
+        <PoyoBalanceDashboard />
 
         <div className="flex-1" />
 

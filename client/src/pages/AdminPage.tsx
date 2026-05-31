@@ -324,6 +324,18 @@ function StoragePanel() {
             disabled={setMut.isPending}
             onSave={(sec) => setMut.mutate({ presignTtlSec: sec })}
           />
+          <ToggleRow
+            label="Poyo 流式暂存（参考图/视频公网中转）"
+            description={
+              "附加功能·默认关闭：当 MinIO/S3 未暴露公网（未设 S3_PUBLIC_ENDPOINT）时，把参考图/视频经 Poyo 流式上传换取公网 URL 供 AI 模型读取。关闭后完全不影响原有存储逻辑。需配置 POYO_API_KEY。" +
+              "\n限制：图片支持 JPEG / PNG / GIF / WebP，公网有效期约 72 小时；视频支持 MP4 / WebM / MOV / AVI / MKV，单文件 ≤ 100MB，有效期约 24 小时；每次 1 个文件；接口限流 5 次/分钟。仅用于生成时临时中转参考素材，不替代本地持久化存储。"
+            }
+            enabled={settings.poyoUploadFallback}
+            disabled={setMut.isPending}
+            onClick={() => setMut.mutate({ poyoUploadFallback: !settings.poyoUploadFallback })}
+            statusOn="已开启（仅在 MinIO/S3 未公网时中转）"
+            statusOff="已关闭（不影响原有存储逻辑）"
+          />
         </>
       )}
     </div>
@@ -385,12 +397,14 @@ function PresignTtlRow({ value, disabled, onSave }: {
   );
 }
 
-function ToggleRow({ label, description, enabled, disabled, onClick }: {
+function ToggleRow({ label, description, enabled, disabled, onClick, statusOn, statusOff }: {
   label: string;
   description: string;
   enabled: boolean;
   disabled?: boolean;
   onClick: () => void;
+  statusOn?: string;
+  statusOff?: string;
 }) {
   const Icon = enabled ? ToggleRight : ToggleLeft;
   return (
@@ -401,9 +415,9 @@ function ToggleRow({ label, description, enabled, disabled, onClick }: {
     }}>
       <div>
         <div style={{ fontSize: 14, fontWeight: 500, color: "var(--c-t1, #f0f0f4)" }}>{label}</div>
-        <div style={{ fontSize: 11, color: "var(--c-t3, rgba(255,255,255,0.4))", marginTop: 3 }}>{description}</div>
+        <div style={{ fontSize: 11, color: "var(--c-t3, rgba(255,255,255,0.4))", marginTop: 3, whiteSpace: "pre-line", lineHeight: 1.6 }}>{description}</div>
         <div style={{ fontSize: 11, color: enabled ? "oklch(0.7 0.18 145)" : "oklch(0.65 0.18 25)", marginTop: 4, fontWeight: 600 }}>
-          状态：{enabled ? "已开启（永久存储）" : "已关闭（24h 后过期）"}
+          状态：{enabled ? (statusOn ?? "已开启（永久存储）") : (statusOff ?? "已关闭（24h 后过期）")}
         </div>
       </div>
       <button
