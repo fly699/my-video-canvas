@@ -606,6 +606,9 @@ export interface ComfyuiImageNodeData {
   // Prompts
   prompt: string;
   negPrompt?: string;
+  /** When on, a workflow run pushes this node's prompt(s) to downstream
+   *  comfyui_video nodes before they run, so the video matches the image. */
+  sendPromptToVideo?: boolean;
   // Models
   ckpt?: string;
   lora?: string;

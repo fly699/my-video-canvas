@@ -2,7 +2,7 @@ import { memo, useCallback, useEffect, useRef, useState } from "react";
 import { Handle, Position } from "@xyflow/react";
 import { BaseNode } from "../BaseNode";
 import { useCanvasStore } from "../../../hooks/useCanvasStore";
-import { propagateRefImage } from "../../../lib/refImagePropagation";
+import { propagateRefImage, propagatePromptToVideo } from "../../../lib/refImagePropagation";
 import { usePreferUpstreamRefSource, useAutoPreferUpstreamRefSource } from "../mediaReachability";
 import type { ComfyuiImageNodeData, ComfyuiLoraEntry } from "../../../../../shared/types";
 import { trpc } from "@/lib/trpc";
@@ -121,6 +121,7 @@ export const ComfyuiImageNode = memo(function ComfyuiImageNode({ id, selected, d
       if (cancelledRef.current) { cancelledRef.current = false; return; }
       updateNodeData(id, { imageUrl: result.url, imageUrls: result.urls, status: "done", errorMessage: undefined, progress: undefined });
       if (result.url) propagateRefImage(id, result.url);
+      if (payload.sendPromptToVideo) propagatePromptToVideo(id);
       toast.success("ComfyUI 图像生成成功");
     },
     onError: (err) => {
@@ -731,6 +732,33 @@ export const ComfyuiImageNode = memo(function ComfyuiImageNode({ id, selected, d
             </button>
           </div>
         </div>
+
+        {/* ── 提示词联动：传给下游 ComfyUI 视频节点 ── */}
+        <button
+          onClick={() => update("sendPromptToVideo", !payload.sendPromptToVideo)}
+          className="nodrag flex items-center justify-between w-full px-2.5 py-1.5 rounded-lg text-[10.5px] transition-all"
+          style={{
+            background: payload.sendPromptToVideo ? "oklch(0.68 0.20 285 / 0.12)" : "var(--c-input)",
+            border: `1px solid ${payload.sendPromptToVideo ? "oklch(0.68 0.20 285 / 0.5)" : "var(--c-bd2)"}`,
+            color: payload.sendPromptToVideo ? "oklch(0.74 0.18 285)" : "var(--c-t3)",
+            cursor: "pointer",
+          }}
+          title="开启后，运行工作流时把本节点的正/反向提示词自动传给下游连接的 ComfyUI 视频节点"
+        >
+          <span>运行工作流时把提示词传给下游视频节点</span>
+          <span
+            style={{
+              width: 26, height: 15, borderRadius: 99, flexShrink: 0, position: "relative",
+              background: payload.sendPromptToVideo ? "oklch(0.68 0.20 285)" : "var(--c-bd3)",
+              transition: "background 150ms ease",
+            }}
+          >
+            <span style={{
+              position: "absolute", top: 2, left: payload.sendPromptToVideo ? 13 : 2,
+              width: 11, height: 11, borderRadius: "50%", background: "#fff", transition: "left 150ms ease",
+            }} />
+          </span>
+        </button>
 
         </>)}
         {cfgTab === "model" && (<>
