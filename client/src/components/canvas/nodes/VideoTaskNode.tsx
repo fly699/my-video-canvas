@@ -239,6 +239,11 @@ const KLING_O3_PARAMS: ParamDef[] = [
   { type: "select", key: "aspect_ratio", label: "宽高比", default: "16:9",
     options: [{ value: "16:9", label: "16:9 横屏" }, { value: "9:16", label: "9:16 竖屏" }, { value: "1:1", label: "1:1 方形" }] },
   { type: "range", key: "duration", label: "时长（秒）", min: 3, max: 15, step: 1, default: 5, unit: "s" },
+  // Kling o3 requires `sound`; Poyo 400s ("sound is required") if it's omitted.
+  // Default off (no audio, no extra cost). The server also injects sound:false as
+  // a fallback (poyoVideo.VIDEO_PARAM_DEFAULTS), so this toggle just surfaces the
+  // choice in the UI — turn it on to let the model generate native audio.
+  { type: "toggle", key: "sound", label: "原生音频", default: false },
   { type: "number", key: "seed", label: "随机种子（可选）", min: 0, max: 2147483647, step: 1 },
 ];
 
