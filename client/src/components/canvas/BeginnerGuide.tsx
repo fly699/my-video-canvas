@@ -1,7 +1,7 @@
 import { useState, useEffect } from "react";
 import {
   X, Sparkles, Layers, Wand2, Video, Boxes, Bot, Users, ScrollText, Activity,
-  Shield, ArrowRight, MessageCircle,
+  Shield, ArrowRight, MessageCircle, Music, Wallet,
 } from "lucide-react";
 import type { NodeType } from "../../../../shared/types";
 import { getNodeConfig } from "../../lib/nodeConfig";
@@ -52,14 +52,24 @@ function WelcomeModal({ onClose }: { onClose: () => void }) {
     { Icon: Layers, color: "oklch(0.68 0.22 285)",
       title: "节点式工作流", desc: "脚本 / 分镜 / 提示词 / 图像 / 视频 / 剪辑节点自由编排，可视化连线" },
     { Icon: Wand2, color: "oklch(0.72 0.20 330)",
-      title: "AI 图像生成", desc: "Manus Forge、Poyo、Higgsfield Soul / Flux Pro / Seedream 多模型支持" },
+      title: "AI 图像生成", desc: "对齐 Poyo 全量目录共 24 个模型：Nano Banana Pro、GPT Image、Flux 2 / Kontext、Seedream、Kling、Z-Image 等，含 Higgsfield Soul / Reve",
+      badge: "NEW" },
     { Icon: Video, color: "oklch(0.62 0.20 25)",
-      title: "AI 视频生成", desc: "Higgsfield DoP、Poyo Seedance / Veo / Kling / Wan / Runway 等 12+ 模型" },
+      title: "AI 视频生成", desc: "扩充至 37 个模型：Sora 2、Veo 3.1、Kling 2.1~3.0、Wan、Seedance、Hailuo、Runway、Higgsfield DoP，覆盖文生 / 图生 / 首尾帧",
+      badge: "NEW" },
     { Icon: Boxes, color: "oklch(0.68 0.20 100)",
-      title: "ComfyUI 自建集成", desc: "图像（多 LoRA / ControlNet+预处理 / IPAdapter / Inpaint / 放大）+ 视频（Wan 文生·图生 / LTX）、15 类模型自动发现、自定义工作流导入",
+      title: "分类模型选择器", desc: "图像 / 视频 / 对话节点统一的模型选择器：按供应商与家族分组、支持搜索，每个模型标注消耗点数（credits），按预算挑选",
+      badge: "NEW" },
+    { Icon: Boxes, color: "oklch(0.68 0.20 100)",
+      title: "ComfyUI 自建集成", desc: "图像（多 LoRA / ControlNet+预处理 / IPAdapter / Inpaint / 放大）+ 视频（Wan 文生·图生 / LTX）、15 类模型自动发现、自定义工作流导入" },
+    { Icon: Music, color: "oklch(0.70 0.18 340)",
+      title: "AI 配乐与配音", desc: "音频节点接入 Suno / MiniMax 音乐生成与 ElevenLabs V3 文本转语音（TTS）配音，一键为视频生成背景音乐与旁白",
+      badge: "NEW" },
+    { Icon: Wallet, color: "oklch(0.72 0.18 155)",
+      title: "Poyo 余额仪表盘", desc: "顶栏实时显示剩余 Poyo 点数，配合模型选择器的点数标注，生成前即可掌握预算与消耗",
       badge: "NEW" },
     { Icon: Bot, color: "oklch(0.70 0.18 200)",
-      title: "大模型对话", desc: "Claude Sonnet 4.6、Gemini 2.5、GPT-5.2，写脚本 / 润色 / 审查 / 多版本" },
+      title: "大模型对话", desc: "Gemini 3 Flash、Claude Sonnet 4.5、Claude Haiku 4.5、GPT-5.2，写脚本 / 润色 / 审查 / 多版本" },
     { Icon: ScrollText, color: "oklch(0.62 0.18 240)",
       title: "ScriptNode 高级 AI", desc: "场景细化、剧本审查、多版本生成、对白提取、Mood Board 等 7 项工具",
       badge: "PRO" },
