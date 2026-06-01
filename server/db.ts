@@ -620,6 +620,13 @@ export async function recordGeneratedAsset(a: {
   }
 }
 
+/** All canvas nodes (raw) — used by the one-off asset backfill script. */
+export async function getAllCanvasNodesRaw(): Promise<Array<{ id: string; projectId: number; data: unknown }>> {
+  const db = await getDb();
+  if (!db) return [];
+  return db.select({ id: canvasNodes.id, projectId: canvasNodes.projectId, data: canvasNodes.data }).from(canvasNodes);
+}
+
 export interface AdminAssetFilter {
   userId?: number;
   type?: "image" | "video" | "audio" | "other";
