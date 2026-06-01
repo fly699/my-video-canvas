@@ -98,6 +98,20 @@ const FIXED_DURATION: Record<string, number> = {
 const NUMERIC_KEYS = new Set(["duration", "seed"]);
 const BOOLEAN_KEYS = new Set(["camera_fixed", "generate_audio", "sound", "multi_shots", "storyboard", "prompt_optimizer"]);
 
+// Some models REQUIRE a param Poyo would otherwise 400 on ("sound is required"),
+// even though the UI offers no control for it. Send a safe default when the
+// caller didn't specify one. Keys here must also appear in VIDEO_PARAM_KEYS.
+// Kling 2.6 / 3.0 / o3 require `sound`; default to off (no audio, no surprises).
+const VIDEO_PARAM_DEFAULTS: Record<string, Record<string, unknown>> = {
+  "kling-2.6": { sound: false },
+  "kling-3.0/standard": { sound: false },
+  "kling-3.0/pro": { sound: false },
+  "kling-3.0/4K": { sound: false },
+  "kling-o3/standard": { sound: false },
+  "kling-o3/pro": { sound: false },
+  "kling-o3/4K": { sound: false },
+};
+
 export function isPoyoVideoProvider(provider: string): boolean {
   return provider in POYO_PROVIDER_MAP;
 }
@@ -163,6 +177,14 @@ export async function submitPoyoVideo(opts: {
       input[key] = Boolean(raw);
     } else {
       input[key] = String(raw);
+    }
+  }
+  // Fill required params the UI doesn't expose (e.g. Kling `sound`) so Poyo
+  // doesn't 400 on "<key> is required". Only sets keys still missing.
+  const defaults = VIDEO_PARAM_DEFAULTS[model];
+  if (defaults) {
+    for (const [key, value] of Object.entries(defaults)) {
+      if (input[key] === undefined) input[key] = value;
     }
   }
   // Fixed-duration models (Veo 3.1) always send their canonical duration.
