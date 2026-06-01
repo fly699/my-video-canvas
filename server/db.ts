@@ -190,6 +190,18 @@ export async function updateProject(id: number, userId: number, data: Partial<In
   await db.update(projects).set(data).where(and(eq(projects.id, id), eq(projects.userId, userId)));
 }
 
+// Set a project's auto cover WITHOUT bumping updatedAt — refreshing a cover is
+// not an edit, so it must not reorder the list or change the "最后打开" time.
+// Explicitly assigning updatedAt to its own value suppresses MySQL's
+// ON UPDATE CURRENT_TIMESTAMP.
+export async function setProjectThumbnail(id: number, userId: number, thumbnail: string) {
+  const db = await getDb();
+  if (!db) { if (DEV_MODE) { dev.devSetProjectThumbnail(id, userId, thumbnail); return; } throw new Error("DB unavailable"); }
+  await db.update(projects)
+    .set({ thumbnail, updatedAt: sql`${projects.updatedAt}` })
+    .where(and(eq(projects.id, id), eq(projects.userId, userId)));
+}
+
 export async function deleteProject(id: number, userId: number) {
   const db = await getDb();
   if (!db) { if (DEV_MODE) { dev.devDeleteProject(id, userId); return; } throw new Error("DB unavailable"); }
