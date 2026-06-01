@@ -448,7 +448,9 @@ export function ChatProvider({ children }: { children: React.ReactNode }) {
         const up = await createUploadUrlMut.mutateAsync({
           conversationId: id, filename: file.name, mimeType: file.type || "application/octet-stream", size: file.size,
         });
-        if (up.mode === "presigned") {
+        if (up.mode === "presigned" || up.mode === "proxy") {
+          // presigned → browser PUTs straight to S3; proxy → browser PUTs to the
+          // app server which streams to internal MinIO. Same client flow either way.
           const putResp = await fetch(up.uploadUrl, { method: "PUT", headers: { "Content-Type": file.type || "application/octet-stream" }, body: file });
           if (!putResp.ok) throw new Error("上传到存储失败");
           const att = await confirmUploadMut.mutateAsync({

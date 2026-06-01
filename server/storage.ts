@@ -114,6 +114,33 @@ function appendHashSuffix(relKey: string): string {
   return `${relKey.slice(0, lastDot)}_${hash}${relKey.slice(lastDot)}`;
 }
 
+/** Produce the final hashed storage key from a relative key (exported for the
+ *  app-server upload proxy, which must bind the exact key into its auth token). */
+export function finalizeStorageKey(relKey: string): string {
+  return appendHashSuffix(normalizeKey(relKey));
+}
+
+/**
+ * Stream a request body straight to S3/MinIO under an already-finalized key —
+ * the upload counterpart to the download proxy. Lets the browser upload large
+ * files THROUGH this server when the storage host isn't browser-reachable, so
+ * no S3_PUBLIC_ENDPOINT (or base64 body-limit) is needed. S3/MinIO only (Forge
+ * is browser-reachable and uses presigned PUT directly).
+ */
+export async function storageUploadStream(
+  finalKey: string,
+  contentType: string,
+  body: NodeJS.ReadableStream,
+  contentLength: number,
+): Promise<{ key: string; url: string }> {
+  if (storageBackend() !== "s3") throw new Error("upload proxy requires the S3/MinIO backend");
+  const key = normalizeKey(finalKey);
+  await getS3().send(new PutObjectCommand({
+    Bucket: ENV.s3Bucket, Key: key, Body: body as unknown as Buffer, ContentType: contentType, ContentLength: contentLength,
+  }));
+  return { key, url: `/manus-storage/${key}` };
+}
+
 export async function storagePut(
   relKey: string,
   data: Buffer | Uint8Array | string,
