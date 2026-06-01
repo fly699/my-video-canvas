@@ -85,8 +85,12 @@ export const ComfyuiVideoNode = memo(function ComfyuiVideoNode({ id, selected, d
     return () => clearTimeout(t);
   }, [payload.customBaseUrl]);
   const serverUrls = payload.serverUrls ?? [];
+  // Fetch models from the ACTIVE address only — generation runs on customBaseUrl,
+  // not the union of saved servers. Unioning (customBaseUrls) showed models that
+  // exist on another saved server but not the one the request targets, so a
+  // dropdown pick could fail with "not in list" on submit.
   const modelsQuery = trpc.comfyui.fetchModels.useQuery(
-    { customBaseUrl: debouncedUrl, customBaseUrls: serverUrls.length > 0 ? serverUrls : undefined },
+    { customBaseUrl: debouncedUrl },
     { staleTime: 60_000, retry: false }
   );
 
