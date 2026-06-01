@@ -17,12 +17,24 @@ const MAX_PER_TYPE = 30;
 const MAX_LABEL_LEN = 32;
 const MAX_JSON = 200_000; // cap a single template at ~200KB to stay clear of quota
 
-// Output / runtime fields that aren't "settings" — excluded from templates.
+// Fields excluded from a template — a template captures CONFIG parameters only
+// (model / sampler / steps / cfg / size / arch …), never per-instance content.
+// Excluded groups:
+//   1) output / runtime state
+//   2) prompts + content (正/反向提示词、脚本/分镜文案 等)
+//   3) per-instance inputs (reference images, mask, seed)
 const TRANSIENT_KEYS = new Set([
+  // 1) output / runtime
   "pinned", "status", "progress", "error", "errorMessage",
   "taskId", "jobId", "promptId", "jobStatus",
   "generatedImageUrl", "imageUrl", "outputUrl", "resultUrl", "videoUrl",
-  "outputs", "history", "messages", "result", "results",
+  "resultVideoUrl", "outputUrls", "outputs", "history", "messages", "result", "results",
+  // 2) prompts + content
+  "prompt", "negPrompt", "negativePrompt", "positivePrompt", "promptText",
+  "text", "content", "sceneDescription", "synopsis", "script", "caption",
+  // 3) per-instance inputs
+  "seed", "referenceImageUrl", "referenceImageUrls", "referenceImages",
+  "maskUrl", "imageUrls",
 ]);
 
 type Store = Record<string, NodeTemplate[]>;

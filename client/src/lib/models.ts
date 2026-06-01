@@ -28,16 +28,13 @@ export const LLM_MODELS: readonly LLMModelMeta[] = [
   // Gemini (Google) — routed to Forge
   { id: "gemini-3-flash-preview",    label: "Gemini 3 Flash",    short: "Gemini3", family: "Gemini", tag: "最新", provider: "Forge", color: "oklch(0.68 0.18 160)", costTier: "低" },
   { id: "gemini-2.5-flash",          label: "Gemini 2.5 Flash",  short: "Gemini",  family: "Gemini", tag: "默认", provider: "Forge", color: "oklch(0.68 0.18 160)", costTier: "低" },
-  // Claude (Anthropic) — Sonnet 4.5 is Poyo's Anthropic model (docs/poyo-llm-api.md);
-  // Haiku stays on Forge. There is NO Claude 4.6 on Poyo — see the hidden alias below.
+  // Claude (Anthropic) — Sonnet 4.6 on Forge; Sonnet 4.5 is Poyo's Anthropic
+  // model (docs/poyo-llm-api.md); Haiku on Forge.
+  { id: "claude-sonnet-4-6",          label: "Claude Sonnet 4.6", short: "Sonnet", family: "Claude", tag: "旗舰", provider: "Forge", color: "oklch(0.68 0.18 280)", costTier: "高" },
   { id: "claude-sonnet-4-5-20250929", label: "Claude Sonnet 4.5", short: "Sonnet", family: "Claude", tag: "智能", provider: "Poyo",  color: "oklch(0.68 0.18 280)", costTier: "高" },
   { id: "claude-haiku-4-5-20251001",  label: "Claude Haiku 4.5",  short: "Haiku",  family: "Claude", tag: "快速", provider: "Forge", color: "oklch(0.68 0.18 55)",  costTier: "低" },
   // GPT (OpenAI) — routed to Poyo
   { id: "gpt-5.2",                   label: "GPT-5.2",           short: "GPT-5.2", family: "GPT",    tag: "强力", provider: "Poyo",  color: "oklch(0.62 0.16 240)", costTier: "中" },
-  // Legacy alias: old node payloads/defaults persist `claude-sonnet-4-6`, which is
-  // NOT a real Poyo/Forge model — the server normalizes it to claude-sonnet-4-5.
-  // Kept hidden so those nodes still resolve; never shown in the picker.
-  { id: "claude-sonnet-4-6",          label: "Claude Sonnet 4.6", short: "Sonnet", family: "Claude", tag: "兼容", provider: "Poyo",  color: "oklch(0.68 0.18 280)", costTier: "高", hidden: true },
 ] as const;
 
 // Legacy export name — AIChatNode and scriptCreationTemplates reference CHAT_MODELS.

@@ -212,25 +212,17 @@ const normalizeToolChoice = (
 
 const isGptModel = (model?: string) => !!model && /^gpt/i.test(model);
 
-// `claude-sonnet-4-6` is a legacy alias kept in old node payloads/defaults — it
-// is NOT a real model name on Poyo or Forge (Poyo's Anthropic model per
-// docs/poyo-llm-api.md is `claude-sonnet-4-5-20250929`). Normalize it so the
-// request never sends a non-existent model id.
-const MODEL_ALIASES: Record<string, string> = {
-  "claude-sonnet-4-6": "claude-sonnet-4-5-20250929",
-};
-export const normalizeModelId = (model: string) => MODEL_ALIASES[model] ?? model;
-
 // Models served via Poyo rather than Forge. GPT-* and the Poyo Claude
-// (claude-sonnet-4-5-20250929, per docs/poyo-llm-api.md) route to Poyo. Keep in
-// sync with the provider labels in client/src/lib/models.ts.
+// (claude-sonnet-4-5-20250929, per docs/poyo-llm-api.md) route to Poyo;
+// claude-sonnet-4-6 and the rest are served by Forge. Keep in sync with the
+// provider labels in client/src/lib/models.ts.
 const POYO_MODEL_IDS = new Set(["claude-sonnet-4-5-20250929"]);
 const routesToPoyo = (model?: string) => isGptModel(model) || (!!model && POYO_MODEL_IDS.has(model));
 
 const resolveApiUrl = (model?: string) => {
   // Poyo-routed models (GPT-*, Poyo Claude) → Poyo API when key is available
   if (ENV.poyoApiKey && routesToPoyo(model)) return "https://api.poyo.ai/v1/chat/completions";
-  // Other models (Gemini, other Claude, etc.) → Forge/Manus API
+  // Other models (Gemini, Claude Sonnet 4.6 / Haiku, etc.) → Forge/Manus API
   if (ENV.forgeApiUrl?.trim()) return `${ENV.forgeApiUrl.replace(/\/$/, "")}/v1/chat/completions`;
   if (ENV.forgeApiKey) return "https://forge.manus.im/v1/chat/completions";
   // Fallback: Poyo for any model if it's the only key configured
@@ -303,6 +295,7 @@ const normalizeResponseFormat = ({
 export const AVAILABLE_MODELS = [
   { id: "gemini-3-flash-preview",     label: "Gemini 3 Flash",    tag: "最新" },
   { id: "gemini-2.5-flash",           label: "Gemini 2.5 Flash",  tag: "默认" },
+  { id: "claude-sonnet-4-6",          label: "Claude Sonnet 4.6", tag: "旗舰" },
   { id: "claude-sonnet-4-5-20250929", label: "Claude Sonnet 4.5", tag: "智能" },
   { id: "claude-haiku-4-5-20251001",  label: "Claude Haiku 4.5",  tag: "快速" },
   { id: "gpt-5.2",                    label: "GPT-5.2",           tag: "强力" },
@@ -331,7 +324,7 @@ export async function invokeLLM(params: InvokeParams): Promise<InvokeResult> {
     response_format,
   } = params;
 
-  const resolvedModel = normalizeModelId(model ?? DEFAULT_MODEL);
+  const resolvedModel = model ?? DEFAULT_MODEL;
   assertApiKey(resolvedModel);
 
   const payload: Record<string, unknown> = {
