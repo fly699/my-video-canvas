@@ -12,6 +12,7 @@ import {
 } from "@xyflow/react";
 import type { NodeType, NodeData, CollaboratorCursor } from "../../../shared/types";
 import { getNodeConfig } from "../lib/nodeConfig";
+import { resolveNodeOutputImageUrl, isRefImageTarget } from "../lib/refImagePropagation";
 
 export interface CanvasNode extends Node {
   data: {
@@ -172,24 +173,16 @@ export const useCanvasStore = create<CanvasStore>((set, get) => ({
         // `output` (top:50%) and the dedicated `image-out` (top:75%). Accept
         // either when wiring into any node with a `ref-image-in` handle so
         // users dragging from the default dot still get auto-fill instead of
-        // a silent miss. useWorkflowRunner propagates to the same three
-        // target types, so keep them in sync here.
-        const targetType = targetNode?.data.nodeType;
-        const targetAcceptsRefImage =
-          targetType === "video_task" || targetType === "comfyui_video" || targetType === "comfyui_image";
-        // Any image-producing node (image_gen / comfyui_image / storyboard) can
-        // pre-fill a downstream reference image when wired into a ref-image-in handle.
-        const sourceProducesImage =
-          sourceNode?.data.nodeType === "image_gen" ||
-          sourceNode?.data.nodeType === "comfyui_image" ||
-          sourceNode?.data.nodeType === "storyboard";
+        // a silent miss. Source/target coverage (all image-producing source
+        // types + the three ref-accepting targets) is centralized in
+        // refImagePropagation so onConnect, post-generation propagation and
+        // useWorkflowRunner all stay in sync.
         if (
-          sourceProducesImage &&
-          targetAcceptsRefImage &&
           (connection.sourceHandle === "image-out" || connection.sourceHandle === "output") &&
-          connection.targetHandle === "ref-image-in"
+          connection.targetHandle === "ref-image-in" &&
+          targetNode && isRefImageTarget(targetNode.data.nodeType)
         ) {
-          const imageUrl = (sourceNode.data.payload as { imageUrl?: string }).imageUrl;
+          const imageUrl = resolveNodeOutputImageUrl(sourceNode);
           if (imageUrl) {
             updatedNodes = state.nodes.map((n) =>
               n.id === connection.target
