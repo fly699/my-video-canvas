@@ -169,16 +169,12 @@ export const useCanvasStore = create<CanvasStore>((set, get) => ({
       if (connection.source && connection.target) {
         const sourceNode = state.nodes.find((n) => n.id === connection.source);
         const targetNode = state.nodes.find((n) => n.id === connection.target);
-        // ImageGenNode exposes two source handles: the BaseNode default
-        // `output` (top:50%) and the dedicated `image-out` (top:75%). Accept
-        // either when wiring into any node with a `ref-image-in` handle so
-        // users dragging from the default dot still get auto-fill instead of
-        // a silent miss. Source/target coverage (all image-producing source
-        // types + the three ref-accepting targets) is centralized in
-        // refImagePropagation so onConnect, post-generation propagation and
-        // useWorkflowRunner all stay in sync.
+        // A `ref-image-in` target handle uniquely identifies a reference-image
+        // wire regardless of which source dot was dragged from. Source/target
+        // coverage (which source types expose an output image, which targets
+        // accept a reference image) is centralized in refImagePropagation and
+        // shared with each node's post-generation propagateRefImage call.
         if (
-          (connection.sourceHandle === "image-out" || connection.sourceHandle === "output") &&
           connection.targetHandle === "ref-image-in" &&
           targetNode && isRefImageTarget(targetNode.data.nodeType)
         ) {

@@ -251,12 +251,16 @@ export const ComfyuiWorkflowNode = memo(function ComfyuiWorkflowNode({ id, selec
       update({
         outputUrl: result.urls[0] ?? "",
         outputUrls: result.urls,
+        // Persist the actual produced type so onConnect/resolveNodeOutputImageUrl
+        // never mistakes a video output for a reference image (config may be "auto").
+        outputType: result.outputType,
         status: "done",
         errorMessage: undefined,
         progress: 100,
       });
-      // Auto-fill downstream reference-image targets (image outputs only).
-      if (result.urls[0] && payload.outputType !== "video") propagateRefImage(id, result.urls[0]);
+      // Auto-fill downstream reference-image targets — image outputs only. Use
+      // the run's actual outputType, not the config (which can be "auto").
+      if (result.urls[0] && result.outputType !== "video") propagateRefImage(id, result.urls[0]);
       toast.success("执行完成");
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);

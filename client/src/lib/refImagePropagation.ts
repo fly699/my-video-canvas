@@ -53,6 +53,13 @@ export function resolveNodeOutputImageUrl(node: CanvasNode | undefined): string 
  * Pure: compute the `referenceImageUrl` updates for every ref-accepting target
  * wired to `sourceId` via an image edge. Used by onConnect (which has live
  * nodes/edges in hand) and by propagateRefImage.
+ *
+ * A reference-image edge is identified solely by `targetHandle === "ref-image-in"`
+ * (that handle only ever accepts an image) plus a ref-accepting target type. We
+ * deliberately do NOT constrain the source handle: legacy-vertical nodes
+ * (e.g. pose_control) have their source port rewritten from `output` to
+ * `bottom` on load (see Canvas.tsx LEGACY_VERTICAL_NODES), so a source-handle
+ * allowlist would silently drop propagation for those persisted edges.
  */
 export function computeRefImageUpdates(
   sourceId: string,
@@ -61,11 +68,7 @@ export function computeRefImageUpdates(
   edges: CanvasEdge[],
 ): { id: string; payload: { referenceImageUrl: string } }[] {
   return edges
-    .filter((e) =>
-      e.source === sourceId &&
-      (e.sourceHandle === "image-out" || e.sourceHandle === "output") &&
-      e.targetHandle === "ref-image-in",
-    )
+    .filter((e) => e.source === sourceId && e.targetHandle === "ref-image-in")
     .flatMap((e) => {
       const target = nodes.find((n) => n.id === e.target);
       return target && REF_TARGET_TYPES.has(target.data.nodeType)
