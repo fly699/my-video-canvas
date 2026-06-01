@@ -10,8 +10,9 @@ import { detectUpstreamImageUrl, resolveWorkflowImageParams } from "@/lib/comfyW
 import { toast } from "sonner";
 import {
   Workflow, Loader2, Upload, X, ChevronDown, ChevronRight,
-  Server, Play, RotateCcw, ImageIcon, FileVideo, Plus, Trash2,
+  Server, Play, RotateCcw, ImageIcon, FileVideo, Plus, Trash2, Copy,
 } from "lucide-react";
+import { SyncConfigDialog } from "../SyncConfigDialog";
 
 interface Props {
   id: string;
@@ -183,6 +184,7 @@ export const ComfyuiWorkflowNode = memo(function ComfyuiWorkflowNode({ id, selec
       : (payload.workflowJson ? "binding" : "empty")
   );
   const [showAdvanced, setShowAdvanced] = useState(false);
+  const [syncOpen, setSyncOpen] = useState(false);
   const [editingBindings, setEditingBindings] = useState(false);
   const [localBindings, setLocalBindings] = useState<WorkflowParamBinding[]>(payload.paramBindings ?? []);
 
@@ -354,6 +356,28 @@ export const ComfyuiWorkflowNode = memo(function ComfyuiWorkflowNode({ id, selec
             fieldBase={fieldBase}
           />
         </div>
+
+        {/* ── Sync this workflow (JSON / bindings / values / address) to siblings ── */}
+        {payload.workflowJson?.trim() && (
+          <>
+            <button
+              onClick={() => setSyncOpen(true)}
+              title="选择目标节点与类别，把当前工作流定义 / 参数值 / 服务器地址同步到其他自定义工作流节点（不含运行状态与结果）"
+              className="nodrag flex items-center justify-center gap-1.5 w-full py-1.5 rounded-lg text-[10.5px] transition-all"
+              style={{
+                background: "oklch(0.65 0.20 140 / 0.08)",
+                border: "1px dashed oklch(0.65 0.20 140 / 0.4)",
+                color: accent, cursor: "pointer", marginBottom: 4,
+              }}
+              onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.background = "oklch(0.65 0.20 140 / 0.16)"; }}
+              onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.background = "oklch(0.65 0.20 140 / 0.08)"; }}
+            >
+              <Copy className="w-3 h-3" />
+              同步配置到其他自定义工作流节点…
+            </button>
+            <SyncConfigDialog open={syncOpen} onOpenChange={setSyncOpen} sourceId={id} nodeType="comfyui_workflow" accent={accent} />
+          </>
+        )}
 
         {/* ── Phase A: Empty ── */}
         {phase === "empty" && (
