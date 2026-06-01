@@ -7,7 +7,8 @@
 // (id set), since a const can't be shared across the client/server bundle
 // boundary here.
 //
-// Routing (llm.ts resolveApiUrl): gpt* → Poyo; others → Forge/Manus.
+// Routing (llm.ts resolveApiUrl): gpt* and claude-sonnet-4-6 → Poyo; others →
+// Forge/Manus. The `provider` field below must match that routing.
 // Cost is token-based, so we show a relative tier rather than a credit number.
 // group = family for the classified picker. NEVER drop an id (old node
 // payloads persist `aiLlmModel` / `model`); only add or mark hidden.
@@ -17,6 +18,7 @@ export type LLMModelMeta = {
   short: string;       // compact chip label
   family: "Gemini" | "Claude" | "GPT";
   tag: string;
+  provider: "Forge" | "Poyo"; // upstream API the model is served by
   color: string;
   costTier: "低" | "中" | "高";
   hidden?: boolean;    // kept for back-compat but not listed
@@ -24,14 +26,14 @@ export type LLMModelMeta = {
 
 export const LLM_MODELS: readonly LLMModelMeta[] = [
   // Gemini (Google) — routed to Forge
-  { id: "gemini-3-flash-preview",    label: "Gemini 3 Flash",    short: "Gemini3", family: "Gemini", tag: "最新", color: "oklch(0.68 0.18 160)", costTier: "低" },
-  { id: "gemini-2.5-flash",          label: "Gemini 2.5 Flash",  short: "Gemini",  family: "Gemini", tag: "默认", color: "oklch(0.68 0.18 160)", costTier: "低" },
-  // Claude (Anthropic) — routed to Forge
-  { id: "claude-sonnet-4-6",          label: "Claude Sonnet 4.6", short: "Sonnet", family: "Claude", tag: "旗舰", color: "oklch(0.68 0.18 280)", costTier: "高" },
-  { id: "claude-sonnet-4-5-20250929", label: "Claude Sonnet 4.5", short: "Sonnet", family: "Claude", tag: "智能", color: "oklch(0.68 0.18 280)", costTier: "高" },
-  { id: "claude-haiku-4-5-20251001",  label: "Claude Haiku 4.5",  short: "Haiku",  family: "Claude", tag: "快速", color: "oklch(0.68 0.18 55)",  costTier: "低" },
+  { id: "gemini-3-flash-preview",    label: "Gemini 3 Flash",    short: "Gemini3", family: "Gemini", tag: "最新", provider: "Forge", color: "oklch(0.68 0.18 160)", costTier: "低" },
+  { id: "gemini-2.5-flash",          label: "Gemini 2.5 Flash",  short: "Gemini",  family: "Gemini", tag: "默认", provider: "Forge", color: "oklch(0.68 0.18 160)", costTier: "低" },
+  // Claude (Anthropic) — Sonnet 4.6 via Poyo, the rest via Forge
+  { id: "claude-sonnet-4-6",          label: "Claude Sonnet 4.6", short: "Sonnet", family: "Claude", tag: "旗舰", provider: "Poyo",  color: "oklch(0.68 0.18 280)", costTier: "高" },
+  { id: "claude-sonnet-4-5-20250929", label: "Claude Sonnet 4.5", short: "Sonnet", family: "Claude", tag: "智能", provider: "Forge", color: "oklch(0.68 0.18 280)", costTier: "高" },
+  { id: "claude-haiku-4-5-20251001",  label: "Claude Haiku 4.5",  short: "Haiku",  family: "Claude", tag: "快速", provider: "Forge", color: "oklch(0.68 0.18 55)",  costTier: "低" },
   // GPT (OpenAI) — routed to Poyo
-  { id: "gpt-5.2",                   label: "GPT-5.2",           short: "GPT-5.2", family: "GPT",    tag: "Poyo", color: "oklch(0.62 0.16 240)", costTier: "中" },
+  { id: "gpt-5.2",                   label: "GPT-5.2",           short: "GPT-5.2", family: "GPT",    tag: "强力", provider: "Poyo",  color: "oklch(0.62 0.16 240)", costTier: "中" },
 ] as const;
 
 // Legacy export name — AIChatNode and scriptCreationTemplates reference CHAT_MODELS.

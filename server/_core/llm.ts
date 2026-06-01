@@ -211,11 +211,16 @@ const normalizeToolChoice = (
 };
 
 const isGptModel = (model?: string) => !!model && /^gpt/i.test(model);
+// Models served via Poyo rather than Forge. GPT-* always route to Poyo; Claude
+// Sonnet 4.6 is also served by Poyo (product decision — keep in sync with the
+// provider labels in client/src/lib/models.ts).
+const POYO_MODEL_IDS = new Set(["claude-sonnet-4-6"]);
+const routesToPoyo = (model?: string) => isGptModel(model) || (!!model && POYO_MODEL_IDS.has(model));
 
 const resolveApiUrl = (model?: string) => {
-  // GPT models → Poyo API when key is available
-  if (ENV.poyoApiKey && isGptModel(model)) return "https://api.poyo.ai/v1/chat/completions";
-  // Non-GPT models (Gemini, Claude, etc.) → Forge/Manus API
+  // Poyo-routed models (GPT-*, Claude Sonnet 4.6) → Poyo API when key is available
+  if (ENV.poyoApiKey && routesToPoyo(model)) return "https://api.poyo.ai/v1/chat/completions";
+  // Other models (Gemini, other Claude, etc.) → Forge/Manus API
   if (ENV.forgeApiUrl?.trim()) return `${ENV.forgeApiUrl.replace(/\/$/, "")}/v1/chat/completions`;
   if (ENV.forgeApiKey) return "https://forge.manus.im/v1/chat/completions";
   // Fallback: Poyo for any model if it's the only key configured
@@ -224,7 +229,7 @@ const resolveApiUrl = (model?: string) => {
 };
 
 const getApiKey = (model?: string) => {
-  if (ENV.poyoApiKey && isGptModel(model)) return ENV.poyoApiKey;
+  if (ENV.poyoApiKey && routesToPoyo(model)) return ENV.poyoApiKey;
   // When a custom forge URL is configured, require the forge key — don't fall through to poyoApiKey
   // which would send the wrong credentials to the custom proxy.
   if (ENV.forgeApiUrl?.trim()) {
