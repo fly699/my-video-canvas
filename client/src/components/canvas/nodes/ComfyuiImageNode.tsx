@@ -100,11 +100,14 @@ export const ComfyuiImageNode = memo(function ComfyuiImageNode({ id, selected, d
     const t = setTimeout(() => setDebouncedUrl(payload.customBaseUrl?.trim() || undefined), 600);
     return () => clearTimeout(t);
   }, [payload.customBaseUrl]);
-  // Saved server addresses (persisted on node). The model list shows the UNION
-  // across every saved address + the current one, so "刷新模型" covers all servers.
+  // Saved server addresses (persisted on node) — used for the quick-switch chips.
+  // The model list is fetched from the ACTIVE address only: generation runs on
+  // customBaseUrl, so unioning across saved servers (customBaseUrls) would offer
+  // models that exist on another server but not the one the request targets,
+  // failing with "not in list" on submit even though it was picked from the list.
   const serverUrls = payload.serverUrls ?? [];
   const modelsQuery = trpc.comfyui.fetchModels.useQuery(
-    { customBaseUrl: debouncedUrl, customBaseUrls: serverUrls.length > 0 ? serverUrls : undefined },
+    { customBaseUrl: debouncedUrl },
     { staleTime: 60_000, retry: false }
   );
 
