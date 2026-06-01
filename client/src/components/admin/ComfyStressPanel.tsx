@@ -56,6 +56,7 @@ export function ComfyStressPanel() {
     ckpt: string; prompt: string; negPrompt: string;
     steps: number; cfg: number; sampler: string; scheduler: string;
     width: number; height: number; batchSize: number;
+    denoise: number; vae?: string; upscaleModel?: string;
     clip?: { clipType: string; name1: string; name2?: string; name3?: string };
     arch?: "sd" | "flux" | "sd3" | "qwen";
     modelSource?: "checkpoint" | "unet";
@@ -65,9 +66,9 @@ export function ComfyStressPanel() {
   }>({
     ckpt: "", prompt: "", negPrompt: "",
     steps: 20, cfg: 7, sampler: "euler", scheduler: "normal",
-    width: 512, height: 512, batchSize: 1,
+    width: 512, height: 512, batchSize: 1, denoise: 1,
   });
-  const [models, setModels] = useState<{ ckpts: string[]; samplers: string[]; schedulers: string[]; clips: string[]; unets: string[] } | null>(null);
+  const [models, setModels] = useState<{ ckpts: string[]; samplers: string[]; schedulers: string[]; clips: string[]; unets: string[]; vaes: string[]; upscaleModels: string[] } | null>(null);
   const [loadingModels, setLoadingModels] = useState(false);
   const [mode, setMode] = useState<"lean" | "full">("lean");
   const [concurrency, setConcurrency] = useState(1);
@@ -91,7 +92,7 @@ export function ComfyStressPanel() {
     setLoadingModels(true);
     try {
       const res = await utils.comfyui.fetchModels.fetch({ customBaseUrls: urls });
-      setModels({ ckpts: res.ckpts, samplers: res.samplers, schedulers: res.schedulers, clips: res.clips, unets: res.unets });
+      setModels({ ckpts: res.ckpts, samplers: res.samplers, schedulers: res.schedulers, clips: res.clips, unets: res.unets, vaes: res.vaes, upscaleModels: res.upscaleModels });
       if (res.ckpts.length === 0) toast.info("已连接，但未发现 checkpoint 模型");
       else toast.success(`已拉取 ${res.ckpts.length} 个模型`);
     } catch (e) {
@@ -379,6 +380,33 @@ export function ComfyStressPanel() {
                 <label style={labelStyle}>批量（1–8）</label>
                 <input type="number" min={1} max={8} style={inputStyle} value={model.batchSize}
                   onChange={(e) => setM({ batchSize: Math.max(1, Math.min(8, Number(e.target.value) || 1)) })} />
+              </div>
+              <div>
+                <label style={labelStyle}>Denoise（0–1）</label>
+                <input type="number" min={0} max={1} step={0.05} style={inputStyle} value={model.denoise}
+                  onChange={(e) => setM({ denoise: Math.max(0, Math.min(1, Number(e.target.value) || 0)) })} />
+              </div>
+              <div>
+                <label style={labelStyle}>VAE（留空用 checkpoint 内置）</label>
+                {models && models.vaes.length > 0 ? (
+                  <select style={inputStyle} value={model.vae ?? ""} onChange={(e) => setM({ vae: e.target.value || undefined })}>
+                    <option value="">— 跟随 checkpoint —</option>
+                    {models.vaes.map((v) => <option key={v} value={v}>{v}</option>)}
+                  </select>
+                ) : (
+                  <input style={inputStyle} placeholder="如 ae.safetensors（Flux/Qwen 需填）" value={model.vae ?? ""} onChange={(e) => setM({ vae: e.target.value || undefined })} />
+                )}
+              </div>
+              <div>
+                <label style={labelStyle}>放大模型（留空不放大）</label>
+                {models && models.upscaleModels.length > 0 ? (
+                  <select style={inputStyle} value={model.upscaleModel ?? ""} onChange={(e) => setM({ upscaleModel: e.target.value || undefined })}>
+                    <option value="">— 不放大 —</option>
+                    {models.upscaleModels.map((u) => <option key={u} value={u}>{u}</option>)}
+                  </select>
+                ) : (
+                  <input style={inputStyle} placeholder="如 4x-UltraSharp.pth" value={model.upscaleModel ?? ""} onChange={(e) => setM({ upscaleModel: e.target.value || undefined })} />
+                )}
               </div>
             </div>
             <div style={{ marginTop: 12 }}>
