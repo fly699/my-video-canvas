@@ -1,6 +1,7 @@
 import { useState, useRef, useMemo } from "react";
 import { createPortal } from "react-dom";
 import { ChevronDown, Check, Search } from "lucide-react";
+import { IMAGE_MODELS } from "@/lib/models";
 
 // Shared, classified model picker used by image / video / LLM nodes.
 // Generalizes LLMModelPicker's createPortal + backdrop anchoring. Options are
@@ -215,3 +216,16 @@ export function imageCostLabel(meta: { cost?: number; costNote?: string }): stri
   if (typeof meta.cost === "number") return `≈${meta.cost} cr`;
   return meta.costNote ?? "—";
 }
+
+// Precomputed, stable picker options for the image models — IMAGE_MODELS is a
+// module constant, so this projection never changes. Sharing one frozen array
+// (instead of `IMAGE_MODELS.map(...)` inline in each node's render) keeps the
+// reference stable so ModelPicker's `groups` useMemo isn't busted every render.
+export const IMAGE_MODEL_PICKER_OPTIONS: ModelPickerOption[] = IMAGE_MODELS.map((m) => ({
+  value: m.value,
+  label: m.label,
+  group: m.group,
+  family: m.family,
+  caps: m.caps,
+  costLabel: imageCostLabel(m),
+}));

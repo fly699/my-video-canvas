@@ -178,6 +178,19 @@ const PROVIDERS: { value: VideoProvider; label: string; group: string; family: s
   { value: "mock",                    label: "Mock 测试",           group: "Dev",        family: "Dev", costLabel: "免费",       caps: ["测试"] },
 ];
 
+// Precomputed, stable ModelPicker options — PROVIDERS is a module constant, so
+// projecting it once (rather than `PROVIDERS.map(...)` inline each render) keeps
+// the reference stable so ModelPicker's `groups` useMemo isn't busted on every
+// re-render (this node re-renders on each 5s poll tick).
+const PROVIDER_PICKER_OPTIONS = PROVIDERS.map((p) => ({
+  value: p.value,
+  label: p.label,
+  group: p.group,
+  family: p.family,
+  caps: p.caps,
+  costLabel: p.costLabel,
+}));
+
 type ParamDef =
   | { type: "select"; key: string; label: string; options: { value: string | number; label: string }[]; default?: string | number }
   | { type: "number"; key: string; label: string; min: number; max: number; step: number; default?: number }
@@ -230,7 +243,9 @@ const KLING_O3_PARAMS: ParamDef[] = [
 ];
 
 const SUPPORTS_NEGATIVE_PROMPT = new Set<string>([
-  "poyo_seedance", "poyo_seedance2_fast",
+  // negative_prompt is documented (docs/poyo-video-api.md) for Kling 2.1 /
+  // 2.5-turbo-pro / Wan 2.5; NOT for Seedance — so seedance models are excluded.
+  "poyo_seedance",
   "poyo_kling_o3_std", "poyo_kling_o3_pro", "poyo_kling_o3_4k",
   "poyo_kling21_std", "poyo_kling21_pro", "poyo_kling25_turbo",
 ]);
@@ -1360,14 +1375,7 @@ export const VideoTaskNode = memo(function VideoTaskNode({ id, selected, data }:
             value={payload.provider}
             disabled={isLocked}
             accent="oklch(0.7 0.18 25)"
-            options={PROVIDERS.map((p) => ({
-              value: p.value,
-              label: p.label,
-              group: p.group,
-              family: p.family,
-              caps: p.caps,
-              costLabel: p.costLabel,
-            }))}
+            options={PROVIDER_PICKER_OPTIONS}
             onChange={(v) => {
               const newProvider = v as VideoProvider;
               updateNodeData(id, {

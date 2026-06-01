@@ -9,10 +9,9 @@ import { Sparkles, Loader2, RefreshCw, Upload, X, Cpu, Check, Grid2X2, Download,
 import { useLocalMedia } from "@/lib/useLocalMedia";
 import { cacheMedia } from "@/lib/mediaCache";
 import { ImageLightbox } from "../ImageLightbox";
-import { IMAGE_MODELS } from "@/lib/models";
 import { makeImageProxyFallback } from "@/lib/utils";
 import { RefImageReachabilityBadge, RefImageSwitchButton, useRefImageGuard } from "../mediaReachability";
-import { ModelPicker, imageCostLabel } from "../ModelPicker";
+import { ModelPicker, IMAGE_MODEL_PICKER_OPTIONS } from "../ModelPicker";
 import { ParamControls } from "../ParamControls";
 import { IMAGE_MODEL_PARAMS, resolveImageParam } from "@/lib/paramDefs";
 
@@ -622,14 +621,7 @@ export const ImageGenNode = memo(function ImageGenNode({ id, selected, data }: P
           <ModelPicker
             value={payload.model ?? "manus_forge"}
             onChange={(v) => update("model", v as ImageGenModel)}
-            options={IMAGE_MODELS.map((m) => ({
-              value: m.value,
-              label: m.label,
-              group: m.group,
-              family: m.family,
-              caps: m.caps,
-              costLabel: imageCostLabel(m),
-            }))}
+            options={IMAGE_MODEL_PICKER_OPTIONS}
           />
         </div>
 

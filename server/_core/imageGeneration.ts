@@ -83,8 +83,9 @@ const POYO_IMAGE_SPECS: Record<string, PoyoImageSpec> = {
   poyo_flux_kontext_max: { wire: "flux-kontext-max",  edit: "flux-kontext-max-edit", sizeMode: "size", outputFormat: true },
   // Seedream (ByteDance)
   poyo_seedream_4:      { wire: "seedream-4",        edit: "seedream-4-edit",        sizeMode: "size", resolution: true, n: true },
-  poyo_seedream:        { wire: "seedream-4.5",      edit: "seedream-4.5-edit",      sizeMode: "size", resolution: true },
-  poyo_seedream_5_lite: { wire: "seedream-5.0-lite", edit: "seedream-5.0-lite-edit", sizeMode: "size", resolution: true },
+  // 4.5 / 5.0-lite: resolution preset is a `size` value (no separate resolution field).
+  poyo_seedream:        { wire: "seedream-4.5",      edit: "seedream-4.5-edit",      sizeMode: "size" },
+  poyo_seedream_5_lite: { wire: "seedream-5.0-lite", edit: "seedream-5.0-lite-edit", sizeMode: "size" },
   // Wan (Alibaba) — unified model, auto-edit when image_urls present (no -edit suffix)
   poyo_wan_image:     { wire: "wan-2.7-image",     sizeMode: "size", n: true },
   poyo_wan_image_pro: { wire: "wan-2.7-image-pro", sizeMode: "size", n: true },
@@ -96,7 +97,7 @@ const POYO_IMAGE_SPECS: Record<string, PoyoImageSpec> = {
   poyo_grok_image: { wire: "grok-imagine-image", sizeMode: "size" },
   // Legacy aliases (kept so old payloads keep routing)
   "gpt-image-2":  { wire: "gpt-image-2", sizeMode: "size", resolution: true, quality: true },
-  "seedream-4.5": { wire: "seedream-4.5", sizeMode: "size", resolution: true },
+  "seedream-4.5": { wire: "seedream-4.5", sizeMode: "size" },
   "flux-2-pro":   { wire: "flux-2-pro", sizeMode: "aspect_ratio" },
   "flux-2-flex":  { wire: "flux-2-flex", sizeMode: "aspect_ratio" },
   "wan-2.7-image":      { wire: "wan-2.7-image", sizeMode: "size", n: true },

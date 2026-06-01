@@ -57,9 +57,13 @@ export const IMAGE_MODEL_PARAMS: Record<string, ParamDef[]> = {
   poyo_flux_kontext_pro: [sizeDef(FLUX_KONTEXT_SIZES, "1:1"), fmtDef(FMT_PNG_JPG)],
   poyo_flux_kontext_max: [sizeDef(FLUX_KONTEXT_SIZES, "1:1"), fmtDef(FMT_PNG_JPG)],
   // Seedream
+  // seedream-4 has a documented separate `resolution` field (1K/2K/4K).
   poyo_seedream_4: [sizeDef(ASPECT_FULL, "16:9"), resDef(RES_124, "2K"), nDef(15)],
-  poyo_seedream: [sizeDef(ASPECT_FULL, "16:9"), resDef(RES_24, "2K")],
-  poyo_seedream_5_lite: [sizeDef(ASPECT_FULL, "16:9"), resDef(RES_23, "2K")],
+  // seedream-4.5 / 5.0-lite: per docs the resolution preset IS a `size` value
+  // (no separate resolution field) — so fold 2K/4K (resp. 2K/3K) into `size`
+  // alongside the aspect-ratio presets, and don't send a `resolution` field.
+  poyo_seedream: [sizeDef(["2K", "4K", ...ASPECT_FULL], "2K")],
+  poyo_seedream_5_lite: [sizeDef(["2K", "3K", ...ASPECT_FULL], "2K")],
   // Wan
   poyo_wan_image: [sizeDef(WAN_SIZES, "1024x1024"), nDef(4)],
   poyo_wan_image_pro: [sizeDef(WAN_SIZES, "1024x1024"), nDef(4)],

@@ -15,7 +15,7 @@ import { IMAGE_MODELS } from "@/lib/models";
 import { makeImageProxyFallback } from "@/lib/utils";
 import { RefImageReachabilityBadge, RefImageSwitchButton, useRefImageGuard } from "../mediaReachability";
 import { LLMModelPicker, type LLMModelId } from "../LLMModelPicker";
-import { ModelPicker, imageCostLabel } from "../ModelPicker";
+import { ModelPicker, IMAGE_MODEL_PICKER_OPTIONS } from "../ModelPicker";
 import { ParamControls } from "../ParamControls";
 import { IMAGE_MODEL_PARAMS, resolveImageParam } from "@/lib/paramDefs";
 import type { ImageGenModel } from "../../../../../shared/types";
@@ -890,14 +890,7 @@ export const StoryboardNode = memo(function StoryboardNode({ id, selected, data 
             <ModelPicker
               value={model}
               onChange={(v) => setModel(v)}
-              options={IMAGE_MODELS.map((m) => ({
-                value: m.value,
-                label: m.label,
-                group: m.group,
-                family: m.family,
-                caps: m.caps,
-                costLabel: imageCostLabel(m),
-              }))}
+              options={IMAGE_MODEL_PICKER_OPTIONS}
             />
           </div>
           <button
