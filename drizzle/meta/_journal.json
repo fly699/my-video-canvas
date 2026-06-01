@@ -176,6 +176,13 @@
       "when": 1780046033619,
       "tag": "0024_storage_minio_only",
       "breakpoints": true
+    },
+    {
+      "idx": 25,
+      "version": "5",
+      "when": 1780500000000,
+      "tag": "0025_storage_minio_only_default_on",
+      "breakpoints": true
     }
   ]
 }
