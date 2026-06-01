@@ -19,12 +19,37 @@ export function ChatView({ membersOpen: _m }: { membersOpen?: boolean }) {
   const filesQuery = trpc.chat.listFiles.useQuery({ conversationId: activeConv?.id ?? 0 }, { enabled: showFiles && !!activeConv });
   const fileRef = useRef<HTMLInputElement>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
+  const rootRef = useRef<HTMLDivElement>(null);
+  // Latest addFiles (defined after the early-return, so reached via a ref).
+  const addFilesRef = useRef<(files: File[]) => void>(() => {});
   const utils = trpc.useUtils();
   const setModeMut = trpc.chat.setMode.useMutation();
   const detailQuery = trpc.chat.getConversation.useQuery({ conversationId: activeConv?.id ?? 0 }, { enabled: !!activeConv && activeConv.type === "group" });
   const isOwner = !!detailQuery.data && myUserId != null && detailQuery.data.createdBy === myUserId;
 
   useEffect(() => { if (scrollRef.current) scrollRef.current.scrollTop = scrollRef.current.scrollHeight; }, [messages]);
+
+  // Document-level paste so Ctrl+V works even when the textarea isn't focused —
+  // notably in a standalone PWA window where focus often sits on <body>. Skips
+  // when another editable element OUTSIDE the chat is focused (let it paste) and
+  // when the textarea handler already consumed the event (defaultPrevented).
+  useEffect(() => {
+    const onDocPaste = (e: ClipboardEvent) => {
+      if (e.defaultPrevented || !e.clipboardData) return;
+      const ae = document.activeElement as HTMLElement | null;
+      const insideChat = !!rootRef.current && !!ae && rootRef.current.contains(ae);
+      const editableOutside = !!ae && !insideChat &&
+        (ae.tagName === "INPUT" || ae.tagName === "TEXTAREA" || ae.isContentEditable);
+      if (editableOutside) return;
+      const files = Array.from(e.clipboardData.items)
+        .filter((it) => it.kind === "file")
+        .map((it) => it.getAsFile())
+        .filter((f): f is File => !!f);
+      if (files.length > 0) { e.preventDefault(); addFilesRef.current(files); }
+    };
+    document.addEventListener("paste", onDocPaste);
+    return () => document.removeEventListener("paste", onDocPaste);
+  }, []);
 
   if (!activeConv) {
     return (
@@ -43,6 +68,7 @@ export function ChatView({ membersOpen: _m }: { membersOpen?: boolean }) {
     if (tooBig) { toast.error(`「${tooBig.name}」超过上限 ${maxFileMb}MB`); }
     setStaged((prev) => [...prev, ...arr.filter((f) => f.size <= maxFileMb * 1024 * 1024)]);
   }
+  addFilesRef.current = addFiles;
 
   async function doSend(encrypt?: boolean) {
     if (busy) return;
@@ -78,7 +104,7 @@ export function ChatView({ membersOpen: _m }: { membersOpen?: boolean }) {
   async function onDeleteDm() { if (confirm("确定删除该私聊？将清除聊天记录，且对双方生效。")) { try { await deleteRoom(activeConv!.id); toast.success("私聊已删除"); } catch (e) { toast.error(e instanceof Error ? e.message : "删除失败"); } } }
 
   return (
-    <div style={{ flex: 1, display: "flex", flexDirection: "column", minWidth: 0, background: C.bg, position: "relative" }}
+    <div ref={rootRef} style={{ flex: 1, display: "flex", flexDirection: "column", minWidth: 0, background: C.bg, position: "relative" }}
          onDragOver={(e) => { e.preventDefault(); setDragOver(true); }}
          onDragLeave={(e) => { if (e.currentTarget === e.target) setDragOver(false); }}
          onDrop={(e) => { e.preventDefault(); setDragOver(false); if (e.dataTransfer.files.length) addFiles(e.dataTransfer.files); }}>
