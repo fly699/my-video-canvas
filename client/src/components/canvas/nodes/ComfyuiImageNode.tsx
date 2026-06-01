@@ -70,6 +70,10 @@ export const ComfyuiImageNode = memo(function ComfyuiImageNode({ id, selected, d
   // the admin toggle is on and that URL probes alive (no-op when off / default).
   const preferUpstreamRef = usePreferUpstreamRefSource();
   useAutoPreferUpstreamRefSource({ nodeId: id, refImageUrl: payload.referenceImageUrl, enabled: preferUpstreamRef, onSwitch: (u) => updateNodeData(id, { referenceImageUrl: u }, true) });
+  // Diffusion architecture: classic SD (default) vs DiT (Flux/SD3/Qwen). New arch
+  // ships as a standalone UNet + separate CLIP/VAE, so default modelSource=unet.
+  const archVal = payload.arch ?? "sd";
+  const modelSrc = payload.modelSource ?? (archVal === "sd" ? "checkpoint" : "unet");
   const [uploading, setUploading] = useState(false);
   // Controlled lightbox index (null = closed). Mirrors ImageGenNode so multi-image
   // navigation + selection inside the lightbox actually work.
@@ -271,8 +275,13 @@ export const ComfyuiImageNode = memo(function ComfyuiImageNode({ id, selected, d
         ? { model: ip.model.trim(), imageUrl: ip.imageUrl, clipVision: ip.clipVision?.trim() || undefined, weight: ip.weight }
         : undefined,
       clip: payload.clip?.name1?.trim()
-        ? { clipType: payload.clip.clipType, name1: payload.clip.name1.trim(), name2: payload.clip.name2?.trim() || undefined }
+        ? { clipType: payload.clip.clipType, name1: payload.clip.name1.trim(), name2: payload.clip.name2?.trim() || undefined, name3: payload.clip.name3?.trim() || undefined }
         : undefined,
+      arch: archVal === "sd" ? undefined : archVal,
+      modelSource: modelSrc,
+      unetWeightDtype: modelSrc === "unet" ? (payload.unetWeightDtype || "default") : undefined,
+      guidance: archVal === "flux" ? (payload.guidance ?? 3.5) : undefined,
+      shift: (archVal === "sd3" || archVal === "qwen") ? (payload.shift ?? (archVal === "qwen" ? 3.1 : 3)) : undefined,
       upscaleModel: payload.upscaleModel?.trim() || undefined,
       steps: payload.steps ?? 20,
       cfg: payload.cfg ?? 7,
@@ -716,12 +725,54 @@ export const ComfyuiImageNode = memo(function ComfyuiImageNode({ id, selected, d
 
         </>)}
         {cfgTab === "model" && (<>
-        {/* ── Checkpoint with datalist suggestions ── */}
+        {/* ── 架构（经典 SD / Flux / SD3 / Qwen）── */}
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
+          <div>
+            <label style={labelStyle}>架构</label>
+            <select
+              value={archVal}
+              onChange={(e) => {
+                const v = e.target.value as "sd" | "flux" | "sd3" | "qwen";
+                // Switching to a DiT arch defaults to UNet loading + a sensible CLIP preset.
+                const patch: Partial<ComfyuiImageNodeData> = { arch: v === "sd" ? undefined : v };
+                if (v !== "sd") {
+                  patch.modelSource = "unet";
+                  if (!payload.clip?.name1) {
+                    if (v === "flux") patch.clip = { clipType: "flux", name1: "", name2: "" };
+                    else if (v === "qwen") patch.clip = { clipType: "qwen_image", name1: "" };
+                    else if (v === "sd3") patch.clip = { clipType: "", name1: "", name2: "", name3: "" };
+                  }
+                } else {
+                  patch.modelSource = undefined;
+                }
+                updateNodeData(id, patch);
+              }}
+              className="nodrag" style={fieldBase}
+            >
+              <option value="sd">经典 SD / SDXL</option>
+              <option value="flux">Flux.1</option>
+              <option value="sd3">SD3 / SD3.5</option>
+              <option value="qwen">Qwen-Image</option>
+            </select>
+          </div>
+          <div>
+            <label style={labelStyle}>模型加载方式</label>
+            <select
+              value={modelSrc}
+              onChange={(e) => update("modelSource", e.target.value === "unet" ? "unet" : "checkpoint")}
+              className="nodrag" style={fieldBase}
+            >
+              <option value="checkpoint">完整 Checkpoint</option>
+              <option value="unet">单独 UNet / 扩散模型</option>
+            </select>
+          </div>
+        </div>
+        {/* ── 模型文件（按加载方式切换 checkpoint / unet 列表）── */}
         <div>
-          <label style={labelStyle}>Checkpoint *</label>
+          <label style={labelStyle}>{modelSrc === "unet" ? "UNet / 扩散模型 *" : "Checkpoint *"}</label>
           <input
-            list={`comfyui-ckpts-${id}`}
-            placeholder="如 sd_xl_base_1.0.safetensors"
+            list={`comfyui-model-${id}`}
+            placeholder={modelSrc === "unet" ? "如 flux1-dev.safetensors" : "如 sd_xl_base_1.0.safetensors"}
             value={payload.ckpt ?? ""}
             onChange={(e) => update("ckpt", e.target.value)}
             className="nodrag"
@@ -729,9 +780,36 @@ export const ComfyuiImageNode = memo(function ComfyuiImageNode({ id, selected, d
             onFocus={(e) => { e.currentTarget.style.borderColor = BORDER_ACCENT; }}
             onBlur={(e) => { e.currentTarget.style.borderColor = BORDER_DEFAULT; }}
           />
-          <datalist id={`comfyui-ckpts-${id}`}>
-            {(modelsQuery.data?.ckpts ?? []).map((c) => <option key={c} value={c} />)}
+          <datalist id={`comfyui-model-${id}`}>
+            {((modelSrc === "unet" ? modelsQuery.data?.unets : modelsQuery.data?.ckpts) ?? []).map((c) => <option key={c} value={c} />)}
           </datalist>
+          {modelSrc === "unet" && (
+            <div style={{ marginTop: 6 }}>
+              <label style={labelStyle}>权重精度（weight_dtype）</label>
+              <select value={payload.unetWeightDtype ?? "default"} onChange={(e) => update("unetWeightDtype", e.target.value)} className="nodrag" style={fieldBase}>
+                {["default", "fp8_e4m3fn", "fp8_e4m3fn_fast", "fp8_e5m2"].map((d) => <option key={d} value={d}>{d}</option>)}
+              </select>
+            </div>
+          )}
+          {archVal === "flux" && (
+            <div style={{ marginTop: 6 }}>
+              <label style={labelStyle}>Flux Guidance</label>
+              <input type="number" min={0} max={100} step={0.1} value={payload.guidance ?? 3.5}
+                onChange={(e) => update("guidance", Number(e.target.value) || 0)} className="nodrag" style={fieldBase} />
+            </div>
+          )}
+          {(archVal === "sd3" || archVal === "qwen") && (
+            <div style={{ marginTop: 6 }}>
+              <label style={labelStyle}>采样位移 shift</label>
+              <input type="number" min={0} max={100} step={0.1} value={payload.shift ?? (archVal === "qwen" ? 3.1 : 3)}
+                onChange={(e) => update("shift", Number(e.target.value) || 0)} className="nodrag" style={fieldBase} />
+            </div>
+          )}
+          {archVal !== "sd" && (
+            <p style={{ fontSize: 10, color: "var(--c-t4)", margin: "4px 0 0" }}>
+              DiT 架构：请在下方「CLIP 来源」选好文本编码器、并填 VAE（多为单独文件）。新架构暂仅支持 txt2img + LoRA，忽略 ControlNet/IPAdapter。
+            </p>
+          )}
         </div>
 
         {/* ── LoRA stack (multi) ── */}
@@ -914,37 +992,44 @@ export const ComfyuiImageNode = memo(function ComfyuiImageNode({ id, selected, d
               <div className="col-span-2">
                 <label style={labelStyle}>CLIP 来源（Checkpoint 报错 "clip input is invalid" 时用）</label>
                 <select
-                  value={payload.clip == null ? "checkpoint" : (payload.clip.name2 !== undefined ? "dual" : "single")}
+                  value={payload.clip == null ? "checkpoint" : (payload.clip.name3 !== undefined ? "triple" : payload.clip.name2 !== undefined ? "dual" : "single")}
                   onChange={(e) => {
                     const m = e.target.value;
                     if (m === "checkpoint") update("clip", undefined);
-                    else if (m === "single") update("clip", { clipType: payload.clip?.clipType || "stable_diffusion", name1: payload.clip?.name1 || "", name2: undefined });
-                    else update("clip", { clipType: payload.clip?.clipType || "flux", name1: payload.clip?.name1 || "", name2: payload.clip?.name2 ?? "" });
+                    else if (m === "single") update("clip", { clipType: payload.clip?.clipType || "stable_diffusion", name1: payload.clip?.name1 || "", name2: undefined, name3: undefined });
+                    else if (m === "dual") update("clip", { clipType: payload.clip?.clipType || "flux", name1: payload.clip?.name1 || "", name2: payload.clip?.name2 ?? "", name3: undefined });
+                    else update("clip", { clipType: "", name1: payload.clip?.name1 || "", name2: payload.clip?.name2 ?? "", name3: payload.clip?.name3 ?? "" });
                   }}
                   className="nodrag" style={fieldBase}
                 >
                   <option value="checkpoint">跟随 Checkpoint（默认）</option>
-                  <option value="single">单独 CLIP（CLIPLoader）</option>
-                  <option value="dual">双 CLIP（DualCLIPLoader · Flux/SD3/SDXL）</option>
+                  <option value="single">单独 CLIP（CLIPLoader · Qwen 等）</option>
+                  <option value="dual">双 CLIP（DualCLIPLoader · Flux/SDXL）</option>
+                  <option value="triple">三 CLIP（TripleCLIPLoader · SD3）</option>
                 </select>
                 {payload.clip != null && (
                   <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 6, marginTop: 6 }}>
-                    <input
-                      list={`comfyui-clip-types-${id}`}
-                      placeholder={payload.clip.name2 !== undefined ? "类型 如 flux / sdxl / sd3" : "类型 如 stable_diffusion / flux"}
-                      value={payload.clip.clipType}
-                      onChange={(e) => update("clip", { ...payload.clip!, clipType: e.target.value })}
-                      className="nodrag" style={fieldBase}
-                    />
-                    <datalist id={`comfyui-clip-types-${id}`}>
-                      {(payload.clip.name2 !== undefined
-                        ? ["sdxl", "sd3", "flux", "hunyuan_video", "hidream"]
-                        : ["stable_diffusion", "sd3", "flux", "stable_cascade", "stable_audio", "mochi", "ltxv", "pixart", "cosmos", "lumina2", "wan", "hunyuan_video"]
-                      ).map((t) => <option key={t} value={t} />)}
-                    </datalist>
+                    {/* TripleCLIPLoader 无 type 字段 */}
+                    {payload.clip.name3 === undefined && (
+                      <>
+                        <input
+                          list={`comfyui-clip-types-${id}`}
+                          placeholder={payload.clip.name2 !== undefined ? "类型 如 flux / sdxl" : "类型 如 qwen_image / flux"}
+                          value={payload.clip.clipType}
+                          onChange={(e) => update("clip", { ...payload.clip!, clipType: e.target.value })}
+                          className="nodrag" style={fieldBase}
+                        />
+                        <datalist id={`comfyui-clip-types-${id}`}>
+                          {(payload.clip.name2 !== undefined
+                            ? ["sdxl", "sd3", "flux", "hunyuan_video", "hidream"]
+                            : ["qwen_image", "stable_diffusion", "sd3", "flux", "stable_cascade", "stable_audio", "mochi", "ltxv", "pixart", "cosmos", "lumina2", "wan", "hunyuan_video"]
+                          ).map((t) => <option key={t} value={t} />)}
+                        </datalist>
+                      </>
+                    )}
                     <input
                       list={`comfyui-clips-${id}`}
-                      placeholder={payload.clip.name2 !== undefined ? "clip_name1 如 clip_l.safetensors" : "clip 文件名"}
+                      placeholder={payload.clip.name2 !== undefined ? "clip_name1 如 clip_l" : "clip 文件名"}
                       value={payload.clip.name1}
                       onChange={(e) => update("clip", { ...payload.clip!, name1: e.target.value })}
                       className="nodrag" style={fieldBase}
@@ -952,9 +1037,18 @@ export const ComfyuiImageNode = memo(function ComfyuiImageNode({ id, selected, d
                     {payload.clip.name2 !== undefined && (
                       <input
                         list={`comfyui-clips-${id}`}
-                        placeholder="clip_name2 如 t5xxl_fp16.safetensors"
+                        placeholder="clip_name2 如 t5xxl_fp16"
                         value={payload.clip.name2}
                         onChange={(e) => update("clip", { ...payload.clip!, name2: e.target.value })}
+                        className="nodrag" style={fieldBase}
+                      />
+                    )}
+                    {payload.clip.name3 !== undefined && (
+                      <input
+                        list={`comfyui-clips-${id}`}
+                        placeholder="clip_name3 如 t5xxl"
+                        value={payload.clip.name3}
+                        onChange={(e) => update("clip", { ...payload.clip!, name3: e.target.value })}
                         className="nodrag" style={fieldBase}
                       />
                     )}

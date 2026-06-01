@@ -583,14 +583,19 @@ export interface ComfyuiIPAdapter {
  * Optional separate CLIP loader, for checkpoints that don't embed a CLIP/text
  * encoder (Flux / SD3 / some UNet-only files → CheckpointLoaderSimple returns a
  * null CLIP and CLIPTextEncode fails with "clip input is invalid: None").
- * `name2` present → DualCLIPLoader (clip_name1 + clip_name2), else CLIPLoader.
- * `clipType` is the loader's `type` field (e.g. "flux", "sdxl", "sd3").
+ * 1 name → CLIPLoader; 2 → DualCLIPLoader (Flux/SDXL); 3 → TripleCLIPLoader (SD3).
+ * `clipType` is the CLIPLoader/DualCLIPLoader `type` (e.g. "flux", "sdxl", "sd3",
+ * "qwen_image"); TripleCLIPLoader takes no type.
  */
 export interface ComfyuiClipLoader {
   clipType: string;
   name1: string;
   name2?: string;
+  name3?: string;
 }
+
+/** Diffusion model architecture — selects the ComfyUI graph shape. */
+export type ComfyuiArch = "sd" | "flux" | "sd3" | "qwen";
 
 export type ComfyuiImageTemplate = "txt2img" | "img2img" | "inpaint";
 export interface ComfyuiImageNodeData {
@@ -616,6 +621,16 @@ export interface ComfyuiImageNodeData {
   ipadapter?: ComfyuiIPAdapter;
   /** Optional separate CLIP loader for checkpoints that don't embed CLIP. */
   clip?: ComfyuiClipLoader;
+  /** Diffusion architecture (default "sd" = classic CheckpointLoaderSimple graph). */
+  arch?: ComfyuiArch;
+  /** Model loader: full checkpoint, or a standalone UNet/diffusion-model file. */
+  modelSource?: "checkpoint" | "unet";
+  /** UNETLoader weight dtype (e.g. "default", "fp8_e4m3fn"); modelSource="unet" only. */
+  unetWeightDtype?: string;
+  /** Flux guidance value (FluxGuidance node). */
+  guidance?: number;
+  /** ModelSampling shift for SD3 (ModelSamplingSD3) / Qwen (ModelSamplingAuraFlow). */
+  shift?: number;
   /** Optional model-based upscale (UpscaleModelLoader name); empty = none. */
   upscaleModel?: string;
   // Sampling
