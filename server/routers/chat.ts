@@ -72,12 +72,6 @@ export function registerChatUserBroadcaster(fn: (userId: number, event: string, 
   userBroadcaster = fn;
 }
 
-const ALLOWED_UPLOAD_MIME = [
-  "image/jpeg", "image/png", "image/webp", "image/gif",
-  "video/mp4", "video/webm", "video/quicktime",
-  "application/pdf", "application/zip", "text/plain",
-  "application/octet-stream",
-];
 
 export const chatRouter = router({
   // ── conversations ─────────────────────────────────────────────────────────
@@ -323,7 +317,8 @@ export const chatRouter = router({
       if (!conv) throw new TRPCError({ code: "NOT_FOUND" });
       if (conv.mode !== "server") throw new TRPCError({ code: "BAD_REQUEST", message: "无服务器会话文件走加密通道" });
       if (!(await isChatMember(conv.id, ctx.user.id))) throw new TRPCError({ code: "FORBIDDEN" });
-      if (!ALLOWED_UPLOAD_MIME.includes(input.mimeType)) throw new TRPCError({ code: "BAD_REQUEST", message: "不支持的文件类型" });
+      // All file formats are allowed (size limit still enforced below). Attachments
+      // are served as downloads / typed media, never executed in the app origin.
 
       const settings = await getChatSettings().catch(() => null);
       const maxBytes = (settings?.maxFileMb ?? 16) * 1024 * 1024;

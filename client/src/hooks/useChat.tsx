@@ -443,21 +443,33 @@ export function ChatProvider({ children }: { children: React.ReactNode }) {
     } else {
       // Server mode: prefer direct-to-storage presigned PUT (handles huge files,
       // bypasses the body limit). Falls back to base64 tRPC when storage is unset.
-      const up = await createUploadUrlMut.mutateAsync({
-        conversationId: id, filename: file.name, mimeType: file.type || "application/octet-stream", size: file.size,
-      });
       let attachmentId: number;
-      if (up.mode === "presigned") {
-        const putResp = await fetch(up.uploadUrl, { method: "PUT", headers: { "Content-Type": file.type || "application/octet-stream" }, body: file });
-        if (!putResp.ok) throw new Error("上传到存储失败");
-        const att = await confirmUploadMut.mutateAsync({
-          conversationId: id, key: up.key, url: up.url, name: up.name, mimeType: file.type || "application/octet-stream", size: file.size,
+      try {
+        const up = await createUploadUrlMut.mutateAsync({
+          conversationId: id, filename: file.name, mimeType: file.type || "application/octet-stream", size: file.size,
         });
-        attachmentId = att.attachmentId;
-      } else {
-        const base64 = await fileToBase64(file);
-        const att = await uploadFileMut.mutateAsync({ conversationId: id, base64, mimeType: file.type || "application/octet-stream", filename: file.name });
-        attachmentId = att.attachmentId;
+        if (up.mode === "presigned") {
+          const putResp = await fetch(up.uploadUrl, { method: "PUT", headers: { "Content-Type": file.type || "application/octet-stream" }, body: file });
+          if (!putResp.ok) throw new Error("上传到存储失败");
+          const att = await confirmUploadMut.mutateAsync({
+            conversationId: id, key: up.key, url: up.url, name: up.name, mimeType: file.type || "application/octet-stream", size: file.size,
+          });
+          attachmentId = att.attachmentId;
+        } else {
+          const base64 = await fileToBase64(file);
+          const att = await uploadFileMut.mutateAsync({ conversationId: id, base64, mimeType: file.type || "application/octet-stream", filename: file.name });
+          attachmentId = att.attachmentId;
+        }
+      } catch (e) {
+        // Without object storage the file is base64'd through tRPC; a large file
+        // exceeds the server body limit and Express returns an HTML error page,
+        // which tRPC then fails to parse ("Unexpected token '<', <!DOCTYPE…").
+        // Translate that into an actionable message instead of the raw JSON error.
+        const msg = e instanceof Error ? e.message : String(e);
+        if (/<!DOCTYPE|Unexpected token '<'|not valid JSON|Payload Too Large|\b413\b/i.test(msg)) {
+          throw new Error("上传失败：文件过大，超出服务器直传上限（约 37MB）。请改用更小的文件，或让管理员配置对象存储以支持大文件。");
+        }
+        throw e;
       }
       await sendMessageMut.mutateAsync({ conversationId: id, content: "", attachmentIds: [attachmentId] });
     }
