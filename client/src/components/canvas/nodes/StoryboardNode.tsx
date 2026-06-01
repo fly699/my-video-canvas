@@ -8,7 +8,7 @@ import { useShallow } from "zustand/react/shallow";
 import type { StoryboardNodeData } from "../../../../../shared/types";
 import { trpc } from "@/lib/trpc";
 import { toast } from "sonner";
-import { Sparkles, ImageIcon, Loader2, RefreshCw, Upload, X, Wand2, History, Languages, Film, ZoomIn, Download, Copy, HardDriveDownload } from "lucide-react";
+import { Sparkles, ImageIcon, Loader2, Upload, X, Wand2, History, Languages, Film, ZoomIn, Download, Copy, HardDriveDownload } from "lucide-react";
 import { useLocalMedia } from "@/lib/useLocalMedia";
 import { cacheMedia } from "@/lib/mediaCache";
 import { mergeCharactersIntoPrompt } from "../../../lib/characterPrompt";
@@ -422,7 +422,8 @@ export const StoryboardNode = memo(function StoryboardNode({ id, selected, data 
 
   return (
     <>
-    <BaseNode id={id} selected={selected} nodeType="storyboard" title={data.title} minHeight={280} heroMedia={heroMedia}>
+    <BaseNode id={id} selected={selected} nodeType="storyboard" title={data.title} minHeight={280} heroMedia={heroMedia}
+      onRun={handleGenerate} running={generating} canRun={!!payload.promptText?.trim()} hasResult={!!payload.imageUrl}>
       <div className="flex flex-col h-full p-3.5 gap-3">
 
         {/* ── Image preview — hidden in creative mode (image shown in heroMedia instead) ── */}
@@ -456,21 +457,8 @@ export const StoryboardNode = memo(function StoryboardNode({ id, selected, data 
                 className="absolute inset-0 opacity-0 hover:opacity-100 transition-opacity flex flex-col items-center justify-center gap-1"
                 style={{ background: "oklch(0 0 0 / 0.55)" }}
               >
+                {/* 「重新生成」已移至标题栏（BaseNode onRun），避免与放大/下载挤在一起 */}
                 <div className="flex items-center gap-1.5">
-                  <button
-                    onClick={handleGenerate}
-                    disabled={generating}
-                    className="nodrag flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-all"
-                    style={{
-                      background: "oklch(0.65 0.20 160 / 0.20)",
-                      borderWidth: 1, borderStyle: "solid",
-                      borderColor: "oklch(0.65 0.20 160 / 0.5)",
-                      color: "oklch(0.75 0.18 160)",
-                    }}
-                  >
-                    {generating ? <Loader2 className="w-3 h-3 animate-spin" /> : <RefreshCw className="w-3 h-3" />}
-                    {generating ? "生成中..." : "重新生成"}
-                  </button>
                   <button
                     onClick={(e) => { e.stopPropagation(); setZoomUrl(payload.imageUrl || null); }}
                     className="nodrag flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs font-medium transition-all"
