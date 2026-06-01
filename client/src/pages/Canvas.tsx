@@ -384,7 +384,7 @@ function CanvasInner({ projectId }: { projectId: number }) {
   const { runState, runWorkflow, reset: resetWorkflowRun } = useWorkflowRunner();
   const [showRunConfirm, setShowRunConfirm] = useState(false);
   const [pendingRunNodeId, setPendingRunNodeId] = useState<string | null>(null);
-  const [runConfirmCountdown, setRunConfirmCountdown] = useState(5);
+  const [runConfirmCountdown, setRunConfirmCountdown] = useState(3);
   const runConfirmOpenRef = useRef(false);
   const runStateRunningRef = useRef(false);
   runStateRunningRef.current = runState.running;
@@ -393,7 +393,7 @@ function CanvasInner({ projectId }: { projectId: number }) {
     if (runConfirmOpenRef.current) return;
     runConfirmOpenRef.current = true;
     setPendingRunNodeId(startNodeId);
-    setRunConfirmCountdown(5);
+    setRunConfirmCountdown(3);
     setShowRunConfirm(true);
   }, []);
 
