@@ -29,18 +29,52 @@ export type NodeType =
 
 export const VIDEO_PROVIDERS = [
   "mock",
+  // ── existing (kept for back-compat; never remove a persisted value) ──
   "poyo_seedance",
   "poyo_veo",
   "poyo_kling26",
   "poyo_kling_o3_std",
   "poyo_kling_o3_pro",
   "poyo_kling_o3_4k",
-  "poyo_wan25_t2v",
-  "poyo_wan25_i2v",
+  "poyo_wan25_t2v",   // legacy name → wire wan2.6-text-to-video
+  "poyo_wan25_i2v",   // legacy name → wire wan2.6-image-to-video
   "poyo_runway45",
   "hf_dop_standard",
   "hf_dop_lite",
   "hf_dop_turbo",
+  // ── new: full Poyo video catalog (docs/poyo-video-api.md) ──
+  // Sora
+  "poyo_sora2",
+  "poyo_sora2_pro",
+  "poyo_sora2_official",
+  "poyo_sora2_pro_official",
+  // Veo 3.1 tiers
+  "poyo_veo_fast",
+  "poyo_veo_lite",
+  "poyo_veo_quality",
+  // Kling
+  "poyo_kling21_std",
+  "poyo_kling21_pro",
+  "poyo_kling25_turbo",
+  "poyo_kling30_std",
+  "poyo_kling30_pro",
+  "poyo_kling30_4k",
+  // Wan
+  "poyo_wan27_t2v",
+  "poyo_wan27_i2v",
+  "poyo_wan22_t2v_fast",
+  "poyo_wan22_i2v_fast",
+  // Seedance
+  "poyo_seedance1_pro",
+  "poyo_seedance15_pro",
+  "poyo_seedance2_fast",
+  // Hailuo
+  "poyo_hailuo02",
+  "poyo_hailuo02_pro",
+  "poyo_hailuo23",
+  // others
+  "poyo_happy_horse",
+  "poyo_grok_video",
 ] as const;
 export type VideoProvider = (typeof VIDEO_PROVIDERS)[number];
 export type VideoTaskStatus = "pending" | "processing" | "succeeded" | "failed";
