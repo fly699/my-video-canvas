@@ -294,7 +294,7 @@ async function pollHistory(baseUrl: string, promptId: string, maxAttempts: numbe
         // The real reason lives in the `execution_error` tuple, which often sits
         // past a naive 500-char slice (after execution_start/execution_cached) —
         // surface its exception_message + failing node directly so it isn't lost.
-        const detail = extractExecError(messages) ?? raw.slice(0, 500);
+        const detail = extractExecError(messages) ?? raw.slice(-600);
         throw new Error(`ComfyUI 执行失败: ${detail.slice(0, 800)}${comfyErrorHint(raw)}`);
       }
     } catch (err) {
@@ -336,15 +336,58 @@ export function sanitizeFilenamePrefix(prefix?: string): string {
  * messages items look like ["execution_error", { node_type, node_id, exception_message, ... }].
  */
 export function extractExecError(messages: unknown[]): string | null {
+  // 1) Canonical execution_error tuple: ["execution_error", { node_type, … }].
   for (const m of messages) {
     if (Array.isArray(m) && m[0] === "execution_error" && m[1] && typeof m[1] === "object") {
-      const d = m[1] as Record<string, unknown>;
-      const node = [d.node_type, d.node_id != null ? `#${d.node_id}` : ""].filter(Boolean).join(" ");
-      const exc = typeof d.exception_message === "string" ? d.exception_message : JSON.stringify(d);
-      return node ? `节点 ${node}: ${exc}` : exc;
+      return formatExecError(m[1] as Record<string, unknown>);
+    }
+  }
+  // 2) Fallback — some ComfyUI builds / custom nodes report the failure under a
+  //    different tag, or only as a validation `node_errors` map. Deep-scan every
+  //    message payload for an exception or node-error shape so the real reason
+  //    isn't lost behind execution_start/execution_cached noise.
+  for (const m of messages) {
+    const d = Array.isArray(m) ? m[1] : m;
+    if (!d || typeof d !== "object") continue;
+    const rec = d as Record<string, unknown>;
+    if (typeof rec.exception_message === "string" || typeof rec.exception_type === "string") {
+      return formatExecError(rec);
+    }
+    if (rec.node_errors && typeof rec.node_errors === "object") {
+      const ne = formatNodeErrors(rec.node_errors as Record<string, unknown>);
+      if (ne) return ne;
     }
   }
   return null;
+}
+
+/** Format a ComfyUI execution_error payload into "节点 X #id: <message>". */
+function formatExecError(d: Record<string, unknown>): string {
+  if (typeof d.exception_message !== "string" && typeof d.exception_type !== "string"
+    && d.node_errors && typeof d.node_errors === "object") {
+    const ne = formatNodeErrors(d.node_errors as Record<string, unknown>);
+    if (ne) return ne;
+  }
+  const node = [d.node_type, d.node_id != null ? `#${d.node_id}` : ""].filter(Boolean).join(" ");
+  const exc = typeof d.exception_message === "string"
+    ? d.exception_message
+    : (typeof d.exception_type === "string" ? d.exception_type : JSON.stringify(d).slice(0, 400));
+  return node ? `节点 ${node}: ${exc}` : exc;
+}
+
+/** Format a validation node_errors map: { "4": { errors: [{ message, details }] } }. */
+function formatNodeErrors(nodeErrors: Record<string, unknown>): string | null {
+  const parts: string[] = [];
+  for (const [nodeId, v] of Object.entries(nodeErrors)) {
+    const errs = (v as { errors?: Array<{ message?: string; details?: string }> })?.errors;
+    if (Array.isArray(errs)) {
+      for (const e of errs) {
+        const msg = [e.message, e.details].filter(Boolean).join(": ");
+        if (msg) parts.push(`节点 #${nodeId}: ${msg}`);
+      }
+    }
+  }
+  return parts.length > 0 ? parts.join("；") : null;
 }
 
 /**

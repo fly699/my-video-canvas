@@ -46,6 +46,21 @@ describe("extractExecError", () => {
   it("returns null when no execution_error present", () => {
     expect(extractExecError([["execution_start", {}], ["execution_cached", { nodes: [] }]])).toBeNull();
   });
+  it("deep-scans for an exception under a non-standard tag", () => {
+    const messages = [
+      ["execution_start", { prompt_id: "x" }],
+      ["some_custom_event", { node_id: "7", node_type: "WeirdNode", exception_type: "RuntimeError", exception_message: "boom" }],
+    ];
+    expect(extractExecError(messages)).toContain("boom");
+  });
+  it("surfaces a validation node_errors map", () => {
+    const messages = [
+      ["execution_error", { node_errors: { "4": { errors: [{ message: "Value not in list", details: "ckpt_name: 'x' not in [...]" }] } } }],
+    ];
+    const s = extractExecError(messages);
+    expect(s).toContain("#4");
+    expect(s).toContain("Value not in list");
+  });
 });
 
 import { sanitizeFilenamePrefix } from "./_core/comfyui";
