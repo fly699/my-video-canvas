@@ -11,7 +11,9 @@ const POLL_MAX_ATTEMPTS = 60; // 4 min max
 // the 4-minute timeout. Without this, cancelled / expired / timeout / unknown
 // statuses look identical to in-progress and hide the real failure for the
 // full poll window.
-const IN_PROGRESS_STATUSES = new Set(["queued", "pending", "processing", "running", "submitted", "in_progress", "started"]);
+// "not_started" is Poyo's initial state for a freshly-queued task (same as the
+// video API) — it must be polled through, not treated as a terminal failure.
+export const IN_PROGRESS_STATUSES = new Set(["not_started", "queued", "pending", "processing", "running", "submitted", "in_progress", "started"]);
 
 // User-facing music model identifiers. Suno variants share the `generate-music`
 // endpoint and differ only by an `input.mv` value (V4 / V4_5 / V4_5PLUS /
