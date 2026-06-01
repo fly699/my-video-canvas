@@ -5,6 +5,7 @@ import { toast } from "sonner";
 import type { NodeType, WorkflowParamBinding } from "../../../shared/types";
 import { VIDEO_PROVIDERS } from "../../../shared/types";
 import { detectUpstreamImageUrl, resolveWorkflowImageParams } from "../lib/comfyWorkflowParams";
+import { computeRefImageUpdates } from "../lib/refImagePropagation";
 import { handleWhitelistError } from "./useWhitelistBlocked";
 
 export type NodeRunPhase = "pending" | "running" | "done" | "failed" | "skipped";
@@ -356,18 +357,11 @@ export function useWorkflowRunner() {
             }, true);
           }
 
-          // Propagate image URL to connected video_task nodes
+          // Propagate image URL to connected reference-image targets
           const { edges: currentEdges, nodes: currentNodes } = useCanvasStore.getState();
-          const downstreamUpdates = currentEdges
-            .filter((e) => e.source === nodeId)
-            .flatMap((edge) => {
-              const target = currentNodes.find((n) => n.id === edge.target);
-              const tt = target?.data.nodeType;
-              // Propagate to any downstream that consumes a reference image
-              return (tt === "video_task" || tt === "comfyui_video" || tt === "comfyui_image") && bestUrl
-                ? [{ id: edge.target, payload: { referenceImageUrl: bestUrl } }]
-                : [];
-            });
+          const downstreamUpdates = bestUrl
+            ? computeRefImageUpdates(nodeId, bestUrl, currentNodes, currentEdges)
+            : [];
           if (downstreamUpdates.length > 0) {
             useCanvasStore.getState().batchUpdateNodeData(downstreamUpdates);
           }
@@ -685,16 +679,10 @@ export function useWorkflowRunner() {
             errorMessage: undefined,
             progress: undefined,
           }, true);
-          // Propagate to downstream nodes that consume reference image
-          const downstreamUpdates = currentEdges
-            .filter((e) => e.source === nodeId)
-            .flatMap((edge) => {
-              const target = nodesAtSuccess.find((n) => n.id === edge.target);
-              const tt = target?.data.nodeType;
-              return (tt === "video_task" || tt === "comfyui_video" || tt === "comfyui_workflow") && result.url
-                ? [{ id: edge.target, payload: { referenceImageUrl: result.url } }]
-                : [];
-            });
+          // Propagate to downstream reference-image targets
+          const downstreamUpdates = result.url
+            ? computeRefImageUpdates(nodeId, result.url, nodesAtSuccess, currentEdges)
+            : [];
           if (downstreamUpdates.length > 0) {
             useCanvasStore.getState().batchUpdateNodeData(downstreamUpdates);
           }
@@ -800,19 +788,12 @@ export function useWorkflowRunner() {
             errorMessage: undefined,
             progress: undefined,
           }, true);
-          // Propagate image output to downstream nodes that accept referenceImageUrl
+          // Propagate image output to downstream reference-image targets (image
+          // outputs only — never a video output). Downstream comfyui_workflow
+          // nodes pull this output at run time (detectUpstreamImageUrl) and are
+          // not ref-image targets, so they're correctly excluded.
           if (result.outputType === "image" && firstUrl) {
-            const wfDownstream = wfEdges
-              .filter((e) => e.source === nodeId)
-              .flatMap((edge) => {
-                const target = wfNodes.find((n) => n.id === edge.target);
-                const tt = target?.data.nodeType;
-                // Downstream comfyui_workflow nodes pull this output at run time
-                // (detectUpstreamImageUrl), so they don't need a referenceImageUrl push.
-                return (tt === "video_task" || tt === "comfyui_video" || tt === "comfyui_image")
-                  ? [{ id: edge.target, payload: { referenceImageUrl: firstUrl } }]
-                  : [];
-              });
+            const wfDownstream = computeRefImageUpdates(nodeId, firstUrl, wfNodes, wfEdges);
             if (wfDownstream.length > 0) useCanvasStore.getState().batchUpdateNodeData(wfDownstream);
           }
           completed.push(nodeId);
