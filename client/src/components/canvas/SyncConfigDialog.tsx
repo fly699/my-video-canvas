@@ -16,7 +16,8 @@ interface FieldCategory {
 // Per-node-type category → field map. Per-node fields (prompt / seed / reference
 // image / result / status) are intentionally excluded — they are never synced.
 const IMAGE_CATEGORIES: FieldCategory[] = [
-  { key: "conn", label: "基础 / 连接", fields: ["serverUrls", "customBaseUrl", "workflowTemplate", "negPrompt"] },
+  { key: "server", label: "服务器地址", fields: ["serverUrls", "customBaseUrl"] },
+  { key: "conn", label: "工作流 / 负向词", fields: ["workflowTemplate", "negPrompt"] },
   { key: "model", label: "模型", fields: ["ckpt", "vae", "upscaleModel"] },
   { key: "sampling", label: "采样参数", fields: ["steps", "cfg", "width", "height", "sampler", "scheduler", "denoise", "batchSize"] },
   { key: "lora", label: "LoRA", fields: ["loras", "lora", "loraStrength"] },
@@ -25,7 +26,8 @@ const IMAGE_CATEGORIES: FieldCategory[] = [
 ];
 
 const VIDEO_CATEGORIES: FieldCategory[] = [
-  { key: "conn", label: "基础 / 连接", fields: ["serverUrls", "customBaseUrl", "workflowTemplate", "negPrompt"] },
+  { key: "server", label: "服务器地址", fields: ["serverUrls", "customBaseUrl"] },
+  { key: "conn", label: "工作流 / 负向词", fields: ["workflowTemplate", "negPrompt"] },
   { key: "model", label: "模型", fields: ["ckpt", "motionModule", "clip", "clipVision", "vae"] },
   { key: "sampling", label: "采样参数", fields: ["steps", "cfg", "frames", "fps", "width", "height", "sampler", "scheduler", "denoise", "batchSize"] },
 ];
@@ -68,15 +70,16 @@ export function SyncConfigDialog({
     return new Set(candidates.map((t) => t.id)); // fallback: all
   }, [candidates, edges, sourceId]);
 
-  const [selectedTargets, setSelectedTargets] = useState<Set<string>>(new Set());
-  const [selectedCats, setSelectedCats] = useState<Set<string>>(new Set());
+  const [selectedTargets, setSelectedTargets] = useState<Set<string>>(() => new Set(smartDefaultTargets));
+  const [selectedCats, setSelectedCats] = useState<Set<string>>(() => new Set(categories.map((c) => c.key)));
 
-  // Reset selections each time the dialog opens.
+  // Re-seed selections each time the dialog opens (or when the smart defaults /
+  // category set change while open) so freshly-added nodes are reflected.
   useEffect(() => {
     if (!open) return;
     setSelectedTargets(new Set(smartDefaultTargets));
     setSelectedCats(new Set(categories.map((c) => c.key))); // categories default all-selected
-  }, [open]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [open, smartDefaultTargets, categories]);
 
   const toggle = (set: Set<string>, key: string) => {
     const next = new Set(set);
@@ -94,10 +97,18 @@ export function SyncConfigDialog({
     if (selectedCats.size === 0) { toast.info("请至少选择一类参数"); return; }
     const source = nodes.find((n) => n.id === sourceId);
     if (!source) return;
-    const sp = source.data as Record<string, unknown>;
+    // Config fields live on data.payload (ckpt / steps / serverUrls / …), NOT
+    // on data directly — reading from source.data here silently produced an
+    // all-undefined patch, so syncing appeared to do nothing.
+    const sp = ((source.data as { payload?: unknown }).payload ?? {}) as Record<string, unknown>;
     const fields = categories.filter((c) => selectedCats.has(c.key)).flatMap((c) => c.fields);
     const patch: Record<string, unknown> = {};
-    for (const f of fields) patch[f] = sp[f];
+    // Only copy fields the source actually has — avoid overwriting targets with
+    // undefined for fields the source never set.
+    for (const f of fields) {
+      if (sp[f] !== undefined) patch[f] = sp[f];
+    }
+    if (Object.keys(patch).length === 0) { toast.info("源节点没有可同步的配置值"); return; }
     const targets = Array.from(selectedTargets);
     batchUpdateNodeData(targets.map((id) => ({ id, payload: patch as Partial<NodeData> })));
     toast.success(`已同步配置到 ${targets.length} 个 ComfyUI ${label}节点`);
