@@ -579,6 +579,19 @@ export interface ComfyuiIPAdapter {
   weight?: number;
 }
 
+/**
+ * Optional separate CLIP loader, for checkpoints that don't embed a CLIP/text
+ * encoder (Flux / SD3 / some UNet-only files → CheckpointLoaderSimple returns a
+ * null CLIP and CLIPTextEncode fails with "clip input is invalid: None").
+ * `name2` present → DualCLIPLoader (clip_name1 + clip_name2), else CLIPLoader.
+ * `clipType` is the loader's `type` field (e.g. "flux", "sdxl", "sd3").
+ */
+export interface ComfyuiClipLoader {
+  clipType: string;
+  name1: string;
+  name2?: string;
+}
+
 export type ComfyuiImageTemplate = "txt2img" | "img2img" | "inpaint";
 export interface ComfyuiImageNodeData {
   // Connection
@@ -601,6 +614,8 @@ export interface ComfyuiImageNodeData {
   controlnet?: ComfyuiControlNet;
   /** Optional IPAdapter style/face reference. */
   ipadapter?: ComfyuiIPAdapter;
+  /** Optional separate CLIP loader for checkpoints that don't embed CLIP. */
+  clip?: ComfyuiClipLoader;
   /** Optional model-based upscale (UpscaleModelLoader name); empty = none. */
   upscaleModel?: string;
   // Sampling

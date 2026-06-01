@@ -1852,6 +1852,12 @@ export const comfyuiRouter = router({
           clipVision: z.string().max(255).optional(),
           weight: z.number().min(0).max(2).optional(),
         }).optional(),
+        // Optional separate CLIP loader (Flux/SD3/UNet-only checkpoints).
+        clip: z.object({
+          clipType: z.string().min(1).max(64),
+          name1: z.string().min(1).max(255),
+          name2: z.string().max(255).optional(),
+        }).optional(),
         // Optional model-based upscale (UpscaleModelLoader name).
         upscaleModel: z.string().max(255).optional(),
         steps: z.number().int().min(1).max(150).default(20),
@@ -1891,6 +1897,7 @@ export const comfyuiRouter = router({
             loras: input.loras,
             controlnet: input.controlnet,
             ipadapter: input.ipadapter,
+            clip: input.clip,
             upscaleModel: input.upscaleModel,
             steps: input.steps,
             cfg: input.cfg,

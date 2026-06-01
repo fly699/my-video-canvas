@@ -52,12 +52,17 @@ export function ComfyStressPanel() {
   const [source, setSource] = useState<"json" | "model">("json");
   const [workflowJson, setWorkflowJson] = useState("");
   // 「服务器模型」模式参数。
-  const [model, setModel] = useState({
+  const [model, setModel] = useState<{
+    ckpt: string; prompt: string; negPrompt: string;
+    steps: number; cfg: number; sampler: string; scheduler: string;
+    width: number; height: number; batchSize: number;
+    clip?: { clipType: string; name1: string; name2?: string };
+  }>({
     ckpt: "", prompt: "", negPrompt: "",
     steps: 20, cfg: 7, sampler: "euler", scheduler: "normal",
     width: 512, height: 512, batchSize: 1,
   });
-  const [models, setModels] = useState<{ ckpts: string[]; samplers: string[]; schedulers: string[] } | null>(null);
+  const [models, setModels] = useState<{ ckpts: string[]; samplers: string[]; schedulers: string[]; clips: string[] } | null>(null);
   const [loadingModels, setLoadingModels] = useState(false);
   const [mode, setMode] = useState<"lean" | "full">("lean");
   const [concurrency, setConcurrency] = useState(1);
@@ -81,7 +86,7 @@ export function ComfyStressPanel() {
     setLoadingModels(true);
     try {
       const res = await utils.comfyui.fetchModels.fetch({ customBaseUrls: urls });
-      setModels({ ckpts: res.ckpts, samplers: res.samplers, schedulers: res.schedulers });
+      setModels({ ckpts: res.ckpts, samplers: res.samplers, schedulers: res.schedulers, clips: res.clips });
       if (res.ckpts.length === 0) toast.info("已连接，但未发现 checkpoint 模型");
       else toast.success(`已拉取 ${res.ckpts.length} 个模型`);
     } catch (e) {
@@ -110,7 +115,10 @@ export function ComfyStressPanel() {
     let args: Parameters<typeof startMut.mutateAsync>[0];
     if (source === "model") {
       if (!model.ckpt.trim()) { toast.error("请先选择一个 checkpoint 模型"); return; }
-      args = { customBaseUrls: urls.length > 0 ? urls : undefined, model, mode, concurrency, total, randomizeSeed };
+      const clip = model.clip?.name1?.trim()
+        ? { clipType: model.clip.clipType, name1: model.clip.name1.trim(), name2: model.clip.name2?.trim() || undefined }
+        : undefined;
+      args = { customBaseUrls: urls.length > 0 ? urls : undefined, model: { ...model, clip }, mode, concurrency, total, randomizeSeed };
     } else {
       if (workflowJson.trim().length < 2) { toast.error("请先粘贴工作流 JSON"); return; }
       try { JSON.parse(workflowJson); } catch { toast.error("工作流 JSON 格式错误，无法解析"); return; }
@@ -312,6 +320,59 @@ export function ComfyStressPanel() {
             <div style={{ marginTop: 12 }}>
               <label style={labelStyle}>负面提示词（可选）</label>
               <input style={inputStyle} value={model.negPrompt} onChange={(e) => setM({ negPrompt: e.target.value })} />
+            </div>
+            {/* CLIP 来源：checkpoint 不含 CLIP（Flux/SD3/UNet-only）时单独加载，否则报 "clip input is invalid" */}
+            <div style={{ marginTop: 12 }}>
+              <label style={labelStyle}>CLIP 来源（Checkpoint 不含 CLIP 时用，如 Flux/SD3）</label>
+              <select
+                style={inputStyle}
+                value={model.clip == null ? "checkpoint" : (model.clip.name2 !== undefined ? "dual" : "single")}
+                onChange={(e) => {
+                  const m = e.target.value;
+                  if (m === "checkpoint") setM({ clip: undefined });
+                  else if (m === "single") setM({ clip: { clipType: model.clip?.clipType || "stable_diffusion", name1: model.clip?.name1 || "", name2: undefined } });
+                  else setM({ clip: { clipType: model.clip?.clipType || "flux", name1: model.clip?.name1 || "", name2: model.clip?.name2 ?? "" } });
+                }}
+              >
+                <option value="checkpoint">跟随 Checkpoint（默认）</option>
+                <option value="single">单独 CLIP（CLIPLoader）</option>
+                <option value="dual">双 CLIP（DualCLIPLoader · Flux/SD3/SDXL）</option>
+              </select>
+              {model.clip != null && (
+                <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(160px, 1fr))", gap: 8, marginTop: 8 }}>
+                  <input
+                    list="cs-clip-types"
+                    style={inputStyle}
+                    placeholder={model.clip.name2 !== undefined ? "类型 如 flux / sdxl / sd3" : "类型 如 stable_diffusion / flux"}
+                    value={model.clip.clipType}
+                    onChange={(e) => setM({ clip: { ...model.clip!, clipType: e.target.value } })}
+                  />
+                  <datalist id="cs-clip-types">
+                    {(model.clip.name2 !== undefined
+                      ? ["sdxl", "sd3", "flux", "hunyuan_video", "hidream"]
+                      : ["stable_diffusion", "sd3", "flux", "stable_cascade", "stable_audio", "mochi", "ltxv", "pixart", "cosmos", "lumina2", "wan", "hunyuan_video"]
+                    ).map((t) => <option key={t} value={t} />)}
+                  </datalist>
+                  {models && models.clips.length > 0 ? (
+                    <select style={inputStyle} value={model.clip.name1} onChange={(e) => setM({ clip: { ...model.clip!, name1: e.target.value } })}>
+                      <option value="">{model.clip.name2 !== undefined ? "— clip_name1 —" : "— 选 CLIP —"}</option>
+                      {models.clips.map((c) => <option key={c} value={c}>{c}</option>)}
+                    </select>
+                  ) : (
+                    <input style={inputStyle} placeholder={model.clip.name2 !== undefined ? "clip_name1 文件名" : "clip 文件名"} value={model.clip.name1} onChange={(e) => setM({ clip: { ...model.clip!, name1: e.target.value } })} />
+                  )}
+                  {model.clip.name2 !== undefined && (
+                    models && models.clips.length > 0 ? (
+                      <select style={inputStyle} value={model.clip.name2} onChange={(e) => setM({ clip: { ...model.clip!, name2: e.target.value } })}>
+                        <option value="">— clip_name2 —</option>
+                        {models.clips.map((c) => <option key={c} value={c}>{c}</option>)}
+                      </select>
+                    ) : (
+                      <input style={inputStyle} placeholder="clip_name2 文件名（如 t5xxl）" value={model.clip.name2} onChange={(e) => setM({ clip: { ...model.clip!, name2: e.target.value } })} />
+                    )
+                  )}
+                </div>
+              )}
             </div>
           </div>
         )}
