@@ -631,6 +631,20 @@ export function useWorkflowRunner() {
             failed.push(nodeId);
             return "fail";
           }
+          // Architecture / loader fields — must mirror the per-node "运行" button
+          // (ComfyuiImageNode), otherwise an auto-run drops arch/modelSource/clip
+          // and a Flux/SD3/Qwen (UNet + separate CLIP) node silently falls back to
+          // a plain checkpoint graph → "model not in checkpoints list" failures.
+          const archVal: "sd" | "flux" | "sd3" | "qwen" =
+            p.arch === "flux" || p.arch === "sd3" || p.arch === "qwen" ? p.arch : "sd";
+          const modelSrc: "checkpoint" | "unet" =
+            p.modelSource === "unet" || p.modelSource === "checkpoint"
+              ? p.modelSource
+              : (archVal === "sd" ? "checkpoint" : "unet");
+          const clipRaw = p.clip as { clipType?: string; name1?: string; name2?: string; name3?: string } | undefined;
+          const clip = clipRaw?.name1?.trim()
+            ? { clipType: clipRaw.clipType || "", name1: clipRaw.name1.trim(), name2: clipRaw.name2?.trim() || undefined, name3: clipRaw.name3?.trim() || undefined }
+            : undefined;
           const result = await comfyuiImageMutation.mutateAsync({
             nodeId,
             projectId: node.data.projectId,
@@ -639,6 +653,13 @@ export function useWorkflowRunner() {
             prompt,
             negPrompt: (p.negPrompt as string) || undefined,
             ckpt,
+            filenamePrefix: `${node.data.title}_${ckpt}`.slice(0, 120),
+            clip,
+            arch: archVal === "sd" ? undefined : archVal,
+            modelSource: modelSrc,
+            unetWeightDtype: modelSrc === "unet" ? ((p.unetWeightDtype as string) || "default") : undefined,
+            guidance: archVal === "flux" ? (typeof p.guidance === "number" ? p.guidance : 3.5) : undefined,
+            shift: (archVal === "sd3" || archVal === "qwen") ? (typeof p.shift === "number" ? p.shift : (archVal === "qwen" ? 3.1 : 3)) : undefined,
             lora: (p.lora as string) || undefined,
             // Forward the multi-LoRA stack + ControlNet so canvas-wide runs match
             // the per-node "运行" button (both call comfyui.generateImage).
