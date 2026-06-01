@@ -371,7 +371,21 @@ export const chatRouter = router({
       // No storage, or storage host unreachable by the browser (e.g. MinIO on
       // 127.0.0.1) → upload through the app server via base64 instead of a
       // presigned PUT the client can't reach.
-      if (!isStorageConfigured() || !canBrowserReachStorageDirectly()) return { mode: "base64" as const };
+      if (!isStorageConfigured() || !canBrowserReachStorageDirectly()) {
+        // base64 rides the 50MB express body limit; base64 inflates ~4/3, so the
+        // real ceiling is ~36MB. Reject larger files here with an actionable
+        // message instead of letting Express return an unparseable HTML 413.
+        const BASE64_TRANSPORT_CAP = 36 * 1024 * 1024;
+        if (input.size > BASE64_TRANSPORT_CAP) {
+          throw new TRPCError({
+            code: "BAD_REQUEST",
+            message: isStorageConfigured()
+              ? "对象存储已配置，但未设置公共端点 S3_PUBLIC_ENDPOINT，浏览器无法直传，超过约 36MB 的文件无法上传。请把 S3_PUBLIC_ENDPOINT 设为浏览器可访问的 MinIO/S3 地址后重启服务。"
+              : "未配置对象存储，单文件最大约 36MB。请配置 MinIO/S3（含 S3_PUBLIC_ENDPOINT），或改用加密会话传大文件。",
+          });
+        }
+        return { mode: "base64" as const };
+      }
       // 「仅允许 MinIO/S3」开关：未配 MinIO/S3 时拒绝直传，不回退 Forge 存储。
       await assertObjectStorageWritable();
       const { uploadUrl, key, url } = await storagePresignPut(relKey, input.mimeType);
