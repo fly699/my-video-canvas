@@ -8,6 +8,7 @@ import { TRPCError } from "@trpc/server";
 import { adminProcedure, router } from "../_core/trpc";
 import { ENV } from "../_core/env";
 import { startStressTest, getJob, listJobs, cancelJob, stopJob, toView } from "../_core/comfyStress";
+import { buildImageWorkflow } from "../_core/comfyui";
 
 export const comfyStressRouter = router({
   // 启动一次压测，立即返回任务概要（含 id）。
@@ -18,7 +19,20 @@ export const comfyStressRouter = router({
         // 兼容旧前端：仍接受单个 customBaseUrl。
         customBaseUrls: z.array(z.string().max(2048)).max(16).optional(),
         customBaseUrl: z.string().max(2048).optional(),
-        workflowJson: z.string().min(2).max(2_000_000),
+        // 压测来源二选一：粘贴工作流 JSON，或选一个 checkpoint 模型自动构造 txt2img。
+        workflowJson: z.string().min(2).max(2_000_000).optional(),
+        model: z.object({
+          ckpt: z.string().min(1).max(512),
+          prompt: z.string().max(2000).default(""),
+          negPrompt: z.string().max(2000).default(""),
+          steps: z.number().int().min(1).max(150).default(20),
+          cfg: z.number().min(0).max(50).default(7),
+          sampler: z.string().max(128).default("euler"),
+          scheduler: z.string().max(128).default("normal"),
+          width: z.number().int().min(64).max(4096).default(512),
+          height: z.number().int().min(64).max(4096).default(512),
+          batchSize: z.number().int().min(1).max(8).default(1),
+        }).optional(),
         mode: z.enum(["lean", "full"]).default("lean"),
         concurrency: z.number().int().min(1).max(32).default(1),
         total: z.number().int().min(1).max(1000).default(10),
@@ -34,10 +48,37 @@ export const comfyStressRouter = router({
       if (baseUrls.length === 0) {
         throw new TRPCError({ code: "BAD_REQUEST", message: "ComfyUI 服务器地址未配置（COMFYUI_BASE_URL 为空，且未提供任何地址）" });
       }
+      // 「服务器模型」模式：用选中的 checkpoint + 参数构造最小 txt2img 工作流；
+      // 否则使用粘贴的 workflowJson。两者皆无则报错。
+      let workflowJson: string;
+      if (input.model) {
+        const m = input.model;
+        const wf = buildImageWorkflow({
+          template: "txt2img",
+          prompt: m.prompt,
+          negPrompt: m.negPrompt,
+          ckpt: m.ckpt,
+          loras: [],
+          seed: Math.floor(Math.random() * 2_147_483_647),
+          steps: m.steps,
+          cfg: m.cfg,
+          sampler: m.sampler,
+          scheduler: m.scheduler,
+          denoise: 1.0,
+          width: m.width,
+          height: m.height,
+          batchSize: m.batchSize,
+        });
+        workflowJson = JSON.stringify(wf);
+      } else if (input.workflowJson) {
+        workflowJson = input.workflowJson;
+      } else {
+        throw new TRPCError({ code: "BAD_REQUEST", message: "请提供工作流 JSON 或选择一个模型" });
+      }
       try {
         return startStressTest({
           baseUrls,
-          workflowJson: input.workflowJson,
+          workflowJson,
           mode: input.mode,
           concurrency: input.concurrency,
           total: input.total,
