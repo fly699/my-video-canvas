@@ -83,4 +83,72 @@ describe("buildImageWorkflow (server-model stress mode)", () => {
     const cte = Object.values(w).find((n) => n.class_type === "CLIPTextEncode")!;
     expect(cte.inputs.clip).toEqual([loader[0], 0]);
   });
+
+  it("wires a TripleCLIPLoader when three clip names are given (SD3)", () => {
+    const w = buildImageWorkflow({
+      template: "txt2img", prompt: "p", negPrompt: "", ckpt: "sd3.5_large.safetensors",
+      loras: [], clip: { clipType: "", name1: "clip_g.safetensors", name2: "clip_l.safetensors", name3: "t5xxl.safetensors" },
+      seed: 1, steps: 20, cfg: 4.5, sampler: "dpmpp_2m", scheduler: "sgm_uniform", denoise: 1,
+      width: 1024, height: 1024, batchSize: 1,
+    });
+    const loader = Object.values(w).find((n) => n.class_type === "TripleCLIPLoader")!;
+    expect(loader.inputs).toMatchObject({ clip_name1: "clip_g.safetensors", clip_name2: "clip_l.safetensors", clip_name3: "t5xxl.safetensors" });
+  });
+});
+
+describe("buildImageWorkflow architectures (DiT)", () => {
+  const base = {
+    template: "txt2img" as const, prompt: "p", negPrompt: "n", loras: [],
+    seed: 1, steps: 20, cfg: 4, sampler: "euler", scheduler: "simple", denoise: 1,
+    width: 1024, height: 1024, batchSize: 1,
+  };
+  const byClass = (w: Record<string, { class_type: string; inputs: Record<string, unknown> }>, ct: string) =>
+    Object.entries(w).find(([, n]) => n.class_type === ct);
+
+  it("flux: UNETLoader + DualCLIPLoader + FluxGuidance + EmptySD3LatentImage + KSampler cfg=1", () => {
+    const w = buildImageWorkflow({
+      ...base, ckpt: "flux1-dev.safetensors", arch: "flux", modelSource: "unet", guidance: 3.5,
+      clip: { clipType: "flux", name1: "clip_l.safetensors", name2: "t5xxl_fp16.safetensors" }, vae: "ae.safetensors",
+    });
+    expect(byClass(w, "UNETLoader")![1].inputs.unet_name).toBe("flux1-dev.safetensors");
+    expect(byClass(w, "EmptySD3LatentImage")).toBeTruthy();
+    const fg = byClass(w, "FluxGuidance")!;
+    expect(fg[1].inputs.guidance).toBe(3.5);
+    const ks = byClass(w, "KSampler")![1];
+    expect(ks.inputs.cfg).toBe(1); // guidance-distilled
+    expect(ks.inputs.positive).toEqual([fg[0], 0]); // positive routed through FluxGuidance
+  });
+
+  it("sd3: ModelSamplingSD3 feeds KSampler.model", () => {
+    const w = buildImageWorkflow({
+      ...base, ckpt: "sd3.5.safetensors", arch: "sd3", modelSource: "checkpoint", shift: 3,
+    });
+    const ms = byClass(w, "ModelSamplingSD3")!;
+    expect(ms[1].inputs.shift).toBe(3);
+    expect(byClass(w, "KSampler")![1].inputs.model).toEqual([ms[0], 0]);
+    expect(byClass(w, "EmptySD3LatentImage")).toBeTruthy();
+  });
+
+  it("qwen: ModelSamplingAuraFlow + UNETLoader + single CLIPLoader(qwen_image)", () => {
+    const w = buildImageWorkflow({
+      ...base, ckpt: "qwen-image.safetensors", arch: "qwen", modelSource: "unet", shift: 3.1,
+      clip: { clipType: "qwen_image", name1: "qwen_2.5_vl_7b.safetensors" }, vae: "qwen_image_vae.safetensors",
+    });
+    const ms = byClass(w, "ModelSamplingAuraFlow")!;
+    expect(ms[1].inputs.shift).toBe(3.1);
+    expect(byClass(w, "KSampler")![1].inputs.model).toEqual([ms[0], 0]);
+    expect(byClass(w, "CLIPLoader")![1].inputs).toMatchObject({ clip_name: "qwen_2.5_vl_7b.safetensors", type: "qwen_image" });
+    expect(byClass(w, "UNETLoader")).toBeTruthy();
+  });
+
+  it("new-arch ignores ControlNet/IPAdapter (classic-SD only)", () => {
+    const w = buildImageWorkflow({
+      ...base, ckpt: "flux1-dev.safetensors", arch: "flux", modelSource: "unet",
+      clip: { clipType: "flux", name1: "a", name2: "b" },
+      controlnet: { model: "cn", imageName: "x.png", strength: 1 },
+      ipadapter: { model: "ip", imageName: "y.png" },
+    });
+    expect(byClass(w, "ControlNetLoader")).toBeUndefined();
+    expect(byClass(w, "IPAdapterModelLoader")).toBeUndefined();
+  });
 });

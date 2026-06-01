@@ -56,13 +56,18 @@ export function ComfyStressPanel() {
     ckpt: string; prompt: string; negPrompt: string;
     steps: number; cfg: number; sampler: string; scheduler: string;
     width: number; height: number; batchSize: number;
-    clip?: { clipType: string; name1: string; name2?: string };
+    clip?: { clipType: string; name1: string; name2?: string; name3?: string };
+    arch?: "sd" | "flux" | "sd3" | "qwen";
+    modelSource?: "checkpoint" | "unet";
+    unetWeightDtype?: string;
+    guidance?: number;
+    shift?: number;
   }>({
     ckpt: "", prompt: "", negPrompt: "",
     steps: 20, cfg: 7, sampler: "euler", scheduler: "normal",
     width: 512, height: 512, batchSize: 1,
   });
-  const [models, setModels] = useState<{ ckpts: string[]; samplers: string[]; schedulers: string[]; clips: string[] } | null>(null);
+  const [models, setModels] = useState<{ ckpts: string[]; samplers: string[]; schedulers: string[]; clips: string[]; unets: string[] } | null>(null);
   const [loadingModels, setLoadingModels] = useState(false);
   const [mode, setMode] = useState<"lean" | "full">("lean");
   const [concurrency, setConcurrency] = useState(1);
@@ -86,7 +91,7 @@ export function ComfyStressPanel() {
     setLoadingModels(true);
     try {
       const res = await utils.comfyui.fetchModels.fetch({ customBaseUrls: urls });
-      setModels({ ckpts: res.ckpts, samplers: res.samplers, schedulers: res.schedulers, clips: res.clips });
+      setModels({ ckpts: res.ckpts, samplers: res.samplers, schedulers: res.schedulers, clips: res.clips, unets: res.unets });
       if (res.ckpts.length === 0) toast.info("已连接，但未发现 checkpoint 模型");
       else toast.success(`已拉取 ${res.ckpts.length} 个模型`);
     } catch (e) {
@@ -116,7 +121,7 @@ export function ComfyStressPanel() {
     if (source === "model") {
       if (!model.ckpt.trim()) { toast.error("请先选择一个 checkpoint 模型"); return; }
       const clip = model.clip?.name1?.trim()
-        ? { clipType: model.clip.clipType, name1: model.clip.name1.trim(), name2: model.clip.name2?.trim() || undefined }
+        ? { clipType: model.clip.clipType, name1: model.clip.name1.trim(), name2: model.clip.name2?.trim() || undefined, name3: model.clip.name3?.trim() || undefined }
         : undefined;
       args = { customBaseUrls: urls.length > 0 ? urls : undefined, model: { ...model, clip }, mode, concurrency, total, randomizeSeed };
     } else {
@@ -255,17 +260,80 @@ export function ComfyStressPanel() {
                 从上方地址（并集）拉取 checkpoint / 采样器 / 调度器。多地址压测使用同一个模型，缺该模型的服务器请求会计为失败。
               </span>
             </div>
+            {/* 架构 + 模型加载方式（DiT：Flux/SD3/Qwen） */}
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))", gap: 12, marginBottom: 12 }}>
+              <div>
+                <label style={labelStyle}>架构</label>
+                <select
+                  style={inputStyle}
+                  value={model.arch ?? "sd"}
+                  onChange={(e) => {
+                    const v = e.target.value as "sd" | "flux" | "sd3" | "qwen";
+                    if (v === "sd") { setM({ arch: undefined, modelSource: undefined }); return; }
+                    const patch: Partial<typeof model> = { arch: v, modelSource: "unet" };
+                    if (!model.clip?.name1) {
+                      if (v === "flux") patch.clip = { clipType: "flux", name1: "", name2: "" };
+                      else if (v === "qwen") patch.clip = { clipType: "qwen_image", name1: "" };
+                      else patch.clip = { clipType: "", name1: "", name2: "", name3: "" };
+                    }
+                    setM(patch);
+                  }}
+                >
+                  <option value="sd">经典 SD / SDXL</option>
+                  <option value="flux">Flux.1</option>
+                  <option value="sd3">SD3 / SD3.5</option>
+                  <option value="qwen">Qwen-Image</option>
+                </select>
+              </div>
+              <div>
+                <label style={labelStyle}>模型加载方式</label>
+                <select
+                  style={inputStyle}
+                  value={model.modelSource ?? ((model.arch ?? "sd") === "sd" ? "checkpoint" : "unet")}
+                  onChange={(e) => setM({ modelSource: e.target.value === "unet" ? "unet" : "checkpoint" })}
+                >
+                  <option value="checkpoint">完整 Checkpoint</option>
+                  <option value="unet">单独 UNet / 扩散模型</option>
+                </select>
+              </div>
+              {(model.modelSource ?? ((model.arch ?? "sd") === "sd" ? "checkpoint" : "unet")) === "unet" && (
+                <div>
+                  <label style={labelStyle}>权重精度</label>
+                  <select style={inputStyle} value={model.unetWeightDtype ?? "default"} onChange={(e) => setM({ unetWeightDtype: e.target.value })}>
+                    {["default", "fp8_e4m3fn", "fp8_e4m3fn_fast", "fp8_e5m2"].map((d) => <option key={d} value={d}>{d}</option>)}
+                  </select>
+                </div>
+              )}
+              {model.arch === "flux" && (
+                <div>
+                  <label style={labelStyle}>Flux Guidance</label>
+                  <input type="number" min={0} max={100} step={0.1} style={inputStyle} value={model.guidance ?? 3.5}
+                    onChange={(e) => setM({ guidance: Number(e.target.value) || 0 })} />
+                </div>
+              )}
+              {(model.arch === "sd3" || model.arch === "qwen") && (
+                <div>
+                  <label style={labelStyle}>采样位移 shift</label>
+                  <input type="number" min={0} max={100} step={0.1} style={inputStyle} value={model.shift ?? (model.arch === "qwen" ? 3.1 : 3)}
+                    onChange={(e) => setM({ shift: Number(e.target.value) || 0 })} />
+                </div>
+              )}
+            </div>
             <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))", gap: 12 }}>
               <div>
-                <label style={labelStyle}>Checkpoint 模型 *</label>
-                {models && models.ckpts.length > 0 ? (
-                  <select style={inputStyle} value={model.ckpt} onChange={(e) => setM({ ckpt: e.target.value })}>
-                    <option value="">— 请选择 —</option>
-                    {models.ckpts.map((c) => <option key={c} value={c}>{c}</option>)}
-                  </select>
-                ) : (
-                  <input style={inputStyle} placeholder="先点「刷新模型」，或手填 ckpt 文件名" value={model.ckpt} onChange={(e) => setM({ ckpt: e.target.value })} />
-                )}
+                {(() => { const isUnet = (model.modelSource ?? ((model.arch ?? "sd") === "sd" ? "checkpoint" : "unet")) === "unet"; const list = isUnet ? (models?.unets ?? []) : (models?.ckpts ?? []); return (
+                  <>
+                    <label style={labelStyle}>{isUnet ? "UNet / 扩散模型 *" : "Checkpoint 模型 *"}</label>
+                    {list.length > 0 ? (
+                      <select style={inputStyle} value={model.ckpt} onChange={(e) => setM({ ckpt: e.target.value })}>
+                        <option value="">— 请选择 —</option>
+                        {list.map((c) => <option key={c} value={c}>{c}</option>)}
+                      </select>
+                    ) : (
+                      <input style={inputStyle} placeholder={isUnet ? "先点「刷新模型」，或手填 unet 文件名" : "先点「刷新模型」，或手填 ckpt 文件名"} value={model.ckpt} onChange={(e) => setM({ ckpt: e.target.value })} />
+                    )}
+                  </>
+                ); })()}
               </div>
               <div>
                 <label style={labelStyle}>采样器</label>
@@ -326,51 +394,51 @@ export function ComfyStressPanel() {
               <label style={labelStyle}>CLIP 来源（Checkpoint 不含 CLIP 时用，如 Flux/SD3）</label>
               <select
                 style={inputStyle}
-                value={model.clip == null ? "checkpoint" : (model.clip.name2 !== undefined ? "dual" : "single")}
+                value={model.clip == null ? "checkpoint" : (model.clip.name3 !== undefined ? "triple" : model.clip.name2 !== undefined ? "dual" : "single")}
                 onChange={(e) => {
                   const m = e.target.value;
                   if (m === "checkpoint") setM({ clip: undefined });
-                  else if (m === "single") setM({ clip: { clipType: model.clip?.clipType || "stable_diffusion", name1: model.clip?.name1 || "", name2: undefined } });
-                  else setM({ clip: { clipType: model.clip?.clipType || "flux", name1: model.clip?.name1 || "", name2: model.clip?.name2 ?? "" } });
+                  else if (m === "single") setM({ clip: { clipType: model.clip?.clipType || "stable_diffusion", name1: model.clip?.name1 || "", name2: undefined, name3: undefined } });
+                  else if (m === "dual") setM({ clip: { clipType: model.clip?.clipType || "flux", name1: model.clip?.name1 || "", name2: model.clip?.name2 ?? "", name3: undefined } });
+                  else setM({ clip: { clipType: "", name1: model.clip?.name1 || "", name2: model.clip?.name2 ?? "", name3: model.clip?.name3 ?? "" } });
                 }}
               >
                 <option value="checkpoint">跟随 Checkpoint（默认）</option>
-                <option value="single">单独 CLIP（CLIPLoader）</option>
-                <option value="dual">双 CLIP（DualCLIPLoader · Flux/SD3/SDXL）</option>
+                <option value="single">单独 CLIP（CLIPLoader · Qwen 等）</option>
+                <option value="dual">双 CLIP（DualCLIPLoader · Flux/SDXL）</option>
+                <option value="triple">三 CLIP（TripleCLIPLoader · SD3）</option>
               </select>
               {model.clip != null && (
                 <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(160px, 1fr))", gap: 8, marginTop: 8 }}>
-                  <input
-                    list="cs-clip-types"
-                    style={inputStyle}
-                    placeholder={model.clip.name2 !== undefined ? "类型 如 flux / sdxl / sd3" : "类型 如 stable_diffusion / flux"}
-                    value={model.clip.clipType}
-                    onChange={(e) => setM({ clip: { ...model.clip!, clipType: e.target.value } })}
-                  />
-                  <datalist id="cs-clip-types">
-                    {(model.clip.name2 !== undefined
-                      ? ["sdxl", "sd3", "flux", "hunyuan_video", "hidream"]
-                      : ["stable_diffusion", "sd3", "flux", "stable_cascade", "stable_audio", "mochi", "ltxv", "pixart", "cosmos", "lumina2", "wan", "hunyuan_video"]
-                    ).map((t) => <option key={t} value={t} />)}
-                  </datalist>
-                  {models && models.clips.length > 0 ? (
-                    <select style={inputStyle} value={model.clip.name1} onChange={(e) => setM({ clip: { ...model.clip!, name1: e.target.value } })}>
-                      <option value="">{model.clip.name2 !== undefined ? "— clip_name1 —" : "— 选 CLIP —"}</option>
-                      {models.clips.map((c) => <option key={c} value={c}>{c}</option>)}
-                    </select>
-                  ) : (
-                    <input style={inputStyle} placeholder={model.clip.name2 !== undefined ? "clip_name1 文件名" : "clip 文件名"} value={model.clip.name1} onChange={(e) => setM({ clip: { ...model.clip!, name1: e.target.value } })} />
+                  {model.clip.name3 === undefined && (
+                    <>
+                      <input
+                        list="cs-clip-types"
+                        style={inputStyle}
+                        placeholder={model.clip.name2 !== undefined ? "类型 如 flux / sdxl" : "类型 如 qwen_image / flux"}
+                        value={model.clip.clipType}
+                        onChange={(e) => setM({ clip: { ...model.clip!, clipType: e.target.value } })}
+                      />
+                      <datalist id="cs-clip-types">
+                        {(model.clip.name2 !== undefined
+                          ? ["sdxl", "sd3", "flux", "hunyuan_video", "hidream"]
+                          : ["qwen_image", "stable_diffusion", "sd3", "flux", "stable_cascade", "stable_audio", "mochi", "ltxv", "pixart", "cosmos", "lumina2", "wan", "hunyuan_video"]
+                        ).map((t) => <option key={t} value={t} />)}
+                      </datalist>
+                    </>
                   )}
-                  {model.clip.name2 !== undefined && (
-                    models && models.clips.length > 0 ? (
-                      <select style={inputStyle} value={model.clip.name2} onChange={(e) => setM({ clip: { ...model.clip!, name2: e.target.value } })}>
-                        <option value="">— clip_name2 —</option>
-                        {models.clips.map((c) => <option key={c} value={c}>{c}</option>)}
-                      </select>
-                    ) : (
-                      <input style={inputStyle} placeholder="clip_name2 文件名（如 t5xxl）" value={model.clip.name2} onChange={(e) => setM({ clip: { ...model.clip!, name2: e.target.value } })} />
-                    )
-                  )}
+                  {([["name1", "clip_name1"], ["name2", "clip_name2"], ["name3", "clip_name3"]] as const)
+                    .filter(([k]) => (model.clip as Record<string, unknown>)[k] !== undefined)
+                    .map(([k, label]) => (
+                      models && models.clips.length > 0 ? (
+                        <select key={k} style={inputStyle} value={(model.clip as Record<string, string>)[k]} onChange={(e) => setM({ clip: { ...model.clip!, [k]: e.target.value } })}>
+                          <option value="">— {label} —</option>
+                          {models.clips.map((c) => <option key={c} value={c}>{c}</option>)}
+                        </select>
+                      ) : (
+                        <input key={k} style={inputStyle} placeholder={`${label} 文件名`} value={(model.clip as Record<string, string>)[k]} onChange={(e) => setM({ clip: { ...model.clip!, [k]: e.target.value } })} />
+                      )
+                    ))}
                 </div>
               )}
             </div>

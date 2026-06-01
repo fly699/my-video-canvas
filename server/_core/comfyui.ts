@@ -511,9 +511,17 @@ interface BuildImageWorkflowArgs {
   negPrompt: string;
   ckpt: string;
   loras: LoraSpec[];
+  // Diffusion architecture — selects the graph shape. Default "sd" = classic.
+  arch?: "sd" | "flux" | "sd3" | "qwen";
+  // Model loader: full checkpoint (CheckpointLoaderSimple) or a standalone UNet
+  // file (UNETLoader). New architectures usually ship as a UNet + separate CLIP/VAE.
+  modelSource?: "checkpoint" | "unet";
+  unetWeightDtype?: string; // UNETLoader weight_dtype (default "default")
+  guidance?: number;        // Flux: FluxGuidance value (default 3.5)
+  shift?: number;           // SD3/Qwen: ModelSampling shift
   // Separate CLIP loader for checkpoints that don't embed CLIP (Flux/SD3/etc).
-  // name2 present → DualCLIPLoader, else CLIPLoader; omitted → checkpoint's CLIP.
-  clip?: { clipType: string; name1: string; name2?: string };
+  // 1 name → CLIPLoader; 2 → DualCLIPLoader; 3 → TripleCLIPLoader (SD3).
+  clip?: { clipType: string; name1: string; name2?: string; name3?: string };
   vae?: string;            // VAELoader name; empty = use checkpoint's VAE
   controlnet?: ControlNetSpec;
   ipadapter?: IPAdapterSpec;
@@ -546,8 +554,17 @@ type NodeRef = [string, number];
  */
 export function buildImageWorkflow(a: BuildImageWorkflowArgs): Record<string, { class_type: string; inputs: Record<string, unknown> }> {
   const wf: Record<string, { class_type: string; inputs: Record<string, unknown> }> = {};
+  const arch = a.arch ?? "sd";
+  const isNewArch = arch !== "sd";
 
-  wf["4"] = { class_type: "CheckpointLoaderSimple", inputs: { ckpt_name: a.ckpt } };
+  // Model loader: a standalone UNet/diffusion-model file (UNETLoader, no embedded
+  // CLIP/VAE — those must come from the separate CLIP loader + VAELoader) or a
+  // full checkpoint (CheckpointLoaderSimple → model/clip/vae).
+  if ((a.modelSource ?? "checkpoint") === "unet") {
+    wf["4"] = { class_type: "UNETLoader", inputs: { unet_name: a.ckpt, weight_dtype: a.unetWeightDtype || "default" } };
+  } else {
+    wf["4"] = { class_type: "CheckpointLoaderSimple", inputs: { ckpt_name: a.ckpt } };
+  }
 
   // VAE source: dedicated loader when provided, else the checkpoint's third output.
   let vaeRef: NodeRef = ["4", 2];
@@ -561,10 +578,15 @@ export function buildImageWorkflow(a: BuildImageWorkflowArgs): Record<string, { 
   let modelRef: NodeRef = ["4", 0];
   let clipRef: NodeRef = ["4", 1];
   if (a.clip && a.clip.name1.trim()) {
-    if (a.clip.name2 && a.clip.name2.trim()) {
-      wf["21"] = { class_type: "DualCLIPLoader", inputs: { clip_name1: a.clip.name1.trim(), clip_name2: a.clip.name2.trim(), type: a.clip.clipType } };
+    const n1 = a.clip.name1.trim();
+    const n2 = a.clip.name2?.trim();
+    const n3 = a.clip.name3?.trim();
+    if (n2 && n3) {
+      wf["21"] = { class_type: "TripleCLIPLoader", inputs: { clip_name1: n1, clip_name2: n2, clip_name3: n3 } };
+    } else if (n2) {
+      wf["21"] = { class_type: "DualCLIPLoader", inputs: { clip_name1: n1, clip_name2: n2, type: a.clip.clipType } };
     } else {
-      wf["21"] = { class_type: "CLIPLoader", inputs: { clip_name: a.clip.name1.trim(), type: a.clip.clipType } };
+      wf["21"] = { class_type: "CLIPLoader", inputs: { clip_name: n1, type: a.clip.clipType } };
     }
     clipRef = ["21", 0];
   }
@@ -589,7 +611,7 @@ export function buildImageWorkflow(a: BuildImageWorkflowArgs): Record<string, { 
   // IPAdapter (optional): a style/face reference image that modulates the model.
   // Uses the explicit-model variant (IPAdapterModelLoader + CLIPVisionLoader +
   // IPAdapterAdvanced) which is the most stable across ipadapter-pack versions.
-  if (a.ipadapter && a.ipadapter.model.trim() && a.ipadapter.imageName) {
+  if (arch === "sd" && a.ipadapter && a.ipadapter.model.trim() && a.ipadapter.imageName) {
     wf["40"] = { class_type: "IPAdapterModelLoader", inputs: { ipadapter_file: a.ipadapter.model.trim() } };
     wf["41"] = { class_type: "CLIPVisionLoader", inputs: { clip_name: a.ipadapter.clipVision?.trim() || "CLIP-ViT-H-14-laion2B-s32B-b79K.safetensors" } };
     wf["42"] = { class_type: "LoadImage", inputs: { image: a.ipadapter.imageName } };
@@ -617,7 +639,22 @@ export function buildImageWorkflow(a: BuildImageWorkflowArgs): Record<string, { 
   // Conditioning may be rewritten by ControlNet below.
   let positiveRef: NodeRef = ["6", 0];
   let negativeRef: NodeRef = ["7", 0];
-  if (a.controlnet && a.controlnet.model.trim() && a.controlnet.imageName) {
+
+  // Architecture-specific conditioning / model sampling (DiT models):
+  // - Flux is guidance-distilled → FluxGuidance on the positive (KSampler cfg=1).
+  // - SD3 / Qwen need a ModelSampling shift node on the model path.
+  if (arch === "flux") {
+    wf["60"] = { class_type: "FluxGuidance", inputs: { conditioning: positiveRef, guidance: a.guidance ?? 3.5 } };
+    positiveRef = ["60", 0];
+  } else if (arch === "sd3") {
+    wf["61"] = { class_type: "ModelSamplingSD3", inputs: { model: modelRef, shift: a.shift ?? 3 } };
+    modelRef = ["61", 0];
+  } else if (arch === "qwen") {
+    wf["61"] = { class_type: "ModelSamplingAuraFlow", inputs: { model: modelRef, shift: a.shift ?? 3.1 } };
+    modelRef = ["61", 0];
+  }
+
+  if (arch === "sd" && a.controlnet && a.controlnet.model.trim() && a.controlnet.imageName) {
     wf["30"] = { class_type: "ControlNetLoader", inputs: { control_net_name: a.controlnet.model.trim() } };
     wf["31"] = { class_type: "LoadImage", inputs: { image: a.controlnet.imageName } };
     // Optional aux preprocessor (canny/depth/openpose…) turns the raw guide image
@@ -643,10 +680,21 @@ export function buildImageWorkflow(a: BuildImageWorkflowArgs): Record<string, { 
     negativeRef = ["32", 1];
   }
 
-  // Latent source: empty latent (txt2img), VAE-encoded reference (img2img), or
-  // mask-aware encode (inpaint: regenerate only the white mask area).
+  // Latent source. DiT architectures (Flux/SD3/Qwen) use EmptySD3LatentImage;
+  // their ControlNet/inpaint graphs differ from classic SD, so new-arch supports
+  // txt2img (empty latent) and img2img (VAEEncode) only — inpaint falls back to
+  // a plain encode. Classic SD keeps the full empty/img2img/inpaint behavior.
   let latentRef: NodeRef;
-  if (a.template === "inpaint") {
+  if (isNewArch) {
+    if ((a.template === "img2img" || a.template === "inpaint") && a.refImageName) {
+      wf["11"] = { class_type: "LoadImage", inputs: { image: a.refImageName } };
+      wf["10"] = { class_type: "VAEEncode", inputs: { pixels: ["11", 0], vae: vaeRef } };
+      latentRef = ["10", 0];
+    } else {
+      wf["5"] = { class_type: "EmptySD3LatentImage", inputs: { width: a.width, height: a.height, batch_size: a.batchSize } };
+      latentRef = ["5", 0];
+    }
+  } else if (a.template === "inpaint") {
     wf["11"] = { class_type: "LoadImage", inputs: { image: a.refImageName ?? "" } };
     wf["12"] = { class_type: "LoadImageMask", inputs: { image: a.maskName ?? "", channel: "red" } };
     wf["10"] = { class_type: "VAEEncodeForInpaint", inputs: { pixels: ["11", 0], vae: vaeRef, mask: ["12", 0], grow_mask_by: 6 } };
@@ -663,7 +711,8 @@ export function buildImageWorkflow(a: BuildImageWorkflowArgs): Record<string, { 
   wf["3"] = {
     class_type: "KSampler",
     inputs: {
-      seed: a.seed, steps: a.steps, cfg: a.cfg,
+      // Flux is guidance-distilled: CFG must be 1 (real guidance comes from FluxGuidance).
+      seed: a.seed, steps: a.steps, cfg: arch === "flux" ? 1 : a.cfg,
       sampler_name: a.sampler, scheduler: a.scheduler, denoise: a.denoise,
       model: modelRef, positive: positiveRef, negative: negativeRef, latent_image: latentRef,
     },
@@ -694,7 +743,12 @@ export interface GenerateComfyImageOptions {
   loras?: LoraSpec[];
   controlnet?: { model: string; imageUrl: string; strength?: number; startPercent?: number; endPercent?: number; preprocessor?: string };
   ipadapter?: { model: string; imageUrl: string; clipVision?: string; weight?: number };
-  clip?: { clipType: string; name1: string; name2?: string };
+  clip?: { clipType: string; name1: string; name2?: string; name3?: string };
+  arch?: "sd" | "flux" | "sd3" | "qwen";
+  modelSource?: "checkpoint" | "unet";
+  unetWeightDtype?: string;
+  guidance?: number;
+  shift?: number;
   upscaleModel?: string;
   steps?: number;
   cfg?: number;
@@ -766,6 +820,11 @@ export async function generateComfyImage(rawBaseUrl: string, options: GenerateCo
     ckpt: options.ckpt,
     loras: cleanLoras,
     clip: options.clip,
+    arch: options.arch,
+    modelSource: options.modelSource,
+    unetWeightDtype: options.unetWeightDtype,
+    guidance: options.guidance,
+    shift: options.shift,
     vae: options.vae,
     controlnet,
     ipadapter,
