@@ -119,6 +119,20 @@ export function LLMModelPicker({ value, onChange, disabled }: Props) {
                   <span style={{ fontSize: 11, color: selected ? "var(--c-t1)" : "var(--c-t3)", flex: 1, fontWeight: selected ? 600 : 400 }}>
                     {m.label}
                   </span>
+                  {/* Upstream provider (Forge / Poyo) */}
+                  <span
+                    style={{
+                      fontSize: 8,
+                      fontWeight: 700,
+                      padding: "1px 5px",
+                      borderRadius: 4,
+                      background: m.provider === "Poyo" ? "oklch(0.62 0.16 240 / 0.18)" : "oklch(0.68 0.16 160 / 0.18)",
+                      color: m.provider === "Poyo" ? "oklch(0.70 0.15 240)" : "oklch(0.70 0.15 160)",
+                      letterSpacing: "0.04em",
+                    }}
+                  >
+                    {m.provider}
+                  </span>
                   <span
                     style={{
                       fontSize: 8,
