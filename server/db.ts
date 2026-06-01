@@ -788,7 +788,14 @@ export async function setStorageSettings(patch: { persistAudio?: boolean; persis
   if (patch.poyoUploadFallback !== undefined) set.poyoUploadFallback = patch.poyoUploadFallback;
   if (patch.minioOnly !== undefined) set.minioOnly = patch.minioOnly;
   if (Object.keys(set).length === 0) return;
-  await db.update(storageSettings).set(set).where(eq(storageSettings.id, 1));
+  // Upsert, not a bare UPDATE: the singleton settings row (id=1) is never
+  // seeded by any migration on the journal's path (0013 creates the table
+  // empty; 0015_consolidate_baseline only adds columns — the seed INSERT lives
+  // in the orphan 0015_storage_settings.sql that never runs). A plain
+  // `UPDATE ... WHERE id=1` therefore matches 0 rows and silently no-ops, so
+  // every toggle / TTL change appears to do nothing. INSERT ... ON DUPLICATE
+  // KEY UPDATE creates the row on first write and updates it thereafter.
+  await db.insert(storageSettings).values({ id: 1, ...set }).onDuplicateKeyUpdate({ set });
 }
 
 export async function addWhitelistEntry(
