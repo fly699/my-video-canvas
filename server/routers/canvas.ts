@@ -76,6 +76,33 @@ function guardUrl(url: string): void {
 
 // ── Projects ──────────────────────────────────────────────────────────────────
 
+// Recursively collect image URLs from a project's node data so a card cover can
+// be auto-filled from any picture in the project. Prefers stable /manus-storage
+// paths (they don't expire) over upstream temp URLs.
+const COVER_IMG_EXT = /\.(png|jpe?g|webp|gif|avif|bmp)(\?|#|$)/i;
+const COVER_IMG_KEY = /(image|img|thumb|cover|poster|frame|photo|avatar|picture)/i;
+function isCoverImageUrl(key: string, v: string): boolean {
+  if (v.startsWith("data:image/")) return v.length < 600_000; // skip huge base64 blobs
+  if (v.startsWith("/manus-storage/")) return COVER_IMG_EXT.test(v) || COVER_IMG_KEY.test(key);
+  if (/^https?:\/\//i.test(v)) return COVER_IMG_EXT.test(v) || COVER_IMG_KEY.test(key);
+  return false;
+}
+export function collectNodeImageUrls(nodes: Array<{ data?: unknown }>): string[] {
+  const out: string[] = [];
+  const seen = new Set<string>();
+  const walk = (obj: unknown, key: string) => {
+    if (typeof obj === "string") {
+      if (isCoverImageUrl(key, obj) && !seen.has(obj)) { seen.add(obj); out.push(obj); }
+    } else if (Array.isArray(obj)) {
+      for (const v of obj) walk(v, key);
+    } else if (obj && typeof obj === "object") {
+      for (const [k, v] of Object.entries(obj)) walk(v, k);
+    }
+  };
+  for (const n of nodes) walk(n.data, "");
+  return out;
+}
+
 export const projectsRouter = router({
   list: protectedProcedure.query(async ({ ctx }) => {
     const [owned, shared] = await Promise.all([
@@ -129,6 +156,27 @@ export const projectsRouter = router({
       await assertProjectOwner(input.id, ctx.user.id);
       await deleteProject(input.id, ctx.user.id);
       return { success: true };
+    }),
+
+  // Auto-fill / refresh a project card cover from any image in its nodes. Picks a
+  // random one (preferring stable /manus-storage paths), optionally excluding the
+  // current cover so the refresh button cycles. Persists it as the thumbnail for
+  // editors+; viewers still get a computed cover but it isn't saved.
+  pickCover: protectedProcedure
+    .input(z.object({ id: z.number(), exclude: z.string().optional() }))
+    .mutation(async ({ ctx, input }) => {
+      const access = await assertProjectAccess(input.id, ctx.user.id, "viewer");
+      const nodes = await getNodesByProject(input.id);
+      const urls = collectNodeImageUrls(nodes);
+      if (urls.length === 0) return { thumbnail: null };
+      const stable = urls.filter((u) => u.startsWith("/manus-storage/"));
+      const pool = stable.length > 0 ? stable : urls;
+      const candidates = pool.length > 1 && input.exclude ? pool.filter((u) => u !== input.exclude) : pool;
+      const chosen = candidates[Math.floor(Math.random() * candidates.length)] ?? pool[0];
+      if (access.role !== "viewer") {
+        await updateProject(input.id, access.project.userId, { thumbnail: chosen });
+      }
+      return { thumbnail: chosen };
     }),
 });
 
