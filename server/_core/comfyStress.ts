@@ -106,8 +106,8 @@ interface StressJob extends StressJobView {
   sampleTimer: ReturnType<typeof setInterval> | null;
   inFlightByServer: Record<string, number>;
   _lastSampleAt: number;
-  _lastCompleted: number;
-  _lastServerCompleted: Record<string, number>;
+  _lastSucceeded: number;
+  _lastServerSucceeded: Record<string, number>;
   // Hard-stop controller: aborting cancels all in-flight ComfyUI fetches immediately.
   abort: AbortController;
 }
@@ -160,18 +160,19 @@ function recompute(job: StressJob): void {
   });
 }
 
-const VIEW_OMIT = new Set([
-  "records", "cancelRequested", "workflowJson", "randomizeSeed", "cleanupTimer",
-  "sampleTimer", "inFlightByServer", "_lastSampleAt", "_lastCompleted",
-  "_lastServerCompleted", "abort",
-]);
-
 export function toView(job: StressJob): StressJobView {
-  const view = {} as Record<string, unknown>;
-  for (const [k, v] of Object.entries(job)) {
-    if (!VIEW_OMIT.has(k)) view[k] = v;
-  }
-  return view as unknown as StressJobView;
+  // Destructure out every internal-only field; the inferred `view` is exactly
+  // StressJobView. The compiler flags any internal field added to StressJob that
+  // isn't listed here, so it can never silently leak into the client payload.
+  const {
+    records, cancelRequested, workflowJson, randomizeSeed, cleanupTimer,
+    sampleTimer, inFlightByServer, _lastSampleAt, _lastSucceeded,
+    _lastServerSucceeded, abort, ...view
+  } = job;
+  void records; void cancelRequested; void workflowJson; void randomizeSeed;
+  void cleanupTimer; void sampleTimer; void inFlightByServer; void _lastSampleAt;
+  void _lastSucceeded; void _lastServerSucceeded; void abort;
+  return view;
 }
 
 function emit(job: StressJob): void {
@@ -179,19 +180,21 @@ function emit(job: StressJob): void {
 }
 
 // 采样一个时间点：计算整体瞬时吞吐与每服务器瞬时吞吐，追加到 timeSeries。
+// Throughput is succeeded-based to match the headline `throughputPerSec` stat
+// (a server that fails fast must not inflate the curve).
 function sample(job: StressJob): void {
-  recompute(job);
+  recompute(job); // refreshes job.servers (per-server succeeded/inFlight/avgMs)
   const now = Date.now();
   const dtSec = (now - job._lastSampleAt) / 1000;
-  const overallTp = dtSec > 0 ? +(((job.completed - job._lastCompleted) / dtSec)).toFixed(3) : 0;
+  const overallTp = dtSec > 0 ? +(((job.succeeded - job._lastSucceeded) / dtSec)).toFixed(3) : 0;
 
-  const perServer = job.baseUrls.map((url) => {
-    const c = job.records.reduce((n, r) => (r.baseUrl === url ? n + 1 : n), 0);
-    const prev = job._lastServerCompleted[url] ?? 0;
-    const tp = dtSec > 0 ? +(((c - prev) / dtSec)).toFixed(3) : 0;
-    job._lastServerCompleted[url] = c;
-    const srv = job.servers.find((s) => s.baseUrl === url);
-    return { baseUrl: url, throughputPerSec: tp, inFlight: srv?.inFlight ?? 0, avgMs: srv?.avgMs ?? null };
+  // Read per-server counts straight off the servers[] recompute just built —
+  // no second scan of job.records.
+  const perServer = job.servers.map((srv) => {
+    const prev = job._lastServerSucceeded[srv.baseUrl] ?? 0;
+    const tp = dtSec > 0 ? +(((srv.succeeded - prev) / dtSec)).toFixed(3) : 0;
+    job._lastServerSucceeded[srv.baseUrl] = srv.succeeded;
+    return { baseUrl: srv.baseUrl, throughputPerSec: tp, inFlight: srv.inFlight, avgMs: srv.avgMs };
   });
 
   job.timeSeries.push({
@@ -206,7 +209,7 @@ function sample(job: StressJob): void {
   });
   if (job.timeSeries.length > MAX_SAMPLES) job.timeSeries.shift();
   job._lastSampleAt = now;
-  job._lastCompleted = job.completed;
+  job._lastSucceeded = job.succeeded;
   emit(job);
 }
 
@@ -290,8 +293,8 @@ export function startStressTest(opts: StressStartOptions): StressJobView {
     sampleTimer: null,
     inFlightByServer: Object.fromEntries(baseUrls.map((u) => [u, 0])),
     _lastSampleAt: now,
-    _lastCompleted: 0,
-    _lastServerCompleted: Object.fromEntries(baseUrls.map((u) => [u, 0])),
+    _lastSucceeded: 0,
+    _lastServerSucceeded: Object.fromEntries(baseUrls.map((u) => [u, 0])),
     abort: new AbortController(),
   };
   jobs.set(id, job);
@@ -340,9 +343,11 @@ async function runPool(job: StressJob): Promise<void> {
         job.inFlightByServer[serverUrl] = Math.max(0, (job.inFlightByServer[serverUrl] ?? 1) - 1);
       }
       if (rec) {
+        // Keep the live counters fresh for polled reads; the 1s sampler owns the
+        // (heavier) emit + time-series so we don't serialize the whole growing
+        // job — including its time-series — on every single completed request.
         job.records.push(rec);
         recompute(job);
-        emit(job);
       }
     }
   };
@@ -356,9 +361,7 @@ async function runPool(job: StressJob): Promise<void> {
   if (job.sampleTimer) { clearInterval(job.sampleTimer); job.sampleTimer = null; }
   job.finishedAt = Date.now();
   job.status = (job.cancelRequested || job.abort.signal.aborted) ? "cancelled" : "completed";
-  recompute(job);
-  sample(job); // 收尾再打一个点，保证曲线到达终态
-  emit(job);
+  sample(job); // 收尾再打一个点（内部 recompute + emit），保证曲线到达终态
 
   // 完成后延迟清理，给前端留出读取窗口。
   job.cleanupTimer = setTimeout(() => { jobs.delete(job.id); }, JOB_RETENTION_MS);

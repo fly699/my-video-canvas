@@ -570,7 +570,7 @@ export const StoryboardNode = memo(function StoryboardNode({ id, selected, data 
               {(payload.imageHistory ?? []).map((url, i) => (
                 <button
                   key={i}
-                  onClick={() => { updateNodeData(id, { imageUrl: url }); setShowHistory(false); }}
+                  onClick={() => { updateNodeData(id, { imageUrl: url }); propagateRefImage(id, url); setShowHistory(false); }}
                   className="nodrag flex-shrink-0 rounded overflow-hidden"
                   style={{
                     width: 60, height: 45,

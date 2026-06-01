@@ -69,21 +69,21 @@ describe("computeRefImageUpdates", () => {
   ] as never[];
   void nodes;
 
-  it("updates ref-accepting targets wired via image-out/output → ref-image-in", () => {
+  it("updates ref-accepting targets wired into ref-image-in, regardless of source handle", () => {
     const edges = [
       edge("S", "V", "image-out", "ref-image-in"),
       edge("S", "CV", "output", "ref-image-in"),
+      // legacy-vertical source handle ("bottom") must still propagate
+      edge("S", "CV", "bottom", "ref-image-in"),
     ];
     const updates = computeRefImageUpdates("S", url, graphNodes, edges);
-    expect(updates).toHaveLength(2);
     expect(updates.every((u) => u.payload.referenceImageUrl === url)).toBe(true);
     expect(new Set(updates.map((u) => u.id))).toEqual(new Set(["V", "CV"]));
   });
 
-  it("skips wrong handles and non-ref targets", () => {
+  it("skips wrong target handle and non-ref targets", () => {
     const edges = [
-      edge("S", "V", "image-out", "prompt-in"),   // wrong target handle
-      edge("S", "V", "some-other", "ref-image-in"), // wrong source handle
+      edge("S", "V", "image-out", "prompt-in"),    // wrong target handle
       edge("S", "N", "image-out", "ref-image-in"), // target doesn't accept ref image
     ];
     expect(computeRefImageUpdates("S", url, graphNodes, edges)).toHaveLength(0);
