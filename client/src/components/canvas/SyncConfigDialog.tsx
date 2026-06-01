@@ -41,21 +41,32 @@ const VIDEO_CATEGORIES: FieldCategory[] = [
   { key: "sampling", label: "采样参数", fields: ["steps", "cfg", "frames", "fps", "width", "height", "sampler", "scheduler", "denoise", "batchSize"] },
 ];
 
+// Custom-workflow nodes have no fixed parameter schema — sync the whole workflow
+// definition (JSON + detected bindings + output config) and/or the filled-in
+// bound values. Per-node run state (status / progress / results) is excluded.
+const WORKFLOW_CATEGORIES: FieldCategory[] = [
+  { key: "server", label: "服务器地址", fields: ["serverUrls", "customBaseUrl"] },
+  { key: "workflow", label: "工作流定义（JSON + 绑定）", fields: ["workflowJson", "paramBindings", "outputNodeIds", "outputType"] },
+  { key: "values", label: "参数值", fields: ["paramValues"] },
+];
+
 export function SyncConfigDialog({
   open, onOpenChange, sourceId, nodeType, accent,
 }: {
   open: boolean;
   onOpenChange: (v: boolean) => void;
   sourceId: string;
-  nodeType: "comfyui_image" | "comfyui_video";
+  nodeType: "comfyui_image" | "comfyui_video" | "comfyui_workflow";
   accent: string;
 }) {
   const nodes = useCanvasStore((s) => s.nodes);
   const edges = useCanvasStore((s) => s.edges);
   const batchUpdateNodeData = useCanvasStore((s) => s.batchUpdateNodeData);
 
-  const categories = nodeType === "comfyui_image" ? IMAGE_CATEGORIES : VIDEO_CATEGORIES;
-  const label = nodeType === "comfyui_image" ? "图像" : "视频";
+  const categories = nodeType === "comfyui_image" ? IMAGE_CATEGORIES
+    : nodeType === "comfyui_video" ? VIDEO_CATEGORIES
+    : WORKFLOW_CATEGORIES;
+  const label = nodeType === "comfyui_image" ? "图像" : nodeType === "comfyui_video" ? "视频" : "自定义工作流";
 
   // Candidate target nodes: same type, excluding the source.
   const candidates = useMemo(
