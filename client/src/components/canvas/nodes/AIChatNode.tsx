@@ -691,8 +691,18 @@ export const AIChatNode = memo(function AIChatNode({ id, selected, data }: Props
                   <span style={{ fontSize: 11, color: model === m.id ? "oklch(0.72 0.20 330)" : "var(--c-t2)", fontWeight: model === m.id ? 500 : 400 }}>
                     {m.label}
                   </span>
-                  <span style={{ fontSize: 9, color: "var(--c-t4)", background: "var(--c-bd1)", borderRadius: 99, padding: "1px 6px", letterSpacing: "0.04em" }}>
-                    {m.tag}
+                  <span style={{ display: "flex", alignItems: "center", gap: 4 }}>
+                    {/* 上游平台（Forge / Poyo） */}
+                    <span style={{
+                      fontSize: 9, fontWeight: 700, borderRadius: 99, padding: "1px 6px", letterSpacing: "0.04em",
+                      background: m.provider === "Poyo" ? "oklch(0.62 0.16 240 / 0.18)" : "oklch(0.68 0.16 160 / 0.18)",
+                      color: m.provider === "Poyo" ? "oklch(0.70 0.15 240)" : "oklch(0.70 0.15 160)",
+                    }}>
+                      {m.provider}
+                    </span>
+                    <span style={{ fontSize: 9, color: "var(--c-t4)", background: "var(--c-bd1)", borderRadius: 99, padding: "1px 6px", letterSpacing: "0.04em" }}>
+                      {m.tag}
+                    </span>
                   </span>
                 </button>
               ))}
