@@ -1,14 +1,14 @@
 -- Poyo integration additions (non-breaking).
 -- 1) Admin-configurable "Poyo stream-upload fallback": when MinIO/S3 isn't
 --    publicly reachable, stage reference media on Poyo for a public URL.
---    Existing singleton row defaults to false → behavior identical to before.
+--    Existing singleton row defaults to false, behavior identical to before.
 -- 2) poyoBalanceSnapshots: periodic snapshots of the platform Poyo credit
 --    balance (the balance API has no history), used to chart consumption.
 --
 -- NOTE: written idempotently (column/table existence checks) because an earlier
--- release of this file shipped WITHOUT `--> statement-breakpoint` separators,
--- so MySQL rejected the whole batch (ER_PARSE_ERROR 1064) and some deployments
--- may have partially applied it. These guards make a re-run safe.
+-- release of this file shipped without the breakpoint separators, so MySQL
+-- rejected the whole batch (ER_PARSE_ERROR 1064) and some deployments may have
+-- partially applied it. These guards make a re-run safe.
 SET @col_exists := (SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'storageSettings' AND COLUMN_NAME = 'poyoUploadFallback');
 --> statement-breakpoint
 SET @sql := IF(@col_exists = 0, 'ALTER TABLE `storageSettings` ADD COLUMN `poyoUploadFallback` BOOLEAN NOT NULL DEFAULT false', 'DO 0');
