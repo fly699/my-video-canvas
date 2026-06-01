@@ -47,3 +47,19 @@ describe("extractExecError", () => {
     expect(extractExecError([["execution_start", {}], ["execution_cached", { nodes: [] }]])).toBeNull();
   });
 });
+
+import { sanitizeFilenamePrefix } from "./_core/comfyui";
+describe("sanitizeFilenamePrefix", () => {
+  it("strips path separators / illegal chars and drops extension", () => {
+    expect(sanitizeFilenamePrefix("ComfyUI 图像 #1_sd_xl.safetensors"))
+      .toBe("ComfyUI_图像_#1_sd_xl");
+  });
+  it("falls back to comfyui_output when empty or all-illegal", () => {
+    expect(sanitizeFilenamePrefix("")).toBe("comfyui_output");
+    expect(sanitizeFilenamePrefix(undefined)).toBe("comfyui_output");
+    expect(sanitizeFilenamePrefix("///")).toBe("comfyui_output");
+  });
+  it("caps length at 64", () => {
+    expect(sanitizeFilenamePrefix("a".repeat(200)).length).toBe(64);
+  });
+});

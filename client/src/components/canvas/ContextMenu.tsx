@@ -4,7 +4,9 @@ import { NODE_TYPE_LIST } from "../../lib/nodeConfig";
 import type { NodeType } from "../../../../shared/types";
 import {
   FileText, Copy, Trash2, Plus, Play, Pin, PinOff, ChevronUp, X, GripHorizontal,
+  BookmarkPlus, Bookmark,
 } from "lucide-react";
+import type { NodeTemplate } from "../../lib/nodeTemplates";
 import { NODE_ICONS } from "../../lib/nodeConfig";
 
 interface ContextMenuProps {
@@ -20,12 +22,19 @@ interface ContextMenuProps {
   onRunWorkflow?: () => void;
   onTogglePin?: () => void;
   onCollapse?: () => void;
+  // Per-node-type setting templates (localStorage). When provided, the node menu
+  // shows 存为模板 + a list of saved templates to apply to this node.
+  nodeTemplates?: NodeTemplate[];
+  onSaveTemplate?: () => void;
+  onApplyTemplate?: (id: string) => void;
+  onDeleteTemplate?: (id: string) => void;
 }
 
 export function ContextMenu({
   x, y, type, nodeId, nodePinned,
   onClose, onAddNode, onDeleteNode, onDuplicateNode, onRunWorkflow,
   onTogglePin, onCollapse,
+  nodeTemplates, onSaveTemplate, onApplyTemplate, onDeleteTemplate,
 }: ContextMenuProps) {
   const menuRef = useRef<HTMLDivElement>(null);
   const [pos, setPos] = useState<{ left: number; top: number; maxHeight: number } | null>(null);
@@ -472,6 +481,61 @@ export function ContextMenu({
                 <Copy className="w-3.5 h-3.5" style={{ color: "var(--c-t3)" }} />
                 复制节点
               </button>
+            )}
+            {onSaveTemplate && (
+              <>
+                <div style={{ height: 1, background: "var(--c-bd1)", margin: "3px 6px" }} />
+                <button
+                  onClick={() => { onSaveTemplate(); }}
+                  style={{
+                    display: "flex", alignItems: "center", gap: 10,
+                    width: "100%", padding: "7px 8px", fontSize: 12,
+                    cursor: "pointer", background: "transparent", border: "none",
+                    textAlign: "left", color: "var(--c-t2)", borderRadius: 8,
+                    transition: "all 120ms ease",
+                  }}
+                  onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.background = "var(--c-elevated)"; (e.currentTarget as HTMLElement).style.color = "var(--c-t1)"; }}
+                  onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.background = "transparent"; (e.currentTarget as HTMLElement).style.color = "var(--c-t2)"; }}
+                >
+                  <BookmarkPlus className="w-3.5 h-3.5" style={{ color: "var(--c-t3)" }} />
+                  存为模板
+                </button>
+                {nodeTemplates && nodeTemplates.length > 0 && (
+                  <div style={{ maxHeight: 168, overflowY: "auto" }}>
+                    {nodeTemplates.map((t) => (
+                      <div
+                        key={t.id}
+                        style={{ display: "flex", alignItems: "center", gap: 6, padding: "0 8px 0 8px", borderRadius: 8 }}
+                        onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.background = "var(--c-elevated)"; }}
+                        onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.background = "transparent"; }}
+                      >
+                        <button
+                          onClick={() => { onApplyTemplate?.(t.id); onClose(); }}
+                          title={`应用模板：${t.label}`}
+                          style={{
+                            flex: 1, minWidth: 0, display: "flex", alignItems: "center", gap: 10,
+                            padding: "7px 0", fontSize: 12, cursor: "pointer", background: "transparent",
+                            border: "none", textAlign: "left", color: "var(--c-t2)",
+                            whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis",
+                          }}
+                        >
+                          <Bookmark className="w-3.5 h-3.5" style={{ color: "var(--c-t3)", flexShrink: 0 }} />
+                          <span style={{ overflow: "hidden", textOverflow: "ellipsis" }}>{t.label}</span>
+                        </button>
+                        <button
+                          onClick={(e) => { e.stopPropagation(); onDeleteTemplate?.(t.id); }}
+                          title="删除模板"
+                          style={{ flexShrink: 0, padding: 4, cursor: "pointer", background: "transparent", border: "none", color: "var(--c-t4)", borderRadius: 6, lineHeight: 0 }}
+                          onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.color = "oklch(0.62 0.20 25)"; }}
+                          onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.color = "var(--c-t4)"; }}
+                        >
+                          <X className="w-3 h-3" />
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </>
             )}
             {onDuplicateNode && onDeleteNode && (
               <div style={{ height: 1, background: "var(--c-bd1)", margin: "3px 6px" }} />

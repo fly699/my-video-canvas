@@ -314,6 +314,23 @@ async function pollHistory(baseUrl: string, promptId: string, maxAttempts: numbe
 }
 
 /**
+ * Sanitize a user-supplied SaveImage filename prefix: strip filesystem-illegal
+ * characters and path separators, collapse whitespace, cap length. Falls back to
+ * "comfyui_output" when empty so the SaveImage node always has a valid prefix.
+ */
+export function sanitizeFilenamePrefix(prefix?: string): string {
+  if (!prefix) return "comfyui_output";
+  const cleaned = prefix
+    .replace(/\.[A-Za-z0-9]{1,12}$/, "")    // drop a trailing extension (.safetensors etc.)
+    .replace(/[\\/:*?"<>|\x00-\x1f]/g, "_") // filesystem-illegal + control chars
+    .replace(/\s+/g, "_")
+    .replace(/_+/g, "_")
+    .replace(/^[_.]+|[_.]+$/g, "")
+    .slice(0, 64);
+  return cleaned || "comfyui_output";
+}
+
+/**
  * Pull the `execution_error` tuple out of ComfyUI's status.messages array and
  * format the failing node + exception_message. Returns null when not present.
  * messages items look like ["execution_error", { node_type, node_id, exception_message, ... }].
@@ -580,6 +597,7 @@ interface BuildImageWorkflowArgs {
   prompt: string;
   negPrompt: string;
   ckpt: string;
+  filenamePrefix?: string; // SaveImage filename_prefix (default "comfyui_output")
   loras: LoraSpec[];
   // Diffusion architecture — selects the graph shape. Default "sd" = classic.
   arch?: "sd" | "flux" | "sd3" | "qwen";
@@ -796,7 +814,7 @@ export function buildImageWorkflow(a: BuildImageWorkflowArgs): Record<string, { 
     wf["51"] = { class_type: "ImageUpscaleWithModel", inputs: { upscale_model: ["50", 0], image: ["8", 0] } };
     imageRef = ["51", 0];
   }
-  wf["9"] = { class_type: "SaveImage", inputs: { filename_prefix: "comfyui_output", images: imageRef } };
+  wf["9"] = { class_type: "SaveImage", inputs: { filename_prefix: sanitizeFilenamePrefix(a.filenamePrefix), images: imageRef } };
 
   return wf;
 }
@@ -806,6 +824,7 @@ export interface GenerateComfyImageOptions {
   prompt: string;
   negPrompt?: string;
   ckpt: string;
+  filenamePrefix?: string; // SaveImage filename_prefix (default "comfyui_output")
   maskUrl?: string;
   // Single-LoRA fields kept for backward compatibility; `loras` takes precedence.
   lora?: string;
@@ -888,6 +907,7 @@ export async function generateComfyImage(rawBaseUrl: string, options: GenerateCo
     prompt: options.prompt ?? "",
     negPrompt: options.negPrompt ?? "",
     ckpt: options.ckpt,
+    filenamePrefix: options.filenamePrefix,
     loras: cleanLoras,
     clip: options.clip,
     arch: options.arch,

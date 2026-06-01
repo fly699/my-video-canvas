@@ -266,6 +266,9 @@ export const ComfyuiImageNode = memo(function ComfyuiImageNode({ id, selected, d
       prompt: payload.prompt,
       negPrompt: payload.negPrompt,
       ckpt: payload.ckpt,
+      // Auto-fill the SaveImage prefix from node title + model so ComfyUI outputs
+      // carry a readable name (server sanitizes; falls back to comfyui_output).
+      filenamePrefix: `${data.title}_${payload.ckpt}`.slice(0, 120),
       lora: payload.lora,
       loras: lorasValue.filter((l) => l.name.trim()).length > 0 ? lorasValue.filter((l) => l.name.trim()) : undefined,
       controlnet: cn?.model?.trim() && cn?.imageUrl
@@ -321,7 +324,10 @@ export const ComfyuiImageNode = memo(function ComfyuiImageNode({ id, selected, d
     const a = document.createElement("a");
     const isSameOrigin = (url.startsWith("/") && !url.startsWith("//")) || url.startsWith(window.location.origin);
     a.href = isSameOrigin ? url : `/api/image-proxy?url=${encodeURIComponent(url)}&download=1`;
-    a.download = `comfyui-${Date.now()}.png`;
+    // Auto-name the download from node title + model so saved files are identifiable.
+    const base = `${data.title}_${(payload.ckpt ?? "").replace(/\.[A-Za-z0-9]+$/, "")}`
+      .replace(/[\\/:*?"<>|\s]+/g, "_").replace(/_+/g, "_").replace(/^_+|_+$/g, "").slice(0, 80) || "comfyui";
+    a.download = `${base}_${Date.now()}.png`;
     document.body.appendChild(a);
     a.click();
     document.body.removeChild(a);

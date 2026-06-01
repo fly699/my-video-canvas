@@ -30,6 +30,7 @@ import { PresentationMode } from "../components/canvas/PresentationMode";
 import { FilmstripPanel } from "../components/canvas/FilmstripPanel";
 import { TimelinePanel } from "../components/canvas/TimelinePanel";
 import { isConnectionValid } from "../lib/connectionRules";
+import { listNodeTemplates, saveNodeTemplate, deleteNodeTemplate } from "../lib/nodeTemplates";
 import { BeginnerGuide, ConnectionHintsPanel } from "../components/canvas/BeginnerGuide";
 import { HelpPanel } from "../components/canvas/HelpPanel";
 import { CollaborationPanel } from "../components/canvas/CollaborationPanel";
@@ -43,7 +44,7 @@ import { trpc } from "@/lib/trpc";
 import { useAuth } from "@/_core/hooks/useAuth";
 import { useIsMobile } from "@/hooks/useMobile";
 import { toast } from "sonner";
-import type { NodeType, CollaboratorCursor } from "../../../shared/types";
+import type { NodeType, CollaboratorCursor, NodeData } from "../../../shared/types";
 import { getNodeConfig, NODE_TYPE_LIST, NODE_ICONS, COLLABORATOR_COLORS } from "../lib/nodeConfig";
 import { io, type Socket } from "socket.io-client";
 import {
@@ -343,6 +344,8 @@ function CanvasInner({ projectId }: { projectId: number }) {
   const [contextMenu, setContextMenu] = useState<{
     x: number; y: number; type: "canvas" | "node"; nodeId?: string; canvasPos?: { x: number; y: number };
   } | null>(null);
+  // Bumped on save/delete so the context menu re-reads node templates from localStorage.
+  const [tplBump, setTplBump] = useState(0);
 
   const [showAssets, setShowAssets] = useState(false);
   const [showTemplates, setShowTemplates] = useState(false);
@@ -2228,6 +2231,10 @@ function CanvasInner({ projectId }: { projectId: number }) {
       {contextMenu && (() => {
         const ctxNode = contextMenu.nodeId ? nodes.find((n) => n.id === contextMenu.nodeId) : undefined;
         const ctxPinned = Boolean((ctxNode?.data.payload as { pinned?: boolean } | undefined)?.pinned);
+        const ctxNodeType = ctxNode?.data.nodeType;
+        // tplBump is read so this list refreshes after a save/delete.
+        void tplBump;
+        const ctxTemplates = ctxNodeType ? listNodeTemplates(ctxNodeType) : [];
         return (
           <ContextMenu
             x={contextMenu.x} y={contextMenu.y}
@@ -2235,6 +2242,24 @@ function CanvasInner({ projectId }: { projectId: number }) {
             nodePinned={ctxPinned}
             onClose={() => setContextMenu(null)}
             onAddNode={handleAddNode}
+            nodeTemplates={ctxTemplates}
+            onSaveTemplate={ctxNode ? () => {
+              const label = window.prompt("模板名称", ctxNode.data.title)?.trim();
+              if (!label) return;
+              const saved = saveNodeTemplate(ctxNodeType!, label, ctxNode.data.payload as Record<string, unknown>);
+              setTplBump((v) => v + 1);
+              toast[saved ? "success" : "error"](saved ? `已存为模板「${saved.label}」` : "保存失败（数量已达上限或内容过大）");
+            } : undefined}
+            onApplyTemplate={ctxNode ? (id) => {
+              const tpl = listNodeTemplates(ctxNodeType!).find((t) => t.id === id);
+              if (!tpl) return;
+              updateNodeData(ctxNode.id, tpl.payload as Partial<NodeData>);
+              toast.success(`已应用模板「${tpl.label}」`);
+            } : undefined}
+            onDeleteTemplate={ctxNodeType ? (id) => {
+              deleteNodeTemplate(ctxNodeType, id);
+              setTplBump((v) => v + 1);
+            } : undefined}
             onDeleteNode={contextMenu.nodeId ? () => {
               const nid = contextMenu.nodeId!;
               deleteNode(nid);

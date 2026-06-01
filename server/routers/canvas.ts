@@ -1829,6 +1829,7 @@ export const comfyuiRouter = router({
         prompt: z.string().min(1).max(2000),
         negPrompt: z.string().max(2000).optional(),
         ckpt: z.string().min(1).max(255),
+        filenamePrefix: z.string().max(128).optional(),
         lora: z.string().max(255).optional(),
         // Multi-LoRA stack (takes precedence over the single `lora`/`loraStrength`).
         loras: z.array(z.object({
@@ -1900,6 +1901,7 @@ export const comfyuiRouter = router({
             prompt: input.prompt,
             negPrompt: input.negPrompt,
             ckpt: input.ckpt,
+            filenamePrefix: input.filenamePrefix,
             lora: input.lora,
             loras: input.loras,
             controlnet: input.controlnet,
