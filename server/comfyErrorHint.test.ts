@@ -30,3 +30,20 @@ describe("comfyErrorHint value_not_in_list", () => {
     expect(h).toContain("完整 Checkpoint");
   });
 });
+
+import { extractExecError } from "./_core/comfyui";
+describe("extractExecError", () => {
+  it("surfaces the exception_message past execution_start/cached", () => {
+    const messages = [
+      ["execution_start", { prompt_id: "x" }],
+      ["execution_cached", { nodes: ["4", "5"] }],
+      ["execution_error", { node_id: "3", node_type: "KSampler", exception_message: "mat1 and mat2 shapes cannot be multiplied" }],
+    ];
+    const s = extractExecError(messages);
+    expect(s).toContain("KSampler");
+    expect(s).toContain("mat1 and mat2");
+  });
+  it("returns null when no execution_error present", () => {
+    expect(extractExecError([["execution_start", {}], ["execution_cached", { nodes: [] }]])).toBeNull();
+  });
+});
