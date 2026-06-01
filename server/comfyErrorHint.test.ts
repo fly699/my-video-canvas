@@ -88,3 +88,18 @@ describe("comfyErrorHint ckpt_name cross-hint", () => {
     expect(h).toContain("单独 UNet");
   });
 });
+
+describe("comfyErrorHint missing_node_type", () => {
+  it("names the VideoHelperSuite plugin for VHS_VideoCombine", () => {
+    const raw = '{"error":{"type":"missing_node_type","message":"Node \'VHS_VideoCombine\' not found. The custom node may not be installed.","details":"Node ID \'#13\'","extra_info":{"node_id":"13","class_type":"VHS_VideoCombine"}}}';
+    const h = comfyErrorHint(raw);
+    expect(h).toContain("未安装节点");
+    expect(h).toContain("VHS_VideoCombine");
+    expect(h).toContain("ComfyUI-VideoHelperSuite");
+  });
+  it("gives a generic plugin hint for an unknown custom node", () => {
+    const h = comfyErrorHint('{"type":"missing_node_type","class_type":"SomeRandomNode"}');
+    expect(h).toContain("SomeRandomNode");
+    expect(h).toContain("ComfyUI-Manager");
+  });
+});

@@ -395,6 +395,29 @@ function formatNodeErrors(nodeErrors: Record<string, unknown>): string | null {
  * hint appended to the raw message. Empty string when nothing matches.
  */
 export function comfyErrorHint(raw: string): string {
+  // Missing custom node, e.g.
+  //   {"type":"missing_node_type", "message":"Node 'VHS_VideoCombine' not found.
+  //    The custom node may not be installed.", "class_type":"VHS_VideoCombine"}
+  if (/missing_node_type|custom node may not be installed/i.test(raw)) {
+    const m = raw.match(/Node '([^']+)' not found|"class_type":\s*"([^"]+)"/);
+    const node = m?.[1] || m?.[2] || "";
+    // Map well-known class_type prefixes to the plugin that provides them.
+    const PLUGIN: Array<[RegExp, string]> = [
+      [/^VHS_/, "ComfyUI-VideoHelperSuite"],
+      [/^(UNETLoaderGGUF|CLIPLoaderGGUF|DualCLIPLoaderGGUF|.*GGUF)$/, "ComfyUI-GGUF"],
+      [/^(WanModelLoader|Wan)/, "ComfyUI-WanVideoWrapper"],
+      [/^(LTXV|LTX)/, "ComfyUI-LTXVideo"],
+      [/^(IPAdapter)/, "ComfyUI_IPAdapter_plus"],
+      [/^(ControlNet|ACN_|Adv)/, "ComfyUI-Advanced-ControlNet"],
+      [/^(Reactor|ReActor)/, "comfyui-reactor-node"],
+      [/^(Impact|UltralyticsDetectorProvider)/, "ComfyUI-Impact-Pack"],
+    ];
+    const plugin = PLUGIN.find(([re]) => re.test(node))?.[1];
+    return `\n\n⚠️ 该 ComfyUI 服务器未安装节点「${node || "未知"}」。` +
+      (plugin
+        ? `它来自插件 ${plugin}，请用 ComfyUI-Manager 安装该插件并重启 ComfyUI（多地址时每台都要装）。`
+        : `它来自某个第三方自定义节点插件，请用 ComfyUI-Manager 搜索该节点名安装对应插件并重启（多地址时每台都要装）。`);
+  }
   // Text-encoder ↔ model dimension mismatch, e.g.
   //   "Given normalized_shape=[3584], expected input with shape [*, 3584], but got input of size[1, 71, 2560]"
   const shape = raw.match(/normalized_shape=\[(\d+)\][^]*?got input of size\s*\[[^\]]*?(\d+)\]/);
