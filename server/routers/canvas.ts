@@ -33,6 +33,7 @@ import {
   clearChatMessages,
 } from "../db";
 import { storagePut, resolveToAbsoluteUrl, canBrowserReachStorageDirectly, storageBackend, assertObjectStorageWritable } from "../storage";
+import { getCachedStorageSettings } from "../_core/storageConfig";
 import { invokeLLM, extractTextContent } from "../_core/llm";
 import { generateImage } from "../_core/imageGeneration";
 import { generateComfyImage, generateComfyVideo, fetchComfyModels, analyzeWorkflow, executeCustomWorkflow, uploadImageForWorkflow, interruptComfy, emptyModelList } from "../_core/comfyui";
@@ -2187,8 +2188,11 @@ export const configRouter = router({
   // public internet" — true for Forge backend or when S3_PUBLIC_ENDPOINT is
   // configured. When false, a fully-private deployment can't pass reference
   // images to URL-only providers, so the frontend warns before spending credits.
-  mediaReachability: protectedProcedure.query(() => ({
+  mediaReachability: protectedProcedure.query(async () => ({
     upstreamCanFetchMedia: canBrowserReachStorageDirectly(),
     backend: storageBackend(),
+    // Admin toggle (readable by all users): auto-prefer the upstream AI temporary
+    // public URL as the reference source when it probes alive. Off by default.
+    preferUpstreamRefSource: (await getCachedStorageSettings()).preferUpstreamRefSource,
   })),
 });

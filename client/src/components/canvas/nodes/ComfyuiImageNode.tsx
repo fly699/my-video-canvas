@@ -3,6 +3,7 @@ import { Handle, Position } from "@xyflow/react";
 import { BaseNode } from "../BaseNode";
 import { useCanvasStore } from "../../../hooks/useCanvasStore";
 import { propagateRefImage } from "../../../lib/refImagePropagation";
+import { usePreferUpstreamRefSource, useAutoPreferUpstreamRefSource } from "../mediaReachability";
 import type { ComfyuiImageNodeData, ComfyuiLoraEntry } from "../../../../../shared/types";
 import { trpc } from "@/lib/trpc";
 import { toast } from "sonner";
@@ -65,6 +66,10 @@ const labelStyle: React.CSSProperties = {
 export const ComfyuiImageNode = memo(function ComfyuiImageNode({ id, selected, data }: Props) {
   const updateNodeData = useCanvasStore((s) => s.updateNodeData);
   const payload = data.payload;
+  // Auto-prefer the upstream AI temporary public URL as the reference source when
+  // the admin toggle is on and that URL probes alive (no-op when off / default).
+  const preferUpstreamRef = usePreferUpstreamRefSource();
+  useAutoPreferUpstreamRefSource({ nodeId: id, refImageUrl: payload.referenceImageUrl, enabled: preferUpstreamRef, onSwitch: (u) => updateNodeData(id, { referenceImageUrl: u }, true) });
   const [uploading, setUploading] = useState(false);
   // Controlled lightbox index (null = closed). Mirrors ImageGenNode so multi-image
   // navigation + selection inside the lightbox actually work.

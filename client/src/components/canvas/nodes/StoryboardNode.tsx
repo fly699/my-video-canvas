@@ -14,7 +14,7 @@ import { cacheMedia } from "@/lib/mediaCache";
 import { mergeCharactersIntoPrompt } from "../../../lib/characterPrompt";
 import { IMAGE_MODELS } from "@/lib/models";
 import { makeImageProxyFallback } from "@/lib/utils";
-import { RefImageReachabilityBadge, RefImageSwitchButton, useRefImageGuard } from "../mediaReachability";
+import { RefImageReachabilityBadge, RefImageSwitchButton, useRefImageGuard, usePreferUpstreamRefSource, useAutoPreferUpstreamRefSource } from "../mediaReachability";
 import { LLMModelPicker, type LLMModelId } from "../LLMModelPicker";
 import { ModelPicker, IMAGE_MODEL_PICKER_OPTIONS } from "../ModelPicker";
 import { ParamControls } from "../ParamControls";
@@ -95,6 +95,10 @@ export const StoryboardNode = memo(function StoryboardNode({ id, selected, data 
   const { mode: canvasMode } = useCanvasMode();
   const isCreative = canvasMode === "creative";
   const payload = data.payload;
+  // Auto-prefer the upstream AI temporary public URL as the reference source when
+  // the admin toggle is on and that URL probes alive (no-op when off / default).
+  const preferUpstreamRef = usePreferUpstreamRefSource();
+  useAutoPreferUpstreamRefSource({ nodeId: id, refImageUrl: payload.referenceImageUrl, enabled: preferUpstreamRef, onSwitch: (u) => updateNodeData(id, { referenceImageUrl: u }, true) });
   // Effective reference the next generation will use (local overrides character)
   const effectiveRefUrl = payload.referenceImageUrl?.trim() || connectedCharRefUrl;
   const [generating, setGenerating] = useState(false);

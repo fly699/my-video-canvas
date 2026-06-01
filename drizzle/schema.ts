@@ -474,6 +474,11 @@ export const storageSettings = mysqlTable("storageSettings", {
   // 0025); deployments without MinIO/S3 can turn it off in the admin panel.
   // Does NOT affect Forge non-storage features (LLM, etc.).
   minioOnly: boolean("minioOnly").notNull().default(true),
+  // When true, after a downstream node's referenceImageUrl is auto-filled, prefer
+  // the upstream AI-platform temporary public URL (imageUrlSource) when it probes
+  // alive — so providers can fetch it directly even if self-hosted MinIO isn't
+  // public. Off by default; off changes nothing.
+  preferUpstreamRefSource: boolean("preferUpstreamRefSource").notNull().default(false),
   updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
 });
 

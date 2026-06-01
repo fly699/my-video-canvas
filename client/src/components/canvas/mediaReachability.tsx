@@ -260,6 +260,50 @@ export function useImageUrlLiveness(url: string | undefined | null): Liveness {
 }
 
 /**
+ * 管理员开关「参考源优先用 AI 平台临时链接」是否打开（所有登录用户都能读到，
+ * 经 config.mediaReachability 暴露）。默认关闭。
+ */
+export function usePreferUpstreamRefSource(): boolean {
+  const q = trpc.config.mediaReachability.useQuery(undefined, {
+    staleTime: 5 * 60_000,
+    refetchOnWindowFocus: false,
+    retry: 1,
+  });
+  return q.data?.preferUpstreamRefSource ?? false;
+}
+
+/**
+ * 自动版的 RefImageSwitchButton：当管理员开关打开、且当前 referenceImageUrl 是从上游
+ * AI 平台出图节点自动填入的（useRefImageSource 能定位到其 imageUrlSource）、且该上游公网
+ * URL 主动探测仍可用时，自动把 referenceImageUrl 切换为该公网链接。
+ *
+ * - 关闭时（enabled=false）：不探测、不切换，全链路零行为变化。
+ * - 无自循环：切换后 referenceImageUrl 不再等于上游节点的持久化 imageUrl，useRefImageSource
+ *   返回空，effect 不再触发。
+ * - 用户手填/上传的参考图不受影响（useRefImageSource 只匹配自动填入的持久化 imageUrl）。
+ * - 用 silent 更新，不污染撤销历史。
+ */
+export function useAutoPreferUpstreamRefSource(args: {
+  nodeId: string;
+  refImageUrl: string | undefined | null;
+  enabled: boolean;
+  onSwitch: (sourceUrl: string) => void;
+}): void {
+  const { nodeId, refImageUrl, enabled, onSwitch } = args;
+  const { sourceUrl } = useRefImageSource(nodeId, refImageUrl);
+  const liveness = useImageUrlLiveness(enabled ? sourceUrl : undefined);
+  // Keep onSwitch out of the effect deps so a fresh closure each render doesn't
+  // re-fire the switch; the effect is driven purely by sourceUrl/liveness.
+  const onSwitchRef = useRef(onSwitch);
+  onSwitchRef.current = onSwitch;
+  useEffect(() => {
+    if (enabled && sourceUrl && liveness === "alive") {
+      onSwitchRef.current(sourceUrl);
+    }
+  }, [enabled, sourceUrl, liveness]);
+}
+
+/**
  * "切换为 AI 平台临时链接"按钮。仅当：该次生成会触发警告 + 找到了原始 AI 平台公网 URL +
  * 主动探测确认它当前仍可用 时，才显示可点击按钮。探测中显示「检测链接…」，探测失败则不显示。
  * 点击后把 referenceImageUrl 改为该公网链接，A 的逻辑随即熄灯。

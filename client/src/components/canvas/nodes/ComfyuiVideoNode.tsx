@@ -5,6 +5,7 @@ import { ComfyServerUrlField } from "./ComfyServerUrlField";
 import { SyncConfigDialog } from "../SyncConfigDialog";
 import { NodeConfigTabs } from "../NodeConfigTabs";
 import { useCanvasStore } from "../../../hooks/useCanvasStore";
+import { usePreferUpstreamRefSource, useAutoPreferUpstreamRefSource } from "../mediaReachability";
 import type { ComfyuiVideoNodeData } from "../../../../../shared/types";
 import { trpc } from "@/lib/trpc";
 import { toast } from "sonner";
@@ -66,6 +67,10 @@ const labelStyle: React.CSSProperties = {
 export const ComfyuiVideoNode = memo(function ComfyuiVideoNode({ id, selected, data }: Props) {
   const updateNodeData = useCanvasStore((s) => s.updateNodeData);
   const payload = data.payload;
+  // Auto-prefer the upstream AI temporary public URL as the reference source when
+  // the admin toggle is on and that URL probes alive (no-op when off / default).
+  const preferUpstreamRef = usePreferUpstreamRefSource();
+  useAutoPreferUpstreamRefSource({ nodeId: id, refImageUrl: payload.referenceImageUrl, enabled: preferUpstreamRef, onSwitch: (u) => updateNodeData(id, { referenceImageUrl: u }, true) });
   const [uploading, setUploading] = useState(false);
   const [translating, setTranslating] = useState(false);
   const [llmModel, setLlmModel] = useState<LLMModelId>("claude-haiku-4-5-20251001");

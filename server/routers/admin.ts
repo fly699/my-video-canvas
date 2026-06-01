@@ -115,14 +115,17 @@ export const adminRouter = router({
         poyoUploadFallback: z.boolean().optional(),
         // Restrict object storage to MinIO/S3 only (disable Forge fallback).
         minioOnly: z.boolean().optional(),
+        // Prefer the upstream AI temporary public URL as the reference source when alive.
+        preferUpstreamRefSource: z.boolean().optional(),
       }))
       .mutation(async ({ input }) => {
         if (
           input.persistAudio === undefined && input.persistVideo === undefined &&
           input.persistImage === undefined && input.presignTtlSec === undefined &&
-          input.poyoUploadFallback === undefined && input.minioOnly === undefined
+          input.poyoUploadFallback === undefined && input.minioOnly === undefined &&
+          input.preferUpstreamRefSource === undefined
         ) {
-          throw new TRPCError({ code: "BAD_REQUEST", message: "至少需要指定 persistAudio / persistVideo / persistImage / presignTtlSec / poyoUploadFallback / minioOnly 其中一项" });
+          throw new TRPCError({ code: "BAD_REQUEST", message: "至少需要指定 persistAudio / persistVideo / persistImage / presignTtlSec / poyoUploadFallback / minioOnly / preferUpstreamRefSource 其中一项" });
         }
         await db.setStorageSettings(input);
         invalidateStorageSettingsCache();

@@ -12,7 +12,7 @@ import { cacheMedia, getCachedMedia } from "@/lib/mediaCache";
 import { listCustomPresets, saveCustomPreset, deleteCustomPreset, type CustomVideoPreset } from "@/lib/customPresets";
 import { ensureNotificationPermission, showCompletionNotification } from "@/lib/notify";
 import { CinematographyPicker } from "../CinematographyPicker";
-import { RefImageReachabilityBadge, RefImageSwitchButton, useRefImageGuard, providerNeedsPublicMedia } from "../mediaReachability";
+import { RefImageReachabilityBadge, RefImageSwitchButton, useRefImageGuard, providerNeedsPublicMedia, usePreferUpstreamRefSource, useAutoPreferUpstreamRefSource } from "../mediaReachability";
 import { ModelPicker } from "../ModelPicker";
 import {
   applyCinematographyToPrompt,
@@ -602,6 +602,10 @@ export const VideoTaskNode = memo(function VideoTaskNode({ id, selected, data }:
   // Use selector to avoid re-rendering on every store change (other nodes' updates)
   const updateNodeData = useCanvasStore((s) => s.updateNodeData);
   const payload = data.payload;
+  // Auto-prefer the upstream AI temporary public URL as the reference source when
+  // the admin toggle is on and that URL probes alive (no-op when off / default).
+  const preferUpstreamRef = usePreferUpstreamRefSource();
+  useAutoPreferUpstreamRefSource({ nodeId: id, refImageUrl: payload.referenceImageUrl, enabled: preferUpstreamRef, onSwitch: (u) => updateNodeData(id, { referenceImageUrl: u }, true) });
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
   // Count of parallel-mode createTaskMutation calls currently in flight.
   // When > 0, the shared mutation's global onSuccess/onError must NOT write to payload —

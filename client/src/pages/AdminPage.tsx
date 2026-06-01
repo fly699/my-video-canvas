@@ -349,6 +349,19 @@ function StoragePanel() {
             statusOn="已开启（仅 MinIO/S3，绝不落 Forge 存储）"
             statusOff="已关闭（未配 MinIO 时回退 Forge 存储）"
           />
+          <ToggleRow
+            label="参考源优先用 AI 平台临时链接（公网有效时）"
+            description={
+              "开启后：当下游节点（视频/图像/ComfyUI 等）的参考图是从上游 AI 出图节点（Poyo / Higgsfield）自动填入时，若该上游临时公网链接经主动探测仍然有效，自动把参考源改用此公网链接。\n" +
+              "用途：上游模型本就能直接读取该公网链接，可规避「自建 MinIO 未对公网开放、上游拉不到参考图」的问题。\n" +
+              "不影响：用户手动填写/上传的参考图；ComfyUI 本地出图（无上游临时链接）；以及所有其他传递/获取逻辑。默认关闭，关闭后与原有行为完全一致。"
+            }
+            enabled={settings.preferUpstreamRefSource}
+            disabled={setMut.isPending}
+            onClick={() => setMut.mutate({ preferUpstreamRefSource: !settings.preferUpstreamRefSource })}
+            statusOn="已开启（参考源在有效时优先用 AI 平台临时链接）"
+            statusOff="已关闭（沿用持久化链接，行为不变）"
+          />
         </>
       )}
     </div>

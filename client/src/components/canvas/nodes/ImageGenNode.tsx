@@ -11,7 +11,7 @@ import { useLocalMedia } from "@/lib/useLocalMedia";
 import { cacheMedia } from "@/lib/mediaCache";
 import { ImageLightbox } from "../ImageLightbox";
 import { makeImageProxyFallback } from "@/lib/utils";
-import { RefImageReachabilityBadge, RefImageSwitchButton, useRefImageGuard } from "../mediaReachability";
+import { RefImageReachabilityBadge, RefImageSwitchButton, useRefImageGuard, usePreferUpstreamRefSource, useAutoPreferUpstreamRefSource } from "../mediaReachability";
 import { ModelPicker, IMAGE_MODEL_PICKER_OPTIONS } from "../ModelPicker";
 import { ParamControls } from "../ParamControls";
 import { IMAGE_MODEL_PARAMS, resolveImageParam } from "@/lib/paramDefs";
@@ -93,6 +93,10 @@ export const ImageGenNode = memo(function ImageGenNode({ id, selected, data }: P
   const { guard, reachable, dialog: reachabilityDialog } = useRefImageGuard();
   const expanded = Boolean(selected) || Boolean((data.payload as { pinned?: boolean }).pinned);
   const payload = data.payload;
+  // Auto-prefer the upstream AI temporary public URL as the reference source when
+  // the admin toggle is on and that URL probes alive (no-op when off / default).
+  const preferUpstreamRef = usePreferUpstreamRefSource();
+  useAutoPreferUpstreamRefSource({ nodeId: id, refImageUrl: payload.referenceImageUrl, enabled: preferUpstreamRef, onSwitch: (u) => updateNodeData(id, { referenceImageUrl: u }, true) });
   const [uploading, setUploading] = useState(false);
   const [lightboxIndex, setLightboxIndex] = useState<number | null>(null);
   const [paramsExpanded, setParamsExpanded] = useState(false);
