@@ -255,7 +255,7 @@ async function submitWorkflow(baseUrl: string, workflow: unknown, signal?: Abort
   });
   if (!res.ok) {
     const text = await res.text().catch(() => "");
-    throw new Error(`ComfyUI 提交工作流失败 (${res.status}): ${text.slice(0, 500)}`);
+    throw new Error(`ComfyUI 提交工作流失败 (${res.status}): ${text.slice(0, 500)}${comfyErrorHint(text)}`);
   }
   const data = (await res.json()) as PromptSubmitResponse;
   if (!data.prompt_id) throw new Error("ComfyUI 未返回 prompt_id");
@@ -326,6 +326,27 @@ export function comfyErrorHint(raw: string): string {
     };
     return `\n\n⚠️ 文本编码器与模型不匹配：模型期望条件维度 ${expected}，实际编码器输出 ${got}。` +
       `说明所选 CLIP / 文本编码器与该模型架构不符。${dimHint[expected] ?? "请核对「架构」与「CLIP 来源」是否与该模型一致（含 type 与 CLIP 文件）。"}`;
+  }
+  // Submitted a model/file name the server doesn't have, e.g.
+  //   {"type":"value_not_in_list", ... "details":"unet_name: 'x.safetensors' not in [...]"}
+  if (/value_not_in_list/.test(raw)) {
+    const m = raw.match(/(\w+):\s*'([^']*)'\s*not in/);
+    const field = m?.[1];
+    const dir: Record<string, string> = {
+      unet_name: "models/diffusion_models（或 models/unet）",
+      ckpt_name: "models/checkpoints",
+      vae_name: "models/vae",
+      clip_name: "models/text_encoders（或 models/clip）",
+      clip_name1: "models/text_encoders（或 models/clip）",
+      clip_name2: "models/text_encoders（或 models/clip）",
+      clip_name3: "models/text_encoders（或 models/clip）",
+      lora_name: "models/loras",
+      control_net_name: "models/controlnet",
+    };
+    const where = field && dir[field] ? `（应放入 ComfyUI 的 ${dir[field]} 目录）` : "";
+    return `\n\n⚠️ 该文件不在这台 ComfyUI 服务器上${m ? `：${m[2]}` : ""}${where}。` +
+      `请把文件放入对应模型目录、点「刷新模型」后从下拉里选择；多地址压测时该文件需在每台服务器都存在。` +
+      (field === "unet_name" ? "若它其实是完整 checkpoint（含 CLIP/VAE），请把「模型加载方式」改为 完整 Checkpoint。" : "");
   }
   // Null CLIP from a checkpoint that doesn't embed one.
   if (/clip input is invalid:\s*None/i.test(raw)) {
