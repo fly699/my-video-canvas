@@ -19,3 +19,14 @@ describe("comfyErrorHint", () => {
     expect(comfyErrorHint("CUDA out of memory")).toBe("");
   });
 });
+
+describe("comfyErrorHint value_not_in_list", () => {
+  it("explains a missing UNet file and points to the right folder", () => {
+    const raw = '{"node_errors":{"4":{"errors":[{"type":"value_not_in_list","message":"Value not in list","details":"unet_name: \'intorealismQwen_v10.safetensors\' not in [\'z_image_turbo_bf16.safetensors\']"}]}}}';
+    const h = comfyErrorHint(raw);
+    expect(h).toContain("不在这台 ComfyUI 服务器上");
+    expect(h).toContain("intorealismQwen_v10.safetensors");
+    expect(h).toContain("diffusion_models");
+    expect(h).toContain("完整 Checkpoint");
+  });
+});
