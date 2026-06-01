@@ -535,12 +535,21 @@ export async function deleteEdge(id: string, projectId: number) {
 
 // ── Assets ────────────────────────────────────────────────────────────────────
 
-export async function getAssetsByUser(userId: number, projectId?: number) {
+export interface AssetFilter {
+  projectId?: number;
+  type?: "image" | "video" | "audio" | "other";
+  source?: "upload" | "generated" | "external";
+  model?: string;
+}
+export async function getAssetsByUser(userId: number, filter: AssetFilter = {}) {
   const db = await getDb();
-  if (!db) return DEV_MODE ? dev.devGetAssetsByUser(userId, projectId) : [];
+  if (!db) return DEV_MODE ? dev.devGetAssetsByUser(userId, filter) : [];
   // Always exclude soft-deleted rows.
   const conds = [eq(assets.userId, userId), isNull(assets.deletedAt)];
-  if (projectId !== undefined) conds.push(eq(assets.projectId, projectId));
+  if (filter.projectId !== undefined) conds.push(eq(assets.projectId, filter.projectId));
+  if (filter.type) conds.push(eq(assets.type, filter.type));
+  if (filter.source) conds.push(eq(assets.source, filter.source));
+  if (filter.model) conds.push(eq(assets.model, filter.model));
   return db.select().from(assets).where(and(...conds)).orderBy(desc(assets.createdAt));
 }
 

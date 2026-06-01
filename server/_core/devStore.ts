@@ -153,9 +153,16 @@ export function devDeleteEdge(id: string, projectId: number) {
 }
 
 // ── Assets ────────────────────────────────────────────────────────────────────
-export function devGetAssetsByUser(userId: number, projectId?: number): Asset[] {
+export function devGetAssetsByUser(
+  userId: number,
+  filter: { projectId?: number; type?: string; source?: string; model?: string } = {},
+): Asset[] {
   return Array.from(assetsMap.values())
-    .filter((a) => a.userId === userId && a.deletedAt == null && (projectId === undefined || a.projectId === projectId))
+    .filter((a) => a.userId === userId && a.deletedAt == null
+      && (filter.projectId === undefined || a.projectId === filter.projectId)
+      && (!filter.type || a.type === filter.type)
+      && (!filter.source || a.source === filter.source)
+      && (!filter.model || a.model === filter.model))
     .sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime());
 }
 

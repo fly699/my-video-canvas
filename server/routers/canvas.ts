@@ -304,8 +304,19 @@ export const edgesRouter = router({
 
 export const assetsRouter = router({
   list: protectedProcedure
-    .input(z.object({ projectId: z.number().optional() }))
-    .query(({ ctx, input }) => getAssetsByUser(ctx.user.id, input.projectId)),
+    .input(z.object({
+      projectId: z.number().optional(),
+      allProjects: z.boolean().optional(),
+      type: z.enum(["image", "video", "audio", "other"]).optional(),
+      source: z.enum(["upload", "generated", "external"]).optional(),
+      model: z.string().max(128).optional(),
+    }).optional())
+    .query(({ ctx, input }) => getAssetsByUser(ctx.user.id, {
+      projectId: input?.allProjects ? undefined : input?.projectId,
+      type: input?.type,
+      source: input?.source,
+      model: input?.model,
+    })),
 
   upload: protectedProcedure
     .input(
