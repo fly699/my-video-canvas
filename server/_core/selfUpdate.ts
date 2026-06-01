@@ -117,22 +117,65 @@ export function getVersionInfo(): Promise<VersionInfo> {
   });
 }
 
-// 检查远程是否有更新（fetch 后比较落后提交数）
-export async function checkRemote(): Promise<{ behind: number; latest: string }> {
-  await runStepQuiet("git fetch --prune");
-  const behind = await new Promise<number>((resolve) => {
-    const child = spawn('git rev-list --count HEAD..@{upstream}', { cwd: repoRoot, shell: true, windowsHide: true });
-    let out = ""; child.stdout?.on("data", (b: Buffer) => { out += b.toString("utf8"); });
-    child.on("error", () => resolve(0));
-    child.on("close", () => resolve(parseInt(out.trim(), 10) || 0));
+// 检查远程是否有更新（fetch 后比较落后提交数）。
+//
+// 健壮性：旧实现把「fetch 失败 / 无上游跟踪 / 真已最新」三种情况全部静默
+// 归并为 behind=0 → UI 一律显示「已是最新」，导致检测出问题时用户无从察觉。
+// 现在：① fetch 成败显式上报；② 当前分支无 @{upstream} 时回退比较 origin/main；
+// ③ 返回 fetchOk / upstreamRef / error 供前端区分「真最新」与「检查失败」。
+export async function checkRemote(): Promise<RemoteState> {
+  const fetchCode = await runStepQuiet("git fetch --prune");
+  const fetchOk = fetchCode === 0;
+
+  // 解析用于比较的上游 ref：优先当前分支跟踪的 @{upstream}，否则回退 origin/main。
+  let upstreamRef = await resolveUpstreamRef();
+
+  const countBehind = (ref: string) => new Promise<number>((resolve) => {
+    const child = spawn(`git rev-list --count HEAD..${ref}`, { cwd: repoRoot, shell: true, windowsHide: true });
+    let out = "";
+    child.stdout?.on("data", (b: Buffer) => { out += b.toString("utf8"); });
+    child.on("error", () => resolve(-1));
+    // rev-list 对未知 ref 会非零退出；用 -1 表示「比较失败」以区别于真正的 0。
+    child.on("close", (code) => resolve(code === 0 ? (parseInt(out.trim(), 10) || 0) : -1));
   });
-  const latest = await new Promise<string>((resolve) => {
-    const child = spawn('git log -1 --format=%s @{upstream}', { cwd: repoRoot, shell: true, windowsHide: true });
-    let out = ""; child.stdout?.on("data", (b: Buffer) => { out += b.toString("utf8"); });
-    child.on("error", () => resolve(""));
-    child.on("close", () => resolve(out.trim()));
+
+  let behind = await countBehind(upstreamRef);
+  // 当前上游比较失败（如 @{upstream} 不存在），回退到 origin/main 再试一次。
+  if (behind < 0 && upstreamRef !== "origin/main") {
+    upstreamRef = "origin/main";
+    behind = await countBehind(upstreamRef);
+  }
+
+  const error = !fetchOk
+    ? "git fetch 失败：无法连接远程仓库（请检查服务器网络 / GitHub 可达性）"
+    : behind < 0
+      ? `无法比较版本：未找到上游分支 ${upstreamRef}（请确认部署分支已设置 git 上游跟踪）`
+      : null;
+
+  const latest = behind > 0
+    ? await new Promise<string>((resolve) => {
+        const child = spawn(`git log -1 --format=%s ${upstreamRef}`, { cwd: repoRoot, shell: true, windowsHide: true });
+        let out = ""; child.stdout?.on("data", (b: Buffer) => { out += b.toString("utf8"); });
+        child.on("error", () => resolve(""));
+        child.on("close", () => resolve(out.trim()));
+      })
+    : "";
+
+  return { behind: Math.max(behind, 0), latest, fetchOk, upstreamRef, error, checkedAt: Date.now() };
+}
+
+// 解析当前分支的上游 ref；无跟踪时回退 origin/main。
+function resolveUpstreamRef(): Promise<string> {
+  return new Promise((resolve) => {
+    const child = spawn('git rev-parse --abbrev-ref --symbolic-full-name "@{upstream}"', { cwd: repoRoot, shell: true, windowsHide: true });
+    let out = "";
+    child.stdout?.on("data", (b: Buffer) => { out += b.toString("utf8"); });
+    child.on("error", () => resolve("origin/main"));
+    child.on("close", (code) => {
+      const ref = out.trim();
+      resolve(code === 0 && ref ? ref : "origin/main");
+    });
   });
-  return { behind, latest };
 }
 
 function runStepQuiet(cmd: string): Promise<number> {
@@ -144,7 +187,17 @@ function runStepQuiet(cmd: string): Promise<number> {
 }
 
 // ── 远程是否有新版本：带 TTL 缓存，供「红点提醒」频繁查询而不频繁 git fetch ──
-interface RemoteState { behind: number; latest: string; checkedAt: number }
+export interface RemoteState {
+  behind: number;
+  latest: string;
+  checkedAt: number;
+  /** git fetch 是否成功（false = 网络/远程不可达） */
+  fetchOk: boolean;
+  /** 实际用于比较的上游 ref（@{upstream} 或回退的 origin/main） */
+  upstreamRef: string;
+  /** 检查失败原因；null = 检查成功（behind 可信） */
+  error: string | null;
+}
 let remoteCache: RemoteState | null = null;
 const REMOTE_TTL = 15 * 60 * 1000; // 15 分钟
 
@@ -152,17 +205,18 @@ export async function getUpdateAvailable(force = false): Promise<RemoteState> {
   const now = Date.now();
   if (!force && remoteCache && now - remoteCache.checkedAt < REMOTE_TTL) return remoteCache;
   try {
-    const { behind, latest } = await checkRemote();
-    remoteCache = { behind, latest, checkedAt: now };
-  } catch {
-    if (!remoteCache) remoteCache = { behind: 0, latest: "", checkedAt: now };
+    remoteCache = await checkRemote();
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : String(e);
+    // 检查本身抛错也要如实上报，而非伪装成「已是最新」。
+    remoteCache = { behind: 0, latest: "", checkedAt: now, fetchOk: false, upstreamRef: "", error: `检查异常：${msg}` };
   }
   return remoteCache;
 }
 
 // 更新成功/已最新后清零红点（避免重启前残留提醒）
 function clearRemoteCache() {
-  remoteCache = { behind: 0, latest: "", checkedAt: Date.now() };
+  remoteCache = { behind: 0, latest: "", checkedAt: Date.now(), fetchOk: true, upstreamRef: "", error: null };
 }
 
 // 启动更新（幂等：运行中重复调用直接返回当前状态）
