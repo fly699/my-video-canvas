@@ -63,3 +63,13 @@ describe("sanitizeFilenamePrefix", () => {
     expect(sanitizeFilenamePrefix("a".repeat(200)).length).toBe(64);
   });
 });
+
+describe("comfyErrorHint ckpt_name cross-hint", () => {
+  it("suggests switching to 单独 UNet when a checkpoint name is actually a UNet file", () => {
+    const raw = '{"node_errors":{"4":{"errors":[{"type":"value_not_in_list","details":"ckpt_name: \'z_image_turbo_bf16.safetensors\' not in [\'a.safetensors\']"}]}}}';
+    const h = comfyErrorHint(raw);
+    expect(h).toContain("不在这台 ComfyUI 服务器上");
+    expect(h).toContain("models/checkpoints");
+    expect(h).toContain("单独 UNet");
+  });
+});

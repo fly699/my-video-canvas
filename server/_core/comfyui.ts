@@ -383,9 +383,14 @@ export function comfyErrorHint(raw: string): string {
       control_net_name: "models/controlnet",
     };
     const where = field && dir[field] ? `（应放入 ComfyUI 的 ${dir[field]} 目录）` : "";
+    // 加载方式选混的常见情形：checkpoint 模式填了 UNet 文件，或反之。给出对调建议。
+    const crossHint =
+      field === "unet_name" ? "若它其实是完整 checkpoint（含 CLIP/VAE），请把「模型加载方式」改为 完整 Checkpoint。"
+      : field === "ckpt_name" ? "若它其实是单独的 UNet/扩散模型（diffusion_models 目录），请把「模型加载方式」改为 单独 UNet。"
+      : "";
     return `\n\n⚠️ 该文件不在这台 ComfyUI 服务器上${m ? `：${m[2]}` : ""}${where}。` +
       `请把文件放入对应模型目录、点「刷新模型」后从下拉里选择；多地址压测时该文件需在每台服务器都存在。` +
-      (field === "unet_name" ? "若它其实是完整 checkpoint（含 CLIP/VAE），请把「模型加载方式」改为 完整 Checkpoint。" : "");
+      crossHint;
   }
   // Null CLIP from a checkpoint that doesn't embed one.
   if (/clip input is invalid:\s*None/i.test(raw)) {
