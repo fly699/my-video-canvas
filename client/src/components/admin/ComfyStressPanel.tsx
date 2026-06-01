@@ -8,6 +8,7 @@
 // 结果按服务器分桶展示，并用 recharts 画出吞吐/延迟的实时曲线。
 
 import { useState } from "react";
+import { usePersistentState } from "@/hooks/usePersistentState";
 import type { inferRouterOutputs } from "@trpc/server";
 import { trpc } from "@/lib/trpc";
 import type { AppRouter } from "../../../../server/routers";
@@ -47,12 +48,16 @@ const PLACEHOLDER_HINT = `粘贴 ComfyUI 导出的「API 格式」工作流 JSON
 
 export function ComfyStressPanel() {
   // 多地址：以列表维护，至少保留一行（空行表示回退到 COMFYUI_BASE_URL）。
-  const [baseUrls, setBaseUrls] = useState<string[]>([""]);
+  // 配置表单整体持久化到 localStorage，刷新/重启后自动回填（不含拉取到的模型列表）。
+  const [baseUrls, setBaseUrls] = usePersistentState<string[]>("comfyStress:baseUrls:v1", [""],
+    { validate: (v) => (Array.isArray(v) && v.every((x) => typeof x === "string") ? v : null) });
   // 压测来源：粘贴工作流 JSON，或选服务器上的一个模型自动构造 txt2img。
-  const [source, setSource] = useState<"json" | "model">("json");
-  const [workflowJson, setWorkflowJson] = useState("");
+  const [source, setSource] = usePersistentState<"json" | "model">("comfyStress:source:v1", "json",
+    { validate: (v) => (v === "json" || v === "model" ? v : null) });
+  const [workflowJson, setWorkflowJson] = usePersistentState<string>("comfyStress:workflowJson:v1", "",
+    { validate: (v) => (typeof v === "string" ? v : null) });
   // 「服务器模型」模式参数。
-  const [model, setModel] = useState<{
+  const [model, setModel] = usePersistentState<{
     ckpt: string; prompt: string; negPrompt: string;
     steps: number; cfg: number; sampler: string; scheduler: string;
     width: number; height: number; batchSize: number;
@@ -63,17 +68,21 @@ export function ComfyStressPanel() {
     unetWeightDtype?: string;
     guidance?: number;
     shift?: number;
-  }>({
+  }>("comfyStress:model:v1", {
     ckpt: "", prompt: "", negPrompt: "",
     steps: 20, cfg: 7, sampler: "euler", scheduler: "normal",
     width: 512, height: 512, batchSize: 1, denoise: 1,
-  });
+  }, { validate: (v) => (v && typeof v === "object" && typeof (v as { ckpt?: unknown }).ckpt === "string" ? v as never : null) });
   const [models, setModels] = useState<{ ckpts: string[]; samplers: string[]; schedulers: string[]; clips: string[]; unets: string[]; vaes: string[]; upscaleModels: string[] } | null>(null);
   const [loadingModels, setLoadingModels] = useState(false);
-  const [mode, setMode] = useState<"lean" | "full">("lean");
-  const [concurrency, setConcurrency] = useState(1);
-  const [total, setTotal] = useState(10);
-  const [randomizeSeed, setRandomizeSeed] = useState(true);
+  const [mode, setMode] = usePersistentState<"lean" | "full">("comfyStress:mode:v1", "lean",
+    { validate: (v) => (v === "lean" || v === "full" ? v : null) });
+  const [concurrency, setConcurrency] = usePersistentState<number>("comfyStress:concurrency:v1", 1,
+    { validate: (v) => (typeof v === "number" && v > 0 ? v : null) });
+  const [total, setTotal] = usePersistentState<number>("comfyStress:total:v1", 10,
+    { validate: (v) => (typeof v === "number" && v > 0 ? v : null) });
+  const [randomizeSeed, setRandomizeSeed] = usePersistentState<boolean>("comfyStress:randomizeSeed:v1", true,
+    { validate: (v) => (typeof v === "boolean" ? v : null) });
 
   const utils = trpc.useUtils();
   const listQuery = trpc.comfyStress.list.useQuery(undefined, {

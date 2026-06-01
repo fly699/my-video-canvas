@@ -74,6 +74,7 @@ export const comfyStressRouter = router({
           prompt: m.prompt,
           negPrompt: m.negPrompt,
           ckpt: m.ckpt,
+          filenamePrefix: m.ckpt,
           loras: [],
           clip: m.clip,
           arch: m.arch,
