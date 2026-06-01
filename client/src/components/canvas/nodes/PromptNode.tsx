@@ -8,7 +8,7 @@ import { toast } from "sonner";
 import { Sparkles, Loader2, RefreshCw, ChevronDown, Upload, X, Grid2X2, Check, Languages, Wand2 } from "lucide-react";
 import { makeImageProxyFallback } from "@/lib/utils";
 import { LLMModelPicker, type LLMModelId } from "../LLMModelPicker";
-import { RefImageReachabilityBadge, RefImageSwitchButton, useRefImageGuard } from "../mediaReachability";
+import { RefImageReachabilityBadge, RefImageSwitchButton, useRefImageGuard, usePreferUpstreamRefSource, useAutoPreferUpstreamRefSource } from "../mediaReachability";
 
 interface Props {
   id: string;
@@ -52,6 +52,10 @@ const monoStyle: React.CSSProperties = {
 export const PromptNode = memo(function PromptNode({ id, selected, data }: Props) {
   const { updateNodeData } = useCanvasStore();
   const payload = data.payload;
+  // Auto-prefer the upstream AI temporary public URL as the reference source when
+  // the admin toggle is on and that URL probes alive (no-op when off / default).
+  const preferUpstreamRef = usePreferUpstreamRefSource();
+  useAutoPreferUpstreamRefSource({ nodeId: id, refImageUrl: payload.referenceImageUrl, enabled: preferUpstreamRef, onSwitch: (u) => updateNodeData(id, { referenceImageUrl: u }, true) });
   // Pinned via right-click menu — keeps input panel expanded across selection changes.
   const expanded = Boolean(selected) || Boolean((payload as { pinned?: boolean }).pinned);
   const [showModelPicker, setShowModelPicker] = useState(false);
