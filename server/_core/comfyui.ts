@@ -289,8 +289,13 @@ async function pollHistory(baseUrl: string, promptId: string, maxAttempts: numbe
       const entry = data[promptId];
       if (entry && entry.status?.completed) return entry;
       if (entry?.status?.status_str === "error") {
-        const raw = JSON.stringify(entry.status.messages ?? []);
-        throw new Error(`ComfyUI 执行失败: ${raw.slice(0, 500)}${comfyErrorHint(raw)}`);
+        const messages = entry.status.messages ?? [];
+        const raw = JSON.stringify(messages);
+        // The real reason lives in the `execution_error` tuple, which often sits
+        // past a naive 500-char slice (after execution_start/execution_cached) —
+        // surface its exception_message + failing node directly so it isn't lost.
+        const detail = extractExecError(messages) ?? raw.slice(0, 500);
+        throw new Error(`ComfyUI 执行失败: ${detail.slice(0, 800)}${comfyErrorHint(raw)}`);
       }
     } catch (err) {
       // External abort (立即停止) — propagate immediately, don't treat as a retryable net error.
@@ -306,6 +311,23 @@ async function pollHistory(baseUrl: string, promptId: string, maxAttempts: numbe
     }
   }
   throw new Error("ComfyUI 任务超时");
+}
+
+/**
+ * Pull the `execution_error` tuple out of ComfyUI's status.messages array and
+ * format the failing node + exception_message. Returns null when not present.
+ * messages items look like ["execution_error", { node_type, node_id, exception_message, ... }].
+ */
+export function extractExecError(messages: unknown[]): string | null {
+  for (const m of messages) {
+    if (Array.isArray(m) && m[0] === "execution_error" && m[1] && typeof m[1] === "object") {
+      const d = m[1] as Record<string, unknown>;
+      const node = [d.node_type, d.node_id != null ? `#${d.node_id}` : ""].filter(Boolean).join(" ");
+      const exc = typeof d.exception_message === "string" ? d.exception_message : JSON.stringify(d);
+      return node ? `节点 ${node}: ${exc}` : exc;
+    }
+  }
+  return null;
 }
 
 /**
