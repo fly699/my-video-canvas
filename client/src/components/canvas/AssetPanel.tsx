@@ -2,20 +2,31 @@ import { useState, useRef, useCallback } from "react";
 import { trpc } from "@/lib/trpc";
 import { toast } from "sonner";
 import { useCanvasStore } from "../../hooks/useCanvasStore";
-import { Upload, X, FileImage, FileVideo, FileAudio, File, Trash2, Plus, Loader2 } from "lucide-react";
+import { Upload, X, FileImage, FileVideo, FileAudio, File, Trash2, Plus, Loader2, Download } from "lucide-react";
 
 interface Props {
   projectId: number;
   onClose: () => void;
 }
 
+type TypeFilter = "" | "image" | "video" | "audio" | "other";
+type SourceFilter = "" | "upload" | "generated" | "external";
+
 export function AssetPanel({ projectId, onClose }: Props) {
   const { addNode } = useCanvasStore();
   const [uploading, setUploading] = useState(false);
   const [dragOver, setDragOver] = useState(false);
+  const [scope, setScope] = useState<"project" | "all">("project");
+  const [typeFilter, setTypeFilter] = useState<TypeFilter>("");
+  const [sourceFilter, setSourceFilter] = useState<SourceFilter>("");
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  const { data: assets, refetch } = trpc.assets.list.useQuery({ projectId });
+  const { data: assets, refetch } = trpc.assets.list.useQuery({
+    projectId: scope === "all" ? undefined : projectId,
+    allProjects: scope === "all",
+    type: typeFilter || undefined,
+    source: sourceFilter || undefined,
+  });
 
   const uploadMutation = trpc.assets.upload.useMutation({
     onSuccess: () => { toast.success("素材上传成功"); refetch(); setUploading(false); },
@@ -25,6 +36,15 @@ export function AssetPanel({ projectId, onClose }: Props) {
   const deleteMutation = trpc.assets.delete.useMutation({
     onSuccess: () => { toast.success("素材已删除"); refetch(); },
   });
+
+  const importMutation = trpc.assets.importFromUrl.useMutation({
+    onSuccess: () => { toast.success("已从链接导入"); refetch(); },
+    onError: (err) => toast.error("导入失败：" + err.message),
+  });
+  const handleImportUrl = () => {
+    const url = window.prompt("粘贴文件链接（http/https）导入到素材库")?.trim();
+    if (url) importMutation.mutate({ url, projectId });
+  };
 
   const processFile = useCallback(
     (file: File) => {
@@ -132,6 +152,44 @@ export function AssetPanel({ projectId, onClose }: Props) {
             </p>
           </div>
         </div>
+        <button
+          onClick={handleImportUrl}
+          disabled={importMutation.isPending}
+          className="mt-2 w-full text-[11px] py-1.5 rounded-lg transition-all"
+          style={{ border: "1px dashed var(--c-bd2)", background: "transparent", color: "var(--c-t3)", cursor: "pointer" }}
+        >
+          {importMutation.isPending ? "导入中…" : "＋ 从链接导入"}
+        </button>
+      </div>
+
+      {/* ── Filters ── */}
+      <div className="px-3 py-2 flex flex-col gap-1.5 flex-shrink-0" style={{ borderBottom: "1px solid var(--c-elevated)" }}>
+        {(() => {
+          const chip = (active: boolean): React.CSSProperties => ({
+            fontSize: 10, padding: "2px 8px", borderRadius: 999, cursor: "pointer",
+            border: `1px solid ${active ? "var(--c-accent, oklch(0.65 0.18 285))" : "var(--c-bd2)"}`,
+            background: active ? "oklch(0.65 0.18 285 / 0.12)" : "transparent",
+            color: active ? "oklch(0.72 0.16 285)" : "var(--c-t3)",
+          });
+          return (
+            <>
+              <div className="flex items-center gap-1">
+                <button style={chip(scope === "project")} onClick={() => setScope("project")}>本项目</button>
+                <button style={chip(scope === "all")} onClick={() => setScope("all")}>全部项目</button>
+              </div>
+              <div className="flex items-center gap-1 flex-wrap">
+                {([["", "全部"], ["image", "图片"], ["video", "视频"], ["audio", "音频"], ["other", "其他"]] as [TypeFilter, string][]).map(([v, l]) => (
+                  <button key={v} style={chip(typeFilter === v)} onClick={() => setTypeFilter(v)}>{l}</button>
+                ))}
+              </div>
+              <div className="flex items-center gap-1 flex-wrap">
+                {([["", "全来源"], ["upload", "上传"], ["generated", "生成"], ["external", "外部"]] as [SourceFilter, string][]).map(([v, l]) => (
+                  <button key={v} style={chip(sourceFilter === v)} onClick={() => setSourceFilter(v)}>{l}</button>
+                ))}
+              </div>
+            </>
+          );
+        })()}
       </div>
 
       {/* ── Asset list ── */}
@@ -179,13 +237,29 @@ export function AssetPanel({ projectId, onClose }: Props) {
                     <p className="text-xs font-medium truncate" style={{ color: "var(--c-t2)" }}>
                       {asset.name}
                     </p>
-                    <p className="text-[10px] mt-0.5" style={{ color: "var(--c-t4)" }}>
-                      {asset.type} · {asset.size ? `${(asset.size / 1024).toFixed(0)} KB` : "—"}
+                    <p className="text-[10px] mt-0.5 truncate" style={{ color: "var(--c-t4)" }}>
+                      {asset.source === "generated" ? `生成${asset.provider ? "·" + asset.provider : ""}` : asset.source === "external" ? "外部" : "上传"}
+                      {asset.model ? ` · ${asset.model}` : ""}
+                      {" · "}{asset.size ? `${(asset.size / 1024).toFixed(0)} KB` : "—"}
                     </p>
                   </div>
 
                   {/* Actions */}
                   <div className="flex items-center gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity">
+                    <a
+                      href={asset.url}
+                      download={asset.name}
+                      target="_blank"
+                      rel="noreferrer"
+                      title="下载"
+                      className="w-6 h-6 rounded-md flex items-center justify-center transition-all"
+                      style={{ color: "var(--c-t3)" }}
+                      onClick={(e) => e.stopPropagation()}
+                      onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.background = "oklch(0.68 0.18 240 / 0.15)"; (e.currentTarget as HTMLElement).style.color = "oklch(0.70 0.16 240)"; }}
+                      onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.background = "transparent"; (e.currentTarget as HTMLElement).style.color = "var(--c-t3)"; }}
+                    >
+                      <Download className="w-3.5 h-3.5" />
+                    </a>
                     <button
                       onClick={() => handleAddToCanvas(asset)}
                       title="添加到画布"

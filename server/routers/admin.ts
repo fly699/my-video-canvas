@@ -18,6 +18,22 @@ const AUDIT_ACTIONS = [
 ] as const;
 
 export const adminRouter = router({
+  // Cross-user media library retrieval (admin browses every user's 专有仓库).
+  assets: router({
+    list: adminProcedure
+      .input(z.object({
+        userId: z.number().optional(),
+        type: z.enum(["image", "video", "audio", "other"]).optional(),
+        source: z.enum(["upload", "generated", "external"]).optional(),
+        model: z.string().max(128).optional(),
+        projectId: z.number().optional(),
+        q: z.string().max(128).optional(),
+        includeDeleted: z.boolean().optional(),
+        limit: z.number().int().min(1).max(500).optional(),
+        offset: z.number().int().min(0).optional(),
+      }).optional())
+      .query(({ input }) => db.getAllAssets(input ?? {})),
+  }),
   logs: router({
     list: adminProcedure
       .input(z.object({

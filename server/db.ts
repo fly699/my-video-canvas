@@ -1,4 +1,4 @@
-import { eq, and, desc, sql, inArray, isNull } from "drizzle-orm";
+import { eq, and, desc, sql, inArray, isNull, like } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/mysql2";
 import {
   InsertUser,
@@ -535,17 +535,126 @@ export async function deleteEdge(id: string, projectId: number) {
 
 // ── Assets ────────────────────────────────────────────────────────────────────
 
-export async function getAssetsByUser(userId: number, projectId?: number) {
+export interface AssetFilter {
+  projectId?: number;
+  type?: "image" | "video" | "audio" | "other";
+  source?: "upload" | "generated" | "external";
+  model?: string;
+}
+export async function getAssetsByUser(userId: number, filter: AssetFilter = {}) {
   const db = await getDb();
-  if (!db) return DEV_MODE ? dev.devGetAssetsByUser(userId, projectId) : [];
-  if (projectId !== undefined) {
-    return db
-      .select()
-      .from(assets)
-      .where(and(eq(assets.userId, userId), eq(assets.projectId, projectId)))
-      .orderBy(desc(assets.createdAt));
+  if (!db) return DEV_MODE ? dev.devGetAssetsByUser(userId, filter) : [];
+  // Always exclude soft-deleted rows.
+  const conds = [eq(assets.userId, userId), isNull(assets.deletedAt)];
+  if (filter.projectId !== undefined) conds.push(eq(assets.projectId, filter.projectId));
+  if (filter.type) conds.push(eq(assets.type, filter.type));
+  if (filter.source) conds.push(eq(assets.source, filter.source));
+  if (filter.model) conds.push(eq(assets.model, filter.model));
+  return db.select().from(assets).where(and(...conds)).orderBy(desc(assets.createdAt));
+}
+
+/** Sanitize a fragment for use in a filename/label tag (项目名 / 模型名). */
+function tagify(s?: string | null): string {
+  if (!s) return "";
+  return s.replace(/\.[A-Za-z0-9]{1,12}$/, "")        // drop extension (.safetensors…)
+    .replace(/[\\/:*?"<>|\x00-\x1f]/g, "_").replace(/\s+/g, "_")
+    .replace(/_+/g, "_").replace(/^[_.]+|[_.]+$/g, "").slice(0, 48);
+}
+
+/**
+ * Index a produced media item into the unified library. Best-effort: any failure
+ * is logged and swallowed so recording never breaks a (paid) generation. Dedupes
+ * by (userId, storageKey) so the video poll + background poller don't double-write.
+ */
+export async function recordGeneratedAsset(a: {
+  userId: number;
+  projectId?: number | null;
+  nodeId?: string | null;
+  type: "image" | "video" | "audio" | "other";
+  source?: "upload" | "generated" | "external";
+  provider?: string | null;
+  model?: string | null;
+  url: string;
+  storageKey?: string | null;
+  name: string;
+  mimeType?: string | null;
+  size?: number | null;
+}): Promise<void> {
+  try {
+    if (!a.url) return;
+    const storageKey = a.storageKey
+      ?? (a.url.startsWith("/manus-storage/") ? a.url.slice("/manus-storage/".length) : a.url);
+    // Tag the display/download name with 项目名_模型 (sanitized) so files are identifiable.
+    let displayName = a.name;
+    try {
+      const proj = a.projectId != null ? await getProjectByIdRaw(a.projectId) : undefined;
+      const parts = [proj?.name, a.model].map(tagify).filter(Boolean);
+      if (parts.length > 0) displayName = parts.join("_");
+    } catch { /* keep a.name */ }
+    const db = await getDb();
+    if (db) {
+      const existing = await db.select({ id: assets.id }).from(assets)
+        .where(and(eq(assets.userId, a.userId), eq(assets.storageKey, storageKey), isNull(assets.deletedAt)))
+        .limit(1);
+      if (existing.length > 0) return;
+    } else if (DEV_MODE) {
+      const ex = dev.devGetAssetsByUser(a.userId).find((x) => x.storageKey === storageKey);
+      if (ex) return;
+    }
+    await createAsset({
+      userId: a.userId,
+      projectId: a.projectId ?? null,
+      name: displayName,
+      type: a.type,
+      mimeType: a.mimeType ?? null,
+      size: a.size ?? null,
+      storageKey,
+      url: a.url,
+      source: a.source ?? "generated",
+      provider: a.provider ?? null,
+      model: a.model ?? null,
+      nodeId: a.nodeId ?? null,
+    } as InsertAsset);
+  } catch (err) {
+    console.error("[recordGeneratedAsset] non-fatal:", err);
   }
-  return db.select().from(assets).where(eq(assets.userId, userId)).orderBy(desc(assets.createdAt));
+}
+
+/** All canvas nodes (raw) — used by the one-off asset backfill script. */
+export async function getAllCanvasNodesRaw(): Promise<Array<{ id: string; projectId: number; data: unknown }>> {
+  const db = await getDb();
+  if (!db) return [];
+  return db.select({ id: canvasNodes.id, projectId: canvasNodes.projectId, data: canvasNodes.data }).from(canvasNodes);
+}
+
+export interface AdminAssetFilter {
+  userId?: number;
+  type?: "image" | "video" | "audio" | "other";
+  source?: "upload" | "generated" | "external";
+  model?: string;
+  projectId?: number;
+  q?: string;            // name contains
+  includeDeleted?: boolean;
+  limit?: number;
+  offset?: number;
+}
+/** Admin cross-user retrieval: every user's library, with filters + pagination. */
+export async function getAllAssets(filter: AdminAssetFilter = {}) {
+  const db = await getDb();
+  if (!db) return DEV_MODE ? dev.devGetAllAssets(filter) : [];
+  const conds = [];
+  if (!filter.includeDeleted) conds.push(isNull(assets.deletedAt));
+  if (filter.userId) conds.push(eq(assets.userId, filter.userId));
+  if (filter.type) conds.push(eq(assets.type, filter.type));
+  if (filter.source) conds.push(eq(assets.source, filter.source));
+  if (filter.model) conds.push(eq(assets.model, filter.model));
+  if (filter.projectId) conds.push(eq(assets.projectId, filter.projectId));
+  if (filter.q) conds.push(like(assets.name, `%${filter.q}%`));
+  return db.select().from(assets)
+    .where(conds.length ? and(...conds) : undefined)
+    .orderBy(desc(assets.createdAt))
+    .limit(Math.min(filter.limit ?? 200, 500))
+    .offset(filter.offset ?? 0);
 }
 
 export async function createAsset(data: InsertAsset) {
@@ -567,7 +676,9 @@ export async function getAssetById(id: number, userId: number) {
 export async function deleteAsset(id: number, userId: number) {
   const db = await getDb();
   if (!db) { if (DEV_MODE) { dev.devDeleteAsset(id, userId); return; } throw new Error("DB unavailable"); }
-  await db.delete(assets).where(and(eq(assets.id, id), eq(assets.userId, userId)));
+  // Soft delete: hide from the user but KEEP the MinIO object and the row (the
+  // file must persist; only its visibility/ownership is cleared).
+  await db.update(assets).set({ deletedAt: new Date() }).where(and(eq(assets.id, id), eq(assets.userId, userId)));
 }
 
 // ── Video Tasks ───────────────────────────────────────────────────────────────

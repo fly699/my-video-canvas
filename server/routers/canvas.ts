@@ -21,6 +21,7 @@ import {
   deleteEdge,
   getAssetsByUser,
   createAsset,
+  recordGeneratedAsset,
   deleteAsset,
   getVideoTasksByProject,
   createVideoTask,
@@ -303,8 +304,19 @@ export const edgesRouter = router({
 
 export const assetsRouter = router({
   list: protectedProcedure
-    .input(z.object({ projectId: z.number().optional() }))
-    .query(({ ctx, input }) => getAssetsByUser(ctx.user.id, input.projectId)),
+    .input(z.object({
+      projectId: z.number().optional(),
+      allProjects: z.boolean().optional(),
+      type: z.enum(["image", "video", "audio", "other"]).optional(),
+      source: z.enum(["upload", "generated", "external"]).optional(),
+      model: z.string().max(128).optional(),
+    }).optional())
+    .query(({ ctx, input }) => getAssetsByUser(ctx.user.id, {
+      projectId: input?.allProjects ? undefined : input?.projectId,
+      type: input?.type,
+      source: input?.source,
+      model: input?.model,
+    })),
 
   upload: protectedProcedure
     .input(
@@ -326,7 +338,8 @@ export const assetsRouter = router({
         await assertProjectAccess(input.projectId, ctx.user.id, "editor");
       }
       const buffer = Buffer.from(input.base64, "base64");
-      const key = `assets/${ctx.user.id}/${nanoid()}-${input.name}`;
+      // Per-user "专有仓库" prefix (u/{userId}/...); old assets/{userId}/ keys still resolve.
+      const key = `u/${ctx.user.id}/uploads/${nanoid()}-${input.name}`;
       // 「仅允许 MinIO/S3」开关：未配 MinIO/S3 时拒绝写入，不回退 Forge 存储。
       await assertObjectStorageWritable();
       const { url } = await storagePut(key, buffer, input.mimeType);
@@ -349,6 +362,50 @@ export const assetsRouter = router({
     .mutation(async ({ ctx, input }) => {
       await deleteAsset(input.id, ctx.user.id);
       return { success: true };
+    }),
+
+  // External import: server-side download a remote URL (size-capped, SSRF-guarded),
+  // re-host into the user's 专有仓库, and index it as source="external".
+  importFromUrl: protectedProcedure
+    .input(z.object({ url: z.string().url(), projectId: z.number().optional(), name: z.string().max(255).optional() }))
+    .mutation(async ({ ctx, input }) => {
+      await assertWhitelisted(ctx);
+      if (input.projectId != null) await assertProjectAccess(input.projectId, ctx.user.id, "editor");
+      guardUrl(input.url); // SSRF: blocks private/loopback hosts
+      const MAX_BYTES = 50 * 1024 * 1024;
+      let res: Response;
+      try {
+        res = await fetch(input.url, { signal: AbortSignal.timeout(30_000), redirect: "follow" });
+      } catch (err) {
+        throw new TRPCError({ code: "BAD_REQUEST", message: "无法下载该链接：" + (err instanceof Error ? err.message : String(err)) });
+      }
+      if (!res.ok || !res.body) throw new TRPCError({ code: "BAD_REQUEST", message: `下载失败 (HTTP ${res.status})` });
+      // Stream with a hard size cap.
+      const reader = res.body.getReader();
+      const chunks: Uint8Array[] = [];
+      let total = 0;
+      for (;;) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        if (value) {
+          total += value.length;
+          if (total > MAX_BYTES) { try { await reader.cancel(); } catch { /* ignore */ } throw new TRPCError({ code: "BAD_REQUEST", message: "文件过大（上限 50MB）" }); }
+          chunks.push(value);
+        }
+      }
+      const buffer = Buffer.concat(chunks.map((c) => Buffer.from(c)));
+      const mimeType = res.headers.get("content-type")?.split(";")[0]?.trim() || "application/octet-stream";
+      const type = mimeType.startsWith("video/") ? "video" : mimeType.startsWith("audio/") ? "audio" : mimeType.startsWith("image/") ? "image" : "other";
+      const name = input.name?.trim() || decodeURIComponent(input.url.split("/").pop()?.split("?")[0] || "") || "外部文件";
+      await assertObjectStorageWritable();
+      const { url, key } = await storagePut(`u/${ctx.user.id}/external/${nanoid()}-${name}`, buffer, mimeType);
+      const asset = await createAsset({
+        userId: ctx.user.id, projectId: input.projectId ?? null, name, type,
+        mimeType, size: buffer.length, storageKey: key, url, source: "external", provider: "manus",
+      });
+      writeAuditLog({ ctx, action: "asset_import_url", detail: { url: truncate(input.url), type, size: buffer.length } });
+      if (!asset) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "保存素材失败" });
+      return asset;
     }),
 });
 
@@ -551,6 +608,9 @@ export const videoTasksRouter = router({
               const persisted = persistedList.join("\n");
               const update = { status: "succeeded" as const, resultVideoUrl: persisted };
               await updateVideoTask(task.id, update);
+              for (const u of persistedList) {
+                await recordGeneratedAsset({ userId: task.userId, projectId: task.projectId, nodeId: task.nodeId, type: "video", source: "generated", provider: task.provider, model: (task.params as { model?: string } | null)?.model ?? task.provider, url: u, name: task.provider });
+              }
               return { ...task, ...update };
             }
             if (upstream.status === "failed") {
@@ -580,6 +640,7 @@ export const videoTasksRouter = router({
               const persisted = await persistVideoOrFallback(upstream.resultVideoUrl, task.provider);
               const update = { status: "succeeded" as const, resultVideoUrl: persisted };
               await updateVideoTask(task.id, update);
+              await recordGeneratedAsset({ userId: task.userId, projectId: task.projectId, nodeId: task.nodeId, type: "video", source: "generated", provider: task.provider, model: (task.params as { model?: string } | null)?.model ?? task.provider, url: persisted, name: task.provider });
               return { ...task, ...update };
             }
             if (upstream.status === "succeeded" && !upstream.resultVideoUrl) {
@@ -904,6 +965,12 @@ export const imageGenRouter = router({
           resultCount: result.urls?.length ?? (result.url ? 1 : 0),
         },
       });
+      {
+        const prov = input.model?.startsWith("hf_") ? "higgsfield" : input.model?.startsWith("poyo_") ? "poyo" : "forge";
+        for (const u of (result.urls?.length ? result.urls : (result.url ? [result.url] : []))) {
+          await recordGeneratedAsset({ userId: ctx.user.id, projectId: input.projectId ?? null, type: "image", source: "generated", provider: prov, model: input.model ?? "default", url: u, name: input.model ?? "图像生成" });
+        }
+      }
       return {
         url: result.url,
         urls: result.urls,
@@ -1481,6 +1548,7 @@ export const audioGenRouter = router({
           action: "audio_music",
           detail: { model, prompt: truncate(input.prompt), resultUrl: result.url, duration: result.duration },
         });
+        await recordGeneratedAsset({ userId: ctx.user.id, projectId: input.projectId ?? null, type: "audio", source: "generated", provider: "poyo", model, url: result.url, name: model });
         return { url: result.url, duration: result.duration, imageUrl: result.imageUrl };
       });
     }),
@@ -1573,6 +1641,7 @@ export const audioGenRouter = router({
             ...(isPoyoTTS ? { stability: input.stability ?? null, timestamps: input.timestamps ?? false } : {}),
           },
         });
+        await recordGeneratedAsset({ userId: ctx.user.id, projectId: input.projectId ?? null, type: "audio", source: "generated", provider: isPoyoTTS ? "poyo" : "openai", model, url: result.url, name: model });
         return {
           url: result.url,
           duration: result.duration,
@@ -1995,6 +2064,9 @@ export const comfyuiRouter = router({
             action: "comfyui_image_gen",
             detail: { template: input.workflowTemplate, ckpt: input.ckpt, prompt: truncate(input.prompt), resultUrl: result.url, nodeId: input.nodeId },
           });
+          for (const u of (result.urls?.length ? result.urls : [result.url])) {
+            await recordGeneratedAsset({ userId: ctx.user.id, projectId: input.projectId, nodeId: input.nodeId, type: "image", source: "generated", provider: "comfyui", model: input.ckpt, url: u, name: input.ckpt || "ComfyUI 图像" });
+          }
           return { url: result.url, urls: result.urls };
         } catch (err) {
           throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: err instanceof Error ? err.message : String(err) });
@@ -2072,6 +2144,7 @@ export const comfyuiRouter = router({
             action: "comfyui_video_gen",
             detail: { template: input.workflowTemplate, ckpt: input.ckpt, prompt: truncate(input.prompt), resultUrl: result.url, nodeId: input.nodeId },
           });
+          await recordGeneratedAsset({ userId: ctx.user.id, projectId: input.projectId, nodeId: input.nodeId, type: "video", source: "generated", provider: "comfyui", model: input.ckpt, url: result.url, name: input.ckpt || "ComfyUI 视频" });
           return { url: result.url };
         } catch (err) {
           throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: err instanceof Error ? err.message : String(err) });
@@ -2212,6 +2285,9 @@ export const comfyuiRouter = router({
             action: "comfyui_workflow_exec",
             detail: { nodeId: input.nodeId, outputType: result.outputType, count: result.urls.length },
           });
+          for (const u of result.urls) {
+            await recordGeneratedAsset({ userId: ctx.user.id, projectId: input.projectId, nodeId: input.nodeId, type: result.outputType === "video" ? "video" : "image", source: "generated", provider: "comfyui", model: null, url: u, name: "自定义工作流" });
+          }
           return result;
         } catch (err) {
           throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: err instanceof Error ? err.message : String(err) });

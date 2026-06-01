@@ -74,7 +74,8 @@ export type AuditAction =
   | "collab:revoke_link"
   | "collab:accept_link"
   | "lan_chat:join"
-  | "lan_chat:ip_mismatch";
+  | "lan_chat:ip_mismatch"
+  | "asset_import_url";
 
 export interface AuditOpts {
   ctx?: TrpcContext;

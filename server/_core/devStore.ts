@@ -153,10 +153,34 @@ export function devDeleteEdge(id: string, projectId: number) {
 }
 
 // ── Assets ────────────────────────────────────────────────────────────────────
-export function devGetAssetsByUser(userId: number, projectId?: number): Asset[] {
+export function devGetAssetsByUser(
+  userId: number,
+  filter: { projectId?: number; type?: string; source?: string; model?: string } = {},
+): Asset[] {
   return Array.from(assetsMap.values())
-    .filter((a) => a.userId === userId && (projectId === undefined || a.projectId === projectId))
+    .filter((a) => a.userId === userId && a.deletedAt == null
+      && (filter.projectId === undefined || a.projectId === filter.projectId)
+      && (!filter.type || a.type === filter.type)
+      && (!filter.source || a.source === filter.source)
+      && (!filter.model || a.model === filter.model))
     .sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime());
+}
+
+export function devGetAllAssets(filter: {
+  userId?: number; type?: string; source?: string; model?: string;
+  projectId?: number; q?: string; includeDeleted?: boolean; limit?: number; offset?: number;
+} = {}): Asset[] {
+  const rows = Array.from(assetsMap.values())
+    .filter((a) => (filter.includeDeleted || a.deletedAt == null)
+      && (!filter.userId || a.userId === filter.userId)
+      && (!filter.type || a.type === filter.type)
+      && (!filter.source || a.source === filter.source)
+      && (!filter.model || a.model === filter.model)
+      && (filter.projectId === undefined || a.projectId === filter.projectId)
+      && (!filter.q || a.name.includes(filter.q)))
+    .sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime());
+  const off = filter.offset ?? 0;
+  return rows.slice(off, off + Math.min(filter.limit ?? 200, 500));
 }
 
 export function devCreateAsset(data: InsertAsset): Asset {
@@ -172,6 +196,11 @@ export function devCreateAsset(data: InsertAsset): Asset {
     storageKey: data.storageKey,
     url: data.url,
     thumbnailUrl: null,
+    source: data.source ?? "upload",
+    provider: data.provider ?? null,
+    model: data.model ?? null,
+    nodeId: data.nodeId ?? null,
+    deletedAt: null,
     createdAt: now(),
   };
   assetsMap.set(id, asset);
@@ -180,7 +209,7 @@ export function devCreateAsset(data: InsertAsset): Asset {
 
 export function devDeleteAsset(id: number, userId: number) {
   const a = assetsMap.get(id);
-  if (a && a.userId === userId) assetsMap.delete(id);
+  if (a && a.userId === userId) a.deletedAt = now(); // soft delete (keep row + file)
 }
 
 // ── Video Tasks ───────────────────────────────────────────────────────────────
