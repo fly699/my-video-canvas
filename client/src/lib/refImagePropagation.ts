@@ -90,3 +90,44 @@ export function propagateRefImage(sourceId: string, url?: string): number {
   if (updates.length > 0) batchUpdateNodeData(updates);
   return updates.length;
 }
+
+/**
+ * Push a source node's prompt(s) to every downstream comfyui_video node so the
+ * video matches the image. Returns the per-target payload updates (pure). A
+ * connection is any edge source→target where target is a comfyui_video node.
+ */
+export function computePromptToVideoUpdates(
+  sourceId: string,
+  prompt: string,
+  negPrompt: string | undefined,
+  nodes: CanvasNode[],
+  edges: CanvasEdge[],
+): { id: string; payload: { prompt: string; negPrompt?: string } }[] {
+  const seen = new Set<string>();
+  const out: { id: string; payload: { prompt: string; negPrompt?: string } }[] = [];
+  for (const e of edges) {
+    if (e.source !== sourceId || seen.has(e.target)) continue;
+    const target = nodes.find((n) => n.id === e.target);
+    if (target?.data.nodeType !== "comfyui_video") continue;
+    seen.add(e.target);
+    out.push({ id: e.target, payload: { prompt, ...(negPrompt !== undefined ? { negPrompt } : {}) } });
+  }
+  return out;
+}
+
+/**
+ * Apply prompt propagation from a source node to downstream comfyui_video nodes.
+ * No-op unless the source's prompt is non-empty. Returns the number updated.
+ */
+export function propagatePromptToVideo(sourceId: string): number {
+  const { nodes, edges, batchUpdateNodeData } = useCanvasStore.getState();
+  const src = nodes.find((n) => n.id === sourceId);
+  if (!src) return 0;
+  const p = src.data.payload as { prompt?: string; negPrompt?: string };
+  const prompt = typeof p.prompt === "string" ? p.prompt : "";
+  if (!prompt.trim()) return 0;
+  const negPrompt = typeof p.negPrompt === "string" ? p.negPrompt : undefined;
+  const updates = computePromptToVideoUpdates(sourceId, prompt, negPrompt, nodes, edges);
+  if (updates.length > 0) batchUpdateNodeData(updates);
+  return updates.length;
+}

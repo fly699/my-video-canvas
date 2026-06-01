@@ -5,7 +5,7 @@ import { toast } from "sonner";
 import type { NodeType, WorkflowParamBinding } from "../../../shared/types";
 import { VIDEO_PROVIDERS } from "../../../shared/types";
 import { detectUpstreamImageUrl, resolveWorkflowImageParams } from "../lib/comfyWorkflowParams";
-import { computeRefImageUpdates } from "../lib/refImagePropagation";
+import { computeRefImageUpdates, computePromptToVideoUpdates } from "../lib/refImagePropagation";
 import { handleWhitelistError } from "./useWhitelistBlocked";
 
 export type NodeRunPhase = "pending" | "running" | "done" | "failed" | "skipped";
@@ -706,6 +706,14 @@ export function useWorkflowRunner() {
             : [];
           if (downstreamUpdates.length > 0) {
             useCanvasStore.getState().batchUpdateNodeData(downstreamUpdates);
+          }
+          // Optional: push this image node's prompt(s) to downstream comfyui_video
+          // nodes (they run later in topo order, reading the updated payload).
+          if ((p as { sendPromptToVideo?: boolean }).sendPromptToVideo) {
+            const promptUpdates = computePromptToVideoUpdates(
+              nodeId, prompt, (p.negPrompt as string) || undefined, nodesAtSuccess, currentEdges,
+            );
+            if (promptUpdates.length > 0) useCanvasStore.getState().batchUpdateNodeData(promptUpdates);
           }
           completed.push(nodeId);
           return "ok";
