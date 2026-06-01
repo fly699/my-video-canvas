@@ -288,11 +288,10 @@ const normalizeResponseFormat = ({
 export const AVAILABLE_MODELS = [
   { id: "gemini-3-flash-preview",     label: "Gemini 3 Flash",    tag: "最新" },
   { id: "gemini-2.5-flash",           label: "Gemini 2.5 Flash",  tag: "默认" },
+  { id: "claude-sonnet-4-6",          label: "Claude Sonnet 4.6", tag: "旗舰" },
   { id: "claude-sonnet-4-5-20250929", label: "Claude Sonnet 4.5", tag: "智能" },
   { id: "claude-haiku-4-5-20251001",  label: "Claude Haiku 4.5",  tag: "快速" },
   { id: "gpt-5.2",                    label: "GPT-5.2",           tag: "Poyo" },
-  // Back-compat alias for older node payloads (resolves like a Claude model).
-  { id: "claude-sonnet-4-6",          label: "Claude Sonnet 4.6", tag: "兼容" },
 ] as const;
 
 export const DEFAULT_MODEL = "gemini-2.5-flash";

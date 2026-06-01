@@ -27,13 +27,11 @@ export const LLM_MODELS: readonly LLMModelMeta[] = [
   { id: "gemini-3-flash-preview",    label: "Gemini 3 Flash",    short: "Gemini3", family: "Gemini", tag: "最新", color: "oklch(0.68 0.18 160)", costTier: "低" },
   { id: "gemini-2.5-flash",          label: "Gemini 2.5 Flash",  short: "Gemini",  family: "Gemini", tag: "默认", color: "oklch(0.68 0.18 160)", costTier: "低" },
   // Claude (Anthropic) — routed to Forge
+  { id: "claude-sonnet-4-6",          label: "Claude Sonnet 4.6", short: "Sonnet", family: "Claude", tag: "旗舰", color: "oklch(0.68 0.18 280)", costTier: "高" },
   { id: "claude-sonnet-4-5-20250929", label: "Claude Sonnet 4.5", short: "Sonnet", family: "Claude", tag: "智能", color: "oklch(0.68 0.18 280)", costTier: "高" },
   { id: "claude-haiku-4-5-20251001",  label: "Claude Haiku 4.5",  short: "Haiku",  family: "Claude", tag: "快速", color: "oklch(0.68 0.18 55)",  costTier: "低" },
   // GPT (OpenAI) — routed to Poyo
   { id: "gpt-5.2",                   label: "GPT-5.2",           short: "GPT-5.2", family: "GPT",    tag: "Poyo", color: "oklch(0.62 0.16 240)", costTier: "中" },
-  // Back-compat alias: older ScriptNode payloads default to claude-sonnet-4-6.
-  // Kept selectable-but-hidden so those nodes still resolve; new picks use 4.5.
-  { id: "claude-sonnet-4-6",         label: "Claude Sonnet 4.6", short: "Sonnet", family: "Claude", tag: "兼容", color: "oklch(0.68 0.18 280)", costTier: "高", hidden: true },
 ] as const;
 
 // Legacy export name — AIChatNode and scriptCreationTemplates reference CHAT_MODELS.
