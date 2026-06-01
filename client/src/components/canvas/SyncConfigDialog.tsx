@@ -4,8 +4,15 @@ import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter,
 } from "../ui/dialog";
 import { Checkbox } from "../ui/checkbox";
+import { RadioGroup, RadioGroupItem } from "../ui/radio-group";
 import { useCanvasStore } from "../../hooks/useCanvasStore";
 import type { NodeData } from "../../../../shared/types";
+
+// How the source node's multiple server addresses are spread across targets
+// when the "服务器地址" category is synced. "follow" = legacy behavior (every
+// target gets the same current address); "sequential"/"random" distribute the
+// addresses across targets' customBaseUrl for multi-machine load splitting.
+type ServerMode = "follow" | "sequential" | "random";
 
 interface FieldCategory {
   key: string;
@@ -72,6 +79,16 @@ export function SyncConfigDialog({
 
   const [selectedTargets, setSelectedTargets] = useState<Set<string>>(() => new Set(smartDefaultTargets));
   const [selectedCats, setSelectedCats] = useState<Set<string>>(() => new Set(categories.map((c) => c.key)));
+  const [serverMode, setServerMode] = useState<ServerMode>("follow");
+
+  // Server address pool of the SOURCE node (the saved list). Drives both whether
+  // the distribution selector shows and how addresses are spread on apply.
+  const sourceServerUrls = useMemo(() => {
+    const s = nodes.find((n) => n.id === sourceId);
+    const sp = ((s?.data as { payload?: unknown } | undefined)?.payload ?? {}) as Record<string, unknown>;
+    const arr = sp.serverUrls;
+    return Array.isArray(arr) ? arr.filter((x): x is string => typeof x === "string") : [];
+  }, [nodes, sourceId]);
 
   // Re-seed selections each time the dialog opens (or when the smart defaults /
   // category set change while open) so freshly-added nodes are reflected.
@@ -79,6 +96,7 @@ export function SyncConfigDialog({
     if (!open) return;
     setSelectedTargets(new Set(smartDefaultTargets));
     setSelectedCats(new Set(categories.map((c) => c.key))); // categories default all-selected
+    setServerMode("follow");
   }, [open, smartDefaultTargets, categories]);
 
   const toggle = (set: Set<string>, key: string) => {
@@ -110,8 +128,34 @@ export function SyncConfigDialog({
     }
     if (Object.keys(patch).length === 0) { toast.info("源节点没有可同步的配置值"); return; }
     const targets = Array.from(selectedTargets);
-    batchUpdateNodeData(targets.map((id) => ({ id, payload: patch as Partial<NodeData> })));
-    toast.success(`已同步配置到 ${targets.length} 个 ComfyUI ${label}节点`);
+
+    // Distribute the source's multiple server addresses across targets when the
+    // server category is synced and the user picked a non-default mode. Every
+    // target still receives the full serverUrls list (kept in `patch`); only the
+    // active customBaseUrl is assigned per-target.
+    const distribute =
+      selectedCats.has("server") && serverMode !== "follow" && sourceServerUrls.length > 1;
+    let pool = sourceServerUrls;
+    if (distribute && serverMode === "random") {
+      pool = [...sourceServerUrls];
+      for (let i = pool.length - 1; i > 0; i--) {
+        const j = Math.floor(Math.random() * (i + 1));
+        [pool[i], pool[j]] = [pool[j], pool[i]];
+      }
+    }
+
+    batchUpdateNodeData(
+      targets.map((id, i) =>
+        distribute
+          ? { id, payload: { ...patch, customBaseUrl: pool[i % pool.length] } as Partial<NodeData> }
+          : { id, payload: patch as Partial<NodeData> },
+      ),
+    );
+    toast.success(
+      distribute
+        ? `已按${serverMode === "random" ? "随机" : "顺序"}分配地址同步到 ${targets.length} 个 ComfyUI ${label}节点`
+        : `已同步配置到 ${targets.length} 个 ComfyUI ${label}节点`,
+    );
     onOpenChange(false);
   };
 
@@ -181,6 +225,33 @@ export function SyncConfigDialog({
                 ))}
               </div>
             </div>
+          </div>
+        )}
+
+        {candidates.length > 0 && sourceServerUrls.length > 1 && selectedCats.has("server") && (
+          <div className="mt-1 rounded-md border border-[var(--c-bd2)] p-3">
+            <div className="text-xs font-semibold uppercase tracking-wide text-muted-foreground mb-2">
+              服务器地址分配（源节点共 {sourceServerUrls.length} 个地址）
+            </div>
+            <RadioGroup
+              value={serverMode}
+              onValueChange={(v) => setServerMode(v as ServerMode)}
+              className="gap-2"
+            >
+              {([
+                { v: "follow", label: "完全遵循当前节点（所有目标用相同地址）" },
+                { v: "sequential", label: "顺序分配（轮流使用各地址，便于多机负载）" },
+                { v: "random", label: "随机分配（洗牌轮流，尽量不重复）" },
+              ] as { v: ServerMode; label: string }[]).map((o) => (
+                <label key={o.v} className="flex items-center gap-2 text-sm cursor-pointer">
+                  <RadioGroupItem value={o.v} />
+                  <span>{o.label}</span>
+                </label>
+              ))}
+            </RadioGroup>
+            <p className="mt-2 text-xs text-muted-foreground">
+              完整地址列表会同步给所有目标，仅各自的「当前选用地址」不同。
+            </p>
           </div>
         )}
 

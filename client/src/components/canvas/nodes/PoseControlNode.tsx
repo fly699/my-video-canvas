@@ -1,6 +1,7 @@
 import { memo, useCallback, useMemo } from "react";
 import { BaseNode } from "../BaseNode";
 import { useCanvasStore } from "../../../hooks/useCanvasStore";
+import { propagateRefImage } from "../../../lib/refImagePropagation";
 import type { PoseControlNodeData } from "../../../../../shared/types";
 import { trpc } from "@/lib/trpc";
 import { toast } from "sonner";
@@ -54,6 +55,8 @@ export const PoseControlNode = memo(function PoseControlNode({ id, selected, dat
   const poseControlMutation = trpc.clip.poseControl.useMutation({
     onSuccess: (result) => {
       update({ outputImageUrl: result.url, outputUrl: result.url, status: "done" });
+      // Auto-fill any already-connected downstream reference-image targets.
+      propagateRefImage(id, result.url);
       toast.success("构图控制图像已生成");
     },
     onError: (err) => { update({ status: "failed", errorMessage: err.message }); toast.error("生成失败：" + err.message); },

@@ -2,6 +2,7 @@ import { memo, useCallback, useEffect, useRef, useState } from "react";
 import { Handle, Position } from "@xyflow/react";
 import { BaseNode } from "../BaseNode";
 import { useCanvasStore } from "../../../hooks/useCanvasStore";
+import { propagateRefImage } from "../../../lib/refImagePropagation";
 import type { ComfyuiImageNodeData, ComfyuiLoraEntry } from "../../../../../shared/types";
 import { trpc } from "@/lib/trpc";
 import { toast } from "sonner";
@@ -61,23 +62,6 @@ const labelStyle: React.CSSProperties = {
   marginBottom: 5,
 };
 
-// Push a chosen / generated image URL to every downstream node that consumes a
-// reference image (video_task / comfyui_video / comfyui_image). Mirrors
-// ImageGenNode.propagateImageUrl so manually-wired ComfyUI chains auto-fill.
-function propagateImageUrl(sourceId: string, url: string): void {
-  const { edges, nodes, batchUpdateNodeData } = useCanvasStore.getState();
-  const updates = edges
-    .filter((e) => e.source === sourceId && e.targetHandle === "ref-image-in")
-    .flatMap((edge) => {
-      const t = nodes.find((n) => n.id === edge.target);
-      const tt = t?.data.nodeType;
-      return tt === "video_task" || tt === "comfyui_video" || tt === "comfyui_image"
-        ? [{ id: edge.target, payload: { referenceImageUrl: url } }]
-        : [];
-    });
-  if (updates.length > 0) batchUpdateNodeData(updates);
-}
-
 export const ComfyuiImageNode = memo(function ComfyuiImageNode({ id, selected, data }: Props) {
   const updateNodeData = useCanvasStore((s) => s.updateNodeData);
   const payload = data.payload;
@@ -124,7 +108,7 @@ export const ComfyuiImageNode = memo(function ComfyuiImageNode({ id, selected, d
       if (!useCanvasStore.getState().nodes.some((n) => n.id === id)) return;
       if (cancelledRef.current) { cancelledRef.current = false; return; }
       updateNodeData(id, { imageUrl: result.url, imageUrls: result.urls, status: "done", errorMessage: undefined, progress: undefined });
-      if (result.url) propagateImageUrl(id, result.url);
+      if (result.url) propagateRefImage(id, result.url);
       toast.success("ComfyUI 图像生成成功");
     },
     onError: (err) => {
@@ -249,7 +233,7 @@ export const ComfyuiImageNode = memo(function ComfyuiImageNode({ id, selected, d
   // URL to connected downstream reference-image consumers (mirrors ImageGenNode).
   const selectImage = useCallback((url: string) => {
     updateNodeData(id, { imageUrl: url });
-    propagateImageUrl(id, url);
+    propagateRefImage(id, url);
   }, [id, updateNodeData]);
 
   const handleGenerate = () => {

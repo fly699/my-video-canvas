@@ -14,7 +14,9 @@ export const comfyStressRouter = router({
   start: adminProcedure
     .input(
       z.object({
-        // 留空则用全局 ENV.comfyuiBaseUrl
+        // 多地址压测：留空则回退到全局 ENV.comfyuiBaseUrl。
+        // 兼容旧前端：仍接受单个 customBaseUrl。
+        customBaseUrls: z.array(z.string().max(2048)).max(16).optional(),
         customBaseUrl: z.string().max(2048).optional(),
         workflowJson: z.string().min(2).max(2_000_000),
         mode: z.enum(["lean", "full"]).default("lean"),
@@ -24,13 +26,17 @@ export const comfyStressRouter = router({
       }),
     )
     .mutation(({ ctx, input }) => {
-      const baseUrl = input.customBaseUrl?.trim() || ENV.comfyuiBaseUrl;
-      if (!baseUrl) {
-        throw new TRPCError({ code: "BAD_REQUEST", message: "ComfyUI 服务器地址未配置（COMFYUI_BASE_URL 为空，且未提供 customBaseUrl）" });
+      const provided = [
+        ...(input.customBaseUrls ?? []),
+        ...(input.customBaseUrl ? [input.customBaseUrl] : []),
+      ].map((u) => u.trim()).filter((u) => u.length > 0);
+      const baseUrls = provided.length > 0 ? provided : (ENV.comfyuiBaseUrl ? [ENV.comfyuiBaseUrl] : []);
+      if (baseUrls.length === 0) {
+        throw new TRPCError({ code: "BAD_REQUEST", message: "ComfyUI 服务器地址未配置（COMFYUI_BASE_URL 为空，且未提供任何地址）" });
       }
       try {
         return startStressTest({
-          baseUrl,
+          baseUrls,
           workflowJson: input.workflowJson,
           mode: input.mode,
           concurrency: input.concurrency,

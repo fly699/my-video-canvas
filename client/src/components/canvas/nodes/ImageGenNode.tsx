@@ -2,6 +2,7 @@ import { memo, useCallback, useEffect, useRef, useState } from "react";
 import { Handle, Position } from "@xyflow/react";
 import { BaseNode } from "../BaseNode";
 import { useCanvasStore } from "../../../hooks/useCanvasStore";
+import { propagateRefImage } from "../../../lib/refImagePropagation";
 import type { ImageGenNodeData, ImageGenModel } from "../../../../../shared/types";
 import { trpc } from "@/lib/trpc";
 import { toast } from "sonner";
@@ -86,30 +87,6 @@ const SOUL_QUALITIES = ["720p", "1080p"] as const;
 
 const MAX_SEED = 2147483647;
 
-// Push a freshly chosen / generated image URL out to every downstream node
-// that consumes a reference image (video_task / comfyui_video / comfyui_image).
-// Kept in sync with useWorkflowRunner's post-generation propagation and
-// useCanvasStore's onConnect pre-populate. Returns how many nodes were
-// updated so callers can toast meaningfully.
-function propagateImageUrl(sourceId: string, url: string): number {
-  const { edges, nodes, batchUpdateNodeData } = useCanvasStore.getState();
-  const updates = edges
-    .filter(e =>
-      e.source === sourceId &&
-      (e.sourceHandle === "image-out" || e.sourceHandle === "output") &&
-      e.targetHandle === "ref-image-in"
-    )
-    .flatMap(edge => {
-      const target = nodes.find(n => n.id === edge.target);
-      const tt = target?.data.nodeType;
-      return (tt === "video_task" || tt === "comfyui_video" || tt === "comfyui_image")
-        ? [{ id: edge.target, payload: { referenceImageUrl: url } }]
-        : [];
-    });
-  if (updates.length > 0) batchUpdateNodeData(updates);
-  return updates.length;
-}
-
 export const ImageGenNode = memo(function ImageGenNode({ id, selected, data }: Props) {
   // Use selector to avoid re-rendering on every store change (other nodes' updates)
   const updateNodeData = useCanvasStore((s) => s.updateNodeData);
@@ -145,7 +122,7 @@ export const ImageGenNode = memo(function ImageGenNode({ id, selected, data }: P
           imageUrlSource: result.sourceUrls?.[0] ?? result.sourceUrl,
           imageUrlSourceAt: result.sourceAt,
         });
-        propagateImageUrl(id, result.urls[0]);
+        propagateRefImage(id, result.urls[0]);
         toast.success(`批量生成完成，共 ${result.urls.length} 张图像`);
       } else {
         const imageUrl = result.url ?? result.urls?.[0];
@@ -157,7 +134,7 @@ export const ImageGenNode = memo(function ImageGenNode({ id, selected, data }: P
           imageUrlSources: undefined,
           imageUrlSourceAt: result.sourceAt,
         });
-        propagateImageUrl(id, imageUrl);
+        propagateRefImage(id, imageUrl);
         toast.success("图像生成成功");
       }
     },
@@ -303,7 +280,7 @@ export const ImageGenNode = memo(function ImageGenNode({ id, selected, data }: P
     const idx = payload.imageUrls?.indexOf(url) ?? -1;
     const matchedSource = idx >= 0 ? payload.imageUrlSources?.[idx] : undefined;
     updateNodeData(id, { imageUrl: url, ...(matchedSource !== undefined ? { imageUrlSource: matchedSource } : {}) });
-    const n = propagateImageUrl(id, url);
+    const n = propagateRefImage(id, url);
     toast.success(n > 0 ? `已选择图像并更新 ${n} 个下游节点` : "已选择此图像");
   };
 

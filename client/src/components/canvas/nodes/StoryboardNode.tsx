@@ -3,6 +3,7 @@ import { createPortal } from "react-dom";
 import { TRPCClientError } from "@trpc/client";
 import { BaseNode } from "../BaseNode";
 import { useCanvasStore } from "../../../hooks/useCanvasStore";
+import { propagateRefImage } from "../../../lib/refImagePropagation";
 import { useShallow } from "zustand/react/shallow";
 import type { StoryboardNodeData } from "../../../../../shared/types";
 import { trpc } from "@/lib/trpc";
@@ -85,7 +86,8 @@ export const StoryboardNode = memo(function StoryboardNode({ id, selected, data 
     useShallow((s) => {
       const outgoingEdges = s.edges.filter((e) => e.source === id);
       return outgoingEdges
-        .map((edge) => s.nodes.find((n) => n.id === edge.target && n.data.nodeType === "video_task"))
+        .map((edge) => s.nodes.find((n) => n.id === edge.target
+          && (n.data.nodeType === "video_task" || n.data.nodeType === "comfyui_video")))
         .filter(Boolean)
         .map((n) => n!.id as string);
     }),
@@ -208,6 +210,9 @@ export const StoryboardNode = memo(function StoryboardNode({ id, selected, data 
         imageUrlSource: result.sourceUrl ?? result.sourceUrls?.[0],
         imageUrlSourceAt: result.sourceAt,
       });
+      // Push the freshly generated image to any already-connected video node so
+      // "connect first, generate later" still auto-fills the reference image.
+      propagateRefImage(id, imageUrl);
       setGenerating(false);
       if (newUrls.length > 1) setShowHistory(true);
       toast.success(newUrls.length > 1 ? `已生成 ${newUrls.length} 张，可在历史中切换` : "分镜图像已生成");
@@ -699,37 +704,69 @@ export const StoryboardNode = memo(function StoryboardNode({ id, selected, data 
             </span>
           </div>
           {connectedVideoNodeIds.length > 0 && (
-            <button
-              onClick={() => {
-                if (!payload.promptText?.trim()) { toast.error("请先填写提示词再发送"); return; }
-                const { updateNodeData: updateStore } = useCanvasStore.getState();
-                connectedVideoNodeIds.forEach((videoNodeId) => {
-                  updateStore(videoNodeId, {
-                    prompt: payload.promptText,
-                    // Always sync referenceImageUrl — explicitly clear it (undefined)
-                    // when the storyboard has no image so stale URLs don't linger
-                    referenceImageUrl: payload.imageUrl || undefined,
+            <div className="flex items-center gap-1.5 flex-wrap self-start">
+              <button
+                onClick={() => {
+                  if (!payload.promptText?.trim()) { toast.error("请先填写提示词再发送"); return; }
+                  const { updateNodeData: updateStore } = useCanvasStore.getState();
+                  connectedVideoNodeIds.forEach((videoNodeId) => {
+                    updateStore(videoNodeId, {
+                      prompt: payload.promptText,
+                      // Always sync referenceImageUrl — explicitly clear it (undefined)
+                      // when the storyboard has no image so stale URLs don't linger
+                      referenceImageUrl: payload.imageUrl || undefined,
+                    });
                   });
-                });
-                toast.success(
-                  connectedVideoNodeIds.length === 1
-                    ? "提示词已发送到视频节点"
-                    : `提示词已发送至 ${connectedVideoNodeIds.length} 个视频节点`
-                );
-              }}
-              className="nodrag flex items-center gap-1 px-2 py-1 rounded text-[10px] transition-all self-start"
-              style={{
-                background: "oklch(0.62 0.20 25 / 0.12)",
-                borderWidth: 1,
-                borderStyle: "solid",
-                borderColor: "oklch(0.62 0.20 25 / 0.35)",
-                color: "oklch(0.68 0.18 25)",
-                cursor: "pointer",
-              }}
-            >
-              <Film className="w-3 h-3" />
-              发送到视频节点
-            </button>
+                  toast.success(
+                    connectedVideoNodeIds.length === 1
+                      ? "提示词已发送到视频节点"
+                      : `提示词已发送至 ${connectedVideoNodeIds.length} 个视频节点`
+                  );
+                }}
+                className="nodrag flex items-center gap-1 px-2 py-1 rounded text-[10px] transition-all"
+                style={{
+                  background: "oklch(0.62 0.20 25 / 0.12)",
+                  borderWidth: 1,
+                  borderStyle: "solid",
+                  borderColor: "oklch(0.62 0.20 25 / 0.35)",
+                  color: "oklch(0.68 0.18 25)",
+                  cursor: "pointer",
+                }}
+              >
+                <Film className="w-3 h-3" />
+                发送到视频节点
+              </button>
+              {/* Image-only send: pushes just the generated image as the video
+                  node's reference, without requiring a prompt. */}
+              <button
+                disabled={!payload.imageUrl}
+                title={payload.imageUrl ? "把本节点已生成的图片发送为视频节点的参考图" : "请先生成图片"}
+                onClick={() => {
+                  if (!payload.imageUrl) return;
+                  const { updateNodeData: updateStore } = useCanvasStore.getState();
+                  connectedVideoNodeIds.forEach((videoNodeId) => {
+                    updateStore(videoNodeId, { referenceImageUrl: payload.imageUrl });
+                  });
+                  toast.success(
+                    connectedVideoNodeIds.length === 1
+                      ? "图片已发送到视频节点"
+                      : `图片已发送至 ${connectedVideoNodeIds.length} 个视频节点`
+                  );
+                }}
+                className="nodrag flex items-center gap-1 px-2 py-1 rounded text-[10px] transition-all"
+                style={{
+                  background: payload.imageUrl ? "oklch(0.62 0.16 260 / 0.14)" : "var(--c-surface)",
+                  borderWidth: 1,
+                  borderStyle: "solid",
+                  borderColor: payload.imageUrl ? "oklch(0.62 0.16 260 / 0.40)" : "var(--c-bd2)",
+                  color: payload.imageUrl ? "oklch(0.72 0.14 260)" : "var(--c-t4)",
+                  cursor: payload.imageUrl ? "pointer" : "not-allowed",
+                }}
+              >
+                <ImageIcon className="w-3 h-3" />
+                发送图片到视频节点
+              </button>
+            </div>
           )}
           <button
             onClick={handleExpandPrompt}

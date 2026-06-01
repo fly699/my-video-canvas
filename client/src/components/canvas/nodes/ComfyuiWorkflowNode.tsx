@@ -3,6 +3,7 @@ import { Handle, Position } from "@xyflow/react";
 import { BaseNode } from "../BaseNode";
 import { ComfyServerUrlField } from "./ComfyServerUrlField";
 import { useCanvasStore } from "../../../hooks/useCanvasStore";
+import { propagateRefImage } from "../../../lib/refImagePropagation";
 import type { ComfyuiWorkflowNodeData, WorkflowParamBinding } from "../../../../../shared/types";
 import { trpc } from "@/lib/trpc";
 import { detectUpstreamImageUrl, resolveWorkflowImageParams } from "@/lib/comfyWorkflowParams";
@@ -254,6 +255,8 @@ export const ComfyuiWorkflowNode = memo(function ComfyuiWorkflowNode({ id, selec
         errorMessage: undefined,
         progress: 100,
       });
+      // Auto-fill downstream reference-image targets (image outputs only).
+      if (result.urls[0] && payload.outputType !== "video") propagateRefImage(id, result.urls[0]);
       toast.success("执行完成");
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
