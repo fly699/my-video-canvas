@@ -56,6 +56,7 @@ vi.mock("./db", () => {
   deleteEdge: vi.fn().mockResolvedValue({}),
   getAssetsByUser: vi.fn().mockResolvedValue([]),
   createAsset: vi.fn().mockResolvedValue({}),
+  recordGeneratedAsset: vi.fn().mockResolvedValue(undefined),
   deleteAsset: vi.fn().mockResolvedValue({}),
   getVideoTasksByProject: vi.fn().mockResolvedValue([]),
   findInFlightVideoTask: vi.fn().mockResolvedValue(undefined),

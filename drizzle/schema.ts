@@ -164,6 +164,12 @@ export const assets = mysqlTable("assets", {
   storageKey: text("storageKey").notNull(),
   url: text("url").notNull(),
   thumbnailUrl: text("thumbnailUrl"),
+  // Unified media library: each row is one of these sources.
+  source: mysqlEnum("source", ["upload", "generated", "external"]).notNull().default("upload"),
+  provider: varchar("provider", { length: 32 }),   // poyo|higgsfield|openai|forge|comfyui|edit|manus
+  model: varchar("model", { length: 128 }),         // generating model / checkpoint / template
+  nodeId: varchar("nodeId", { length: 64 }),        // canvas node that produced it (if any)
+  deletedAt: timestamp("deletedAt"),                // soft delete: hidden from user, file kept in MinIO
   createdAt: timestamp("createdAt").defaultNow().notNull(),
 });
 

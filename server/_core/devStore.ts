@@ -155,7 +155,7 @@ export function devDeleteEdge(id: string, projectId: number) {
 // ── Assets ────────────────────────────────────────────────────────────────────
 export function devGetAssetsByUser(userId: number, projectId?: number): Asset[] {
   return Array.from(assetsMap.values())
-    .filter((a) => a.userId === userId && (projectId === undefined || a.projectId === projectId))
+    .filter((a) => a.userId === userId && a.deletedAt == null && (projectId === undefined || a.projectId === projectId))
     .sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime());
 }
 
@@ -172,6 +172,11 @@ export function devCreateAsset(data: InsertAsset): Asset {
     storageKey: data.storageKey,
     url: data.url,
     thumbnailUrl: null,
+    source: data.source ?? "upload",
+    provider: data.provider ?? null,
+    model: data.model ?? null,
+    nodeId: data.nodeId ?? null,
+    deletedAt: null,
     createdAt: now(),
   };
   assetsMap.set(id, asset);
@@ -180,7 +185,7 @@ export function devCreateAsset(data: InsertAsset): Asset {
 
 export function devDeleteAsset(id: number, userId: number) {
   const a = assetsMap.get(id);
-  if (a && a.userId === userId) assetsMap.delete(id);
+  if (a && a.userId === userId) a.deletedAt = now(); // soft delete (keep row + file)
 }
 
 // ── Video Tasks ───────────────────────────────────────────────────────────────

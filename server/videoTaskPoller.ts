@@ -1,5 +1,5 @@
 import type { Server as SocketIOServer } from "socket.io";
-import { getPendingVideoTasks, updateVideoTask, claimVideoTaskForSubmit } from "./db";
+import { getPendingVideoTasks, updateVideoTask, claimVideoTaskForSubmit, recordGeneratedAsset } from "./db";
 import { isPoyoVideoProvider, submitPoyoVideo, checkPoyoVideoStatus } from "./_core/poyoVideo";
 import { isHiggsfieldVideoProvider, submitHiggsfieldVideo, checkHiggsfieldVideoStatus } from "./_core/higgsfield";
 import { persistVideoOrFallback, persistVideosOrFallback } from "./_core/persistVideo";
@@ -170,6 +170,15 @@ export function setupVideoTaskPoller(io: SocketIOServer) {
               resultVideoUrl: result.resultVideoUrl,
               errorMessage: result.errorMessage,
             });
+
+            // Index succeeded videos into the unified media library (dedupes with
+            // the client-driven poll path by storageKey).
+            if (result.status === "succeeded" && result.resultVideoUrl) {
+              const model = (task.params as { model?: string } | null)?.model ?? task.provider;
+              for (const u of result.resultVideoUrl.split("\n").filter(Boolean)) {
+                await recordGeneratedAsset({ userId: task.userId, projectId: task.projectId, nodeId: task.nodeId, type: "video", source: "generated", provider: task.provider, model, url: u, name: task.provider });
+              }
+            }
 
             // Notify via socket
             io.to(`project:${task.projectId}`).emit("collaboration-event", {

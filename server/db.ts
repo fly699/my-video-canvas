@@ -538,14 +538,62 @@ export async function deleteEdge(id: string, projectId: number) {
 export async function getAssetsByUser(userId: number, projectId?: number) {
   const db = await getDb();
   if (!db) return DEV_MODE ? dev.devGetAssetsByUser(userId, projectId) : [];
-  if (projectId !== undefined) {
-    return db
-      .select()
-      .from(assets)
-      .where(and(eq(assets.userId, userId), eq(assets.projectId, projectId)))
-      .orderBy(desc(assets.createdAt));
+  // Always exclude soft-deleted rows.
+  const conds = [eq(assets.userId, userId), isNull(assets.deletedAt)];
+  if (projectId !== undefined) conds.push(eq(assets.projectId, projectId));
+  return db.select().from(assets).where(and(...conds)).orderBy(desc(assets.createdAt));
+}
+
+/**
+ * Index a produced media item into the unified library. Best-effort: any failure
+ * is logged and swallowed so recording never breaks a (paid) generation. Dedupes
+ * by (userId, storageKey) so the video poll + background poller don't double-write.
+ */
+export async function recordGeneratedAsset(a: {
+  userId: number;
+  projectId?: number | null;
+  nodeId?: string | null;
+  type: "image" | "video" | "audio" | "other";
+  source?: "upload" | "generated" | "external";
+  provider?: string | null;
+  model?: string | null;
+  url: string;
+  storageKey?: string | null;
+  name: string;
+  mimeType?: string | null;
+  size?: number | null;
+}): Promise<void> {
+  try {
+    if (!a.url) return;
+    const storageKey = a.storageKey
+      ?? (a.url.startsWith("/manus-storage/") ? a.url.slice("/manus-storage/".length) : a.url);
+    const db = await getDb();
+    if (db) {
+      const existing = await db.select({ id: assets.id }).from(assets)
+        .where(and(eq(assets.userId, a.userId), eq(assets.storageKey, storageKey), isNull(assets.deletedAt)))
+        .limit(1);
+      if (existing.length > 0) return;
+    } else if (DEV_MODE) {
+      const ex = dev.devGetAssetsByUser(a.userId).find((x) => x.storageKey === storageKey);
+      if (ex) return;
+    }
+    await createAsset({
+      userId: a.userId,
+      projectId: a.projectId ?? null,
+      name: a.name,
+      type: a.type,
+      mimeType: a.mimeType ?? null,
+      size: a.size ?? null,
+      storageKey,
+      url: a.url,
+      source: a.source ?? "generated",
+      provider: a.provider ?? null,
+      model: a.model ?? null,
+      nodeId: a.nodeId ?? null,
+    } as InsertAsset);
+  } catch (err) {
+    console.error("[recordGeneratedAsset] non-fatal:", err);
   }
-  return db.select().from(assets).where(eq(assets.userId, userId)).orderBy(desc(assets.createdAt));
 }
 
 export async function createAsset(data: InsertAsset) {
@@ -567,7 +615,9 @@ export async function getAssetById(id: number, userId: number) {
 export async function deleteAsset(id: number, userId: number) {
   const db = await getDb();
   if (!db) { if (DEV_MODE) { dev.devDeleteAsset(id, userId); return; } throw new Error("DB unavailable"); }
-  await db.delete(assets).where(and(eq(assets.id, id), eq(assets.userId, userId)));
+  // Soft delete: hide from the user but KEEP the MinIO object and the row (the
+  // file must persist; only its visibility/ownership is cleared).
+  await db.update(assets).set({ deletedAt: new Date() }).where(and(eq(assets.id, id), eq(assets.userId, userId)));
 }
 
 // ── Video Tasks ───────────────────────────────────────────────────────────────
