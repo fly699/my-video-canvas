@@ -27,6 +27,7 @@ import {
   MessageCircle,
   Music,
   Wallet,
+  RefreshCw,
 } from "lucide-react";
 
 // ── Animated background grid ─────────────────────────────────────────────────
@@ -69,6 +70,7 @@ interface Project {
   name: string;
   description?: string | null;
   updatedAt: Date;
+  thumbnail?: string | null;
 }
 
 function ProjectCard({
@@ -76,14 +78,31 @@ function ProjectCard({
   onOpen,
   onDelete,
   onRename,
+  onRefreshCover,
+  refreshingCover = false,
   readOnly = false,
 }: {
   project: Project;
   onOpen: () => void;
   onDelete: () => void;
   onRename: (name: string) => void;
+  onRefreshCover?: () => void;
+  refreshingCover?: boolean;
   readOnly?: boolean;
 }) {
+  // Upstream temp URLs can expire — on load failure, auto-swap to another image
+  // (bounded to avoid loops) and otherwise fall back to the placeholder.
+  const [coverFailed, setCoverFailed] = useState(false);
+  const swapAttempts = useRef(0);
+  useEffect(() => { setCoverFailed(false); }, [project.thumbnail]);
+  const showCover = !!project.thumbnail && !coverFailed;
+  const handleCoverError = () => {
+    setCoverFailed(true);
+    if (onRefreshCover && swapAttempts.current < 3) {
+      swapAttempts.current += 1;
+      onRefreshCover(); // server prefers stable /manus-storage paths
+    }
+  };
   const [menuOpen, setMenuOpen] = useState(false);
   const [renaming, setRenaming] = useState(false);
   const [renameVal, setRenameVal] = useState(project.name);
@@ -149,19 +168,45 @@ function ProjectCard({
           </svg>
         </div>
 
-        {/* Center icon */}
-        <div
-          className="relative z-10 w-10 h-10 rounded-xl flex items-center justify-center"
-          style={{
-            background: "oklch(0.68 0.22 285 / 0.15)",
-            border: "1px solid oklch(0.68 0.22 285 / 0.3)",
-          }}
-        >
-          <Film className="w-5 h-5" style={{ color: "oklch(0.68 0.22 285)" }} />
-        </div>
+        {/* Auto-filled cover from any image in the project */}
+        {showCover && (
+          <img
+            src={project.thumbnail!}
+            alt=""
+            className="absolute inset-0 w-full h-full object-cover z-[5]"
+            loading="lazy"
+            onError={handleCoverError}
+          />
+        )}
+
+        {/* Center icon (placeholder shown only when no cover) */}
+        {!showCover && (
+          <div
+            className="relative z-10 w-10 h-10 rounded-xl flex items-center justify-center"
+            style={{
+              background: "oklch(0.68 0.22 285 / 0.15)",
+              border: "1px solid oklch(0.68 0.22 285 / 0.3)",
+            }}
+          >
+            <Film className="w-5 h-5" style={{ color: "oklch(0.68 0.22 285)" }} />
+          </div>
+        )}
 
         {/* Hover overlay */}
-        <div className="absolute inset-0 opacity-0 group-hover:opacity-100 transition-opacity" style={{ background: "var(--c-overlay)" }} />
+        <div className="absolute inset-0 opacity-0 group-hover:opacity-100 transition-opacity z-[6]" style={{ background: "var(--c-overlay)" }} />
+
+        {/* Refresh cover button (editors only) */}
+        {onRefreshCover && (
+          <button
+            className="absolute top-2 right-2 z-20 w-7 h-7 rounded-lg flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity"
+            style={{ background: "oklch(0 0 0 / 0.55)", border: "1px solid var(--c-bd2)", color: "var(--c-t1)", cursor: "pointer" }}
+            title="换一张封面（从项目里的图片中选取）"
+            onClick={(e) => { e.stopPropagation(); onRefreshCover(); }}
+            disabled={refreshingCover}
+          >
+            <RefreshCw className={`w-3.5 h-3.5 ${refreshingCover ? "animate-spin" : ""}`} />
+          </button>
+        )}
       </div>
 
       {/* Content */}
@@ -325,6 +370,35 @@ export default function Home() {
   const updateProject = trpc.projects.update.useMutation({
     onSuccess: () => refetch(),
   });
+
+  // Auto-fill / refresh a project card cover from any image in the project.
+  const [refreshingCover, setRefreshingCover] = useState<number | null>(null);
+  const autoFilledRef = useRef<Set<number>>(new Set());
+  const pickCover = trpc.projects.pickCover.useMutation();
+
+  const refreshCover = async (projectId: number, exclude?: string | null) => {
+    setRefreshingCover(projectId);
+    try {
+      const res = await pickCover.mutateAsync({ id: projectId, exclude: exclude ?? undefined });
+      if (res.thumbnail) await refetch();
+      else toast.info("该项目还没有可用作封面的图片");
+    } catch {
+      /* non-fatal — leave the placeholder */
+    } finally {
+      setRefreshingCover(null);
+    }
+  };
+
+  // One-time auto-fill: owned projects without a cover get one picked on load.
+  useEffect(() => {
+    for (const p of projects?.owned ?? []) {
+      if (!p.thumbnail && !autoFilledRef.current.has(p.id)) {
+        autoFilledRef.current.add(p.id);
+        pickCover.mutateAsync({ id: p.id }).then((res) => { if (res.thumbnail) refetch(); }).catch(() => {});
+      }
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [projects?.owned]);
 
   const handleCreate = async () => {
     if (creating) return;
@@ -832,13 +906,15 @@ export default function Home() {
             <>
               <div className="grid grid-cols-4 gap-4">
                 <NewProjectCard onClick={handleCreate} />
-                {(projects?.owned ?? []).map((project: { id: number; name: string; description?: string | null; updatedAt: Date }) => (
+                {(projects?.owned ?? []).map((project: { id: number; name: string; description?: string | null; updatedAt: Date; thumbnail?: string | null }) => (
                   <ProjectCard
                     key={project.id}
                     project={project}
                     onOpen={() => navigate(`/canvas/${project.id}`)}
                     onDelete={() => deleteProject.mutate({ id: project.id })}
                     onRename={(name) => updateProject.mutate({ id: project.id, name })}
+                    onRefreshCover={() => refreshCover(project.id, project.thumbnail)}
+                    refreshingCover={refreshingCover === project.id}
                   />
                 ))}
               </div>
@@ -846,7 +922,7 @@ export default function Home() {
                 <div className="mt-10">
                   <h2 className="text-base font-semibold mb-3" style={{ color: "var(--c-t2)" }}>协作项目</h2>
                   <div className="grid grid-cols-4 gap-4">
-                    {projects!.shared.map((project: { id: number; name: string; description?: string | null; updatedAt: Date }) => (
+                    {projects!.shared.map((project: { id: number; name: string; description?: string | null; updatedAt: Date; thumbnail?: string | null }) => (
                       <ProjectCard
                         key={project.id}
                         project={project}
