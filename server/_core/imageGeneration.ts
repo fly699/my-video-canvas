@@ -9,6 +9,10 @@ export type GenerateImageOptions = {
   model?: string;
   size?: string;
   quality?: "low" | "medium" | "high" | "720p" | "1080p";
+  // Generic Poyo image params (extended model set)
+  resolution?: string; // "0.5K" | "1K" | "2K" | "3K" | "4K"
+  n?: number;
+  outputFormat?: string; // "png" | "jpg" | "jpeg" | "webp"
   originalImages?: Array<{
     url?: string;
     b64Json?: string;
@@ -44,25 +48,101 @@ const POYO_BASE = "https://api.poyo.ai";
 const POLL_INTERVAL_MS = 3000;
 const POLL_MAX_ATTEMPTS = 40; // 2 min max
 
+// ---------------------------------------------------------------------------
+// Poyo image model specs — maps each UI model value to its wire name and which
+// params it accepts, per docs/poyo-image-api.md. `sizeMode` selects the field
+// name for size: "size" (most models), "aspect_ratio" (legacy flux-2 to avoid
+// regressing the previously-working path), or false (no size param). `edit`
+// names the -edit wire variant used when reference image(s) are supplied;
+// `editOnly` means the model is always the edit variant (kling-o1).
+// ---------------------------------------------------------------------------
+type PoyoImageSpec = {
+  wire: string;
+  edit?: string;       // -edit variant wire name (when image_urls present)
+  editOnly?: boolean;  // model is edit-only (image_urls required)
+  sizeMode?: "size" | "aspect_ratio" | false;
+  resolution?: boolean;
+  quality?: boolean;     // low/medium/high
+  n?: boolean;
+  outputFormat?: boolean;
+};
+
+const POYO_IMAGE_SPECS: Record<string, PoyoImageSpec> = {
+  // Nano Banana (Google)
+  poyo_nano_banana:     { wire: "nano-banana",     edit: "nano-banana-edit" },
+  poyo_nano_banana_2:   { wire: "nano-banana-2",   edit: "nano-banana-2-edit" },
+  poyo_nano_banana_pro: { wire: "nano-banana-pro", edit: "nano-banana-pro-edit", sizeMode: "size", resolution: true, outputFormat: true },
+  // GPT Image (OpenAI)
+  poyo_gpt_4o_image: { wire: "gpt-4o-image",  edit: "gpt-4o-image-edit" },
+  poyo_gpt_image_15: { wire: "gpt-image-1.5", edit: "gpt-image-1.5-edit", quality: true },
+  poyo_gpt_image:    { wire: "gpt-image-2",   edit: "gpt-image-2-edit", sizeMode: "size", resolution: true, quality: true },
+  // Flux (Black Forest Labs)
+  poyo_flux:             { wire: "flux-2-pro",        edit: "flux-2-pro-edit",  sizeMode: "aspect_ratio" },
+  poyo_sdxl:             { wire: "flux-2-flex",       edit: "flux-2-flex-edit", sizeMode: "aspect_ratio" },
+  poyo_flux_kontext_pro: { wire: "flux-kontext-pro",  edit: "flux-kontext-pro-edit", sizeMode: "size", outputFormat: true },
+  poyo_flux_kontext_max: { wire: "flux-kontext-max",  edit: "flux-kontext-max-edit", sizeMode: "size", outputFormat: true },
+  // Seedream (ByteDance)
+  poyo_seedream_4:      { wire: "seedream-4",        edit: "seedream-4-edit",        sizeMode: "size", resolution: true, n: true },
+  poyo_seedream:        { wire: "seedream-4.5",      edit: "seedream-4.5-edit",      sizeMode: "size", resolution: true },
+  poyo_seedream_5_lite: { wire: "seedream-5.0-lite", edit: "seedream-5.0-lite-edit", sizeMode: "size", resolution: true },
+  // Wan (Alibaba) — unified model, auto-edit when image_urls present (no -edit suffix)
+  poyo_wan_image:     { wire: "wan-2.7-image",     sizeMode: "size", n: true },
+  poyo_wan_image_pro: { wire: "wan-2.7-image-pro", sizeMode: "size", n: true },
+  // Kling (Kuaishou)
+  poyo_kling_o1_image: { wire: "kling-o1-image-edit", editOnly: true, sizeMode: "size", resolution: true, n: true, outputFormat: true },
+  poyo_kling_o3_image: { wire: "kling-o3-image", edit: "kling-o3-image-edit", sizeMode: "size", resolution: true, n: true, outputFormat: true },
+  // Others — unified models, auto-edit when image_urls present
+  poyo_z_image:    { wire: "z-image",            sizeMode: "size" },
+  poyo_grok_image: { wire: "grok-imagine-image", sizeMode: "size" },
+  // Legacy aliases (kept so old payloads keep routing)
+  "gpt-image-2":  { wire: "gpt-image-2", sizeMode: "size", resolution: true, quality: true },
+  "seedream-4.5": { wire: "seedream-4.5", sizeMode: "size", resolution: true },
+  "flux-2-pro":   { wire: "flux-2-pro", sizeMode: "aspect_ratio" },
+  "flux-2-flex":  { wire: "flux-2-flex", sizeMode: "aspect_ratio" },
+  "wan-2.7-image":      { wire: "wan-2.7-image", sizeMode: "size", n: true },
+  "grok-imagine-image": { wire: "grok-imagine-image", sizeMode: "size" },
+};
+
+// Build the Poyo `input` payload for a model spec from the generic options.
+async function buildPoyoImageInput(spec: PoyoImageSpec, options: GenerateImageOptions): Promise<{ model: string; input: Record<string, unknown> }> {
+  const input: Record<string, unknown> = { prompt: options.prompt };
+
+  // Resolve reference image(s) → absolute URLs Poyo can fetch (our internal
+  // `/manus-storage/{key}` paths aren't reachable upstream).
+  const refUrls: string[] = [];
+  for (const img of options.originalImages ?? []) {
+    if (img?.url) refUrls.push(await resolveToAbsoluteUrl(img.url));
+  }
+  const hasRefs = refUrls.length > 0;
+  const isEdit = spec.editOnly || (hasRefs && !!spec.edit);
+
+  if (spec.sizeMode === "size" && options.size) input.size = options.size;
+  else if (spec.sizeMode === "aspect_ratio") input.aspect_ratio = options.size ?? "16:9";
+
+  if (spec.resolution && options.resolution) input.resolution = options.resolution;
+  if (spec.quality && options.quality) input.quality = options.quality;
+  if (spec.n && options.n) input.n = options.n;
+  if (spec.outputFormat && options.outputFormat) input.output_format = options.outputFormat;
+
+  if (hasRefs) {
+    // Edit/unified models read reference images from `image_urls`.
+    input.image_urls = refUrls;
+    // Legacy single-ref field kept for models that historically used it.
+    input.reference_image_url = refUrls[0];
+  }
+
+  const model = isEdit && spec.edit ? spec.edit : spec.wire;
+  return { model, input };
+}
+
 async function generateImagePoyo(options: GenerateImageOptions): Promise<GenerateImageResponse> {
   if (!ENV.poyoApiKey) throw new Error("POYO_API_KEY is not configured");
 
-  const model = options.model ?? "gpt-image-2";
-  const input: Record<string, unknown> = { prompt: options.prompt };
-
-  if (model === "gpt-image-2") {
-    input.size = options.size ?? "16:9";
-    input.quality = options.quality ?? "medium";
-  } else {
-    // Flux models (flux-2-pro, flux-2-flex) use aspect_ratio
-    input.aspect_ratio = options.size ?? "16:9";
-  }
-
-  if (options.originalImages?.[0]?.url) {
-    // Upstream Poyo can't fetch our internal `/manus-storage/{key}` paths;
-    // hand them an absolute presigned S3 URL.
-    input.reference_image_url = await resolveToAbsoluteUrl(options.originalImages[0].url);
-  }
+  // Resolve the model spec (by UI value or legacy wire alias); fall back to a
+  // gpt-image-2-like default so an unknown value still produces a valid call.
+  const specKey = options.model ?? "gpt-image-2";
+  const spec = POYO_IMAGE_SPECS[specKey] ?? { wire: specKey, sizeMode: "size" as const, resolution: true, quality: true };
+  const { model, input } = await buildPoyoImageInput(spec, options);
 
   // Submit task
   const submitRes = await fetch(`${POYO_BASE}/api/generate/submit`, {
@@ -196,14 +276,9 @@ async function generateImageForge(options: GenerateImageOptions): Promise<Genera
 export async function generateImage(options: GenerateImageOptions): Promise<GenerateImageResponse> {
   // Route by explicit model selection
   if (options.model === "manus_forge") return generateImageForge(options);
-  if (options.model === "poyo_gpt_image")  return generateImagePoyo({ ...options, model: "gpt-image-2" });
-  if (options.model === "poyo_seedream")   return generateImagePoyo({ ...options, model: "seedream-4.5" });
-  if (options.model === "poyo_grok_image") return generateImagePoyo({ ...options, model: "grok-imagine-image" });
-  if (options.model === "poyo_wan_image")  return generateImagePoyo({ ...options, model: "wan-2.7-image" });
-  if (options.model === "poyo_flux" || options.model === "poyo_sdxl") {
-    // flux-2-pro: high quality Flux model; flux-2-flex: flexible/cheaper variant
-    const poyoModel = options.model === "poyo_flux" ? "flux-2-pro" : "flux-2-flex";
-    return generateImagePoyo({ ...options, model: poyoModel });
+  // All Poyo image models (incl. legacy wire aliases) resolve via POYO_IMAGE_SPECS.
+  if (options.model && (options.model.startsWith("poyo_") || options.model in POYO_IMAGE_SPECS)) {
+    return generateImagePoyo(options);
   }
   // Higgsfield image models
   if (options.model === "hf_soul_standard" || options.model === "hf_reve" || options.model === "hf_seedream_v4" || options.model === "hf_flux_pro") {

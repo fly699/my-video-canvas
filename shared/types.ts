@@ -212,7 +212,38 @@ export interface AIChatNodeData {
   model?: string;
 }
 
-export type ImageGenModel = "manus_forge" | "poyo_flux" | "poyo_sdxl" | "poyo_gpt_image" | "poyo_seedream" | "poyo_grok_image" | "poyo_wan_image" | "hf_soul_standard" | "hf_reve" | "hf_seedream_v4" | "hf_flux_pro";
+export type ImageGenModel =
+  // Manus (built-in)
+  | "manus_forge"
+  // Poyo · Nano Banana (Google)
+  | "poyo_nano_banana" | "poyo_nano_banana_2" | "poyo_nano_banana_pro"
+  // Poyo · GPT Image (OpenAI)
+  | "poyo_gpt_4o_image" | "poyo_gpt_image_15" | "poyo_gpt_image"
+  // Poyo · Flux (Black Forest Labs)
+  | "poyo_flux" | "poyo_sdxl" | "poyo_flux_kontext_pro" | "poyo_flux_kontext_max"
+  // Poyo · Seedream (ByteDance)
+  | "poyo_seedream_4" | "poyo_seedream" | "poyo_seedream_5_lite"
+  // Poyo · Wan (Alibaba)
+  | "poyo_wan_image" | "poyo_wan_image_pro"
+  // Poyo · Kling (Kuaishou)
+  | "poyo_kling_o1_image" | "poyo_kling_o3_image"
+  // Poyo · others
+  | "poyo_z_image" | "poyo_grok_image"
+  // Higgsfield
+  | "hf_soul_standard" | "hf_reve" | "hf_seedream_v4" | "hf_flux_pro";
+
+/** UI value strings for every image model — single source for the Zod enum. */
+export const IMAGE_GEN_MODELS = [
+  "manus_forge",
+  "poyo_nano_banana", "poyo_nano_banana_2", "poyo_nano_banana_pro",
+  "poyo_gpt_4o_image", "poyo_gpt_image_15", "poyo_gpt_image",
+  "poyo_flux", "poyo_sdxl", "poyo_flux_kontext_pro", "poyo_flux_kontext_max",
+  "poyo_seedream_4", "poyo_seedream", "poyo_seedream_5_lite",
+  "poyo_wan_image", "poyo_wan_image_pro",
+  "poyo_kling_o1_image", "poyo_kling_o3_image",
+  "poyo_z_image", "poyo_grok_image",
+  "hf_soul_standard", "hf_reve", "hf_seedream_v4", "hf_flux_pro",
+] as const satisfies readonly ImageGenModel[];
 export interface ImageGenNodeData {
   prompt: string;
   negativePrompt?: string;

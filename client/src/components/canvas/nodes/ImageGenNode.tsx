@@ -12,6 +12,9 @@ import { ImageLightbox } from "../ImageLightbox";
 import { IMAGE_MODELS } from "@/lib/models";
 import { makeImageProxyFallback } from "@/lib/utils";
 import { RefImageReachabilityBadge, RefImageSwitchButton, useRefImageGuard } from "../mediaReachability";
+import { ModelPicker, imageCostLabel } from "../ModelPicker";
+import { ParamControls } from "../ParamControls";
+import { IMAGE_MODEL_PARAMS } from "@/lib/paramDefs";
 
 interface Props {
   id: string;
@@ -82,14 +85,7 @@ const FLUX_PRO_ASPECT_RATIOS = REVE_ASPECT_RATIOS;
 const REVE_RESOLUTIONS = ["1K", "2K", "4K"] as const;
 const SOUL_QUALITIES = ["720p", "1080p"] as const;
 
-// Per-model aspect ratio whitelists — protect downstream APIs from cross-model contamination
-// Also used to drive UI <option> rendering so users cannot select a value the server will silently drop
-const POYO_ASPECT_RATIOS = ["1:1", "16:9", "9:16", "4:3", "3:4", "21:9"] as const;
-const POYO_QUALITIES = ["low", "medium", "high"] as const;
-
 const MAX_SEED = 2147483647;
-
-const MODELS = IMAGE_MODELS as unknown as { value: ImageGenModel; label: string; desc: string; group: string }[];
 
 // Push a freshly chosen / generated image URL out to every downstream node
 // that consumes a reference image (video_task / comfyui_video / comfyui_image).
@@ -218,14 +214,10 @@ export const ImageGenNode = memo(function ImageGenNode({ id, selected, data }: P
     if (genMutation.isPending) return;
     if (uploading) { toast.error("参考图正在上传中，请稍候"); return; }
     if (!payload.prompt?.trim()) { toast.error("请先填写提示词"); return; }
-    const isPoyo = payload.model === "poyo_flux" || payload.model === "poyo_sdxl" || payload.model === "poyo_gpt_image" ||
-                   payload.model === "poyo_seedream" || payload.model === "poyo_grok_image" || payload.model === "poyo_wan_image";
     const isReveOrSeedream = payload.model === "hf_reve" || payload.model === "hf_seedream_v4" || payload.model === "hf_flux_pro";
-    const poyoAspect = (POYO_ASPECT_RATIOS as readonly string[]).includes(payload.aspectRatio ?? "") ? payload.aspectRatio : undefined;
     const reveAspectAllowed: readonly string[] = payload.model === "hf_flux_pro" ? FLUX_PRO_ASPECT_RATIOS : REVE_ASPECT_RATIOS;
     const reveAspect = reveAspectAllowed.includes(payload.reveAspectRatio ?? "") ? payload.reveAspectRatio : undefined;
     const fluxNum = ([1, 2, 3, 4] as number[]).includes(payload.fluxNumImages as number) ? (payload.fluxNumImages as 1 | 2 | 3 | 4) : undefined;
-    const poyoQuality = (POYO_QUALITIES as readonly string[]).includes(payload.poyoQuality ?? "") ? payload.poyoQuality : undefined;
     const soulQuality = (SOUL_QUALITIES as readonly string[]).includes(payload.soulQuality ?? "") ? payload.soulQuality : undefined;
     const reveResolution = (REVE_RESOLUTIONS as readonly string[]).includes(payload.reveResolution ?? "") ? payload.reveResolution : undefined;
     const widthAndHeight = (SOUL_SIZES as readonly string[]).includes(payload.widthAndHeight ?? "") ? payload.widthAndHeight : undefined;
@@ -233,16 +225,32 @@ export const ImageGenNode = memo(function ImageGenNode({ id, selected, data }: P
       typeof s === "number" && Number.isInteger(s) && s >= 0 && s <= MAX_SEED ? s : undefined;
     const validGuidance = (g: number | undefined) =>
       typeof g === "number" && Number.isFinite(g) && g >= 1 && g <= 20 ? g : undefined;
+    // 通用尺寸字段尚未写入 ImageGenNodeData 类型（由后端 Zod 接收）。以 tRPC
+    // 输入类型作为视图，使枚举字段（imageResolution / imageOutputFormat 等）
+    // 与 mutation 入参精确对齐，无需在前端硬抄枚举。
+    type GenInput = Parameters<typeof genMutation.mutate>[0];
+    const generic = payload as unknown as Pick<
+      GenInput,
+      "imageSize" | "imageResolution" | "imageN" | "imageOutputFormat" | "poyoAspectRatio"
+    >;
     const submit = () => genMutation.mutate({
       prompt: payload.prompt,
       negativePrompt: payload.negativePrompt,
       style: payload.style,
       referenceImageUrl: payload.referenceImageUrl,
       model: payload.model || undefined,
-      // Poyo image model params
-      ...(isPoyo ? {
-        poyoAspectRatio: poyoAspect,
-        ...(payload.model === "poyo_gpt_image" ? { poyoQuality } : {}),
+      // Poyo image model params —— 对任意 poyo_ 开头模型转发通用参数字段。
+      // 通用尺寸字段（imageSize / imageResolution / imageN / imageOutputFormat）
+      // 与旧 poyoAspectRatio 由 ParamControls/旧节点写入，后端 Zod 校验枚举；前端
+      // payload 类型尚未声明这些键，统一经 generic 视图读取后由后端二次校验。
+      ...(payload.model?.startsWith("poyo_") ? {
+        imageSize: generic.imageSize,
+        imageResolution: generic.imageResolution,
+        imageN: generic.imageN,
+        imageOutputFormat: generic.imageOutputFormat,
+        poyoQuality: payload.poyoQuality,
+        // 兼容旧节点：旧 payload 用 poyoAspectRatio，后端 size 取 imageSize ?? poyoAspectRatio
+        poyoAspectRatio: generic.poyoAspectRatio,
       } : {}),
       // Soul Standard specific params
       ...(payload.model === "hf_soul_standard" ? {
@@ -318,7 +326,6 @@ export const ImageGenNode = memo(function ImageGenNode({ id, selected, data }: P
   const isReve = payload.model === "hf_reve";
   const isSeedreamV4 = payload.model === "hf_seedream_v4";
   const isFluxPro = payload.model === "hf_flux_pro";
-  const isGptImage = payload.model === "poyo_gpt_image";
   const isManus = payload.model === "manus_forge";
   // Models that use the collapsible params panel
   const isReveLike = isReve || isSeedreamV4 || isFluxPro;
@@ -606,25 +613,18 @@ export const ImageGenNode = memo(function ImageGenNode({ id, selected, data }: P
             <Cpu style={{ width: 10, height: 10 }} />
             模型
           </label>
-          <select
-            value={payload.model ?? ""}
-            onChange={(e) => update("model", e.target.value)}
-            className="nodrag"
-            style={{ ...fieldBase, cursor: "pointer" }}
-            onFocus={(e) => { e.currentTarget.style.borderColor = BORDER_ACCENT; }}
-            onBlur={(e) => { e.currentTarget.style.borderColor = BORDER_DEFAULT; }}
-          >
-            <option value="">自动选择</option>
-            {["Manus", "Poyo", "Higgsfield"].map((group) => (
-              <optgroup key={group} label={`── ${group} ──`} style={{ background: "var(--c-surface)" }}>
-                {MODELS.filter((m) => m.group === group).map((m) => (
-                  <option key={m.value} value={m.value} style={{ background: "var(--c-surface)" }}>
-                    {m.label} — {m.desc}
-                  </option>
-                ))}
-              </optgroup>
-            ))}
-          </select>
+          <ModelPicker
+            value={payload.model ?? "manus_forge"}
+            onChange={(v) => update("model", v as ImageGenModel)}
+            options={IMAGE_MODELS.map((m) => ({
+              value: m.value,
+              label: m.label,
+              group: m.group,
+              family: m.family,
+              caps: m.caps,
+              costLabel: imageCostLabel(m),
+            }))}
+          />
         </div>
 
         {/* Prompt */}
@@ -675,8 +675,10 @@ export const ImageGenNode = memo(function ImageGenNode({ id, selected, data }: P
                   {STYLES.map((s) => <option key={s} value={s}>{s}</option>)}
                 </select>
               </div>
-              {/* Manus Forge ignores aspect ratio server-side — hide the picker to avoid misleading users */}
-              {!isManus && (
+              {/* 比例选择器仅用于既没有 schema 参数、且非 Manus 的旧模型；
+                  Poyo 模型的尺寸/比例改由下方 ParamControls 渲染（schema 驱动），
+                  Manus Forge 服务端忽略比例所以隐藏。 */}
+              {!isManus && payload.model && !IMAGE_MODEL_PARAMS[payload.model] && (
                 <div style={{ width: 80 }}>
                   <label style={labelStyle}>比例</label>
                   <select
@@ -685,33 +687,22 @@ export const ImageGenNode = memo(function ImageGenNode({ id, selected, data }: P
                     className="nodrag"
                     style={{ ...fieldBase, cursor: "pointer" }}
                   >
-                    {/* Restrict options to the Poyo whitelist (server-validated); fallback to RATIOS for other non-Manus paths */}
-                    {(payload.model && (payload.model === "poyo_flux" || payload.model === "poyo_sdxl" || payload.model === "poyo_gpt_image" || payload.model === "poyo_seedream" || payload.model === "poyo_grok_image" || payload.model === "poyo_wan_image")
-                      ? (POYO_ASPECT_RATIOS as readonly string[])
-                      : (RATIOS as readonly string[])
-                    ).map((r) => <option key={r} value={r}>{r}</option>)}
+                    {(RATIOS as readonly string[]).map((r) => <option key={r} value={r}>{r}</option>)}
                   </select>
                 </div>
               )}
             </div>
-            {/* GPT Image 2 quality selector */}
-            {isGptImage && (
-              <div>
-                <label style={labelStyle}>质量</label>
-                <select
-                  value={payload.poyoQuality ?? "medium"}
-                  onChange={(e) => update("poyoQuality", e.target.value as "low" | "medium" | "high")}
-                  className="nodrag"
-                  style={{ ...fieldBase, cursor: "pointer" }}
-                  onFocus={(e) => { e.currentTarget.style.borderColor = BORDER_ACCENT; }}
-                  onBlur={(e) => { e.currentTarget.style.borderColor = BORDER_DEFAULT; }}
-                >
-                  <option value="low">低质量 · 快速</option>
-                  <option value="medium">标准质量</option>
-                  <option value="high">高质量 · 慢速</option>
-                </select>
-              </div>
-            )}
+          </div>
+        )}
+
+        {/* Poyo 模型参数控件（schema 驱动）—— 替代原 Poyo 专属比例/GPT 质量硬编码区块 */}
+        {payload.model && IMAGE_MODEL_PARAMS[payload.model] && IMAGE_MODEL_PARAMS[payload.model].length > 0 && (
+          <div style={{ marginBottom: 10 }}>
+            <ParamControls
+              defs={IMAGE_MODEL_PARAMS[payload.model]}
+              values={payload as unknown as Record<string, unknown>}
+              onChange={(key, value) => update(key as keyof ImageGenNodeData, value as never)}
+            />
           </div>
         )}
 
@@ -1032,8 +1023,10 @@ export const ImageGenNode = memo(function ImageGenNode({ id, selected, data }: P
         >
           {genMutation.isPending ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Sparkles className="w-3.5 h-3.5" />}
           {(() => {
+            const poyoN = (payload as unknown as { imageN?: number }).imageN ?? 1;
             const batch = isSoul && (payload.batchSize ?? 1) > 1 ? (payload.batchSize ?? 1)
                         : isFluxPro && (payload.fluxNumImages ?? 1) > 1 ? (payload.fluxNumImages ?? 1)
+                        : poyoN > 1 ? poyoN
                         : 1;
             if (genMutation.isPending) return batch > 1 ? `批量生成中 (${batch} 张)...` : "AI 生成中...";
             return batch > 1 ? `批量生成 ${batch} 张` : "生成图像";

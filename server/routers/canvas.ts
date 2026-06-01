@@ -46,7 +46,7 @@ import { submitAndPollPoyoTTS } from "../_core/poyoAudio";
 import { synthesizeOpenAITTS, type OpenAITTSModel } from "../_core/openaiTTS";
 import { trimVideo, getVideoDuration, mergeVideos, burnSubtitles, generateSRT, overlayVideo, assertSafeUrl, burnAssSubtitles, smartCutVideo } from "../_core/videoEditor";
 import { transcribeAudio } from "../_core/voiceTranscription";
-import { VIDEO_PROVIDERS } from "../../shared/types";
+import { VIDEO_PROVIDERS, IMAGE_GEN_MODELS } from "../../shared/types";
 import type { SubtitleEntry } from "../../shared/types";
 import { assertWhitelisted, assertComfyuiAllowed } from "../_core/whitelist";
 import { writeAuditLog, truncate } from "../_core/auditLog";
@@ -743,9 +743,14 @@ export const imageGenRouter = router({
         negativePrompt: z.string().optional(),
         referenceImageUrl: z.string().optional(),
         style: z.string().optional(),
-        model: z.enum(["manus_forge", "poyo_flux", "poyo_sdxl", "poyo_gpt_image", "poyo_seedream", "poyo_grok_image", "poyo_wan_image", "hf_soul_standard", "hf_reve", "hf_seedream_v4", "hf_flux_pro"]).optional(),
+        model: z.enum(IMAGE_GEN_MODELS).optional(),
         poyoAspectRatio: z.string().optional(),
         poyoQuality: z.enum(["low", "medium", "high"]).optional(),
+        // Generic Poyo image params (schema-driven, extended model set)
+        imageSize: z.string().max(64).optional(),
+        imageResolution: z.enum(["0.5K", "1K", "2K", "3K", "4K"]).optional(),
+        imageN: z.number().int().min(1).max(15).optional(),
+        imageOutputFormat: z.enum(["png", "jpg", "jpeg", "webp"]).optional(),
         widthAndHeight: z.string().optional(),
         quality: z.enum(["720p", "1080p"]).optional(),
         batchSize: z.union([z.literal(1), z.literal(4)]).optional(),
@@ -799,10 +804,16 @@ export const imageGenRouter = router({
         ...(input.referenceImageUrl
           ? { originalImages: [{ url: input.referenceImageUrl, mimeType: "image/jpeg" }] }
           : {}),
-        ...((input.model === "poyo_flux" || input.model === "poyo_sdxl" || input.model === "poyo_gpt_image" ||
-             input.model === "poyo_seedream" || input.model === "poyo_grok_image" || input.model === "poyo_wan_image") ? {
-          size: input.poyoAspectRatio,
+        // All Poyo image models share the generic param channel; the backend
+        // spec table (POYO_IMAGE_SPECS) decides which fields each model actually
+        // sends. `imageSize` (new ParamDef field) falls back to the legacy
+        // `poyoAspectRatio` so old nodes keep working.
+        ...(input.model?.startsWith("poyo_") ? {
+          size: input.imageSize ?? input.poyoAspectRatio,
           quality: input.poyoQuality,
+          resolution: input.imageResolution,
+          n: input.imageN,
+          outputFormat: input.imageOutputFormat,
         } : {}),
         ...(input.model === "hf_soul_standard" ? {
           widthAndHeight: input.widthAndHeight,
