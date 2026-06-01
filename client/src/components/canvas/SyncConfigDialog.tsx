@@ -25,8 +25,10 @@ interface FieldCategory {
 const IMAGE_CATEGORIES: FieldCategory[] = [
   { key: "server", label: "服务器地址", fields: ["serverUrls", "customBaseUrl"] },
   { key: "conn", label: "工作流 / 负向词", fields: ["workflowTemplate", "negPrompt"] },
-  { key: "model", label: "模型", fields: ["ckpt", "vae", "upscaleModel"] },
-  { key: "sampling", label: "采样参数", fields: ["steps", "cfg", "width", "height", "sampler", "scheduler", "denoise", "batchSize"] },
+  // 模型类别覆盖架构（DiT）相关字段：架构、加载方式、UNet 精度、CLIP 来源。
+  { key: "model", label: "模型", fields: ["ckpt", "arch", "modelSource", "unetWeightDtype", "clip", "vae", "upscaleModel"] },
+  // guidance（Flux）/ shift（SD3·Qwen）是按架构的采样调节项，归入采样参数。
+  { key: "sampling", label: "采样参数", fields: ["steps", "cfg", "guidance", "shift", "width", "height", "sampler", "scheduler", "denoise", "batchSize"] },
   { key: "lora", label: "LoRA", fields: ["loras", "lora", "loraStrength"] },
   { key: "controlnet", label: "ControlNet", fields: ["controlnet"] },
   { key: "ipadapter", label: "IPAdapter", fields: ["ipadapter"] },
@@ -125,6 +127,13 @@ export function SyncConfigDialog({
     // undefined for fields the source never set.
     for (const f of fields) {
       if (sp[f] !== undefined) patch[f] = sp[f];
+    }
+    // Architecture / loader fields must mirror the source EXACTLY when the model
+    // category is synced — including being cleared back to undefined (= 经典 SD /
+    // checkpoint). Otherwise a target keeps e.g. arch=flux while receiving an SD
+    // ckpt, producing the exact text-encoder dimension mismatch we guard against.
+    if (selectedCats.has("model")) {
+      for (const f of ["arch", "modelSource", "unetWeightDtype", "clip"]) patch[f] = sp[f];
     }
     if (Object.keys(patch).length === 0) { toast.info("源节点没有可同步的配置值"); return; }
     const targets = Array.from(selectedTargets);
