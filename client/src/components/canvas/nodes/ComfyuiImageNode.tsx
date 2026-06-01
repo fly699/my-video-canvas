@@ -270,6 +270,9 @@ export const ComfyuiImageNode = memo(function ComfyuiImageNode({ id, selected, d
       ipadapter: ip?.model?.trim() && ip?.imageUrl
         ? { model: ip.model.trim(), imageUrl: ip.imageUrl, clipVision: ip.clipVision?.trim() || undefined, weight: ip.weight }
         : undefined,
+      clip: payload.clip?.name1?.trim()
+        ? { clipType: payload.clip.clipType, name1: payload.clip.name1.trim(), name2: payload.clip.name2?.trim() || undefined }
+        : undefined,
       upscaleModel: payload.upscaleModel?.trim() || undefined,
       steps: payload.steps ?? 20,
       cfg: payload.cfg ?? 7,
@@ -906,6 +909,60 @@ export const ComfyuiImageNode = memo(function ComfyuiImageNode({ id, selected, d
                 <datalist id={`comfyui-vaes-${id}`}>
                   {(modelsQuery.data?.vaes ?? []).map((v) => <option key={v} value={v} />)}
                 </datalist>
+              </div>
+              {/* CLIP 来源：checkpoint 不含 CLIP（Flux/SD3/UNet-only）时单独加载 */}
+              <div className="col-span-2">
+                <label style={labelStyle}>CLIP 来源（Checkpoint 报错 "clip input is invalid" 时用）</label>
+                <select
+                  value={payload.clip == null ? "checkpoint" : (payload.clip.name2 !== undefined ? "dual" : "single")}
+                  onChange={(e) => {
+                    const m = e.target.value;
+                    if (m === "checkpoint") update("clip", undefined);
+                    else if (m === "single") update("clip", { clipType: payload.clip?.clipType || "stable_diffusion", name1: payload.clip?.name1 || "", name2: undefined });
+                    else update("clip", { clipType: payload.clip?.clipType || "flux", name1: payload.clip?.name1 || "", name2: payload.clip?.name2 ?? "" });
+                  }}
+                  className="nodrag" style={fieldBase}
+                >
+                  <option value="checkpoint">跟随 Checkpoint（默认）</option>
+                  <option value="single">单独 CLIP（CLIPLoader）</option>
+                  <option value="dual">双 CLIP（DualCLIPLoader · Flux/SD3/SDXL）</option>
+                </select>
+                {payload.clip != null && (
+                  <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 6, marginTop: 6 }}>
+                    <input
+                      list={`comfyui-clip-types-${id}`}
+                      placeholder={payload.clip.name2 !== undefined ? "类型 如 flux / sdxl / sd3" : "类型 如 stable_diffusion / flux"}
+                      value={payload.clip.clipType}
+                      onChange={(e) => update("clip", { ...payload.clip!, clipType: e.target.value })}
+                      className="nodrag" style={fieldBase}
+                    />
+                    <datalist id={`comfyui-clip-types-${id}`}>
+                      {(payload.clip.name2 !== undefined
+                        ? ["sdxl", "sd3", "flux", "hunyuan_video", "hidream"]
+                        : ["stable_diffusion", "sd3", "flux", "stable_cascade", "stable_audio", "mochi", "ltxv", "pixart", "cosmos", "lumina2", "wan", "hunyuan_video"]
+                      ).map((t) => <option key={t} value={t} />)}
+                    </datalist>
+                    <input
+                      list={`comfyui-clips-${id}`}
+                      placeholder={payload.clip.name2 !== undefined ? "clip_name1 如 clip_l.safetensors" : "clip 文件名"}
+                      value={payload.clip.name1}
+                      onChange={(e) => update("clip", { ...payload.clip!, name1: e.target.value })}
+                      className="nodrag" style={fieldBase}
+                    />
+                    {payload.clip.name2 !== undefined && (
+                      <input
+                        list={`comfyui-clips-${id}`}
+                        placeholder="clip_name2 如 t5xxl_fp16.safetensors"
+                        value={payload.clip.name2}
+                        onChange={(e) => update("clip", { ...payload.clip!, name2: e.target.value })}
+                        className="nodrag" style={fieldBase}
+                      />
+                    )}
+                    <datalist id={`comfyui-clips-${id}`}>
+                      {(modelsQuery.data?.clips ?? []).map((c) => <option key={c} value={c} />)}
+                    </datalist>
+                  </div>
+                )}
               </div>
               {/* Upscale model (放大) */}
               <div className="col-span-2">

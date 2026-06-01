@@ -32,6 +32,12 @@ export const comfyStressRouter = router({
           width: z.number().int().min(64).max(4096).default(512),
           height: z.number().int().min(64).max(4096).default(512),
           batchSize: z.number().int().min(1).max(8).default(1),
+          // Optional separate CLIP loader (Flux/SD3/UNet-only checkpoints).
+          clip: z.object({
+            clipType: z.string().min(1).max(64),
+            name1: z.string().min(1).max(255),
+            name2: z.string().max(255).optional(),
+          }).optional(),
         }).optional(),
         mode: z.enum(["lean", "full"]).default("lean"),
         concurrency: z.number().int().min(1).max(32).default(1),
@@ -59,6 +65,7 @@ export const comfyStressRouter = router({
           negPrompt: m.negPrompt,
           ckpt: m.ckpt,
           loras: [],
+          clip: m.clip,
           seed: Math.floor(Math.random() * 2_147_483_647),
           steps: m.steps,
           cfg: m.cfg,

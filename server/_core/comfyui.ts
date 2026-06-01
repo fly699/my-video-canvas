@@ -511,6 +511,9 @@ interface BuildImageWorkflowArgs {
   negPrompt: string;
   ckpt: string;
   loras: LoraSpec[];
+  // Separate CLIP loader for checkpoints that don't embed CLIP (Flux/SD3/etc).
+  // name2 present → DualCLIPLoader, else CLIPLoader; omitted → checkpoint's CLIP.
+  clip?: { clipType: string; name1: string; name2?: string };
   vae?: string;            // VAELoader name; empty = use checkpoint's VAE
   controlnet?: ControlNetSpec;
   ipadapter?: IPAdapterSpec;
@@ -553,9 +556,20 @@ export function buildImageWorkflow(a: BuildImageWorkflowArgs): Record<string, { 
     vaeRef = ["20", 0];
   }
 
-  // LoRA chain: each loader threads model+clip through, so they stack in order.
+  // CLIP source: a dedicated CLIPLoader / DualCLIPLoader when the checkpoint
+  // doesn't embed a CLIP (Flux / SD3 / UNet-only), else the checkpoint's CLIP.
   let modelRef: NodeRef = ["4", 0];
   let clipRef: NodeRef = ["4", 1];
+  if (a.clip && a.clip.name1.trim()) {
+    if (a.clip.name2 && a.clip.name2.trim()) {
+      wf["21"] = { class_type: "DualCLIPLoader", inputs: { clip_name1: a.clip.name1.trim(), clip_name2: a.clip.name2.trim(), type: a.clip.clipType } };
+    } else {
+      wf["21"] = { class_type: "CLIPLoader", inputs: { clip_name: a.clip.name1.trim(), type: a.clip.clipType } };
+    }
+    clipRef = ["21", 0];
+  }
+
+  // LoRA chain: each loader threads model+clip through, so they stack in order.
   a.loras.forEach((l, i) => {
     const nid = `lora_${i}`;
     wf[nid] = {
@@ -680,6 +694,7 @@ export interface GenerateComfyImageOptions {
   loras?: LoraSpec[];
   controlnet?: { model: string; imageUrl: string; strength?: number; startPercent?: number; endPercent?: number; preprocessor?: string };
   ipadapter?: { model: string; imageUrl: string; clipVision?: string; weight?: number };
+  clip?: { clipType: string; name1: string; name2?: string };
   upscaleModel?: string;
   steps?: number;
   cfg?: number;
@@ -750,6 +765,7 @@ export async function generateComfyImage(rawBaseUrl: string, options: GenerateCo
     negPrompt: options.negPrompt ?? "",
     ckpt: options.ckpt,
     loras: cleanLoras,
+    clip: options.clip,
     vae: options.vae,
     controlnet,
     ipadapter,

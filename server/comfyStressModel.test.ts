@@ -50,4 +50,37 @@ describe("buildImageWorkflow (server-model stress mode)", () => {
     expect(() => JSON.parse(json)).not.toThrow();
     expect(JSON.parse(json)).toEqual(wf);
   });
+
+  it("uses the checkpoint's CLIP when no separate clip is given", () => {
+    const cte = Object.values(wf).find((n) => n.class_type === "CLIPTextEncode")!;
+    expect(cte.inputs.clip).toEqual(["4", 1]); // checkpoint node 4, CLIP output
+    expect(Object.values(wf).some((n) => n.class_type === "CLIPLoader" || n.class_type === "DualCLIPLoader")).toBe(false);
+  });
+
+  it("wires a single CLIPLoader and feeds CLIPTextEncode from it", () => {
+    const w = buildImageWorkflow({
+      template: "txt2img", prompt: "p", negPrompt: "", ckpt: "unet.safetensors",
+      loras: [], clip: { clipType: "stable_diffusion", name1: "clip_l.safetensors" },
+      seed: 1, steps: 8, cfg: 7, sampler: "euler", scheduler: "normal", denoise: 1,
+      width: 512, height: 512, batchSize: 1,
+    });
+    const loader = Object.entries(w).find(([, n]) => n.class_type === "CLIPLoader")!;
+    expect(loader[1].inputs).toMatchObject({ clip_name: "clip_l.safetensors", type: "stable_diffusion" });
+    expect(Object.values(w).some((n) => n.class_type === "DualCLIPLoader")).toBe(false);
+    const cte = Object.values(w).find((n) => n.class_type === "CLIPTextEncode")!;
+    expect(cte.inputs.clip).toEqual([loader[0], 0]);
+  });
+
+  it("wires a DualCLIPLoader when two clip names are given (Flux/SD3)", () => {
+    const w = buildImageWorkflow({
+      template: "txt2img", prompt: "p", negPrompt: "", ckpt: "flux1-dev.safetensors",
+      loras: [], clip: { clipType: "flux", name1: "clip_l.safetensors", name2: "t5xxl_fp16.safetensors" },
+      seed: 1, steps: 8, cfg: 1, sampler: "euler", scheduler: "simple", denoise: 1,
+      width: 1024, height: 1024, batchSize: 1,
+    });
+    const loader = Object.entries(w).find(([, n]) => n.class_type === "DualCLIPLoader")!;
+    expect(loader[1].inputs).toMatchObject({ clip_name1: "clip_l.safetensors", clip_name2: "t5xxl_fp16.safetensors", type: "flux" });
+    const cte = Object.values(w).find((n) => n.class_type === "CLIPTextEncode")!;
+    expect(cte.inputs.clip).toEqual([loader[0], 0]);
+  });
 });
