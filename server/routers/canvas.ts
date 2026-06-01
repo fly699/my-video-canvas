@@ -363,6 +363,50 @@ export const assetsRouter = router({
       await deleteAsset(input.id, ctx.user.id);
       return { success: true };
     }),
+
+  // External import: server-side download a remote URL (size-capped, SSRF-guarded),
+  // re-host into the user's 专有仓库, and index it as source="external".
+  importFromUrl: protectedProcedure
+    .input(z.object({ url: z.string().url(), projectId: z.number().optional(), name: z.string().max(255).optional() }))
+    .mutation(async ({ ctx, input }) => {
+      await assertWhitelisted(ctx);
+      if (input.projectId != null) await assertProjectAccess(input.projectId, ctx.user.id, "editor");
+      guardUrl(input.url); // SSRF: blocks private/loopback hosts
+      const MAX_BYTES = 50 * 1024 * 1024;
+      let res: Response;
+      try {
+        res = await fetch(input.url, { signal: AbortSignal.timeout(30_000), redirect: "follow" });
+      } catch (err) {
+        throw new TRPCError({ code: "BAD_REQUEST", message: "无法下载该链接：" + (err instanceof Error ? err.message : String(err)) });
+      }
+      if (!res.ok || !res.body) throw new TRPCError({ code: "BAD_REQUEST", message: `下载失败 (HTTP ${res.status})` });
+      // Stream with a hard size cap.
+      const reader = res.body.getReader();
+      const chunks: Uint8Array[] = [];
+      let total = 0;
+      for (;;) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        if (value) {
+          total += value.length;
+          if (total > MAX_BYTES) { try { await reader.cancel(); } catch { /* ignore */ } throw new TRPCError({ code: "BAD_REQUEST", message: "文件过大（上限 50MB）" }); }
+          chunks.push(value);
+        }
+      }
+      const buffer = Buffer.concat(chunks.map((c) => Buffer.from(c)));
+      const mimeType = res.headers.get("content-type")?.split(";")[0]?.trim() || "application/octet-stream";
+      const type = mimeType.startsWith("video/") ? "video" : mimeType.startsWith("audio/") ? "audio" : mimeType.startsWith("image/") ? "image" : "other";
+      const name = input.name?.trim() || decodeURIComponent(input.url.split("/").pop()?.split("?")[0] || "") || "外部文件";
+      await assertObjectStorageWritable();
+      const { url, key } = await storagePut(`u/${ctx.user.id}/external/${nanoid()}-${name}`, buffer, mimeType);
+      const asset = await createAsset({
+        userId: ctx.user.id, projectId: input.projectId ?? null, name, type,
+        mimeType, size: buffer.length, storageKey: key, url, source: "external", provider: "manus",
+      });
+      writeAuditLog({ ctx, action: "asset_import_url", detail: { url: truncate(input.url), type, size: buffer.length } });
+      if (!asset) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "保存素材失败" });
+      return asset;
+    }),
 });
 
 // ── Video Tasks ───────────────────────────────────────────────────────────────

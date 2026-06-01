@@ -37,6 +37,15 @@ export function AssetPanel({ projectId, onClose }: Props) {
     onSuccess: () => { toast.success("素材已删除"); refetch(); },
   });
 
+  const importMutation = trpc.assets.importFromUrl.useMutation({
+    onSuccess: () => { toast.success("已从链接导入"); refetch(); },
+    onError: (err) => toast.error("导入失败：" + err.message),
+  });
+  const handleImportUrl = () => {
+    const url = window.prompt("粘贴文件链接（http/https）导入到素材库")?.trim();
+    if (url) importMutation.mutate({ url, projectId });
+  };
+
   const processFile = useCallback(
     (file: File) => {
       if (file.size > 20 * 1024 * 1024) { toast.error("文件大小不能超过 20MB"); return; }
@@ -143,6 +152,14 @@ export function AssetPanel({ projectId, onClose }: Props) {
             </p>
           </div>
         </div>
+        <button
+          onClick={handleImportUrl}
+          disabled={importMutation.isPending}
+          className="mt-2 w-full text-[11px] py-1.5 rounded-lg transition-all"
+          style={{ border: "1px dashed var(--c-bd2)", background: "transparent", color: "var(--c-t3)", cursor: "pointer" }}
+        >
+          {importMutation.isPending ? "导入中…" : "＋ 从链接导入"}
+        </button>
       </div>
 
       {/* ── Filters ── */}
