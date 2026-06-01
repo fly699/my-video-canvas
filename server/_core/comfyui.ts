@@ -289,7 +289,8 @@ async function pollHistory(baseUrl: string, promptId: string, maxAttempts: numbe
       const entry = data[promptId];
       if (entry && entry.status?.completed) return entry;
       if (entry?.status?.status_str === "error") {
-        throw new Error(`ComfyUI 执行失败: ${JSON.stringify(entry.status.messages ?? []).slice(0, 500)}`);
+        const raw = JSON.stringify(entry.status.messages ?? []);
+        throw new Error(`ComfyUI 执行失败: ${raw.slice(0, 500)}${comfyErrorHint(raw)}`);
       }
     } catch (err) {
       // External abort (立即停止) — propagate immediately, don't treat as a retryable net error.
@@ -305,6 +306,32 @@ async function pollHistory(baseUrl: string, promptId: string, maxAttempts: numbe
     }
   }
   throw new Error("ComfyUI 任务超时");
+}
+
+/**
+ * Translate the most common ComfyUI execution errors into an actionable Chinese
+ * hint appended to the raw message. Empty string when nothing matches.
+ */
+export function comfyErrorHint(raw: string): string {
+  // Text-encoder ↔ model dimension mismatch, e.g.
+  //   "Given normalized_shape=[3584], expected input with shape [*, 3584], but got input of size[1, 71, 2560]"
+  const shape = raw.match(/normalized_shape=\[(\d+)\][^]*?got input of size\s*\[[^\]]*?(\d+)\]/);
+  if (shape) {
+    const expected = Number(shape[1]);
+    const got = Number(shape[2]);
+    const dimHint: Record<number, string> = {
+      3584: "3584 = Qwen2.5-VL（Qwen-Image）：架构选「Qwen-Image」，CLIP 来源选「单独 CLIP」、类型 qwen_image、选 Qwen 文本编码器（如 qwen_2.5_vl_7b…）。",
+      4096: "4096 = T5-XXL：Flux 用「双 CLIP（flux）」clip_l + t5xxl；SD3 用「三 CLIP」clip_g + clip_l + t5xxl。",
+      2048: "2048 = SDXL（clip_g+clip_l 拼接）：架构选「经典 SD/SDXL」并用含 CLIP 的 SDXL checkpoint，或「双 CLIP（sdxl）」。",
+    };
+    return `\n\n⚠️ 文本编码器与模型不匹配：模型期望条件维度 ${expected}，实际编码器输出 ${got}。` +
+      `说明所选 CLIP / 文本编码器与该模型架构不符。${dimHint[expected] ?? "请核对「架构」与「CLIP 来源」是否与该模型一致（含 type 与 CLIP 文件）。"}`;
+  }
+  // Null CLIP from a checkpoint that doesn't embed one.
+  if (/clip input is invalid:\s*None/i.test(raw)) {
+    return "\n\n⚠️ 该 checkpoint 不含 CLIP：在「CLIP 来源」选 单独/双/三 CLIP 并指定文本编码器文件（Flux/SD3/Qwen 等需单独加载）。";
+  }
+  return "";
 }
 
 function downloadUrl(baseUrl: string, filename: string, subfolder: string, type: string): string {
