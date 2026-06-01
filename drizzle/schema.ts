@@ -470,9 +470,10 @@ export const storageSettings = mysqlTable("storageSettings", {
   poyoUploadFallback: boolean("poyoUploadFallback").notNull().default(false),
   // When true, object storage is restricted to MinIO/S3 ONLY — the Forge
   // storage fallback is disabled, so no file is ever written to Manus/Forge
-  // storage (writes fail if MinIO/S3 isn't configured). Off by default to keep
-  // existing behavior. Does NOT affect Forge non-storage features (LLM, etc.).
-  minioOnly: boolean("minioOnly").notNull().default(false),
+  // storage (writes fail if MinIO/S3 isn't configured). ON by default (migration
+  // 0025); deployments without MinIO/S3 can turn it off in the admin panel.
+  // Does NOT affect Forge non-storage features (LLM, etc.).
+  minioOnly: boolean("minioOnly").notNull().default(true),
   updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
 });
 
