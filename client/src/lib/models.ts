@@ -42,7 +42,7 @@ export type ImageModelMeta = {
 
 export const IMAGE_MODELS: readonly ImageModelMeta[] = [
   // --- Manus (built-in, free) ---
-  { value: "manus_forge", label: "Manus Forge", desc: "内置 · 稳定", group: "Manus", family: "Manus", provider: "Manus", cost: 0, caps: ["内置", "离线兜底"] },
+  { value: "manus_forge", label: "Manus Forge", desc: "内置 · 稳定", group: "Manus", family: "Manus", provider: "Manus", costNote: "内置", caps: ["内置", "离线兜底"] },
 
   // --- Poyo · Nano Banana (Google) ---
   { value: "poyo_nano_banana",     label: "Nano Banana",     desc: "预算 · 写实",        group: "Poyo", family: "Nano",     provider: "Poyo", cost: 5,  caps: ["T2I", "I2I"] },

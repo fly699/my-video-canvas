@@ -212,7 +212,6 @@ export function ModelPicker({ value, onChange, options, disabled, searchable = t
 
 /** Format an image-model cost into a short badge label. */
 export function imageCostLabel(meta: { cost?: number; costNote?: string }): string {
-  if (meta.cost === 0) return "免费";
   if (typeof meta.cost === "number") return `≈${meta.cost} cr`;
   return meta.costNote ?? "—";
 }
