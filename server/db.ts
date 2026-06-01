@@ -553,6 +553,14 @@ export async function getAssetsByUser(userId: number, filter: AssetFilter = {}) 
   return db.select().from(assets).where(and(...conds)).orderBy(desc(assets.createdAt));
 }
 
+/** Sanitize a fragment for use in a filename/label tag (项目名 / 模型名). */
+function tagify(s?: string | null): string {
+  if (!s) return "";
+  return s.replace(/\.[A-Za-z0-9]{1,12}$/, "")        // drop extension (.safetensors…)
+    .replace(/[\\/:*?"<>|\x00-\x1f]/g, "_").replace(/\s+/g, "_")
+    .replace(/_+/g, "_").replace(/^[_.]+|[_.]+$/g, "").slice(0, 48);
+}
+
 /**
  * Index a produced media item into the unified library. Best-effort: any failure
  * is logged and swallowed so recording never breaks a (paid) generation. Dedupes
@@ -576,6 +584,13 @@ export async function recordGeneratedAsset(a: {
     if (!a.url) return;
     const storageKey = a.storageKey
       ?? (a.url.startsWith("/manus-storage/") ? a.url.slice("/manus-storage/".length) : a.url);
+    // Tag the display/download name with 项目名_模型 (sanitized) so files are identifiable.
+    let displayName = a.name;
+    try {
+      const proj = a.projectId != null ? await getProjectByIdRaw(a.projectId) : undefined;
+      const parts = [proj?.name, a.model].map(tagify).filter(Boolean);
+      if (parts.length > 0) displayName = parts.join("_");
+    } catch { /* keep a.name */ }
     const db = await getDb();
     if (db) {
       const existing = await db.select({ id: assets.id }).from(assets)
@@ -589,7 +604,7 @@ export async function recordGeneratedAsset(a: {
     await createAsset({
       userId: a.userId,
       projectId: a.projectId ?? null,
-      name: a.name,
+      name: displayName,
       type: a.type,
       mimeType: a.mimeType ?? null,
       size: a.size ?? null,

@@ -338,7 +338,8 @@ export const assetsRouter = router({
         await assertProjectAccess(input.projectId, ctx.user.id, "editor");
       }
       const buffer = Buffer.from(input.base64, "base64");
-      const key = `assets/${ctx.user.id}/${nanoid()}-${input.name}`;
+      // Per-user "专有仓库" prefix (u/{userId}/...); old assets/{userId}/ keys still resolve.
+      const key = `u/${ctx.user.id}/uploads/${nanoid()}-${input.name}`;
       // 「仅允许 MinIO/S3」开关：未配 MinIO/S3 时拒绝写入，不回退 Forge 存储。
       await assertObjectStorageWritable();
       const { url } = await storagePut(key, buffer, input.mimeType);
