@@ -48,12 +48,23 @@ const PLACEHOLDER_HINT = `粘贴 ComfyUI 导出的「API 格式」工作流 JSON
 export function ComfyStressPanel() {
   // 多地址：以列表维护，至少保留一行（空行表示回退到 COMFYUI_BASE_URL）。
   const [baseUrls, setBaseUrls] = useState<string[]>([""]);
+  // 压测来源：粘贴工作流 JSON，或选服务器上的一个模型自动构造 txt2img。
+  const [source, setSource] = useState<"json" | "model">("json");
   const [workflowJson, setWorkflowJson] = useState("");
+  // 「服务器模型」模式参数。
+  const [model, setModel] = useState({
+    ckpt: "", prompt: "", negPrompt: "",
+    steps: 20, cfg: 7, sampler: "euler", scheduler: "normal",
+    width: 512, height: 512, batchSize: 1,
+  });
+  const [models, setModels] = useState<{ ckpts: string[]; samplers: string[]; schedulers: string[] } | null>(null);
+  const [loadingModels, setLoadingModels] = useState(false);
   const [mode, setMode] = useState<"lean" | "full">("lean");
   const [concurrency, setConcurrency] = useState(1);
   const [total, setTotal] = useState(10);
   const [randomizeSeed, setRandomizeSeed] = useState(true);
 
+  const utils = trpc.useUtils();
   const listQuery = trpc.comfyStress.list.useQuery(undefined, {
     refetchInterval: 1500,
     refetchOnWindowFocus: false,
@@ -61,6 +72,24 @@ export function ComfyStressPanel() {
   const startMut = trpc.comfyStress.start.useMutation();
   const cancelMut = trpc.comfyStress.cancel.useMutation();
   const stopMut = trpc.comfyStress.stop.useMutation();
+
+  const setM = (patch: Partial<typeof model>) => setModel((m) => ({ ...m, ...patch }));
+
+  async function refreshModels() {
+    const urls = baseUrls.map((u) => u.trim()).filter((u) => u.length > 0);
+    if (urls.length === 0) { toast.error("请先填写至少一个 ComfyUI 地址再刷新模型"); return; }
+    setLoadingModels(true);
+    try {
+      const res = await utils.comfyui.fetchModels.fetch({ customBaseUrls: urls });
+      setModels({ ckpts: res.ckpts, samplers: res.samplers, schedulers: res.schedulers });
+      if (res.ckpts.length === 0) toast.info("已连接，但未发现 checkpoint 模型");
+      else toast.success(`已拉取 ${res.ckpts.length} 个模型`);
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "拉取模型失败");
+    } finally {
+      setLoadingModels(false);
+    }
+  }
 
   const jobs = listQuery.data ?? [];
   const hasRunning = jobs.some((j) => j.status === "running");
@@ -76,26 +105,19 @@ export function ComfyStressPanel() {
   }
 
   async function onStart() {
-    if (workflowJson.trim().length < 2) {
-      toast.error("请先粘贴工作流 JSON");
-      return;
-    }
-    try {
-      JSON.parse(workflowJson);
-    } catch {
-      toast.error("工作流 JSON 格式错误，无法解析");
-      return;
-    }
     const urls = baseUrls.map((u) => u.trim()).filter((u) => u.length > 0);
+    // 按来源组装压测参数。
+    let args: Parameters<typeof startMut.mutateAsync>[0];
+    if (source === "model") {
+      if (!model.ckpt.trim()) { toast.error("请先选择一个 checkpoint 模型"); return; }
+      args = { customBaseUrls: urls.length > 0 ? urls : undefined, model, mode, concurrency, total, randomizeSeed };
+    } else {
+      if (workflowJson.trim().length < 2) { toast.error("请先粘贴工作流 JSON"); return; }
+      try { JSON.parse(workflowJson); } catch { toast.error("工作流 JSON 格式错误，无法解析"); return; }
+      args = { customBaseUrls: urls.length > 0 ? urls : undefined, workflowJson, mode, concurrency, total, randomizeSeed };
+    }
     try {
-      await startMut.mutateAsync({
-        customBaseUrls: urls.length > 0 ? urls : undefined,
-        workflowJson,
-        mode,
-        concurrency,
-        total,
-        randomizeSeed,
-      });
+      await startMut.mutateAsync(args);
       toast.success("压测任务已启动");
       void listQuery.refetch();
     } catch (e) {
@@ -178,15 +200,121 @@ export function ComfyStressPanel() {
           </button>
         </div>
 
+        {/* 压测来源切换 */}
         <div style={{ marginBottom: 16 }}>
-          <label style={labelStyle}>工作流 JSON（API 格式）</label>
-          <textarea
-            style={{ ...inputStyle, minHeight: 140, fontFamily: "monospace", fontSize: 12, resize: "vertical" }}
-            placeholder={PLACEHOLDER_HINT}
-            value={workflowJson}
-            onChange={(e) => setWorkflowJson(e.target.value)}
-          />
+          <label style={labelStyle}>压测来源</label>
+          <div style={{ display: "inline-flex", borderRadius: 8, border: `1px solid ${C.border}`, overflow: "hidden" }}>
+            {([["json", "工作流 JSON"], ["model", "服务器模型"]] as const).map(([val, lbl]) => (
+              <button
+                key={val}
+                onClick={() => setSource(val)}
+                style={{
+                  padding: "7px 16px", fontSize: 13, border: "none", cursor: "pointer",
+                  background: source === val ? C.blue : "transparent",
+                  color: source === val ? "#fff" : C.sub, fontWeight: source === val ? 600 : 400,
+                }}
+              >
+                {lbl}
+              </button>
+            ))}
+          </div>
         </div>
+
+        {source === "json" ? (
+          <div style={{ marginBottom: 16 }}>
+            <label style={labelStyle}>工作流 JSON（API 格式）</label>
+            <textarea
+              style={{ ...inputStyle, minHeight: 140, fontFamily: "monospace", fontSize: 12, resize: "vertical" }}
+              placeholder={PLACEHOLDER_HINT}
+              value={workflowJson}
+              onChange={(e) => setWorkflowJson(e.target.value)}
+            />
+          </div>
+        ) : (
+          <div style={{ marginBottom: 16 }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 10 }}>
+              <button
+                onClick={refreshModels}
+                disabled={loadingModels}
+                style={{
+                  padding: "7px 14px", borderRadius: 8, border: `1px solid ${C.border}`,
+                  background: "transparent", color: C.blue, cursor: loadingModels ? "wait" : "pointer", fontSize: 13,
+                }}
+              >
+                {loadingModels ? "拉取中…" : "刷新模型"}
+              </button>
+              <span style={{ fontSize: 12, color: C.sub }}>
+                从上方地址（并集）拉取 checkpoint / 采样器 / 调度器。多地址压测使用同一个模型，缺该模型的服务器请求会计为失败。
+              </span>
+            </div>
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))", gap: 12 }}>
+              <div>
+                <label style={labelStyle}>Checkpoint 模型 *</label>
+                {models && models.ckpts.length > 0 ? (
+                  <select style={inputStyle} value={model.ckpt} onChange={(e) => setM({ ckpt: e.target.value })}>
+                    <option value="">— 请选择 —</option>
+                    {models.ckpts.map((c) => <option key={c} value={c}>{c}</option>)}
+                  </select>
+                ) : (
+                  <input style={inputStyle} placeholder="先点「刷新模型」，或手填 ckpt 文件名" value={model.ckpt} onChange={(e) => setM({ ckpt: e.target.value })} />
+                )}
+              </div>
+              <div>
+                <label style={labelStyle}>采样器</label>
+                {models && models.samplers.length > 0 ? (
+                  <select style={inputStyle} value={model.sampler} onChange={(e) => setM({ sampler: e.target.value })}>
+                    {models.samplers.map((s) => <option key={s} value={s}>{s}</option>)}
+                  </select>
+                ) : (
+                  <input style={inputStyle} value={model.sampler} onChange={(e) => setM({ sampler: e.target.value })} />
+                )}
+              </div>
+              <div>
+                <label style={labelStyle}>调度器</label>
+                {models && models.schedulers.length > 0 ? (
+                  <select style={inputStyle} value={model.scheduler} onChange={(e) => setM({ scheduler: e.target.value })}>
+                    {models.schedulers.map((s) => <option key={s} value={s}>{s}</option>)}
+                  </select>
+                ) : (
+                  <input style={inputStyle} value={model.scheduler} onChange={(e) => setM({ scheduler: e.target.value })} />
+                )}
+              </div>
+              <div>
+                <label style={labelStyle}>步数（1–150）</label>
+                <input type="number" min={1} max={150} style={inputStyle} value={model.steps}
+                  onChange={(e) => setM({ steps: Math.max(1, Math.min(150, Number(e.target.value) || 1)) })} />
+              </div>
+              <div>
+                <label style={labelStyle}>CFG</label>
+                <input type="number" min={0} max={50} step={0.5} style={inputStyle} value={model.cfg}
+                  onChange={(e) => setM({ cfg: Math.max(0, Math.min(50, Number(e.target.value) || 0)) })} />
+              </div>
+              <div>
+                <label style={labelStyle}>宽</label>
+                <input type="number" min={64} max={4096} step={8} style={inputStyle} value={model.width}
+                  onChange={(e) => setM({ width: Math.max(64, Math.min(4096, Number(e.target.value) || 64)) })} />
+              </div>
+              <div>
+                <label style={labelStyle}>高</label>
+                <input type="number" min={64} max={4096} step={8} style={inputStyle} value={model.height}
+                  onChange={(e) => setM({ height: Math.max(64, Math.min(4096, Number(e.target.value) || 64)) })} />
+              </div>
+              <div>
+                <label style={labelStyle}>批量（1–8）</label>
+                <input type="number" min={1} max={8} style={inputStyle} value={model.batchSize}
+                  onChange={(e) => setM({ batchSize: Math.max(1, Math.min(8, Number(e.target.value) || 1)) })} />
+              </div>
+            </div>
+            <div style={{ marginTop: 12 }}>
+              <label style={labelStyle}>正向提示词（可选）</label>
+              <input style={inputStyle} placeholder="a photo of a cat" value={model.prompt} onChange={(e) => setM({ prompt: e.target.value })} />
+            </div>
+            <div style={{ marginTop: 12 }}>
+              <label style={labelStyle}>负面提示词（可选）</label>
+              <input style={inputStyle} value={model.negPrompt} onChange={(e) => setM({ negPrompt: e.target.value })} />
+            </div>
+          </div>
+        )}
 
         <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(160px, 1fr))", gap: 16, marginBottom: 16 }}>
           <div>
