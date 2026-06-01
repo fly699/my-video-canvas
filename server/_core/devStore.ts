@@ -89,6 +89,13 @@ export function devUpdateProject(id: number, userId: number, data: Partial<Inser
   projectsMap.set(id, { ...p, ...data, id, userId, updatedAt: now() });
 }
 
+// Cover refresh: set thumbnail but keep updatedAt (mirrors setProjectThumbnail).
+export function devSetProjectThumbnail(id: number, userId: number, thumbnail: string) {
+  const p = projectsMap.get(id);
+  if (!p || p.userId !== userId) return;
+  projectsMap.set(id, { ...p, thumbnail });
+}
+
 export function devDeleteProject(id: number, userId: number) {
   const p = projectsMap.get(id);
   if (p && p.userId === userId) projectsMap.delete(id);

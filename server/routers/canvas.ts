@@ -9,6 +9,7 @@ import {
   getProjectAccess,
   createProject,
   updateProject,
+  setProjectThumbnail,
   deleteProject,
   deleteVideoTask,
   getNodesByProject,
@@ -87,6 +88,15 @@ function isCoverImageUrl(key: string, v: string): boolean {
   if (/^https?:\/\//i.test(v)) return COVER_IMG_EXT.test(v) || COVER_IMG_KEY.test(key);
   return false;
 }
+function shuffle<T>(arr: T[]): T[] {
+  const a = [...arr];
+  for (let i = a.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [a[i], a[j]] = [a[j], a[i]];
+  }
+  return a;
+}
+
 export function collectNodeImageUrls(nodes: Array<{ data?: unknown }>): string[] {
   const out: string[] = [];
   const seen = new Set<string>();
@@ -158,25 +168,28 @@ export const projectsRouter = router({
       return { success: true };
     }),
 
-  // Auto-fill / refresh a project card cover from any image in its nodes. Picks a
-  // random one (preferring stable /manus-storage paths), optionally excluding the
-  // current cover so the refresh button cycles. Persists it as the thumbnail for
-  // editors+; viewers still get a computed cover but it isn't saved.
+  // Auto-fill / refresh a project card cover from images in its nodes. With 4+
+  // usable images, returns 4 (a 2×2 grid on the card); otherwise a single image.
+  // Prefers stable /manus-storage paths (they don't expire). Persisted as a JSON
+  // array in `thumbnail` WITHOUT bumping updatedAt — a cover refresh isn't an edit.
+  // Editors+ persist; viewers get a computed cover that isn't saved.
   pickCover: protectedProcedure
-    .input(z.object({ id: z.number(), exclude: z.string().optional() }))
+    .input(z.object({ id: z.number() }))
     .mutation(async ({ ctx, input }) => {
       const access = await assertProjectAccess(input.id, ctx.user.id, "viewer");
       const nodes = await getNodesByProject(input.id);
       const urls = collectNodeImageUrls(nodes);
-      if (urls.length === 0) return { thumbnail: null };
-      const stable = urls.filter((u) => u.startsWith("/manus-storage/"));
-      const pool = stable.length > 0 ? stable : urls;
-      const candidates = pool.length > 1 && input.exclude ? pool.filter((u) => u !== input.exclude) : pool;
-      const chosen = candidates[Math.floor(Math.random() * candidates.length)] ?? pool[0];
+      if (urls.length === 0) return { covers: [] as string[] };
+      // Stable paths first, then the rest — shuffled within each tier so refresh
+      // cycles through the available images.
+      const stable = shuffle(urls.filter((u) => u.startsWith("/manus-storage/")));
+      const rest = shuffle(urls.filter((u) => !u.startsWith("/manus-storage/")));
+      const ordered = [...stable, ...rest];
+      const covers = ordered.slice(0, ordered.length >= 4 ? 4 : 1);
       if (access.role !== "viewer") {
-        await updateProject(input.id, access.project.userId, { thumbnail: chosen });
+        await setProjectThumbnail(input.id, access.project.userId, JSON.stringify(covers));
       }
-      return { thumbnail: chosen };
+      return { covers };
     }),
 });
 

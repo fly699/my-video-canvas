@@ -65,6 +65,19 @@ function GridBackground() {
 }
 
 // ── Project card ─────────────────────────────────────────────────────────────
+// The cover is persisted in `thumbnail` as a JSON array of 1–4 image URLs;
+// legacy single-URL strings are still accepted.
+function parseCovers(thumbnail?: string | null): string[] {
+  if (!thumbnail) return [];
+  if (thumbnail.startsWith("[")) {
+    try {
+      const a = JSON.parse(thumbnail);
+      return Array.isArray(a) ? a.filter((x): x is string => typeof x === "string") : [];
+    } catch { return []; }
+  }
+  return [thumbnail];
+}
+
 interface Project {
   id: number;
   name: string;
@@ -90,12 +103,15 @@ function ProjectCard({
   refreshingCover?: boolean;
   readOnly?: boolean;
 }) {
-  // Upstream temp URLs can expire — on load failure, auto-swap to another image
+  // Cover may be a single image or (4+ available) a 2×2 grid. Upstream temp URLs
+  // can expire — on single-cover load failure, auto-swap to another image
   // (bounded to avoid loops) and otherwise fall back to the placeholder.
+  const covers = parseCovers(project.thumbnail);
+  const isGrid = covers.length >= 4;
   const [coverFailed, setCoverFailed] = useState(false);
   const swapAttempts = useRef(0);
   useEffect(() => { setCoverFailed(false); }, [project.thumbnail]);
-  const showCover = !!project.thumbnail && !coverFailed;
+  const showCover = covers.length > 0 && !coverFailed;
   const handleCoverError = () => {
     setCoverFailed(true);
     if (onRefreshCover && swapAttempts.current < 3) {
@@ -168,16 +184,29 @@ function ProjectCard({
           </svg>
         </div>
 
-        {/* Auto-filled cover from any image in the project */}
-        {showCover && (
+        {/* Auto-filled cover: 2×2 grid when 4+ images, else a single image */}
+        {showCover && (isGrid ? (
+          <div className="absolute inset-0 z-[5] grid grid-cols-2 grid-rows-2 gap-px">
+            {covers.slice(0, 4).map((url, i) => (
+              <img
+                key={i}
+                src={url}
+                alt=""
+                className="w-full h-full object-cover"
+                loading="lazy"
+                onError={(e) => { (e.currentTarget as HTMLImageElement).style.visibility = "hidden"; }}
+              />
+            ))}
+          </div>
+        ) : (
           <img
-            src={project.thumbnail!}
+            src={covers[0]}
             alt=""
             className="absolute inset-0 w-full h-full object-cover z-[5]"
             loading="lazy"
             onError={handleCoverError}
           />
-        )}
+        ))}
 
         {/* Center icon (placeholder shown only when no cover) */}
         {!showCover && (
@@ -376,11 +405,11 @@ export default function Home() {
   const autoFilledRef = useRef<Set<number>>(new Set());
   const pickCover = trpc.projects.pickCover.useMutation();
 
-  const refreshCover = async (projectId: number, exclude?: string | null) => {
+  const refreshCover = async (projectId: number) => {
     setRefreshingCover(projectId);
     try {
-      const res = await pickCover.mutateAsync({ id: projectId, exclude: exclude ?? undefined });
-      if (res.thumbnail) await refetch();
+      const res = await pickCover.mutateAsync({ id: projectId });
+      if (res.covers.length > 0) await refetch();
       else toast.info("该项目还没有可用作封面的图片");
     } catch {
       /* non-fatal — leave the placeholder */
@@ -394,7 +423,7 @@ export default function Home() {
     for (const p of projects?.owned ?? []) {
       if (!p.thumbnail && !autoFilledRef.current.has(p.id)) {
         autoFilledRef.current.add(p.id);
-        pickCover.mutateAsync({ id: p.id }).then((res) => { if (res.thumbnail) refetch(); }).catch(() => {});
+        pickCover.mutateAsync({ id: p.id }).then((res) => { if (res.covers.length > 0) refetch(); }).catch(() => {});
       }
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -913,7 +942,7 @@ export default function Home() {
                     onOpen={() => navigate(`/canvas/${project.id}`)}
                     onDelete={() => deleteProject.mutate({ id: project.id })}
                     onRename={(name) => updateProject.mutate({ id: project.id, name })}
-                    onRefreshCover={() => refreshCover(project.id, project.thumbnail)}
+                    onRefreshCover={() => refreshCover(project.id)}
                     refreshingCover={refreshingCover === project.id}
                   />
                 ))}
