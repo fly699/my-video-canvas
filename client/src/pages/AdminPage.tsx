@@ -6,7 +6,7 @@ import { Shield, Trash2, Plus, ToggleLeft, ToggleRight, ClipboardList, RefreshCw
 import { ComfyStressPanel } from "@/components/admin/ComfyStressPanel";
 
 type EntryType = "ip" | "user";
-type Tab = "whitelist" | "logs" | "storage" | "chat" | "comfyStress" | "system";
+type Tab = "whitelist" | "logs" | "storage" | "chat" | "comfyStress" | "assets" | "system";
 
 const ACTION_LABELS: Record<string, string> = {
   login_email: "邮箱登录",
@@ -111,7 +111,7 @@ export default function AdminPage() {
 
         {/* Tabs */}
         <div style={{ display: "flex", gap: "4px", marginBottom: "20px", borderBottom: "1px solid rgba(255,255,255,0.06)", paddingBottom: "0" }}>
-          {([["whitelist", "白名单管理"], ["logs", "操作日志"], ["storage", "存储设置"], ["chat", "聊天管理"], ["comfyStress", "ComfyUI 压测"], ["system", "系统更新"]] as [Tab, string][]).map(([tab, label]) => (
+          {([["whitelist", "白名单管理"], ["logs", "操作日志"], ["storage", "存储设置"], ["chat", "聊天管理"], ["comfyStress", "ComfyUI 压测"], ["assets", "素材库(全用户)"], ["system", "系统更新"]] as [Tab, string][]).map(([tab, label]) => (
             <button
               key={tab}
               onClick={() => setActiveTab(tab)}
@@ -145,6 +145,7 @@ export default function AdminPage() {
         {activeTab === "storage" && <StoragePanel />}
         {activeTab === "chat" && <ChatAdminPanel />}
         {activeTab === "comfyStress" && <ComfyStressPanel />}
+        {activeTab === "assets" && <AssetsAdminPanel />}
         {activeTab === "system" && <SystemUpdatePanel />}
       </div>
     </div>
@@ -1165,3 +1166,65 @@ const paginBtn: React.CSSProperties = {
   borderRadius: "7px", background: "rgba(255,255,255,0.04)",
   color: "var(--c-t1, #f0f0f4)", fontSize: "13px", cursor: "pointer",
 };
+
+// ── Assets Panel (admin cross-user media library) ─────────────────────────────
+function AssetsAdminPanel() {
+  const [userId, setUserId] = useState<string>("");
+  const [type, setType] = useState<"" | "image" | "video" | "audio" | "other">("");
+  const [source, setSource] = useState<"" | "upload" | "generated" | "external">("");
+  const [q, setQ] = useState("");
+  const { data: assets, isFetching } = trpc.admin.assets.list.useQuery({
+    userId: userId.trim() ? Number(userId.trim()) : undefined,
+    type: type || undefined,
+    source: source || undefined,
+    q: q.trim() || undefined,
+    limit: 300,
+  });
+  const chip = (active: boolean): React.CSSProperties => ({
+    fontSize: 11, padding: "3px 10px", borderRadius: 999, cursor: "pointer",
+    border: `1px solid ${active ? "oklch(0.72 0.2 285)" : "rgba(255,255,255,0.12)"}`,
+    background: active ? "oklch(0.72 0.2 285 / 0.15)" : "transparent",
+    color: active ? "oklch(0.78 0.16 285)" : "var(--c-t2, rgba(255,255,255,0.55))",
+  });
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+      <div style={{ display: "flex", flexWrap: "wrap", gap: 8, alignItems: "center" }}>
+        <input value={userId} onChange={(e) => setUserId(e.target.value)} placeholder="用户 ID（空=全部）" inputMode="numeric"
+          style={{ width: 130, padding: "6px 10px", borderRadius: 7, border: "1px solid rgba(255,255,255,0.12)", background: "rgba(255,255,255,0.04)", color: "var(--c-t1,#f0f0f4)", fontSize: 13 }} />
+        <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="按名称搜索"
+          style={{ flex: 1, minWidth: 140, padding: "6px 10px", borderRadius: 7, border: "1px solid rgba(255,255,255,0.12)", background: "rgba(255,255,255,0.04)", color: "var(--c-t1,#f0f0f4)", fontSize: 13 }} />
+      </div>
+      <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+        {([["", "全部"], ["image", "图片"], ["video", "视频"], ["audio", "音频"], ["other", "其他"]] as const).map(([v, l]) => (
+          <button key={v} style={chip(type === v)} onClick={() => setType(v)}>{l}</button>
+        ))}
+        <span style={{ width: 1, background: "rgba(255,255,255,0.1)", margin: "0 4px" }} />
+        {([["", "全来源"], ["upload", "上传"], ["generated", "生成"], ["external", "外部"]] as const).map(([v, l]) => (
+          <button key={v} style={chip(source === v)} onClick={() => setSource(v)}>{l}</button>
+        ))}
+      </div>
+      <div style={{ fontSize: 12, color: "var(--c-t3, rgba(255,255,255,0.4))" }}>
+        {isFetching ? "加载中…" : `${assets?.length ?? 0} 个素材`}
+      </div>
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(160px, 1fr))", gap: 10 }}>
+        {(assets ?? []).map((a) => (
+          <div key={a.id} style={{ border: "1px solid rgba(255,255,255,0.1)", borderRadius: 10, overflow: "hidden", background: "rgba(255,255,255,0.03)" }}>
+            <div style={{ height: 110, background: "rgba(0,0,0,0.25)", display: "flex", alignItems: "center", justifyContent: "center" }}>
+              {a.type === "image"
+                ? <img src={a.url} alt={a.name} style={{ width: "100%", height: "100%", objectFit: "cover" }} />
+                : <span style={{ fontSize: 11, color: "var(--c-t3,rgba(255,255,255,0.4))" }}>{a.type}</span>}
+            </div>
+            <div style={{ padding: "7px 9px" }}>
+              <div style={{ fontSize: 12, color: "var(--c-t1,#f0f0f4)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }} title={a.name}>{a.name}</div>
+              <div style={{ fontSize: 10.5, color: "var(--c-t3,rgba(255,255,255,0.4))", marginTop: 2 }}>
+                u{a.userId} · {a.source === "generated" ? `生成${a.provider ? "·" + a.provider : ""}` : a.source === "external" ? "外部" : "上传"}{a.model ? ` · ${a.model}` : ""}
+              </div>
+              <a href={a.url} download={a.name} target="_blank" rel="noreferrer"
+                style={{ fontSize: 11, color: "oklch(0.72 0.16 240)", display: "inline-block", marginTop: 4 }}>下载</a>
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}

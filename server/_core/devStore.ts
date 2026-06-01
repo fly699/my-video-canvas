@@ -166,6 +166,23 @@ export function devGetAssetsByUser(
     .sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime());
 }
 
+export function devGetAllAssets(filter: {
+  userId?: number; type?: string; source?: string; model?: string;
+  projectId?: number; q?: string; includeDeleted?: boolean; limit?: number; offset?: number;
+} = {}): Asset[] {
+  const rows = Array.from(assetsMap.values())
+    .filter((a) => (filter.includeDeleted || a.deletedAt == null)
+      && (!filter.userId || a.userId === filter.userId)
+      && (!filter.type || a.type === filter.type)
+      && (!filter.source || a.source === filter.source)
+      && (!filter.model || a.model === filter.model)
+      && (filter.projectId === undefined || a.projectId === filter.projectId)
+      && (!filter.q || a.name.includes(filter.q)))
+    .sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime());
+  const off = filter.offset ?? 0;
+  return rows.slice(off, off + Math.min(filter.limit ?? 200, 500));
+}
+
 export function devCreateAsset(data: InsertAsset): Asset {
   const id = newId();
   const asset: Asset = {

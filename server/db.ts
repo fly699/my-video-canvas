@@ -1,4 +1,4 @@
-import { eq, and, desc, sql, inArray, isNull } from "drizzle-orm";
+import { eq, and, desc, sql, inArray, isNull, like } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/mysql2";
 import {
   InsertUser,
@@ -618,6 +618,36 @@ export async function recordGeneratedAsset(a: {
   } catch (err) {
     console.error("[recordGeneratedAsset] non-fatal:", err);
   }
+}
+
+export interface AdminAssetFilter {
+  userId?: number;
+  type?: "image" | "video" | "audio" | "other";
+  source?: "upload" | "generated" | "external";
+  model?: string;
+  projectId?: number;
+  q?: string;            // name contains
+  includeDeleted?: boolean;
+  limit?: number;
+  offset?: number;
+}
+/** Admin cross-user retrieval: every user's library, with filters + pagination. */
+export async function getAllAssets(filter: AdminAssetFilter = {}) {
+  const db = await getDb();
+  if (!db) return DEV_MODE ? dev.devGetAllAssets(filter) : [];
+  const conds = [];
+  if (!filter.includeDeleted) conds.push(isNull(assets.deletedAt));
+  if (filter.userId) conds.push(eq(assets.userId, filter.userId));
+  if (filter.type) conds.push(eq(assets.type, filter.type));
+  if (filter.source) conds.push(eq(assets.source, filter.source));
+  if (filter.model) conds.push(eq(assets.model, filter.model));
+  if (filter.projectId) conds.push(eq(assets.projectId, filter.projectId));
+  if (filter.q) conds.push(like(assets.name, `%${filter.q}%`));
+  return db.select().from(assets)
+    .where(conds.length ? and(...conds) : undefined)
+    .orderBy(desc(assets.createdAt))
+    .limit(Math.min(filter.limit ?? 200, 500))
+    .offset(filter.offset ?? 0);
 }
 
 export async function createAsset(data: InsertAsset) {
