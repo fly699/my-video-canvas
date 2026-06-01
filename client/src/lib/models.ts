@@ -1,10 +1,44 @@
-// Chat models (shared between AIChatNode and any future chat components)
-export const CHAT_MODELS = [
-  { id: "gemini-2.5-flash",          label: "Gemini 2.5 Flash",  tag: "默认" },
-  { id: "claude-haiku-4-5-20251001", label: "Claude Haiku 4.5",  tag: "快速" },
-  { id: "claude-sonnet-4-6",         label: "Claude Sonnet 4.6", tag: "智能" },
-  { id: "gpt-5.2",                   label: "GPT-5.2",           tag: "Poyo" },
+// ---------------------------------------------------------------------------
+// LLM / chat models — single source of truth
+// ---------------------------------------------------------------------------
+// Used by ScriptNode (via LLMModelPicker re-export), AIChatNode, and the
+// scriptCreationTemplates recommendedLlm references. The backend keeps a
+// parallel AVAILABLE_MODELS list (server/_core/llm.ts) that must stay aligned
+// (id set), since a const can't be shared across the client/server bundle
+// boundary here.
+//
+// Routing (llm.ts resolveApiUrl): gpt* → Poyo; others → Forge/Manus.
+// Cost is token-based, so we show a relative tier rather than a credit number.
+// group = family for the classified picker. NEVER drop an id (old node
+// payloads persist `aiLlmModel` / `model`); only add or mark hidden.
+export type LLMModelMeta = {
+  id: string;
+  label: string;
+  short: string;       // compact chip label
+  family: "Gemini" | "Claude" | "GPT";
+  tag: string;
+  color: string;
+  costTier: "低" | "中" | "高";
+  hidden?: boolean;    // kept for back-compat but not listed
+};
+
+export const LLM_MODELS: readonly LLMModelMeta[] = [
+  // Gemini (Google) — routed to Forge
+  { id: "gemini-3-flash-preview",    label: "Gemini 3 Flash",    short: "Gemini3", family: "Gemini", tag: "最新", color: "oklch(0.68 0.18 160)", costTier: "低" },
+  { id: "gemini-2.5-flash",          label: "Gemini 2.5 Flash",  short: "Gemini",  family: "Gemini", tag: "默认", color: "oklch(0.68 0.18 160)", costTier: "低" },
+  // Claude (Anthropic) — routed to Forge
+  { id: "claude-sonnet-4-5-20250929", label: "Claude Sonnet 4.5", short: "Sonnet", family: "Claude", tag: "智能", color: "oklch(0.68 0.18 280)", costTier: "高" },
+  { id: "claude-haiku-4-5-20251001",  label: "Claude Haiku 4.5",  short: "Haiku",  family: "Claude", tag: "快速", color: "oklch(0.68 0.18 55)",  costTier: "低" },
+  // GPT (OpenAI) — routed to Poyo
+  { id: "gpt-5.2",                   label: "GPT-5.2",           short: "GPT-5.2", family: "GPT",    tag: "Poyo", color: "oklch(0.62 0.16 240)", costTier: "中" },
+  // Back-compat alias: older ScriptNode payloads default to claude-sonnet-4-6.
+  // Kept selectable-but-hidden so those nodes still resolve; new picks use 4.5.
+  { id: "claude-sonnet-4-6",         label: "Claude Sonnet 4.6", short: "Sonnet", family: "Claude", tag: "兼容", color: "oklch(0.68 0.18 280)", costTier: "高", hidden: true },
 ] as const;
+
+// Legacy export name — AIChatNode and scriptCreationTemplates reference CHAT_MODELS.
+// Aliased to the unified list so there's a single source.
+export const CHAT_MODELS = LLM_MODELS;
 
 // ---------------------------------------------------------------------------
 // Image generation models

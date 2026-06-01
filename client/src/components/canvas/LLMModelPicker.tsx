@@ -1,15 +1,16 @@
 import { useState, useRef, useEffect } from "react";
 import { createPortal } from "react-dom";
 import { ChevronDown, Check, Bot } from "lucide-react";
+import { LLM_MODELS as ALL_LLM_MODELS } from "@/lib/models";
 
-export const LLM_MODELS = [
-  { id: "gemini-2.5-flash",          short: "Gemini",  label: "Gemini 2.5 Flash",  tag: "默认", color: "oklch(0.68 0.18 160)" },
-  { id: "claude-haiku-4-5-20251001", short: "Haiku",   label: "Claude Haiku 4.5",  tag: "快速", color: "oklch(0.68 0.18 55)"  },
-  { id: "claude-sonnet-4-6",         short: "Sonnet",  label: "Claude Sonnet 4.6", tag: "智能", color: "oklch(0.68 0.18 280)" },
-  { id: "gpt-5.2",                   short: "GPT-5.2", label: "GPT-5.2",           tag: "Poyo", color: "oklch(0.62 0.16 240)" },
-] as const;
+// Re-export for existing consumers (ScriptNode imports LLM_MODELS + LLMModelId
+// from here). Single source lives in lib/models.ts.
+export const LLM_MODELS = ALL_LLM_MODELS;
+export type LLMModelId = (typeof ALL_LLM_MODELS)[number]["id"];
 
-export type LLMModelId = (typeof LLM_MODELS)[number]["id"];
+// Visible models in the dropdown (hide back-compat aliases). The current value
+// is still resolved against the full list so an aliased pick renders fine.
+const VISIBLE_MODELS = ALL_LLM_MODELS.filter((m) => !m.hidden);
 
 interface Props {
   value: LLMModelId;
@@ -21,7 +22,7 @@ export function LLMModelPicker({ value, onChange, disabled }: Props) {
   const [open, setOpen] = useState(false);
   const btnRef = useRef<HTMLButtonElement>(null);
   const [btnRect, setBtnRect] = useState<DOMRect | null>(null);
-  const current = LLM_MODELS.find((m) => m.id === value) ?? LLM_MODELS[0];
+  const current = ALL_LLM_MODELS.find((m) => m.id === value) ?? ALL_LLM_MODELS[0];
 
   return (
     <>
@@ -91,7 +92,7 @@ export function LLMModelPicker({ value, onChange, disabled }: Props) {
             >
               选择 AI 模型
             </div>
-            {LLM_MODELS.map((m) => {
+            {VISIBLE_MODELS.map((m) => {
               const selected = m.id === value;
               return (
                 <button

@@ -55,7 +55,7 @@ export interface ScriptTemplateCategory {
 const M = {
   GEMINI: "gemini-2.5-flash",
   HAIKU:  "claude-haiku-4-5-20251001",
-  SONNET: "claude-sonnet-4-6",
+  SONNET: "claude-sonnet-4-5-20250929",
   GPT:    "gpt-5.2",
 } as const;
 
