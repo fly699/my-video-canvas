@@ -14,7 +14,7 @@ import { makeImageProxyFallback } from "@/lib/utils";
 import { RefImageReachabilityBadge, RefImageSwitchButton, useRefImageGuard } from "../mediaReachability";
 import { ModelPicker, imageCostLabel } from "../ModelPicker";
 import { ParamControls } from "../ParamControls";
-import { IMAGE_MODEL_PARAMS } from "@/lib/paramDefs";
+import { IMAGE_MODEL_PARAMS, resolveImageParam } from "@/lib/paramDefs";
 
 interface Props {
   id: string;
@@ -238,17 +238,23 @@ export const ImageGenNode = memo(function ImageGenNode({ id, selected, data }: P
       negativePrompt: payload.negativePrompt,
       style: payload.style,
       referenceImageUrl: payload.referenceImageUrl,
-      model: payload.model || undefined,
+      // Match the picker, which displays "manus_forge" when unset — otherwise a
+      // fresh node shows Manus Forge but the backend's undefined-fallback routes
+      // to Poyo gpt-image-2 (different model; errors with no Poyo key).
+      model: payload.model || "manus_forge",
       // Poyo image model params —— 对任意 poyo_ 开头模型转发通用参数字段。
       // 通用尺寸字段（imageSize / imageResolution / imageN / imageOutputFormat）
       // 与旧 poyoAspectRatio 由 ParamControls/旧节点写入，后端 Zod 校验枚举；前端
       // payload 类型尚未声明这些键，统一经 generic 视图读取后由后端二次校验。
       ...(payload.model?.startsWith("poyo_") ? {
-        imageSize: generic.imageSize,
-        imageResolution: generic.imageResolution,
-        imageN: generic.imageN,
-        imageOutputFormat: generic.imageOutputFormat,
-        poyoQuality: payload.poyoQuality,
+        // Resolve each param to payload value OR the ParamDef default — the
+        // controls only display defaults, so an untouched node would otherwise
+        // omit fields some models require (e.g. z-image text-to-image size).
+        imageSize: resolveImageParam(payload.model, "imageSize", generic.imageSize) as GenInput["imageSize"],
+        imageResolution: resolveImageParam(payload.model, "imageResolution", generic.imageResolution) as GenInput["imageResolution"],
+        imageN: resolveImageParam(payload.model, "imageN", generic.imageN) as GenInput["imageN"],
+        imageOutputFormat: resolveImageParam(payload.model, "imageOutputFormat", generic.imageOutputFormat) as GenInput["imageOutputFormat"],
+        poyoQuality: resolveImageParam(payload.model, "poyoQuality", payload.poyoQuality) as GenInput["poyoQuality"],
         // 兼容旧节点：旧 payload 用 poyoAspectRatio，后端 size 取 imageSize ?? poyoAspectRatio
         poyoAspectRatio: generic.poyoAspectRatio,
       } : {}),
@@ -273,7 +279,7 @@ export const ImageGenNode = memo(function ImageGenNode({ id, selected, data }: P
       } : {}),
       projectId: data.projectId,
     });
-    guard({ model: payload.model, refImageUrl: payload.referenceImageUrl }, submit);
+    guard({ model: payload.model ?? "manus_forge", refImageUrl: payload.referenceImageUrl }, submit);
   };
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {

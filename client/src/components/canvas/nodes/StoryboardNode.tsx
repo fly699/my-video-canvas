@@ -17,7 +17,7 @@ import { RefImageReachabilityBadge, RefImageSwitchButton, useRefImageGuard } fro
 import { LLMModelPicker, type LLMModelId } from "../LLMModelPicker";
 import { ModelPicker, imageCostLabel } from "../ModelPicker";
 import { ParamControls } from "../ParamControls";
-import { IMAGE_MODEL_PARAMS } from "@/lib/paramDefs";
+import { IMAGE_MODEL_PARAMS, resolveImageParam } from "@/lib/paramDefs";
 import type { ImageGenModel } from "../../../../../shared/types";
 import { useCanvasMode } from "../../../contexts/CanvasModeContext";
 
@@ -330,12 +330,14 @@ export const StoryboardNode = memo(function StoryboardNode({ id, selected, data 
         sizingFields.reveResolution = payload.reveResolution;
       }
     } else if (model.startsWith("poyo_")) {
-      // 对任意 poyo_ 模型转发通用参数字段（与 ImageGenNode 一致）
-      sizingFields.imageSize = generic.imageSize;
-      sizingFields.imageResolution = generic.imageResolution;
-      sizingFields.imageN = generic.imageN;
-      sizingFields.imageOutputFormat = generic.imageOutputFormat;
-      sizingFields.poyoQuality = payload.poyoQuality;
+      // 对任意 poyo_ 模型转发通用参数字段（与 ImageGenNode 一致）。
+      // resolveImageParam: 控件只展示默认值不落库，提交时补上 ParamDef 默认，
+      // 避免未展开节点漏发必填字段（如 z-image 文生图 size 必填）。
+      sizingFields.imageSize = resolveImageParam(model, "imageSize", generic.imageSize);
+      sizingFields.imageResolution = resolveImageParam(model, "imageResolution", generic.imageResolution);
+      sizingFields.imageN = resolveImageParam(model, "imageN", generic.imageN);
+      sizingFields.imageOutputFormat = resolveImageParam(model, "imageOutputFormat", generic.imageOutputFormat);
+      sizingFields.poyoQuality = resolveImageParam(model, "poyoQuality", payload.poyoQuality);
       // 兼容旧节点：旧 payload 用 poyoAspectRatio，后端 size 取 imageSize ?? poyoAspectRatio
       sizingFields.poyoAspectRatio = generic.poyoAspectRatio;
     }

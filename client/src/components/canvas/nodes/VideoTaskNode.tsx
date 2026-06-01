@@ -479,6 +479,22 @@ interface ParamPreset {
   negativePrompt?: string;
 }
 
+// Merge a provider's ParamDef defaults into the params actually submitted.
+// The param controls only DISPLAY `def.default`; they don't persist it until
+// the user touches the control. The backend builder copies only keys present
+// in `params`, and several models require fields (Seedance resolution+
+// aspect_ratio, Kling 2.6 sound, etc.). Without this, a fresh node the user
+// never expanded would submit prompt-only and the upstream call would fail.
+function withParamDefaults(provider: string, params: Record<string, unknown> | undefined): Record<string, unknown> {
+  const defs = PROVIDER_PARAMS[provider] ?? [];
+  const merged: Record<string, unknown> = { ...(params ?? {}) };
+  for (const def of defs) {
+    if (def.default === undefined) continue;            // number/optional fields (e.g. seed) have no default
+    if (merged[def.key] === undefined || merged[def.key] === "") merged[def.key] = def.default;
+  }
+  return merged;
+}
+
 const KLING_O3_PRESETS: ParamPreset[] = [
   { id: "cinematic",  label: "电影横屏", params: { aspect_ratio: "16:9", duration: 10 } },
   { id: "portrait",   label: "竖屏短片", params: { aspect_ratio: "9:16", duration: 8 } },
@@ -540,23 +556,6 @@ const PROVIDER_PRESETS: Record<string, ParamPreset[]> = {
 
 const BORDER_DEFAULT = "var(--c-bd2)";
 const accentColor = "oklch(0.62 0.20 25)";
-
-// Rough cost estimates in Poyo credits per 5s clip (display only)
-const PROVIDER_COST: Record<string, { label: string; color: string }> = {
-  poyo_seedance:     { label: "~3积分", color: "oklch(0.72 0.18 155)" },
-  poyo_veo:          { label: "~20积分", color: "oklch(0.65 0.18 60)" },
-  poyo_kling26:      { label: "~4积分", color: "oklch(0.72 0.18 155)" },
-  poyo_kling_o3_std: { label: "~6积分", color: "oklch(0.72 0.18 155)" },
-  poyo_kling_o3_pro: { label: "~12积分", color: "oklch(0.65 0.18 60)" },
-  poyo_kling_o3_4k:  { label: "~30积分", color: "oklch(0.62 0.20 25)" },
-  poyo_wan25_t2v:    { label: "~3积分", color: "oklch(0.72 0.18 155)" },
-  poyo_wan25_i2v:    { label: "~3积分", color: "oklch(0.72 0.18 155)" },
-  poyo_runway45:     { label: "~10积分", color: "oklch(0.65 0.18 60)" },
-  hf_dop_standard:   { label: "~8积分", color: "oklch(0.65 0.18 60)" },
-  hf_dop_lite:       { label: "~3积分", color: "oklch(0.72 0.18 155)" },
-  hf_dop_turbo:      { label: "~2积分", color: "oklch(0.72 0.18 155)" },
-  mock:              { label: "免费", color: "oklch(0.55 0.08 260)" },
-};
 
 const fieldStyle: React.CSSProperties = {
   width: "100%",
@@ -773,7 +772,7 @@ export const VideoTaskNode = memo(function VideoTaskNode({ id, selected, data }:
       // Only send negativePrompt for providers that actually support it
       negativePrompt: SUPPORTS_NEGATIVE_PROMPT.has(payload.provider) ? payload.negativePrompt : undefined,
       referenceImageUrl: finalRefImage,
-      params: payload.params,
+      params: withParamDefaults(payload.provider, payload.params),
     });
     guard({ model: payload.provider, refImageUrl: finalRefImage }, submit);
   };
@@ -1257,9 +1256,11 @@ export const VideoTaskNode = memo(function VideoTaskNode({ id, selected, data }:
                   parallelProviders.forEach(provider => {
                     setParallelResults(prev => ({ ...prev, [provider]: { status: "processing" } }));
                     createTaskMutation.mutate(
-                      // Send only prompt/negative/refImage in parallel mode — per-provider params
-                      // diverge enough that sharing one params bag tends to break some providers
-                      { nodeId: id, projectId: data.projectId, provider, prompt: submission.prompt, negativePrompt: SUPPORTS_NEGATIVE_PROMPT.has(provider) ? payload.negativePrompt : undefined, referenceImageUrl: submission.referenceImageUrl },
+                      // Don't share the node's params bag across providers (they diverge),
+                      // but each provider still needs its OWN required-field defaults
+                      // (resolution/aspect_ratio/duration/...) since the backend no longer
+                      // hard-defaults them — so pass that provider's ParamDef defaults.
+                      { nodeId: id, projectId: data.projectId, provider, prompt: submission.prompt, negativePrompt: SUPPORTS_NEGATIVE_PROMPT.has(provider) ? payload.negativePrompt : undefined, referenceImageUrl: submission.referenceImageUrl, params: withParamDefaults(provider, {}) },
                       {
                         onSuccess: (result) => {
                           if (parallelGenRef.current !== gen) return; // stale — user closed parallel mode
@@ -1339,19 +1340,8 @@ export const VideoTaskNode = memo(function VideoTaskNode({ id, selected, data }:
         <div style={{ marginTop: 4 }}>
           <div className="flex items-center justify-between" style={{ marginBottom: 5 }}>
             <label style={{ ...labelStyle, marginBottom: 0 }}>视频模型</label>
-            {PROVIDER_COST[payload.provider] && (
-              <span
-                style={{
-                  fontSize: 9, fontWeight: 700, letterSpacing: "0.04em",
-                  padding: "1px 6px", borderRadius: 99,
-                  background: `${PROVIDER_COST[payload.provider].color}18`,
-                  border: `1px solid ${PROVIDER_COST[payload.provider].color}30`,
-                  color: PROVIDER_COST[payload.provider].color,
-                }}
-              >
-                {PROVIDER_COST[payload.provider].label}
-              </span>
-            )}
+            {/* Cost is shown per-model inside the ModelPicker (costLabel) — no
+                separate badge here to avoid two divergent price sources. */}
           </div>
           {/* Legacy migration: some historical providers (hf_dop_preview / hf_kling_* /
               hf_seedance_*) were removed when Higgsfield video API was rewritten. If a

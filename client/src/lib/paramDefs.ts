@@ -75,3 +75,15 @@ export const IMAGE_MODEL_PARAMS: Record<string, ParamDef[]> = {
 export function paramOptions(def: Extract<ParamDef, { type: "select" }>): { value: string; label: string }[] {
   return def.options.map((o) => (typeof o === "string" ? { value: o, label: o } : o));
 }
+
+// Resolve the effective value of an image param: the persisted payload value,
+// else the ParamDef default. The controls only DISPLAY def.default — they don't
+// persist it until the user interacts — so a model whose field is required
+// upstream (e.g. z-image text-to-image `size`) would otherwise submit empty.
+// Used at submit time to forward the value the user actually sees.
+export function resolveImageParam(model: string | undefined, key: string, persisted: unknown): unknown {
+  if (persisted !== undefined && persisted !== "") return persisted;
+  if (!model) return persisted;
+  const def = (IMAGE_MODEL_PARAMS[model] ?? []).find((d) => d.key === key);
+  return def?.default ?? persisted;
+}

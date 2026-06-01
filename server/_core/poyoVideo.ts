@@ -128,8 +128,25 @@ export async function submitPoyoVideo(opts: {
   const input: Record<string, unknown> = {
     prompt: opts.prompt,
     ...(opts.negativePrompt ? { negative_prompt: opts.negativePrompt } : {}),
-    ...(refImageAbsoluteUrl ? { reference_image_url: refImageAbsoluteUrl } : {}),
   };
+
+  // The reference image goes into different fields depending on the model
+  // (docs/poyo-video-api.md): Kling 2.1 + Hailuo 2.3 use `start_image_url`;
+  // Wan i2v / Sora official / Veo use `image_urls` (array, first = start frame);
+  // everything else keeps the historical `reference_image_url`.
+  if (refImageAbsoluteUrl) {
+    const startImageModels = new Set<string>([
+      "kling-2.1/standard", "kling-2.1/pro", "kling-2.5-turbo-pro", "hailuo-2.3",
+    ]);
+    const imageUrlsModels = new Set<string>([
+      "wan2.7-image-to-video", "wan2.2-image-to-video-fast", "wan2.6-image-to-video",
+      "sora-2-official", "sora-2-pro-official",
+      "veo3.1-fast", "veo3.1-quality", "veo3.1-lite",
+    ]);
+    if (startImageModels.has(model)) input.start_image_url = refImageAbsoluteUrl;
+    else if (imageUrlsModels.has(model)) input.image_urls = [refImageAbsoluteUrl];
+    else input.reference_image_url = refImageAbsoluteUrl;
+  }
 
   // Spec-driven: copy only the keys this model accepts (docs/poyo-video-api.md),
   // coercing numeric/boolean fields. Models not in the table send just prompt +
