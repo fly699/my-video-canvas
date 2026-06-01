@@ -465,6 +465,14 @@ export const storageSettings = mysqlTable("storageSettings", {
   // help when the URL must stay fetchable by slow upstream AI tasks; shorter
   // values shrink the leak-exposure window. Default 1h.
   presignTtlSec: int("presignTtlSec").notNull().default(3600),
+  // When MinIO/S3 is not publicly reachable, route reference images/videos
+  // through Poyo's stream-upload endpoint to obtain a public URL for AI models.
+  poyoUploadFallback: boolean("poyoUploadFallback").notNull().default(false),
+  // When true, object storage is restricted to MinIO/S3 ONLY — the Forge
+  // storage fallback is disabled, so no file is ever written to Manus/Forge
+  // storage (writes fail if MinIO/S3 isn't configured). Off by default to keep
+  // existing behavior. Does NOT affect Forge non-storage features (LLM, etc.).
+  minioOnly: boolean("minioOnly").notNull().default(false),
   updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
 });
 
@@ -504,3 +512,19 @@ export const auditLogs = mysqlTable("auditLogs", {
 
 export type AuditLog = typeof auditLogs.$inferSelect;
 export type InsertAuditLog = typeof auditLogs.$inferInsert;
+
+// ── Poyo Balance Snapshots ──────────────────────────────────────────────────
+// Poyo's balance API only returns the current credit amount (no history), so we
+// snapshot it periodically to chart consumption / spending trends. The balance
+// is a single platform-wide account (shared across all users), hence no userId.
+export const poyoBalanceSnapshots = mysqlTable("poyoBalanceSnapshots", {
+  id: int("id").autoincrement().primaryKey(),
+  creditsAmount: float("creditsAmount").notNull(),
+  email: varchar("email", { length: 320 }),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+}, (t) => ({
+  createdAtIdx: index("poyoBalanceSnapshots_createdAt_idx").on(t.createdAt),
+}));
+
+export type PoyoBalanceSnapshot = typeof poyoBalanceSnapshots.$inferSelect;
+export type InsertPoyoBalanceSnapshot = typeof poyoBalanceSnapshots.$inferInsert;

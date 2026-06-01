@@ -29,18 +29,52 @@ export type NodeType =
 
 export const VIDEO_PROVIDERS = [
   "mock",
+  // ── existing (kept for back-compat; never remove a persisted value) ──
   "poyo_seedance",
   "poyo_veo",
   "poyo_kling26",
   "poyo_kling_o3_std",
   "poyo_kling_o3_pro",
   "poyo_kling_o3_4k",
-  "poyo_wan25_t2v",
-  "poyo_wan25_i2v",
+  "poyo_wan25_t2v",   // legacy name → wire wan2.6-text-to-video
+  "poyo_wan25_i2v",   // legacy name → wire wan2.6-image-to-video
   "poyo_runway45",
   "hf_dop_standard",
   "hf_dop_lite",
   "hf_dop_turbo",
+  // ── new: full Poyo video catalog (docs/poyo-video-api.md) ──
+  // Sora
+  "poyo_sora2",
+  "poyo_sora2_pro",
+  "poyo_sora2_official",
+  "poyo_sora2_pro_official",
+  // Veo 3.1 tiers
+  "poyo_veo_fast",
+  "poyo_veo_lite",
+  "poyo_veo_quality",
+  // Kling
+  "poyo_kling21_std",
+  "poyo_kling21_pro",
+  "poyo_kling25_turbo",
+  "poyo_kling30_std",
+  "poyo_kling30_pro",
+  "poyo_kling30_4k",
+  // Wan
+  "poyo_wan27_t2v",
+  "poyo_wan27_i2v",
+  "poyo_wan22_t2v_fast",
+  "poyo_wan22_i2v_fast",
+  // Seedance
+  "poyo_seedance1_pro",
+  "poyo_seedance15_pro",
+  "poyo_seedance2_fast",
+  // Hailuo
+  "poyo_hailuo02",
+  "poyo_hailuo02_pro",
+  "poyo_hailuo23",
+  // others
+  "poyo_happy_horse",
+  "poyo_grok_video",
 ] as const;
 export type VideoProvider = (typeof VIDEO_PROVIDERS)[number];
 export type VideoTaskStatus = "pending" | "processing" | "succeeded" | "failed";
@@ -212,7 +246,38 @@ export interface AIChatNodeData {
   model?: string;
 }
 
-export type ImageGenModel = "manus_forge" | "poyo_flux" | "poyo_sdxl" | "poyo_gpt_image" | "poyo_seedream" | "poyo_grok_image" | "poyo_wan_image" | "hf_soul_standard" | "hf_reve" | "hf_seedream_v4" | "hf_flux_pro";
+export type ImageGenModel =
+  // Manus (built-in)
+  | "manus_forge"
+  // Poyo · Nano Banana (Google)
+  | "poyo_nano_banana" | "poyo_nano_banana_2" | "poyo_nano_banana_pro"
+  // Poyo · GPT Image (OpenAI)
+  | "poyo_gpt_4o_image" | "poyo_gpt_image_15" | "poyo_gpt_image"
+  // Poyo · Flux (Black Forest Labs)
+  | "poyo_flux" | "poyo_sdxl" | "poyo_flux_kontext_pro" | "poyo_flux_kontext_max"
+  // Poyo · Seedream (ByteDance)
+  | "poyo_seedream_4" | "poyo_seedream" | "poyo_seedream_5_lite"
+  // Poyo · Wan (Alibaba)
+  | "poyo_wan_image" | "poyo_wan_image_pro"
+  // Poyo · Kling (Kuaishou)
+  | "poyo_kling_o1_image" | "poyo_kling_o3_image"
+  // Poyo · others
+  | "poyo_z_image" | "poyo_grok_image"
+  // Higgsfield
+  | "hf_soul_standard" | "hf_reve" | "hf_seedream_v4" | "hf_flux_pro";
+
+/** UI value strings for every image model — single source for the Zod enum. */
+export const IMAGE_GEN_MODELS = [
+  "manus_forge",
+  "poyo_nano_banana", "poyo_nano_banana_2", "poyo_nano_banana_pro",
+  "poyo_gpt_4o_image", "poyo_gpt_image_15", "poyo_gpt_image",
+  "poyo_flux", "poyo_sdxl", "poyo_flux_kontext_pro", "poyo_flux_kontext_max",
+  "poyo_seedream_4", "poyo_seedream", "poyo_seedream_5_lite",
+  "poyo_wan_image", "poyo_wan_image_pro",
+  "poyo_kling_o1_image", "poyo_kling_o3_image",
+  "poyo_z_image", "poyo_grok_image",
+  "hf_soul_standard", "hf_reve", "hf_seedream_v4", "hf_flux_pro",
+] as const satisfies readonly ImageGenModel[];
 export interface ImageGenNodeData {
   prompt: string;
   negativePrompt?: string;
@@ -272,14 +337,21 @@ export interface AudioNodeData {
   aiModel?: string; // legacy fallback
   // Music (配乐)
   musicPrompt?: string;
-  musicDuration?: number;
+  musicDuration?: number;       // @deprecated 时长由模型版本决定，不再使用（旧节点兼容）
   musicStyle?: string;
   musicInstrumental?: boolean;  // false = generate with vocals
-  musicNegativeTags?: string;   // comma-separated keywords to exclude
+  musicNegativeTags?: string;   // comma-separated keywords to exclude (Suno only)
+  musicLyrics?: string;         // MiniMax Music 2.6 lyrics (optional)
   // Dubbing / TTS (配音)
   ttsText?: string;
   ttsVoice?: string;
-  ttsSpeed?: number;
+  ttsSpeed?: number;                              // OpenAI direct models only
+  // ElevenLabs V3 TTS (Poyo) — per official OpenAPI
+  ttsStability?: number;                          // 0–1
+  ttsTimestamps?: boolean;                        // request word-level timestamps.json
+  ttsLanguageCode?: string;                       // ISO 639-1
+  ttsTextNormalization?: "auto" | "on" | "off";
+  ttsTimestampsUrl?: string;                      // download URL when timestamps returned
   // SFX (音效)
   sfxPrompt?: string;
   sfxDuration?: number;
@@ -511,6 +583,7 @@ export type ComfyuiImageTemplate = "txt2img" | "img2img" | "inpaint";
 export interface ComfyuiImageNodeData {
   // Connection
   customBaseUrl?: string;       // empty = use server-side global default
+  serverUrls?: string[];        // saved server addresses for quick selection (persisted on node)
   workflowTemplate: ComfyuiImageTemplate;
   // Prompts
   prompt: string;
@@ -557,6 +630,7 @@ export type ComfyuiVideoTemplate = "animatediff" | "svd" | "wan_t2v" | "wan_i2v"
 export interface ComfyuiVideoNodeData {
   // Connection
   customBaseUrl?: string;
+  serverUrls?: string[];        // saved server addresses for quick selection (persisted on node)
   workflowTemplate: ComfyuiVideoTemplate;
   // Prompts
   prompt: string;
@@ -604,6 +678,7 @@ export interface WorkflowParamBinding {
 
 export interface ComfyuiWorkflowNodeData {
   customBaseUrl?: string;
+  serverUrls?: string[];        // saved server addresses for quick selection (persisted on node)
   workflowJson?: string;
   workflowName?: string;
   paramBindings?: WorkflowParamBinding[];

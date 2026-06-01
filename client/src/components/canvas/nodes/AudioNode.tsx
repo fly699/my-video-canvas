@@ -61,66 +61,51 @@ const labelStyle: React.CSSProperties = {
 
 // ── Model lists ───────────────────────────────────────────────────────────────
 
-// Real Poyo-backed music models. Suno is confirmed live via the
-// `generate-music` endpoint with input.mv ∈ {V3.5, V4, V4.5, V4.5PLUS, V5}.
-// Mureka / MiniMax / Eleven Music are referenced by Poyo marketing but their
-// concrete `model` endpoint names are not yet published; they're kept here as
-// disabled options with ⚠ markers (same pattern as VideoTaskNode legacy
-// Higgsfield providers and AudioNode TTS legacy ids).
+// Poyo-backed music models. Suno variants route to `generate-music` (mv param);
+// MiniMax Music 2.6 routes to its own model id via the standard status endpoint.
+// Suno track length is determined by the model version — there is no duration param.
 const MUSIC_MODELS = [
-  // ── Live (Suno via generate-music endpoint) ───
-  { value: "suno-v5",          label: "Suno v5",          desc: "8 分钟 · 最高质量",     group: "Suno" },
-  { value: "suno-v4.5plus",    label: "Suno v4.5 PLUS",   desc: "增强版",                group: "Suno" },
-  { value: "suno-v4.5",        label: "Suno v4.5",        desc: "旗舰 · 全风格",         group: "Suno" },
-  { value: "suno-v4",          label: "Suno v4",          desc: "稳定 · 经典",           group: "Suno" },
-  { value: "suno-v3.5",        label: "Suno v3.5",        desc: "初代 · 快速",           group: "Suno" },
-  // ── Pending (endpoint name not yet confirmed in Poyo docs) ───
-  { value: "mureka",           label: "Mureka ⚠ 待接入",         desc: "Poyo 端点名待确认",  group: "待接入" },
-  { value: "minimax-music-02", label: "MiniMax Music-02 ⚠ 待接入", desc: "Poyo 端点名待确认",  group: "待接入" },
+  // ── Suno (generate-music endpoint) ───
+  { value: "suno-v5.5",        label: "Suno v5.5",        desc: "最新",          group: "Suno" },
+  { value: "suno-v5",          label: "Suno v5",          desc: "最高质量",      group: "Suno" },
+  { value: "suno-v4.5plus",    label: "Suno v4.5 PLUS",   desc: "增强版",        group: "Suno" },
+  { value: "suno-v4.5all",     label: "Suno v4.5 ALL",    desc: "全能",          group: "Suno" },
+  { value: "suno-v4.5",        label: "Suno v4.5",        desc: "旗舰 · 全风格", group: "Suno" },
+  { value: "suno-v4",          label: "Suno v4",          desc: "稳定 · 经典",   group: "Suno" },
+  // ── MiniMax (status endpoint) ───
+  { value: "minimax-music-2.6", label: "MiniMax Music 2.6", desc: "歌词 / 器乐", group: "MiniMax" },
 ];
 
-const LEGACY_MUSIC_MODELS = new Set(["mureka", "minimax-music-02"]);
+function musicModelIsMiniMax(m?: string): boolean {
+  return m === "minimax-music-2.6";
+}
 
-// Per-model maximum music duration (seconds). UI range slider clamps to this.
-const MUSIC_MAX_DURATION: Record<string, number> = {
-  "suno-v3.5":         240,
-  "suno-v4":           240,
-  "suno-v4.5":         240, // 4 min
-  "suno-v4.5plus":     240,
-  "suno-v5":           480, // 8 min — flagship
-  "mureka":            240,
-  "minimax-music-02":  180,
-};
+// Normalize legacy saved model ids to a live one (mirrors server-side normalization).
+function normalizeMusicModel(m?: string): string {
+  if (m === "suno-v3.5") return "suno-v4";
+  if (m === "minimax-music-02") return "minimax-music-2.6";
+  if (m && MUSIC_MODELS.some((x) => x.value === m)) return m;
+  return "suno-v5"; // mureka / unknown → default
+}
 
 // Dubbing/TTS models. The "openai_*_real" entries hit OpenAI's /v1/audio/speech
-// directly (live). The other 4 are kept for backward compat with saved nodes —
-// Poyo platform doesn't actually offer TTS, so submitting them now returns a
-// router-level error guiding the user to a live model.
+// directly (live). "elevenlabs-v3-tts" routes to Poyo's ElevenLabs V3 TTS.
 const DUBBING_MODELS = [
   // ── Live (OpenAI direct) ───
   { value: "openai_tts_real",       label: "OpenAI TTS",       desc: "标准 · $0.015/1k 字符",  group: "OpenAI" },
   { value: "openai_tts_hd_real",    label: "OpenAI TTS-HD",    desc: "高清 · $0.030/1k 字符",  group: "OpenAI" },
   { value: "openai_gpt4o_mini_tts", label: "GPT-4o Mini TTS",  desc: "新 · 支持 instructions", group: "OpenAI" },
-  // ── Deprecated (Poyo platform doesn't actually provide TTS) ───
-  { value: "openai_tts_hd",    label: "OpenAI TTS-HD ⚠ 已下线",   desc: "请改用 OpenAI TTS-HD", group: "已下线" },
-  { value: "openai_tts",       label: "OpenAI TTS ⚠ 已下线",      desc: "请改用 OpenAI TTS",    group: "已下线" },
-  { value: "elevenlabs_v3",    label: "ElevenLabs v3 ⚠ 已下线",   desc: "未接入",               group: "已下线" },
-  { value: "cosyvoice_2",      label: "CosyVoice 2.0 ⚠ 已下线",   desc: "未接入",               group: "已下线" },
+  // ── Live (Poyo) ───
+  { value: "elevenlabs-v3-tts",     label: "ElevenLabs v3 TTS", desc: "Poyo · 16 积分/1k 字",  group: "ElevenLabs" },
 ];
-
-// Set of legacy TTS model ids that no longer work — gating render + submit.
-const LEGACY_TTS_MODELS = new Set(["openai_tts_hd", "openai_tts", "elevenlabs_v3", "cosyvoice_2"]);
 
 // Per-model TTS text limit (characters). Submitting more than this either errors
 // at the provider or is silently truncated — in both cases the user pays.
 const TTS_TEXT_LIMIT: Record<string, number> = {
+  "elevenlabs-v3-tts":   5000,
   openai_tts_real:       4096,
   openai_tts_hd_real:    4096,
   openai_gpt4o_mini_tts: 4096,
-  openai_tts_hd: 4096,
-  openai_tts:    4096,
-  elevenlabs_v3: 5000,
-  cosyvoice_2:   2000,
 };
 
 // SFX — coming soon
@@ -140,34 +125,46 @@ const OPENAI_VOICES = [
   { value: "nova",    label: "Nova",    desc: "女声" },
   { value: "shimmer", label: "Shimmer", desc: "柔和" },
 ];
+// ElevenLabs V3 voice names (per Poyo OpenAPI). value === the wire name; Rachel
+// is first so it becomes the default selection (matches the spec default).
 const ELEVENLABS_VOICES = [
-  { value: "21m00Tcm4TlvDq8ikWAM", label: "Rachel",  desc: "女声 · 美式" },
-  { value: "AZnzlk1XvdvUeBnXmlld", label: "Domi",    desc: "女声 · 自信" },
-  { value: "EXAVITQu4vr4xnSDxMaL", label: "Bella",   desc: "女声 · 柔和" },
-  { value: "ErXwobaYiN019PkySvjV", label: "Antoni",  desc: "男声 · 温暖" },
-  { value: "VR6AewLTigWG4xSOukaG", label: "Arnold",  desc: "男声 · 深沉" },
-  { value: "pNInz6obpgDQGcFmaJgB", label: "Adam",    desc: "男声 · 旁白" },
-];
-const COSYVOICE_VOICES = [
-  { value: "中文女", label: "中文女", desc: "标准 · 女声" },
-  { value: "中文男", label: "中文男", desc: "标准 · 男声" },
-  { value: "英文女", label: "英文女", desc: "English · F" },
-  { value: "英文男", label: "英文男", desc: "English · M" },
-  { value: "日语男", label: "日语男", desc: "日本語 · M" },
-  { value: "粤语女", label: "粤语女", desc: "广东话 · F" },
+  { value: "Rachel",    label: "Rachel",    desc: "女声 · 旁白" },
+  { value: "Aria",      label: "Aria",      desc: "女声" },
+  { value: "Sarah",     label: "Sarah",     desc: "女声" },
+  { value: "Laura",     label: "Laura",     desc: "女声" },
+  { value: "Charlotte", label: "Charlotte", desc: "女声" },
+  { value: "Alice",     label: "Alice",     desc: "女声" },
+  { value: "Matilda",   label: "Matilda",   desc: "女声" },
+  { value: "Jessica",   label: "Jessica",   desc: "女声" },
+  { value: "Lily",      label: "Lily",      desc: "女声" },
+  { value: "River",     label: "River",     desc: "中性" },
+  { value: "Roger",     label: "Roger",     desc: "男声" },
+  { value: "Charlie",   label: "Charlie",   desc: "男声" },
+  { value: "George",    label: "George",    desc: "男声" },
+  { value: "Callum",    label: "Callum",    desc: "男声" },
+  { value: "Liam",      label: "Liam",      desc: "男声" },
+  { value: "Will",      label: "Will",      desc: "男声" },
+  { value: "Eric",      label: "Eric",      desc: "男声" },
+  { value: "Chris",     label: "Chris",     desc: "男声" },
+  { value: "Brian",     label: "Brian",     desc: "男声" },
+  { value: "Daniel",    label: "Daniel",    desc: "男声" },
+  { value: "Bill",      label: "Bill",      desc: "男声" },
 ];
 
 function voicesForModel(model?: string): { value: string; label: string; desc: string }[] {
-  if (model === "elevenlabs_v3") return ELEVENLABS_VOICES;
-  if (model === "cosyvoice_2") return COSYVOICE_VOICES;
-  return OPENAI_VOICES; // default for openai_tts / openai_tts_hd / unknown
+  if (modelIsElevenLabs(model)) return ELEVENLABS_VOICES;
+  return OPENAI_VOICES; // default for openai_tts_real / *_hd_real / gpt4o-mini / unknown
 }
 
-// ElevenLabs uses voice_settings (stability/style) for pacing, not a `speed` field.
-// Server still accepts speed, but for elevenlabs we hide the slider so users don't
-// expect it to take effect (and don't waste credits tuning a no-op).
+// The Poyo ElevenLabs V3 TTS id (and its legacy underscore alias on old nodes).
+function modelIsElevenLabs(model?: string): boolean {
+  return model === "elevenlabs-v3-tts" || model === "elevenlabs_v3";
+}
+
+// `speed` is only meaningful for OpenAI TTS. ElevenLabs V3 uses `stability`
+// instead, so the speed slider is hidden for it.
 function modelSupportsSpeed(model?: string): boolean {
-  return model !== "elevenlabs_v3";
+  return !modelIsElevenLabs(model);
 }
 
 // Suno/Poyo style tags expect English genre keywords. Submitting raw Chinese
@@ -284,6 +281,9 @@ export const AudioNode = memo(function AudioNode({ id, selected, data }: Props) 
       updateNodeData(id, {
         url: result.url,
         duration: result.duration,
+        // timestampsUrl is only present for ElevenLabs V3 TTS with timestamps on;
+        // clear any stale value from a previous run otherwise.
+        ttsTimestampsUrl: result.timestampsUrl ?? undefined,
         name: `配音 · ${(payload.ttsVoice ?? "alloy")} · ${payload.ttsText?.slice(0, 16) ?? ""}`,
       });
       toast.success("配音生成完成");
@@ -351,31 +351,27 @@ export const AudioNode = memo(function AudioNode({ id, selected, data }: Props) 
   const handleGenerateMusic = () => {
     if (musicMutation.isPending) return;
     if (!payload.musicPrompt?.trim()) { toast.error("请先输入音乐描述"); return; }
-    const validMusic = MUSIC_MODELS.map((m) => m.value);
-    const raw = payload.musicModel ?? payload.aiModel ?? "suno-v5";
-    const modelVal = (validMusic.includes(raw) ? raw : "suno-v5") as
-      | "suno-v3.5" | "suno-v4" | "suno-v4.5" | "suno-v4.5plus" | "suno-v5"
-      | "mureka" | "minimax-music-02";
-    // Block submit early for not-yet-integrated providers (Mureka / MiniMax).
-    if (LEGACY_MUSIC_MODELS.has(modelVal)) {
-      toast.error(`"${modelVal}" 尚未接入（Poyo 端点名待确认），请改用 Suno 系列`);
+    const modelVal = normalizeMusicModel(payload.musicModel ?? payload.aiModel) as
+      | "suno-v4" | "suno-v4.5" | "suno-v4.5plus" | "suno-v4.5all" | "suno-v5" | "suno-v5.5"
+      | "minimax-music-2.6";
+    const isMiniMax = musicModelIsMiniMax(modelVal);
+    // MiniMax requires a prompt of at least 10 chars — block early to avoid a wasted call.
+    if (isMiniMax && payload.musicPrompt.trim().length < 10) {
+      toast.error("MiniMax Music 2.6 的描述需至少 10 个字符，请补充");
       return;
     }
-    // Clamp duration to the picked model's actual max (UI also clamps, but if
-    // payload.musicDuration was set under a different model we'd otherwise send
-    // a too-large value that the provider would either reject or silently cap).
-    const maxDur = MUSIC_MAX_DURATION[modelVal] ?? 240;
-    const durationSeconds = Math.min(payload.musicDuration ?? 30, maxDur);
-    // Translate Chinese style tag to English — Suno/Poyo expect English genre
-    // keywords; raw Chinese gets ignored or treated as prompt noise.
-    const styleEn = payload.musicStyle ? (MUSIC_STYLE_ZH_TO_EN[payload.musicStyle] ?? payload.musicStyle) : undefined;
+    // Translate Chinese style tag to English — Suno expects English genre keywords;
+    // MiniMax has no style param so it's omitted there.
+    const styleEn = (!isMiniMax && payload.musicStyle)
+      ? (MUSIC_STYLE_ZH_TO_EN[payload.musicStyle] ?? payload.musicStyle)
+      : undefined;
     musicMutation.mutate({
       model: modelVal,
       prompt: payload.musicPrompt,
       style: styleEn,
-      durationSeconds,
-      instrumental: payload.musicInstrumental ?? true,
-      negativePrompt: payload.musicNegativeTags || undefined,
+      instrumental: payload.musicInstrumental ?? (isMiniMax ? false : true),
+      negativeTags: !isMiniMax ? (payload.musicNegativeTags || undefined) : undefined,
+      lyrics: isMiniMax ? (payload.musicLyrics || undefined) : undefined,
       projectId: data.projectId,
     });
   };
@@ -385,35 +381,36 @@ export const AudioNode = memo(function AudioNode({ id, selected, data }: Props) 
     if (!payload.ttsText?.trim()) { toast.error("请先输入配音文本"); return; }
     const validTTS = DUBBING_MODELS.map((m) => m.value);
     const rawTTS = payload.ttsModel ?? payload.aiModel ?? "openai_tts_real";
-    const model = (validTTS.includes(rawTTS) ? rawTTS : "openai_tts_real") as
+    // Old saved nodes may carry the legacy "elevenlabs_v3" id — keep it routable
+    // (server normalizes it); otherwise fall back to the default OpenAI model.
+    const model = (validTTS.includes(rawTTS) || rawTTS === "elevenlabs_v3" ? rawTTS : "openai_tts_real") as
       | "openai_tts_real" | "openai_tts_hd_real" | "openai_gpt4o_mini_tts"
-      | "openai_tts_hd" | "openai_tts" | "elevenlabs_v3" | "cosyvoice_2";
-    // Block submit early for deprecated models — server would reject anyway,
-    // but a clear toast is friendlier than a TRPC error popover.
-    if (LEGACY_TTS_MODELS.has(model)) {
-      toast.error(`"${model}" 已下线，请改用 OpenAI TTS / TTS-HD / GPT-4o Mini TTS`);
-      return;
-    }
+      | "elevenlabs-v3-tts" | "elevenlabs_v3";
     // Reject overlong text early — the provider would charge for the prefix and
     // truncate (or reject) the rest. Better to surface the limit before submit.
-    const limit = TTS_TEXT_LIMIT[model] ?? 4096;
+    const limit = TTS_TEXT_LIMIT[model] ?? (modelIsElevenLabs(model) ? 5000 : 4096);
     if (payload.ttsText.length > limit) {
       toast.error(`${model} 单次配音上限 ${limit} 字，当前 ${payload.ttsText.length} 字，请截断`);
       return;
     }
-    // Voice IDs differ per provider; refuse an OpenAI voice id under ElevenLabs etc.
+    // Voice names differ per provider; refuse a voice not valid for this model.
     const allowedVoices = voicesForModel(model).map(v => v.value);
     const voice = payload.ttsVoice && allowedVoices.includes(payload.ttsVoice)
       ? payload.ttsVoice
       : allowedVoices[0];
-    // ElevenLabs v3 doesn't honour `speed`; don't send it (the field is meaningful only for OpenAI/CosyVoice).
-    const speed = modelSupportsSpeed(model) ? payload.ttsSpeed : undefined;
+    const isEleven = modelIsElevenLabs(model);
     ttsMutation.mutate({
       model,
       text: payload.ttsText,
       voice,
-      speed,
       projectId: data.projectId,
+      // OpenAI-only
+      speed: isEleven ? undefined : (modelSupportsSpeed(model) ? payload.ttsSpeed : undefined),
+      // ElevenLabs V3-only (per official OpenAPI)
+      stability: isEleven ? (payload.ttsStability ?? 0.5) : undefined,
+      timestamps: isEleven ? (payload.ttsTimestamps ?? false) : undefined,
+      languageCode: isEleven ? (payload.ttsLanguageCode || undefined) : undefined,
+      applyTextNormalization: isEleven ? (payload.ttsTextNormalization ?? "auto") : undefined,
     });
   };
 
@@ -538,116 +535,107 @@ export const AudioNode = memo(function AudioNode({ id, selected, data }: Props) 
         </div>
 
         {/* ── 配乐 Music ── */}
-        {category === "music" && (
+        {category === "music" && (() => {
+          const musicModel = normalizeMusicModel(payload.musicModel ?? payload.aiModel);
+          const isMiniMax = musicModelIsMiniMax(musicModel);
+          const instrumentalDefault = isMiniMax ? false : true;
+          return (
           <>
             <ModelSelect
               models={MUSIC_MODELS}
-              value={payload.musicModel ?? (MUSIC_MODELS.find(m => m.value === payload.aiModel) ? payload.aiModel : undefined)}
-              onChange={(v) => {
-                // Clamp existing duration to the new model's cap so the slider doesn't display a value above its max
-                const newMax = MUSIC_MAX_DURATION[v] ?? 240;
-                const cur = payload.musicDuration ?? 30;
-                if (cur > newMax) {
-                  updateNodeData(id, { musicModel: v, musicDuration: newMax });
-                } else {
-                  update("musicModel", v);
-                }
-              }}
+              value={MUSIC_MODELS.some(m => m.value === payload.musicModel) ? payload.musicModel : musicModel}
+              onChange={(v) => update("musicModel", v)}
             />
             <div>
               <label style={labelStyle}>音乐描述</label>
               <textarea className="nodrag nowheel"
-                placeholder="描述你想要的配乐风格、氛围、节奏..."
+                placeholder={isMiniMax ? "描述歌曲主题、情绪、风格（至少 10 字）..." : "描述你想要的配乐风格、氛围、节奏..."}
                 value={payload.musicPrompt ?? ""}
                 onChange={(e) => update("musicPrompt", e.target.value)}
                 rows={3}
-                
+
                 style={{ ...fieldStyle, resize: "none", lineHeight: 1.6 }}
                 onFocus={(e) => { e.currentTarget.style.borderColor = BORDER_ACCENT; }}
                 onBlur={(e) => { e.currentTarget.style.borderColor = BORDER_DEFAULT; }}
               />
             </div>
-            {/* Style tags */}
-            <div>
-              <label style={labelStyle}>风格标签</label>
-              <div className="flex flex-wrap gap-1">
-                {MUSIC_STYLES_ZH.map((s) => (
-                  <button
-                    key={s}
-                    onClick={() => update("musicStyle", payload.musicStyle === s ? undefined : s)}
-                    className="nodrag px-2 py-0.5 rounded text-[10px] transition-all"
-                    style={{
-                      background: payload.musicStyle === s ? accentA(0.15) : "var(--c-input)",
-                      border: `1px solid ${payload.musicStyle === s ? accentA(0.4) : "var(--c-bd2)"}`,
-                      color: payload.musicStyle === s ? accent : "var(--c-t3)",
-                      cursor: "pointer",
-                      fontWeight: payload.musicStyle === s ? 600 : 400,
-                    }}
-                  >
-                    {s}
-                  </button>
-                ))}
+            {/* Style tags — Suno only (MiniMax has no style param) */}
+            {!isMiniMax && (
+              <div>
+                <label style={labelStyle}>风格标签</label>
+                <div className="flex flex-wrap gap-1">
+                  {MUSIC_STYLES_ZH.map((s) => (
+                    <button
+                      key={s}
+                      onClick={() => update("musicStyle", payload.musicStyle === s ? undefined : s)}
+                      className="nodrag px-2 py-0.5 rounded text-[10px] transition-all"
+                      style={{
+                        background: payload.musicStyle === s ? accentA(0.15) : "var(--c-input)",
+                        border: `1px solid ${payload.musicStyle === s ? accentA(0.4) : "var(--c-bd2)"}`,
+                        color: payload.musicStyle === s ? accent : "var(--c-t3)",
+                        cursor: "pointer",
+                        fontWeight: payload.musicStyle === s ? 600 : 400,
+                      }}
+                    >
+                      {s}
+                    </button>
+                  ))}
+                </div>
               </div>
-            </div>
-            {/* Duration — slider max varies per model (suno-v5 supports up to 480s) */}
-            <div>
-              <div className="flex items-center justify-between" style={{ marginBottom: 5 }}>
-                <label style={{ ...labelStyle, marginBottom: 0 }}>时长</label>
-                <span style={{ fontSize: 11, color: "var(--c-t3)", fontVariantNumeric: "tabular-nums" }}>{payload.musicDuration ?? 30}秒</span>
+            )}
+            {/* Lyrics — MiniMax only (optional; empty → model auto-writes lyrics) */}
+            {isMiniMax && (
+              <div>
+                <label style={labelStyle}>歌词（可选）</label>
+                <textarea className="nodrag nowheel"
+                  placeholder="留空则由模型自动生成歌词；纯器乐请打开下方开关"
+                  value={payload.musicLyrics ?? ""}
+                  onChange={(e) => update("musicLyrics", e.target.value)}
+                  rows={3}
+                  style={{ ...fieldStyle, resize: "none", lineHeight: 1.6 }}
+                  onFocus={(e) => { e.currentTarget.style.borderColor = BORDER_ACCENT; }}
+                  onBlur={(e) => { e.currentTarget.style.borderColor = BORDER_DEFAULT; }}
+                />
               </div>
-              {(() => {
-                const cur = (payload.musicModel ?? payload.aiModel ?? "suno-v4.5") as string;
-                const maxDur = MUSIC_MAX_DURATION[cur] ?? 240;
-                return (
-                  <input
-                    type="range"
-                    min={10}
-                    max={maxDur}
-                    step={5}
-                    value={Math.min(payload.musicDuration ?? 30, maxDur)}
-                    onChange={(e) => update("musicDuration", Number(e.target.value))}
-                    className="nodrag w-full"
-                    style={{ accentColor: accent }}
-                  />
-                );
-              })()}
-            </div>
-            {/* Instrumental toggle — previously hard-coded true, hiding the vocal-music capability */}
+            )}
+            {/* Instrumental toggle */}
             <div className="flex items-center justify-between">
               <label style={{ ...labelStyle, marginBottom: 0 }}>纯器乐</label>
               <button
-                onClick={() => update("musicInstrumental", !(payload.musicInstrumental ?? true))}
+                onClick={() => update("musicInstrumental", !(payload.musicInstrumental ?? instrumentalDefault))}
                 className="nodrag relative flex-shrink-0"
                 style={{
                   width: 32, height: 18, borderRadius: 9,
-                  background: (payload.musicInstrumental ?? true) ? accentA(0.5) : "var(--c-bd1)",
-                  border: `1px solid ${(payload.musicInstrumental ?? true) ? accentA(0.5) : "var(--c-bd3)"}`,
+                  background: (payload.musicInstrumental ?? instrumentalDefault) ? accentA(0.5) : "var(--c-bd1)",
+                  border: `1px solid ${(payload.musicInstrumental ?? instrumentalDefault) ? accentA(0.5) : "var(--c-bd3)"}`,
                   cursor: "pointer",
                   transition: "background 150ms ease",
                 }}
               >
                 <span style={{
                   position: "absolute", top: 2,
-                  left: (payload.musicInstrumental ?? true) ? 14 : 2,
+                  left: (payload.musicInstrumental ?? instrumentalDefault) ? 14 : 2,
                   width: 12, height: 12, borderRadius: "50%",
                   background: "var(--c-t1)",
                   transition: "left 150ms ease",
                 }} />
               </button>
             </div>
-            {/* Negative tags — exclude unwanted elements */}
-            <div>
-              <label style={labelStyle}>排除元素（可选）</label>
-              <input
-                placeholder="例如：drums, vocals, distortion"
-                value={payload.musicNegativeTags ?? ""}
-                onChange={(e) => update("musicNegativeTags", e.target.value)}
-                className="nodrag"
-                style={fieldStyle}
-                onFocus={(e) => { e.currentTarget.style.borderColor = BORDER_ACCENT; }}
-                onBlur={(e) => { e.currentTarget.style.borderColor = BORDER_DEFAULT; }}
-              />
-            </div>
+            {/* Negative tags — Suno only (exclude unwanted elements) */}
+            {!isMiniMax && (
+              <div>
+                <label style={labelStyle}>排除元素（可选）</label>
+                <input
+                  placeholder="例如：drums, vocals, distortion"
+                  value={payload.musicNegativeTags ?? ""}
+                  onChange={(e) => update("musicNegativeTags", e.target.value)}
+                  className="nodrag"
+                  style={fieldStyle}
+                  onFocus={(e) => { e.currentTarget.style.borderColor = BORDER_ACCENT; }}
+                  onBlur={(e) => { e.currentTarget.style.borderColor = BORDER_DEFAULT; }}
+                />
+              </div>
+            )}
             <GenerateBtn
               disabled={!payload.musicPrompt?.trim()}
               loading={musicMutation.isPending}
@@ -655,33 +643,19 @@ export const AudioNode = memo(function AudioNode({ id, selected, data }: Props) 
               label="生成配乐"
             />
           </>
-        )}
+          );
+        })()}
 
         {/* ── 配音 Dubbing ── */}
         {category === "dubbing" && (() => {
           const ttsModel = (payload.ttsModel ?? (DUBBING_MODELS.find(m => m.value === payload.aiModel) ? payload.aiModel : undefined) ?? "openai_tts_real") as string;
           const voices = voicesForModel(ttsModel);
-          const textLimit = TTS_TEXT_LIMIT[ttsModel] ?? 4096;
+          const textLimit = TTS_TEXT_LIMIT[ttsModel] ?? (modelIsElevenLabs(ttsModel) ? 5000 : 4096);
           const supportsSpeed = modelSupportsSpeed(ttsModel);
+          const isEleven = modelIsElevenLabs(ttsModel);
           const textLen = (payload.ttsText ?? "").length;
-          const isLegacyModel = LEGACY_TTS_MODELS.has(ttsModel);
           return (
           <>
-            {/* Migration warning for nodes saved with the dead Poyo TTS aliases */}
-            {isLegacyModel && (
-              <div style={{
-                padding: "8px 10px",
-                background: "oklch(0.70 0.16 65 / 0.10)",
-                border: "1px solid oklch(0.70 0.16 65 / 0.35)",
-                borderRadius: 6,
-                fontSize: 11,
-                lineHeight: 1.5,
-                color: "oklch(0.80 0.16 65)",
-              }}>
-                ⚠ 模型 <code style={{ fontFamily: "monospace" }}>{ttsModel}</code> 已下线（Poyo 平台不提供 TTS）。
-                请改用 <strong>OpenAI TTS</strong> / <strong>TTS-HD</strong> / <strong>GPT-4o Mini TTS</strong>。
-              </div>
-            )}
             <ModelSelect
               models={DUBBING_MODELS}
               value={payload.ttsModel ?? (DUBBING_MODELS.find(m => m.value === payload.aiModel) ? payload.aiModel : undefined)}
@@ -761,11 +735,87 @@ export const AudioNode = memo(function AudioNode({ id, selected, data }: Props) 
                 </div>
               </div>
             )}
+            {/* ── ElevenLabs V3-only controls (per official OpenAPI) ── */}
+            {isEleven && (
+              <>
+                {/* Stability 0–1 */}
+                <div>
+                  <div className="flex items-center justify-between" style={{ marginBottom: 5 }}>
+                    <label style={{ ...labelStyle, marginBottom: 0 }}>稳定性</label>
+                    <span style={{ fontSize: 11, color: "var(--c-t3)", fontVariantNumeric: "tabular-nums" }}>
+                      {(payload.ttsStability ?? 0.5).toFixed(2)}
+                    </span>
+                  </div>
+                  <input
+                    type="range"
+                    min={0}
+                    max={1}
+                    step={0.05}
+                    value={payload.ttsStability ?? 0.5}
+                    onChange={(e) => update("ttsStability", Number(e.target.value))}
+                    className="nodrag w-full"
+                    style={{ accentColor: accent }}
+                  />
+                </div>
+                {/* Timestamps toggle */}
+                <div className="flex items-center justify-between">
+                  <label style={{ ...labelStyle, marginBottom: 0 }}>时间戳 (timestamps.json)</label>
+                  <button
+                    onClick={() => update("ttsTimestamps", !(payload.ttsTimestamps ?? false))}
+                    className="nodrag relative flex-shrink-0"
+                    style={{
+                      width: 32, height: 18, borderRadius: 9,
+                      background: (payload.ttsTimestamps ?? false) ? accentA(0.5) : "var(--c-bd1)",
+                      border: `1px solid ${(payload.ttsTimestamps ?? false) ? accentA(0.5) : "var(--c-bd3)"}`,
+                      cursor: "pointer",
+                      transition: "background 150ms ease",
+                    }}
+                  >
+                    <span style={{
+                      position: "absolute", top: 2,
+                      left: (payload.ttsTimestamps ?? false) ? 14 : 2,
+                      width: 12, height: 12, borderRadius: "50%",
+                      background: "var(--c-t1)",
+                      transition: "left 150ms ease",
+                    }} />
+                  </button>
+                </div>
+                {/* Language code (ISO 639-1, optional) */}
+                <div>
+                  <label style={labelStyle}>语言代码 (ISO 639-1，可选)</label>
+                  <input
+                    placeholder="例如：en / zh / ja"
+                    value={payload.ttsLanguageCode ?? ""}
+                    onChange={(e) => update("ttsLanguageCode", e.target.value)}
+                    className="nodrag"
+                    style={fieldStyle}
+                    onFocus={(e) => { e.currentTarget.style.borderColor = BORDER_ACCENT; }}
+                    onBlur={(e) => { e.currentTarget.style.borderColor = BORDER_DEFAULT; }}
+                  />
+                </div>
+                {/* apply_text_normalization */}
+                <div>
+                  <label style={labelStyle}>文本规范化</label>
+                  <select
+                    value={payload.ttsTextNormalization ?? "auto"}
+                    onChange={(e) => update("ttsTextNormalization", e.target.value)}
+                    className="nodrag"
+                    style={{ ...fieldStyle, cursor: "pointer" }}
+                    onFocus={(e) => { e.currentTarget.style.borderColor = BORDER_ACCENT; }}
+                    onBlur={(e) => { e.currentTarget.style.borderColor = BORDER_DEFAULT; }}
+                  >
+                    <option value="auto" style={{ background: "var(--c-base)" }}>auto（自动）</option>
+                    <option value="on" style={{ background: "var(--c-base)" }}>on（开启）</option>
+                    <option value="off" style={{ background: "var(--c-base)" }}>off（关闭）</option>
+                  </select>
+                </div>
+              </>
+            )}
             <GenerateBtn
-              disabled={!payload.ttsText?.trim() || textLen > textLimit || isLegacyModel}
+              disabled={!payload.ttsText?.trim() || textLen > textLimit}
               loading={ttsMutation.isPending}
               onClick={handleGenerateTTS}
-              label={isLegacyModel ? "请先换用 OpenAI TTS" : "生成配音"}
+              label="生成配音"
             />
           </>
           );
@@ -864,6 +914,20 @@ export const AudioNode = memo(function AudioNode({ id, selected, data }: Props) 
       {audioPlayer && (
         <div className="px-3 pb-3">
           {audioPlayer}
+          {/* ElevenLabs V3 TTS timestamps.json download link */}
+          {payload.ttsTimestampsUrl && (
+            <a
+              href={payload.ttsTimestampsUrl}
+              target="_blank"
+              rel="noopener noreferrer"
+              download
+              className="nodrag flex items-center gap-1 mt-1.5"
+              style={{ fontSize: 10.5, color: accent, textDecoration: "none" }}
+            >
+              <HardDriveDownload style={{ width: 11, height: 11 }} />
+              下载 timestamps.json
+            </a>
+          )}
         </div>
       )}
     </BaseNode>

@@ -675,7 +675,7 @@ export const AIChatNode = memo(function AIChatNode({ id, selected, data }: Props
                 minWidth: 200,
               }}
             >
-              {CHAT_MODELS.map((m) => (
+              {CHAT_MODELS.filter((m) => !m.hidden).map((m) => (
                 <button
                   key={m.id}
                   className="nodrag w-full flex items-center justify-between px-3 py-2 transition-all text-left"

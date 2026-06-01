@@ -198,7 +198,9 @@ function StoragePanel() {
             <p style={{ margin: "4px 0 0", fontSize: 12, color: "var(--c-t2, rgba(255,255,255,0.55))", lineHeight: 1.5 }}>
               开启后系统会自动把生成的音频/视频/图像存到你的对象存储（推荐自建 MinIO，数据不出本机），URL 永久可用。<br />
               关闭后节点降级为直接使用模型提供商的上游 URL（Poyo: 24h 后过期；Higgsfield: 临时 CDN）。<br />
-              配置：S3_ENDPOINT / S3_BUCKET / S3_ACCESS_KEY / S3_SECRET_KEY（可运行 deploy\setup-minio.bat 一键配置）。
+              配置：S3_ENDPOINT / S3_BUCKET / S3_ACCESS_KEY / S3_SECRET_KEY（可运行 deploy\setup-minio.bat 一键配置）。<br />
+              <strong>存储后端优先级</strong>：配齐 S3_* → 用 <strong>MinIO/S3</strong>（首选）；否则若配了 Forge 凭据 → 回退 <strong>Forge 内置存储</strong>；都没有 → <strong>无持久化</strong>，所有存储操作会失败。
+              <strong>Forge 内置存储现已降级为「未配 S3 时的回退」</strong>，配了 MinIO/S3 后不再走它。
             </p>
             <div style={{ marginTop: 12, display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
               <button
@@ -248,29 +250,71 @@ function StoragePanel() {
         </div>
       </div>
 
+      <div style={{ ...cardStyle, alignItems: "stretch", padding: "16px 20px" }}>
+        <div style={{ display: "flex", alignItems: "flex-start", gap: 12 }}>
+          <HardDrive style={{ width: 18, height: 18, color: "oklch(0.72 0.16 65)", flexShrink: 0, marginTop: 2 }} />
+          <div style={{ flex: 1 }}>
+            <h3 style={{ margin: 0, fontSize: 15, fontWeight: 600, color: "var(--c-t1, #f0f0f4)" }}>
+              关于 Forge 平台（非存储依赖）
+            </h3>
+            <p style={{ margin: "4px 0 0", fontSize: 12, color: "var(--c-t2, rgba(255,255,255,0.55))", lineHeight: 1.6 }}>
+              <strong style={{ color: "oklch(0.82 0.14 65)" }}>请区分两层，互不影响：</strong><br />
+              <strong>① 上面的「持久化开关」</strong>：只管"生成的媒体要不要落对象存储"，
+              <strong>不影响</strong>本卡片下列任何非存储功能；关闭它至多让媒体降级为上游临时 URL（配了 MinIO 时甚至被忽略）。<br />
+              <strong>② Forge 凭据（环境变量 BUILT_IN_FORGE_API_URL / BUILT_IN_FORGE_API_KEY）</strong>：是部署层面的整个 Forge 平台开关。
+              「Forge 内置存储」虽已被 MinIO/S3 取代为回退，但该平台仍是必需基础设施，与对象存储配置无关，承担以下子系统：<br />
+              • <strong>LLM 代理</strong>：Claude / Gemini 等非 GPT 模型经 Forge `/v1/chat/completions` 调用<br />
+              • <strong>图像生成</strong>：`manus_forge` 模型，以及未配 Poyo Key 时的兜底<br />
+              • <strong>语音转写</strong>：Whisper（音频转文字）<br />
+              • <strong>定时任务</strong>：heartbeat 计划任务<br />
+              • <strong>站内通知</strong>：项目所有者通知<br />
+              • <strong>Data API / 地图</strong>：YouTube、Google Maps 等外部 API 代理<br />
+              因此让上述功能失效的是<strong>移除环境变量里的 Forge 凭据</strong>（运维操作），而<strong>不是</strong>点上面的持久化开关。即使存储全切 MinIO，也不要删 Forge 凭据。
+            </p>
+          </div>
+        </div>
+      </div>
+
       {loading && (
         <div style={{ color: "var(--c-t2)", fontSize: 13, padding: 12 }}>加载中...</div>
       )}
 
       {settings && (
         <>
+          <div style={{
+            padding: "10px 14px",
+            background: "oklch(0.70 0.16 65 / 0.10)",
+            border: "1px solid oklch(0.70 0.16 65 / 0.35)",
+            borderRadius: 8,
+            fontSize: 12,
+            lineHeight: 1.6,
+            color: "oklch(0.82 0.14 65)",
+          }}>
+            <strong>下列开关仅在未配置 MinIO/S3、回退到 Forge 内置存储时才生效。</strong><br />
+            自有 MinIO/S3 是本地磁盘、无配额成本，因此一旦配置好（S3_ENDPOINT/S3_BUCKET/...），
+            系统对音/视/图<strong>恒为持久化</strong>，以下开关将被忽略。这些开关本质是
+            「Forge 内置存储（有配额计费）」的省钱阀门。<br />
+            关闭后多数媒体降级为模型提供商的上游临时 URL（Poyo 24h / Higgsfield 临时）；
+            但 <strong>OpenAI TTS 例外</strong>——它只返回 mp3 字节流、无可降级的 URL，
+            音频持久化关闭时会<strong>直接拒绝生成</strong>。
+          </div>
           <ToggleRow
-            label="持久化图像"
-            description="Poyo / Higgsfield 图像生成输出（Forge 不受影响）"
+            label="持久化图像（Forge 存储）"
+            description="仅 Forge 存储后端生效（配置 MinIO/S3 后恒持久化、此开关被忽略）。作用对象：Poyo / Higgsfield 图像生成输出（它们返回临时 CDN URL，关闭则不转存、直接用 24h 临时链接）。注：manus_forge 图像模型因只返回字节流、无临时 URL，生成图始终落盘（存到当前存储后端：MinIO 或 Forge），不受此开关控制。"
             enabled={settings.persistImage}
             disabled={setMut.isPending}
             onClick={() => handleToggle("persistImage")}
           />
           <ToggleRow
-            label="持久化音频"
-            description="音乐生成 / 配音 / TTS 输出"
+            label="持久化音频（Forge 存储）"
+            description="仅 Forge 存储后端生效（配置 MinIO/S3 后恒持久化、此开关被忽略）。作用对象：音乐生成 / 配音 / TTS 输出。"
             enabled={settings.persistAudio}
             disabled={setMut.isPending}
             onClick={() => handleToggle("persistAudio")}
           />
           <ToggleRow
-            label="持久化视频"
-            description="Poyo / Higgsfield 视频生成输出"
+            label="持久化视频（Forge 存储）"
+            description="仅 Forge 存储后端生效（配置 MinIO/S3 后恒持久化、此开关被忽略）。作用对象：Poyo / Higgsfield 视频生成输出。"
             enabled={settings.persistVideo}
             disabled={setMut.isPending}
             onClick={() => handleToggle("persistVideo")}
@@ -279,6 +323,31 @@ function StoragePanel() {
             value={settings.presignTtlSec}
             disabled={setMut.isPending}
             onSave={(sec) => setMut.mutate({ presignTtlSec: sec })}
+          />
+          <ToggleRow
+            label="Poyo 流式暂存（参考图/视频公网中转）"
+            description={
+              "附加功能·默认关闭：当 MinIO/S3 未暴露公网（未设 S3_PUBLIC_ENDPOINT）时，把参考图/视频经 Poyo 流式上传换取公网 URL 供 AI 模型读取。关闭后完全不影响原有存储逻辑。需配置 POYO_API_KEY。" +
+              "\n限制：图片支持 JPEG / PNG / GIF / WebP，公网有效期约 72 小时；视频支持 MP4 / WebM / MOV / AVI / MKV，单文件 ≤ 100MB，有效期约 24 小时；每次 1 个文件；接口限流 5 次/分钟。仅用于生成时临时中转参考素材，不替代本地持久化存储。"
+            }
+            enabled={settings.poyoUploadFallback}
+            disabled={setMut.isPending}
+            onClick={() => setMut.mutate({ poyoUploadFallback: !settings.poyoUploadFallback })}
+            statusOn="已开启（仅在 MinIO/S3 未公网时中转）"
+            statusOff="已关闭（不影响原有存储逻辑）"
+          />
+          <ToggleRow
+            label="仅允许 MinIO/S3（禁用 Forge 存储回退）"
+            description={
+              "开启后，下列「无专属持久化开关」的写入被限制为自建 MinIO/S3：用户上传、聊天附件、画布上传、本地剪辑产物。未配置 MinIO/S3 时这些写入将直接失败，而不是回退到 Forge 存储。\n" +
+              "不影响：上面三个 AI 产物持久化开关（音/视/图各自控制）；Forge 的非存储功能（LLM 代理 / 语音转写 / 定时任务 / 通知 / Data API / manus_forge 画图模型）；读取既有文件。\n" +
+              "注：ComfyUI 内网节点产物为安全考量已「永久硬锁 MinIO/S3」，无视此开关——未配 MinIO/S3 时一律拒绝、绝不落 Forge。请先配置 S3_ENDPOINT / S3_BUCKET / S3_ACCESS_KEY / S3_SECRET_KEY 再开启本开关。"
+            }
+            enabled={settings.minioOnly}
+            disabled={setMut.isPending}
+            onClick={() => setMut.mutate({ minioOnly: !settings.minioOnly })}
+            statusOn="已开启（仅 MinIO/S3，绝不落 Forge 存储）"
+            statusOff="已关闭（未配 MinIO 时回退 Forge 存储）"
           />
         </>
       )}
@@ -341,12 +410,14 @@ function PresignTtlRow({ value, disabled, onSave }: {
   );
 }
 
-function ToggleRow({ label, description, enabled, disabled, onClick }: {
+function ToggleRow({ label, description, enabled, disabled, onClick, statusOn, statusOff }: {
   label: string;
   description: string;
   enabled: boolean;
   disabled?: boolean;
   onClick: () => void;
+  statusOn?: string;
+  statusOff?: string;
 }) {
   const Icon = enabled ? ToggleRight : ToggleLeft;
   return (
@@ -357,9 +428,9 @@ function ToggleRow({ label, description, enabled, disabled, onClick }: {
     }}>
       <div>
         <div style={{ fontSize: 14, fontWeight: 500, color: "var(--c-t1, #f0f0f4)" }}>{label}</div>
-        <div style={{ fontSize: 11, color: "var(--c-t3, rgba(255,255,255,0.4))", marginTop: 3 }}>{description}</div>
+        <div style={{ fontSize: 11, color: "var(--c-t3, rgba(255,255,255,0.4))", marginTop: 3, whiteSpace: "pre-line", lineHeight: 1.6 }}>{description}</div>
         <div style={{ fontSize: 11, color: enabled ? "oklch(0.7 0.18 145)" : "oklch(0.65 0.18 25)", marginTop: 4, fontWeight: 600 }}>
-          状态：{enabled ? "已开启（永久存储）" : "已关闭（24h 后过期）"}
+          状态：{enabled ? (statusOn ?? "已开启（永久存储）") : (statusOff ?? "已关闭（24h 后过期）")}
         </div>
       </div>
       <button

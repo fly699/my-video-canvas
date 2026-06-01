@@ -32,20 +32,21 @@ import {
   addChatMessagePair,
   clearChatMessages,
 } from "../db";
-import { storagePut, resolveToAbsoluteUrl, canBrowserReachStorageDirectly, storageBackend } from "../storage";
+import { storagePut, resolveToAbsoluteUrl, canBrowserReachStorageDirectly, storageBackend, assertObjectStorageWritable } from "../storage";
 import { invokeLLM, extractTextContent } from "../_core/llm";
 import { generateImage } from "../_core/imageGeneration";
 import { generateComfyImage, generateComfyVideo, fetchComfyModels, analyzeWorkflow, executeCustomWorkflow, uploadImageForWorkflow, interruptComfy, emptyModelList } from "../_core/comfyui";
+import type { ComfyModelList } from "../_core/comfyui";
 import { ENV } from "../_core/env";
 import { isPoyoVideoProvider, submitPoyoVideo, checkPoyoVideoStatus } from "../_core/poyoVideo";
 import { isHiggsfieldVideoProvider, submitHiggsfieldVideo, checkHiggsfieldVideoStatus } from "../_core/higgsfield";
 import { persistVideoOrFallback, persistVideosOrFallback } from "../_core/persistVideo";
 import { submitAndPollPoyoMusic, type PoyoMusicModel } from "../_core/poyoAudio";
-import { submitAndPollPoyoTTS, type PoyoTTSModel } from "../_core/poyoAudio";
+import { submitAndPollPoyoTTS } from "../_core/poyoAudio";
 import { synthesizeOpenAITTS, type OpenAITTSModel } from "../_core/openaiTTS";
 import { trimVideo, getVideoDuration, mergeVideos, burnSubtitles, generateSRT, overlayVideo, assertSafeUrl, burnAssSubtitles, smartCutVideo } from "../_core/videoEditor";
 import { transcribeAudio } from "../_core/voiceTranscription";
-import { VIDEO_PROVIDERS } from "../../shared/types";
+import { VIDEO_PROVIDERS, IMAGE_GEN_MODELS } from "../../shared/types";
 import type { SubtitleEntry } from "../../shared/types";
 import { assertWhitelisted, assertComfyuiAllowed } from "../_core/whitelist";
 import { writeAuditLog, truncate } from "../_core/auditLog";
@@ -264,6 +265,8 @@ export const assetsRouter = router({
       }
       const buffer = Buffer.from(input.base64, "base64");
       const key = `assets/${ctx.user.id}/${nanoid()}-${input.name}`;
+      // 「仅允许 MinIO/S3」开关：未配 MinIO/S3 时拒绝写入，不回退 Forge 存储。
+      await assertObjectStorageWritable();
       const { url } = await storagePut(key, buffer, input.mimeType);
       const asset = await createAsset({
         userId: ctx.user.id,
@@ -740,9 +743,14 @@ export const imageGenRouter = router({
         negativePrompt: z.string().optional(),
         referenceImageUrl: z.string().optional(),
         style: z.string().optional(),
-        model: z.enum(["manus_forge", "poyo_flux", "poyo_sdxl", "poyo_gpt_image", "poyo_seedream", "poyo_grok_image", "poyo_wan_image", "hf_soul_standard", "hf_reve", "hf_seedream_v4", "hf_flux_pro"]).optional(),
+        model: z.enum(IMAGE_GEN_MODELS).optional(),
         poyoAspectRatio: z.string().optional(),
         poyoQuality: z.enum(["low", "medium", "high"]).optional(),
+        // Generic Poyo image params (schema-driven, extended model set)
+        imageSize: z.string().max(64).optional(),
+        imageResolution: z.enum(["0.5K", "1K", "2K", "3K", "4K"]).optional(),
+        imageN: z.number().int().min(1).max(15).optional(),
+        imageOutputFormat: z.enum(["png", "jpg", "jpeg", "webp"]).optional(),
         widthAndHeight: z.string().optional(),
         quality: z.enum(["720p", "1080p"]).optional(),
         batchSize: z.union([z.literal(1), z.literal(4)]).optional(),
@@ -796,10 +804,16 @@ export const imageGenRouter = router({
         ...(input.referenceImageUrl
           ? { originalImages: [{ url: input.referenceImageUrl, mimeType: "image/jpeg" }] }
           : {}),
-        ...((input.model === "poyo_flux" || input.model === "poyo_sdxl" || input.model === "poyo_gpt_image" ||
-             input.model === "poyo_seedream" || input.model === "poyo_grok_image" || input.model === "poyo_wan_image") ? {
-          size: input.poyoAspectRatio,
+        // All Poyo image models share the generic param channel; the backend
+        // spec table (POYO_IMAGE_SPECS) decides which fields each model actually
+        // sends. `imageSize` (new ParamDef field) falls back to the legacy
+        // `poyoAspectRatio` so old nodes keep working.
+        ...(input.model?.startsWith("poyo_") ? {
+          size: input.imageSize ?? input.poyoAspectRatio,
           quality: input.poyoQuality,
+          resolution: input.imageResolution,
+          n: input.imageN,
+          outputFormat: input.imageOutputFormat,
         } : {}),
         ...(input.model === "hf_soul_standard" ? {
           widthAndHeight: input.widthAndHeight,
@@ -1359,69 +1373,85 @@ export const audioGenRouter = router({
     .input(
       z.object({
         model: z.enum([
-          "suno-v3.5", "suno-v4", "suno-v4.5", "suno-v4.5plus", "suno-v5",
-          "mureka", "minimax-music-02",
+          // Live (Suno via generate-music)
+          "suno-v4", "suno-v4.5", "suno-v4.5plus", "suno-v4.5all", "suno-v5", "suno-v5.5",
+          // Live (MiniMax via status endpoint)
+          "minimax-music-2.6",
+          // Legacy aliases — normalized below
+          "suno-v3.5", "minimax-music-02", "mureka",
         ]),
         prompt: z.string().min(1),
         style: z.string().optional(),
-        durationSeconds: z.number().int().min(10).max(480).optional(),
         instrumental: z.boolean().optional(),
-        negativePrompt: z.string().optional(),
+        negativeTags: z.string().optional(),
+        lyrics: z.string().max(3500).optional(),   // MiniMax only
         projectId: z.number().optional(),
       })
     )
     .mutation(async ({ ctx, input }) => {
       await assertWhitelisted(ctx);
       if (input.projectId != null) await assertProjectAccess(input.projectId, ctx.user.id, "editor");
-      // Defense in depth: each model has a different actual max duration; the client
-      // clamps but a bypassed client could send any value up to the Zod max(480).
-      // Clamp here too so e.g. minimax (180s cap) doesn't silently truncate paid output.
-      const MUSIC_MAX_DURATION: Record<string, number> = {
-        "suno-v4.5": 240, "suno-v5": 480, "mureka": 240, "minimax-music-02": 180,
-      };
-      const maxDur = MUSIC_MAX_DURATION[input.model] ?? 240;
-      const durationSeconds = input.durationSeconds !== undefined
-        ? Math.min(input.durationSeconds, maxDur)
-        : undefined;
-      // Long-poll generation (~30s-2min) is when client-side retries are most likely.
+
+      // Normalize legacy ids to live ones. Mureka has no live equivalent.
+      let model: string = input.model;
+      if (model === "suno-v3.5") model = "suno-v4";
+      else if (model === "minimax-music-02") model = "minimax-music-2.6";
+      else if (model === "mureka") {
+        throw new TRPCError({ code: "BAD_REQUEST", message: "Mureka 暂未接入，请改用 Suno 或 MiniMax Music 2.6。" });
+      }
+
+      // MiniMax requires a prompt of 10-2000 chars.
+      if (model === "minimax-music-2.6" && input.prompt.trim().length < 10) {
+        throw new TRPCError({ code: "BAD_REQUEST", message: "MiniMax Music 2.6 的描述需至少 10 个字符。" });
+      }
+
       return dedupe("audioGen.generateMusic", ctx.user.id, input, async () => {
         const result = await submitAndPollPoyoMusic({
-          model: input.model as PoyoMusicModel,
+          model: model as PoyoMusicModel,
           prompt: input.prompt,
           style: input.style,
-          durationSeconds,
           instrumental: input.instrumental,
-          negativePrompt: input.negativePrompt,
+          negativeTags: input.negativeTags,
+          lyrics: input.lyrics,
         });
         writeAuditLog({
           ctx,
           action: "audio_music",
-          detail: { model: input.model, prompt: truncate(input.prompt), resultUrl: result.url, duration: result.duration },
+          detail: { model, prompt: truncate(input.prompt), resultUrl: result.url, duration: result.duration },
         });
-        return { url: result.url, duration: result.duration };
+        return { url: result.url, duration: result.duration, imageUrl: result.imageUrl };
       });
     }),
 
   generateDubbing: protectedProcedure
     .input(
       z.object({
-        // New OpenAI-direct models + legacy Poyo aliases (latter are rejected
-        // at runtime with a clear error so old saved nodes don't 404 silently).
+        // Live TTS providers: 3 OpenAI-direct (via openaiTTS.ts) + Poyo
+        // ElevenLabs V3. The old "elevenlabs_v3" underscore id is accepted for
+        // backward compat with saved nodes and normalized to the live id below.
         model: z.enum([
           // Live (OpenAI direct)
           "openai_tts_real",
           "openai_tts_hd_real",
           "openai_gpt4o_mini_tts",
-          // Deprecated (kept in schema so existing nodes don't fail validation
-          // before the user sees the migration message)
+          // Live (Poyo)
+          "elevenlabs-v3-tts",
+          // Legacy aliases — accepted for backward compat with saved nodes and
+          // normalized below (elevenlabs_v3→live Poyo; the rest→openai_tts_real)
+          // so old payloads don't hit an opaque Zod validation error.
+          "elevenlabs_v3",
           "openai_tts_hd",
           "openai_tts",
-          "elevenlabs_v3",
           "cosyvoice_2",
         ]),
         text: z.string().min(1).max(5000),
         voice: z.string().optional(),
-        speed: z.number().min(0.5).max(2.0).optional(),
+        speed: z.number().min(0.5).max(2.0).optional(),          // OpenAI only
+        // ElevenLabs V3 TTS params (per official OpenAPI)
+        stability: z.number().min(0).max(1).optional(),
+        timestamps: z.boolean().optional(),
+        languageCode: z.string().optional(),
+        applyTextNormalization: z.enum(["auto", "on", "off"]).optional(),
         projectId: z.number().optional(),
       })
     )
@@ -1429,42 +1459,63 @@ export const audioGenRouter = router({
       await assertWhitelisted(ctx);
       if (input.projectId != null) await assertProjectAccess(input.projectId, ctx.user.id, "editor");
 
-      // Legacy Poyo TTS aliases — Poyo platform does NOT actually offer TTS,
-      // these 4 ids always 404'd upstream. Refuse at the router so the user
-      // sees a clear migration message instead of a confusing provider error.
-      const LEGACY_POYO_TTS = new Set(["openai_tts_hd", "openai_tts", "elevenlabs_v3", "cosyvoice_2"]);
-      if (LEGACY_POYO_TTS.has(input.model)) {
-        throw new TRPCError({
-          code: "BAD_REQUEST",
-          message: `TTS 模型 "${input.model}" 已下线（Poyo 平台不提供 TTS）。请改用 OpenAI TTS 系列（openai_tts_real / openai_tts_hd_real / openai_gpt4o_mini_tts）。`,
-        });
-      }
+      // Normalize legacy ids: elevenlabs_v3 → live Poyo TTS; the retired
+      // openai_tts/openai_tts_hd/cosyvoice_2 ids → the live OpenAI default.
+      const LEGACY_TO_LIVE: Record<string, string> = {
+        elevenlabs_v3: "elevenlabs-v3-tts",
+        openai_tts_hd: "openai_tts_hd_real",
+        openai_tts: "openai_tts_real",
+        cosyvoice_2: "openai_tts_real",
+      };
+      const model = LEGACY_TO_LIVE[input.model] ?? input.model;
+      const isPoyoTTS = model === "elevenlabs-v3-tts";
 
-      // Per-model text limits — applies to live OpenAI models only.
-      // OpenAI TTS supports up to 4096 chars per request.
+      // Per-model text limits. ElevenLabs V3 allows 5000; OpenAI TTS 4096.
       const TEXT_LIMIT: Record<string, number> = {
+        "elevenlabs-v3-tts":   5000,
         openai_tts_real:       4096,
         openai_tts_hd_real:    4096,
         openai_gpt4o_mini_tts: 4096,
       };
-      const limit = TEXT_LIMIT[input.model] ?? 4096;
+      const limit = TEXT_LIMIT[model] ?? 4096;
       if (input.text.length > limit) {
-        throw new TRPCError({ code: "BAD_REQUEST", message: `${input.model} 单次配音上限 ${limit} 字（当前 ${input.text.length}）` });
+        throw new TRPCError({ code: "BAD_REQUEST", message: `${model} 单次配音上限 ${limit} 字（当前 ${input.text.length}）` });
       }
 
       return dedupe("audioGen.generateDubbing", ctx.user.id, input, async () => {
-        const result = await synthesizeOpenAITTS({
-          model: input.model as OpenAITTSModel,
-          text: input.text,
-          voice: input.voice,
-          speed: input.speed,
-        });
+        const result = isPoyoTTS
+          ? await submitAndPollPoyoTTS({
+              model: "elevenlabs-v3-tts",
+              text: input.text,
+              voice: input.voice,
+              stability: input.stability,
+              timestamps: input.timestamps,
+              languageCode: input.languageCode,
+              applyTextNormalization: input.applyTextNormalization,
+            })
+          : await synthesizeOpenAITTS({
+              model: model as OpenAITTSModel,
+              text: input.text,
+              voice: input.voice,
+              speed: input.speed,
+            });
         writeAuditLog({
           ctx,
           action: "audio_dubbing",
-          detail: { model: input.model, text: truncate(input.text), voice: input.voice ?? null, resultUrl: result.url, duration: result.duration ?? null },
+          detail: {
+            model,
+            text: truncate(input.text),
+            voice: input.voice ?? null,
+            resultUrl: result.url,
+            duration: result.duration ?? null,
+            ...(isPoyoTTS ? { stability: input.stability ?? null, timestamps: input.timestamps ?? false } : {}),
+          },
         });
-        return { url: result.url, duration: result.duration };
+        return {
+          url: result.url,
+          duration: result.duration,
+          timestampsUrl: isPoyoTTS ? (result as { timestampsUrl?: string }).timestampsUrl : undefined,
+        };
       });
     }),
 });
@@ -1963,22 +2014,53 @@ export const comfyuiRouter = router({
     }),
 
   fetchModels: protectedProcedure
-    .input(z.object({ customBaseUrl: z.string().max(2048).optional() }))
+    .input(z.object({
+      customBaseUrl: z.string().max(2048).optional(),
+      // Multi-server: refresh the union of models across all saved addresses.
+      customBaseUrls: z.array(z.string().max(2048)).max(20).optional(),
+    }))
     .query(async ({ ctx, input }) => {
       // Whitelist check: fetchModels can be used as an SSRF probe via customBaseUrl
       // (the server fetches whatever URL the client supplies). Treat with the same
       // gate as the paid generate endpoints.
       await assertComfyuiAllowed(ctx);
-      const baseUrl = input.customBaseUrl?.trim() || ENV.comfyuiBaseUrl;
+      // Candidate base URLs: explicit saved list ∪ single field, deduped.
+      const candidates = Array.from(new Set(
+        [...(input.customBaseUrls ?? []), input.customBaseUrl]
+          .map((u) => u?.trim())
+          .filter((u): u is string => !!u),
+      ));
+      const urls = candidates.length > 0 ? candidates : (ENV.comfyuiBaseUrl ? [ENV.comfyuiBaseUrl] : []);
       // Not configured is a benign empty state (UI degrades to free-text), not an error.
-      if (!baseUrl) return emptyModelList();
-      try {
-        return await fetchComfyModels(baseUrl);
-      } catch (err) {
-        // Surface the real reason (unreachable / bad status / timeout) so the UI
-        // can distinguish "server has no models" from "couldn't reach server".
-        throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: err instanceof Error ? err.message : String(err) });
+      if (urls.length === 0) return emptyModelList();
+      // Single URL: preserve original behavior — surface the real reason
+      // (unreachable / bad status / timeout) so the UI can distinguish
+      // "server has no models" from "couldn't reach server".
+      if (urls.length === 1) {
+        try {
+          return await fetchComfyModels(urls[0]);
+        } catch (err) {
+          throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: err instanceof Error ? err.message : String(err) });
+        }
       }
+      // Multiple URLs: best-effort union so one unreachable server doesn't blank
+      // out models from the others.
+      const merged = emptyModelList();
+      const results = await Promise.allSettled(urls.map((u) => fetchComfyModels(u)));
+      let anyOk = false;
+      for (const r of results) {
+        if (r.status !== "fulfilled") continue;
+        anyOk = true;
+        for (const key of Object.keys(merged) as (keyof ComfyModelList)[]) {
+          for (const v of r.value[key]) if (!merged[key].includes(v)) merged[key].push(v);
+        }
+      }
+      if (!anyOk) {
+        const firstErr = results.find((r): r is PromiseRejectedResult => r.status === "rejected");
+        throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: firstErr?.reason instanceof Error ? firstErr.reason.message : "无法连接任何 ComfyUI 服务器" });
+      }
+      for (const key of Object.keys(merged) as (keyof ComfyModelList)[]) merged[key].sort();
+      return merged;
     }),
 
   analyzeWorkflow: protectedProcedure

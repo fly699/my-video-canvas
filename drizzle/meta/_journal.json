@@ -162,6 +162,20 @@
       "when": 1780046033617,
       "tag": "0022_comfyui_whitelist_bypass",
       "breakpoints": true
+    },
+    {
+      "idx": 23,
+      "version": "5",
+      "when": 1780046033618,
+      "tag": "0023_poyo_balance_and_upload",
+      "breakpoints": true
+    },
+    {
+      "idx": 24,
+      "version": "5",
+      "when": 1780046033619,
+      "tag": "0024_storage_minio_only",
+      "breakpoints": true
     }
   ]
 }

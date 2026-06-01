@@ -25,6 +25,8 @@ import {
   Boxes,
   Bot,
   MessageCircle,
+  Music,
+  Wallet,
 } from "lucide-react";
 
 // ── Animated background grid ─────────────────────────────────────────────────
@@ -513,25 +515,43 @@ export default function Home() {
                   {
                     icon: Wand2, color: "oklch(0.72 0.20 330)",
                     title: "AI 图像生成",
-                    desc: "Manus Forge · Poyo · Higgsfield Soul / Flux Pro / Seedream / Reve",
-                    badge: null,
+                    desc: "对齐 Poyo 全量 24 模型：Nano Banana Pro / GPT Image / Flux 2·Kontext / Seedream / Kling / Z-Image，含 Higgsfield Soul·Reve",
+                    badge: "NEW",
                   },
                   {
                     icon: Video, color: "oklch(0.62 0.20 25)",
                     title: "AI 视频生成",
-                    desc: "Higgsfield DoP · Poyo Seedance / Veo / Kling / Wan / Runway",
-                    badge: null,
+                    desc: "扩充至 37 模型：Sora 2 / Veo 3.1 / Kling 2.1~3.0 / Wan / Seedance / Hailuo / Runway / Higgsfield DoP",
+                    badge: "NEW",
+                  },
+                  {
+                    icon: Boxes, color: "oklch(0.68 0.20 100)",
+                    title: "分类模型选择器",
+                    desc: "图像 / 视频 / 对话统一选择器：按供应商与家族分组、可搜索，每模型标注消耗点数，按预算挑选",
+                    badge: "NEW",
                   },
                   {
                     icon: Boxes, color: "oklch(0.68 0.20 100)",
                     title: "ComfyUI 自建集成",
                     desc: "图像（多 LoRA / ControlNet / IPAdapter / Inpaint / 放大）+ 视频（Wan 文生·图生 / LTX）、15 类模型发现、自定义工作流导入",
+                    badge: null,
+                  },
+                  {
+                    icon: Music, color: "oklch(0.70 0.18 340)",
+                    title: "AI 配乐与配音",
+                    desc: "音频节点接入 Suno / MiniMax 音乐与 ElevenLabs V3 文本转语音（TTS），一键生成背景音乐与旁白",
+                    badge: "NEW",
+                  },
+                  {
+                    icon: Wallet, color: "oklch(0.72 0.18 155)",
+                    title: "Poyo 余额仪表盘",
+                    desc: "顶栏实时显示剩余 Poyo 点数，配合模型选择器的点数标注，生成前掌握预算",
                     badge: "NEW",
                   },
                   {
                     icon: Bot, color: "oklch(0.70 0.18 200)",
                     title: "大模型对话",
-                    desc: "Claude Sonnet 4.6 · Gemini 2.5 Flash · GPT-5.2，写脚本 / 润色 / 审查",
+                    desc: "Gemini 3 Flash · Claude Sonnet 4.5 · Haiku 4.5 · GPT-5.2，写脚本 / 润色 / 审查",
                     badge: null,
                   },
                   {

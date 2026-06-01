@@ -29,6 +29,7 @@ import { comfyStressRouter } from "./routers/comfyStress";
 import { adminRouter } from "./routers/admin";
 import { collaborationRouter } from "./routers/collaboration";
 import { chatRouter } from "./routers/chat";
+import { poyoRouter } from "./routers/poyo";
 
 export const appRouter = router({
   system: systemRouter,
@@ -71,6 +72,7 @@ export const appRouter = router({
   admin: adminRouter,
   collaboration: collaborationRouter,
   chat: chatRouter,
+  poyo: poyoRouter,
 });
 
 export type AppRouter = typeof appRouter;

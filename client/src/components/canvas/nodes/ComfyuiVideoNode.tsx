@@ -1,13 +1,16 @@
 import { memo, useCallback, useEffect, useRef, useState } from "react";
 import { Handle, Position } from "@xyflow/react";
 import { BaseNode } from "../BaseNode";
+import { ComfyServerUrlField } from "./ComfyServerUrlField";
+import { SyncConfigDialog } from "../SyncConfigDialog";
+import { NodeConfigTabs } from "../NodeConfigTabs";
 import { useCanvasStore } from "../../../hooks/useCanvasStore";
 import type { ComfyuiVideoNodeData } from "../../../../../shared/types";
 import { trpc } from "@/lib/trpc";
 import { toast } from "sonner";
 import {
   Play, Loader2, RefreshCw, Upload, X, Cpu, Download, AlertCircle,
-  ChevronDown, ChevronRight, Server, Boxes, HardDriveDownload, Languages, Copy, Lock, Unlock, Ban,
+  ChevronDown, ChevronRight, Server, Boxes, HardDriveDownload, Languages, Copy, Lock, Unlock, Ban, Sparkles, Layers,
 } from "lucide-react";
 import { useLocalMedia } from "@/lib/useLocalMedia";
 import { cacheMedia } from "@/lib/mediaCache";
@@ -76,8 +79,9 @@ export const ComfyuiVideoNode = memo(function ComfyuiVideoNode({ id, selected, d
     const t = setTimeout(() => setDebouncedUrl(payload.customBaseUrl?.trim() || undefined), 600);
     return () => clearTimeout(t);
   }, [payload.customBaseUrl]);
+  const serverUrls = payload.serverUrls ?? [];
   const modelsQuery = trpc.comfyui.fetchModels.useQuery(
-    { customBaseUrl: debouncedUrl },
+    { customBaseUrl: debouncedUrl, customBaseUrls: serverUrls.length > 0 ? serverUrls : undefined },
     { staleTime: 60_000, retry: false }
   );
 
@@ -167,36 +171,8 @@ export const ComfyuiVideoNode = memo(function ComfyuiVideoNode({ id, selected, d
     else update("seed", Math.floor(Math.random() * 2147483647));
   };
 
-  // Sync shared ComfyUI config to ALL other comfyui_video nodes on the canvas.
-  // Per-node fields (prompt / seed / reference image / result) are NOT synced.
-  const syncToAllComfyVideos = useCallback(() => {
-    const { nodes: allNodes, batchUpdateNodeData } = useCanvasStore.getState();
-    const targets = allNodes.filter((n) => n.data.nodeType === "comfyui_video" && n.id !== id);
-    if (targets.length === 0) { toast.info("当前画布只有这一个 ComfyUI 视频节点"); return; }
-    const p = payload;
-    const patch: Partial<ComfyuiVideoNodeData> = {
-      customBaseUrl: p.customBaseUrl,
-      workflowTemplate: p.workflowTemplate,
-      negPrompt: p.negPrompt,
-      ckpt: p.ckpt,
-      motionModule: p.motionModule,
-      clip: p.clip,
-      clipVision: p.clipVision,
-      steps: p.steps,
-      cfg: p.cfg,
-      frames: p.frames,
-      fps: p.fps,
-      width: p.width,
-      height: p.height,
-      sampler: p.sampler,
-      scheduler: p.scheduler,
-      denoise: p.denoise,
-      vae: p.vae,
-      batchSize: p.batchSize,
-    };
-    batchUpdateNodeData(targets.map((t) => ({ id: t.id, payload: patch })));
-    toast.success(`已同步配置到 ${targets.length} 个 ComfyUI 视频节点`);
-  }, [id, payload]);
+  const [syncOpen, setSyncOpen] = useState(false);
+  const [cfgTab, setCfgTab] = useState("basic");
 
   const tpl = payload.workflowTemplate ?? "animatediff";
   const isSvd = tpl === "svd";
@@ -304,7 +280,8 @@ export const ComfyuiVideoNode = memo(function ComfyuiVideoNode({ id, selected, d
   ) : null;
 
   return (
-    <BaseNode id={id} selected={selected} nodeType="comfyui_video" title={data.title} minHeight={300} heroMedia={heroMedia}>
+    <BaseNode id={id} selected={selected} nodeType="comfyui_video" title={data.title} minHeight={300} heroMedia={heroMedia}
+      onRun={handleGenerate} running={genMutation.isPending || payload.status === "processing"} canRun={!!payload.prompt?.trim() && !!payload.ckpt?.trim()} hasResult={payload.status === "done" && !!payload.resultVideoUrl}>
       <div className="flex flex-col h-full p-3.5 gap-3 overflow-auto">
 
         {/* ── Status pill ── */}
@@ -410,6 +387,18 @@ export const ComfyuiVideoNode = memo(function ComfyuiVideoNode({ id, selected, d
           }}
         >
 
+        <NodeConfigTabs
+          tabs={[
+            { key: "basic", label: "基础", Icon: Server },
+            { key: "model", label: "模型", Icon: Boxes },
+            { key: "sampling", label: "采样", Icon: Sparkles },
+            { key: "advanced", label: "高级", Icon: Layers },
+          ]}
+          active={cfgTab}
+          onChange={setCfgTab}
+          accent={accent}
+        >
+        {cfgTab === "basic" && (<>
         {/* ── ComfyUI URL ── */}
         <div
           className="rounded-xl"
@@ -431,32 +420,19 @@ export const ComfyuiVideoNode = memo(function ComfyuiVideoNode({ id, selected, d
           </button>
           {urlExpanded && (
             <div className="px-3 pb-3">
-              <div className="flex items-center gap-1.5">
-                <input
-                  placeholder="http://127.0.0.1:8188（留空使用全局默认）"
-                  value={payload.customBaseUrl ?? ""}
-                  onChange={(e) => update("customBaseUrl", e.target.value)}
-                  className="nodrag flex-1"
-                  style={fieldBase}
-                  onFocus={(e) => { e.currentTarget.style.borderColor = BORDER_ACCENT; }}
-                  onBlur={(e) => { e.currentTarget.style.borderColor = BORDER_DEFAULT; }}
-                />
-                <button
-                  onClick={() => { modelsQuery.refetch(); }}
-                  disabled={modelsQuery.isFetching}
-                  className="nodrag flex-shrink-0 flex items-center justify-center rounded-md"
-                  title="刷新模型列表"
-                  style={{
-                    width: 30, height: 30,
-                    background: "var(--c-surface)",
-                    border: "1px solid var(--c-bd2)",
-                    color: modelsQuery.isFetching ? "var(--c-t4)" : accent,
-                    cursor: modelsQuery.isFetching ? "wait" : "pointer",
-                  }}
-                >
-                  <RefreshCw className={modelsQuery.isFetching ? "w-3 h-3 animate-spin" : "w-3 h-3"} />
-                </button>
-              </div>
+              <ComfyServerUrlField
+                id={id}
+                value={payload.customBaseUrl ?? ""}
+                onChange={(v) => update("customBaseUrl", v)}
+                serverUrls={serverUrls}
+                onChangeServerUrls={(next) => update("serverUrls", next)}
+                isFetching={modelsQuery.isFetching}
+                onRefresh={() => { modelsQuery.refetch(); }}
+                accent={accent}
+                borderAccent={BORDER_ACCENT}
+                borderDefault={BORDER_DEFAULT}
+                fieldBase={fieldBase}
+              />
               {/* Connection status — visible cue when fetchModels failed */}
               {modelsQuery.isFetching ? (
                 <div className="flex items-center gap-1.5 mt-1.5 text-[10px]" style={{ color: "var(--c-t4)" }}>
@@ -479,10 +455,10 @@ export const ComfyuiVideoNode = memo(function ComfyuiVideoNode({ id, selected, d
           )}
         </div>
 
-        {/* ── Sync config to all ComfyUI video nodes ── */}
+        {/* ── Sync config to other ComfyUI video nodes (picker dialog) ── */}
         <button
-          onClick={syncToAllComfyVideos}
-          title="把当前服务器地址 / Checkpoint / 运动模块 / 采样参数等配置同步到画布中所有其他 ComfyUI 视频节点（不含提示词、Seed、参考图、结果视频）"
+          onClick={() => setSyncOpen(true)}
+          title="选择目标节点与参数类别，把当前配置同步到其他 ComfyUI 视频节点（不含提示词、Seed、参考图、结果视频）"
           className="nodrag flex items-center justify-center gap-1.5 w-full py-1.5 rounded-lg text-[10.5px] transition-all"
           style={{
             background: "oklch(0.62 0.22 50 / 0.08)",
@@ -495,8 +471,9 @@ export const ComfyuiVideoNode = memo(function ComfyuiVideoNode({ id, selected, d
           onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.background = "oklch(0.62 0.22 50 / 0.08)"; }}
         >
           <Copy className="w-3 h-3" />
-          同步配置到全部 ComfyUI 视频节点
+          同步配置到其他 ComfyUI 视频节点…
         </button>
+        <SyncConfigDialog open={syncOpen} onOpenChange={setSyncOpen} sourceId={id} nodeType="comfyui_video" accent={accent} />
 
         {/* ── Workflow template ── */}
         <div>
@@ -596,6 +573,8 @@ export const ComfyuiVideoNode = memo(function ComfyuiVideoNode({ id, selected, d
           </div>
         </div>
 
+        </>)}
+        {cfgTab === "model" && (<>
         {/* ── Main model (Checkpoint or UNET) ── */}
         <div>
           <label style={labelStyle}>{usesClip ? "模型（UNET/Checkpoint）*" : "Checkpoint *"}</label>
@@ -668,6 +647,8 @@ export const ComfyuiVideoNode = memo(function ComfyuiVideoNode({ id, selected, d
           </div>
         )}
 
+        </>)}
+        {cfgTab === "sampling" && (<>
         {/* ── Advanced params ── */}
         <div
           className="rounded-xl"
@@ -830,6 +811,8 @@ export const ComfyuiVideoNode = memo(function ComfyuiVideoNode({ id, selected, d
           )}
         </div>
 
+        </>)}
+        {cfgTab === "advanced" && (<>
         {/* ── Start/reference image (SVD / Wan I2V) ── */}
         {needsRef && (
         <div>
@@ -897,6 +880,9 @@ export const ComfyuiVideoNode = memo(function ComfyuiVideoNode({ id, selected, d
           )}
         </div>
         )}
+
+        </>)}
+        </NodeConfigTabs>
 
         {/* ── Progress bar ── */}
         {payload.status === "processing" && payload.progress != null && (

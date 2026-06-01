@@ -13,6 +13,7 @@ import {
   whitelistEntries,
   storageSettings,
   auditLogs,
+  poyoBalanceSnapshots,
   projectCollaborators,
   projectShareLinks,
   InsertProject,
@@ -61,7 +62,7 @@ import * as dev from "./_core/devStore";
 
 // Dev-mode whitelist state
 const devWhitelistSettings = { id: 1, enabled: false, comfyuiBypass: false, updatedAt: new Date() };
-const devStorageSettings = { id: 1, persistAudio: true, persistVideo: true, persistImage: true, presignTtlSec: 3600, updatedAt: new Date() };
+const devStorageSettings = { id: 1, persistAudio: true, persistVideo: true, persistImage: true, presignTtlSec: 3600, poyoUploadFallback: false, minioOnly: false, updatedAt: new Date() };
 const devWhitelistEntries: Array<{ id: number; type: "ip" | "user"; value: string; note: string | null; createdBy: number | null; createdAt: Date }> = [];
 let devNextWhitelistId = 1;
 
@@ -746,13 +747,15 @@ export async function getWhitelistEntries() {
 
 // ── Storage persistence settings ────────────────────────────────────────────
 
-export async function getStorageSettings(): Promise<{ persistAudio: boolean; persistVideo: boolean; persistImage: boolean; presignTtlSec: number }> {
+export async function getStorageSettings(): Promise<{ persistAudio: boolean; persistVideo: boolean; persistImage: boolean; presignTtlSec: number; poyoUploadFallback: boolean; minioOnly: boolean }> {
   const db = await getDb();
   if (!db) return {
     persistAudio: devStorageSettings.persistAudio,
     persistVideo: devStorageSettings.persistVideo,
     persistImage: devStorageSettings.persistImage,
     presignTtlSec: devStorageSettings.presignTtlSec,
+    poyoUploadFallback: devStorageSettings.poyoUploadFallback,
+    minioOnly: devStorageSettings.minioOnly,
   };
   const rows = await db.select().from(storageSettings).limit(1);
   const row = rows[0];
@@ -761,16 +764,20 @@ export async function getStorageSettings(): Promise<{ persistAudio: boolean; per
     persistVideo: row?.persistVideo ?? true,
     persistImage: row?.persistImage ?? true,
     presignTtlSec: row?.presignTtlSec ?? 3600,
+    poyoUploadFallback: row?.poyoUploadFallback ?? false,
+    minioOnly: row?.minioOnly ?? false,
   };
 }
 
-export async function setStorageSettings(patch: { persistAudio?: boolean; persistVideo?: boolean; persistImage?: boolean; presignTtlSec?: number }): Promise<void> {
+export async function setStorageSettings(patch: { persistAudio?: boolean; persistVideo?: boolean; persistImage?: boolean; presignTtlSec?: number; poyoUploadFallback?: boolean; minioOnly?: boolean }): Promise<void> {
   const db = await getDb();
   if (!db) {
     if (patch.persistAudio !== undefined) devStorageSettings.persistAudio = patch.persistAudio;
     if (patch.persistVideo !== undefined) devStorageSettings.persistVideo = patch.persistVideo;
     if (patch.persistImage !== undefined) devStorageSettings.persistImage = patch.persistImage;
     if (patch.presignTtlSec !== undefined) devStorageSettings.presignTtlSec = patch.presignTtlSec;
+    if (patch.poyoUploadFallback !== undefined) devStorageSettings.poyoUploadFallback = patch.poyoUploadFallback;
+    if (patch.minioOnly !== undefined) devStorageSettings.minioOnly = patch.minioOnly;
     return;
   }
   const set: Record<string, boolean | number> = {};
@@ -778,6 +785,8 @@ export async function setStorageSettings(patch: { persistAudio?: boolean; persis
   if (patch.persistVideo !== undefined) set.persistVideo = patch.persistVideo;
   if (patch.persistImage !== undefined) set.persistImage = patch.persistImage;
   if (patch.presignTtlSec !== undefined) set.presignTtlSec = patch.presignTtlSec;
+  if (patch.poyoUploadFallback !== undefined) set.poyoUploadFallback = patch.poyoUploadFallback;
+  if (patch.minioOnly !== undefined) set.minioOnly = patch.minioOnly;
   if (Object.keys(set).length === 0) return;
   await db.update(storageSettings).set(set).where(eq(storageSettings.id, 1));
 }
@@ -1064,6 +1073,59 @@ export async function clearAuditLogs(): Promise<void> {
   const db = await getDb();
   if (!db) { devAuditLogs.splice(0); return; }
   await db.delete(auditLogs);
+}
+
+// ── Poyo balance snapshots ──────────────────────────────────────────────────
+
+type DevPoyoSnapshot = typeof poyoBalanceSnapshots.$inferSelect;
+const devPoyoSnapshots: DevPoyoSnapshot[] = []; // newest first
+let devPoyoSnapshotId = 1;
+
+/**
+ * Insert a balance snapshot, but only if the most recent one is older than
+ * `windowMs` — Poyo balance is polled frequently (every ~5 min by every client)
+ * so this throttle prevents the table from ballooning. Returns whether a row
+ * was actually written.
+ */
+export async function insertPoyoBalanceSnapshotThrottled(
+  data: { creditsAmount: number; email?: string | null },
+  windowMs = 5 * 60_000,
+): Promise<boolean> {
+  const now = Date.now();
+  const db = await getDb();
+  if (!db) {
+    const last = devPoyoSnapshots[0];
+    if (last && now - last.createdAt.getTime() < windowMs) return false;
+    devPoyoSnapshots.unshift({
+      id: devPoyoSnapshotId++,
+      creditsAmount: data.creditsAmount,
+      email: data.email ?? null,
+      createdAt: new Date(),
+    } as DevPoyoSnapshot);
+    if (devPoyoSnapshots.length > 500) devPoyoSnapshots.pop();
+    return true;
+  }
+  const lastRows = await db.select({ createdAt: poyoBalanceSnapshots.createdAt })
+    .from(poyoBalanceSnapshots)
+    .orderBy(desc(poyoBalanceSnapshots.createdAt))
+    .limit(1);
+  const last = lastRows[0];
+  if (last && now - last.createdAt.getTime() < windowMs) return false;
+  await db.insert(poyoBalanceSnapshots).values({ creditsAmount: data.creditsAmount, email: data.email ?? null });
+  return true;
+}
+
+export async function getRecentPoyoBalanceSnapshots(
+  limit = 50,
+): Promise<Array<{ creditsAmount: number; email: string | null; at: Date }>> {
+  const db = await getDb();
+  if (!db) {
+    return devPoyoSnapshots.slice(0, limit).map((r) => ({ creditsAmount: r.creditsAmount, email: r.email, at: r.createdAt }));
+  }
+  const rows = await db.select().from(poyoBalanceSnapshots)
+    .orderBy(desc(poyoBalanceSnapshots.createdAt))
+    .limit(limit);
+  return rows.map((r) => ({ creditsAmount: r.creditsAmount, email: r.email, at: r.createdAt }));
 }
 
 // ── Account-based Chat (rewrite) ────────────────────────────────────────────────

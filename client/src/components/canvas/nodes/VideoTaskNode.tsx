@@ -13,6 +13,7 @@ import { listCustomPresets, saveCustomPreset, deleteCustomPreset, type CustomVid
 import { ensureNotificationPermission, showCompletionNotification } from "@/lib/notify";
 import { CinematographyPicker } from "../CinematographyPicker";
 import { RefImageReachabilityBadge, RefImageSwitchButton, useRefImageGuard, providerNeedsPublicMedia } from "../mediaReachability";
+import { ModelPicker } from "../ModelPicker";
 import {
   applyCinematographyToPrompt,
   clearCinematographyFromPrompt,
@@ -26,6 +27,9 @@ import {
 const REQUIRES_REFERENCE_IMAGE = new Set<string>([
   "poyo_wan25_i2v",
   "hf_dop_standard", "hf_dop_lite", "hf_dop_turbo",
+  // image-to-video models that require a start frame
+  "poyo_kling21_std", "poyo_kling21_pro",
+  "poyo_wan27_i2v", "poyo_wan22_i2v_fast",
 ]);
 
 // Heuristic: only allow http(s) / same-origin paths to render. Reject data:/blob:/javascript:.
@@ -122,23 +126,70 @@ const STATUS = {
   failed:     { icon: XCircle,       label: "失败",   accent: "oklch(0.62 0.20 25)",   bg: "oklch(0.62 0.20 25 / 0.08)",  borderColor: "oklch(0.62 0.20 25 / 0.30)" },
 } as const;
 
-const PROVIDERS: { value: VideoProvider; label: string; group: string }[] = [
-  { value: "poyo_seedance",       label: "Seedance 2",          group: "Poyo" },
-  { value: "poyo_veo",            label: "Veo 3.1",             group: "Poyo" },
-  { value: "poyo_kling26",        label: "Kling 2.6",           group: "Poyo" },
-  { value: "poyo_kling_o3_std",   label: "Kling O3 Standard",   group: "Poyo" },
-  { value: "poyo_kling_o3_pro",   label: "Kling O3 Pro",        group: "Poyo" },
-  { value: "poyo_kling_o3_4k",    label: "Kling O3 4K",         group: "Poyo" },
-  { value: "poyo_wan25_t2v",      label: "Wan 2.6 文生视频",    group: "Poyo" },
-  { value: "poyo_wan25_i2v",      label: "Wan 2.6 图生视频",    group: "Poyo" },
-  { value: "poyo_runway45",       label: "Runway Gen 4.5",      group: "Poyo" },
-  // Higgsfield 公共 API 仅支持 DoP 3 个变体（其他 Kling/Seedance/Veo 模型
-  // 只在 cloud.higgsfield.ai 私有后端，第三方无法调用）。
-  { value: "hf_dop_standard",     label: "DoP Standard",        group: "Higgsfield" },
-  { value: "hf_dop_lite",         label: "DoP Lite",            group: "Higgsfield" },
-  { value: "hf_dop_turbo",        label: "DoP Turbo",           group: "Higgsfield" },
-  { value: "mock",                label: "Mock 测试",           group: "Dev" },
+// Cost labels: Poyo from docs/poyo-credits-pricing.md (1 cr = $0.005). Models
+// the doc only describes by dimension ("时长×分辨率") show 模型页. Higgsfield
+// bills separately (标 HF 计费).
+const PROVIDERS: { value: VideoProvider; label: string; group: string; family: string; costLabel?: string; caps?: string[] }[] = [
+  // ── Sora ──
+  { value: "poyo_sora2",              label: "Sora 2",              group: "Poyo", family: "Sora",     costLabel: "模型页",      caps: ["T2V", "I2V", "10/15s"] },
+  { value: "poyo_sora2_pro",          label: "Sora 2 Pro",          group: "Poyo", family: "Sora",     costLabel: "100 cr/次",   caps: ["T2V", "I2V", "15/25s", "HD"] },
+  { value: "poyo_sora2_official",     label: "Sora 2 官方版",       group: "Poyo", family: "Sora",     costLabel: "≈12 cr/s",    caps: ["T2V", "+1图", "4-20s"] },
+  { value: "poyo_sora2_pro_official", label: "Sora 2 Pro 官方版",   group: "Poyo", family: "Sora",     costLabel: "模型页",      caps: ["T2V", "I2V", "1080p"] },
+  // ── Veo 3.1 ──
+  { value: "poyo_veo",                label: "Veo 3.1 (Fast)",      group: "Poyo", family: "Veo",      costLabel: "模型页",      caps: ["T2V", "I2V", "8s", "4K"] },
+  { value: "poyo_veo_fast",           label: "Veo 3.1 Fast",        group: "Poyo", family: "Veo",      costLabel: "模型页",      caps: ["T2V", "I2V", "8s", "4K"] },
+  { value: "poyo_veo_quality",        label: "Veo 3.1 Quality",     group: "Poyo", family: "Veo",      costLabel: "模型页",      caps: ["T2V", "I2V", "8s", "4K"] },
+  { value: "poyo_veo_lite",           label: "Veo 3.1 Lite",        group: "Poyo", family: "Veo",      costLabel: "模型页(低)",  caps: ["T2V", "8s"] },
+  // ── Kling ──
+  { value: "poyo_kling21_std",        label: "Kling 2.1 Standard",  group: "Poyo", family: "Kling",    costLabel: "模型页",      caps: ["I2V", "5/10s"] },
+  { value: "poyo_kling21_pro",        label: "Kling 2.1 Pro",       group: "Poyo", family: "Kling",    costLabel: "模型页",      caps: ["I2V", "首尾帧"] },
+  { value: "poyo_kling25_turbo",      label: "Kling 2.5 Turbo Pro", group: "Poyo", family: "Kling",    costLabel: "模型页",      caps: ["T2V", "首尾帧"] },
+  { value: "poyo_kling26",            label: "Kling 2.6",           group: "Poyo", family: "Kling",    costLabel: "≈13-24 cr/s", caps: ["T2V", "I2V", "原生音频"] },
+  { value: "poyo_kling30_std",        label: "Kling 3.0 Standard",  group: "Poyo", family: "Kling",    costLabel: "模型页",      caps: ["T2V", "I2V", "音频", "多镜头"] },
+  { value: "poyo_kling30_pro",        label: "Kling 3.0 Pro",       group: "Poyo", family: "Kling",    costLabel: "模型页",      caps: ["T2V", "I2V", "2K", "音频"] },
+  { value: "poyo_kling30_4k",         label: "Kling 3.0 4K",        group: "Poyo", family: "Kling",    costLabel: "50 cr/s",     caps: ["4K", "音频", "多镜头"] },
+  { value: "poyo_kling_o3_std",       label: "Kling O3 Standard",   group: "Poyo", family: "Kling",    costLabel: "10-13 cr/s",  caps: ["T2V", "I2V", "参考"] },
+  { value: "poyo_kling_o3_pro",       label: "Kling O3 Pro",        group: "Poyo", family: "Kling",    costLabel: "13-16 cr/s",  caps: ["T2V", "I2V", "参考"] },
+  { value: "poyo_kling_o3_4k",        label: "Kling O3 4K",         group: "Poyo", family: "Kling",    costLabel: "50 cr/s",     caps: ["4K", "参考"] },
+  // ── Wan ──
+  { value: "poyo_wan25_t2v",          label: "Wan 2.6 文生视频",    group: "Poyo", family: "Wan",      costLabel: "模型页",      caps: ["T2V", "多镜头"] },
+  { value: "poyo_wan25_i2v",          label: "Wan 2.6 图生视频",    group: "Poyo", family: "Wan",      costLabel: "模型页",      caps: ["I2V", "多镜头"] },
+  { value: "poyo_wan27_t2v",          label: "Wan 2.7 文生视频",    group: "Poyo", family: "Wan",      costLabel: "720p 12/1080p 18 cr/s", caps: ["T2V", "音频"] },
+  { value: "poyo_wan27_i2v",          label: "Wan 2.7 图生视频",    group: "Poyo", family: "Wan",      costLabel: "720p 12/1080p 18 cr/s", caps: ["I2V", "首尾帧"] },
+  { value: "poyo_wan22_t2v_fast",     label: "Wan 2.2 文生(快)",    group: "Poyo", family: "Wan",      costLabel: "模型页",      caps: ["T2V", "720p"] },
+  { value: "poyo_wan22_i2v_fast",     label: "Wan 2.2 图生(快)",    group: "Poyo", family: "Wan",      costLabel: "模型页",      caps: ["I2V", "720p"] },
+  // ── Seedance ──
+  { value: "poyo_seedance1_pro",      label: "Seedance 1.0 Pro",    group: "Poyo", family: "Seedance", costLabel: "模型页",      caps: ["T2V", "I2V", "5/10s"] },
+  { value: "poyo_seedance15_pro",     label: "Seedance 1.5 Pro",    group: "Poyo", family: "Seedance", costLabel: "模型页",      caps: ["T2V", "I2V", "音频"] },
+  { value: "poyo_seedance",           label: "Seedance 2",          group: "Poyo", family: "Seedance", costLabel: "480p 10/720p 20/1080p 45 cr/s", caps: ["T2V", "首尾帧", "参考", "音频"] },
+  { value: "poyo_seedance2_fast",     label: "Seedance 2 Fast",     group: "Poyo", family: "Seedance", costLabel: "模型页(低)",  caps: ["T2V", "720p", "音频"] },
+  // ── Hailuo ──
+  { value: "poyo_hailuo02",           label: "Hailuo 02",           group: "Poyo", family: "Hailuo",   costLabel: "模型页",      caps: ["T2V", "I2V", "768P"] },
+  { value: "poyo_hailuo02_pro",       label: "Hailuo 02 Pro",       group: "Poyo", family: "Hailuo",   costLabel: "模型页",      caps: ["1080P", "6s"] },
+  { value: "poyo_hailuo23",           label: "Hailuo 2.3",          group: "Poyo", family: "Hailuo",   costLabel: "模型页",      caps: ["T2V", "+首帧", "1080p"] },
+  // ── others ──
+  { value: "poyo_happy_horse",        label: "Happy Horse",         group: "Poyo", family: "其他",     costLabel: "模型页",      caps: ["四工作流", "1080p"] },
+  { value: "poyo_grok_video",         label: "Grok Imagine",        group: "Poyo", family: "其他",     costLabel: "模型页",      caps: ["T2V", "I2V", "6/10s"] },
+  { value: "poyo_runway45",           label: "Runway Gen 4.5",      group: "Poyo", family: "Runway",   costLabel: "模型页",      caps: ["T2V", "+1图", "5/10s"] },
+  // ── Higgsfield (公共 API 仅 DoP 3 档；其余 Kling/Seedance/Veo 在私有后端) ──
+  { value: "hf_dop_standard",         label: "DoP Standard",        group: "Higgsfield", family: "DoP", costLabel: "HF 计费",    caps: ["I2V", "运镜"] },
+  { value: "hf_dop_lite",             label: "DoP Lite",            group: "Higgsfield", family: "DoP", costLabel: "HF 计费",    caps: ["I2V", "4s"] },
+  { value: "hf_dop_turbo",            label: "DoP Turbo",           group: "Higgsfield", family: "DoP", costLabel: "HF 计费",    caps: ["I2V", "4s"] },
+  { value: "mock",                    label: "Mock 测试",           group: "Dev",        family: "Dev", costLabel: "免费",       caps: ["测试"] },
 ];
+
+// Precomputed, stable ModelPicker options — PROVIDERS is a module constant, so
+// projecting it once (rather than `PROVIDERS.map(...)` inline each render) keeps
+// the reference stable so ModelPicker's `groups` useMemo isn't busted on every
+// re-render (this node re-renders on each 5s poll tick).
+const PROVIDER_PICKER_OPTIONS = PROVIDERS.map((p) => ({
+  value: p.value,
+  label: p.label,
+  group: p.group,
+  family: p.family,
+  caps: p.caps,
+  costLabel: p.costLabel,
+}));
 
 type ParamDef =
   | { type: "select"; key: string; label: string; options: { value: string | number; label: string }[]; default?: string | number }
@@ -192,9 +243,140 @@ const KLING_O3_PARAMS: ParamDef[] = [
 ];
 
 const SUPPORTS_NEGATIVE_PROMPT = new Set<string>([
+  // negative_prompt is documented (docs/poyo-video-api.md) for Kling 2.1 /
+  // 2.5-turbo-pro / Wan 2.5; NOT for Seedance — so seedance models are excluded.
   "poyo_seedance",
   "poyo_kling_o3_std", "poyo_kling_o3_pro", "poyo_kling_o3_4k",
+  "poyo_kling21_std", "poyo_kling21_pro", "poyo_kling25_turbo",
 ]);
+
+// ── Reusable param sets for the expanded model catalog ──
+const AR_3 = [{ value: "16:9", label: "16:9 横屏" }, { value: "9:16", label: "9:16 竖屏" }, { value: "1:1", label: "1:1 方形" }];
+const AR_2 = [{ value: "16:9", label: "16:9 横屏" }, { value: "9:16", label: "9:16 竖屏" }];
+const DUR_5_10 = [{ value: 5, label: "5 秒" }, { value: 10, label: "10 秒" }];
+const DUR_6_10 = [{ value: 6, label: "6 秒" }, { value: 10, label: "10 秒" }];
+const seedDef: ParamDef = { type: "number", key: "seed", label: "随机种子（可选）", min: 0, max: 2147483647, step: 1 };
+
+// Sora official: duration 4-20 (step 4), aspect 16:9/9:16
+const SORA_OFFICIAL_PARAMS: ParamDef[] = [
+  { type: "select", key: "duration", label: "时长（秒）", default: 4,
+    options: [4, 8, 12, 16, 20].map((v) => ({ value: v, label: `${v} 秒` })) },
+  { type: "select", key: "aspect_ratio", label: "宽高比", default: "16:9", options: AR_2 },
+];
+// Sora 2 / Pro (non-official): duration choices + style + storyboard
+const SORA_STYLE_OPTS = ["thanksgiving", "comic", "news", "selfie", "nostalgic", "anime"].map((v) => ({ value: v, label: v }));
+const SORA2_PARAMS: ParamDef[] = [
+  { type: "select", key: "duration", label: "时长（秒）", default: 10,
+    options: [{ value: 10, label: "10 秒" }, { value: 15, label: "15 秒" }] },
+  { type: "select", key: "style", label: "风格（可选）", default: "", options: [{ value: "", label: "默认" }, ...SORA_STYLE_OPTS] },
+  { type: "toggle", key: "storyboard", label: "故事板模式", default: false },
+];
+const SORA2_PRO_PARAMS: ParamDef[] = [
+  { type: "select", key: "duration", label: "时长（秒）", default: 15,
+    options: [{ value: 15, label: "15 秒" }, { value: 25, label: "25 秒（HD）" }] },
+  { type: "select", key: "style", label: "风格（可选）", default: "", options: [{ value: "", label: "默认" }, ...SORA_STYLE_OPTS] },
+  { type: "toggle", key: "storyboard", label: "故事板模式", default: false },
+];
+// Veo 3.1 tiers: fixed 8s, aspect 16:9/9:16, resolution 720p/1080p/4k, generation_type
+const VEO_RES_4K = [{ value: "720p", label: "720p" }, { value: "1080p", label: "1080p" }, { value: "4k", label: "4K" }];
+const VEO_PARAMS: ParamDef[] = [
+  { type: "select", key: "aspect_ratio", label: "宽高比", default: "16:9", options: AR_2 },
+  { type: "select", key: "duration", label: "时长（秒）", default: 8, options: [{ value: 8, label: "8 秒（固定）" }] },
+  { type: "select", key: "resolution", label: "分辨率", default: "720p", options: VEO_RES_4K },
+  { type: "select", key: "generation_type", label: "生成模式", default: "reference",
+    options: [{ value: "reference", label: "参考图风格" }, { value: "frame", label: "首尾帧" }] },
+];
+const VEO_LITE_PARAMS: ParamDef[] = [
+  { type: "select", key: "aspect_ratio", label: "宽高比", default: "16:9", options: AR_2 },
+  { type: "select", key: "duration", label: "时长（秒）", default: 8, options: [{ value: 8, label: "8 秒（固定）" }] },
+  { type: "select", key: "resolution", label: "分辨率", default: "720p",
+    options: [{ value: "720p", label: "720p" }, { value: "1080p", label: "1080p" }] },
+];
+// Kling 2.1 (I2V): duration 5/10
+const KLING21_PARAMS: ParamDef[] = [
+  { type: "select", key: "duration", label: "时长（秒）", default: 5, options: DUR_5_10 },
+];
+const KLING25_PARAMS: ParamDef[] = [
+  { type: "select", key: "aspect_ratio", label: "宽高比", default: "16:9", options: AR_3 },
+  { type: "select", key: "duration", label: "时长（秒）", default: 5, options: DUR_5_10 },
+];
+// Kling 3.0: aspect 1:1/16:9/9:16, duration 3-15, sound
+const KLING30_PARAMS: ParamDef[] = [
+  { type: "select", key: "aspect_ratio", label: "宽高比", default: "16:9", options: AR_3 },
+  { type: "range", key: "duration", label: "时长（秒）", min: 3, max: 15, step: 1, default: 5, unit: "s" },
+  { type: "toggle", key: "sound", label: "原生音频", default: false },
+  seedDef,
+];
+// Wan 2.7
+const WAN_RES = [{ value: "720p", label: "720p" }, { value: "1080p", label: "1080p" }];
+const WAN27_T2V_PARAMS: ParamDef[] = [
+  { type: "select", key: "resolution", label: "分辨率", default: "720p", options: WAN_RES },
+  { type: "select", key: "aspect_ratio", label: "宽高比", default: "16:9",
+    options: [...AR_3, { value: "4:3", label: "4:3 标准" }, { value: "3:4", label: "3:4 竖屏" }] },
+  { type: "select", key: "duration", label: "时长（秒）", default: 5,
+    options: [{ value: 5, label: "5 秒" }, { value: 10, label: "10 秒" }, { value: 15, label: "15 秒" }] },
+  seedDef,
+];
+const WAN27_I2V_PARAMS: ParamDef[] = [
+  { type: "select", key: "resolution", label: "分辨率", default: "720p", options: WAN_RES },
+  { type: "range", key: "duration", label: "时长（秒）", min: 2, max: 15, step: 1, default: 5, unit: "s" },
+  { type: "toggle", key: "multi_shots", label: "多镜头模式", default: false },
+  seedDef,
+];
+const WAN22_FAST_PARAMS: ParamDef[] = [
+  { type: "select", key: "aspect_ratio", label: "宽高比", default: "16:9", options: AR_2 },
+  { type: "select", key: "resolution", label: "分辨率", default: "720p",
+    options: [{ value: "480p", label: "480p" }, { value: "720p", label: "720p" }] },
+  seedDef,
+];
+const WAN22_I2V_FAST_PARAMS: ParamDef[] = [
+  { type: "select", key: "resolution", label: "分辨率", default: "720p",
+    options: [{ value: "480p", label: "480p" }, { value: "720p", label: "720p" }] },
+  seedDef,
+];
+// Seedance 1.x
+const SEEDANCE1_PARAMS: ParamDef[] = [
+  { type: "select", key: "resolution", label: "分辨率", default: "720p", options: WAN_RES },
+  { type: "select", key: "duration", label: "时长（秒）", default: 5, options: DUR_5_10 },
+  seedDef,
+];
+const SEEDANCE15_PARAMS: ParamDef[] = [
+  { type: "select", key: "resolution", label: "分辨率", default: "720p",
+    options: [{ value: "480p", label: "480p" }, { value: "720p", label: "720p" }, { value: "1080p", label: "1080p" }] },
+  { type: "range", key: "duration", label: "时长（秒）", min: 3, max: 12, step: 1, default: 5, unit: "s" },
+  { type: "toggle", key: "camera_fixed", label: "固定镜头", default: false },
+  { type: "toggle", key: "generate_audio", label: "AI 生成音频", default: false },
+  seedDef,
+];
+// Hailuo
+const HAILUO02_PARAMS: ParamDef[] = [
+  { type: "select", key: "resolution", label: "分辨率", default: "768p",
+    options: [{ value: "512p", label: "512P" }, { value: "768p", label: "768P" }] },
+  { type: "select", key: "duration", label: "时长（秒）", default: 6, options: DUR_6_10 },
+];
+const HAILUO02_PRO_PARAMS: ParamDef[] = [
+  { type: "select", key: "resolution", label: "分辨率", default: "1080p", options: [{ value: "1080p", label: "1080P" }] },
+  { type: "select", key: "duration", label: "时长（秒）", default: 6, options: [{ value: 6, label: "6 秒" }] },
+];
+const HAILUO23_PARAMS: ParamDef[] = [
+  { type: "select", key: "resolution", label: "分辨率", default: "768p",
+    options: [{ value: "768p", label: "768P" }, { value: "1080p", label: "1080P（仅6s）" }] },
+  { type: "select", key: "duration", label: "时长（秒）", default: 6, options: DUR_6_10 },
+  { type: "toggle", key: "prompt_optimizer", label: "提示词优化", default: false },
+];
+const HAPPY_HORSE_PARAMS: ParamDef[] = [
+  { type: "select", key: "resolution", label: "分辨率", default: "1080p", options: WAN_RES },
+  { type: "select", key: "aspect_ratio", label: "宽高比", default: "16:9", options: AR_3 },
+  { type: "range", key: "duration", label: "时长（秒）", min: 3, max: 15, step: 1, default: 5, unit: "s" },
+  seedDef,
+];
+const GROK_PARAMS: ParamDef[] = [
+  { type: "select", key: "aspect_ratio", label: "宽高比", default: "16:9",
+    options: [{ value: "1:1", label: "1:1" }, { value: "2:3", label: "2:3" }, { value: "3:2", label: "3:2" }, ...AR_2] },
+  { type: "select", key: "duration", label: "时长（秒）", default: 6, options: DUR_6_10 },
+  { type: "select", key: "style", label: "风格", default: "normal",
+    options: [{ value: "fun", label: "fun" }, { value: "normal", label: "normal" }, { value: "spicy", label: "spicy" }] },
+];
 
 const PROVIDER_PARAMS: Record<string, ParamDef[]> = {
   poyo_seedance: [
@@ -260,6 +442,48 @@ const PROVIDER_PARAMS: Record<string, ParamDef[]> = {
       options: [{ value: 5, label: "5 秒" }, { value: 10, label: "10 秒" }] },
     { type: "number", key: "seed", label: "随机种子（可选）", min: 0, max: 2147483647, step: 1 },
   ],
+  // ── new catalog ──
+  poyo_sora2: SORA2_PARAMS,
+  poyo_sora2_pro: SORA2_PRO_PARAMS,
+  poyo_sora2_official: SORA_OFFICIAL_PARAMS,
+  poyo_sora2_pro_official: [
+    ...SORA_OFFICIAL_PARAMS,
+    { type: "select", key: "resolution", label: "分辨率", default: "1024p",
+      options: [{ value: "720p", label: "720p" }, { value: "1024p", label: "1024p" }, { value: "1080p", label: "1080p" }] },
+  ],
+  poyo_veo_fast: VEO_PARAMS,
+  poyo_veo_quality: VEO_PARAMS,
+  poyo_veo_lite: VEO_LITE_PARAMS,
+  poyo_kling21_std: KLING21_PARAMS,
+  poyo_kling21_pro: KLING21_PARAMS,
+  poyo_kling25_turbo: KLING25_PARAMS,
+  poyo_kling30_std: KLING30_PARAMS,
+  poyo_kling30_pro: KLING30_PARAMS,
+  poyo_kling30_4k: KLING30_PARAMS,
+  poyo_wan27_t2v: WAN27_T2V_PARAMS,
+  poyo_wan27_i2v: WAN27_I2V_PARAMS,
+  poyo_wan22_t2v_fast: WAN22_FAST_PARAMS,
+  poyo_wan22_i2v_fast: WAN22_I2V_FAST_PARAMS,
+  poyo_seedance1_pro: SEEDANCE1_PARAMS,
+  poyo_seedance15_pro: SEEDANCE15_PARAMS,
+  poyo_seedance2_fast: [
+    { type: "select", key: "resolution", label: "分辨率", default: "720p",
+      options: [{ value: "480p", label: "480p" }, { value: "720p", label: "720p" }] },
+    { type: "select", key: "aspect_ratio", label: "宽高比", default: "16:9",
+      options: [
+        { value: "21:9", label: "21:9 超宽" }, { value: "16:9", label: "16:9 横屏" },
+        { value: "4:3", label: "4:3 标准" }, { value: "1:1", label: "1:1 方形" },
+        { value: "3:4", label: "3:4 竖屏" }, { value: "9:16", label: "9:16 竖屏" },
+      ]},
+    { type: "range", key: "duration", label: "时长（秒）", min: 4, max: 15, step: 1, default: 5, unit: "s" },
+    { type: "toggle", key: "generate_audio", label: "AI 生成音频", default: false },
+    seedDef,
+  ],
+  poyo_hailuo02: HAILUO02_PARAMS,
+  poyo_hailuo02_pro: HAILUO02_PRO_PARAMS,
+  poyo_hailuo23: HAILUO23_PARAMS,
+  poyo_happy_horse: HAPPY_HORSE_PARAMS,
+  poyo_grok_video: GROK_PARAMS,
   mock: [],
 };
 
@@ -268,6 +492,22 @@ interface ParamPreset {
   label: string;
   params: Record<string, unknown>;
   negativePrompt?: string;
+}
+
+// Merge a provider's ParamDef defaults into the params actually submitted.
+// The param controls only DISPLAY `def.default`; they don't persist it until
+// the user touches the control. The backend builder copies only keys present
+// in `params`, and several models require fields (Seedance resolution+
+// aspect_ratio, Kling 2.6 sound, etc.). Without this, a fresh node the user
+// never expanded would submit prompt-only and the upstream call would fail.
+function withParamDefaults(provider: string, params: Record<string, unknown> | undefined): Record<string, unknown> {
+  const defs = PROVIDER_PARAMS[provider] ?? [];
+  const merged: Record<string, unknown> = { ...(params ?? {}) };
+  for (const def of defs) {
+    if (def.default === undefined) continue;            // number/optional fields (e.g. seed) have no default
+    if (merged[def.key] === undefined || merged[def.key] === "") merged[def.key] = def.default;
+  }
+  return merged;
 }
 
 const KLING_O3_PRESETS: ParamPreset[] = [
@@ -331,23 +571,6 @@ const PROVIDER_PRESETS: Record<string, ParamPreset[]> = {
 
 const BORDER_DEFAULT = "var(--c-bd2)";
 const accentColor = "oklch(0.62 0.20 25)";
-
-// Rough cost estimates in Poyo credits per 5s clip (display only)
-const PROVIDER_COST: Record<string, { label: string; color: string }> = {
-  poyo_seedance:     { label: "~3积分", color: "oklch(0.72 0.18 155)" },
-  poyo_veo:          { label: "~20积分", color: "oklch(0.65 0.18 60)" },
-  poyo_kling26:      { label: "~4积分", color: "oklch(0.72 0.18 155)" },
-  poyo_kling_o3_std: { label: "~6积分", color: "oklch(0.72 0.18 155)" },
-  poyo_kling_o3_pro: { label: "~12积分", color: "oklch(0.65 0.18 60)" },
-  poyo_kling_o3_4k:  { label: "~30积分", color: "oklch(0.62 0.20 25)" },
-  poyo_wan25_t2v:    { label: "~3积分", color: "oklch(0.72 0.18 155)" },
-  poyo_wan25_i2v:    { label: "~3积分", color: "oklch(0.72 0.18 155)" },
-  poyo_runway45:     { label: "~10积分", color: "oklch(0.65 0.18 60)" },
-  hf_dop_standard:   { label: "~8积分", color: "oklch(0.65 0.18 60)" },
-  hf_dop_lite:       { label: "~3积分", color: "oklch(0.72 0.18 155)" },
-  hf_dop_turbo:      { label: "~2积分", color: "oklch(0.72 0.18 155)" },
-  mock:              { label: "免费", color: "oklch(0.55 0.08 260)" },
-};
 
 const fieldStyle: React.CSSProperties = {
   width: "100%",
@@ -564,7 +787,7 @@ export const VideoTaskNode = memo(function VideoTaskNode({ id, selected, data }:
       // Only send negativePrompt for providers that actually support it
       negativePrompt: SUPPORTS_NEGATIVE_PROMPT.has(payload.provider) ? payload.negativePrompt : undefined,
       referenceImageUrl: finalRefImage,
-      params: payload.params,
+      params: withParamDefaults(payload.provider, payload.params),
     });
     guard({ model: payload.provider, refImageUrl: finalRefImage }, submit);
   };
@@ -1048,9 +1271,11 @@ export const VideoTaskNode = memo(function VideoTaskNode({ id, selected, data }:
                   parallelProviders.forEach(provider => {
                     setParallelResults(prev => ({ ...prev, [provider]: { status: "processing" } }));
                     createTaskMutation.mutate(
-                      // Send only prompt/negative/refImage in parallel mode — per-provider params
-                      // diverge enough that sharing one params bag tends to break some providers
-                      { nodeId: id, projectId: data.projectId, provider, prompt: submission.prompt, negativePrompt: SUPPORTS_NEGATIVE_PROMPT.has(provider) ? payload.negativePrompt : undefined, referenceImageUrl: submission.referenceImageUrl },
+                      // Don't share the node's params bag across providers (they diverge),
+                      // but each provider still needs its OWN required-field defaults
+                      // (resolution/aspect_ratio/duration/...) since the backend no longer
+                      // hard-defaults them — so pass that provider's ParamDef defaults.
+                      { nodeId: id, projectId: data.projectId, provider, prompt: submission.prompt, negativePrompt: SUPPORTS_NEGATIVE_PROMPT.has(provider) ? payload.negativePrompt : undefined, referenceImageUrl: submission.referenceImageUrl, params: withParamDefaults(provider, {}) },
                       {
                         onSuccess: (result) => {
                           if (parallelGenRef.current !== gen) return; // stale — user closed parallel mode
@@ -1130,19 +1355,8 @@ export const VideoTaskNode = memo(function VideoTaskNode({ id, selected, data }:
         <div style={{ marginTop: 4 }}>
           <div className="flex items-center justify-between" style={{ marginBottom: 5 }}>
             <label style={{ ...labelStyle, marginBottom: 0 }}>视频模型</label>
-            {PROVIDER_COST[payload.provider] && (
-              <span
-                style={{
-                  fontSize: 9, fontWeight: 700, letterSpacing: "0.04em",
-                  padding: "1px 6px", borderRadius: 99,
-                  background: `${PROVIDER_COST[payload.provider].color}18`,
-                  border: `1px solid ${PROVIDER_COST[payload.provider].color}30`,
-                  color: PROVIDER_COST[payload.provider].color,
-                }}
-              >
-                {PROVIDER_COST[payload.provider].label}
-              </span>
-            )}
+            {/* Cost is shown per-model inside the ModelPicker (costLabel) — no
+                separate badge here to avoid two divergent price sources. */}
           </div>
           {/* Legacy migration: some historical providers (hf_dop_preview / hf_kling_* /
               hf_seedance_*) were removed when Higgsfield video API was rewritten. If a
@@ -1157,10 +1371,13 @@ export const VideoTaskNode = memo(function VideoTaskNode({ id, selected, data }:
               ⚠️ 当前模型 <code style={{ fontFamily: "monospace" }}>{payload.provider}</code> 已下线（Higgsfield 公共 API 不再支持）。请重新选择。
             </div>
           )}
-          <select
+          <ModelPicker
             value={payload.provider}
-            onChange={(e) => {
-              const newProvider = e.target.value as VideoProvider;
+            disabled={isLocked}
+            accent="oklch(0.7 0.18 25)"
+            options={PROVIDER_PICKER_OPTIONS}
+            onChange={(v) => {
+              const newProvider = v as VideoProvider;
               updateNodeData(id, {
                 provider: newProvider,
                 params: {},
@@ -1168,26 +1385,7 @@ export const VideoTaskNode = memo(function VideoTaskNode({ id, selected, data }:
                 ...(!SUPPORTS_NEGATIVE_PROMPT.has(newProvider) ? { negativePrompt: undefined } : {}),
               });
             }}
-            disabled={isLocked}
-            className="nodrag"
-            style={{ ...fieldStyle, cursor: isLocked ? "not-allowed" : "pointer", opacity: isLocked ? 0.5 : 1 }}
-            onFocus={onFocusAccent}
-            onBlur={onBlurDefault}
-          >
-            {/* Stub option so legacy provider value renders something instead of blank */}
-            {!PROVIDERS.some((p) => p.value === payload.provider) && (
-              <option value={payload.provider} disabled style={{ background: "var(--c-surface)" }}>
-                ⚠ 已下线: {payload.provider}
-              </option>
-            )}
-            {["Poyo", "Higgsfield", "Dev"].map((group) => (
-              <optgroup key={group} label={`── ${group} ──`} style={{ background: "var(--c-surface)" }}>
-                {PROVIDERS.filter((p) => p.group === group).map((p) => (
-                  <option key={p.value} value={p.value} style={{ background: "var(--c-surface)" }}>{p.label}</option>
-                ))}
-              </optgroup>
-            ))}
-          </select>
+          />
         </div>
 
         {/* ── Prompt ── */}

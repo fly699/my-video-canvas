@@ -3,19 +3,100 @@ import { resolveToAbsoluteUrl } from "../storage";
 
 const POYO_BASE = "https://api.poyo.ai";
 
-export type PoyoVideoModel = "seedance-2" | "veo-3.1" | "kling-2.6" | "kling-o3-standard" | "kling-o3-pro" | "kling-o3-4k" | "wan2.6-text-to-video" | "wan2.6-image-to-video" | "runway-gen-4.5";
-
-export const POYO_PROVIDER_MAP: Record<string, PoyoVideoModel> = {
+// UI provider value → Poyo wire model name (docs/poyo-video-api.md).
+// Only-add: never drop a key here, old video_tasks rows reference these.
+export const POYO_PROVIDER_MAP: Record<string, string> = {
+  // existing
   poyo_seedance:     "seedance-2",
-  poyo_veo:          "veo-3.1",
+  poyo_veo:          "veo3.1-fast",
   poyo_kling26:      "kling-2.6",
-  poyo_kling_o3_std: "kling-o3-standard",
-  poyo_kling_o3_pro: "kling-o3-pro",
-  poyo_kling_o3_4k:  "kling-o3-4k",
+  poyo_kling_o3_std: "kling-o3/standard",
+  poyo_kling_o3_pro: "kling-o3/pro",
+  poyo_kling_o3_4k:  "kling-o3/4K",
   poyo_wan25_t2v:    "wan2.6-text-to-video",
   poyo_wan25_i2v:    "wan2.6-image-to-video",
   poyo_runway45:     "runway-gen-4.5",
+  // Sora
+  poyo_sora2:              "sora-2",
+  poyo_sora2_pro:          "sora-2-pro",
+  poyo_sora2_official:     "sora-2-official",
+  poyo_sora2_pro_official: "sora-2-pro-official",
+  // Veo 3.1 tiers
+  poyo_veo_fast:    "veo3.1-fast",
+  poyo_veo_lite:    "veo3.1-lite",
+  poyo_veo_quality: "veo3.1-quality",
+  // Kling
+  poyo_kling21_std:   "kling-2.1/standard",
+  poyo_kling21_pro:   "kling-2.1/pro",
+  poyo_kling25_turbo: "kling-2.5-turbo-pro",
+  poyo_kling30_std:   "kling-3.0/standard",
+  poyo_kling30_pro:   "kling-3.0/pro",
+  poyo_kling30_4k:    "kling-3.0/4K",
+  // Wan
+  poyo_wan27_t2v:      "wan2.7-text-to-video",
+  poyo_wan27_i2v:      "wan2.7-image-to-video",
+  poyo_wan22_t2v_fast: "wan2.2-text-to-video-fast",
+  poyo_wan22_i2v_fast: "wan2.2-image-to-video-fast",
+  // Seedance
+  poyo_seedance1_pro:  "seedance-1.0-pro",
+  poyo_seedance15_pro: "seedance-1.5-pro",
+  poyo_seedance2_fast: "seedance-2-fast",
+  // Hailuo
+  poyo_hailuo02:     "hailuo-02",
+  poyo_hailuo02_pro: "hailuo-02-pro",
+  poyo_hailuo23:     "hailuo-2.3",
+  // others
+  poyo_happy_horse: "happy-horse",
+  poyo_grok_video:  "grok-imagine",
 };
+
+// Allowed input keys per wire model. The builder copies only these from
+// `params` (plus prompt/refs), so the UI can send a superset without poisoning
+// any model's payload. `duration`/`seed` are numbers; the rest pass through.
+// Keys map 1:1 to the Poyo API field names in docs/poyo-video-api.md.
+const VIDEO_PARAM_KEYS: Record<string, string[]> = {
+  "seedance-2":      ["resolution", "aspect_ratio", "duration", "camera_fixed", "generate_audio", "seed"],
+  "seedance-2-fast": ["resolution", "aspect_ratio", "duration", "camera_fixed", "generate_audio", "seed"],
+  "seedance-1.0-pro": ["resolution", "duration", "seed"],
+  "seedance-1.5-pro": ["resolution", "duration", "camera_fixed", "generate_audio", "seed"],
+  "veo3.1-fast":    ["aspect_ratio", "resolution", "generation_type", "duration"],
+  "veo3.1-lite":    ["aspect_ratio", "resolution", "duration"],
+  "veo3.1-quality": ["aspect_ratio", "resolution", "generation_type", "duration"],
+  "kling-2.6":          ["aspect_ratio", "duration", "sound"],
+  "kling-2.1/standard": ["duration"],
+  "kling-2.1/pro":      ["duration"],
+  "kling-2.5-turbo-pro": ["aspect_ratio", "duration"],
+  "kling-3.0/standard": ["aspect_ratio", "duration", "sound", "seed"],
+  "kling-3.0/pro":      ["aspect_ratio", "duration", "sound", "seed"],
+  "kling-3.0/4K":       ["aspect_ratio", "duration", "sound", "seed"],
+  "kling-o3/standard":  ["aspect_ratio", "duration", "sound", "seed"],
+  "kling-o3/pro":       ["aspect_ratio", "duration", "sound", "seed"],
+  "kling-o3/4K":        ["aspect_ratio", "duration", "sound", "seed"],
+  "wan2.6-text-to-video":  ["resolution", "duration", "multi_shots"],
+  "wan2.6-image-to-video": ["resolution", "duration", "multi_shots"],
+  "wan2.7-text-to-video":  ["resolution", "aspect_ratio", "duration", "seed"],
+  "wan2.7-image-to-video": ["resolution", "duration", "multi_shots", "seed"],
+  "wan2.2-text-to-video-fast": ["aspect_ratio", "resolution", "seed"],
+  "wan2.2-image-to-video-fast": ["resolution", "seed"],
+  "hailuo-02":     ["resolution", "duration"],
+  "hailuo-02-pro": ["resolution", "duration"],
+  "hailuo-2.3":    ["resolution", "duration", "prompt_optimizer"],
+  "happy-horse":   ["resolution", "aspect_ratio", "duration", "seed"],
+  "grok-imagine":  ["aspect_ratio", "duration", "style"],
+  "sora-2":              ["duration", "style", "storyboard"],
+  "sora-2-pro":          ["duration", "style", "storyboard"],
+  "sora-2-official":     ["duration", "aspect_ratio"],
+  "sora-2-pro-official": ["duration", "aspect_ratio", "resolution"],
+  "runway-gen-4.5":  ["aspect_ratio", "duration", "seed"],
+};
+
+// Models whose duration is fixed regardless of UI selection.
+const FIXED_DURATION: Record<string, number> = {
+  "veo3.1-fast": 8, "veo3.1-lite": 8, "veo3.1-quality": 8,
+};
+
+const NUMERIC_KEYS = new Set(["duration", "seed"]);
+const BOOLEAN_KEYS = new Set(["camera_fixed", "generate_audio", "sound", "multi_shots", "storyboard", "prompt_optimizer"]);
 
 export function isPoyoVideoProvider(provider: string): boolean {
   return provider in POYO_PROVIDER_MAP;
@@ -47,50 +128,45 @@ export async function submitPoyoVideo(opts: {
   const input: Record<string, unknown> = {
     prompt: opts.prompt,
     ...(opts.negativePrompt ? { negative_prompt: opts.negativePrompt } : {}),
-    ...(refImageAbsoluteUrl ? { reference_image_url: refImageAbsoluteUrl } : {}),
   };
 
-  if (model === "seedance-2") {
-    // resolution and aspect_ratio are both required by the Seedance 2 API
-    input.resolution = (opts.params?.resolution as string) ?? "720p";
-    input.aspect_ratio = (opts.params?.aspect_ratio as string) ?? "16:9";
-    input.duration = (opts.params?.duration as number) ?? 5;
-    if (opts.params?.camera_fixed !== undefined) {
-      input.camera_fixed = Boolean(opts.params.camera_fixed);
-    }
-    if (opts.params?.generate_audio !== undefined) {
-      input.generate_audio = Boolean(opts.params.generate_audio);
-    }
-  } else if (model === "kling-2.6") {
-    input.aspect_ratio = (opts.params?.aspect_ratio as string) ?? "16:9";
-    input.duration = (opts.params?.duration as number) ?? 5;
-    // sound is required per Kling 2.6 API docs; always send it
-    input.sound = Boolean(opts.params?.sound ?? false);
-  } else if (model === "kling-o3-standard" || model === "kling-o3-pro" || model === "kling-o3-4k") {
-    input.aspect_ratio = (opts.params?.aspect_ratio as string) ?? "16:9";
-    input.duration = (opts.params?.duration as number) ?? 5;
-  } else if (model === "veo-3.1") {
-    // Only 16:9 and 9:16 are valid; duration is always 8 seconds
-    input.aspect_ratio = (opts.params?.aspect_ratio as string) ?? "16:9";
-    input.duration = 8;
-    if (opts.params?.resolution) input.resolution = String(opts.params.resolution);
-    if (opts.params?.generation_type) input.generation_type = String(opts.params.generation_type);
-  } else if (model === "wan2.6-text-to-video" || model === "wan2.6-image-to-video") {
-    // aspect_ratio is not documented in Wan 2.6 API; omit to avoid unexpected errors
-    input.duration = (opts.params?.duration as number) ?? 5;
-    if (opts.params?.resolution) input.resolution = String(opts.params.resolution);
-    if (opts.params?.multi_shots !== undefined) input.multi_shots = Boolean(opts.params.multi_shots);
-  } else if (model === "runway-gen-4.5") {
-    input.aspect_ratio = (opts.params?.aspect_ratio as string) ?? "16:9";
-    input.duration = (opts.params?.duration as number) ?? 5;
+  // The reference image goes into different fields depending on the model
+  // (docs/poyo-video-api.md): Kling 2.1 + Hailuo 2.3 use `start_image_url`;
+  // Wan i2v / Sora official / Veo use `image_urls` (array, first = start frame);
+  // everything else keeps the historical `reference_image_url`.
+  if (refImageAbsoluteUrl) {
+    const startImageModels = new Set<string>([
+      "kling-2.1/standard", "kling-2.1/pro", "kling-2.5-turbo-pro", "hailuo-2.3",
+    ]);
+    const imageUrlsModels = new Set<string>([
+      "wan2.7-image-to-video", "wan2.2-image-to-video-fast", "wan2.6-image-to-video",
+      "sora-2-official", "sora-2-pro-official",
+      "veo3.1-fast", "veo3.1-quality", "veo3.1-lite",
+    ]);
+    if (startImageModels.has(model)) input.start_image_url = refImageAbsoluteUrl;
+    else if (imageUrlsModels.has(model)) input.image_urls = [refImageAbsoluteUrl];
+    else input.reference_image_url = refImageAbsoluteUrl;
   }
 
-  // Seed — optional; omit unless a valid finite integer (Number("") is 0, not NaN,
-  // but non-numeric strings like "abc" produce NaN which serializes to null in JSON)
-  if (opts.params?.seed !== undefined && opts.params.seed !== null && String(opts.params.seed) !== "") {
-    const seedNum = Number(opts.params.seed);
-    if (Number.isFinite(seedNum)) input.seed = Math.trunc(seedNum);
+  // Spec-driven: copy only the keys this model accepts (docs/poyo-video-api.md),
+  // coercing numeric/boolean fields. Models not in the table send just prompt +
+  // refs. This replaces the per-model if-chain so adding a model = one map entry.
+  const allowed = VIDEO_PARAM_KEYS[model] ?? [];
+  const p = opts.params ?? {};
+  for (const key of allowed) {
+    const raw = p[key];
+    if (raw === undefined || raw === null || raw === "") continue;
+    if (NUMERIC_KEYS.has(key)) {
+      const num = Number(raw);
+      if (Number.isFinite(num)) input[key] = Math.trunc(num);
+    } else if (BOOLEAN_KEYS.has(key)) {
+      input[key] = Boolean(raw);
+    } else {
+      input[key] = String(raw);
+    }
   }
+  // Fixed-duration models (Veo 3.1) always send their canonical duration.
+  if (model in FIXED_DURATION) input.duration = FIXED_DURATION[model];
 
   const res = await fetch(`${POYO_BASE}/api/generate/submit`, {
     method: "POST",

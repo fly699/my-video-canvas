@@ -58,12 +58,12 @@ function ChipRow({ label, options, value, onChange, color }: {
       <span style={{ fontSize: 9, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.07em", color: "var(--c-t4)" }}>
         {label}
       </span>
-      <div className="flex gap-1 overflow-x-auto nodrag" style={{ scrollbarWidth: "none" }}>
+      <div className="flex flex-wrap gap-1 nodrag">
         {options.map((opt) => (
           <button
             key={opt}
             onClick={() => onChange(opt)}
-            className="nodrag flex-shrink-0 px-2 py-0.5 rounded-full transition-all"
+            className="nodrag px-2 py-0.5 rounded-full transition-all"
             style={{
               fontSize: 9,
               fontWeight: value === opt ? 700 : 400,
@@ -1083,6 +1083,8 @@ export const ScriptNode = memo(function ScriptNode({ id, selected, data }: Props
                 ))}
               </div>
 
+              {/* Tab content — capped height with internal scroll to keep the node compact */}
+              <div className="nowheel nodrag" style={{ maxHeight: 360, overflowY: "auto", overflowX: "hidden" }}>
               {/* ── 审查 tab ── */}
               {advTab === "review" && (
                 <div className="flex flex-col gap-2">
@@ -1307,6 +1309,7 @@ export const ScriptNode = memo(function ScriptNode({ id, selected, data }: Props
                   )}
                 </div>
               )}
+              </div>{/* end tab content scroll */}
 
             </div>
           )}

@@ -9,7 +9,7 @@
 // - 4 built-in templates: txt2img / img2img / animatediff / svd.
 
 import type { Server as SocketIOServer } from "socket.io";
-import { storagePut, resolveToAbsoluteUrl } from "server/storage";
+import { storagePut, resolveToAbsoluteUrl, assertMinioOnlyWrite } from "server/storage";
 import { assertSafeUrl } from "./videoEditor";
 import type { WorkflowParamBinding } from "@shared/types";
 
@@ -358,6 +358,8 @@ async function fetchWithSizeLimit(url: string, maxBytes: number, timeoutMs: numb
 async function downloadAndStore(downloadUrlStr: string, ext: string, mimeType: string): Promise<{ url: string; key: string }> {
   const { buf, contentType } = await fetchWithSizeLimit(downloadUrlStr, MAX_COMFY_OUTPUT_BYTES, 120_000, "下载 ComfyUI 输出");
   const ct = contentType ?? mimeType;
+  // ComfyUI 内网节点产物永久硬锁 MinIO/S3：无视管理员开关，未配 MinIO/S3 一律拒绝（绝不落 Forge）。
+  assertMinioOnlyWrite();
   return await storagePut(`comfyui/${Date.now()}.${ext}`, buf, ct);
 }
 

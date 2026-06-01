@@ -1,6 +1,7 @@
 import { memo, useCallback, useRef, useState } from "react";
 import { Handle, Position } from "@xyflow/react";
 import { BaseNode } from "../BaseNode";
+import { ComfyServerUrlField } from "./ComfyServerUrlField";
 import { useCanvasStore } from "../../../hooks/useCanvasStore";
 import type { ComfyuiWorkflowNodeData, WorkflowParamBinding } from "../../../../../shared/types";
 import { trpc } from "@/lib/trpc";
@@ -315,6 +316,10 @@ export const ComfyuiWorkflowNode = memo(function ComfyuiWorkflowNode({ id, selec
       selected={selected}
       nodeType="comfyui_workflow"
       title={data.title}
+      onRun={handleRun}
+      running={isProcessing}
+      canRun={phase === "run" && !!payload.workflowJson?.trim()}
+      hasResult={!!payload.outputUrls && payload.outputUrls.length > 0}
     >
       {/* ref-image-in (top:30%): feed an upstream image into the first blank image param.
           Generic "in" (top:55%) keeps ordering-only / video-input edges. */}
@@ -330,11 +335,16 @@ export const ComfyuiWorkflowNode = memo(function ComfyuiWorkflowNode({ id, selec
             <Server size={9} style={{ display: "inline", marginRight: 3 }} />
             ComfyUI 地址（留空用全局默认）
           </label>
-          <input
-            style={fieldBase}
-            placeholder="http://192.168.x.x:8188"
+          <ComfyServerUrlField
+            id={id}
             value={payload.customBaseUrl ?? ""}
-            onChange={(e) => update({ customBaseUrl: e.target.value })}
+            onChange={(v) => update({ customBaseUrl: v })}
+            serverUrls={payload.serverUrls ?? []}
+            onChangeServerUrls={(next) => update({ serverUrls: next })}
+            accent={accent}
+            borderAccent={BORDER_ACCENT}
+            borderDefault={BORDER_DEFAULT}
+            fieldBase={fieldBase}
           />
         </div>
 
@@ -436,7 +446,7 @@ export const ComfyuiWorkflowNode = memo(function ComfyuiWorkflowNode({ id, selec
             </div>
 
             {/* Binding list */}
-            <div style={{ display: "flex", flexDirection: "column", gap: 6, maxHeight: 280, overflowY: "auto" }}>
+            <div className="nowheel nodrag" style={{ display: "flex", flexDirection: "column", gap: 6, maxHeight: 280, overflowY: "auto" }}>
               {localBindings.map((b, i) => (
                 <div key={i} style={{ background: "var(--c-input)", borderRadius: 6, padding: "7px 9px", border: "1px solid var(--c-bd2)" }}>
                   <div style={{ display: "flex", alignItems: "center", gap: 6, justifyContent: "space-between" }}>
@@ -546,9 +556,9 @@ export const ComfyuiWorkflowNode = memo(function ComfyuiWorkflowNode({ id, selec
               </div>
             )}
 
-            {/* Dynamic param form */}
+            {/* Dynamic param form — capped height with internal scroll to keep the node compact */}
             {(payload.paramBindings ?? []).length > 0 && (
-              <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+              <div className="nowheel nodrag" style={{ display: "flex", flexDirection: "column", gap: 8, maxHeight: 420, overflowY: "auto", overflowX: "hidden" }}>
                 {(payload.paramBindings ?? []).map((b) => {
                   const key = `${b.nodeId}.${b.fieldPath}`;
                   const value = payload.paramValues?.[key] ?? b.defaultValue ?? "";

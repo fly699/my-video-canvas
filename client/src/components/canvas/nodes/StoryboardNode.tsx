@@ -7,14 +7,18 @@ import { useShallow } from "zustand/react/shallow";
 import type { StoryboardNodeData } from "../../../../../shared/types";
 import { trpc } from "@/lib/trpc";
 import { toast } from "sonner";
-import { Sparkles, ImageIcon, Loader2, RefreshCw, ChevronDown, Upload, X, Wand2, History, Languages, Film, ZoomIn, Download, Copy, HardDriveDownload } from "lucide-react";
+import { Sparkles, ImageIcon, Loader2, RefreshCw, Upload, X, Wand2, History, Languages, Film, ZoomIn, Download, Copy, HardDriveDownload } from "lucide-react";
 import { useLocalMedia } from "@/lib/useLocalMedia";
 import { cacheMedia } from "@/lib/mediaCache";
 import { mergeCharactersIntoPrompt } from "../../../lib/characterPrompt";
-import { IMAGE_MODELS, type ImageModelId } from "@/lib/models";
+import { IMAGE_MODELS } from "@/lib/models";
 import { makeImageProxyFallback } from "@/lib/utils";
 import { RefImageReachabilityBadge, RefImageSwitchButton, useRefImageGuard } from "../mediaReachability";
 import { LLMModelPicker, type LLMModelId } from "../LLMModelPicker";
+import { ModelPicker, IMAGE_MODEL_PICKER_OPTIONS } from "../ModelPicker";
+import { ParamControls } from "../ParamControls";
+import { IMAGE_MODEL_PARAMS, resolveImageParam } from "@/lib/paramDefs";
+import type { ImageGenModel } from "../../../../../shared/types";
 import { useCanvasMode } from "../../../contexts/CanvasModeContext";
 
 interface Props {
@@ -92,7 +96,6 @@ export const StoryboardNode = memo(function StoryboardNode({ id, selected, data 
   // Effective reference the next generation will use (local overrides character)
   const effectiveRefUrl = payload.referenceImageUrl?.trim() || connectedCharRefUrl;
   const [generating, setGenerating] = useState(false);
-  const [showModelPicker, setShowModelPicker] = useState(false);
   const [inputExpanded, setInputExpanded] = useState(!!selected);
   const [llmModel, setLlmModel] = useState<LLMModelId>("gemini-2.5-flash");
   const [showHistory, setShowHistory] = useState(false);
@@ -117,10 +120,10 @@ export const StoryboardNode = memo(function StoryboardNode({ id, selected, data 
   useEffect(() => {
     setInputExpanded(!!selected);
   }, [selected]);
-  const model: ImageModelId = IMAGE_MODELS.some(m => m.value === payload.imageModel)
-    ? (payload.imageModel as ImageModelId)
+  const model: ImageGenModel = IMAGE_MODELS.some(m => m.value === payload.imageModel)
+    ? (payload.imageModel as ImageGenModel)
     : "manus_forge";
-  const setModel = (m: ImageModelId) => { updateNodeData(id, { imageModel: m }); };
+  const setModel = (m: string) => { updateNodeData(id, { imageModel: m as ImageGenModel }); };
   const { guard, reachable, dialog: reachabilityDialog } = useRefImageGuard();
 
   // ── Per-model sizing controls ──
@@ -128,8 +131,6 @@ export const StoryboardNode = memo(function StoryboardNode({ id, selected, data 
   // independently without forcing the user to round-trip via ImageGenNode.
   const isSoul = model === "hf_soul_standard";
   const isV2HF = model === "hf_reve" || model === "hf_seedream_v4" || model === "hf_flux_pro";
-  const isPoyoImg = model === "poyo_flux" || model === "poyo_sdxl" || model === "poyo_gpt_image" ||
-                    model === "poyo_seedream" || model === "poyo_grok_image" || model === "poyo_wan_image";
   const SOUL_SIZES_LIST = [
     "2048x1152", "2048x1536", "2016x1344", "1696x960", "1632x1088",
     "1152x2048", "1536x2048", "1344x2016", "960x1696", "1088x1632",
@@ -137,8 +138,6 @@ export const StoryboardNode = memo(function StoryboardNode({ id, selected, data 
   ] as const;
   const V2_ASPECT_RATIOS = ["1:1", "2:3", "3:2", "3:4", "4:3", "4:5", "5:4", "9:16", "16:9", "21:9"] as const;
   const V2_RESOLUTIONS = ["1K", "2K", "4K"] as const;
-  const POYO_ASPECTS = ["1:1", "16:9", "9:16", "4:3", "3:4", "21:9"] as const;
-  const POYO_QUALITIES_LIST = ["low", "medium", "high"] as const;
 
   // Sync key shared settings (model / color tone / batch / negative prompt)
   // from this storyboard to ALL other storyboard nodes on the canvas.
@@ -167,8 +166,6 @@ export const StoryboardNode = memo(function StoryboardNode({ id, selected, data 
 
   const [uploadingRef, setUploadingRef] = useState(false);
   const refInputRef = useRef<HTMLInputElement>(null);
-  const modelBtnRef = useRef<HTMLButtonElement>(null);
-  const [modelPickerRect, setModelPickerRect] = useState<DOMRect | null>(null);
 
   const uploadRefMutation = trpc.upload.uploadImage.useMutation({
     onSuccess: (result) => {
@@ -314,6 +311,11 @@ export const StoryboardNode = memo(function StoryboardNode({ id, selected, data 
     // consumes. The imageGen.generate tRPC procedure validates each field
     // against its own zod enum; mismatched-model fields are dropped server-
     // side, but staying clean here keeps the request small and obvious.
+    // 通用尺寸字段尚未写入 StoryboardNodeData 类型（由后端 Zod 接收）；宽松视图读取。
+    const generic = payload as unknown as {
+      imageSize?: string; imageResolution?: string; imageN?: number;
+      imageOutputFormat?: string; poyoAspectRatio?: string;
+    };
     const sizingFields: Record<string, unknown> = {};
     if (isSoul) {
       if (SOUL_SIZES_LIST.includes(payload.widthAndHeight as (typeof SOUL_SIZES_LIST)[number])) {
@@ -327,13 +329,17 @@ export const StoryboardNode = memo(function StoryboardNode({ id, selected, data 
       if (V2_RESOLUTIONS.includes(payload.reveResolution as (typeof V2_RESOLUTIONS)[number])) {
         sizingFields.reveResolution = payload.reveResolution;
       }
-    } else if (isPoyoImg) {
-      if (POYO_ASPECTS.includes(payload.poyoAspectRatio as (typeof POYO_ASPECTS)[number])) {
-        sizingFields.poyoAspectRatio = payload.poyoAspectRatio;
-      }
-      if (POYO_QUALITIES_LIST.includes(payload.poyoQuality as (typeof POYO_QUALITIES_LIST)[number])) {
-        sizingFields.poyoQuality = payload.poyoQuality;
-      }
+    } else if (model.startsWith("poyo_")) {
+      // 对任意 poyo_ 模型转发通用参数字段（与 ImageGenNode 一致）。
+      // resolveImageParam: 控件只展示默认值不落库，提交时补上 ParamDef 默认，
+      // 避免未展开节点漏发必填字段（如 z-image 文生图 size 必填）。
+      sizingFields.imageSize = resolveImageParam(model, "imageSize", generic.imageSize);
+      sizingFields.imageResolution = resolveImageParam(model, "imageResolution", generic.imageResolution);
+      sizingFields.imageN = resolveImageParam(model, "imageN", generic.imageN);
+      sizingFields.imageOutputFormat = resolveImageParam(model, "imageOutputFormat", generic.imageOutputFormat);
+      sizingFields.poyoQuality = resolveImageParam(model, "poyoQuality", payload.poyoQuality);
+      // 兼容旧节点：旧 payload 用 poyoAspectRatio，后端 size 取 imageSize ?? poyoAspectRatio
+      sizingFields.poyoAspectRatio = generic.poyoAspectRatio;
     }
     const submit = () => {
       setGenerating(true);
@@ -349,8 +355,6 @@ export const StoryboardNode = memo(function StoryboardNode({ id, selected, data 
     };
     guard({ model, refImageUrl: charRefUrl }, submit);
   };
-
-  const currentModel = IMAGE_MODELS.find((m) => m.value === model) ?? IMAGE_MODELS[0];
 
   // ── Local media cache (IndexedDB) ────────────────────────────────────────
   const { isLocal: imgIsLocal, blobUrl: imgBlobUrl, downloadedAt: imgDownloadedAt, refresh: refreshImgCache } = useLocalMedia(payload.imageUrl);
@@ -882,33 +886,13 @@ export const StoryboardNode = memo(function StoryboardNode({ id, selected, data 
 
         {/* ── Model selector + sync-all-storyboards ── */}
         <div className="nodrag flex items-stretch gap-1.5">
-          <button
-            ref={modelBtnRef}
-            onClick={() => {
-              if (modelBtnRef.current) setModelPickerRect(modelBtnRef.current.getBoundingClientRect());
-              setShowModelPicker((v) => !v);
-            }}
-            className="nodrag flex items-center justify-between flex-1 px-2.5 py-1.5 rounded-lg text-xs transition-all"
-            style={{
-              background: "var(--c-input)",
-              borderWidth: 1,
-              borderStyle: "solid",
-              borderColor: "oklch(0.65 0.20 160 / 0.30)",
-              color: "oklch(0.72 0.18 160)",
-            }}
-          >
-            <span className="flex items-center gap-1.5">
-              <Sparkles className="w-3 h-3" />
-              {currentModel.label}
-              <span
-                className="px-1 py-0.5 rounded text-[9px] font-semibold"
-                style={{ background: "oklch(0.65 0.20 160 / 0.15)", color: "oklch(0.65 0.20 160)" }}
-              >
-                {currentModel.group}
-              </span>
-            </span>
-            <ChevronDown className="w-3 h-3 opacity-60" style={{ transform: showModelPicker ? "rotate(180deg)" : "none", transition: "transform 150ms" }} />
-          </button>
+          <div className="flex-1">
+            <ModelPicker
+              value={model}
+              onChange={(v) => setModel(v)}
+              options={IMAGE_MODEL_PICKER_OPTIONS}
+            />
+          </div>
           <button
             onClick={syncToAllStoryboards}
             title="把当前模型 / 色调 / 抽卡次数 / 反向提示词等参数同步到画布中所有其他分镜节点"
@@ -927,8 +911,9 @@ export const StoryboardNode = memo(function StoryboardNode({ id, selected, data 
             同步到全部
           </button>
         </div>
-        {/* ── Sizing controls (per-model) ── */}
-        {(isSoul || isV2HF || isPoyoImg) && (
+        {/* ── Sizing controls (per-model) ── Soul / Reve-like 走既有专属控件；
+            Poyo 模型改由下方 schema 驱动的 ParamControls 渲染 ── */}
+        {(isSoul || isV2HF) && (
           <div className="flex gap-1.5 nodrag">
             {isSoul && (
               <>
@@ -991,36 +976,16 @@ export const StoryboardNode = memo(function StoryboardNode({ id, selected, data 
                 </div>
               </>
             )}
-            {isPoyoImg && (
-              <>
-                <div style={{ flex: 1 }}>
-                  <label style={{ fontSize: 10, fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.07em", color: "var(--c-t4)", display: "block", marginBottom: 4 }}>
-                    宽高比
-                  </label>
-                  <select
-                    value={payload.poyoAspectRatio ?? "16:9"}
-                    onChange={(e) => updateNodeData(id, { poyoAspectRatio: e.target.value })}
-                    className="nodrag"
-                    style={{ width: "100%", padding: "6px 8px", fontSize: 11, background: "var(--c-input)", border: "1px solid var(--c-bd2)", borderRadius: 6, color: "var(--c-t1)", cursor: "pointer" }}
-                  >
-                    {POYO_ASPECTS.map((r) => <option key={r} value={r}>{r}</option>)}
-                  </select>
-                </div>
-                <div style={{ width: 90 }}>
-                  <label style={{ fontSize: 10, fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.07em", color: "var(--c-t4)", display: "block", marginBottom: 4 }}>
-                    画质
-                  </label>
-                  <select
-                    value={payload.poyoQuality ?? "medium"}
-                    onChange={(e) => updateNodeData(id, { poyoQuality: e.target.value as "low" | "medium" | "high" })}
-                    className="nodrag"
-                    style={{ width: "100%", padding: "6px 8px", fontSize: 11, background: "var(--c-input)", border: "1px solid var(--c-bd2)", borderRadius: 6, color: "var(--c-t1)", cursor: "pointer" }}
-                  >
-                    {POYO_QUALITIES_LIST.map((q) => <option key={q} value={q}>{q}</option>)}
-                  </select>
-                </div>
-              </>
-            )}
+          </div>
+        )}
+        {/* Poyo 模型参数控件（schema 驱动）—— 替代原 Poyo 宽高比/画质硬编码块 */}
+        {model && IMAGE_MODEL_PARAMS[model] && IMAGE_MODEL_PARAMS[model].length > 0 && (
+          <div className="nodrag">
+            <ParamControls
+              defs={IMAGE_MODEL_PARAMS[model]}
+              values={payload as unknown as Record<string, unknown>}
+              onChange={(key, value) => updateNodeData(id, { [key]: value } as unknown as Partial<StoryboardNodeData>)}
+            />
           </div>
         )}
         {/* ── Batch count (only effective for hf_soul_standard) ── */}
@@ -1063,65 +1028,6 @@ export const StoryboardNode = memo(function StoryboardNode({ id, selected, data 
 
       {reachabilityDialog}
     </BaseNode>
-
-      {/* ── Image model picker portal (avoids overflow:hidden clipping from BaseNode inner wrapper) ── */}
-      {showModelPicker && modelPickerRect && createPortal(
-        <>
-          {/* Backdrop to close on outside click — skip if mousedown target is the toggle button itself */}
-          <div
-            style={{ position: "fixed", inset: 0, zIndex: 99990 }}
-            onMouseDown={(e) => {
-              if (modelBtnRef.current?.contains(e.target as Node)) return;
-              setShowModelPicker(false);
-            }}
-          />
-          <div
-            className="rounded-lg overflow-hidden"
-            style={{
-              position: "fixed",
-              zIndex: 99991,
-              bottom: window.innerHeight - modelPickerRect.top + 4,
-              left: modelPickerRect.left,
-              width: modelPickerRect.width,
-              background: "var(--c-surface)",
-              borderWidth: 1,
-              borderStyle: "solid",
-              borderColor: "var(--c-bd2)",
-              boxShadow: "0 8px 24px oklch(0 0 0 / 0.5)",
-            }}
-          >
-            {["Manus", "Poyo", "Higgsfield"].map((group) => (
-              <div key={group}>
-                <div className="px-2.5 py-1" style={{ fontSize: 9, fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.08em", color: "var(--c-t4)", borderBottom: "1px solid var(--c-bd2)" }}>
-                  {group}
-                </div>
-                {IMAGE_MODELS.filter((m) => m.group === group).map((m) => (
-                  <button
-                    key={m.value}
-                    className="nodrag flex items-center justify-between w-full px-2.5 py-2 text-xs transition-colors"
-                    style={{
-                      background: model === m.value ? "oklch(0.65 0.20 160 / 0.10)" : "transparent",
-                      color: model === m.value ? "oklch(0.72 0.18 160)" : "var(--c-t2)",
-                    }}
-                    onMouseDown={(e) => { e.stopPropagation(); setModel(m.value); setShowModelPicker(false); }}
-                    onMouseEnter={(e) => { if (model !== m.value) (e.currentTarget as HTMLElement).style.background = "var(--c-elevated)"; }}
-                    onMouseLeave={(e) => { if (model !== m.value) (e.currentTarget as HTMLElement).style.background = "transparent"; }}
-                  >
-                    <span>{m.label}</span>
-                    <span
-                      className="px-1 py-0.5 rounded text-[9px] font-semibold"
-                      style={{ background: "oklch(0.65 0.20 160 / 0.12)", color: "oklch(0.55 0.15 160)" }}
-                    >
-                      {m.desc}
-                    </span>
-                  </button>
-                ))}
-              </div>
-            ))}
-          </div>
-        </>,
-        document.body
-      )}
 
       {/* ── Image lightbox (portal to body — avoids React Flow event interception) ── */}
       {zoomUrl && createPortal(

@@ -1,6 +1,6 @@
 import { execFile } from "child_process";
 import { promisify } from "util";
-import { storagePut } from "../storage";
+import { storagePut, assertObjectStorageWritable } from "../storage";
 import * as fs from "fs/promises";
 import * as path from "path";
 import * as os from "os";
@@ -201,6 +201,7 @@ export async function trimVideo(opts: TrimOptions): Promise<TrimResult> {
 
     // Read output and upload to storage
     const outBuffer = await fs.readFile(outPath);
+    await assertObjectStorageWritable();
     const { url } = await storagePut(`generated/clip-${Date.now()}.mp4`, outBuffer, "video/mp4");
 
     // Calculate duration
@@ -362,6 +363,7 @@ export async function mergeVideos(opts: MergeOptions): Promise<MergeResult> {
     }
 
     const outBuffer = await fs.readFile(outPath);
+    await assertObjectStorageWritable();
     const { url } = await storagePut(`generated/merge-${Date.now()}.mp4`, outBuffer, "video/mp4");
     return { url, duration: Math.max(0, totalDuration) };
   } finally {
@@ -440,6 +442,7 @@ export async function burnSubtitles(
     }
 
     const outBuffer = await fs.readFile(outPath);
+    await assertObjectStorageWritable();
     const { url } = await storagePut(`generated/subtitled-${Date.now()}.mp4`, outBuffer, "video/mp4");
     return { url };
   } finally {
@@ -571,6 +574,7 @@ export async function burnAssSubtitles(
     }
 
     const outBuffer = await fs.readFile(outPath);
+    await assertObjectStorageWritable();
     const { url } = await storagePut(`generated/motion-sub-${Date.now()}.mp4`, outBuffer, "video/mp4");
     return { url };
   } finally {
@@ -679,6 +683,7 @@ export async function smartCutVideo(opts: SmartCutOptions): Promise<SmartCutResu
     }
 
     const outBuffer = await fs.readFile(outPath);
+    await assertObjectStorageWritable();
     const { url } = await storagePut(`generated/smartcut-${Date.now()}.mp4`, outBuffer, "video/mp4");
     const outputDuration = opts.keepSegments.reduce((sum, seg) => sum + (seg.end - seg.start), 0);
     return { url, outputDuration };
@@ -793,6 +798,7 @@ export async function overlayVideo(opts: OverlayOptions): Promise<{ url: string 
 
     const buf = await fs.readFile(outputPath);
     const key = `overlay-${Date.now()}.mp4`;
+    await assertObjectStorageWritable();
     const { url } = await storagePut(key, buf, "video/mp4");
     return { url };
   } finally {

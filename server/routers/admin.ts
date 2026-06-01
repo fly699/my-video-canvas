@@ -111,13 +111,18 @@ export const adminRouter = router({
         persistImage: z.boolean().optional(),
         // Presigned GET URL validity for self-hosted S3/MinIO: 1 min … 7 days.
         presignTtlSec: z.number().int().min(60).max(604_800).optional(),
+        // Poyo stream-upload fallback (additive; off by default).
+        poyoUploadFallback: z.boolean().optional(),
+        // Restrict object storage to MinIO/S3 only (disable Forge fallback).
+        minioOnly: z.boolean().optional(),
       }))
       .mutation(async ({ input }) => {
         if (
           input.persistAudio === undefined && input.persistVideo === undefined &&
-          input.persistImage === undefined && input.presignTtlSec === undefined
+          input.persistImage === undefined && input.presignTtlSec === undefined &&
+          input.poyoUploadFallback === undefined && input.minioOnly === undefined
         ) {
-          throw new TRPCError({ code: "BAD_REQUEST", message: "至少需要指定 persistAudio / persistVideo / persistImage / presignTtlSec 其中一项" });
+          throw new TRPCError({ code: "BAD_REQUEST", message: "至少需要指定 persistAudio / persistVideo / persistImage / presignTtlSec / poyoUploadFallback / minioOnly 其中一项" });
         }
         await db.setStorageSettings(input);
         invalidateStorageSettingsCache();

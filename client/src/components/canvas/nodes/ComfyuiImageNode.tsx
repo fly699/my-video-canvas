@@ -16,6 +16,9 @@ import { ImageLightbox } from "../ImageLightbox";
 import { MaskCanvas } from "./MaskCanvas";
 import { LLMModelPicker, type LLMModelId } from "../LLMModelPicker";
 import { makeImageProxyFallback } from "@/lib/utils";
+import { ComfyServerUrlField } from "./ComfyServerUrlField";
+import { SyncConfigDialog } from "../SyncConfigDialog";
+import { NodeConfigTabs } from "../NodeConfigTabs";
 
 interface Props {
   id: string;
@@ -87,6 +90,8 @@ export const ComfyuiImageNode = memo(function ComfyuiImageNode({ id, selected, d
   // deployment (some setups have no Gemini but do have Claude/GPT via Poyo).
   const [llmModel, setLlmModel] = useState<LLMModelId>("claude-haiku-4-5-20251001");
   const [urlExpanded, setUrlExpanded] = useState(false);
+  const [syncOpen, setSyncOpen] = useState(false);
+  const [cfgTab, setCfgTab] = useState("basic");
   const [paramsExpanded, setParamsExpanded] = useState(false);
   const [cnExpanded, setCnExpanded] = useState(false);
   const [ipExpanded, setIpExpanded] = useState(false);
@@ -102,8 +107,11 @@ export const ComfyuiImageNode = memo(function ComfyuiImageNode({ id, selected, d
     const t = setTimeout(() => setDebouncedUrl(payload.customBaseUrl?.trim() || undefined), 600);
     return () => clearTimeout(t);
   }, [payload.customBaseUrl]);
+  // Saved server addresses (persisted on node). The model list shows the UNION
+  // across every saved address + the current one, so "刷新模型" covers all servers.
+  const serverUrls = payload.serverUrls ?? [];
   const modelsQuery = trpc.comfyui.fetchModels.useQuery(
-    { customBaseUrl: debouncedUrl },
+    { customBaseUrl: debouncedUrl, customBaseUrls: serverUrls.length > 0 ? serverUrls : undefined },
     { staleTime: 60_000, retry: false }
   );
 
@@ -237,36 +245,6 @@ export const ComfyuiImageNode = memo(function ComfyuiImageNode({ id, selected, d
   // node to ALL other comfyui_image nodes on the canvas — handy after the Script
   // node batch-creates many ComfyUI image nodes: configure one, propagate to all.
   // Per-node fields (prompt / seed / reference & result images) are NOT synced.
-  const syncToAllComfyImages = useCallback(() => {
-    const { nodes: allNodes, batchUpdateNodeData } = useCanvasStore.getState();
-    const targets = allNodes.filter((n) => n.data.nodeType === "comfyui_image" && n.id !== id);
-    if (targets.length === 0) { toast.info("当前画布只有这一个 ComfyUI 图像节点"); return; }
-    const p = payload;
-    const patch: Partial<ComfyuiImageNodeData> = {
-      customBaseUrl: p.customBaseUrl,
-      workflowTemplate: p.workflowTemplate,
-      negPrompt: p.negPrompt,
-      ckpt: p.ckpt,
-      lora: p.lora,
-      loraStrength: p.loraStrength,
-      loras: p.loras,
-      controlnet: p.controlnet,
-      ipadapter: p.ipadapter,
-      upscaleModel: p.upscaleModel,
-      steps: p.steps,
-      cfg: p.cfg,
-      width: p.width,
-      height: p.height,
-      sampler: p.sampler,
-      scheduler: p.scheduler,
-      denoise: p.denoise,
-      vae: p.vae,
-      batchSize: p.batchSize,
-    };
-    batchUpdateNodeData(targets.map((t) => ({ id: t.id, payload: patch })));
-    toast.success(`已同步配置到 ${targets.length} 个 ComfyUI 图像节点`);
-  }, [id, payload]);
-
   // Select which generated image is the node's active output. Also push the new
   // URL to connected downstream reference-image consumers (mirrors ImageGenNode).
   const selectImage = useCallback((url: string) => {
@@ -399,7 +377,8 @@ export const ComfyuiImageNode = memo(function ComfyuiImageNode({ id, selected, d
   ) : null;
 
   return (
-    <BaseNode id={id} selected={selected} nodeType="comfyui_image" title={data.title} minHeight={320} heroMedia={heroMedia}>
+    <BaseNode id={id} selected={selected} nodeType="comfyui_image" title={data.title} minHeight={320} heroMedia={heroMedia}
+      onRun={handleGenerate} running={genMutation.isPending} canRun={!!payload.prompt?.trim() && !!payload.ckpt?.trim()} hasResult={!!payload.imageUrl}>
       <div className="flex flex-col h-full p-3.5 gap-3 overflow-auto">
 
         {/* ── Result image(s) ── */}
@@ -569,6 +548,18 @@ export const ComfyuiImageNode = memo(function ComfyuiImageNode({ id, selected, d
           }}
         >
 
+        <NodeConfigTabs
+          tabs={[
+            { key: "basic", label: "基础", Icon: Server },
+            { key: "model", label: "模型", Icon: Boxes },
+            { key: "sampling", label: "采样", Icon: Sparkles },
+            { key: "advanced", label: "高级", Icon: Layers },
+          ]}
+          active={cfgTab}
+          onChange={setCfgTab}
+          accent={accent}
+        >
+        {cfgTab === "basic" && (<>
         {/* ── ComfyUI URL (collapsible) ── */}
         <div
           className="rounded-xl"
@@ -590,32 +581,19 @@ export const ComfyuiImageNode = memo(function ComfyuiImageNode({ id, selected, d
           </button>
           {urlExpanded && (
             <div className="px-3 pb-3">
-              <div className="flex items-center gap-1.5">
-                <input
-                  placeholder="http://127.0.0.1:8188（留空使用全局默认）"
-                  value={payload.customBaseUrl ?? ""}
-                  onChange={(e) => update("customBaseUrl", e.target.value)}
-                  className="nodrag flex-1"
-                  style={fieldBase}
-                  onFocus={(e) => { e.currentTarget.style.borderColor = BORDER_ACCENT; }}
-                  onBlur={(e) => { e.currentTarget.style.borderColor = BORDER_DEFAULT; }}
-                />
-                <button
-                  onClick={() => { modelsQuery.refetch(); }}
-                  disabled={modelsQuery.isFetching}
-                  className="nodrag flex-shrink-0 flex items-center justify-center rounded-md"
-                  title="刷新模型列表（拉取 ComfyUI 服务端已安装的 checkpoint / lora 等）"
-                  style={{
-                    width: 30, height: 30,
-                    background: "var(--c-surface)",
-                    border: "1px solid var(--c-bd2)",
-                    color: modelsQuery.isFetching ? "var(--c-t4)" : accent,
-                    cursor: modelsQuery.isFetching ? "wait" : "pointer",
-                  }}
-                >
-                  <RefreshCw className={modelsQuery.isFetching ? "w-3 h-3 animate-spin" : "w-3 h-3"} />
-                </button>
-              </div>
+              <ComfyServerUrlField
+                id={id}
+                value={payload.customBaseUrl ?? ""}
+                onChange={(v) => update("customBaseUrl", v)}
+                serverUrls={serverUrls}
+                onChangeServerUrls={(next) => update("serverUrls", next)}
+                isFetching={modelsQuery.isFetching}
+                onRefresh={() => { modelsQuery.refetch(); }}
+                accent={accent}
+                borderAccent={BORDER_ACCENT}
+                borderDefault={BORDER_DEFAULT}
+                fieldBase={fieldBase}
+              />
               {/* Connection / model count status */}
               <ComfyConnectionStatus
                 isFetching={modelsQuery.isFetching}
@@ -639,10 +617,10 @@ export const ComfyuiImageNode = memo(function ComfyuiImageNode({ id, selected, d
           )}
         </div>
 
-        {/* ── Sync config to all ComfyUI image nodes ── */}
+        {/* ── Sync config to other ComfyUI image nodes (picker dialog) ── */}
         <button
-          onClick={syncToAllComfyImages}
-          title="把当前服务器地址 / Checkpoint / LoRA / 采样参数等配置同步到画布中所有其他 ComfyUI 图像节点（不含提示词、Seed、结果图）"
+          onClick={() => setSyncOpen(true)}
+          title="选择目标节点与参数类别，把当前配置同步到其他 ComfyUI 图像节点（不含提示词、Seed、结果图）"
           className="nodrag flex items-center justify-center gap-1.5 w-full py-1.5 rounded-lg text-[10.5px] transition-all"
           style={{
             background: "oklch(0.68 0.20 100 / 0.08)",
@@ -655,8 +633,9 @@ export const ComfyuiImageNode = memo(function ComfyuiImageNode({ id, selected, d
           onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.background = "oklch(0.68 0.20 100 / 0.08)"; }}
         >
           <Copy className="w-3 h-3" />
-          同步配置到全部 ComfyUI 图像节点
+          同步配置到其他 ComfyUI 图像节点…
         </button>
+        <SyncConfigDialog open={syncOpen} onOpenChange={setSyncOpen} sourceId={id} nodeType="comfyui_image" accent={accent} />
 
         {/* ── Workflow template ── */}
         <div>
@@ -743,6 +722,8 @@ export const ComfyuiImageNode = memo(function ComfyuiImageNode({ id, selected, d
           </div>
         </div>
 
+        </>)}
+        {cfgTab === "model" && (<>
         {/* ── Checkpoint with datalist suggestions ── */}
         <div>
           <label style={labelStyle}>Checkpoint *</label>
@@ -824,6 +805,8 @@ export const ComfyuiImageNode = memo(function ComfyuiImageNode({ id, selected, d
           </button>
         </div>
 
+        </>)}
+        {cfgTab === "sampling" && (<>
         {/* ── Advanced params (collapsible) ── */}
         <div
           className="rounded-xl"
@@ -989,6 +972,10 @@ export const ComfyuiImageNode = memo(function ComfyuiImageNode({ id, selected, d
           )}
         </div>
 
+        </>)}
+        {/* 参考图归入"基础"页（紧随提示词，img2img/inpaint 常用）；它物理位置在采样之后，
+            故用独立的 basic 片段渲染——basic 激活时此片段会接在上面 basic 内容之后显示。 */}
+        {cfgTab === "basic" && (<>
         {/* ── Reference image upload (img2img / inpaint) ── */}
         {needsRefImage && (
           <div>
@@ -1072,7 +1059,8 @@ export const ComfyuiImageNode = memo(function ComfyuiImageNode({ id, selected, d
             )}
           </div>
         )}
-
+        </>)}
+        {cfgTab === "advanced" && (<>
         {/* ── ControlNet (optional, applies to txt2img & img2img) ── */}
         <div className="rounded-xl" style={{ background: "var(--c-input)", border: "1px solid var(--c-bd1)" }}>
           <button
@@ -1254,6 +1242,9 @@ export const ComfyuiImageNode = memo(function ComfyuiImageNode({ id, selected, d
             </div>
           )}
         </div>
+
+        </>)}
+        </NodeConfigTabs>
 
         {/* ── Progress bar ── */}
         {payload.status === "processing" && payload.progress != null && (
