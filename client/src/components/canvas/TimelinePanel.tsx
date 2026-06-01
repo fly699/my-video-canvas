@@ -160,9 +160,12 @@ export function TimelinePanel({ onClose }: TimelinePanelProps) {
     .filter((node) => {
       const p = node.data.payload as Record<string, unknown>;
       if (node.data.nodeType === "video_task") return !!p.resultVideoUrl;
+      if (node.data.nodeType === "comfyui_video") return !!p.resultVideoUrl;
       if (node.data.nodeType === "clip") return !!p.outputUrl;
       if (node.data.nodeType === "merge") return !!p.outputUrl;
       if (node.data.nodeType === "overlay") return !!p.outputUrl;
+      // Custom-workflow nodes only count when their run produced a video output.
+      if (node.data.nodeType === "comfyui_workflow") return !!p.outputUrl && p.outputType === "video";
       return false;
     })
     .sort((a, b) => {
