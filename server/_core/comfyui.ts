@@ -246,7 +246,46 @@ function abortableSleep(ms: number, signal?: AbortSignal): Promise<void> {
   });
 }
 
+const endsGguf = (v: unknown) => typeof v === "string" && /\.gguf$/i.test(v);
+
+/**
+ * Core CLIP/UNet loaders can't read `.gguf` files — those need the ComfyUI-GGUF
+ * loader variants. Our built-in templates use the core loaders, but the model
+ * dropdown also lists GGUF encoders (scanned from CLIPLoaderGGUF), so a user can
+ * pick a `.gguf` clip and hit "value_not_in_list" on the core CLIPLoader. Swap
+ * any core loader whose file is `.gguf` to its GGUF class_type before submit.
+ * Mutates the workflow in place. Safe for hand-pasted workflows (a GGUF graph
+ * already uses the GGUF nodes, so nothing matches).
+ */
+export function normalizeGgufLoaders(workflow: unknown): void {
+  if (!workflow || typeof workflow !== "object") return;
+  for (const node of Object.values(workflow as Record<string, unknown>)) {
+    if (!node || typeof node !== "object") continue;
+    const n = node as { class_type?: string; inputs?: Record<string, unknown> };
+    const inputs = n.inputs;
+    if (!n.class_type || !inputs) continue;
+    switch (n.class_type) {
+      case "CLIPLoader":
+        if (endsGguf(inputs.clip_name)) n.class_type = "CLIPLoaderGGUF";
+        break;
+      case "DualCLIPLoader":
+        if (endsGguf(inputs.clip_name1) || endsGguf(inputs.clip_name2)) n.class_type = "DualCLIPLoaderGGUF";
+        break;
+      case "TripleCLIPLoader":
+        if (endsGguf(inputs.clip_name1) || endsGguf(inputs.clip_name2) || endsGguf(inputs.clip_name3)) n.class_type = "TripleCLIPLoaderGGUF";
+        break;
+      case "UNETLoader":
+        if (endsGguf(inputs.unet_name)) {
+          n.class_type = "UnetLoaderGGUF"; // GGUF unet loader takes only unet_name
+          delete inputs.weight_dtype;
+        }
+        break;
+    }
+  }
+}
+
 async function submitWorkflow(baseUrl: string, workflow: unknown, signal?: AbortSignal): Promise<string> {
+  normalizeGgufLoaders(workflow);
   const res = await fetch(`${baseUrl}/prompt`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
