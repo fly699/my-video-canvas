@@ -150,7 +150,18 @@ export function ChatView({ membersOpen: _m }: { membersOpen?: boolean }) {
         <button onClick={() => fileRef.current?.click()} title={`添加文件（单文件 ≤ ${maxFileMb}MB）`} style={iconBtn}><Paperclip size={18} /></button>
         <textarea value={text} onChange={(e) => { setText(e.target.value); emitTyping(); }}
           onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); void doSend(); } }}
-          placeholder="Enter 发送，Shift+Enter 换行，可拖拽文件到此" rows={1}
+          onPaste={(e) => {
+            // Support pasting files of any type (screenshots, images, docs…). The
+            // clipboard exposes them via items (type "file") — pull out the Files
+            // and stage them; only swallow the paste when files were present so
+            // normal text paste still works.
+            const files = Array.from(e.clipboardData.items)
+              .filter((it) => it.kind === "file")
+              .map((it) => it.getAsFile())
+              .filter((f): f is File => !!f);
+            if (files.length > 0) { e.preventDefault(); addFiles(files); }
+          }}
+          placeholder="Enter 发送，Shift+Enter 换行，可拖拽或粘贴文件到此" rows={1}
           style={{ flex: 1, resize: "none", maxHeight: 140, padding: "10px 14px", borderRadius: 12, border: `1px solid ${C.border}`, background: "var(--c-elevated, rgba(128,128,128,0.10))", color: C.t1, fontSize: 14, outline: "none", fontFamily: "inherit" }} />
         <button onClick={() => doSend()} disabled={busy || (!text.trim() && staged.length === 0)} title="发送"
           style={{ ...iconBtn, width: 40, height: 40, background: C.accentSoft, color: C.accent, border: `1px solid ${C.accent}`, opacity: busy || (!text.trim() && staged.length === 0) ? 0.5 : 1 }}>
