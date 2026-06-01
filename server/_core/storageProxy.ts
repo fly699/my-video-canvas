@@ -3,8 +3,38 @@ import {
   isStorageConfigured,
   storagePresignGet,
   storageFetchStream,
+  storageUploadStream,
   canBrowserReachStorageDirectly,
 } from "../storage";
+import { verifyUploadToken } from "./uploadToken";
+
+/**
+ * Streamed upload counterpart to the download proxy. The browser PUTs the raw
+ * file here (same origin — always reachable), and we stream it to S3/MinIO. Auth
+ * is a short-lived HMAC token (from chat.createUploadUrl) carrying the exact key
+ * + size cap, so no internet-reachable S3_PUBLIC_ENDPOINT is required.
+ *
+ * MUST be registered BEFORE express.json so the body stream isn't consumed.
+ */
+export function registerStorageUploadProxy(app: Express) {
+  app.put("/manus-storage-upload", (req, res) => {
+    void (async () => {
+      const token = typeof req.query.token === "string" ? req.query.token : "";
+      const p = verifyUploadToken(token);
+      if (!p) { res.status(403).json({ error: "无效或过期的上传凭证" }); return; }
+      const len = Number(req.headers["content-length"] || 0);
+      if (!Number.isFinite(len) || len <= 0) { res.status(411).json({ error: "缺少 Content-Length" }); return; }
+      if (len > p.maxBytes) { res.status(413).json({ error: "文件超过上限" }); return; }
+      try {
+        const { url } = await storageUploadStream(p.key, p.contentType, req, len);
+        res.json({ ok: true, url });
+      } catch (err) {
+        console.error("[StorageUpload] failed:", err);
+        if (!res.headersSent) res.status(502).json({ error: "上传到存储失败" });
+      }
+    })();
+  });
+}
 
 export function registerStorageProxy(app: Express) {
   app.get("/manus-storage/*", async (req, res) => {

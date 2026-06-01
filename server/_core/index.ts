@@ -8,7 +8,7 @@ import { createExpressMiddleware } from "@trpc/server/adapters/express";
 import { registerOAuthRoutes } from "./oauth";
 import { registerEmailAuthRoutes } from "./emailAuth";
 import { registerGoogleAuthRoutes } from "./googleAuth";
-import { registerStorageProxy } from "./storageProxy";
+import { registerStorageProxy, registerStorageUploadProxy } from "./storageProxy";
 import { registerVideoProxy } from "./videoProxy";
 import { registerImageProxy } from "./imageProxy";
 import { appRouter } from "../routers";
@@ -74,6 +74,10 @@ async function startServer() {
   // Trust the first proxy hop so req.ip reflects the real client IP from X-Forwarded-For.
   // This prevents IP spoofing via direct connections while supporting reverse-proxy deployments.
   app.set("trust proxy", 1);
+
+  // Streamed upload proxy must be registered BEFORE the body parsers so the raw
+  // file stream reaches S3/MinIO untouched (no 50MB JSON limit, no base64).
+  registerStorageUploadProxy(app);
 
   // Configure body parser with larger size limit for file uploads
   app.use(express.json({ limit: "50mb" }));

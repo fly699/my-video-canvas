@@ -2,7 +2,8 @@ import path from "path";
 import { z } from "zod";
 import { TRPCError } from "@trpc/server";
 import { router, protectedProcedure } from "../_core/trpc";
-import { storagePut, storagePresignPut, isStorageConfigured, canBrowserReachStorageDirectly, assertObjectStorageWritable } from "../storage";
+import { storagePut, storagePresignPut, isStorageConfigured, canBrowserReachStorageDirectly, assertObjectStorageWritable, finalizeStorageKey } from "../storage";
+import { signUploadToken } from "../_core/uploadToken";
 import { hashPassword, verifyPassword } from "../_core/scrypt";
 import {
   getOrCreateLobby,
@@ -368,20 +369,30 @@ export const chatRouter = router({
       const safeName = path.basename(input.filename).replace(/[^a-zA-Z0-9._-]/g, "_").slice(0, 120) || "file";
       const date = new Date().toISOString().slice(0, 10);
       const relKey = `chat/${conv.id}/${date}/${crypto.randomUUID()}-${safeName}`;
-      // No storage, or storage host unreachable by the browser (e.g. MinIO on
-      // 127.0.0.1) → upload through the app server via base64 instead of a
-      // presigned PUT the client can't reach.
-      if (!isStorageConfigured() || !canBrowserReachStorageDirectly()) {
-        // base64 rides the 50MB express body limit; base64 inflates ~4/3, so the
-        // real ceiling is ~36MB. Reject larger files here with an actionable
-        // message instead of letting Express return an unparseable HTML 413.
+      // Storage configured but the browser can't reach the host directly (typical
+      // internal MinIO, no S3_PUBLIC_ENDPOINT) → stream the upload THROUGH this
+      // server, mirroring the download proxy. No public endpoint or base64 cap.
+      if (isStorageConfigured() && !canBrowserReachStorageDirectly()) {
+        await assertObjectStorageWritable();
+        const key = finalizeStorageKey(relKey);
+        const token = signUploadToken({
+          key, conversationId: conv.id, userId: ctx.user.id,
+          maxBytes, contentType: input.mimeType, exp: Date.now() + 60 * 60 * 1000,
+        });
+        return {
+          mode: "proxy" as const,
+          uploadUrl: `/manus-storage-upload?token=${encodeURIComponent(token)}`,
+          key, url: `/manus-storage/${key}`, name: safeName, kind: kindFromMime(input.mimeType),
+        };
+      }
+      // No storage at all → base64 through tRPC (bounded by the 50MB body limit;
+      // base64 inflates ~4/3 → ~36MB ceiling). Reject larger with a clear message.
+      if (!isStorageConfigured()) {
         const BASE64_TRANSPORT_CAP = 36 * 1024 * 1024;
         if (input.size > BASE64_TRANSPORT_CAP) {
           throw new TRPCError({
             code: "BAD_REQUEST",
-            message: isStorageConfigured()
-              ? "对象存储已配置，但未设置公共端点 S3_PUBLIC_ENDPOINT，浏览器无法直传，超过约 36MB 的文件无法上传。请把 S3_PUBLIC_ENDPOINT 设为浏览器可访问的 MinIO/S3 地址后重启服务。"
-              : "未配置对象存储，单文件最大约 36MB。请配置 MinIO/S3（含 S3_PUBLIC_ENDPOINT），或改用加密会话传大文件。",
+            message: "未配置对象存储，单文件最大约 36MB。请配置 MinIO/S3，或改用加密会话传大文件。",
           });
         }
         return { mode: "base64" as const };
