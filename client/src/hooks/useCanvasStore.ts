@@ -70,6 +70,12 @@ interface CanvasStore {
   projectId: number | null;
   isDirty: boolean;
 
+  // IDs of nodes removed locally that may still have a DB row. The save loop
+  // deletes these server-side (reconciliation) so deletions survive a reload —
+  // previously only the context-menu delete hit the server, so removing a node
+  // via the Delete key left an orphan row that "resurrected" on next open.
+  deletedNodeIds: string[];
+
   // Undo/redo history
   past: HistorySnapshot[];
   future: HistorySnapshot[];
@@ -108,6 +114,7 @@ interface CanvasStore {
   removeCollaborator: (userId: number) => void;
   markClean: () => void;
   markDirty: () => void;
+  clearDeletedNodeIds: (ids: string[]) => void;
   resetCanvas: () => void;
   undo: () => void;
   redo: () => void;
@@ -130,6 +137,7 @@ export const useCanvasStore = create<CanvasStore>((set, get) => ({
   collaborators: new Map(),
   projectId: null,
   isDirty: false,
+  deletedNodeIds: [],
   past: [],
   future: [],
 
@@ -144,9 +152,13 @@ export const useCanvasStore = create<CanvasStore>((set, get) => ({
     const isStructural = changes.some(
       (c) => c.type === "add" || c.type === "remove"
     );
+    // Track removals (e.g. Delete/Backspace key) so the save can delete them
+    // server-side — applyNodeChanges only mutates local state.
+    const removedIds = changes.filter((c) => c.type === "remove").map((c) => (c as { id: string }).id);
     set((state) => ({
       ...(isStructural ? pushHistory(state) : {}),
       nodes: applyNodeChanges(changes, state.nodes) as CanvasNode[],
+      deletedNodeIds: removedIds.length ? [...state.deletedNodeIds, ...removedIds] : state.deletedNodeIds,
       isDirty: true,
     }));
   },
@@ -344,6 +356,7 @@ export const useCanvasStore = create<CanvasStore>((set, get) => ({
       ...pushHistory(state),
       nodes: state.nodes.filter((n) => n.id !== id),
       edges: state.edges.filter((e) => e.source !== id && e.target !== id),
+      deletedNodeIds: [...state.deletedNodeIds, id],
       isDirty: true,
     }));
   },
@@ -437,8 +450,9 @@ export const useCanvasStore = create<CanvasStore>((set, get) => ({
 
   markClean: () => set({ isDirty: false }),
   markDirty: () => set({ isDirty: true }),
+  clearDeletedNodeIds: (ids) => set((state) => ({ deletedNodeIds: state.deletedNodeIds.filter((x) => !ids.includes(x)) })),
   resetCanvas: () =>
-    set({ nodes: [], edges: [], selectedNodeIds: [], collaborators: new Map(), isDirty: false, past: [], future: [] }),
+    set({ nodes: [], edges: [], selectedNodeIds: [], collaborators: new Map(), isDirty: false, deletedNodeIds: [], past: [], future: [] }),
 
   undo: () => {
     const { past, nodes, edges, future } = get();

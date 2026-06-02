@@ -545,8 +545,15 @@ function CanvasInner({ projectId }: { projectId: number }) {
     setEdges(flowEdges);
   }, [dbEdges, dbNodes]);
 
+  // Restore the saved viewport ONCE on initial load. Previously this re-ran on
+  // every `project` refetch (e.g. after auto-save invalidates the query), which
+  // snapped the canvas back mid-pan — "画布自己突然移动". Canvas is keyed by
+  // projectId (remounts per project), so a per-mount ref guard is sufficient.
+  const viewportRestoredRef = useRef(false);
   useEffect(() => {
+    if (viewportRestoredRef.current) return;
     if (project?.viewportState) {
+      viewportRestoredRef.current = true;
       const vp = project.viewportState as { x: number; y: number; zoom: number };
       const tid = setTimeout(() => reactFlow.setViewport(vp), 100);
       return () => clearTimeout(tid);
@@ -557,6 +564,18 @@ function CanvasInner({ projectId }: { projectId: number }) {
   const saveCanvas = useCallback(async () => {
     if (!isDirty) return;
     try {
+      // Reconcile deletions: remove server rows for nodes deleted locally (incl.
+      // via the Delete key), so they don't resurrect on reload. Only clear the
+      // ones we successfully deleted, so a failure is retried next save.
+      const deletedIds = useCanvasStore.getState().deletedNodeIds;
+      if (deletedIds.length > 0) {
+        const done: string[] = [];
+        for (const id of deletedIds) {
+          try { await deleteNodeMutation.mutateAsync({ id, projectId }); done.push(id); }
+          catch (e) { console.error("[save] delete node failed:", id, e); }
+        }
+        if (done.length) useCanvasStore.getState().clearDeletedNodeIds(done);
+      }
       if (nodes.length > 0) {
         await batchUpsertNodes.mutateAsync(nodes.map((n) => ({
           id: n.id, projectId,
@@ -584,7 +603,7 @@ function CanvasInner({ projectId }: { projectId: number }) {
     } catch (err) {
       console.error("Auto-save failed:", err);
     }
-  }, [isDirty, nodes, edges, projectId, batchUpsertNodes, upsertEdge, updateProject, markClean, reactFlow]);
+  }, [isDirty, nodes, edges, projectId, batchUpsertNodes, upsertEdge, updateProject, markClean, reactFlow, deleteNodeMutation]);
 
   useEffect(() => {
     if (!isDirty) return;
