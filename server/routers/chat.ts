@@ -77,13 +77,15 @@ export async function postDownloadRequestToChannel(notice: {
 }): Promise<void> {
   try {
     const ch = await getOrCreateDownloadChannel();
+    // Leading [#DLREQ:<grantId>] marker lets the chat client render an inline
+    // approve control; it's stripped from the displayed text.
     const content =
-      `📥 下载申请 · grant #${notice.grantId}\n` +
+      `[#DLREQ:${notice.grantId}]\n` +
+      `📥 下载申请\n` +
       `申请人：${notice.requesterName ?? `用户${notice.userId}`}\n` +
       `文件：${notice.fileName ?? "（未知）"}${notice.fileType ? `（${notice.fileType}）` : ""}` +
       `${notice.projectName ? `\n项目：${notice.projectName}` : ""}` +
-      `${notice.reason ? `\n理由：${notice.reason}` : ""}\n` +
-      `→ 在左下角指示灯或「管理后台 · 下载审批」处理`;
+      `${notice.reason ? `\n理由：${notice.reason}` : ""}`;
     const msg = await insertConversationMessage({
       conversationId: ch.id, senderId: notice.userId,
       senderName: notice.requesterName ?? `用户${notice.userId}`, content,

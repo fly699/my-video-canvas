@@ -112,7 +112,7 @@ function ConvRow({ c, active, onClick }: { c: ConversationSummary; active: boole
         <span style={{ fontWeight: 600, fontSize: 13, color: C.t1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", display: "block" }}>{title}</span>
         {c.lastMessage && (
           <span style={{ fontSize: 11, color: C.t3, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", display: "block" }}>
-            {c.lastMessage.senderName}: {c.lastMessage.content || "[文件]"}
+            {c.lastMessage.senderName}: {c.lastMessage.content.replace(/^\[#DLREQ:\d+\]\n?/, "📥 ") || "[文件]"}
           </span>
         )}
       </span>
