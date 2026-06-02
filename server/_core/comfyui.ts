@@ -9,7 +9,7 @@
 // - 4 built-in templates: txt2img / img2img / animatediff / svd.
 
 import type { Server as SocketIOServer } from "socket.io";
-import { storagePut, resolveToAbsoluteUrl, assertMinioOnlyWrite } from "server/storage";
+import { storagePut, resolveToAbsoluteUrl, assertMinioOnlyWrite, isOwnStorageUrl } from "server/storage";
 import { assertSafeUrl } from "./videoEditor";
 import type { WorkflowParamBinding } from "@shared/types";
 
@@ -569,7 +569,9 @@ async function uploadImageToComfy(baseUrl: string, sourceUrl: string): Promise<s
   // Reject everything else including relative paths that could be re-resolved.
   let fetchUrl = sourceUrl;
   if (/^https?:\/\//i.test(sourceUrl)) {
-    assertSafeUrl(sourceUrl);
+    // Our own MinIO/S3 host may legitimately be on a private address — exempt it
+    // from the SSRF guard, same rationale as the /manus-storage/ branch below.
+    if (!isOwnStorageUrl(sourceUrl)) assertSafeUrl(sourceUrl);
   } else if (sourceUrl.startsWith("/manus-storage/")) {
     // node fetch() can't parse a relative path ("Failed to parse URL from
     // /manus-storage/…"). Resolve our trusted internal storage path to an

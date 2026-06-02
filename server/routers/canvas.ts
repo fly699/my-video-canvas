@@ -35,7 +35,7 @@ import {
   addChatMessagePair,
   clearChatMessages,
 } from "../db";
-import { storagePut, resolveToAbsoluteUrl, canBrowserReachStorageDirectly, storageBackend, assertObjectStorageWritable } from "../storage";
+import { storagePut, resolveToAbsoluteUrl, canBrowserReachStorageDirectly, storageBackend, assertObjectStorageWritable, isOwnStorageUrl } from "../storage";
 import { getCachedStorageSettings } from "../_core/storageConfig";
 import { invokeLLM, extractTextContent } from "../_core/llm";
 import { generateImage } from "../_core/imageGeneration";
@@ -72,6 +72,8 @@ async function assertTaskAccess(taskId: number, userId: number) {
 }
 
 function guardUrl(url: string): void {
+  // 自有 MinIO/S3 主机（常在内网，如 172.16.x.x）合法，豁免 SSRF 拦截。
+  if (isOwnStorageUrl(url)) return;
   try { assertSafeUrl(url); } catch {
     throw new TRPCError({ code: "BAD_REQUEST", message: "不允许访问私有/本地主机" });
   }
