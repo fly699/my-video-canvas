@@ -2,7 +2,7 @@ import { useState, useRef, useCallback } from "react";
 import { trpc } from "@/lib/trpc";
 import { toast } from "sonner";
 import { useCanvasStore } from "../../hooks/useCanvasStore";
-import { Upload, X, FileImage, FileVideo, FileAudio, File, Trash2, Plus, Loader2, Download, Check } from "lucide-react";
+import { Upload, X, FileImage, FileVideo, FileAudio, File, Trash2, Plus, Loader2, Download, Check, Play } from "lucide-react";
 import { ImageLightbox } from "./ImageLightbox";
 import { uploadAssetFile } from "@/lib/assetUpload";
 
@@ -24,6 +24,7 @@ export function AssetPanel({ projectId, onClose, onHeaderMouseDown }: Props) {
   const [typeFilter, setTypeFilter] = useState<TypeFilter>("");
   const [sourceFilter, setSourceFilter] = useState<SourceFilter>("");
   const [lightboxIdx, setLightboxIdx] = useState<number | null>(null);
+  const [videoPreview, setVideoPreview] = useState<string | null>(null);
   // Multi-select: set of asset ids. Click an item's body to toggle. Selected
   // items can be batch-added to the canvas, dragged together, or deleted.
   const [selected, setSelected] = useState<Set<number>>(new Set());
@@ -286,15 +287,27 @@ export function AssetPanel({ projectId, onClose, onHeaderMouseDown }: Props) {
                     {isSel && <Check className="w-3 h-3" style={{ color: "white" }} />}
                   </button>
 
-                  {/* Thumbnail (click an image to zoom in the lightbox) */}
+                  {/* Thumbnail — images zoom in the lightbox; videos show their
+                      first frame + a play badge and open a video preview. */}
                   <div
-                    className="w-10 h-10 rounded-lg overflow-hidden flex-shrink-0 flex items-center justify-center"
-                    style={{ background: `${accent}12`, border: `1px solid ${accent}25`, cursor: asset.type === "image" ? "zoom-in" : "default" }}
-                    onClick={asset.type === "image" ? () => { const i = imageUrls.indexOf(asset.url); if (i >= 0) setLightboxIdx(i); } : undefined}
-                    title={asset.type === "image" ? "点击放大" : undefined}
+                    className="relative w-10 h-10 rounded-lg overflow-hidden flex-shrink-0 flex items-center justify-center"
+                    style={{ background: `${accent}12`, border: `1px solid ${accent}25`, cursor: (asset.type === "image" || asset.type === "video") ? "zoom-in" : "default" }}
+                    onClick={
+                      asset.type === "image" ? () => { const i = imageUrls.indexOf(asset.url); if (i >= 0) setLightboxIdx(i); }
+                      : asset.type === "video" ? () => setVideoPreview(asset.url)
+                      : undefined
+                    }
+                    title={asset.type === "image" ? "点击放大" : asset.type === "video" ? "点击预览" : undefined}
                   >
                     {asset.type === "image" ? (
                       <img src={asset.url} alt={asset.name} className="w-full h-full object-cover" />
+                    ) : asset.type === "video" ? (
+                      <>
+                        <video src={asset.url} muted preload="metadata" className="w-full h-full object-cover" />
+                        <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
+                          <Play className="w-3.5 h-3.5 text-white" fill="white" style={{ filter: "drop-shadow(0 1px 2px rgba(0,0,0,0.6))" }} />
+                        </div>
+                      </>
                     ) : (
                       <Icon className="w-5 h-5" style={{ color: accent }} />
                     )}
@@ -400,6 +413,26 @@ export function AssetPanel({ projectId, onClose, onHeaderMouseDown }: Props) {
           onClose={() => setLightboxIdx(null)}
           onNavigate={setLightboxIdx}
         />
+      )}
+
+      {/* Video preview overlay */}
+      {videoPreview && (
+        <div
+          className="fixed inset-0 z-[120] flex items-center justify-center p-6"
+          style={{ background: "oklch(0 0 0 / 0.8)", backdropFilter: "blur(8px)" }}
+          onClick={() => setVideoPreview(null)}
+        >
+          <div className="relative" style={{ maxWidth: "90vw", maxHeight: "85vh" }} onClick={(e) => e.stopPropagation()}>
+            <video src={videoPreview} controls autoPlay style={{ maxWidth: "90vw", maxHeight: "85vh", borderRadius: 10, background: "#000" }} />
+            <button
+              onClick={() => setVideoPreview(null)}
+              className="absolute flex items-center justify-center"
+              style={{ top: -10, right: -10, width: 30, height: 30, borderRadius: "50%", background: "var(--c-elevated, #1a1a20)", border: "1px solid var(--c-bd2)", color: "var(--c-t1)", cursor: "pointer" }}
+            >
+              <X className="w-4 h-4" />
+            </button>
+          </div>
+        </div>
       )}
     </div>
   );
