@@ -480,6 +480,15 @@ export const assetsRouter = router({
       return { success: true };
     }),
 
+  // Bulk soft-delete (multi-select in the library). Each is user-scoped, so a
+  // caller can only delete their own assets even if foreign ids are mixed in.
+  deleteMany: protectedProcedure
+    .input(z.object({ ids: z.array(z.number()).min(1).max(500) }))
+    .mutation(async ({ ctx, input }) => {
+      for (const id of input.ids) await deleteAsset(id, ctx.user.id);
+      return { success: true, count: input.ids.length };
+    }),
+
   // External import: server-side download a remote URL (size-capped, SSRF-guarded),
   // re-host into the user's 专有仓库, and index it as source="external".
   importFromUrl: protectedProcedure

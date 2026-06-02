@@ -710,6 +710,15 @@ export async function deleteAsset(id: number, userId: number) {
   await db.update(assets).set({ deletedAt: new Date() }).where(and(eq(assets.id, id), eq(assets.userId, userId)));
 }
 
+// Admin soft-delete (no user scope) — used by the cross-user admin library.
+// Same soft-delete semantics: the row + MinIO object are kept.
+export async function deleteAssetAdmin(ids: number[]) {
+  if (ids.length === 0) return;
+  const db = await getDb();
+  if (!db) { if (DEV_MODE) { dev.devDeleteAssetAdmin(ids); return; } throw new Error("DB unavailable"); }
+  await db.update(assets).set({ deletedAt: new Date() }).where(inArray(assets.id, ids));
+}
+
 // ── Video Tasks ───────────────────────────────────────────────────────────────
 
 export async function createVideoTask(data: InsertVideoTask) {
