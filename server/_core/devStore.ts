@@ -630,7 +630,7 @@ let chatNextMsgId = 1;
 let chatNextAttachId = 1;
 let chatNextBanId = 1;
 let chatSettingsDev: ChatSettingsRow = {
-  id: 1, serverlessAllowed: true, lobbyEnabled: true, maxFileMb: 200, updatedAt: now(),
+  id: 1, serverlessAllowed: true, lobbyEnabled: true, maxFileMb: 5000, updatedAt: now(),
 };
 
 export function devGetOrCreateLobby(): ChatConversation {

@@ -439,7 +439,7 @@ export const chatSettings = mysqlTable("chat_settings", {
   id: int("id").autoincrement().primaryKey(),
   serverlessAllowed: boolean("serverlessAllowed").notNull().default(true),
   lobbyEnabled: boolean("lobbyEnabled").notNull().default(true),
-  maxFileMb: int("maxFileMb").notNull().default(200),
+  maxFileMb: int("maxFileMb").notNull().default(5000),
   updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
 });
 

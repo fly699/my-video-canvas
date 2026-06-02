@@ -218,6 +218,13 @@
       "when": 1780500500000,
       "tag": "0030_download_auth_toggle",
       "breakpoints": true
+    },
+    {
+      "idx": 31,
+      "version": "5",
+      "when": 1780500600000,
+      "tag": "0031_chat_max_file_5000",
+      "breakpoints": true
     }
   ]
 }
