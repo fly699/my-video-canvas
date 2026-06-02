@@ -8,6 +8,8 @@ import type { ComfyuiWorkflowNodeData, WorkflowParamBinding } from "../../../../
 import { trpc } from "@/lib/trpc";
 import { detectUpstreamImageUrl, resolveWorkflowImageParams } from "@/lib/comfyWorkflowParams";
 import { makeImageProxyFallback } from "@/lib/utils";
+import { isOwnStorageUrl } from "@/lib/ownStorage";
+import { ImageLightbox } from "../ImageLightbox";
 import { toast } from "sonner";
 import {
   Workflow, Loader2, Upload, X, ChevronDown, ChevronRight,
@@ -187,6 +189,7 @@ export const ComfyuiWorkflowNode = memo(function ComfyuiWorkflowNode({ id, selec
   const [showAdvanced, setShowAdvanced] = useState(false);
   const [syncOpen, setSyncOpen] = useState(false);
   const [editingBindings, setEditingBindings] = useState(false);
+  const [lightboxIdx, setLightboxIdx] = useState<number | null>(null);
   const [localBindings, setLocalBindings] = useState<WorkflowParamBinding[]>(payload.paramBindings ?? []);
 
   const update = useCallback((patch: Partial<ComfyuiWorkflowNodeData>, silent = false) => {
@@ -345,6 +348,7 @@ export const ComfyuiWorkflowNode = memo(function ComfyuiWorkflowNode({ id, selec
       selected={selected}
       nodeType="comfyui_workflow"
       title={data.title}
+      resizable
       onRun={handleRun}
       running={isProcessing}
       canRun={phase === "run" && !!payload.workflowJson?.trim()}
@@ -784,14 +788,22 @@ export const ComfyuiWorkflowNode = memo(function ComfyuiWorkflowNode({ id, selec
               /* Image grid */
               <div style={{ display: "grid", gridTemplateColumns: payload.outputUrls.length > 1 ? "1fr 1fr" : "1fr", gap: 6 }}>
                 {payload.outputUrls.map((url, i) => (
-                  <div key={i} style={{ position: "relative", paddingTop: "100%", borderRadius: 8, overflow: "hidden", background: "var(--c-input)" }}>
+                  <div key={i} className="nodrag" style={{ position: "relative", paddingTop: "100%", borderRadius: 8, overflow: "hidden", background: "var(--c-input)", cursor: "zoom-in" }} onClick={() => setLightboxIdx(i)} title="点击放大">
                     <img
                       src={url}
                       alt={`Output ${i + 1}`}
                       style={{ position: "absolute", inset: 0, width: "100%", height: "100%", objectFit: "contain" }}
+                      onError={makeImageProxyFallback(url)}
                     />
+                    {/* MinIO storage indicator (ComfyUI outputs are hard-locked to MinIO) */}
+                    {isOwnStorageUrl(url) && (
+                      <div
+                        title="已存储到 MinIO·长期有效"
+                        style={{ position: "absolute", top: 5, left: 5, width: 10, height: 10, borderRadius: "50%", background: "oklch(0.72 0.18 155)", boxShadow: "0 0 0 2.5px oklch(0.72 0.18 155 / 0.35)", pointerEvents: "none" }}
+                      />
+                    )}
                     <div style={{ position: "absolute", bottom: 4, right: 4, background: "rgba(0,0,0,0.5)", borderRadius: 4, padding: "2px 5px" }}>
-                      <a href={url} target="_blank" rel="noopener noreferrer" style={{ color: "#fff", fontSize: 10, textDecoration: "none" }}>
+                      <a href={url} target="_blank" rel="noopener noreferrer" onClick={(e) => e.stopPropagation()} style={{ color: "#fff", fontSize: 10, textDecoration: "none" }}>
                         <ImageIcon size={10} style={{ display: "inline", marginRight: 2 }} />
                         {i + 1}
                       </a>
@@ -803,6 +815,16 @@ export const ComfyuiWorkflowNode = memo(function ComfyuiWorkflowNode({ id, selec
           </div>
         )}
       </div>
+
+      {/* Lightbox — click an output image to enlarge / navigate */}
+      {lightboxIdx !== null && payload.outputType !== "video" && payload.outputUrls && payload.outputUrls.length > 0 && lightboxIdx < payload.outputUrls.length && (
+        <ImageLightbox
+          images={payload.outputUrls}
+          currentIndex={lightboxIdx}
+          onClose={() => setLightboxIdx(null)}
+          onNavigate={(idx) => setLightboxIdx(idx)}
+        />
+      )}
     </BaseNode>
   );
 });

@@ -451,7 +451,7 @@ export const ComfyuiImageNode = memo(function ComfyuiImageNode({ id, selected, d
   ) : null;
 
   return (
-    <BaseNode id={id} selected={selected} nodeType="comfyui_image" title={data.title} minHeight={320} heroMedia={heroMedia}
+    <BaseNode id={id} selected={selected} nodeType="comfyui_image" title={data.title} minHeight={320} resizable heroMedia={heroMedia}
       onRun={handleGenerate} running={genMutation.isPending} canRun={!!payload.prompt?.trim() && !!payload.ckpt?.trim()} hasResult={!!payload.imageUrl}>
       <div
         className="flex flex-col h-full p-3.5 gap-3 overflow-auto"
@@ -487,6 +487,13 @@ export const ComfyuiImageNode = memo(function ComfyuiImageNode({ id, selected, d
                     draggable={false}
                     onError={makeImageProxyFallback(url)}
                   />
+                  {isOwnStorageUrl(url) && (
+                    <div
+                      title="已存储到 MinIO·长期有效"
+                      className="absolute top-1 left-1 rounded-full pointer-events-none"
+                      style={{ width: 9, height: 9, background: "oklch(0.72 0.18 155)", boxShadow: "0 0 0 2px oklch(0.72 0.18 155 / 0.35)" }}
+                    />
+                  )}
                   {isSelected && (
                     <div
                       className="absolute top-1 right-1 rounded-full flex items-center justify-center"

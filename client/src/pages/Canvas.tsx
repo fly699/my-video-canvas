@@ -1849,7 +1849,7 @@ function CanvasInner({ projectId }: { projectId: number }) {
               ...(barEdge === "left" && { left: 20, top: `calc(50% + ${barAlong}px)`, transform: "translateY(-50%)" }),
               ...(barEdge === "right" && { right: 20, top: `calc(50% + ${barAlong}px)`, transform: "translateY(-50%)" }),
               cursor: "default",
-              background: "color-mix(in oklch, var(--c-base) 95%, transparent)",
+              background: "color-mix(in oklch, var(--c-base) 72%, transparent)",
               backdropFilter: "blur(24px)",
               border: "1px solid var(--c-bd2)",
               boxShadow: "var(--c-node-shadow-hover), 0 0 0 1px var(--c-bd2)",
