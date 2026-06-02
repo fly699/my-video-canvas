@@ -2,7 +2,7 @@ import { useState, useRef, useCallback } from "react";
 import { trpc } from "@/lib/trpc";
 import { toast } from "sonner";
 import { useCanvasStore } from "../../hooks/useCanvasStore";
-import { Upload, X, FileImage, FileVideo, FileAudio, File, Trash2, Plus, Loader2, Download, Check, Play } from "lucide-react";
+import { Upload, X, FileImage, FileVideo, FileAudio, File, Trash2, Plus, Loader2, Download, Check, Play, Filter, ChevronDown, ChevronUp } from "lucide-react";
 import { ImageLightbox } from "./ImageLightbox";
 import { uploadAssetFile } from "@/lib/assetUpload";
 import { downloadMedia } from "@/lib/download";
@@ -24,6 +24,7 @@ export function AssetPanel({ projectId, onClose, onHeaderMouseDown }: Props) {
   const [scope, setScope] = useState<"project" | "all">("project");
   const [typeFilter, setTypeFilter] = useState<TypeFilter>("");
   const [sourceFilter, setSourceFilter] = useState<SourceFilter>("");
+  const [filtersOpen, setFiltersOpen] = useState(false);
   const [lightboxIdx, setLightboxIdx] = useState<number | null>(null);
   const [videoPreview, setVideoPreview] = useState<string | null>(null);
   // Multi-select: set of asset ids. Click an item's body to toggle. Selected
@@ -209,8 +210,8 @@ export function AssetPanel({ projectId, onClose, onHeaderMouseDown }: Props) {
         </button>
       </div>
 
-      {/* ── Filters ── */}
-      <div className="px-3 py-2 flex flex-col gap-1.5 flex-shrink-0" style={{ borderBottom: "1px solid var(--c-elevated)" }}>
+      {/* ── Filters (collapsible — collapsed by default to save space) ── */}
+      <div className="px-3 py-1.5 flex flex-col gap-1.5 flex-shrink-0" style={{ borderBottom: "1px solid var(--c-elevated)" }}>
         {(() => {
           const chip = (active: boolean): React.CSSProperties => ({
             fontSize: 10, padding: "2px 8px", borderRadius: 999, cursor: "pointer",
@@ -218,22 +219,40 @@ export function AssetPanel({ projectId, onClose, onHeaderMouseDown }: Props) {
             background: active ? "oklch(0.65 0.18 285 / 0.12)" : "transparent",
             color: active ? "oklch(0.72 0.16 285)" : "var(--c-t3)",
           });
+          const typeLabel = ({ "": "全部", image: "图片", video: "视频", audio: "音频", other: "其他" } as Record<string, string>)[typeFilter];
+          const srcLabel = ({ "": "全来源", upload: "上传", generated: "生成", external: "外部" } as Record<string, string>)[sourceFilter];
+          const summary = `${scope === "all" ? "全部项目" : "本项目"} · ${typeLabel} · ${srcLabel}`;
           return (
             <>
-              <div className="flex items-center gap-1">
-                <button style={chip(scope === "project")} onClick={() => setScope("project")}>本项目</button>
-                <button style={chip(scope === "all")} onClick={() => setScope("all")}>全部项目</button>
-              </div>
-              <div className="flex items-center gap-1 flex-wrap">
-                {([["", "全部"], ["image", "图片"], ["video", "视频"], ["audio", "音频"], ["other", "其他"]] as [TypeFilter, string][]).map(([v, l]) => (
-                  <button key={v} style={chip(typeFilter === v)} onClick={() => setTypeFilter(v)}>{l}</button>
-                ))}
-              </div>
-              <div className="flex items-center gap-1 flex-wrap">
-                {([["", "全来源"], ["upload", "上传"], ["generated", "生成"], ["external", "外部"]] as [SourceFilter, string][]).map(([v, l]) => (
-                  <button key={v} style={chip(sourceFilter === v)} onClick={() => setSourceFilter(v)}>{l}</button>
-                ))}
-              </div>
+              <button
+                onClick={() => setFiltersOpen((v) => !v)}
+                className="flex items-center justify-between w-full"
+                style={{ background: "transparent", border: "none", cursor: "pointer", color: "var(--c-t3)", fontSize: 11, padding: "1px 0" }}
+              >
+                <span className="truncate" style={{ display: "flex", alignItems: "center", gap: 5 }}>
+                  <Filter className="w-3 h-3" style={{ flexShrink: 0 }} />
+                  <span className="truncate">{summary}</span>
+                </span>
+                {filtersOpen ? <ChevronUp className="w-3.5 h-3.5 flex-shrink-0" /> : <ChevronDown className="w-3.5 h-3.5 flex-shrink-0" />}
+              </button>
+              {filtersOpen && (
+                <div className="flex flex-col gap-1.5 pt-0.5">
+                  <div className="flex items-center gap-1">
+                    <button style={chip(scope === "project")} onClick={() => setScope("project")}>本项目</button>
+                    <button style={chip(scope === "all")} onClick={() => setScope("all")}>全部项目</button>
+                  </div>
+                  <div className="flex items-center gap-1 flex-wrap">
+                    {([["", "全部"], ["image", "图片"], ["video", "视频"], ["audio", "音频"], ["other", "其他"]] as [TypeFilter, string][]).map(([v, l]) => (
+                      <button key={v} style={chip(typeFilter === v)} onClick={() => setTypeFilter(v)}>{l}</button>
+                    ))}
+                  </div>
+                  <div className="flex items-center gap-1 flex-wrap">
+                    {([["", "全来源"], ["upload", "上传"], ["generated", "生成"], ["external", "外部"]] as [SourceFilter, string][]).map(([v, l]) => (
+                      <button key={v} style={chip(sourceFilter === v)} onClick={() => setSourceFilter(v)}>{l}</button>
+                    ))}
+                  </div>
+                </div>
+              )}
             </>
           );
         })()}
@@ -255,7 +274,9 @@ export function AssetPanel({ projectId, onClose, onHeaderMouseDown }: Props) {
             </p>
           </div>
         ) : (
-          <div className="space-y-1">
+          // Auto multi-column thumbnail grid — adapts to panel width; file names
+          // are hidden (shown on hover + as title) to stay compact.
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(64px, 1fr))", gap: 6 }}>
             {assets.map((asset) => {
               const Icon = getIcon(asset.type);
               const accent = getAccent(asset.type);
@@ -268,100 +289,61 @@ export function AssetPanel({ projectId, onClose, onHeaderMouseDown }: Props) {
                     e.dataTransfer.setData("application/x-asset-list", dragPayload(asset));
                     e.dataTransfer.effectAllowed = "copy";
                   }}
-                  className="group relative flex items-center gap-2.5 p-2 rounded-lg transition-all"
+                  className="group relative rounded-lg overflow-hidden transition-all"
                   style={{
-                    background: isSel ? "oklch(0.65 0.18 285 / 0.12)" : "transparent",
-                    border: isSel ? "1px solid oklch(0.65 0.18 285 / 0.35)" : "1px solid transparent",
-                    cursor: "grab",
+                    aspectRatio: "1 / 1",
+                    background: `${accent}10`,
+                    border: isSel ? "1.5px solid oklch(0.65 0.18 285)" : "1px solid var(--c-bd1)",
+                    cursor: (asset.type === "image" || asset.type === "video") ? "zoom-in" : "grab",
                   }}
-                  title="拖拽到画布添加为节点"
-                  onMouseEnter={(e) => { if (!isSel) (e.currentTarget as HTMLElement).style.background = "var(--c-surface)"; }}
-                  onMouseLeave={(e) => { if (!isSel) (e.currentTarget as HTMLElement).style.background = "transparent"; }}
+                  title={asset.name}
+                  onClick={() => {
+                    if (selected.size > 0) { toggleSelect(asset.id); return; } // selecting mode → toggle
+                    if (asset.type === "image") { const i = imageUrls.indexOf(asset.url); if (i >= 0) setLightboxIdx(i); }
+                    else if (asset.type === "video") setVideoPreview(asset.url);
+                  }}
                 >
-                  {/* Selection checkbox — overlaid on the thumbnail corner so it
-                      never reserves row width. Hidden until hover, or while a
-                      selection is active, or when this row itself is selected. */}
+                  {/* Thumbnail fill */}
+                  {asset.type === "image" ? (
+                    <img src={asset.url} alt={asset.name} className="w-full h-full object-cover" draggable={false} />
+                  ) : asset.type === "video" ? (
+                    <>
+                      <video src={asset.url} muted preload="metadata" className="w-full h-full object-cover" />
+                      <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
+                        <Play className="w-4 h-4 text-white" fill="white" style={{ filter: "drop-shadow(0 1px 2px rgba(0,0,0,0.6))" }} />
+                      </div>
+                    </>
+                  ) : (
+                    <div className="w-full h-full flex items-center justify-center"><Icon className="w-6 h-6" style={{ color: accent }} /></div>
+                  )}
+
+                  {/* Selection checkbox (top-left; visible on hover / when selecting) */}
                   <button
                     onClick={(e) => { e.stopPropagation(); toggleSelect(asset.id); }}
                     title={isSel ? "取消选择" : "选择"}
-                    className={`absolute top-1.5 left-1.5 z-10 w-4 h-4 rounded flex items-center justify-center transition-opacity ${isSel || selected.size > 0 ? "opacity-100" : "opacity-0 group-hover:opacity-100"}`}
-                    style={{
-                      border: `1.5px solid ${isSel ? "oklch(0.65 0.18 285)" : "oklch(1 0 0 / 0.6)"}`,
-                      background: isSel ? "oklch(0.65 0.18 285)" : "oklch(0 0 0 / 0.55)",
-                    }}
+                    className={`absolute top-1 left-1 z-10 w-4 h-4 rounded flex items-center justify-center transition-opacity ${isSel || selected.size > 0 ? "opacity-100" : "opacity-0 group-hover:opacity-100"}`}
+                    style={{ border: `1.5px solid ${isSel ? "oklch(0.65 0.18 285)" : "oklch(1 0 0 / 0.6)"}`, background: isSel ? "oklch(0.65 0.18 285)" : "oklch(0 0 0 / 0.55)" }}
                   >
                     {isSel && <Check className="w-3 h-3" style={{ color: "white" }} />}
                   </button>
 
-                  {/* Thumbnail — images zoom in the lightbox; videos show their
-                      first frame + a play badge and open a video preview. */}
-                  <div
-                    className="relative w-10 h-10 rounded-lg overflow-hidden flex-shrink-0 flex items-center justify-center"
-                    style={{ background: `${accent}12`, border: `1px solid ${accent}25`, cursor: (asset.type === "image" || asset.type === "video") ? "zoom-in" : "default" }}
-                    onClick={
-                      asset.type === "image" ? () => { const i = imageUrls.indexOf(asset.url); if (i >= 0) setLightboxIdx(i); }
-                      : asset.type === "video" ? () => setVideoPreview(asset.url)
-                      : undefined
-                    }
-                    title={asset.type === "image" ? "点击放大" : asset.type === "video" ? "点击预览" : undefined}
-                  >
-                    {asset.type === "image" ? (
-                      <img src={asset.url} alt={asset.name} className="w-full h-full object-cover" />
-                    ) : asset.type === "video" ? (
-                      <>
-                        <video src={asset.url} muted preload="metadata" className="w-full h-full object-cover" />
-                        <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
-                          <Play className="w-3.5 h-3.5 text-white" fill="white" style={{ filter: "drop-shadow(0 1px 2px rgba(0,0,0,0.6))" }} />
-                        </div>
-                      </>
-                    ) : (
-                      <Icon className="w-5 h-5" style={{ color: accent }} />
-                    )}
+                  {/* Hover overlay: name (bottom) + actions (top-right) */}
+                  <div className="absolute inset-x-0 bottom-0 px-1.5 py-1 opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none"
+                    style={{ background: "linear-gradient(to top, oklch(0 0 0 / 0.75), transparent)" }}>
+                    <p className="text-[9.5px] leading-tight truncate text-white">{asset.name}</p>
                   </div>
-
-                  {/* Info (click to toggle selection) */}
-                  <div className="flex-1 min-w-0" style={{ cursor: "pointer" }} onClick={() => toggleSelect(asset.id)}>
-                    <p className="text-xs font-medium truncate" style={{ color: "var(--c-t2)" }}>
-                      {asset.name}
-                    </p>
-                    <p className="text-[10px] mt-0.5 truncate" style={{ color: "var(--c-t4)" }}>
-                      {asset.source === "generated" ? `生成${asset.provider ? "·" + asset.provider : ""}` : asset.source === "external" ? "外部" : "上传"}
-                      {asset.model ? ` · ${asset.model}` : ""}
-                      {" · "}{asset.size ? `${(asset.size / 1024).toFixed(0)} KB` : "—"}
-                    </p>
-                  </div>
-
-                  {/* Actions */}
-                  <div className="flex items-center gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity">
-                    <button
-                      title="下载"
-                      className="w-6 h-6 rounded-md flex items-center justify-center transition-all"
-                      style={{ color: "var(--c-t3)" }}
-                      onClick={(e) => { e.stopPropagation(); void downloadMedia(asset.url, asset.name, asset.type === "video" ? "video" : "image", asset.id); }}
-                      onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.background = "oklch(0.68 0.18 240 / 0.15)"; (e.currentTarget as HTMLElement).style.color = "oklch(0.70 0.16 240)"; }}
-                      onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.background = "transparent"; (e.currentTarget as HTMLElement).style.color = "var(--c-t3)"; }}
-                    >
-                      <Download className="w-3.5 h-3.5" />
+                  <div className="absolute top-1 right-1 flex items-center gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity">
+                    <button title="下载" className="w-5 h-5 rounded flex items-center justify-center" style={{ background: "oklch(0 0 0 / 0.55)", color: "white" }}
+                      onClick={(e) => { e.stopPropagation(); void downloadMedia(asset.url, asset.name, asset.type === "video" ? "video" : "image", asset.id); }}>
+                      <Download className="w-3 h-3" />
                     </button>
-                    <button
-                      onClick={() => handleAddToCanvas(asset)}
-                      title="添加到画布"
-                      className="w-6 h-6 rounded-md flex items-center justify-center transition-all"
-                      style={{ color: "var(--c-t3)" }}
-                      onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.background = "oklch(0.72 0.18 155 / 0.15)"; (e.currentTarget as HTMLElement).style.color = "oklch(0.72 0.18 155)"; }}
-                      onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.background = "transparent"; (e.currentTarget as HTMLElement).style.color = "var(--c-t3)"; }}
-                    >
-                      <Plus className="w-3.5 h-3.5" />
+                    <button title="添加到画布" className="w-5 h-5 rounded flex items-center justify-center" style={{ background: "oklch(0 0 0 / 0.55)", color: "white" }}
+                      onClick={(e) => { e.stopPropagation(); handleAddToCanvas(asset); }}>
+                      <Plus className="w-3 h-3" />
                     </button>
-                    <button
-                      onClick={() => { if (confirm("确认删除此素材？")) deleteMutation.mutate({ id: asset.id }); }}
-                      title="删除"
-                      className="w-6 h-6 rounded-md flex items-center justify-center transition-all"
-                      style={{ color: "var(--c-t3)" }}
-                      onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.background = "oklch(0.62 0.20 25 / 0.15)"; (e.currentTarget as HTMLElement).style.color = "oklch(0.62 0.20 25)"; }}
-                      onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.background = "transparent"; (e.currentTarget as HTMLElement).style.color = "var(--c-t3)"; }}
-                    >
-                      <Trash2 className="w-3.5 h-3.5" />
+                    <button title="删除" className="w-5 h-5 rounded flex items-center justify-center" style={{ background: "oklch(0 0 0 / 0.55)", color: "oklch(0.78 0.16 25)" }}
+                      onClick={(e) => { e.stopPropagation(); if (confirm("确认删除此素材？")) deleteMutation.mutate({ id: asset.id }); }}>
+                      <Trash2 className="w-3 h-3" />
                     </button>
                   </div>
                 </div>
