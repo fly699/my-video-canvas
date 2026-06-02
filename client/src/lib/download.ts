@@ -27,8 +27,20 @@ export function mediaFetchUrl(rawUrl: string, download = false, proxy: MediaProx
  * triggers the real (streamed) download when the body is actually a media file;
  * otherwise it surfaces a toast.
  */
-export async function downloadMedia(rawUrl: string, filename: string, proxy: MediaProxyKind = "video"): Promise<void> {
+// ── Download authorization gate (pluggable) ──────────────────────────────────
+// When strict download authorization is on, a top-level component registers a
+// gate here (it has tRPC access). The gate returns false to block the download
+// (and shows a "申请下载" prompt itself). When unregistered / feature off, it's a
+// transparent no-op so downloads behave exactly as before.
+type DownloadGate = (rawUrl: string, assetId?: number) => Promise<boolean>;
+let _gate: DownloadGate | null = null;
+export function setDownloadGate(fn: DownloadGate | null): void { _gate = fn; }
+
+export async function downloadMedia(rawUrl: string, filename: string, proxy: MediaProxyKind = "video", assetId?: number): Promise<void> {
   if (!rawUrl) { toast.error("没有可下载的文件"); return; }
+  if (_gate) {
+    try { if (!(await _gate(rawUrl, assetId))) return; } catch { /* gate failure → fall through (server still enforces) */ }
+  }
   const url = mediaFetchUrl(rawUrl, true, proxy);
 
   // Internal storage URLs are stable and don't expire — download directly without

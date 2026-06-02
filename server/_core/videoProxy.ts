@@ -9,6 +9,7 @@
  */
 import type { Express } from "express";
 import { isRequestAuthenticated } from "./context";
+import { authorizeDownload } from "./downloadAuth";
 
 const BLOCKED_HOSTS = [
   "localhost",
@@ -61,6 +62,12 @@ export function registerVideoProxy(app: Express) {
     if (!isAllowedUrl(decodedUrl)) {
       res.status(403).send("URL not allowed");
       return;
+    }
+
+    // Strict download authorization (when enabled) — only on the download path.
+    if (req.query.download !== undefined) {
+      const ok = await authorizeDownload(req, res, { rawUrl: decodedUrl });
+      if (!ok) return;
     }
 
     const MAX_VIDEO_BYTES = 500 * 1024 * 1024; // 500 MB

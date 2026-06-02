@@ -6,7 +6,7 @@ import { Shield, Trash2, Plus, ToggleLeft, ToggleRight, ClipboardList, RefreshCw
 import { ComfyStressPanel } from "@/components/admin/ComfyStressPanel";
 
 type EntryType = "ip" | "user";
-type Tab = "whitelist" | "logs" | "storage" | "chat" | "comfyStress" | "assets" | "system";
+type Tab = "whitelist" | "logs" | "storage" | "chat" | "comfyStress" | "assets" | "downloads" | "system";
 
 const ACTION_LABELS: Record<string, string> = {
   login_email: "邮箱登录",
@@ -111,7 +111,7 @@ export default function AdminPage() {
 
         {/* Tabs */}
         <div style={{ display: "flex", gap: "4px", marginBottom: "20px", borderBottom: "1px solid rgba(255,255,255,0.06)", paddingBottom: "0" }}>
-          {([["whitelist", "白名单管理"], ["logs", "操作日志"], ["storage", "存储设置"], ["chat", "聊天管理"], ["comfyStress", "ComfyUI 压测"], ["assets", "素材库(全用户)"], ["system", "系统更新"]] as [Tab, string][]).map(([tab, label]) => (
+          {([["whitelist", "白名单管理"], ["logs", "操作日志"], ["storage", "存储设置"], ["chat", "聊天管理"], ["comfyStress", "ComfyUI 压测"], ["assets", "素材库(全用户)"], ["downloads", "下载审批"], ["system", "系统更新"]] as [Tab, string][]).map(([tab, label]) => (
             <button
               key={tab}
               onClick={() => setActiveTab(tab)}
@@ -146,6 +146,7 @@ export default function AdminPage() {
         {activeTab === "chat" && <ChatAdminPanel />}
         {activeTab === "comfyStress" && <ComfyStressPanel />}
         {activeTab === "assets" && <AssetsAdminPanel />}
+        {activeTab === "downloads" && <DownloadsAdminPanel />}
         {activeTab === "system" && <SystemUpdatePanel />}
       </div>
     </div>
@@ -1166,6 +1167,76 @@ const paginBtn: React.CSSProperties = {
   borderRadius: "7px", background: "rgba(255,255,255,0.04)",
   color: "var(--c-t1, #f0f0f4)", fontSize: "13px", cursor: "pointer",
 };
+
+// ── Downloads approval panel ──────────────────────────────────────────────────
+function DownloadsAdminPanel() {
+  const utils = trpc.useUtils();
+  const [status, setStatus] = useState<"pending" | "active" | "revoked" | "denied" | "">("pending");
+  const { data: grants, isFetching } = trpc.admin.downloads.list.useQuery({ status: status || undefined, limit: 300 });
+  const decideMut = trpc.admin.downloads.decide.useMutation({ onSuccess: () => void utils.admin.downloads.list.invalidate() });
+  const revokeMut = trpc.admin.downloads.revoke.useMutation({ onSuccess: () => void utils.admin.downloads.list.invalidate() });
+
+  const chip = (active: boolean): React.CSSProperties => ({
+    fontSize: 12, padding: "4px 11px", borderRadius: 999, cursor: "pointer",
+    border: `1px solid ${active ? "oklch(0.72 0.2 285)" : "rgba(255,255,255,0.12)"}`,
+    background: active ? "oklch(0.72 0.2 285 / 0.15)" : "transparent",
+    color: active ? "oklch(0.78 0.16 285)" : "var(--c-t2, rgba(255,255,255,0.55))",
+  });
+  const statusColor = (s: string) => s === "pending" ? "oklch(0.8 0.16 85)" : s === "active" ? "oklch(0.72 0.18 155)" : s === "denied" ? "oklch(0.7 0.18 25)" : "var(--c-t3,rgba(255,255,255,0.4))";
+  const statusLabel = (s: string) => ({ pending: "待审批", active: "已授权", revoked: "已撤销", denied: "已拒绝" } as Record<string, string>)[s] ?? s;
+
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+      <div style={{ fontSize: 12.5, color: "var(--c-t2, rgba(255,255,255,0.55))", lineHeight: 1.6 }}>
+        严格下载授权由部署级开关 <code style={{ background: "rgba(255,255,255,0.08)", padding: "1px 5px", borderRadius: 4 }}>DOWNLOAD_AUTH</code> 控制。开启后，非管理员下载原文件须持「一次性授权」——可在此审批用户申请，或主动按文件/项目授权。每张授权对每个文件仅可下载一次。
+      </div>
+      <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+        {([["pending", "待审批"], ["active", "已授权"], ["denied", "已拒绝"], ["revoked", "已撤销"], ["", "全部"]] as const).map(([v, l]) => (
+          <button key={v} style={chip(status === v)} onClick={() => setStatus(v)}>{l}</button>
+        ))}
+      </div>
+      <div style={{ fontSize: 12, color: "var(--c-t3, rgba(255,255,255,0.4))" }}>{isFetching ? "加载中…" : `${grants?.length ?? 0} 条`}</div>
+      <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+        {(grants ?? []).map((g) => (
+          <div key={g.id} style={{ display: "flex", alignItems: "center", gap: 12, padding: "10px 12px", borderRadius: 8, border: "1px solid rgba(255,255,255,0.08)", background: "rgba(255,255,255,0.02)" }}>
+            <div style={{ flex: 1, minWidth: 0 }}>
+              <div style={{ fontSize: 13, color: "var(--c-t1,#f0f0f4)" }}>
+                <span style={{ color: statusColor(g.status), fontWeight: 600 }}>{statusLabel(g.status)}</span>
+                {" · "}用户 u{g.userId}
+                {" · "}{g.origin === "request" ? "用户申请" : "管理员授权"}
+                {" · "}{g.scope === "asset" ? "单文件" : "整个项目"}
+              </div>
+              <div style={{ fontSize: 11, color: "var(--c-t3,rgba(255,255,255,0.4))", marginTop: 2, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                {g.scope === "asset" ? (g.storageKey ?? `assetId ${g.assetId ?? "?"}`) : `projectId ${g.projectId ?? "?"}`}
+                {g.reason ? ` · 理由：${g.reason}` : ""}{g.note ? ` · 备注：${g.note}` : ""}
+              </div>
+            </div>
+            <div style={{ display: "flex", gap: 6, flexShrink: 0 }}>
+              {g.status === "pending" && (
+                <>
+                  <button disabled={decideMut.isPending} onClick={() => decideMut.mutate({ grantId: g.id, approve: true })}
+                    style={{ fontSize: 12, padding: "5px 11px", borderRadius: 7, border: "1px solid oklch(0.6 0.16 155 / 0.5)", background: "oklch(0.6 0.16 155 / 0.12)", color: "oklch(0.74 0.18 155)", cursor: "pointer" }}>批准</button>
+                  <button disabled={decideMut.isPending} onClick={() => decideMut.mutate({ grantId: g.id, approve: false })}
+                    style={{ fontSize: 12, padding: "5px 11px", borderRadius: 7, border: "1px solid oklch(0.6 0.16 25 / 0.5)", background: "transparent", color: "oklch(0.74 0.18 25)", cursor: "pointer" }}>拒绝</button>
+                </>
+              )}
+              {g.status === "active" && (
+                <button disabled={revokeMut.isPending} onClick={() => revokeMut.mutate({ grantId: g.id })}
+                  style={{ fontSize: 12, padding: "5px 11px", borderRadius: 7, border: "1px solid rgba(255,255,255,0.15)", background: "transparent", color: "var(--c-t2,rgba(255,255,255,0.55))", cursor: "pointer" }}>撤销</button>
+              )}
+            </div>
+          </div>
+        ))}
+        {(grants ?? []).length === 0 && !isFetching && (
+          <div style={{ fontSize: 12.5, color: "var(--c-t3,rgba(255,255,255,0.4))", padding: "16px 0", textAlign: "center" }}>暂无记录</div>
+        )}
+      </div>
+      {(decideMut.error || revokeMut.error) && (
+        <div style={{ fontSize: 11.5, color: "oklch(0.7 0.18 25)" }}>{(decideMut.error || revokeMut.error)?.message}</div>
+      )}
+    </div>
+  );
+}
 
 // ── Admin asset lightbox (click-to-enlarge) ──────────────────────────────────
 type AdminAsset = { id: number; name: string; type: string; url: string; userId: number; source: string | null; provider: string | null; model: string | null };

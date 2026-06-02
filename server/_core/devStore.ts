@@ -38,6 +38,7 @@ import type {
   ChatBan,
   InsertChatBan,
   ChatSettingsRow,
+  DownloadGrant,
 } from "../../drizzle/schema";
 
 let nextId = 100;
@@ -870,4 +871,67 @@ export function devGetChatSettings(): ChatSettingsRow {
 export function devSetChatSettings(patch: Partial<Pick<ChatSettingsRow, "serverlessAllowed" | "lobbyEnabled" | "maxFileMb">>): ChatSettingsRow {
   chatSettingsDev = { ...chatSettingsDev, ...patch, updatedAt: now() };
   return chatSettingsDev;
+}
+
+// ── Download authorization (in-memory) ──────────────────────────────────────
+const downloadGrantsMap = new Map<number, DownloadGrant>();
+const downloadConsumptions: Array<{ grantId: number; storageKey: string }> = [];
+
+export function devGetAssetByStorageKey(storageKey: string): { id: number; userId: number; projectId: number | null } | null {
+  for (const a of Array.from(assetsMap.values())) {
+    if (a.storageKey === storageKey && a.deletedAt == null) return { id: a.id, userId: a.userId, projectId: a.projectId };
+  }
+  return null;
+}
+
+export function devCreateDownloadGrant(input: {
+  userId: number; scope: "asset" | "project"; storageKey?: string | null; assetId?: number | null; projectId?: number | null;
+  reason?: string | null; note?: string | null; origin: "request" | "admin"; status: "pending" | "active";
+  createdBy: number; decidedBy?: number; decidedAt?: Date; expiresAt?: Date | null;
+}): DownloadGrant {
+  const id = newId();
+  const g: DownloadGrant = {
+    id, userId: input.userId, origin: input.origin, scope: input.scope,
+    storageKey: input.storageKey ?? null, assetId: input.assetId ?? null, projectId: input.projectId ?? null,
+    status: input.status, reason: input.reason ?? null, note: input.note ?? null,
+    createdBy: input.createdBy, decidedBy: input.decidedBy ?? null, decidedAt: input.decidedAt ?? null,
+    expiresAt: input.expiresAt ?? null, createdAt: now(),
+  };
+  downloadGrantsMap.set(id, g);
+  return g;
+}
+
+export function devUpdateDownloadGrant(id: number, patch: Partial<DownloadGrant>): void {
+  const g = downloadGrantsMap.get(id);
+  if (g) downloadGrantsMap.set(id, { ...g, ...patch });
+}
+
+export function devListDownloadGrants(filter: { status?: string; userId?: number; limit?: number; offset?: number } = {}): DownloadGrant[] {
+  let rows = Array.from(downloadGrantsMap.values());
+  if (filter.status) rows = rows.filter((g) => g.status === filter.status);
+  if (filter.userId) rows = rows.filter((g) => g.userId === filter.userId);
+  rows.sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime());
+  const off = filter.offset ?? 0;
+  return rows.slice(off, off + Math.min(filter.limit ?? 200, 500));
+}
+
+export function devFindUsableDownloadGrant(input: { userId: number; storageKey: string; assetId?: number | null; projectId?: number | null }): DownloadGrant | null {
+  const nowT = Date.now();
+  const consumed = new Set(downloadConsumptions.filter((c) => c.storageKey === input.storageKey).map((c) => c.grantId));
+  for (const g of Array.from(downloadGrantsMap.values())) {
+    if (g.userId !== input.userId || g.status !== "active") continue;
+    if (g.expiresAt && g.expiresAt.getTime() < nowT) continue;
+    if (consumed.has(g.id)) continue;
+    const covers = g.scope === "asset"
+      ? (g.storageKey === input.storageKey || (input.assetId != null && g.assetId === input.assetId))
+      : (input.projectId != null && g.projectId === input.projectId);
+    if (covers) return g;
+  }
+  return null;
+}
+
+export function devConsumeDownloadGrant(grantId: number, _userId: number, storageKey: string, _assetId: number | null): boolean {
+  if (downloadConsumptions.some((c) => c.grantId === grantId && c.storageKey === storageKey)) return false;
+  downloadConsumptions.push({ grantId, storageKey });
+  return true;
 }
