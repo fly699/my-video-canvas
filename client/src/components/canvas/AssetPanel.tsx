@@ -261,7 +261,7 @@ export function AssetPanel({ projectId, onClose, onHeaderMouseDown }: Props) {
                     e.dataTransfer.setData("application/x-asset-list", dragPayload(asset));
                     e.dataTransfer.effectAllowed = "copy";
                   }}
-                  className="group flex items-center gap-2.5 p-2 rounded-lg transition-all"
+                  className="group relative flex items-center gap-2.5 p-2 rounded-lg transition-all"
                   style={{
                     background: isSel ? "oklch(0.65 0.18 285 / 0.12)" : "transparent",
                     border: isSel ? "1px solid oklch(0.65 0.18 285 / 0.35)" : "1px solid transparent",
@@ -271,14 +271,16 @@ export function AssetPanel({ projectId, onClose, onHeaderMouseDown }: Props) {
                   onMouseEnter={(e) => { if (!isSel) (e.currentTarget as HTMLElement).style.background = "var(--c-surface)"; }}
                   onMouseLeave={(e) => { if (!isSel) (e.currentTarget as HTMLElement).style.background = "transparent"; }}
                 >
-                  {/* Selection checkbox */}
+                  {/* Selection checkbox — overlaid on the thumbnail corner so it
+                      never reserves row width. Hidden until hover, or while a
+                      selection is active, or when this row itself is selected. */}
                   <button
                     onClick={(e) => { e.stopPropagation(); toggleSelect(asset.id); }}
                     title={isSel ? "取消选择" : "选择"}
-                    className="w-4 h-4 rounded flex items-center justify-center flex-shrink-0 transition-all"
+                    className={`absolute top-1.5 left-1.5 z-10 w-4 h-4 rounded flex items-center justify-center transition-opacity ${isSel || selected.size > 0 ? "opacity-100" : "opacity-0 group-hover:opacity-100"}`}
                     style={{
-                      border: `1.5px solid ${isSel ? "oklch(0.65 0.18 285)" : "var(--c-bd3)"}`,
-                      background: isSel ? "oklch(0.65 0.18 285)" : "transparent",
+                      border: `1.5px solid ${isSel ? "oklch(0.65 0.18 285)" : "oklch(1 0 0 / 0.6)"}`,
+                      background: isSel ? "oklch(0.65 0.18 285)" : "oklch(0 0 0 / 0.55)",
                     }}
                   >
                     {isSel && <Check className="w-3 h-3" style={{ color: "white" }} />}

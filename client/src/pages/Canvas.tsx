@@ -849,6 +849,10 @@ function CanvasInner({ projectId }: { projectId: number }) {
   // `asset` node per item at the cursor, staggered so a multi-select batch
   // fans out instead of stacking.
   const handleAssetDrop = useCallback((e: React.DragEvent) => {
+    // If a node's reference drop zone already consumed this drop (it calls
+    // preventDefault), don't ALSO spawn an asset node on the canvas — that was
+    // the "dropped into a node but a duplicate appears on the canvas" bug.
+    if (e.defaultPrevented) return;
     const raw = e.dataTransfer.getData("application/x-asset-list");
     if (!raw) return;
     e.preventDefault();
