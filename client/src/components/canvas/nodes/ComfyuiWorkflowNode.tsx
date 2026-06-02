@@ -358,6 +358,19 @@ export const ComfyuiWorkflowNode = memo(function ComfyuiWorkflowNode({ id, selec
 
       <div style={{ display: "flex", flexDirection: "column", gap: 10, padding: "2px 0" }}>
 
+        {/* Config area — collapses when the node is deselected (results stay
+            visible below), matching the other media nodes. */}
+        <div
+          style={{
+            display: "flex", flexDirection: "column", gap: 10,
+            overflow: "hidden",
+            maxHeight: selected ? "9999px" : "0px",
+            transition: selected
+              ? "max-height 220ms cubic-bezier(0.23, 1, 0.32, 1)"
+              : "max-height 160ms cubic-bezier(0.77, 0, 0.175, 1)",
+          }}
+        >
+
         {/* Server URL */}
         <div>
           <label style={labelStyle}>
@@ -745,7 +758,9 @@ export const ComfyuiWorkflowNode = memo(function ComfyuiWorkflowNode({ id, selec
           </div>
         )}
 
-        {/* ── Results ── */}
+        </div>{/* end collapsible config */}
+
+        {/* ── Results ── (always visible, even when config is collapsed) */}
         {payload.status === "done" && payload.outputUrls && payload.outputUrls.length > 0 && (
           <div>
             <label style={{ ...labelStyle, marginBottom: 6 }}>
@@ -897,6 +912,13 @@ function ImageParamField({
           <ImageIcon size={10} /> 用上游图填入
         </button>
       )}
+      <input
+        ref={fileRef}
+        type="file"
+        accept="image/*"
+        style={{ display: "none" }}
+        onChange={(e) => { const f = e.target.files?.[0]; e.target.value = ""; if (f) void doUploadFile(f); }}
+      />
     </div>
   );
 }
