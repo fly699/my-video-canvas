@@ -2,6 +2,7 @@ import { useEffect, useCallback } from "react";
 import { createPortal } from "react-dom";
 import { X, ChevronLeft, ChevronRight, Check, Download } from "lucide-react";
 import { makeImageProxyFallback } from "@/lib/utils";
+import { downloadMedia } from "@/lib/download";
 
 interface ImageLightboxProps {
   images: string[];
@@ -43,15 +44,7 @@ export function ImageLightbox({
   }, [handleKeyDown]);
 
   const handleDownload = () => {
-    const a = document.createElement("a");
-    const filename = `generated-${currentIndex + 1}.png`;
-    if (currentUrl.startsWith("/") || currentUrl.startsWith(window.location.origin)) {
-      a.href = currentUrl;
-    } else {
-      a.href = `/api/image-proxy?url=${encodeURIComponent(currentUrl)}&download=1`;
-    }
-    a.download = filename;
-    a.click();
+    void downloadMedia(currentUrl, `generated-${currentIndex + 1}.png`, "image");
   };
 
   return createPortal(

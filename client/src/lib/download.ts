@@ -6,9 +6,12 @@ import { toast } from "sonner";
  * directly by the storage proxy. `download` appends the flag that makes the
  * server send `Content-Disposition: attachment`.
  */
-export function mediaFetchUrl(rawUrl: string, download = false): string {
+export type MediaProxyKind = "video" | "image";
+
+export function mediaFetchUrl(rawUrl: string, download = false, proxy: MediaProxyKind = "video"): string {
   if (/^https?:\/\//i.test(rawUrl)) {
-    return `/api/video-proxy?url=${encodeURIComponent(rawUrl)}${download ? "&download=1" : ""}`;
+    const ep = proxy === "image" ? "/api/image-proxy" : "/api/video-proxy";
+    return `${ep}?url=${encodeURIComponent(rawUrl)}${download ? "&download=1" : ""}`;
   }
   if (download && rawUrl.startsWith("/")) {
     return rawUrl + (rawUrl.includes("?") ? "&" : "?") + "download=1";
@@ -24,9 +27,9 @@ export function mediaFetchUrl(rawUrl: string, download = false): string {
  * triggers the real (streamed) download when the body is actually a media file;
  * otherwise it surfaces a toast.
  */
-export async function downloadMedia(rawUrl: string, filename: string): Promise<void> {
+export async function downloadMedia(rawUrl: string, filename: string, proxy: MediaProxyKind = "video"): Promise<void> {
   if (!rawUrl) { toast.error("没有可下载的文件"); return; }
-  const url = mediaFetchUrl(rawUrl, true);
+  const url = mediaFetchUrl(rawUrl, true, proxy);
 
   // Internal storage URLs are stable and don't expire — download directly without
   // a preflight (the storage proxy doesn't support Range, so a probe would pull
@@ -64,9 +67,9 @@ export async function downloadMedia(rawUrl: string, filename: string): Promise<v
 }
 
 /** Convenience onClick handler for an existing `<a>`/button download control. */
-export function onDownloadMedia(rawUrl: string, filename: string) {
+export function onDownloadMedia(rawUrl: string, filename: string, proxy: MediaProxyKind = "video") {
   return (e: { preventDefault: () => void }) => {
     e.preventDefault();
-    void downloadMedia(rawUrl, filename);
+    void downloadMedia(rawUrl, filename, proxy);
   };
 }

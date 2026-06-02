@@ -9,6 +9,7 @@ import { toast } from "sonner";
 import { Sparkles, Loader2, RefreshCw, Upload, X, Cpu, Check, Grid2X2, Download, ZoomIn, ChevronDown, ChevronRight, Lock, Unlock, ImagePlus, HardDriveDownload } from "lucide-react";
 import { useLocalMedia } from "@/lib/useLocalMedia";
 import { cacheMedia } from "@/lib/mediaCache";
+import { downloadMedia } from "@/lib/download";
 import { ImageLightbox } from "../ImageLightbox";
 import { makeImageProxyFallback } from "@/lib/utils";
 import { RefImageReachabilityBadge, RefImageSwitchButton, useRefImageGuard, usePreferUpstreamRefSource, useAutoPreferUpstreamRefSource } from "../mediaReachability";
@@ -293,17 +294,7 @@ export const ImageGenNode = memo(function ImageGenNode({ id, selected, data }: P
   };
 
   const handleDownloadImage = (url: string) => {
-    if (!url) return;
-    const a = document.createElement("a");
-    const filename = `generated-${Date.now()}.png`;
-    // Same-origin check: must start with single "/" (not protocol-relative "//host/...") or origin prefix
-    const isSameOrigin = (url.startsWith("/") && !url.startsWith("//")) || url.startsWith(window.location.origin);
-    a.href = isSameOrigin ? url : `/api/image-proxy?url=${encodeURIComponent(url)}&download=1`;
-    a.download = filename;
-    // Firefox requires <a> in DOM for download to trigger
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
+    void downloadMedia(url, `generated-${Date.now()}.png`, "image");
   };
 
   const handleDownloadSelected = () => handleDownloadImage(payload.imageUrl ?? "");

@@ -31,6 +31,7 @@ import { FilmstripPanel } from "../components/canvas/FilmstripPanel";
 import { TimelinePanel } from "../components/canvas/TimelinePanel";
 import { isConnectionValid } from "../lib/connectionRules";
 import { listNodeTemplates, saveNodeTemplate, deleteNodeTemplate } from "../lib/nodeTemplates";
+import { downloadMedia } from "@/lib/download";
 import { BeginnerGuide, ConnectionHintsPanel } from "../components/canvas/BeginnerGuide";
 import { HelpPanel } from "../components/canvas/HelpPanel";
 import { CollaborationPanel } from "../components/canvas/CollaborationPanel";
@@ -824,15 +825,8 @@ function CanvasInner({ projectId }: { projectId: number }) {
       const url = p.imageUrl as string;
       await new Promise<void>((resolve) => {
         setTimeout(() => {
-          const a = document.createElement("a");
           const filename = `${node.data.title.replace(/[^a-zA-Z0-9一-龥]/g, "_")}-${i + 1}.png`;
-          if (url.startsWith("/") || url.startsWith(window.location.origin)) {
-            a.href = url;
-          } else {
-            a.href = `/api/image-proxy?url=${encodeURIComponent(url)}&download=1`;
-          }
-          a.download = filename;
-          a.click();
+          void downloadMedia(url, filename, "image");
           resolve();
         }, i * 150);
       });
