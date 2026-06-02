@@ -540,3 +540,49 @@ export const poyoBalanceSnapshots = mysqlTable("poyoBalanceSnapshots", {
 
 export type PoyoBalanceSnapshot = typeof poyoBalanceSnapshots.$inferSelect;
 export type InsertPoyoBalanceSnapshot = typeof poyoBalanceSnapshots.$inferInsert;
+
+// ── Download authorization (strict approval + one-time consumption) ──────────
+// 严格鉴权模型：除管理员外，任何人（含文件所有者）下载原文件都必须持有一张
+// 可消费的授权。授权来源有二——① 用户申请→管理员批准；② 管理员主动批量授权
+// （按单文件 / 按整个项目）给某用户。每张授权对「每个文件」只允许成功下载一次。
+export const downloadGrants = mysqlTable("download_grants", {
+  id: int("id").autoincrement().primaryKey(),
+  userId: int("userId").notNull(),                                   // 被授权人（grantee）
+  origin: mysqlEnum("origin", ["request", "admin"]).notNull(),       // 用户申请 / 管理员主动
+  scope: mysqlEnum("scope", ["asset", "project"]).notNull(),         // 单文件 / 整个项目
+  storageKey: varchar("storageKey", { length: 512 }),                // scope=asset
+  assetId: int("assetId"),                                           // scope=asset（已知时）
+  projectId: int("projectId"),                                       // scope=project
+  status: mysqlEnum("status", ["pending", "active", "revoked", "denied"]).notNull().default("pending"),
+  reason: varchar("reason", { length: 500 }),                        // 用户申请理由（origin=request）
+  note: varchar("note", { length: 500 }),                            // 管理员备注
+  createdBy: int("createdBy").notNull(),                             // 申请人 或 操作管理员
+  decidedBy: int("decidedBy"),                                       // 审批的管理员
+  decidedAt: timestamp("decidedAt"),
+  expiresAt: timestamp("expiresAt"),                                 // 可选有效期
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+}, (t) => ({
+  userStatusIdx: index("dl_grant_user_status_idx").on(t.userId, t.status),
+  statusIdx: index("dl_grant_status_idx").on(t.status),
+  projectIdx: index("dl_grant_project_idx").on(t.projectId),
+}));
+
+export type DownloadGrant = typeof downloadGrants.$inferSelect;
+export type InsertDownloadGrant = typeof downloadGrants.$inferInsert;
+
+// 一次性消费台账：每成功下载一个文件写一行；(grantId, storageKey) 唯一约束在
+// 数据库层强制「每张授权对每个文件只能下载一次」，并发安全。也是下载审计来源。
+export const downloadConsumptions = mysqlTable("download_consumptions", {
+  id: int("id").autoincrement().primaryKey(),
+  grantId: int("grantId").notNull(),
+  userId: int("userId").notNull(),
+  storageKey: varchar("storageKey", { length: 512 }).notNull(),
+  assetId: int("assetId"),
+  servedAt: timestamp("servedAt").defaultNow().notNull(),
+}, (t) => ({
+  grantFileUniq: uniqueIndex("dl_consume_grant_file_uniq").on(t.grantId, t.storageKey),
+  userIdx: index("dl_consume_user_idx").on(t.userId),
+}));
+
+export type DownloadConsumption = typeof downloadConsumptions.$inferSelect;
+export type InsertDownloadConsumption = typeof downloadConsumptions.$inferInsert;
