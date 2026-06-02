@@ -4,6 +4,7 @@
 
 import { ENV } from "./_core/env";
 import { S3Client, PutObjectCommand, GetObjectCommand } from "@aws-sdk/client-s3";
+import { Upload } from "@aws-sdk/lib-storage";
 import type { Readable } from "node:stream";
 import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
 // NOTE: storageConfig imports isS3Configured from this module; both directions
@@ -236,6 +237,32 @@ export async function storagePut(
     throw new Error(`Storage upload to S3 failed (${uploadResp.status})`);
   }
 
+  return { key, url: `/manus-storage/${key}` };
+}
+
+/**
+ * Stream a (potentially very large) body straight to S3/MinIO via multipart
+ * upload — only one part (~8 MB) is held in memory at a time, so the whole file
+ * never gets buffered. Used to re-host large upstream videos without risking
+ * server OOM. MinIO/S3 ONLY: multipart isn't available on the Forge presign
+ * path, so callers must fall back to the upstream URL when not on S3.
+ */
+export async function storagePutStream(
+  relKey: string,
+  body: Readable,
+  contentType = "application/octet-stream",
+): Promise<{ key: string; url: string }> {
+  if (storageBackend() !== "s3") {
+    throw new Error("storagePutStream requires the S3/MinIO backend");
+  }
+  const key = appendHashSuffix(normalizeKey(relKey));
+  const upload = new Upload({
+    client: getS3(),
+    params: { Bucket: ENV.s3Bucket, Key: key, Body: body, ContentType: contentType },
+    partSize: 8 * 1024 * 1024, // 8 MB parts
+    queueSize: 4,              // up to 4 parts in flight → ~32 MB peak memory
+  });
+  await upload.done();
   return { key, url: `/manus-storage/${key}` };
 }
 
