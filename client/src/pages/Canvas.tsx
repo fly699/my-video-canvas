@@ -299,6 +299,26 @@ function MobileToolDivider() {
 }
 
 // ── Canvas inner ──────────────────────────────────────────────────────────────
+// The DB columns a node persists to. Used both to build the upsert payload and to
+// compute a per-node signature for diff-based saving (only write nodes that this
+// session actually changed — so a stale/concurrent session can't re-create a node
+// it never touched, which previously "resurrected" deleted nodes).
+function nodeUpsertFields(n: CanvasNode) {
+  return {
+    type: n.data.nodeType,
+    title: n.data.title,
+    data: n.data.payload as Record<string, unknown>,
+    posX: n.position.x,
+    posY: n.position.y,
+    width: (n.style?.width as number) ?? 320,
+    height: (n.style?.height as number | undefined) ?? 0,
+    zIndex: n.zIndex ?? 0,
+  };
+}
+function nodeSig(n: CanvasNode): string {
+  return JSON.stringify(nodeUpsertFields(n));
+}
+
 function CanvasInner({ projectId }: { projectId: number }) {
   const { user, isAuthenticated, logout } = useAuth();
   const [, navigate] = useLocation();
@@ -459,6 +479,9 @@ function CanvasInner({ projectId }: { projectId: number }) {
   // it. Reset per project because Canvas is keyed by projectId (remounts).
   const nodesLoadedRef = useRef(false);
   const edgesLoadedRef = useRef(false);
+  // Baseline of what each node looked like at last successful save/load (id → sig).
+  // saveCanvas upserts only nodes whose sig changed and deletes ids that vanished.
+  const savedNodeSigsRef = useRef<Map<string, string>>(new Map());
 
   // ── Data loading ────────────────────────────────────────────────────────────
   const { data: project, isLoading: projectLoading, isError: projectError } = trpc.projects.get.useQuery(
@@ -478,13 +501,6 @@ function CanvasInner({ projectId }: { projectId: number }) {
   const upsertEdge = trpc.edges.upsert.useMutation();
   const deleteNodeMutation = trpc.nodes.delete.useMutation({
     onError: (e) => toast.error("删除节点失败（服务端拒绝）：" + e.message),
-    onSuccess: (r) => {
-      // Diagnostic: a 200 that removed 0 rows means the id/projectId didn't match
-      // any DB row — the node would then "resurrect" on reload. Surface it loudly.
-      if (r && typeof r.deleted === "number" && r.deleted === 0) {
-        toast.error("删除请求成功但库中 0 行被删除（ID/项目不匹配）——这就是删除后又出现的原因。请把这条提示截图给我。", { duration: 12000 });
-      }
-    },
   });
   const deleteEdgeMutation = trpc.edges.delete.useMutation();
   const updateProject = trpc.projects.update.useMutation({
@@ -533,6 +549,8 @@ function CanvasInner({ projectId }: { projectId: number }) {
       };
     });
     setNodes(flowNodes);
+    // Seed the save baseline so unchanged loaded nodes are never re-upserted.
+    savedNodeSigsRef.current = new Map(flowNodes.map((n) => [n.id, nodeSig(n)]));
   }, [dbNodes]);
 
   useEffect(() => {
@@ -588,32 +606,23 @@ function CanvasInner({ projectId }: { projectId: number }) {
     if (isReadOnly) return; // read-only collaborators must never write (server also rejects)
     if (!isDirty) return;
     try {
-      // Reconcile deletions: remove server rows for nodes deleted locally (incl.
-      // via the Delete key), so they don't resurrect on reload. Only clear the
-      // ones we successfully deleted, so a failure is retried next save.
-      const deletedIds = useCanvasStore.getState().deletedNodeIds;
-      if (deletedIds.length > 0) {
-        const done: string[] = [];
-        for (const id of deletedIds) {
-          try { await deleteNodeMutation.mutateAsync({ id, projectId }); done.push(id); }
-          catch (e) { console.error("[save] delete node failed:", id, e); }
-        }
-        if (done.length) useCanvasStore.getState().clearDeletedNodeIds(done);
+      // ── Diff-based node save ──────────────────────────────────────────────
+      // Upsert ONLY nodes whose signature changed since last save/load, and
+      // delete ids that vanished from local state. Two wins:
+      //  1. A stale/concurrent session won't re-upsert nodes it didn't touch, so
+      //     it can't "resurrect" a node another session deleted.
+      //  2. Deletion is by diff — robust to any delete path (Delete key, menu, …).
+      const currentSigs = new Map(nodes.map((n) => [n.id, nodeSig(n)]));
+      const baseline = savedNodeSigsRef.current;
+      const toUpsert = nodes.filter((n) => baseline.get(n.id) !== currentSigs.get(n.id));
+      const toDelete = Array.from(baseline.keys()).filter((id) => !currentSigs.has(id));
+      let allDeleted = true;
+      for (const id of toDelete) {
+        try { await deleteNodeMutation.mutateAsync({ id, projectId }); }
+        catch (e) { allDeleted = false; console.error("[save] delete node failed:", id, e); }
       }
-      if (nodes.length > 0) {
-        await batchUpsertNodes.mutateAsync(nodes.map((n) => ({
-          id: n.id, projectId,
-          type: n.data.nodeType,
-          title: n.data.title,
-          data: n.data.payload as Record<string, unknown>,
-          posX: n.position.x, posY: n.position.y,
-          width: (n.style?.width as number) ?? 320,
-          // 0 = "no explicit height" sentinel — load logic treats this as
-          // content-driven (matches addNode behavior). Real user-resized
-          // values are positive and are preserved across reload.
-          height: (n.style?.height as number | undefined) ?? 0,
-          zIndex: n.zIndex ?? 0,
-        })));
+      if (toUpsert.length > 0) {
+        await batchUpsertNodes.mutateAsync(toUpsert.map((n) => ({ id: n.id, projectId, ...nodeUpsertFields(n) })));
       }
       for (const edge of edges) {
         await upsertEdge.mutateAsync({
@@ -623,9 +632,10 @@ function CanvasInner({ projectId }: { projectId: number }) {
         });
       }
       await updateProject.mutateAsync({ id: projectId, viewportState: reactFlow.getViewport() });
-      // Only mark clean if every deletion was reconciled; otherwise stay dirty so
-      // the next save retries the failed deletes (don't silently drop them).
-      if (useCanvasStore.getState().deletedNodeIds.length === 0) markClean();
+      // Commit the new baseline so the next save only diffs against what we just
+      // persisted. Only mark clean if all deletions landed (else retry next save).
+      savedNodeSigsRef.current = currentSigs;
+      if (allDeleted) markClean();
     } catch (err) {
       console.error("Auto-save failed:", err);
       toast.error("保存失败：" + (err instanceof Error ? err.message : String(err)));
