@@ -18,6 +18,7 @@ import { Server as SocketIOServer } from "socket.io";
 import { setupVideoTaskPoller } from "../videoTaskPoller";
 import { setComfySocketIO } from "./comfyui";
 import { setStressSocketIO, STRESS_ROOM } from "./comfyStress";
+import { setDownloadSocketIO, ADMIN_ROOM } from "./downloadNotify";
 import { sdk } from "./sdk";
 import { ENV } from "./env";
 import { getProjectAccess, isChatMember } from "../db";
@@ -180,6 +181,10 @@ async function startServer() {
       if (user.role === "admin") socket.join(STRESS_ROOM);
     });
     socket.on("comfystress:unsubscribe", () => { socket.leave(STRESS_ROOM); });
+
+    // Admins auto-join the notifications room so new download requests reach
+    // them in-app (anywhere — canvas, library, etc.) for on-the-spot approval.
+    if (user.role === "admin") socket.join(ADMIN_ROOM);
 
     socket.on("join-project", async (data: { projectId: number; userName: string; color: string }) => {
       try {
@@ -383,6 +388,7 @@ async function startServer() {
   // ── ComfyUI progress relay ────────────────────────────────────────────────
   setComfySocketIO(io);
   setStressSocketIO(io);
+  setDownloadSocketIO(io);
 
   // ── Video task background poller ───────────────────────────────────────────
   setupVideoTaskPoller(io);

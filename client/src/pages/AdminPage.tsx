@@ -1240,6 +1240,8 @@ function DownloadsAdminPanel() {
                 {" · "}{g.scope === "asset" ? "单文件" : "整个项目"}
                 {g.projectName ? ` · 项目：${g.projectName}` : ""}
                 {g.reason ? ` · 理由：${g.reason}` : ""}{g.note ? ` · 备注：${g.note}` : ""}
+                {" · 申请："}{new Date(g.createdAt).toLocaleString("zh-CN")}
+                {g.status === "active" && g.expiresAt ? ` · 有效期至：${new Date(g.expiresAt).toLocaleString("zh-CN")}` : ""}
               </div>
             </div>
             <div style={{ display: "flex", gap: 6, flexShrink: 0, alignItems: "center" }}>
@@ -1251,7 +1253,10 @@ function DownloadsAdminPanel() {
                   <button disabled={busy} onClick={() => decideMut.mutate({ grantId: g.id, approve: true })} style={btn("oklch(0.74 0.18 155)", "oklch(0.6 0.16 155 / 0.12)")}>批准</button>
                   <button disabled={busy} onClick={() => decideMut.mutate({ grantId: g.id, approve: false })} style={btn("oklch(0.74 0.18 25)")}>拒绝</button>
                   {g.projectId != null && (
-                    <button disabled={busy} title="一次性授权该用户下载这个项目的全部文件" onClick={() => grantMut.mutate({ userId: g.userId, scope: "project", projectId: g.projectId!, note: "审批时授权整个项目" })} style={btn("oklch(0.72 0.2 285)")}>授权整个项目</button>
+                    <button disabled={busy} title="一次性授权该用户下载这个项目的全部文件（并结掉本申请）" onClick={() => grantMut.mutate(
+                      { userId: g.userId, scope: "project", projectId: g.projectId!, note: "审批时授权整个项目" },
+                      { onSuccess: () => decideMut.mutate({ grantId: g.id, approve: true }) }, // resolve the pending request too
+                    )} style={btn("oklch(0.72 0.2 285)")}>授权整个项目</button>
                   )}
                 </>
               )}
