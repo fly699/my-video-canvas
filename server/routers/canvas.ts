@@ -2101,10 +2101,12 @@ export const comfyuiRouter = router({
           endPercent: z.number().min(0).max(1).optional(),
           preprocessor: z.string().max(128).optional(),
         }).optional(),
-        // Optional IPAdapter style/face reference.
+        // Optional IPAdapter style/face reference(s). Supports multiple images
+        // (multi-image conditioning, chained server-side).
         ipadapter: z.object({
           model: z.string().min(1).max(255),
           imageUrl: z.string().min(1).max(2048),
+          imageUrls: z.array(z.string().min(1).max(2048)).max(8).optional(),
           clipVision: z.string().max(255).optional(),
           weight: z.number().min(0).max(2).optional(),
         }).optional(),

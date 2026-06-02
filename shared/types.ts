@@ -591,7 +591,8 @@ export interface ComfyuiControlNet {
 
 export interface ComfyuiIPAdapter {
   model: string;
-  imageUrl: string;
+  imageUrl: string;                 // primary reference (back-compat; mirrors imageUrls[0])
+  imageUrls?: string[];             // multi-image style/face conditioning (chained server-side)
   clipVision?: string;
   weight?: number;
 }

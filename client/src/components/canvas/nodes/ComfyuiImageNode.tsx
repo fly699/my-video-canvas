@@ -140,7 +140,7 @@ export const ComfyuiImageNode = memo(function ComfyuiImageNode({ id, selected, d
     onSuccess: (result) => {
       setUploading(false);
       if (!useCanvasStore.getState().nodes.some((n) => n.id === id)) return;
-      const cur = useCanvasStore.getState().nodes.find((n) => n.id === id)?.data as ComfyuiImageNodeData | undefined;
+      const cur = useCanvasStore.getState().nodes.find((n) => n.id === id)?.data.payload as ComfyuiImageNodeData | undefined;
       if (uploadTargetRef.current === "mask") {
         updateNodeData(id, { maskUrl: result.url });
       } else if (uploadTargetRef.current === "controlnet") {
@@ -149,7 +149,9 @@ export const ComfyuiImageNode = memo(function ComfyuiImageNode({ id, selected, d
         toast.success("ControlNet 图像上传成功");
       } else if (uploadTargetRef.current === "ipadapter") {
         const p = cur?.ipadapter;
-        updateNodeData(id, { ipadapter: { model: p?.model ?? "", clipVision: p?.clipVision, weight: p?.weight, imageUrl: result.url } });
+        const prev = p?.imageUrls?.length ? p.imageUrls : (p?.imageUrl ? [p.imageUrl] : []);
+        const next = [...prev, result.url];
+        updateNodeData(id, { ipadapter: { model: p?.model ?? "", clipVision: p?.clipVision, weight: p?.weight, imageUrl: next[0], imageUrls: next } });
         toast.success("IPAdapter 参考图上传成功");
       } else {
         updateNodeData(id, { referenceImageUrl: result.url });
