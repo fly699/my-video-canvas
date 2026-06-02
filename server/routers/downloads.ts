@@ -6,6 +6,7 @@ import { writeAuditLog } from "../_core/auditLog";
 import { toInternalStoragePath } from "../storage";
 import { isDownloadAuthEnabled } from "../_core/storageConfig";
 import { notifyAdminsOfDownloadRequest } from "../_core/downloadNotify";
+import { postDownloadRequestToChannel } from "./chat";
 
 /** Bare storage key from a URL/path (own-storage → key; external → the URL). */
 function keyOf(url: string): string {
@@ -62,11 +63,13 @@ export const downloadsRouter = router({
       // Push to online admins for on-the-spot approval (best-effort).
       const meta = await db.getAssetMetaForGrant(asset?.id ?? input.assetId ?? null, storageKey).catch(() => null);
       const proj = meta?.projectId != null ? await db.getProjectByIdRaw(meta.projectId).catch(() => null) : null;
-      notifyAdminsOfDownloadRequest({
+      const noticeBase = {
         grantId: grant.id, userId: ctx.user.id, requesterName: ctx.user.name ?? null,
         fileName: meta?.name ?? storageKey.split("/").pop() ?? null, fileType: meta?.type ?? null,
-        projectName: proj?.name ?? null, reason: input.reason ?? null, createdAt: Date.now(),
-      });
+        projectName: proj?.name ?? null, reason: input.reason ?? null,
+      };
+      notifyAdminsOfDownloadRequest({ ...noticeBase, createdAt: Date.now() });
+      void postDownloadRequestToChannel(noticeBase); // also log into the chat "下载审批" channel
       return grant;
     }),
 
