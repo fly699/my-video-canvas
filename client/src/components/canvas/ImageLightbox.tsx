@@ -10,7 +10,9 @@ interface ImageLightboxProps {
   selectedUrl?: string;
   onClose: () => void;
   onNavigate: (index: number) => void;
-  onSelect: (url: string) => void;
+  /** Optional: when omitted, the "select this image" action is hidden — the
+   *  lightbox becomes a plain zoomable viewer (asset / reference-image previews). */
+  onSelect?: (url: string) => void;
 }
 
 const accent = "oklch(0.72 0.20 330)";
@@ -27,7 +29,7 @@ export function ImageLightbox({
   onSelect,
 }: ImageLightboxProps) {
   const currentUrl = images[currentIndex];
-  const isSelected = currentUrl === selectedUrl;
+  const isSelected = !!onSelect && currentUrl === selectedUrl;
   const hasPrev = currentIndex > 0;
   const hasNext = currentIndex < images.length - 1;
 
@@ -80,7 +82,7 @@ export function ImageLightbox({
       if (e.key === "Escape") onClose();
       if (e.key === "ArrowLeft" && hasPrev) onNavigate(currentIndex - 1);
       if (e.key === "ArrowRight" && hasNext) onNavigate(currentIndex + 1);
-      if (e.key === "Enter") onSelect(currentUrl);
+      if (e.key === "Enter") onSelect?.(currentUrl);
       if ((e.key === "+" || e.key === "=")) setScale((s) => clamp(s * 1.2, MIN_SCALE, MAX_SCALE));
       if (e.key === "-") setScale((s) => { const n = clamp(s / 1.2, MIN_SCALE, MAX_SCALE); if (n === MIN_SCALE) { setTx(0); setTy(0); } return n; });
       if (e.key === "0") resetZoom();
@@ -164,21 +166,23 @@ export function ImageLightbox({
               <Download style={{ width: 12, height: 12 }} />
               下载
             </button>
-            {/* Select */}
-            <button
-              onClick={() => onSelect(currentUrl)}
-              className="flex items-center gap-1 px-2.5 py-1 rounded-md text-xs font-medium transition-all"
-              style={{
-                background: isSelected ? `oklch(0.72 0.20 330 / 0.2)` : "var(--c-bd1)",
-                borderWidth: 1, borderStyle: "solid",
-                borderColor: isSelected ? `oklch(0.72 0.20 330 / 0.5)` : "var(--c-bd3)",
-                color: isSelected ? accent : "var(--c-t2)",
-                cursor: "pointer",
-              }}
-            >
-              <Check style={{ width: 12, height: 12 }} />
-              {isSelected ? "已选择" : "选择此图"}
-            </button>
+            {/* Select (only when a select handler is provided) */}
+            {onSelect && (
+              <button
+                onClick={() => onSelect(currentUrl)}
+                className="flex items-center gap-1 px-2.5 py-1 rounded-md text-xs font-medium transition-all"
+                style={{
+                  background: isSelected ? `oklch(0.72 0.20 330 / 0.2)` : "var(--c-bd1)",
+                  borderWidth: 1, borderStyle: "solid",
+                  borderColor: isSelected ? `oklch(0.72 0.20 330 / 0.5)` : "var(--c-bd3)",
+                  color: isSelected ? accent : "var(--c-t2)",
+                  cursor: "pointer",
+                }}
+              >
+                <Check style={{ width: 12, height: 12 }} />
+                {isSelected ? "已选择" : "选择此图"}
+              </button>
+            )}
             {/* Close */}
             <button
               onClick={onClose}

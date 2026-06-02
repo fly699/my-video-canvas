@@ -100,6 +100,7 @@ export const ImageGenNode = memo(function ImageGenNode({ id, selected, data }: P
   useAutoPreferUpstreamRefSource({ nodeId: id, refImageUrl: payload.referenceImageUrl, enabled: preferUpstreamRef, onSwitch: (u) => updateNodeData(id, { referenceImageUrl: u }, true) });
   const [uploading, setUploading] = useState(false);
   const [lightboxIndex, setLightboxIndex] = useState<number | null>(null);
+  const [refZoom, setRefZoom] = useState(false);
   const [paramsExpanded, setParamsExpanded] = useState(false);
   // Derived, not local state — stays in sync with collaboration/undo updates
   const seedLocked = payload.seed != null;
@@ -924,12 +925,15 @@ export const ImageGenNode = memo(function ImageGenNode({ id, selected, data }: P
               <img
                 src={payload.referenceImageUrl}
                 alt="reference"
-                className="w-full h-full object-cover"
+                className="nodrag w-full h-full object-cover"
+                style={{ cursor: "zoom-in" }}
                 draggable={false}
+                title="点击放大"
+                onClick={() => setRefZoom(true)}
                 onError={makeImageProxyFallback(payload.referenceImageUrl ?? "")}
               />
               <button
-                onClick={() => update("referenceImageUrl", undefined)}
+                onClick={(e) => { e.stopPropagation(); update("referenceImageUrl", undefined); }}
                 className="nodrag absolute top-1 right-1 p-0.5 rounded-full"
                 style={{ background: "oklch(0 0 0 / 0.7)", color: "var(--c-t1)" }}
               >
@@ -1042,6 +1046,16 @@ export const ImageGenNode = memo(function ImageGenNode({ id, selected, data }: P
           />
         );
       })()}
+
+      {/* Reference-image zoom (plain viewer) */}
+      {refZoom && payload.referenceImageUrl && (
+        <ImageLightbox
+          images={[payload.referenceImageUrl]}
+          currentIndex={0}
+          onClose={() => setRefZoom(false)}
+          onNavigate={() => {}}
+        />
+      )}
 
       {reachabilityDialog}
     </BaseNode>
