@@ -501,6 +501,13 @@ function CanvasInner({ projectId }: { projectId: number }) {
   const upsertEdge = trpc.edges.upsert.useMutation();
   const deleteNodeMutation = trpc.nodes.delete.useMutation({
     onError: (e) => toast.error("删除节点失败（服务端拒绝）：" + e.message),
+    onSuccess: (r) => {
+      // Diagnostic: a 200 that removed 0 rows means the id/projectId didn't match
+      // any DB row — the node would then "resurrect" on reload. Surface it loudly.
+      if (r && typeof r.deleted === "number" && r.deleted === 0) {
+        toast.error("删除请求成功但库中 0 行被删除（ID/项目不匹配）——这就是删除后又出现的原因。请把这条提示截图给我。", { duration: 12000 });
+      }
+    },
   });
   const deleteEdgeMutation = trpc.edges.delete.useMutation();
   const updateProject = trpc.projects.update.useMutation({
