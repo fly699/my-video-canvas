@@ -1215,7 +1215,7 @@ const VIDEO_OUTPUT_CLASS_TYPES = new Set(["VHS_VideoCombine", "SaveAnimatedWEBP"
 // Known node types that mark image outputs
 const IMAGE_OUTPUT_CLASS_TYPES = new Set(["SaveImage", "PreviewImage"]);
 
-type WorkflowJson = Record<string, { class_type: string; inputs: Record<string, unknown> }>;
+type WorkflowJson = Record<string, { class_type: string; inputs: Record<string, unknown>; _meta?: { title?: string } }>;
 
 export async function analyzeWorkflow(
   workflowJson: string,
@@ -1295,6 +1295,18 @@ export async function analyzeWorkflow(
         type: "text",
         defaultValue: inputs.text ?? "",
       });
+    } else if (ct === "TextEncodeQwenImageEditPlus" || ct === "TextEncodeQwenImageEdit") {
+      // Qwen-Image-Edit(-Plus): the edit instruction lives in `prompt`, and the
+      // node fuses up to 3 reference images (image1/2/3) per that instruction.
+      // Surface the prompt so users can vary the fusion ("把图1的角色放到图2中" 等)
+      // without touching the workflow. The image1/2/3 inputs come from LoadImage
+      // nodes, which are detected separately as bindable image params.
+      detectedParams.push({
+        nodeId, fieldPath: "inputs.prompt",
+        label: node._meta?.title?.trim() || "编辑指令（提示词）",
+        type: "text",
+        defaultValue: inputs.prompt ?? "",
+      });
     } else if (ct === "KSampler" || ct === "KSamplerAdvanced") {
       const ksamplerSamplers = pickFirstArray(info, "KSampler", "sampler_name");
       const ksamplerSchedulers = pickFirstArray(info, "KSampler", "scheduler");
@@ -1334,9 +1346,11 @@ export async function analyzeWorkflow(
         { nodeId, fieldPath: "inputs.strength_model", label: "LoRA 强度", type: "number", defaultValue: inputs.strength_model ?? 1.0, min: 0, max: 2, step: 0.05 },
       );
     } else if (ct === "LoadImage") {
+      // Use the node's title (e.g. 加载图像1 / 加载图像2) as the label so multiple
+      // reference inputs in a fusion/edit workflow stay distinguishable in the UI.
       detectedParams.push({
         nodeId, fieldPath: "inputs.image",
-        label: "输入图像",
+        label: node._meta?.title?.trim() || "输入图像",
         type: "image",
         defaultValue: inputs.image ?? "",
       });
