@@ -2,6 +2,7 @@ import { useState, useRef, useCallback, useMemo, useEffect } from "react";
 import { useAuth } from "@/_core/hooks/useAuth";
 import { getLoginUrl } from "@/const";
 import { trpc } from "@/lib/trpc";
+import { uploadAssetFile } from "@/lib/assetUpload";
 import { useLocation } from "wouter";
 import { toast } from "sonner";
 import {
@@ -238,10 +239,7 @@ export default function Library() {
     return c;
   }, [list]);
 
-  const uploadMutation = trpc.assets.upload.useMutation({
-    onSuccess: () => { toast.success("素材上传成功"); refetch(); setUploading(false); },
-    onError: (err) => { toast.error("上传失败：" + err.message); setUploading(false); },
-  });
+  const utils = trpc.useUtils();
   const deleteMutation = trpc.assets.delete.useMutation({
     onSuccess: () => { toast.success("素材已删除"); refetch(); },
     onError: (err) => toast.error("删除失败：" + err.message),
@@ -252,18 +250,13 @@ export default function Library() {
   });
 
   const processFile = useCallback((file: File) => {
-    if (file.size > 20 * 1024 * 1024) { toast.error("文件大小不能超过 20MB"); return; }
     setUploading(true);
-    const reader = new FileReader();
-    reader.onload = () => {
-      const base64 = (reader.result as string).split(",")[1];
-      const type = file.type.startsWith("video/") ? "video" : file.type.startsWith("audio/") ? "audio" : file.type.startsWith("image/") ? "image" : "other";
-      // 用户仓库上传：不绑定具体项目（projectId 省略），归入个人专有仓库。
-      uploadMutation.mutate({ name: file.name, type, mimeType: file.type, size: file.size, base64 });
-    };
-    reader.onerror = () => { setUploading(false); toast.error("读取文件失败，请重试"); };
-    reader.readAsDataURL(file);
-  }, [uploadMutation]);
+    // 用户仓库上传：不绑定具体项目（projectId 省略），归入个人专有仓库。
+    // 走流式/预签名直传，支持大文件（最大 500MB），无 base64 ~15MB 限制。
+    uploadAssetFile(utils.client, file)
+      .then((ok) => { if (ok) { toast.success("素材上传成功"); refetch(); } })
+      .finally(() => setUploading(false));
+  }, [utils, refetch]);
 
   const handleFileSelect = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -370,7 +363,7 @@ export default function Library() {
             </div>
             <p className="text-xs" style={{ color: "var(--c-t4)" }}>
               <Upload className="inline w-3.5 h-3.5 mr-1 -mt-0.5" />
-              拖拽文件到此处上传（图片 / 视频 / 音频 · 最大 20MB）
+              拖拽文件到此处上传（图片 / 视频 / 音频 · 最大 500MB）
             </p>
           </div>
 

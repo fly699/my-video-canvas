@@ -4,6 +4,7 @@ import { toast } from "sonner";
 import { useCanvasStore } from "../../hooks/useCanvasStore";
 import { Upload, X, FileImage, FileVideo, FileAudio, File, Trash2, Plus, Loader2, Download } from "lucide-react";
 import { ImageLightbox } from "./ImageLightbox";
+import { uploadAssetFile } from "@/lib/assetUpload";
 
 interface Props {
   projectId: number;
@@ -35,11 +36,7 @@ export function AssetPanel({ projectId, onClose, onHeaderMouseDown }: Props) {
   // Image URLs (in list order) for the click-to-zoom lightbox.
   const imageUrls = (assets ?? []).filter((a) => a.type === "image").map((a) => a.url);
 
-  const uploadMutation = trpc.assets.upload.useMutation({
-    onSuccess: () => { toast.success("素材上传成功"); refetch(); setUploading(false); },
-    onError: (err) => { toast.error("上传失败：" + err.message); setUploading(false); },
-  });
-
+  const utils = trpc.useUtils();
   const deleteMutation = trpc.assets.delete.useMutation({
     onSuccess: () => { toast.success("素材已删除"); refetch(); },
   });
@@ -55,17 +52,13 @@ export function AssetPanel({ projectId, onClose, onHeaderMouseDown }: Props) {
 
   const processFile = useCallback(
     (file: File) => {
-      if (file.size > 20 * 1024 * 1024) { toast.error("文件大小不能超过 20MB"); return; }
       setUploading(true);
-      const reader = new FileReader();
-      reader.onload = () => {
-        const base64 = (reader.result as string).split(",")[1];
-        const type = file.type.startsWith("video/") ? "video" : file.type.startsWith("audio/") ? "audio" : file.type.startsWith("image/") ? "image" : "other";
-        uploadMutation.mutate({ name: file.name, type, mimeType: file.type, size: file.size, base64, projectId });
-      };
-      reader.readAsDataURL(file);
+      // 流式/预签名直传，支持大文件（最大 500MB），无 base64 ~15MB 限制。
+      uploadAssetFile(utils.client, file, projectId)
+        .then((ok) => { if (ok) { toast.success("素材上传成功"); refetch(); } })
+        .finally(() => setUploading(false));
     },
-    [projectId, uploadMutation]
+    [projectId, utils, refetch]
   );
 
   const handleFileSelect = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
@@ -157,7 +150,7 @@ export function AssetPanel({ projectId, onClose, onHeaderMouseDown }: Props) {
               {uploading ? "上传中..." : "点击或拖拽上传"}
             </p>
             <p className="text-[10px] mt-0.5" style={{ color: "var(--c-t4)" }}>
-              图片 · 视频 · 音频 · 最大 20MB
+              图片 · 视频 · 音频 · 最大 500MB
             </p>
           </div>
         </div>

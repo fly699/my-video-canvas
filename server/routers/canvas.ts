@@ -35,7 +35,8 @@ import {
   addChatMessagePair,
   clearChatMessages,
 } from "../db";
-import { storagePut, resolveToAbsoluteUrl, canBrowserReachStorageDirectly, storageBackend, assertObjectStorageWritable, isOwnStorageUrl, toInternalStoragePath } from "../storage";
+import { storagePut, resolveToAbsoluteUrl, canBrowserReachStorageDirectly, storageBackend, assertObjectStorageWritable, isOwnStorageUrl, toInternalStoragePath, storagePresignPut, isStorageConfigured, finalizeStorageKey } from "../storage";
+import { signUploadToken } from "../_core/uploadToken";
 import { getCachedStorageSettings } from "../_core/storageConfig";
 import { invokeLLM, extractTextContent } from "../_core/llm";
 import { generateImage } from "../_core/imageGeneration";
@@ -327,6 +328,67 @@ export const assetsRouter = router({
   // Lightweight summary for the Home 素材库 entry card (count + a few cover URLs).
   summary: protectedProcedure
     .query(({ ctx }) => getAssetSummary(ctx.user.id)),
+
+  // ── Streamed / presigned upload (large files; no base64 ~15MB cap) ──────────
+  // Mirror of chat.createUploadUrl: hand the browser a direct upload URL so big
+  // files don't go base64 through tRPC. Then confirmUpload indexes the asset.
+  createUploadUrl: protectedProcedure
+    .input(z.object({
+      name: z.string().max(255),
+      mimeType: z.string().max(128),
+      size: z.number().int().min(1),
+      projectId: z.number().optional(),
+    }))
+    .mutation(async ({ ctx, input }) => {
+      await assertWhitelisted(ctx);
+      if (input.projectId != null) await assertProjectAccess(input.projectId, ctx.user.id, "editor");
+      const MAX_BYTES = 500 * 1024 * 1024; // 500MB streamed ceiling
+      if (input.size > MAX_BYTES) throw new TRPCError({ code: "BAD_REQUEST", message: "文件超过 500MB 上限" });
+      const safeName = input.name.replace(/[^a-zA-Z0-9._\-一-龥]/g, "_").slice(0, 120) || "file";
+      const relKey = `u/${ctx.user.id}/uploads/${nanoid()}-${safeName}`;
+      // Storage configured but browser can't reach it (internal MinIO, no public
+      // endpoint) → stream THROUGH this server via the upload proxy (HMAC token).
+      if (isStorageConfigured() && !canBrowserReachStorageDirectly()) {
+        await assertObjectStorageWritable();
+        const key = finalizeStorageKey(relKey);
+        const token = signUploadToken({
+          key, conversationId: 0, userId: ctx.user.id,
+          maxBytes: MAX_BYTES, contentType: input.mimeType, exp: Date.now() + 60 * 60 * 1000,
+        });
+        return { mode: "proxy" as const, uploadUrl: `/manus-storage-upload?token=${encodeURIComponent(token)}`, key, url: `/manus-storage/${key}` };
+      }
+      // No object storage → caller falls back to base64 (assets.upload).
+      if (!isStorageConfigured()) return { mode: "base64" as const };
+      // Browser-reachable storage (Forge / S3 public) → presigned PUT direct.
+      await assertObjectStorageWritable();
+      const { uploadUrl, key, url } = await storagePresignPut(relKey, input.mimeType);
+      return { mode: "presigned" as const, uploadUrl, key, url };
+    }),
+
+  // Index an asset AFTER a successful proxy/presigned PUT. Validates the key
+  // belongs to this user's prefix so a client can't claim arbitrary objects.
+  confirmUpload: protectedProcedure
+    .input(z.object({
+      key: z.string().max(512),
+      url: z.string().max(1024),
+      name: z.string().max(255),
+      type: z.enum(["image", "video", "audio", "other"]),
+      mimeType: z.string().max(128),
+      size: z.number().int().min(1),
+      projectId: z.number().optional(),
+    }))
+    .mutation(async ({ ctx, input }) => {
+      if (input.projectId != null) await assertProjectAccess(input.projectId, ctx.user.id, "editor");
+      const prefix = `u/${ctx.user.id}/`;
+      if (!input.key.startsWith(prefix)) throw new TRPCError({ code: "FORBIDDEN", message: "非法的存储键" });
+      if (input.url !== `/manus-storage/${input.key}`) throw new TRPCError({ code: "BAD_REQUEST", message: "URL 与存储键不一致" });
+      const asset = await createAsset({
+        userId: ctx.user.id, projectId: input.projectId ?? null, name: input.name,
+        type: input.type, mimeType: input.mimeType, size: input.size, storageKey: input.key, url: input.url,
+      });
+      if (!asset) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "保存素材失败" });
+      return asset;
+    }),
 
   upload: protectedProcedure
     .input(
