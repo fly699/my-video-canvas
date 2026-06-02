@@ -3,6 +3,7 @@ import { trpc } from "@/lib/trpc";
 import { toast } from "sonner";
 import { useCanvasStore } from "../../hooks/useCanvasStore";
 import { Upload, X, FileImage, FileVideo, FileAudio, File, Trash2, Plus, Loader2, Download } from "lucide-react";
+import { ImageLightbox } from "./ImageLightbox";
 
 interface Props {
   projectId: number;
@@ -21,6 +22,7 @@ export function AssetPanel({ projectId, onClose, onHeaderMouseDown }: Props) {
   const [scope, setScope] = useState<"project" | "all">("project");
   const [typeFilter, setTypeFilter] = useState<TypeFilter>("");
   const [sourceFilter, setSourceFilter] = useState<SourceFilter>("");
+  const [lightboxIdx, setLightboxIdx] = useState<number | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const { data: assets, refetch } = trpc.assets.list.useQuery({
@@ -29,6 +31,9 @@ export function AssetPanel({ projectId, onClose, onHeaderMouseDown }: Props) {
     type: typeFilter || undefined,
     source: sourceFilter || undefined,
   });
+
+  // Image URLs (in list order) for the click-to-zoom lightbox.
+  const imageUrls = (assets ?? []).filter((a) => a.type === "image").map((a) => a.url);
 
   const uploadMutation = trpc.assets.upload.useMutation({
     onSuccess: () => { toast.success("素材上传成功"); refetch(); setUploading(false); },
@@ -224,10 +229,12 @@ export function AssetPanel({ projectId, onClose, onHeaderMouseDown }: Props) {
                   onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.background = "var(--c-surface)"; }}
                   onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.background = "transparent"; }}
                 >
-                  {/* Thumbnail */}
+                  {/* Thumbnail (click an image to zoom in the lightbox) */}
                   <div
                     className="w-10 h-10 rounded-lg overflow-hidden flex-shrink-0 flex items-center justify-center"
-                    style={{ background: `${accent}12`, border: `1px solid ${accent}25` }}
+                    style={{ background: `${accent}12`, border: `1px solid ${accent}25`, cursor: asset.type === "image" ? "zoom-in" : "default" }}
+                    onClick={asset.type === "image" ? () => { const i = imageUrls.indexOf(asset.url); if (i >= 0) setLightboxIdx(i); } : undefined}
+                    title={asset.type === "image" ? "点击放大" : undefined}
                   >
                     {asset.type === "image" ? (
                       <img src={asset.url} alt={asset.name} className="w-full h-full object-cover" />
@@ -291,6 +298,16 @@ export function AssetPanel({ projectId, onClose, onHeaderMouseDown }: Props) {
           </div>
         )}
       </div>
+
+      {/* Click-to-zoom preview (plain viewer — no select action) */}
+      {lightboxIdx !== null && imageUrls[lightboxIdx] && (
+        <ImageLightbox
+          images={imageUrls}
+          currentIndex={lightboxIdx}
+          onClose={() => setLightboxIdx(null)}
+          onNavigate={setLightboxIdx}
+        />
+      )}
     </div>
   );
 }

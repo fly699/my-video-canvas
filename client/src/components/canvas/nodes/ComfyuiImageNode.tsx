@@ -79,6 +79,7 @@ export const ComfyuiImageNode = memo(function ComfyuiImageNode({ id, selected, d
   // Controlled lightbox index (null = closed). Mirrors ImageGenNode so multi-image
   // navigation + selection inside the lightbox actually work.
   const [lightboxIndex, setLightboxIndex] = useState<number | null>(null);
+  const [refZoom, setRefZoom] = useState(false);
   const [translating, setTranslating] = useState(false);
   // Translation LLM — let the user pick a model that's available in their
   // deployment (some setups have no Gemini but do have Claude/GPT via Poyo).
@@ -1160,12 +1161,15 @@ export const ComfyuiImageNode = memo(function ComfyuiImageNode({ id, selected, d
                 <img
                   src={payload.referenceImageUrl}
                   alt="reference"
-                  className="w-full h-full object-cover"
+                  className="nodrag w-full h-full object-cover"
+                  style={{ cursor: "zoom-in" }}
                   draggable={false}
+                  title="点击放大"
+                  onClick={() => setRefZoom(true)}
                   onError={makeImageProxyFallback(payload.referenceImageUrl ?? "")}
                 />
                 <button
-                  onClick={() => update("referenceImageUrl", undefined)}
+                  onClick={(e) => { e.stopPropagation(); update("referenceImageUrl", undefined); }}
                   className="nodrag absolute top-1 right-1 p-0.5 rounded-full"
                   style={{ background: "oklch(0 0 0 / 0.7)", color: "var(--c-t1)" }}
                 >
@@ -1509,6 +1513,16 @@ export const ComfyuiImageNode = memo(function ComfyuiImageNode({ id, selected, d
           />
         );
       })()}
+
+      {/* Reference-image zoom (plain viewer) */}
+      {refZoom && payload.referenceImageUrl && (
+        <ImageLightbox
+          images={[payload.referenceImageUrl]}
+          currentIndex={0}
+          onClose={() => setRefZoom(false)}
+          onNavigate={() => {}}
+        />
+      )}
     </BaseNode>
   );
 });
