@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { buildFilterGraph, segmentDuration, collectVideoSegments, type Segment } from "./_core/videoComposer";
+import { buildFilterGraph, segmentDuration, collectVideoSegments, buildEditorASS, type Segment, type AudioInput, type TextInput } from "./_core/videoComposer";
 import { emptyEditorDoc } from "@shared/editorTypes";
 
 const OPTS = { width: 1920, height: 1080, fps: 30 };
@@ -65,6 +65,29 @@ describe("buildFilterGraph (single-pass composer)", () => {
     expect(g.filterComplex).toContain("colorchannelmixer=aa=0.800");
     expect(g.filterComplex).toContain("overlay=x=960:y=270:enable='between(t,1.000,3.000)'");
     expect(g.outV).toBe("[ob0]");
+  });
+
+  it("mixes audio-track clips with delay/volume/fades + the ass filter for text", () => {
+    const segs: Segment[] = [{ isImage: false, hasAudio: true, trimIn: 0, trimOut: 5, speed: 1 }];
+    const audioClips: AudioInput[] = [{ trimIn: 0, trimOut: 4, speed: 1, start: 0.5, volume: 0.8, fadeIn: 0.5, fadeOut: 0.5 }];
+    const g = buildFilterGraph(segs, OPTS, [], { audioClips, assPath: "/tmp/x.ass" });
+    expect(g.filterComplex).toContain("adelay=delays=500:all=1");
+    expect(g.filterComplex).toContain("volume=0.800");
+    expect(g.filterComplex).toContain("afade=t=in:st=0:d=0.500");
+    expect(g.filterComplex).toContain("amix=inputs=2:normalize=0");
+    expect(g.filterComplex).toContain("ass='/tmp/x.ass'");
+    expect(g.outA).toBe("[outa]");
+    expect(g.outV).toBe("[sv]");
+  });
+
+  it("buildEditorASS emits positioned, faded CJK-capable dialogue", () => {
+    const clips: TextInput[] = [{ start: 1, end: 3, text: { content: "中文字幕", size: 60, color: "#ffff00", motionStyle: "fade" }, x: 0.1, y: 0.8 }];
+    const ass = buildEditorASS(clips, { width: 1920, height: 1080 });
+    expect(ass).toContain("PlayResX: 1920");
+    expect(ass).toContain("\\pos(192,864)"); // 0.1*1920, 0.8*1080
+    expect(ass).toContain("\\fs60");
+    expect(ass).toContain("\\fad(300,300)");
+    expect(ass).toContain("中文字幕");
   });
 
   it("collectVideoSegments sorts video/image clips by start and ignores audio/text", () => {

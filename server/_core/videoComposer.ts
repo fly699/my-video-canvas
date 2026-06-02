@@ -2,9 +2,9 @@ import * as fs from "fs/promises";
 import * as path from "path";
 import * as os from "os";
 import { storagePut, assertObjectStorageWritable } from "../storage";
-import { execFileAsync, downloadToTemp, buildAtempoFilters, hasAudioTrack } from "./videoEditor";
+import { execFileAsync, downloadToTemp, buildAtempoFilters, hasAudioTrack, cssColorToASSHex, escapeASSText, formatASSTime } from "./videoEditor";
 import { sanitizeFilenamePrefix } from "./comfyui";
-import type { EditorDoc, Clip, ClipEffects, ClipTransform } from "@shared/editorTypes";
+import type { EditorDoc, Clip, ClipEffects, ClipTransform, ClipText } from "@shared/editorTypes";
 
 // Render timeouts are generous: a full multi-clip render re-encodes everything
 // in ONE pass, which can take minutes for long timelines.
@@ -41,6 +41,63 @@ export interface OverlayInput {
   start: number;       // timeline position (seconds)
   duration: number;    // visible duration on the timeline
   transform?: ClipTransform;
+}
+
+/** A clip on a dedicated audio track, mixed into the output. */
+export interface AudioInput {
+  trimIn: number;
+  trimOut: number;
+  speed: number;
+  start: number;       // timeline position (seconds)
+  volume: number;
+  fadeIn: number;
+  fadeOut: number;
+}
+
+/** A text clip rendered as an ASS dialogue event. */
+export interface TextInput {
+  start: number;
+  end: number;
+  text: ClipText;
+  x: number;           // 0..1 of canvas (top-left anchor)
+  y: number;           // 0..1 of canvas
+}
+
+/** Build an ASS subtitle document for the editor's text clips (CJK-safe, positioned). */
+export function buildEditorASS(clips: TextInput[], opts: { width: number; height: number }): string {
+  const head = [
+    "[Script Info]",
+    "ScriptType: v4.00+",
+    "WrapStyle: 0",
+    "ScaledBorderAndShadow: yes",
+    `PlayResX: ${opts.width}`,
+    `PlayResY: ${opts.height}`,
+    "",
+    "[V4+ Styles]",
+    "Format: Name, Fontname, Fontsize, PrimaryColour, OutlineColour, BackColour, Bold, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding",
+    "Style: Default,Arial,48,&H00FFFFFF,&H00000000,&H64000000,1,1,2,1,7,0,0,0,1",
+    "",
+    "[Events]",
+    "Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text",
+  ];
+  const events = clips.map((c) => {
+    const size = c.text.size ?? 48;
+    const color = cssColorToASSHex(c.text.color ?? "white");
+    const px = Math.round(c.x * opts.width);
+    const py = Math.round(c.y * opts.height);
+    const tags = [`\\an7`, `\\pos(${px},${py})`, `\\fs${size}`, `\\c${color}`];
+    const motion = c.text.motionStyle;
+    if (motion === "fade") tags.push("\\fad(300,300)");
+    else if (motion === "roll") return `Dialogue: 0,${formatASSTime(c.start)},${formatASSTime(c.end)},Default,,0,0,0,,{\\an7\\move(${px},${opts.height},${px},${py})\\fs${size}\\c${color}}${escapeASSText(c.text.content)}`;
+    else if (motion === "bounce" || motion === "karaoke") tags.push("\\fad(200,200)");
+    return `Dialogue: 0,${formatASSTime(c.start)},${formatASSTime(c.end)},Default,,0,0,0,,{${tags.join("")}}${escapeASSText(c.text.content)}`;
+  });
+  return head.concat(events).join("\n") + "\n";
+}
+
+/** Escape a file path for use inside the ffmpeg `ass`/`subtitles` filter. */
+function escapeFilterPath(p: string): string {
+  return p.replace(/\\/g, "\\\\").replace(/:/g, "\\:").replace(/,/g, "\\,").replace(/'/g, "\\'");
 }
 
 /** Visible (output) duration of a segment in seconds. */
@@ -93,6 +150,7 @@ export function buildFilterGraph(
   segs: Segment[],
   opts: { width: number; height: number; fps: number },
   overlays: OverlayInput[] = [],
+  extra: { audioClips?: AudioInput[]; assPath?: string } = {},
 ): { filterComplex: string; outV: string; outA: string; duration: number } {
   const { width: w, height: h, fps } = opts;
   const parts: string[] = [];
@@ -134,8 +192,10 @@ export function buildFilterGraph(
     aLabels.push(`[a${i}]`);
   });
 
-  // Fast path: no transitions and no overlays → single combined concat.
-  if (!hasTransitions(segs) && overlays.length === 0) {
+  const audioClips = extra.audioClips ?? [];
+
+  // Fast path: nothing but a plain concat is needed.
+  if (!hasTransitions(segs) && overlays.length === 0 && audioClips.length === 0 && !extra.assPath) {
     const concatInputs = segs.map((_, i) => `${vLabels[i]}${aLabels[i]}`).join("");
     parts.push(`${concatInputs}concat=n=${segs.length}:v=1:a=1[outv][outa]`);
     const duration = segs.reduce((sum, s) => sum + segmentDuration(s), 0);
@@ -195,6 +255,35 @@ export function buildFilterGraph(
     curV = `[ob${j}]`;
   });
 
+  // Burn positioned text/subtitles (ASS) over the composed video.
+  if (extra.assPath) {
+    parts.push(`${curV}ass='${escapeFilterPath(extra.assPath)}'[sv]`);
+    curV = "[sv]";
+  }
+
+  // Mix dedicated audio-track clips into the base audio (positioned + faded).
+  if (audioClips.length > 0) {
+    const mixLabels = [curA];
+    audioClips.forEach((a, k) => {
+      const inIdx = segs.length + overlays.length + k;
+      const dur = Math.max(0.05, (a.trimOut - a.trimIn) / (a.speed || 1));
+      const ac: string[] = [
+        `atrim=start=${a.trimIn.toFixed(3)}:end=${a.trimOut.toFixed(3)}`,
+        "asetpts=PTS-STARTPTS",
+      ];
+      if (Math.abs(a.speed - 1) > 0.001) ac.push(...buildAtempoFilters(a.speed));
+      if (Math.abs(a.volume - 1) > 0.001) ac.push(`volume=${a.volume.toFixed(3)}`);
+      if (a.fadeIn > 0) ac.push(`afade=t=in:st=0:d=${a.fadeIn.toFixed(3)}`);
+      if (a.fadeOut > 0) ac.push(`afade=t=out:st=${Math.max(0, dur - a.fadeOut).toFixed(3)}:d=${a.fadeOut.toFixed(3)}`);
+      ac.push(`adelay=delays=${Math.round(a.start * 1000)}:all=1`);
+      ac.push("aformat=sample_fmts=fltp:channel_layouts=stereo:sample_rates=44100");
+      parts.push(`[${inIdx}:a]${ac.join(",")}[ax${k}]`);
+      mixLabels.push(`[ax${k}]`);
+    });
+    parts.push(`${mixLabels.join("")}amix=inputs=${mixLabels.length}:normalize=0:dropout_transition=0[outa]`);
+    curA = "[outa]";
+  }
+
   return { filterComplex: parts.join(";"), outV: curV, outA: curA, duration: curDur };
 }
 
@@ -218,6 +307,30 @@ export function collectOverlayClips(doc: EditorDoc): Clip[] {
   return clips.sort((a, b) => a.start - b.start);
 }
 
+/** Audio-track clips mixed into the output, in time order. */
+export function collectAudioClips(doc: EditorDoc): Clip[] {
+  const clips: Clip[] = [];
+  for (const t of doc.tracks) {
+    if (t.hidden || t.muted || t.type !== "audio") continue;
+    for (const c of t.clips) if (c.kind === "audio") clips.push(c);
+  }
+  return clips.sort((a, b) => a.start - b.start);
+}
+
+/** Text clips rendered as ASS dialogue, in time order. */
+export function collectTextClips(doc: EditorDoc): TextInput[] {
+  const out: TextInput[] = [];
+  for (const t of doc.tracks) {
+    if (t.hidden || t.type !== "text") continue;
+    for (const c of t.clips) {
+      if (c.kind !== "text" || !c.text?.content) continue;
+      const dur = Math.max(0.05, c.trimOut - c.trimIn);
+      out.push({ start: c.start, end: c.start + dur, text: c.text, x: c.transform?.x ?? 0.1, y: c.transform?.y ?? 0.8 });
+    }
+  }
+  return out.sort((a, b) => a.start - b.start);
+}
+
 function clipVisibleDuration(c: Clip): number {
   if (c.kind === "image") return Math.max(0.05, c.trimOut - c.trimIn);
   return Math.max(0.05, (c.trimOut - c.trimIn) / (c.speed ?? 1));
@@ -233,6 +346,8 @@ export async function composeTimeline(doc: EditorDoc, opts: ComposeOptions): Pro
   const clips = collectVideoSegments(doc);
   if (clips.length === 0) throw new Error("时间轴没有可渲染的视频/图片片段");
   const overlayClips = collectOverlayClips(doc);
+  const audioClipsSrc = collectAudioClips(doc);
+  const textClips = collectTextClips(doc);
 
   const report = (p: number, s: string) => opts.onProgress?.(p, s);
   report(2, "准备素材");
@@ -241,7 +356,8 @@ export async function composeTimeline(doc: EditorDoc, opts: ComposeOptions): Pro
   const inputArgs: string[] = [];
   const segs: Segment[] = [];
   const overlays: OverlayInput[] = [];
-  const total = clips.length + overlayClips.length;
+  const audioClips: AudioInput[] = [];
+  const total = clips.length + overlayClips.length + audioClipsSrc.length;
   let done = 0;
 
   try {
@@ -274,7 +390,25 @@ export async function composeTimeline(doc: EditorDoc, opts: ComposeOptions): Pro
       report(2 + Math.round((++done) / total * 28), "下载素材");
     }
 
-    const graph = buildFilterGraph(segs, { width: doc.width, height: doc.height, fps: doc.fps }, overlays);
+    // Audio-track clips next (input order: main → overlays → audio).
+    for (const c of audioClipsSrc) {
+      if (!c.assetUrl) continue;
+      const p = await downloadToTemp(c.assetUrl, "m4a");
+      tmpFiles.push(p);
+      audioClips.push({ trimIn: c.trimIn, trimOut: c.trimOut, speed: c.speed ?? 1, start: c.start, volume: c.volume ?? 1, fadeIn: c.fadeIn ?? 0, fadeOut: c.fadeOut ?? 0 });
+      inputArgs.push("-i", p);
+      report(2 + Math.round((++done) / total * 28), "下载素材");
+    }
+
+    // Positioned text/subtitles → ASS file (referenced by the ass filter).
+    let assPath: string | undefined;
+    if (textClips.length > 0) {
+      assPath = path.join(os.tmpdir(), `editor-${Date.now()}-${Math.random().toString(36).slice(2)}.ass`);
+      await fs.writeFile(assPath, buildEditorASS(textClips, { width: doc.width, height: doc.height }), "utf8");
+      tmpFiles.push(assPath);
+    }
+
+    const graph = buildFilterGraph(segs, { width: doc.width, height: doc.height, fps: doc.fps }, overlays, { audioClips, assPath });
 
     const outName = `compose-${Date.now()}-${Math.random().toString(36).slice(2)}.mp4`;
     const outPath = path.join(os.tmpdir(), outName);

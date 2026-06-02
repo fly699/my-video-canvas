@@ -463,7 +463,7 @@ export async function burnSubtitles(
   }
 }
 
-function cssColorToASSHex(color: string): string {
+export function cssColorToASSHex(color: string): string {
   const MAP: Record<string, string> = {
     white: "FFFFFF", yellow: "00FFFF", red: "0000FF", blue: "FF0000",
     green: "00FF00", black: "000000", orange: "0080FF",
@@ -475,7 +475,7 @@ function cssColorToASSHex(color: string): string {
 
 export type SubtitleMotionStyle = "fade" | "roll" | "karaoke" | "bounce";
 
-function formatASSTime(seconds: number): string {
+export function formatASSTime(seconds: number): string {
   const h = Math.floor(seconds / 3600);
   const m = Math.floor((seconds % 3600) / 60);
   const s = Math.floor(seconds % 60);
@@ -484,7 +484,7 @@ function formatASSTime(seconds: number): string {
   return `${h}:${String(m).padStart(2, "0")}:${String(s).padStart(2, "0")}.${String(cs).padStart(2, "0")}`;
 }
 
-function escapeASSText(raw: string): string {
+export function escapeASSText(raw: string): string {
   // In ASS Dialogue text fields, { } delimit override tag blocks.
   // Escape { and } so user text cannot inject ASS control tags.
   return raw.replace(/\\/g, "\\\\").replace(/\{/g, "\\{").replace(/\}/g, "\\}").replace(/\n/g, "\\N");

@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { trpc } from "@/lib/trpc";
-import { FileVideo, FileAudio, FileImage, Search, Type as TypeIcon } from "lucide-react";
+import { toast } from "sonner";
+import { FileVideo, FileAudio, FileImage, Search, Type as TypeIcon, Captions } from "lucide-react";
 import { EC } from "./theme";
 import { useEditorStore, kindFromAssetType, trackEnd, clipDuration } from "./editorStore";
 import { probeMediaDuration } from "./theme";
@@ -23,6 +24,31 @@ export function MediaBin() {
   const assets = (listQuery.data ?? []).filter((a) => a.type !== "other");
 
   const addClip = useEditorStore((s) => s.addClip);
+  const transcribeMut = trpc.subtitle.transcribe.useMutation();
+
+  // AI auto-subtitle: transcribe the first video/audio clip with Whisper and lay
+  // the result onto the text track as timed text clips.
+  function autoSubtitle() {
+    const doc = useEditorStore.getState().doc;
+    if (!doc) return;
+    let src: { assetUrl?: string; start: number } | undefined;
+    for (const t of doc.tracks) for (const c of t.clips) if ((c.kind === "video" || c.kind === "audio") && c.assetUrl) { src = c; break; }
+    if (!src?.assetUrl) { toast.error("先在时间轴添加一个视频或音频片段"); return; }
+    const textTrack = doc.tracks.find((t) => t.type === "text");
+    if (!textTrack) { toast.error("没有文字轨道"); return; }
+    const abs = new URL(src.assetUrl, location.origin).href;
+    toast.info("正在用 AI 转写字幕…");
+    transcribeMut.mutate({ audioUrl: abs }, {
+      onSuccess: ({ entries }) => {
+        entries.forEach((e) => addClip(textTrack.id, {
+          kind: "text", start: src!.start + e.start, trimIn: 0, trimOut: Math.max(0.3, e.end - e.start),
+          text: { content: e.text, size: 48, color: "#ffffff", motionStyle: "none" },
+        }));
+        toast.success(`已生成 ${entries.length} 条字幕`);
+      },
+      onError: (e) => toast.error("转写失败：" + e.message),
+    });
+  }
 
   // Click-to-add: append the asset to the matching track at its end.
   async function quickAdd(a: { id: number; url: string; name: string; type: string }) {
@@ -100,6 +126,11 @@ export function MediaBin() {
           }}
           style={{ width: "100%", display: "flex", alignItems: "center", justifyContent: "center", gap: 6, padding: "7px 0", fontSize: 12, borderRadius: 7, border: `1px dashed ${EC.border}`, background: "transparent", color: EC.t2, cursor: "pointer" }}
         ><TypeIcon size={13} /> 添加文字</button>
+        <button
+          disabled={transcribeMut.isPending}
+          onClick={autoSubtitle}
+          style={{ width: "100%", marginTop: 6, display: "flex", alignItems: "center", justifyContent: "center", gap: 6, padding: "7px 0", fontSize: 12, borderRadius: 7, border: `1px dashed ${EC.border}`, background: "transparent", color: transcribeMut.isPending ? EC.t4 : EC.t2, cursor: transcribeMut.isPending ? "default" : "pointer" }}
+        ><Captions size={13} /> {transcribeMut.isPending ? "转写中…" : "AI 自动字幕"}</button>
       </div>
     </aside>
   );
