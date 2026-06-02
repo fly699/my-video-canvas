@@ -5,6 +5,7 @@ import { useCanvasStore } from "../../hooks/useCanvasStore";
 import { Upload, X, FileImage, FileVideo, FileAudio, File, Trash2, Plus, Loader2, Download, Check, Play } from "lucide-react";
 import { ImageLightbox } from "./ImageLightbox";
 import { uploadAssetFile } from "@/lib/assetUpload";
+import { downloadMedia } from "@/lib/download";
 
 interface Props {
   projectId: number;
@@ -327,20 +328,16 @@ export function AssetPanel({ projectId, onClose, onHeaderMouseDown }: Props) {
 
                   {/* Actions */}
                   <div className="flex items-center gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity">
-                    <a
-                      href={asset.url}
-                      download={asset.name}
-                      target="_blank"
-                      rel="noreferrer"
+                    <button
                       title="下载"
                       className="w-6 h-6 rounded-md flex items-center justify-center transition-all"
                       style={{ color: "var(--c-t3)" }}
-                      onClick={(e) => e.stopPropagation()}
+                      onClick={(e) => { e.stopPropagation(); void downloadMedia(asset.url, asset.name, asset.type === "video" ? "video" : "image", asset.id); }}
                       onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.background = "oklch(0.68 0.18 240 / 0.15)"; (e.currentTarget as HTMLElement).style.color = "oklch(0.70 0.16 240)"; }}
                       onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.background = "transparent"; (e.currentTarget as HTMLElement).style.color = "var(--c-t3)"; }}
                     >
                       <Download className="w-3.5 h-3.5" />
-                    </a>
+                    </button>
                     <button
                       onClick={() => handleAddToCanvas(asset)}
                       title="添加到画布"

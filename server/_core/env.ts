@@ -41,11 +41,6 @@ export const ENV = {
   higgsfieldApiSecret: process.env.HIGGSFIELD_API_SECRET ?? "",
   openaiApiKey: process.env.OPENAI_API_KEY ?? "",
   comfyuiBaseUrl: process.env.COMFYUI_BASE_URL ?? "",
-  // Strict download authorization: when on, non-admins can only download an
-  // original file if they hold a consumable grant (admin-approved request or
-  // admin batch grant). Master switch is deploy-config (not an in-app toggle,
-  // so a compromised admin account can't silently disable it).
-  downloadAuthEnabled: ["1", "true", "on", "yes"].includes((process.env.DOWNLOAD_AUTH ?? "").toLowerCase()),
   // Google OAuth (standalone OpenID Connect). Both must be set to enable the
   // "使用 Google 登录" button. GOOGLE_REDIRECT_URI is optional — when unset the
   // callback URL is derived from the incoming request origin.

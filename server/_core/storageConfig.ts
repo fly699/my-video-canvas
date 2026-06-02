@@ -13,7 +13,7 @@
 import * as db from "../db";
 import { isS3Configured } from "../storage";
 
-type Cached = { persistAudio: boolean; persistVideo: boolean; persistImage: boolean; presignTtlSec: number; poyoUploadFallback: boolean; minioOnly: boolean; preferUpstreamRefSource: boolean };
+type Cached = { persistAudio: boolean; persistVideo: boolean; persistImage: boolean; presignTtlSec: number; poyoUploadFallback: boolean; minioOnly: boolean; preferUpstreamRefSource: boolean; downloadAuthEnabled: boolean };
 
 let _cached: Cached | null = null;
 let _expiresAt = 0;
@@ -45,7 +45,7 @@ export async function getCachedStorageSettings(): Promise<Cached> {
       // that DB outages can't silently bypass the admin's explicit "off"
       // intent and burn S3 quota.
       if (_cached) return _cached;
-      return { persistAudio: false, persistVideo: false, persistImage: false, presignTtlSec: 3600, poyoUploadFallback: false, minioOnly: false, preferUpstreamRefSource: false };
+      return { persistAudio: false, persistVideo: false, persistImage: false, presignTtlSec: 3600, poyoUploadFallback: false, minioOnly: false, preferUpstreamRefSource: false, downloadAuthEnabled: false };
     } finally {
       _inflight = null;
     }
@@ -80,6 +80,11 @@ export async function isImagePersistenceEnabled(): Promise<boolean> {
  */
 export async function isPoyoUploadFallbackEnabled(): Promise<boolean> {
   return (await getCachedStorageSettings()).poyoUploadFallback;
+}
+
+/** Admin-controlled master switch for strict download authorization. */
+export async function isDownloadAuthEnabled(): Promise<boolean> {
+  return (await getCachedStorageSettings()).downloadAuthEnabled;
 }
 
 /** Whether the admin restricted object storage to MinIO/S3 only (no Forge fallback). */
