@@ -884,6 +884,20 @@ export function devGetAssetByStorageKey(storageKey: string): { id: number; userI
   return null;
 }
 
+export function devGetAssetMetaForGrant(assetId: number | null, storageKey: string | null): { name: string; url: string; type: string; projectId: number | null } | null {
+  if (assetId != null) {
+    const a = assetsMap.get(assetId);
+    if (a) return { name: a.name, url: a.url, type: a.type, projectId: a.projectId };
+  }
+  if (storageKey) {
+    for (const a of Array.from(assetsMap.values())) {
+      if (a.storageKey === storageKey) return { name: a.name, url: a.url, type: a.type, projectId: a.projectId };
+    }
+    return { name: storageKey.split("/").pop() || storageKey, url: `/manus-storage/${storageKey}`, type: "other", projectId: null };
+  }
+  return null;
+}
+
 export function devCreateDownloadGrant(input: {
   userId: number; scope: "asset" | "project"; storageKey?: string | null; assetId?: number | null; projectId?: number | null;
   reason?: string | null; note?: string | null; origin: "request" | "admin"; status: "pending" | "active";

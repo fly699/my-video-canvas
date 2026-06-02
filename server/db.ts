@@ -733,6 +733,24 @@ export async function getAssetByStorageKey(storageKey: string): Promise<{ id: nu
   return rows[0] ?? null;
 }
 
+// Resolve a file's display metadata (name/url/type/project) for the admin
+// download-review UI — by assetId first, else by storageKey. Cross-user (admin).
+export async function getAssetMetaForGrant(assetId: number | null, storageKey: string | null): Promise<{ name: string; url: string; type: string; projectId: number | null } | null> {
+  const db = await getDb();
+  if (!db) { if (DEV_MODE) return dev.devGetAssetMetaForGrant(assetId, storageKey); return null; }
+  if (assetId != null) {
+    const rows = await db.select({ name: assets.name, url: assets.url, type: assets.type, projectId: assets.projectId }).from(assets).where(eq(assets.id, assetId)).limit(1);
+    if (rows[0]) return rows[0];
+  }
+  if (storageKey) {
+    const rows = await db.select({ name: assets.name, url: assets.url, type: assets.type, projectId: assets.projectId }).from(assets).where(eq(assets.storageKey, storageKey)).limit(1);
+    if (rows[0]) return rows[0];
+    // Not in the asset table (e.g. a raw generated file) — synthesize from the key.
+    return { name: storageKey.split("/").pop() || storageKey, url: `/manus-storage/${storageKey}`, type: "other", projectId: null };
+  }
+  return null;
+}
+
 export async function createDownloadRequest(input: {
   userId: number; scope: "asset" | "project"; storageKey?: string | null; assetId?: number | null; projectId?: number | null; reason?: string | null;
 }): Promise<DownloadGrant | null> {
