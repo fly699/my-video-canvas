@@ -51,6 +51,7 @@ import { io, type Socket } from "socket.io-client";
 import {
   Film,
   Save,
+  CopyPlus,
   Download,
   Users,
   ChevronLeft,
@@ -479,6 +480,7 @@ function CanvasInner({ projectId }: { projectId: number }) {
   // it. Reset per project because Canvas is keyed by projectId (remounts).
   const nodesLoadedRef = useRef(false);
   const edgesLoadedRef = useRef(false);
+  const saveCanvasRef = useRef<(() => Promise<void>) | null>(null);
   // Baseline of what each node looked like at last successful save/load (id → sig).
   // saveCanvas upserts only nodes whose sig changed and deletes ids that vanished.
   const savedNodeSigsRef = useRef<Map<string, string>>(new Map());
@@ -509,6 +511,20 @@ function CanvasInner({ projectId }: { projectId: number }) {
       utils.projects.list.invalidate();
     },
   });
+  const saveAsMutation = trpc.projects.saveAs.useMutation({
+    onSuccess: (proj) => { utils.projects.list.invalidate(); if (proj) navigate(`/canvas/${proj.id}`); },
+    onError: (e) => toast.error("另存为失败：" + e.message),
+  });
+  const handleSaveAs = useCallback(async () => {
+    if (saveAsMutation.isPending) return;
+    const def = `${project?.name ?? "画布"} 副本`;
+    const name = window.prompt("另存为新项目，输入名称：", def)?.trim();
+    if (!name) return;
+    // Persist any pending edits first so the copy includes them.
+    try { await saveCanvasRef.current?.(); } catch { /* non-fatal */ }
+    await saveAsMutation.mutateAsync({ sourceProjectId: projectId, name });
+    toast.success(`已另存为「${name}」`);
+  }, [project?.name, projectId, saveAsMutation]);
 
   // Reset canvas store on unmount to prevent stale nodes polluting next canvas
   useEffect(() => {
@@ -641,6 +657,7 @@ function CanvasInner({ projectId }: { projectId: number }) {
       toast.error("保存失败：" + (err instanceof Error ? err.message : String(err)));
     }
   }, [isReadOnly, isDirty, nodes, edges, projectId, batchUpsertNodes, upsertEdge, updateProject, markClean, reactFlow, deleteNodeMutation]);
+  saveCanvasRef.current = saveCanvas;
 
   useEffect(() => {
     if (!isDirty) return;
@@ -1317,6 +1334,22 @@ function CanvasInner({ projectId }: { projectId: number }) {
             <TooltipContent side="bottom" className="text-xs">
               保存 <kbd className="ml-1 px-1 py-0.5 rounded text-[10px] bg-[var(--c-elevated)] font-mono">⌘S</kbd>
             </TooltipContent>
+          </Tooltip>
+
+          {/* Save As (duplicate into a new project) */}
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <button
+                onClick={handleSaveAs}
+                className="topbar-btn"
+                disabled={saveAsMutation.isPending}
+              >
+                {saveAsMutation.isPending
+                  ? <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                  : <CopyPlus className="w-3.5 h-3.5" />}
+              </button>
+            </TooltipTrigger>
+            <TooltipContent side="bottom" className="text-xs">另存为新项目</TooltipContent>
           </Tooltip>
 
           {/* Export Images */}
