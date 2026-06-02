@@ -7,6 +7,7 @@ import { propagateRefImage } from "../../../lib/refImagePropagation";
 import type { ComfyuiWorkflowNodeData, WorkflowParamBinding } from "../../../../../shared/types";
 import { trpc } from "@/lib/trpc";
 import { detectUpstreamImageUrl, resolveWorkflowImageParams } from "@/lib/comfyWorkflowParams";
+import { makeImageProxyFallback } from "@/lib/utils";
 import { toast } from "sonner";
 import {
   Workflow, Loader2, Upload, X, ChevronDown, ChevronRight,
@@ -302,6 +303,25 @@ export const ComfyuiWorkflowNode = memo(function ComfyuiWorkflowNode({ id, selec
   const setParamValue = useCallback((key: string, value: unknown) => {
     update({ paramValues: { ...payload.paramValues, [key]: value } }, true);
   }, [payload.paramValues, update]);
+
+  // Upload a local image file to our storage and return its URL (the run flow
+  // then re-uploads URL-valued image params to ComfyUI). Powers drag-in / file
+  // pick on image params.
+  const imgUploadMutation = trpc.upload.uploadImage.useMutation();
+  const uploadLocalImage = useCallback((file: File): Promise<string | null> => new Promise((resolve) => {
+    if (!file.type.startsWith("image/")) { toast.error("请选择图片文件"); resolve(null); return; }
+    if (file.size > 16 * 1024 * 1024) { toast.error("文件不能超过 16MB"); resolve(null); return; }
+    const reader = new FileReader();
+    reader.onload = async () => {
+      try {
+        const base64 = (reader.result as string).split(",")[1];
+        const r = await imgUploadMutation.mutateAsync({ base64, mimeType: file.type, filename: file.name });
+        resolve(r.url);
+      } catch (e) { toast.error("上传失败：" + (e instanceof Error ? e.message : String(e))); resolve(null); }
+    };
+    reader.onerror = () => { toast.error("文件读取失败"); resolve(null); };
+    reader.readAsDataURL(file);
+  }), [imgUploadMutation]);
 
   const isProcessing = payload.status === "processing" || executeMutation.isPending;
   const progress = payload.progress;
@@ -648,23 +668,13 @@ export const ComfyuiWorkflowNode = memo(function ComfyuiWorkflowNode({ id, selec
                         </label>
                       )}
                       {b.type === "image" && (
-                        <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
-                          <input
-                            style={{ ...fieldBase, flex: 1 }}
-                            placeholder="图片 URL 或 ComfyUI 文件名"
-                            value={String(value)}
-                            onChange={(e) => setParamValue(key, e.target.value)}
-                          />
-                          {String(value) && (
-                            <button
-                              style={{ padding: "6px 8px", borderRadius: 6, cursor: "pointer", background: accent, border: "none", color: "#fff", fontSize: 11 }}
-                              onClick={() => handleImageParamUpload(b, String(value))}
-                              title="上传到 ComfyUI"
-                            >
-                              <Upload size={12} />
-                            </button>
-                          )}
-                        </div>
+                        <ImageParamField
+                          value={String(value)}
+                          onChangeUrl={(u) => setParamValue(key, u)}
+                          uploadFile={uploadLocalImage}
+                          upstreamUrl={upstreamImageUrl}
+                          onUploadToComfy={payload.customBaseUrl?.trim() ? (u) => handleImageParamUpload(b, u) : undefined}
+                        />
                       )}
                     </div>
                   );
@@ -781,3 +791,112 @@ export const ComfyuiWorkflowNode = memo(function ComfyuiWorkflowNode({ id, selec
     </BaseNode>
   );
 });
+
+// ── Image param control ───────────────────────────────────────────────────────
+// Bind an image to a workflow LoadImage param by: dragging an asset from the
+// library / a file / an image URL onto it, picking a local file, or pasting a
+// URL. Shows a thumbnail when set. stopPropagation on drop so the canvas doesn't
+// ALSO spawn a duplicate asset node (same fix as the other media nodes).
+function parseDragImageUrls(dt: DataTransfer): string[] {
+  const assetRaw = dt.getData("application/x-asset-list");
+  if (assetRaw) {
+    try {
+      const list = JSON.parse(assetRaw) as Array<{ url?: string; type?: string }>;
+      return list.filter((a) => a.url && (!a.type || a.type === "image")).map((a) => a.url!);
+    } catch { /* fall through */ }
+  }
+  const uri = dt.getData("text/uri-list") || dt.getData("text/plain");
+  return uri ? uri.split(/[\r\n]+/).map((s) => s.trim()).filter((s) => /^https?:\/\//.test(s)) : [];
+}
+
+function ImageParamField({
+  value, onChangeUrl, uploadFile, upstreamUrl, onUploadToComfy,
+}: {
+  value: string;
+  onChangeUrl: (url: string) => void;
+  uploadFile: (file: File) => Promise<string | null>;
+  upstreamUrl?: string | null;
+  onUploadToComfy?: (url: string) => void;
+}) {
+  const [dragOver, setDragOver] = useState(false);
+  const [uploading, setUploading] = useState(false);
+  const fileRef = useRef<HTMLInputElement>(null);
+
+  const doUploadFile = async (file: File) => {
+    setUploading(true);
+    const url = await uploadFile(file).finally(() => setUploading(false));
+    if (url) onChangeUrl(url);
+  };
+  const onDrop = (e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setDragOver(false);
+    const files = Array.from(e.dataTransfer.files ?? []).filter((f) => f.type.startsWith("image/"));
+    if (files.length) { void doUploadFile(files[0]); return; }
+    const urls = parseDragImageUrls(e.dataTransfer);
+    if (urls.length) onChangeUrl(urls[0]);
+  };
+
+  const isImg = /^https?:\/\//.test(value) || value.startsWith("/");
+  return (
+    <div
+      className="nodrag"
+      onDragOver={(e) => {
+        if (e.dataTransfer.types.includes("application/x-asset-list") || e.dataTransfer.types.includes("Files") || e.dataTransfer.types.includes("text/uri-list")) {
+          e.preventDefault(); e.stopPropagation(); e.dataTransfer.dropEffect = "copy"; setDragOver(true);
+        }
+      }}
+      onDragLeave={() => setDragOver(false)}
+      onDrop={onDrop}
+      style={{ display: "flex", flexDirection: "column", gap: 6, padding: 6, borderRadius: 8, border: `1px dashed ${dragOver ? BORDER_ACCENT : "var(--c-bd2)"}`, background: dragOver ? "color-mix(in oklch, var(--c-input) 82%, var(--c-base))" : "transparent" }}
+    >
+      {isImg && value && (
+        <div style={{ position: "relative", width: "100%", height: 88, borderRadius: 6, overflow: "hidden", background: "var(--c-canvas)", border: "1px solid var(--c-bd2)" }}>
+          <img src={value} alt="ref" draggable={false} style={{ width: "100%", height: "100%", objectFit: "cover" }} onError={makeImageProxyFallback(value)} />
+          <button
+            onClick={() => onChangeUrl("")}
+            className="nodrag"
+            title="清除"
+            style={{ position: "absolute", top: 3, right: 3, padding: 3, borderRadius: "50%", background: "oklch(0 0 0 / 0.65)", color: "#fff", border: "none", lineHeight: 0, cursor: "pointer" }}
+          >
+            <X size={11} />
+          </button>
+        </div>
+      )}
+      <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
+        <input
+          style={{ ...fieldBase, flex: 1 }}
+          placeholder="拖入图片 / 粘贴 URL / 上传文件"
+          value={value}
+          onChange={(e) => onChangeUrl(e.target.value)}
+        />
+        <button
+          onClick={() => fileRef.current?.click()}
+          disabled={uploading}
+          title="上传本地图片"
+          style={{ padding: "6px 8px", borderRadius: 6, cursor: uploading ? "not-allowed" : "pointer", background: "var(--c-input)", border: "1px solid var(--c-bd2)", color: "var(--c-t2)", fontSize: 11, lineHeight: 0 }}
+        >
+          {uploading ? <Loader2 size={12} style={{ animation: "spin 1s linear infinite" }} /> : <Upload size={12} />}
+        </button>
+        {value && onUploadToComfy && (
+          <button
+            onClick={() => onUploadToComfy(value)}
+            title="预上传到 ComfyUI（可选；运行时也会自动上传）"
+            style={{ padding: "6px 8px", borderRadius: 6, cursor: "pointer", background: accent, border: "none", color: "#fff", fontSize: 11, lineHeight: 0 }}
+          >
+            <ImageIcon size={12} />
+          </button>
+        )}
+      </div>
+      {!value && upstreamUrl && (
+        <button
+          onClick={() => onChangeUrl(upstreamUrl)}
+          className="nodrag"
+          style={{ alignSelf: "flex-start", display: "flex", alignItems: "center", gap: 4, fontSize: 10.5, padding: "3px 8px", borderRadius: 6, border: "1px solid oklch(0.65 0.16 145 / 0.4)", background: "transparent", color: "oklch(0.7 0.16 145)", cursor: "pointer" }}
+        >
+          <ImageIcon size={10} /> 用上游图填入
+        </button>
+      )}
+    </div>
+  );
+}
