@@ -1,6 +1,8 @@
 import { useEffect, useRef, useState } from "react";
+import { useLocation } from "wouter";
 import { Lock, Paperclip, Send, ShieldCheck, Users, Trash2, LogOut, X, FileIcon, ImageIcon, Film, FolderOpen, Download } from "lucide-react";
 import { useChat, SERVERLESS_ENCRYPT_PROMPT_BYTES } from "@/hooks/useChat";
+import { useAuth } from "@/_core/hooks/useAuth";
 import { trpc } from "@/lib/trpc";
 import type { ChatWireMessage, ChatFileRef } from "@shared/types";
 import { toast } from "sonner";
@@ -265,6 +267,10 @@ function StagedChip({ file, onRemove }: { file: File; onRemove: () => void }) {
 }
 
 function Bubble({ msg, mine }: { msg: ChatWireMessage; mine: boolean }) {
+  // Download-request messages carry a leading [#DLREQ:<grantId>] marker → strip
+  // it from display and render an inline approve control (admins only).
+  const dl = msg.content.match(/^\[#DLREQ:(\d+)\]\n?/);
+  const displayContent = dl ? msg.content.slice(dl[0].length) : msg.content;
   return (
     <div style={{ display: "flex", gap: 9, alignItems: "flex-start", flexDirection: mine ? "row-reverse" : "row" }}>
       <span style={{ width: 32, height: 32, borderRadius: 10, flexShrink: 0, background: avatarGrad(`u${msg.senderId}`), color: "#fff", display: "inline-flex", alignItems: "center", justifyContent: "center", fontSize: 12, fontWeight: 700 }}>{initials(msg.senderName || "我")}</span>
@@ -273,11 +279,40 @@ function Bubble({ msg, mine }: { msg: ChatWireMessage; mine: boolean }) {
         <div style={{ padding: "9px 13px", borderRadius: 14, fontSize: 14, lineHeight: 1.55, wordBreak: "break-word",
           background: mine ? C.accentSoft : C.surfaceFlat, color: C.t1,
           border: `1px solid ${mine ? "rgba(245,158,11,0.30)" : C.border}`, borderTopRightRadius: mine ? 4 : 14, borderTopLeftRadius: mine ? 14 : 4 }}>
-          <MessageContent content={msg.content} />
+          <MessageContent content={displayContent} />
           {msg.attachments?.map((a, i) => <Attachment key={i} a={a} mine={mine} />)}
+          {dl && <DownloadApproveInline grantId={Number(dl[1])} />}
         </div>
         <span style={{ fontSize: 10, color: C.t4, padding: "0 2px" }}>{new Date(msg.createdAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}</span>
       </div>
+    </div>
+  );
+}
+
+/** Inline approve control inside a "下载审批" channel message (admins only). */
+function DownloadApproveInline({ grantId }: { grantId: number }) {
+  const { user } = useAuth();
+  const [, navigate] = useLocation();
+  const utils = trpc.useUtils();
+  const [hours, setHours] = useState(1);
+  const [done, setDone] = useState<"approved" | "denied" | null>(null);
+  const decideMut = trpc.admin.downloads.decide.useMutation();
+  if (user?.role !== "admin") return null;
+  if (done) return <div style={{ marginTop: 8, fontSize: 12, color: done === "approved" ? "oklch(0.7 0.16 155)" : "oklch(0.7 0.16 25)" }}>{done === "approved" ? `已授权（${hours}h）` : "已拒绝"}</div>;
+  const after = (r: "approved" | "denied") => { setDone(r); void utils.admin.downloads.pendingCount.invalidate(); void utils.admin.downloads.list.invalidate(); };
+  return (
+    <div style={{ display: "flex", alignItems: "center", gap: 6, marginTop: 9, flexWrap: "wrap" }}>
+      <select value={hours} onChange={(e) => setHours(Number(e.target.value))} title="授权有效期"
+        style={{ fontSize: 11.5, padding: "3px 6px", borderRadius: 6, border: `1px solid ${C.border}`, background: C.surfaceFlat, color: C.t1, cursor: "pointer" }}>
+        {Array.from({ length: 24 }, (_, i) => i + 1).map((h) => <option key={h} value={h}>{h} 小时</option>)}
+      </select>
+      <button disabled={decideMut.isPending}
+        onClick={() => decideMut.mutate({ grantId, approve: true, expiresHours: hours }, { onSuccess: () => { toast.success(`已授权（${hours}h）`); after("approved"); }, onError: (e) => toast.error("授权失败：" + e.message) })}
+        style={{ fontSize: 12, fontWeight: 600, padding: "4px 12px", borderRadius: 7, border: "none", background: "oklch(0.6 0.16 155)", color: "#fff", cursor: "pointer" }}>授权（{hours}h）</button>
+      <button disabled={decideMut.isPending}
+        onClick={() => decideMut.mutate({ grantId, approve: false }, { onSuccess: () => { toast.success("已拒绝"); after("denied"); }, onError: (e) => toast.error(e.message) })}
+        style={{ fontSize: 12, padding: "4px 10px", borderRadius: 7, border: `1px solid ${C.border}`, background: "transparent", color: "oklch(0.74 0.18 25)", cursor: "pointer" }}>拒绝</button>
+      <button onClick={() => navigate("/admin")} style={{ fontSize: 12, padding: "4px 10px", borderRadius: 7, border: `1px solid ${C.border}`, background: "transparent", color: C.t3, cursor: "pointer" }}>查看</button>
     </div>
   );
 }

@@ -7,6 +7,7 @@ import { signUploadToken } from "../_core/uploadToken";
 import { hashPassword, verifyPassword } from "../_core/scrypt";
 import {
   getOrCreateLobby,
+  getOrCreateDownloadChannel,
   createConversation,
   getConversationById,
   getConversationByDmKey,
@@ -67,6 +68,31 @@ let eventBroadcaster: ((conversationId: number, event: string, payload: unknown)
 export function registerChatEventBroadcaster(fn: (conversationId: number, event: string, payload: unknown) => void): void {
   eventBroadcaster = fn;
 }
+
+/** Post a download request into the dedicated "下载审批" channel + broadcast it
+ *  live (best-effort; called from the downloads router). */
+export async function postDownloadRequestToChannel(notice: {
+  grantId: number; userId: number; requesterName: string | null;
+  fileName: string | null; fileType: string | null; projectName: string | null; reason: string | null;
+}): Promise<void> {
+  try {
+    const ch = await getOrCreateDownloadChannel();
+    // Leading [#DLREQ:<grantId>] marker lets the chat client render an inline
+    // approve control; it's stripped from the displayed text.
+    const content =
+      `[#DLREQ:${notice.grantId}]\n` +
+      `📥 下载申请\n` +
+      `申请人：${notice.requesterName ?? `用户${notice.userId}`}\n` +
+      `文件：${notice.fileName ?? "（未知）"}${notice.fileType ? `（${notice.fileType}）` : ""}` +
+      `${notice.projectName ? `\n项目：${notice.projectName}` : ""}` +
+      `${notice.reason ? `\n理由：${notice.reason}` : ""}`;
+    const msg = await insertConversationMessage({
+      conversationId: ch.id, senderId: notice.userId,
+      senderName: notice.requesterName ?? `用户${notice.userId}`, content,
+    });
+    if (msg && broadcaster) broadcaster(ch.id, rowToWire(msg));
+  } catch { /* non-fatal — popup/badge still notify */ }
+}
 /** Broadcast directly to a user's personal room (for new-DM / invite notices). */
 let userBroadcaster: ((userId: number, event: string, payload: unknown) => void) | null = null;
 export function registerChatUserBroadcaster(fn: (userId: number, event: string, payload: unknown) => void): void {
@@ -80,6 +106,10 @@ export const chatRouter = router({
     const settings = await getChatSettings().catch(() => null);
     // Ensure the global lobby exists (in dev/no-migration setups it is created lazily).
     if (!settings || settings.lobbyEnabled) { try { await getOrCreateLobby(); } catch { /* non-fatal */ } }
+    // Admins auto-join the "下载审批" channel so it shows in their chat list.
+    if (ctx.user.role === "admin") {
+      try { const ch = await getOrCreateDownloadChannel(); if (!(await isChatMember(ch.id, ctx.user.id))) await addChatMember(ch.id, ctx.user.id, "member"); } catch { /* non-fatal */ }
+    }
     const convs = await listConversationsForUser(ctx.user.id);
     const out = [] as Array<{
       id: number; type: string; mode: string; title: string | null;

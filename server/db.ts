@@ -1441,6 +1441,14 @@ export async function getOrCreateLobby(): Promise<ChatConversation> {
   return rows[0]!;
 }
 
+// Singleton server-mode channel where download requests are posted for admins.
+// Keyed by dmKey for dedup; not E2E (server mode) so the server can post to it.
+export async function getOrCreateDownloadChannel(): Promise<ChatConversation> {
+  const existing = await getConversationByDmKey("system:download-approval");
+  if (existing) return existing;
+  return createConversation({ type: "group", mode: "server", title: "下载审批", dmKey: "system:download-approval", createdBy: null });
+}
+
 export async function createConversation(data: InsertChatConversation): Promise<ChatConversation> {
   const db = await getDb();
   if (!db) { if (DEV_MODE) return dev.devCreateConversation(data); throw new Error("DB unavailable"); }

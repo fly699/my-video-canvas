@@ -1185,6 +1185,7 @@ const paginBtn: React.CSSProperties = {
 function DownloadsAdminPanel() {
   const utils = trpc.useUtils();
   const [status, setStatus] = useState<"pending" | "active" | "revoked" | "denied" | "">("pending");
+  const [approveHours, setApproveHours] = useState(1);
   const [preview, setPreview] = useState<AdminAsset | null>(null);
   const { data: grants, isFetching } = trpc.admin.downloads.list.useQuery({ status: status || undefined, limit: 300 });
   const onDone = () => void utils.admin.downloads.list.invalidate();
@@ -1208,10 +1209,17 @@ function DownloadsAdminPanel() {
       <div style={{ fontSize: 12.5, color: "var(--c-t2, rgba(255,255,255,0.55))", lineHeight: 1.6 }}>
         在「存储设置 → 严格下载授权」开启后，非管理员下载原文件须持「一次性授权」。可在此审批用户申请、查证文件，或主动按文件/整个项目授权。每张授权对每个文件仅可成功下载一次。
       </div>
-      <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+      <div style={{ display: "flex", gap: 6, flexWrap: "wrap", alignItems: "center" }}>
         {([["pending", "待审批"], ["active", "已授权"], ["denied", "已拒绝"], ["revoked", "已撤销"], ["", "全部"]] as const).map(([v, l]) => (
           <button key={v} style={chip(status === v)} onClick={() => setStatus(v)}>{l}</button>
         ))}
+        <span style={{ marginLeft: "auto", display: "inline-flex", alignItems: "center", gap: 6, fontSize: 12, color: "var(--c-t3,rgba(255,255,255,0.5))" }}>
+          批准有效期
+          <select value={approveHours} onChange={(e) => setApproveHours(Number(e.target.value))}
+            style={{ fontSize: 12, padding: "3px 6px", borderRadius: 6, border: "1px solid rgba(255,255,255,0.14)", background: "rgba(255,255,255,0.04)", color: "var(--c-t1,#f0f0f4)", cursor: "pointer" }}>
+            {Array.from({ length: 24 }, (_, i) => i + 1).map((h) => <option key={h} value={h}>{h} 小时</option>)}
+          </select>
+        </span>
       </div>
       <div style={{ fontSize: 12, color: "var(--c-t3, rgba(255,255,255,0.4))" }}>{isFetching ? "加载中…" : `${grants?.length ?? 0} 条`}</div>
       <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
@@ -1250,12 +1258,12 @@ function DownloadsAdminPanel() {
               )}
               {g.status === "pending" && (
                 <>
-                  <button disabled={busy} onClick={() => decideMut.mutate({ grantId: g.id, approve: true })} style={btn("oklch(0.74 0.18 155)", "oklch(0.6 0.16 155 / 0.12)")}>批准</button>
+                  <button disabled={busy} onClick={() => decideMut.mutate({ grantId: g.id, approve: true, expiresHours: approveHours })} style={btn("oklch(0.74 0.18 155)", "oklch(0.6 0.16 155 / 0.12)")}>批准（{approveHours}h）</button>
                   <button disabled={busy} onClick={() => decideMut.mutate({ grantId: g.id, approve: false })} style={btn("oklch(0.74 0.18 25)")}>拒绝</button>
                   {g.projectId != null && (
                     <button disabled={busy} title="一次性授权该用户下载这个项目的全部文件（并结掉本申请）" onClick={() => grantMut.mutate(
                       { userId: g.userId, scope: "project", projectId: g.projectId!, note: "审批时授权整个项目" },
-                      { onSuccess: () => decideMut.mutate({ grantId: g.id, approve: true }) }, // resolve the pending request too
+                      { onSuccess: () => decideMut.mutate({ grantId: g.id, approve: true, expiresHours: approveHours }) }, // resolve the pending request too
                     )} style={btn("oklch(0.72 0.2 285)")}>授权整个项目</button>
                   )}
                 </>

@@ -6,6 +6,7 @@ import { writeAuditLog } from "../_core/auditLog";
 import { toInternalStoragePath } from "../storage";
 import { isDownloadAuthEnabled } from "../_core/storageConfig";
 import { notifyAdminsOfDownloadRequest } from "../_core/downloadNotify";
+import { postDownloadRequestToChannel } from "./chat";
 
 /** Bare storage key from a URL/path (own-storage → key; external → the URL). */
 function keyOf(url: string): string {
@@ -62,11 +63,13 @@ export const downloadsRouter = router({
       // Push to online admins for on-the-spot approval (best-effort).
       const meta = await db.getAssetMetaForGrant(asset?.id ?? input.assetId ?? null, storageKey).catch(() => null);
       const proj = meta?.projectId != null ? await db.getProjectByIdRaw(meta.projectId).catch(() => null) : null;
-      notifyAdminsOfDownloadRequest({
+      const noticeBase = {
         grantId: grant.id, userId: ctx.user.id, requesterName: ctx.user.name ?? null,
         fileName: meta?.name ?? storageKey.split("/").pop() ?? null, fileType: meta?.type ?? null,
-        projectName: proj?.name ?? null, reason: input.reason ?? null, createdAt: Date.now(),
-      });
+        projectName: proj?.name ?? null, reason: input.reason ?? null,
+      };
+      notifyAdminsOfDownloadRequest({ ...noticeBase, createdAt: Date.now() });
+      void postDownloadRequestToChannel(noticeBase); // also log into the chat "下载审批" channel
       return grant;
     }),
 
@@ -101,11 +104,11 @@ export const adminDownloadsRouter = router({
     }),
 
   decide: adminProcedure
-    .input(z.object({ grantId: z.number(), approve: z.boolean(), note: z.string().max(500).optional(), expiresDays: z.number().int().min(1).max(365).optional() }))
+    .input(z.object({ grantId: z.number(), approve: z.boolean(), note: z.string().max(500).optional(), expiresHours: z.number().int().min(1).max(24).optional() }))
     .mutation(async ({ ctx, input }) => {
-      // Approved grants expire (default 3 days) so a one-time download must be
-      // used promptly — a stale approval can't be redeemed indefinitely later.
-      const expiresAt = input.approve ? new Date(Date.now() + (input.expiresDays ?? 3) * 86400_000) : null;
+      // Approved grants expire (default 1 hour, 1–24h) so a one-time download
+      // must be used promptly — a stale approval can't be redeemed later.
+      const expiresAt = input.approve ? new Date(Date.now() + (input.expiresHours ?? 1) * 3600_000) : null;
       await db.decideDownloadGrant(input.grantId, ctx.user.id, input.approve, input.note ?? null, expiresAt);
       writeAuditLog({ ctx, action: input.approve ? "download:approve" : "download:deny", detail: { grantId: input.grantId, note: input.note, expiresAt: expiresAt?.toISOString() } });
       return { success: true };
@@ -132,6 +135,9 @@ export const adminDownloadsRouter = router({
       writeAuditLog({ ctx, action: "download:grant", detail: { grantId: grant.id, userId: input.userId, scope: input.scope } });
       return grant;
     }),
+
+  // Cheap count of un-handled requests — drives the global admin badge.
+  pendingCount: adminProcedure.query(async () => (await db.listDownloadGrants({ status: "pending", limit: 500 })).length),
 
   revoke: adminProcedure
     .input(z.object({ grantId: z.number() }))
