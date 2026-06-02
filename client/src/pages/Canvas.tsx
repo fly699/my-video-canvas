@@ -476,7 +476,9 @@ function CanvasInner({ projectId }: { projectId: number }) {
   const utils = trpc.useUtils();
   const batchUpsertNodes = trpc.nodes.batchUpsert.useMutation();
   const upsertEdge = trpc.edges.upsert.useMutation();
-  const deleteNodeMutation = trpc.nodes.delete.useMutation();
+  const deleteNodeMutation = trpc.nodes.delete.useMutation({
+    onError: (e) => toast.error("删除节点失败（服务端拒绝）：" + e.message),
+  });
   const deleteEdgeMutation = trpc.edges.delete.useMutation();
   const updateProject = trpc.projects.update.useMutation({
     onSuccess: () => {
@@ -618,6 +620,7 @@ function CanvasInner({ projectId }: { projectId: number }) {
       if (useCanvasStore.getState().deletedNodeIds.length === 0) markClean();
     } catch (err) {
       console.error("Auto-save failed:", err);
+      toast.error("保存失败：" + (err instanceof Error ? err.message : String(err)));
     }
   }, [isDirty, nodes, edges, projectId, batchUpsertNodes, upsertEdge, updateProject, markClean, reactFlow, deleteNodeMutation]);
 
