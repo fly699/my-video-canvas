@@ -26,9 +26,20 @@ export function useReferenceImages(id: string, payload: RefPayload) {
     [id, updateNodeData],
   );
 
+  // Read the LIVE list from the store rather than the render-snapshot `payload`.
+  // Critical for back-to-back mutations (e.g. uploading several files in a loop,
+  // or a multi-URL drop): the component hasn't re-rendered between iterations,
+  // so the closed-over `payload` is stale and each commit would clobber the
+  // previous one — leaving only the last image. Falling back to `payload` keeps
+  // it correct if the node isn't in the store yet.
+  const liveImages = useCallback((): ReferenceImage[] => {
+    const node = useCanvasStore.getState().nodes.find((n) => n.id === id);
+    return normalizeRefImages((node?.data.payload as RefPayload) ?? payload);
+  }, [id, payload]);
+
   // Append new URLs (de-duplicated against existing), skipping blanks.
   const addUrls = useCallback((urls: string[], source: RefSource = "url") => {
-    const cur = normalizeRefImages(payload);
+    const cur = liveImages();
     const seen = new Set(cur.map((r) => r.url));
     const add = urls
       .map((u) => (u ?? "").trim())
@@ -36,11 +47,11 @@ export function useReferenceImages(id: string, payload: RefPayload) {
       .map((u) => makeRefImage(u, source));
     if (add.length) commit([...cur, ...add]);
     return add.length;
-  }, [payload, commit]);
+  }, [liveImages, commit]);
 
   // Insert URLs at a position (smart-sort drop). De-dupes; clamps index.
   const insertUrls = useCallback((urls: string[], index: number, source: RefSource = "drop") => {
-    const cur = normalizeRefImages(payload);
+    const cur = liveImages();
     const seen = new Set(cur.map((r) => r.url));
     const add = urls
       .map((u) => (u ?? "").trim())
@@ -50,15 +61,15 @@ export function useReferenceImages(id: string, payload: RefPayload) {
     const at = Math.max(0, Math.min(index, cur.length));
     commit([...cur.slice(0, at), ...add, ...cur.slice(at)]);
     return add.length;
-  }, [payload, commit]);
+  }, [liveImages, commit]);
 
   const removeId = useCallback((rid: string) => {
-    commit(normalizeRefImages(payload).filter((r) => r.id !== rid));
-  }, [payload, commit]);
+    commit(liveImages().filter((r) => r.id !== rid));
+  }, [liveImages, commit]);
 
   // Move an existing entry to a target index (reorder within the strip).
   const moveId = useCallback((rid: string, toIndex: number) => {
-    const cur = normalizeRefImages(payload);
+    const cur = liveImages();
     const from = cur.findIndex((r) => r.id === rid);
     if (from < 0) return;
     const next = cur.slice();
@@ -66,7 +77,7 @@ export function useReferenceImages(id: string, payload: RefPayload) {
     const clamped = Math.max(0, Math.min(toIndex, next.length));
     next.splice(clamped, 0, moved);
     commit(next);
-  }, [payload, commit]);
+  }, [liveImages, commit]);
 
   const clear = useCallback(() => commit([]), [commit]);
 

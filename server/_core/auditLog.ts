@@ -76,6 +76,7 @@ export type AuditAction =
   | "lan_chat:join"
   | "lan_chat:ip_mismatch"
   | "asset_import_url"
+  | "asset_admin_delete"
   | "download:request"
   | "download:approve"
   | "download:deny"

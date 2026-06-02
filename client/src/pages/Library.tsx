@@ -20,6 +20,9 @@ import {
   X,
   Boxes,
   Play,
+  Check,
+  CheckSquare,
+  Square,
 } from "lucide-react";
 
 type TypeFilter = "" | "image" | "video" | "audio" | "other";
@@ -113,21 +116,48 @@ function Lightbox({ asset, onClose }: { asset: Asset; onClose: () => void }) {
 }
 
 // ── Asset grid card ─────────────────────────────────────────────────────────
-function AssetCard({ asset, onPreview, onDelete }: { asset: Asset; onPreview: () => void; onDelete: () => void }) {
+function AssetCard({
+  asset, onPreview, onDelete, selected, selecting, onToggleSelect,
+}: {
+  asset: Asset; onPreview: () => void; onDelete: () => void;
+  selected: boolean; selecting: boolean; onToggleSelect: (e: React.MouseEvent) => void;
+}) {
   const Icon = iconFor(asset.type);
   const accent = accentFor(asset.type);
+  // While selecting, a click anywhere on the card toggles selection instead of
+  // opening the preview (matches the canvas asset-strip multi-select behavior).
+  const handlePreviewClick = (e: React.MouseEvent) => {
+    if (selecting) { onToggleSelect(e); return; }
+    onPreview();
+  };
   return (
     <div
       className="group relative flex flex-col rounded-xl overflow-hidden transition-all duration-200"
-      style={{ background: "var(--c-surface)", border: "1px solid var(--c-bd1)" }}
-      onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.borderColor = `${accent}55`; }}
-      onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.borderColor = "var(--c-bd1)"; }}
+      style={{ background: "var(--c-surface)", border: `1px solid ${selected ? accent : "var(--c-bd1)"}`, boxShadow: selected ? `0 0 0 1px ${accent}` : "none" }}
+      onMouseEnter={(e) => { if (!selected) (e.currentTarget as HTMLElement).style.borderColor = `${accent}55`; }}
+      onMouseLeave={(e) => { if (!selected) (e.currentTarget as HTMLElement).style.borderColor = "var(--c-bd1)"; }}
     >
+      {/* Selection checkbox — always visible while selecting or when checked */}
+      <button
+        onClick={onToggleSelect}
+        title={selected ? "取消选择" : "选择"}
+        className="absolute top-2 left-2 z-10 w-5 h-5 rounded-md flex items-center justify-center transition-opacity"
+        style={{
+          background: selected ? accent : "oklch(0 0 0 / 0.55)",
+          color: "white",
+          opacity: selecting || selected ? 1 : 0,
+          border: selected ? "none" : "1px solid oklch(1 0 0 / 0.5)",
+        }}
+        onMouseEnter={(e) => { if (!selecting && !selected) (e.currentTarget as HTMLElement).style.opacity = "1"; }}
+      >
+        {selected && <Check className="w-3.5 h-3.5" strokeWidth={3} />}
+      </button>
+
       {/* Preview */}
       <div
         className="relative h-32 flex items-center justify-center cursor-pointer overflow-hidden"
         style={{ background: `${accent}0c` }}
-        onClick={onPreview}
+        onClick={handlePreviewClick}
       >
         {asset.type === "image" ? (
           <img
@@ -147,9 +177,9 @@ function AssetCard({ asset, onPreview, onDelete }: { asset: Asset; onPreview: ()
         ) : (
           <Icon className="w-8 h-8" style={{ color: accent }} />
         )}
-        {/* Type badge */}
+        {/* Type badge — bottom-left to leave the top-left corner for the checkbox */}
         <span
-          className="absolute top-2 left-2 px-1.5 py-0.5 rounded text-[9px] font-semibold"
+          className="absolute bottom-2 left-2 px-1.5 py-0.5 rounded text-[9px] font-semibold"
           style={{ background: "oklch(0 0 0 / 0.5)", color: "white" }}
         >
           {asset.type}
@@ -199,6 +229,7 @@ export default function Library() {
   const [uploading, setUploading] = useState(false);
   const [dragOver, setDragOver] = useState(false);
   const [preview, setPreview] = useState<Asset | null>(null);
+  const [selected, setSelected] = useState<Set<number>>(new Set());
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   // Debounce search input → server query.
@@ -244,6 +275,10 @@ export default function Library() {
     onSuccess: () => { toast.success("素材已删除"); refetch(); },
     onError: (err) => toast.error("删除失败：" + err.message),
   });
+  const deleteManyMutation = trpc.assets.deleteMany.useMutation({
+    onSuccess: (r) => { toast.success(`已删除 ${r.count} 个素材`); setSelected(new Set()); refetch(); },
+    onError: (err) => toast.error("批量删除失败：" + err.message),
+  });
   const importMutation = trpc.assets.importFromUrl.useMutation({
     onSuccess: () => { toast.success("已从链接导入"); refetch(); },
     onError: (err) => toast.error("导入失败：" + err.message),
@@ -274,6 +309,46 @@ export default function Library() {
   const handleImportUrl = () => {
     const url = window.prompt("粘贴文件链接（http/https）导入到用户仓库")?.trim();
     if (url) importMutation.mutate({ url });
+  };
+
+  // ── Multi-select ──
+  const selecting = selected.size > 0;
+  const toggleSelect = useCallback((id: number) => {
+    setSelected((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id); else next.add(id);
+      return next;
+    });
+  }, []);
+  const allVisibleSelected = list.length > 0 && list.every((a) => selected.has(a.id));
+  const toggleSelectAll = () => {
+    setSelected((prev) => {
+      if (list.every((a) => prev.has(a.id))) {
+        // deselect the currently-visible ones, keep any off-screen selections
+        const next = new Set(prev);
+        for (const a of list) next.delete(a.id);
+        return next;
+      }
+      const next = new Set(prev);
+      for (const a of list) next.add(a.id);
+      return next;
+    });
+  };
+  const handleBulkDelete = () => {
+    const ids = Array.from(selected);
+    if (ids.length === 0) return;
+    if (!confirm(`确认删除选中的 ${ids.length} 个素材？`)) return;
+    deleteManyMutation.mutate({ ids });
+  };
+  const handleBulkDownload = () => {
+    const byId = new Map(list.map((a) => [a.id, a]));
+    for (const id of Array.from(selected)) {
+      const a = byId.get(id);
+      if (!a) continue;
+      const link = document.createElement("a");
+      link.href = a.url; link.download = a.name; link.target = "_blank"; link.rel = "noreferrer";
+      document.body.appendChild(link); link.click(); link.remove();
+    }
   };
 
   // ── Auth gate ── (redirect as an effect, not during render, to keep render pure)
@@ -406,6 +481,47 @@ export default function Library() {
             </div>
           </div>
 
+          {/* Selection toolbar */}
+          {list.length > 0 && (
+            <div className="flex items-center justify-between flex-wrap gap-2">
+              <button
+                onClick={toggleSelectAll}
+                className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-medium transition-all"
+                style={{ color: "var(--c-t2)", border: "1px solid var(--c-bd2)" }}
+              >
+                {allVisibleSelected ? <CheckSquare className="w-3.5 h-3.5" style={{ color: ACCENT }} /> : <Square className="w-3.5 h-3.5" />}
+                {allVisibleSelected ? "取消全选" : "全选"}
+                {selecting && <span style={{ color: "oklch(0.78 0.15 60)" }}>· 已选 {selected.size}</span>}
+              </button>
+              {selecting && (
+                <div className="flex items-center gap-1.5">
+                  <button
+                    onClick={handleBulkDownload}
+                    className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-medium transition-all"
+                    style={{ color: "var(--c-t2)", border: "1px solid var(--c-bd2)" }}
+                  >
+                    <Download className="w-3.5 h-3.5" /> 下载
+                  </button>
+                  <button
+                    onClick={handleBulkDelete}
+                    disabled={deleteManyMutation.isPending}
+                    className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-medium transition-all"
+                    style={{ color: "oklch(0.78 0.16 25)", border: "1px solid oklch(0.6 0.16 25 / 0.4)" }}
+                  >
+                    {deleteManyMutation.isPending ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Trash2 className="w-3.5 h-3.5" />} 删除
+                  </button>
+                  <button
+                    onClick={() => setSelected(new Set())}
+                    className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs font-medium transition-all"
+                    style={{ color: "var(--c-t3)", border: "1px solid var(--c-bd2)" }}
+                  >
+                    <X className="w-3.5 h-3.5" /> 取消
+                  </button>
+                </div>
+              )}
+            </div>
+          )}
+
           {/* Grid */}
           {isFetching && list.length === 0 ? (
             <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-3">
@@ -442,6 +558,9 @@ export default function Library() {
                     asset={a}
                     onPreview={() => setPreview(a)}
                     onDelete={() => { if (confirm("确认删除此素材？")) deleteMutation.mutate({ id: a.id }); }}
+                    selected={selected.has(a.id)}
+                    selecting={selecting}
+                    onToggleSelect={(e) => { e.stopPropagation(); toggleSelect(a.id); }}
                   />
                   {a.projectId != null && projectName.has(a.projectId) && (
                     <span className="text-[9.5px] px-1 truncate" style={{ color: "var(--c-t4)" }} title={projectName.get(a.projectId)}>

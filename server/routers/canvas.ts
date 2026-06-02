@@ -480,6 +480,15 @@ export const assetsRouter = router({
       return { success: true };
     }),
 
+  // Bulk soft-delete (multi-select in the library). Each is user-scoped, so a
+  // caller can only delete their own assets even if foreign ids are mixed in.
+  deleteMany: protectedProcedure
+    .input(z.object({ ids: z.array(z.number()).min(1).max(500) }))
+    .mutation(async ({ ctx, input }) => {
+      for (const id of input.ids) await deleteAsset(id, ctx.user.id);
+      return { success: true, count: input.ids.length };
+    }),
+
   // External import: server-side download a remote URL (size-capped, SSRF-guarded),
   // re-host into the user's 专有仓库, and index it as source="external".
   importFromUrl: protectedProcedure
@@ -547,28 +556,42 @@ export const videoTasksRouter = router({
         prompt: z.string().max(4000),
         negativePrompt: z.string().max(1000).optional(),
         referenceImageUrl: z.string().optional(),
+        // Multi-reference images (首尾帧 / reference / elements). [0] mirrors
+        // referenceImageUrl; the backend maps the list per-model.
+        referenceImageUrls: z.array(z.string()).max(9).optional(),
         params: z.record(z.string(), z.unknown()).optional(),
       })
     )
     .mutation(async ({ ctx, input }) => {
       await assertWhitelisted(ctx);
       await assertProjectAccess(input.projectId, ctx.user.id, "editor");
-      if (input.referenceImageUrl) {
-        if (input.referenceImageUrl.match(/^https?:\/\//)) {
-          guardUrl(input.referenceImageUrl);
-        } else if (!input.referenceImageUrl.startsWith("/")) {
-          throw new TRPCError({ code: "BAD_REQUEST", message: "不支持的 URL 协议，仅允许 http/https 或相对路径" });
-        }
-      }
+      // Validate every reference URL (single + multi) the same way.
+      const validateRef = (u: string) => {
+        if (u.match(/^https?:\/\//)) guardUrl(u);
+        else if (!u.startsWith("/")) throw new TRPCError({ code: "BAD_REQUEST", message: "不支持的 URL 协议，仅允许 http/https 或相对路径" });
+      };
+      if (input.referenceImageUrl) validateRef(input.referenceImageUrl);
+      for (const u of input.referenceImageUrls ?? []) if (u?.trim()) validateRef(u.trim());
+      // Coalesced reference list: prefer the multi-image array, fall back to the
+      // single field. Drives both the inline submit and the persisted params.
+      const refList = (input.referenceImageUrls?.length ? input.referenceImageUrls : (input.referenceImageUrl ? [input.referenceImageUrl] : []))
+        .map((u) => u?.trim()).filter((u): u is string => Boolean(u));
       // Higgsfield DoP is strictly image-to-video — fail fast at the API edge
       // so the user sees an immediate "需要参考图" error instead of waiting
       // for the background poller to retry 10 times (~100s) before failing.
-      if (input.provider.startsWith("hf_dop_") && !input.referenceImageUrl?.trim()) {
+      if (input.provider.startsWith("hf_dop_") && refList.length === 0) {
         throw new TRPCError({
           code: "BAD_REQUEST",
           message: "Higgsfield DoP 视频模型必须提供参考图（image-to-video 模式）。请连接一个图像节点或填写 referenceImageUrl。",
         });
       }
+      // Persist the multi-image list inside params (the video_tasks table has no
+      // dedicated column) so the background poller can re-submit with all images.
+      // The `_referenceImageUrls` key is filtered out of the upstream payload by
+      // VIDEO_PARAM_KEYS, so it never poisons the provider request.
+      const mergedParams: Record<string, unknown> | undefined = refList.length > 1
+        ? { ...((input.params as Record<string, unknown> | undefined) ?? {}), _referenceImageUrls: refList }
+        : (input.params as Record<string, unknown> | undefined);
 
       // Idempotency: if this node already has a pending/processing task, return it
       // instead of creating a new one. Prevents double-charges when the client is
@@ -588,8 +611,8 @@ export const videoTasksRouter = router({
         provider: input.provider,
         prompt: input.prompt,
         negativePrompt: input.negativePrompt,
-        referenceImageUrl: input.referenceImageUrl,
-        params: input.params as Record<string, unknown>,
+        referenceImageUrl: refList[0] ?? input.referenceImageUrl,
+        params: mergedParams,
         status: "pending",
       });
       if (!task) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "Failed to create video task" });
@@ -626,7 +649,8 @@ export const videoTasksRouter = router({
               provider: input.provider,
               prompt: input.prompt,
               negativePrompt: input.negativePrompt,
-              referenceImageUrl: input.referenceImageUrl,
+              referenceImageUrl: refList[0] ?? input.referenceImageUrl,
+              referenceImageUrls: refList.length > 1 ? refList : undefined,
               params: input.params as Record<string, unknown>,
             });
             externalTaskId = result.externalTaskId;

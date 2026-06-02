@@ -9,6 +9,7 @@ import { ENV } from "../_core/env";
 import { randomBytes } from "crypto";
 import { getUpdateStatus, getVersionInfo, getUpdateAvailable, startUpdate } from "../_core/selfUpdate";
 import { startBackfill, getBackfillStatus } from "../_core/assetBackfill";
+import { writeAuditLog } from "../_core/auditLog";
 
 const AUDIT_ACTIONS = [
   "login_email", "login_oauth",
@@ -38,6 +39,15 @@ export const adminRouter = router({
     // 记录进素材库（幂等，按 userId+storageKey 去重）。后台异步执行，前端轮询 status。
     backfill: adminProcedure.mutation(() => startBackfill()),
     backfillStatus: adminProcedure.query(() => getBackfillStatus()),
+    // Cross-user bulk soft-delete (admin library multi-select). Soft delete keeps
+    // the MinIO object + row; only visibility is cleared. Audited.
+    delete: adminProcedure
+      .input(z.object({ ids: z.array(z.number()).min(1).max(500) }))
+      .mutation(async ({ ctx, input }) => {
+        await db.deleteAssetAdmin(input.ids);
+        writeAuditLog({ ctx, action: "asset_admin_delete", detail: { ids: input.ids, count: input.ids.length } });
+        return { success: true, count: input.ids.length };
+      }),
   }),
   logs: router({
     list: adminProcedure

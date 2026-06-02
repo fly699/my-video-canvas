@@ -21,6 +21,21 @@ async function submit(provider: string, params: Record<string, unknown>) {
   return lastBody!;
 }
 
+// Submit with reference images. URLs are absolute http(s) so resolveToAbsoluteUrl
+// passes them through unchanged, letting us assert the exact field mapping.
+async function submitWithRefs(provider: string, urls: string[], params: Record<string, unknown> = {}) {
+  const { submitPoyoVideo } = await import("./_core/poyoVideo");
+  await submitPoyoVideo({
+    provider, prompt: "hi", params,
+    referenceImageUrl: urls[0],
+    referenceImageUrls: urls.length > 1 ? urls : undefined,
+  });
+  return lastBody!;
+}
+const A = "https://cdn.example.com/a.png";
+const B = "https://cdn.example.com/b.png";
+const C = "https://cdn.example.com/c.png";
+
 describe("submitPoyoVideo required-param defaults", () => {
   it("injects sound:false for Kling o3 standard when the UI didn't provide it", async () => {
     const body = await submit("poyo_kling_o3_std", { aspect_ratio: "16:9", duration: 5 });
@@ -49,5 +64,80 @@ describe("submitPoyoVideo required-param defaults", () => {
     expect(body.input.sound).toBe(false);
     const body2 = await submit("poyo_seedance", { resolution: "1080p", duration: 5 });
     expect("sound" in body2.input).toBe(false);
+  });
+});
+
+describe("submitPoyoVideo single-image mapping (unchanged)", () => {
+  it("kling 2.1 → start_image_url", async () => {
+    const body = await submitWithRefs("poyo_kling21_std", [A]);
+    expect(body.input.start_image_url).toBe(A);
+    expect("image_urls" in body.input).toBe(false);
+  });
+  it("wan i2v / sora-official / veo → image_urls[0]", async () => {
+    expect((await submitWithRefs("poyo_wan27_i2v", [A])).input.image_urls).toEqual([A]);
+    expect((await submitWithRefs("poyo_sora2_official", [A])).input.image_urls).toEqual([A]);
+    expect((await submitWithRefs("poyo_veo_fast", [A])).input.image_urls).toEqual([A]);
+  });
+  it("everything else → reference_image_url", async () => {
+    expect((await submitWithRefs("poyo_grok_video", [A])).input.reference_image_url).toBe(A);
+  });
+});
+
+describe("submitPoyoVideo multi-image mapping (per-model)", () => {
+  it("kling 2.1 pro / 2.5 turbo → start + end frame", async () => {
+    const body = await submitWithRefs("poyo_kling21_pro", [A, B]);
+    expect(body.input.start_image_url).toBe(A);
+    expect(body.input.end_image_url).toBe(B);
+    const t = await submitWithRefs("poyo_kling25_turbo", [A, B]);
+    expect(t.input.start_image_url).toBe(A);
+    expect(t.input.end_image_url).toBe(B);
+  });
+
+  it("wan i2v / kling 3.0 → image_urls (首尾帧, cap 2)", async () => {
+    expect((await submitWithRefs("poyo_wan27_i2v", [A, B])).input.image_urls).toEqual([A, B]);
+    expect((await submitWithRefs("poyo_kling30_pro", [A, B, C])).input.image_urls).toEqual([A, B]);
+  });
+
+  it("veo 3.1 fast → image_urls + generation_type (2=frame, 3=reference)", async () => {
+    const frame = await submitWithRefs("poyo_veo_fast", [A, B]);
+    expect(frame.input.image_urls).toEqual([A, B]);
+    expect(frame.input.generation_type).toBe("frame");
+    const ref = await submitWithRefs("poyo_veo_fast", [A, B, C]);
+    expect(ref.input.image_urls).toEqual([A, B, C]);
+    expect(ref.input.generation_type).toBe("reference");
+  });
+
+  it("veo 3.1 fast → explicit generation_type param overrides inference", async () => {
+    const body = await submitWithRefs("poyo_veo_fast", [A, B, C], { generation_type: "frame" });
+    expect(body.input.generation_type).toBe("frame");
+  });
+
+  it("seedance / kling-o3 → image_urls within frame cap, reference_image_urls beyond", async () => {
+    // 2 imgs ≤ frame cap (2) → image_urls
+    expect((await submitWithRefs("poyo_seedance", [A, B])).input.image_urls).toEqual([A, B]);
+    // 3 imgs > frame cap → reference mode
+    expect((await submitWithRefs("poyo_seedance", [A, B, C])).input.reference_image_urls).toEqual([A, B, C]);
+    // kling-o3 reference cap 4
+    expect((await submitWithRefs("poyo_kling_o3_pro", [A, B, C])).input.reference_image_urls).toEqual([A, B, C]);
+  });
+
+  it("happy-horse → 1 img keeps legacy single field, 2+ = reference_image_urls", async () => {
+    // Single image: unchanged legacy mapping (reference_image_url) — we don't
+    // touch working single-image behavior. Multiple: reference mode.
+    expect((await submitWithRefs("poyo_happy_horse", [A])).input.reference_image_url).toBe(A);
+    expect((await submitWithRefs("poyo_happy_horse", [A, B])).input.reference_image_urls).toEqual([A, B]);
+  });
+
+  it("model without multi support → first image only, single mapping", async () => {
+    // grok has no multi spec → falls back to reference_image_url on first image
+    const body = await submitWithRefs("poyo_grok_video", [A, B]);
+    expect(body.input.reference_image_url).toBe(A);
+    expect("reference_image_urls" in body.input).toBe(false);
+  });
+
+  it("de-dupes repeated URLs before mapping", async () => {
+    const body = await submitWithRefs("poyo_kling21_pro", [A, A]);
+    expect(body.input.start_image_url).toBe(A);
+    expect("end_image_url" in body.input).toBe(false); // dupe dropped → single
   });
 });

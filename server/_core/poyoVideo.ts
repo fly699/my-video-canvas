@@ -112,6 +112,84 @@ const VIDEO_PARAM_DEFAULTS: Record<string, Record<string, unknown>> = {
   "kling-o3/4K": { sound: false },
 };
 
+// ── Reference-image field mapping ─────────────────────────────────────────────
+// SINGLE image: the historical per-model field (start_image_url / image_urls /
+// reference_image_url). Kept byte-for-byte to avoid regressing working jobs.
+const SINGLE_START_IMAGE_MODELS = new Set<string>([
+  "kling-2.1/standard", "kling-2.1/pro", "kling-2.5-turbo-pro", "hailuo-2.3",
+]);
+const SINGLE_IMAGE_URLS_MODELS = new Set<string>([
+  "wan2.7-image-to-video", "wan2.2-image-to-video-fast", "wan2.6-image-to-video",
+  "sora-2-official", "sora-2-pro-official",
+  "veo3.1-fast", "veo3.1-quality", "veo3.1-lite",
+]);
+
+function applySingleImage(input: Record<string, unknown>, model: string, url: string): void {
+  if (SINGLE_START_IMAGE_MODELS.has(model)) input.start_image_url = url;
+  else if (SINGLE_IMAGE_URLS_MODELS.has(model)) input.image_urls = [url];
+  else input.reference_image_url = url;
+}
+
+// MULTI image: per wire-model capability (docs/poyo-video-api.md §二-七). Only
+// models that genuinely accept >1 reference image appear here; anything absent
+// falls back to single-image mapping on the first image (no surprise charges).
+interface MultiImageSpec {
+  imageUrls?: number;       // image_urls array cap (frame mode: [0]=start [1]=end …)
+  startEnd?: boolean;       // start_image_url + end_image_url (2 frames)
+  referenceImages?: number; // reference_image_urls cap (multi-reference mode)
+  veoGenType?: boolean;     // also derive generation_type (frame=2 / reference=3)
+}
+const MULTI_IMAGE_SPEC: Record<string, MultiImageSpec> = {
+  "seedance-2":      { imageUrls: 2, referenceImages: 9 },
+  "seedance-2-fast": { imageUrls: 2, referenceImages: 9 },
+  "veo3.1-fast":     { imageUrls: 3, veoGenType: true },
+  "veo3.1-quality":  { imageUrls: 2, veoGenType: true }, // frame only, no reference
+  "kling-2.1/pro":        { startEnd: true },
+  "kling-2.5-turbo-pro":  { startEnd: true },
+  "kling-3.0/standard":   { imageUrls: 2 },
+  "kling-3.0/pro":        { imageUrls: 2 },
+  "kling-3.0/4K":         { imageUrls: 2 },
+  "kling-o3/standard": { imageUrls: 2, referenceImages: 4 },
+  "kling-o3/pro":      { imageUrls: 2, referenceImages: 4 },
+  "kling-o3/4K":       { imageUrls: 2, referenceImages: 4 },
+  "wan2.7-image-to-video":      { imageUrls: 2 },
+  "wan2.2-image-to-video-fast": { imageUrls: 2 },
+  "happy-horse":     { imageUrls: 1, referenceImages: 9 },
+};
+
+function applyMultiImage(input: Record<string, unknown>, model: string, urls: string[]): void {
+  const spec = MULTI_IMAGE_SPEC[model];
+  if (!spec) { applySingleImage(input, model, urls[0]); return; } // no multi support → first only
+  if (spec.startEnd) {
+    input.start_image_url = urls[0];
+    if (urls[1]) input.end_image_url = urls[1];
+    return;
+  }
+  if (spec.veoGenType) {
+    const n = Math.min(urls.length, spec.imageUrls ?? 3);
+    input.image_urls = urls.slice(0, n);
+    // generation_type: 2 imgs = frame, 3 = reference. The params loop runs after
+    // this and lets an explicit user choice override.
+    if (n >= 3) input.generation_type = "reference";
+    else if (n === 2) input.generation_type = "frame";
+    return;
+  }
+  // Frame (image_urls) for counts within the frame cap; reference for more.
+  if (spec.imageUrls && urls.length <= spec.imageUrls) {
+    input.image_urls = urls.slice(0, spec.imageUrls);
+    return;
+  }
+  if (spec.referenceImages) {
+    input.reference_image_urls = urls.slice(0, spec.referenceImages);
+    return;
+  }
+  if (spec.imageUrls) {
+    input.image_urls = urls.slice(0, spec.imageUrls);
+    return;
+  }
+  applySingleImage(input, model, urls[0]);
+}
+
 export function isPoyoVideoProvider(provider: string): boolean {
   return provider in POYO_PROVIDER_MAP;
 }
@@ -125,6 +203,9 @@ export async function submitPoyoVideo(opts: {
   prompt: string;
   negativePrompt?: string;
   referenceImageUrl?: string;
+  /** Multi-reference images (首尾帧 / reference / elements). [0] mirrors
+   *  referenceImageUrl. When >1, mapped per-model via MULTI_IMAGE_SPEC. */
+  referenceImageUrls?: string[];
   params?: Record<string, unknown>;
 }): Promise<SubmitPoyoVideoResult> {
   if (!ENV.poyoApiKey) throw new Error("POYO_API_KEY is not configured");
@@ -132,35 +213,25 @@ export async function submitPoyoVideo(opts: {
   const model = POYO_PROVIDER_MAP[opts.provider];
   if (!model) throw new Error(`Unknown poyo provider: ${opts.provider}`);
 
-  // Poyo's API fetches the reference image from upstream — relative paths
-  // like `/manus-storage/{key}` aren't resolvable on their side, so convert
-  // to an absolute presigned S3 URL before submitting.
-  const refImageAbsoluteUrl = opts.referenceImageUrl
-    ? await resolveToAbsoluteUrl(opts.referenceImageUrl)
-    : undefined;
+  // Coalesce the reference image source: prefer the multi-image list, fall back
+  // to the legacy single field. De-dupe while preserving order.
+  const rawRefs = (opts.referenceImageUrls?.length ? opts.referenceImageUrls : (opts.referenceImageUrl ? [opts.referenceImageUrl] : []))
+    .map((u) => u?.trim()).filter((u): u is string => Boolean(u));
+  const uniqueRefs = Array.from(new Set(rawRefs));
+  // Poyo's API fetches reference images from upstream — relative paths like
+  // `/manus-storage/{key}` aren't resolvable on their side, so convert each to
+  // an absolute presigned S3 URL before submitting.
+  const resolvedRefs = await Promise.all(uniqueRefs.map((u) => resolveToAbsoluteUrl(u)));
 
   const input: Record<string, unknown> = {
     prompt: opts.prompt,
     ...(opts.negativePrompt ? { negative_prompt: opts.negativePrompt } : {}),
   };
 
-  // The reference image goes into different fields depending on the model
-  // (docs/poyo-video-api.md): Kling 2.1 + Hailuo 2.3 use `start_image_url`;
-  // Wan i2v / Sora official / Veo use `image_urls` (array, first = start frame);
-  // everything else keeps the historical `reference_image_url`.
-  if (refImageAbsoluteUrl) {
-    const startImageModels = new Set<string>([
-      "kling-2.1/standard", "kling-2.1/pro", "kling-2.5-turbo-pro", "hailuo-2.3",
-    ]);
-    const imageUrlsModels = new Set<string>([
-      "wan2.7-image-to-video", "wan2.2-image-to-video-fast", "wan2.6-image-to-video",
-      "sora-2-official", "sora-2-pro-official",
-      "veo3.1-fast", "veo3.1-quality", "veo3.1-lite",
-    ]);
-    if (startImageModels.has(model)) input.start_image_url = refImageAbsoluteUrl;
-    else if (imageUrlsModels.has(model)) input.image_urls = [refImageAbsoluteUrl];
-    else input.reference_image_url = refImageAbsoluteUrl;
-  }
+  // Single image → historical per-model field (unchanged). Multiple images →
+  // per-model multi-image mapping (首尾帧 / reference). See helpers above.
+  if (resolvedRefs.length === 1) applySingleImage(input, model, resolvedRefs[0]);
+  else if (resolvedRefs.length > 1) applyMultiImage(input, model, resolvedRefs);
 
   // Spec-driven: copy only the keys this model accepts (docs/poyo-video-api.md),
   // coercing numeric/boolean fields. Models not in the table send just prompt +

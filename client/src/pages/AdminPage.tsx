@@ -2,7 +2,7 @@ import { useState, useEffect } from "react";
 import { useLocation } from "wouter";
 import { trpc } from "@/lib/trpc";
 import { useAuth } from "@/_core/hooks/useAuth";
-import { Shield, Trash2, Plus, ToggleLeft, ToggleRight, ClipboardList, RefreshCw, HardDrive, ArrowLeft, Loader2, CheckCircle2, XCircle, DownloadCloud, RotateCw, GitCommit } from "lucide-react";
+import { Shield, Trash2, Plus, ToggleLeft, ToggleRight, ClipboardList, RefreshCw, HardDrive, ArrowLeft, Loader2, CheckCircle2, XCircle, DownloadCloud, RotateCw, GitCommit, X, Check, CheckSquare, Square, Download, Play } from "lucide-react";
 import { ComfyStressPanel } from "@/components/admin/ComfyStressPanel";
 
 type EntryType = "ip" | "user";
@@ -1167,6 +1167,51 @@ const paginBtn: React.CSSProperties = {
   color: "var(--c-t1, #f0f0f4)", fontSize: "13px", cursor: "pointer",
 };
 
+// ── Admin asset lightbox (click-to-enlarge) ──────────────────────────────────
+type AdminAsset = { id: number; name: string; type: string; url: string; userId: number; source: string | null; provider: string | null; model: string | null };
+function AdminAssetLightbox({ asset, onClose }: { asset: AdminAsset; onClose: () => void }) {
+  useEffect(() => {
+    const h = (e: KeyboardEvent) => { if (e.key === "Escape") onClose(); };
+    window.addEventListener("keydown", h);
+    return () => window.removeEventListener("keydown", h);
+  }, [onClose]);
+  return (
+    <div
+      style={{ position: "fixed", inset: 0, zIndex: 200, display: "flex", alignItems: "center", justifyContent: "center", padding: 24, background: "oklch(0 0 0 / 0.8)", backdropFilter: "blur(8px)" }}
+      onClick={onClose}
+    >
+      <div
+        style={{ position: "relative", maxWidth: 960, width: "100%", maxHeight: "88vh", display: "flex", flexDirection: "column", borderRadius: 16, overflow: "hidden", background: "var(--c-elevated, #1a1a20)", border: "1px solid rgba(255,255,255,0.12)" }}
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "12px 16px", borderBottom: "1px solid rgba(255,255,255,0.08)" }}>
+          <span style={{ fontSize: 13, fontWeight: 500, color: "var(--c-t1,#f0f0f4)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{asset.name}</span>
+          <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+            <a href={asset.url} download={asset.name} target="_blank" rel="noreferrer"
+              style={{ display: "inline-flex", alignItems: "center", gap: 4, padding: "4px 10px", borderRadius: 8, fontSize: 12, color: "var(--c-t2,rgba(255,255,255,0.6))", border: "1px solid rgba(255,255,255,0.12)" }}>
+              <Download style={{ width: 13, height: 13 }} /> 下载
+            </a>
+            <button onClick={onClose} style={{ width: 28, height: 28, borderRadius: 8, display: "flex", alignItems: "center", justifyContent: "center", color: "var(--c-t3,rgba(255,255,255,0.4))", background: "transparent", border: "none", cursor: "pointer" }}>
+              <X style={{ width: 16, height: 16 }} />
+            </button>
+          </div>
+        </div>
+        <div style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center", overflow: "auto", padding: 16, background: "rgba(0,0,0,0.3)" }}>
+          {asset.type === "image" ? (
+            <img src={asset.url} alt={asset.name} style={{ maxWidth: "100%", maxHeight: "72vh", objectFit: "contain" }} />
+          ) : asset.type === "video" ? (
+            <video src={asset.url} controls autoPlay style={{ maxWidth: "100%", maxHeight: "72vh" }} />
+          ) : asset.type === "audio" ? (
+            <audio src={asset.url} controls autoPlay style={{ width: "100%" }} />
+          ) : (
+            <div style={{ fontSize: 13, color: "var(--c-t3,rgba(255,255,255,0.4))" }}>该文件类型无法预览，请下载查看</div>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ── Assets Panel (admin cross-user media library) ─────────────────────────────
 function AssetsAdminPanel() {
   const [userId, setUserId] = useState<string>("");
@@ -1174,6 +1219,8 @@ function AssetsAdminPanel() {
   const [source, setSource] = useState<"" | "upload" | "generated" | "external">("");
   const [q, setQ] = useState("");
   const utils = trpc.useUtils();
+  const [selected, setSelected] = useState<Set<number>>(new Set());
+  const [preview, setPreview] = useState<AdminAsset | null>(null);
   const { data: assets, isFetching } = trpc.admin.assets.list.useQuery({
     userId: userId.trim() ? Number(userId.trim()) : undefined,
     type: type || undefined,
@@ -1181,6 +1228,24 @@ function AssetsAdminPanel() {
     q: q.trim() || undefined,
     limit: 300,
   });
+
+  const deleteMut = trpc.admin.assets.delete.useMutation({
+    onSuccess: (r) => { setSelected(new Set()); void utils.admin.assets.list.invalidate(); void utils.admin.assets.backfillStatus.invalidate(); void r; },
+  });
+  const list = (assets ?? []) as AdminAsset[];
+  const selecting = selected.size > 0;
+  const allSelected = list.length > 0 && list.every((a) => selected.has(a.id));
+  const toggleSelect = (id: number) => setSelected((prev) => { const n = new Set(prev); if (n.has(id)) n.delete(id); else n.add(id); return n; });
+  const toggleSelectAll = () => setSelected((prev) => {
+    if (list.every((a) => prev.has(a.id))) { const n = new Set(prev); for (const a of list) n.delete(a.id); return n; }
+    const n = new Set(prev); for (const a of list) n.add(a.id); return n;
+  });
+  const handleBulkDelete = () => {
+    const ids = Array.from(selected);
+    if (ids.length === 0) return;
+    if (!confirm(`确认删除选中的 ${ids.length} 个素材？（软删除：保留文件，仅从素材库隐藏）`)) return;
+    deleteMut.mutate({ ids });
+  };
 
   // 一键回填历史素材（扫描画布节点，把已在 MinIO 但未入库的图片/视频补入素材库）。
   const backfillStatus = trpc.admin.assets.backfillStatus.useQuery(undefined, {
@@ -1260,28 +1325,80 @@ function AssetsAdminPanel() {
         </div>
       </div>
 
-      <div style={{ fontSize: 12, color: "var(--c-t3, rgba(255,255,255,0.4))" }}>
-        {isFetching ? "加载中…" : `${assets?.length ?? 0} 个素材`}
+      {/* Count + multi-select toolbar */}
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: 8 }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+          <span style={{ fontSize: 12, color: "var(--c-t3, rgba(255,255,255,0.4))" }}>
+            {isFetching ? "加载中…" : `${list.length} 个素材`}
+          </span>
+          {list.length > 0 && (
+            <button onClick={toggleSelectAll} style={{ display: "inline-flex", alignItems: "center", gap: 5, fontSize: 12, padding: "4px 9px", borderRadius: 7, border: "1px solid rgba(255,255,255,0.12)", background: "transparent", color: "var(--c-t2,rgba(255,255,255,0.6))", cursor: "pointer" }}>
+              {allSelected ? <CheckSquare style={{ width: 14, height: 14, color: "oklch(0.72 0.2 285)" }} /> : <Square style={{ width: 14, height: 14 }} />}
+              {allSelected ? "取消全选" : "全选"}
+              {selecting && <span style={{ color: "oklch(0.78 0.16 285)" }}>· 已选 {selected.size}</span>}
+            </button>
+          )}
+        </div>
+        {selecting && (
+          <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+            <button onClick={handleBulkDelete} disabled={deleteMut.isPending}
+              style={{ display: "inline-flex", alignItems: "center", gap: 5, fontSize: 12, padding: "5px 11px", borderRadius: 7, border: "1px solid oklch(0.6 0.16 25 / 0.4)", background: "transparent", color: "oklch(0.78 0.16 25)", cursor: deleteMut.isPending ? "not-allowed" : "pointer" }}>
+              {deleteMut.isPending ? <Loader2 className="animate-spin" style={{ width: 13, height: 13 }} /> : <Trash2 style={{ width: 13, height: 13 }} />} 删除选中
+            </button>
+            <button onClick={() => setSelected(new Set())}
+              style={{ display: "inline-flex", alignItems: "center", gap: 4, fontSize: 12, padding: "5px 9px", borderRadius: 7, border: "1px solid rgba(255,255,255,0.12)", background: "transparent", color: "var(--c-t3,rgba(255,255,255,0.4))", cursor: "pointer" }}>
+              <X style={{ width: 13, height: 13 }} /> 取消
+            </button>
+          </div>
+        )}
       </div>
+      {deleteMut.error && <div style={{ fontSize: 11.5, color: "oklch(0.7 0.18 25)" }}>删除失败：{deleteMut.error.message}</div>}
       <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(160px, 1fr))", gap: 10 }}>
-        {(assets ?? []).map((a) => (
-          <div key={a.id} style={{ border: "1px solid rgba(255,255,255,0.1)", borderRadius: 10, overflow: "hidden", background: "rgba(255,255,255,0.03)" }}>
-            <div style={{ height: 110, background: "rgba(0,0,0,0.25)", display: "flex", alignItems: "center", justifyContent: "center" }}>
-              {a.type === "image"
-                ? <img src={a.url} alt={a.name} style={{ width: "100%", height: "100%", objectFit: "cover" }} />
-                : <span style={{ fontSize: 11, color: "var(--c-t3,rgba(255,255,255,0.4))" }}>{a.type}</span>}
+        {list.map((a) => {
+          const isSel = selected.has(a.id);
+          return (
+          <div key={a.id} style={{ position: "relative", border: `1px solid ${isSel ? "oklch(0.72 0.2 285)" : "rgba(255,255,255,0.1)"}`, borderRadius: 10, overflow: "hidden", background: "rgba(255,255,255,0.03)", boxShadow: isSel ? "0 0 0 1px oklch(0.72 0.2 285)" : "none" }}>
+            {/* checkbox */}
+            <button
+              onClick={(e) => { e.stopPropagation(); toggleSelect(a.id); }}
+              title={isSel ? "取消选择" : "选择"}
+              style={{ position: "absolute", top: 6, left: 6, zIndex: 5, width: 20, height: 20, borderRadius: 6, display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer", background: isSel ? "oklch(0.72 0.2 285)" : "oklch(0 0 0 / 0.55)", color: "white", border: isSel ? "none" : "1px solid oklch(1 0 0 / 0.5)" }}
+            >
+              {isSel && <Check style={{ width: 13, height: 13 }} strokeWidth={3} />}
+            </button>
+            {/* preview (click to enlarge, or toggle while selecting) */}
+            <div
+              onClick={() => { if (selecting) toggleSelect(a.id); else setPreview(a); }}
+              style={{ height: 110, background: "rgba(0,0,0,0.25)", display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer", position: "relative", overflow: "hidden" }}
+            >
+              {a.type === "image" ? (
+                <img src={a.url} alt={a.name} style={{ width: "100%", height: "100%", objectFit: "cover" }} />
+              ) : a.type === "video" ? (
+                <>
+                  <video src={a.url} muted preload="metadata" style={{ width: "100%", height: "100%", objectFit: "cover" }} />
+                  <div style={{ position: "absolute", inset: 0, display: "flex", alignItems: "center", justifyContent: "center", pointerEvents: "none" }}>
+                    <div style={{ width: 32, height: 32, borderRadius: "50%", display: "flex", alignItems: "center", justifyContent: "center", background: "oklch(0 0 0 / 0.5)" }}>
+                      <Play style={{ width: 14, height: 14, color: "white" }} fill="white" />
+                    </div>
+                  </div>
+                </>
+              ) : (
+                <span style={{ fontSize: 11, color: "var(--c-t3,rgba(255,255,255,0.4))" }}>{a.type}</span>
+              )}
             </div>
             <div style={{ padding: "7px 9px" }}>
               <div style={{ fontSize: 12, color: "var(--c-t1,#f0f0f4)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }} title={a.name}>{a.name}</div>
               <div style={{ fontSize: 10.5, color: "var(--c-t3,rgba(255,255,255,0.4))", marginTop: 2 }}>
                 u{a.userId} · {a.source === "generated" ? `生成${a.provider ? "·" + a.provider : ""}` : a.source === "external" ? "外部" : "上传"}{a.model ? ` · ${a.model}` : ""}
               </div>
-              <a href={a.url} download={a.name} target="_blank" rel="noreferrer"
+              <a href={a.url} download={a.name} target="_blank" rel="noreferrer" onClick={(e) => e.stopPropagation()}
                 style={{ fontSize: 11, color: "oklch(0.72 0.16 240)", display: "inline-block", marginTop: 4 }}>下载</a>
             </div>
           </div>
-        ))}
+          );
+        })}
       </div>
+      {preview && <AdminAssetLightbox asset={preview} onClose={() => setPreview(null)} />}
     </div>
   );
 }

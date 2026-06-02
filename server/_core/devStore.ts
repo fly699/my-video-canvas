@@ -213,6 +213,13 @@ export function devDeleteAsset(id: number, userId: number) {
   if (a && a.userId === userId) a.deletedAt = now(); // soft delete (keep row + file)
 }
 
+export function devDeleteAssetAdmin(ids: number[]) {
+  for (const id of ids) {
+    const a = assetsMap.get(id);
+    if (a) a.deletedAt = now(); // admin soft delete (any user)
+  }
+}
+
 // ── Video Tasks ───────────────────────────────────────────────────────────────
 export function devCreateVideoTask(data: InsertVideoTask): VideoTask {
   const id = newId();
