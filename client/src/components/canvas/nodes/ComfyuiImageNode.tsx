@@ -157,7 +157,11 @@ export const ComfyuiImageNode = memo(function ComfyuiImageNode({ id, selected, d
         updateNodeData(id, { ipadapter: { model: p?.model ?? "", clipVision: p?.clipVision, weight: p?.weight, imageUrl: next[0], imageUrls: next } });
         toast.success("IPAdapter 参考图上传成功");
       } else {
-        updateNodeData(id, { referenceImageUrl: result.url });
+        // A reference upload implies img2img — switch from txt2img so the
+        // server actually honours referenceImageUrl (no-op if already img2img/inpaint).
+        const patch: Partial<ComfyuiImageNodeData> = { referenceImageUrl: result.url };
+        if (cur?.workflowTemplate !== "img2img" && cur?.workflowTemplate !== "inpaint") patch.workflowTemplate = "img2img";
+        updateNodeData(id, patch);
         toast.success("参考图上传成功");
       }
     },
@@ -385,6 +389,25 @@ export const ComfyuiImageNode = memo(function ComfyuiImageNode({ id, selected, d
     appendIpUrls(ipUrlsFromDrag(e.dataTransfer));
   };
 
+  // Drop an image from the asset library / OS / a URL anywhere on the node body
+  // → set it as the img2img reference (switching txt2img → img2img so the server
+  // actually honours it). Mirrors the per-node ref drop in ImageGenNode and stops
+  // propagation so the canvas doesn't ALSO spawn a duplicate asset node.
+  // (Drops on the IPAdapter zone are handled by handleIpDrop, which stops first.)
+  const setReferenceFromDrop = (url: string) => {
+    const tmpl = payload.workflowTemplate;
+    const patch: Partial<ComfyuiImageNodeData> = { referenceImageUrl: url };
+    if (tmpl !== "img2img" && tmpl !== "inpaint") patch.workflowTemplate = "img2img";
+    updateNodeData(id, patch);
+    toast.success(tmpl === "inpaint" ? "已设为原图" : "已设为参考图（img2img）");
+  };
+  const handleNodeDrop = (e: React.DragEvent) => {
+    const files = Array.from(e.dataTransfer.files ?? []).filter((f) => f.type.startsWith("image/"));
+    if (files.length) { e.preventDefault(); e.stopPropagation(); uploadImageFile(files[0], "reference"); return; }
+    const urls = ipUrlsFromDrag(e.dataTransfer); // asset-list JSON, then uri/text
+    if (urls.length) { e.preventDefault(); e.stopPropagation(); setReferenceFromDrop(urls[0]); }
+  };
+
   const handleDownload = (url: string) => {
     if (!url) return;
     // Auto-name the download from node title + model so saved files are identifiable.
@@ -430,7 +453,11 @@ export const ComfyuiImageNode = memo(function ComfyuiImageNode({ id, selected, d
   return (
     <BaseNode id={id} selected={selected} nodeType="comfyui_image" title={data.title} minHeight={320} heroMedia={heroMedia}
       onRun={handleGenerate} running={genMutation.isPending} canRun={!!payload.prompt?.trim() && !!payload.ckpt?.trim()} hasResult={!!payload.imageUrl}>
-      <div className="flex flex-col h-full p-3.5 gap-3 overflow-auto">
+      <div
+        className="flex flex-col h-full p-3.5 gap-3 overflow-auto"
+        onDragOver={(e) => { if (e.dataTransfer.types.includes("application/x-asset-list") || e.dataTransfer.types.includes("Files") || e.dataTransfer.types.includes("text/uri-list")) { e.preventDefault(); e.dataTransfer.dropEffect = "copy"; } }}
+        onDrop={handleNodeDrop}
+      >
 
         {/* ── Result image(s) ── */}
         {payload.imageUrl ? (
