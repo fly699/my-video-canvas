@@ -8,6 +8,7 @@ import { storagePut, storageBackend, isStorageConfigured } from "../storage";
 import { ENV } from "../_core/env";
 import { randomBytes } from "crypto";
 import { getUpdateStatus, getVersionInfo, getUpdateAvailable, startUpdate } from "../_core/selfUpdate";
+import { startBackfill, getBackfillStatus } from "../_core/assetBackfill";
 
 const AUDIT_ACTIONS = [
   "login_email", "login_oauth",
@@ -33,6 +34,10 @@ export const adminRouter = router({
         offset: z.number().int().min(0).optional(),
       }).optional())
       .query(({ input }) => db.getAllAssets(input ?? {})),
+    // 一键回填历史素材：扫描全部画布节点，把已在 MinIO 但未入库的图片/视频
+    // 记录进素材库（幂等，按 userId+storageKey 去重）。后台异步执行，前端轮询 status。
+    backfill: adminProcedure.mutation(() => startBackfill()),
+    backfillStatus: adminProcedure.query(() => getBackfillStatus()),
   }),
   logs: router({
     list: adminProcedure

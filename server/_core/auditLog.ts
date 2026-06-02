@@ -75,7 +75,14 @@ export type AuditAction =
   | "collab:accept_link"
   | "lan_chat:join"
   | "lan_chat:ip_mismatch"
-  | "asset_import_url";
+  | "asset_import_url"
+  | "download:request"
+  | "download:approve"
+  | "download:deny"
+  | "download:grant"
+  | "download:revoke"
+  | "download:served"
+  | "download:denied";
 
 export interface AuditOpts {
   ctx?: TrpcContext;

@@ -204,6 +204,13 @@
       "when": 1780500300000,
       "tag": "0028_assets_media_library",
       "breakpoints": true
+    },
+    {
+      "idx": 29,
+      "version": "5",
+      "when": 1780500400000,
+      "tag": "0029_download_authorization",
+      "breakpoints": true
     }
   ]
 }

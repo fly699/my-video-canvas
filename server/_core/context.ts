@@ -40,6 +40,25 @@ export async function isRequestAuthenticated(req: CreateExpressContextOptions["r
   }
 }
 
+/**
+ * Resolve the full authenticated user (id + role) from a raw Express request —
+ * used by the storage download gateway, which must enforce ownership/role and
+ * cannot rely on the tRPC context. Returns null when unauthenticated.
+ */
+export async function resolveRequestUser(req: CreateExpressContextOptions["req"]): Promise<User | null> {
+  if (isDevBypass) return DEV_USER;
+  try {
+    return await sdk.authenticateRequest(req);
+  } catch {
+    return null;
+  }
+}
+
+/** Whether the server is running in dev-bypass mode (no OAuth + no DATABASE_URL). */
+export function isDevBypassMode(): boolean {
+  return isDevBypass;
+}
+
 export async function createContext(
   opts: CreateExpressContextOptions
 ): Promise<TrpcContext> {

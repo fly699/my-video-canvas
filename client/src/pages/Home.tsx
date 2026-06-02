@@ -339,6 +339,62 @@ function ProjectCard({
   );
 }
 
+// ── Library (用户仓库) entry card ─────────────────────────────────────────────
+// Mirrors the ProjectCard footprint so it sits cleanly in the grid. The cover is
+// a 2×2 collage of the user's most recent images (falls back to an icon).
+function LibraryEntryCard({ covers, count, onOpen }: { covers: string[]; count: number; onOpen: () => void }) {
+  const accent = "oklch(0.65 0.18 60)"; // 素材库主色（琥珀金）
+  const grid = covers.slice(0, 4);
+  return (
+    <div
+      className="group relative flex flex-col rounded-xl border transition-all duration-200 cursor-pointer overflow-hidden"
+      onClick={onOpen}
+      style={{
+        borderColor: `${accent.replace(")", " / 0.35)")}`,
+        background: "var(--c-surface)",
+        boxShadow: "0 1px 2px oklch(0 0 0 / 0.2), 0 4px 16px oklch(0 0 0 / 0.1)",
+      }}
+      onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.borderColor = accent; (e.currentTarget as HTMLElement).style.background = "var(--c-elevated)"; }}
+      onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.borderColor = `${accent.replace(")", " / 0.35)")}`; (e.currentTarget as HTMLElement).style.background = "var(--c-surface)"; }}
+    >
+      {/* Cover */}
+      <div className="relative h-36 flex items-center justify-center overflow-hidden" style={{ background: `${accent.replace(")", " / 0.07)")}` }}>
+        {grid.length > 0 ? (
+          <div className="absolute inset-0 grid grid-cols-2 grid-rows-2 gap-px">
+            {grid.map((url, i) => (
+              <img key={i} src={url} alt="" loading="lazy" className="w-full h-full object-cover"
+                onError={(e) => { (e.currentTarget as HTMLImageElement).style.visibility = "hidden"; }} />
+            ))}
+            {/* fill empty cells when fewer than 4 images */}
+            {Array.from({ length: Math.max(0, 4 - grid.length) }).map((_, i) => (
+              <div key={`f${i}`} style={{ background: `${accent.replace(")", " / 0.05)")}` }} />
+            ))}
+          </div>
+        ) : null}
+        {/* Tint + icon overlay */}
+        <div className="absolute inset-0" style={{ background: grid.length > 0 ? "oklch(0 0 0 / 0.35)" : "transparent" }} />
+        <div className="relative z-10 w-11 h-11 rounded-xl flex items-center justify-center" style={{ background: `${accent.replace(")", " / 0.18)")}`, border: `1px solid ${accent.replace(")", " / 0.4)")}`, backdropFilter: "blur(4px)" }}>
+          <Boxes className="w-5 h-5" style={{ color: accent }} />
+        </div>
+        <span className="absolute top-2 left-2 z-10 px-1.5 py-0.5 rounded text-[9px] font-bold tracking-wide" style={{ background: `${accent.replace(")", " / 0.9)")}`, color: "oklch(0.15 0.02 60)" }}>
+          仓库
+        </span>
+      </div>
+      {/* Content */}
+      <div className="flex flex-col gap-1 p-4">
+        <h3 className="text-sm font-semibold leading-snug flex items-center gap-1.5" style={{ color: "var(--c-t1)" }}>
+          素材库
+          <ArrowRight className="w-3.5 h-3.5 transition-transform group-hover:translate-x-0.5" style={{ color: accent }} />
+        </h3>
+        <div className="flex items-center gap-1 text-xs" style={{ color: "var(--c-t4)" }}>
+          <Boxes className="w-3 h-3" />
+          <span>{count > 0 ? `${count} 个素材 · 跨项目` : "个人专有仓库"}</span>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ── New project card ──────────────────────────────────────────────────────────
 function NewProjectCard({ onClick }: { onClick: () => void }) {
   return (
@@ -374,6 +430,12 @@ export default function Home() {
   const { data: projects, refetch } = trpc.projects.list.useQuery(undefined, {
     enabled: isAuthenticated,
   });
+
+  // 用户仓库（素材库）入口：轻量 summary（总数 + 最近图片封面），避免为一个角标拉取全量素材。
+  const { data: librarySummary } = trpc.assets.summary.useQuery(undefined, {
+    enabled: isAuthenticated,
+  });
+  const libraryCovers = librarySummary?.covers ?? [];
 
   // 管理员：检测是否有新版本（带服务端 15 分钟缓存，每 30 分钟轮询一次）
   const { data: updateInfo } = trpc.admin.update.available.useQuery(undefined, {
@@ -935,6 +997,11 @@ export default function Home() {
             <>
               <div className="grid grid-cols-4 gap-4">
                 <NewProjectCard onClick={handleCreate} />
+                <LibraryEntryCard
+                  covers={libraryCovers}
+                  count={librarySummary?.count ?? 0}
+                  onOpen={() => navigate("/library")}
+                />
                 {(projects?.owned ?? []).map((project: { id: number; name: string; description?: string | null; updatedAt: Date; thumbnail?: string | null }) => (
                   <ProjectCard
                     key={project.id}
