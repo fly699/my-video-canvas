@@ -955,6 +955,23 @@ export default function Home() {
       {/* Main content */}
       <main className="relative z-10 flex-1 px-6 py-8 overflow-y-auto">
         <div className="max-w-5xl mx-auto">
+          {/* 个人仓库入口（独立于项目网格 — 跨项目素材库） */}
+          {!loading && (
+            <div className="mb-8">
+              <div className="flex items-center justify-between mb-3">
+                <h2 className="text-sm font-semibold" style={{ color: "var(--c-t2)" }}>个人仓库</h2>
+                <span className="text-[11px]" style={{ color: "var(--c-t4)" }}>跨项目素材</span>
+              </div>
+              <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-4">
+                <LibraryEntryCard
+                  covers={libraryCovers}
+                  count={librarySummary?.count ?? 0}
+                  onOpen={() => navigate("/library")}
+                />
+              </div>
+            </div>
+          )}
+
           {/* Header */}
           <div className="flex items-center justify-between mb-8">
             <div>
@@ -999,11 +1016,6 @@ export default function Home() {
             <>
               <div className="grid grid-cols-4 gap-4">
                 <NewProjectCard onClick={handleCreate} />
-                <LibraryEntryCard
-                  covers={libraryCovers}
-                  count={librarySummary?.count ?? 0}
-                  onOpen={() => navigate("/library")}
-                />
                 {(projects?.owned ?? []).map((project: { id: number; name: string; description?: string | null; updatedAt: Date; thumbnail?: string | null }) => (
                   <ProjectCard
                     key={project.id}
