@@ -82,8 +82,9 @@ export function emptyEditorDoc(width = 1920, height = 1080, fps = 30): EditorDoc
     fps,
     tracks: [
       { id: "v1", type: "video", clips: [] },
-      { id: "a1", type: "audio", clips: [] },
+      { id: "ov1", type: "overlay", clips: [] },
       { id: "t1", type: "text", clips: [] },
+      { id: "a1", type: "audio", clips: [] },
     ],
   };
 }

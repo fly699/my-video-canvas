@@ -4,7 +4,7 @@ import * as os from "os";
 import { storagePut, assertObjectStorageWritable } from "../storage";
 import { execFileAsync, downloadToTemp, buildAtempoFilters, hasAudioTrack } from "./videoEditor";
 import { sanitizeFilenamePrefix } from "./comfyui";
-import type { EditorDoc, Clip } from "@shared/editorTypes";
+import type { EditorDoc, Clip, ClipEffects, ClipTransform } from "@shared/editorTypes";
 
 // Render timeouts are generous: a full multi-clip render re-encodes everything
 // in ONE pass, which can take minutes for long timelines.
@@ -28,6 +28,19 @@ export interface Segment {
   trimIn: number;
   trimOut: number;
   speed: number;
+  effects?: ClipEffects;                          // color/filter (eq + preset)
+  transition?: { type: string; duration: number }; // entry transition vs the previous segment
+}
+
+/** A clip on an overlay track, composited on top of the base at its time slot. */
+export interface OverlayInput {
+  isImage: boolean;
+  trimIn: number;
+  trimOut: number;
+  speed: number;
+  start: number;       // timeline position (seconds)
+  duration: number;    // visible duration on the timeline
+  transform?: ClipTransform;
 }
 
 /** Visible (output) duration of a segment in seconds. */
@@ -36,15 +49,51 @@ export function segmentDuration(s: Segment): number {
   return Math.max(0.05, (s.trimOut - s.trimIn) / (s.speed || 1));
 }
 
+/** Map our transition names to ffmpeg xfade transition identifiers. */
+function xfadeName(t: string): string {
+  switch (t) {
+    case "dissolve": return "dissolve";
+    case "slide": return "slideleft";
+    case "wipe": return "wipeleft";
+    case "fade": default: return "fade";
+  }
+}
+
+/** Color/filter chain for a visual clip (ffmpeg eq + preset). Empty when none. */
+function colorChain(e?: ClipEffects): string[] {
+  if (!e) return [];
+  const out: string[] = [];
+  const parts: string[] = [];
+  if (e.brightness != null) parts.push(`brightness=${e.brightness}`);
+  if (e.contrast != null) parts.push(`contrast=${e.contrast}`);
+  if (e.saturation != null) parts.push(`saturation=${e.saturation}`);
+  if (parts.length) out.push(`eq=${parts.join(":")}`);
+  switch (e.filter) {
+    case "vintage": out.push("curves=preset=vintage"); break;
+    case "warm": out.push("colorbalance=rm=0.12:gm=0.04:bm=-0.12"); break;
+    case "cool": out.push("colorbalance=rm=-0.12:gm=-0.02:bm=0.12"); break;
+    case "bw": case "mono": out.push("hue=s=0"); break;
+    case "cinematic": out.push("curves=preset=increase_contrast"); break;
+  }
+  return out;
+}
+
+/** Whether any segment requests a real entry transition. */
+function hasTransitions(segs: Segment[]): boolean {
+  return segs.some((s, i) => i > 0 && s.transition && s.transition.type !== "none" && s.transition.duration > 0);
+}
+
 /**
  * Build the single ffmpeg `-filter_complex` graph that normalizes every segment
  * to the output canvas and concatenates them — video AND audio — in ONE pass.
  * Pure function (no I/O) so it can be unit-tested. Input index i corresponds to
  * segment i (added to ffmpeg in the same order).
  */
-export function buildFilterGraph(segs: Segment[], opts: { width: number; height: number; fps: number }): {
-  filterComplex: string; outV: string; outA: string;
-} {
+export function buildFilterGraph(
+  segs: Segment[],
+  opts: { width: number; height: number; fps: number },
+  overlays: OverlayInput[] = [],
+): { filterComplex: string; outV: string; outA: string; duration: number } {
   const { width: w, height: h, fps } = opts;
   const parts: string[] = [];
   const vLabels: string[] = [];
@@ -65,6 +114,7 @@ export function buildFilterGraph(segs: Segment[], opts: { width: number; height:
     vChain.push(`pad=${w}:${h}:(ow-iw)/2:(oh-ih)/2`);
     vChain.push("setsar=1");
     vChain.push(`fps=${fps}`);
+    vChain.push(...colorChain(s.effects));
     vChain.push("format=yuv420p");
     parts.push(`[${i}:v]${vChain.join(",")}[v${i}]`);
     vLabels.push(`[v${i}]`);
@@ -84,22 +134,93 @@ export function buildFilterGraph(segs: Segment[], opts: { width: number; height:
     aLabels.push(`[a${i}]`);
   });
 
-  // Interleave v/a labels for concat.
-  const concatInputs = segs.map((_, i) => `${vLabels[i]}${aLabels[i]}`).join("");
-  parts.push(`${concatInputs}concat=n=${segs.length}:v=1:a=1[outv][outa]`);
+  // Fast path: no transitions and no overlays → single combined concat.
+  if (!hasTransitions(segs) && overlays.length === 0) {
+    const concatInputs = segs.map((_, i) => `${vLabels[i]}${aLabels[i]}`).join("");
+    parts.push(`${concatInputs}concat=n=${segs.length}:v=1:a=1[outv][outa]`);
+    const duration = segs.reduce((sum, s) => sum + segmentDuration(s), 0);
+    return { filterComplex: parts.join(";"), outV: "[outv]", outA: "[outa]", duration };
+  }
 
-  return { filterComplex: parts.join(";"), outV: "[outv]", outA: "[outa]" };
+  // General path: fold segments left-to-right with per-pair xfade or concat,
+  // so transitions and hard cuts can be mixed in one graph.
+  let curV = vLabels[0];
+  let curA = aLabels[0];
+  let curDur = segmentDuration(segs[0]);
+  for (let i = 1; i < segs.length; i++) {
+    const dur = segmentDuration(segs[i]);
+    const tr = segs[i].transition;
+    const useX = tr && tr.type !== "none" && tr.duration > 0;
+    if (useX) {
+      const td = Math.min(tr!.duration, curDur, dur);
+      const off = Math.max(0, curDur - td);
+      parts.push(`${curV}${vLabels[i]}xfade=transition=${xfadeName(tr!.type)}:duration=${td.toFixed(3)}:offset=${off.toFixed(3)}[vf${i}]`);
+      parts.push(`${curA}${aLabels[i]}acrossfade=d=${td.toFixed(3)}[af${i}]`);
+      curV = `[vf${i}]`; curA = `[af${i}]`;
+      curDur = curDur + dur - td;
+    } else {
+      parts.push(`${curV}${vLabels[i]}concat=n=2:v=1:a=0[vf${i}]`);
+      parts.push(`${curA}${aLabels[i]}concat=n=2:v=0:a=1[af${i}]`);
+      curV = `[vf${i}]`; curA = `[af${i}]`;
+      curDur = curDur + dur;
+    }
+  }
+
+  // Composite overlay clips on top of the base video at their time slots.
+  overlays.forEach((o, j) => {
+    const inIdx = segs.length + j;
+    const oc: string[] = [];
+    if (!o.isImage) {
+      oc.push(`trim=start=${o.trimIn.toFixed(3)}:end=${o.trimOut.toFixed(3)}`, "setpts=PTS-STARTPTS");
+      if (Math.abs(o.speed - 1) > 0.001) oc.push(`setpts=${(1 / o.speed).toFixed(6)}*PTS`);
+    } else {
+      oc.push("setpts=PTS-STARTPTS");
+    }
+    const scaleW = Math.max(2, Math.round((o.transform?.scale ?? 0.4) * w));
+    oc.push(`scale=${scaleW}:-2`);
+    oc.push(`fps=${fps}`);
+    oc.push("format=rgba");
+    const op = o.transform?.opacity ?? 1;
+    if (op < 0.999) oc.push(`colorchannelmixer=aa=${op.toFixed(3)}`);
+    const rot = o.transform?.rotation ?? 0;
+    if (rot) oc.push(`rotate=${(rot * Math.PI / 180).toFixed(5)}:c=none:ow=rotw(iw):oh=roth(ih)`);
+    // shift the overlay so its frames land at its timeline start
+    oc.push(`setpts=PTS+${o.start.toFixed(3)}/TB`);
+    parts.push(`[${inIdx}:v]${oc.join(",")}[ov${j}]`);
+
+    const x = Math.round((o.transform?.x ?? 0.1) * w);
+    const y = Math.round((o.transform?.y ?? 0.1) * h);
+    const end = o.start + o.duration;
+    parts.push(`${curV}[ov${j}]overlay=x=${x}:y=${y}:enable='between(t,${o.start.toFixed(3)},${end.toFixed(3)})':eof_action=pass[ob${j}]`);
+    curV = `[ob${j}]`;
+  });
+
+  return { filterComplex: parts.join(";"), outV: curV, outA: curA, duration: curDur };
 }
 
-/** Collect the clips that contribute to the rendered video, in play order. */
+/** Main (base) video-track clips that get concatenated, in play order. */
 export function collectVideoSegments(doc: EditorDoc): Clip[] {
   const clips: Clip[] = [];
   for (const t of doc.tracks) {
-    if (t.hidden) continue;
-    if (t.type !== "video" && t.type !== "overlay") continue;
+    if (t.hidden || t.type !== "video") continue;
     for (const c of t.clips) if (c.kind === "video" || c.kind === "image") clips.push(c);
   }
   return clips.sort((a, b) => a.start - b.start);
+}
+
+/** Overlay-track clips composited on top of the base, in time order. */
+export function collectOverlayClips(doc: EditorDoc): Clip[] {
+  const clips: Clip[] = [];
+  for (const t of doc.tracks) {
+    if (t.hidden || t.type !== "overlay") continue;
+    for (const c of t.clips) if (c.kind === "video" || c.kind === "image") clips.push(c);
+  }
+  return clips.sort((a, b) => a.start - b.start);
+}
+
+function clipVisibleDuration(c: Clip): number {
+  if (c.kind === "image") return Math.max(0.05, c.trimOut - c.trimIn);
+  return Math.max(0.05, (c.trimOut - c.trimIn) / (c.speed ?? 1));
 }
 
 /**
@@ -111,6 +232,7 @@ export function collectVideoSegments(doc: EditorDoc): Clip[] {
 export async function composeTimeline(doc: EditorDoc, opts: ComposeOptions): Promise<ComposeResult> {
   const clips = collectVideoSegments(doc);
   if (clips.length === 0) throw new Error("时间轴没有可渲染的视频/图片片段");
+  const overlayClips = collectOverlayClips(doc);
 
   const report = (p: number, s: string) => opts.onProgress?.(p, s);
   report(2, "准备素材");
@@ -118,37 +240,49 @@ export async function composeTimeline(doc: EditorDoc, opts: ComposeOptions): Pro
   const tmpFiles: string[] = [];
   const inputArgs: string[] = [];
   const segs: Segment[] = [];
+  const overlays: OverlayInput[] = [];
+  const total = clips.length + overlayClips.length;
+  let done = 0;
 
   try {
-    // Download every source + probe audio (sequential is fine; counts as progress).
-    for (let i = 0; i < clips.length; i++) {
-      const c = clips[i];
+    // Main (base) clips first — input order must match the filter graph.
+    for (const c of clips) {
       if (!c.assetUrl) throw new Error("片段缺少素材地址");
       const isImage = c.kind === "image";
-      const ext = isImage ? "img" : "mp4";
-      const p = await downloadToTemp(c.assetUrl, ext);
+      const p = await downloadToTemp(c.assetUrl, isImage ? "img" : "mp4");
       tmpFiles.push(p);
       const hasAudio = isImage ? false : await hasAudioTrack(p);
-      const speed = c.speed ?? 1;
       const trimIn = isImage ? 0 : c.trimIn;
       const trimOut = isImage ? Math.max(0.05, c.trimOut - c.trimIn) : c.trimOut;
-      const seg: Segment = { isImage, hasAudio, trimIn, trimOut, speed };
+      const seg: Segment = { isImage, hasAudio, trimIn, trimOut, speed: c.speed ?? 1, effects: c.effects, transition: c.transitionIn };
       segs.push(seg);
-      // Image inputs must be looped for their visible duration.
       if (isImage) inputArgs.push("-loop", "1", "-t", segmentDuration(seg).toFixed(3), "-i", p);
       else inputArgs.push("-i", p);
-      report(2 + Math.round((i + 1) / clips.length * 28), "下载素材");
+      report(2 + Math.round((++done) / total * 28), "下载素材");
     }
 
-    const { filterComplex, outV, outA } = buildFilterGraph(segs, { width: doc.width, height: doc.height, fps: doc.fps });
+    // Overlay clips next (composited on top).
+    for (const c of overlayClips) {
+      if (!c.assetUrl) continue;
+      const isImage = c.kind === "image";
+      const p = await downloadToTemp(c.assetUrl, isImage ? "img" : "mp4");
+      tmpFiles.push(p);
+      const dur = clipVisibleDuration(c);
+      overlays.push({ isImage, trimIn: isImage ? 0 : c.trimIn, trimOut: isImage ? dur : c.trimOut, speed: c.speed ?? 1, start: c.start, duration: dur, transform: c.transform });
+      if (isImage) inputArgs.push("-loop", "1", "-t", dur.toFixed(3), "-i", p);
+      else inputArgs.push("-i", p);
+      report(2 + Math.round((++done) / total * 28), "下载素材");
+    }
+
+    const graph = buildFilterGraph(segs, { width: doc.width, height: doc.height, fps: doc.fps }, overlays);
 
     const outName = `compose-${Date.now()}-${Math.random().toString(36).slice(2)}.mp4`;
     const outPath = path.join(os.tmpdir(), outName);
 
     const args = [
       ...inputArgs,
-      "-filter_complex", filterComplex,
-      "-map", outV, "-map", outA,
+      "-filter_complex", graph.filterComplex,
+      "-map", graph.outV, "-map", graph.outA,
       "-c:v", "libx264", "-preset", "medium", "-crf", "18", "-pix_fmt", "yuv420p",
       "-c:a", "aac", "-b:a", "192k",
       "-movflags", "+faststart",
@@ -171,9 +305,8 @@ export async function composeTimeline(doc: EditorDoc, opts: ComposeOptions): Pro
     const key = `u/${opts.userId}/editor/${namePart}-${Date.now()}.mp4`;
     const { url, key: storageKey } = await storagePut(key, outBuffer, "video/mp4");
 
-    const duration = segs.reduce((sum, s) => sum + segmentDuration(s), 0);
     report(100, "完成");
-    return { url, storageKey, duration };
+    return { url, storageKey, duration: graph.duration };
   } finally {
     await Promise.all(tmpFiles.map((f) => fs.unlink(f).catch(() => undefined)));
   }

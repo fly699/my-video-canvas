@@ -38,6 +38,35 @@ describe("buildFilterGraph (single-pass composer)", () => {
     expect(segmentDuration({ isImage: true, hasAudio: false, trimIn: 0, trimOut: 3, speed: 1 })).toBe(3);
   });
 
+  it("folds with xfade when a segment has a transition, and acrossfade for audio", () => {
+    const segs: Segment[] = [
+      { isImage: false, hasAudio: true, trimIn: 0, trimOut: 3, speed: 1 },
+      { isImage: false, hasAudio: true, trimIn: 0, trimOut: 3, speed: 1, transition: { type: "dissolve", duration: 1 } },
+    ];
+    const g = buildFilterGraph(segs, OPTS);
+    expect(g.filterComplex).toContain("xfade=transition=dissolve:duration=1.000:offset=2.000");
+    expect(g.filterComplex).toContain("acrossfade=d=1.000");
+    expect(g.duration).toBeCloseTo(5, 3); // 3 + 3 - 1
+  });
+
+  it("inserts color eq + preset filter into the clip chain", () => {
+    const segs: Segment[] = [{ isImage: false, hasAudio: false, trimIn: 0, trimOut: 2, speed: 1, effects: { brightness: 0.1, contrast: 1.2, saturation: 1.3, filter: "warm" } }];
+    const g = buildFilterGraph(segs, OPTS);
+    expect(g.filterComplex).toContain("eq=brightness=0.1:contrast=1.2:saturation=1.3");
+    expect(g.filterComplex).toContain("colorbalance=");
+  });
+
+  it("composites an overlay with position/scale/opacity and time-gated enable", () => {
+    const segs: Segment[] = [{ isImage: false, hasAudio: true, trimIn: 0, trimOut: 4, speed: 1 }];
+    const overlays = [{ isImage: true, trimIn: 0, trimOut: 2, speed: 1, start: 1, duration: 2, transform: { x: 0.5, y: 0.25, scale: 0.3, opacity: 0.8 } }];
+    const g = buildFilterGraph(segs, OPTS, overlays);
+    expect(g.filterComplex).toContain("[1:v]"); // overlay input index = main count
+    expect(g.filterComplex).toContain("scale=576:-2"); // 0.3 * 1920
+    expect(g.filterComplex).toContain("colorchannelmixer=aa=0.800");
+    expect(g.filterComplex).toContain("overlay=x=960:y=270:enable='between(t,1.000,3.000)'");
+    expect(g.outV).toBe("[ob0]");
+  });
+
   it("collectVideoSegments sorts video/image clips by start and ignores audio/text", () => {
     const doc = emptyEditorDoc();
     doc.tracks[0].clips.push({ id: "b", kind: "video", start: 5, trimIn: 0, trimOut: 2, assetUrl: "x" });

@@ -16,7 +16,7 @@ describe("editor session devStore parity + soft delete", () => {
     const s = mk();
     expect(s.name).toBe("未命名剪辑");
     expect(s.deletedAt).toBeNull();
-    expect((s.doc as EditorDoc).tracks).toHaveLength(3);
+    expect((s.doc as EditorDoc).tracks).toHaveLength(4);
   });
 
   it("get is owner-scoped", () => {
