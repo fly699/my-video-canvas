@@ -224,10 +224,11 @@ function ProjectCard({
         {/* Hover overlay */}
         <div className="absolute inset-0 opacity-0 group-hover:opacity-100 transition-opacity z-[6]" style={{ background: "var(--c-overlay)" }} />
 
-        {/* Refresh cover button (editors only) */}
+        {/* Refresh cover button (editors only). Top-LEFT so it doesn't cover the
+            ⋯ menu (rename/delete) which lives at top-right. */}
         {onRefreshCover && (
           <button
-            className="absolute top-2 right-2 z-20 w-7 h-7 rounded-lg flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity"
+            className="absolute top-2 left-2 z-20 w-7 h-7 rounded-lg flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity"
             style={{ background: "oklch(0 0 0 / 0.55)", border: "1px solid var(--c-bd2)", color: "var(--c-t1)", cursor: "pointer" }}
             title="换一张封面（从项目里的图片中选取）"
             onClick={(e) => { e.stopPropagation(); onRefreshCover(); }}
@@ -285,10 +286,11 @@ function ProjectCard({
         </div>
       </div>
 
-      {/* Menu button */}
+      {/* Menu button (⋯ rename/delete) — z-20 so the thumbnail hover overlay
+          never sits above it and steals the click. */}
       {!readOnly && <div
         ref={menuRef}
-        className="absolute top-3 right-3"
+        className="absolute top-3 right-3 z-20"
         onClick={(e) => e.stopPropagation()}
       >
         <button
