@@ -9,6 +9,18 @@ import { getLoginUrl } from "./const";
 import { handleWhitelistError } from "./hooks/useWhitelistBlocked";
 import "./index.css";
 
+// One-time cleanup: the browser-side media cache (IndexedDB) was removed in
+// favor of relying on durable MinIO/S3 storage. Drop the old database once so
+// previously-cached blobs don't linger and waste the user's disk quota.
+if (typeof window !== "undefined" && typeof indexedDB !== "undefined") {
+  try {
+    if (!localStorage.getItem("media-cache-purged-v1")) {
+      indexedDB.deleteDatabase("ai-canvas-media-cache");
+      localStorage.setItem("media-cache-purged-v1", "1");
+    }
+  } catch { /* ignore — best-effort cleanup */ }
+}
+
 const queryClient = new QueryClient();
 
 const handleGlobalError = (error: unknown) => {

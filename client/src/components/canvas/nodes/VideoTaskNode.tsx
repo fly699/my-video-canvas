@@ -7,10 +7,9 @@ import { mergeCharactersIntoPrompt } from "../../../lib/characterPrompt";
 import { trpc } from "@/lib/trpc";
 import { toast } from "sonner";
 import { Handle, Position } from "@xyflow/react";
-import { Play, Loader2, CheckCircle2, XCircle, Clock, RefreshCw, AlertCircle, Download, ChevronDown, ChevronRight, Layers, Plus, X as XIcon, Film, HardDriveDownload } from "lucide-react";
-import { useLocalMedia } from "@/lib/useLocalMedia";
+import { Play, Loader2, CheckCircle2, XCircle, Clock, RefreshCw, AlertCircle, Download, ChevronDown, ChevronRight, Layers, Plus, X as XIcon, Film } from "lucide-react";
+import { isOwnStorageUrl } from "@/lib/ownStorage";
 import { mediaFetchUrl, onDownloadMedia } from "@/lib/download";
-import { cacheMedia, getCachedMedia } from "@/lib/mediaCache";
 import { listCustomPresets, saveCustomPreset, deleteCustomPreset, type CustomVideoPreset } from "@/lib/customPresets";
 import { ensureNotificationPermission, showCompletionNotification } from "@/lib/notify";
 import { CinematographyPicker } from "../CinematographyPicker";
@@ -49,10 +48,11 @@ function toProxiedSrc(u: string): string {
   return u.startsWith("http") ? `/api/video-proxy?url=${encodeURIComponent(u)}` : u;
 }
 
-function LocalCacheBadge({ downloadedAt }: { downloadedAt: number }) {
+// 绿点徽标：媒体已落到我方 MinIO 长期存储（/manus-storage/ 路径）。
+function MinioStorageBadge() {
   return (
     <div
-      title={`已缓存到本地（${new Date(downloadedAt).toLocaleString("zh-CN")}）`}
+      title="已存储到 MinIO·长期有效"
       className="absolute top-1.5 left-1.5 z-10 w-2.5 h-2.5 rounded-full pointer-events-none"
       style={{ background: "oklch(0.72 0.18 155)", boxShadow: "0 0 0 2.5px oklch(0.72 0.18 155 / 0.35)" }}
     />
@@ -60,27 +60,12 @@ function LocalCacheBadge({ downloadedAt }: { downloadedAt: number }) {
 }
 
 function ShotItem({ u, idx }: { u: string; idx: number }) {
-  const { isLocal, blobUrl, downloadedAt, refresh } = useLocalMedia(u);
-  const [caching, setCaching] = useState(false);
-  const [cacheProgress, setCacheProgress] = useState(0);
-  const src = blobUrl ?? toProxiedSrc(u);
-  const handleCache = async () => {
-    if (caching) return;
-    setCaching(true); setCacheProgress(0);
-    try {
-      await cacheMedia(u, "video", (loaded, total) => {
-        if (total > 0) setCacheProgress(Math.round(loaded / total * 100));
-      });
-      refresh();
-      toast.success("已缓存到本地");
-    } catch (e) {
-      toast.error("缓存失败：" + (e instanceof Error ? e.message : String(e)));
-    } finally { setCaching(false); }
-  };
+  const storedInMinio = isOwnStorageUrl(u);
+  const src = toProxiedSrc(u);
   return (
     <div>
       <div className="relative rounded-lg overflow-hidden" style={{ borderWidth: 1, borderStyle: "solid", borderColor: "oklch(0.72 0.18 155 / 0.30)" }}>
-        {isLocal && <LocalCacheBadge downloadedAt={downloadedAt} />}
+        {storedInMinio && <MinioStorageBadge />}
         <video
           src={src}
           controls
@@ -98,18 +83,6 @@ function ShotItem({ u, idx }: { u: string; idx: number }) {
       >
         <Download className="w-2.5 h-2.5" /> 第 {idx + 1} 段
       </a>
-      {!isLocal && (
-        <button
-          onClick={handleCache}
-          disabled={caching}
-          className="nodrag mt-0.5 flex items-center justify-center gap-1 w-full py-1 rounded text-[10px] font-medium"
-          style={{ background: "transparent", border: "1px solid var(--c-bd2)", color: "var(--c-t3)", cursor: caching ? "not-allowed" : "pointer" }}
-        >
-          {caching
-            ? <><Loader2 className="w-2.5 h-2.5 animate-spin" />{cacheProgress > 0 ? ` ${cacheProgress}%` : " 缓存中..."}</>
-            : <><HardDriveDownload className="w-2.5 h-2.5" /> 缓存</>}
-        </button>
-      )}
     </div>
   );
 }
@@ -1028,40 +1001,12 @@ export const VideoTaskNode = memo(function VideoTaskNode({ id, selected, data }:
     });
   }, [payload.status, payload.provider, payload.prompt, id]);
 
-  // ── Local media cache (IndexedDB) ────────────────────────────────────────
-  const { isLocal, blobUrl, downloadedAt, refresh: refreshLocalCache } = useLocalMedia(primaryUrl);
-  const [caching, setCaching] = useState(false);
-  const [cacheProgress, setCacheProgress] = useState(0);
-  // On network video error, notify the user once when a local cache exists —
-  // useLocalMedia self-heals by updating blobUrl, so no fallback state machine needed.
-  const errorToastedRef = useRef<string | null>(null);
-  const handleVideoError = useCallback(() => {
-    if (!primaryUrl || errorToastedRef.current === primaryUrl) return;
-    const urlAtError = primaryUrl;
-    getCachedMedia(urlAtError).then((entry) => {
-      if (entry && errorToastedRef.current !== urlAtError) {
-        errorToastedRef.current = urlAtError;
-        toast.info("在线地址失效，已切换到本地缓存");
-      }
-    }).catch(() => {});
-  }, [primaryUrl]);
-  const handleCache = async () => {
-    if (!primaryUrl || caching) return;
-    setCaching(true); setCacheProgress(0);
-    try {
-      await cacheMedia(primaryUrl, "video", (loaded, total) => {
-        if (total > 0) setCacheProgress(Math.round(loaded / total * 100));
-      });
-      refreshLocalCache();
-      toast.success("已缓存到本地");
-    } catch (e) {
-      toast.error("缓存失败：" + (e instanceof Error ? e.message : String(e)));
-    } finally { setCaching(false); }
-  };
+  // 绿点指示：结果视频是否已落到我方 MinIO 长期存储（/manus-storage/ 路径）。
+  const videoStoredInMinio = isOwnStorageUrl(primaryUrl);
 
   const heroMedia = payload.status === "succeeded" && videoSrc ? (
     <video
-      src={blobUrl ?? videoSrc}
+      src={videoSrc}
       controls
       className="w-full"
       preload="metadata"
@@ -1128,15 +1073,14 @@ export const VideoTaskNode = memo(function VideoTaskNode({ id, selected, data }:
             ) : (
               <>
                 <div className="relative rounded-lg overflow-hidden" style={{ borderWidth: 1, borderStyle: "solid", borderColor: STATUS.succeeded.borderColor }}>
-                  {isLocal && <LocalCacheBadge downloadedAt={downloadedAt} />}
+                  {videoStoredInMinio && <MinioStorageBadge />}
                   <video
                     key={videoSrc}
-                    src={blobUrl ?? videoSrc}
+                    src={videoSrc}
                     controls
                     className="w-full nodrag"
                     style={{ maxHeight: 140, display: "block" }}
                     preload="metadata"
-                    onError={handleVideoError}
                   />
                 </div>
                 {/* Download button (primary URL — works for single-shot results) */}
@@ -1159,24 +1103,6 @@ export const VideoTaskNode = memo(function VideoTaskNode({ id, selected, data }:
                     <Download className="w-3 h-3" />
                     下载视频
                   </a>
-                )}
-                {/* Cache to local button */}
-                {!isLocal && primaryUrl && (
-                  <button
-                    onClick={handleCache}
-                    disabled={caching}
-                    className="nodrag mt-1 flex items-center justify-center gap-1.5 w-full py-1.5 rounded-lg text-xs font-medium"
-                    style={{
-                      background: "transparent",
-                      borderWidth: 1, borderStyle: "solid", borderColor: "var(--c-bd2)",
-                      color: "var(--c-t3)",
-                      cursor: caching ? "not-allowed" : "pointer",
-                    }}
-                  >
-                    {caching
-                      ? <><Loader2 className="w-3 h-3 animate-spin" />{cacheProgress > 0 ? ` ${cacheProgress}%` : " 缓存中..."}</>
-                      : <><HardDriveDownload className="w-3 h-3" /> 缓存到本地</>}
-                  </button>
                 )}
               </>
             )}

@@ -4,7 +4,7 @@ import { X, Play, Pause, Clock, Film, Pin, GripHorizontal } from "lucide-react";
 import { useCanvasStore } from "../../hooks/useCanvasStore";
 import { getNodeConfig } from "../../lib/nodeConfig";
 import type { NodeType } from "../../../../shared/types";
-import { useLocalMedia } from "../../lib/useLocalMedia";
+import { isOwnStorageUrl } from "../../lib/ownStorage";
 import { usePersistentState } from "../../hooks/usePersistentState";
 
 interface TimelinePanelProps {
@@ -468,12 +468,12 @@ interface TimelineClipProps {
 }
 
 function TimelineClip({ index, clip, isPlaying, videoRef, proxySrc, onNavigate, onPlay, onEnded }: TimelineClipProps) {
-  const { isLocal, blobUrl, downloadedAt } = useLocalMedia(clip.videoUrl);
+  const storedInMinio = isOwnStorageUrl(clip.videoUrl);
 
   // Drag-to-attach: timeline clips are always videos, which LLMs can't read
   // as images. Attach them as a text-file reference so the chat node shows a
   // clean chip and the model gets the clip title/URL as written context.
-  const dragUrl = blobUrl ?? clip.videoUrl;
+  const dragUrl = clip.videoUrl;
   const onDragStart = (e: React.DragEvent) => {
     if (!dragUrl) return;
     const payload = {
@@ -546,15 +546,15 @@ function TimelineClip({ index, clip, isPlaying, videoRef, proxySrc, onNavigate, 
       >
         <video
           ref={videoRef}
-          src={blobUrl ?? proxySrc(clip.videoUrl)}
+          src={proxySrc(clip.videoUrl)}
           style={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }}
           preload="metadata"
           onEnded={onEnded}
           onError={(e) => console.error("[TimelinePanel] Video load error:", (e.currentTarget as HTMLVideoElement).error?.message)}
         />
-        {isLocal && (
+        {storedInMinio && (
           <div
-            title={`已缓存到本地（${new Date(downloadedAt).toLocaleString("zh-CN")}）`}
+            title="已存储到 MinIO·长期有效"
             style={{
               position: "absolute",
               top: 4,

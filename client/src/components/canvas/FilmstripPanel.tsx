@@ -4,7 +4,7 @@ import { X, Film, ImageOff, GripHorizontal, Pin } from "lucide-react";
 import { useCanvasStore } from "../../hooks/useCanvasStore";
 import { getNodeConfig } from "../../lib/nodeConfig";
 import type { NodeType } from "../../../../shared/types";
-import { useLocalMedia } from "../../lib/useLocalMedia";
+import { isOwnStorageUrl } from "../../lib/ownStorage";
 import { usePersistentState } from "../../hooks/usePersistentState";
 
 interface FilmstripPanelProps {
@@ -458,7 +458,7 @@ function FilmFrame({
   onClick,
 }: FilmFrameProps) {
   const mediaUrl = isVideo ? videoUrl : imageUrl;
-  const { isLocal, blobUrl, downloadedAt } = useLocalMedia(mediaUrl);
+  const storedInMinio = isOwnStorageUrl(mediaUrl);
 
   // Drag-to-attach into an AI chat node. Images go as multimodal image_url
   // parts the LLM can actually see; videos go as a text "file" attachment
@@ -539,14 +539,14 @@ function FilmFrame({
       <div style={{ width: "100%", height: 100, position: "relative", overflow: "hidden", flexShrink: 0 }}>
         {isVideo && videoUrl ? (
           <video
-            src={blobUrl ?? videoUrl}
+            src={videoUrl}
             style={{ width: "100%", height: "100%", objectFit: "cover" }}
             muted
             preload="metadata"
           />
         ) : (
           <img
-            src={blobUrl ?? imageUrl}
+            src={imageUrl}
             alt={title}
             style={{
               width: "100%",
@@ -557,9 +557,9 @@ function FilmFrame({
             loading="lazy"
           />
         )}
-        {isLocal && (
+        {storedInMinio && (
           <div
-            title={`已缓存到本地（${new Date(downloadedAt).toLocaleString("zh-CN")}）`}
+            title="已存储到 MinIO·长期有效"
             style={{
               position: "absolute",
               top: 4,
