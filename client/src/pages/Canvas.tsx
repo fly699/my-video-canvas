@@ -454,6 +454,11 @@ function CanvasInner({ projectId }: { projectId: number }) {
   const [renamingProject, setRenamingProject] = useState(false);
   const [renameValue, setRenameValue] = useState("");
   const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // Guards so the DB snapshot is applied to local state only once (initial load);
+  // later, local state is the source of truth and a query refetch must not clobber
+  // it. Reset per project because Canvas is keyed by projectId (remounts).
+  const nodesLoadedRef = useRef(false);
+  const edgesLoadedRef = useRef(false);
 
   // ── Data loading ────────────────────────────────────────────────────────────
   const { data: project, isLoading: projectLoading, isError: projectError } = trpc.projects.get.useQuery(
@@ -488,6 +493,13 @@ function CanvasInner({ projectId }: { projectId: number }) {
 
   useEffect(() => {
     if (!dbNodes) return;
+    // Apply the DB snapshot ONCE (initial load). `nodes.list` uses React Query's
+    // default refetchOnWindowFocus, so without this guard a focus-triggered
+    // refetch would overwrite local state — resurrecting a just-deleted node
+    // (not yet reconciled to the server) which would then be re-upserted by the
+    // save. Remote changes arrive via the collaboration socket, not this query.
+    if (nodesLoadedRef.current) return;
+    nodesLoadedRef.current = true;
     const flowNodes: CanvasNode[] = dbNodes.map((n) => {
       const cfg = getNodeConfig(n.type as NodeType);
       // Decide whether to apply the stored height to React Flow's style.
@@ -516,6 +528,8 @@ function CanvasInner({ projectId }: { projectId: number }) {
 
   useEffect(() => {
     if (!dbEdges || !dbNodes) return;
+    if (edgesLoadedRef.current) return; // apply DB snapshot once; later local state is source of truth (see nodes effect)
+    edgesLoadedRef.current = true;
     // Migration: 5 processing nodes (merge / subtitle / subtitle_motion /
     // pose_control / smart_cut) previously rendered `input` at Position.Top and
     // `output` at Position.Bottom via showHandles={false}. They now use
@@ -599,7 +613,9 @@ function CanvasInner({ projectId }: { projectId: number }) {
         });
       }
       await updateProject.mutateAsync({ id: projectId, viewportState: reactFlow.getViewport() });
-      markClean();
+      // Only mark clean if every deletion was reconciled; otherwise stay dirty so
+      // the next save retries the failed deletes (don't silently drop them).
+      if (useCanvasStore.getState().deletedNodeIds.length === 0) markClean();
     } catch (err) {
       console.error("Auto-save failed:", err);
     }
