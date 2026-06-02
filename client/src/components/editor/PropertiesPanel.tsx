@@ -1,5 +1,7 @@
-import { Trash2 } from "lucide-react";
-import { EC } from "./theme";
+import { Trash2, Mic } from "lucide-react";
+import { toast } from "sonner";
+import { trpc } from "@/lib/trpc";
+import { EC, probeMediaDuration } from "./theme";
 import { useEditorStore } from "./editorStore";
 import type { Clip } from "@shared/editorTypes";
 
@@ -12,6 +14,23 @@ export function PropertiesPanel() {
   const doc = useEditorStore((s) => s.doc);
   const update = useEditorStore((s) => s.updateClip);
   const remove = useEditorStore((s) => s.removeClip);
+  const addClip = useEditorStore((s) => s.addClip);
+  const dubMut = trpc.audioGen.generateDubbing.useMutation();
+
+  // AI dubbing: synthesize speech from the text clip and drop it on the audio track.
+  async function aiDub(text: string, start: number) {
+    if (!text.trim()) { toast.error("文字为空"); return; }
+    const d = useEditorStore.getState().doc;
+    const audioTrack = d?.tracks.find((t) => t.type === "audio");
+    if (!audioTrack) { toast.error("没有音频轨道"); return; }
+    toast.info("正在生成 AI 配音…");
+    try {
+      const r = await dubMut.mutateAsync({ model: "openai_tts_real", text });
+      const dur = await probeMediaDuration(r.url, "audio");
+      addClip(audioTrack.id, { kind: "audio", assetUrl: r.url, start, trimIn: 0, trimOut: dur, volume: 1 });
+      toast.success("已生成配音并加入音频轨");
+    } catch (e) { toast.error("配音失败：" + (e instanceof Error ? e.message : "")); }
+  }
 
   let clip: Clip | null = null;
   if (doc && selectedClipId) {
@@ -45,6 +64,11 @@ export function PropertiesPanel() {
             <Row label="字号"><input type="number" value={c.text?.size ?? 48} onChange={(e) => update(c.id, { text: { ...c.text, content: c.text?.content ?? "", size: Number(e.target.value) } })} style={input} /></Row>
             <Row label="颜色"><input type="color" value={c.text?.color ?? "#ffffff"} onChange={(e) => update(c.id, { text: { ...c.text, content: c.text?.content ?? "", color: e.target.value } })} style={{ ...input, height: 30, padding: 2 }} /></Row>
             <Row label="动效"><Select value={c.text?.motionStyle ?? "none"} options={MOTIONS} onChange={(v) => update(c.id, { text: { ...c.text, content: c.text?.content ?? "", motionStyle: v as NonNullable<Clip["text"]>["motionStyle"] } })} /></Row>
+            <button
+              disabled={dubMut.isPending}
+              onClick={() => aiDub(c.text?.content ?? "", c.start)}
+              style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 6, padding: "7px 0", fontSize: 12, borderRadius: 7, border: `1px solid ${EC.accent}`, background: EC.accentSoft, color: EC.accent, cursor: dubMut.isPending ? "default" : "pointer" }}
+            ><Mic size={13} /> {dubMut.isPending ? "生成中…" : "AI 配音（朗读这段文字）"}</button>
           </Section>
         )}
 
