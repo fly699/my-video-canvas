@@ -76,27 +76,27 @@ export const CustomEdge = memo(function CustomEdge({
   const hasLabel = typeof label === "string" && label.trim().length > 0;
   const showControls = hovered || selected;
 
-  // Rich, high-presence colors: each source node type has its own hue, shown at
-  // near-full alpha so lines read clearly and the palette feels varied.
+  // Colored by source node type; idle lines are slightly translucent so the
+  // canvas feels lighter, hover/selected go solid for clear emphasis.
   const strokeColor = sourceCompleted
-    ? "oklch(0.64 0.22 155)"
+    ? "oklch(0.64 0.22 155 / 0.9)"
     : sourceFailed
-      ? "oklch(0.62 0.24 25)"
+      ? "oklch(0.62 0.24 25 / 0.9)"
       : selected
         ? (typeColor ?? "oklch(0.68 0.24 285)")
         : hovered
           ? (typeColor ?? "oklch(0.72 0.18 285)")
           : isCreative
-            ? (typeColor ? `${typeColor}dd` : "oklch(0.70 0.12 260)")
+            ? (typeColor ? `${typeColor}99` : "oklch(0.70 0.12 260 / 0.6)")
             : typeColor
-              ? typeColor
-              : "oklch(0.68 0.16 260)";
+              ? `${typeColor}c0`
+              : "oklch(0.68 0.16 260 / 0.75)";
 
-  // Thicker strokes (user asked for bolder lines). Hover/selection step up more
-  // so the active edge clearly stands out.
+  // Slightly thinner than the bold pass (user asked to slim down a touch);
+  // hover/selection still step up for emphasis.
   const strokeWidth = isCreative
-    ? selected ? 3.5 : hovered ? 3 : 2.25
-    : selected ? 4.5 : hovered ? 3.75 : 3;
+    ? selected ? 2.75 : hovered ? 2.25 : 1.5
+    : selected ? 3.5 : hovered ? 2.75 : 2;
 
   // ── Particle flow ───────────────────────────────────────────────────────────
   const svgPathId = `pp-${id.replace(/[^a-zA-Z0-9_-]/g, "_")}`;
@@ -104,7 +104,7 @@ export const CustomEdge = memo(function CustomEdge({
   const durSeconds = sourceRunning ? 0.75 : isCreative ? 3.5 : 2.6;
   // Smaller particles — visible but not chunky. Running state stays slightly
   // bigger so the user can tell at a glance that something is in flight.
-  const particleR = sourceRunning ? (isCreative ? 2 : 2.4) : isCreative ? 1.3 : 1.6;
+  const particleR = sourceRunning ? (isCreative ? 2.4 : 2.8) : isCreative ? 1.9 : 2.3;
   const particleColor = sourceRunning
     ? "oklch(0.92 0.28 142)"
     : sourceCompleted
@@ -116,9 +116,9 @@ export const CustomEdge = memo(function CustomEdge({
           : (typeColor ?? "oklch(0.72 0.14 260)");
   const particleOpacity = sourceRunning
     ? 1.0
-    : sourceCompleted ? (isCreative ? 0.78 : 0.88)
-    : sourceFailed ? 0.78
-    : isCreative ? 0.55 : 0.78;
+    : sourceCompleted ? (isCreative ? 0.9 : 0.95)
+    : sourceFailed ? 0.9
+    : isCreative ? 0.8 : 0.92;
   // Modest glow halo — visible direction cue without dominating the canvas.
   const glowR = particleR * 2.4;
   const glowOpacity = sourceRunning ? 0.36 : isCreative ? 0.12 : 0.18;

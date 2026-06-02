@@ -36,6 +36,11 @@ export function AssetPanel({ projectId, onClose, onHeaderMouseDown }: Props) {
     allProjects: scope === "all",
     type: typeFilter || undefined,
     source: sourceFilter || undefined,
+  }, {
+    // Auto-pick up newly generated/uploaded assets while the panel is open
+    // (generation completes asynchronously elsewhere on the canvas).
+    refetchInterval: 8000,
+    refetchOnWindowFocus: true,
   });
 
   // Image URLs (in list order) for the click-to-zoom lightbox.

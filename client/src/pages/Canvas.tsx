@@ -390,7 +390,9 @@ function CanvasInner({ projectId }: { projectId: number }) {
   const [showStatsSidebar, setShowStatsSidebar] = usePersistentState<boolean>(
     "ui:panel:stats:v1", false, { validate: validateBool },
   );
-  const [showFilmstrip, setShowFilmstrip] = useState(false);
+  const [showFilmstrip, setShowFilmstrip] = usePersistentState<boolean>(
+    "ui:panel:filmstrip:v1", false, { validate: validateBool },
+  );
   const [showTimeline, setShowTimeline] = usePersistentState<boolean>(
     "ui:panel:timeline:v1", false, { validate: validateBool },
   );
@@ -414,11 +416,17 @@ function CanvasInner({ projectId }: { projectId: number }) {
   const { mode: canvasMode, setMode: setCanvasMode } = useCanvasMode();
   const { theme } = useTheme();
   const isLight = theme === "light" || theme === "warm" || theme === "mint" || theme === "lavender" || theme === "paper" || canvasMode === "creative";
-  // Auto-show filmstrip when entering creative mode, hide when leaving
+  // Auto-show the filmstrip when ENTERING creative mode and hide when LEAVING —
+  // but only on an actual mode transition, so the persisted open-state isn't
+  // clobbered on mount/reload.
+  const prevCanvasModeRef = useRef(canvasMode);
   useEffect(() => {
+    const prev = prevCanvasModeRef.current;
+    if (prev === canvasMode) return;
+    prevCanvasModeRef.current = canvasMode;
     if (canvasMode === "creative") setShowFilmstrip(true);
     else setShowFilmstrip(false);
-  }, [canvasMode]);
+  }, [canvasMode, setShowFilmstrip]);
   const [connectingFromType, setConnectingFromType] = useState<NodeType | null>(null);
 
   // Workflow runner
@@ -1670,6 +1678,8 @@ function CanvasInner({ projectId }: { projectId: number }) {
             zoomActivationKeyCode="Control"
             fitView={!project?.viewportState}
             fitViewOptions={{ padding: 0.2 }}
+            minZoom={0.05}
+            maxZoom={6}
             deleteKeyCode="Delete"
             multiSelectionKeyCode="Shift"
             proOptions={{ hideAttribution: true }}
@@ -1849,7 +1859,7 @@ function CanvasInner({ projectId }: { projectId: number }) {
               ...(barEdge === "left" && { left: 20, top: `calc(50% + ${barAlong}px)`, transform: "translateY(-50%)" }),
               ...(barEdge === "right" && { right: 20, top: `calc(50% + ${barAlong}px)`, transform: "translateY(-50%)" }),
               cursor: "default",
-              background: "color-mix(in oklch, var(--c-base) 72%, transparent)",
+              background: "color-mix(in oklch, var(--c-base) 55%, transparent)",
               backdropFilter: "blur(24px)",
               border: "1px solid var(--c-bd2)",
               boxShadow: "var(--c-node-shadow-hover), 0 0 0 1px var(--c-bd2)",
