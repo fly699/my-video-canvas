@@ -197,6 +197,21 @@ export const ComfyuiWorkflowNode = memo(function ComfyuiWorkflowNode({ id, selec
   }, [id, updateNodeData]);
 
   const analyzeMutation = trpc.comfyui.analyzeWorkflow.useMutation();
+
+  // Test the ComfyUI server connection (this node runs arbitrary workflows and
+  // doesn't pull a model list, so we probe via fetchModels purely to verify
+  // reachability and report what's available).
+  const utils = trpc.useUtils();
+  const [testingServer, setTestingServer] = useState(false);
+  const handleTestServer = useCallback(async () => {
+    setTestingServer(true);
+    try {
+      const r = await utils.comfyui.fetchModels.fetch({ customBaseUrl: payload.customBaseUrl?.trim() || undefined });
+      toast.success(`连接成功 — checkpoint ${r.ckpts.length} · LoRA ${r.loras.length}`);
+    } catch (e) {
+      toast.error("连接失败：" + (e instanceof Error ? e.message : String(e)).slice(0, 120));
+    } finally { setTestingServer(false); }
+  }, [utils, payload.customBaseUrl]);
   const executeMutation = trpc.comfyui.executeWorkflow.useMutation();
   const uploadImageMutation = trpc.comfyui.uploadWorkflowImage.useMutation();
 
@@ -387,6 +402,8 @@ export const ComfyuiWorkflowNode = memo(function ComfyuiWorkflowNode({ id, selec
             onChange={(v) => update({ customBaseUrl: v })}
             serverUrls={payload.serverUrls ?? []}
             onChangeServerUrls={(next) => update({ serverUrls: next })}
+            isFetching={testingServer}
+            onRefresh={handleTestServer}
             accent={accent}
             borderAccent={BORDER_ACCENT}
             borderDefault={BORDER_DEFAULT}
