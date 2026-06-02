@@ -49,6 +49,28 @@ export function isOwnStorageUrl(rawUrl: string): boolean {
   return false;
 }
 
+/**
+ * If a URL points at our own `/manus-storage/` proxy path — whether a relative
+ * path (`/manus-storage/{key}`) OR an absolute same-origin URL
+ * (`https://app-host:3000/manus-storage/{key}`) — return the internal
+ * `/manus-storage/{key}` path; otherwise null.
+ *
+ * The host is intentionally IGNORED: only the storage key is ever used (resolved
+ * against our own MinIO), so a crafted host can never redirect the fetch
+ * elsewhere. This is what lets the app fetch its own stored reference images
+ * without tripping the SSRF guard (the app server commonly lives on a private
+ * address like 172.16.x.x:3000).
+ */
+export function toInternalStoragePath(rawUrl: string): string | null {
+  if (typeof rawUrl !== "string" || !rawUrl) return null;
+  if (rawUrl.startsWith("/manus-storage/")) return rawUrl;
+  try {
+    const u = new URL(rawUrl);
+    if (u.pathname.startsWith("/manus-storage/")) return u.pathname;
+  } catch { /* not an absolute URL — fall through */ }
+  return null;
+}
+
 /** Rewrite a presigned URL's origin to the public endpoint, when configured. */
 function applyPublicEndpoint(signedUrl: string): string {
   if (!ENV.s3PublicEndpoint) return signedUrl;
