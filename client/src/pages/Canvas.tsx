@@ -1703,6 +1703,8 @@ function CanvasInner({ projectId }: { projectId: number }) {
             )}
             <MiniMap
               position="bottom-right"
+              pannable
+              zoomable
               nodeColor={(n) => getNodeConfig((n.data as { nodeType: NodeType }).nodeType)?.color ?? "var(--c-bd3)"}
               maskColor={isLight ? "oklch(0.95 0.004 255 / 0.55)" : "oklch(0.09 0.006 260 / 0.55)"}
               style={{
@@ -1715,15 +1717,16 @@ function CanvasInner({ projectId }: { projectId: number }) {
                 margin: 0,
                 width: mmSize.w,
                 height: mmSize.h,
-                // Force above filmstrip (15) / timeline (18) / bottom toolbar
+                // Force above filmstrip (15) / timeline (25) / bottom toolbar
                 // (20). Inline so it wins against the lib's .react-flow__panel
                 // baseline z-index 5 regardless of CSS load order.
-                zIndex: 30,
+                zIndex: 40,
               }}
             />
             {/* Minimap drag handle + resize grip — transparent overlay.
-                z-index: 31 so it stays just above .react-flow__minimap (30)
-                and clears the filmstrip (15) / timeline (18) panels. */}
+                z-index: 41 so it stays just above .react-flow__minimap (40)
+                and clears the filmstrip (15) / timeline (25) panels. The body is
+                pointer-events:none so drag-to-pan reaches the minimap below. */}
             <div
               style={{
                 position: "absolute",
@@ -1731,7 +1734,7 @@ function CanvasInner({ projectId }: { projectId: number }) {
                 right: mmPos.right,
                 width: mmSize.w,
                 height: mmSize.h,
-                zIndex: 31,
+                zIndex: 41,
                 pointerEvents: "none",
                 borderRadius: 12,
               }}

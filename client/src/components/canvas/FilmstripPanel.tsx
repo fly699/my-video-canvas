@@ -209,7 +209,11 @@ export function FilmstripPanel({ onClose }: FilmstripPanelProps) {
   // past the cap). Floating mode uses max(user's manual width, autoWidth) so
   // adding more clips keeps growing the panel even after the user resized —
   // the manual width acts as a baseline, not a ceiling.
-  const FRAME_W = 100;
+  // Frames auto-scale to the panel height: taller panel → bigger thumbnails.
+  // Square image area + 22px footer; the scroll row spans the rest of the height.
+  const FOOTER_H = 22;
+  const imgSide = Math.max(64, Math.min(layout.height - 28 /*header*/ - 16 /*row padding*/ - FOOTER_H, 240));
+  const FRAME_W = imgSide;
   const FRAME_GAP = 8;
   const SIDE_PADDING = 24; // 12px each side of the scroll row
   const HEADER_MIN = 320;
@@ -393,6 +397,7 @@ export function FilmstripPanel({ onClose }: FilmstripPanelProps) {
               <FilmFrame
                 key={node.id}
                 index={index}
+                imgSide={imgSide}
                 imageUrl={mediaUrl}
                 videoUrl={videoUrl}
                 isVideo={isVideo}
@@ -436,6 +441,7 @@ export function FilmstripPanel({ onClose }: FilmstripPanelProps) {
 
 interface FilmFrameProps {
   index: number;
+  imgSide: number;
   imageUrl?: string;
   videoUrl?: string;
   isVideo: boolean;
@@ -448,6 +454,7 @@ interface FilmFrameProps {
 
 function FilmFrame({
   index,
+  imgSide,
   imageUrl,
   videoUrl,
   isVideo,
@@ -499,8 +506,8 @@ function FilmFrame({
       draggable={!!networkUrl}
       onDragStart={onDragStart}
       style={{
-        width: 100,
-        height: 122,
+        width: imgSide,
+        height: imgSide + 22,
         flexShrink: 0,
         background: "var(--c-base)",
         border: isSelected
@@ -536,7 +543,7 @@ function FilmFrame({
       }}
     >
       {/* Image/video area */}
-      <div style={{ width: "100%", height: 100, position: "relative", overflow: "hidden", flexShrink: 0 }}>
+      <div style={{ width: "100%", height: imgSide, position: "relative", overflow: "hidden", flexShrink: 0 }}>
         {isVideo && videoUrl ? (
           <video
             src={videoUrl}
