@@ -70,7 +70,7 @@ export function registerVideoProxy(app: Express) {
       if (!ok) return;
     }
 
-    const MAX_VIDEO_BYTES = 500 * 1024 * 1024; // 500 MB
+    const MAX_VIDEO_BYTES = 5000 * 1024 * 1024; // 5000 MB
     const FETCH_TIMEOUT_MS = 60_000;
 
     try {

@@ -386,8 +386,8 @@ export const assetsRouter = router({
     .mutation(async ({ ctx, input }) => {
       await assertWhitelisted(ctx);
       if (input.projectId != null) await assertProjectAccess(input.projectId, ctx.user.id, "editor");
-      const MAX_BYTES = 500 * 1024 * 1024; // 500MB streamed ceiling
-      if (input.size > MAX_BYTES) throw new TRPCError({ code: "BAD_REQUEST", message: "文件超过 500MB 上限" });
+      const MAX_BYTES = 5000 * 1024 * 1024; // 5000MB streamed ceiling (not a memory limit — streamed direct, just a runaway/abuse guard)
+      if (input.size > MAX_BYTES) throw new TRPCError({ code: "BAD_REQUEST", message: "文件超过 5000MB 上限" });
       const safeName = input.name.replace(/[^a-zA-Z0-9._\-一-龥]/g, "_").slice(0, 120) || "file";
       const relKey = `u/${ctx.user.id}/uploads/${nanoid()}-${safeName}`;
       // Storage configured but browser can't reach it (internal MinIO, no public
