@@ -1,7 +1,7 @@
 import { memo, useRef, useState } from "react";
 import { BaseNode } from "../BaseNode";
 import type { AssetNodeData } from "../../../../../shared/types";
-import { FileVideo, FileImage, FileAudio, File, ExternalLink, Upload, RefreshCw, Loader2 } from "lucide-react";
+import { FileVideo, FileImage, FileAudio, File, ExternalLink, Upload, RefreshCw, Loader2, Play, X } from "lucide-react";
 import { useCanvasStore } from "../../../hooks/useCanvasStore";
 import { trpc } from "@/lib/trpc";
 import { toast } from "sonner";
@@ -24,6 +24,7 @@ export const AssetNode = memo(function AssetNode({ id, selected, data }: Props) 
   const payload = data.payload;
   const { updateNodeData } = useCanvasStore();
   const [uploading, setUploading] = useState(false);
+  const [videoPreview, setVideoPreview] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const uploadMutation = trpc.upload.uploadImage.useMutation({
@@ -116,8 +117,10 @@ export const AssetNode = memo(function AssetNode({ id, selected, data }: Props) 
     if (payload.type === "video") {
       return (
         <div
-          className="relative rounded-lg overflow-hidden"
-          style={{ border: "1px solid var(--c-bd2)" }}
+          className="relative rounded-lg overflow-hidden nodrag"
+          style={{ border: "1px solid var(--c-bd2)", cursor: "zoom-in" }}
+          onClick={() => setVideoPreview(true)}
+          title="点击播放"
         >
           {storedInMinio && (
             <div
@@ -126,7 +129,13 @@ export const AssetNode = memo(function AssetNode({ id, selected, data }: Props) 
               style={{ background: "oklch(0.72 0.18 155)", boxShadow: "0 0 0 2.5px oklch(0.72 0.18 155 / 0.35)" }}
             />
           )}
-          <video src={payload.url} controls className="w-full nodrag" style={{ maxHeight: 160, display: "block" }} />
+          {/* First-frame thumbnail (like images) — playback opens in an overlay */}
+          <video src={payload.url} muted preload="metadata" className="w-full" style={{ maxHeight: 160, display: "block", objectFit: "cover" }} />
+          <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
+            <div className="w-10 h-10 rounded-full flex items-center justify-center" style={{ background: "oklch(0 0 0 / 0.5)" }}>
+              <Play className="w-5 h-5 text-white" fill="white" />
+            </div>
+          </div>
         </div>
       );
     }
@@ -182,12 +191,14 @@ export const AssetNode = memo(function AssetNode({ id, selected, data }: Props) 
     }
     if (payload.url && payload.type === "video") {
       return (
-        <video
-          src={payload.url}
-          controls
-          style={{ width: "100%", maxHeight: 200, display: "block" }}
-          className="nodrag"
-        />
+        <div className="relative nodrag" style={{ cursor: "zoom-in" }} onClick={() => setVideoPreview(true)} title="点击播放">
+          <video src={payload.url} muted preload="metadata" style={{ width: "100%", maxHeight: 200, display: "block", objectFit: "cover" }} />
+          <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
+            <div className="w-11 h-11 rounded-full flex items-center justify-center" style={{ background: "oklch(0 0 0 / 0.5)" }}>
+              <Play className="w-5 h-5 text-white" fill="white" />
+            </div>
+          </div>
+        </div>
       );
     }
     if (payload.url) {
@@ -252,6 +263,27 @@ export const AssetNode = memo(function AssetNode({ id, selected, data }: Props) 
           onChange={handleReplace}
         />
       </div>
+
+      {/* Video preview overlay (play here instead of embedded in the node) */}
+      {videoPreview && payload.url && payload.type === "video" && (
+        <div
+          className="fixed inset-0 z-[120] flex items-center justify-center p-6 nodrag nowheel"
+          style={{ background: "oklch(0 0 0 / 0.8)", backdropFilter: "blur(8px)" }}
+          onClick={() => setVideoPreview(false)}
+          onWheel={(e) => e.stopPropagation()}
+        >
+          <div className="relative" style={{ maxWidth: "90vw", maxHeight: "85vh" }} onClick={(e) => e.stopPropagation()}>
+            <video src={payload.url} controls autoPlay style={{ maxWidth: "90vw", maxHeight: "85vh", borderRadius: 10, background: "#000" }} />
+            <button
+              onClick={() => setVideoPreview(false)}
+              className="absolute flex items-center justify-center"
+              style={{ top: -10, right: -10, width: 30, height: 30, borderRadius: "50%", background: "var(--c-elevated, #1a1a20)", border: "1px solid var(--c-bd2)", color: "var(--c-t1)", cursor: "pointer" }}
+            >
+              <X className="w-4 h-4" />
+            </button>
+          </div>
+        </div>
+      )}
     </BaseNode>
   );
 });

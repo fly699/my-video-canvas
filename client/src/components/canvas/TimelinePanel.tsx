@@ -239,7 +239,11 @@ export function TimelinePanel({ onClose }: TimelinePanelProps) {
   // Docked auto-width: panel grows with clip count, capped at viewport width
   // (horizontal scroll inside takes over past the cap). Floating mode uses
   // the user's persisted width.
-  const CLIP_W = 120;
+  // Clips auto-scale to the panel height (taller panel → bigger previews),
+  // keeping the original 120:90 video aspect; 22px footer below.
+  const FOOTER_H = 22;
+  const clipVideoH = Math.max(56, Math.min(layout.height - 28 /*header*/ - 16 /*padding*/ - FOOTER_H, 220));
+  const CLIP_W = Math.round(clipVideoH * (120 / 90));
   const CLIP_GAP = 8;
   const SIDE_PADDING = 24;
   const HEADER_MIN = 360;
@@ -418,6 +422,8 @@ export function TimelinePanel({ onClose }: TimelinePanelProps) {
             <TimelineClip
               key={clip.nodeId}
               index={index}
+              clipW={CLIP_W}
+              videoH={clipVideoH}
               clip={clip}
               isPlaying={playingId === clip.nodeId}
               videoRef={(el) => { videoRefs.current[clip.nodeId] = el; }}
@@ -458,6 +464,8 @@ export function TimelinePanel({ onClose }: TimelinePanelProps) {
 
 interface TimelineClipProps {
   index: number;
+  clipW: number;
+  videoH: number;
   clip: VideoClip;
   isPlaying: boolean;
   videoRef: (el: HTMLVideoElement | null) => void;
@@ -467,7 +475,7 @@ interface TimelineClipProps {
   onEnded: () => void;
 }
 
-function TimelineClip({ index, clip, isPlaying, videoRef, proxySrc, onNavigate, onPlay, onEnded }: TimelineClipProps) {
+function TimelineClip({ index, clipW, videoH, clip, isPlaying, videoRef, proxySrc, onNavigate, onPlay, onEnded }: TimelineClipProps) {
   const storedInMinio = isOwnStorageUrl(clip.videoUrl);
 
   // Drag-to-attach: timeline clips are always videos, which LLMs can't read
@@ -494,8 +502,8 @@ function TimelineClip({ index, clip, isPlaying, videoRef, proxySrc, onNavigate, 
       draggable={!!dragUrl}
       onDragStart={onDragStart}
       style={{
-        width: 120,
-        height: 112,
+        width: clipW,
+        height: videoH + 22,
         flexShrink: 0,
         display: "flex",
         flexDirection: "column",
@@ -541,7 +549,7 @@ function TimelineClip({ index, clip, isPlaying, videoRef, proxySrc, onNavigate, 
 
       {/* Video preview */}
       <div
-        style={{ width: "100%", height: 90, position: "relative", overflow: "hidden", flexShrink: 0, cursor: "pointer" }}
+        style={{ width: "100%", height: videoH, position: "relative", overflow: "hidden", flexShrink: 0, cursor: "pointer" }}
         onClick={onNavigate}
       >
         <video

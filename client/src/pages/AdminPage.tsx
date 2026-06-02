@@ -1185,9 +1185,13 @@ const paginBtn: React.CSSProperties = {
 function DownloadsAdminPanel() {
   const utils = trpc.useUtils();
   const [status, setStatus] = useState<"pending" | "active" | "revoked" | "denied" | "">("pending");
+  const [preview, setPreview] = useState<AdminAsset | null>(null);
   const { data: grants, isFetching } = trpc.admin.downloads.list.useQuery({ status: status || undefined, limit: 300 });
-  const decideMut = trpc.admin.downloads.decide.useMutation({ onSuccess: () => void utils.admin.downloads.list.invalidate() });
-  const revokeMut = trpc.admin.downloads.revoke.useMutation({ onSuccess: () => void utils.admin.downloads.list.invalidate() });
+  const onDone = () => void utils.admin.downloads.list.invalidate();
+  const decideMut = trpc.admin.downloads.decide.useMutation({ onSuccess: onDone });
+  const revokeMut = trpc.admin.downloads.revoke.useMutation({ onSuccess: onDone });
+  const grantMut = trpc.admin.downloads.grant.useMutation({ onSuccess: onDone });
+  const busy = decideMut.isPending || revokeMut.isPending || grantMut.isPending;
 
   const chip = (active: boolean): React.CSSProperties => ({
     fontSize: 12, padding: "4px 11px", borderRadius: 999, cursor: "pointer",
@@ -1197,11 +1201,12 @@ function DownloadsAdminPanel() {
   });
   const statusColor = (s: string) => s === "pending" ? "oklch(0.8 0.16 85)" : s === "active" ? "oklch(0.72 0.18 155)" : s === "denied" ? "oklch(0.7 0.18 25)" : "var(--c-t3,rgba(255,255,255,0.4))";
   const statusLabel = (s: string) => ({ pending: "待审批", active: "已授权", revoked: "已撤销", denied: "已拒绝" } as Record<string, string>)[s] ?? s;
+  const btn = (color: string, bg = "transparent"): React.CSSProperties => ({ fontSize: 12, padding: "5px 11px", borderRadius: 7, border: `1px solid ${color}`, background: bg, color, cursor: busy ? "not-allowed" : "pointer", whiteSpace: "nowrap" });
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
       <div style={{ fontSize: 12.5, color: "var(--c-t2, rgba(255,255,255,0.55))", lineHeight: 1.6 }}>
-        严格下载授权由部署级开关 <code style={{ background: "rgba(255,255,255,0.08)", padding: "1px 5px", borderRadius: 4 }}>DOWNLOAD_AUTH</code> 控制。开启后，非管理员下载原文件须持「一次性授权」——可在此审批用户申请，或主动按文件/项目授权。每张授权对每个文件仅可下载一次。
+        在「存储设置 → 严格下载授权」开启后，非管理员下载原文件须持「一次性授权」。可在此审批用户申请、查证文件，或主动按文件/整个项目授权。每张授权对每个文件仅可成功下载一次。
       </div>
       <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
         {([["pending", "待审批"], ["active", "已授权"], ["denied", "已拒绝"], ["revoked", "已撤销"], ["", "全部"]] as const).map(([v, l]) => (
@@ -1210,43 +1215,61 @@ function DownloadsAdminPanel() {
       </div>
       <div style={{ fontSize: 12, color: "var(--c-t3, rgba(255,255,255,0.4))" }}>{isFetching ? "加载中…" : `${grants?.length ?? 0} 条`}</div>
       <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-        {(grants ?? []).map((g) => (
+        {(grants ?? []).map((g) => {
+          const isImg = g.fileType === "image" && g.fileUrl;
+          const openPreview = () => g.fileUrl && setPreview({ id: g.id, name: g.fileName ?? "文件", type: g.fileType ?? "other", url: g.fileUrl, userId: g.userId, source: null, provider: null, model: null });
+          return (
           <div key={g.id} style={{ display: "flex", alignItems: "center", gap: 12, padding: "10px 12px", borderRadius: 8, border: "1px solid rgba(255,255,255,0.08)", background: "rgba(255,255,255,0.02)" }}>
+            {/* File preview thumbnail — click to verify */}
+            <div
+              onClick={g.fileUrl ? openPreview : undefined}
+              title={g.fileUrl ? "点击查看文件" : undefined}
+              style={{ width: 44, height: 44, flexShrink: 0, borderRadius: 7, overflow: "hidden", background: "rgba(0,0,0,0.25)", display: "flex", alignItems: "center", justifyContent: "center", cursor: g.fileUrl ? "zoom-in" : "default" }}
+            >
+              {isImg ? <img src={g.fileUrl!} alt={g.fileName ?? ""} style={{ width: "100%", height: "100%", objectFit: "cover" }} />
+                : <span style={{ fontSize: 9.5, color: "var(--c-t3,rgba(255,255,255,0.4))" }}>{g.fileType ?? "文件"}</span>}
+            </div>
             <div style={{ flex: 1, minWidth: 0 }}>
-              <div style={{ fontSize: 13, color: "var(--c-t1,#f0f0f4)" }}>
+              <div style={{ fontSize: 13, color: "var(--c-t1,#f0f0f4)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
                 <span style={{ color: statusColor(g.status), fontWeight: 600 }}>{statusLabel(g.status)}</span>
-                {" · "}用户 u{g.userId}
-                {" · "}{g.origin === "request" ? "用户申请" : "管理员授权"}
-                {" · "}{g.scope === "asset" ? "单文件" : "整个项目"}
+                {" · "}{g.fileName ?? (g.scope === "project" ? `项目 ${g.projectName ?? g.projectId}` : (g.storageKey ?? `assetId ${g.assetId ?? "?"}`))}
               </div>
               <div style={{ fontSize: 11, color: "var(--c-t3,rgba(255,255,255,0.4))", marginTop: 2, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                {g.scope === "asset" ? (g.storageKey ?? `assetId ${g.assetId ?? "?"}`) : `projectId ${g.projectId ?? "?"}`}
+                申请人：{g.requesterName ?? `u${g.userId}`}{g.requesterEmail ? `（${g.requesterEmail}）` : ""}
+                {" · "}{g.origin === "request" ? "用户申请" : "管理员授权"}
+                {" · "}{g.scope === "asset" ? "单文件" : "整个项目"}
+                {g.projectName ? ` · 项目：${g.projectName}` : ""}
                 {g.reason ? ` · 理由：${g.reason}` : ""}{g.note ? ` · 备注：${g.note}` : ""}
               </div>
             </div>
-            <div style={{ display: "flex", gap: 6, flexShrink: 0 }}>
+            <div style={{ display: "flex", gap: 6, flexShrink: 0, alignItems: "center" }}>
+              {g.fileUrl && (
+                <a href={g.fileUrl} target="_blank" rel="noreferrer" style={{ ...btn("var(--c-t3,rgba(255,255,255,0.5))"), textDecoration: "none" }}>查看</a>
+              )}
               {g.status === "pending" && (
                 <>
-                  <button disabled={decideMut.isPending} onClick={() => decideMut.mutate({ grantId: g.id, approve: true })}
-                    style={{ fontSize: 12, padding: "5px 11px", borderRadius: 7, border: "1px solid oklch(0.6 0.16 155 / 0.5)", background: "oklch(0.6 0.16 155 / 0.12)", color: "oklch(0.74 0.18 155)", cursor: "pointer" }}>批准</button>
-                  <button disabled={decideMut.isPending} onClick={() => decideMut.mutate({ grantId: g.id, approve: false })}
-                    style={{ fontSize: 12, padding: "5px 11px", borderRadius: 7, border: "1px solid oklch(0.6 0.16 25 / 0.5)", background: "transparent", color: "oklch(0.74 0.18 25)", cursor: "pointer" }}>拒绝</button>
+                  <button disabled={busy} onClick={() => decideMut.mutate({ grantId: g.id, approve: true })} style={btn("oklch(0.74 0.18 155)", "oklch(0.6 0.16 155 / 0.12)")}>批准</button>
+                  <button disabled={busy} onClick={() => decideMut.mutate({ grantId: g.id, approve: false })} style={btn("oklch(0.74 0.18 25)")}>拒绝</button>
+                  {g.projectId != null && (
+                    <button disabled={busy} title="一次性授权该用户下载这个项目的全部文件" onClick={() => grantMut.mutate({ userId: g.userId, scope: "project", projectId: g.projectId!, note: "审批时授权整个项目" })} style={btn("oklch(0.72 0.2 285)")}>授权整个项目</button>
+                  )}
                 </>
               )}
               {g.status === "active" && (
-                <button disabled={revokeMut.isPending} onClick={() => revokeMut.mutate({ grantId: g.id })}
-                  style={{ fontSize: 12, padding: "5px 11px", borderRadius: 7, border: "1px solid rgba(255,255,255,0.15)", background: "transparent", color: "var(--c-t2,rgba(255,255,255,0.55))", cursor: "pointer" }}>撤销</button>
+                <button disabled={busy} onClick={() => revokeMut.mutate({ grantId: g.id })} style={btn("var(--c-t2,rgba(255,255,255,0.5))")}>撤销</button>
               )}
             </div>
           </div>
-        ))}
+          );
+        })}
         {(grants ?? []).length === 0 && !isFetching && (
           <div style={{ fontSize: 12.5, color: "var(--c-t3,rgba(255,255,255,0.4))", padding: "16px 0", textAlign: "center" }}>暂无记录</div>
         )}
       </div>
-      {(decideMut.error || revokeMut.error) && (
-        <div style={{ fontSize: 11.5, color: "oklch(0.7 0.18 25)" }}>{(decideMut.error || revokeMut.error)?.message}</div>
+      {(decideMut.error || revokeMut.error || grantMut.error) && (
+        <div style={{ fontSize: 11.5, color: "oklch(0.7 0.18 25)" }}>{(decideMut.error || revokeMut.error || grantMut.error)?.message}</div>
       )}
+      {preview && <AdminAssetLightbox asset={preview} onClose={() => setPreview(null)} />}
     </div>
   );
 }

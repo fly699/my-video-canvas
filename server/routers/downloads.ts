@@ -69,7 +69,27 @@ export const downloadsRouter = router({
 export const adminDownloadsRouter = router({
   list: adminProcedure
     .input(z.object({ status: z.enum(["pending", "active", "revoked", "denied"]).optional(), limit: z.number().int().min(1).max(500).optional(), offset: z.number().int().min(0).optional() }).optional())
-    .query(({ input }) => db.listDownloadGrants(input ?? {})),
+    .query(async ({ input }) => {
+      const grants = await db.listDownloadGrants(input ?? {});
+      // Enrich each grant so the admin can verify WHAT and WHO without guessing
+      // from a raw storage key: file name/url/type (preview), requester, project.
+      return Promise.all(grants.map(async (g) => {
+        const [file, requester, project] = await Promise.all([
+          db.getAssetMetaForGrant(g.assetId, g.storageKey),
+          db.getUserById(g.userId).catch(() => null),
+          g.projectId != null ? db.getProjectByIdRaw(g.projectId).catch(() => null) : Promise.resolve(null),
+        ]);
+        return {
+          ...g,
+          fileName: file?.name ?? null,
+          fileUrl: file?.url ?? null,
+          fileType: file?.type ?? null,
+          requesterName: requester?.name ?? null,
+          requesterEmail: requester?.email ?? null,
+          projectName: project?.name ?? null,
+        };
+      }));
+    }),
 
   decide: adminProcedure
     .input(z.object({ grantId: z.number(), approve: z.boolean(), note: z.string().max(500).optional() }))

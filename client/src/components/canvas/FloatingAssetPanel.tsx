@@ -5,8 +5,8 @@ import { AssetPanel } from "./AssetPanel";
 interface Box { x: number; y: number; w: number; h: number }
 
 const clamp = (v: number, lo: number, hi: number) => Math.max(lo, Math.min(hi, v));
-const MIN_W = 260;
-const MIN_H = 320;
+const MIN_W = 150;
+const MIN_H = 280;
 
 /**
  * Floating, draggable, resizable container for the asset library — drag by the
