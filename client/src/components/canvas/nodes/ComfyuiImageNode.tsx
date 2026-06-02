@@ -80,6 +80,10 @@ export const ComfyuiImageNode = memo(function ComfyuiImageNode({ id, selected, d
   // navigation + selection inside the lightbox actually work.
   const [lightboxIndex, setLightboxIndex] = useState<number | null>(null);
   const [refZoom, setRefZoom] = useState(false);
+  // IPAdapter reference-image zoom (controlled index; null = closed).
+  const [ipZoomIndex, setIpZoomIndex] = useState<number | null>(null);
+  // Cursor-driven insertion indicator while dragging onto the IPAdapter grid.
+  const [ipDragOver, setIpDragOver] = useState(false);
   const [translating, setTranslating] = useState(false);
   // Translation LLM — let the user pick a model that's available in their
   // deployment (some setups have no Gemini but do have Claude/GPT via Poyo).
@@ -140,7 +144,7 @@ export const ComfyuiImageNode = memo(function ComfyuiImageNode({ id, selected, d
     onSuccess: (result) => {
       setUploading(false);
       if (!useCanvasStore.getState().nodes.some((n) => n.id === id)) return;
-      const cur = useCanvasStore.getState().nodes.find((n) => n.id === id)?.data as ComfyuiImageNodeData | undefined;
+      const cur = useCanvasStore.getState().nodes.find((n) => n.id === id)?.data.payload as ComfyuiImageNodeData | undefined;
       if (uploadTargetRef.current === "mask") {
         updateNodeData(id, { maskUrl: result.url });
       } else if (uploadTargetRef.current === "controlnet") {
@@ -149,7 +153,9 @@ export const ComfyuiImageNode = memo(function ComfyuiImageNode({ id, selected, d
         toast.success("ControlNet 图像上传成功");
       } else if (uploadTargetRef.current === "ipadapter") {
         const p = cur?.ipadapter;
-        updateNodeData(id, { ipadapter: { model: p?.model ?? "", clipVision: p?.clipVision, weight: p?.weight, imageUrl: result.url } });
+        const prev = p?.imageUrls?.length ? p.imageUrls : (p?.imageUrl ? [p.imageUrl] : []);
+        const next = [...prev, result.url];
+        updateNodeData(id, { ipadapter: { model: p?.model ?? "", clipVision: p?.clipVision, weight: p?.weight, imageUrl: next[0], imageUrls: next } });
         toast.success("IPAdapter 参考图上传成功");
       } else {
         updateNodeData(id, { referenceImageUrl: result.url });
@@ -197,8 +203,31 @@ export const ComfyuiImageNode = memo(function ComfyuiImageNode({ id, selected, d
     updateNodeData(id, { controlnet: { model: cn?.model ?? "", imageUrl: cn?.imageUrl ?? "", strength: cn?.strength, startPercent: cn?.startPercent, endPercent: cn?.endPercent, ...patch } });
 
   const ip = payload.ipadapter;
+  // NB: preserve `imageUrls` across model/weight/clipVision edits — omitting it
+  // here would silently wipe a multi-image set whenever the user tweaks a field.
   const updateIp = (patch: Partial<NonNullable<ComfyuiImageNodeData["ipadapter"]>>) =>
-    updateNodeData(id, { ipadapter: { model: ip?.model ?? "", imageUrl: ip?.imageUrl ?? "", clipVision: ip?.clipVision, weight: ip?.weight, ...patch } });
+    updateNodeData(id, { ipadapter: { model: ip?.model ?? "", imageUrl: ip?.imageUrl ?? "", imageUrls: ip?.imageUrls, clipVision: ip?.clipVision, weight: ip?.weight, ...patch } });
+
+  // IPAdapter takes MULTIPLE style/face references (chained server-side). The
+  // legacy single `imageUrl` is kept as a fallback (== first of the list) so
+  // older saved nodes and downstream reads still work.
+  const ipImages: string[] = ip?.imageUrls?.length ? ip.imageUrls : (ip?.imageUrl ? [ip.imageUrl] : []);
+  const setIpImages = (next: string[]) => {
+    const trimmed = next.slice(0, 8);
+    updateNodeData(id, { ipadapter: { model: ip?.model ?? "", clipVision: ip?.clipVision, weight: ip?.weight, imageUrl: trimmed[0] ?? "", imageUrls: trimmed.length ? trimmed : undefined } });
+  };
+  const removeIpImage = (i: number) => setIpImages(ipImages.filter((_, idx) => idx !== i));
+  const moveIpImage = (from: number, to: number) => {
+    if (from === to || from < 0 || from >= ipImages.length) return;
+    const next = [...ipImages];
+    const [m] = next.splice(from, 1);
+    next.splice(to > from ? to - 1 : to, 0, m);
+    setIpImages(next);
+  };
+  const appendIpUrls = (urls: string[]) => {
+    const clean = urls.map((u) => u.trim()).filter((u) => /^https?:\/\//.test(u));
+    if (clean.length) setIpImages([...ipImages, ...clean]);
+  };
 
   const handleTranslate = (field: "prompt" | "negPrompt" = "prompt") => {
     if (translating || translateMutation.isPending) return;
@@ -280,8 +309,8 @@ export const ComfyuiImageNode = memo(function ComfyuiImageNode({ id, selected, d
       controlnet: cn?.model?.trim() && cn?.imageUrl
         ? { model: cn.model.trim(), imageUrl: cn.imageUrl, strength: cn.strength, startPercent: cn.startPercent, endPercent: cn.endPercent, preprocessor: cn.preprocessor?.trim() || undefined }
         : undefined,
-      ipadapter: ip?.model?.trim() && ip?.imageUrl
-        ? { model: ip.model.trim(), imageUrl: ip.imageUrl, clipVision: ip.clipVision?.trim() || undefined, weight: ip.weight }
+      ipadapter: ip?.model?.trim() && ipImages.length
+        ? { model: ip.model.trim(), imageUrl: ipImages[0], imageUrls: ipImages.length > 1 ? ipImages : undefined, clipVision: ip.clipVision?.trim() || undefined, weight: ip.weight }
         : undefined,
       clip: payload.clip?.name1?.trim()
         ? { clipType: payload.clip.clipType, name1: payload.clip.name1.trim(), name2: payload.clip.name2?.trim() || undefined, name3: payload.clip.name3?.trim() || undefined }
@@ -308,11 +337,12 @@ export const ComfyuiImageNode = memo(function ComfyuiImageNode({ id, selected, d
     });
   };
 
-  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>, target: "reference" | "controlnet" | "ipadapter" = "reference") => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-    if (!file.type.startsWith("image/")) { toast.error("请选择图片文件"); e.target.value = ""; return; }
-    if (file.size > 16 * 1024 * 1024) { toast.error("文件不能超过 16 MB"); e.target.value = ""; return; }
+  // Upload a single image file to the given slot. Safe to call repeatedly for
+  // multiple files: the IPAdapter onSuccess handler reads fresh store state and
+  // appends, and React onSuccess callbacks run serially, so no append is lost.
+  const uploadImageFile = (file: File, target: "reference" | "controlnet" | "ipadapter") => {
+    if (!file.type.startsWith("image/")) { toast.error("请选择图片文件"); return; }
+    if (file.size > 16 * 1024 * 1024) { toast.error("文件不能超过 16 MB"); return; }
     uploadTargetRef.current = target;
     setUploading(true);
     const reader = new FileReader();
@@ -322,7 +352,38 @@ export const ComfyuiImageNode = memo(function ComfyuiImageNode({ id, selected, d
     };
     reader.onerror = () => { setUploading(false); toast.error("文件读取失败"); };
     reader.readAsDataURL(file);
+  };
+
+  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>, target: "reference" | "controlnet" | "ipadapter" = "reference") => {
+    const files = Array.from(e.target.files ?? []);
+    // IPAdapter supports multiple references; other slots take a single image.
+    (target === "ipadapter" ? files : files.slice(0, 1)).forEach((f) => uploadImageFile(f, target));
     e.target.value = "";
+  };
+
+  // Parse image URLs out of a drag payload (asset-library JSON, then uri/text).
+  const ipUrlsFromDrag = (dt: DataTransfer): string[] => {
+    const assetRaw = dt.getData("application/x-asset-list");
+    if (assetRaw) {
+      try {
+        const list = JSON.parse(assetRaw) as Array<{ url?: string; type?: string }>;
+        return list.filter((a) => a.url && (!a.type || a.type === "image")).map((a) => a.url!);
+      } catch { /* fall through */ }
+    }
+    const uri = dt.getData("text/uri-list") || dt.getData("text/plain");
+    return uri ? uri.split(/[\r\n]+/).map((s) => s.trim()).filter((s) => /^https?:\/\//.test(s)) : [];
+  };
+
+  const handleIpDrop = (e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setIpDragOver(false);
+    // intra-grid reorder
+    const reorder = e.dataTransfer.getData("application/x-ip-reorder");
+    if (reorder) { moveIpImage(Number(reorder), ipImages.length); return; }
+    const files = Array.from(e.dataTransfer.files ?? []).filter((f) => f.type.startsWith("image/"));
+    if (files.length) { files.forEach((f) => uploadImageFile(f, "ipadapter")); return; }
+    appendIpUrls(ipUrlsFromDrag(e.dataTransfer));
   };
 
   const handleDownload = (url: string) => {
@@ -1344,7 +1405,7 @@ export const ComfyuiImageNode = memo(function ComfyuiImageNode({ id, selected, d
             style={{ cursor: "pointer", background: "transparent" }}
           >
             <span style={{ fontSize: 10.5, fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.07em", color: "var(--c-t4)", display: "flex", alignItems: "center", gap: 4 }}>
-              IPAdapter{ip?.model?.trim() && ip?.imageUrl ? <span style={{ color: accent }}>●</span> : "（风格/人脸参考·可选）"}
+              IPAdapter{ip?.model?.trim() && ipImages.length ? <span style={{ color: accent }}>●{ipImages.length > 1 ? `×${ipImages.length}` : ""}</span> : "（风格/人脸参考·可选）"}
             </span>
             {ipExpanded ? <ChevronDown className="w-3 h-3" style={{ color: "var(--c-t4)" }} /> : <ChevronRight className="w-3 h-3" style={{ color: "var(--c-t4)" }} />}
           </button>
@@ -1365,32 +1426,74 @@ export const ComfyuiImageNode = memo(function ComfyuiImageNode({ id, selected, d
                   {(modelsQuery.data?.ipadapters ?? []).map((m) => <option key={m} value={m} />)}
                 </datalist>
               </div>
-              <div>
-                <label style={labelStyle}>参考图像</label>
-                {ip?.imageUrl ? (
-                  <div className="relative rounded-lg overflow-hidden" style={{ height: 80, border: `1px solid ${BORDER_DEFAULT}`, background: "var(--c-canvas)" }}>
-                    <img src={ip.imageUrl} alt="ipadapter" className="w-full h-full object-cover" draggable={false} onError={makeImageProxyFallback(ip.imageUrl)} />
-                    <button onClick={() => updateIp({ imageUrl: "" })} className="nodrag absolute top-1 right-1 p-0.5 rounded-full" style={{ background: "oklch(0 0 0 / 0.7)", color: "var(--c-t1)" }}>
-                      <X style={{ width: 12, height: 12 }} />
-                    </button>
+              <div
+                onDragOver={(e) => { e.preventDefault(); e.stopPropagation(); e.dataTransfer.dropEffect = "copy"; setIpDragOver(true); }}
+                onDragLeave={() => setIpDragOver(false)}
+                onDrop={handleIpDrop}
+              >
+                <label style={labelStyle}>
+                  参考图像
+                  <span style={{ fontWeight: 400, color: "var(--c-t3)" }}> · 可多张（最多 8，全部参与调制）{ipImages.length ? ` · 已选 ${ipImages.length}` : ""}</span>
+                </label>
+                {ipImages.length > 0 && (
+                  <div
+                    className="nodrag"
+                    style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 4, marginBottom: 6 }}
+                  >
+                    {ipImages.map((url, i) => (
+                      <div
+                        key={`${url}-${i}`}
+                        draggable
+                        onDragStart={(e) => { e.dataTransfer.setData("application/x-ip-reorder", String(i)); e.dataTransfer.effectAllowed = "move"; }}
+                        className="relative group rounded-lg overflow-hidden"
+                        style={{ aspectRatio: "1 / 1", border: `1px solid ${BORDER_DEFAULT}`, background: "var(--c-canvas)", cursor: "grab" }}
+                      >
+                        <img
+                          src={url}
+                          alt={`ipadapter-${i + 1}`}
+                          className="w-full h-full object-cover"
+                          draggable={false}
+                          style={{ cursor: "zoom-in" }}
+                          onClick={() => setIpZoomIndex(i)}
+                          onError={makeImageProxyFallback(url)}
+                        />
+                        <span style={{ position: "absolute", left: 2, top: 2, minWidth: 14, height: 14, paddingInline: 3, borderRadius: 7, fontSize: 8.5, fontWeight: 700, lineHeight: "14px", textAlign: "center", background: accent, color: "white" }}>
+                          {i + 1}
+                        </span>
+                        <button
+                          onClick={(e) => { e.stopPropagation(); removeIpImage(i); }}
+                          className="nodrag absolute opacity-0 group-hover:opacity-100 transition-opacity"
+                          style={{ right: 2, top: 2, padding: 2, borderRadius: "50%", background: "oklch(0 0 0 / 0.7)", color: "white", lineHeight: 0 }}
+                          title="删除"
+                        >
+                          <X style={{ width: 10, height: 10 }} />
+                        </button>
+                      </div>
+                    ))}
                   </div>
-                ) : (
+                )}
+                {ipImages.length < 8 && (
                   <button
                     onClick={() => ipFileInputRef.current?.click()}
                     disabled={uploading}
-                    className="nodrag w-full flex items-center justify-center gap-2 py-3 rounded-lg"
-                    style={{ border: "1px dashed var(--c-bd3)", background: "var(--c-input)", color: uploading ? "var(--c-t4)" : "var(--c-t3)", fontSize: 11, cursor: uploading ? "not-allowed" : "pointer" }}
+                    className="nodrag w-full flex items-center justify-center gap-2 py-2.5 rounded-lg"
+                    style={{ border: `1px dashed ${ipDragOver ? accent : "var(--c-bd3)"}`, background: ipDragOver ? "color-mix(in oklch, var(--c-input) 80%, var(--c-base))" : "var(--c-input)", color: uploading ? "var(--c-t4)" : "var(--c-t3)", fontSize: 11, cursor: uploading ? "not-allowed" : "pointer" }}
                   >
-                    {uploading ? <><Loader2 style={{ width: 13, height: 13 }} className="animate-spin" /> 上传中...</> : <><Upload style={{ width: 13, height: 13 }} /> 上传参考图像</>}
+                    {uploading ? <><Loader2 style={{ width: 13, height: 13 }} className="animate-spin" /> 上传中...</> : <><Upload style={{ width: 13, height: 13 }} /> {ipImages.length ? "添加参考图像" : "上传参考图像"}（可拖入）</>}
                   </button>
                 )}
-                <input ref={ipFileInputRef} type="file" accept="image/*" style={{ display: "none" }} onChange={(e) => handleFileChange(e, "ipadapter")} />
-                {(!ip?.imageUrl || ip.imageUrl.startsWith("http")) && (
+                <input ref={ipFileInputRef} type="file" accept="image/*" multiple style={{ display: "none" }} onChange={(e) => handleFileChange(e, "ipadapter")} />
+                {ipImages.length < 8 && (
                   <input
                     type="url"
-                    placeholder="或粘贴公网图片 URL（https://…）"
-                    value={ip?.imageUrl?.startsWith("http") ? ip.imageUrl : ""}
-                    onChange={(e) => updateIp({ imageUrl: e.target.value.trim() })}
+                    placeholder="或粘贴公网图片 URL 后回车添加（https://…）"
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter") {
+                        e.preventDefault();
+                        const v = (e.target as HTMLInputElement).value.trim();
+                        if (v) { appendIpUrls([v]); (e.target as HTMLInputElement).value = ""; }
+                      }
+                    }}
                     className="nodrag" style={{ ...fieldBase, marginTop: 6, fontSize: 10.5 }}
                     onFocus={(e) => { e.currentTarget.style.borderColor = BORDER_ACCENT; }}
                     onBlur={(e) => { e.currentTarget.style.borderColor = BORDER_DEFAULT; }}
@@ -1521,6 +1624,16 @@ export const ComfyuiImageNode = memo(function ComfyuiImageNode({ id, selected, d
           currentIndex={0}
           onClose={() => setRefZoom(false)}
           onNavigate={() => {}}
+        />
+      )}
+
+      {/* IPAdapter reference zoom (navigable across the multi-image set) */}
+      {ipZoomIndex !== null && ipImages.length > 0 && ipZoomIndex < ipImages.length && (
+        <ImageLightbox
+          images={ipImages}
+          currentIndex={ipZoomIndex}
+          onClose={() => setIpZoomIndex(null)}
+          onNavigate={(idx) => setIpZoomIndex(idx)}
         />
       )}
     </BaseNode>

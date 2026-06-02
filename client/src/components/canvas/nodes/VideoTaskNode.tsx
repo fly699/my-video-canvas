@@ -15,6 +15,10 @@ import { ensureNotificationPermission, showCompletionNotification } from "@/lib/
 import { CinematographyPicker } from "../CinematographyPicker";
 import { RefImageReachabilityBadge, RefImageSwitchButton, useRefImageGuard, providerNeedsPublicMedia, usePreferUpstreamRefSource, useAutoPreferUpstreamRefSource } from "../mediaReachability";
 import { ModelPicker } from "../ModelPicker";
+import { ImageLightbox } from "../ImageLightbox";
+import { ReferenceImageStrip } from "../ReferenceImageStrip";
+import { useReferenceImages } from "../../../hooks/useReferenceImages";
+import { makeImageProxyFallback } from "@/lib/utils";
 import {
   applyCinematographyToPrompt,
   clearCinematographyFromPrompt,
@@ -624,6 +628,41 @@ export const VideoTaskNode = memo(function VideoTaskNode({ id, selected, data }:
 
   const { guard, reachable, dialog: reachabilityDialog } = useRefImageGuard();
 
+  // Multi-reference-image management. Only the first (首图) feeds the video
+  // model's start frame; the rest are managed alternates the user can reorder.
+  const refImages = useReferenceImages(id, payload);
+  const [stripOpen, setStripOpen] = useState(false);
+  const [refZoom, setRefZoom] = useState<number | null>(null);
+  const [refUploading, setRefUploading] = useState(false);
+  const refFileInputRef = useRef<HTMLInputElement>(null);
+  const refUploadMutation = trpc.upload.uploadImage.useMutation();
+  const uploadRefFiles = useCallback(async (files: File[], index: number) => {
+    const imgs = files.filter((f) => f.type.startsWith("image/"));
+    if (!imgs.length) { toast.error("请选择图片文件"); return; }
+    setRefUploading(true);
+    let at = index;
+    try {
+      for (const file of imgs) {
+        if (file.size > 16 * 1024 * 1024) { toast.error(`${file.name} 超过 16MB`); continue; }
+        const base64 = await new Promise<string>((resolve, reject) => {
+          const reader = new FileReader();
+          reader.onload = () => resolve((reader.result as string).split(",")[1]);
+          reader.onerror = () => reject(new Error("文件读取失败"));
+          reader.readAsDataURL(file);
+        });
+        const result = await refUploadMutation.mutateAsync({ base64, mimeType: file.type, filename: file.name });
+        if (!useCanvasStore.getState().nodes.some((n) => n.id === id)) return;
+        refImages.insertUrls([result.url], at, "upload");
+        at++;
+      }
+      toast.success("参考图上传成功");
+    } catch (err) {
+      toast.error("参考图上传失败：" + (err instanceof Error ? err.message : String(err)));
+    } finally {
+      setRefUploading(false);
+    }
+  }, [id, refImages, refUploadMutation]);
+
   const [parallelMode, setParallelMode] = useState(false);
   const [parallelProviders, setParallelProviders] = useState<VideoProvider[]>([]);
   const [parallelResults, setParallelResults] = useState<Record<string, { status: "pending" | "processing" | "done" | "failed"; videoUrl?: string; taskId?: number }>>({});
@@ -1025,7 +1064,17 @@ export const VideoTaskNode = memo(function VideoTaskNode({ id, selected, data }:
   ) : null;
 
   return (
-    <BaseNode id={id} selected={selected} nodeType="video_task" title={data.title} minHeight={260} heroMedia={heroMedia}>
+    <BaseNode id={id} selected={selected} nodeType="video_task" title={data.title} minHeight={260} heroMedia={heroMedia}
+      headerRight={refImages.images.length > 1 ? (
+        <button
+          onClick={() => setStripOpen((v) => !v)}
+          className="nodrag flex items-center gap-1"
+          style={{ fontSize: 10, color: stripOpen ? accentColor : "var(--c-t3)", border: `1px solid ${stripOpen ? "oklch(0.62 0.20 25 / 0.5)" : "var(--c-bd2)"}`, borderRadius: 6, padding: "1px 6px" }}
+          title="展开/收起左侧参考图列表"
+        >
+          <Layers style={{ width: 11, height: 11 }} /> {refImages.images.length}
+        </button>
+      ) : undefined}>
       <div className="flex flex-col h-full p-3.5 gap-3 overflow-auto">
 
         {/* ── Status pill ── */}
@@ -1431,10 +1480,32 @@ export const VideoTaskNode = memo(function VideoTaskNode({ id, selected, data }:
           </div>
         )}
 
-        {/* ── Reference image URL (for all models) ── */}
-        <div>
+        {/* ── Reference images (multi; 首图 = start frame) ── */}
+        <div
+          onDragOver={(e) => { if (!isLocked && (e.dataTransfer.types.includes("application/x-asset-list") || e.dataTransfer.types.includes("Files") || e.dataTransfer.types.includes("text/uri-list"))) { e.preventDefault(); e.dataTransfer.dropEffect = "copy"; } }}
+          onDrop={(e) => {
+            if (isLocked) return;
+            const files = Array.from(e.dataTransfer.files ?? []).filter((f) => f.type.startsWith("image/"));
+            if (files.length) { e.preventDefault(); void uploadRefFiles(files, refImages.images.length); return; }
+            const assetRaw = e.dataTransfer.getData("application/x-asset-list");
+            if (assetRaw) {
+              e.preventDefault();
+              try {
+                const list = JSON.parse(assetRaw) as Array<{ url?: string; type?: string }>;
+                const urls = list.filter((a) => a.url && (!a.type || a.type === "image")).map((a) => a.url!);
+                if (urls.length) refImages.addUrls(urls, "drop");
+              } catch { /* ignore */ }
+              return;
+            }
+            const uri = (e.dataTransfer.getData("text/uri-list") || e.dataTransfer.getData("text/plain")).trim();
+            if (/^https?:\/\//.test(uri)) { e.preventDefault(); refImages.addUrls([uri], "drop"); }
+          }}
+        >
           <label style={{ ...labelStyle, display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
-            参考图 URL（可选）
+            参考图（可选）
+            {refImages.images.length > 0 && (
+              <span style={{ fontSize: 10, color: "var(--c-t4)" }}>· {refImages.images.length} 张（仅首图用于生成）</span>
+            )}
             <RefImageReachabilityBadge
               model={parallelMode ? (parallelProviders.find(providerNeedsPublicMedia) ?? parallelProviders[0]) : payload.provider}
               refImageUrl={payload.referenceImageUrl}
@@ -1447,17 +1518,63 @@ export const VideoTaskNode = memo(function VideoTaskNode({ id, selected, data }:
               reachable={reachable}
               onSwitch={(u) => handleChange("referenceImageUrl", u)}
             />
+            {refImages.images.length > 1 && (
+              <button
+                onClick={() => setStripOpen((v) => !v)}
+                className="nodrag"
+                style={{ marginLeft: "auto", display: "flex", alignItems: "center", gap: 3, fontSize: 10, color: stripOpen ? accentColor : "var(--c-t3)", border: `1px solid ${stripOpen ? "oklch(0.62 0.20 25 / 0.5)" : "var(--c-bd2)"}`, borderRadius: 6, padding: "1px 6px" }}
+                title="展开左侧参考图列表"
+              >
+                <Layers style={{ width: 11, height: 11 }} /> {stripOpen ? "收起" : "展开"}
+              </button>
+            )}
           </label>
-          <input
-            placeholder="https://..."
-            value={payload.referenceImageUrl ?? ""}
-            onChange={(e) => handleChange("referenceImageUrl", e.target.value)}
-            disabled={isLocked}
-            className="nodrag"
-            style={{ ...fieldStyle, opacity: isLocked ? 0.5 : 1 }}
-            onFocus={onFocusMid}
-            onBlur={onBlurDefault}
-          />
+
+          {refImages.images.length > 0 && (
+            <div className="nowheel" style={{ display: "flex", gap: 6, overflowX: "auto", paddingBottom: 2 }}>
+              {refImages.images.map((img, i) => (
+                <div key={img.id} className="relative rounded-lg overflow-hidden flex-shrink-0" style={{ width: 68, height: 68, borderWidth: 1, borderStyle: "solid", borderColor: i === 0 ? "oklch(0.62 0.20 25 / 0.5)" : "var(--c-bd2)", background: "var(--c-canvas)" }}>
+                  <img src={img.url} alt={`ref-${i + 1}`} className="nodrag w-full h-full object-cover" style={{ cursor: "zoom-in" }} draggable={false} title={i === 0 ? "首图（用于生成）" : "点击放大"} onClick={() => setRefZoom(i)} onError={makeImageProxyFallback(img.url)} />
+                  <span style={{ position: "absolute", left: 3, top: 3, minWidth: 15, height: 15, paddingInline: 3, borderRadius: 8, fontSize: 9, fontWeight: 700, lineHeight: "15px", textAlign: "center", background: accentColor, color: "white" }}>{i + 1}</span>
+                  {!isLocked && (
+                    <button onClick={(e) => { e.stopPropagation(); refImages.removeId(img.id); }} className="nodrag absolute top-1 right-1 p-0.5 rounded-full" style={{ background: "oklch(0 0 0 / 0.7)", color: "var(--c-t1)" }}>
+                      <XIcon style={{ width: 11, height: 11 }} />
+                    </button>
+                  )}
+                </div>
+              ))}
+            </div>
+          )}
+
+          <div style={{ display: "flex", gap: 6, marginTop: refImages.images.length > 0 ? 6 : 0 }}>
+            <button
+              onClick={() => refFileInputRef.current?.click()}
+              disabled={isLocked || refUploading}
+              className="nodrag flex items-center justify-center gap-1.5 flex-shrink-0 rounded-lg"
+              style={{ padding: "0 10px", height: 32, borderWidth: 1, borderStyle: "dashed", borderColor: "var(--c-bd3)", background: "var(--c-input)", color: "var(--c-t3)", fontSize: 11, cursor: isLocked || refUploading ? "not-allowed" : "pointer" }}
+              title="上传参考图"
+            >
+              {refUploading ? <Loader2 style={{ width: 13, height: 13 }} className="animate-spin" /> : <Plus style={{ width: 13, height: 13 }} />}
+            </button>
+            <input
+              placeholder="粘贴公网图片 URL 后回车添加（https://…）"
+              disabled={isLocked}
+              className="nodrag"
+              style={{ ...fieldStyle, opacity: isLocked ? 0.5 : 1 }}
+              onKeyDown={(e) => {
+                if (e.key !== "Enter") return;
+                const v = (e.target as HTMLInputElement).value.trim();
+                if (/^https?:\/\//.test(v)) { refImages.addUrls([v], "url"); (e.target as HTMLInputElement).value = ""; }
+              }}
+              onFocus={onFocusMid}
+              onBlur={(e) => {
+                const v = e.currentTarget.value.trim();
+                if (/^https?:\/\//.test(v)) { refImages.addUrls([v], "url"); e.currentTarget.value = ""; }
+                onBlurDefault(e);
+              }}
+            />
+          </div>
+          <input ref={refFileInputRef} type="file" accept="image/*" multiple style={{ display: "none" }} onChange={(e) => { const files = Array.from(e.target.files ?? []); e.target.value = ""; if (files.length) void uploadRefFiles(files, refImages.images.length); }} />
         </div>
 
         {/* ── Dynamic model-specific params ── */}
@@ -1893,6 +2010,27 @@ export const VideoTaskNode = memo(function VideoTaskNode({ id, selected, data }:
           onClose={() => setPickerOpen(false)}
         />
       )}
+      {refZoom !== null && refImages.images.length > 0 && (
+        <ImageLightbox
+          images={refImages.images.map((r) => r.url)}
+          currentIndex={Math.min(refZoom, refImages.images.length - 1)}
+          onClose={() => setRefZoom(null)}
+          onNavigate={(idx) => setRefZoom(idx)}
+        />
+      )}
+
+      <ReferenceImageStrip
+        images={refImages.images}
+        open={stripOpen}
+        accent={accentColor}
+        onClose={() => setStripOpen(false)}
+        onRemove={refImages.removeId}
+        onMove={refImages.moveId}
+        onInsertUrls={(urls, index) => refImages.insertUrls(urls, index, "drop")}
+        onDropFiles={(files, index) => void uploadRefFiles(files, index)}
+        onZoom={(i) => setRefZoom(i)}
+      />
+
       {reachabilityDialog}
     </BaseNode>
   );

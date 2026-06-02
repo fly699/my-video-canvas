@@ -699,7 +699,8 @@ export interface ControlNetSpec {
 
 export interface IPAdapterSpec {
   model: string;
-  imageName: string;       // already-uploaded ComfyUI image filename
+  imageName: string;       // already-uploaded ComfyUI image filename (primary; back-compat)
+  imageNames?: string[];   // multi-image style/face conditioning (chained IPAdapterAdvanced)
   clipVision?: string;     // CLIPVisionLoader name; empty = sensible default
   weight?: number;
 }
@@ -811,26 +812,38 @@ export function buildImageWorkflow(a: BuildImageWorkflowArgs): Record<string, { 
   // IPAdapter (optional): a style/face reference image that modulates the model.
   // Uses the explicit-model variant (IPAdapterModelLoader + CLIPVisionLoader +
   // IPAdapterAdvanced) which is the most stable across ipadapter-pack versions.
-  if (arch === "sd" && a.ipadapter && a.ipadapter.model.trim() && a.ipadapter.imageName) {
-    wf["40"] = { class_type: "IPAdapterModelLoader", inputs: { ipadapter_file: a.ipadapter.model.trim() } };
-    wf["41"] = { class_type: "CLIPVisionLoader", inputs: { clip_name: a.ipadapter.clipVision?.trim() || "CLIP-ViT-H-14-laion2B-s32B-b79K.safetensors" } };
-    wf["42"] = { class_type: "LoadImage", inputs: { image: a.ipadapter.imageName } };
-    wf["43"] = {
-      class_type: "IPAdapterAdvanced",
-      inputs: {
-        model: modelRef,
-        ipadapter: ["40", 0],
-        image: ["42", 0],
-        clip_vision: ["41", 0],
-        weight: a.ipadapter.weight ?? 1.0,
-        weight_type: "linear",
-        combine_embeds: "concat",
-        start_at: 0,
-        end_at: 1,
-        embeds_scaling: "V only",
-      },
-    };
-    modelRef = ["43", 0];
+  {
+    const ipImages = a.ipadapter
+      ? (a.ipadapter.imageNames?.length ? a.ipadapter.imageNames : (a.ipadapter.imageName ? [a.ipadapter.imageName] : []))
+      : [];
+    if (arch === "sd" && a.ipadapter && a.ipadapter.model.trim() && ipImages.length) {
+      wf["40"] = { class_type: "IPAdapterModelLoader", inputs: { ipadapter_file: a.ipadapter.model.trim() } };
+      wf["41"] = { class_type: "CLIPVisionLoader", inputs: { clip_name: a.ipadapter.clipVision?.trim() || "CLIP-ViT-H-14-laion2B-s32B-b79K.safetensors" } };
+      // Chain one IPAdapterAdvanced per reference image (robust across image
+      // sizes / ipadapter-pack versions — avoids ImageBatch dimension errors).
+      // Each stage modulates the running model from the previous stage.
+      ipImages.forEach((name, i) => {
+        const li = `42_${i}`;
+        const ia = `43_${i}`;
+        wf[li] = { class_type: "LoadImage", inputs: { image: name } };
+        wf[ia] = {
+          class_type: "IPAdapterAdvanced",
+          inputs: {
+            model: modelRef,
+            ipadapter: ["40", 0],
+            image: [li, 0],
+            clip_vision: ["41", 0],
+            weight: a.ipadapter!.weight ?? 1.0,
+            weight_type: "linear",
+            combine_embeds: "concat",
+            start_at: 0,
+            end_at: 1,
+            embeds_scaling: "V only",
+          },
+        };
+        modelRef = [ia, 0];
+      });
+    }
   }
 
   wf["6"] = { class_type: "CLIPTextEncode", inputs: { text: a.prompt, clip: clipRef } };
@@ -943,7 +956,7 @@ export interface GenerateComfyImageOptions {
   loraStrength?: number;
   loras?: LoraSpec[];
   controlnet?: { model: string; imageUrl: string; strength?: number; startPercent?: number; endPercent?: number; preprocessor?: string };
-  ipadapter?: { model: string; imageUrl: string; clipVision?: string; weight?: number };
+  ipadapter?: { model: string; imageUrl: string; imageUrls?: string[]; clipVision?: string; weight?: number };
   clip?: { clipType: string; name1: string; name2?: string; name3?: string };
   arch?: "sd" | "flux" | "sd3" | "qwen";
   modelSource?: "checkpoint" | "unet";
@@ -1002,16 +1015,24 @@ export async function generateComfyImage(rawBaseUrl: string, options: GenerateCo
     };
   }
 
-  // Upload the IPAdapter reference image (if any).
+  // Upload the IPAdapter reference image(s) (if any). Supports multiple
+  // style/face references — each is uploaded and chained server-side.
   let ipadapter: IPAdapterSpec | undefined;
-  if (options.ipadapter && options.ipadapter.model.trim() && options.ipadapter.imageUrl) {
-    const ipImageName = await uploadImageToComfy(baseUrl, options.ipadapter.imageUrl);
-    ipadapter = {
-      model: options.ipadapter.model.trim(),
-      imageName: ipImageName,
-      clipVision: options.ipadapter.clipVision,
-      weight: options.ipadapter.weight ?? 1.0,
-    };
+  if (options.ipadapter && options.ipadapter.model.trim()) {
+    const srcUrls = Array.from(new Set([
+      ...(options.ipadapter.imageUrls?.length ? options.ipadapter.imageUrls : (options.ipadapter.imageUrl ? [options.ipadapter.imageUrl] : [])),
+    ].map((u) => u.trim()).filter(Boolean)));
+    if (srcUrls.length) {
+      const names = [];
+      for (const u of srcUrls) names.push(await uploadImageToComfy(baseUrl, u));
+      ipadapter = {
+        model: options.ipadapter.model.trim(),
+        imageName: names[0],
+        imageNames: names,
+        clipVision: options.ipadapter.clipVision,
+        weight: options.ipadapter.weight ?? 1.0,
+      };
+    }
   }
 
   const workflow = buildImageWorkflow({

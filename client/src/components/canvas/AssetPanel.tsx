@@ -2,7 +2,7 @@ import { useState, useRef, useCallback } from "react";
 import { trpc } from "@/lib/trpc";
 import { toast } from "sonner";
 import { useCanvasStore } from "../../hooks/useCanvasStore";
-import { Upload, X, FileImage, FileVideo, FileAudio, File, Trash2, Plus, Loader2, Download } from "lucide-react";
+import { Upload, X, FileImage, FileVideo, FileAudio, File, Trash2, Plus, Loader2, Download, Check } from "lucide-react";
 import { ImageLightbox } from "./ImageLightbox";
 import { uploadAssetFile } from "@/lib/assetUpload";
 
@@ -17,13 +17,16 @@ type TypeFilter = "" | "image" | "video" | "audio" | "other";
 type SourceFilter = "" | "upload" | "generated" | "external";
 
 export function AssetPanel({ projectId, onClose, onHeaderMouseDown }: Props) {
-  const { addNode } = useCanvasStore();
+  const { addNode, updateNodeData } = useCanvasStore();
   const [uploading, setUploading] = useState(false);
   const [dragOver, setDragOver] = useState(false);
   const [scope, setScope] = useState<"project" | "all">("project");
   const [typeFilter, setTypeFilter] = useState<TypeFilter>("");
   const [sourceFilter, setSourceFilter] = useState<SourceFilter>("");
   const [lightboxIdx, setLightboxIdx] = useState<number | null>(null);
+  // Multi-select: set of asset ids. Click an item's body to toggle. Selected
+  // items can be batch-added to the canvas, dragged together, or deleted.
+  const [selected, setSelected] = useState<Set<number>>(new Set());
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const { data: assets, refetch } = trpc.assets.list.useQuery({
@@ -74,14 +77,49 @@ export function AssetPanel({ projectId, onClose, onHeaderMouseDown }: Props) {
     if (file) processFile(file);
   }, [processFile]);
 
-  const handleAddToCanvas = (asset: NonNullable<typeof assets>[0]) => {
+  type Asset = NonNullable<typeof assets>[0];
+
+  // Create a populated `asset` node per item, staggered so a batch fans out.
+  const addAssetsToCanvas = (list: Asset[]) => {
+    if (list.length === 0) return;
     try {
-      addNode("asset", { x: 200, y: 200 });
-      toast.success("素材节点已添加到画布");
+      list.forEach((asset, i) => {
+        const node = addNode("asset", { x: 200 + i * 28, y: 200 + i * 28 });
+        const t = asset.type === "video" || asset.type === "audio" || asset.type === "image" ? asset.type : "other";
+        updateNodeData(node.id, {
+          url: asset.url, name: asset.name, type: t,
+          mimeType: asset.mimeType ?? undefined, size: asset.size ?? undefined,
+          storageKey: asset.storageKey ?? undefined,
+        }, true);
+      });
+      toast.success(`已添加 ${list.length} 个素材到画布`);
     } catch (err) {
       toast.error("无法添加节点：" + (err instanceof Error ? err.message : String(err)));
     }
   };
+
+  const handleAddToCanvas = (asset: Asset) => addAssetsToCanvas([asset]);
+
+  const toggleSelect = (id: number) =>
+    setSelected((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id); else next.add(id);
+      return next;
+    });
+
+  // Build the drag payload. Dragging a selected item carries the whole
+  // selection; dragging an unselected item carries just that one.
+  const dragPayload = (asset: Asset): string => {
+    const pool = selected.has(asset.id) && selected.size > 0
+      ? (assets ?? []).filter((a) => selected.has(a.id))
+      : [asset];
+    return JSON.stringify(pool.map((a) => ({
+      url: a.url, name: a.name, type: a.type,
+      mimeType: a.mimeType ?? undefined, size: a.size ?? undefined, storageKey: a.storageKey ?? undefined,
+    })));
+  };
+
+  const selectedAssets = (assets ?? []).filter((a) => selected.has(a.id));
 
   const getIcon = (type: string) => {
     if (type === "video") return FileVideo;
@@ -214,14 +252,38 @@ export function AssetPanel({ projectId, onClose, onHeaderMouseDown }: Props) {
             {assets.map((asset) => {
               const Icon = getIcon(asset.type);
               const accent = getAccent(asset.type);
+              const isSel = selected.has(asset.id);
               return (
                 <div
                   key={asset.id}
+                  draggable
+                  onDragStart={(e) => {
+                    e.dataTransfer.setData("application/x-asset-list", dragPayload(asset));
+                    e.dataTransfer.effectAllowed = "copy";
+                  }}
                   className="group flex items-center gap-2.5 p-2 rounded-lg transition-all"
-                  style={{ background: "transparent" }}
-                  onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.background = "var(--c-surface)"; }}
-                  onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.background = "transparent"; }}
+                  style={{
+                    background: isSel ? "oklch(0.65 0.18 285 / 0.12)" : "transparent",
+                    border: isSel ? "1px solid oklch(0.65 0.18 285 / 0.35)" : "1px solid transparent",
+                    cursor: "grab",
+                  }}
+                  title="拖拽到画布添加为节点"
+                  onMouseEnter={(e) => { if (!isSel) (e.currentTarget as HTMLElement).style.background = "var(--c-surface)"; }}
+                  onMouseLeave={(e) => { if (!isSel) (e.currentTarget as HTMLElement).style.background = "transparent"; }}
                 >
+                  {/* Selection checkbox */}
+                  <button
+                    onClick={(e) => { e.stopPropagation(); toggleSelect(asset.id); }}
+                    title={isSel ? "取消选择" : "选择"}
+                    className="w-4 h-4 rounded flex items-center justify-center flex-shrink-0 transition-all"
+                    style={{
+                      border: `1.5px solid ${isSel ? "oklch(0.65 0.18 285)" : "var(--c-bd3)"}`,
+                      background: isSel ? "oklch(0.65 0.18 285)" : "transparent",
+                    }}
+                  >
+                    {isSel && <Check className="w-3 h-3" style={{ color: "white" }} />}
+                  </button>
+
                   {/* Thumbnail (click an image to zoom in the lightbox) */}
                   <div
                     className="w-10 h-10 rounded-lg overflow-hidden flex-shrink-0 flex items-center justify-center"
@@ -236,8 +298,8 @@ export function AssetPanel({ projectId, onClose, onHeaderMouseDown }: Props) {
                     )}
                   </div>
 
-                  {/* Info */}
-                  <div className="flex-1 min-w-0">
+                  {/* Info (click to toggle selection) */}
+                  <div className="flex-1 min-w-0" style={{ cursor: "pointer" }} onClick={() => toggleSelect(asset.id)}>
                     <p className="text-xs font-medium truncate" style={{ color: "var(--c-t2)" }}>
                       {asset.name}
                     </p>
@@ -291,6 +353,42 @@ export function AssetPanel({ projectId, onClose, onHeaderMouseDown }: Props) {
           </div>
         )}
       </div>
+
+      {/* ── Selection action bar ── */}
+      {selected.size > 0 && (
+        <div
+          className="flex items-center gap-2 px-3 py-2 flex-shrink-0"
+          style={{ borderTop: "1px solid var(--c-elevated)", background: "var(--c-base)" }}
+        >
+          <span className="text-[11px] flex-1" style={{ color: "var(--c-t3)" }}>已选 {selected.size} 项</span>
+          <button
+            onClick={() => { addAssetsToCanvas(selectedAssets); }}
+            className="text-[11px] px-2 py-1 rounded-md transition-all"
+            style={{ border: "1px solid oklch(0.72 0.18 155 / 0.4)", background: "oklch(0.72 0.18 155 / 0.12)", color: "oklch(0.72 0.18 155)", cursor: "pointer" }}
+          >
+            添加到画布
+          </button>
+          <button
+            onClick={() => {
+              if (confirm(`确认删除选中的 ${selected.size} 个素材？`)) {
+                selectedAssets.forEach((a) => deleteMutation.mutate({ id: a.id }));
+                setSelected(new Set());
+              }
+            }}
+            className="text-[11px] px-2 py-1 rounded-md transition-all"
+            style={{ border: "1px solid oklch(0.62 0.20 25 / 0.4)", background: "oklch(0.62 0.20 25 / 0.12)", color: "oklch(0.62 0.20 25)", cursor: "pointer" }}
+          >
+            删除
+          </button>
+          <button
+            onClick={() => setSelected(new Set())}
+            className="text-[11px] px-2 py-1 rounded-md transition-all"
+            style={{ border: "1px solid var(--c-bd2)", background: "transparent", color: "var(--c-t3)", cursor: "pointer" }}
+          >
+            取消
+          </button>
+        </div>
+      )}
 
       {/* Click-to-zoom preview (plain viewer — no select action) */}
       {lightboxIdx !== null && imageUrls[lightboxIdx] && (

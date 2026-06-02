@@ -165,6 +165,19 @@ export interface AssetNodeData {
   size?: number;
 }
 
+/**
+ * One entry in a node's multi-reference-image list. `id` is a stable nanoid
+ * used as the React key and for reorder/delete. `source` records how it was
+ * added (for badges/debugging). The display number is just the 1-based index,
+ * so deleting an entry auto-renumbers the rest. The first entry mirrors the
+ * legacy `referenceImageUrl` field for backend / downstream compatibility.
+ */
+export interface ReferenceImage {
+  id: string;
+  url: string;
+  source?: "upload" | "paste" | "drop" | "url" | "upstream";
+}
+
 export interface VideoTaskNodeData {
   provider: VideoProvider;
   status: VideoTaskStatus;
@@ -173,6 +186,8 @@ export interface VideoTaskNodeData {
   prompt?: string;
   negativePrompt?: string;
   referenceImageUrl?: string;
+  /** Multi-angle reference images (see ReferenceImage). [0].url mirrors referenceImageUrl. */
+  referenceImages?: ReferenceImage[];
   resultVideoUrl?: string;
   errorMessage?: string;
   progress?: number;
@@ -284,6 +299,8 @@ export interface ImageGenNodeData {
   style?: string;
   aspectRatio?: string;
   referenceImageUrl?: string;
+  /** Multi-angle reference images (see ReferenceImage). [0].url mirrors referenceImageUrl. */
+  referenceImages?: ReferenceImage[];
   imageUrl?: string;
   imageStorageKey?: string;
   model?: ImageGenModel;
@@ -574,7 +591,8 @@ export interface ComfyuiControlNet {
 
 export interface ComfyuiIPAdapter {
   model: string;
-  imageUrl: string;
+  imageUrl: string;                 // primary reference (back-compat; mirrors imageUrls[0])
+  imageUrls?: string[];             // multi-image style/face conditioning (chained server-side)
   clipVision?: string;
   weight?: number;
 }
@@ -649,6 +667,8 @@ export interface ComfyuiImageNodeData {
   batchSize?: number;
   // I/O
   referenceImageUrl?: string;
+  /** Multi-angle reference images (see ReferenceImage). [0].url mirrors referenceImageUrl. */
+  referenceImages?: ReferenceImage[];
   /** Inpaint mask (white = regenerate). Drawn over the reference image. */
   maskUrl?: string;
   imageUrl?: string;
@@ -690,6 +710,8 @@ export interface ComfyuiVideoNodeData {
   batchSize?: number;
   // I/O
   referenceImageUrl?: string;
+  /** Multi-angle reference images (see ReferenceImage). [0].url mirrors referenceImageUrl. */
+  referenceImages?: ReferenceImage[];
   resultVideoUrl?: string;
   resultStorageKey?: string;
   progress?: number;

@@ -3,6 +3,10 @@ import { Handle, Position } from "@xyflow/react";
 import { BaseNode } from "../BaseNode";
 import { useCanvasStore } from "../../../hooks/useCanvasStore";
 import { propagateRefImage } from "../../../lib/refImagePropagation";
+import { useReferenceImages } from "../../../hooks/useReferenceImages";
+import { refUrls } from "../../../lib/referenceImages";
+import { ReferenceImageStrip } from "../ReferenceImageStrip";
+import { Layers } from "lucide-react";
 import type { ImageGenNodeData, ImageGenModel } from "../../../../../shared/types";
 import { trpc } from "@/lib/trpc";
 import { toast } from "sonner";
@@ -100,7 +104,10 @@ export const ImageGenNode = memo(function ImageGenNode({ id, selected, data }: P
   useAutoPreferUpstreamRefSource({ nodeId: id, refImageUrl: payload.referenceImageUrl, enabled: preferUpstreamRef, onSwitch: (u) => updateNodeData(id, { referenceImageUrl: u }, true) });
   const [uploading, setUploading] = useState(false);
   const [lightboxIndex, setLightboxIndex] = useState<number | null>(null);
-  const [refZoom, setRefZoom] = useState(false);
+  const [refZoom, setRefZoom] = useState<number | null>(null);
+  // Multi-reference-image list + left-docked expandable strip.
+  const refImages = useReferenceImages(id, payload);
+  const [stripOpen, setStripOpen] = useState(false);
   const [paramsExpanded, setParamsExpanded] = useState(false);
   // Derived, not local state — stays in sync with collaboration/undo updates
   const seedLocked = payload.seed != null;
@@ -149,19 +156,37 @@ export const ImageGenNode = memo(function ImageGenNode({ id, selected, data }: P
     },
   });
 
-  const uploadMutation = trpc.upload.uploadImage.useMutation({
-    onSuccess: (result) => {
-      setUploading(false);
-      // Guard: node may have been deleted while upload was in flight
-      if (!useCanvasStore.getState().nodes.some((n) => n.id === id)) return;
-      updateNodeData(id, { referenceImageUrl: result.url });
+  const uploadMutation = trpc.upload.uploadImage.useMutation();
+
+  // Upload image files and insert them into the reference list at `index`.
+  // Used by both the inline upload button (append) and the strip's drag-in
+  // (smart-sorted by drop position).
+  const uploadFilesToRef = useCallback(async (files: File[], index: number) => {
+    const imgs = files.filter((f) => f.type.startsWith("image/"));
+    if (!imgs.length) { toast.error("请选择图片文件"); return; }
+    setUploading(true);
+    let at = index;
+    try {
+      for (const file of imgs) {
+        if (file.size > 16 * 1024 * 1024) { toast.error(`${file.name} 超过 16MB`); continue; }
+        const base64 = await new Promise<string>((resolve, reject) => {
+          const reader = new FileReader();
+          reader.onload = () => resolve((reader.result as string).split(",")[1]);
+          reader.onerror = () => reject(new Error("文件读取失败"));
+          reader.readAsDataURL(file);
+        });
+        const result = await uploadMutation.mutateAsync({ base64, mimeType: file.type, filename: file.name });
+        if (!useCanvasStore.getState().nodes.some((n) => n.id === id)) return;
+        refImages.insertUrls([result.url], at, "upload");
+        at++;
+      }
       toast.success("参考图上传成功");
-    },
-    onError: (err) => {
+    } catch (err) {
+      toast.error("参考图上传失败：" + (err instanceof Error ? err.message : String(err)));
+    } finally {
       setUploading(false);
-      toast.error("参考图上传失败：" + err.message);
-    },
-  });
+    }
+  }, [id, refImages, uploadMutation]);
 
   const update = useCallback(
     (field: keyof ImageGenNodeData, value: unknown) => updateNodeData(id, { [field]: value }),
@@ -220,6 +245,7 @@ export const ImageGenNode = memo(function ImageGenNode({ id, selected, data }: P
       negativePrompt: payload.negativePrompt,
       style: payload.style,
       referenceImageUrl: payload.referenceImageUrl,
+      referenceImageUrls: refUrls(payload),
       // Match the picker, which displays "manus_forge" when unset — otherwise a
       // fresh node shows Manus Forge but the backend's undefined-fallback routes
       // to Poyo gpt-image-2 (different model; errors with no Poyo key).
@@ -265,19 +291,9 @@ export const ImageGenNode = memo(function ImageGenNode({ id, selected, data }: P
   };
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-    if (!file.type.startsWith("image/")) { toast.error("请选择图片文件"); e.target.value = ""; return; }
-    if (file.size > 16 * 1024 * 1024) { toast.error("文件不能超过 16 MB"); e.target.value = ""; return; }
-    setUploading(true);
-    const reader = new FileReader();
-    reader.onload = () => {
-      const base64 = (reader.result as string).split(",")[1];
-      uploadMutation.mutate({ base64, mimeType: file.type, filename: file.name });
-    };
-    reader.onerror = () => { setUploading(false); toast.error("文件读取失败"); };
-    reader.readAsDataURL(file);
+    const files = Array.from(e.target.files ?? []);
     e.target.value = "";
+    if (files.length) void uploadFilesToRef(files, refImages.images.length);
   };
 
   const handleSelectImage = (url: string) => {
@@ -389,7 +405,17 @@ export const ImageGenNode = memo(function ImageGenNode({ id, selected, data }: P
 
   return (
     <BaseNode id={id} selected={selected} nodeType="image_gen" title={data.title} minHeight={300} heroMedia={heroMedia}
-      onRun={handleGenerate} running={genMutation.isPending} canRun={!!payload.prompt?.trim()} hasResult={!!payload.imageUrl}>
+      onRun={handleGenerate} running={genMutation.isPending} canRun={!!payload.prompt?.trim()} hasResult={!!payload.imageUrl}
+      headerRight={refImages.images.length > 1 ? (
+        <button
+          onClick={() => setStripOpen((v) => !v)}
+          className="nodrag flex items-center gap-1"
+          style={{ fontSize: 10, color: stripOpen ? accent : "var(--c-t3)", border: `1px solid ${stripOpen ? BORDER_ACCENT : "var(--c-bd2)"}`, borderRadius: 6, padding: "1px 6px" }}
+          title="展开/收起左侧参考图列表"
+        >
+          <Layers style={{ width: 11, height: 11 }} /> {refImages.images.length}
+        </button>
+      ) : undefined}>
       <div className="flex flex-col h-full p-3.5 gap-3 overflow-auto">
 
         {/* ── Batch grid result ── */}
@@ -900,10 +926,31 @@ export const ImageGenNode = memo(function ImageGenNode({ id, selected, data }: P
           </div>
         )}
 
-        {/* Reference image upload */}
-        <div>
+        {/* Reference images (multi) */}
+        <div
+          onDragOver={(e) => { if (e.dataTransfer.types.includes("application/x-asset-list") || e.dataTransfer.types.includes("Files") || e.dataTransfer.types.includes("text/uri-list")) { e.preventDefault(); e.dataTransfer.dropEffect = "copy"; } }}
+          onDrop={(e) => {
+            const files = Array.from(e.dataTransfer.files ?? []).filter((f) => f.type.startsWith("image/"));
+            if (files.length) { e.preventDefault(); void uploadFilesToRef(files, refImages.images.length); return; }
+            const assetRaw = e.dataTransfer.getData("application/x-asset-list");
+            if (assetRaw) {
+              e.preventDefault();
+              try {
+                const list = JSON.parse(assetRaw) as Array<{ url?: string; type?: string }>;
+                const urls = list.filter((a) => a.url && (!a.type || a.type === "image")).map((a) => a.url!);
+                if (urls.length) refImages.addUrls(urls, "drop");
+              } catch { /* ignore */ }
+              return;
+            }
+            const uri = (e.dataTransfer.getData("text/uri-list") || e.dataTransfer.getData("text/plain")).trim();
+            if (/^https?:\/\//.test(uri)) { e.preventDefault(); refImages.addUrls([uri], "drop"); }
+          }}
+        >
           <label style={{ ...labelStyle, display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
-            参考图（可选）
+            参考图（可选，可多张）
+            {refImages.images.length > 0 && (
+              <span style={{ fontSize: 10, color: "var(--c-t3)", fontWeight: 600 }}>· {refImages.images.length} 张</span>
+            )}
             <RefImageReachabilityBadge
               model={payload.model}
               refImageUrl={payload.referenceImageUrl}
@@ -916,66 +963,89 @@ export const ImageGenNode = memo(function ImageGenNode({ id, selected, data }: P
               reachable={reachable}
               onSwitch={(u) => update("referenceImageUrl", u)}
             />
-          </label>
-          {payload.referenceImageUrl ? (
-            <div
-              className="relative rounded-lg overflow-hidden"
-              style={{ height: 80, borderWidth: 1, borderStyle: "solid", borderColor: BORDER_DEFAULT, background: "var(--c-canvas)" }}
-            >
-              <img
-                src={payload.referenceImageUrl}
-                alt="reference"
-                className="nodrag w-full h-full object-cover"
-                style={{ cursor: "zoom-in" }}
-                draggable={false}
-                title="点击放大"
-                onClick={() => setRefZoom(true)}
-                onError={makeImageProxyFallback(payload.referenceImageUrl ?? "")}
-              />
+            {refImages.images.length > 1 && (
               <button
-                onClick={(e) => { e.stopPropagation(); update("referenceImageUrl", undefined); }}
-                className="nodrag absolute top-1 right-1 p-0.5 rounded-full"
-                style={{ background: "oklch(0 0 0 / 0.7)", color: "var(--c-t1)" }}
+                onClick={() => setStripOpen((v) => !v)}
+                className="nodrag"
+                style={{ marginLeft: "auto", display: "flex", alignItems: "center", gap: 3, fontSize: 10, color: stripOpen ? accent : "var(--c-t3)", border: `1px solid ${stripOpen ? BORDER_ACCENT : "var(--c-bd2)"}`, borderRadius: 6, padding: "1px 6px" }}
+                title="展开左侧参考图列表"
               >
-                <X style={{ width: 12, height: 12 }} />
+                <Layers style={{ width: 11, height: 11 }} /> {stripOpen ? "收起" : "展开"}
               </button>
+            )}
+          </label>
+
+          {/* Horizontal thumbnails (numbered) */}
+          {refImages.images.length > 0 && (
+            <div className="nowheel" style={{ display: "flex", gap: 6, overflowX: "auto", paddingBottom: 2 }}>
+              {refImages.images.map((img, i) => (
+                <div key={img.id} className="relative rounded-lg overflow-hidden flex-shrink-0" style={{ width: 72, height: 72, borderWidth: 1, borderStyle: "solid", borderColor: BORDER_DEFAULT, background: "var(--c-canvas)" }}>
+                  <img
+                    src={img.url}
+                    alt={`ref-${i + 1}`}
+                    className="nodrag w-full h-full object-cover"
+                    style={{ cursor: "zoom-in" }}
+                    draggable={false}
+                    title="点击放大"
+                    onClick={() => setRefZoom(i)}
+                    onError={makeImageProxyFallback(img.url)}
+                  />
+                  <span style={{ position: "absolute", left: 3, top: 3, minWidth: 15, height: 15, paddingInline: 3, borderRadius: 8, fontSize: 9, fontWeight: 700, lineHeight: "15px", textAlign: "center", background: accent, color: "white" }}>{i + 1}</span>
+                  <button
+                    onClick={(e) => { e.stopPropagation(); refImages.removeId(img.id); }}
+                    className="nodrag absolute top-1 right-1 p-0.5 rounded-full"
+                    style={{ background: "oklch(0 0 0 / 0.7)", color: "var(--c-t1)" }}
+                  >
+                    <X style={{ width: 11, height: 11 }} />
+                  </button>
+                </div>
+              ))}
             </div>
-          ) : (
-            <button
-              onClick={() => fileInputRef.current?.click()}
-              disabled={uploading}
-              className="nodrag w-full flex items-center justify-center gap-2 py-3 rounded-lg transition-colors"
-              style={{
-                borderWidth: 1, borderStyle: "dashed",
-                borderColor: uploading ? BORDER_DEFAULT : "var(--c-bd3)",
-                background: "var(--c-input)",
-                color: uploading ? "var(--c-t4)" : "var(--c-t3)",
-                fontSize: 11, cursor: uploading ? "not-allowed" : "pointer",
-              }}
-            >
-              {uploading
-                ? <><Loader2 style={{ width: 13, height: 13 }} className="animate-spin" /> 上传中...</>
-                : <><Upload style={{ width: 13, height: 13 }} /> 点击上传参考图</>
-              }
-            </button>
           )}
+
+          <button
+            onClick={() => fileInputRef.current?.click()}
+            disabled={uploading}
+            className="nodrag w-full flex items-center justify-center gap-2 py-2.5 rounded-lg transition-colors"
+            style={{
+              marginTop: refImages.images.length > 0 ? 6 : 0,
+              borderWidth: 1, borderStyle: "dashed",
+              borderColor: uploading ? BORDER_DEFAULT : "var(--c-bd3)",
+              background: "var(--c-input)",
+              color: uploading ? "var(--c-t4)" : "var(--c-t3)",
+              fontSize: 11, cursor: uploading ? "not-allowed" : "pointer",
+            }}
+          >
+            {uploading
+              ? <><Loader2 style={{ width: 13, height: 13 }} className="animate-spin" /> 上传中...</>
+              : <><Upload style={{ width: 13, height: 13 }} /> {refImages.images.length > 0 ? "添加参考图" : "上传 / 拖拽参考图"}</>
+            }
+          </button>
           <input
             ref={fileInputRef}
             type="file"
             accept="image/*"
+            multiple
             style={{ display: "none" }}
             onChange={handleFileChange}
           />
-          {/* 或直接粘贴公网图片 URL —— 存储未公网暴露时，公网 URL 上游可直接读取 */}
+          {/* 或直接粘贴公网图片 URL —— 回车/失焦添加为新的参考图 */}
           <input
             type="url"
-            placeholder="或粘贴公网图片 URL（https://…）"
-            value={payload.referenceImageUrl?.startsWith("http") ? payload.referenceImageUrl : ""}
-            onChange={(e) => update("referenceImageUrl", e.target.value.trim() || undefined)}
+            placeholder="粘贴公网图片 URL 后回车添加（https://…）"
             className="nodrag"
             style={{ ...fieldBase, marginTop: 6, fontSize: 10.5 }}
+            onKeyDown={(e) => {
+              if (e.key !== "Enter") return;
+              const v = (e.target as HTMLInputElement).value.trim();
+              if (/^https?:\/\//.test(v)) { refImages.addUrls([v], "url"); (e.target as HTMLInputElement).value = ""; }
+            }}
+            onBlur={(e) => {
+              const v = e.currentTarget.value.trim();
+              if (/^https?:\/\//.test(v)) { refImages.addUrls([v], "url"); e.currentTarget.value = ""; }
+              e.currentTarget.style.borderColor = BORDER_DEFAULT;
+            }}
             onFocus={(e) => { e.currentTarget.style.borderColor = BORDER_ACCENT; }}
-            onBlur={(e) => { e.currentTarget.style.borderColor = BORDER_DEFAULT; }}
           />
         </div>
 
@@ -1047,15 +1117,28 @@ export const ImageGenNode = memo(function ImageGenNode({ id, selected, data }: P
         );
       })()}
 
-      {/* Reference-image zoom (plain viewer) */}
-      {refZoom && payload.referenceImageUrl && (
+      {/* Reference-image zoom (plain viewer, navigable across all refs) */}
+      {refZoom !== null && refImages.images.length > 0 && (
         <ImageLightbox
-          images={[payload.referenceImageUrl]}
-          currentIndex={0}
-          onClose={() => setRefZoom(false)}
-          onNavigate={() => {}}
+          images={refImages.images.map((r) => r.url)}
+          currentIndex={Math.min(refZoom, refImages.images.length - 1)}
+          onClose={() => setRefZoom(null)}
+          onNavigate={(idx) => setRefZoom(idx)}
         />
       )}
+
+      {/* Left-docked, expandable reference-image strip */}
+      <ReferenceImageStrip
+        images={refImages.images}
+        open={stripOpen}
+        accent={accent}
+        onClose={() => setStripOpen(false)}
+        onRemove={refImages.removeId}
+        onMove={refImages.moveId}
+        onInsertUrls={(urls, index) => refImages.insertUrls(urls, index, "drop")}
+        onDropFiles={(files, index) => void uploadFilesToRef(files, index)}
+        onZoom={(i) => setRefZoom(i)}
+      />
 
       {reachabilityDialog}
     </BaseNode>
