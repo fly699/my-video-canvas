@@ -15,6 +15,7 @@ import {
 } from "lucide-react";
 import { useLocalMedia } from "@/lib/useLocalMedia";
 import { cacheMedia } from "@/lib/mediaCache";
+import { mediaFetchUrl, onDownloadMedia } from "@/lib/download";
 import { LLMModelPicker, type LLMModelId } from "../LLMModelPicker";
 
 interface Props {
@@ -347,8 +348,8 @@ export const ComfyuiVideoNode = memo(function ComfyuiVideoNode({ id, selected, d
               />
             </div>
             <a
-              href={`/api/video-proxy?url=${encodeURIComponent(payload.resultVideoUrl)}&download=1`}
-              download
+              href={mediaFetchUrl(payload.resultVideoUrl, true)}
+              onClick={onDownloadMedia(payload.resultVideoUrl, "ComfyUI视频.mp4")}
               className="nodrag mt-1.5 flex items-center justify-center gap-1.5 w-full py-1.5 rounded-lg text-xs font-medium transition-all"
               style={{
                 background: "oklch(0.72 0.18 155 / 0.10)",

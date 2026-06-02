@@ -4,6 +4,7 @@ import { useCanvasStore } from "../../../hooks/useCanvasStore";
 import type { SmartCutNodeData } from "../../../../../shared/types";
 import { trpc } from "@/lib/trpc";
 import { toast } from "sonner";
+import { mediaFetchUrl, onDownloadMedia } from "@/lib/download";
 import { Zap, Loader2, Download, RotateCcw } from "lucide-react";
 
 interface Props {
@@ -148,8 +149,8 @@ export const SmartCutNode = memo(function SmartCutNode({ id, selected, data }: P
           <div className="flex flex-col gap-1.5">
             <video key={payload.outputUrl} src={`/api/video-proxy?url=${encodeURIComponent(payload.outputUrl)}`}
               controls className="w-full rounded-lg nodrag" style={{ maxHeight: 120, display: "block", border: `1px solid ${accentA(0.4)}` }} preload="metadata" />
-            <a href={`/api/video-proxy?url=${encodeURIComponent(payload.outputUrl)}&download=1`} download
-              className="nodrag flex items-center justify-center gap-1 py-1.5 rounded-lg text-[10px]"
+            <a href={mediaFetchUrl(payload.outputUrl, true)} onClick={onDownloadMedia(payload.outputUrl, "智能剪辑视频.mp4")}
+              className="nodrag flex items-center justify-center gap-1 py-1.5 rounded-lg text-[10px] cursor-pointer"
               style={{ background: accentA(0.08), border: `1px solid ${accentA(0.25)}`, color: accent, textDecoration: "none" }}>
               <Download style={{ width: 10, height: 10 }} /> 下载智能剪辑视频
             </a>

@@ -4,6 +4,7 @@ import { useCanvasStore } from "../../../hooks/useCanvasStore";
 import type { SubtitleNodeData, SubtitleEntry } from "../../../../../shared/types";
 import { trpc } from "@/lib/trpc";
 import { toast } from "sonner";
+import { mediaFetchUrl, onDownloadMedia } from "@/lib/download";
 import { Captions, Loader2, Download, RotateCcw, Mic2, Plus, Trash2, X } from "lucide-react";
 
 interface Props {
@@ -411,8 +412,8 @@ export const SubtitleNode = memo(function SubtitleNode({ id, selected, data }: P
                   preload="metadata"
                 />
                 <a
-                  href={`/api/video-proxy?url=${encodeURIComponent(payload.outputUrl)}&download=1`}
-                  download
+                  href={mediaFetchUrl(payload.outputUrl, true)}
+                  onClick={onDownloadMedia(payload.outputUrl, "字幕视频.mp4")}
                   className="nodrag flex items-center justify-center gap-1 py-1.5 rounded-lg text-[10px]"
                   style={{ background: accentA(0.08), border: `1px solid ${accentA(0.25)}`, color: accent, textDecoration: "none" }}
                 >

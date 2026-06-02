@@ -4,6 +4,7 @@ import { useCanvasStore } from "../../../hooks/useCanvasStore";
 import type { OverlayNodeData } from "../../../../../shared/types";
 import { trpc } from "@/lib/trpc";
 import { toast } from "sonner";
+import { mediaFetchUrl, onDownloadMedia } from "@/lib/download";
 import { Blend, Loader2, CheckCircle2, XCircle, Download, Play } from "lucide-react";
 
 interface Props {
@@ -354,8 +355,8 @@ export const OverlayNode = memo(function OverlayNode({ id, selected, data }: Pro
               />
             </div>
             <a
-              href={payload.outputUrl.startsWith("http") ? `/api/video-proxy?url=${encodeURIComponent(payload.outputUrl)}&download=1` : payload.outputUrl}
-              download
+              href={mediaFetchUrl(payload.outputUrl, true)}
+              onClick={onDownloadMedia(payload.outputUrl, "叠加视频.mp4")}
               className="nodrag mt-1.5 flex items-center justify-center gap-1.5 w-full py-1.5 rounded-lg text-xs font-medium transition-all"
               style={{
                 background: "oklch(0.72 0.18 155 / 0.10)",
