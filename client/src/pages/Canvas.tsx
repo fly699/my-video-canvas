@@ -319,6 +319,10 @@ function nodeUpsertFields(n: CanvasNode) {
 function nodeSig(n: CanvasNode): string {
   return JSON.stringify(nodeUpsertFields(n));
 }
+// Discards corrupted localStorage payloads for persisted boolean panel toggles.
+function validateBool(v: unknown): boolean | null {
+  return typeof v === "boolean" ? v : null;
+}
 
 function CanvasInner({ projectId }: { projectId: number }) {
   const { user, isAuthenticated, logout } = useAuth();
@@ -369,7 +373,13 @@ function CanvasInner({ projectId }: { projectId: number }) {
   // Bumped on save/delete so the context menu re-reads node templates from localStorage.
   const [tplBump, setTplBump] = useState(0);
 
-  const [showAssets, setShowAssets] = useState(false);
+  // Panels whose open-state should survive a reload use usePersistentState
+  // (namespaced `ui:panel:*`). Transient modals/pickers (node picker, search,
+  // help, snapshots, run-confirm, …) stay as plain useState — they should
+  // always start closed.
+  const [showAssets, setShowAssets] = usePersistentState<boolean>(
+    "ui:panel:assets:v1", false, { validate: validateBool },
+  );
   const [showTemplates, setShowTemplates] = useState(false);
   const [showNodeSearch, setShowNodeSearch] = useState(false);
   const [showCollaborators, setShowCollaborators] = useState(false);
@@ -377,9 +387,13 @@ function CanvasInner({ projectId }: { projectId: number }) {
   const [showNodePicker, setShowNodePicker] = useState(false);
   const [showPresentation, setShowPresentation] = useState(false);
   const [showShortcuts, setShowShortcuts] = useState(false);
-  const [showStatsSidebar, setShowStatsSidebar] = useState(false);
+  const [showStatsSidebar, setShowStatsSidebar] = usePersistentState<boolean>(
+    "ui:panel:stats:v1", false, { validate: validateBool },
+  );
   const [showFilmstrip, setShowFilmstrip] = useState(false);
-  const [showTimeline, setShowTimeline] = useState(false);
+  const [showTimeline, setShowTimeline] = usePersistentState<boolean>(
+    "ui:panel:timeline:v1", false, { validate: validateBool },
+  );
   const [canvasBg, setCanvasBg] = useState<CanvasBg>(() => loadCanvasBg());
   // Keep --c-canvas in sync with the picker so all components using
   // var(--c-canvas) (node borders, inset previews, vignette) match the
@@ -391,7 +405,9 @@ function CanvasInner({ projectId }: { projectId: number }) {
   const [showSnapshots, setShowSnapshots] = useState(false);
   const [globalAspectRatio, setGlobalAspectRatio] = useState<string | null>(null);
   const [showRatioPicker, setShowRatioPicker] = useState(false);
-  const [showConnectionHints, setShowConnectionHints] = useState(false);
+  const [showConnectionHints, setShowConnectionHints] = usePersistentState<boolean>(
+    "ui:panel:connectionHints:v1", false, { validate: validateBool },
+  );
   const [showHelp, setShowHelp] = useState(false);
   const [chatOpen, setChatOpen] = useState(false);
   const [showArcPicker, setShowArcPicker] = useState(false);
@@ -826,6 +842,36 @@ function CanvasInner({ projectId }: { projectId: number }) {
     }
     setShowNodePicker(false);
   }, [addNode, reactFlow, emitCollabEvent]);
+
+  // ── Drag assets from the library onto the canvas ────────────────────────────
+  // FloatingAssetPanel rows set `application/x-asset-list` (JSON array of
+  // {url,name,type,mimeType,size,storageKey}). Dropping creates a populated
+  // `asset` node per item at the cursor, staggered so a multi-select batch
+  // fans out instead of stacking.
+  const handleAssetDrop = useCallback((e: React.DragEvent) => {
+    const raw = e.dataTransfer.getData("application/x-asset-list");
+    if (!raw) return;
+    e.preventDefault();
+    if (isReadOnly) { toast.error("只读协作者无法添加素材"); return; }
+    let items: Array<{ url: string; name?: string; type?: string; mimeType?: string; size?: number; storageKey?: string }> = [];
+    try { items = JSON.parse(raw); } catch { return; }
+    if (!Array.isArray(items) || items.length === 0) return;
+    const base = reactFlow.screenToFlowPosition({ x: e.clientX, y: e.clientY });
+    items.forEach((it, i) => {
+      try {
+        const node = addNode("asset", { x: base.x + i * 28, y: base.y + i * 28 });
+        const t = it.type === "video" || it.type === "audio" || it.type === "image" ? it.type : "other";
+        updateNodeData(node.id, {
+          url: it.url, name: it.name ?? "素材", type: t,
+          mimeType: it.mimeType, size: it.size, storageKey: it.storageKey,
+        } as Partial<NodeData>, true);
+        emitCollabEvent("node:add", { ...node, data: { ...node.data, payload: { ...node.data.payload, url: it.url, name: it.name, type: t } } });
+      } catch (err) {
+        toast.error(err instanceof Error ? err.message : "添加素材失败");
+      }
+    });
+    toast.success(`已添加 ${items.length} 个素材到画布`);
+  }, [isReadOnly, reactFlow, addNode, updateNodeData, emitCollabEvent]);
 
   // ── Global aspect ratio lock ────────────────────────────────────────────────
   const RATIO_PRESETS = ["16:9", "9:16", "1:1", "4:3", "3:4", "2.35:1"];
@@ -1598,6 +1644,13 @@ function CanvasInner({ projectId }: { projectId: number }) {
               emitCollabEvent("edge:delete", { id: e.id });
             })}
             onMoveEnd={(_, vp) => { setViewport(vp); markDirty(); }}
+            onDrop={handleAssetDrop}
+            onDragOver={(e) => {
+              if (e.dataTransfer.types.includes("application/x-asset-list")) {
+                e.preventDefault();
+                e.dataTransfer.dropEffect = "copy";
+              }
+            }}
             nodesDraggable={!isReadOnly}
             nodesConnectable={!isReadOnly}
             edgesFocusable={!isReadOnly}
