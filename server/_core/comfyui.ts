@@ -9,7 +9,7 @@
 // - 4 built-in templates: txt2img / img2img / animatediff / svd.
 
 import type { Server as SocketIOServer } from "socket.io";
-import { storagePut, resolveToAbsoluteUrl, assertMinioOnlyWrite, isOwnStorageUrl } from "server/storage";
+import { storagePut, resolveToAbsoluteUrl, assertMinioOnlyWrite, isOwnStorageUrl, toInternalStoragePath } from "server/storage";
 import { assertSafeUrl } from "./videoEditor";
 import type { WorkflowParamBinding } from "@shared/types";
 
@@ -568,17 +568,17 @@ async function uploadImageToComfy(baseUrl: string, sourceUrl: string): Promise<s
   // storage proxy paths (must start with `/manus-storage/` — trusted prefix).
   // Reject everything else including relative paths that could be re-resolved.
   let fetchUrl = sourceUrl;
-  if (/^https?:\/\//i.test(sourceUrl)) {
-    // Our own MinIO/S3 host may legitimately be on a private address — exempt it
-    // from the SSRF guard, same rationale as the /manus-storage/ branch below.
+  // Our own /manus-storage/ proxy path — relative OR an absolute same-origin URL
+  // like https://172.16.0.114:3000/manus-storage/… . Resolve to a fetchable
+  // (presigned) URL and SKIP the SSRF guard: this is our own storage, and only
+  // the key is used (host ignored), so it can never be redirected elsewhere.
+  const internalPath = toInternalStoragePath(sourceUrl);
+  if (internalPath) {
+    fetchUrl = await resolveToAbsoluteUrl(internalPath);
+  } else if (/^https?:\/\//i.test(sourceUrl)) {
+    // Genuinely external URL. Allow our own MinIO/S3 host (may be private);
+    // SSRF-guard everything else.
     if (!isOwnStorageUrl(sourceUrl)) assertSafeUrl(sourceUrl);
-  } else if (sourceUrl.startsWith("/manus-storage/")) {
-    // node fetch() can't parse a relative path ("Failed to parse URL from
-    // /manus-storage/…"). Resolve our trusted internal storage path to an
-    // absolute (presigned) URL the app server can fetch — same as the
-    // Poyo/Higgsfield reference-image handling. assertSafeUrl is intentionally
-    // skipped: this is our own storage, whose host may legitimately be internal.
-    fetchUrl = await resolveToAbsoluteUrl(sourceUrl);
   } else {
     throw new Error("参考图 URL 协议不受支持，仅允许 http/https 或 /manus-storage/ 相对路径");
   }
