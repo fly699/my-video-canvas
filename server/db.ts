@@ -783,10 +783,10 @@ export async function adminCreateGrant(input: {
   return rows[0] ?? null;
 }
 
-export async function decideDownloadGrant(grantId: number, adminId: number, approve: boolean, note?: string | null): Promise<void> {
+export async function decideDownloadGrant(grantId: number, adminId: number, approve: boolean, note?: string | null, expiresAt?: Date | null): Promise<void> {
   const db = await getDb();
-  if (!db) { if (DEV_MODE) { dev.devUpdateDownloadGrant(grantId, { status: approve ? "active" : "denied", decidedBy: adminId, decidedAt: new Date(), note: note ?? null }); return; } throw new Error("DB unavailable"); }
-  await db.update(downloadGrants).set({ status: approve ? "active" : "denied", decidedBy: adminId, decidedAt: new Date(), note: note ?? null })
+  if (!db) { if (DEV_MODE) { dev.devUpdateDownloadGrant(grantId, { status: approve ? "active" : "denied", decidedBy: adminId, decidedAt: new Date(), note: note ?? null, expiresAt: approve ? (expiresAt ?? null) : null }); return; } throw new Error("DB unavailable"); }
+  await db.update(downloadGrants).set({ status: approve ? "active" : "denied", decidedBy: adminId, decidedAt: new Date(), note: note ?? null, ...(approve ? { expiresAt: expiresAt ?? null } : {}) })
     .where(and(eq(downloadGrants.id, grantId), eq(downloadGrants.status, "pending")));
 }
 
