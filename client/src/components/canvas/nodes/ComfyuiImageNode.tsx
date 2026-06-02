@@ -14,6 +14,7 @@ import {
 } from "lucide-react";
 import { useLocalMedia } from "@/lib/useLocalMedia";
 import { cacheMedia } from "@/lib/mediaCache";
+import { downloadMedia } from "@/lib/download";
 import { ImageLightbox } from "../ImageLightbox";
 import { MaskCanvas } from "./MaskCanvas";
 import { LLMModelPicker, type LLMModelId } from "../LLMModelPicker";
@@ -325,16 +326,10 @@ export const ComfyuiImageNode = memo(function ComfyuiImageNode({ id, selected, d
 
   const handleDownload = (url: string) => {
     if (!url) return;
-    const a = document.createElement("a");
-    const isSameOrigin = (url.startsWith("/") && !url.startsWith("//")) || url.startsWith(window.location.origin);
-    a.href = isSameOrigin ? url : `/api/image-proxy?url=${encodeURIComponent(url)}&download=1`;
     // Auto-name the download from node title + model so saved files are identifiable.
     const base = `${data.title}_${(payload.ckpt ?? "").replace(/\.[A-Za-z0-9]+$/, "")}`
       .replace(/[\\/:*?"<>|\s]+/g, "_").replace(/_+/g, "_").replace(/^_+|_+$/g, "").slice(0, 80) || "comfyui";
-    a.download = `${base}_${Date.now()}.png`;
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
+    void downloadMedia(url, `${base}_${Date.now()}.png`, "image");
   };
 
   const isImg2Img = payload.workflowTemplate === "img2img";

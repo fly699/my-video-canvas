@@ -150,7 +150,18 @@ export function ChatProvider({ children }: { children: React.ReactNode }) {
       auth: devUser ? { devUser: Number(devUser) } : {},
     });
     socketRef.current = socket;
-    socket.on("connect", () => setConnected(true));
+    socket.on("connect", () => {
+      setConnected(true);
+      // `connect` fires on every reconnect too. socket.io assigns a fresh session
+      // on reconnect, so the server-side room membership from the previous session
+      // is gone — without re-joining, new messages silently stop arriving until the
+      // user reselects a conversation. Re-join the active room to keep delivery live.
+      const active = activeIdRef.current;
+      if (active != null) {
+        socket.emit("chat:join", { conversationId: active });
+        void reloadMessages(active); // resync messages missed while disconnected
+      }
+    });
     socket.on("disconnect", () => setConnected(false));
 
     socket.on("chat:message:new", (msg: ChatWireMessage) => {
