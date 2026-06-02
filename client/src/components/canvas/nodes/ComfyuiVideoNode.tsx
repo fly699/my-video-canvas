@@ -11,10 +11,9 @@ import { trpc } from "@/lib/trpc";
 import { toast } from "sonner";
 import {
   Play, Loader2, RefreshCw, Upload, X, Cpu, Download, AlertCircle,
-  ChevronDown, ChevronRight, Server, Boxes, HardDriveDownload, Languages, Copy, Lock, Unlock, Ban, Sparkles, Layers,
+  ChevronDown, ChevronRight, Server, Boxes, Languages, Copy, Lock, Unlock, Ban, Sparkles, Layers,
 } from "lucide-react";
-import { useLocalMedia } from "@/lib/useLocalMedia";
-import { cacheMedia } from "@/lib/mediaCache";
+import { isOwnStorageUrl } from "@/lib/ownStorage";
 import { mediaFetchUrl, onDownloadMedia } from "@/lib/download";
 import { LLMModelPicker, type LLMModelId } from "../LLMModelPicker";
 
@@ -254,27 +253,12 @@ export const ComfyuiVideoNode = memo(function ComfyuiVideoNode({ id, selected, d
       ? `/api/video-proxy?url=${encodeURIComponent(payload.resultVideoUrl!)}`
       : payload.resultVideoUrl;
 
-  // ── Local media cache (IndexedDB) ────────────────────────────────────────
-  const { isLocal: videoIsLocal, blobUrl: videoBlobUrl, downloadedAt: videoDownloadedAt, refresh: refreshVideoCache } = useLocalMedia(isSafeMediaUrl(payload.resultVideoUrl) ? payload.resultVideoUrl : undefined);
-  const [videoCaching, setVideoCaching] = useState(false);
-  const [videoCacheProgress, setVideoCacheProgress] = useState(0);
-  const handleVideoCache = async () => {
-    if (!payload.resultVideoUrl || videoCaching) return;
-    setVideoCaching(true); setVideoCacheProgress(0);
-    try {
-      await cacheMedia(payload.resultVideoUrl, "video", (loaded, total) => {
-        if (total > 0) setVideoCacheProgress(Math.round(loaded / total * 100));
-      });
-      refreshVideoCache();
-      toast.success("已缓存到本地");
-    } catch (err) {
-      toast.error("缓存失败：" + (err instanceof Error ? err.message : String(err)));
-    } finally { setVideoCaching(false); }
-  };
+  // 绿点指示：结果视频是否已落到我方 MinIO 长期存储（/manus-storage/ 路径）。
+  const videoStoredInMinio = isOwnStorageUrl(payload.resultVideoUrl);
 
   const heroMedia = payload.status === "done" && videoSrc ? (
     <video
-      src={videoBlobUrl ?? videoSrc}
+      src={videoSrc}
       controls
       className="w-full"
       preload="metadata"
@@ -331,16 +315,16 @@ export const ComfyuiVideoNode = memo(function ComfyuiVideoNode({ id, selected, d
         {payload.status === "done" && payload.resultVideoUrl && videoSrc && (
           <div className="flex-shrink-0">
             <div className="relative rounded-lg overflow-hidden" style={{ borderWidth: 1, borderStyle: "solid", borderColor: "oklch(0.72 0.18 155 / 0.30)" }}>
-              {videoIsLocal && (
+              {videoStoredInMinio && (
                 <div
-                  title={`已缓存到本地（${new Date(videoDownloadedAt).toLocaleString("zh-CN")}）`}
+                  title="已存储到 MinIO·长期有效"
                   className="absolute top-1.5 left-1.5 z-10 w-2.5 h-2.5 rounded-full pointer-events-none"
                   style={{ background: "oklch(0.72 0.18 155)", boxShadow: "0 0 0 2.5px oklch(0.72 0.18 155 / 0.35)" }}
                 />
               )}
               <video
-                key={videoBlobUrl ?? videoSrc}
-                src={videoBlobUrl ?? videoSrc}
+                key={videoSrc}
+                src={videoSrc}
                 controls
                 className="w-full nodrag"
                 style={{ maxHeight: 160, display: "block" }}
@@ -361,18 +345,6 @@ export const ComfyuiVideoNode = memo(function ComfyuiVideoNode({ id, selected, d
               <Download className="w-3 h-3" />
               下载视频
             </a>
-            {!videoIsLocal && (
-              <button
-                onClick={handleVideoCache}
-                disabled={videoCaching}
-                className="nodrag mt-1 flex items-center justify-center gap-1.5 w-full py-1.5 rounded-lg text-xs font-medium"
-                style={{ background: "transparent", borderWidth: 1, borderStyle: "solid", borderColor: "var(--c-bd2)", color: "var(--c-t3)", cursor: videoCaching ? "not-allowed" : "pointer" }}
-              >
-                {videoCaching
-                  ? <><Loader2 className="w-3 h-3 animate-spin" />{videoCacheProgress > 0 ? ` ${videoCacheProgress}%` : " 缓存中..."}</>
-                  : <><HardDriveDownload className="w-3 h-3" /> 缓存到本地</>}
-              </button>
-            )}
           </div>
         )}
 

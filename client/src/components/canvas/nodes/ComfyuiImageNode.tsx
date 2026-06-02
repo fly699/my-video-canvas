@@ -9,11 +9,10 @@ import { trpc } from "@/lib/trpc";
 import { toast } from "sonner";
 import {
   Sparkles, Loader2, RefreshCw, Upload, X, Cpu, Download, ZoomIn,
-  ChevronDown, ChevronRight, Server, Boxes, ImageIcon, HardDriveDownload,
+  ChevronDown, ChevronRight, Server, Boxes, ImageIcon,
   Languages, Check, Copy, Lock, Unlock, Ban, Plus, Layers,
 } from "lucide-react";
-import { useLocalMedia } from "@/lib/useLocalMedia";
-import { cacheMedia } from "@/lib/mediaCache";
+import { isOwnStorageUrl } from "@/lib/ownStorage";
 import { downloadMedia } from "@/lib/download";
 import { ImageLightbox } from "../ImageLightbox";
 import { MaskCanvas } from "./MaskCanvas";
@@ -158,7 +157,11 @@ export const ComfyuiImageNode = memo(function ComfyuiImageNode({ id, selected, d
         updateNodeData(id, { ipadapter: { model: p?.model ?? "", clipVision: p?.clipVision, weight: p?.weight, imageUrl: next[0], imageUrls: next } });
         toast.success("IPAdapter 参考图上传成功");
       } else {
-        updateNodeData(id, { referenceImageUrl: result.url });
+        // A reference upload implies img2img — switch from txt2img so the
+        // server actually honours referenceImageUrl (no-op if already img2img/inpaint).
+        const patch: Partial<ComfyuiImageNodeData> = { referenceImageUrl: result.url };
+        if (cur?.workflowTemplate !== "img2img" && cur?.workflowTemplate !== "inpaint") patch.workflowTemplate = "img2img";
+        updateNodeData(id, patch);
         toast.success("参考图上传成功");
       }
     },
@@ -386,6 +389,25 @@ export const ComfyuiImageNode = memo(function ComfyuiImageNode({ id, selected, d
     appendIpUrls(ipUrlsFromDrag(e.dataTransfer));
   };
 
+  // Drop an image from the asset library / OS / a URL anywhere on the node body
+  // → set it as the img2img reference (switching txt2img → img2img so the server
+  // actually honours it). Mirrors the per-node ref drop in ImageGenNode and stops
+  // propagation so the canvas doesn't ALSO spawn a duplicate asset node.
+  // (Drops on the IPAdapter zone are handled by handleIpDrop, which stops first.)
+  const setReferenceFromDrop = (url: string) => {
+    const tmpl = payload.workflowTemplate;
+    const patch: Partial<ComfyuiImageNodeData> = { referenceImageUrl: url };
+    if (tmpl !== "img2img" && tmpl !== "inpaint") patch.workflowTemplate = "img2img";
+    updateNodeData(id, patch);
+    toast.success(tmpl === "inpaint" ? "已设为原图" : "已设为参考图（img2img）");
+  };
+  const handleNodeDrop = (e: React.DragEvent) => {
+    const files = Array.from(e.dataTransfer.files ?? []).filter((f) => f.type.startsWith("image/"));
+    if (files.length) { e.preventDefault(); e.stopPropagation(); uploadImageFile(files[0], "reference"); return; }
+    const urls = ipUrlsFromDrag(e.dataTransfer); // asset-list JSON, then uri/text
+    if (urls.length) { e.preventDefault(); e.stopPropagation(); setReferenceFromDrop(urls[0]); }
+  };
+
   const handleDownload = (url: string) => {
     if (!url) return;
     // Auto-name the download from node title + model so saved files are identifiable.
@@ -398,29 +420,13 @@ export const ComfyuiImageNode = memo(function ComfyuiImageNode({ id, selected, d
   const isInpaint = payload.workflowTemplate === "inpaint";
   const needsRefImage = isImg2Img || isInpaint;
 
-  // ── Local media cache (IndexedDB) ────────────────────────────────────────
-  const { isLocal: imgIsLocal, blobUrl: imgBlobUrl, downloadedAt: imgDownloadedAt, refresh: refreshImgCache } = useLocalMedia(payload.imageUrl);
-  const [imgCaching, setImgCaching] = useState(false);
-  const [imgCacheProgress, setImgCacheProgress] = useState(0);
-  const handleImgCache = async (e: React.MouseEvent) => {
-    e.stopPropagation();
-    if (!payload.imageUrl || imgCaching) return;
-    setImgCaching(true); setImgCacheProgress(0);
-    try {
-      await cacheMedia(payload.imageUrl, "image", (loaded, total) => {
-        if (total > 0) setImgCacheProgress(Math.round(loaded / total * 100));
-      });
-      refreshImgCache();
-      toast.success("已缓存到本地");
-    } catch (err) {
-      toast.error("缓存失败：" + (err instanceof Error ? err.message : String(err)));
-    } finally { setImgCaching(false); }
-  };
+  // 绿点指示：结果图是否已落到我方 MinIO 长期存储（/manus-storage/ 路径）。
+  const imgStoredInMinio = isOwnStorageUrl(payload.imageUrl);
 
   const heroMedia = payload.imageUrl ? (
     <div className="relative overflow-hidden group" style={{ width: "100%" }}>
       <img
-        src={imgBlobUrl ?? payload.imageUrl}
+        src={payload.imageUrl}
         alt="comfyui-generated"
         className="w-full h-full object-cover"
         draggable={false}
@@ -447,7 +453,11 @@ export const ComfyuiImageNode = memo(function ComfyuiImageNode({ id, selected, d
   return (
     <BaseNode id={id} selected={selected} nodeType="comfyui_image" title={data.title} minHeight={320} heroMedia={heroMedia}
       onRun={handleGenerate} running={genMutation.isPending} canRun={!!payload.prompt?.trim() && !!payload.ckpt?.trim()} hasResult={!!payload.imageUrl}>
-      <div className="flex flex-col h-full p-3.5 gap-3 overflow-auto">
+      <div
+        className="flex flex-col h-full p-3.5 gap-3 overflow-auto"
+        onDragOver={(e) => { if (e.dataTransfer.types.includes("application/x-asset-list") || e.dataTransfer.types.includes("Files") || e.dataTransfer.types.includes("text/uri-list")) { e.preventDefault(); e.dataTransfer.dropEffect = "copy"; } }}
+        onDrop={handleNodeDrop}
+      >
 
         {/* ── Result image(s) ── */}
         {payload.imageUrl ? (
@@ -531,15 +541,15 @@ export const ComfyuiImageNode = memo(function ComfyuiImageNode({ id, selected, d
             className="relative rounded-lg overflow-hidden flex-shrink-0"
             style={{ aspectRatio: "16/9", borderWidth: 1, borderStyle: "solid", borderColor: BORDER_DEFAULT, background: "var(--c-canvas)" }}
           >
-            {imgIsLocal && (
+            {imgStoredInMinio && (
               <div
-                title={`已缓存到本地（${new Date(imgDownloadedAt).toLocaleString("zh-CN")}）`}
+                title="已存储到 MinIO·长期有效"
                 className="absolute top-1.5 left-1.5 z-10 w-2.5 h-2.5 rounded-full pointer-events-none"
                 style={{ background: "oklch(0.72 0.18 155)", boxShadow: "0 0 0 2.5px oklch(0.72 0.18 155 / 0.35)" }}
               />
             )}
             <img
-              src={imgBlobUrl ?? payload.imageUrl}
+              src={payload.imageUrl}
               alt="generated"
               className="w-full h-full object-contain"
               draggable={false}
@@ -565,18 +575,6 @@ export const ComfyuiImageNode = memo(function ComfyuiImageNode({ id, selected, d
                 <Download className="w-3 h-3" />
                 下载
               </button>
-              {!imgIsLocal && (
-                <button
-                  onClick={handleImgCache}
-                  disabled={imgCaching}
-                  className="nodrag flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-medium"
-                  style={{ background: "oklch(0.14 0.007 260 / 0.8)", borderWidth: 1, borderStyle: "solid", borderColor: "var(--c-bd3)", color: "oklch(0.72 0.18 155)" }}
-                  title={imgCaching ? `缓存中 ${imgCacheProgress}%` : "缓存到本地"}
-                >
-                  {imgCaching ? <Loader2 className="w-3 h-3 animate-spin" /> : <HardDriveDownload className="w-3 h-3" />}
-                  {imgCaching ? (imgCacheProgress > 0 ? `${imgCacheProgress}%` : "缓存中") : "缓存"}
-                </button>
-              )}
             </div>
           </div>
           )

@@ -14,11 +14,31 @@
  * least view within the 24h window. Logs but never blocks the task from
  * being marked succeeded.
  */
-import { storagePut } from "../storage";
+import { Readable, Transform } from "node:stream";
+import type { ReadableStream as WebReadableStream } from "node:stream/web";
+import { storagePutStream, storageBackend } from "../storage";
 import { isVideoPersistenceEnabled } from "./storageConfig";
 
-const MAX_PERSIST_VIDEO_BYTES = 500 * 1024 * 1024; // 500 MB hard cap
+// Streaming multipart upload only buffers one part at a time, so memory is no
+// longer the constraint — the cap now just guards against a runaway/huge
+// upstream filling storage. 5 GB mirrors the chat attachment ceiling.
+const MAX_PERSIST_VIDEO_BYTES = 5 * 1024 * 1024 * 1024; // 5 GB
 const PERSIST_FETCH_TIMEOUT_MS = 180_000; // 3 min — large videos can be slow
+
+// Wrap a stream so it errors out past `maxBytes` (handles upstreams that omit
+// Content-Length). lib-storage aborts the in-progress multipart on stream error.
+export function capStream(src: Readable, maxBytes: number): Readable {
+  let seen = 0;
+  const counter = new Transform({
+    transform(chunk: Buffer, _enc, cb) {
+      seen += chunk.length;
+      if (seen > maxBytes) { cb(new Error(`stream exceeded ${maxBytes} bytes`)); return; }
+      cb(null, chunk);
+    },
+  });
+  src.on("error", (e) => counter.destroy(e));
+  return src.pipe(counter);
+}
 
 // In-flight dedupe: client-driven videoTasks.poll and the server-side
 // background videoTaskPoller can both observe upstream "finished" within
@@ -61,6 +81,12 @@ export async function persistVideoOrFallback(upstreamUrl: string, provider: stri
 }
 
 async function persistImpl(upstreamUrl: string, provider: string): Promise<string> {
+  // Streaming multipart is S3/MinIO-only. Per product decision we do NOT
+  // re-host videos to the Forge backend — fall back to the upstream URL there.
+  if (storageBackend() !== "s3") {
+    console.warn(`[persistVideo] non-S3 backend for ${provider}; not persisting (MinIO-only), keeping upstream URL`);
+    return upstreamUrl;
+  }
   try {
     const res = await fetch(upstreamUrl, { signal: AbortSignal.timeout(PERSIST_FETCH_TIMEOUT_MS) });
     if (!res.ok) {
@@ -76,39 +102,17 @@ async function persistImpl(upstreamUrl: string, provider: string): Promise<strin
       }
     }
     if (!res.body) return upstreamUrl;
-    const reader = res.body.getReader();
-    const chunks: Uint8Array[] = [];
-    let total = 0;
-    let completed = false;
-    let overflowed = false;
-    try {
-      while (true) {
-        const { done, value } = await reader.read();
-        if (done) { completed = true; break; }
-        total += value.byteLength;
-        if (total > MAX_PERSIST_VIDEO_BYTES) {
-          overflowed = true;
-          console.warn(`[persistVideo] video stream exceeded ${MAX_PERSIST_VIDEO_BYTES} bytes for ${provider}, keeping upstream URL`);
-          break;
-        }
-        chunks.push(value);
-      }
-    } finally {
-      // Cancel on any non-completion exit (byte-cap, network error mid-stream)
-      // so the underlying HTTP/TCP socket is released to the connection pool;
-      // without this, bursty concurrent persistence can starve the pool.
-      if (!completed) {
-        try { await reader.cancel(); } catch { /* ignore */ }
-      }
-      try { reader.releaseLock(); } catch { /* ignore */ }
-    }
-    if (overflowed) return upstreamUrl;
-    // Buffer.concat accepts Uint8Array[] directly — no need for an extra
-    // chunks.map(Buffer.from) pass (was doubling peak memory ~2x).
-    const buf = Buffer.concat(chunks, total);
     const mime = res.headers.get("content-type") ?? "video/mp4";
     const ext = mime.includes("webm") ? "webm" : mime.includes("quicktime") ? "mov" : "mp4";
-    const { url } = await storagePut(`generated-videos/${provider}-${Date.now()}.${ext}`, buf, mime);
+    // Stream upstream → S3 multipart: only ~one part is buffered at a time, so
+    // multi-GB videos persist without OOM. capStream enforces the size ceiling
+    // for upstreams that omit Content-Length.
+    const src = Readable.fromWeb(res.body as unknown as WebReadableStream<Uint8Array>);
+    const { url } = await storagePutStream(
+      `generated-videos/${provider}-${Date.now()}.${ext}`,
+      capStream(src, MAX_PERSIST_VIDEO_BYTES),
+      mime,
+    );
     return url;
   } catch (err) {
     // Log only the error message, never the upstream URL — Poyo/Higgsfield
