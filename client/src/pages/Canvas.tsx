@@ -578,6 +578,7 @@ function CanvasInner({ projectId }: { projectId: number }) {
 
   // ── Auto-save ───────────────────────────────────────────────────────────────
   const saveCanvas = useCallback(async () => {
+    if (isReadOnly) return; // read-only collaborators must never write (server also rejects)
     if (!isDirty) return;
     try {
       // Reconcile deletions: remove server rows for nodes deleted locally (incl.
@@ -622,7 +623,7 @@ function CanvasInner({ projectId }: { projectId: number }) {
       console.error("Auto-save failed:", err);
       toast.error("保存失败：" + (err instanceof Error ? err.message : String(err)));
     }
-  }, [isDirty, nodes, edges, projectId, batchUpsertNodes, upsertEdge, updateProject, markClean, reactFlow, deleteNodeMutation]);
+  }, [isReadOnly, isDirty, nodes, edges, projectId, batchUpsertNodes, upsertEdge, updateProject, markClean, reactFlow, deleteNodeMutation]);
 
   useEffect(() => {
     if (!isDirty) return;
