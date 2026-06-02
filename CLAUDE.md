@@ -39,6 +39,25 @@ DATABASE_URL="" OAUTH_SERVER_URL="" NODE_ENV=development pnpm dev
 
 ---
 
+## 数据库迁移注意事项（drizzle-kit，务必遵守！）
+
+迁移机制：`db:migrate` 与 `db:push` 都执行 `drizzle-kit migrate`；管理后台「系统更新」一键更新会自动跑 `pnpm db:push`。迁移文件在 `drizzle/*.sql`，由 `meta/_journal.json` 记录顺序，应用记录存在 DB 的 `__drizzle_migrations` 表（按 journal 的 `when` 时间戳判断是否已应用，失败的迁移不会被记录、下次会重试）。
+
+**血泪教训（2026-06，0029 迁移连续翻车两次后用真实 MariaDB 复现定位）：**
+
+1. **drizzle-kit 按字符串 `--> statement-breakpoint` 暴力切分迁移文件——连注释里出现该字面量也会被当成真正的分隔符！** 切碎后 SQL 片段非法，报 `42000 You have an error in your SQL syntax`。
+   → **迁移 `.sql` 文件的注释里严禁出现该分隔符字面量**（哪怕用反引号包起来当例子也不行，drizzle-kit 照切不误）。注意：本 `CLAUDE.md` 不被 drizzle-kit 处理，这里写出标记无妨。
+
+2. **一个 .sql 里有多条语句时，每两条之间必须显式插入一行 `--> statement-breakpoint`**（mysql2 默认 `multipleStatements: false`，否则多条被当一条发送报错）。单条语句的迁移不需要。
+
+3. **建表/改表尽量幂等**：用 `CREATE TABLE IF NOT EXISTS`，以兼容「首次失败已自动提交了第一张表」的半成品状态，让重跑能续上。
+
+4. **改完迁移必须用真实 MySQL/MariaDB 跑一遍 `drizzle-kit migrate` 复现验证，禁止靠猜！** 本机无 DB 时：`apt-get install -y mariadb-server`（root 下 `mariadbd --user=root --datadir=... --socket=... --skip-name-resolve` 起独立实例），建库后 `DATABASE_URL="mysql://用户:密码@127.0.0.1:端口/库" npx drizzle-kit migrate`。同时验证「半成品状态」（手动建出第一张表 + 从 `__drizzle_migrations` 删掉该条记录）下能否幂等通过。
+
+5. **绝不靠盲改让用户反复折腾数据库**；先复现拿到确切 `sqlState/sqlMessage`，再动手。
+
+---
+
 ## 安全审查历史摘要
 
 本项目已经历多轮安全审查（共 13 轮），主要修复集中在以下模块：
