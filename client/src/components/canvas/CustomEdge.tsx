@@ -76,27 +76,27 @@ export const CustomEdge = memo(function CustomEdge({
   const hasLabel = typeof label === "string" && label.trim().length > 0;
   const showControls = hovered || selected;
 
-  // Stronger color presence — bumped alpha on the type-tinted idle state and
-  // boosted hover/selected saturation so the line is easier to follow visually.
+  // Rich, high-presence colors: each source node type has its own hue, shown at
+  // near-full alpha so lines read clearly and the palette feels varied.
   const strokeColor = sourceCompleted
-    ? (isCreative ? "oklch(0.58 0.20 155 / 0.85)" : "oklch(0.62 0.20 155 / 0.95)")
+    ? "oklch(0.64 0.22 155)"
     : sourceFailed
-      ? (isCreative ? "oklch(0.57 0.20 25 / 0.80)" : "oklch(0.60 0.22 25 / 0.90)")
+      ? "oklch(0.62 0.24 25)"
       : selected
-        ? (isCreative ? `${typeColor ?? "oklch(0.68 0.22 285)"}` : "oklch(0.68 0.22 285)")
+        ? (typeColor ?? "oklch(0.68 0.24 285)")
         : hovered
-          ? (typeColor ? `${typeColor}d0` : "var(--c-bd3)")
+          ? (typeColor ?? "oklch(0.72 0.18 285)")
           : isCreative
-            ? (typeColor ? `${typeColor}88` : "oklch(0.65 0.04 260)")
+            ? (typeColor ? `${typeColor}dd` : "oklch(0.70 0.12 260)")
             : typeColor
-              ? `${typeColor}bb`
-              : "oklch(0.62 0.06 260 / 0.85)";
+              ? typeColor
+              : "oklch(0.68 0.16 260)";
 
-  // Slim default strokes — user explicitly asked for thin edges. Hover /
-  // selection nudge up slightly so interactivity stays legible.
+  // Thicker strokes (user asked for bolder lines). Hover/selection step up more
+  // so the active edge clearly stands out.
   const strokeWidth = isCreative
-    ? selected ? 2 : hovered ? 1.5 : 1
-    : selected ? 2.5 : hovered ? 2 : 1.5;
+    ? selected ? 3.5 : hovered ? 3 : 2.25
+    : selected ? 4.5 : hovered ? 3.75 : 3;
 
   // ── Particle flow ───────────────────────────────────────────────────────────
   const svgPathId = `pp-${id.replace(/[^a-zA-Z0-9_-]/g, "_")}`;
@@ -162,7 +162,7 @@ export const CustomEdge = memo(function CustomEdge({
                 : sourceRunning
                   ? "drop-shadow(0 0 6px oklch(0.85 0.26 142 / 0.55))"
                   : typeColor
-                    ? `drop-shadow(0 0 3px ${typeColor}55)`
+                    ? `drop-shadow(0 0 4px ${typeColor}77)`
                     : undefined,
           transition: "stroke 300ms ease, stroke-width 140ms ease, filter 300ms ease",
           pointerEvents: "none",
@@ -212,9 +212,9 @@ export const CustomEdge = memo(function CustomEdge({
 
       {/* Arrowhead at target end — slightly larger to match the thicker strokes */}
       <polygon
-        points={arrowPoints(targetX, targetY, targetPosition, isCreative ? 8 : 11, isCreative ? 4 : 6)}
+        points={arrowPoints(targetX, targetY, targetPosition, isCreative ? 10 : 13, isCreative ? 5.5 : 7.5)}
         fill={strokeColor}
-        opacity={isCreative ? 0.80 : 1.0}
+        opacity={isCreative ? 0.9 : 1.0}
         pointerEvents="none"
       />
 
