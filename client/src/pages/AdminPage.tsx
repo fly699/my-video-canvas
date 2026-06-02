@@ -364,6 +364,19 @@ function StoragePanel() {
             statusOn="已开启（参考源在有效时优先用 AI 平台临时链接）"
             statusOff="已关闭（沿用持久化链接，行为不变）"
           />
+          <ToggleRow
+            label="严格下载授权（非管理员下载须经批准）"
+            description={
+              "开启后：除管理员外，任何人下载原始文件都必须持有一张「一次性授权」——来自①用户申请→管理员在「下载审批」批准，或②管理员主动按文件/项目授权。每张授权对每个文件仅可成功下载一次。\n" +
+              "覆盖范围：所有经服务端下载的原文件（/manus-storage 及图片/视频代理的 download 路径）；普通查看/播放不受影响。\n" +
+              "默认关闭，关闭后与原有行为完全一致（任何人都可下载）。"
+            }
+            enabled={settings.downloadAuthEnabled}
+            disabled={setMut.isPending}
+            onClick={() => setMut.mutate({ downloadAuthEnabled: !settings.downloadAuthEnabled })}
+            statusOn="已开启（非管理员须持授权才能下载）"
+            statusOff="已关闭（任何人都可下载，行为不变）"
+          />
         </>
       )}
     </div>

@@ -3,6 +3,7 @@ import { useAuth } from "@/_core/hooks/useAuth";
 import { getLoginUrl } from "@/const";
 import { trpc } from "@/lib/trpc";
 import { uploadAssetFile } from "@/lib/assetUpload";
+import { downloadMedia } from "@/lib/download";
 import { useLocation } from "wouter";
 import { toast } from "sonner";
 import {
@@ -87,13 +88,13 @@ function Lightbox({ asset, onClose }: { asset: Asset; onClose: () => void }) {
         <div className="flex items-center justify-between px-4 py-3" style={{ borderBottom: "1px solid var(--c-bd1)" }}>
           <span className="text-sm font-medium truncate" style={{ color: "var(--c-t1)" }}>{asset.name}</span>
           <div className="flex items-center gap-1.5">
-            <a
-              href={asset.url} download={asset.name} target="_blank" rel="noreferrer"
+            <button
+              onClick={() => void downloadMedia(asset.url, asset.name, asset.type === "video" ? "video" : "image", asset.id)}
               className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs"
-              style={{ color: "var(--c-t2)", border: "1px solid var(--c-bd2)" }}
+              style={{ color: "var(--c-t2)", border: "1px solid var(--c-bd2)", background: "transparent", cursor: "pointer" }}
             >
               <Download className="w-3.5 h-3.5" /> 下载
-            </a>
+            </button>
             <button onClick={onClose} className="w-7 h-7 rounded-lg flex items-center justify-center" style={{ color: "var(--c-t3)" }}>
               <X className="w-4 h-4" />
             </button>
@@ -196,14 +197,14 @@ function AssetCard({
 
       {/* Actions */}
       <div className="absolute top-2 right-2 flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-        <a
-          href={asset.url} download={asset.name} target="_blank" rel="noreferrer" title="下载"
-          onClick={(e) => e.stopPropagation()}
+        <button
+          title="下载"
+          onClick={(e) => { e.stopPropagation(); void downloadMedia(asset.url, asset.name, asset.type === "video" ? "video" : "image", asset.id); }}
           className="w-7 h-7 rounded-lg flex items-center justify-center"
-          style={{ background: "oklch(0 0 0 / 0.55)", color: "white" }}
+          style={{ background: "oklch(0 0 0 / 0.55)", color: "white", border: "none", cursor: "pointer" }}
         >
           <Download className="w-3.5 h-3.5" />
-        </a>
+        </button>
         <button
           title="删除" onClick={(e) => { e.stopPropagation(); onDelete(); }}
           className="w-7 h-7 rounded-lg flex items-center justify-center"
@@ -345,9 +346,7 @@ export default function Library() {
     for (const id of Array.from(selected)) {
       const a = byId.get(id);
       if (!a) continue;
-      const link = document.createElement("a");
-      link.href = a.url; link.download = a.name; link.target = "_blank"; link.rel = "noreferrer";
-      document.body.appendChild(link); link.click(); link.remove();
+      void downloadMedia(a.url, a.name, a.type === "video" ? "video" : "image", a.id);
     }
   };
 

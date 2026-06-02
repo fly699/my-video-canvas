@@ -1,8 +1,8 @@
 import type { Request, Response } from "express";
-import { ENV } from "./env";
 import { resolveRequestUser } from "./context";
 import { toInternalStoragePath } from "../storage";
 import { writeAuditLog } from "./auditLog";
+import { isDownloadAuthEnabled } from "./storageConfig";
 import * as db from "../db";
 
 /** Strip the `/manus-storage/` prefix (+ any query) to get the bare storage key. */
@@ -39,7 +39,7 @@ export async function authorizeDownload(
   res: Response,
   opts: { paramKey?: string; rawUrl?: string },
 ): Promise<boolean> {
-  if (!ENV.downloadAuthEnabled) return true;
+  if (!(await isDownloadAuthEnabled())) return true;
 
   const user = await resolveRequestUser(req);
   if (!user) {

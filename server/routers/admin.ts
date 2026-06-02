@@ -151,15 +151,17 @@ export const adminRouter = router({
         minioOnly: z.boolean().optional(),
         // Prefer the upstream AI temporary public URL as the reference source when alive.
         preferUpstreamRefSource: z.boolean().optional(),
+        // Strict download authorization master switch.
+        downloadAuthEnabled: z.boolean().optional(),
       }))
       .mutation(async ({ input }) => {
         if (
           input.persistAudio === undefined && input.persistVideo === undefined &&
           input.persistImage === undefined && input.presignTtlSec === undefined &&
           input.poyoUploadFallback === undefined && input.minioOnly === undefined &&
-          input.preferUpstreamRefSource === undefined
+          input.preferUpstreamRefSource === undefined && input.downloadAuthEnabled === undefined
         ) {
-          throw new TRPCError({ code: "BAD_REQUEST", message: "至少需要指定 persistAudio / persistVideo / persistImage / presignTtlSec / poyoUploadFallback / minioOnly / preferUpstreamRefSource 其中一项" });
+          throw new TRPCError({ code: "BAD_REQUEST", message: "至少需要指定一项设置" });
         }
         await db.setStorageSettings(input);
         invalidateStorageSettingsCache();

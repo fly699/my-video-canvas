@@ -485,6 +485,11 @@ export const storageSettings = mysqlTable("storageSettings", {
   // alive — so providers can fetch it directly even if self-hosted MinIO isn't
   // public. Off by default; off changes nothing.
   preferUpstreamRefSource: boolean("preferUpstreamRefSource").notNull().default(false),
+  // Strict download authorization: when true, non-admins may only download an
+  // original file with a consumable grant (admin-approved request or admin
+  // batch grant). Admin-controlled from the Storage settings page. Off by
+  // default → behavior identical to before (non-breaking).
+  downloadAuthEnabled: boolean("downloadAuthEnabled").notNull().default(false),
   updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
 });
 

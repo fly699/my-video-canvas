@@ -4,7 +4,7 @@ import { protectedProcedure, adminProcedure, router } from "../_core/trpc";
 import * as db from "../db";
 import { writeAuditLog } from "../_core/auditLog";
 import { toInternalStoragePath } from "../storage";
-import { ENV } from "../_core/env";
+import { isDownloadAuthEnabled } from "../_core/storageConfig";
 
 /** Bare storage key from a URL/path (own-storage → key; external → the URL). */
 function keyOf(url: string): string {
@@ -15,8 +15,8 @@ function keyOf(url: string): string {
 // ── User-facing download authorization ───────────────────────────────────────
 export const downloadsRouter = router({
   // Whether strict download authorization is enforced in this deployment.
-  config: protectedProcedure.query(({ ctx }) => ({
-    enabled: ENV.downloadAuthEnabled,
+  config: protectedProcedure.query(async ({ ctx }) => ({
+    enabled: await isDownloadAuthEnabled(),
     isAdmin: ctx.user.role === "admin",
   })),
 
@@ -25,7 +25,7 @@ export const downloadsRouter = router({
   checkAccess: protectedProcedure
     .input(z.object({ url: z.string().min(1).max(2048), assetId: z.number().optional() }))
     .query(async ({ ctx, input }) => {
-      if (!ENV.downloadAuthEnabled || ctx.user.role === "admin") return { allowed: true as const, reason: "open" as const };
+      if (!(await isDownloadAuthEnabled()) || ctx.user.role === "admin") return { allowed: true as const, reason: "open" as const };
       const storageKey = keyOf(input.url);
       let assetId = input.assetId ?? null;
       let projectId: number | null = null;
@@ -44,7 +44,7 @@ export const downloadsRouter = router({
       reason: z.string().max(500).optional(),
     }))
     .mutation(async ({ ctx, input }) => {
-      if (!ENV.downloadAuthEnabled) throw new TRPCError({ code: "BAD_REQUEST", message: "本部署未开启下载授权" });
+      if (!(await isDownloadAuthEnabled())) throw new TRPCError({ code: "BAD_REQUEST", message: "未开启下载授权" });
       const storageKey = keyOf(input.url);
       const asset = await db.getAssetByStorageKey(storageKey);
       // Reuse an existing pending request for the same file by this user.
