@@ -8,6 +8,7 @@ import { toast } from "sonner";
 import { Handle, Position } from "@xyflow/react";
 import { Play, Loader2, CheckCircle2, XCircle, Clock, RefreshCw, AlertCircle, Download, ChevronDown, ChevronRight, Layers, Plus, X as XIcon, Film, HardDriveDownload } from "lucide-react";
 import { useLocalMedia } from "@/lib/useLocalMedia";
+import { mediaFetchUrl, onDownloadMedia } from "@/lib/download";
 import { cacheMedia, getCachedMedia } from "@/lib/mediaCache";
 import { listCustomPresets, saveCustomPreset, deleteCustomPreset, type CustomVideoPreset } from "@/lib/customPresets";
 import { ensureNotificationPermission, showCompletionNotification } from "@/lib/notify";
@@ -85,9 +86,9 @@ function ShotItem({ u, idx }: { u: string; idx: number }) {
         />
       </div>
       <a
-        href={u.startsWith("http") ? `/api/video-proxy?url=${encodeURIComponent(u)}&download=1` : u}
-        download
-        className="nodrag mt-1 flex items-center justify-center gap-1 w-full py-1 rounded text-[10px] font-medium"
+        href={mediaFetchUrl(u, true)}
+        onClick={onDownloadMedia(u, `视频_第${idx + 1}段.mp4`)}
+        className="nodrag mt-1 flex items-center justify-center gap-1 w-full py-1 rounded text-[10px] font-medium cursor-pointer"
         style={{ background: "oklch(0.72 0.18 155 / 0.10)", border: "1px solid oklch(0.72 0.18 155 / 0.30)", color: "oklch(0.72 0.18 155)", textDecoration: "none" }}
       >
         <Download className="w-2.5 h-2.5" /> 第 {idx + 1} 段
@@ -1079,9 +1080,9 @@ export const VideoTaskNode = memo(function VideoTaskNode({ id, selected, data }:
                 {/* Download button (primary URL — works for single-shot results) */}
                 {primaryUrl && (
                   <a
-                    href={primaryUrl.startsWith("http") ? `/api/video-proxy?url=${encodeURIComponent(primaryUrl)}&download=1` : primaryUrl}
-                    download
-                    className="nodrag mt-1.5 flex items-center justify-center gap-1.5 w-full py-1.5 rounded-lg text-xs font-medium transition-all"
+                    href={mediaFetchUrl(primaryUrl, true)}
+                    onClick={onDownloadMedia(primaryUrl, "视频.mp4")}
+                    className="nodrag mt-1.5 flex items-center justify-center gap-1.5 w-full py-1.5 rounded-lg text-xs font-medium transition-all cursor-pointer"
                     style={{
                       background: "oklch(0.72 0.18 155 / 0.10)",
                       borderWidth: 1, borderStyle: "solid",

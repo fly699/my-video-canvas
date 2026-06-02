@@ -5,6 +5,7 @@ import { useCanvasStore } from "../../../hooks/useCanvasStore";
 import type { ClipNodeData } from "../../../../../shared/types";
 import { trpc } from "@/lib/trpc";
 import { toast } from "sonner";
+import { downloadMedia } from "@/lib/download";
 import {
   Scissors, Play, Pause, Loader2, Download, RotateCcw,
   ArrowRight, Volume2, Music, Film,
@@ -293,12 +294,8 @@ export const ClipNode = memo(function ClipNode({ id, selected, data }: Props) {
   };
 
   const handleDownload = () => {
-    const url = payload.outputUrl;
-    if (!url) return;
-    const a = document.createElement("a");
-    a.href = url.startsWith("/") ? url : `/api/video-proxy?url=${encodeURIComponent(url)}`;
-    a.download = `clip-${Date.now()}.mp4`;
-    a.click();
+    if (!payload.outputUrl) return;
+    void downloadMedia(payload.outputUrl, `clip-${Date.now()}.mp4`);
   };
 
   const isProcessing = trimMutation.isPending || payload.status === "processing";

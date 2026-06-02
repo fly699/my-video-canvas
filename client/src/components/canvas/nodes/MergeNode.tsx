@@ -4,6 +4,7 @@ import { useCanvasStore } from "../../../hooks/useCanvasStore";
 import type { MergeNodeData, MergeTransition } from "../../../../../shared/types";
 import { trpc } from "@/lib/trpc";
 import { toast } from "sonner";
+import { mediaFetchUrl, onDownloadMedia } from "@/lib/download";
 import { Merge, Loader2, Download, RotateCcw, Music, ChevronDown } from "lucide-react";
 
 interface Props {
@@ -180,8 +181,8 @@ export const MergeNode = memo(function MergeNode({ id, selected, data }: Props) 
             />
             <div className="flex gap-1.5">
               <a
-                href={`/api/video-proxy?url=${encodeURIComponent(payload.outputUrl)}&download=1`}
-                download
+                href={mediaFetchUrl(payload.outputUrl, true)}
+                onClick={onDownloadMedia(payload.outputUrl, "合并视频.mp4")}
                 className="nodrag flex-1 flex items-center justify-center gap-1 py-1.5 rounded-lg text-[10px] font-medium"
                 style={{ background: accentA(0.10), border: `1px solid ${accentA(0.3)}`, color: accent, textDecoration: "none" }}
               >
