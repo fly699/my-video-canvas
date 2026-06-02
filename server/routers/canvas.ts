@@ -981,6 +981,9 @@ export const imageGenRouter = router({
         prompt: z.string().min(1),
         negativePrompt: z.string().optional(),
         referenceImageUrl: z.string().optional(),
+        // Multi-angle reference images (first mirrors referenceImageUrl). Edit/
+        // unified models read all of these via `image_urls`.
+        referenceImageUrls: z.array(z.string()).max(8).optional(),
         style: z.string().optional(),
         model: z.enum(IMAGE_GEN_MODELS).optional(),
         poyoAspectRatio: z.string().optional(),
@@ -1012,10 +1015,16 @@ export const imageGenRouter = router({
       if (input.projectId != null) {
         await assertProjectAccess(input.projectId, ctx.user.id, "editor");
       }
-      if (input.referenceImageUrl) {
-        if (input.referenceImageUrl.match(/^https?:\/\//)) {
-          guardUrl(input.referenceImageUrl);
-        } else if (!input.referenceImageUrl.startsWith("/")) {
+      // Build the full reference list (primary + extras), de-duplicated and
+      // each validated; tolerate http(s) or our own relative storage paths.
+      const allRefUrls = Array.from(new Set([
+        ...(input.referenceImageUrl ? [input.referenceImageUrl] : []),
+        ...(input.referenceImageUrls ?? []),
+      ].map((u) => u.trim()).filter(Boolean)));
+      for (const u of allRefUrls) {
+        if (u.match(/^https?:\/\//)) {
+          guardUrl(u);
+        } else if (!u.startsWith("/")) {
           throw new TRPCError({ code: "BAD_REQUEST", message: "不支持的 URL 协议，仅允许 http/https 或相对路径" });
         }
       }
@@ -1040,8 +1049,8 @@ export const imageGenRouter = router({
         prompt: fullPrompt,
         model: input.model,
         ...(isHfModel && input.negativePrompt ? { negativePrompt: input.negativePrompt } : {}),
-        ...(input.referenceImageUrl
-          ? { originalImages: [{ url: input.referenceImageUrl, mimeType: "image/jpeg" }] }
+        ...(allRefUrls.length
+          ? { originalImages: allRefUrls.map((url) => ({ url, mimeType: "image/jpeg" })) }
           : {}),
         // All Poyo image models share the generic param channel; the backend
         // spec table (POYO_IMAGE_SPECS) decides which fields each model actually
