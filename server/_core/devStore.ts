@@ -163,7 +163,7 @@ export function devGetAssetsByUser(
       && (!filter.type || a.type === filter.type)
       && (!filter.source || a.source === filter.source)
       && (!filter.model || a.model === filter.model)
-      && (!filter.q || a.name.includes(filter.q)))
+      && (!filter.q || a.name.toLowerCase().includes(filter.q.toLowerCase())))
     .sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime());
 }
 

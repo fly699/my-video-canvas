@@ -431,15 +431,11 @@ export default function Home() {
     enabled: isAuthenticated,
   });
 
-  // 用户仓库（素材库）入口：取最近的图片做封面拼贴 + 统计总数。
-  const { data: libraryAssets } = trpc.assets.list.useQuery(
-    { allProjects: true },
-    { enabled: isAuthenticated },
-  );
-  const libraryCovers = (libraryAssets ?? [])
-    .filter((a: { type: string; url: string }) => a.type === "image" && !!a.url)
-    .slice(0, 4)
-    .map((a: { url: string }) => a.url);
+  // 用户仓库（素材库）入口：轻量 summary（总数 + 最近图片封面），避免为一个角标拉取全量素材。
+  const { data: librarySummary } = trpc.assets.summary.useQuery(undefined, {
+    enabled: isAuthenticated,
+  });
+  const libraryCovers = librarySummary?.covers ?? [];
 
   // 管理员：检测是否有新版本（带服务端 15 分钟缓存，每 30 分钟轮询一次）
   const { data: updateInfo } = trpc.admin.update.available.useQuery(undefined, {
@@ -1003,7 +999,7 @@ export default function Home() {
                 <NewProjectCard onClick={handleCreate} />
                 <LibraryEntryCard
                   covers={libraryCovers}
-                  count={libraryAssets?.length ?? 0}
+                  count={librarySummary?.count ?? 0}
                   onOpen={() => navigate("/library")}
                 />
                 {(projects?.owned ?? []).map((project: { id: number; name: string; description?: string | null; updatedAt: Date; thumbnail?: string | null }) => (

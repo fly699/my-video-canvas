@@ -20,6 +20,7 @@ import {
   upsertEdge,
   deleteEdge,
   getAssetsByUser,
+  getAssetSummary,
   createAsset,
   recordGeneratedAsset,
   deleteAsset,
@@ -319,6 +320,10 @@ export const assetsRouter = router({
       model: input?.model,
       q: input?.q?.trim() || undefined,
     })),
+
+  // Lightweight summary for the Home 素材库 entry card (count + a few cover URLs).
+  summary: protectedProcedure
+    .query(({ ctx }) => getAssetSummary(ctx.user.id)),
 
   upload: protectedProcedure
     .input(

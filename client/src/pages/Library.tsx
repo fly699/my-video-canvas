@@ -261,6 +261,7 @@ export default function Library() {
       // 用户仓库上传：不绑定具体项目（projectId 省略），归入个人专有仓库。
       uploadMutation.mutate({ name: file.name, type, mimeType: file.type, size: file.size, base64 });
     };
+    reader.onerror = () => { setUploading(false); toast.error("读取文件失败，请重试"); };
     reader.readAsDataURL(file);
   }, [uploadMutation]);
 
@@ -282,11 +283,11 @@ export default function Library() {
     if (url) importMutation.mutate({ url });
   };
 
-  // ── Auth gate ──
-  if (!loading && !isAuthenticated) {
-    window.location.href = getLoginUrl();
-    return null;
-  }
+  // ── Auth gate ── (redirect as an effect, not during render, to keep render pure)
+  useEffect(() => {
+    if (!loading && !isAuthenticated) window.location.href = getLoginUrl();
+  }, [loading, isAuthenticated]);
+  if (!loading && !isAuthenticated) return null;
 
   const chip = (active: boolean): React.CSSProperties => ({
     fontSize: 11, padding: "4px 11px", borderRadius: 999, cursor: "pointer", transition: "all .15s",

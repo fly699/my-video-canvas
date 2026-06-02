@@ -1,4 +1,4 @@
-import { eq, and, desc, sql, inArray, isNull, like } from "drizzle-orm";
+import { eq, and, desc, sql, inArray, isNull, like, count } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/mysql2";
 import {
   InsertUser,
@@ -542,6 +542,10 @@ export interface AssetFilter {
   model?: string;
   q?: string;            // name contains (用户仓库搜索)
 }
+/** Escape MySQL LIKE metacharacters so a user query is matched literally. */
+function escapeLike(s: string): string {
+  return s.replace(/[\\%_]/g, (c) => `\\${c}`);
+}
 export async function getAssetsByUser(userId: number, filter: AssetFilter = {}) {
   const db = await getDb();
   if (!db) return DEV_MODE ? dev.devGetAssetsByUser(userId, filter) : [];
@@ -551,8 +555,30 @@ export async function getAssetsByUser(userId: number, filter: AssetFilter = {}) 
   if (filter.type) conds.push(eq(assets.type, filter.type));
   if (filter.source) conds.push(eq(assets.source, filter.source));
   if (filter.model) conds.push(eq(assets.model, filter.model));
-  if (filter.q) conds.push(like(assets.name, `%${filter.q}%`));
+  if (filter.q) conds.push(like(assets.name, `%${escapeLike(filter.q)}%`));
   return db.select().from(assets).where(and(...conds)).orderBy(desc(assets.createdAt));
+}
+
+/**
+ * Lightweight library summary for the Home entry card: total count + a few recent
+ * image URLs for the cover collage. Avoids shipping the whole asset table just to
+ * render a number and 4 thumbnails.
+ */
+export async function getAssetSummary(userId: number, coverLimit = 4): Promise<{ count: number; covers: string[] }> {
+  const db = await getDb();
+  if (!db) {
+    if (DEV_MODE) {
+      const all = dev.devGetAssetsByUser(userId);
+      return { count: all.length, covers: all.filter((a) => a.type === "image" && a.url).slice(0, coverLimit).map((a) => a.url) };
+    }
+    return { count: 0, covers: [] };
+  }
+  const conds = [eq(assets.userId, userId), isNull(assets.deletedAt)];
+  const [countRow] = await db.select({ c: count() }).from(assets).where(and(...conds));
+  const imgs = await db.select({ url: assets.url }).from(assets)
+    .where(and(...conds, eq(assets.type, "image")))
+    .orderBy(desc(assets.createdAt)).limit(coverLimit);
+  return { count: Number(countRow?.c ?? 0), covers: imgs.map((r) => r.url) };
 }
 
 /** Sanitize a fragment for use in a filename/label tag (项目名 / 模型名). */
@@ -651,7 +677,7 @@ export async function getAllAssets(filter: AdminAssetFilter = {}) {
   if (filter.source) conds.push(eq(assets.source, filter.source));
   if (filter.model) conds.push(eq(assets.model, filter.model));
   if (filter.projectId) conds.push(eq(assets.projectId, filter.projectId));
-  if (filter.q) conds.push(like(assets.name, `%${filter.q}%`));
+  if (filter.q) conds.push(like(assets.name, `%${escapeLike(filter.q)}%`));
   return db.select().from(assets)
     .where(conds.length ? and(...conds) : undefined)
     .orderBy(desc(assets.createdAt))
