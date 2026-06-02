@@ -1,5 +1,5 @@
 import { useReactFlow } from "@xyflow/react";
-import { useRef } from "react";
+import { useEffect, useRef } from "react";
 import { X, Film, ImageOff, GripHorizontal, Pin } from "lucide-react";
 import { useCanvasStore } from "../../hooks/useCanvasStore";
 import { getNodeConfig } from "../../lib/nodeConfig";
@@ -151,6 +151,28 @@ export function FilmstripPanel({ onClose }: FilmstripPanelProps) {
   };
 
   const redock = () => setLayout((cur) => ({ ...cur, docked: true }));
+
+  // Pull a floating panel back into view. A layout persisted on a larger window
+  // (or a different screen) can place top/left off-screen, so the panel renders
+  // outside the viewport and looks like it "disappeared" even though the toggle
+  // is on. validateLayout only bounds-checks size, not position — so clamp here
+  // on mount and on window resize. Docked mode is always visible by design.
+  useEffect(() => {
+    const clampToViewport = () => {
+      if (dragRef.current) return; // don't fight an in-progress drag/resize
+      setLayout((cur) => {
+        if (cur.docked) return cur;
+        const left = Math.min(Math.max(0, cur.left), Math.max(0, window.innerWidth - cur.width));
+        const top = Math.min(Math.max(0, cur.top), Math.max(0, window.innerHeight - cur.height));
+        if (left === cur.left && top === cur.top) return cur; // no change → no needless write
+        return { ...cur, left, top };
+      });
+    };
+    clampToViewport();
+    window.addEventListener("resize", clampToViewport);
+    return () => window.removeEventListener("resize", clampToViewport);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   // Filter nodes that have an imageUrl, resultVideoUrl, or imageUrls in payload
   const mediaNodes = nodes.filter((node) => {
