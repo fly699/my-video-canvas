@@ -144,6 +144,50 @@ export const projectsRouter = router({
       return project;
     }),
 
+  // Save As: duplicate a project (nodes + edges + viewport + thumbnail) into a new
+  // one owned by the current user. Node ids are a global primary key, so every
+  // node gets a fresh id and edges are remapped onto the new ids.
+  saveAs: protectedProcedure
+    .input(z.object({ sourceProjectId: z.number(), name: z.string().min(1).max(255) }))
+    .mutation(async ({ ctx, input }) => {
+      const access = await assertProjectAccess(input.sourceProjectId, ctx.user.id, "viewer");
+      const src = access.project;
+      const newProject = await createProject({ userId: ctx.user.id, name: input.name, description: src.description ?? undefined });
+      if (!newProject) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "另存为失败：无法创建项目" });
+      if (src.viewportState != null || src.thumbnail != null) {
+        await updateProject(newProject.id, ctx.user.id, { viewportState: src.viewportState, thumbnail: src.thumbnail });
+      }
+      const nodes = await getNodesByProject(input.sourceProjectId);
+      const idMap = new Map<string, string>();
+      for (const n of nodes) idMap.set(n.id, nanoid());
+      if (nodes.length > 0) {
+        await batchUpsertNodes(nodes.map((n) => {
+          // `data` (json column) may come back as a parsed object OR a raw JSON
+          // string depending on the driver — parse strings so re-inserting into the
+          // json column doesn't double-encode the payload.
+          let data: Record<string, unknown> | null = null;
+          if (typeof n.data === "string") { try { data = JSON.parse(n.data); } catch { data = null; } }
+          else if (n.data && typeof n.data === "object") { data = n.data as Record<string, unknown>; }
+          return {
+            id: idMap.get(n.id)!, projectId: newProject.id,
+            type: n.type, title: n.title, data,
+            posX: n.posX, posY: n.posY, width: n.width, height: n.height, zIndex: n.zIndex,
+          };
+        }));
+      }
+      const edges = await getEdgesByProject(input.sourceProjectId);
+      for (const e of edges) {
+        const s = idMap.get(e.sourceNodeId), t = idMap.get(e.targetNodeId);
+        if (!s || !t) continue; // skip edges to missing nodes
+        await upsertEdge({
+          id: nanoid(), projectId: newProject.id,
+          sourceNodeId: s, targetNodeId: t,
+          sourcePort: e.sourcePort, targetPort: e.targetPort, label: e.label,
+        });
+      }
+      return newProject;
+    }),
+
   update: protectedProcedure
     .input(
       z.object({
