@@ -30,8 +30,8 @@ import { PresentationMode } from "../components/canvas/PresentationMode";
 import { FilmstripPanel } from "../components/canvas/FilmstripPanel";
 import { TimelinePanel } from "../components/canvas/TimelinePanel";
 import { isConnectionValid } from "../lib/connectionRules";
-import { listNodeTemplates, saveNodeTemplate, deleteNodeTemplate } from "../lib/nodeTemplates";
-import { downloadMedia } from "@/lib/download";
+import { listNodeTemplates, saveNodeTemplate, deleteNodeTemplate, exportNodeTemplatesJson, importNodeTemplatesJson } from "../lib/nodeTemplates";
+import { downloadMedia, downloadTextFile } from "@/lib/download";
 import { BeginnerGuide, ConnectionHintsPanel } from "../components/canvas/BeginnerGuide";
 import { HelpPanel } from "../components/canvas/HelpPanel";
 import { CollaborationPanel } from "../components/canvas/CollaborationPanel";
@@ -2253,6 +2253,22 @@ function CanvasInner({ projectId }: { projectId: number }) {
             onDeleteTemplate={ctxNodeType ? (id) => {
               deleteNodeTemplate(ctxNodeType, id);
               setTplBump((v) => v + 1);
+            } : undefined}
+            onExportTemplates={ctxNodeType ? () => {
+              const json = exportNodeTemplatesJson(ctxNodeType);
+              if (!json) { toast.info("该节点类型还没有已保存的模板"); return; }
+              downloadTextFile(`${ctxNodeType}-templates.json`, json);
+            } : undefined}
+            onImportTemplates={ctxNodeType ? (file) => {
+              file.text().then((txt) => {
+                const { imported, skipped } = importNodeTemplatesJson(ctxNodeType, txt);
+                setTplBump((v) => v + 1);
+                toast[imported > 0 ? "success" : "error"](
+                  imported > 0
+                    ? `已导入 ${imported} 个模板${skipped ? `（跳过 ${skipped}）` : ""}`
+                    : "未导入任何模板（格式不符或重名）",
+                );
+              }).catch(() => toast.error("读取文件失败"));
             } : undefined}
             onDeleteNode={contextMenu.nodeId ? () => {
               const nid = contextMenu.nodeId!;
