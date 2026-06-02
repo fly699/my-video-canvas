@@ -2,6 +2,7 @@ import { memo, useCallback, useEffect, useRef, useState } from "react";
 import { BaseNode } from "../BaseNode";
 import { useCanvasStore } from "../../../hooks/useCanvasStore";
 import type { VideoTaskNodeData, VideoProvider, CharacterNodeData } from "../../../../../shared/types";
+import { maxRefImagesForProvider } from "../../../../../shared/videoRefCaps";
 import { mergeCharactersIntoPrompt } from "../../../lib/characterPrompt";
 import { trpc } from "@/lib/trpc";
 import { toast } from "sonner";
@@ -836,6 +837,7 @@ export const VideoTaskNode = memo(function VideoTaskNode({ id, selected, data }:
       // Only send negativePrompt for providers that actually support it
       negativePrompt: SUPPORTS_NEGATIVE_PROMPT.has(payload.provider) ? payload.negativePrompt : undefined,
       referenceImageUrl: finalRefImage,
+      referenceImageUrls: buildRefUrls(payload.provider, finalRefImage),
       params: withParamDefaults(payload.provider, payload.params),
     });
     guard({ model: payload.provider, refImageUrl: finalRefImage }, submit);
@@ -871,6 +873,17 @@ export const VideoTaskNode = memo(function VideoTaskNode({ id, selected, data }:
       referenceImageUrl: payload.referenceImageUrl?.trim() || charRefFallback,
     };
   }, [id, payload.prompt, payload.referenceImageUrl]);
+
+  // Build the multi-reference list to send for a provider: the node's attached
+  // reference images (or the single primary), capped to what the provider's
+  // model actually consumes. Returns undefined for single-image cases so the
+  // backend keeps its unchanged single-image mapping.
+  const buildRefUrls = useCallback((provider: string, primary: string | undefined): string[] | undefined => {
+    const all = refImages.images.map((i) => i.url).filter((u): u is string => Boolean(u));
+    const base = all.length ? all : (primary ? [primary] : []);
+    const max = maxRefImagesForProvider(provider);
+    return max > 1 && base.length > 1 ? base.slice(0, max) : undefined;
+  }, [refImages.images]);
 
   // [CHARGED] / [CHARGED?] are server-side markers that indicate the upstream
   // provider has (almost certainly / possibly) already billed for this task,
@@ -1334,7 +1347,7 @@ export const VideoTaskNode = memo(function VideoTaskNode({ id, selected, data }:
                       // but each provider still needs its OWN required-field defaults
                       // (resolution/aspect_ratio/duration/...) since the backend no longer
                       // hard-defaults them — so pass that provider's ParamDef defaults.
-                      { nodeId: id, projectId: data.projectId, provider, prompt: submission.prompt, negativePrompt: SUPPORTS_NEGATIVE_PROMPT.has(provider) ? payload.negativePrompt : undefined, referenceImageUrl: submission.referenceImageUrl, params: withParamDefaults(provider, {}) },
+                      { nodeId: id, projectId: data.projectId, provider, prompt: submission.prompt, negativePrompt: SUPPORTS_NEGATIVE_PROMPT.has(provider) ? payload.negativePrompt : undefined, referenceImageUrl: submission.referenceImageUrl, referenceImageUrls: buildRefUrls(provider, submission.referenceImageUrl), params: withParamDefaults(provider, {}) },
                       {
                         onSuccess: (result) => {
                           if (parallelGenRef.current !== gen) return; // stale — user closed parallel mode
@@ -1503,9 +1516,18 @@ export const VideoTaskNode = memo(function VideoTaskNode({ id, selected, data }:
         >
           <label style={{ ...labelStyle, display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
             参考图（可选）
-            {refImages.images.length > 0 && (
-              <span style={{ fontSize: 10, color: "var(--c-t4)" }}>· {refImages.images.length} 张（仅首图用于生成）</span>
-            )}
+            {refImages.images.length > 0 && (() => {
+              const max = maxRefImagesForProvider(payload.provider);
+              const n = refImages.images.length;
+              const hint = max === 0
+                ? "该模型为文生视频，参考图将被忽略"
+                : max === 1
+                  ? "仅首图用于生成"
+                  : n <= max
+                    ? `全部 ${n} 张用于生成`
+                    : `前 ${max} 张用于生成`;
+              return <span style={{ fontSize: 10, color: "var(--c-t4)" }}>· {n} 张（{hint}）</span>;
+            })()}
             <RefImageReachabilityBadge
               model={parallelMode ? (parallelProviders.find(providerNeedsPublicMedia) ?? parallelProviders[0]) : payload.provider}
               refImageUrl={payload.referenceImageUrl}
