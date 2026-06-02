@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useLocation } from "wouter";
 import { trpc } from "@/lib/trpc";
 import { useAuth } from "@/_core/hooks/useAuth";
@@ -1173,6 +1173,7 @@ function AssetsAdminPanel() {
   const [type, setType] = useState<"" | "image" | "video" | "audio" | "other">("");
   const [source, setSource] = useState<"" | "upload" | "generated" | "external">("");
   const [q, setQ] = useState("");
+  const utils = trpc.useUtils();
   const { data: assets, isFetching } = trpc.admin.assets.list.useQuery({
     userId: userId.trim() ? Number(userId.trim()) : undefined,
     type: type || undefined,
@@ -1180,6 +1181,27 @@ function AssetsAdminPanel() {
     q: q.trim() || undefined,
     limit: 300,
   });
+
+  // 一键回填历史素材（扫描画布节点，把已在 MinIO 但未入库的图片/视频补入素材库）。
+  const backfillStatus = trpc.admin.assets.backfillStatus.useQuery(undefined, {
+    refetchOnWindowFocus: false,
+    refetchInterval: (qr) => (qr.state.data?.state === "running" ? 1200 : false),
+  });
+  const backfillMut = trpc.admin.assets.backfill.useMutation({
+    onSuccess: () => { void utils.admin.assets.backfillStatus.invalidate(); },
+  });
+  const bf = backfillStatus.data;
+  const bfRunning = bf?.state === "running";
+  // 回填成功后刷新素材列表，让新补入的记录立即可见。
+  useEffect(() => {
+    if (bf?.state === "success") void utils.admin.assets.list.invalidate();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [bf?.state, bf?.finishedAt]);
+  const handleBackfill = () => {
+    if (bfRunning) return;
+    if (!confirm("扫描全部画布节点，把历史生成的图片/视频补入素材库？\n该操作幂等（重复运行不会产生重复记录），可安全多次执行。")) return;
+    backfillMut.mutate();
+  };
   const chip = (active: boolean): React.CSSProperties => ({
     fontSize: 11, padding: "3px 10px", borderRadius: 999, cursor: "pointer",
     border: `1px solid ${active ? "oklch(0.72 0.2 285)" : "rgba(255,255,255,0.12)"}`,
@@ -1203,6 +1225,41 @@ function AssetsAdminPanel() {
           <button key={v} style={chip(source === v)} onClick={() => setSource(v)}>{l}</button>
         ))}
       </div>
+      {/* 历史素材回填 */}
+      <div style={{
+        display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap",
+        padding: "10px 12px", borderRadius: 8,
+        border: "1px solid rgba(255,255,255,0.08)", background: "rgba(255,255,255,0.02)",
+      }}>
+        <button
+          onClick={handleBackfill}
+          disabled={bfRunning}
+          style={{
+            display: "flex", alignItems: "center", gap: 7,
+            padding: "7px 14px", fontSize: 12.5, fontWeight: 600,
+            background: bfRunning ? "rgba(255,255,255,0.06)" : "oklch(0.62 0.18 60 / 0.85)",
+            border: "1px solid oklch(0.68 0.18 60 / 0.4)", borderRadius: 8,
+            color: bfRunning ? "var(--c-t3, rgba(255,255,255,0.4))" : "#1a1205",
+            cursor: bfRunning ? "not-allowed" : "pointer", flexShrink: 0,
+          }}
+        >
+          {bfRunning
+            ? <Loader2 className="animate-spin" style={{ width: 13, height: 13 }} />
+            : <DownloadCloud style={{ width: 13, height: 13 }} />}
+          {bfRunning ? "回填中…" : "补历史素材数据"}
+        </button>
+        <div style={{ fontSize: 12, color: "var(--c-t2, rgba(255,255,255,0.55))", lineHeight: 1.5 }}>
+          {bf?.state === "running"
+            ? `扫描中：${bf.scanned}${bf.total ? `/${bf.total}` : ""} 个节点，已补 ${bf.recorded} 条…`
+            : bf?.state === "success"
+              ? `完成：扫描 ${bf.scanned} 个节点，补入 ${bf.recorded} 条（去重自动跳过），${bf.skipped} 条无归属跳过。`
+              : bf?.state === "error"
+                ? <span style={{ color: "oklch(0.7 0.18 25)" }}>失败：{bf.error}</span>
+                : "把历史生成、已在 MinIO 但未入库的图片/视频补入素材库（幂等，可重复运行）。"}
+          {backfillMut.error && <span style={{ color: "oklch(0.7 0.18 25)", marginLeft: 8 }}>启动失败：{backfillMut.error.message}</span>}
+        </div>
+      </div>
+
       <div style={{ fontSize: 12, color: "var(--c-t3, rgba(255,255,255,0.4))" }}>
         {isFetching ? "加载中…" : `${assets?.length ?? 0} 个素材`}
       </div>
