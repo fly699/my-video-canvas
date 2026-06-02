@@ -2,12 +2,13 @@ import { useState, useEffect, useRef } from "react";
 import { useLocation, useParams } from "wouter";
 import { trpc } from "@/lib/trpc";
 import { toast } from "sonner";
-import { ArrowLeft, Plus, Film, Trash2, Loader2, Clapperboard, Check } from "lucide-react";
+import { ArrowLeft, Plus, Film, Trash2, Loader2, Clapperboard, Check, Download } from "lucide-react";
 import { useEditorStore } from "@/components/editor/editorStore";
 import { MediaBin } from "@/components/editor/MediaBin";
 import { Timeline } from "@/components/editor/Timeline";
 import { PreviewStage } from "@/components/editor/PreviewStage";
 import { PropertiesPanel } from "@/components/editor/PropertiesPanel";
+import { downloadMedia } from "@/lib/download";
 
 const ACCENT = "oklch(0.65 0.19 310)"; // 剪辑器主色（品红紫）
 
@@ -92,6 +93,28 @@ function EditorWorkspace({ id }: { id: number }) {
   const doc = useEditorStore((s) => s.doc);
   const loadedFor = useRef<number | null>(null);
 
+  // ── Export (single-pass render) ──
+  const [jobId, setJobId] = useState<string | null>(null);
+  const [exportPct, setExportPct] = useState(0);
+  const [exportStage, setExportStage] = useState("");
+  const [exportUrl, setExportUrl] = useState<string | null>(null);
+  const exportMut = trpc.editor.export.useMutation({
+    onSuccess: ({ jobId }) => { setJobId(jobId); setExportUrl(null); setExportPct(0); setExportStage("排队中"); },
+    onError: (e) => toast.error("导出失败：" + e.message),
+  });
+  const statusQuery = trpc.editor.exportStatus.useQuery({ jobId: jobId! }, {
+    enabled: !!jobId,
+    refetchInterval: 1000,
+  });
+  useEffect(() => {
+    const d = statusQuery.data;
+    if (!d) return;
+    setExportPct(d.progress); setExportStage(d.stage);
+    if (d.status === "done") { setJobId(null); setExportUrl(d.url); toast.success("成片已生成"); }
+    if (d.status === "error") { setJobId(null); toast.error("渲染失败：" + (d.error ?? "")); }
+  }, [statusQuery.data]);
+  const exporting = exportMut.isPending || !!jobId;
+
   // Load the fetched doc into the editor store once.
   useEffect(() => {
     if (sessionQuery.data && loadedFor.current !== id) {
@@ -148,7 +171,18 @@ function EditorWorkspace({ id }: { id: number }) {
           {saveState === "saving" ? <><Loader2 size={11} className="animate-spin" /> 保存中</> : saveState === "saved" ? <><Check size={11} /> 已保存</> : null}
         </span>
         <div style={{ flex: 1 }} />
-        <button disabled style={{ ...primaryBtn, opacity: 0.5, cursor: "not-allowed" }} title="即将上线">导出（开发中）</button>
+        {exportUrl && (
+          <button onClick={() => downloadMedia(exportUrl, `${displayName}.mp4`)} style={{ ...primaryBtn, background: "transparent", color: ACCENT, border: `1px solid ${ACCENT}` }}>
+            <Download size={15} /> 下载成片
+          </button>
+        )}
+        <button
+          disabled={exporting}
+          onClick={() => exportMut.mutate({ id })}
+          style={{ ...primaryBtn, minWidth: 120, justifyContent: "center", opacity: exporting ? 0.85 : 1, cursor: exporting ? "default" : "pointer" }}
+        >
+          {exporting ? <><Loader2 size={15} className="animate-spin" /> {exportStage || "导出中"} {exportPct > 0 ? `${exportPct}%` : ""}</> : "导出成片"}
+        </button>
       </header>
 
       <div style={{ flex: 1, display: "flex", minHeight: 0 }}>

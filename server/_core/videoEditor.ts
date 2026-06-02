@@ -9,8 +9,8 @@ const _execFileRaw = promisify(execFile);
 const FFMPEG_TIMEOUT_MS = 120_000;
 const FFPROBE_TIMEOUT_MS = 30_000;
 
-function execFileAsync(cmd: "ffmpeg" | "ffprobe", args: string[]) {
-  const timeout = cmd === "ffprobe" ? FFPROBE_TIMEOUT_MS : FFMPEG_TIMEOUT_MS;
+export function execFileAsync(cmd: "ffmpeg" | "ffprobe", args: string[], opts?: { timeoutMs?: number }) {
+  const timeout = opts?.timeoutMs ?? (cmd === "ffprobe" ? FFPROBE_TIMEOUT_MS : FFMPEG_TIMEOUT_MS);
   return _execFileRaw(cmd, args, { timeout, maxBuffer: 10 * 1024 * 1024 });
 }
 
@@ -42,7 +42,7 @@ export function assertSafeUrl(url: string): void {
   }
 }
 
-async function downloadToTemp(url: string, ext: string): Promise<string> {
+export async function downloadToTemp(url: string, ext: string): Promise<string> {
   // Our own /manus-storage/ proxy path (relative OR an absolute same-origin URL
   // like https://172.16.0.114:3000/manus-storage/…) → resolve to a fetchable
   // (presigned) URL and SKIP the SSRF guard. The host is discarded; only the
@@ -68,7 +68,7 @@ async function downloadToTemp(url: string, ext: string): Promise<string> {
   return tmpPath;
 }
 
-function buildAtempoFilters(speed: number): string[] {
+export function buildAtempoFilters(speed: number): string[] {
   // atempo supports 0.5–2.0; chain multiple filters for values outside this range
   const filters: string[] = [];
 
@@ -607,7 +607,7 @@ export interface SmartCutResult {
   outputDuration: number;
 }
 
-async function hasAudioTrack(videoPath: string): Promise<boolean> {
+export async function hasAudioTrack(videoPath: string): Promise<boolean> {
   let stdout: string;
   try {
     ({ stdout } = await execFileAsync("ffprobe", [

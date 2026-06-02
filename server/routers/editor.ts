@@ -4,6 +4,8 @@ import { protectedProcedure, router } from "../_core/trpc";
 import * as db from "../db";
 import { writeAuditLog } from "../_core/auditLog";
 import { EDITOR_DOC_VERSION, emptyEditorDoc, type EditorDoc } from "@shared/editorTypes";
+import { composeTimeline } from "../_core/videoComposer";
+import { createRenderJob, getRenderJob, updateRenderJob } from "../_core/editorRenderJobs";
 
 // ── EDL validation ────────────────────────────────────────────────────────────
 // Kept tolerant: unknown effect/transition keys are allowed through so the
@@ -119,5 +121,49 @@ export const editorRouter = router({
       await db.deleteEditSession(input.id, ctx.user.id);
       writeAuditLog({ ctx, action: "editor:delete", detail: { sessionId: input.id } });
       return { success: true };
+    }),
+
+  // Kick off a single-pass render of the session's timeline. Runs in the
+  // background (ffmpeg child); poll exportStatus for progress. The finished MP4
+  // lands in the user's MinIO prefix and is indexed in the media library, so the
+  // existing strict-download gate governs who may download it.
+  export: protectedProcedure
+    .input(z.object({ id: z.number() }))
+    .mutation(async ({ ctx, input }) => {
+      const session = await db.getEditSession(input.id, ctx.user.id);
+      if (!session) throw new TRPCError({ code: "NOT_FOUND" });
+      const doc = session.doc as EditorDoc;
+      const job = createRenderJob(ctx.user.id, input.id);
+
+      // Fire-and-forget; progress/result are reported through the job registry.
+      void (async () => {
+        try {
+          const res = await composeTimeline(doc, {
+            userId: ctx.user.id,
+            projectName: session.name,
+            onProgress: (pct, stage) => updateRenderJob(job.id, { progress: pct, stage }),
+          });
+          await db.recordGeneratedAsset({
+            userId: ctx.user.id, projectId: session.projectId ?? null, type: "video",
+            source: "generated", provider: "editor", model: "timeline",
+            url: res.url, storageKey: res.storageKey, name: session.name, mimeType: "video/mp4",
+          }).catch(() => undefined);
+          updateRenderJob(job.id, { status: "done", progress: 100, stage: "完成", url: res.url, storageKey: res.storageKey, duration: res.duration });
+          writeAuditLog({ ctx, action: "editor:export", detail: { sessionId: input.id, storageKey: res.storageKey } });
+        } catch (e) {
+          updateRenderJob(job.id, { status: "error", stage: "失败", error: e instanceof Error ? e.message : String(e) });
+        }
+      })();
+
+      return { jobId: job.id };
+    }),
+
+  // Poll a render job's progress/result (owner-scoped).
+  exportStatus: protectedProcedure
+    .input(z.object({ jobId: z.string() }))
+    .query(({ ctx, input }) => {
+      const job = getRenderJob(input.jobId, ctx.user.id);
+      if (!job) throw new TRPCError({ code: "NOT_FOUND" });
+      return { status: job.status, progress: job.progress, stage: job.stage, url: job.url ?? null, error: job.error ?? null, duration: job.duration ?? null };
     }),
 });
