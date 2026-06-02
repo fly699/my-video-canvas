@@ -39,6 +39,8 @@ import type {
   InsertChatBan,
   ChatSettingsRow,
   DownloadGrant,
+  EditSession,
+  InsertEditSession,
 } from "../../drizzle/schema";
 
 let nextId = 100;
@@ -948,4 +950,54 @@ export function devConsumeDownloadGrant(grantId: number, _userId: number, storag
   if (downloadConsumptions.some((c) => c.grantId === grantId && c.storageKey === storageKey)) return false;
   downloadConsumptions.push({ grantId, storageKey });
   return true;
+}
+
+// ── Video Editor sessions ─────────────────────────────────────────────────────
+const editSessionsMap = new Map<number, EditSession>();
+
+export function devListEditSessions(userId: number): EditSession[] {
+  return Array.from(editSessionsMap.values())
+    .filter((s) => s.userId === userId && s.deletedAt == null)
+    .sort((a, b) => b.updatedAt.getTime() - a.updatedAt.getTime());
+}
+
+export function devGetEditSession(id: number, userId: number): EditSession | undefined {
+  const s = editSessionsMap.get(id);
+  return s && s.userId === userId && s.deletedAt == null ? s : undefined;
+}
+
+export function devCreateEditSession(data: InsertEditSession): EditSession {
+  const id = newId();
+  const session: EditSession = {
+    id,
+    userId: data.userId,
+    projectId: data.projectId ?? null,
+    name: data.name ?? "未命名剪辑",
+    doc: data.doc,
+    thumbnailUrl: data.thumbnailUrl ?? null,
+    deletedAt: null,
+    createdAt: now(),
+    updatedAt: now(),
+  };
+  editSessionsMap.set(id, session);
+  return session;
+}
+
+export function devUpdateEditSession(
+  id: number,
+  userId: number,
+  patch: Partial<Pick<InsertEditSession, "name" | "doc" | "thumbnailUrl">>,
+): void {
+  const s = editSessionsMap.get(id);
+  if (!s || s.userId !== userId) return;
+  if (patch.name !== undefined) s.name = patch.name;
+  if (patch.doc !== undefined) s.doc = patch.doc;
+  if (patch.thumbnailUrl !== undefined) s.thumbnailUrl = patch.thumbnailUrl ?? null;
+  s.updatedAt = now();
+}
+
+export function devDeleteEditSession(id: number, userId: number): void {
+  const s = editSessionsMap.get(id);
+  if (!s || s.userId !== userId) return;
+  s.deletedAt = now();
 }

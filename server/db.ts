@@ -59,6 +59,9 @@ import {
   downloadGrants,
   downloadConsumptions,
   type DownloadGrant,
+  editSessions,
+  type EditSession,
+  type InsertEditSession,
 } from "../drizzle/schema";
 import { ENV } from "./_core/env";
 import * as dev from "./_core/devStore";
@@ -1711,4 +1714,51 @@ export async function searchUsersForChat(q: string, excludeUserId: number, limit
     .where(and(sql`(${users.name} LIKE ${like} OR ${users.email} LIKE ${like})`, sql`${users.id} <> ${excludeUserId}`))
     .limit(limit);
   return rows;
+}
+
+// ── Video Editor sessions ─────────────────────────────────────────────────────
+export async function listEditSessions(userId: number): Promise<EditSession[]> {
+  const db = await getDb();
+  if (!db) return DEV_MODE ? dev.devListEditSessions(userId) : [];
+  return db.select().from(editSessions)
+    .where(and(eq(editSessions.userId, userId), isNull(editSessions.deletedAt)))
+    .orderBy(desc(editSessions.updatedAt));
+}
+
+export async function getEditSession(id: number, userId: number): Promise<EditSession | undefined> {
+  const db = await getDb();
+  if (!db) return DEV_MODE ? dev.devGetEditSession(id, userId) : undefined;
+  const rows = await db.select().from(editSessions)
+    .where(and(eq(editSessions.id, id), eq(editSessions.userId, userId), isNull(editSessions.deletedAt)))
+    .limit(1);
+  return rows[0];
+}
+
+export async function createEditSession(data: InsertEditSession): Promise<EditSession | null> {
+  const db = await getDb();
+  if (!db) { if (DEV_MODE) return dev.devCreateEditSession(data); throw new Error("DB unavailable"); }
+  const [header] = await db.insert(editSessions).values(data);
+  const insertId = (header as unknown as { insertId: number }).insertId;
+  const rows = await db.select().from(editSessions).where(eq(editSessions.id, insertId));
+  return rows[0] ?? null;
+}
+
+/** Update a session's doc/name/thumbnail. Scoped to the owner; no-op if not theirs. */
+export async function updateEditSession(
+  id: number,
+  userId: number,
+  patch: Partial<Pick<InsertEditSession, "name" | "doc" | "thumbnailUrl">>,
+): Promise<void> {
+  const db = await getDb();
+  if (!db) { if (DEV_MODE) { dev.devUpdateEditSession(id, userId, patch); return; } throw new Error("DB unavailable"); }
+  await db.update(editSessions).set(patch)
+    .where(and(eq(editSessions.id, id), eq(editSessions.userId, userId)));
+}
+
+/** Soft-delete (hide from the user; row kept). */
+export async function deleteEditSession(id: number, userId: number): Promise<void> {
+  const db = await getDb();
+  if (!db) { if (DEV_MODE) { dev.devDeleteEditSession(id, userId); return; } throw new Error("DB unavailable"); }
+  await db.update(editSessions).set({ deletedAt: new Date() })
+    .where(and(eq(editSessions.id, id), eq(editSessions.userId, userId)));
 }
