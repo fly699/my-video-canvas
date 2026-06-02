@@ -310,12 +310,14 @@ export const assetsRouter = router({
       type: z.enum(["image", "video", "audio", "other"]).optional(),
       source: z.enum(["upload", "generated", "external"]).optional(),
       model: z.string().max(128).optional(),
+      q: z.string().max(128).optional(),
     }).optional())
     .query(({ ctx, input }) => getAssetsByUser(ctx.user.id, {
       projectId: input?.allProjects ? undefined : input?.projectId,
       type: input?.type,
       source: input?.source,
       model: input?.model,
+      q: input?.q?.trim() || undefined,
     })),
 
   upload: protectedProcedure

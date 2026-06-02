@@ -11,6 +11,7 @@ import LoginPage from "./pages/LoginPage";
 import AdminPage from "./pages/AdminPage";
 import AcceptInvite from "./pages/AcceptInvite";
 import ChatPage from "./pages/ChatPage";
+import Library from "./pages/Library";
 import { WhitelistBlockedDialog } from "./components/WhitelistBlockedDialog";
 import { useParams } from "wouter";
 
@@ -29,6 +30,7 @@ function Router() {
       <Route path="/invite/:token" component={AcceptInvite} />
       <Route path="/i/:code" component={AcceptInvite} />
       <Route path="/chat" component={ChatPage} />
+      <Route path="/library" component={Library} />
       <Route path="/404" component={NotFound} />
       <Route component={NotFound} />
     </Switch>

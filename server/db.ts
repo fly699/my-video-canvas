@@ -540,6 +540,7 @@ export interface AssetFilter {
   type?: "image" | "video" | "audio" | "other";
   source?: "upload" | "generated" | "external";
   model?: string;
+  q?: string;            // name contains (用户仓库搜索)
 }
 export async function getAssetsByUser(userId: number, filter: AssetFilter = {}) {
   const db = await getDb();
@@ -550,6 +551,7 @@ export async function getAssetsByUser(userId: number, filter: AssetFilter = {}) 
   if (filter.type) conds.push(eq(assets.type, filter.type));
   if (filter.source) conds.push(eq(assets.source, filter.source));
   if (filter.model) conds.push(eq(assets.model, filter.model));
+  if (filter.q) conds.push(like(assets.name, `%${filter.q}%`));
   return db.select().from(assets).where(and(...conds)).orderBy(desc(assets.createdAt));
 }
 
