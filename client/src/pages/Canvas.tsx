@@ -23,7 +23,7 @@ import { CustomNode } from "../components/canvas/CustomNode";
 import { CustomEdge } from "../components/canvas/CustomEdge";
 import { ContextMenu } from "../components/canvas/ContextMenu";
 import { CollaboratorCursors } from "../components/canvas/CollaboratorCursors";
-import { AssetPanel } from "../components/canvas/AssetPanel";
+import { FloatingAssetPanel } from "../components/canvas/FloatingAssetPanel";
 import { TemplatePanel } from "../components/canvas/TemplatePanel";
 import { NodeSearch } from "../components/canvas/NodeSearch";
 import { PresentationMode } from "../components/canvas/PresentationMode";
@@ -2080,18 +2080,9 @@ function CanvasInner({ projectId }: { projectId: number }) {
           />
         )}
 
-        {/* ── Asset panel ── */}
+        {/* ── Asset panel (floating, draggable, resizable) ── */}
         {showAssets && (
-          <div
-            className="w-64 flex flex-col flex-shrink-0 animate-slide-down"
-            style={{
-              background: "color-mix(in oklch, var(--c-base) 95%, transparent)",
-              backdropFilter: "blur(20px)",
-              borderLeft: "1px solid var(--c-bd1)",
-            }}
-          >
-            <AssetPanel projectId={projectId} onClose={() => setShowAssets(false)} />
-          </div>
+          <FloatingAssetPanel projectId={projectId} onClose={() => setShowAssets(false)} />
         )}
 
         {/* ── Stats sidebar ── */}

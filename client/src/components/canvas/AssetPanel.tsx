@@ -7,12 +7,14 @@ import { Upload, X, FileImage, FileVideo, FileAudio, File, Trash2, Plus, Loader2
 interface Props {
   projectId: number;
   onClose: () => void;
+  /** When provided, the header acts as a drag handle for a floating container. */
+  onHeaderMouseDown?: (e: React.MouseEvent) => void;
 }
 
 type TypeFilter = "" | "image" | "video" | "audio" | "other";
 type SourceFilter = "" | "upload" | "generated" | "external";
 
-export function AssetPanel({ projectId, onClose }: Props) {
+export function AssetPanel({ projectId, onClose, onHeaderMouseDown }: Props) {
   const { addNode } = useCanvasStore();
   const [uploading, setUploading] = useState(false);
   const [dragOver, setDragOver] = useState(false);
@@ -102,10 +104,11 @@ export function AssetPanel({ projectId, onClose }: Props) {
       className="flex flex-col h-full"
       style={{ background: "var(--c-base)", borderLeft: "1px solid var(--c-bd1)" }}
     >
-      {/* ── Header ── */}
+      {/* ── Header (drag handle when floating) ── */}
       <div
         className="flex items-center justify-between px-4 py-3 flex-shrink-0"
-        style={{ borderBottom: "1px solid var(--c-elevated)" }}
+        style={{ borderBottom: "1px solid var(--c-elevated)", cursor: onHeaderMouseDown ? "move" : undefined, userSelect: "none" }}
+        onMouseDown={onHeaderMouseDown}
       >
         <div>
           <h3 className="text-sm font-semibold" style={{ color: "var(--c-t1)" }}>素材库</h3>
@@ -114,6 +117,7 @@ export function AssetPanel({ projectId, onClose }: Props) {
           </p>
         </div>
         <button
+          onMouseDown={(e) => e.stopPropagation()}
           onClick={onClose}
           className="w-7 h-7 rounded-lg flex items-center justify-center transition-all"
           style={{ color: "var(--c-t4)", background: "transparent" }}
