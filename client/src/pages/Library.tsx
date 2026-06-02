@@ -297,7 +297,7 @@ export default function Library() {
   });
 
   return (
-    <div className="relative min-h-screen flex flex-col" style={{ background: "var(--c-canvas, var(--c-base))" }}>
+    <div className="relative h-screen flex flex-col overflow-hidden" style={{ background: "var(--c-canvas, var(--c-base))" }}>
       {/* Nav */}
       <nav
         className="sticky top-0 z-20 flex items-center justify-between px-6 py-4 border-b"
@@ -347,7 +347,7 @@ export default function Library() {
       <input ref={fileInputRef} type="file" accept="image/*,video/*,audio/*" onChange={handleFileSelect} className="hidden" />
 
       {/* Body */}
-      <main className="flex-1 px-6 py-6">
+      <main className="flex-1 overflow-y-auto px-6 py-6">
         <div className="max-w-6xl mx-auto flex flex-col gap-5">
           {/* Stats + drop zone */}
           <div
