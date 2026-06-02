@@ -56,6 +56,9 @@ import {
   type ChatBan,
   type InsertChatBan,
   type ChatSettingsRow,
+  downloadGrants,
+  downloadConsumptions,
+  type DownloadGrant,
 } from "../drizzle/schema";
 import { ENV } from "./_core/env";
 import * as dev from "./_core/devStore";
@@ -717,6 +720,109 @@ export async function deleteAssetAdmin(ids: number[]) {
   const db = await getDb();
   if (!db) { if (DEV_MODE) { dev.devDeleteAssetAdmin(ids); return; } throw new Error("DB unavailable"); }
   await db.update(assets).set({ deletedAt: new Date() }).where(inArray(assets.id, ids));
+}
+
+// ── Download authorization ─────────────────────────────────────────────────
+// Find an asset row by its storageKey (any owner) — lets the download gateway
+// resolve a file's assetId/projectId/owner from just the storage key.
+export async function getAssetByStorageKey(storageKey: string): Promise<{ id: number; userId: number; projectId: number | null } | null> {
+  const db = await getDb();
+  if (!db) { if (DEV_MODE) return dev.devGetAssetByStorageKey(storageKey); return null; }
+  const rows = await db.select({ id: assets.id, userId: assets.userId, projectId: assets.projectId })
+    .from(assets).where(and(eq(assets.storageKey, storageKey), isNull(assets.deletedAt))).limit(1);
+  return rows[0] ?? null;
+}
+
+export async function createDownloadRequest(input: {
+  userId: number; scope: "asset" | "project"; storageKey?: string | null; assetId?: number | null; projectId?: number | null; reason?: string | null;
+}): Promise<DownloadGrant | null> {
+  const db = await getDb();
+  if (!db) { if (DEV_MODE) return dev.devCreateDownloadGrant({ ...input, origin: "request", status: "pending", createdBy: input.userId }); throw new Error("DB unavailable"); }
+  const [res] = await db.insert(downloadGrants).values({
+    userId: input.userId, origin: "request", scope: input.scope,
+    storageKey: input.storageKey ?? null, assetId: input.assetId ?? null, projectId: input.projectId ?? null,
+    status: "pending", reason: input.reason ?? null, createdBy: input.userId,
+  });
+  const id = (res as { insertId?: number }).insertId;
+  if (!id) return null;
+  const rows = await db.select().from(downloadGrants).where(eq(downloadGrants.id, id)).limit(1);
+  return rows[0] ?? null;
+}
+
+export async function adminCreateGrant(input: {
+  userId: number; scope: "asset" | "project"; storageKey?: string | null; assetId?: number | null; projectId?: number | null; note?: string | null; expiresAt?: Date | null; createdBy: number;
+}): Promise<DownloadGrant | null> {
+  const db = await getDb();
+  if (!db) { if (DEV_MODE) return dev.devCreateDownloadGrant({ ...input, origin: "admin", status: "active", decidedBy: input.createdBy, decidedAt: new Date() }); throw new Error("DB unavailable"); }
+  const [res] = await db.insert(downloadGrants).values({
+    userId: input.userId, origin: "admin", scope: input.scope,
+    storageKey: input.storageKey ?? null, assetId: input.assetId ?? null, projectId: input.projectId ?? null,
+    status: "active", note: input.note ?? null, createdBy: input.createdBy, decidedBy: input.createdBy, decidedAt: new Date(), expiresAt: input.expiresAt ?? null,
+  });
+  const id = (res as { insertId?: number }).insertId;
+  if (!id) return null;
+  const rows = await db.select().from(downloadGrants).where(eq(downloadGrants.id, id)).limit(1);
+  return rows[0] ?? null;
+}
+
+export async function decideDownloadGrant(grantId: number, adminId: number, approve: boolean, note?: string | null): Promise<void> {
+  const db = await getDb();
+  if (!db) { if (DEV_MODE) { dev.devUpdateDownloadGrant(grantId, { status: approve ? "active" : "denied", decidedBy: adminId, decidedAt: new Date(), note: note ?? null }); return; } throw new Error("DB unavailable"); }
+  await db.update(downloadGrants).set({ status: approve ? "active" : "denied", decidedBy: adminId, decidedAt: new Date(), note: note ?? null })
+    .where(and(eq(downloadGrants.id, grantId), eq(downloadGrants.status, "pending")));
+}
+
+export async function revokeDownloadGrant(grantId: number, adminId: number): Promise<void> {
+  const db = await getDb();
+  if (!db) { if (DEV_MODE) { dev.devUpdateDownloadGrant(grantId, { status: "revoked", decidedBy: adminId, decidedAt: new Date() }); return; } throw new Error("DB unavailable"); }
+  await db.update(downloadGrants).set({ status: "revoked", decidedBy: adminId, decidedAt: new Date() }).where(eq(downloadGrants.id, grantId));
+}
+
+export async function listDownloadGrants(filter: { status?: "pending" | "active" | "revoked" | "denied"; userId?: number; limit?: number; offset?: number } = {}): Promise<DownloadGrant[]> {
+  const db = await getDb();
+  if (!db) { if (DEV_MODE) return dev.devListDownloadGrants(filter); return []; }
+  const conds = [];
+  if (filter.status) conds.push(eq(downloadGrants.status, filter.status));
+  if (filter.userId) conds.push(eq(downloadGrants.userId, filter.userId));
+  let q = db.select().from(downloadGrants).$dynamic();
+  if (conds.length) q = q.where(and(...conds));
+  return q.orderBy(desc(downloadGrants.createdAt)).limit(Math.min(filter.limit ?? 200, 500)).offset(filter.offset ?? 0);
+}
+
+/** A grant the user can use to download `storageKey` right now: status=active,
+ *  not expired, covers the file (asset by key/id, or project by projectId), and
+ *  not yet consumed for this storageKey. Returns the first such grant. */
+export async function findUsableDownloadGrant(input: { userId: number; storageKey: string; assetId?: number | null; projectId?: number | null }): Promise<DownloadGrant | null> {
+  const db = await getDb();
+  if (!db) { if (DEV_MODE) return dev.devFindUsableDownloadGrant(input); return null; }
+  const now = new Date();
+  const candidates = await db.select().from(downloadGrants)
+    .where(and(eq(downloadGrants.userId, input.userId), eq(downloadGrants.status, "active")));
+  const consumed = await db.select({ grantId: downloadConsumptions.grantId })
+    .from(downloadConsumptions).where(eq(downloadConsumptions.storageKey, input.storageKey));
+  const consumedSet = new Set(consumed.map((c) => c.grantId));
+  for (const g of candidates) {
+    if (g.expiresAt && g.expiresAt.getTime() < now.getTime()) continue;
+    if (consumedSet.has(g.id)) continue;
+    const covers = g.scope === "asset"
+      ? (g.storageKey === input.storageKey || (input.assetId != null && g.assetId === input.assetId))
+      : (input.projectId != null && g.projectId === input.projectId);
+    if (covers) return g;
+  }
+  return null;
+}
+
+/** Atomically consume a grant for a file. Returns true the first time, false if
+ *  already consumed (DB unique (grantId, storageKey) makes this race-safe). */
+export async function consumeDownloadGrant(grantId: number, userId: number, storageKey: string, assetId?: number | null): Promise<boolean> {
+  const db = await getDb();
+  if (!db) { if (DEV_MODE) return dev.devConsumeDownloadGrant(grantId, userId, storageKey, assetId ?? null); throw new Error("DB unavailable"); }
+  try {
+    await db.insert(downloadConsumptions).values({ grantId, userId, storageKey, assetId: assetId ?? null });
+    return true;
+  } catch {
+    return false; // unique violation → already consumed
+  }
 }
 
 // ── Video Tasks ───────────────────────────────────────────────────────────────

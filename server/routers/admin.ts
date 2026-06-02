@@ -10,6 +10,7 @@ import { randomBytes } from "crypto";
 import { getUpdateStatus, getVersionInfo, getUpdateAvailable, startUpdate } from "../_core/selfUpdate";
 import { startBackfill, getBackfillStatus } from "../_core/assetBackfill";
 import { writeAuditLog } from "../_core/auditLog";
+import { adminDownloadsRouter } from "./downloads";
 
 const AUDIT_ACTIONS = [
   "login_email", "login_oauth",
@@ -20,6 +21,8 @@ const AUDIT_ACTIONS = [
 ] as const;
 
 export const adminRouter = router({
+  // Download authorization: review/approve user requests, batch-grant, revoke.
+  downloads: adminDownloadsRouter,
   // Cross-user media library retrieval (admin browses every user's 专有仓库).
   assets: router({
     list: adminProcedure

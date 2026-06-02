@@ -7,6 +7,7 @@ import {
   canBrowserReachStorageDirectly,
 } from "../storage";
 import { verifyUploadToken } from "./uploadToken";
+import { authorizeDownload } from "./downloadAuth";
 
 /**
  * Streamed upload counterpart to the download proxy. The browser PUTs the raw
@@ -47,6 +48,14 @@ export function registerStorageProxy(app: Express) {
     if (!isStorageConfigured()) {
       res.status(500).send("Storage proxy not configured");
       return;
+    }
+
+    // Strict download authorization (when enabled): a ?download=1 request for an
+    // original file must be backed by a consumable grant (non-admins). Plain
+    // viewing (no download flag) is never gated.
+    if (req.query.download !== undefined) {
+      const ok = await authorizeDownload(req, res, { paramKey: key });
+      if (!ok) return; // 403/401 already sent
     }
 
     try {

@@ -8,6 +8,7 @@
  */
 import type { Express } from "express";
 import { isRequestAuthenticated } from "./context";
+import { authorizeDownload } from "./downloadAuth";
 
 const BLOCKED_HOSTS = [
   "localhost",
@@ -57,6 +58,12 @@ export function registerImageProxy(app: Express) {
     if (!isAllowedUrl(decodedUrl)) {
       res.status(403).send("URL not allowed");
       return;
+    }
+
+    // Strict download authorization (when enabled) — only on the download path.
+    if (req.query.download !== undefined) {
+      const ok = await authorizeDownload(req, res, { rawUrl: decodedUrl });
+      if (!ok) return;
     }
 
     const MAX_IMAGE_BYTES = 32 * 1024 * 1024; // 32 MB
