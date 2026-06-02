@@ -26,6 +26,7 @@
  * ```
  */
 import { ENV } from "./env";
+import { resolveToAbsoluteUrl, toInternalStoragePath, isOwnStorageUrl } from "../storage";
 
 export type TranscribeOptions = {
   audioUrl: string; // URL to the audio file (e.g., S3 URL)
@@ -90,23 +91,32 @@ export async function transcribeAudio(
       };
     }
 
-    // Step 2: Download audio from URL
-    // Guard against SSRF to private/local network addresses
-    try {
-      const { protocol, hostname } = new URL(options.audioUrl);
-      // URL.hostname wraps IPv6 in brackets (e.g. "[::1]") — strip them before matching.
-      const host = hostname.startsWith("[") && hostname.endsWith("]") ? hostname.slice(1, -1) : hostname;
-      const privatePatterns = [/^localhost$/i, /^127\./, /^10\./, /^172\.(1[6-9]|2\d|3[01])\./, /^192\.168\./, /^169\.254\./, /^::1$/, /^::ffff:/i, /^0\./, /^100\.(6[4-9]|[7-9]\d|1[01]\d|12[0-7])\./, /^f[cd][0-9a-f]{2}:/i, /^fe[89ab][0-9a-f]:/i];
-      if ((protocol !== "https:" && protocol !== "http:") || privatePatterns.some((p) => p.test(host))) {
-        return { error: "Invalid audio URL", code: "INVALID_FORMAT" as const, details: "Private or non-HTTP URLs are not allowed" };
+    // Step 2: Download audio from URL.
+    // Our own /manus-storage/ proxy URL (relative OR absolute same-origin) is
+    // trusted internal storage — resolve it to a fetchable presigned URL and
+    // skip the SSRF guard (host discarded, only our key is used). Everything
+    // else is guarded against SSRF to private/local network addresses.
+    let audioUrl = options.audioUrl;
+    const internal = toInternalStoragePath(audioUrl);
+    if (internal) {
+      audioUrl = await resolveToAbsoluteUrl(internal);
+    } else if (!isOwnStorageUrl(audioUrl)) {
+      try {
+        const { protocol, hostname } = new URL(audioUrl);
+        // URL.hostname wraps IPv6 in brackets (e.g. "[::1]") — strip them before matching.
+        const host = hostname.startsWith("[") && hostname.endsWith("]") ? hostname.slice(1, -1) : hostname;
+        const privatePatterns = [/^localhost$/i, /^127\./, /^10\./, /^172\.(1[6-9]|2\d|3[01])\./, /^192\.168\./, /^169\.254\./, /^::1$/, /^::ffff:/i, /^0\./, /^100\.(6[4-9]|[7-9]\d|1[01]\d|12[0-7])\./, /^f[cd][0-9a-f]{2}:/i, /^fe[89ab][0-9a-f]:/i];
+        if ((protocol !== "https:" && protocol !== "http:") || privatePatterns.some((p) => p.test(host))) {
+          return { error: "Invalid audio URL", code: "INVALID_FORMAT" as const, details: "Private or non-HTTP URLs are not allowed" };
+        }
+      } catch {
+        return { error: "Invalid audio URL", code: "INVALID_FORMAT" as const, details: "Could not parse URL" };
       }
-    } catch {
-      return { error: "Invalid audio URL", code: "INVALID_FORMAT" as const, details: "Could not parse URL" };
     }
     let audioBuffer: Buffer;
     let mimeType: string;
     try {
-      const response = await fetch(options.audioUrl);
+      const response = await fetch(audioUrl);
       if (!response.ok) {
         return {
           error: "Failed to download audio file",

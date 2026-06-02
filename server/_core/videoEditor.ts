@@ -1,6 +1,6 @@
 import { execFile } from "child_process";
 import { promisify } from "util";
-import { storagePut, assertObjectStorageWritable } from "../storage";
+import { storagePut, assertObjectStorageWritable, resolveToAbsoluteUrl, toInternalStoragePath, isOwnStorageUrl } from "../storage";
 import * as fs from "fs/promises";
 import * as path from "path";
 import * as os from "os";
@@ -43,11 +43,22 @@ export function assertSafeUrl(url: string): void {
 }
 
 async function downloadToTemp(url: string, ext: string): Promise<string> {
-  assertSafeUrl(url);
+  // Our own /manus-storage/ proxy path (relative OR an absolute same-origin URL
+  // like https://172.16.0.114:3000/manus-storage/…) → resolve to a fetchable
+  // (presigned) URL and SKIP the SSRF guard. The host is discarded; only the
+  // storage key is used against our own backend, so it can't be redirected
+  // elsewhere. Direct MinIO/S3 host is allowed; everything else is SSRF-guarded.
+  let fetchUrl = url;
+  const internal = toInternalStoragePath(url);
+  if (internal) {
+    fetchUrl = await resolveToAbsoluteUrl(internal);
+  } else if (!isOwnStorageUrl(url)) {
+    assertSafeUrl(url);
+  }
   const uniqueName = `ffmpeg-${Date.now()}-${Math.random().toString(36).slice(2)}.${ext}`;
   const tmpPath = path.join(os.tmpdir(), uniqueName);
 
-  const res = await fetch(url);
+  const res = await fetch(fetchUrl);
   if (!res.ok) {
     throw new Error(`Failed to download ${url}: HTTP ${res.status} ${res.statusText}`);
   }
