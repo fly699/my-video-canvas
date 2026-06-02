@@ -28,15 +28,23 @@ export function canBrowserReachStorageDirectly(): boolean {
  * Whether an absolute URL targets our OWN configured object storage (MinIO/S3).
  * Self-hosted MinIO commonly lives on a private address (e.g. 172.16.x.x), so a
  * generic SSRF guard that blocks private hosts would otherwise reject our own
- * stored reference images. Matches host[:port] of S3_ENDPOINT or S3_PUBLIC_ENDPOINT,
- * so it stays narrow (only the storage host, not arbitrary internal services).
+ * stored reference images.
+ *
+ * Matches by HOSTNAME (ignoring port) against S3_ENDPOINT / S3_PUBLIC_ENDPOINT —
+ * the storage server is often reached on a different port than the internal SDK
+ * endpoint (e.g. MinIO behind a reverse proxy on :80 vs S3_ENDPOINT :9000), and a
+ * strict host:port match silently misses that. Still narrow: only the storage
+ * host itself is exempt; other internal hosts (cloud metadata, etc.) stay blocked.
+ * The storage host is trusted infrastructure the operator configured.
  */
 export function isOwnStorageUrl(rawUrl: string): boolean {
   let target: URL;
   try { target = new URL(rawUrl); } catch { return false; }
+  const host = target.hostname.toLowerCase();
+  if (!host) return false;
   for (const ep of [ENV.s3Endpoint, ENV.s3PublicEndpoint]) {
     if (!ep) continue;
-    try { if (new URL(ep).host === target.host) return true; } catch { /* ignore malformed env */ }
+    try { if (new URL(ep).hostname.toLowerCase() === host) return true; } catch { /* ignore malformed env */ }
   }
   return false;
 }
