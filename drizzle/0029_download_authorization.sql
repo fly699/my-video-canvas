@@ -1,15 +1,10 @@
 -- Strict download authorization: every download of an original file (except by
 -- admins) must be backed by a consumable grant. Grants come from either a user
 -- request that an admin approved, or an admin-initiated batch grant (per-file or
--- per-project). Each grant allows exactly ONE successful download per file —
--- enforced race-safe by the (grantId, storageKey) unique index on consumptions.
---
--- NOTE: drizzle-kit splits a migration file into separate queries on each
--- `--> statement-breakpoint` marker and sends them one at a time (mysql2 has
--- multipleStatements disabled). The two CREATE TABLEs MUST be separated by the
--- marker below, or they get sent as one multi-statement query and MySQL rejects
--- it with a syntax error. IF NOT EXISTS keeps a re-run idempotent even if a
--- prior failed attempt already auto-committed the first table.
+-- per-project). Each grant allows exactly ONE successful download per file.
+-- The two CREATE TABLE statements are separated by the real breakpoint marker on
+-- its own line below; IF NOT EXISTS keeps a re-run idempotent after a prior
+-- partial attempt.
 CREATE TABLE IF NOT EXISTS `download_grants` (
   `id` INT AUTO_INCREMENT PRIMARY KEY,
   `userId` INT NOT NULL,
