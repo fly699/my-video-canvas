@@ -1,8 +1,13 @@
-import { useState } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useLocation, useParams } from "wouter";
 import { trpc } from "@/lib/trpc";
 import { toast } from "sonner";
-import { ArrowLeft, Plus, Film, Trash2, Loader2, Clapperboard } from "lucide-react";
+import { ArrowLeft, Plus, Film, Trash2, Loader2, Clapperboard, Check } from "lucide-react";
+import { useEditorStore } from "@/components/editor/editorStore";
+import { MediaBin } from "@/components/editor/MediaBin";
+import { Timeline } from "@/components/editor/Timeline";
+import { PreviewStage } from "@/components/editor/PreviewStage";
+import { PropertiesPanel } from "@/components/editor/PropertiesPanel";
 
 const ACCENT = "oklch(0.65 0.19 310)"; // 剪辑器主色（品红紫）
 
@@ -75,14 +80,46 @@ function EditorGallery() {
   );
 }
 
-/** The editor shell for one session. Timeline/preview UI lands in the next phase. */
+/** The full editor workspace for one session: media bin · preview · properties · timeline. */
 function EditorWorkspace({ id }: { id: number }) {
   const [, navigate] = useLocation();
-  const sessionQuery = trpc.editor.get.useQuery({ id });
+  const sessionQuery = trpc.editor.get.useQuery({ id }, { refetchOnWindowFocus: false });
   const [name, setName] = useState<string | null>(null);
+  const [saveState, setSaveState] = useState<"idle" | "saving" | "saved">("idle");
   const saveMut = trpc.editor.save.useMutation();
 
-  if (sessionQuery.isLoading) {
+  const load = useEditorStore((s) => s.load);
+  const doc = useEditorStore((s) => s.doc);
+  const loadedFor = useRef<number | null>(null);
+
+  // Load the fetched doc into the editor store once.
+  useEffect(() => {
+    if (sessionQuery.data && loadedFor.current !== id) {
+      load(sessionQuery.data.doc);
+      loadedFor.current = id;
+    }
+  }, [sessionQuery.data, id, load]);
+
+  // Debounced autosave whenever the doc becomes dirty.
+  useEffect(() => {
+    const unsub = useEditorStore.subscribe((state, prev) => {
+      if (state.doc === prev.doc) return;
+      if (!state.dirty) return;
+      setSaveState("saving");
+      clearTimeout((autosaveTimer as { t?: ReturnType<typeof setTimeout> }).t);
+      (autosaveTimer as { t?: ReturnType<typeof setTimeout> }).t = setTimeout(() => {
+        const cur = useEditorStore.getState();
+        if (!cur.doc) return;
+        saveMut.mutate({ id, doc: cur.doc }, {
+          onSuccess: () => { useEditorStore.getState().markClean(); setSaveState("saved"); setTimeout(() => setSaveState("idle"), 1500); },
+          onError: (e) => { setSaveState("idle"); toast.error("保存失败：" + e.message); },
+        });
+      }, 800);
+    });
+    return () => unsub();
+  }, [id, saveMut]);
+
+  if (sessionQuery.isLoading || (sessionQuery.data && !doc)) {
     return <div style={{ minHeight: "100vh", display: "flex", alignItems: "center", justifyContent: "center", background: "var(--c-bg, #0c0c10)", color: "var(--c-t3)" }}><Loader2 className="animate-spin" /></div>;
   }
   if (sessionQuery.error || !sessionQuery.data) {
@@ -98,34 +135,36 @@ function EditorWorkspace({ id }: { id: number }) {
 
   return (
     <div style={{ height: "100vh", display: "flex", flexDirection: "column", background: "var(--c-bg, #0c0c10)", color: "var(--c-t1)" }}>
-      <header style={{ display: "flex", alignItems: "center", gap: 12, padding: "10px 16px", borderBottom: "1px solid var(--c-bd2)", flexShrink: 0 }}>
+      <header style={{ display: "flex", alignItems: "center", gap: 12, padding: "8px 16px", borderBottom: "1px solid var(--c-bd2)", flexShrink: 0 }}>
         <button onClick={() => navigate("/editor")} title="返回列表" style={iconBtn}><ArrowLeft size={18} /></button>
         <Clapperboard size={18} style={{ color: ACCENT }} />
         <input
           value={displayName}
           onChange={(e) => setName(e.target.value)}
           onBlur={() => { if (name !== null && name !== session.name) saveMut.mutate({ id, name }); }}
-          style={{ fontSize: 14, fontWeight: 600, background: "transparent", border: "1px solid transparent", borderRadius: 6, padding: "4px 8px", color: "var(--c-t1)", outline: "none", width: 220 }}
+          style={{ fontSize: 14, fontWeight: 600, background: "transparent", border: "1px solid transparent", borderRadius: 6, padding: "4px 8px", color: "var(--c-t1)", outline: "none", width: 200 }}
         />
+        <span style={{ fontSize: 11, color: "var(--c-t4)", display: "inline-flex", alignItems: "center", gap: 4 }}>
+          {saveState === "saving" ? <><Loader2 size={11} className="animate-spin" /> 保存中</> : saveState === "saved" ? <><Check size={11} /> 已保存</> : null}
+        </span>
         <div style={{ flex: 1 }} />
         <button disabled style={{ ...primaryBtn, opacity: 0.5, cursor: "not-allowed" }} title="即将上线">导出（开发中）</button>
       </header>
 
-      {/* Workspace skeleton: media bin · preview · properties · timeline.
-          Interactive timeline/preview are built in the next phase. */}
       <div style={{ flex: 1, display: "flex", minHeight: 0 }}>
-        <aside style={{ width: 220, borderRight: "1px solid var(--c-bd2)", padding: 12, fontSize: 12, color: "var(--c-t3)" }}>素材库（开发中）</aside>
-        <main style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center", color: "var(--c-t4)", fontSize: 13 }}>
-          预览区（开发中）· {session.doc.width}×{session.doc.height} @ {session.doc.fps}fps
-        </main>
-        <aside style={{ width: 240, borderLeft: "1px solid var(--c-bd2)", padding: 12, fontSize: 12, color: "var(--c-t3)" }}>属性面板（开发中）</aside>
+        <MediaBin />
+        <PreviewStage />
+        <PropertiesPanel />
       </div>
-      <div style={{ height: 160, borderTop: "1px solid var(--c-bd2)", padding: 12, fontSize: 12, color: "var(--c-t3)", flexShrink: 0 }}>
-        时间轴（开发中）· {session.doc.tracks.length} 条轨道
+      <div style={{ height: 230, borderTop: "1px solid var(--c-bd2)", flexShrink: 0 }}>
+        <Timeline />
       </div>
     </div>
   );
 }
+
+// Module-scoped autosave debounce handle (one workspace mounted at a time).
+const autosaveTimer: { t?: ReturnType<typeof setTimeout> } = {};
 
 export default function Editor() {
   const params = useParams<{ id?: string }>();

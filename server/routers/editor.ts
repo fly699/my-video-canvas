@@ -12,7 +12,7 @@ import { EDITOR_DOC_VERSION, emptyEditorDoc, type EditorDoc } from "@shared/edit
 const transformSchema = z.object({
   x: z.number().optional(), y: z.number().optional(), scale: z.number().optional(),
   opacity: z.number().optional(), rotation: z.number().optional(),
-}).passthrough();
+});
 
 const clipSchema = z.object({
   id: z.string().min(1).max(64),
@@ -30,15 +30,15 @@ const clipSchema = z.object({
   effects: z.object({
     brightness: z.number().optional(), contrast: z.number().optional(),
     saturation: z.number().optional(), filter: z.string().max(64).optional(),
-  }).passthrough().optional(),
+  }).optional(),
   transform: transformSchema.optional(),
   text: z.object({
     content: z.string().max(2000),
     font: z.string().max(64).optional(), size: z.number().optional(),
     color: z.string().max(32).optional(), bgColor: z.string().max(32).optional(),
     motionStyle: z.string().max(32).optional(),
-  }).passthrough().optional(),
-}).passthrough();
+  }).optional(),
+});
 
 const docSchema = z.object({
   version: z.literal(EDITOR_DOC_VERSION),
