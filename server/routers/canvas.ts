@@ -238,8 +238,8 @@ export const nodesRouter = router({
     .input(z.object({ id: z.string(), projectId: z.number() }))
     .mutation(async ({ ctx, input }) => {
       await assertProjectAccess(input.projectId, ctx.user.id, "editor");
-      await deleteNode(input.id, input.projectId);
-      return { success: true };
+      const deleted = await deleteNode(input.id, input.projectId);
+      return { success: true, deleted };
     }),
 
   batchUpsert: protectedProcedure

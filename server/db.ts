@@ -474,10 +474,11 @@ export async function upsertNode(data: InsertCanvasNode) {
   });
 }
 
-export async function deleteNode(id: string, projectId: number) {
+export async function deleteNode(id: string, projectId: number): Promise<number> {
   const db = await getDb();
-  if (!db) { if (DEV_MODE) { dev.devDeleteNode(id, projectId); return; } throw new Error("DB unavailable"); }
-  await db.delete(canvasNodes).where(and(eq(canvasNodes.id, id), eq(canvasNodes.projectId, projectId)));
+  if (!db) { if (DEV_MODE) { dev.devDeleteNode(id, projectId); return 1; } throw new Error("DB unavailable"); }
+  const [header] = await db.delete(canvasNodes).where(and(eq(canvasNodes.id, id), eq(canvasNodes.projectId, projectId)));
+  return (header as unknown as { affectedRows?: number })?.affectedRows ?? 0;
 }
 
 export async function batchUpsertNodes(nodes: InsertCanvasNode[]) {
