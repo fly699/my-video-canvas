@@ -66,6 +66,19 @@ export async function downloadMedia(rawUrl: string, filename: string, proxy: Med
   a.remove();
 }
 
+/** Download an in-memory text string as a local file (e.g. exported JSON). */
+export function downloadTextFile(filename: string, text: string, mime = "application/json"): void {
+  const blob = new Blob([text], { type: mime });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
+}
+
 /** Convenience onClick handler for an existing `<a>`/button download control. */
 export function onDownloadMedia(rawUrl: string, filename: string, proxy: MediaProxyKind = "video") {
   return (e: { preventDefault: () => void }) => {

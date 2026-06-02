@@ -106,3 +106,62 @@ export function deleteNodeTemplate(nodeType: string, id: string): void {
   store[nodeType] = list.filter((t) => t.id !== id);
   write(store);
 }
+
+// ── File export / import ──────────────────────────────────────────────────────
+// Lets a user store templates as a portable .json file (backup / share across
+// machines or accounts), complementing the localStorage store.
+
+interface NodeTemplateExport {
+  version: 1;
+  nodeType: string;
+  exportedAt: string;
+  templates: NodeTemplate[];
+}
+
+/** Serialize all templates of a node type to a JSON string, or null if there are none. */
+export function exportNodeTemplatesJson(nodeType: string): string | null {
+  const templates = listNodeTemplates(nodeType);
+  if (templates.length === 0) return null;
+  const data: NodeTemplateExport = { version: 1, nodeType, exportedAt: new Date().toISOString(), templates };
+  return JSON.stringify(data, null, 2);
+}
+
+/**
+ * Import templates from an exported JSON string into a node type. Accepts either
+ * the `{ templates: [...] }` envelope or a bare array. Re-tags to the target
+ * nodeType, re-generates ids, sanitizes payloads, dedupes by label, and respects
+ * the per-type cap. Returns counts so the caller can report the result.
+ */
+export function importNodeTemplatesJson(nodeType: string, json: string): { imported: number; skipped: number } {
+  let parsed: unknown;
+  try { parsed = JSON.parse(json); } catch { return { imported: 0, skipped: 0 }; }
+  const arr: unknown[] = Array.isArray(parsed)
+    ? parsed
+    : (parsed && typeof parsed === "object" && Array.isArray((parsed as { templates?: unknown }).templates))
+      ? (parsed as { templates: unknown[] }).templates
+      : [];
+  if (arr.length === 0) return { imported: 0, skipped: 0 };
+  const store = read();
+  const list = store[nodeType] ?? [];
+  const seenLabels = new Set(list.map((t) => t.label));
+  let imported = 0, skipped = 0;
+  for (const raw of arr) {
+    if (list.length >= MAX_PER_TYPE) { skipped++; continue; }
+    if (!raw || typeof raw !== "object") { skipped++; continue; }
+    const r = raw as Record<string, unknown>;
+    const label = typeof r.label === "string" ? r.label.trim().slice(0, MAX_LABEL_LEN) : "";
+    const payload = r.payload && typeof r.payload === "object" ? (r.payload as Record<string, unknown>) : null;
+    if (!label || !payload || seenLabels.has(label)) { skipped++; continue; }
+    const tpl: NodeTemplate = {
+      id: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+      label, nodeType, payload: sanitizeTemplatePayload(payload), createdAt: new Date().toISOString(),
+    };
+    if (JSON.stringify(tpl).length > MAX_JSON) { skipped++; continue; }
+    list.unshift(tpl);
+    seenLabels.add(label);
+    imported++;
+  }
+  store[nodeType] = list;
+  write(store);
+  return { imported, skipped };
+}

@@ -4,7 +4,7 @@ import { NODE_TYPE_LIST } from "../../lib/nodeConfig";
 import type { NodeType } from "../../../../shared/types";
 import {
   FileText, Copy, Trash2, Plus, Play, Pin, PinOff, ChevronUp, X, GripHorizontal,
-  BookmarkPlus, Bookmark,
+  BookmarkPlus, Bookmark, Download, Upload,
 } from "lucide-react";
 import type { NodeTemplate } from "../../lib/nodeTemplates";
 import { NODE_ICONS } from "../../lib/nodeConfig";
@@ -28,6 +28,8 @@ interface ContextMenuProps {
   onSaveTemplate?: () => void;
   onApplyTemplate?: (id: string) => void;
   onDeleteTemplate?: (id: string) => void;
+  onExportTemplates?: () => void;
+  onImportTemplates?: (file: File) => void;
 }
 
 export function ContextMenu({
@@ -35,7 +37,9 @@ export function ContextMenu({
   onClose, onAddNode, onDeleteNode, onDuplicateNode, onRunWorkflow,
   onTogglePin, onCollapse,
   nodeTemplates, onSaveTemplate, onApplyTemplate, onDeleteTemplate,
+  onExportTemplates, onImportTemplates,
 }: ContextMenuProps) {
+  const tplFileRef = useRef<HTMLInputElement>(null);
   const menuRef = useRef<HTMLDivElement>(null);
   const [pos, setPos] = useState<{ left: number; top: number; maxHeight: number } | null>(null);
 
@@ -533,6 +537,48 @@ export function ContextMenu({
                         </button>
                       </div>
                     ))}
+                  </div>
+                )}
+                {(onExportTemplates || onImportTemplates) && (
+                  <div style={{ display: "flex", gap: 4, padding: "2px 6px 0" }}>
+                    {onExportTemplates && (
+                      <button
+                        onClick={() => { onExportTemplates(); }}
+                        title="把该节点类型的模板导出为 .json 文件"
+                        style={{
+                          flex: 1, display: "flex", alignItems: "center", justifyContent: "center", gap: 6,
+                          padding: "6px 8px", fontSize: 11, cursor: "pointer", background: "transparent",
+                          border: "1px solid var(--c-bd1)", borderRadius: 8, color: "var(--c-t3)",
+                        }}
+                        onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.background = "var(--c-elevated)"; (e.currentTarget as HTMLElement).style.color = "var(--c-t1)"; }}
+                        onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.background = "transparent"; (e.currentTarget as HTMLElement).style.color = "var(--c-t3)"; }}
+                      >
+                        <Download className="w-3 h-3" /> 导出文件
+                      </button>
+                    )}
+                    {onImportTemplates && (
+                      <button
+                        onClick={() => tplFileRef.current?.click()}
+                        title="从 .json 文件导入模板"
+                        style={{
+                          flex: 1, display: "flex", alignItems: "center", justifyContent: "center", gap: 6,
+                          padding: "6px 8px", fontSize: 11, cursor: "pointer", background: "transparent",
+                          border: "1px solid var(--c-bd1)", borderRadius: 8, color: "var(--c-t3)",
+                        }}
+                        onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.background = "var(--c-elevated)"; (e.currentTarget as HTMLElement).style.color = "var(--c-t1)"; }}
+                        onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.background = "transparent"; (e.currentTarget as HTMLElement).style.color = "var(--c-t3)"; }}
+                      >
+                        <Upload className="w-3 h-3" /> 导入文件
+                      </button>
+                    )}
+                    <input
+                      ref={tplFileRef} type="file" accept="application/json,.json" className="hidden"
+                      onChange={(e) => {
+                        const f = e.target.files?.[0];
+                        if (f) onImportTemplates?.(f);
+                        e.target.value = "";
+                      }}
+                    />
                   </div>
                 )}
               </>
