@@ -30,6 +30,9 @@ interface ContextMenuProps {
   onDeleteTemplate?: (id: string) => void;
   onExportTemplates?: () => void;
   onImportTemplates?: (file: File) => void;
+  // ComfyUI nodes only: save ALL params (incl. prompts / workflow JSON) into the
+  // toolbar "节点模板库". Shown in place of the generic 存为模板 block.
+  onSaveToLibrary?: () => void;
 }
 
 export function ContextMenu({
@@ -37,7 +40,7 @@ export function ContextMenu({
   onClose, onAddNode, onDeleteNode, onDuplicateNode, onRunWorkflow,
   onTogglePin, onCollapse,
   nodeTemplates, onSaveTemplate, onApplyTemplate, onDeleteTemplate,
-  onExportTemplates, onImportTemplates,
+  onExportTemplates, onImportTemplates, onSaveToLibrary,
 }: ContextMenuProps) {
   const tplFileRef = useRef<HTMLInputElement>(null);
   const menuRef = useRef<HTMLDivElement>(null);
@@ -485,6 +488,26 @@ export function ContextMenu({
                 <Copy className="w-3.5 h-3.5" style={{ color: "var(--c-t3)" }} />
                 复制节点
               </button>
+            )}
+            {onSaveToLibrary && (
+              <>
+                <div style={{ height: 1, background: "var(--c-bd1)", margin: "3px 6px" }} />
+                <button
+                  onClick={() => { onSaveToLibrary(); onClose(); }}
+                  style={{
+                    display: "flex", alignItems: "center", gap: 10,
+                    width: "100%", padding: "7px 8px", fontSize: 12,
+                    cursor: "pointer", background: "transparent", border: "none",
+                    textAlign: "left", color: "var(--c-t2)", borderRadius: 8,
+                    transition: "all 120ms ease",
+                  }}
+                  onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.background = "var(--c-elevated)"; (e.currentTarget as HTMLElement).style.color = "var(--c-t1)"; }}
+                  onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.background = "transparent"; (e.currentTarget as HTMLElement).style.color = "var(--c-t2)"; }}
+                >
+                  <BookmarkPlus className="w-3.5 h-3.5" style={{ color: "var(--c-t3)" }} />
+                  存入模板库（含参数）
+                </button>
+              </>
             )}
             {onSaveTemplate && (
               <>

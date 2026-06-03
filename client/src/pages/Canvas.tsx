@@ -25,12 +25,14 @@ import { ContextMenu } from "../components/canvas/ContextMenu";
 import { CollaboratorCursors } from "../components/canvas/CollaboratorCursors";
 import { FloatingAssetPanel } from "../components/canvas/FloatingAssetPanel";
 import { TemplatePanel } from "../components/canvas/TemplatePanel";
+import { NodeTemplateLibrary } from "../components/canvas/NodeTemplateLibrary";
 import { NodeSearch } from "../components/canvas/NodeSearch";
 import { PresentationMode } from "../components/canvas/PresentationMode";
 import { FilmstripPanel } from "../components/canvas/FilmstripPanel";
 import { TimelinePanel } from "../components/canvas/TimelinePanel";
 import { isConnectionValid } from "../lib/connectionRules";
 import { listNodeTemplates, saveNodeTemplate, deleteNodeTemplate, exportNodeTemplatesJson, importNodeTemplatesJson } from "../lib/nodeTemplates";
+import { saveComfyNodeTemplate, isComfyNodeType, type ComfyNodeType } from "../lib/comfyNodeTemplates";
 import { downloadMedia, downloadTextFile } from "@/lib/download";
 import { BeginnerGuide, ConnectionHintsPanel } from "../components/canvas/BeginnerGuide";
 import { HelpPanel } from "../components/canvas/HelpPanel";
@@ -83,6 +85,7 @@ import {
   HelpCircle,
   Clapperboard,
   MessageSquare,
+  Boxes,
 } from "lucide-react";
 import { loadNamedSnapshots, type NamedSnapshot } from "../hooks/useCanvasStore";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
@@ -381,6 +384,7 @@ function CanvasInner({ projectId }: { projectId: number }) {
     "ui:panel:assets:v1", false, { validate: validateBool },
   );
   const [showTemplates, setShowTemplates] = useState(false);
+  const [showNodeLib, setShowNodeLib] = useState(false);
   const [showNodeSearch, setShowNodeSearch] = useState(false);
   const [showCollaborators, setShowCollaborators] = usePersistentState<boolean>(
     "ui:canvas:collab-open:v1", false, { validate: validateBool },
@@ -877,6 +881,23 @@ function CanvasInner({ projectId }: { projectId: number }) {
     setShowNodePicker(false);
   }, [addNode, reactFlow, emitCollabEvent]);
 
+  // Re-create a fully-configured ComfyUI node from a library template (like
+  // duplicating): add a fresh node at the viewport center, then inject the saved
+  // payload. Autosave + collab follow the normal add/update paths.
+  const addNodeFromTemplate = useCallback((type: ComfyNodeType, payload: Record<string, unknown>) => {
+    const vp = reactFlow.getViewport();
+    const cx = (window.innerWidth / 2 - vp.x) / vp.zoom;
+    const cy = (window.innerHeight / 2 - vp.y) / vp.zoom;
+    try {
+      const newNode = addNode(type, { x: cx + Math.random() * 80 - 40, y: cy + Math.random() * 80 - 40 });
+      updateNodeData(newNode.id, payload as Partial<NodeData>);
+      emitCollabEvent("node:add", newNode);
+      toast.success("已从模板创建节点");
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "创建节点失败");
+    }
+  }, [addNode, updateNodeData, reactFlow, emitCollabEvent]);
+
   // ── Drag assets from the library onto the canvas ────────────────────────────
   // FloatingAssetPanel rows set `application/x-asset-list` (JSON array of
   // {url,name,type,mimeType,size,storageKey}). Dropping creates a populated
@@ -1003,7 +1024,7 @@ function CanvasInner({ projectId }: { projectId: number }) {
         saveCanvas();
         if (wasDirty) toast.success("已保存");
       }
-      if (e.key === "Escape") { setContextMenu(null); setShowNodePicker(false); setShowNodeSearch(false); setShowTemplates(false); runConfirmOpenRef.current = false; setShowRunConfirm(false); setRunConfirmCountdown(5); setShowHelp(false); setShowArcPicker(false); }
+      if (e.key === "Escape") { setContextMenu(null); setShowNodePicker(false); setShowNodeSearch(false); setShowTemplates(false); setShowNodeLib(false); runConfirmOpenRef.current = false; setShowRunConfirm(false); setRunConfirmCountdown(5); setShowHelp(false); setShowArcPicker(false); }
 
       // Cmd+K / Ctrl+K — Node search (skip when typing in an input)
       if (!isEditing && (e.metaKey || e.ctrlKey) && e.key === "k") {
@@ -1260,6 +1281,21 @@ function CanvasInner({ projectId }: { projectId: number }) {
             <TooltipContent side="bottom" className="text-xs">
               快速模板 <kbd className="ml-1 px-1 py-0.5 rounded text-[10px] bg-background/15 border border-background/25 font-mono">⌘T</kbd>
             </TooltipContent>
+          </Tooltip>
+
+          {/* ComfyUI node template library */}
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <button
+                onClick={() => setShowNodeLib(!showNodeLib)}
+                className="topbar-btn"
+                data-active={showNodeLib ? "true" : undefined}
+                style={showNodeLib ? { background: "oklch(0.65 0.20 140 / 0.12)", border: "1px solid oklch(0.65 0.20 140 / 0.3)", color: "oklch(0.65 0.20 140)" } : undefined}
+              >
+                <Boxes className="w-3.5 h-3.5" />
+              </button>
+            </TooltipTrigger>
+            <TooltipContent side="bottom" className="text-xs">ComfyUI 节点模板库</TooltipContent>
           </Tooltip>
 
           {/* Node Search */}
@@ -2279,6 +2315,14 @@ function CanvasInner({ projectId }: { projectId: number }) {
           />
         )}
 
+        {/* ── ComfyUI node template library (full-param, click → new node) ── */}
+        {showNodeLib && (
+          <NodeTemplateLibrary
+            onClose={() => setShowNodeLib(false)}
+            onUse={addNodeFromTemplate}
+          />
+        )}
+
         {/* ── Asset panel (floating, draggable, resizable) ── */}
         {showAssets && (
           <FloatingAssetPanel projectId={projectId} onClose={() => setShowAssets(false)} />
@@ -2416,9 +2460,12 @@ function CanvasInner({ projectId }: { projectId: number }) {
         const ctxNode = contextMenu.nodeId ? nodes.find((n) => n.id === contextMenu.nodeId) : undefined;
         const ctxPinned = Boolean((ctxNode?.data.payload as { pinned?: boolean } | undefined)?.pinned);
         const ctxNodeType = ctxNode?.data.nodeType;
+        // ComfyUI nodes use the dedicated 节点模板库 (full params incl. prompts)
+        // instead of the generic per-type setting templates.
+        const ctxIsComfy = isComfyNodeType(ctxNodeType);
         // tplBump is read so this list refreshes after a save/delete.
         void tplBump;
-        const ctxTemplates = ctxNodeType ? listNodeTemplates(ctxNodeType) : [];
+        const ctxTemplates = ctxNodeType && !ctxIsComfy ? listNodeTemplates(ctxNodeType) : [];
         return (
           <ContextMenu
             x={contextMenu.x} y={contextMenu.y}
@@ -2427,29 +2474,39 @@ function CanvasInner({ projectId }: { projectId: number }) {
             onClose={() => setContextMenu(null)}
             onAddNode={handleAddNode}
             nodeTemplates={ctxTemplates}
-            onSaveTemplate={ctxNode ? () => {
+            onSaveToLibrary={ctxNode && ctxIsComfy ? () => {
+              const label = window.prompt("模板名称（保存到节点模板库，含全部参数）", ctxNode.data.title)?.trim();
+              if (!label) return;
+              const useCloud = (ctxNode.data.payload as { useCloudComfy?: boolean }).useCloudComfy === true;
+              const saved = saveComfyNodeTemplate(
+                ctxNodeType as ComfyNodeType, label,
+                ctxNode.data.payload as Record<string, unknown>, useCloud,
+              );
+              toast[saved ? "success" : "error"](saved ? `已存入模板库「${saved.label}」` : "保存失败（数量已达上限或内容过大）");
+            } : undefined}
+            onSaveTemplate={ctxNode && !ctxIsComfy ? () => {
               const label = window.prompt("模板名称", ctxNode.data.title)?.trim();
               if (!label) return;
               const saved = saveNodeTemplate(ctxNodeType!, label, ctxNode.data.payload as Record<string, unknown>);
               setTplBump((v) => v + 1);
               toast[saved ? "success" : "error"](saved ? `已存为模板「${saved.label}」` : "保存失败（数量已达上限或内容过大）");
             } : undefined}
-            onApplyTemplate={ctxNode ? (id) => {
+            onApplyTemplate={ctxNode && !ctxIsComfy ? (id) => {
               const tpl = listNodeTemplates(ctxNodeType!).find((t) => t.id === id);
               if (!tpl) return;
               updateNodeData(ctxNode.id, tpl.payload as Partial<NodeData>);
               toast.success(`已应用模板「${tpl.label}」`);
             } : undefined}
-            onDeleteTemplate={ctxNodeType ? (id) => {
+            onDeleteTemplate={ctxNodeType && !ctxIsComfy ? (id) => {
               deleteNodeTemplate(ctxNodeType, id);
               setTplBump((v) => v + 1);
             } : undefined}
-            onExportTemplates={ctxNodeType ? () => {
+            onExportTemplates={ctxNodeType && !ctxIsComfy ? () => {
               const json = exportNodeTemplatesJson(ctxNodeType);
               if (!json) { toast.info("该节点类型还没有已保存的模板"); return; }
               downloadTextFile(`${ctxNodeType}-templates.json`, json);
             } : undefined}
-            onImportTemplates={ctxNodeType ? (file) => {
+            onImportTemplates={ctxNodeType && !ctxIsComfy ? (file) => {
               file.text().then((txt) => {
                 const { imported, skipped } = importNodeTemplatesJson(ctxNodeType, txt);
                 setTplBump((v) => v + 1);

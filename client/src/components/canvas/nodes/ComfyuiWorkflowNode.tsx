@@ -1,4 +1,4 @@
-import { memo, useCallback, useRef, useState } from "react";
+import { memo, useCallback, useMemo, useRef, useState } from "react";
 import { Handle, Position } from "@xyflow/react";
 import { BaseNode } from "../BaseNode";
 import { ComfyServerUrlField } from "./ComfyServerUrlField";
@@ -7,6 +7,7 @@ import { propagateRefImage } from "../../../lib/refImagePropagation";
 import type { ComfyuiWorkflowNodeData, WorkflowParamBinding } from "../../../../../shared/types";
 import { trpc } from "@/lib/trpc";
 import { detectUpstreamImageUrl, resolveWorkflowImageParams } from "@/lib/comfyWorkflowParams";
+import { summarizeComfyWorkflow } from "@/lib/comfyWorkflowSummary";
 import { makeImageProxyFallback } from "@/lib/utils";
 import { isOwnStorageUrl } from "@/lib/ownStorage";
 import { ImageLightbox } from "../ImageLightbox";
@@ -202,6 +203,14 @@ export const ComfyuiWorkflowNode = memo(function ComfyuiWorkflowNode({ id, selec
   // Local vs official cloud (cloud.comfy.org). The cloud toggle is only usable by
   // admins / whitelisted users (and only when the server has it configured).
   const useCloud = payload.useCloudComfy === true;
+  // Border-colored annotation: which workflow / models are loaded. Recomputed
+  // only when the JSON changes. accentColor matches the node border (green local,
+  // blue cloud); detail powers the hover tooltip.
+  const accentColor = useCloud ? CLOUD_ACCENT : accent;
+  const summary = useMemo(() => summarizeComfyWorkflow(payload.workflowJson), [payload.workflowJson]);
+  const annotationText = `${payload.workflowName ? payload.workflowName + " · " : ""}${summary.brief}`;
+  const annotationDetail = `${payload.workflowName ? "工作流: " + payload.workflowName + "\n" : ""}${summary.detail}`;
+  const hasOutput = payload.status === "done" && !!payload.outputUrls && payload.outputUrls.length > 0;
   const cloudInfo = trpc.comfyui.cloudInfo.useQuery(undefined, { staleTime: 60_000 });
   const canUseCloud = cloudInfo.data?.allowed ?? false;
   const cloudConfigured = cloudInfo.data?.configured ?? false;
@@ -313,14 +322,18 @@ export const ComfyuiWorkflowNode = memo(function ComfyuiWorkflowNode({ id, selec
   const handleFileUpload = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
+    // Remember the source filename (sans extension) so the node can show a
+    // "which workflow is loaded" annotation. Persisted on the node payload.
+    const baseName = file.name.replace(/\.[^.]+$/, "");
     const reader = new FileReader();
     reader.onload = (ev) => {
       const text = ev.target?.result as string;
       setLocalJson(text);
+      if (baseName) update({ workflowName: baseName });
     };
     reader.readAsText(file);
     e.target.value = "";
-  }, []);
+  }, [update]);
 
   const handleImageParamUpload = useCallback(async (binding: WorkflowParamBinding, sourceUrl: string) => {
     const baseUrl = payload.customBaseUrl?.trim() || undefined;
@@ -388,7 +401,8 @@ export const ComfyuiWorkflowNode = memo(function ComfyuiWorkflowNode({ id, selec
       running={isProcessing}
       canRun={phase === "run" && !!payload.workflowJson?.trim()}
       hasResult={!!payload.outputUrls && payload.outputUrls.length > 0}
-      borderTint={useCloud ? CLOUD_ACCENT : accent}
+      borderTint={accentColor}
+      headerTooltip={summary.ok ? annotationDetail : undefined}
     >
       {/* ref-image-in (top:30%): feed an upstream image into the first blank image param.
           Generic "in" (top:55%) keeps ordering-only / video-input edges. */}
@@ -397,6 +411,21 @@ export const ComfyuiWorkflowNode = memo(function ComfyuiWorkflowNode({ id, selec
       <Handle type="source" position={Position.Right} id="out" style={{ top: "50%", background: accent, border: "2px solid var(--c-bg)" }} />
 
       <div style={{ display: "flex", flexDirection: "column", gap: 10, padding: "2px 0" }}>
+
+        {/* Workflow annotation — border-colored "文件名 · 模型简要", always visible
+            (even when config is collapsed). When there are outputs it moves onto
+            the 输出结果 row instead (see below) to avoid adding height. */}
+        {summary.ok && !hasOutput && (
+          <div
+            title={annotationDetail}
+            style={{
+              fontSize: 10.5, color: accentColor, fontWeight: 500, lineHeight: 1.4,
+              whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis",
+            }}
+          >
+            {annotationText}
+          </div>
+        )}
 
         {/* Config area — collapses when the node is deselected (results stay
             visible below), matching the other media nodes. */}
@@ -859,9 +888,22 @@ export const ComfyuiWorkflowNode = memo(function ComfyuiWorkflowNode({ id, selec
         {/* ── Results ── (always visible, even when config is collapsed) */}
         {payload.status === "done" && payload.outputUrls && payload.outputUrls.length > 0 && (
           <div>
-            <label style={{ ...labelStyle, marginBottom: 6 }}>
-              输出结果（{payload.outputUrls.length} 个）
-            </label>
+            <div style={{ display: "flex", alignItems: "baseline", gap: 8, marginBottom: 6, minWidth: 0 }}>
+              <label style={{ ...labelStyle, marginBottom: 0, flexShrink: 0 }}>
+                输出结果（{payload.outputUrls.length} 个）
+              </label>
+              {summary.ok && (
+                <span
+                  title={annotationDetail}
+                  style={{
+                    fontSize: 10, color: accentColor, fontWeight: 500, lineHeight: 1.4,
+                    whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", minWidth: 0,
+                  }}
+                >
+                  {annotationText}
+                </span>
+              )}
+            </div>
             {/* Video output */}
             {payload.outputType === "video" ? (
               <div>
