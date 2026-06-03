@@ -1264,7 +1264,7 @@ function DownloadsAdminPanel() {
                 <span style={{ color: statusColor(g.status), fontWeight: 600 }}>{statusLabel(g.status)}</span>
                 {" · "}{g.fileName ?? (g.scope === "project" ? `项目 ${g.projectName ?? g.projectId}` : (g.storageKey ?? `assetId ${g.assetId ?? "?"}`))}
               </div>
-              <div style={{ fontSize: 11, color: "var(--c-t3,rgba(255,255,255,0.4))", marginTop: 2, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+              <div style={{ fontSize: 11, color: "var(--c-t3,rgba(255,255,255,0.4))", marginTop: 2, whiteSpace: "normal", wordBreak: "break-word", lineHeight: 1.6 }}>
                 申请人：{g.requesterName ?? `u${g.userId}`}{g.requesterEmail ? `（${g.requesterEmail}）` : ""}
                 {" · "}{g.origin === "request" ? "用户申请" : "管理员授权"}
                 {" · "}{g.scope === "asset" ? "单文件" : "整个项目"}
