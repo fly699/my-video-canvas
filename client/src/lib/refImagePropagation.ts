@@ -131,3 +131,13 @@ export function propagatePromptToVideo(sourceId: string): number {
   if (updates.length > 0) batchUpdateNodeData(updates);
   return updates.length;
 }
+
+/** Push an explicit prompt (the custom-workflow node's resolved positive/negative
+ *  prompt) to downstream comfyui_video nodes. */
+export function propagateWorkflowPrompt(sourceId: string, prompt: string, negPrompt?: string): number {
+  if (!prompt.trim()) return 0;
+  const { nodes, edges, batchUpdateNodeData } = useCanvasStore.getState();
+  const updates = computePromptToVideoUpdates(sourceId, prompt, negPrompt, nodes, edges);
+  if (updates.length > 0) batchUpdateNodeData(updates);
+  return updates.length;
+}

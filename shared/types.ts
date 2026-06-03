@@ -724,11 +724,16 @@ export interface ComfyuiVideoNodeData {
   errorMessage?: string;
 }
 
+/** Semantic role of a param — drives precise auto-fill from upstream nodes
+ *  (positive/negative prompt, reference/control image, inpaint mask). */
+export type WorkflowParamRole = "positive" | "negative" | "reference" | "control" | "mask";
+
 export interface WorkflowParamBinding {
   nodeId: string;
   fieldPath: string;
   label: string;
   type: "text" | "number" | "select" | "image" | "boolean";
+  role?: WorkflowParamRole;
   defaultValue?: unknown;
   options?: string[];
   min?: number;
@@ -753,6 +758,8 @@ export interface ComfyuiWorkflowNodeData {
   paramBindings?: WorkflowParamBinding[];
   paramValues?: Record<string, unknown>;
   outputNodeIds?: string[];
+  /** All detected output nodes (for the "输出选择" UI). */
+  outputNodes?: { id: string; classType: string; isVideo: boolean }[];
   outputType?: "image" | "video" | "auto";
   outputUrl?: string;
   outputUrls?: string[];

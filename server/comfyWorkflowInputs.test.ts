@@ -62,4 +62,15 @@ describe("fillWorkflowPromptParams", () => {
     expect(out["6.inputs.text"]).toBe("mine");   // user kept
     expect(out["7.inputs.text"]).toBe("up-neg"); // blank filled
   });
+
+  it("uses explicit roles over label heuristics", () => {
+    // labels don't say 提示词, but roles do the targeting
+    const bindings: WorkflowParamBinding[] = [
+      { nodeId: "a", fieldPath: "inputs.text", label: "文本A", type: "text", role: "positive" },
+      { nodeId: "b", fieldPath: "inputs.text", label: "文本B", type: "text", role: "negative" },
+    ];
+    const out = fillWorkflowPromptParams(bindings, {}, { positive: "P", negative: "N" });
+    expect(out["a.inputs.text"]).toBe("P");
+    expect(out["b.inputs.text"]).toBe("N");
+  });
 });

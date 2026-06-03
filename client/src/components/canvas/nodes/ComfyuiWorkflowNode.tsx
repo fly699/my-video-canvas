@@ -3,7 +3,7 @@ import { Handle, Position } from "@xyflow/react";
 import { BaseNode } from "../BaseNode";
 import { ComfyServerUrlField } from "./ComfyServerUrlField";
 import { useCanvasStore } from "../../../hooks/useCanvasStore";
-import { propagateRefImage } from "../../../lib/refImagePropagation";
+import { propagateRefImage, propagateWorkflowPrompt } from "../../../lib/refImagePropagation";
 import type { ComfyuiWorkflowNodeData, WorkflowParamBinding } from "../../../../../shared/types";
 import { trpc } from "@/lib/trpc";
 import { detectUpstreamImageUrl, detectUpstreamImages, detectUpstreamPrompt, resolveWorkflowImageParams, fillWorkflowPromptParams } from "@/lib/comfyWorkflowParams";
@@ -266,6 +266,7 @@ export const ComfyuiWorkflowNode = memo(function ComfyuiWorkflowNode({ id, selec
         workflowJson: trimmed,
         paramBindings: bindings,
         outputNodeIds: result.outputNodeIds,
+        outputNodes: result.outputNodes,
         outputType: result.outputType === "mixed" ? "auto" : result.outputType,
         paramValues: {},
       });
@@ -329,6 +330,14 @@ export const ComfyuiWorkflowNode = memo(function ComfyuiWorkflowNode({ id, selec
       // Auto-fill downstream reference-image targets — image outputs only. Use
       // the run's actual outputType, not the config (which can be "auto").
       if (result.urls[0] && result.outputType !== "video") propagateRefImage(id, result.urls[0]);
+      // Push the resolved prompt to downstream comfyui_video nodes (下发提示词).
+      const bs = payload.paramBindings ?? [];
+      const keyOf = (b?: WorkflowParamBinding) => (b ? `${b.nodeId}.${b.fieldPath}` : undefined);
+      const posKey = keyOf(bs.find((b) => b.role === "positive") ?? bs.find((b) => b.type === "text" && /提示词|prompt/i.test(b.label) && !/负|negative/i.test(b.label)));
+      const negKey = keyOf(bs.find((b) => b.role === "negative") ?? bs.find((b) => b.type === "text" && /负|negative/i.test(b.label)));
+      const posText = posKey ? String(effectiveParamValues[posKey] ?? "") : "";
+      const negText = negKey ? String(effectiveParamValues[negKey] ?? "") : undefined;
+      if (posText.trim()) propagateWorkflowPrompt(id, posText, negText);
       toast.success("执行完成");
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
@@ -668,6 +677,39 @@ export const ComfyuiWorkflowNode = memo(function ComfyuiWorkflowNode({ id, selec
                       <span style={{ fontSize: 10, color: "var(--c-t4)", marginLeft: 6 }}>
                         节点 {b.nodeId} · {b.type}
                       </span>
+                      {/* Role tag — drives precise auto-fill from upstream nodes.
+                          Editable for text/image params. */}
+                      {editingBindings && (b.type === "text" || b.type === "image") && (
+                        <select
+                          value={b.role ?? ""}
+                          onChange={(e) => {
+                            const updated = [...localBindings];
+                            const role = e.target.value || undefined;
+                            updated[i] = { ...b, role: role as WorkflowParamBinding["role"] };
+                            setLocalBindings(updated);
+                          }}
+                          style={{ ...fieldBase, padding: "3px 6px", fontSize: 10.5, marginTop: 4, cursor: "pointer" }}
+                        >
+                          <option value="">角色：自动</option>
+                          {b.type === "text" ? (
+                            <>
+                              <option value="positive">正向提示词</option>
+                              <option value="negative">反向提示词</option>
+                            </>
+                          ) : (
+                            <>
+                              <option value="reference">参考图</option>
+                              <option value="control">控制图</option>
+                              <option value="mask">遮罩</option>
+                            </>
+                          )}
+                        </select>
+                      )}
+                      {!editingBindings && b.role && (
+                        <span style={{ fontSize: 9, color: accent, marginLeft: 6, padding: "1px 5px", borderRadius: 4, border: `1px solid ${accent}55` }}>
+                          {b.role === "positive" ? "正向" : b.role === "negative" ? "反向" : b.role === "reference" ? "参考图" : b.role === "control" ? "控制图" : "遮罩"}
+                        </span>
+                      )}
                     </div>
                     {editingBindings && (
                       <button
@@ -893,7 +935,7 @@ export const ComfyuiWorkflowNode = memo(function ComfyuiWorkflowNode({ id, selec
                 高级选项
               </button>
               {showAdvanced && (
-                <div style={{ display: "flex", gap: 8 }}>
+                <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
                   <div style={{ flex: 1 }}>
                     <label style={labelStyle}>输出类型</label>
                     <select
@@ -906,6 +948,31 @@ export const ComfyuiWorkflowNode = memo(function ComfyuiWorkflowNode({ id, selec
                       <option value="video">视频</option>
                     </select>
                   </div>
+                  {/* Output selection — pick which output node(s) to collect when
+                      the workflow has more than one SaveImage / VHS output. */}
+                  {(payload.outputNodes?.length ?? 0) > 1 && (() => {
+                    const all = payload.outputNodes ?? [];
+                    // empty/undefined outputNodeIds = collect all
+                    const sel = payload.outputNodeIds && payload.outputNodeIds.length > 0 ? payload.outputNodeIds : all.map((o) => o.id);
+                    const toggle = (id: string) => {
+                      const next = sel.includes(id) ? sel.filter((x) => x !== id) : [...sel, id];
+                      // keep at least one selected; storing all is fine (== collect all)
+                      update({ outputNodeIds: next.length > 0 ? next : [id] });
+                    };
+                    return (
+                      <div>
+                        <label style={labelStyle}>输出节点（{sel.length}/{all.length}）</label>
+                        <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+                          {all.map((o) => (
+                            <label key={o.id} style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 11.5, color: "var(--c-t2)", cursor: "pointer" }}>
+                              <input type="checkbox" checked={sel.includes(o.id)} onChange={() => toggle(o.id)} />
+                              节点 {o.id} · {o.classType}（{o.isVideo ? "视频" : "图像"}）
+                            </label>
+                          ))}
+                        </div>
+                      </div>
+                    );
+                  })()}
                 </div>
               )}
             </div>

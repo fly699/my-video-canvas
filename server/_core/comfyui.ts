@@ -1228,7 +1228,7 @@ type WorkflowJson = Record<string, { class_type: string; inputs: Record<string, 
 export async function analyzeWorkflow(
   workflowJson: string,
   rawBaseUrl?: string,
-): Promise<{ detectedParams: WorkflowParamBinding[]; outputNodeIds: string[]; outputType: "image" | "video" | "mixed" }> {
+): Promise<{ detectedParams: WorkflowParamBinding[]; outputNodeIds: string[]; outputNodes: { id: string; classType: string; isVideo: boolean }[]; outputType: "image" | "video" | "mixed" }> {
   let workflow: WorkflowJson;
   try {
     workflow = JSON.parse(workflowJson) as WorkflowJson;
@@ -1251,6 +1251,7 @@ export async function analyzeWorkflow(
 
   const detectedParams: WorkflowParamBinding[] = [];
   const outputNodeIds: string[] = [];
+  const outputNodes: { id: string; classType: string; isVideo: boolean }[] = [];
   let hasImage = false;
   let hasVideo = false;
 
@@ -1308,6 +1309,7 @@ export async function analyzeWorkflow(
         nodeId, fieldPath: "inputs.text",
         label: isPositive ? "提示词" : "负向提示词",
         type: "text",
+        role: isPositive ? "positive" : "negative",
         defaultValue: inputs.text ?? "",
       });
     } else if (ct === "TextEncodeQwenImageEditPlus" || ct === "TextEncodeQwenImageEdit") {
@@ -1370,6 +1372,7 @@ export async function analyzeWorkflow(
         nodeId, fieldPath: "inputs.image",
         label: node._meta?.title?.trim() || (isMask ? "遮罩" : "输入图像"),
         type: "image",
+        role: isMask ? "mask" : "reference",
         defaultValue: inputs.image ?? "",
       });
     } else if (ct === "ControlNetLoader" || ct === "DiffControlNetLoader") {
@@ -1394,12 +1397,15 @@ export async function analyzeWorkflow(
     } else if (ct === "VHS_VideoCombine") {
       if ("frame_rate" in inputs) detectedParams.push({ nodeId, fieldPath: "inputs.frame_rate", label: "帧率 (FPS)", type: "number", defaultValue: inputs.frame_rate ?? 8, min: 1, max: 60, step: 1 });
       outputNodeIds.push(nodeId);
+      outputNodes.push({ id: nodeId, classType: ct, isVideo: true });
       hasVideo = true;
     } else if (IMAGE_OUTPUT_CLASS_TYPES.has(ct)) {
       outputNodeIds.push(nodeId);
+      outputNodes.push({ id: nodeId, classType: ct, isVideo: false });
       hasImage = true;
     } else if (VIDEO_OUTPUT_CLASS_TYPES.has(ct)) {
       outputNodeIds.push(nodeId);
+      outputNodes.push({ id: nodeId, classType: ct, isVideo: true });
       hasVideo = true;
     } else {
       // Generic fallback for unrecognized nodes: surface a LITERAL `prompt` /
@@ -1413,6 +1419,7 @@ export async function analyzeWorkflow(
             nodeId, fieldPath: `inputs.${field}`,
             label: node._meta?.title?.trim() || "提示词",
             type: "text",
+            role: "positive", // custom prompt-source nodes feed the positive prompt
             defaultValue: (inputs as Record<string, unknown>)[field] as string,
           });
           break;
@@ -1422,7 +1429,7 @@ export async function analyzeWorkflow(
   }
 
   const outputType = hasImage && hasVideo ? "mixed" : hasVideo ? "video" : "image";
-  return { detectedParams, outputNodeIds, outputType };
+  return { detectedParams, outputNodeIds, outputNodes, outputType };
 }
 
 // ── Custom workflow execution ─────────────────────────────────────────────────
