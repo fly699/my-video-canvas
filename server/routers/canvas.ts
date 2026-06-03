@@ -1817,7 +1817,7 @@ export const clipRouter = router({
       }).refine(d => d.endTime > d.startTime, { message: "出点必须大于入点", path: ["endTime"] })
     )
     .mutation(async ({ ctx, input }) => {
-      await assertWhitelisted(ctx);
+      // local ffmpeg, no third-party AI — not whitelist-gated
       guardUrl(input.inputUrl);
       if (input.audioUrl) guardUrl(input.audioUrl);
       const result = await trimVideo(input);
@@ -1827,7 +1827,7 @@ export const clipRouter = router({
   getVideoDuration: protectedProcedure
     .input(z.object({ url: z.string().url() }))
     .query(async ({ ctx, input }) => {
-      await assertWhitelisted(ctx);
+      // local ffprobe, no third-party AI — not whitelist-gated
       guardUrl(input.url);
       const duration = await getVideoDuration(input.url);
       return { duration };
@@ -1925,7 +1925,7 @@ export const mergeRouter = router({
       })
     )
     .mutation(async ({ ctx, input }) => {
-      await assertWhitelisted(ctx);
+      // local ffmpeg, no third-party AI — not whitelist-gated
       for (const url of input.inputUrls) guardUrl(url);
       if (input.bgMusicUrl) guardUrl(input.bgMusicUrl);
       const result = await mergeVideos(input);
@@ -1976,7 +1976,7 @@ export const subtitleRouter = router({
       })
     )
     .mutation(async ({ ctx, input }) => {
-      await assertWhitelisted(ctx);
+      // local ffmpeg, no third-party AI — not whitelist-gated
       guardUrl(input.videoUrl);
       const result = await burnSubtitles(input.videoUrl, input.entries as SubtitleEntry[], {
         fontSize: input.fontSize,
@@ -1992,7 +1992,7 @@ export const subtitleRouter = router({
       })
     )
     .mutation(async ({ ctx, input }) => {
-      await assertWhitelisted(ctx);
+      // pure local string generation, no AI — not whitelist-gated
       return { srt: generateSRT(input.entries as SubtitleEntry[]) };
     }),
 });
@@ -2021,7 +2021,7 @@ export const subtitleMotionRouter = router({
       fontColor: z.string().optional(),
     }))
     .mutation(async ({ ctx, input }) => {
-      await assertWhitelisted(ctx);
+      // local ffmpeg (ASS burn), no third-party AI — not whitelist-gated
       guardUrl(input.videoUrl);
       return dedupe("subtitleMotion.burnMotion", ctx.user.id, input, async () => {
         const result = await burnAssSubtitles(
@@ -2086,7 +2086,7 @@ export const overlayRouter = router({
       })
     )
     .mutation(async ({ ctx, input }) => {
-      await assertWhitelisted(ctx);
+      // local ffmpeg (overlay/水印/调色), no third-party AI — not whitelist-gated
       guardUrl(input.inputUrl);
       if (input.overlayImageUrl) guardUrl(input.overlayImageUrl);
       if (input.pipVideoUrl) guardUrl(input.pipVideoUrl);
