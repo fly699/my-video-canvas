@@ -1,4 +1,4 @@
-import { Trash2, Mic } from "lucide-react";
+import { Trash2, Mic, AlignLeft, AlignCenter, AlignRight } from "lucide-react";
 import { toast } from "sonner";
 import { trpc } from "@/lib/trpc";
 import { EC, probeMediaDuration } from "./theme";
@@ -48,6 +48,8 @@ export function PropertiesPanel() {
 
   const setEff = (k: keyof NonNullable<Clip["effects"]>, v: number | string | undefined) => update(c.id, { effects: { ...eff, [k]: v } });
   const setTf = (k: keyof NonNullable<Clip["transform"]>, v: number) => update(c.id, { transform: { ...tf, [k]: v } });
+  const txt = c.text;
+  const setText = (patch: Partial<NonNullable<Clip["text"]>>) => update(c.id, { text: { ...txt, content: txt?.content ?? "", ...patch } });
 
   return (
     <aside style={panel}>
@@ -59,11 +61,37 @@ export function PropertiesPanel() {
       <div style={{ overflowY: "auto", padding: 12, display: "flex", flexDirection: "column", gap: 14 }}>
         {c.kind === "text" && (
           <Section title="文字">
-            <textarea value={c.text?.content ?? ""} onChange={(e) => update(c.id, { text: { ...c.text, content: e.target.value } })}
+            <textarea value={txt?.content ?? ""} onChange={(e) => setText({ content: e.target.value })}
               rows={2} style={{ ...input, resize: "vertical" }} placeholder="输入文字…" />
-            <Row label="字号"><input type="number" value={c.text?.size ?? 48} onChange={(e) => update(c.id, { text: { ...c.text, content: c.text?.content ?? "", size: Number(e.target.value) } })} style={input} /></Row>
-            <Row label="颜色"><input type="color" value={c.text?.color ?? "#ffffff"} onChange={(e) => update(c.id, { text: { ...c.text, content: c.text?.content ?? "", color: e.target.value } })} style={{ ...input, height: 30, padding: 2 }} /></Row>
-            <Row label="动效"><Select value={c.text?.motionStyle ?? "none"} options={MOTIONS} onChange={(v) => update(c.id, { text: { ...c.text, content: c.text?.content ?? "", motionStyle: v as NonNullable<Clip["text"]>["motionStyle"] } })} /></Row>
+            <Row label="字号"><input type="number" value={txt?.size ?? 48} onChange={(e) => setText({ size: Number(e.target.value) })} style={input} /></Row>
+            {/* style row: bold / italic / alignment */}
+            <div style={{ display: "flex", gap: 6 }}>
+              <Toggle on={!!txt?.bold} onClick={() => setText({ bold: !txt?.bold })} title="粗体"><b>B</b></Toggle>
+              <Toggle on={!!txt?.italic} onClick={() => setText({ italic: !txt?.italic })} title="斜体"><i>I</i></Toggle>
+              <Toggle on={(txt?.align ?? "center") === "left"} onClick={() => setText({ align: "left" })} title="左对齐"><AlignLeft size={13} /></Toggle>
+              <Toggle on={(txt?.align ?? "center") === "center"} onClick={() => setText({ align: "center" })} title="居中"><AlignCenter size={13} /></Toggle>
+              <Toggle on={(txt?.align ?? "center") === "right"} onClick={() => setText({ align: "right" })} title="右对齐"><AlignRight size={13} /></Toggle>
+            </div>
+            <Row label="颜色"><input type="color" value={txt?.color ?? "#ffffff"} onChange={(e) => setText({ color: e.target.value })} style={{ ...input, height: 30, padding: 2 }} /></Row>
+            {/* 描边 */}
+            <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+              <Toggle on={(txt?.strokeWidth ?? 0) > 0} onClick={() => setText({ strokeWidth: (txt?.strokeWidth ?? 0) > 0 ? 0 : 4, strokeColor: txt?.strokeColor ?? "#000000" })} title="描边" wide>描边</Toggle>
+              {(txt?.strokeWidth ?? 0) > 0 && <>
+                <input type="number" min={0} max={40} value={txt?.strokeWidth ?? 4} onChange={(e) => setText({ strokeWidth: Number(e.target.value) })} style={{ ...input, width: 54 }} />
+                <input type="color" value={txt?.strokeColor ?? "#000000"} onChange={(e) => setText({ strokeColor: e.target.value })} style={{ ...input, width: 34, height: 30, padding: 2 }} />
+              </>}
+            </div>
+            {/* 投影 */}
+            <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+              <Toggle on={!!txt?.shadow} onClick={() => setText({ shadow: !txt?.shadow, shadowColor: txt?.shadowColor ?? "#000000" })} title="投影" wide>投影</Toggle>
+              {txt?.shadow && <input type="color" value={txt?.shadowColor ?? "#000000"} onChange={(e) => setText({ shadowColor: e.target.value })} style={{ ...input, width: 34, height: 30, padding: 2 }} />}
+            </div>
+            {/* 背景框 */}
+            <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+              <Toggle on={!!txt?.bgColor} onClick={() => setText({ bgColor: txt?.bgColor ? undefined : "#000000" })} title="背景框" wide>背景框</Toggle>
+              {txt?.bgColor && <input type="color" value={txt?.bgColor ?? "#000000"} onChange={(e) => setText({ bgColor: e.target.value })} style={{ ...input, width: 34, height: 30, padding: 2 }} />}
+            </div>
+            <Row label="动效"><Select value={txt?.motionStyle ?? "none"} options={MOTIONS} onChange={(v) => setText({ motionStyle: v as NonNullable<Clip["text"]>["motionStyle"] })} /></Row>
             <button
               disabled={dubMut.isPending}
               onClick={() => aiDub(c.text?.content ?? "", c.start)}
@@ -132,6 +160,17 @@ export function PropertiesPanel() {
 }
 
 function labelKind(k: string) { return k === "video" ? "视频" : k === "audio" ? "音频" : k === "image" ? "图片" : "文字"; }
+
+function Toggle({ on, onClick, title, wide, children }: { on: boolean; onClick: () => void; title: string; wide?: boolean; children: React.ReactNode }) {
+  return (
+    <button onClick={onClick} title={title} style={{
+      height: 30, minWidth: wide ? 56 : 30, padding: wide ? "0 10px" : 0, flexShrink: 0,
+      display: "inline-flex", alignItems: "center", justifyContent: "center", gap: 4,
+      fontSize: 12, borderRadius: 7, cursor: "pointer",
+      border: `1px solid ${on ? EC.accent : EC.border}`, background: on ? EC.accentSoft : "transparent", color: on ? EC.accent : EC.t2,
+    }}>{children}</button>
+  );
+}
 
 function Section({ title, children }: { title: string; children: React.ReactNode }) {
   return (

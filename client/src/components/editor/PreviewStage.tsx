@@ -23,6 +23,28 @@ function cssFilter(c: Clip): string {
   return parts.join(" ");
 }
 
+/** CSS for a text clip — mirrors the ASS styling used at export (approximate). */
+function textCss(t: Clip["text"], canvasH: number): React.CSSProperties {
+  const size = t?.size ?? 48;
+  const stroke = t?.strokeWidth ?? 0;
+  const css: React.CSSProperties = {
+    fontSize: `${(size / canvasH) * 100}cqh`,
+    color: t?.color ?? "#fff",
+    fontFamily: t?.font,
+    fontWeight: t?.bold ? 800 : 600,
+    fontStyle: t?.italic ? "italic" : undefined,
+    background: t?.bgColor,
+    padding: t?.bgColor ? "0.12em 0.32em" : 0,
+    borderRadius: t?.bgColor ? "0.1em" : undefined,
+    whiteSpace: "pre-wrap",
+    lineHeight: 1.25,
+  };
+  // stroke (scaled to font via em so it tracks the preview zoom)
+  if (stroke > 0) (css as Record<string, unknown>).WebkitTextStroke = `${(stroke / size).toFixed(3)}em ${t?.strokeColor ?? "#000"}`;
+  if (t?.shadow) css.textShadow = `0 0.05em 0.12em ${t?.shadowColor ?? "rgba(0,0,0,0.65)"}`;
+  return css;
+}
+
 function activeAt(doc: EditorDoc, t: number): { clip: Clip; trackType: string }[] {
   const out: { clip: Clip; trackType: string }[] = [];
   for (const track of doc.tracks) {
@@ -186,8 +208,8 @@ export function PreviewStage() {
               <div key={clip.id} data-clip-box={clip.id} style={boxStyle}
                 onPointerDown={(e) => beginMove(e, clip)}>
                 {clip.kind === "text" ? (
-                  <div style={{ width: "100%", display: "flex", alignItems: "center", justifyContent: "center", textAlign: "center", pointerEvents: "none" }}>
-                    <span style={{ fontSize: `${((clip.text?.size ?? 48) / doc.height) * 100}cqh`, color: clip.text?.color ?? "#fff", fontFamily: clip.text?.font, background: clip.text?.bgColor, padding: clip.text?.bgColor ? "0.1em 0.3em" : 0, fontWeight: 700, textShadow: "0 2px 8px rgba(0,0,0,0.6)", whiteSpace: "pre-wrap" }}>{clip.text?.content}</span>
+                  <div style={{ width: "100%", display: "flex", alignItems: "center", justifyContent: clip.text?.align === "left" ? "flex-start" : clip.text?.align === "right" ? "flex-end" : "center", textAlign: clip.text?.align ?? "center", pointerEvents: "none" }}>
+                    <span style={textCss(clip.text, doc.height)}>{clip.text?.content}</span>
                   </div>
                 ) : clip.kind === "image" ? (
                   <img src={clip.assetUrl} alt="" draggable={false} style={{ width: "100%", height: "auto", display: "block", filter: cssFilter(clip), pointerEvents: "none" }} />

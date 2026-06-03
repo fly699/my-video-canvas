@@ -40,6 +40,10 @@ const clipSchema = z.object({
     font: z.string().max(64).optional(), size: z.number().optional(),
     color: z.string().max(32).optional(), bgColor: z.string().max(32).optional(),
     motionStyle: z.string().max(32).optional(),
+    bold: z.boolean().optional(), italic: z.boolean().optional(),
+    align: z.enum(["left", "center", "right"]).optional(),
+    strokeColor: z.string().max(32).optional(), strokeWidth: z.number().min(0).max(40).optional(),
+    shadow: z.boolean().optional(), shadowColor: z.string().max(32).optional(),
   }).optional(),
 });
 

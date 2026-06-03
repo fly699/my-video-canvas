@@ -38,9 +38,17 @@ export interface ClipText {
   content: string;
   font?: string;
   size?: number;        // px at output resolution
-  color?: string;       // CSS color
+  color?: string;       // CSS fill color
   bgColor?: string;     // optional text background box
   motionStyle?: "none" | "fade" | "roll" | "karaoke" | "bounce";
+  // ── rich styling (preview via CSS; export via ASS override tags) ──
+  bold?: boolean;
+  italic?: boolean;
+  align?: "left" | "center" | "right";
+  strokeColor?: string; // 描边色
+  strokeWidth?: number; // 描边粗细 (px @ output res, 0 = none)
+  shadow?: boolean;     // 投影
+  shadowColor?: string; // 投影色 (default semi-black)
 }
 
 export interface Clip {

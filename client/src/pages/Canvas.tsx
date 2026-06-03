@@ -1272,6 +1272,20 @@ function CanvasInner({ projectId }: { projectId: number }) {
             <TooltipContent side="bottom" className="text-xs">素材库</TooltipContent>
           </Tooltip>
 
+          {/* Video editor (jump to the timeline editor) */}
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <button
+                onClick={() => navigate("/editor")}
+                className="topbar-btn"
+                style={{ background: "oklch(0.65 0.19 310 / 0.12)", border: "1px solid oklch(0.65 0.19 310 / 0.32)", color: "oklch(0.7 0.19 310)" }}
+              >
+                <Clapperboard className="w-3.5 h-3.5" />
+              </button>
+            </TooltipTrigger>
+            <TooltipContent side="bottom" className="text-xs">视频剪辑器</TooltipContent>
+          </Tooltip>
+
           {/* Stats sidebar toggle */}
           <Tooltip>
             <TooltipTrigger asChild>
