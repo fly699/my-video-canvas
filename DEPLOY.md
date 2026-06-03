@@ -19,9 +19,12 @@ ffmpeg -version
 
 有版本号即可；提示 `command not found` 则需安装。
 
-### 裸机安装
+### 安装
 
 ```bash
+# Windows（与 deploy.ps1 一致）
+winget install --id Gyan.FFmpeg -e
+
 # Debian / Ubuntu
 sudo apt-get update && sudo apt-get install -y ffmpeg
 
@@ -32,9 +35,28 @@ sudo yum install -y epel-release && sudo yum install -y ffmpeg
 brew install ffmpeg
 ```
 
+> Windows 用 winget 装完后，**新开一个 PowerShell** 让 PATH 生效再启动应用。
+
 ---
 
-## 方式一：Docker（推荐，已内置 ffmpeg + git + pnpm）
+## 方式零：Windows 一键部署（`deploy/deploy.bat`）
+
+这是本项目的主部署方式。双击 `deploy/deploy.bat`（会自动提权），`deploy.ps1`
+会用 winget 依次准备 **Node.js / pnpm / ffmpeg / Docker**，再 `pnpm install →
+db:push → build → start`。
+
+> ✅ **ffmpeg 现已纳入 deploy.ps1 的自动安装**（Step 1，winget `Gyan.FFmpeg`）。
+> **已经部署过的老环境**：重新双击一次 `deploy.bat` 即可补装 ffmpeg（脚本幂等，
+> 已完成的步骤不会重复）；或手动 `winget install --id Gyan.FFmpeg -e` 后**新开
+> PowerShell**。
+>
+> ⚠️ 应用内「系统更新」(`update.bat` / 管理后台一键更新) 只做
+> `git pull → pnpm install → db:push → build`，**不会**装 ffmpeg 这类系统软件，
+> 所以 ffmpeg 要在首次部署时装好。
+
+---
+
+## 方式一：Docker（已内置 ffmpeg + git + pnpm）
 
 仓库根目录已提供 `Dockerfile`。
 

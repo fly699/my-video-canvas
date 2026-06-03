@@ -88,7 +88,7 @@ $ContainerName = "avc-mysql"
 $DbName        = "ai_video_canvas"
 
 # ============================================================================
-Step 1 "准备运行环境（Node.js / pnpm）"
+Step 1 "准备运行环境（Node.js / pnpm / ffmpeg）"
 # ============================================================================
 $hasWinget = Have winget
 
@@ -115,6 +115,28 @@ if (-not (Have pnpm)) {
 }
 if (-not (Have pnpm)) { Die "pnpm 启用失败，请手动执行：npm install -g pnpm" }
 Ok "pnpm $(pnpm -v)"
+
+# ffmpeg：视频剪辑器「单遍导出」与画布的裁剪/合并/字幕/叠加等节点都依赖系统
+# ffmpeg/ffprobe（非 npm 依赖）。这里像装 Node 一样用 winget 自动装；装不上不
+# 致命（其他功能仍可用），但会明确告警，避免视频功能上线后才报错。
+if (-not (Have ffmpeg)) {
+    if ($SkipDeps) {
+        Warn "未检测到 ffmpeg，且指定了 -SkipDeps。视频剪辑/导出将不可用，请手动安装：winget install Gyan.FFmpeg"
+    } elseif (-not $hasWinget) {
+        Warn "未检测到 ffmpeg，且系统无 winget。视频功能将不可用，请手动安装并加入 PATH：https://www.gyan.dev/ffmpeg/builds/"
+    } else {
+        Write-Host "    未检测到 ffmpeg，使用 winget 自动安装（视频剪辑/导出依赖）…"
+        winget install --id Gyan.FFmpeg -e --silent --accept-source-agreements --accept-package-agreements
+        Refresh-Path
+    }
+}
+if (Have ffmpeg) {
+    $ffLine = (ffmpeg -version 2>$null | Select-Object -First 1)
+    Ok "ffmpeg $ffLine"
+} else {
+    Warn "ffmpeg 仍不可用——视频剪辑器导出、裁剪/合并/字幕等功能会报错。"
+    Warn "可【重开 PowerShell 让 PATH 生效后重跑本脚本】，或手动安装 ffmpeg：winget install Gyan.FFmpeg"
+}
 
 # ============================================================================
 Step 2 "准备 Docker 引擎"
