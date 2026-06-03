@@ -1,5 +1,5 @@
 import { useRef, useCallback, useState, useEffect } from "react";
-import { ZoomIn, ZoomOut, Scissors, Magnet, Trash2, Copy, SplitSquareHorizontal, Volume2, VolumeX, Eye, EyeOff, Lock, Unlock, Plus } from "lucide-react";
+import { ZoomIn, ZoomOut, Maximize2, Scissors, Magnet, Trash2, Copy, SplitSquareHorizontal, Volume2, VolumeX, Eye, EyeOff, Lock, Unlock, Plus } from "lucide-react";
 import { EC, trackColor, trackLabel, fmtTime, probeMediaDuration } from "./theme";
 import { useEditorStore, clipDuration } from "./editorStore";
 import { ClipThumb } from "./ClipThumb";
@@ -173,6 +173,14 @@ export function Timeline() {
 
   const onPointerUp = useCallback(() => { dragRef.current = null; setSnapX(null); }, []);
 
+  // Zoom so the whole timeline fits the visible lane width.
+  const fitToWindow = useCallback(() => {
+    const el = scrollRef.current; if (!el) return;
+    const avail = el.clientWidth - LABEL_W - 24; // minus labels + a little breathing room
+    const sec = Math.max(duration + 2, 5);
+    if (avail > 0) setPxPerSec(Math.min(400, Math.max(8, avail / sec)));
+  }, [duration, setPxPerSec]);
+
   const onDrop = useCallback(async (e: React.DragEvent, trackId: string) => {
     e.preventDefault();
     const raw = e.dataTransfer.getData(MEDIA_DND_MIME);
@@ -201,6 +209,7 @@ export function Timeline() {
         <button onClick={() => setSnapOn((v) => !v)} title={snapOn ? "吸附：开（拖动时对齐片段/播放头）" : "吸附：关"} style={{ ...zoomBtn, width: "auto", padding: "0 8px", gap: 4, color: snapOn ? EC.accent : EC.t3, borderColor: snapOn ? EC.accent : EC.border, display: "inline-flex", alignItems: "center" }}><Magnet size={13} /><span style={{ fontSize: 11 }}>吸附</span></button>
         <button onClick={() => setPxPerSec(pxPerSec / 1.4)} title="缩小" style={zoomBtn}><ZoomOut size={14} /></button>
         <button onClick={() => setPxPerSec(pxPerSec * 1.4)} title="放大" style={zoomBtn}><ZoomIn size={14} /></button>
+        <button onClick={fitToWindow} title="适应窗口（缩放至完整显示时间轴）" style={zoomBtn}><Maximize2 size={13} /></button>
       </div>
 
       {/* scrollable area: labels + tracks */}
@@ -275,6 +284,16 @@ export function Timeline() {
                       <span style={{ position: "relative", fontSize: 10, color: EC.t1, padding: "0 10px", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", pointerEvents: "none" }}>
                         {c.kind === "text" ? (c.text?.content ?? "文字") : (c.assetUrl?.split("/").pop() ?? c.kind)}
                       </span>
+                      {/* keyframe markers — diamonds along the clip at each keyframe's time */}
+                      {(c.keyframes?.length ?? 0) > 0 && (() => {
+                        const cd = clipDuration(c);
+                        return c.keyframes!.map((k, i) => (
+                          <div key={i} title={`关键帧 @ ${k.t.toFixed(2)}s`}
+                            style={{ position: "absolute", bottom: 2, left: `${Math.max(0, Math.min(1, k.t / cd)) * 100}%`,
+                              width: 6, height: 6, marginLeft: -3, transform: "rotate(45deg)", background: "oklch(0.92 0.16 95)",
+                              border: "1px solid oklch(0.3 0 0)", borderRadius: 1, pointerEvents: "none", zIndex: 2 }} />
+                        ));
+                      })()}
                       {/* trim handles — wider hit area + visible grip */}
                       <div onPointerDown={(e) => onClipPointerDown(e, c.id, "trim-l")} className="editor-trim"
                         style={{ position: "absolute", left: 0, top: 0, bottom: 0, width: 10, cursor: "ew-resize", display: "flex", alignItems: "center", justifyContent: "center" }}>
