@@ -23,7 +23,7 @@ export function MediaPreview({ asset, onClose }: { asset: PreviewAsset; onClose:
   }, [onClose]);
 
   if (asset.kind === "image") {
-    return <ImageLightbox images={[asset.url]} currentIndex={0} onClose={onClose} onNavigate={() => {}} preventContextMenu />;
+    return <ImageLightbox images={[asset.url]} currentIndex={0} onClose={onClose} onNavigate={() => {}} />;
   }
 
   // The streaming proxy handles audio fine via the video route (audio has no
