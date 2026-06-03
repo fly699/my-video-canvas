@@ -252,6 +252,9 @@ OWNER_EMAIL=$OwnerEmail
 # HIGGSFIELD_API_SECRET=
 # POYO_API_KEY=
 # COMFYUI_BASE_URL=
+# ComfyUI 官方云端（cloud.comfy.org）：在 platform.comfy.org 生成 API Key（需 Creator/Pro 套餐）
+# COMFYUI_CLOUD_API_KEY=
+# COMFYUI_CLOUD_BASE_URL=https://cloud.comfy.org
 "@
     # 用无 BOM 的 UTF-8 写入，避免首行键名被 BOM 污染
     [System.IO.File]::WriteAllText($envPath, $content, (New-Object System.Text.UTF8Encoding($false)))
