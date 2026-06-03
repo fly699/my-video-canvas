@@ -27,14 +27,56 @@ function getNodeImageUrl(nodeType: string, payload: Record<string, unknown>): st
 
 /** Auto-detect the first image URL from nodes connected into targetId. */
 export function detectUpstreamImageUrl(targetId: string, edges: MiniEdge[], nodes: MiniNode[]): string | undefined {
+  return detectUpstreamImages(targetId, edges, nodes)[0];
+}
+
+/** All upstream image URLs feeding targetId (edge order, de-duplicated). Used to
+ *  fill MULTIPLE blank image params (multi-reference workflows: IPAdapter / multi
+ *  LoadImage / fusion). */
+export function detectUpstreamImages(targetId: string, edges: MiniEdge[], nodes: MiniNode[]): string[] {
+  const out: string[] = [];
+  const seen = new Set<string>();
   for (const edge of edges) {
     if (edge.target !== targetId) continue;
     const src = nodes.find((n) => n.id === edge.source);
     if (!src || !IMAGE_SOURCE_TYPES.has(src.data.nodeType)) continue;
     const url = getNodeImageUrl(src.data.nodeType, (src.data.payload ?? {}) as Record<string, unknown>);
-    if (url) return url;
+    if (url && !seen.has(url)) { seen.add(url); out.push(url); }
   }
-  return undefined;
+  return out;
+}
+
+const PROMPT_SOURCE_TYPES = new Set(["prompt", "storyboard", "script", "ai_chat"]);
+
+/** Auto-detect positive / negative prompt text from upstream text-producing
+ *  nodes wired into targetId (first match each). */
+export function detectUpstreamPrompt(targetId: string, edges: MiniEdge[], nodes: MiniNode[]): { positive?: string; negative?: string } {
+  let positive: string | undefined;
+  let negative: string | undefined;
+  const str = (v: unknown) => (typeof v === "string" && v.trim() ? v.trim() : undefined);
+  for (const edge of edges) {
+    if (edge.target !== targetId) continue;
+    const src = nodes.find((n) => n.id === edge.source);
+    if (!src || !PROMPT_SOURCE_TYPES.has(src.data.nodeType)) continue;
+    const p = (src.data.payload ?? {}) as Record<string, unknown>;
+    let pos: string | undefined;
+    let neg: string | undefined;
+    switch (src.data.nodeType) {
+      case "prompt": pos = str(p.positivePrompt); neg = str(p.negativePrompt); break;
+      case "storyboard": pos = str(p.description); neg = str(p.negativePrompt); break;
+      case "script": pos = str(p.content); break;
+      case "ai_chat": {
+        const msgs = Array.isArray(p.messages) ? (p.messages as Array<{ role?: string; content?: string }>) : [];
+        const lastAssistant = [...msgs].reverse().find((m) => m.role === "assistant");
+        pos = str(lastAssistant?.content);
+        break;
+      }
+    }
+    positive ??= pos;
+    negative ??= neg;
+    if (positive && negative) break;
+  }
+  return { positive, negative };
 }
 
 /**
@@ -45,16 +87,46 @@ export function detectUpstreamImageUrl(targetId: string, edges: MiniEdge[], node
 export function resolveWorkflowImageParams(
   bindings: WorkflowParamBinding[] | undefined,
   paramValues: Record<string, unknown>,
-  upstreamImageUrl: string | undefined,
+  upstream: string | string[] | undefined,
 ): { paramValues: Record<string, unknown>; imageParamKeys: string[] } {
   const imageBindings = (bindings ?? []).filter((b) => b.type === "image");
   const imageParamKeys = imageBindings.map((b) => `${b.nodeId}.${b.fieldPath}`);
-  if (!upstreamImageUrl) return { paramValues, imageParamKeys };
+  const urls = Array.isArray(upstream) ? upstream : upstream ? [upstream] : [];
+  if (urls.length === 0) return { paramValues, imageParamKeys };
   const next = { ...paramValues };
+  // Fill the blank image params in order with successive upstream images
+  // (multi-reference). A single upstream image fills only the first blank.
+  let i = 0;
   for (const b of imageBindings) {
+    if (i >= urls.length) break;
     const key = `${b.nodeId}.${b.fieldPath}`;
     const cur = next[key];
-    if (cur == null || cur === "") next[key] = upstreamImageUrl;
+    if (cur == null || cur === "") { next[key] = urls[i]; i++; }
   }
   return { paramValues: next, imageParamKeys };
+}
+
+/** Fill blank positive / negative prompt params from upstream prompt text.
+ *  Positive param = first text binding labelled 提示词 (not 负…); negative =
+ *  first labelled 负…. Only fills params the user hasn't set. */
+export function fillWorkflowPromptParams(
+  bindings: WorkflowParamBinding[] | undefined,
+  paramValues: Record<string, unknown>,
+  prompts: { positive?: string; negative?: string },
+): Record<string, unknown> {
+  if (!prompts.positive && !prompts.negative) return paramValues;
+  const texts = (bindings ?? []).filter((b) => b.type === "text");
+  const isNeg = (b: WorkflowParamBinding) => /负|negative/i.test(b.label);
+  const posB = texts.find((b) => /提示词|prompt/i.test(b.label) && !isNeg(b)) ?? texts.find((b) => !isNeg(b));
+  const negB = texts.find(isNeg);
+  const next = { ...paramValues };
+  const set = (b: WorkflowParamBinding | undefined, v: string | undefined) => {
+    if (!b || !v) return;
+    const key = `${b.nodeId}.${b.fieldPath}`;
+    const cur = next[key];
+    if (cur == null || cur === "") next[key] = v;
+  };
+  set(posB, prompts.positive);
+  set(negB, prompts.negative);
+  return next;
 }

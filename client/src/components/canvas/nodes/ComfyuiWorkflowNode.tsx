@@ -6,7 +6,7 @@ import { useCanvasStore } from "../../../hooks/useCanvasStore";
 import { propagateRefImage } from "../../../lib/refImagePropagation";
 import type { ComfyuiWorkflowNodeData, WorkflowParamBinding } from "../../../../../shared/types";
 import { trpc } from "@/lib/trpc";
-import { detectUpstreamImageUrl, resolveWorkflowImageParams } from "@/lib/comfyWorkflowParams";
+import { detectUpstreamImageUrl, detectUpstreamImages, detectUpstreamPrompt, resolveWorkflowImageParams, fillWorkflowPromptParams } from "@/lib/comfyWorkflowParams";
 import { summarizeComfyWorkflow } from "@/lib/comfyWorkflowSummary";
 import { makeImageProxyFallback } from "@/lib/utils";
 import { isOwnStorageUrl } from "@/lib/ownStorage";
@@ -281,14 +281,14 @@ export const ComfyuiWorkflowNode = memo(function ComfyuiWorkflowNode({ id, selec
     if (!workflowJson.trim()) { toast.error("请先加载 Workflow JSON"); return; }
     update({ status: "processing", errorMessage: undefined, progress: 0 }, true);
     try {
-      // Pull an image from a connected upstream node into any blank image param.
+      // Pull upstream images (multi-reference → fill blank image params in order)
+      // and upstream prompt text (→ blank positive/negative prompt params).
       const { nodes, edges } = useCanvasStore.getState();
-      const upstreamImg = detectUpstreamImageUrl(id, edges, nodes);
-      const { paramValues, imageParamKeys } = resolveWorkflowImageParams(
-        payload.paramBindings,
-        payload.paramValues ?? {},
-        upstreamImg,
-      );
+      const upstreamImgs = detectUpstreamImages(id, edges, nodes);
+      const upstreamPrompt = detectUpstreamPrompt(id, edges, nodes);
+      const imgResolved = resolveWorkflowImageParams(payload.paramBindings, payload.paramValues ?? {}, upstreamImgs);
+      const imageParamKeys = imgResolved.imageParamKeys;
+      const paramValues = fillWorkflowPromptParams(payload.paramBindings, imgResolved.paramValues, upstreamPrompt);
       // Seed handling: unless the user pinned the seed (randomizeSeed === false),
       // re-randomize every seed param each run, and persist the used value back so
       // the form reflects what was actually sent.
@@ -783,6 +783,27 @@ export const ComfyuiWorkflowNode = memo(function ComfyuiWorkflowNode({ id, selec
                       );
                     })}
                   </div>
+                </div>
+              );
+            })()}
+
+            {/* Aspect-ratio presets — shown when the workflow exposes width + height.
+                Sets both params to a common resolution for the chosen ratio. */}
+            {(() => {
+              const widthB = (payload.paramBindings ?? []).find((b) => b.type === "number" && (/width/i.test(b.fieldPath) || b.label.includes("宽")));
+              const heightB = (payload.paramBindings ?? []).find((b) => b.type === "number" && (/height/i.test(b.fieldPath) || b.label.includes("高")));
+              if (!widthB || !heightB) return null;
+              const PRESETS: [string, number, number][] = [["1:1", 1024, 1024], ["16:9", 1344, 768], ["9:16", 768, 1344], ["4:3", 1152, 896], ["3:4", 896, 1152]];
+              return (
+                <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 4, flexWrap: "wrap" }}>
+                  <label style={{ ...labelStyle, marginBottom: 0 }}>比例</label>
+                  {PRESETS.map(([lbl, w, h]) => (
+                    <button
+                      key={lbl}
+                      onClick={() => { setParamValue(`${widthB.nodeId}.${widthB.fieldPath}`, w); setParamValue(`${heightB.nodeId}.${heightB.fieldPath}`, h); }}
+                      style={{ padding: "4px 9px", fontSize: 11, borderRadius: 6, cursor: "pointer", background: "var(--c-input)", border: "1px solid var(--c-bd2)", color: "var(--c-t2)" }}
+                    >{lbl}</button>
+                  ))}
                 </div>
               );
             })()}
