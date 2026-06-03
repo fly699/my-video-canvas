@@ -411,7 +411,11 @@ function CanvasInner({ projectId }: { projectId: number }) {
     "ui:panel:connectionHints:v1", false, { validate: validateBool },
   );
   const [showHelp, setShowHelp] = useState(false);
-  const [chatOpen, setChatOpen] = useState(false);
+  // Chat floating window: remember whether it was open across reloads (its
+  // position/size/scale/pin already persist inside CanvasChatWindow).
+  const [chatOpen, setChatOpen] = usePersistentState<boolean>(
+    "ui:canvas:chat-open:v1", false, { validate: validateBool },
+  );
   const [showArcPicker, setShowArcPicker] = useState(false);
   const { mode: canvasMode, setMode: setCanvasMode } = useCanvasMode();
   const { theme } = useTheme();
