@@ -423,6 +423,16 @@ export const ComfyuiImageNode = memo(function ComfyuiImageNode({ id, selected, d
   // 绿点指示：结果图是否已落到我方 MinIO 长期存储（/manus-storage/ 路径）。
   const imgStoredInMinio = isOwnStorageUrl(payload.imageUrl);
 
+  // 标题栏下常驻的模型注释（与自定义工作流节点一致）：模板 · checkpoint。
+  const ckptShort = (payload.ckpt ?? "").split(/[\\/]/).pop()?.replace(/\.[^.]+$/, "") ?? "";
+  const modelAnnotation = [payload.workflowTemplate, ckptShort].filter(Boolean).join(" · ");
+  const modelTip = [
+    payload.ckpt ? `模型: ${payload.ckpt}` : "",
+    payload.lora ? `LoRA: ${payload.lora}` : "",
+    (payload.sampler || payload.steps != null) ? `采样: ${payload.sampler ?? ""} ${payload.steps != null ? payload.steps + "步" : ""}${payload.cfg != null ? " CFG " + payload.cfg : ""}`.trim() : "",
+    (payload.width && payload.height) ? `尺寸: ${payload.width}×${payload.height}` : "",
+  ].filter(Boolean).join("\n");
+
   const heroMedia = payload.imageUrl ? (
     <div className="relative overflow-hidden group" style={{ width: "100%" }}>
       <img
@@ -452,12 +462,22 @@ export const ComfyuiImageNode = memo(function ComfyuiImageNode({ id, selected, d
 
   return (
     <BaseNode id={id} selected={selected} nodeType="comfyui_image" title={data.title} minHeight={320} resizable heroMedia={heroMedia}
-      onRun={handleGenerate} running={genMutation.isPending} canRun={!!payload.prompt?.trim() && !!payload.ckpt?.trim()} hasResult={!!payload.imageUrl}>
+      onRun={handleGenerate} running={genMutation.isPending} canRun={!!payload.prompt?.trim() && !!payload.ckpt?.trim()} hasResult={!!payload.imageUrl}
+      headerTooltip={modelTip || undefined}>
       <div
         className="flex flex-col h-full p-3.5 gap-3 overflow-auto"
         onDragOver={(e) => { if (e.dataTransfer.types.includes("application/x-asset-list") || e.dataTransfer.types.includes("Files") || e.dataTransfer.types.includes("text/uri-list")) { e.preventDefault(); e.dataTransfer.dropEffect = "copy"; } }}
         onDrop={handleNodeDrop}
       >
+        {/* 模型注释：标题栏下方常驻显示（模板 · checkpoint），与自定义工作流节点一致 */}
+        {modelAnnotation && (
+          <div
+            title={modelTip || undefined}
+            style={{ fontSize: 10.5, color: accent, fontWeight: 500, lineHeight: 1.4, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", flexShrink: 0 }}
+          >
+            {modelAnnotation}
+          </div>
+        )}
 
         {/* ── Result image(s) ── */}
         {payload.imageUrl ? (

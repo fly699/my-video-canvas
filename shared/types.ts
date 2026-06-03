@@ -740,6 +740,9 @@ export interface ComfyuiWorkflowNodeData {
   useCloudComfy?: boolean;
   workflowJson?: string;
   workflowName?: string;
+  /** Seed handling on run: when true (default), seed params are re-randomized
+   *  each run; when false, the fixed value from the form is used as-is. */
+  randomizeSeed?: boolean;
   paramBindings?: WorkflowParamBinding[];
   paramValues?: Record<string, unknown>;
   outputNodeIds?: string[];

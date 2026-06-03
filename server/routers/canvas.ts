@@ -2470,7 +2470,7 @@ export const comfyuiRouter = router({
             detail: { nodeId: input.nodeId, outputType: result.outputType, count: result.urls.length },
           });
           for (const u of result.urls) {
-            await recordGeneratedAsset({ userId: ctx.user.id, projectId: input.projectId, nodeId: input.nodeId, type: result.outputType === "video" ? "video" : "image", source: "generated", provider: "comfyui", model: null, url: u, name: "自定义工作流" });
+            await recordGeneratedAsset({ userId: ctx.user.id, projectId: input.projectId, nodeId: input.nodeId, type: result.outputType === "video" ? "video" : "image", source: "generated", provider: "comfyui", model: null, url: u, name: "自定义工作流", mimeType: result.outputType === "video" ? "video/mp4" : "image/png" });
           }
           return result;
         } catch (err) {

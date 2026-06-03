@@ -9,7 +9,7 @@ import type { NodeType } from "../../../shared/types";
 import type { ComfyNodeType } from "../../../shared/comfyNodeTemplate";
 
 export {
-  COMFY_NODE_TYPES, isComfyNodeType, sanitizeComfyPayload, COMFY_TEMPLATE_LIMITS,
+  COMFY_NODE_TYPES, isComfyNodeType, sanitizeComfyPayload, COMFY_TEMPLATE_LIMITS, extractComfyThumbnail,
 } from "../../../shared/comfyNodeTemplate";
 export type { ComfyNodeType, ComfyNodeTemplate } from "../../../shared/comfyNodeTemplate";
 

@@ -287,13 +287,29 @@ export const ComfyuiWorkflowNode = memo(function ComfyuiWorkflowNode({ id, selec
         payload.paramValues ?? {},
         upstreamImg,
       );
+      // Seed handling: unless the user pinned the seed (randomizeSeed === false),
+      // re-randomize every seed param each run, and persist the used value back so
+      // the form reflects what was actually sent.
+      const randomize = payload.randomizeSeed !== false;
+      const seedPatch: Record<string, unknown> = {};
+      if (randomize) {
+        for (const b of payload.paramBindings ?? []) {
+          if (b.type === "number" && (/seed/i.test(b.fieldPath) || b.label.includes("种子"))) {
+            seedPatch[`${b.nodeId}.${b.fieldPath}`] = Math.floor(Math.random() * 2_147_483_647);
+          }
+        }
+      }
+      const effectiveParamValues = { ...paramValues, ...seedPatch };
+      if (Object.keys(seedPatch).length > 0) {
+        update({ paramValues: { ...(payload.paramValues ?? {}), ...seedPatch } }, true);
+      }
       const result = await executeMutation.mutateAsync({
         nodeId: id,
         projectId: data.projectId,
         customBaseUrl: payload.customBaseUrl?.trim() || undefined,
         useCloudComfy: payload.useCloudComfy === true,
         workflowJson,
-        paramValues,
+        paramValues: effectiveParamValues,
         imageParamKeys: imageParamKeys.length > 0 ? imageParamKeys : undefined,
         outputNodeIds: payload.outputNodeIds,
         outputType: payload.outputType ?? "auto",
@@ -745,6 +761,36 @@ export const ComfyuiWorkflowNode = memo(function ComfyuiWorkflowNode({ id, selec
               </div>
             )}
 
+            {/* Seed mode — only when the workflow has a seed param. Random (default):
+                re-roll each run; Fixed: use the value in the form below as-is. */}
+            {(payload.paramBindings ?? []).some((b) => b.type === "number" && (/seed/i.test(b.fieldPath) || b.label.includes("种子"))) && (() => {
+              const random = payload.randomizeSeed !== false;
+              return (
+                <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 4 }}>
+                  <label style={{ ...labelStyle, marginBottom: 0 }}>种子</label>
+                  <div style={{ display: "flex", gap: 6, flex: 1 }}>
+                    {([["random", "随机", true], ["fixed", "固定", false]] as const).map(([k, lbl, val]) => {
+                      const active = random === val;
+                      return (
+                        <button
+                          key={k}
+                          onClick={() => update({ randomizeSeed: val })}
+                          title={val ? "每次运行自动生成新随机种子" : "固定使用下方表单里的种子值"}
+                          style={{
+                            flex: 1, padding: "5px 4px", fontSize: 11, borderRadius: 7, cursor: "pointer",
+                            borderWidth: 1, borderStyle: "solid",
+                            borderColor: active ? accent : BORDER_DEFAULT,
+                            background: active ? `${accent}1f` : "transparent",
+                            color: active ? accent : "var(--c-t2)", fontWeight: active ? 600 : 400,
+                          }}
+                        >{lbl}</button>
+                      );
+                    })}
+                  </div>
+                </div>
+              );
+            })()}
+
             {/* Dynamic param form — capped height with internal scroll to keep the node compact */}
             {(payload.paramBindings ?? []).length > 0 && (
               <div className="nowheel nodrag" style={{ display: "flex", flexDirection: "column", gap: 8, maxHeight: 420, overflowY: "auto", overflowX: "hidden" }}>
@@ -908,13 +954,20 @@ export const ComfyuiWorkflowNode = memo(function ComfyuiWorkflowNode({ id, selec
             {payload.outputType === "video" ? (
               <div>
                 {payload.outputUrls.map((url, i) => (
-                  <div key={i} style={{ marginBottom: 8 }}>
+                  <div key={i} style={{ position: "relative", marginBottom: 8 }}>
                     <video
                       src={url}
                       controls
                       style={{ width: "100%", borderRadius: 8, maxHeight: 240, background: "#000" }}
                       onError={(e) => { (e.currentTarget as HTMLVideoElement).src = ""; }}
                     />
+                    {/* MinIO storage indicator — parity with the image grid */}
+                    {isOwnStorageUrl(url) && (
+                      <div
+                        title="已存储到 MinIO·长期有效"
+                        style={{ position: "absolute", top: 6, left: 6, width: 10, height: 10, borderRadius: "50%", background: "oklch(0.72 0.18 155)", boxShadow: "0 0 0 2.5px oklch(0.72 0.18 155 / 0.35)", pointerEvents: "none" }}
+                      />
+                    )}
                   </div>
                 ))}
               </div>

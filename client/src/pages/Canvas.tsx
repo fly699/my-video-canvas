@@ -32,7 +32,7 @@ import { FilmstripPanel } from "../components/canvas/FilmstripPanel";
 import { TimelinePanel } from "../components/canvas/TimelinePanel";
 import { isConnectionValid } from "../lib/connectionRules";
 import { listNodeTemplates, saveNodeTemplate, deleteNodeTemplate, exportNodeTemplatesJson, importNodeTemplatesJson } from "../lib/nodeTemplates";
-import { isComfyNodeType, suggestComfyTemplateName, describeComfyTemplate, type ComfyNodeType } from "../lib/comfyNodeTemplates";
+import { isComfyNodeType, suggestComfyTemplateName, describeComfyTemplate, extractComfyThumbnail, type ComfyNodeType } from "../lib/comfyNodeTemplates";
 import { SaveComfyTemplateDialog } from "../components/canvas/SaveComfyTemplateDialog";
 import { downloadMedia, downloadTextFile } from "@/lib/download";
 import { BeginnerGuide, ConnectionHintsPanel } from "../components/canvas/BeginnerGuide";
@@ -387,7 +387,7 @@ function CanvasInner({ projectId }: { projectId: number }) {
   const [showTemplates, setShowTemplates] = useState(false);
   const [showNodeLib, setShowNodeLib] = useState(false);
   const [comfySaveTarget, setComfySaveTarget] = useState<
-    { nodeType: ComfyNodeType; payload: Record<string, unknown>; useCloud: boolean; defaultName: string } | null
+    { nodeType: ComfyNodeType; payload: Record<string, unknown>; useCloud: boolean; defaultName: string; thumbnail?: string } | null
   >(null);
   const [showNodeSearch, setShowNodeSearch] = useState(false);
   const [showCollaborators, setShowCollaborators] = usePersistentState<boolean>(
@@ -2334,6 +2334,7 @@ function CanvasInner({ projectId }: { projectId: number }) {
             nodeType={comfySaveTarget.nodeType}
             defaultName={comfySaveTarget.defaultName}
             useCloud={comfySaveTarget.useCloud}
+            thumbnail={comfySaveTarget.thumbnail}
             modelInfo={describeComfyTemplate(comfySaveTarget.nodeType, comfySaveTarget.payload)}
             onCancel={() => setComfySaveTarget(null)}
             onSave={(label, note) => {
@@ -2343,6 +2344,7 @@ function CanvasInner({ projectId }: { projectId: number }) {
                 {
                   label, nodeType: target.nodeType, payload: target.payload,
                   note: note || undefined,
+                  thumbnail: target.thumbnail,
                   useCloud: target.nodeType === "comfyui_workflow" ? target.useCloud : undefined,
                 },
                 {
@@ -2514,7 +2516,8 @@ function CanvasInner({ projectId }: { projectId: number }) {
               const useCloud = (payload as { useCloudComfy?: boolean }).useCloudComfy === true;
               // Auto-fill the model name as the default template name (editable in the dialog).
               const defaultName = suggestComfyTemplateName(ctxNodeType as ComfyNodeType, payload) || ctxNode.data.title;
-              setComfySaveTarget({ nodeType: ctxNodeType as ComfyNodeType, payload, useCloud, defaultName });
+              const thumbnail = extractComfyThumbnail(ctxNodeType as ComfyNodeType, payload);
+              setComfySaveTarget({ nodeType: ctxNodeType as ComfyNodeType, payload, useCloud, defaultName, thumbnail });
             } : undefined}
             onSaveTemplate={ctxNode && !ctxIsComfy ? () => {
               const label = window.prompt("模板名称", ctxNode.data.title)?.trim();

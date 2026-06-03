@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { sanitizeComfyPayload, colorForTemplate, suggestComfyTemplateName, describeComfyTemplate } from "../client/src/lib/comfyNodeTemplates";
+import { extractComfyThumbnail } from "../shared/comfyNodeTemplate";
 
 describe("sanitizeComfyPayload", () => {
   it("keeps prompts / params / workflow JSON, drops runtime+output state", () => {
@@ -72,6 +73,21 @@ describe("describeComfyTemplate", () => {
   });
   it("returns 无参数 when nothing configured", () => {
     expect(describeComfyTemplate("comfyui_video", {})).toBe("无参数");
+  });
+});
+
+describe("extractComfyThumbnail", () => {
+  it("uses the first image output for workflow image runs, none for video", () => {
+    expect(extractComfyThumbnail("comfyui_workflow", { outputType: "image", outputUrls: ["/manus-storage/a.png"] })).toBe("/manus-storage/a.png");
+    expect(extractComfyThumbnail("comfyui_workflow", { outputType: "video", outputUrls: ["/manus-storage/v.mp4"] })).toBeUndefined();
+  });
+  it("uses imageUrl for image nodes, none for video nodes", () => {
+    expect(extractComfyThumbnail("comfyui_image", { imageUrl: "https://x/y.png" })).toBe("https://x/y.png");
+    expect(extractComfyThumbnail("comfyui_video", { resultVideoUrl: "https://x/v.mp4" })).toBeUndefined();
+  });
+  it("rejects data: URLs and oversized strings", () => {
+    expect(extractComfyThumbnail("comfyui_image", { imageUrl: "data:image/png;base64,AAAA" })).toBeUndefined();
+    expect(extractComfyThumbnail("comfyui_image", { imageUrl: "https://x/" + "a".repeat(3000) })).toBeUndefined();
   });
 });
 

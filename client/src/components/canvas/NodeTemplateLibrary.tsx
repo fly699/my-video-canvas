@@ -332,6 +332,18 @@ export function NodeTemplateLibrary({ onClose, onUse }: Props) {
                       </div>
                     )}
 
+                    {t.thumbnail && (
+                      <div className="w-full" style={{ height: 110, background: "var(--c-base)", borderBottom: `1px solid ${color}30` }}>
+                        <img
+                          src={t.thumbnail}
+                          alt={t.label}
+                          className="w-full h-full"
+                          style={{ objectFit: "cover" }}
+                          onError={(e) => { const el = e.currentTarget.parentElement as HTMLElement | null; if (el) el.style.display = "none"; }}
+                        />
+                      </div>
+                    )}
+
                     <div className="px-3.5 pt-3.5 pb-3.5 flex flex-col gap-2">
                       <div className="flex items-center gap-2 min-w-0 pr-12">
                         <span
