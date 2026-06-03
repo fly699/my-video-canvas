@@ -25,6 +25,7 @@ const clipSchema = z.object({
   trimIn: z.number().min(0),
   trimOut: z.number().min(0),
   speed: z.number().min(0.1).max(8).optional(),
+  reverse: z.boolean().optional(),
   volume: z.number().min(0).max(4).optional(),
   fadeIn: z.number().min(0).optional(),
   fadeOut: z.number().min(0).optional(),
@@ -34,7 +35,7 @@ const clipSchema = z.object({
     saturation: z.number().optional(), filter: z.string().max(64).optional(),
   }).optional(),
   transform: transformSchema.optional(),
-  fit: z.enum(["contain", "cover", "stretch"]).optional(),
+  fit: z.enum(["contain", "cover", "stretch", "blur"]).optional(),
   text: z.object({
     content: z.string().max(2000),
     font: z.string().max(64).optional(), size: z.number().optional(),

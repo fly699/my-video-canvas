@@ -14,8 +14,9 @@ export type ClipKind = "video" | "image" | "audio" | "text";
 export type TransitionType = "none" | "fade" | "dissolve" | "slide" | "wipe";
 
 /** How a visual clip fills the output frame.
- *  contain = 适应（完整显示，留黑边）; cover = 填充（铺满，裁剪溢出）; stretch = 拉伸（变形铺满）. */
-export type FitMode = "contain" | "cover" | "stretch";
+ *  contain = 适应（完整显示，留黑边）; cover = 填充（铺满，裁剪溢出）; stretch = 拉伸（变形铺满）;
+ *  blur = 模糊填充（原画完整居中，放大模糊的同画面铺满作背景，消除黑边）. */
+export type FitMode = "contain" | "cover" | "stretch" | "blur";
 
 /** Preset color/filter adjustments applied to a visual clip. */
 export interface ClipEffects {
@@ -60,6 +61,7 @@ export interface Clip {
   trimIn: number;           // source in-point (seconds)
   trimOut: number;          // source out-point (seconds); for image/text = display duration from start
   speed?: number;           // 0.25..4, default 1
+  reverse?: boolean;        // 倒放：视频/音频逆序播放（图片无效）
   volume?: number;          // 0..2, default 1 (audio/video)
   fadeIn?: number;          // seconds
   fadeOut?: number;         // seconds
