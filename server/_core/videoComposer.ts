@@ -214,7 +214,10 @@ export function buildFilterGraph(
       aChain.push("aformat=sample_fmts=fltp:channel_layouts=stereo:sample_rates=44100");
       parts.push(`[${i}:a]${aChain.join(",")}[a${i}]`);
     } else {
-      parts.push(`anullsrc=channel_layout=stereo:sample_rate=44100,atrim=0:${dur.toFixed(3)},asetpts=PTS-STARTPTS[a${i}]`);
+      // Silence MUST use the same sample format as real-audio chains (fltp), else
+      // concat sees mismatched audio formats and produces no packets → the AAC
+      // encoder can't open ("Could not open encoder before EOF") and export fails.
+      parts.push(`anullsrc=channel_layout=stereo:sample_rate=44100,atrim=0:${dur.toFixed(3)},asetpts=PTS-STARTPTS,aformat=sample_fmts=fltp:channel_layouts=stereo:sample_rates=44100[a${i}]`);
     }
     aLabels.push(`[a${i}]`);
   });
