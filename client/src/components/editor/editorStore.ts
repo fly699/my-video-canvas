@@ -1,6 +1,6 @@
 import { create } from "zustand";
 import { nanoid } from "nanoid";
-import type { EditorDoc, Clip, ClipKind, Track, TrackType } from "@shared/editorTypes";
+import type { EditorDoc, Clip, ClipKind, Track, TrackType, TransformKeyframe } from "@shared/editorTypes";
 import { editorDocDuration } from "@shared/editorTypes";
 
 /** Visible duration of a clip on the timeline (seconds), accounting for speed. */
@@ -52,6 +52,10 @@ export interface EditorStore {
   trimClip: (clipId: string, patch: { trimIn?: number; trimOut?: number; start?: number }) => void;
   updateClip: (clipId: string, patch: Partial<Clip>) => void;
   removeClip: (clipId: string) => void;
+  // transform keyframes (animation)
+  addKeyframe: (clipId: string, t: number) => void;
+  removeKeyframe: (clipId: string, t: number) => void;
+  clearKeyframes: (clipId: string) => void;
   splitClip: (clipId: string, atTime: number) => void;
   duplicateClip: (clipId: string) => void;
   selectClip: (id: string | null) => void;
@@ -212,6 +216,45 @@ export const useEditorStore = create<EditorStore>((set, get) => ({
     const copy: Clip = { ...c, id: `c_${nanoid(8)}`, start: c.start + clipDuration(c) };
     const tracks = s.doc.tracks.map((t, ti) => ti !== loc.trackIdx ? t : { ...t, clips: [...t.clips, copy] });
     return withHistory(s, { ...s.doc, tracks }, { selectedClipId: copy.id });
+  }),
+
+  // Snapshot the clip's current (base) transform as a keyframe at time `t`
+  // (seconds from the clip start), replacing any keyframe at the same instant.
+  addKeyframe: (clipId, t) => set((s) => {
+    if (!s.doc) return s;
+    const loc = findClip(s.doc, clipId);
+    if (!loc) return s;
+    const c = s.doc.tracks[loc.trackIdx].clips[loc.clipIdx];
+    const tr = c.transform ?? {};
+    const at = Math.max(0, t);
+    const kf: TransformKeyframe = { t: at, x: tr.x ?? 0, y: tr.y ?? 0, scale: tr.scale ?? 1, opacity: tr.opacity ?? 1, rotation: tr.rotation ?? 0 };
+    const keyframes = [...(c.keyframes ?? []).filter((k) => Math.abs(k.t - at) > 0.02), kf].sort((a, b) => a.t - b.t);
+    const tracks = s.doc.tracks.map((tk, ti) => ti !== loc.trackIdx ? tk : {
+      ...tk, clips: tk.clips.map((x) => x.id === clipId ? { ...x, keyframes } : x),
+    });
+    return withHistory(s, { ...s.doc, tracks });
+  }),
+
+  removeKeyframe: (clipId, t) => set((s) => {
+    if (!s.doc) return s;
+    const loc = findClip(s.doc, clipId);
+    if (!loc) return s;
+    const c = s.doc.tracks[loc.trackIdx].clips[loc.clipIdx];
+    const keyframes = (c.keyframes ?? []).filter((k) => Math.abs(k.t - t) > 0.02);
+    const tracks = s.doc.tracks.map((tk, ti) => ti !== loc.trackIdx ? tk : {
+      ...tk, clips: tk.clips.map((x) => x.id === clipId ? { ...x, keyframes: keyframes.length ? keyframes : undefined } : x),
+    });
+    return withHistory(s, { ...s.doc, tracks });
+  }),
+
+  clearKeyframes: (clipId) => set((s) => {
+    if (!s.doc) return s;
+    const loc = findClip(s.doc, clipId);
+    if (!loc) return s;
+    const tracks = s.doc.tracks.map((tk, ti) => ti !== loc.trackIdx ? tk : {
+      ...tk, clips: tk.clips.map((x) => x.id === clipId ? { ...x, keyframes: undefined } : x),
+    });
+    return withHistory(s, { ...s.doc, tracks });
   }),
 
   selectClip: (id) => set({ selectedClipId: id }),

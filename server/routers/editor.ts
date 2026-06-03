@@ -136,12 +136,20 @@ export const editorRouter = router({
   // lands in the user's MinIO prefix and is indexed in the media library, so the
   // existing strict-download gate governs who may download it.
   export: protectedProcedure
-    .input(z.object({ id: z.number() }))
+    .input(z.object({
+      id: z.number(),
+      format: z.enum(["mp4", "hevc", "webm", "mov"]).optional(),
+      quality: z.enum(["high", "medium", "low"]).optional(),
+      width: z.number().int().min(16).max(7680).optional(),
+      height: z.number().int().min(16).max(7680).optional(),
+      fps: z.number().int().min(1).max(120).optional(),
+    }))
     .mutation(async ({ ctx, input }) => {
       const session = await db.getEditSession(input.id, ctx.user.id);
       if (!session) throw new TRPCError({ code: "NOT_FOUND" });
       const doc = session.doc as EditorDoc;
       const job = createRenderJob(ctx.user.id, input.id);
+      const mimeType = input.format === "webm" ? "video/webm" : input.format === "mov" ? "video/quicktime" : "video/mp4";
 
       // Fire-and-forget; progress/result are reported through the job registry.
       void (async () => {
@@ -150,11 +158,16 @@ export const editorRouter = router({
             userId: ctx.user.id,
             projectName: session.name,
             onProgress: (pct, stage) => updateRenderJob(job.id, { progress: pct, stage }),
+            format: input.format,
+            quality: input.quality,
+            width: input.width,
+            height: input.height,
+            fps: input.fps,
           });
           await db.recordGeneratedAsset({
             userId: ctx.user.id, projectId: session.projectId ?? null, type: "video",
             source: "generated", provider: "editor", model: "timeline",
-            url: res.url, storageKey: res.storageKey, name: session.name, mimeType: "video/mp4",
+            url: res.url, storageKey: res.storageKey, name: session.name, mimeType,
           }).catch(() => undefined);
           updateRenderJob(job.id, { status: "done", progress: 100, stage: "完成", url: res.url, storageKey: res.storageKey, duration: res.duration });
           writeAuditLog({ ctx, action: "editor:export", detail: { sessionId: input.id, storageKey: res.storageKey } });

@@ -1,0 +1,140 @@
+import { useEffect, useState } from "react";
+import type { ClipKind } from "@shared/editorTypes";
+
+// Lazily-built, module-level caches so a thumbnail/waveform is extracted once per
+// asset and reused across re-renders and clips. All extraction is best-effort —
+// on any failure (CORS taint, decode error, oversized file) we fall back to no
+// thumbnail, so the timeline keeps working regardless of the media source.
+const videoThumbCache = new Map<string, string>();   // key -> dataURL
+const audioPeaksCache = new Map<string, number[]>();  // url -> normalized peaks
+const inFlight = new Set<string>();
+
+const vKey = (url: string, t: number) => `${url}#${Math.round(t)}`;
+
+function getAudioContext(): AudioContext | null {
+  const w = window as unknown as { AudioContext?: typeof AudioContext; webkitAudioContext?: typeof AudioContext };
+  const Ctor = w.AudioContext ?? w.webkitAudioContext;
+  return Ctor ? new Ctor() : null;
+}
+
+/** Capture the first frame of a video clip (at its in-point) as a data URL. */
+function useVideoThumb(url: string | undefined, trimIn: number): string | null {
+  const [thumb, setThumb] = useState<string | null>(() => (url ? videoThumbCache.get(vKey(url, trimIn)) ?? null : null));
+  useEffect(() => {
+    if (!url) { setThumb(null); return; }
+    const key = vKey(url, trimIn);
+    const cached = videoThumbCache.get(key);
+    if (cached) { setThumb(cached); return; }
+    if (inFlight.has(key)) return;
+    inFlight.add(key);
+    let cancelled = false;
+    const v = document.createElement("video");
+    v.crossOrigin = "anonymous";
+    v.muted = true;
+    v.preload = "metadata";
+    const done = () => { inFlight.delete(key); try { v.removeAttribute("src"); v.load(); } catch { /* ignore */ } };
+    const fail = () => { if (!cancelled) setThumb(null); done(); };
+    v.addEventListener("error", fail, { once: true });
+    v.addEventListener("loadeddata", () => {
+      const seekTo = Math.min(Math.max(0.05, trimIn), Math.max(0.05, (v.duration || 1) - 0.05));
+      const grab = () => {
+        try {
+          const w = 160;
+          const ratio = v.videoHeight / Math.max(1, v.videoWidth);
+          const h = Math.max(1, Math.round(w * (Number.isFinite(ratio) && ratio > 0 ? ratio : 0.56)));
+          const cv = document.createElement("canvas");
+          cv.width = w; cv.height = h;
+          const ctx = cv.getContext("2d");
+          if (ctx) {
+            ctx.drawImage(v, 0, 0, w, h);
+            const data = cv.toDataURL("image/jpeg", 0.6); // throws if the canvas is tainted
+            videoThumbCache.set(key, data);
+            if (!cancelled) setThumb(data);
+          }
+        } catch { if (!cancelled) setThumb(null); }
+        done();
+      };
+      v.addEventListener("seeked", grab, { once: true });
+      try { v.currentTime = seekTo; } catch { grab(); }
+    }, { once: true });
+    v.src = url;
+    return () => { cancelled = true; };
+  }, [url, trimIn]);
+  return thumb;
+}
+
+/** Decode an audio clip and compute normalized peak samples for a waveform. */
+function useAudioPeaks(url: string | undefined): number[] | null {
+  const [peaks, setPeaks] = useState<number[] | null>(() => (url ? audioPeaksCache.get(url) ?? null : null));
+  useEffect(() => {
+    if (!url) { setPeaks(null); return; }
+    const cached = audioPeaksCache.get(url);
+    if (cached) { setPeaks(cached); return; }
+    const key = `a:${url}`;
+    if (inFlight.has(key)) return;
+    inFlight.add(key);
+    let cancelled = false;
+    void (async () => {
+      let ac: AudioContext | null = null;
+      try {
+        const res = await fetch(url);
+        const buf = await res.arrayBuffer();
+        if (buf.byteLength > 40 * 1024 * 1024) throw new Error("audio too large to waveform");
+        ac = getAudioContext();
+        if (!ac) throw new Error("no AudioContext");
+        const audio = await ac.decodeAudioData(buf);
+        const ch = audio.getChannelData(0);
+        const N = 240;
+        const block = Math.max(1, Math.floor(ch.length / N));
+        const out: number[] = [];
+        let max = 0.0001;
+        for (let i = 0; i < N; i++) {
+          let peak = 0;
+          const base = i * block;
+          for (let j = 0; j < block; j++) { const a = Math.abs(ch[base + j] || 0); if (a > peak) peak = a; }
+          out.push(peak);
+          if (peak > max) max = peak;
+        }
+        const norm = out.map((p) => p / max); // 0..1
+        audioPeaksCache.set(url, norm);
+        if (!cancelled) setPeaks(norm);
+      } catch {
+        if (!cancelled) setPeaks(null);
+      } finally {
+        inFlight.delete(key);
+        try { await ac?.close(); } catch { /* ignore */ }
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [url]);
+  return peaks;
+}
+
+/** Visual fill for a timeline clip: image / video first-frame thumbnail, or an
+ *  audio waveform. Falls back to nothing (the clip's solid color) on failure. */
+export function ClipThumb({ kind, assetUrl, trimIn, color }: {
+  kind: ClipKind;
+  assetUrl?: string;
+  trimIn: number;
+  color: string;
+}) {
+  const videoThumb = useVideoThumb(kind === "video" ? assetUrl : undefined, trimIn);
+  const peaks = useAudioPeaks(kind === "audio" ? assetUrl : undefined);
+
+  if (kind === "image" && assetUrl) {
+    return <div style={{ position: "absolute", inset: 0, opacity: 0.45, backgroundImage: `url(${assetUrl})`, backgroundSize: "cover", backgroundPosition: "center", pointerEvents: "none" }} />;
+  }
+  if (kind === "video" && videoThumb) {
+    return <div style={{ position: "absolute", inset: 0, opacity: 0.5, backgroundImage: `url(${videoThumb})`, backgroundSize: "cover", backgroundPosition: "center", pointerEvents: "none" }} />;
+  }
+  if (kind === "audio" && peaks && peaks.length > 0) {
+    return (
+      <div style={{ position: "absolute", inset: 0, display: "flex", alignItems: "center", gap: 0, padding: "0 2px", pointerEvents: "none", opacity: 0.7 }}>
+        {peaks.map((p, i) => (
+          <div key={i} style={{ flex: 1, minWidth: 0, height: `${Math.max(6, p * 86)}%`, background: color, opacity: 0.65, borderRadius: 0.5 }} />
+        ))}
+      </div>
+    );
+  }
+  return null;
+}

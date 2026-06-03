@@ -2,7 +2,7 @@ import { useState, useEffect, useRef } from "react";
 import { useLocation, useParams } from "wouter";
 import { trpc } from "@/lib/trpc";
 import { toast } from "sonner";
-import { ArrowLeft, Plus, Film, Trash2, Loader2, Clapperboard, Check, Download, Undo2, Redo2 } from "lucide-react";
+import { ArrowLeft, Plus, Film, Trash2, Loader2, Clapperboard, Check, Download, Undo2, Redo2, SlidersHorizontal } from "lucide-react";
 import { useEditorStore } from "@/components/editor/editorStore";
 import { MediaBin } from "@/components/editor/MediaBin";
 import { Timeline } from "@/components/editor/Timeline";
@@ -124,6 +124,11 @@ function EditorWorkspace({ id }: { id: number }) {
   const [exportPct, setExportPct] = useState(0);
   const [exportStage, setExportStage] = useState("");
   const [exportUrl, setExportUrl] = useState<string | null>(null);
+  // Export settings (format / quality / resolution).
+  const [exportFormat, setExportFormat] = useState<"mp4" | "hevc" | "webm" | "mov">("mp4");
+  const [exportQuality, setExportQuality] = useState<"high" | "medium" | "low">("high");
+  const [exportRes, setExportRes] = useState<"source" | "2160" | "1080" | "720" | "480">("source");
+  const [exportMenu, setExportMenu] = useState(false);
   const exportMut = trpc.editor.export.useMutation({
     onSuccess: ({ jobId }) => { setJobId(jobId); setExportUrl(null); setExportPct(0); setExportStage("排队中"); },
     onError: (e) => toast.error("导出失败：" + e.message),
@@ -140,6 +145,22 @@ function EditorWorkspace({ id }: { id: number }) {
     if (d.status === "error") { setJobId(null); toast.error("渲染失败：" + (d.error ?? "")); }
   }, [statusQuery.data]);
   const exporting = exportMut.isPending || !!jobId;
+
+  // Kick off an export, translating the resolution preset into output dims that
+  // preserve the document's aspect ratio.
+  const startExport = () => {
+    setExportMenu(false);
+    const d = useEditorStore.getState().doc;
+    let width: number | undefined;
+    let height: number | undefined;
+    if (exportRes !== "source" && d) {
+      const targetH = parseInt(exportRes, 10);
+      const even = (n: number) => Math.max(2, Math.round(n) - (Math.round(n) % 2));
+      height = even(targetH);
+      width = even((d.width * targetH) / d.height);
+    }
+    exportMut.mutate({ id, format: exportFormat, quality: exportQuality, width, height });
+  };
 
   // Load the fetched doc into the editor store once.
   useEffect(() => {
@@ -211,13 +232,47 @@ function EditorWorkspace({ id }: { id: number }) {
         ><Redo2 size={16} /></button>
         <CanvasSettings />
         {exportUrl && (
-          <button onClick={() => downloadMedia(exportUrl, `${displayName}.mp4`)} style={{ ...primaryBtn, background: "transparent", color: ACCENT, border: `1px solid ${ACCENT}` }}>
+          <button onClick={() => downloadMedia(exportUrl, `${displayName}.${exportFormat === "hevc" ? "mp4" : exportFormat}`)} style={{ ...primaryBtn, background: "transparent", color: ACCENT, border: `1px solid ${ACCENT}` }}>
             <Download size={15} /> 下载成片
           </button>
         )}
+        {/* Export settings (format / quality / resolution) */}
+        <div style={{ position: "relative" }}>
+          <button
+            onClick={() => setExportMenu((v) => !v)}
+            title="导出设置"
+            disabled={exporting}
+            style={{ ...iconBtn, opacity: exporting ? 0.5 : 1, cursor: exporting ? "default" : "pointer", color: exportMenu ? ACCENT : "var(--c-t2)", borderColor: exportMenu ? ACCENT : "var(--c-bd2)" }}
+          ><SlidersHorizontal size={16} /></button>
+          {exportMenu && (
+            <>
+              <div onClick={() => setExportMenu(false)} style={{ position: "fixed", inset: 0, zIndex: 40 }} />
+              <div style={{ position: "absolute", top: 40, right: 0, zIndex: 41, width: 230, padding: 12, borderRadius: 12, background: "var(--c-base)", border: "1px solid var(--c-bd2)", boxShadow: "0 16px 48px oklch(0 0 0 / 0.5)", display: "flex", flexDirection: "column", gap: 10 }}>
+                <div style={{ fontSize: 12, fontWeight: 600, color: "var(--c-t1)" }}>导出设置</div>
+                {([
+                  { label: "格式", value: exportFormat, set: (v: string) => setExportFormat(v as typeof exportFormat), opts: [["mp4", "MP4 (H.264)"], ["hevc", "MP4 (H.265/HEVC)"], ["webm", "WebM (VP9)"], ["mov", "MOV (H.264)"]] },
+                  { label: "质量", value: exportQuality, set: (v: string) => setExportQuality(v as typeof exportQuality), opts: [["high", "高（清晰，文件大）"], ["medium", "中"], ["low", "低（小文件）"]] },
+                  { label: "分辨率", value: exportRes, set: (v: string) => setExportRes(v as typeof exportRes), opts: [["source", "原始（画布尺寸）"], ["2160", "2160p (4K)"], ["1080", "1080p"], ["720", "720p"], ["480", "480p"]] },
+                ] as const).map((row) => (
+                  <label key={row.label} style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+                    <span style={{ fontSize: 11, color: "var(--c-t3)" }}>{row.label}</span>
+                    <select
+                      value={row.value}
+                      onChange={(e) => row.set(e.target.value)}
+                      style={{ padding: "6px 8px", borderRadius: 8, fontSize: 12, background: "var(--c-elevated)", border: "1px solid var(--c-bd3)", color: "var(--c-t1)", outline: "none" }}
+                    >
+                      {row.opts.map(([v, l]) => <option key={v} value={v}>{l}</option>)}
+                    </select>
+                  </label>
+                ))}
+                <button onClick={startExport} disabled={exporting} style={{ ...primaryBtn, justifyContent: "center", marginTop: 2 }}>开始导出</button>
+              </div>
+            </>
+          )}
+        </div>
         <button
           disabled={exporting}
-          onClick={() => exportMut.mutate({ id })}
+          onClick={startExport}
           style={{ ...primaryBtn, minWidth: 120, justifyContent: "center", opacity: exporting ? 0.85 : 1, cursor: exporting ? "default" : "pointer" }}
         >
           {exporting ? <><Loader2 size={15} className="animate-spin" /> {exportStage || "导出中"} {exportPct > 0 ? `${exportPct}%` : ""}</> : "导出成片"}
