@@ -180,7 +180,10 @@ export function buildFilterGraph(
   overlays: OverlayInput[] = [],
   extra: { audioClips?: AudioInput[]; assPath?: string } = {},
 ): { filterComplex: string; outV: string; outA: string; duration: number } {
-  const { width: w, height: h, fps } = opts;
+  const { fps } = opts;
+  // even dims only (libx264/yuv420p reject odd sizes → empty graph, -22)
+  const w = Math.max(2, opts.width - (opts.width % 2));
+  const h = Math.max(2, opts.height - (opts.height % 2));
   const parts: string[] = [];
   const vLabels: string[] = [];
   const aLabels: string[] = [];
@@ -432,15 +435,21 @@ export async function composeTimeline(doc: EditorDoc, opts: ComposeOptions): Pro
       report(2 + Math.round((++done) / total * 28), "下载素材");
     }
 
+    // libx264 + yuv420p require EVEN dimensions — odd width/height (e.g. from a
+    // custom canvas size) makes format=yuv420p fail and the whole graph produce
+    // no packets (both encoders error -22). Round down to even.
+    const W = Math.max(2, doc.width - (doc.width % 2));
+    const H = Math.max(2, doc.height - (doc.height % 2));
+
     // Positioned text/subtitles → ASS file (referenced by the ass filter).
     let assPath: string | undefined;
     if (textClips.length > 0) {
       assPath = path.join(os.tmpdir(), `editor-${Date.now()}-${Math.random().toString(36).slice(2)}.ass`);
-      await fs.writeFile(assPath, buildEditorASS(textClips, { width: doc.width, height: doc.height }), "utf8");
+      await fs.writeFile(assPath, buildEditorASS(textClips, { width: W, height: H }), "utf8");
       tmpFiles.push(assPath);
     }
 
-    const graph = buildFilterGraph(segs, { width: doc.width, height: doc.height, fps: doc.fps }, overlays, { audioClips, assPath });
+    const graph = buildFilterGraph(segs, { width: W, height: H, fps: doc.fps }, overlays, { audioClips, assPath });
 
     const outName = `compose-${Date.now()}-${Math.random().toString(36).slice(2)}.mp4`;
     const outPath = path.join(os.tmpdir(), outName);

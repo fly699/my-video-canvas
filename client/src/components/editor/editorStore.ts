@@ -183,9 +183,9 @@ export const useEditorStore = create<EditorStore>((set, get) => ({
 
   setCanvas: (width, height, fps) => set((s) => {
     if (!s.doc) return s;
-    const w = Math.max(16, Math.min(7680, Math.round(width)));
-    const h = Math.max(16, Math.min(7680, Math.round(height)));
-    return { doc: { ...s.doc, width: w, height: h, fps: fps ?? s.doc.fps }, dirty: true };
+    // even dimensions only — libx264/yuv420p reject odd sizes at export
+    const even = (n: number) => { const v = Math.max(16, Math.min(7680, Math.round(n))); return v - (v % 2); };
+    return { doc: { ...s.doc, width: even(width), height: even(height), fps: fps ?? s.doc.fps }, dirty: true };
   }),
 
   setPlayhead: (t) => set({ playhead: Math.max(0, t) }),
