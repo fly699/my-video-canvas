@@ -51,6 +51,53 @@ export function detectUpstreamImages(targetId: string, edges: MiniEdge[], nodes:
   return out;
 }
 
+export interface UpstreamImageSource { id: string; title: string; url: string }
+
+/** Connected upstream image sources (id + display title + url), in smart order.
+ *  Powers the per-image-param「来源」picker. */
+export function listUpstreamImageSources(targetId: string, edges: MiniEdge[], nodes: MiniNode[]): UpstreamImageSource[] {
+  const byId = new Map(nodes.map((n) => [n.id, n]));
+  const incoming = (edges as Array<{ source: string; target: string }>).map((e, i) => ({ e, i })).filter(({ e }) => e.target === targetId);
+  incoming.sort((a, b) => compareUpstreamNodes(byId.get(a.e.source), byId.get(b.e.source), a.i, b.i));
+  const out: UpstreamImageSource[] = [];
+  const seen = new Set<string>();
+  for (const { e } of incoming) {
+    const src = byId.get(e.source);
+    if (!src || seen.has(e.source) || !IMAGE_SOURCE_TYPES.has(src.data.nodeType)) continue;
+    const url = getNodeImageUrl(src.data.nodeType, (src.data.payload ?? {}) as Record<string, unknown>);
+    if (url) { seen.add(e.source); out.push({ id: e.source, title: src.data.title || e.source, url }); }
+  }
+  return out;
+}
+
+/** Resolve image params from an EXPLICIT source map (paramKey → upstream nodeId)
+ *  first, then auto-fill remaining blanks from the unused sources in smart order.
+ *  User-typed values are never overwritten. */
+export function resolveImageParamsWithMap(
+  bindings: WorkflowParamBinding[] | undefined,
+  paramValues: Record<string, unknown>,
+  sources: UpstreamImageSource[],
+  sourceMap: Record<string, string> = {},
+): { paramValues: Record<string, unknown>; imageParamKeys: string[] } {
+  const imageBindings = (bindings ?? []).filter((b) => b.type === "image");
+  const imageParamKeys = imageBindings.map((b) => `${b.nodeId}.${b.fieldPath}`);
+  const next = { ...paramValues };
+  const mappedIds = new Set(Object.values(sourceMap));
+  const autoUrls = sources.filter((s) => !mappedIds.has(s.id)).map((s) => s.url);
+  let ai = 0;
+  for (const b of imageBindings) {
+    const key = `${b.nodeId}.${b.fieldPath}`;
+    if (next[key] != null && next[key] !== "") continue; // user-set, keep
+    const mappedId = sourceMap[key];
+    if (mappedId) {
+      const s = sources.find((x) => x.id === mappedId);
+      if (s) { next[key] = s.url; continue; }
+    }
+    if (ai < autoUrls.length) next[key] = autoUrls[ai++];
+  }
+  return { paramValues: next, imageParamKeys };
+}
+
 const PROMPT_SOURCE_TYPES = new Set(["prompt", "storyboard", "script", "ai_chat"]);
 
 /** Auto-detect positive / negative prompt text from upstream text-producing

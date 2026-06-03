@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   detectUpstreamImages, detectUpstreamPrompt,
   resolveWorkflowImageParams, fillWorkflowPromptParams,
+  resolveImageParamsWithMap, type UpstreamImageSource,
 } from "../client/src/lib/comfyWorkflowParams";
 import type { WorkflowParamBinding } from "../shared/types";
 
@@ -37,6 +38,30 @@ describe("resolveWorkflowImageParams fills multiple blanks in order", () => {
     const { paramValues: out } = resolveWorkflowImageParams([img("1"), img("2")], {}, "/one.png");
     expect(out["1.inputs.image"]).toBe("/one.png");
     expect(out["2.inputs.image"]).toBeUndefined();
+  });
+});
+
+describe("resolveImageParamsWithMap", () => {
+  const sources: UpstreamImageSource[] = [
+    { id: "n1", title: "素材1", url: "/1.png" },
+    { id: "n2", title: "素材2", url: "/2.png" },
+    { id: "n3", title: "分镜1", url: "/3.png" },
+  ];
+  const bindings = [img("10"), img("11"), img("12")];
+
+  it("honors explicit mapping first, then auto-fills the rest from unused sources", () => {
+    // map param 10 → n3 explicitly; 11/12 auto from remaining (n1, n2) in order
+    const map = { "10.inputs.image": "n3" };
+    const { paramValues: out } = resolveImageParamsWithMap(bindings, {}, sources, map);
+    expect(out["10.inputs.image"]).toBe("/3.png"); // explicit
+    expect(out["11.inputs.image"]).toBe("/1.png"); // auto (n1, n3 excluded as mapped)
+    expect(out["12.inputs.image"]).toBe("/2.png"); // auto (n2)
+  });
+
+  it("never overwrites a user-set value", () => {
+    const { paramValues: out } = resolveImageParamsWithMap(bindings, { "10.inputs.image": "/user.png" }, sources, {});
+    expect(out["10.inputs.image"]).toBe("/user.png");
+    expect(out["11.inputs.image"]).toBe("/1.png");
   });
 });
 

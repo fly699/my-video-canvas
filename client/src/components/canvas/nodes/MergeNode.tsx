@@ -5,7 +5,8 @@ import type { MergeNodeData, MergeTransition } from "../../../../../shared/types
 import { trpc } from "@/lib/trpc";
 import { toast } from "sonner";
 import { mediaFetchUrl, onDownloadMedia } from "@/lib/download";
-import { Merge, Loader2, Download, RotateCcw, Music, ChevronDown } from "lucide-react";
+import { compareUpstreamNodes } from "../../../lib/inputOrder";
+import { Merge, Loader2, Download, RotateCcw, Music, ChevronDown, GripVertical, X } from "lucide-react";
 
 interface Props {
   id: string;
@@ -57,6 +58,7 @@ export const MergeNode = memo(function MergeNode({ id, selected, data }: Props) 
   const { updateNodeData, nodes, edges } = useCanvasStore();
   const payload = data.payload;
   const [showBgMusic, setShowBgMusic] = useState(false);
+  const [dragIdx, setDragIdx] = useState<number | null>(null);
 
   const mergeMutation = trpc.merge.mergeVideos.useMutation({
     onSuccess: (result) => {
@@ -108,23 +110,42 @@ export const MergeNode = memo(function MergeNode({ id, selected, data }: Props) 
   // Collect video URLs from connected source nodes (video-producing types only).
   // AudioNode is explicitly excluded — if a user connects an audio source it should
   // populate `bgMusicUrl` instead of being treated as a video track (would crash FFmpeg).
-  const VIDEO_SOURCE_TYPES = new Set(["video_task", "clip", "merge", "overlay", "asset", "subtitle", "subtitle_motion", "smart_cut"]);
-  const collectInputUrls = (): string[] => {
-    const incomingEdges = edges.filter((e) => e.target === id);
-    const urls: string[] = [];
-    for (const edge of incomingEdges) {
-      const srcNode = nodes.find((n) => n.id === edge.source);
+  const VIDEO_SOURCE_TYPES = new Set(["video_task", "clip", "merge", "overlay", "asset", "subtitle", "subtitle_motion", "smart_cut", "comfyui_video", "comfyui_workflow"]);
+  // Connected video inputs, smart-ordered (title number → Y → connection order),
+  // each with a display label (the source node's title).
+  const collectInputItems = (): { url: string; label: string }[] => {
+    const byId = new Map(nodes.map((n) => [n.id, n]));
+    const incoming = edges.map((e, i) => ({ e, i })).filter(({ e }) => e.target === id);
+    incoming.sort((a, b) => compareUpstreamNodes(byId.get(a.e.source), byId.get(b.e.source), a.i, b.i));
+    const items: { url: string; label: string }[] = [];
+    for (const { e } of incoming) {
+      const srcNode = byId.get(e.source);
       if (!srcNode || !VIDEO_SOURCE_TYPES.has(srcNode.data.nodeType)) continue;
-      // asset nodes can hold any mime type — exclude pure audio assets
       if (srcNode.data.nodeType === "asset") {
         const mt = (srcNode.data.payload as { mimeType?: string }).mimeType;
         if (mt && mt.startsWith("audio/")) continue;
       }
       const p = srcNode.data.payload as Record<string, unknown>;
       const url = (p.resultVideoUrl ?? p.outputUrl ?? p.url) as string | undefined;
-      if (url) urls.push(url);
+      if (url) items.push({ url, label: srcNode.data.title || url.split("/").pop() || url });
     }
-    return urls;
+    return items;
+  };
+  const collectInputUrls = (): string[] => collectInputItems().map((x) => x.url);
+
+  // Effective ordered inputs for the drag-reorder list: explicit manual order if
+  // set, otherwise the smart-ordered connected inputs. Labels prefer source titles.
+  const graphItems = collectInputItems();
+  const labelByUrl = new Map(graphItems.map((x) => [x.url, x.label]));
+  const orderItems: { url: string; label: string }[] = (payload.inputVideoUrls ?? []).length
+    ? (payload.inputVideoUrls ?? []).map((u) => ({ url: u, label: labelByUrl.get(u) ?? u.split("/").pop() ?? u }))
+    : graphItems;
+  const reorder = (from: number, to: number) => {
+    if (from === to) return;
+    const arr = orderItems.map((x) => x.url);
+    const [m] = arr.splice(from, 1);
+    arr.splice(to, 0, m);
+    update({ inputVideoUrls: arr });
   };
 
   // Auto-detect a connected AudioNode (or audio-mime asset) for background music
@@ -226,6 +247,37 @@ export const MergeNode = memo(function MergeNode({ id, selected, data }: Props) 
                 <RotateCcw style={{ width: 9, height: 9 }} />
                 重置
               </button>
+            </div>
+          </div>
+        )}
+
+        {/* Ordered input list — drag to set the concatenation order. Connected
+            inputs are smart-ordered by default; dragging fixes an explicit order. */}
+        {orderItems.length > 0 && (
+          <div>
+            <label style={labelStyle}>合并顺序（拖拽排序，从上到下依次拼接）</label>
+            <div className="flex flex-col gap-1">
+              {orderItems.map((it, i) => (
+                <div
+                  key={it.url + i}
+                  draggable
+                  onDragStart={() => setDragIdx(i)}
+                  onDragOver={(e) => e.preventDefault()}
+                  onDrop={(e) => { e.preventDefault(); if (dragIdx != null) reorder(dragIdx, i); setDragIdx(null); }}
+                  onDragEnd={() => setDragIdx(null)}
+                  className="nodrag"
+                  style={{ display: "flex", alignItems: "center", gap: 6, padding: "5px 7px", borderRadius: 7, background: dragIdx === i ? accentA(0.14) : "var(--c-input)", border: `1px solid ${BORDER_DEFAULT}`, cursor: "grab" }}
+                >
+                  <GripVertical style={{ width: 12, height: 12, color: "var(--c-t4)", flexShrink: 0 }} />
+                  <span style={{ width: 16, height: 16, flexShrink: 0, borderRadius: 4, background: accentA(0.18), color: accent, fontSize: 10, fontWeight: 700, display: "flex", alignItems: "center", justifyContent: "center" }}>{i + 1}</span>
+                  <span style={{ flex: 1, minWidth: 0, fontSize: 11, color: "var(--c-t2)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }} title={it.url}>{it.label}</span>
+                  <button
+                    onClick={() => update({ inputVideoUrls: orderItems.filter((_, j) => j !== i).map((x) => x.url) })}
+                    title="从合并列表移除"
+                    style={{ flexShrink: 0, padding: 2, lineHeight: 0, background: "none", border: "none", color: "var(--c-t4)", cursor: "pointer" }}
+                  ><X style={{ width: 11, height: 11 }} /></button>
+                </div>
+              ))}
             </div>
           </div>
         )}
