@@ -60,7 +60,7 @@ function EditorGallery() {
         )}
         {sessions.map((s) => (
           <div key={s.id} style={card} onClick={() => navigate(`/editor/${s.id}`)}>
-            <div style={{ aspectRatio: "16 / 9", background: "var(--c-elevated, #1a1a20)", borderRadius: 8, display: "flex", alignItems: "center", justifyContent: "center", overflow: "hidden" }}>
+            <div style={{ height: 124, background: "var(--c-elevated, #1a1a20)", borderRadius: 8, display: "flex", alignItems: "center", justifyContent: "center", overflow: "hidden" }}>
               {s.thumbnailUrl
                 ? <img src={s.thumbnailUrl} alt={s.name} style={{ width: "100%", height: "100%", objectFit: "cover" }} />
                 : <Film size={28} style={{ color: "var(--c-t4)" }} />}
