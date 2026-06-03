@@ -138,7 +138,7 @@ export const editorRouter = router({
   export: protectedProcedure
     .input(z.object({
       id: z.number(),
-      format: z.enum(["mp4", "webm", "mov"]).optional(),
+      format: z.enum(["mp4", "hevc", "webm", "mov"]).optional(),
       quality: z.enum(["high", "medium", "low"]).optional(),
       width: z.number().int().min(16).max(7680).optional(),
       height: z.number().int().min(16).max(7680).optional(),

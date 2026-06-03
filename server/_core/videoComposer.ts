@@ -15,7 +15,7 @@ export interface ComposeOptions {
   projectName?: string | null;
   onProgress?: (pct: number, stage: string) => void;
   // Export overrides (optional). Default: doc dimensions/fps, mp4/H.264, high quality.
-  format?: "mp4" | "webm" | "mov";
+  format?: "mp4" | "hevc" | "webm" | "mov";
   quality?: "high" | "medium" | "low";
   width?: number;   // output width override (even); preserves aspect at the caller
   height?: number;  // output height override (even)
@@ -505,14 +505,19 @@ export async function composeTimeline(doc: EditorDoc, opts: ComposeOptions): Pro
     // Export container/codec/quality. Default mp4 + H.264 + high.
     const format = opts.format ?? "mp4";
     const quality = opts.quality ?? "high";
+    // H.265/HEVC lives in an .mp4 container (tag hvc1 for QuickTime/Apple players).
     const ext = format === "webm" ? "webm" : format === "mov" ? "mov" : "mp4";
     const mimeType = format === "webm" ? "video/webm" : format === "mov" ? "video/quicktime" : "video/mp4";
     const isWebm = format === "webm";
+    const isHevc = format === "hevc";
     const h264Crf = ({ high: "18", medium: "22", low: "27" } as const)[quality];
+    const hevcCrf = ({ high: "20", medium: "24", low: "28" } as const)[quality];
     const vp9Crf = ({ high: "28", medium: "33", low: "38" } as const)[quality];
     const vCodec = isWebm
       ? ["-c:v", "libvpx-vp9", "-b:v", "0", "-crf", vp9Crf, "-row-mt", "1", "-pix_fmt", "yuv420p"]
-      : ["-c:v", "libx264", "-preset", "medium", "-crf", h264Crf, "-pix_fmt", "yuv420p"];
+      : isHevc
+        ? ["-c:v", "libx265", "-preset", "medium", "-crf", hevcCrf, "-tag:v", "hvc1", "-pix_fmt", "yuv420p"]
+        : ["-c:v", "libx264", "-preset", "medium", "-crf", h264Crf, "-pix_fmt", "yuv420p"];
     const aCodec = isWebm ? ["-c:a", "libopus", "-b:a", "160k"] : ["-c:a", "aac", "-b:a", "192k"];
     const containerArgs = isWebm ? [] : ["-movflags", "+faststart"];
 

@@ -125,7 +125,7 @@ function EditorWorkspace({ id }: { id: number }) {
   const [exportStage, setExportStage] = useState("");
   const [exportUrl, setExportUrl] = useState<string | null>(null);
   // Export settings (format / quality / resolution).
-  const [exportFormat, setExportFormat] = useState<"mp4" | "webm" | "mov">("mp4");
+  const [exportFormat, setExportFormat] = useState<"mp4" | "hevc" | "webm" | "mov">("mp4");
   const [exportQuality, setExportQuality] = useState<"high" | "medium" | "low">("high");
   const [exportRes, setExportRes] = useState<"source" | "2160" | "1080" | "720" | "480">("source");
   const [exportMenu, setExportMenu] = useState(false);
@@ -232,7 +232,7 @@ function EditorWorkspace({ id }: { id: number }) {
         ><Redo2 size={16} /></button>
         <CanvasSettings />
         {exportUrl && (
-          <button onClick={() => downloadMedia(exportUrl, `${displayName}.${exportFormat}`)} style={{ ...primaryBtn, background: "transparent", color: ACCENT, border: `1px solid ${ACCENT}` }}>
+          <button onClick={() => downloadMedia(exportUrl, `${displayName}.${exportFormat === "hevc" ? "mp4" : exportFormat}`)} style={{ ...primaryBtn, background: "transparent", color: ACCENT, border: `1px solid ${ACCENT}` }}>
             <Download size={15} /> 下载成片
           </button>
         )}
@@ -250,7 +250,7 @@ function EditorWorkspace({ id }: { id: number }) {
               <div style={{ position: "absolute", top: 40, right: 0, zIndex: 41, width: 230, padding: 12, borderRadius: 12, background: "var(--c-base)", border: "1px solid var(--c-bd2)", boxShadow: "0 16px 48px oklch(0 0 0 / 0.5)", display: "flex", flexDirection: "column", gap: 10 }}>
                 <div style={{ fontSize: 12, fontWeight: 600, color: "var(--c-t1)" }}>导出设置</div>
                 {([
-                  { label: "格式", value: exportFormat, set: (v: string) => setExportFormat(v as typeof exportFormat), opts: [["mp4", "MP4 (H.264)"], ["webm", "WebM (VP9)"], ["mov", "MOV (H.264)"]] },
+                  { label: "格式", value: exportFormat, set: (v: string) => setExportFormat(v as typeof exportFormat), opts: [["mp4", "MP4 (H.264)"], ["hevc", "MP4 (H.265/HEVC)"], ["webm", "WebM (VP9)"], ["mov", "MOV (H.264)"]] },
                   { label: "质量", value: exportQuality, set: (v: string) => setExportQuality(v as typeof exportQuality), opts: [["high", "高（清晰，文件大）"], ["medium", "中"], ["low", "低（小文件）"]] },
                   { label: "分辨率", value: exportRes, set: (v: string) => setExportRes(v as typeof exportRes), opts: [["source", "原始（画布尺寸）"], ["2160", "2160p (4K)"], ["1080", "1080p"], ["720", "720p"], ["480", "480p"]] },
                 ] as const).map((row) => (
