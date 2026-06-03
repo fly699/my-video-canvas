@@ -5,6 +5,7 @@
 // duplicating it) from a library panel. Only runtime/output state is stripped.
 
 import { getNodeConfig } from "./nodeConfig";
+import { summarizeComfyWorkflow } from "./comfyWorkflowSummary";
 import type { NodeType } from "../../../shared/types";
 
 export type ComfyNodeType = "comfyui_image" | "comfyui_video" | "comfyui_workflow";
@@ -59,6 +60,29 @@ export function sanitizeComfyPayload(payload: Record<string, unknown>): Record<s
 export function colorForTemplate(nodeType: ComfyNodeType, useCloud?: boolean): string {
   if (nodeType === "comfyui_workflow" && useCloud) return "oklch(0.68 0.16 235)"; // cloud blue
   return getNodeConfig(nodeType as NodeType).color;
+}
+
+function modelBaseName(name: string): string {
+  const base = name.split(/[\\/]/).pop() ?? name;
+  return base.replace(/\.(safetensors|ckpt|pt|pth|bin|gguf|sft)$/i, "");
+}
+
+/** Suggested default template name when saving — auto-derived from the node's
+ *  model: the workflow's main checkpoint (custom flow), or the configured
+ *  checkpoint / motion module / template (image & video). Empty if none found,
+ *  so the caller can fall back to the node title. */
+export function suggestComfyTemplateName(nodeType: ComfyNodeType, payload: Record<string, unknown>): string {
+  const str = (v: unknown): string => (typeof v === "string" ? v.trim() : "");
+  if (nodeType === "comfyui_workflow") {
+    const s = summarizeComfyWorkflow(str(payload.workflowJson) || undefined);
+    if (s.checkpoints[0]) return s.checkpoints[0];
+    return str(payload.workflowName);
+  }
+  const ckpt = str(payload.ckpt);
+  if (ckpt) return modelBaseName(ckpt);
+  const motion = str((payload as { motionModule?: unknown }).motionModule);
+  if (motion) return modelBaseName(motion);
+  return str((payload as { workflowTemplate?: unknown }).workflowTemplate);
 }
 
 function read(): ComfyNodeTemplate[] {

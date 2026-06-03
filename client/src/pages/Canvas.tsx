@@ -32,7 +32,7 @@ import { FilmstripPanel } from "../components/canvas/FilmstripPanel";
 import { TimelinePanel } from "../components/canvas/TimelinePanel";
 import { isConnectionValid } from "../lib/connectionRules";
 import { listNodeTemplates, saveNodeTemplate, deleteNodeTemplate, exportNodeTemplatesJson, importNodeTemplatesJson } from "../lib/nodeTemplates";
-import { saveComfyNodeTemplate, isComfyNodeType, type ComfyNodeType } from "../lib/comfyNodeTemplates";
+import { saveComfyNodeTemplate, isComfyNodeType, suggestComfyTemplateName, type ComfyNodeType } from "../lib/comfyNodeTemplates";
 import { downloadMedia, downloadTextFile } from "@/lib/download";
 import { BeginnerGuide, ConnectionHintsPanel } from "../components/canvas/BeginnerGuide";
 import { HelpPanel } from "../components/canvas/HelpPanel";
@@ -2475,7 +2475,10 @@ function CanvasInner({ projectId }: { projectId: number }) {
             onAddNode={handleAddNode}
             nodeTemplates={ctxTemplates}
             onSaveToLibrary={ctxNode && ctxIsComfy ? () => {
-              const label = window.prompt("模板名称（保存到节点模板库，含全部参数）", ctxNode.data.title)?.trim();
+              const payload = ctxNode.data.payload as Record<string, unknown>;
+              // Auto-fill the model name as the default template name (editable).
+              const suggested = suggestComfyTemplateName(ctxNodeType as ComfyNodeType, payload) || ctxNode.data.title;
+              const label = window.prompt("模板名称（保存到节点模板库，含全部参数）", suggested)?.trim();
               if (!label) return;
               const useCloud = (ctxNode.data.payload as { useCloudComfy?: boolean }).useCloudComfy === true;
               const saved = saveComfyNodeTemplate(
