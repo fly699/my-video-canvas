@@ -397,7 +397,6 @@ export function AssetPanel({ projectId, onClose, onHeaderMouseDown }: Props) {
           currentIndex={lightboxIdx}
           onClose={() => setLightboxIdx(null)}
           onNavigate={setLightboxIdx}
-          preventContextMenu
         />
       )}
 

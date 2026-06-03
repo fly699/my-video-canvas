@@ -271,9 +271,10 @@ export const AssetNode = memo(function AssetNode({ id, selected, data }: Props) 
           style={{ background: "oklch(0 0 0 / 0.8)", backdropFilter: "blur(8px)" }}
           onClick={() => setVideoPreview(false)}
           onWheel={(e) => e.stopPropagation()}
+          onContextMenu={(e) => e.preventDefault()}
         >
           <div className="relative" style={{ maxWidth: "90vw", maxHeight: "85vh" }} onClick={(e) => e.stopPropagation()}>
-            <video src={payload.url} controls autoPlay style={{ maxWidth: "90vw", maxHeight: "85vh", borderRadius: 10, background: "#000" }} />
+            <video src={payload.url} controls autoPlay controlsList="nodownload" style={{ maxWidth: "90vw", maxHeight: "85vh", borderRadius: 10, background: "#000" }} />
             <button
               onClick={() => setVideoPreview(false)}
               className="absolute flex items-center justify-center"

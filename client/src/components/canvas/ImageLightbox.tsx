@@ -13,8 +13,6 @@ interface ImageLightboxProps {
   /** Optional: when omitted, the "select this image" action is hidden — the
    *  lightbox becomes a plain zoomable viewer (asset / reference-image previews). */
   onSelect?: (url: string) => void;
-  /** Deterrent: block the browser context menu on the image (editor previews). */
-  preventContextMenu?: boolean;
 }
 
 const accent = "oklch(0.72 0.20 330)";
@@ -29,7 +27,6 @@ export function ImageLightbox({
   onClose,
   onNavigate,
   onSelect,
-  preventContextMenu,
 }: ImageLightboxProps) {
   const currentUrl = images[currentIndex];
   const isSelected = !!onSelect && currentUrl === selectedUrl;
@@ -107,6 +104,7 @@ export function ImageLightbox({
       className="fixed inset-0 z-[9999] flex items-center justify-center"
       style={{ background: "oklch(0 0 0 / 0.88)" }}
       onClick={onClose}
+      onContextMenu={(e) => e.preventDefault()}
     >
       {/* Main image container */}
       <div
@@ -131,7 +129,7 @@ export function ImageLightbox({
             cursor: scale > 1 ? (panRef.current ? "grabbing" : "grab") : "zoom-in",
           }}
           draggable={false}
-          onContextMenu={preventContextMenu ? (e) => e.preventDefault() : undefined}
+          onContextMenu={(e) => e.preventDefault()}
           onMouseDown={onImgMouseDown}
           onDoubleClick={(e) => { e.stopPropagation(); scale > 1 ? resetZoom() : setScale(2); }}
           onError={makeImageProxyFallback(currentUrl)}
