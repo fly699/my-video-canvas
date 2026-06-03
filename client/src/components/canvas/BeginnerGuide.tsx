@@ -1,7 +1,7 @@
 import { useState, useEffect } from "react";
 import {
   X, Sparkles, Layers, Wand2, Video, Boxes, Bot, Users, ScrollText, Activity,
-  Shield, ArrowRight, MessageCircle, Music, Wallet,
+  Shield, ArrowRight, MessageCircle, Music, Wallet, Clapperboard, Bookmark,
 } from "lucide-react";
 import type { NodeType } from "../../../../shared/types";
 import { getNodeConfig } from "../../lib/nodeConfig";
@@ -57,11 +57,17 @@ function WelcomeModal({ onClose }: { onClose: () => void }) {
     { Icon: Video, color: "oklch(0.62 0.20 25)",
       title: "AI 视频生成", desc: "扩充至 37 个模型：Sora 2、Veo 3.1、Kling 2.1~3.0、Wan、Seedance、Hailuo、Runway、Higgsfield DoP，覆盖文生 / 图生 / 首尾帧",
       badge: "NEW" },
+    { Icon: Clapperboard, color: "oklch(0.65 0.19 310)",
+      title: "内置综合剪辑器", desc: "多片段时间轴 · 单遍 ffmpeg 导出高素质成片；转场 / 特效 / 画面适配（模糊填充）/ 倒放 / 变速、富文本字幕、AI 配乐配音，撤销重做 + 自动保存",
+      badge: "NEW" },
     { Icon: Boxes, color: "oklch(0.68 0.20 100)",
       title: "分类模型选择器", desc: "图像 / 视频 / 对话节点统一的模型选择器：按供应商与家族分组、支持搜索，每个模型标注消耗点数（credits），按预算挑选",
       badge: "NEW" },
     { Icon: Boxes, color: "oklch(0.68 0.20 100)",
-      title: "ComfyUI 自建集成", desc: "图像（多 LoRA / ControlNet+预处理 / IPAdapter / Inpaint / 放大）+ 视频（Wan 文生·图生 / LTX）、15 类模型自动发现、自定义工作流导入" },
+      title: "ComfyUI 自建集成", desc: "图像（多 LoRA / ControlNet+预处理 / IPAdapter / Inpaint / 放大）+ 视频（Wan 文生·图生 / LTX）、15 类模型自动发现、自定义工作流导入；标题栏常驻模型标注、随机/固定种子、多行提示词批量出图" },
+    { Icon: Bookmark, color: "oklch(0.65 0.20 140)",
+      title: "ComfyUI 节点模板库", desc: "右键任意 ComfyUI 节点把全部参数（含提示词 / 工作流）存为共享模板，全员可调用；按节点外框颜色分类、可搜索 / 注释 / 重命名，点击即在画布快速新建带参节点",
+      badge: "NEW" },
     { Icon: Music, color: "oklch(0.70 0.18 340)",
       title: "AI 配乐与配音", desc: "音频节点接入 Suno / MiniMax 音乐生成与 ElevenLabs V3 文本转语音（TTS）配音，一键为视频生成背景音乐与旁白",
       badge: "NEW" },
@@ -201,7 +207,7 @@ function WelcomeModal({ onClose }: { onClose: () => void }) {
           }}
         >
           <div style={{ fontSize: 12, color: "var(--c-t3)" }}>
-            核心功能 · <span style={{ color: "var(--c-t2)", fontWeight: 600 }}>9 大工具</span>
+            核心功能 · <span style={{ color: "var(--c-t2)", fontWeight: 600 }}>{features.length} 大工具</span>
           </div>
 
           <div

@@ -29,6 +29,7 @@ import {
   Music,
   Wallet,
   RefreshCw,
+  Bookmark,
 } from "lucide-react";
 
 // ── Animated background grid ─────────────────────────────────────────────────
@@ -730,6 +731,12 @@ export default function Home() {
                     badge: "NEW",
                   },
                   {
+                    icon: Clapperboard, color: "oklch(0.65 0.19 310)",
+                    title: "内置综合剪辑器",
+                    desc: "多片段时间轴 · 单遍导出高素质成片；转场/特效/模糊填充/倒放/变速、富文本字幕、AI 配乐配音，撤销重做 + 自动保存",
+                    badge: "NEW",
+                  },
+                  {
                     icon: Boxes, color: "oklch(0.68 0.20 100)",
                     title: "分类模型选择器",
                     desc: "图像 / 视频 / 对话统一选择器：按供应商与家族分组、可搜索，每模型标注消耗点数，按预算挑选",
@@ -738,8 +745,14 @@ export default function Home() {
                   {
                     icon: Boxes, color: "oklch(0.68 0.20 100)",
                     title: "ComfyUI 自建集成",
-                    desc: "图像（多 LoRA / ControlNet / IPAdapter / Inpaint / 放大）+ 视频（Wan 文生·图生 / LTX）、15 类模型发现、自定义工作流导入",
+                    desc: "图像（多 LoRA / ControlNet / IPAdapter / Inpaint / 放大）+ 视频（Wan / LTX）、自定义工作流；标题栏模型标注、随机/固定种子、多行提示词批量出图",
                     badge: null,
+                  },
+                  {
+                    icon: Bookmark, color: "oklch(0.65 0.20 140)",
+                    title: "ComfyUI 节点模板库",
+                    desc: "右键 ComfyUI 节点把全部参数（含提示词/工作流）存为共享模板，全员可调用；按外框颜色分类、可搜索/注释/重命名，点击即新建带参节点",
+                    badge: "NEW",
                   },
                   {
                     icon: Music, color: "oklch(0.70 0.18 340)",
