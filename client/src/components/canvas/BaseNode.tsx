@@ -41,13 +41,16 @@ interface BaseNodeProps {
   /** 可选：自定义节点外框基础色（oklch 等）。设置后静止/选中态边框用此色着色，
    *  用于以颜色区分节点的运行模式（如 ComfyUI 本地 vs 云端）。不影响运行态边框。 */
   borderTint?: string;
+  /** 可选：标题栏 hover 提示文本（覆盖默认的"双击编辑标题"）。
+   *  用于在标题上展示节点的附加信息（如 ComfyUI 工作流模型详情）。 */
+  headerTooltip?: string;
 }
 
 export const BaseNode = memo(function BaseNode({
   id, selected, nodeType, title, children,
   minWidth = 280, minHeight = 140, showHandles = true, headerRight, resizable = false,
   onRun, canRun = true, running: nodeRunning = false, hasResult = false,
-  heroMedia, borderTint,
+  heroMedia, borderTint, headerTooltip,
 }: BaseNodeProps) {
   const config = getNodeConfig(nodeType);
   const Icon = NODE_ICONS[config.icon] ?? FileText;
@@ -345,7 +348,7 @@ export const BaseNode = memo(function BaseNode({
                   transition: "color 150ms ease",
                 }}
                 onDoubleClick={() => { setEditingTitle(true); setTitleValue(title); }}
-                title={`双击编辑标题: ${title}`}
+                title={headerTooltip ? `${headerTooltip}\n\n双击编辑标题: ${title}` : `双击编辑标题: ${title}`}
               >
                 {title}
               </span>
