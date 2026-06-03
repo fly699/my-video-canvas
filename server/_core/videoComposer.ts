@@ -94,16 +94,30 @@ export function buildEditorASS(clips: TextInput[], opts: { width: number; height
     "Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text",
   ];
   const events = clips.map((c) => {
-    const size = c.text.size ?? 48;
-    const color = cssColorToASSHex(c.text.color ?? "white");
+    const t = c.text;
+    const size = t.size ?? 48;
+    const color = cssColorToASSHex(t.color ?? "white");
     const px = Math.round(c.x * opts.width);
     const py = Math.round(c.y * opts.height);
-    const tags = [`\\an7`, `\\pos(${px},${py})`, `\\fs${size}`, `\\c${color}`];
-    const motion = c.text.motionStyle;
+    // base styling tags shared by all motion styles
+    const base: string[] = [`\\fs${size}`, `\\c${color}`];
+    if (t.bold) base.push("\\b1");
+    if (t.italic) base.push("\\i1");
+    // 描边 (outline): explicit width + colour, or 0 to disable the style default
+    base.push(`\\bord${t.strokeWidth && t.strokeWidth > 0 ? t.strokeWidth : 0}`);
+    if (t.strokeWidth && t.strokeWidth > 0) base.push(`\\3c${cssColorToASSHex(t.strokeColor ?? "black")}`);
+    // 投影 (shadow): depth + back colour, or 0
+    base.push(`\\shad${t.shadow ? 3 : 0}`);
+    if (t.shadow) base.push(`\\4c${cssColorToASSHex(t.shadowColor ?? "#000000")}`);
+
+    const motion = t.motionStyle;
+    if (motion === "roll") {
+      return `Dialogue: 0,${formatASSTime(c.start)},${formatASSTime(c.end)},Default,,0,0,0,,{\\an7\\move(${px},${opts.height},${px},${py})${base.join("")}}${escapeASSText(t.content)}`;
+    }
+    const tags = [`\\an7`, `\\pos(${px},${py})`, ...base];
     if (motion === "fade") tags.push("\\fad(300,300)");
-    else if (motion === "roll") return `Dialogue: 0,${formatASSTime(c.start)},${formatASSTime(c.end)},Default,,0,0,0,,{\\an7\\move(${px},${opts.height},${px},${py})\\fs${size}\\c${color}}${escapeASSText(c.text.content)}`;
     else if (motion === "bounce" || motion === "karaoke") tags.push("\\fad(200,200)");
-    return `Dialogue: 0,${formatASSTime(c.start)},${formatASSTime(c.end)},Default,,0,0,0,,{${tags.join("")}}${escapeASSText(c.text.content)}`;
+    return `Dialogue: 0,${formatASSTime(c.start)},${formatASSTime(c.end)},Default,,0,0,0,,{${tags.join("")}}${escapeASSText(t.content)}`;
   });
   return head.concat(events).join("\n") + "\n";
 }

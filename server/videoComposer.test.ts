@@ -102,6 +102,20 @@ describe("buildFilterGraph (single-pass composer)", () => {
     expect(ass).toContain("中文字幕");
   });
 
+  it("buildEditorASS applies bold/italic/stroke/shadow styling", () => {
+    const clips: TextInput[] = [{ start: 0, end: 2, x: 0.1, y: 0.8, text: {
+      content: "样式", size: 50, color: "#ffffff", bold: true, italic: true,
+      strokeWidth: 5, strokeColor: "#ff0000", shadow: true, shadowColor: "#000000",
+    } }];
+    const ass = buildEditorASS(clips, { width: 1920, height: 1080 });
+    expect(ass).toContain("\\b1");      // bold
+    expect(ass).toContain("\\i1");      // italic
+    expect(ass).toContain("\\bord5");   // stroke width
+    expect(ass).toContain("\\3c");      // stroke colour
+    expect(ass).toContain("\\shad3");   // shadow depth
+    expect(ass).toContain("\\4c");      // shadow colour
+  });
+
   it("collectVideoSegments sorts video/image clips by start and ignores audio/text", () => {
     const doc = emptyEditorDoc();
     doc.tracks[0].clips.push({ id: "b", kind: "video", start: 5, trimIn: 0, trimOut: 2, assetUrl: "x" });
