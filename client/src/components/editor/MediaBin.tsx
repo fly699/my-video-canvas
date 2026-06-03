@@ -98,15 +98,18 @@ export function MediaBin() {
               title={`${a.name}（点击添加 / 拖到时间轴）`}
               style={{ cursor: "grab", borderRadius: 8, overflow: "hidden", border: `1px solid ${EC.border}`, background: EC.elevated }}
             >
-              <div style={{ height: 92, display: "flex", alignItems: "center", justifyContent: "center", background: "var(--c-bg, #0c0c10)" }}>
-                {kind === "image" ? (
-                  <img src={a.url} alt={a.name} loading="lazy" style={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }} />
-                ) : kind === "video" ? (
-                  <video src={a.url} muted preload="metadata" style={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }} />
-                ) : (
+              {/* Each media gets its OWN explicit pixel height — never a % height
+                  inside a flex box — so the thumbnail box can't collapse even in
+                  WebViews that mishandle aspect-ratio / percentage heights. */}
+              {kind === "image" ? (
+                <div style={{ height: 92, minHeight: 92, backgroundImage: `url("${a.url}")`, backgroundSize: "cover", backgroundPosition: "center", backgroundColor: "var(--c-bg, #0c0c10)" }} />
+              ) : kind === "video" ? (
+                <video src={a.url} muted preload="metadata" style={{ display: "block", width: "100%", height: 92, minHeight: 92, objectFit: "cover", backgroundColor: "var(--c-bg, #0c0c10)" }} />
+              ) : (
+                <div style={{ height: 92, minHeight: 92, display: "flex", alignItems: "center", justifyContent: "center", backgroundColor: "var(--c-bg, #0c0c10)" }}>
                   <Icon size={22} style={{ color: EC.t3 }} />
-                )}
-              </div>
+                </div>
+              )}
               <div style={{ display: "flex", alignItems: "center", gap: 3, padding: "3px 5px" }}>
                 <Icon size={10} style={{ color: EC.t4, flexShrink: 0 }} />
                 <span style={{ fontSize: 10, color: EC.t3, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{a.name}</span>
