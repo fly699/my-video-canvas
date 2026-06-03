@@ -384,7 +384,9 @@ export const assetsRouter = router({
       projectId: z.number().optional(),
     }))
     .mutation(async ({ ctx, input }) => {
-      await assertWhitelisted(ctx);
+      // NOTE: no assertWhitelisted here — the whitelist gates THIRD-PARTY AI MODEL
+      // usage (cost control), not uploading your own files. Auth + project-ownership
+      // below are the only gates for asset ingestion.
       if (input.projectId != null) await assertProjectAccess(input.projectId, ctx.user.id, "editor");
       const MAX_BYTES = 5000 * 1024 * 1024; // 5000MB streamed ceiling (not a memory limit — streamed direct, just a runaway/abuse guard)
       if (input.size > MAX_BYTES) throw new TRPCError({ code: "BAD_REQUEST", message: "文件超过 5000MB 上限" });
@@ -446,7 +448,7 @@ export const assetsRouter = router({
       })
     )
     .mutation(async ({ ctx, input }) => {
-      await assertWhitelisted(ctx);
+      // No assertWhitelisted: uploading your own files is not third-party AI usage.
       // When projectId is supplied, the caller must have editor+ access on
       // that project — otherwise editors could attach assets to arbitrary
       // projects they don't belong to (IDOR).
@@ -494,7 +496,8 @@ export const assetsRouter = router({
   importFromUrl: protectedProcedure
     .input(z.object({ url: z.string().url(), projectId: z.number().optional(), name: z.string().max(255).optional() }))
     .mutation(async ({ ctx, input }) => {
-      await assertWhitelisted(ctx);
+      // No assertWhitelisted: importing a link into your own library is not
+      // third-party AI usage. SSRF guard + project ownership still apply.
       if (input.projectId != null) await assertProjectAccess(input.projectId, ctx.user.id, "editor");
       guardUrl(input.url); // SSRF: blocks private/loopback hosts
       const MAX_BYTES = 50 * 1024 * 1024;
