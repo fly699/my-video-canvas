@@ -83,7 +83,10 @@ export type AuditAction =
   | "download:grant"
   | "download:revoke"
   | "download:served"
-  | "download:denied";
+  | "download:denied"
+  | "editor:create"
+  | "editor:delete"
+  | "editor:export";
 
 export interface AuditOpts {
   ctx?: TrpcContext;

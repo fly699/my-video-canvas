@@ -64,7 +64,7 @@ export function AssetPanel({ projectId, onClose, onHeaderMouseDown }: Props) {
   const processFile = useCallback(
     (file: File) => {
       setUploading(true);
-      // 流式/预签名直传，支持大文件（最大 500MB），无 base64 ~15MB 限制。
+      // 流式/预签名直传，支持大文件（最大 5000MB），无 base64 ~15MB 限制。
       uploadAssetFile(utils.client, file, projectId)
         .then((ok) => { if (ok) { toast.success("素材上传成功"); refetch(); } })
         .finally(() => setUploading(false));
@@ -196,7 +196,7 @@ export function AssetPanel({ projectId, onClose, onHeaderMouseDown }: Props) {
               {uploading ? "上传中..." : "点击或拖拽上传"}
             </p>
             <p className="text-[10px] mt-0.5" style={{ color: "var(--c-t4)" }}>
-              图片 · 视频 · 音频 · 最大 500MB
+              图片 · 视频 · 音频 · 最大 5000MB
             </p>
           </div>
         </div>

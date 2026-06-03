@@ -24,6 +24,7 @@ import {
   Check,
   CheckSquare,
   Square,
+  Clapperboard,
 } from "lucide-react";
 
 type TypeFilter = "" | "image" | "video" | "audio" | "other";
@@ -391,6 +392,14 @@ export default function Library() {
           </div>
         </div>
         <div className="flex items-center gap-2">
+          <button
+            onClick={() => navigate("/editor")}
+            className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-all"
+            style={{ color: "oklch(0.65 0.19 310)", border: "1px solid oklch(0.65 0.19 310 / 0.4)" }}
+            title="进入视频剪辑器，把素材拖到时间轴剪辑"
+          >
+            <Clapperboard className="w-3.5 h-3.5" /> 视频剪辑器
+          </button>
           <button
             onClick={handleImportUrl}
             disabled={importMutation.isPending}

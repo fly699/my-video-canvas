@@ -70,7 +70,7 @@ export function ChatProvider({ children }: { children: React.ReactNode }) {
   const convQuery = trpc.chat.listConversations.useQuery(undefined, { refetchOnWindowFocus: false });
   const conversations = useMemo(() => (convQuery.data as ConversationSummary[] | undefined) ?? [], [convQuery.data]);
   const settingsQuery = trpc.chat.getSettings.useQuery(undefined, { refetchOnWindowFocus: false });
-  const maxFileMb = settingsQuery.data?.maxFileMb ?? 16;
+  const maxFileMb = settingsQuery.data?.maxFileMb ?? 5000;
   const serverlessAllowed = settingsQuery.data?.serverlessAllowed ?? true;
   const joinableQuery = trpc.chat.listJoinableRooms.useQuery(undefined, { refetchOnWindowFocus: false });
   const joinableRooms = useMemo(() => (joinableQuery.data as JoinableRoom[] | undefined) ?? [], [joinableQuery.data]);

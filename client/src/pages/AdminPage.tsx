@@ -1002,7 +1002,7 @@ function ChatSettingsPanel() {
           </label>
           <label style={chatToggleRow}>
             <span>单文件大小上限 (MB)</span>
-            <input type="number" min={1} max={512} defaultValue={s.maxFileMb} onBlur={(e) => mu.mutate({ maxFileMb: Number(e.target.value) })} style={{ width: 80, ...chatInput }} />
+            <input type="number" min={1} max={5120} defaultValue={s.maxFileMb} onBlur={(e) => mu.mutate({ maxFileMb: Number(e.target.value) })} style={{ width: 80, ...chatInput }} />
           </label>
         </div>
       )}

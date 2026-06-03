@@ -176,6 +176,28 @@ export const assets = mysqlTable("assets", {
 export type Asset = typeof assets.$inferSelect;
 export type InsertAsset = typeof assets.$inferInsert;
 
+// ── Video Editor sessions ───────────────────────────────────────────────────
+// One row per saved timeline-editor document. `doc` holds the full EDL
+// (tracks/clips/effects) the front-end edits; the server renders it in a single
+// ffmpeg pass on export. Soft-deletable; not tied to a canvas project (optional
+// link via projectId for "import from canvas").
+export const editSessions = mysqlTable("edit_sessions", {
+  id: int("id").autoincrement().primaryKey(),
+  userId: int("userId").notNull(),
+  projectId: int("projectId"),                       // optional link to a canvas project
+  name: varchar("name", { length: 255 }).notNull().default("未命名剪辑"),
+  doc: json("doc").notNull(),                         // EditorDoc JSON
+  thumbnailUrl: text("thumbnailUrl"),
+  deletedAt: timestamp("deletedAt"),                  // soft delete: hidden from user
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+}, (t) => ({
+  userIdx: index("edit_sessions_user_idx").on(t.userId),
+}));
+
+export type EditSession = typeof editSessions.$inferSelect;
+export type InsertEditSession = typeof editSessions.$inferInsert;
+
 // ── Video Tasks ───────────────────────────────────────────────────────────────
 export const videoTasks = mysqlTable("video_tasks", {
   id: int("id").autoincrement().primaryKey(),
@@ -439,7 +461,7 @@ export const chatSettings = mysqlTable("chat_settings", {
   id: int("id").autoincrement().primaryKey(),
   serverlessAllowed: boolean("serverlessAllowed").notNull().default(true),
   lobbyEnabled: boolean("lobbyEnabled").notNull().default(true),
-  maxFileMb: int("maxFileMb").notNull().default(200),
+  maxFileMb: int("maxFileMb").notNull().default(5000),
   updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
 });
 

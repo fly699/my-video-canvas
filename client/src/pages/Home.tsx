@@ -7,6 +7,7 @@ import { toast } from "sonner";
 import {
   Plus,
   Film,
+  Clapperboard,
   ArrowRight,
   MoreHorizontal,
   Trash2,
@@ -391,6 +392,43 @@ function LibraryEntryCard({ covers, count, onOpen }: { covers: string[]; count: 
         <div className="flex items-center gap-1 text-xs" style={{ color: "var(--c-t4)" }}>
           <Boxes className="w-3 h-3" />
           <span>{count > 0 ? `${count} 个素材 · 跨项目` : "个人专有仓库"}</span>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// 视频剪辑器入口卡片 — 进入综合时间轴剪辑器（独立于画布节点）。
+function EditorEntryCard({ onOpen }: { onOpen: () => void }) {
+  const accent = "oklch(0.65 0.19 310)"; // 剪辑器主色（品红紫）
+  return (
+    <div
+      className="group relative flex flex-col rounded-xl border transition-all duration-200 cursor-pointer overflow-hidden"
+      onClick={onOpen}
+      style={{
+        borderColor: `${accent.replace(")", " / 0.35)")}`,
+        background: "var(--c-surface)",
+        boxShadow: "0 1px 2px oklch(0 0 0 / 0.2), 0 4px 16px oklch(0 0 0 / 0.1)",
+      }}
+      onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.borderColor = accent; (e.currentTarget as HTMLElement).style.background = "var(--c-elevated)"; }}
+      onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.borderColor = `${accent.replace(")", " / 0.35)")}`; (e.currentTarget as HTMLElement).style.background = "var(--c-surface)"; }}
+    >
+      <div className="relative h-36 flex items-center justify-center overflow-hidden" style={{ background: `${accent.replace(")", " / 0.07)")}` }}>
+        <div className="relative z-10 w-11 h-11 rounded-xl flex items-center justify-center" style={{ background: `${accent.replace(")", " / 0.18)")}`, border: `1px solid ${accent.replace(")", " / 0.4)")}` }}>
+          <Clapperboard className="w-5 h-5" style={{ color: accent }} />
+        </div>
+        <span className="absolute top-2 left-2 z-10 px-1.5 py-0.5 rounded text-[9px] font-bold tracking-wide" style={{ background: `${accent.replace(")", " / 0.9)")}`, color: "#fff" }}>
+          剪辑器
+        </span>
+      </div>
+      <div className="flex flex-col gap-1 p-4">
+        <h3 className="text-sm font-semibold leading-snug flex items-center gap-1.5" style={{ color: "var(--c-t1)" }}>
+          视频剪辑器
+          <ArrowRight className="w-3.5 h-3.5 transition-transform group-hover:translate-x-0.5" style={{ color: accent }} />
+        </h3>
+        <div className="flex items-center gap-1 text-xs" style={{ color: "var(--c-t4)" }}>
+          <Clapperboard className="w-3 h-3" />
+          <span>时间轴剪辑 · 单遍导出</span>
         </div>
       </div>
     </div>
@@ -968,6 +1006,7 @@ export default function Home() {
                   count={librarySummary?.count ?? 0}
                   onOpen={() => navigate("/library")}
                 />
+                <EditorEntryCard onOpen={() => navigate("/editor")} />
               </div>
             </div>
           )}

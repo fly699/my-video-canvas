@@ -352,9 +352,9 @@ export const chatRouter = router({
       // are served as downloads / typed media, never executed in the app origin.
 
       const settings = await getChatSettings().catch(() => null);
-      const maxBytes = (settings?.maxFileMb ?? 16) * 1024 * 1024;
+      const maxBytes = (settings?.maxFileMb ?? 5000) * 1024 * 1024;
       const buffer = Buffer.from(input.base64, "base64");
-      if (buffer.length > maxBytes) throw new TRPCError({ code: "BAD_REQUEST", message: `文件超过 ${settings?.maxFileMb ?? 16}MB 上限` });
+      if (buffer.length > maxBytes) throw new TRPCError({ code: "BAD_REQUEST", message: `文件超过 ${settings?.maxFileMb ?? 5000}MB 上限` });
 
       const safeName = path.basename(input.filename).replace(/[^a-zA-Z0-9._-]/g, "_").slice(0, 120) || "file";
       const date = new Date().toISOString().slice(0, 10);
@@ -393,8 +393,8 @@ export const chatRouter = router({
       if (conv.mode !== "server") throw new TRPCError({ code: "BAD_REQUEST", message: "无服务器会话文件走加密通道" });
       if (!(await isChatMember(conv.id, ctx.user.id))) throw new TRPCError({ code: "FORBIDDEN" });
       const settings = await getChatSettings().catch(() => null);
-      const maxBytes = (settings?.maxFileMb ?? 16) * 1024 * 1024;
-      if (input.size > maxBytes) throw new TRPCError({ code: "BAD_REQUEST", message: `文件超过 ${settings?.maxFileMb ?? 16}MB 上限` });
+      const maxBytes = (settings?.maxFileMb ?? 5000) * 1024 * 1024;
+      if (input.size > maxBytes) throw new TRPCError({ code: "BAD_REQUEST", message: `文件超过 ${settings?.maxFileMb ?? 5000}MB 上限` });
 
       const safeName = path.basename(input.filename).replace(/[^a-zA-Z0-9._-]/g, "_").slice(0, 120) || "file";
       const date = new Date().toISOString().slice(0, 10);
@@ -474,7 +474,7 @@ export const chatRouter = router({
   getSettings: protectedProcedure.query(async () => {
     const s = await getChatSettings().catch(() => null);
     return {
-      maxFileMb: s?.maxFileMb ?? 16,
+      maxFileMb: s?.maxFileMb ?? 5000,
       serverlessAllowed: s?.serverlessAllowed ?? true,
       lobbyEnabled: s?.lobbyEnabled ?? true,
       storageConfigured: isStorageConfigured(),
