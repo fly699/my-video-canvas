@@ -13,6 +13,21 @@ const TTS_MODELS: [string, string][] = [
   ["openai_gpt4o_mini_tts", "GPT-4o mini"],
   ["elevenlabs-v3-tts", "ElevenLabs V3"],
 ];
+// Voices vary by provider (mirror AudioNode); value === wire name.
+const OPENAI_VOICES: [string, string][] = [
+  ["alloy", "Alloy · 中性"], ["echo", "Echo · 男声"], ["fable", "Fable · 英式"],
+  ["onyx", "Onyx · 低沉"], ["nova", "Nova · 女声"], ["shimmer", "Shimmer · 柔和"],
+];
+const ELEVENLABS_VOICES: [string, string][] = [
+  ["Rachel", "Rachel · 女声"], ["Aria", "Aria · 女声"], ["Sarah", "Sarah · 女声"], ["Charlotte", "Charlotte · 女声"],
+  ["River", "River · 中性"], ["Roger", "Roger · 男声"], ["George", "George · 男声"], ["Brian", "Brian · 男声"], ["Daniel", "Daniel · 男声"],
+];
+const voicesForModel = (m: string): [string, string][] => (m === "elevenlabs-v3-tts" || m === "elevenlabs_v3" ? ELEVENLABS_VOICES : OPENAI_VOICES);
+// Fonts — the render host (Windows) ships these CJK families, so export matches preview.
+const FONTS: [string, string][] = [
+  ["", "默认"], ["Microsoft YaHei", "微软雅黑"], ["SimHei", "黑体"], ["SimSun", "宋体"],
+  ["KaiTi", "楷体"], ["FangSong", "仿宋"], ["Arial", "Arial"], ["Times New Roman", "Times"],
+];
 const FILTERS: [string, string][] = [["", "无"], ["cinematic", "电影感"], ["vintage", "复古"], ["warm", "暖色"], ["cool", "冷色"], ["bw", "黑白"]];
 const TRANSITIONS: [string, string][] = [["none", "无"], ["fade", "淡入淡出"], ["dissolve", "叠化"], ["slide", "滑动"], ["wipe", "擦除"]];
 const MOTIONS: [string, string][] = [["none", "无"], ["fade", "淡入"], ["roll", "滚动"], ["karaoke", "卡拉OK"], ["bounce", "弹跳"]];
@@ -28,6 +43,16 @@ export function PropertiesPanel() {
     "ui:editor:tts-model:v1", "openai_tts_real",
     { validate: (p) => (typeof p === "string" && TTS_MODELS.some(([v]) => v === p) ? p : null) },
   );
+  const [ttsVoice, setTtsVoice] = usePersistentState<string>(
+    "ui:editor:tts-voice:v1", "alloy",
+    { validate: (p) => (typeof p === "string" && p ? p : null) },
+  );
+  // when the model changes, reset the voice if it isn't valid for the new provider
+  const pickModel = (m: string) => {
+    setTtsModel(m);
+    const allowed = voicesForModel(m).map(([v]) => v);
+    if (!allowed.includes(ttsVoice)) setTtsVoice(allowed[0]);
+  };
 
   // AI dubbing: synthesize speech from the text clip and drop it on the audio track.
   async function aiDub(text: string, start: number) {
@@ -37,7 +62,7 @@ export function PropertiesPanel() {
     if (!audioTrack) { toast.error("没有音频轨道"); return; }
     toast.info("正在生成 AI 配音…");
     try {
-      const r = await dubMut.mutateAsync({ model: ttsModel as Parameters<typeof dubMut.mutateAsync>[0]["model"], text });
+      const r = await dubMut.mutateAsync({ model: ttsModel as Parameters<typeof dubMut.mutateAsync>[0]["model"], voice: ttsVoice || undefined, text });
       const dur = await probeMediaDuration(r.url, "audio");
       addClip(audioTrack.id, { kind: "audio", assetUrl: r.url, start, trimIn: 0, trimOut: dur, volume: 1 });
       toast.success("已生成配音并加入音频轨");
@@ -62,6 +87,17 @@ export function PropertiesPanel() {
   const setTf = (k: keyof NonNullable<Clip["transform"]>, v: number) => update(c.id, { transform: { ...tf, [k]: v } });
   const txt = c.text;
   const setText = (patch: Partial<NonNullable<Clip["text"]>>) => update(c.id, { text: { ...txt, content: txt?.content ?? "", ...patch } });
+  // Center on an axis using the actually-rendered box size (falls back to an
+  // estimate when the clip isn't visible at the current playhead).
+  const centerAxis = (axis: "x" | "y") => {
+    const box = document.querySelector(`[data-clip-box="${c.id}"]`) as HTMLElement | null;
+    const stage = box?.offsetParent as HTMLElement | null;
+    if (box && stage?.offsetWidth && stage.offsetHeight) {
+      if (axis === "x") setTf("x", Math.max(0, (1 - box.offsetWidth / stage.offsetWidth) / 2));
+      else setTf("y", Math.max(0, (1 - box.offsetHeight / stage.offsetHeight) / 2));
+    } else if (axis === "x") setTf("x", Math.max(0, (1 - (tf.scale ?? 1)) / 2));
+    else setTf("y", 0.4);
+  };
 
   return (
     <aside style={panel}>
@@ -76,6 +112,7 @@ export function PropertiesPanel() {
             <textarea value={txt?.content ?? ""} onChange={(e) => setText({ content: e.target.value })}
               rows={2} style={{ ...input, resize: "vertical" }} placeholder="输入文字…" />
             <Row label="字号"><input type="number" value={txt?.size ?? 48} onChange={(e) => setText({ size: Number(e.target.value) })} style={input} /></Row>
+            <Row label="字体"><Select value={txt?.font ?? ""} options={FONTS} onChange={(v) => setText({ font: v || undefined })} /></Row>
             {/* style row: bold / italic / alignment */}
             <div style={{ display: "flex", gap: 6 }}>
               <Toggle on={!!txt?.bold} onClick={() => setText({ bold: !txt?.bold })} title="粗体"><b>B</b></Toggle>
@@ -104,7 +141,8 @@ export function PropertiesPanel() {
               {txt?.bgColor && <input type="color" value={txt?.bgColor ?? "#000000"} onChange={(e) => setText({ bgColor: e.target.value })} style={{ ...input, width: 34, height: 30, padding: 2 }} />}
             </div>
             <Row label="动效"><Select value={txt?.motionStyle ?? "none"} options={MOTIONS} onChange={(v) => setText({ motionStyle: v as NonNullable<Clip["text"]>["motionStyle"] })} /></Row>
-            <Row label="配音模型"><Select value={ttsModel} options={TTS_MODELS} onChange={setTtsModel} /></Row>
+            <Row label="配音模型"><Select value={ttsModel} options={TTS_MODELS} onChange={pickModel} /></Row>
+            <Row label="发音人"><Select value={ttsVoice} options={voicesForModel(ttsModel)} onChange={setTtsVoice} /></Row>
             <button
               disabled={dubMut.isPending}
               onClick={() => aiDub(c.text?.content ?? "", c.start)}
@@ -150,7 +188,9 @@ export function PropertiesPanel() {
         {isVisual && (
           <Section title="位置 / 大小">
             <div style={{ display: "flex", gap: 6, marginBottom: 2 }}>
-              <button onClick={() => setTf("x", Math.max(0, ((1 - (tf.scale ?? 1)) / 2)))} title="水平居中" style={alignBtn}>水平居中</button>
+              <button onClick={() => centerAxis("x")} title="水平居中" style={alignBtn}>水平居中</button>
+              <button onClick={() => centerAxis("y")} title="垂直居中" style={alignBtn}>垂直居中</button>
+              <button onClick={() => { centerAxis("x"); centerAxis("y"); }} title="居中" style={alignBtn}>居中</button>
               <button onClick={() => update(c.id, { transform: undefined })} title="清除位置/缩放/旋转" style={alignBtn}>重置</button>
             </div>
             <NumSlider label="缩放" value={tf.scale ?? 1} min={0.05} max={3} step={0.01} disp={(v) => Math.round(v * 100)} parse={(s) => s / 100} suffix="%" onChange={(v) => setTf("scale", v)} />
