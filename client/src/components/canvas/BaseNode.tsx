@@ -88,6 +88,14 @@ export const BaseNode = memo(function BaseNode({
 
   // Pinned state — when true, child collapsible regions stay expanded
   // regardless of `selected`. Toggled via the right-click context menu.
+  // Generation status/progress read straight from the payload, so a persistent
+  // progress bar can render even when the node's config is collapsed (the per-node
+  // progress bars live inside the collapsing body and vanish when deselected).
+  const genStatus = useCanvasStore((s) => (s.nodes.find((n) => n.id === id)?.data.payload as { status?: string } | undefined)?.status);
+  const genProgress = useCanvasStore((s) => {
+    const p = (s.nodes.find((n) => n.id === id)?.data.payload as { progress?: number } | undefined)?.progress;
+    return typeof p === "number" ? p : null;
+  });
   const pinned = useCanvasStore((s) => {
     const node = s.nodes.find((n) => n.id === id);
     return Boolean((node?.data.payload as Record<string, unknown> | undefined)?.pinned);
@@ -539,6 +547,30 @@ export const BaseNode = memo(function BaseNode({
           </button>
         </div>
       </div>
+
+      {/* ── Persistent generation progress ──
+          Rendered right under the header (outside the collapsing body) so the
+          bar stays visible even when the node is collapsed/deselected. Driven by
+          the payload's status/progress, so it works for every node uniformly. */}
+      {(genStatus === "processing" || nodeRunning) && (
+        <div
+          title={genProgress != null ? `生成中 ${Math.round(genProgress)}%` : "生成中…"}
+          style={{ height: 4, flexShrink: 0, background: "var(--c-bd1)", overflow: "hidden" }}
+        >
+          <div
+            className={genProgress == null ? "animate-pulse" : undefined}
+            style={{
+              height: "100%",
+              width: genProgress != null ? `${Math.max(3, Math.min(100, genProgress))}%` : "100%",
+              background: config.color,
+              opacity: genProgress == null ? 0.55 : 1,
+              boxShadow: `0 0 6px ${config.color}88`,
+              transition: "width 280ms ease",
+              borderRadius: 2,
+            }}
+          />
+        </div>
+      )}
 
       {/* ── Hero media (creative mode only, shown via CSS) ── */}
       {hasHero && (
