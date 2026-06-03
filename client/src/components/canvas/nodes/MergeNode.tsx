@@ -76,6 +76,35 @@ export const MergeNode = memo(function MergeNode({ id, selected, data }: Props) 
 
   const update = (patch: Partial<MergeNodeData>) => updateNodeData(id, patch);
 
+  // Drag a video asset from the 素材库 (or a URL) straight onto the node → append
+  // it to the merge list. Mirrors the asset-drop pattern used by the gen nodes.
+  const handleDragOver = (e: React.DragEvent) => {
+    if (e.dataTransfer.types.includes("application/x-asset-list") || e.dataTransfer.types.includes("text/uri-list")) {
+      e.preventDefault(); e.dataTransfer.dropEffect = "copy";
+    }
+  };
+  const handleDrop = (e: React.DragEvent) => {
+    let dropped: string[] = [];
+    const raw = e.dataTransfer.getData("application/x-asset-list");
+    if (raw) {
+      try {
+        dropped = (JSON.parse(raw) as Array<{ url?: string; type?: string; mimeType?: string }>)
+          .filter((a) => a.url && (a.type === "video" || a.mimeType?.startsWith("video/")))
+          .map((a) => a.url!);
+      } catch { /* ignore */ }
+    }
+    if (!dropped.length) {
+      const uri = (e.dataTransfer.getData("text/uri-list") || e.dataTransfer.getData("text/plain")).trim();
+      if (/^https?:\/\//.test(uri)) dropped = [uri];
+    }
+    if (!dropped.length) return; // not a video asset — let the canvas handle it
+    e.preventDefault(); e.stopPropagation();
+    const existing = payload.inputVideoUrls ?? [];
+    const merged = [...existing, ...dropped.filter((u) => !existing.includes(u))];
+    update({ inputVideoUrls: merged });
+    toast.success(`已添加 ${merged.length - existing.length} 个视频到合并列表`);
+  };
+
   // Collect video URLs from connected source nodes (video-producing types only).
   // AudioNode is explicitly excluded — if a user connects an audio source it should
   // populate `bgMusicUrl` instead of being treated as a video track (would crash FFmpeg).
@@ -149,7 +178,7 @@ export const MergeNode = memo(function MergeNode({ id, selected, data }: Props) 
   return (
     <BaseNode id={id} selected={selected} nodeType="merge" title={data.title} minHeight={200}>
 
-      <div className="flex flex-col gap-3 p-3.5">
+      <div className="flex flex-col gap-3 p-3.5" onDragOver={handleDragOver} onDrop={handleDrop}>
 
         {/* Status */}
         {isProcessing && (
