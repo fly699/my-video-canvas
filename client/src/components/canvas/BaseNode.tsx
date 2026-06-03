@@ -555,20 +555,25 @@ export const BaseNode = memo(function BaseNode({
       {(genStatus === "processing" || nodeRunning) && (
         <div
           title={genProgress != null ? `生成中 ${Math.round(genProgress)}%` : "生成中…"}
-          style={{ height: 4, flexShrink: 0, background: "var(--c-bd1)", overflow: "hidden" }}
+          style={{ display: "flex", alignItems: "center", gap: 6, padding: "3px 10px", flexShrink: 0, background: "var(--c-node-bg)", borderBottom: "1px solid var(--c-bd1)" }}
         >
-          <div
-            className={genProgress == null ? "animate-pulse" : undefined}
-            style={{
-              height: "100%",
-              width: genProgress != null ? `${Math.max(3, Math.min(100, genProgress))}%` : "100%",
-              background: config.color,
-              opacity: genProgress == null ? 0.55 : 1,
-              boxShadow: `0 0 6px ${config.color}88`,
-              transition: "width 280ms ease",
-              borderRadius: 2,
-            }}
-          />
+          <div style={{ flex: 1, height: 4, background: "var(--c-bd1)", borderRadius: 2, overflow: "hidden" }}>
+            <div
+              className={genProgress == null ? "animate-pulse" : undefined}
+              style={{
+                height: "100%",
+                width: genProgress != null ? `${Math.max(3, Math.min(100, genProgress))}%` : "100%",
+                background: config.color,
+                opacity: genProgress == null ? 0.55 : 1,
+                boxShadow: `0 0 6px ${config.color}88`,
+                transition: "width 280ms ease",
+                borderRadius: 2,
+              }}
+            />
+          </div>
+          <span style={{ fontSize: 9.5, fontWeight: 700, color: config.color, whiteSpace: "nowrap" }}>
+            {genProgress != null ? `${Math.round(genProgress)}%` : "生成中"}
+          </span>
         </div>
       )}
 

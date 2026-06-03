@@ -1554,15 +1554,7 @@ export const ComfyuiImageNode = memo(function ComfyuiImageNode({ id, selected, d
         </>)}
         </NodeConfigTabs>
 
-        {/* ── Progress bar ── */}
-        {payload.status === "processing" && payload.progress != null && (
-          <div style={{ marginBottom: 4 }}>
-            <div style={{ height: 4, borderRadius: 2, background: "var(--c-bd2)", overflow: "hidden" }}>
-              <div style={{ height: "100%", width: `${payload.progress}%`, background: accent, transition: "width 300ms ease", borderRadius: 2 }} />
-            </div>
-            <span style={{ fontSize: 10, color: "var(--c-t4)", marginTop: 2, display: "block" }}>{payload.progress}%</span>
-          </div>
-        )}
+        {/* 进度条由 BaseNode 常驻渲染（收缩后仍可见） */}
 
         {/* ── Generate button ── */}
         <button
