@@ -1,8 +1,8 @@
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useCallback } from "react";
 import { Play, Pause, SkipBack } from "lucide-react";
 import { EC, fmtTime } from "./theme";
 import { useEditorStore, clipDuration } from "./editorStore";
-import type { Clip, EditorDoc } from "@shared/editorTypes";
+import type { Clip, ClipTransform, EditorDoc } from "@shared/editorTypes";
 
 /** CSS approximation of the ffmpeg color effects (preview only; export is exact). */
 function cssFilter(c: Clip): string {
@@ -23,7 +23,6 @@ function cssFilter(c: Clip): string {
   return parts.join(" ");
 }
 
-/** Active clips at a given time, per track (top track last = on top). */
 function activeAt(doc: EditorDoc, t: number): { clip: Clip; trackType: string }[] {
   const out: { clip: Clip; trackType: string }[] = [];
   for (const track of doc.tracks) {
@@ -35,27 +34,35 @@ function activeAt(doc: EditorDoc, t: number): { clip: Clip; trackType: string }[
   return out;
 }
 
+type DragState =
+  | { mode: "move"; id: string; px: number; py: number; tf: ClipTransform }
+  | { mode: "scale"; id: string; cx: number; cy: number; startW: number; startScale: number; aspect: number }
+  | { mode: "rotate"; id: string; cx: number; cy: number; start: number };
+
 export function PreviewStage() {
   const doc = useEditorStore((s) => s.doc);
   const playhead = useEditorStore((s) => s.playhead);
   const playing = useEditorStore((s) => s.playing);
   const duration = useEditorStore((s) => s.duration());
+  const selectedClipId = useEditorStore((s) => s.selectedClipId);
   const setPlayhead = useEditorStore((s) => s.setPlayhead);
   const setPlaying = useEditorStore((s) => s.setPlaying);
+  const selectClip = useEditorStore((s) => s.selectClip);
+  const updateClip = useEditorStore((s) => s.updateClip);
 
   const mediaRefs = useRef<Map<string, HTMLVideoElement | HTMLAudioElement>>(new Map());
+  const stageRef = useRef<HTMLDivElement>(null);
+  const dragRef = useRef<DragState | null>(null);
   const rafRef = useRef<number | null>(null);
   const lastTsRef = useRef<number>(0);
 
-  // Playback loop: advance the playhead by wall-clock time while playing.
+  // Playback loop
   useEffect(() => {
     if (!playing) { if (rafRef.current) cancelAnimationFrame(rafRef.current); rafRef.current = null; return; }
     lastTsRef.current = performance.now();
     const tick = (ts: number) => {
-      const dt = (ts - lastTsRef.current) / 1000;
-      lastTsRef.current = ts;
-      const cur = useEditorStore.getState().playhead;
-      const next = cur + dt;
+      const dt = (ts - lastTsRef.current) / 1000; lastTsRef.current = ts;
+      const next = useEditorStore.getState().playhead + dt;
       if (next >= duration) { setPlayhead(duration); setPlaying(false); return; }
       setPlayhead(next);
       rafRef.current = requestAnimationFrame(tick);
@@ -64,7 +71,7 @@ export function PreviewStage() {
     return () => { if (rafRef.current) cancelAnimationFrame(rafRef.current); };
   }, [playing, duration, setPlayhead, setPlaying]);
 
-  // Sync media element time/playstate to the playhead each render.
+  // Sync media time/playstate
   useEffect(() => {
     if (!doc) return;
     const active = new Set<string>();
@@ -80,9 +87,64 @@ export function PreviewStage() {
       if (playing && el.paused) el.play().catch(() => {});
       if (!playing && !el.paused) el.pause();
     }
-    // Pause anything no longer active.
     mediaRefs.current.forEach((el, id) => { if (!active.has(id) && !el.paused) el.pause(); });
   }, [doc, playhead, playing]);
+
+  const stageSize = () => { const r = stageRef.current?.getBoundingClientRect(); return { w: r?.width ?? 1, h: r?.height ?? 1, left: r?.left ?? 0, top: r?.top ?? 0 }; };
+
+  // ── direct-manipulation drag (move / scale / rotate) ──
+  const onWinMove = useCallback((e: PointerEvent) => {
+    const d = dragRef.current; if (!d) return;
+    const { w, h, left, top } = stageSize();
+    if (d.mode === "move") {
+      const nx = d.tf.x! + (e.clientX - d.px) / w;
+      const ny = d.tf.y! + (e.clientY - d.py) / h;
+      updateClip(d.id, { transform: { ...d.tf, x: Math.max(-0.5, Math.min(1, nx)), y: Math.max(-0.5, Math.min(1, ny)) } });
+    } else if (d.mode === "scale") {
+      const distX = Math.abs(e.clientX - left - d.cx);
+      const newW = Math.max(0.04, (distX * 2) / w);             // width fraction (symmetric from center)
+      const newH = newW / d.aspect;                              // height fraction (keep media aspect)
+      const cxFrac = d.cx / w, cyFrac = d.cy / h;
+      const st = useEditorStore.getState();
+      const cur = findClip(st.doc, d.id);
+      updateClip(d.id, { transform: { ...(cur?.transform ?? {}), scale: newW, x: cxFrac - newW / 2, y: cyFrac - newH / 2 } });
+    } else if (d.mode === "rotate") {
+      const ang = Math.atan2(e.clientY - top - d.cy, e.clientX - left - d.cx) * 180 / Math.PI + 90;
+      updateClip(d.id, { transform: { ...(findClip(useEditorStore.getState().doc, d.id)?.transform ?? {}), rotation: Math.round(ang) } });
+    }
+  }, [updateClip]);
+
+  const endDrag = useCallback(() => {
+    dragRef.current = null;
+    window.removeEventListener("pointermove", onWinMove);
+    window.removeEventListener("pointerup", endDrag);
+  }, [onWinMove]);
+
+  const beginMove = useCallback((e: React.PointerEvent, clip: Clip) => {
+    e.stopPropagation(); selectClip(clip.id);
+    const tf = { x: clip.transform?.x ?? 0.1, y: clip.transform?.y ?? 0.1, scale: clip.transform?.scale ?? 0.4, rotation: clip.transform?.rotation ?? 0, opacity: clip.transform?.opacity ?? 1 };
+    dragRef.current = { mode: "move", id: clip.id, px: e.clientX, py: e.clientY, tf };
+    window.addEventListener("pointermove", onWinMove); window.addEventListener("pointerup", endDrag);
+  }, [selectClip, onWinMove, endDrag]);
+
+  const beginScale = useCallback((e: React.PointerEvent, clip: Clip, boxEl: HTMLElement | null) => {
+    e.stopPropagation(); e.preventDefault();
+    const { left, top, w } = stageSize();
+    const r = boxEl?.getBoundingClientRect();
+    if (!r) return;
+    const cx = r.left + r.width / 2 - left, cy = r.top + r.height / 2 - top;
+    const aspect = r.width / Math.max(1, r.height);
+    dragRef.current = { mode: "scale", id: clip.id, cx, cy, startW: r.width / w, startScale: clip.transform?.scale ?? 0.4, aspect };
+    window.addEventListener("pointermove", onWinMove); window.addEventListener("pointerup", endDrag);
+  }, [onWinMove, endDrag]);
+
+  const beginRotate = useCallback((e: React.PointerEvent, clip: Clip, boxEl: HTMLElement | null) => {
+    e.stopPropagation(); e.preventDefault();
+    const { left, top } = stageSize();
+    const r = boxEl?.getBoundingClientRect(); if (!r) return;
+    dragRef.current = { mode: "rotate", id: clip.id, cx: r.left + r.width / 2 - left, cy: r.top + r.height / 2 - top, start: clip.transform?.rotation ?? 0 };
+    window.addEventListener("pointermove", onWinMove); window.addEventListener("pointerup", endDrag);
+  }, [onWinMove, endDrag]);
 
   if (!doc) return null;
   const visible = activeAt(doc, playhead);
@@ -91,50 +153,60 @@ export function PreviewStage() {
   return (
     <main style={{ flex: 1, display: "flex", flexDirection: "column", minWidth: 0, background: "var(--c-bg, #0c0c10)" }}>
       <div style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center", padding: 16, minHeight: 0 }}>
-        <div onContextMenu={(e) => e.preventDefault()} style={{ position: "relative", aspectRatio: `${aspect}`, maxWidth: "100%", maxHeight: "100%", width: aspect >= 1 ? "100%" : "auto", height: aspect >= 1 ? "auto" : "100%", background: "#000", borderRadius: 8, overflow: "hidden", boxShadow: "0 8px 32px oklch(0 0 0 / 0.5)" }}>
+        <div ref={stageRef} onPointerDown={() => selectClip(null)} onContextMenu={(e) => e.preventDefault()}
+          style={{ position: "relative", aspectRatio: `${aspect}`, maxWidth: "100%", maxHeight: "100%", width: aspect >= 1 ? "100%" : "auto", height: aspect >= 1 ? "auto" : "100%", background: "#000", borderRadius: 8, overflow: "hidden", boxShadow: "0 8px 32px oklch(0 0 0 / 0.5)" }}>
           {visible.map(({ clip, trackType }) => {
             const tf = clip.transform;
-            const fullFrame = !tf && (trackType === "video");
-            const boxStyle: React.CSSProperties = fullFrame
-              ? { position: "absolute", inset: 0 }
-              : {
-                  position: "absolute",
-                  left: `${(tf?.x ?? 0.1) * 100}%`, top: `${(tf?.y ?? 0.1) * 100}%`,
-                  width: `${(tf?.scale ?? 0.4) * 100}%`,
-                  opacity: tf?.opacity ?? 1,
-                  transform: `rotate(${tf?.rotation ?? 0}deg)`,
-                };
-            if (clip.kind === "text") {
-              return (
-                <div key={clip.id} style={{ ...boxStyle, display: "flex", alignItems: "center", justifyContent: "center", textAlign: "center", pointerEvents: "none" }}>
-                  <span style={{ fontSize: `${((clip.text?.size ?? 48) / doc.height) * 100}cqh`, color: clip.text?.color ?? "#fff", fontFamily: clip.text?.font, background: clip.text?.bgColor, padding: clip.text?.bgColor ? "0.1em 0.3em" : 0, fontWeight: 700, textShadow: "0 2px 8px rgba(0,0,0,0.6)" }}>
-                    {clip.text?.content}
-                  </span>
-                </div>
-              );
-            }
-            // full-frame clips honor the per-clip fit mode; PiP/overlay boxes use cover
+            const fullFrame = !tf && trackType === "video";
+            const selected = clip.id === selectedClipId;
             const objFit: React.CSSProperties["objectFit"] = fullFrame
               ? (clip.fit === "cover" ? "cover" : clip.fit === "stretch" ? "fill" : "contain")
               : "cover";
-            if (clip.kind === "image") {
-              return <img key={clip.id} src={clip.assetUrl} alt="" style={{ ...boxStyle, objectFit: objFit, filter: cssFilter(clip) }} />;
+
+            if (fullFrame) {
+              // main full-frame clip — click to select; sizing via 画面适配
+              const common = { onPointerDown: (e: React.PointerEvent) => { e.stopPropagation(); selectClip(clip.id); } };
+              const st: React.CSSProperties = { position: "absolute", inset: 0, objectFit: objFit, filter: cssFilter(clip), outline: selected ? `2px solid ${EC.accent}` : "none", outlineOffset: -2 };
+              if (clip.kind === "image") return <img key={clip.id} {...common} src={clip.assetUrl} alt="" style={st} />;
+              if (clip.kind === "video") return <video key={clip.id} {...common} ref={(el) => { if (el) mediaRefs.current.set(clip.id, el); else mediaRefs.current.delete(clip.id); }} src={clip.assetUrl} playsInline style={st} />;
+              return null;
             }
-            if (clip.kind === "video") {
-              return <video key={clip.id} ref={(el) => { if (el) mediaRefs.current.set(clip.id, el); else mediaRefs.current.delete(clip.id); }}
-                src={clip.assetUrl} playsInline muted={false} style={{ ...boxStyle, objectFit: objFit, filter: cssFilter(clip) }} />;
-            }
-            return null;
+
+            // positioned (overlay / PiP / text) — interactive box with handles
+            const boxStyle: React.CSSProperties = {
+              position: "absolute",
+              left: `${(tf?.x ?? 0.1) * 100}%`, top: `${(tf?.y ?? 0.1) * 100}%`,
+              width: `${(tf?.scale ?? 0.4) * 100}%`,
+              opacity: tf?.opacity ?? 1,
+              transform: `rotate(${tf?.rotation ?? 0}deg)`,
+              cursor: "move", touchAction: "none",
+              outline: selected ? `2px solid ${EC.accent}` : "none",
+            };
+            return (
+              <div key={clip.id} data-clip-box={clip.id} style={boxStyle}
+                onPointerDown={(e) => beginMove(e, clip)}>
+                {clip.kind === "text" ? (
+                  <div style={{ width: "100%", display: "flex", alignItems: "center", justifyContent: "center", textAlign: "center", pointerEvents: "none" }}>
+                    <span style={{ fontSize: `${((clip.text?.size ?? 48) / doc.height) * 100}cqh`, color: clip.text?.color ?? "#fff", fontFamily: clip.text?.font, background: clip.text?.bgColor, padding: clip.text?.bgColor ? "0.1em 0.3em" : 0, fontWeight: 700, textShadow: "0 2px 8px rgba(0,0,0,0.6)", whiteSpace: "pre-wrap" }}>{clip.text?.content}</span>
+                  </div>
+                ) : clip.kind === "image" ? (
+                  <img src={clip.assetUrl} alt="" draggable={false} style={{ width: "100%", height: "auto", display: "block", filter: cssFilter(clip), pointerEvents: "none" }} />
+                ) : clip.kind === "video" ? (
+                  <video ref={(el) => { if (el) mediaRefs.current.set(clip.id, el); else mediaRefs.current.delete(clip.id); }} src={clip.assetUrl} playsInline muted={false} style={{ width: "100%", height: "auto", display: "block", filter: cssFilter(clip), pointerEvents: "none" }} />
+                ) : null}
+
+                {selected && <SelectionHandles clip={clip} onScale={beginScale} onRotate={beginRotate} />}
+              </div>
+            );
           })}
-          {/* hidden audio elements for audio-track clips */}
+
           {visible.filter(({ clip }) => clip.kind === "audio").map(({ clip }) => (
             <audio key={clip.id} ref={(el) => { if (el) mediaRefs.current.set(clip.id, el); else mediaRefs.current.delete(clip.id); }} src={clip.assetUrl} />
           ))}
-          {visible.length === 0 && <div style={{ position: "absolute", inset: 0, display: "flex", alignItems: "center", justifyContent: "center", color: EC.t4, fontSize: 13 }}>把素材拖到时间轴开始剪辑</div>}
+          {visible.length === 0 && <div style={{ position: "absolute", inset: 0, display: "flex", alignItems: "center", justifyContent: "center", color: EC.t4, fontSize: 13, pointerEvents: "none" }}>把素材拖到时间轴开始剪辑</div>}
         </div>
       </div>
 
-      {/* transport */}
       <div style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 12, padding: "8px 0", borderTop: `1px solid ${EC.border}` }}>
         <button onClick={() => { setPlaying(false); setPlayhead(0); }} title="回到开头" style={transBtn}><SkipBack size={16} /></button>
         <button onClick={() => setPlaying(!playing)} title={playing ? "暂停" : "播放"} style={{ ...transBtn, background: EC.accent, color: "#fff", width: 38, height: 38 }}>
@@ -144,6 +216,33 @@ export function PreviewStage() {
       </div>
     </main>
   );
+}
+
+/** 4 corner resize handles + a rotation handle, rendered inside the clip box. */
+function SelectionHandles({ clip, onScale, onRotate }: {
+  clip: Clip;
+  onScale: (e: React.PointerEvent, clip: Clip, box: HTMLElement | null) => void;
+  onRotate: (e: React.PointerEvent, clip: Clip, box: HTMLElement | null) => void;
+}) {
+  const box = (e: React.PointerEvent) => (e.currentTarget.closest("[data-clip-box]") as HTMLElement | null);
+  const corner = (pos: React.CSSProperties): React.CSSProperties => ({ position: "absolute", width: 12, height: 12, borderRadius: "50%", background: "#fff", border: `2px solid ${EC.accent}`, ...pos, touchAction: "none" });
+  return (
+    <>
+      <div onPointerDown={(e) => onScale(e, clip, box(e))} style={{ ...corner({ left: -6, top: -6, cursor: "nwse-resize" }) }} />
+      <div onPointerDown={(e) => onScale(e, clip, box(e))} style={{ ...corner({ right: -6, top: -6, cursor: "nesw-resize" }) }} />
+      <div onPointerDown={(e) => onScale(e, clip, box(e))} style={{ ...corner({ left: -6, bottom: -6, cursor: "nesw-resize" }) }} />
+      <div onPointerDown={(e) => onScale(e, clip, box(e))} style={{ ...corner({ right: -6, bottom: -6, cursor: "nwse-resize" }) }} />
+      {/* rotation handle */}
+      <div onPointerDown={(e) => onRotate(e, clip, box(e))} style={{ position: "absolute", left: "50%", top: -26, width: 12, height: 12, marginLeft: -6, borderRadius: "50%", background: EC.accent, border: "2px solid #fff", cursor: "grab", touchAction: "none" }} />
+      <div style={{ position: "absolute", left: "50%", top: -16, width: 1, height: 16, background: EC.accent, marginLeft: -0.5, pointerEvents: "none" }} />
+    </>
+  );
+}
+
+function findClip(doc: EditorDoc | null, id: string): Clip | null {
+  if (!doc) return null;
+  for (const t of doc.tracks) { const c = t.clips.find((x) => x.id === id); if (c) return c; }
+  return null;
 }
 
 const transBtn: React.CSSProperties = {

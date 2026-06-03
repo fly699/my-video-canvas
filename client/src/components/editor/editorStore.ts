@@ -33,6 +33,8 @@ export interface EditorStore {
   trimClip: (clipId: string, patch: { trimIn?: number; trimOut?: number; start?: number }) => void;
   updateClip: (clipId: string, patch: Partial<Clip>) => void;
   removeClip: (clipId: string) => void;
+  splitClip: (clipId: string, atTime: number) => void;
+  duplicateClip: (clipId: string) => void;
   selectClip: (id: string | null) => void;
 
   // output canvas (ratio / resolution / fps)
@@ -118,6 +120,36 @@ export const useEditorStore = create<EditorStore>((set, get) => ({
     if (!s.doc) return s;
     const tracks = s.doc.tracks.map((t) => ({ ...t, clips: t.clips.filter((c) => c.id !== clipId) }));
     return { doc: { ...s.doc, tracks }, dirty: true, selectedClipId: s.selectedClipId === clipId ? null : s.selectedClipId };
+  }),
+
+  // Cut a clip in two at the given timeline time (only if the time is inside it).
+  splitClip: (clipId, atTime) => set((s) => {
+    if (!s.doc) return s;
+    const loc = findClip(s.doc, clipId);
+    if (!loc) return s;
+    const c = s.doc.tracks[loc.trackIdx].clips[loc.clipIdx];
+    const speed = c.speed ?? 1;
+    const dur = clipDuration(c);
+    const offset = atTime - c.start;                 // seconds into the clip (timeline)
+    if (offset <= 0.05 || offset >= dur - 0.05) return s; // too close to an edge
+    const cutSrc = c.trimIn + offset * speed; // source time at the cut
+    const left: Clip = { ...c, trimOut: cutSrc };
+    const right: Clip = { ...c, id: `c_${nanoid(8)}`, start: atTime, trimIn: cutSrc };
+    const tracks = s.doc.tracks.map((t, ti) => ti !== loc.trackIdx ? t : {
+      ...t, clips: t.clips.flatMap((x) => x.id === clipId ? [left, right] : [x]),
+    });
+    return { doc: { ...s.doc, tracks }, dirty: true, selectedClipId: right.id };
+  }),
+
+  // Copy a clip and drop the copy right after the original on the same track.
+  duplicateClip: (clipId) => set((s) => {
+    if (!s.doc) return s;
+    const loc = findClip(s.doc, clipId);
+    if (!loc) return s;
+    const c = s.doc.tracks[loc.trackIdx].clips[loc.clipIdx];
+    const copy: Clip = { ...c, id: `c_${nanoid(8)}`, start: c.start + clipDuration(c) };
+    const tracks = s.doc.tracks.map((t, ti) => ti !== loc.trackIdx ? t : { ...t, clips: [...t.clips, copy] });
+    return { doc: { ...s.doc, tracks }, dirty: true, selectedClipId: copy.id };
   }),
 
   selectClip: (id) => set({ selectedClipId: id }),
