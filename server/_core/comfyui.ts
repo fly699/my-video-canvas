@@ -1533,6 +1533,224 @@ export async function executeCustomWorkflow(
   return { urls: allUrls, outputType: resolvedOutputType };
 }
 
+// ── Official ComfyUI cloud (cloud.comfy.org) ──────────────────────────────────
+// The cloud REST API differs from local self-hosted ComfyUI (so it gets its own
+// client rather than reusing submitWorkflow/pollHistory). Per the official docs
+// (https://docs.comfy.org/development/cloud/overview — experimental, may change):
+//   submit : POST {base}/api/prompt           (X-API-Key) body {prompt}  → {prompt_id}
+//   status : GET  {base}/api/job/{id}/status              → {status: pending|in_progress|completed|failed|cancelled}
+//   detail : GET  {base}/api/jobs/{id}                    → {outputs: {...}} (ComfyUI outputs shape)
+//   view   : GET  {base}/api/view?filename&subfolder&type → 302 → temporary signed URL
+// The local code path is untouched; this is only used when a custom-flow node is
+// switched to 云端 by an admin / whitelisted user.
+
+interface CloudJobDetail {
+  outputs?: HistoryEntry["outputs"];
+  status?: string;
+  error?: string;
+  message?: string;
+}
+
+async function cloudSubmit(baseUrl: string, workflow: unknown, apiKey: string): Promise<string> {
+  normalizeGgufLoaders(workflow);
+  const res = await fetch(`${baseUrl}/api/prompt`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", "X-API-Key": apiKey },
+    body: JSON.stringify({ prompt: workflow }),
+    signal: AbortSignal.timeout(30_000),
+  });
+  if (!res.ok) {
+    const text = await res.text().catch(() => "");
+    if (res.status === 401 || res.status === 403) throw new Error("云端 API Key 无效或无权限（需 Creator/Pro 套餐）");
+    throw new Error(`云端提交工作流失败 (${res.status}): ${text.slice(0, 500)}`);
+  }
+  const data = (await res.json()) as { prompt_id?: string; promptId?: string; id?: string };
+  const id = data.prompt_id ?? data.promptId ?? data.id;
+  if (!id) throw new Error("云端未返回 prompt_id");
+  return id;
+}
+
+/** Poll the cloud job until it reaches a terminal state; on success fetch and
+ * return the job detail (with outputs). */
+async function cloudPoll(baseUrl: string, promptId: string, apiKey: string, maxAttempts: number): Promise<CloudJobDetail> {
+  const headers = { "X-API-Key": apiKey };
+  let netErrors = 0;
+  for (let i = 0; i < maxAttempts; i++) {
+    await abortableSleep(POLL_INTERVAL_MS);
+    let status: string;
+    try {
+      const res = await fetch(`${baseUrl}/api/job/${promptId}/status`, { headers, signal: AbortSignal.timeout(10_000) });
+      if (res.status === 401 || res.status === 403) throw new Error("云端 API Key 无效或无权限");
+      if (!res.ok) {
+        if (res.status === 404 || res.status >= 500) {
+          if (++netErrors >= 5) throw new Error(`云端持续无响应 (HTTP ${res.status} × ${netErrors})`);
+          continue;
+        }
+        throw new Error(`云端状态查询失败 (${res.status})`);
+      }
+      netErrors = 0;
+      const data = (await res.json()) as { status?: string };
+      status = (data.status ?? "").toLowerCase();
+    } catch (err) {
+      // Surface explicit API/auth errors immediately; retry only transient ones.
+      if (err instanceof Error && /API Key|查询失败|无响应/.test(err.message)) throw err;
+      if (++netErrors >= 5) throw new Error("云端连接持续失败");
+      continue;
+    }
+    if (status === "completed" || status === "success" || status === "succeeded") {
+      const dRes = await fetch(`${baseUrl}/api/jobs/${promptId}`, { headers, signal: AbortSignal.timeout(15_000) });
+      if (!dRes.ok) throw new Error(`云端获取结果失败 (${dRes.status})`);
+      return (await dRes.json()) as CloudJobDetail;
+    }
+    if (status === "failed" || status === "error" || status === "cancelled" || status === "canceled") {
+      let detail = "";
+      try {
+        const dRes = await fetch(`${baseUrl}/api/jobs/${promptId}`, { headers, signal: AbortSignal.timeout(10_000) });
+        if (dRes.ok) { const d = (await dRes.json()) as CloudJobDetail; detail = d.error ?? d.message ?? JSON.stringify(d).slice(0, 400); }
+      } catch { /* best-effort */ }
+      throw new Error(`云端任务${status === "failed" || status === "error" ? "执行失败" : "已取消"}${detail ? ": " + detail : ""}`);
+    }
+    // pending / in_progress / queued → keep polling
+  }
+  throw new Error("云端任务超时未完成");
+}
+
+/** Download a cloud output via /api/view (follows the 302 to a signed storage URL
+ * WITHOUT forwarding X-API-Key, so the key never leaks to the storage backend). */
+async function cloudDownloadAndStore(baseUrl: string, filename: string, subfolder: string, type: string, apiKey: string, ext: string, mime: string): Promise<{ url: string; key: string }> {
+  const u = new URL(`${baseUrl}/api/view`);
+  u.searchParams.set("filename", filename);
+  u.searchParams.set("subfolder", subfolder);
+  u.searchParams.set("type", type);
+  const res = await fetch(u.toString(), { headers: { "X-API-Key": apiKey }, redirect: "manual", signal: AbortSignal.timeout(30_000) });
+  let buf: Buffer, contentType: string | null;
+  if (res.status >= 300 && res.status < 400) {
+    const loc = res.headers.get("location");
+    if (!loc) throw new Error("云端 /api/view 未返回下载地址");
+    const signed = new URL(loc, baseUrl).toString();
+    ({ buf, contentType } = await fetchWithSizeLimit(signed, MAX_COMFY_OUTPUT_BYTES, 120_000, "下载云端输出"));
+  } else if (res.ok) {
+    // Direct stream (no redirect) — re-fetch through the size-limited reader.
+    ({ buf, contentType } = await fetchWithSizeLimit(u.toString(), MAX_COMFY_OUTPUT_BYTES, 120_000, "下载云端输出", { "X-API-Key": apiKey }));
+  } else {
+    throw new Error(`下载云端输出失败 (${res.status})`);
+  }
+  assertMinioOnlyWrite();
+  return await storagePut(`comfyui/${Date.now()}.${ext}`, buf, contentType ?? mime);
+}
+
+/** Upload a reference image to the cloud (POST {base}/api/upload/image) and
+ * return the stored input filename for use in a LoadImage node. */
+async function uploadImageToCloud(baseUrl: string, sourceUrl: string, apiKey: string): Promise<string> {
+  let fetchUrl = sourceUrl;
+  const internalPath = toInternalStoragePath(sourceUrl);
+  if (internalPath) fetchUrl = await resolveToAbsoluteUrl(internalPath);
+  else if (/^https?:\/\//i.test(sourceUrl)) { if (!isOwnStorageUrl(sourceUrl)) assertSafeUrl(sourceUrl); }
+  else throw new Error("参考图 URL 协议不受支持，仅允许 http/https 或 /manus-storage/ 相对路径");
+  const { buf, contentType } = await fetchWithSizeLimit(fetchUrl, MAX_REF_IMAGE_BYTES, 60_000, "下载参考图");
+  const ct = contentType ?? "image/png";
+  const ext = ct.includes("jpeg") ? "jpg" : ct.includes("webp") ? "webp" : "png";
+  const form = new FormData();
+  form.append("image", new Blob([new Uint8Array(buf)], { type: ct }), `comfy_input_${Date.now()}.${ext}`);
+  form.append("overwrite", "true");
+  const upRes = await fetch(`${baseUrl}/api/upload/image`, { method: "POST", body: form, headers: { "X-API-Key": apiKey }, signal: AbortSignal.timeout(60_000) });
+  if (!upRes.ok) { const t = await upRes.text().catch(() => ""); throw new Error(`上传参考图到云端失败 (${upRes.status}): ${t.slice(0, 200)}`); }
+  const data = (await upRes.json()) as { name?: string; subfolder?: string };
+  if (!data.name) throw new Error("云端上传未返回文件名");
+  return data.subfolder ? `${data.subfolder}/${data.name}` : data.name;
+}
+
+export async function executeCloudWorkflow(
+  rawBaseUrl: string,
+  options: ExecuteCustomWorkflowOptions,
+): Promise<{ urls: string[]; outputType: "image" | "video" }> {
+  const baseUrl = normalizeBaseUrl(rawBaseUrl);
+  const apiKey = options.apiKey;
+  if (!apiKey) throw new Error("云端 API Key 未配置（请在服务端设置 COMFYUI_CLOUD_API_KEY）");
+
+  let workflow: WorkflowJson;
+  try { workflow = JSON.parse(options.workflowJson) as WorkflowJson; }
+  catch { throw new Error("Workflow JSON 格式错误，无法解析"); }
+  workflow = JSON.parse(JSON.stringify(workflow)) as WorkflowJson;
+
+  // Inject paramValues (same key format as local). Image-typed params with a URL
+  // are uploaded to the cloud first and replaced with the returned filename.
+  const imageKeys = new Set(options.imageParamKeys ?? []);
+  for (const [key, rawValue] of Object.entries(options.paramValues)) {
+    const parts = key.split("."); if (parts.length < 2) continue;
+    const [wfNodeId, ...pathParts] = parts;
+    const node = workflow[wfNodeId]; if (!node) continue;
+    const fieldParts = pathParts[0] === "inputs" ? pathParts.slice(1) : pathParts;
+    if (fieldParts.length === 0) continue;
+    let value = rawValue;
+    if (imageKeys.has(key) && typeof value === "string" && (/^https?:\/\//i.test(value) || value.startsWith("/manus-storage/"))) {
+      value = await uploadImageToCloud(baseUrl, value, apiKey);
+    }
+    if (fieldParts.length === 1) { node.inputs[fieldParts[0]] = value; }
+    else {
+      let obj: Record<string, unknown> = node.inputs;
+      for (let i = 0; i < fieldParts.length - 1; i++) {
+        if (obj[fieldParts[i]] == null || typeof obj[fieldParts[i]] !== "object") obj[fieldParts[i]] = {};
+        obj = obj[fieldParts[i]] as Record<string, unknown>;
+      }
+      obj[fieldParts[fieldParts.length - 1]] = value;
+    }
+  }
+
+  const promptId = await cloudSubmit(baseUrl, workflow, apiKey);
+  const detail = await cloudPoll(baseUrl, promptId, apiKey, POLL_MAX_ATTEMPTS_VIDEO);
+
+  const targetNodeIds = new Set(options.outputNodeIds ?? []);
+  const useAll = targetNodeIds.size === 0;
+  const imageUrls: string[] = [];
+  const videoUrls: string[] = [];
+  for (const [nodeId, nodeOutput] of Object.entries(detail.outputs ?? {})) {
+    if (!useAll && !targetNodeIds.has(nodeId)) continue;
+    for (const v of nodeOutput.gifs ?? []) {
+      const ext = v.filename.split(".").pop() || "mp4";
+      const s = await cloudDownloadAndStore(baseUrl, v.filename, v.subfolder, v.type, apiKey, ext, "video/mp4");
+      videoUrls.push(s.url);
+    }
+    for (const img of nodeOutput.images ?? []) {
+      if (/\.(mp4|webm|gif|webp)$/i.test(img.filename)) {
+        const ext = img.filename.split(".").pop() || "mp4";
+        const s = await cloudDownloadAndStore(baseUrl, img.filename, img.subfolder, img.type, apiKey, ext, "video/mp4");
+        videoUrls.push(s.url);
+      } else {
+        const s = await cloudDownloadAndStore(baseUrl, img.filename, img.subfolder, img.type, apiKey, "png", "image/png");
+        imageUrls.push(s.url);
+      }
+    }
+  }
+
+  const resolvedOutputType = options.outputType === "video" ? "video"
+    : options.outputType === "image" ? "image"
+    : videoUrls.length > 0 ? "video" : "image";
+  const allUrls = resolvedOutputType === "video"
+    ? (videoUrls.length > 0 ? videoUrls : imageUrls)
+    : (imageUrls.length > 0 ? imageUrls : videoUrls);
+  if (allUrls.length === 0) throw new Error("云端任务完成但未返回任何输出");
+  return { urls: allUrls, outputType: resolvedOutputType };
+}
+
+/** Lightweight cloud connectivity + API-key check for the node's 测试 button.
+ * No documented ping endpoint exists, so we probe the status endpoint with a
+ * sentinel id: 401/403 ⇒ bad key, 5xx ⇒ server down, anything else (incl. 404
+ * "job not found") ⇒ reachable and authenticated. */
+export async function testCloudConnection(rawBaseUrl: string, apiKey: string): Promise<{ ok: boolean; message: string }> {
+  if (!apiKey) return { ok: false, message: "服务端未配置 COMFYUI_CLOUD_API_KEY" };
+  let baseUrl: string;
+  try { baseUrl = normalizeBaseUrl(rawBaseUrl); } catch (e) { return { ok: false, message: e instanceof Error ? e.message : "地址无效" }; }
+  try {
+    const res = await fetch(`${baseUrl}/api/job/__connectivity_check__/status`, { headers: { "X-API-Key": apiKey }, signal: AbortSignal.timeout(10_000) });
+    if (res.status === 401 || res.status === 403) return { ok: false, message: "API Key 无效或无权限（需 Creator/Pro 套餐）" };
+    if (res.status >= 500) return { ok: false, message: `云端服务器错误 (${res.status})` };
+    return { ok: true, message: "云端连接正常，API Key 有效" };
+  } catch (e) {
+    return { ok: false, message: "无法连接云端：" + (e instanceof Error ? e.message : String(e)).slice(0, 120) };
+  }
+}
+
 // ── Upload image to ComfyUI (public, for workflow node param binding) ─────────
 
 export async function uploadImageForWorkflow(rawBaseUrl: string, sourceUrl: string): Promise<string> {
