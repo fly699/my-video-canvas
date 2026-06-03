@@ -38,6 +38,11 @@ export function PropertiesPanel() {
   const update = useEditorStore((s) => s.updateClip);
   const remove = useEditorStore((s) => s.removeClip);
   const addClip = useEditorStore((s) => s.addClip);
+  const playhead = useEditorStore((s) => s.playhead);
+  const setPlayhead = useEditorStore((s) => s.setPlayhead);
+  const addKeyframe = useEditorStore((s) => s.addKeyframe);
+  const removeKeyframe = useEditorStore((s) => s.removeKeyframe);
+  const clearKeyframes = useEditorStore((s) => s.clearKeyframes);
   const dubMut = trpc.audioGen.generateDubbing.useMutation();
   const [ttsModel, setTtsModel] = usePersistentState<string>(
     "ui:editor:tts-model:v1", "openai_tts_real",
@@ -203,6 +208,40 @@ export function PropertiesPanel() {
             <NumSlider label="Y" value={tf.y ?? 0} min={-0.5} max={1} step={0.005} disp={(v) => Math.round(v * 100)} parse={(s) => s / 100} suffix="%" onChange={(v) => setTf("y", v)} />
             <NumSlider label="旋转" value={tf.rotation ?? 0} min={-180} max={180} step={1} disp={(v) => Math.round(v)} parse={(s) => s} suffix="°" onChange={(v) => setTf("rotation", v)} />
             <NumSlider label="不透明度" value={tf.opacity ?? 1} min={0} max={1} step={0.01} disp={(v) => Math.round(v * 100)} parse={(s) => s / 100} suffix="%" onChange={(v) => setTf("opacity", v)} />
+          </Section>
+        )}
+
+        {isVisual && (
+          <Section title="关键帧动画">
+            <div style={{ fontSize: 11, color: EC.t3, marginBottom: 6, lineHeight: 1.5 }}>
+              在播放头处记录当前「位置 / 缩放 / 旋转 / 不透明度」为关键帧；多个关键帧之间自动补间。预览实时演示。
+            </div>
+            <button
+              onClick={() => {
+                const t = +(playhead - c.start).toFixed(3);
+                const dur = (c.trimOut - c.trimIn) / (c.speed ?? 1);
+                if (t < -0.001 || t > dur + 0.001) { toast.error("请先把播放头移到该片段时间范围内"); return; }
+                addKeyframe(c.id, Math.max(0, t));
+                toast.success("已在播放头添加关键帧");
+              }}
+              style={{ ...alignBtn, width: "100%" }}
+            >＋ 在播放头添加关键帧</button>
+            {(c.keyframes ?? []).length > 0 && (
+              <>
+                <div style={{ display: "flex", flexDirection: "column", gap: 3, marginTop: 6 }}>
+                  {[...(c.keyframes ?? [])].sort((a, b) => a.t - b.t).map((k) => (
+                    <div key={k.t} style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 11, color: EC.t2, padding: "3px 6px", borderRadius: 6, background: "var(--c-elevated)" }}>
+                      <span style={{ flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                        @ {k.t.toFixed(2)}s · {Math.round((k.scale ?? 1) * 100)}% · α{Math.round((k.opacity ?? 1) * 100)} · {Math.round(k.rotation ?? 0)}°
+                      </span>
+                      <button onClick={() => setPlayhead(c.start + k.t)} title="跳到此关键帧" style={alignBtn}>定位</button>
+                      <button onClick={() => removeKeyframe(c.id, k.t)} title="删除关键帧" style={{ ...alignBtn, padding: "2px 6px" }}><Trash2 size={11} /></button>
+                    </div>
+                  ))}
+                </div>
+                <button onClick={() => clearKeyframes(c.id)} style={{ ...alignBtn, width: "100%", marginTop: 4 }}>清除全部关键帧</button>
+              </>
+            )}
           </Section>
         )}
 

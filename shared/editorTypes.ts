@@ -52,6 +52,17 @@ export interface ClipText {
   shadowColor?: string; // 投影色 (default semi-black)
 }
 
+/** A transform keyframe: `t` seconds from the clip's start; any subset of the
+ *  transform fields it animates. Between keyframes, values interpolate linearly. */
+export interface TransformKeyframe {
+  t: number;         // seconds from the clip start
+  x?: number;
+  y?: number;
+  scale?: number;
+  opacity?: number;
+  rotation?: number;
+}
+
 export interface Clip {
   id: string;
   kind: ClipKind;
@@ -68,8 +79,36 @@ export interface Clip {
   transitionIn?: { type: TransitionType; duration: number };
   effects?: ClipEffects;
   transform?: ClipTransform;
+  /** Transform animation keyframes (position/scale/opacity/rotation over time).
+   *  When present, they override the static `transform` for the animated fields. */
+  keyframes?: TransformKeyframe[];
   fit?: FitMode;            // how a full-frame visual clip fills the canvas (default contain)
   text?: ClipText;
+}
+
+/** The effective transform of a clip at `tIntoClip` seconds from its start —
+ *  the static `transform` with any keyframed fields linearly interpolated. */
+export function transformAt(clip: Clip, tIntoClip: number): ClipTransform {
+  const base: ClipTransform = { ...(clip.transform ?? {}) };
+  const kfs = clip.keyframes;
+  if (!kfs || kfs.length === 0) return base;
+  const sorted = [...kfs].sort((a, b) => a.t - b.t);
+  const fields = ["x", "y", "scale", "opacity", "rotation"] as const;
+  for (const f of fields) {
+    const pts = sorted.filter((k) => k[f] != null);
+    if (pts.length === 0) continue;
+    if (tIntoClip <= pts[0].t) { base[f] = pts[0][f]; continue; }
+    if (tIntoClip >= pts[pts.length - 1].t) { base[f] = pts[pts.length - 1][f]; continue; }
+    for (let i = 0; i < pts.length - 1; i++) {
+      const a = pts[i], b = pts[i + 1];
+      if (tIntoClip >= a.t && tIntoClip <= b.t) {
+        const r = (tIntoClip - a.t) / Math.max(1e-6, b.t - a.t);
+        base[f] = (a[f] as number) + ((b[f] as number) - (a[f] as number)) * r;
+        break;
+      }
+    }
+  }
+  return base;
 }
 
 export interface Track {

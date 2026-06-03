@@ -3,6 +3,7 @@ import { Play, Pause, SkipBack } from "lucide-react";
 import { EC, fmtTime } from "./theme";
 import { useEditorStore, clipDuration } from "./editorStore";
 import type { Clip, ClipTransform, EditorDoc } from "@shared/editorTypes";
+import { transformAt } from "@shared/editorTypes";
 
 /** CSS approximation of the ffmpeg color effects (preview only; export is exact). */
 function cssFilter(c: Clip): string {
@@ -178,8 +179,9 @@ export function PreviewStage() {
         <div ref={stageRef} onPointerDown={() => selectClip(null)} onContextMenu={(e) => e.preventDefault()}
           style={{ position: "relative", aspectRatio: `${aspect}`, maxWidth: "100%", maxHeight: "100%", width: aspect >= 1 ? "100%" : "auto", height: aspect >= 1 ? "auto" : "100%", background: "#000", borderRadius: 8, overflow: "hidden", boxShadow: "0 8px 32px oklch(0 0 0 / 0.5)" }}>
           {visible.map(({ clip, trackType }) => {
-            const tf = clip.transform;
-            const fullFrame = !tf && trackType === "video";
+            const hasKf = !!clip.keyframes && clip.keyframes.length > 0;
+            const tf = hasKf ? transformAt(clip, playhead - clip.start) : clip.transform;
+            const fullFrame = !clip.transform && !hasKf && trackType === "video";
             const selected = clip.id === selectedClipId;
             const objFit: React.CSSProperties["objectFit"] = fullFrame
               ? (clip.fit === "cover" ? "cover" : clip.fit === "stretch" ? "fill" : "contain")
