@@ -6,7 +6,7 @@ import { useCanvasStore } from "../../../hooks/useCanvasStore";
 import { propagateRefImage, propagateWorkflowPrompt } from "../../../lib/refImagePropagation";
 import type { ComfyuiWorkflowNodeData, WorkflowParamBinding } from "../../../../../shared/types";
 import { trpc } from "@/lib/trpc";
-import { detectUpstreamImageUrl, detectUpstreamImages, detectUpstreamPrompt, resolveWorkflowImageParams, fillWorkflowPromptParams } from "@/lib/comfyWorkflowParams";
+import { detectUpstreamImageUrl, detectUpstreamPrompt, fillWorkflowPromptParams, listUpstreamImageSources, resolveImageParamsWithMap } from "@/lib/comfyWorkflowParams";
 import { summarizeComfyWorkflow } from "@/lib/comfyWorkflowSummary";
 import { makeImageProxyFallback } from "@/lib/utils";
 import { isOwnStorageUrl } from "@/lib/ownStorage";
@@ -179,6 +179,9 @@ export const ComfyuiWorkflowNode = memo(function ComfyuiWorkflowNode({ id, selec
   const updateNodeData = useCanvasStore((s) => s.updateNodeData);
   // Reactively detect an upstream image feeding this node (via any incoming edge).
   const upstreamImageUrl = useCanvasStore((s) => detectUpstreamImageUrl(id, s.edges, s.nodes));
+  const edgesForSources = useCanvasStore((s) => s.edges);
+  const nodesForSources = useCanvasStore((s) => s.nodes);
+  const upstreamSources = useMemo(() => listUpstreamImageSources(id, edgesForSources, nodesForSources), [id, edgesForSources, nodesForSources]);
   const payload = data.payload;
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -285,9 +288,10 @@ export const ComfyuiWorkflowNode = memo(function ComfyuiWorkflowNode({ id, selec
       // Pull upstream images (multi-reference → fill blank image params in order)
       // and upstream prompt text (→ blank positive/negative prompt params).
       const { nodes, edges } = useCanvasStore.getState();
-      const upstreamImgs = detectUpstreamImages(id, edges, nodes);
+      const sources = listUpstreamImageSources(id, edges, nodes);
       const upstreamPrompt = detectUpstreamPrompt(id, edges, nodes);
-      const imgResolved = resolveWorkflowImageParams(payload.paramBindings, payload.paramValues ?? {}, upstreamImgs);
+      // Explicit per-param「来源」mapping first, then smart auto-fill the rest.
+      const imgResolved = resolveImageParamsWithMap(payload.paramBindings, payload.paramValues ?? {}, sources, payload.imageSourceMap ?? {});
       const imageParamKeys = imgResolved.imageParamKeys;
       const paramValues = fillWorkflowPromptParams(payload.paramBindings, imgResolved.paramValues, upstreamPrompt);
       // Seed handling: unless the user pinned the seed (randomizeSeed === false),
@@ -911,13 +915,33 @@ export const ComfyuiWorkflowNode = memo(function ComfyuiWorkflowNode({ id, selec
                         </label>
                       )}
                       {b.type === "image" && (
-                        <ImageParamField
-                          value={String(value)}
-                          onChangeUrl={(u) => setParamValue(key, u)}
-                          uploadFile={uploadLocalImage}
-                          upstreamUrl={upstreamImageUrl}
-                          onUploadToComfy={payload.customBaseUrl?.trim() ? (u) => handleImageParamUpload(b, u) : undefined}
-                        />
+                        <>
+                          {/* 来源映射：显式指定该图像参数用哪个上游节点的图（不填用智能自动排序） */}
+                          {upstreamSources.length > 0 && (
+                            <select
+                              value={payload.imageSourceMap?.[key] ?? ""}
+                              onChange={(e) => {
+                                const map = { ...(payload.imageSourceMap ?? {}) };
+                                if (e.target.value) map[key] = e.target.value; else delete map[key];
+                                update({ imageSourceMap: map });
+                              }}
+                              style={{ ...fieldBase, padding: "5px 8px", fontSize: 11, marginBottom: 5, cursor: "pointer" }}
+                              title="来源：选某个上游节点的图，或自动（按编号/位置/连线顺序）"
+                            >
+                              <option value="">来源：自动排序</option>
+                              {upstreamSources.map((s, i) => (
+                                <option key={s.id} value={s.id}>来源：{i + 1}. {s.title}</option>
+                              ))}
+                            </select>
+                          )}
+                          <ImageParamField
+                            value={String(value)}
+                            onChangeUrl={(u) => setParamValue(key, u)}
+                            uploadFile={uploadLocalImage}
+                            upstreamUrl={upstreamImageUrl}
+                            onUploadToComfy={payload.customBaseUrl?.trim() ? (u) => handleImageParamUpload(b, u) : undefined}
+                          />
+                        </>
                       )}
                     </div>
                   );

@@ -757,6 +757,9 @@ export interface ComfyuiWorkflowNodeData {
   randomizeSeed?: boolean;
   paramBindings?: WorkflowParamBinding[];
   paramValues?: Record<string, unknown>;
+  /** Explicit per-image-param source: paramKey → upstream nodeId. Unmapped params
+   *  auto-fill from connected upstream images in smart order. */
+  imageSourceMap?: Record<string, string>;
   outputNodeIds?: string[];
   /** All detected output nodes (for the "输出选择" UI). */
   outputNodes?: { id: string; classType: string; isVideo: boolean }[];
