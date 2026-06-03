@@ -210,6 +210,8 @@ export const ComfyuiWorkflowNode = memo(function ComfyuiWorkflowNode({ id, selec
   const summary = useMemo(() => summarizeComfyWorkflow(payload.workflowJson), [payload.workflowJson]);
   const annotationText = `${payload.workflowName ? payload.workflowName + " · " : ""}${summary.brief}`;
   const annotationDetail = `${payload.workflowName ? "工作流: " + payload.workflowName + "\n" : ""}${summary.detail}`;
+  // Corner annotation prefers the template-library name when the node came from one.
+  const cornerText = payload.templateLabel?.trim() || (summary.ok ? annotationText : "");
   const hasOutput = payload.status === "done" && !!payload.outputUrls && payload.outputUrls.length > 0;
   const cloudInfo = trpc.comfyui.cloudInfo.useQuery(undefined, { staleTime: 60_000 });
   const canUseCloud = cloudInfo.data?.allowed ?? false;
@@ -419,6 +421,15 @@ export const ComfyuiWorkflowNode = memo(function ComfyuiWorkflowNode({ id, selec
       hasResult={!!payload.outputUrls && payload.outputUrls.length > 0}
       borderTint={accentColor}
       headerTooltip={summary.ok ? annotationDetail : undefined}
+      hideTypeBadge
+      headerRight={cornerText ? (
+        <span
+          title={annotationDetail || cornerText}
+          style={{ fontSize: 10.5, fontWeight: 600, color: accentColor, maxWidth: 150, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", display: "block" }}
+        >
+          {cornerText}
+        </span>
+      ) : undefined}
     >
       {/* ref-image-in (top:30%): feed an upstream image into the first blank image param.
           Generic "in" (top:55%) keeps ordering-only / video-input edges. */}
@@ -427,21 +438,6 @@ export const ComfyuiWorkflowNode = memo(function ComfyuiWorkflowNode({ id, selec
       <Handle type="source" position={Position.Right} id="out" style={{ top: "50%", background: accent, border: "2px solid var(--c-bg)" }} />
 
       <div style={{ display: "flex", flexDirection: "column", gap: 10, padding: "2px 0" }}>
-
-        {/* Workflow annotation — border-colored "文件名 · 模型简要", always visible
-            (even when config is collapsed). When there are outputs it moves onto
-            the 输出结果 row instead (see below) to avoid adding height. */}
-        {summary.ok && !hasOutput && (
-          <div
-            title={annotationDetail}
-            style={{
-              fontSize: 10.5, color: accentColor, fontWeight: 500, lineHeight: 1.4,
-              whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis",
-            }}
-          >
-            {annotationText}
-          </div>
-        )}
 
         {/* Config area — collapses when the node is deselected (results stay
             visible below), matching the other media nodes. */}
@@ -934,22 +930,9 @@ export const ComfyuiWorkflowNode = memo(function ComfyuiWorkflowNode({ id, selec
         {/* ── Results ── (always visible, even when config is collapsed) */}
         {payload.status === "done" && payload.outputUrls && payload.outputUrls.length > 0 && (
           <div>
-            <div style={{ display: "flex", alignItems: "baseline", gap: 8, marginBottom: 6, minWidth: 0 }}>
-              <label style={{ ...labelStyle, marginBottom: 0, flexShrink: 0 }}>
-                输出结果（{payload.outputUrls.length} 个）
-              </label>
-              {summary.ok && (
-                <span
-                  title={annotationDetail}
-                  style={{
-                    fontSize: 10, color: accentColor, fontWeight: 500, lineHeight: 1.4,
-                    whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", minWidth: 0,
-                  }}
-                >
-                  {annotationText}
-                </span>
-              )}
-            </div>
+            <label style={{ ...labelStyle, marginBottom: 6 }}>
+              输出结果（{payload.outputUrls.length} 个）
+            </label>
             {/* Video output */}
             {payload.outputType === "video" ? (
               <div>

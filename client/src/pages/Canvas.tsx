@@ -889,13 +889,14 @@ function CanvasInner({ projectId }: { projectId: number }) {
   // Re-create a fully-configured ComfyUI node from a library template (like
   // duplicating): add a fresh node at the viewport center, then inject the saved
   // payload. Autosave + collab follow the normal add/update paths.
-  const addNodeFromTemplate = useCallback((type: ComfyNodeType, payload: Record<string, unknown>) => {
+  const addNodeFromTemplate = useCallback((type: ComfyNodeType, payload: Record<string, unknown>, label: string) => {
     const vp = reactFlow.getViewport();
     const cx = (window.innerWidth / 2 - vp.x) / vp.zoom;
     const cy = (window.innerHeight / 2 - vp.y) / vp.zoom;
     try {
       const newNode = addNode(type, { x: cx + Math.random() * 80 - 40, y: cy + Math.random() * 80 - 40 });
-      updateNodeData(newNode.id, payload as Partial<NodeData>);
+      // Inject templateLabel so the new node's corner annotation shows the template name.
+      updateNodeData(newNode.id, { ...payload, templateLabel: label } as Partial<NodeData>);
       emitCollabEvent("node:add", newNode);
       toast.success("已从模板创建节点");
     } catch (err) {

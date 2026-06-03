@@ -620,6 +620,9 @@ export interface ComfyuiImageNodeData {
   // Connection
   customBaseUrl?: string;       // empty = use server-side global default
   serverUrls?: string[];        // saved server addresses for quick selection (persisted on node)
+  /** When created from a template-library entry, its label — shown as the node's
+   *  corner annotation in preference to the model-derived name. */
+  templateLabel?: string;
   workflowTemplate: ComfyuiImageTemplate;
   // Prompts
   prompt: string;
@@ -684,6 +687,8 @@ export interface ComfyuiVideoNodeData {
   // Connection
   customBaseUrl?: string;
   serverUrls?: string[];        // saved server addresses for quick selection (persisted on node)
+  /** Template-library label (preferred corner annotation when set). */
+  templateLabel?: string;
   workflowTemplate: ComfyuiVideoTemplate;
   // Prompts
   prompt: string;
@@ -740,6 +745,8 @@ export interface ComfyuiWorkflowNodeData {
   useCloudComfy?: boolean;
   workflowJson?: string;
   workflowName?: string;
+  /** Template-library label (preferred corner annotation when set). */
+  templateLabel?: string;
   /** Seed handling on run: when true (default), seed params are re-randomized
    *  each run; when false, the fixed value from the form is used as-is. */
   randomizeSeed?: boolean;

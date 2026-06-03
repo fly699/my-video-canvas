@@ -426,6 +426,8 @@ export const ComfyuiImageNode = memo(function ComfyuiImageNode({ id, selected, d
   // 标题栏下常驻的模型注释（与自定义工作流节点一致）：模板 · checkpoint。
   const ckptShort = (payload.ckpt ?? "").split(/[\\/]/).pop()?.replace(/\.[^.]+$/, "") ?? "";
   const modelAnnotation = [payload.workflowTemplate, ckptShort].filter(Boolean).join(" · ");
+  // Corner annotation prefers the template-library name when the node came from one.
+  const cornerText = payload.templateLabel?.trim() || modelAnnotation;
   const modelTip = [
     payload.ckpt ? `模型: ${payload.ckpt}` : "",
     payload.lora ? `LoRA: ${payload.lora}` : "",
@@ -463,21 +465,21 @@ export const ComfyuiImageNode = memo(function ComfyuiImageNode({ id, selected, d
   return (
     <BaseNode id={id} selected={selected} nodeType="comfyui_image" title={data.title} minHeight={320} resizable heroMedia={heroMedia}
       onRun={handleGenerate} running={genMutation.isPending} canRun={!!payload.prompt?.trim() && !!payload.ckpt?.trim()} hasResult={!!payload.imageUrl}
-      headerTooltip={modelTip || undefined}>
+      headerTooltip={modelTip || undefined}
+      hideTypeBadge
+      headerRight={cornerText ? (
+        <span
+          title={modelTip || cornerText}
+          style={{ fontSize: 10.5, fontWeight: 600, color: accent, maxWidth: 150, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", display: "block" }}
+        >
+          {cornerText}
+        </span>
+      ) : undefined}>
       <div
         className="flex flex-col h-full p-3.5 gap-3 overflow-auto"
         onDragOver={(e) => { if (e.dataTransfer.types.includes("application/x-asset-list") || e.dataTransfer.types.includes("Files") || e.dataTransfer.types.includes("text/uri-list")) { e.preventDefault(); e.dataTransfer.dropEffect = "copy"; } }}
         onDrop={handleNodeDrop}
       >
-        {/* 模型注释：标题栏下方常驻显示（模板 · checkpoint），与自定义工作流节点一致 */}
-        {modelAnnotation && (
-          <div
-            title={modelTip || undefined}
-            style={{ fontSize: 10.5, color: accent, fontWeight: 500, lineHeight: 1.4, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", flexShrink: 0 }}
-          >
-            {modelAnnotation}
-          </div>
-        )}
 
         {/* ── Result image(s) ── */}
         {payload.imageUrl ? (

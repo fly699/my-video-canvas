@@ -44,13 +44,15 @@ interface BaseNodeProps {
   /** 可选：标题栏 hover 提示文本（覆盖默认的"双击编辑标题"）。
    *  用于在标题上展示节点的附加信息（如 ComfyUI 工作流模型详情）。 */
   headerTooltip?: string;
+  /** 可选：隐藏右上角的节点类型徽章（如「COMFYUI 视频」）。 */
+  hideTypeBadge?: boolean;
 }
 
 export const BaseNode = memo(function BaseNode({
   id, selected, nodeType, title, children,
   minWidth = 280, minHeight = 140, showHandles = true, headerRight, resizable = false,
   onRun, canRun = true, running: nodeRunning = false, hasResult = false,
-  heroMedia, borderTint, headerTooltip,
+  heroMedia, borderTint, headerTooltip, hideTypeBadge,
 }: BaseNodeProps) {
   const config = getNodeConfig(nodeType);
   const Icon = NODE_ICONS[config.icon] ?? FileText;
@@ -450,17 +452,19 @@ export const BaseNode = memo(function BaseNode({
         {headerRight && <div className="flex-shrink-0">{headerRight}</div>}
 
         {/* Type badge */}
-        <span
-          className="text-[9px] font-bold px-1.5 py-0.5 rounded-full flex-shrink-0 leading-none tracking-widest uppercase"
-          style={{
-            background: `${config.color}15`,
-            color: `${config.color}`,
-            border: `1px solid ${config.color}28`,
-            opacity: 0.85,
-          }}
-        >
-          {config.label}
-        </span>
+        {!hideTypeBadge && (
+          <span
+            className="text-[9px] font-bold px-1.5 py-0.5 rounded-full flex-shrink-0 leading-none tracking-widest uppercase"
+            style={{
+              background: `${config.color}15`,
+              color: `${config.color}`,
+              border: `1px solid ${config.color}28`,
+              opacity: 0.85,
+            }}
+          >
+            {config.label}
+          </span>
+        )}
 
         {/* Run status badge */}
         {runStatus === "running" && (
