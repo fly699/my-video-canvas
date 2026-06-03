@@ -16,6 +16,18 @@ function findClip(doc: EditorDoc, clipId: string): { trackIdx: number; clipIdx: 
   return null;
 }
 
+/** Drop a selection that no longer exists in the given doc (e.g. after undoing a paste). */
+function clampSelection(doc: EditorDoc, sel: string | null): string | null {
+  return sel && findClip(doc, sel) ? sel : null;
+}
+
+// ── Undo/redo history ──────────────────────────────────────────────────────────
+// Snapshot-based: every doc-mutating action records the PRIOR doc on `past`.
+// Rapid bursts (clip drag, slider scrub) within COALESCE_MS collapse into a
+// single undo step so one drag isn't dozens of tiny undos.
+const HISTORY_CAP = 80;
+const COALESCE_MS = 450;
+
 export interface EditorStore {
   doc: EditorDoc | null;
   selectedClipId: string | null;
@@ -24,10 +36,17 @@ export interface EditorStore {
   pxPerSec: number;     // timeline zoom
   dirty: boolean;       // unsaved changes since last markClean
 
+  // history
+  past: EditorDoc[];
+  future: EditorDoc[];
+  _lastMutateTs: number;
+
   load: (doc: EditorDoc) => void;
   markClean: () => void;
+  undo: () => void;
+  redo: () => void;
 
-  // clip ops (all mark dirty)
+  // clip ops (all mark dirty + record history)
   addClip: (trackId: string, clip: Omit<Clip, "id"> & { id?: string }) => string;
   moveClip: (clipId: string, targetTrackId: string, newStart: number) => void;
   trimClip: (clipId: string, patch: { trimIn?: number; trimOut?: number; start?: number }) => void;
@@ -54,6 +73,15 @@ export interface EditorStore {
   selectedClip: () => Clip | null;
 }
 
+/** Build a state patch that applies `nextDoc` and records the prior doc on the
+ *  undo stack (coalescing rapid bursts). `s.doc` must be non-null. */
+function withHistory(s: EditorStore, nextDoc: EditorDoc, extra: Partial<EditorStore> = {}): Partial<EditorStore> {
+  const now = Date.now();
+  const coalesce = now - s._lastMutateTs < COALESCE_MS;
+  const past = coalesce ? s.past : [...s.past, s.doc as EditorDoc].slice(-HISTORY_CAP);
+  return { doc: nextDoc, past, future: [], dirty: true, _lastMutateTs: now, ...extra };
+}
+
 export const useEditorStore = create<EditorStore>((set, get) => ({
   doc: null,
   selectedClipId: null,
@@ -61,9 +89,38 @@ export const useEditorStore = create<EditorStore>((set, get) => ({
   playing: false,
   pxPerSec: 60,
   dirty: false,
+  past: [],
+  future: [],
+  _lastMutateTs: 0,
 
-  load: (doc) => set({ doc, dirty: false, selectedClipId: null, playhead: 0, playing: false }),
+  load: (doc) => set({ doc, dirty: false, selectedClipId: null, playhead: 0, playing: false, past: [], future: [], _lastMutateTs: 0 }),
   markClean: () => set({ dirty: false }),
+
+  undo: () => set((s) => {
+    if (!s.doc || s.past.length === 0) return s;
+    const prev = s.past[s.past.length - 1];
+    return {
+      doc: prev,
+      past: s.past.slice(0, -1),
+      future: [s.doc, ...s.future].slice(0, HISTORY_CAP),
+      dirty: true,
+      _lastMutateTs: 0, // break coalescing so the next edit records cleanly
+      selectedClipId: clampSelection(prev, s.selectedClipId),
+    };
+  }),
+
+  redo: () => set((s) => {
+    if (!s.doc || s.future.length === 0) return s;
+    const next = s.future[0];
+    return {
+      doc: next,
+      past: [...s.past, s.doc].slice(-HISTORY_CAP),
+      future: s.future.slice(1),
+      dirty: true,
+      _lastMutateTs: 0,
+      selectedClipId: clampSelection(next, s.selectedClipId),
+    };
+  }),
 
   addClip: (trackId, clip) => {
     const id = clip.id ?? `c_${nanoid(8)}`;
@@ -72,7 +129,7 @@ export const useEditorStore = create<EditorStore>((set, get) => ({
       const tracks = s.doc.tracks.map((t) =>
         t.id === trackId ? { ...t, clips: [...t.clips, { ...clip, id }] } : t,
       );
-      return { doc: { ...s.doc, tracks }, dirty: true, selectedClipId: id };
+      return withHistory(s, { ...s.doc, tracks }, { selectedClipId: id });
     });
     return id;
   },
@@ -90,7 +147,7 @@ export const useEditorStore = create<EditorStore>((set, get) => ({
       if (t.id === targetTrackId) clips = [...clips, { ...clip, start }];
       return { ...t, clips };
     });
-    return { doc: { ...s.doc, tracks }, dirty: true };
+    return withHistory(s, { ...s.doc, tracks });
   }),
 
   trimClip: (clipId, patch) => set((s) => {
@@ -107,7 +164,7 @@ export const useEditorStore = create<EditorStore>((set, get) => ({
         return { ...c, trimIn, trimOut, start };
       }),
     });
-    return { doc: { ...s.doc, tracks }, dirty: true };
+    return withHistory(s, { ...s.doc, tracks });
   }),
 
   updateClip: (clipId, patch) => set((s) => {
@@ -118,13 +175,13 @@ export const useEditorStore = create<EditorStore>((set, get) => ({
       ...t,
       clips: t.clips.map((c) => c.id === clipId ? { ...c, ...patch } : c),
     });
-    return { doc: { ...s.doc, tracks }, dirty: true };
+    return withHistory(s, { ...s.doc, tracks });
   }),
 
   removeClip: (clipId) => set((s) => {
     if (!s.doc) return s;
     const tracks = s.doc.tracks.map((t) => ({ ...t, clips: t.clips.filter((c) => c.id !== clipId) }));
-    return { doc: { ...s.doc, tracks }, dirty: true, selectedClipId: s.selectedClipId === clipId ? null : s.selectedClipId };
+    return withHistory(s, { ...s.doc, tracks }, { selectedClipId: s.selectedClipId === clipId ? null : s.selectedClipId });
   }),
 
   // Cut a clip in two at the given timeline time (only if the time is inside it).
@@ -143,7 +200,7 @@ export const useEditorStore = create<EditorStore>((set, get) => ({
     const tracks = s.doc.tracks.map((t, ti) => ti !== loc.trackIdx ? t : {
       ...t, clips: t.clips.flatMap((x) => x.id === clipId ? [left, right] : [x]),
     });
-    return { doc: { ...s.doc, tracks }, dirty: true, selectedClipId: right.id };
+    return withHistory(s, { ...s.doc, tracks }, { selectedClipId: right.id });
   }),
 
   // Copy a clip and drop the copy right after the original on the same track.
@@ -154,7 +211,7 @@ export const useEditorStore = create<EditorStore>((set, get) => ({
     const c = s.doc.tracks[loc.trackIdx].clips[loc.clipIdx];
     const copy: Clip = { ...c, id: `c_${nanoid(8)}`, start: c.start + clipDuration(c) };
     const tracks = s.doc.tracks.map((t, ti) => ti !== loc.trackIdx ? t : { ...t, clips: [...t.clips, copy] });
-    return { doc: { ...s.doc, tracks }, dirty: true, selectedClipId: copy.id };
+    return withHistory(s, { ...s.doc, tracks }, { selectedClipId: copy.id });
   }),
 
   selectClip: (id) => set({ selectedClipId: id }),
@@ -162,7 +219,7 @@ export const useEditorStore = create<EditorStore>((set, get) => ({
   updateTrack: (trackId, patch) => set((s) => {
     if (!s.doc) return s;
     const tracks = s.doc.tracks.map((t) => (t.id === trackId ? { ...t, ...patch } : t));
-    return { doc: { ...s.doc, tracks }, dirty: true };
+    return withHistory(s, { ...s.doc, tracks });
   }),
 
   addTrack: (type) => set((s) => {
@@ -171,21 +228,21 @@ export const useEditorStore = create<EditorStore>((set, get) => ({
     // place video/overlay near the top, audio at the bottom, text in the middle.
     const order: Record<TrackType, number> = { video: 0, overlay: 1, text: 2, audio: 3 };
     const tracks = [...s.doc.tracks, track].sort((a, b) => order[a.type] - order[b.type]);
-    return { doc: { ...s.doc, tracks }, dirty: true };
+    return withHistory(s, { ...s.doc, tracks });
   }),
 
   removeTrack: (trackId) => set((s) => {
     if (!s.doc || s.doc.tracks.length <= 1) return s;
     const tracks = s.doc.tracks.filter((t) => t.id !== trackId);
     const goneIds = new Set(s.doc.tracks.find((t) => t.id === trackId)?.clips.map((c) => c.id));
-    return { doc: { ...s.doc, tracks }, dirty: true, selectedClipId: goneIds.has(s.selectedClipId ?? "") ? null : s.selectedClipId };
+    return withHistory(s, { ...s.doc, tracks }, { selectedClipId: goneIds.has(s.selectedClipId ?? "") ? null : s.selectedClipId });
   }),
 
   setCanvas: (width, height, fps) => set((s) => {
     if (!s.doc) return s;
     // even dimensions only — libx264/yuv420p reject odd sizes at export
     const even = (n: number) => { const v = Math.max(16, Math.min(7680, Math.round(n))); return v - (v % 2); };
-    return { doc: { ...s.doc, width: even(width), height: even(height), fps: fps ?? s.doc.fps }, dirty: true };
+    return withHistory(s, { ...s.doc, width: even(width), height: even(height), fps: fps ?? s.doc.fps });
   }),
 
   setPlayhead: (t) => set({ playhead: Math.max(0, t) }),
