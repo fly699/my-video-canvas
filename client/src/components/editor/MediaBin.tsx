@@ -64,7 +64,7 @@ export function MediaBin() {
   }
 
   return (
-    <aside style={{ width: 230, flexShrink: 0, borderRight: `1px solid ${EC.border}`, display: "flex", flexDirection: "column", minHeight: 0, background: EC.surface }}>
+    <aside style={{ width: 252, flexShrink: 0, borderRight: `1px solid ${EC.border}`, display: "flex", flexDirection: "column", minHeight: 0, background: EC.surface }}>
       <div style={{ padding: 10, borderBottom: `1px solid ${EC.border}` }}>
         <div style={{ position: "relative", marginBottom: 8 }}>
           <Search size={13} style={{ position: "absolute", left: 8, top: 8, color: EC.t4 }} />
@@ -98,11 +98,11 @@ export function MediaBin() {
               title={`${a.name}（点击添加 / 拖到时间轴）`}
               style={{ cursor: "grab", borderRadius: 8, overflow: "hidden", border: `1px solid ${EC.border}`, background: EC.elevated }}
             >
-              <div style={{ aspectRatio: "1 / 1", display: "flex", alignItems: "center", justifyContent: "center", background: "var(--c-bg, #0c0c10)" }}>
+              <div style={{ height: 92, display: "flex", alignItems: "center", justifyContent: "center", background: "var(--c-bg, #0c0c10)" }}>
                 {kind === "image" ? (
-                  <img src={a.url} alt={a.name} loading="lazy" style={{ width: "100%", height: "100%", objectFit: "cover" }} />
+                  <img src={a.url} alt={a.name} loading="lazy" style={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }} />
                 ) : kind === "video" ? (
-                  <video src={a.url} muted preload="metadata" style={{ width: "100%", height: "100%", objectFit: "cover" }} />
+                  <video src={a.url} muted preload="metadata" style={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }} />
                 ) : (
                   <Icon size={22} style={{ color: EC.t3 }} />
                 )}
