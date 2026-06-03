@@ -96,6 +96,10 @@ export const BaseNode = memo(function BaseNode({
     const p = (s.nodes.find((n) => n.id === id)?.data.payload as { progress?: number } | undefined)?.progress;
     return typeof p === "number" ? p : null;
   });
+  const genError = useCanvasStore((s) => {
+    const pl = s.nodes.find((n) => n.id === id)?.data.payload as { status?: string; errorMessage?: string } | undefined;
+    return pl?.status === "failed" ? (pl.errorMessage || "生成失败") : null;
+  });
   const pinned = useCanvasStore((s) => {
     const node = s.nodes.find((n) => n.id === id);
     return Boolean((node?.data.payload as Record<string, unknown> | undefined)?.pinned);
@@ -573,6 +577,22 @@ export const BaseNode = memo(function BaseNode({
           </div>
           <span style={{ fontSize: 9.5, fontWeight: 700, color: config.color, whiteSpace: "nowrap" }}>
             {genProgress != null ? `${Math.round(genProgress)}%` : "生成中"}
+          </span>
+        </div>
+      )}
+
+      {/* ── Persistent failure indicator ──
+          Like the progress bar, rendered outside the collapsing body so a failed
+          generation is visible even when the node is collapsed (the detailed error
+          lives inside the body). */}
+      {genStatus !== "processing" && !nodeRunning && genError && (
+        <div
+          title={genError}
+          style={{ display: "flex", alignItems: "center", gap: 5, padding: "3px 10px", flexShrink: 0, background: "oklch(0.62 0.20 25 / 0.12)", borderBottom: "1px solid var(--c-bd1)" }}
+        >
+          <AlertTriangle size={11} style={{ color: "oklch(0.62 0.20 25)", flexShrink: 0 }} />
+          <span style={{ fontSize: 9.5, fontWeight: 600, color: "oklch(0.62 0.20 25)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+            {genError}
           </span>
         </div>
       )}
