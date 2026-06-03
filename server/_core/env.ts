@@ -41,6 +41,12 @@ export const ENV = {
   higgsfieldApiSecret: process.env.HIGGSFIELD_API_SECRET ?? "",
   openaiApiKey: process.env.OPENAI_API_KEY ?? "",
   comfyuiBaseUrl: process.env.COMFYUI_BASE_URL ?? "",
+  // Official ComfyUI cloud (cloud.comfy.org). Opt-in per node via the node's
+  // 本地/云端 toggle, and only usable by admins / whitelisted users. The base URL
+  // and API key are server-side secrets (never exposed to the canvas doc). When
+  // either is unset the cloud toggle reports "未配置" and falls back to nothing.
+  comfyuiCloudBaseUrl: process.env.COMFYUI_CLOUD_BASE_URL ?? "https://api.comfy.org",
+  comfyuiCloudApiKey: process.env.COMFYUI_CLOUD_API_KEY ?? "",
   // Google OAuth (standalone OpenID Connect). Both must be set to enable the
   // "使用 Google 登录" button. GOOGLE_REDIRECT_URI is optional — when unset the
   // callback URL is derived from the incoming request origin.

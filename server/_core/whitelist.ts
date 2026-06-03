@@ -102,3 +102,23 @@ export async function assertComfyuiAllowed(ctx: TrpcContext): Promise<void> {
   if (comfyuiBypass) return;
   await assertWhitelisted(ctx);
 }
+
+/** Whether the caller may use the official ComfyUI cloud (cloud.comfy.org).
+ * Cloud runs on a paid/shared quota, so unlike local self-hosted ComfyUI it is
+ * ALWAYS restricted to admins and explicitly whitelisted users — regardless of
+ * the global whitelist toggle or the comfyui bypass (those govern local use). */
+export async function isComfyuiCloudAllowed(ctx: TrpcContext): Promise<boolean> {
+  if (ctx.user?.role === "admin") return true;
+  const userId = ctx.user?.id;
+  if (userId != null && (await db.isWhitelisted("user", String(userId)))) return true;
+  return false;
+}
+
+/** Gate for cloud ComfyUI execution — throws FORBIDDEN when not allowed. */
+export async function assertComfyuiCloudAllowed(ctx: TrpcContext): Promise<void> {
+  if (await isComfyuiCloudAllowed(ctx)) return;
+  throw new TRPCError({
+    code: "FORBIDDEN",
+    message: "ComfyUI 云服务仅向管理员和白名单用户开放，请联系管理员加入白名单",
+  });
+}

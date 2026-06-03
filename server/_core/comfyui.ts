@@ -284,11 +284,17 @@ export function normalizeGgufLoaders(workflow: unknown): void {
   }
 }
 
-async function submitWorkflow(baseUrl: string, workflow: unknown, signal?: AbortSignal): Promise<string> {
+/** Auth header for the official ComfyUI cloud — empty for local self-hosted
+ * ComfyUI (apiKey undefined) so local requests are byte-for-byte unchanged. */
+function comfyAuthHeaders(apiKey?: string): Record<string, string> {
+  return apiKey ? { "X-API-Key": apiKey } : {};
+}
+
+async function submitWorkflow(baseUrl: string, workflow: unknown, signal?: AbortSignal, apiKey?: string): Promise<string> {
   normalizeGgufLoaders(workflow);
   const res = await fetch(`${baseUrl}/prompt`, {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    headers: { "Content-Type": "application/json", ...comfyAuthHeaders(apiKey) },
     body: JSON.stringify({ prompt: workflow }),
     signal: withTimeout(30_000, signal),
   });
@@ -301,7 +307,7 @@ async function submitWorkflow(baseUrl: string, workflow: unknown, signal?: Abort
   return data.prompt_id;
 }
 
-async function pollHistory(baseUrl: string, promptId: string, maxAttempts: number, signal?: AbortSignal): Promise<HistoryEntry> {
+async function pollHistory(baseUrl: string, promptId: string, maxAttempts: number, signal?: AbortSignal, apiKey?: string): Promise<HistoryEntry> {
   // Early exit when the server keeps refusing connections (down / unreachable) —
   // bail after 5 consecutive transient failures (~15s) instead of waiting the full
   // 5/10-minute timeout.
@@ -312,6 +318,7 @@ async function pollHistory(baseUrl: string, promptId: string, maxAttempts: numbe
     try {
       const res = await fetch(`${baseUrl}/history/${promptId}`, {
         signal: withTimeout(10_000, signal),
+        ...(apiKey ? { headers: comfyAuthHeaders(apiKey) } : {}),
       });
       if (!res.ok) {
         if (res.status === 404 || res.status >= 500) {
@@ -515,8 +522,8 @@ function downloadUrl(baseUrl: string, filename: string, subfolder: string, type:
 /** Pre-flight Content-Length check + STREAMING read with running byte-count cap.
  * Protects against a malicious server using chunked transfer (no Content-Length)
  * to stream multi-GB responses that arrayBuffer() would happily swallow into RAM. */
-async function fetchWithSizeLimit(url: string, maxBytes: number, timeoutMs: number, label: string): Promise<{ buf: Buffer; contentType: string | null }> {
-  const res = await fetch(url, { signal: AbortSignal.timeout(timeoutMs) });
+async function fetchWithSizeLimit(url: string, maxBytes: number, timeoutMs: number, label: string, headers?: Record<string, string>): Promise<{ buf: Buffer; contentType: string | null }> {
+  const res = await fetch(url, { signal: AbortSignal.timeout(timeoutMs), ...(headers ? { headers } : {}) });
   if (!res.ok) throw new Error(`${label} 失败 (${res.status})`);
   const contentType = res.headers.get("content-type");
   const declared = res.headers.get("content-length");
@@ -552,8 +559,8 @@ async function fetchWithSizeLimit(url: string, maxBytes: number, timeoutMs: numb
   return { buf, contentType };
 }
 
-async function downloadAndStore(downloadUrlStr: string, ext: string, mimeType: string): Promise<{ url: string; key: string }> {
-  const { buf, contentType } = await fetchWithSizeLimit(downloadUrlStr, MAX_COMFY_OUTPUT_BYTES, 120_000, "下载 ComfyUI 输出");
+async function downloadAndStore(downloadUrlStr: string, ext: string, mimeType: string, apiKey?: string): Promise<{ url: string; key: string }> {
+  const { buf, contentType } = await fetchWithSizeLimit(downloadUrlStr, MAX_COMFY_OUTPUT_BYTES, 120_000, "下载 ComfyUI 输出", apiKey ? comfyAuthHeaders(apiKey) : undefined);
   const ct = contentType ?? mimeType;
   // ComfyUI 内网节点产物永久硬锁 MinIO/S3：无视管理员开关，未配 MinIO/S3 一律拒绝（绝不落 Forge）。
   assertMinioOnlyWrite();
@@ -562,7 +569,7 @@ async function downloadAndStore(downloadUrlStr: string, ext: string, mimeType: s
 
 // ── Image upload (for img2img / SVD) ──────────────────────────────────────────
 
-async function uploadImageToComfy(baseUrl: string, sourceUrl: string): Promise<string> {
+async function uploadImageToComfy(baseUrl: string, sourceUrl: string, apiKey?: string): Promise<string> {
   // SSRF protection: the source URL is user-supplied (referenceImageUrl).
   // Accept either absolute http(s) URLs (subject to assertSafeUrl) or our own
   // storage proxy paths (must start with `/manus-storage/` — trusted prefix).
@@ -596,6 +603,7 @@ async function uploadImageToComfy(baseUrl: string, sourceUrl: string): Promise<s
     method: "POST",
     body: form,
     signal: AbortSignal.timeout(60_000),
+    ...(apiKey ? { headers: comfyAuthHeaders(apiKey) } : {}),
   });
   if (!upRes.ok) {
     const text = await upRes.text().catch(() => "");
@@ -1402,6 +1410,9 @@ export interface ExecuteCustomWorkflowOptions {
   outputType?: "image" | "video" | "auto";
   projectId?: number;
   nodeId?: string;
+  // When set, requests carry an `X-API-Key` header — used for the official
+  // ComfyUI cloud (cloud.comfy.org). Undefined for local self-hosted ComfyUI.
+  apiKey?: string;
 }
 
 export async function executeCustomWorkflow(
@@ -1409,6 +1420,7 @@ export async function executeCustomWorkflow(
   options: ExecuteCustomWorkflowOptions,
 ): Promise<{ urls: string[]; outputType: "image" | "video" }> {
   const baseUrl = normalizeBaseUrl(rawBaseUrl);
+  const apiKey = options.apiKey;
 
   let workflow: WorkflowJson;
   try {
@@ -1441,7 +1453,7 @@ export async function executeCustomWorkflow(
     // upstream-node image feeds work without a separate client upload step.
     let value = rawValue;
     if (imageKeys.has(key) && typeof value === "string" && (/^https?:\/\//i.test(value) || value.startsWith("/manus-storage/"))) {
-      value = await uploadImageToComfy(baseUrl, value);
+      value = await uploadImageToComfy(baseUrl, value, apiKey);
     }
 
     // Walk the path and set the value
@@ -1459,9 +1471,10 @@ export async function executeCustomWorkflow(
     }
   }
 
-  const promptId = await submitWorkflow(baseUrl, workflow);
+  const promptId = await submitWorkflow(baseUrl, workflow, undefined, apiKey);
 
-  // Fire-and-forget progress relay
+  // Fire-and-forget progress relay (websocket; best-effort, local only — cloud
+  // progress would need a separate auth scheme, so it's simply skipped there).
   if (options.projectId != null && options.nodeId != null && _io != null) {
     const projectId = options.projectId;
     const nodeId = options.nodeId;
@@ -1473,7 +1486,7 @@ export async function executeCustomWorkflow(
   }
 
   // Use longer poll limit since we don't know the workflow complexity
-  const entry = await pollHistory(baseUrl, promptId, POLL_MAX_ATTEMPTS_VIDEO);
+  const entry = await pollHistory(baseUrl, promptId, POLL_MAX_ATTEMPTS_VIDEO, undefined, apiKey);
 
   // Determine which output nodes to collect from
   const targetNodeIds = new Set(options.outputNodeIds ?? []);
@@ -1489,7 +1502,7 @@ export async function executeCustomWorkflow(
     for (const v of nodeOutput.gifs ?? []) {
       const dlUrl = downloadUrl(baseUrl, v.filename, v.subfolder, v.type);
       const ext = v.filename.split(".").pop() || "mp4";
-      const stored = await downloadAndStore(dlUrl, ext, "video/mp4");
+      const stored = await downloadAndStore(dlUrl, ext, "video/mp4", apiKey);
       videoUrls.push(stored.url);
     }
 
@@ -1498,11 +1511,11 @@ export async function executeCustomWorkflow(
       if (/\.(mp4|webm|gif|webp)$/i.test(img.filename)) {
         const dlUrl = downloadUrl(baseUrl, img.filename, img.subfolder, img.type);
         const ext = img.filename.split(".").pop() || "mp4";
-        const stored = await downloadAndStore(dlUrl, ext, "video/mp4");
+        const stored = await downloadAndStore(dlUrl, ext, "video/mp4", apiKey);
         videoUrls.push(stored.url);
       } else {
         const dlUrl = downloadUrl(baseUrl, img.filename, img.subfolder, img.type);
-        const stored = await downloadAndStore(dlUrl, "png", "image/png");
+        const stored = await downloadAndStore(dlUrl, "png", "image/png", apiKey);
         imageUrls.push(stored.url);
       }
     }

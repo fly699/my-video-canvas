@@ -53,7 +53,7 @@ import { trimVideo, getVideoDuration, mergeVideos, burnSubtitles, generateSRT, o
 import { transcribeAudio } from "../_core/voiceTranscription";
 import { VIDEO_PROVIDERS, IMAGE_GEN_MODELS } from "../../shared/types";
 import type { SubtitleEntry } from "../../shared/types";
-import { assertWhitelisted, assertComfyuiAllowed } from "../_core/whitelist";
+import { assertWhitelisted, assertComfyuiAllowed, assertComfyuiCloudAllowed, isComfyuiCloudAllowed } from "../_core/whitelist";
 import { writeAuditLog, truncate } from "../_core/auditLog";
 import { dedupe } from "../_core/idempotency";
 import { assertProjectAccess, assertProjectOwner } from "../_core/permissions";
@@ -2407,11 +2407,20 @@ export const comfyuiRouter = router({
       }
     }),
 
+  // Whether the caller may flip a custom-flow node to the official ComfyUI cloud,
+  // and whether the server has the cloud endpoint/key configured. Drives the
+  // node's 本地/云端 toggle (disabled + hint when not allowed / not configured).
+  cloudInfo: protectedProcedure.query(async ({ ctx }) => ({
+    allowed: await isComfyuiCloudAllowed(ctx),
+    configured: !!(ENV.comfyuiCloudBaseUrl && ENV.comfyuiCloudApiKey),
+  })),
+
   executeWorkflow: protectedProcedure
     .input(z.object({
       nodeId: z.string(),
       projectId: z.number(),
       customBaseUrl: z.string().max(2048).optional(),
+      useCloudComfy: z.boolean().optional(),
       workflowJson: z.string().max(500_000),
       paramValues: z.record(z.string(), z.unknown()),
       imageParamKeys: z.array(z.string().max(512)).max(64).optional(),
@@ -2421,8 +2430,19 @@ export const comfyuiRouter = router({
     .mutation(async ({ ctx, input }) => {
       await assertComfyuiAllowed(ctx);
       await assertProjectAccess(input.projectId, ctx.user.id, "editor");
-      const baseUrl = input.customBaseUrl?.trim() || ENV.comfyuiBaseUrl;
-      if (!baseUrl) throw new TRPCError({ code: "BAD_REQUEST", message: "ComfyUI URL 未配置：请在节点设置中填写或服务端设置 COMFYUI_BASE_URL" });
+      // Cloud path: gated to admins / whitelisted users, uses server-side
+      // endpoint + key. Local path is untouched (customBaseUrl or COMFYUI_BASE_URL).
+      let baseUrl: string;
+      let apiKey: string | undefined;
+      if (input.useCloudComfy) {
+        await assertComfyuiCloudAllowed(ctx);
+        baseUrl = ENV.comfyuiCloudBaseUrl;
+        apiKey = ENV.comfyuiCloudApiKey || undefined;
+        if (!baseUrl || !apiKey) throw new TRPCError({ code: "BAD_REQUEST", message: "ComfyUI 云服务未配置：请在服务端设置 COMFYUI_CLOUD_BASE_URL 与 COMFYUI_CLOUD_API_KEY" });
+      } else {
+        baseUrl = input.customBaseUrl?.trim() || ENV.comfyuiBaseUrl;
+        if (!baseUrl) throw new TRPCError({ code: "BAD_REQUEST", message: "ComfyUI URL 未配置：请在节点设置中填写或服务端设置 COMFYUI_BASE_URL" });
+      }
       return dedupe("comfyui.executeWorkflow", ctx.user.id, input, async () => {
         try {
           const result = await executeCustomWorkflow(baseUrl, {
@@ -2433,6 +2453,7 @@ export const comfyuiRouter = router({
             outputType: input.outputType === "auto" ? undefined : input.outputType,
             projectId: input.projectId,
             nodeId: input.nodeId,
+            apiKey,
           });
           writeAuditLog({
             ctx,
