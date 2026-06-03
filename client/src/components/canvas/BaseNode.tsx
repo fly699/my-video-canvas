@@ -38,13 +38,16 @@ interface BaseNodeProps {
   running?: boolean;
   /** 是否已有结果：true → 图标 RefreshCw + "重新生成"；false → Play + "运行"。 */
   hasResult?: boolean;
+  /** 可选：自定义节点外框基础色（oklch 等）。设置后静止/选中态边框用此色着色，
+   *  用于以颜色区分节点的运行模式（如 ComfyUI 本地 vs 云端）。不影响运行态边框。 */
+  borderTint?: string;
 }
 
 export const BaseNode = memo(function BaseNode({
   id, selected, nodeType, title, children,
   minWidth = 280, minHeight = 140, showHandles = true, headerRight, resizable = false,
   onRun, canRun = true, running: nodeRunning = false, hasResult = false,
-  heroMedia,
+  heroMedia, borderTint,
 }: BaseNodeProps) {
   const config = getNodeConfig(nodeType);
   const Icon = NODE_ICONS[config.icon] ?? FileText;
@@ -179,15 +182,19 @@ export const BaseNode = memo(function BaseNode({
 
   const borderStyle = runBorder
     ? runBorder
-    : isCreative
+    : borderTint
       ? selected
-        ? `1.5px solid ${config.color}70`
-        : `1px solid var(--c-bd2)`
-      : selected
-        ? `1.5px solid ${config.color}80`
-        : isHovered
-          ? `1px solid var(--c-bd3)`
-          : `1px solid var(--c-bd1)`;
+        ? `1.5px solid ${borderTint}`
+        : `1px solid ${borderTint}99`
+      : isCreative
+        ? selected
+          ? `1.5px solid ${config.color}70`
+          : `1px solid var(--c-bd2)`
+        : selected
+          ? `1.5px solid ${config.color}80`
+          : isHovered
+            ? `1px solid var(--c-bd3)`
+            : `1px solid var(--c-bd1)`;
 
   const shadowStyle = runShadow
     ? `${runShadow}, var(--c-node-shadow-run)`

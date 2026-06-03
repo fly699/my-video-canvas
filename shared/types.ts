@@ -734,6 +734,10 @@ export interface WorkflowParamBinding {
 export interface ComfyuiWorkflowNodeData {
   customBaseUrl?: string;
   serverUrls?: string[];        // saved server addresses for quick selection (persisted on node)
+  // When true, run on the official ComfyUI cloud (cloud.comfy.org) instead of the
+  // local/self-hosted server. The cloud endpoint + API key live server-side; only
+  // admins / whitelisted users may enable this. Border tint indicates the mode.
+  useCloudComfy?: boolean;
   workflowJson?: string;
   workflowName?: string;
   paramBindings?: WorkflowParamBinding[];

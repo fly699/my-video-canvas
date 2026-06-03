@@ -28,7 +28,8 @@ interface Props {
   };
 }
 
-const accent = "oklch(0.65 0.20 140)";
+const accent = "oklch(0.65 0.20 140)";        // 本地：绿色
+const CLOUD_ACCENT = "oklch(0.68 0.16 235)";  // 云端：蓝青色（外框据此区分）
 const BORDER_DEFAULT = "var(--c-bd2)";
 const BORDER_ACCENT = "oklch(0.65 0.20 140 / 0.5)";
 
@@ -198,6 +199,17 @@ export const ComfyuiWorkflowNode = memo(function ComfyuiWorkflowNode({ id, selec
 
   const analyzeMutation = trpc.comfyui.analyzeWorkflow.useMutation();
 
+  // Local vs official cloud (cloud.comfy.org). The cloud toggle is only usable by
+  // admins / whitelisted users (and only when the server has it configured).
+  const useCloud = payload.useCloudComfy === true;
+  const cloudInfo = trpc.comfyui.cloudInfo.useQuery(undefined, { staleTime: 60_000 });
+  const canUseCloud = cloudInfo.data?.allowed ?? false;
+  const cloudConfigured = cloudInfo.data?.configured ?? false;
+  const setUseCloud = useCallback((on: boolean) => {
+    if (on && !canUseCloud) { toast.error("ComfyUI 云服务仅向管理员和白名单用户开放"); return; }
+    update({ useCloudComfy: on });
+  }, [canUseCloud, update]);
+
   // Test the ComfyUI server connection (this node runs arbitrary workflows and
   // doesn't pull a model list, so we probe via fetchModels purely to verify
   // reachability and report what's available).
@@ -263,6 +275,7 @@ export const ComfyuiWorkflowNode = memo(function ComfyuiWorkflowNode({ id, selec
         nodeId: id,
         projectId: data.projectId,
         customBaseUrl: payload.customBaseUrl?.trim() || undefined,
+        useCloudComfy: payload.useCloudComfy === true,
         workflowJson,
         paramValues,
         imageParamKeys: imageParamKeys.length > 0 ? imageParamKeys : undefined,
@@ -368,6 +381,7 @@ export const ComfyuiWorkflowNode = memo(function ComfyuiWorkflowNode({ id, selec
       running={isProcessing}
       canRun={phase === "run" && !!payload.workflowJson?.trim()}
       hasResult={!!payload.outputUrls && payload.outputUrls.length > 0}
+      borderTint={useCloud ? CLOUD_ACCENT : accent}
     >
       {/* ref-image-in (top:30%): feed an upstream image into the first blank image param.
           Generic "in" (top:55%) keeps ordering-only / video-input edges. */}
@@ -390,7 +404,46 @@ export const ComfyuiWorkflowNode = memo(function ComfyuiWorkflowNode({ id, selec
           }}
         >
 
-        {/* Server URL */}
+        {/* 运行位置：本地自建服务器 vs 官方云端 cloud.comfy.org。
+            云端开关仅管理员/白名单用户可用；外框颜色随之改变（绿=本地，蓝=云端）。 */}
+        <div>
+          <label style={labelStyle}>
+            <Server size={9} style={{ display: "inline", marginRight: 3 }} />
+            运行位置
+          </label>
+          <div style={{ display: "flex", gap: 6 }}>
+            {([["local", "本地服务器", accent], ["cloud", "云端 cloud.comfy.org", CLOUD_ACCENT]] as const).map(([key, label, col]) => {
+              const active = (key === "cloud") === useCloud;
+              const disabled = key === "cloud" && !canUseCloud;
+              return (
+                <button
+                  key={key}
+                  onClick={() => setUseCloud(key === "cloud")}
+                  disabled={disabled}
+                  title={disabled ? "ComfyUI 云服务仅向管理员和白名单用户开放" : undefined}
+                  style={{
+                    flex: 1, padding: "6px 4px", fontSize: 11, borderRadius: 8, cursor: disabled ? "not-allowed" : "pointer",
+                    borderWidth: 1, borderStyle: "solid",
+                    borderColor: active ? col : BORDER_DEFAULT,
+                    background: active ? `${col}1f` : "transparent",
+                    color: disabled ? "var(--c-t4)" : active ? col : "var(--c-t2)",
+                    opacity: disabled ? 0.55 : 1, fontWeight: active ? 600 : 400,
+                  }}
+                >{label}</button>
+              );
+            })}
+          </div>
+          {useCloud && (
+            <div style={{ marginTop: 6, fontSize: 10.5, lineHeight: 1.5, color: "var(--c-t4)" }}>
+              {cloudConfigured
+                ? "已连接官方云端，无需本地服务器；服务端密钥已配置。"
+                : "⚠ 服务端尚未配置云端密钥（COMFYUI_CLOUD_API_KEY），运行将失败。"}
+            </div>
+          )}
+        </div>
+
+        {/* Server URL — 仅本地模式显示（云端用服务端配置的地址，无需填写） */}
+        {!useCloud && (
         <div>
           <label style={labelStyle}>
             <Server size={9} style={{ display: "inline", marginRight: 3 }} />
@@ -410,6 +463,7 @@ export const ComfyuiWorkflowNode = memo(function ComfyuiWorkflowNode({ id, selec
             fieldBase={fieldBase}
           />
         </div>
+        )}
 
         {/* ── Sync this workflow (JSON / bindings / values / address) to siblings ── */}
         {payload.workflowJson?.trim() && (
