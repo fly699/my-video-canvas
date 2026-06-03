@@ -166,9 +166,25 @@ export async function checkRemote(): Promise<RemoteState> {
     changes = await logSubjects("--no-merges");
     if (changes.length === 0) changes = await logSubjects(""); // include merges as a fallback
   }
+  changes = changes.map(prettifyChange);
   const latest = changes[0] ?? "";
 
   return { behind: Math.max(behind, 0), latest, changes, fetchOk, upstreamRef, error, checkedAt: Date.now() };
+}
+
+// 把 Conventional-Commit 风格的提交标题美化成中文展示：
+// "feat(editor): 文字描边样式" → "【新增】文字描边样式"（去掉 type(scope): 噪声）。
+// 非该风格的标题原样返回（已是中文则直接显示）；合并提交标题给个通用标签。
+const CC_TYPE_ZH: Record<string, string> = {
+  feat: "新增", fix: "修复", perf: "优化", refactor: "重构", style: "样式",
+  docs: "文档", build: "构建", chore: "杂项", test: "测试", ci: "流水线", revert: "回退",
+};
+function prettifyChange(subject: string): string {
+  if (/^Merge\b/i.test(subject)) return "【合并】" + subject.replace(/^Merge\s+(pull request|branch)\s*/i, "").trim();
+  const m = subject.match(/^(\w+)(?:\([^)]*\))?(!)?:\s*(.+)$/);
+  if (!m) return subject;
+  const tag = CC_TYPE_ZH[m[1].toLowerCase()] ?? m[1];
+  return `【${tag}${m[2] ? "·破坏性" : ""}】${m[3]}`;
 }
 
 // 解析当前分支的上游 ref；无跟踪时回退 origin/main。
