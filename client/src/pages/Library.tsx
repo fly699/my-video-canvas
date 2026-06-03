@@ -101,13 +101,13 @@ function Lightbox({ asset, onClose }: { asset: Asset; onClose: () => void }) {
             </button>
           </div>
         </div>
-        <div className="flex-1 flex items-center justify-center overflow-auto p-4" style={{ background: "var(--c-base)" }}>
+        <div className="flex-1 flex items-center justify-center overflow-auto p-4" style={{ background: "var(--c-base)" }} onContextMenu={(e) => e.preventDefault()}>
           {asset.type === "image" ? (
             <img src={asset.url} alt={asset.name} className="max-w-full max-h-[72vh] object-contain" />
           ) : asset.type === "video" ? (
-            <video src={asset.url} controls autoPlay className="max-w-full max-h-[72vh]" />
+            <video src={asset.url} controls autoPlay controlsList="nodownload" className="max-w-full max-h-[72vh]" />
           ) : asset.type === "audio" ? (
-            <audio src={asset.url} controls autoPlay className="w-full" />
+            <audio src={asset.url} controls autoPlay controlsList="nodownload" className="w-full" />
           ) : (
             <div className="text-sm" style={{ color: "var(--c-t3)" }}>该文件类型无法预览，请下载查看</div>
           )}
@@ -160,6 +160,7 @@ function AssetCard({
         className="relative h-32 flex items-center justify-center cursor-pointer overflow-hidden"
         style={{ background: `${accent}0c` }}
         onClick={handlePreviewClick}
+        onContextMenu={(e) => e.preventDefault()}
       >
         {asset.type === "image" ? (
           <img
