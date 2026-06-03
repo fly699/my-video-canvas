@@ -30,7 +30,8 @@ export interface Segment {
   speed: number;
   effects?: ClipEffects;                          // color/filter (eq + preset)
   transition?: { type: string; duration: number }; // entry transition vs the previous segment
-  fit?: FitMode;                                  // contain (default) | cover | stretch
+  fit?: FitMode;                                  // contain (default) | cover | stretch | blur
+  reverse?: boolean;                              // 倒放：逆序播放（图片无效）
 }
 
 /** ffmpeg filters that fit a frame into the output canvas per the fit mode. */
@@ -191,34 +192,42 @@ export function buildFilterGraph(
   segs.forEach((s, i) => {
     const dur = segmentDuration(s);
     // ── video chain ──
-    const vChain: string[] = [];
+    // pre = source-side filters (trim / 倒放 / 变速); post = normalize to canvas
+    // (sar / fps / color / format / timebase). The fit stage sits between them and
+    // is either a linear chain (contain/cover/stretch) or a split+overlay subgraph
+    // (blur fill), so it must be emitted separately.
+    const pre: string[] = [];
     if (!s.isImage) {
-      vChain.push(`trim=start=${s.trimIn.toFixed(3)}:end=${s.trimOut.toFixed(3)}`);
-      vChain.push("setpts=PTS-STARTPTS");
-      if (Math.abs(s.speed - 1) > 0.001) vChain.push(`setpts=${(1 / s.speed).toFixed(6)}*PTS`);
+      pre.push(`trim=start=${s.trimIn.toFixed(3)}:end=${s.trimOut.toFixed(3)}`);
+      if (s.reverse) pre.push("reverse");          // 倒放：逆序整段（缓冲整段，故仅适合短片段）
+      pre.push("setpts=PTS-STARTPTS");
+      if (Math.abs(s.speed - 1) > 0.001) pre.push(`setpts=${(1 / s.speed).toFixed(6)}*PTS`);
     } else {
-      vChain.push("setpts=PTS-STARTPTS");
+      pre.push("setpts=PTS-STARTPTS");
     }
-    vChain.push(...fitChain(s.fit, w, h));
-    vChain.push("setsar=1");
-    vChain.push(`fps=${fps}`);
-    vChain.push(...colorChain(s.effects));
-    vChain.push("format=yuv420p");
     // Pin the timebase so every segment matches when folded. concat emits a
     // microsecond timebase (1/1000000) while fps-filtered segments are 1/fps;
     // feeding a concat (hard cut) output into a later xfade alongside a fresh
     // segment then fails with "timebase ... do not match" → "Failed to
     // configure output pad". settb keeps all combine inputs on 1/fps.
-    vChain.push(`settb=1/${fps}`);
-    parts.push(`[${i}:v]${vChain.join(",")}[v${i}]`);
+    const post: string[] = ["setsar=1", `fps=${fps}`, ...colorChain(s.effects), "format=yuv420p", `settb=1/${fps}`];
+
+    if (s.fit === "blur") {
+      // 模糊填充：同一画面放大铺满 + 高斯/盒式模糊作背景，原画完整居中叠加，消除黑边。
+      parts.push(`[${i}:v]${pre.join(",")},split[bg${i}][fg${i}]`);
+      parts.push(`[bg${i}]scale=${w}:${h}:force_original_aspect_ratio=increase,crop=${w}:${h},boxblur=20:2,setsar=1[bgb${i}]`);
+      parts.push(`[fg${i}]scale=${w}:${h}:force_original_aspect_ratio=decrease,setsar=1[fgs${i}]`);
+      parts.push(`[bgb${i}][fgs${i}]overlay=(W-w)/2:(H-h)/2,${post.join(",")}[v${i}]`);
+    } else {
+      parts.push(`[${i}:v]${[...pre, ...fitChain(s.fit, w, h), ...post].join(",")}[v${i}]`);
+    }
     vLabels.push(`[v${i}]`);
 
     // ── audio chain ── (real audio when present, otherwise silence of clip length)
     if (s.hasAudio) {
-      const aChain: string[] = [
-        `atrim=start=${s.trimIn.toFixed(3)}:end=${s.trimOut.toFixed(3)}`,
-        "asetpts=PTS-STARTPTS",
-      ];
+      const aChain: string[] = [`atrim=start=${s.trimIn.toFixed(3)}:end=${s.trimOut.toFixed(3)}`];
+      if (s.reverse) aChain.push("areverse");      // 倒放：音频同步逆序
+      aChain.push("asetpts=PTS-STARTPTS");
       if (Math.abs(s.speed - 1) > 0.001) aChain.push(...buildAtempoFilters(s.speed));
       aChain.push("aformat=sample_fmts=fltp:channel_layouts=stereo:sample_rates=44100");
       parts.push(`[${i}:a]${aChain.join(",")}[a${i}]`);
@@ -428,7 +437,7 @@ export async function composeTimeline(doc: EditorDoc, opts: ComposeOptions): Pro
       }
       const trimIn = isImage ? 0 : c.trimIn;
       const trimOut = isImage ? Math.max(0.05, c.trimOut - c.trimIn) : c.trimOut;
-      const seg: Segment = { isImage, hasAudio, trimIn, trimOut, speed: c.speed ?? 1, effects: c.effects, transition: c.transitionIn, fit: c.fit };
+      const seg: Segment = { isImage, hasAudio, trimIn, trimOut, speed: c.speed ?? 1, effects: c.effects, transition: c.transitionIn, fit: c.fit, reverse: c.reverse };
       segs.push(seg);
       if (isImage) inputArgs.push("-loop", "1", "-t", segmentDuration(seg).toFixed(3), "-i", p);
       else inputArgs.push("-i", p);

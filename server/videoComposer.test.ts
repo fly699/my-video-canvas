@@ -38,6 +38,28 @@ describe("buildFilterGraph (single-pass composer)", () => {
     expect(s).not.toContain("force_original_aspect_ratio");
   });
 
+  it("fit mode: blur emits split + blurred cover background overlaid by contain foreground", () => {
+    const g = buildFilterGraph([{ isImage: false, hasAudio: true, trimIn: 0, trimOut: 2, speed: 1, fit: "blur" }], OPTS).filterComplex;
+    expect(g).toContain("split[bg0][fg0]");
+    // background: cover-scale + crop + blur
+    expect(g).toContain("[bg0]scale=1920:1080:force_original_aspect_ratio=increase,crop=1920:1080,boxblur=20:2");
+    // foreground: contain-scale, then centered overlay → normalized output [v0]
+    expect(g).toContain("[fg0]scale=1920:1080:force_original_aspect_ratio=decrease");
+    expect(g).toContain("overlay=(W-w)/2:(H-h)/2");
+    expect(g).toContain("[v0]");
+  });
+
+  it("reverse: adds reverse (video) + areverse (audio) before setpts/atempo", () => {
+    const g = buildFilterGraph([{ isImage: false, hasAudio: true, trimIn: 1, trimOut: 4, speed: 2, reverse: true }], OPTS).filterComplex;
+    // video: trim → reverse → setpts → speed
+    expect(g).toMatch(/trim=start=1\.000:end=4\.000,reverse,setpts=PTS-STARTPTS,setpts=0\.500000\*PTS/);
+    // audio: atrim → areverse → asetpts → atempo
+    expect(g).toMatch(/atrim=start=1\.000:end=4\.000,areverse,asetpts=PTS-STARTPTS,atempo/);
+    // an image segment (no reverse semantics) must NOT get a reverse filter
+    const gi = buildFilterGraph([{ isImage: true, hasAudio: false, trimIn: 0, trimOut: 2, speed: 1, reverse: true }], OPTS).filterComplex;
+    expect(gi).not.toContain("reverse");
+  });
+
   it("injects setpts speed change for sped-up clips", () => {
     const segs: Segment[] = [{ isImage: false, hasAudio: true, trimIn: 0, trimOut: 10, speed: 2 }];
     const g = buildFilterGraph(segs, OPTS);

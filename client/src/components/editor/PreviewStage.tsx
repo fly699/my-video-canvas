@@ -189,6 +189,20 @@ export function PreviewStage() {
               // main full-frame clip — click to select; sizing via 画面适配
               const common = { onPointerDown: (e: React.PointerEvent) => { e.stopPropagation(); selectClip(clip.id); } };
               const st: React.CSSProperties = { position: "absolute", inset: 0, objectFit: objFit, filter: cssFilter(clip), outline: selected ? `2px solid ${EC.accent}` : "none", outlineOffset: -2 };
+              // 模糊填充：近似预览 = 模糊放大的同画面铺满作背景 + 原画完整居中（导出由后端为准）
+              if (clip.fit === "blur") {
+                const bg: React.CSSProperties = { position: "absolute", inset: 0, width: "100%", height: "100%", objectFit: "cover", filter: "blur(22px) brightness(0.85)", transform: "scale(1.12)", pointerEvents: "none" };
+                const fg: React.CSSProperties = { position: "absolute", inset: 0, objectFit: "contain", filter: cssFilter(clip), outline: selected ? `2px solid ${EC.accent}` : "none", outlineOffset: -2 };
+                return (
+                  <div key={clip.id} style={{ position: "absolute", inset: 0 }}>
+                    {clip.kind === "image" ? (
+                      <><img src={clip.assetUrl} alt="" style={bg} /><img {...common} src={clip.assetUrl} alt="" style={fg} /></>
+                    ) : (
+                      <><video src={clip.assetUrl} muted autoPlay loop playsInline style={bg} /><video {...common} ref={(el) => { if (el) mediaRefs.current.set(clip.id, el); else mediaRefs.current.delete(clip.id); }} src={clip.assetUrl} playsInline style={fg} /></>
+                    )}
+                  </div>
+                );
+              }
               if (clip.kind === "image") return <img key={clip.id} {...common} src={clip.assetUrl} alt="" style={st} />;
               if (clip.kind === "video") return <video key={clip.id} {...common} ref={(el) => { if (el) mediaRefs.current.set(clip.id, el); else mediaRefs.current.delete(clip.id); }} src={clip.assetUrl} playsInline style={st} />;
               return null;

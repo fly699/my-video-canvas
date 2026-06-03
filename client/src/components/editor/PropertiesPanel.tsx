@@ -157,22 +157,27 @@ export function PropertiesPanel() {
             <Slider label={`音量 ${Math.round((c.volume ?? 1) * 100)}%`} min={0} max={2} step={0.05} value={c.volume ?? 1} onChange={(v) => update(c.id, { volume: v })} />
             <Slider label={`淡入 ${(c.fadeIn ?? 0).toFixed(1)}s`} min={0} max={5} step={0.1} value={c.fadeIn ?? 0} onChange={(v) => update(c.id, { fadeIn: v })} />
             <Slider label={`淡出 ${(c.fadeOut ?? 0).toFixed(1)}s`} min={0} max={5} step={0.1} value={c.fadeOut ?? 0} onChange={(v) => update(c.id, { fadeOut: v })} />
+            <button
+              onClick={() => update(c.id, { reverse: !c.reverse })}
+              title="倒放：本片段逆序播放（导出时生效；预览为正放近似）"
+              style={{ width: "100%", marginTop: 2, padding: "7px 0", fontSize: 11.5, borderRadius: 7, cursor: "pointer", border: `1px solid ${c.reverse ? EC.accent : EC.border}`, background: c.reverse ? EC.accentSoft : "transparent", color: c.reverse ? EC.accent : EC.t2 }}
+            >{c.reverse ? "✓ 倒放已开启" : "倒放（逆序播放）"}</button>
           </Section>
         )}
 
         {(c.kind === "video" || c.kind === "image") && (
           <Section title="画面适配">
             <div style={{ display: "flex", gap: 6 }}>
-              {([["contain", "适应"], ["cover", "填充"], ["stretch", "拉伸"]] as const).map(([v, label]) => {
+              {([["contain", "适应"], ["cover", "填充"], ["stretch", "拉伸"], ["blur", "模糊"]] as const).map(([v, label]) => {
                 const active = (c.fit ?? "contain") === v;
                 return (
                   <button key={v} onClick={() => update(c.id, { fit: v })}
-                    title={v === "contain" ? "完整显示，留黑边" : v === "cover" ? "铺满画面，裁掉溢出" : "拉伸铺满（可能变形）"}
+                    title={v === "contain" ? "完整显示，留黑边" : v === "cover" ? "铺满画面，裁掉溢出" : v === "stretch" ? "拉伸铺满（可能变形）" : "模糊填充：原画完整居中，模糊放大的同画面铺满背景（消除黑边）"}
                     style={{ flex: 1, padding: "7px 0", fontSize: 11.5, borderRadius: 7, cursor: "pointer", border: `1px solid ${active ? EC.accent : EC.border}`, background: active ? EC.accentSoft : "transparent", color: active ? EC.accent : EC.t2 }}>{label}</button>
                 );
               })}
             </div>
-            <div style={{ fontSize: 10.5, color: EC.t4 }}>适应=留黑边 · 填充=铺满裁切 · 拉伸=变形铺满（针对主轨整屏画面）</div>
+            <div style={{ fontSize: 10.5, color: EC.t4 }}>适应=留黑边 · 填充=铺满裁切 · 拉伸=变形铺满 · 模糊=模糊背景填黑边（针对主轨整屏画面）</div>
           </Section>
         )}
 
