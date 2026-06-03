@@ -2,7 +2,7 @@ import { useState, useEffect, useRef } from "react";
 import { useLocation, useParams } from "wouter";
 import { trpc } from "@/lib/trpc";
 import { toast } from "sonner";
-import { ArrowLeft, Plus, Film, Trash2, Loader2, Clapperboard, Check, Download } from "lucide-react";
+import { ArrowLeft, Plus, Film, Trash2, Loader2, Clapperboard, Check, Download, Undo2, Redo2 } from "lucide-react";
 import { useEditorStore } from "@/components/editor/editorStore";
 import { MediaBin } from "@/components/editor/MediaBin";
 import { Timeline } from "@/components/editor/Timeline";
@@ -99,7 +99,25 @@ function EditorWorkspace({ id }: { id: number }) {
 
   const load = useEditorStore((s) => s.load);
   const doc = useEditorStore((s) => s.doc);
+  const undo = useEditorStore((s) => s.undo);
+  const redo = useEditorStore((s) => s.redo);
+  const canUndo = useEditorStore((s) => s.past.length > 0);
+  const canRedo = useEditorStore((s) => s.future.length > 0);
   const loadedFor = useRef<number | null>(null);
+
+  // Undo/redo keyboard shortcuts (ignored while typing in a field).
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (!(e.ctrlKey || e.metaKey)) return;
+      const t = e.target as HTMLElement;
+      if (t.closest("input, textarea, [contenteditable='true']")) return;
+      const k = e.key.toLowerCase();
+      if (k === "z" && !e.shiftKey) { e.preventDefault(); useEditorStore.getState().undo(); }
+      else if ((k === "z" && e.shiftKey) || k === "y") { e.preventDefault(); useEditorStore.getState().redo(); }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, []);
 
   // ── Export (single-pass render) ──
   const [jobId, setJobId] = useState<string | null>(null);
@@ -179,6 +197,18 @@ function EditorWorkspace({ id }: { id: number }) {
           {saveState === "saving" ? <><Loader2 size={11} className="animate-spin" /> 保存中</> : saveState === "saved" ? <><Check size={11} /> 已保存</> : null}
         </span>
         <div style={{ flex: 1 }} />
+        <button
+          onClick={() => undo()}
+          disabled={!canUndo}
+          title="撤销 (Ctrl+Z)"
+          style={{ ...iconBtn, opacity: canUndo ? 1 : 0.4, cursor: canUndo ? "pointer" : "default" }}
+        ><Undo2 size={16} /></button>
+        <button
+          onClick={() => redo()}
+          disabled={!canRedo}
+          title="重做 (Ctrl+Shift+Z)"
+          style={{ ...iconBtn, opacity: canRedo ? 1 : 0.4, cursor: canRedo ? "pointer" : "default" }}
+        ><Redo2 size={16} /></button>
         <CanvasSettings />
         {exportUrl && (
           <button onClick={() => downloadMedia(exportUrl, `${displayName}.mp4`)} style={{ ...primaryBtn, background: "transparent", color: ACCENT, border: `1px solid ${ACCENT}` }}>
