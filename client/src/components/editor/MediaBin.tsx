@@ -1,12 +1,13 @@
-import { useState } from "react";
+import { useState, useRef } from "react";
 import { trpc } from "@/lib/trpc";
 import { toast } from "sonner";
-import { FileVideo, FileAudio, FileImage, Search, Type as TypeIcon, Captions, Plus, Music, RefreshCw } from "lucide-react";
+import { FileVideo, FileAudio, FileImage, Search, Type as TypeIcon, Captions, Plus, Music, RefreshCw, Upload } from "lucide-react";
 import { MediaPreview, type PreviewAsset } from "./MediaPreview";
 import { MusicGen } from "./MusicGen";
 import { EC } from "./theme";
 import { useEditorStore, kindFromAssetType, trackEnd, clipDuration } from "./editorStore";
 import { probeMediaDuration } from "./theme";
+import { parseSrt } from "@shared/srt";
 
 type TypeFilter = "" | "image" | "video" | "audio";
 
@@ -35,6 +36,7 @@ export function MediaBin() {
 
   const addClip = useEditorStore((s) => s.addClip);
   const transcribeMut = trpc.subtitle.transcribe.useMutation();
+  const srtRef = useRef<HTMLInputElement>(null);
 
   // AI auto-subtitle: transcribe the first video/audio clip with Whisper and lay
   // the result onto the text track as timed text clips.
@@ -58,6 +60,23 @@ export function MediaBin() {
       },
       onError: (e) => toast.error("转写失败：" + e.message),
     });
+  }
+
+  // Import an .srt / .vtt file: parse cues and lay them on the text track as
+  // timed text clips (offset from the timeline origin).
+  function importSrt(file: File) {
+    file.text().then((txt) => {
+      const cues = parseSrt(txt);
+      if (cues.length === 0) { toast.error("未解析到字幕（请检查 SRT/VTT 格式）"); return; }
+      const doc = useEditorStore.getState().doc;
+      if (!doc) return;
+      const textTrack = doc.tracks.find((t) => t.type === "text") ?? doc.tracks[0];
+      cues.forEach((c) => addClip(textTrack.id, {
+        kind: "text", start: c.start, trimIn: 0, trimOut: Math.max(0.3, c.end - c.start),
+        text: { content: c.text, size: 48, color: "#ffffff", motionStyle: "none" },
+      }));
+      toast.success(`已导入 ${cues.length} 条字幕`);
+    }).catch(() => toast.error("读取文件失败"));
   }
 
   // Click-to-add: append the asset to the matching track at its end.
@@ -165,6 +184,14 @@ export function MediaBin() {
           onClick={autoSubtitle}
           style={{ width: "100%", marginTop: 6, display: "flex", alignItems: "center", justifyContent: "center", gap: 6, padding: "7px 0", fontSize: 12, borderRadius: 7, border: `1px dashed ${EC.border}`, background: "transparent", color: transcribeMut.isPending ? EC.t4 : EC.t2, cursor: transcribeMut.isPending ? "default" : "pointer" }}
         ><Captions size={13} /> {transcribeMut.isPending ? "转写中…" : "AI 自动字幕"}</button>
+        <button
+          onClick={() => srtRef.current?.click()}
+          style={{ width: "100%", marginTop: 6, display: "flex", alignItems: "center", justifyContent: "center", gap: 6, padding: "7px 0", fontSize: 12, borderRadius: 7, border: `1px dashed ${EC.border}`, background: "transparent", color: EC.t2, cursor: "pointer" }}
+        ><Upload size={13} /> 导入 SRT 字幕</button>
+        <input
+          ref={srtRef} type="file" accept=".srt,.vtt,text/plain" style={{ display: "none" }}
+          onChange={(e) => { const f = e.target.files?.[0]; if (f) importSrt(f); e.target.value = ""; }}
+        />
         <button
           onClick={() => setMusicOpen(true)}
           style={{ width: "100%", marginTop: 6, display: "flex", alignItems: "center", justifyContent: "center", gap: 6, padding: "7px 0", fontSize: 12, borderRadius: 7, border: `1px solid ${EC.accent}`, background: EC.accentSoft, color: EC.accent, cursor: "pointer" }}

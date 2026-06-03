@@ -14,6 +14,12 @@ export interface ComposeOptions {
   userId: number;
   projectName?: string | null;
   onProgress?: (pct: number, stage: string) => void;
+  // Export overrides (optional). Default: doc dimensions/fps, mp4/H.264, high quality.
+  format?: "mp4" | "webm" | "mov";
+  quality?: "high" | "medium" | "low";
+  width?: number;   // output width override (even); preserves aspect at the caller
+  height?: number;  // output height override (even)
+  fps?: number;     // output fps override
 }
 export interface ComposeResult {
   url: string;
@@ -479,9 +485,12 @@ export async function composeTimeline(doc: EditorDoc, opts: ComposeOptions): Pro
 
     // libx264 + yuv420p require EVEN dimensions — odd width/height (e.g. from a
     // custom canvas size) makes format=yuv420p fail and the whole graph produce
-    // no packets (both encoders error -22). Round down to even.
-    const W = Math.max(2, doc.width - (doc.width % 2));
-    const H = Math.max(2, doc.height - (doc.height % 2));
+    // no packets (both encoders error -22). Round down to even. Resolution/fps
+    // may be overridden by the export settings (default = doc dimensions).
+    const even = (n: number) => Math.max(2, Math.round(n) - (Math.round(n) % 2));
+    const W = even(opts.width ?? doc.width);
+    const H = even(opts.height ?? doc.height);
+    const fps = Math.max(1, Math.min(120, Math.round(opts.fps ?? doc.fps)));
 
     // Positioned text/subtitles → ASS file (referenced by the ass filter).
     let assPath: string | undefined;
@@ -491,18 +500,32 @@ export async function composeTimeline(doc: EditorDoc, opts: ComposeOptions): Pro
       tmpFiles.push(assPath);
     }
 
-    const graph = buildFilterGraph(segs, { width: W, height: H, fps: doc.fps }, overlays, { audioClips, assPath });
+    const graph = buildFilterGraph(segs, { width: W, height: H, fps }, overlays, { audioClips, assPath });
 
-    const outName = `compose-${Date.now()}-${Math.random().toString(36).slice(2)}.mp4`;
+    // Export container/codec/quality. Default mp4 + H.264 + high.
+    const format = opts.format ?? "mp4";
+    const quality = opts.quality ?? "high";
+    const ext = format === "webm" ? "webm" : format === "mov" ? "mov" : "mp4";
+    const mimeType = format === "webm" ? "video/webm" : format === "mov" ? "video/quicktime" : "video/mp4";
+    const isWebm = format === "webm";
+    const h264Crf = ({ high: "18", medium: "22", low: "27" } as const)[quality];
+    const vp9Crf = ({ high: "28", medium: "33", low: "38" } as const)[quality];
+    const vCodec = isWebm
+      ? ["-c:v", "libvpx-vp9", "-b:v", "0", "-crf", vp9Crf, "-row-mt", "1", "-pix_fmt", "yuv420p"]
+      : ["-c:v", "libx264", "-preset", "medium", "-crf", h264Crf, "-pix_fmt", "yuv420p"];
+    const aCodec = isWebm ? ["-c:a", "libopus", "-b:a", "160k"] : ["-c:a", "aac", "-b:a", "192k"];
+    const containerArgs = isWebm ? [] : ["-movflags", "+faststart"];
+
+    const outName = `compose-${Date.now()}-${Math.random().toString(36).slice(2)}.${ext}`;
     const outPath = path.join(os.tmpdir(), outName);
 
     const args = [
       ...inputArgs,
       "-filter_complex", graph.filterComplex,
       "-map", graph.outV, "-map", graph.outA,
-      "-c:v", "libx264", "-preset", "medium", "-crf", "18", "-pix_fmt", "yuv420p",
-      "-c:a", "aac", "-b:a", "192k",
-      "-movflags", "+faststart",
+      ...vCodec,
+      ...aCodec,
+      ...containerArgs,
       "-y", outPath,
     ];
 
@@ -541,8 +564,8 @@ export async function composeTimeline(doc: EditorDoc, opts: ComposeOptions): Pro
     tmpFiles.push(outPath);
     await assertObjectStorageWritable();
     const namePart = sanitizeFilenamePrefix(opts.projectName || "成片") || "成片";
-    const key = `u/${opts.userId}/editor/${namePart}-${Date.now()}.mp4`;
-    const { url, key: storageKey } = await storagePut(key, outBuffer, "video/mp4");
+    const key = `u/${opts.userId}/editor/${namePart}-${Date.now()}.${ext}`;
+    const { url, key: storageKey } = await storagePut(key, outBuffer, mimeType);
 
     report(100, "完成");
     return { url, storageKey, duration: graph.duration };
