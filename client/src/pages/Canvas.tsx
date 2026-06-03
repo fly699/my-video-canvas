@@ -502,6 +502,26 @@ function CanvasInner({ projectId }: { projectId: number }) {
   );
   const mmDragRef = useRef<{ sx: number; sy: number; sb: number; sr: number } | null>(null);
   const mmResizeRef = useRef<{ sx: number; sy: number; sw: number; sh: number } | null>(null);
+
+  // Keep the floating minimap + toolbar on-screen when the window shrinks (e.g.
+  // exiting F11). Persisted pixel offsets from a larger window can push them off
+  // the smaller viewport otherwise.
+  useEffect(() => {
+    const fix = () => {
+      setMmPos((p) => ({
+        bottom: Math.max(4, Math.min(p.bottom, Math.max(4, window.innerHeight - mmSize.h - 4))),
+        right: Math.max(4, Math.min(p.right, Math.max(4, window.innerWidth - mmSize.w - 4))),
+      }));
+      setBarAlong((a) => {
+        const horiz = barEdge === "bottom" || barEdge === "top";
+        const limit = horiz ? Math.max(0, window.innerWidth / 2 - 260) : Math.max(0, window.innerHeight / 2 - 160);
+        return Math.max(-limit, Math.min(limit, a));
+      });
+    };
+    window.addEventListener("resize", fix);
+    fix();
+    return () => window.removeEventListener("resize", fix);
+  }, [setMmPos, setBarAlong, mmSize.h, mmSize.w, barEdge]);
   const [renamingProject, setRenamingProject] = useState(false);
   const [renameValue, setRenameValue] = useState("");
   const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
