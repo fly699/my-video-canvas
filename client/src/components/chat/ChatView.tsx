@@ -4,6 +4,7 @@ import { Lock, Paperclip, Send, ShieldCheck, Users, Trash2, LogOut, X, FileIcon,
 import { useChat, SERVERLESS_ENCRYPT_PROMPT_BYTES } from "@/hooks/useChat";
 import { useAuth } from "@/_core/hooks/useAuth";
 import { trpc } from "@/lib/trpc";
+import { goToAdminTab } from "@/lib/adminNav";
 import type { ChatWireMessage, ChatFileRef } from "@shared/types";
 import { toast } from "sonner";
 import { C, avatarGrad, initials } from "./chatTheme";
@@ -312,7 +313,7 @@ function DownloadApproveInline({ grantId }: { grantId: number }) {
       <button disabled={decideMut.isPending}
         onClick={() => decideMut.mutate({ grantId, approve: false }, { onSuccess: () => { toast.success("已拒绝"); after("denied"); }, onError: (e) => toast.error(e.message) })}
         style={{ fontSize: 12, padding: "4px 10px", borderRadius: 7, border: `1px solid ${C.border}`, background: "transparent", color: "oklch(0.74 0.18 25)", cursor: "pointer" }}>拒绝</button>
-      <button onClick={() => navigate("/admin")} style={{ fontSize: 12, padding: "4px 10px", borderRadius: 7, border: `1px solid ${C.border}`, background: "transparent", color: C.t3, cursor: "pointer" }}>查看</button>
+      <button onClick={() => goToAdminTab(navigate, "downloads")} style={{ fontSize: 12, padding: "4px 10px", borderRadius: 7, border: `1px solid ${C.border}`, background: "transparent", color: C.t3, cursor: "pointer" }}>查看</button>
     </div>
   );
 }

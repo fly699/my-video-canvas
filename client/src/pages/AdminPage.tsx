@@ -4,6 +4,7 @@ import { trpc } from "@/lib/trpc";
 import { useAuth } from "@/_core/hooks/useAuth";
 import { Shield, Trash2, Plus, ToggleLeft, ToggleRight, ClipboardList, RefreshCw, HardDrive, ArrowLeft, Loader2, CheckCircle2, XCircle, DownloadCloud, RotateCw, GitCommit, X, Check, CheckSquare, Square, Download, Play } from "lucide-react";
 import { ComfyStressPanel } from "@/components/admin/ComfyStressPanel";
+import { adminTabFromUrl, ADMIN_TAB_EVENT } from "@/lib/adminNav";
 
 type EntryType = "ip" | "user";
 type Tab = "whitelist" | "logs" | "storage" | "chat" | "comfyStress" | "assets" | "downloads" | "system";
@@ -30,8 +31,21 @@ const ACTION_COLORS: Record<string, string> = {
 
 export default function AdminPage() {
   const { user, loading: authLoading } = useAuth();
-  const [activeTab, setActiveTab] = useState<Tab>("whitelist");
+  // Initial tab comes from ?tab= so deep links (e.g. a download-approval "查看")
+  // land on the right sub-page instead of the default.
+  const [activeTab, setActiveTab] = useState<Tab>(() => adminTabFromUrl() as Tab);
   const [, navigate] = useLocation();
+
+  // Switch tab when a deep-link event fires while this page is already mounted
+  // (a query-only URL change doesn't remount the page).
+  useEffect(() => {
+    const onSetTab = (e: Event) => {
+      const tab = (e as CustomEvent<string>).detail;
+      if (tab) setActiveTab(tab as Tab);
+    };
+    window.addEventListener(ADMIN_TAB_EVENT, onSetTab);
+    return () => window.removeEventListener(ADMIN_TAB_EVENT, onSetTab);
+  }, []);
 
   // 「系统更新」标签红点：是否有新版本（服务端 15 分钟缓存）
   const { data: updateInfo } = trpc.admin.update.available.useQuery(undefined, {

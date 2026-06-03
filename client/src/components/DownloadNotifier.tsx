@@ -5,6 +5,7 @@ import { toast } from "sonner";
 import { Bell } from "lucide-react";
 import { useAuth } from "@/_core/hooks/useAuth";
 import { trpc } from "@/lib/trpc";
+import { goToAdminTab } from "@/lib/adminNav";
 
 interface Notice {
   grantId: number;
@@ -58,7 +59,7 @@ export function DownloadNotifier() {
       {/* Persistent un-handled indicator (bottom-left) */}
       {pending > 0 && (
         <button
-          onClick={() => navigate("/admin")}
+          onClick={() => goToAdminTab(navigate, "downloads")}
           title="有待审批的下载申请，点击前往审批"
           style={{
             position: "fixed", left: 16, bottom: 16, zIndex: 1090,
@@ -93,7 +94,7 @@ export function DownloadNotifier() {
                   {Array.from({ length: 24 }, (_, i) => i + 1).map((h) => <option key={h} value={h}>{h} 小时</option>)}
                 </select>
                 <button onClick={() => dismiss(n.grantId)} style={{ fontSize: 12, padding: "5px 10px", borderRadius: 7, border: "1px solid var(--c-bd2)", background: "transparent", color: "var(--c-t3)", cursor: "pointer" }}>忽略</button>
-                <button onClick={() => { dismiss(n.grantId); navigate("/admin"); }} style={{ fontSize: 12, padding: "5px 10px", borderRadius: 7, border: "1px solid var(--c-bd2)", background: "transparent", color: "var(--c-t2)", cursor: "pointer" }}>查看</button>
+                <button onClick={() => { dismiss(n.grantId); goToAdminTab(navigate, "downloads"); }} style={{ fontSize: 12, padding: "5px 10px", borderRadius: 7, border: "1px solid var(--c-bd2)", background: "transparent", color: "var(--c-t2)", cursor: "pointer" }}>查看</button>
                 <button
                   disabled={decideMut.isPending}
                   onClick={() => decideMut.mutate(
