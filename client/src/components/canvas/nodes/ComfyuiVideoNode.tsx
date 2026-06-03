@@ -14,6 +14,7 @@ import {
   ChevronDown, ChevronRight, Server, Boxes, Languages, Copy, Lock, Unlock, Ban, Sparkles, Layers,
 } from "lucide-react";
 import { isOwnStorageUrl } from "@/lib/ownStorage";
+import { useComfyUpstreamAutoFill } from "./useComfyUpstreamAutoFill";
 import { LLMModelPicker, type LLMModelId } from "../LLMModelPicker";
 
 interface Props {
@@ -66,6 +67,7 @@ const labelStyle: React.CSSProperties = {
 export const ComfyuiVideoNode = memo(function ComfyuiVideoNode({ id, selected, data }: Props) {
   const updateNodeData = useCanvasStore((s) => s.updateNodeData);
   const payload = data.payload;
+  useComfyUpstreamAutoFill(id, payload, updateNodeData);
   // Auto-prefer the upstream AI temporary public URL as the reference source when
   // the admin toggle is on and that URL probes alive (no-op when off / default).
   const preferUpstreamRef = usePreferUpstreamRefSource();

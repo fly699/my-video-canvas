@@ -13,6 +13,7 @@ import {
   Languages, Check, Copy, Lock, Unlock, Ban, Plus, Layers,
 } from "lucide-react";
 import { isOwnStorageUrl } from "@/lib/ownStorage";
+import { useComfyUpstreamAutoFill } from "./useComfyUpstreamAutoFill";
 import { downloadMedia } from "@/lib/download";
 import { ImageLightbox } from "../ImageLightbox";
 import { MaskCanvas } from "./MaskCanvas";
@@ -66,6 +67,7 @@ const labelStyle: React.CSSProperties = {
 export const ComfyuiImageNode = memo(function ComfyuiImageNode({ id, selected, data }: Props) {
   const updateNodeData = useCanvasStore((s) => s.updateNodeData);
   const payload = data.payload;
+  useComfyUpstreamAutoFill(id, payload, updateNodeData);
   // Auto-prefer the upstream AI temporary public URL as the reference source when
   // the admin toggle is on and that URL probes alive (no-op when off / default).
   const preferUpstreamRef = usePreferUpstreamRefSource();
