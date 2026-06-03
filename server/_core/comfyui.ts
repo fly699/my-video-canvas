@@ -1296,6 +1296,13 @@ export async function analyzeWorkflow(
     const inputs = node.inputs ?? {};
 
     if (ct === "CLIPTextEncode") {
+      // Skip when `text` is wired from an upstream node (array ref): the prompt
+      // is produced by another node (e.g. "easy promptLine" which splits a
+      // multi-line prompt into a list → one image per line). Exposing it here as
+      // an editable field would let the user overwrite the connection and
+      // silently collapse the batch to a single image. The upstream source node
+      // is surfaced instead by the generic prompt/text fallback below.
+      if (Array.isArray(inputs.text)) continue;
       const isPositive = !negativeClipNodeIds.has(nodeId);
       detectedParams.push({
         nodeId, fieldPath: "inputs.text",
@@ -1391,6 +1398,23 @@ export async function analyzeWorkflow(
     } else if (VIDEO_OUTPUT_CLASS_TYPES.has(ct)) {
       outputNodeIds.push(nodeId);
       hasVideo = true;
+    } else {
+      // Generic fallback for unrecognized nodes: surface a LITERAL `prompt` /
+      // `text` string so custom prompt-source nodes (e.g. "easy promptLine",
+      // wildcard / batch-prompt nodes) become editable. Multi-line prompts in
+      // such nodes drive ComfyUI's per-line list execution → multiple images.
+      // Only literal strings are exposed; wired (array) inputs are left alone.
+      for (const field of ["prompt", "text"]) {
+        if (typeof (inputs as Record<string, unknown>)[field] === "string") {
+          detectedParams.push({
+            nodeId, fieldPath: `inputs.${field}`,
+            label: node._meta?.title?.trim() || "提示词",
+            type: "text",
+            defaultValue: (inputs as Record<string, unknown>)[field] as string,
+          });
+          break;
+        }
+      }
     }
   }
 
