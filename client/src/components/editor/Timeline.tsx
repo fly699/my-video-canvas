@@ -312,7 +312,7 @@ export function Timeline() {
       </div>
 
       <div style={{ display: "flex", alignItems: "center", gap: 6, padding: "3px 10px", borderTop: `1px solid ${EC.border}`, fontSize: 10, color: EC.t4, flexShrink: 0 }}>
-        <Scissors size={11} /> 拖动移动/换轨 · 拖两端裁剪 · 拖标尺定位 · 右键片段菜单 · Del 删除 · S 分割 · Ctrl+D 复制
+        <Scissors size={11} /> 拖动移动/换轨 · 拖两端裁剪 · 拖标尺定位 · 右键片段菜单 · Del 删除 · S 分割 · Ctrl+D 复制 · 空格 播放/暂停 · ←/→ 逐帧 · Home/End 首尾
       </div>
 
       {menu && (() => {
