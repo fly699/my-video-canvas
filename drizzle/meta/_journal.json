@@ -232,6 +232,13 @@
       "when": 1780500700000,
       "tag": "0032_edit_sessions",
       "breakpoints": true
+    },
+    {
+      "idx": 33,
+      "version": "5",
+      "when": 1780500800000,
+      "tag": "0033_comfy_node_templates",
+      "breakpoints": true
     }
   ]
 }

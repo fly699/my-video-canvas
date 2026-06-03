@@ -4,7 +4,7 @@ import { NODE_TYPE_LIST } from "../../lib/nodeConfig";
 import type { NodeType } from "../../../../shared/types";
 import {
   FileText, Copy, Trash2, Plus, Play, Pin, PinOff, ChevronUp, X, GripHorizontal,
-  BookmarkPlus, Bookmark, Download, Upload,
+  BookmarkPlus, Bookmark, Download, Upload, Boxes,
 } from "lucide-react";
 import type { NodeTemplate } from "../../lib/nodeTemplates";
 import { NODE_ICONS } from "../../lib/nodeConfig";
@@ -17,6 +17,8 @@ interface ContextMenuProps {
   nodePinned?: boolean;
   onClose: () => void;
   onAddNode?: (type: NodeType) => void;
+  /** Canvas node-picker only: open the ComfyUI node template library. Rendered first. */
+  onOpenNodeLibrary?: () => void;
   onDeleteNode?: () => void;
   onDuplicateNode?: () => void;
   onRunWorkflow?: () => void;
@@ -37,7 +39,7 @@ interface ContextMenuProps {
 
 export function ContextMenu({
   x, y, type, nodeId, nodePinned,
-  onClose, onAddNode, onDeleteNode, onDuplicateNode, onRunWorkflow,
+  onClose, onAddNode, onOpenNodeLibrary, onDeleteNode, onDuplicateNode, onRunWorkflow,
   onTogglePin, onCollapse,
   nodeTemplates, onSaveTemplate, onApplyTemplate, onDeleteTemplate,
   onExportTemplates, onImportTemplates, onSaveToLibrary,
@@ -345,6 +347,36 @@ export function ContextMenu({
               scrollbarWidth: "thin",
               scrollbarColor: "var(--c-bd3) transparent",
             }}>
+              {/* ComfyUI 节点模板库快捷入口 — 置于列表第一位 */}
+              {onOpenNodeLibrary && (
+                <>
+                  <button
+                    onClick={() => { onOpenNodeLibrary(); if (!persistent) onClose(); }}
+                    style={{
+                      display: "flex", alignItems: "center", gap: 10, width: "100%",
+                      padding: "7px 8px", fontSize: 12, cursor: "pointer",
+                      background: "oklch(0.65 0.20 140 / 0.08)", border: "1px solid oklch(0.65 0.20 140 / 0.25)",
+                      textAlign: "left", color: "oklch(0.65 0.20 140)", borderRadius: 8,
+                      transition: "all 120ms ease",
+                    }}
+                    onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.background = "oklch(0.65 0.20 140 / 0.16)"; }}
+                    onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.background = "oklch(0.65 0.20 140 / 0.08)"; }}
+                  >
+                    <div
+                      style={{
+                        width: 22, height: 22, borderRadius: 6,
+                        display: "flex", alignItems: "center", justifyContent: "center",
+                        background: "oklch(0.65 0.20 140 / 0.18)", border: "1px solid oklch(0.65 0.20 140 / 0.4)",
+                        flexShrink: 0,
+                      }}
+                    >
+                      <Boxes className="w-3 h-3" style={{ color: "oklch(0.65 0.20 140)" }} />
+                    </div>
+                    <div style={{ fontWeight: 600, lineHeight: 1.2 }}>节点模板库</div>
+                  </button>
+                  <div style={{ height: 1, background: "var(--c-bd1)", margin: "4px 6px" }} />
+                </>
+              )}
               {/* ComfyUI nodes pinned to the top in a fixed order:
                   1. ComfyUI 图像
                   2. ComfyUI 视频

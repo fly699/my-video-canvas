@@ -41,6 +41,8 @@ import type {
   DownloadGrant,
   EditSession,
   InsertEditSession,
+  ComfyNodeTemplateRow,
+  InsertComfyNodeTemplate,
 } from "../../drizzle/schema";
 
 let nextId = 100;
@@ -1000,4 +1002,49 @@ export function devDeleteEditSession(id: number, userId: number): void {
   const s = editSessionsMap.get(id);
   if (!s || s.userId !== userId) return;
   s.deletedAt = now();
+}
+
+// ── ComfyUI node template library (shared) ─────────────────────────────────────
+const comfyTemplatesMap = new Map<number, ComfyNodeTemplateRow>();
+
+export function devListComfyNodeTemplates(): ComfyNodeTemplateRow[] {
+  return Array.from(comfyTemplatesMap.values())
+    .sort((a, b) => b.updatedAt.getTime() - a.updatedAt.getTime());
+}
+
+export function devGetComfyNodeTemplate(id: number): ComfyNodeTemplateRow | undefined {
+  return comfyTemplatesMap.get(id);
+}
+
+export function devCreateComfyNodeTemplate(data: InsertComfyNodeTemplate): ComfyNodeTemplateRow {
+  const id = newId();
+  const row: ComfyNodeTemplateRow = {
+    id,
+    userId: data.userId,
+    creatorName: data.creatorName ?? null,
+    label: data.label,
+    nodeType: data.nodeType,
+    payload: data.payload,
+    note: data.note ?? null,
+    useCloud: data.useCloud ?? null,
+    createdAt: now(),
+    updatedAt: now(),
+  };
+  comfyTemplatesMap.set(id, row);
+  return row;
+}
+
+export function devUpdateComfyNodeTemplate(
+  id: number,
+  patch: Partial<Pick<InsertComfyNodeTemplate, "label" | "note">>,
+): void {
+  const r = comfyTemplatesMap.get(id);
+  if (!r) return;
+  if (patch.label !== undefined) r.label = patch.label;
+  if (patch.note !== undefined) r.note = patch.note ?? null;
+  r.updatedAt = now();
+}
+
+export function devDeleteComfyNodeTemplate(id: number): void {
+  comfyTemplatesMap.delete(id);
 }

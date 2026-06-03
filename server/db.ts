@@ -62,6 +62,9 @@ import {
   editSessions,
   type EditSession,
   type InsertEditSession,
+  comfyNodeTemplates,
+  type ComfyNodeTemplateRow,
+  type InsertComfyNodeTemplate,
 } from "../drizzle/schema";
 import { ENV } from "./_core/env";
 import * as dev from "./_core/devStore";
@@ -1761,4 +1764,42 @@ export async function deleteEditSession(id: number, userId: number): Promise<voi
   if (!db) { if (DEV_MODE) { dev.devDeleteEditSession(id, userId); return; } throw new Error("DB unavailable"); }
   await db.update(editSessions).set({ deletedAt: new Date() })
     .where(and(eq(editSessions.id, id), eq(editSessions.userId, userId)));
+}
+
+// ── ComfyUI node template library (shared across all users) ────────────────────
+export async function listComfyNodeTemplates(): Promise<ComfyNodeTemplateRow[]> {
+  const db = await getDb();
+  if (!db) return DEV_MODE ? dev.devListComfyNodeTemplates() : [];
+  return db.select().from(comfyNodeTemplates).orderBy(desc(comfyNodeTemplates.updatedAt));
+}
+
+export async function getComfyNodeTemplate(id: number): Promise<ComfyNodeTemplateRow | undefined> {
+  const db = await getDb();
+  if (!db) return DEV_MODE ? dev.devGetComfyNodeTemplate(id) : undefined;
+  const rows = await db.select().from(comfyNodeTemplates).where(eq(comfyNodeTemplates.id, id)).limit(1);
+  return rows[0];
+}
+
+export async function createComfyNodeTemplate(data: InsertComfyNodeTemplate): Promise<ComfyNodeTemplateRow | null> {
+  const db = await getDb();
+  if (!db) { if (DEV_MODE) return dev.devCreateComfyNodeTemplate(data); throw new Error("DB unavailable"); }
+  const [header] = await db.insert(comfyNodeTemplates).values(data);
+  const insertId = (header as unknown as { insertId: number }).insertId;
+  const rows = await db.select().from(comfyNodeTemplates).where(eq(comfyNodeTemplates.id, insertId));
+  return rows[0] ?? null;
+}
+
+export async function updateComfyNodeTemplate(
+  id: number,
+  patch: Partial<Pick<InsertComfyNodeTemplate, "label" | "note">>,
+): Promise<void> {
+  const db = await getDb();
+  if (!db) { if (DEV_MODE) { dev.devUpdateComfyNodeTemplate(id, patch); return; } throw new Error("DB unavailable"); }
+  await db.update(comfyNodeTemplates).set(patch).where(eq(comfyNodeTemplates.id, id));
+}
+
+export async function deleteComfyNodeTemplate(id: number): Promise<void> {
+  const db = await getDb();
+  if (!db) { if (DEV_MODE) { dev.devDeleteComfyNodeTemplate(id); return; } throw new Error("DB unavailable"); }
+  await db.delete(comfyNodeTemplates).where(eq(comfyNodeTemplates.id, id));
 }

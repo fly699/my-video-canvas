@@ -32,7 +32,8 @@ import { FilmstripPanel } from "../components/canvas/FilmstripPanel";
 import { TimelinePanel } from "../components/canvas/TimelinePanel";
 import { isConnectionValid } from "../lib/connectionRules";
 import { listNodeTemplates, saveNodeTemplate, deleteNodeTemplate, exportNodeTemplatesJson, importNodeTemplatesJson } from "../lib/nodeTemplates";
-import { saveComfyNodeTemplate, isComfyNodeType, type ComfyNodeType } from "../lib/comfyNodeTemplates";
+import { isComfyNodeType, suggestComfyTemplateName, describeComfyTemplate, type ComfyNodeType } from "../lib/comfyNodeTemplates";
+import { SaveComfyTemplateDialog } from "../components/canvas/SaveComfyTemplateDialog";
 import { downloadMedia, downloadTextFile } from "@/lib/download";
 import { BeginnerGuide, ConnectionHintsPanel } from "../components/canvas/BeginnerGuide";
 import { HelpPanel } from "../components/canvas/HelpPanel";
@@ -385,6 +386,9 @@ function CanvasInner({ projectId }: { projectId: number }) {
   );
   const [showTemplates, setShowTemplates] = useState(false);
   const [showNodeLib, setShowNodeLib] = useState(false);
+  const [comfySaveTarget, setComfySaveTarget] = useState<
+    { nodeType: ComfyNodeType; payload: Record<string, unknown>; useCloud: boolean; defaultName: string } | null
+  >(null);
   const [showNodeSearch, setShowNodeSearch] = useState(false);
   const [showCollaborators, setShowCollaborators] = usePersistentState<boolean>(
     "ui:canvas:collab-open:v1", false, { validate: validateBool },
@@ -553,6 +557,7 @@ function CanvasInner({ projectId }: { projectId: number }) {
   );
 
   const utils = trpc.useUtils();
+  const createComfyTemplateMut = trpc.comfyTemplates.create.useMutation();
   const batchUpsertNodes = trpc.nodes.batchUpsert.useMutation();
   const upsertEdge = trpc.edges.upsert.useMutation();
   const deleteNodeMutation = trpc.nodes.delete.useMutation({
@@ -2323,6 +2328,35 @@ function CanvasInner({ projectId }: { projectId: number }) {
           />
         )}
 
+        {/* ── Save-to-library dialog (name + note + model preview) ── */}
+        {comfySaveTarget && (
+          <SaveComfyTemplateDialog
+            nodeType={comfySaveTarget.nodeType}
+            defaultName={comfySaveTarget.defaultName}
+            useCloud={comfySaveTarget.useCloud}
+            modelInfo={describeComfyTemplate(comfySaveTarget.nodeType, comfySaveTarget.payload)}
+            onCancel={() => setComfySaveTarget(null)}
+            onSave={(label, note) => {
+              const target = comfySaveTarget;
+              setComfySaveTarget(null);
+              createComfyTemplateMut.mutate(
+                {
+                  label, nodeType: target.nodeType, payload: target.payload,
+                  note: note || undefined,
+                  useCloud: target.nodeType === "comfyui_workflow" ? target.useCloud : undefined,
+                },
+                {
+                  onSuccess: (saved) => {
+                    utils.comfyTemplates.list.invalidate();
+                    toast.success(`已存入共享模板库「${saved.label}」`);
+                  },
+                  onError: (e) => toast.error("保存失败：" + e.message),
+                },
+              );
+            }}
+          />
+        )}
+
         {/* ── Asset panel (floating, draggable, resizable) ── */}
         {showAssets && (
           <FloatingAssetPanel projectId={projectId} onClose={() => setShowAssets(false)} />
@@ -2473,16 +2507,14 @@ function CanvasInner({ projectId }: { projectId: number }) {
             nodePinned={ctxPinned}
             onClose={() => setContextMenu(null)}
             onAddNode={handleAddNode}
+            onOpenNodeLibrary={() => { setContextMenu(null); setShowNodeLib(true); }}
             nodeTemplates={ctxTemplates}
             onSaveToLibrary={ctxNode && ctxIsComfy ? () => {
-              const label = window.prompt("模板名称（保存到节点模板库，含全部参数）", ctxNode.data.title)?.trim();
-              if (!label) return;
-              const useCloud = (ctxNode.data.payload as { useCloudComfy?: boolean }).useCloudComfy === true;
-              const saved = saveComfyNodeTemplate(
-                ctxNodeType as ComfyNodeType, label,
-                ctxNode.data.payload as Record<string, unknown>, useCloud,
-              );
-              toast[saved ? "success" : "error"](saved ? `已存入模板库「${saved.label}」` : "保存失败（数量已达上限或内容过大）");
+              const payload = ctxNode.data.payload as Record<string, unknown>;
+              const useCloud = (payload as { useCloudComfy?: boolean }).useCloudComfy === true;
+              // Auto-fill the model name as the default template name (editable in the dialog).
+              const defaultName = suggestComfyTemplateName(ctxNodeType as ComfyNodeType, payload) || ctxNode.data.title;
+              setComfySaveTarget({ nodeType: ctxNodeType as ComfyNodeType, payload, useCloud, defaultName });
             } : undefined}
             onSaveTemplate={ctxNode && !ctxIsComfy ? () => {
               const label = window.prompt("模板名称", ctxNode.data.title)?.trim();
