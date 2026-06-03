@@ -204,6 +204,12 @@ export function buildFilterGraph(
     vChain.push(`fps=${fps}`);
     vChain.push(...colorChain(s.effects));
     vChain.push("format=yuv420p");
+    // Pin the timebase so every segment matches when folded. concat emits a
+    // microsecond timebase (1/1000000) while fps-filtered segments are 1/fps;
+    // feeding a concat (hard cut) output into a later xfade alongside a fresh
+    // segment then fails with "timebase ... do not match" → "Failed to
+    // configure output pad". settb keeps all combine inputs on 1/fps.
+    vChain.push(`settb=1/${fps}`);
     parts.push(`[${i}:v]${vChain.join(",")}[v${i}]`);
     vLabels.push(`[v${i}]`);
 
@@ -247,12 +253,12 @@ export function buildFilterGraph(
     if (useX) {
       const td = Math.min(tr!.duration, curDur, dur);
       const off = Math.max(0, curDur - td);
-      parts.push(`${curV}${vLabels[i]}xfade=transition=${xfadeName(tr!.type)}:duration=${td.toFixed(3)}:offset=${off.toFixed(3)}[vf${i}]`);
+      parts.push(`${curV}${vLabels[i]}xfade=transition=${xfadeName(tr!.type)}:duration=${td.toFixed(3)}:offset=${off.toFixed(3)},settb=1/${fps}[vf${i}]`);
       parts.push(`${curA}${aLabels[i]}acrossfade=d=${td.toFixed(3)}[af${i}]`);
       curV = `[vf${i}]`; curA = `[af${i}]`;
       curDur = curDur + dur - td;
     } else {
-      parts.push(`${curV}${vLabels[i]}concat=n=2:v=1:a=0[vf${i}]`);
+      parts.push(`${curV}${vLabels[i]}concat=n=2:v=1:a=0,settb=1/${fps}[vf${i}]`);
       parts.push(`${curA}${aLabels[i]}concat=n=2:v=0:a=1[af${i}]`);
       curV = `[vf${i}]`; curA = `[af${i}]`;
       curDur = curDur + dur;
@@ -509,8 +515,12 @@ export async function composeTimeline(doc: EditorDoc, opts: ComposeOptions): Pro
       const rootLine = stderr
         .split(/\r?\n/)
         .map((l) => l.trim())
-        .find((l) => /matches no streams|Invalid argument|No such filter|Error (initializing|reinitializing|applying|parsing|opening)|Cannot|could not|Failed to|deprecated pixel format|Conversion failed/i.test(l)
-          && !/Could not open encoder|Terminating thread|received no packets|Task finished with error/i.test(l));
+        // Prefer the SPECIFIC cause line (e.g. "...timebase ... do not match",
+        // "...parameters ... do not match", "matches no streams") over the
+        // generic "Failed to configure output pad" that ffmpeg prints right
+        // after it; also skip the encoder-failure tail which hides the root.
+        .find((l) => /do not match|matches no streams|No such filter|Invalid argument|Error (initializing|reinitializing|applying|parsing|opening)|Cannot|Impossible to convert|deprecated pixel format/i.test(l)
+          && !/Could not open encoder|Terminating thread|received no packets|Task finished with error|Failed to configure output pad|Error reinitializing filters/i.test(l));
       const detail = rootLine || stderr.slice(-600) || e.message || String(err);
       // No "渲染失败：" prefix here — the client already prepends it when showing
       // the job error (avoids the doubled "渲染失败：渲染失败：").
