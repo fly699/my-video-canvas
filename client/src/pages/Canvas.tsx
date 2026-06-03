@@ -382,7 +382,9 @@ function CanvasInner({ projectId }: { projectId: number }) {
   );
   const [showTemplates, setShowTemplates] = useState(false);
   const [showNodeSearch, setShowNodeSearch] = useState(false);
-  const [showCollaborators, setShowCollaborators] = useState(false);
+  const [showCollaborators, setShowCollaborators] = usePersistentState<boolean>(
+    "ui:canvas:collab-open:v1", false, { validate: validateBool },
+  );
   const [showCollaboratorPanel, setShowCollaboratorPanel] = useState(false);
   const [showNodePicker, setShowNodePicker] = useState(false);
   const [showPresentation, setShowPresentation] = useState(false);
