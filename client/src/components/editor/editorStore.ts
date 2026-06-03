@@ -1,6 +1,6 @@
 import { create } from "zustand";
 import { nanoid } from "nanoid";
-import type { EditorDoc, Clip, ClipKind } from "@shared/editorTypes";
+import type { EditorDoc, Clip, ClipKind, Track, TrackType } from "@shared/editorTypes";
 import { editorDocDuration } from "@shared/editorTypes";
 
 /** Visible duration of a clip on the timeline (seconds), accounting for speed. */
@@ -36,6 +36,11 @@ export interface EditorStore {
   splitClip: (clipId: string, atTime: number) => void;
   duplicateClip: (clipId: string) => void;
   selectClip: (id: string | null) => void;
+
+  // track ops
+  updateTrack: (trackId: string, patch: Partial<Pick<Track, "muted" | "hidden" | "locked" | "name">>) => void;
+  addTrack: (type: TrackType) => void;
+  removeTrack: (trackId: string) => void;
 
   // output canvas (ratio / resolution / fps)
   setCanvas: (width: number, height: number, fps?: number) => void;
@@ -153,6 +158,28 @@ export const useEditorStore = create<EditorStore>((set, get) => ({
   }),
 
   selectClip: (id) => set({ selectedClipId: id }),
+
+  updateTrack: (trackId, patch) => set((s) => {
+    if (!s.doc) return s;
+    const tracks = s.doc.tracks.map((t) => (t.id === trackId ? { ...t, ...patch } : t));
+    return { doc: { ...s.doc, tracks }, dirty: true };
+  }),
+
+  addTrack: (type) => set((s) => {
+    if (!s.doc) return s;
+    const track: Track = { id: `${type[0]}_${nanoid(6)}`, type, clips: [] };
+    // place video/overlay near the top, audio at the bottom, text in the middle.
+    const order: Record<TrackType, number> = { video: 0, overlay: 1, text: 2, audio: 3 };
+    const tracks = [...s.doc.tracks, track].sort((a, b) => order[a.type] - order[b.type]);
+    return { doc: { ...s.doc, tracks }, dirty: true };
+  }),
+
+  removeTrack: (trackId) => set((s) => {
+    if (!s.doc || s.doc.tracks.length <= 1) return s;
+    const tracks = s.doc.tracks.filter((t) => t.id !== trackId);
+    const goneIds = new Set(s.doc.tracks.find((t) => t.id === trackId)?.clips.map((c) => c.id));
+    return { doc: { ...s.doc, tracks }, dirty: true, selectedClipId: goneIds.has(s.selectedClipId ?? "") ? null : s.selectedClipId };
+  }),
 
   setCanvas: (width, height, fps) => set((s) => {
     if (!s.doc) return s;

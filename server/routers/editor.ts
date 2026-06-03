@@ -57,8 +57,10 @@ const docSchema = z.object({
     type: z.enum(["video", "audio", "text", "overlay"]),
     muted: z.boolean().optional(),
     hidden: z.boolean().optional(),
+    locked: z.boolean().optional(),
+    name: z.string().max(64).optional(),
     clips: z.array(clipSchema).max(500),
-  })).max(20),
+  })).max(40),
 });
 
 export const editorRouter = router({

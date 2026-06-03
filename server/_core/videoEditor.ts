@@ -2,6 +2,7 @@ import { execFile } from "child_process";
 import { promisify } from "util";
 import { storagePut, assertObjectStorageWritable, resolveToAbsoluteUrl, toInternalStoragePath, isOwnStorageUrl } from "../storage";
 import * as fs from "fs/promises";
+import * as fsSync from "fs";
 import * as path from "path";
 import * as os from "os";
 
@@ -9,9 +10,43 @@ const _execFileRaw = promisify(execFile);
 const FFMPEG_TIMEOUT_MS = 120_000;
 const FFPROBE_TIMEOUT_MS = 30_000;
 
+// Resolve the ffmpeg/ffprobe binary WITHOUT relying solely on PATH. On Windows a
+// winget/choco install often isn't on the PATH of the running service/pm2 process
+// → `spawn ffmpeg ENOENT`. Check an env override, then common install locations,
+// then fall back to the bare command (PATH). Result is cached.
+const _ffCache: Record<string, string> = {};
+function resolveFf(cmd: "ffmpeg" | "ffprobe"): string {
+  if (_ffCache[cmd]) return _ffCache[cmd];
+  const exe = process.platform === "win32" ? `${cmd}.exe` : cmd;
+  const candidates: string[] = [];
+  const envOverride = cmd === "ffmpeg" ? process.env.FFMPEG_PATH : process.env.FFPROBE_PATH;
+  if (envOverride) candidates.push(envOverride);
+  if (process.platform === "win32") {
+    const la = process.env.LOCALAPPDATA;
+    if (la) {
+      candidates.push(path.join(la, "Microsoft", "WinGet", "Links", exe)); // winget shim
+      try { // winget package dir: Gyan.FFmpeg.*/ffmpeg-*/bin/ffmpeg.exe
+        const pkgRoot = path.join(la, "Microsoft", "WinGet", "Packages");
+        for (const d of fsSync.readdirSync(pkgRoot)) {
+          if (!/ffmpeg/i.test(d)) continue;
+          for (const sub of fsSync.readdirSync(path.join(pkgRoot, d))) {
+            candidates.push(path.join(pkgRoot, d, sub, "bin", exe));
+          }
+        }
+      } catch { /* dir may not exist */ }
+    }
+    candidates.push("C:\\ProgramData\\chocolatey\\bin\\" + exe, "C:\\ffmpeg\\bin\\" + exe, "C:\\Program Files\\ffmpeg\\bin\\" + exe);
+  } else {
+    candidates.push(`/usr/bin/${cmd}`, `/usr/local/bin/${cmd}`, `/opt/homebrew/bin/${cmd}`, `/snap/bin/${cmd}`);
+  }
+  for (const c of candidates) { try { if (fsSync.existsSync(c)) { _ffCache[cmd] = c; return c; } } catch { /* ignore */ } }
+  _ffCache[cmd] = cmd; // last resort: rely on PATH
+  return cmd;
+}
+
 export function execFileAsync(cmd: "ffmpeg" | "ffprobe", args: string[], opts?: { timeoutMs?: number }) {
   const timeout = opts?.timeoutMs ?? (cmd === "ffprobe" ? FFPROBE_TIMEOUT_MS : FFMPEG_TIMEOUT_MS);
-  return _execFileRaw(cmd, args, { timeout, maxBuffer: 10 * 1024 * 1024 });
+  return _execFileRaw(resolveFf(cmd), args, { timeout, maxBuffer: 10 * 1024 * 1024 });
 }
 
 // ── Helpers ───────────────────────────────────────────────────────────────────

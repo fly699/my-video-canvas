@@ -1,10 +1,11 @@
 import { useRef, useCallback, useState, useEffect } from "react";
-import { ZoomIn, ZoomOut, Scissors, Magnet, Trash2, Copy, SplitSquareHorizontal } from "lucide-react";
+import { ZoomIn, ZoomOut, Scissors, Magnet, Trash2, Copy, SplitSquareHorizontal, Volume2, VolumeX, Eye, EyeOff, Lock, Unlock, Plus } from "lucide-react";
 import { EC, trackColor, trackLabel, fmtTime, probeMediaDuration } from "./theme";
 import { useEditorStore, clipDuration } from "./editorStore";
 import { MEDIA_DND_MIME, type MediaDragPayload } from "./MediaBin";
+import type { TrackType } from "@shared/editorTypes";
 
-const LABEL_W = 56;
+const LABEL_W = 96;
 const RULER_H = 26;
 const TRACK_H = 52;
 const SNAP_PX = 7; // snap threshold in screen pixels
@@ -32,6 +33,10 @@ export function Timeline() {
   const setPlayhead = useEditorStore((s) => s.setPlayhead);
   const setPlaying = useEditorStore((s) => s.setPlaying);
   const selectClip = useEditorStore((s) => s.selectClip);
+  const updateTrack = useEditorStore((s) => s.updateTrack);
+  const addTrack = useEditorStore((s) => s.addTrack);
+  const removeTrack = useEditorStore((s) => s.removeTrack);
+  const [addMenu, setAddMenu] = useState(false);
 
   // Keyboard: Delete/Backspace = remove selected clip; S = split at playhead; Ctrl/⌘+D = duplicate.
   useEffect(() => {
@@ -49,13 +54,13 @@ export function Timeline() {
     return () => window.removeEventListener("keydown", onKey);
   }, []);
 
-  // close context menu on any outside click
+  // close the clip context menu / add-track menu on any outside click
   useEffect(() => {
-    if (!menu) return;
-    const close = () => setMenu(null);
+    if (!menu && !addMenu) return;
+    const close = () => { setMenu(null); setAddMenu(false); };
     window.addEventListener("pointerdown", close);
     return () => window.removeEventListener("pointerdown", close);
-  }, [menu]);
+  }, [menu, addMenu]);
 
   const contentSec = Math.max(duration + 5, 20);
   const contentW = contentSec * pxPerSec;
@@ -89,9 +94,9 @@ export function Timeline() {
     e.stopPropagation();
     const st = useEditorStore.getState();
     if (!st.doc) return;
-    let clip = null, trackId = "";
-    for (const t of st.doc.tracks) { const c = t.clips.find((x) => x.id === clipId); if (c) { clip = c; trackId = t.id; break; } }
-    if (!clip) return;
+    let clip = null, trackId = "", trackLocked = false;
+    for (const t of st.doc.tracks) { const c = t.clips.find((x) => x.id === clipId); if (c) { clip = c; trackId = t.id; trackLocked = !!t.locked; break; } }
+    if (!clip || trackLocked) return; // locked tracks: no select/move/trim
     selectClip(clipId);
     if (mode === "move") {
       const grabDx = e.clientX - (laneRect()?.left ?? 0) - clip.start * pxPerSec; // cursor offset within clip
@@ -201,12 +206,33 @@ export function Timeline() {
       <div ref={scrollRef} style={{ flex: 1, overflow: "auto", position: "relative" }}
         onPointerMove={onPointerMove} onPointerUp={onPointerUp} onPointerCancel={onPointerUp}>
         <div style={{ display: "flex", minWidth: LABEL_W + contentW }}>
-          {/* label column */}
+          {/* label column — per-track controls (静音/隐藏/锁定/删除) */}
           <div style={{ width: LABEL_W, flexShrink: 0, position: "sticky", left: 0, zIndex: 3, background: EC.surface, borderRight: `1px solid ${EC.border}` }}>
-            <div style={{ height: RULER_H, borderBottom: `1px solid ${EC.border}` }} />
-            {doc.tracks.map((t) => (
-              <div key={t.id} style={{ height: TRACK_H, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 11, fontWeight: 600, color: trackColor(t.type), borderBottom: `1px solid ${EC.border}` }}>{trackLabel(t.type)}</div>
-            ))}
+            <div style={{ height: RULER_H, borderBottom: `1px solid ${EC.border}`, display: "flex", alignItems: "center", justifyContent: "center", position: "relative" }}>
+              <button onClick={() => setAddMenu((v) => !v)} title="新增轨道" style={{ ...trackBtn, color: EC.accent }}><Plus size={13} /></button>
+              {addMenu && (
+                <div onPointerDown={(e) => e.stopPropagation()} style={{ position: "absolute", top: RULER_H, left: 4, zIndex: 20, padding: 4, borderRadius: 8, background: EC.surface, border: `1px solid ${EC.border}`, boxShadow: "0 8px 24px oklch(0 0 0 / 0.4)" }}>
+                  {(["video", "overlay", "text", "audio"] as TrackType[]).map((ty) => (
+                    <div key={ty} onClick={() => { addTrack(ty); setAddMenu(false); }} style={{ padding: "5px 12px", fontSize: 12, color: trackColor(ty), cursor: "pointer", whiteSpace: "nowrap" }}>+ {trackLabel(ty)}轨</div>
+                  ))}
+                </div>
+              )}
+            </div>
+            {doc.tracks.map((t) => {
+              const hasAudio = t.type === "audio" || t.type === "video";
+              const isVisual = t.type === "video" || t.type === "overlay" || t.type === "text";
+              return (
+                <div key={t.id} style={{ height: TRACK_H, display: "flex", flexDirection: "column", justifyContent: "center", gap: 3, padding: "0 6px", borderBottom: `1px solid ${EC.border}`, opacity: t.hidden ? 0.5 : 1 }}>
+                  <span style={{ fontSize: 10.5, fontWeight: 700, color: trackColor(t.type) }}>{t.name ?? trackLabel(t.type)}</span>
+                  <div style={{ display: "flex", gap: 2 }}>
+                    {hasAudio && <button onClick={() => updateTrack(t.id, { muted: !t.muted })} title={t.muted ? "取消静音" : "静音"} style={{ ...trackBtn, color: t.muted ? "oklch(0.62 0.2 25)" : EC.t3 }}>{t.muted ? <VolumeX size={12} /> : <Volume2 size={12} />}</button>}
+                    {isVisual && <button onClick={() => updateTrack(t.id, { hidden: !t.hidden })} title={t.hidden ? "显示" : "隐藏"} style={{ ...trackBtn, color: t.hidden ? "oklch(0.62 0.2 25)" : EC.t3 }}>{t.hidden ? <EyeOff size={12} /> : <Eye size={12} />}</button>}
+                    <button onClick={() => updateTrack(t.id, { locked: !t.locked })} title={t.locked ? "解锁" : "锁定"} style={{ ...trackBtn, color: t.locked ? EC.accent : EC.t3 }}>{t.locked ? <Lock size={12} /> : <Unlock size={12} />}</button>
+                    {doc.tracks.length > 1 && <button onClick={() => { if (t.clips.length === 0 || confirm(`删除「${t.name ?? trackLabel(t.type)}」轨道及其 ${t.clips.length} 个片段？`)) removeTrack(t.id); }} title="删除轨道" style={{ ...trackBtn, color: EC.t3 }}><Trash2 size={12} /></button>}
+                  </div>
+                </div>
+              );
+            })}
           </div>
 
           {/* lane area */}
@@ -223,9 +249,9 @@ export function Timeline() {
             {/* tracks */}
             {doc.tracks.map((t) => (
               <div key={t.id} data-track-id={t.id}
-                onDragOver={(e) => { e.preventDefault(); e.dataTransfer.dropEffect = "copy"; }}
-                onDrop={(e) => onDrop(e, t.id)}
-                style={{ height: TRACK_H, position: "relative", borderBottom: `1px solid ${EC.border}`, background: "var(--c-bg, #0c0c10)" }}>
+                onDragOver={(e) => { if (t.locked) return; e.preventDefault(); e.dataTransfer.dropEffect = "copy"; }}
+                onDrop={(e) => { if (!t.locked) onDrop(e, t.id); }}
+                style={{ height: TRACK_H, position: "relative", borderBottom: `1px solid ${EC.border}`, background: t.locked ? "oklch(0.5 0 0 / 0.06)" : "var(--c-bg, #0c0c10)", opacity: t.hidden ? 0.4 : 1 }}>
                 {t.clips.map((c) => {
                   const left = c.start * pxPerSec;
                   const width = Math.max(8, clipDuration(c) * pxPerSec);
@@ -310,4 +336,8 @@ export function Timeline() {
 const zoomBtn: React.CSSProperties = {
   display: "inline-flex", alignItems: "center", justifyContent: "center", width: 26, height: 24,
   borderRadius: 6, border: `1px solid ${EC.border}`, background: "transparent", color: EC.t2, cursor: "pointer",
+};
+const trackBtn: React.CSSProperties = {
+  display: "inline-flex", alignItems: "center", justifyContent: "center", width: 18, height: 16,
+  borderRadius: 4, border: "none", background: "transparent", cursor: "pointer", padding: 0,
 };

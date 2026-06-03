@@ -45,12 +45,12 @@ function textCss(t: Clip["text"], canvasH: number): React.CSSProperties {
   return css;
 }
 
-function activeAt(doc: EditorDoc, t: number): { clip: Clip; trackType: string }[] {
-  const out: { clip: Clip; trackType: string }[] = [];
+function activeAt(doc: EditorDoc, t: number): { clip: Clip; trackType: string; muted: boolean }[] {
+  const out: { clip: Clip; trackType: string; muted: boolean }[] = [];
   for (const track of doc.tracks) {
     if (track.hidden) continue;
     for (const c of track.clips) {
-      if (t >= c.start && t < c.start + clipDuration(c)) out.push({ clip: c, trackType: track.type });
+      if (t >= c.start && t < c.start + clipDuration(c)) out.push({ clip: c, trackType: track.type, muted: !!track.muted });
     }
   }
   return out;
@@ -97,7 +97,7 @@ export function PreviewStage() {
   useEffect(() => {
     if (!doc) return;
     const active = new Set<string>();
-    for (const { clip } of activeAt(doc, playhead)) {
+    for (const { clip, muted } of activeAt(doc, playhead)) {
       if (clip.kind !== "video" && clip.kind !== "audio") continue;
       active.add(clip.id);
       const el = mediaRefs.current.get(clip.id);
@@ -105,7 +105,7 @@ export function PreviewStage() {
       const localSrc = clip.trimIn + (playhead - clip.start) * (clip.speed ?? 1);
       if (Math.abs(el.currentTime - localSrc) > 0.25) el.currentTime = localSrc;
       el.playbackRate = clip.speed ?? 1;
-      el.volume = Math.min(1, clip.volume ?? 1);
+      el.volume = muted ? 0 : Math.min(1, clip.volume ?? 1);
       if (playing && el.paused) el.play().catch(() => {});
       if (!playing && !el.paused) el.pause();
     }

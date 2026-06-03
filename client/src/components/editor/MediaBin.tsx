@@ -1,8 +1,9 @@
 import { useState } from "react";
 import { trpc } from "@/lib/trpc";
 import { toast } from "sonner";
-import { FileVideo, FileAudio, FileImage, Search, Type as TypeIcon, Captions, Plus } from "lucide-react";
+import { FileVideo, FileAudio, FileImage, Search, Type as TypeIcon, Captions, Plus, Music } from "lucide-react";
 import { MediaPreview, type PreviewAsset } from "./MediaPreview";
+import { MusicGen } from "./MusicGen";
 import { EC } from "./theme";
 import { useEditorStore, kindFromAssetType, trackEnd, clipDuration } from "./editorStore";
 import { probeMediaDuration } from "./theme";
@@ -22,6 +23,7 @@ export function MediaBin() {
   const [type, setType] = useState<TypeFilter>("");
   const [q, setQ] = useState("");
   const [preview, setPreview] = useState<PreviewAsset | null>(null);
+  const [musicOpen, setMusicOpen] = useState(false);
   const listQuery = trpc.assets.list.useQuery({ allProjects: true, type: type || undefined, q: q.trim() || undefined });
   const assets = (listQuery.data ?? []).filter((a) => a.type !== "other");
 
@@ -149,9 +151,14 @@ export function MediaBin() {
           onClick={autoSubtitle}
           style={{ width: "100%", marginTop: 6, display: "flex", alignItems: "center", justifyContent: "center", gap: 6, padding: "7px 0", fontSize: 12, borderRadius: 7, border: `1px dashed ${EC.border}`, background: "transparent", color: transcribeMut.isPending ? EC.t4 : EC.t2, cursor: transcribeMut.isPending ? "default" : "pointer" }}
         ><Captions size={13} /> {transcribeMut.isPending ? "转写中…" : "AI 自动字幕"}</button>
+        <button
+          onClick={() => setMusicOpen(true)}
+          style={{ width: "100%", marginTop: 6, display: "flex", alignItems: "center", justifyContent: "center", gap: 6, padding: "7px 0", fontSize: 12, borderRadius: 7, border: `1px solid ${EC.accent}`, background: EC.accentSoft, color: EC.accent, cursor: "pointer" }}
+        ><Music size={13} /> AI 配乐</button>
       </div>
 
       {preview && <MediaPreview asset={preview} onClose={() => setPreview(null)} />}
+      {musicOpen && <MusicGen onClose={() => setMusicOpen(false)} />}
     </aside>
   );
 }
