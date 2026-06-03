@@ -74,7 +74,7 @@ export function Timeline() {
     } else {
       dragRef.current = { kind: mode, clipId, startX: e.clientX, orig: { start: clip.start, trimIn: clip.trimIn, trimOut: clip.trimOut, speed: clip.speed ?? 1, isImage: clip.kind === "image" } };
     }
-    (e.target as HTMLElement).setPointerCapture?.(e.pointerId);
+    try { (e.target as HTMLElement).setPointerCapture?.(e.pointerId); } catch { /* synthetic/no-active-pointer */ }
   }, [pxPerSec, selectClip]);
 
   const laneRect = () => laneRef.current?.getBoundingClientRect();
@@ -86,7 +86,7 @@ export function Timeline() {
     const x = e.clientX - rect.left;
     const { sec, at } = snap(Math.max(0, x / pxPerSec));
     setPlayhead(sec); setSnapX(at);
-    (e.currentTarget as HTMLElement).setPointerCapture?.(e.pointerId);
+    try { (e.currentTarget as HTMLElement).setPointerCapture?.(e.pointerId); } catch { /* synthetic/no-active-pointer */ }
   }, [pxPerSec, snap, setPlayhead, setPlaying]);
 
   const onPointerMove = useCallback((e: React.PointerEvent) => {

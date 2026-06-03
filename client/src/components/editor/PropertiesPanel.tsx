@@ -81,6 +81,22 @@ export function PropertiesPanel() {
           </Section>
         )}
 
+        {(c.kind === "video" || c.kind === "image") && (
+          <Section title="画面适配">
+            <div style={{ display: "flex", gap: 6 }}>
+              {([["contain", "适应"], ["cover", "填充"], ["stretch", "拉伸"]] as const).map(([v, label]) => {
+                const active = (c.fit ?? "contain") === v;
+                return (
+                  <button key={v} onClick={() => update(c.id, { fit: v })}
+                    title={v === "contain" ? "完整显示，留黑边" : v === "cover" ? "铺满画面，裁掉溢出" : "拉伸铺满（可能变形）"}
+                    style={{ flex: 1, padding: "7px 0", fontSize: 11.5, borderRadius: 7, cursor: "pointer", border: `1px solid ${active ? EC.accent : EC.border}`, background: active ? EC.accentSoft : "transparent", color: active ? EC.accent : EC.t2 }}>{label}</button>
+                );
+              })}
+            </div>
+            <div style={{ fontSize: 10.5, color: EC.t4 }}>适应=留黑边 · 填充=铺满裁切 · 拉伸=变形铺满（针对主轨整屏画面）</div>
+          </Section>
+        )}
+
         {isVisual && c.kind !== "text" && (
           <Section title="调色 / 滤镜">
             <Slider label={`亮度 ${(eff.brightness ?? 0).toFixed(2)}`} min={-1} max={1} step={0.02} value={eff.brightness ?? 0} onChange={(v) => setEff("brightness", v)} />

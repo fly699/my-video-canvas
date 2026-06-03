@@ -4,7 +4,7 @@ import * as os from "os";
 import { storagePut, assertObjectStorageWritable } from "../storage";
 import { execFileAsync, downloadToTemp, buildAtempoFilters, hasAudioTrack, cssColorToASSHex, escapeASSText, formatASSTime } from "./videoEditor";
 import { sanitizeFilenamePrefix } from "./comfyui";
-import type { EditorDoc, Clip, ClipEffects, ClipTransform, ClipText } from "@shared/editorTypes";
+import type { EditorDoc, Clip, ClipEffects, ClipTransform, ClipText, FitMode } from "@shared/editorTypes";
 
 // Render timeouts are generous: a full multi-clip render re-encodes everything
 // in ONE pass, which can take minutes for long timelines.
@@ -30,6 +30,19 @@ export interface Segment {
   speed: number;
   effects?: ClipEffects;                          // color/filter (eq + preset)
   transition?: { type: string; duration: number }; // entry transition vs the previous segment
+  fit?: FitMode;                                  // contain (default) | cover | stretch
+}
+
+/** ffmpeg filters that fit a frame into the output canvas per the fit mode. */
+function fitChain(fit: FitMode | undefined, w: number, h: number): string[] {
+  switch (fit) {
+    case "cover":   // 填充：放大铺满，裁掉溢出
+      return [`scale=${w}:${h}:force_original_aspect_ratio=increase`, `crop=${w}:${h}`];
+    case "stretch": // 拉伸：精确铺满，可能变形
+      return [`scale=${w}:${h}`];
+    default:        // 适应：完整显示，居中留黑边
+      return [`scale=${w}:${h}:force_original_aspect_ratio=decrease`, `pad=${w}:${h}:(ow-iw)/2:(oh-ih)/2`];
+  }
 }
 
 /** A clip on an overlay track, composited on top of the base at its time slot. */
@@ -168,8 +181,7 @@ export function buildFilterGraph(
     } else {
       vChain.push("setpts=PTS-STARTPTS");
     }
-    vChain.push(`scale=${w}:${h}:force_original_aspect_ratio=decrease`);
-    vChain.push(`pad=${w}:${h}:(ow-iw)/2:(oh-ih)/2`);
+    vChain.push(...fitChain(s.fit, w, h));
     vChain.push("setsar=1");
     vChain.push(`fps=${fps}`);
     vChain.push(...colorChain(s.effects));
@@ -370,7 +382,7 @@ export async function composeTimeline(doc: EditorDoc, opts: ComposeOptions): Pro
       const hasAudio = isImage ? false : await hasAudioTrack(p);
       const trimIn = isImage ? 0 : c.trimIn;
       const trimOut = isImage ? Math.max(0.05, c.trimOut - c.trimIn) : c.trimOut;
-      const seg: Segment = { isImage, hasAudio, trimIn, trimOut, speed: c.speed ?? 1, effects: c.effects, transition: c.transitionIn };
+      const seg: Segment = { isImage, hasAudio, trimIn, trimOut, speed: c.speed ?? 1, effects: c.effects, transition: c.transitionIn, fit: c.fit };
       segs.push(seg);
       if (isImage) inputArgs.push("-loop", "1", "-t", segmentDuration(seg).toFixed(3), "-i", p);
       else inputArgs.push("-i", p);

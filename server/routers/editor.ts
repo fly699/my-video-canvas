@@ -34,6 +34,7 @@ const clipSchema = z.object({
     saturation: z.number().optional(), filter: z.string().max(64).optional(),
   }).optional(),
   transform: transformSchema.optional(),
+  fit: z.enum(["contain", "cover", "stretch"]).optional(),
   text: z.object({
     content: z.string().max(2000),
     font: z.string().max(64).optional(), size: z.number().optional(),

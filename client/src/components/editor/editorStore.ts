@@ -35,6 +35,9 @@ export interface EditorStore {
   removeClip: (clipId: string) => void;
   selectClip: (id: string | null) => void;
 
+  // output canvas (ratio / resolution / fps)
+  setCanvas: (width: number, height: number, fps?: number) => void;
+
   // playback / view
   setPlayhead: (t: number) => void;
   setPlaying: (b: boolean) => void;
@@ -118,6 +121,14 @@ export const useEditorStore = create<EditorStore>((set, get) => ({
   }),
 
   selectClip: (id) => set({ selectedClipId: id }),
+
+  setCanvas: (width, height, fps) => set((s) => {
+    if (!s.doc) return s;
+    const w = Math.max(16, Math.min(7680, Math.round(width)));
+    const h = Math.max(16, Math.min(7680, Math.round(height)));
+    return { doc: { ...s.doc, width: w, height: h, fps: fps ?? s.doc.fps }, dirty: true };
+  }),
+
   setPlayhead: (t) => set({ playhead: Math.max(0, t) }),
   setPlaying: (b) => set({ playing: b }),
   setPxPerSec: (n) => set({ pxPerSec: Math.min(400, Math.max(8, n)) }),
