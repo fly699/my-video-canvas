@@ -211,6 +211,7 @@ export const comfyNodeTemplates = mysqlTable("comfy_node_templates", {
   nodeType: varchar("nodeType", { length: 32 }).notNull(),  // comfyui_image|video|workflow
   payload: json("payload").notNull(),
   note: text("note"),
+  thumbnail: text("thumbnail"),                             // generated-image URL captured at save (not exported)
   useCloud: boolean("useCloud"),                            // workflow: local vs cloud (card color)
   createdAt: timestamp("createdAt").defaultNow().notNull(),
   updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),

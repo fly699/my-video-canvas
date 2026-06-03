@@ -49,9 +49,34 @@ export interface ComfyNodeTemplate {
   nodeType: ComfyNodeType;
   payload: Record<string, unknown>;
   note?: string;
+  /** Generated-image URL captured at save (shown on cards; excluded from export). */
+  thumbnail?: string;
   useCloud?: boolean;
   /** Creator (for ownership-based edit/delete) + display name. */
   userId: number;
   creatorName?: string;
   createdAt: string;
+}
+
+/** Capture a thumbnail (generated IMAGE url) from a node's LIVE payload at save
+ *  time. Only image outputs yield a thumbnail; video outputs return undefined.
+ *  Rejects data: URLs / oversized strings to keep the DB row small. */
+export function extractComfyThumbnail(nodeType: ComfyNodeType, payload: Record<string, unknown>): string | undefined {
+  const ok = (u: unknown): u is string =>
+    typeof u === "string" && u.length > 0 && u.length < 2048 && (/^https?:\/\//i.test(u) || u.startsWith("/"));
+  const firstOk = (...cands: unknown[]): string | undefined => {
+    for (const c of cands) {
+      if (ok(c)) return c;
+      if (Array.isArray(c) && ok(c[0])) return c[0] as string;
+    }
+    return undefined;
+  };
+  if (nodeType === "comfyui_workflow") {
+    if (payload.outputType === "video") return undefined; // video output → no still
+    return firstOk(payload.outputUrls, payload.outputUrl);
+  }
+  if (nodeType === "comfyui_image") {
+    return firstOk(payload.imageUrl, payload.imageUrls);
+  }
+  return undefined; // comfyui_video → result is a video, no still thumbnail
 }

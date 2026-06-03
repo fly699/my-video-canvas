@@ -9,6 +9,8 @@ interface Props {
   /** Model / param summary shown read-only so the user knows what they're saving. */
   modelInfo: string;
   useCloud: boolean;
+  /** Auto-captured generated-image thumbnail (preview only; saved to DB, not exported). */
+  thumbnail?: string;
   onSave: (label: string, note: string) => void;
   onCancel: () => void;
 }
@@ -19,7 +21,7 @@ const inputStyle: React.CSSProperties = {
   color: "var(--c-t1)", outline: "none", fontFamily: "var(--font-sans)",
 };
 
-export function SaveComfyTemplateDialog({ nodeType, defaultName, modelInfo, useCloud, onSave, onCancel }: Props) {
+export function SaveComfyTemplateDialog({ nodeType, defaultName, modelInfo, useCloud, thumbnail, onSave, onCancel }: Props) {
   const [name, setName] = useState(defaultName);
   const [note, setNote] = useState("");
   const color = colorForTemplate(nodeType, useCloud);
@@ -53,7 +55,17 @@ export function SaveComfyTemplateDialog({ nodeType, defaultName, modelInfo, useC
 
         <div className="px-5 py-4 flex flex-col gap-4">
           {/* Node type + model info preview */}
-          <div className="flex flex-col gap-2 rounded-xl px-3.5 py-3" style={{ background: "var(--c-surface)", border: `1px solid ${color}30` }}>
+          <div className="flex gap-3 rounded-xl px-3.5 py-3" style={{ background: "var(--c-surface)", border: `1px solid ${color}30` }}>
+            {thumbnail && (
+              <img
+                src={thumbnail}
+                alt="thumbnail"
+                className="rounded-lg flex-shrink-0"
+                style={{ width: 56, height: 56, objectFit: "cover", border: `1px solid ${color}40` }}
+                onError={(e) => { (e.currentTarget as HTMLImageElement).style.display = "none"; }}
+              />
+            )}
+            <div className="flex flex-col gap-2 min-w-0 flex-1">
             <div className="flex items-center gap-1.5 flex-wrap">
               <span className="text-[9px] font-bold px-1.5 py-0.5 rounded-full uppercase tracking-wide" style={{ background: `${color}18`, border: `1px solid ${color}30`, color }}>
                 {config.label}
@@ -65,6 +77,7 @@ export function SaveComfyTemplateDialog({ nodeType, defaultName, modelInfo, useC
               )}
             </div>
             <p className="text-[11px] leading-relaxed" style={{ color: "var(--c-t3)" }}>{modelInfo}</p>
+            </div>
           </div>
 
           {/* Name */}

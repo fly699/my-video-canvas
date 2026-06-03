@@ -17,6 +17,7 @@ function toClient(r: ComfyNodeTemplateRow): ComfyNodeTemplate {
     nodeType: r.nodeType as ComfyNodeType,
     payload: (r.payload ?? {}) as Record<string, unknown>,
     note: r.note ?? undefined,
+    thumbnail: r.thumbnail ?? undefined,
     useCloud: r.useCloud ?? undefined,
     userId: r.userId,
     creatorName: r.creatorName ?? undefined,
@@ -38,6 +39,7 @@ export const comfyTemplatesRouter = router({
       nodeType: nodeTypeSchema,
       payload: z.record(z.string(), z.unknown()),
       note: z.string().max(COMFY_TEMPLATE_LIMITS.MAX_NOTE_LEN).optional(),
+      thumbnail: z.string().max(2048).optional(),
       useCloud: z.boolean().optional(),
     }))
     .mutation(async ({ ctx, input }) => {
@@ -53,6 +55,7 @@ export const comfyTemplatesRouter = router({
         nodeType: input.nodeType,
         payload,
         note: input.note?.trim() || null,
+        thumbnail: input.thumbnail || null,
         useCloud: input.nodeType === "comfyui_workflow" ? !!input.useCloud : null,
       });
       if (!row) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "保存失败" });

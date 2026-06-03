@@ -256,6 +256,17 @@ export const ComfyuiVideoNode = memo(function ComfyuiVideoNode({ id, selected, d
   // 绿点指示：结果视频是否已落到我方 MinIO 长期存储（/manus-storage/ 路径）。
   const videoStoredInMinio = isOwnStorageUrl(payload.resultVideoUrl);
 
+  // 标题栏下常驻的模型注释（与自定义工作流节点一致）：模板 · 模型。
+  const modelRaw = payload.ckpt || payload.motionModule || "";
+  const modelShort = modelRaw.split(/[\\/]/).pop()?.replace(/\.[^.]+$/, "") ?? "";
+  const modelAnnotation = [payload.workflowTemplate, modelShort].filter(Boolean).join(" · ");
+  const modelTip = [
+    payload.ckpt ? `模型: ${payload.ckpt}` : "",
+    payload.motionModule ? `Motion: ${payload.motionModule}` : "",
+    (payload.sampler || payload.steps != null) ? `采样: ${payload.sampler ?? ""} ${payload.steps != null ? payload.steps + "步" : ""}${payload.cfg != null ? " CFG " + payload.cfg : ""}`.trim() : "",
+    (payload.frames || payload.fps) ? `${payload.frames ? payload.frames + "帧" : ""}${payload.fps ? " @" + payload.fps + "fps" : ""}`.trim() : "",
+  ].filter(Boolean).join("\n");
+
   const heroMedia = payload.status === "done" && videoSrc ? (
     <video
       src={videoSrc}
@@ -275,8 +286,18 @@ export const ComfyuiVideoNode = memo(function ComfyuiVideoNode({ id, selected, d
 
   return (
     <BaseNode id={id} selected={selected} nodeType="comfyui_video" title={data.title} minHeight={300} resizable heroMedia={heroMedia}
-      onRun={handleGenerate} running={genMutation.isPending || payload.status === "processing"} canRun={!!payload.prompt?.trim() && !!payload.ckpt?.trim()} hasResult={payload.status === "done" && !!payload.resultVideoUrl}>
+      onRun={handleGenerate} running={genMutation.isPending || payload.status === "processing"} canRun={!!payload.prompt?.trim() && !!payload.ckpt?.trim()} hasResult={payload.status === "done" && !!payload.resultVideoUrl}
+      headerTooltip={modelTip || undefined}>
       <div className="flex flex-col h-full p-3.5 gap-3 overflow-auto">
+        {/* 模型注释：标题栏下方常驻显示（模板 · 模型），与自定义工作流节点一致 */}
+        {modelAnnotation && (
+          <div
+            title={modelTip || undefined}
+            style={{ fontSize: 10.5, color: accent, fontWeight: 500, lineHeight: 1.4, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", flexShrink: 0 }}
+          >
+            {modelAnnotation}
+          </div>
+        )}
 
         {/* ── Status pill ── */}
         <div

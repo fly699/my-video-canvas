@@ -1026,6 +1026,7 @@ export function devCreateComfyNodeTemplate(data: InsertComfyNodeTemplate): Comfy
     nodeType: data.nodeType,
     payload: data.payload,
     note: data.note ?? null,
+    thumbnail: data.thumbnail ?? null,
     useCloud: data.useCloud ?? null,
     createdAt: now(),
     updatedAt: now(),

@@ -239,6 +239,13 @@
       "when": 1780500800000,
       "tag": "0033_comfy_node_templates",
       "breakpoints": true
+    },
+    {
+      "idx": 34,
+      "version": "5",
+      "when": 1780500900000,
+      "tag": "0034_comfy_template_thumbnail",
+      "breakpoints": true
     }
   ]
 }
