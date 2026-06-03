@@ -198,6 +198,29 @@ export const editSessions = mysqlTable("edit_sessions", {
 export type EditSession = typeof editSessions.$inferSelect;
 export type InsertEditSession = typeof editSessions.$inferInsert;
 
+// ── ComfyUI node template library ──────────────────────────────────────────────
+// Shared across ALL users: any logged-in user can add; everyone can view/use;
+// only the creator (or an admin) may edit/delete. `payload` holds the sanitized
+// node parameters (prompts / models / workflow JSON) so a template re-creates a
+// fully-configured node. No thumbnail/output is stored.
+export const comfyNodeTemplates = mysqlTable("comfy_node_templates", {
+  id: int("id").autoincrement().primaryKey(),
+  userId: int("userId").notNull(),                          // creator
+  creatorName: varchar("creatorName", { length: 255 }),     // display name (denormalized)
+  label: varchar("label", { length: 64 }).notNull(),
+  nodeType: varchar("nodeType", { length: 32 }).notNull(),  // comfyui_image|video|workflow
+  payload: json("payload").notNull(),
+  note: text("note"),
+  useCloud: boolean("useCloud"),                            // workflow: local vs cloud (card color)
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+}, (t) => ({
+  typeIdx: index("comfy_node_templates_type_idx").on(t.nodeType),
+}));
+
+export type ComfyNodeTemplateRow = typeof comfyNodeTemplates.$inferSelect;
+export type InsertComfyNodeTemplate = typeof comfyNodeTemplates.$inferInsert;
+
 // ── Video Tasks ───────────────────────────────────────────────────────────────
 export const videoTasks = mysqlTable("video_tasks", {
   id: int("id").autoincrement().primaryKey(),

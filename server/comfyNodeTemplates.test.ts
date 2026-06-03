@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { sanitizeComfyPayload, colorForTemplate, suggestComfyTemplateName } from "../client/src/lib/comfyNodeTemplates";
+import { sanitizeComfyPayload, colorForTemplate, suggestComfyTemplateName, describeComfyTemplate } from "../client/src/lib/comfyNodeTemplates";
 
 describe("sanitizeComfyPayload", () => {
   it("keeps prompts / params / workflow JSON, drops runtime+output state", () => {
@@ -55,6 +55,23 @@ describe("suggestComfyTemplateName", () => {
 
   it("returns empty string when nothing is configured", () => {
     expect(suggestComfyTemplateName("comfyui_image", {})).toBe("");
+  });
+});
+
+describe("describeComfyTemplate", () => {
+  it("summarizes the workflow model for custom-flow templates", () => {
+    const json = JSON.stringify({ "4": { class_type: "CheckpointLoaderSimple", inputs: { ckpt_name: "sd_xl.safetensors" } } });
+    expect(describeComfyTemplate("comfyui_workflow", { workflowJson: json })).toContain("sd_xl");
+  });
+  it("lists template / ckpt / lora / prompt for image nodes", () => {
+    const s = describeComfyTemplate("comfyui_image", { workflowTemplate: "txt2img", ckpt: "dreamshaper.safetensors", lora: "detail.safetensors", prompt: "a cat" });
+    expect(s).toContain("txt2img");
+    expect(s).toContain("dreamshaper");
+    expect(s).toContain("LoRA detail");
+    expect(s).toContain("a cat");
+  });
+  it("returns 无参数 when nothing configured", () => {
+    expect(describeComfyTemplate("comfyui_video", {})).toBe("无参数");
   });
 });
 
