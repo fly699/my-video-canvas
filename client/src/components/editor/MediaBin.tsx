@@ -82,7 +82,11 @@ export function MediaBin() {
         </div>
       </div>
 
-      <div style={{ flex: 1, overflowY: "auto", padding: 8, display: "grid", gridTemplateColumns: "1fr 1fr", gap: 6, alignContent: "start" }}>
+      {/* gridAutoRows:max-content is REQUIRED: the cards use overflow:hidden, which
+          lets a grid compress their auto rows below content when the list overflows
+          (many assets) — collapsing thumbnails into thin strips. Pinning rows to
+          content size keeps every thumbnail full-height and the list scrolls. */}
+      <div style={{ flex: 1, overflowY: "auto", padding: 8, display: "grid", gridTemplateColumns: "1fr 1fr", gridAutoRows: "max-content", gap: 6, alignContent: "start" }}>
         {listQuery.isLoading && <div style={{ gridColumn: "1/-1", fontSize: 12, color: EC.t3 }}>加载中…</div>}
         {!listQuery.isLoading && assets.length === 0 && <div style={{ gridColumn: "1/-1", fontSize: 12, color: EC.t4, padding: "20px 0", textAlign: "center" }}>暂无素材<br/>可在素材库上传或生成</div>}
         {assets.map((a) => {
