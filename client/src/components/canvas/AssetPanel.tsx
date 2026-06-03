@@ -290,6 +290,7 @@ export function AssetPanel({ projectId, onClose, onHeaderMouseDown }: Props) {
                     e.dataTransfer.effectAllowed = "copy";
                   }}
                   className="group relative rounded-lg overflow-hidden transition-all"
+                  onContextMenu={(e) => e.preventDefault()}
                   style={{
                     aspectRatio: "1 / 1",
                     background: `${accent}10`,
@@ -396,6 +397,7 @@ export function AssetPanel({ projectId, onClose, onHeaderMouseDown }: Props) {
           currentIndex={lightboxIdx}
           onClose={() => setLightboxIdx(null)}
           onNavigate={setLightboxIdx}
+          preventContextMenu
         />
       )}
 
@@ -405,9 +407,10 @@ export function AssetPanel({ projectId, onClose, onHeaderMouseDown }: Props) {
           className="fixed inset-0 z-[120] flex items-center justify-center p-6"
           style={{ background: "oklch(0 0 0 / 0.8)", backdropFilter: "blur(8px)" }}
           onClick={() => setVideoPreview(null)}
+          onContextMenu={(e) => e.preventDefault()}
         >
           <div className="relative" style={{ maxWidth: "90vw", maxHeight: "85vh" }} onClick={(e) => e.stopPropagation()}>
-            <video src={videoPreview} controls autoPlay style={{ maxWidth: "90vw", maxHeight: "85vh", borderRadius: 10, background: "#000" }} />
+            <video src={videoPreview} controls autoPlay controlsList="nodownload" style={{ maxWidth: "90vw", maxHeight: "85vh", borderRadius: 10, background: "#000" }} />
             <button
               onClick={() => setVideoPreview(null)}
               className="absolute flex items-center justify-center"
