@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { trpc } from "@/lib/trpc";
 import { toast } from "sonner";
-import { FileVideo, FileAudio, FileImage, Search, Type as TypeIcon, Captions, Plus, Music } from "lucide-react";
+import { FileVideo, FileAudio, FileImage, Search, Type as TypeIcon, Captions, Plus, Music, RefreshCw } from "lucide-react";
 import { MediaPreview, type PreviewAsset } from "./MediaPreview";
 import { MusicGen } from "./MusicGen";
 import { EC } from "./theme";
@@ -24,7 +24,13 @@ export function MediaBin() {
   const [q, setQ] = useState("");
   const [preview, setPreview] = useState<PreviewAsset | null>(null);
   const [musicOpen, setMusicOpen] = useState(false);
-  const listQuery = trpc.assets.list.useQuery({ allProjects: true, type: type || undefined, q: q.trim() || undefined });
+  // Refetch when the window/tab regains focus and when the bin is shown again,
+  // so assets uploaded or generated elsewhere appear without a full page reload.
+  // A manual 刷新 button is also provided for an explicit refresh.
+  const listQuery = trpc.assets.list.useQuery(
+    { allProjects: true, type: type || undefined, q: q.trim() || undefined },
+    { refetchOnWindowFocus: true, refetchOnMount: "always" },
+  );
   const assets = (listQuery.data ?? []).filter((a) => a.type !== "other");
 
   const addClip = useEditorStore((s) => s.addClip);
@@ -70,10 +76,18 @@ export function MediaBin() {
   return (
     <aside style={{ width: 252, flexShrink: 0, borderRight: `1px solid ${EC.border}`, display: "flex", flexDirection: "column", minHeight: 0, background: EC.surface }}>
       <div style={{ padding: 10, borderBottom: `1px solid ${EC.border}` }}>
-        <div style={{ position: "relative", marginBottom: 8 }}>
-          <Search size={13} style={{ position: "absolute", left: 8, top: 8, color: EC.t4 }} />
-          <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="搜索素材…"
-            style={{ width: "100%", padding: "6px 8px 6px 26px", fontSize: 12, borderRadius: 7, border: `1px solid ${EC.border}`, background: EC.elevated, color: EC.t1, outline: "none" }} />
+        <div style={{ display: "flex", gap: 6, marginBottom: 8 }}>
+          <div style={{ position: "relative", flex: 1 }}>
+            <Search size={13} style={{ position: "absolute", left: 8, top: 8, color: EC.t4 }} />
+            <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="搜索素材…"
+              style={{ width: "100%", padding: "6px 8px 6px 26px", fontSize: 12, borderRadius: 7, border: `1px solid ${EC.border}`, background: EC.elevated, color: EC.t1, outline: "none" }} />
+          </div>
+          <button
+            onClick={() => listQuery.refetch()}
+            disabled={listQuery.isFetching}
+            title="刷新素材库"
+            style={{ flexShrink: 0, width: 30, display: "inline-flex", alignItems: "center", justifyContent: "center", borderRadius: 7, border: `1px solid ${EC.border}`, background: EC.elevated, color: listQuery.isFetching ? EC.accent : EC.t3, cursor: listQuery.isFetching ? "default" : "pointer" }}
+          ><RefreshCw size={14} className={listQuery.isFetching ? "animate-spin" : undefined} /></button>
         </div>
         <div style={{ display: "flex", gap: 4 }}>
           {([["", "全部"], ["video", "视频"], ["image", "图片"], ["audio", "音频"]] as [TypeFilter, string][]).map(([v, label]) => (
