@@ -102,6 +102,7 @@ export function MediaBin() {
               draggable
               onDragStart={(e) => { e.dataTransfer.setData(MEDIA_DND_MIME, JSON.stringify(payload)); e.dataTransfer.effectAllowed = "copy"; }}
               onClick={() => setPreview({ id: a.id, url: a.url, name: a.name, kind })}
+              onContextMenu={(e) => e.preventDefault()}
               title={`${a.name}（点击放大预览 · 拖拽或＋加入时间轴）`}
               style={{ position: "relative", cursor: "zoom-in", borderRadius: 8, overflow: "hidden", border: `1px solid ${EC.border}`, background: EC.elevated }}
             >
