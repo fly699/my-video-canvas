@@ -152,16 +152,27 @@ export async function checkRemote(): Promise<RemoteState> {
       ? `无法比较版本：未找到上游分支 ${upstreamRef}（请确认部署分支已设置 git 上游跟踪）`
       : null;
 
-  const latest = behind > 0
+  // List the pending NON-merge commit subjects (HEAD..upstream) so the admin sees
+  // WHAT changed, not just the uninformative "Merge pull request #N" merge subject.
+  const changes = behind > 0
+    ? await new Promise<string[]>((resolve) => {
+        const child = spawn(`git log HEAD..${upstreamRef} --no-merges --format=%s --max-count=40`, { cwd: repoRoot, shell: true, windowsHide: true });
+        let out = ""; child.stdout?.on("data", (b: Buffer) => { out += b.toString("utf8"); });
+        child.on("error", () => resolve([]));
+        child.on("close", () => resolve(out.split("\n").map((s) => s.trim()).filter(Boolean)));
+      })
+    : [];
+  // Headline = first real change if available, else the latest commit subject.
+  const latest = changes[0] ?? (behind > 0
     ? await new Promise<string>((resolve) => {
         const child = spawn(`git log -1 --format=%s ${upstreamRef}`, { cwd: repoRoot, shell: true, windowsHide: true });
         let out = ""; child.stdout?.on("data", (b: Buffer) => { out += b.toString("utf8"); });
         child.on("error", () => resolve(""));
         child.on("close", () => resolve(out.trim()));
       })
-    : "";
+    : "");
 
-  return { behind: Math.max(behind, 0), latest, fetchOk, upstreamRef, error, checkedAt: Date.now() };
+  return { behind: Math.max(behind, 0), latest, changes, fetchOk, upstreamRef, error, checkedAt: Date.now() };
 }
 
 // 解析当前分支的上游 ref；无跟踪时回退 origin/main。
@@ -190,6 +201,8 @@ function runStepQuiet(cmd: string): Promise<number> {
 export interface RemoteState {
   behind: number;
   latest: string;
+  /** Subjects of the pending NON-merge commits (newest first) — the real changelog. */
+  changes: string[];
   checkedAt: number;
   /** git fetch 是否成功（false = 网络/远程不可达） */
   fetchOk: boolean;
@@ -209,14 +222,14 @@ export async function getUpdateAvailable(force = false): Promise<RemoteState> {
   } catch (e) {
     const msg = e instanceof Error ? e.message : String(e);
     // 检查本身抛错也要如实上报，而非伪装成「已是最新」。
-    remoteCache = { behind: 0, latest: "", checkedAt: now, fetchOk: false, upstreamRef: "", error: `检查异常：${msg}` };
+    remoteCache = { behind: 0, latest: "", changes: [], checkedAt: now, fetchOk: false, upstreamRef: "", error: `检查异常：${msg}` };
   }
   return remoteCache;
 }
 
 // 更新成功/已最新后清零红点（避免重启前残留提醒）
 function clearRemoteCache() {
-  remoteCache = { behind: 0, latest: "", checkedAt: Date.now(), fetchOk: true, upstreamRef: "", error: null };
+  remoteCache = { behind: 0, latest: "", changes: [], checkedAt: Date.now(), fetchOk: true, upstreamRef: "", error: null };
 }
 
 // 启动更新（幂等：运行中重复调用直接返回当前状态）

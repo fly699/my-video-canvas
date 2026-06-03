@@ -108,11 +108,15 @@ export function PropertiesPanel() {
 
         {isVisual && (
           <Section title="位置 / 大小">
-            <Slider label={`X ${Math.round((tf.x ?? 0) * 100)}%`} min={0} max={1} step={0.01} value={tf.x ?? 0} onChange={(v) => setTf("x", v)} />
-            <Slider label={`Y ${Math.round((tf.y ?? 0) * 100)}%`} min={0} max={1} step={0.01} value={tf.y ?? 0} onChange={(v) => setTf("y", v)} />
-            <Slider label={`缩放 ${Math.round((tf.scale ?? 1) * 100)}%`} min={0.05} max={1.5} step={0.01} value={tf.scale ?? 1} onChange={(v) => setTf("scale", v)} />
-            <Slider label={`不透明度 ${Math.round((tf.opacity ?? 1) * 100)}%`} min={0} max={1} step={0.01} value={tf.opacity ?? 1} onChange={(v) => setTf("opacity", v)} />
-            <Slider label={`旋转 ${tf.rotation ?? 0}°`} min={-180} max={180} step={1} value={tf.rotation ?? 0} onChange={(v) => setTf("rotation", v)} />
+            <div style={{ display: "flex", gap: 6, marginBottom: 2 }}>
+              <button onClick={() => setTf("x", Math.max(0, ((1 - (tf.scale ?? 1)) / 2)))} title="水平居中" style={alignBtn}>水平居中</button>
+              <button onClick={() => update(c.id, { transform: undefined })} title="清除位置/缩放/旋转" style={alignBtn}>重置</button>
+            </div>
+            <NumSlider label="缩放" value={tf.scale ?? 1} min={0.05} max={3} step={0.01} disp={(v) => Math.round(v * 100)} parse={(s) => s / 100} suffix="%" onChange={(v) => setTf("scale", v)} />
+            <NumSlider label="X" value={tf.x ?? 0} min={-0.5} max={1} step={0.005} disp={(v) => Math.round(v * 100)} parse={(s) => s / 100} suffix="%" onChange={(v) => setTf("x", v)} />
+            <NumSlider label="Y" value={tf.y ?? 0} min={-0.5} max={1} step={0.005} disp={(v) => Math.round(v * 100)} parse={(s) => s / 100} suffix="%" onChange={(v) => setTf("y", v)} />
+            <NumSlider label="旋转" value={tf.rotation ?? 0} min={-180} max={180} step={1} disp={(v) => Math.round(v)} parse={(s) => s} suffix="°" onChange={(v) => setTf("rotation", v)} />
+            <NumSlider label="不透明度" value={tf.opacity ?? 1} min={0} max={1} step={0.01} disp={(v) => Math.round(v * 100)} parse={(s) => s / 100} suffix="%" onChange={(v) => setTf("opacity", v)} />
           </Section>
         )}
 
@@ -148,6 +152,25 @@ function Slider({ label, min, max, step, value, onChange }: { label: string; min
     </div>
   );
 }
+/** Slider + precise numeric input (剪映-style). `disp`/`parse` map raw↔displayed. */
+function NumSlider({ label, value, min, max, step, suffix, disp, parse, onChange }: {
+  label: string; value: number; min: number; max: number; step: number; suffix?: string;
+  disp: (v: number) => number; parse: (display: number) => number; onChange: (v: number) => void;
+}) {
+  const clamp = (v: number) => Math.max(min, Math.min(max, v));
+  return (
+    <div>
+      <div style={{ display: "flex", alignItems: "center", marginBottom: 3 }}>
+        <span style={{ fontSize: 11, color: EC.t2, flex: 1 }}>{label}</span>
+        <input type="number" value={disp(value)} onChange={(e) => { const n = Number(e.target.value); if (!Number.isNaN(n)) onChange(clamp(parse(n))); }}
+          style={{ width: 56, padding: "2px 6px", fontSize: 11, textAlign: "right", borderRadius: 6, border: `1px solid ${EC.border}`, background: EC.elevated, color: EC.t1, outline: "none" }} />
+        {suffix && <span style={{ fontSize: 10, color: EC.t4, width: 14, textAlign: "right" }}>{suffix}</span>}
+      </div>
+      <input type="range" min={min} max={max} step={step} value={value} onChange={(e) => onChange(Number(e.target.value))} style={{ width: "100%", accentColor: EC.accent }} />
+    </div>
+  );
+}
+const alignBtn: React.CSSProperties = { flex: 1, padding: "5px 0", fontSize: 11, borderRadius: 6, cursor: "pointer", border: `1px solid ${EC.border}`, background: "transparent", color: EC.t2 };
 function Select({ value, options, onChange }: { value: string; options: [string, string][]; onChange: (v: string) => void }) {
   return (
     <select value={value} onChange={(e) => onChange(e.target.value)} style={{ ...input, cursor: "pointer" }}>

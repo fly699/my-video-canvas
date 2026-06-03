@@ -592,10 +592,16 @@ function SystemUpdatePanel() {
                 available.error
                   ? <span style={{ fontSize: 12, color: "oklch(0.65 0.18 25)" }}>检查失败：{available.error}</span>
                   : <span style={{ fontSize: 12, color: available.behind > 0 ? "oklch(0.78 0.18 60)" : "oklch(0.7 0.18 145)" }}>
-                      {available.behind > 0
-                        ? `有 ${available.behind} 个新提交待更新${available.latest ? `（最新：${available.latest}）` : ""}`
-                        : "已是最新版本"}
+                      {available.behind > 0 ? `有 ${available.behind} 个新提交待更新` : "已是最新版本"}
                     </span>
+              )}
+              {available && !available.error && available.behind > 0 && (available.changes?.length ?? 0) > 0 && (
+                <div style={{ width: "100%", marginTop: 4, maxHeight: 180, overflowY: "auto", padding: "8px 12px", borderRadius: 8, border: "1px solid var(--c-bd2)", background: "var(--c-surface)" }}>
+                  <div style={{ fontSize: 11, fontWeight: 600, color: "var(--c-t3)", marginBottom: 6 }}>更新内容（{available.changes.length} 项变更）</div>
+                  <ul style={{ margin: 0, paddingLeft: 16, display: "flex", flexDirection: "column", gap: 3 }}>
+                    {available.changes.map((c, i) => <li key={i} style={{ fontSize: 12, color: "var(--c-t2)", lineHeight: 1.5 }}>{c}</li>)}
+                  </ul>
+                </div>
               )}
               {checkMut.error && (
                 <span style={{ fontSize: 12, color: "oklch(0.65 0.18 25)" }}>检查失败：{checkMut.error.message}</span>
