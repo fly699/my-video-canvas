@@ -66,6 +66,21 @@ export function TimelinePanel({ onClose }: TimelinePanelProps) {
     TL_DEFAULT_LAYOUT,
     { validate: validateTimelineLayout },
   );
+
+  // Keep the floating panel on-screen when the window shrinks (e.g. exiting F11).
+  useEffect(() => {
+    const fix = () => setLayout((l) => {
+      if (l.docked) return l;
+      const width = Math.min(l.width, window.innerWidth);
+      const height = Math.min(l.height, window.innerHeight);
+      const left = Math.max(0, Math.min(l.left, window.innerWidth - width));
+      const top = Math.max(0, Math.min(l.top, window.innerHeight - height));
+      return left === l.left && top === l.top && width === l.width && height === l.height ? l : { ...l, left, top, width, height };
+    });
+    window.addEventListener("resize", fix);
+    fix();
+    return () => window.removeEventListener("resize", fix);
+  }, [setLayout]);
   const dragRef = useRef<{
     mode: "move" | "resize-height" | "resize-corner";
     startX: number; startY: number;

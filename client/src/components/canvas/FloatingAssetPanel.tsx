@@ -1,4 +1,4 @@
-import { useRef } from "react";
+import { useRef, useEffect } from "react";
 import { usePersistentState } from "../../hooks/usePersistentState";
 import { AssetPanel } from "./AssetPanel";
 
@@ -27,6 +27,19 @@ export function FloatingAssetPanel({ projectId, onClose }: { projectId: number; 
   );
   const dragRef = useRef<{ mx: number; my: number; x: number; y: number } | null>(null);
   const rezRef = useRef<{ mx: number; my: number; w: number; h: number } | null>(null);
+
+  // Keep the panel on-screen when the window shrinks (e.g. exiting F11 fullscreen),
+  // and on mount in case it was persisted from a larger window.
+  useEffect(() => {
+    const fix = () => setBox((b) => {
+      const w = Math.min(b.w, window.innerWidth);
+      const h = Math.min(b.h, window.innerHeight);
+      return { w, h, x: clamp(b.x, 0, Math.max(0, window.innerWidth - w)), y: clamp(b.y, 0, Math.max(0, window.innerHeight - h)) };
+    });
+    window.addEventListener("resize", fix);
+    fix();
+    return () => window.removeEventListener("resize", fix);
+  }, [setBox]);
 
   function onHeaderDown(e: React.MouseEvent) {
     // Ignore clicks on interactive header controls (e.g. the close button).

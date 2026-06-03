@@ -13,6 +13,13 @@ import { downloadMedia } from "@/lib/download";
 
 const ACCENT = "oklch(0.65 0.19 310)"; // 剪辑器主色（品红紫）
 
+// Go back to wherever the user came from (e.g. the canvas that linked here);
+// fall back to an explicit route if there's no in-app history to return to.
+function goBack(navigate: (to: string) => void, fallback: string) {
+  if (typeof window !== "undefined" && window.history.length > 1) window.history.back();
+  else navigate(fallback);
+}
+
 function fmtDate(d: Date | string) {
   const dt = typeof d === "string" ? new Date(d) : d;
   return dt.toLocaleString("zh-CN", { month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit" });
@@ -37,7 +44,7 @@ function EditorGallery() {
   return (
     <div style={{ minHeight: "100vh", background: "var(--c-bg, #0c0c10)", color: "var(--c-t1)" }}>
       <header style={{ display: "flex", alignItems: "center", gap: 12, padding: "14px 20px", borderBottom: "1px solid var(--c-bd2)" }}>
-        <button onClick={() => navigate("/")} title="返回首页" style={iconBtn}><ArrowLeft size={18} /></button>
+        <button onClick={() => goBack(navigate, "/")} title="返回" style={iconBtn}><ArrowLeft size={18} /></button>
         <Clapperboard size={20} style={{ color: ACCENT }} />
         <h1 style={{ fontSize: 17, fontWeight: 700, margin: 0 }}>视频剪辑器</h1>
         <span style={{ fontSize: 12, color: "var(--c-t3)" }}>多片段时间轴 · 单遍导出 · 高素质成片</span>
@@ -160,7 +167,7 @@ function EditorWorkspace({ id }: { id: number }) {
   return (
     <div style={{ height: "100vh", display: "flex", flexDirection: "column", background: "var(--c-bg, #0c0c10)", color: "var(--c-t1)" }}>
       <header style={{ display: "flex", alignItems: "center", gap: 12, padding: "8px 16px", borderBottom: "1px solid var(--c-bd2)", flexShrink: 0 }}>
-        <button onClick={() => navigate("/editor")} title="返回列表" style={iconBtn}><ArrowLeft size={18} /></button>
+        <button onClick={() => goBack(navigate, "/editor")} title="返回" style={iconBtn}><ArrowLeft size={18} /></button>
         <Clapperboard size={18} style={{ color: ACCENT }} />
         <input
           value={displayName}
