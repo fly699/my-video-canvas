@@ -26,6 +26,18 @@ describe("buildFilterGraph (single-pass composer)", () => {
     expect(g.outA).toBe("[outa]");
   });
 
+  it("applies fit mode: contain (pad), cover (crop), stretch (exact scale)", () => {
+    const mk = (fit: "contain" | "cover" | "stretch") => buildFilterGraph(
+      [{ isImage: false, hasAudio: true, trimIn: 0, trimOut: 2, speed: 1, fit }], OPTS).filterComplex;
+    expect(mk("contain")).toContain("force_original_aspect_ratio=decrease");
+    expect(mk("contain")).toContain("pad=1920:1080");
+    expect(mk("cover")).toContain("force_original_aspect_ratio=increase");
+    expect(mk("cover")).toContain("crop=1920:1080");
+    const s = mk("stretch");
+    expect(s).toContain("scale=1920:1080,"); // exact, no ratio flag
+    expect(s).not.toContain("force_original_aspect_ratio");
+  });
+
   it("injects setpts speed change for sped-up clips", () => {
     const segs: Segment[] = [{ isImage: false, hasAudio: true, trimIn: 0, trimOut: 10, speed: 2 }];
     const g = buildFilterGraph(segs, OPTS);

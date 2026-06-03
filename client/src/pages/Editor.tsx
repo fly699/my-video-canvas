@@ -8,6 +8,7 @@ import { MediaBin } from "@/components/editor/MediaBin";
 import { Timeline } from "@/components/editor/Timeline";
 import { PreviewStage } from "@/components/editor/PreviewStage";
 import { PropertiesPanel } from "@/components/editor/PropertiesPanel";
+import { CanvasSettings } from "@/components/editor/CanvasSettings";
 import { downloadMedia } from "@/lib/download";
 
 const ACCENT = "oklch(0.65 0.19 310)"; // 剪辑器主色（品红紫）
@@ -171,6 +172,7 @@ function EditorWorkspace({ id }: { id: number }) {
           {saveState === "saving" ? <><Loader2 size={11} className="animate-spin" /> 保存中</> : saveState === "saved" ? <><Check size={11} /> 已保存</> : null}
         </span>
         <div style={{ flex: 1 }} />
+        <CanvasSettings />
         {exportUrl && (
           <button onClick={() => downloadMedia(exportUrl, `${displayName}.mp4`)} style={{ ...primaryBtn, background: "transparent", color: ACCENT, border: `1px solid ${ACCENT}` }}>
             <Download size={15} /> 下载成片

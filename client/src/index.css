@@ -971,3 +971,7 @@ button:active:not(:disabled) {
 
 /* Editor MediaBin: reveal the quick-add "+" button on card hover */
 .editor-media-card:hover .editor-media-add { opacity: 1 !important; }
+
+/* Editor timeline: drag affordances */
+.editor-clip:active { cursor: grabbing !important; }
+.editor-trim:hover > div { background: #fff !important; width: 4px !important; }

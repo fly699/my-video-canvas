@@ -13,6 +13,10 @@ export type ClipKind = "video" | "image" | "audio" | "text";
 
 export type TransitionType = "none" | "fade" | "dissolve" | "slide" | "wipe";
 
+/** How a visual clip fills the output frame.
+ *  contain = 适应（完整显示，留黑边）; cover = 填充（铺满，裁剪溢出）; stretch = 拉伸（变形铺满）. */
+export type FitMode = "contain" | "cover" | "stretch";
+
 /** Preset color/filter adjustments applied to a visual clip. */
 export interface ClipEffects {
   brightness?: number;  // -1..1   (ffmpeg eq brightness)
@@ -54,6 +58,7 @@ export interface Clip {
   transitionIn?: { type: TransitionType; duration: number };
   effects?: ClipEffects;
   transform?: ClipTransform;
+  fit?: FitMode;            // how a full-frame visual clip fills the canvas (default contain)
   text?: ClipText;
 }
 

@@ -113,12 +113,16 @@ export function PreviewStage() {
                 </div>
               );
             }
+            // full-frame clips honor the per-clip fit mode; PiP/overlay boxes use cover
+            const objFit: React.CSSProperties["objectFit"] = fullFrame
+              ? (clip.fit === "cover" ? "cover" : clip.fit === "stretch" ? "fill" : "contain")
+              : "cover";
             if (clip.kind === "image") {
-              return <img key={clip.id} src={clip.assetUrl} alt="" style={{ ...boxStyle, objectFit: fullFrame ? "contain" : "cover", filter: cssFilter(clip) }} />;
+              return <img key={clip.id} src={clip.assetUrl} alt="" style={{ ...boxStyle, objectFit: objFit, filter: cssFilter(clip) }} />;
             }
             if (clip.kind === "video") {
               return <video key={clip.id} ref={(el) => { if (el) mediaRefs.current.set(clip.id, el); else mediaRefs.current.delete(clip.id); }}
-                src={clip.assetUrl} playsInline muted={false} style={{ ...boxStyle, objectFit: fullFrame ? "contain" : "cover", filter: cssFilter(clip) }} />;
+                src={clip.assetUrl} playsInline muted={false} style={{ ...boxStyle, objectFit: objFit, filter: cssFilter(clip) }} />;
             }
             return null;
           })}
