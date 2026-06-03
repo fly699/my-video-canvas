@@ -4,6 +4,7 @@ import { getNodeConfig } from "../../lib/nodeConfig";
 import { CONNECTION_HINTS } from "../../lib/connectionRules";
 import type { NodeType } from "../../../../shared/types";
 import { useCanvasStore } from "../../hooks/useCanvasStore";
+import { useHoverStore } from "../../hooks/useHoverStore";
 import { NodeSelectedContext } from "../../contexts/NodeSelectedContext";
 import { trpc } from "@/lib/trpc";
 import { useWorkflowRunState } from "../../contexts/WorkflowRunContext";
@@ -230,8 +231,8 @@ export const BaseNode = memo(function BaseNode({
         // overflow is intentionally NOT set here so handle ::before hit-area expansions
         // can extend beyond the node edge without being clipped
       }}
-      onMouseEnter={() => setIsHovered(true)}
-      onMouseLeave={() => setIsHovered(false)}
+      onMouseEnter={() => { setIsHovered(true); useHoverStore.getState().setHovered(id); }}
+      onMouseLeave={() => { setIsHovered(false); if (useHoverStore.getState().nodeId === id) useHoverStore.getState().setHovered(null); }}
     >
       {/* Resize handles — outside overflow:hidden so corner grips aren't clipped */}
       <NodeResizer
