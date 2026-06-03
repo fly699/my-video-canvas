@@ -371,6 +371,8 @@ function clipVisibleDuration(c: Clip): number {
  */
 export async function composeTimeline(doc: EditorDoc, opts: ComposeOptions): Promise<ComposeResult> {
   const clips = collectVideoSegments(doc);
+  // clips whose (video) track is muted → drop their audio in the render
+  const mutedClipIds = new Set(doc.tracks.filter((t) => t.type === "video" && t.muted).flatMap((t) => t.clips.map((c) => c.id)));
   if (clips.length === 0) throw new Error("时间轴没有可渲染的视频/图片片段");
   const overlayClips = collectOverlayClips(doc);
   const audioClipsSrc = collectAudioClips(doc);
@@ -394,7 +396,7 @@ export async function composeTimeline(doc: EditorDoc, opts: ComposeOptions): Pro
       const isImage = c.kind === "image";
       const p = await downloadToTemp(c.assetUrl, isImage ? "img" : "mp4");
       tmpFiles.push(p);
-      const hasAudio = isImage ? false : await hasAudioTrack(p);
+      const hasAudio = isImage || mutedClipIds.has(c.id) ? false : await hasAudioTrack(p);
       const trimIn = isImage ? 0 : c.trimIn;
       const trimOut = isImage ? Math.max(0.05, c.trimOut - c.trimIn) : c.trimOut;
       const seg: Segment = { isImage, hasAudio, trimIn, trimOut, speed: c.speed ?? 1, effects: c.effects, transition: c.transitionIn, fit: c.fit };
@@ -454,7 +456,10 @@ export async function composeTimeline(doc: EditorDoc, opts: ComposeOptions): Pro
     try {
       await execFileAsync("ffmpeg", args, { timeoutMs: COMPOSE_TIMEOUT_MS });
     } catch (err: unknown) {
-      const e = err as { stderr?: string; message?: string };
+      const e = err as { stderr?: string; message?: string; code?: string };
+      if (e.code === "ENOENT" || /ENOENT/.test(e.message ?? "")) {
+        throw new Error("未找到 ffmpeg：请在服务器安装 ffmpeg（Windows: winget install Gyan.FFmpeg）并重启应用；或设置环境变量 FFMPEG_PATH 指向 ffmpeg 可执行文件。");
+      }
       throw new Error("渲染失败：" + (e.stderr?.slice(-600) || e.message || String(err)));
     }
     report(88, "上传成片");

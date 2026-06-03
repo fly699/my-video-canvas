@@ -73,8 +73,10 @@ export interface Clip {
 export interface Track {
   id: string;
   type: TrackType;
-  muted?: boolean;
-  hidden?: boolean;
+  muted?: boolean;   // 静音：本轨音频不计入导出/预览
+  hidden?: boolean;  // 隐藏：本轨画面不参与渲染
+  locked?: boolean;  // 锁定：禁止在时间轴上选中/拖动/裁剪
+  name?: string;     // optional custom label
   clips: Clip[];
 }
 
