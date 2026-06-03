@@ -592,7 +592,9 @@ function SystemUpdatePanel() {
                 available.error
                   ? <span style={{ fontSize: 12, color: "oklch(0.65 0.18 25)" }}>检查失败：{available.error}</span>
                   : <span style={{ fontSize: 12, color: available.behind > 0 ? "oklch(0.78 0.18 60)" : "oklch(0.7 0.18 145)" }}>
-                      {available.behind > 0 ? `有 ${available.behind} 个新提交待更新` : "已是最新版本"}
+                      {available.behind > 0
+                        ? `有 ${available.behind} 个新提交待更新${available.latest ? `（最新：${available.latest}）` : ""}`
+                        : "已是最新版本"}
                     </span>
               )}
               {available && !available.error && available.behind > 0 && (available.changes?.length ?? 0) > 0 && (

@@ -152,25 +152,21 @@ export async function checkRemote(): Promise<RemoteState> {
       ? `无法比较版本：未找到上游分支 ${upstreamRef}（请确认部署分支已设置 git 上游跟踪）`
       : null;
 
-  // List the pending NON-merge commit subjects (HEAD..upstream) so the admin sees
-  // WHAT changed, not just the uninformative "Merge pull request #N" merge subject.
-  const changes = behind > 0
-    ? await new Promise<string[]>((resolve) => {
-        const child = spawn(`git log HEAD..${upstreamRef} --no-merges --format=%s --max-count=40`, { cwd: repoRoot, shell: true, windowsHide: true });
-        let out = ""; child.stdout?.on("data", (b: Buffer) => { out += b.toString("utf8"); });
-        child.on("error", () => resolve([]));
-        child.on("close", () => resolve(out.split("\n").map((s) => s.trim()).filter(Boolean)));
-      })
-    : [];
-  // Headline = first real change if available, else the latest commit subject.
-  const latest = changes[0] ?? (behind > 0
-    ? await new Promise<string>((resolve) => {
-        const child = spawn(`git log -1 --format=%s ${upstreamRef}`, { cwd: repoRoot, shell: true, windowsHide: true });
-        let out = ""; child.stdout?.on("data", (b: Buffer) => { out += b.toString("utf8"); });
-        child.on("error", () => resolve(""));
-        child.on("close", () => resolve(out.trim()));
-      })
-    : "");
+  // List pending commit subjects so the admin sees WHAT changed. Prefer non-merge
+  // commits (the real feature/fix messages); if that yields nothing (e.g. only
+  // merge commits in range), fall back to ALL subjects so the panel is never blank.
+  const logSubjects = (extra: string) => new Promise<string[]>((resolve) => {
+    const child = spawn(`git log HEAD..${upstreamRef} ${extra} --format=%s --max-count=40`, { cwd: repoRoot, shell: true, windowsHide: true });
+    let out = ""; child.stdout?.on("data", (b: Buffer) => { out += b.toString("utf8"); });
+    child.on("error", () => resolve([]));
+    child.on("close", () => resolve(out.split("\n").map((s) => s.trim()).filter(Boolean)));
+  });
+  let changes: string[] = [];
+  if (behind > 0) {
+    changes = await logSubjects("--no-merges");
+    if (changes.length === 0) changes = await logSubjects(""); // include merges as a fallback
+  }
+  const latest = changes[0] ?? "";
 
   return { behind: Math.max(behind, 0), latest, changes, fetchOk, upstreamRef, error, checkedAt: Date.now() };
 }

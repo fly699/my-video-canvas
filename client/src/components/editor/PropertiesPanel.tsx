@@ -3,8 +3,16 @@ import { toast } from "sonner";
 import { trpc } from "@/lib/trpc";
 import { EC, probeMediaDuration } from "./theme";
 import { useEditorStore } from "./editorStore";
+import { usePersistentState } from "@/hooks/usePersistentState";
 import type { Clip } from "@shared/editorTypes";
 
+// TTS models available for AI 配音 (mirror audioGen.generateDubbing).
+const TTS_MODELS: [string, string][] = [
+  ["openai_tts_real", "OpenAI 标准"],
+  ["openai_tts_hd_real", "OpenAI 高清"],
+  ["openai_gpt4o_mini_tts", "GPT-4o mini"],
+  ["elevenlabs-v3-tts", "ElevenLabs V3"],
+];
 const FILTERS: [string, string][] = [["", "无"], ["cinematic", "电影感"], ["vintage", "复古"], ["warm", "暖色"], ["cool", "冷色"], ["bw", "黑白"]];
 const TRANSITIONS: [string, string][] = [["none", "无"], ["fade", "淡入淡出"], ["dissolve", "叠化"], ["slide", "滑动"], ["wipe", "擦除"]];
 const MOTIONS: [string, string][] = [["none", "无"], ["fade", "淡入"], ["roll", "滚动"], ["karaoke", "卡拉OK"], ["bounce", "弹跳"]];
@@ -16,6 +24,10 @@ export function PropertiesPanel() {
   const remove = useEditorStore((s) => s.removeClip);
   const addClip = useEditorStore((s) => s.addClip);
   const dubMut = trpc.audioGen.generateDubbing.useMutation();
+  const [ttsModel, setTtsModel] = usePersistentState<string>(
+    "ui:editor:tts-model:v1", "openai_tts_real",
+    { validate: (p) => (typeof p === "string" && TTS_MODELS.some(([v]) => v === p) ? p : null) },
+  );
 
   // AI dubbing: synthesize speech from the text clip and drop it on the audio track.
   async function aiDub(text: string, start: number) {
@@ -25,7 +37,7 @@ export function PropertiesPanel() {
     if (!audioTrack) { toast.error("没有音频轨道"); return; }
     toast.info("正在生成 AI 配音…");
     try {
-      const r = await dubMut.mutateAsync({ model: "openai_tts_real", text });
+      const r = await dubMut.mutateAsync({ model: ttsModel as Parameters<typeof dubMut.mutateAsync>[0]["model"], text });
       const dur = await probeMediaDuration(r.url, "audio");
       addClip(audioTrack.id, { kind: "audio", assetUrl: r.url, start, trimIn: 0, trimOut: dur, volume: 1 });
       toast.success("已生成配音并加入音频轨");
@@ -92,6 +104,7 @@ export function PropertiesPanel() {
               {txt?.bgColor && <input type="color" value={txt?.bgColor ?? "#000000"} onChange={(e) => setText({ bgColor: e.target.value })} style={{ ...input, width: 34, height: 30, padding: 2 }} />}
             </div>
             <Row label="动效"><Select value={txt?.motionStyle ?? "none"} options={MOTIONS} onChange={(v) => setText({ motionStyle: v as NonNullable<Clip["text"]>["motionStyle"] })} /></Row>
+            <Row label="配音模型"><Select value={ttsModel} options={TTS_MODELS} onChange={setTtsModel} /></Row>
             <button
               disabled={dubMut.isPending}
               onClick={() => aiDub(c.text?.content ?? "", c.start)}
