@@ -1,5 +1,5 @@
-import { useRef, useCallback, useState } from "react";
-import { ZoomIn, ZoomOut, Scissors, Magnet } from "lucide-react";
+import { useRef, useCallback, useState, useEffect } from "react";
+import { ZoomIn, ZoomOut, Scissors, Magnet, Trash2, Copy, SplitSquareHorizontal } from "lucide-react";
 import { EC, trackColor, trackLabel, fmtTime, probeMediaDuration } from "./theme";
 import { useEditorStore, clipDuration } from "./editorStore";
 import { MEDIA_DND_MIME, type MediaDragPayload } from "./MediaBin";
@@ -26,11 +26,36 @@ export function Timeline() {
   const dragRef = useRef<DragMode | null>(null);
   const [snapX, setSnapX] = useState<number | null>(null); // guide line (seconds) while snapping
   const [snapOn, setSnapOn] = useState(true);
+  const [menu, setMenu] = useState<{ x: number; y: number; clipId: string } | null>(null);
 
   const setPxPerSec = useEditorStore((s) => s.setPxPerSec);
   const setPlayhead = useEditorStore((s) => s.setPlayhead);
   const setPlaying = useEditorStore((s) => s.setPlaying);
   const selectClip = useEditorStore((s) => s.selectClip);
+
+  // Keyboard: Delete/Backspace = remove selected clip; S = split at playhead; Ctrl/⌘+D = duplicate.
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      const t = e.target as HTMLElement;
+      if (t.closest("input, textarea, [contenteditable='true']")) return;
+      const st = useEditorStore.getState();
+      const sel = st.selectedClipId;
+      if (!sel) return;
+      if (e.key === "Delete" || e.key === "Backspace") { e.preventDefault(); st.removeClip(sel); }
+      else if ((e.key === "s" || e.key === "S") && !e.ctrlKey && !e.metaKey) { e.preventDefault(); st.splitClip(sel, st.playhead); }
+      else if ((e.key === "d" || e.key === "D") && (e.ctrlKey || e.metaKey)) { e.preventDefault(); st.duplicateClip(sel); }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, []);
+
+  // close context menu on any outside click
+  useEffect(() => {
+    if (!menu) return;
+    const close = () => setMenu(null);
+    window.addEventListener("pointerdown", close);
+    return () => window.removeEventListener("pointerdown", close);
+  }, [menu]);
 
   const contentSec = Math.max(duration + 5, 20);
   const contentW = contentSec * pxPerSec;
@@ -209,6 +234,7 @@ export function Timeline() {
                   return (
                     <div key={c.id}
                       onPointerDown={(e) => onClipPointerDown(e, c.id, "move")}
+                      onContextMenu={(e) => { e.preventDefault(); e.stopPropagation(); selectClip(c.id); setMenu({ x: e.clientX, y: e.clientY, clipId: c.id }); }}
                       className="editor-clip"
                       style={{
                         position: "absolute", left, width, top: 5, bottom: 5,
@@ -261,8 +287,22 @@ export function Timeline() {
       </div>
 
       <div style={{ display: "flex", alignItems: "center", gap: 6, padding: "3px 10px", borderTop: `1px solid ${EC.border}`, fontSize: 10, color: EC.t4, flexShrink: 0 }}>
-        <Scissors size={11} /> 拖动片段移动/换轨 · 拖两端裁剪 · 拖标尺或播放头方块定位 · 吸附自动对齐
+        <Scissors size={11} /> 拖动移动/换轨 · 拖两端裁剪 · 拖标尺定位 · 右键片段菜单 · Del 删除 · S 分割 · Ctrl+D 复制
       </div>
+
+      {menu && (() => {
+        const st = useEditorStore.getState();
+        const act = (fn: () => void) => { fn(); setMenu(null); };
+        const item: React.CSSProperties = { display: "flex", alignItems: "center", gap: 8, padding: "7px 12px", fontSize: 12, color: EC.t1, cursor: "pointer", whiteSpace: "nowrap" };
+        return (
+          <div style={{ position: "fixed", left: menu.x, top: menu.y, zIndex: 1000, minWidth: 150, padding: 4, borderRadius: 10, background: EC.surface, border: `1px solid ${EC.border}`, boxShadow: "0 12px 40px oklch(0 0 0 / 0.5)" }}
+            onPointerDown={(e) => e.stopPropagation()}>
+            <div style={item} onClick={() => act(() => st.splitClip(menu.clipId, st.playhead))}><SplitSquareHorizontal size={14} /> 在播放头分割<span style={{ marginLeft: "auto", color: EC.t4 }}>S</span></div>
+            <div style={item} onClick={() => act(() => st.duplicateClip(menu.clipId))}><Copy size={14} /> 复制片段<span style={{ marginLeft: "auto", color: EC.t4 }}>Ctrl+D</span></div>
+            <div style={{ ...item, color: "oklch(0.65 0.2 25)" }} onClick={() => act(() => st.removeClip(menu.clipId))}><Trash2 size={14} /> 删除片段<span style={{ marginLeft: "auto", color: EC.t4 }}>Del</span></div>
+          </div>
+        );
+      })()}
     </div>
   );
 }
