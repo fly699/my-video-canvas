@@ -29,6 +29,8 @@ const RUNTIME_KEYS = new Set([
   "imageUrl", "imageStorageKey", "imageHistory", "imageUrls", "selectedImageIndex",
   "resultVideoUrl", "resultStorageKey", "url", "storageKey",
   "pinned",
+  // per-instance corner annotation — a saved template gets its own name instead
+  "templateLabel",
 ]);
 
 /** Strip runtime/output fields and oversized strings (keep the workflow JSON). */

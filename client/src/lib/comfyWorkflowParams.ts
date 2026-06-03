@@ -6,8 +6,9 @@
 // model in useWorkflowRunner) and fill any image param the user left blank.
 // The server then uploads the URL to ComfyUI and substitutes the filename.
 import type { WorkflowParamBinding } from "../../../shared/types";
+import { compareUpstreamNodes } from "./inputOrder";
 
-type MiniNode = { id: string; data: { nodeType: string; payload?: unknown } };
+type MiniNode = { id: string; data: { nodeType: string; payload?: unknown; title?: string }; position?: { y?: number } };
 type MiniEdge = { source: string; target: string };
 
 const IMAGE_SOURCE_TYPES = new Set(["image_gen", "comfyui_image", "storyboard", "comfyui_workflow", "asset"]);
@@ -34,11 +35,15 @@ export function detectUpstreamImageUrl(targetId: string, edges: MiniEdge[], node
  *  fill MULTIPLE blank image params (multi-reference workflows: IPAdapter / multi
  *  LoadImage / fusion). */
 export function detectUpstreamImages(targetId: string, edges: MiniEdge[], nodes: MiniNode[]): string[] {
+  const byId = new Map(nodes.map((n) => [n.id, n]));
+  // Smart, deterministic order: by trailing number in the source title, then Y,
+  // then connection order — so multi-reference fill matches the on-edge numbers.
+  const incoming = edges.map((e, i) => ({ e, i })).filter(({ e }) => e.target === targetId);
+  incoming.sort((a, b) => compareUpstreamNodes(byId.get(a.e.source), byId.get(b.e.source), a.i, b.i));
   const out: string[] = [];
   const seen = new Set<string>();
-  for (const edge of edges) {
-    if (edge.target !== targetId) continue;
-    const src = nodes.find((n) => n.id === edge.source);
+  for (const { e } of incoming) {
+    const src = byId.get(e.source);
     if (!src || !IMAGE_SOURCE_TYPES.has(src.data.nodeType)) continue;
     const url = getNodeImageUrl(src.data.nodeType, (src.data.payload ?? {}) as Record<string, unknown>);
     if (url && !seen.has(url)) { seen.add(url); out.push(url); }

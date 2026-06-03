@@ -2,6 +2,8 @@ import { useState, useCallback, useRef, useEffect, memo } from "react";
 import { BaseEdge, EdgeLabelRenderer, getBezierPath, Position } from "@xyflow/react";
 import type { EdgeProps } from "@xyflow/react";
 import { useCanvasStore } from "../../hooks/useCanvasStore";
+import { useHoverStore } from "../../hooks/useHoverStore";
+import { edgeOrderIndex } from "../../lib/inputOrder";
 import { useWorkflowRunState } from "../../contexts/WorkflowRunContext";
 import { useCanvasMode } from "../../contexts/CanvasModeContext";
 import { getNodeConfig } from "../../lib/nodeConfig";
@@ -18,7 +20,7 @@ const PARTICLE_COUNT = 3;
 
 export const CustomEdge = memo(function CustomEdge({
   id,
-  source,
+  source, target,
   sourceX, sourceY, targetX, targetY,
   sourcePosition, targetPosition,
   selected, label,
@@ -29,6 +31,21 @@ export const CustomEdge = memo(function CustomEdge({
   const sourceFailed = failedIds.includes(source ?? "");
 
   const nodes = useCanvasStore(s => s.nodes);
+  // Input/output order badge: shown near the relevant handle when the edge's
+  // target (input) or source (output) node is hovered, so multi-input ordering
+  // (参考图1/2, merge clip order …) is visible right on the connection.
+  const hoveredNodeId = useHoverStore(s => s.nodeId);
+  const allEdges = useCanvasStore(s => s.edges);
+  let orderBadge: { x: number; y: number; n: number } | null = null;
+  if (hoveredNodeId && (hoveredNodeId === target || hoveredNodeId === source)) {
+    const side = hoveredNodeId === target ? "in" : "out";
+    const { index, total } = edgeOrderIndex(id, side, hoveredNodeId, allEdges, nodes);
+    if (index >= 0 && total > 1) {
+      const t = 0.16;
+      const [ax, ay, bx, by] = side === "in" ? [targetX, targetY, sourceX, sourceY] : [sourceX, sourceY, targetX, targetY];
+      orderBadge = { x: ax + (bx - ax) * t, y: ay + (by - ay) * t, n: index + 1 };
+    }
+  }
   const sourceNodeType = nodes.find(n => n.id === source)?.data.nodeType as string | undefined;
   const typeColor = sourceNodeType ? getNodeConfig(sourceNodeType as Parameters<typeof getNodeConfig>[0]).color : null;
   const { mode: canvasMode } = useCanvasMode();
@@ -217,6 +234,14 @@ export const CustomEdge = memo(function CustomEdge({
         opacity={isCreative ? 0.9 : 1.0}
         pointerEvents="none"
       />
+
+      {/* Input/output order number near the hovered node's handle */}
+      {orderBadge && (
+        <g pointerEvents="none" style={{ transition: "opacity 120ms ease" }}>
+          <circle cx={orderBadge.x} cy={orderBadge.y} r={9.5} fill="var(--c-base)" stroke={strokeColor} strokeWidth={2} />
+          <text x={orderBadge.x} y={orderBadge.y} textAnchor="middle" dominantBaseline="central" fontSize={11} fontWeight={800} fill={strokeColor}>{orderBadge.n}</text>
+        </g>
+      )}
 
       <EdgeLabelRenderer>
         <div
