@@ -2,6 +2,7 @@ import { useRef, useCallback, useState, useEffect } from "react";
 import { ZoomIn, ZoomOut, Scissors, Magnet, Trash2, Copy, SplitSquareHorizontal, Volume2, VolumeX, Eye, EyeOff, Lock, Unlock, Plus } from "lucide-react";
 import { EC, trackColor, trackLabel, fmtTime, probeMediaDuration } from "./theme";
 import { useEditorStore, clipDuration } from "./editorStore";
+import { ClipThumb } from "./ClipThumb";
 import { MEDIA_DND_MIME, type MediaDragPayload } from "./MediaBin";
 import type { TrackType } from "@shared/editorTypes";
 
@@ -270,9 +271,7 @@ export function Timeline() {
                         boxShadow: selected ? `0 0 0 2px ${col}` : "none",
                         display: "flex", alignItems: "center",
                       }}>
-                      {(c.kind === "image" || c.kind === "video") && c.assetUrl && (
-                        <div style={{ position: "absolute", inset: 0, opacity: 0.4, backgroundImage: `url(${c.kind === "image" ? c.assetUrl : ""})`, backgroundSize: "cover", backgroundPosition: "center", pointerEvents: "none" }} />
-                      )}
+                      <ClipThumb kind={c.kind} assetUrl={c.assetUrl} trimIn={c.trimIn} color={col} />
                       <span style={{ position: "relative", fontSize: 10, color: EC.t1, padding: "0 10px", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", pointerEvents: "none" }}>
                         {c.kind === "text" ? (c.text?.content ?? "文字") : (c.assetUrl?.split("/").pop() ?? c.kind)}
                       </span>
