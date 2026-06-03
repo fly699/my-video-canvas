@@ -6,7 +6,7 @@ import { useCanvasStore } from "../../../hooks/useCanvasStore";
 import { propagateRefImage } from "../../../lib/refImagePropagation";
 import type { ComfyuiWorkflowNodeData, WorkflowParamBinding } from "../../../../../shared/types";
 import { trpc } from "@/lib/trpc";
-import { detectUpstreamImageUrl, resolveWorkflowImageParams } from "@/lib/comfyWorkflowParams";
+import { detectUpstreamImageUrl, detectUpstreamImages, detectUpstreamPrompt, resolveWorkflowImageParams, fillWorkflowPromptParams } from "@/lib/comfyWorkflowParams";
 import { summarizeComfyWorkflow } from "@/lib/comfyWorkflowSummary";
 import { makeImageProxyFallback } from "@/lib/utils";
 import { isOwnStorageUrl } from "@/lib/ownStorage";
@@ -281,14 +281,14 @@ export const ComfyuiWorkflowNode = memo(function ComfyuiWorkflowNode({ id, selec
     if (!workflowJson.trim()) { toast.error("请先加载 Workflow JSON"); return; }
     update({ status: "processing", errorMessage: undefined, progress: 0 }, true);
     try {
-      // Pull an image from a connected upstream node into any blank image param.
+      // Pull upstream images (multi-reference → fill blank image params in order)
+      // and upstream prompt text (→ blank positive/negative prompt params).
       const { nodes, edges } = useCanvasStore.getState();
-      const upstreamImg = detectUpstreamImageUrl(id, edges, nodes);
-      const { paramValues, imageParamKeys } = resolveWorkflowImageParams(
-        payload.paramBindings,
-        payload.paramValues ?? {},
-        upstreamImg,
-      );
+      const upstreamImgs = detectUpstreamImages(id, edges, nodes);
+      const upstreamPrompt = detectUpstreamPrompt(id, edges, nodes);
+      const imgResolved = resolveWorkflowImageParams(payload.paramBindings, payload.paramValues ?? {}, upstreamImgs);
+      const imageParamKeys = imgResolved.imageParamKeys;
+      const paramValues = fillWorkflowPromptParams(payload.paramBindings, imgResolved.paramValues, upstreamPrompt);
       // Seed handling: unless the user pinned the seed (randomizeSeed === false),
       // re-randomize every seed param each run, and persist the used value back so
       // the form reflects what was actually sent.
