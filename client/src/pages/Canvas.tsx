@@ -144,7 +144,7 @@ function ToolBtn({
       <TooltipContent side="right" className="text-xs">
         <span>{label}</span>
         {kbd && (
-          <kbd className="ml-2 px-1.5 py-0.5 rounded text-[10px] bg-[var(--c-elevated)] font-mono">
+          <kbd className="ml-2 px-1.5 py-0.5 rounded text-[10px] bg-background/15 border border-background/25 font-mono">
             {kbd}
           </kbd>
         )}
@@ -1236,7 +1236,7 @@ function CanvasInner({ projectId }: { projectId: number }) {
               </button>
             </TooltipTrigger>
             <TooltipContent side="bottom" className="text-xs">
-              快速模板 <kbd className="ml-1 px-1 py-0.5 rounded text-[10px] bg-[var(--c-elevated)] font-mono">⌘T</kbd>
+              快速模板 <kbd className="ml-1 px-1 py-0.5 rounded text-[10px] bg-background/15 border border-background/25 font-mono">⌘T</kbd>
             </TooltipContent>
           </Tooltip>
 
@@ -1251,7 +1251,7 @@ function CanvasInner({ projectId }: { projectId: number }) {
               </button>
             </TooltipTrigger>
             <TooltipContent side="bottom" className="text-xs">
-              搜索节点 <kbd className="ml-1 px-1 py-0.5 rounded text-[10px] bg-[var(--c-elevated)] font-mono">⌘K</kbd>
+              搜索节点 <kbd className="ml-1 px-1 py-0.5 rounded text-[10px] bg-background/15 border border-background/25 font-mono">⌘K</kbd>
             </TooltipContent>
           </Tooltip>
 
@@ -1360,7 +1360,7 @@ function CanvasInner({ projectId }: { projectId: number }) {
               </button>
             </TooltipTrigger>
             <TooltipContent side="bottom" className="text-xs">
-              撤销 <kbd className="ml-1 px-1 py-0.5 rounded text-[10px] bg-[var(--c-elevated)] font-mono">⌘Z</kbd>
+              撤销 <kbd className="ml-1 px-1 py-0.5 rounded text-[10px] bg-background/15 border border-background/25 font-mono">⌘Z</kbd>
             </TooltipContent>
           </Tooltip>
 
@@ -1377,7 +1377,7 @@ function CanvasInner({ projectId }: { projectId: number }) {
               </button>
             </TooltipTrigger>
             <TooltipContent side="bottom" className="text-xs">
-              重做 <kbd className="ml-1 px-1 py-0.5 rounded text-[10px] bg-[var(--c-elevated)] font-mono">⌘⇧Z</kbd>
+              重做 <kbd className="ml-1 px-1 py-0.5 rounded text-[10px] bg-background/15 border border-background/25 font-mono">⌘⇧Z</kbd>
             </TooltipContent>
           </Tooltip>
 
@@ -1394,7 +1394,7 @@ function CanvasInner({ projectId }: { projectId: number }) {
               </button>
             </TooltipTrigger>
             <TooltipContent side="bottom" className="text-xs">
-              保存 <kbd className="ml-1 px-1 py-0.5 rounded text-[10px] bg-[var(--c-elevated)] font-mono">⌘S</kbd>
+              保存 <kbd className="ml-1 px-1 py-0.5 rounded text-[10px] bg-background/15 border border-background/25 font-mono">⌘S</kbd>
             </TooltipContent>
           </Tooltip>
 
@@ -1987,7 +1987,7 @@ function CanvasInner({ projectId }: { projectId: number }) {
                 </button>
               </TooltipTrigger>
               <TooltipContent side="top" className="text-xs">
-                运行工作流 <kbd className="ml-1 px-1 py-0.5 rounded text-[10px] bg-[var(--c-elevated)] font-mono">Shift+R</kbd>
+                运行工作流 <kbd className="ml-1 px-1 py-0.5 rounded text-[10px] bg-background/15 border border-background/25 font-mono">Shift+R</kbd>
               </TooltipContent>
             </Tooltip>}
 
