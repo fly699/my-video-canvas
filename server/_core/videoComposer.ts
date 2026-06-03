@@ -101,6 +101,7 @@ export function buildEditorASS(clips: TextInput[], opts: { width: number; height
     const py = Math.round(c.y * opts.height);
     // base styling tags shared by all motion styles
     const base: string[] = [`\\fs${size}`, `\\c${color}`];
+    if (t.font) base.push(`\\fn${t.font}`); // requires the font installed on the render host
     if (t.bold) base.push("\\b1");
     if (t.italic) base.push("\\i1");
     // 描边 (outline): explicit width + colour, or 0 to disable the style default
