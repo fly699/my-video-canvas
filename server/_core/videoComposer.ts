@@ -2,7 +2,7 @@ import * as fs from "fs/promises";
 import * as path from "path";
 import * as os from "os";
 import { storagePut, assertObjectStorageWritable } from "../storage";
-import { execFileAsync, downloadToTemp, buildAtempoFilters, hasAudioTrack, cssColorToASSHex, escapeASSText, formatASSTime } from "./videoEditor";
+import { execFileAsync, downloadToTemp, buildAtempoFilters, probeStreams, cssColorToASSHex, escapeASSText, formatASSTime } from "./videoEditor";
 import { sanitizeFilenamePrefix } from "./comfyui";
 import type { EditorDoc, Clip, ClipEffects, ClipTransform, ClipText, FitMode } from "@shared/editorTypes";
 
@@ -397,12 +397,29 @@ export async function composeTimeline(doc: EditorDoc, opts: ComposeOptions): Pro
 
   try {
     // Main (base) clips first — input order must match the filter graph.
+    let skippedNoVideo = 0;
     for (const c of clips) {
       if (!c.assetUrl) throw new Error("片段缺少素材地址");
       const isImage = c.kind === "image";
       const p = await downloadToTemp(c.assetUrl, isImage ? "img" : "mp4");
       tmpFiles.push(p);
-      const hasAudio = isImage || mutedClipIds.has(c.id) ? false : await hasAudioTrack(p);
+      let hasAudio: boolean;
+      if (isImage) {
+        hasAudio = false;
+      } else {
+        // Probe BOTH streams in one ffprobe call. A "video" clip that carries no
+        // video stream (e.g. an audio file dropped onto the video track, or a
+        // corrupt source) would make the filter graph reference a non-existent
+        // [i:v] pad → empty video output → libx264 "Could not open encoder
+        // before EOF" / code -22. Skip such clips here so the render survives.
+        const probe = await probeStreams(p);
+        if (!probe.hasVideo) {
+          skippedNoVideo++;
+          report(2 + Math.round((++done) / total * 28), "下载素材");
+          continue;
+        }
+        hasAudio = mutedClipIds.has(c.id) ? false : probe.hasAudio;
+      }
       const trimIn = isImage ? 0 : c.trimIn;
       const trimOut = isImage ? Math.max(0.05, c.trimOut - c.trimIn) : c.trimOut;
       const seg: Segment = { isImage, hasAudio, trimIn, trimOut, speed: c.speed ?? 1, effects: c.effects, transition: c.transitionIn, fit: c.fit };
@@ -410,6 +427,16 @@ export async function composeTimeline(doc: EditorDoc, opts: ComposeOptions): Pro
       if (isImage) inputArgs.push("-loop", "1", "-t", segmentDuration(seg).toFixed(3), "-i", p);
       else inputArgs.push("-i", p);
       report(2 + Math.round((++done) / total * 28), "下载素材");
+    }
+
+    // Every base clip turned out to have no usable video stream — bail with a
+    // clear, actionable message instead of letting ffmpeg fail opaquely.
+    if (segs.length === 0) {
+      throw new Error(
+        skippedNoVideo > 0
+          ? `视频轨道上的 ${skippedNoVideo} 个片段都不包含视频画面（可能是把音频文件拖到了视频轨道，或源文件损坏）。请将纯音频素材放到音频轨道，或移除这些片段后重试。`
+          : "时间轴没有可渲染的视频/图片片段",
+      );
     }
 
     // Overlay clips next (composited on top).
@@ -472,7 +499,22 @@ export async function composeTimeline(doc: EditorDoc, opts: ComposeOptions): Pro
       if (e.code === "ENOENT" || /ENOENT/.test(e.message ?? "")) {
         throw new Error("未找到 ffmpeg：请在服务器安装 ffmpeg（Windows: winget install Gyan.FFmpeg）并重启应用；或设置环境变量 FFMPEG_PATH 指向 ffmpeg 可执行文件。");
       }
-      throw new Error("渲染失败：" + (e.stderr?.slice(-600) || e.message || String(err)));
+      const stderr = e.stderr ?? "";
+      // Log the FULL stderr server-side for diagnosis — the user-facing message
+      // is necessarily truncated.
+      if (stderr) console.error("[videoComposer] ffmpeg failed; filter_complex=\n" + graph.filterComplex + "\n--- stderr ---\n" + stderr);
+      // Surface the FIRST meaningful root-cause line (filter graph / mapping
+      // errors), not just the encoder-failure tail which hides why the stream
+      // was empty ("Could not open encoder before EOF").
+      const rootLine = stderr
+        .split(/\r?\n/)
+        .map((l) => l.trim())
+        .find((l) => /matches no streams|Invalid argument|No such filter|Error (initializing|reinitializing|applying|parsing|opening)|Cannot|could not|Failed to|deprecated pixel format|Conversion failed/i.test(l)
+          && !/Could not open encoder|Terminating thread|received no packets|Task finished with error/i.test(l));
+      const detail = rootLine || stderr.slice(-600) || e.message || String(err);
+      // No "渲染失败：" prefix here — the client already prepends it when showing
+      // the job error (avoids the doubled "渲染失败：渲染失败：").
+      throw new Error(detail);
     }
     report(88, "上传成片");
 

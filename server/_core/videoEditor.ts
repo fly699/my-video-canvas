@@ -664,6 +664,40 @@ export async function hasAudioTrack(videoPath: string): Promise<boolean> {
   }
 }
 
+/**
+ * Probe a media file for both video and audio stream presence in a single
+ * ffprobe call. Used by the editor composer to skip clips that claim to be
+ * "video" but carry no real video stream (e.g. an audio file dragged onto a
+ * video track, or a corrupt source) — such clips otherwise make the
+ * `-filter_complex` graph reference a non-existent `[i:v]` pad, producing an
+ * empty video output and the opaque "Could not open encoder before EOF" /
+ * code -22 failure at the libx264 stage.
+ *
+ * On probe failure we report `hasVideo:true` (conservative — let ffmpeg try
+ * and surface its own error) but `hasAudio:false` is NOT assumed; we mirror
+ * hasAudioTrack's conservative true so the audio path is attempted.
+ */
+export async function probeStreams(filePath: string): Promise<{ hasVideo: boolean; hasAudio: boolean }> {
+  let stdout: string;
+  try {
+    ({ stdout } = await execFileAsync("ffprobe", [
+      "-v", "quiet", "-print_format", "json", "-show_streams", filePath,
+    ]));
+  } catch {
+    return { hasVideo: true, hasAudio: true };
+  }
+  try {
+    const probe = JSON.parse(stdout) as { streams?: Array<{ codec_type?: string }> };
+    const streams = Array.isArray(probe.streams) ? probe.streams : [];
+    return {
+      hasVideo: streams.some((s) => s.codec_type === "video"),
+      hasAudio: streams.some((s) => s.codec_type === "audio"),
+    };
+  } catch {
+    return { hasVideo: true, hasAudio: true };
+  }
+}
+
 export async function smartCutVideo(opts: SmartCutOptions): Promise<SmartCutResult> {
   if (opts.keepSegments.length === 0) throw new Error("keepSegments 不能为空");
 
