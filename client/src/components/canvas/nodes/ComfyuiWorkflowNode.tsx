@@ -209,6 +209,13 @@ export const ComfyuiWorkflowNode = memo(function ComfyuiWorkflowNode({ id, selec
     if (on && !canUseCloud) { toast.error("ComfyUI 云服务仅向管理员和白名单用户开放"); return; }
     update({ useCloudComfy: on });
   }, [canUseCloud, update]);
+  const cloudTestMut = trpc.comfyui.cloudTest.useMutation();
+  const handleTestCloud = useCallback(async () => {
+    try {
+      const r = await cloudTestMut.mutateAsync();
+      if (r.ok) toast.success(r.message); else toast.error(r.message);
+    } catch (e) { toast.error("测试失败：" + (e instanceof Error ? e.message : String(e)).slice(0, 120)); }
+  }, [cloudTestMut]);
 
   // Test the ComfyUI server connection (this node runs arbitrary workflows and
   // doesn't pull a model list, so we probe via fetchModels purely to verify
@@ -434,10 +441,24 @@ export const ComfyuiWorkflowNode = memo(function ComfyuiWorkflowNode({ id, selec
             })}
           </div>
           {useCloud && (
-            <div style={{ marginTop: 6, fontSize: 10.5, lineHeight: 1.5, color: "var(--c-t4)" }}>
-              {cloudConfigured
-                ? "已连接官方云端，无需本地服务器；服务端密钥已配置。"
-                : "⚠ 服务端尚未配置云端密钥（COMFYUI_CLOUD_API_KEY），运行将失败。"}
+            <div style={{ marginTop: 6, display: "flex", flexDirection: "column", gap: 6 }}>
+              <div style={{ fontSize: 10.5, lineHeight: 1.5, color: "var(--c-t4)" }}>
+                {cloudConfigured
+                  ? "已连接官方云端 cloud.comfy.org，无需本地服务器；服务端密钥已配置。"
+                  : "⚠ 服务端尚未配置云端密钥（COMFYUI_CLOUD_API_KEY），运行将失败。"}
+              </div>
+              <button
+                onClick={handleTestCloud}
+                disabled={cloudTestMut.isPending}
+                style={{
+                  alignSelf: "flex-start", display: "inline-flex", alignItems: "center", gap: 5,
+                  padding: "5px 10px", fontSize: 11, borderRadius: 7, cursor: cloudTestMut.isPending ? "default" : "pointer",
+                  border: `1px solid ${CLOUD_ACCENT}`, background: `${CLOUD_ACCENT}1f`, color: CLOUD_ACCENT,
+                }}
+              >
+                {cloudTestMut.isPending ? <Loader2 size={12} className="animate-spin" /> : <RotateCcw size={12} />}
+                测试云端连接
+              </button>
             </div>
           )}
         </div>

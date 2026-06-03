@@ -40,7 +40,7 @@ import { signUploadToken } from "../_core/uploadToken";
 import { getCachedStorageSettings } from "../_core/storageConfig";
 import { invokeLLM, extractTextContent } from "../_core/llm";
 import { generateImage } from "../_core/imageGeneration";
-import { generateComfyImage, generateComfyVideo, fetchComfyModels, analyzeWorkflow, executeCustomWorkflow, uploadImageForWorkflow, interruptComfy, emptyModelList } from "../_core/comfyui";
+import { generateComfyImage, generateComfyVideo, fetchComfyModels, analyzeWorkflow, executeCustomWorkflow, executeCloudWorkflow, testCloudConnection, uploadImageForWorkflow, interruptComfy, emptyModelList } from "../_core/comfyui";
 import type { ComfyModelList } from "../_core/comfyui";
 import { ENV } from "../_core/env";
 import { isPoyoVideoProvider, submitPoyoVideo, checkPoyoVideoStatus } from "../_core/poyoVideo";
@@ -2415,6 +2415,12 @@ export const comfyuiRouter = router({
     configured: !!(ENV.comfyuiCloudBaseUrl && ENV.comfyuiCloudApiKey),
   })),
 
+  // Test cloud connectivity + API key for the node's 测试 button (gated like exec).
+  cloudTest: protectedProcedure.mutation(async ({ ctx }) => {
+    await assertComfyuiCloudAllowed(ctx);
+    return testCloudConnection(ENV.comfyuiCloudBaseUrl, ENV.comfyuiCloudApiKey);
+  }),
+
   executeWorkflow: protectedProcedure
     .input(z.object({
       nodeId: z.string(),
@@ -2445,7 +2451,10 @@ export const comfyuiRouter = router({
       }
       return dedupe("comfyui.executeWorkflow", ctx.user.id, input, async () => {
         try {
-          const result = await executeCustomWorkflow(baseUrl, {
+          // Cloud uses the cloud.comfy.org REST API (/api/prompt + /api/job/.../status
+          // + /api/view); local uses the standard self-hosted ComfyUI API — untouched.
+          const run = input.useCloudComfy ? executeCloudWorkflow : executeCustomWorkflow;
+          const result = await run(baseUrl, {
             workflowJson: input.workflowJson,
             paramValues: input.paramValues,
             imageParamKeys: input.imageParamKeys,
