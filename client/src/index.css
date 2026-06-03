@@ -968,3 +968,6 @@ button:active:not(:disabled) {
   min-width: 0;
   min-height: 0;
 }
+
+/* Editor MediaBin: reveal the quick-add "+" button on card hover */
+.editor-media-card:hover .editor-media-add { opacity: 1 !important; }

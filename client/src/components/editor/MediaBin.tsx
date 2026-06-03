@@ -1,7 +1,8 @@
 import { useState } from "react";
 import { trpc } from "@/lib/trpc";
 import { toast } from "sonner";
-import { FileVideo, FileAudio, FileImage, Search, Type as TypeIcon, Captions } from "lucide-react";
+import { FileVideo, FileAudio, FileImage, Search, Type as TypeIcon, Captions, Plus } from "lucide-react";
+import { MediaPreview, type PreviewAsset } from "./MediaPreview";
 import { EC } from "./theme";
 import { useEditorStore, kindFromAssetType, trackEnd, clipDuration } from "./editorStore";
 import { probeMediaDuration } from "./theme";
@@ -20,6 +21,7 @@ export const MEDIA_DND_MIME = "application/x-editor-media";
 export function MediaBin() {
   const [type, setType] = useState<TypeFilter>("");
   const [q, setQ] = useState("");
+  const [preview, setPreview] = useState<PreviewAsset | null>(null);
   const listQuery = trpc.assets.list.useQuery({ allProjects: true, type: type || undefined, q: q.trim() || undefined });
   const assets = (listQuery.data ?? []).filter((a) => a.type !== "other");
 
@@ -96,12 +98,20 @@ export function MediaBin() {
           return (
             <div
               key={a.id}
+              className="editor-media-card"
               draggable
               onDragStart={(e) => { e.dataTransfer.setData(MEDIA_DND_MIME, JSON.stringify(payload)); e.dataTransfer.effectAllowed = "copy"; }}
-              onClick={() => quickAdd(a)}
-              title={`${a.name}（点击添加 / 拖到时间轴）`}
-              style={{ cursor: "grab", borderRadius: 8, overflow: "hidden", border: `1px solid ${EC.border}`, background: EC.elevated }}
+              onClick={() => setPreview({ id: a.id, url: a.url, name: a.name, kind })}
+              title={`${a.name}（点击放大预览 · 拖拽或＋加入时间轴）`}
+              style={{ position: "relative", cursor: "zoom-in", borderRadius: 8, overflow: "hidden", border: `1px solid ${EC.border}`, background: EC.elevated }}
             >
+              {/* hover "+": add to timeline without leaving the bin */}
+              <button
+                className="editor-media-add"
+                title="加入时间轴"
+                onClick={(e) => { e.stopPropagation(); quickAdd(a); }}
+                style={{ position: "absolute", top: 4, right: 4, zIndex: 2, width: 22, height: 22, borderRadius: 6, border: "none", display: "inline-flex", alignItems: "center", justifyContent: "center", background: EC.accent, color: "#fff", cursor: "pointer", opacity: 0, transition: "opacity 120ms" }}
+              ><Plus size={14} /></button>
               {/* Each media gets its OWN explicit pixel height — never a % height
                   inside a flex box — so the thumbnail box can't collapse even in
                   WebViews that mishandle aspect-ratio / percentage heights. */}
@@ -139,6 +149,8 @@ export function MediaBin() {
           style={{ width: "100%", marginTop: 6, display: "flex", alignItems: "center", justifyContent: "center", gap: 6, padding: "7px 0", fontSize: 12, borderRadius: 7, border: `1px dashed ${EC.border}`, background: "transparent", color: transcribeMut.isPending ? EC.t4 : EC.t2, cursor: transcribeMut.isPending ? "default" : "pointer" }}
         ><Captions size={13} /> {transcribeMut.isPending ? "转写中…" : "AI 自动字幕"}</button>
       </div>
+
+      {preview && <MediaPreview asset={preview} onClose={() => setPreview(null)} />}
     </aside>
   );
 }
