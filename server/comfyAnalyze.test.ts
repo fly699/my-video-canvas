@@ -39,4 +39,17 @@ describe("analyzeWorkflow — wired prompt source (easy promptLine)", () => {
     expect(outputNodeIds).toContain("9");
     expect(outputType).toBe("image");
   });
+
+  it("surfaces LoadImage and LoadImageMask as image params (inpaint 遮罩)", async () => {
+    const wf = JSON.stringify({
+      "10": { class_type: "LoadImage", inputs: { image: "in.png" }, _meta: { title: "底图" } },
+      "11": { class_type: "LoadImageMask", inputs: { image: "mask.png", channel: "red" } },
+      "9": { class_type: "SaveImage", inputs: { images: ["10", 0] } },
+    });
+    const { detectedParams } = await analyzeWorkflow(wf);
+    const p10 = detectedParams.find((p) => p.nodeId === "10");
+    const p11 = detectedParams.find((p) => p.nodeId === "11");
+    expect(p10).toMatchObject({ type: "image", label: "底图" });
+    expect(p11).toMatchObject({ type: "image", fieldPath: "inputs.image", label: "遮罩" });
+  });
 });

@@ -1360,12 +1360,15 @@ export async function analyzeWorkflow(
         { nodeId, fieldPath: "inputs.lora_name", label: "LoRA 模型", type: loras.length > 0 ? "select" : "text", defaultValue: inputs.lora_name ?? "", options: loras.length > 0 ? loras : undefined },
         { nodeId, fieldPath: "inputs.strength_model", label: "LoRA 强度", type: "number", defaultValue: inputs.strength_model ?? 1.0, min: 0, max: 2, step: 0.05 },
       );
-    } else if (ct === "LoadImage") {
+    } else if (ct === "LoadImage" || ct === "LoadImageMask") {
       // Use the node's title (e.g. 加载图像1 / 加载图像2) as the label so multiple
       // reference inputs in a fusion/edit workflow stay distinguishable in the UI.
+      // LoadImageMask (inpaint/outpaint 遮罩) is surfaced as an image param too and
+      // uploaded through the same path.
+      const isMask = ct === "LoadImageMask";
       detectedParams.push({
         nodeId, fieldPath: "inputs.image",
-        label: node._meta?.title?.trim() || "输入图像",
+        label: node._meta?.title?.trim() || (isMask ? "遮罩" : "输入图像"),
         type: "image",
         defaultValue: inputs.image ?? "",
       });

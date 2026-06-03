@@ -787,6 +787,27 @@ export const ComfyuiWorkflowNode = memo(function ComfyuiWorkflowNode({ id, selec
               );
             })()}
 
+            {/* Aspect-ratio presets — shown when the workflow exposes width + height.
+                Sets both params to a common resolution for the chosen ratio. */}
+            {(() => {
+              const widthB = (payload.paramBindings ?? []).find((b) => b.type === "number" && (/width/i.test(b.fieldPath) || b.label.includes("宽")));
+              const heightB = (payload.paramBindings ?? []).find((b) => b.type === "number" && (/height/i.test(b.fieldPath) || b.label.includes("高")));
+              if (!widthB || !heightB) return null;
+              const PRESETS: [string, number, number][] = [["1:1", 1024, 1024], ["16:9", 1344, 768], ["9:16", 768, 1344], ["4:3", 1152, 896], ["3:4", 896, 1152]];
+              return (
+                <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 4, flexWrap: "wrap" }}>
+                  <label style={{ ...labelStyle, marginBottom: 0 }}>比例</label>
+                  {PRESETS.map(([lbl, w, h]) => (
+                    <button
+                      key={lbl}
+                      onClick={() => { setParamValue(`${widthB.nodeId}.${widthB.fieldPath}`, w); setParamValue(`${heightB.nodeId}.${heightB.fieldPath}`, h); }}
+                      style={{ padding: "4px 9px", fontSize: 11, borderRadius: 6, cursor: "pointer", background: "var(--c-input)", border: "1px solid var(--c-bd2)", color: "var(--c-t2)" }}
+                    >{lbl}</button>
+                  ))}
+                </div>
+              );
+            })()}
+
             {/* Dynamic param form — capped height with internal scroll to keep the node compact */}
             {(payload.paramBindings ?? []).length > 0 && (
               <div className="nowheel nodrag" style={{ display: "flex", flexDirection: "column", gap: 8, maxHeight: 420, overflowY: "auto", overflowX: "hidden" }}>

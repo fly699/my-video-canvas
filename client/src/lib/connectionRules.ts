@@ -23,7 +23,7 @@ export const CONNECTION_MATRIX: Partial<Record<NodeType, NodeType[]>> = {
   merge: ["asset"],
   comfyui_image: ["video_task", "asset", "clip", "pose_control", "comfyui_video", "comfyui_workflow"],
   comfyui_video: ["clip", "asset", "overlay", "merge", "subtitle", "subtitle_motion", "smart_cut", "lip_sync", "comfyui_workflow"],
-  comfyui_workflow: ["video_task", "asset", "clip", "overlay", "merge", "subtitle", "subtitle_motion", "smart_cut", "lip_sync"],
+  comfyui_workflow: ["video_task", "asset", "clip", "overlay", "merge", "subtitle", "subtitle_motion", "smart_cut", "lip_sync", "comfyui_workflow", "comfyui_image", "comfyui_video"],
   note: [],
   group: [],
 };
