@@ -33,8 +33,10 @@ describe("analyzeWorkflow — wired prompt source (easy promptLine)", () => {
     expect(promptLine).toBeDefined();
     expect(promptLine!.type).toBe("text");
     expect(promptLine!.label).toBe("提示词行");
-    // The literal negative CLIPTextEncode (21) is still exposed.
-    expect(byKey("21", "inputs.text")?.label).toBe("负向提示词");
+    // The literal negative CLIPTextEncode (21) is still exposed, tagged negative.
+    expect(byKey("21", "inputs.text")).toMatchObject({ label: "负向提示词", role: "negative" });
+    // The promptLine positive source is tagged positive.
+    expect(promptLine!.role).toBe("positive");
     // SaveImage is the image output node.
     expect(outputNodeIds).toContain("9");
     expect(outputType).toBe("image");
@@ -49,7 +51,7 @@ describe("analyzeWorkflow — wired prompt source (easy promptLine)", () => {
     const { detectedParams } = await analyzeWorkflow(wf);
     const p10 = detectedParams.find((p) => p.nodeId === "10");
     const p11 = detectedParams.find((p) => p.nodeId === "11");
-    expect(p10).toMatchObject({ type: "image", label: "底图" });
-    expect(p11).toMatchObject({ type: "image", fieldPath: "inputs.image", label: "遮罩" });
+    expect(p10).toMatchObject({ type: "image", label: "底图", role: "reference" });
+    expect(p11).toMatchObject({ type: "image", fieldPath: "inputs.image", label: "遮罩", role: "mask" });
   });
 });

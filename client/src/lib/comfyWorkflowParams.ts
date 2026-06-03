@@ -116,9 +116,12 @@ export function fillWorkflowPromptParams(
 ): Record<string, unknown> {
   if (!prompts.positive && !prompts.negative) return paramValues;
   const texts = (bindings ?? []).filter((b) => b.type === "text");
-  const isNeg = (b: WorkflowParamBinding) => /负|negative/i.test(b.label);
-  const posB = texts.find((b) => /提示词|prompt/i.test(b.label) && !isNeg(b)) ?? texts.find((b) => !isNeg(b));
-  const negB = texts.find(isNeg);
+  const isNeg = (b: WorkflowParamBinding) => b.role === "negative" || (!b.role && /负|negative/i.test(b.label));
+  // Prefer explicit roles; fall back to the label heuristic.
+  const posB = texts.find((b) => b.role === "positive")
+    ?? texts.find((b) => !b.role && /提示词|prompt/i.test(b.label) && !isNeg(b))
+    ?? texts.find((b) => !isNeg(b));
+  const negB = texts.find((b) => b.role === "negative") ?? texts.find(isNeg);
   const next = { ...paramValues };
   const set = (b: WorkflowParamBinding | undefined, v: string | undefined) => {
     if (!b || !v) return;
