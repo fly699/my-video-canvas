@@ -10,11 +10,10 @@ import type { ComfyuiVideoNodeData } from "../../../../../shared/types";
 import { trpc } from "@/lib/trpc";
 import { toast } from "sonner";
 import {
-  Play, Loader2, RefreshCw, Upload, X, Cpu, Download, AlertCircle,
+  Play, Loader2, RefreshCw, Upload, X, Cpu, AlertCircle,
   ChevronDown, ChevronRight, Server, Boxes, Languages, Copy, Lock, Unlock, Ban, Sparkles, Layers,
 } from "lucide-react";
 import { isOwnStorageUrl } from "@/lib/ownStorage";
-import { mediaFetchUrl, onDownloadMedia } from "@/lib/download";
 import { LLMModelPicker, type LLMModelId } from "../LLMModelPicker";
 
 interface Props {
@@ -260,6 +259,8 @@ export const ComfyuiVideoNode = memo(function ComfyuiVideoNode({ id, selected, d
   const modelRaw = payload.ckpt || payload.motionModule || "";
   const modelShort = modelRaw.split(/[\\/]/).pop()?.replace(/\.[^.]+$/, "") ?? "";
   const modelAnnotation = [payload.workflowTemplate, modelShort].filter(Boolean).join(" · ");
+  // Corner annotation prefers the template-library name when the node came from one.
+  const cornerText = payload.templateLabel?.trim() || modelAnnotation;
   const modelTip = [
     payload.ckpt ? `模型: ${payload.ckpt}` : "",
     payload.motionModule ? `Motion: ${payload.motionModule}` : "",
@@ -287,29 +288,28 @@ export const ComfyuiVideoNode = memo(function ComfyuiVideoNode({ id, selected, d
   return (
     <BaseNode id={id} selected={selected} nodeType="comfyui_video" title={data.title} minHeight={300} resizable heroMedia={heroMedia}
       onRun={handleGenerate} running={genMutation.isPending || payload.status === "processing"} canRun={!!payload.prompt?.trim() && !!payload.ckpt?.trim()} hasResult={payload.status === "done" && !!payload.resultVideoUrl}
-      headerTooltip={modelTip || undefined}>
+      headerTooltip={modelTip || undefined}
+      hideTypeBadge
+      headerRight={cornerText ? (
+        <span
+          title={modelTip || cornerText}
+          style={{ fontSize: 10.5, fontWeight: 600, color: accent, maxWidth: 150, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", display: "block" }}
+        >
+          {cornerText}
+        </span>
+      ) : undefined}>
       <div className="flex flex-col h-full p-3.5 gap-3 overflow-auto">
-        {/* 模型注释：标题栏下方常驻显示（模板 · 模型），与自定义工作流节点一致 */}
-        {modelAnnotation && (
-          <div
-            title={modelTip || undefined}
-            style={{ fontSize: 10.5, color: accent, fontWeight: 500, lineHeight: 1.4, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", flexShrink: 0 }}
-          >
-            {modelAnnotation}
-          </div>
-        )}
 
-        {/* ── Status pill ── */}
+        {/* ── Status pill ── (hidden once done — the player + green MinIO dot suffice) */}
+        {payload.status !== "done" && (
         <div
           className="flex items-center gap-2 px-2.5 py-2 rounded-lg flex-shrink-0"
           style={{
-            background: payload.status === "done" ? "oklch(0.72 0.18 155 / 0.08)"
-                       : payload.status === "processing" ? "oklch(0.68 0.22 285 / 0.08)"
+            background: payload.status === "processing" ? "oklch(0.68 0.22 285 / 0.08)"
                        : payload.status === "failed" ? "oklch(0.62 0.20 25 / 0.08)"
                        : "var(--c-surface)",
             borderWidth: 1, borderStyle: "solid",
-            borderColor: payload.status === "done" ? "oklch(0.72 0.18 155 / 0.30)"
-                        : payload.status === "processing" ? "oklch(0.68 0.22 285 / 0.30)"
+            borderColor: payload.status === "processing" ? "oklch(0.68 0.22 285 / 0.30)"
                         : payload.status === "failed" ? "oklch(0.62 0.20 25 / 0.30)"
                         : "var(--c-bd2)",
           }}
@@ -320,19 +320,18 @@ export const ComfyuiVideoNode = memo(function ComfyuiVideoNode({ id, selected, d
             <Boxes className="w-3.5 h-3.5 flex-shrink-0" style={{ color: accent }} />
           )}
           <span className="text-xs font-medium" style={{
-            color: payload.status === "done" ? "oklch(0.72 0.18 155)"
-                 : payload.status === "processing" ? "oklch(0.68 0.22 285)"
+            color: payload.status === "processing" ? "oklch(0.68 0.22 285)"
                  : payload.status === "failed" ? "oklch(0.62 0.20 25)"
                  : "var(--c-t3)",
           }}>
-            {payload.status === "done" ? "已完成"
-             : payload.status === "processing" ? "ComfyUI 生成中..."
+            {payload.status === "processing" ? "ComfyUI 生成中..."
              : payload.status === "failed" ? "失败"
              : "待运行"}
           </span>
         </div>
+        )}
 
-        {/* ── Result video ── */}
+        {/* ── Result video ── (download button removed; use the player's own menu) */}
         {payload.status === "done" && payload.resultVideoUrl && videoSrc && (
           <div className="flex-shrink-0">
             <div className="relative rounded-lg overflow-hidden" style={{ borderWidth: 1, borderStyle: "solid", borderColor: "oklch(0.72 0.18 155 / 0.30)" }}>
@@ -352,20 +351,6 @@ export const ComfyuiVideoNode = memo(function ComfyuiVideoNode({ id, selected, d
                 preload="metadata"
               />
             </div>
-            <a
-              href={mediaFetchUrl(payload.resultVideoUrl, true)}
-              onClick={onDownloadMedia(payload.resultVideoUrl, "ComfyUI视频.mp4")}
-              className="nodrag mt-1.5 flex items-center justify-center gap-1.5 w-full py-1.5 rounded-lg text-xs font-medium transition-all"
-              style={{
-                background: "oklch(0.72 0.18 155 / 0.10)",
-                borderWidth: 1, borderStyle: "solid", borderColor: "oklch(0.72 0.18 155 / 0.30)",
-                color: "oklch(0.72 0.18 155)",
-                textDecoration: "none",
-              }}
-            >
-              <Download className="w-3 h-3" />
-              下载视频
-            </a>
           </div>
         )}
 

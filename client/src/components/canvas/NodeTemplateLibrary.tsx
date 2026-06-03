@@ -10,8 +10,9 @@ import {
 
 interface Props {
   onClose: () => void;
-  /** Re-create a fully-configured node from a template (like duplicating). */
-  onUse: (nodeType: ComfyNodeType, payload: Record<string, unknown>) => void;
+  /** Re-create a fully-configured node from a template (like duplicating).
+   *  `label` becomes the new node's corner annotation. */
+  onUse: (nodeType: ComfyNodeType, payload: Record<string, unknown>, label: string) => void;
 }
 
 type CategoryId = "all" | ComfyNodeType;
@@ -293,8 +294,8 @@ export function NodeTemplateLibrary({ onClose, onUse }: Props) {
                     key={t.id}
                     role="button"
                     tabIndex={0}
-                    onClick={() => { onUse(t.nodeType, t.payload); onClose(); }}
-                    onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); onUse(t.nodeType, t.payload); onClose(); } }}
+                    onClick={() => { onUse(t.nodeType, t.payload, t.label); onClose(); }}
+                    onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); onUse(t.nodeType, t.payload, t.label); onClose(); } }}
                     className="group w-full text-left rounded-2xl overflow-hidden transition-all duration-150 flex flex-col relative cursor-pointer"
                     style={{ background: "var(--c-base)", border: `1.5px solid ${color}` }}
                     onMouseEnter={(e) => {
@@ -329,18 +330,6 @@ export function NodeTemplateLibrary({ onClose, onUse }: Props) {
                         >
                           <Trash2 className="w-3 h-3" />
                         </button>
-                      </div>
-                    )}
-
-                    {t.thumbnail && (
-                      <div className="w-full" style={{ height: 110, background: "var(--c-base)", borderBottom: `1px solid ${color}30` }}>
-                        <img
-                          src={t.thumbnail}
-                          alt={t.label}
-                          className="w-full h-full"
-                          style={{ objectFit: "cover" }}
-                          onError={(e) => { const el = e.currentTarget.parentElement as HTMLElement | null; if (el) el.style.display = "none"; }}
-                        />
                       </div>
                     )}
 
