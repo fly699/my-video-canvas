@@ -1,14 +1,12 @@
 import { memo, useCallback, useRef, useState } from "react";
-import { IMAGE_MODELS } from "@/lib/models";
 import { BaseNode } from "../BaseNode";
 import { useCanvasStore } from "../../../hooks/useCanvasStore";
-import type { PromptNodeData, ImageGenModel } from "../../../../../shared/types";
+import type { PromptNodeData } from "../../../../../shared/types";
 import { trpc } from "@/lib/trpc";
 import { toast } from "sonner";
-import { Sparkles, Loader2, RefreshCw, ChevronDown, Upload, X, Grid2X2, Check, Languages, Wand2 } from "lucide-react";
+import { Sparkles, Loader2, Upload, X, Languages, ScanText } from "lucide-react";
 import { makeImageProxyFallback } from "@/lib/utils";
 import { LLMModelPicker, type LLMModelId } from "../LLMModelPicker";
-import { RefImageReachabilityBadge, RefImageSwitchButton, useRefImageGuard, usePreferUpstreamRefSource, useAutoPreferUpstreamRefSource } from "../mediaReachability";
 
 interface Props {
   id: string;
@@ -22,90 +20,44 @@ interface Props {
 }
 
 const BORDER_DEFAULT = "var(--c-bd2)";
-
 const accentColor = "oklch(0.68 0.22 300)";
 const accentA = (a: number) => `oklch(0.68 0.22 300 / ${a})`;
 
 const fieldStyle: React.CSSProperties = {
-  width: "100%",
-  padding: "7px 10px",
-  fontSize: 12,
-  background: "var(--c-input)",
-  borderWidth: 1,
-  borderStyle: "solid",
-  borderColor: BORDER_DEFAULT,
-  borderRadius: 8,
-  color: "var(--c-t1)",
-  outline: "none",
-  transition: "border-color 150ms ease, background 150ms ease",
-  lineHeight: 1.5,
+  width: "100%", padding: "7px 10px", fontSize: 12, background: "var(--c-input)",
+  borderWidth: 1, borderStyle: "solid", borderColor: BORDER_DEFAULT, borderRadius: 8,
+  color: "var(--c-t1)", outline: "none", transition: "border-color 150ms ease, background 150ms ease", lineHeight: 1.5,
+};
+const monoStyle: React.CSSProperties = {
+  ...fieldStyle, fontFamily: "'JetBrains Mono', 'Fira Code', monospace", fontSize: 11, resize: "none", lineHeight: 1.7,
 };
 
-const monoStyle: React.CSSProperties = {
-  ...fieldStyle,
-  fontFamily: "'JetBrains Mono', 'Fira Code', monospace",
-  fontSize: 11,
-  resize: "none",
-  lineHeight: 1.7,
-};
+const DEFAULT_LLM: LLMModelId = "gemini-2.5-flash";
 
 export const PromptNode = memo(function PromptNode({ id, selected, data }: Props) {
   const { updateNodeData } = useCanvasStore();
   const payload = data.payload;
-  // Auto-prefer the upstream AI temporary public URL as the reference source when
-  // the admin toggle is on and that URL probes alive (no-op when off / default).
-  const preferUpstreamRef = usePreferUpstreamRefSource();
-  useAutoPreferUpstreamRefSource({ nodeId: id, refImageUrl: payload.referenceImageUrl, enabled: preferUpstreamRef, onSwitch: (u) => updateNodeData(id, { referenceImageUrl: u }, true) });
-  // Pinned via right-click menu — keeps input panel expanded across selection changes.
   const expanded = Boolean(selected) || Boolean((payload as { pinned?: boolean }).pinned);
-  const [showModelPicker, setShowModelPicker] = useState(false);
-  const [batchMode, setBatchMode] = useState(false);
-  const model = (payload.imageModel as string) ?? IMAGE_MODELS[0].value;
-  const setModel = (m: string) => { updateNodeData(id, { imageModel: m as ImageGenModel }); };
-  const { guard, reachable, dialog: reachabilityDialog } = useRefImageGuard();
+
+  const llmModel = (payload.llmModel as LLMModelId) ?? DEFAULT_LLM;
+  const setLlmModel = (m: LLMModelId) => updateNodeData(id, { llmModel: m });
 
   const [uploadingRef, setUploadingRef] = useState(false);
+  const [busy, setBusy] = useState<null | "analyze" | "expand" | "translate" | "pipeline">(null);
   const refInputRef = useRef<HTMLInputElement>(null);
 
   const uploadRefMutation = trpc.upload.uploadImage.useMutation({
-    onSuccess: (result) => {
-      updateNodeData(id, { referenceImageUrl: result.url });
-      setUploadingRef(false);
-      toast.success("参考图已上传");
-    },
-    onError: (err) => {
-      setUploadingRef(false);
-      toast.error("参考图上传失败：" + err.message);
-    },
+    onSuccess: (result) => { updateNodeData(id, { referenceImageUrl: result.url }); setUploadingRef(false); toast.success("图片已上传"); },
+    onError: (err) => { setUploadingRef(false); toast.error("图片上传失败：" + err.message); },
   });
+  const enhanceMutation = trpc.aiEnhance.enhance.useMutation();
+  const analyzeMutation = trpc.aiEnhance.analyzeImage.useMutation();
 
-  const [expandingPrompt, setExpandingPrompt] = useState(false);
-  const [translating, setTranslating] = useState(false);
-  const [llmModel, setLlmModel] = useState<LLMModelId>("gemini-2.5-flash");
-
-  const aiExpandMutation = trpc.aiEnhance.enhance.useMutation({
-    onSuccess: (result) => {
-      updateNodeData(id, { positivePrompt: result.result });
-      setExpandingPrompt(false);
-      toast.success("提示词已扩写");
-    },
-    onError: (err) => {
-      setExpandingPrompt(false);
-      toast.error("扩写失败：" + err.message);
-    },
-  });
-
-  const aiTranslateMutation = trpc.aiEnhance.enhance.useMutation({
-    onSuccess: (result) => {
-      updateNodeData(id, { positivePrompt: result.result });
-      setTranslating(false);
-      toast.success("已翻译为英文");
-    },
-    onError: (err) => {
-      setTranslating(false);
-      toast.error("翻译失败：" + err.message);
-    },
-  });
+  const handleChange = useCallback(
+    (field: keyof PromptNodeData, value: string) => updateNodeData(id, { [field]: value }),
+    [id, updateNodeData]
+  );
+  const toggle = (field: keyof PromptNodeData) => updateNodeData(id, { [field]: !payload[field] });
 
   const handleRefUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -113,64 +65,53 @@ export const PromptNode = memo(function PromptNode({ id, selected, data }: Props
     if (file.size > 16 * 1024 * 1024) { toast.error("文件不能超过 16MB"); return; }
     setUploadingRef(true);
     const reader = new FileReader();
-    reader.onload = () => {
-      const base64 = (reader.result as string).split(",")[1];
-      uploadRefMutation.mutate({ base64, mimeType: file.type, filename: file.name });
-    };
+    reader.onload = () => { const base64 = (reader.result as string).split(",")[1]; uploadRefMutation.mutate({ base64, mimeType: file.type, filename: file.name }); };
     reader.readAsDataURL(file);
     e.target.value = "";
   };
 
-  const genImageMutation = trpc.imageGen.generate.useMutation({
-    onSuccess: (result) => {
-      if (result.urls && result.urls.length > 1) {
-        updateNodeData(id, {
-          imageUrls: result.urls, imageUrl: result.urls[0], selectedImageIndex: 0,
-          imageUrlSources: result.sourceUrls,
-          imageUrlSource: result.sourceUrls?.[0] ?? result.sourceUrl,
-          imageUrlSourceAt: result.sourceAt,
-        });
-        toast.success(`${result.urls.length} 张图像已生成`);
-      } else {
-        const imageUrl = result.url ?? result.urls?.[0];
-        if (!imageUrl) { toast.error("生成完成但未返回图像"); return; }
-        updateNodeData(id, {
-          imageUrl, imageUrls: undefined, selectedImageIndex: undefined,
-          imageUrlSource: result.sourceUrl ?? result.sourceUrls?.[0],
-          imageUrlSources: undefined,
-          imageUrlSourceAt: result.sourceAt,
-        });
-        toast.success("图像已生成");
+  // ── Individual ops (manual "run now" buttons) ──────────────────────────────
+  const runAnalyze = async (): Promise<string | null> => {
+    if (!payload.referenceImageUrl) { toast.error("请先上传或填写要分析的图片"); return null; }
+    const r = await analyzeMutation.mutateAsync({ imageUrl: payload.referenceImageUrl, instruction: payload.positivePrompt?.trim() || undefined, model: llmModel });
+    return r.result?.trim() || null;
+  };
+  const runEnhance = async (mode: "expand" | "translate_en", text: string): Promise<string | null> => {
+    if (!text.trim()) { toast.error("提示词为空"); return null; }
+    const r = await enhanceMutation.mutateAsync({ text, mode, model: llmModel });
+    return r.result?.trim() || null;
+  };
+
+  const doManual = async (op: "analyze" | "expand" | "translate") => {
+    if (busy) return;
+    setBusy(op);
+    try {
+      let out: string | null = null;
+      if (op === "analyze") out = await runAnalyze();
+      else if (op === "expand") out = await runEnhance("expand", payload.positivePrompt ?? "");
+      else out = await runEnhance("translate_en", payload.positivePrompt ?? "");
+      if (out) {
+        updateNodeData(id, { positivePrompt: out });
+        toast.success(op === "analyze" ? "已从图片提取提示词" : op === "expand" ? "提示词已扩写" : "已翻译为英文");
       }
-    },
-    onError: (err) => {
-      toast.error("生成失败：" + err.message);
-    },
-  });
+    } catch (e) { toast.error("处理失败：" + (e instanceof Error ? e.message : "")); }
+    finally { setBusy(null); }
+  };
 
-  const handleChange = useCallback(
-    (field: keyof PromptNodeData, value: string) => {
-      updateNodeData(id, { [field]: value });
-    },
-    [id, updateNodeData]
-  );
-
-  const handleGenerate = () => {
-    if (genImageMutation.isPending) return;
-    if (!payload.positivePrompt?.trim()) { toast.error("请先填写正向提示词"); return; }
-    const submit = () => genImageMutation.mutate({
-      prompt: payload.positivePrompt,
-      negativePrompt: payload.negativePrompt,
-      style: payload.style,
-      referenceImageUrl: payload.referenceImageUrl,
-      model: model as ImageGenModel,
-      ...((model === "poyo_flux" || model === "poyo_sdxl") ? {
-        poyoAspectRatio: payload.aspectRatio,
-      } : {}),
-      ...(model === "hf_soul_standard" && batchMode ? { batchSize: 4 as const } : {}),
-      projectId: data.projectId,
-    });
-    guard({ model, refImageUrl: payload.referenceImageUrl }, submit);
+  // ── Pipeline (node run button): analyze → expand → translate, per toggles ───
+  const anyEnabled = !!(payload.enableAnalyze || payload.enableExpand || payload.enableTranslate);
+  const handleRunPipeline = async () => {
+    if (busy) return;
+    setBusy("pipeline");
+    try {
+      let text = payload.positivePrompt ?? "";
+      if (payload.enableAnalyze && payload.referenceImageUrl) { const r = await runAnalyze(); if (r) text = r; }
+      if (payload.enableExpand && text.trim()) { const r = await runEnhance("expand", text); if (r) text = r; }
+      if (payload.enableTranslate && text.trim()) { const r = await runEnhance("translate_en", text); if (r) text = r; }
+      if (text && text !== payload.positivePrompt) updateNodeData(id, { positivePrompt: text });
+      toast.success(anyEnabled ? "提示词处理完成" : "已使用当前提示词文本");
+    } catch (e) { toast.error("处理失败：" + (e instanceof Error ? e.message : "")); }
+    finally { setBusy(null); }
   };
 
   const onFocusAccent = (e: React.FocusEvent<HTMLElement>) => { e.currentTarget.style.borderColor = accentA(0.6); };
@@ -178,392 +119,137 @@ export const PromptNode = memo(function PromptNode({ id, selected, data }: Props
   const onFocusNeg    = (e: React.FocusEvent<HTMLElement>) => { e.currentTarget.style.borderColor = "var(--c-t4)"; };
   const onBlurDefault = (e: React.FocusEvent<HTMLElement>) => { e.currentTarget.style.borderColor = BORDER_DEFAULT; };
 
-  const currentModel = IMAGE_MODELS.find((m) => m.value === model) ?? IMAGE_MODELS[0];
-
-  // heroMedia shows text prompt preview only — images are shown in the interactive body grid
   const heroMedia = payload.positivePrompt?.trim() ? (
-    <div
-      className="node-hero-placeholder"
-      style={{ minHeight: 100, padding: "14px 16px", alignItems: "flex-start", justifyContent: "flex-start" }}
-    >
+    <div className="node-hero-placeholder" style={{ minHeight: 100, padding: "14px 16px", alignItems: "flex-start", justifyContent: "flex-start" }}>
       <p style={{ fontSize: 11, color: "var(--c-t3)", lineHeight: 1.7, fontFamily: "monospace", margin: 0 }}>
-        {payload.positivePrompt.length > 120
-          ? payload.positivePrompt.slice(0, 120) + "…"
-          : payload.positivePrompt}
+        {payload.positivePrompt.length > 120 ? payload.positivePrompt.slice(0, 120) + "…" : payload.positivePrompt}
       </p>
     </div>
   ) : null;
 
+  const canRun = !!payload.positivePrompt?.trim() || (!!payload.referenceImageUrl && !!payload.enableAnalyze);
+
   return (
-    <BaseNode id={id} selected={selected} nodeType="prompt" title={data.title} minHeight={200} resizable heroMedia={heroMedia}>
+    <BaseNode
+      id={id} selected={selected} nodeType="prompt" title={data.title} minHeight={200} resizable heroMedia={heroMedia}
+      onRun={handleRunPipeline} running={busy === "pipeline"} canRun={canRun} hasResult={!!payload.positivePrompt?.trim()}
+    >
       <div className="flex flex-col h-full p-3.5 gap-3">
+        <div style={{ overflow: "hidden", maxHeight: expanded ? "9999px" : "0px", transition: expanded ? "max-height 220ms cubic-bezier(0.23, 1, 0.32, 1)" : "max-height 160ms cubic-bezier(0.77, 0, 0.175, 1)" }}>
+          <div className="flex flex-col gap-3">
 
-        {/* Preview area — single or A/B compare */}
-        {payload.imageUrls && payload.imageUrls.length > 1 ? (
-          <div className="flex flex-col gap-1.5 flex-shrink-0">
-            <div className="flex gap-1.5">
-              {payload.imageUrls.map((url, i) => (
-                <div
-                  key={i}
-                  className="relative rounded-lg overflow-hidden flex-1"
-                  style={{
-                    height: 90,
-                    border: `1.5px solid ${(payload.selectedImageIndex ?? 0) === i ? accentColor : "var(--c-bd2)"}`,
-                    cursor: "pointer",
-                  }}
-                  onClick={() => updateNodeData(id, { imageUrl: url, selectedImageIndex: i })}
-                >
-                  <img
-                    src={url}
-                    alt={`图像 ${i + 1}`}
-                    className="w-full h-full object-cover"
-                    draggable={false}
-                    onError={makeImageProxyFallback(url)}
-                  />
-                  {(payload.selectedImageIndex ?? 0) === i && (
-                    <div
-                      className="absolute top-1 right-1 w-4 h-4 rounded-full flex items-center justify-center"
-                      style={{ background: accentColor }}
-                    >
-                      <Check style={{ width: 9, height: 9, color: "white" }} />
-                    </div>
-                  )}
-                  <div
-                    className="absolute bottom-1 left-1 px-1 rounded text-[9px] font-semibold"
-                    style={{ background: "oklch(0 0 0 / 0.6)", color: "var(--c-t1)" }}
-                  >
-                    {i === 0 ? "A" : "B"}
-                  </div>
+            {/* Positive prompt */}
+            <div>
+              <label style={{ fontSize: 10.5, fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.06em", color: "var(--c-t4)", display: "block", marginBottom: 5 }}>正向提示词（输出至下游）</label>
+              <textarea className="nodrag nowheel" placeholder="masterpiece, best quality, cinematic lighting..."
+                value={payload.positivePrompt ?? ""} onChange={(e) => handleChange("positivePrompt", e.target.value)} rows={3}
+                style={{ ...monoStyle, borderColor: accentA(0.3) }} onFocus={onFocusAccent} onBlur={onBlurAccent} />
+            </div>
+
+            {/* Negative prompt */}
+            <div>
+              <label style={{ fontSize: 10, fontWeight: 500, textTransform: "uppercase", letterSpacing: "0.05em", color: "var(--c-t4)", display: "block", marginBottom: 4 }}>反向提示词</label>
+              <textarea className="nodrag nowheel" placeholder="blurry, low quality, distorted..."
+                value={payload.negativePrompt ?? ""} onChange={(e) => handleChange("negativePrompt", e.target.value)} rows={2}
+                style={monoStyle} onFocus={onFocusNeg} onBlur={onBlurDefault} />
+            </div>
+
+            {/* Input image (analysis only — never output downstream) */}
+            <div>
+              <label style={{ fontSize: 10, fontWeight: 500, textTransform: "uppercase", letterSpacing: "0.05em", color: "var(--c-t4)", display: "block", marginBottom: 4 }}>输入图片（仅用于分析提取提示词）</label>
+              {payload.referenceImageUrl && (
+                <div className="relative rounded-lg overflow-hidden mb-1.5" style={{ height: 80, borderWidth: 1, borderStyle: "solid", borderColor: BORDER_DEFAULT }}>
+                  <img src={payload.referenceImageUrl} alt="输入图" className="w-full h-full object-cover" draggable={false} onError={makeImageProxyFallback(payload.referenceImageUrl)} />
                 </div>
-              ))}
+              )}
+              <div className="flex items-center gap-1.5">
+                <input ref={refInputRef} type="file" accept="image/*" className="hidden" onChange={handleRefUpload} />
+                <button onClick={() => refInputRef.current?.click()} disabled={uploadingRef}
+                  className="nodrag flex items-center gap-1 px-2 py-1 rounded text-[10px] transition-all flex-1"
+                  style={{ background: "var(--c-input)", borderWidth: 1, borderStyle: "solid", borderColor: "var(--c-bd2)", color: "var(--c-t3)", cursor: uploadingRef ? "not-allowed" : "pointer" }}>
+                  {uploadingRef ? <Loader2 className="w-3 h-3 animate-spin" /> : <Upload className="w-3 h-3" />}
+                  {payload.referenceImageUrl ? "更换图片" : "上传图片"}
+                </button>
+                {payload.referenceImageUrl && (
+                  <button onClick={() => updateNodeData(id, { referenceImageUrl: undefined })} className="nodrag p-1 rounded transition-all"
+                    style={{ background: "var(--c-input)", borderWidth: 1, borderStyle: "solid", borderColor: "var(--c-bd2)", color: "var(--c-t3)" }} title="清除图片"><X className="w-3 h-3" /></button>
+                )}
+              </div>
+              <input type="url" placeholder="或粘贴公网图片 URL（https://…）"
+                value={payload.referenceImageUrl?.startsWith("http") ? payload.referenceImageUrl : ""}
+                onChange={(e) => updateNodeData(id, { referenceImageUrl: e.target.value.trim() || undefined })}
+                className="nodrag" style={{ ...fieldStyle, fontSize: 10.5, marginTop: 6 }} onFocus={onFocusAccent} onBlur={onBlurDefault} />
             </div>
-            <p style={{ fontSize: 10, color: "var(--c-t4)", textAlign: "center" }}>
-              点击选择图像 · 已选: {(payload.selectedImageIndex ?? 0) === 0 ? "A" : "B"}
-            </p>
-          </div>
-        ) : payload.imageUrl ? (
-          <div
-            className="relative rounded-lg overflow-hidden flex-shrink-0"
-            style={{
-              height: 100,
-              borderWidth: 1,
-              borderStyle: "solid",
-              borderColor: BORDER_DEFAULT,
-            }}
-          >
-            <img
-              src={payload.imageUrl}
-              alt="preview"
-              className="w-full h-full object-cover"
-              draggable={false}
-              onError={makeImageProxyFallback(payload.imageUrl ?? "")}
-            />
-            <div
-              className="absolute inset-0 opacity-0 hover:opacity-100 transition-opacity flex items-center justify-center"
-              style={{ background: "oklch(0 0 0 / 0.55)" }}
-            >
-              <button
-                onClick={handleGenerate}
-                disabled={genImageMutation.isPending}
-                className="nodrag flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-medium"
-                style={{
-                  background: accentA(0.2),
-                  borderWidth: 1,
-                  borderStyle: "solid",
-                  borderColor: accentA(0.5),
-                  color: accentColor,
-                }}
-              >
-                {genImageMutation.isPending ? <Loader2 className="w-3 h-3 animate-spin" /> : <RefreshCw className="w-3 h-3" />}
-                重新生成
-              </button>
+
+            {/* AI model */}
+            <div>
+              <label style={{ fontSize: 10, fontWeight: 500, textTransform: "uppercase", letterSpacing: "0.05em", color: "var(--c-t4)", display: "block", marginBottom: 4 }}>AI 模型（分析 / 扩写 / 翻译）</label>
+              <LLMModelPicker value={llmModel} onChange={setLlmModel} disabled={!!busy} />
             </div>
-          </div>
-        ) : null}
 
-        {/* ── Input area (collapsed when not selected, mirrors ImageGenNode UX) ── */}
-        <div
-          style={{
-            overflow: "hidden",
-            maxHeight: expanded ? "9999px" : "0px",
-            transition: expanded
-              ? "max-height 220ms cubic-bezier(0.23, 1, 0.32, 1)"
-              : "max-height 160ms cubic-bezier(0.77, 0, 0.175, 1)",
-          }}
-        >
-        <div className="flex flex-col gap-3">
+            {/* AI ops with workflow toggles */}
+            <div className="flex flex-col gap-1.5">
+              <div style={{ fontSize: 10, color: "var(--c-t4)", lineHeight: 1.5 }}>
+                AI 处理（开关决定是否在工作流运行时参与；多个开启时按 分析→扩写→翻译 顺序执行；全部关闭则用上方文本框内容）
+              </div>
+              <OpRow icon={<ScanText className="w-3 h-3" />} label="分析提取（图→提示词）" busy={busy === "analyze"} disabled={!!busy}
+                on={!!payload.enableAnalyze} onToggle={() => toggle("enableAnalyze")} onRun={() => doManual("analyze")} />
+              <OpRow icon={<Sparkles className="w-3 h-3" />} label="AI 扩写" busy={busy === "expand"} disabled={!!busy}
+                on={!!payload.enableExpand} onToggle={() => toggle("enableExpand")} onRun={() => doManual("expand")} />
+              <OpRow icon={<Languages className="w-3 h-3" />} label="翻译英文" busy={busy === "translate"} disabled={!!busy}
+                on={!!payload.enableTranslate} onToggle={() => toggle("enableTranslate")} onRun={() => doManual("translate")} />
+            </div>
 
-        {/* Positive prompt */}
-        <div>
-          <label style={{ fontSize: 10.5, fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.06em", color: "var(--c-t4)", display: "block", marginBottom: 5 }}>
-            正向提示词
-          </label>
-          <textarea className="nodrag nowheel"
-            placeholder="masterpiece, best quality, cinematic lighting..."
-            value={payload.positivePrompt ?? ""}
-            onChange={(e) => handleChange("positivePrompt", e.target.value)}
-            rows={3}
-            
-            style={{ ...monoStyle, borderColor: accentA(0.3) }}
-            onFocus={onFocusAccent}
-            onBlur={onBlurAccent}
-          />
-          <div className="flex items-center gap-1 mt-1 flex-wrap">
-            <LLMModelPicker value={llmModel} onChange={setLlmModel} disabled={expandingPrompt || translating} />
-            <button
-              onClick={() => {
-                if (expandingPrompt || translating || aiExpandMutation.isPending) return;
-                if (!payload.positivePrompt?.trim()) { toast.error("请先填写提示词"); return; }
-                setExpandingPrompt(true);
-                aiExpandMutation.mutate({ text: payload.positivePrompt, mode: "expand", model: llmModel });
-              }}
-              disabled={expandingPrompt || translating}
-              className="nodrag flex items-center gap-1 px-1.5 py-0.5 rounded-md text-[9px] font-medium transition-all"
-              style={{
-                background: expandingPrompt ? "var(--c-surface)" : "oklch(0.68 0.22 300 / 0.10)",
-                border: `1px solid ${expandingPrompt ? "var(--c-bd2)" : "oklch(0.68 0.22 300 / 0.35)"}`,
-                color: expandingPrompt || translating ? "var(--c-t4)" : "oklch(0.72 0.18 300)",
-                cursor: expandingPrompt || translating ? "not-allowed" : "pointer",
-              }}
-            >
-              {expandingPrompt ? <Loader2 className="w-2.5 h-2.5 animate-spin" /> : <Sparkles className="w-2.5 h-2.5" />}
-              AI 扩写
-            </button>
-            <button
-              onClick={() => {
-                if (translating || expandingPrompt || aiTranslateMutation.isPending) return;
-                if (!payload.positivePrompt?.trim()) { toast.error("请先填写提示词"); return; }
-                setTranslating(true);
-                aiTranslateMutation.mutate({ text: payload.positivePrompt, mode: "translate_en", model: llmModel });
-              }}
-              disabled={translating || expandingPrompt}
-              className="nodrag flex items-center gap-1 px-1.5 py-0.5 rounded-md text-[9px] font-medium transition-all"
-              style={{
-                background: translating ? "var(--c-surface)" : "oklch(0.65 0.18 200 / 0.10)",
-                border: `1px solid ${translating ? "var(--c-bd2)" : "oklch(0.65 0.18 200 / 0.35)"}`,
-                color: translating || expandingPrompt ? "var(--c-t4)" : "oklch(0.70 0.16 200)",
-                cursor: translating || expandingPrompt ? "not-allowed" : "pointer",
-              }}
-            >
-              {translating ? <Loader2 className="w-2.5 h-2.5 animate-spin" /> : <Languages className="w-2.5 h-2.5" />}
-              翻译英文
-            </button>
+            {/* Style + ratio with downstream-pass checkboxes */}
+            <div className="flex flex-col gap-1.5">
+              <div className="flex gap-1.5 items-center">
+                <input placeholder="风格" value={payload.style ?? ""} onChange={(e) => handleChange("style", e.target.value)}
+                  className="nodrag flex-1" style={fieldStyle} onFocus={(e) => { e.currentTarget.style.borderColor = accentA(0.5); }} onBlur={onBlurDefault} />
+                <PassCheck label="传递" on={!!payload.passStyle} onToggle={() => toggle("passStyle")} />
+              </div>
+              <div className="flex gap-1.5 items-center">
+                <input placeholder="比例 (16:9)" value={payload.aspectRatio ?? ""} onChange={(e) => handleChange("aspectRatio", e.target.value)}
+                  className="nodrag flex-1" style={fieldStyle} onFocus={(e) => { e.currentTarget.style.borderColor = accentA(0.5); }} onBlur={onBlurDefault} />
+                <PassCheck label="传递" on={!!payload.passRatio} onToggle={() => toggle("passRatio")} />
+              </div>
+            </div>
+
           </div>
         </div>
-
-        {/* Negative prompt */}
-        <div>
-          <label style={{ fontSize: 10, fontWeight: 500, textTransform: "uppercase", letterSpacing: "0.05em", color: "var(--c-t4)", display: "block", marginBottom: 4 }}>
-            反向提示词
-          </label>
-          <textarea className="nodrag nowheel"
-            placeholder="blurry, low quality, distorted..."
-            value={payload.negativePrompt ?? ""}
-            onChange={(e) => handleChange("negativePrompt", e.target.value)}
-            rows={2}
-            
-            style={monoStyle}
-            onFocus={onFocusNeg}
-            onBlur={onBlurDefault}
-          />
-        </div>
-
-        {/* Reference image upload */}
-        <div className="flex items-center gap-1.5">
-          <input
-            ref={refInputRef}
-            type="file"
-            accept="image/*"
-            className="hidden"
-            onChange={handleRefUpload}
-          />
-          <button
-            onClick={() => refInputRef.current?.click()}
-            disabled={uploadingRef}
-            className="nodrag flex items-center gap-1 px-2 py-1 rounded text-[10px] transition-all flex-1"
-            style={{
-              background: "var(--c-input)",
-              borderWidth: 1,
-              borderStyle: "solid",
-              borderColor: "var(--c-bd2)",
-              color: "var(--c-t3)",
-              cursor: uploadingRef ? "not-allowed" : "pointer",
-            }}
-          >
-            {uploadingRef ? <Loader2 className="w-3 h-3 animate-spin" /> : <Upload className="w-3 h-3" />}
-            {payload.referenceImageUrl ? "更换参考图" : "上传参考图"}
-          </button>
-          {payload.referenceImageUrl && (
-            <button
-              onClick={() => updateNodeData(id, { referenceImageUrl: undefined })}
-              className="nodrag p-1 rounded transition-all"
-              style={{ background: "var(--c-input)", borderWidth: 1, borderStyle: "solid", borderColor: "var(--c-bd2)", color: "var(--c-t3)" }}
-              title="清除参考图"
-            >
-              <X className="w-3 h-3" />
-            </button>
-          )}
-          <RefImageReachabilityBadge
-            model={model}
-            refImageUrl={payload.referenceImageUrl}
-            reachable={reachable}
-          />
-          <RefImageSwitchButton
-            nodeId={id}
-            model={model}
-            refImageUrl={payload.referenceImageUrl}
-            reachable={reachable}
-            onSwitch={(u) => updateNodeData(id, { referenceImageUrl: u })}
-          />
-        </div>
-        {/* 或直接粘贴公网图片 URL */}
-        <input
-          type="url"
-          placeholder="或粘贴公网图片 URL（https://…）"
-          value={payload.referenceImageUrl?.startsWith("http") ? payload.referenceImageUrl : ""}
-          onChange={(e) => updateNodeData(id, { referenceImageUrl: e.target.value.trim() || undefined })}
-          className="nodrag"
-          style={{ ...fieldStyle, fontSize: 10.5 }}
-          onFocus={onFocusAccent}
-          onBlur={onBlurDefault}
-        />
-
-        {/* Style + ratio */}
-        <div className="flex gap-1.5">
-          <input
-            placeholder="风格"
-            value={payload.style ?? ""}
-            onChange={(e) => handleChange("style", e.target.value)}
-            className="nodrag flex-1"
-            style={fieldStyle}
-            onFocus={(e) => { e.currentTarget.style.borderColor = accentA(0.5); }}
-            onBlur={onBlurDefault}
-          />
-          <input
-            placeholder="比例 (16:9)"
-            value={payload.aspectRatio ?? ""}
-            onChange={(e) => handleChange("aspectRatio", e.target.value)}
-            className="nodrag"
-            style={{ ...fieldStyle, width: 90 }}
-            onFocus={(e) => { e.currentTarget.style.borderColor = accentA(0.5); }}
-            onBlur={onBlurDefault}
-          />
-        </div>
-
-        {/* ── Model selector ── */}
-        <div className="relative nodrag">
-          <button
-            onClick={() => setShowModelPicker((v) => !v)}
-            className="nodrag flex items-center justify-between w-full px-2.5 py-1.5 rounded-lg text-xs transition-all"
-            style={{
-              background: "var(--c-input)",
-              borderWidth: 1,
-              borderStyle: "solid",
-              borderColor: accentA(0.30),
-              color: accentColor,
-            }}
-          >
-            <span className="flex items-center gap-1.5">
-              <Sparkles className="w-3 h-3" />
-              {currentModel.label}
-              <span
-                className="px-1 py-0.5 rounded text-[9px] font-semibold"
-                style={{ background: accentA(0.15), color: accentColor }}
-              >
-                {currentModel.desc}
-              </span>
-            </span>
-            <ChevronDown className="w-3 h-3 opacity-60" style={{ transform: showModelPicker ? "rotate(180deg)" : "none", transition: "transform 150ms" }} />
-          </button>
-
-          {showModelPicker && (
-            <div
-              className="absolute bottom-full left-0 right-0 mb-1 rounded-lg overflow-hidden z-50"
-              style={{
-                background: "var(--c-surface)",
-                borderWidth: 1,
-                borderStyle: "solid",
-                borderColor: "var(--c-bd2)",
-                boxShadow: "0 8px 24px oklch(0 0 0 / 0.5)",
-              }}
-            >
-              {["Manus", "Poyo", "Higgsfield"].map((group) => (
-                <div key={group}>
-                  <div className="px-2.5 py-1" style={{ fontSize: 9, fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.08em", color: "var(--c-t4)", borderBottom: "1px solid var(--c-bd2)" }}>
-                    {group}
-                  </div>
-                  {IMAGE_MODELS.filter((m) => m.group === group).map((m) => (
-                    <button
-                      key={m.value}
-                      className="nodrag flex items-center justify-between w-full px-2.5 py-2 text-xs transition-colors"
-                      style={{
-                        background: model === m.value ? accentA(0.10) : "transparent",
-                        color: model === m.value ? accentColor : "var(--c-t2)",
-                      }}
-                      onClick={() => { setModel(m.value); setShowModelPicker(false); }}
-                      onMouseEnter={(e) => { if (model !== m.value) (e.currentTarget as HTMLElement).style.background = "var(--c-elevated)"; }}
-                      onMouseLeave={(e) => { if (model !== m.value) (e.currentTarget as HTMLElement).style.background = "transparent"; }}
-                    >
-                      <span>{m.label}</span>
-                      <span
-                        className="px-1 py-0.5 rounded text-[9px] font-semibold"
-                        style={{ background: accentA(0.12), color: accentA(0.8) }}
-                      >
-                        {m.desc}
-                      </span>
-                    </button>
-                  ))}
-                </div>
-              ))}
-            </div>
-          )}
-        </div>
-
-        {/* Batch toggle + Generate button */}
-        <div className="flex gap-1.5">
-          <button
-            onClick={() => setBatchMode((v) => !v)}
-            className="nodrag flex items-center gap-1 px-2 py-1.5 rounded-lg text-[11px] font-medium transition-all flex-shrink-0"
-            style={{
-              background: batchMode ? accentA(0.15) : "var(--c-surface)",
-              borderWidth: 1,
-              borderStyle: "solid",
-              borderColor: batchMode ? accentA(0.4) : BORDER_DEFAULT,
-              color: batchMode ? accentColor : "var(--c-t4)",
-              cursor: "pointer",
-            }}
-            title={batchMode ? "当前：生成4图 A/B对比" : "点击开启A/B对比模式"}
-          >
-            <Grid2X2 className="w-3 h-3" />
-            {batchMode ? "A/B" : "1图"}
-          </button>
-          <button
-            onClick={handleGenerate}
-            disabled={genImageMutation.isPending || !payload.positivePrompt?.trim()}
-            className="nodrag flex items-center justify-center gap-1.5 flex-1 py-2 rounded-lg text-xs font-medium transition-all"
-            style={{
-              background: genImageMutation.isPending || !payload.positivePrompt?.trim()
-                ? "var(--c-surface)"
-                : accentA(0.15),
-              borderWidth: 1,
-              borderStyle: "solid",
-              borderColor: genImageMutation.isPending || !payload.positivePrompt?.trim()
-                ? BORDER_DEFAULT
-                : accentA(0.4),
-              color: genImageMutation.isPending || !payload.positivePrompt?.trim()
-                ? "var(--c-t4)"
-                : accentColor,
-              cursor: genImageMutation.isPending || !payload.positivePrompt?.trim() ? "not-allowed" : "pointer",
-            }}
-          >
-            {genImageMutation.isPending ? <Loader2 className="w-3 h-3 animate-spin" /> : <Sparkles className="w-3 h-3" />}
-            {genImageMutation.isPending ? "生成中..." : batchMode ? "生成 4 图" : "AI 生成图像"}
-          </button>
-        </div>
-        </div>{/* end inner gap-3 */}
-        </div>{/* end input collapse wrapper */}
       </div>
-      {reachabilityDialog}
     </BaseNode>
   );
 });
+
+function OpRow({ icon, label, on, busy, disabled, onToggle, onRun }: {
+  icon: React.ReactNode; label: string; on: boolean; busy: boolean; disabled: boolean; onToggle: () => void; onRun: () => void;
+}) {
+  return (
+    <div className="flex items-center gap-1.5">
+      <button onClick={onRun} disabled={disabled}
+        className="nodrag flex items-center gap-1.5 flex-1 px-2 py-1.5 rounded-lg text-[11px] font-medium transition-all"
+        style={{ background: accentA(0.10), border: `1px solid ${accentA(0.30)}`, color: accentColor, cursor: disabled ? "not-allowed" : "pointer", justifyContent: "flex-start" }}
+        title="立即执行一次（写入正向提示词）">
+        {busy ? <Loader2 className="w-3 h-3 animate-spin" /> : icon}
+        {label}
+      </button>
+      <button onClick={onToggle} disabled={disabled} title={on ? "工作流中参与（点击关闭）" : "工作流中不参与（点击开启）"}
+        className="nodrag flex items-center gap-1 px-2 py-1.5 rounded-lg text-[10px] font-medium transition-all flex-shrink-0"
+        style={{ background: on ? accentA(0.18) : "var(--c-surface)", border: `1px solid ${on ? accentA(0.45) : BORDER_DEFAULT}`, color: on ? accentColor : "var(--c-t4)", cursor: disabled ? "not-allowed" : "pointer", minWidth: 56 }}>
+        <span style={{ width: 7, height: 7, borderRadius: "50%", background: on ? accentColor : "var(--c-t4)", flexShrink: 0 }} />
+        {on ? "工作流" : "关"}
+      </button>
+    </div>
+  );
+}
+
+function PassCheck({ label, on, onToggle }: { label: string; on: boolean; onToggle: () => void }) {
+  return (
+    <button onClick={onToggle} title={on ? "传递至下游（点击关闭）" : "不传递至下游（点击开启）"}
+      className="nodrag flex items-center gap-1 px-2 py-1.5 rounded-lg text-[10px] font-medium transition-all flex-shrink-0"
+      style={{ background: on ? accentA(0.18) : "var(--c-surface)", border: `1px solid ${on ? accentA(0.45) : BORDER_DEFAULT}`, color: on ? accentColor : "var(--c-t4)", minWidth: 56 }}>
+      <span style={{ width: 7, height: 7, borderRadius: "50%", background: on ? accentColor : "var(--c-t4)", flexShrink: 0 }} />
+      {label}
+    </button>
+  );
+}
