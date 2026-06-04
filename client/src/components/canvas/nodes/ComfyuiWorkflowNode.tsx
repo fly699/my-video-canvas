@@ -1,6 +1,8 @@
 import { memo, useCallback, useMemo, useRef, useState } from "react";
 import { Handle, Position } from "@xyflow/react";
 import { BaseNode } from "../BaseNode";
+import { handleStyle } from "../../../lib/handleStyle";
+import { useHoverStore } from "../../../hooks/useHoverStore";
 import { ComfyServerUrlField } from "./ComfyServerUrlField";
 import { useCanvasStore } from "../../../hooks/useCanvasStore";
 import { propagateRefImage, propagateWorkflowPrompt } from "../../../lib/refImagePropagation";
@@ -176,6 +178,7 @@ const PRESET_SD35 = JSON.stringify({
 type Phase = "empty" | "binding" | "run";
 
 export const ComfyuiWorkflowNode = memo(function ComfyuiWorkflowNode({ id, selected, data }: Props) {
+  const handlesActive = useHoverStore((s) => s.nodeId === id) || !!selected;
   const updateNodeData = useCanvasStore((s) => s.updateNodeData);
   // Reactively detect an upstream image feeding this node (via any incoming edge).
   const upstreamImageUrl = useCanvasStore((s) => detectUpstreamImageUrl(id, s.edges, s.nodes));
@@ -451,16 +454,7 @@ export const ComfyuiWorkflowNode = memo(function ComfyuiWorkflowNode({ id, selec
         type="target"
         position={Position.Left}
         id="ref-image-in"
-        style={{
-          width: 15, height: 15,
-          borderRadius: 4,
-          top: "28%",
-          left: -7,
-          background: "oklch(0.7 0.18 145)",
-          border: "2px solid var(--c-canvas)",
-          boxShadow: "0 0 0 2px oklch(0.7 0.18 145 / 0.30)",
-          zIndex: 10,
-        }}
+        style={{ ...handleStyle("oklch(0.7 0.18 145)", handlesActive, "square"), top: "28%", left: -7 }}
         title="参考图输入"
       />
 

@@ -1,6 +1,8 @@
 import { memo, useCallback, useEffect, useRef, useState } from "react";
 import { Handle, Position } from "@xyflow/react";
 import { BaseNode } from "../BaseNode";
+import { handleStyle } from "../../../lib/handleStyle";
+import { useHoverStore } from "../../../hooks/useHoverStore";
 import { ComfyServerUrlField } from "./ComfyServerUrlField";
 import { SyncConfigDialog } from "../SyncConfigDialog";
 import { NodeConfigTabs } from "../NodeConfigTabs";
@@ -65,6 +67,7 @@ const labelStyle: React.CSSProperties = {
 };
 
 export const ComfyuiVideoNode = memo(function ComfyuiVideoNode({ id, selected, data }: Props) {
+  const handlesActive = useHoverStore((s) => s.nodeId === id) || !!selected;
   const updateNodeData = useCanvasStore((s) => s.updateNodeData);
   const payload = data.payload;
   useComfyUpstreamAutoFill(id, payload, updateNodeData);
@@ -932,16 +935,7 @@ export const ComfyuiVideoNode = memo(function ComfyuiVideoNode({ id, selected, d
         type="target"
         position={Position.Left}
         id="ref-image-in"
-        style={{
-          width: 15, height: 15,
-          borderRadius: 4,
-          background: "oklch(0.68 0.22 285)",
-          border: "2px solid var(--c-canvas)",
-          boxShadow: "0 0 0 2px oklch(0.68 0.22 285 / 0.30)",
-          left: -7,
-          top: "28%",
-          zIndex: 10,
-        }}
+        style={{ ...handleStyle("oklch(0.68 0.22 285)", handlesActive, "square"), top: "28%", left: -7 }}
         title="参考图输入"
       />
 

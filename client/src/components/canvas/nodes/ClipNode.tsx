@@ -1,6 +1,8 @@
 import { memo, useCallback, useEffect, useRef, useState } from "react";
 import { Handle, Position } from "@xyflow/react";
 import { BaseNode } from "../BaseNode";
+import { handleStyle } from "../../../lib/handleStyle";
+import { useHoverStore } from "../../../hooks/useHoverStore";
 import { useCanvasStore } from "../../../hooks/useCanvasStore";
 import type { ClipNodeData } from "../../../../../shared/types";
 import { trpc } from "@/lib/trpc";
@@ -151,6 +153,7 @@ function TrimBar({
 // ── Main component ────────────────────────────────────────────────────────────
 
 export const ClipNode = memo(function ClipNode({ id, selected, data }: Props) {
+  const handlesActive = useHoverStore((s) => s.nodeId === id) || !!selected;
   const { updateNodeData } = useCanvasStore();
   const payload = data.payload;
   const [isPlaying, setIsPlaying] = useState(false);
@@ -312,14 +315,14 @@ export const ClipNode = memo(function ClipNode({ id, selected, data }: Props) {
         type="target"
         position={Position.Left}
         id="video-in"
-        style={{ top: "35%", borderRadius: 3, background: `${accent}90`, border: `2px solid var(--c-surface)`, width: 12, height: 12, left: -6 }}
+        style={{ ...handleStyle(accent, handlesActive, "square"), top: "35%", left: -7 }}
         title="视频输入 ← 连接视频任务或素材"
       />
       <Handle
         type="target"
         position={Position.Left}
         id="audio-in"
-        style={{ top: "65%", borderRadius: 3, background: "oklch(0.68 0.20 340 / 0.85)", border: `2px solid var(--c-surface)`, width: 12, height: 12, left: -6 }}
+        style={{ ...handleStyle("oklch(0.68 0.20 340)", handlesActive, "square"), top: "65%", left: -7 }}
         title="音频输入 ← 连接音频节点"
       />
       {/* Output handle — circle = source/sends */}
@@ -327,7 +330,7 @@ export const ClipNode = memo(function ClipNode({ id, selected, data }: Props) {
         type="source"
         position={Position.Right}
         id="clip-out"
-        style={{ borderRadius: "50%", background: accent, border: `2px solid var(--c-surface)`, width: 12, height: 12, right: -6 }}
+        style={{ ...handleStyle(accent, handlesActive, "circle"), right: -7 }}
         title="剪辑输出 → 连接素材节点保存"
       />
 
