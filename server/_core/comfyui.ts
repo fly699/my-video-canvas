@@ -1238,6 +1238,12 @@ export async function analyzeWorkflow(
   if (!workflow || typeof workflow !== "object" || Array.isArray(workflow)) {
     throw new Error("Workflow JSON 结构无效：应为 { 节点ID: {...} } 的对象（ComfyUI API 格式，非 UI 导出格式）");
   }
+  // UI-exported workflows ({nodes:[...], links:[...]}) parse as objects but have
+  // no class_type keys → every node is skipped → zero editable params. Detect this
+  // explicitly so the user gets actionable guidance instead of an empty param list.
+  if (Array.isArray((workflow as Record<string, unknown>).nodes)) {
+    throw new Error("检测到 ComfyUI「UI 导出格式」（含 nodes 节点列表）。请在 ComfyUI 用 “Save (API Format)”，或开启设置里的开发者模式后用 “Export (API)” 导出 API 格式再导入——UI 格式无法解析出可编辑参数。");
+  }
 
   // Optionally fetch object_info to get enum options (best-effort)
   let info: ObjectInfo = {};
@@ -1439,6 +1445,45 @@ export async function analyzeWorkflow(
           break;
         }
       }
+    }
+  }
+
+  // ── Generic widget sweep（尽量扩大白名单）─────────────────────────────────────
+  // Surface any remaining LITERAL scalar input (number/boolean/string) that wasn't
+  // already bound by a specific branch above and isn't wired from another node, so
+  // params on custom / unrecognized nodes (FluxGuidance.guidance, ModelSamplingSD3
+  // .shift, latent .length, custom widgets…) become editable instead of disappearing.
+  const GENERIC_SKIP_FIELDS = new Set([
+    "filename_prefix", "save_output", "unique_id", "control_after_generate",
+    "images", "samples", "latent_image", "audio", "mask", "pixels",
+  ]);
+  const GENERIC_LABELS: Record<string, string> = {
+    guidance: "Guidance", shift: "Shift", length: "帧数", num_frames: "帧数", video_frames: "帧数",
+    width: "宽度", height: "高度", batch_size: "批量数量", fps: "帧率 (FPS)", frame_rate: "帧率 (FPS)",
+    steps: "步数", cfg: "CFG Scale", denoise: "Denoise", seed: "随机种子", noise_seed: "随机种子",
+    strength: "强度", weight: "权重",
+  };
+  const MAX_PARAMS = 80;
+  const bound = new Set(detectedParams.map((p) => `${p.nodeId}|${p.fieldPath}`));
+  for (const [nodeId, node] of Object.entries(workflow)) {
+    if (detectedParams.length >= MAX_PARAMS) break;
+    if (typeof node !== "object" || !node.class_type) continue;
+    const nodeInputs = (node.inputs ?? {}) as Record<string, unknown>;
+    const title = node._meta?.title?.trim();
+    for (const [field, val] of Object.entries(nodeInputs)) {
+      if (detectedParams.length >= MAX_PARAMS) break;
+      if (bound.has(`${nodeId}|inputs.${field}`) || GENERIC_SKIP_FIELDS.has(field)) continue;
+      if (val === null || Array.isArray(val) || typeof val === "object") continue; // wired / complex
+      const t = typeof val;
+      if (t !== "number" && t !== "boolean" && t !== "string") continue;
+      const base = GENERIC_LABELS[field] ?? field;
+      detectedParams.push({
+        nodeId, fieldPath: `inputs.${field}`,
+        label: title ? `${title}·${base}` : base,
+        type: t === "number" ? "number" : t === "boolean" ? "boolean" : "text",
+        defaultValue: val as string | number | boolean,
+      });
+      bound.add(`${nodeId}|inputs.${field}`);
     }
   }
 
