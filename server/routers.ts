@@ -33,6 +33,7 @@ import { poyoRouter } from "./routers/poyo";
 import { downloadsRouter } from "./routers/downloads";
 import { editorRouter } from "./routers/editor";
 import { comfyTemplatesRouter } from "./routers/comfyTemplates";
+import { agentRouter } from "./routers/agent";
 
 export const appRouter = router({
   system: systemRouter,
@@ -69,6 +70,7 @@ export const appRouter = router({
   lipSync: lipSyncRouter,
   avatar: avatarRouter,
   comfyui: comfyuiRouter,
+  agent: agentRouter,
   comfyStress: comfyStressRouter,
   config: configRouter,
   upload: uploadRouter,

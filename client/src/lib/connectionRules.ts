@@ -26,6 +26,9 @@ export const CONNECTION_MATRIX: Partial<Record<NodeType, NodeType[]>> = {
   comfyui_workflow: ["video_task", "asset", "clip", "overlay", "merge", "subtitle", "subtitle_motion", "smart_cut", "lip_sync", "comfyui_workflow", "comfyui_image", "comfyui_video"],
   note: [],
   group: [],
+  // The agent (Copilot) orchestrates by CREATING nodes via chat, not via edges —
+  // it has no connection handles, so no outgoing graph connections.
+  agent: [],
 };
 
 export const NOTE_TYPES: NodeType[] = ["note"];
@@ -189,5 +192,10 @@ export const CONNECTION_HINTS: Record<
     label: "ComfyUI 自定义",
     outgoing: "→ 视频任务 / 素材 / 剪辑 / 叠加 / 合并 / 字幕",
     incoming: "← 分镜 / 提示词 / 角色 / 素材 / 图像生成",
+  },
+  agent: {
+    label: "智能体",
+    outgoing: "通过对话直接在画布生成节点（不经连线）",
+    incoming: "对话式描述需求，自动编排工作流",
   },
 };

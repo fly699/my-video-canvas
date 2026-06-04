@@ -2,13 +2,13 @@ import type { NodeType } from "../../../shared/types";
 import {
   ScrollText, Film, Wand2, ImagePlus, Package, Video, Bot, StickyNote,
   AudioWaveform, SlidersHorizontal, Folder, UserRound, Scissors, Merge, Captions, Blend,
-  Zap, Layers, Mic, Scan, PersonStanding, Boxes,
+  Zap, Layers, Mic, Scan, PersonStanding, Boxes, Sparkles,
 } from "lucide-react";
 
 export const NODE_ICONS: Record<string, React.ComponentType<{ className?: string; style?: React.CSSProperties }>> = {
   ScrollText, Film, Wand2, ImagePlus, Package, Video, Bot, StickyNote,
   AudioWaveform, SlidersHorizontal, Folder, UserRound, Scissors, Merge, Captions, Blend,
-  Zap, Layers, Mic, Scan, PersonStanding, Boxes,
+  Zap, Layers, Mic, Scan, PersonStanding, Boxes, Sparkles,
 };
 
 export interface NodeConfig {
@@ -275,6 +275,17 @@ export const NODE_CONFIGS: Record<NodeType, NodeConfig> = {
     borderColor: "oklch(0.65 0.20 140 / 0.4)",
     defaultWidth: 420,
     defaultTitle: "ComfyUI 自定义工作流",
+  },
+  agent: {
+    type: "agent",
+    label: "智能体",
+    icon: "Sparkles",
+    color: "oklch(0.70 0.20 310)",
+    bgColor: "oklch(0.70 0.20 310 / 0.08)",
+    borderColor: "oklch(0.70 0.20 310 / 0.4)",
+    defaultWidth: 400,
+    defaultHeight: 520,
+    defaultTitle: "智能体 Copilot",
   },
 };
 

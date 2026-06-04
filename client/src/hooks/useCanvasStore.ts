@@ -554,6 +554,8 @@ function getDefaultPayload(type: NodeType): NodeData {
       return { workflowTemplate: "txt2img", prompt: "", ckpt: "", steps: 20, cfg: 7, seed: -1, width: 512, height: 512, status: "idle" };
     case "comfyui_video":
       return { workflowTemplate: "animatediff", prompt: "", ckpt: "", steps: 20, cfg: 7, seed: -1, frames: 16, fps: 8, status: "idle" };
+    case "agent":
+      return { messages: [], status: "idle" };
     default:
       return {} as NodeData;
   }

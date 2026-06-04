@@ -25,6 +25,7 @@ import { AvatarNode } from "./nodes/AvatarNode";
 import { ComfyuiImageNode } from "./nodes/ComfyuiImageNode";
 import { ComfyuiVideoNode } from "./nodes/ComfyuiVideoNode";
 import { ComfyuiWorkflowNode } from "./nodes/ComfyuiWorkflowNode";
+import { AgentNode } from "./nodes/AgentNode";
 import type { NodeType } from "../../../../shared/types";
 
 interface CustomNodeData {
@@ -92,6 +93,8 @@ export const CustomNode = memo(function CustomNode(props: NodeProps) {
       return <ComfyuiVideoNode {...(props as unknown as AnyNodeProps)} />;
     case "comfyui_workflow":
       return <ComfyuiWorkflowNode {...(props as unknown as AnyNodeProps)} />;
+    case "agent":
+      return <AgentNode {...(props as unknown as AnyNodeProps)} />;
     default:
       return null;
   }
