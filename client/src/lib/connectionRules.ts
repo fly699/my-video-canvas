@@ -53,7 +53,10 @@ export function isConnectionValid(
 ): boolean {
   if (sourceType === null || targetType === null) return true;
   if (NOTE_TYPES.includes(sourceType) || NOTE_TYPES.includes(targetType)) return true;
-  if (sourceType === targetType) return false;
+  // The matrix is authoritative — it already omits same-type pairs that must not
+  // self-chain (e.g. prompt→prompt) and explicitly lists the ones that should
+  // (comfy 图像/视频/自定义 串并联). Self-loops on the *same node* are blocked
+  // separately in Canvas's isValidConnection (source === target).
   const targets = CONNECTION_MATRIX[sourceType];
   return targets != null && targets.includes(targetType);
 }
