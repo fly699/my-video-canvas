@@ -16,6 +16,7 @@ import {
 import { NODE_ICONS } from "../../lib/nodeConfig";
 import { toast } from "sonner";
 import { hasPassableOutput, directPassDownstream } from "../../lib/canvasPassthrough";
+import { handleStyle } from "../../lib/handleStyle";
 
 interface BaseNodeProps {
   id: string;
@@ -152,52 +153,11 @@ export const BaseNode = memo(function BaseNode({
 
   const showActions = isHovered || selected;
 
-  // Shared base styles for all handles. At rest (node not hovered/selected) the
-  // dots stay deliberately subtle — small, HOLLOW (transparent inside) with just a
-  // thin colored ring — so they don't visually compete with the node content.
-  // On hover/select they fill in, enlarge and gain an outer glow.
-  const handleActive = isHovered || selected;
-  const handleShared: React.CSSProperties = {
-    width: 15,
-    height: 15,
-    borderWidth: 2,
-    borderStyle: "solid",
-    boxSizing: "border-box",
-    transition: "opacity 150ms ease, transform 150ms ease, box-shadow 150ms ease, background 150ms ease, border-color 150ms ease",
-    zIndex: 10,
-  };
-
-  // Active (hover/select): solid filled dot, slightly enlarged, soft outer glow.
-  // Rest: shrunk hollow ring — transparent interior, colored border only.
-  const handleState: React.CSSProperties = handleActive
-    ? {
-        background: config.color,
-        borderColor: "var(--c-canvas)",
-        opacity: 1,
-        transform: "scale(1.12)",
-        boxShadow: `0 0 0 4px ${config.color}33`,
-      }
-    : {
-        background: "transparent",
-        borderColor: config.color,
-        opacity: 0.55,
-        transform: "scale(0.6)",
-        boxShadow: "none",
-      };
-
-  // Target (input) handle: SQUARE with slight rounding — receives data
-  const targetHandle: React.CSSProperties = {
-    ...handleShared,
-    borderRadius: 4,                                       // square = input
-    ...handleState,
-  };
-
-  // Source (output) handle: CIRCLE — sends data
-  const sourceHandle: React.CSSProperties = {
-    ...handleShared,
-    borderRadius: "50%",                                   // circle = output
-    ...handleState,
-  };
+  // Connection handles — shared subtle-at-rest / filled-on-hover styling (see
+  // lib/handleStyle). Target = square (receives), source = circle (sends).
+  const handleActive = isHovered || !!selected;
+  const targetHandle = handleStyle(config.color, handleActive, "square");
+  const sourceHandle = handleStyle(config.color, handleActive, "circle");
 
   // Derive border & shadow from runStatus
   const runBorder = runStatus === "running"
