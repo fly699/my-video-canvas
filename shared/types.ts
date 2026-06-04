@@ -811,6 +811,10 @@ export interface AgentNodeData {
   model?: string;
   /** 仅 ComfyUI 生成：开启后生成只走 comfyui_workflow 自定义工作流节点（从模板库选模板）。 */
   comfyOnlyMode?: boolean;
+  /** 自动应用：智能体规划后直接把操作应用到画布，无需手动点「应用」。 */
+  autoApply?: boolean;
+  /** 自动执行：应用后自动发起工作流运行（仍经画布的运行确认弹窗）。「一句话成片」。 */
+  autoRun?: boolean;
   status?: "idle" | "thinking" | "failed";
   errorMessage?: string;
 }

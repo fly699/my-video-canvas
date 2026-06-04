@@ -4,12 +4,13 @@ import { useCanvasStore } from "../../../hooks/useCanvasStore";
 import type { AgentNodeData, AgentMessage, AgentOperation } from "../../../../../shared/types";
 import { trpc } from "@/lib/trpc";
 import { toast } from "sonner";
-import { Sparkles, Loader2, Send, Check, Plus, Link2, Pencil, Trash2, LayoutGrid, Boxes } from "lucide-react";
+import { Sparkles, Loader2, Send, Check, Plus, Link2, Pencil, Trash2, LayoutGrid, Boxes, Wrench, Zap } from "lucide-react";
 import { LLMModelPicker, type LLMModelId } from "../LLMModelPicker";
 import { NodeTextArea } from "../NodeTextInput";
 import { applyAgentOperations, buildGraphSummary } from "@/lib/agentApply";
 import { getNodeConfig } from "../../../lib/nodeConfig";
 import { LAYOUTS, computeLayout } from "@/lib/layoutUtils";
+import { estimateOpsBudget, budgetLabel } from "@/lib/agentBudget";
 
 interface Props {
   id: string;
@@ -74,45 +75,62 @@ export const AgentNode = memo(function AgentNode({ id, selected, data }: Props) 
     setLayoutIdx((i) => i + 1);
   };
 
+  const autoApply = payload.autoApply ?? false;
+  const autoRun = payload.autoRun ?? false;
+
   const setMessages = (msgs: AgentMessage[]) => updateNodeData(id, { messages: msgs });
+  // Read the latest messages straight from the store (avoids stale closures when
+  // auto-applying right after a send).
+  const freshMessages = (): AgentMessage[] =>
+    ((useCanvasStore.getState().nodes.find((n) => n.id === id)?.data.payload as AgentNodeData | undefined)?.messages) ?? [];
 
   useEffect(() => {
     scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight });
   }, [messages.length, chat.isPending]);
 
-  const handleSend = async () => {
-    const text = input.trim();
-    if (!text || chat.isPending) return;
-    const history = messages.map((m) => ({ role: m.role, content: m.content }));
-    const summary = buildGraphSummary(id);
-    const afterUser: AgentMessage[] = [...messages, { role: "user", content: text }];
-    setMessages(afterUser);
-    setInput("");
-    try {
-      const r = await chat.mutateAsync({
-        projectId: data.projectId, message: text, history,
-        graphSummary: summary || undefined, model, comfyOnly,
-      });
-      setMessages([...afterUser, { role: "assistant", content: r.reply, operations: r.operations }]);
-    } catch (e) {
-      setMessages([...afterUser, { role: "assistant", content: "处理失败：" + (e instanceof Error ? e.message : ""), operations: [] }]);
-    }
-  };
-
   const handleApply = (msgIdx: number, ops: AgentOperation[]) => {
+    if (ops.length === 0) return;
     const pos = useCanvasStore.getState().nodes.find((n) => n.id === id)?.position ?? { x: 0, y: 0 };
     const templates = (templatesQuery.data ?? []).map((t) => ({ id: t.id, label: t.label, payload: t.payload }));
     const r = applyAgentOperations(ops, pos, { templates }); // mutates op.status/op.error in place
     setAppliedIdx((prev) => new Set(prev).add(msgIdx));
-    // Persist op statuses back into the message so the preview shows applied/failed.
-    setMessages(messages.map((m, i) => (i === msgIdx ? { ...m, operations: [...ops] } : m)));
+    // Persist op statuses (read fresh so an auto-apply right after send is correct).
+    setMessages(freshMessages().map((m, i) => (i === msgIdx ? { ...m, operations: [...ops] } : m)));
     const parts = [r.created && `新建 ${r.created}`, r.connected && `连接 ${r.connected}`, r.updated && `更新 ${r.updated}`, r.deleted && `删除 ${r.deleted}`].filter(Boolean);
     if (r.failures.length > 0) {
       toast.warning(`已应用 ${parts.join(" · ") || "0 步"}，${r.failures.length} 步失败：${r.failures[0].reason}`);
     } else {
       toast.success(parts.length ? `已应用：${parts.join(" · ")}` : "无可应用的操作");
     }
+    // 自动执行（一句话成片）：应用了新建/更新后，发起一次工作流运行（经画布确认）。
+    if (autoRun && (r.created > 0 || r.updated > 0)) {
+      useCanvasStore.getState().requestRun(null);
+    }
   };
+
+  const handleSend = async (override?: string) => {
+    const text = (override ?? input).trim();
+    if (!text || chat.isPending) return;
+    const history = messages.map((m) => ({ role: m.role, content: m.content }));
+    const summary = buildGraphSummary(id);
+    const afterUser: AgentMessage[] = [...messages, { role: "user", content: text }];
+    const assistantIdx = afterUser.length; // index the assistant reply will occupy
+    setMessages(afterUser);
+    if (!override) setInput("");
+    try {
+      const r = await chat.mutateAsync({
+        projectId: data.projectId, message: text, history,
+        graphSummary: summary || undefined, model, comfyOnly,
+      });
+      setMessages([...afterUser, { role: "assistant", content: r.reply, operations: r.operations }]);
+      if (autoApply && r.operations.length > 0) handleApply(assistantIdx, r.operations);
+    } catch (e) {
+      setMessages([...afterUser, { role: "assistant", content: "处理失败：" + (e instanceof Error ? e.message : ""), operations: [] }]);
+    }
+  };
+
+  // 运行自愈：让智能体检查画布上运行失败/缺参的节点并给出修复方案（节点状态已随 graphSummary 提供）。
+  const handleSelfHeal = () => handleSend("请检查当前画布上运行失败或缺少必要参数的节点，并用 update / connect 操作给出修复方案（修正参数、补全缺失连接或参考图）。若无问题请说明。");
 
   return (
     <BaseNode id={id} selected={selected} nodeType="agent" title={data.title} minHeight={420} resizable showHandles={false}>
@@ -153,6 +171,15 @@ export const AgentNode = memo(function AgentNode({ id, selected, data }: Props) 
                       );
                     })}
                   </div>
+                  {(() => {
+                    const b = estimateOpsBudget(m.operations);
+                    const lbl = budgetLabel(b);
+                    return lbl ? (
+                      <div style={{ padding: "2px 9px 4px", fontSize: 10, color: "var(--c-t4)", display: "flex", alignItems: "center", gap: 4 }}>
+                        <Zap className="w-3 h-3" style={{ flexShrink: 0 }} />预估消耗：{lbl}
+                      </div>
+                    ) : null;
+                  })()}
                   <button
                     onClick={() => handleApply(i, m.operations!)}
                     disabled={appliedIdx.has(i)}
@@ -199,11 +226,26 @@ export const AgentNode = memo(function AgentNode({ id, selected, data }: Props) 
             >
               {analyzeMut.isPending ? <Loader2 className="w-3 h-3 animate-spin" /> : <Boxes className="w-3 h-3" />}新增节点模板库分析
             </button>
+            <button
+              onClick={handleSelfHeal}
+              disabled={chat.isPending}
+              className="nodrag flex items-center gap-1 px-2 py-1 rounded-lg text-[10px] font-medium"
+              title="运行自愈：检查画布上运行失败/缺参的节点并给出修复方案"
+              style={{ background: accentA(0.1), border: `1px solid ${accentA(0.3)}`, color: accent, cursor: chat.isPending ? "wait" : "pointer" }}
+            >
+              <Wrench className="w-3 h-3" />诊断修复
+            </button>
             <label className="nodrag flex items-center gap-1 text-[10px]" style={{ color: "var(--c-t3)", cursor: "pointer" }} title="重新分析全部模板（而非仅新增/变更）">
               <input type="checkbox" checked={analyzeFull} onChange={(e) => setAnalyzeFull(e.target.checked)} style={{ accentColor: accent }} />全量
             </label>
             <label className="nodrag flex items-center gap-1 text-[10px]" style={{ color: comfyOnly ? accent : "var(--c-t3)", cursor: "pointer" }} title="开启后：音视频生成只用 ComfyUI 自定义工作流节点（从模板库选模板）">
               <input type="checkbox" checked={comfyOnly} onChange={(e) => updateNodeData(id, { comfyOnlyMode: e.target.checked })} style={{ accentColor: accent }} />仅 ComfyUI 生成
+            </label>
+            <label className="nodrag flex items-center gap-1 text-[10px]" style={{ color: autoApply ? accent : "var(--c-t3)", cursor: "pointer" }} title="规划后直接应用到画布，无需手动点应用">
+              <input type="checkbox" checked={autoApply} onChange={(e) => updateNodeData(id, { autoApply: e.target.checked })} style={{ accentColor: accent }} />自动应用
+            </label>
+            <label className="nodrag flex items-center gap-1 text-[10px]" style={{ color: autoRun ? accent : "var(--c-t3)", cursor: "pointer" }} title="一句话成片：应用后自动发起运行（仍需画布确认）">
+              <input type="checkbox" checked={autoRun} onChange={(e) => updateNodeData(id, { autoRun: e.target.checked })} style={{ accentColor: accent }} /><Zap className="w-3 h-3" />自动执行
             </label>
           </div>
           <LLMModelPicker value={model} onChange={(m) => updateNodeData(id, { model: m })} disabled={chat.isPending} />
@@ -214,7 +256,7 @@ export const AgentNode = memo(function AgentNode({ id, selected, data }: Props) 
               value={input}
               onValueChange={setInput}
               rows={2}
-              onKeyDown={(e) => { if ((e.metaKey || e.ctrlKey) && e.key === "Enter") { e.preventDefault(); handleSend(); } }}
+              onKeyDown={(e) => { if ((e.metaKey || e.ctrlKey) && e.key === "Enter") { e.preventDefault(); void handleSend(); } }}
               style={{
                 flex: 1, fontSize: 12, padding: "7px 10px", background: "var(--c-input)", borderRadius: 8,
                 borderWidth: 1, borderStyle: "solid", borderColor: "var(--c-bd2)", color: "var(--c-t1)",
@@ -224,7 +266,7 @@ export const AgentNode = memo(function AgentNode({ id, selected, data }: Props) 
               onBlur={(e) => { e.currentTarget.style.borderColor = "var(--c-bd2)"; }}
             />
             <button
-              onClick={handleSend}
+              onClick={() => void handleSend()}
               disabled={chat.isPending || !input.trim()}
               className="nodrag flex items-center justify-center flex-shrink-0"
               title="发送（Ctrl/⌘+Enter）"
