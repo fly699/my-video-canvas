@@ -2521,6 +2521,42 @@ Output an optimized English prompt under 80 words. Output ONLY the prompt text.`
       });
       return { result: extractTextContent(response).trim() };
     }),
+
+  // Vision: reverse-engineer a generation prompt from an input image. Used by the
+  // 提示词 node's「分析提取」action — the prompt node consumes images only to
+  // extract text, it never outputs an image.
+  analyzeImage: protectedProcedure
+    .input(
+      z.object({
+        imageUrl: z.string().min(1).max(2048),
+        instruction: z.string().max(2000).optional(),
+        model: z.string().optional(),
+      })
+    )
+    .mutation(async ({ input }) => {
+      let absoluteUrl = input.imageUrl;
+      try { absoluteUrl = await resolveToAbsoluteUrl(input.imageUrl); }
+      catch (err) { console.warn("[analyzeImage] resolveToAbsoluteUrl failed:", err instanceof Error ? err.message : err); }
+      const system = `You are an expert at reverse-engineering image-generation prompts.
+Study the image and produce a single detailed prompt that could regenerate it.
+Cover: subject, composition, style/medium, lighting, color palette, mood, and notable details.
+Output ONLY the prompt as vivid, comma-separated English descriptive phrases — no preamble, no labels.`;
+      const response = await invokeLLM({
+        messages: [
+          { role: "system" as const, content: system },
+          {
+            role: "user" as const,
+            content: [
+              { type: "text" as const, text: input.instruction?.trim() || "Describe this image as a generation prompt." },
+              { type: "image_url" as const, image_url: { url: absoluteUrl, detail: "high" as const } },
+            ],
+          },
+        ],
+        model: input.model ?? "gemini-2.5-flash",
+        maxTokens: 600,
+      });
+      return { result: extractTextContent(response).trim() };
+    }),
 });
 
 // ── Deployment config / capability flags ──────────────────────────────────────

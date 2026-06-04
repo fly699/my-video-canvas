@@ -141,18 +141,22 @@ export interface StoryboardNodeData {
 export interface PromptNodeData {
   positivePrompt: string;
   negativePrompt?: string;
-  imageUrl?: string;
-  imageStorageKey?: string;
   style?: string;
   aspectRatio?: string;
-  imageModel?: ImageGenModel;
+  // Input image used ONLY for analysis (image → prompt). The prompt node never
+  // outputs an image downstream — it is a text-only producer.
   referenceImageUrl?: string;
-  imageUrls?: string[];
-  selectedImageIndex?: number;
-  // Original upstream AI-platform URL(s) (see ImageGenNodeData)
-  imageUrlSource?: string;
-  imageUrlSources?: string[];
-  imageUrlSourceAt?: number;
+  // LLM / vision model used by the analyze / expand / translate operations.
+  llmModel?: string;
+  // Whether each AI text op participates in a workflow run. When more than one is
+  // on, they execute in this order: analyze → expand → translate. When all are
+  // off, the text already in positivePrompt is used as-is.
+  enableAnalyze?: boolean;
+  enableExpand?: boolean;
+  enableTranslate?: boolean;
+  // Whether style / aspectRatio are passed to downstream consumers.
+  passStyle?: boolean;
+  passRatio?: boolean;
 }
 
 export interface AssetNodeData {

@@ -22,9 +22,13 @@ function edge(source: string, target: string, sourceHandle: string | null, targe
 
 describe("resolveNodeOutputImageUrl", () => {
   it("reads imageUrl for image-ish source types", () => {
-    for (const t of ["image_gen", "comfyui_image", "storyboard", "prompt"]) {
+    for (const t of ["image_gen", "comfyui_image", "storyboard"]) {
       expect(resolveNodeOutputImageUrl(node(t, { imageUrl: "http://x/a.png" }))).toBe("http://x/a.png");
     }
+  });
+
+  it("does NOT treat the prompt node as an image source (text-only producer)", () => {
+    expect(resolveNodeOutputImageUrl(node("prompt", { imageUrl: "http://x/a.png" }))).toBeUndefined();
   });
 
   it("reads outputImageUrl (then outputUrl) for pose_control", () => {

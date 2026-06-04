@@ -68,11 +68,6 @@ function SlideContent({ node }: { node: CanvasNode }) {
     const d = payload as PromptNodeData;
     return (
       <div className="w-full h-full flex gap-5 p-5 overflow-hidden">
-        {d.imageUrl && (
-          <div className="flex-shrink-0 w-1/2 rounded-lg overflow-hidden" style={{ background: "var(--c-canvas)", border: "1px solid var(--c-bd1)" }}>
-            <img src={d.imageUrl} alt="prompt preview" className="w-full h-full object-contain" />
-          </div>
-        )}
         <div className="flex-1 flex flex-col gap-4 overflow-auto">
           <div>
             <div style={{ fontSize: 10, color: "var(--c-t4)", letterSpacing: "0.05em", marginBottom: 6 }}>正向提示词</div>

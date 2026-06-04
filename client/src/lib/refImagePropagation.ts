@@ -1,7 +1,7 @@
 // Centralized "reference image" propagation between canvas nodes.
 //
 // An image-producing source node (image_gen / comfyui_image / storyboard /
-// prompt / pose_control / post_process / comfyui_workflow) can feed its current
+// pose_control / post_process / comfyui_workflow) can feed its current
 // output image into the `referenceImageUrl` of any downstream node that accepts
 // one (video_task / comfyui_video / comfyui_image), wired through an
 // `image-out`/`output` → `ref-image-in` edge.
@@ -34,7 +34,8 @@ export function resolveNodeOutputImageUrl(node: CanvasNode | undefined): string 
     case "image_gen":
     case "comfyui_image":
     case "storyboard":
-    case "prompt":
+      // NB: "prompt" is intentionally NOT here — the 提示词 node is a text-only
+      // producer and never feeds an image downstream.
       return str(p.imageUrl);
     case "pose_control":
       return str(p.outputImageUrl) ?? str(p.outputUrl);

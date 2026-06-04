@@ -174,6 +174,8 @@ export function useWorkflowRunner() {
   }, []);
 
   const imageGenMutation = trpc.imageGen.generate.useMutation();
+  const aiEnhanceMutation = trpc.aiEnhance.enhance.useMutation();
+  const analyzeImageMutation = trpc.aiEnhance.analyzeImage.useMutation();
   const videoTaskMutation = trpc.videoTasks.create.useMutation();
   const clipMutation = trpc.clip.trimVideo.useMutation();
   const mergeMutation = trpc.merge.mergeVideos.useMutation();
@@ -314,8 +316,34 @@ export function useWorkflowRunner() {
       const nodeType = node.data.nodeType;
 
       try {
-        // ── Image generation (storyboard / prompt / image_gen) ──────────────
-        if (nodeType === "storyboard" || nodeType === "prompt" || nodeType === "image_gen") {
+        // ── Prompt node: text-only pipeline (analyze → expand → translate) ───
+        // The 提示词 node no longer generates or outputs images; it just produces
+        // text. Enabled ops run in order; if none are on, the entered text stands.
+        if (nodeType === "prompt") {
+          const model = (p.llmModel as string) || "gemini-2.5-flash";
+          const img = (p.referenceImageUrl as string) || "";
+          let text = (p.positivePrompt as string) || "";
+          if (p.enableAnalyze && img) {
+            const r = await analyzeImageMutation.mutateAsync({ imageUrl: img, instruction: text.trim() || undefined, model });
+            if (r.result?.trim()) text = r.result.trim();
+          }
+          if (p.enableExpand && text.trim()) {
+            const r = await aiEnhanceMutation.mutateAsync({ text, mode: "expand", model });
+            if (r.result?.trim()) text = r.result.trim();
+          }
+          if (p.enableTranslate && text.trim()) {
+            const r = await aiEnhanceMutation.mutateAsync({ text, mode: "translate_en", model });
+            if (r.result?.trim()) text = r.result.trim();
+          }
+          if (!text.trim()) { failed.push(nodeId); return "fail"; }
+          if (text !== (p.positivePrompt as string)) {
+            useCanvasStore.getState().updateNodeData(nodeId, { positivePrompt: text }, true);
+          }
+          completed.push(nodeId);
+          return "ok";
+
+        // ── Image generation (storyboard / image_gen) ───────────────────────
+        } else if (nodeType === "storyboard" || nodeType === "image_gen") {
           const prompt =
             (p.promptText as string) ||
             (p.positivePrompt as string) ||

@@ -114,7 +114,18 @@ export function detectUpstreamPrompt(targetId: string, edges: MiniEdge[], nodes:
     let pos: string | undefined;
     let neg: string | undefined;
     switch (src.data.nodeType) {
-      case "prompt": pos = str(p.positivePrompt); neg = str(p.negativePrompt); break;
+      case "prompt": {
+        pos = str(p.positivePrompt);
+        neg = str(p.negativePrompt);
+        // Style / aspect-ratio opt into the outgoing prompt text via per-field
+        // checkboxes (the 提示词 node is text-only — it has no separate downstream
+        // channel for these), appended after the positive prompt.
+        const extras: string[] = [];
+        if (p.passStyle && str(p.style)) extras.push(str(p.style)!);
+        if (p.passRatio && str(p.aspectRatio)) extras.push(str(p.aspectRatio)!);
+        if (extras.length) pos = [pos, ...extras].filter(Boolean).join(", ");
+        break;
+      }
       case "storyboard": pos = str(p.description); neg = str(p.negativePrompt); break;
       case "script": pos = str(p.content); break;
       case "ai_chat": {
