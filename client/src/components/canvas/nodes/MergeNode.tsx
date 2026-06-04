@@ -223,7 +223,7 @@ export const MergeNode = memo(function MergeNode({ id, selected, data }: Props) 
           <div className="flex flex-col gap-1.5 flex-shrink-0">
             <video
               key={payload.outputUrl}
-              src={`/api/video-proxy?url=${encodeURIComponent(payload.outputUrl)}`}
+              src={mediaFetchUrl(payload.outputUrl)}
               controls
               className="w-full rounded-lg nodrag"
               style={{ maxHeight: 140, display: "block", border: `1px solid ${accentA(0.4)}` }}
