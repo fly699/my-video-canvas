@@ -1,4 +1,5 @@
-import { useState, useRef, useCallback } from "react";
+import { useState, useRef, useCallback, useEffect } from "react";
+import { createPortal } from "react-dom";
 import { trpc } from "@/lib/trpc";
 import { toast } from "sonner";
 import { useCanvasStore } from "../../hooks/useCanvasStore";
@@ -61,29 +62,51 @@ export function AssetPanel({ projectId, onClose, onHeaderMouseDown }: Props) {
     if (url) importMutation.mutate({ url, projectId });
   };
 
-  const processFile = useCallback(
-    (file: File) => {
+  // Upload one or many files (multi-select / drag / paste). Each goes through the
+  // streamed/presigned direct upload (≤5000MB, no base64 cap). Uploaded
+  // sequentially so a big batch doesn't fire dozens of parallel requests.
+  const processFiles = useCallback(
+    (files: File[]) => {
+      const list = files.filter((f) => /^(image|video|audio)\//.test(f.type));
+      if (list.length === 0) { if (files.length) toast.error("仅支持图片 / 视频 / 音频"); return; }
       setUploading(true);
-      // 流式/预签名直传，支持大文件（最大 5000MB），无 base64 ~15MB 限制。
-      uploadAssetFile(utils.client, file, projectId)
-        .then((ok) => { if (ok) { toast.success("素材上传成功"); refetch(); } })
-        .finally(() => setUploading(false));
+      (async () => {
+        let ok = 0;
+        for (const f of list) {
+          try { if (await uploadAssetFile(utils.client, f, projectId)) ok++; } catch { /* per-file, keep going */ }
+        }
+        if (ok > 0) { toast.success(list.length === 1 ? "素材上传成功" : `成功上传 ${ok} / ${list.length} 个素材`); refetch(); }
+        else toast.error("上传失败");
+      })().finally(() => setUploading(false));
     },
     [projectId, utils, refetch]
   );
 
   const handleFileSelect = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (file) processFile(file);
+    const files = Array.from(e.target.files ?? []);
+    if (files.length) processFiles(files);
     e.target.value = "";
-  }, [processFile]);
+  }, [processFiles]);
 
   const handleDrop = useCallback((e: React.DragEvent) => {
     e.preventDefault();
     setDragOver(false);
-    const file = e.dataTransfer.files?.[0];
-    if (file) processFile(file);
-  }, [processFile]);
+    const files = Array.from(e.dataTransfer.files ?? []);
+    if (files.length) processFiles(files);
+  }, [processFiles]);
+
+  // Paste-to-upload: while the panel is open, Ctrl/⌘-V pastes clipboard
+  // image/video/audio files into the library (skipped when typing in a field).
+  useEffect(() => {
+    const onPaste = (e: ClipboardEvent) => {
+      const t = e.target as HTMLElement | null;
+      if (t && (t.tagName === "INPUT" || t.tagName === "TEXTAREA" || t.isContentEditable)) return;
+      const files = Array.from(e.clipboardData?.files ?? []);
+      if (files.length) { e.preventDefault(); processFiles(files); }
+    };
+    document.addEventListener("paste", onPaste);
+    return () => document.removeEventListener("paste", onPaste);
+  }, [processFiles]);
 
   type Asset = NonNullable<typeof assets>[0];
 
@@ -174,7 +197,7 @@ export function AssetPanel({ projectId, onClose, onHeaderMouseDown }: Props) {
 
       {/* ── Upload zone ── */}
       <div className="px-3 py-3 flex-shrink-0" style={{ borderBottom: "1px solid var(--c-elevated)" }}>
-        <input ref={fileInputRef} type="file" accept="image/*,video/*,audio/*" onChange={handleFileSelect} className="hidden" />
+        <input ref={fileInputRef} type="file" accept="image/*,video/*,audio/*" multiple onChange={handleFileSelect} className="hidden" />
         <div
           onClick={() => !uploading && fileInputRef.current?.click()}
           onDragOver={(e) => { e.preventDefault(); setDragOver(true); }}
@@ -193,7 +216,7 @@ export function AssetPanel({ projectId, onClose, onHeaderMouseDown }: Props) {
           )}
           <div className="text-center">
             <p className="text-xs font-medium" style={{ color: uploading ? "oklch(0.65 0.18 60)" : "var(--c-t3)" }}>
-              {uploading ? "上传中..." : "点击或拖拽上传"}
+              {uploading ? "上传中..." : "点击、拖拽或粘贴上传（可多选）"}
             </p>
             <p className="text-[10px] mt-0.5" style={{ color: "var(--c-t4)" }}>
               图片 · 视频 · 音频 · 最大 5000MB
@@ -400,10 +423,13 @@ export function AssetPanel({ projectId, onClose, onHeaderMouseDown }: Props) {
         />
       )}
 
-      {/* Video preview overlay */}
-      {videoPreview && (
+      {/* Video preview overlay — portalled to <body> so it escapes the floating
+          panel's backdrop-filter containing block (which would otherwise clip a
+          plain fixed overlay to the panel box and play it "inside" the library,
+          exactly like ImageLightbox does for images). */}
+      {videoPreview && createPortal(
         <div
-          className="fixed inset-0 z-[120] flex items-center justify-center p-6"
+          className="fixed inset-0 z-[9999] flex items-center justify-center p-6"
           style={{ background: "oklch(0 0 0 / 0.8)", backdropFilter: "blur(8px)" }}
           onClick={() => setVideoPreview(null)}
           onContextMenu={(e) => e.preventDefault()}
@@ -418,7 +444,8 @@ export function AssetPanel({ projectId, onClose, onHeaderMouseDown }: Props) {
               <X className="w-4 h-4" />
             </button>
           </div>
-        </div>
+        </div>,
+        document.body
       )}
     </div>
   );
