@@ -830,8 +830,23 @@ export interface AgentNodeData {
   autoApply?: boolean;
   /** 自动执行：应用后自动发起工作流运行（仍经画布的运行确认弹窗）。「一句话成片」。 */
   autoRun?: boolean;
+  /** 规划控制偏好：用户在「规划设置」对话框里的特殊要求，发送时拼成约束注入 Agent。 */
+  planPrefs?: AgentPlanPrefs;
   status?: "idle" | "thinking" | "failed";
   errorMessage?: string;
+}
+
+export interface AgentPlanPrefs {
+  /** 先生图再图生视频（而非直接文生视频）。 */
+  imageFirst?: boolean;
+  /** 自动添加配乐（audio 节点并入 merge）。 */
+  addMusic?: boolean;
+  /** 自动添加字幕（subtitle 节点）。 */
+  addSubtitle?: boolean;
+  /** 画面比例，如 "9:16" / "16:9" / "1:1"。 */
+  aspect?: string;
+  /** 整体视觉风格（自由文本）。 */
+  style?: string;
 }
 
 export type NodeData =

@@ -4,7 +4,7 @@ import { useCanvasStore } from "../../../hooks/useCanvasStore";
 import type { AgentNodeData, AgentMessage, AgentOperation } from "../../../../../shared/types";
 import { trpc } from "@/lib/trpc";
 import { toast } from "sonner";
-import { Sparkles, Loader2, Send, Check, Plus, Link2, Pencil, Trash2, LayoutGrid, Boxes, Wrench, Zap, BookTemplate, Focus, ShieldCheck } from "lucide-react";
+import { Sparkles, Loader2, Send, Check, Plus, Link2, Pencil, Trash2, LayoutGrid, Boxes, Wrench, Zap, BookTemplate, Focus, ShieldCheck, SlidersHorizontal } from "lucide-react";
 import { LLMModelPicker, type LLMModelId } from "../LLMModelPicker";
 import { NodeTextArea } from "../NodeTextInput";
 import { applyAgentOperations, buildGraphSummary } from "@/lib/agentApply";
@@ -50,6 +50,7 @@ export const AgentNode = memo(function AgentNode({ id, selected, data }: Props) 
   const [layoutIdx, setLayoutIdx] = useState(0);
   const [analyzeFull, setAnalyzeFull] = useState(false);
   const [showRecipes, setShowRecipes] = useState(false);
+  const [showPrefs, setShowPrefs] = useState(false);
   // Duration-aware capacity dialog: shown when the agent's plan split a target
   // duration longer than the model's per-shot cap into multiple shots.
   const [capacityPlan, setCapacityPlan] = useState<{
@@ -100,6 +101,20 @@ export const AgentNode = memo(function AgentNode({ id, selected, data }: Props) 
 
   const autoApply = payload.autoApply ?? false;
   const autoRun = payload.autoRun ?? false;
+
+  // 规划控制偏好（「规划设置」对话框）。
+  const planPrefs = payload.planPrefs ?? {};
+  const setPref = (patch: Partial<typeof planPrefs>) => updateNodeData(id, { planPrefs: { ...planPrefs, ...patch } });
+  // Render the prefs into a constraint block the agent must follow.
+  const buildPrefsText = (): string | undefined => {
+    const lines: string[] = [];
+    if (planPrefs.imageFirst) lines.push("- 视频生成采用「先生图再图生视频」管线：先用 image_gen/comfyui 出静帧，再图生视频，不要直接文生视频。");
+    if (planPrefs.addMusic) lines.push("- 自动添加 audio 配乐节点并连入 merge 合并节点。");
+    if (planPrefs.addSubtitle) lines.push("- 自动添加 subtitle 字幕节点（接在视频/合并之后）。");
+    if (planPrefs.aspect) lines.push(`- 画面比例统一为 ${planPrefs.aspect}。`);
+    if (planPrefs.style?.trim()) lines.push(`- 整体视觉风格：${planPrefs.style.trim()}。`);
+    return lines.length ? lines.join("\n") : undefined;
+  };
 
   const setMessages = (msgs: AgentMessage[]) => updateNodeData(id, { messages: msgs });
   // Read the latest messages straight from the store (avoids stale closures when
@@ -156,6 +171,7 @@ export const AgentNode = memo(function AgentNode({ id, selected, data }: Props) 
       const r = await chat.mutateAsync({
         projectId: data.projectId, message: text, history,
         graphSummary: summary || undefined, model, comfyOnly,
+        prefs: buildPrefsText(),
       });
       setMessages([...afterUser, { role: "assistant", content: r.reply, operations: r.operations }]);
       // Duration-aware capacity check: if the plan split a target longer than the
@@ -380,6 +396,14 @@ export const AgentNode = memo(function AgentNode({ id, selected, data }: Props) 
               {analyzeMut.isPending ? <Loader2 className="w-3 h-3 animate-spin" /> : <Boxes className="w-3 h-3" />}新增节点模板库分析
             </button>
             <button
+              onClick={() => setShowPrefs(true)}
+              className="nodrag flex items-center gap-1 px-2 py-1 rounded-lg text-[10px] font-medium"
+              title="规划设置：生图→再生视频 / 配乐 / 字幕 / 画面比例等特殊要求"
+              style={{ background: accentA(0.1), border: `1px solid ${accentA(0.3)}`, color: accent, cursor: "pointer" }}
+            >
+              <SlidersHorizontal className="w-3 h-3" />规划设置
+            </button>
+            <button
               onClick={handlePreflight}
               className="nodrag flex items-center gap-1 px-2 py-1 rounded-lg text-[10px] font-medium"
               title="运行前体检：扫描结构问题（缺参/孤立/断链/循环）并预估全画布成本"
@@ -443,6 +467,51 @@ export const AgentNode = memo(function AgentNode({ id, selected, data }: Props) 
           </div>
         </div>
       </div>
+      {showPrefs && (
+        <div className="nodrag nowheel" style={{ position: "fixed", inset: 0, zIndex: 9999, background: "rgba(0,0,0,0.5)", display: "flex", alignItems: "center", justifyContent: "center" }}
+          onClick={() => setShowPrefs(false)}>
+          <div onClick={(e) => e.stopPropagation()} style={{ width: 380, maxWidth: "90vw", background: "var(--c-surface)", border: `1px solid ${accentA(0.3)}`, borderRadius: 14, padding: 18, boxShadow: "0 12px 40px rgba(0,0,0,0.4)" }}>
+            <div style={{ fontSize: 14, fontWeight: 700, color: "var(--c-t1)", marginBottom: 4 }}>规划设置</div>
+            <div style={{ fontSize: 11, color: "var(--c-t4)", marginBottom: 14 }}>这些要求会作为约束注入智能体的规划。</div>
+            <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+              {([
+                ["imageFirst", "生图 → 再生视频", "先出静帧再图生视频，不直接文生视频"],
+                ["addMusic", "自动配乐", "添加 audio 节点并入合并"],
+                ["addSubtitle", "自动字幕", "添加 subtitle 字幕节点"],
+              ] as const).map(([key, label, hint]) => (
+                <label key={key} className="nodrag" style={{ display: "flex", alignItems: "flex-start", gap: 8, cursor: "pointer" }}>
+                  <input type="checkbox" checked={!!planPrefs[key]} onChange={(e) => setPref({ [key]: e.target.checked })} style={{ accentColor: accent, marginTop: 2 }} />
+                  <span><span style={{ fontSize: 12.5, color: "var(--c-t1)", fontWeight: 600 }}>{label}</span><br /><span style={{ fontSize: 10.5, color: "var(--c-t4)" }}>{hint}</span></span>
+                </label>
+              ))}
+              <div>
+                <div style={{ fontSize: 12, color: "var(--c-t2)", marginBottom: 4 }}>画面比例</div>
+                <div style={{ display: "flex", gap: 6 }}>
+                  {["", "9:16", "16:9", "1:1"].map((a) => (
+                    <button key={a || "auto"} className="nodrag" onClick={() => setPref({ aspect: a })}
+                      style={{ flex: 1, padding: "5px", fontSize: 11, borderRadius: 7, cursor: "pointer",
+                        background: (planPrefs.aspect ?? "") === a ? accentA(0.18) : "var(--c-surface)",
+                        border: `1px solid ${(planPrefs.aspect ?? "") === a ? accentA(0.4) : "var(--c-bd2)"}`,
+                        color: (planPrefs.aspect ?? "") === a ? accent : "var(--c-t3)" }}>
+                      {a || "默认"}
+                    </button>
+                  ))}
+                </div>
+              </div>
+              <div>
+                <div style={{ fontSize: 12, color: "var(--c-t2)", marginBottom: 4 }}>整体风格（可选）</div>
+                <input className="nodrag" value={planPrefs.style ?? ""} onChange={(e) => setPref({ style: e.target.value })}
+                  placeholder="如：电影感 / 赛博朋克 / 水彩插画"
+                  style={{ width: "100%", padding: "6px 8px", fontSize: 12, borderRadius: 8, background: "var(--c-surface)", border: "1px solid var(--c-bd2)", color: "var(--c-t1)" }} />
+              </div>
+            </div>
+            <button className="nodrag" onClick={() => setShowPrefs(false)}
+              style={{ width: "100%", marginTop: 16, padding: "8px", fontSize: 12, fontWeight: 600, borderRadius: 9, cursor: "pointer", background: accentA(0.18), border: `1px solid ${accentA(0.4)}`, color: accent }}>
+              完成
+            </button>
+          </div>
+        </div>
+      )}
       {capacityPlan && (
         <div className="nodrag nowheel" style={{ position: "fixed", inset: 0, zIndex: 9999, background: "rgba(0,0,0,0.5)", display: "flex", alignItems: "center", justifyContent: "center" }}
           onClick={() => setCapacityPlan(null)}>

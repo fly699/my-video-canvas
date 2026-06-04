@@ -28,6 +28,8 @@ export const agentRouter = router({
         graphSummary: z.string().max(20000).optional(),
         model: z.string().optional(),
         comfyOnly: z.boolean().optional(),
+        /** Pre-rendered 用户偏好/约束 block from the agent node's 规划设置 dialog. */
+        prefs: z.string().max(2000).optional(),
       })
     )
     .mutation(async ({ ctx, input }) => {
@@ -78,7 +80,7 @@ export const agentRouter = router({
 ${catalogText({ comfyOnly: input.comfyOnly })}${templateSection}${comfyConstraint}
 
 # 当前画布
-${input.graphSummary?.trim() || "（空画布）"}
+${input.graphSummary?.trim() || "（空画布）"}${input.prefs?.trim() ? `\n\n# 用户偏好/约束（必须遵守）\n${input.prefs.trim()}` : ""}
 
 # 输出要求
 严格只输出一个 JSON 对象（不要 markdown 代码块、不要任何多余文字），结构如下：
