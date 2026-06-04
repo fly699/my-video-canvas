@@ -30,6 +30,9 @@ import {
   Wallet,
   RefreshCw,
   Bookmark,
+  Palette,
+  Upload,
+  ScrollText,
 } from "lucide-react";
 
 // ── Animated background grid ─────────────────────────────────────────────────
@@ -775,8 +778,26 @@ export default function Home() {
                   {
                     icon: Users, color: "oklch(0.66 0.18 140)",
                     title: "多人实时协作",
-                    desc: "多用户同时编辑，节点变更秒同步，协作者光标可见",
-                    badge: null,
+                    desc: "多用户同时编辑，节点变更秒同步，协作者光标可见；他人节点按创建者显示专属颜色标识，同项目编辑者共享素材库",
+                    badge: "NEW",
+                  },
+                  {
+                    icon: Palette, color: "oklch(0.66 0.20 300)",
+                    title: "护眼主题与外观",
+                    desc: "共 15 套主题：深色含 ComfyUI 炭灰，浅色新增 晴空 / 鼠尾草 / 暖砂 护眼配色；画布背景默认跟随主题，切换即变",
+                    badge: "NEW",
+                  },
+                  {
+                    icon: ScrollText, color: "oklch(0.62 0.18 240)",
+                    title: "脚本 → ComfyUI 专业分镜",
+                    desc: "目标模型支持 ComfyUI 主流（Qwen-Image / Flux.1 / Wan 2.2 / HunyuanVideo 等）；分镜携带景别 / 焦段 / 灯光 / 调色与反向提示词并写入下游",
+                    badge: "NEW",
+                  },
+                  {
+                    icon: Upload, color: "oklch(0.65 0.18 60)",
+                    title: "素材库批量上传",
+                    desc: "多选 / 拖拽 / 粘贴（Ctrl·⌘V）批量上传，视频点击全屏弹窗预览",
+                    badge: "NEW",
                   },
                   {
                     icon: MessageCircle, color: "oklch(0.70 0.18 285)",
