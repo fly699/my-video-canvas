@@ -4,7 +4,7 @@ import { useCanvasStore } from "../../../hooks/useCanvasStore";
 import type { AgentNodeData, AgentMessage, AgentOperation } from "../../../../../shared/types";
 import { trpc } from "@/lib/trpc";
 import { toast } from "sonner";
-import { Sparkles, Loader2, Send, Check, Plus, Link2, Pencil, Trash2, LayoutGrid, Boxes, Wrench, Zap, BookTemplate, Focus } from "lucide-react";
+import { Sparkles, Loader2, Send, Check, Plus, Link2, Pencil, Trash2, LayoutGrid, Boxes, Wrench, Zap, BookTemplate, Focus, ShieldCheck } from "lucide-react";
 import { LLMModelPicker, type LLMModelId } from "../LLMModelPicker";
 import { NodeTextArea } from "../NodeTextInput";
 import { applyAgentOperations, buildGraphSummary } from "@/lib/agentApply";
@@ -12,6 +12,7 @@ import { getNodeConfig } from "../../../lib/nodeConfig";
 import { LAYOUTS, computeLayout } from "@/lib/layoutUtils";
 import { estimateOpsBudget, budgetLabel } from "@/lib/agentBudget";
 import { AGENT_RECIPES } from "@/lib/agentRecipes";
+import { runPreflight } from "@/lib/preflight";
 import { useWorkflowRunState } from "../../../contexts/WorkflowRunContext";
 
 interface Props {
@@ -158,6 +159,33 @@ export const AgentNode = memo(function AgentNode({ id, selected, data }: Props) 
 
   // 运行自愈：让智能体检查画布上运行失败/缺参的节点并给出修复方案（节点状态已随 graphSummary 提供）。
   const handleSelfHeal = () => handleSend("请检查当前画布上运行失败或缺少必要参数的节点，并用 update / connect 操作给出修复方案（修正参数、补全缺失连接或参考图）。若无问题请说明。");
+
+  // 运行前体检：扫描整张画布的结构问题与全画布成本预估，汇报为一条消息。
+  const handlePreflight = () => {
+    const { nodes, edges } = useCanvasStore.getState();
+    const r = runPreflight(
+      nodes.filter((n) => n.id !== id).map((n) => ({ id: n.id, data: { nodeType: n.data.nodeType, title: n.data.title, payload: n.data.payload as Record<string, unknown> } })),
+      edges.map((e) => ({ source: e.source, target: e.target })),
+    );
+    const lines: string[] = [];
+    const head = r.errorCount === 0 && r.warningCount === 0
+      ? "✅ 运行前体检通过，未发现结构问题。"
+      : `运行前体检：${r.errorCount} 个错误、${r.warningCount} 个提醒。`;
+    lines.push(head);
+    for (const iss of r.issues.slice(0, 12)) lines.push(`${iss.severity === "error" ? "⛔" : "⚠️"} ${iss.message}`);
+    if (r.issues.length > 12) lines.push(`…还有 ${r.issues.length - 12} 条`);
+    const lbl = budgetLabel(r.budget);
+    lines.push(`\n📊 全画布预估（${r.runnableCount} 个可运行节点）：${lbl || "无云端消耗"}`);
+    const bal = balanceQuery.data;
+    if (r.budget.credits > 0 && bal?.configured && typeof bal.creditsAmount === "number") {
+      lines.push(r.budget.credits > bal.creditsAmount ? `余额 ${bal.creditsAmount} 不足以覆盖预估 ${r.budget.credits} credits` : `当前余额 ${bal.creditsAmount} credits，足够`);
+    }
+    if (r.errorCount > 0) lines.push("\n可点击「诊断修复」让我尝试自动修正。");
+    setMessages([...messages, { role: "assistant", content: lines.join("\n"), operations: [] }]);
+    if (r.errorCount > 0) toast.warning(`体检发现 ${r.errorCount} 个错误`);
+    else if (r.warningCount > 0) toast.info(`体检发现 ${r.warningCount} 个提醒`);
+    else toast.success("体检通过");
+  };
 
   // 成片配方：一键把配方展开为完整节点链并应用（走与智能体输出相同的应用路径）。
   const handleApplyRecipe = (recipeId: string) => {
@@ -336,6 +364,14 @@ export const AgentNode = memo(function AgentNode({ id, selected, data }: Props) 
               style={{ background: accentA(0.1), border: `1px solid ${accentA(0.3)}`, color: accent, cursor: analyzeMut.isPending ? "wait" : "pointer" }}
             >
               {analyzeMut.isPending ? <Loader2 className="w-3 h-3 animate-spin" /> : <Boxes className="w-3 h-3" />}新增节点模板库分析
+            </button>
+            <button
+              onClick={handlePreflight}
+              className="nodrag flex items-center gap-1 px-2 py-1 rounded-lg text-[10px] font-medium"
+              title="运行前体检：扫描结构问题（缺参/孤立/断链/循环）并预估全画布成本"
+              style={{ background: accentA(0.1), border: `1px solid ${accentA(0.3)}`, color: accent, cursor: "pointer" }}
+            >
+              <ShieldCheck className="w-3 h-3" />运行前体检
             </button>
             <button
               onClick={handleSelfHeal}

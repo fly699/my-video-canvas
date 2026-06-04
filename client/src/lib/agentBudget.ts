@@ -39,6 +39,19 @@ export function estimateOpsBudget(ops: AgentOperation[]): BudgetEstimate {
   return { credits, byModelCount, localCount };
 }
 
+/** Same estimate but over already-created canvas nodes (whole-canvas preflight).
+ *  Accepts a minimal shape so it works on store nodes without importing them. */
+export function estimateNodesBudget(
+  nodes: Array<{ data: { nodeType: string; payload?: Record<string, unknown> } }>,
+): BudgetEstimate {
+  const ops: AgentOperation[] = nodes.map((n) => ({
+    op: "create",
+    nodeType: n.data.nodeType as AgentOperation["nodeType"],
+    payload: n.data.payload,
+  }));
+  return estimateOpsBudget(ops);
+}
+
 /** Compact one-line label, or "" when nothing costs anything. */
 export function budgetLabel(b: BudgetEstimate): string {
   const parts: string[] = [];

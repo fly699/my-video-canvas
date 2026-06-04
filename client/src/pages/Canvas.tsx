@@ -57,6 +57,7 @@ import {
   Save,
   CopyPlus,
   Download,
+  Upload,
   Users,
   ChevronLeft,
   Plus,
@@ -343,6 +344,7 @@ function CanvasInner({ projectId }: { projectId: number }) {
     setCollaborator, removeCollaborator, collaborators, resetCanvas,
     undo, redo, past, future,
     saveNamedSnapshot, restoreNamedSnapshot, deleteNamedSnapshot,
+    importGraph,
   } = useCanvasStore(useShallow((s) => ({
     nodes: s.nodes,
     edges: s.edges,
@@ -370,6 +372,7 @@ function CanvasInner({ projectId }: { projectId: number }) {
     saveNamedSnapshot: s.saveNamedSnapshot,
     restoreNamedSnapshot: s.restoreNamedSnapshot,
     deleteNamedSnapshot: s.deleteNamedSnapshot,
+    importGraph: s.importGraph,
   })));
 
   const [contextMenu, setContextMenu] = useState<{
@@ -1018,6 +1021,26 @@ function CanvasInner({ projectId }: { projectId: number }) {
     toast.success("画布已导出为 JSON");
   };
 
+  // ── Import ────────────────────────────────────────────────────────────────
+  const importInputRef = useRef<HTMLInputElement>(null);
+  const handleImportFile = async (file: File) => {
+    if (isReadOnly) { toast.error("只读协作者无法导入"); return; }
+    try {
+      const text = await file.text();
+      const graph = JSON.parse(text) as Parameters<typeof importGraph>[0];
+      if (!graph || !Array.isArray(graph.nodes) || graph.nodes.length === 0) {
+        toast.error("文件格式不符：未找到可导入的节点");
+        return;
+      }
+      const r = importGraph(graph);
+      if (r.nodes === 0) { toast.error("未导入任何节点（类型不识别或格式不符）"); return; }
+      toast.success(`已导入 ${r.nodes} 个节点 · ${r.edges} 条连接`);
+      setTimeout(() => reactFlow.fitView({ padding: 0.2, duration: 400 }), 80);
+    } catch (e) {
+      toast.error("导入失败：" + (e instanceof Error ? e.message : "无法解析 JSON"));
+    }
+  };
+
   // ── Export images ───────────────────────────────────────────────────────────
   const handleExportImages = useCallback(async () => {
     const imageNodes = nodes.filter((n) => {
@@ -1547,6 +1570,28 @@ function CanvasInner({ projectId }: { projectId: number }) {
             </TooltipTrigger>
             <TooltipContent side="bottom" className="text-xs">导出 JSON</TooltipContent>
           </Tooltip>
+
+          {/* Import JSON */}
+          {!isReadOnly && (
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <button
+                  onClick={() => importInputRef.current?.click()}
+                  className="topbar-btn"
+                >
+                  <Upload className="w-3.5 h-3.5" />
+                </button>
+              </TooltipTrigger>
+              <TooltipContent side="bottom" className="text-xs">导入 JSON（合并到当前画布）</TooltipContent>
+            </Tooltip>
+          )}
+          <input
+            ref={importInputRef}
+            type="file"
+            accept="application/json,.json"
+            style={{ display: "none" }}
+            onChange={(e) => { const f = e.target.files?.[0]; if (f) handleImportFile(f); e.target.value = ""; }}
+          />
           {/* Divider */}
           <div className="w-px h-4 mx-1" style={{ background: "var(--c-bd2)" }} />
 
