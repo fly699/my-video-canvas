@@ -119,11 +119,35 @@ export const PromptNode = memo(function PromptNode({ id, selected, data }: Props
   const onFocusNeg    = (e: React.FocusEvent<HTMLElement>) => { e.currentTarget.style.borderColor = "var(--c-t4)"; };
   const onBlurDefault = (e: React.FocusEvent<HTMLElement>) => { e.currentTarget.style.borderColor = BORDER_DEFAULT; };
 
-  const heroMedia = payload.positivePrompt?.trim() ? (
-    <div className="node-hero-placeholder" style={{ minHeight: 100, padding: "14px 16px", alignItems: "flex-start", justifyContent: "flex-start" }}>
-      <p style={{ fontSize: 11, color: "var(--c-t3)", lineHeight: 1.7, fontFamily: "monospace", margin: 0 }}>
-        {payload.positivePrompt.length > 120 ? payload.positivePrompt.slice(0, 120) + "…" : payload.positivePrompt}
-      </p>
+  // ── Collapsed-state summary: show both positive & negative prompts ──────────
+  const pos = payload.positivePrompt?.trim();
+  const neg = payload.negativePrompt?.trim();
+  const hasAnyPrompt = !!(pos || neg);
+  const clampStyle: React.CSSProperties = {
+    fontSize: 11, lineHeight: 1.6, fontFamily: "monospace", margin: 0,
+    display: "-webkit-box", WebkitLineClamp: 3, WebkitBoxOrient: "vertical", overflow: "hidden",
+  };
+  const promptSummary = hasAnyPrompt ? (
+    <div style={{ display: "flex", flexDirection: "column", gap: 7 }}>
+      {pos && (
+        <div>
+          <div style={{ fontSize: 9, fontWeight: 700, letterSpacing: "0.06em", textTransform: "uppercase", color: accentColor, marginBottom: 2 }}>正向</div>
+          <p style={{ ...clampStyle, color: "var(--c-t2)" }}>{pos}</p>
+        </div>
+      )}
+      {neg && (
+        <div>
+          <div style={{ fontSize: 9, fontWeight: 700, letterSpacing: "0.06em", textTransform: "uppercase", color: "var(--c-t4)", marginBottom: 2 }}>反向</div>
+          <p style={{ ...clampStyle, color: "var(--c-t3)" }}>{neg}</p>
+        </div>
+      )}
+    </div>
+  ) : null;
+
+  // Creative-mode collapsed preview (rendered by BaseNode above the body).
+  const heroMedia = hasAnyPrompt ? (
+    <div className="node-hero-placeholder" style={{ minHeight: 80, padding: "14px 16px", alignItems: "flex-start", justifyContent: "flex-start" }}>
+      {promptSummary}
     </div>
   ) : null;
 
@@ -135,6 +159,14 @@ export const PromptNode = memo(function PromptNode({ id, selected, data }: Props
       onRun={handleRunPipeline} running={busy === "pipeline"} canRun={canRun} hasResult={!!payload.positivePrompt?.trim()}
     >
       <div className="flex flex-col h-full p-3.5 gap-3">
+        {/* Collapsed summary (professional mode): positive + negative prompts at a glance */}
+        {!expanded && (
+          hasAnyPrompt ? (
+            promptSummary
+          ) : (
+            <p style={{ fontSize: 11, color: "var(--c-t4)", fontFamily: "monospace", margin: 0 }}>未填写提示词</p>
+          )
+        )}
         <div style={{ overflow: "hidden", maxHeight: expanded ? "9999px" : "0px", transition: expanded ? "max-height 220ms cubic-bezier(0.23, 1, 0.32, 1)" : "max-height 160ms cubic-bezier(0.77, 0, 0.175, 1)" }}>
           <div className="flex flex-col gap-3">
 
