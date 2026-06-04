@@ -267,6 +267,13 @@
       "when": 1780501200000,
       "tag": "0037_comfy_template_analysis",
       "breakpoints": true
+    },
+    {
+      "idx": 38,
+      "version": "5",
+      "when": 1780501300000,
+      "tag": "0038_comfy_template_analysis_duration",
+      "breakpoints": true
     }
   ]
 }

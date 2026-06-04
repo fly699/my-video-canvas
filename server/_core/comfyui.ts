@@ -1228,7 +1228,7 @@ type WorkflowJson = Record<string, { class_type: string; inputs: Record<string, 
 export async function analyzeWorkflow(
   workflowJson: string,
   rawBaseUrl?: string,
-): Promise<{ detectedParams: WorkflowParamBinding[]; outputNodeIds: string[]; outputNodes: { id: string; classType: string; isVideo: boolean }[]; outputType: "image" | "video" | "mixed" }> {
+): Promise<{ detectedParams: WorkflowParamBinding[]; outputNodeIds: string[]; outputNodes: { id: string; classType: string; isVideo: boolean }[]; outputType: "image" | "video" | "mixed"; videoCapabilities?: { maxFrames: number; fps: number } }> {
   let workflow: WorkflowJson;
   try {
     workflow = JSON.parse(workflowJson) as WorkflowJson;
@@ -1254,6 +1254,14 @@ export async function analyzeWorkflow(
   const outputNodes: { id: string; classType: string; isVideo: boolean }[] = [];
   let hasImage = false;
   let hasVideo = false;
+  // Deterministic video-duration capability detection (frames / fps), used by the
+  // agent to know each template's per-shot length. frames come from the latent
+  // video node's `length` (Hunyuan/LTXV/Wan) or SVD `video_frames`, or — only for
+  // a video workflow — AnimateDiff's EmptyLatentImage `batch_size`; fps from
+  // VHS_VideoCombine `frame_rate`.
+  let detectedFrames: number | undefined;
+  let detectedFps: number | undefined;
+  let animatediffBatch: number | undefined;
 
   // Pre-scan: identify which CLIPTextEncode nodes are wired to KSampler's negative input.
   // Walk the conditioning graph recursively so that intermediate nodes such as
@@ -1295,6 +1303,12 @@ export async function analyzeWorkflow(
     if (typeof node !== "object" || !node.class_type) continue;
     const ct = node.class_type;
     const inputs = node.inputs ?? {};
+
+    // Capture frames/fps wherever they appear (literal numbers only — wired refs ignored).
+    if (typeof (inputs as Record<string, unknown>).length === "number") detectedFrames = (inputs as Record<string, number>).length;
+    if (typeof (inputs as Record<string, unknown>).video_frames === "number") detectedFrames = (inputs as Record<string, number>).video_frames;
+    if (typeof (inputs as Record<string, unknown>).frame_rate === "number") detectedFps = (inputs as Record<string, number>).frame_rate;
+    if (ct === "EmptyLatentImage" && typeof (inputs as Record<string, unknown>).batch_size === "number") animatediffBatch = (inputs as Record<string, number>).batch_size;
 
     if (ct === "CLIPTextEncode") {
       // Skip when `text` is wired from an upstream node (array ref): the prompt
@@ -1429,7 +1443,13 @@ export async function analyzeWorkflow(
   }
 
   const outputType = hasImage && hasVideo ? "mixed" : hasVideo ? "video" : "image";
-  return { detectedParams, outputNodeIds, outputNodes, outputType };
+  // For a video workflow with no explicit latent-length, AnimateDiff encodes the
+  // frame count in EmptyLatentImage.batch_size.
+  const frames = detectedFrames ?? (hasVideo ? animatediffBatch : undefined);
+  const videoCapabilities = hasVideo && frames && detectedFps
+    ? { maxFrames: frames, fps: detectedFps }
+    : undefined;
+  return { detectedParams, outputNodeIds, outputNodes, outputType, videoCapabilities };
 }
 
 // ── Custom workflow execution ─────────────────────────────────────────────────

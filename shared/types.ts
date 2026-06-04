@@ -804,6 +804,10 @@ export interface AgentOperation {
   sourceRef?: string;           // connect source (tempId or real node id)
   sourceHandle?: string;
   targetHandle?: string;
+  /** create: scene grouping key (e.g. "s1"). Nodes sharing a sceneGroup are laid
+   *  out together and wrapped in an auto-created `group` "场景" container by the
+   *  apply layer. Used by duration-aware scene planning. */
+  sceneGroup?: string;
   /** Short human-readable rationale shown in the proposal preview. */
   note?: string;
   status?: "proposed" | "applied" | "rejected" | "failed";

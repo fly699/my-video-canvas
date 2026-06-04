@@ -115,6 +115,9 @@ interface CanvasStore {
   onEdgesChange: (changes: EdgeChange[]) => void;
   onConnect: (connection: Connection) => void;
   addNode: (type: NodeType, position: { x: number; y: number }) => CanvasNode;
+  /** Add a sized `group` "scene" container box behind other nodes (zIndex -1).
+   *  Used by the agent apply layer to wrap a scene's shots. */
+  addGroupBox: (rect: { x: number; y: number; width: number; height: number }, title: string) => void;
   batchAddSceneNodes: (
     scenes: Array<{ description?: string; promptText?: string; negativePrompt?: string; cameraMovement?: string; duration?: number; lens?: string; colorGrade?: string; shotType?: string; lighting?: string }>,
     sourceNodeId: string,
@@ -309,6 +312,31 @@ export const useCanvasStore = create<CanvasStore>((set, get) => ({
     }));
 
     return newNode;
+  },
+
+  addGroupBox: (rect, title) => {
+    const projectId = get().projectId;
+    if (!projectId) return;
+    const uid = get().currentUserId;
+    const node: CanvasNode = {
+      id: nanoid(),
+      type: "custom",
+      position: { x: rect.x, y: rect.y },
+      // Render behind the shot nodes it wraps (shots default to zIndex 0).
+      zIndex: -1,
+      data: {
+        nodeType: "group",
+        title,
+        payload: { ...getDefaultPayload("group"), ...(uid != null ? { createdBy: uid } : {}) } as NodeData,
+        projectId,
+      },
+      style: { width: rect.width, height: rect.height },
+    };
+    set((state) => ({
+      ...(get()._suppressHistory ? {} : pushHistory(state)),
+      nodes: [...state.nodes, node],
+      isDirty: true,
+    }));
   },
 
   batchAddSceneNodes: (scenes, sourceNodeId, sourcePosition, targetType = "storyboard") => {

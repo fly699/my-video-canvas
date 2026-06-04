@@ -234,6 +234,10 @@ export const comfyTemplateAnalysis = mysqlTable("comfy_template_analysis", {
   outputType: varchar("outputType", { length: 16 }), // image|video|mixed
   hasVideoOutput: boolean("hasVideoOutput"),
   modelNames: json("modelNames"),                // string[]
+  // Video capability (null for image-only templates). shotSeconds = maxFrames/fps,
+  // derived in code. Lets the agent plan enough shots to fill a target duration.
+  maxFrames: int("maxFrames"),
+  fps: int("fps"),
   analysisVersion: int("analysisVersion").notNull().default(1),
   model: varchar("model", { length: 64 }),       // LLM used for the analysis
   analyzedAt: timestamp("analyzedAt").defaultNow().notNull(),

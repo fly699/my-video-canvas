@@ -48,7 +48,7 @@ export const agentRouter = router({
         const rows = analyses
           .filter((a) => labelById.has(a.templateId))
           .sort((a, b) => (b.hasVideoOutput ? 1 : 0) - (a.hasVideoOutput ? 1 : 0))
-          .map((a) => ({ id: a.templateId, label: labelById.get(a.templateId)!, functionSummary: a.functionSummary ?? "", capabilities: (a.capabilities as string[] | null) ?? [], outputType: a.outputType ?? undefined, hasVideoOutput: a.hasVideoOutput ?? undefined }));
+          .map((a) => ({ id: a.templateId, label: labelById.get(a.templateId)!, functionSummary: a.functionSummary ?? "", capabilities: (a.capabilities as string[] | null) ?? [], outputType: a.outputType ?? undefined, hasVideoOutput: a.hasVideoOutput ?? undefined, shotSeconds: a.maxFrames && a.fps ? Math.round((a.maxFrames / a.fps) * 10) / 10 : null }));
         for (const r of rows) validTemplateIds.add(r.id);
         if (rows.length > 0) {
           templateSection = `\n\n# 已分析的 ComfyUI 自定义工作流模板（comfyui_workflow 可用 payload.templateId 引用其 id）\n${templateKnowledgeText(rows)}`;
@@ -97,6 +97,9 @@ ${input.graphSummary?.trim() || "（空画布）"}
 - 每个节点的 payload 只能使用目录中该节点类型列出的字段名。
 - 按创作链路合理编排：脚本/分镜 → 提示词/图像/视频 → 合并/字幕/配乐。
 - 模板智能匹配：选用 comfyui_workflow 模板时，按需求匹配 outputType（生图选 image、生视频选 video），并参考 capabilities 标签挑最贴合的模板；视频优先 hasVideoOutput 的模板。
+- 时长感知拆镜（重要）：视频模板/模型每镜有最长时长（上面括号里的「每镜≈Ns」就是单个镜头能生成的秒数上限）。当用户的目标总时长 T 大于所选模板的每镜上限 d 时，绝不能只做几个镜头，必须按 镜头数 = ceil(T / d) 规划足够多的镜头，使 镜头数 × d ≈ T（例：目标 60s、每镜 5s → 需 12 个镜头）。把这些镜头组织成若干「场景」（叙事段落），每个场景包含一个或多个镜头。
+- 场景分组：为每个生成节点加 sceneGroup 字段标注它属于哪个场景（如 "s1"/"s2"…，同一场景的镜头用同一个值），画布会据此把同场景的镜头框进一个「场景」分组容器。所有镜头仍各自连入 merge 合并成片。
+- 规划摘要：当涉及视频时长拆分时，在返回 JSON 顶层additionally给出 plan 对象：{"targetSeconds":目标总秒数,"perShotSeconds":每镜秒数,"templateLabel":"所选模板名","shots":镜头总数}，供前端做时长校验与提示。
 - 运行自愈：当画布摘要里某节点 status=failed（或缺少必要参数/连接）时，可主动用 update/connect 修复（补全提示词、参考图、连线或换更合适的模板），并在 reply 说明修了什么。
 - 若用户只是提问、或当前无需改动画布，operations 给空数组 []，把回答写进 reply。
 - 你只负责把工作流搭好并填好参数；是否触发生成由用户在画布上确认。`;
@@ -112,20 +115,32 @@ ${input.graphSummary?.trim() || "（空画布）"}
 
       let reply = text.trim();
       let operations: AgentOperation[] = [];
+      let plan: { targetSeconds: number; perShotSeconds: number; templateLabel?: string; shots: number } | undefined;
       const jsonMatch = text.match(/\{[\s\S]*\}/);
       if (jsonMatch) {
         try {
-          const parsed = JSON.parse(jsonMatch[0]) as { reply?: unknown; operations?: unknown };
+          const parsed = JSON.parse(jsonMatch[0]) as { reply?: unknown; operations?: unknown; plan?: unknown };
           if (typeof parsed.reply === "string" && parsed.reply.trim()) reply = parsed.reply.trim();
           if (Array.isArray(parsed.operations)) {
             operations = parsed.operations
               .map((o) => sanitizeOperation(o, { comfyOnly: input.comfyOnly, validTemplateIds }))
               .filter((o): o is AgentOperation => o !== null);
           }
+          // Optional planning summary (duration-aware shot split) for the client's
+          // capacity dialog. Only accept well-formed numeric fields.
+          const p = parsed.plan as Record<string, unknown> | undefined;
+          if (p && typeof p.targetSeconds === "number" && typeof p.perShotSeconds === "number" && typeof p.shots === "number") {
+            plan = {
+              targetSeconds: p.targetSeconds,
+              perShotSeconds: p.perShotSeconds,
+              shots: p.shots,
+              templateLabel: typeof p.templateLabel === "string" ? p.templateLabel : undefined,
+            };
+          }
         } catch {
           /* not valid JSON — return the raw text as the reply with no operations */
         }
       }
-      return { reply, operations };
+      return { reply, operations, plan };
     }),
 });

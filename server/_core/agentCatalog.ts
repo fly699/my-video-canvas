@@ -149,7 +149,7 @@ export function catalogText(opts: { comfyOnly?: boolean } = {}): string {
 
 /** Render analyzed-template knowledge for the system prompt (bounded). */
 export function templateKnowledgeText(
-  rows: { id: number; label: string; functionSummary: string; capabilities: string[]; outputType?: string; hasVideoOutput?: boolean }[],
+  rows: { id: number; label: string; functionSummary: string; capabilities: string[]; outputType?: string; hasVideoOutput?: boolean; shotSeconds?: number | null }[],
   opts: { maxItems?: number; maxLen?: number } = {},
 ): string {
   const maxItems = opts.maxItems ?? 20;
@@ -157,7 +157,9 @@ export function templateKnowledgeText(
   // Prefer video-capable + (implicitly) recently analyzed (caller pre-sorts).
   const lines = rows.slice(0, maxItems).map((r) => {
     const caps = r.capabilities?.length ? `[${r.capabilities.join("/")}]` : "";
-    return `• id=${r.id} 「${r.label}」(${r.outputType ?? "?"}) ${caps} ${r.functionSummary}`.trim();
+    // Per-shot duration cap for video templates so the agent can plan enough shots.
+    const dur = r.shotSeconds && r.shotSeconds > 0 ? `, 每镜≈${r.shotSeconds % 1 === 0 ? r.shotSeconds : r.shotSeconds.toFixed(1)}s` : "";
+    return `• id=${r.id} 「${r.label}」(${r.outputType ?? "?"}${dur}) ${caps} ${r.functionSummary}`.trim();
   });
   let out = lines.join("\n");
   if (out.length > maxLen) out = out.slice(0, maxLen);
@@ -205,7 +207,7 @@ export function sanitizeOperation(
     }
     return {
       op: "create", nodeType, tempId: str(o.tempId), title: str(o.title),
-      payload, note: str(o.note),
+      payload, note: str(o.note), sceneGroup: str(o.sceneGroup),
     };
   }
   if (op === "connect") {

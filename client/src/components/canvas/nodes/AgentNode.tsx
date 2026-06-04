@@ -50,6 +50,13 @@ export const AgentNode = memo(function AgentNode({ id, selected, data }: Props) 
   const [layoutIdx, setLayoutIdx] = useState(0);
   const [analyzeFull, setAnalyzeFull] = useState(false);
   const [showRecipes, setShowRecipes] = useState(false);
+  // Duration-aware capacity dialog: shown when the agent's plan split a target
+  // duration longer than the model's per-shot cap into multiple shots.
+  const [capacityPlan, setCapacityPlan] = useState<{
+    plan: { targetSeconds: number; perShotSeconds: number; templateLabel?: string; shots: number };
+    msgIdx: number;
+    ops: AgentOperation[];
+  } | null>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
   // Track agent-initiated workflow runs (执行感知 + 自动续作).
   const runInitiatedRef = useRef(false);
@@ -151,7 +158,14 @@ export const AgentNode = memo(function AgentNode({ id, selected, data }: Props) 
         graphSummary: summary || undefined, model, comfyOnly,
       });
       setMessages([...afterUser, { role: "assistant", content: r.reply, operations: r.operations }]);
-      if (autoApply && r.operations.length > 0) handleApply(assistantIdx, r.operations);
+      // Duration-aware capacity check: if the plan split a target longer than the
+      // model's per-shot cap into many shots, let the user choose how to proceed
+      // before applying (instead of silently auto-applying a 12-shot plan).
+      if (r.plan && r.plan.targetSeconds > r.plan.perShotSeconds && r.operations.length > 0) {
+        setCapacityPlan({ plan: r.plan, msgIdx: assistantIdx, ops: r.operations });
+      } else if (autoApply && r.operations.length > 0) {
+        handleApply(assistantIdx, r.operations);
+      }
     } catch (e) {
       setMessages([...afterUser, { role: "assistant", content: "处理失败：" + (e instanceof Error ? e.message : ""), operations: [] }]);
     }
@@ -429,6 +443,37 @@ export const AgentNode = memo(function AgentNode({ id, selected, data }: Props) 
           </div>
         </div>
       </div>
+      {capacityPlan && (
+        <div className="nodrag nowheel" style={{ position: "fixed", inset: 0, zIndex: 9999, background: "rgba(0,0,0,0.5)", display: "flex", alignItems: "center", justifyContent: "center" }}
+          onClick={() => setCapacityPlan(null)}>
+          <div onClick={(e) => e.stopPropagation()} style={{ width: 420, maxWidth: "90vw", background: "var(--c-surface)", border: `1px solid ${accentA(0.3)}`, borderRadius: 14, padding: 18, boxShadow: "0 12px 40px rgba(0,0,0,0.4)" }}>
+            <div style={{ fontSize: 14, fontWeight: 700, color: "var(--c-t1)", marginBottom: 8 }}>时长规划确认</div>
+            <div style={{ fontSize: 12, lineHeight: 1.7, color: "var(--c-t2)", marginBottom: 14 }}>
+              目标总时长 <b>{capacityPlan.plan.targetSeconds}s</b>，
+              {capacityPlan.plan.templateLabel ? `模板「${capacityPlan.plan.templateLabel}」` : "所选模型"}每镜最长约 <b>{capacityPlan.plan.perShotSeconds}s</b>。
+              <br />为达成时长，已规划 <b>{capacityPlan.plan.shots}</b> 个镜头（分多个场景）。如何处理？
+            </div>
+            <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+              <button className="nodrag" onClick={() => { const c = capacityPlan; setCapacityPlan(null); handleApply(c.msgIdx, c.ops); }}
+                style={{ padding: "9px", fontSize: 12, fontWeight: 600, borderRadius: 9, cursor: "pointer", background: accentA(0.18), border: `1px solid ${accentA(0.4)}`, color: accent }}>
+                ① 采用此规划（自动补足时长，{capacityPlan.plan.shots} 镜）
+              </button>
+              <button className="nodrag" onClick={() => { setCapacityPlan(null); handleSend("每个场景只保留 1 个镜头，接受较短的总时长，不要为补足时长而增加镜头数。"); }}
+                style={{ padding: "9px", fontSize: 12, fontWeight: 600, borderRadius: 9, cursor: "pointer", background: "var(--c-surface)", border: "1px solid var(--c-bd2)", color: "var(--c-t2)" }}>
+                ② 接受较短时长（每场景 1 镜）
+              </button>
+              <button className="nodrag" onClick={() => { setCapacityPlan(null); handleSend("改用每镜时长更长的视频模板/模型重新规划，尽量减少镜头数量以接近目标总时长。"); }}
+                style={{ padding: "9px", fontSize: 12, fontWeight: 600, borderRadius: 9, cursor: "pointer", background: "var(--c-surface)", border: "1px solid var(--c-bd2)", color: "var(--c-t2)" }}>
+                ③ 换更长时长的模板重新规划
+              </button>
+              <button className="nodrag" onClick={() => setCapacityPlan(null)}
+                style={{ padding: "6px", fontSize: 11, cursor: "pointer", background: "transparent", border: "none", color: "var(--c-t4)" }}>
+                取消
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </BaseNode>
   );
 });
