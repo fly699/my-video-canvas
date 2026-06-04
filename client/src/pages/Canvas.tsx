@@ -605,6 +605,12 @@ function CanvasInner({ projectId }: { projectId: number }) {
     return () => { resetCanvas(); };
   }, [projectId, setProjectId, resetCanvas]);
 
+  // Keep the store's current-user id in sync so nodes created here are stamped
+  // with their author (drives the per-creator collaborator color dot).
+  useEffect(() => {
+    useCanvasStore.getState().setCurrentUserId(user?.id ?? null);
+  }, [user?.id]);
+
   useEffect(() => {
     if (!dbNodes) return;
     // Apply the DB snapshot ONCE (initial load). `nodes.list` uses React Query's

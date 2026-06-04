@@ -1,6 +1,6 @@
 import { memo, useState, useRef, useCallback, useEffect } from "react";
 import { Handle, Position, NodeResizer } from "@xyflow/react";
-import { getNodeConfig } from "../../lib/nodeConfig";
+import { getNodeConfig, COLLABORATOR_COLORS } from "../../lib/nodeConfig";
 import { CONNECTION_HINTS } from "../../lib/connectionRules";
 import type { NodeType } from "../../../../shared/types";
 import { useCanvasStore } from "../../hooks/useCanvasStore";
@@ -105,6 +105,15 @@ export const BaseNode = memo(function BaseNode({
     const node = s.nodes.find((n) => n.id === id);
     return Boolean((node?.data.payload as Record<string, unknown> | undefined)?.pinned);
   });
+  // Creator id (stamped into the payload at creation) → a per-collaborator color
+  // dot in the title bar, matching the cursor / "在线协作者" colors.
+  const createdBy = useCanvasStore((s) => {
+    const p = s.nodes.find((n) => n.id === id)?.data.payload as { createdBy?: number } | undefined;
+    return typeof p?.createdBy === "number" ? p.createdBy : null;
+  });
+  const currentUserId = useCanvasStore((s) => s.currentUserId);
+  const creatorName = useCanvasStore((s) => (createdBy != null ? s.collaborators.get(createdBy)?.userName : undefined));
+  const creatorColor = createdBy != null ? COLLABORATOR_COLORS[createdBy % COLLABORATOR_COLORS.length] : null;
   const deleteNodeMutation = trpc.nodes.delete.useMutation();
   const { mode: canvasMode } = useCanvasMode();
   const { theme } = useTheme();
@@ -455,6 +464,22 @@ export const BaseNode = memo(function BaseNode({
           >
             {config.label}
           </span>
+        )}
+
+        {/* Collaborator indicator — a small dot in the creator's unique color so
+            collaborators can tell who placed each node. Matches cursor colors. */}
+        {creatorColor && (
+          <span
+            className="flex-shrink-0 rounded-full"
+            title={createdBy === currentUserId ? "你放置的节点" : `${creatorName ?? "协作者"} 放置的节点`}
+            style={{
+              width: 8,
+              height: 8,
+              background: creatorColor,
+              border: "1.5px solid var(--c-base)",
+              boxShadow: `0 0 0 1px ${creatorColor}66, 0 0 6px ${creatorColor}55`,
+            }}
+          />
         )}
 
         {/* Run status badge */}
