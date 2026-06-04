@@ -60,6 +60,9 @@ export const MergeNode = memo(function MergeNode({ id, selected, data }: Props) 
   const payload = data.payload;
   const [showBgMusic, setShowBgMusic] = useState(false);
   const [dragIdx, setDragIdx] = useState<number | null>(null);
+  // Auto-collapse the editing controls when the node is deselected; expand when
+  // selected or pinned (mirrors NodeSelectedContext / the other nodes' behavior).
+  const expanded = Boolean(selected) || Boolean((data.payload as { pinned?: boolean }).pinned);
 
   const mergeMutation = trpc.merge.mergeVideos.useMutation({
     onSuccess: (result) => {
@@ -252,6 +255,18 @@ export const MergeNode = memo(function MergeNode({ id, selected, data }: Props) 
           </div>
         )}
 
+        {/* Compact summary when collapsed (deselected) — keeps the node informative
+            without the full editing controls. */}
+        {!expanded && (
+          <div className="flex items-center gap-1.5 text-[11px]" style={{ color: "var(--c-t3)" }}>
+            <Merge style={{ width: 11, height: 11, color: accent, flexShrink: 0 }} />
+            <span>{orderItems.length} 个视频输入 · 转场：{TRANSITIONS.find((t) => t.value === (payload.transition ?? "none"))?.label ?? "直切"}{effectiveBgMusicUrl ? " · 含背景音乐" : ""}</span>
+          </div>
+        )}
+
+        {/* Editing controls — collapse when the node is deselected. */}
+        {expanded && (<>
+
         {/* Ordered input list — drag to set the concatenation order. Connected
             inputs are smart-ordered by default; dragging fixes an explicit order. */}
         {orderItems.length > 0 && (
@@ -405,6 +420,8 @@ export const MergeNode = memo(function MergeNode({ id, selected, data }: Props) 
             : <Merge style={{ width: 13, height: 13 }} />}
           {isProcessing ? "合并中..." : isDone ? "已完成（重置后可重新合并）" : "合并视频"}
         </button>
+
+        </>)}
 
       </div>
 
