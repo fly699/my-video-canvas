@@ -81,6 +81,16 @@ function guardUrl(url: string): void {
   }
 }
 
+// 本地媒体端点（ffmpeg 剪辑/合并/字幕/叠加）的 URL 校验：除了绝对 http(s) URL，
+// 还必须接受自有存储的 `/manus-storage/…` 相对路径——ComfyUI、本地生成等节点的产物
+// 正是以该相对路径存储。`z.string().url()` 会把相对路径误判为「Invalid URL」，而底层
+// `downloadToTemp()`/`guardUrl()` 早已能解析它。所以这些端点统一改用本 schema。
+const mediaUrlSchema = z
+  .string()
+  .refine((v) => /^https?:\/\//i.test(v) || v.startsWith("/manus-storage/"), {
+    message: "必须是 http(s) URL 或 /manus-storage/ 存储路径",
+  });
+
 // ── Projects ──────────────────────────────────────────────────────────────────
 
 // Recursively collect image URLs from a project's node data so a card cover can
@@ -1808,11 +1818,11 @@ export const clipRouter = router({
   trimVideo: protectedProcedure
     .input(
       z.object({
-        inputUrl: z.string().url(),
+        inputUrl: mediaUrlSchema,
         startTime: z.number().min(0),
         endTime: z.number().min(0),
         speed: z.number().min(0.25).max(4.0).optional(),
-        audioUrl: z.string().url().optional(),
+        audioUrl: mediaUrlSchema.optional(),
         audioVolume: z.number().min(0).max(2.0).optional(),
       }).refine(d => d.endTime > d.startTime, { message: "出点必须大于入点", path: ["endTime"] })
     )
@@ -1825,7 +1835,7 @@ export const clipRouter = router({
     }),
 
   getVideoDuration: protectedProcedure
-    .input(z.object({ url: z.string().url() }))
+    .input(z.object({ url: mediaUrlSchema }))
     .query(async ({ ctx, input }) => {
       // local ffprobe, no third-party AI — not whitelist-gated
       guardUrl(input.url);
@@ -1835,7 +1845,7 @@ export const clipRouter = router({
 
   smartCut: protectedProcedure
     .input(z.object({
-      inputUrl: z.string().url(),
+      inputUrl: mediaUrlSchema,
       aggressiveness: z.enum(["low", "medium", "high"]).default("medium"),
       targetDuration: z.number().min(5).max(3600).optional(),
       model: z.string().optional(),
@@ -1917,10 +1927,10 @@ export const mergeRouter = router({
   mergeVideos: protectedProcedure
     .input(
       z.object({
-        inputUrls: z.array(z.string().url()).min(2).max(10),
+        inputUrls: z.array(mediaUrlSchema).min(2).max(10),
         transition: z.enum(["none", "fade", "dissolve"]).optional(),
         transitionDuration: z.number().min(0.1).max(2.0).optional(),
-        bgMusicUrl: z.string().url().optional(),
+        bgMusicUrl: mediaUrlSchema.optional(),
         bgMusicVolume: z.number().min(0).max(1).optional(),
       })
     )
@@ -1938,7 +1948,7 @@ export const subtitleRouter = router({
   transcribe: protectedProcedure
     .input(
       z.object({
-        audioUrl: z.string().url(),
+        audioUrl: mediaUrlSchema,
         language: z.string().optional(),
       })
     )
@@ -1969,7 +1979,7 @@ export const subtitleRouter = router({
   burnIn: protectedProcedure
     .input(
       z.object({
-        videoUrl: z.string().url(),
+        videoUrl: mediaUrlSchema,
         entries: z.array(z.object({ start: z.number(), end: z.number(), text: z.string().max(500) })).max(2000),
         fontSize: z.number().int().min(8).max(48).optional(),
         fontColor: z.string().optional(),
@@ -2000,7 +2010,7 @@ export const subtitleRouter = router({
 // ── Motion Subtitles ──────────────────────────────────────────────────────────
 export const subtitleMotionRouter = router({
   transcribe: protectedProcedure
-    .input(z.object({ audioUrl: z.string().url(), language: z.string().optional() }))
+    .input(z.object({ audioUrl: mediaUrlSchema, language: z.string().optional() }))
     .mutation(async ({ ctx, input }) => {
       await assertWhitelisted(ctx);
       guardUrl(input.audioUrl);
@@ -2014,7 +2024,7 @@ export const subtitleMotionRouter = router({
 
   burnMotion: protectedProcedure
     .input(z.object({
-      videoUrl: z.string().url(),
+      videoUrl: mediaUrlSchema,
       entries: z.array(z.object({ start: z.number().min(0), end: z.number().min(0), text: z.string().max(500) })).min(1).max(2000).refine((arr) => arr.every((e) => e.end > e.start), { message: "每条字幕的 end 必须大于 start" }),
       motionStyle: z.enum(["fade", "roll", "karaoke", "bounce"]).optional(),
       fontSize: z.number().int().min(8).max(48).optional(),
@@ -2068,15 +2078,15 @@ export const overlayRouter = router({
   process: protectedProcedure
     .input(
       z.object({
-        inputUrl: z.string().url(),
+        inputUrl: mediaUrlSchema,
         mode: z.enum(["watermark", "pip", "color_correction"]),
         // Watermark
-        overlayImageUrl: z.string().url().optional(),
+        overlayImageUrl: mediaUrlSchema.optional(),
         overlayPosition: z.enum(["top-left", "top-right", "bottom-left", "bottom-right", "center"]).optional(),
         overlayScale: z.number().min(0.05).max(1.0).optional(),
         overlayOpacity: z.number().min(0).max(1).optional(),
         // PiP
-        pipVideoUrl: z.string().url().optional(),
+        pipVideoUrl: mediaUrlSchema.optional(),
         pipPosition: z.enum(["top-left", "top-right", "bottom-left", "bottom-right"]).optional(),
         pipScale: z.number().min(0.1).max(0.5).optional(),
         // Color correction
