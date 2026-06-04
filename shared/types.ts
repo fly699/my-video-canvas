@@ -193,6 +193,13 @@ export interface VideoTaskNodeData {
   referenceImageUrl?: string;
   /** Multi-angle reference images (see ReferenceImage). [0].url mirrors referenceImageUrl. */
   referenceImages?: ReferenceImage[];
+  /** Final video URL. Named `resultVideoUrl` (not `outputUrl` like the post-processing
+   *  nodes) for historical reasons: video_task results come from the async provider-task
+   *  subsystem and are filled by server/videoTaskPoller into this field. The in-app
+   *  composing nodes (clip/merge/subtitle/…) and comfyui_workflow use `outputUrl` instead;
+   *  comfyui_video reuses this same `resultVideoUrl` name. Downstream readers bridge both
+   *  via `resultVideoUrl ?? outputUrl ?? url` — see getNodeVideoUrl in useWorkflowRunner.ts
+   *  for the full rationale. Do NOT rename without migrating the poller + persisted payloads. */
   resultVideoUrl?: string;
   errorMessage?: string;
   progress?: number;
@@ -722,6 +729,10 @@ export interface ComfyuiVideoNodeData {
   referenceImageUrl?: string;
   /** Multi-angle reference images (see ReferenceImage). [0].url mirrors referenceImageUrl. */
   referenceImages?: ReferenceImage[];
+  /** Final video URL. comfyui_video deliberately reuses video_task's `resultVideoUrl`
+   *  name (not the `outputUrl` used by clip/merge/comfyui_workflow). This split is
+   *  historical, not a principled convention — see getNodeVideoUrl in useWorkflowRunner.ts.
+   *  Downstream bridges both with `resultVideoUrl ?? outputUrl ?? url`. */
   resultVideoUrl?: string;
   resultStorageKey?: string;
   progress?: number;
