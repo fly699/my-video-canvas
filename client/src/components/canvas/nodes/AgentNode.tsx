@@ -4,7 +4,7 @@ import { useCanvasStore } from "../../../hooks/useCanvasStore";
 import type { AgentNodeData, AgentMessage, AgentOperation } from "../../../../../shared/types";
 import { trpc } from "@/lib/trpc";
 import { toast } from "sonner";
-import { Sparkles, Loader2, Send, Check, Plus, Link2, Pencil, Trash2, LayoutGrid } from "lucide-react";
+import { Sparkles, Loader2, Send, Check, Plus, Link2, Pencil, Trash2, LayoutGrid, Boxes } from "lucide-react";
 import { LLMModelPicker, type LLMModelId } from "../LLMModelPicker";
 import { NodeTextArea } from "../NodeTextInput";
 import { applyAgentOperations, buildGraphSummary } from "@/lib/agentApply";
@@ -44,8 +44,22 @@ export const AgentNode = memo(function AgentNode({ id, selected, data }: Props) 
   const [input, setInput] = useState("");
   const [appliedIdx, setAppliedIdx] = useState<Set<number>>(new Set());
   const [layoutIdx, setLayoutIdx] = useState(0);
+  const [analyzeFull, setAnalyzeFull] = useState(false);
   const scrollRef = useRef<HTMLDivElement>(null);
   const chat = trpc.agent.chat.useMutation();
+  const templatesQuery = trpc.comfyTemplates.list.useQuery(undefined, { staleTime: 30_000 });
+  const analyzeMut = trpc.comfyTemplates.analyzeLibrary.useMutation();
+  const comfyOnly = payload.comfyOnlyMode ?? false;
+
+  const handleAnalyzeLibrary = async () => {
+    if (analyzeMut.isPending) return;
+    try {
+      const r = await analyzeMut.mutateAsync({ model, full: analyzeFull });
+      toast.success(`模板库分析完成：已分析 ${r.analyzed} · 跳过 ${r.skipped}${r.failed ? ` · 失败 ${r.failed}` : ""}`);
+    } catch (e) {
+      toast.error("分析失败：" + (e instanceof Error ? e.message : ""));
+    }
+  };
 
   // Cycle through the smart-layout options, re-arranging all canvas nodes (except
   // this agent node) in one undoable step.
@@ -77,7 +91,7 @@ export const AgentNode = memo(function AgentNode({ id, selected, data }: Props) 
     try {
       const r = await chat.mutateAsync({
         projectId: data.projectId, message: text, history,
-        graphSummary: summary || undefined, model,
+        graphSummary: summary || undefined, model, comfyOnly,
       });
       setMessages([...afterUser, { role: "assistant", content: r.reply, operations: r.operations }]);
     } catch (e) {
@@ -87,7 +101,8 @@ export const AgentNode = memo(function AgentNode({ id, selected, data }: Props) 
 
   const handleApply = (msgIdx: number, ops: AgentOperation[]) => {
     const pos = useCanvasStore.getState().nodes.find((n) => n.id === id)?.position ?? { x: 0, y: 0 };
-    const r = applyAgentOperations(ops, pos); // mutates op.status/op.error in place
+    const templates = (templatesQuery.data ?? []).map((t) => ({ id: t.id, label: t.label, payload: t.payload }));
+    const r = applyAgentOperations(ops, pos, { templates }); // mutates op.status/op.error in place
     setAppliedIdx((prev) => new Set(prev).add(msgIdx));
     // Persist op statuses back into the message so the preview shows applied/failed.
     setMessages(messages.map((m, i) => (i === msgIdx ? { ...m, operations: [...ops] } : m)));
@@ -175,6 +190,21 @@ export const AgentNode = memo(function AgentNode({ id, selected, data }: Props) 
             >
               <LayoutGrid className="w-3 h-3" />智能排序
             </button>
+            <button
+              onClick={handleAnalyzeLibrary}
+              disabled={analyzeMut.isPending}
+              className="nodrag flex items-center gap-1 px-2 py-1 rounded-lg text-[10px] font-medium"
+              title="分析 ComfyUI 模板库功能并入库（增量；勾选全量则重新分析全部）"
+              style={{ background: accentA(0.1), border: `1px solid ${accentA(0.3)}`, color: accent, cursor: analyzeMut.isPending ? "wait" : "pointer" }}
+            >
+              {analyzeMut.isPending ? <Loader2 className="w-3 h-3 animate-spin" /> : <Boxes className="w-3 h-3" />}新增节点模板库分析
+            </button>
+            <label className="nodrag flex items-center gap-1 text-[10px]" style={{ color: "var(--c-t3)", cursor: "pointer" }} title="重新分析全部模板（而非仅新增/变更）">
+              <input type="checkbox" checked={analyzeFull} onChange={(e) => setAnalyzeFull(e.target.checked)} style={{ accentColor: accent }} />全量
+            </label>
+            <label className="nodrag flex items-center gap-1 text-[10px]" style={{ color: comfyOnly ? accent : "var(--c-t3)", cursor: "pointer" }} title="开启后：音视频生成只用 ComfyUI 自定义工作流节点（从模板库选模板）">
+              <input type="checkbox" checked={comfyOnly} onChange={(e) => updateNodeData(id, { comfyOnlyMode: e.target.checked })} style={{ accentColor: accent }} />仅 ComfyUI 生成
+            </label>
           </div>
           <LLMModelPicker value={model} onChange={(m) => updateNodeData(id, { model: m })} disabled={chat.isPending} />
           <div style={{ display: "flex", gap: 6, alignItems: "flex-end" }}>

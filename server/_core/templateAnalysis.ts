@@ -1,5 +1,6 @@
 import { analyzeWorkflow } from "./comfyui";
 import { invokeLLM, extractTextContent } from "./llm";
+import * as db from "../db";
 import type { ComfyNodeTemplateRow, InsertComfyTemplateAnalysis } from "../../drizzle/schema";
 import type { WorkflowParamBinding } from "../../shared/types";
 
@@ -90,4 +91,38 @@ ${workflowJson ? `工作流JSON(截断)：\n${workflowJson.slice(0, 6000)}` : ""
     model,
     analyzedAt: new Date(),
   };
+}
+
+/**
+ * Analyze the template library and persist results. Default = incremental
+ * (never-analyzed / template updated since / out-of-version); `full` re-does all.
+ * `max` caps how many are analyzed in one call (used by agent.chat so a planning
+ * turn isn't blocked analyzing a huge backlog — the rest get done next turn).
+ */
+export async function runLibraryAnalysis(
+  model: string,
+  opts: { full?: boolean; max?: number } = {},
+): Promise<{ total: number; analyzed: number; failed: number; skipped: number }> {
+  const templates = await db.listComfyNodeTemplates();
+  const analyses = await db.listComfyTemplateAnalysis();
+  const byId = new Map(analyses.map((a) => [a.templateId, a]));
+
+  let toAnalyze = templates.filter((t) => {
+    if (opts.full) return true;
+    const a = byId.get(t.id);
+    if (!a) return true;
+    if ((a.analysisVersion ?? 0) < CURRENT_ANALYSIS_VERSION) return true;
+    const tplUpdated = t.updatedAt instanceof Date ? t.updatedAt : new Date(t.updatedAt);
+    const analyzed = a.analyzedAt instanceof Date ? a.analyzedAt : new Date(a.analyzedAt);
+    return tplUpdated > analyzed;
+  });
+  const pending = toAnalyze.length;
+  if (opts.max != null && toAnalyze.length > opts.max) toAnalyze = toAnalyze.slice(0, opts.max);
+
+  let analyzed = 0, failed = 0;
+  for (const t of toAnalyze) {
+    try { await db.upsertComfyTemplateAnalysis(await analyzeTemplate(t, model)); analyzed++; }
+    catch { failed++; }
+  }
+  return { total: templates.length, analyzed, failed, skipped: templates.length - pending };
 }

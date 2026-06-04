@@ -3,7 +3,7 @@ import { TRPCError } from "@trpc/server";
 import { protectedProcedure, router } from "../_core/trpc";
 import * as db from "../db";
 import { assertLLMAllowed } from "../_core/whitelist";
-import { analyzeTemplate, CURRENT_ANALYSIS_VERSION } from "../_core/templateAnalysis";
+import { runLibraryAnalysis } from "../_core/templateAnalysis";
 import {
   sanitizeComfyPayload, COMFY_TEMPLATE_LIMITS,
   type ComfyNodeType, type ComfyNodeTemplate,
@@ -128,29 +128,6 @@ export const comfyTemplatesRouter = router({
     .mutation(async ({ ctx, input }) => {
       await assertLLMAllowed(ctx);
       const model = input.model ?? "claude-sonnet-4-5-20250929";
-      const templates = await db.listComfyNodeTemplates();
-      const analyses = await db.listComfyTemplateAnalysis();
-      const byId = new Map(analyses.map((a) => [a.templateId, a]));
-
-      const toAnalyze = templates.filter((t) => {
-        if (input.full) return true;
-        const a = byId.get(t.id);
-        if (!a) return true; // never analyzed
-        if ((a.analysisVersion ?? 0) < CURRENT_ANALYSIS_VERSION) return true; // algorithm bumped
-        const tplUpdated = t.updatedAt instanceof Date ? t.updatedAt : new Date(t.updatedAt);
-        const analyzed = a.analyzedAt instanceof Date ? a.analyzedAt : new Date(a.analyzedAt);
-        return tplUpdated > analyzed; // template changed since last analysis
-      });
-
-      let analyzed = 0, failed = 0;
-      for (const t of toAnalyze) {
-        try {
-          await db.upsertComfyTemplateAnalysis(await analyzeTemplate(t, model));
-          analyzed++;
-        } catch {
-          failed++;
-        }
-      }
-      return { total: templates.length, analyzed, failed, skipped: templates.length - toAnalyze.length };
+      return runLibraryAnalysis(model, { full: input.full });
     }),
 });

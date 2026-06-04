@@ -809,6 +809,8 @@ export interface AgentMessage {
 export interface AgentNodeData {
   messages?: AgentMessage[];
   model?: string;
+  /** 仅 ComfyUI 生成：开启后生成只走 comfyui_workflow 自定义工作流节点（从模板库选模板）。 */
+  comfyOnlyMode?: boolean;
   status?: "idle" | "thinking" | "failed";
   errorMessage?: string;
 }

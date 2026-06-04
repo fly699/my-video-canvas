@@ -109,6 +109,15 @@ export const AGENT_NODE_CATALOG: AgentNodeSpec[] = [
     ],
   },
   {
+    type: "comfyui_workflow", label: "ComfyUI 自定义", purpose: "本地/云 ComfyUI 自定义工作流，按模板库的模板生成图/视频",
+    connectsTo: ["merge", "asset", "video_task", "comfyui_video"],
+    fields: [
+      { name: "templateId", type: "number", desc: "引用「已分析的 ComfyUI 模板」中的模板 id" },
+      { name: "prompt", type: "string", desc: "正向提示词（写入模板的 positive 角色参数）" },
+      { name: "negPrompt", type: "string", desc: "反向提示词（写入 negative 角色参数）" },
+    ],
+  },
+  {
     type: "note", label: "便签", purpose: "说明/批注，可连接任意节点",
     connectsTo: [],
     fields: [{ name: "content", type: "string", desc: "便签文本" }],
@@ -117,13 +126,38 @@ export const AGENT_NODE_CATALOG: AgentNodeSpec[] = [
 
 const SPEC_BY_TYPE = new Map(AGENT_NODE_CATALOG.map((s) => [s.type, s]));
 
-/** Render the catalog as compact text for the LLM system prompt. */
-export function catalogText(): string {
-  return AGENT_NODE_CATALOG.map((s) => {
-    const fields = s.fields.map((f) => `${f.name}(${f.type}): ${f.desc}`).join("; ");
-    const to = s.connectsTo.length ? s.connectsTo.join(", ") : "（无固定下游）";
-    return `• ${s.type} 「${s.label}」— ${s.purpose}\n  可设字段: ${fields}\n  可连接到: ${to}`;
-  }).join("\n");
+// In "仅 ComfyUI 生成" mode these generation node types are excluded — generation
+// must go through comfyui_workflow (a template materialized into a workflow node).
+const COMFY_ONLY_EXCLUDED = new Set<NodeType>(["image_gen", "video_task", "audio", "comfyui_image", "comfyui_video"]);
+
+/** Render the catalog as compact text for the LLM system prompt. In comfyOnly
+ *  mode, the excluded generation nodes are dropped so the model can't pick them. */
+export function catalogText(opts: { comfyOnly?: boolean } = {}): string {
+  return AGENT_NODE_CATALOG
+    .filter((s) => !(opts.comfyOnly && COMFY_ONLY_EXCLUDED.has(s.type)))
+    .map((s) => {
+      const fields = s.fields.map((f) => `${f.name}(${f.type}): ${f.desc}`).join("; ");
+      const to = s.connectsTo.length ? s.connectsTo.join(", ") : "（无固定下游）";
+      return `• ${s.type} 「${s.label}」— ${s.purpose}\n  可设字段: ${fields}\n  可连接到: ${to}`;
+    })
+    .join("\n");
+}
+
+/** Render analyzed-template knowledge for the system prompt (bounded). */
+export function templateKnowledgeText(
+  rows: { id: number; label: string; functionSummary: string; capabilities: string[]; outputType?: string; hasVideoOutput?: boolean }[],
+  opts: { maxItems?: number; maxLen?: number } = {},
+): string {
+  const maxItems = opts.maxItems ?? 20;
+  const maxLen = opts.maxLen ?? 2000;
+  // Prefer video-capable + (implicitly) recently analyzed (caller pre-sorts).
+  const lines = rows.slice(0, maxItems).map((r) => {
+    const caps = r.capabilities?.length ? `[${r.capabilities.join("/")}]` : "";
+    return `• id=${r.id} 「${r.label}」(${r.outputType ?? "?"}) ${caps} ${r.functionSummary}`.trim();
+  });
+  let out = lines.join("\n");
+  if (out.length > maxLen) out = out.slice(0, maxLen);
+  return out;
 }
 
 /**
@@ -131,7 +165,7 @@ export function catalogText(): string {
  * null if it is structurally invalid (unknown create nodeType, missing refs).
  * Create-op payloads are filtered to the spec's whitelisted fields.
  */
-export function sanitizeOperation(raw: unknown): AgentOperation | null {
+export function sanitizeOperation(raw: unknown, opts: { comfyOnly?: boolean } = {}): AgentOperation | null {
   if (!raw || typeof raw !== "object") return null;
   const o = raw as Record<string, unknown>;
   const op = o.op;
@@ -141,6 +175,8 @@ export function sanitizeOperation(raw: unknown): AgentOperation | null {
   if (op === "create") {
     const nodeType = str(o.nodeType) as NodeType | undefined;
     if (!nodeType || !SPEC_BY_TYPE.has(nodeType)) return null;
+    // comfyOnly: drop any generation node that isn't comfyui_workflow.
+    if (opts.comfyOnly && COMFY_ONLY_EXCLUDED.has(nodeType)) return null;
     const spec = SPEC_BY_TYPE.get(nodeType)!;
     const allowed = new Set(spec.fields.map((f) => f.name));
     const payload: Record<string, unknown> = {};
