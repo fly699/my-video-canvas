@@ -30,15 +30,26 @@ const GENRES  = ["短视频", "电影", "动作片", "广告片", "短剧", "纪
 const STYLES  = ["电影感", "写实", "动漫", "复古胶片", "赛博朋克", "史诗", "极简", "梦幻"];
 const MOODS   = ["温暖治愈", "紧张刺激", "浪漫唯美", "神秘悬疑", "壮阔震撼", "轻松幽默"];
 const RATIOS  = ["16:9", "9:16", "1:1", "4:3", "2.35:1"];
-const TARGET_MODELS = [
-  { value: "",         label: "通用",     desc: "不针对特定模型" },
-  { value: "kling",    label: "Kling",    desc: "快手·运镜精准" },
-  { value: "veo",      label: "Veo 3",    desc: "Google·自然语言" },
-  { value: "runway",   label: "Runway",   desc: "风格简洁" },
-  { value: "wan",      label: "WAN 2.5",  desc: "阿里·结构化" },
-  { value: "seedance", label: "Seedance", desc: "字节·写实" },
-  { value: "dop",      label: "DoP",      desc: "Higgsfield·电影级" },
+const TARGET_MODELS: { value: string; label: string; desc: string; group: string }[] = [
+  { value: "",          label: "通用",         desc: "不针对特定模型",      group: "通用" },
+  // 云端视频
+  { value: "kling",     label: "Kling",        desc: "快手·运镜精准",       group: "云端视频" },
+  { value: "veo",       label: "Veo 3",        desc: "Google·自然语言",     group: "云端视频" },
+  { value: "runway",    label: "Runway",       desc: "风格简洁",            group: "云端视频" },
+  { value: "wan",       label: "WAN 2.5",      desc: "阿里·结构化",         group: "云端视频" },
+  { value: "seedance",  label: "Seedance",     desc: "字节·写实",           group: "云端视频" },
+  { value: "dop",       label: "DoP",          desc: "Higgsfield·电影级",   group: "云端视频" },
+  // ComfyUI 图像
+  { value: "qwen",      label: "Qwen-Image",   desc: "通义·双语/文字渲染",  group: "ComfyUI 图像" },
+  { value: "flux",      label: "Flux.1",       desc: "密集自然语言·强遵循", group: "ComfyUI 图像" },
+  { value: "sdxl",      label: "SDXL / Pony",  desc: "标签式+反向词",       group: "ComfyUI 图像" },
+  // ComfyUI 视频
+  { value: "wan_local", label: "Wan 2.2 本地", desc: "结构化运动",          group: "ComfyUI 视频" },
+  { value: "hunyuan",   label: "HunyuanVideo", desc: "腾讯·电影化",         group: "ComfyUI 视频" },
+  { value: "ltxv",      label: "LTX-Video",    desc: "快速·聚焦动作",       group: "ComfyUI 视频" },
+  { value: "cogvideox", label: "CogVideoX",    desc: "时序运动细节",        group: "ComfyUI 视频" },
 ];
+const TARGET_MODEL_GROUPS = ["通用", "云端视频", "ComfyUI 图像", "ComfyUI 视频"];
 
 const POLISH_MODES = [
   { value: "polish",   label: "润色" },
@@ -316,7 +327,7 @@ export const ScriptNode = memo(function ScriptNode({ id, selected, data }: Props
   // language is chosen at generation time (server writes promptText in it), so
   // no client-side translation is needed here.
   const addScenesFromResult = useCallback((
-    scenes: Array<{ description?: string; promptText?: string; cameraMovement?: string; duration?: number }>,
+    scenes: Array<{ description?: string; promptText?: string; negativePrompt?: string; cameraMovement?: string; duration?: number; lens?: string; colorGrade?: string; shotType?: string; lighting?: string }>,
   ): { count: number; target: "storyboard" | "comfyui_image" } => {
     const store = useCanvasStore.getState();
     const ownNode = store.nodes.find((n) => n.id === id);
@@ -699,7 +710,7 @@ export const ScriptNode = memo(function ScriptNode({ id, selected, data }: Props
           onClick={() => {
             if (anyPending) return;
             if (!payload.content?.trim()) { toast.error("请先填写脚本内容"); return; }
-            generateMutation.mutate({ content: payload.content ?? "", synopsis: payload.synopsis, model: llmModel, count: storyboardCount, promptLang });
+            generateMutation.mutate({ content: payload.content ?? "", synopsis: payload.synopsis, model: llmModel, count: storyboardCount, promptLang, targetVideoModel: targetModel || undefined });
           }}
           disabled={anyPending}
           className="nodrag flex items-center justify-center gap-1.5 w-full py-1.5 rounded-lg text-xs font-medium transition-all"
@@ -891,9 +902,23 @@ export const ScriptNode = memo(function ScriptNode({ id, selected, data }: Props
                     width: "100%",
                   }}
                 >
-                  {TARGET_MODELS.map((m) => (
-                    <option key={m.value} value={m.value}>{m.label} — {m.desc}</option>
-                  ))}
+                  {TARGET_MODEL_GROUPS.map((g) => {
+                    const items = TARGET_MODELS.filter((m) => m.group === g);
+                    if (items.length === 0) return null;
+                    // "通用" is a single ungrouped entry; the rest get optgroups.
+                    if (g === "通用") {
+                      return items.map((m) => (
+                        <option key={m.value} value={m.value}>{m.label} — {m.desc}</option>
+                      ));
+                    }
+                    return (
+                      <optgroup key={g} label={g}>
+                        {items.map((m) => (
+                          <option key={m.value} value={m.value}>{m.label} — {m.desc}</option>
+                        ))}
+                      </optgroup>
+                    );
+                  })}
                 </select>
               </div>
 

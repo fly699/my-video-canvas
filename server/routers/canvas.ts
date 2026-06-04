@@ -1146,6 +1146,81 @@ export const imageGenRouter = router({
 
 // ── Scripts ───────────────────────────────────────────────────────────────────
 
+// ── Script → storyboard scene generation: shared helpers ──────────────────────
+// Prompt-style guidance per target generation model so each scene's promptText is
+// written the way that model expects. Covers cloud video models AND mainstream
+// ComfyUI models (Qwen / Flux / SDXL / Wan / Hunyuan / LTXV / CogVideoX).
+const MODEL_PROMPT_GUIDES: Record<string, string> = {
+  // ── Cloud video models ──
+  kling: "Kling (Kuaishou): excellent precise camera control. Use detailed camera moves (push-in, dolly, orbital pan, crane). Rich motion with emotional narrative; describe subject actions precisely.",
+  veo: "Veo 3.1 (Google): natural-language understanding. Use flowing natural English; emphasize realistic physics, human emotion, complex interaction. Write like a film scene description — no keyword lists.",
+  runway: "Runway Gen-4.5: concise style-focused prompt under 60 words. Lead with aesthetic style, then subject and action: [cinematography style], [subject] [action], [environment], [lighting].",
+  wan: "Wan 2.5 (Alibaba, cloud): structured keyword prompt — subject, action, environment/background, visual style, lighting, camera angle. Good for stylized artistic content.",
+  seedance: "Seedance 2 (ByteDance): photorealistic. Include shot type (ECU/CU/MS/LS), lens focal length, lighting setup, color-grade style, specific camera movement. Professional cinematography terms.",
+  dop: "DoP/Higgsfield: professional director's language. Specify focal length, aperture, lighting type & color temperature, film-stock look, composition rule, emotional subtext. Cinematic excellence.",
+  // ── ComfyUI image models ──
+  qwen: "Qwen-Image (ComfyUI, Alibaba): bilingual (中/英) natural-language description, excellent legible-text rendering. Write a flowing, detailed scene — subject, setting, composition, lighting, art style — in natural sentences. May specify on-screen text. Avoid keyword spam and weight syntax.",
+  flux: "Flux.1 (ComfyUI, Black Forest Labs): dense, highly prompt-adherent natural language. One rich paragraph: subject + action, composition & framing, lens/optics, lighting direction & quality, color palette, mood. No tag lists, no weight syntax, no inline negatives.",
+  sdxl: "SDXL / Pony (ComfyUI): Danbooru-style comma-separated tags plus quality boosters. Order: subject tags, details, action, setting, art style, lighting, (masterpiece, best quality, highly detailed). Relies heavily on a strong separate negative prompt.",
+  // ── ComfyUI video models ──
+  wan_local: "Wan 2.2 (ComfyUI local, Alibaba): structured motion prompt — subject, concrete physical action, environment, camera movement, visual style. Describe motion that unfolds over time. Works for T2V and I2V.",
+  hunyuan: "HunyuanVideo (ComfyUI, Tencent): cinematic natural-language film prose. Emphasize subject motion, camera movement, atmosphere and lighting evolution across the shot.",
+  ltxv: "LTX-Video (ComfyUI): concise, motion-first prompt under ~50 words. State the subject, the single key action/motion, the camera move, and the setting. Avoid static descriptive clutter.",
+  cogvideox: "CogVideoX (ComfyUI): detailed temporal description — how subject and camera evolve through the shot, beat by beat. Specify motion arc, pacing and continuity.",
+};
+
+function buildModelGuide(target?: string): string {
+  if (!target) return "General cinematic: descriptive prompts with subject, action, composition, lighting, color and camera information, plus a quality negative prompt.";
+  return MODEL_PROMPT_GUIDES[target] ?? "General cinematic: descriptive prompts with visual detail, lighting, color and camera information.";
+}
+
+const VALID_CAMERA_MOVEMENTS = ["static", "pan-left", "pan-right", "zoom-in", "zoom-out", "tilt-up", "tilt-down", "tracking"];
+
+export interface GeneratedScene {
+  description: string;
+  promptText: string;
+  negativePrompt: string;
+  cameraMovement: string;
+  duration: number;
+  shotType?: string;
+  lens?: string;
+  lighting?: string;
+  colorGrade?: string;
+}
+
+/** The JSON field contract handed to the LLM for each storyboard scene. Includes
+ *  professional cinematography fields + a negative prompt (critical for ComfyUI). */
+function sceneFieldsInstruction(promptLangName: string, avgDuration: number): string {
+  return `Each element MUST be an object with EXACTLY these fields:
+- "description": string — Chinese (中文), 2-3 sentences describing what the viewer sees.
+- "promptText": string — ${promptLangName}. A detailed, production-ready generation prompt that STRICTLY FOLLOWS THE STYLE GUIDE above. Bake the professional cinematography (shot size, lens, lighting, color) into it the way the target model expects.
+- "negativePrompt": string — ${promptLangName}. Quality defects / unwanted elements to avoid (e.g. blurry, low quality, deformed anatomy, extra limbs, text artifacts, watermark, oversaturation, harsh banding). Tailor to the medium.
+- "shotType": string — one of: ECU, CU, MS, MLS, WS, establishing.
+- "lens": string — a focal length such as 24mm, 35mm, 50mm, 85mm, 135mm.
+- "lighting": string — short lighting setup (e.g. "soft key + rim, golden hour", "low-key chiaroscuro 3200K").
+- "colorGrade": string — short grade/palette (e.g. "warm teal-orange", "desaturated cold blue", "Kodak Portra").
+- "cameraMovement": string — one of: static, pan-left, pan-right, zoom-in, zoom-out, tilt-up, tilt-down, tracking.
+- "duration": number — integer seconds, around ${avgDuration}.`;
+}
+
+/** Validate + normalize one raw scene object from the LLM into a GeneratedScene. */
+function normalizeScene(raw: Record<string, unknown>, avgDuration: number): GeneratedScene {
+  const str = (v: unknown) => (typeof v === "string" ? v.trim() : "");
+  const cam = str(raw.cameraMovement);
+  const durNum = typeof raw.duration === "number" && isFinite(raw.duration) ? Math.round(raw.duration) : avgDuration;
+  return {
+    description: str(raw.description),
+    promptText: str(raw.promptText),
+    negativePrompt: str(raw.negativePrompt),
+    cameraMovement: VALID_CAMERA_MOVEMENTS.includes(cam) ? cam : "static",
+    duration: Math.max(1, Math.min(120, durNum || avgDuration)),
+    shotType: str(raw.shotType) || undefined,
+    lens: str(raw.lens) || undefined,
+    lighting: str(raw.lighting) || undefined,
+    colorGrade: str(raw.colorGrade) || undefined,
+  };
+}
+
 export const scriptsRouter = router({
   generateStoryboards: protectedProcedure
     .input(
@@ -1153,6 +1228,7 @@ export const scriptsRouter = router({
         content: z.string().min(1),
         synopsis: z.string().optional(),
         count: z.number().int().min(2).max(8).default(4),
+        targetVideoModel: z.string().optional(),
         model: z.string().optional(),
         promptLang: z.enum(["zh", "en"]).default("en"),
       })
@@ -1160,14 +1236,16 @@ export const scriptsRouter = router({
     .mutation(async ({ ctx, input }) => {
       return dedupe("scripts.generateStoryboards", ctx.user.id, input, async () => {
       const promptLangName = input.promptLang === "zh" ? "Chinese (中文)" : "English";
-      const systemPrompt = `You are a professional film director and storyboard artist.
-Given a script, break it into exactly ${input.count} visual storyboard scenes.
-Output ONLY a valid JSON array with no markdown fences, no explanation.
-Each element must have these fields:
-- "description": string (2-3 sentences, what the viewer sees)
-- "promptText": string (${promptLangName}, detailed cinematic prompt for image generation — write it in ${promptLangName})
-- "cameraMovement": string (one of: static, pan-left, pan-right, zoom-in, zoom-out, tilt-up, tilt-down, tracking)
-- "duration": number (scene duration in seconds, integer 2-10)`;
+      // Heuristic average so the LLM picks sane per-scene durations even though
+      // this path has no explicit total-duration input.
+      const avgDuration = 5;
+      const systemPrompt = `You are a professional film director and storyboard artist. Break the given script into exactly ${input.count} visual storyboard scenes.
+
+Target generation-model prompt style guide (write every promptText to match it):
+${buildModelGuide(input.targetVideoModel)}
+
+Output ONLY a valid JSON array — no markdown fences, no prose before or after.
+${sceneFieldsInstruction(promptLangName, avgDuration)}`;
 
       const userContent = [
         input.synopsis ? `Synopsis: ${input.synopsis}\n\n` : "",
@@ -1180,19 +1258,21 @@ Each element must have these fields:
           { role: "user" as const, content: userContent },
         ],
         model: input.model ?? "claude-sonnet-4-5-20250929",
+        maxTokens: 4000,
       });
 
       const text = extractTextContent(response);
       const jsonMatch = text.match(/\[[\s\S]*\]/);
       if (!jsonMatch) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "AI 未返回有效 JSON" });
 
-      let scenes: Array<{ description: string; promptText: string; cameraMovement?: string; duration?: number }>;
+      let raw: Array<Record<string, unknown>>;
       try {
-        scenes = JSON.parse(jsonMatch[0]);
+        raw = JSON.parse(jsonMatch[0]);
       } catch {
         throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "JSON 解析失败" });
       }
-      return { scenes: scenes.slice(0, input.count) };
+      const scenes = raw.slice(0, input.count).map((s) => normalizeScene(s, avgDuration));
+      return { scenes };
       });
     }),
 
@@ -1220,18 +1300,7 @@ Each element must have these fields:
       // Long latency (20-40s) makes user-driven retry probable; we collapse identical
       // concurrent submits into one external LLM call & charge.
       return dedupe("scripts.generateFullScript", ctx.user.id, input, async () => {
-      const MODEL_PROMPT_GUIDES: Record<string, string> = {
-        kling: "Kling (Kuaishou): Excellent precise camera control. Use detailed camera moves: push-in, dolly, orbital pan, crane shot. Rich motion expression with emotional narrative. Describe subject actions precisely.",
-        veo: "Veo 3.1 (Google): Natural language understanding. Use flowing natural English. Emphasize realistic physics, human emotions, complex interactions. Write like a film scene description. No keyword lists.",
-        runway: "Runway Gen-4.5: Concise style-focused prompts under 60 words. Lead with aesthetic style, then subject and action. Format: [cinematography style], [subject] [action], [environment], [lighting].",
-        wan: "Wan 2.5 (Alibaba): Structured keyword prompts. Format: subject, action description, environment/background, visual style, lighting condition, camera angle. Good for stylized artistic content.",
-        seedance: "Seedance 2 (ByteDance): Photorealistic output. Include: shot type (ECU/CU/MS/LS), lens focal length, lighting setup, color grade style, specific camera movement. Professional cinematography terminology.",
-        dop: "DoP/Higgsfield: Professional director's language. Specify: focal length, aperture suggestion, lighting type and color temperature, film stock style, composition rule, emotional subtext. Cinematic excellence.",
-      };
-
-      const modelGuide = input.targetVideoModel
-        ? (MODEL_PROMPT_GUIDES[input.targetVideoModel] ?? "General cinematic: descriptive English prompts with visual details, lighting, and camera information.")
-        : "General cinematic: descriptive English prompts with visual details, lighting, camera information, and mood.";
+      const modelGuide = buildModelGuide(input.targetVideoModel);
 
       const avgDuration = Math.round(input.totalDuration / input.sceneCount);
       const promptLangName = input.promptLang === "zh" ? "Chinese (中文)" : "English";
@@ -1247,20 +1316,25 @@ Each element must have these fields:
       // affects scene promptText in Call 2).
 
       // ── Call 1: Chinese narrative script (plain text, full token budget) ──
-      const scriptSystemPrompt = `你是专业编剧和 AI 视频导演。根据故事梗概创作一部完整的中文分镜剧本。
+      // Tuned for Claude: explicit role, hard constraints, and a clear output
+      // contract up front (Claude follows structured directives reliably).
+      const scriptSystemPrompt = `你是顶尖的专业编剧兼 AI 视频导演，擅长把一句梗概扩写成可直接拍摄的分镜剧本。
 
-制作要求：
+# 制作规格
 - 类型：${input.genre ?? "通用"}
 - 视觉风格：${input.style ?? "电影感"}
 - 情感基调：${input.mood ?? "中性"}
 - 画面比例：${input.aspectRatio}
 - 总时长：约 ${input.totalDuration} 秒，共 ${input.sceneCount} 个场景（平均每场景 ${avgDuration} 秒）
 
-要求：
-1. 全程用中文创作，采用专业剧本格式，包含场景标题（场景一、场景二……）、生动的动作描写和氛围描述。
-2. 叙事连贯，覆盖全部 ${input.sceneCount} 个场景。
-3. 至少 200 字。
-4. 只输出剧本正文，不要 JSON、不要额外说明、不要 markdown 代码块。`;
+# 写作要求
+1. 全程中文，专业剧本格式：每个场景以「场景一/场景二……」开头，含地点·时间、镜头与动作描写、人物表演与情绪、环境氛围。
+2. 叙事连贯，有起承转合，完整覆盖 ${input.sceneCount} 个场景，节奏与单场景时长匹配。
+3. 善用电影化的视听语言（景别、运镜、光影、色调），但以可读的中文叙述呈现，便于后续逐场拆解为生成提示词。
+4. 正文不少于 200 字。
+
+# 输出
+只输出剧本正文。禁止 JSON、禁止解释、禁止 markdown 代码块。`;
 
       const fullScriptSystemPrompt = input.templatePromptOverride
         ? `${scriptSystemPrompt}\n\n## 模板专属写作要求\n${input.templatePromptOverride}`
@@ -1278,18 +1352,13 @@ Each element must have these fields:
 
       // ── Call 2: scene breakdown derived from the generated script ──
       // promptText language follows the toggle; description stays Chinese.
-      const scenesSystemPrompt = `You are a professional film director and storyboard artist.
-Given a Chinese script, break it into exactly ${input.sceneCount} visual storyboard scenes.
+      const scenesSystemPrompt = `You are a professional film director and storyboard artist. Break the given Chinese script into exactly ${input.sceneCount} visual storyboard scenes that together tell the whole story in order.
 
-Target Video Model Prompt Style Guide:
+Target generation-model prompt style guide (write every promptText to match it):
 ${modelGuide}
 
-Output ONLY a valid JSON array with no markdown fences, no explanation.
-Each element must have these fields:
-- "description": string (Chinese 中文, 2-3 sentences, what the viewer sees)
-- "promptText": string (${promptLangName}, detailed cinematic prompt for image generation — write it in ${promptLangName}, follow the style guide above strictly)
-- "cameraMovement": string (one of: static, pan-left, pan-right, zoom-in, zoom-out, tilt-up, tilt-down, tracking)
-- "duration": number (scene duration in seconds, integer, around ${avgDuration})`;
+Output ONLY a valid JSON array — no markdown fences, no prose before or after the array.
+${sceneFieldsInstruction(promptLangName, avgDuration)}`;
 
       // Feed the generated script (fallback to synopsis if the model returned
       // nothing) so scenes match the actual narrative. Cap input to keep the
@@ -1306,10 +1375,11 @@ Each element must have these fields:
 
       const scenesText = extractTextContent(scenesResponse);
       const scenesMatch = scenesText.match(/\[[\s\S]*\]/);
-      let scenes: Array<{ description?: string; promptText?: string; cameraMovement?: string; duration?: number }> = [];
+      let scenes: GeneratedScene[] = [];
       if (scenesMatch) {
         try {
-          scenes = JSON.parse(scenesMatch[0]);
+          const rawScenes = JSON.parse(scenesMatch[0]) as Array<Record<string, unknown>>;
+          scenes = rawScenes.slice(0, input.sceneCount).map((s) => normalizeScene(s, avgDuration));
         } catch {
           // Tolerate scene-parse failure: the script (the user's main concern)
           // is already in hand; return it with no scenes rather than failing all.
@@ -1323,7 +1393,7 @@ Each element must have these fields:
 
       return {
         scriptText,
-        scenes: scenes.slice(0, input.sceneCount),
+        scenes,
       };
       });
     }),

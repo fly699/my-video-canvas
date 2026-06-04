@@ -89,7 +89,7 @@ interface CanvasStore {
   onConnect: (connection: Connection) => void;
   addNode: (type: NodeType, position: { x: number; y: number }) => CanvasNode;
   batchAddSceneNodes: (
-    scenes: Array<{ description?: string; promptText?: string; cameraMovement?: string; duration?: number }>,
+    scenes: Array<{ description?: string; promptText?: string; negativePrompt?: string; cameraMovement?: string; duration?: number; lens?: string; colorGrade?: string; shotType?: string; lighting?: string }>,
     sourceNodeId: string,
     sourcePosition: { x: number; y: number },
     targetType?: "storyboard" | "comfyui_image"
@@ -282,6 +282,7 @@ export const useCanvasStore = create<CanvasStore>((set, get) => ({
                 // Scene image prompt → ComfyUI prompt; the user fills ckpt/server later.
                 workflowTemplate: "txt2img" as const,
                 prompt: scene.promptText || scene.description || "",
+                negPrompt: scene.negativePrompt || undefined,
               },
               projectId,
             }
@@ -291,8 +292,11 @@ export const useCanvasStore = create<CanvasStore>((set, get) => ({
               payload: {
                 description: scene.description ?? "",
                 promptText: scene.promptText ?? "",
+                negativePrompt: scene.negativePrompt || undefined,
                 cameraMovement: scene.cameraMovement,
                 duration: scene.duration,
+                lens: scene.lens || undefined,
+                colorTone: scene.colorGrade || undefined,
               },
               projectId,
             },
