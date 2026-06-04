@@ -1271,10 +1271,13 @@ function DownloadsAdminPanel() {
         ))}
         <span style={{ marginLeft: "auto", display: "inline-flex", alignItems: "center", gap: 6, fontSize: 12, color: "var(--c-t3,rgba(255,255,255,0.5))" }}>
           批准有效期
-          <select value={approveHours} onChange={(e) => setApproveHours(Number(e.target.value))}
-            style={{ fontSize: 12, padding: "3px 6px", borderRadius: 6, border: "1px solid rgba(255,255,255,0.14)", background: "rgba(255,255,255,0.04)", color: "var(--c-t1,#f0f0f4)", cursor: "pointer" }}>
-            {Array.from({ length: 24 }, (_, i) => i + 1).map((h) => <option key={h} value={h}>{h} 小时</option>)}
-          </select>
+          <input
+            type="number" min={1} max={72} value={approveHours}
+            onChange={(e) => { const v = Math.max(1, Math.min(72, Math.round(Number(e.target.value) || 1))); setApproveHours(v); }}
+            title="1–72 小时"
+            style={{ width: 64, fontSize: 12, padding: "3px 6px", borderRadius: 6, border: "1px solid rgba(255,255,255,0.14)", background: "rgba(255,255,255,0.04)", color: "var(--c-t1,#f0f0f4)" }}
+          />
+          <span style={{ fontSize: 12, color: "var(--c-t3,rgba(255,255,255,0.5))" }}>小时</span>
         </span>
       </div>
       <div style={{ fontSize: 12, color: "var(--c-t3, rgba(255,255,255,0.4))" }}>{isFetching ? "加载中…" : `${grants?.length ?? 0} 条`}</div>

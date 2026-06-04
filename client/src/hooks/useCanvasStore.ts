@@ -82,6 +82,10 @@ interface CanvasStore {
 
   // Actions
   setProjectId: (id: number) => void;
+  /** Current logged-in user id — stamped as `createdBy` on nodes this client
+   *  creates, so collaborators can be distinguished by a per-creator color dot. */
+  currentUserId: number | null;
+  setCurrentUserId: (id: number | null) => void;
   setNodes: (nodes: CanvasNode[]) => void;
   setEdges: (edges: CanvasEdge[]) => void;
   onNodesChange: (changes: NodeChange[]) => void;
@@ -136,12 +140,14 @@ export const useCanvasStore = create<CanvasStore>((set, get) => ({
   selectedNodeIds: [],
   collaborators: new Map(),
   projectId: null,
+  currentUserId: null,
   isDirty: false,
   deletedNodeIds: [],
   past: [],
   future: [],
 
   setProjectId: (id) => set({ projectId: id }),
+  setCurrentUserId: (id) => set({ currentUserId: id }),
 
   // setNodes / setEdges are used for initial load — don't push to history
   setNodes: (nodes) => set({ nodes }),
@@ -237,6 +243,7 @@ export const useCanvasStore = create<CanvasStore>((set, get) => ({
       title = `${base} #${maxNum + 1}`;
     }
 
+    const uid = get().currentUserId;
     const newNode: CanvasNode = {
       id,
       type: "custom",
@@ -244,7 +251,9 @@ export const useCanvasStore = create<CanvasStore>((set, get) => ({
       data: {
         nodeType: type,
         title,
-        payload: getDefaultPayload(type),
+        // Stamp creator id into the payload (transient, no schema change — same
+        // pattern as `pinned`) so each node shows its placer's collaborator color.
+        payload: { ...getDefaultPayload(type), ...(uid != null ? { createdBy: uid } : {}) } as NodeData,
         projectId,
       },
       style: {
@@ -268,6 +277,7 @@ export const useCanvasStore = create<CanvasStore>((set, get) => ({
     set((state) => {
       const projectId = state.nodes.find((n) => n.id === sourceNodeId)?.data.projectId ?? storeProjectId;
       const isComfy = targetType === "comfyui_image";
+      const sceneUid = get().currentUserId ?? undefined;
       const config = getNodeConfig(isComfy ? "comfyui_image" : "storyboard");
       const nodeWidth = (config.defaultWidth as number) ?? 360;
       const newNodes: CanvasNode[] = scenes.map((scene, i) => ({
@@ -283,6 +293,7 @@ export const useCanvasStore = create<CanvasStore>((set, get) => ({
                 workflowTemplate: "txt2img" as const,
                 prompt: scene.promptText || scene.description || "",
                 negPrompt: scene.negativePrompt || undefined,
+                createdBy: sceneUid,
               },
               projectId,
             }
@@ -297,6 +308,7 @@ export const useCanvasStore = create<CanvasStore>((set, get) => ({
                 duration: scene.duration,
                 lens: scene.lens || undefined,
                 colorTone: scene.colorGrade || undefined,
+                createdBy: sceneUid,
               },
               projectId,
             },
@@ -390,6 +402,9 @@ export const useCanvasStore = create<CanvasStore>((set, get) => ({
     ];
     const clonedPayload = JSON.parse(JSON.stringify(node.data.payload)) as Record<string, unknown>;
     for (const k of RUNTIME_FIELDS) delete clonedPayload[k];
+    // The duplicate is authored by whoever clicked duplicate.
+    const dupUid = get().currentUserId;
+    if (dupUid != null) clonedPayload.createdBy = dupUid;
     const newNode: CanvasNode = {
       ...node,
       id: newId,

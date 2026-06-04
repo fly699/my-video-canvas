@@ -104,9 +104,9 @@ export const adminDownloadsRouter = router({
     }),
 
   decide: adminProcedure
-    .input(z.object({ grantId: z.number(), approve: z.boolean(), note: z.string().max(500).optional(), expiresHours: z.number().int().min(1).max(24).optional() }))
+    .input(z.object({ grantId: z.number(), approve: z.boolean(), note: z.string().max(500).optional(), expiresHours: z.number().int().min(1).max(72).optional() }))
     .mutation(async ({ ctx, input }) => {
-      // Approved grants expire (default 1 hour, 1–24h) so a one-time download
+      // Approved grants expire (default 1 hour, 1–72h) so a one-time download
       // must be used promptly — a stale approval can't be redeemed later.
       const expiresAt = input.approve ? new Date(Date.now() + (input.expiresHours ?? 1) * 3600_000) : null;
       await db.decideDownloadGrant(input.grantId, ctx.user.id, input.approve, input.note ?? null, expiresAt);
