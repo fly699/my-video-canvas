@@ -4,13 +4,15 @@ import { useCanvasStore } from "../../../hooks/useCanvasStore";
 import type { AgentNodeData, AgentMessage, AgentOperation } from "../../../../../shared/types";
 import { trpc } from "@/lib/trpc";
 import { toast } from "sonner";
-import { Sparkles, Loader2, Send, Check, Plus, Link2, Pencil, Trash2, LayoutGrid, Boxes, Wrench, Zap } from "lucide-react";
+import { Sparkles, Loader2, Send, Check, Plus, Link2, Pencil, Trash2, LayoutGrid, Boxes, Wrench, Zap, BookTemplate, Focus } from "lucide-react";
 import { LLMModelPicker, type LLMModelId } from "../LLMModelPicker";
 import { NodeTextArea } from "../NodeTextInput";
 import { applyAgentOperations, buildGraphSummary } from "@/lib/agentApply";
 import { getNodeConfig } from "../../../lib/nodeConfig";
 import { LAYOUTS, computeLayout } from "@/lib/layoutUtils";
 import { estimateOpsBudget, budgetLabel } from "@/lib/agentBudget";
+import { AGENT_RECIPES } from "@/lib/agentRecipes";
+import { useWorkflowRunState } from "../../../contexts/WorkflowRunContext";
 
 interface Props {
   id: string;
@@ -46,11 +48,24 @@ export const AgentNode = memo(function AgentNode({ id, selected, data }: Props) 
   const [appliedIdx, setAppliedIdx] = useState<Set<number>>(new Set());
   const [layoutIdx, setLayoutIdx] = useState(0);
   const [analyzeFull, setAnalyzeFull] = useState(false);
+  const [showRecipes, setShowRecipes] = useState(false);
   const scrollRef = useRef<HTMLDivElement>(null);
+  // Track agent-initiated workflow runs (执行感知 + 自动续作).
+  const runInitiatedRef = useRef(false);
+  const prevRunningRef = useRef(false);
+  const sawRunningRef = useRef(false);
   const chat = trpc.agent.chat.useMutation();
   const templatesQuery = trpc.comfyTemplates.list.useQuery(undefined, { staleTime: 30_000 });
   const analyzeMut = trpc.comfyTemplates.analyzeLibrary.useMutation();
+  const balanceQuery = trpc.poyo.balance.useQuery(undefined, { staleTime: 60_000 });
   const comfyOnly = payload.comfyOnlyMode ?? false;
+  // Selected canvas nodes (excluding this agent) → drives 局部编辑微调.
+  // NB: select the stable array ref and filter in render — filtering inside the
+  // selector returns a fresh array each call and triggers an infinite re-render.
+  const selectedNodeIdsRaw = useCanvasStore((s) => s.selectedNodeIds);
+  const selectedNodeIds = selectedNodeIdsRaw.filter((nid) => nid !== id);
+  // Workflow run state → drives 执行感知 + 自动续作.
+  const runState = useWorkflowRunState();
 
   const handleAnalyzeLibrary = async () => {
     if (analyzeMut.isPending) return;
@@ -88,6 +103,17 @@ export const AgentNode = memo(function AgentNode({ id, selected, data }: Props) 
     scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight });
   }, [messages.length, chat.isPending]);
 
+  // 余额/成本守卫：估算本批生成的云端消耗，与 Poyo 余额比较。返回 true=可继续。
+  const budgetGuardPasses = (ops: AgentOperation[]): boolean => {
+    const est = estimateOpsBudget(ops);
+    const bal = balanceQuery.data;
+    if (est.credits > 0 && bal?.configured && typeof bal.creditsAmount === "number" && est.credits > bal.creditsAmount) {
+      toast.error(`预计消耗约 ${est.credits} credits，超过当前余额 ${bal.creditsAmount}，已暂停自动执行。请充值或减少生成节点。`);
+      return false;
+    }
+    return true;
+  };
+
   const handleApply = (msgIdx: number, ops: AgentOperation[]) => {
     if (ops.length === 0) return;
     const pos = useCanvasStore.getState().nodes.find((n) => n.id === id)?.position ?? { x: 0, y: 0 };
@@ -102,17 +128,18 @@ export const AgentNode = memo(function AgentNode({ id, selected, data }: Props) 
     } else {
       toast.success(parts.length ? `已应用：${parts.join(" · ")}` : "无可应用的操作");
     }
-    // 自动执行（一句话成片）：应用了新建/更新后，发起一次工作流运行（经画布确认）。
-    if (autoRun && (r.created > 0 || r.updated > 0)) {
+    // 自动执行（一句话成片）：应用了新建/更新后，发起一次工作流运行（经画布确认 + 余额守卫）。
+    if (autoRun && (r.created > 0 || r.updated > 0) && budgetGuardPasses(ops)) {
+      runInitiatedRef.current = true;
       useCanvasStore.getState().requestRun(null);
     }
   };
 
-  const handleSend = async (override?: string) => {
+  const handleSend = async (override?: string, focusNodeIds?: string[]) => {
     const text = (override ?? input).trim();
     if (!text || chat.isPending) return;
     const history = messages.map((m) => ({ role: m.role, content: m.content }));
-    const summary = buildGraphSummary(id);
+    const summary = buildGraphSummary(id, focusNodeIds ? { focusNodeIds } : {});
     const afterUser: AgentMessage[] = [...messages, { role: "user", content: text }];
     const assistantIdx = afterUser.length; // index the assistant reply will occupy
     setMessages(afterUser);
@@ -131,6 +158,48 @@ export const AgentNode = memo(function AgentNode({ id, selected, data }: Props) 
 
   // 运行自愈：让智能体检查画布上运行失败/缺参的节点并给出修复方案（节点状态已随 graphSummary 提供）。
   const handleSelfHeal = () => handleSend("请检查当前画布上运行失败或缺少必要参数的节点，并用 update / connect 操作给出修复方案（修正参数、补全缺失连接或参考图）。若无问题请说明。");
+
+  // 成片配方：一键把配方展开为完整节点链并应用（走与智能体输出相同的应用路径）。
+  const handleApplyRecipe = (recipeId: string) => {
+    const recipe = AGENT_RECIPES.find((x) => x.id === recipeId);
+    if (!recipe) return;
+    setShowRecipes(false);
+    const ops = recipe.build(input.trim() || undefined);
+    const pos = useCanvasStore.getState().nodes.find((n) => n.id === id)?.position ?? { x: 0, y: 0 };
+    const templates = (templatesQuery.data ?? []).map((t) => ({ id: t.id, label: t.label, payload: t.payload }));
+    const r = applyAgentOperations(ops, pos, { templates });
+    const parts = [r.created && `新建 ${r.created}`, r.connected && `连接 ${r.connected}`].filter(Boolean);
+    setMessages([...messages, { role: "assistant", content: `已套用配方「${recipe.name}」：${parts.join(" · ") || "0 步"}。可继续让我填充/调整各节点内容，或直接运行。`, operations: [] }]);
+    toast.success(`已套用配方：${recipe.name}`);
+  };
+
+  // 局部编辑微调：只针对当前选中的节点，带上它们的参数上下文让智能体改。
+  const handleRefineSelected = () => {
+    if (selectedNodeIds.length === 0) { toast.info("请先在画布上选中要微调的节点"); return; }
+    const text = input.trim() || "请优化/完善这些选中节点的参数与内容。";
+    handleSend(`【仅微调选中的 ${selectedNodeIds.length} 个节点，不要新建无关节点；只对它们用 update 操作】\n${text}`, selectedNodeIds);
+    setInput("");
+  };
+
+  // ── 执行感知 + 自动续作 ───────────────────────────────────────────────────
+  // 当本智能体发起的运行结束时，汇报结果；若有失败且开启自动执行，发起自愈闭环。
+  useEffect(() => {
+    if (runState.running && runInitiatedRef.current) sawRunningRef.current = true;
+    const justFinished = prevRunningRef.current && !runState.running;
+    prevRunningRef.current = runState.running;
+    if (!justFinished || !runInitiatedRef.current || !sawRunningRef.current) return;
+    runInitiatedRef.current = false;
+    sawRunningRef.current = false;
+    const nodesNow = useCanvasStore.getState().nodes;
+    const titleOf = (nid: string) => nodesNow.find((n) => n.id === nid)?.data.title ?? nid;
+    const failed = runState.failedIds;
+    let content = `运行完成：✅ ${runState.completedIds.length} 个成功${failed.length ? `，❌ ${failed.length} 个失败` : ""}。`;
+    if (failed.length) {
+      content += "\n" + failed.slice(0, 5).map((nid) => `• ${titleOf(nid)}：${runState.nodeStates[nid]?.errorMessage ?? "失败"}`).join("\n");
+    }
+    setMessages([...freshMessages(), { role: "assistant", content, operations: [] }]);
+    if (failed.length > 0 && autoRun) handleSelfHeal();
+  }, [runState.running]); // eslint-disable-line react-hooks/exhaustive-deps
 
   return (
     <BaseNode id={id} selected={selected} nodeType="agent" title={data.title} minHeight={420} resizable showHandles={false}>
@@ -177,6 +246,11 @@ export const AgentNode = memo(function AgentNode({ id, selected, data }: Props) 
                     return lbl ? (
                       <div style={{ padding: "2px 9px 4px", fontSize: 10, color: "var(--c-t4)", display: "flex", alignItems: "center", gap: 4 }}>
                         <Zap className="w-3 h-3" style={{ flexShrink: 0 }} />预估消耗：{lbl}
+                        {b.credits > 0 && balanceQuery.data?.configured && typeof balanceQuery.data.creditsAmount === "number" && (
+                          <span style={{ color: b.credits > balanceQuery.data.creditsAmount ? "oklch(0.62 0.20 25)" : "var(--c-t4)" }}>
+                            （余额 {balanceQuery.data.creditsAmount}）
+                          </span>
+                        )}
                       </div>
                     ) : null;
                   })()}
@@ -209,6 +283,43 @@ export const AgentNode = memo(function AgentNode({ id, selected, data }: Props) 
         <div style={{ flexShrink: 0, borderTop: "1px solid var(--c-bd1)", padding: "8px 10px", display: "flex", flexDirection: "column", gap: 7 }}>
           {/* Tools row */}
           <div style={{ display: "flex", gap: 6, alignItems: "center", flexWrap: "wrap" }}>
+            <div style={{ position: "relative" }}>
+              <button
+                onClick={() => setShowRecipes((v) => !v)}
+                className="nodrag flex items-center gap-1 px-2 py-1 rounded-lg text-[10px] font-medium"
+                title="成片配方：一键展开常见成片的完整节点链"
+                style={{ background: accentA(0.1), border: `1px solid ${accentA(0.3)}`, color: accent, cursor: "pointer" }}
+              >
+                <BookTemplate className="w-3 h-3" />配方
+              </button>
+              {showRecipes && (
+                <div className="nodrag nowheel" style={{ position: "absolute", bottom: "calc(100% + 4px)", left: 0, zIndex: 20, width: 230, maxHeight: 240, overflowY: "auto", background: "var(--c-surface)", border: `1px solid ${accentA(0.3)}`, borderRadius: 10, padding: 4, boxShadow: "0 8px 24px rgba(0,0,0,0.3)" }}>
+                  {AGENT_RECIPES.map((rec) => (
+                    <button
+                      key={rec.id}
+                      onClick={() => handleApplyRecipe(rec.id)}
+                      className="nodrag"
+                      style={{ display: "block", width: "100%", textAlign: "left", padding: "6px 8px", borderRadius: 7, background: "transparent", border: "none", cursor: "pointer", color: "var(--c-t1)" }}
+                      onMouseEnter={(e) => { e.currentTarget.style.background = accentA(0.1); }}
+                      onMouseLeave={(e) => { e.currentTarget.style.background = "transparent"; }}
+                    >
+                      <div style={{ fontSize: 11.5, fontWeight: 600 }}>{rec.name}</div>
+                      <div style={{ fontSize: 10, color: "var(--c-t4)" }}>{rec.desc}</div>
+                    </button>
+                  ))}
+                  <div style={{ fontSize: 9.5, color: "var(--c-t4)", padding: "4px 8px 2px", lineHeight: 1.4 }}>提示：先在输入框写主题，再选配方即可作为脚本梗概。</div>
+                </div>
+              )}
+            </div>
+            <button
+              onClick={handleRefineSelected}
+              disabled={chat.isPending || selectedNodeIds.length === 0}
+              className="nodrag flex items-center gap-1 px-2 py-1 rounded-lg text-[10px] font-medium"
+              title="局部编辑：只针对画布上选中的节点微调（不新建无关节点）"
+              style={{ background: selectedNodeIds.length ? accentA(0.1) : "var(--c-surface)", border: `1px solid ${selectedNodeIds.length ? accentA(0.3) : "var(--c-bd2)"}`, color: selectedNodeIds.length ? accent : "var(--c-t4)", cursor: selectedNodeIds.length && !chat.isPending ? "pointer" : "not-allowed" }}
+            >
+              <Focus className="w-3 h-3" />微调选中{selectedNodeIds.length ? `(${selectedNodeIds.length})` : ""}
+            </button>
             <button
               onClick={handleSmartLayout}
               className="nodrag flex items-center gap-1 px-2 py-1 rounded-lg text-[10px] font-medium"

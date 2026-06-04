@@ -126,11 +126,12 @@ const SUMMARY_FIELDS: Partial<Record<NodeType, string[]>> = {
   note: ["content"],
 };
 
-export function buildGraphSummary(excludeNodeId: string): string {
+export function buildGraphSummary(excludeNodeId: string, opts: { focusNodeIds?: string[] } = {}): string {
   const { nodes, edges } = useCanvasStore.getState();
+  const focus = opts.focusNodeIds && opts.focusNodeIds.length ? new Set(opts.focusNodeIds) : null;
   const clip = (v: unknown) => (typeof v === "string" ? (v.length > 60 ? v.slice(0, 60) + "…" : v) : v);
   const nodeLines = nodes
-    .filter((n) => n.id !== excludeNodeId)
+    .filter((n) => n.id !== excludeNodeId && (!focus || focus.has(n.id)))
     .map((n) => {
       const type = n.data.nodeType as NodeType;
       const fields = SUMMARY_FIELDS[type] ?? [];
