@@ -159,10 +159,25 @@ export const PromptNode = memo(function PromptNode({ id, selected, data }: Props
       onRun={handleRunPipeline} running={busy === "pipeline"} canRun={canRun} hasResult={!!payload.positivePrompt?.trim()}
     >
       <div className="flex flex-col h-full p-3.5 gap-3">
-        {/* Collapsed summary (professional mode): positive + negative prompts at a glance */}
+        {/* Collapsed summary (professional mode): fills the remaining node height and
+            scrolls, so a resized-tall node has no dead space and long prompts are
+            fully readable (no line clamp) by scrolling. */}
         {!expanded && (
           hasAnyPrompt ? (
-            promptSummary
+            <div className="nodrag nowheel" style={{ flex: 1, minHeight: 0, overflowY: "auto", display: "flex", flexDirection: "column", gap: 8 }}>
+              {pos && (
+                <div>
+                  <div style={{ fontSize: 9, fontWeight: 700, letterSpacing: "0.06em", textTransform: "uppercase", color: accentColor, marginBottom: 3 }}>正向</div>
+                  <p style={{ fontSize: 11, lineHeight: 1.65, fontFamily: "monospace", margin: 0, color: "var(--c-t2)", whiteSpace: "pre-wrap", wordBreak: "break-word" }}>{pos}</p>
+                </div>
+              )}
+              {neg && (
+                <div>
+                  <div style={{ fontSize: 9, fontWeight: 700, letterSpacing: "0.06em", textTransform: "uppercase", color: "var(--c-t4)", marginBottom: 3 }}>反向</div>
+                  <p style={{ fontSize: 11, lineHeight: 1.65, fontFamily: "monospace", margin: 0, color: "var(--c-t3)", whiteSpace: "pre-wrap", wordBreak: "break-word" }}>{neg}</p>
+                </div>
+              )}
+            </div>
           ) : (
             <p style={{ fontSize: 11, color: "var(--c-t4)", fontFamily: "monospace", margin: 0 }}>未填写提示词</p>
           )

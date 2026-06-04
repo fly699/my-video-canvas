@@ -228,7 +228,7 @@ export const BaseNode = memo(function BaseNode({
       <NodeResizer
         minWidth={minWidth}
         minHeight={minHeight}
-        isVisible={resizable && selected}
+        isVisible={resizable && (selected || isHovered)}
         lineStyle={{
           borderColor: `${config.color}40`,
           borderWidth: 1,
