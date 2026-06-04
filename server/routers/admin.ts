@@ -82,7 +82,7 @@ export const adminRouter = router({
   whitelist: router({
     getSettings: adminProcedure.query(async () => {
       const settings = await db.getWhitelistSettings();
-      return { enabled: settings?.enabled ?? false, comfyuiBypass: settings?.comfyuiBypass ?? false };
+      return { enabled: settings?.enabled ?? false, comfyuiBypass: settings?.comfyuiBypass ?? false, llmBypass: settings?.llmBypass ?? false };
     }),
 
     setEnabled: adminProcedure
@@ -97,6 +97,14 @@ export const adminRouter = router({
       .input(z.object({ comfyuiBypass: z.boolean() }))
       .mutation(async ({ input }) => {
         await db.setWhitelistComfyuiBypass(input.comfyuiBypass);
+        invalidateWhitelistCache();
+        return { success: true };
+      }),
+
+    setLlmBypass: adminProcedure
+      .input(z.object({ llmBypass: z.boolean() }))
+      .mutation(async ({ input }) => {
+        await db.setWhitelistLlmBypass(input.llmBypass);
         invalidateWhitelistCache();
         return { success: true };
       }),

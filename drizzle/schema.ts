@@ -501,6 +501,11 @@ export const whitelistSettings = mysqlTable("whitelistSettings", {
   // quota cost), so admins can free it up independently. Other cloud AI
   // (Poyo/Higgsfield) stays whitelist-gated. Default false = no behavior change.
   comfyuiBypass: boolean("comfyuiBypass").notNull().default(false),
+  // When true, text/vision LLM procedures (AI chat, character-consistency check)
+  // bypass the whitelist even while it's globally enabled — lets admins keep
+  // cheap LLM features open while gating paid image/video generation. Default
+  // false = no behavior change.
+  llmBypass: boolean("llmBypass").notNull().default(false),
   updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
 });
 

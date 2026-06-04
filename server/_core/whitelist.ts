@@ -5,6 +5,7 @@ import type { TrpcContext } from "./context";
 interface WhitelistSettingsCache {
   enabled: boolean;
   comfyuiBypass: boolean;
+  llmBypass: boolean;
 }
 
 let _cachedSettings: WhitelistSettingsCache | null = null;
@@ -12,7 +13,7 @@ let _cacheExpiry = 0;
 // Incremented on every invalidation so in-flight DB reads don't overwrite with stale data.
 let _cacheGeneration = 0;
 
-const DISABLED: WhitelistSettingsCache = { enabled: false, comfyuiBypass: false };
+const DISABLED: WhitelistSettingsCache = { enabled: false, comfyuiBypass: false, llmBypass: false };
 
 export function invalidateWhitelistCache(): void {
   _cachedSettings = null;
@@ -33,6 +34,7 @@ async function getWhitelistSettingsCached(): Promise<WhitelistSettingsCache> {
     const value: WhitelistSettingsCache = {
       enabled: settings?.enabled ?? false,
       comfyuiBypass: settings?.comfyuiBypass ?? false,
+      llmBypass: settings?.llmBypass ?? false,
     };
     // Only write cache if no invalidation happened while awaiting.
     if (_cacheGeneration === gen) {
@@ -47,6 +49,7 @@ async function getWhitelistSettingsCached(): Promise<WhitelistSettingsCache> {
     const freshValue: WhitelistSettingsCache = {
       enabled: fresh?.enabled ?? false,
       comfyuiBypass: fresh?.comfyuiBypass ?? false,
+      llmBypass: fresh?.llmBypass ?? false,
     };
     if (_cacheGeneration === postInvalidationGen) {
       _cachedSettings = freshValue;
@@ -90,6 +93,17 @@ export async function assertWhitelisted(ctx: TrpcContext): Promise<void> {
     code: "FORBIDDEN",
     message: "您没有使用此功能的权限，请联系管理员加入白名单",
   });
+}
+
+/** LLM-specific gate. Text/vision LLM features are cheap relative to image/video
+ * generation, so admins can open them independently while keeping paid media
+ * generation whitelist-gated. When the bypass is on, LLM procedures are freely
+ * usable; otherwise this falls back to the standard whitelist check — so when
+ * the bypass is off it is byte-for-byte equivalent to the previous gate. */
+export async function assertLLMAllowed(ctx: TrpcContext): Promise<void> {
+  const { llmBypass } = await getWhitelistSettingsCached();
+  if (llmBypass) return;
+  await assertWhitelisted(ctx);
 }
 
 /** ComfyUI-specific gate. ComfyUI is the user's own self-hosted server (no cloud

@@ -246,6 +246,13 @@
       "when": 1780500900000,
       "tag": "0034_comfy_template_thumbnail",
       "breakpoints": true
+    },
+    {
+      "idx": 35,
+      "version": "5",
+      "when": 1780501000000,
+      "tag": "0035_llm_whitelist_bypass",
+      "breakpoints": true
     }
   ]
 }
