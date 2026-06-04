@@ -106,14 +106,16 @@ export const BaseNode = memo(function BaseNode({
     return Boolean((node?.data.payload as Record<string, unknown> | undefined)?.pinned);
   });
   // Creator id (stamped into the payload at creation) → a per-collaborator color
-  // dot in the title bar, matching the cursor / "在线协作者" colors.
+  // dot in the title bar, matching the cursor / "在线协作者" colors. Only shown
+  // for OTHER collaborators' nodes (your own stay undotted — no solo noise).
   const createdBy = useCanvasStore((s) => {
     const p = s.nodes.find((n) => n.id === id)?.data.payload as { createdBy?: number } | undefined;
     return typeof p?.createdBy === "number" ? p.createdBy : null;
   });
   const currentUserId = useCanvasStore((s) => s.currentUserId);
   const creatorName = useCanvasStore((s) => (createdBy != null ? s.collaborators.get(createdBy)?.userName : undefined));
-  const creatorColor = createdBy != null ? COLLABORATOR_COLORS[createdBy % COLLABORATOR_COLORS.length] : null;
+  const isOtherCreator = createdBy != null && currentUserId != null && createdBy !== currentUserId;
+  const creatorColor = isOtherCreator ? COLLABORATOR_COLORS[createdBy % COLLABORATOR_COLORS.length] : null;
   const deleteNodeMutation = trpc.nodes.delete.useMutation();
   const { mode: canvasMode } = useCanvasMode();
   const { theme } = useTheme();
@@ -471,7 +473,7 @@ export const BaseNode = memo(function BaseNode({
         {creatorColor && (
           <span
             className="flex-shrink-0 rounded-full"
-            title={createdBy === currentUserId ? "你放置的节点" : `${creatorName ?? "协作者"} 放置的节点`}
+            title={`${creatorName ?? "协作者"} 放置的节点`}
             style={{
               width: 8,
               height: 8,
