@@ -106,6 +106,12 @@ interface CanvasStore {
   batchUpdateNodeData: (updates: { id: string; payload: Partial<NodeData> }[]) => void;
   /** Batch-move many nodes in one history step (used by the agent's auto-layout). */
   batchUpdateNodePositions: (updates: { id: string; position: { x: number; y: number } }[]) => void;
+  /** Run `fn` as a single undoable batch: snapshot history once up-front and
+   *  suppress per-action history pushes during `fn` (used when the agent applies
+   *  a multi-step plan so one Ctrl+Z reverts the whole batch). */
+  runBatch: (fn: () => void) => void;
+  /** internal: when true, mutating actions skip their own pushHistory. */
+  _suppressHistory: boolean;
   updateNodeTitle: (id: string, title: string) => void;
   deleteNode: (id: string) => void;
   duplicateNode: (id: string) => void;
@@ -144,6 +150,7 @@ export const useCanvasStore = create<CanvasStore>((set, get) => ({
   projectId: null,
   currentUserId: null,
   isDirty: false,
+  _suppressHistory: false,
   deletedNodeIds: [],
   past: [],
   future: [],
@@ -209,7 +216,7 @@ export const useCanvasStore = create<CanvasStore>((set, get) => ({
         }
       }
       return {
-        ...pushHistory(state),
+        ...(get()._suppressHistory ? {} : pushHistory(state)),
         nodes: updatedNodes,
         edges: addEdge(
           { ...connection, id: nanoid(), type: "custom", animated: false },
@@ -265,7 +272,7 @@ export const useCanvasStore = create<CanvasStore>((set, get) => ({
     };
 
     set((state) => ({
-      ...pushHistory(state),
+      ...(get()._suppressHistory ? {} : pushHistory(state)),
       nodes: [...state.nodes, newNode],
       isDirty: true,
     }));
@@ -369,9 +376,15 @@ export const useCanvasStore = create<CanvasStore>((set, get) => ({
     }));
   },
 
+  runBatch: (fn) => {
+    // Snapshot once, then suppress per-action history so the whole batch is one undo.
+    set((state) => ({ ...pushHistory(state), _suppressHistory: true }));
+    try { fn(); } finally { set({ _suppressHistory: false }); }
+  },
+
   updateNodeTitle: (id, title) => {
     set((state) => ({
-      ...pushHistory(state),
+      ...(get()._suppressHistory ? {} : pushHistory(state)),
       nodes: state.nodes.map((n) =>
         n.id === id ? { ...n, data: { ...n.data, title } } : n
       ),
@@ -381,7 +394,7 @@ export const useCanvasStore = create<CanvasStore>((set, get) => ({
 
   deleteNode: (id) => {
     set((state) => ({
-      ...pushHistory(state),
+      ...(get()._suppressHistory ? {} : pushHistory(state)),
       nodes: state.nodes.filter((n) => n.id !== id),
       edges: state.edges.filter((e) => e.source !== id && e.target !== id),
       deletedNodeIds: [...state.deletedNodeIds, id],
@@ -425,7 +438,7 @@ export const useCanvasStore = create<CanvasStore>((set, get) => ({
       selected: false,
     };
     set((state) => ({
-      ...pushHistory(state),
+      ...(get()._suppressHistory ? {} : pushHistory(state)),
       nodes: [...state.nodes, newNode],
       isDirty: true,
     }));

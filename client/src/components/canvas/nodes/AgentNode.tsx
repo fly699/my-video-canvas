@@ -87,10 +87,16 @@ export const AgentNode = memo(function AgentNode({ id, selected, data }: Props) 
 
   const handleApply = (msgIdx: number, ops: AgentOperation[]) => {
     const pos = useCanvasStore.getState().nodes.find((n) => n.id === id)?.position ?? { x: 0, y: 0 };
-    const r = applyAgentOperations(ops, pos);
+    const r = applyAgentOperations(ops, pos); // mutates op.status/op.error in place
     setAppliedIdx((prev) => new Set(prev).add(msgIdx));
+    // Persist op statuses back into the message so the preview shows applied/failed.
+    setMessages(messages.map((m, i) => (i === msgIdx ? { ...m, operations: [...ops] } : m)));
     const parts = [r.created && `新建 ${r.created}`, r.connected && `连接 ${r.connected}`, r.updated && `更新 ${r.updated}`, r.deleted && `删除 ${r.deleted}`].filter(Boolean);
-    toast.success(parts.length ? `已应用：${parts.join(" · ")}` : "无可应用的操作");
+    if (r.failures.length > 0) {
+      toast.warning(`已应用 ${parts.join(" · ") || "0 步"}，${r.failures.length} 步失败：${r.failures[0].reason}`);
+    } else {
+      toast.success(parts.length ? `已应用：${parts.join(" · ")}` : "无可应用的操作");
+    }
   };
 
   return (
@@ -120,11 +126,14 @@ export const AgentNode = memo(function AgentNode({ id, selected, data }: Props) 
                   <div style={{ padding: "6px 9px", display: "flex", flexDirection: "column", gap: 4 }}>
                     {m.operations.map((op, j) => {
                       const { Icon, label } = OP_META[op.op];
+                      const failed = op.status === "failed";
+                      const c = failed ? "oklch(0.62 0.20 25)" : accent;
                       return (
                         <div key={j} style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 11, color: "var(--c-t2)" }}>
-                          <Icon className="w-3 h-3" style={{ color: accent, flexShrink: 0 }} />
-                          <span style={{ color: accent, fontWeight: 600, flexShrink: 0 }}>{label}</span>
-                          <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }} title={op.note || opText(op)}>{opText(op)}</span>
+                          <Icon className="w-3 h-3" style={{ color: c, flexShrink: 0 }} />
+                          <span style={{ color: c, fontWeight: 600, flexShrink: 0 }}>{label}</span>
+                          <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }} title={failed ? op.error : (op.note || opText(op))}>{opText(op)}</span>
+                          {failed && <span style={{ color: "oklch(0.62 0.20 25)", flexShrink: 0, fontSize: 10 }}>失败</span>}
                         </div>
                       );
                     })}
