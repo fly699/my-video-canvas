@@ -930,8 +930,9 @@ export const ComfyuiWorkflowNode = memo(function ComfyuiWorkflowNode({ id, selec
                       )}
                       {b.type === "image" && (
                         <>
-                          {/* 来源映射：显式指定该图像参数用哪个上游节点的图（不填用智能自动排序） */}
-                          {upstreamSources.length > 0 && (
+                          {/* 来源映射：显式指定该图像参数用哪个上游节点的图（不填用智能自动排序）。
+                              即使还没连上游图像，也显示一个禁用的占位下拉，让用户知道「可显式指定来源」这个功能存在、且知道下一步该连上游图。 */}
+                          {upstreamSources.length > 0 ? (
                             <select
                               value={payload.imageSourceMap?.[key] ?? ""}
                               onChange={(e) => {
@@ -946,6 +947,15 @@ export const ComfyuiWorkflowNode = memo(function ComfyuiWorkflowNode({ id, selec
                               {upstreamSources.map((s, i) => (
                                 <option key={s.id} value={s.id}>来源：{i + 1}. {s.title}</option>
                               ))}
+                            </select>
+                          ) : (
+                            <select
+                              disabled
+                              value=""
+                              style={{ ...fieldBase, padding: "5px 8px", fontSize: 11, marginBottom: 5, cursor: "default", opacity: 0.6 }}
+                              title="把一个上游图像节点连到本节点的「参考图输入」句柄后，即可在此显式指定该图像参数的来源"
+                            >
+                              <option value="">来源：连接上游图像后可选 ▸</option>
                             </select>
                           )}
                           <ImageParamField
