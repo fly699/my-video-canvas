@@ -37,4 +37,33 @@ describe("agentCatalog.sanitizeOperation", () => {
     expect(sanitizeOperation({ op: "explode" })).toBeNull();
     expect(sanitizeOperation("nope")).toBeNull();
   });
+
+  it("comfyOnly excludes generation + storyboard nodes", () => {
+    for (const t of ["image_gen", "video_task", "audio", "comfyui_image", "comfyui_video", "storyboard"]) {
+      expect(sanitizeOperation({ op: "create", nodeType: t, payload: {} }, { comfyOnly: true })).toBeNull();
+    }
+    // prompt + comfyui_workflow stay available in comfyOnly
+    expect(sanitizeOperation({ op: "create", nodeType: "prompt", payload: { positivePrompt: "x" } }, { comfyOnly: true })).not.toBeNull();
+  });
+
+  it("hard-validates comfyui_workflow templateId against the analyzed set", () => {
+    const validTemplateIds = new Set<number>([7]);
+    // valid id → kept, prompts preserved
+    const ok = sanitizeOperation(
+      { op: "create", nodeType: "comfyui_workflow", payload: { templateId: 7, prompt: "p", negPrompt: "n" } },
+      { comfyOnly: true, validTemplateIds },
+    );
+    expect(ok).not.toBeNull();
+    expect((ok!.payload as Record<string, unknown>).templateId).toBe(7);
+    // hallucinated id (not in set) → dropped in any mode
+    expect(sanitizeOperation(
+      { op: "create", nodeType: "comfyui_workflow", payload: { templateId: 999, prompt: "p" } },
+      { validTemplateIds },
+    )).toBeNull();
+    // comfyOnly + missing templateId → dropped (empty shell otherwise)
+    expect(sanitizeOperation(
+      { op: "create", nodeType: "comfyui_workflow", payload: { prompt: "p" } },
+      { comfyOnly: true, validTemplateIds },
+    )).toBeNull();
+  });
 });
