@@ -926,18 +926,21 @@ export const ComfyuiVideoNode = memo(function ComfyuiVideoNode({ id, selected, d
         </div>{/* end input collapse wrapper */}
       </div>
 
-      {/* Input handle — receives reference image */}
+      {/* Input handle — receives reference image. Distinct purple, separated from
+          the generic input (BaseNode default at 50%), sized/ringed for visibility. */}
       <Handle
         type="target"
         position={Position.Left}
         id="ref-image-in"
         style={{
-          width: 12, height: 12,
-          borderRadius: 3,
-          background: "oklch(0.68 0.22 285 / 0.85)",
+          width: 15, height: 15,
+          borderRadius: 4,
+          background: "oklch(0.68 0.22 285)",
           border: "2px solid var(--c-canvas)",
-          left: -6,
-          top: "25%",
+          boxShadow: "0 0 0 2px oklch(0.68 0.22 285 / 0.30)",
+          left: -7,
+          top: "28%",
+          zIndex: 10,
         }}
         title="参考图输入"
       />

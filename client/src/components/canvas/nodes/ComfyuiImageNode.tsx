@@ -1600,18 +1600,22 @@ export const ComfyuiImageNode = memo(function ComfyuiImageNode({ id, selected, d
         </div>{/* end input collapse wrapper */}
       </div>
 
-      {/* Input handle — receives reference image */}
+      {/* Input handle — receives reference image. Distinct pink, sits clearly above
+          the generic input (BaseNode default at 50%) and is sized/ringed to read
+          well even when the node is collapsed. */}
       <Handle
         type="target"
         position={Position.Left}
         id="ref-image-in"
         style={{
-          width: 12, height: 12,
-          borderRadius: 3,
-          background: "oklch(0.72 0.20 330 / 0.85)",
+          width: 15, height: 15,
+          borderRadius: 4,
+          background: "oklch(0.72 0.20 330)",
           border: "2px solid var(--c-canvas)",
-          left: -6,
-          top: "25%",
+          boxShadow: "0 0 0 2px oklch(0.72 0.20 330 / 0.30)",
+          left: -7,
+          top: "28%",
+          zIndex: 10,
         }}
         title="参考图输入（img2img 使用）"
       />
