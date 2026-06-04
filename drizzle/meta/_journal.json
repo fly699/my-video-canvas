@@ -253,6 +253,13 @@
       "when": 1780501000000,
       "tag": "0035_llm_whitelist_bypass",
       "breakpoints": true
+    },
+    {
+      "idx": 36,
+      "version": "5",
+      "when": 1780501100000,
+      "tag": "0036_agent_node_type",
+      "breakpoints": true
     }
   ]
 }

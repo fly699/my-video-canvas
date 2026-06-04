@@ -25,7 +25,8 @@ export type NodeType =
   | "avatar"
   | "comfyui_image"
   | "comfyui_video"
-  | "comfyui_workflow";
+  | "comfyui_workflow"
+  | "agent";
 
 export const VIDEO_PROVIDERS = [
   "mock",
@@ -775,6 +776,43 @@ export interface ComfyuiWorkflowNodeData {
   errorMessage?: string;
 }
 
+// ── Agent (Copilot) node ──────────────────────────────────────────────────────
+/** One graph operation proposed by the agent. The client validates + applies it
+ *  through the canvas store (create/connect/update/delete), so every change is
+ *  undoable & persisted exactly like a manual edit. */
+export interface AgentOperation {
+  op: "create" | "update" | "connect" | "delete";
+  /** create: agent-assigned temp id so later `connect` ops can reference the
+   *  not-yet-created node. */
+  tempId?: string;
+  nodeType?: NodeType;          // create
+  title?: string;               // create / update
+  /** create / update: whitelisted payload fields for the target node type. */
+  payload?: Record<string, unknown>;
+  targetRef?: string;           // update / delete / connect target (tempId or real node id)
+  sourceRef?: string;           // connect source (tempId or real node id)
+  sourceHandle?: string;
+  targetHandle?: string;
+  /** Short human-readable rationale shown in the proposal preview. */
+  note?: string;
+  status?: "proposed" | "applied" | "rejected" | "failed";
+  error?: string;
+}
+
+export interface AgentMessage {
+  role: "user" | "assistant";
+  content: string;
+  /** assistant only: the graph operations proposed in this turn. */
+  operations?: AgentOperation[];
+}
+
+export interface AgentNodeData {
+  messages?: AgentMessage[];
+  model?: string;
+  status?: "idle" | "thinking" | "failed";
+  errorMessage?: string;
+}
+
 export type NodeData =
   | ScriptNodeData
   | StoryboardNodeData
@@ -800,7 +838,8 @@ export type NodeData =
   | AvatarNodeData
   | ComfyuiImageNodeData
   | ComfyuiVideoNodeData
-  | ComfyuiWorkflowNodeData;
+  | ComfyuiWorkflowNodeData
+  | AgentNodeData;
 
 // ── Canvas Node ───────────────────────────────────────────────────────────────
 
