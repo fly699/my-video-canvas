@@ -52,8 +52,8 @@ export const AGENT_NODE_CATALOG: AgentNodeSpec[] = [
     ],
   },
   {
-    type: "prompt", label: "提示词", purpose: "纯文本提示词，向下游图像/视频节点传递",
-    connectsTo: ["image_gen", "video_task", "comfyui_image", "comfyui_video"],
+    type: "prompt", label: "提示词", purpose: "纯文本提示词，向下游图像/视频节点传递（仅 ComfyUI 模式下作为每个镜头的提示词容器）",
+    connectsTo: ["image_gen", "video_task", "comfyui_image", "comfyui_video", "comfyui_workflow"],
     fields: [
       { name: "positivePrompt", type: "string", desc: "正向提示词（输出至下游）" },
       { name: "negativePrompt", type: "string", desc: "反向提示词" },
@@ -126,9 +126,13 @@ export const AGENT_NODE_CATALOG: AgentNodeSpec[] = [
 
 const SPEC_BY_TYPE = new Map(AGENT_NODE_CATALOG.map((s) => [s.type, s]));
 
-// In "仅 ComfyUI 生成" mode these generation node types are excluded — generation
-// must go through comfyui_workflow (a template materialized into a workflow node).
-const COMFY_ONLY_EXCLUDED = new Set<NodeType>(["image_gen", "video_task", "audio", "comfyui_image", "comfyui_video"]);
+// In "仅 ComfyUI 生成" mode these node types are excluded. The generation nodes
+// (image_gen / video_task / audio / comfyui_image / comfyui_video) are dropped so
+// generation must go through comfyui_workflow (a library template materialized
+// into a workflow node). `storyboard` is also excluded here: its built-in "AI 生成
+// 分镜" uses cloud image models (inconsistent with ComfyUI-only), so per-shot
+// prompts are carried by `prompt` nodes instead (script → prompt → comfyui_workflow).
+const COMFY_ONLY_EXCLUDED = new Set<NodeType>(["image_gen", "video_task", "audio", "comfyui_image", "comfyui_video", "storyboard"]);
 
 /** Render the catalog as compact text for the LLM system prompt. In comfyOnly
  *  mode, the excluded generation nodes are dropped so the model can't pick them. */
@@ -165,7 +169,10 @@ export function templateKnowledgeText(
  * null if it is structurally invalid (unknown create nodeType, missing refs).
  * Create-op payloads are filtered to the spec's whitelisted fields.
  */
-export function sanitizeOperation(raw: unknown, opts: { comfyOnly?: boolean } = {}): AgentOperation | null {
+export function sanitizeOperation(
+  raw: unknown,
+  opts: { comfyOnly?: boolean; validTemplateIds?: Set<number> } = {},
+): AgentOperation | null {
   if (!raw || typeof raw !== "object") return null;
   const o = raw as Record<string, unknown>;
   const op = o.op;
@@ -184,6 +191,17 @@ export function sanitizeOperation(raw: unknown, opts: { comfyOnly?: boolean } = 
       for (const [k, v] of Object.entries(o.payload as Record<string, unknown>)) {
         if (allowed.has(k)) payload[k] = v;
       }
+    }
+    // Hard-guard comfyui_workflow templateId against the real analyzed-template set
+    // so the model can't fabricate a template (e.g. an invented name with a made-up
+    // / missing id that materializes into an empty, un-runnable shell node).
+    if (nodeType === "comfyui_workflow" && opts.validTemplateIds) {
+      const tid = payload.templateId != null ? Number(payload.templateId) : NaN;
+      const hasValidTemplate = Number.isInteger(tid) && opts.validTemplateIds.has(tid);
+      // comfyOnly: a workflow node is meaningless without a real template → drop.
+      if (opts.comfyOnly && !hasValidTemplate) return null;
+      // Any mode: a templateId that doesn't resolve is a hallucination → drop.
+      if (payload.templateId != null && !hasValidTemplate) return null;
     }
     return {
       op: "create", nodeType, tempId: str(o.tempId), title: str(o.title),

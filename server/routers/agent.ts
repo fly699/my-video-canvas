@@ -41,6 +41,7 @@ export const agentRouter = router({
       // backlog), then read the latest analyses to feed the model. Best-effort.
       try { await runLibraryAnalysis(model, { max: 6 }); } catch { /* non-fatal */ }
       let templateSection = "";
+      const validTemplateIds = new Set<number>();
       try {
         const [templates, analyses] = await Promise.all([db.listComfyNodeTemplates(), db.listComfyTemplateAnalysis()]);
         const labelById = new Map(templates.map((t) => [t.id, t.label]));
@@ -48,13 +49,27 @@ export const agentRouter = router({
           .filter((a) => labelById.has(a.templateId))
           .sort((a, b) => (b.hasVideoOutput ? 1 : 0) - (a.hasVideoOutput ? 1 : 0))
           .map((a) => ({ id: a.templateId, label: labelById.get(a.templateId)!, functionSummary: a.functionSummary ?? "", capabilities: (a.capabilities as string[] | null) ?? [], outputType: a.outputType ?? undefined, hasVideoOutput: a.hasVideoOutput ?? undefined }));
+        for (const r of rows) validTemplateIds.add(r.id);
         if (rows.length > 0) {
           templateSection = `\n\n# 已分析的 ComfyUI 自定义工作流模板（comfyui_workflow 可用 payload.templateId 引用其 id）\n${templateKnowledgeText(rows)}`;
         }
-      } catch { /* non-fatal */ }
+      } catch (e) {
+        // Surface (don't silently swallow) — most likely the analysis table is
+        // missing (migration 0037 not applied), which otherwise looks like an
+        // "empty library" to the agent.
+        console.warn("[agent] template analysis unavailable:", e instanceof Error ? e.message : e);
+      }
+
+      // 仅 ComfyUI 模式但没有任何「已分析模板」可用：拒绝并明确指引，避免 LLM 编造模板生成空壳节点。
+      if (input.comfyOnly && validTemplateIds.size === 0) {
+        return {
+          reply: "已开启「仅 ComfyUI 生成」，但模板知识库为空——我没有任何可引用的已分析工作流模板。请先点工具栏的「新增节点模板库分析」分析你的模板库；若分析后仍为空，多半是数据库尚未应用模板分析表迁移（管理后台「系统更新」跑一次即可）。完成后再让我编排。",
+          operations: [],
+        };
+      }
 
       const comfyConstraint = input.comfyOnly
-        ? `\n\n# 仅 ComfyUI 生成（当前已开启）\n- 所有图像/视频/音频生成只能使用 comfyui_workflow 自定义工作流节点；禁止使用 image_gen / video_task / audio / comfyui_image / comfyui_video。\n- create comfyui_workflow 时必须用 payload.templateId 引用上面「已分析模板」中的某个 id，并把正向提示词放入 payload.prompt、反向放 payload.negPrompt。`
+        ? `\n\n# 仅 ComfyUI 生成（当前已开启）\n- 所有图像/视频/音频生成只能使用 comfyui_workflow 自定义工作流节点；禁止使用 image_gen / video_task / audio / comfyui_image / comfyui_video / storyboard。\n- 每个镜头用一个「prompt 提示词」节点承载该镜头的提示词，再连接到对应的 comfyui_workflow 节点（script → prompt → comfyui_workflow）。\n- create comfyui_workflow 时必须用 payload.templateId 引用上面「已分析模板」中真实存在的某个 id（禁止编造 id 或只写名字），并把正向提示词放入 payload.prompt、反向放 payload.negPrompt。`
         : "";
 
       const system = `你是「AI 视频画布」的智能体副驾（Copilot）。用户用自然语言描述想做的视频，你负责把它拆解为画布上的节点工作流。
@@ -104,7 +119,7 @@ ${input.graphSummary?.trim() || "（空画布）"}
           if (typeof parsed.reply === "string" && parsed.reply.trim()) reply = parsed.reply.trim();
           if (Array.isArray(parsed.operations)) {
             operations = parsed.operations
-              .map((o) => sanitizeOperation(o, { comfyOnly: input.comfyOnly }))
+              .map((o) => sanitizeOperation(o, { comfyOnly: input.comfyOnly, validTemplateIds }))
               .filter((o): o is AgentOperation => o !== null);
           }
         } catch {
