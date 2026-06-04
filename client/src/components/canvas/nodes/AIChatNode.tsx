@@ -50,6 +50,7 @@ const FIELD_MAP: Partial<Record<NodeType, string>> = {
 // the picker can stay rich without bloating this component file. See
 // client/src/lib/aiAssistantTemplates.ts for the actual definitions.
 import { AI_TEMPLATE_CATEGORIES, type AITemplate } from "@/lib/aiAssistantTemplates";
+import { NodeTextArea, NodeInput } from "../NodeTextInput";
 
 export const AIChatNode = memo(function AIChatNode({ id, selected, data }: Props) {
   const { updateNodeData } = useCanvasStore();
@@ -557,10 +558,10 @@ export const AIChatNode = memo(function AIChatNode({ id, selected, data }: Props
           className="px-3.5 py-2 flex items-center gap-1.5 flex-shrink-0 relative"
           style={{ borderBottomWidth: 1, borderBottomStyle: "solid", borderBottomColor: "var(--c-bd1)" }}
         >
-          <input
+          <NodeInput
             placeholder="系统提示词（可选）"
             value={payload.systemPrompt ?? ""}
-            onChange={(e) => updateNodeData(id, { systemPrompt: e.target.value })}
+            onValueChange={(v) => updateNodeData(id, { systemPrompt: v })}
             className="nodrag flex-1"
             style={{
               fontSize: 11,
@@ -917,11 +918,11 @@ export const AIChatNode = memo(function AIChatNode({ id, selected, data }: Props
           >
             <Layers className="w-3 h-3" />
           </button>
-          <textarea
+          <NodeTextArea
             ref={inputRef}
             placeholder={pendingAttachments.length > 0 ? "添加说明（可选）" : "发送消息或粘贴图片… (Enter 发送 / Shift+Enter 换行)"}
             value={input}
-            onChange={(e) => setInput(e.target.value)}
+            onValueChange={(v) => setInput(v)}
             onKeyDown={handleKeyDown}
             onPaste={handlePaste}
             disabled={sendMutation.isPending}

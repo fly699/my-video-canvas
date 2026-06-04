@@ -29,6 +29,7 @@ import {
   clearCinematographyParamsPatch,
   getTemplateById,
 } from "@/lib/cinematographyTemplates";
+import { NodeTextArea, NodeInput } from "../NodeTextInput";
 
 // Providers that require a reference image (image-to-video)
 const REQUIRES_REFERENCE_IMAGE = new Set<string>([
@@ -1392,10 +1393,10 @@ export const VideoTaskNode = memo(function VideoTaskNode({ id, selected, data }:
         {/* ── Prompt ── */}
         <div>
           <label style={labelStyle}>提示词 *</label>
-          <textarea
+          <NodeTextArea
             placeholder="视频生成提示词..."
             value={payload.prompt ?? ""}
-            onChange={(e) => handleChange("prompt", e.target.value)}
+            onValueChange={(v) => handleChange("prompt", v)}
             rows={3}
             disabled={isLocked}
             className="nodrag nowheel"
@@ -1409,10 +1410,10 @@ export const VideoTaskNode = memo(function VideoTaskNode({ id, selected, data }:
         {SUPPORTS_NEGATIVE_PROMPT.has(payload.provider) && (
           <div>
             <label style={labelStyle}>反向提示词（可选）</label>
-            <input
+            <NodeInput
               placeholder="blurry, low quality..."
               value={payload.negativePrompt ?? ""}
-              onChange={(e) => handleChange("negativePrompt", e.target.value)}
+              onValueChange={(v) => handleChange("negativePrompt", v)}
               disabled={isLocked}
               className="nodrag"
               style={{ ...fieldStyle, opacity: isLocked ? 0.5 : 1 }}
@@ -1608,11 +1609,11 @@ export const VideoTaskNode = memo(function VideoTaskNode({ id, selected, data }:
                 </div>
                 {savingPreset && (
                   <div className="flex gap-1.5 nodrag" style={{ marginBottom: 8 }}>
-                    <input
+                    <NodeInput
                       autoFocus
                       placeholder="预设名称（如：抖音横屏）"
                       value={newPresetLabel}
-                      onChange={(e) => setNewPresetLabel(e.target.value.slice(0, 24))}
+                      onValueChange={(v) => setNewPresetLabel(v.slice(0, 24))}
                       onKeyDown={(e) => {
                         if (e.key === "Enter") handleSavePreset();
                         else if (e.key === "Escape") { setSavingPreset(false); setNewPresetLabel(""); }

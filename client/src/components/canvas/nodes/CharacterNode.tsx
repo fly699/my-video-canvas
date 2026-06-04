@@ -13,6 +13,7 @@ import {
   DEFAULT_SCENE_TEMPLATE,
 } from "../../../lib/characterPrompt";
 import { CharacterConsistencyPanel, type ConsistencyResult } from "../CharacterConsistencyPanel";
+import { NodeTextArea, NodeInput } from "../NodeTextInput";
 
 interface Props {
   id: string;
@@ -315,11 +316,11 @@ export const CharacterNode = memo(function CharacterNode({ id, selected, data }:
             <div className="flex gap-2">
               <div className="flex-1">
                 <label style={labelStyle}>姓名</label>
-                <input
+                <NodeInput
                   type="text"
                   placeholder="角色姓名"
                   value={payload.name ?? ""}
-                  onChange={(e) => update("name", e.target.value)}
+                  onValueChange={(v) => update("name", v)}
                   className="nodrag"
                   style={fieldStyle}
                   onFocus={(e) => { e.currentTarget.style.borderColor = BORDER_ACCENT; }}
@@ -346,11 +347,11 @@ export const CharacterNode = memo(function CharacterNode({ id, selected, data }:
             <div className="flex gap-2">
               <div className="flex-1">
                 <label style={labelStyle}>职业 / 角色定位</label>
-                <input
+                <NodeInput
                   type="text"
                   placeholder="主角、侦探、教授..."
                   value={payload.role ?? ""}
-                  onChange={(e) => update("role", e.target.value)}
+                  onValueChange={(v) => update("role", v)}
                   className="nodrag"
                   style={fieldStyle}
                   onFocus={(e) => { e.currentTarget.style.borderColor = BORDER_ACCENT; }}
@@ -359,11 +360,11 @@ export const CharacterNode = memo(function CharacterNode({ id, selected, data }:
               </div>
               <div style={{ width: 80 }}>
                 <label style={labelStyle}>年龄</label>
-                <input
+                <NodeInput
                   type="text"
                   placeholder="25岁"
                   value={payload.age ?? ""}
-                  onChange={(e) => update("age", e.target.value)}
+                  onValueChange={(v) => update("age", v)}
                   className="nodrag"
                   style={fieldStyle}
                   onFocus={(e) => { e.currentTarget.style.borderColor = BORDER_ACCENT; }}
@@ -373,12 +374,12 @@ export const CharacterNode = memo(function CharacterNode({ id, selected, data }:
             </div>
             <div>
               <label style={labelStyle}>外貌特征</label>
-              <textarea className="nodrag nowheel"
+              <NodeTextArea className="nodrag nowheel"
                 placeholder="身高、发色、眼神、服装风格..."
                 value={payload.appearance ?? ""}
-                onChange={(e) => update("appearance", e.target.value)}
+                onValueChange={(v) => update("appearance", v)}
                 rows={2}
-                
+
                 style={{ ...fieldStyle, resize: "none", lineHeight: 1.6 }}
                 onFocus={(e) => { e.currentTarget.style.borderColor = BORDER_ACCENT; }}
                 onBlur={(e) => { e.currentTarget.style.borderColor = BORDER_DEFAULT; }}
@@ -386,10 +387,10 @@ export const CharacterNode = memo(function CharacterNode({ id, selected, data }:
             </div>
             <div>
               <label style={labelStyle}>性格特征</label>
-              <textarea className="nodrag nowheel"
+              <NodeTextArea className="nodrag nowheel"
                 placeholder="开朗、内敛、冷静、热情..."
                 value={payload.personality ?? ""}
-                onChange={(e) => update("personality", e.target.value)}
+                onValueChange={(v) => update("personality", v)}
                 rows={2}
 
                 style={{ ...fieldStyle, resize: "none", lineHeight: 1.6 }}
@@ -400,10 +401,10 @@ export const CharacterNode = memo(function CharacterNode({ id, selected, data }:
             {/* ── New: outfit & signature (Character Bible essentials) ── */}
             <div>
               <label style={labelStyle}>服装 (Outfit)</label>
-              <textarea className="nodrag nowheel"
+              <NodeTextArea className="nodrag nowheel"
                 placeholder="黑色西装 + 红色领带 / 米色风衣 + 牛仔裤..."
                 value={payload.outfit ?? ""}
-                onChange={(e) => update("outfit", e.target.value)}
+                onValueChange={(v) => update("outfit", v)}
                 rows={2}
                 style={{ ...fieldStyle, resize: "none", lineHeight: 1.6 }}
                 onFocus={(e) => { e.currentTarget.style.borderColor = BORDER_ACCENT; }}
@@ -412,11 +413,11 @@ export const CharacterNode = memo(function CharacterNode({ id, selected, data }:
             </div>
             <div>
               <label style={labelStyle}>标志性 / 特征物件</label>
-              <input
+              <NodeInput
                 type="text"
                 placeholder="银怀表、左眼疤痕、铜色头发、墨镜..."
                 value={payload.signature ?? ""}
-                onChange={(e) => update("signature", e.target.value)}
+                onValueChange={(v) => update("signature", v)}
                 className="nodrag"
                 style={fieldStyle}
                 onFocus={(e) => { e.currentTarget.style.borderColor = BORDER_ACCENT; }}
@@ -431,11 +432,11 @@ export const CharacterNode = memo(function CharacterNode({ id, selected, data }:
           <>
             <div>
               <label style={labelStyle}>场景名称</label>
-              <input
+              <NodeInput
                 type="text"
                 placeholder="废弃工厂、霓虹都市、古代宫廷..."
                 value={payload.sceneName ?? ""}
-                onChange={(e) => update("sceneName", e.target.value)}
+                onValueChange={(v) => update("sceneName", v)}
                 className="nodrag"
                 style={fieldStyle}
                 onFocus={(e) => { e.currentTarget.style.borderColor = BORDER_ACCENT; }}
@@ -462,12 +463,12 @@ export const CharacterNode = memo(function CharacterNode({ id, selected, data }:
             />
             <div>
               <label style={labelStyle}>场景描述</label>
-              <textarea className="nodrag nowheel"
+              <NodeTextArea className="nodrag nowheel"
                 placeholder="详细描述场景的视觉元素、光线、质感..."
                 value={payload.sceneDescription ?? ""}
-                onChange={(e) => update("sceneDescription", e.target.value)}
+                onValueChange={(v) => update("sceneDescription", v)}
                 rows={3}
-                
+
                 style={{ ...fieldStyle, resize: "none", lineHeight: 1.6 }}
                 onFocus={(e) => { e.currentTarget.style.borderColor = BORDER_ACCENT; }}
                 onBlur={(e) => { e.currentTarget.style.borderColor = BORDER_DEFAULT; }}
@@ -544,10 +545,10 @@ export const CharacterNode = memo(function CharacterNode({ id, selected, data }:
         {selected && (
           <div>
             <label style={labelStyle}>补充备注</label>
-            <textarea className="nodrag nowheel"
+            <NodeTextArea className="nodrag nowheel"
               placeholder="其他需要记录的信息..."
               value={payload.notes ?? ""}
-              onChange={(e) => update("notes", e.target.value)}
+              onValueChange={(v) => update("notes", v)}
               rows={2}
 
               style={{ ...fieldStyle, resize: "none", lineHeight: 1.6 }}
@@ -758,11 +759,11 @@ function PromptPreviewSection({
       </div>
       {editing && (
         <div className="nodrag" style={{ marginTop: 6 }}>
-          <textarea
+          <NodeTextArea
             className="nodrag nowheel"
             placeholder={defaultTemplate}
             value={payload.customPromptTemplate ?? ""}
-            onChange={(e) => onChange(e.target.value)}
+            onValueChange={(v) => onChange(v)}
             rows={3}
             style={{
               width: "100%",
