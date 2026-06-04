@@ -184,3 +184,30 @@ cd /tmp && node my_test.js 2>&1
    - 文件：`server/_core/whitelist.ts`
    - 问题：正常路径写入 `_cacheExpiry = now + 30_000`，`now` 为函数入口时间戳；若 DB 响应较慢，TTL 实际短于 30 秒，与二次读取路径使用 `Date.now()` 不一致。
    - 修复：改为 `Date.now() + 30_000`，确保 TTL 从写入时刻起算。
+
+---
+
+## 第 14 轮更新说明（2026-06-04）
+
+剪辑器与画布节点的自驱体验优化，4 个提交均通过 `tsc` / 168 项 vitest / build / 无头浏览器实测。
+
+### 节点（画布）
+
+1. **生成进度条收缩后仍可见** — `client/src/components/canvas/BaseNode.tsx`
+   - 问题：进度条原本只在节点折叠的配置区内渲染，节点收缩/取消选中后看不到生成进度。
+   - 修复：在 BaseNode 标题栏下方常驻渲染进度条，直接读 `payload.status/progress`，对所有节点统一生效。
+
+2. **移除 comfyui 节点冗余内嵌进度条** — `ComfyuiImageNode/ComfyuiVideoNode/ComfyuiWorkflowNode`
+   - 上一步常驻进度条已覆盖原内嵌进度条，删除三处重复 UI。
+
+3. **节点失败状态常驻提示** — `BaseNode.tsx`
+   - 问题：生成失败（`payload.status==="failed"`）的错误信息原本只在折叠配置区内显示，收缩后不可见。
+   - 修复：标题栏下方常驻一条红色失败提示（图标 + 错误摘要，hover 看全文），与进度条同理。实测「未配置 ComfyUI 地址」运行 → 红条出现，取消选中收缩后仍可见。
+
+### 剪辑器
+
+4. **播放 / 定位快捷键** — 空格 播放/暂停、Home/End 跳首尾、←/→ 逐帧步进（Shift ×10）。逐帧实测精确（5 帧 = 0.166s @30fps）。
+
+5. **时间轴增强** — `client/src/components/editor/Timeline.tsx`
+   - 「适应窗口」按钮：一键缩放 `pxPerSec` 使整条时间轴完整显示（实测 3s 片段 180px→792px 铺满可视区）。
+   - 含关键帧的片段在轨道上按关键帧时间显示菱形标记，关键帧动画在时间轴上可见可定位。
