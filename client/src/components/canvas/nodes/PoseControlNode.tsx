@@ -6,6 +6,7 @@ import type { PoseControlNodeData } from "../../../../../shared/types";
 import { trpc } from "@/lib/trpc";
 import { toast } from "sonner";
 import { Layers, Loader2, Download, RotateCcw } from "lucide-react";
+import { NodeTextArea, NodeInput } from "../NodeTextInput";
 
 interface Props {
   id: string;
@@ -98,8 +99,8 @@ export const PoseControlNode = memo(function PoseControlNode({ id, selected, dat
         {/* Reference image */}
         <div>
           <label style={labelStyle}>参考构图图像 URL（自动从连接节点读取）</label>
-          <input className="nodrag" placeholder="https://..." value={payload.referenceImageUrl ?? ""}
-            onChange={(e) => update({ referenceImageUrl: e.target.value })} style={fieldStyle}
+          <NodeInput className="nodrag" placeholder="https://..." value={payload.referenceImageUrl ?? ""}
+            onValueChange={(v) => update({ referenceImageUrl: v })} style={fieldStyle}
             onFocus={(e) => { e.currentTarget.style.borderColor = accentA(0.6); }}
             onBlur={(e) => { e.currentTarget.style.borderColor = BORDER_DEFAULT; }} />
         </div>
@@ -117,11 +118,11 @@ export const PoseControlNode = memo(function PoseControlNode({ id, selected, dat
         {/* Prompt */}
         <div>
           <label style={labelStyle}>图像描述提示词（英文效果更佳）</label>
-          <textarea
+          <NodeTextArea
             className="nodrag nowheel"
             placeholder="Describe the new image content while maintaining the reference composition..."
             value={payload.prompt ?? ""}
-            onChange={(e) => update({ prompt: e.target.value })}
+            onValueChange={(v) => update({ prompt: v })}
             rows={3}
             style={{ ...fieldStyle, resize: "vertical" as const, lineHeight: 1.6 }}
             onFocus={(e) => { e.currentTarget.style.borderColor = accentA(0.6); }}

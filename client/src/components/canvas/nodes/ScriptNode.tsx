@@ -11,6 +11,7 @@ import {
 } from "lucide-react";
 import { LLMModelPicker, LLM_MODELS, type LLMModelId } from "../LLMModelPicker";
 import { SCRIPT_TEMPLATE_CATEGORIES, getScriptTemplate, type ScriptTemplate } from "@/lib/scriptCreationTemplates";
+import { NodeTextArea, NodeInput } from "../NodeTextInput";
 
 interface Props {
   id: string;
@@ -529,11 +530,11 @@ export const ScriptNode = memo(function ScriptNode({ id, selected, data }: Props
 
         {/* Synopsis row */}
         <div className="flex gap-1.5 items-center">
-          <input
+          <NodeInput
             ref={synopsisInputRef}
             placeholder="故事梗概（一句话概括，也是 AI 剧本创作的核心素材）"
             value={payload.synopsis ?? ""}
-            onChange={(e) => handleChange("synopsis", e.target.value)}
+            onValueChange={(v) => handleChange("synopsis", v)}
             className="nodrag"
             style={{ ...inputStyle, flex: 1 }}
             onFocus={onFocus}
@@ -562,11 +563,10 @@ export const ScriptNode = memo(function ScriptNode({ id, selected, data }: Props
         </div>
 
         {/* Script content */}
-        <textarea className="nodrag nowheel flex-1 nowheel"
+        <NodeTextArea className="nodrag nowheel flex-1 nowheel"
           placeholder={"在此输入或粘贴脚本内容...\n\n也可直接使用下方「AI 剧本创作」一键生成。"}
           value={payload.content ?? ""}
-          onChange={(e) => handleChange("content", e.target.value)}
-          
+          onValueChange={(v) => handleChange("content", v)}
           style={textareaStyle}
           onFocus={onFocus}
           onBlur={onBlur}

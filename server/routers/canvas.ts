@@ -1179,7 +1179,7 @@ Each element must have these fields:
           { role: "system" as const, content: systemPrompt },
           { role: "user" as const, content: userContent },
         ],
-        model: input.model ?? "gemini-2.5-flash",
+        model: input.model ?? "claude-sonnet-4-5-20250929",
       });
 
       const text = extractTextContent(response);
@@ -1345,7 +1345,7 @@ Each element must have these fields:
             { role: "system" as const, content: systemPrompt },
             { role: "user" as const, content: userContent },
           ],
-          model: input.model ?? "gemini-2.5-flash",
+          model: input.model ?? "claude-sonnet-4-5-20250929",
         });
         return { result: extractTextContent(response).trim() };
       });
@@ -1563,7 +1563,7 @@ score 为 0-100 整数，issues 数组最多 8 条，每条包含 type/line/sugg
             { role: "system" as const, content: systemPrompt },
             { role: "user" as const, content: userContent },
           ],
-          model: input.model ?? "gemini-2.5-flash",
+          model: input.model ?? "claude-sonnet-4-5-20250929",
         });
         return { result: extractTextContent(response).trim() };
       });
@@ -1611,7 +1611,7 @@ score 为 0-100 整数，issues 数组最多 8 条，每条包含 type/line/sugg
             { role: "system" as const, content: systemPrompt },
             { role: "user" as const, content: input.scriptText },
           ],
-          model: input.model ?? "gemini-2.5-flash",
+          model: input.model ?? "claude-sonnet-4-5-20250929",
         });
         return { result: extractTextContent(response).trim() };
       });
@@ -1880,7 +1880,7 @@ export const clipRouter = router({
             { role: "system" as const, content: systemPrompt },
             { role: "user" as const, content: `片段列表（JSON）：\n${transcriptJson}` },
           ],
-          model: input.model ?? "gemini-2.5-flash",
+          model: input.model ?? "claude-sonnet-4-5-20250929",
           maxTokens: 2000,
         });
         const text = extractTextContent(response);
@@ -2527,7 +2527,7 @@ Output an optimized English prompt under 80 words. Output ONLY the prompt text.`
           { role: "system" as const, content: systemPrompts[input.mode] },
           { role: "user" as const, content: input.text },
         ],
-        model: input.model ?? "gemini-2.5-flash",
+        model: input.model ?? "claude-sonnet-4-5-20250929",
       });
       return { result: extractTextContent(response).trim() };
     }),
@@ -2562,7 +2562,7 @@ Output ONLY the prompt as vivid, comma-separated English descriptive phrases —
             ],
           },
         ],
-        model: input.model ?? "gemini-2.5-flash",
+        model: input.model ?? "claude-sonnet-4-5-20250929",
         maxTokens: 600,
       });
       return { result: extractTextContent(response).trim() };

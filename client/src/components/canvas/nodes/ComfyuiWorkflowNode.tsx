@@ -19,6 +19,7 @@ import {
   Server, Play, RotateCcw, ImageIcon, FileVideo, Plus, Trash2, Copy,
 } from "lucide-react";
 import { SyncConfigDialog } from "../SyncConfigDialog";
+import { NodeTextArea, NodeInput } from "../NodeTextInput";
 
 interface Props {
   id: string;
@@ -603,11 +604,11 @@ export const ComfyuiWorkflowNode = memo(function ComfyuiWorkflowNode({ id, selec
             </div>
 
             <label style={labelStyle}>粘贴 API-format Workflow JSON</label>
-            <textarea className="nowheel nowheel"
+            <NodeTextArea className="nowheel nowheel"
               style={{ ...fieldBase, minHeight: 120, resize: "vertical", fontFamily: "var(--font-mono, monospace)", fontSize: 11 }}
               placeholder={'{\n  "3": { "class_type": "KSampler", ... },\n  ...\n}'}
               value={localJson}
-              onChange={(e) => setLocalJson(e.target.value)}
+              onValueChange={(v) => setLocalJson(v)}
               spellCheck={false}
             />
 
@@ -674,12 +675,12 @@ export const ComfyuiWorkflowNode = memo(function ComfyuiWorkflowNode({ id, selec
                   <div style={{ display: "flex", alignItems: "center", gap: 6, justifyContent: "space-between" }}>
                     <div style={{ flex: 1, minWidth: 0 }}>
                       {editingBindings ? (
-                        <input
+                        <NodeInput
                           style={{ ...fieldBase, padding: "4px 7px", fontSize: 11.5 }}
                           value={b.label}
-                          onChange={(e) => {
+                          onValueChange={(v) => {
                             const updated = [...localBindings];
-                            updated[i] = { ...b, label: e.target.value };
+                            updated[i] = { ...b, label: v };
                             setLocalBindings(updated);
                           }}
                         />
@@ -872,10 +873,10 @@ export const ComfyuiWorkflowNode = memo(function ComfyuiWorkflowNode({ id, selec
                     <div key={key}>
                       <label style={labelStyle}>{b.label}</label>
                       {b.type === "text" && (
-                        <textarea 
+                        <NodeTextArea
                           style={{ ...fieldBase, minHeight: 56, resize: "vertical" }}
                           value={String(value)}
-                          onChange={(e) => setParamValue(key, e.target.value)}
+                          onValueChange={(v) => setParamValue(key, v)}
                         />
                       )}
                       {b.type === "number" && (
@@ -897,12 +898,12 @@ export const ComfyuiWorkflowNode = memo(function ComfyuiWorkflowNode({ id, selec
                         const listId = `wf-opts-${key.replace(/[^a-zA-Z0-9_-]/g, "_")}`;
                         return (
                           <>
-                            <input
+                            <NodeInput
                               list={hasOptions ? listId : undefined}
                               style={fieldBase}
                               value={String(value)}
                               placeholder={hasOptions ? `输入以搜索（${b.options!.length} 个可选）` : undefined}
-                              onChange={(e) => setParamValue(key, e.target.value)}
+                              onValueChange={(v) => setParamValue(key, v)}
                             />
                             {hasOptions && (
                               <datalist id={listId}>
@@ -1193,11 +1194,11 @@ function ImageParamField({
         </div>
       )}
       <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
-        <input
+        <NodeInput
           style={{ ...fieldBase, flex: 1 }}
           placeholder="拖入图片 / 粘贴 URL / 上传文件"
           value={value}
-          onChange={(e) => onChangeUrl(e.target.value)}
+          onValueChange={(v) => onChangeUrl(v)}
         />
         <button
           onClick={() => fileRef.current?.click()}

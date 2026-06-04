@@ -20,6 +20,7 @@ import { ParamControls } from "../ParamControls";
 import { IMAGE_MODEL_PARAMS, resolveImageParam } from "@/lib/paramDefs";
 import type { ImageGenModel } from "../../../../../shared/types";
 import { useCanvasMode } from "../../../contexts/CanvasModeContext";
+import { NodeTextArea, NodeInput } from "../NodeTextInput";
 
 interface Props {
   id: string;
@@ -102,7 +103,7 @@ export const StoryboardNode = memo(function StoryboardNode({ id, selected, data 
   const effectiveRefUrl = payload.referenceImageUrl?.trim() || connectedCharRefUrl;
   const [generating, setGenerating] = useState(false);
   const [inputExpanded, setInputExpanded] = useState(!!selected);
-  const [llmModel, setLlmModel] = useState<LLMModelId>("gemini-2.5-flash");
+  const [llmModel, setLlmModel] = useState<LLMModelId>("claude-sonnet-4-5-20250929");
   const [showHistory, setShowHistory] = useState(false);
   const [batchCount, setBatchCount] = useState<1 | 4>(([1, 4].includes(payload.batchSize as number) ? payload.batchSize : 1) as 1 | 4);
   const [zoomUrl, setZoomUrl] = useState<string | null>(null);
@@ -576,10 +577,10 @@ export const StoryboardNode = memo(function StoryboardNode({ id, selected, data 
             onFocus={onFocus}
             onBlur={onBlur}
           />
-          <input
+          <NodeInput
             placeholder="运镜方式"
             value={payload.cameraMovement ?? ""}
-            onChange={(e) => handleChange("cameraMovement", e.target.value)}
+            onValueChange={(v) => handleChange("cameraMovement", v)}
             className="nodrag flex-1"
             style={fieldStyle}
             onFocus={onFocus}
@@ -605,10 +606,10 @@ export const StoryboardNode = memo(function StoryboardNode({ id, selected, data 
         </div>
 
         {/* ── Description ── */}
-        <textarea
+        <NodeTextArea
           placeholder="场景描述..."
           value={payload.description ?? ""}
-          onChange={(e) => handleChange("description", e.target.value)}
+          onValueChange={(v) => handleChange("description", v)}
           className="nodrag nowheel"
           rows={2}
           style={{ ...fieldStyle, resize: "none", lineHeight: 1.6 }}
@@ -640,10 +641,10 @@ export const StoryboardNode = memo(function StoryboardNode({ id, selected, data 
 
         {/* ── Prompt ── */}
         <div className="flex flex-col gap-1">
-          <textarea
+          <NodeTextArea
             placeholder="正向提示词（用于 AI 生图）..."
             value={payload.promptText ?? ""}
-            onChange={(e) => handleChange("promptText", e.target.value)}
+            onValueChange={(v) => handleChange("promptText", v)}
             className="nodrag nowheel"
             rows={2}
             style={{
@@ -772,10 +773,10 @@ export const StoryboardNode = memo(function StoryboardNode({ id, selected, data 
         </div>
 
         {/* ── Negative prompt ── */}
-        <textarea
+        <NodeTextArea
           placeholder="负面提示词（可选，描述不希望出现的内容）..."
           value={payload.negativePrompt ?? ""}
-          onChange={(e) => handleChange("negativePrompt", e.target.value)}
+          onValueChange={(v) => handleChange("negativePrompt", v)}
           className="nodrag nowheel"
           rows={2}
           style={{ ...fieldStyle, resize: "none", lineHeight: 1.6 }}
@@ -785,19 +786,19 @@ export const StoryboardNode = memo(function StoryboardNode({ id, selected, data 
 
         {/* ── Style row ── */}
         <div className="flex gap-1.5">
-          <input
+          <NodeInput
             placeholder="色调/风格"
             value={payload.colorTone ?? ""}
-            onChange={(e) => handleChange("colorTone", e.target.value)}
+            onValueChange={(v) => handleChange("colorTone", v)}
             className="nodrag flex-1"
             style={fieldStyle}
             onFocus={onFocus}
             onBlur={onBlur}
           />
-          <input
+          <NodeInput
             placeholder="镜头"
             value={payload.lens ?? ""}
-            onChange={(e) => handleChange("lens", e.target.value)}
+            onValueChange={(v) => handleChange("lens", v)}
             className="nodrag flex-1"
             style={fieldStyle}
             onFocus={onFocus}

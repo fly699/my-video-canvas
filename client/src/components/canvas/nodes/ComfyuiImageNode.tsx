@@ -24,6 +24,7 @@ import { makeImageProxyFallback } from "@/lib/utils";
 import { ComfyServerUrlField } from "./ComfyServerUrlField";
 import { SyncConfigDialog } from "../SyncConfigDialog";
 import { NodeConfigTabs } from "../NodeConfigTabs";
+import { NodeTextArea, NodeInput } from "../NodeTextInput";
 
 interface Props {
   id: string;
@@ -91,7 +92,7 @@ export const ComfyuiImageNode = memo(function ComfyuiImageNode({ id, selected, d
   const [translating, setTranslating] = useState(false);
   // Translation LLM — let the user pick a model that's available in their
   // deployment (some setups have no Gemini but do have Claude/GPT via Poyo).
-  const [llmModel, setLlmModel] = useState<LLMModelId>("claude-haiku-4-5-20251001");
+  const [llmModel, setLlmModel] = useState<LLMModelId>("claude-sonnet-4-5-20250929");
   const [urlExpanded, setUrlExpanded] = useState(false);
   const [syncOpen, setSyncOpen] = useState(false);
   const [cfgTab, setCfgTab] = useState("basic");
@@ -760,10 +761,10 @@ export const ComfyuiImageNode = memo(function ComfyuiImageNode({ id, selected, d
         {/* ── Prompt ── */}
         <div>
           <label style={labelStyle}>提示词 *</label>
-          <textarea className="nodrag nowheel"
+          <NodeTextArea className="nodrag nowheel"
             placeholder="描述你想生成的图像..."
             value={payload.prompt ?? ""}
-            onChange={(e) => update("prompt", e.target.value)}
+            onValueChange={(v) => update("prompt", v)}
             rows={3}
 
             style={{ ...fieldBase, resize: "none", lineHeight: 1.6 }}
@@ -793,10 +794,10 @@ export const ComfyuiImageNode = memo(function ComfyuiImageNode({ id, selected, d
         {/* ── Negative prompt ── */}
         <div>
           <label style={labelStyle}>反向提示词</label>
-          <textarea className="nodrag nowheel"
+          <NodeTextArea className="nodrag nowheel"
             placeholder="blurry, low quality..."
             value={payload.negPrompt ?? ""}
-            onChange={(e) => update("negPrompt", e.target.value)}
+            onValueChange={(v) => update("negPrompt", v)}
             rows={2}
 
             style={{ ...fieldBase, resize: "none", lineHeight: 1.6, fontFamily: "var(--font-mono)", fontSize: 10.5 }}
@@ -896,11 +897,11 @@ export const ComfyuiImageNode = memo(function ComfyuiImageNode({ id, selected, d
         {/* ── 模型文件（按加载方式切换 checkpoint / unet 列表）── */}
         <div>
           <label style={labelStyle}>{modelSrc === "unet" ? "UNet / 扩散模型 *" : "Checkpoint *"}</label>
-          <input
+          <NodeInput
             list={`comfyui-model-${id}`}
             placeholder={modelSrc === "unet" ? "如 flux1-dev.safetensors" : "如 sd_xl_base_1.0.safetensors"}
             value={payload.ckpt ?? ""}
-            onChange={(e) => update("ckpt", e.target.value)}
+            onValueChange={(v) => update("ckpt", v)}
             className="nodrag"
             style={fieldBase}
             onFocus={(e) => { e.currentTarget.style.borderColor = BORDER_ACCENT; }}
@@ -954,11 +955,11 @@ export const ComfyuiImageNode = memo(function ComfyuiImageNode({ id, selected, d
             {lorasValue.map((l, i) => (
               <div key={i} className="flex flex-col gap-1 p-1.5 rounded-lg" style={{ background: "var(--c-input)", border: "1px solid var(--c-bd1)" }}>
                 <div className="flex items-center gap-1">
-                  <input
+                  <NodeInput
                     list={`comfyui-loras-${id}`}
                     placeholder="lora 文件名"
                     value={l.name}
-                    onChange={(e) => updateLora(i, { name: e.target.value })}
+                    onValueChange={(v) => updateLora(i, { name: v })}
                     className="nodrag"
                     style={{ ...fieldBase, flex: 1 }}
                     onFocus={(e) => { e.currentTarget.style.borderColor = "var(--c-t4)"; }}
@@ -1062,11 +1063,11 @@ export const ComfyuiImageNode = memo(function ComfyuiImageNode({ id, selected, d
               {/* Sampler */}
               <div>
                 <label style={labelStyle}>采样器</label>
-                <input
+                <NodeInput
                   list={`comfyui-samplers-${id}`}
                   placeholder="euler"
                   value={payload.sampler ?? ""}
-                  onChange={(e) => update("sampler", e.target.value || undefined)}
+                  onValueChange={(v) => update("sampler", v || undefined)}
                   className="nodrag" style={fieldBase}
                 />
                 <datalist id={`comfyui-samplers-${id}`}>
@@ -1076,11 +1077,11 @@ export const ComfyuiImageNode = memo(function ComfyuiImageNode({ id, selected, d
               {/* Scheduler */}
               <div>
                 <label style={labelStyle}>调度器</label>
-                <input
+                <NodeInput
                   list={`comfyui-schedulers-${id}`}
                   placeholder="normal"
                   value={payload.scheduler ?? ""}
-                  onChange={(e) => update("scheduler", e.target.value || undefined)}
+                  onValueChange={(v) => update("scheduler", v || undefined)}
                   className="nodrag" style={fieldBase}
                 />
                 <datalist id={`comfyui-schedulers-${id}`}>
@@ -1103,11 +1104,11 @@ export const ComfyuiImageNode = memo(function ComfyuiImageNode({ id, selected, d
               {/* VAE */}
               <div className="col-span-2">
                 <label style={labelStyle}>VAE（留空用 Checkpoint 内置）</label>
-                <input
+                <NodeInput
                   list={`comfyui-vaes-${id}`}
                   placeholder="ae.safetensors"
                   value={payload.vae ?? ""}
-                  onChange={(e) => update("vae", e.target.value || undefined)}
+                  onValueChange={(v) => update("vae", v || undefined)}
                   className="nodrag" style={fieldBase}
                 />
                 <datalist id={`comfyui-vaes-${id}`}>
@@ -1138,11 +1139,11 @@ export const ComfyuiImageNode = memo(function ComfyuiImageNode({ id, selected, d
                     {/* TripleCLIPLoader 无 type 字段 */}
                     {payload.clip.name3 === undefined && (
                       <>
-                        <input
+                        <NodeInput
                           list={`comfyui-clip-types-${id}`}
                           placeholder={payload.clip.name2 !== undefined ? "类型 如 flux / sdxl" : "类型 如 qwen_image / flux"}
                           value={payload.clip.clipType}
-                          onChange={(e) => update("clip", { ...payload.clip!, clipType: e.target.value })}
+                          onValueChange={(v) => update("clip", { ...payload.clip!, clipType: v })}
                           className="nodrag" style={fieldBase}
                         />
                         <datalist id={`comfyui-clip-types-${id}`}>
@@ -1153,28 +1154,28 @@ export const ComfyuiImageNode = memo(function ComfyuiImageNode({ id, selected, d
                         </datalist>
                       </>
                     )}
-                    <input
+                    <NodeInput
                       list={`comfyui-clips-${id}`}
                       placeholder={payload.clip.name2 !== undefined ? "clip_name1 如 clip_l" : "clip 文件名"}
                       value={payload.clip.name1}
-                      onChange={(e) => update("clip", { ...payload.clip!, name1: e.target.value })}
+                      onValueChange={(v) => update("clip", { ...payload.clip!, name1: v })}
                       className="nodrag" style={fieldBase}
                     />
                     {payload.clip.name2 !== undefined && (
-                      <input
+                      <NodeInput
                         list={`comfyui-clips-${id}`}
                         placeholder="clip_name2 如 t5xxl_fp16"
                         value={payload.clip.name2}
-                        onChange={(e) => update("clip", { ...payload.clip!, name2: e.target.value })}
+                        onValueChange={(v) => update("clip", { ...payload.clip!, name2: v })}
                         className="nodrag" style={fieldBase}
                       />
                     )}
                     {payload.clip.name3 !== undefined && (
-                      <input
+                      <NodeInput
                         list={`comfyui-clips-${id}`}
                         placeholder="clip_name3 如 t5xxl"
                         value={payload.clip.name3}
-                        onChange={(e) => update("clip", { ...payload.clip!, name3: e.target.value })}
+                        onValueChange={(v) => update("clip", { ...payload.clip!, name3: v })}
                         className="nodrag" style={fieldBase}
                       />
                     )}
@@ -1187,11 +1188,11 @@ export const ComfyuiImageNode = memo(function ComfyuiImageNode({ id, selected, d
               {/* Upscale model (放大) */}
               <div className="col-span-2">
                 <label style={labelStyle}>放大模型（留空不放大）</label>
-                <input
+                <NodeInput
                   list={`comfyui-upscalers-${id}`}
                   placeholder="如 4x-UltraSharp.pth"
                   value={payload.upscaleModel ?? ""}
-                  onChange={(e) => update("upscaleModel", e.target.value || undefined)}
+                  onValueChange={(v) => update("upscaleModel", v || undefined)}
                   className="nodrag" style={fieldBase}
                 />
                 <datalist id={`comfyui-upscalers-${id}`}>
@@ -1346,11 +1347,11 @@ export const ComfyuiImageNode = memo(function ComfyuiImageNode({ id, selected, d
             <div className="px-3 pb-3 flex flex-col gap-2">
               <div>
                 <label style={labelStyle}>ControlNet 模型</label>
-                <input
+                <NodeInput
                   list={`comfyui-controlnets-${id}`}
                   placeholder="如 control_v11p_sd15_canny.pth"
                   value={cn?.model ?? ""}
-                  onChange={(e) => updateCn({ model: e.target.value })}
+                  onValueChange={(v) => updateCn({ model: v })}
                   className="nodrag" style={fieldBase}
                   onFocus={(e) => { e.currentTarget.style.borderColor = BORDER_ACCENT; }}
                   onBlur={(e) => { e.currentTarget.style.borderColor = BORDER_DEFAULT; }}
@@ -1361,11 +1362,11 @@ export const ComfyuiImageNode = memo(function ComfyuiImageNode({ id, selected, d
               </div>
               <div>
                 <label style={labelStyle}>预处理器（可选，需 controlnet_aux 节点包）</label>
-                <input
+                <NodeInput
                   list={`comfyui-cn-preproc-${id}`}
                   placeholder="留空＝直接用控制图（已是边缘/深度图）"
                   value={cn?.preprocessor ?? ""}
-                  onChange={(e) => updateCn({ preprocessor: e.target.value })}
+                  onValueChange={(v) => updateCn({ preprocessor: v })}
                   className="nodrag" style={{ ...fieldBase, fontSize: 10.5 }}
                 />
                 <datalist id={`comfyui-cn-preproc-${id}`}>
@@ -1445,11 +1446,11 @@ export const ComfyuiImageNode = memo(function ComfyuiImageNode({ id, selected, d
             <div className="px-3 pb-3 flex flex-col gap-2">
               <div>
                 <label style={labelStyle}>IPAdapter 模型</label>
-                <input
+                <NodeInput
                   list={`comfyui-ipadapters-${id}`}
                   placeholder="如 ip-adapter-plus_sdxl_vit-h.safetensors"
                   value={ip?.model ?? ""}
-                  onChange={(e) => updateIp({ model: e.target.value })}
+                  onValueChange={(v) => updateIp({ model: v })}
                   className="nodrag" style={fieldBase}
                   onFocus={(e) => { e.currentTarget.style.borderColor = BORDER_ACCENT; }}
                   onBlur={(e) => { e.currentTarget.style.borderColor = BORDER_DEFAULT; }}
@@ -1538,11 +1539,11 @@ export const ComfyuiImageNode = memo(function ComfyuiImageNode({ id, selected, d
               </div>
               <div>
                 <label style={labelStyle}>CLIP Vision（留空用默认）</label>
-                <input
+                <NodeInput
                   list={`comfyui-clipvisions-${id}`}
                   placeholder="CLIP-ViT-H-14-laion2B-s32B-b79K.safetensors"
                   value={ip?.clipVision ?? ""}
-                  onChange={(e) => updateIp({ clipVision: e.target.value })}
+                  onValueChange={(v) => updateIp({ clipVision: v })}
                   className="nodrag" style={{ ...fieldBase, fontSize: 10.5 }}
                 />
                 <datalist id={`comfyui-clipvisions-${id}`}>

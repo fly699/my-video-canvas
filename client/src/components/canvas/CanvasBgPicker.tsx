@@ -9,6 +9,9 @@ export interface CanvasBg {
   patternColor: string;
   gap: number;
   size: number;
+  /** When true, the canvas bottom color follows the active theme's --c-canvas
+   *  (switching theme updates it). A preset/custom pick sets this false. */
+  followTheme: boolean;
 }
 
 export const DEFAULT_CANVAS_BG: CanvasBg = {
@@ -17,6 +20,7 @@ export const DEFAULT_CANVAS_BG: CanvasBg = {
   patternColor: "oklch(0.26 0.008 260 / 0.7)",
   gap: 24,
   size: 1.5,
+  followTheme: true,
 };
 
 const STORAGE_KEY = "avc:canvas-bg";
@@ -24,7 +28,16 @@ const STORAGE_KEY = "avc:canvas-bg";
 export function loadCanvasBg(): CanvasBg {
   try {
     const raw = localStorage.getItem(STORAGE_KEY);
-    if (raw) return { ...DEFAULT_CANVAS_BG, ...JSON.parse(raw) };
+    if (raw) {
+      const parsed = JSON.parse(raw) as Partial<CanvasBg>;
+      // Legacy rows (saved before followTheme existed): only the historical
+      // default dark bg should follow the theme; an explicitly customized color
+      // stays custom so we don't silently discard the user's choice.
+      const followTheme = typeof parsed.followTheme === "boolean"
+        ? parsed.followTheme
+        : parsed.bgColor == null || parsed.bgColor === DEFAULT_CANVAS_BG.bgColor;
+      return { ...DEFAULT_CANVAS_BG, ...parsed, followTheme };
+    }
   } catch {}
   return DEFAULT_CANVAS_BG;
 }
@@ -173,7 +186,7 @@ export function CanvasBgPicker({ value, onChange }: Props) {
   };
 
   const selectPreset = (p: typeof BG_PRESETS[0]) => {
-    update({ bgColor: p.color, patternColor: p.patternColor });
+    update({ bgColor: p.color, patternColor: p.patternColor, followTheme: false });
   };
 
   return (
@@ -254,6 +267,32 @@ export function CanvasBgPicker({ value, onChange }: Props) {
           </div>
 
           <div style={{ padding: "12px" }}>
+
+            {/* Follow-theme toggle — when on, the canvas底色 tracks the active
+                theme's background; picking a preset/custom color turns it off. */}
+            <button
+              onClick={() => update({ followTheme: true })}
+              style={{
+                width: "100%",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                gap: 6,
+                padding: "7px 10px",
+                marginBottom: 14,
+                borderRadius: 9,
+                border: value.followTheme ? "1.5px solid oklch(0.68 0.22 285 / 0.7)" : "1.5px solid var(--c-bd1)",
+                background: value.followTheme ? "oklch(0.68 0.22 285 / 0.12)" : "var(--c-surface)",
+                color: value.followTheme ? "oklch(0.68 0.22 285)" : "var(--c-t3)",
+                fontSize: 11,
+                fontWeight: 600,
+                cursor: "pointer",
+                transition: "all 150ms ease",
+              }}
+            >
+              <span style={{ width: 7, height: 7, borderRadius: "50%", background: value.followTheme ? "oklch(0.68 0.22 285)" : "var(--c-t4)" }} />
+              跟随当前主题
+            </button>
 
             {/* Pattern selector */}
             <p style={{ fontSize: 10, fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.06em", color: "var(--c-t4)", marginBottom: 8 }}>
@@ -336,7 +375,7 @@ export function CanvasBgPicker({ value, onChange }: Props) {
                 value={bgColorToInputValue(value.bgColor)}
                 onChange={(e) => {
                   const hex = e.target.value;
-                  update({ bgColor: hex, patternColor: derivePatternColor(hex) });
+                  update({ bgColor: hex, patternColor: derivePatternColor(hex), followTheme: false });
                 }}
                 style={{
                   width: 30, height: 22, padding: 0, border: "1px solid var(--c-bd2)",

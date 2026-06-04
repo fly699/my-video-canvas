@@ -320,7 +320,7 @@ export function useWorkflowRunner() {
         // The 提示词 node no longer generates or outputs images; it just produces
         // text. Enabled ops run in order; if none are on, the entered text stands.
         if (nodeType === "prompt") {
-          const model = (p.llmModel as string) || "gemini-2.5-flash";
+          const model = (p.llmModel as string) || "claude-sonnet-4-5-20250929";
           const img = (p.referenceImageUrl as string) || "";
           let text = (p.positivePrompt as string) || "";
           if (p.enableAnalyze && img) {

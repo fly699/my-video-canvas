@@ -18,6 +18,7 @@ import {
 import { isOwnStorageUrl } from "@/lib/ownStorage";
 import { useComfyUpstreamAutoFill } from "./useComfyUpstreamAutoFill";
 import { LLMModelPicker, type LLMModelId } from "../LLMModelPicker";
+import { NodeTextArea, NodeInput } from "../NodeTextInput";
 
 interface Props {
   id: string;
@@ -77,7 +78,7 @@ export const ComfyuiVideoNode = memo(function ComfyuiVideoNode({ id, selected, d
   useAutoPreferUpstreamRefSource({ nodeId: id, refImageUrl: payload.referenceImageUrl, enabled: preferUpstreamRef, onSwitch: (u) => updateNodeData(id, { referenceImageUrl: u }, true) });
   const [uploading, setUploading] = useState(false);
   const [translating, setTranslating] = useState(false);
-  const [llmModel, setLlmModel] = useState<LLMModelId>("claude-haiku-4-5-20251001");
+  const [llmModel, setLlmModel] = useState<LLMModelId>("claude-sonnet-4-5-20250929");
   const [urlExpanded, setUrlExpanded] = useState(false);
   const [paramsExpanded, setParamsExpanded] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -504,10 +505,10 @@ export const ComfyuiVideoNode = memo(function ComfyuiVideoNode({ id, selected, d
         {/* ── Prompt ── */}
         <div>
           <label style={labelStyle}>提示词 *</label>
-          <textarea className="nodrag nowheel"
+          <NodeTextArea className="nodrag nowheel"
             placeholder="描述视频内容..."
             value={payload.prompt ?? ""}
-            onChange={(e) => update("prompt", e.target.value)}
+            onValueChange={(v) => update("prompt", v)}
             rows={3}
 
             style={{ ...fieldBase, resize: "none", lineHeight: 1.6 }}
@@ -537,12 +538,12 @@ export const ComfyuiVideoNode = memo(function ComfyuiVideoNode({ id, selected, d
         {/* ── Negative prompt ── */}
         <div>
           <label style={labelStyle}>反向提示词</label>
-          <textarea className="nodrag nowheel"
+          <NodeTextArea className="nodrag nowheel"
             placeholder="blurry, low quality..."
             value={payload.negPrompt ?? ""}
-            onChange={(e) => update("negPrompt", e.target.value)}
+            onValueChange={(v) => update("negPrompt", v)}
             rows={2}
-            
+
             style={{ ...fieldBase, resize: "none", lineHeight: 1.6, fontFamily: "var(--font-mono)", fontSize: 10.5 }}
             onFocus={(e) => { e.currentTarget.style.borderColor = "var(--c-t4)"; }}
             onBlur={(e) => { e.currentTarget.style.borderColor = BORDER_DEFAULT; }}
@@ -571,11 +572,11 @@ export const ComfyuiVideoNode = memo(function ComfyuiVideoNode({ id, selected, d
         {/* ── Main model (Checkpoint or UNET) ── */}
         <div>
           <label style={labelStyle}>{usesClip ? "模型（UNET/Checkpoint）*" : "Checkpoint *"}</label>
-          <input
+          <NodeInput
             list={`comfyui-vid-ckpts-${id}`}
             placeholder={isSvd ? "如 svd_xt.safetensors" : usesClip ? "如 wan2.2_t2v_…fp8.safetensors" : "如 sd_v1-5_pruned.safetensors"}
             value={payload.ckpt ?? ""}
-            onChange={(e) => update("ckpt", e.target.value)}
+            onValueChange={(v) => update("ckpt", v)}
             className="nodrag"
             style={fieldBase}
             onFocus={(e) => { e.currentTarget.style.borderColor = BORDER_ACCENT; }}
@@ -590,11 +591,11 @@ export const ComfyuiVideoNode = memo(function ComfyuiVideoNode({ id, selected, d
         {usesClip && (
           <div>
             <label style={labelStyle}>CLIP 文本编码器（留空用推荐默认）</label>
-            <input
+            <NodeInput
               list={`comfyui-vid-clip-${id}`}
               placeholder={payload.workflowTemplate === "ltxv" ? "t5xxl_fp16.safetensors" : "umt5_xxl_fp8_e4m3fn_scaled.safetensors"}
               value={payload.clip ?? ""}
-              onChange={(e) => update("clip", e.target.value)}
+              onValueChange={(v) => update("clip", v)}
               className="nodrag" style={{ ...fieldBase, fontSize: 10.5 }}
             />
             <datalist id={`comfyui-vid-clip-${id}`}>
@@ -607,11 +608,11 @@ export const ComfyuiVideoNode = memo(function ComfyuiVideoNode({ id, selected, d
         {usesClipVision && (
           <div>
             <label style={labelStyle}>CLIP Vision（图生视频，留空用默认）</label>
-            <input
+            <NodeInput
               list={`comfyui-vid-clipvision-${id}`}
               placeholder="clip_vision_h.safetensors"
               value={payload.clipVision ?? ""}
-              onChange={(e) => update("clipVision", e.target.value)}
+              onValueChange={(v) => update("clipVision", v)}
               className="nodrag" style={{ ...fieldBase, fontSize: 10.5 }}
             />
             <datalist id={`comfyui-vid-clipvision-${id}`}>
@@ -624,11 +625,11 @@ export const ComfyuiVideoNode = memo(function ComfyuiVideoNode({ id, selected, d
         {isAnimateDiff && (
           <div>
             <label style={labelStyle}>Motion Module *</label>
-            <input
+            <NodeInput
               list={`comfyui-vid-motion-${id}`}
               placeholder="如 mm_sd_v15_v2.ckpt"
               value={payload.motionModule ?? ""}
-              onChange={(e) => update("motionModule", e.target.value)}
+              onValueChange={(v) => update("motionModule", v)}
               className="nodrag"
               style={fieldBase}
               onFocus={(e) => { e.currentTarget.style.borderColor = BORDER_ACCENT; }}
@@ -722,11 +723,11 @@ export const ComfyuiVideoNode = memo(function ComfyuiVideoNode({ id, selected, d
               {/* Sampler */}
               <div>
                 <label style={labelStyle}>采样器</label>
-                <input
+                <NodeInput
                   list={`comfyui-vid-samplers-${id}`}
                   placeholder="euler"
                   value={payload.sampler ?? ""}
-                  onChange={(e) => update("sampler", e.target.value || undefined)}
+                  onValueChange={(v) => update("sampler", v || undefined)}
                   className="nodrag" style={fieldBase}
                 />
                 <datalist id={`comfyui-vid-samplers-${id}`}>
@@ -736,11 +737,11 @@ export const ComfyuiVideoNode = memo(function ComfyuiVideoNode({ id, selected, d
               {/* Scheduler */}
               <div>
                 <label style={labelStyle}>调度器</label>
-                <input
+                <NodeInput
                   list={`comfyui-vid-schedulers-${id}`}
                   placeholder="normal"
                   value={payload.scheduler ?? ""}
-                  onChange={(e) => update("scheduler", e.target.value || undefined)}
+                  onValueChange={(v) => update("scheduler", v || undefined)}
                   className="nodrag" style={fieldBase}
                 />
                 <datalist id={`comfyui-vid-schedulers-${id}`}>
@@ -763,11 +764,11 @@ export const ComfyuiVideoNode = memo(function ComfyuiVideoNode({ id, selected, d
               {/* VAE */}
               <div className="col-span-2">
                 <label style={labelStyle}>VAE（留空用 Checkpoint 内置）</label>
-                <input
+                <NodeInput
                   list={`comfyui-vid-vaes-${id}`}
                   placeholder="ae.safetensors"
                   value={payload.vae ?? ""}
-                  onChange={(e) => update("vae", e.target.value || undefined)}
+                  onValueChange={(v) => update("vae", v || undefined)}
                   className="nodrag" style={fieldBase}
                 />
                 <datalist id={`comfyui-vid-vaes-${id}`}>

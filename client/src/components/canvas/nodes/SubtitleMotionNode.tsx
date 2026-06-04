@@ -6,6 +6,7 @@ import { trpc } from "@/lib/trpc";
 import { toast } from "sonner";
 import { mediaFetchUrl, onDownloadMedia } from "@/lib/download";
 import { Clapperboard, Loader2, Download, RotateCcw, Mic2, Plus, Trash2, X } from "lucide-react";
+import { NodeInput } from "../NodeTextInput";
 
 interface Props {
   id: string;
@@ -226,7 +227,7 @@ export const SubtitleMotionNode = memo(function SubtitleMotionNode({ id, selecte
                           className="nodrag" style={{ ...fieldStyle, padding: "2px 6px", fontSize: 10, fontFamily: "monospace", width: "100%" }} />
                         <span style={{ fontSize: 9, color: "var(--c-t4)", textAlign: "center" }}>{formatTime(entry.start)} → {formatTime(entry.end)}</span>
                       </div>
-                      <input value={entry.text} onChange={(e) => handleUpdateEntry(i, { text: e.target.value })}
+                      <NodeInput value={entry.text} onValueChange={(v) => handleUpdateEntry(i, { text: v })}
                         className="nodrag flex-1" style={{ ...fieldStyle, fontSize: 11 }} placeholder="字幕文本..." />
                       <button onClick={() => handleDeleteEntry(i)} className="nodrag p-1 rounded flex-shrink-0" style={{ color: "var(--c-t4)", cursor: "pointer" }}>
                         <Trash2 style={{ width: 10, height: 10 }} />

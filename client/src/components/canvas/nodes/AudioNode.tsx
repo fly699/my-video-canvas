@@ -8,6 +8,7 @@ import {
   Music, Upload, Mic, Loader2, Play, Pause, X, Volume2, Zap, Wind, HardDriveDownload,
 } from "lucide-react";
 import { isOwnStorageUrl } from "@/lib/ownStorage";
+import { NodeTextArea, NodeInput } from "../NodeTextInput";
 
 // Route external CDN URLs (e.g. Poyo audio when persistence is off) through the
 // server proxy so remote browsers can play them; same-origin /manus-storage
@@ -521,10 +522,10 @@ export const AudioNode = memo(function AudioNode({ id, selected, data }: Props) 
             />
             <div>
               <label style={labelStyle}>音乐描述</label>
-              <textarea className="nodrag nowheel"
+              <NodeTextArea className="nodrag nowheel"
                 placeholder={isMiniMax ? "描述歌曲主题、情绪、风格（至少 10 字）..." : "描述你想要的配乐风格、氛围、节奏..."}
                 value={payload.musicPrompt ?? ""}
-                onChange={(e) => update("musicPrompt", e.target.value)}
+                onValueChange={(v) => update("musicPrompt", v)}
                 rows={3}
 
                 style={{ ...fieldStyle, resize: "none", lineHeight: 1.6 }}
@@ -560,10 +561,10 @@ export const AudioNode = memo(function AudioNode({ id, selected, data }: Props) 
             {isMiniMax && (
               <div>
                 <label style={labelStyle}>歌词（可选）</label>
-                <textarea className="nodrag nowheel"
+                <NodeTextArea className="nodrag nowheel"
                   placeholder="留空则由模型自动生成歌词；纯器乐请打开下方开关"
                   value={payload.musicLyrics ?? ""}
-                  onChange={(e) => update("musicLyrics", e.target.value)}
+                  onValueChange={(v) => update("musicLyrics", v)}
                   rows={3}
                   style={{ ...fieldStyle, resize: "none", lineHeight: 1.6 }}
                   onFocus={(e) => { e.currentTarget.style.borderColor = BORDER_ACCENT; }}
@@ -598,10 +599,10 @@ export const AudioNode = memo(function AudioNode({ id, selected, data }: Props) 
             {!isMiniMax && (
               <div>
                 <label style={labelStyle}>排除元素（可选）</label>
-                <input
+                <NodeInput
                   placeholder="例如：drums, vocals, distortion"
                   value={payload.musicNegativeTags ?? ""}
-                  onChange={(e) => update("musicNegativeTags", e.target.value)}
+                  onValueChange={(v) => update("musicNegativeTags", v)}
                   className="nodrag"
                   style={fieldStyle}
                   onFocus={(e) => { e.currentTarget.style.borderColor = BORDER_ACCENT; }}
@@ -653,12 +654,12 @@ export const AudioNode = memo(function AudioNode({ id, selected, data }: Props) 
                   {textLen} / {textLimit}
                 </span>
               </div>
-              <textarea className="nodrag nowheel"
+              <NodeTextArea className="nodrag nowheel"
                 placeholder="输入要转换为语音的文字..."
                 value={payload.ttsText ?? ""}
-                onChange={(e) => update("ttsText", e.target.value)}
+                onValueChange={(v) => update("ttsText", v)}
                 rows={4}
-                
+
                 style={{ ...fieldStyle, resize: "none", lineHeight: 1.6 }}
                 onFocus={(e) => { e.currentTarget.style.borderColor = BORDER_ACCENT; }}
                 onBlur={(e) => { e.currentTarget.style.borderColor = BORDER_DEFAULT; }}
@@ -756,10 +757,10 @@ export const AudioNode = memo(function AudioNode({ id, selected, data }: Props) 
                 {/* Language code (ISO 639-1, optional) */}
                 <div>
                   <label style={labelStyle}>语言代码 (ISO 639-1，可选)</label>
-                  <input
+                  <NodeInput
                     placeholder="例如：en / zh / ja"
                     value={payload.ttsLanguageCode ?? ""}
-                    onChange={(e) => update("ttsLanguageCode", e.target.value)}
+                    onValueChange={(v) => update("ttsLanguageCode", v)}
                     className="nodrag"
                     style={fieldStyle}
                     onFocus={(e) => { e.currentTarget.style.borderColor = BORDER_ACCENT; }}
@@ -804,12 +805,12 @@ export const AudioNode = memo(function AudioNode({ id, selected, data }: Props) 
             />
             <div>
               <label style={labelStyle}>音效描述</label>
-              <textarea className="nodrag nowheel"
+              <NodeTextArea className="nodrag nowheel"
                 placeholder="描述需要的音效，例如：雨声、脚步声、爆炸声..."
                 value={payload.sfxPrompt ?? ""}
-                onChange={(e) => update("sfxPrompt", e.target.value)}
+                onValueChange={(v) => update("sfxPrompt", v)}
                 rows={3}
-                
+
                 style={{ ...fieldStyle, resize: "none", lineHeight: 1.6 }}
                 onFocus={(e) => { e.currentTarget.style.borderColor = BORDER_ACCENT; }}
                 onBlur={(e) => { e.currentTarget.style.borderColor = BORDER_DEFAULT; }}

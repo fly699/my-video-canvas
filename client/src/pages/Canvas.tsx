@@ -43,7 +43,7 @@ import { WorkflowStatusPanel } from "../components/canvas/WorkflowStatusPanel";
 import { ThemeSwitcher } from "../components/canvas/ThemeSwitcher";
 import { CanvasBgPicker, loadCanvasBg, type CanvasBg } from "../components/canvas/CanvasBgPicker";
 import { useCanvasMode } from "../contexts/CanvasModeContext";
-import { useTheme } from "../contexts/ThemeContext";
+import { useTheme, THEMES } from "../contexts/ThemeContext";
 import { trpc } from "@/lib/trpc";
 import { useAuth } from "@/_core/hooks/useAuth";
 import { useIsMobile } from "@/hooks/useMobile";
@@ -409,11 +409,17 @@ function CanvasInner({ projectId }: { projectId: number }) {
   const [canvasBg, setCanvasBg] = useState<CanvasBg>(() => loadCanvasBg());
   // Keep --c-canvas in sync with the picker so all components using
   // var(--c-canvas) (node borders, inset previews, vignette) match the
-  // user-chosen background color.
+  // user-chosen background color. In "follow theme" mode we must NOT set an
+  // inline override (it would shadow the theme's CSS --c-canvas and a theme
+  // switch would no longer change the background — the reported bug).
   useEffect(() => {
+    if (canvasBg.followTheme) {
+      document.documentElement.style.removeProperty("--c-canvas");
+      return;
+    }
     document.documentElement.style.setProperty("--c-canvas", canvasBg.bgColor);
     return () => { document.documentElement.style.removeProperty("--c-canvas"); };
-  }, [canvasBg.bgColor]);
+  }, [canvasBg.followTheme, canvasBg.bgColor]);
   const [showSnapshots, setShowSnapshots] = useState(false);
   const [globalAspectRatio, setGlobalAspectRatio] = useState<string | null>(null);
   const [showRatioPicker, setShowRatioPicker] = useState(false);
@@ -429,7 +435,15 @@ function CanvasInner({ projectId }: { projectId: number }) {
   const [showArcPicker, setShowArcPicker] = useState(false);
   const { mode: canvasMode, setMode: setCanvasMode } = useCanvasMode();
   const { theme } = useTheme();
-  const isLight = theme === "light" || theme === "warm" || theme === "mint" || theme === "lavender" || theme === "paper" || canvasMode === "creative";
+  const themeIsDark = THEMES.find((t) => t.id === theme)?.dark ?? true;
+  const isLight = !themeIsDark || canvasMode === "creative";
+  // Effective canvas background: in "follow theme" mode use the theme's own
+  // --c-canvas (so switching theme updates it) with a theme-appropriate pattern
+  // color; otherwise use the user's explicit picker color.
+  const effectiveBgColor = canvasBg.followTheme ? "var(--c-canvas)" : canvasBg.bgColor;
+  const effectivePatternColor = canvasBg.followTheme
+    ? (themeIsDark ? "oklch(0.32 0.010 260 / 0.6)" : "oklch(0.60 0.010 260 / 0.5)")
+    : canvasBg.patternColor;
   // Auto-show the filmstrip when ENTERING creative mode and hide when LEAVING —
   // but only on an actual mode transition, so the persisted open-state isn't
   // clobbered on mount/reload.
@@ -1124,8 +1138,9 @@ function CanvasInner({ projectId }: { projectId: number }) {
       <header
         className="canvas-topbar h-11 flex items-center px-3 gap-2 flex-shrink-0 z-20"
         style={{
-          background: "color-mix(in oklch, var(--c-base) 95%, transparent)",
-          backdropFilter: "blur(20px)",
+          background: "color-mix(in oklch, var(--c-base) 68%, transparent)",
+          backdropFilter: "blur(20px) saturate(1.4)",
+          WebkitBackdropFilter: "blur(20px) saturate(1.4)",
           borderBottom: "1px solid var(--c-bd1)",
         }}
       >
@@ -1693,7 +1708,7 @@ function CanvasInner({ projectId }: { projectId: number }) {
         {/* ── Canvas ── */}
         <div
           className="flex-1 relative canvas-vignette"
-          style={{ background: canvasBg.bgColor }}
+          style={{ background: effectiveBgColor }}
           onContextMenu={handleCanvasContextMenu}
           onDoubleClick={handleCanvasDoubleClick}
           onMouseMove={handleMouseMove}
@@ -1719,7 +1734,7 @@ function CanvasInner({ projectId }: { projectId: number }) {
             edges={edges}
             nodeTypes={nodeTypes}
             edgeTypes={edgeTypes}
-            style={{ background: canvasBg.bgColor }}
+            style={{ background: effectiveBgColor }}
             onNodesChange={onNodesChange}
             onEdgesChange={onEdgesChange}
             onConnect={(connection) => {
@@ -1780,7 +1795,7 @@ function CanvasInner({ projectId }: { projectId: number }) {
                 }
                 gap={canvasBg.gap}
                 size={canvasBg.size}
-                color={canvasBg.patternColor}
+                color={effectivePatternColor}
               />
             )}
             <MiniMap
