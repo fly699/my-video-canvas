@@ -5,6 +5,7 @@ import type { MergeNodeData, MergeTransition } from "../../../../../shared/types
 import { trpc } from "@/lib/trpc";
 import { toast } from "sonner";
 import { mediaFetchUrl, onDownloadMedia } from "@/lib/download";
+import { NodeTextArea } from "../NodeTextInput";
 import { compareUpstreamNodes } from "../../../lib/inputOrder";
 import { Merge, Loader2, Download, RotateCcw, Music, ChevronDown, GripVertical, X } from "lucide-react";
 
@@ -285,12 +286,12 @@ export const MergeNode = memo(function MergeNode({ id, selected, data }: Props) 
         {/* Manual URL input (optional) */}
         <div>
           <label style={labelStyle}>视频 URL（自动从连接节点读取，可手动覆盖）</label>
-          <textarea
+          <NodeTextArea
             className="nodrag nowheel"
             placeholder={"每行一个视频 URL\nhttps://...\nhttps://..."}
             value={(payload.inputVideoUrls ?? []).join("\n")}
-            onChange={(e) => {
-              const urls = e.target.value.split("\n").map((u) => u.trim()).filter(Boolean);
+            onValueChange={(v) => {
+              const urls = v.split("\n").map((u) => u.trim()).filter(Boolean);
               update({ inputVideoUrls: urls });
             }}
             rows={3}
