@@ -4,11 +4,12 @@ import { useCanvasStore } from "../../../hooks/useCanvasStore";
 import type { AgentNodeData, AgentMessage, AgentOperation } from "../../../../../shared/types";
 import { trpc } from "@/lib/trpc";
 import { toast } from "sonner";
-import { Sparkles, Loader2, Send, Check, Plus, Link2, Pencil, Trash2 } from "lucide-react";
+import { Sparkles, Loader2, Send, Check, Plus, Link2, Pencil, Trash2, LayoutGrid } from "lucide-react";
 import { LLMModelPicker, type LLMModelId } from "../LLMModelPicker";
 import { NodeTextArea } from "../NodeTextInput";
 import { applyAgentOperations, buildGraphSummary } from "@/lib/agentApply";
 import { getNodeConfig } from "../../../lib/nodeConfig";
+import { LAYOUTS, computeLayout } from "@/lib/layoutUtils";
 
 interface Props {
   id: string;
@@ -42,8 +43,22 @@ export const AgentNode = memo(function AgentNode({ id, selected, data }: Props) 
 
   const [input, setInput] = useState("");
   const [appliedIdx, setAppliedIdx] = useState<Set<number>>(new Set());
+  const [layoutIdx, setLayoutIdx] = useState(0);
   const scrollRef = useRef<HTMLDivElement>(null);
   const chat = trpc.agent.chat.useMutation();
+
+  // Cycle through the smart-layout options, re-arranging all canvas nodes (except
+  // this agent node) in one undoable step.
+  const handleSmartLayout = () => {
+    const layout = LAYOUTS[layoutIdx % LAYOUTS.length];
+    const { nodes, edges, batchUpdateNodePositions } = useCanvasStore.getState();
+    const targets = nodes.filter((n) => n.id !== id);
+    if (targets.length === 0) { toast.info("画布暂无可排序的节点"); return; }
+    const updates = computeLayout(layout.id, targets.map((n) => ({ id: n.id, position: n.position, data: { nodeType: n.data.nodeType } })), edges.map((e) => ({ source: e.source, target: e.target })));
+    batchUpdateNodePositions(updates);
+    toast.success(`已应用布局：${layout.name}`);
+    setLayoutIdx((i) => i + 1);
+  };
 
   const setMessages = (msgs: AgentMessage[]) => updateNodeData(id, { messages: msgs });
 
@@ -141,6 +156,17 @@ export const AgentNode = memo(function AgentNode({ id, selected, data }: Props) 
 
         {/* Composer */}
         <div style={{ flexShrink: 0, borderTop: "1px solid var(--c-bd1)", padding: "8px 10px", display: "flex", flexDirection: "column", gap: 7 }}>
+          {/* Tools row */}
+          <div style={{ display: "flex", gap: 6, alignItems: "center", flexWrap: "wrap" }}>
+            <button
+              onClick={handleSmartLayout}
+              className="nodrag flex items-center gap-1 px-2 py-1 rounded-lg text-[10px] font-medium"
+              title="智能排序：点击在多种布局间循环"
+              style={{ background: accentA(0.1), border: `1px solid ${accentA(0.3)}`, color: accent, cursor: "pointer" }}
+            >
+              <LayoutGrid className="w-3 h-3" />智能排序
+            </button>
+          </div>
           <LLMModelPicker value={model} onChange={(m) => updateNodeData(id, { model: m })} disabled={chat.isPending} />
           <div style={{ display: "flex", gap: 6, alignItems: "flex-end" }}>
             <NodeTextArea

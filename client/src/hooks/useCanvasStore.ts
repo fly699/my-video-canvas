@@ -104,6 +104,8 @@ interface CanvasStore {
   // right-click context menu.
   updateNodeData: (id: string, payload: Partial<NodeData> & { pinned?: boolean }, silent?: boolean) => void;
   batchUpdateNodeData: (updates: { id: string; payload: Partial<NodeData> }[]) => void;
+  /** Batch-move many nodes in one history step (used by the agent's auto-layout). */
+  batchUpdateNodePositions: (updates: { id: string; position: { x: number; y: number } }[]) => void;
   updateNodeTitle: (id: string, title: string) => void;
   deleteNode: (id: string) => void;
   duplicateNode: (id: string) => void;
@@ -353,6 +355,16 @@ export const useCanvasStore = create<CanvasStore>((set, get) => ({
         const patch = updateMap.get(n.id);
         return patch ? { ...n, data: { ...n.data, payload: { ...n.data.payload, ...patch } as NodeData } } : n;
       }),
+      isDirty: true,
+    }));
+  },
+
+  batchUpdateNodePositions: (updates) => {
+    if (updates.length === 0) return;
+    const posMap = new Map(updates.map((u) => [u.id, u.position]));
+    set((state) => ({
+      ...pushHistory(state),
+      nodes: state.nodes.map((n) => (posMap.has(n.id) ? { ...n, position: posMap.get(n.id)! } : n)),
       isDirty: true,
     }));
   },
