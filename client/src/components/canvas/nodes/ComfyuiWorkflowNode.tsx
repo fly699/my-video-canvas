@@ -443,11 +443,26 @@ export const ComfyuiWorkflowNode = memo(function ComfyuiWorkflowNode({ id, selec
         </span>
       ) : undefined}
     >
-      {/* ref-image-in (top:30%): feed an upstream image into the first blank image param.
-          Generic "in" (top:55%) keeps ordering-only / video-input edges. */}
-      <Handle type="target" position={Position.Left} id="ref-image-in" style={{ top: "30%", background: "oklch(0.7 0.18 145)", border: "2px solid var(--c-bg)" }} />
-      <Handle type="target" position={Position.Left} id="in" style={{ top: "55%", background: accent, border: "2px solid var(--c-bg)" }} />
-      <Handle type="source" position={Position.Right} id="out" style={{ top: "50%", background: accent, border: "2px solid var(--c-bg)" }} />
+      {/* ref-image-in (top:28%): feed an upstream image into the first blank image
+          param. The generic input/output dots are provided by BaseNode (id="input"
+          at 50% left / id="output" at 50% right) — we no longer render duplicate
+          "in"/"out" handles here (they overlapped the defaults and were unused). */}
+      <Handle
+        type="target"
+        position={Position.Left}
+        id="ref-image-in"
+        style={{
+          width: 15, height: 15,
+          borderRadius: 4,
+          top: "28%",
+          left: -7,
+          background: "oklch(0.7 0.18 145)",
+          border: "2px solid var(--c-canvas)",
+          boxShadow: "0 0 0 2px oklch(0.7 0.18 145 / 0.30)",
+          zIndex: 10,
+        }}
+        title="参考图输入"
+      />
 
       <div style={{ display: "flex", flexDirection: "column", gap: 10, padding: "2px 0" }}>
 
@@ -915,8 +930,9 @@ export const ComfyuiWorkflowNode = memo(function ComfyuiWorkflowNode({ id, selec
                       )}
                       {b.type === "image" && (
                         <>
-                          {/* 来源映射：显式指定该图像参数用哪个上游节点的图（不填用智能自动排序） */}
-                          {upstreamSources.length > 0 && (
+                          {/* 来源映射：显式指定该图像参数用哪个上游节点的图（不填用智能自动排序）。
+                              即使还没连上游图像，也显示一个禁用的占位下拉，让用户知道「可显式指定来源」这个功能存在、且知道下一步该连上游图。 */}
+                          {upstreamSources.length > 0 ? (
                             <select
                               value={payload.imageSourceMap?.[key] ?? ""}
                               onChange={(e) => {
@@ -931,6 +947,15 @@ export const ComfyuiWorkflowNode = memo(function ComfyuiWorkflowNode({ id, selec
                               {upstreamSources.map((s, i) => (
                                 <option key={s.id} value={s.id}>来源：{i + 1}. {s.title}</option>
                               ))}
+                            </select>
+                          ) : (
+                            <select
+                              disabled
+                              value=""
+                              style={{ ...fieldBase, padding: "5px 8px", fontSize: 11, marginBottom: 5, cursor: "default", opacity: 0.6 }}
+                              title="把一个上游图像节点连到本节点的「参考图输入」句柄后，即可在此显式指定该图像参数的来源"
+                            >
+                              <option value="">来源：连接上游图像后可选 ▸</option>
                             </select>
                           )}
                           <ImageParamField

@@ -235,13 +235,25 @@ export const CustomEdge = memo(function CustomEdge({
         pointerEvents="none"
       />
 
-      {/* Input/output order number near the hovered node's handle */}
-      {orderBadge && (
-        <g pointerEvents="none" style={{ transition: "opacity 120ms ease" }}>
-          <circle cx={orderBadge.x} cy={orderBadge.y} r={9.5} fill="var(--c-base)" stroke={strokeColor} strokeWidth={2} />
-          <text x={orderBadge.x} y={orderBadge.y} textAnchor="middle" dominantBaseline="central" fontSize={11} fontWeight={800} fill={strokeColor}>{orderBadge.n}</text>
-        </g>
-      )}
+      {/* Input/output order number near the hovered node's handle.
+          Filled with the (solid) edge/type color and a white, dark-outlined
+          number so it stays high-contrast and readable in every theme — the
+          old version filled with the page background and drew the digit in the
+          (alpha-dimmed) edge color, which read as an unreadable dark blob. */}
+      {orderBadge && (() => {
+        const badgeColor = typeColor ?? "oklch(0.70 0.20 285)";
+        return (
+          <g pointerEvents="none" style={{ transition: "opacity 120ms ease" }}>
+            <circle cx={orderBadge.x} cy={orderBadge.y} r={10} fill={badgeColor} stroke="var(--c-base)" strokeWidth={2.5} />
+            <text
+              x={orderBadge.x} y={orderBadge.y}
+              textAnchor="middle" dominantBaseline="central"
+              fontSize={11.5} fontWeight={800} fill="#ffffff"
+              style={{ paintOrder: "stroke", stroke: "oklch(0 0 0 / 0.45)", strokeWidth: 2.5 }}
+            >{orderBadge.n}</text>
+          </g>
+        );
+      })()}
 
       <EdgeLabelRenderer>
         <div

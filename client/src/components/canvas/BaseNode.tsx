@@ -152,10 +152,13 @@ export const BaseNode = memo(function BaseNode({
 
   const showActions = isHovered || selected;
 
-  // Shared base styles for all handles
+  // Shared base styles for all handles. Bigger + always clearly visible at rest
+  // (a faint colored ring + near-full opacity) so connection dots read well even
+  // on a collapsed node; emphasized further on hover/select.
+  const handleActive = isHovered || selected;
   const handleShared: React.CSSProperties = {
-    width: 14,
-    height: 14,
+    width: 15,
+    height: 15,
     border: `2px solid var(--c-canvas)`,
     transition: "opacity 150ms ease, transform 150ms ease, box-shadow 150ms ease",
     zIndex: 10,
@@ -164,11 +167,11 @@ export const BaseNode = memo(function BaseNode({
   // Target (input) handle: SQUARE with slight rounding — receives data
   const targetHandle: React.CSSProperties = {
     ...handleShared,
-    borderRadius: 3,                                       // square = input
-    background: `${config.color}90`,                       // slightly transparent
-    opacity: isHovered || selected ? 1 : 0.40,
-    transform: isHovered || selected ? "scale(1.1)" : "scale(0.85)",
-    boxShadow: isHovered || selected ? `0 0 0 3px ${config.color}22` : "none",
+    borderRadius: 4,                                       // square = input
+    background: config.color,
+    opacity: handleActive ? 1 : 0.85,
+    transform: handleActive ? "scale(1.18)" : "scale(1)",
+    boxShadow: handleActive ? `0 0 0 4px ${config.color}33` : `0 0 0 2px ${config.color}24`,
   };
 
   // Source (output) handle: CIRCLE — sends data
@@ -176,9 +179,9 @@ export const BaseNode = memo(function BaseNode({
     ...handleShared,
     borderRadius: "50%",                                   // circle = output
     background: config.color,                              // fully colored
-    opacity: isHovered || selected ? 1 : 0.45,
-    transform: isHovered || selected ? "scale(1.1)" : "scale(0.85)",
-    boxShadow: isHovered || selected ? `0 0 0 4px ${config.color}30` : "none",
+    opacity: handleActive ? 1 : 0.85,
+    transform: handleActive ? "scale(1.18)" : "scale(1)",
+    boxShadow: handleActive ? `0 0 0 4px ${config.color}33` : `0 0 0 2px ${config.color}24`,
   };
 
   // Derive border & shadow from runStatus
@@ -622,8 +625,11 @@ export const BaseNode = memo(function BaseNode({
           <>
             <Handle type="target" position={Position.Left}   id="input"  style={{ ...targetHandle, top: "50%", left: -7 }} title={inTitle} />
             <Handle type="source" position={Position.Right}  id="output" style={{ ...sourceHandle, top: "50%", right: -7 }} title={outTitle} />
-            <Handle type="target" position={Position.Top}    id="top"    style={{ ...targetHandle, left: "50%", top: -7 }} title={inTitle} />
-            <Handle type="source" position={Position.Bottom} id="bottom" style={{ ...sourceHandle, left: "50%", bottom: -7 }} title={outTitle} />
+            {/* Top/Bottom handles offset off-center (32% / 68%) so the input dot and
+                output dot never sit stacked at the horizontal center on a short or
+                collapsed node — keeps in/out visually distinct. */}
+            <Handle type="target" position={Position.Top}    id="top"    style={{ ...targetHandle, left: "32%", top: -7 }} title={inTitle} />
+            <Handle type="source" position={Position.Bottom} id="bottom" style={{ ...sourceHandle, left: "68%", bottom: -7 }} title={outTitle} />
           </>
         );
       })()}
