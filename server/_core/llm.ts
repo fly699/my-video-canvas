@@ -301,7 +301,7 @@ export const AVAILABLE_MODELS = [
   { id: "gpt-5.2",                    label: "GPT-5.2",           tag: "强力" },
 ] as const;
 
-export const DEFAULT_MODEL = "gemini-2.5-flash";
+export const DEFAULT_MODEL = "claude-sonnet-4-5-20250929";
 
 /** Extract plain text from an LLM response, handling both string and array content. */
 export function extractTextContent(response: InvokeResult): string {

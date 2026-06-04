@@ -62,7 +62,7 @@ export const AIChatNode = memo(function AIChatNode({ id, selected, data }: Props
   const [localMessages, setLocalMessages] = useState<Array<{ role: "user" | "assistant"; content: string; attachments?: ChatAttachment[]; _id: string }>>(
     () => ((data.payload as typeof payload).messages ?? []).map(m => ({ ...m, _id: crypto.randomUUID() }))
   );
-  const [model, setModel] = useState<string>(payload.model ?? "gemini-2.5-flash");
+  const [model, setModel] = useState<string>(payload.model ?? "claude-sonnet-4-5-20250929");
   const [showModelPicker, setShowModelPicker] = useState(false);
   const [showTemplates, setShowTemplates] = useState(false);
   const [showSlashMenu, setShowSlashMenu] = useState(false);

@@ -92,7 +92,7 @@ export const ComfyuiImageNode = memo(function ComfyuiImageNode({ id, selected, d
   const [translating, setTranslating] = useState(false);
   // Translation LLM — let the user pick a model that's available in their
   // deployment (some setups have no Gemini but do have Claude/GPT via Poyo).
-  const [llmModel, setLlmModel] = useState<LLMModelId>("claude-haiku-4-5-20251001");
+  const [llmModel, setLlmModel] = useState<LLMModelId>("claude-sonnet-4-5-20250929");
   const [urlExpanded, setUrlExpanded] = useState(false);
   const [syncOpen, setSyncOpen] = useState(false);
   const [cfgTab, setCfgTab] = useState("basic");

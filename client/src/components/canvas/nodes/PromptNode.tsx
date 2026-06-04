@@ -33,7 +33,7 @@ const monoStyle: React.CSSProperties = {
   ...fieldStyle, fontFamily: "'JetBrains Mono', 'Fira Code', monospace", fontSize: 11, resize: "none", lineHeight: 1.7,
 };
 
-const DEFAULT_LLM: LLMModelId = "gemini-2.5-flash";
+const DEFAULT_LLM: LLMModelId = "claude-sonnet-4-5-20250929";
 
 export const PromptNode = memo(function PromptNode({ id, selected, data }: Props) {
   const { updateNodeData } = useCanvasStore();
