@@ -246,8 +246,8 @@ export function PreviewStage() {
       </div>
 
       <div style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 12, padding: "8px 0", borderTop: `1px solid ${EC.border}` }}>
-        <button onClick={() => { setPlaying(false); setPlayhead(0); }} title="回到开头" style={transBtn}><SkipBack size={16} /></button>
-        <button onClick={() => setPlaying(!playing)} title={playing ? "暂停" : "播放"} style={{ ...transBtn, background: EC.accent, color: "#fff", width: 38, height: 38 }}>
+        <button onClick={() => { setPlaying(false); setPlayhead(0); }} title="回到开头 (Home)" style={transBtn}><SkipBack size={16} /></button>
+        <button onClick={() => setPlaying(!playing)} title={playing ? "暂停 (空格)" : "播放 (空格)"} style={{ ...transBtn, background: EC.accent, color: "#fff", width: 38, height: 38 }}>
           {playing ? <Pause size={18} /> : <Play size={18} />}
         </button>
         <span style={{ fontSize: 12, color: EC.t3, fontVariantNumeric: "tabular-nums", minWidth: 110, textAlign: "center" }}>{fmtTime(playhead)} / {fmtTime(duration)}</span>

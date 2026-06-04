@@ -105,15 +105,28 @@ function EditorWorkspace({ id }: { id: number }) {
   const canRedo = useEditorStore((s) => s.future.length > 0);
   const loadedFor = useRef<number | null>(null);
 
-  // Undo/redo keyboard shortcuts (ignored while typing in a field).
+  // Workspace keyboard shortcuts (all ignored while typing in a field):
+  //   Ctrl/⌘+Z 撤销 · Ctrl/⌘+Shift+Z / Ctrl+Y 重做
+  //   空格 播放/暂停 · Home/End 跳到开头/结尾 · ←/→ 逐帧步进（Shift 加大步长）
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
-      if (!(e.ctrlKey || e.metaKey)) return;
       const t = e.target as HTMLElement;
-      if (t.closest("input, textarea, [contenteditable='true']")) return;
-      const k = e.key.toLowerCase();
-      if (k === "z" && !e.shiftKey) { e.preventDefault(); useEditorStore.getState().undo(); }
-      else if ((k === "z" && e.shiftKey) || k === "y") { e.preventDefault(); useEditorStore.getState().redo(); }
+      if (t.closest("input, textarea, [contenteditable='true'], select")) return;
+      const st = useEditorStore.getState();
+      if (e.ctrlKey || e.metaKey) {
+        const k = e.key.toLowerCase();
+        if (k === "z" && !e.shiftKey) { e.preventDefault(); st.undo(); }
+        else if ((k === "z" && e.shiftKey) || k === "y") { e.preventDefault(); st.redo(); }
+        return;
+      }
+      if (!st.doc) return;
+      const fps = st.doc.fps || 30;
+      const step = (e.shiftKey ? 10 : 1) / fps; // one frame, or 10 with Shift
+      if (e.key === " ") { e.preventDefault(); st.setPlaying(!st.playing); }
+      else if (e.key === "Home") { e.preventDefault(); st.setPlaying(false); st.setPlayhead(0); }
+      else if (e.key === "End") { e.preventDefault(); st.setPlaying(false); st.setPlayhead(st.duration()); }
+      else if (e.key === "ArrowLeft") { e.preventDefault(); st.setPlaying(false); st.setPlayhead(Math.max(0, st.playhead - step)); }
+      else if (e.key === "ArrowRight") { e.preventDefault(); st.setPlaying(false); st.setPlayhead(Math.min(st.duration(), st.playhead + step)); }
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);

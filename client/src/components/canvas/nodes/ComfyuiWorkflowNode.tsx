@@ -406,7 +406,6 @@ export const ComfyuiWorkflowNode = memo(function ComfyuiWorkflowNode({ id, selec
   }), [imgUploadMutation]);
 
   const isProcessing = payload.status === "processing" || executeMutation.isPending;
-  const progress = payload.progress;
 
   const handleReset = useCallback(() => {
     setLocalJson("");
@@ -1001,15 +1000,7 @@ export const ComfyuiWorkflowNode = memo(function ComfyuiWorkflowNode({ id, selec
               )}
             </div>
 
-            {/* Progress bar */}
-            {isProcessing && progress != null && (
-              <div style={{ marginTop: 10 }}>
-                <div style={{ height: 4, borderRadius: 2, background: "var(--c-bd2)", overflow: "hidden" }}>
-                  <div style={{ height: "100%", width: `${progress}%`, background: accent, transition: "width 300ms ease", borderRadius: 2 }} />
-                </div>
-                <span style={{ fontSize: 10, color: "var(--c-t4)", marginTop: 3, display: "block" }}>{progress}%</span>
-              </div>
-            )}
+            {/* 进度条由 BaseNode 常驻渲染（收缩后仍可见） */}
 
             {/* Error */}
             {payload.status === "failed" && payload.errorMessage && (
