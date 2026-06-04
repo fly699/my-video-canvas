@@ -35,6 +35,21 @@ export interface ApplyResult {
   failures: { index: number; op: string; reason: string }[];
 }
 
+const COMFY_NODE_TYPES = new Set<string>(["comfyui_image", "comfyui_video", "comfyui_workflow"]);
+
+/** Assign chosen ComfyUI server URLs onto a batch's comfy create ops (in place),
+ *  spreading load by round-robin (顺序) or random. No-op when chosen is empty. */
+export function distributeServers(ops: AgentOperation[], chosen: string[], strategy: "round" | "random"): void {
+  if (chosen.length === 0) return;
+  let i = 0;
+  for (const o of ops) {
+    if (o.op !== "create" || !o.nodeType || !COMFY_NODE_TYPES.has(o.nodeType)) continue;
+    const url = strategy === "random" ? chosen[Math.floor(Math.random() * chosen.length)] : chosen[i % chosen.length];
+    o.payload = { ...(o.payload ?? {}), customBaseUrl: url };
+    i++;
+  }
+}
+
 export function applyAgentOperations(
   ops: AgentOperation[],
   anchor: { x: number; y: number },
@@ -90,7 +105,11 @@ export function applyAgentOperations(
           if (op.nodeType === "comfyui_workflow" && payload?.templateId != null) {
             const tpl = opts.templates?.find((t) => t.id === Number(payload!.templateId));
             if (!tpl) { fail(index, op, `未找到模板 id=${String(payload.templateId)}`); return; }
+            // Preserve a multi-server-distribution override (set client-side before
+            // apply) — materializeTemplate rebuilds payload from the template.
+            const serverOverride = typeof payload.customBaseUrl === "string" ? payload.customBaseUrl : undefined;
             payload = materializeTemplate(tpl, String(payload.prompt ?? ""), String(payload.negPrompt ?? ""));
+            if (serverOverride) payload.customBaseUrl = serverOverride;
           }
           // Scene layout when planned, else fan out 3 per row to the agent's right.
           const pos = posByOp.get(op) ?? {

@@ -7,7 +7,7 @@ import { toast } from "sonner";
 import { Sparkles, Loader2, Send, Check, Plus, Link2, Pencil, Trash2, LayoutGrid, Boxes, Wrench, Zap, BookTemplate, Focus, ShieldCheck, SlidersHorizontal } from "lucide-react";
 import { LLMModelPicker, type LLMModelId } from "../LLMModelPicker";
 import { NodeTextArea } from "../NodeTextInput";
-import { applyAgentOperations, buildGraphSummary } from "@/lib/agentApply";
+import { applyAgentOperations, buildGraphSummary, distributeServers } from "@/lib/agentApply";
 import { getNodeConfig } from "../../../lib/nodeConfig";
 import { LAYOUTS, computeLayout } from "@/lib/layoutUtils";
 import { estimateOpsBudget, budgetLabel } from "@/lib/agentBudget";
@@ -51,6 +51,11 @@ export const AgentNode = memo(function AgentNode({ id, selected, data }: Props) 
   const [analyzeFull, setAnalyzeFull] = useState(false);
   const [showRecipes, setShowRecipes] = useState(false);
   const [showPrefs, setShowPrefs] = useState(false);
+  // Multi-server distribution dialog (≥2 comfy nodes across ≥2 known servers).
+  const [serverDist, setServerDist] = useState<{
+    msgIdx: number; ops: AgentOperation[]; comfyCount: number;
+    servers: string[]; selected: Set<string>; strategy: "round" | "random";
+  } | null>(null);
   // Duration-aware capacity dialog: shown when the agent's plan split a target
   // duration longer than the model's per-shot cap into multiple shots.
   const [capacityPlan, setCapacityPlan] = useState<{
@@ -137,7 +142,49 @@ export const AgentNode = memo(function AgentNode({ id, selected, data }: Props) 
     return true;
   };
 
+  // Gather candidate ComfyUI server addresses for a batch of comfy ops, from the
+  // ops' own payload and (for templateId-referencing workflow nodes) the template.
+  const COMFY_TYPES = new Set(["comfyui_image", "comfyui_video", "comfyui_workflow"]);
+  const gatherServers = (ops: AgentOperation[]): { comfyCount: number; servers: string[] } => {
+    const tplById = new Map((templatesQuery.data ?? []).map((t) => [t.id, t]));
+    const servers = new Set<string>();
+    let comfyCount = 0;
+    const add = (v: unknown) => { if (typeof v === "string" && v.trim()) servers.add(v.trim()); };
+    for (const o of ops) {
+      if (o.op !== "create" || !o.nodeType || !COMFY_TYPES.has(o.nodeType)) continue;
+      comfyCount++;
+      const p = (o.payload ?? {}) as Record<string, unknown>;
+      add(p.customBaseUrl);
+      if (Array.isArray(p.serverUrls)) p.serverUrls.forEach(add);
+      const tid = p.templateId != null ? Number(p.templateId) : NaN;
+      const tp = (Number.isInteger(tid) ? tplById.get(tid)?.payload : undefined) as Record<string, unknown> | undefined;
+      if (tp) { add(tp.customBaseUrl); if (Array.isArray(tp.serverUrls)) tp.serverUrls.forEach(add); }
+    }
+    return { comfyCount, servers: Array.from(servers) };
+  };
+
+  // Apply gate: when a plan creates ≥2 comfy nodes across ≥2 known servers, ask
+  // the user which servers to use and how to distribute before applying.
   const handleApply = (msgIdx: number, ops: AgentOperation[]) => {
+    if (ops.length === 0) return;
+    const { comfyCount, servers } = gatherServers(ops);
+    if (comfyCount >= 2 && servers.length >= 2) {
+      setServerDist({ msgIdx, ops, comfyCount, servers, selected: new Set(servers), strategy: "round" });
+      return;
+    }
+    doApply(msgIdx, ops);
+  };
+
+  // Assign chosen servers onto the comfy ops by the picked strategy, then apply.
+  const applyServerDistribution = () => {
+    if (!serverDist) return;
+    const { msgIdx, ops, servers, selected, strategy } = serverDist;
+    distributeServers(ops, servers.filter((s) => selected.has(s)), strategy);
+    setServerDist(null);
+    doApply(msgIdx, ops);
+  };
+
+  const doApply = (msgIdx: number, ops: AgentOperation[]) => {
     if (ops.length === 0) return;
     const pos = useCanvasStore.getState().nodes.find((n) => n.id === id)?.position ?? { x: 0, y: 0 };
     const templates = (templatesQuery.data ?? []).map((t) => ({ id: t.id, label: t.label, payload: t.payload }));
@@ -509,6 +556,46 @@ export const AgentNode = memo(function AgentNode({ id, selected, data }: Props) 
               style={{ width: "100%", marginTop: 16, padding: "8px", fontSize: 12, fontWeight: 600, borderRadius: 9, cursor: "pointer", background: accentA(0.18), border: `1px solid ${accentA(0.4)}`, color: accent }}>
               完成
             </button>
+          </div>
+        </div>
+      )}
+      {serverDist && (
+        <div className="nodrag nowheel" style={{ position: "fixed", inset: 0, zIndex: 9999, background: "rgba(0,0,0,0.5)", display: "flex", alignItems: "center", justifyContent: "center" }}
+          onClick={() => setServerDist(null)}>
+          <div onClick={(e) => e.stopPropagation()} style={{ width: 440, maxWidth: "92vw", background: "var(--c-surface)", border: `1px solid ${accentA(0.3)}`, borderRadius: 14, padding: 18, boxShadow: "0 12px 40px rgba(0,0,0,0.4)" }}>
+            <div style={{ fontSize: 14, fontWeight: 700, color: "var(--c-t1)", marginBottom: 4 }}>多服务器分配</div>
+            <div style={{ fontSize: 11, color: "var(--c-t4)", marginBottom: 12 }}>本次将创建 {serverDist.comfyCount} 个 ComfyUI 节点。选择要使用的服务器，并把它们分配到各节点以分散负载。</div>
+            <div style={{ display: "flex", flexDirection: "column", gap: 6, maxHeight: 200, overflowY: "auto", marginBottom: 12 }}>
+              {serverDist.servers.map((s) => (
+                <label key={s} className="nodrag" style={{ display: "flex", alignItems: "center", gap: 8, cursor: "pointer", fontSize: 12, color: "var(--c-t1)" }}>
+                  <input type="checkbox" checked={serverDist.selected.has(s)} style={{ accentColor: accent }}
+                    onChange={(e) => setServerDist((prev) => { if (!prev) return prev; const sel = new Set(prev.selected); if (e.target.checked) sel.add(s); else sel.delete(s); return { ...prev, selected: sel }; })} />
+                  <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{s}</span>
+                </label>
+              ))}
+            </div>
+            <div style={{ fontSize: 12, color: "var(--c-t2)", marginBottom: 6 }}>分配策略</div>
+            <div style={{ display: "flex", gap: 6, marginBottom: 14 }}>
+              {([["round", "顺序（轮询）"], ["random", "随机"]] as const).map(([v, label]) => (
+                <button key={v} className="nodrag" onClick={() => setServerDist((prev) => prev && { ...prev, strategy: v })}
+                  style={{ flex: 1, padding: "6px", fontSize: 11.5, borderRadius: 8, cursor: "pointer",
+                    background: serverDist.strategy === v ? accentA(0.18) : "var(--c-surface)",
+                    border: `1px solid ${serverDist.strategy === v ? accentA(0.4) : "var(--c-bd2)"}`,
+                    color: serverDist.strategy === v ? accent : "var(--c-t3)" }}>
+                  {label}
+                </button>
+              ))}
+            </div>
+            <div style={{ display: "flex", gap: 8 }}>
+              <button className="nodrag" disabled={serverDist.selected.size === 0} onClick={applyServerDistribution}
+                style={{ flex: 1, padding: "9px", fontSize: 12, fontWeight: 600, borderRadius: 9, cursor: serverDist.selected.size === 0 ? "not-allowed" : "pointer", background: accentA(0.18), border: `1px solid ${accentA(0.4)}`, color: accent, opacity: serverDist.selected.size === 0 ? 0.5 : 1 }}>
+                确认分配并应用
+              </button>
+              <button className="nodrag" onClick={() => { const sd = serverDist; setServerDist(null); doApply(sd.msgIdx, sd.ops); }}
+                style={{ flex: 1, padding: "9px", fontSize: 12, fontWeight: 600, borderRadius: 9, cursor: "pointer", background: "var(--c-surface)", border: "1px solid var(--c-bd2)", color: "var(--c-t2)" }}>
+                跳过（用默认）
+              </button>
+            </div>
           </div>
         </div>
       )}
