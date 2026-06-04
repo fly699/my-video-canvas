@@ -53,7 +53,7 @@ import { trimVideo, getVideoDuration, mergeVideos, burnSubtitles, generateSRT, o
 import { transcribeAudio } from "../_core/voiceTranscription";
 import { VIDEO_PROVIDERS, IMAGE_GEN_MODELS } from "../../shared/types";
 import type { SubtitleEntry } from "../../shared/types";
-import { assertWhitelisted, assertComfyuiAllowed, assertComfyuiCloudAllowed, isComfyuiCloudAllowed } from "../_core/whitelist";
+import { assertWhitelisted, assertLLMAllowed, assertComfyuiAllowed, assertComfyuiCloudAllowed, isComfyuiCloudAllowed } from "../_core/whitelist";
 import { writeAuditLog, truncate } from "../_core/auditLog";
 import { dedupe } from "../_core/idempotency";
 import { assertProjectAccess, assertProjectOwner } from "../_core/permissions";
@@ -884,7 +884,8 @@ export const aiChatRouter = router({
       // "not whitelisted" error rather than a project FORBIDDEN; this also
       // closes the gap that let an editor invoke the LLM without any
       // platform-side limit (all other AI mutations call assertWhitelisted).
-      await assertWhitelisted(ctx);
+      // LLM-scoped gate: respects the admin "open LLM" bypass.
+      await assertLLMAllowed(ctx);
       await assertProjectAccess(input.projectId, ctx.user.id, "editor");
       // Allow empty message when there's at least one attachment — image-only prompts are valid.
       if (!input.message.trim() && !(input.attachments?.length ?? 0)) {
@@ -1473,7 +1474,7 @@ score 为 0-100 整数，issues 数组最多 8 条，每条包含 type/line/sugg
       model: z.string().optional(),
     }))
     .mutation(async ({ ctx, input }) => {
-      await assertWhitelisted(ctx);
+      await assertLLMAllowed(ctx);
       return dedupe("scripts.checkCharacterConsistency", ctx.user.id, input, async () => {
         // LLM providers (Anthropic / OpenAI / Gemini) require absolute HTTPS
         // URLs in image_url fields; our internal /manus-storage/{key} proxy

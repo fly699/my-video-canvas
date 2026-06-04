@@ -694,6 +694,9 @@ function WhitelistPanel() {
   const setComfyuiBypassMut = trpc.admin.whitelist.setComfyuiBypass.useMutation({
     onSuccess: () => utils.admin.whitelist.getSettings.invalidate(),
   });
+  const setLlmBypassMut = trpc.admin.whitelist.setLlmBypass.useMutation({
+    onSuccess: () => utils.admin.whitelist.getSettings.invalidate(),
+  });
   const addEntryMut = trpc.admin.whitelist.addEntry.useMutation({
     onSuccess: () => utils.admin.whitelist.listEntries.invalidate(),
   });
@@ -709,6 +712,7 @@ function WhitelistPanel() {
 
   const enabled = settingsQuery.data?.enabled ?? false;
   const comfyuiBypass = settingsQuery.data?.comfyuiBypass ?? false;
+  const llmBypass = settingsQuery.data?.llmBypass ?? false;
   const entries = entriesQuery.data ?? [];
 
   if (settingsQuery.isError || entriesQuery.isError) {
@@ -789,6 +793,36 @@ function WhitelistPanel() {
           }}
         >
           {comfyuiBypass ? <><ToggleRight style={{ width: "16px", height: "16px" }} />已豁免</> : <><ToggleLeft style={{ width: "16px", height: "16px" }} />未豁免</>}
+        </button>
+      </div>
+
+      {/* LLM bypass toggle — text/vision LLM is cheap, can be opened independently */}
+      <div style={{ ...cardStyle, marginBottom: "20px", flexDirection: "row", alignItems: "center", justifyContent: "space-between" }}>
+        <div>
+          <h3 style={{ margin: 0, fontSize: "15px", fontWeight: 600, color: "var(--c-t1, #f0f0f4)" }}>LLM 模型单独开放</h3>
+          <p style={{ margin: "4px 0 0", fontSize: "13px", color: "var(--c-t2, rgba(255,255,255,0.45))", lineHeight: 1.5 }}>
+            {llmBypass
+              ? "已开放 — 大模型对话、角色一致性检查等 LLM（文本/视觉）功能不受白名单限制，所有登录用户均可使用"
+              : "未开放 — LLM 功能与其他 AI 一样受白名单管控"}
+            <br />
+            <span style={{ color: "var(--c-t3, rgba(255,255,255,0.35))", fontSize: "12px" }}>
+              提示：此开关仅在上方「白名单开关」启用时才有实际效果；图像 / 视频 / 音频等付费生成始终受白名单保护。
+            </span>
+          </p>
+        </div>
+        <button
+          type="button"
+          onClick={() => setLlmBypassMut.mutate({ llmBypass: !llmBypass })}
+          disabled={setLlmBypassMut.isPending}
+          style={{
+            display: "flex", alignItems: "center", gap: "6px", padding: "8px 16px",
+            border: "none", borderRadius: "8px", cursor: "pointer", flexShrink: 0,
+            background: llmBypass ? "rgba(34,197,94,0.15)" : "rgba(148,163,184,0.15)",
+            color: llmBypass ? "#4ade80" : "var(--c-t2, rgba(255,255,255,0.5))",
+            fontSize: "13px", fontWeight: 600, transition: "all 0.15s",
+          }}
+        >
+          {llmBypass ? <><ToggleRight style={{ width: "16px", height: "16px" }} />已开放</> : <><ToggleLeft style={{ width: "16px", height: "16px" }} />未开放</>}
         </button>
       </div>
 

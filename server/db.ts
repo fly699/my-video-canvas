@@ -70,7 +70,7 @@ import { ENV } from "./_core/env";
 import * as dev from "./_core/devStore";
 
 // Dev-mode whitelist state
-const devWhitelistSettings = { id: 1, enabled: false, comfyuiBypass: false, updatedAt: new Date() };
+const devWhitelistSettings = { id: 1, enabled: false, comfyuiBypass: false, llmBypass: false, updatedAt: new Date() };
 const devStorageSettings = { id: 1, persistAudio: true, persistVideo: true, persistImage: true, presignTtlSec: 3600, poyoUploadFallback: false, minioOnly: true, preferUpstreamRefSource: false, downloadAuthEnabled: false, updatedAt: new Date() };
 const devWhitelistEntries: Array<{ id: number; type: "ip" | "user"; value: string; note: string | null; createdBy: number | null; createdAt: Date }> = [];
 let devNextWhitelistId = 1;
@@ -1028,6 +1028,13 @@ export async function setWhitelistComfyuiBypass(comfyuiBypass: boolean): Promise
   if (!db) { devWhitelistSettings.comfyuiBypass = comfyuiBypass; return; }
   await db.insert(whitelistSettings).values({ id: 1, comfyuiBypass })
     .onDuplicateKeyUpdate({ set: { comfyuiBypass } });
+}
+
+export async function setWhitelistLlmBypass(llmBypass: boolean): Promise<void> {
+  const db = await getDb();
+  if (!db) { devWhitelistSettings.llmBypass = llmBypass; return; }
+  await db.insert(whitelistSettings).values({ id: 1, llmBypass })
+    .onDuplicateKeyUpdate({ set: { llmBypass } });
 }
 
 export async function getWhitelistEntries() {
