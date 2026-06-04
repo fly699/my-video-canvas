@@ -53,7 +53,9 @@ export interface ScriptTemplateCategory {
 
 // CHAT_MODELS id reference (do not change without updating models.ts)
 const M = {
-  GEMINI: "gemini-2.5-flash",
+  // gemini-2.5-flash is no longer served (see models.ts) — recommend the working
+  // Gemini 3 Flash so applying a template doesn't pick a dead model.
+  GEMINI: "gemini-3-flash-preview",
   HAIKU:  "claude-haiku-4-5-20251001",
   SONNET: "claude-sonnet-4-5-20250929",
   GPT:    "gpt-5.2",

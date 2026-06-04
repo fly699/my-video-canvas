@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { resolveMaxTokens } from "./_core/llm";
+import { resolveMaxTokens, resolveModelId } from "./_core/llm";
 
 // Regression: Gemini 3 Flash Preview (served via Forge) rejects an over-large
 // max_tokens (the script generator asks for 8000), which 400'd the request and
@@ -8,10 +8,6 @@ import { resolveMaxTokens } from "./_core/llm";
 describe("resolveMaxTokens", () => {
   it("clamps Gemini 3 Flash preview down to its safe ceiling", () => {
     expect(resolveMaxTokens("gemini-3-flash-preview", 8000)).toBe(4096);
-  });
-
-  it("clamps Gemini 2.5 Flash too", () => {
-    expect(resolveMaxTokens("gemini-2.5-flash", 8000)).toBe(4096);
   });
 
   it("leaves a Gemini request already under the ceiling untouched", () => {
@@ -29,5 +25,27 @@ describe("resolveMaxTokens", () => {
 
   it("passes through when model is undefined", () => {
     expect(resolveMaxTokens(undefined, 8000)).toBe(8000);
+  });
+});
+
+// gemini-2.5-flash is no longer served upstream → remapped to the working Gemini 3.
+describe("resolveModelId", () => {
+  it("remaps the dead gemini-2.5-flash to gemini-3-flash-preview", () => {
+    expect(resolveModelId("gemini-2.5-flash")).toBe("gemini-3-flash-preview");
+  });
+
+  it("leaves a working model id untouched", () => {
+    expect(resolveModelId("gemini-3-flash-preview")).toBe("gemini-3-flash-preview");
+    expect(resolveModelId("claude-sonnet-4-6")).toBe("claude-sonnet-4-6");
+  });
+
+  it("falls back to the default model when undefined", () => {
+    expect(resolveModelId(undefined)).toBe("claude-sonnet-4-5-20250929");
+  });
+
+  it("a remapped 2.5 request then clamps via its new id's ceiling", () => {
+    // End-to-end: caller passes the dead id + 8000 budget → runs as Gemini 3 @ 4096.
+    const resolved = resolveModelId("gemini-2.5-flash");
+    expect(resolveMaxTokens(resolved, 8000)).toBe(4096);
   });
 });
