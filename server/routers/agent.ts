@@ -81,8 +81,10 @@ ${input.graphSummary?.trim() || "（空画布）"}
 - 新建节点用 "create" 并赋唯一 tempId；之后的 "connect" 用 tempId 或画布中已存在的节点 id 互相连接（sourceRef→targetRef）。
 - 每个节点的 payload 只能使用目录中该节点类型列出的字段名。
 - 按创作链路合理编排：脚本/分镜 → 提示词/图像/视频 → 合并/字幕/配乐。
+- 模板智能匹配：选用 comfyui_workflow 模板时，按需求匹配 outputType（生图选 image、生视频选 video），并参考 capabilities 标签挑最贴合的模板；视频优先 hasVideoOutput 的模板。
+- 运行自愈：当画布摘要里某节点 status=failed（或缺少必要参数/连接）时，可主动用 update/connect 修复（补全提示词、参考图、连线或换更合适的模板），并在 reply 说明修了什么。
 - 若用户只是提问、或当前无需改动画布，operations 给空数组 []，把回答写进 reply。
-- 你只负责把工作流搭好并填好参数，默认不触发生成（用户会在画布上点运行）。`;
+- 你只负责把工作流搭好并填好参数；是否触发生成由用户在画布上确认。`;
 
       const messages = [
         { role: "system" as const, content: system },

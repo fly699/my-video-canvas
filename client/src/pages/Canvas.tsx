@@ -475,6 +475,14 @@ function CanvasInner({ projectId }: { projectId: number }) {
     setShowRunConfirm(true);
   }, []);
 
+  // Route store-level run requests (e.g. the agent's auto-run) through the normal
+  // run-confirm dialog so generation still gets one explicit user confirmation.
+  const runRequest = useCanvasStore((s) => s.runRequest);
+  useEffect(() => {
+    if (runRequest) handleRunRequest(runRequest.startNodeId);
+    // token changes each request → re-fires even for the same startNodeId
+  }, [runRequest?.token]); // eslint-disable-line react-hooks/exhaustive-deps
+
   useEffect(() => {
     if (!showRunConfirm) return;
     if (runConfirmCountdown <= 0) return;
