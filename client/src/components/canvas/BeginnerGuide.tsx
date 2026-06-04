@@ -2,6 +2,7 @@ import { useState, useEffect } from "react";
 import {
   X, Sparkles, Layers, Wand2, Video, Boxes, Bot, Users, ScrollText, Activity,
   Shield, ArrowRight, MessageCircle, Music, Wallet, Clapperboard, Bookmark,
+  Palette, Upload,
 } from "lucide-react";
 import type { NodeType } from "../../../../shared/types";
 import { getNodeConfig } from "../../lib/nodeConfig";
@@ -77,8 +78,14 @@ function WelcomeModal({ onClose }: { onClose: () => void }) {
     { Icon: Bot, color: "oklch(0.70 0.18 200)",
       title: "大模型对话", desc: "Gemini 3 Flash、Claude Sonnet 4.5、Claude Haiku 4.5、GPT-5.2，写脚本 / 润色 / 审查 / 多版本" },
     { Icon: ScrollText, color: "oklch(0.62 0.18 240)",
-      title: "ScriptNode 高级 AI", desc: "场景细化、剧本审查、多版本生成、对白提取、Mood Board 等 7 项工具",
+      title: "ScriptNode 高级 AI", desc: "场景细化、剧本审查、多版本生成、对白提取、Mood Board 等 7 项工具；目标模型支持 ComfyUI 主流（Qwen-Image / Flux.1 / Wan 2.2 / HunyuanVideo 等），一键生成的分镜携带景别 / 焦段 / 灯光 / 调色与反向提示词并写入下游",
       badge: "PRO" },
+    { Icon: Palette, color: "oklch(0.66 0.20 300)",
+      title: "护眼主题与外观", desc: "共 15 套主题：深色系含 ComfyUI（litegraph 炭灰），浅色系新增 晴空 / 鼠尾草 / 暖砂 护眼配色；画布背景默认「跟随主题」切换即变，也可固定底色",
+      badge: "NEW" },
+    { Icon: Upload, color: "oklch(0.65 0.18 60)",
+      title: "素材库批量与共享", desc: "多选 / 拖拽 / 粘贴（Ctrl·⌘V）批量上传，视频点击全屏弹窗预览；同一项目的编辑者共享素材库，互见彼此上传与 AI 生成的素材",
+      badge: "NEW" },
     { Icon: Activity, color: "oklch(0.65 0.20 160)",
       title: "工作流状态面板", desc: "一键运行整条工作流，右侧面板实时展示每个节点进度、耗时、错误",
       badge: "NEW" },
@@ -86,7 +93,8 @@ function WelcomeModal({ onClose }: { onClose: () => void }) {
       title: "团队聊天 · 桌面应用", desc: "大厅/群聊/端到端加密私聊，可安装为 Chrome 桌面应用，支持专属浅色主题",
       badge: "NEW" },
     { Icon: Users, color: "oklch(0.66 0.18 140)",
-      title: "多人实时协作", desc: "多用户同时编辑，节点变更秒同步，协作者光标可见" },
+      title: "多人实时协作", desc: "多用户同时编辑，节点变更秒同步，协作者光标可见；他人放置的节点按创建者显示专属颜色标识，一眼辨认归属",
+      badge: "NEW" },
   ];
 
   return (
