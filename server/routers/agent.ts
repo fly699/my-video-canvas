@@ -3,7 +3,9 @@ import { router, protectedProcedure } from "../_core/trpc";
 import { assertProjectAccess } from "../_core/permissions";
 import { assertLLMAllowed } from "../_core/whitelist";
 import { invokeLLM, extractTextContent } from "../_core/llm";
-import { catalogText, sanitizeOperation } from "../_core/agentCatalog";
+import { catalogText, sanitizeOperation, templateKnowledgeText } from "../_core/agentCatalog";
+import { runLibraryAnalysis } from "../_core/templateAnalysis";
+import * as db from "../db";
 import type { AgentOperation } from "../../shared/types";
 
 // ── Agent (Copilot) router ────────────────────────────────────────────────────
@@ -25,16 +27,40 @@ export const agentRouter = router({
           .optional(),
         graphSummary: z.string().max(20000).optional(),
         model: z.string().optional(),
+        comfyOnly: z.boolean().optional(),
       })
     )
     .mutation(async ({ ctx, input }) => {
       await assertProjectAccess(input.projectId, ctx.user.id, "editor");
       await assertLLMAllowed(ctx);
 
+      const model = input.model ?? "claude-sonnet-4-5-20250929";
+
+      // Before planning, refresh template knowledge: incrementally analyze any
+      // newly-added / changed templates (capped so a turn isn't blocked on a big
+      // backlog), then read the latest analyses to feed the model. Best-effort.
+      try { await runLibraryAnalysis(model, { max: 6 }); } catch { /* non-fatal */ }
+      let templateSection = "";
+      try {
+        const [templates, analyses] = await Promise.all([db.listComfyNodeTemplates(), db.listComfyTemplateAnalysis()]);
+        const labelById = new Map(templates.map((t) => [t.id, t.label]));
+        const rows = analyses
+          .filter((a) => labelById.has(a.templateId))
+          .sort((a, b) => (b.hasVideoOutput ? 1 : 0) - (a.hasVideoOutput ? 1 : 0))
+          .map((a) => ({ id: a.templateId, label: labelById.get(a.templateId)!, functionSummary: a.functionSummary ?? "", capabilities: (a.capabilities as string[] | null) ?? [], outputType: a.outputType ?? undefined, hasVideoOutput: a.hasVideoOutput ?? undefined }));
+        if (rows.length > 0) {
+          templateSection = `\n\n# 已分析的 ComfyUI 自定义工作流模板（comfyui_workflow 可用 payload.templateId 引用其 id）\n${templateKnowledgeText(rows)}`;
+        }
+      } catch { /* non-fatal */ }
+
+      const comfyConstraint = input.comfyOnly
+        ? `\n\n# 仅 ComfyUI 生成（当前已开启）\n- 所有图像/视频/音频生成只能使用 comfyui_workflow 自定义工作流节点；禁止使用 image_gen / video_task / audio / comfyui_image / comfyui_video。\n- create comfyui_workflow 时必须用 payload.templateId 引用上面「已分析模板」中的某个 id，并把正向提示词放入 payload.prompt、反向放 payload.negPrompt。`
+        : "";
+
       const system = `你是「AI 视频画布」的智能体副驾（Copilot）。用户用自然语言描述想做的视频，你负责把它拆解为画布上的节点工作流。
 
 # 可用节点目录（只能使用下面列出的节点类型与字段，禁止编造任何不存在的节点或字段）
-${catalogText()}
+${catalogText({ comfyOnly: input.comfyOnly })}${templateSection}${comfyConstraint}
 
 # 当前画布
 ${input.graphSummary?.trim() || "（空画布）"}
@@ -64,7 +90,7 @@ ${input.graphSummary?.trim() || "（空画布）"}
         { role: "user" as const, content: input.message },
       ];
 
-      const response = await invokeLLM({ messages, model: input.model ?? "claude-sonnet-4-5-20250929", maxTokens: 4000 });
+      const response = await invokeLLM({ messages, model, maxTokens: 4000 });
       const text = extractTextContent(response);
 
       let reply = text.trim();
@@ -76,7 +102,7 @@ ${input.graphSummary?.trim() || "（空画布）"}
           if (typeof parsed.reply === "string" && parsed.reply.trim()) reply = parsed.reply.trim();
           if (Array.isArray(parsed.operations)) {
             operations = parsed.operations
-              .map(sanitizeOperation)
+              .map((o) => sanitizeOperation(o, { comfyOnly: input.comfyOnly }))
               .filter((o): o is AgentOperation => o !== null);
           }
         } catch {

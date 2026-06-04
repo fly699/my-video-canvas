@@ -260,6 +260,13 @@
       "when": 1780501100000,
       "tag": "0036_agent_node_type",
       "breakpoints": true
+    },
+    {
+      "idx": 37,
+      "version": "5",
+      "when": 1780501200000,
+      "tag": "0037_comfy_template_analysis",
+      "breakpoints": true
     }
   ]
 }

@@ -65,6 +65,9 @@ import {
   comfyNodeTemplates,
   type ComfyNodeTemplateRow,
   type InsertComfyNodeTemplate,
+  comfyTemplateAnalysis,
+  type ComfyTemplateAnalysisRow,
+  type InsertComfyTemplateAnalysis,
 } from "../drizzle/schema";
 import { ENV } from "./_core/env";
 import * as dev from "./_core/devStore";
@@ -1825,4 +1828,35 @@ export async function deleteComfyNodeTemplate(id: number): Promise<void> {
   const db = await getDb();
   if (!db) { if (DEV_MODE) { dev.devDeleteComfyNodeTemplate(id); return; } throw new Error("DB unavailable"); }
   await db.delete(comfyNodeTemplates).where(eq(comfyNodeTemplates.id, id));
+}
+
+// ── ComfyUI template analysis (agent planning knowledge) ──────────────────────
+export async function listComfyTemplateAnalysis(): Promise<ComfyTemplateAnalysisRow[]> {
+  const db = await getDb();
+  if (!db) return DEV_MODE ? dev.devListComfyTemplateAnalysis() : [];
+  return db.select().from(comfyTemplateAnalysis);
+}
+
+export async function getComfyTemplateAnalysis(templateId: number): Promise<ComfyTemplateAnalysisRow | undefined> {
+  const db = await getDb();
+  if (!db) return DEV_MODE ? dev.devGetComfyTemplateAnalysis(templateId) : undefined;
+  const rows = await db.select().from(comfyTemplateAnalysis).where(eq(comfyTemplateAnalysis.templateId, templateId)).limit(1);
+  return rows[0];
+}
+
+export async function upsertComfyTemplateAnalysis(data: InsertComfyTemplateAnalysis): Promise<void> {
+  const db = await getDb();
+  if (!db) { if (DEV_MODE) dev.devUpsertComfyTemplateAnalysis(data); return; }
+  await db.insert(comfyTemplateAnalysis).values(data).onDuplicateKeyUpdate({
+    set: {
+      functionSummary: data.functionSummary,
+      capabilities: data.capabilities,
+      outputType: data.outputType,
+      hasVideoOutput: data.hasVideoOutput,
+      modelNames: data.modelNames,
+      analysisVersion: data.analysisVersion ?? 1,
+      model: data.model,
+      analyzedAt: new Date(),
+    },
+  });
 }

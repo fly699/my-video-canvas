@@ -43,6 +43,8 @@ import type {
   InsertEditSession,
   ComfyNodeTemplateRow,
   InsertComfyNodeTemplate,
+  ComfyTemplateAnalysisRow,
+  InsertComfyTemplateAnalysis,
 } from "../../drizzle/schema";
 
 let nextId = 100;
@@ -1027,6 +1029,30 @@ export function devListComfyNodeTemplates(): ComfyNodeTemplateRow[] {
 
 export function devGetComfyNodeTemplate(id: number): ComfyNodeTemplateRow | undefined {
   return comfyTemplatesMap.get(id);
+}
+
+const comfyAnalysisMap = new Map<number, ComfyTemplateAnalysisRow>();
+
+export function devListComfyTemplateAnalysis(): ComfyTemplateAnalysisRow[] {
+  return Array.from(comfyAnalysisMap.values());
+}
+export function devGetComfyTemplateAnalysis(templateId: number): ComfyTemplateAnalysisRow | undefined {
+  return comfyAnalysisMap.get(templateId);
+}
+export function devUpsertComfyTemplateAnalysis(data: InsertComfyTemplateAnalysis): void {
+  const prev = comfyAnalysisMap.get(data.templateId);
+  comfyAnalysisMap.set(data.templateId, {
+    id: prev?.id ?? newId(),
+    templateId: data.templateId,
+    functionSummary: data.functionSummary ?? null,
+    capabilities: data.capabilities ?? null,
+    outputType: data.outputType ?? null,
+    hasVideoOutput: data.hasVideoOutput ?? null,
+    modelNames: data.modelNames ?? null,
+    analysisVersion: data.analysisVersion ?? 1,
+    model: data.model ?? null,
+    analyzedAt: now(),
+  });
 }
 
 export function devCreateComfyNodeTemplate(data: InsertComfyNodeTemplate): ComfyNodeTemplateRow {

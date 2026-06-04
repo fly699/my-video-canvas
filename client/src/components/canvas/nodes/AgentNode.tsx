@@ -4,11 +4,12 @@ import { useCanvasStore } from "../../../hooks/useCanvasStore";
 import type { AgentNodeData, AgentMessage, AgentOperation } from "../../../../../shared/types";
 import { trpc } from "@/lib/trpc";
 import { toast } from "sonner";
-import { Sparkles, Loader2, Send, Check, Plus, Link2, Pencil, Trash2 } from "lucide-react";
+import { Sparkles, Loader2, Send, Check, Plus, Link2, Pencil, Trash2, LayoutGrid, Boxes } from "lucide-react";
 import { LLMModelPicker, type LLMModelId } from "../LLMModelPicker";
 import { NodeTextArea } from "../NodeTextInput";
 import { applyAgentOperations, buildGraphSummary } from "@/lib/agentApply";
 import { getNodeConfig } from "../../../lib/nodeConfig";
+import { LAYOUTS, computeLayout } from "@/lib/layoutUtils";
 
 interface Props {
   id: string;
@@ -42,8 +43,36 @@ export const AgentNode = memo(function AgentNode({ id, selected, data }: Props) 
 
   const [input, setInput] = useState("");
   const [appliedIdx, setAppliedIdx] = useState<Set<number>>(new Set());
+  const [layoutIdx, setLayoutIdx] = useState(0);
+  const [analyzeFull, setAnalyzeFull] = useState(false);
   const scrollRef = useRef<HTMLDivElement>(null);
   const chat = trpc.agent.chat.useMutation();
+  const templatesQuery = trpc.comfyTemplates.list.useQuery(undefined, { staleTime: 30_000 });
+  const analyzeMut = trpc.comfyTemplates.analyzeLibrary.useMutation();
+  const comfyOnly = payload.comfyOnlyMode ?? false;
+
+  const handleAnalyzeLibrary = async () => {
+    if (analyzeMut.isPending) return;
+    try {
+      const r = await analyzeMut.mutateAsync({ model, full: analyzeFull });
+      toast.success(`模板库分析完成：已分析 ${r.analyzed} · 跳过 ${r.skipped}${r.failed ? ` · 失败 ${r.failed}` : ""}`);
+    } catch (e) {
+      toast.error("分析失败：" + (e instanceof Error ? e.message : ""));
+    }
+  };
+
+  // Cycle through the smart-layout options, re-arranging all canvas nodes (except
+  // this agent node) in one undoable step.
+  const handleSmartLayout = () => {
+    const layout = LAYOUTS[layoutIdx % LAYOUTS.length];
+    const { nodes, edges, batchUpdateNodePositions } = useCanvasStore.getState();
+    const targets = nodes.filter((n) => n.id !== id);
+    if (targets.length === 0) { toast.info("画布暂无可排序的节点"); return; }
+    const updates = computeLayout(layout.id, targets.map((n) => ({ id: n.id, position: n.position, data: { nodeType: n.data.nodeType } })), edges.map((e) => ({ source: e.source, target: e.target })));
+    batchUpdateNodePositions(updates);
+    toast.success(`已应用布局：${layout.name}`);
+    setLayoutIdx((i) => i + 1);
+  };
 
   const setMessages = (msgs: AgentMessage[]) => updateNodeData(id, { messages: msgs });
 
@@ -62,7 +91,7 @@ export const AgentNode = memo(function AgentNode({ id, selected, data }: Props) 
     try {
       const r = await chat.mutateAsync({
         projectId: data.projectId, message: text, history,
-        graphSummary: summary || undefined, model,
+        graphSummary: summary || undefined, model, comfyOnly,
       });
       setMessages([...afterUser, { role: "assistant", content: r.reply, operations: r.operations }]);
     } catch (e) {
@@ -72,10 +101,17 @@ export const AgentNode = memo(function AgentNode({ id, selected, data }: Props) 
 
   const handleApply = (msgIdx: number, ops: AgentOperation[]) => {
     const pos = useCanvasStore.getState().nodes.find((n) => n.id === id)?.position ?? { x: 0, y: 0 };
-    const r = applyAgentOperations(ops, pos);
+    const templates = (templatesQuery.data ?? []).map((t) => ({ id: t.id, label: t.label, payload: t.payload }));
+    const r = applyAgentOperations(ops, pos, { templates }); // mutates op.status/op.error in place
     setAppliedIdx((prev) => new Set(prev).add(msgIdx));
+    // Persist op statuses back into the message so the preview shows applied/failed.
+    setMessages(messages.map((m, i) => (i === msgIdx ? { ...m, operations: [...ops] } : m)));
     const parts = [r.created && `新建 ${r.created}`, r.connected && `连接 ${r.connected}`, r.updated && `更新 ${r.updated}`, r.deleted && `删除 ${r.deleted}`].filter(Boolean);
-    toast.success(parts.length ? `已应用：${parts.join(" · ")}` : "无可应用的操作");
+    if (r.failures.length > 0) {
+      toast.warning(`已应用 ${parts.join(" · ") || "0 步"}，${r.failures.length} 步失败：${r.failures[0].reason}`);
+    } else {
+      toast.success(parts.length ? `已应用：${parts.join(" · ")}` : "无可应用的操作");
+    }
   };
 
   return (
@@ -105,11 +141,14 @@ export const AgentNode = memo(function AgentNode({ id, selected, data }: Props) 
                   <div style={{ padding: "6px 9px", display: "flex", flexDirection: "column", gap: 4 }}>
                     {m.operations.map((op, j) => {
                       const { Icon, label } = OP_META[op.op];
+                      const failed = op.status === "failed";
+                      const c = failed ? "oklch(0.62 0.20 25)" : accent;
                       return (
                         <div key={j} style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 11, color: "var(--c-t2)" }}>
-                          <Icon className="w-3 h-3" style={{ color: accent, flexShrink: 0 }} />
-                          <span style={{ color: accent, fontWeight: 600, flexShrink: 0 }}>{label}</span>
-                          <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }} title={op.note || opText(op)}>{opText(op)}</span>
+                          <Icon className="w-3 h-3" style={{ color: c, flexShrink: 0 }} />
+                          <span style={{ color: c, fontWeight: 600, flexShrink: 0 }}>{label}</span>
+                          <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }} title={failed ? op.error : (op.note || opText(op))}>{opText(op)}</span>
+                          {failed && <span style={{ color: "oklch(0.62 0.20 25)", flexShrink: 0, fontSize: 10 }}>失败</span>}
                         </div>
                       );
                     })}
@@ -141,6 +180,32 @@ export const AgentNode = memo(function AgentNode({ id, selected, data }: Props) 
 
         {/* Composer */}
         <div style={{ flexShrink: 0, borderTop: "1px solid var(--c-bd1)", padding: "8px 10px", display: "flex", flexDirection: "column", gap: 7 }}>
+          {/* Tools row */}
+          <div style={{ display: "flex", gap: 6, alignItems: "center", flexWrap: "wrap" }}>
+            <button
+              onClick={handleSmartLayout}
+              className="nodrag flex items-center gap-1 px-2 py-1 rounded-lg text-[10px] font-medium"
+              title="智能排序：点击在多种布局间循环"
+              style={{ background: accentA(0.1), border: `1px solid ${accentA(0.3)}`, color: accent, cursor: "pointer" }}
+            >
+              <LayoutGrid className="w-3 h-3" />智能排序
+            </button>
+            <button
+              onClick={handleAnalyzeLibrary}
+              disabled={analyzeMut.isPending}
+              className="nodrag flex items-center gap-1 px-2 py-1 rounded-lg text-[10px] font-medium"
+              title="分析 ComfyUI 模板库功能并入库（增量；勾选全量则重新分析全部）"
+              style={{ background: accentA(0.1), border: `1px solid ${accentA(0.3)}`, color: accent, cursor: analyzeMut.isPending ? "wait" : "pointer" }}
+            >
+              {analyzeMut.isPending ? <Loader2 className="w-3 h-3 animate-spin" /> : <Boxes className="w-3 h-3" />}新增节点模板库分析
+            </button>
+            <label className="nodrag flex items-center gap-1 text-[10px]" style={{ color: "var(--c-t3)", cursor: "pointer" }} title="重新分析全部模板（而非仅新增/变更）">
+              <input type="checkbox" checked={analyzeFull} onChange={(e) => setAnalyzeFull(e.target.checked)} style={{ accentColor: accent }} />全量
+            </label>
+            <label className="nodrag flex items-center gap-1 text-[10px]" style={{ color: comfyOnly ? accent : "var(--c-t3)", cursor: "pointer" }} title="开启后：音视频生成只用 ComfyUI 自定义工作流节点（从模板库选模板）">
+              <input type="checkbox" checked={comfyOnly} onChange={(e) => updateNodeData(id, { comfyOnlyMode: e.target.checked })} style={{ accentColor: accent }} />仅 ComfyUI 生成
+            </label>
+          </div>
           <LLMModelPicker value={model} onChange={(m) => updateNodeData(id, { model: m })} disabled={chat.isPending} />
           <div style={{ display: "flex", gap: 6, alignItems: "flex-end" }}>
             <NodeTextArea

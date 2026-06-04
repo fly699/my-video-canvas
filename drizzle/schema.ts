@@ -223,6 +223,25 @@ export const comfyNodeTemplates = mysqlTable("comfy_node_templates", {
 export type ComfyNodeTemplateRow = typeof comfyNodeTemplates.$inferSelect;
 export type InsertComfyNodeTemplate = typeof comfyNodeTemplates.$inferInsert;
 
+// ── ComfyUI template functional analysis (for the agent's planning) ───────────
+// One row per template (1:1 via unique templateId). The agent reads these
+// LLM-produced functional summaries to recommend/configure comfyui_workflow nodes.
+export const comfyTemplateAnalysis = mysqlTable("comfy_template_analysis", {
+  id: int("id").autoincrement().primaryKey(),
+  templateId: int("templateId").notNull().unique(),
+  functionSummary: text("functionSummary"),
+  capabilities: json("capabilities"),            // string[]
+  outputType: varchar("outputType", { length: 16 }), // image|video|mixed
+  hasVideoOutput: boolean("hasVideoOutput"),
+  modelNames: json("modelNames"),                // string[]
+  analysisVersion: int("analysisVersion").notNull().default(1),
+  model: varchar("model", { length: 64 }),       // LLM used for the analysis
+  analyzedAt: timestamp("analyzedAt").defaultNow().notNull(),
+});
+
+export type ComfyTemplateAnalysisRow = typeof comfyTemplateAnalysis.$inferSelect;
+export type InsertComfyTemplateAnalysis = typeof comfyTemplateAnalysis.$inferInsert;
+
 // ── Video Tasks ───────────────────────────────────────────────────────────────
 export const videoTasks = mysqlTable("video_tasks", {
   id: int("id").autoincrement().primaryKey(),

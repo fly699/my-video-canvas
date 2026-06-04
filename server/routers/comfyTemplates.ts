@@ -2,6 +2,8 @@ import { z } from "zod";
 import { TRPCError } from "@trpc/server";
 import { protectedProcedure, router } from "../_core/trpc";
 import * as db from "../db";
+import { assertLLMAllowed } from "../_core/whitelist";
+import { runLibraryAnalysis } from "../_core/templateAnalysis";
 import {
   sanitizeComfyPayload, COMFY_TEMPLATE_LIMITS,
   type ComfyNodeType, type ComfyNodeTemplate,
@@ -93,5 +95,39 @@ export const comfyTemplatesRouter = router({
       }
       await db.deleteComfyNodeTemplate(input.id);
       return { success: true };
+    }),
+
+  // ── Template-library functional analysis (for the agent) ───────────────────
+  // List stored analyses joined with template label (compact, for the agent's
+  // system prompt and any UI).
+  analysisList: protectedProcedure.query(async () => {
+    const [templates, analyses] = await Promise.all([
+      db.listComfyNodeTemplates(),
+      db.listComfyTemplateAnalysis(),
+    ]);
+    const byId = new Map(templates.map((t) => [t.id, t]));
+    return analyses
+      .filter((a) => byId.has(a.templateId))
+      .map((a) => ({
+        id: a.templateId,
+        label: byId.get(a.templateId)!.label,
+        nodeType: byId.get(a.templateId)!.nodeType,
+        functionSummary: a.functionSummary ?? "",
+        capabilities: (a.capabilities as string[] | null) ?? [],
+        outputType: a.outputType ?? undefined,
+        hasVideoOutput: a.hasVideoOutput ?? undefined,
+        analyzedAt: (a.analyzedAt instanceof Date ? a.analyzedAt : new Date(a.analyzedAt)).toISOString(),
+      }));
+  }),
+
+  // Analyze the template library and persist results. Default = incremental
+  // (only never-analyzed / updated / out-of-version templates); `full` re-does
+  // all. LLM-gated (respects admin "open LLM" bypass); any editor may trigger.
+  analyzeLibrary: protectedProcedure
+    .input(z.object({ model: z.string().max(64).optional(), full: z.boolean().optional() }))
+    .mutation(async ({ ctx, input }) => {
+      await assertLLMAllowed(ctx);
+      const model = input.model ?? "claude-sonnet-4-5-20250929";
+      return runLibraryAnalysis(model, { full: input.full });
     }),
 });

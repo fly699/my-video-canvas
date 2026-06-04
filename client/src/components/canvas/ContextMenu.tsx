@@ -1,6 +1,7 @@
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { usePersistentState } from "../../hooks/usePersistentState";
 import { NODE_TYPE_LIST } from "../../lib/nodeConfig";
+import { sortNodeConfigsForPalette } from "../../lib/nodeOrder";
 import type { NodeType } from "../../../../shared/types";
 import {
   FileText, Copy, Trash2, Plus, Play, Pin, PinOff, ChevronUp, X, GripHorizontal,
@@ -382,19 +383,7 @@ export function ContextMenu({
                   2. ComfyUI 视频
                   3. ComfyUI 自定义 (custom workflow)
                   …rest preserves the source order from NODE_CONFIGS. */}
-              {(() => {
-                const COMFY_ORDER: Record<string, number> = {
-                  comfyui_image: 0,
-                  comfyui_video: 1,
-                  comfyui_workflow: 2,
-                };
-                return [...NODE_TYPE_LIST].sort((a, b) => {
-                  const ai = COMFY_ORDER[a.type] ?? Infinity;
-                  const bi = COMFY_ORDER[b.type] ?? Infinity;
-                  if (ai !== bi) return ai - bi;
-                  return 0;
-                });
-              })().map((config) => {
+              {sortNodeConfigsForPalette(NODE_TYPE_LIST).map((config) => {
                 const Icon = NODE_ICONS[config.icon] ?? FileText;
                 return (
                   <button
