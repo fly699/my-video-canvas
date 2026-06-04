@@ -172,6 +172,19 @@ export function devGetAssetsByUser(
     .sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime());
 }
 
+export function devGetAssetsByProject(
+  projectId: number,
+  filter: { type?: string; source?: string; model?: string; q?: string } = {},
+): Asset[] {
+  return Array.from(assetsMap.values())
+    .filter((a) => a.projectId === projectId && a.deletedAt == null
+      && (!filter.type || a.type === filter.type)
+      && (!filter.source || a.source === filter.source)
+      && (!filter.model || a.model === filter.model)
+      && (!filter.q || a.name.toLowerCase().includes(filter.q.toLowerCase())))
+    .sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime());
+}
+
 export function devGetAllAssets(filter: {
   userId?: number; type?: string; source?: string; model?: string;
   projectId?: number; q?: string; includeDeleted?: boolean; limit?: number; offset?: number;

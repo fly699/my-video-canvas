@@ -20,6 +20,7 @@ import {
   upsertEdge,
   deleteEdge,
   getAssetsByUser,
+  getAssetsByProject,
   getAssetSummary,
   createAsset,
   recordGeneratedAsset,
@@ -371,13 +372,24 @@ export const assetsRouter = router({
       model: z.string().max(128).optional(),
       q: z.string().max(128).optional(),
     }).optional())
-    .query(({ ctx, input }) => getAssetsByUser(ctx.user.id, {
-      projectId: input?.allProjects ? undefined : input?.projectId,
-      type: input?.type,
-      source: input?.source,
-      model: input?.model,
-      q: input?.q?.trim() || undefined,
-    })),
+    .query(async ({ ctx, input }) => {
+      const commonFilter = {
+        type: input?.type,
+        source: input?.source,
+        model: input?.model,
+        q: input?.q?.trim() || undefined,
+      };
+      const projectId = input?.allProjects ? undefined : input?.projectId;
+      // Project-scoped view: editors of a shared project see ONE common library
+      // (every asset tied to the project, regardless of which collaborator made
+      // it). Requires project access; falls back to personal library otherwise.
+      if (projectId != null) {
+        await assertProjectAccess(projectId, ctx.user.id, "viewer");
+        return getAssetsByProject(projectId, commonFilter);
+      }
+      // Personal library (no project / all-projects): the caller's own assets.
+      return getAssetsByUser(ctx.user.id, commonFilter);
+    }),
 
   // Lightweight summary for the Home 素材库 entry card (count + a few cover URLs).
   summary: protectedProcedure

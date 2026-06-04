@@ -570,6 +570,22 @@ export async function getAssetsByUser(userId: number, filter: AssetFilter = {}) 
 }
 
 /**
+ * Project-scoped asset library — every asset tied to `projectId` regardless of
+ * which collaborator created it, so editors of a shared project see one common
+ * library. Caller must already be authorized for the project (assertProjectAccess).
+ */
+export async function getAssetsByProject(projectId: number, filter: Omit<AssetFilter, "projectId"> = {}) {
+  const db = await getDb();
+  if (!db) return DEV_MODE ? dev.devGetAssetsByProject(projectId, filter) : [];
+  const conds = [eq(assets.projectId, projectId), isNull(assets.deletedAt)];
+  if (filter.type) conds.push(eq(assets.type, filter.type));
+  if (filter.source) conds.push(eq(assets.source, filter.source));
+  if (filter.model) conds.push(eq(assets.model, filter.model));
+  if (filter.q) conds.push(like(assets.name, `%${escapeLike(filter.q)}%`));
+  return db.select().from(assets).where(and(...conds)).orderBy(desc(assets.createdAt));
+}
+
+/**
  * Lightweight library summary for the Home entry card: total count + a few recent
  * image URLs for the cover collage. Avoids shipping the whole asset table just to
  * render a number and 4 thumbnails.
