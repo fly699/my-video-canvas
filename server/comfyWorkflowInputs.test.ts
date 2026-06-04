@@ -70,6 +70,15 @@ describe("detectUpstreamPrompt", () => {
     const nodes: N[] = [{ id: "p", data: { nodeType: "prompt", payload: { positivePrompt: "a cat", negativePrompt: "blurry" } } }];
     expect(detectUpstreamPrompt("w", [{ source: "p", target: "w" }], nodes)).toEqual({ positive: "a cat", negative: "blurry" });
   });
+  it("appends style/ratio to the positive prompt only when the pass flags are on", () => {
+    const base = { positivePrompt: "a cat", style: "cinematic", aspectRatio: "16:9" };
+    const at = (payload: Record<string, unknown>) =>
+      detectUpstreamPrompt("w", [{ source: "p", target: "w" }], [{ id: "p", data: { nodeType: "prompt", payload } }]).positive;
+    expect(at(base)).toBe("a cat");                                   // flags off → no extras
+    expect(at({ ...base, passStyle: true })).toBe("a cat, cinematic");
+    expect(at({ ...base, passRatio: true })).toBe("a cat, 16:9");
+    expect(at({ ...base, passStyle: true, passRatio: true })).toBe("a cat, cinematic, 16:9");
+  });
   it("reads script content and ai_chat last assistant message as positive", () => {
     const nodes: N[] = [
       { id: "s", data: { nodeType: "script", payload: { content: "scene text" } } },
