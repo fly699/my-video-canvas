@@ -7,6 +7,7 @@ import { toast } from "sonner";
 import { Sparkles, Loader2, Upload, X, Languages, ScanText } from "lucide-react";
 import { makeImageProxyFallback } from "@/lib/utils";
 import { LLMModelPicker, type LLMModelId } from "../LLMModelPicker";
+import { NodeTextArea, NodeInput } from "../NodeTextInput";
 
 interface Props {
   id: string;
@@ -188,16 +189,16 @@ export const PromptNode = memo(function PromptNode({ id, selected, data }: Props
             {/* Positive prompt */}
             <div>
               <label style={{ fontSize: 10.5, fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.06em", color: "var(--c-t4)", display: "block", marginBottom: 5 }}>正向提示词（输出至下游）</label>
-              <textarea className="nodrag nowheel" placeholder="masterpiece, best quality, cinematic lighting..."
-                value={payload.positivePrompt ?? ""} onChange={(e) => handleChange("positivePrompt", e.target.value)} rows={3}
+              <NodeTextArea className="nodrag nowheel" placeholder="masterpiece, best quality, cinematic lighting..."
+                value={payload.positivePrompt ?? ""} onValueChange={(v) => handleChange("positivePrompt", v)} rows={3}
                 style={{ ...monoStyle, borderColor: accentA(0.3) }} onFocus={onFocusAccent} onBlur={onBlurAccent} />
             </div>
 
             {/* Negative prompt */}
             <div>
               <label style={{ fontSize: 10, fontWeight: 500, textTransform: "uppercase", letterSpacing: "0.05em", color: "var(--c-t4)", display: "block", marginBottom: 4 }}>反向提示词</label>
-              <textarea className="nodrag nowheel" placeholder="blurry, low quality, distorted..."
-                value={payload.negativePrompt ?? ""} onChange={(e) => handleChange("negativePrompt", e.target.value)} rows={2}
+              <NodeTextArea className="nodrag nowheel" placeholder="blurry, low quality, distorted..."
+                value={payload.negativePrompt ?? ""} onValueChange={(v) => handleChange("negativePrompt", v)} rows={2}
                 style={monoStyle} onFocus={onFocusNeg} onBlur={onBlurDefault} />
             </div>
 
@@ -250,12 +251,12 @@ export const PromptNode = memo(function PromptNode({ id, selected, data }: Props
             {/* Style + ratio with downstream-pass checkboxes */}
             <div className="flex flex-col gap-1.5">
               <div className="flex gap-1.5 items-center">
-                <input placeholder="风格" value={payload.style ?? ""} onChange={(e) => handleChange("style", e.target.value)}
+                <NodeInput placeholder="风格" value={payload.style ?? ""} onValueChange={(v) => handleChange("style", v)}
                   className="nodrag flex-1" style={fieldStyle} onFocus={(e) => { e.currentTarget.style.borderColor = accentA(0.5); }} onBlur={onBlurDefault} />
                 <PassCheck label="传递" on={!!payload.passStyle} onToggle={() => toggle("passStyle")} />
               </div>
               <div className="flex gap-1.5 items-center">
-                <input placeholder="比例 (16:9)" value={payload.aspectRatio ?? ""} onChange={(e) => handleChange("aspectRatio", e.target.value)}
+                <NodeInput placeholder="比例 (16:9)" value={payload.aspectRatio ?? ""} onValueChange={(v) => handleChange("aspectRatio", v)}
                   className="nodrag flex-1" style={fieldStyle} onFocus={(e) => { e.currentTarget.style.borderColor = accentA(0.5); }} onBlur={onBlurDefault} />
                 <PassCheck label="传递" on={!!payload.passRatio} onToggle={() => toggle("passRatio")} />
               </div>
