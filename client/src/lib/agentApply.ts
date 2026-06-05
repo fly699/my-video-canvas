@@ -105,6 +105,13 @@ export function applyAgentOperations(
           if (op.nodeType === "comfyui_workflow" && payload?.templateId != null) {
             const tpl = opts.templates?.find((t) => t.id === Number(payload!.templateId));
             if (!tpl) { fail(index, op, `未找到模板 id=${String(payload.templateId)}`); return; }
+            // Guard: only comfyui_workflow templates carry a workflowJson. Referencing
+            // a comfyui_image/video template id here would produce an empty workflow
+            // node (no params/model) — fail clearly instead of creating a blank node.
+            if (!tpl.payload || typeof tpl.payload.workflowJson !== "string" || !(tpl.payload.workflowJson as string).trim()) {
+              fail(index, op, `模板「${tpl.label}」(id=${tpl.id}) 不是工作流模板（无 workflowJson），无法作为 comfyui_workflow 节点`);
+              return;
+            }
             // Preserve a multi-server-distribution override (set client-side before
             // apply) — materializeTemplate rebuilds payload from the template.
             const serverOverride = typeof payload.customBaseUrl === "string" ? payload.customBaseUrl : undefined;

@@ -44,7 +44,11 @@ export const agentRouter = router({
       // Before planning, refresh template knowledge: incrementally analyze any
       // newly-added / changed templates (capped so a turn isn't blocked on a big
       // backlog), then read the latest analyses to feed the model. Best-effort.
-      try { await runLibraryAnalysis(model, { max: 6 }); } catch { /* non-fatal */ }
+      // Refresh template knowledge before planning. comfyOnly REQUIRES the full
+      // library be analyzed (otherwise the agent only "knows" a partial subset and
+      // picks the wrong templates), so analyze many per turn there; results are
+      // cached so only new/changed templates re-run on later turns.
+      try { await runLibraryAnalysis(model, { max: input.comfyOnly ? 40 : 6 }); } catch { /* non-fatal */ }
       let templateSection = "";
       const validTemplateIds = new Set<number>();
       let hasImageTemplate = false;
@@ -53,7 +57,13 @@ export const agentRouter = router({
       let videoTpls: { id: number; label: string }[] = [];
       try {
         const [templates, analyses] = await Promise.all([db.listComfyNodeTemplates(), db.listComfyTemplateAnalysis()]);
-        const labelById = new Map(templates.map((t) => [t.id, t.label]));
+        // Only comfyui_workflow templates carry a workflowJson + paramBindings, and
+        // only the comfyui_workflow node references templates by payload.templateId
+        // (comfyui_image / comfyui_video templates have NO templateId field in the
+        // catalog). Referencing a non-workflow template id from a comfyui_workflow
+        // node materializes to an EMPTY node (no workflow, no params/model), so the
+        // agent's template set MUST be restricted to comfyui_workflow templates.
+        const labelById = new Map(templates.filter((t) => t.nodeType === "comfyui_workflow").map((t) => [t.id, t.label]));
         const rows = analyses
           .filter((a) => labelById.has(a.templateId))
           .sort((a, b) => (b.hasVideoOutput ? 1 : 0) - (a.hasVideoOutput ? 1 : 0))
