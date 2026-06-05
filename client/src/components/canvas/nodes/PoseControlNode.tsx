@@ -1,5 +1,6 @@
 import { memo, useCallback, useMemo } from "react";
 import { BaseNode } from "../BaseNode";
+import { MediaImage } from "../MediaImage";
 import { useCanvasStore } from "../../../hooks/useCanvasStore";
 import { propagateRefImage } from "../../../lib/refImagePropagation";
 import type { PoseControlNodeData } from "../../../../../shared/types";
@@ -107,7 +108,7 @@ export const PoseControlNode = memo(function PoseControlNode({ id, selected, dat
 
         {/* Reference image preview */}
         {(payload.referenceImageUrl || sourceImageUrl) && (
-          <img
+          <MediaImage
             src={payload.referenceImageUrl || sourceImageUrl}
             alt="参考构图"
             className="w-full rounded-lg nodrag"
@@ -148,7 +149,7 @@ export const PoseControlNode = memo(function PoseControlNode({ id, selected, dat
         {payload.outputImageUrl && (
           <div className="flex flex-col gap-1.5">
             <label style={labelStyle}>生成结果</label>
-            <img src={payload.outputImageUrl} alt="生成结果" className="w-full rounded-lg nodrag"
+            <MediaImage src={payload.outputImageUrl} alt="生成结果" className="w-full rounded-lg nodrag"
               style={{ maxHeight: 160, objectFit: "cover", border: `1px solid ${accentA(0.4)}` }} />
             <a href={payload.outputImageUrl} target="_blank" rel="noreferrer"
               className="nodrag flex items-center justify-center gap-1 py-1.5 rounded-lg text-[10px]"

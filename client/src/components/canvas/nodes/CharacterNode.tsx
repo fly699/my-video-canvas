@@ -1,6 +1,7 @@
 import { memo, useCallback, useMemo, useRef, useState } from "react";
 import { useShallow } from "zustand/react/shallow";
 import { BaseNode } from "../BaseNode";
+import { MediaImage } from "../MediaImage";
 import { useCanvasStore } from "../../../hooks/useCanvasStore";
 import type { CharacterNodeData, CharacterKind, StoryboardNodeData } from "../../../../../shared/types";
 import { trpc } from "@/lib/trpc";
@@ -207,7 +208,7 @@ export const CharacterNode = memo(function CharacterNode({ id, selected, data }:
   );
 
   const heroMedia = payload.referenceImageUrl ? (
-    <img
+    <MediaImage
       src={payload.referenceImageUrl}
       alt="参考图"
       style={{ width: "100%", maxHeight: 240, objectFit: "cover", display: "block" }}
@@ -256,7 +257,7 @@ export const CharacterNode = memo(function CharacterNode({ id, selected, data }:
           <label style={labelStyle}>参考图</label>
           {payload.referenceImageUrl ? (
             <div className="relative rounded-lg overflow-hidden" style={{ border: `1px solid ${accentA(0.3)}` }}>
-              <img
+              <MediaImage
                 src={payload.referenceImageUrl}
                 alt="参考图"
                 className="w-full object-cover"

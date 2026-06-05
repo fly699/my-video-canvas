@@ -7,6 +7,7 @@ import { trpc } from "@/lib/trpc";
 import { toast } from "sonner";
 import { isOwnStorageUrl } from "@/lib/ownStorage";
 import { mediaFetchUrl } from "@/lib/download";
+import { MediaImage } from "../MediaImage";
 
 interface Props {
   id: string;
@@ -87,7 +88,7 @@ export const AssetNode = memo(function AssetNode({ id, selected, data }: Props) 
               style={{ background: "oklch(0.72 0.18 155)", boxShadow: "0 0 0 2.5px oklch(0.72 0.18 155 / 0.35)" }}
             />
           )}
-          <img src={payload.url} alt={payload.name} className="w-full h-full object-cover" draggable={false} />
+          <MediaImage src={payload.url} alt={payload.name} className="w-full h-full object-cover" draggable={false} />
           <div
             className="absolute inset-0 opacity-0 group-hover/img:opacity-100 transition-opacity flex items-end justify-end p-2"
             style={{ background: "oklch(0 0 0 / 0.40)" }}
@@ -182,7 +183,7 @@ export const AssetNode = memo(function AssetNode({ id, selected, data }: Props) 
   const heroMedia = (() => {
     if (payload.url && payload.type === "image") {
       return (
-        <img
+        <MediaImage
           src={payload.url}
           style={{ width: "100%", maxHeight: 240, objectFit: "cover", display: "block" }}
           draggable={false}
