@@ -82,6 +82,36 @@ const DEV_MODE = process.env.NODE_ENV === "development" && !process.env.DATABASE
 
 let _db: ReturnType<typeof drizzle> | null = null;
 
+// Full canvas_nodes.type enum — keep in sync with drizzle/schema.ts.
+const NODE_TYPE_ENUM_VALUES = [
+  "script", "storyboard", "prompt", "image_gen", "asset", "video_task", "ai_chat",
+  "note", "audio", "post_process", "group", "character", "clip", "merge", "subtitle",
+  "overlay", "subtitle_motion", "smart_cut", "pose_control", "voice_clone", "lip_sync",
+  "avatar", "comfyui_image", "comfyui_video", "comfyui_workflow", "agent",
+] as const;
+
+// Boot-time self-heal: guarantee canvas_nodes.type accepts every node type even if
+// migrations are stuck/partial (notably 'agent' — a missing value makes agent-node
+// inserts fail with ER 1265, which rolls back the whole node-save transaction so
+// NOTHING — nodes OR viewport — persists). Idempotent: only ALTERs when a value is
+// actually missing. Runs once per process; failures are non-fatal (logged).
+let _selfHealPromise: Promise<void> | null = null;
+async function ensureNodeTypeEnum(db: NonNullable<typeof _db>): Promise<void> {
+  try {
+    const res = await db.execute(sql`SELECT COLUMN_TYPE AS ct FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'canvas_nodes' AND COLUMN_NAME = 'type'`);
+    const rows = (Array.isArray(res) ? res[0] : res) as unknown as Array<{ ct?: string }> | undefined;
+    const colType = rows?.[0]?.ct;
+    if (!colType) return; // table not created yet (fresh DB) — migrations will build it
+    const missing = NODE_TYPE_ENUM_VALUES.filter((v) => !colType.includes(`'${v}'`));
+    if (missing.length === 0) return; // already complete — no-op
+    const enumList = NODE_TYPE_ENUM_VALUES.map((v) => `'${v}'`).join(",");
+    await db.execute(sql.raw(`ALTER TABLE \`canvas_nodes\` MODIFY COLUMN \`type\` ENUM(${enumList}) NOT NULL`));
+    console.warn(`[Database] self-heal: added missing canvas_nodes.type enum values: ${missing.join(", ")}`);
+  } catch (e) {
+    console.warn("[Database] canvas_nodes enum self-heal skipped:", e instanceof Error ? e.message : e);
+  }
+}
+
 export async function getDb() {
   if (!_db && process.env.DATABASE_URL) {
     try {
@@ -90,7 +120,9 @@ export async function getDb() {
       console.warn("[Database] Failed to connect:", error);
       _db = null;
     }
+    if (_db && !_selfHealPromise) _selfHealPromise = ensureNodeTypeEnum(_db);
   }
+  if (_selfHealPromise) await _selfHealPromise;
   return _db;
 }
 

@@ -721,25 +721,30 @@ function CanvasInner({ projectId }: { projectId: number }) {
   const saveCanvas = useCallback(async () => {
     if (isReadOnly) return; // read-only collaborators must never write (server also rejects)
     if (!isDirty) return;
-    try {
-      // ── Diff-based node save ──────────────────────────────────────────────
-      // Upsert ONLY nodes whose signature changed since last save/load, and
-      // delete ids that vanished from local state. Two wins:
-      //  1. A stale/concurrent session won't re-upsert nodes it didn't touch, so
-      //     it can't "resurrect" a node another session deleted.
-      //  2. Deletion is by diff — robust to any delete path (Delete key, menu, …).
-      const currentSigs = new Map(nodes.map((n) => [n.id, nodeSig(n)]));
-      const baseline = savedNodeSigsRef.current;
-      const toUpsert = nodes.filter((n) => baseline.get(n.id) !== currentSigs.get(n.id));
-      const toDelete = Array.from(baseline.keys()).filter((id) => !currentSigs.has(id));
-      let allDeleted = true;
-      for (const id of toDelete) {
-        try { await deleteNodeMutation.mutateAsync({ id, projectId }); }
-        catch (e) { allDeleted = false; console.error("[save] delete node failed:", id, e); }
-      }
-      if (toUpsert.length > 0) {
+    // Each part saves INDEPENDENTLY so a failure in one (e.g. a node the DB schema
+    // rejects) can't block the others — previously a failed node-batch threw before
+    // the viewport save, so neither the agent node NOR the pan/zoom persisted.
+    const currentSigs = new Map(nodes.map((n) => [n.id, nodeSig(n)]));
+    const baseline = savedNodeSigsRef.current;
+    const toUpsert = nodes.filter((n) => baseline.get(n.id) !== currentSigs.get(n.id));
+    const toDelete = Array.from(baseline.keys()).filter((id) => !currentSigs.has(id));
+
+    let nodesOk = true;
+    for (const id of toDelete) {
+      try { await deleteNodeMutation.mutateAsync({ id, projectId }); }
+      catch (e) { nodesOk = false; console.error("[save] delete node failed:", id, e); }
+    }
+    if (toUpsert.length > 0) {
+      try {
         await batchUpsertNodes.mutateAsync(toUpsert.map((n) => ({ id: n.id, projectId, ...nodeUpsertFields(n) })));
+      } catch (err) {
+        nodesOk = false;
+        console.error("[save] node upsert failed:", err);
+        toast.error("节点保存失败：" + (err instanceof Error ? err.message : String(err)));
       }
+    }
+    // Edges + viewport persist regardless of node-save outcome.
+    try {
       for (const edge of edges) {
         await upsertEdge.mutateAsync({
           id: edge.id, projectId, sourceNodeId: edge.source, targetNodeId: edge.target,
@@ -747,15 +752,14 @@ function CanvasInner({ projectId }: { projectId: number }) {
           label: typeof edge.label === "string" ? edge.label : undefined,
         });
       }
+    } catch (e) { console.error("[save] edge upsert failed:", e); }
+    try {
       await updateProject.mutateAsync({ id: projectId, viewportState: reactFlow.getViewport() });
-      // Commit the new baseline so the next save only diffs against what we just
-      // persisted. Only mark clean if all deletions landed (else retry next save).
-      savedNodeSigsRef.current = currentSigs;
-      if (allDeleted) markClean();
-    } catch (err) {
-      console.error("Auto-save failed:", err);
-      toast.error("保存失败：" + (err instanceof Error ? err.message : String(err)));
-    }
+    } catch (e) { console.error("[save] viewport save failed:", e); }
+
+    // Only advance the node baseline / mark clean when ALL node ops landed, so a
+    // failed node retries next save (but viewport/edges already persisted above).
+    if (nodesOk) { savedNodeSigsRef.current = currentSigs; markClean(); }
   }, [isReadOnly, isDirty, nodes, edges, projectId, batchUpsertNodes, upsertEdge, updateProject, markClean, reactFlow, deleteNodeMutation]);
   saveCanvasRef.current = saveCanvas;
 
