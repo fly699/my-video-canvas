@@ -2,6 +2,7 @@ import { memo, useCallback, useEffect, useRef, useState } from "react";
 import { Handle, Position } from "@xyflow/react";
 import { BaseNode } from "../BaseNode";
 import { handleStyle } from "../../../lib/handleStyle";
+import { useConnectState } from "../../../hooks/useConnectingStore";
 import { useHoverStore } from "../../../hooks/useHoverStore";
 import { useCanvasStore } from "../../../hooks/useCanvasStore";
 import { propagateRefImage, propagatePromptToVideo } from "../../../lib/refImagePropagation";
@@ -69,6 +70,7 @@ const labelStyle: React.CSSProperties = {
 
 export const ComfyuiImageNode = memo(function ComfyuiImageNode({ id, selected, data }: Props) {
   const handlesActive = useHoverStore((s) => s.nodeId === id) || !!selected;
+  const connectState = useConnectState(id, "comfyui_image");
   const updateNodeData = useCanvasStore((s) => s.updateNodeData);
   const payload = data.payload;
   useComfyUpstreamAutoFill(id, payload, updateNodeData);
@@ -1611,7 +1613,7 @@ export const ComfyuiImageNode = memo(function ComfyuiImageNode({ id, selected, d
         type="target"
         position={Position.Left}
         id="ref-image-in"
-        style={{ ...handleStyle("oklch(0.72 0.20 330)", handlesActive, "square"), top: "28%", left: -7 }}
+        style={{ ...handleStyle("oklch(0.72 0.20 330)", handlesActive, "square", connectState.target), top: "28%", left: -7 }}
         title="参考图输入（img2img 使用）"
       />
 

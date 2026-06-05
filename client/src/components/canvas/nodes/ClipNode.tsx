@@ -2,6 +2,7 @@ import { memo, useCallback, useEffect, useRef, useState } from "react";
 import { Handle, Position } from "@xyflow/react";
 import { BaseNode } from "../BaseNode";
 import { handleStyle } from "../../../lib/handleStyle";
+import { useConnectState } from "../../../hooks/useConnectingStore";
 import { useHoverStore } from "../../../hooks/useHoverStore";
 import { useCanvasStore } from "../../../hooks/useCanvasStore";
 import type { ClipNodeData } from "../../../../../shared/types";
@@ -154,6 +155,7 @@ function TrimBar({
 
 export const ClipNode = memo(function ClipNode({ id, selected, data }: Props) {
   const handlesActive = useHoverStore((s) => s.nodeId === id) || !!selected;
+  const connectState = useConnectState(id, "clip");
   const { updateNodeData } = useCanvasStore();
   const payload = data.payload;
   const [isPlaying, setIsPlaying] = useState(false);
@@ -315,14 +317,14 @@ export const ClipNode = memo(function ClipNode({ id, selected, data }: Props) {
         type="target"
         position={Position.Left}
         id="video-in"
-        style={{ ...handleStyle(accent, handlesActive, "square"), top: "35%", left: -7 }}
+        style={{ ...handleStyle(accent, handlesActive, "square", connectState.target), top: "35%", left: -7 }}
         title="视频输入 ← 连接视频任务或素材"
       />
       <Handle
         type="target"
         position={Position.Left}
         id="audio-in"
-        style={{ ...handleStyle("oklch(0.68 0.20 340)", handlesActive, "square"), top: "65%", left: -7 }}
+        style={{ ...handleStyle("oklch(0.68 0.20 340)", handlesActive, "square", connectState.target), top: "65%", left: -7 }}
         title="音频输入 ← 连接音频节点"
       />
       {/* Output handle — circle = source/sends */}
@@ -330,7 +332,7 @@ export const ClipNode = memo(function ClipNode({ id, selected, data }: Props) {
         type="source"
         position={Position.Right}
         id="clip-out"
-        style={{ ...handleStyle(accent, handlesActive, "circle"), right: -7 }}
+        style={{ ...handleStyle(accent, handlesActive, "circle", connectState.source), right: -7 }}
         title="剪辑输出 → 连接素材节点保存"
       />
 

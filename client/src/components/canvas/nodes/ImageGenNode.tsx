@@ -2,6 +2,7 @@ import { memo, useCallback, useEffect, useRef, useState } from "react";
 import { Handle, Position } from "@xyflow/react";
 import { BaseNode } from "../BaseNode";
 import { handleStyle } from "../../../lib/handleStyle";
+import { useConnectState } from "../../../hooks/useConnectingStore";
 import { useHoverStore } from "../../../hooks/useHoverStore";
 import { useCanvasStore } from "../../../hooks/useCanvasStore";
 import { propagateRefImage } from "../../../lib/refImagePropagation";
@@ -96,6 +97,7 @@ const MAX_SEED = 2147483647;
 
 export const ImageGenNode = memo(function ImageGenNode({ id, selected, data }: Props) {
   const handlesActive = useHoverStore((s) => s.nodeId === id) || !!selected;
+  const connectState = useConnectState(id, "image_gen");
   // Use selector to avoid re-rendering on every store change (other nodes' updates)
   const updateNodeData = useCanvasStore((s) => s.updateNodeData);
   const { guard, reachable, dialog: reachabilityDialog } = useRefImageGuard();
@@ -1065,7 +1067,7 @@ export const ImageGenNode = memo(function ImageGenNode({ id, selected, data }: P
         type="source"
         position={Position.Right}
         id="image-out"
-        style={{ ...handleStyle(accent, handlesActive, "circle"), top: "75%", right: -7 }}
+        style={{ ...handleStyle(accent, handlesActive, "circle", connectState.source), top: "75%", right: -7 }}
         title="图像输出 → 连接到视频任务参考图"
       />
 
