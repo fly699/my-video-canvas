@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { fillWorkflowPromptParams } from "./comfyWorkflowParams";
+import { fillWorkflowPromptParams, resolveWorkflowImageParams, resolveImageParamsWithMap } from "./comfyWorkflowParams";
 import type { WorkflowParamBinding } from "../../../shared/types";
 
 // Mirrors the z_image_turbo workflow: node 6 = positive (literal default text),
@@ -42,6 +42,37 @@ describe("fillWorkflowPromptParams — upstream overrides workflow defaults", ()
   it("no upstream prompt → paramValues unchanged", () => {
     const pv = { "6.inputs.text": "原样" };
     expect(fillWorkflowPromptParams(bindings, pv, {})).toEqual(pv);
+  });
+
+  it("image params: upstream image overrides a built-in default filename", () => {
+    const imgB: WorkflowParamBinding[] = [
+      { nodeId: "11", fieldPath: "inputs.image", type: "image", role: "reference", label: "输入图像", defaultValue: "example.png" },
+    ];
+    // param still holds the workflow's built-in default filename → upstream overrides
+    const out = resolveWorkflowImageParams(imgB, { "11.inputs.image": "example.png" }, ["/up.png"]);
+    expect(out.paramValues["11.inputs.image"]).toBe("/up.png");
+  });
+
+  it("image params: a user-set image (differs from default) is preserved", () => {
+    const imgB: WorkflowParamBinding[] = [
+      { nodeId: "11", fieldPath: "inputs.image", type: "image", role: "reference", label: "输入图像", defaultValue: "example.png" },
+    ];
+    const out = resolveWorkflowImageParams(imgB, { "11.inputs.image": "/mine.png" }, ["/up.png"]);
+    expect(out.paramValues["11.inputs.image"]).toBe("/mine.png");
+  });
+
+  it("resolveImageParamsWithMap: upstream overrides default, keeps user edits", () => {
+    const imgB: WorkflowParamBinding[] = [
+      { nodeId: "10", fieldPath: "inputs.image", type: "image", label: "图A", defaultValue: "a_default.png" },
+      { nodeId: "11", fieldPath: "inputs.image", type: "image", label: "图B" }, // no default, user set
+    ];
+    const out = resolveImageParamsWithMap(
+      imgB,
+      { "10.inputs.image": "a_default.png", "11.inputs.image": "/userB.png" },
+      [{ id: "s1", url: "/auto1.png", label: "上游1" }],
+    );
+    expect(out.paramValues["10.inputs.image"]).toBe("/auto1.png"); // default overridden
+    expect(out.paramValues["11.inputs.image"]).toBe("/userB.png"); // user edit kept
   });
 
   it("falls back to label heuristic when bindings have no explicit role", () => {
