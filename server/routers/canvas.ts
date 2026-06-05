@@ -41,7 +41,7 @@ import { signUploadToken } from "../_core/uploadToken";
 import { getCachedStorageSettings } from "../_core/storageConfig";
 import { invokeLLM, extractTextContent } from "../_core/llm";
 import { generateImage } from "../_core/imageGeneration";
-import { generateComfyImage, generateComfyVideo, fetchComfyModels, analyzeWorkflow, executeCustomWorkflow, executeCloudWorkflow, testCloudConnection, uploadImageForWorkflow, interruptComfy, emptyModelList } from "../_core/comfyui";
+import { generateComfyImage, generateComfyVideo, fetchComfyModels, fetchComfyServerStatus, analyzeWorkflow, executeCustomWorkflow, executeCloudWorkflow, testCloudConnection, uploadImageForWorkflow, interruptComfy, emptyModelList } from "../_core/comfyui";
 import type { ComfyModelList } from "../_core/comfyui";
 import { ENV } from "../_core/env";
 import { isPoyoVideoProvider, submitPoyoVideo, checkPoyoVideoStatus } from "../_core/poyoVideo";
@@ -2397,6 +2397,19 @@ export const comfyuiRouter = router({
           throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: err instanceof Error ? err.message : String(err) });
         }
       });
+    }),
+
+  // Live health/capacity of one or more ComfyUI servers (online · VRAM · queue).
+  // Same SSRF gate as fetchModels (server probes client-supplied URLs). Returns
+  // one status per input URL, in order, echoing the exact input string for 1:1
+  // client mapping; an unreachable server yields { online: false, error }.
+  serverStatus: protectedProcedure
+    .input(z.object({ baseUrls: z.array(z.string().max(2048)).max(20) }))
+    .query(async ({ ctx, input }) => {
+      await assertComfyuiAllowed(ctx);
+      const urls = Array.from(new Set(input.baseUrls.map((u) => u.trim()).filter(Boolean)));
+      const list = urls.length > 0 ? urls : (ENV.comfyuiBaseUrl ? [ENV.comfyuiBaseUrl] : []);
+      return Promise.all(list.map((u) => fetchComfyServerStatus(u)));
     }),
 
   interrupt: protectedProcedure
