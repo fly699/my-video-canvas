@@ -1006,6 +1006,9 @@ export const VideoTaskNode = memo(function VideoTaskNode({ id, selected, data }:
   // 绿点指示：结果视频是否已落到我方 MinIO 长期存储（/manus-storage/ 路径）。
   const videoStoredInMinio = isOwnStorageUrl(primaryUrl);
 
+  // Only treat a finished result video as a "hero" preview — a bare reference
+  // image is an INPUT, not a result, so the node must stay expanded (showing its
+  // controls) until it has actually produced a video.
   const heroMedia = payload.status === "succeeded" && videoSrc ? (
     <video
       src={videoSrc}
@@ -1013,13 +1016,6 @@ export const VideoTaskNode = memo(function VideoTaskNode({ id, selected, data }:
       className="w-full"
       preload="metadata"
       style={{ display: "block", maxHeight: 240 }}
-    />
-  ) : isSafeMediaUrl(payload.referenceImageUrl) ? (
-    <img
-      src={payload.referenceImageUrl}
-      style={{ width: "100%", maxHeight: 220, objectFit: "cover", display: "block" }}
-      draggable={false}
-      onError={(e) => { (e.currentTarget as HTMLImageElement).style.display = "none"; }}
     />
   ) : null;
 

@@ -140,6 +140,11 @@ export const BaseNode = memo(function BaseNode({
   const isCreative = canvasMode === "creative";
   const isLight = theme === "light" || theme === "warm" || theme === "mint" || theme === "lavender" || theme === "paper" || isCreative;
   const hasHero = heroMedia != null;
+  // A previewable node that has a result and is NOT being edited (not selected,
+  // not pinned) renders collapsed: only the title bar + warning/error/progress +
+  // the hero preview. In that state drop the min-height floor so the node shrinks
+  // to fit the preview's natural aspect ratio instead of leaving empty space.
+  const isCollapsedPreview = hasHero && !selected && !pinned;
 
   // Workflow run status
   const { running, currentNodeId, completedIds, failedIds } = useWorkflowRunState();
@@ -235,7 +240,7 @@ export const BaseNode = memo(function BaseNode({
   return (
     <div
       className={`group/node relative${runStatus === "running" ? " node-run-pulse" : ""}`}
-      data-selected={selected ? "true" : "false"}
+      data-selected={(selected || pinned) ? "true" : "false"}
       data-has-hero={hasHero ? "true" : "false"}
       style={{
         borderRadius: 16,
@@ -243,7 +248,7 @@ export const BaseNode = memo(function BaseNode({
         border: borderStyle,
         boxShadow: shadowStyle,
         minWidth: isCreative ? Math.round(minWidth * 1.25) : minWidth,
-        minHeight,
+        minHeight: isCollapsedPreview ? 0 : minHeight,
         width: "100%",
         height: "100%",
         transition: "border-color 150ms ease, box-shadow 180ms ease, opacity 180ms ease, transform 180ms ease",
