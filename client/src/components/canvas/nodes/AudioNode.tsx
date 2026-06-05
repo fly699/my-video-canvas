@@ -8,14 +8,8 @@ import {
   Music, Upload, Mic, Loader2, Play, Pause, X, Volume2, Zap, Wind, HardDriveDownload,
 } from "lucide-react";
 import { isOwnStorageUrl } from "@/lib/ownStorage";
+import { mediaFetchUrl } from "@/lib/download";
 import { NodeTextArea, NodeInput } from "../NodeTextInput";
-
-// Route external CDN URLs (e.g. Poyo audio when persistence is off) through the
-// server proxy so remote browsers can play them; same-origin /manus-storage
-// paths are used directly. The video-proxy handles audio/* content types too.
-function toProxiedAudioSrc(u: string): string {
-  return u.startsWith("http") ? `/api/video-proxy?url=${encodeURIComponent(u)}` : u;
-}
 
 interface Props {
   id: string;
@@ -461,7 +455,7 @@ export const AudioNode = memo(function AudioNode({ id, selected, data }: Props) 
       </button>
       <audio
         ref={audioRef}
-        src={payload.url ? toProxiedAudioSrc(payload.url) : undefined}
+        src={payload.url ? mediaFetchUrl(payload.url) : undefined}
         onEnded={() => setIsPlaying(false)}
         onEmptied={() => setIsPlaying(false)}
         onLoadedMetadata={(e) => update("duration", (e.target as HTMLAudioElement).duration)}

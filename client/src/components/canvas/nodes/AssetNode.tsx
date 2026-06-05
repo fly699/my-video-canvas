@@ -6,6 +6,7 @@ import { useCanvasStore } from "../../../hooks/useCanvasStore";
 import { trpc } from "@/lib/trpc";
 import { toast } from "sonner";
 import { isOwnStorageUrl } from "@/lib/ownStorage";
+import { mediaFetchUrl } from "@/lib/download";
 
 interface Props {
   id: string;
@@ -130,7 +131,7 @@ export const AssetNode = memo(function AssetNode({ id, selected, data }: Props) 
             />
           )}
           {/* First-frame thumbnail (like images) — playback opens in an overlay */}
-          <video src={payload.url} muted preload="metadata" className="w-full" style={{ maxHeight: 160, display: "block", objectFit: "cover" }} />
+          <video src={mediaFetchUrl(payload.url)} muted preload="metadata" className="w-full" style={{ maxHeight: 160, display: "block", objectFit: "cover" }} />
           <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
             <div className="w-10 h-10 rounded-full flex items-center justify-center" style={{ background: "oklch(0 0 0 / 0.5)" }}>
               <Play className="w-5 h-5 text-white" fill="white" />
@@ -192,7 +193,7 @@ export const AssetNode = memo(function AssetNode({ id, selected, data }: Props) 
     if (payload.url && payload.type === "video") {
       return (
         <div className="relative nodrag" style={{ cursor: "zoom-in" }} onClick={() => setVideoPreview(true)} title="点击播放">
-          <video src={payload.url} muted preload="metadata" style={{ width: "100%", maxHeight: 200, display: "block", objectFit: "cover" }} />
+          <video src={mediaFetchUrl(payload.url)} muted preload="metadata" style={{ width: "100%", maxHeight: 200, display: "block", objectFit: "cover" }} />
           <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
             <div className="w-11 h-11 rounded-full flex items-center justify-center" style={{ background: "oklch(0 0 0 / 0.5)" }}>
               <Play className="w-5 h-5 text-white" fill="white" />
@@ -274,7 +275,7 @@ export const AssetNode = memo(function AssetNode({ id, selected, data }: Props) 
           onContextMenu={(e) => e.preventDefault()}
         >
           <div className="relative" style={{ maxWidth: "90vw", maxHeight: "85vh" }} onClick={(e) => e.stopPropagation()}>
-            <video src={payload.url} controls autoPlay controlsList="nodownload" style={{ maxWidth: "90vw", maxHeight: "85vh", borderRadius: 10, background: "#000" }} />
+            <video src={mediaFetchUrl(payload.url)} controls autoPlay controlsList="nodownload" style={{ maxWidth: "90vw", maxHeight: "85vh", borderRadius: 10, background: "#000" }} />
             <button
               onClick={() => setVideoPreview(false)}
               className="absolute flex items-center justify-center"

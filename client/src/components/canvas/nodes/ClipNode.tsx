@@ -7,7 +7,7 @@ import { useCanvasStore } from "../../../hooks/useCanvasStore";
 import type { ClipNodeData } from "../../../../../shared/types";
 import { trpc } from "@/lib/trpc";
 import { toast } from "sonner";
-import { downloadMedia } from "@/lib/download";
+import { downloadMedia, mediaFetchUrl } from "@/lib/download";
 import {
   Scissors, Play, Pause, Loader2, Download, RotateCcw,
   ArrowRight, Volume2, Music, Film,
@@ -380,7 +380,7 @@ export const ClipNode = memo(function ClipNode({ id, selected, data }: Props) {
               <video
                 key={displayUrl}
                 ref={videoRef}
-                src={displayUrl}
+                src={displayUrl ? mediaFetchUrl(displayUrl) : undefined}
                 className="w-full nodrag"
                 style={{ maxHeight: 200, display: "block" }}
                 onLoadedMetadata={handleVideoMetadata}
