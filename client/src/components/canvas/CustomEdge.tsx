@@ -62,11 +62,16 @@ export const CustomEdge = memo(function CustomEdge({
     const side = hoveredNodeId === target ? "in" : "out";
     const { index, total } = edgeOrderIndex(id, side, hoveredNodeId, allEdges, nodes);
     if (index >= 0 && total > 1) {
-      // Place the badge ON the bezier curve, close to the relevant node's handle
-      // (param 0.85 from source = 15% in front of the target; 0.15 near the source).
+      // Place the badge ON the bezier curve. Many edges converge on one node, so a
+      // FIXED distance piles every badge on top of each other near the handle.
+      // Stagger each badge's distance along its curve by its order index — since the
+      // edge bundle fans out away from the node, different distances separate them.
       const sc = bezierControl(sourcePosition, sourceX, sourceY, targetX, targetY);
       const tc = bezierControl(targetPosition, targetX, targetY, sourceX, sourceY);
-      const param = side === "in" ? 0.85 : 0.15;
+      const frac = total > 1 ? index / (total - 1) : 0; // 0..1 across the order
+      const spread = Math.min(0.34, 0.05 * total); // wider stagger when more edges
+      // "in": closest to target for #1, stepping further back; "out": mirror.
+      const param = side === "in" ? 0.9 - frac * spread : 0.1 + frac * spread;
       const p = bezierAt(param, [sourceX, sourceY], sc, tc, [targetX, targetY]);
       orderBadge = { x: p.x, y: p.y, n: index + 1 };
     }
