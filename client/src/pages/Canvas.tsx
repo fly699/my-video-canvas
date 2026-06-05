@@ -14,6 +14,7 @@ import {
 import "@xyflow/react/dist/style.css";
 import { useCanvasStore, type CanvasNode, type CanvasEdge } from "../hooks/useCanvasStore";
 import { useComfyPreviewStore } from "../hooks/useComfyPreviewStore";
+import { useConnectingStore } from "../hooks/useConnectingStore";
 import { usePersistentState } from "../hooks/usePersistentState";
 import { useShallow } from "zustand/react/shallow";
 import { useWorkflowRunner, RUNNABLE_TYPES } from "../hooks/useWorkflowRunner";
@@ -1067,12 +1068,17 @@ function CanvasInner({ projectId }: { projectId: number }) {
   const handleConnectStart = useCallback((_: unknown, params: { nodeId: string | null; handleType: string | null }) => {
     if (params.nodeId) {
       const node = nodes.find(n => n.id === params.nodeId);
-      if (node) setConnectingFromType(node.data.nodeType);
+      if (node) {
+        setConnectingFromType(node.data.nodeType);
+        // Drive valid-target handle highlighting across the canvas.
+        useConnectingStore.getState().begin(node.id, node.data.nodeType, params.handleType === "target" ? "target" : "source");
+      }
     }
   }, [nodes]);
 
   const handleConnectEnd = useCallback(() => {
     setConnectingFromType(null);
+    useConnectingStore.getState().end();
   }, []);
 
   // ── Export ──────────────────────────────────────────────────────────────────

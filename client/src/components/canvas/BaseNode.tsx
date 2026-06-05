@@ -5,6 +5,7 @@ import { CONNECTION_HINTS } from "../../lib/connectionRules";
 import type { NodeType } from "../../../../shared/types";
 import { useCanvasStore } from "../../hooks/useCanvasStore";
 import { useComfyPreviewStore } from "../../hooks/useComfyPreviewStore";
+import { useConnectState } from "../../hooks/useConnectingStore";
 import { useHoverStore } from "../../hooks/useHoverStore";
 import { NodeSelectedContext } from "../../contexts/NodeSelectedContext";
 import { trpc } from "@/lib/trpc";
@@ -183,9 +184,12 @@ export const BaseNode = memo(function BaseNode({
 
   // Connection handles — shared subtle-at-rest / filled-on-hover styling (see
   // lib/handleStyle). Target = square (receives), source = circle (sends).
+  // During a connection drag, `connectState` highlights the handle that could
+  // complete it (per the connection matrix) and dims the rest.
   const handleActive = isHovered || !!selected;
-  const targetHandle = handleStyle(config.color, handleActive, "square");
-  const sourceHandle = handleStyle(config.color, handleActive, "circle");
+  const connectState = useConnectState(id, nodeType);
+  const targetHandle = handleStyle(config.color, handleActive, "square", connectState.target);
+  const sourceHandle = handleStyle(config.color, handleActive, "circle", connectState.source);
 
   // Derive border & shadow from runStatus
   const runBorder = runStatus === "running"

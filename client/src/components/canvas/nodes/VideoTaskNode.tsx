@@ -1,6 +1,7 @@
 import { memo, useCallback, useEffect, useRef, useState } from "react";
 import { BaseNode } from "../BaseNode";
 import { handleStyle } from "../../../lib/handleStyle";
+import { useConnectState } from "../../../hooks/useConnectingStore";
 import { useHoverStore } from "../../../hooks/useHoverStore";
 import { useCanvasStore } from "../../../hooks/useCanvasStore";
 import type { VideoTaskNodeData, VideoProvider, CharacterNodeData } from "../../../../../shared/types";
@@ -582,6 +583,7 @@ const labelStyle: React.CSSProperties = {
 
 export const VideoTaskNode = memo(function VideoTaskNode({ id, selected, data }: Props) {
   const handlesActive = useHoverStore((s) => s.nodeId === id) || !!selected;
+  const connectState = useConnectState(id, "video_task");
   const expanded = Boolean(selected) || Boolean((data.payload as { pinned?: boolean }).pinned);
   // Use selector to avoid re-rendering on every store change (other nodes' updates)
   const updateNodeData = useCanvasStore((s) => s.updateNodeData);
@@ -1939,7 +1941,7 @@ export const VideoTaskNode = memo(function VideoTaskNode({ id, selected, data }:
         type="target"
         position={Position.Left}
         id="ref-image-in"
-        style={{ ...handleStyle("oklch(0.68 0.22 285)", handlesActive, "square"), top: "25%", left: -7 }}
+        style={{ ...handleStyle("oklch(0.68 0.22 285)", handlesActive, "square", connectState.target), top: "25%", left: -7 }}
         title="参考图输入 ← 连接图像生成节点"
       />
       {pickerOpen && (
