@@ -1503,12 +1503,20 @@ export async function analyzeWorkflow(
       const t = typeof val;
       if (t !== "number" && t !== "boolean" && t !== "string") continue;
       const base = GENERIC_LABELS[field] ?? field;
-      detectedParams.push({
-        nodeId, fieldPath: `inputs.${field}`,
-        label: title ? `${title}·${base}` : base,
-        type: t === "number" ? "number" : t === "boolean" ? "boolean" : "text",
-        defaultValue: val as string | number | boolean,
-      });
+      const label = title ? `${title}·${base}` : base;
+      // Prefer the authoritative /object_info schema for this widget: a real enum
+      // becomes a dropdown of installed options, INT/FLOAT carry real min/max/step.
+      // Fall back to the JS type of the literal value when no schema is available.
+      const spec = readInputSpec(info, node.class_type as string, field);
+      let binding: WorkflowParamBinding;
+      if (spec?.kind === "enum" && spec.options && spec.options.length > 0) {
+        binding = { nodeId, fieldPath: `inputs.${field}`, label, type: "select", options: spec.options, defaultValue: val as string | number | boolean };
+      } else if (spec && (spec.kind === "int" || spec.kind === "float") && t === "number") {
+        binding = { nodeId, fieldPath: `inputs.${field}`, label, type: "number", defaultValue: val as number, min: spec.min, max: spec.max, step: spec.step };
+      } else {
+        binding = { nodeId, fieldPath: `inputs.${field}`, label, type: t === "number" ? "number" : t === "boolean" ? "boolean" : "text", defaultValue: val as string | number | boolean };
+      }
+      detectedParams.push(binding);
       bound.add(`${nodeId}|inputs.${field}`);
     }
   }
@@ -1935,6 +1943,40 @@ function pickFirstArray(info: ObjectInfo, nodeName: string, fieldName: string): 
     return first.filter((x): x is string => typeof x === "string");
   }
   return [];
+}
+
+/** Authoritative input schema for one (node class, field) from /object_info.
+ * ComfyUI encodes each input as `[typeSpec, config?]` where typeSpec is a type
+ * string ("INT"/"FLOAT"/"STRING"/"BOOLEAN") or an enum array, and config carries
+ * default/min/max/step. We use this to give custom-node widgets real number
+ * ranges and real (installed-model) dropdowns instead of heuristic guesses. */
+interface InputSpec {
+  kind: "enum" | "int" | "float" | "boolean" | "string" | "other";
+  options?: string[];
+  min?: number;
+  max?: number;
+  step?: number;
+}
+function readInputSpec(info: ObjectInfo, nodeName: string, fieldName: string): InputSpec | null {
+  const slot = info[nodeName]?.input?.required?.[fieldName] ?? info[nodeName]?.input?.optional?.[fieldName];
+  if (!slot) return null;
+  const typeSpec = slot[0];
+  const cfg = (slot[1] && typeof slot[1] === "object" && !Array.isArray(slot[1])) ? (slot[1] as Record<string, unknown>) : {};
+  // Ignore absurd bounds (e.g. INT seed max 0xffffffffffffffff) that would make
+  // a number input meaningless / overflow JS precision.
+  const sane = (v: unknown) => (typeof v === "number" && isFinite(v) && Math.abs(v) <= 1e9 ? v : undefined);
+  if (Array.isArray(typeSpec)) {
+    return { kind: "enum", options: typeSpec.filter((x): x is string => typeof x === "string") };
+  }
+  if (typeof typeSpec === "string") {
+    const t = typeSpec.toUpperCase();
+    if (t === "INT") return { kind: "int", min: sane(cfg.min), max: sane(cfg.max), step: sane(cfg.step) ?? 1 };
+    if (t === "FLOAT") return { kind: "float", min: sane(cfg.min), max: sane(cfg.max), step: sane(cfg.step) };
+    if (t === "BOOLEAN") return { kind: "boolean" };
+    if (t === "STRING") return { kind: "string" };
+    return { kind: "other" };
+  }
+  return null;
 }
 
 /** Merge several (nodeClass, field) sources, de-duplicate, and sort. */
