@@ -117,7 +117,7 @@ export const AgentNode = memo(function AgentNode({ id, selected, data }: Props) 
   // Render the prefs into a constraint block the agent must follow.
   const buildPrefsText = (): string | undefined => {
     const lines: string[] = [];
-    if (planPrefs.imageFirst) lines.push("- 视频生成采用「先生图再图生视频」管线：先用 image_gen/comfyui 出静帧，再图生视频，不要直接文生视频。");
+    if (planPrefs.imageFirst) lines.push("- 【强制·先生图再生视频】每个视频镜头必须走图生视频管线：为该镜头先建一个 image_gen 图像节点（把镜头画面描述作为它的 prompt），再建 video_task 视频节点，并连接 image_gen → video_task，让生成的静帧作为视频首帧。严禁让 storyboard/prompt/script 直接连到 video_task 做文生视频。");
     if (planPrefs.addMusic) lines.push("- 自动添加 audio 配乐节点并连入 merge 合并节点。");
     if (planPrefs.addSubtitle) lines.push("- 自动添加 subtitle 字幕节点（接在视频/合并之后）。");
     if (planPrefs.aspect) lines.push(`- 画面比例统一为 ${planPrefs.aspect}。`);
@@ -224,6 +224,7 @@ export const AgentNode = memo(function AgentNode({ id, selected, data }: Props) 
         projectId: data.projectId, message: text, history,
         graphSummary: summary || undefined, model, comfyOnly,
         prefs: buildPrefsText(),
+        imageFirst: planPrefs.imageFirst ?? false,
       });
       setMessages([...baseMessages, { role: "assistant", content: r.reply, operations: r.operations }]);
       // Duration-aware capacity check: if the plan split a target longer than the
