@@ -4,10 +4,10 @@ import { useCanvasStore } from "../../../hooks/useCanvasStore";
 import type { MergeNodeData, MergeTransition } from "../../../../../shared/types";
 import { trpc } from "@/lib/trpc";
 import { toast } from "sonner";
-import { mediaFetchUrl, onDownloadMedia } from "@/lib/download";
+import { mediaFetchUrl } from "@/lib/download";
 import { NodeTextArea } from "../NodeTextInput";
 import { compareUpstreamNodes } from "../../../lib/inputOrder";
-import { Merge, Loader2, Download, RotateCcw, Music, ChevronDown, GripVertical, X } from "lucide-react";
+import { Merge, Loader2, RotateCcw, Music, ChevronDown, GripVertical, X } from "lucide-react";
 
 interface Props {
   id: string;
@@ -203,7 +203,7 @@ export const MergeNode = memo(function MergeNode({ id, selected, data }: Props) 
   return (
     <BaseNode id={id} selected={selected} nodeType="merge" title={data.title} minHeight={200} resizable>
 
-      <div className="flex flex-col gap-3 p-3.5" onDragOver={handleDragOver} onDrop={handleDrop}>
+      <div className="flex flex-col gap-3 p-3.5 h-full" onDragOver={handleDragOver} onDrop={handleDrop}>
 
         {/* Status */}
         {isProcessing && (
@@ -222,34 +222,27 @@ export const MergeNode = memo(function MergeNode({ id, selected, data }: Props) 
           </div>
         )}
 
-        {/* Output video */}
+        {/* Output video — fills the node height so it scales when the node is
+            resized (was locked at 140px). */}
         {isDone && payload.outputUrl && (
-          <div className="flex flex-col gap-1.5 flex-shrink-0">
+          <div className="flex flex-col gap-1.5 flex-1" style={{ minHeight: 0 }}>
             <video
               key={payload.outputUrl}
               src={mediaFetchUrl(payload.outputUrl)}
               controls
               className="w-full rounded-lg nodrag"
-              style={{ maxHeight: 140, display: "block", border: `1px solid ${accentA(0.4)}` }}
+              style={{ flex: 1, minHeight: 180, width: "100%", objectFit: "contain", display: "block", border: `1px solid ${accentA(0.4)}`, background: "#000" }}
               preload="metadata"
             />
-            <div className="flex gap-1.5">
-              <a
-                href={mediaFetchUrl(payload.outputUrl, true)}
-                onClick={onDownloadMedia(payload.outputUrl, "合并视频.mp4")}
-                className="nodrag flex-1 flex items-center justify-center gap-1 py-1.5 rounded-lg text-[10px] font-medium"
-                style={{ background: accentA(0.10), border: `1px solid ${accentA(0.3)}`, color: accent, textDecoration: "none" }}
-              >
-                <Download style={{ width: 10, height: 10 }} />
-                下载 ({payload.outputDuration?.toFixed(1) ?? "?"}s)
-              </a>
+            <div className="flex gap-1.5 flex-shrink-0">
               <button
                 onClick={handleReset}
-                className="nodrag flex items-center justify-center gap-1 px-2.5 py-1.5 rounded-lg text-[10px]"
+                className="nodrag flex-1 flex items-center justify-center gap-1 px-2.5 py-1.5 rounded-lg text-[10px]"
                 style={{ background: "var(--c-surface)", border: "1px solid var(--c-bd2)", color: "var(--c-t3)", cursor: "pointer" }}
               >
                 <RotateCcw style={{ width: 9, height: 9 }} />
                 重置
+                {payload.outputDuration ? <span style={{ color: "var(--c-t4)" }}> · {payload.outputDuration.toFixed(1)}s</span> : null}
               </button>
             </div>
           </div>
