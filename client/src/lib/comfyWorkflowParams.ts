@@ -87,7 +87,7 @@ export function resolveImageParamsWithMap(
   let ai = 0;
   for (const b of imageBindings) {
     const key = `${b.nodeId}.${b.fieldPath}`;
-    if (next[key] != null && next[key] !== "") continue; // user-set, keep
+    if (!isParamAtDefault(next[key], b)) continue; // genuine user edit → keep
     const mappedId = sourceMap[key];
     if (mappedId) {
       const s = sources.find((x) => x.id === mappedId);
@@ -142,10 +142,21 @@ export function detectUpstreamPrompt(targetId: string, edges: MiniEdge[], nodes:
   return { positive, negative };
 }
 
+/** A param is "overridable by an explicitly connected upstream node" when it is
+ *  blank OR still holds the workflow's built-in default (b.defaultValue) — i.e.
+ *  the user hasn't deliberately typed/picked a different value. Connecting an
+ *  upstream node is a clear signal it should drive that param, so upstream wins
+ *  over the workflow's baked-in defaults while genuine user edits are preserved.
+ *  Shared by the prompt-text and image auto-fill paths for consistent behavior. */
+export function isParamAtDefault(cur: unknown, b: WorkflowParamBinding): boolean {
+  return cur == null || cur === "" || (b.defaultValue != null && cur === b.defaultValue);
+}
+
 /**
  * Compute the paramValues to actually submit plus the list of image-param keys.
- * Blank image params are filled with `upstreamImageUrl` when available; the
- * returned `imageParamKeys` tells the server which params to upload-as-image.
+ * Image params that are blank or at their built-in default are filled with
+ * `upstreamImageUrl` when available; the returned `imageParamKeys` tells the
+ * server which params to upload-as-image.
  */
 export function resolveWorkflowImageParams(
   bindings: WorkflowParamBinding[] | undefined,
@@ -163,8 +174,7 @@ export function resolveWorkflowImageParams(
   for (const b of imageBindings) {
     if (i >= urls.length) break;
     const key = `${b.nodeId}.${b.fieldPath}`;
-    const cur = next[key];
-    if (cur == null || cur === "") { next[key] = urls[i]; i++; }
+    if (isParamAtDefault(next[key], b)) { next[key] = urls[i]; i++; }
   }
   return { paramValues: next, imageParamKeys };
 }
@@ -194,9 +204,7 @@ export function fillWorkflowPromptParams(
   const set = (b: WorkflowParamBinding | undefined, v: string | undefined) => {
     if (!b || !v) return;
     const key = `${b.nodeId}.${b.fieldPath}`;
-    const cur = next[key];
-    const atDefault = cur == null || cur === "" || (b.defaultValue != null && cur === b.defaultValue);
-    if (atDefault) next[key] = v;
+    if (isParamAtDefault(next[key], b)) next[key] = v;
   };
   set(posB, prompts.positive);
   set(negB, prompts.negative);
