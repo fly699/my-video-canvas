@@ -1,7 +1,7 @@
 import { useRef, useState } from "react";
 import { X, ZoomIn } from "lucide-react";
 import type { ReferenceImage } from "../../../../shared/types";
-import { makeImageProxyFallback } from "@/lib/utils";
+import { MediaImage } from "./MediaImage";
 
 interface Props {
   images: ReferenceImage[];
@@ -117,14 +117,13 @@ export function ReferenceImageStrip({
               className="relative group rounded-lg overflow-hidden"
               style={{ height: 72, border: `1px solid var(--c-bd2)`, background: "var(--c-canvas)", cursor: "grab" }}
             >
-              <img
+              <MediaImage
                 src={img.url}
                 alt={`ref-${i + 1}`}
                 className="w-full h-full object-cover"
                 draggable={false}
                 style={{ cursor: "zoom-in" }}
                 onClick={() => onZoom(i)}
-                onError={makeImageProxyFallback(img.url)}
               />
               {/* number badge */}
               <span

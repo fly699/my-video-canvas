@@ -21,7 +21,7 @@ import { downloadMedia } from "@/lib/download";
 import { ImageLightbox } from "../ImageLightbox";
 import { MaskCanvas } from "./MaskCanvas";
 import { LLMModelPicker, type LLMModelId } from "../LLMModelPicker";
-import { makeImageProxyFallback } from "@/lib/utils";
+import { MediaImage } from "../MediaImage";
 import { ComfyServerUrlField } from "./ComfyServerUrlField";
 import { SyncConfigDialog } from "../SyncConfigDialog";
 import { NodeConfigTabs } from "../NodeConfigTabs";
@@ -445,13 +445,12 @@ export const ComfyuiImageNode = memo(function ComfyuiImageNode({ id, selected, d
 
   const heroMedia = payload.imageUrl ? (
     <div className="relative overflow-hidden group" style={{ width: "100%" }}>
-      <img
+      <MediaImage
         src={payload.imageUrl}
         alt="comfyui-generated"
         className="w-full h-full object-cover"
         draggable={false}
         style={{ objectFit: "cover", display: "block" }}
-        onError={makeImageProxyFallback(payload.imageUrl)}
       />
       <div
         className="absolute inset-0 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center"
@@ -510,12 +509,11 @@ export const ComfyuiImageNode = memo(function ComfyuiImageNode({ id, selected, d
                   }}
                   title={isSelected ? "当前选中（节点输出）" : "点击选为输出图像"}
                 >
-                  <img
+                  <MediaImage
                     src={url}
                     alt={`generated-${i}`}
                     className="w-full h-full object-cover"
                     draggable={false}
-                    onError={makeImageProxyFallback(url)}
                   />
                   {isOwnStorageUrl(url) && (
                     <div
@@ -585,12 +583,11 @@ export const ComfyuiImageNode = memo(function ComfyuiImageNode({ id, selected, d
                 style={{ background: "oklch(0.72 0.18 155)", boxShadow: "0 0 0 2.5px oklch(0.72 0.18 155 / 0.35)" }}
               />
             )}
-            <img
+            <MediaImage
               src={payload.imageUrl}
               alt="generated"
               className="w-full h-full object-contain"
               draggable={false}
-              onError={makeImageProxyFallback(payload.imageUrl ?? "")}
             />
             <div
               className="absolute inset-0 opacity-0 hover:opacity-100 transition-opacity flex items-center justify-center gap-2"
@@ -1254,7 +1251,7 @@ export const ComfyuiImageNode = memo(function ComfyuiImageNode({ id, selected, d
                 className="relative rounded-lg overflow-hidden"
                 style={{ height: 80, borderWidth: 1, borderStyle: "solid", borderColor: BORDER_DEFAULT, background: "var(--c-canvas)" }}
               >
-                <img
+                <MediaImage
                   src={payload.referenceImageUrl}
                   alt="reference"
                   className="nodrag w-full h-full object-cover"
@@ -1262,7 +1259,6 @@ export const ComfyuiImageNode = memo(function ComfyuiImageNode({ id, selected, d
                   draggable={false}
                   title="点击放大"
                   onClick={() => setRefZoom(true)}
-                  onError={makeImageProxyFallback(payload.referenceImageUrl ?? "")}
                 />
                 <button
                   onClick={(e) => { e.stopPropagation(); update("referenceImageUrl", undefined); }}
@@ -1386,7 +1382,7 @@ export const ComfyuiImageNode = memo(function ComfyuiImageNode({ id, selected, d
                 <label style={labelStyle}>控制图像</label>
                 {cn?.imageUrl ? (
                   <div className="relative rounded-lg overflow-hidden" style={{ height: 80, border: `1px solid ${BORDER_DEFAULT}`, background: "var(--c-canvas)" }}>
-                    <img src={cn.imageUrl} alt="controlnet" className="w-full h-full object-cover" draggable={false} onError={makeImageProxyFallback(cn.imageUrl)} />
+                    <MediaImage src={cn.imageUrl} alt="controlnet" className="w-full h-full object-cover" draggable={false} />
                     <button onClick={() => updateCn({ imageUrl: "" })} className="nodrag absolute top-1 right-1 p-0.5 rounded-full" style={{ background: "oklch(0 0 0 / 0.7)", color: "var(--c-t1)" }}>
                       <X style={{ width: 12, height: 12 }} />
                     </button>
@@ -1483,14 +1479,13 @@ export const ComfyuiImageNode = memo(function ComfyuiImageNode({ id, selected, d
                         className="relative group rounded-lg overflow-hidden"
                         style={{ aspectRatio: "1 / 1", border: `1px solid ${BORDER_DEFAULT}`, background: "var(--c-canvas)", cursor: "grab" }}
                       >
-                        <img
+                        <MediaImage
                           src={url}
                           alt={`ipadapter-${i + 1}`}
                           className="w-full h-full object-cover"
                           draggable={false}
                           style={{ cursor: "zoom-in" }}
                           onClick={() => setIpZoomIndex(i)}
-                          onError={makeImageProxyFallback(url)}
                         />
                         <span style={{ position: "absolute", left: 2, top: 2, minWidth: 14, height: 14, paddingInline: 3, borderRadius: 7, fontSize: 8.5, fontWeight: 700, lineHeight: "14px", textAlign: "center", background: accent, color: "white" }}>
                           {i + 1}

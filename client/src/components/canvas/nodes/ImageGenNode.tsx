@@ -17,7 +17,7 @@ import { Sparkles, Loader2, RefreshCw, Upload, X, Cpu, Check, Grid2X2, Download,
 import { isOwnStorageUrl } from "@/lib/ownStorage";
 import { downloadMedia } from "@/lib/download";
 import { ImageLightbox } from "../ImageLightbox";
-import { makeImageProxyFallback } from "@/lib/utils";
+import { MediaImage } from "../MediaImage";
 import { RefImageReachabilityBadge, RefImageSwitchButton, useRefImageGuard, usePreferUpstreamRefSource, useAutoPreferUpstreamRefSource } from "../mediaReachability";
 import { ModelPicker, IMAGE_MODEL_PICKER_OPTIONS } from "../ModelPicker";
 import { ParamControls } from "../ParamControls";
@@ -346,12 +346,11 @@ export const ImageGenNode = memo(function ImageGenNode({ id, selected, data }: P
         const isSelected = url === payload.imageUrl;
         return (
           <div key={idx} className="relative rounded-lg overflow-hidden" style={{ aspectRatio: "1/1", background: "var(--c-canvas)" }}>
-            <img
+            <MediaImage
               src={url}
               alt={`generated-${idx}`}
               className="w-full h-full object-cover"
               draggable={false}
-              onError={makeImageProxyFallback(url)}
             />
             {isSelected && (
               <div
@@ -367,13 +366,12 @@ export const ImageGenNode = memo(function ImageGenNode({ id, selected, data }: P
     </div>
   ) : payload.imageUrl ? (
     <div className="relative overflow-hidden group" style={{ width: "100%" }}>
-      <img
+      <MediaImage
         src={payload.imageUrl}
         alt="generated"
         className="w-full h-full object-cover"
         draggable={false}
         style={{ objectFit: "cover", display: "block" }}
-        onError={makeImageProxyFallback(payload.imageUrl)}
       />
       <div
         className="absolute inset-0 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center"
@@ -463,12 +461,11 @@ export const ImageGenNode = memo(function ImageGenNode({ id, selected, data }: P
                     onMouseEnter={(e) => { if (!isSelected) e.currentTarget.style.opacity = "1"; }}
                     onMouseLeave={(e) => { if (!isSelected) e.currentTarget.style.opacity = "0.72"; }}
                   >
-                    <img
+                    <MediaImage
                       src={url}
                       alt={`generated-${idx}`}
                       className="w-full h-full object-cover"
                       draggable={false}
-                      onError={makeImageProxyFallback(url)}
                     />
                     {/* Selected checkmark */}
                     {isSelected && (
@@ -509,13 +506,12 @@ export const ImageGenNode = memo(function ImageGenNode({ id, selected, data }: P
                     下载
                   </button>
                 </div>
-                <img
+                <MediaImage
                   src={payload.imageUrl}
                   alt="selected"
                   className="w-full object-contain"
                   style={{ maxHeight: 120 }}
                   draggable={false}
-                  onError={makeImageProxyFallback(payload.imageUrl ?? "")}
                 />
               </div>
             )}
@@ -534,12 +530,11 @@ export const ImageGenNode = memo(function ImageGenNode({ id, selected, data }: P
                   style={{ background: "oklch(0.72 0.18 155)", boxShadow: "0 0 0 2.5px oklch(0.72 0.18 155 / 0.35)" }}
                 />
               )}
-              <img
+              <MediaImage
                 src={payload.imageUrl}
                 alt="generated"
                 className="w-full h-full object-contain"
                 draggable={false}
-                onError={makeImageProxyFallback(payload.imageUrl ?? "")}
               />
               <div
                 className="absolute inset-0 opacity-0 hover:opacity-100 transition-opacity flex items-center justify-center gap-2"
@@ -957,7 +952,7 @@ export const ImageGenNode = memo(function ImageGenNode({ id, selected, data }: P
             <div className="nowheel" style={{ display: "flex", gap: 6, overflowX: "auto", paddingBottom: 2 }}>
               {refImages.images.map((img, i) => (
                 <div key={img.id} className="relative rounded-lg overflow-hidden flex-shrink-0" style={{ width: 72, height: 72, borderWidth: 1, borderStyle: "solid", borderColor: BORDER_DEFAULT, background: "var(--c-canvas)" }}>
-                  <img
+                  <MediaImage
                     src={img.url}
                     alt={`ref-${i + 1}`}
                     className="nodrag w-full h-full object-cover"
@@ -965,7 +960,6 @@ export const ImageGenNode = memo(function ImageGenNode({ id, selected, data }: P
                     draggable={false}
                     title="点击放大"
                     onClick={() => setRefZoom(i)}
-                    onError={makeImageProxyFallback(img.url)}
                   />
                   <span style={{ position: "absolute", left: 3, top: 3, minWidth: 15, height: 15, paddingInline: 3, borderRadius: 8, fontSize: 9, fontWeight: 700, lineHeight: "15px", textAlign: "center", background: accent, color: "white" }}>{i + 1}</span>
                   <button

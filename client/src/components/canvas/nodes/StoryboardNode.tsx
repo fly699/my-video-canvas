@@ -12,7 +12,7 @@ import { Sparkles, ImageIcon, Loader2, Upload, X, Wand2, History, Languages, Fil
 import { isOwnStorageUrl } from "@/lib/ownStorage";
 import { mergeCharactersIntoPrompt } from "../../../lib/characterPrompt";
 import { IMAGE_MODELS } from "@/lib/models";
-import { makeImageProxyFallback } from "@/lib/utils";
+import { MediaImage } from "../MediaImage";
 import { RefImageReachabilityBadge, RefImageSwitchButton, useRefImageGuard, usePreferUpstreamRefSource, useAutoPreferUpstreamRefSource } from "../mediaReachability";
 import { LLMModelPicker, type LLMModelId } from "../LLMModelPicker";
 import { ModelPicker, IMAGE_MODEL_PICKER_OPTIONS } from "../ModelPicker";
@@ -371,11 +371,10 @@ export const StoryboardNode = memo(function StoryboardNode({ id, selected, data 
   const heroMedia = (() => {
     if (payload.imageUrl) {
       return (
-        <img
+        <MediaImage
           src={payload.imageUrl}
           style={{ width: "100%", objectFit: "cover", display: "block" }}
           draggable={false}
-          onError={makeImageProxyFallback(payload.imageUrl)}
           alt="分镜"
         />
       );
@@ -430,12 +429,11 @@ export const StoryboardNode = memo(function StoryboardNode({ id, selected, data 
                   style={{ background: "oklch(0.72 0.18 155)", boxShadow: "0 0 0 2.5px oklch(0.72 0.18 155 / 0.35)" }}
                 />
               )}
-              <img
+              <MediaImage
                 src={payload.imageUrl}
                 alt="分镜"
                 className="w-full h-full object-cover"
                 draggable={false}
-                onError={makeImageProxyFallback(payload.imageUrl ?? "")}
               />
               <div
                 className="absolute inset-0 opacity-0 hover:opacity-100 transition-opacity flex flex-col items-center justify-center gap-1"
@@ -541,11 +539,10 @@ export const StoryboardNode = memo(function StoryboardNode({ id, selected, data 
                   }}
                   title={i === 0 ? "当前版本" : `版本 ${i + 1}`}
                 >
-                  <img
+                  <MediaImage
                     src={url}
                     alt={`历史 ${i + 1}`}
                     style={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }}
-                    onError={makeImageProxyFallback(url)}
                   />
                 </button>
               ))}
@@ -1036,11 +1033,10 @@ export const StoryboardNode = memo(function StoryboardNode({ id, selected, data 
           onMouseDown={(e) => { if (e.target === e.currentTarget) setZoomUrl(null); }}
         >
           <div style={{ position: "relative", maxWidth: "90vw", maxHeight: "90vh" }}>
-            <img
+            <MediaImage
               src={zoomUrl}
               alt="分镜大图"
               style={{ maxWidth: "90vw", maxHeight: "85vh", objectFit: "contain", borderRadius: 8, display: "block" }}
-              onError={makeImageProxyFallback(zoomUrl)}
             />
             {/* Top-right controls */}
             <div style={{ position: "absolute", top: -12, right: -12, display: "flex", gap: 8 }}>
