@@ -94,6 +94,7 @@ export const comfyTemplatesRouter = router({
         throw new TRPCError({ code: "FORBIDDEN", message: "只能删除自己创建的模板" });
       }
       await db.deleteComfyNodeTemplate(input.id);
+      await db.deleteComfyTemplateAnalysis(input.id); // drop its analysis too (no orphan)
       return { success: true };
     }),
 

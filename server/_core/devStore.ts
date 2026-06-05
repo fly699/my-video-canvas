@@ -1048,6 +1048,10 @@ export function devListComfyTemplateAnalysis(): ComfyTemplateAnalysisRow[] {
 export function devGetComfyTemplateAnalysis(templateId: number): ComfyTemplateAnalysisRow | undefined {
   return comfyAnalysisMap.get(templateId);
 }
+export function devDeleteComfyTemplateAnalysis(templateId: number): void {
+  comfyAnalysisMap.delete(templateId);
+}
+
 export function devUpsertComfyTemplateAnalysis(data: InsertComfyTemplateAnalysis): void {
   const prev = comfyAnalysisMap.get(data.templateId);
   comfyAnalysisMap.set(data.templateId, {

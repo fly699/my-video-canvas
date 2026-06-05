@@ -1905,9 +1905,22 @@ export async function upsertComfyTemplateAnalysis(data: InsertComfyTemplateAnaly
       outputType: data.outputType,
       hasVideoOutput: data.hasVideoOutput,
       modelNames: data.modelNames,
+      // maxFrames/fps MUST be refreshed on re-analysis too (e.g. v1→v2 upgrade adds
+      // them) — omitting them here previously left upgraded rows with NULL duration,
+      // so the agent couldn't plan shot counts by per-shot length.
+      maxFrames: data.maxFrames ?? null,
+      fps: data.fps ?? null,
       analysisVersion: data.analysisVersion ?? 1,
       model: data.model,
       analyzedAt: new Date(),
     },
   });
+}
+
+/** Delete one template's analysis row (called when the template is deleted, and
+ *  to prune orphans). No-op when absent. */
+export async function deleteComfyTemplateAnalysis(templateId: number): Promise<void> {
+  const db = await getDb();
+  if (!db) { if (DEV_MODE) dev.devDeleteComfyTemplateAnalysis(templateId); return; }
+  await db.delete(comfyTemplateAnalysis).where(eq(comfyTemplateAnalysis.templateId, templateId));
 }
