@@ -1,6 +1,7 @@
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { BaseNode } from "../BaseNode";
+import { MediaImage } from "../MediaImage";
 import { useCanvasStore } from "../../../hooks/useCanvasStore";
 import type { AIChatNodeData, ChatAttachment, NodeType } from "../../../../../shared/types";
 import { trpc } from "@/lib/trpc";
@@ -1190,7 +1191,7 @@ function AttachmentChip({ att }: { att: ChatAttachment }) {
         title={att.name}
         onClick={(e) => e.stopPropagation()}
       >
-        <img src={att.url} alt={att.name} style={{ width: "100%", height: "100%", objectFit: "cover" }} />
+        <MediaImage src={att.url} alt={att.name} style={{ width: "100%", height: "100%", objectFit: "cover" }} />
       </a>
     );
   }
@@ -1210,7 +1211,7 @@ function PendingAttachmentChip({ att, onRemove }: { att: ChatAttachment; onRemov
   if (att.type === "image") {
     return (
       <div className="relative rounded overflow-hidden" style={{ width: 56, height: 56, border: "1px solid var(--c-bd2)" }}>
-        <img src={att.url} alt={att.name} style={{ width: "100%", height: "100%", objectFit: "cover" }} />
+        <MediaImage src={att.url} alt={att.name} style={{ width: "100%", height: "100%", objectFit: "cover" }} />
         <button
           onClick={onRemove}
           className="nodrag absolute top-0.5 right-0.5 w-4 h-4 rounded-full flex items-center justify-center"
