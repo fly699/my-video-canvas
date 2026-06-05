@@ -4,6 +4,7 @@ import { getNodeConfig, COLLABORATOR_COLORS } from "../../lib/nodeConfig";
 import { CONNECTION_HINTS } from "../../lib/connectionRules";
 import type { NodeType } from "../../../../shared/types";
 import { useCanvasStore } from "../../hooks/useCanvasStore";
+import { useComfyPreviewStore } from "../../hooks/useComfyPreviewStore";
 import { useHoverStore } from "../../hooks/useHoverStore";
 import { NodeSelectedContext } from "../../contexts/NodeSelectedContext";
 import { trpc } from "@/lib/trpc";
@@ -106,6 +107,12 @@ export const BaseNode = memo(function BaseNode({
   // "burning"), not "processing" — recognize all of them so the persistent
   // progress bar stays visible when those nodes are collapsed too.
   const genBusy = genStatus === "processing" || genStatus === "transcribing" || genStatus === "burning";
+  // Live ComfyUI sampling preview (transient; never persisted). Cleared as soon
+  // as the run stops so a stale frame doesn't linger over the real result.
+  const livePreview = useComfyPreviewStore((s) => s.previews[id]);
+  useEffect(() => {
+    if (!genBusy && livePreview) useComfyPreviewStore.getState().clearPreview(id);
+  }, [genBusy, livePreview, id]);
   const pinned = useCanvasStore((s) => {
     const node = s.nodes.find((n) => n.id === id);
     return Boolean((node?.data.payload as Record<string, unknown> | undefined)?.pinned);
@@ -606,6 +613,21 @@ export const BaseNode = memo(function BaseNode({
           <span style={{ fontSize: 9.5, fontWeight: 700, color: config.color, whiteSpace: "nowrap" }}>
             {genProgress != null ? `${Math.round(genProgress)}%` : "生成中"}
           </span>
+        </div>
+      )}
+
+      {/* ── Live sampling preview (ComfyUI) ──
+          The denoising in-progress image streamed over the WS. Shown only while
+          busy and when the node is expanded (selected/pinned), so collapsed nodes
+          stay compact. Transient — discarded when the run finishes. */}
+      {genBusy && livePreview && (selected || pinned) && (
+        <div style={{ padding: "4px 8px", flexShrink: 0, background: "var(--c-node-bg)", borderBottom: "1px solid var(--c-bd1)" }}>
+          <img
+            src={livePreview}
+            alt="实时预览"
+            className="nodrag"
+            style={{ display: "block", width: "100%", maxHeight: 200, objectFit: "contain", borderRadius: 6, background: "var(--c-surface)" }}
+          />
         </div>
       )}
 
