@@ -4,6 +4,7 @@ import { assertProjectAccess } from "../_core/permissions";
 import { assertLLMAllowed } from "../_core/whitelist";
 import { invokeLLM, extractTextContent } from "../_core/llm";
 import { catalogText, sanitizeOperation, templateKnowledgeText } from "../_core/agentCatalog";
+import { enforceImageFirst } from "../_core/imageFirst";
 import { runLibraryAnalysis } from "../_core/templateAnalysis";
 import * as db from "../db";
 import type { AgentOperation } from "../../shared/types";
@@ -30,6 +31,8 @@ export const agentRouter = router({
         comfyOnly: z.boolean().optional(),
         /** Pre-rendered 用户偏好/约束 block from the agent node's 规划设置 dialog. */
         prefs: z.string().max(2000).optional(),
+        /** 生图→生视频偏好：开启后服务端确定性地把 文本→视频 改写为 文本→图像→视频。 */
+        imageFirst: z.boolean().optional(),
       })
     )
     .mutation(async ({ ctx, input }) => {
@@ -127,6 +130,9 @@ ${input.graphSummary?.trim() || "（空画布）"}${input.prefs?.trim() ? `\n\n#
             operations = parsed.operations
               .map((o) => sanitizeOperation(o, { comfyOnly: input.comfyOnly, validTemplateIds }))
               .filter((o): o is AgentOperation => o !== null);
+            // 生图→生视频：确定性强制（仅非 ComfyUI 模式，image_gen 在此可用）。即使 LLM
+            // 没照做，也把 文本→视频 改写为 文本→image_gen→视频，保证偏好必然生效。
+            if (input.imageFirst && !input.comfyOnly) operations = enforceImageFirst(operations);
           }
           // Optional planning summary (duration-aware shot split) for the client's
           // capacity dialog. Only accept well-formed numeric fields.
