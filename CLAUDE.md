@@ -56,6 +56,11 @@ DATABASE_URL="" OAUTH_SERVER_URL="" NODE_ENV=development pnpm dev
 
 5. **绝不靠盲改让用户反复折腾数据库**；先复现拿到确切 `sqlState/sqlMessage`，再动手。
 
+6. **生产库是标准 MySQL，禁止使用 MariaDB 专属语法！**（2026-06，0038 翻车实录）`ALTER TABLE ... ADD COLUMN IF NOT EXISTS` / `DROP COLUMN IF EXISTS` 等是 **MariaDB 扩展，MySQL 8 不支持**，在生产 MySQL 上跑 `db:push` 直接报 `ER_PARSE_ERROR (1064/42000)`、系统更新失败。
+   → 需要幂等加列时统一用 **`information_schema` 守卫 + `PREPARE`/`EXECUTE`**（MySQL/MariaDB 通用）：
+   先 `SET @ddl := (SELECT IF(COUNT(*)=0, 'ALTER TABLE ... ADD COLUMN ...', 'SELECT 1') FROM information_schema.COLUMNS WHERE TABLE_SCHEMA=DATABASE() AND TABLE_NAME='表' AND COLUMN_NAME='列');` 再 `PREPARE`/`EXECUTE`/`DEALLOCATE`，多语句之间记得插 statement-breakpoint。
+   → **本机的 `mysqld` 其实是 MariaDB**（`mysqld --version` 会显示 `MariaDB`），它会接受这类专属语法，所以「本机验证通过」≠「MySQL 通过」。复现 MySQL 行为靠人工核对语法是否为 MySQL 8 核心特性，绝不能用本机 MariaDB 的「能跑」当 MySQL 的背书。
+
 ---
 
 ## 安全审查历史摘要

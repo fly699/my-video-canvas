@@ -4,7 +4,7 @@ import { useCanvasStore } from "../../../hooks/useCanvasStore";
 import type { AgentNodeData, AgentMessage, AgentOperation } from "../../../../../shared/types";
 import { trpc } from "@/lib/trpc";
 import { toast } from "sonner";
-import { Sparkles, Loader2, Send, Check, Plus, Link2, Pencil, Trash2, LayoutGrid, Boxes, Wrench, Zap, BookTemplate, Focus, ShieldCheck, SlidersHorizontal } from "lucide-react";
+import { Sparkles, Loader2, Send, Check, Plus, Link2, Pencil, Trash2, LayoutGrid, Boxes, Wrench, Zap, BookTemplate, Focus, ShieldCheck, SlidersHorizontal, RotateCw } from "lucide-react";
 import { LLMModelPicker, type LLMModelId } from "../LLMModelPicker";
 import { NodeTextArea } from "../NodeTextInput";
 import { applyAgentOperations, buildGraphSummary, distributeServers } from "@/lib/agentApply";
@@ -205,22 +205,23 @@ export const AgentNode = memo(function AgentNode({ id, selected, data }: Props) 
     }
   };
 
-  const handleSend = async (override?: string, focusNodeIds?: string[]) => {
-    const text = (override ?? input).trim();
+  const FAIL_PREFIX = "处理失败：";
+
+  // Core planning call. `baseMessages` already ends with the user message being
+  // answered (so history = everything before it). Shared by send and retry.
+  const runChat = async (text: string, baseMessages: AgentMessage[], focusNodeIds?: string[]) => {
     if (!text || chat.isPending) return;
-    const history = messages.map((m) => ({ role: m.role, content: m.content }));
+    const history = baseMessages.slice(0, -1).map((m) => ({ role: m.role, content: m.content }));
     const summary = buildGraphSummary(id, focusNodeIds ? { focusNodeIds } : {});
-    const afterUser: AgentMessage[] = [...messages, { role: "user", content: text }];
-    const assistantIdx = afterUser.length; // index the assistant reply will occupy
-    setMessages(afterUser);
-    if (!override) setInput("");
+    const assistantIdx = baseMessages.length; // index the assistant reply will occupy
+    setMessages(baseMessages);
     try {
       const r = await chat.mutateAsync({
         projectId: data.projectId, message: text, history,
         graphSummary: summary || undefined, model, comfyOnly,
         prefs: buildPrefsText(),
       });
-      setMessages([...afterUser, { role: "assistant", content: r.reply, operations: r.operations }]);
+      setMessages([...baseMessages, { role: "assistant", content: r.reply, operations: r.operations }]);
       // Duration-aware capacity check: if the plan split a target longer than the
       // model's per-shot cap into many shots, let the user choose how to proceed
       // before applying (instead of silently auto-applying a 12-shot plan).
@@ -230,8 +231,24 @@ export const AgentNode = memo(function AgentNode({ id, selected, data }: Props) 
         handleApply(assistantIdx, r.operations);
       }
     } catch (e) {
-      setMessages([...afterUser, { role: "assistant", content: "处理失败：" + (e instanceof Error ? e.message : ""), operations: [] }]);
+      setMessages([...baseMessages, { role: "assistant", content: FAIL_PREFIX + (e instanceof Error ? e.message : ""), operations: [] }]);
     }
+  };
+
+  const handleSend = async (override?: string, focusNodeIds?: string[]) => {
+    const text = (override ?? input).trim();
+    if (!text || chat.isPending) return;
+    if (!override) setInput("");
+    await runChat(text, [...messages, { role: "user", content: text }], focusNodeIds);
+  };
+
+  // 重试：重跑失败助手消息所对应的上一条用户指令（丢弃失败回复，不重复用户气泡）。
+  const handleRetry = (failedIdx: number) => {
+    if (chat.isPending) return;
+    const msgs = freshMessages();
+    const userMsg = msgs[failedIdx - 1];
+    if (!userMsg || userMsg.role !== "user") { toast.error("找不到可重试的上一条指令"); return; }
+    void runChat(userMsg.content, msgs.slice(0, failedIdx));
   };
 
   // 运行自愈：让智能体检查画布上运行失败/缺参的节点并给出修复方案（节点状态已随 graphSummary 提供）。
@@ -328,6 +345,21 @@ export const AgentNode = memo(function AgentNode({ id, selected, data }: Props) 
               }}>
                 {m.content}
               </div>
+              {m.role === "assistant" && m.content.startsWith(FAIL_PREFIX) && (
+                <button
+                  onClick={() => handleRetry(i)}
+                  disabled={chat.isPending}
+                  className="nodrag flex items-center gap-1"
+                  title="重试：重跑上一条指令"
+                  style={{
+                    marginTop: 6, padding: "4px 10px", fontSize: 11, fontWeight: 600, borderRadius: 8,
+                    background: accentA(0.12), border: `1px solid ${accentA(0.35)}`, color: accent,
+                    cursor: chat.isPending ? "wait" : "pointer",
+                  }}
+                >
+                  {chat.isPending ? <Loader2 className="w-3 h-3 animate-spin" /> : <RotateCw className="w-3 h-3" />}重试
+                </button>
+              )}
               {m.role === "assistant" && m.operations && m.operations.length > 0 && (
                 <div style={{ marginTop: 6, border: `1px solid ${accentA(0.28)}`, borderRadius: 10, overflow: "hidden", background: accentA(0.06) }}>
                   <div style={{ padding: "6px 9px", display: "flex", flexDirection: "column", gap: 4 }}>
