@@ -331,6 +331,7 @@ export const chatRouter = router({
   markRead: protectedProcedure
     .input(z.object({ conversationId: z.number(), messageId: z.number() }))
     .mutation(async ({ ctx, input }) => {
+      if (!(await isChatMember(input.conversationId, ctx.user.id))) throw new TRPCError({ code: "FORBIDDEN" });
       await updateLastRead(input.conversationId, ctx.user.id, input.messageId);
       return { success: true };
     }),

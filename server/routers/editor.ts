@@ -5,7 +5,8 @@ import * as db from "../db";
 import { writeAuditLog } from "../_core/auditLog";
 import { EDITOR_DOC_VERSION, emptyEditorDoc, type EditorDoc } from "@shared/editorTypes";
 import { composeTimeline } from "../_core/videoComposer";
-import { createRenderJob, getRenderJob, updateRenderJob } from "../_core/editorRenderJobs";
+import { createRenderJob, getRenderJob, updateRenderJob, countRunningRenderJobs } from "../_core/editorRenderJobs";
+import { assertProjectAccess } from "../_core/permissions";
 
 // ── EDL validation ────────────────────────────────────────────────────────────
 // Kept tolerant: unknown effect/transition keys are allowed through so the
@@ -93,6 +94,12 @@ export const editorRouter = router({
       fps: z.number().int().min(1).max(120).optional(),
     }).optional())
     .mutation(async ({ ctx, input }) => {
+      // Linking a session to a project records its exports into that project's
+      // shared asset library — so the caller must have editor access to it,
+      // otherwise any user could inject assets into arbitrary projects (IDOR).
+      if (input?.projectId != null) {
+        await assertProjectAccess(input.projectId, ctx.user.id, "editor");
+      }
       const doc = emptyEditorDoc(input?.width, input?.height, input?.fps);
       const s = await db.createEditSession({
         userId: ctx.user.id,
@@ -147,6 +154,11 @@ export const editorRouter = router({
     .mutation(async ({ ctx, input }) => {
       const session = await db.getEditSession(input.id, ctx.user.id);
       if (!session) throw new TRPCError({ code: "NOT_FOUND" });
+      // Each export spawns a full-reencode ffmpeg child; cap concurrent renders
+      // per user so connect-spamming export can't exhaust CPU/memory/disk.
+      if (countRunningRenderJobs(ctx.user.id) >= 3) {
+        throw new TRPCError({ code: "TOO_MANY_REQUESTS", message: "已有多个导出任务进行中，请稍后再试" });
+      }
       const doc = session.doc as EditorDoc;
       const job = createRenderJob(ctx.user.id, input.id);
       const mimeType = input.format === "webm" ? "video/webm" : input.format === "mov" ? "video/quicktime" : "video/mp4";

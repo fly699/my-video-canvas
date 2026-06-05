@@ -629,6 +629,7 @@ export function subscribeComfyProgress(
   promptId: string,
   callback: (event: ComfyProgressEvent) => void,
   timeoutMs = 600_000,
+  signal?: AbortSignal,
 ): Promise<void> {
   return new Promise((resolve) => {
     const wsUrl = baseUrl.replace(/^http/, "ws") + "/ws?clientId=" + encodeURIComponent("cc_" + promptId.slice(0, 8));
@@ -646,6 +647,14 @@ export function subscribeComfyProgress(
     }
 
     const timer = setTimeout(() => { try { ws.close(); } catch { /* ignore */ } done(); }, timeoutMs);
+
+    // The caller aborts once polling has resolved the result, so a WS that never
+    // receives a terminal event (some ComfyUI builds omit `executed`) is closed
+    // promptly instead of idling until the timeout — preventing connection leaks.
+    if (signal) {
+      if (signal.aborted) { clearTimeout(timer); try { ws.close(); } catch { /* ignore */ } done(); }
+      else signal.addEventListener("abort", () => { clearTimeout(timer); try { ws.close(); } catch { /* ignore */ } done(); }, { once: true });
+    }
 
     ws.addEventListener("message", (ev) => {
       try {
@@ -1077,7 +1086,8 @@ export async function generateComfyImage(rawBaseUrl: string, options: GenerateCo
 
   const promptId = await submitWorkflow(baseUrl, workflow);
 
-  // Fire-and-forget progress relay
+  // Fire-and-forget progress relay; closed once polling resolves (see below).
+  const progressAbort = new AbortController();
   if (options.projectId != null && options.nodeId != null && _io != null) {
     const projectId = options.projectId;
     const nodeId = options.nodeId;
@@ -1085,10 +1095,15 @@ export async function generateComfyImage(rawBaseUrl: string, options: GenerateCo
       if (ev.type === "progress" && ev.value != null && ev.max != null) {
         _io?.to(`project:${projectId}`).emit("comfyui:progress", { nodeId, type: "progress", value: ev.value, max: ev.max });
       }
-    }).catch(() => { /* progress is best-effort */ });
+    }, 600_000, progressAbort.signal).catch(() => { /* progress is best-effort */ });
   }
 
-  const entry = await pollHistory(baseUrl, promptId, POLL_MAX_ATTEMPTS_IMAGE);
+  let entry: HistoryEntry;
+  try {
+    entry = await pollHistory(baseUrl, promptId, POLL_MAX_ATTEMPTS_IMAGE);
+  } finally {
+    progressAbort.abort(); // stop the progress WS whether polling succeeded or threw
+  }
 
   // Collect all SaveImage outputs (supports batchSize > 1)
   const urls: string[] = [];
@@ -1182,7 +1197,8 @@ export async function generateComfyVideo(rawBaseUrl: string, options: GenerateCo
 
   const promptId = await submitWorkflow(baseUrl, workflow);
 
-  // Fire-and-forget progress relay
+  // Fire-and-forget progress relay; closed once polling resolves (see below).
+  const progressAbort = new AbortController();
   if (options.projectId != null && options.nodeId != null && _io != null) {
     const projectId = options.projectId;
     const nodeId = options.nodeId;
@@ -1190,10 +1206,15 @@ export async function generateComfyVideo(rawBaseUrl: string, options: GenerateCo
       if (ev.type === "progress" && ev.value != null && ev.max != null) {
         _io?.to(`project:${projectId}`).emit("comfyui:progress", { nodeId, type: "progress", value: ev.value, max: ev.max });
       }
-    }).catch(() => { /* progress is best-effort */ });
+    }, 600_000, progressAbort.signal).catch(() => { /* progress is best-effort */ });
   }
 
-  const entry = await pollHistory(baseUrl, promptId, POLL_MAX_ATTEMPTS_VIDEO);
+  let entry: HistoryEntry;
+  try {
+    entry = await pollHistory(baseUrl, promptId, POLL_MAX_ATTEMPTS_VIDEO);
+  } finally {
+    progressAbort.abort();
+  }
 
   // Find VHS_VideoCombine output (lives in `gifs` array regardless of mp4 format)
   for (const nodeOutput of Object.values(entry.outputs ?? {})) {
@@ -1310,8 +1331,13 @@ export async function analyzeWorkflow(
     const ct = node.class_type;
     const inputs = node.inputs ?? {};
 
-    // Capture frames/fps wherever they appear (literal numbers only — wired refs ignored).
-    if (typeof (inputs as Record<string, unknown>).length === "number") detectedFrames = (inputs as Record<string, number>).length;
+    // Capture frames/fps (literal numbers only — wired refs ignored). `length`
+    // is a generic input name that also appears on non-video nodes (text/list
+    // helpers etc.), so only trust it on known video-latent node types —
+    // otherwise an unrelated node's `length` would clobber the real frame count
+    // and feed the agent a wrong per-shot duration. (#7)
+    const isVideoLatentNode = /(?:Video|HunyuanLatent|LTXV|WanImage|Mochi|CogVideo|SVD)/i.test(ct);
+    if (isVideoLatentNode && typeof (inputs as Record<string, unknown>).length === "number") detectedFrames = (inputs as Record<string, number>).length;
     if (typeof (inputs as Record<string, unknown>).video_frames === "number") detectedFrames = (inputs as Record<string, number>).video_frames;
     if (typeof (inputs as Record<string, unknown>).frame_rate === "number") detectedFps = (inputs as Record<string, number>).frame_rate;
     if (ct === "EmptyLatentImage" && typeof (inputs as Record<string, unknown>).batch_size === "number") animatediffBatch = (inputs as Record<string, number>).batch_size;
@@ -1574,6 +1600,7 @@ export async function executeCustomWorkflow(
 
   // Fire-and-forget progress relay (websocket; best-effort, local only — cloud
   // progress would need a separate auth scheme, so it's simply skipped there).
+  const progressAbort = new AbortController();
   if (options.projectId != null && options.nodeId != null && _io != null) {
     const projectId = options.projectId;
     const nodeId = options.nodeId;
@@ -1581,11 +1608,16 @@ export async function executeCustomWorkflow(
       if (ev.type === "progress" && ev.value != null && ev.max != null) {
         _io?.to(`project:${projectId}`).emit("comfyui:progress", { nodeId, type: "progress", value: ev.value, max: ev.max });
       }
-    }).catch(() => { /* progress is best-effort */ });
+    }, 600_000, progressAbort.signal).catch(() => { /* progress is best-effort */ });
   }
 
   // Use longer poll limit since we don't know the workflow complexity
-  const entry = await pollHistory(baseUrl, promptId, POLL_MAX_ATTEMPTS_VIDEO, undefined, apiKey);
+  let entry: HistoryEntry;
+  try {
+    entry = await pollHistory(baseUrl, promptId, POLL_MAX_ATTEMPTS_VIDEO, undefined, apiKey);
+  } finally {
+    progressAbort.abort();
+  }
 
   // Determine which output nodes to collect from
   const targetNodeIds = new Set(options.outputNodeIds ?? []);
