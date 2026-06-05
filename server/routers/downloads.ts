@@ -136,19 +136,25 @@ export const adminDownloadsRouter = router({
       return grant;
     }),
 
-  // Resolve a target user (by email) and/or a project (by id) so the proactive-
-  // grant form can confirm "who / which project" before granting. Either side may
-  // be omitted; missing/not-found resolves to null.
-  lookup: adminProcedure
-    .input(z.object({ email: z.string().max(200).optional(), projectId: z.number().optional() }))
+  // Resolve a target user (by email) AND list every project they can access —
+  // owned + projects they collaborate on — so the proactive-grant form can show a
+  // checklist instead of asking for a project id.
+  userProjects: adminProcedure
+    .input(z.object({ email: z.string().max(200) }))
     .query(async ({ input }) => {
-      const email = input.email?.trim();
-      const user = email ? await db.findUserByEmail(email) : null;
-      const project = input.projectId != null ? await db.getProjectByIdRaw(input.projectId) : null;
-      return {
-        user: user ? { id: user.id, name: user.name ?? null, email: user.email ?? null } : null,
-        project: project ? { id: project.id, name: project.name, ownerId: project.userId } : null,
-      };
+      const email = input.email.trim();
+      if (!email) return { user: null, projects: [] as { id: number; name: string; role: "owner" | "collaborator" }[] };
+      const user = await db.findUserByEmail(email);
+      if (!user) return { user: null, projects: [] as { id: number; name: string; role: "owner" | "collaborator" }[] };
+      const [owned, shared] = await Promise.all([
+        db.getProjectsByUser(user.id),
+        db.getProjectsSharedWithUser(user.id),
+      ]);
+      const projects = [
+        ...owned.map((p) => ({ id: p.id, name: p.name, role: "owner" as const })),
+        ...shared.map((p) => ({ id: p.id, name: p.name, role: "collaborator" as const })),
+      ];
+      return { user: { id: user.id, name: user.name ?? null, email: user.email ?? null }, projects };
     }),
 
   // Cheap count of un-handled requests — drives the global admin badge.

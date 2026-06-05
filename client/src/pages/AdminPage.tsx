@@ -1246,7 +1246,7 @@ function DownloadsAdminPanel() {
   // 主动授权表单状态
   const [showGrant, setShowGrant] = useState(false);
   const [grantEmail, setGrantEmail] = useState("");
-  const [grantProjectId, setGrantProjectId] = useState("");
+  const [grantProjectSel, setGrantProjectSel] = useState<Set<number>>(new Set());
   const [grantAmount, setGrantAmount] = useState(7);
   const [grantUnit, setGrantUnit] = useState<"hour" | "day">("day");
   const [grantForever, setGrantForever] = useState(false);
@@ -1263,10 +1263,9 @@ function DownloadsAdminPanel() {
     if (m > 0) return `${m}分 ${sec}秒`;
     return `${sec}秒`;
   };
-  const projectIdNum = Number(grantProjectId) || undefined;
-  const lookup = trpc.admin.downloads.lookup.useQuery(
-    { email: grantEmail.trim() || undefined, projectId: projectIdNum },
-    { enabled: showGrant && (!!grantEmail.trim() || projectIdNum != null) },
+  const userProjects = trpc.admin.downloads.userProjects.useQuery(
+    { email: grantEmail.trim() },
+    { enabled: showGrant && !!grantEmail.trim() },
   );
   const { data: grants, isFetching } = trpc.admin.downloads.list.useQuery({ status: status || undefined, limit: 300 });
   const onDone = () => void utils.admin.downloads.list.invalidate();
@@ -1298,35 +1297,54 @@ function DownloadsAdminPanel() {
           <span style={{ fontSize: 11, opacity: 0.7 }}>{showGrant ? "收起" : "展开"}</span>
         </button>
         {showGrant && (() => {
-          const u = lookup.data?.user; const p = lookup.data?.project;
-          const canGrant = !!u && !!p && !grantMut.isPending;
+          const u = userProjects.data?.user;
+          const projects = userProjects.data?.projects ?? [];
+          const owned = projects.filter((p) => p.role === "owner");
+          const collab = projects.filter((p) => p.role === "collaborator");
+          const canGrant = !!u && grantProjectSel.size > 0 && !grantMut.isPending;
           const inp: React.CSSProperties = { fontSize: 12.5, padding: "6px 9px", borderRadius: 7, border: "1px solid rgba(255,255,255,0.14)", background: "rgba(255,255,255,0.04)", color: "var(--c-t1,#f0f0f4)", width: "100%" };
-          const submit = () => {
-            if (!u || !p) return;
+          const toggleProj = (id: number) => setGrantProjectSel((prev) => { const n = new Set(prev); if (n.has(id)) n.delete(id); else n.add(id); return n; });
+          const submit = async () => {
+            if (!u || grantProjectSel.size === 0) return;
             const expiresAt = grantForever ? undefined : Date.now() + grantAmount * (grantUnit === "day" ? 86400_000 : 3600_000);
-            grantMut.mutate(
-              { userId: u.id, scope: "project", projectId: p.id, note: grantNote.trim() || undefined, expiresAt },
-              { onSuccess: () => { setStatus("active"); setGrantEmail(""); setGrantProjectId(""); setGrantNote(""); } },
-            );
+            const ids = Array.from(grantProjectSel);
+            for (const pid of ids) {
+              try { await grantMut.mutateAsync({ userId: u.id, scope: "project", projectId: pid, note: grantNote.trim() || undefined, expiresAt }); } catch { /* per-project, keep going */ }
+            }
+            setStatus("active"); setGrantProjectSel(new Set()); setGrantNote("");
           };
+          const projRow = (p: { id: number; name: string; role: string }) => (
+            <label key={p.id} style={{ display: "flex", alignItems: "center", gap: 8, padding: "5px 8px", borderRadius: 6, cursor: "pointer", background: grantProjectSel.has(p.id) ? "oklch(0.72 0.2 285 / 0.12)" : "transparent", fontSize: 12.5, color: "var(--c-t1,#f0f0f4)" }}>
+              <input type="checkbox" checked={grantProjectSel.has(p.id)} onChange={() => toggleProj(p.id)} />
+              <span style={{ flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{p.name}</span>
+              <span style={{ fontSize: 10.5, color: "var(--c-t4,rgba(255,255,255,0.4))" }}>#{p.id}</span>
+            </label>
+          );
           return (
             <div style={{ padding: "4px 12px 12px", display: "flex", flexDirection: "column", gap: 10 }}>
-              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
-                <div>
-                  <label style={{ fontSize: 11, color: "var(--c-t3,rgba(255,255,255,0.5))" }}>用户邮箱</label>
-                  <input value={grantEmail} onChange={(e) => setGrantEmail(e.target.value)} placeholder="user@example.com" style={inp} />
-                  <div style={{ fontSize: 11, marginTop: 3, color: u ? "oklch(0.74 0.18 155)" : "oklch(0.7 0.18 25)" }}>
-                    {grantEmail.trim() ? (lookup.isFetching ? "查找中…" : u ? `✓ ${u.name ?? u.email ?? `用户 ${u.id}`}（id ${u.id}）` : "未找到该邮箱用户") : "　"}
-                  </div>
-                </div>
-                <div>
-                  <label style={{ fontSize: 11, color: "var(--c-t3,rgba(255,255,255,0.5))" }}>项目 ID</label>
-                  <input value={grantProjectId} onChange={(e) => setGrantProjectId(e.target.value.replace(/[^0-9]/g, ""))} placeholder="如 123" inputMode="numeric" style={inp} />
-                  <div style={{ fontSize: 11, marginTop: 3, color: p ? "oklch(0.74 0.18 155)" : "oklch(0.7 0.18 25)" }}>
-                    {projectIdNum != null ? (lookup.isFetching ? "查找中…" : p ? `✓ ${p.name}` : "未找到该项目") : "　"}
-                  </div>
+              <div>
+                <label style={{ fontSize: 11, color: "var(--c-t3,rgba(255,255,255,0.5))" }}>用户邮箱</label>
+                <input value={grantEmail} onChange={(e) => { setGrantEmail(e.target.value); setGrantProjectSel(new Set()); }} placeholder="输入用户邮箱后自动列出其项目" style={inp} />
+                <div style={{ fontSize: 11, marginTop: 3, color: u ? "oklch(0.74 0.18 155)" : "oklch(0.7 0.18 25)" }}>
+                  {grantEmail.trim() ? (userProjects.isFetching ? "查找中…" : u ? `✓ ${u.name ?? u.email ?? `用户 ${u.id}`}（id ${u.id}）` : "未找到该邮箱用户") : "　"}
                 </div>
               </div>
+
+              {/* 该用户的项目（自有 + 协作）— 勾选要授权的 */}
+              {u && (
+                <div style={{ border: "1px solid rgba(255,255,255,0.1)", borderRadius: 7, maxHeight: 240, overflowY: "auto", padding: "4px 0" }}>
+                  {projects.length === 0 && <div style={{ fontSize: 12, color: "var(--c-t4,rgba(255,255,255,0.4))", padding: "10px 10px", textAlign: "center" }}>该用户暂无可授权的项目</div>}
+                  {owned.length > 0 && <>
+                    <div style={{ fontSize: 10.5, color: "var(--c-t3,rgba(255,255,255,0.5))", padding: "4px 10px 2px", fontWeight: 600 }}>自有项目（{owned.length}）</div>
+                    {owned.map(projRow)}
+                  </>}
+                  {collab.length > 0 && <>
+                    <div style={{ fontSize: 10.5, color: "var(--c-t3,rgba(255,255,255,0.5))", padding: "6px 10px 2px", fontWeight: 600 }}>参与协作的项目（{collab.length}）</div>
+                    {collab.map(projRow)}
+                  </>}
+                </div>
+              )}
+
               <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
                 <span style={{ fontSize: 12, color: "var(--c-t3,rgba(255,255,255,0.5))" }}>有效期</span>
                 <input type="number" min={1} disabled={grantForever} value={grantAmount} onChange={(e) => setGrantAmount(Math.max(1, Math.round(Number(e.target.value) || 1)))} style={{ ...inp, width: 80, opacity: grantForever ? 0.5 : 1 }} />
@@ -1341,9 +1359,9 @@ function DownloadsAdminPanel() {
               </div>
               <input value={grantNote} onChange={(e) => setGrantNote(e.target.value)} placeholder="备注（可选，记入授权与日志）" style={inp} />
               <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-                <button disabled={!canGrant} onClick={submit}
+                <button disabled={!canGrant} onClick={() => void submit()}
                   style={{ fontSize: 12.5, fontWeight: 600, padding: "7px 16px", borderRadius: 7, border: "1px solid oklch(0.72 0.2 285)", background: canGrant ? "oklch(0.72 0.2 285 / 0.18)" : "transparent", color: "oklch(0.82 0.16 285)", cursor: canGrant ? "pointer" : "not-allowed", opacity: canGrant ? 1 : 0.5 }}>
-                  {grantMut.isPending ? "授权中…" : "授权该用户下载此项目"}
+                  {grantMut.isPending ? "授权中…" : `授权选中的 ${grantProjectSel.size} 个项目`}
                 </button>
                 <span style={{ fontSize: 11, color: "var(--c-t4,rgba(255,255,255,0.35))" }}>授权后立即生效（status=active），并记入审计日志</span>
               </div>
@@ -1408,10 +1426,10 @@ function DownloadsAdminPanel() {
                   <button disabled={busy} onClick={() => decideMut.mutate({ grantId: g.id, approve: true, expiresHours: approveHours })} style={btn("oklch(0.74 0.18 155)", "oklch(0.6 0.16 155 / 0.12)")}>批准（{approveHours}h）</button>
                   <button disabled={busy} onClick={() => decideMut.mutate({ grantId: g.id, approve: false })} style={btn("oklch(0.74 0.18 25)")}>拒绝</button>
                   {g.projectId != null && (
-                    <button disabled={busy} title="一次性授权该用户下载这个项目的全部文件（并结掉本申请）" onClick={() => grantMut.mutate(
-                      { userId: g.userId, scope: "project", projectId: g.projectId!, note: "审批时授权整个项目" },
+                    <button disabled={busy} title={`一次性授权该用户下载这个项目的全部文件（有效期 ${approveHours}h，并结掉本申请）`} onClick={() => grantMut.mutate(
+                      { userId: g.userId, scope: "project", projectId: g.projectId!, note: "审批时授权整个项目", expiresAt: Date.now() + approveHours * 3600_000 },
                       { onSuccess: () => decideMut.mutate({ grantId: g.id, approve: true, expiresHours: approveHours }) }, // resolve the pending request too
-                    )} style={btn("oklch(0.72 0.2 285)")}>授权整个项目</button>
+                    )} style={btn("oklch(0.72 0.2 285)")}>授权整个项目（{approveHours}h）</button>
                   )}
                 </>
               )}
