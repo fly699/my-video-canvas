@@ -33,6 +33,9 @@ export const agentRouter = router({
         prefs: z.string().max(2000).optional(),
         /** 生图→生视频偏好：开启后服务端确定性地把 文本→视频 改写为 文本→图像→视频。 */
         imageFirst: z.boolean().optional(),
+        /** 用户在「模板选择」里指定的 comfyui_workflow 模板（留空=自动选择）。 */
+        imageTemplateId: z.number().optional(),
+        videoTemplateId: z.number().optional(),
       })
     )
     .mutation(async ({ ctx, input }) => {
@@ -100,15 +103,18 @@ export const agentRouter = router({
         };
       }
 
-      const imgVidHint = input.comfyOnly && input.imageFirst && imageTpls.length && videoTpls.length
-        ? `\n- 本次出图请用模板 id=${imageTpls[0].id}「${imageTpls[0].label}」；图生视频请用模板 id=${videoTpls[0].id}「${videoTpls[0].label}」。每个镜头各建这两个 comfyui_workflow 并串联（出图 → 图生视频）。`
+      // Prefer the user's explicitly-chosen templates (「模板选择」对话框); else auto-pick the first.
+      const chosenImg = imageTpls.find((t) => t.id === input.imageTemplateId) ?? imageTpls[0];
+      const chosenVid = videoTpls.find((t) => t.id === input.videoTemplateId) ?? videoTpls[0];
+      const imgVidHint = input.comfyOnly && input.imageFirst && chosenImg && chosenVid
+        ? `\n- 本次出图请用模板 id=${chosenImg.id}「${chosenImg.label}」；图生视频请用模板 id=${chosenVid.id}「${chosenVid.label}」。每个镜头各建这两个 comfyui_workflow 并串联（出图 → 图生视频）。`
         : "";
 
       const comfyConstraint = input.comfyOnly
         ? `\n\n# 仅 ComfyUI 生成（当前已开启）\n- 所有图像/视频/音频生成只能使用 comfyui_workflow 自定义工作流节点；禁止使用 image_gen / video_task / audio / comfyui_image / comfyui_video / storyboard。\n- create comfyui_workflow 时必须用 payload.templateId 引用上面「已分析模板」中真实存在的某个 id（禁止编造 id 或只写名字），并把正向提示词放入 payload.prompt、反向放 payload.negPrompt。${
             input.imageFirst
               ? `\n- 【生图→生视频，已开启】每个镜头必须分两步、串联两个 comfyui_workflow 节点：先用一个「出图模板」(上面 outputType=image 的模板) 的 comfyui_workflow 生成静帧，再用一个「图生视频模板」(outputType=video / hasVideoOutput 的模板) 的 comfyui_workflow 把静帧转成视频；并连接 出图节点 → 图生视频节点（链路：script → prompt → 出图comfyui_workflow → 图生视频comfyui_workflow → merge）。出图与图生视频必须各用对应 outputType 的模板，不能用同一个；两个节点的 payload.prompt 都写该镜头提示词。${imgVidHint}`
-              : `\n- 每个镜头用一个「prompt 提示词」节点承载该镜头的提示词，再连接到对应的 comfyui_workflow 节点（script → prompt → comfyui_workflow）。`
+              : `\n- 每个镜头用一个「prompt 提示词」节点承载该镜头的提示词，再连接到对应的 comfyui_workflow 节点（script → prompt → comfyui_workflow）。${chosenVid ? `\n- 本次生成请优先使用模板 id=${chosenVid.id}「${chosenVid.label}」。` : ""}`
           }`
         : "";
 
@@ -169,8 +175,8 @@ ${input.graphSummary?.trim() || "（空画布）"}${input.prefs?.trim() ? `\n\n#
             // 非 ComfyUI：插 image_gen（文本→image_gen→视频）。
             // 仅 ComfyUI：插出图 comfyui_workflow（prompt→出图→图生视频），用识别到的出图/视频模板。
             if (input.imageFirst) {
-              if (input.comfyOnly && imageTpls.length && videoTpls.length) {
-                operations = enforceImageFirstComfy(operations, new Set(imageTpls.map((t) => t.id)), new Set(videoTpls.map((t) => t.id)), imageTpls[0].id);
+              if (input.comfyOnly && chosenImg && chosenVid) {
+                operations = enforceImageFirstComfy(operations, new Set(imageTpls.map((t) => t.id)), new Set(videoTpls.map((t) => t.id)), chosenImg.id);
               } else if (!input.comfyOnly) {
                 operations = enforceImageFirst(operations);
               }
