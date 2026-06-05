@@ -398,8 +398,8 @@ export const AgentNode = memo(function AgentNode({ id, selected, data }: Props) 
   }, [runState.running]); // eslint-disable-line react-hooks/exhaustive-deps
 
   return (
-    <BaseNode id={id} selected={selected} nodeType="agent" title={data.title} minHeight={420} resizable showHandles={false}>
-      <div className="flex flex-col h-full" style={{ minHeight: 0 }}>
+    <BaseNode id={id} selected={selected} nodeType="agent" title={data.title} minHeight={420} resizable showHandles={false} capNodeHeight>
+      <div className="flex flex-col flex-1" style={{ minHeight: 0 }}>
         {/* Messages */}
         <div ref={scrollRef} className="nodrag nowheel" style={{ flex: 1, minHeight: 0, overflowY: "auto", padding: "10px 12px", display: "flex", flexDirection: "column", gap: 10 }}>
           {messages.length === 0 && (

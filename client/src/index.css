@@ -930,61 +930,75 @@ button:active:not(:disabled) {
    CREATIVE MODE — LibTV-inspired media-first canvas layout
    ═══════════════════════════════════════════════════════════════════════════ */
 
-/* Hero media: hidden in professional mode, always shown in creative mode */
+/* ── Media-first collapse — ALL canvas modes (was creative-only) ──────────────
+   A previewable node that already produced an image/video collapses when it is
+   not being edited: only the title bar + warning/error/progress (rendered
+   outside .node-body-wrap) + a hero preview remain; the whole body (controls and
+   the in-body interactive result) is hidden. Selecting/pinning the node expands
+   the full body and hides the hero, so there is no duplicate preview and all the
+   in-body interactions (lightbox, select, download) stay reachable.
+   `data-selected` reflects selected OR pinned (see BaseNode). */
+
+/* Hero shows ONLY while collapsed (has a result AND not expanded). */
 .node-hero-media {
   display: none;
 }
-:root[data-canvas-mode="creative"] .node-hero-media {
+[data-has-hero="true"][data-selected="false"] .node-hero-media {
   display: block;
-}
-
-/* Node body: transition for smooth collapse/expand */
-.node-body-wrap {
-  flex: 1;
-  display: flex;
-  flex-direction: column;
-  transition:
-    max-height 300ms cubic-bezier(0.4, 0, 0.2, 1),
-    opacity 200ms ease;
-  overflow: visible;        /* professional mode: always visible */
-}
-
-/* Creative mode: collapse controls when node has hero and is NOT selected */
-:root[data-canvas-mode="creative"] [data-has-hero="true"][data-selected="false"] .node-body-wrap {
-  max-height: 0 !important;
-  overflow: hidden !important;
-  opacity: 0;
-}
-:root[data-canvas-mode="creative"] [data-has-hero="true"][data-selected="true"] .node-body-wrap {
-  max-height: 2600px;
-  opacity: 1;
-}
-/* Nodes without hero: always show body (script, note, ai_chat, etc.) */
-:root[data-canvas-mode="creative"] [data-has-hero="false"] .node-body-wrap {
-  max-height: none;
-  overflow: visible;
-  opacity: 1;
-}
-
-/* Hero media style: flush to card width, no side padding */
-:root[data-canvas-mode="creative"] .node-hero-media {
   width: 100%;
   flex-shrink: 0;
   line-height: 0;
   position: relative;
   overflow: hidden;
-  /* Clip to card's top corners */
-  border-radius: 0;
+  border-radius: 0;        /* clip to card's top corners */
 }
-:root[data-canvas-mode="creative"] .node-hero-media img,
-:root[data-canvas-mode="creative"] .node-hero-media video {
+/* Preview keeps its NATURAL aspect ratio so the node height fits the image/video
+   instead of cropping everything to a fixed 16:9. */
+[data-has-hero="true"][data-selected="false"] .node-hero-media img,
+[data-has-hero="true"][data-selected="false"] .node-hero-media video {
   width: 100%;
-  aspect-ratio: 16 / 9;
+  height: auto;
+  aspect-ratio: auto;
   display: block;
-  object-fit: cover;
+  object-fit: contain;
 }
-/* Hover overlay: dim + show play icon via CSS */
-:root[data-canvas-mode="creative"] .node-hero-media::after {
+
+/* Node body: transition for smooth collapse/expand */
+.node-body-wrap {
+  flex: 1;
+  /* Allow the body to shrink below its content height so that, when the node
+     is height-capped (e.g. Agent), the body's own internal scroll area takes
+     over instead of the content overflowing past the cap. */
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  transition:
+    max-height 300ms cubic-bezier(0.4, 0, 0.2, 1),
+    opacity 200ms ease;
+  overflow: visible;
+}
+
+/* Has a result + collapsed → hide the whole body. */
+[data-has-hero="true"][data-selected="false"] .node-body-wrap {
+  max-height: 0 !important;
+  overflow: hidden !important;
+  opacity: 0;
+}
+[data-has-hero="true"][data-selected="true"] .node-body-wrap {
+  max-height: 2600px;
+  opacity: 1;
+}
+/* No result yet → always show body (script, note, ai_chat, unconfigured gen nodes). */
+[data-has-hero="false"] .node-body-wrap {
+  max-height: none;
+  overflow: visible;
+  opacity: 1;
+}
+[data-has-hero="true"] .node-body-wrap {
+  will-change: max-height, opacity;
+}
+/* Hover overlay: subtle dim over the collapsed preview (all modes) */
+[data-has-hero="true"][data-selected="false"] .node-hero-media::after {
   content: "";
   position: absolute;
   inset: 0;
@@ -993,7 +1007,7 @@ button:active:not(:disabled) {
   transition: opacity 180ms ease;
   pointer-events: none;
 }
-:root[data-canvas-mode="creative"] .node-hero-media:hover::after {
+[data-has-hero="true"][data-selected="false"] .node-hero-media:hover::after {
   opacity: 1;
 }
 
@@ -1072,11 +1086,6 @@ button:active:not(:disabled) {
 /* Creative mode: node cards get slightly more width */
 :root[data-canvas-mode="creative"] .react-flow__node > div {
   /* Handled by JS — see BaseNode width scaling */
-}
-
-/* Prevent content-collapse flash during initial render */
-:root[data-canvas-mode="creative"] [data-has-hero="true"] .node-body-wrap {
-  will-change: max-height, opacity;
 }
 
 /* ── Container & Flex fixes ─────────────────────────────────────────────────── */

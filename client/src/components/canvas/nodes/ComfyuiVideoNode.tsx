@@ -273,6 +273,9 @@ export const ComfyuiVideoNode = memo(function ComfyuiVideoNode({ id, selected, d
     (payload.frames || payload.fps) ? `${payload.frames ? payload.frames + "帧" : ""}${payload.fps ? " @" + payload.fps + "fps" : ""}`.trim() : "",
   ].filter(Boolean).join("\n");
 
+  // Only treat a finished result video as a "hero" preview — a bare reference
+  // image is an INPUT, not a result, so the node must stay expanded (showing its
+  // controls) until it has actually produced a video.
   const heroMedia = payload.status === "done" && videoSrc ? (
     <video
       src={videoSrc}
@@ -280,13 +283,6 @@ export const ComfyuiVideoNode = memo(function ComfyuiVideoNode({ id, selected, d
       className="w-full"
       preload="metadata"
       style={{ display: "block", maxHeight: 240 }}
-    />
-  ) : isSafeMediaUrl(payload.referenceImageUrl) ? (
-    <img
-      src={payload.referenceImageUrl}
-      style={{ width: "100%", maxHeight: 220, objectFit: "cover", display: "block" }}
-      draggable={false}
-      onError={(e) => { (e.currentTarget as HTMLImageElement).style.display = "none"; }}
     />
   ) : null;
 
