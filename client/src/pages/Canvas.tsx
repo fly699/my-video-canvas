@@ -704,24 +704,31 @@ function CanvasInner({ projectId }: { projectId: number }) {
   // snapped the canvas back mid-pan — "画布自己突然移动". Canvas is keyed by
   // projectId (remounts per project), so a per-mount ref guard is sufficient.
   const viewportRestoredRef = useRef(false);
-  // Restore the saved pan/zoom (or fit a fresh project) exactly ONCE, after BOTH
-  // the project and its nodes have loaded — otherwise ReactFlow's auto-fit on the
-  // initial (empty/loading) render races with, and overwrites, the saved viewport.
-  // `fitView` is disabled on the flow so this is the single source of truth.
-  useEffect(() => {
+  const reactFlowReadyRef = useRef(false);
+  // Apply the saved pan/zoom (or fit a fresh project) exactly ONCE — only after BOTH
+  // ReactFlow has initialized (onInit) AND the project + nodes have loaded. Doing it
+  // before init silently no-ops (setViewport needs the rendered flow); doing it
+  // before data loads has nothing to restore. `fitView` is disabled on the flow so
+  // this is the single source of truth. Called from onInit and from the effect
+  // below, whichever happens last wins (guarded so it runs once).
+  const applyInitialViewport = useCallback(() => {
     if (viewportRestoredRef.current) return;
-    if (project === undefined || dbNodes === undefined) return; // wait for both
+    if (!reactFlowReadyRef.current) return;
+    if (project === undefined || dbNodes === undefined) return;
+    // viewportState is a JSON column — MySQL returns it parsed (object) but some
+    // drivers (e.g. MariaDB) return it as a JSON string, so handle both.
+    let vpRaw: unknown = project?.viewportState;
+    if (typeof vpRaw === "string") { try { vpRaw = JSON.parse(vpRaw); } catch { vpRaw = null; } }
+    const vp = vpRaw as { x: number; y: number; zoom: number } | null | undefined;
+    const valid = !!vp && typeof vp.x === "number" && typeof vp.y === "number" && typeof vp.zoom === "number";
     viewportRestoredRef.current = true;
-    const vp = project?.viewportState as { x: number; y: number; zoom: number } | null | undefined;
-    const tid = setTimeout(() => {
-      if (vp && typeof vp.x === "number" && typeof vp.y === "number" && typeof vp.zoom === "number") {
-        reactFlow.setViewport(vp);
-      } else {
-        reactFlow.fitView({ padding: 0.2 }); // fresh project — no saved viewport
-      }
-    }, 80);
-    return () => clearTimeout(tid);
+    // Defer a frame so the rendered flow has its dimensions before we set/fit.
+    requestAnimationFrame(() => {
+      if (valid) reactFlow.setViewport(vp!, { duration: 0 });
+      else reactFlow.fitView({ padding: 0.2 });
+    });
   }, [project, dbNodes, reactFlow]);
+  useEffect(() => { applyInitialViewport(); }, [applyInitialViewport]);
 
   // ── Auto-save ───────────────────────────────────────────────────────────────
   const saveCanvas = useCallback(async () => {
@@ -1831,6 +1838,7 @@ function CanvasInner({ projectId }: { projectId: number }) {
               deleteEdgeMutation.mutate({ id: e.id, projectId });
               emitCollabEvent("edge:delete", { id: e.id });
             })}
+            onInit={() => { reactFlowReadyRef.current = true; applyInitialViewport(); }}
             onMoveEnd={(_, vp) => { setViewport(vp); if (viewportRestoredRef.current) markDirty(); }}
             onDrop={handleAssetDrop}
             onDragOver={(e) => {

@@ -284,7 +284,9 @@ export const NODE_CONFIGS: Record<NodeType, NodeConfig> = {
     bgColor: "oklch(0.70 0.20 310 / 0.08)",
     borderColor: "oklch(0.70 0.20 310 / 0.4)",
     defaultWidth: 400,
-    defaultHeight: 520,
+    // No defaultHeight → content-driven: the node grows with its messages / plan
+    // results (BaseNode minHeight=420 keeps it visible) instead of being locked at
+    // a fixed height that clips run output. Restored from a brief fixed-height pass.
     defaultTitle: "智能体 Copilot",
   },
 };
