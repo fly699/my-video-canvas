@@ -22,6 +22,37 @@ function modelNamesFromParams(params: WorkflowParamBinding[]): string[] {
   return Array.from(names);
 }
 
+/** Derive capability tags structurally (no LLM) from the detected params + output
+ *  type, so capabilities are never empty even if the LLM summary call fails. */
+function heuristicCapabilities(params: WorkflowParamBinding[], outputType: "image" | "video" | "mixed"): string[] {
+  const caps = new Set<string>();
+  const hasImageInput = params.some((p) => p.type === "image"); // LoadImage/LoadImageMask present → 图生
+  if (outputType === "image" || outputType === "mixed") caps.add(hasImageInput ? "图生图" : "文生图");
+  if (outputType === "video" || outputType === "mixed") caps.add(hasImageInput ? "图生视频" : "文生视频");
+  const anyField = (re: RegExp) => params.some((p) => re.test(p.fieldPath) || re.test(p.label));
+  if (anyField(/lora/i)) caps.add("LoRA");
+  if (anyField(/control_?net|controlnet/i)) caps.add("ControlNet");
+  if (anyField(/ipadapter|ip_adapter/i)) caps.add("IPAdapter");
+  if (anyField(/upscale|放大/i)) caps.add("放大");
+  if (anyField(/inpaint|遮罩|mask/i)) caps.add("局部重绘");
+  return Array.from(caps);
+}
+
+/** Run an async fn over items with a bounded concurrency (keeps the LLM gateway
+ *  happy while being far faster than the old one-at-a-time loop). */
+async function mapLimit<T, R>(items: T[], limit: number, fn: (t: T) => Promise<R>): Promise<R[]> {
+  const results: R[] = new Array(items.length);
+  let next = 0;
+  const worker = async () => {
+    while (next < items.length) {
+      const i = next++;
+      results[i] = await fn(items[i]);
+    }
+  };
+  await Promise.all(Array.from({ length: Math.min(limit, items.length) }, worker));
+  return results;
+}
+
 /**
  * Analyze one ComfyUI template: structural parse (analyzeWorkflow) + an LLM
  * functional summary. Degrades gracefully when there is no workflowJson or the
@@ -60,8 +91,10 @@ export async function analyzeTemplate(template: ComfyNodeTemplateRow, model: str
   }
 
   // LLM functional summary (JSON-prompt + regex parse — proven pattern here).
+  // Seed capabilities structurally so they're never empty even if the LLM fails;
+  // the LLM call below enriches/refines them.
   let functionSummary = template.note?.trim() || template.label;
-  let capabilities: string[] = [];
+  let capabilities: string[] = heuristicCapabilities(params, outputType);
   try {
     const paramBrief = params.slice(0, 30).map((p) => `${p.label}(${p.type}${p.role ? `,${p.role}` : ""})`).join("; ");
     const sys = `你是 ComfyUI 工作流专家。根据给定模板信息，用中文总结其功能与能力。严格只输出一个 JSON 对象（无 markdown、无多余文字）：{"functionSummary":"一句话功能说明","capabilities":["能力标签",...]}。capabilities 示例：文生图、图生图、文生视频、图生视频、LoRA微调、ControlNet、放大、换脸、风格迁移。`;
@@ -85,9 +118,13 @@ ${workflowJson ? `工作流JSON(截断)：\n${workflowJson.slice(0, 6000)}` : ""
     if (m) {
       const parsed = JSON.parse(m[0]) as { functionSummary?: unknown; capabilities?: unknown };
       if (typeof parsed.functionSummary === "string" && parsed.functionSummary.trim()) functionSummary = parsed.functionSummary.trim();
-      if (Array.isArray(parsed.capabilities)) capabilities = parsed.capabilities.filter((c): c is string => typeof c === "string").slice(0, 12);
+      if (Array.isArray(parsed.capabilities)) {
+        const llmCaps = parsed.capabilities.filter((c): c is string => typeof c === "string");
+        // Merge LLM caps with the structural ones (structural first, deduped).
+        capabilities = Array.from(new Set([...capabilities, ...llmCaps])).slice(0, 12);
+      }
     }
-  } catch { /* LLM failed → keep label/note-based summary */ }
+  } catch { /* LLM failed → keep heuristic capabilities + label/note summary */ }
 
   return {
     templateId: template.id,
@@ -144,6 +181,15 @@ export async function runLibraryAnalysis(
   const analyses = await db.listComfyTemplateAnalysis();
   const byId = new Map(analyses.map((a) => [a.templateId, a]));
 
+  // Prune orphan analyses (template deleted but its analysis row lingered) so the
+  // table stays clean and consumers never see stale rows. Best-effort.
+  const validIds = new Set(templates.map((t) => t.id));
+  for (const a of analyses) {
+    if (!validIds.has(a.templateId)) {
+      try { await db.deleteComfyTemplateAnalysis(a.templateId); } catch { /* non-fatal */ }
+    }
+  }
+
   let toAnalyze = templates.filter((t) => {
     if (opts.full) return true;
     const a = byId.get(t.id);
@@ -156,10 +202,14 @@ export async function runLibraryAnalysis(
   const pending = toAnalyze.length;
   if (opts.max != null && toAnalyze.length > opts.max) toAnalyze = toAnalyze.slice(0, opts.max);
 
-  let analyzed = 0, failed = 0;
-  for (const t of toAnalyze) {
-    try { await db.upsertComfyTemplateAnalysis(await analyzeTemplate(t, model)); analyzed++; }
-    catch { failed++; }
-  }
+  // Bounded-concurrency analysis (was sequential — far too slow once the agent
+  // analyzes the whole library on a comfyOnly turn). Failures are logged, not
+  // swallowed silently, so a recurring parse/LLM problem is diagnosable.
+  const outcomes = await mapLimit(toAnalyze, 4, async (t) => {
+    try { await db.upsertComfyTemplateAnalysis(await analyzeTemplate(t, model)); return true; }
+    catch (e) { console.warn(`[templateAnalysis] failed for template id=${t.id} 「${t.label}」:`, e instanceof Error ? e.message : e); return false; }
+  });
+  const analyzed = outcomes.filter(Boolean).length;
+  const failed = outcomes.length - analyzed;
   return { total: templates.length, analyzed, failed, skipped: templates.length - pending };
 }
