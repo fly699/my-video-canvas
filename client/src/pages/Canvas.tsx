@@ -1897,8 +1897,8 @@ function CanvasInner({ projectId }: { projectId: number }) {
             edgesFocusable={!isReadOnly}
             elementsSelectable
             selectionMode={SelectionMode.Partial}
-            selectionKeyCode="Control"
-            panOnDrag={[0, 1, 2]}
+            selectionOnDrag
+            panOnDrag={[1, 2]}
             panOnScroll
             panOnScrollMode={PanOnScrollMode.Free}
             zoomOnScroll={false}
