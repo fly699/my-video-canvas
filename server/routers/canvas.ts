@@ -2010,7 +2010,7 @@ export const mergeRouter = router({
   mergeVideos: protectedProcedure
     .input(
       z.object({
-        inputUrls: z.array(mediaUrlSchema).min(2).max(10),
+        inputUrls: z.array(mediaUrlSchema).min(2).max(50),
         transition: z.enum(["none", "fade", "dissolve"]).optional(),
         transitionDuration: z.number().min(0.1).max(2.0).optional(),
         bgMusicUrl: mediaUrlSchema.optional(),
