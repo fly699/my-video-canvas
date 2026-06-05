@@ -64,12 +64,16 @@ export const comfyTemplatesRouter = router({
       return toClient(row);
     }),
 
-  // Rename / edit note — creator or admin only.
+  // Rename / edit note, or OVERWRITE the saved params (payload/thumbnail/useCloud)
+  // from a node — creator or admin only.
   update: protectedProcedure
     .input(z.object({
       id: z.number(),
       label: z.string().trim().min(1).max(COMFY_TEMPLATE_LIMITS.MAX_LABEL_LEN).optional(),
       note: z.string().max(COMFY_TEMPLATE_LIMITS.MAX_NOTE_LEN).optional(),
+      payload: z.record(z.string(), z.unknown()).optional(),
+      thumbnail: z.string().max(2048).optional(),
+      useCloud: z.boolean().optional(),
     }))
     .mutation(async ({ ctx, input }) => {
       const existing = await db.getComfyNodeTemplate(input.id);
@@ -77,10 +81,23 @@ export const comfyTemplatesRouter = router({
       if (existing.userId !== ctx.user.id && ctx.user.role !== "admin") {
         throw new TRPCError({ code: "FORBIDDEN", message: "只能修改自己创建的模板" });
       }
+      let payload: Record<string, unknown> | undefined;
+      if (input.payload !== undefined) {
+        payload = sanitizeComfyPayload(input.payload as Record<string, unknown>);
+        if (JSON.stringify(payload).length > COMFY_TEMPLATE_LIMITS.MAX_JSON) {
+          throw new TRPCError({ code: "BAD_REQUEST", message: "模板内容过大" });
+        }
+      }
       await db.updateComfyNodeTemplate(input.id, {
         ...(input.label !== undefined ? { label: input.label.trim() } : {}),
         ...(input.note !== undefined ? { note: input.note.trim() || null } : {}),
+        ...(payload !== undefined ? { payload } : {}),
+        ...(input.thumbnail !== undefined ? { thumbnail: input.thumbnail || null } : {}),
+        ...(input.useCloud !== undefined ? { useCloud: existing.nodeType === "comfyui_workflow" ? !!input.useCloud : null } : {}),
       });
+      // Overwriting the params invalidates the stored functional analysis — drop
+      // it so the agent re-analyzes this template on next library analysis.
+      if (payload !== undefined) await db.deleteComfyTemplateAnalysis(input.id);
       return { success: true };
     }),
 

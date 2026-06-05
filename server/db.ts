@@ -1872,7 +1872,7 @@ export async function createComfyNodeTemplate(data: InsertComfyNodeTemplate): Pr
 
 export async function updateComfyNodeTemplate(
   id: number,
-  patch: Partial<Pick<InsertComfyNodeTemplate, "label" | "note">>,
+  patch: Partial<Pick<InsertComfyNodeTemplate, "label" | "note" | "payload" | "thumbnail" | "useCloud">>,
 ): Promise<void> {
   const db = await getDb();
   if (!db) { if (DEV_MODE) { dev.devUpdateComfyNodeTemplate(id, patch); return; } throw new Error("DB unavailable"); }

@@ -1091,12 +1091,15 @@ export function devCreateComfyNodeTemplate(data: InsertComfyNodeTemplate): Comfy
 
 export function devUpdateComfyNodeTemplate(
   id: number,
-  patch: Partial<Pick<InsertComfyNodeTemplate, "label" | "note">>,
+  patch: Partial<Pick<InsertComfyNodeTemplate, "label" | "note" | "payload" | "thumbnail" | "useCloud">>,
 ): void {
   const r = comfyTemplatesMap.get(id);
   if (!r) return;
   if (patch.label !== undefined) r.label = patch.label;
   if (patch.note !== undefined) r.note = patch.note ?? null;
+  if (patch.payload !== undefined) r.payload = patch.payload;
+  if (patch.thumbnail !== undefined) r.thumbnail = patch.thumbnail ?? null;
+  if (patch.useCloud !== undefined) r.useCloud = patch.useCloud ?? null;
   r.updatedAt = now();
 }
 
