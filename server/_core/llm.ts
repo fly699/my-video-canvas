@@ -346,6 +346,26 @@ export function extractTextContent(response: InvokeResult): string {
   return "";
 }
 
+// Upstream gateway hiccups (Gemini 3 preview especially) intermittently return
+// 5xx "Server exception, please try again later" or 429 rate-limits. These are
+// transient, so retry with exponential backoff before surfacing the error. 4xx
+// (other than 429) are caller-fixable and not retried. Total ≤3 attempts.
+const LLM_MAX_RETRIES = 2;
+const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+const isRetryableStatus = (s: number) => s === 429 || s >= 500;
+const retryBackoffMs = (attempt: number) => 700 * 2 ** attempt + Math.floor(Math.random() * 300);
+
+// Pull the human-readable message out of the gateway's JSON error envelope
+// ({"error":{"message":"…"}}) so the UI shows that instead of a raw JSON blob.
+function friendlyLLMError(status: number, statusText: string, body: string): string {
+  let detail = body;
+  try {
+    const j = JSON.parse(body) as { error?: { message?: string }; message?: string };
+    detail = j?.error?.message ?? j?.message ?? body;
+  } catch { /* not JSON — keep raw */ }
+  return `LLM invoke failed: ${status} ${statusText} – ${detail}`;
+}
+
 export async function invokeLLM(params: InvokeParams): Promise<InvokeResult> {
   const {
     messages,
@@ -392,22 +412,38 @@ export async function invokeLLM(params: InvokeParams): Promise<InvokeResult> {
     payload.response_format = normalizedResponseFormat;
   }
 
-  const response = await fetch(resolveApiUrl(resolvedModel), {
-    method: "POST",
-    headers: {
-      "content-type": "application/json",
-      authorization: `Bearer ${getApiKey(resolvedModel)}`,
-    },
-    body: JSON.stringify(payload),
-    signal: AbortSignal.timeout(120_000),
-  });
+  const url = resolveApiUrl(resolvedModel);
+  const body = JSON.stringify(payload);
+  const authHeader = `Bearer ${getApiKey(resolvedModel)}`;
 
-  if (!response.ok) {
+  let lastError: unknown;
+  for (let attempt = 0; attempt <= LLM_MAX_RETRIES; attempt++) {
+    let response: Response;
+    try {
+      response = await fetch(url, {
+        method: "POST",
+        headers: { "content-type": "application/json", authorization: authHeader },
+        body,
+        signal: AbortSignal.timeout(120_000), // fresh per attempt
+      });
+    } catch (e) {
+      // Network error / timeout → transient; retry unless out of attempts.
+      lastError = e;
+      if (attempt < LLM_MAX_RETRIES) { await sleep(retryBackoffMs(attempt)); continue; }
+      throw e;
+    }
+
+    if (response.ok) return (await response.json()) as InvokeResult;
+
     const errorText = await response.text();
-    throw new Error(
-      `LLM invoke failed: ${response.status} ${response.statusText} – ${errorText}`
-    );
+    // Retry transient upstream errors (5xx / 429); surface caller-fixable 4xx now.
+    if (isRetryableStatus(response.status) && attempt < LLM_MAX_RETRIES) {
+      lastError = new Error(friendlyLLMError(response.status, response.statusText, errorText));
+      await sleep(retryBackoffMs(attempt));
+      continue;
+    }
+    throw new Error(friendlyLLMError(response.status, response.statusText, errorText));
   }
-
-  return (await response.json()) as InvokeResult;
+  // Exhausted retries on network errors.
+  throw lastError instanceof Error ? lastError : new Error("LLM invoke failed");
 }
