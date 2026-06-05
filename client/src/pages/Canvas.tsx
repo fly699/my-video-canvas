@@ -1772,12 +1772,14 @@ function CanvasInner({ projectId }: { projectId: number }) {
                   used in ContextMenu's "Add node" pinned palette. */}
               {sortNodeConfigsForPalette(NODE_TYPE_LIST).map((config) => {
                 const Icon = NODE_ICONS[config.icon] ?? FileText;
+                const soon = config.comingSoon === true;
                 return (
                   <button
                     key={config.type}
                     onClick={() => addNodeAtCenter(config.type)}
-                    className="group/picker flex flex-col items-center gap-2.5 px-2 py-3 rounded-xl transition-all text-center"
-                    style={{ color: "var(--c-t2)" }}
+                    title={soon ? "即将上线" : undefined}
+                    className="group/picker relative flex flex-col items-center gap-2.5 px-2 py-3 rounded-xl transition-all text-center"
+                    style={{ color: "var(--c-t2)", opacity: soon ? 0.5 : 1 }}
                     onMouseEnter={(e) => {
                       const el = e.currentTarget as HTMLElement;
                       el.style.background = "var(--c-elevated)";
@@ -1789,6 +1791,14 @@ function CanvasInner({ projectId }: { projectId: number }) {
                       el.style.color = "var(--c-t2)";
                     }}
                   >
+                    {soon && (
+                      <span
+                        className="absolute top-1 right-1 px-1 rounded text-[8px] font-bold uppercase tracking-wider"
+                        style={{ background: "var(--c-elevated)", color: "var(--c-t4)", border: "1px solid var(--c-bd2)", lineHeight: "12px" }}
+                      >
+                        Soon
+                      </span>
+                    )}
                     <div
                       className="w-10 h-10 rounded-xl flex items-center justify-center flex-shrink-0 transition-all"
                       style={{

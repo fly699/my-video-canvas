@@ -385,10 +385,12 @@ export function ContextMenu({
                   …rest preserves the source order from NODE_CONFIGS. */}
               {sortNodeConfigsForPalette(NODE_TYPE_LIST).map((config) => {
                 const Icon = NODE_ICONS[config.icon] ?? FileText;
+                const soon = config.comingSoon === true;
                 return (
                   <button
                     key={config.type}
                     onClick={() => { onAddNode?.(config.type); if (!persistent) onClose(); }}
+                    title={soon ? "即将上线" : undefined}
                     style={{
                       display: "flex",
                       alignItems: "center",
@@ -403,6 +405,7 @@ export function ContextMenu({
                       color: "var(--c-t2)",
                       borderRadius: 8,
                       transition: "all 120ms ease",
+                      opacity: soon ? 0.5 : 1,
                     }}
                     onMouseEnter={(e) => {
                       (e.currentTarget as HTMLElement).style.background = "var(--c-elevated)";
@@ -424,8 +427,11 @@ export function ContextMenu({
                     >
                       <Icon className="w-3 h-3" style={{ color: config.color }} />
                     </div>
-                    <div>
+                    <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
                       <div style={{ fontWeight: 500, lineHeight: 1.2 }}>{config.label}</div>
+                      {soon && (
+                        <span style={{ fontSize: 8, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.05em", padding: "0 4px", borderRadius: 4, background: "var(--c-elevated)", color: "var(--c-t4)", border: "1px solid var(--c-bd2)", lineHeight: "13px" }}>Soon</span>
+                      )}
                     </div>
                   </button>
                 );
