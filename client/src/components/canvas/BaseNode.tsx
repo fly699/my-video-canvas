@@ -102,6 +102,10 @@ export const BaseNode = memo(function BaseNode({
     const pl = s.nodes.find((n) => n.id === id)?.data.payload as { status?: string; errorMessage?: string } | undefined;
     return pl?.status === "failed" ? (pl.errorMessage || "生成失败") : null;
   });
+  // Subtitle/burning nodes report busy via their own verbs ("transcribing"/
+  // "burning"), not "processing" — recognize all of them so the persistent
+  // progress bar stays visible when those nodes are collapsed too.
+  const genBusy = genStatus === "processing" || genStatus === "transcribing" || genStatus === "burning";
   const pinned = useCanvasStore((s) => {
     const node = s.nodes.find((n) => n.id === id);
     return Boolean((node?.data.payload as Record<string, unknown> | undefined)?.pinned);
@@ -580,7 +584,7 @@ export const BaseNode = memo(function BaseNode({
           Rendered right under the header (outside the collapsing body) so the
           bar stays visible even when the node is collapsed/deselected. Driven by
           the payload's status/progress, so it works for every node uniformly. */}
-      {(genStatus === "processing" || nodeRunning) && (
+      {(genBusy || nodeRunning) && (
         <div
           title={genProgress != null ? `生成中 ${Math.round(genProgress)}%` : "生成中…"}
           style={{ display: "flex", alignItems: "center", gap: 6, padding: "3px 10px", flexShrink: 0, background: "var(--c-node-bg)", borderBottom: "1px solid var(--c-bd1)" }}
@@ -609,7 +613,7 @@ export const BaseNode = memo(function BaseNode({
           Like the progress bar, rendered outside the collapsing body so a failed
           generation is visible even when the node is collapsed (the detailed error
           lives inside the body). */}
-      {genStatus !== "processing" && !nodeRunning && genError && (
+      {!genBusy && !nodeRunning && genError && (
         <div
           title={genError}
           style={{ display: "flex", alignItems: "center", gap: 5, padding: "3px 10px", flexShrink: 0, background: "oklch(0.62 0.20 25 / 0.12)", borderBottom: "1px solid var(--c-bd1)" }}

@@ -242,7 +242,14 @@ export const AgentNode = memo(function AgentNode({ id, selected, data }: Props) 
       // model's per-shot cap into many shots, let the user choose how to proceed
       // before applying (instead of silently auto-applying a 12-shot plan).
       if (r.plan && r.plan.targetSeconds > r.plan.perShotSeconds && r.operations.length > 0) {
-        setCapacityPlan({ plan: r.plan, msgIdx: assistantIdx, ops: r.operations });
+        // When "自动应用 / 一句话成片" is on, keep it fully automatic: the plan has
+        // already been split into enough shots, so apply it as-is instead of
+        // blocking on the capacity dialog (which would defeat hands-off mode).
+        if (autoApply) {
+          handleApply(assistantIdx, r.operations);
+        } else {
+          setCapacityPlan({ plan: r.plan, msgIdx: assistantIdx, ops: r.operations });
+        }
       } else if (autoApply && r.operations.length > 0) {
         handleApply(assistantIdx, r.operations);
       }
@@ -458,20 +465,29 @@ export const AgentNode = memo(function AgentNode({ id, selected, data }: Props) 
                       </div>
                     ) : null;
                   })()}
+                  {(() => {
+                    // "Applied" must survive node re-render / reopen: apply stamps each
+                    // op with a status and persists it, so derive from that too — not
+                    // just the in-memory appliedIdx (which resets), else a reopened plan
+                    // shows "应用" again and a second click duplicates every node.
+                    const applied = appliedIdx.has(i) || m.operations!.some((op) => !!op.status);
+                    return (
                   <button
                     onClick={() => handleApply(i, m.operations!)}
-                    disabled={appliedIdx.has(i)}
+                    disabled={applied}
                     className="nodrag"
                     style={{
-                      width: "100%", padding: "6px", fontSize: 11, fontWeight: 600, cursor: appliedIdx.has(i) ? "default" : "pointer",
-                      background: appliedIdx.has(i) ? "var(--c-surface)" : accentA(0.18),
-                      color: appliedIdx.has(i) ? "var(--c-t4)" : accent,
+                      width: "100%", padding: "6px", fontSize: 11, fontWeight: 600, cursor: applied ? "default" : "pointer",
+                      background: applied ? "var(--c-surface)" : accentA(0.18),
+                      color: applied ? "var(--c-t4)" : accent,
                       border: "none", borderTop: `1px solid ${accentA(0.25)}`,
                       display: "flex", alignItems: "center", justifyContent: "center", gap: 5,
                     }}
                   >
-                    {appliedIdx.has(i) ? <><Check className="w-3.5 h-3.5" />已应用到画布</> : <><Sparkles className="w-3.5 h-3.5" />应用到画布（{m.operations.length} 步）</>}
+                    {applied ? <><Check className="w-3.5 h-3.5" />已应用到画布</> : <><Sparkles className="w-3.5 h-3.5" />应用到画布（{m.operations.length} 步）</>}
                   </button>
+                    );
+                  })()}
                 </div>
               )}
             </div>

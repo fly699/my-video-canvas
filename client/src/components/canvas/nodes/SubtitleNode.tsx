@@ -68,7 +68,7 @@ export const SubtitleNode = memo(function SubtitleNode({ id, selected, data }: P
 
   const update = useCallback((patch: Partial<SubtitleNodeData>) => updateNodeData(id, patch), [id, updateNodeData]);
 
-  const VIDEO_SOURCE_TYPES = new Set(["video_task", "clip", "merge", "overlay", "asset", "subtitle", "subtitle_motion", "smart_cut"]);
+  const VIDEO_SOURCE_TYPES = new Set(["video_task", "clip", "merge", "overlay", "asset", "subtitle", "subtitle_motion", "smart_cut", "comfyui_video", "comfyui_workflow"]);
 
   // Find connected video URL from source nodes (excludes audio nodes and audio-mime assets)
   const findSourceVideoUrl = (): string | undefined => {
@@ -405,7 +405,7 @@ export const SubtitleNode = memo(function SubtitleNode({ id, selected, data }: P
                 <label style={labelStyle}>烧录后视频</label>
                 <video
                   key={payload.outputUrl}
-                  src={`/api/video-proxy?url=${encodeURIComponent(payload.outputUrl)}`}
+                  src={mediaFetchUrl(payload.outputUrl)}
                   controls
                   className="w-full rounded-lg nodrag"
                   style={{ maxHeight: 120, display: "block", border: `1px solid ${accentA(0.4)}` }}
