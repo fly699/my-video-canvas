@@ -747,6 +747,25 @@ export async function deleteAssetAdmin(ids: number[]) {
   await db.update(assets).set({ deletedAt: new Date() }).where(inArray(assets.id, ids));
 }
 
+// Resolve storage keys for a set of asset ids (admin, no user scope, includes
+// already soft-deleted rows) — used by the hard-delete path to know which MinIO
+// objects to physically remove before deleting the rows.
+export async function getAssetStorageKeysByIds(ids: number[]): Promise<{ id: number; storageKey: string | null }[]> {
+  if (ids.length === 0) return [];
+  const db = await getDb();
+  if (!db) { if (DEV_MODE) return dev.devGetAssetStorageKeysByIds(ids); return []; }
+  return db.select({ id: assets.id, storageKey: assets.storageKey }).from(assets).where(inArray(assets.id, ids));
+}
+
+// Admin HARD delete (no user scope): physically remove the rows. The caller must
+// delete the MinIO objects first. Irreversible — used by the "彻底删除" action.
+export async function hardDeleteAssetsAdmin(ids: number[]) {
+  if (ids.length === 0) return;
+  const db = await getDb();
+  if (!db) { if (DEV_MODE) { dev.devHardDeleteAssetsAdmin(ids); return; } throw new Error("DB unavailable"); }
+  await db.delete(assets).where(inArray(assets.id, ids));
+}
+
 // ── Download authorization ─────────────────────────────────────────────────
 // Find an asset row by its storageKey (any owner) — lets the download gateway
 // resolve a file's assetId/projectId/owner from just the storage key.

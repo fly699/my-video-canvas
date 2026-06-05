@@ -136,6 +136,21 @@ export const adminDownloadsRouter = router({
       return grant;
     }),
 
+  // Resolve a target user (by email) and/or a project (by id) so the proactive-
+  // grant form can confirm "who / which project" before granting. Either side may
+  // be omitted; missing/not-found resolves to null.
+  lookup: adminProcedure
+    .input(z.object({ email: z.string().max(200).optional(), projectId: z.number().optional() }))
+    .query(async ({ input }) => {
+      const email = input.email?.trim();
+      const user = email ? await db.findUserByEmail(email) : null;
+      const project = input.projectId != null ? await db.getProjectByIdRaw(input.projectId) : null;
+      return {
+        user: user ? { id: user.id, name: user.name ?? null, email: user.email ?? null } : null,
+        project: project ? { id: project.id, name: project.name, ownerId: project.userId } : null,
+      };
+    }),
+
   // Cheap count of un-handled requests — drives the global admin badge.
   pendingCount: adminProcedure.query(async () => (await db.listDownloadGrants({ status: "pending", limit: 500 })).length),
 

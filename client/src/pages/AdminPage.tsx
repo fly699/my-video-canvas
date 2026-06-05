@@ -1243,6 +1243,31 @@ function DownloadsAdminPanel() {
   const [status, setStatus] = useState<"pending" | "active" | "revoked" | "denied" | "">("pending");
   const [approveHours, setApproveHours] = useState(1);
   const [preview, setPreview] = useState<AdminAsset | null>(null);
+  // 主动授权表单状态
+  const [showGrant, setShowGrant] = useState(false);
+  const [grantEmail, setGrantEmail] = useState("");
+  const [grantProjectId, setGrantProjectId] = useState("");
+  const [grantAmount, setGrantAmount] = useState(7);
+  const [grantUnit, setGrantUnit] = useState<"hour" | "day">("day");
+  const [grantForever, setGrantForever] = useState(false);
+  const [grantNote, setGrantNote] = useState("");
+  // 实时倒计时：每秒推进一个 now 时间戳，驱动「剩余有效期」显示。
+  const [nowTs, setNowTs] = useState(() => Date.now());
+  useEffect(() => { const t = setInterval(() => setNowTs(Date.now()), 1000); return () => clearInterval(t); }, []);
+  const fmtRemain = (exp: string | number | Date): string => {
+    const ms = new Date(exp).getTime() - nowTs;
+    if (ms <= 0) return "已过期";
+    const s = Math.floor(ms / 1000), d = Math.floor(s / 86400), h = Math.floor((s % 86400) / 3600), m = Math.floor((s % 3600) / 60), sec = s % 60;
+    if (d > 0) return `${d}天 ${h}时 ${m}分`;
+    if (h > 0) return `${h}时 ${m}分 ${sec}秒`;
+    if (m > 0) return `${m}分 ${sec}秒`;
+    return `${sec}秒`;
+  };
+  const projectIdNum = Number(grantProjectId) || undefined;
+  const lookup = trpc.admin.downloads.lookup.useQuery(
+    { email: grantEmail.trim() || undefined, projectId: projectIdNum },
+    { enabled: showGrant && (!!grantEmail.trim() || projectIdNum != null) },
+  );
   const { data: grants, isFetching } = trpc.admin.downloads.list.useQuery({ status: status || undefined, limit: 300 });
   const onDone = () => void utils.admin.downloads.list.invalidate();
   const decideMut = trpc.admin.downloads.decide.useMutation({ onSuccess: onDone });
@@ -1264,6 +1289,67 @@ function DownloadsAdminPanel() {
     <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
       <div style={{ fontSize: 12.5, color: "var(--c-t2, rgba(255,255,255,0.55))", lineHeight: 1.6 }}>
         在「存储设置 → 严格下载授权」开启后，非管理员下载原文件须持「一次性授权」。可在此审批用户申请、查证文件，或主动按文件/整个项目授权。每张授权对每个文件仅可成功下载一次。
+      </div>
+
+      {/* 主动授权（无需用户提交申请）— 直接给某用户授权某项目，可指定任意有效期 */}
+      <div style={{ border: "1px solid oklch(0.72 0.2 285 / 0.3)", borderRadius: 8, overflow: "hidden", background: "oklch(0.72 0.2 285 / 0.04)" }}>
+        <button onClick={() => setShowGrant((v) => !v)} style={{ width: "100%", display: "flex", alignItems: "center", justifyContent: "space-between", padding: "9px 12px", background: "transparent", border: "none", color: "oklch(0.8 0.16 285)", fontSize: 13, fontWeight: 600, cursor: "pointer" }}>
+          <span>＋ 主动授权（无需用户申请，直接授权整个项目）</span>
+          <span style={{ fontSize: 11, opacity: 0.7 }}>{showGrant ? "收起" : "展开"}</span>
+        </button>
+        {showGrant && (() => {
+          const u = lookup.data?.user; const p = lookup.data?.project;
+          const canGrant = !!u && !!p && !grantMut.isPending;
+          const inp: React.CSSProperties = { fontSize: 12.5, padding: "6px 9px", borderRadius: 7, border: "1px solid rgba(255,255,255,0.14)", background: "rgba(255,255,255,0.04)", color: "var(--c-t1,#f0f0f4)", width: "100%" };
+          const submit = () => {
+            if (!u || !p) return;
+            const expiresAt = grantForever ? undefined : Date.now() + grantAmount * (grantUnit === "day" ? 86400_000 : 3600_000);
+            grantMut.mutate(
+              { userId: u.id, scope: "project", projectId: p.id, note: grantNote.trim() || undefined, expiresAt },
+              { onSuccess: () => { setStatus("active"); setGrantEmail(""); setGrantProjectId(""); setGrantNote(""); } },
+            );
+          };
+          return (
+            <div style={{ padding: "4px 12px 12px", display: "flex", flexDirection: "column", gap: 10 }}>
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
+                <div>
+                  <label style={{ fontSize: 11, color: "var(--c-t3,rgba(255,255,255,0.5))" }}>用户邮箱</label>
+                  <input value={grantEmail} onChange={(e) => setGrantEmail(e.target.value)} placeholder="user@example.com" style={inp} />
+                  <div style={{ fontSize: 11, marginTop: 3, color: u ? "oklch(0.74 0.18 155)" : "oklch(0.7 0.18 25)" }}>
+                    {grantEmail.trim() ? (lookup.isFetching ? "查找中…" : u ? `✓ ${u.name ?? u.email ?? `用户 ${u.id}`}（id ${u.id}）` : "未找到该邮箱用户") : "　"}
+                  </div>
+                </div>
+                <div>
+                  <label style={{ fontSize: 11, color: "var(--c-t3,rgba(255,255,255,0.5))" }}>项目 ID</label>
+                  <input value={grantProjectId} onChange={(e) => setGrantProjectId(e.target.value.replace(/[^0-9]/g, ""))} placeholder="如 123" inputMode="numeric" style={inp} />
+                  <div style={{ fontSize: 11, marginTop: 3, color: p ? "oklch(0.74 0.18 155)" : "oklch(0.7 0.18 25)" }}>
+                    {projectIdNum != null ? (lookup.isFetching ? "查找中…" : p ? `✓ ${p.name}` : "未找到该项目") : "　"}
+                  </div>
+                </div>
+              </div>
+              <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+                <span style={{ fontSize: 12, color: "var(--c-t3,rgba(255,255,255,0.5))" }}>有效期</span>
+                <input type="number" min={1} disabled={grantForever} value={grantAmount} onChange={(e) => setGrantAmount(Math.max(1, Math.round(Number(e.target.value) || 1)))} style={{ ...inp, width: 80, opacity: grantForever ? 0.5 : 1 }} />
+                <select disabled={grantForever} value={grantUnit} onChange={(e) => setGrantUnit(e.target.value as "hour" | "day")} style={{ ...inp, width: 80, opacity: grantForever ? 0.5 : 1 }}>
+                  <option value="hour">小时</option>
+                  <option value="day">天</option>
+                </select>
+                <label style={{ display: "inline-flex", alignItems: "center", gap: 5, fontSize: 12, color: "var(--c-t2,rgba(255,255,255,0.6))", cursor: "pointer" }}>
+                  <input type="checkbox" checked={grantForever} onChange={(e) => setGrantForever(e.target.checked)} /> 永久有效
+                </label>
+                {!grantForever && <span style={{ fontSize: 11, color: "var(--c-t4,rgba(255,255,255,0.35))" }}>到期：{new Date(Date.now() + grantAmount * (grantUnit === "day" ? 86400_000 : 3600_000)).toLocaleString("zh-CN")}</span>}
+              </div>
+              <input value={grantNote} onChange={(e) => setGrantNote(e.target.value)} placeholder="备注（可选，记入授权与日志）" style={inp} />
+              <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                <button disabled={!canGrant} onClick={submit}
+                  style={{ fontSize: 12.5, fontWeight: 600, padding: "7px 16px", borderRadius: 7, border: "1px solid oklch(0.72 0.2 285)", background: canGrant ? "oklch(0.72 0.2 285 / 0.18)" : "transparent", color: "oklch(0.82 0.16 285)", cursor: canGrant ? "pointer" : "not-allowed", opacity: canGrant ? 1 : 0.5 }}>
+                  {grantMut.isPending ? "授权中…" : "授权该用户下载此项目"}
+                </button>
+                <span style={{ fontSize: 11, color: "var(--c-t4,rgba(255,255,255,0.35))" }}>授权后立即生效（status=active），并记入审计日志</span>
+              </div>
+            </div>
+          );
+        })()}
       </div>
       <div style={{ display: "flex", gap: 6, flexWrap: "wrap", alignItems: "center" }}>
         {([["pending", "待审批"], ["active", "已授权"], ["denied", "已拒绝"], ["revoked", "已撤销"], ["", "全部"]] as const).map(([v, l]) => (
@@ -1308,7 +1394,9 @@ function DownloadsAdminPanel() {
                 {g.projectName ? ` · 项目：${g.projectName}` : ""}
                 {g.reason ? ` · 理由：${g.reason}` : ""}{g.note ? ` · 备注：${g.note}` : ""}
                 {" · 申请："}{new Date(g.createdAt).toLocaleString("zh-CN")}
-                {g.status === "active" && g.expiresAt ? ` · 有效期至：${new Date(g.expiresAt).toLocaleString("zh-CN")}` : ""}
+                {g.status === "active" && (g.expiresAt
+                  ? <span style={{ color: new Date(g.expiresAt).getTime() - nowTs <= 0 ? "oklch(0.7 0.18 25)" : "oklch(0.78 0.16 85)", fontWeight: 600 }}>{" · 剩余 "}{fmtRemain(g.expiresAt)}<span style={{ fontWeight: 400, color: "var(--c-t4,rgba(255,255,255,0.35))" }}>（至 {new Date(g.expiresAt).toLocaleString("zh-CN")}）</span></span>
+                  : <span style={{ color: "oklch(0.72 0.18 155)", fontWeight: 600 }}>{" · 永久有效"}</span>)}
               </div>
             </div>
             <div style={{ display: "flex", gap: 6, flexShrink: 0, alignItems: "center" }}>
@@ -1411,6 +1499,14 @@ function AssetsAdminPanel() {
   const deleteMut = trpc.admin.assets.delete.useMutation({
     onSuccess: (r) => { setSelected(new Set()); void utils.admin.assets.list.invalidate(); void utils.admin.assets.backfillStatus.invalidate(); void r; },
   });
+  const hardDeleteMut = trpc.admin.assets.hardDelete.useMutation({
+    onSuccess: (r) => {
+      setSelected(new Set());
+      void utils.admin.assets.list.invalidate();
+      void utils.admin.assets.backfillStatus.invalidate();
+      alert(`已彻底删除 ${r.count} 条记录；物理删除 MinIO 对象 ${r.objectsDeleted} 个${r.objectsFailed ? `，${r.objectsFailed} 个未能删除（非 S3/MinIO 后端或对象不存在）` : ""}。`);
+    },
+  });
   const list = (assets ?? []) as AdminAsset[];
   const selecting = selected.size > 0;
   const allSelected = list.length > 0 && list.every((a) => selected.has(a.id));
@@ -1424,6 +1520,17 @@ function AssetsAdminPanel() {
     if (ids.length === 0) return;
     if (!confirm(`确认删除选中的 ${ids.length} 个素材？（软删除：保留文件，仅从素材库隐藏）`)) return;
     deleteMut.mutate({ ids });
+  };
+  // 彻底删除（仅管理员，服务端 adminProcedure 再校验）：物理删 MinIO 对象 + 删行，不可恢复。
+  // 二次确认：先警告，再要求输入数量确认，杜绝误触。
+  const handleHardDelete = () => {
+    const ids = Array.from(selected);
+    if (ids.length === 0) return;
+    if (!confirm(`⚠️ 彻底删除选中的 ${ids.length} 个素材？\n\n这将物理删除 MinIO 中的文件对象并删除数据库记录，无法恢复、无法找回！\n（普通"删除"只是隐藏，文件仍保留；彻底删除则真正抹除。）`)) return;
+    const answer = prompt(`此操作不可逆。请输入要删除的数量「${ids.length}」以确认彻底删除：`);
+    if (answer == null) return;
+    if (answer.trim() !== String(ids.length)) { alert("输入与数量不符，已取消。"); return; }
+    hardDeleteMut.mutate({ ids });
   };
 
   // 一键回填历史素材（扫描画布节点，把已在 MinIO 但未入库的图片/视频补入素材库）。
@@ -1522,7 +1629,11 @@ function AssetsAdminPanel() {
           <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
             <button onClick={handleBulkDelete} disabled={deleteMut.isPending}
               style={{ display: "inline-flex", alignItems: "center", gap: 5, fontSize: 12, padding: "5px 11px", borderRadius: 7, border: "1px solid oklch(0.6 0.16 25 / 0.4)", background: "transparent", color: "oklch(0.78 0.16 25)", cursor: deleteMut.isPending ? "not-allowed" : "pointer" }}>
-              {deleteMut.isPending ? <Loader2 className="animate-spin" style={{ width: 13, height: 13 }} /> : <Trash2 style={{ width: 13, height: 13 }} />} 删除选中
+              {deleteMut.isPending ? <Loader2 className="animate-spin" style={{ width: 13, height: 13 }} /> : <Trash2 style={{ width: 13, height: 13 }} />} 删除选中（隐藏）
+            </button>
+            <button onClick={handleHardDelete} disabled={hardDeleteMut.isPending} title="物理删除 MinIO 文件 + 数据库记录，不可恢复（仅管理员）"
+              style={{ display: "inline-flex", alignItems: "center", gap: 5, fontSize: 12, padding: "5px 11px", borderRadius: 7, border: "1px solid oklch(0.6 0.2 25 / 0.7)", background: "oklch(0.6 0.2 25 / 0.12)", color: "oklch(0.82 0.2 25)", fontWeight: 600, cursor: hardDeleteMut.isPending ? "not-allowed" : "pointer" }}>
+              {hardDeleteMut.isPending ? <Loader2 className="animate-spin" style={{ width: 13, height: 13 }} /> : <Trash2 style={{ width: 13, height: 13 }} />} 彻底删除
             </button>
             <button onClick={() => setSelected(new Set())}
               style={{ display: "inline-flex", alignItems: "center", gap: 4, fontSize: 12, padding: "5px 9px", borderRadius: 7, border: "1px solid rgba(255,255,255,0.12)", background: "transparent", color: "var(--c-t3,rgba(255,255,255,0.4))", cursor: "pointer" }}>
@@ -1532,6 +1643,7 @@ function AssetsAdminPanel() {
         )}
       </div>
       {deleteMut.error && <div style={{ fontSize: 11.5, color: "oklch(0.7 0.18 25)" }}>删除失败：{deleteMut.error.message}</div>}
+      {hardDeleteMut.error && <div style={{ fontSize: 11.5, color: "oklch(0.7 0.18 25)" }}>彻底删除失败：{hardDeleteMut.error.message}</div>}
       <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(160px, 1fr))", gap: 10 }}>
         {list.map((a) => {
           const isSel = selected.has(a.id);
