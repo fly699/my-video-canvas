@@ -1,5 +1,6 @@
 import { memo, useCallback } from "react";
 import { BaseNode } from "../BaseNode";
+import { isOwnStorageUrl } from "@/lib/ownStorage";
 import { useCanvasStore } from "../../../hooks/useCanvasStore";
 import type { OverlayNodeData } from "../../../../../shared/types";
 import { trpc } from "@/lib/trpc";
@@ -342,7 +343,7 @@ export const OverlayNode = memo(function OverlayNode({ id, selected, data }: Pro
         {/* Result video */}
         {isDone && payload.outputUrl && videoSrc && (
           <div className="flex-shrink-0">
-            <div className="rounded-lg overflow-hidden" style={{ borderWidth: 1, borderStyle: "solid", borderColor: "oklch(0.65 0.18 155 / 0.35)" }}>
+            <div className="relative rounded-lg overflow-hidden" style={{ borderWidth: 1, borderStyle: "solid", borderColor: "oklch(0.65 0.18 155 / 0.35)" }}>
               <video
                 key={videoSrc}
                 src={videoSrc}
@@ -351,6 +352,13 @@ export const OverlayNode = memo(function OverlayNode({ id, selected, data }: Pro
                 style={{ maxHeight: 140, display: "block" }}
                 preload="metadata"
               />
+              {isOwnStorageUrl(payload.outputUrl) && (
+                <div
+                  title="已存储到 MinIO·长期有效"
+                  className="absolute top-1.5 left-1.5 z-10 rounded-full pointer-events-none"
+                  style={{ width: 10, height: 10, background: "oklch(0.72 0.18 155)", boxShadow: "0 0 0 2.5px oklch(0.72 0.18 155 / 0.35)" }}
+                />
+              )}
             </div>
             <a
               href={mediaFetchUrl(payload.outputUrl, true)}

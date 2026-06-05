@@ -1,5 +1,6 @@
 import { memo, useState, useCallback } from "react";
 import { BaseNode } from "../BaseNode";
+import { isOwnStorageUrl } from "@/lib/ownStorage";
 import { useCanvasStore } from "../../../hooks/useCanvasStore";
 import type { SubtitleNodeData, SubtitleEntry } from "../../../../../shared/types";
 import { trpc } from "@/lib/trpc";
@@ -403,14 +404,20 @@ export const SubtitleNode = memo(function SubtitleNode({ id, selected, data }: P
             {payload.outputUrl && (
               <div className="flex flex-col gap-1.5">
                 <label style={labelStyle}>烧录后视频</label>
-                <video
-                  key={payload.outputUrl}
-                  src={mediaFetchUrl(payload.outputUrl)}
-                  controls
-                  className="w-full rounded-lg nodrag"
-                  style={{ maxHeight: 120, display: "block", border: `1px solid ${accentA(0.4)}` }}
-                  preload="metadata"
-                />
+                <div className="relative">
+                  <video
+                    key={payload.outputUrl}
+                    src={mediaFetchUrl(payload.outputUrl)}
+                    controls
+                    className="w-full rounded-lg nodrag"
+                    style={{ maxHeight: 120, display: "block", border: `1px solid ${accentA(0.4)}` }}
+                    preload="metadata"
+                  />
+                  {isOwnStorageUrl(payload.outputUrl) && (
+                    <div title="已存储到 MinIO·长期有效" className="absolute top-1.5 left-1.5 z-10 rounded-full pointer-events-none"
+                      style={{ width: 10, height: 10, background: "oklch(0.72 0.18 155)", boxShadow: "0 0 0 2.5px oklch(0.72 0.18 155 / 0.35)" }} />
+                  )}
+                </div>
                 <a
                   href={mediaFetchUrl(payload.outputUrl, true)}
                   onClick={onDownloadMedia(payload.outputUrl, "字幕视频.mp4")}

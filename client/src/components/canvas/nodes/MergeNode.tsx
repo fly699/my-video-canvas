@@ -5,6 +5,7 @@ import type { MergeNodeData, MergeTransition } from "../../../../../shared/types
 import { trpc } from "@/lib/trpc";
 import { toast } from "sonner";
 import { mediaFetchUrl } from "@/lib/download";
+import { isOwnStorageUrl } from "@/lib/ownStorage";
 import { NodeTextArea } from "../NodeTextInput";
 import { compareUpstreamNodes } from "../../../lib/inputOrder";
 import { Merge, Loader2, RotateCcw, Music, ChevronDown, GripVertical, X } from "lucide-react";
@@ -226,14 +227,23 @@ export const MergeNode = memo(function MergeNode({ id, selected, data }: Props) 
             resized (was locked at 140px). */}
         {isDone && payload.outputUrl && (
           <div className="flex flex-col gap-1.5 flex-1" style={{ minHeight: 0 }}>
-            <video
-              key={payload.outputUrl}
-              src={mediaFetchUrl(payload.outputUrl)}
-              controls
-              className="w-full rounded-lg nodrag"
-              style={{ flex: 1, minHeight: 180, width: "100%", objectFit: "contain", display: "block", border: `1px solid ${accentA(0.4)}`, background: "#000" }}
-              preload="metadata"
-            />
+            <div className="relative" style={{ flex: 1, minHeight: 0, display: "flex" }}>
+              <video
+                key={payload.outputUrl}
+                src={mediaFetchUrl(payload.outputUrl)}
+                controls
+                className="w-full rounded-lg nodrag"
+                style={{ flex: 1, minHeight: 180, width: "100%", objectFit: "contain", display: "block", border: `1px solid ${accentA(0.4)}`, background: "#000" }}
+                preload="metadata"
+              />
+              {isOwnStorageUrl(payload.outputUrl) && (
+                <div
+                  title="已存储到 MinIO·长期有效"
+                  className="absolute top-1.5 left-1.5 z-10 rounded-full pointer-events-none"
+                  style={{ width: 10, height: 10, background: "oklch(0.72 0.18 155)", boxShadow: "0 0 0 2.5px oklch(0.72 0.18 155 / 0.35)" }}
+                />
+              )}
+            </div>
             {/* Bottom controls hide when the node is collapsed — the output
                 video preview stays, but the reset button only shows expanded. */}
             {expanded && (

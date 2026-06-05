@@ -1,6 +1,7 @@
 import { memo, useCallback, useMemo, useRef, useState } from "react";
 import { useShallow } from "zustand/react/shallow";
 import { BaseNode } from "../BaseNode";
+import { isOwnStorageUrl } from "@/lib/ownStorage";
 import { MediaImage } from "../MediaImage";
 import { useCanvasStore } from "../../../hooks/useCanvasStore";
 import type { CharacterNodeData, CharacterKind, StoryboardNodeData } from "../../../../../shared/types";
@@ -208,12 +209,18 @@ export const CharacterNode = memo(function CharacterNode({ id, selected, data }:
   );
 
   const heroMedia = payload.referenceImageUrl ? (
-    <MediaImage
-      src={payload.referenceImageUrl}
-      alt="参考图"
-      style={{ width: "100%", maxHeight: 240, objectFit: "cover", display: "block" }}
-      draggable={false}
-    />
+    <div className="relative" style={{ width: "100%" }}>
+      <MediaImage
+        src={payload.referenceImageUrl}
+        alt="参考图"
+        style={{ width: "100%", maxHeight: 240, objectFit: "cover", display: "block" }}
+        draggable={false}
+      />
+      {isOwnStorageUrl(payload.referenceImageUrl) && (
+        <div title="已存储到 MinIO·长期有效" className="absolute top-1.5 left-1.5 z-10 rounded-full pointer-events-none"
+          style={{ width: 10, height: 10, background: "oklch(0.72 0.18 155)", boxShadow: "0 0 0 2.5px oklch(0.72 0.18 155 / 0.35)" }} />
+      )}
+    </div>
   ) : null;
 
   return (
@@ -263,6 +270,10 @@ export const CharacterNode = memo(function CharacterNode({ id, selected, data }:
                 className="w-full object-cover"
                 style={{ maxHeight: 140 }}
               />
+              {isOwnStorageUrl(payload.referenceImageUrl) && (
+                <div title="已存储到 MinIO·长期有效" className="absolute top-1.5 left-1.5 z-10 rounded-full pointer-events-none"
+                  style={{ width: 10, height: 10, background: "oklch(0.72 0.18 155)", boxShadow: "0 0 0 2.5px oklch(0.72 0.18 155 / 0.35)" }} />
+              )}
               <div className="absolute top-1.5 right-1.5 flex gap-1">
                 <button
                   onClick={() => fileInputRef.current?.click()}

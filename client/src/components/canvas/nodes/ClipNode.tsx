@@ -1,6 +1,7 @@
 import { memo, useCallback, useEffect, useRef, useState } from "react";
 import { Handle, Position } from "@xyflow/react";
 import { BaseNode } from "../BaseNode";
+import { isOwnStorageUrl } from "@/lib/ownStorage";
 import { handleStyle } from "../../../lib/handleStyle";
 import { useConnectState } from "../../../hooks/useConnectingStore";
 import { useHoverStore } from "../../../hooks/useHoverStore";
@@ -390,6 +391,13 @@ export const ClipNode = memo(function ClipNode({ id, selected, data }: Props) {
                 onEnded={() => setIsPlaying(false)}
                 preload="metadata"
               />
+              {isOwnStorageUrl(displayUrl) && (
+                <div
+                  title="已存储到 MinIO·长期有效"
+                  className="absolute top-1.5 left-1.5 z-10 rounded-full pointer-events-none"
+                  style={{ width: 10, height: 10, background: "oklch(0.72 0.18 155)", boxShadow: "0 0 0 2.5px oklch(0.72 0.18 155 / 0.35)" }}
+                />
+              )}
               {/* Controls overlay */}
               <div
                 className="absolute bottom-0 left-0 right-0 flex items-center gap-1.5 px-2 py-1.5"

@@ -1,5 +1,6 @@
 import { memo, useCallback, useMemo } from "react";
 import { BaseNode } from "../BaseNode";
+import { isOwnStorageUrl } from "@/lib/ownStorage";
 import { MediaImage } from "../MediaImage";
 import { useCanvasStore } from "../../../hooks/useCanvasStore";
 import { propagateRefImage } from "../../../lib/refImagePropagation";
@@ -149,8 +150,14 @@ export const PoseControlNode = memo(function PoseControlNode({ id, selected, dat
         {payload.outputImageUrl && (
           <div className="flex flex-col gap-1.5">
             <label style={labelStyle}>生成结果</label>
-            <MediaImage src={payload.outputImageUrl} alt="生成结果" className="w-full rounded-lg nodrag"
-              style={{ maxHeight: 160, objectFit: "cover", border: `1px solid ${accentA(0.4)}` }} />
+            <div className="relative">
+              <MediaImage src={payload.outputImageUrl} alt="生成结果" className="w-full rounded-lg nodrag"
+                style={{ maxHeight: 160, objectFit: "cover", border: `1px solid ${accentA(0.4)}` }} />
+              {isOwnStorageUrl(payload.outputImageUrl) && (
+                <div title="已存储到 MinIO·长期有效" className="absolute top-1.5 left-1.5 z-10 rounded-full pointer-events-none"
+                  style={{ width: 10, height: 10, background: "oklch(0.72 0.18 155)", boxShadow: "0 0 0 2.5px oklch(0.72 0.18 155 / 0.35)" }} />
+              )}
+            </div>
             <a href={payload.outputImageUrl} target="_blank" rel="noreferrer"
               className="nodrag flex items-center justify-center gap-1 py-1.5 rounded-lg text-[10px]"
               style={{ background: accentA(0.08), border: `1px solid ${accentA(0.25)}`, color: accent, textDecoration: "none" }}>
