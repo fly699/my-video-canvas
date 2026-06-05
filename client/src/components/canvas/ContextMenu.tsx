@@ -1,7 +1,7 @@
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { usePersistentState } from "../../hooks/usePersistentState";
-import { getNodeConfig, type NodeConfig } from "../../lib/nodeConfig";
-import { NODE_CATEGORIES } from "../../lib/nodeCategories";
+import { NODE_TYPE_LIST, type NodeConfig } from "../../lib/nodeConfig";
+import { sortNodeConfigsForPalette } from "../../lib/nodeOrder";
 import type { NodeType } from "../../../../shared/types";
 import {
   FileText, Copy, Trash2, Plus, Play, Pin, PinOff, ChevronUp, X, GripHorizontal,
@@ -378,12 +378,13 @@ export function ContextMenu({
                   <div style={{ height: 1, background: "var(--c-bd1)", margin: "4px 6px" }} />
                 </>
               )}
-              {/* Grouped by category (same taxonomy as the bottom NodePicker). */}
-              {(() => {
-                const renderItem = (config: NodeConfig) => {
-                  const Icon = NODE_ICONS[config.icon] ?? FileText;
-                  const soon = config.comingSoon === true;
-                  return (
+              {/* Flat list: ComfyUI nodes pinned to the top, rest preserves
+                  the source order from NODE_CONFIGS (same sort as the bottom
+                  NodePicker). */}
+              {sortNodeConfigsForPalette(NODE_TYPE_LIST).map((config: NodeConfig) => {
+                const Icon = NODE_ICONS[config.icon] ?? FileText;
+                const soon = config.comingSoon === true;
+                return (
                   <button
                     key={config.type}
                     onClick={() => { onAddNode?.(config.type); if (!persistent) onClose(); }}
@@ -431,19 +432,8 @@ export function ContextMenu({
                       )}
                     </div>
                   </button>
-                  );
-                };
-                return NODE_CATEGORIES.map((cat) => {
-                  const configs = cat.types.map((t) => getNodeConfig(t)).filter(Boolean) as NodeConfig[];
-                  if (configs.length === 0) return null;
-                  return (
-                    <div key={cat.id}>
-                      <div style={{ fontSize: 9, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.08em", color: "var(--c-t4)", padding: "7px 8px 2px" }}>{cat.label}</div>
-                      {configs.map(renderItem)}
-                    </div>
-                  );
-                });
-              })()}
+                );
+              })}
             </div>
           </>
         ) : (
