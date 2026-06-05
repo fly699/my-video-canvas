@@ -47,10 +47,6 @@ function isSafeMediaUrl(url: string | undefined): boolean {
   return /^https?:\/\//i.test(url);
 }
 
-function toProxiedSrc(u: string): string {
-  return u.startsWith("http") ? `/api/video-proxy?url=${encodeURIComponent(u)}` : u;
-}
-
 // 绿点徽标：媒体已落到我方 MinIO 长期存储（/manus-storage/ 路径）。
 function MinioStorageBadge() {
   return (
@@ -64,7 +60,7 @@ function MinioStorageBadge() {
 
 function ShotItem({ u, idx }: { u: string; idx: number }) {
   const storedInMinio = isOwnStorageUrl(u);
-  const src = toProxiedSrc(u);
+  const src = mediaFetchUrl(u);
   return (
     <div>
       <div className="relative rounded-lg overflow-hidden" style={{ borderWidth: 1, borderStyle: "solid", borderColor: "oklch(0.72 0.18 155 / 0.30)" }}>
@@ -916,7 +912,7 @@ export const VideoTaskNode = memo(function VideoTaskNode({ id, selected, data }:
   // Hero / primary video — first URL (used for legacy single-video UI paths
   // like heroMedia and the download link).
   const primaryUrl: string | undefined = safeResultUrls[0];
-  const videoSrc = primaryUrl ? toProxiedSrc(primaryUrl) : undefined;
+  const videoSrc = primaryUrl ? mediaFetchUrl(primaryUrl) : undefined;
   const hasMultiResults = safeResultUrls.length > 1;
 
   // Get param defs for current provider
@@ -1326,7 +1322,7 @@ export const VideoTaskNode = memo(function VideoTaskNode({ id, selected, data }:
                     >
                       {result.status === "done" && isSafeMediaUrl(result.videoUrl) ? (
                         <video
-                          src={result.videoUrl!.startsWith("http") ? `/api/video-proxy?url=${encodeURIComponent(result.videoUrl!)}` : result.videoUrl}
+                          src={mediaFetchUrl(result.videoUrl!)}
                           controls
                           className="w-full nodrag"
                           style={{ maxHeight: 80, display: "block" }}

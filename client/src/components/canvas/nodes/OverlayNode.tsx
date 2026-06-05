@@ -124,9 +124,7 @@ export const OverlayNode = memo(function OverlayNode({ id, selected, data }: Pro
   const onFocusMid = (e: React.FocusEvent<HTMLElement>) => { e.currentTarget.style.borderColor = "var(--c-t4)"; };
   const onBlurDefault = (e: React.FocusEvent<HTMLElement>) => { e.currentTarget.style.borderColor = BORDER_DEFAULT; };
 
-  const videoSrc = payload.outputUrl?.startsWith("http")
-    ? `/api/video-proxy?url=${encodeURIComponent(payload.outputUrl)}`
-    : payload.outputUrl;
+  const videoSrc = payload.outputUrl ? mediaFetchUrl(payload.outputUrl) : undefined;
 
   const mode = payload.mode ?? "watermark";
 

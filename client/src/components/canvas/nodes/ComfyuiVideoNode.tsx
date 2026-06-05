@@ -16,6 +16,7 @@ import {
   ChevronDown, ChevronRight, Server, Boxes, Languages, Copy, Lock, Unlock, Ban, Sparkles, Layers,
 } from "lucide-react";
 import { isOwnStorageUrl } from "@/lib/ownStorage";
+import { mediaFetchUrl } from "@/lib/download";
 import { useComfyUpstreamAutoFill } from "./useComfyUpstreamAutoFill";
 import { LLMModelPicker, type LLMModelId } from "../LLMModelPicker";
 import { NodeTextArea, NodeInput } from "../NodeTextInput";
@@ -252,11 +253,7 @@ export const ComfyuiVideoNode = memo(function ComfyuiVideoNode({ id, selected, d
     e.target.value = "";
   };
 
-  const videoSrc = !isSafeMediaUrl(payload.resultVideoUrl)
-    ? undefined
-    : payload.resultVideoUrl!.startsWith("http")
-      ? `/api/video-proxy?url=${encodeURIComponent(payload.resultVideoUrl!)}`
-      : payload.resultVideoUrl;
+  const videoSrc = isSafeMediaUrl(payload.resultVideoUrl) ? mediaFetchUrl(payload.resultVideoUrl!) : undefined;
 
   // 绿点指示：结果视频是否已落到我方 MinIO 长期存储（/manus-storage/ 路径）。
   const videoStoredInMinio = isOwnStorageUrl(payload.resultVideoUrl);
