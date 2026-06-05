@@ -287,27 +287,46 @@ export default function Library() {
     onError: (err) => toast.error("导入失败：" + err.message),
   });
 
-  const processFile = useCallback((file: File) => {
+  // 多文件上传（多选 / 拖拽 / 粘贴）。用户仓库上传不绑定具体项目（projectId 省略），
+  // 归入个人专有仓库；走流式/预签名直传，支持大文件、无 base64 限制；逐个上传避免并发风暴。
+  const processFiles = useCallback((files: File[]) => {
+    const list = files.filter((f) => /^(image|video|audio)\//.test(f.type));
+    if (list.length === 0) { if (files.length) toast.error("仅支持图片 / 视频 / 音频"); return; }
     setUploading(true);
-    // 用户仓库上传：不绑定具体项目（projectId 省略），归入个人专有仓库。
-    // 走流式/预签名直传，支持大文件（最大 500MB），无 base64 ~15MB 限制。
-    uploadAssetFile(utils.client, file)
-      .then((ok) => { if (ok) { toast.success("素材上传成功"); refetch(); } })
-      .finally(() => setUploading(false));
+    (async () => {
+      let ok = 0;
+      for (const f of list) {
+        try { if (await uploadAssetFile(utils.client, f)) ok++; } catch { /* per-file, keep going */ }
+      }
+      if (ok > 0) { toast.success(list.length === 1 ? "素材上传成功" : `成功上传 ${ok} / ${list.length} 个素材`); refetch(); }
+      else toast.error("上传失败");
+    })().finally(() => setUploading(false));
   }, [utils, refetch]);
 
   const handleFileSelect = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (file) processFile(file);
+    const files = Array.from(e.target.files ?? []);
+    if (files.length) processFiles(files);
     e.target.value = "";
-  }, [processFile]);
+  }, [processFiles]);
 
   const handleDrop = useCallback((e: React.DragEvent) => {
     e.preventDefault();
     setDragOver(false);
-    const file = e.dataTransfer.files?.[0];
-    if (file) processFile(file);
-  }, [processFile]);
+    const files = Array.from(e.dataTransfer.files ?? []);
+    if (files.length) processFiles(files);
+  }, [processFiles]);
+
+  // 粘贴上传：在仓库页 Ctrl/⌘-V 把剪贴板中的图片/视频/音频文件批量上传（输入框内不触发）。
+  useEffect(() => {
+    const onPaste = (e: ClipboardEvent) => {
+      const t = e.target as HTMLElement | null;
+      if (t && (t.tagName === "INPUT" || t.tagName === "TEXTAREA" || t.isContentEditable)) return;
+      const files = Array.from(e.clipboardData?.files ?? []);
+      if (files.length) { e.preventDefault(); processFiles(files); }
+    };
+    document.addEventListener("paste", onPaste);
+    return () => document.removeEventListener("paste", onPaste);
+  }, [processFiles]);
 
   const handleImportUrl = () => {
     const url = window.prompt("粘贴文件链接（http/https）导入到用户仓库")?.trim();
@@ -421,7 +440,7 @@ export default function Library() {
         </div>
       </nav>
 
-      <input ref={fileInputRef} type="file" accept="image/*,video/*,audio/*" onChange={handleFileSelect} className="hidden" />
+      <input ref={fileInputRef} type="file" accept="image/*,video/*,audio/*" multiple onChange={handleFileSelect} className="hidden" />
 
       {/* Body */}
       <main className="flex-1 overflow-y-auto px-6 py-6">
@@ -447,7 +466,7 @@ export default function Library() {
             </div>
             <p className="text-xs" style={{ color: "var(--c-t4)" }}>
               <Upload className="inline w-3.5 h-3.5 mr-1 -mt-0.5" />
-              拖拽文件到此处上传（图片 / 视频 / 音频 · 最大 500MB）
+              多选 / 拖拽 / 粘贴（Ctrl·⌘V）批量上传（图片 / 视频 / 音频 · 最大 500MB）
             </p>
           </div>
 
