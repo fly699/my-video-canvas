@@ -1,7 +1,9 @@
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { X, Check, BookmarkPlus, Cloud, Server } from "lucide-react";
 import { getNodeConfig } from "../../lib/nodeConfig";
 import { colorForTemplate, type ComfyNodeType } from "../../lib/comfyNodeTemplates";
+import { trpc } from "@/lib/trpc";
+import { useAuth } from "@/_core/hooks/useAuth";
 
 interface Props {
   nodeType: ComfyNodeType;
@@ -11,7 +13,8 @@ interface Props {
   useCloud: boolean;
   /** Auto-captured generated-image thumbnail (preview only; saved to DB, not exported). */
   thumbnail?: string;
-  onSave: (label: string, note: string) => void;
+  /** overwriteId set → update that existing template instead of creating a new one. */
+  onSave: (label: string, note: string, overwriteId?: number) => void;
   onCancel: () => void;
 }
 
@@ -24,10 +27,31 @@ const inputStyle: React.CSSProperties = {
 export function SaveComfyTemplateDialog({ nodeType, defaultName, modelInfo, useCloud, thumbnail, onSave, onCancel }: Props) {
   const [name, setName] = useState(defaultName);
   const [note, setNote] = useState("");
+  const [mode, setMode] = useState<"new" | "overwrite">("new");
+  const [overwriteId, setOverwriteId] = useState<number | null>(null);
   const color = colorForTemplate(nodeType, useCloud);
   const config = getNodeConfig(nodeType);
-  const canSave = name.trim().length > 0;
-  const submit = () => { if (canSave) onSave(name.trim(), note); };
+
+  // Existing templates of the same node type that the user may overwrite (own,
+  // or any when admin). Drives the "覆盖现有" picker.
+  const { user } = useAuth();
+  const listQuery = trpc.comfyTemplates.list.useQuery(undefined, { staleTime: 30_000 });
+  const overwritable = useMemo(
+    () => (listQuery.data ?? []).filter(
+      (t) => t.nodeType === nodeType && (t.userId === user?.id || user?.role === "admin"),
+    ),
+    [listQuery.data, nodeType, user],
+  );
+
+  const effectiveOverwrite = mode === "overwrite" ? overwriteId : null;
+  const canSave = name.trim().length > 0 && (mode === "new" || effectiveOverwrite != null);
+  const submit = () => { if (canSave) onSave(name.trim(), note, effectiveOverwrite ?? undefined); };
+
+  const pickOverwrite = (id: number) => {
+    setOverwriteId(id);
+    const t = overwritable.find((x) => x.id === id);
+    if (t) { setName(t.label); setNote(t.note ?? ""); }
+  };
 
   return (
     <div
@@ -80,9 +104,45 @@ export function SaveComfyTemplateDialog({ nodeType, defaultName, modelInfo, useC
             </div>
           </div>
 
+          {/* Mode: new vs overwrite an existing template */}
+          {overwritable.length > 0 && (
+            <div className="flex flex-col gap-2">
+              <div className="flex gap-1 p-0.5 rounded-lg" style={{ background: "var(--c-surface)", border: "1px solid var(--c-bd2)" }}>
+                {([["new", "新建模板"], ["overwrite", "覆盖现有"]] as const).map(([m, lbl]) => (
+                  <button
+                    key={m}
+                    onClick={() => setMode(m)}
+                    className="flex-1 py-1.5 rounded-md text-[12px] font-medium"
+                    style={{ background: mode === m ? color : "transparent", color: mode === m ? "#fff" : "var(--c-t3)", border: "none", cursor: "pointer" }}
+                  >
+                    {lbl}
+                  </button>
+                ))}
+              </div>
+              {mode === "overwrite" && (
+                <select
+                  value={overwriteId ?? ""}
+                  onChange={(e) => { const v = Number(e.target.value); if (v) pickOverwrite(v); }}
+                  className="nodrag"
+                  style={inputStyle}
+                >
+                  <option value="" disabled>选择要覆盖的模板…</option>
+                  {overwritable.map((t) => (
+                    <option key={t.id} value={t.id}>{t.label}</option>
+                  ))}
+                </select>
+              )}
+              {mode === "overwrite" && effectiveOverwrite != null && (
+                <p className="text-[10px]" style={{ color: "oklch(0.72 0.16 50)" }}>
+                  将用当前节点的参数覆盖该模板（含缩略图），并重置其分析结果。
+                </p>
+              )}
+            </div>
+          )}
+
           {/* Name */}
           <label className="flex flex-col gap-1.5">
-            <span className="text-[11px] font-medium" style={{ color: "var(--c-t3)" }}>模板名称</span>
+            <span className="text-[11px] font-medium" style={{ color: "var(--c-t3)" }}>{mode === "overwrite" ? "模板名称（可改名）" : "模板名称"}</span>
             <input
               value={name}
               onChange={(e) => setName(e.target.value)}
@@ -118,7 +178,7 @@ export function SaveComfyTemplateDialog({ nodeType, defaultName, modelInfo, useC
             className="px-5 py-2 rounded-xl text-sm font-semibold flex items-center gap-1.5"
             style={{ background: canSave ? color : "var(--c-surface)", border: canSave ? "none" : "1px solid var(--c-bd2)", color: canSave ? "#fff" : "var(--c-t4)", cursor: canSave ? "pointer" : "not-allowed" }}
           >
-            <Check className="w-3.5 h-3.5" /> 保存
+            <Check className="w-3.5 h-3.5" /> {mode === "overwrite" ? "覆盖保存" : "保存"}
           </button>
         </div>
       </div>

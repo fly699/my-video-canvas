@@ -586,6 +586,7 @@ function CanvasInner({ projectId }: { projectId: number }) {
 
   const utils = trpc.useUtils();
   const createComfyTemplateMut = trpc.comfyTemplates.create.useMutation();
+  const updateComfyTemplateMut = trpc.comfyTemplates.update.useMutation();
   const batchUpsertNodes = trpc.nodes.batchUpsert.useMutation();
   const upsertEdge = trpc.edges.upsert.useMutation();
   const deleteNodeMutation = trpc.nodes.delete.useMutation({
@@ -2483,9 +2484,27 @@ function CanvasInner({ projectId }: { projectId: number }) {
             thumbnail={comfySaveTarget.thumbnail}
             modelInfo={describeComfyTemplate(comfySaveTarget.nodeType, comfySaveTarget.payload)}
             onCancel={() => setComfySaveTarget(null)}
-            onSave={(label, note) => {
+            onSave={(label, note, overwriteId) => {
               const target = comfySaveTarget;
               setComfySaveTarget(null);
+              if (overwriteId != null) {
+                updateComfyTemplateMut.mutate(
+                  {
+                    id: overwriteId, label, payload: target.payload,
+                    note: note || undefined,
+                    thumbnail: target.thumbnail,
+                    useCloud: target.nodeType === "comfyui_workflow" ? target.useCloud : undefined,
+                  },
+                  {
+                    onSuccess: () => {
+                      utils.comfyTemplates.list.invalidate();
+                      toast.success(`已覆盖更新模板「${label}」`);
+                    },
+                    onError: (e) => toast.error("覆盖失败：" + e.message),
+                  },
+                );
+                return;
+              }
               createComfyTemplateMut.mutate(
                 {
                   label, nodeType: target.nodeType, payload: target.payload,
