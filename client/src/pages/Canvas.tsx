@@ -559,6 +559,7 @@ function CanvasInner({ projectId }: { projectId: number }) {
   const [renamingProject, setRenamingProject] = useState(false);
   const [renameValue, setRenameValue] = useState("");
   const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const savingRef = useRef(false); // in-flight save mutex (prevents concurrent saveCanvas)
   // Guards so the DB snapshot is applied to local state only once (initial load);
   // later, local state is the source of truth and a query refetch must not clobber
   // it. Reset per project because Canvas is keyed by projectId (remounts).
@@ -704,6 +705,7 @@ function CanvasInner({ projectId }: { projectId: number }) {
   // snapped the canvas back mid-pan — "画布自己突然移动". Canvas is keyed by
   // projectId (remounts per project), so a per-mount ref guard is sufficient.
   const viewportRestoredRef = useRef(false);
+  const viewportScheduledRef = useRef(false);
   const reactFlowReadyRef = useRef(false);
   // Apply the saved pan/zoom (or fit a fresh project) exactly ONCE — only after BOTH
   // ReactFlow has initialized (onInit) AND the project + nodes have loaded. Doing it
@@ -712,20 +714,23 @@ function CanvasInner({ projectId }: { projectId: number }) {
   // this is the single source of truth. Called from onInit and from the effect
   // below, whichever happens last wins (guarded so it runs once).
   const applyInitialViewport = useCallback(() => {
-    if (viewportRestoredRef.current) return;
+    if (viewportRestoredRef.current || viewportScheduledRef.current) return;
     if (!reactFlowReadyRef.current) return;
     if (project === undefined || dbNodes === undefined) return;
+    viewportScheduledRef.current = true; // sync guard: prevent onInit+effect double-schedule
     // viewportState is a JSON column — MySQL returns it parsed (object) but some
     // drivers (e.g. MariaDB) return it as a JSON string, so handle both.
     let vpRaw: unknown = project?.viewportState;
     if (typeof vpRaw === "string") { try { vpRaw = JSON.parse(vpRaw); } catch { vpRaw = null; } }
     const vp = vpRaw as { x: number; y: number; zoom: number } | null | undefined;
     const valid = !!vp && typeof vp.x === "number" && typeof vp.y === "number" && typeof vp.zoom === "number";
-    viewportRestoredRef.current = true;
     // Defer a frame so the rendered flow has its dimensions before we set/fit.
+    // Mark restored ONLY after the viewport actually lands — otherwise an onMoveEnd
+    // firing in the gap would markDirty and persist the un-restored viewport.
     requestAnimationFrame(() => {
       if (valid) reactFlow.setViewport(vp!, { duration: 0 });
       else reactFlow.fitView({ padding: 0.2 });
+      viewportRestoredRef.current = true;
     });
   }, [project, dbNodes, reactFlow]);
   useEffect(() => { applyInitialViewport(); }, [applyInitialViewport]);
@@ -734,13 +739,24 @@ function CanvasInner({ projectId }: { projectId: number }) {
   const saveCanvas = useCallback(async () => {
     if (isReadOnly) return; // read-only collaborators must never write (server also rejects)
     if (!isDirty) return;
+    if (savingRef.current) return; // in-flight mutex: never run two saves concurrently
+    savingRef.current = true;
+    try {
     // Each part saves INDEPENDENTLY so a failure in one (e.g. a node the DB schema
     // rejects) can't block the others — previously a failed node-batch threw before
     // the viewport save, so neither the agent node NOR the pan/zoom persisted.
     const currentSigs = new Map(nodes.map((n) => [n.id, nodeSig(n)]));
     const baseline = savedNodeSigsRef.current;
     const toUpsert = nodes.filter((n) => baseline.get(n.id) !== currentSigs.get(n.id));
-    const toDelete = Array.from(baseline.keys()).filter((id) => !currentSigs.has(id));
+    let toDelete = Array.from(baseline.keys()).filter((id) => !currentSigs.has(id));
+    // Data-loss safety valve: if the local node set is suspiciously empty while the
+    // baseline had nodes, this is almost certainly a transient/incomplete snapshot
+    // (load race, reset mid-flight), NOT a real "delete everything" — skip deletion
+    // so we never nuke the project's nodes from a bad snapshot.
+    if (toDelete.length > 0 && currentSigs.size === 0 && baseline.size > 0) {
+      console.warn("[save] skipping suspicious bulk delete (local nodes empty, baseline non-empty)");
+      toDelete = [];
+    }
 
     let nodesOk = true;
     for (const id of toDelete) {
@@ -773,6 +789,7 @@ function CanvasInner({ projectId }: { projectId: number }) {
     // Only advance the node baseline / mark clean when ALL node ops landed, so a
     // failed node retries next save (but viewport/edges already persisted above).
     if (nodesOk) { savedNodeSigsRef.current = currentSigs; markClean(); }
+    } finally { savingRef.current = false; }
   }, [isReadOnly, isDirty, nodes, edges, projectId, batchUpsertNodes, upsertEdge, updateProject, markClean, reactFlow, deleteNodeMutation]);
   saveCanvasRef.current = saveCanvas;
 

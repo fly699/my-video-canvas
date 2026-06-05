@@ -58,7 +58,7 @@ function extractFrameMedia(p: Record<string, unknown>): { imageUrl?: string; vid
     || (Array.isArray(p.outputUrls) ? (p.outputUrls as string[])[0] : undefined);
   if (out) {
     const t = p.outputType as string | undefined;
-    const isVideo = t === "video" || (t !== "image" && /\.(mp4|webm|mov|m4v)(\?|#|$)/i.test(out));
+    const isVideo = t === "video" || (t !== "image" && /\.(mp4|webm|mov|m4v|mkv|avi|ogv|gif)(\?|#|$)/i.test(out));
     if (isVideo) videoUrl = videoUrl || out;
     else if (!imageUrl) return { imageUrl: out, videoUrl };
   }
