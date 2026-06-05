@@ -757,6 +757,18 @@ function CanvasInner({ projectId }: { projectId: number }) {
     return () => { if (saveTimerRef.current) clearTimeout(saveTimerRef.current); };
   }, [isDirty, saveCanvas]);
 
+  // Flush a pending (debounced) save when leaving the canvas — logout, navigation,
+  // or tab close. The 2s debounce timer above is cleared on unmount, so without
+  // this any node added/edited within ~2s of leaving would never persist and would
+  // vanish on next load (most often the agent node: users add it, chat, then leave
+  // quickly). saveCanvasRef holds the latest saveCanvas (with current nodes/edges)
+  // and self-guards on isReadOnly/isDirty.
+  useEffect(() => {
+    const flush = () => { if (useCanvasStore.getState().isDirty) void saveCanvasRef.current?.(); };
+    window.addEventListener("beforeunload", flush);
+    return () => { window.removeEventListener("beforeunload", flush); flush(); };
+  }, []);
+
   // ── Socket ──────────────────────────────────────────────────────────────────
   const emitCollabEvent = useCallback((type: string, payload: unknown) => {
     if (!socketRef.current?.connected || !user) return;
