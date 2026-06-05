@@ -16,6 +16,27 @@ function arrowPoints(tx: number, ty: number, pos: Position, sz: number, hw: numb
   return `${tx-hw},${ty-sz} ${tx+hw},${ty-sz} ${tx},${ty}`;
 }
 
+// Replicate ReactFlow's bezier control-point math so we can place a point exactly
+// ON the curve (not on the straight chord between endpoints, which drifts far from
+// the rendered line when many edges fan out — the order badges then float off-line).
+function ctrlOffset(distance: number, curvature: number): number {
+  return distance >= 0 ? 0.5 * distance : curvature * 25 * Math.sqrt(-distance);
+}
+function bezierControl(pos: Position, x1: number, y1: number, x2: number, y2: number, c = 0.25): [number, number] {
+  switch (pos) {
+    case Position.Left:   return [x1 - ctrlOffset(x1 - x2, c), y1];
+    case Position.Right:  return [x1 + ctrlOffset(x2 - x1, c), y1];
+    case Position.Top:    return [x1, y1 - ctrlOffset(y1 - y2, c)];
+    default:              return [x1, y1 + ctrlOffset(y2 - y1, c)]; // Bottom
+  }
+}
+// Cubic bezier point at parameter t (0=source … 1=target).
+function bezierAt(t: number, p0: [number, number], p1: [number, number], p2: [number, number], p3: [number, number]): { x: number; y: number } {
+  const u = 1 - t;
+  const a = u * u * u, b = 3 * u * u * t, cc = 3 * u * t * t, d = t * t * t;
+  return { x: a * p0[0] + b * p1[0] + cc * p2[0] + d * p3[0], y: a * p0[1] + b * p1[1] + cc * p2[1] + d * p3[1] };
+}
+
 const PARTICLE_COUNT = 3;
 
 export const CustomEdge = memo(function CustomEdge({
@@ -41,9 +62,13 @@ export const CustomEdge = memo(function CustomEdge({
     const side = hoveredNodeId === target ? "in" : "out";
     const { index, total } = edgeOrderIndex(id, side, hoveredNodeId, allEdges, nodes);
     if (index >= 0 && total > 1) {
-      const t = 0.16;
-      const [ax, ay, bx, by] = side === "in" ? [targetX, targetY, sourceX, sourceY] : [sourceX, sourceY, targetX, targetY];
-      orderBadge = { x: ax + (bx - ax) * t, y: ay + (by - ay) * t, n: index + 1 };
+      // Place the badge ON the bezier curve, close to the relevant node's handle
+      // (param 0.85 from source = 15% in front of the target; 0.15 near the source).
+      const sc = bezierControl(sourcePosition, sourceX, sourceY, targetX, targetY);
+      const tc = bezierControl(targetPosition, targetX, targetY, sourceX, sourceY);
+      const param = side === "in" ? 0.85 : 0.15;
+      const p = bezierAt(param, [sourceX, sourceY], sc, tc, [targetX, targetY]);
+      orderBadge = { x: p.x, y: p.y, n: index + 1 };
     }
   }
   const sourceNodeType = nodes.find(n => n.id === source)?.data.nodeType as string | undefined;
