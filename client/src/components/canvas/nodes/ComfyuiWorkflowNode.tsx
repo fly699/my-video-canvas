@@ -1,4 +1,4 @@
-import { memo, useCallback, useMemo, useRef, useState } from "react";
+import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Handle, Position } from "@xyflow/react";
 import { BaseNode } from "../BaseNode";
 import { handleStyle } from "../../../lib/handleStyle";
@@ -204,6 +204,19 @@ export const ComfyuiWorkflowNode = memo(function ComfyuiWorkflowNode({ id, selec
   const update = useCallback((patch: Partial<ComfyuiWorkflowNodeData>, silent = false) => {
     updateNodeData(id, patch, silent);
   }, [id, updateNodeData]);
+
+  // Creating a node from the template library (or a collab peer) populates the
+  // payload AFTER mount, but phase/localJson were snapshotted from the empty
+  // payload at mount — leaving the node stuck on the "paste JSON" screen with no
+  // param form. When a workflow appears while we're still empty, advance out of it.
+  useEffect(() => {
+    if (phase === "empty" && payload.workflowJson) {
+      setLocalJson(payload.workflowJson);
+      setLocalBindings(payload.paramBindings ?? []);
+      setPhase(payload.paramBindings && payload.paramBindings.length > 0 ? "run" : "binding");
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [payload.workflowJson, payload.paramBindings]);
 
   const analyzeMutation = trpc.comfyui.analyzeWorkflow.useMutation();
 

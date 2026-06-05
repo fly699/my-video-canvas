@@ -63,7 +63,7 @@ export const SubtitleMotionNode = memo(function SubtitleMotionNode({ id, selecte
 
   const update = useCallback((patch: Partial<SubtitleMotionNodeData>) => updateNodeData(id, patch), [id, updateNodeData]);
 
-  const VIDEO_SOURCE_TYPES = new Set(["video_task", "clip", "merge", "overlay", "asset", "subtitle", "subtitle_motion", "smart_cut"]);
+  const VIDEO_SOURCE_TYPES = new Set(["video_task", "clip", "merge", "overlay", "asset", "subtitle", "subtitle_motion", "smart_cut", "comfyui_video", "comfyui_workflow"]);
 
   const findSourceVideoUrl = (): string | undefined => {
     const inEdges = edges.filter((e) => e.target === id);
@@ -290,7 +290,7 @@ export const SubtitleMotionNode = memo(function SubtitleMotionNode({ id, selecte
             {payload.outputUrl && (
               <div className="flex flex-col gap-1.5">
                 <label style={labelStyle}>烧录后视频</label>
-                <video key={payload.outputUrl} src={`/api/video-proxy?url=${encodeURIComponent(payload.outputUrl)}`}
+                <video key={payload.outputUrl} src={mediaFetchUrl(payload.outputUrl)}
                   controls className="w-full rounded-lg nodrag" style={{ maxHeight: 120, display: "block", border: `1px solid ${accentA(0.4)}` }} preload="metadata" />
                 <a href={mediaFetchUrl(payload.outputUrl, true)} onClick={onDownloadMedia(payload.outputUrl, "字幕视频.mp4")}
                   className="nodrag flex items-center justify-center gap-1 py-1.5 rounded-lg text-[10px] cursor-pointer"

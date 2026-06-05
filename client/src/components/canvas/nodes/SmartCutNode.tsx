@@ -46,7 +46,7 @@ export const SmartCutNode = memo(function SmartCutNode({ id, selected, data }: P
 
   const update = useCallback((patch: Partial<SmartCutNodeData>) => updateNodeData(id, patch), [id, updateNodeData]);
 
-  const VIDEO_SOURCE_TYPES = new Set(["video_task", "clip", "merge", "overlay", "asset", "subtitle", "subtitle_motion", "smart_cut"]);
+  const VIDEO_SOURCE_TYPES = new Set(["video_task", "clip", "merge", "overlay", "asset", "subtitle", "subtitle_motion", "smart_cut", "comfyui_video", "comfyui_workflow"]);
 
   const findSourceVideoUrl = (): string | undefined => {
     const inEdges = edges.filter((e) => e.target === id);
@@ -147,7 +147,7 @@ export const SmartCutNode = memo(function SmartCutNode({ id, selected, data }: P
         {/* Output video */}
         {payload.outputUrl && (
           <div className="flex flex-col gap-1.5">
-            <video key={payload.outputUrl} src={`/api/video-proxy?url=${encodeURIComponent(payload.outputUrl)}`}
+            <video key={payload.outputUrl} src={mediaFetchUrl(payload.outputUrl)}
               controls className="w-full rounded-lg nodrag" style={{ maxHeight: 120, display: "block", border: `1px solid ${accentA(0.4)}` }} preload="metadata" />
             <a href={mediaFetchUrl(payload.outputUrl, true)} onClick={onDownloadMedia(payload.outputUrl, "智能剪辑视频.mp4")}
               className="nodrag flex items-center justify-center gap-1 py-1.5 rounded-lg text-[10px] cursor-pointer"
