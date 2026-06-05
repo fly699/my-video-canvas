@@ -690,6 +690,7 @@ export interface ComfyuiImageNodeData {
   imageStorageKey?: string;
   imageUrls?: string[];
   progress?: number;
+  queueRemaining?: number;  // ComfyUI server queue depth while waiting to start (transient)
   status?: "idle" | "processing" | "done" | "failed";
   errorMessage?: string;
 }
@@ -736,6 +737,7 @@ export interface ComfyuiVideoNodeData {
   resultVideoUrl?: string;
   resultStorageKey?: string;
   progress?: number;
+  queueRemaining?: number;  // ComfyUI server queue depth while waiting to start (transient)
   status?: "idle" | "processing" | "done" | "failed";
   errorMessage?: string;
 }
@@ -783,6 +785,7 @@ export interface ComfyuiWorkflowNodeData {
   outputUrl?: string;
   outputUrls?: string[];
   progress?: number;
+  queueRemaining?: number;  // ComfyUI server queue depth while waiting to start (transient)
   status?: "idle" | "processing" | "done" | "failed";
   errorMessage?: string;
 }

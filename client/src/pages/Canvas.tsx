@@ -887,13 +887,16 @@ function CanvasInner({ projectId }: { projectId: number }) {
         store.setEdges(store.edges.filter((e) => e.id !== p.id));
       }
     });
-    socket.on("comfyui:progress", (event: { nodeId: string; type: string; value?: number; max?: number; preview?: string }) => {
+    socket.on("comfyui:progress", (event: { nodeId: string; type: string; value?: number; max?: number; preview?: string; queueRemaining?: number }) => {
       if (event.type === "progress" && event.value != null && event.max != null && event.max > 0) {
         const pct = Math.round((event.value / event.max) * 100);
-        useCanvasStore.getState().updateNodeData(event.nodeId, { progress: pct }, true);
+        // Sampling has started → clear any "排队中" hint.
+        useCanvasStore.getState().updateNodeData(event.nodeId, { progress: pct, queueRemaining: 0 }, true);
       } else if (event.type === "preview" && typeof event.preview === "string") {
         // Live sampling preview — kept in a transient store (never persisted).
         useComfyPreviewStore.getState().setPreview(event.nodeId, event.preview);
+      } else if (event.type === "queue" && typeof event.queueRemaining === "number") {
+        useCanvasStore.getState().updateNodeData(event.nodeId, { queueRemaining: event.queueRemaining }, true);
       }
     });
     socketRef.current = socket;

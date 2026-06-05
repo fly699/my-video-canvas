@@ -39,6 +39,8 @@ function comfyProgressRelay(projectId: number, nodeId: string): (ev: ComfyProgre
       if (now - lastPreviewAt < 200) return; // throttle to ~5 fps to bound bandwidth
       lastPreviewAt = now;
       _io?.to(`project:${projectId}`).emit("comfyui:progress", { nodeId, type: "preview", preview: ev.previewDataUrl });
+    } else if (ev.type === "queue" && typeof ev.queueRemaining === "number") {
+      _io?.to(`project:${projectId}`).emit("comfyui:progress", { nodeId, type: "queue", queueRemaining: ev.queueRemaining });
     }
   };
 }
@@ -435,7 +437,13 @@ function formatExecError(d: Record<string, unknown>): string {
   const exc = typeof d.exception_message === "string"
     ? d.exception_message
     : (typeof d.exception_type === "string" ? d.exception_type : JSON.stringify(d).slice(0, 400));
-  return node ? `节点 ${node}: ${exc}` : exc;
+  const base = node ? `节点 ${node}: ${exc}` : exc;
+  // Append the deepest traceback frame — it points at the actual file:line that
+  // raised, which is what you need to debug a failing (custom) node.
+  const tb = Array.isArray(d.traceback)
+    ? (d.traceback as unknown[]).filter((x): x is string => typeof x === "string").map((s) => s.trim()).filter(Boolean)
+    : [];
+  return tb.length > 0 ? `${base}\n↳ ${tb[tb.length - 1].slice(0, 240)}` : base;
 }
 
 /** Format a validation node_errors map: { "4": { errors: [{ message, details }] } }. */
@@ -633,12 +641,13 @@ async function uploadImageToComfy(baseUrl: string, sourceUrl: string, apiKey?: s
 // ── WebSocket progress subscription ──────────────────────────────────────────
 
 interface ComfyProgressEvent {
-  type: "progress" | "executing" | "executed" | "error" | "preview";
+  type: "progress" | "executing" | "executed" | "error" | "preview" | "queue";
   value?: number;
   max?: number;
   nodeId?: string;
   errorMessage?: string;
   previewDataUrl?: string;  // live sampling preview (data: URL) from a WS binary frame
+  queueRemaining?: number;  // jobs still queued on the server (from the WS status message)
 }
 
 /** Parse a ComfyUI WS binary preview frame into a data: URL, or null if it isn't
@@ -699,6 +708,13 @@ export function subscribeComfyProgress(
           type: string;
           data?: Record<string, unknown>;
         };
+        // Server queue depth — broadcast to all clients (no prompt_id), so handle
+        // it before the prompt_id filter below.
+        if (msg.type === "status") {
+          const qr = (msg.data as { status?: { exec_info?: { queue_remaining?: unknown } } } | undefined)?.status?.exec_info?.queue_remaining;
+          if (typeof qr === "number") callback({ type: "queue", queueRemaining: qr });
+          return;
+        }
         if (msg.data?.prompt_id && msg.data.prompt_id !== promptId) return;
 
         if (msg.type === "progress") {

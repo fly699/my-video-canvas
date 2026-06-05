@@ -99,6 +99,11 @@ export const BaseNode = memo(function BaseNode({
     const p = (s.nodes.find((n) => n.id === id)?.data.payload as { progress?: number } | undefined)?.progress;
     return typeof p === "number" ? p : null;
   });
+  // ComfyUI server queue depth while this node is waiting to start sampling.
+  const genQueue = useCanvasStore((s) => {
+    const q = (s.nodes.find((n) => n.id === id)?.data.payload as { queueRemaining?: number } | undefined)?.queueRemaining;
+    return typeof q === "number" && q > 0 ? q : null;
+  });
   const genError = useCanvasStore((s) => {
     const pl = s.nodes.find((n) => n.id === id)?.data.payload as { status?: string; errorMessage?: string } | undefined;
     return pl?.status === "failed" ? (pl.errorMessage || "生成失败") : null;
@@ -611,7 +616,7 @@ export const BaseNode = memo(function BaseNode({
             />
           </div>
           <span style={{ fontSize: 9.5, fontWeight: 700, color: config.color, whiteSpace: "nowrap" }}>
-            {genProgress != null ? `${Math.round(genProgress)}%` : "生成中"}
+            {genProgress != null ? `${Math.round(genProgress)}%` : (genQueue != null ? `排队 ${genQueue}` : "生成中")}
           </span>
         </div>
       )}

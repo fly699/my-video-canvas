@@ -46,6 +46,23 @@ describe("extractExecError", () => {
   it("returns null when no execution_error present", () => {
     expect(extractExecError([["execution_start", {}], ["execution_cached", { nodes: [] }]])).toBeNull();
   });
+  it("appends the deepest traceback frame (file:line of the actual failure)", () => {
+    const messages = [
+      ["execution_error", {
+        node_id: "3", node_type: "KSampler", exception_message: "boom",
+        traceback: [
+          "Traceback (most recent call last):\n",
+          "  File \"/comfy/nodes.py\", line 1500, in sample\n",
+          "  File \"/comfy/custom_nodes/foo.py\", line 42, in run\n    raise RuntimeError('boom')\n",
+        ],
+      }],
+    ];
+    const s = extractExecError(messages)!;
+    expect(s).toContain("KSampler");
+    expect(s).toContain("boom");
+    expect(s).toContain("foo.py"); // deepest frame surfaced
+    expect(s).toContain("↳");
+  });
   it("deep-scans for an exception under a non-standard tag", () => {
     const messages = [
       ["execution_start", { prompt_id: "x" }],
