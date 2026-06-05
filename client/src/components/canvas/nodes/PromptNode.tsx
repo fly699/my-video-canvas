@@ -1,6 +1,7 @@
 import { memo, useCallback, useRef, useState } from "react";
 import { BaseNode } from "../BaseNode";
 import { useCanvasStore } from "../../../hooks/useCanvasStore";
+import { useCanvasMode } from "../../../contexts/CanvasModeContext";
 import type { PromptNodeData } from "../../../../../shared/types";
 import { trpc } from "@/lib/trpc";
 import { toast } from "sonner";
@@ -37,6 +38,8 @@ const DEFAULT_LLM: LLMModelId = "claude-sonnet-4-5-20250929";
 
 export const PromptNode = memo(function PromptNode({ id, selected, data }: Props) {
   const { updateNodeData } = useCanvasStore();
+  const { mode: canvasMode } = useCanvasMode();
+  const isCreative = canvasMode === "creative";
   const payload = data.payload;
   const expanded = Boolean(selected) || Boolean((payload as { pinned?: boolean }).pinned);
 
@@ -145,8 +148,10 @@ export const PromptNode = memo(function PromptNode({ id, selected, data }: Props
     </div>
   ) : null;
 
-  // Creative-mode collapsed preview (rendered by BaseNode above the body).
-  const heroMedia = hasAnyPrompt ? (
+  // Creative-mode collapsed preview only — the prompt text is an INPUT, not a
+  // generated result, so in other modes it must NOT act as a hero (the global
+  // collapse rule would otherwise hide the editor before anything is produced).
+  const heroMedia = isCreative && hasAnyPrompt ? (
     <div className="node-hero-placeholder" style={{ minHeight: 80, padding: "14px 16px", alignItems: "flex-start", justifyContent: "flex-start" }}>
       {promptSummary}
     </div>
