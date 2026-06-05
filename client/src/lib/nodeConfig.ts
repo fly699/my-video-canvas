@@ -21,6 +21,7 @@ export interface NodeConfig {
   defaultWidth: number;
   defaultHeight?: number; // undefined = auto height driven by content
   defaultTitle: string;
+  comingSoon?: boolean; // placeholder node (no payload logic yet) — shown dimmed with a "Soon" badge
 }
 
 export const NODE_CONFIGS: Record<NodeType, NodeConfig> = {
@@ -225,6 +226,7 @@ export const NODE_CONFIGS: Record<NodeType, NodeConfig> = {
     borderColor: "oklch(0.65 0.18 350 / 0.4)",
     defaultWidth: 340,
     defaultTitle: "声音克隆",
+    comingSoon: true,
   },
   lip_sync: {
     type: "lip_sync",
@@ -235,6 +237,7 @@ export const NODE_CONFIGS: Record<NodeType, NodeConfig> = {
     borderColor: "oklch(0.62 0.20 220 / 0.4)",
     defaultWidth: 360,
     defaultTitle: "唇形同步",
+    comingSoon: true,
   },
   avatar: {
     type: "avatar",
@@ -245,6 +248,7 @@ export const NODE_CONFIGS: Record<NodeType, NodeConfig> = {
     borderColor: "oklch(0.65 0.20 290 / 0.4)",
     defaultWidth: 380,
     defaultTitle: "数字人",
+    comingSoon: true,
   },
   comfyui_image: {
     type: "comfyui_image",
