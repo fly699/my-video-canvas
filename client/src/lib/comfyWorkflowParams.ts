@@ -186,11 +186,17 @@ export function fillWorkflowPromptParams(
     ?? texts.find((b) => !isNeg(b));
   const negB = texts.find((b) => b.role === "negative") ?? texts.find(isNeg);
   const next = { ...paramValues };
+  // Fill when the param is blank OR still holds the workflow's BUILT-IN default
+  // (b.defaultValue) — so a workflow whose positive CLIPTextEncode ships with
+  // default text (e.g. "一个女孩在操场上") doesn't silently ignore an explicitly
+  // connected upstream prompt node. A value the user deliberately typed in the
+  // node (i.e. differing from the default) is preserved, matching prior behavior.
   const set = (b: WorkflowParamBinding | undefined, v: string | undefined) => {
     if (!b || !v) return;
     const key = `${b.nodeId}.${b.fieldPath}`;
     const cur = next[key];
-    if (cur == null || cur === "") next[key] = v;
+    const atDefault = cur == null || cur === "" || (b.defaultValue != null && cur === b.defaultValue);
+    if (atDefault) next[key] = v;
   };
   set(posB, prompts.positive);
   set(negB, prompts.negative);
