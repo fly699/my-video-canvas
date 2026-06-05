@@ -35,6 +35,21 @@ export interface ApplyResult {
   failures: { index: number; op: string; reason: string }[];
 }
 
+const COMFY_NODE_TYPES = new Set<string>(["comfyui_image", "comfyui_video", "comfyui_workflow"]);
+
+/** Assign chosen ComfyUI server URLs onto a batch's comfy create ops (in place),
+ *  spreading load by round-robin (顺序) or random. No-op when chosen is empty. */
+export function distributeServers(ops: AgentOperation[], chosen: string[], strategy: "round" | "random"): void {
+  if (chosen.length === 0) return;
+  let i = 0;
+  for (const o of ops) {
+    if (o.op !== "create" || !o.nodeType || !COMFY_NODE_TYPES.has(o.nodeType)) continue;
+    const url = strategy === "random" ? chosen[Math.floor(Math.random() * chosen.length)] : chosen[i % chosen.length];
+    o.payload = { ...(o.payload ?? {}), customBaseUrl: url };
+    i++;
+  }
+}
+
 export function applyAgentOperations(
   ops: AgentOperation[],
   anchor: { x: number; y: number },
@@ -49,6 +64,35 @@ export function applyAgentOperations(
     res.failures.push({ index, op: op.op, reason });
   };
 
+  // ── Scene-aware layout planning ──────────────────────────────────────────
+  // When create ops carry `sceneGroup` (duration-aware scene planning), lay each
+  // scene out as its own vertical column and wrap it in a `group` "场景" box.
+  // Otherwise fall back to the original 3-per-row fan-out (unchanged behavior).
+  const SCENE_COL_W = 420, ROW_H = 300, PAD = 32, HEADER = 48, NODE_W = 340;
+  const createOps = ops.filter((o) => o.op === "create");
+  const sceneKeys: string[] = [];
+  for (const o of createOps) {
+    const k = o.sceneGroup?.trim();
+    if (k && !sceneKeys.includes(k)) sceneKeys.push(k);
+  }
+  const useScenes = sceneKeys.length > 0;
+  const posByOp = new Map<AgentOperation, { x: number; y: number }>();
+  const sceneBoxes: { x: number; y: number; width: number; height: number; title: string }[] = [];
+  if (useScenes) {
+    sceneKeys.forEach((key, sIdx) => {
+      const sceneOps = createOps.filter((o) => o.sceneGroup?.trim() === key);
+      const baseX = anchor.x + 480 + sIdx * (SCENE_COL_W + PAD);
+      sceneOps.forEach((o, i) => posByOp.set(o, { x: baseX + PAD, y: anchor.y + HEADER + i * ROW_H }));
+      sceneBoxes.push({ x: baseX, y: anchor.y, width: NODE_W + PAD * 2, height: HEADER + sceneOps.length * ROW_H, title: `场景${sIdx + 1}` });
+    });
+    // Scene-less create ops (e.g. shared script / merge) go in a trailing column.
+    const tailX = anchor.x + 480 + sceneKeys.length * (SCENE_COL_W + PAD);
+    let tailIdx = 0;
+    for (const o of createOps) {
+      if (!o.sceneGroup?.trim()) { posByOp.set(o, { x: tailX, y: anchor.y + HEADER + tailIdx * ROW_H }); tailIdx++; }
+    }
+  }
+
   // Whole plan = one undo step.
   store.runBatch(() => {
     let createdIdx = 0;
@@ -61,10 +105,14 @@ export function applyAgentOperations(
           if (op.nodeType === "comfyui_workflow" && payload?.templateId != null) {
             const tpl = opts.templates?.find((t) => t.id === Number(payload!.templateId));
             if (!tpl) { fail(index, op, `未找到模板 id=${String(payload.templateId)}`); return; }
+            // Preserve a multi-server-distribution override (set client-side before
+            // apply) — materializeTemplate rebuilds payload from the template.
+            const serverOverride = typeof payload.customBaseUrl === "string" ? payload.customBaseUrl : undefined;
             payload = materializeTemplate(tpl, String(payload.prompt ?? ""), String(payload.negPrompt ?? ""));
+            if (serverOverride) payload.customBaseUrl = serverOverride;
           }
-          // Fan created nodes out to the right of the agent node, 3 per row.
-          const pos = {
+          // Scene layout when planned, else fan out 3 per row to the agent's right.
+          const pos = posByOp.get(op) ?? {
             x: anchor.x + 480 + (createdIdx % 3) * 360,
             y: anchor.y + Math.floor(createdIdx / 3) * 300,
           };
@@ -105,6 +153,8 @@ export function applyAgentOperations(
         fail(index, op, e instanceof Error ? e.message : String(e));
       }
     });
+    // Wrap each planned scene's shots in a 「场景」group container (behind nodes).
+    for (const box of sceneBoxes) store.addGroupBox(box, box.title);
   });
   return res;
 }
@@ -126,11 +176,12 @@ const SUMMARY_FIELDS: Partial<Record<NodeType, string[]>> = {
   note: ["content"],
 };
 
-export function buildGraphSummary(excludeNodeId: string): string {
+export function buildGraphSummary(excludeNodeId: string, opts: { focusNodeIds?: string[] } = {}): string {
   const { nodes, edges } = useCanvasStore.getState();
+  const focus = opts.focusNodeIds && opts.focusNodeIds.length ? new Set(opts.focusNodeIds) : null;
   const clip = (v: unknown) => (typeof v === "string" ? (v.length > 60 ? v.slice(0, 60) + "…" : v) : v);
   const nodeLines = nodes
-    .filter((n) => n.id !== excludeNodeId)
+    .filter((n) => n.id !== excludeNodeId && (!focus || focus.has(n.id)))
     .map((n) => {
       const type = n.data.nodeType as NodeType;
       const fields = SUMMARY_FIELDS[type] ?? [];

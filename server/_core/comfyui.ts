@@ -1228,7 +1228,7 @@ type WorkflowJson = Record<string, { class_type: string; inputs: Record<string, 
 export async function analyzeWorkflow(
   workflowJson: string,
   rawBaseUrl?: string,
-): Promise<{ detectedParams: WorkflowParamBinding[]; outputNodeIds: string[]; outputNodes: { id: string; classType: string; isVideo: boolean }[]; outputType: "image" | "video" | "mixed" }> {
+): Promise<{ detectedParams: WorkflowParamBinding[]; outputNodeIds: string[]; outputNodes: { id: string; classType: string; isVideo: boolean }[]; outputType: "image" | "video" | "mixed"; videoCapabilities?: { maxFrames: number; fps: number } }> {
   let workflow: WorkflowJson;
   try {
     workflow = JSON.parse(workflowJson) as WorkflowJson;
@@ -1237,6 +1237,12 @@ export async function analyzeWorkflow(
   }
   if (!workflow || typeof workflow !== "object" || Array.isArray(workflow)) {
     throw new Error("Workflow JSON 结构无效：应为 { 节点ID: {...} } 的对象（ComfyUI API 格式，非 UI 导出格式）");
+  }
+  // UI-exported workflows ({nodes:[...], links:[...]}) parse as objects but have
+  // no class_type keys → every node is skipped → zero editable params. Detect this
+  // explicitly so the user gets actionable guidance instead of an empty param list.
+  if (Array.isArray((workflow as Record<string, unknown>).nodes)) {
+    throw new Error("检测到 ComfyUI「UI 导出格式」（含 nodes 节点列表）。请在 ComfyUI 用 “Save (API Format)”，或开启设置里的开发者模式后用 “Export (API)” 导出 API 格式再导入——UI 格式无法解析出可编辑参数。");
   }
 
   // Optionally fetch object_info to get enum options (best-effort)
@@ -1254,6 +1260,14 @@ export async function analyzeWorkflow(
   const outputNodes: { id: string; classType: string; isVideo: boolean }[] = [];
   let hasImage = false;
   let hasVideo = false;
+  // Deterministic video-duration capability detection (frames / fps), used by the
+  // agent to know each template's per-shot length. frames come from the latent
+  // video node's `length` (Hunyuan/LTXV/Wan) or SVD `video_frames`, or — only for
+  // a video workflow — AnimateDiff's EmptyLatentImage `batch_size`; fps from
+  // VHS_VideoCombine `frame_rate`.
+  let detectedFrames: number | undefined;
+  let detectedFps: number | undefined;
+  let animatediffBatch: number | undefined;
 
   // Pre-scan: identify which CLIPTextEncode nodes are wired to KSampler's negative input.
   // Walk the conditioning graph recursively so that intermediate nodes such as
@@ -1295,6 +1309,12 @@ export async function analyzeWorkflow(
     if (typeof node !== "object" || !node.class_type) continue;
     const ct = node.class_type;
     const inputs = node.inputs ?? {};
+
+    // Capture frames/fps wherever they appear (literal numbers only — wired refs ignored).
+    if (typeof (inputs as Record<string, unknown>).length === "number") detectedFrames = (inputs as Record<string, number>).length;
+    if (typeof (inputs as Record<string, unknown>).video_frames === "number") detectedFrames = (inputs as Record<string, number>).video_frames;
+    if (typeof (inputs as Record<string, unknown>).frame_rate === "number") detectedFps = (inputs as Record<string, number>).frame_rate;
+    if (ct === "EmptyLatentImage" && typeof (inputs as Record<string, unknown>).batch_size === "number") animatediffBatch = (inputs as Record<string, number>).batch_size;
 
     if (ct === "CLIPTextEncode") {
       // Skip when `text` is wired from an upstream node (array ref): the prompt
@@ -1428,8 +1448,53 @@ export async function analyzeWorkflow(
     }
   }
 
+  // ── Generic widget sweep（尽量扩大白名单）─────────────────────────────────────
+  // Surface any remaining LITERAL scalar input (number/boolean/string) that wasn't
+  // already bound by a specific branch above and isn't wired from another node, so
+  // params on custom / unrecognized nodes (FluxGuidance.guidance, ModelSamplingSD3
+  // .shift, latent .length, custom widgets…) become editable instead of disappearing.
+  const GENERIC_SKIP_FIELDS = new Set([
+    "filename_prefix", "save_output", "unique_id", "control_after_generate",
+    "images", "samples", "latent_image", "audio", "mask", "pixels",
+  ]);
+  const GENERIC_LABELS: Record<string, string> = {
+    guidance: "Guidance", shift: "Shift", length: "帧数", num_frames: "帧数", video_frames: "帧数",
+    width: "宽度", height: "高度", batch_size: "批量数量", fps: "帧率 (FPS)", frame_rate: "帧率 (FPS)",
+    steps: "步数", cfg: "CFG Scale", denoise: "Denoise", seed: "随机种子", noise_seed: "随机种子",
+    strength: "强度", weight: "权重",
+  };
+  const MAX_PARAMS = 80;
+  const bound = new Set(detectedParams.map((p) => `${p.nodeId}|${p.fieldPath}`));
+  for (const [nodeId, node] of Object.entries(workflow)) {
+    if (detectedParams.length >= MAX_PARAMS) break;
+    if (typeof node !== "object" || !node.class_type) continue;
+    const nodeInputs = (node.inputs ?? {}) as Record<string, unknown>;
+    const title = node._meta?.title?.trim();
+    for (const [field, val] of Object.entries(nodeInputs)) {
+      if (detectedParams.length >= MAX_PARAMS) break;
+      if (bound.has(`${nodeId}|inputs.${field}`) || GENERIC_SKIP_FIELDS.has(field)) continue;
+      if (val === null || Array.isArray(val) || typeof val === "object") continue; // wired / complex
+      const t = typeof val;
+      if (t !== "number" && t !== "boolean" && t !== "string") continue;
+      const base = GENERIC_LABELS[field] ?? field;
+      detectedParams.push({
+        nodeId, fieldPath: `inputs.${field}`,
+        label: title ? `${title}·${base}` : base,
+        type: t === "number" ? "number" : t === "boolean" ? "boolean" : "text",
+        defaultValue: val as string | number | boolean,
+      });
+      bound.add(`${nodeId}|inputs.${field}`);
+    }
+  }
+
   const outputType = hasImage && hasVideo ? "mixed" : hasVideo ? "video" : "image";
-  return { detectedParams, outputNodeIds, outputNodes, outputType };
+  // For a video workflow with no explicit latent-length, AnimateDiff encodes the
+  // frame count in EmptyLatentImage.batch_size.
+  const frames = detectedFrames ?? (hasVideo ? animatediffBatch : undefined);
+  const videoCapabilities = hasVideo && frames && detectedFps
+    ? { maxFrames: frames, fps: detectedFps }
+    : undefined;
+  return { detectedParams, outputNodeIds, outputNodes, outputType, videoCapabilities };
 }
 
 // ── Custom workflow execution ─────────────────────────────────────────────────

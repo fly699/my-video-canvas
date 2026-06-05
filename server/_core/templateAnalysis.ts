@@ -6,7 +6,8 @@ import type { WorkflowParamBinding } from "../../shared/types";
 
 // Bump when the analysis algorithm/output shape changes so the incremental
 // re-analysis (analyzeLibrary) re-processes older rows.
-export const CURRENT_ANALYSIS_VERSION = 1;
+// v2: added per-shot video duration (maxFrames/fps) for agent scene planning.
+export const CURRENT_ANALYSIS_VERSION = 2;
 
 const MODEL_FIELD_HINTS = ["ckpt_name", "unet_name", "lora_name", "vae_name", "model_name"];
 
@@ -32,13 +33,21 @@ export async function analyzeTemplate(template: ComfyNodeTemplateRow, model: str
 
   let outputType: "image" | "video" | "mixed" = template.nodeType === "comfyui_video" ? "video" : "image";
   let params: WorkflowParamBinding[] = [];
+  let videoCaps: { maxFrames: number; fps: number } | undefined;
   if (workflowJson) {
     try {
       const a = await analyzeWorkflow(workflowJson); // offline: no baseUrl
       outputType = a.outputType;
       params = a.detectedParams;
+      videoCaps = a.videoCapabilities;
     } catch { /* keep nodeType-derived outputType, no params */ }
   }
+
+  // Resolve per-shot video duration (frames/fps). Prefer the workflow-derived
+  // values; else read the saved comfyui_video node payload; else fall back to the
+  // built-in template defaults (comfyui.ts buildVideoWorkflow). Left null for
+  // image-only templates so the agent simply treats them as unconstrained.
+  const { maxFrames, fps } = resolveVideoCaps(template, payload, videoCaps, outputType);
 
   // Model names: from params, else from common payload fields.
   let modelNames = modelNamesFromParams(params);
@@ -87,10 +96,38 @@ ${workflowJson ? `工作流JSON(截断)：\n${workflowJson.slice(0, 6000)}` : ""
     outputType,
     hasVideoOutput: outputType !== "image",
     modelNames,
+    maxFrames,
+    fps,
     analysisVersion: CURRENT_ANALYSIS_VERSION,
     model,
     analyzedAt: new Date(),
   };
+}
+
+// Built-in comfyui_video template per-shot frames/fps (mirrors the defaults in
+// comfyui.ts buildVideoWorkflow): Wan 81@16≈5s, LTXV 97@25≈3.9s, AnimateDiff/SVD 16@8=2s.
+const BUILTIN_VIDEO_DEFAULTS: Record<string, { maxFrames: number; fps: number }> = {
+  wan_t2v: { maxFrames: 81, fps: 16 },
+  wan_i2v: { maxFrames: 81, fps: 16 },
+  ltxv: { maxFrames: 97, fps: 25 },
+  animatediff: { maxFrames: 16, fps: 8 },
+  svd: { maxFrames: 16, fps: 8 },
+};
+
+function resolveVideoCaps(
+  template: ComfyNodeTemplateRow,
+  payload: Record<string, unknown>,
+  fromWorkflow: { maxFrames: number; fps: number } | undefined,
+  outputType: "image" | "video" | "mixed",
+): { maxFrames: number | null; fps: number | null } {
+  if (fromWorkflow) return { maxFrames: fromWorkflow.maxFrames, fps: fromWorkflow.fps };
+  if (outputType === "image") return { maxFrames: null, fps: null };
+  // Saved comfyui_video node payload carries frames/fps directly.
+  const pf = payload.frames, pfps = payload.fps;
+  if (typeof pf === "number" && typeof pfps === "number") return { maxFrames: pf, fps: pfps };
+  const wt = payload.workflowTemplate;
+  if (typeof wt === "string" && BUILTIN_VIDEO_DEFAULTS[wt]) return BUILTIN_VIDEO_DEFAULTS[wt];
+  return { maxFrames: null, fps: null };
 }
 
 /**

@@ -38,7 +38,23 @@ export const RUNNABLE_TYPES: NodeType[] = [
 
 const VIDEO_SOURCE_TYPES = new Set(["video_task", "clip", "merge", "overlay", "asset", "subtitle", "subtitle_motion", "smart_cut", "comfyui_video", "comfyui_workflow"]);
 
-/** Pick the video output URL from a node's payload regardless of which field it uses. */
+// Pick the video output URL from a node's payload regardless of which field it uses.
+//
+// ── 为什么要同时认 resultVideoUrl / outputUrl / url（历史缘由）──────────────────
+// 视频结果在不同节点用了不同的字段名，这是历史遗留的命名分歧，而非有意约定：
+//   • resultVideoUrl —— 来自「异步 provider 任务」子系统：video_task 把生成提交给
+//     上游（Poyo/Higgsfield 等）拿到 taskId，最终结果由 server/videoTaskPoller 轮询
+//     回填到 payload.resultVideoUrl（任务结果字段天生就叫这个名）。comfyui_video
+//     沿用了同一字段（ComfyuiVideoNode.tsx）。
+//   • outputUrl —— 来自「应用内合成」子系统：clip / merge / overlay / subtitle /
+//     subtitle_motion / smart_cut 这些后处理节点，以及 comfyui_workflow，都把结果写
+//     在 payload.outputUrl。注意 comfyui_workflow 虽是「生成」节点却用 outputUrl，
+//     所以并不存在「生成类→resultVideoUrl、加工类→outputUrl」这样的干净规则。
+//   • url —— 兜底：asset（用户上传/导入的素材）把媒体地址存在 payload.url。
+// 两套子系统各自起的名，谁也没统一过；下游一律用「resultVideoUrl ?? outputUrl ?? url」
+// 这个三选一回退来把两套桥接起来，因此功能上始终正常。
+// ⚠️ 切勿「顺手统一」字段名：resultVideoUrl 是 videoTaskPoller 异步回填的，强行改名会
+//    破坏轮询写入与已持久化的旧 payload。要改需同时动 poller、types、所有读写点并做迁移。
 function getNodeVideoUrl(payload: Record<string, unknown>): string | undefined {
   return (payload.resultVideoUrl ?? payload.outputUrl ?? payload.url) as string | undefined;
 }

@@ -62,6 +62,25 @@ function persistNamedSnapshots(projectId: number | null, snaps: NamedSnapshot[])
 
 const MAX_HISTORY = 50;
 
+// Runtime/output payload fields stripped when cloning a node (duplicate / variants
+// / import) so the copy doesn't claim it already generated or share a task id.
+const CLONE_RUNTIME_FIELDS = [
+  "imageUrl", "imageStorageKey", "imageHistory", "imageUrls", "selectedImageIndex",
+  "resultVideoUrl", "errorMessage", "progress", "taskId", "externalTaskId",
+  "status", "messages", "url", "storageKey", "outputUrl", "outputDuration",
+];
+
+// Generation node types that support A/B 变体 (fresh seed per clone).
+export const VARIANT_TYPES: NodeType[] = [
+  "image_gen", "video_task", "comfyui_image", "comfyui_video", "comfyui_workflow",
+];
+
+// Shape of an exported graph file (see Canvas handleExport) accepted by importGraph.
+export interface ImportedGraph {
+  nodes?: Array<{ id?: string; type?: string; title?: string; position?: { x: number; y: number }; data?: Record<string, unknown> }>;
+  edges?: Array<{ id?: string; source?: string; target?: string; sourceHandle?: string | null; targetHandle?: string | null; label?: string }>;
+}
+
 interface CanvasStore {
   nodes: CanvasNode[];
   edges: CanvasEdge[];
@@ -96,6 +115,9 @@ interface CanvasStore {
   onEdgesChange: (changes: EdgeChange[]) => void;
   onConnect: (connection: Connection) => void;
   addNode: (type: NodeType, position: { x: number; y: number }) => CanvasNode;
+  /** Add a sized `group` "scene" container box behind other nodes (zIndex -1).
+   *  Used by the agent apply layer to wrap a scene's shots. */
+  addGroupBox: (rect: { x: number; y: number; width: number; height: number }, title: string) => void;
   batchAddSceneNodes: (
     scenes: Array<{ description?: string; promptText?: string; negativePrompt?: string; cameraMovement?: string; duration?: number; lens?: string; colorGrade?: string; shotType?: string; lighting?: string }>,
     sourceNodeId: string,
@@ -119,6 +141,12 @@ interface CanvasStore {
   updateNodeTitle: (id: string, title: string) => void;
   deleteNode: (id: string) => void;
   duplicateNode: (id: string) => void;
+  /** Clone a generation node into `count` A/B variants (fresh seed each, same
+   *  upstream inputs re-wired). Returns the number of variants created. */
+  createVariants: (id: string, count: number) => number;
+  /** Import an exported graph (canvas-x.json) into the current project, remapping
+   *  all ids so it merges without colliding. Returns counts created. */
+  importGraph: (graph: ImportedGraph) => { nodes: number; edges: number };
   updateEdgeLabel: (id: string, label: string) => void;
 
   // Named snapshots
@@ -286,6 +314,31 @@ export const useCanvasStore = create<CanvasStore>((set, get) => ({
     return newNode;
   },
 
+  addGroupBox: (rect, title) => {
+    const projectId = get().projectId;
+    if (!projectId) return;
+    const uid = get().currentUserId;
+    const node: CanvasNode = {
+      id: nanoid(),
+      type: "custom",
+      position: { x: rect.x, y: rect.y },
+      // Render behind the shot nodes it wraps (shots default to zIndex 0).
+      zIndex: -1,
+      data: {
+        nodeType: "group",
+        title,
+        payload: { ...getDefaultPayload("group"), ...(uid != null ? { createdBy: uid } : {}) } as NodeData,
+        projectId,
+      },
+      style: { width: rect.width, height: rect.height },
+    };
+    set((state) => ({
+      ...(get()._suppressHistory ? {} : pushHistory(state)),
+      nodes: [...state.nodes, node],
+      isDirty: true,
+    }));
+  },
+
   batchAddSceneNodes: (scenes, sourceNodeId, sourcePosition, targetType = "storyboard") => {
     const storeProjectId = get().projectId;
     if (!storeProjectId) return; // guard: project not loaded yet
@@ -426,13 +479,8 @@ export const useCanvasStore = create<CanvasStore>((set, get) => ({
     // already finished generating, and doesn't reuse the original node's taskId
     // (which would make both the source and the duplicate poll the same task and
     // appear to "succeed" together — confusing and a vector for accidental re-submits).
-    const RUNTIME_FIELDS = [
-      "imageUrl", "imageStorageKey", "imageHistory", "imageUrls", "selectedImageIndex",
-      "resultVideoUrl", "errorMessage", "progress", "taskId", "externalTaskId",
-      "status", "messages", "url", "storageKey", "outputUrl", "outputDuration",
-    ];
     const clonedPayload = JSON.parse(JSON.stringify(node.data.payload)) as Record<string, unknown>;
-    for (const k of RUNTIME_FIELDS) delete clonedPayload[k];
+    for (const k of CLONE_RUNTIME_FIELDS) delete clonedPayload[k];
     // The duplicate is authored by whoever clicked duplicate.
     const dupUid = get().currentUserId;
     if (dupUid != null) clonedPayload.createdBy = dupUid;
@@ -448,6 +496,92 @@ export const useCanvasStore = create<CanvasStore>((set, get) => ({
       nodes: [...state.nodes, newNode],
       isDirty: true,
     }));
+  },
+
+  createVariants: (id, count) => {
+    const state0 = get();
+    const node = state0.nodes.find((n) => n.id === id);
+    if (!node || count < 1) return 0;
+    const dupUid = state0.currentUserId;
+    // Re-wire each variant from the same upstream inputs as the source so they
+    // actually have what they need to generate (A/B comparison on equal inputs).
+    const incoming = state0.edges.filter((e) => e.target === id);
+    const newNodes: CanvasNode[] = [];
+    const newEdges: CanvasEdge[] = [];
+    for (let i = 1; i <= count; i++) {
+      const newId = nanoid();
+      const p = JSON.parse(JSON.stringify(node.data.payload)) as Record<string, unknown>;
+      for (const k of CLONE_RUNTIME_FIELDS) delete p[k];
+      if (dupUid != null) p.createdBy = dupUid;
+      // Fresh random seed per variant so they diverge even on identical configs.
+      p.seed = Math.floor(Math.random() * 2147483647);
+      newNodes.push({
+        ...node,
+        id: newId,
+        position: { x: node.position.x + 380, y: node.position.y + (i - 1) * 180 },
+        data: { ...node.data, payload: p as typeof node.data.payload, title: `${node.data.title} · 变体${i}` },
+        selected: false,
+      });
+      for (const e of incoming) newEdges.push({ ...e, id: nanoid(), target: newId });
+    }
+    set((s) => ({
+      ...pushHistory(s),
+      nodes: [...s.nodes, ...newNodes],
+      edges: [...s.edges, ...newEdges],
+      isDirty: true,
+    }));
+    return newNodes.length;
+  },
+
+  importGraph: (graph) => {
+    const { projectId } = get();
+    if (!projectId) return { nodes: 0, edges: 0 };
+    const dupUid = get().currentUserId;
+    const srcNodes = graph.nodes ?? [];
+    const srcEdges = graph.edges ?? [];
+    // Map each imported node's old id → a fresh id, so importing into a populated
+    // canvas never collides with existing nodes (and can be imported repeatedly).
+    const idMap = new Map<string, string>();
+    const newNodes: CanvasNode[] = [];
+    for (const sn of srcNodes) {
+      const type = sn.type as NodeType | undefined;
+      if (!type || !sn.id) continue;
+      const cfg = getNodeConfig(type);
+      if (!cfg) continue; // unknown node type — skip rather than corrupt the canvas
+      const newId = nanoid();
+      idMap.set(sn.id, newId);
+      const payload = { ...(sn.data ?? {}) } as Record<string, unknown>;
+      for (const k of CLONE_RUNTIME_FIELDS) delete payload[k];
+      if (dupUid != null) payload.createdBy = dupUid;
+      const pos = sn.position ?? { x: 0, y: 0 };
+      newNodes.push({
+        id: newId,
+        type: "custom",
+        position: { x: pos.x + 60, y: pos.y + 60 },
+        data: { nodeType: type, title: sn.title ?? cfg.defaultTitle, projectId, payload: payload as CanvasNode["data"]["payload"] },
+        selected: false,
+      });
+    }
+    const newEdges: CanvasEdge[] = [];
+    for (const se of srcEdges) {
+      const source = se.source && idMap.get(se.source);
+      const target = se.target && idMap.get(se.target);
+      if (!source || !target) continue; // dangling — drop
+      newEdges.push({
+        id: nanoid(), source, target,
+        sourceHandle: se.sourceHandle ?? undefined,
+        targetHandle: se.targetHandle ?? undefined,
+        label: typeof se.label === "string" ? se.label : undefined,
+      } as CanvasEdge);
+    }
+    if (newNodes.length === 0) return { nodes: 0, edges: 0 };
+    set((s) => ({
+      ...pushHistory(s),
+      nodes: [...s.nodes, ...newNodes],
+      edges: [...s.edges, ...newEdges],
+      isDirty: true,
+    }));
+    return { nodes: newNodes.length, edges: newEdges.length };
   },
 
   setSelectedNodeIds: (ids) => set({ selectedNodeIds: ids }),

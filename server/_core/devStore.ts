@@ -1049,6 +1049,8 @@ export function devUpsertComfyTemplateAnalysis(data: InsertComfyTemplateAnalysis
     outputType: data.outputType ?? null,
     hasVideoOutput: data.hasVideoOutput ?? null,
     modelNames: data.modelNames ?? null,
+    maxFrames: data.maxFrames ?? null,
+    fps: data.fps ?? null,
     analysisVersion: data.analysisVersion ?? 1,
     model: data.model ?? null,
     analyzedAt: now(),

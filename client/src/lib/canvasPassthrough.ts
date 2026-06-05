@@ -21,7 +21,10 @@ export function getNodeImageOutput(nodeType: string, payload: AnyPayload): strin
   return (payload.imageUrl ?? payload.outputUrl) as string | undefined;
 }
 
-/** This node's video output URL, or undefined if it has none. */
+/** This node's video output URL, or undefined if it has none.
+ *  The `resultVideoUrl ?? outputUrl` fallback bridges the historical field-name split
+ *  (video_task/comfyui_video write resultVideoUrl; clip/merge/…/comfyui_workflow write
+ *  outputUrl). Full rationale in getNodeVideoUrl, client/src/hooks/useWorkflowRunner.ts. */
 export function getNodeVideoOutput(nodeType: string, payload: AnyPayload): string | undefined {
   if (nodeType === "asset") return payload.type === "video" ? (payload.url as string | undefined) : undefined;
   if (nodeType === "comfyui_workflow") return payload.outputType === "image" ? undefined : (payload.outputUrl as string | undefined);

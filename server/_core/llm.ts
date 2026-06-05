@@ -303,6 +303,41 @@ export const AVAILABLE_MODELS = [
 
 export const DEFAULT_MODEL = "claude-sonnet-4-5-20250929";
 
+// Model ids that are no longer served by the upstream gateway → remapped to a
+// working equivalent so existing node payloads (and any stale picks) keep
+// functioning instead of 400ing. `gemini-2.5-flash` returns an unknown-model
+// error on every node now; route it to the working Gemini 3 Flash (same family,
+// strictly newer). Applied to ALL callers in invokeLLM.
+const MODEL_ALIASES: Record<string, string> = {
+  "gemini-2.5-flash": "gemini-3-flash-preview",
+};
+
+/** Resolve a possibly-stale model id to the one actually served upstream. */
+export function resolveModelId(model: string | undefined): string {
+  const m = model ?? DEFAULT_MODEL;
+  return MODEL_ALIASES[m] ?? m;
+}
+
+// Per-model max output-token ceilings. Most models accept a large `max_tokens`
+// (the script generator asks for 8000), but the Gemini *preview* reasoning
+// models served via Forge reject a budget that high and 400 the whole request —
+// which is why Gemini worked in every node EXCEPT the script node (the only
+// caller passing 8000). Clamp the requested budget down to a known-good ceiling
+// for those models so the request succeeds; other models are left unclamped so
+// Claude/GPT keep their full budget. 4096 is proven safe — every other LLM path
+// (agent, ai_chat, storyboard, enhance) already uses ≤4096 with Gemini fine.
+// NOTE: thinking tokens count toward max_tokens (docs/poyo-llm-api.md), so a
+// conservative ceiling also avoids the reasoning budget swallowing the output.
+const MODEL_MAX_OUTPUT_TOKENS: Record<string, number> = {
+  "gemini-3-flash-preview": 4096,
+};
+
+/** Resolve the effective max_tokens for a model, clamping to its ceiling if any. */
+export function resolveMaxTokens(model: string | undefined, requested: number): number {
+  const ceiling = model ? MODEL_MAX_OUTPUT_TOKENS[model] : undefined;
+  return ceiling ? Math.min(requested, ceiling) : requested;
+}
+
 /** Extract plain text from an LLM response, handling both string and array content. */
 export function extractTextContent(response: InvokeResult): string {
   const raw = response.choices?.[0]?.message?.content;
@@ -324,7 +359,7 @@ export async function invokeLLM(params: InvokeParams): Promise<InvokeResult> {
     response_format,
   } = params;
 
-  const resolvedModel = model ?? DEFAULT_MODEL;
+  const resolvedModel = resolveModelId(model);
   assertApiKey(resolvedModel);
 
   const payload: Record<string, unknown> = {
@@ -344,7 +379,7 @@ export async function invokeLLM(params: InvokeParams): Promise<InvokeResult> {
     payload.tool_choice = normalizedToolChoice;
   }
 
-  payload.max_tokens = params.maxTokens ?? params.max_tokens ?? 4096;
+  payload.max_tokens = resolveMaxTokens(resolvedModel, params.maxTokens ?? params.max_tokens ?? 4096);
 
   const normalizedResponseFormat = normalizeResponseFormat({
     responseFormat,

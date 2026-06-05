@@ -193,6 +193,13 @@ export interface VideoTaskNodeData {
   referenceImageUrl?: string;
   /** Multi-angle reference images (see ReferenceImage). [0].url mirrors referenceImageUrl. */
   referenceImages?: ReferenceImage[];
+  /** Final video URL. Named `resultVideoUrl` (not `outputUrl` like the post-processing
+   *  nodes) for historical reasons: video_task results come from the async provider-task
+   *  subsystem and are filled by server/videoTaskPoller into this field. The in-app
+   *  composing nodes (clip/merge/subtitle/…) and comfyui_workflow use `outputUrl` instead;
+   *  comfyui_video reuses this same `resultVideoUrl` name. Downstream readers bridge both
+   *  via `resultVideoUrl ?? outputUrl ?? url` — see getNodeVideoUrl in useWorkflowRunner.ts
+   *  for the full rationale. Do NOT rename without migrating the poller + persisted payloads. */
   resultVideoUrl?: string;
   errorMessage?: string;
   progress?: number;
@@ -722,6 +729,10 @@ export interface ComfyuiVideoNodeData {
   referenceImageUrl?: string;
   /** Multi-angle reference images (see ReferenceImage). [0].url mirrors referenceImageUrl. */
   referenceImages?: ReferenceImage[];
+  /** Final video URL. comfyui_video deliberately reuses video_task's `resultVideoUrl`
+   *  name (not the `outputUrl` used by clip/merge/comfyui_workflow). This split is
+   *  historical, not a principled convention — see getNodeVideoUrl in useWorkflowRunner.ts.
+   *  Downstream bridges both with `resultVideoUrl ?? outputUrl ?? url`. */
   resultVideoUrl?: string;
   resultStorageKey?: string;
   progress?: number;
@@ -793,6 +804,10 @@ export interface AgentOperation {
   sourceRef?: string;           // connect source (tempId or real node id)
   sourceHandle?: string;
   targetHandle?: string;
+  /** create: scene grouping key (e.g. "s1"). Nodes sharing a sceneGroup are laid
+   *  out together and wrapped in an auto-created `group` "场景" container by the
+   *  apply layer. Used by duration-aware scene planning. */
+  sceneGroup?: string;
   /** Short human-readable rationale shown in the proposal preview. */
   note?: string;
   status?: "proposed" | "applied" | "rejected" | "failed";
@@ -815,8 +830,23 @@ export interface AgentNodeData {
   autoApply?: boolean;
   /** 自动执行：应用后自动发起工作流运行（仍经画布的运行确认弹窗）。「一句话成片」。 */
   autoRun?: boolean;
+  /** 规划控制偏好：用户在「规划设置」对话框里的特殊要求，发送时拼成约束注入 Agent。 */
+  planPrefs?: AgentPlanPrefs;
   status?: "idle" | "thinking" | "failed";
   errorMessage?: string;
+}
+
+export interface AgentPlanPrefs {
+  /** 先生图再图生视频（而非直接文生视频）。 */
+  imageFirst?: boolean;
+  /** 自动添加配乐（audio 节点并入 merge）。 */
+  addMusic?: boolean;
+  /** 自动添加字幕（subtitle 节点）。 */
+  addSubtitle?: boolean;
+  /** 画面比例，如 "9:16" / "16:9" / "1:1"。 */
+  aspect?: string;
+  /** 整体视觉风格（自由文本）。 */
+  style?: string;
 }
 
 export type NodeData =

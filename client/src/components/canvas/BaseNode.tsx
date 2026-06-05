@@ -11,9 +11,10 @@ import { useWorkflowRunState } from "../../contexts/WorkflowRunContext";
 import { useCanvasMode } from "../../contexts/CanvasModeContext";
 import { useTheme } from "../../contexts/ThemeContext";
 import {
-  Trash2, Copy, GripVertical, Check, X, Loader2, FileText, AlertTriangle, Pin, Pencil, Share2, Play, RefreshCw,
+  Trash2, Copy, GripVertical, Check, X, Loader2, FileText, AlertTriangle, Pin, Pencil, Share2, Play, RefreshCw, Layers,
 } from "lucide-react";
 import { NODE_ICONS } from "../../lib/nodeConfig";
+import { VARIANT_TYPES } from "../../hooks/useCanvasStore";
 import { toast } from "sonner";
 import { hasPassableOutput, directPassDownstream } from "../../lib/canvasPassthrough";
 import { handleStyle } from "../../lib/handleStyle";
@@ -58,7 +59,7 @@ export const BaseNode = memo(function BaseNode({
 }: BaseNodeProps) {
   const config = getNodeConfig(nodeType);
   const Icon = NODE_ICONS[config.icon] ?? FileText;
-  const { deleteNode, duplicateNode, updateNodeTitle, projectId } = useCanvasStore();
+  const { deleteNode, duplicateNode, createVariants, updateNodeTitle, projectId } = useCanvasStore();
   // Detect ambiguous dual-target connection: when both `input` (left) and `top` handles
   // receive edges, the workflow runner only uses one — warn the user.
   const dualTargetConflict = useCanvasStore((s) => {
@@ -522,6 +523,24 @@ export const BaseNode = memo(function BaseNode({
             pointerEvents: showActions ? "auto" : "none",
           }}
         >
+          {VARIANT_TYPES.includes(nodeType) && (
+            <button
+              onClick={() => { const n = createVariants(id, 3); if (n > 0) toast.success(`已生成 ${n} 个变体（各带随机种子，复用相同输入）`); }}
+              className="w-6 h-6 rounded-md flex items-center justify-center transition-all"
+              style={{ color: "var(--c-t4)" }}
+              onMouseEnter={(e) => {
+                (e.currentTarget as HTMLElement).style.background = "var(--c-bd2)";
+                (e.currentTarget as HTMLElement).style.color = "var(--c-t2)";
+              }}
+              onMouseLeave={(e) => {
+                (e.currentTarget as HTMLElement).style.background = "transparent";
+                (e.currentTarget as HTMLElement).style.color = "var(--c-t4)";
+              }}
+              title="生成 A/B 变体（×3，各带随机种子）"
+            >
+              <Layers className="w-3 h-3" />
+            </button>
+          )}
           <button
             onClick={() => duplicateNode(id)}
             className="w-6 h-6 rounded-md flex items-center justify-center transition-all"

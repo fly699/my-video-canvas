@@ -27,7 +27,11 @@ export type LLMModelMeta = {
 export const LLM_MODELS: readonly LLMModelMeta[] = [
   // Gemini (Google) — routed to Forge
   { id: "gemini-3-flash-preview",    label: "Gemini 3 Flash",    short: "Gemini3", family: "Gemini", tag: "最新", provider: "Forge", color: "oklch(0.68 0.18 160)", costTier: "低" },
-  { id: "gemini-2.5-flash",          label: "Gemini 2.5 Flash",  short: "Gemini",  family: "Gemini", tag: "快速", provider: "Forge", color: "oklch(0.68 0.18 160)", costTier: "低" },
+  // No longer served by the upstream gateway (returns unknown-model). Hidden from
+  // the picker; the backend remaps this id to gemini-3-flash-preview (MODEL_ALIASES
+  // in server/_core/llm.ts) so old node payloads still run. Kept here (not dropped)
+  // so the persisted id still resolves for display.
+  { id: "gemini-2.5-flash",          label: "Gemini 2.5 Flash",  short: "Gemini",  family: "Gemini", tag: "快速", provider: "Forge", color: "oklch(0.68 0.18 160)", costTier: "低", hidden: true },
   // Claude (Anthropic) — Sonnet 4.6 on Forge; Sonnet 4.5 is Poyo's Anthropic
   // model (docs/poyo-llm-api.md); Haiku on Forge.
   { id: "claude-sonnet-4-6",          label: "Claude Sonnet 4.6", short: "Sonnet", family: "Claude", tag: "旗舰", provider: "Forge", color: "oklch(0.68 0.18 280)", costTier: "高" },
