@@ -234,17 +234,21 @@ export const MergeNode = memo(function MergeNode({ id, selected, data }: Props) 
               style={{ flex: 1, minHeight: 180, width: "100%", objectFit: "contain", display: "block", border: `1px solid ${accentA(0.4)}`, background: "#000" }}
               preload="metadata"
             />
-            <div className="flex gap-1.5 flex-shrink-0">
-              <button
-                onClick={handleReset}
-                className="nodrag flex-1 flex items-center justify-center gap-1 px-2.5 py-1.5 rounded-lg text-[10px]"
-                style={{ background: "var(--c-surface)", border: "1px solid var(--c-bd2)", color: "var(--c-t3)", cursor: "pointer" }}
-              >
-                <RotateCcw style={{ width: 9, height: 9 }} />
-                重置
-                {payload.outputDuration ? <span style={{ color: "var(--c-t4)" }}> · {payload.outputDuration.toFixed(1)}s</span> : null}
-              </button>
-            </div>
+            {/* Bottom controls hide when the node is collapsed — the output
+                video preview stays, but the reset button only shows expanded. */}
+            {expanded && (
+              <div className="flex gap-1.5 flex-shrink-0">
+                <button
+                  onClick={handleReset}
+                  className="nodrag flex-1 flex items-center justify-center gap-1 px-2.5 py-1.5 rounded-lg text-[10px]"
+                  style={{ background: "var(--c-surface)", border: "1px solid var(--c-bd2)", color: "var(--c-t3)", cursor: "pointer" }}
+                >
+                  <RotateCcw style={{ width: 9, height: 9 }} />
+                  重置
+                  {payload.outputDuration ? <span style={{ color: "var(--c-t4)" }}> · {payload.outputDuration.toFixed(1)}s</span> : null}
+                </button>
+              </div>
+            )}
           </div>
         )}
 

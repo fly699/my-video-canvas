@@ -1068,9 +1068,13 @@ export const ComfyuiWorkflowNode = memo(function ComfyuiWorkflowNode({ id, selec
         {/* ── Results ── (always visible, even when config is collapsed) */}
         {payload.status === "done" && payload.outputUrls && payload.outputUrls.length > 0 && (
           <div>
-            <label style={{ ...labelStyle, marginBottom: 6 }}>
-              输出结果（{payload.outputUrls.length} 个）
-            </label>
+            {/* Section label is redundant once the node is collapsed (no config
+                above it) — show it only while expanded; the result media stays. */}
+            {selected && (
+              <label style={{ ...labelStyle, marginBottom: 6 }}>
+                输出结果（{payload.outputUrls.length} 个）
+              </label>
+            )}
             {/* Video output */}
             {payload.outputType === "video" ? (
               <div>
