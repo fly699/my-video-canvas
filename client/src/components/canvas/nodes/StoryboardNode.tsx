@@ -379,7 +379,11 @@ export const StoryboardNode = memo(function StoryboardNode({ id, selected, data 
         />
       );
     }
-    if (payload.description?.trim()) {
+    // Text-only description is an INPUT, not a generated result — only surface it
+    // as a creative-mode preview card. In other modes returning it as hero would
+    // (via the now-global collapse rule) hide the node's editor before any image
+    // exists. Real image results below collapse in every mode.
+    if (isCreative && payload.description?.trim()) {
       return (
         <div
           className="node-hero-placeholder"
