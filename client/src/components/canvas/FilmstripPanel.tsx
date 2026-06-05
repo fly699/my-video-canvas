@@ -46,6 +46,25 @@ function validateLayout(v: unknown): FilmstripLayout | null {
   return { docked: o.docked, left: o.left, top: o.top, width: o.width, height: o.height };
 }
 
+// Resolve a node payload's frame media, bridging the field-name split across node
+// types: imageUrl/imageUrls (image_gen, comfyui_image, storyboard), resultVideoUrl
+// (video_task, comfyui_video), and outputUrl/outputUrls+outputType (comfyui_workflow).
+function extractFrameMedia(p: Record<string, unknown>): { imageUrl?: string; videoUrl?: string } {
+  const imageUrl = (p.imageUrl as string | undefined)
+    || (Array.isArray(p.imageUrls) ? (p.imageUrls as string[])[0] : undefined);
+  let videoUrl = p.resultVideoUrl as string | undefined;
+  // comfyui_workflow output → bridge by outputType (fall back to extension sniff).
+  const out = (p.outputUrl as string | undefined)
+    || (Array.isArray(p.outputUrls) ? (p.outputUrls as string[])[0] : undefined);
+  if (out) {
+    const t = p.outputType as string | undefined;
+    const isVideo = t === "video" || (t !== "image" && /\.(mp4|webm|mov|m4v)(\?|#|$)/i.test(out));
+    if (isVideo) videoUrl = videoUrl || out;
+    else if (!imageUrl) return { imageUrl: out, videoUrl };
+  }
+  return { imageUrl, videoUrl };
+}
+
 export function FilmstripPanel({ onClose }: FilmstripPanelProps) {
   const { nodes } = useCanvasStore();
   const reactFlow = useReactFlow();
@@ -189,10 +208,13 @@ export function FilmstripPanel({ onClose }: FilmstripPanelProps) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // Filter nodes that have an imageUrl, resultVideoUrl, or imageUrls in payload
+  // Filter nodes that carry a usable image/video output. Bridges the field-name
+  // split: image_gen/storyboard use imageUrl(s); video_task & comfyui_video use
+  // resultVideoUrl; comfyui_workflow uses outputUrl(s)+outputType — the last was
+  // previously missed, so ComfyUI-workflow videos had no filmstrip frame.
   const mediaNodes = nodes.filter((node) => {
-    const p = node.data.payload as Record<string, unknown>;
-    return !!(p.imageUrl || p.resultVideoUrl || (Array.isArray(p.imageUrls) && (p.imageUrls as string[]).length > 0));
+    const m = extractFrameMedia(node.data.payload as Record<string, unknown>);
+    return !!(m.imageUrl || m.videoUrl);
   });
 
   // Sort by Y position ascending, then X position for natural storyboard order
@@ -393,10 +415,9 @@ export function FilmstripPanel({ onClose }: FilmstripPanelProps) {
         ) : (
           sortedNodes.map((node, index) => {
             const payload = node.data.payload as Record<string, unknown>;
-            const mediaUrl = (payload.imageUrl as string | undefined)
-              || (Array.isArray(payload.imageUrls) ? (payload.imageUrls as string[])[0] : undefined)
-              || undefined;
-            const videoUrl = payload.resultVideoUrl as string | undefined;
+            const m = extractFrameMedia(payload);
+            const mediaUrl = m.imageUrl;
+            const videoUrl = m.videoUrl;
             const isVideo = !!videoUrl && !mediaUrl;
             const isStoryboard = node.data.nodeType === "storyboard";
             // sceneNumber accepts either number or string ("开场" / "S1-A" / 7);
