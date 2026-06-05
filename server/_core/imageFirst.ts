@@ -69,3 +69,64 @@ export function enforceImageFirst(ops: AgentOperation[]): AgentOperation[] {
   }
   return result;
 }
+
+// comfyOnly variant: image_gen is disallowed, so the image step must also be a
+// comfyui_workflow node (using an image-output template). For each created video
+// comfyui_workflow (templateId ∈ videoTplIds) not already fed by an image
+// comfyui_workflow (templateId ∈ imageTplIds), splice an image comfyui_workflow
+// (templateId = defaultImageTplId, carrying the video's prompt) before it:
+// prompt → image-cw → video-cw. Deterministic; doesn't rely on the LLM obeying.
+export function enforceImageFirstComfy(
+  ops: AgentOperation[],
+  imageTplIds: Set<number>,
+  videoTplIds: Set<number>,
+  defaultImageTplId: number,
+): AgentOperation[] {
+  const tplByTemp = new Map<string, number>();
+  const createByTemp = new Map<string, AgentOperation>();
+  for (const o of ops) {
+    if (o.op === "create" && o.tempId && o.nodeType === "comfyui_workflow") {
+      const tid = Number((o.payload as Record<string, unknown> | undefined)?.templateId);
+      if (Number.isFinite(tid)) tplByTemp.set(o.tempId, tid);
+      createByTemp.set(o.tempId, o);
+    }
+  }
+  const videoTemps = new Set<string>();
+  tplByTemp.forEach((tid, temp) => { if (videoTplIds.has(tid)) videoTemps.add(temp); });
+  if (videoTemps.size === 0) return ops;
+
+  const videoHasImage = new Set<string>();
+  for (const o of ops) {
+    if (o.op === "connect" && o.targetRef && videoTemps.has(o.targetRef) && o.sourceRef) {
+      const st = tplByTemp.get(o.sourceRef);
+      if (st != null && imageTplIds.has(st)) videoHasImage.add(o.targetRef);
+    }
+  }
+
+  const result: AgentOperation[] = [];
+  const imgForVideo = new Map<string, string>();
+  let counter = 0;
+  for (const o of ops) {
+    if (o.op === "connect" && o.sourceRef && o.targetRef && videoTemps.has(o.targetRef) && !videoHasImage.has(o.targetRef)) {
+      const st = tplByTemp.get(o.sourceRef);
+      const sourceIsImage = st != null && imageTplIds.has(st);
+      if (!sourceIsImage) {
+        let imgRef = imgForVideo.get(o.targetRef);
+        if (!imgRef) {
+          imgRef = `imgfirst_cw_${++counter}`;
+          imgForVideo.set(o.targetRef, imgRef);
+          const vPayload = (createByTemp.get(o.targetRef)?.payload ?? {}) as Record<string, unknown>;
+          const imgPayload: Record<string, unknown> = { templateId: defaultImageTplId };
+          if (typeof vPayload.prompt === "string" && vPayload.prompt) imgPayload.prompt = vPayload.prompt;
+          if (typeof vPayload.negPrompt === "string" && vPayload.negPrompt) imgPayload.negPrompt = vPayload.negPrompt;
+          result.push({ op: "create", nodeType: "comfyui_workflow", tempId: imgRef, title: "出图", payload: imgPayload, note: "生图→生视频：自动插入出图工作流作为视频首帧" });
+        }
+        result.push({ ...o, targetRef: imgRef });
+        result.push({ op: "connect", sourceRef: imgRef, targetRef: o.targetRef, note: "生图→生视频" });
+        continue;
+      }
+    }
+    result.push(o);
+  }
+  return result;
+}
