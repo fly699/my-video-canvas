@@ -110,7 +110,7 @@ export const AGENT_NODE_CATALOG: AgentNodeSpec[] = [
   },
   {
     type: "comfyui_workflow", label: "ComfyUI 自定义", purpose: "本地/云 ComfyUI 自定义工作流，按模板库的模板生成图/视频",
-    connectsTo: ["merge", "asset", "video_task", "comfyui_video"],
+    connectsTo: ["merge", "asset", "video_task", "comfyui_video", "comfyui_workflow"],
     fields: [
       { name: "templateId", type: "number", desc: "引用「已分析的 ComfyUI 模板」中的模板 id" },
       { name: "prompt", type: "string", desc: "正向提示词（写入模板的 positive 角色参数）" },

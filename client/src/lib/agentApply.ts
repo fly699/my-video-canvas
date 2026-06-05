@@ -1,4 +1,5 @@
 import { useCanvasStore } from "../hooks/useCanvasStore";
+import { isConnectionValid } from "./connectionRules";
 import type { NodeType, NodeData, AgentOperation, WorkflowParamBinding } from "../../../shared/types";
 
 /** Library template shape (subset of comfyTemplates.list output) used to
@@ -58,6 +59,11 @@ export function applyAgentOperations(
   const store = useCanvasStore.getState();
   const idMap = new Map<string, string>(); // tempId → real node id
   const resolve = (ref?: string): string | undefined => (ref ? idMap.get(ref) ?? ref : undefined);
+  // Track live node ids (existing + created this batch) and their types so connect
+  // ops can be validated — otherwise a connect to a hallucinated/uncreated ref
+  // would create a dangling edge, and an illegal pairing would bypass the rules.
+  const liveIds = new Set(store.nodes.map((n) => n.id));
+  const typeById = new Map<string, NodeType>(store.nodes.map((n) => [n.id, n.data.nodeType as NodeType]));
   const res: ApplyResult = { created: 0, connected: 0, updated: 0, deleted: 0, failures: [] };
   const fail = (index: number, op: AgentOperation, reason: string) => {
     op.status = "failed"; op.error = reason;
@@ -125,6 +131,8 @@ export function applyAgentOperations(
           };
           const node = store.addNode(op.nodeType as NodeType, pos);
           if (op.tempId) idMap.set(op.tempId, node.id);
+          liveIds.add(node.id);
+          typeById.set(node.id, op.nodeType as NodeType);
           if (op.title) store.updateNodeTitle(node.id, op.title);
           if (payload && Object.keys(payload).length) {
             store.updateNodeData(node.id, payload as Partial<NodeData>, true);
@@ -137,6 +145,13 @@ export function applyAgentOperations(
           const target = resolve(op.targetRef);
           if (!source || !target) { fail(index, op, `连接的节点未找到（${op.sourceRef}→${op.targetRef}）`); return; }
           if (source === target) { fail(index, op, "不能连接到自身"); return; }
+          // The refs must resolve to REAL nodes (existing or created this batch) —
+          // a hallucinated/uncreated ref otherwise becomes a dangling edge.
+          if (!liveIds.has(source) || !liveIds.has(target)) { fail(index, op, `连接引用了不存在的节点（${op.sourceRef}→${op.targetRef}）`); return; }
+          // Enforce the same connection rules as the manual UI so the agent can't
+          // build illegal pairings (e.g. merge → script).
+          const st = typeById.get(source), tt = typeById.get(target);
+          if (st && tt && !isConnectionValid(st, tt)) { fail(index, op, `不允许的连接：${st} → ${tt}`); return; }
           store.onConnect({ source, target, sourceHandle: op.sourceHandle ?? "output", targetHandle: op.targetHandle ?? "input" });
           op.status = "applied";
           res.connected++;
@@ -145,7 +160,14 @@ export function applyAgentOperations(
           if (!target) { fail(index, op, `要更新的节点未找到（${op.targetRef}）`); return; }
           if (op.title) store.updateNodeTitle(target, op.title);
           if (op.payload && Object.keys(op.payload).length) {
-            store.updateNodeData(target, op.payload as Partial<NodeData>, true);
+            // Guard: an update must not inject a templateId for a node whose template
+            // isn't a real workflow template (would blank the node) — strip it.
+            const up = { ...(op.payload as Record<string, unknown>) };
+            if (up.templateId != null) {
+              const tpl = opts.templates?.find((t) => t.id === Number(up.templateId));
+              if (!tpl || typeof tpl.payload?.workflowJson !== "string" || !(tpl.payload.workflowJson as string).trim()) delete up.templateId;
+            }
+            if (Object.keys(up).length) store.updateNodeData(target, up as Partial<NodeData>, true);
           }
           op.status = "applied";
           res.updated++;

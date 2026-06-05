@@ -71,6 +71,7 @@ export const AgentNode = memo(function AgentNode({ id, selected, data }: Props) 
   const scrollRef = useRef<HTMLDivElement>(null);
   // Track agent-initiated workflow runs (执行感知 + 自动续作).
   const runInitiatedRef = useRef(false);
+  const selfHealRoundsRef = useRef(0); // caps auto self-heal loops per user request
   const prevRunningRef = useRef(false);
   const sawRunningRef = useRef(false);
   const chat = trpc.agent.chat.useMutation();
@@ -253,6 +254,7 @@ export const AgentNode = memo(function AgentNode({ id, selected, data }: Props) 
   const handleSend = async (override?: string, focusNodeIds?: string[]) => {
     const text = (override ?? input).trim();
     if (!text || chat.isPending) return;
+    if (!override) selfHealRoundsRef.current = 0; // genuine user send resets the self-heal cap
     // 仅 ComfyUI：首次规划前先弹「模板选择」让用户指定/确认（或自动），选完再规划。
     if (comfyOnly && !templatePrefs.asked) {
       setPendingSend({ text, focusNodeIds });
@@ -380,7 +382,12 @@ export const AgentNode = memo(function AgentNode({ id, selected, data }: Props) 
       content += "\n" + failed.slice(0, 5).map((nid) => `• ${titleOf(nid)}：${runState.nodeStates[nid]?.errorMessage ?? "失败"}`).join("\n");
     }
     setMessages([...freshMessages(), { role: "assistant", content, operations: [] }]);
-    if (failed.length > 0 && autoRun) handleSelfHeal();
+    // Auto self-heal on failure — but cap rounds so a persistently-failing node
+    // can't loop forever (and burn credits). Reset on a fresh user-initiated send.
+    if (failed.length > 0 && autoRun && selfHealRoundsRef.current < 2) {
+      selfHealRoundsRef.current += 1;
+      handleSelfHeal();
+    }
   }, [runState.running]); // eslint-disable-line react-hooks/exhaustive-deps
 
   return (

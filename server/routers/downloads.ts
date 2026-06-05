@@ -110,7 +110,7 @@ export const adminDownloadsRouter = router({
       // arbitrary) > `expiresHours` (legacy 1–72h, used by the quick-approve buttons
       // in the notifier/chat). Default when approving with none given: 1 hour.
       expiresHours: z.number().int().min(1).max(72).optional(),
-      expiresAt: z.number().optional(),
+      expiresAt: z.number().int().positive().optional(), // epoch ms; must be a real (future) time
       permanent: z.boolean().optional(),
     }))
     .mutation(async ({ ctx, input }) => {
@@ -118,7 +118,9 @@ export const adminDownloadsRouter = router({
         ? null
         : input.permanent
           ? null
-          : input.expiresAt != null
+          // Use an explicit expiresAt only if it's in the future (a past time would
+          // make the grant "approved but already expired" → silent failure).
+          : (input.expiresAt != null && input.expiresAt > Date.now())
             ? new Date(input.expiresAt)
             : new Date(Date.now() + (input.expiresHours ?? 1) * 3600_000);
       await db.decideDownloadGrant(input.grantId, ctx.user.id, input.approve, input.note ?? null, expiresAt);
@@ -135,7 +137,7 @@ export const adminDownloadsRouter = router({
       assetId: z.number().optional(),
       projectId: z.number().optional(),
       note: z.string().max(500).optional(),
-      expiresAt: z.number().optional(), // epoch ms
+      expiresAt: z.number().int().positive().optional(), // epoch ms (future)
     }).refine((d) => d.scope === "asset" ? (!!d.storageKey || d.assetId != null) : d.projectId != null, { message: "asset 授权需 storageKey/assetId；project 授权需 projectId" }))
     .mutation(async ({ ctx, input }) => {
       const grant = await db.adminCreateGrant({

@@ -103,9 +103,13 @@ export const agentRouter = router({
         };
       }
 
-      // Prefer the user's explicitly-chosen templates (「模板选择」对话框); else auto-pick the first.
-      const chosenImg = imageTpls.find((t) => t.id === input.imageTemplateId) ?? imageTpls[0];
+      // Prefer the user's explicitly-chosen templates (「模板选择」对话框); else auto-pick.
       const chosenVid = videoTpls.find((t) => t.id === input.videoTemplateId) ?? videoTpls[0];
+      // Image template must differ from the video one (a "mixed" template appears in
+      // both lists — using the same for both defeats 出图→图生视频).
+      const chosenImg = imageTpls.find((t) => t.id === input.imageTemplateId && t.id !== chosenVid?.id)
+        ?? imageTpls.find((t) => t.id !== chosenVid?.id)
+        ?? imageTpls[0];
       // 按所选模板的特性参数（每镜时长、能力标签）指导分镜规划。
       const capsOf = (t?: { caps?: string[] }) => (t?.caps?.length ? `[${t.caps.join("/")}]` : "");
       const durPlanHint = (t?: { shotSeconds?: number | null }) =>

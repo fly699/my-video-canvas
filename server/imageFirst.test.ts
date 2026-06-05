@@ -52,6 +52,21 @@ describe("enforceImageFirst", () => {
     expect(out).toHaveLength(ops.length);
   });
 
+  it("a video with two non-image sources gets ONE image node and ONE image→video edge", () => {
+    const ops: AgentOperation[] = [
+      { op: "create", nodeType: "storyboard", tempId: "sb1", payload: {} },
+      { op: "create", nodeType: "prompt", tempId: "p1", payload: {} },
+      { op: "create", nodeType: "video_task", tempId: "vt1", payload: { prompt: "x" } },
+      { op: "connect", sourceRef: "sb1", targetRef: "vt1" },
+      { op: "connect", sourceRef: "p1", targetRef: "vt1" },
+    ];
+    const out = enforceImageFirst(ops);
+    expect(creates(out, "image_gen")).toHaveLength(1);
+    const imgRef = creates(out, "image_gen")[0].tempId!;
+    const imgToVid = out.filter((o) => o.op === "connect" && o.sourceRef === imgRef && o.targetRef === "vt1");
+    expect(imgToVid).toHaveLength(1); // not duplicated per source
+  });
+
   it("handles multiple shots, one image_gen per video", () => {
     const ops: AgentOperation[] = [
       { op: "create", nodeType: "storyboard", tempId: "sb1", payload: {} },

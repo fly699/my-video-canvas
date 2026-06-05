@@ -97,7 +97,7 @@ const NODE_TYPE_ENUM_VALUES = [
 // actually missing. Runs once per process; failures are non-fatal (logged).
 let _selfHealPromise: Promise<void> | null = null;
 async function ensureNodeTypeEnum(db: NonNullable<typeof _db>): Promise<void> {
-  try {
+  const work = (async () => {
     const res = await db.execute(sql`SELECT COLUMN_TYPE AS ct FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'canvas_nodes' AND COLUMN_NAME = 'type'`);
     const rows = (Array.isArray(res) ? res[0] : res) as unknown as Array<{ ct?: string }> | undefined;
     const colType = rows?.[0]?.ct;
@@ -107,9 +107,13 @@ async function ensureNodeTypeEnum(db: NonNullable<typeof _db>): Promise<void> {
     const enumList = NODE_TYPE_ENUM_VALUES.map((v) => `'${v}'`).join(",");
     await db.execute(sql.raw(`ALTER TABLE \`canvas_nodes\` MODIFY COLUMN \`type\` ENUM(${enumList}) NOT NULL`));
     console.warn(`[Database] self-heal: added missing canvas_nodes.type enum values: ${missing.join(", ")}`);
-  } catch (e) {
-    console.warn("[Database] canvas_nodes enum self-heal skipped:", e instanceof Error ? e.message : e);
-  }
+  })();
+  // Bound the wait: a hung information_schema/ALTER must NOT block every other DB
+  // call (getDb awaits this once). The ALTER, if slow, still finishes in the bg.
+  const timeout = new Promise<void>((resolve) => setTimeout(resolve, 8000));
+  try { await Promise.race([work, timeout]); }
+  catch (e) { console.warn("[Database] canvas_nodes enum self-heal skipped:", e instanceof Error ? e.message : e); }
+  work.catch(() => { /* background completion errors are non-fatal */ });
 }
 
 export async function getDb() {
