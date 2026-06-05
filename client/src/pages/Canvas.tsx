@@ -50,8 +50,8 @@ import { useAuth } from "@/_core/hooks/useAuth";
 import { useIsMobile } from "@/hooks/useMobile";
 import { toast } from "sonner";
 import type { NodeType, CollaboratorCursor, NodeData } from "../../../shared/types";
-import { getNodeConfig, NODE_TYPE_LIST, NODE_ICONS, COLLABORATOR_COLORS } from "../lib/nodeConfig";
-import { sortNodeConfigsForPalette } from "../lib/nodeOrder";
+import { getNodeConfig, NODE_TYPE_LIST, NODE_ICONS, COLLABORATOR_COLORS, type NodeConfig } from "../lib/nodeConfig";
+import { NODE_CATEGORIES } from "../lib/nodeCategories";
 import { io, type Socket } from "socket.io-client";
 import {
   Film,
@@ -400,6 +400,8 @@ function CanvasInner({ projectId }: { projectId: number }) {
   );
   const [showCollaboratorPanel, setShowCollaboratorPanel] = useState(false);
   const [showNodePicker, setShowNodePicker] = useState(false);
+  const [nodePickerSearch, setNodePickerSearch] = useState("");
+  useEffect(() => { if (!showNodePicker) setNodePickerSearch(""); }, [showNodePicker]); // fresh search each open
   const [showPresentation, setShowPresentation] = useState(false);
   const [showShortcuts, setShowShortcuts] = useState(false);
   const [showStatsSidebar, setShowStatsSidebar] = usePersistentState<boolean>(
@@ -1773,58 +1775,61 @@ function CanvasInner({ projectId }: { projectId: number }) {
               </div>
               <p className="text-[10px]" style={{ color: "var(--c-t4)" }}>点击添加到画布中心</p>
             </div>
-            <div className="p-2.5 grid grid-cols-4 gap-1.5">
-              {/* ComfyUI nodes pinned to the top in a fixed order:
-                  ComfyUI 图像 / ComfyUI 视频 / ComfyUI 自定义 — rest preserves
-                  the source order from NODE_CONFIGS. Mirrors the sort logic
-                  used in ContextMenu's "Add node" pinned palette. */}
-              {sortNodeConfigsForPalette(NODE_TYPE_LIST).map((config) => {
-                const Icon = NODE_ICONS[config.icon] ?? FileText;
-                const soon = config.comingSoon === true;
-                return (
-                  <button
-                    key={config.type}
-                    onClick={() => addNodeAtCenter(config.type)}
-                    title={soon ? "即将上线" : undefined}
-                    className="group/picker relative flex flex-col items-center gap-2.5 px-2 py-3 rounded-xl transition-all text-center"
-                    style={{ color: "var(--c-t2)", opacity: soon ? 0.5 : 1 }}
-                    onMouseEnter={(e) => {
-                      const el = e.currentTarget as HTMLElement;
-                      el.style.background = "var(--c-elevated)";
-                      el.style.color = "var(--c-t1)";
-                    }}
-                    onMouseLeave={(e) => {
-                      const el = e.currentTarget as HTMLElement;
-                      el.style.background = "transparent";
-                      el.style.color = "var(--c-t2)";
-                    }}
-                  >
-                    {soon && (
-                      <span
-                        className="absolute top-1 right-1 px-1 rounded text-[8px] font-bold uppercase tracking-wider"
-                        style={{ background: "var(--c-elevated)", color: "var(--c-t4)", border: "1px solid var(--c-bd2)", lineHeight: "12px" }}
-                      >
-                        Soon
-                      </span>
-                    )}
-                    <div
-                      className="w-10 h-10 rounded-xl flex items-center justify-center flex-shrink-0 transition-all"
-                      style={{
-                        background: `${config.color}14`,
-                        border: `1px solid ${config.color}30`,
-                        boxShadow: `0 2px 8px ${config.color}10`,
-                      }}
+            {/* Search */}
+            <div className="px-2.5 pt-2.5">
+              <input
+                value={nodePickerSearch}
+                onChange={(e) => setNodePickerSearch(e.target.value)}
+                placeholder="搜索节点…"
+                autoFocus
+                className="nodrag w-full"
+                style={{ padding: "7px 10px", borderRadius: 9, fontSize: 12, background: "var(--c-surface)", border: "1px solid var(--c-bd2)", color: "var(--c-t1)", outline: "none" }}
+              />
+            </div>
+            <div className="p-2.5 flex flex-col gap-3" style={{ maxHeight: 440, overflowY: "auto" }}>
+              {(() => {
+                const renderTile = (config: NodeConfig) => {
+                  const Icon = NODE_ICONS[config.icon] ?? FileText;
+                  const soon = config.comingSoon === true;
+                  return (
+                    <button
+                      key={config.type}
+                      onClick={() => addNodeAtCenter(config.type)}
+                      title={soon ? "即将上线" : undefined}
+                      className="group/picker relative flex flex-col items-center gap-2.5 px-2 py-3 rounded-xl transition-all text-center"
+                      style={{ color: "var(--c-t2)", opacity: soon ? 0.5 : 1 }}
+                      onMouseEnter={(e) => { const el = e.currentTarget as HTMLElement; el.style.background = "var(--c-elevated)"; el.style.color = "var(--c-t1)"; }}
+                      onMouseLeave={(e) => { const el = e.currentTarget as HTMLElement; el.style.background = "transparent"; el.style.color = "var(--c-t2)"; }}
                     >
-                      <Icon style={{ color: config.color, width: 18, height: 18 }} />
+                      {soon && (
+                        <span className="absolute top-1 right-1 px-1 rounded text-[8px] font-bold uppercase tracking-wider" style={{ background: "var(--c-elevated)", color: "var(--c-t4)", border: "1px solid var(--c-bd2)", lineHeight: "12px" }}>Soon</span>
+                      )}
+                      <div className="w-10 h-10 rounded-xl flex items-center justify-center flex-shrink-0 transition-all" style={{ background: `${config.color}14`, border: `1px solid ${config.color}30`, boxShadow: `0 2px 8px ${config.color}10` }}>
+                        <Icon style={{ color: config.color, width: 18, height: 18 }} />
+                      </div>
+                      <div className="flex flex-col gap-0.5">
+                        <p className="text-[11px] font-semibold leading-none" style={{ letterSpacing: "-0.01em" }}>{config.label}</p>
+                      </div>
+                    </button>
+                  );
+                };
+                const q = nodePickerSearch.trim().toLowerCase();
+                if (q) {
+                  const hits = NODE_TYPE_LIST.filter((c) => c.label.toLowerCase().includes(q) || c.type.toLowerCase().includes(q));
+                  if (hits.length === 0) return <p className="text-[11px] text-center py-6" style={{ color: "var(--c-t4)" }}>未找到匹配的节点</p>;
+                  return <div className="grid grid-cols-4 gap-1.5">{hits.map(renderTile)}</div>;
+                }
+                return NODE_CATEGORIES.map((cat) => {
+                  const configs = cat.types.map((t) => getNodeConfig(t)).filter(Boolean) as NodeConfig[];
+                  if (configs.length === 0) return null;
+                  return (
+                    <div key={cat.id} className="flex flex-col gap-1">
+                      <p className="text-[10px] font-semibold uppercase tracking-widest px-1" style={{ color: "var(--c-t4)" }}>{cat.label}</p>
+                      <div className="grid grid-cols-4 gap-1.5">{configs.map(renderTile)}</div>
                     </div>
-                    <div className="flex flex-col gap-0.5">
-                      <p className="text-[11px] font-semibold leading-none" style={{ letterSpacing: "-0.01em" }}>
-                        {config.label}
-                      </p>
-                    </div>
-                  </button>
-                );
-              })}
+                  );
+                });
+              })()}
             </div>
           </div>
         )}
