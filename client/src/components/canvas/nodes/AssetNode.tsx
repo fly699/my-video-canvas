@@ -183,18 +183,34 @@ export const AssetNode = memo(function AssetNode({ id, selected, data }: Props) 
   const heroMedia = (() => {
     if (payload.url && payload.type === "image") {
       return (
-        <MediaImage
-          src={payload.url}
-          style={{ width: "100%", maxHeight: 240, objectFit: "cover", display: "block" }}
-          draggable={false}
-          alt={payload.name}
-        />
+        <div className="relative" style={{ width: "100%" }}>
+          <MediaImage
+            src={payload.url}
+            style={{ width: "100%", maxHeight: 240, objectFit: "cover", display: "block" }}
+            draggable={false}
+            alt={payload.name}
+          />
+          {storedInMinio && (
+            <div
+              title="已存储到 MinIO·长期有效"
+              className="absolute top-1.5 left-1.5 z-10 rounded-full pointer-events-none"
+              style={{ width: 10, height: 10, background: "oklch(0.72 0.18 155)", boxShadow: "0 0 0 2.5px oklch(0.72 0.18 155 / 0.35)" }}
+            />
+          )}
+        </div>
       );
     }
     if (payload.url && payload.type === "video") {
       return (
         <div className="relative nodrag" style={{ cursor: "zoom-in" }} onClick={() => setVideoPreview(true)} title="点击播放">
           <video src={mediaFetchUrl(payload.url)} muted preload="metadata" style={{ width: "100%", maxHeight: 200, display: "block", objectFit: "cover" }} />
+          {storedInMinio && (
+            <div
+              title="已存储到 MinIO·长期有效"
+              className="absolute top-1.5 left-1.5 z-10 rounded-full pointer-events-none"
+              style={{ width: 10, height: 10, background: "oklch(0.72 0.18 155)", boxShadow: "0 0 0 2.5px oklch(0.72 0.18 155 / 0.35)" }}
+            />
+          )}
           <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
             <div className="w-11 h-11 rounded-full flex items-center justify-center" style={{ background: "oklch(0 0 0 / 0.5)" }}>
               <Play className="w-5 h-5 text-white" fill="white" />

@@ -1010,13 +1010,16 @@ export const VideoTaskNode = memo(function VideoTaskNode({ id, selected, data }:
   // image is an INPUT, not a result, so the node must stay expanded (showing its
   // controls) until it has actually produced a video.
   const heroMedia = payload.status === "succeeded" && videoSrc ? (
-    <video
-      src={videoSrc}
-      controls
-      className="w-full"
-      preload="metadata"
-      style={{ display: "block", maxHeight: 240 }}
-    />
+    <div className="relative" style={{ width: "100%" }}>
+      <video
+        src={videoSrc}
+        controls
+        className="w-full"
+        preload="metadata"
+        style={{ display: "block", maxHeight: 240 }}
+      />
+      {videoStoredInMinio && <MinioStorageBadge />}
+    </div>
   ) : null;
 
   return (

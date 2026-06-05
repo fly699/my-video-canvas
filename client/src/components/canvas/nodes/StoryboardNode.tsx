@@ -371,12 +371,21 @@ export const StoryboardNode = memo(function StoryboardNode({ id, selected, data 
   const heroMedia = (() => {
     if (payload.imageUrl) {
       return (
-        <MediaImage
-          src={payload.imageUrl}
-          style={{ width: "100%", objectFit: "cover", display: "block" }}
-          draggable={false}
-          alt="分镜"
-        />
+        <div className="relative" style={{ width: "100%" }}>
+          <MediaImage
+            src={payload.imageUrl}
+            style={{ width: "100%", objectFit: "cover", display: "block" }}
+            draggable={false}
+            alt="分镜"
+          />
+          {imgStoredInMinio && (
+            <div
+              title="已存储到 MinIO·长期有效"
+              className="absolute top-1.5 left-1.5 z-10 rounded-full pointer-events-none"
+              style={{ width: 10, height: 10, background: "oklch(0.72 0.18 155)", boxShadow: "0 0 0 2.5px oklch(0.72 0.18 155 / 0.35)" }}
+            />
+          )}
+        </div>
       );
     }
     // Text-only description is an INPUT, not a generated result — only surface it
