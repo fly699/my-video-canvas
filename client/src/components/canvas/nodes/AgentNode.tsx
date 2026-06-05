@@ -51,6 +51,7 @@ export const AgentNode = memo(function AgentNode({ id, selected, data }: Props) 
   const [analyzeFull, setAnalyzeFull] = useState(false);
   const [showRecipes, setShowRecipes] = useState(false);
   const [showPrefs, setShowPrefs] = useState(false);
+  const [showTemplates, setShowTemplates] = useState(false);
   // 配方配置对话框（点配方后弹出，应用前可调镜头数/比例/时长/配乐字幕/AI生成内容）。
   const [recipeCfg, setRecipeCfg] = useState<{ recipe: AgentRecipe; cfg: RecipeConfig; useAI: boolean } | null>(null);
   const [recipeBusy, setRecipeBusy] = useState(false);
@@ -73,6 +74,10 @@ export const AgentNode = memo(function AgentNode({ id, selected, data }: Props) 
   const sawRunningRef = useRef(false);
   const chat = trpc.agent.chat.useMutation();
   const templatesQuery = trpc.comfyTemplates.list.useQuery(undefined, { staleTime: 30_000 });
+  const analysisQuery = trpc.comfyTemplates.analysisList.useQuery(undefined, { staleTime: 30_000, enabled: showTemplates });
+  const templatePrefs = payload.templatePrefs ?? {};
+  const setTemplatePref = (patch: Partial<NonNullable<AgentNodeData["templatePrefs"]>>) =>
+    updateNodeData(id, { templatePrefs: { ...templatePrefs, ...patch } });
   const analyzeMut = trpc.comfyTemplates.analyzeLibrary.useMutation();
   const recipeShotsMut = trpc.agent.recipeShots.useMutation();
   const balanceQuery = trpc.poyo.balance.useQuery(undefined, { staleTime: 60_000 });
@@ -225,6 +230,8 @@ export const AgentNode = memo(function AgentNode({ id, selected, data }: Props) 
         graphSummary: summary || undefined, model, comfyOnly,
         prefs: buildPrefsText(),
         imageFirst: planPrefs.imageFirst ?? false,
+        imageTemplateId: templatePrefs.imageTemplateId,
+        videoTemplateId: templatePrefs.videoTemplateId,
       });
       setMessages([...baseMessages, { role: "assistant", content: r.reply, operations: r.operations }]);
       // Duration-aware capacity check: if the plan split a target longer than the
@@ -521,6 +528,15 @@ export const AgentNode = memo(function AgentNode({ id, selected, data }: Props) 
               <SlidersHorizontal className="w-3 h-3" />规划设置
             </button>
             <button
+              onClick={() => setShowTemplates(true)}
+              className="nodrag flex items-center gap-1 px-2 py-1 rounded-lg text-[10px] font-medium"
+              title="模板选择：分类列出可用的 ComfyUI 工作流模板，指定生图/图生视频用哪个（或自动）"
+              style={{ background: accentA(0.1), border: `1px solid ${accentA(0.3)}`, color: accent, cursor: "pointer" }}
+            >
+              <BookTemplate className="w-3 h-3" />模板选择
+              {(templatePrefs.imageTemplateId || templatePrefs.videoTemplateId) ? <span style={{ width: 6, height: 6, borderRadius: 999, background: accent }} /> : null}
+            </button>
+            <button
               onClick={handlePreflight}
               className="nodrag flex items-center gap-1 px-2 py-1 rounded-lg text-[10px] font-medium"
               title="运行前体检：扫描结构问题（缺参/孤立/断链/循环）并预估全画布成本"
@@ -629,6 +645,66 @@ export const AgentNode = memo(function AgentNode({ id, selected, data }: Props) 
           </div>
         </div>
       )}
+      {showTemplates && (() => {
+        // 仅 comfyui_workflow 模板可被智能体作为 templateId 引用；按输出类型分类。
+        const wf = (analysisQuery.data ?? []).filter((t) => t.nodeType === "comfyui_workflow");
+        const imgTpls = wf.filter((t) => t.outputType === "image" || t.outputType === "mixed");
+        const vidTpls = wf.filter((t) => t.hasVideoOutput || t.outputType === "video" || t.outputType === "mixed");
+        const row = (
+          t: { id: number; label: string; outputType?: string; functionSummary?: string },
+          checked: boolean,
+          onPick: () => void,
+        ) => (
+          <label key={t.id} className="nodrag" style={{ display: "flex", alignItems: "flex-start", gap: 8, padding: "6px 8px", borderRadius: 7, cursor: "pointer", background: checked ? accentA(0.12) : "transparent" }}>
+            <input type="radio" checked={checked} onChange={onPick} style={{ accentColor: accent, marginTop: 2 }} />
+            <span style={{ minWidth: 0 }}>
+              <span style={{ fontSize: 12.5, color: "var(--c-t1)", fontWeight: 600 }}>{t.label}</span>
+              <span style={{ fontSize: 10, color: "var(--c-t4)" }}> · id {t.id}{t.outputType ? ` · ${t.outputType}` : ""}</span>
+              {t.functionSummary ? <span style={{ display: "block", fontSize: 10.5, color: "var(--c-t4)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{t.functionSummary}</span> : null}
+            </span>
+          </label>
+        );
+        const autoRow = (checked: boolean, onPick: () => void) => (
+          <label className="nodrag" style={{ display: "flex", alignItems: "center", gap: 8, padding: "6px 8px", borderRadius: 7, cursor: "pointer", background: checked ? accentA(0.12) : "transparent" }}>
+            <input type="radio" checked={checked} onChange={onPick} style={{ accentColor: accent }} />
+            <span style={{ fontSize: 12.5, color: "var(--c-t2)", fontWeight: 600 }}>自动选择（智能体按需求挑）</span>
+          </label>
+        );
+        return (
+          <div className="nodrag nowheel" style={{ position: "fixed", inset: 0, zIndex: 9999, background: "rgba(0,0,0,0.5)", display: "flex", alignItems: "center", justifyContent: "center" }}
+            onClick={() => setShowTemplates(false)}>
+            <div onClick={(e) => e.stopPropagation()} style={{ width: 460, maxWidth: "92vw", maxHeight: "86vh", overflowY: "auto", background: "var(--c-surface)", border: `1px solid ${accentA(0.3)}`, borderRadius: 14, padding: 18, boxShadow: "0 12px 40px rgba(0,0,0,0.4)" }}>
+              <div style={{ fontSize: 14, fontWeight: 700, color: "var(--c-t1)", marginBottom: 4 }}>模板选择</div>
+              <div style={{ fontSize: 11, color: "var(--c-t4)", marginBottom: 12 }}>智能体仅能引用「ComfyUI 自定义工作流」模板。为生图/图生视频指定要用的模板，或留「自动」。{analysisQuery.isFetching ? " 加载中…" : ""}</div>
+              {wf.length === 0 && !analysisQuery.isFetching && (
+                <div style={{ fontSize: 12, color: "oklch(0.7 0.18 25)", padding: "10px 0" }}>没有已分析的「自定义工作流(comfyui_workflow)」模板。请用「ComfyUI 自定义工作流」节点导入工作流并另存为模板，再点工具栏「新增节点模板库分析」。</div>
+              )}
+              <div style={{ fontSize: 12, fontWeight: 600, color: accent, margin: "8px 0 4px" }}>出图模板（生图）· {imgTpls.length}</div>
+              <div style={{ display: "flex", flexDirection: "column", gap: 2, border: "1px solid var(--c-bd1)", borderRadius: 8, padding: 4 }}>
+                {autoRow(!templatePrefs.imageTemplateId, () => setTemplatePref({ imageTemplateId: undefined }))}
+                {imgTpls.map((t) => row(t, templatePrefs.imageTemplateId === t.id, () => setTemplatePref({ imageTemplateId: t.id })))}
+                {imgTpls.length === 0 && <div style={{ fontSize: 11, color: "var(--c-t4)", padding: "4px 8px" }}>无</div>}
+              </div>
+              <div style={{ fontSize: 12, fontWeight: 600, color: accent, margin: "12px 0 4px" }}>视频模板（图生视频 / 出视频）· {vidTpls.length}</div>
+              <div style={{ display: "flex", flexDirection: "column", gap: 2, border: "1px solid var(--c-bd1)", borderRadius: 8, padding: 4 }}>
+                {autoRow(!templatePrefs.videoTemplateId, () => setTemplatePref({ videoTemplateId: undefined }))}
+                {vidTpls.map((t) => row(t, templatePrefs.videoTemplateId === t.id, () => setTemplatePref({ videoTemplateId: t.id })))}
+                {vidTpls.length === 0 && <div style={{ fontSize: 11, color: "var(--c-t4)", padding: "4px 8px" }}>无</div>}
+              </div>
+              <div style={{ display: "flex", gap: 8, marginTop: 16 }}>
+                <button className="nodrag" onClick={() => { setTemplatePref({ imageTemplateId: undefined, videoTemplateId: undefined }); }}
+                  style={{ flex: 1, padding: "8px", fontSize: 12, fontWeight: 600, borderRadius: 9, cursor: "pointer", background: "var(--c-surface)", border: "1px solid var(--c-bd2)", color: "var(--c-t3)" }}>
+                  全部自动
+                </button>
+                <button className="nodrag" onClick={() => setShowTemplates(false)}
+                  style={{ flex: 2, padding: "8px", fontSize: 12, fontWeight: 600, borderRadius: 9, cursor: "pointer", background: accentA(0.18), border: `1px solid ${accentA(0.4)}`, color: accent }}>
+                  完成
+                </button>
+              </div>
+            </div>
+          </div>
+        );
+      })()}
       {recipeCfg && (() => {
         const { recipe, cfg, useAI } = recipeCfg;
         const [minShots, maxShots] = recipe.shotRange;
