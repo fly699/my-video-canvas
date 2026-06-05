@@ -2027,6 +2027,59 @@ function genericScan(info: ObjectInfo, list: ComfyModelList): void {
   }
 }
 
+export interface ComfyServerStatus {
+  baseUrl: string;     // echoes the exact input string so the client can map 1:1
+  online: boolean;
+  version?: string;
+  vramTotalMB?: number;
+  vramFreeMB?: number;
+  queueRunning?: number;
+  queuePending?: number;
+  error?: string;
+}
+
+/** Live health/capacity probe for one ComfyUI server: GPU/VRAM/version from
+ * /system_stats and queue depth from /queue. Best-effort and never throws —
+ * an offline/unreachable server returns { online: false, error }. */
+export async function fetchComfyServerStatus(rawBaseUrl: string): Promise<ComfyServerStatus> {
+  const out: ComfyServerStatus = { baseUrl: rawBaseUrl, online: false };
+  let baseUrl: string;
+  try {
+    baseUrl = normalizeBaseUrl(rawBaseUrl);
+  } catch {
+    out.error = "地址无效";
+    return out;
+  }
+  try {
+    const res = await fetch(`${baseUrl}/system_stats`, { signal: AbortSignal.timeout(6_000) });
+    if (!res.ok) { out.error = `HTTP ${res.status}`; return out; }
+    const j = (await res.json()) as {
+      system?: { comfyui_version?: string };
+      devices?: Array<{ vram_total?: number; vram_free?: number }>;
+    };
+    out.online = true;
+    out.version = j.system?.comfyui_version;
+    const dev = j.devices?.[0];
+    if (dev) {
+      if (typeof dev.vram_total === "number") out.vramTotalMB = Math.round(dev.vram_total / (1024 * 1024));
+      if (typeof dev.vram_free === "number") out.vramFreeMB = Math.round(dev.vram_free / (1024 * 1024));
+    }
+  } catch (e) {
+    out.error = e instanceof Error ? (/timeout|abort/i.test(e.message) ? "连接超时" : e.message) : "无法连接";
+    return out; // offline — skip the queue probe
+  }
+  // Queue depth (best-effort; older builds may not expose /queue).
+  try {
+    const qr = await fetch(`${baseUrl}/queue`, { signal: AbortSignal.timeout(5_000) });
+    if (qr.ok) {
+      const q = (await qr.json()) as { queue_running?: unknown[]; queue_pending?: unknown[] };
+      if (Array.isArray(q.queue_running)) out.queueRunning = q.queue_running.length;
+      if (Array.isArray(q.queue_pending)) out.queuePending = q.queue_pending.length;
+    }
+  } catch { /* queue is optional */ }
+  return out;
+}
+
 export async function fetchComfyModels(rawBaseUrl: string): Promise<ComfyModelList> {
   const baseUrl = normalizeBaseUrl(rawBaseUrl);
   const res = await fetch(`${baseUrl}/object_info`, { signal: AbortSignal.timeout(15_000) });
