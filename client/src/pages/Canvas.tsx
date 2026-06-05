@@ -845,42 +845,45 @@ function CanvasInner({ projectId }: { projectId: number }) {
       if (event.type === "cursor:move") {
         const p = event.payload as { x: number; y: number };
         setCollaborator({ userId: event.userId, userName: event.userName, color: event.color, x: p.x, y: p.y });
-      } else if (event.type === "node:move") {
+        return;
+      }
+      if (event.type === "user:leave") { removeCollaborator(event.userId); return; }
+      // Node/edge mutations from peers: ignore until our OWN DB snapshot has loaded —
+      // otherwise the load-once setNodes would clobber an early remote change (or vice
+      // versa), diverging collaborators. Apply WITHOUT markDirty (the author already
+      // persisted it) and keep the save baseline in sync so our local diff never
+      // re-persists or re-deletes a peer's node (was: every receiver re-wrote the row).
+      if (!nodesLoadedRef.current) return;
+      const store = useCanvasStore.getState();
+      const syncBaseline = (id: string) => {
+        const n = useCanvasStore.getState().nodes.find((x) => x.id === id);
+        if (n) savedNodeSigsRef.current.set(id, nodeSig(n)); else savedNodeSigsRef.current.delete(id);
+      };
+      if (event.type === "node:move") {
         const p = event.payload as { id: string; x: number; y: number };
-        const { nodes: currentNodes, setNodes: storeSetNodes } = useCanvasStore.getState();
-        storeSetNodes(currentNodes.map((n) => n.id === p.id ? { ...n, position: { x: p.x, y: p.y } } : n));
+        store.setNodes(store.nodes.map((n) => n.id === p.id ? { ...n, position: { x: p.x, y: p.y } } : n));
+        syncBaseline(p.id);
       } else if (event.type === "node:add") {
         const newNode = event.payload as CanvasNode;
-        const { nodes: currentNodes, setNodes: storeSetNodes, markDirty } = useCanvasStore.getState();
-        storeSetNodes([...currentNodes.filter((n) => n.id !== newNode.id), newNode]);
-        markDirty();
+        store.setNodes([...store.nodes.filter((n) => n.id !== newNode.id), newNode]);
+        syncBaseline(newNode.id);
       } else if (event.type === "node:delete") {
         const p = event.payload as { id: string };
-        const { nodes: currentNodes, setNodes: storeSetNodes, setEdges: storeSetEdges, edges: currentEdges, markDirty } = useCanvasStore.getState();
-        storeSetNodes(currentNodes.filter((n) => n.id !== p.id));
-        storeSetEdges(currentEdges.filter((e) => e.source !== p.id && e.target !== p.id));
-        markDirty();
+        store.setNodes(store.nodes.filter((n) => n.id !== p.id));
+        store.setEdges(store.edges.filter((e) => e.source !== p.id && e.target !== p.id));
+        savedNodeSigsRef.current.delete(p.id);
       } else if (event.type === "node:update") {
         const p = event.payload as { id: string; patch: Record<string, unknown> };
-        const { nodes: currentNodes, setNodes: storeSetNodes, markDirty } = useCanvasStore.getState();
-        storeSetNodes(currentNodes.map((n) =>
+        store.setNodes(store.nodes.map((n) =>
           n.id === p.id ? { ...n, data: { ...n.data, payload: { ...n.data.payload, ...p.patch } } } : n
         ) as CanvasNode[]);
-        markDirty();
+        syncBaseline(p.id);
       } else if (event.type === "edge:add") {
         const newEdge = event.payload as CanvasEdge;
-        const { edges: currentEdges, setEdges: storeSetEdges, markDirty } = useCanvasStore.getState();
-        if (!currentEdges.find((e) => e.id === newEdge.id)) {
-          storeSetEdges([...currentEdges, newEdge]);
-          markDirty();
-        }
+        if (!store.edges.find((e) => e.id === newEdge.id)) store.setEdges([...store.edges, newEdge]);
       } else if (event.type === "edge:delete") {
         const p = event.payload as { id: string };
-        const { edges: currentEdges, setEdges: storeSetEdges, markDirty } = useCanvasStore.getState();
-        storeSetEdges(currentEdges.filter((e) => e.id !== p.id));
-        markDirty();
-      } else if (event.type === "user:leave") {
-        removeCollaborator(event.userId);
+        store.setEdges(store.edges.filter((e) => e.id !== p.id));
       }
     });
     socket.on("comfyui:progress", (event: { nodeId: string; type: string; value?: number; max?: number }) => {
@@ -1839,6 +1842,12 @@ function CanvasInner({ projectId }: { projectId: number }) {
             edgeTypes={edgeTypes}
             style={{ background: effectiveBgColor }}
             onNodesChange={onNodesChange}
+            onNodeDragStop={(_, node, draggedNodes) => {
+              // Broadcast the final position(s) to collaborators (live-move sync).
+              for (const n of (draggedNodes?.length ? draggedNodes : [node])) {
+                emitCollabEvent("node:move", { id: n.id, x: n.position.x, y: n.position.y });
+              }
+            }}
             onEdgesChange={onEdgesChange}
             onConnect={(connection) => {
               const prevIds = new Set(useCanvasStore.getState().edges.map((e) => e.id));

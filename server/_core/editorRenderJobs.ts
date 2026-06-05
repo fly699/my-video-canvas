@@ -20,10 +20,24 @@ export interface RenderJob {
 
 const jobs = new Map<string, RenderJob>();
 const JOB_TTL_MS = 60 * 60_000; // keep finished jobs for an hour
+// Hard cap for "running" jobs: if a render never reports done/error (e.g. the
+// ffmpeg child crashed or the process was interrupted mid-export), the job
+// would otherwise leak forever and never be swept. After this cap we mark it
+// errored so it becomes eligible for normal TTL cleanup.
+const RUNNING_HARD_CAP_MS = 2 * 60 * 60_000; // 2 hours
 
 function sweep() {
   const now = Date.now();
-  for (const [id, j] of Array.from(jobs.entries())) if (j.status !== "running" && now - j.createdAt > JOB_TTL_MS) jobs.delete(id);
+  for (const [id, j] of Array.from(jobs.entries())) {
+    if (j.status === "running") {
+      if (now - j.createdAt > RUNNING_HARD_CAP_MS) {
+        j.status = "error";
+        j.error = j.error || "渲染超时（任务长时间无进度，已自动终止）";
+      }
+    } else if (now - j.createdAt > JOB_TTL_MS) {
+      jobs.delete(id);
+    }
+  }
 }
 
 export function createRenderJob(userId: number, sessionId: number): RenderJob {

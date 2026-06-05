@@ -10,33 +10,7 @@
 import type { Express } from "express";
 import { isRequestAuthenticated } from "./context";
 import { authorizeDownload } from "./downloadAuth";
-
-const BLOCKED_HOSTS = [
-  "localhost",
-  "127.0.0.1",
-  "0.0.0.0",
-  "::1",
-  "169.254.169.254", // AWS metadata
-  "metadata.google.internal",
-];
-
-function isAllowedUrl(rawUrl: string): boolean {
-  try {
-    const u = new URL(rawUrl);
-    // Only allow HTTPS
-    if (u.protocol !== "https:") return false;
-    // URL.hostname wraps IPv6 in brackets (e.g. "[::1]") — strip them before matching.
-    const rawHost = u.hostname.toLowerCase();
-    const host = rawHost.startsWith("[") && rawHost.endsWith("]") ? rawHost.slice(1, -1) : rawHost;
-    // Block internal/private hosts
-    if (BLOCKED_HOSTS.some((b) => host === b || host.endsWith(`.${b}`))) return false;
-    // Block private IP ranges (including IPv4-mapped IPv6 ::ffff:)
-    if (/^10\.|^172\.(1[6-9]|2\d|3[01])\.|^192\.168\.|^::ffff:/i.test(host)) return false;
-    return true;
-  } catch {
-    return false;
-  }
-}
+import { isAllowedExternalUrl as isAllowedUrl } from "./ssrfGuard";
 
 export function registerVideoProxy(app: Express) {
   app.get("/api/video-proxy", async (req, res) => {

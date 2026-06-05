@@ -202,6 +202,18 @@ function EditorWorkspace({ id }: { id: number }) {
     return () => unsub();
   }, [id, saveMut]);
 
+  // Flush a pending (debounced) save when leaving the editor — navigation or tab
+  // close — so an edit made within the 800ms debounce isn't lost (mirrors Canvas).
+  useEffect(() => {
+    const flush = () => {
+      const cur = useEditorStore.getState();
+      if (cur.dirty && cur.doc) saveMut.mutate({ id, doc: cur.doc });
+    };
+    window.addEventListener("beforeunload", flush);
+    return () => { window.removeEventListener("beforeunload", flush); flush(); };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [id]);
+
   if (sessionQuery.isLoading || (sessionQuery.data && !doc)) {
     return <div style={{ minHeight: "100vh", display: "flex", alignItems: "center", justifyContent: "center", background: "var(--c-bg, #0c0c10)", color: "var(--c-t3)" }}><Loader2 className="animate-spin" /></div>;
   }

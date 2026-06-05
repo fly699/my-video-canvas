@@ -8,6 +8,7 @@ import {
 } from "../storage";
 import { verifyUploadToken } from "./uploadToken";
 import { authorizeDownload } from "./downloadAuth";
+import { isRequestAuthenticated } from "./context";
 
 /**
  * Streamed upload counterpart to the download proxy. The browser PUTs the raw
@@ -47,6 +48,15 @@ export function registerStorageProxy(app: Express) {
 
     if (!isStorageConfigured()) {
       res.status(500).send("Storage proxy not configured");
+      return;
+    }
+
+    // Require a logged-in session to read storage objects (matches the image/video
+    // proxies). Previously the plain "view" path was completely ungated, so anyone
+    // with a storageKey could read any private file anonymously AND the one-time
+    // download-authorization could be bypassed by simply omitting ?download.
+    if (!await isRequestAuthenticated(req)) {
+      res.status(401).send("Unauthorized");
       return;
     }
 

@@ -222,7 +222,9 @@ async function startServer() {
     socket.on("leave-project", (data: { projectId: number }) => {
       const room = `project:${data.projectId}`;
       socket.leave(room);
-      projectUsers.get(data.projectId)?.delete(user.id);
+      const lu = projectUsers.get(data.projectId);
+      lu?.delete(user.id);
+      if (lu && lu.size === 0) projectUsers.delete(data.projectId); // reclaim empty room
       projectRoles.delete(data.projectId);
 
       socket.to(room).emit("collaboration-event", {
@@ -262,7 +264,9 @@ async function startServer() {
       unsubscribeBus();
       if (currentProjectId !== null) {
         const room = `project:${currentProjectId}`;
-        projectUsers.get(currentProjectId)?.delete(user.id);
+        const du = projectUsers.get(currentProjectId);
+        du?.delete(user.id);
+        if (du && du.size === 0) projectUsers.delete(currentProjectId); // reclaim empty room
         socket.to(room).emit("collaboration-event", {
           type: "user:leave",
           userId: user.id,

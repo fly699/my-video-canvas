@@ -48,11 +48,19 @@ export function probeMediaDuration(url: string, kind: "video" | "audio"): Promis
     const el = document.createElement(kind === "audio" ? "audio" : "video");
     el.preload = "metadata";
     el.muted = true;
-    const done = (d: number) => { resolve(isFinite(d) && d > 0 ? d : 5); el.src = ""; };
+    let settled = false;
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const done = (d: number) => {
+      if (settled) return;
+      settled = true;
+      if (timer !== undefined) clearTimeout(timer);
+      resolve(isFinite(d) && d > 0 ? d : 5);
+      el.src = "";
+    };
     el.onloadedmetadata = () => done(el.duration);
     el.onerror = () => done(5);
     el.src = url;
     // Safety timeout — never hang the UI.
-    setTimeout(() => done(el.duration), 4000);
+    timer = setTimeout(() => done(el.duration), 4000);
   });
 }
