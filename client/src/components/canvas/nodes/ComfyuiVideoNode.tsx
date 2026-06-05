@@ -277,13 +277,22 @@ export const ComfyuiVideoNode = memo(function ComfyuiVideoNode({ id, selected, d
   // image is an INPUT, not a result, so the node must stay expanded (showing its
   // controls) until it has actually produced a video.
   const heroMedia = payload.status === "done" && videoSrc ? (
-    <video
-      src={videoSrc}
-      controls
-      className="w-full"
-      preload="metadata"
-      style={{ display: "block", maxHeight: 240 }}
-    />
+    <div className="relative" style={{ width: "100%" }}>
+      <video
+        src={videoSrc}
+        controls
+        className="w-full"
+        preload="metadata"
+        style={{ display: "block", maxHeight: 240 }}
+      />
+      {videoStoredInMinio && (
+        <div
+          title="已存储到 MinIO·长期有效"
+          className="absolute top-1.5 left-1.5 z-10 rounded-full pointer-events-none"
+          style={{ width: 10, height: 10, background: "oklch(0.72 0.18 155)", boxShadow: "0 0 0 2.5px oklch(0.72 0.18 155 / 0.35)" }}
+        />
+      )}
+    </div>
   ) : null;
 
   return (

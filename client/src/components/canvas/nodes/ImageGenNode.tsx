@@ -355,6 +355,13 @@ export const ImageGenNode = memo(function ImageGenNode({ id, selected, data }: P
               className="w-full"
               draggable={false}
             />
+            {isOwnStorageUrl(url) && (
+              <div
+                title="已存储到 MinIO·长期有效"
+                className="absolute top-1 left-1 rounded-full pointer-events-none"
+                style={{ width: 9, height: 9, background: "oklch(0.72 0.18 155)", boxShadow: "0 0 0 2px oklch(0.72 0.18 155 / 0.35)" }}
+              />
+            )}
             {isSelected && (
               <div
                 className="absolute top-1 right-1 rounded-full flex items-center justify-center"
@@ -376,6 +383,13 @@ export const ImageGenNode = memo(function ImageGenNode({ id, selected, data }: P
         draggable={false}
         style={{ display: "block" }}
       />
+      {imgStoredInMinio && (
+        <div
+          title="已存储到 MinIO·长期有效"
+          className="absolute top-1.5 left-1.5 z-10 rounded-full pointer-events-none"
+          style={{ width: 10, height: 10, background: "oklch(0.72 0.18 155)", boxShadow: "0 0 0 2.5px oklch(0.72 0.18 155 / 0.35)" }}
+        />
+      )}
       <div
         className="absolute inset-0 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center"
         style={{ background: "oklch(0 0 0 / 0.45)" }}
