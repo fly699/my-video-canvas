@@ -52,7 +52,7 @@ import { useIsMobile } from "@/hooks/useMobile";
 import { toast } from "sonner";
 import type { NodeType, CollaboratorCursor, NodeData } from "../../../shared/types";
 import { getNodeConfig, NODE_TYPE_LIST, NODE_ICONS, COLLABORATOR_COLORS, type NodeConfig } from "../lib/nodeConfig";
-import { NODE_CATEGORIES } from "../lib/nodeCategories";
+import { sortNodeConfigsForPalette } from "../lib/nodeOrder";
 import { io, type Socket } from "socket.io-client";
 import {
   Film,
@@ -1792,7 +1792,7 @@ function CanvasInner({ projectId }: { projectId: number }) {
                 style={{ padding: "7px 10px", borderRadius: 9, fontSize: 12, background: "var(--c-surface)", border: "1px solid var(--c-bd2)", color: "var(--c-t1)", outline: "none" }}
               />
             </div>
-            <div className="p-2.5 flex flex-col gap-3" style={{ maxHeight: 440, overflowY: "auto" }}>
+            <div className="p-2.5" style={{ maxHeight: 440, overflowY: "auto" }}>
               {(() => {
                 const renderTile = (config: NodeConfig) => {
                   const Icon = NODE_ICONS[config.icon] ?? FileText;
@@ -1820,21 +1820,11 @@ function CanvasInner({ projectId }: { projectId: number }) {
                   );
                 };
                 const q = nodePickerSearch.trim().toLowerCase();
-                if (q) {
-                  const hits = NODE_TYPE_LIST.filter((c) => c.label.toLowerCase().includes(q) || c.type.toLowerCase().includes(q));
-                  if (hits.length === 0) return <p className="text-[11px] text-center py-6" style={{ color: "var(--c-t4)" }}>未找到匹配的节点</p>;
-                  return <div className="grid grid-cols-4 gap-1.5">{hits.map(renderTile)}</div>;
-                }
-                return NODE_CATEGORIES.map((cat) => {
-                  const configs = cat.types.map((t) => getNodeConfig(t)).filter(Boolean) as NodeConfig[];
-                  if (configs.length === 0) return null;
-                  return (
-                    <div key={cat.id} className="flex flex-col gap-1">
-                      <p className="text-[10px] font-semibold uppercase tracking-widest px-1" style={{ color: "var(--c-t4)" }}>{cat.label}</p>
-                      <div className="grid grid-cols-4 gap-1.5">{configs.map(renderTile)}</div>
-                    </div>
-                  );
-                });
+                const list = q
+                  ? NODE_TYPE_LIST.filter((c) => c.label.toLowerCase().includes(q) || c.type.toLowerCase().includes(q))
+                  : sortNodeConfigsForPalette(NODE_TYPE_LIST);
+                if (list.length === 0) return <p className="text-[11px] text-center py-6" style={{ color: "var(--c-t4)" }}>未找到匹配的节点</p>;
+                return <div className="grid grid-cols-4 gap-1.5">{list.map(renderTile)}</div>;
               })()}
             </div>
           </div>
