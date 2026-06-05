@@ -646,7 +646,13 @@ function CanvasInner({ projectId }: { projectId: number }) {
         cfg.defaultHeight !== undefined ||
         (n.height > 0 && !isLegacyFallback);
       const style: React.CSSProperties = { width: n.width };
-      if (useStoredHeight) style.height = n.height;
+      if (useStoredHeight) {
+        // A fixed-height node (config.defaultHeight) saved with height 0 — agent
+        // nodes were created without an explicit style.height, so auto-save stored
+        // 0 and applying it rendered the node at 0px (invisible). Fall back to the
+        // config's defaultHeight so such nodes show after reload.
+        style.height = n.height > 0 ? n.height : (cfg.defaultHeight ?? n.height);
+      }
       return {
         id: n.id, type: "custom",
         position: { x: n.posX, y: n.posY },

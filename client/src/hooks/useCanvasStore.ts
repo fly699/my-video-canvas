@@ -301,7 +301,10 @@ export const useCanvasStore = create<CanvasStore>((set, get) => ({
       },
       style: {
         width: config.defaultWidth,
-        // height is intentionally omitted — let content drive the node height
+        // Content-driven nodes omit height (content sizes them). Fixed-height
+        // nodes (config.defaultHeight, e.g. the agent) MUST carry an explicit
+        // height — otherwise auto-save stores 0 and they reload at 0px (invisible).
+        ...(config.defaultHeight !== undefined ? { height: config.defaultHeight } : {}),
       },
     };
 
