@@ -145,4 +145,40 @@ ${input.graphSummary?.trim() || "（空画布）"}${input.prefs?.trim() ? `\n\n#
       }
       return { reply, operations, plan };
     }),
+
+  // Generate per-shot descriptions for a 成片配方 from a topic, so the recipe's
+  // shots get topic-specific content instead of fixed placeholder beats. Returns
+  // a plain string[]; the client builds the node chain deterministically.
+  recipeShots: protectedProcedure
+    .input(
+      z.object({
+        projectId: z.number(),
+        recipeName: z.string().min(1).max(100),
+        topic: z.string().max(2000).optional(),
+        shots: z.number().int().min(1).max(20),
+        style: z.string().max(200).optional(),
+        model: z.string().optional(),
+      })
+    )
+    .mutation(async ({ ctx, input }) => {
+      await assertProjectAccess(input.projectId, ctx.user.id, "editor");
+      await assertLLMAllowed(ctx);
+      const model = input.model ?? "claude-sonnet-4-5-20250929";
+      const system = `你是短视频分镜编剧。根据给定的视频类型与主题，输出恰好 ${input.shots} 个镜头的中文画面描述。要求：每条 15-40 字，具体可拍（画面主体 / 动作 / 环境 / 镜头语言），按叙事顺序连贯推进，不要编号前缀。严格只输出一个 JSON 字符串数组，例如 ["镜头1描述","镜头2描述"]，不要 markdown、不要任何多余文字。`;
+      const user = `视频类型：${input.recipeName}\n主题：${input.topic?.trim() || "（未指定，请自拟一个吸引人的主题）"}${input.style?.trim() ? `\n风格：${input.style.trim()}` : ""}\n镜头数：${input.shots}`;
+      const response = await invokeLLM({
+        messages: [{ role: "system", content: system }, { role: "user", content: user }],
+        model, maxTokens: 1500,
+      });
+      const text = extractTextContent(response);
+      let shots: string[] = [];
+      const m = text.match(/\[[\s\S]*\]/);
+      if (m) {
+        try {
+          const arr = JSON.parse(m[0]) as unknown;
+          if (Array.isArray(arr)) shots = arr.filter((x): x is string => typeof x === "string").map((s) => s.trim()).filter(Boolean);
+        } catch { /* fall through — empty shots → client uses default beats */ }
+      }
+      return { shots };
+    }),
 });
