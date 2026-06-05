@@ -56,10 +56,15 @@ export const GroupNode = memo(function GroupNode({ id, selected, data }: Props) 
           borderRadius: 16,
           background: color.bg,
           border: `1.5px ${selected ? "solid" : "dashed"} ${selected ? color.accent : color.border}`,
+          // Share BaseNode's shadow tokens so groups read as part of the same node
+          // family: a soft resting shadow, and a colored glow ring when selected.
+          boxShadow: selected
+            ? `0 0 0 4px ${color.accent}1f, var(--c-node-shadow-selected)`
+            : "var(--c-node-shadow-rest)",
           display: "flex",
           flexDirection: "column",
           overflow: "hidden",
-          transition: "border-color 150ms ease, border-style 150ms ease",
+          transition: "border-color 150ms ease, border-style 150ms ease, box-shadow 150ms ease",
         }}
       >
         {/* Header bar */}
