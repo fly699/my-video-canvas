@@ -240,6 +240,15 @@ export function devDeleteAssetAdmin(ids: number[]) {
   }
 }
 
+export function devGetAssetStorageKeysByIds(ids: number[]): { id: number; storageKey: string | null }[] {
+  return ids.map((id) => assetsMap.get(id)).filter((a): a is NonNullable<typeof a> => !!a)
+    .map((a) => ({ id: a.id, storageKey: a.storageKey ?? null }));
+}
+
+export function devHardDeleteAssetsAdmin(ids: number[]) {
+  for (const id of ids) assetsMap.delete(id); // admin hard delete (any user)
+}
+
 // ── Video Tasks ───────────────────────────────────────────────────────────────
 export function devCreateVideoTask(data: InsertVideoTask): VideoTask {
   const id = newId();

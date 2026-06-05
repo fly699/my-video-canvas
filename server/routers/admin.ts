@@ -4,7 +4,7 @@ import { adminProcedure, router } from "../_core/trpc";
 import * as db from "../db";
 import { invalidateWhitelistCache } from "../_core/whitelist";
 import { invalidateStorageSettingsCache } from "../_core/storageConfig";
-import { storagePut, storageBackend, isStorageConfigured } from "../storage";
+import { storagePut, storageBackend, isStorageConfigured, storageDeleteObject } from "../storage";
 import { ENV } from "../_core/env";
 import { randomBytes } from "crypto";
 import { getUpdateStatus, getVersionInfo, getUpdateAvailable, startUpdate } from "../_core/selfUpdate";
@@ -50,6 +50,24 @@ export const adminRouter = router({
         await db.deleteAssetAdmin(input.ids);
         writeAuditLog({ ctx, action: "asset_admin_delete", detail: { ids: input.ids, count: input.ids.length } });
         return { success: true, count: input.ids.length };
+      }),
+    // Admin-only HARD delete (彻底删除): physically remove the MinIO object(s) AND
+    // the DB row(s). Irreversible — gated by adminProcedure (admins only) and
+    // double-confirmed in the UI. Deletes blobs first (best-effort per file), then
+    // the rows; reports how many objects were actually removed. Audited.
+    hardDelete: adminProcedure
+      .input(z.object({ ids: z.array(z.number()).min(1).max(200) }))
+      .mutation(async ({ ctx, input }) => {
+        const rows = await db.getAssetStorageKeysByIds(input.ids);
+        let objectsDeleted = 0, objectsFailed = 0;
+        for (const r of rows) {
+          if (!r.storageKey) continue;
+          try { if (await storageDeleteObject(r.storageKey)) objectsDeleted++; else objectsFailed++; }
+          catch { objectsFailed++; }
+        }
+        await db.hardDeleteAssetsAdmin(input.ids);
+        writeAuditLog({ ctx, action: "asset_admin_hard_delete", detail: { ids: input.ids, count: input.ids.length, objectsDeleted, objectsFailed } });
+        return { success: true, count: input.ids.length, objectsDeleted, objectsFailed };
       }),
   }),
   logs: router({

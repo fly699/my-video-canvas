@@ -3,7 +3,7 @@
 // Downloads return /manus-storage/{key} paths served via 307 redirect.
 
 import { ENV } from "./_core/env";
-import { S3Client, PutObjectCommand, GetObjectCommand } from "@aws-sdk/client-s3";
+import { S3Client, PutObjectCommand, GetObjectCommand, DeleteObjectCommand } from "@aws-sdk/client-s3";
 import { Upload } from "@aws-sdk/lib-storage";
 import type { Readable } from "node:stream";
 import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
@@ -187,6 +187,22 @@ export async function storageUploadStream(
     Bucket: ENV.s3Bucket, Key: key, Body: body as unknown as Buffer, ContentType: contentType, ContentLength: contentLength,
   }));
   return { key, url: `/manus-storage/${key}` };
+}
+
+/**
+ * Permanently remove an object from S3/MinIO by its (already-final) storage key.
+ * Used by the admin "彻底删除/hard delete" path. Only the S3/MinIO backend is
+ * supported (production); returns false for other backends so the caller can
+ * report that the blob wasn't physically removed. The key is the exact value
+ * stored in assets.storageKey (no /manus-storage prefix); a leading slash is
+ * tolerated.
+ */
+export async function storageDeleteObject(key: string): Promise<boolean> {
+  if (storageBackend() !== "s3") return false;
+  const k = normalizeKey(key);
+  if (!k) return false;
+  await getS3().send(new DeleteObjectCommand({ Bucket: ENV.s3Bucket, Key: k }));
+  return true;
 }
 
 export async function storagePut(
