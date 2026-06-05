@@ -832,8 +832,9 @@ export interface AgentNodeData {
   autoRun?: boolean;
   /** 规划控制偏好：用户在「规划设置」对话框里的特殊要求，发送时拼成约束注入 Agent。 */
   planPrefs?: AgentPlanPrefs;
-  /** 「模板选择」对话框里为生图/图生视频指定的 comfyui_workflow 模板（留空=自动选择）。 */
-  templatePrefs?: { imageTemplateId?: number; videoTemplateId?: number };
+  /** 「模板选择」对话框里为生图/图生视频指定的 comfyui_workflow 模板（留空=自动选择）。
+   *  `asked` 记录仅ComfyUI模式下是否已弹窗询问过模板，避免每次发送都打断。 */
+  templatePrefs?: { imageTemplateId?: number; videoTemplateId?: number; asked?: boolean };
   status?: "idle" | "thinking" | "failed";
   errorMessage?: string;
 }

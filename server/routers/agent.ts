@@ -56,8 +56,8 @@ export const agentRouter = router({
       const validTemplateIds = new Set<number>();
       let hasImageTemplate = false;
       let hasVideoTemplate = false;
-      let imageTpls: { id: number; label: string }[] = [];
-      let videoTpls: { id: number; label: string }[] = [];
+      let imageTpls: { id: number; label: string; shotSeconds?: number | null; caps?: string[] }[] = [];
+      let videoTpls: { id: number; label: string; shotSeconds?: number | null; caps?: string[] }[] = [];
       try {
         const [templates, analyses] = await Promise.all([db.listComfyNodeTemplates(), db.listComfyTemplateAnalysis()]);
         // Only comfyui_workflow templates carry a workflowJson + paramBindings, and
@@ -72,8 +72,8 @@ export const agentRouter = router({
           .sort((a, b) => (b.hasVideoOutput ? 1 : 0) - (a.hasVideoOutput ? 1 : 0))
           .map((a) => ({ id: a.templateId, label: labelById.get(a.templateId)!, functionSummary: a.functionSummary ?? "", capabilities: (a.capabilities as string[] | null) ?? [], outputType: a.outputType ?? undefined, hasVideoOutput: a.hasVideoOutput ?? undefined, shotSeconds: a.maxFrames && a.fps ? Math.round((a.maxFrames / a.fps) * 10) / 10 : null }));
         for (const r of rows) validTemplateIds.add(r.id);
-        imageTpls = rows.filter((r) => r.outputType === "image" || r.outputType === "mixed").map((r) => ({ id: r.id, label: r.label }));
-        videoTpls = rows.filter((r) => r.hasVideoOutput || r.outputType === "video" || r.outputType === "mixed").map((r) => ({ id: r.id, label: r.label }));
+        imageTpls = rows.filter((r) => r.outputType === "image" || r.outputType === "mixed").map((r) => ({ id: r.id, label: r.label, shotSeconds: r.shotSeconds, caps: r.capabilities }));
+        videoTpls = rows.filter((r) => r.hasVideoOutput || r.outputType === "video" || r.outputType === "mixed").map((r) => ({ id: r.id, label: r.label, shotSeconds: r.shotSeconds, caps: r.capabilities }));
         hasImageTemplate = imageTpls.length > 0;
         hasVideoTemplate = videoTpls.length > 0;
         if (rows.length > 0) {
@@ -106,15 +106,19 @@ export const agentRouter = router({
       // Prefer the user's explicitly-chosen templates (「模板选择」对话框); else auto-pick the first.
       const chosenImg = imageTpls.find((t) => t.id === input.imageTemplateId) ?? imageTpls[0];
       const chosenVid = videoTpls.find((t) => t.id === input.videoTemplateId) ?? videoTpls[0];
+      // 按所选模板的特性参数（每镜时长、能力标签）指导分镜规划。
+      const capsOf = (t?: { caps?: string[] }) => (t?.caps?.length ? `[${t.caps.join("/")}]` : "");
+      const durPlanHint = (t?: { shotSeconds?: number | null }) =>
+        t?.shotSeconds && t.shotSeconds > 0 ? `请按该视频模板每镜≈${t.shotSeconds}s 规划镜头数（镜头数≈ceil(目标总时长/${t.shotSeconds})）。` : "";
       const imgVidHint = input.comfyOnly && input.imageFirst && chosenImg && chosenVid
-        ? `\n- 本次出图请用模板 id=${chosenImg.id}「${chosenImg.label}」；图生视频请用模板 id=${chosenVid.id}「${chosenVid.label}」。每个镜头各建这两个 comfyui_workflow 并串联（出图 → 图生视频）。`
+        ? `\n- 本次出图请用模板 id=${chosenImg.id}「${chosenImg.label}」${capsOf(chosenImg)}；图生视频请用模板 id=${chosenVid.id}「${chosenVid.label}」${capsOf(chosenVid)}${chosenVid.shotSeconds ? `（每镜≈${chosenVid.shotSeconds}s）` : ""}。每个镜头各建这两个 comfyui_workflow 并串联（出图 → 图生视频）。${durPlanHint(chosenVid)} 请结合上述模板的能力标签与时长特性来设计分镜（数量、节奏、每镜内容）。`
         : "";
 
       const comfyConstraint = input.comfyOnly
         ? `\n\n# 仅 ComfyUI 生成（当前已开启）\n- 所有图像/视频/音频生成只能使用 comfyui_workflow 自定义工作流节点；禁止使用 image_gen / video_task / audio / comfyui_image / comfyui_video / storyboard。\n- create comfyui_workflow 时必须用 payload.templateId 引用上面「已分析模板」中真实存在的某个 id（禁止编造 id 或只写名字），并把正向提示词放入 payload.prompt、反向放 payload.negPrompt。${
             input.imageFirst
               ? `\n- 【生图→生视频，已开启】每个镜头必须分两步、串联两个 comfyui_workflow 节点：先用一个「出图模板」(上面 outputType=image 的模板) 的 comfyui_workflow 生成静帧，再用一个「图生视频模板」(outputType=video / hasVideoOutput 的模板) 的 comfyui_workflow 把静帧转成视频；并连接 出图节点 → 图生视频节点（链路：script → prompt → 出图comfyui_workflow → 图生视频comfyui_workflow → merge）。出图与图生视频必须各用对应 outputType 的模板，不能用同一个；两个节点的 payload.prompt 都写该镜头提示词。${imgVidHint}`
-              : `\n- 每个镜头用一个「prompt 提示词」节点承载该镜头的提示词，再连接到对应的 comfyui_workflow 节点（script → prompt → comfyui_workflow）。${chosenVid ? `\n- 本次生成请优先使用模板 id=${chosenVid.id}「${chosenVid.label}」。` : ""}`
+              : `\n- 每个镜头用一个「prompt 提示词」节点承载该镜头的提示词，再连接到对应的 comfyui_workflow 节点（script → prompt → comfyui_workflow）。${chosenVid ? `\n- 本次生成请优先使用模板 id=${chosenVid.id}「${chosenVid.label}」${capsOf(chosenVid)}${chosenVid.shotSeconds ? `（每镜≈${chosenVid.shotSeconds}s）` : ""}。${durPlanHint(chosenVid)} 请结合该模板的能力与时长特性设计分镜。` : ""}`
           }`
         : "";
 
