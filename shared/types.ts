@@ -333,6 +333,9 @@ export interface ImageGenNodeData {
   fluxNumImages?: number;
   // Batch generation results
   imageUrls?: string[]; // multiple generated images (Soul batchSize=4, etc.)
+  /** Collapsed hero preview mode for a multi-image batch: "grid" (default) shows
+   *  the whole grid, "single" shows only the selected image. */
+  heroView?: "grid" | "single";
   // Original upstream (AI-platform) URL(s) captured at generation time, kept so
   // that — when the re-hosted /manus-storage copy isn't reachable by upstream —
   // a downstream node can offer to switch the reference back to the still-valid
@@ -689,6 +692,9 @@ export interface ComfyuiImageNodeData {
   imageUrl?: string;
   imageStorageKey?: string;
   imageUrls?: string[];
+  /** Collapsed hero preview mode when a batch produced multiple images:
+   *  "grid" shows the whole grid (default), "single" shows only the selected image. */
+  heroView?: "grid" | "single";
   progress?: number;
   queueRemaining?: number;  // ComfyUI server queue depth while waiting to start (transient)
   status?: "idle" | "processing" | "done" | "failed";

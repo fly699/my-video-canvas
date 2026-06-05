@@ -443,7 +443,30 @@ export const ComfyuiImageNode = memo(function ComfyuiImageNode({ id, selected, d
     (payload.width && payload.height) ? `尺寸: ${payload.width}×${payload.height}` : "",
   ].filter(Boolean).join("\n");
 
-  const heroMedia = payload.imageUrl ? (
+  // Collapsed hero preview: a batch (imageUrls>1) shows the whole grid by default
+  // (heroView "grid"); "single" falls back to the selected image only.
+  const heroHasMultiple = (payload.imageUrls?.length ?? 0) > 1;
+  const heroShowGrid = heroHasMultiple && payload.heroView !== "single";
+  const heroMedia = heroShowGrid ? (
+    <div
+      className="grid gap-1 p-2"
+      style={{ gridTemplateColumns: payload.imageUrls!.length === 4 ? "1fr 1fr" : `repeat(${Math.min(payload.imageUrls!.length, 3)}, 1fr)` }}
+    >
+      {payload.imageUrls!.map((url, idx) => {
+        const isSelected = url === payload.imageUrl;
+        return (
+          <div key={idx} className="relative rounded-lg overflow-hidden" style={{ background: "var(--c-canvas)" }}>
+            <MediaImage src={url} alt={`comfyui-generated-${idx}`} className="w-full" draggable={false} />
+            {isSelected && (
+              <div className="absolute top-1 right-1 rounded-full flex items-center justify-center" style={{ width: 16, height: 16, background: accent }}>
+                <Check style={{ width: 10, height: 10, color: "var(--c-canvas)" }} />
+              </div>
+            )}
+          </div>
+        );
+      })}
+    </div>
+  ) : payload.imageUrl ? (
     <div className="relative overflow-hidden group" style={{ width: "100%" }}>
       <MediaImage
         src={payload.imageUrl}
@@ -491,8 +514,29 @@ export const ComfyuiImageNode = memo(function ComfyuiImageNode({ id, selected, d
         {/* ── Result image(s) ── */}
         {payload.imageUrl ? (
           (payload.imageUrls && payload.imageUrls.length > 1) ? (
-            // Multi-image grid
-            <div className="flex-shrink-0 grid gap-1.5" style={{ gridTemplateColumns: payload.imageUrls.length >= 2 ? "1fr 1fr" : "1fr" }}>
+            // Multi-image grid + collapsed-preview mode toggle
+            <div className="flex-shrink-0 flex flex-col gap-1.5">
+              <div className="flex items-center justify-between">
+                <span style={{ fontSize: 10, color: "var(--c-t4)" }}>{payload.imageUrls.length} 张 · 点击选择输出</span>
+                <div className="flex items-center rounded-md overflow-hidden" style={{ border: `1px solid ${BORDER_DEFAULT}` }} title="折叠后预览：整组网格 / 仅选中图">
+                  {(["grid", "single"] as const).map((mode) => {
+                    const active = (payload.heroView ?? "grid") === mode;
+                    return (
+                      <button
+                        key={mode}
+                        onClick={() => update("heroView", mode)}
+                        className="nodrag flex items-center gap-1 px-1.5 py-0.5"
+                        style={{ fontSize: 9.5, background: active ? accent : "transparent", color: active ? "var(--c-canvas)" : "var(--c-t3)" }}
+                        title={mode === "grid" ? "折叠后显示整组网格（默认）" : "折叠后只显示选中图"}
+                      >
+                        {mode === "grid" ? <Boxes style={{ width: 10, height: 10 }} /> : <ImageIcon style={{ width: 10, height: 10 }} />}
+                        {mode === "grid" ? "网格" : "单图"}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+              <div className="grid gap-1.5" style={{ gridTemplateColumns: payload.imageUrls.length >= 2 ? "1fr 1fr" : "1fr" }}>
               {payload.imageUrls.map((url, i) => {
                 const isSelected = url === payload.imageUrl;
                 return (
@@ -569,6 +613,7 @@ export const ComfyuiImageNode = memo(function ComfyuiImageNode({ id, selected, d
                 </div>
                 );
               })}
+              </div>
             </div>
           ) : (
           // Single image
