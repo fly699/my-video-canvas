@@ -548,7 +548,7 @@ export default function Home() {
   // ── Unauthenticated landing ──────────────────────────────────────────────
   if (!loading && !isAuthenticated) {
     return (
-      <div className="relative min-h-screen flex flex-col overflow-hidden">
+      <div className="relative h-screen flex flex-col overflow-hidden">
         <GridBackground />
 
         {/* Nav */}
@@ -580,7 +580,7 @@ export default function Home() {
         </nav>
 
         {/* Main landing — Banner / Stats / Feature grid / Showcase */}
-        <main className="relative z-10 flex-1 px-6 pb-16">
+        <main className="relative z-10 flex-1 px-6 pb-16 overflow-y-auto">
           <div className="max-w-5xl mx-auto flex flex-col gap-8">
 
             {/* ── Banner card ────────────────────────────────────────────── */}
@@ -921,7 +921,7 @@ export default function Home() {
 
   // ── Authenticated dashboard ──────────────────────────────────────────────
   return (
-    <div className="relative min-h-screen flex flex-col overflow-hidden">
+    <div className="relative h-screen flex flex-col overflow-hidden">
       <GridBackground />
 
       {/* Nav */}
