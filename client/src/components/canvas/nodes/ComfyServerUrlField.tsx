@@ -2,6 +2,7 @@ import { useCallback, useMemo, useState } from "react";
 import { RefreshCw, Plus, X, Activity } from "lucide-react";
 import { toast } from "sonner";
 import { trpc } from "@/lib/trpc";
+import { useComfyServersStore } from "../../../hooks/useComfyServersStore";
 
 const MAX_SERVERS = 20;
 
@@ -42,24 +43,37 @@ export function ComfyServerUrlField({
   borderDefault: string;
   fieldBase: React.CSSProperties;
 }) {
+  // Global, cross-project server registry (localStorage). The displayed list is
+  // the union of this node's legacy per-node addresses and the global registry;
+  // new saves go to the global registry so every node can pick them.
+  const globalServers = useComfyServersStore((s) => s.servers);
+  const addGlobalServer = useComfyServersStore((s) => s.add);
+  const removeGlobalServer = useComfyServersStore((s) => s.remove);
+  const allServers = useMemo(
+    () => Array.from(new Set([...serverUrls, ...globalServers])),
+    [serverUrls, globalServers],
+  );
+
   const saveCurrent = useCallback(() => {
     const u = value.trim();
     if (!u) { toast.info("请先填写服务器地址"); return; }
-    if (serverUrls.includes(u)) { toast.info("该地址已在列表中"); return; }
-    if (serverUrls.length >= MAX_SERVERS) { toast.info(`地址数量已达上限（${MAX_SERVERS}）`); return; }
-    onChangeServerUrls([...serverUrls, u]);
-    toast.success("已保存到地址列表");
-  }, [value, serverUrls, onChangeServerUrls]);
+    if (allServers.includes(u)) { toast.info("该地址已在列表中"); return; }
+    if (allServers.length >= MAX_SERVERS) { toast.info(`地址数量已达上限（${MAX_SERVERS}）`); return; }
+    addGlobalServer(u);
+    toast.success("已保存到全局服务器列表（所有节点可选）");
+  }, [value, allServers, addGlobalServer]);
 
   const remove = useCallback((u: string) => {
-    onChangeServerUrls(serverUrls.filter((s) => s !== u));
-  }, [serverUrls, onChangeServerUrls]);
+    // Remove from both sources so it disappears regardless of where it lived.
+    removeGlobalServer(u);
+    if (serverUrls.includes(u)) onChangeServerUrls(serverUrls.filter((s) => s !== u));
+  }, [serverUrls, onChangeServerUrls, removeGlobalServer]);
 
   // Live server status (online · VRAM · queue), fetched on demand.
   const [probe, setProbe] = useState(false);
   const probeUrls = useMemo(
-    () => Array.from(new Set([value.trim(), ...serverUrls].filter(Boolean))),
-    [value, serverUrls],
+    () => Array.from(new Set([value.trim(), ...allServers].filter(Boolean))),
+    [value, allServers],
   );
   const statusQuery = trpc.comfyui.serverStatus.useQuery(
     { baseUrls: probeUrls },
@@ -88,12 +102,12 @@ export function ComfyServerUrlField({
           onBlur={(e) => { e.currentTarget.style.borderColor = borderDefault; }}
         />
         <datalist id={`comfy-servers-${id}`}>
-          {serverUrls.map((u) => <option key={u} value={u} />)}
+          {allServers.map((u) => <option key={u} value={u} />)}
         </datalist>
         <button
           onClick={saveCurrent}
           className="nodrag flex-shrink-0 flex items-center justify-center rounded-md"
-          title="保存当前地址到列表（供快速选择，随节点持久化）"
+          title="保存到全局服务器列表（所有 ComfyUI 节点共用，浏览器本地持久化）"
           style={{ width: 30, height: 30, background: "var(--c-surface)", border: "1px solid var(--c-bd2)", color: accent, cursor: "pointer" }}
         >
           <Plus className="w-3 h-3" />
@@ -139,9 +153,9 @@ export function ComfyServerUrlField({
           </div>
         );
       })()}
-      {serverUrls.length > 0 && (
+      {allServers.length > 0 && (
         <div className="flex flex-wrap gap-1.5 mt-1.5">
-          {serverUrls.map((u) => {
+          {allServers.map((u) => {
             const active = value.trim() === u;
             const s = probe ? statusByUrl.get(u) : undefined;
             return (
