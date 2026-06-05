@@ -337,7 +337,10 @@ export const ImageGenNode = memo(function ImageGenNode({ id, selected, data }: P
   // 绿点指示：结果图是否已落到我方 MinIO 长期存储（/manus-storage/ 路径）。
   const imgStoredInMinio = isOwnStorageUrl(payload.imageUrl);
 
-  const heroMedia = hasMultiple ? (
+  // Collapsed hero: a multi-image batch shows the whole grid by default
+  // ("grid"); "single" falls back to just the selected image.
+  const heroShowGrid = hasMultiple && payload.heroView !== "single";
+  const heroMedia = heroShowGrid ? (
     <div
       className="grid gap-1 p-2"
       style={{ gridTemplateColumns: payload.imageUrls!.length === 4 ? "1fr 1fr" : `repeat(${Math.min(payload.imageUrls!.length, 3)}, 1fr)` }}
@@ -415,6 +418,24 @@ export const ImageGenNode = memo(function ImageGenNode({ id, selected, data }: P
                 {payload.imageUrls!.length} 张图像 · 点击选择
               </span>
               <div className="flex gap-1">
+                {/* 折叠预览模式：网格 / 单图 */}
+                <div className="flex items-center rounded overflow-hidden" style={{ border: `1px solid ${BORDER_DEFAULT}` }} title="折叠后预览：整组网格 / 仅选中图">
+                  {(["grid", "single"] as const).map((mode) => {
+                    const active = (payload.heroView ?? "grid") === mode;
+                    return (
+                      <button
+                        key={mode}
+                        onClick={() => update("heroView", mode)}
+                        className="nodrag flex items-center gap-1 px-1.5 py-0.5"
+                        style={{ fontSize: 9.5, background: active ? accent : "transparent", color: active ? "white" : "var(--c-t3)" }}
+                        title={mode === "grid" ? "折叠后显示整组网格（默认）" : "折叠后只显示选中图"}
+                      >
+                        {mode === "grid" ? <Grid2X2 style={{ width: 10, height: 10 }} /> : <ImagePlus style={{ width: 10, height: 10 }} />}
+                        {mode === "grid" ? "网格" : "单图"}
+                      </button>
+                    );
+                  })}
+                </div>
                 <button
                   onClick={handleGenerate}
                   disabled={genMutation.isPending}
