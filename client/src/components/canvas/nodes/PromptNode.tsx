@@ -5,7 +5,7 @@ import type { PromptNodeData } from "../../../../../shared/types";
 import { trpc } from "@/lib/trpc";
 import { toast } from "sonner";
 import { Sparkles, Loader2, Upload, X, Languages, ScanText } from "lucide-react";
-import { makeImageProxyFallback } from "@/lib/utils";
+import { MediaImage } from "../MediaImage";
 import { LLMModelPicker, type LLMModelId } from "../LLMModelPicker";
 import { NodeTextArea, NodeInput } from "../NodeTextInput";
 
@@ -207,7 +207,7 @@ export const PromptNode = memo(function PromptNode({ id, selected, data }: Props
               <label style={{ fontSize: 10, fontWeight: 500, textTransform: "uppercase", letterSpacing: "0.05em", color: "var(--c-t4)", display: "block", marginBottom: 4 }}>输入图片（仅用于分析提取提示词）</label>
               {payload.referenceImageUrl && (
                 <div className="relative rounded-lg overflow-hidden mb-1.5" style={{ height: 80, borderWidth: 1, borderStyle: "solid", borderColor: BORDER_DEFAULT }}>
-                  <img src={payload.referenceImageUrl} alt="输入图" className="w-full h-full object-cover" draggable={false} onError={makeImageProxyFallback(payload.referenceImageUrl)} />
+                  <MediaImage src={payload.referenceImageUrl} alt="输入图" className="w-full h-full object-cover" draggable={false} />
                 </div>
               )}
               <div className="flex items-center gap-1.5">

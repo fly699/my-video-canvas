@@ -21,7 +21,7 @@ import { ModelPicker } from "../ModelPicker";
 import { ImageLightbox } from "../ImageLightbox";
 import { ReferenceImageStrip } from "../ReferenceImageStrip";
 import { useReferenceImages } from "../../../hooks/useReferenceImages";
-import { makeImageProxyFallback } from "@/lib/utils";
+import { MediaImage } from "../MediaImage";
 import {
   applyCinematographyToPrompt,
   clearCinematographyFromPrompt,
@@ -1484,7 +1484,7 @@ export const VideoTaskNode = memo(function VideoTaskNode({ id, selected, data }:
             <div className="nowheel" style={{ display: "flex", gap: 6, overflowX: "auto", paddingBottom: 2 }}>
               {refImages.images.map((img, i) => (
                 <div key={img.id} className="relative rounded-lg overflow-hidden flex-shrink-0" style={{ width: 68, height: 68, borderWidth: 1, borderStyle: "solid", borderColor: i === 0 ? "oklch(0.62 0.20 25 / 0.5)" : "var(--c-bd2)", background: "var(--c-canvas)" }}>
-                  <img src={img.url} alt={`ref-${i + 1}`} className="nodrag w-full h-full object-cover" style={{ cursor: "zoom-in" }} draggable={false} title={i === 0 ? "首图（用于生成）" : "点击放大"} onClick={() => setRefZoom(i)} onError={makeImageProxyFallback(img.url)} />
+                  <MediaImage src={img.url} alt={`ref-${i + 1}`} className="nodrag w-full h-full object-cover" style={{ cursor: "zoom-in" }} draggable={false} title={i === 0 ? "首图（用于生成）" : "点击放大"} onClick={() => setRefZoom(i)} />
                   <span style={{ position: "absolute", left: 3, top: 3, minWidth: 15, height: 15, paddingInline: 3, borderRadius: 8, fontSize: 9, fontWeight: 700, lineHeight: "15px", textAlign: "center", background: accentColor, color: "white" }}>{i + 1}</span>
                   {!isLocked && (
                     <button onClick={(e) => { e.stopPropagation(); refImages.removeId(img.id); }} className="nodrag absolute top-1 right-1 p-0.5 rounded-full" style={{ background: "oklch(0 0 0 / 0.7)", color: "var(--c-t1)" }}>

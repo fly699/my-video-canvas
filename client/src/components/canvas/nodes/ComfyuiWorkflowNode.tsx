@@ -11,7 +11,7 @@ import type { ComfyuiWorkflowNodeData, WorkflowParamBinding } from "../../../../
 import { trpc } from "@/lib/trpc";
 import { detectUpstreamImageUrl, detectUpstreamPrompt, fillWorkflowPromptParams, listUpstreamImageSources, resolveImageParamsWithMap } from "@/lib/comfyWorkflowParams";
 import { summarizeComfyWorkflow } from "@/lib/comfyWorkflowSummary";
-import { makeImageProxyFallback } from "@/lib/utils";
+import { MediaImage } from "../MediaImage";
 import { isOwnStorageUrl } from "@/lib/ownStorage";
 import { ImageLightbox } from "../ImageLightbox";
 import { toast } from "sonner";
@@ -1097,11 +1097,10 @@ export const ComfyuiWorkflowNode = memo(function ComfyuiWorkflowNode({ id, selec
               <div style={{ display: "grid", gridTemplateColumns: payload.outputUrls.length > 1 ? "1fr 1fr" : "1fr", gap: 6 }}>
                 {payload.outputUrls.map((url, i) => (
                   <div key={i} className="nodrag" style={{ position: "relative", paddingTop: "100%", borderRadius: 8, overflow: "hidden", background: "var(--c-input)", cursor: "zoom-in" }} onClick={() => setLightboxIdx(i)} title="点击放大">
-                    <img
+                    <MediaImage
                       src={url}
                       alt={`Output ${i + 1}`}
                       style={{ position: "absolute", inset: 0, width: "100%", height: "100%", objectFit: "contain" }}
-                      onError={makeImageProxyFallback(url)}
                     />
                     {/* MinIO storage indicator (ComfyUI outputs are hard-locked to MinIO) */}
                     {isOwnStorageUrl(url) && (
@@ -1197,7 +1196,7 @@ function ImageParamField({
     >
       {isImg && value && (
         <div style={{ position: "relative", width: "100%", height: 88, borderRadius: 6, overflow: "hidden", background: "var(--c-canvas)", border: "1px solid var(--c-bd2)" }}>
-          <img src={value} alt="ref" draggable={false} style={{ width: "100%", height: "100%", objectFit: "cover" }} onError={makeImageProxyFallback(value)} />
+          <MediaImage src={value} alt="ref" draggable={false} style={{ width: "100%", height: "100%", objectFit: "cover" }} />
           <button
             onClick={() => onChangeUrl("")}
             className="nodrag"

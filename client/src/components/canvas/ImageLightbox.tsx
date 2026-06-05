@@ -1,7 +1,7 @@
 import { useEffect, useCallback, useState, useRef } from "react";
 import { createPortal } from "react-dom";
 import { X, ChevronLeft, ChevronRight, Check, Download } from "lucide-react";
-import { makeImageProxyFallback } from "@/lib/utils";
+import { MediaImage } from "./MediaImage";
 import { downloadMedia } from "@/lib/download";
 
 interface ImageLightboxProps {
@@ -114,7 +114,7 @@ export function ImageLightbox({
         onClick={(e) => e.stopPropagation()}
         onWheel={handleWheel}
       >
-        <img
+        <MediaImage
           src={currentUrl}
           alt={`preview-${currentIndex}`}
           style={{
@@ -132,7 +132,6 @@ export function ImageLightbox({
           onContextMenu={(e) => e.preventDefault()}
           onMouseDown={onImgMouseDown}
           onDoubleClick={(e) => { e.stopPropagation(); scale > 1 ? resetZoom() : setScale(2); }}
-          onError={makeImageProxyFallback(currentUrl)}
         />
 
         {/* Top bar */}
@@ -226,7 +225,7 @@ export function ImageLightbox({
                   flexShrink: 0,
                 }}
               >
-                <img src={url} alt={`thumb-${idx}`} style={{ width: "100%", height: "100%", objectFit: "cover" }} draggable={false} onError={makeImageProxyFallback(url)} />
+                <MediaImage src={url} alt={`thumb-${idx}`} style={{ width: "100%", height: "100%", objectFit: "cover" }} draggable={false} />
               </button>
             ))}
           </div>
