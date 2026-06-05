@@ -698,15 +698,24 @@ function CanvasInner({ projectId }: { projectId: number }) {
   // snapped the canvas back mid-pan — "画布自己突然移动". Canvas is keyed by
   // projectId (remounts per project), so a per-mount ref guard is sufficient.
   const viewportRestoredRef = useRef(false);
+  // Restore the saved pan/zoom (or fit a fresh project) exactly ONCE, after BOTH
+  // the project and its nodes have loaded — otherwise ReactFlow's auto-fit on the
+  // initial (empty/loading) render races with, and overwrites, the saved viewport.
+  // `fitView` is disabled on the flow so this is the single source of truth.
   useEffect(() => {
     if (viewportRestoredRef.current) return;
-    if (project?.viewportState) {
-      viewportRestoredRef.current = true;
-      const vp = project.viewportState as { x: number; y: number; zoom: number };
-      const tid = setTimeout(() => reactFlow.setViewport(vp), 100);
-      return () => clearTimeout(tid);
-    }
-  }, [project, reactFlow]);
+    if (project === undefined || dbNodes === undefined) return; // wait for both
+    viewportRestoredRef.current = true;
+    const vp = project?.viewportState as { x: number; y: number; zoom: number } | null | undefined;
+    const tid = setTimeout(() => {
+      if (vp && typeof vp.x === "number" && typeof vp.y === "number" && typeof vp.zoom === "number") {
+        reactFlow.setViewport(vp);
+      } else {
+        reactFlow.fitView({ padding: 0.2 }); // fresh project — no saved viewport
+      }
+    }, 80);
+    return () => clearTimeout(tid);
+  }, [project, dbNodes, reactFlow]);
 
   // ── Auto-save ───────────────────────────────────────────────────────────────
   const saveCanvas = useCallback(async () => {
@@ -1812,7 +1821,7 @@ function CanvasInner({ projectId }: { projectId: number }) {
               deleteEdgeMutation.mutate({ id: e.id, projectId });
               emitCollabEvent("edge:delete", { id: e.id });
             })}
-            onMoveEnd={(_, vp) => { setViewport(vp); markDirty(); }}
+            onMoveEnd={(_, vp) => { setViewport(vp); if (viewportRestoredRef.current) markDirty(); }}
             onDrop={handleAssetDrop}
             onDragOver={(e) => {
               if (e.dataTransfer.types.includes("application/x-asset-list")) {
@@ -1833,7 +1842,7 @@ function CanvasInner({ projectId }: { projectId: number }) {
             zoomOnPinch
             zoomOnDoubleClick={false}
             zoomActivationKeyCode="Control"
-            fitView={!project?.viewportState}
+            fitView={false}
             fitViewOptions={{ padding: 0.2 }}
             minZoom={0.05}
             maxZoom={6}
