@@ -52,6 +52,7 @@ export const AgentNode = memo(function AgentNode({ id, selected, data }: Props) 
   const [showRecipes, setShowRecipes] = useState(false);
   const [showPrefs, setShowPrefs] = useState(false);
   const [showTemplates, setShowTemplates] = useState(false);
+  const [pendingSend, setPendingSend] = useState<{ text: string; focusNodeIds?: string[] } | null>(null);
   // 配方配置对话框（点配方后弹出，应用前可调镜头数/比例/时长/配乐字幕/AI生成内容）。
   const [recipeCfg, setRecipeCfg] = useState<{ recipe: AgentRecipe; cfg: RecipeConfig; useAI: boolean } | null>(null);
   const [recipeBusy, setRecipeBusy] = useState(false);
@@ -224,14 +225,16 @@ export const AgentNode = memo(function AgentNode({ id, selected, data }: Props) 
     const summary = buildGraphSummary(id, focusNodeIds ? { focusNodeIds } : {});
     const assistantIdx = baseMessages.length; // index the assistant reply will occupy
     setMessages(baseMessages);
+    // Read the freshest template choice from the store (the picker may have just set it).
+    const tp = ((useCanvasStore.getState().nodes.find((n) => n.id === id)?.data.payload as AgentNodeData | undefined)?.templatePrefs) ?? {};
     try {
       const r = await chat.mutateAsync({
         projectId: data.projectId, message: text, history,
         graphSummary: summary || undefined, model, comfyOnly,
         prefs: buildPrefsText(),
         imageFirst: planPrefs.imageFirst ?? false,
-        imageTemplateId: templatePrefs.imageTemplateId,
-        videoTemplateId: templatePrefs.videoTemplateId,
+        imageTemplateId: tp.imageTemplateId,
+        videoTemplateId: tp.videoTemplateId,
       });
       setMessages([...baseMessages, { role: "assistant", content: r.reply, operations: r.operations }]);
       // Duration-aware capacity check: if the plan split a target longer than the
@@ -250,8 +253,23 @@ export const AgentNode = memo(function AgentNode({ id, selected, data }: Props) 
   const handleSend = async (override?: string, focusNodeIds?: string[]) => {
     const text = (override ?? input).trim();
     if (!text || chat.isPending) return;
+    // 仅 ComfyUI：首次规划前先弹「模板选择」让用户指定/确认（或自动），选完再规划。
+    if (comfyOnly && !templatePrefs.asked) {
+      setPendingSend({ text, focusNodeIds });
+      setShowTemplates(true);
+      return;
+    }
     if (!override) setInput("");
     await runChat(text, [...messages, { role: "user", content: text }], focusNodeIds);
+  };
+
+  // 模板选择对话框里点「开始规划」：记住已询问，关闭弹窗，发出挂起的指令。
+  const startPendingPlan = () => {
+    setTemplatePref({ asked: true });
+    setShowTemplates(false);
+    const p = pendingSend;
+    setPendingSend(null);
+    if (p) { setInput(""); void runChat(p.text, [...freshMessages(), { role: "user", content: p.text }], p.focusNodeIds); }
   };
 
   // 重试：重跑失败助手消息所对应的上一条用户指令（丢弃失败回复，不重复用户气泡）。
@@ -672,7 +690,7 @@ export const AgentNode = memo(function AgentNode({ id, selected, data }: Props) 
         );
         return (
           <div className="nodrag nowheel" style={{ position: "fixed", inset: 0, zIndex: 9999, background: "rgba(0,0,0,0.5)", display: "flex", alignItems: "center", justifyContent: "center" }}
-            onClick={() => setShowTemplates(false)}>
+            onClick={() => { setShowTemplates(false); setPendingSend(null); }}>
             <div onClick={(e) => e.stopPropagation()} style={{ width: 460, maxWidth: "92vw", maxHeight: "86vh", overflowY: "auto", background: "var(--c-surface)", border: `1px solid ${accentA(0.3)}`, borderRadius: 14, padding: 18, boxShadow: "0 12px 40px rgba(0,0,0,0.4)" }}>
               <div style={{ fontSize: 14, fontWeight: 700, color: "var(--c-t1)", marginBottom: 4 }}>模板选择</div>
               <div style={{ fontSize: 11, color: "var(--c-t4)", marginBottom: 12 }}>智能体仅能引用「ComfyUI 自定义工作流」模板。为生图/图生视频指定要用的模板，或留「自动」。{analysisQuery.isFetching ? " 加载中…" : ""}</div>
@@ -696,10 +714,17 @@ export const AgentNode = memo(function AgentNode({ id, selected, data }: Props) 
                   style={{ flex: 1, padding: "8px", fontSize: 12, fontWeight: 600, borderRadius: 9, cursor: "pointer", background: "var(--c-surface)", border: "1px solid var(--c-bd2)", color: "var(--c-t3)" }}>
                   全部自动
                 </button>
-                <button className="nodrag" onClick={() => setShowTemplates(false)}
-                  style={{ flex: 2, padding: "8px", fontSize: 12, fontWeight: 600, borderRadius: 9, cursor: "pointer", background: accentA(0.18), border: `1px solid ${accentA(0.4)}`, color: accent }}>
-                  完成
-                </button>
+                {pendingSend ? (
+                  <button className="nodrag" onClick={startPendingPlan}
+                    style={{ flex: 2, padding: "8px", fontSize: 12, fontWeight: 600, borderRadius: 9, cursor: "pointer", background: accentA(0.18), border: `1px solid ${accentA(0.4)}`, color: accent, display: "flex", alignItems: "center", justifyContent: "center", gap: 5 }}>
+                    <Sparkles className="w-3.5 h-3.5" />用所选模板开始规划
+                  </button>
+                ) : (
+                  <button className="nodrag" onClick={() => setShowTemplates(false)}
+                    style={{ flex: 2, padding: "8px", fontSize: 12, fontWeight: 600, borderRadius: 9, cursor: "pointer", background: accentA(0.18), border: `1px solid ${accentA(0.4)}`, color: accent }}>
+                    完成
+                  </button>
+                )}
               </div>
             </div>
           </div>
