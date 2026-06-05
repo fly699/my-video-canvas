@@ -26,6 +26,23 @@ const MAX_REF_IMAGE_BYTES = 30 * 1024 * 1024;     // 30 MB — sane upper bound 
 let _io: SocketIOServer | null = null;
 export function setComfySocketIO(io: SocketIOServer): void { _io = io; }
 
+/** A progress callback that relays sampling progress and (throttled) live preview
+ * frames to the node's project room over socket.io. Shared by the image/video/
+ * custom-workflow run paths. */
+function comfyProgressRelay(projectId: number, nodeId: string): (ev: ComfyProgressEvent) => void {
+  let lastPreviewAt = 0;
+  return (ev) => {
+    if (ev.type === "progress" && ev.value != null && ev.max != null) {
+      _io?.to(`project:${projectId}`).emit("comfyui:progress", { nodeId, type: "progress", value: ev.value, max: ev.max });
+    } else if (ev.type === "preview" && ev.previewDataUrl) {
+      const now = Date.now();
+      if (now - lastPreviewAt < 200) return; // throttle to ~5 fps to bound bandwidth
+      lastPreviewAt = now;
+      _io?.to(`project:${projectId}`).emit("comfyui:progress", { nodeId, type: "preview", preview: ev.previewDataUrl });
+    }
+  };
+}
+
 // ── URL validation ────────────────────────────────────────────────────────────
 
 function normalizeBaseUrl(raw: string): string {
@@ -616,11 +633,21 @@ async function uploadImageToComfy(baseUrl: string, sourceUrl: string, apiKey?: s
 // ── WebSocket progress subscription ──────────────────────────────────────────
 
 interface ComfyProgressEvent {
-  type: "progress" | "executing" | "executed" | "error";
+  type: "progress" | "executing" | "executed" | "error" | "preview";
   value?: number;
   max?: number;
   nodeId?: string;
   errorMessage?: string;
+  previewDataUrl?: string;  // live sampling preview (data: URL) from a WS binary frame
+}
+
+/** Parse a ComfyUI WS binary preview frame into a data: URL, or null if it isn't
+ * a preview-image frame. Layout: [4B BE eventType=1][4B BE imageType: 1=JPEG,
+ * 2=PNG][raw image bytes]. */
+export function parseComfyPreviewFrame(buf: Buffer): string | null {
+  if (buf.length <= 8 || buf.readUInt32BE(0) !== 1) return null;
+  const mime = buf.readUInt32BE(4) === 2 ? "image/png" : "image/jpeg";
+  return `data:${mime};base64,${buf.subarray(8).toString("base64")}`;
 }
 
 /** Connect to ComfyUI WS and relay progress events via callback until the job finishes. */
@@ -641,6 +668,7 @@ export function subscribeComfyProgress(
     let ws: WebSocket;
     try {
       ws = new WebSocket(wsUrl);
+      ws.binaryType = "arraybuffer"; // receive preview frames as ArrayBuffer, not Blob
     } catch {
       done();
       return;
@@ -657,8 +685,17 @@ export function subscribeComfyProgress(
     }
 
     ws.addEventListener("message", (ev) => {
+      // Binary frames are live sampling previews:
+      //   [4B big-endian eventType=1][4B imageType: 1=JPEG, 2=PNG][image bytes]
+      if (typeof ev.data !== "string") {
+        try {
+          const dataUrl = parseComfyPreviewFrame(Buffer.from(ev.data as ArrayBuffer));
+          if (dataUrl) callback({ type: "preview", previewDataUrl: dataUrl });
+        } catch { /* ignore malformed binary frame */ }
+        return;
+      }
       try {
-        const msg = JSON.parse(typeof ev.data === "string" ? ev.data : ev.data.toString()) as {
+        const msg = JSON.parse(ev.data) as {
           type: string;
           data?: Record<string, unknown>;
         };
@@ -1091,11 +1128,7 @@ export async function generateComfyImage(rawBaseUrl: string, options: GenerateCo
   if (options.projectId != null && options.nodeId != null && _io != null) {
     const projectId = options.projectId;
     const nodeId = options.nodeId;
-    subscribeComfyProgress(baseUrl, promptId, (ev) => {
-      if (ev.type === "progress" && ev.value != null && ev.max != null) {
-        _io?.to(`project:${projectId}`).emit("comfyui:progress", { nodeId, type: "progress", value: ev.value, max: ev.max });
-      }
-    }, 600_000, progressAbort.signal).catch(() => { /* progress is best-effort */ });
+    subscribeComfyProgress(baseUrl, promptId, comfyProgressRelay(projectId, nodeId), 600_000, progressAbort.signal).catch(() => { /* progress is best-effort */ });
   }
 
   let entry: HistoryEntry;
@@ -1202,11 +1235,7 @@ export async function generateComfyVideo(rawBaseUrl: string, options: GenerateCo
   if (options.projectId != null && options.nodeId != null && _io != null) {
     const projectId = options.projectId;
     const nodeId = options.nodeId;
-    subscribeComfyProgress(baseUrl, promptId, (ev) => {
-      if (ev.type === "progress" && ev.value != null && ev.max != null) {
-        _io?.to(`project:${projectId}`).emit("comfyui:progress", { nodeId, type: "progress", value: ev.value, max: ev.max });
-      }
-    }, 600_000, progressAbort.signal).catch(() => { /* progress is best-effort */ });
+    subscribeComfyProgress(baseUrl, promptId, comfyProgressRelay(projectId, nodeId), 600_000, progressAbort.signal).catch(() => { /* progress is best-effort */ });
   }
 
   let entry: HistoryEntry;
@@ -1612,11 +1641,7 @@ export async function executeCustomWorkflow(
   if (options.projectId != null && options.nodeId != null && _io != null) {
     const projectId = options.projectId;
     const nodeId = options.nodeId;
-    subscribeComfyProgress(baseUrl, promptId, (ev) => {
-      if (ev.type === "progress" && ev.value != null && ev.max != null) {
-        _io?.to(`project:${projectId}`).emit("comfyui:progress", { nodeId, type: "progress", value: ev.value, max: ev.max });
-      }
-    }, 600_000, progressAbort.signal).catch(() => { /* progress is best-effort */ });
+    subscribeComfyProgress(baseUrl, promptId, comfyProgressRelay(projectId, nodeId), 600_000, progressAbort.signal).catch(() => { /* progress is best-effort */ });
   }
 
   // Use longer poll limit since we don't know the workflow complexity

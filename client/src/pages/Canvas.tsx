@@ -13,6 +13,7 @@ import {
 } from "@xyflow/react";
 import "@xyflow/react/dist/style.css";
 import { useCanvasStore, type CanvasNode, type CanvasEdge } from "../hooks/useCanvasStore";
+import { useComfyPreviewStore } from "../hooks/useComfyPreviewStore";
 import { usePersistentState } from "../hooks/usePersistentState";
 import { useShallow } from "zustand/react/shallow";
 import { useWorkflowRunner, RUNNABLE_TYPES } from "../hooks/useWorkflowRunner";
@@ -886,10 +887,13 @@ function CanvasInner({ projectId }: { projectId: number }) {
         store.setEdges(store.edges.filter((e) => e.id !== p.id));
       }
     });
-    socket.on("comfyui:progress", (event: { nodeId: string; type: string; value?: number; max?: number }) => {
+    socket.on("comfyui:progress", (event: { nodeId: string; type: string; value?: number; max?: number; preview?: string }) => {
       if (event.type === "progress" && event.value != null && event.max != null && event.max > 0) {
         const pct = Math.round((event.value / event.max) * 100);
         useCanvasStore.getState().updateNodeData(event.nodeId, { progress: pct }, true);
+      } else if (event.type === "preview" && typeof event.preview === "string") {
+        // Live sampling preview — kept in a transient store (never persisted).
+        useComfyPreviewStore.getState().setPreview(event.nodeId, event.preview);
       }
     });
     socketRef.current = socket;
