@@ -4,7 +4,7 @@ import { assertProjectAccess } from "../_core/permissions";
 import { assertLLMAllowed } from "../_core/whitelist";
 import { invokeLLM, extractTextContent } from "../_core/llm";
 import { catalogText, sanitizeOperation, templateKnowledgeText } from "../_core/agentCatalog";
-import { enforceImageFirst } from "../_core/imageFirst";
+import { enforceImageFirst, enforceImageFirstComfy } from "../_core/imageFirst";
 import { runLibraryAnalysis } from "../_core/templateAnalysis";
 import * as db from "../db";
 import type { AgentOperation } from "../../shared/types";
@@ -49,6 +49,8 @@ export const agentRouter = router({
       const validTemplateIds = new Set<number>();
       let hasImageTemplate = false;
       let hasVideoTemplate = false;
+      let imageTpls: { id: number; label: string }[] = [];
+      let videoTpls: { id: number; label: string }[] = [];
       try {
         const [templates, analyses] = await Promise.all([db.listComfyNodeTemplates(), db.listComfyTemplateAnalysis()]);
         const labelById = new Map(templates.map((t) => [t.id, t.label]));
@@ -57,8 +59,10 @@ export const agentRouter = router({
           .sort((a, b) => (b.hasVideoOutput ? 1 : 0) - (a.hasVideoOutput ? 1 : 0))
           .map((a) => ({ id: a.templateId, label: labelById.get(a.templateId)!, functionSummary: a.functionSummary ?? "", capabilities: (a.capabilities as string[] | null) ?? [], outputType: a.outputType ?? undefined, hasVideoOutput: a.hasVideoOutput ?? undefined, shotSeconds: a.maxFrames && a.fps ? Math.round((a.maxFrames / a.fps) * 10) / 10 : null }));
         for (const r of rows) validTemplateIds.add(r.id);
-        hasImageTemplate = rows.some((r) => r.outputType === "image" || r.outputType === "mixed");
-        hasVideoTemplate = rows.some((r) => r.hasVideoOutput || r.outputType === "video" || r.outputType === "mixed");
+        imageTpls = rows.filter((r) => r.outputType === "image" || r.outputType === "mixed").map((r) => ({ id: r.id, label: r.label }));
+        videoTpls = rows.filter((r) => r.hasVideoOutput || r.outputType === "video" || r.outputType === "mixed").map((r) => ({ id: r.id, label: r.label }));
+        hasImageTemplate = imageTpls.length > 0;
+        hasVideoTemplate = videoTpls.length > 0;
         if (rows.length > 0) {
           templateSection = `\n\n# 已分析的 ComfyUI 自定义工作流模板（comfyui_workflow 可用 payload.templateId 引用其 id）\n${templateKnowledgeText(rows)}`;
         }
@@ -77,18 +81,23 @@ export const agentRouter = router({
         };
       }
 
-      // 仅 ComfyUI + 生图→生视频，但库里没有「出图（文生图）」模板：无法先生图，明确指引而非硬凑。
-      if (input.comfyOnly && input.imageFirst && !hasImageTemplate) {
+      // 仅 ComfyUI + 生图→生视频，但缺出图或缺图生视频模板：无法串联，明确指引而非硬凑。
+      if (input.comfyOnly && input.imageFirst && (!hasImageTemplate || !hasVideoTemplate)) {
+        const missing = !hasImageTemplate ? "「出图（文生图）」" : "「图生视频 / 出视频」";
         return {
-          reply: "已开启「仅 ComfyUI 生成」+「生图→生视频」，但模板库里没有任何「出图（文生图）」的工作流模板，无法先生成静帧再图生视频。请二选一：①在模板库添加并分析一个输出图像的 ComfyUI 工作流（出图模板），再让我编排；或②在「规划设置」里关闭「生图→生视频」，我直接用图生视频/文生视频模板生成。",
+          reply: `已开启「仅 ComfyUI 生成」+「生图→生视频」，但模板库里缺少${missing}的工作流模板，无法把"先生图再图生视频"串起来。请在模板库添加并分析一个对应的工作流，或在「规划设置」里关闭「生图→生视频」。（当前已识别：出图模板 ${imageTpls.length} 个、视频模板 ${videoTpls.length} 个。）`,
           operations: [],
         };
       }
 
+      const imgVidHint = input.comfyOnly && input.imageFirst && imageTpls.length && videoTpls.length
+        ? `\n- 本次出图请用模板 id=${imageTpls[0].id}「${imageTpls[0].label}」；图生视频请用模板 id=${videoTpls[0].id}「${videoTpls[0].label}」。每个镜头各建这两个 comfyui_workflow 并串联（出图 → 图生视频）。`
+        : "";
+
       const comfyConstraint = input.comfyOnly
         ? `\n\n# 仅 ComfyUI 生成（当前已开启）\n- 所有图像/视频/音频生成只能使用 comfyui_workflow 自定义工作流节点；禁止使用 image_gen / video_task / audio / comfyui_image / comfyui_video / storyboard。\n- create comfyui_workflow 时必须用 payload.templateId 引用上面「已分析模板」中真实存在的某个 id（禁止编造 id 或只写名字），并把正向提示词放入 payload.prompt、反向放 payload.negPrompt。${
             input.imageFirst
-              ? `\n- 【生图→生视频，已开启】每个镜头必须分两步、串联两个 comfyui_workflow 节点：先用一个「出图模板」(上面 outputType=image 的模板) 的 comfyui_workflow 生成静帧，再用一个「图生视频模板」(outputType=video / hasVideoOutput 的模板) 的 comfyui_workflow 把静帧转成视频；并连接 出图节点 → 图生视频节点（链路：script → prompt → 出图comfyui_workflow → 图生视频comfyui_workflow → merge）。出图与图生视频必须各用对应 outputType 的模板，不能用同一个；两个节点的 payload.prompt 都写该镜头提示词。`
+              ? `\n- 【生图→生视频，已开启】每个镜头必须分两步、串联两个 comfyui_workflow 节点：先用一个「出图模板」(上面 outputType=image 的模板) 的 comfyui_workflow 生成静帧，再用一个「图生视频模板」(outputType=video / hasVideoOutput 的模板) 的 comfyui_workflow 把静帧转成视频；并连接 出图节点 → 图生视频节点（链路：script → prompt → 出图comfyui_workflow → 图生视频comfyui_workflow → merge）。出图与图生视频必须各用对应 outputType 的模板，不能用同一个；两个节点的 payload.prompt 都写该镜头提示词。${imgVidHint}`
               : `\n- 每个镜头用一个「prompt 提示词」节点承载该镜头的提示词，再连接到对应的 comfyui_workflow 节点（script → prompt → comfyui_workflow）。`
           }`
         : "";
@@ -146,9 +155,16 @@ ${input.graphSummary?.trim() || "（空画布）"}${input.prefs?.trim() ? `\n\n#
             operations = parsed.operations
               .map((o) => sanitizeOperation(o, { comfyOnly: input.comfyOnly, validTemplateIds }))
               .filter((o): o is AgentOperation => o !== null);
-            // 生图→生视频：确定性强制（仅非 ComfyUI 模式，image_gen 在此可用）。即使 LLM
-            // 没照做，也把 文本→视频 改写为 文本→image_gen→视频，保证偏好必然生效。
-            if (input.imageFirst && !input.comfyOnly) operations = enforceImageFirst(operations);
+            // 生图→生视频：确定性强制——即使 LLM 没照做也保证生效。
+            // 非 ComfyUI：插 image_gen（文本→image_gen→视频）。
+            // 仅 ComfyUI：插出图 comfyui_workflow（prompt→出图→图生视频），用识别到的出图/视频模板。
+            if (input.imageFirst) {
+              if (input.comfyOnly && imageTpls.length && videoTpls.length) {
+                operations = enforceImageFirstComfy(operations, new Set(imageTpls.map((t) => t.id)), new Set(videoTpls.map((t) => t.id)), imageTpls[0].id);
+              } else if (!input.comfyOnly) {
+                operations = enforceImageFirst(operations);
+              }
+            }
           }
           // Optional planning summary (duration-aware shot split) for the client's
           // capacity dialog. Only accept well-formed numeric fields.
