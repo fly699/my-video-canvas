@@ -201,7 +201,7 @@ export const MergeNode = memo(function MergeNode({ id, selected, data }: Props) 
   const isFailed = payload.status === "failed";
 
   return (
-    <BaseNode id={id} selected={selected} nodeType="merge" title={data.title} minHeight={200}>
+    <BaseNode id={id} selected={selected} nodeType="merge" title={data.title} minHeight={200} resizable>
 
       <div className="flex flex-col gap-3 p-3.5" onDragOver={handleDragOver} onDrop={handleDrop}>
 
