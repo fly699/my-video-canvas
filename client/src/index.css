@@ -966,6 +966,10 @@ button:active:not(:disabled) {
 /* Node body: transition for smooth collapse/expand */
 .node-body-wrap {
   flex: 1;
+  /* Allow the body to shrink below its content height so that, when the node
+     is height-capped (e.g. Agent), the body's own internal scroll area takes
+     over instead of the content overflowing past the cap. */
+  min-height: 0;
   display: flex;
   flex-direction: column;
   transition:

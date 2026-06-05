@@ -51,13 +51,16 @@ interface BaseNodeProps {
   headerTooltip?: string;
   /** 可选：隐藏右上角的节点类型徽章（如「COMFYUI 视频」）。 */
   hideTypeBadge?: boolean;
+  /** 可选：给整个节点高度封顶为 3×宽度，超出由节点内部滚动消化（如 Agent 长输出）。
+   *  用户手动 resize（写入 style.height）后自动解除该上限。 */
+  capNodeHeight?: boolean;
 }
 
 export const BaseNode = memo(function BaseNode({
   id, selected, nodeType, title, children,
   minWidth = 280, minHeight = 140, showHandles = true, headerRight, resizable = false,
   onRun, canRun = true, running: nodeRunning = false, hasResult = false,
-  heroMedia, borderTint, headerTooltip, hideTypeBadge,
+  heroMedia, borderTint, headerTooltip, hideTypeBadge, capNodeHeight = false,
 }: BaseNodeProps) {
   const config = getNodeConfig(nodeType);
   const Icon = NODE_ICONS[config.icon] ?? FileText;
@@ -145,6 +148,23 @@ export const BaseNode = memo(function BaseNode({
   // the hero preview. In that state drop the min-height floor so the node shrinks
   // to fit the preview's natural aspect ratio instead of leaving empty space.
   const isCollapsedPreview = hasHero && !selected && !pinned;
+
+  // Whole-node height cap (e.g. Agent's long output): clamp the node to 3× its
+  // width and let the node's own internal scroll area absorb the overflow. A
+  // manual resize (which writes style.height) lifts the cap so the user can
+  // temporarily enlarge it.
+  const nodeStyleWidth = useCanvasStore((s) => {
+    const w = s.nodes.find((n) => n.id === id)?.style?.width;
+    return typeof w === "number" ? w : null;
+  });
+  const nodeStyleHeight = useCanvasStore((s) => {
+    const h = s.nodes.find((n) => n.id === id)?.style?.height;
+    return typeof h === "number" ? h : null;
+  });
+  const manuallyResized = nodeStyleHeight != null && nodeStyleHeight > 0;
+  const cappedMaxHeight = capNodeHeight && !manuallyResized
+    ? Math.round((nodeStyleWidth ?? config.defaultWidth) * 3)
+    : undefined;
 
   // Workflow run status
   const { running, currentNodeId, completedIds, failedIds } = useWorkflowRunState();
@@ -283,7 +303,7 @@ export const BaseNode = memo(function BaseNode({
       />
 
     {/* Inner content wrapper clips visual content to the rounded corners */}
-    <div className="flex flex-col" style={{ overflow: "hidden", borderRadius: "inherit", width: "100%", height: "100%" }}>
+    <div className="flex flex-col" style={{ overflow: "hidden", borderRadius: "inherit", width: "100%", height: "100%", maxHeight: cappedMaxHeight }}>
 
       {/* ── Color accent strip at top ── */}
       <div
@@ -671,7 +691,10 @@ export const BaseNode = memo(function BaseNode({
       {/* ── Content area (collapsible in creative mode when hero exists) ── */}
       <NodeSelectedContext.Provider value={!!selected || pinned}>
         <div className="node-body-wrap">
-          <div className="overflow-visible nopan" style={{ flex: 1, minHeight: 0 }}>{children}</div>
+          {/* When the node height is capped, make this wrapper a flex column so a
+              flex:1 child can inherit the bounded height (percentage height/h-full
+              can't resolve here because the parent height is flex-derived). */}
+          <div className="overflow-visible nopan" style={{ flex: 1, minHeight: 0, ...(capNodeHeight ? { display: "flex", flexDirection: "column" } : {}) }}>{children}</div>
         </div>
       </NodeSelectedContext.Provider>
 
