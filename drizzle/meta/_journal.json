@@ -281,6 +281,13 @@
       "when": 1780501400000,
       "tag": "0039_ensure_node_type_enum",
       "breakpoints": true
+    },
+    {
+      "idx": 40,
+      "version": "5",
+      "when": 1780501500000,
+      "tag": "0040_asset_size_bigint",
+      "breakpoints": true
     }
   ]
 }

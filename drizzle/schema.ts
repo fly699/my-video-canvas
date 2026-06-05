@@ -1,5 +1,6 @@
 import {
   int,
+  bigint,
   index,
   uniqueIndex,
   mysqlEnum,
@@ -161,7 +162,8 @@ export const assets = mysqlTable("assets", {
   name: varchar("name", { length: 255 }).notNull(),
   type: mysqlEnum("type", ["image", "video", "audio", "other"]).notNull(),
   mimeType: varchar("mimeType", { length: 128 }),
-  size: int("size"),
+  // BIGINT: video uploads can exceed the signed-INT max (~2.1GB). (#1)
+  size: bigint("size", { mode: "number" }),
   storageKey: text("storageKey").notNull(),
   url: text("url").notNull(),
   thumbnailUrl: text("thumbnailUrl"),
@@ -465,7 +467,8 @@ export const chatAttachments = mysqlTable("chat_attachments", {
   url: text("url").notNull(),
   name: varchar("name", { length: 255 }).notNull(),
   mimeType: varchar("mimeType", { length: 128 }).notNull(),
-  size: int("size").notNull(),
+  // BIGINT: keep parity with assets.size for large media. (#1)
+  size: bigint("size", { mode: "number" }).notNull(),
   kind: mysqlEnum("kind", ["image", "video", "file"]).notNull(),
   createdAt: timestamp("createdAt").defaultNow().notNull(),
 }, (t) => ({

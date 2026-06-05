@@ -99,6 +99,9 @@ export function registerStorageProxy(app: Express) {
         if (!res.headersSent) res.status(502).end();
         else res.destroy();
       });
+      // If the client disconnects mid-download, tear down the upstream (MinIO)
+      // stream too — otherwise its socket/handle leaks until GC.
+      res.on("close", () => { body.destroy(); });
       body.pipe(res);
     } catch (err) {
       console.error("[StorageProxy] failed:", err);

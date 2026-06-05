@@ -40,6 +40,14 @@ function sweep() {
   }
 }
 
+/** How many renders this user currently has in flight (each spawns an ffmpeg child). */
+export function countRunningRenderJobs(userId: number): number {
+  sweep();
+  let n = 0;
+  for (const j of Array.from(jobs.values())) if (j.userId === userId && j.status === "running") n++;
+  return n;
+}
+
 export function createRenderJob(userId: number, sessionId: number): RenderJob {
   sweep();
   const job: RenderJob = { id: randomUUID(), userId, sessionId, status: "running", progress: 0, stage: "排队中", createdAt: Date.now() };

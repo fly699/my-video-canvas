@@ -27,6 +27,20 @@ describe("analyzeWorkflow videoCapabilities", () => {
     expect(a.videoCapabilities).toEqual({ maxFrames: 16, fps: 8 });
   });
 
+  it("ignores a `length` input on a non-video node (no false frame count)", async () => {
+    // A text/list helper node that happens to expose a numeric `length` must not
+    // clobber the real frame count read from the video-latent node. (#7)
+    const wf = JSON.stringify({
+      "2": { class_type: "StringListHelper", inputs: { length: 999 } },
+      "5": { class_type: "EmptyHunyuanLatentVideo", inputs: { width: 832, height: 480, length: 81 } },
+      "8": { class_type: "VAEDecode", inputs: { samples: ["4", 0], vae: ["3", 0] } },
+      "13": { class_type: "VHS_VideoCombine", inputs: { frame_rate: 16, images: ["8", 0] } },
+    });
+    const a = await analyzeWorkflow(wf);
+    expect(a.outputType).toBe("video");
+    expect(a.videoCapabilities).toEqual({ maxFrames: 81, fps: 16 });
+  });
+
   it("returns no videoCapabilities for an image-only workflow", async () => {
     const wf = JSON.stringify({
       "5": { class_type: "EmptyLatentImage", inputs: { width: 512, height: 512, batch_size: 4 } },
