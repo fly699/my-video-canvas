@@ -54,14 +54,17 @@ export function enforceImageFirst(ops: AgentOperation[]): AgentOperation[] {
         if (!imgRef) {
           imgRef = `imgfirst_${++counter}`;
           imgForVideo.set(o.targetRef, imgRef);
-          const vPayload = (createByTemp.get(o.targetRef)?.payload ?? {}) as Record<string, unknown>;
+          const vCreate = createByTemp.get(o.targetRef);
+          const vPayload = (vCreate?.payload ?? {}) as Record<string, unknown>;
           const imgPayload: Record<string, unknown> = {};
           if (typeof vPayload.prompt === "string" && vPayload.prompt) imgPayload.prompt = vPayload.prompt;
           if (typeof vPayload.aspectRatio === "string" && vPayload.aspectRatio) imgPayload.aspectRatio = vPayload.aspectRatio;
-          result.push({ op: "create", nodeType: "image_gen", tempId: imgRef, title: "静帧", payload: imgPayload, note: "生图→生视频：自动插入图像节点作为视频首帧" });
+          result.push({ op: "create", nodeType: "image_gen", tempId: imgRef, title: "静帧", payload: imgPayload, sceneGroup: vCreate?.sceneGroup, note: "生图→生视频：自动插入图像节点作为视频首帧" });
+          // image_gen → video ONCE (only when the image node is first created),
+          // otherwise multiple non-image sources on one video would duplicate it.
+          result.push({ op: "connect", sourceRef: imgRef, targetRef: o.targetRef, note: "生图→生视频" });
         }
-        result.push({ ...o, targetRef: imgRef });          // text source → image_gen
-        result.push({ op: "connect", sourceRef: imgRef, targetRef: o.targetRef, note: "生图→生视频" }); // image_gen → video
+        result.push({ ...o, targetRef: imgRef }); // each text source → image_gen
         continue;
       }
     }
@@ -115,14 +118,15 @@ export function enforceImageFirstComfy(
         if (!imgRef) {
           imgRef = `imgfirst_cw_${++counter}`;
           imgForVideo.set(o.targetRef, imgRef);
-          const vPayload = (createByTemp.get(o.targetRef)?.payload ?? {}) as Record<string, unknown>;
+          const vCreate = createByTemp.get(o.targetRef);
+          const vPayload = (vCreate?.payload ?? {}) as Record<string, unknown>;
           const imgPayload: Record<string, unknown> = { templateId: defaultImageTplId };
           if (typeof vPayload.prompt === "string" && vPayload.prompt) imgPayload.prompt = vPayload.prompt;
           if (typeof vPayload.negPrompt === "string" && vPayload.negPrompt) imgPayload.negPrompt = vPayload.negPrompt;
-          result.push({ op: "create", nodeType: "comfyui_workflow", tempId: imgRef, title: "出图", payload: imgPayload, note: "生图→生视频：自动插入出图工作流作为视频首帧" });
+          result.push({ op: "create", nodeType: "comfyui_workflow", tempId: imgRef, title: "出图", payload: imgPayload, sceneGroup: vCreate?.sceneGroup, note: "生图→生视频：自动插入出图工作流作为视频首帧" });
+          result.push({ op: "connect", sourceRef: imgRef, targetRef: o.targetRef, note: "生图→生视频" }); // 出图→视频 仅一次
         }
         result.push({ ...o, targetRef: imgRef });
-        result.push({ op: "connect", sourceRef: imgRef, targetRef: o.targetRef, note: "生图→生视频" });
         continue;
       }
     }
