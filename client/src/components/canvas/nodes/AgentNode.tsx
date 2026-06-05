@@ -11,7 +11,7 @@ import { applyAgentOperations, buildGraphSummary, distributeServers } from "@/li
 import { getNodeConfig } from "../../../lib/nodeConfig";
 import { LAYOUTS, computeLayout } from "@/lib/layoutUtils";
 import { estimateOpsBudget, budgetLabel } from "@/lib/agentBudget";
-import { AGENT_RECIPES } from "@/lib/agentRecipes";
+import { AGENT_RECIPES, buildRecipeOps, recipeDefaultConfig, type AgentRecipe, type RecipeConfig } from "@/lib/agentRecipes";
 import { runPreflight } from "@/lib/preflight";
 import { useWorkflowRunState } from "../../../contexts/WorkflowRunContext";
 
@@ -51,6 +51,9 @@ export const AgentNode = memo(function AgentNode({ id, selected, data }: Props) 
   const [analyzeFull, setAnalyzeFull] = useState(false);
   const [showRecipes, setShowRecipes] = useState(false);
   const [showPrefs, setShowPrefs] = useState(false);
+  // 配方配置对话框（点配方后弹出，应用前可调镜头数/比例/时长/配乐字幕/AI生成内容）。
+  const [recipeCfg, setRecipeCfg] = useState<{ recipe: AgentRecipe; cfg: RecipeConfig; useAI: boolean } | null>(null);
+  const [recipeBusy, setRecipeBusy] = useState(false);
   // Multi-server distribution dialog (≥2 comfy nodes across ≥2 known servers).
   const [serverDist, setServerDist] = useState<{
     msgIdx: number; ops: AgentOperation[]; comfyCount: number;
@@ -71,6 +74,7 @@ export const AgentNode = memo(function AgentNode({ id, selected, data }: Props) 
   const chat = trpc.agent.chat.useMutation();
   const templatesQuery = trpc.comfyTemplates.list.useQuery(undefined, { staleTime: 30_000 });
   const analyzeMut = trpc.comfyTemplates.analyzeLibrary.useMutation();
+  const recipeShotsMut = trpc.agent.recipeShots.useMutation();
   const balanceQuery = trpc.poyo.balance.useQuery(undefined, { staleTime: 60_000 });
   const comfyOnly = payload.comfyOnlyMode ?? false;
   // Selected canvas nodes (excluding this agent) → drives 局部编辑微调.
@@ -281,18 +285,48 @@ export const AgentNode = memo(function AgentNode({ id, selected, data }: Props) 
     else toast.success("体检通过");
   };
 
-  // 成片配方：一键把配方展开为完整节点链并应用（走与智能体输出相同的应用路径）。
-  const handleApplyRecipe = (recipeId: string) => {
-    const recipe = AGENT_RECIPES.find((x) => x.id === recipeId);
-    if (!recipe) return;
+  // 成片配方：点配方先打开配置对话框（应用前可调），确认后展开为节点链并应用。
+  const openRecipe = (recipe: AgentRecipe) => {
     setShowRecipes(false);
-    const ops = recipe.build(input.trim() || undefined);
-    const pos = useCanvasStore.getState().nodes.find((n) => n.id === id)?.position ?? { x: 0, y: 0 };
-    const templates = (templatesQuery.data ?? []).map((t) => ({ id: t.id, label: t.label, payload: t.payload }));
-    const r = applyAgentOperations(ops, pos, { templates });
-    const parts = [r.created && `新建 ${r.created}`, r.connected && `连接 ${r.connected}`].filter(Boolean);
-    setMessages([...messages, { role: "assistant", content: `已套用配方「${recipe.name}」：${parts.join(" · ") || "0 步"}。可继续让我填充/调整各节点内容，或直接运行。`, operations: [] }]);
-    toast.success(`已套用配方：${recipe.name}`);
+    setRecipeCfg({
+      recipe,
+      cfg: recipeDefaultConfig(recipe, { topic: input.trim() || undefined, comfyOnly, prefs: planPrefs }),
+      useAI: false,
+    });
+  };
+  const setRecipeField = (patch: Partial<RecipeConfig>) =>
+    setRecipeCfg((prev) => (prev ? { ...prev, cfg: { ...prev.cfg, ...patch } } : prev));
+
+  // ComfyUI workflow templates available for 仅ComfyUI 配方（视频模板优先排前）。
+  const workflowTemplates = (templatesQuery.data ?? []).filter((t) => t.nodeType === "comfyui_workflow");
+
+  const handleConfirmRecipe = async () => {
+    if (!recipeCfg || recipeBusy) return;
+    const { recipe, cfg, useAI } = recipeCfg;
+    if (cfg.comfyOnly && cfg.videoTemplateId == null) { toast.error("仅 ComfyUI 模式：请先选择一个视频工作流模板"); return; }
+    let shotDescriptions = cfg.shotDescriptions;
+    if (useAI) {
+      setRecipeBusy(true);
+      try {
+        const r = await recipeShotsMut.mutateAsync({
+          projectId: data.projectId, recipeName: recipe.name, topic: cfg.topic,
+          shots: cfg.shots, style: cfg.style, model,
+        });
+        if (r.shots.length > 0) shotDescriptions = r.shots;
+        else toast.info("AI 未返回有效分镜，改用默认分镜文案");
+      } catch (e) {
+        toast.error("AI 生成分镜失败，改用默认文案：" + (e instanceof Error ? e.message : ""));
+      } finally { setRecipeBusy(false); }
+    }
+    const ops = buildRecipeOps(recipe, { ...cfg, shotDescriptions });
+    setRecipeCfg(null);
+    // Route through the agent apply path: push a message carrying the ops, then
+    // apply it (handleApply adds the multi-server dialog + budget guard for free).
+    const msgs = freshMessages();
+    const idx = msgs.length;
+    const created = ops.filter((o) => o.op === "create").length;
+    setMessages([...msgs, { role: "assistant", content: `已按配方「${recipe.name}」生成 ${created} 个节点（${cfg.shots} 镜${useAI ? "，AI 分镜内容" : ""}）。可继续让我调整内容，或直接运行。`, operations: ops }]);
+    handleApply(idx, ops);
   };
 
   // 局部编辑微调：只针对当前选中的节点，带上它们的参数上下文让智能体改。
@@ -434,17 +468,20 @@ export const AgentNode = memo(function AgentNode({ id, selected, data }: Props) 
                   {AGENT_RECIPES.map((rec) => (
                     <button
                       key={rec.id}
-                      onClick={() => handleApplyRecipe(rec.id)}
+                      onClick={() => openRecipe(rec)}
                       className="nodrag"
                       style={{ display: "block", width: "100%", textAlign: "left", padding: "6px 8px", borderRadius: 7, background: "transparent", border: "none", cursor: "pointer", color: "var(--c-t1)" }}
                       onMouseEnter={(e) => { e.currentTarget.style.background = accentA(0.1); }}
                       onMouseLeave={(e) => { e.currentTarget.style.background = "transparent"; }}
                     >
-                      <div style={{ fontSize: 11.5, fontWeight: 600 }}>{rec.name}</div>
+                      <div style={{ fontSize: 11.5, fontWeight: 600, display: "flex", alignItems: "center", gap: 5 }}>
+                        {rec.name}
+                        <span style={{ fontSize: 9, color: accent, background: accentA(0.12), padding: "0 5px", borderRadius: 5 }}>{rec.category}</span>
+                      </div>
                       <div style={{ fontSize: 10, color: "var(--c-t4)" }}>{rec.desc}</div>
                     </button>
                   ))}
-                  <div style={{ fontSize: 9.5, color: "var(--c-t4)", padding: "4px 8px 2px", lineHeight: 1.4 }}>提示：先在输入框写主题，再选配方即可作为脚本梗概。</div>
+                  <div style={{ fontSize: 9.5, color: "var(--c-t4)", padding: "4px 8px 2px", lineHeight: 1.4 }}>提示：先在输入框写主题，再选配方；点击后可调镜头数 / 比例 / 配乐字幕，并可让 AI 生成各镜内容。</div>
                 </div>
               )}
             </div>
@@ -591,6 +628,99 @@ export const AgentNode = memo(function AgentNode({ id, selected, data }: Props) 
           </div>
         </div>
       )}
+      {recipeCfg && (() => {
+        const { recipe, cfg, useAI } = recipeCfg;
+        const [minShots, maxShots] = recipe.shotRange;
+        const setShots = (v: number) => setRecipeField({ shots: Math.max(minShots, Math.min(maxShots, Math.round(v) || minShots)) });
+        return (
+          <div className="nodrag nowheel" style={{ position: "fixed", inset: 0, zIndex: 9999, background: "rgba(0,0,0,0.5)", display: "flex", alignItems: "center", justifyContent: "center" }}
+            onClick={() => !recipeBusy && setRecipeCfg(null)}>
+            <div onClick={(e) => e.stopPropagation()} style={{ width: 420, maxWidth: "92vw", maxHeight: "88vh", overflowY: "auto", background: "var(--c-surface)", border: `1px solid ${accentA(0.3)}`, borderRadius: 14, padding: 18, boxShadow: "0 12px 40px rgba(0,0,0,0.4)" }}>
+              <div style={{ fontSize: 14, fontWeight: 700, color: "var(--c-t1)", marginBottom: 2, display: "flex", alignItems: "center", gap: 6 }}>
+                <BookTemplate className="w-4 h-4" style={{ color: accent }} />{recipe.name}
+                <span style={{ fontSize: 10, color: accent, background: accentA(0.12), padding: "1px 6px", borderRadius: 6 }}>{recipe.category}</span>
+              </div>
+              <div style={{ fontSize: 11, color: "var(--c-t4)", marginBottom: 14 }}>{recipe.desc}</div>
+              <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+                <div>
+                  <div style={{ fontSize: 12, color: "var(--c-t2)", marginBottom: 4 }}>主题（可选，作为脚本梗概）</div>
+                  <input className="nodrag" value={cfg.topic ?? ""} onChange={(e) => setRecipeField({ topic: e.target.value })}
+                    placeholder={recipe.synopsis()}
+                    style={{ width: "100%", padding: "6px 8px", fontSize: 12, borderRadius: 8, background: "var(--c-input)", border: "1px solid var(--c-bd2)", color: "var(--c-t1)" }} />
+                </div>
+                <div style={{ display: "flex", gap: 12 }}>
+                  <div style={{ flex: 1 }}>
+                    <div style={{ fontSize: 12, color: "var(--c-t2)", marginBottom: 4 }}>镜头数（{minShots}–{maxShots}）</div>
+                    <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                      <button className="nodrag" onClick={() => setShots(cfg.shots - 1)} style={{ width: 28, height: 28, borderRadius: 7, cursor: "pointer", background: "var(--c-surface)", border: "1px solid var(--c-bd2)", color: "var(--c-t2)", fontSize: 16 }}>−</button>
+                      <input className="nodrag" type="number" value={cfg.shots} min={minShots} max={maxShots} onChange={(e) => setShots(Number(e.target.value))}
+                        style={{ width: 48, textAlign: "center", padding: "5px", fontSize: 13, borderRadius: 7, background: "var(--c-input)", border: "1px solid var(--c-bd2)", color: "var(--c-t1)" }} />
+                      <button className="nodrag" onClick={() => setShots(cfg.shots + 1)} style={{ width: 28, height: 28, borderRadius: 7, cursor: "pointer", background: "var(--c-surface)", border: "1px solid var(--c-bd2)", color: "var(--c-t2)", fontSize: 16 }}>+</button>
+                    </div>
+                  </div>
+                  <div style={{ flex: 1 }}>
+                    <div style={{ fontSize: 12, color: "var(--c-t2)", marginBottom: 4 }}>每镜时长（秒）</div>
+                    <input className="nodrag" type="number" value={cfg.durationEach} min={1} max={60} onChange={(e) => setRecipeField({ durationEach: Math.max(1, Math.min(60, Number(e.target.value) || 1)) })}
+                      style={{ width: "100%", padding: "5px 8px", fontSize: 13, borderRadius: 7, background: "var(--c-input)", border: "1px solid var(--c-bd2)", color: "var(--c-t1)" }} />
+                  </div>
+                </div>
+                <div>
+                  <div style={{ fontSize: 12, color: "var(--c-t2)", marginBottom: 4 }}>画面比例</div>
+                  <div style={{ display: "flex", gap: 6 }}>
+                    {["9:16", "16:9", "1:1"].map((a) => (
+                      <button key={a} className="nodrag" onClick={() => setRecipeField({ aspect: a })}
+                        style={{ flex: 1, padding: "5px", fontSize: 11, borderRadius: 7, cursor: "pointer",
+                          background: cfg.aspect === a ? accentA(0.18) : "var(--c-surface)",
+                          border: `1px solid ${cfg.aspect === a ? accentA(0.4) : "var(--c-bd2)"}`,
+                          color: cfg.aspect === a ? accent : "var(--c-t3)" }}>{a}</button>
+                    ))}
+                  </div>
+                </div>
+                {cfg.comfyOnly ? (
+                  <div>
+                    <div style={{ fontSize: 12, color: "var(--c-t2)", marginBottom: 4 }}>视频工作流模板（仅 ComfyUI，必选）</div>
+                    {workflowTemplates.length === 0 ? (
+                      <div style={{ fontSize: 11, color: "oklch(0.62 0.20 25)" }}>模板库暂无 comfyui_workflow 模板，请先保存一个，或关闭「仅 ComfyUI 生成」。</div>
+                    ) : (
+                      <select className="nodrag" value={cfg.videoTemplateId ?? ""} onChange={(e) => setRecipeField({ videoTemplateId: e.target.value ? Number(e.target.value) : undefined })}
+                        style={{ width: "100%", padding: "6px 8px", fontSize: 12, borderRadius: 8, background: "var(--c-input)", border: "1px solid var(--c-bd2)", color: "var(--c-t1)" }}>
+                        <option value="">— 选择模板 —</option>
+                        {workflowTemplates.map((t) => <option key={t.id} value={t.id}>{t.label}</option>)}
+                      </select>
+                    )}
+                  </div>
+                ) : (
+                  <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+                    {([
+                      ["imageFirst", "生图 → 再生视频", cfg.imageFirst],
+                      ["addMusic", "自动配乐", cfg.addMusic],
+                      ["addSubtitle", "自动字幕", cfg.addSubtitle],
+                    ] as const).map(([key, label, val]) => (
+                      <label key={key} className="nodrag" style={{ display: "flex", alignItems: "center", gap: 8, cursor: "pointer", fontSize: 12.5, color: "var(--c-t1)" }}>
+                        <input type="checkbox" checked={!!val} onChange={(e) => setRecipeField({ [key]: e.target.checked } as Partial<RecipeConfig>)} style={{ accentColor: accent }} />{label}
+                      </label>
+                    ))}
+                  </div>
+                )}
+                <label className="nodrag" style={{ display: "flex", alignItems: "flex-start", gap: 8, cursor: "pointer", paddingTop: 4, borderTop: "1px solid var(--c-bd1)" }}>
+                  <input type="checkbox" checked={useAI} onChange={(e) => setRecipeCfg((prev) => prev && { ...prev, useAI: e.target.checked })} style={{ accentColor: accent, marginTop: 2 }} />
+                  <span><span style={{ fontSize: 12.5, color: "var(--c-t1)", fontWeight: 600, display: "flex", alignItems: "center", gap: 4 }}><Sparkles className="w-3 h-3" style={{ color: accent }} />AI 生成分镜内容</span><span style={{ fontSize: 10.5, color: "var(--c-t4)" }}>按主题让 AI 写出每个镜头的具体画面描述（否则用默认分镜文案）</span></span>
+                </label>
+              </div>
+              <div style={{ display: "flex", gap: 8, marginTop: 16 }}>
+                <button className="nodrag" disabled={recipeBusy} onClick={() => setRecipeCfg(null)}
+                  style={{ flex: 1, padding: "9px", fontSize: 12, fontWeight: 600, borderRadius: 9, cursor: recipeBusy ? "not-allowed" : "pointer", background: "var(--c-surface)", border: "1px solid var(--c-bd2)", color: "var(--c-t2)" }}>
+                  取消
+                </button>
+                <button className="nodrag" disabled={recipeBusy || (cfg.comfyOnly && cfg.videoTemplateId == null)} onClick={() => void handleConfirmRecipe()}
+                  style={{ flex: 2, padding: "9px", fontSize: 12, fontWeight: 600, borderRadius: 9, cursor: recipeBusy ? "wait" : "pointer", background: accentA(0.18), border: `1px solid ${accentA(0.4)}`, color: accent, opacity: (cfg.comfyOnly && cfg.videoTemplateId == null) ? 0.5 : 1, display: "flex", alignItems: "center", justifyContent: "center", gap: 6 }}>
+                  {recipeBusy ? <><Loader2 className="w-3.5 h-3.5 animate-spin" />AI 生成分镜中…</> : <><Sparkles className="w-3.5 h-3.5" />生成并应用（{cfg.shots} 镜）</>}
+                </button>
+              </div>
+            </div>
+          </div>
+        );
+      })()}
       {serverDist && (
         <div className="nodrag nowheel" style={{ position: "fixed", inset: 0, zIndex: 9999, background: "rgba(0,0,0,0.5)", display: "flex", alignItems: "center", justifyContent: "center" }}
           onClick={() => setServerDist(null)}>

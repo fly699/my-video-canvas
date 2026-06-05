@@ -1,83 +1,209 @@
 import type { AgentOperation } from "../../../shared/types";
 
-// Deterministic "成片配方" — one click expands a recipe into a full node chain
-// (skeleton + sensible defaults), applied through the same applyAgentOperations
-// path as the agent's own output. Faster and more reliable than free-form chat
-// for common formats; the user (or the agent) then fills/refines the content.
+// "成片配方" — one click expands a recipe into a full node chain. Now config-driven:
+// the recipe defines sensible defaults + per-shot content, and a single builder
+// honors the user's choices (shot count / aspect / duration / 配乐 / 字幕 / 生图先行 /
+// 仅ComfyUI / AI 生成分镜) so the same recipe adapts instead of being hardcoded.
+// Applied through the same applyAgentOperations path as the agent's own output.
+
+export interface RecipeConfig {
+  topic?: string;
+  shots: number;
+  aspect: string;            // "9:16" | "16:9" | "1:1"
+  durationEach: number;      // seconds per shot
+  addMusic: boolean;
+  addSubtitle: boolean;
+  imageFirst: boolean;       // 生图 → 再图生视频
+  style?: string;
+  comfyOnly?: boolean;       // 仅 ComfyUI 生成
+  videoTemplateId?: number;  // required when comfyOnly
+  /** Per-shot descriptions (AI-generated or default). Length ≥ shots preferred. */
+  shotDescriptions?: string[];
+}
 
 export interface AgentRecipe {
   id: string;
   name: string;
   desc: string;
-  /** Build the operation list. `topic` seeds titles/synopsis when provided. */
-  build: (topic?: string) => AgentOperation[];
+  category: string;
+  defaults: {
+    shots: number;
+    aspect: string;
+    durationEach: number;
+    addMusic?: boolean;
+    addSubtitle?: boolean;
+    imageFirst?: boolean;
+  };
+  /** Recipes that read as narration add a 配音(dubbing) track automatically. */
+  voiceOver?: boolean;
+  /** [min, max] shot bounds for the config dialog. */
+  shotRange: [number, number];
+  /** Synopsis seed for the script node. */
+  synopsis: (topic?: string) => string;
+  /** Base per-shot beats; fitted to the chosen shot count. */
+  beats: string[];
 }
 
-// Helper: a script → N storyboards → N video_task → merge chain.
-function shotChain(opts: {
-  synopsis: string;
-  shots: string[];          // per-shot description
-  durationEach?: number;
-  aspectHint?: string;      // e.g. "9:16 竖屏"
-}): AgentOperation[] {
+// Fit a base beat list to exactly `n` items: slice if fewer, pad with generic
+// shot labels if more.
+function fitBeats(base: string[], n: number, topic?: string): string[] {
+  if (base.length >= n) return base.slice(0, n);
+  const out = [...base];
+  for (let i = base.length; i < n; i++) out.push(topic ? `${topic} · 镜头${i + 1}` : `镜头${i + 1}`);
+  return out;
+}
+
+function resolveDescriptions(recipe: AgentRecipe, cfg: RecipeConfig, shots: number): string[] {
+  if (cfg.shotDescriptions && cfg.shotDescriptions.length > 0) {
+    const ds = cfg.shotDescriptions.filter((s) => s && s.trim());
+    if (ds.length >= shots) return ds.slice(0, shots);
+    // pad short AI output with default beats
+    return [...ds, ...fitBeats(recipe.beats, shots).slice(ds.length)];
+  }
+  return fitBeats(recipe.beats, shots, cfg.topic);
+}
+
+function styleAspectSuffix(cfg: RecipeConfig): string {
+  const bits = [cfg.aspect, cfg.style?.trim()].filter(Boolean);
+  return bits.length ? `（${bits.join("，")}）` : "";
+}
+
+/** Build the operation list for a recipe + user config. Pure / deterministic. */
+export function buildRecipeOps(recipe: AgentRecipe, cfg: RecipeConfig): AgentOperation[] {
+  const shots = Math.max(1, Math.floor(cfg.shots));
+  const descs = resolveDescriptions(recipe, cfg, shots);
+  const useComfy = !!cfg.comfyOnly && cfg.videoTemplateId != null;
   const ops: AgentOperation[] = [];
-  ops.push({ op: "create", nodeType: "script", tempId: "script", title: "脚本", payload: { synopsis: `${opts.synopsis}（${opts.aspectHint ?? "16:9"}）`, aiSceneCount: opts.shots.length } });
-  opts.shots.forEach((desc, i) => {
-    const sb = `sb${i + 1}`;
-    const vt = `vt${i + 1}`;
-    ops.push({ op: "create", nodeType: "storyboard", tempId: sb, title: `分镜${i + 1}`, payload: { description: desc, duration: opts.durationEach ?? 5 } });
-    ops.push({ op: "create", nodeType: "video_task", tempId: vt, title: `视频${i + 1}`, payload: {} });
-    ops.push({ op: "connect", sourceRef: "script", targetRef: sb });
-    ops.push({ op: "connect", sourceRef: sb, targetRef: vt });
-    ops.push({ op: "connect", sourceRef: vt, targetRef: "merge" });
+
+  ops.push({
+    op: "create", nodeType: "script", tempId: "script", title: "脚本",
+    payload: { synopsis: recipe.synopsis(cfg.topic) + styleAspectSuffix(cfg), aiSceneCount: shots },
   });
-  ops.push({ op: "create", nodeType: "merge", tempId: "merge", title: "合并成片", payload: { transition: "fade", transitionDuration: 0.5 } });
+  // Create merge up front so per-shot `connect → merge` resolves in apply order.
+  ops.push({
+    op: "create", nodeType: "merge", tempId: "merge", title: "合并成片",
+    payload: { transition: "fade", transitionDuration: 0.5 },
+  });
+
+  for (let i = 0; i < shots; i++) {
+    const n = i + 1;
+    const desc = descs[i];
+    if (useComfy) {
+      const p = `p${n}`, cw = `cw${n}`;
+      ops.push({ op: "create", nodeType: "prompt", tempId: p, title: `提示词${n}`, payload: { positivePrompt: desc, aspectRatio: cfg.aspect, ...(cfg.style?.trim() ? { style: cfg.style.trim() } : {}) } });
+      ops.push({ op: "create", nodeType: "comfyui_workflow", tempId: cw, title: `镜头${n}`, payload: { templateId: cfg.videoTemplateId, prompt: desc } });
+      ops.push({ op: "connect", sourceRef: "script", targetRef: p });
+      ops.push({ op: "connect", sourceRef: p, targetRef: cw });
+      ops.push({ op: "connect", sourceRef: cw, targetRef: "merge" });
+      continue;
+    }
+    const sb = `sb${n}`, vt = `vt${n}`;
+    ops.push({ op: "create", nodeType: "storyboard", tempId: sb, title: `分镜${n}`, payload: { description: desc, duration: cfg.durationEach } });
+    ops.push({ op: "connect", sourceRef: "script", targetRef: sb });
+    let tail = sb;
+    if (cfg.imageFirst) {
+      const img = `img${n}`;
+      ops.push({ op: "create", nodeType: "image_gen", tempId: img, title: `静帧${n}`, payload: { aspectRatio: cfg.aspect } });
+      ops.push({ op: "connect", sourceRef: tail, targetRef: img });
+      tail = img;
+    }
+    ops.push({ op: "create", nodeType: "video_task", tempId: vt, title: `视频${n}`, payload: {} });
+    ops.push({ op: "connect", sourceRef: tail, targetRef: vt });
+    tail = vt;
+    if (cfg.addSubtitle) {
+      const sub = `sub${n}`;
+      ops.push({ op: "create", nodeType: "subtitle", tempId: sub, title: `字幕${n}`, payload: {} });
+      ops.push({ op: "connect", sourceRef: tail, targetRef: sub });
+      tail = sub;
+    }
+    ops.push({ op: "connect", sourceRef: tail, targetRef: "merge" });
+  }
+
+  // 音轨（comfyOnly 下尊重「仅 ComfyUI」语义，不添加音频/字幕节点）。
+  if (!useComfy) {
+    if (cfg.addMusic) {
+      ops.push({ op: "create", nodeType: "audio", tempId: "music", title: "配乐", payload: { audioCategory: "music" } });
+      ops.push({ op: "connect", sourceRef: "music", targetRef: "merge" });
+    }
+    if (recipe.voiceOver) {
+      ops.push({ op: "create", nodeType: "audio", tempId: "voice", title: "配音", payload: { audioCategory: "dubbing" } });
+      ops.push({ op: "connect", sourceRef: "voice", targetRef: "merge" });
+    }
+  }
   return ops;
+}
+
+/** Merge a recipe's defaults with the agent node's planPrefs into a start config. */
+export function recipeDefaultConfig(
+  recipe: AgentRecipe,
+  opts: { topic?: string; comfyOnly?: boolean; prefs?: { imageFirst?: boolean; addMusic?: boolean; addSubtitle?: boolean; aspect?: string; style?: string } } = {},
+): RecipeConfig {
+  const p = opts.prefs ?? {};
+  return {
+    topic: opts.topic?.trim() || undefined,
+    shots: recipe.defaults.shots,
+    aspect: p.aspect || recipe.defaults.aspect,
+    durationEach: recipe.defaults.durationEach,
+    addMusic: p.addMusic ?? recipe.defaults.addMusic ?? false,
+    addSubtitle: p.addSubtitle ?? recipe.defaults.addSubtitle ?? false,
+    imageFirst: p.imageFirst ?? recipe.defaults.imageFirst ?? false,
+    style: p.style?.trim() || undefined,
+    comfyOnly: opts.comfyOnly,
+    videoTemplateId: undefined,
+  };
 }
 
 export const AGENT_RECIPES: AgentRecipe[] = [
   {
-    id: "vertical_promo",
-    name: "竖屏宣传片（3镜）",
-    desc: "脚本 → 3 分镜 → 3 视频 → 合并（9:16）",
-    build: (topic) => shotChain({
-      synopsis: topic?.trim() || "产品/品牌竖屏宣传短片",
-      aspectHint: "9:16 竖屏",
-      durationEach: 4,
-      shots: ["开场：抓眼球的产品/主体特写", "中段：卖点 / 使用场景展示", "收尾：品牌露出 + 行动号召"],
-    }),
+    id: "vertical_promo", name: "竖屏宣传片", desc: "脚本 → 多分镜 → 视频 → 合并（9:16）", category: "营销",
+    defaults: { shots: 3, aspect: "9:16", durationEach: 4, addMusic: true }, shotRange: [2, 8],
+    synopsis: (t) => t?.trim() || "产品/品牌竖屏宣传短片",
+    beats: ["开场：抓眼球的产品/主体特写", "中段：核心卖点 / 使用场景展示", "收尾：品牌露出 + 行动号召"],
   },
   {
-    id: "drama_4shot",
-    name: "狗血短剧（4镜）",
-    desc: "脚本 → 4 分镜 → 4 视频 → 合并",
-    build: (topic) => shotChain({
-      synopsis: topic?.trim() || "强冲突反转狗血短剧",
-      aspectHint: "9:16 竖屏",
-      durationEach: 6,
-      shots: ["设定与矛盾铺垫", "冲突激化", "高潮反转", "结局与情绪收束"],
-    }),
+    id: "drama", name: "反转短剧", desc: "脚本 → 多分镜 → 视频 → 合并（强冲突）", category: "叙事",
+    defaults: { shots: 4, aspect: "9:16", durationEach: 6, addMusic: true }, shotRange: [3, 12],
+    synopsis: (t) => t?.trim() || "强冲突反转狗血短剧",
+    beats: ["设定与人物关系铺垫", "矛盾出现、冲突升级", "高潮反转、情绪爆发", "结局与情绪收束"],
   },
   {
-    id: "talking_sell",
-    name: "口播带货",
-    desc: "脚本 → 分镜 → 图像 → 视频 → 字幕 → 合并 + 配音",
-    build: (topic) => {
-      const ops: AgentOperation[] = [];
-      ops.push({ op: "create", nodeType: "script", tempId: "script", title: "口播脚本", payload: { synopsis: topic?.trim() || "单品口播带货脚本（痛点→卖点→促单）", aiSceneCount: 1 } });
-      ops.push({ op: "create", nodeType: "storyboard", tempId: "sb", title: "主画面", payload: { description: "主播/产品口播主画面", duration: 15 } });
-      ops.push({ op: "create", nodeType: "image_gen", tempId: "img", title: "产品图", payload: {} });
-      ops.push({ op: "create", nodeType: "video_task", tempId: "vt", title: "口播视频", payload: {} });
-      ops.push({ op: "create", nodeType: "audio", tempId: "voice", title: "配音", payload: { audioCategory: "voice" } });
-      ops.push({ op: "create", nodeType: "subtitle", tempId: "sub", title: "字幕", payload: {} });
-      ops.push({ op: "create", nodeType: "merge", tempId: "merge", title: "合并成片", payload: { transition: "none" } });
-      ops.push({ op: "connect", sourceRef: "script", targetRef: "sb" });
-      ops.push({ op: "connect", sourceRef: "sb", targetRef: "img" });
-      ops.push({ op: "connect", sourceRef: "img", targetRef: "vt" });
-      ops.push({ op: "connect", sourceRef: "vt", targetRef: "sub" });
-      ops.push({ op: "connect", sourceRef: "sub", targetRef: "merge" });
-      ops.push({ op: "connect", sourceRef: "voice", targetRef: "merge" });
-      return ops;
-    },
+    id: "talking_sell", name: "口播带货", desc: "脚本 → 主画面 → 视频 → 字幕 + 配音 → 合并", category: "营销",
+    defaults: { shots: 1, aspect: "9:16", durationEach: 15, addSubtitle: true }, voiceOver: true, shotRange: [1, 3],
+    synopsis: (t) => t?.trim() || "单品口播带货脚本（痛点 → 卖点 → 促单）",
+    beats: ["主播出镜口播：痛点引入 → 卖点展示 → 限时促单", "产品细节特写补充", "优惠信息 + 行动号召"],
+  },
+  {
+    id: "knowledge", name: "知识科普/解说", desc: "脚本 → 多分镜 → 视频 → 字幕 + 解说配音 → 合并", category: "知识",
+    defaults: { shots: 5, aspect: "16:9", durationEach: 6, addSubtitle: true }, voiceOver: true, shotRange: [3, 12],
+    synopsis: (t) => t?.trim() || "一个知识点的科普解说短片",
+    beats: ["抛出问题/悬念，吸引注意", "背景与概念铺垫", "核心原理拆解（图示/类比）", "实例佐证", "总结升华 + 互动引导"],
+  },
+  {
+    id: "vlog", name: "横屏 Vlog", desc: "脚本 → 多分镜 → 视频 → 合并 + 配乐（16:9）", category: "生活",
+    defaults: { shots: 5, aspect: "16:9", durationEach: 5, addMusic: true }, shotRange: [3, 12],
+    synopsis: (t) => t?.trim() || "一天/一次体验的横屏 Vlog",
+    beats: ["开场打招呼 + 今天主题", "出发 / 准备过程", "高光体验片段一", "高光体验片段二", "收尾感受 + 下期预告"],
+  },
+  {
+    id: "music_mv", name: "卡点音乐 MV", desc: "脚本 → 多快切镜头 → 生图 → 视频 → 合并 + 配乐", category: "音乐",
+    defaults: { shots: 8, aspect: "9:16", durationEach: 2, addMusic: true, imageFirst: true }, shotRange: [4, 16],
+    synopsis: (t) => t?.trim() || "踩节拍快切的氛围音乐 MV",
+    beats: ["主体登场特写", "环境全景", "动作细节快切", "光影/色彩氛围", "情绪高点", "转场过渡", "节奏副歌爆发", "收束定格"],
+  },
+  {
+    id: "cinematic_trailer", name: "电影感预告", desc: "脚本 → 多分镜 → 视频 → 合并 + 配乐（16:9）", category: "叙事",
+    defaults: { shots: 6, aspect: "16:9", durationEach: 4, addMusic: true }, shotRange: [4, 12],
+    synopsis: (t) => t?.trim() || "电影感叙事预告片",
+    beats: ["氛围空镜 + 旁白起势", "主角与世界观登场", "冲突/危机浮现", "节奏加快的冲突蒙太奇", "高潮悬念定格", "片名 Logo + 上映信息"],
+  },
+  {
+    id: "product_3", name: "产品三件套", desc: "脚本 → 外观/细节/场景 三镜 → 视频 → 合并（1:1）", category: "营销",
+    defaults: { shots: 3, aspect: "1:1", durationEach: 5, addMusic: true }, shotRange: [3, 6],
+    synopsis: (t) => t?.trim() || "电商产品三镜展示（外观 → 细节 → 场景）",
+    beats: ["产品整体外观 360° 展示", "材质/工艺细节微距特写", "真实使用场景演示"],
   },
 ];
+
+export function getRecipe(id: string): AgentRecipe | undefined {
+  return AGENT_RECIPES.find((r) => r.id === id);
+}
