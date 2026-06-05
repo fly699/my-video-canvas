@@ -104,13 +104,25 @@ export const adminDownloadsRouter = router({
     }),
 
   decide: adminProcedure
-    .input(z.object({ grantId: z.number(), approve: z.boolean(), note: z.string().max(500).optional(), expiresHours: z.number().int().min(1).max(72).optional() }))
+    .input(z.object({
+      grantId: z.number(), approve: z.boolean(), note: z.string().max(500).optional(),
+      // Validity, in priority order: `permanent` (no expiry) > `expiresAt` (epoch ms,
+      // arbitrary) > `expiresHours` (legacy 1–72h, used by the quick-approve buttons
+      // in the notifier/chat). Default when approving with none given: 1 hour.
+      expiresHours: z.number().int().min(1).max(72).optional(),
+      expiresAt: z.number().optional(),
+      permanent: z.boolean().optional(),
+    }))
     .mutation(async ({ ctx, input }) => {
-      // Approved grants expire (default 1 hour, 1–72h) so a one-time download
-      // must be used promptly — a stale approval can't be redeemed later.
-      const expiresAt = input.approve ? new Date(Date.now() + (input.expiresHours ?? 1) * 3600_000) : null;
+      const expiresAt = !input.approve
+        ? null
+        : input.permanent
+          ? null
+          : input.expiresAt != null
+            ? new Date(input.expiresAt)
+            : new Date(Date.now() + (input.expiresHours ?? 1) * 3600_000);
       await db.decideDownloadGrant(input.grantId, ctx.user.id, input.approve, input.note ?? null, expiresAt);
-      writeAuditLog({ ctx, action: input.approve ? "download:approve" : "download:deny", detail: { grantId: input.grantId, note: input.note, expiresAt: expiresAt?.toISOString() } });
+      writeAuditLog({ ctx, action: input.approve ? "download:approve" : "download:deny", detail: { grantId: input.grantId, note: input.note, expiresAt: expiresAt?.toISOString() ?? null } });
       return { success: true };
     }),
 

@@ -1241,15 +1241,19 @@ const paginBtn: React.CSSProperties = {
 function DownloadsAdminPanel() {
   const utils = trpc.useUtils();
   const [status, setStatus] = useState<"pending" | "active" | "revoked" | "denied" | "">("pending");
-  const [approveHours, setApproveHours] = useState(1);
   const [preview, setPreview] = useState<AdminAsset | null>(null);
+  // 统一有效期控件（审批 / 授权整个项目 / 主动授权共用）：数量 + 单位 + 永久。
+  const [expAmount, setExpAmount] = useState(1);
+  const [expUnit, setExpUnit] = useState<"hour" | "day">("hour");
+  const [expForever, setExpForever] = useState(false);
+  const expiresMs = (): number | undefined => expForever ? undefined : Date.now() + expAmount * (expUnit === "day" ? 86400_000 : 3600_000);
+  const expLabel = expForever ? "永久" : `${expAmount}${expUnit === "day" ? "天" : "小时"}`;
+  // decide/grant 通用的有效期参数（永久 → permanent；否则 → expiresAt 时间戳）。
+  const expDecideArg = (): { permanent: true } | { expiresAt: number } => expForever ? { permanent: true } : { expiresAt: expiresMs()! };
   // 主动授权表单状态
   const [showGrant, setShowGrant] = useState(false);
   const [grantEmail, setGrantEmail] = useState("");
   const [grantProjectSel, setGrantProjectSel] = useState<Set<number>>(new Set());
-  const [grantAmount, setGrantAmount] = useState(7);
-  const [grantUnit, setGrantUnit] = useState<"hour" | "day">("day");
-  const [grantForever, setGrantForever] = useState(false);
   const [grantNote, setGrantNote] = useState("");
   // 实时倒计时：每秒推进一个 now 时间戳，驱动「剩余有效期」显示。
   const [nowTs, setNowTs] = useState(() => Date.now());
@@ -1306,7 +1310,7 @@ function DownloadsAdminPanel() {
           const toggleProj = (id: number) => setGrantProjectSel((prev) => { const n = new Set(prev); if (n.has(id)) n.delete(id); else n.add(id); return n; });
           const submit = async () => {
             if (!u || grantProjectSel.size === 0) return;
-            const expiresAt = grantForever ? undefined : Date.now() + grantAmount * (grantUnit === "day" ? 86400_000 : 3600_000);
+            const expiresAt = expiresMs();
             const ids = Array.from(grantProjectSel);
             for (const pid of ids) {
               try { await grantMut.mutateAsync({ userId: u.id, scope: "project", projectId: pid, note: grantNote.trim() || undefined, expiresAt }); } catch { /* per-project, keep going */ }
@@ -1345,17 +1349,10 @@ function DownloadsAdminPanel() {
                 </div>
               )}
 
-              <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
-                <span style={{ fontSize: 12, color: "var(--c-t3,rgba(255,255,255,0.5))" }}>有效期</span>
-                <input type="number" min={1} disabled={grantForever} value={grantAmount} onChange={(e) => setGrantAmount(Math.max(1, Math.round(Number(e.target.value) || 1)))} style={{ ...inp, width: 80, opacity: grantForever ? 0.5 : 1 }} />
-                <select disabled={grantForever} value={grantUnit} onChange={(e) => setGrantUnit(e.target.value as "hour" | "day")} style={{ ...inp, width: 80, opacity: grantForever ? 0.5 : 1 }}>
-                  <option value="hour">小时</option>
-                  <option value="day">天</option>
-                </select>
-                <label style={{ display: "inline-flex", alignItems: "center", gap: 5, fontSize: 12, color: "var(--c-t2,rgba(255,255,255,0.6))", cursor: "pointer" }}>
-                  <input type="checkbox" checked={grantForever} onChange={(e) => setGrantForever(e.target.checked)} /> 永久有效
-                </label>
-                {!grantForever && <span style={{ fontSize: 11, color: "var(--c-t4,rgba(255,255,255,0.35))" }}>到期：{new Date(Date.now() + grantAmount * (grantUnit === "day" ? 86400_000 : 3600_000)).toLocaleString("zh-CN")}</span>}
+              <div style={{ fontSize: 11.5, color: "var(--c-t3,rgba(255,255,255,0.5))" }}>
+                有效期：<span style={{ color: "oklch(0.8 0.16 285)", fontWeight: 600 }}>{expLabel}</span>
+                {!expForever && <span style={{ color: "var(--c-t4,rgba(255,255,255,0.35))" }}>（到期 {new Date(expiresMs()!).toLocaleString("zh-CN")}）</span>}
+                <span style={{ color: "var(--c-t4,rgba(255,255,255,0.35))" }}> · 在上方「有效期」处调整</span>
               </div>
               <input value={grantNote} onChange={(e) => setGrantNote(e.target.value)} placeholder="备注（可选，记入授权与日志）" style={inp} />
               <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
@@ -1373,15 +1370,20 @@ function DownloadsAdminPanel() {
         {([["pending", "待审批"], ["active", "已授权"], ["denied", "已拒绝"], ["revoked", "已撤销"], ["", "全部"]] as const).map(([v, l]) => (
           <button key={v} style={chip(status === v)} onClick={() => setStatus(v)}>{l}</button>
         ))}
-        <span style={{ marginLeft: "auto", display: "inline-flex", alignItems: "center", gap: 6, fontSize: 12, color: "var(--c-t3,rgba(255,255,255,0.5))" }}>
-          批准有效期
-          <input
-            type="number" min={1} max={72} value={approveHours}
-            onChange={(e) => { const v = Math.max(1, Math.min(72, Math.round(Number(e.target.value) || 1))); setApproveHours(v); }}
-            title="1–72 小时"
-            style={{ width: 64, fontSize: 12, padding: "3px 6px", borderRadius: 6, border: "1px solid rgba(255,255,255,0.14)", background: "rgba(255,255,255,0.04)", color: "var(--c-t1,#f0f0f4)" }}
+        <span style={{ marginLeft: "auto", display: "inline-flex", alignItems: "center", gap: 6, fontSize: 12, color: "var(--c-t3,rgba(255,255,255,0.5))" }} title="审批 / 授权整个项目 / 主动授权 共用此有效期">
+          有效期
+          <input type="number" min={1} disabled={expForever} value={expAmount}
+            onChange={(e) => setExpAmount(Math.max(1, Math.round(Number(e.target.value) || 1)))}
+            style={{ width: 56, fontSize: 12, padding: "3px 6px", borderRadius: 6, border: "1px solid rgba(255,255,255,0.14)", background: "rgba(255,255,255,0.04)", color: "var(--c-t1,#f0f0f4)", opacity: expForever ? 0.5 : 1 }}
           />
-          <span style={{ fontSize: 12, color: "var(--c-t3,rgba(255,255,255,0.5))" }}>小时</span>
+          <select disabled={expForever} value={expUnit} onChange={(e) => setExpUnit(e.target.value as "hour" | "day")}
+            style={{ fontSize: 12, padding: "3px 6px", borderRadius: 6, border: "1px solid rgba(255,255,255,0.14)", background: "rgba(255,255,255,0.04)", color: "var(--c-t1,#f0f0f4)", opacity: expForever ? 0.5 : 1 }}>
+            <option value="hour">小时</option>
+            <option value="day">天</option>
+          </select>
+          <label style={{ display: "inline-flex", alignItems: "center", gap: 4, cursor: "pointer" }}>
+            <input type="checkbox" checked={expForever} onChange={(e) => setExpForever(e.target.checked)} /> 永久
+          </label>
         </span>
       </div>
       <div style={{ fontSize: 12, color: "var(--c-t3, rgba(255,255,255,0.4))" }}>{isFetching ? "加载中…" : `${grants?.length ?? 0} 条`}</div>
@@ -1423,13 +1425,13 @@ function DownloadsAdminPanel() {
               )}
               {g.status === "pending" && (
                 <>
-                  <button disabled={busy} onClick={() => decideMut.mutate({ grantId: g.id, approve: true, expiresHours: approveHours })} style={btn("oklch(0.74 0.18 155)", "oklch(0.6 0.16 155 / 0.12)")}>批准（{approveHours}h）</button>
+                  <button disabled={busy} onClick={() => decideMut.mutate({ grantId: g.id, approve: true, ...expDecideArg() })} style={btn("oklch(0.74 0.18 155)", "oklch(0.6 0.16 155 / 0.12)")}>批准（{expLabel}）</button>
                   <button disabled={busy} onClick={() => decideMut.mutate({ grantId: g.id, approve: false })} style={btn("oklch(0.74 0.18 25)")}>拒绝</button>
                   {g.projectId != null && (
-                    <button disabled={busy} title={`一次性授权该用户下载这个项目的全部文件（有效期 ${approveHours}h，并结掉本申请）`} onClick={() => grantMut.mutate(
-                      { userId: g.userId, scope: "project", projectId: g.projectId!, note: "审批时授权整个项目", expiresAt: Date.now() + approveHours * 3600_000 },
-                      { onSuccess: () => decideMut.mutate({ grantId: g.id, approve: true, expiresHours: approveHours }) }, // resolve the pending request too
-                    )} style={btn("oklch(0.72 0.2 285)")}>授权整个项目（{approveHours}h）</button>
+                    <button disabled={busy} title={`一次性授权该用户下载这个项目的全部文件（有效期 ${expLabel}，并结掉本申请）`} onClick={() => grantMut.mutate(
+                      { userId: g.userId, scope: "project", projectId: g.projectId!, note: "审批时授权整个项目", expiresAt: expiresMs() },
+                      { onSuccess: () => decideMut.mutate({ grantId: g.id, approve: true, ...expDecideArg() }) }, // resolve the pending request too
+                    )} style={btn("oklch(0.72 0.2 285)")}>授权整个项目（{expLabel}）</button>
                   )}
                 </>
               )}
