@@ -148,7 +148,16 @@ export function ComfyServerStatusIndicator() {
     { baseUrls: servers, gpuIndexByUrl },
     { refetchInterval: 2000, refetchOnWindowFocus: true, staleTime: 1500 },
   );
-  const statuses = (statusQuery.data ?? []) as ComfyServerStatus[];
+  // Render the CONFIGURED server union (global ∪ local) directly, overlaying live
+  // status when available. The status probe (serverStatus) is whitelist-gated and
+  // can be FORBIDDEN / loading / fail per user, so we must NOT key the UI off its
+  // result — otherwise an admin-synced global address would look "empty" to a
+  // non-whitelisted user even though it synced fine. Addresses always show; status
+  // (online/offline/load) is layered on top.
+  const probed = (statusQuery.data ?? []) as ComfyServerStatus[];
+  const statusByUrl = new Map(probed.map((s) => [s.baseUrl, s]));
+  const statuses: ComfyServerStatus[] = servers.map((url) => statusByUrl.get(url) ?? { baseUrl: url, online: false });
+  const probeError = statusQuery.error?.message;
   const onlineCount = statuses.filter((s) => s.online).length;
   const totalQueue = statuses.reduce((n, s) => n + (s.queueRunning ?? 0) + (s.queuePending ?? 0), 0);
 
@@ -261,6 +270,11 @@ export function ComfyServerStatusIndicator() {
 
             {/* Body (scrolls) */}
             <div style={{ flex: 1, minHeight: 0, overflowY: "auto", padding: 11 }}>
+              {probeError && servers.length > 0 && (
+                <div style={{ marginBottom: 9, padding: "6px 8px", borderRadius: 7, fontSize: 10, lineHeight: 1.4, background: "oklch(0.7 0.18 25 / 0.1)", border: "1px solid oklch(0.7 0.18 25 / 0.3)", color: "oklch(0.72 0.16 25)" }}>
+                  无法读取服务器状态：{probeError}（地址已同步，状态需相应权限）
+                </div>
+              )}
               {statuses.length === 0 ? (
                 <div style={{ fontSize: 11, color: "var(--c-t4)", padding: "8px 2px" }}>未配置 ComfyUI 服务器。下方添加地址即可。</div>
               ) : (
