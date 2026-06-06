@@ -2122,12 +2122,13 @@ export async function fetchComfyServerStatus(rawBaseUrl: string): Promise<ComfyS
     out.error = "地址无效";
     return out;
   }
+  let deviceIndex: number | undefined; // which GPU THIS instance uses (multi-GPU hosts)
   try {
     const res = await fetch(`${baseUrl}/system_stats`, { signal: AbortSignal.timeout(6_000) });
     if (!res.ok) { out.error = `HTTP ${res.status}`; return out; }
     const j = (await res.json()) as {
       system?: { comfyui_version?: string; ram_total?: number; ram_free?: number };
-      devices?: Array<{ name?: string; type?: string; vram_total?: number; vram_free?: number }>;
+      devices?: Array<{ name?: string; type?: string; index?: number; vram_total?: number; vram_free?: number }>;
     };
     out.online = true;
     out.version = j.system?.comfyui_version;
@@ -2136,6 +2137,7 @@ export async function fetchComfyServerStatus(rawBaseUrl: string): Promise<ComfyS
     const dev = j.devices?.[0];
     if (dev) {
       if (dev.name) out.deviceName = dev.name;
+      if (typeof dev.index === "number") deviceIndex = dev.index;
       if (typeof dev.vram_total === "number") out.vramTotalMB = Math.round(dev.vram_total / (1024 * 1024));
       if (typeof dev.vram_free === "number") out.vramFreeMB = Math.round(dev.vram_free / (1024 * 1024));
     }
@@ -2158,7 +2160,7 @@ export async function fetchComfyServerStatus(rawBaseUrl: string): Promise<ComfyS
   // read its cached reading here. Empty until the first frame arrives / when
   // Crystools isn't installed.
   ensureCrystoolsMonitor(baseUrl);
-  const mon = getCrystoolsReading(baseUrl);
+  const mon = getCrystoolsReading(baseUrl, deviceIndex);
   if (mon?.gpuUtilization != null) out.gpuUtilization = mon.gpuUtilization;
   return out;
 }

@@ -15,9 +15,21 @@ export interface CrystoolsReading {
   at: number;                // ms epoch of last frame
 }
 
+interface GpuStat {
+  index?: number;
+  gpuUtilization?: number;
+  gpuTemperature?: number;
+  vramUsedPercent?: number;
+}
+
 interface Conn {
   ws: WebSocket | null;
-  latest?: CrystoolsReading;
+  // Crystools reports EVERY GPU on the host (gpus[0], gpus[1]…). When several
+  // ComfyUI instances share a multi-GPU machine, each must read the GPU IT uses
+  // (matched by device index from /system_stats) — not always gpus[0], which made
+  // every server show the first GPU's load.
+  gpus?: GpuStat[];
+  gpusAt?: number;
   lastRequested: number;
   reconnectTimer?: ReturnType<typeof setTimeout>;
   closing: boolean;
@@ -51,13 +63,14 @@ function connect(baseUrl: string, c: Conn): void {
       const msg = JSON.parse(ev.data) as { type?: string; data?: Record<string, unknown> };
       if (msg.type !== "crystools.monitor" || !msg.data) return;
       const gpus = msg.data.gpus as Array<Record<string, unknown>> | undefined;
-      const g = Array.isArray(gpus) ? gpus[0] : undefined;
-      c.latest = {
-        gpuUtilization: typeof g?.gpu_utilization === "number" ? clamp(g.gpu_utilization) : undefined,
-        gpuTemperature: typeof g?.gpu_temperature === "number" ? Math.round(g.gpu_temperature) : undefined,
-        vramUsedPercent: typeof g?.vram_used_percent === "number" ? clamp(g.vram_used_percent) : undefined,
-        at: Date.now(),
-      };
+      if (!Array.isArray(gpus)) return;
+      c.gpus = gpus.map((g) => ({
+        index: typeof g.index === "number" ? g.index : undefined,
+        gpuUtilization: typeof g.gpu_utilization === "number" ? clamp(g.gpu_utilization) : undefined,
+        gpuTemperature: typeof g.gpu_temperature === "number" ? Math.round(g.gpu_temperature) : undefined,
+        vramUsedPercent: typeof g.vram_used_percent === "number" ? clamp(g.vram_used_percent) : undefined,
+      }));
+      c.gpusAt = Date.now();
     } catch { /* ignore malformed frame */ }
   });
   ws.addEventListener("close", () => { c.ws = null; if (!c.closing) scheduleReconnect(baseUrl, c); });
@@ -73,11 +86,19 @@ export function ensureCrystoolsMonitor(baseUrl: string): void {
   connect(baseUrl, c);
 }
 
-/** Latest FRESH crystools reading for a server, or undefined when unavailable. */
-export function getCrystoolsReading(baseUrl: string): CrystoolsReading | undefined {
+/** Latest FRESH crystools reading for a server's GPU, or undefined. `deviceIndex`
+ *  (from the server's own /system_stats) selects the right GPU on a multi-GPU
+ *  host — matched by reported index, then positionally, falling back to gpus[0]. */
+export function getCrystoolsReading(baseUrl: string, deviceIndex?: number): CrystoolsReading | undefined {
   const c = conns.get(baseUrl);
-  if (c?.latest && Date.now() - c.latest.at < FRESH_MS) return c.latest;
-  return undefined;
+  if (!c?.gpus || c.gpus.length === 0 || Date.now() - (c.gpusAt ?? 0) >= FRESH_MS) return undefined;
+  let g: GpuStat | undefined;
+  if (typeof deviceIndex === "number") {
+    g = c.gpus.find((x) => x.index === deviceIndex) ?? c.gpus[deviceIndex];
+  }
+  g = g ?? c.gpus[0];
+  if (!g) return undefined;
+  return { gpuUtilization: g.gpuUtilization, gpuTemperature: g.gpuTemperature, vramUsedPercent: g.vramUsedPercent, at: c.gpusAt ?? Date.now() };
 }
 
 // Prune connections to servers nobody is watching anymore.

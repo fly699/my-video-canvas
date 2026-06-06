@@ -136,7 +136,7 @@ export function ComfyServerStatusIndicator() {
 
   const statusQuery = trpc.comfyui.serverStatus.useQuery(
     { baseUrls: servers },
-    { refetchInterval: 5000, refetchOnWindowFocus: true, staleTime: 4000 },
+    { refetchInterval: 2000, refetchOnWindowFocus: true, staleTime: 1500 },
   );
   const statuses = (statusQuery.data ?? []) as ComfyServerStatus[];
   const onlineCount = statuses.filter((s) => s.online).length;
