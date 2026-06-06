@@ -295,6 +295,20 @@
       "when": 1780501600000,
       "tag": "0041_comfy_global_servers",
       "breakpoints": true
+    },
+    {
+      "idx": 42,
+      "version": "5",
+      "when": 1780501700000,
+      "tag": "0042_storage_antileech_toggles",
+      "breakpoints": true
+    },
+    {
+      "idx": 43,
+      "version": "5",
+      "when": 1780501800000,
+      "tag": "0043_download_watermark_toggle",
+      "breakpoints": true
     }
   ]
 }

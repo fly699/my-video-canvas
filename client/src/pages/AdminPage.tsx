@@ -391,6 +391,45 @@ function StoragePanel() {
             statusOn="已开启（非管理员须持授权才能下载）"
             statusOff="已关闭（任何人都可下载，行为不变）"
           />
+          <ToggleRow
+            label="防盗链：始终服务器中转，不暴露真实存储链接"
+            description={
+              "开启后：存储代理不再 307 跳转到 S3/MinIO 的真实预签名链接，而是一律由本服务器流式中转。浏览器 F12 的网络面板只能看到需登录的同源 /manus-storage 路径，看不到真实存储地址，无法复制/转发原始链接。\n" +
+              "代价：媒体流量经过应用服务器，占用其带宽（仅在「存储对浏览器可直连」时有差异；自建 MinIO 在 127.0.0.1 时本就走中转，开关无额外影响）。\n" +
+              "说明：仅改变取流路径，不影响上传、生成、播放等任何功能。默认关闭，关闭后与原有行为完全一致。"
+            }
+            enabled={settings.forceStorageRelay}
+            disabled={setMut.isPending}
+            onClick={() => setMut.mutate({ forceStorageRelay: !settings.forceStorageRelay })}
+            statusOn="已开启（一律服务器中转，隐藏真实链接）"
+            statusOff="已关闭（可直连时 307 跳转，行为不变）"
+          />
+          <ToggleRow
+            label="可追源水印（页面叠加观看者身份）"
+            description={
+              "开启后：在应用界面叠加一层很淡的、平铺的水印，内容为当前观看者的身份（邮箱/ID）。截图、录屏、二次转发的画面都会带上是谁泄露的标识，便于追责与威慑。\n" +
+              "限制：水印是页面叠加层，不会写进原始媒体文件——它防的是「截图/录屏外传」，并非阻止下载原文件（防下载请配合上面的两个开关）。\n" +
+              "说明：纯叠加层（鼠标穿透、不挡操作），不触碰任何媒体处理流程。默认关闭，关闭后界面无任何变化。"
+            }
+            enabled={settings.watermarkEnabled}
+            disabled={setMut.isPending}
+            onClick={() => setMut.mutate({ watermarkEnabled: !settings.watermarkEnabled })}
+            statusOn="已开启（界面叠加观看者身份水印）"
+            statusOff="已关闭（无水印，行为不变）"
+          />
+          <ToggleRow
+            label="下载文件烧入可追源水印（图片+视频）"
+            description={
+              "开启后：用户下载原文件时，服务器用 ffmpeg 把「下载者身份+时间」水印烧进文件本身（图片、视频均生效），下载到本地的文件也能追溯是谁泄露的。\n" +
+              "代价：下载时需重新编码，大视频会变慢、占 CPU；仅对走本服务器代理的图片/视频生效（音频与外部无法处理的文件原样下载）。\n" +
+              "安全：任何编码失败都会自动回退为原文件下载，绝不让下载失败。默认关闭，关闭后与原有行为完全一致。"
+            }
+            enabled={settings.downloadWatermarkEnabled}
+            disabled={setMut.isPending}
+            onClick={() => setMut.mutate({ downloadWatermarkEnabled: !settings.downloadWatermarkEnabled })}
+            statusOn="已开启（下载的图片/视频烧入下载者水印）"
+            statusOff="已关闭（下载原文件，行为不变）"
+          />
         </>
       )}
     </div>

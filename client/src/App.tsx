@@ -20,6 +20,7 @@ import { toast } from "sonner";
 import { trpc } from "@/lib/trpc";
 import { setDownloadGate } from "@/lib/download";
 import { DownloadNotifier } from "./components/DownloadNotifier";
+import { WatermarkOverlay } from "./components/WatermarkOverlay";
 
 function CanvasWithKey() {
   const params = useParams<{ projectId: string }>();
@@ -121,6 +122,7 @@ function App() {
           <Router />
           <DownloadGateRegistrar />
           <DownloadNotifier />
+          <WatermarkOverlay />
           <WhitelistBlockedDialog />
         </TooltipProvider>
         </CanvasModeProvider>

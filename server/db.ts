@@ -75,7 +75,7 @@ import * as dev from "./_core/devStore";
 
 // Dev-mode whitelist state
 const devWhitelistSettings = { id: 1, enabled: false, comfyuiBypass: false, llmBypass: false, updatedAt: new Date() };
-const devStorageSettings = { id: 1, persistAudio: true, persistVideo: true, persistImage: true, presignTtlSec: 3600, poyoUploadFallback: false, minioOnly: true, preferUpstreamRefSource: false, downloadAuthEnabled: false, updatedAt: new Date() };
+const devStorageSettings = { id: 1, persistAudio: true, persistVideo: true, persistImage: true, presignTtlSec: 3600, poyoUploadFallback: false, minioOnly: true, preferUpstreamRefSource: false, downloadAuthEnabled: false, forceStorageRelay: false, watermarkEnabled: false, downloadWatermarkEnabled: false, updatedAt: new Date() };
 const devWhitelistEntries: Array<{ id: number; type: "ip" | "user"; value: string; note: string | null; createdBy: number | null; createdAt: Date }> = [];
 let devNextWhitelistId = 1;
 
@@ -1193,7 +1193,7 @@ export async function getWhitelistEntries() {
 
 // ── Storage persistence settings ────────────────────────────────────────────
 
-export async function getStorageSettings(): Promise<{ persistAudio: boolean; persistVideo: boolean; persistImage: boolean; presignTtlSec: number; poyoUploadFallback: boolean; minioOnly: boolean; preferUpstreamRefSource: boolean; downloadAuthEnabled: boolean }> {
+export async function getStorageSettings(): Promise<{ persistAudio: boolean; persistVideo: boolean; persistImage: boolean; presignTtlSec: number; poyoUploadFallback: boolean; minioOnly: boolean; preferUpstreamRefSource: boolean; downloadAuthEnabled: boolean; forceStorageRelay: boolean; watermarkEnabled: boolean; downloadWatermarkEnabled: boolean }> {
   const db = await getDb();
   if (!db) return {
     persistAudio: devStorageSettings.persistAudio,
@@ -1204,6 +1204,9 @@ export async function getStorageSettings(): Promise<{ persistAudio: boolean; per
     minioOnly: devStorageSettings.minioOnly,
     preferUpstreamRefSource: devStorageSettings.preferUpstreamRefSource,
     downloadAuthEnabled: devStorageSettings.downloadAuthEnabled,
+    forceStorageRelay: devStorageSettings.forceStorageRelay,
+    watermarkEnabled: devStorageSettings.watermarkEnabled,
+    downloadWatermarkEnabled: devStorageSettings.downloadWatermarkEnabled,
   };
   const rows = await db.select().from(storageSettings).limit(1);
   const row = rows[0];
@@ -1216,10 +1219,13 @@ export async function getStorageSettings(): Promise<{ persistAudio: boolean; per
     minioOnly: row?.minioOnly ?? true,
     preferUpstreamRefSource: row?.preferUpstreamRefSource ?? false,
     downloadAuthEnabled: row?.downloadAuthEnabled ?? false,
+    forceStorageRelay: row?.forceStorageRelay ?? false,
+    watermarkEnabled: row?.watermarkEnabled ?? false,
+    downloadWatermarkEnabled: row?.downloadWatermarkEnabled ?? false,
   };
 }
 
-export async function setStorageSettings(patch: { persistAudio?: boolean; persistVideo?: boolean; persistImage?: boolean; presignTtlSec?: number; poyoUploadFallback?: boolean; minioOnly?: boolean; preferUpstreamRefSource?: boolean; downloadAuthEnabled?: boolean }): Promise<void> {
+export async function setStorageSettings(patch: { persistAudio?: boolean; persistVideo?: boolean; persistImage?: boolean; presignTtlSec?: number; poyoUploadFallback?: boolean; minioOnly?: boolean; preferUpstreamRefSource?: boolean; downloadAuthEnabled?: boolean; forceStorageRelay?: boolean; watermarkEnabled?: boolean; downloadWatermarkEnabled?: boolean }): Promise<void> {
   const db = await getDb();
   if (!db) {
     if (patch.persistAudio !== undefined) devStorageSettings.persistAudio = patch.persistAudio;
@@ -1230,6 +1236,9 @@ export async function setStorageSettings(patch: { persistAudio?: boolean; persis
     if (patch.minioOnly !== undefined) devStorageSettings.minioOnly = patch.minioOnly;
     if (patch.preferUpstreamRefSource !== undefined) devStorageSettings.preferUpstreamRefSource = patch.preferUpstreamRefSource;
     if (patch.downloadAuthEnabled !== undefined) devStorageSettings.downloadAuthEnabled = patch.downloadAuthEnabled;
+    if (patch.forceStorageRelay !== undefined) devStorageSettings.forceStorageRelay = patch.forceStorageRelay;
+    if (patch.watermarkEnabled !== undefined) devStorageSettings.watermarkEnabled = patch.watermarkEnabled;
+    if (patch.downloadWatermarkEnabled !== undefined) devStorageSettings.downloadWatermarkEnabled = patch.downloadWatermarkEnabled;
     return;
   }
   const set: Record<string, boolean | number> = {};
@@ -1241,6 +1250,9 @@ export async function setStorageSettings(patch: { persistAudio?: boolean; persis
   if (patch.minioOnly !== undefined) set.minioOnly = patch.minioOnly;
   if (patch.preferUpstreamRefSource !== undefined) set.preferUpstreamRefSource = patch.preferUpstreamRefSource;
   if (patch.downloadAuthEnabled !== undefined) set.downloadAuthEnabled = patch.downloadAuthEnabled;
+  if (patch.forceStorageRelay !== undefined) set.forceStorageRelay = patch.forceStorageRelay;
+  if (patch.watermarkEnabled !== undefined) set.watermarkEnabled = patch.watermarkEnabled;
+  if (patch.downloadWatermarkEnabled !== undefined) set.downloadWatermarkEnabled = patch.downloadWatermarkEnabled;
   if (Object.keys(set).length === 0) return;
   // Upsert, not a bare UPDATE: the singleton settings row (id=1) is never
   // seeded by any migration on the journal's path (0013 creates the table

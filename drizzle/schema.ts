@@ -568,6 +568,20 @@ export const storageSettings = mysqlTable("storageSettings", {
   // batch grant). Admin-controlled from the Storage settings page. Off by
   // default → behavior identical to before (non-breaking).
   downloadAuthEnabled: boolean("downloadAuthEnabled").notNull().default(false),
+  // Anti-leech: when true, the storage proxy NEVER 307-redirects to the raw
+  // presigned S3/MinIO URL — it always streams the object through this server, so
+  // the real storage link is never exposed in the browser's network panel. Off by
+  // default → behavior identical to before (redirect when reachable).
+  forceStorageRelay: boolean("forceStorageRelay").notNull().default(false),
+  // Anti-leech: when true, a faint page-level watermark (the viewer's identity) is
+  // overlaid across the app so screenshots / screen recordings are traceable. Off
+  // by default → no overlay, behavior unchanged.
+  watermarkEnabled: boolean("watermarkEnabled").notNull().default(false),
+  // Anti-leech: when true, original-file DOWNLOADS (image/video, via the server
+  // proxies) are re-encoded with the downloader's identity burned in (ffmpeg
+  // drawtext), so the leaked file itself is traceable. Off by default; on any
+  // ffmpeg failure the original file is served unchanged (downloads never break).
+  downloadWatermarkEnabled: boolean("downloadWatermarkEnabled").notNull().default(false),
   updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
 });
 
