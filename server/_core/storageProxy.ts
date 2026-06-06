@@ -107,9 +107,14 @@ export function registerStorageProxy(app: Express) {
       }
 
       // Otherwise (typical MinIO on 127.0.0.1) the client cannot reach the
-      // storage host — stream the object THROUGH this server instead.
-      const { body, contentType, contentLength } = await storageFetchStream(key);
+      // storage host — stream the object THROUGH this server instead. Forward the
+      // browser's Range header so <video> seeking/scrubbing works (206 Partial
+      // Content) instead of re-pulling the whole file from the start.
+      const range = typeof req.headers.range === "string" ? req.headers.range : undefined;
+      const { body, contentType, contentLength, contentRange, status, acceptRanges } = await storageFetchStream(key, range);
       if (contentType) res.set("Content-Type", contentType);
+      if (acceptRanges) res.set("Accept-Ranges", "bytes");
+      if (contentRange) res.set("Content-Range", contentRange);
       if (typeof contentLength === "number") res.set("Content-Length", String(contentLength));
       res.set("Cache-Control", "private, max-age=300");
       // Optional ?download=1 forces a save dialog with the original filename.
@@ -117,6 +122,7 @@ export function registerStorageProxy(app: Express) {
         const name = key.split("/").pop() || "file";
         res.set("Content-Disposition", `attachment; filename="${encodeURIComponent(name)}"`);
       }
+      res.status(status === 206 ? 206 : 200);
       body.on("error", (err) => {
         console.error("[StorageProxy] stream error:", err);
         if (!res.headersSent) res.status(502).end();
