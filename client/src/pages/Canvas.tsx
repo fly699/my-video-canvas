@@ -22,6 +22,7 @@ import { WorkflowRunProvider } from "../contexts/WorkflowRunContext";
 import { CanvasChatWindow } from "../components/chat/CanvasChatWindow";
 import { PoyoBalanceDashboard } from "../components/PoyoBalanceDashboard";
 import { CustomNode } from "../components/canvas/CustomNode";
+import { ComfyServerStatusIndicator } from "../components/canvas/ComfyServerStatusIndicator";
 import { CustomEdge } from "../components/canvas/CustomEdge";
 import { ContextMenu } from "../components/canvas/ContextMenu";
 import { CollaboratorCursors } from "../components/canvas/CollaboratorCursors";
@@ -1355,6 +1356,9 @@ function CanvasInner({ projectId }: { projectId: number }) {
             <Users className="w-3.5 h-3.5" />
             {collaboratorList.length > 0 && <span>{collaboratorList.length}</span>}
           </button>
+
+          {/* ComfyUI server status (GPU/VRAM/RAM/queue + config panel) */}
+          <ComfyServerStatusIndicator />
 
           {/* Chat (floating in-canvas window) */}
           <Tooltip>
