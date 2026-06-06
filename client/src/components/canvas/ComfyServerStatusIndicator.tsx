@@ -103,14 +103,14 @@ export function ComfyServerStatusIndicator() {
 
   // Persist the open state too, so the floating panel reliably survives a reload
   // (pin / position / size are already persisted below).
-  const [open, setOpen] = usePersistentState<boolean>("ui:comfyStatus:open:v1", false, { validate: (v) => (typeof v === "boolean" ? v : null) });
+  const [open, setOpen] = usePersistentState<boolean>("ui:comfyStatus:open:v1", false, { validate: (v) => (typeof v === "boolean" ? v : null), crossTab: false });
   const [draft, setDraft] = useState("");
   const btnRef = useRef<HTMLButtonElement>(null);
   const panelRef = useRef<HTMLDivElement>(null);
   const [btnRect, setBtnRect] = useState<DOMRect | null>(null);
 
   // Pin / drag / resize — persisted so the panel survives reloads.
-  const [pinned, setPinned] = usePersistentState<boolean>("ui:comfyStatus:pinned:v1", false, { validate: (v) => (typeof v === "boolean" ? v : null) });
+  const [pinned, setPinned] = usePersistentState<boolean>("ui:comfyStatus:pinned:v1", false, { validate: (v) => (typeof v === "boolean" ? v : null), crossTab: false });
   const [pos, setPos] = usePersistentState<{ left: number; top: number } | null>("ui:comfyStatus:pos:v1", null, {
     validate: (v) => {
       if (v === null) return null as unknown as { left: number; top: number } | null;
@@ -120,6 +120,7 @@ export function ComfyServerStatusIndicator() {
       if (typeof window !== "undefined" && (o.left < 0 || o.left > window.innerWidth - 80 || o.top < 0 || o.top > window.innerHeight - 60)) return null;
       return { left: o.left, top: o.top };
     },
+    crossTab: false,
   });
   const [size, setSize] = usePersistentState<{ w: number; h: number }>("ui:comfyStatus:size:v1", { w: 360, h: 440 }, {
     validate: (v) => {
@@ -128,6 +129,7 @@ export function ComfyServerStatusIndicator() {
       if (typeof o.w !== "number" || typeof o.h !== "number" || o.w < 260 || o.h < 200) return null;
       return { w: o.w, h: o.h };
     },
+    crossTab: false,
   });
 
   const visible = open || pinned;

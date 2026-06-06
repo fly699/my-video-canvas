@@ -390,7 +390,7 @@ function CanvasInner({ projectId }: { projectId: number }) {
   // help, snapshots, run-confirm, …) stay as plain useState — they should
   // always start closed.
   const [showAssets, setShowAssets] = usePersistentState<boolean>(
-    "ui:panel:assets:v1", false, { validate: validateBool },
+    "ui:panel:assets:v1", false, { validate: validateBool, crossTab: false },
   );
   const [showTemplates, setShowTemplates] = useState(false);
   const [showNodeLib, setShowNodeLib] = useState(false);
@@ -399,7 +399,7 @@ function CanvasInner({ projectId }: { projectId: number }) {
   >(null);
   const [showNodeSearch, setShowNodeSearch] = useState(false);
   const [showCollaborators, setShowCollaborators] = usePersistentState<boolean>(
-    "ui:canvas:collab-open:v1", false, { validate: validateBool },
+    "ui:canvas:collab-open:v1", false, { validate: validateBool, crossTab: false },
   );
   const [showCollaboratorPanel, setShowCollaboratorPanel] = useState(false);
   const [showNodePicker, setShowNodePicker] = useState(false);
@@ -408,13 +408,13 @@ function CanvasInner({ projectId }: { projectId: number }) {
   const [showPresentation, setShowPresentation] = useState(false);
   const [showShortcuts, setShowShortcuts] = useState(false);
   const [showStatsSidebar, setShowStatsSidebar] = usePersistentState<boolean>(
-    "ui:panel:stats:v1", false, { validate: validateBool },
+    "ui:panel:stats:v1", false, { validate: validateBool, crossTab: false },
   );
   const [showFilmstrip, setShowFilmstrip] = usePersistentState<boolean>(
-    "ui:panel:filmstrip:v1", false, { validate: validateBool },
+    "ui:panel:filmstrip:v1", false, { validate: validateBool, crossTab: false },
   );
   const [showTimeline, setShowTimeline] = usePersistentState<boolean>(
-    "ui:panel:timeline:v1", false, { validate: validateBool },
+    "ui:panel:timeline:v1", false, { validate: validateBool, crossTab: false },
   );
   const [canvasBg, setCanvasBg] = useState<CanvasBg>(() => loadCanvasBg());
   // Keep --c-canvas in sync with the picker so all components using
@@ -440,7 +440,7 @@ function CanvasInner({ projectId }: { projectId: number }) {
   // Chat floating window: remember whether it was open across reloads (its
   // position/size/scale/pin already persist inside CanvasChatWindow).
   const [chatOpen, setChatOpen] = usePersistentState<boolean>(
-    "ui:canvas:chat-open:v1", false, { validate: validateBool },
+    "ui:canvas:chat-open:v1", false, { validate: validateBool, crossTab: false },
   );
   const [showArcPicker, setShowArcPicker] = useState(false);
   const { mode: canvasMode, setMode: setCanvasMode } = useCanvasMode();
@@ -1389,8 +1389,8 @@ function CanvasInner({ projectId }: { projectId: number }) {
             {collaboratorList.length > 0 && <span>{collaboratorList.length}</span>}
           </button>
 
-          {/* ComfyUI server status (GPU/VRAM/RAM/queue + config panel) */}
-          <ComfyServerStatusIndicator />
+          {/* ComfyUI server status (GPU/VRAM/RAM/queue + config panel) — main window only */}
+          {!isPopout && <ComfyServerStatusIndicator />}
 
           {/* Open the project in a second window (multi-monitor: independent
               viewport, live-synced via BroadcastChannel). Hidden inside a popout. */}
@@ -1408,7 +1408,8 @@ function CanvasInner({ projectId }: { projectId: number }) {
             </button>
           )}
 
-          {/* Chat (floating in-canvas window) */}
+          {/* Chat (floating in-canvas window) — hidden in popout (second-monitor) windows */}
+          {!isPopout && (
           <Tooltip>
             <TooltipTrigger asChild>
               <button
@@ -1422,6 +1423,7 @@ function CanvasInner({ projectId }: { projectId: number }) {
             </TooltipTrigger>
             <TooltipContent side="bottom" className="text-xs">聊天（悬浮窗）</TooltipContent>
           </Tooltip>
+          )}
 
           {/* Help guide */}
           <Tooltip>
@@ -1527,7 +1529,8 @@ function CanvasInner({ projectId }: { projectId: number }) {
             <TooltipContent side="bottom" className="text-xs">视频剪辑器</TooltipContent>
           </Tooltip>
 
-          {/* Stats sidebar toggle */}
+          {/* Stats sidebar toggle — main window only */}
+          {!isPopout && (
           <Tooltip>
             <TooltipTrigger asChild>
               <button
@@ -1541,6 +1544,7 @@ function CanvasInner({ projectId }: { projectId: number }) {
             </TooltipTrigger>
             <TooltipContent side="bottom" className="text-xs">画布统计</TooltipContent>
           </Tooltip>
+          )}
 
           {/* Filmstrip toggle */}
           <Tooltip>
@@ -2594,7 +2598,7 @@ function CanvasInner({ projectId }: { projectId: number }) {
             borderLeft: "1px solid var(--c-bd1)",
             display: "flex",
             flexDirection: "column",
-            transform: showStatsSidebar ? "translateX(0)" : "translateX(100%)",
+            transform: (showStatsSidebar && !isPopout) ? "translateX(0)" : "translateX(100%)",
             transition: "transform 280ms cubic-bezier(0.23, 1, 0.32, 1)",
             zIndex: 15,
             pointerEvents: showStatsSidebar ? "auto" : "none",
@@ -2901,7 +2905,7 @@ function CanvasInner({ projectId }: { projectId: number }) {
         );
       })()}
 
-      {chatOpen && <CanvasChatWindow onClose={() => setChatOpen(false)} />}
+      {!isPopout && chatOpen && <CanvasChatWindow onClose={() => setChatOpen(false)} />}
     </div>
   );
 }

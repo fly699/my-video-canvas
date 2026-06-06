@@ -22,10 +22,15 @@ export function usePersistentState<T>(
   options?: {
     /** Validate parsed JSON; return `null` to reject and fall back to default. */
     validate?: (parsed: unknown) => T | null;
+    /** Mirror writes from OTHER tabs/windows into this one (default true). Set
+     *  false for per-window UI state (open panels, popups) that must stay
+     *  controlled by the window it was toggled in — e.g. multi-monitor popouts. */
+    crossTab?: boolean;
   },
 ): [T, React.Dispatch<React.SetStateAction<T>>] {
   const validateRef = useRef(options?.validate);
   validateRef.current = options?.validate;
+  const crossTab = options?.crossTab !== false;
 
   const [state, setState] = useState<T>(() => {
     if (typeof window === "undefined") return defaultValue;
@@ -60,9 +65,10 @@ export function usePersistentState<T>(
     }
   }, [key, state]);
 
-  // Cross-tab sync. When another tab writes the same key, mirror in.
+  // Cross-tab sync. When another tab writes the same key, mirror in — unless the
+  // caller opted out (per-window UI state).
   useEffect(() => {
-    if (typeof window === "undefined") return;
+    if (typeof window === "undefined" || !crossTab) return;
     const handler = (e: StorageEvent) => {
       if (e.key !== key) return;
       if (e.newValue === null) {
@@ -83,7 +89,7 @@ export function usePersistentState<T>(
     };
     window.addEventListener("storage", handler);
     return () => window.removeEventListener("storage", handler);
-  }, [key, defaultValue]);
+  }, [key, defaultValue, crossTab]);
 
   return [state, setState];
 }
