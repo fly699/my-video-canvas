@@ -179,13 +179,18 @@ export const adminRouter = router({
         preferUpstreamRefSource: z.boolean().optional(),
         // Strict download authorization master switch.
         downloadAuthEnabled: z.boolean().optional(),
+        // Anti-leech: always stream through (never expose raw presigned URL).
+        forceStorageRelay: z.boolean().optional(),
+        // Anti-leech: page-level identity watermark for traceability.
+        watermarkEnabled: z.boolean().optional(),
       }))
       .mutation(async ({ input }) => {
         if (
           input.persistAudio === undefined && input.persistVideo === undefined &&
           input.persistImage === undefined && input.presignTtlSec === undefined &&
           input.poyoUploadFallback === undefined && input.minioOnly === undefined &&
-          input.preferUpstreamRefSource === undefined && input.downloadAuthEnabled === undefined
+          input.preferUpstreamRefSource === undefined && input.downloadAuthEnabled === undefined &&
+          input.forceStorageRelay === undefined && input.watermarkEnabled === undefined
         ) {
           throw new TRPCError({ code: "BAD_REQUEST", message: "至少需要指定一项设置" });
         }

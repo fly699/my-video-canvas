@@ -9,6 +9,7 @@ import {
 import { verifyUploadToken } from "./uploadToken";
 import { authorizeDownload } from "./downloadAuth";
 import { isRequestAuthenticated } from "./context";
+import { isForceStorageRelayEnabled } from "./storageConfig";
 
 /**
  * Streamed upload counterpart to the download proxy. The browser PUTs the raw
@@ -71,8 +72,10 @@ export function registerStorageProxy(app: Express) {
     try {
       // When the storage host is publicly reachable (Forge, or S3/MinIO behind a
       // public endpoint), 307-redirect the browser straight to the signed URL —
-      // cheapest path, no app-server bandwidth.
-      if (canBrowserReachStorageDirectly()) {
+      // cheapest path, no app-server bandwidth. Unless the admin enabled
+      // "force relay" (anti-leech): then we always stream through below so the raw
+      // presigned URL is never exposed in the browser's network panel.
+      if (canBrowserReachStorageDirectly() && !(await isForceStorageRelayEnabled())) {
         const url = await storagePresignGet(key);
         if (!url) {
           res.status(502).send("Empty signed URL from backend");
