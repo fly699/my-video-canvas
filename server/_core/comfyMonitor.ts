@@ -15,8 +15,8 @@ export interface CrystoolsReading {
   at: number;                // ms epoch of last frame
 }
 
-interface GpuStat {
-  index?: number;
+export interface GpuStat {
+  index: number;             // position in the host's physical-ordered gpus array
   gpuUtilization?: number;
   gpuTemperature?: number;
   vramUsedPercent?: number;
@@ -24,20 +24,25 @@ interface GpuStat {
   vramUsedMB?: number;
 }
 
-/** Hint used to pick THIS instance's GPU out of all the host's GPUs. */
-export interface GpuMatch {
-  deviceIndex?: number;   // from /system_stats (reliable only with --cuda-device)
-  vramTotalMB?: number;   // the instance's GPU total VRAM
-  vramUsedMB?: number;    // the instance's GPU used VRAM (total - free)
-}
+// Why a USER-CHOSEN GPU index, not auto-correlation (verified against the
+// official source, 2026-06):
+//   • ComfyUI-Crystools (general/gpu.py, CGPUInfo) enumerates GPUs with pynvml
+//     DIRECTLY — nvmlDeviceGetCount()/nvmlDeviceGetHandleByIndex() over ALL
+//     physical GPUs, IGNORING CUDA_VISIBLE_DEVICES. Its crystools.monitor frames
+//     carry only utilization/temp/vram per GPU — NO index/uuid/pci bus id — in
+//     physical order, IDENTICAL for every ComfyUI instance on that host.
+//   • ComfyUI (main.py) handles --cuda-device by setting CUDA_VISIBLE_DEVICES
+//     before torch loads, so each pinned instance sees its GPU as logical 0 and
+//     /system_stats always reports index 0.
+// => On a shared multi-GPU host there is NO field that maps an instance to its
+//    physical GPU (VRAM only diverges under load). So we let the caller pin an
+//    explicit physical index and read gpus[index]; with a single GPU we use it.
 
 interface Conn {
   ws: WebSocket | null;
-  // Crystools reports EVERY GPU on the host (gpus[0], gpus[1]…). When several
-  // ComfyUI instances share a multi-GPU machine, each must read the GPU IT uses —
-  // not always gpus[0], which made every server show the first GPU's load. We
-  // correlate by VRAM usage (works even when CUDA_VISIBLE_DEVICES hides the real
-  // index), with device-index and position as fallbacks.
+  // Crystools reports EVERY physical GPU on the host (gpus[0], gpus[1]…) in a
+  // stable order, the same for every instance on that machine. We cache the full
+  // array; the chosen GPU is selected by explicit index at read time.
   gpus?: GpuStat[];
   gpusAt?: number;
   lastRequested: number;
@@ -75,8 +80,10 @@ function connect(baseUrl: string, c: Conn): void {
       const gpus = msg.data.gpus as Array<Record<string, unknown>> | undefined;
       if (!Array.isArray(gpus)) return;
       const toMB = (v: unknown) => (typeof v === "number" ? Math.round(v / (1024 * 1024)) : undefined);
-      c.gpus = gpus.map((g) => ({
-        index: typeof g.index === "number" ? g.index : undefined,
+      // crystools.monitor frames have NO per-GPU index — the array position IS the
+      // physical index (pynvml enumeration order), so we use the position.
+      c.gpus = gpus.map((g, i) => ({
+        index: i,
         gpuUtilization: typeof g.gpu_utilization === "number" ? clamp(g.gpu_utilization) : undefined,
         gpuTemperature: typeof g.gpu_temperature === "number" ? Math.round(g.gpu_temperature) : undefined,
         vramUsedPercent: typeof g.vram_used_percent === "number" ? clamp(g.vram_used_percent) : undefined,
@@ -99,38 +106,27 @@ export function ensureCrystoolsMonitor(baseUrl: string): void {
   connect(baseUrl, c);
 }
 
-/** Latest FRESH crystools reading for THIS instance's GPU, or undefined. On a
- *  multi-GPU host Crystools reports every GPU, so we must pick the one this
- *  instance uses. Order of signals: single GPU → it; VRAM-usage match (works even
- *  when CUDA_VISIBLE_DEVICES masks the index); reported index; position; gpus[0]. */
-export function getCrystoolsReading(baseUrl: string, match?: GpuMatch): CrystoolsReading | undefined {
+/** The host's full, FRESH per-GPU array (physical order), or undefined when no
+ *  fresh Crystools frame. Used to let the user SEE every GPU and pick the right
+ *  one for this server. */
+export function getCrystoolsGpus(baseUrl: string): GpuStat[] | undefined {
   const c = conns.get(baseUrl);
   if (!c?.gpus || c.gpus.length === 0 || Date.now() - (c.gpusAt ?? 0) >= FRESH_MS) return undefined;
-  const gpus = c.gpus;
-  let g: GpuStat | undefined;
-  if (gpus.length === 1) {
-    g = gpus[0];
-  } else if (match) {
-    // 1) VRAM-usage correlation — the instance's /system_stats GPU vram should
-    //    match exactly one of the host GPUs (total within tolerance, used closest).
-    if (typeof match.vramUsedMB === "number") {
-      const cand = gpus.filter((x) =>
-        typeof x.vramUsedMB === "number" &&
-        (match.vramTotalMB == null || x.vramTotalMB == null ||
-          Math.abs(x.vramTotalMB - match.vramTotalMB) <= Math.max(64, match.vramTotalMB * 0.02)));
-      if (cand.length) {
-        g = cand.reduce((best, x) =>
-          Math.abs((x.vramUsedMB ?? 0) - match.vramUsedMB!) < Math.abs((best.vramUsedMB ?? 0) - match.vramUsedMB!) ? x : best);
-      }
-    }
-    // 2) Reported index. 3) Positional.
-    if (!g && typeof match.deviceIndex === "number") {
-      g = gpus.find((x) => x.index === match.deviceIndex) ?? gpus[match.deviceIndex];
-    }
-  }
-  g = g ?? gpus[0];
-  if (!g) return undefined;
-  return { gpuUtilization: g.gpuUtilization, gpuTemperature: g.gpuTemperature, vramUsedPercent: g.vramUsedPercent, at: c.gpusAt ?? Date.now() };
+  return c.gpus;
+}
+
+/** Latest FRESH crystools reading for the GPU this server uses, or undefined.
+ *  Selection is DETERMINISTIC: an explicit physical `gpuIndex` (the server's
+ *  --cuda-device, set by the user) wins; a single-GPU host uses its only GPU;
+ *  otherwise we fall back to gpus[0] (ambiguous — the UI prompts the user to
+ *  pick). We never guess by VRAM: it only diverges under active load. */
+export function getCrystoolsReading(baseUrl: string, gpuIndex?: number): CrystoolsReading | undefined {
+  const gpus = getCrystoolsGpus(baseUrl);
+  if (!gpus || gpus.length === 0) return undefined;
+  let g: GpuStat;
+  if (typeof gpuIndex === "number" && gpuIndex >= 0 && gpuIndex < gpus.length) g = gpus[gpuIndex];
+  else g = gpus[0];
+  return { gpuUtilization: g.gpuUtilization, gpuTemperature: g.gpuTemperature, vramUsedPercent: g.vramUsedPercent, at: Date.now() };
 }
 
 // Prune connections to servers nobody is watching anymore.

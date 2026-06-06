@@ -2406,12 +2406,19 @@ export const comfyuiRouter = router({
   // one status per input URL, in order, echoing the exact input string for 1:1
   // client mapping; an unreachable server yields { online: false, error }.
   serverStatus: protectedProcedure
-    .input(z.object({ baseUrls: z.array(z.string().max(2048)).max(20) }))
+    .input(z.object({
+      baseUrls: z.array(z.string().max(2048)).max(20),
+      // Optional per-server physical GPU index (the server's --cuda-device). On a
+      // shared multi-GPU host this is the ONLY deterministic way to know which GPU
+      // an instance uses (Crystools reports all GPUs unindexed; see comfyMonitor).
+      gpuIndexByUrl: z.record(z.string(), z.number().int().min(0).max(63)).optional(),
+    }))
     .query(async ({ ctx, input }) => {
       await assertComfyuiAllowed(ctx);
       const urls = Array.from(new Set(input.baseUrls.map((u) => u.trim()).filter(Boolean)));
       const list = urls.length > 0 ? urls : (ENV.comfyuiBaseUrl ? [ENV.comfyuiBaseUrl] : []);
-      return Promise.all(list.map((u) => fetchComfyServerStatus(u)));
+      const idx = input.gpuIndexByUrl ?? {};
+      return Promise.all(list.map((u) => fetchComfyServerStatus(u, idx[u])));
     }),
 
   interrupt: protectedProcedure
