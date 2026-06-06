@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useCallback } from "react";
+import { useState, useEffect, useRef, useCallback, useMemo } from "react";
 import { useParams, useLocation } from "wouter";
 import {
   ReactFlow,
@@ -91,6 +91,7 @@ import {
   HelpCircle,
   Clapperboard,
   MessageSquare,
+  MonitorUp,
   Boxes,
 } from "lucide-react";
 import { loadNamedSnapshots, type NamedSnapshot } from "../hooks/useCanvasStore";
@@ -503,6 +504,14 @@ function CanvasInner({ projectId }: { projectId: number }) {
   const nodesRef = useRef(nodes);
   nodesRef.current = nodes;
   const [viewport, setViewport] = useState({ x: 0, y: 0, zoom: 1 });
+  // Multi-monitor: a "popout" window (opened on a second screen) shares the same
+  // project but keeps an INDEPENDENT viewport (pan/zoom) — it must not overwrite
+  // the main window's server-persisted viewport. Live node/edge edits are mirrored
+  // between same-browser windows via a BroadcastChannel (the socket path filters
+  // out same-user events, so two windows of one user wouldn't otherwise sync).
+  const isPopout = useMemo(() => typeof window !== "undefined" && new URLSearchParams(window.location.search).has("popout"), []);
+  const popoutVpKey = `ui:canvas:popoutViewport:${projectId}`;
+  const bcRef = useRef<BroadcastChannel | null>(null);
   // Toolbar & minimap layout persists across reloads. Keys are namespaced
   // `ui:*` so the localStorage admin can grep for them. The validate fn
   // discards corrupted payloads (e.g. partial migrations) rather than
@@ -725,8 +734,10 @@ function CanvasInner({ projectId }: { projectId: number }) {
     if (project === undefined || dbNodes === undefined) return;
     viewportScheduledRef.current = true; // sync guard: prevent onInit+effect double-schedule
     // viewportState is a JSON column — MySQL returns it parsed (object) but some
-    // drivers (e.g. MariaDB) return it as a JSON string, so handle both.
+    // drivers (e.g. MariaDB) return it as a JSON string, so handle both. A popout
+    // window restores its OWN (localStorage) viewport instead of the shared one.
     let vpRaw: unknown = project?.viewportState;
+    if (isPopout) { try { vpRaw = JSON.parse(localStorage.getItem(popoutVpKey) ?? "null"); } catch { vpRaw = null; } }
     if (typeof vpRaw === "string") { try { vpRaw = JSON.parse(vpRaw); } catch { vpRaw = null; } }
     const vp = vpRaw as { x: number; y: number; zoom: number } | null | undefined;
     const valid = !!vp && typeof vp.x === "number" && typeof vp.y === "number" && typeof vp.zoom === "number";
@@ -789,7 +800,10 @@ function CanvasInner({ projectId }: { projectId: number }) {
       }
     } catch (e) { console.error("[save] edge upsert failed:", e); }
     try {
-      await updateProject.mutateAsync({ id: projectId, viewportState: reactFlow.getViewport() });
+      // A popout window keeps its viewport local (independent second-monitor view)
+      // so it never clobbers the main window's shared, server-persisted viewport.
+      if (isPopout) localStorage.setItem(popoutVpKey, JSON.stringify(reactFlow.getViewport()));
+      else await updateProject.mutateAsync({ id: projectId, viewportState: reactFlow.getViewport() });
     } catch (e) { console.error("[save] viewport save failed:", e); }
 
     // Only advance the node baseline / mark clean when ALL node ops landed, so a
@@ -820,6 +834,8 @@ function CanvasInner({ projectId }: { projectId: number }) {
 
   // ── Socket ──────────────────────────────────────────────────────────────────
   const emitCollabEvent = useCallback((type: string, payload: unknown) => {
+    // Mirror to same-browser windows (multi-monitor) regardless of socket state.
+    try { bcRef.current?.postMessage({ type, payload }); } catch { /* channel closed */ }
     if (!socketRef.current?.connected || !user) return;
     socketRef.current.emit("collaboration-event", {
       type, projectId, userId: user.id,
@@ -846,14 +862,10 @@ function CanvasInner({ projectId }: { projectId: number }) {
     socket.on("auth-error", (e: { code: string; projectId: number }) => {
       console.warn("[Socket] auth-error", e);
     });
-    socket.on("collaboration-event", (event: { type: string; userId: number; userName: string; color: string; payload: unknown }) => {
-      if (event.userId === user.id) return;
-      if (event.type === "cursor:move") {
-        const p = event.payload as { x: number; y: number };
-        setCollaborator({ userId: event.userId, userName: event.userName, color: event.color, x: p.x, y: p.y });
-        return;
-      }
-      if (event.type === "user:leave") { removeCollaborator(event.userId); return; }
+    // Shared apply logic for peer node/edge mutations — used by BOTH the socket
+    // (cross-device collaborators) and the BroadcastChannel (same-browser windows
+    // on a second monitor). Pulled out so the two transports stay in lockstep.
+    const applyRemoteMutation = (event: { type: string; payload: unknown }) => {
       // Node/edge mutations from peers: ignore until our OWN DB snapshot has loaded —
       // otherwise the load-once setNodes would clobber an early remote change (or vice
       // versa), diverging collaborators. Apply WITHOUT markDirty (the author already
@@ -891,7 +903,27 @@ function CanvasInner({ projectId }: { projectId: number }) {
         const p = event.payload as { id: string };
         store.setEdges(store.edges.filter((e) => e.id !== p.id));
       }
+    };
+
+    socket.on("collaboration-event", (event: { type: string; userId: number; userName: string; color: string; payload: unknown }) => {
+      if (event.userId === user.id) return;
+      if (event.type === "cursor:move") {
+        const p = event.payload as { x: number; y: number };
+        setCollaborator({ userId: event.userId, userName: event.userName, color: event.color, x: p.x, y: p.y });
+        return;
+      }
+      if (event.type === "user:leave") { removeCollaborator(event.userId); return; }
+      applyRemoteMutation(event);
     });
+
+    // Same-browser window sync (multi-monitor). Note: a BroadcastChannel never
+    // receives its own posts, so no self-echo filtering is needed.
+    try {
+      const bc = new BroadcastChannel(`canvas-sync:${projectId}`);
+      bc.onmessage = (e: MessageEvent) => { const d = e.data as { type?: string; payload?: unknown }; if (d?.type) applyRemoteMutation({ type: d.type, payload: d.payload }); };
+      bcRef.current = bc;
+    } catch { /* BroadcastChannel unsupported — socket still covers cross-device */ }
+
     socket.on("comfyui:progress", (event: { nodeId: string; type: string; value?: number; max?: number; preview?: string; queueRemaining?: number }) => {
       if (event.type === "progress" && event.value != null && event.max != null && event.max > 0) {
         const pct = Math.round((event.value / event.max) * 100);
@@ -905,7 +937,7 @@ function CanvasInner({ projectId }: { projectId: number }) {
       }
     });
     socketRef.current = socket;
-    return () => { socket.emit("leave-project", { projectId }); socket.disconnect(); };
+    return () => { socket.emit("leave-project", { projectId }); socket.disconnect(); bcRef.current?.close(); bcRef.current = null; };
   }, [isAuthenticated, user, projectId]);
 
   const handleMouseMove = useCallback((e: React.MouseEvent) => {
@@ -1359,6 +1391,22 @@ function CanvasInner({ projectId }: { projectId: number }) {
 
           {/* ComfyUI server status (GPU/VRAM/RAM/queue + config panel) */}
           <ComfyServerStatusIndicator />
+
+          {/* Open the project in a second window (multi-monitor: independent
+              viewport, live-synced via BroadcastChannel). Hidden inside a popout. */}
+          {!isPopout && (
+            <button
+              className="topbar-btn"
+              title="在新窗口打开（副屏，独立视口·实时同步）"
+              onClick={() => {
+                const url = new URL(window.location.href);
+                url.searchParams.set("popout", "1");
+                window.open(url.toString(), "_blank", "noopener,width=1280,height=860");
+              }}
+            >
+              <MonitorUp className="w-3.5 h-3.5" />
+            </button>
+          )}
 
           {/* Chat (floating in-canvas window) */}
           <Tooltip>
