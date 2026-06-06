@@ -93,8 +93,13 @@ export function ComfyServerStatusIndicator() {
   const servers = Array.from(new Set([...globalServers, ...localServers]));
   const isGlobal = (url: string) => globalServers.includes(url);
 
-  // Add: admins add to the shared global list; everyone else adds personally.
-  const addServer = (url: string) => { if (isAdmin) setGlobal([...globalServers, url]); else addLocal(url); };
+  // Add: admins choose scope (shared global list vs this browser only); everyone
+  // else can only add personally (local). Adding a personal copy of a URL already
+  // in the global list is a no-op the dedup'd union absorbs.
+  const addServer = (url: string, scope: "global" | "local") => {
+    if (scope === "global" && isAdmin) setGlobal([...globalServers, url]);
+    else addLocal(url);
+  };
   // Remove: a global entry is removed globally (admin only); a personal one locally.
   const removeServer = (url: string) => {
     if (isGlobal(url)) { if (isAdmin) setGlobal(globalServers.filter((u) => u !== url)); }
@@ -105,6 +110,8 @@ export function ComfyServerStatusIndicator() {
   // (pin / position / size are already persisted below).
   const [open, setOpen] = usePersistentState<boolean>("ui:comfyStatus:open:v1", false, { validate: (v) => (typeof v === "boolean" ? v : null), crossTab: false });
   const [draft, setDraft] = useState("");
+  // Admins pick where a new address goes; non-admins are always local.
+  const [addScope, setAddScope] = useState<"global" | "local">("global");
   const btnRef = useRef<HTMLButtonElement>(null);
   const panelRef = useRef<HTMLDivElement>(null);
   const [btnRect, setBtnRect] = useState<DOMRect | null>(null);
@@ -350,28 +357,59 @@ export function ComfyServerStatusIndicator() {
                 </div>
               )}
 
-              {/* Add server */}
-              <div style={{ marginTop: 10, marginBottom: 4, fontSize: 9.5, color: "var(--c-t4)" }}>
-                {isAdmin ? "添加到全局列表（所有用户自动可见）" : "添加到本机列表（仅本浏览器）"}
-              </div>
-              <div className="flex items-center gap-1.5">
-                <input
-                  value={draft}
-                  onChange={(e) => setDraft(e.target.value)}
-                  onKeyDown={(e) => { if (e.key === "Enter") { const u = draft.trim(); if (u) { addServer(u); setDraft(""); } } }}
-                  placeholder="http://127.0.0.1:8188"
-                  spellCheck={false}
-                  style={{ flex: 1, padding: "6px 9px", borderRadius: 8, fontSize: 11, background: "var(--c-input)", border: "1px solid var(--c-bd2)", color: "var(--c-t1)", outline: "none", fontFamily: "monospace" }}
-                />
-                <button
-                  onClick={() => { const u = draft.trim(); if (u) { addServer(u); setDraft(""); } }}
-                  disabled={!draft.trim()}
-                  className="flex items-center gap-1 px-2.5 rounded-lg text-xs font-medium"
-                  style={{ height: 30, background: draft.trim() ? "oklch(0.72 0.13 175 / 0.15)" : "var(--c-surface)", border: `1px solid ${draft.trim() ? "oklch(0.72 0.13 175 / 0.45)" : "var(--c-bd2)"}`, color: draft.trim() ? "oklch(0.72 0.13 175)" : "var(--c-t4)", cursor: draft.trim() ? "pointer" : "not-allowed" }}
-                >
-                  <Plus className="w-3 h-3" /> {isAdmin ? "添加(全局)" : "添加"}
-                </button>
-              </div>
+              {/* Add server. Admins choose global (DB, all users) vs local (this
+                  browser only); non-admins can only add locally. */}
+              {(() => {
+                const scope: "global" | "local" = isAdmin ? addScope : "local";
+                const submit = () => { const u = draft.trim(); if (u) { addServer(u, scope); setDraft(""); } };
+                return (
+                  <>
+                    {isAdmin && (
+                      <div className="flex items-center gap-1" style={{ marginTop: 10 }}>
+                        {(["global", "local"] as const).map((sc) => {
+                          const on = addScope === sc;
+                          return (
+                            <button
+                              key={sc}
+                              onClick={() => setAddScope(sc)}
+                              className="flex items-center gap-1 rounded transition-all"
+                              style={{
+                                height: 22, padding: "0 8px", fontSize: 10, fontWeight: 700,
+                                background: on ? "oklch(0.68 0.22 285 / 0.16)" : "var(--c-input)",
+                                border: `1px solid ${on ? "oklch(0.68 0.22 285 / 0.5)" : "var(--c-bd2)"}`,
+                                color: on ? "oklch(0.74 0.16 285)" : "var(--c-t3)", cursor: "pointer",
+                              }}
+                            >
+                              {sc === "global" ? "全局" : "本机"}
+                            </button>
+                          );
+                        })}
+                      </div>
+                    )}
+                    <div style={{ marginTop: isAdmin ? 5 : 10, marginBottom: 4, fontSize: 9.5, color: "var(--c-t4)" }}>
+                      {scope === "global" ? "添加到全局列表（所有用户自动可见）" : "添加到本机列表（仅本浏览器）"}
+                    </div>
+                    <div className="flex items-center gap-1.5">
+                      <input
+                        value={draft}
+                        onChange={(e) => setDraft(e.target.value)}
+                        onKeyDown={(e) => { if (e.key === "Enter") submit(); }}
+                        placeholder="http://127.0.0.1:8188"
+                        spellCheck={false}
+                        style={{ flex: 1, padding: "6px 9px", borderRadius: 8, fontSize: 11, background: "var(--c-input)", border: "1px solid var(--c-bd2)", color: "var(--c-t1)", outline: "none", fontFamily: "monospace" }}
+                      />
+                      <button
+                        onClick={submit}
+                        disabled={!draft.trim()}
+                        className="flex items-center gap-1 px-2.5 rounded-lg text-xs font-medium"
+                        style={{ height: 30, background: draft.trim() ? "oklch(0.72 0.13 175 / 0.15)" : "var(--c-surface)", border: `1px solid ${draft.trim() ? "oklch(0.72 0.13 175 / 0.45)" : "var(--c-bd2)"}`, color: draft.trim() ? "oklch(0.72 0.13 175)" : "var(--c-t4)", cursor: draft.trim() ? "pointer" : "not-allowed" }}
+                      >
+                        <Plus className="w-3 h-3" /> {isAdmin ? (scope === "global" ? "添加(全局)" : "添加(本机)") : "添加"}
+                      </button>
+                    </div>
+                  </>
+                );
+              })()}
             </div>
 
             {/* Resize handle */}
