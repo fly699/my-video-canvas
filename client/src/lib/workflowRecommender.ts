@@ -23,7 +23,8 @@ export interface RecModelList {
 export type ModelFamily =
   | "flux" | "sd3" | "sdxl" | "pony" | "sd15"
   | "wan" | "ltxv" | "hunyuanVideo" | "svd" | "animatediff"
-  | "controlnet" | "ipadapter" | "upscale";
+  | "controlnet" | "ipadapter" | "upscale"
+  | "loraSpeed" | "lora";
 
 export type BuiltinNodeType = "comfyui_image" | "comfyui_video";
 
@@ -186,6 +187,31 @@ export function recommendWorkflows(models: RecModelList): FamilyRec[] {
       query: "ComfyUI upscale",
       builtins: [],
       externals: [{ title: "超分放大工作流", desc: "ESRGAN/4x 等模型放大 + 细节修复。", needs: "upscale 模型（如 4x-UltraSharp）" }],
+    });
+  }
+
+  // ── LoRA-aware recommendations ──
+  const loras = models.loras ?? [];
+  if (loras.length > 0) {
+    // Few-step / acceleration LoRAs (LCM / Lightning / Hyper / Turbo / DMD).
+    const speed = pick(loras, /lcm|lightning|hyper|turbo|dmd|tcd/i, 4);
+    if (speed.length > 0) {
+      recs.push({
+        family: "loraSpeed", label: "极速 LoRA（少步出图）", matched: speed,
+        query: "LCM Lightning Hyper ComfyUI",
+        builtins: [],
+        externals: [{ title: "少步加速工作流（LCM/Lightning/Hyper）", desc: "配套采样器/步数/CFG，4~8 步快速出图；在内置文生图节点的 LoRA 里挂上即可。", needs: "对应加速 LoRA + 匹配底模" }],
+      });
+    }
+    // General LoRA stacking — the built-in image nodes already support multi-LoRA.
+    recs.push({
+      family: "lora", label: `LoRA 风格/角色（${loras.length} 个）`, matched: loras.slice(0, 4),
+      query: "LoRA stack ComfyUI workflow",
+      builtins: [],
+      externals: [
+        { title: "多 LoRA 叠加工作流", desc: "把多个风格/角色 LoRA 串联控制画面；内置「文生图/图生图」节点可直接加多个 LoRA。", needs: "你已有的 LoRA + 对应底模" },
+        { title: "角色一致性（LoRA + IPAdapter）", desc: "用人物 LoRA 配合参考图保持同一角色跨镜一致。", needs: "角色 LoRA（可选 IPAdapter）" },
+      ],
     });
   }
 

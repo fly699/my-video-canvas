@@ -46,6 +46,20 @@ describe("recommendWorkflows", () => {
     expect(fam(recs)).toEqual(expect.arrayContaining(["sdxl", "controlnet", "ipadapter", "upscale"]));
   });
 
+  it("recommends from LoRAs: speed LoRAs and general LoRA stacking", () => {
+    const recs = recommendWorkflows({ ckpts: ["dreamshaper_8.safetensors"], loras: ["lcm_lora_sd15.safetensors", "myCharacter.safetensors"] });
+    expect(fam(recs)).toContain("loraSpeed");
+    expect(fam(recs)).toContain("lora");
+    const lora = recs.find((r) => r.family === "lora")!;
+    expect(lora.label).toContain("2");
+  });
+
+  it("does not add LoRA recs when the server has no LoRAs", () => {
+    const recs = recommendWorkflows({ ckpts: ["sd_xl_base_1.0.safetensors"] });
+    expect(fam(recs)).not.toContain("lora");
+    expect(fam(recs)).not.toContain("loraSpeed");
+  });
+
   it("returns nothing for an empty server", () => {
     expect(recommendWorkflows({})).toEqual([]);
   });

@@ -1,8 +1,9 @@
 import { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
-import { Server, Plus, X, Cpu, RefreshCw, Pin, PinOff, Zap, Ban, ListX } from "lucide-react";
+import { Server, Plus, X, Cpu, RefreshCw, Pin, PinOff, Zap, Ban, ListX, Sparkles } from "lucide-react";
 import { toast } from "sonner";
 import { trpc } from "@/lib/trpc";
+import { WorkflowRecommenderDialog } from "./WorkflowRecommenderDialog";
 import { useAuth } from "@/_core/hooks/useAuth";
 import { useComfyServersStore } from "../../hooks/useComfyServersStore";
 import { usePersistentState } from "../../hooks/usePersistentState";
@@ -112,6 +113,8 @@ export function ComfyServerStatusIndicator() {
   const [draft, setDraft] = useState("");
   // Admins pick where a new address goes; non-admins are always local.
   const [addScope, setAddScope] = useState<"global" | "local">("global");
+  // Which server's "recommend workflows" dialog is open.
+  const [recommendFor, setRecommendFor] = useState<string | null>(null);
   const btnRef = useRef<HTMLButtonElement>(null);
   const panelRef = useRef<HTMLDivElement>(null);
   const [btnRect, setBtnRect] = useState<DOMRect | null>(null);
@@ -359,6 +362,7 @@ export function ComfyServerStatusIndicator() {
                               <ActBtn icon={<Zap className="w-3 h-3" />} label="释放显存" color="oklch(0.72 0.18 155)" disabled={busy} onClick={() => runAction(s.baseUrl, "free", "释放显存")} />
                               <ActBtn icon={<Ban className="w-3 h-3" />} label="中断" color="oklch(0.65 0.21 25)" disabled={busy} onClick={() => runAction(s.baseUrl, "interrupt", "中断")} />
                               <ActBtn icon={<ListX className="w-3 h-3" />} label="清空队列" color="oklch(0.74 0.16 80)" disabled={busy} onClick={() => runAction(s.baseUrl, "clearQueue", "清空队列")} />
+                              <ActBtn icon={<Sparkles className="w-3 h-3" />} label="推荐工作流" color="oklch(0.72 0.18 285)" onClick={() => setRecommendFor(s.baseUrl)} />
                               <ActBtn icon={<RefreshCw className="w-3 h-3" />} label="刷新" color="oklch(0.64 0.16 250)" disabled={statusQuery.isFetching} onClick={() => statusQuery.refetch()} />
                             </div>
                           </>
@@ -437,6 +441,8 @@ export function ComfyServerStatusIndicator() {
         </>,
         document.body,
       )}
+
+      {recommendFor && <WorkflowRecommenderDialog baseUrl={recommendFor} onClose={() => setRecommendFor(null)} />}
     </>
   );
 }
