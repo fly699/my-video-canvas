@@ -136,16 +136,35 @@ export function ComfyServerStatusIndicator() {
 
   // Which physical GPU each server uses (its --cuda-device). Crystools reports
   // EVERY host GPU with no per-GPU id and ComfyUI reports a masked index 0 under
-  // CUDA_VISIBLE_DEVICES, so on a shared multi-GPU box this user-set pin is the
-  // only deterministic way to read the right GPU. Synced across this user's tabs.
+  // CUDA_VISIBLE_DEVICES, so on a shared multi-GPU box we can't read it from data.
+  // This map holds the user's MANUAL overrides (synced across this user's tabs).
   const [gpuIndexByUrl, setGpuIndexByUrl] = usePersistentState<Record<string, number>>(
     "ui:comfyStatus:gpuIndex:v1", {},
     { validate: (v) => (v && typeof v === "object" ? (v as Record<string, number>) : null) },
   );
   const setGpuIndex = (url: string, idx: number) => setGpuIndexByUrl((m) => ({ ...m, [url]: idx }));
 
+  // Smart auto-default: when several servers share ONE host (same machine, each
+  // pinned to a different GPU), assign them distinct indices 0,1,2… in order —
+  // the common `--cuda-device 0/1/2/3` per port layout. Removes the manual step in
+  // the typical setup; a manual override always wins. Single-host servers → 0.
+  const autoIndexByUrl: Record<string, number> = (() => {
+    const seenPerHost = new Map<string, number>();
+    const out: Record<string, number> = {};
+    for (const url of servers) {
+      let host: string;
+      try { host = new URL(url).host; } catch { host = url; }
+      const n = seenPerHost.get(host) ?? 0;
+      out[url] = n;
+      seenPerHost.set(host, n + 1);
+    }
+    return out;
+  })();
+  // Effective = manual override ?? auto-by-host-order. Sent to the probe and shown.
+  const effectiveIndexByUrl: Record<string, number> = { ...autoIndexByUrl, ...gpuIndexByUrl };
+
   const statusQuery = trpc.comfyui.serverStatus.useQuery(
-    { baseUrls: servers, gpuIndexByUrl },
+    { baseUrls: servers, gpuIndexByUrl: effectiveIndexByUrl },
     { refetchInterval: 2000, refetchOnWindowFocus: true, staleTime: 1500 },
   );
   // Render the CONFIGURED server union (global ∪ local) directly, overlaying live
