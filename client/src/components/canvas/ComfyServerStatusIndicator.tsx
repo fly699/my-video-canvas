@@ -134,8 +134,18 @@ export function ComfyServerStatusIndicator() {
 
   const visible = open || pinned;
 
+  // Which physical GPU each server uses (its --cuda-device). Crystools reports
+  // EVERY host GPU with no per-GPU id and ComfyUI reports a masked index 0 under
+  // CUDA_VISIBLE_DEVICES, so on a shared multi-GPU box this user-set pin is the
+  // only deterministic way to read the right GPU. Synced across this user's tabs.
+  const [gpuIndexByUrl, setGpuIndexByUrl] = usePersistentState<Record<string, number>>(
+    "ui:comfyStatus:gpuIndex:v1", {},
+    { validate: (v) => (v && typeof v === "object" ? (v as Record<string, number>) : null) },
+  );
+  const setGpuIndex = (url: string, idx: number) => setGpuIndexByUrl((m) => ({ ...m, [url]: idx }));
+
   const statusQuery = trpc.comfyui.serverStatus.useQuery(
-    { baseUrls: servers },
+    { baseUrls: servers, gpuIndexByUrl },
     { refetchInterval: 2000, refetchOnWindowFocus: true, staleTime: 1500 },
   );
   const statuses = (statusQuery.data ?? []) as ComfyServerStatus[];
@@ -281,6 +291,9 @@ export function ComfyServerStatusIndicator() {
                             <div className="flex flex-col gap-1">
                               {s.deviceName && <div style={{ fontSize: 9, color: "var(--c-t3)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }} title={s.deviceName}>{s.deviceName}</div>}
                               <PanelBar label="GPU" pct={s.gpuUtilization ?? null} used={typeof s.gpuUtilization === "number" ? `${s.gpuUtilization}%` : "需Crystools"} />
+                              {s.gpus && s.gpus.length > 1 && (
+                                <GpuPicker gpus={s.gpus} selected={s.gpuIndex ?? 0} onSelect={(i) => setGpuIndex(s.baseUrl, i)} />
+                              )}
                               <PanelBar label="显存" pct={vram} used={gb(s.vramTotalMB != null && s.vramFreeMB != null ? s.vramTotalMB - s.vramFreeMB : undefined)} total={gb(s.vramTotalMB)} />
                               <PanelBar label="内存" pct={ram} used={gb(s.ramTotalMB != null && s.ramFreeMB != null ? s.ramTotalMB - s.ramFreeMB : undefined)} total={gb(s.ramTotalMB)} />
                             </div>
@@ -337,6 +350,40 @@ export function ComfyServerStatusIndicator() {
         document.body,
       )}
     </>
+  );
+}
+
+/** Multi-GPU host → let the user pin which physical GPU this server uses. Each
+ *  chip shows the GPU's live compute %, so the user can wiggle a job and SEE which
+ *  index lights up, then click it. This is the only deterministic mapping: see the
+ *  note in comfyMonitor.ts (Crystools reports all GPUs unindexed; ComfyUI masks the
+ *  index under CUDA_VISIBLE_DEVICES). */
+function GpuPicker({ gpus, selected, onSelect }: { gpus: Array<{ index: number; gpuUtilization?: number }>; selected: number; onSelect: (i: number) => void }) {
+  return (
+    <div className="flex items-center gap-1" style={{ marginTop: 2, flexWrap: "wrap" }}>
+      <span style={{ fontSize: 8.5, color: "var(--c-t4)", marginRight: 1 }} title="此服务器实际使用的显卡（对应启动参数 --cuda-device）。Crystools 会上报主机上所有显卡，需手动指定本服务器用的那一张。">选卡</span>
+      {gpus.map((g) => {
+        const on = g.index === selected;
+        const u = typeof g.gpuUtilization === "number" ? g.gpuUtilization : null;
+        return (
+          <button
+            key={g.index}
+            onClick={() => onSelect(g.index)}
+            title={`GPU ${g.index}${u != null ? ` · ${u}%` : ""}`}
+            className="flex items-center gap-0.5 rounded transition-all"
+            style={{
+              height: 16, padding: "0 4px", fontSize: 8.5, fontWeight: 700, lineHeight: 1,
+              background: on ? "oklch(0.68 0.22 285 / 0.18)" : "var(--c-input)",
+              border: `1px solid ${on ? "oklch(0.68 0.22 285 / 0.5)" : "var(--c-bd2)"}`,
+              color: on ? "oklch(0.74 0.16 285)" : "var(--c-t3)", cursor: "pointer",
+            }}
+          >
+            {g.index}
+            {u != null && <span style={{ color: loadColor(u), fontWeight: 800 }}>{u}%</span>}
+          </button>
+        );
+      })}
+    </div>
   );
 }
 

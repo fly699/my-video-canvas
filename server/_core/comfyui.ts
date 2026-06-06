@@ -11,7 +11,7 @@
 import type { Server as SocketIOServer } from "socket.io";
 import { storagePut, resolveToAbsoluteUrl, assertMinioOnlyWrite, isOwnStorageUrl, toInternalStoragePath } from "server/storage";
 import { assertSafeUrl } from "./videoEditor";
-import { ensureCrystoolsMonitor, getCrystoolsReading } from "./comfyMonitor";
+import { ensureCrystoolsMonitor, getCrystoolsReading, getCrystoolsGpus } from "./comfyMonitor";
 import type { WorkflowParamBinding } from "@shared/types";
 
 const POLL_INTERVAL_MS = 3_000;
@@ -2103,8 +2103,15 @@ export interface ComfyServerStatus {
   ramFreeMB?: number;
   deviceName?: string;
   /** GPU compute utilization 0-100, only when the ComfyUI-Crystools extension is
-   *  installed (vanilla /system_stats does not expose it). Left undefined otherwise. */
+   *  installed (vanilla /system_stats does not expose it). Left undefined otherwise.
+   *  On a multi-GPU host this is the GPU selected by `gpuIndex` (see below). */
   gpuUtilization?: number;
+  /** Every physical GPU Crystools reports on this host (physical order), so the
+   *  client can show a picker and the user can pin which one this server uses. */
+  gpus?: Array<{ index: number; gpuUtilization?: number; vramUsedPercent?: number }>;
+  /** Which physical GPU index was used for `gpuUtilization` (echoes the caller's
+   *  pin, or 0 when unset). */
+  gpuIndex?: number;
   queueRunning?: number;
   queuePending?: number;
   error?: string;
@@ -2113,7 +2120,7 @@ export interface ComfyServerStatus {
 /** Live health/capacity probe for one ComfyUI server: GPU/VRAM/version from
  * /system_stats and queue depth from /queue. Best-effort and never throws —
  * an offline/unreachable server returns { online: false, error }. */
-export async function fetchComfyServerStatus(rawBaseUrl: string): Promise<ComfyServerStatus> {
+export async function fetchComfyServerStatus(rawBaseUrl: string, gpuIndex?: number): Promise<ComfyServerStatus> {
   const out: ComfyServerStatus = { baseUrl: rawBaseUrl, online: false };
   let baseUrl: string;
   try {
@@ -2122,7 +2129,6 @@ export async function fetchComfyServerStatus(rawBaseUrl: string): Promise<ComfyS
     out.error = "地址无效";
     return out;
   }
-  let deviceIndex: number | undefined; // which GPU THIS instance uses (multi-GPU hosts)
   try {
     const res = await fetch(`${baseUrl}/system_stats`, { signal: AbortSignal.timeout(6_000) });
     if (!res.ok) { out.error = `HTTP ${res.status}`; return out; }
@@ -2137,7 +2143,6 @@ export async function fetchComfyServerStatus(rawBaseUrl: string): Promise<ComfyS
     const dev = j.devices?.[0];
     if (dev) {
       if (dev.name) out.deviceName = dev.name;
-      if (typeof dev.index === "number") deviceIndex = dev.index;
       if (typeof dev.vram_total === "number") out.vramTotalMB = Math.round(dev.vram_total / (1024 * 1024));
       if (typeof dev.vram_free === "number") out.vramFreeMB = Math.round(dev.vram_free / (1024 * 1024));
     }
@@ -2160,8 +2165,14 @@ export async function fetchComfyServerStatus(rawBaseUrl: string): Promise<ComfyS
   // read its cached reading here. Empty until the first frame arrives / when
   // Crystools isn't installed.
   ensureCrystoolsMonitor(baseUrl);
-  const vramUsedMB = (out.vramTotalMB != null && out.vramFreeMB != null) ? out.vramTotalMB - out.vramFreeMB : undefined;
-  const mon = getCrystoolsReading(baseUrl, { deviceIndex, vramTotalMB: out.vramTotalMB, vramUsedMB });
+  // Expose every physical GPU Crystools sees so the client can show a picker; the
+  // chosen GPU's compute % comes from the user-pinned physical index (or gpus[0]).
+  const allGpus = getCrystoolsGpus(baseUrl);
+  if (allGpus && allGpus.length > 0) {
+    out.gpus = allGpus.map((g) => ({ index: g.index, gpuUtilization: g.gpuUtilization, vramUsedPercent: g.vramUsedPercent }));
+    out.gpuIndex = (typeof gpuIndex === "number" && gpuIndex >= 0 && gpuIndex < allGpus.length) ? gpuIndex : 0;
+  }
+  const mon = getCrystoolsReading(baseUrl, gpuIndex);
   if (mon?.gpuUtilization != null) out.gpuUtilization = mon.gpuUtilization;
   return out;
 }

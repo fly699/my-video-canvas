@@ -11,6 +11,10 @@ export interface ComfyServerStatus {
   ramFreeMB?: number;
   deviceName?: string;
   gpuUtilization?: number;
+  /** Every physical GPU on the host (physical order) so the user can pin which one
+   *  this server uses; see comfyMonitor for why auto-detection is impossible. */
+  gpus?: Array<{ index: number; gpuUtilization?: number; vramUsedPercent?: number }>;
+  gpuIndex?: number;
   queueRunning?: number;
   queuePending?: number;
   error?: string;
