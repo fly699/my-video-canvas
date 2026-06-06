@@ -13,6 +13,7 @@ import { detectUpstreamImageUrl, detectUpstreamPrompt, fillWorkflowPromptParams,
 import { summarizeComfyWorkflow } from "@/lib/comfyWorkflowSummary";
 import { MediaImage } from "../MediaImage";
 import { isOwnStorageUrl } from "@/lib/ownStorage";
+import { WatermarkedVideo } from "@/components/WatermarkedVideo";
 import { ImageLightbox } from "../ImageLightbox";
 import { toast } from "sonner";
 import {
@@ -1080,7 +1081,8 @@ export const ComfyuiWorkflowNode = memo(function ComfyuiWorkflowNode({ id, selec
               <div>
                 {payload.outputUrls.map((url, i) => (
                   <div key={i} style={{ position: "relative", marginBottom: 8 }}>
-                    <video
+                    <WatermarkedVideo
+                      block
                       src={url}
                       controls
                       style={{ width: "100%", borderRadius: 8, maxHeight: 240, background: "#000" }}

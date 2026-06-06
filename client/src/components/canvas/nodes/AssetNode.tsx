@@ -7,6 +7,7 @@ import { trpc } from "@/lib/trpc";
 import { toast } from "sonner";
 import { isOwnStorageUrl } from "@/lib/ownStorage";
 import { mediaFetchUrl } from "@/lib/download";
+import { WatermarkedVideo } from "@/components/WatermarkedVideo";
 import { MediaImage } from "../MediaImage";
 
 interface Props {
@@ -292,7 +293,7 @@ export const AssetNode = memo(function AssetNode({ id, selected, data }: Props) 
           onContextMenu={(e) => e.preventDefault()}
         >
           <div className="relative" style={{ maxWidth: "90vw", maxHeight: "85vh" }} onClick={(e) => e.stopPropagation()}>
-            <video src={mediaFetchUrl(payload.url)} controls autoPlay controlsList="nodownload" style={{ maxWidth: "90vw", maxHeight: "85vh", borderRadius: 10, background: "#000" }} />
+            <WatermarkedVideo src={mediaFetchUrl(payload.url)} controls autoPlay controlsList="nodownload" style={{ maxWidth: "90vw", maxHeight: "85vh", borderRadius: 10, background: "#000" }} />
             <button
               onClick={() => setVideoPreview(false)}
               className="absolute flex items-center justify-center"

@@ -6,6 +6,7 @@ import type { SubtitleNodeData, SubtitleEntry } from "../../../../../shared/type
 import { trpc } from "@/lib/trpc";
 import { toast } from "sonner";
 import { mediaFetchUrl, onDownloadMedia } from "@/lib/download";
+import { WatermarkedVideo } from "@/components/WatermarkedVideo";
 import { Captions, Loader2, Download, RotateCcw, Mic2, Plus, Trash2, X } from "lucide-react";
 
 interface Props {
@@ -405,7 +406,8 @@ export const SubtitleNode = memo(function SubtitleNode({ id, selected, data }: P
               <div className="flex flex-col gap-1.5">
                 <label style={labelStyle}>烧录后视频</label>
                 <div className="relative">
-                  <video
+                  <WatermarkedVideo
+                    block
                     key={payload.outputUrl}
                     src={mediaFetchUrl(payload.outputUrl)}
                     controls

@@ -6,6 +6,7 @@ import type { SmartCutNodeData } from "../../../../../shared/types";
 import { trpc } from "@/lib/trpc";
 import { toast } from "sonner";
 import { mediaFetchUrl, onDownloadMedia } from "@/lib/download";
+import { WatermarkedVideo } from "@/components/WatermarkedVideo";
 import { Zap, Loader2, Download, RotateCcw } from "lucide-react";
 
 interface Props {
@@ -149,7 +150,7 @@ export const SmartCutNode = memo(function SmartCutNode({ id, selected, data }: P
         {payload.outputUrl && (
           <div className="flex flex-col gap-1.5">
             <div className="relative">
-              <video key={payload.outputUrl} src={mediaFetchUrl(payload.outputUrl)}
+              <WatermarkedVideo block key={payload.outputUrl} src={mediaFetchUrl(payload.outputUrl)}
                 controls className="w-full rounded-lg nodrag" style={{ maxHeight: 120, display: "block", border: `1px solid ${accentA(0.4)}` }} preload="metadata" />
               {isOwnStorageUrl(payload.outputUrl) && (
                 <div title="已存储到 MinIO·长期有效" className="absolute top-1.5 left-1.5 z-10 rounded-full pointer-events-none"
