@@ -309,6 +309,13 @@
       "when": 1780501800000,
       "tag": "0043_download_watermark_toggle",
       "breakpoints": true
+    },
+    {
+      "idx": 44,
+      "version": "5",
+      "when": 1780501900000,
+      "tag": "0044_devtools_block_toggle",
+      "breakpoints": true
     }
   ]
 }

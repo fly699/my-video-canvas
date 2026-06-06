@@ -185,6 +185,8 @@ export const adminRouter = router({
         watermarkEnabled: z.boolean().optional(),
         // Anti-leech: burn the downloader's identity into image/video downloads.
         downloadWatermarkEnabled: z.boolean().optional(),
+        // Anti-leech deterrent: block context menu + devtools shortcuts (non-admin).
+        devtoolsBlockEnabled: z.boolean().optional(),
       }))
       .mutation(async ({ input }) => {
         if (
@@ -193,7 +195,7 @@ export const adminRouter = router({
           input.poyoUploadFallback === undefined && input.minioOnly === undefined &&
           input.preferUpstreamRefSource === undefined && input.downloadAuthEnabled === undefined &&
           input.forceStorageRelay === undefined && input.watermarkEnabled === undefined &&
-          input.downloadWatermarkEnabled === undefined
+          input.downloadWatermarkEnabled === undefined && input.devtoolsBlockEnabled === undefined
         ) {
           throw new TRPCError({ code: "BAD_REQUEST", message: "至少需要指定一项设置" });
         }

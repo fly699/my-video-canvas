@@ -582,6 +582,10 @@ export const storageSettings = mysqlTable("storageSettings", {
   // drawtext), so the leaked file itself is traceable. Off by default; on any
   // ffmpeg failure the original file is served unchanged (downloads never break).
   downloadWatermarkEnabled: boolean("downloadWatermarkEnabled").notNull().default(false),
+  // Anti-leech deterrent (NOT real security): when true, non-admin clients block
+  // the context menu and devtools key shortcuts (F12 / Ctrl+Shift+I/J/C / Ctrl+U).
+  // Trivially bypassable; off by default. Admins are always exempt.
+  devtoolsBlockEnabled: boolean("devtoolsBlockEnabled").notNull().default(false),
   updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
 });
 

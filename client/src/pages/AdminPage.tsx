@@ -395,9 +395,10 @@ function StoragePanel() {
           <ToggleRow
             label="防盗链：始终服务器中转，不暴露真实存储链接"
             description={
-              "开启后：存储代理不再 307 跳转到 S3/MinIO 的真实预签名链接，而是一律由本服务器流式中转。浏览器 F12 的网络面板只能看到需登录的同源 /manus-storage 路径，看不到真实存储地址，无法复制/转发原始链接。\n" +
-              "代价：媒体流量经过应用服务器，占用其带宽（仅在「存储对浏览器可直连」时有差异；自建 MinIO 在 127.0.0.1 时本就走中转，开关无额外影响）。\n" +
-              "说明：仅改变取流路径，不影响上传、生成、播放等任何功能。默认关闭，关闭后与原有行为完全一致。"
+              "作用：让浏览器 F12 看不到 S3/MinIO 的真实预签名直链——存储代理不再 307 跳转，一律由本服务器流式中转，F12 只看到需登录的同源 /manus-storage 路径。\n" +
+              "重要：这【不等于防下载】。已登录用户仍能从该同源链接把字节流存成原文件；它只防『真实直链被复制/转发出去群发盗刷』。要真正限制下载请用『严格下载授权』，要可追责请配合水印。\n" +
+              "代价：媒体流量经应用服务器、占带宽，且自建 MinIO 部署本就走中转（此开关对它无额外影响），仅对『存储可被浏览器直连』的部署有差异。\n" +
+              "仅改取流路径，不影响上传/生成/播放。默认关闭，关闭后与原有行为完全一致。"
             }
             enabled={settings.forceStorageRelay}
             disabled={setMut.isPending}
@@ -430,6 +431,19 @@ function StoragePanel() {
             onClick={() => setMut.mutate({ downloadWatermarkEnabled: !settings.downloadWatermarkEnabled })}
             statusOn="已开启（下载的图片/视频烧入下载者水印）"
             statusOff="已关闭（下载原文件，行为不变）"
+          />
+          <ToggleRow
+            label="阻止 F12 / 右键（仅威慑，非真正安全）"
+            description={
+              "开启后：非管理员页面会拦截右键菜单和开发者工具快捷键（F12、Ctrl+Shift+I/J/C、Ctrl+U）。管理员自己不受影响，便于排障。\n" +
+              "请务必知悉：这只是【弱威慑】，无法真正阻止——用户可在打开页面前先开 devtools、用浏览器菜单、禁用 JS、或直接抓包来绕过。真正防护请依赖下载授权 + 水印 + 服务端鉴权。\n" +
+              "默认关闭，关闭后行为完全不变。"
+            }
+            enabled={settings.devtoolsBlockEnabled}
+            disabled={setMut.isPending}
+            onClick={() => setMut.mutate({ devtoolsBlockEnabled: !settings.devtoolsBlockEnabled })}
+            statusOn="已开启（非管理员拦右键/F12，仅威慑）"
+            statusOff="已关闭（行为不变）"
           />
         </>
       )}

@@ -21,6 +21,7 @@ import { trpc } from "@/lib/trpc";
 import { setDownloadGate } from "@/lib/download";
 import { DownloadNotifier } from "./components/DownloadNotifier";
 import { WatermarkOverlay } from "./components/WatermarkOverlay";
+import { DevtoolsDeterrent } from "./components/DevtoolsDeterrent";
 
 function CanvasWithKey() {
   const params = useParams<{ projectId: string }>();
@@ -123,6 +124,7 @@ function App() {
           <DownloadGateRegistrar />
           <DownloadNotifier />
           <WatermarkOverlay />
+          <DevtoolsDeterrent />
           <WhitelistBlockedDialog />
         </TooltipProvider>
         </CanvasModeProvider>
