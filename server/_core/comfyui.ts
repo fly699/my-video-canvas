@@ -81,6 +81,30 @@ export async function interruptComfy(rawBaseUrl: string): Promise<void> {
   }
 }
 
+/** Unload models + free VRAM on a ComfyUI server (POST /free). */
+export async function freeComfyMemory(rawBaseUrl: string): Promise<void> {
+  const baseUrl = normalizeBaseUrl(rawBaseUrl);
+  const res = await fetch(`${baseUrl}/free`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ unload_models: true, free_memory: true }),
+    signal: AbortSignal.timeout(10_000),
+  });
+  if (!res.ok) throw new Error(`ComfyUI 释放显存失败 (${res.status})`);
+}
+
+/** Clear the pending queue on a ComfyUI server (POST /queue { clear: true }). */
+export async function clearComfyQueue(rawBaseUrl: string): Promise<void> {
+  const baseUrl = normalizeBaseUrl(rawBaseUrl);
+  const res = await fetch(`${baseUrl}/queue`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ clear: true }),
+    signal: AbortSignal.timeout(10_000),
+  });
+  if (!res.ok) throw new Error(`ComfyUI 清空队列失败 (${res.status})`);
+}
+
 // ── Workflow templates ────────────────────────────────────────────────────────
 //
 // Templates use placeholder tokens like "__seed__", "__steps__" that we replace
