@@ -2160,7 +2160,8 @@ export async function fetchComfyServerStatus(rawBaseUrl: string): Promise<ComfyS
   // read its cached reading here. Empty until the first frame arrives / when
   // Crystools isn't installed.
   ensureCrystoolsMonitor(baseUrl);
-  const mon = getCrystoolsReading(baseUrl, deviceIndex);
+  const vramUsedMB = (out.vramTotalMB != null && out.vramFreeMB != null) ? out.vramTotalMB - out.vramFreeMB : undefined;
+  const mon = getCrystoolsReading(baseUrl, { deviceIndex, vramTotalMB: out.vramTotalMB, vramUsedMB });
   if (mon?.gpuUtilization != null) out.gpuUtilization = mon.gpuUtilization;
   return out;
 }
