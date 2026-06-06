@@ -11,6 +11,7 @@ import type { ComfyuiWorkflowNodeData, WorkflowParamBinding } from "../../../../
 import { trpc } from "@/lib/trpc";
 import { detectUpstreamImageUrl, detectUpstreamPrompt, fillWorkflowPromptParams, listUpstreamImageSources, resolveImageParamsWithMap } from "@/lib/comfyWorkflowParams";
 import { summarizeComfyWorkflow } from "@/lib/comfyWorkflowSummary";
+import { detectWorkflowFormat, extractComfyWorkflowsFromPng } from "@/lib/comfyWorkflowImport";
 import { MediaImage } from "../MediaImage";
 import { isOwnStorageUrl } from "@/lib/ownStorage";
 import { WatermarkedVideo } from "@/components/WatermarkedVideo";
@@ -299,6 +300,47 @@ export const ComfyuiWorkflowNode = memo(function ComfyuiWorkflowNode({ id, selec
       toast.error("分析失败：" + (err instanceof Error ? err.message : String(err)));
     }
   }, [analyzeMutation, payload.customBaseUrl, update]);
+
+  // ── File import (drag/drop or picker): .json (API or UI graph) and ComfyUI .png
+  //    (embedded workflow). API JSON → existing analyze flow; UI graph → server
+  //    converts to API (object_info) first. On any failure, a clear toast + the
+  //    existing paste flow remain — no existing path is touched.
+  const convertMutation = trpc.comfyui.convertWorkflow.useMutation();
+  const importFileRef = useRef<HTMLInputElement>(null);
+  const [importing, setImporting] = useState(false);
+
+  const toApiThenAnalyze = useCallback(async (parsed: unknown, rawText: string) => {
+    const fmt = detectWorkflowFormat(parsed);
+    if (fmt === "api") { await handleAnalyze(rawText); return; }
+    if (fmt === "ui") {
+      const r = await convertMutation.mutateAsync({ customBaseUrl: payload.customBaseUrl?.trim() || undefined, uiWorkflow: JSON.stringify(parsed) });
+      await handleAnalyze(r.workflowJson);
+      toast.success("已把 UI 工作流转换为可运行格式");
+      return;
+    }
+    toast.error("无法识别的工作流格式（需 ComfyUI 的 API/UI 工作流）");
+  }, [convertMutation, handleAnalyze, payload.customBaseUrl]);
+
+  const handleFile = useCallback(async (file: File) => {
+    setImporting(true);
+    try {
+      const isPng = /\.png$/i.test(file.name) || file.type === "image/png";
+      if (isPng) {
+        const bytes = new Uint8Array(await file.arrayBuffer());
+        const { promptApi, workflowUi } = extractComfyWorkflowsFromPng(bytes);
+        if (promptApi) { await handleAnalyze(JSON.stringify(promptApi)); toast.success("已从 PNG 读取工作流"); return; }
+        if (workflowUi) { await toApiThenAnalyze(workflowUi, JSON.stringify(workflowUi)); return; }
+        toast.error("该 PNG 未内嵌 ComfyUI 工作流（请用 ComfyUI 生成的图，或导出 JSON）");
+        return;
+      }
+      const text = await file.text();
+      let parsed: unknown;
+      try { parsed = JSON.parse(text); } catch { toast.error("JSON 解析失败"); return; }
+      await toApiThenAnalyze(parsed, text);
+    } catch (err) {
+      toast.error("导入失败：" + (err instanceof Error ? err.message : String(err)));
+    } finally { setImporting(false); }
+  }, [handleAnalyze, toApiThenAnalyze]);
 
   const handleRun = useCallback(async () => {
     const workflowJson = payload.workflowJson ?? "";
@@ -589,7 +631,25 @@ export const ComfyuiWorkflowNode = memo(function ComfyuiWorkflowNode({ id, selec
 
         {/* ── Phase A: Empty ── */}
         {phase === "empty" && (
-          <div>
+          <div
+            onDragOver={(e) => { e.preventDefault(); e.stopPropagation(); }}
+            onDrop={(e) => { e.preventDefault(); e.stopPropagation(); const f = e.dataTransfer.files?.[0]; if (f) void handleFile(f); }}
+          >
+            {/* Import from file (.json / ComfyUI .png) */}
+            <div
+              onClick={() => { if (!importing) importFileRef.current?.click(); }}
+              style={{
+                marginBottom: 8, padding: "10px 12px", borderRadius: 8, cursor: importing ? "wait" : "pointer",
+                border: `1px dashed ${accent}`, background: "var(--c-input)", color: "var(--c-t2)",
+                fontSize: 11.5, textAlign: "center", display: "flex", alignItems: "center", justifyContent: "center", gap: 6,
+              }}
+            >
+              {importing ? <Loader2 size={13} style={{ animation: "spin 1s linear infinite" }} /> : <Workflow size={13} style={{ color: accent }} />}
+              {importing ? "正在导入…" : "拖入或点击导入工作流文件（.json / ComfyUI .png）"}
+            </div>
+            <input ref={importFileRef} type="file" accept=".json,application/json,.png,image/png" style={{ display: "none" }}
+              onChange={(e) => { const f = e.target.files?.[0]; if (f) void handleFile(f); e.target.value = ""; }} />
+
             {/* Preset buttons */}
             <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginBottom: 8 }}>
               {[

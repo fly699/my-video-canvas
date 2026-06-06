@@ -45,7 +45,7 @@ import { signUploadToken } from "../_core/uploadToken";
 import { getCachedStorageSettings } from "../_core/storageConfig";
 import { invokeLLM, extractTextContent } from "../_core/llm";
 import { generateImage } from "../_core/imageGeneration";
-import { generateComfyImage, generateComfyVideo, fetchComfyModels, fetchComfyServerStatus, analyzeWorkflow, executeCustomWorkflow, executeCloudWorkflow, testCloudConnection, uploadImageForWorkflow, interruptComfy, freeComfyMemory, clearComfyQueue, emptyModelList } from "../_core/comfyui";
+import { generateComfyImage, generateComfyVideo, fetchComfyModels, fetchComfyServerStatus, analyzeWorkflow, convertUiWorkflowToApi, executeCustomWorkflow, executeCloudWorkflow, testCloudConnection, uploadImageForWorkflow, interruptComfy, freeComfyMemory, clearComfyQueue, emptyModelList } from "../_core/comfyui";
 import type { ComfyModelList } from "../_core/comfyui";
 import { ENV } from "../_core/env";
 import { isPoyoVideoProvider, submitPoyoVideo, checkPoyoVideoStatus } from "../_core/poyoVideo";
@@ -2539,6 +2539,25 @@ export const comfyuiRouter = router({
       const baseUrl = input.customBaseUrl?.trim() || ENV.comfyuiBaseUrl || undefined;
       try {
         return await analyzeWorkflow(input.workflowJson, baseUrl);
+      } catch (err) {
+        throw new TRPCError({ code: "BAD_REQUEST", message: err instanceof Error ? err.message : String(err) });
+      }
+    }),
+
+  // Convert a ComfyUI UI-graph ("workflow") JSON to runnable API ("prompt") JSON,
+  // using the server's /object_info. Best-effort; throws a clear message on
+  // failure so the client falls back to asking for the API format.
+  convertWorkflow: protectedProcedure
+    .input(z.object({
+      customBaseUrl: z.string().max(2048).optional(),
+      uiWorkflow: z.string().max(5_000_000),
+    }))
+    .mutation(async ({ ctx, input }) => {
+      await assertComfyuiAllowed(ctx);
+      const baseUrl = input.customBaseUrl?.trim() || ENV.comfyuiBaseUrl;
+      if (!baseUrl) throw new TRPCError({ code: "BAD_REQUEST", message: "未配置 ComfyUI 服务器地址，无法读取节点定义以转换" });
+      try {
+        return { workflowJson: await convertUiWorkflowToApi(input.uiWorkflow, baseUrl) };
       } catch (err) {
         throw new TRPCError({ code: "BAD_REQUEST", message: err instanceof Error ? err.message : String(err) });
       }

@@ -12,6 +12,7 @@ import type { Server as SocketIOServer } from "socket.io";
 import { storagePut, resolveToAbsoluteUrl, assertMinioOnlyWrite, isOwnStorageUrl, toInternalStoragePath } from "server/storage";
 import { assertSafeUrl } from "./videoEditor";
 import { ensureCrystoolsMonitor, getCrystoolsReading, getCrystoolsGpus } from "./comfyMonitor";
+import { convertUiWorkflowToApiPrompt } from "./comfyWorkflowConvert";
 import type { WorkflowParamBinding } from "@shared/types";
 
 const POLL_INTERVAL_MS = 3_000;
@@ -1315,6 +1316,21 @@ const VIDEO_OUTPUT_CLASS_TYPES = new Set(["VHS_VideoCombine", "SaveAnimatedWEBP"
 const IMAGE_OUTPUT_CLASS_TYPES = new Set(["SaveImage", "PreviewImage"]);
 
 type WorkflowJson = Record<string, { class_type: string; inputs: Record<string, unknown>; _meta?: { title?: string } }>;
+
+/** Convert a ComfyUI UI-graph ("workflow") JSON to runnable API ("prompt") JSON,
+ *  fetching the server's /object_info to map widgets→inputs. Throws (caller shows
+ *  the message + falls back to "use API format") rather than emit a partial graph. */
+export async function convertUiWorkflowToApi(uiWorkflowJson: string, rawBaseUrl: string): Promise<string> {
+  const baseUrl = normalizeBaseUrl(rawBaseUrl);
+  let ui: unknown;
+  try { ui = JSON.parse(uiWorkflowJson); } catch { throw new Error("工作流 JSON 解析失败"); }
+  const res = await fetch(`${baseUrl}/object_info`, { signal: AbortSignal.timeout(20_000) });
+  if (!res.ok) throw new Error(`读取节点定义失败 (HTTP ${res.status})`);
+  const objectInfo = (await res.json()) as Record<string, { input?: { required?: Record<string, unknown>; optional?: Record<string, unknown> } }>;
+  const { prompt, error } = convertUiWorkflowToApiPrompt(ui as Parameters<typeof convertUiWorkflowToApiPrompt>[0], objectInfo);
+  if (error || !prompt) throw new Error(error ?? "无法转换该工作流");
+  return JSON.stringify(prompt);
+}
 
 export async function analyzeWorkflow(
   workflowJson: string,
