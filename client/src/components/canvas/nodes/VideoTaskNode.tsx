@@ -19,6 +19,7 @@ import { CinematographyPicker } from "../CinematographyPicker";
 import { RefImageReachabilityBadge, RefImageSwitchButton, useRefImageGuard, providerNeedsPublicMedia, usePreferUpstreamRefSource, useAutoPreferUpstreamRefSource } from "../mediaReachability";
 import { ModelPicker } from "../ModelPicker";
 import { ImageLightbox } from "../ImageLightbox";
+import { WatermarkedVideo } from "@/components/WatermarkedVideo";
 import { ReferenceImageStrip } from "../ReferenceImageStrip";
 import { useReferenceImages } from "../../../hooks/useReferenceImages";
 import { MediaImage } from "../MediaImage";
@@ -66,7 +67,8 @@ function ShotItem({ u, idx }: { u: string; idx: number }) {
     <div>
       <div className="relative rounded-lg overflow-hidden" style={{ borderWidth: 1, borderStyle: "solid", borderColor: "oklch(0.72 0.18 155 / 0.30)" }}>
         {storedInMinio && <MinioStorageBadge />}
-        <video
+        <WatermarkedVideo
+          block
           src={src}
           controls
           className="w-full nodrag"
@@ -1011,7 +1013,8 @@ export const VideoTaskNode = memo(function VideoTaskNode({ id, selected, data }:
   // controls) until it has actually produced a video.
   const heroMedia = payload.status === "succeeded" && videoSrc ? (
     <div className="relative" style={{ width: "100%" }}>
-      <video
+      <WatermarkedVideo
+        block
         src={videoSrc}
         controls
         className="w-full"
@@ -1075,7 +1078,8 @@ export const VideoTaskNode = memo(function VideoTaskNode({ id, selected, data }:
               <>
                 <div className="relative rounded-lg overflow-hidden" style={{ borderWidth: 1, borderStyle: "solid", borderColor: STATUS.succeeded.borderColor }}>
                   {videoStoredInMinio && <MinioStorageBadge />}
-                  <video
+                  <WatermarkedVideo
+                    block
                     key={videoSrc}
                     src={videoSrc}
                     controls
@@ -1322,7 +1326,8 @@ export const VideoTaskNode = memo(function VideoTaskNode({ id, selected, data }:
                       }}
                     >
                       {result.status === "done" && isSafeMediaUrl(result.videoUrl) ? (
-                        <video
+                        <WatermarkedVideo
+                          block
                           src={mediaFetchUrl(result.videoUrl!)}
                           controls
                           className="w-full nodrag"

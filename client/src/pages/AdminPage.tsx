@@ -1,10 +1,12 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useLocation } from "wouter";
 import { trpc } from "@/lib/trpc";
 import { useAuth } from "@/_core/hooks/useAuth";
 import { Shield, Trash2, Plus, ToggleLeft, ToggleRight, ClipboardList, RefreshCw, HardDrive, ArrowLeft, Loader2, CheckCircle2, XCircle, DownloadCloud, RotateCw, GitCommit, X, Check, CheckSquare, Square, Download, Play } from "lucide-react";
 import { ComfyStressPanel } from "@/components/admin/ComfyStressPanel";
 import { WatermarkedVideo } from "@/components/WatermarkedVideo";
+import { downloadTextFile } from "@/lib/download";
+import { toast } from "sonner";
 import { adminTabFromUrl, ADMIN_TAB_EVENT } from "@/lib/adminNav";
 
 type EntryType = "ip" | "user";
@@ -185,6 +187,72 @@ function StoragePanel() {
   // failing pipeline stage so the fix is obvious.
   const testMut = trpc.admin.storage.test.useMutation();
 
+  // Admin config export/import: the storage-settings panel + admin-managed global
+  // ComfyUI servers and per-server GPU pins, as a single JSON file (backup /
+  // migrate between deployments).
+  const setGlobalServersMut = trpc.comfyui.setGlobalServers.useMutation();
+  const setGlobalGpuMut = trpc.comfyui.setGlobalGpuIndex.useMutation();
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const [ioBusy, setIoBusy] = useState(false);
+
+  const STORAGE_KEYS = [
+    "persistAudio", "persistVideo", "persistImage", "presignTtlSec", "poyoUploadFallback",
+    "minioOnly", "preferUpstreamRefSource", "downloadAuthEnabled", "forceStorageRelay",
+    "watermarkEnabled", "downloadWatermarkEnabled", "devtoolsBlockEnabled",
+  ] as const;
+
+  const exportConfig = async () => {
+    setIoBusy(true);
+    try {
+      const [s, comfyServers, comfyGpuIndex] = await Promise.all([
+        utils.admin.storage.getSettings.fetch(),
+        utils.comfyui.globalServers.fetch(),
+        utils.comfyui.globalGpuIndex.fetch(),
+      ]);
+      const storageSettings: Record<string, boolean | number> = {};
+      for (const k of STORAGE_KEYS) { const v = (s as Record<string, unknown>)[k]; if (typeof v === "boolean" || typeof v === "number") storageSettings[k] = v; }
+      const cfg = {
+        _type: "ai-video-canvas-admin-config",
+        _version: 1,
+        exportedAt: new Date().toISOString(),
+        storageSettings,
+        comfyServers,
+        comfyGpuIndex,
+      };
+      downloadTextFile(`avc-admin-config-${new Date().toISOString().slice(0, 10)}.json`, JSON.stringify(cfg, null, 2));
+      toast.success("配置已导出");
+    } catch (e) {
+      toast.error(`导出失败：${e instanceof Error ? e.message : String(e)}`);
+    } finally { setIoBusy(false); }
+  };
+
+  const importConfig = async (file: File) => {
+    setIoBusy(true);
+    try {
+      const cfg = JSON.parse(await file.text()) as Record<string, unknown>;
+      if (cfg._type !== "ai-video-canvas-admin-config") throw new Error("不是有效的管理员配置文件");
+      if (!confirm("导入将用文件内容覆盖当前的存储设置、全局 ComfyUI 服务器与显卡选择，确定继续？")) { setIoBusy(false); return; }
+      const ss = (cfg.storageSettings ?? {}) as Record<string, unknown>;
+      const patch: Record<string, boolean | number> = {};
+      for (const k of STORAGE_KEYS) { const v = ss[k]; if (typeof v === "boolean" || typeof v === "number") patch[k] = v; }
+      if (Object.keys(patch).length > 0) await setMut.mutateAsync(patch);
+      if (Array.isArray(cfg.comfyServers)) await setGlobalServersMut.mutateAsync({ servers: (cfg.comfyServers as unknown[]).filter((u): u is string => typeof u === "string") });
+      if (cfg.comfyGpuIndex && typeof cfg.comfyGpuIndex === "object") {
+        const gi: Record<string, number> = {};
+        for (const [k, v] of Object.entries(cfg.comfyGpuIndex as Record<string, unknown>)) if (typeof v === "number" && Number.isInteger(v) && v >= 0 && v <= 63) gi[k] = v;
+        await setGlobalGpuMut.mutateAsync({ gpuIndex: gi });
+      }
+      await Promise.all([
+        utils.admin.storage.getSettings.invalidate(),
+        utils.comfyui.globalServers.invalidate(),
+        utils.comfyui.globalGpuIndex.invalidate(),
+      ]);
+      toast.success("配置已导入并生效");
+    } catch (e) {
+      toast.error(`导入失败：${e instanceof Error ? e.message : String(e)}`);
+    } finally { setIoBusy(false); }
+  };
+
   const settings = settingsQuery.data;
   const loading = settingsQuery.isLoading;
 
@@ -205,6 +273,28 @@ function StoragePanel() {
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+      {/* Config export / import (backup & migrate between deployments) */}
+      <div style={{ ...cardStyle, alignItems: "stretch", padding: "14px 20px" }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
+          <DownloadCloud style={{ width: 18, height: 18, color: "oklch(0.72 0.2 285)", flexShrink: 0 }} />
+          <div style={{ flex: 1, minWidth: 200 }}>
+            <h3 style={{ margin: 0, fontSize: 14, fontWeight: 600, color: "var(--c-t1, #f0f0f4)" }}>配置 导出 / 导入</h3>
+            <p style={{ margin: "2px 0 0", fontSize: 12, color: "var(--c-t3, rgba(255,255,255,0.55))" }}>
+              导出本页存储设置 + 全局 ComfyUI 服务器与显卡选择为 JSON，便于备份或迁移到其他部署。导入会覆盖当前对应配置。
+            </p>
+          </div>
+          <button onClick={() => void exportConfig()} disabled={ioBusy}
+            style={{ display: "flex", alignItems: "center", gap: 6, padding: "7px 12px", borderRadius: 8, fontSize: 13, fontWeight: 600, cursor: ioBusy ? "not-allowed" : "pointer", color: "#fff", background: "oklch(0.6 0.16 250)", border: "none", opacity: ioBusy ? 0.6 : 1 }}>
+            <DownloadCloud style={{ width: 14, height: 14 }} /> 导出
+          </button>
+          <button onClick={() => fileInputRef.current?.click()} disabled={ioBusy}
+            style={{ display: "flex", alignItems: "center", gap: 6, padding: "7px 12px", borderRadius: 8, fontSize: 13, fontWeight: 600, cursor: ioBusy ? "not-allowed" : "pointer", color: "var(--c-t1)", background: "var(--c-input, #1a1a20)", border: "1px solid var(--c-bd2)", opacity: ioBusy ? 0.6 : 1 }}>
+            <RotateCw style={{ width: 14, height: 14 }} /> 导入
+          </button>
+          <input ref={fileInputRef} type="file" accept="application/json,.json" style={{ display: "none" }}
+            onChange={(e) => { const f = e.target.files?.[0]; if (f) void importConfig(f); e.target.value = ""; }} />
+        </div>
+      </div>
       <div style={{ ...cardStyle, alignItems: "stretch", padding: "16px 20px" }}>
         <div style={{ display: "flex", alignItems: "flex-start", gap: 12, marginBottom: 8 }}>
           <HardDrive style={{ width: 18, height: 18, color: "oklch(0.72 0.2 285)", flexShrink: 0, marginTop: 2 }} />
@@ -395,9 +485,10 @@ function StoragePanel() {
           <ToggleRow
             label="防盗链：始终服务器中转，不暴露真实存储链接"
             description={
-              "开启后：存储代理不再 307 跳转到 S3/MinIO 的真实预签名链接，而是一律由本服务器流式中转。浏览器 F12 的网络面板只能看到需登录的同源 /manus-storage 路径，看不到真实存储地址，无法复制/转发原始链接。\n" +
-              "代价：媒体流量经过应用服务器，占用其带宽（仅在「存储对浏览器可直连」时有差异；自建 MinIO 在 127.0.0.1 时本就走中转，开关无额外影响）。\n" +
-              "说明：仅改变取流路径，不影响上传、生成、播放等任何功能。默认关闭，关闭后与原有行为完全一致。"
+              "作用：让浏览器 F12 看不到 S3/MinIO 的真实预签名直链——存储代理不再 307 跳转，一律由本服务器流式中转，F12 只看到需登录的同源 /manus-storage 路径。\n" +
+              "重要：这【不等于防下载】。已登录用户仍能从该同源链接把字节流存成原文件；它只防『真实直链被复制/转发出去群发盗刷』。要真正限制下载请用『严格下载授权』，要可追责请配合水印。\n" +
+              "代价：媒体流量经应用服务器、占带宽，且自建 MinIO 部署本就走中转（此开关对它无额外影响），仅对『存储可被浏览器直连』的部署有差异。\n" +
+              "仅改取流路径，不影响上传/生成/播放。默认关闭，关闭后与原有行为完全一致。"
             }
             enabled={settings.forceStorageRelay}
             disabled={setMut.isPending}
@@ -430,6 +521,19 @@ function StoragePanel() {
             onClick={() => setMut.mutate({ downloadWatermarkEnabled: !settings.downloadWatermarkEnabled })}
             statusOn="已开启（下载的图片/视频烧入下载者水印）"
             statusOff="已关闭（下载原文件，行为不变）"
+          />
+          <ToggleRow
+            label="阻止 F12 / 右键（仅威慑，非真正安全）"
+            description={
+              "开启后：非管理员页面会拦截右键菜单和开发者工具快捷键（F12、Ctrl+Shift+I/J/C、Ctrl+U）。管理员自己不受影响，便于排障。\n" +
+              "请务必知悉：这只是【弱威慑】，无法真正阻止——用户可在打开页面前先开 devtools、用浏览器菜单、禁用 JS、或直接抓包来绕过。真正防护请依赖下载授权 + 水印 + 服务端鉴权。\n" +
+              "默认关闭，关闭后行为完全不变。"
+            }
+            enabled={settings.devtoolsBlockEnabled}
+            disabled={setMut.isPending}
+            onClick={() => setMut.mutate({ devtoolsBlockEnabled: !settings.devtoolsBlockEnabled })}
+            statusOn="已开启（非管理员拦右键/F12，仅威慑）"
+            statusOff="已关闭（行为不变）"
           />
         </>
       )}

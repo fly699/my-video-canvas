@@ -404,19 +404,26 @@ export async function storageGetSignedUrl(relKey: string): Promise<string> {
  */
 export async function storageFetchStream(
   relKey: string,
-): Promise<{ body: Readable; contentType?: string; contentLength?: number }> {
+  range?: string,
+): Promise<{ body: Readable; contentType?: string; contentLength?: number; contentRange?: string; status: number; acceptRanges: boolean }> {
   const key = normalizeKey(relKey);
+  // Only forward a well-formed byte range; anything else is treated as a full GET
+  // (so a malformed header can't turn into a backend 416 / parse error).
+  const safeRange = typeof range === "string" && /^bytes=/.test(range) ? range : undefined;
   if (storageBackend() === "s3") {
-    const out = await getS3().send(new GetObjectCommand({ Bucket: ENV.s3Bucket, Key: key }));
+    const out = await getS3().send(new GetObjectCommand({ Bucket: ENV.s3Bucket, Key: key, Range: safeRange }));
     return {
       body: out.Body as Readable,
       contentType: out.ContentType,
       contentLength: typeof out.ContentLength === "number" ? out.ContentLength : undefined,
+      contentRange: out.ContentRange,
+      status: out.ContentRange ? 206 : 200,
+      acceptRanges: true, // S3/MinIO always honor byte ranges
     };
   }
   const signed = await storagePresignGet(key);
-  const resp = await fetch(signed, { signal: AbortSignal.timeout(30_000) });
-  if (!resp.ok || !resp.body) {
+  const resp = await fetch(signed, { headers: safeRange ? { Range: safeRange } : undefined, signal: AbortSignal.timeout(30_000) });
+  if (!resp.ok || !resp.body) { // 200 and 206 are both .ok (200–299)
     throw new Error(`Storage fetch failed (${resp.status})`);
   }
   const { Readable: NodeReadable } = await import("node:stream");
@@ -425,5 +432,8 @@ export async function storageFetchStream(
     body: NodeReadable.fromWeb(resp.body as Parameters<typeof NodeReadable.fromWeb>[0]),
     contentType: resp.headers.get("content-type") ?? undefined,
     contentLength: lenHeader ? Number(lenHeader) : undefined,
+    contentRange: resp.headers.get("content-range") ?? undefined,
+    status: resp.status,
+    acceptRanges: resp.status === 206 || (resp.headers.get("accept-ranges") ?? "").includes("bytes"),
   };
 }

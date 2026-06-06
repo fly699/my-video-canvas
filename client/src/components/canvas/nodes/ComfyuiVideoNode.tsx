@@ -9,6 +9,7 @@ import { SyncConfigDialog } from "../SyncConfigDialog";
 import { NodeConfigTabs } from "../NodeConfigTabs";
 import { useCanvasStore } from "../../../hooks/useCanvasStore";
 import { usePreferUpstreamRefSource, useAutoPreferUpstreamRefSource } from "../mediaReachability";
+import { WatermarkedVideo } from "@/components/WatermarkedVideo";
 import type { ComfyuiVideoNodeData } from "../../../../../shared/types";
 import { trpc } from "@/lib/trpc";
 import { toast } from "sonner";
@@ -278,7 +279,8 @@ export const ComfyuiVideoNode = memo(function ComfyuiVideoNode({ id, selected, d
   // controls) until it has actually produced a video.
   const heroMedia = payload.status === "done" && videoSrc ? (
     <div className="relative" style={{ width: "100%" }}>
-      <video
+      <WatermarkedVideo
+        block
         src={videoSrc}
         controls
         className="w-full"
@@ -352,7 +354,8 @@ export const ComfyuiVideoNode = memo(function ComfyuiVideoNode({ id, selected, d
                   style={{ background: "oklch(0.72 0.18 155)", boxShadow: "0 0 0 2.5px oklch(0.72 0.18 155 / 0.35)" }}
                 />
               )}
-              <video
+              <WatermarkedVideo
+                block
                 key={videoSrc}
                 src={videoSrc}
                 controls

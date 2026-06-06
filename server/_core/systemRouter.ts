@@ -1,14 +1,15 @@
 import { z } from "zod";
 import { notifyOwner } from "./notification";
 import { adminProcedure, protectedProcedure, publicProcedure, router } from "./trpc";
-import { isWatermarkEnabled } from "./storageConfig";
+import { isWatermarkEnabled, isDevtoolsBlockEnabled } from "./storageConfig";
 
 export const systemRouter = router({
   // App-wide media-protection flags readable by any logged-in user (the watermark
-  // overlay needs to know whether to render). Admin-only settings stay in the
-  // admin router; this exposes ONLY the booleans clients must act on.
+  // overlay / devtools deterrent need to know whether to act). Admin-only settings
+  // stay in the admin router; this exposes ONLY the booleans clients must act on.
   mediaProtection: protectedProcedure.query(async () => ({
     watermarkEnabled: await isWatermarkEnabled(),
+    devtoolsBlock: await isDevtoolsBlockEnabled(),
   })),
 
   health: publicProcedure

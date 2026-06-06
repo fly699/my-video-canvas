@@ -6,6 +6,7 @@ import type { OverlayNodeData } from "../../../../../shared/types";
 import { trpc } from "@/lib/trpc";
 import { toast } from "sonner";
 import { mediaFetchUrl, onDownloadMedia } from "@/lib/download";
+import { WatermarkedVideo } from "@/components/WatermarkedVideo";
 import { Blend, Loader2, CheckCircle2, XCircle, Download, Play } from "lucide-react";
 
 interface Props {
@@ -344,7 +345,8 @@ export const OverlayNode = memo(function OverlayNode({ id, selected, data }: Pro
         {isDone && payload.outputUrl && videoSrc && (
           <div className="flex-shrink-0">
             <div className="relative rounded-lg overflow-hidden" style={{ borderWidth: 1, borderStyle: "solid", borderColor: "oklch(0.65 0.18 155 / 0.35)" }}>
-              <video
+              <WatermarkedVideo
+                block
                 key={videoSrc}
                 src={videoSrc}
                 controls

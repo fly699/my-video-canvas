@@ -6,6 +6,7 @@ import { trpc } from "@/lib/trpc";
 import { toast } from "sonner";
 import { mediaFetchUrl } from "@/lib/download";
 import { isOwnStorageUrl } from "@/lib/ownStorage";
+import { WatermarkedVideo } from "@/components/WatermarkedVideo";
 import { NodeTextArea } from "../NodeTextInput";
 import { compareUpstreamNodes } from "../../../lib/inputOrder";
 import { Merge, Loader2, RotateCcw, Music, ChevronDown, GripVertical, X } from "lucide-react";
@@ -228,7 +229,8 @@ export const MergeNode = memo(function MergeNode({ id, selected, data }: Props) 
         {isDone && payload.outputUrl && (
           <div className="flex flex-col gap-1.5 flex-1" style={{ minHeight: 0 }}>
             <div className="relative" style={{ flex: 1, minHeight: 0, display: "flex" }}>
-              <video
+              <WatermarkedVideo
+                block
                 key={payload.outputUrl}
                 src={mediaFetchUrl(payload.outputUrl)}
                 controls
