@@ -2074,6 +2074,12 @@ export interface ComfyServerStatus {
   version?: string;
   vramTotalMB?: number;
   vramFreeMB?: number;
+  ramTotalMB?: number;
+  ramFreeMB?: number;
+  deviceName?: string;
+  /** GPU compute utilization 0-100, only when the ComfyUI-Crystools extension is
+   *  installed (vanilla /system_stats does not expose it). Left undefined otherwise. */
+  gpuUtilization?: number;
   queueRunning?: number;
   queuePending?: number;
   error?: string;
@@ -2095,13 +2101,16 @@ export async function fetchComfyServerStatus(rawBaseUrl: string): Promise<ComfyS
     const res = await fetch(`${baseUrl}/system_stats`, { signal: AbortSignal.timeout(6_000) });
     if (!res.ok) { out.error = `HTTP ${res.status}`; return out; }
     const j = (await res.json()) as {
-      system?: { comfyui_version?: string };
-      devices?: Array<{ vram_total?: number; vram_free?: number }>;
+      system?: { comfyui_version?: string; ram_total?: number; ram_free?: number };
+      devices?: Array<{ name?: string; type?: string; vram_total?: number; vram_free?: number }>;
     };
     out.online = true;
     out.version = j.system?.comfyui_version;
+    if (typeof j.system?.ram_total === "number") out.ramTotalMB = Math.round(j.system.ram_total / (1024 * 1024));
+    if (typeof j.system?.ram_free === "number") out.ramFreeMB = Math.round(j.system.ram_free / (1024 * 1024));
     const dev = j.devices?.[0];
     if (dev) {
+      if (dev.name) out.deviceName = dev.name;
       if (typeof dev.vram_total === "number") out.vramTotalMB = Math.round(dev.vram_total / (1024 * 1024));
       if (typeof dev.vram_free === "number") out.vramFreeMB = Math.round(dev.vram_free / (1024 * 1024));
     }
@@ -2118,6 +2127,16 @@ export async function fetchComfyServerStatus(rawBaseUrl: string): Promise<ComfyS
       if (Array.isArray(q.queue_pending)) out.queuePending = q.queue_pending.length;
     }
   } catch { /* queue is optional */ }
+  // GPU compute utilization (best-effort; only the ComfyUI-Crystools extension
+  // exposes this over HTTP — vanilla ComfyUI does not. Never throws.)
+  try {
+    const cr = await fetch(`${baseUrl}/crystools/monitor`, { signal: AbortSignal.timeout(3_000) });
+    if (cr.ok) {
+      const m = (await cr.json()) as { gpus?: Array<{ gpu_utilization?: number }> };
+      const g = m.gpus?.[0]?.gpu_utilization;
+      if (typeof g === "number" && isFinite(g)) out.gpuUtilization = Math.max(0, Math.min(100, Math.round(g)));
+    }
+  } catch { /* crystools is optional */ }
   return out;
 }
 
