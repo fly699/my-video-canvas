@@ -4,6 +4,7 @@ import { trpc } from "@/lib/trpc";
 import { useAuth } from "@/_core/hooks/useAuth";
 import { Shield, Trash2, Plus, ToggleLeft, ToggleRight, ClipboardList, RefreshCw, HardDrive, ArrowLeft, Loader2, CheckCircle2, XCircle, DownloadCloud, RotateCw, GitCommit, X, Check, CheckSquare, Square, Download, Play } from "lucide-react";
 import { ComfyStressPanel } from "@/components/admin/ComfyStressPanel";
+import { WatermarkedVideo } from "@/components/WatermarkedVideo";
 import { adminTabFromUrl, ADMIN_TAB_EVENT } from "@/lib/adminNav";
 
 type EntryType = "ip" | "user";
@@ -1526,7 +1527,7 @@ function AdminAssetLightbox({ asset, onClose }: { asset: AdminAsset; onClose: ()
           {asset.type === "image" ? (
             <img src={asset.url} alt={asset.name} style={{ maxWidth: "100%", maxHeight: "72vh", objectFit: "contain" }} />
           ) : asset.type === "video" ? (
-            <video src={asset.url} controls autoPlay style={{ maxWidth: "100%", maxHeight: "72vh" }} />
+            <WatermarkedVideo src={asset.url} controls autoPlay style={{ maxWidth: "100%", maxHeight: "72vh" }} />
           ) : asset.type === "audio" ? (
             <audio src={asset.url} controls autoPlay style={{ width: "100%" }} />
           ) : (

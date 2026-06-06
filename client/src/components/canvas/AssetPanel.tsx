@@ -7,6 +7,7 @@ import { Upload, X, FileImage, FileVideo, FileAudio, File, Trash2, Plus, Loader2
 import { ImageLightbox } from "./ImageLightbox";
 import { uploadAssetFile } from "@/lib/assetUpload";
 import { downloadMedia } from "@/lib/download";
+import { WatermarkedVideo } from "@/components/WatermarkedVideo";
 
 interface Props {
   projectId: number;
@@ -435,7 +436,7 @@ export function AssetPanel({ projectId, onClose, onHeaderMouseDown }: Props) {
           onContextMenu={(e) => e.preventDefault()}
         >
           <div className="relative" style={{ maxWidth: "90vw", maxHeight: "85vh" }} onClick={(e) => e.stopPropagation()}>
-            <video src={videoPreview} controls autoPlay controlsList="nodownload" style={{ maxWidth: "90vw", maxHeight: "85vh", borderRadius: 10, background: "#000" }} />
+            <WatermarkedVideo src={videoPreview} controls autoPlay controlsList="nodownload" style={{ maxWidth: "90vw", maxHeight: "85vh", borderRadius: 10, background: "#000" }} />
             <button
               onClick={() => setVideoPreview(null)}
               className="absolute flex items-center justify-center"

@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback, memo } from "react";
 import { X, ChevronLeft, ChevronRight, FileText, Paperclip } from "lucide-react";
+import { WatermarkedVideo } from "@/components/WatermarkedVideo";
 import type { CanvasNode } from "../../hooks/useCanvasStore";
 import { getNodeConfig, NODE_ICONS } from "../../lib/nodeConfig";
 import type {
@@ -126,7 +127,7 @@ function SlideContent({ node }: { node: CanvasNode }) {
         {d.type === "image" && d.url ? (
           <img src={d.url} alt={d.name} className="max-w-full max-h-full object-contain rounded-lg" />
         ) : d.type === "video" && d.url ? (
-          <video src={d.url} controls className="max-w-full max-h-full rounded-lg" />
+          <WatermarkedVideo src={d.url} controls className="max-w-full max-h-full rounded-lg" />
         ) : (
           <div className="flex flex-col items-center gap-3" style={{ color: "var(--c-t4)" }}>
             <Paperclip style={{ width: 40, height: 40 }} />
@@ -143,7 +144,7 @@ function SlideContent({ node }: { node: CanvasNode }) {
     return (
       <div className="w-full h-full flex flex-col gap-4 p-5 overflow-auto">
         {d.resultVideoUrl ? (
-          <video
+          <WatermarkedVideo
             src={d.resultVideoUrl?.startsWith("http") ? `/api/video-proxy?url=${encodeURIComponent(d.resultVideoUrl)}` : d.resultVideoUrl}
             controls
             className="w-full rounded-lg"
