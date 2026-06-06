@@ -7,9 +7,16 @@
  * Security: Only HTTPS URLs are allowed. Private/internal IPs are blocked.
  */
 import type { Express } from "express";
-import { isRequestAuthenticated } from "./context";
+import { isRequestAuthenticated, resolveRequestUser } from "./context";
 import { authorizeDownload } from "./downloadAuth";
 import { isAllowedExternalUrl as isAllowedUrl } from "./ssrfGuard";
+import { isDownloadWatermarkEnabled } from "./storageConfig";
+import { serveWatermarkedDownload, extFromName, buildDownloadWatermarkLabel } from "./downloadWatermark";
+
+/** Last path segment of a URL, used as a download filename. */
+function nameFromUrl(u: string, fallback: string): string {
+  try { return decodeURIComponent(new URL(u).pathname.split("/").pop() || "") || fallback; } catch { return fallback; }
+}
 
 export function registerImageProxy(app: Express) {
   app.get("/api/image-proxy", async (req, res) => {
@@ -41,6 +48,20 @@ export function registerImageProxy(app: Express) {
     if (req.query.download !== undefined) {
       const ok = await authorizeDownload(req, res, { rawUrl: decodedUrl });
       if (!ok) return;
+    }
+
+    // Anti-leech: burn the downloader's identity into the downloaded image when
+    // enabled (best-effort; ffmpeg failure still serves the original).
+    if (req.query.download !== undefined && await isDownloadWatermarkEnabled()) {
+      const user = await resolveRequestUser(req);
+      const served = await serveWatermarkedDownload(res, {
+        sourceUrl: decodedUrl,
+        kind: "image",
+        srcExt: extFromName(decodedUrl, "image"),
+        downloadName: nameFromUrl(decodedUrl, "image"),
+        label: buildDownloadWatermarkLabel(user),
+      });
+      if (served) return;
     }
 
     const MAX_IMAGE_BYTES = 32 * 1024 * 1024; // 32 MB

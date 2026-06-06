@@ -13,7 +13,7 @@
 import * as db from "../db";
 import { isS3Configured } from "../storage";
 
-type Cached = { persistAudio: boolean; persistVideo: boolean; persistImage: boolean; presignTtlSec: number; poyoUploadFallback: boolean; minioOnly: boolean; preferUpstreamRefSource: boolean; downloadAuthEnabled: boolean; forceStorageRelay: boolean; watermarkEnabled: boolean };
+type Cached = { persistAudio: boolean; persistVideo: boolean; persistImage: boolean; presignTtlSec: number; poyoUploadFallback: boolean; minioOnly: boolean; preferUpstreamRefSource: boolean; downloadAuthEnabled: boolean; forceStorageRelay: boolean; watermarkEnabled: boolean; downloadWatermarkEnabled: boolean };
 
 let _cached: Cached | null = null;
 let _expiresAt = 0;
@@ -45,7 +45,7 @@ export async function getCachedStorageSettings(): Promise<Cached> {
       // that DB outages can't silently bypass the admin's explicit "off"
       // intent and burn S3 quota.
       if (_cached) return _cached;
-      return { persistAudio: false, persistVideo: false, persistImage: false, presignTtlSec: 3600, poyoUploadFallback: false, minioOnly: false, preferUpstreamRefSource: false, downloadAuthEnabled: false, forceStorageRelay: false, watermarkEnabled: false };
+      return { persistAudio: false, persistVideo: false, persistImage: false, presignTtlSec: 3600, poyoUploadFallback: false, minioOnly: false, preferUpstreamRefSource: false, downloadAuthEnabled: false, forceStorageRelay: false, watermarkEnabled: false, downloadWatermarkEnabled: false };
     } finally {
       _inflight = null;
     }
@@ -97,6 +97,12 @@ export async function isForceStorageRelayEnabled(): Promise<boolean> {
  *  users so screenshots / screen recordings are traceable. */
 export async function isWatermarkEnabled(): Promise<boolean> {
   return (await getCachedStorageSettings()).watermarkEnabled;
+}
+
+/** Anti-leech: when on, original-file image/video downloads are re-encoded with
+ *  the downloader's identity burned in (ffmpeg) so the leaked file is traceable. */
+export async function isDownloadWatermarkEnabled(): Promise<boolean> {
+  return (await getCachedStorageSettings()).downloadWatermarkEnabled;
 }
 
 /** Whether the admin restricted object storage to MinIO/S3 only (no Forge fallback). */

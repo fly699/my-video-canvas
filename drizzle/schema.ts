@@ -577,6 +577,11 @@ export const storageSettings = mysqlTable("storageSettings", {
   // overlaid across the app so screenshots / screen recordings are traceable. Off
   // by default → no overlay, behavior unchanged.
   watermarkEnabled: boolean("watermarkEnabled").notNull().default(false),
+  // Anti-leech: when true, original-file DOWNLOADS (image/video, via the server
+  // proxies) are re-encoded with the downloader's identity burned in (ffmpeg
+  // drawtext), so the leaked file itself is traceable. Off by default; on any
+  // ffmpeg failure the original file is served unchanged (downloads never break).
+  downloadWatermarkEnabled: boolean("downloadWatermarkEnabled").notNull().default(false),
   updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
 });
 

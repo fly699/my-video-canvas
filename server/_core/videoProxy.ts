@@ -8,9 +8,16 @@
  * Security: Only HTTPS URLs are allowed. Private/internal IPs are blocked.
  */
 import type { Express } from "express";
-import { isRequestAuthenticated } from "./context";
+import { isRequestAuthenticated, resolveRequestUser } from "./context";
 import { authorizeDownload } from "./downloadAuth";
 import { isAllowedExternalUrl as isAllowedUrl } from "./ssrfGuard";
+import { isDownloadWatermarkEnabled } from "./storageConfig";
+import { serveWatermarkedDownload, extFromName, buildDownloadWatermarkLabel } from "./downloadWatermark";
+
+/** Last path segment of a URL, used as a download filename. */
+function nameFromUrl(u: string, fallback: string): string {
+  try { return decodeURIComponent(new URL(u).pathname.split("/").pop() || "") || fallback; } catch { return fallback; }
+}
 
 export function registerVideoProxy(app: Express) {
   app.get("/api/video-proxy", async (req, res) => {
@@ -42,6 +49,20 @@ export function registerVideoProxy(app: Express) {
     if (req.query.download !== undefined) {
       const ok = await authorizeDownload(req, res, { rawUrl: decodedUrl });
       if (!ok) return;
+    }
+
+    // Anti-leech: burn the downloader's identity into the downloaded video when
+    // enabled (best-effort; ffmpeg failure still serves the original).
+    if (req.query.download !== undefined && await isDownloadWatermarkEnabled()) {
+      const user = await resolveRequestUser(req);
+      const served = await serveWatermarkedDownload(res, {
+        sourceUrl: decodedUrl,
+        kind: "video",
+        srcExt: extFromName(decodedUrl, "video"),
+        downloadName: nameFromUrl(decodedUrl, "video"),
+        label: buildDownloadWatermarkLabel(user),
+      });
+      if (served) return;
     }
 
     const MAX_VIDEO_BYTES = 5000 * 1024 * 1024; // 5000 MB

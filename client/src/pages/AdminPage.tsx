@@ -417,6 +417,19 @@ function StoragePanel() {
             statusOn="已开启（界面叠加观看者身份水印）"
             statusOff="已关闭（无水印，行为不变）"
           />
+          <ToggleRow
+            label="下载文件烧入可追源水印（图片+视频）"
+            description={
+              "开启后：用户下载原文件时，服务器用 ffmpeg 把「下载者身份+时间」水印烧进文件本身（图片、视频均生效），下载到本地的文件也能追溯是谁泄露的。\n" +
+              "代价：下载时需重新编码，大视频会变慢、占 CPU；仅对走本服务器代理的图片/视频生效（音频与外部无法处理的文件原样下载）。\n" +
+              "安全：任何编码失败都会自动回退为原文件下载，绝不让下载失败。默认关闭，关闭后与原有行为完全一致。"
+            }
+            enabled={settings.downloadWatermarkEnabled}
+            disabled={setMut.isPending}
+            onClick={() => setMut.mutate({ downloadWatermarkEnabled: !settings.downloadWatermarkEnabled })}
+            statusOn="已开启（下载的图片/视频烧入下载者水印）"
+            statusOff="已关闭（下载原文件，行为不变）"
+          />
         </>
       )}
     </div>

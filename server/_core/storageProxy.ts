@@ -8,8 +8,9 @@ import {
 } from "../storage";
 import { verifyUploadToken } from "./uploadToken";
 import { authorizeDownload } from "./downloadAuth";
-import { isRequestAuthenticated } from "./context";
-import { isForceStorageRelayEnabled } from "./storageConfig";
+import { isRequestAuthenticated, resolveRequestUser } from "./context";
+import { isForceStorageRelayEnabled, isDownloadWatermarkEnabled } from "./storageConfig";
+import { serveWatermarkedDownload, watermarkKindFromName, extFromName, buildDownloadWatermarkLabel } from "./downloadWatermark";
 
 /**
  * Streamed upload counterpart to the download proxy. The browser PUTs the raw
@@ -67,6 +68,25 @@ export function registerStorageProxy(app: Express) {
     if (req.query.download !== undefined) {
       const ok = await authorizeDownload(req, res, { paramKey: key });
       if (!ok) return; // 403/401 already sent
+    }
+
+    // Anti-leech: burn the downloader's identity into image/video downloads when
+    // the admin enabled it. Best-effort — on no-font/fetch failure we fall through
+    // to normal serving, and ffmpeg errors still serve the original (never breaks).
+    if (req.query.download !== undefined && await isDownloadWatermarkEnabled()) {
+      const kind = watermarkKindFromName(key);
+      if (kind) {
+        const user = await resolveRequestUser(req);
+        const name = key.split("/").pop() || "file";
+        const served = await serveWatermarkedDownload(res, {
+          sourceUrl: `/manus-storage/${key}`,
+          kind,
+          srcExt: extFromName(key, kind),
+          downloadName: name,
+          label: buildDownloadWatermarkLabel(user),
+        });
+        if (served) return;
+      }
     }
 
     try {
