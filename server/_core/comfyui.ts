@@ -11,6 +11,7 @@
 import type { Server as SocketIOServer } from "socket.io";
 import { storagePut, resolveToAbsoluteUrl, assertMinioOnlyWrite, isOwnStorageUrl, toInternalStoragePath } from "server/storage";
 import { assertSafeUrl } from "./videoEditor";
+import { ensureCrystoolsMonitor, getCrystoolsReading } from "./comfyMonitor";
 import type { WorkflowParamBinding } from "@shared/types";
 
 const POLL_INTERVAL_MS = 3_000;
@@ -2151,16 +2152,14 @@ export async function fetchComfyServerStatus(rawBaseUrl: string): Promise<ComfyS
       if (Array.isArray(q.queue_pending)) out.queuePending = q.queue_pending.length;
     }
   } catch { /* queue is optional */ }
-  // GPU compute utilization (best-effort; only the ComfyUI-Crystools extension
-  // exposes this over HTTP — vanilla ComfyUI does not. Never throws.)
-  try {
-    const cr = await fetch(`${baseUrl}/crystools/monitor`, { signal: AbortSignal.timeout(3_000) });
-    if (cr.ok) {
-      const m = (await cr.json()) as { gpus?: Array<{ gpu_utilization?: number }> };
-      const g = m.gpus?.[0]?.gpu_utilization;
-      if (typeof g === "number" && isFinite(g)) out.gpuUtilization = Math.max(0, Math.min(100, Math.round(g)));
-    }
-  } catch { /* crystools is optional */ }
+  // GPU compute utilization: only the ComfyUI-Crystools extension exposes it, and
+  // it broadcasts over the /ws socket (NOT HTTP — same channel the ComfyUI web UI
+  // uses). We keep a passive background WS subscription per watched server and
+  // read its cached reading here. Empty until the first frame arrives / when
+  // Crystools isn't installed.
+  ensureCrystoolsMonitor(baseUrl);
+  const mon = getCrystoolsReading(baseUrl);
+  if (mon?.gpuUtilization != null) out.gpuUtilization = mon.gpuUtilization;
   return out;
 }
 
