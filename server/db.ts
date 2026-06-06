@@ -10,6 +10,7 @@ import {
   videoTasks,
   chatMessages,
   whitelistSettings,
+  comfySettings,
   whitelistEntries,
   storageSettings,
   auditLogs,
@@ -1087,6 +1088,30 @@ export async function getWhitelistSettings() {
   if (!db) return devWhitelistSettings;
   const rows = await db.select().from(whitelistSettings).limit(1);
   return rows[0] ?? null;
+}
+
+// ── Global ComfyUI server registry (admin-managed, shared by all users) ────────
+let devComfyServers: string[] = [];
+
+export async function getComfyGlobalServers(): Promise<string[]> {
+  const db = await getDb();
+  if (!db) return devComfyServers;
+  try {
+    const rows = await db.select().from(comfySettings).limit(1);
+    const raw = rows[0]?.servers;
+    if (!raw) return [];
+    const parsed = JSON.parse(raw);
+    return Array.isArray(parsed) ? parsed.filter((u): u is string => typeof u === "string") : [];
+  } catch { return []; }
+}
+
+export async function setComfyGlobalServers(servers: string[]): Promise<void> {
+  const clean = Array.from(new Set(servers.map((u) => u.trim()).filter(Boolean))).slice(0, 50);
+  const db = await getDb();
+  if (!db) { devComfyServers = clean; return; }
+  const json = JSON.stringify(clean);
+  await db.insert(comfySettings).values({ id: 1, servers: json })
+    .onDuplicateKeyUpdate({ set: { servers: json } });
 }
 
 export async function setWhitelistEnabled(enabled: boolean): Promise<void> {

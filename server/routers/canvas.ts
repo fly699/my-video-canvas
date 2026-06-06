@@ -1,8 +1,10 @@
 import { z } from "zod";
 import { TRPCError } from "@trpc/server";
 import { nanoid } from "nanoid";
-import { protectedProcedure, router } from "../_core/trpc";
+import { protectedProcedure, adminProcedure, router } from "../_core/trpc";
 import {
+  getComfyGlobalServers,
+  setComfyGlobalServers,
   getProjectsByUser,
   getProjectsSharedWithUser,
   getProjectById,
@@ -41,7 +43,7 @@ import { signUploadToken } from "../_core/uploadToken";
 import { getCachedStorageSettings } from "../_core/storageConfig";
 import { invokeLLM, extractTextContent } from "../_core/llm";
 import { generateImage } from "../_core/imageGeneration";
-import { generateComfyImage, generateComfyVideo, fetchComfyModels, fetchComfyServerStatus, analyzeWorkflow, executeCustomWorkflow, executeCloudWorkflow, testCloudConnection, uploadImageForWorkflow, interruptComfy, emptyModelList } from "../_core/comfyui";
+import { generateComfyImage, generateComfyVideo, fetchComfyModels, fetchComfyServerStatus, analyzeWorkflow, executeCustomWorkflow, executeCloudWorkflow, testCloudConnection, uploadImageForWorkflow, interruptComfy, freeComfyMemory, clearComfyQueue, emptyModelList } from "../_core/comfyui";
 import type { ComfyModelList } from "../_core/comfyui";
 import { ENV } from "../_core/env";
 import { isPoyoVideoProvider, submitPoyoVideo, checkPoyoVideoStatus } from "../_core/poyoVideo";
@@ -2423,6 +2425,35 @@ export const comfyuiRouter = router({
       if (!baseUrl) throw new TRPCError({ code: "BAD_REQUEST", message: "ComfyUI URL 未配置" });
       try {
         await interruptComfy(baseUrl);
+        return { ok: true as const };
+      } catch (err) {
+        throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: err instanceof Error ? err.message : String(err) });
+      }
+    }),
+
+  // Admin-managed global server registry — every user reads it; only admins write.
+  globalServers: protectedProcedure.query(() => getComfyGlobalServers()),
+  setGlobalServers: adminProcedure
+    .input(z.object({ servers: z.array(z.string().max(2048)).max(50) }))
+    .mutation(async ({ input }) => {
+      await setComfyGlobalServers(input.servers);
+      return { ok: true as const };
+    }),
+
+  // Per-server control actions for the topbar status panel.
+  serverAction: protectedProcedure
+    .input(z.object({
+      baseUrl: z.string().max(2048),
+      action: z.enum(["free", "interrupt", "clearQueue"]),
+    }))
+    .mutation(async ({ ctx, input }) => {
+      await assertComfyuiAllowed(ctx);
+      const baseUrl = input.baseUrl.trim() || ENV.comfyuiBaseUrl;
+      if (!baseUrl) throw new TRPCError({ code: "BAD_REQUEST", message: "ComfyUI URL 未配置" });
+      try {
+        if (input.action === "free") await freeComfyMemory(baseUrl);
+        else if (input.action === "interrupt") await interruptComfy(baseUrl);
+        else await clearComfyQueue(baseUrl);
         return { ok: true as const };
       } catch (err) {
         throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: err instanceof Error ? err.message : String(err) });
