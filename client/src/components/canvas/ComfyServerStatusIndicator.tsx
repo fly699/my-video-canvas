@@ -34,14 +34,18 @@ function MiniBar({ label, pct, title }: { label: string; pct: number | null; tit
   );
 }
 
-function PanelBar({ label, pct, valueText }: { label: string; pct: number | null; valueText: string }) {
+function PanelBar({ label, pct, used, total }: { label: string; pct: number | null; used: string; total?: string }) {
+  // 已用值随负载着色（绿→琥珀→红）；总量保持暗色，一眼区分。
   return (
     <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
       <span style={{ width: 26, fontSize: 9.5, color: "var(--c-t3)", fontWeight: 600 }}>{label}</span>
       <div style={{ flex: 1, height: 5, borderRadius: 3, background: "var(--c-bd1)", overflow: "hidden" }}>
         <div style={{ height: "100%", width: `${pct ?? 0}%`, background: loadColor(pct), transition: "width 400ms ease" }} />
       </div>
-      <span style={{ width: 64, textAlign: "right", fontSize: 9.5, color: "var(--c-t2)", fontVariantNumeric: "tabular-nums" }}>{valueText}</span>
+      <span style={{ width: 68, textAlign: "right", fontSize: 9.5, fontVariantNumeric: "tabular-nums", whiteSpace: "nowrap" }}>
+        <span style={{ color: loadColor(pct), fontWeight: 700 }}>{used}</span>
+        {total != null && <span style={{ color: "var(--c-t4)" }}>/{total}</span>}
+      </span>
     </div>
   );
 }
@@ -97,7 +101,9 @@ export function ComfyServerStatusIndicator() {
     else removeLocal(url);
   };
 
-  const [open, setOpen] = useState(false);
+  // Persist the open state too, so the floating panel reliably survives a reload
+  // (pin / position / size are already persisted below).
+  const [open, setOpen] = usePersistentState<boolean>("ui:comfyStatus:open:v1", false, { validate: (v) => (typeof v === "boolean" ? v : null) });
   const [draft, setDraft] = useState("");
   const btnRef = useRef<HTMLButtonElement>(null);
   const panelRef = useRef<HTMLDivElement>(null);
@@ -272,22 +278,22 @@ export function ComfyServerStatusIndicator() {
                           <>
                             <div className="flex flex-col gap-1">
                               {s.deviceName && <div style={{ fontSize: 9, color: "var(--c-t3)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }} title={s.deviceName}>{s.deviceName}</div>}
-                              <PanelBar label="GPU" pct={s.gpuUtilization ?? null} valueText={typeof s.gpuUtilization === "number" ? `${s.gpuUtilization}%` : "需Crystools"} />
-                              <PanelBar label="显存" pct={vram} valueText={`${gb(s.vramTotalMB != null && s.vramFreeMB != null ? s.vramTotalMB - s.vramFreeMB : undefined)}/${gb(s.vramTotalMB)}`} />
-                              <PanelBar label="内存" pct={ram} valueText={`${gb(s.ramTotalMB != null && s.ramFreeMB != null ? s.ramTotalMB - s.ramFreeMB : undefined)}/${gb(s.ramTotalMB)}`} />
+                              <PanelBar label="GPU" pct={s.gpuUtilization ?? null} used={typeof s.gpuUtilization === "number" ? `${s.gpuUtilization}%` : "需Crystools"} />
+                              <PanelBar label="显存" pct={vram} used={gb(s.vramTotalMB != null && s.vramFreeMB != null ? s.vramTotalMB - s.vramFreeMB : undefined)} total={gb(s.vramTotalMB)} />
+                              <PanelBar label="内存" pct={ram} used={gb(s.ramTotalMB != null && s.ramFreeMB != null ? s.ramTotalMB - s.ramFreeMB : undefined)} total={gb(s.ramTotalMB)} />
                             </div>
                             {/* Per-server actions */}
                             <div className="flex items-center gap-1" style={{ marginTop: 7 }}>
-                              <ActBtn icon={<Zap className="w-3 h-3" />} label="释放显存" disabled={busy} onClick={() => runAction(s.baseUrl, "free", "释放显存")} />
-                              <ActBtn icon={<Ban className="w-3 h-3" />} label="中断" disabled={busy} onClick={() => runAction(s.baseUrl, "interrupt", "中断")} />
-                              <ActBtn icon={<ListX className="w-3 h-3" />} label="清空队列" disabled={busy} onClick={() => runAction(s.baseUrl, "clearQueue", "清空队列")} />
-                              <ActBtn icon={<RefreshCw className="w-3 h-3" />} label="刷新" disabled={statusQuery.isFetching} onClick={() => statusQuery.refetch()} />
+                              <ActBtn icon={<Zap className="w-3 h-3" />} label="释放显存" color="oklch(0.72 0.18 155)" disabled={busy} onClick={() => runAction(s.baseUrl, "free", "释放显存")} />
+                              <ActBtn icon={<Ban className="w-3 h-3" />} label="中断" color="oklch(0.65 0.21 25)" disabled={busy} onClick={() => runAction(s.baseUrl, "interrupt", "中断")} />
+                              <ActBtn icon={<ListX className="w-3 h-3" />} label="清空队列" color="oklch(0.74 0.16 80)" disabled={busy} onClick={() => runAction(s.baseUrl, "clearQueue", "清空队列")} />
+                              <ActBtn icon={<RefreshCw className="w-3 h-3" />} label="刷新" color="oklch(0.64 0.16 250)" disabled={statusQuery.isFetching} onClick={() => statusQuery.refetch()} />
                             </div>
                           </>
                         ) : (
                           <div className="flex items-center justify-between gap-2">
                             <span style={{ fontSize: 10, color: "oklch(0.7 0.18 25)" }}>{s.error ?? "离线"}</span>
-                            <ActBtn icon={<RefreshCw className="w-3 h-3" />} label="重试" disabled={statusQuery.isFetching} onClick={() => statusQuery.refetch()} />
+                            <ActBtn icon={<RefreshCw className="w-3 h-3" />} label="重试" color="oklch(0.64 0.16 250)" disabled={statusQuery.isFetching} onClick={() => statusQuery.refetch()} />
                           </div>
                         )}
                       </div>
@@ -332,16 +338,28 @@ export function ComfyServerStatusIndicator() {
   );
 }
 
-function ActBtn({ icon, label, onClick, disabled }: { icon: React.ReactNode; label: string; onClick: () => void; disabled?: boolean }) {
+function ActBtn({ icon, label, onClick, disabled, color }: { icon: React.ReactNode; label: string; onClick: () => void; disabled?: boolean; color?: string }) {
+  // Each action carries a semantic color (free=green, interrupt=red,
+  // clearQueue=amber, refresh=blue). Resting = tinted border+text; hover fills
+  // the tint. Disabled = neutral grey.
+  const c = color ?? "var(--c-t2)";
+  const tint = (a: number) => (color ? color.replace(/\)$/, ` / ${a})`) : `var(--c-input)`);
   return (
     <button
       onClick={onClick}
       disabled={disabled}
       title={label}
       className="flex items-center gap-1 px-1.5 rounded text-[9.5px] font-medium transition-all"
-      style={{ height: 22, background: "var(--c-input)", border: "1px solid var(--c-bd2)", color: disabled ? "var(--c-t4)" : "var(--c-t2)", cursor: disabled ? "not-allowed" : "pointer", opacity: disabled ? 0.6 : 1 }}
-      onMouseEnter={(e) => { if (!disabled) { e.currentTarget.style.background = "var(--c-elevated)"; e.currentTarget.style.color = "var(--c-t1)"; } }}
-      onMouseLeave={(e) => { e.currentTarget.style.background = "var(--c-input)"; e.currentTarget.style.color = disabled ? "var(--c-t4)" : "var(--c-t2)"; }}
+      style={{
+        height: 22,
+        background: disabled ? "var(--c-input)" : tint(0.08),
+        border: `1px solid ${disabled ? "var(--c-bd2)" : tint(0.4)}`,
+        color: disabled ? "var(--c-t4)" : c,
+        cursor: disabled ? "not-allowed" : "pointer",
+        opacity: disabled ? 0.6 : 1,
+      }}
+      onMouseEnter={(e) => { if (!disabled) { e.currentTarget.style.background = tint(0.2); } }}
+      onMouseLeave={(e) => { if (!disabled) { e.currentTarget.style.background = tint(0.08); } }}
     >
       {icon}{label}
     </button>
