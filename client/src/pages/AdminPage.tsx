@@ -1,10 +1,12 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useLocation } from "wouter";
 import { trpc } from "@/lib/trpc";
 import { useAuth } from "@/_core/hooks/useAuth";
 import { Shield, Trash2, Plus, ToggleLeft, ToggleRight, ClipboardList, RefreshCw, HardDrive, ArrowLeft, Loader2, CheckCircle2, XCircle, DownloadCloud, RotateCw, GitCommit, X, Check, CheckSquare, Square, Download, Play } from "lucide-react";
 import { ComfyStressPanel } from "@/components/admin/ComfyStressPanel";
 import { WatermarkedVideo } from "@/components/WatermarkedVideo";
+import { downloadTextFile } from "@/lib/download";
+import { toast } from "sonner";
 import { adminTabFromUrl, ADMIN_TAB_EVENT } from "@/lib/adminNav";
 
 type EntryType = "ip" | "user";
@@ -185,6 +187,72 @@ function StoragePanel() {
   // failing pipeline stage so the fix is obvious.
   const testMut = trpc.admin.storage.test.useMutation();
 
+  // Admin config export/import: the storage-settings panel + admin-managed global
+  // ComfyUI servers and per-server GPU pins, as a single JSON file (backup /
+  // migrate between deployments).
+  const setGlobalServersMut = trpc.comfyui.setGlobalServers.useMutation();
+  const setGlobalGpuMut = trpc.comfyui.setGlobalGpuIndex.useMutation();
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const [ioBusy, setIoBusy] = useState(false);
+
+  const STORAGE_KEYS = [
+    "persistAudio", "persistVideo", "persistImage", "presignTtlSec", "poyoUploadFallback",
+    "minioOnly", "preferUpstreamRefSource", "downloadAuthEnabled", "forceStorageRelay",
+    "watermarkEnabled", "downloadWatermarkEnabled", "devtoolsBlockEnabled",
+  ] as const;
+
+  const exportConfig = async () => {
+    setIoBusy(true);
+    try {
+      const [s, comfyServers, comfyGpuIndex] = await Promise.all([
+        utils.admin.storage.getSettings.fetch(),
+        utils.comfyui.globalServers.fetch(),
+        utils.comfyui.globalGpuIndex.fetch(),
+      ]);
+      const storageSettings: Record<string, boolean | number> = {};
+      for (const k of STORAGE_KEYS) { const v = (s as Record<string, unknown>)[k]; if (typeof v === "boolean" || typeof v === "number") storageSettings[k] = v; }
+      const cfg = {
+        _type: "ai-video-canvas-admin-config",
+        _version: 1,
+        exportedAt: new Date().toISOString(),
+        storageSettings,
+        comfyServers,
+        comfyGpuIndex,
+      };
+      downloadTextFile(`avc-admin-config-${new Date().toISOString().slice(0, 10)}.json`, JSON.stringify(cfg, null, 2));
+      toast.success("配置已导出");
+    } catch (e) {
+      toast.error(`导出失败：${e instanceof Error ? e.message : String(e)}`);
+    } finally { setIoBusy(false); }
+  };
+
+  const importConfig = async (file: File) => {
+    setIoBusy(true);
+    try {
+      const cfg = JSON.parse(await file.text()) as Record<string, unknown>;
+      if (cfg._type !== "ai-video-canvas-admin-config") throw new Error("不是有效的管理员配置文件");
+      if (!confirm("导入将用文件内容覆盖当前的存储设置、全局 ComfyUI 服务器与显卡选择，确定继续？")) { setIoBusy(false); return; }
+      const ss = (cfg.storageSettings ?? {}) as Record<string, unknown>;
+      const patch: Record<string, boolean | number> = {};
+      for (const k of STORAGE_KEYS) { const v = ss[k]; if (typeof v === "boolean" || typeof v === "number") patch[k] = v; }
+      if (Object.keys(patch).length > 0) await setMut.mutateAsync(patch);
+      if (Array.isArray(cfg.comfyServers)) await setGlobalServersMut.mutateAsync({ servers: (cfg.comfyServers as unknown[]).filter((u): u is string => typeof u === "string") });
+      if (cfg.comfyGpuIndex && typeof cfg.comfyGpuIndex === "object") {
+        const gi: Record<string, number> = {};
+        for (const [k, v] of Object.entries(cfg.comfyGpuIndex as Record<string, unknown>)) if (typeof v === "number" && Number.isInteger(v) && v >= 0 && v <= 63) gi[k] = v;
+        await setGlobalGpuMut.mutateAsync({ gpuIndex: gi });
+      }
+      await Promise.all([
+        utils.admin.storage.getSettings.invalidate(),
+        utils.comfyui.globalServers.invalidate(),
+        utils.comfyui.globalGpuIndex.invalidate(),
+      ]);
+      toast.success("配置已导入并生效");
+    } catch (e) {
+      toast.error(`导入失败：${e instanceof Error ? e.message : String(e)}`);
+    } finally { setIoBusy(false); }
+  };
+
   const settings = settingsQuery.data;
   const loading = settingsQuery.isLoading;
 
@@ -205,6 +273,28 @@ function StoragePanel() {
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+      {/* Config export / import (backup & migrate between deployments) */}
+      <div style={{ ...cardStyle, alignItems: "stretch", padding: "14px 20px" }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
+          <DownloadCloud style={{ width: 18, height: 18, color: "oklch(0.72 0.2 285)", flexShrink: 0 }} />
+          <div style={{ flex: 1, minWidth: 200 }}>
+            <h3 style={{ margin: 0, fontSize: 14, fontWeight: 600, color: "var(--c-t1, #f0f0f4)" }}>配置 导出 / 导入</h3>
+            <p style={{ margin: "2px 0 0", fontSize: 12, color: "var(--c-t3, rgba(255,255,255,0.55))" }}>
+              导出本页存储设置 + 全局 ComfyUI 服务器与显卡选择为 JSON，便于备份或迁移到其他部署。导入会覆盖当前对应配置。
+            </p>
+          </div>
+          <button onClick={() => void exportConfig()} disabled={ioBusy}
+            style={{ display: "flex", alignItems: "center", gap: 6, padding: "7px 12px", borderRadius: 8, fontSize: 13, fontWeight: 600, cursor: ioBusy ? "not-allowed" : "pointer", color: "#fff", background: "oklch(0.6 0.16 250)", border: "none", opacity: ioBusy ? 0.6 : 1 }}>
+            <DownloadCloud style={{ width: 14, height: 14 }} /> 导出
+          </button>
+          <button onClick={() => fileInputRef.current?.click()} disabled={ioBusy}
+            style={{ display: "flex", alignItems: "center", gap: 6, padding: "7px 12px", borderRadius: 8, fontSize: 13, fontWeight: 600, cursor: ioBusy ? "not-allowed" : "pointer", color: "var(--c-t1)", background: "var(--c-input, #1a1a20)", border: "1px solid var(--c-bd2)", opacity: ioBusy ? 0.6 : 1 }}>
+            <RotateCw style={{ width: 14, height: 14 }} /> 导入
+          </button>
+          <input ref={fileInputRef} type="file" accept="application/json,.json" style={{ display: "none" }}
+            onChange={(e) => { const f = e.target.files?.[0]; if (f) void importConfig(f); e.target.value = ""; }} />
+        </div>
+      </div>
       <div style={{ ...cardStyle, alignItems: "stretch", padding: "16px 20px" }}>
         <div style={{ display: "flex", alignItems: "flex-start", gap: 12, marginBottom: 8 }}>
           <HardDrive style={{ width: 18, height: 18, color: "oklch(0.72 0.2 285)", flexShrink: 0, marginTop: 2 }} />
