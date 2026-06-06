@@ -1108,3 +1108,42 @@ button:active:not(:disabled) {
 /* Editor timeline: drag affordances */
 .editor-clip:active { cursor: grabbing !important; }
 .editor-trim:hover > div { background: #fff !important; width: 4px !important; }
+
+/* Watermarked video wrapper: keep the identity watermark visible in fullscreen by
+   fullscreening the CONTAINER (not the bare <video>, which renders no DOM children
+   in native fullscreen). The global WatermarkOverlay portals into this container. */
+.wm-video-wrap:fullscreen {
+  display: flex !important;
+  align-items: center;
+  justify-content: center;
+  width: 100vw;
+  height: 100vh;
+  background: #000;
+}
+.wm-video-wrap:fullscreen > video {
+  max-width: 100vw !important;
+  max-height: 100vh !important;
+  width: auto !important;
+  height: auto !important;
+}
+.wm-fs-btn {
+  position: absolute;
+  bottom: 8px;
+  right: 8px;
+  z-index: 5;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 30px;
+  height: 30px;
+  border-radius: 7px;
+  color: #fff;
+  background: rgba(0, 0, 0, 0.45);
+  border: 1px solid rgba(255, 255, 255, 0.25);
+  cursor: pointer;
+  opacity: 0;
+  transition: opacity 160ms ease, background 160ms ease;
+}
+.wm-video-wrap:hover .wm-fs-btn,
+.wm-video-wrap:fullscreen .wm-fs-btn { opacity: 1; }
+.wm-fs-btn:hover { background: rgba(0, 0, 0, 0.7); }

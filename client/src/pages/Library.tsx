@@ -4,6 +4,7 @@ import { getLoginUrl } from "@/const";
 import { trpc } from "@/lib/trpc";
 import { uploadAssetFile } from "@/lib/assetUpload";
 import { downloadMedia } from "@/lib/download";
+import { WatermarkedVideo } from "@/components/WatermarkedVideo";
 import { useLocation } from "wouter";
 import { toast } from "sonner";
 import {
@@ -105,7 +106,7 @@ function Lightbox({ asset, onClose }: { asset: Asset; onClose: () => void }) {
           {asset.type === "image" ? (
             <img src={asset.url} alt={asset.name} className="max-w-full max-h-[72vh] object-contain" />
           ) : asset.type === "video" ? (
-            <video src={asset.url} controls autoPlay controlsList="nodownload" className="max-w-full max-h-[72vh]" />
+            <WatermarkedVideo src={asset.url} controls autoPlay controlsList="nodownload" className="max-w-full max-h-[72vh]" />
           ) : asset.type === "audio" ? (
             <audio src={asset.url} controls autoPlay controlsList="nodownload" className="w-full" />
           ) : (
