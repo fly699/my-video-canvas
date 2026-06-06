@@ -164,17 +164,29 @@ ${input.graphSummary?.trim() || "（空画布）"}${input.prefs?.trim() ? `\n\n#
         { role: "user" as const, content: input.message },
       ];
 
-      const response = await invokeLLM({ messages, model, maxTokens: 4000 });
+      // A full multi-shot plan (script + N storyboards + connects + merge) is a
+      // large JSON object. 4000 tokens truncated it → JSON.parse failed → the raw
+      // (truncated) JSON leaked into the chat as "乱码". Give it plenty of room
+      // (capped per-model by resolveMaxTokens). NB: we deliberately do NOT force
+      // response_format json_object — the default model is Claude (proxied), where
+      // the OpenAI-style flag isn't reliably supported; the robust parse below
+      // handles fences/prose instead.
+      const response = await invokeLLM({ messages, model, maxTokens: 16000 });
       const text = extractTextContent(response);
 
       let reply = text.trim();
       let operations: AgentOperation[] = [];
       let plan: { targetSeconds: number; perShotSeconds: number; templateLabel?: string; shots: number } | undefined;
-      const jsonMatch = text.match(/\{[\s\S]*\}/);
+      // Strip an accidental ```json fence (belt-and-suspenders; json_object mode
+      // shouldn't add one) before matching the outermost { … } object.
+      const cleaned = text.replace(/^\s*```(?:json)?\s*/i, "").replace(/\s*```\s*$/i, "").trim();
+      const jsonMatch = cleaned.match(/\{[\s\S]*\}/);
+      let parsedOk = false;
       if (jsonMatch) {
         try {
           const parsed = JSON.parse(jsonMatch[0]) as { reply?: unknown; operations?: unknown; plan?: unknown };
-          if (typeof parsed.reply === "string" && parsed.reply.trim()) reply = parsed.reply.trim();
+          parsedOk = true;
+          reply = typeof parsed.reply === "string" && parsed.reply.trim() ? parsed.reply.trim() : "已规划完成。";
           if (Array.isArray(parsed.operations)) {
             operations = parsed.operations
               .map((o) => sanitizeOperation(o, { comfyOnly: input.comfyOnly, validTemplateIds }))
@@ -202,7 +214,19 @@ ${input.graphSummary?.trim() || "（空画布）"}${input.prefs?.trim() ? `\n\n#
             };
           }
         } catch {
-          /* not valid JSON — return the raw text as the reply with no operations */
+          /* malformed/truncated JSON — handled below */
+        }
+      }
+      // Graceful fallback: never dump a raw/truncated JSON blob into the chat.
+      // If the model clearly attempted a plan (has "operations") but it didn't
+      // parse, it was almost certainly truncated → ask the user to retry smaller.
+      // Otherwise the model answered in plain prose (a question/explanation) → keep it.
+      if (!parsedOk) {
+        if (/"operations"\s*:/.test(cleaned) || /^\s*[`{]/.test(text)) {
+          reply = "规划结果过长，未能完整返回（可能被截断）。请重试，或减少镜头数 / 缩短目标时长后再试。";
+          operations = [];
+        } else {
+          reply = text.trim();
         }
       }
       return { reply, operations, plan };
