@@ -19,8 +19,8 @@ export function PoyoBalanceDashboard() {
   const alertedRef = useRef<number | null>(null);
 
   const balanceQ = trpc.poyo.balance.useQuery(undefined, {
-    refetchInterval: 5 * 60 * 1000,
-    refetchOnWindowFocus: false,
+    refetchInterval: 30 * 1000,
+    refetchOnWindowFocus: true,
     retry: false,
   });
   const historyQ = trpc.poyo.history.useQuery({ limit: 30 }, { enabled: open });
