@@ -144,12 +144,29 @@ export function ComfyServerStatusIndicator() {
   // Which physical GPU each server uses (its --cuda-device). Crystools reports
   // EVERY host GPU with no per-GPU id and ComfyUI reports a masked index 0 under
   // CUDA_VISIBLE_DEVICES, so on a shared multi-GPU box we can't read it from data.
-  // This map holds the user's MANUAL overrides (synced across this user's tabs).
+  // Two layers: admins pin it GLOBALLY (DB, synced to all users); any user can also
+  // override LOCALLY (this browser). This map holds the local overrides.
   const [gpuIndexByUrl, setGpuIndexByUrl] = usePersistentState<Record<string, number>>(
     "ui:comfyStatus:gpuIndex:v1", {},
     { validate: (v) => (v && typeof v === "object" ? (v as Record<string, number>) : null) },
   );
-  const setGpuIndex = (url: string, idx: number) => setGpuIndexByUrl((m) => ({ ...m, [url]: idx }));
+  // Admin-managed global GPU pins (DB), read by everyone.
+  const globalGpuQ = trpc.comfyui.globalGpuIndex.useQuery(undefined, { refetchInterval: 60_000, staleTime: 30_000 });
+  const globalGpuIndex = globalGpuQ.data ?? {};
+  const setGlobalGpuMut = trpc.comfyui.setGlobalGpuIndex.useMutation({
+    onSuccess: () => utils.comfyui.globalGpuIndex.invalidate(),
+    onError: (e) => toast.error(`同步显卡选择失败：${e.message}`),
+  });
+  // Picking a GPU: admins write the GLOBAL pin (and clear any stale local override
+  // so the global one takes effect); non-admins set a local override.
+  const pickGpu = (url: string, idx: number) => {
+    if (isAdmin) {
+      setGlobalGpuMut.mutate({ gpuIndex: { ...globalGpuIndex, [url]: idx } });
+      setGpuIndexByUrl((m) => { if (m[url] == null) return m; const n = { ...m }; delete n[url]; return n; });
+    } else {
+      setGpuIndexByUrl((m) => ({ ...m, [url]: idx }));
+    }
+  };
 
   // Smart auto-default: when several servers share ONE host (same machine, each
   // pinned to a different GPU), assign them distinct indices 0,1,2… in order —
@@ -167,8 +184,8 @@ export function ComfyServerStatusIndicator() {
     }
     return out;
   })();
-  // Effective = manual override ?? auto-by-host-order. Sent to the probe and shown.
-  const effectiveIndexByUrl: Record<string, number> = { ...autoIndexByUrl, ...gpuIndexByUrl };
+  // Effective precedence: local override > admin global pin > auto-by-host-order.
+  const effectiveIndexByUrl: Record<string, number> = { ...autoIndexByUrl, ...globalGpuIndex, ...gpuIndexByUrl };
 
   const statusQuery = trpc.comfyui.serverStatus.useQuery(
     { baseUrls: servers, gpuIndexByUrl: effectiveIndexByUrl },
@@ -332,7 +349,7 @@ export function ComfyServerStatusIndicator() {
                               {s.deviceName && <div style={{ fontSize: 9, color: "var(--c-t3)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }} title={s.deviceName}>{s.deviceName}</div>}
                               <PanelBar label="GPU" pct={s.gpuUtilization ?? null} used={typeof s.gpuUtilization === "number" ? `${s.gpuUtilization}%` : "需Crystools"} />
                               {s.gpus && s.gpus.length > 1 && (
-                                <GpuPicker gpus={s.gpus} selected={s.gpuIndex ?? 0} onSelect={(i) => setGpuIndex(s.baseUrl, i)} />
+                                <GpuPicker gpus={s.gpus} selected={s.gpuIndex ?? 0} isAdmin={isAdmin} onSelect={(i) => pickGpu(s.baseUrl, i)} />
                               )}
                               <PanelBar label="显存" pct={vram} used={gb(s.vramTotalMB != null && s.vramFreeMB != null ? s.vramTotalMB - s.vramFreeMB : undefined)} total={gb(s.vramTotalMB)} />
                               <PanelBar label="内存" pct={ram} used={gb(s.ramTotalMB != null && s.ramFreeMB != null ? s.ramTotalMB - s.ramFreeMB : undefined)} total={gb(s.ramTotalMB)} />
@@ -429,10 +446,10 @@ export function ComfyServerStatusIndicator() {
  *  index lights up, then click it. This is the only deterministic mapping: see the
  *  note in comfyMonitor.ts (Crystools reports all GPUs unindexed; ComfyUI masks the
  *  index under CUDA_VISIBLE_DEVICES). */
-function GpuPicker({ gpus, selected, onSelect }: { gpus: Array<{ index: number; gpuUtilization?: number }>; selected: number; onSelect: (i: number) => void }) {
+function GpuPicker({ gpus, selected, onSelect, isAdmin }: { gpus: Array<{ index: number; gpuUtilization?: number }>; selected: number; onSelect: (i: number) => void; isAdmin?: boolean }) {
   return (
     <div className="flex items-center gap-1" style={{ marginTop: 2, flexWrap: "wrap" }}>
-      <span style={{ fontSize: 8.5, color: "var(--c-t4)", marginRight: 1 }} title="此服务器实际使用的显卡（对应启动参数 --cuda-device）。Crystools 会上报主机上所有显卡，需手动指定本服务器用的那一张。">选卡</span>
+      <span style={{ fontSize: 8.5, color: "var(--c-t4)", marginRight: 1 }} title={`此服务器实际使用的显卡（对应启动参数 --cuda-device）。Crystools 会上报主机上所有显卡，需指定本服务器用的那一张。${isAdmin ? "管理员选择会同步给所有用户。" : "你的选择仅本浏览器生效。"}`}>选卡{isAdmin ? "(全局)" : ""}</span>
       {gpus.map((g) => {
         const on = g.index === selected;
         const u = typeof g.gpuUtilization === "number" ? g.gpuUtilization : null;
