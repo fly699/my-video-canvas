@@ -3,6 +3,7 @@ import { createPortal } from "react-dom";
 import { Server, Plus, X, Cpu, RefreshCw, Pin, PinOff, Zap, Ban, ListX } from "lucide-react";
 import { toast } from "sonner";
 import { trpc } from "@/lib/trpc";
+import { useAuth } from "@/_core/hooks/useAuth";
 import { useComfyServersStore } from "../../hooks/useComfyServersStore";
 import { usePersistentState } from "../../hooks/usePersistentState";
 import { type ComfyServerStatus } from "../../lib/comfyAggregateStatus";
@@ -66,9 +67,35 @@ function ServerChip({ s }: { s: ComfyServerStatus }) {
 }
 
 export function ComfyServerStatusIndicator() {
-  const servers = useComfyServersStore((s) => s.servers);
-  const addServer = useComfyServersStore((s) => s.add);
-  const removeServer = useComfyServersStore((s) => s.remove);
+  const { user } = useAuth();
+  const isAdmin = user?.role === "admin";
+
+  // Personal (this browser) registry.
+  const localServers = useComfyServersStore((s) => s.servers);
+  const addLocal = useComfyServersStore((s) => s.add);
+  const removeLocal = useComfyServersStore((s) => s.remove);
+
+  // Admin-managed global registry (DB) — every user reads it; admins edit it.
+  const utils = trpc.useUtils();
+  const globalQ = trpc.comfyui.globalServers.useQuery(undefined, { refetchInterval: 60_000, staleTime: 30_000 });
+  const globalServers = globalQ.data ?? [];
+  const setGlobalMut = trpc.comfyui.setGlobalServers.useMutation({
+    onSuccess: () => utils.comfyui.globalServers.invalidate(),
+    onError: (e) => toast.error(`更新全局服务器失败：${e.message}`),
+  });
+  const setGlobal = (next: string[]) => setGlobalMut.mutate({ servers: next });
+
+  // Union of global + personal, used both for probing and for the dedup'd panel list.
+  const servers = Array.from(new Set([...globalServers, ...localServers]));
+  const isGlobal = (url: string) => globalServers.includes(url);
+
+  // Add: admins add to the shared global list; everyone else adds personally.
+  const addServer = (url: string) => { if (isAdmin) setGlobal([...globalServers, url]); else addLocal(url); };
+  // Remove: a global entry is removed globally (admin only); a personal one locally.
+  const removeServer = (url: string) => {
+    if (isGlobal(url)) { if (isAdmin) setGlobal(globalServers.filter((u) => u !== url)); }
+    else removeLocal(url);
+  };
 
   const [open, setOpen] = useState(false);
   const [draft, setDraft] = useState("");
@@ -224,17 +251,19 @@ export function ComfyServerStatusIndicator() {
                     const vram = usedPct(s.vramTotalMB, s.vramFreeMB);
                     const ram = usedPct(s.ramTotalMB, s.ramFreeMB);
                     const queue = (s.queueRunning ?? 0) + (s.queuePending ?? 0);
-                    const inRegistry = servers.includes(s.baseUrl);
+                    const global = isGlobal(s.baseUrl);
+                    const canRemove = global ? isAdmin : localServers.includes(s.baseUrl);
                     const busy = actionMut.isPending && actionMut.variables?.baseUrl === s.baseUrl;
                     return (
                       <div key={s.baseUrl} style={{ background: "var(--c-surface)", border: "1px solid var(--c-bd1)", borderRadius: 9, padding: "8px 9px" }}>
                         <div className="flex items-center gap-1.5" style={{ marginBottom: 6 }}>
                           <span className="rounded-full" style={{ width: 6, height: 6, flexShrink: 0, background: s.online ? "oklch(0.72 0.18 155)" : "oklch(0.63 0.23 25)" }} />
                           <span title={s.baseUrl} style={{ flex: 1, minWidth: 0, fontSize: 10.5, color: "var(--c-t1)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", fontFamily: "monospace" }}>{s.baseUrl}</span>
+                          {global && <span title="管理员配置·所有用户可见" style={{ flexShrink: 0, fontSize: 8, fontWeight: 700, padding: "1px 4px", borderRadius: 4, background: "oklch(0.68 0.22 285 / 0.15)", color: "oklch(0.72 0.16 285)", border: "1px solid oklch(0.68 0.22 285 / 0.3)" }}>全局</span>}
                           {s.version && <span style={{ fontSize: 9, color: "var(--c-t4)" }}>v{s.version}</span>}
                           {queue > 0 && <span style={{ fontSize: 9, fontWeight: 700, color: "oklch(0.72 0.13 175)" }} title="运行+排队">⏳{queue}</span>}
-                          {inRegistry && (
-                            <button title="移除此服务器" onClick={() => removeServer(s.baseUrl)} style={{ flexShrink: 0, padding: 1, lineHeight: 0, background: "none", border: "none", color: "var(--c-t4)", cursor: "pointer" }}>
+                          {canRemove && (
+                            <button title={global ? "从全局移除（所有用户）" : "移除此服务器"} onClick={() => removeServer(s.baseUrl)} style={{ flexShrink: 0, padding: 1, lineHeight: 0, background: "none", border: "none", color: "var(--c-t4)", cursor: "pointer" }}>
                               <X style={{ width: 11, height: 11 }} />
                             </button>
                           )}
@@ -268,7 +297,10 @@ export function ComfyServerStatusIndicator() {
               )}
 
               {/* Add server */}
-              <div className="flex items-center gap-1.5" style={{ marginTop: 10 }}>
+              <div style={{ marginTop: 10, marginBottom: 4, fontSize: 9.5, color: "var(--c-t4)" }}>
+                {isAdmin ? "添加到全局列表（所有用户自动可见）" : "添加到本机列表（仅本浏览器）"}
+              </div>
+              <div className="flex items-center gap-1.5">
                 <input
                   value={draft}
                   onChange={(e) => setDraft(e.target.value)}
@@ -283,7 +315,7 @@ export function ComfyServerStatusIndicator() {
                   className="flex items-center gap-1 px-2.5 rounded-lg text-xs font-medium"
                   style={{ height: 30, background: draft.trim() ? "oklch(0.72 0.13 175 / 0.15)" : "var(--c-surface)", border: `1px solid ${draft.trim() ? "oklch(0.72 0.13 175 / 0.45)" : "var(--c-bd2)"}`, color: draft.trim() ? "oklch(0.72 0.13 175)" : "var(--c-t4)", cursor: draft.trim() ? "pointer" : "not-allowed" }}
                 >
-                  <Plus className="w-3 h-3" /> 添加
+                  <Plus className="w-3 h-3" /> {isAdmin ? "添加(全局)" : "添加"}
                 </button>
               </div>
             </div>

@@ -288,6 +288,13 @@
       "when": 1780501500000,
       "tag": "0040_asset_size_bigint",
       "breakpoints": true
+    },
+    {
+      "idx": 41,
+      "version": "5",
+      "when": 1780501600000,
+      "tag": "0041_comfy_global_servers",
+      "breakpoints": true
     }
   ]
 }

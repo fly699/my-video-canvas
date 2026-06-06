@@ -1,8 +1,10 @@
 import { z } from "zod";
 import { TRPCError } from "@trpc/server";
 import { nanoid } from "nanoid";
-import { protectedProcedure, router } from "../_core/trpc";
+import { protectedProcedure, adminProcedure, router } from "../_core/trpc";
 import {
+  getComfyGlobalServers,
+  setComfyGlobalServers,
   getProjectsByUser,
   getProjectsSharedWithUser,
   getProjectById,
@@ -2427,6 +2429,15 @@ export const comfyuiRouter = router({
       } catch (err) {
         throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: err instanceof Error ? err.message : String(err) });
       }
+    }),
+
+  // Admin-managed global server registry — every user reads it; only admins write.
+  globalServers: protectedProcedure.query(() => getComfyGlobalServers()),
+  setGlobalServers: adminProcedure
+    .input(z.object({ servers: z.array(z.string().max(2048)).max(50) }))
+    .mutation(async ({ input }) => {
+      await setComfyGlobalServers(input.servers);
+      return { ok: true as const };
     }),
 
   // Per-server control actions for the topbar status panel.

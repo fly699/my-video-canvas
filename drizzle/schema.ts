@@ -571,6 +571,14 @@ export const storageSettings = mysqlTable("storageSettings", {
   updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
 });
 
+/** Single-row (id always 1) admin-managed global ComfyUI server registry,
+ *  shared across all users. `servers` is a JSON array of base URLs. */
+export const comfySettings = mysqlTable("comfy_settings", {
+  id: int("id").primaryKey(),
+  servers: text("servers"),
+});
+export type ComfySettingsRow = typeof comfySettings.$inferSelect;
+
 export const whitelistEntries = mysqlTable("whitelistEntries", {
   id: int("id").autoincrement().primaryKey(),
   type: mysqlEnum("type", ["ip", "user"]).notNull(),
