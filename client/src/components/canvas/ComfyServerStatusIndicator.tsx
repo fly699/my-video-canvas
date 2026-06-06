@@ -93,8 +93,13 @@ export function ComfyServerStatusIndicator() {
   const servers = Array.from(new Set([...globalServers, ...localServers]));
   const isGlobal = (url: string) => globalServers.includes(url);
 
-  // Add: admins add to the shared global list; everyone else adds personally.
-  const addServer = (url: string) => { if (isAdmin) setGlobal([...globalServers, url]); else addLocal(url); };
+  // Add: admins choose scope (shared global list vs this browser only); everyone
+  // else can only add personally (local). Adding a personal copy of a URL already
+  // in the global list is a no-op the dedup'd union absorbs.
+  const addServer = (url: string, scope: "global" | "local") => {
+    if (scope === "global" && isAdmin) setGlobal([...globalServers, url]);
+    else addLocal(url);
+  };
   // Remove: a global entry is removed globally (admin only); a personal one locally.
   const removeServer = (url: string) => {
     if (isGlobal(url)) { if (isAdmin) setGlobal(globalServers.filter((u) => u !== url)); }
@@ -105,6 +110,8 @@ export function ComfyServerStatusIndicator() {
   // (pin / position / size are already persisted below).
   const [open, setOpen] = usePersistentState<boolean>("ui:comfyStatus:open:v1", false, { validate: (v) => (typeof v === "boolean" ? v : null), crossTab: false });
   const [draft, setDraft] = useState("");
+  // Admins pick where a new address goes; non-admins are always local.
+  const [addScope, setAddScope] = useState<"global" | "local">("global");
   const btnRef = useRef<HTMLButtonElement>(null);
   const panelRef = useRef<HTMLDivElement>(null);
   const [btnRect, setBtnRect] = useState<DOMRect | null>(null);
@@ -137,12 +144,29 @@ export function ComfyServerStatusIndicator() {
   // Which physical GPU each server uses (its --cuda-device). Crystools reports
   // EVERY host GPU with no per-GPU id and ComfyUI reports a masked index 0 under
   // CUDA_VISIBLE_DEVICES, so on a shared multi-GPU box we can't read it from data.
-  // This map holds the user's MANUAL overrides (synced across this user's tabs).
+  // Two layers: admins pin it GLOBALLY (DB, synced to all users); any user can also
+  // override LOCALLY (this browser). This map holds the local overrides.
   const [gpuIndexByUrl, setGpuIndexByUrl] = usePersistentState<Record<string, number>>(
     "ui:comfyStatus:gpuIndex:v1", {},
     { validate: (v) => (v && typeof v === "object" ? (v as Record<string, number>) : null) },
   );
-  const setGpuIndex = (url: string, idx: number) => setGpuIndexByUrl((m) => ({ ...m, [url]: idx }));
+  // Admin-managed global GPU pins (DB), read by everyone.
+  const globalGpuQ = trpc.comfyui.globalGpuIndex.useQuery(undefined, { refetchInterval: 60_000, staleTime: 30_000 });
+  const globalGpuIndex = globalGpuQ.data ?? {};
+  const setGlobalGpuMut = trpc.comfyui.setGlobalGpuIndex.useMutation({
+    onSuccess: () => utils.comfyui.globalGpuIndex.invalidate(),
+    onError: (e) => toast.error(`同步显卡选择失败：${e.message}`),
+  });
+  // Picking a GPU: admins write the GLOBAL pin (and clear any stale local override
+  // so the global one takes effect); non-admins set a local override.
+  const pickGpu = (url: string, idx: number) => {
+    if (isAdmin) {
+      setGlobalGpuMut.mutate({ gpuIndex: { ...globalGpuIndex, [url]: idx } });
+      setGpuIndexByUrl((m) => { if (m[url] == null) return m; const n = { ...m }; delete n[url]; return n; });
+    } else {
+      setGpuIndexByUrl((m) => ({ ...m, [url]: idx }));
+    }
+  };
 
   // Smart auto-default: when several servers share ONE host (same machine, each
   // pinned to a different GPU), assign them distinct indices 0,1,2… in order —
@@ -160,8 +184,8 @@ export function ComfyServerStatusIndicator() {
     }
     return out;
   })();
-  // Effective = manual override ?? auto-by-host-order. Sent to the probe and shown.
-  const effectiveIndexByUrl: Record<string, number> = { ...autoIndexByUrl, ...gpuIndexByUrl };
+  // Effective precedence: local override > admin global pin > auto-by-host-order.
+  const effectiveIndexByUrl: Record<string, number> = { ...autoIndexByUrl, ...globalGpuIndex, ...gpuIndexByUrl };
 
   const statusQuery = trpc.comfyui.serverStatus.useQuery(
     { baseUrls: servers, gpuIndexByUrl: effectiveIndexByUrl },
@@ -325,7 +349,7 @@ export function ComfyServerStatusIndicator() {
                               {s.deviceName && <div style={{ fontSize: 9, color: "var(--c-t3)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }} title={s.deviceName}>{s.deviceName}</div>}
                               <PanelBar label="GPU" pct={s.gpuUtilization ?? null} used={typeof s.gpuUtilization === "number" ? `${s.gpuUtilization}%` : "需Crystools"} />
                               {s.gpus && s.gpus.length > 1 && (
-                                <GpuPicker gpus={s.gpus} selected={s.gpuIndex ?? 0} onSelect={(i) => setGpuIndex(s.baseUrl, i)} />
+                                <GpuPicker gpus={s.gpus} selected={s.gpuIndex ?? 0} isAdmin={isAdmin} onSelect={(i) => pickGpu(s.baseUrl, i)} />
                               )}
                               <PanelBar label="显存" pct={vram} used={gb(s.vramTotalMB != null && s.vramFreeMB != null ? s.vramTotalMB - s.vramFreeMB : undefined)} total={gb(s.vramTotalMB)} />
                               <PanelBar label="内存" pct={ram} used={gb(s.ramTotalMB != null && s.ramFreeMB != null ? s.ramTotalMB - s.ramFreeMB : undefined)} total={gb(s.ramTotalMB)} />
@@ -350,28 +374,59 @@ export function ComfyServerStatusIndicator() {
                 </div>
               )}
 
-              {/* Add server */}
-              <div style={{ marginTop: 10, marginBottom: 4, fontSize: 9.5, color: "var(--c-t4)" }}>
-                {isAdmin ? "添加到全局列表（所有用户自动可见）" : "添加到本机列表（仅本浏览器）"}
-              </div>
-              <div className="flex items-center gap-1.5">
-                <input
-                  value={draft}
-                  onChange={(e) => setDraft(e.target.value)}
-                  onKeyDown={(e) => { if (e.key === "Enter") { const u = draft.trim(); if (u) { addServer(u); setDraft(""); } } }}
-                  placeholder="http://127.0.0.1:8188"
-                  spellCheck={false}
-                  style={{ flex: 1, padding: "6px 9px", borderRadius: 8, fontSize: 11, background: "var(--c-input)", border: "1px solid var(--c-bd2)", color: "var(--c-t1)", outline: "none", fontFamily: "monospace" }}
-                />
-                <button
-                  onClick={() => { const u = draft.trim(); if (u) { addServer(u); setDraft(""); } }}
-                  disabled={!draft.trim()}
-                  className="flex items-center gap-1 px-2.5 rounded-lg text-xs font-medium"
-                  style={{ height: 30, background: draft.trim() ? "oklch(0.72 0.13 175 / 0.15)" : "var(--c-surface)", border: `1px solid ${draft.trim() ? "oklch(0.72 0.13 175 / 0.45)" : "var(--c-bd2)"}`, color: draft.trim() ? "oklch(0.72 0.13 175)" : "var(--c-t4)", cursor: draft.trim() ? "pointer" : "not-allowed" }}
-                >
-                  <Plus className="w-3 h-3" /> {isAdmin ? "添加(全局)" : "添加"}
-                </button>
-              </div>
+              {/* Add server. Admins choose global (DB, all users) vs local (this
+                  browser only); non-admins can only add locally. */}
+              {(() => {
+                const scope: "global" | "local" = isAdmin ? addScope : "local";
+                const submit = () => { const u = draft.trim(); if (u) { addServer(u, scope); setDraft(""); } };
+                return (
+                  <>
+                    {isAdmin && (
+                      <div className="flex items-center gap-1" style={{ marginTop: 10 }}>
+                        {(["global", "local"] as const).map((sc) => {
+                          const on = addScope === sc;
+                          return (
+                            <button
+                              key={sc}
+                              onClick={() => setAddScope(sc)}
+                              className="flex items-center gap-1 rounded transition-all"
+                              style={{
+                                height: 22, padding: "0 8px", fontSize: 10, fontWeight: 700,
+                                background: on ? "oklch(0.68 0.22 285 / 0.16)" : "var(--c-input)",
+                                border: `1px solid ${on ? "oklch(0.68 0.22 285 / 0.5)" : "var(--c-bd2)"}`,
+                                color: on ? "oklch(0.74 0.16 285)" : "var(--c-t3)", cursor: "pointer",
+                              }}
+                            >
+                              {sc === "global" ? "全局" : "本机"}
+                            </button>
+                          );
+                        })}
+                      </div>
+                    )}
+                    <div style={{ marginTop: isAdmin ? 5 : 10, marginBottom: 4, fontSize: 9.5, color: "var(--c-t4)" }}>
+                      {scope === "global" ? "添加到全局列表（所有用户自动可见）" : "添加到本机列表（仅本浏览器）"}
+                    </div>
+                    <div className="flex items-center gap-1.5">
+                      <input
+                        value={draft}
+                        onChange={(e) => setDraft(e.target.value)}
+                        onKeyDown={(e) => { if (e.key === "Enter") submit(); }}
+                        placeholder="http://127.0.0.1:8188"
+                        spellCheck={false}
+                        style={{ flex: 1, padding: "6px 9px", borderRadius: 8, fontSize: 11, background: "var(--c-input)", border: "1px solid var(--c-bd2)", color: "var(--c-t1)", outline: "none", fontFamily: "monospace" }}
+                      />
+                      <button
+                        onClick={submit}
+                        disabled={!draft.trim()}
+                        className="flex items-center gap-1 px-2.5 rounded-lg text-xs font-medium"
+                        style={{ height: 30, background: draft.trim() ? "oklch(0.72 0.13 175 / 0.15)" : "var(--c-surface)", border: `1px solid ${draft.trim() ? "oklch(0.72 0.13 175 / 0.45)" : "var(--c-bd2)"}`, color: draft.trim() ? "oklch(0.72 0.13 175)" : "var(--c-t4)", cursor: draft.trim() ? "pointer" : "not-allowed" }}
+                      >
+                        <Plus className="w-3 h-3" /> {isAdmin ? (scope === "global" ? "添加(全局)" : "添加(本机)") : "添加"}
+                      </button>
+                    </div>
+                  </>
+                );
+              })()}
             </div>
 
             {/* Resize handle */}
@@ -391,10 +446,10 @@ export function ComfyServerStatusIndicator() {
  *  index lights up, then click it. This is the only deterministic mapping: see the
  *  note in comfyMonitor.ts (Crystools reports all GPUs unindexed; ComfyUI masks the
  *  index under CUDA_VISIBLE_DEVICES). */
-function GpuPicker({ gpus, selected, onSelect }: { gpus: Array<{ index: number; gpuUtilization?: number }>; selected: number; onSelect: (i: number) => void }) {
+function GpuPicker({ gpus, selected, onSelect, isAdmin }: { gpus: Array<{ index: number; gpuUtilization?: number }>; selected: number; onSelect: (i: number) => void; isAdmin?: boolean }) {
   return (
     <div className="flex items-center gap-1" style={{ marginTop: 2, flexWrap: "wrap" }}>
-      <span style={{ fontSize: 8.5, color: "var(--c-t4)", marginRight: 1 }} title="此服务器实际使用的显卡（对应启动参数 --cuda-device）。Crystools 会上报主机上所有显卡，需手动指定本服务器用的那一张。">选卡</span>
+      <span style={{ fontSize: 8.5, color: "var(--c-t4)", marginRight: 1 }} title={`此服务器实际使用的显卡（对应启动参数 --cuda-device）。Crystools 会上报主机上所有显卡，需指定本服务器用的那一张。${isAdmin ? "管理员选择会同步给所有用户。" : "你的选择仅本浏览器生效。"}`}>选卡{isAdmin ? "(全局)" : ""}</span>
       {gpus.map((g) => {
         const on = g.index === selected;
         const u = typeof g.gpuUtilization === "number" ? g.gpuUtilization : null;

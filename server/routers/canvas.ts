@@ -5,6 +5,8 @@ import { protectedProcedure, adminProcedure, router } from "../_core/trpc";
 import {
   getComfyGlobalServers,
   setComfyGlobalServers,
+  getComfyGlobalGpuIndex,
+  setComfyGlobalGpuIndex,
   getProjectsByUser,
   getProjectsSharedWithUser,
   getProjectById,
@@ -2444,6 +2446,16 @@ export const comfyuiRouter = router({
     .input(z.object({ servers: z.array(z.string().max(2048)).max(50) }))
     .mutation(async ({ input }) => {
       await setComfyGlobalServers(input.servers);
+      return { ok: true as const };
+    }),
+
+  // Admin-managed per-server physical GPU pin (the server's --cuda-device), shared
+  // by all users so the admin's choice syncs everywhere. Every user reads it.
+  globalGpuIndex: protectedProcedure.query(() => getComfyGlobalGpuIndex()),
+  setGlobalGpuIndex: adminProcedure
+    .input(z.object({ gpuIndex: z.record(z.string().max(2048), z.number().int().min(0).max(63)) }))
+    .mutation(async ({ input }) => {
+      await setComfyGlobalGpuIndex(input.gpuIndex);
       return { ok: true as const };
     }),
 

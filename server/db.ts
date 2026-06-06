@@ -1091,27 +1091,76 @@ export async function getWhitelistSettings() {
 }
 
 // ── Global ComfyUI server registry (admin-managed, shared by all users) ────────
+// Stored as JSON in comfy_settings.servers (single row id=1). Legacy rows held a
+// bare string[] of URLs; we now hold { servers, gpuIndex } so the admin's chosen
+// physical GPU per server also syncs to everyone. Reads accept BOTH shapes, so no
+// migration is needed — the text column already exists.
+interface ComfyGlobalSettings { servers: string[]; gpuIndex: Record<string, number>; }
 let devComfyServers: string[] = [];
+let devComfyGpuIndex: Record<string, number> = {};
 
-export async function getComfyGlobalServers(): Promise<string[]> {
+function parseComfySettings(raw: string | null | undefined): ComfyGlobalSettings {
+  if (!raw) return { servers: [], gpuIndex: {} };
+  try {
+    const p: unknown = JSON.parse(raw);
+    if (Array.isArray(p)) return { servers: p.filter((u): u is string => typeof u === "string"), gpuIndex: {} };
+    if (p && typeof p === "object") {
+      const o = p as { servers?: unknown; gpuIndex?: unknown };
+      const servers = Array.isArray(o.servers) ? o.servers.filter((u): u is string => typeof u === "string") : [];
+      const gpuIndex: Record<string, number> = {};
+      if (o.gpuIndex && typeof o.gpuIndex === "object") {
+        for (const [k, v] of Object.entries(o.gpuIndex as Record<string, unknown>)) {
+          if (typeof v === "number" && Number.isInteger(v) && v >= 0 && v <= 63) gpuIndex[k] = v;
+        }
+      }
+      return { servers, gpuIndex };
+    }
+  } catch { /* fall through */ }
+  return { servers: [], gpuIndex: {} };
+}
+
+export async function getComfyGlobalSettings(): Promise<ComfyGlobalSettings> {
   const db = await getDb();
-  if (!db) return devComfyServers;
+  if (!db) return { servers: devComfyServers, gpuIndex: devComfyGpuIndex };
   try {
     const rows = await db.select().from(comfySettings).limit(1);
-    const raw = rows[0]?.servers;
-    if (!raw) return [];
-    const parsed = JSON.parse(raw);
-    return Array.isArray(parsed) ? parsed.filter((u): u is string => typeof u === "string") : [];
-  } catch { return []; }
+    return parseComfySettings(rows[0]?.servers);
+  } catch { return { servers: [], gpuIndex: {} }; }
+}
+
+async function writeComfyGlobalSettings(next: ComfyGlobalSettings): Promise<void> {
+  const db = await getDb();
+  if (!db) { devComfyServers = next.servers; devComfyGpuIndex = next.gpuIndex; return; }
+  const json = JSON.stringify(next);
+  await db.insert(comfySettings).values({ id: 1, servers: json })
+    .onDuplicateKeyUpdate({ set: { servers: json } });
+}
+
+export async function getComfyGlobalServers(): Promise<string[]> {
+  return (await getComfyGlobalSettings()).servers;
 }
 
 export async function setComfyGlobalServers(servers: string[]): Promise<void> {
   const clean = Array.from(new Set(servers.map((u) => u.trim()).filter(Boolean))).slice(0, 50);
-  const db = await getDb();
-  if (!db) { devComfyServers = clean; return; }
-  const json = JSON.stringify(clean);
-  await db.insert(comfySettings).values({ id: 1, servers: json })
-    .onDuplicateKeyUpdate({ set: { servers: json } });
+  const cur = await getComfyGlobalSettings();
+  // Prune GPU pins for servers that no longer exist.
+  const gpuIndex: Record<string, number> = {};
+  for (const u of clean) if (cur.gpuIndex[u] != null) gpuIndex[u] = cur.gpuIndex[u];
+  await writeComfyGlobalSettings({ servers: clean, gpuIndex });
+}
+
+export async function getComfyGlobalGpuIndex(): Promise<Record<string, number>> {
+  return (await getComfyGlobalSettings()).gpuIndex;
+}
+
+export async function setComfyGlobalGpuIndex(gpuIndex: Record<string, number>): Promise<void> {
+  const clean: Record<string, number> = {};
+  for (const [k, v] of Object.entries(gpuIndex)) {
+    const key = k.trim();
+    if (key && typeof v === "number" && Number.isInteger(v) && v >= 0 && v <= 63) clean[key] = v;
+  }
+  const cur = await getComfyGlobalSettings();
+  await writeComfyGlobalSettings({ servers: cur.servers, gpuIndex: clean });
 }
 
 export async function setWhitelistEnabled(enabled: boolean): Promise<void> {
