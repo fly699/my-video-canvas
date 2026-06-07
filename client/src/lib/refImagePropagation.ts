@@ -13,6 +13,7 @@
 // Both now go through the helpers here so coverage stays consistent.
 
 import { useCanvasStore, type CanvasNode, type CanvasEdge } from "../hooks/useCanvasStore";
+import type { ComfyuiControlNet } from "../../../shared/types";
 
 // Downstream node types that consume a reference image.
 const REF_TARGET_TYPES = new Set(["video_task", "comfyui_video", "comfyui_image"]);
@@ -139,6 +140,41 @@ export function propagateWorkflowPrompt(sourceId: string, prompt: string, negPro
   if (!prompt.trim()) return 0;
   const { nodes, edges, batchUpdateNodeData } = useCanvasStore.getState();
   const updates = computePromptToVideoUpdates(sourceId, prompt, negPrompt, nodes, edges);
+  if (updates.length > 0) batchUpdateNodeData(updates);
+  return updates.length;
+}
+
+/**
+ * Shot continuity: push an already-extracted control map (depth/pose/canny) into
+ * every downstream comfyui_image node's ControlNet guide image. Pure. The map is
+ * pre-processed, so we clear `preprocessor`; the user's ControlNet model/strength
+ * are preserved.
+ */
+export function computeControlMapUpdates(
+  sourceId: string,
+  mapUrl: string,
+  nodes: CanvasNode[],
+  edges: CanvasEdge[],
+): { id: string; payload: { controlnet: ComfyuiControlNet } }[] {
+  const seen = new Set<string>();
+  const out: { id: string; payload: { controlnet: ComfyuiControlNet } }[] = [];
+  for (const e of edges) {
+    if (e.source !== sourceId || seen.has(e.target)) continue;
+    const target = nodes.find((n) => n.id === e.target);
+    if (target?.data.nodeType !== "comfyui_image") continue;
+    seen.add(e.target);
+    const cur = ((target.data.payload as { controlnet?: Partial<ComfyuiControlNet> }).controlnet) ?? {};
+    const controlnet: ComfyuiControlNet = { ...cur, model: cur.model ?? "", imageUrl: mapUrl, preprocessor: "" };
+    out.push({ id: e.target, payload: { controlnet } });
+  }
+  return out;
+}
+
+/** Apply an extracted control map to downstream comfyui_image ControlNet guides. */
+export function propagateControlMap(sourceId: string, mapUrl: string): number {
+  if (!mapUrl) return 0;
+  const { nodes, edges, batchUpdateNodeData } = useCanvasStore.getState();
+  const updates = computeControlMapUpdates(sourceId, mapUrl, nodes, edges);
   if (updates.length > 0) batchUpdateNodeData(updates);
   return updates.length;
 }
