@@ -1147,3 +1147,27 @@ button:active:not(:disabled) {
 .wm-video-wrap:hover .wm-fs-btn,
 .wm-video-wrap:fullscreen .wm-fs-btn { opacity: 1; }
 .wm-fs-btn:hover { background: rgba(0, 0, 0, 0.7); }
+
+/* Dual-range trim sliders (ClipNode). Two full-width range inputs are stacked to
+   form a start/end selection; without this the top input would swallow ALL pointer
+   events across the whole track, leaving the start (left) thumb undraggable — you
+   could only trim the right side. Make the track transparent to pointer events and
+   capture only on the thumb, so both thumbs drag independently and clicks on the
+   bare track still pass through to the parent for seeking. */
+.trim-range { pointer-events: none; background: transparent; }
+.trim-range::-webkit-slider-thumb {
+  pointer-events: auto;
+  -webkit-appearance: none;
+  appearance: none;
+  width: 16px;
+  height: 24px;
+  cursor: ew-resize;
+}
+.trim-range::-moz-range-thumb {
+  pointer-events: auto;
+  width: 16px;
+  height: 24px;
+  border: none;
+  background: transparent;
+  cursor: ew-resize;
+}

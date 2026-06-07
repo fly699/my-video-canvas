@@ -112,7 +112,7 @@ function TrimBar({
             const v = Number(e.target.value);
             onStartChange(Math.min(v, endTime - 0.5));
           }}
-          className="nodrag absolute inset-0 w-full h-full opacity-0 cursor-pointer"
+          className="trim-range nodrag absolute inset-0 w-full h-full opacity-0 cursor-pointer"
           style={{ zIndex: 2 }}
           title={`入点: ${fmt(startTime)}`}
         />
@@ -127,7 +127,7 @@ function TrimBar({
             const v = Number(e.target.value);
             onEndChange(Math.max(v, startTime + 0.5));
           }}
-          className="nodrag absolute inset-0 w-full h-full opacity-0 cursor-pointer"
+          className="trim-range nodrag absolute inset-0 w-full h-full opacity-0 cursor-pointer"
           style={{ zIndex: 3 }}
           title={`出点: ${fmt(endTime)}`}
         />
