@@ -1257,10 +1257,15 @@ export interface GenerateComfyVideoOptions {
   nodeId?: string;
 }
 
-/** Pure: thread a LoRA chain off a CheckpointLoaderSimple node and rewire the
- *  template's model/clip consumers through it. Used to apply a character LoRA to
- *  checkpoint-based video templates (e.g. AnimateDiff). Templates without a
- *  CheckpointLoaderSimple (Wan UNET / LTXV / SVD) are returned unchanged. */
+// Loaders that expose a model on output 0 but no paired text CLIP for a LoRA
+// (Wan native UNet, GGUF UNet, SVD image-only checkpoint) → LoraLoaderModelOnly.
+const MODEL_ONLY_LOADERS = new Set(["UNETLoader", "UnetLoaderGGUF", "ImageOnlyCheckpointLoader"]);
+
+/** Pure: thread a LoRA chain off a video template's model loader and rewire its
+ *  model (and clip, when paired) consumers through it.
+ *   - CheckpointLoaderSimple (AnimateDiff / LTXV): LoraLoader threads model+clip.
+ *   - UNETLoader / ImageOnlyCheckpointLoader (Wan / SVD): LoraLoaderModelOnly threads model.
+ *  Templates with no recognized model loader are returned unchanged. */
 export function injectLoraChain(
   workflow: Record<string, { class_type: string; inputs: Record<string, unknown> }>,
   loras: LoraSpec[],
@@ -1268,21 +1273,42 @@ export function injectLoraChain(
   if (!loras || loras.length === 0) return workflow;
   const wf = JSON.parse(JSON.stringify(workflow)) as typeof workflow;
   const ckptId = Object.keys(wf).find((id) => wf[id].class_type === "CheckpointLoaderSimple");
-  if (!ckptId) return wf; // unsupported template → no-op (no surprise wiring)
-  let modelRef: [string, number] = [ckptId, 0];
-  let clipRef: [string, number] = [ckptId, 1];
   const loraIds = new Set<string>();
+
+  if (ckptId) {
+    // model + clip chain
+    let modelRef: [string, number] = [ckptId, 0];
+    let clipRef: [string, number] = [ckptId, 1];
+    loras.forEach((l, i) => {
+      const nid = `char_lora_${i}`;
+      wf[nid] = { class_type: "LoraLoader", inputs: { lora_name: l.name, strength_model: l.strengthModel, strength_clip: l.strengthClip ?? l.strengthModel, model: modelRef, clip: clipRef } };
+      modelRef = [nid, 0]; clipRef = [nid, 1]; loraIds.add(nid);
+    });
+    for (const [id, node] of Object.entries(wf)) {
+      if (loraIds.has(id)) continue;
+      for (const key of Object.keys(node.inputs)) {
+        const v = node.inputs[key];
+        if (Array.isArray(v) && v[0] === ckptId && v[1] === 0) node.inputs[key] = modelRef;
+        else if (Array.isArray(v) && v[0] === ckptId && v[1] === 1) node.inputs[key] = clipRef;
+      }
+    }
+    return wf;
+  }
+
+  // model-only loaders (Wan UNet / SVD image-only checkpoint)
+  const loaderId = Object.keys(wf).find((id) => MODEL_ONLY_LOADERS.has(wf[id].class_type));
+  if (!loaderId) return wf; // unsupported template → no-op
+  let modelRef: [string, number] = [loaderId, 0];
   loras.forEach((l, i) => {
     const nid = `char_lora_${i}`;
-    wf[nid] = { class_type: "LoraLoader", inputs: { lora_name: l.name, strength_model: l.strengthModel, strength_clip: l.strengthClip ?? l.strengthModel, model: modelRef, clip: clipRef } };
-    modelRef = [nid, 0]; clipRef = [nid, 1]; loraIds.add(nid);
+    wf[nid] = { class_type: "LoraLoaderModelOnly", inputs: { lora_name: l.name, strength_model: l.strengthModel, model: modelRef } };
+    modelRef = [nid, 0]; loraIds.add(nid);
   });
   for (const [id, node] of Object.entries(wf)) {
-    if (loraIds.has(id)) continue; // the chain itself consumes the original refs
+    if (loraIds.has(id)) continue;
     for (const key of Object.keys(node.inputs)) {
       const v = node.inputs[key];
-      if (Array.isArray(v) && v[0] === ckptId && v[1] === 0) node.inputs[key] = modelRef;
-      else if (Array.isArray(v) && v[0] === ckptId && v[1] === 1) node.inputs[key] = clipRef;
+      if (Array.isArray(v) && v[0] === loaderId && v[1] === 0) node.inputs[key] = modelRef;
     }
   }
   return wf;

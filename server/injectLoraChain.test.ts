@@ -39,8 +39,30 @@ describe("injectLoraChain", () => {
     expect(out["12"].inputs.model).toEqual(["char_lora_1", 0]); // consumer points at chain end
   });
 
-  it("returns the graph unchanged for non-checkpoint templates (Wan UNETLoader)", () => {
-    const wan = { "1": { class_type: "UNETLoader", inputs: { unet_name: "wan.safetensors" } } };
-    expect(injectLoraChain(wan, [{ name: "hero", strengthModel: 0.8 }])).toEqual(wan);
+  it("uses LoraLoaderModelOnly for Wan UNETLoader and rewires model consumers", () => {
+    const wan = {
+      "1": { class_type: "UNETLoader", inputs: { unet_name: "wan.safetensors" } },
+      "5": { class_type: "KSampler", inputs: { model: ["1", 0], seed: 1 } },
+    };
+    const out = injectLoraChain(wan, [{ name: "hero", strengthModel: 0.8 }]);
+    expect(out["char_lora_0"].class_type).toBe("LoraLoaderModelOnly");
+    expect(out["char_lora_0"].inputs.model).toEqual(["1", 0]);
+    expect(out["char_lora_0"].inputs.clip).toBeUndefined(); // model-only
+    expect(out["5"].inputs.model).toEqual(["char_lora_0", 0]);
+  });
+
+  it("uses LoraLoaderModelOnly for SVD ImageOnlyCheckpointLoader", () => {
+    const svd = {
+      "15": { class_type: "ImageOnlyCheckpointLoader", inputs: { ckpt_name: "svd.safetensors" } },
+      "3": { class_type: "KSampler", inputs: { model: ["15", 0] } },
+    };
+    const out = injectLoraChain(svd, [{ name: "hero", strengthModel: 0.8 }]);
+    expect(out["char_lora_0"].class_type).toBe("LoraLoaderModelOnly");
+    expect(out["3"].inputs.model).toEqual(["char_lora_0", 0]);
+  });
+
+  it("returns unchanged when no recognized model loader exists", () => {
+    const g = { "1": { class_type: "SomethingElse", inputs: {} } };
+    expect(injectLoraChain(g, [{ name: "hero", strengthModel: 0.8 }])).toEqual(g);
   });
 });

@@ -9,7 +9,9 @@ import { useCanvasStore } from "../../../hooks/useCanvasStore";
 import { propagateRefImage, propagateWorkflowPrompt } from "../../../lib/refImagePropagation";
 import type { ComfyuiWorkflowNodeData, WorkflowParamBinding } from "../../../../../shared/types";
 import { trpc } from "@/lib/trpc";
-import { detectUpstreamImageUrl, detectUpstreamPrompt, fillWorkflowPromptParams, listUpstreamImageSources, resolveImageParamsWithMap } from "@/lib/comfyWorkflowParams";
+import { detectUpstreamImageUrl, detectUpstreamPrompt, fillWorkflowPromptParams, fillWorkflowLoraParam, listUpstreamImageSources, resolveImageParamsWithMap } from "@/lib/comfyWorkflowParams";
+import { connectedCharacters, connectedCharacterLora } from "@/lib/characterConditioning";
+import { mergeCharactersIntoPrompt } from "@/lib/characterPrompt";
 import { applyFreeVramToAllComfyNodes } from "@/lib/comfyFreeVram";
 import { summarizeComfyWorkflow } from "@/lib/comfyWorkflowSummary";
 import { detectWorkflowFormat, extractComfyWorkflowsFromPng } from "@/lib/comfyWorkflowImport";
@@ -401,10 +403,16 @@ export const ComfyuiWorkflowNode = memo(function ComfyuiWorkflowNode({ id, selec
       const { nodes, edges } = useCanvasStore.getState();
       const sources = listUpstreamImageSources(id, edges, nodes);
       const upstreamPrompt = detectUpstreamPrompt(id, edges, nodes);
+      // Connected Character(s): merge their profile text into the positive prompt
+      // and offer their LoRA to the workflow's lora_name param (fill-only-when-blank).
+      const chars = connectedCharacters(id, edges, nodes);
+      if (chars.length > 0) upstreamPrompt.positive = mergeCharactersIntoPrompt(upstreamPrompt.positive ?? "", chars);
       // Explicit per-param「来源」mapping first, then smart auto-fill the rest.
       const imgResolved = resolveImageParamsWithMap(payload.paramBindings, payload.paramValues ?? {}, sources, payload.imageSourceMap ?? {});
       const imageParamKeys = imgResolved.imageParamKeys;
-      const paramValues = fillWorkflowPromptParams(payload.paramBindings, imgResolved.paramValues, upstreamPrompt, { force: payload.preferUpstreamPrompt !== false });
+      let paramValues = fillWorkflowPromptParams(payload.paramBindings, imgResolved.paramValues, upstreamPrompt, { force: payload.preferUpstreamPrompt !== false });
+      const charLora = connectedCharacterLora(id, edges, nodes);
+      if (charLora) paramValues = fillWorkflowLoraParam(payload.paramBindings, paramValues, charLora.name);
       // Seed handling: unless the user pinned the seed (randomizeSeed === false),
       // re-randomize every seed param each run, and persist the used value back so
       // the form reflects what was actually sent.

@@ -11,7 +11,7 @@ import { compareUpstreamNodes } from "./inputOrder";
 type MiniNode = { id: string; data: { nodeType: string; payload?: unknown; title?: string }; position?: { y?: number } };
 type MiniEdge = { source: string; target: string };
 
-const IMAGE_SOURCE_TYPES = new Set(["image_gen", "comfyui_image", "storyboard", "comfyui_workflow", "asset"]);
+const IMAGE_SOURCE_TYPES = new Set(["image_gen", "comfyui_image", "storyboard", "comfyui_workflow", "asset", "character"]);
 
 /** Pick a node's image-output URL regardless of which field/type it uses. */
 function getNodeImageUrl(nodeType: string, payload: Record<string, unknown>): string | undefined {
@@ -20,6 +20,8 @@ function getNodeImageUrl(nodeType: string, payload: Record<string, unknown>): st
     if (mt && !mt.startsWith("image/")) return undefined;
     return payload.url as string | undefined;
   }
+  // A connected Character contributes its primary reference image (identity lock).
+  if (nodeType === "character") return payload.referenceImageUrl as string | undefined;
   // comfyui_workflow stores its result in outputUrl, but only treat it as an
   // image when the run produced images (not a video).
   if (nodeType === "comfyui_workflow" && payload.outputType === "video") return undefined;
@@ -235,6 +237,26 @@ export function resolveWorkflowImageParams(
     if (isParamAtDefault(next[key], b)) { next[key] = urls[i]; i++; }
   }
   return { paramValues: next, imageParamKeys };
+}
+
+/** Fill the workflow's exposed LoRA-name param from a connected character's LoRA.
+ *  Targets the binding whose fieldPath/label looks like a LoRA model selector
+ *  (`lora_name` / 「LoRA 模型」). Fill-only-when-blank or at the built-in default —
+ *  a value the user picked is preserved. Returns the (possibly) updated values. */
+export function fillWorkflowLoraParam(
+  bindings: WorkflowParamBinding[] | undefined,
+  paramValues: Record<string, unknown>,
+  loraName: string | undefined,
+): Record<string, unknown> {
+  if (!loraName) return paramValues;
+  const b = (bindings ?? []).find((x) =>
+    (x.type === "select" || x.type === "text") &&
+    (/lora_name$/i.test(x.fieldPath) || /lora/i.test(x.label)) &&
+    !/strength|权重|强度/i.test(x.label));
+  if (!b) return paramValues;
+  const key = `${b.nodeId}.${b.fieldPath}`;
+  if (!isParamAtDefault(paramValues[key], b)) return paramValues; // user-picked → keep
+  return { ...paramValues, [key]: loraName };
 }
 
 /** Fill blank positive / negative prompt params from upstream prompt text.
