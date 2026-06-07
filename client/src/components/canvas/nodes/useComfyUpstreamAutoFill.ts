@@ -84,5 +84,6 @@ function upstreamCharacter(
   edges: { source: string; target: string }[],
   nodes: { id: string; data: { nodeType: string; payload?: unknown }; position?: { x: number; y: number } }[],
 ): CharacterNodeData | undefined {
-  return connectedCharacters(id, edges, nodes)[0];
+  // First PERSON character (scenes carry no identity/IPAdapter).
+  return connectedCharacters(id, edges, nodes).find((c) => (c.characterKind ?? "person") !== "scene");
 }

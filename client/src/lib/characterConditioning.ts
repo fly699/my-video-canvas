@@ -47,6 +47,8 @@ export function connectedCharacters(
   return uniq.map((n) => n.data.payload as CharacterNodeData);
 }
 
+/** Identity REFERENCE images only come from PERSON characters — a 场景 (scene) node's
+ *  image is a location, not a face/subject, so it must not feed IPAdapter/identity refs. */
 export function connectedCharacterRefImages(
   targetId: string,
   edges: { source: string; target: string }[],
@@ -55,6 +57,7 @@ export function connectedCharacterRefImages(
   const out: string[] = [];
   const seen = new Set<string>();
   for (const c of connectedCharacters(targetId, edges, nodes)) {
+    if ((c.characterKind ?? "person") === "scene") continue; // scenes = location text, not identity
     for (const url of characterReferenceImages(c)) {
       if (!seen.has(url)) { seen.add(url); out.push(url); }
     }
@@ -62,13 +65,15 @@ export function connectedCharacterRefImages(
   return out;
 }
 
-/** First connected character's LoRA (name + strength), or null. Priority by position. */
+/** First connected PERSON character's LoRA (name + strength), or null. Priority by
+ *  position. Scene nodes carry no character LoRA. */
 export function connectedCharacterLora(
   targetId: string,
   edges: { source: string; target: string }[],
   nodes: CharNodeLike[],
 ): { name: string; strengthModel: number } | null {
   for (const c of connectedCharacters(targetId, edges, nodes)) {
+    if ((c.characterKind ?? "person") === "scene") continue;
     const name = c.loraName?.trim();
     if (name) return { name, strengthModel: c.loraStrength ?? 0.8 };
   }
@@ -95,6 +100,9 @@ export function deriveCharacterConditioning(
   current: { ipadapter?: ComfyuiIPAdapter | null; loras?: ComfyuiLoraEntry[] | null },
 ): CharacterConditioningPatch {
   const patch: CharacterConditioningPatch = {};
+  // A 场景 (scene) node is location context, not a face/subject — never wire its
+  // image into IPAdapter face-lock or treat its data as a character LoRA.
+  if ((character.characterKind ?? "person") === "scene") return patch;
 
   const refs = characterReferenceImages(character);
   const curIp = current.ipadapter ?? undefined;

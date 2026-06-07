@@ -85,15 +85,18 @@ function cleanupSeparators(s: string): string {
  * Each character becomes a bracketed `[…]` block prepended to the prompt so
  * the model sees structured identity context before the scene description. */
 export function mergeCharactersIntoPrompt(basePrompt: string, characters: CharacterNodeData[]): string {
-  const rendered = characters
-    .map((c) => characterToPromptInjection(c))
-    .filter((t) => t.length > 0);
-  if (rendered.length === 0) return basePrompt;
-  // With multiple characters, prefix each block with an ordinal (角色1/角色2…) so
-  // models that support ordered references (@Image1 / character1) can align each
-  // identity with its reference image (passed in the same character order).
-  const multi = rendered.length > 1;
-  const blocks = rendered.map((t, i) => (multi ? `[角色${i + 1}：${t}]` : `[${t}]`));
+  const items = characters
+    .map((c) => ({ kind: c.characterKind ?? "person", text: characterToPromptInjection(c) }))
+    .filter((x) => x.text.length > 0);
+  if (items.length === 0) return basePrompt;
+  // With multiple items, prefix each block with a kind-appropriate ordinal
+  // (角色1 / 场景2…), numbered by the same order references are passed, so models
+  // that support ordered references (@Image1 / character1) can align them.
+  const multi = items.length > 1;
+  const blocks = items.map((x, i) => {
+    const label = multi ? `${x.kind === "scene" ? "场景" : "角色"}${i + 1}：` : "";
+    return `[${label}${x.text}]`;
+  });
   const prefix = blocks.join(" ");
   return basePrompt.trim().length === 0 ? prefix : `${prefix} ${basePrompt}`;
 }

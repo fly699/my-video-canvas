@@ -31,3 +31,14 @@ describe("mergeCharactersIntoPrompt", () => {
     expect(mergeCharactersIntoPrompt("", [c({ name: "Z" })])).toBe("[Z]");
   });
 });
+
+describe("mergeCharactersIntoPrompt scene labelling", () => {
+  it("labels person vs scene with kind-appropriate ordinals", () => {
+    const out = mergeCharactersIntoPrompt("", [
+      c({ name: "Alice" }),
+      c({ characterKind: "scene", sceneName: "夜街" }),
+    ]);
+    expect(out).toContain("角色1：");
+    expect(out).toContain("场景2：");
+  });
+});
