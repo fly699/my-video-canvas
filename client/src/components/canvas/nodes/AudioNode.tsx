@@ -354,6 +354,12 @@ export const AudioNode = memo(function AudioNode({ id, selected, data }: Props) 
       toast.error("MiniMax Music 2.6 的描述需至少 10 个字符，请补充");
       return;
     }
+    // Server caps lyrics at max(3500) — block over-long lyrics with a clear message
+    // instead of a confusing 400 (the textarea has no maxLength).
+    if (isMiniMax && (payload.musicLyrics?.length ?? 0) > 3500) {
+      toast.error(`歌词上限 3500 字，当前 ${payload.musicLyrics!.length} 字，请截断`);
+      return;
+    }
     // Translate Chinese style tag to English — Suno expects English genre keywords;
     // MiniMax has no style param so it's omitted there.
     const styleEn = (!isMiniMax && payload.musicStyle)

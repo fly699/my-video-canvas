@@ -70,6 +70,7 @@ export const PoseControlNode = memo(function PoseControlNode({ id, selected, dat
     const refUrl = payload.referenceImageUrl || sourceImageUrl;
     if (!refUrl) { toast.error("请先连接图像节点或填写参考图 URL"); return; }
     if (!payload.prompt?.trim()) { toast.error("请填写图像描述提示词"); return; }
+    if (payload.prompt.trim().length > 1000) { toast.error("提示词上限 1000 字，请截断"); return; } // server max(1000)
     update({ status: "processing", errorMessage: undefined });
     poseControlMutation.mutate({
       referenceImageUrl: refUrl,
