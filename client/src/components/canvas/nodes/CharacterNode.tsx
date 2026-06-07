@@ -122,8 +122,16 @@ export const CharacterNode = memo(function CharacterNode({ id, selected, data }:
     if (!name) { toast.error(kind === "scene" ? "请先填写场景名" : "请先填写角色名"); return; }
     // Strip graph-specific/transient fields so a re-instantiated character doesn't
     // inherit the original's agent ownership / scene membership / creator.
-    const { createdBy: _c, ownerAgentId: _o, sceneGroup: _s, ...clean } = payload as Record<string, unknown>;
+    const { createdBy: _c, ownerAgentId: _o, sceneGroup: _s, ...rest } = payload as Record<string, unknown>;
     void _c; void _o; void _s;
+    // Strip the OPPOSITE kind's fields: a node toggled person↔scene keeps the now-hidden
+    // fields in its payload, which would otherwise be saved and resurface if the library
+    // entry is later toggled. Keep only this kind's fields + the shared ones.
+    const PERSON_ONLY = ["name", "role", "gender", "age", "appearance", "personality", "outfit", "signature", "loraName", "loraStrength", "ipadapterWeight"];
+    const SCENE_ONLY = ["sceneName", "locationType", "sceneDescription", "atmosphere", "timeOfDay"];
+    const stripKeys = kind === "scene" ? PERSON_ONLY : SCENE_ONLY;
+    const clean = Object.fromEntries(Object.entries(rest).filter(([k]) => !stripKeys.includes(k)));
+    clean.characterKind = kind; // pin authoritatively (covers legacy/undefined)
     saveLibMut.mutate({ name, characterKind: kind, payload: clean, thumbnail: payload.referenceImageUrl || undefined });
   }, [payload, kind, saveLibMut]);
 

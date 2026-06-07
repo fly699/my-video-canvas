@@ -24,10 +24,14 @@ export function CharacterLibraryPanel({ onClose }: { onClose: () => void }) {
     if (name && name !== cur) renameMut.mutate({ id, name });
   };
 
-  const addToCanvas = (payload: Record<string, unknown>, i: number) => {
+  const addToCanvas = (payload: Record<string, unknown>, kind: string, i: number) => {
     try {
       const node = addNode("character", { x: 240 + i * 28, y: 220 + i * 28 });
-      updateNodeData(node.id, payload, true);
+      // Pin characterKind from the authoritative library row column — legacy entries
+      // saved before characterKind lived in the payload would otherwise default to
+      // "person" even when the row is a 场景.
+      const merged: Record<string, unknown> = { ...payload, characterKind: payload.characterKind ?? kind ?? "person" };
+      updateNodeData(node.id, merged, true);
       toast.success("已添加到画布");
     } catch (e) {
       toast.error("添加失败：" + (e instanceof Error ? e.message : String(e)));
@@ -70,7 +74,7 @@ export function CharacterLibraryPanel({ onClose }: { onClose: () => void }) {
               <div style={{ fontSize: 12, fontWeight: 600, color: "var(--c-t1)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", cursor: "text" }}>{it.name}</div>
               <div style={{ fontSize: 9.5, color: "var(--c-t4)" }}>{it.characterKind === "scene" ? "场景" : "人物"}</div>
             </div>
-            <button onClick={() => addToCanvas(it.payload, i)} title="添加到画布" className="nodrag flex-shrink-0 flex items-center justify-center" style={{ width: 26, height: 26, borderRadius: 6, background: "oklch(0.66 0.18 30 / 0.12)", border: "1px solid oklch(0.66 0.18 30 / 0.3)", color: "oklch(0.66 0.18 30)", cursor: "pointer" }}>
+            <button onClick={() => addToCanvas(it.payload, it.characterKind, i)} title="添加到画布" className="nodrag flex-shrink-0 flex items-center justify-center" style={{ width: 26, height: 26, borderRadius: 6, background: "oklch(0.66 0.18 30 / 0.12)", border: "1px solid oklch(0.66 0.18 30 / 0.3)", color: "oklch(0.66 0.18 30)", cursor: "pointer" }}>
               <Plus className="w-3.5 h-3.5" />
             </button>
             <button onClick={() => { if (window.confirm(`从角色库删除「${it.name}」？`)) delMut.mutate({ id: it.id }); }} title="删除" className="nodrag flex-shrink-0 flex items-center justify-center" style={{ width: 26, height: 26, borderRadius: 6, background: "none", border: "none", color: "var(--c-t4)", cursor: "pointer" }}>
