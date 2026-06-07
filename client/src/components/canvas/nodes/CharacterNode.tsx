@@ -186,10 +186,11 @@ export const CharacterNode = memo(function CharacterNode({ id, selected, data }:
     };
     const fillRefIfBlank = () => { if (refs[0] && !((tp.referenceImageUrl as string | undefined)?.trim())) p.referenceImageUrl = refs[0]; };
     if (nt === "comfyui_image") {
+      // Identity via IPAdapter + LoRA only — do NOT set referenceImageUrl (that's the
+      // img2img/inpaint source; setting it would unintentionally turn a txt2img into img2img).
       const cond = deriveCharacterConditioning(payload, { ipadapter: tp.ipadapter as never, loras: tp.loras as never });
       if (cond.ipadapter) p.ipadapter = cond.ipadapter; // fill-only-when-blank inside
       if (cond.loras) p.loras = cond.loras;
-      fillRefIfBlank();
     } else if (nt === "comfyui_video") {
       fillRefIfBlank();
       addLora();
