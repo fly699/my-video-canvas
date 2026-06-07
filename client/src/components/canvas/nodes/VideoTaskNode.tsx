@@ -7,7 +7,7 @@ import { useCanvasStore } from "../../../hooks/useCanvasStore";
 import type { VideoTaskNodeData, VideoProvider, CharacterNodeData } from "../../../../../shared/types";
 import { maxRefImagesForProvider } from "../../../../../shared/videoRefCaps";
 import { mergeCharactersIntoPrompt } from "../../../lib/characterPrompt";
-import { connectedCharacterRefImages } from "../../../lib/characterConditioning";
+import { connectedCharacterRefImages, connectedCharacters } from "../../../lib/characterConditioning";
 import { trpc } from "@/lib/trpc";
 import { toast } from "sonner";
 import { Handle, Position } from "@xyflow/react";
@@ -845,19 +845,12 @@ export const VideoTaskNode = memo(function VideoTaskNode({ id, selected, data }:
     referenceImageUrl: string | undefined;
   } => {
     const { nodes: allNodes, edges: allEdges } = useCanvasStore.getState();
-    const connectedCharacters: CharacterNodeData[] = [];
-    let charRefFallback: string | undefined = undefined;
-    for (const e of allEdges) {
-      if (e.target !== id) continue;
-      const src = allNodes.find((n) => n.id === e.source);
-      if (src?.data.nodeType === "character") {
-        const cp = src.data.payload as CharacterNodeData;
-        connectedCharacters.push(cp);
-        if (!charRefFallback && cp.referenceImageUrl) charRefFallback = cp.referenceImageUrl;
-      }
-    }
+    // Position-ordered (topmost first) so the prompt's 角色1/角色2 numbering aligns
+    // with the reference image order in buildRefUrls (both use connectedCharacters).
+    const chars = connectedCharacters(id, allEdges, allNodes);
+    const charRefFallback = chars.find((c) => c.referenceImageUrl?.trim())?.referenceImageUrl;
     return {
-      prompt: mergeCharactersIntoPrompt(payload.prompt ?? "", connectedCharacters),
+      prompt: mergeCharactersIntoPrompt(payload.prompt ?? "", chars),
       referenceImageUrl: payload.referenceImageUrl?.trim() || charRefFallback,
     };
   }, [id, payload.prompt, payload.referenceImageUrl]);
