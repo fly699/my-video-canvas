@@ -93,3 +93,23 @@ describe("connectedCharacterLora", () => {
     expect(connectedCharacterLora("wf", [{ source: "c1", target: "wf" }], nodes)).toBeNull();
   });
 });
+
+describe("scene characters are excluded from identity (image/LoRA)", () => {
+  const N = (id: string, payload: unknown, y = 0) => ({ id, data: { nodeType: "character", payload }, position: { x: 0, y } });
+  it("connectedCharacterRefImages skips scene-kind nodes", () => {
+    const nodes = [
+      N("person", { characterKind: "person", referenceImageUrl: "face.png" }, 100),
+      N("scene", { characterKind: "scene", referenceImageUrl: "street.png" }, 200),
+    ];
+    const edges = [{ source: "person", target: "x" }, { source: "scene", target: "x" }];
+    expect(connectedCharacterRefImages("x", edges, nodes)).toEqual(["face.png"]);
+  });
+  it("connectedCharacterLora skips scene-kind nodes", () => {
+    const nodes = [N("scene", { characterKind: "scene", loraName: "loc.safetensors" }, 100), N("person", { characterKind: "person", loraName: "hero.safetensors" }, 200)];
+    const edges = [{ source: "scene", target: "x" }, { source: "person", target: "x" }];
+    expect(connectedCharacterLora("x", edges, nodes)?.name).toBe("hero.safetensors");
+  });
+  it("deriveCharacterConditioning returns empty for a scene", () => {
+    expect(deriveCharacterConditioning({ characterKind: "scene", referenceImageUrl: "street.png" }, {})).toEqual({});
+  });
+});
