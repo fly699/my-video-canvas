@@ -166,6 +166,24 @@ describe("detectUpstreamPrompt — comfyui_workflow forwards prompt downstream",
     const edges = [{ source: "w1", target: "w2" }, { source: "w2", target: "w1" }];
     expect(() => detectUpstreamPrompt("w1", edges, nodes)).not.toThrow();
   });
+
+  it("storyboard forwards its REFINED promptText (the prompt it generates from), not raw description", () => {
+    const nodes: N[] = [
+      { id: "s1", data: { nodeType: "storyboard", payload: { description: "原始场景描述", promptText: "refined cinematic prompt" } } },
+      { id: "d1", data: { nodeType: "comfyui_image", payload: {} } },
+    ];
+    const edges = [{ source: "s1", target: "d1" }];
+    expect(detectUpstreamPrompt("d1", edges, nodes).positive).toBe("refined cinematic prompt");
+  });
+
+  it("storyboard falls back to description when promptText not yet expanded", () => {
+    const nodes: N[] = [
+      { id: "s1", data: { nodeType: "storyboard", payload: { description: "原始场景描述" } } },
+      { id: "d1", data: { nodeType: "comfyui_image", payload: {} } },
+    ];
+    const edges = [{ source: "s1", target: "d1" }];
+    expect(detectUpstreamPrompt("d1", edges, nodes).positive).toBe("原始场景描述");
+  });
 });
 
 import { fillWorkflowLoraParam } from "./comfyWorkflowParams";
