@@ -414,8 +414,14 @@ export const ClipNode = memo(function ClipNode({ id, selected, data }: Props) {
       const out: string[] = [];
       for (const edge of s.edges.filter(e => e.target === id && e.targetHandle === "audio-in")) {
         const node = s.nodes.find(n => n.id === edge.source);
-        if (!node || node.data.nodeType !== "audio") continue;
+        if (!node) continue;
         const p = node.data.payload as Record<string, unknown>;
+        // Accept AudioNodes AND uploaded audio ASSETS (mirrors MergeNode bg-music
+        // detection) — an audio asset wired to audio-in was previously dropped.
+        const isAudioNode = node.data.nodeType === "audio";
+        const isAudioAsset = node.data.nodeType === "asset"
+          && (p.type === "audio" || (typeof p.mimeType === "string" && (p.mimeType as string).startsWith("audio/")));
+        if (!isAudioNode && !isAudioAsset) continue;
         if (p.url) out.push(`${node.id}\t${node.data.title ?? "音频"}\t${p.url as string}`);
       }
       return out.join("\n");

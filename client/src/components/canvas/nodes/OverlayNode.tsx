@@ -71,22 +71,25 @@ export const OverlayNode = memo(function OverlayNode({ id, selected, data }: Pro
 
   // Auto-detect inputVideoUrl from connected video-output nodes only (not image/asset nodes)
   const VIDEO_SOURCE_TYPES = new Set(["video_task", "clip", "merge", "overlay", "asset", "subtitle", "subtitle_motion", "smart_cut", "comfyui_video", "comfyui_workflow"]);
-  const autoDetectedVideoUrl = (() => {
-    const incomingEdges = edges.filter((e) => e.target === id);
-    for (const edge of incomingEdges) {
+  const autoDetectedVideoUrls = (() => {
+    const urls: string[] = [];
+    for (const edge of edges.filter((e) => e.target === id)) {
       const src = nodes.find((n) => n.id === edge.source);
       if (!src || !VIDEO_SOURCE_TYPES.has(src.data.nodeType)) continue;
-      const p = src.data.payload as Record<string, unknown>;
-      // getNodeVideoOutput correctly skips a comfyui_workflow whose run produced an
-      // IMAGE (outputType==="image") and an asset that isn't a video — so we never
-      // feed an image/audio URL into the video overlay pipeline.
-      const url = getNodeVideoOutput(src.data.nodeType, p);
-      if (url) return url;
+      // getNodeVideoOutput skips a comfyui_workflow that produced an IMAGE and a
+      // non-video asset — so we never feed an image/audio URL into the overlay.
+      const url = getNodeVideoOutput(src.data.nodeType, src.data.payload as Record<string, unknown>);
+      if (url && !urls.includes(url)) urls.push(url);
     }
-    return undefined;
+    return urls;
   })();
+  const autoDetectedVideoUrl = autoDetectedVideoUrls[0];
+  // PiP mode needs a SECOND video — auto-fill it from the second distinct connected
+  // video so wiring two videos "just works" without hand-typing the pip URL.
+  const autoDetectedPipUrl = autoDetectedVideoUrls[1];
 
   const effectiveInputUrl = payload.inputVideoUrl ?? autoDetectedVideoUrl;
+  const effectivePipUrl = payload.pipVideoUrl?.trim() || autoDetectedPipUrl;
 
   const handleProcess = () => {
     if (overlayMutation.isPending || payload.status === "processing") return;
@@ -99,8 +102,8 @@ export const OverlayNode = memo(function OverlayNode({ id, selected, data }: Pro
       toast.error("水印/Logo 模式需要填写叠加图片 URL");
       return;
     }
-    if (mode === "pip" && !payload.pipVideoUrl) {
-      toast.error("画中画模式需要填写画中画视频 URL");
+    if (mode === "pip" && !effectivePipUrl) {
+      toast.error("画中画模式需要第二个视频（再连一个视频源，或填写画中画视频 URL）");
       return;
     }
     updateNodeData(id, { status: "processing", errorMessage: undefined });
@@ -113,7 +116,7 @@ export const OverlayNode = memo(function OverlayNode({ id, selected, data }: Pro
       overlayPosition: payload.overlayPosition,
       overlayScale: payload.overlayScale,
       overlayOpacity: payload.overlayOpacity,
-      pipVideoUrl: payload.pipVideoUrl,
+      pipVideoUrl: effectivePipUrl,
       pipPosition: payload.pipPosition,
       pipScale: payload.pipScale,
       brightness: payload.brightness,
@@ -250,7 +253,7 @@ export const OverlayNode = memo(function OverlayNode({ id, selected, data }: Pro
             <div className="flex-shrink-0">
               <label style={labelStyle}>画中画视频 URL *</label>
               <input
-                placeholder="https://..."
+                placeholder={autoDetectedPipUrl ? "（已自动连接第二个视频）" : "https://..."}
                 value={payload.pipVideoUrl ?? ""}
                 onChange={(e) => handleChange("pipVideoUrl", e.target.value)}
                 disabled={isProcessing}
@@ -259,6 +262,9 @@ export const OverlayNode = memo(function OverlayNode({ id, selected, data }: Pro
                 onFocus={onFocusMid}
                 onBlur={onBlurDefault}
               />
+              {autoDetectedPipUrl && !payload.pipVideoUrl && (
+                <p style={{ fontSize: 9.5, color: "var(--c-t4)", margin: "3px 0 0" }}>已自动使用第二个连接的视频作为画中画</p>
+              )}
             </div>
             <div className="grid grid-cols-2 gap-2 flex-shrink-0">
               <div>
