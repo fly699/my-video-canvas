@@ -60,6 +60,7 @@ import { VIDEO_PROVIDERS, IMAGE_GEN_MODELS } from "../../shared/types";
 import type { SubtitleEntry } from "../../shared/types";
 import { assertWhitelisted, assertLLMAllowed, assertComfyuiAllowed, assertComfyuiCloudAllowed, isComfyuiCloudAllowed } from "../_core/whitelist";
 import { writeAuditLog, truncate } from "../_core/auditLog";
+import { withComfyUsageLog } from "../_core/comfyUsageLog";
 import { dedupe } from "../_core/idempotency";
 import { assertProjectAccess, assertProjectOwner } from "../_core/permissions";
 
@@ -2275,7 +2276,11 @@ export const comfyuiRouter = router({
       await assertProjectAccess(input.projectId, ctx.user.id, "editor");
       const baseUrl = input.customBaseUrl?.trim() || ENV.comfyuiBaseUrl;
       if (!baseUrl) throw new TRPCError({ code: "BAD_REQUEST", message: "ComfyUI URL 未配置：请在节点设置中填写或服务端设置 COMFYUI_BASE_URL" });
-      return dedupe("comfyui.generateImage", ctx.user.id, input, async () => {
+      return dedupe("comfyui.generateImage", ctx.user.id, input, () => withComfyUsageLog(
+        ctx,
+        { action: "generateImage", baseUrl, model: input.ckpt, projectId: input.projectId, nodeId: input.nodeId,
+          detail: { template: input.workflowTemplate, prompt: truncate(input.prompt), seed: input.seed, width: input.width, height: input.height, steps: input.steps, cfg: input.cfg, batchSize: input.batchSize, arch: input.arch } },
+        async () => {
         try {
           const result = await generateComfyImage(baseUrl, {
             workflowTemplate: input.workflowTemplate,
@@ -2322,7 +2327,9 @@ export const comfyuiRouter = router({
         } catch (err) {
           throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: err instanceof Error ? err.message : String(err) });
         }
-      });
+        },
+        (r) => ({ resultUrl: r.url, resultCount: r.urls?.length ?? 1 }),
+      ));
     }),
 
   generateVideo: protectedProcedure
@@ -2364,7 +2371,11 @@ export const comfyuiRouter = router({
       await assertProjectAccess(input.projectId, ctx.user.id, "editor");
       const baseUrl = input.customBaseUrl?.trim() || ENV.comfyuiBaseUrl;
       if (!baseUrl) throw new TRPCError({ code: "BAD_REQUEST", message: "ComfyUI URL 未配置：请在节点设置中填写或服务端设置 COMFYUI_BASE_URL" });
-      return dedupe("comfyui.generateVideo", ctx.user.id, input, async () => {
+      return dedupe("comfyui.generateVideo", ctx.user.id, input, () => withComfyUsageLog(
+        ctx,
+        { action: "generateVideo", baseUrl, model: input.ckpt, projectId: input.projectId, nodeId: input.nodeId,
+          detail: { template: input.workflowTemplate, prompt: truncate(input.prompt), seed: input.seed, frames: input.frames, fps: input.fps, steps: input.steps, cfg: input.cfg } },
+        async () => {
         try {
           const result = await generateComfyVideo(baseUrl, {
             workflowTemplate: input.workflowTemplate,
@@ -2400,7 +2411,9 @@ export const comfyuiRouter = router({
         } catch (err) {
           throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: err instanceof Error ? err.message : String(err) });
         }
-      });
+        },
+        (r) => ({ resultUrl: r.url, resultCount: 1 }),
+      ));
     }),
 
   // Live health/capacity of one or more ComfyUI servers (online · VRAM · queue).
@@ -2469,14 +2482,16 @@ export const comfyuiRouter = router({
       await assertComfyuiAllowed(ctx);
       const baseUrl = input.baseUrl.trim() || ENV.comfyuiBaseUrl;
       if (!baseUrl) throw new TRPCError({ code: "BAD_REQUEST", message: "ComfyUI URL 未配置" });
-      try {
-        if (input.action === "free") await freeComfyMemory(baseUrl);
-        else if (input.action === "interrupt") await interruptComfy(baseUrl);
-        else await clearComfyQueue(baseUrl);
-        return { ok: true as const };
-      } catch (err) {
-        throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: err instanceof Error ? err.message : String(err) });
-      }
+      return withComfyUsageLog(ctx, { action: `serverAction:${input.action}`, baseUrl }, async () => {
+        try {
+          if (input.action === "free") await freeComfyMemory(baseUrl);
+          else if (input.action === "interrupt") await interruptComfy(baseUrl);
+          else await clearComfyQueue(baseUrl);
+          return { ok: true as const };
+        } catch (err) {
+          throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: err instanceof Error ? err.message : String(err) });
+        }
+      });
     }),
 
   fetchModels: protectedProcedure
@@ -2557,11 +2572,13 @@ export const comfyuiRouter = router({
       await assertComfyuiAllowed(ctx);
       const baseUrl = input.customBaseUrl?.trim() || ENV.comfyuiBaseUrl;
       if (!baseUrl) throw new TRPCError({ code: "BAD_REQUEST", message: "未配置 ComfyUI 服务器地址" });
-      try {
-        return { url: await extractControlMap(baseUrl, input.sourceImageUrl, input.preprocessor) };
-      } catch (err) {
-        throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: err instanceof Error ? err.message : String(err) });
-      }
+      return withComfyUsageLog(ctx, { action: "extractControlMap", baseUrl, model: input.preprocessor }, async () => {
+        try {
+          return { url: await extractControlMap(baseUrl, input.sourceImageUrl, input.preprocessor) };
+        } catch (err) {
+          throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: err instanceof Error ? err.message : String(err) });
+        }
+      }, (r) => ({ resultUrl: r.url, resultCount: 1 }));
     }),
 
   // Convert a ComfyUI UI-graph ("workflow") JSON to runnable API ("prompt") JSON,
@@ -2644,7 +2661,11 @@ export const comfyuiRouter = router({
         baseUrl = input.customBaseUrl?.trim() || ENV.comfyuiBaseUrl;
         if (!baseUrl) throw new TRPCError({ code: "BAD_REQUEST", message: "ComfyUI URL 未配置：请在节点设置中填写或服务端设置 COMFYUI_BASE_URL" });
       }
-      return dedupe("comfyui.executeWorkflow", ctx.user.id, input, async () => {
+      return dedupe("comfyui.executeWorkflow", ctx.user.id, input, () => withComfyUsageLog(
+        ctx,
+        { action: input.useCloudComfy ? "executeWorkflow:cloud" : "executeWorkflow", baseUrl, projectId: input.projectId, nodeId: input.nodeId,
+          detail: { outputType: input.outputType } },
+        async () => {
         try {
           // Cloud uses the cloud.comfy.org REST API (/api/prompt + /api/job/.../status
           // + /api/view); local uses the standard self-hosted ComfyUI API — untouched.
@@ -2671,7 +2692,9 @@ export const comfyuiRouter = router({
         } catch (err) {
           throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: err instanceof Error ? err.message : String(err) });
         }
-      });
+        },
+        (r) => ({ resultUrl: r.urls[0], resultCount: r.urls.length }),
+      ));
     }),
 });
 

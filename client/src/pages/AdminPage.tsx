@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, useMemo } from "react";
 import { useLocation } from "wouter";
 import { trpc } from "@/lib/trpc";
 import { useAuth } from "@/_core/hooks/useAuth";
@@ -10,7 +10,7 @@ import { toast } from "sonner";
 import { adminTabFromUrl, ADMIN_TAB_EVENT } from "@/lib/adminNav";
 
 type EntryType = "ip" | "user";
-type Tab = "whitelist" | "logs" | "storage" | "chat" | "comfyStress" | "assets" | "downloads" | "system";
+type Tab = "whitelist" | "logs" | "comfyLogs" | "storage" | "chat" | "comfyStress" | "assets" | "downloads" | "system";
 
 const ACTION_LABELS: Record<string, string> = {
   login_email: "邮箱登录",
@@ -128,7 +128,7 @@ export default function AdminPage() {
 
         {/* Tabs */}
         <div style={{ display: "flex", gap: "4px", marginBottom: "20px", borderBottom: "1px solid rgba(255,255,255,0.06)", paddingBottom: "0" }}>
-          {([["whitelist", "白名单管理"], ["logs", "操作日志"], ["storage", "存储设置"], ["chat", "聊天管理"], ["comfyStress", "ComfyUI 压测"], ["assets", "素材库(全用户)"], ["downloads", "下载审批"], ["system", "系统更新"]] as [Tab, string][]).map(([tab, label]) => (
+          {([["whitelist", "白名单管理"], ["logs", "操作日志"], ["comfyLogs", "ComfyUI 日志"], ["storage", "存储设置"], ["chat", "聊天管理"], ["comfyStress", "ComfyUI 压测"], ["assets", "素材库(全用户)"], ["downloads", "下载审批"], ["system", "系统更新"]] as [Tab, string][]).map(([tab, label]) => (
             <button
               key={tab}
               onClick={() => setActiveTab(tab)}
@@ -159,6 +159,7 @@ export default function AdminPage() {
 
         {activeTab === "whitelist" && <WhitelistPanel />}
         {activeTab === "logs" && <LogsPanel />}
+        {activeTab === "comfyLogs" && <ComfyUsageLogsPanel />}
         {activeTab === "storage" && <StoragePanel />}
         {activeTab === "chat" && <ChatAdminPanel />}
         {activeTab === "comfyStress" && <ComfyStressPanel />}
@@ -1166,6 +1167,139 @@ function DetailCell({ detail }: { detail: Record<string, unknown> | null }) {
   if (detail.language) parts.push(`语言：${detail.language}`);
   if (parts.length === 0) return <span>{JSON.stringify(detail).slice(0, 80)}</span>;
   return <span title={parts.join(" | ")}>{parts.slice(0, 2).join(" | ")}{parts.length > 2 ? " …" : ""}</span>;
+}
+
+// ── ComfyUI usage logs (per-user / per-server, detailed) ─────────────────────
+function ComfyUsageLogsPanel() {
+  const [offset, setOffset] = useState(0);
+  const [rangeDays, setRangeDays] = useState("7");
+  const [statusFilter, setStatusFilter] = useState<"" | "success" | "error">("");
+  const [hostFilter, setHostFilter] = useState("");
+  const utils = trpc.useUtils();
+  const LIMIT = 50;
+  // Anchor sinceMs at selection time so the query key is stable (no refetch loop).
+  const sinceMs = useMemo(() => (rangeDays === "0" ? undefined : Date.now() - Number(rangeDays) * 86400000), [rangeDays]);
+
+  const summaryQ = trpc.admin.comfyLogs.summary.useQuery({ sinceMs });
+  const listQ = trpc.admin.comfyLogs.list.useQuery(
+    { limit: LIMIT, offset, status: statusFilter || undefined, host: hostFilter || undefined, sinceMs },
+    { keepPreviousData: true } as object,
+  );
+  const clearMut = trpc.admin.comfyLogs.clear.useMutation({
+    onSuccess: () => { utils.admin.comfyLogs.list.invalidate(); utils.admin.comfyLogs.summary.invalidate(); setOffset(0); },
+  });
+
+  const s = summaryQ.data;
+  const rows = (listQ.data?.rows ?? []) as Array<Record<string, unknown>>;
+  const total = listQ.data?.total ?? 0;
+  const totalPages = Math.ceil(total / LIMIT);
+  const currentPage = Math.floor(offset / LIMIT) + 1;
+  const errRate = s && s.totals.runs > 0 ? Math.round((s.totals.errors / s.totals.runs) * 100) : 0;
+
+  const stat = (label: string, value: string, color = "var(--c-t1)") => (
+    <div style={{ flex: 1, minWidth: 110, padding: "10px 12px", borderRadius: 8, background: "var(--c-surface, rgba(255,255,255,0.03))", border: "1px solid var(--c-bd1, rgba(255,255,255,0.06))" }}>
+      <div style={{ fontSize: 11, color: "var(--c-t3, rgba(255,255,255,0.45))" }}>{label}</div>
+      <div style={{ fontSize: 18, fontWeight: 700, color }}>{value}</div>
+    </div>
+  );
+  const miniTable = (title: string, header: string, items: Array<{ key: string; label: string; runs: number; errors: number; avgMs: number; onClick?: () => void }>) => (
+    <div style={{ flex: 1, minWidth: 260 }}>
+      <div style={{ fontSize: 12, fontWeight: 600, color: "var(--c-t2)", marginBottom: 6 }}>{title}</div>
+      <div style={{ border: "1px solid var(--c-bd1, rgba(255,255,255,0.06))", borderRadius: 8, overflow: "hidden" }}>
+        <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12 }}>
+          <thead><tr style={{ background: "var(--c-surface, rgba(255,255,255,0.03))" }}>
+            {[header, "运行", "失败", "均时"].map((h) => <th key={h} style={{ padding: "5px 8px", textAlign: "left", color: "var(--c-t3)", fontWeight: 500 }}>{h}</th>)}
+          </tr></thead>
+          <tbody>
+            {items.length === 0 ? <tr><td colSpan={4} style={{ padding: 10, color: "var(--c-t4)", textAlign: "center" }}>暂无</td></tr> :
+              items.slice(0, 8).map((it) => (
+                <tr key={it.key} onClick={it.onClick} style={{ borderTop: "1px solid rgba(255,255,255,0.04)", cursor: it.onClick ? "pointer" : "default" }}>
+                  <td style={{ padding: "5px 8px", color: "var(--c-t1)", maxWidth: 150, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }} title={it.label}>{it.label}</td>
+                  <td style={{ padding: "5px 8px", color: "var(--c-t2)" }}>{it.runs}</td>
+                  <td style={{ padding: "5px 8px", color: it.errors > 0 ? "#f87171" : "var(--c-t3)" }}>{it.errors}</td>
+                  <td style={{ padding: "5px 8px", color: "var(--c-t3)" }}>{(it.avgMs / 1000).toFixed(1)}s</td>
+                </tr>
+              ))}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  );
+
+  return (
+    <div style={cardStyle}>
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 14, flexWrap: "wrap", gap: 10 }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+          <HardDrive style={{ width: 16, height: 16, color: "oklch(0.72 0.2 285)" }} />
+          <h3 style={{ margin: 0, fontSize: 15, fontWeight: 600, color: "var(--c-t1, #f0f0f4)" }}>ComfyUI 使用日志
+            {total > 0 && <span style={{ fontWeight: 400, color: "var(--c-t2)", fontSize: 13, marginLeft: 8 }}>（共 {total} 条）</span>}</h3>
+        </div>
+        <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+          <select value={rangeDays} onChange={(e) => { setRangeDays(e.target.value); setOffset(0); }} style={{ ...inputStyle, width: "auto", padding: "6px 10px", fontSize: 12 }}>
+            {[["1", "近 24 小时"], ["7", "近 7 天"], ["30", "近 30 天"], ["0", "全部"]].map(([v, l]) => <option key={v} value={v}>{l}</option>)}
+          </select>
+          <select value={statusFilter} onChange={(e) => { setStatusFilter(e.target.value as "" | "success" | "error"); setOffset(0); }} style={{ ...inputStyle, width: "auto", padding: "6px 10px", fontSize: 12 }}>
+            <option value="">全部状态</option><option value="success">成功</option><option value="error">失败</option>
+          </select>
+          {hostFilter && <button onClick={() => { setHostFilter(""); setOffset(0); }} style={{ ...inputStyle, width: "auto", padding: "6px 10px", fontSize: 12, cursor: "pointer" }} title="清除服务器筛选">服务器：{hostFilter} ✕</button>}
+          <button onClick={() => { listQ.refetch(); summaryQ.refetch(); }} style={iconBtn} title="刷新"><RefreshCw style={{ width: 14, height: 14 }} /></button>
+          <button onClick={() => { if (confirm("确定清空全部 ComfyUI 使用日志？")) clearMut.mutate(); }} disabled={clearMut.isPending} style={{ ...iconBtn, color: "#f87171", borderColor: "rgba(239,68,68,0.2)", background: "rgba(239,68,68,0.08)" }} title="清空"><Trash2 style={{ width: 14, height: 14 }} /></button>
+        </div>
+      </div>
+
+      {/* Summary */}
+      <div style={{ display: "flex", gap: 10, flexWrap: "wrap", marginBottom: 14 }}>
+        {stat("总运行", String(s?.totals.runs ?? 0))}
+        {stat("失败", String(s?.totals.errors ?? 0), (s?.totals.errors ?? 0) > 0 ? "#f87171" : "var(--c-t1)")}
+        {stat("失败率", `${errRate}%`, errRate >= 20 ? "#f87171" : "var(--c-t1)")}
+        {stat("平均耗时", `${((s?.totals.avgMs ?? 0) / 1000).toFixed(1)}s`)}
+      </div>
+      <div style={{ display: "flex", gap: 14, flexWrap: "wrap", marginBottom: 16 }}>
+        {miniTable("按用户", "用户", (s?.byUser ?? []).map((u) => ({ key: String(u.userId ?? "?"), label: u.userEmail || (u.userId != null ? `ID:${u.userId}` : "未知"), runs: u.runs, errors: u.errors, avgMs: u.avgMs })))}
+        {miniTable("按服务器", "host:port", (s?.byHost ?? []).map((h) => ({ key: h.host ?? "?", label: h.host ?? "—", runs: h.runs, errors: h.errors, avgMs: h.avgMs, onClick: h.host ? () => { setHostFilter(h.host!); setOffset(0); } : undefined })))}
+      </div>
+
+      {/* Detailed table */}
+      {listQ.isLoading ? <div style={{ color: "var(--c-t2)", fontSize: 13, padding: "24px 0" }}>加载中…</div>
+        : rows.length === 0 ? <div style={{ padding: 40, textAlign: "center", color: "var(--c-t2)", fontSize: 14, border: "1px dashed rgba(255,255,255,0.08)", borderRadius: 8 }}>暂无记录</div>
+        : (
+        <div style={{ overflowX: "auto" }}>
+          <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12 }}>
+            <thead><tr>{["时间", "用户", "操作", "服务器", "模型", "状态", "耗时", "结果 / 错误"].map((h) => <th key={h} style={{ padding: "8px 10px", textAlign: "left", color: "var(--c-t2)", fontWeight: 500, borderBottom: "1px solid rgba(255,255,255,0.06)", whiteSpace: "nowrap" }}>{h}</th>)}</tr></thead>
+            <tbody>
+              {rows.map((log) => {
+                const ok = log.status === "success";
+                const detail = (log.detail as Record<string, unknown> | null) ?? null;
+                return (
+                  <tr key={String(log.id)} style={{ borderBottom: "1px solid rgba(255,255,255,0.04)" }}>
+                    <td style={{ ...tdStyle, whiteSpace: "nowrap", color: "var(--c-t2)" }}>{new Date(log.createdAt as string).toLocaleString("zh-CN", { month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit" })}</td>
+                    <td style={{ ...tdStyle, maxWidth: 150 }}><div style={{ color: "var(--c-t1)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{(log.userEmail as string) || (log.userName as string) || (log.userId != null ? `ID:${log.userId}` : "—")}</div></td>
+                    <td style={{ ...tdStyle, whiteSpace: "nowrap", color: "var(--c-t2)" }}>{String(log.action)}</td>
+                    <td style={{ ...tdStyle, fontFamily: "monospace", whiteSpace: "nowrap", color: "var(--c-t1)", cursor: "pointer" }} onClick={() => { if (log.host) { setHostFilter(String(log.host)); setOffset(0); } }} title="点击按此服务器筛选">{String(log.host ?? "—")}</td>
+                    <td style={{ ...tdStyle, maxWidth: 140, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", color: "var(--c-t2)" }} title={String(log.model ?? "")}>{String(log.model ?? "—")}</td>
+                    <td style={{ ...tdStyle, whiteSpace: "nowrap" }}><span style={{ padding: "2px 7px", borderRadius: 4, fontSize: 11, fontWeight: 600, color: ok ? "oklch(0.75 0.18 150)" : "#f87171", background: ok ? "oklch(0.75 0.18 150 / 0.12)" : "rgba(239,68,68,0.1)", border: `1px solid ${ok ? "oklch(0.75 0.18 150 / 0.3)" : "rgba(239,68,68,0.3)"}` }}>{ok ? "成功" : "失败"}</span></td>
+                    <td style={{ ...tdStyle, whiteSpace: "nowrap", color: "var(--c-t2)" }}>{log.durationMs != null ? `${(Number(log.durationMs) / 1000).toFixed(1)}s` : "—"}</td>
+                    <td style={{ ...tdStyle, maxWidth: 240, color: ok ? "var(--c-t2)" : "#f87171" }}>
+                      <span title={ok ? String(log.resultUrl ?? "") : String(log.errorMessage ?? "")} style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", display: "block" }}>
+                        {ok ? (log.resultUrl ? `✓ 已生成${log.resultCount ? ` ×${log.resultCount}` : ""}` : (detail ? Object.keys(detail).length + " 项参数" : "✓")) : String(log.errorMessage ?? "失败")}
+                      </span>
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+      )}
+      {totalPages > 1 && (
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 12, marginTop: 16 }}>
+          <button onClick={() => setOffset(Math.max(0, offset - LIMIT))} disabled={offset === 0} style={paginBtn}>上一页</button>
+          <span style={{ fontSize: 13, color: "var(--c-t2)" }}>{currentPage} / {totalPages}</span>
+          <button onClick={() => setOffset(offset + LIMIT)} disabled={currentPage >= totalPages} style={paginBtn}>下一页</button>
+        </div>
+      )}
+    </div>
+  );
 }
 
 

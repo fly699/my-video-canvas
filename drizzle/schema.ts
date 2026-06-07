@@ -634,6 +634,39 @@ export const auditLogs = mysqlTable("auditLogs", {
 export type AuditLog = typeof auditLogs.$inferSelect;
 export type InsertAuditLog = typeof auditLogs.$inferInsert;
 
+// ── Per-user ComfyUI server usage logs ──────────────────────────────────────
+// Detailed record of every ComfyUI call (generate image/video, custom workflow,
+// server action): which user, which server/host:port, model, status, duration,
+// result and error — for admin observability & per-user/per-server analytics.
+export const comfyUsageLogs = mysqlTable("comfyUsageLogs", {
+  id: int("id").autoincrement().primaryKey(),
+  userId: int("userId"),
+  userEmail: varchar("userEmail", { length: 320 }),
+  userName: varchar("userName", { length: 255 }),
+  ip: varchar("ip", { length: 64 }).notNull(),
+  action: varchar("action", { length: 64 }).notNull(),       // generateImage / generateVideo / executeWorkflow / serverAction:free …
+  baseUrl: varchar("baseUrl", { length: 512 }).notNull(),    // the server address used
+  host: varchar("host", { length: 255 }),                    // host:port derived from baseUrl
+  model: varchar("model", { length: 255 }),                  // ckpt / template / preprocessor
+  projectId: int("projectId"),
+  nodeId: varchar("nodeId", { length: 255 }),
+  status: varchar("status", { length: 16 }).notNull(),       // success | error
+  durationMs: int("durationMs"),
+  resultUrl: varchar("resultUrl", { length: 2048 }),
+  resultCount: int("resultCount"),
+  errorMessage: varchar("errorMessage", { length: 1024 }),
+  detail: json("detail"),                                    // extra dimensions (prompt summary, seed, size, gpuIndex…)
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+}, (t) => ({
+  userIdIdx: index("comfyUsageLogs_userId_idx").on(t.userId),
+  hostIdx: index("comfyUsageLogs_host_idx").on(t.host),
+  statusIdx: index("comfyUsageLogs_status_idx").on(t.status),
+  createdAtIdx: index("comfyUsageLogs_createdAt_idx").on(t.createdAt),
+}));
+
+export type ComfyUsageLog = typeof comfyUsageLogs.$inferSelect;
+export type InsertComfyUsageLog = typeof comfyUsageLogs.$inferInsert;
+
 // ── Poyo Balance Snapshots ──────────────────────────────────────────────────
 // Poyo's balance API only returns the current credit amount (no history), so we
 // snapshot it periodically to chart consumption / spending trends. The balance
