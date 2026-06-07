@@ -54,14 +54,24 @@ export interface FamilyRec {
 const has = (arr: string[] | undefined, re: RegExp) => Array.isArray(arr) && arr.some((s) => re.test(s));
 const pick = (arr: string[] | undefined, re: RegExp, n = 3) => (arr ?? []).filter((s) => re.test(s)).slice(0, n);
 
-/** Build browser search URLs for a query across the popular workflow sites. */
+/** Official ComfyUI example workflows (downloadable .json/.png per model). The
+ *  single most reliable source — hosted on github.io, listed by category. */
+export const OFFICIAL_EXAMPLES_URL = "https://comfyanonymous.github.io/ComfyUI_examples/";
+
+/** Browser search URLs for a query across the popular workflow / model sites. All
+ *  are stable `search?q=` style endpoints (resolve regardless of the query),
+ *  opened in the user's browser (which can reach them even if our server can't). */
 export function workflowSearchLinks(query: string): { label: string; url: string }[] {
   const q = encodeURIComponent(query);
+  const qWf = encodeURIComponent(`${query} ComfyUI workflow`);
   return [
     { label: "ComfyWorkflows", url: `https://comfyworkflows.com/search?q=${q}` },
-    { label: "OpenArt", url: `https://openart.ai/workflows/search?q=${q}` },
+    { label: "OpenArt", url: `https://openart.ai/workflows/all?q=${q}` },
     { label: "Civitai", url: `https://civitai.com/search/models?query=${q}` },
-    { label: "Google", url: `https://www.google.com/search?q=${q}+ComfyUI+workflow+json` },
+    { label: "HuggingFace", url: `https://huggingface.co/models?search=${q}` },
+    { label: "GitHub", url: `https://github.com/search?q=${qWf}&type=repositories` },
+    { label: "Reddit", url: `https://www.reddit.com/r/comfyui/search/?q=${q}&restrict_sr=1` },
+    { label: "Google", url: `https://www.google.com/search?q=${qWf}+json` },
   ];
 }
 
@@ -86,6 +96,9 @@ export function recommendWorkflows(models: RecModelList): FamilyRec[] {
       externals: [
         { title: "Flux Dev/Schnell 基础工作流", desc: "官方推荐的 Flux 文生图基础流，含 CLIP/T5 双编码。", needs: "flux1-dev/schnell + t5xxl + clip_l + ae(VAE)" },
         { title: "Flux + ControlNet / Redux", desc: "结构/风格参考引导生成。", needs: "Flux + ControlNet 或 Redux(styleModel)" },
+        { title: "Flux Kontext 指令编辑", desc: "用自然语言指令编辑已有图（改物体/风格/背景）。", needs: "flux1-kontext" },
+        { title: "Flux Fill 局部重绘", desc: "蒙版区域重绘/扩图。", needs: "flux1-fill + 蒙版" },
+        { title: "Flux + 多 LoRA 风格", desc: "叠加角色/画风 LoRA。", needs: "Flux + Flux 版 LoRA" },
       ],
     });
   } else if (has(base, /sd3|stable.?diffusion.?3|sd_?3/i)) {
@@ -93,14 +106,22 @@ export function recommendWorkflows(models: RecModelList): FamilyRec[] {
       family: "sd3", label: "SD3 / SD3.5", matched: pick(base, /sd3|sd_?3/i),
       query: "Stable Diffusion 3.5",
       builtins: [IMG("txt2img", "SD3 文生图", "用 SD3/3.5 模型文生图（内置节点）。")],
-      externals: [{ title: "SD3.5 Large/Medium 基础工作流", desc: "三文本编码器的 SD3.5 标准流。", needs: "sd3.5 + clip_g/clip_l/t5xxl" }],
+      externals: [
+        { title: "SD3.5 Large/Medium 基础工作流", desc: "三文本编码器的 SD3.5 标准流。", needs: "sd3.5 + clip_g/clip_l/t5xxl" },
+        { title: "SD3.5 + ControlNet", desc: "Blur/Canny/Depth 结构控制。", needs: "sd3.5 + 对应 ControlNet" },
+        { title: "SD3.5 Turbo 加速", desc: "少步快速出图。", needs: "sd3.5-large-turbo" },
+      ],
     });
   } else if (has(base, /pony/i)) {
     recs.push({
       family: "pony", label: "Pony (SDXL)", matched: pick(base, /pony/i),
       query: "Pony Diffusion XL",
       builtins: [IMG("txt2img", "Pony 文生图", "Pony 属 SDXL 体系，用内置 txt2img。"), IMG("img2img", "Pony 图生图", "基于已有图改绘。")],
-      externals: [{ title: "Pony 角色/风格工作流", desc: "Pony 专用提示词风格 + LoRA 叠加。", needs: "Pony XL ckpt + 对应 LoRA" }],
+      externals: [
+        { title: "Pony 角色/风格工作流", desc: "Pony 专用提示词风格 + LoRA 叠加。", needs: "Pony XL ckpt + 对应 LoRA" },
+        { title: "Pony + IPAdapter 角色一致", desc: "参考图保持人物一致。", needs: "Pony + IPAdapter(SDXL)" },
+        { title: "Pony + ControlNet 姿态", desc: "openpose 控制动作。", needs: "Pony + SDXL ControlNet" },
+      ],
     });
   } else if (has(base, /xl|sdxl|sd_xl/i)) {
     recs.push({
@@ -110,6 +131,9 @@ export function recommendWorkflows(models: RecModelList): FamilyRec[] {
       externals: [
         { title: "SDXL Base + Refiner", desc: "Base 出图 + Refiner 精修的经典两段式。", needs: "sdxl base + refiner" },
         { title: "SDXL Lightning / Turbo", desc: "4~8 步极速出图。", needs: "对应 Lightning/Turbo ckpt 或 LoRA" },
+        { title: "SDXL ControlNet 全家桶", desc: "canny/depth/openpose 结构控制。", needs: "SDXL + 对应 ControlNet" },
+        { title: "SDXL Inpaint 局部重绘", desc: "蒙版重绘/换装/去物。", needs: "SDXL(-inpaint) + 蒙版" },
+        { title: "SDXL + IPAdapter 风格/人脸", desc: "参考图迁移风格或保持人物。", needs: "SDXL + IPAdapter + clip_vision" },
       ],
     });
   } else if (ckpts.length > 0) {
@@ -118,7 +142,12 @@ export function recommendWorkflows(models: RecModelList): FamilyRec[] {
       family: "sd15", label: "SD1.5", matched: ckpts.slice(0, 3),
       query: "SD1.5",
       builtins: [IMG("txt2img", "文生图", "用你的模型文生图（内置节点）。"), IMG("img2img", "图生图", "基于参考图改绘。")],
-      externals: [{ title: "SD1.5 + LCM/LoRA 加速", desc: "LCM LoRA 少步快出图。", needs: "SD1.5 ckpt + LCM LoRA" }],
+      externals: [
+        { title: "SD1.5 + LCM/LoRA 加速", desc: "LCM LoRA 少步快出图。", needs: "SD1.5 ckpt + LCM LoRA" },
+        { title: "SD1.5 ControlNet 姿态/线稿", desc: "openpose/canny/depth 精确控图。", needs: "SD1.5 + 对应 ControlNet" },
+        { title: "SD1.5 AnimateDiff 动画", desc: "底模 + 动作模块出动图。", needs: "SD1.5 + motion module" },
+        { title: "SD1.5 Inpaint 局部重绘", desc: "蒙版重绘/修手。", needs: "SD1.5(-inpainting) + 蒙版" },
+      ],
     });
   }
 

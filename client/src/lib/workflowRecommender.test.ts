@@ -64,9 +64,15 @@ describe("recommendWorkflows", () => {
     expect(recommendWorkflows({})).toEqual([]);
   });
 
-  it("builds browser search links across the workflow sites", () => {
+  it("builds browser search links across many workflow/model sites", () => {
     const links = workflowSearchLinks("Flux");
-    expect(links.map((l) => l.label)).toEqual(["ComfyWorkflows", "OpenArt", "Civitai", "Google"]);
+    expect(links.map((l) => l.label)).toEqual(["ComfyWorkflows", "OpenArt", "Civitai", "HuggingFace", "GitHub", "Reddit", "Google"]);
     expect(links[0].url).toContain("comfyworkflows.com/search?q=Flux");
+    expect(links.find((l) => l.label === "GitHub")!.url).toContain("github.com/search?q=");
+    // every URL is a valid absolute https URL
+    for (const l of links) expect(() => new URL(l.url)).not.toThrow();
+    expect(new URL(l0(links)).protocol).toBe("https:");
   });
 });
+
+function l0(links: { url: string }[]): string { return links[0].url; }
