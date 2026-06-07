@@ -137,13 +137,33 @@ export function buildAtempoFilters(speed: number): string[] {
 
 // ── Public API ────────────────────────────────────────────────────────────────
 
+export interface AudioTrackInput {
+  url: string;
+  volume?: number;   // 0..2, default 1
+  delay?: number;    // seconds start offset, default 0
+  fadeIn?: number;   // seconds
+  fadeOut?: number;  // seconds
+  isVoice?: boolean; // mark as the ducking key (others duck to it)
+}
+
+export interface ClipOutputSettings {
+  resolution?: "source" | "720p" | "1080p" | "4k";
+  fps?: number;                 // 1..60
+  format?: "mp4" | "webm";
+}
+
 export interface TrimOptions {
   inputUrl: string;
   startTime: number;    // seconds
   endTime: number;      // seconds
   speed?: number;       // 0.1–10.0, default 1.0 (1.0 = no change)
-  audioUrl?: string;    // optional audio track URL to replace/mix in
-  audioVolume?: number; // 0.0–2.0 volume for the EXTERNAL audio (default 1.0)
+  audioUrl?: string;    // legacy single external audio (→ folded into audioTracks)
+  audioVolume?: number; // legacy volume for the single external audio (default 1.0)
+  audioTracks?: AudioTrackInput[]; // multi-track external audio
+  loudnorm?: boolean;   // EBU R128 loudness normalization on the final mix
+  ducking?: boolean;    // enable voice ducking when a source is marked isVoice
+  colorPreset?: string; // one-click look (see buildColorPresetFilters)
+  output?: ClipOutputSettings;
   edit?: ClipEdit;      // optional picture/audio adjustments (default = none)
 }
 
@@ -167,6 +187,10 @@ export interface ClipEdit {
   mixAudio?: boolean;                // when an external audio is connected, MIX it with the
                                      //   original instead of replacing it
   originalVolume?: number;           // 0..2 volume for the source's own audio (default 1.0)
+  originalIsVoice?: boolean;         // mark the source audio as the ducking voice key
+  denoiseAudio?: boolean;            // afftdn noise reduction on the source audio
+  originalFadeIn?: number;           // seconds (audio-only fade for the source track)
+  originalFadeOut?: number;          // seconds
 }
 
 export interface TrimResult {
@@ -221,87 +245,192 @@ export function buildClipAudioFilters(
   return f;
 }
 
+/** Pure: video filters for a one-click color "look". Inserted into the -vf chain
+ *  after the manual eq adjustment, before speed/fade. */
+export function buildColorPresetFilters(preset?: string): string[] {
+  switch (preset) {
+    case "cinematic": return ["eq=contrast=1.08:saturation=0.90", "colorbalance=rs=-0.06:bs=0.06:rm=0.03:bh=0.05"];
+    case "warm":      return ["colorbalance=rm=0.10:rh=0.06:bm=-0.06:bh=-0.04"];
+    case "cool":      return ["colorbalance=bm=0.10:bh=0.06:rm=-0.06:rh=-0.04"];
+    case "bw":        return ["hue=s=0", "eq=contrast=1.05"];
+    case "vintage":   return ["curves=preset=vintage"];
+    case "vivid":     return ["eq=saturation=1.35:contrast=1.08"];
+    default:          return [];
+  }
+}
+
+/** A normalized audio source feeding the clip's final mix. */
+export interface AudioSourceSpec {
+  label: string;     // ffmpeg input label, e.g. "0:a" (original) or "1:a" (track)
+  volume?: number;   // default 1
+  delay?: number;    // seconds, default 0 (start offset)
+  reverse?: boolean; // areverse
+  atempo?: number;   // time-stretch factor (1 = none); only the original uses this
+  denoise?: boolean; // afftdn
+  fadeIn?: number;   // seconds
+  fadeOut?: number;  // seconds
+  isVoice?: boolean; // ducking key
+}
+
+const _br = (l: string) => (l.startsWith("[") ? l : `[${l}]`);
+
+/** Build a per-source audio chain (returns the filter list without the wrapping). */
+export function buildAudioSourceChain(s: AudioSourceSpec, clipDuration: number): string[] {
+  const f: string[] = [];
+  if (s.denoise) f.push("afftdn");
+  if (s.reverse) f.push("areverse");
+  if (s.delay && s.delay > 0) f.push(`adelay=${Math.round(s.delay * 1000)}:all=1`);
+  if (s.atempo && Math.abs(s.atempo - 1) > 1e-3) f.push(...buildAtempoFilters(s.atempo));
+  if (s.volume != null && Math.abs(s.volume - 1) > 1e-3) f.push(`volume=${s.volume.toFixed(4)}`);
+  if (s.fadeIn && s.fadeIn > 0) f.push(`afade=t=in:st=0:d=${s.fadeIn.toFixed(3)}`);
+  if (s.fadeOut && s.fadeOut > 0) f.push(`afade=t=out:st=${Math.max(0, clipDuration - s.fadeOut).toFixed(3)}:d=${s.fadeOut.toFixed(3)}`);
+  return f;
+}
+
+/** Pure: assemble the AUDIO portion of a filter_complex from N sources, with optional
+ *  voice-ducking (sidechaincompress) and final loudness normalization (EBU R128).
+ *  Returns null when there are no audio sources (caller emits -an). */
+export function buildAudioMixGraph(
+  sources: AudioSourceSpec[],
+  o: { clipDuration: number; loudnorm?: boolean; ducking?: boolean },
+): { complex: string; outLabel: string } | null {
+  if (sources.length === 0) return null;
+  const parts: string[] = [];
+  const labels: string[] = [];
+  sources.forEach((s, i) => {
+    const chain = buildAudioSourceChain(s, o.clipDuration);
+    const out = `s${i}`;
+    parts.push(`${_br(s.label)}${chain.length ? chain.join(",") : "anull"}[${out}]`);
+    labels.push(out);
+  });
+
+  // Helper: amix a label list into one (passthrough when single).
+  const mix = (ls: string[], outName: string): string => {
+    if (ls.length === 1) return ls[0];
+    parts.push(`${ls.map(_br).join("")}amix=inputs=${ls.length}:duration=longest:normalize=0[${outName}]`);
+    return outName;
+  };
+
+  let mixed: string;
+  const voice = sources.map((s, i) => ({ s, l: labels[i] })).filter((x) => x.s.isVoice).map((x) => x.l);
+  const music = sources.map((s, i) => ({ s, l: labels[i] })).filter((x) => !x.s.isVoice).map((x) => x.l);
+  if (o.ducking && voice.length > 0 && music.length > 0) {
+    const vm = mix(voice, "vm");
+    const mm = mix(music, "mm");
+    parts.push(`${_br(mm)}${_br(vm)}sidechaincompress=threshold=0.05:ratio=8:attack=20:release=300[duck]`);
+    parts.push(`${_br("duck")}${_br(vm)}amix=inputs=2:duration=longest:normalize=0[mx]`);
+    mixed = "mx";
+  } else {
+    mixed = mix(labels, "mx");
+  }
+
+  let outLabel = mixed;
+  if (o.loudnorm) { parts.push(`${_br(mixed)}loudnorm[aout]`); outLabel = "aout"; }
+  return { complex: parts.join(";"), outLabel };
+}
+
 export async function trimVideo(opts: TrimOptions): Promise<TrimResult> {
   const speed = opts.speed ?? 1.0;
   const audioVolume = opts.audioVolume ?? 1.0;
   const edit = opts.edit ?? {};
   const clipDuration = (opts.endTime - opts.startTime) / speed;
 
-  const ext = "mp4";
-  const inputPath = await downloadToTemp(opts.inputUrl, ext);
+    // Resolve output container/codec from settings.
+    const fmt = opts.output?.format ?? "mp4";
+    const ext = fmt === "webm" ? "webm" : "mp4";
+    const inputPath = await downloadToTemp(opts.inputUrl, "mp4");
 
-  const outName = `ffmpeg-out-${Date.now()}-${Math.random().toString(36).slice(2)}.mp4`;
-  const outPath = path.join(os.tmpdir(), outName);
+    const outName = `ffmpeg-out-${Date.now()}-${Math.random().toString(36).slice(2)}.${ext}`;
+    const outPath = path.join(os.tmpdir(), outName);
 
-  let audioPath: string | null = null;
+  // Normalize legacy single-audio input into the multi-track list.
+  const trackInputs: AudioTrackInput[] = [
+    ...(opts.audioUrl ? [{ url: opts.audioUrl, volume: opts.audioVolume, isVoice: false }] : []),
+    ...(opts.audioTracks ?? []),
+  ];
+  const trackPaths: string[] = [];
 
   try {
-    // Download optional audio track
-    if (opts.audioUrl) {
-      audioPath = await downloadToTemp(opts.audioUrl, "m4a");
-    }
+    for (const t of trackInputs) trackPaths.push(await downloadToTemp(t.url, "m4a"));
 
     const args: string[] = [];
-
-    // Fast seek before input
+    // Fast seek before the video input.
     args.push("-ss", String(opts.startTime));
     args.push("-to", String(opts.endTime));
     args.push("-i", inputPath);
-    if (audioPath) args.push("-i", audioPath);
+    for (const p of trackPaths) args.push("-i", p);
 
+    // ── Video filter chain (incl. color preset + output scale/fps) ──
     const videoFilters = buildClipVideoFilters(edit, speed, clipDuration);
-    const needVideoEncode = videoFilters.length > 0;
+    // Color preset goes after the manual eq (which buildClipVideoFilters already
+    // emitted) but the helper appended speed/fade last; insert preset before those.
+    const presetFilters = buildColorPresetFilters(opts.colorPreset);
+    const scaleFilter = resolutionScaleFilter(opts.output?.resolution);
+    const allVideoFilters = [...videoFilters, ...presetFilters, ...(scaleFilter ? [scaleFilter] : [])];
+    const fpsArg = opts.output?.fps && opts.output.fps > 0 ? opts.output.fps : null;
+    const needVideoEncode = allVideoFilters.length > 0 || fpsArg != null || fmt === "webm";
 
-    // Decide the audio output mode.
-    //   none     — muted, no external track
-    //   external — replace source audio with the connected track
-    //   mix      — blend external track with the source audio
-    //   original — keep (and process) the source's own audio
-    const audioMode: "none" | "external" | "mix" | "original" =
-      (edit.muteOriginal && !audioPath) ? "none"
-        : audioPath ? (edit.mixAudio && !edit.muteOriginal ? "mix" : "external")
-        : edit.muteOriginal ? "none"
-        : "original";
+    // ── Audio sources (original + external tracks) ──
+    const sources: AudioSourceSpec[] = [];
+    if (!edit.muteOriginal) {
+      sources.push({
+        label: "0:a",
+        volume: edit.originalVolume ?? 1.0,
+        reverse: edit.reverse,
+        atempo: speed,
+        denoise: edit.denoiseAudio,
+        fadeIn: edit.originalFadeIn ?? edit.fadeIn,
+        fadeOut: edit.originalFadeOut ?? edit.fadeOut,
+        isVoice: edit.originalIsVoice,
+      });
+    }
+    trackInputs.forEach((t, i) => {
+      sources.push({ label: `${i + 1}:a`, volume: t.volume, delay: t.delay, fadeIn: t.fadeIn, fadeOut: t.fadeOut, isVoice: t.isVoice });
+    });
 
-    // Audio sub-chains (per stream). External music is NOT time-stretched/reversed.
-    const origAudio = buildClipAudioFilters(edit, speed, clipDuration, edit.originalVolume ?? 1.0, true);
-    const extAudio = buildClipAudioFilters(edit, speed, clipDuration, audioVolume, false);
+    const audioGraph = buildAudioMixGraph(sources, { clipDuration, loudnorm: opts.loudnorm, ducking: opts.ducking });
 
-    if (audioMode === "mix") {
-      // Two audio inputs → filter_complex (also routes video through it when filtered).
+    // ── Assemble ffmpeg args. Use filter_complex whenever audio is mixed (≥2
+    //    sources / ducking / loudnorm); otherwise the simpler -vf/-af path. ──
+    const vcodec = fmt === "webm" ? "libvpx-vp9" : "libx264";
+    const acodec = fmt === "webm" ? "libopus" : "aac";
+    const useComplexAudio = sources.length >= 2 || !!opts.ducking || !!opts.loudnorm;
+
+    if (audioGraph && useComplexAudio) {
       const parts: string[] = [];
-      if (needVideoEncode) parts.push(`[0:v]${videoFilters.join(",")}[vout]`);
-      parts.push(`[0:a]${(origAudio.length ? origAudio : ["anull"]).join(",")}[a0]`);
-      parts.push(`[1:a]${(extAudio.length ? extAudio : ["anull"]).join(",")}[a1]`);
-      parts.push(`[a0][a1]amix=inputs=2:duration=first:dropout_transition=0[aout]`);
+      if (needVideoEncode) parts.push(`[0:v]${allVideoFilters.join(",")}[vout]`);
+      parts.push(audioGraph.complex);
       args.push("-filter_complex", parts.join(";"));
-      args.push("-map", needVideoEncode ? "[vout]" : "0:v", "-map", "[aout]");
-      args.push("-c:v", needVideoEncode ? "libx264" : "copy");
-      if (needVideoEncode) args.push("-preset", "fast");
-      args.push("-c:a", "aac");
-    } else if (audioMode === "external") {
-      args.push("-map", "0:v", "-map", "1:a");
-      if (needVideoEncode) args.push("-vf", videoFilters.join(","));
-      if (extAudio.length) args.push("-af", extAudio.join(","));
-      args.push("-c:v", needVideoEncode ? "libx264" : "copy");
-      if (needVideoEncode) args.push("-preset", "fast");
-      args.push("-c:a", "aac");
+      args.push("-map", needVideoEncode ? "[vout]" : "0:v");
+      args.push("-map", `[${audioGraph.outLabel}]`);
+      args.push("-c:v", needVideoEncode ? vcodec : "copy");
+      if (needVideoEncode) args.push("-preset", fmt === "webm" ? "realtime" : "fast");
+      if (fpsArg) args.push("-r", String(fpsArg));
+      args.push("-c:a", acodec);
       args.push("-shortest");
-    } else if (audioMode === "none") {
-      if (needVideoEncode) { args.push("-vf", videoFilters.join(",")); args.push("-c:v", "libx264", "-preset", "fast"); }
-      else args.push("-c:v", "copy");
-      args.push("-an");
+    } else if (audioGraph) {
+      // Exactly one audio source (original OR one external track) → -vf/-af.
+      const single = sources[0];
+      const af = buildAudioSourceChain(single, clipDuration);
+      args.push("-map", needVideoEncode ? "0:v" : "0:v");
+      args.push("-map", single.label);
+      if (needVideoEncode) args.push("-vf", allVideoFilters.join(","));
+      if (af.length) args.push("-af", af.join(","));
+      args.push("-c:v", needVideoEncode ? vcodec : "copy");
+      if (needVideoEncode) args.push("-preset", fmt === "webm" ? "realtime" : "fast");
+      if (fpsArg) args.push("-r", String(fpsArg));
+      args.push("-c:a", af.length ? acodec : (fmt === "webm" ? acodec : "copy"));
+      if (trackPaths.length > 0) args.push("-shortest");
     } else {
-      // original
-      const needAudioEncode = origAudio.length > 0;
-      if (needVideoEncode) { args.push("-vf", videoFilters.join(",")); args.push("-c:v", "libx264", "-preset", "fast"); }
+      // No audio at all.
+      if (needVideoEncode) { args.push("-vf", allVideoFilters.join(",")); args.push("-c:v", vcodec, "-preset", fmt === "webm" ? "realtime" : "fast"); }
       else args.push("-c:v", "copy");
-      if (needAudioEncode) { args.push("-af", origAudio.join(",")); args.push("-c:a", "aac"); }
-      else args.push("-c:a", "copy");
+      if (fpsArg) args.push("-r", String(fpsArg));
+      args.push("-an");
     }
 
     // Output options
-    args.push("-movflags", "+faststart");
+    if (fmt === "mp4") args.push("-movflags", "+faststart");
     args.push("-y"); // overwrite without prompt
     args.push(outPath);
 
@@ -320,17 +449,25 @@ export async function trimVideo(opts: TrimOptions): Promise<TrimResult> {
     // Read output and upload to storage
     const outBuffer = await fs.readFile(outPath);
     await assertObjectStorageWritable();
-    const { url } = await storagePut(`generated/clip-${Date.now()}.mp4`, outBuffer, "video/mp4");
+    const mime = fmt === "webm" ? "video/webm" : "video/mp4";
+    const { url } = await storagePut(`generated/clip-${Date.now()}.${ext}`, outBuffer, mime);
 
     return { url, duration: clipDuration };
   } finally {
     // Clean up all temp files
     await fs.unlink(inputPath).catch(() => undefined);
     await fs.unlink(outPath).catch(() => undefined);
-    if (audioPath) {
-      await fs.unlink(audioPath).catch(() => undefined);
-    }
+    for (const p of trackPaths) await fs.unlink(p).catch(() => undefined);
   }
+}
+
+/** Map an output resolution preset to an ffmpeg scale filter (keeps aspect; pads to
+ *  even dims). Returns null for "source"/undefined. */
+function resolutionScaleFilter(res?: ClipOutputSettings["resolution"]): string | null {
+  const h = res === "720p" ? 720 : res === "1080p" ? 1080 : res === "4k" ? 2160 : null;
+  if (h == null) return null;
+  // Scale by height, keep aspect, force even width.
+  return `scale=-2:${h}`;
 }
 
 // ── Extract a single frame as a PNG (clip cover / still) ───────────────────────

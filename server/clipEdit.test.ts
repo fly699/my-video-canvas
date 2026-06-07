@@ -1,5 +1,8 @@
 import { describe, it, expect } from "vitest";
-import { buildClipVideoFilters, buildClipAudioFilters, type ClipEdit } from "./_core/videoEditor";
+import {
+  buildClipVideoFilters, buildClipAudioFilters, buildColorPresetFilters,
+  buildAudioMixGraph, type ClipEdit, type AudioSourceSpec,
+} from "./_core/videoEditor";
 
 const dur = 10; // trimmed clip duration (seconds)
 
@@ -56,5 +59,66 @@ describe("buildClipAudioFilters", () => {
     expect(f).not.toContain("areverse");
     expect(f.some((x) => x.startsWith("atempo="))).toBe(false);
     expect(f).toContain("volume=0.8000");
+  });
+});
+
+describe("buildColorPresetFilters", () => {
+  it("returns nothing for none/undefined", () => {
+    expect(buildColorPresetFilters()).toEqual([]);
+    expect(buildColorPresetFilters("none")).toEqual([]);
+  });
+  it("black & white desaturates", () => {
+    expect(buildColorPresetFilters("bw")).toContain("hue=s=0");
+  });
+  it("known presets emit filters", () => {
+    for (const p of ["cinematic", "warm", "cool", "vintage", "vivid"]) {
+      expect(buildColorPresetFilters(p).length).toBeGreaterThan(0);
+    }
+  });
+});
+
+describe("buildAudioMixGraph", () => {
+  const dur = 10;
+  it("returns null when there are no sources (→ -an)", () => {
+    expect(buildAudioMixGraph([], { clipDuration: dur })).toBeNull();
+  });
+
+  it("single source passes through (its own label is the output)", () => {
+    const g = buildAudioMixGraph([{ label: "0:a", volume: 0.5 }], { clipDuration: dur })!;
+    expect(g.outLabel).toBe("s0");
+    expect(g.complex).toContain("[0:a]");
+    expect(g.complex).toContain("volume=0.5000");
+    expect(g.complex).not.toContain("amix");
+  });
+
+  it("mixes multiple sources with normalize=0 (per-track volume preserved)", () => {
+    const srcs: AudioSourceSpec[] = [
+      { label: "0:a" }, { label: "1:a", delay: 2, volume: 0.8 }, { label: "2:a", fadeIn: 1 },
+    ];
+    const g = buildAudioMixGraph(srcs, { clipDuration: dur })!;
+    expect(g.complex).toContain("adelay=2000:all=1");
+    expect(g.complex).toContain("amix=inputs=3");
+    expect(g.complex).toContain("normalize=0");
+    expect(g.outLabel).toBe("mx");
+  });
+
+  it("applies loudnorm on the final mix", () => {
+    const g = buildAudioMixGraph([{ label: "0:a" }, { label: "1:a" }], { clipDuration: dur, loudnorm: true })!;
+    expect(g.complex).toContain("loudnorm");
+    expect(g.outLabel).toBe("aout");
+  });
+
+  it("ducks music by the voice-marked source when ducking is on", () => {
+    const srcs: AudioSourceSpec[] = [
+      { label: "0:a", isVoice: true }, { label: "1:a" }, { label: "2:a" },
+    ];
+    const g = buildAudioMixGraph(srcs, { clipDuration: dur, ducking: true })!;
+    expect(g.complex).toContain("sidechaincompress");
+  });
+
+  it("without a voice source, ducking falls back to a plain mix", () => {
+    const g = buildAudioMixGraph([{ label: "0:a" }, { label: "1:a" }], { clipDuration: dur, ducking: true })!;
+    expect(g.complex).not.toContain("sidechaincompress");
+    expect(g.complex).toContain("amix=inputs=2");
   });
 });
