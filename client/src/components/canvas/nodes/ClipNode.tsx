@@ -12,7 +12,8 @@ import { toast } from "sonner";
 import { downloadMedia, mediaFetchUrl } from "@/lib/download";
 import {
   Scissors, Play, Pause, Loader2, Download, RotateCcw,
-  ArrowRight, Volume2, Music, Film,
+  ArrowRight, Volume2, Music, Film, Image as ImageIcon,
+  RotateCw, FlipHorizontal, FlipVertical, ChevronDown, ChevronRight, Sliders,
 } from "lucide-react";
 
 interface Props {
@@ -152,6 +153,128 @@ function TrimBar({
   );
 }
 
+// ── Advanced picture/audio editing (collapsible) ──────────────────────────────
+
+function segBtn(active: boolean): React.CSSProperties {
+  return {
+    flex: 1, padding: "4px 2px", fontSize: 10, borderRadius: 6, cursor: "pointer",
+    borderWidth: 1, borderStyle: "solid",
+    borderColor: active ? accentA(0.45) : BORDER_DEFAULT,
+    background: active ? accentA(0.18) : "var(--c-input)",
+    color: active ? accent : "var(--c-t3)", fontWeight: active ? 600 : 400,
+  };
+}
+
+function EqSlider({ label, value, min, max, neutral, onChange }: {
+  label: string; value: number; min: number; max: number; neutral: number; onChange: (v: number) => void;
+}) {
+  return (
+    <div className="flex items-center gap-2">
+      <span style={{ width: 40, fontSize: 10, color: "var(--c-t3)", flexShrink: 0 }}>{label}</span>
+      <input type="range" min={min} max={max} step={0.05} value={value}
+        onChange={(e) => onChange(Number(e.target.value))}
+        className="nodrag flex-1" style={{ accentColor: accent }} />
+      <button onClick={() => onChange(neutral)} title="重置"
+        style={{ fontSize: 9, color: "var(--c-t4)", cursor: "pointer", width: 28, textAlign: "right" }}>
+        {value.toFixed(2)}
+      </button>
+    </div>
+  );
+}
+
+function AdvancedEditPanel({ payload, update, hasExternalAudio }: {
+  payload: ClipNodeData;
+  update: (field: keyof ClipNodeData, value: unknown) => void;
+  hasExternalAudio: boolean;
+}) {
+  const [open, setOpen] = useState(false);
+  const aspect = payload.aspect ?? "original";
+  const rotate = payload.rotate ?? 0;
+  return (
+    <div style={{ borderTop: `1px solid ${BORDER_DEFAULT}`, paddingTop: 8 }}>
+      <button onClick={() => setOpen((o) => !o)}
+        className="nodrag flex items-center gap-1 w-full"
+        style={{ fontSize: 11, fontWeight: 600, color: "var(--c-t2)", cursor: "pointer" }}>
+        {open ? <ChevronDown style={{ width: 12, height: 12 }} /> : <ChevronRight style={{ width: 12, height: 12 }} />}
+        <Sliders style={{ width: 11, height: 11 }} /> 高级编辑
+      </button>
+      {open && (
+        <div className="flex flex-col gap-2.5 mt-2">
+          {/* Fade in / out */}
+          <div className="flex items-center gap-2">
+            <div className="flex-1">
+              <label style={labelStyle}>淡入 (秒)</label>
+              <input type="number" min={0} max={10} step={0.1} value={payload.fadeIn ?? 0}
+                onChange={(e) => update("fadeIn", Math.max(0, Number(e.target.value) || 0))}
+                className="nodrag w-full px-2 py-1 rounded text-[11px]"
+                style={{ background: "var(--c-input)", border: `1px solid ${BORDER_DEFAULT}`, color: "var(--c-t1)" }} />
+            </div>
+            <div className="flex-1">
+              <label style={labelStyle}>淡出 (秒)</label>
+              <input type="number" min={0} max={10} step={0.1} value={payload.fadeOut ?? 0}
+                onChange={(e) => update("fadeOut", Math.max(0, Number(e.target.value) || 0))}
+                className="nodrag w-full px-2 py-1 rounded text-[11px]"
+                style={{ background: "var(--c-input)", border: `1px solid ${BORDER_DEFAULT}`, color: "var(--c-t1)" }} />
+            </div>
+          </div>
+
+          {/* Aspect ratio (center crop) */}
+          <div>
+            <label style={labelStyle}>画面比例（居中裁剪）</label>
+            <div className="flex items-center gap-1.5">
+              {(["original", "9:16", "16:9", "1:1"] as const).map((a) => (
+                <button key={a} onClick={() => update("aspect", a)} style={segBtn(aspect === a)}>
+                  {a === "original" ? "原始" : a}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {/* Rotate / flip */}
+          <div>
+            <label style={labelStyle}>旋转 / 翻转</label>
+            <div className="flex items-center gap-1.5">
+              {([[0, "0°"], [90, "90°"], [180, "180°"], [270, "270°"]] as const).map(([deg, lbl]) => (
+                <button key={deg} onClick={() => update("rotate", deg)} style={segBtn(rotate === deg)}>
+                  {deg === 0 ? lbl : <span className="flex items-center justify-center gap-0.5"><RotateCw style={{ width: 9, height: 9 }} />{lbl}</span>}
+                </button>
+              ))}
+              <button onClick={() => update("flipH", !payload.flipH)} style={segBtn(!!payload.flipH)} title="水平镜像">
+                <FlipHorizontal style={{ width: 11, height: 11, margin: "0 auto" }} />
+              </button>
+              <button onClick={() => update("flipV", !payload.flipV)} style={segBtn(!!payload.flipV)} title="垂直翻转">
+                <FlipVertical style={{ width: 11, height: 11, margin: "0 auto" }} />
+              </button>
+            </div>
+          </div>
+
+          {/* Color filters */}
+          <div className="flex flex-col gap-1.5">
+            <label style={labelStyle}>画面调整</label>
+            <EqSlider label="亮度" value={payload.brightness ?? 0} min={-1} max={1} neutral={0} onChange={(v) => update("brightness", v)} />
+            <EqSlider label="对比度" value={payload.contrast ?? 1} min={0} max={2} neutral={1} onChange={(v) => update("contrast", v)} />
+            <EqSlider label="饱和度" value={payload.saturation ?? 1} min={0} max={3} neutral={1} onChange={(v) => update("saturation", v)} />
+          </div>
+
+          {/* Audio / reverse toggles */}
+          <div className="flex items-center gap-1.5">
+            <button onClick={() => update("reverse", !payload.reverse)} style={segBtn(!!payload.reverse)} title="视频与音频倒放">倒放</button>
+            <button onClick={() => update("muteOriginal", !payload.muteOriginal)} style={segBtn(!!payload.muteOriginal)} title="去掉视频自带的声音">静音原声</button>
+            {hasExternalAudio && (
+              <button onClick={() => update("mixAudio", !payload.mixAudio)} style={segBtn(!!payload.mixAudio)} title="把连入的音频与原声混合，而不是替换">混音</button>
+            )}
+          </div>
+
+          {/* Original audio volume (when not muted) */}
+          {!payload.muteOriginal && (
+            <EqSlider label="原声量" value={payload.originalVolume ?? 1} min={0} max={2} neutral={1} onChange={(v) => update("originalVolume", v)} />
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ── Main component ────────────────────────────────────────────────────────────
 
 export const ClipNode = memo(function ClipNode({ id, selected, data }: Props) {
@@ -284,6 +407,22 @@ export const ClipNode = memo(function ClipNode({ id, selected, data }: Props) {
     if (endTime <= startTime) { toast.error("出点必须大于入点"); return; }
 
     update("status", "processing");
+    const edit = {
+      reverse: payload.reverse || undefined,
+      rotate: payload.rotate || undefined,
+      flipH: payload.flipH || undefined,
+      flipV: payload.flipV || undefined,
+      brightness: payload.brightness ?? undefined,
+      contrast: payload.contrast ?? undefined,
+      saturation: payload.saturation ?? undefined,
+      aspect: payload.aspect && payload.aspect !== "original" ? payload.aspect : undefined,
+      fadeIn: payload.fadeIn || undefined,
+      fadeOut: payload.fadeOut || undefined,
+      muteOriginal: payload.muteOriginal || undefined,
+      mixAudio: activeAudioUrl && payload.mixAudio ? true : undefined,
+      originalVolume: payload.originalVolume ?? undefined,
+    };
+    const hasEdit = Object.values(edit).some((v) => v !== undefined);
     trimMutation.mutate({
       inputUrl: activeVideoUrl,
       startTime,
@@ -291,7 +430,19 @@ export const ClipNode = memo(function ClipNode({ id, selected, data }: Props) {
       speed: Math.abs(speed - 1.0) > 0.01 ? speed : undefined,
       audioUrl: activeAudioUrl ?? undefined,
       audioVolume: activeAudioUrl ? audioVolume : undefined,
+      edit: hasEdit ? edit : undefined,
     });
+  };
+
+  // ── Extract the current frame as an image (clip cover / still) ───────────────
+  const frameMutation = trpc.clip.extractFrame.useMutation({
+    onSuccess: (result) => { void downloadMedia(result.url, `frame-${Date.now()}.png`); toast.success("已截取当前帧"); },
+    onError: (err) => toast.error("截取失败：" + err.message),
+  });
+  const handleExtractFrame = () => {
+    if (frameMutation.isPending) return;
+    if (!activeVideoUrl) { toast.error("请先连接视频节点"); return; }
+    frameMutation.mutate({ inputUrl: activeVideoUrl, time: currentTime });
   };
 
   const handleReset = () => {
@@ -457,6 +608,28 @@ export const ClipNode = memo(function ClipNode({ id, selected, data }: Props) {
                   }}
                 />
 
+                {/* Precise numeric in / out (frame-accurate, complements the slider) */}
+                <div className="flex items-center gap-2">
+                  <div className="flex-1">
+                    <label style={labelStyle}>入点 (秒)</label>
+                    <input
+                      type="number" min={0} max={duration} step={0.1} value={Number(startTime.toFixed(2))}
+                      onChange={(e) => { const v = Math.max(0, Math.min(Number(e.target.value), endTime - 0.1)); update("startTime", v); if (videoRef.current) videoRef.current.currentTime = v; }}
+                      className="nodrag w-full px-2 py-1 rounded text-[11px]"
+                      style={{ background: "var(--c-input)", border: `1px solid ${BORDER_DEFAULT}`, color: "var(--c-t1)" }}
+                    />
+                  </div>
+                  <div className="flex-1">
+                    <label style={labelStyle}>出点 (秒)</label>
+                    <input
+                      type="number" min={0} max={duration} step={0.1} value={Number(endTime.toFixed(2))}
+                      onChange={(e) => { const v = Math.max(startTime + 0.1, Math.min(Number(e.target.value), duration)); update("endTime", v); }}
+                      className="nodrag w-full px-2 py-1 rounded text-[11px]"
+                      style={{ background: "var(--c-input)", border: `1px solid ${BORDER_DEFAULT}`, color: "var(--c-t1)" }}
+                    />
+                  </div>
+                </div>
+
                 {/* Clip info */}
                 <div
                   className="flex justify-between items-center px-2 py-1.5 rounded-lg"
@@ -490,7 +663,20 @@ export const ClipNode = memo(function ClipNode({ id, selected, data }: Props) {
                       </button>
                     ))}
                   </div>
+                  <div className="flex items-center gap-2 mt-1.5">
+                    <span style={{ fontSize: 10, color: "var(--c-t4)", whiteSpace: "nowrap" }}>自定义</span>
+                    <input
+                      type="number" min={0.1} max={10} step={0.05} value={Number(speed.toFixed(2))}
+                      onChange={(e) => { const v = Math.max(0.1, Math.min(Number(e.target.value) || 1, 10)); update("speed", v); }}
+                      className="nodrag flex-1 px-2 py-1 rounded text-[11px]"
+                      style={{ background: "var(--c-input)", border: `1px solid ${BORDER_DEFAULT}`, color: "var(--c-t1)" }}
+                    />
+                    <span style={{ fontSize: 10, color: "var(--c-t4)" }}>×（0.1–10）</span>
+                  </div>
                 </div>
+
+                {/* Advanced picture/audio editing */}
+                <AdvancedEditPanel payload={payload} update={update} hasExternalAudio={!!activeAudioUrl} />
 
                 {/* Audio section */}
                 {activeAudioUrl && (
@@ -540,6 +726,17 @@ export const ClipNode = memo(function ClipNode({ id, selected, data }: Props) {
                     ? <Loader2 style={{ width: 13, height: 13 }} className="animate-spin" />
                     : <Scissors style={{ width: 13, height: 13 }} />}
                   {isProcessing ? "处理中，请稍候..." : "执行剪辑"}
+                </button>
+
+                <button
+                  onClick={handleExtractFrame}
+                  disabled={frameMutation.isPending}
+                  className="nodrag flex items-center justify-center gap-1.5 w-full py-1.5 rounded-lg text-[11px] font-medium transition-all"
+                  style={{ background: "var(--c-input)", border: `1px solid ${BORDER_DEFAULT}`, color: "var(--c-t2)", cursor: frameMutation.isPending ? "not-allowed" : "pointer" }}
+                  title="把当前预览位置的画面导出为 PNG 图片"
+                >
+                  {frameMutation.isPending ? <Loader2 style={{ width: 12, height: 12 }} className="animate-spin" /> : <ImageIcon style={{ width: 12, height: 12 }} />}
+                  截取当前帧
                 </button>
 
                 {payload.status === "failed" && payload.errorMessage && (
