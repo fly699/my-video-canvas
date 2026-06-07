@@ -797,6 +797,11 @@ export interface ComfyuiWorkflowNodeData {
    *  (acting as a transparent prompt forwarder). Defaults to ON (undefined ⇒
    *  forward); set false to stop the prompt at this node. */
   forwardPrompt?: boolean;
+  /** After a successful run, unload models + free VRAM on the ComfyUI server — but
+   *  only when that server's queue is idle (no other task on the GPU). Each GPU is
+   *  its own ComfyUI process/baseUrl, so this targets exactly the node's server.
+   *  Local servers only (cloud skipped). Defaults to OFF (undefined/false ⇒ keep). */
+  freeVramAfterRun?: boolean;
   paramBindings?: WorkflowParamBinding[];
   paramValues?: Record<string, unknown>;
   /** Explicit per-image-param source: paramKey → upstream nodeId. Unmapped params

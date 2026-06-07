@@ -45,7 +45,7 @@ import { signUploadToken } from "../_core/uploadToken";
 import { getCachedStorageSettings } from "../_core/storageConfig";
 import { invokeLLM, extractTextContent } from "../_core/llm";
 import { generateImage } from "../_core/imageGeneration";
-import { generateComfyImage, generateComfyVideo, fetchComfyModels, fetchComfyServerStatus, analyzeWorkflow, convertUiWorkflowToApi, extractControlMap, CONTROL_MAP_PREPROCESSORS, executeCustomWorkflow, executeCloudWorkflow, testCloudConnection, uploadImageForWorkflow, interruptComfy, freeComfyMemory, clearComfyQueue, emptyModelList } from "../_core/comfyui";
+import { generateComfyImage, generateComfyVideo, fetchComfyModels, fetchComfyServerStatus, analyzeWorkflow, convertUiWorkflowToApi, extractControlMap, CONTROL_MAP_PREPROCESSORS, executeCustomWorkflow, executeCloudWorkflow, testCloudConnection, uploadImageForWorkflow, interruptComfy, freeComfyMemory, getComfyQueueDepth, shouldFreeVram, clearComfyQueue, emptyModelList } from "../_core/comfyui";
 import type { ComfyModelList } from "../_core/comfyui";
 import { ENV } from "../_core/env";
 import { isPoyoVideoProvider, submitPoyoVideo, checkPoyoVideoStatus } from "../_core/poyoVideo";
@@ -2644,6 +2644,9 @@ export const comfyuiRouter = router({
       imageParamKeys: z.array(z.string().max(512)).max(64).optional(),
       outputNodeIds: z.array(z.string()).optional(),
       outputType: z.enum(["image", "video", "auto"]).default("auto"),
+      // Opt-in: after a successful run, unload models + free VRAM on the server —
+      // but only when its queue is idle (no other task using that GPU). Local only.
+      freeVramAfterRun: z.boolean().optional(),
     }))
     .mutation(async ({ ctx, input }) => {
       await assertComfyuiAllowed(ctx);
@@ -2687,6 +2690,15 @@ export const comfyuiRouter = router({
           });
           for (const u of result.urls) {
             await recordGeneratedAsset({ userId: ctx.user.id, projectId: input.projectId, nodeId: input.nodeId, type: result.outputType === "video" ? "video" : "image", source: "generated", provider: "comfyui", model: null, url: u, name: "自定义工作流", mimeType: result.outputType === "video" ? "video/mp4" : "image/png" });
+          }
+          // Optional post-run VRAM cleanup (local only, queue must be idle). Awaited
+          // so the runner only advances to the next layer AFTER the cache is freed;
+          // best-effort — never let a cleanup hiccup fail the (already-successful) run.
+          if (input.freeVramAfterRun && !input.useCloudComfy) {
+            try {
+              const queue = await getComfyQueueDepth(baseUrl);
+              if (shouldFreeVram({ enabled: true, isCloud: false, queue })) await freeComfyMemory(baseUrl);
+            } catch { /* cleanup is best-effort */ }
           }
           return result;
         } catch (err) {
