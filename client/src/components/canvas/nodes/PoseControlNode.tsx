@@ -4,6 +4,7 @@ import { isOwnStorageUrl } from "@/lib/ownStorage";
 import { MediaImage } from "../MediaImage";
 import { useCanvasStore } from "../../../hooks/useCanvasStore";
 import { propagateRefImage } from "../../../lib/refImagePropagation";
+import { getNodeImageOutput } from "@/lib/canvasPassthrough";
 import type { PoseControlNodeData } from "../../../../../shared/types";
 import { trpc } from "@/lib/trpc";
 import { toast } from "sonner";
@@ -49,7 +50,9 @@ export const PoseControlNode = memo(function PoseControlNode({ id, selected, dat
       const src = nodes.find((n) => n.id === edge.source);
       if (!src) continue;
       const p = src.data.payload as Record<string, unknown>;
-      const url = (p.imageUrl ?? p.outputUrl ?? p.url) as string | undefined;
+      // getNodeImageOutput restricts assets to type==="image" and skips a video-output
+      // comfyui_workflow — so a connected video/audio asset is never read as the image.
+      const url = getNodeImageOutput(src.data.nodeType, p);
       if (url) return url;
     }
     return undefined;
