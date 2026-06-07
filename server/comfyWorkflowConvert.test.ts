@@ -62,11 +62,28 @@ describe("convertUiWorkflowToApiPrompt", () => {
     expect(p["9"].inputs.filename_prefix).toBe("ComfyUI");
   });
 
-  it("bails with an error when a node definition is missing (server lacks the node)", () => {
+  it("reports missing node definitions with an actionable message", () => {
     const bad = { nodes: [{ id: 1, type: "SomeCustomNodeNotInstalled", widgets_values: [] }], links: [] };
     const { prompt, error } = convertUiWorkflowToApiPrompt(bad, objectInfo);
     expect(prompt).toBeUndefined();
-    expect(error).toMatch(/缺少节点定义/);
+    expect(error).toMatch(/节点定义/);
+    expect(error).toMatch(/Save \(API Format\)/);
+  });
+
+  it("resolves a PrimitiveNode-fed input to its literal widget value", () => {
+    const g = {
+      nodes: [
+        { id: 1, type: "PrimitiveNode", widgets_values: [768] },
+        { id: 2, type: "EmptyLatentImage", inputs: [{ name: "width", link: 1 }], widgets_values: [512, 1] },
+      ],
+      links: [[1, 1, 0, 2, 0, "INT"]],
+    };
+    const { prompt, error } = convertUiWorkflowToApiPrompt(g, objectInfo);
+    expect(error).toBeUndefined();
+    expect(prompt!["2"].inputs.width).toBe(768);  // literal from the Primitive
+    expect(prompt!["2"].inputs.height).toBe(512); // remaining widgets shift correctly
+    expect(prompt!["2"].inputs.batch_size).toBe(1);
+    expect(prompt!["1"]).toBeUndefined();          // the Primitive itself is not emitted
   });
 
   it("skips muted/bypassed nodes", () => {

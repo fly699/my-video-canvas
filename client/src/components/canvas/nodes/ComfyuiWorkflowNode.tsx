@@ -649,6 +649,9 @@ export const ComfyuiWorkflowNode = memo(function ComfyuiWorkflowNode({ id, selec
             </div>
             <input ref={importFileRef} type="file" accept=".json,application/json,.png,image/png" style={{ display: "none" }}
               onChange={(e) => { const f = e.target.files?.[0]; if (f) void handleFile(f); e.target.value = ""; }} />
+            <div style={{ fontSize: 10, color: "var(--c-t4)", marginBottom: 10, lineHeight: 1.5 }}>
+              最稳：ComfyUI 里用 <b>Save (API Format)</b> 导出的 .json，或带工作流的 PNG（直接可用，无需联服务器）。普通「Save」的 UI .json 会自动转换，但含未装节点 / Primitive 等复杂连接时可能转换失败。
+            </div>
 
             {/* Preset buttons */}
             <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginBottom: 8 }}>

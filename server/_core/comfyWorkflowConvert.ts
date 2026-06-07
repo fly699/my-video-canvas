@@ -56,29 +56,42 @@ export function convertUiWorkflowToApiPrompt(ui: UiWorkflow, objectInfo: ObjectI
 
   const isActive = (n: UiNode | undefined) => !!n && n.mode !== 2 && n.mode !== 4; // 2=muted,4=bypass
 
-  // Resolve a link to a concrete [nodeId, slot], following Reroute passthrough.
-  // Returns null if it dead-ends at a virtual node we can't resolve.
-  const resolveLink = (linkId: number, depth = 0): [string, number] | null => {
+  const isPrimitive = (t: string) => /^primitivenode$|^primitive$/i.test(t);
+
+  // Resolve a link to a concrete graph edge [nodeId, slot] OR a literal value (a
+  // PrimitiveNode feeds a widget value), following Reroute passthrough. Returns
+  // null when it dead-ends at an unsupported virtual node.
+  const resolveLink = (linkId: number, depth = 0): { link?: [string, number]; value?: unknown } | null => {
     if (depth > 64) return null;
     const src = linkMap.get(linkId);
     if (!src) return null;
     const [srcId, srcSlot] = src;
     const srcNode = nodeById.get(srcId);
-    if (srcNode && (srcNode.type === "Reroute" || srcNode.type === "Reroute (rgthree)")) {
-      const up = srcNode.inputs?.[0]?.link;
-      return typeof up === "number" ? resolveLink(up, depth + 1) : null;
+    if (srcNode) {
+      const t = srcNode.type;
+      if (t === "Reroute" || t === "Reroute (rgthree)") {
+        const up = srcNode.inputs?.[0]?.link;
+        return typeof up === "number" ? resolveLink(up, depth + 1) : null;
+      }
+      if (isPrimitive(t)) {
+        const wv = Array.isArray(srcNode.widgets_values) ? srcNode.widgets_values : [];
+        return { value: wv[0] };
+      }
+      if (VIRTUAL.has(t)) return null;
     }
-    if (srcNode && VIRTUAL.has(srcNode.type)) return null; // Primitive/Get/Set — unsupported
-    return [String(srcId), srcSlot];
+    return { link: [String(srcId), srcSlot] };
   };
 
+  const ADVICE = "。最稳做法：在 ComfyUI 用「Save (API Format)」导出 JSON，或直接拖入带工作流的 PNG。";
   const prompt: Record<string, ApiNode> = {};
+  const missingDefs = new Set<string>();
+  const unresolved: string[] = [];
 
   for (const node of nodes) {
     if (!isActive(node)) continue;
-    if (VIRTUAL.has(node.type)) continue;
+    if (VIRTUAL.has(node.type) || isPrimitive(node.type)) continue;
     const def = objectInfo[node.type];
-    if (!def || !def.input) return { error: `缺少节点定义：${node.type}（该服务器未安装此节点？）` };
+    if (!def || !def.input) { missingDefs.add(node.type); continue; }
 
     const ordered: [string, unknown][] = [
       ...Object.entries(def.input.required ?? {}),
@@ -88,16 +101,16 @@ export function convertUiWorkflowToApiPrompt(ui: UiWorkflow, objectInfo: ObjectI
     for (const inp of node.inputs ?? []) if (typeof inp.link === "number") connectedByName.set(inp.name, inp.link);
 
     const widgets = Array.isArray(node.widgets_values) ? node.widgets_values : null;
-    // Object-form widgets_values (rare) is not order-mappable → bail safely.
-    if (node.widgets_values && !Array.isArray(node.widgets_values)) return { error: `节点 ${node.type} 的参数格式不支持自动转换` };
+    if (node.widgets_values && !Array.isArray(node.widgets_values)) { unresolved.push(`${node.type}（参数格式特殊）`); continue; }
 
     const apiInputs: Record<string, unknown> = {};
     let wi = 0; // widgets_values cursor
+    let nodeFailed = false;
     for (const [name, spec] of ordered) {
       if (connectedByName.has(name)) {
-        const resolved = resolveLink(connectedByName.get(name)!);
-        if (!resolved) return { error: `连线无法解析（可能含 Primitive/Reroute 复杂连接）：${node.type}.${name}` };
-        apiInputs[name] = resolved;
+        const r = resolveLink(connectedByName.get(name)!);
+        if (!r) { unresolved.push(`${node.type}.${name}`); nodeFailed = true; break; }
+        apiInputs[name] = r.link ?? r.value;
       } else if (isWidgetSpec(spec)) {
         if (!widgets || wi >= widgets.length) {
           // Missing widget value: use the spec default if any, else leave out.
@@ -110,15 +123,26 @@ export function convertUiWorkflowToApiPrompt(ui: UiWorkflow, objectInfo: ObjectI
       }
       // else: an unconnected link-type input → omit (ComfyUI treats as optional/none)
     }
+    if (nodeFailed) continue;
 
     // Validate: every REQUIRED input must be present (connected or widget/default).
+    let missingReq = false;
     for (const name of Object.keys(def.input.required ?? {})) {
-      if (!(name in apiInputs)) return { error: `节点 ${node.type} 缺少必填输入 ${name}，无法可靠转换` };
+      if (!(name in apiInputs)) { unresolved.push(`${node.type}.${name}（必填缺失）`); missingReq = true; break; }
     }
+    if (missingReq) continue;
 
     prompt[String(node.id)] = { class_type: node.type, inputs: apiInputs, _meta: node.title ? { title: node.title } : undefined };
   }
 
-  if (Object.keys(prompt).length === 0) return { error: "没有可转换的有效节点" };
+  // Aggregate all problems into ONE actionable message (rather than bailing on the
+  // first), and always point to the reliable API-format / PNG path.
+  if (missingDefs.size > 0) {
+    return { error: `服务器上缺少这些节点定义：${Array.from(missingDefs).slice(0, 8).join("、")}${missingDefs.size > 8 ? " 等" : ""}（未安装对应自定义节点？）${ADVICE}` };
+  }
+  if (unresolved.length > 0) {
+    return { error: `部分连线/参数无法自动转换：${unresolved.slice(0, 6).join("、")}${unresolved.length > 6 ? " 等" : ""}${ADVICE}` };
+  }
+  if (Object.keys(prompt).length === 0) return { error: `没有可转换的有效节点${ADVICE}` };
   return { prompt };
 }
