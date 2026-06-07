@@ -182,14 +182,16 @@ function EqSlider({ label, value, min, max, neutral, onChange }: {
   );
 }
 
-function AdvancedEditPanel({ payload, update, hasExternalAudio }: {
+function AdvancedEditPanel({ payload, update, hasAudioTracks }: {
   payload: ClipNodeData;
   update: (field: keyof ClipNodeData, value: unknown) => void;
-  hasExternalAudio: boolean;
+  hasAudioTracks: boolean;
 }) {
   const [open, setOpen] = useState(false);
   const aspect = payload.aspect ?? "original";
   const rotate = payload.rotate ?? 0;
+  const preset = payload.colorPreset ?? "none";
+  const out = payload.output ?? {};
   return (
     <div style={{ borderTop: `1px solid ${BORDER_DEFAULT}`, paddingTop: 8 }}>
       <button onClick={() => setOpen((o) => !o)}
@@ -248,20 +250,35 @@ function AdvancedEditPanel({ payload, update, hasExternalAudio }: {
             </div>
           </div>
 
+          {/* Color preset / LUT look */}
+          <div>
+            <label style={labelStyle}>调色预设</label>
+            <div className="flex items-center gap-1 flex-wrap">
+              {([["none", "无"], ["cinematic", "电影感"], ["warm", "暖色"], ["cool", "冷色"], ["bw", "黑白"], ["vintage", "复古"], ["vivid", "鲜艳"]] as const).map(([k, lbl]) => (
+                <button key={k} onClick={() => update("colorPreset", k)} style={{ ...segBtn(preset === k), flex: "0 0 auto", padding: "4px 8px" }}>{lbl}</button>
+              ))}
+            </div>
+          </div>
+
           {/* Color filters */}
           <div className="flex flex-col gap-1.5">
-            <label style={labelStyle}>画面调整</label>
+            <label style={labelStyle}>画面微调</label>
             <EqSlider label="亮度" value={payload.brightness ?? 0} min={-1} max={1} neutral={0} onChange={(v) => update("brightness", v)} />
             <EqSlider label="对比度" value={payload.contrast ?? 1} min={0} max={2} neutral={1} onChange={(v) => update("contrast", v)} />
             <EqSlider label="饱和度" value={payload.saturation ?? 1} min={0} max={3} neutral={1} onChange={(v) => update("saturation", v)} />
           </div>
 
-          {/* Audio / reverse toggles */}
-          <div className="flex items-center gap-1.5">
+          {/* Audio processing */}
+          <div className="flex items-center gap-1.5 flex-wrap">
             <button onClick={() => update("reverse", !payload.reverse)} style={segBtn(!!payload.reverse)} title="视频与音频倒放">倒放</button>
             <button onClick={() => update("muteOriginal", !payload.muteOriginal)} style={segBtn(!!payload.muteOriginal)} title="去掉视频自带的声音">静音原声</button>
-            {hasExternalAudio && (
-              <button onClick={() => update("mixAudio", !payload.mixAudio)} style={segBtn(!!payload.mixAudio)} title="把连入的音频与原声混合，而不是替换">混音</button>
+            <button onClick={() => update("denoiseAudio", !payload.denoiseAudio)} style={segBtn(!!payload.denoiseAudio)} title="对原声做降噪 (afftdn)">原声降噪</button>
+            <button onClick={() => update("loudnorm", !payload.loudnorm)} style={segBtn(!!payload.loudnorm)} title="EBU R128 响度标准化（统一音量）">响度标准化</button>
+            {hasAudioTracks && (
+              <button onClick={() => update("ducking", !payload.ducking)} style={segBtn(!!payload.ducking)} title="配乐遇到「人声」轨自动压低（需在某条轨标记为人声）">语音闪避</button>
+            )}
+            {hasAudioTracks && (
+              <button onClick={() => update("originalIsVoice", !payload.originalIsVoice)} style={segBtn(!!payload.originalIsVoice)} title="把原声当作人声轨（用于语音闪避）">原声=人声</button>
             )}
           </div>
 
@@ -269,8 +286,86 @@ function AdvancedEditPanel({ payload, update, hasExternalAudio }: {
           {!payload.muteOriginal && (
             <EqSlider label="原声量" value={payload.originalVolume ?? 1} min={0} max={2} neutral={1} onChange={(v) => update("originalVolume", v)} />
           )}
+
+          {/* Output settings */}
+          <div className="flex flex-col gap-1.5">
+            <label style={labelStyle}>输出设置</label>
+            <div className="flex items-center gap-1.5">
+              {(["source", "720p", "1080p", "4k"] as const).map((r) => (
+                <button key={r} onClick={() => update("output", { ...out, resolution: r })} style={segBtn((out.resolution ?? "source") === r)}>
+                  {r === "source" ? "原始" : r}
+                </button>
+              ))}
+            </div>
+            <div className="flex items-center gap-1.5">
+              {([["mp4", "MP4"], ["webm", "WebM"]] as const).map(([f, lbl]) => (
+                <button key={f} onClick={() => update("output", { ...out, format: f })} style={segBtn((out.format ?? "mp4") === f)}>{lbl}</button>
+              ))}
+              <span style={{ fontSize: 10, color: "var(--c-t4)", marginLeft: 4 }}>帧率</span>
+              <input type="number" min={0} max={60} step={1} value={out.fps ?? 0}
+                onChange={(e) => update("output", { ...out, fps: Math.max(0, Math.min(60, Number(e.target.value) || 0)) || undefined })}
+                placeholder="原始"
+                className="nodrag w-14 px-2 py-1 rounded text-[11px]"
+                style={{ background: "var(--c-input)", border: `1px solid ${BORDER_DEFAULT}`, color: "var(--c-t1)" }} />
+            </div>
+          </div>
         </div>
       )}
+    </div>
+  );
+}
+
+// ── Multi-track audio mixer ────────────────────────────────────────────────────
+
+function AudioTracksPanel({ sources, payload, setTrack }: {
+  sources: { id: string; title: string; url: string }[];
+  payload: ClipNodeData;
+  setTrack: (nodeId: string, patch: Record<string, unknown>) => void;
+}) {
+  const cfg = payload.audioTracks ?? {};
+  const anySolo = sources.some((s) => cfg[s.id]?.solo);
+  return (
+    <div className="flex flex-col gap-1.5">
+      <label style={labelStyle}>
+        <span className="flex items-center gap-1"><Music style={{ width: 10, height: 10 }} />音轨（{sources.length}）</span>
+      </label>
+      {sources.map((s, i) => {
+        const c = cfg[s.id] ?? {};
+        const dimmed = anySolo && !c.solo;
+        return (
+          <div key={s.id} className="flex flex-col gap-1 px-2 py-1.5 rounded-lg"
+            style={{ background: accentA(0.05), border: `1px solid ${accentA(0.18)}`, opacity: dimmed ? 0.5 : 1 }}>
+            <div className="flex items-center gap-1.5">
+              <span style={{ fontSize: 10.5, fontWeight: 600, color: "var(--c-t2)", flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{i + 1}. {s.title}</span>
+              <button onClick={() => setTrack(s.id, { muted: !c.muted })} style={{ ...segBtn(!!c.muted), flex: "0 0 auto", padding: "2px 6px" }} title="静音">M</button>
+              <button onClick={() => setTrack(s.id, { solo: !c.solo })} style={{ ...segBtn(!!c.solo), flex: "0 0 auto", padding: "2px 6px" }} title="独奏">S</button>
+              <button onClick={() => setTrack(s.id, { isVoice: !c.isVoice })} style={{ ...segBtn(!!c.isVoice), flex: "0 0 auto", padding: "2px 6px" }} title="标记为人声（语音闪避的压低源）">声</button>
+            </div>
+            <div className="flex items-center gap-2">
+              <Volume2 style={{ width: 11, height: 11, color: "var(--c-t3)", flexShrink: 0 }} />
+              <input type="range" min={0} max={2} step={0.05} value={c.volume ?? 1}
+                onChange={(e) => setTrack(s.id, { volume: Number(e.target.value) })}
+                className="nodrag flex-1" style={{ accentColor: accent }} />
+              <span style={{ fontSize: 10, color: "var(--c-t4)", width: 30, textAlign: "right" }}>{((c.volume ?? 1) * 100).toFixed(0)}%</span>
+            </div>
+            <div className="flex items-center gap-1.5">
+              <span style={{ fontSize: 9.5, color: "var(--c-t4)" }}>延迟</span>
+              <input type="number" min={0} max={600} step={0.1} value={c.delay ?? 0}
+                onChange={(e) => setTrack(s.id, { delay: Math.max(0, Number(e.target.value) || 0) || undefined })}
+                className="nodrag w-12 px-1.5 py-0.5 rounded text-[10px]" style={{ background: "var(--c-input)", border: `1px solid ${BORDER_DEFAULT}`, color: "var(--c-t1)" }} />
+              <span style={{ fontSize: 9.5, color: "var(--c-t4)" }}>淡入</span>
+              <input type="number" min={0} max={30} step={0.1} value={c.fadeIn ?? 0}
+                onChange={(e) => setTrack(s.id, { fadeIn: Math.max(0, Number(e.target.value) || 0) || undefined })}
+                className="nodrag w-11 px-1.5 py-0.5 rounded text-[10px]" style={{ background: "var(--c-input)", border: `1px solid ${BORDER_DEFAULT}`, color: "var(--c-t1)" }} />
+              <span style={{ fontSize: 9.5, color: "var(--c-t4)" }}>淡出</span>
+              <input type="number" min={0} max={30} step={0.1} value={c.fadeOut ?? 0}
+                onChange={(e) => setTrack(s.id, { fadeOut: Math.max(0, Number(e.target.value) || 0) || undefined })}
+                className="nodrag w-11 px-1.5 py-0.5 rounded text-[10px]" style={{ background: "var(--c-input)", border: `1px solid ${BORDER_DEFAULT}`, color: "var(--c-t1)" }} />
+            </div>
+          </div>
+        );
+      })}
+      <p style={{ fontSize: 9.5, color: "var(--c-t4)" }}>多条音轨与原声混音；静音原声可仅用外部音轨。</p>
     </div>
   );
 }
@@ -309,28 +404,30 @@ export const ClipNode = memo(function ClipNode({ id, selected, data }: Props) {
     }, [id]),
   );
 
-  const inputAudioUrl = useCanvasStore(
+  // All connected audio sources (multi-track). Stable string key avoids re-subscribe
+  // churn; parsed back into objects below.
+  const audioSourcesKey = useCanvasStore(
     useCallback((s: ReturnType<typeof useCanvasStore.getState>) => {
+      const out: string[] = [];
       for (const edge of s.edges.filter(e => e.target === id && e.targetHandle === "audio-in")) {
         const node = s.nodes.find(n => n.id === edge.source);
-        if (!node) continue;
-        if (node.data.nodeType === "audio") {
-          const p = node.data.payload as Record<string, unknown>;
-          if (p.url) return p.url as string;
-        }
+        if (!node || node.data.nodeType !== "audio") continue;
+        const p = node.data.payload as Record<string, unknown>;
+        if (p.url) out.push(`${node.id}\t${node.data.title ?? "音频"}\t${p.url as string}`);
       }
-      return null;
+      return out.join("\n");
     }, [id]),
   );
+  const audioSources = audioSourcesKey
+    ? audioSourcesKey.split("\n").map((l) => { const [nid, title, url] = l.split("\t"); return { id: nid, title, url }; })
+    : [];
 
   const activeVideoUrl = inputVideoUrl ?? payload.inputVideoUrl ?? null;
-  const activeAudioUrl = inputAudioUrl ?? payload.inputAudioUrl ?? null;
 
   const duration = payload.sourceDuration ?? 0;
   const startTime = payload.startTime ?? 0;
   const endTime = payload.endTime ?? (payload.sourceDuration ?? Infinity);
   const speed = Math.max(0.01, payload.speed ?? 1.0);
-  const audioVolume = payload.audioVolume ?? 1.0;
 
   // When source video loads, capture duration and init trim points
   const handleVideoMetadata = (e: React.SyntheticEvent<HTMLVideoElement>) => {
@@ -419,17 +516,40 @@ export const ClipNode = memo(function ClipNode({ id, selected, data }: Props) {
       fadeIn: payload.fadeIn || undefined,
       fadeOut: payload.fadeOut || undefined,
       muteOriginal: payload.muteOriginal || undefined,
-      mixAudio: activeAudioUrl && payload.mixAudio ? true : undefined,
       originalVolume: payload.originalVolume ?? undefined,
+      originalIsVoice: payload.originalIsVoice || undefined,
+      denoiseAudio: payload.denoiseAudio || undefined,
     };
     const hasEdit = Object.values(edit).some((v) => v !== undefined);
+
+    // Build multi-track audio: per-source settings keyed by node id; respect solo/mute.
+    const trackCfg = payload.audioTracks ?? {};
+    const anySolo = audioSources.some((s) => trackCfg[s.id]?.solo);
+    const audioTracks = audioSources
+      .filter((s) => { const c = trackCfg[s.id] ?? {}; return anySolo ? c.solo : !c.muted; })
+      .map((s) => { const c = trackCfg[s.id] ?? {}; return {
+        url: s.url,
+        volume: c.volume ?? 1,
+        delay: c.delay || undefined,
+        fadeIn: c.fadeIn || undefined,
+        fadeOut: c.fadeOut || undefined,
+        isVoice: c.isVoice || undefined,
+      }; });
+
+    const output = payload.output && (payload.output.resolution && payload.output.resolution !== "source"
+      || payload.output.fps || (payload.output.format && payload.output.format !== "mp4"))
+      ? payload.output : undefined;
+
     trimMutation.mutate({
       inputUrl: activeVideoUrl,
       startTime,
       endTime,
       speed: Math.abs(speed - 1.0) > 0.01 ? speed : undefined,
-      audioUrl: activeAudioUrl ?? undefined,
-      audioVolume: activeAudioUrl ? audioVolume : undefined,
+      audioTracks: audioTracks.length > 0 ? audioTracks : undefined,
+      loudnorm: payload.loudnorm || undefined,
+      ducking: payload.ducking || undefined,
+      colorPreset: payload.colorPreset && payload.colorPreset !== "none" ? payload.colorPreset : undefined,
+      output,
       edit: hasEdit ? edit : undefined,
     });
   };
@@ -675,39 +795,17 @@ export const ClipNode = memo(function ClipNode({ id, selected, data }: Props) {
                   </div>
                 </div>
 
-                {/* Advanced picture/audio editing */}
-                <AdvancedEditPanel payload={payload} update={update} hasExternalAudio={!!activeAudioUrl} />
-
-                {/* Audio section */}
-                {activeAudioUrl && (
-                  <div>
-                    <label style={labelStyle}>
-                      <span className="flex items-center gap-1">
-                        <Music style={{ width: 10, height: 10 }} />
-                        音频音量
-                      </span>
-                    </label>
-                    <div className="flex items-center gap-2">
-                      <Volume2 style={{ width: 12, height: 12, color: "var(--c-t3)", flexShrink: 0 }} />
-                      <input
-                        type="range"
-                        min={0}
-                        max={2.0}
-                        step={0.05}
-                        value={audioVolume}
-                        onChange={(e) => update("audioVolume", Number(e.target.value))}
-                        className="nodrag flex-1"
-                        style={{ accentColor: accent }}
-                      />
-                      <span style={{ fontSize: 11, color: "var(--c-t3)", width: 32, textAlign: "right" }}>
-                        {(audioVolume * 100).toFixed(0)}%
-                      </span>
-                    </div>
-                    <p style={{ fontSize: 10, color: "var(--c-t4)", marginTop: 4 }}>
-                      已连接音频轨道，将替换原始音频
-                    </p>
-                  </div>
+                {/* Multi-track audio mixer */}
+                {audioSources.length > 0 && (
+                  <AudioTracksPanel sources={audioSources} payload={payload}
+                    setTrack={(nid, patch) => {
+                      const cur = payload.audioTracks ?? {};
+                      updateNodeData(id, { audioTracks: { ...cur, [nid]: { ...cur[nid], ...patch } } });
+                    }} />
                 )}
+
+                {/* Advanced picture/audio editing + pro options */}
+                <AdvancedEditPanel payload={payload} update={update} hasAudioTracks={audioSources.length > 0} />
 
                 {/* Process button */}
                 <button

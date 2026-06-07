@@ -487,6 +487,23 @@ export interface ClipNodeData {
   muteOriginal?: boolean;    // drop the source's own audio
   mixAudio?: boolean;        // mix external audio with original instead of replacing
   originalVolume?: number;   // 0..2 for source's own audio, default 1.0
+  originalIsVoice?: boolean; // mark source audio as ducking voice key
+  denoiseAudio?: boolean;    // afftdn on source audio
+  // ── Multi-track audio (per source-node settings, keyed by audio node id) ──
+  audioTracks?: Record<string, {
+    volume?: number;         // 0..2, default 1
+    delay?: number;          // seconds start offset
+    muted?: boolean;
+    solo?: boolean;
+    fadeIn?: number;
+    fadeOut?: number;
+    isVoice?: boolean;       // ducking key
+  }>;
+  // ── Pro: loudness / ducking / color / output ──
+  loudnorm?: boolean;        // EBU R128 normalize final mix
+  ducking?: boolean;         // voice ducking when a source is marked voice
+  colorPreset?: "none" | "cinematic" | "warm" | "cool" | "bw" | "vintage" | "vivid";
+  output?: { resolution?: "source" | "720p" | "1080p" | "4k"; fps?: number; format?: "mp4" | "webm" };
   // Output
   outputUrl?: string;
   outputDuration?: number;

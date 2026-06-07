@@ -1912,6 +1912,22 @@ export const clipRouter = router({
         speed: z.number().min(0.1).max(10.0).optional(),
         audioUrl: mediaUrlSchema.optional(),
         audioVolume: z.number().min(0).max(2.0).optional(),
+        audioTracks: z.array(z.object({
+          url: mediaUrlSchema,
+          volume: z.number().min(0).max(2).optional(),
+          delay: z.number().min(0).max(600).optional(),
+          fadeIn: z.number().min(0).max(30).optional(),
+          fadeOut: z.number().min(0).max(30).optional(),
+          isVoice: z.boolean().optional(),
+        })).max(8).optional(),
+        loudnorm: z.boolean().optional(),
+        ducking: z.boolean().optional(),
+        colorPreset: z.enum(["none", "cinematic", "warm", "cool", "bw", "vintage", "vivid"]).optional(),
+        output: z.object({
+          resolution: z.enum(["source", "720p", "1080p", "4k"]).optional(),
+          fps: z.number().int().min(1).max(60).optional(),
+          format: z.enum(["mp4", "webm"]).optional(),
+        }).optional(),
         edit: z.object({
           reverse: z.boolean().optional(),
           rotate: z.union([z.literal(0), z.literal(90), z.literal(180), z.literal(270)]).optional(),
@@ -1926,6 +1942,10 @@ export const clipRouter = router({
           muteOriginal: z.boolean().optional(),
           mixAudio: z.boolean().optional(),
           originalVolume: z.number().min(0).max(2).optional(),
+          originalIsVoice: z.boolean().optional(),
+          denoiseAudio: z.boolean().optional(),
+          originalFadeIn: z.number().min(0).max(30).optional(),
+          originalFadeOut: z.number().min(0).max(30).optional(),
         }).optional(),
       }).refine(d => d.endTime > d.startTime, { message: "出点必须大于入点", path: ["endTime"] })
     )
@@ -1933,6 +1953,7 @@ export const clipRouter = router({
       // local ffmpeg, no third-party AI — not whitelist-gated
       guardUrl(input.inputUrl);
       if (input.audioUrl) guardUrl(input.audioUrl);
+      for (const t of input.audioTracks ?? []) guardUrl(t.url);
       const result = await trimVideo(input);
       return { url: result.url, duration: result.duration };
     }),
