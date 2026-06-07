@@ -6,6 +6,7 @@ import { getNodeConfig } from "../../lib/nodeConfig";
 import type { NodeType } from "../../../../shared/types";
 import { isOwnStorageUrl } from "../../lib/ownStorage";
 import { usePersistentState } from "../../hooks/usePersistentState";
+import { useHorizontalWheelScroll } from "../../hooks/useHorizontalWheelScroll";
 
 interface FilmstripPanelProps {
   onClose: () => void;
@@ -68,6 +69,7 @@ function extractFrameMedia(p: Record<string, unknown>): { imageUrl?: string; vid
 export function FilmstripPanel({ onClose }: FilmstripPanelProps) {
   const { nodes } = useCanvasStore();
   const reactFlow = useReactFlow();
+  const wheelScrollRef = useHorizontalWheelScroll<HTMLDivElement>();
   const [layout, setLayout] = usePersistentState<FilmstripLayout>(
     "ui:filmstrip:layout:v2",
     DEFAULT_LAYOUT,
@@ -382,8 +384,10 @@ export function FilmstripPanel({ onClose }: FilmstripPanelProps) {
         </div>
       </div>
 
-      {/* Filmstrip scroll area */}
+      {/* Filmstrip scroll area — mouse wheel scrolls thumbnails horizontally */}
       <div
+        ref={wheelScrollRef}
+        className="nowheel"
         style={{
           flex: 1,
           overflowX: "auto",

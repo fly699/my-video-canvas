@@ -6,6 +6,7 @@ import { getNodeConfig } from "../../lib/nodeConfig";
 import type { NodeType } from "../../../../shared/types";
 import { isOwnStorageUrl } from "../../lib/ownStorage";
 import { usePersistentState } from "../../hooks/usePersistentState";
+import { useHorizontalWheelScroll } from "../../hooks/useHorizontalWheelScroll";
 
 interface TimelinePanelProps {
   onClose: () => void;
@@ -59,6 +60,7 @@ interface VideoClip {
 export function TimelinePanel({ onClose }: TimelinePanelProps) {
   const { nodes } = useCanvasStore();
   const reactFlow = useReactFlow();
+  const wheelScrollRef = useHorizontalWheelScroll<HTMLDivElement>();
   const [playingId, setPlayingId] = useState<string | null>(null);
   const videoRefs = useRef<Record<string, HTMLVideoElement | null>>({});
   const [layout, setLayout] = usePersistentState<TimelineLayout>(
@@ -404,8 +406,10 @@ export function TimelinePanel({ onClose }: TimelinePanelProps) {
         </div>
       </div>
 
-      {/* Scroll area */}
+      {/* Scroll area — mouse wheel scrolls the timeline clips horizontally */}
       <div
+        ref={wheelScrollRef}
+        className="nowheel"
         style={{
           flex: 1,
           overflowX: "auto",
