@@ -202,7 +202,12 @@ export const ComfyuiWorkflowNode = memo(function ComfyuiWorkflowNode({ id, selec
     const posB = texts.find((b) => b.role === "positive")
       ?? texts.find((b) => !b.role && /提示词|prompt/i.test(b.label) && !isNeg(b))
       ?? texts.find((b) => !isNeg(b));
-    return { detected, hasTextParam: texts.length > 0, hasPosTarget: !!posB };
+    const negB = texts.find((b) => b.role === "negative") ?? texts.find(isNeg);
+    const tag = (b: WorkflowParamBinding | undefined) => (b ? `${b.label}（节点 ${b.nodeId}）` : undefined);
+    // Ambiguous when there are 2+ text params but none carries an explicit role —
+    // then positive/negative are guessed from labels and may land on the wrong slot.
+    const ambiguous = texts.length >= 2 && !texts.some((b) => b.role === "positive" || b.role === "negative");
+    return { detected, hasTextParam: texts.length > 0, hasPosTarget: !!posB, posTarget: tag(posB), negTarget: tag(negB), ambiguous };
   }, [id, edgesForSources, nodesForSources, payload.paramBindings]);
   // Param bindings whose node id no longer exists in the current workflow JSON —
   // a stale binding map (workflow re-imported/edited without re-analyzing). Their
@@ -970,7 +975,7 @@ export const ComfyuiWorkflowNode = memo(function ComfyuiWorkflowNode({ id, selec
                 upstream prompt was detected and whether a positive prompt param exists
                 to receive it — so "上游优先没生效" can be told apart from a wiring issue. */}
             {upstreamPromptInfo.hasTextParam && (() => {
-              const { detected, hasPosTarget } = upstreamPromptInfo;
+              const { detected, hasPosTarget, posTarget, negTarget, ambiguous } = upstreamPromptInfo;
               const hasUpstream = !!(detected.positive || detected.negative);
               if (!hasUpstream) {
                 return (
@@ -982,14 +987,33 @@ export const ComfyuiWorkflowNode = memo(function ComfyuiWorkflowNode({ id, selec
               if (!hasPosTarget) {
                 return (
                   <div style={{ fontSize: 10.5, color: "oklch(0.72 0.17 65)", marginBottom: 4, lineHeight: 1.4 }}>
-                    已连上游提示词，但本工作流未识别到「正向提示词」参数。请在上方「参数绑定」里把对应文本参数的角色设为「正向」。
+                    已连上游提示词，但本工作流未识别到「正向提示词」参数。请点「参数绑定」→「编辑」，把对应文本参数的角色设为「正向」。
                   </div>
                 );
               }
               return (
-                <div style={{ fontSize: 10.5, color: "oklch(0.7 0.16 145)", marginBottom: 4, lineHeight: 1.4, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }} title={detected.positive || detected.negative}>
-                  {payload.preferUpstreamPrompt !== false ? "运行时将用上游提示词覆盖：" : "运行时仅在留空/默认时填入上游提示词："}
-                  {(detected.positive || detected.negative || "").slice(0, 60)}
+                <div style={{ marginBottom: 4, lineHeight: 1.45 }}>
+                  {/* Show the EXACT target param(s) so wrong-slot mapping is visible. */}
+                  {detected.positive && posTarget && (
+                    <div style={{ fontSize: 10.5, color: "oklch(0.7 0.16 145)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }} title={detected.positive}>
+                      上游正向 → 「{posTarget}」：{detected.positive.slice(0, 40)}
+                    </div>
+                  )}
+                  {detected.negative && negTarget && (
+                    <div style={{ fontSize: 10.5, color: "oklch(0.7 0.16 145)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }} title={detected.negative}>
+                      上游反向 → 「{negTarget}」：{detected.negative.slice(0, 40)}
+                    </div>
+                  )}
+                  {ambiguous && (
+                    <div style={{ fontSize: 10.5, color: "oklch(0.72 0.17 65)", marginTop: 2 }}>
+                      本工作流有多个文本参数但未设角色，正/反向是按名称猜的，可能对错位置。请点「参数绑定」→「编辑」，给每个文本参数显式选「正向 / 反向」。
+                    </div>
+                  )}
+                  {payload.preferUpstreamPrompt === false && (
+                    <div style={{ fontSize: 10.5, color: "var(--c-t3)", marginTop: 2 }}>
+                      当前为「仅填空」：仅当目标参数留空或为默认值时才填入。
+                    </div>
+                  )}
                 </div>
               );
             })()}
