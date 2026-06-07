@@ -1,6 +1,53 @@
 import { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
+import { toCanvas } from "html-to-image";
 import { X, Pencil, Square, ArrowUpRight, Undo2, Check, Crop, Scissors } from "lucide-react";
+
+interface RegionRect { x: number; y: number; w: number; h: number }
+
+/**
+ * Direct region screenshot: the user drags a box over the CURRENT PAGE (no OS
+ * share-screen picker), and we render just that region from the DOM via
+ * html-to-image. Captures app content (DOM + same-origin media); cannot capture
+ * other windows (use captureScreen for that). Returns a PNG data URL or null.
+ */
+export async function captureRegion(rect: RegionRect): Promise<string | null> {
+  const dpr = window.devicePixelRatio || 1;
+  const full = await toCanvas(document.documentElement, { pixelRatio: dpr, cacheBust: true, backgroundColor: getComputedStyle(document.body).backgroundColor || "#111" });
+  const sx = (rect.x + window.scrollX) * dpr;
+  const sy = (rect.y + window.scrollY) * dpr;
+  const w = Math.max(1, Math.round(rect.w * dpr));
+  const h = Math.max(1, Math.round(rect.h * dpr));
+  const out = document.createElement("canvas");
+  out.width = w; out.height = h;
+  out.getContext("2d")?.drawImage(full, sx, sy, rect.w * dpr, rect.h * dpr, 0, 0, w, h);
+  return out.toDataURL("image/png");
+}
+
+/** Full-viewport drag-to-select overlay. Calls onSelect(rect in viewport coords)
+ *  on release, or onCancel on Esc / a too-small selection. */
+export function RegionSelectOverlay({ onSelect, onCancel }: { onSelect: (r: RegionRect) => void; onCancel: () => void }) {
+  const [start, setStart] = useState<{ x: number; y: number } | null>(null);
+  const [cur, setCur] = useState<{ x: number; y: number } | null>(null);
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => { if (e.key === "Escape") { e.preventDefault(); onCancel(); } };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [onCancel]);
+  const rect: RegionRect | null = start && cur ? { x: Math.min(start.x, cur.x), y: Math.min(start.y, cur.y), w: Math.abs(cur.x - start.x), h: Math.abs(cur.y - start.y) } : null;
+  return createPortal(
+    <div
+      onPointerDown={(e) => { (e.target as HTMLElement).setPointerCapture?.(e.pointerId); setStart({ x: e.clientX, y: e.clientY }); setCur({ x: e.clientX, y: e.clientY }); }}
+      onPointerMove={(e) => { if (start) setCur({ x: e.clientX, y: e.clientY }); }}
+      onPointerUp={() => { if (rect && rect.w > 4 && rect.h > 4) onSelect(rect); else onCancel(); }}
+      style={{ position: "fixed", inset: 0, zIndex: 100002, cursor: "crosshair", background: rect ? "transparent" : "rgba(0,0,0,0.2)" }}
+    >
+      {rect && <div style={{ position: "fixed", left: rect.x, top: rect.y, width: rect.w, height: rect.h, border: "1.5px solid #0a84ff", boxShadow: "0 0 0 9999px rgba(0,0,0,0.42)", pointerEvents: "none" }} />}
+      {!start && <div style={{ position: "fixed", top: 18, left: "50%", transform: "translateX(-50%)", padding: "7px 16px", borderRadius: 9, background: "rgba(0,0,0,0.72)", color: "#fff", fontSize: 13, fontWeight: 600, pointerEvents: "none" }}>拖动鼠标框选要截图的区域（Esc 取消）</div>}
+    </div>,
+    document.body,
+  );
+}
 
 // Screen capture + lightweight annotation for the chat composer. Captured via the
 // browser's getDisplayMedia (the standard share-screen/window/tab picker), then
