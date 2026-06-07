@@ -32,6 +32,33 @@ describe("mergeCharactersIntoPrompt", () => {
   });
 });
 
+describe("mergeCharactersIntoPrompt maxLength budgeting", () => {
+  it("never exceeds maxLength and PRESERVES the full base prompt", () => {
+    const base = "镜头：一个人在沙漠中行走。".repeat(10); // ~130 chars
+    const longAppearance = "细节".repeat(2000); // huge injection
+    const out = mergeCharactersIntoPrompt(base, [c({ name: "Alice", appearance: longAppearance })], 4000);
+    expect(out.length).toBeLessThanOrEqual(4000);
+    expect(out.endsWith(base)).toBe(true); // base prompt fully retained at the end
+  });
+
+  it("base alone over the limit → clamped base, injection dropped", () => {
+    const base = "x".repeat(5000);
+    const out = mergeCharactersIntoPrompt(base, [c({ name: "Alice" })], 4000);
+    expect(out.length).toBe(4000);
+    expect(out).not.toContain("Alice");
+  });
+
+  it("empty base → clamps the prefix to maxLength", () => {
+    const out = mergeCharactersIntoPrompt("", [c({ name: "Alice", appearance: "红".repeat(5000) })], 100);
+    expect(out.length).toBeLessThanOrEqual(100);
+  });
+
+  it("under budget → identical to the no-maxLength result", () => {
+    const chars = [c({ name: "Alice" }), c({ name: "Bob" })];
+    expect(mergeCharactersIntoPrompt("对话", chars, 4000)).toBe(mergeCharactersIntoPrompt("对话", chars));
+  });
+});
+
 describe("mergeCharactersIntoPrompt scene labelling", () => {
   it("numbers person and scene with INDEPENDENT counters (per-kind)", () => {
     const out = mergeCharactersIntoPrompt("", [

@@ -314,10 +314,10 @@ export const StoryboardNode = memo(function StoryboardNode({ id, selected, data 
     const manualRef = payload.referenceImageUrl?.trim();
     const charRefs = manualRef ? [] : connectedCharacterRefImages(id, allEdges, allNodes).slice(0, 8);
     const charRefUrl: string | undefined = manualRef || charRefs[0];
-    const rawPrompt = mergeCharactersIntoPrompt(payload.promptText, chars);
-    const enhancedPrompt = Array.from(rawPrompt).length > 2000
-      ? Array.from(rawPrompt).slice(0, 2000).join("")
-      : rawPrompt;
+    // Cap to 2000 while PRESERVING the user's scene text — the previous crude
+    // slice(0, 2000) cut from the END, dropping the scene description (which sits
+    // after the prepended character blocks). maxLength trims the injection instead.
+    const enhancedPrompt = mergeCharactersIntoPrompt(payload.promptText, chars, 2000);
 
     // Per-model sizing: pass only the fields the chosen model actually
     // consumes. The imageGen.generate tRPC procedure validates each field

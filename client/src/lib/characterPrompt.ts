@@ -81,14 +81,29 @@ function cleanupSeparators(s: string): string {
     .trim();
 }
 
+/** Clamp a string to `max` UTF-16 code units (matching the server's z.string().max()
+ *  semantics), without leaving a dangling high surrogate that'd render as `�`. */
+function clampLen(s: string, max: number): string {
+  if (s.length <= max) return s;
+  let out = s.slice(0, max);
+  const last = out.charCodeAt(out.length - 1);
+  if (last >= 0xd800 && last <= 0xdbff) out = out.slice(0, -1); // drop lone high surrogate
+  return out;
+}
+
 /** Merge a base user prompt with one or more character injection blocks.
  * Each character becomes a bracketed `[…]` block prepended to the prompt so
- * the model sees structured identity context before the scene description. */
-export function mergeCharactersIntoPrompt(basePrompt: string, characters: CharacterNodeData[]): string {
+ * the model sees structured identity context before the scene description.
+ *
+ * `maxLength` (optional) caps the result to the downstream server's prompt limit
+ * (video = 4000, storyboard = 2000) WITHOUT a hard error: the user's base prompt is
+ * preserved and the prepended character injection is trimmed to fit the remaining
+ * budget — so adding characters never silently truncates the scene the user typed. */
+export function mergeCharactersIntoPrompt(basePrompt: string, characters: CharacterNodeData[], maxLength?: number): string {
   const items = characters
     .map((c) => ({ kind: c.characterKind ?? "person", text: characterToPromptInjection(c) }))
     .filter((x) => x.text.length > 0);
-  if (items.length === 0) return basePrompt;
+  if (items.length === 0) return maxLength ? clampLen(basePrompt, maxLength) : basePrompt;
   // With multiple items, prefix each block with a kind-appropriate ordinal
   // (角色1 / 场景1…). CRITICAL: number PERSON and SCENE with INDEPENDENT counters,
   // because only PERSON characters contribute reference images (scenes are text-only —
@@ -105,7 +120,14 @@ export function mergeCharactersIntoPrompt(basePrompt: string, characters: Charac
     return `[${label}${x.text}]`;
   });
   const prefix = blocks.join(" ");
-  return basePrompt.trim().length === 0 ? prefix : `${prefix} ${basePrompt}`;
+  if (basePrompt.trim().length === 0) return maxLength ? clampLen(prefix, maxLength) : prefix;
+  if (maxLength === undefined) return `${prefix} ${basePrompt}`;
+  // Preserve the FULL base prompt; trim the injected prefix to fit the budget.
+  // If the base alone already meets/exceeds the limit, drop the injection (and
+  // clamp the base) rather than erroring downstream.
+  const budget = maxLength - basePrompt.length - 1; // -1 for the joining space
+  if (budget <= 0) return clampLen(basePrompt, maxLength);
+  return `${clampLen(prefix, budget)} ${basePrompt}`;
 }
 
 /** List of placeholder keys the editor UI advertises to users. Kept in sync

@@ -852,7 +852,10 @@ export const VideoTaskNode = memo(function VideoTaskNode({ id, selected, data }:
     // Single-ref fallback: PERSON characters only — a 场景's image is location, not identity.
     const charRefFallback = chars.find((c) => (c.characterKind ?? "person") !== "scene" && c.referenceImageUrl?.trim())?.referenceImageUrl;
     return {
-      prompt: mergeCharactersIntoPrompt(payload.prompt ?? "", chars),
+      // Cap to the server's prompt limit (z.string().max(4000)); the base prompt is
+      // preserved and only the injected character text is trimmed to fit — otherwise
+      // many/long character profiles could push it over 4000 → BAD_REQUEST.
+      prompt: mergeCharactersIntoPrompt(payload.prompt ?? "", chars, 4000),
       referenceImageUrl: payload.referenceImageUrl?.trim() || charRefFallback,
     };
   }, [id, payload.prompt, payload.referenceImageUrl]);
