@@ -68,6 +68,9 @@ import {
   comfyNodeTemplates,
   type ComfyNodeTemplateRow,
   type InsertComfyNodeTemplate,
+  characterLibrary,
+  type CharacterLibraryRow,
+  type InsertCharacterLibrary,
   comfyTemplateAnalysis,
   type ComfyTemplateAnalysisRow,
   type InsertComfyTemplateAnalysis,
@@ -2078,6 +2081,46 @@ export async function deleteComfyNodeTemplate(id: number): Promise<void> {
   const db = await getDb();
   if (!db) { if (DEV_MODE) { dev.devDeleteComfyNodeTemplate(id); return; } throw new Error("DB unavailable"); }
   await db.delete(comfyNodeTemplates).where(eq(comfyNodeTemplates.id, id));
+}
+
+// ── Global character library ──────────────────────────────────────────────────
+// Dev-mode (no DB) uses a self-contained in-memory store so the feature works in
+// the dev bypass without a database.
+const _devCharLib: CharacterLibraryRow[] = [];
+let _devCharLibSeq = 1;
+
+export async function listCharacterLibrary(): Promise<CharacterLibraryRow[]> {
+  const db = await getDb();
+  if (!db) return DEV_MODE ? [..._devCharLib].sort((a, b) => +b.updatedAt - +a.updatedAt) : [];
+  return db.select().from(characterLibrary).orderBy(desc(characterLibrary.updatedAt));
+}
+
+export async function getCharacterLibrary(id: number): Promise<CharacterLibraryRow | undefined> {
+  const db = await getDb();
+  if (!db) return DEV_MODE ? _devCharLib.find((r) => r.id === id) : undefined;
+  const rows = await db.select().from(characterLibrary).where(eq(characterLibrary.id, id)).limit(1);
+  return rows[0];
+}
+
+export async function createCharacterLibrary(data: InsertCharacterLibrary): Promise<CharacterLibraryRow | null> {
+  const db = await getDb();
+  if (!db) {
+    if (!DEV_MODE) throw new Error("DB unavailable");
+    const now = new Date();
+    const row = { id: _devCharLibSeq++, creatorName: null, thumbnail: null, note: null, characterKind: "person", ...data, createdAt: now, updatedAt: now } as CharacterLibraryRow;
+    _devCharLib.push(row);
+    return row;
+  }
+  const [header] = await db.insert(characterLibrary).values(data);
+  const insertId = (header as unknown as { insertId: number }).insertId;
+  const rows = await db.select().from(characterLibrary).where(eq(characterLibrary.id, insertId));
+  return rows[0] ?? null;
+}
+
+export async function deleteCharacterLibrary(id: number): Promise<void> {
+  const db = await getDb();
+  if (!db) { if (DEV_MODE) { const i = _devCharLib.findIndex((r) => r.id === id); if (i >= 0) _devCharLib.splice(i, 1); return; } throw new Error("DB unavailable"); }
+  await db.delete(characterLibrary).where(eq(characterLibrary.id, id));
 }
 
 // ── ComfyUI template analysis (agent planning knowledge) ──────────────────────

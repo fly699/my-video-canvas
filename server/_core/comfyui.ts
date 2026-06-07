@@ -1251,9 +1251,41 @@ export interface GenerateComfyVideoOptions {
   vae?: string;
   batchSize?: number;
   referenceImageUrl?: string;
+  loras?: LoraSpec[];          // character/style LoRAs (checkpoint-based templates)
   // Progress relay (optional)
   projectId?: number;
   nodeId?: string;
+}
+
+/** Pure: thread a LoRA chain off a CheckpointLoaderSimple node and rewire the
+ *  template's model/clip consumers through it. Used to apply a character LoRA to
+ *  checkpoint-based video templates (e.g. AnimateDiff). Templates without a
+ *  CheckpointLoaderSimple (Wan UNET / LTXV / SVD) are returned unchanged. */
+export function injectLoraChain(
+  workflow: Record<string, { class_type: string; inputs: Record<string, unknown> }>,
+  loras: LoraSpec[],
+): typeof workflow {
+  if (!loras || loras.length === 0) return workflow;
+  const wf = JSON.parse(JSON.stringify(workflow)) as typeof workflow;
+  const ckptId = Object.keys(wf).find((id) => wf[id].class_type === "CheckpointLoaderSimple");
+  if (!ckptId) return wf; // unsupported template → no-op (no surprise wiring)
+  let modelRef: [string, number] = [ckptId, 0];
+  let clipRef: [string, number] = [ckptId, 1];
+  const loraIds = new Set<string>();
+  loras.forEach((l, i) => {
+    const nid = `char_lora_${i}`;
+    wf[nid] = { class_type: "LoraLoader", inputs: { lora_name: l.name, strength_model: l.strengthModel, strength_clip: l.strengthClip ?? l.strengthModel, model: modelRef, clip: clipRef } };
+    modelRef = [nid, 0]; clipRef = [nid, 1]; loraIds.add(nid);
+  });
+  for (const [id, node] of Object.entries(wf)) {
+    if (loraIds.has(id)) continue; // the chain itself consumes the original refs
+    for (const key of Object.keys(node.inputs)) {
+      const v = node.inputs[key];
+      if (Array.isArray(v) && v[0] === ckptId && v[1] === 0) node.inputs[key] = modelRef;
+      else if (Array.isArray(v) && v[0] === ckptId && v[1] === 1) node.inputs[key] = clipRef;
+    }
+  }
+  return wf;
 }
 
 export async function generateComfyVideo(rawBaseUrl: string, options: GenerateComfyVideoOptions): Promise<{ url: string }> {
@@ -1305,7 +1337,13 @@ export async function generateComfyVideo(rawBaseUrl: string, options: GenerateCo
     refImageName,
   });
 
-  const promptId = await submitWorkflow(baseUrl, workflow);
+  // Character/style LoRAs — applied to checkpoint-based templates (AnimateDiff);
+  // other templates (Wan UNET / LTXV / SVD) are returned unchanged.
+  const finalWorkflow = options.loras?.length
+    ? injectLoraChain(workflow as Record<string, { class_type: string; inputs: Record<string, unknown> }>, options.loras)
+    : workflow;
+
+  const promptId = await submitWorkflow(baseUrl, finalWorkflow);
 
   // Fire-and-forget progress relay; closed once polling resolves (see below).
   const progressAbort = new AbortController();

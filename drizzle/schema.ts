@@ -225,6 +225,29 @@ export const comfyNodeTemplates = mysqlTable("comfy_node_templates", {
 export type ComfyNodeTemplateRow = typeof comfyNodeTemplates.$inferSelect;
 export type InsertComfyNodeTemplate = typeof comfyNodeTemplates.$inferInsert;
 
+// ── Global character library (reusable identities across projects/canvases) ────
+// One row per saved character/scene. `payload` holds the full CharacterNodeData
+// so it can be re-instantiated as a node anywhere. Shared library (all users see
+// all entries); creator/admin may edit/delete (enforced in the router).
+export const characterLibrary = mysqlTable("character_library", {
+  id: int("id").autoincrement().primaryKey(),
+  userId: int("userId").notNull(),                          // creator
+  creatorName: varchar("creatorName", { length: 255 }),     // display name (denormalized)
+  name: varchar("name", { length: 120 }).notNull(),         // library display name
+  characterKind: varchar("characterKind", { length: 16 }).notNull().default("person"), // person|scene
+  payload: json("payload").notNull(),                       // full CharacterNodeData
+  thumbnail: text("thumbnail"),                             // reference-image URL captured at save
+  note: text("note"),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+}, (t) => ({
+  userIdx: index("character_library_user_idx").on(t.userId),
+  kindIdx: index("character_library_kind_idx").on(t.characterKind),
+}));
+
+export type CharacterLibraryRow = typeof characterLibrary.$inferSelect;
+export type InsertCharacterLibrary = typeof characterLibrary.$inferInsert;
+
 // ── ComfyUI template functional analysis (for the agent's planning) ───────────
 // One row per template (1:1 via unique templateId). The agent reads these
 // LLM-produced functional summaries to recommend/configure comfyui_workflow nodes.

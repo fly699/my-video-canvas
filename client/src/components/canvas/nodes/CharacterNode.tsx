@@ -7,7 +7,7 @@ import { useCanvasStore } from "../../../hooks/useCanvasStore";
 import type { CharacterNodeData, CharacterKind, StoryboardNodeData } from "../../../../../shared/types";
 import { trpc } from "@/lib/trpc";
 import { toast } from "sonner";
-import { User, Mountain, Upload, X, Image as ImageIcon, Loader2, Plus, Search } from "lucide-react";
+import { User, Mountain, Upload, X, Image as ImageIcon, Loader2, Plus, Search, Save } from "lucide-react";
 import {
   characterToPromptInjection,
   CHARACTER_PLACEHOLDERS,
@@ -112,6 +112,21 @@ export const CharacterNode = memo(function CharacterNode({ id, selected, data }:
   const [consistencyResult, setConsistencyResult] = useState<ConsistencyResult | null>(null);
   const [consistencyScenes, setConsistencyScenes] = useState<{ ids: string[]; urls: string[] }>({ ids: [], urls: [] });
 
+  const utils = trpc.useUtils();
+  const saveLibMut = trpc.characterLibrary.create.useMutation({
+    onSuccess: () => { toast.success("已保存到角色库"); utils.characterLibrary.list.invalidate(); },
+    onError: (err) => toast.error("保存到角色库失败：" + err.message),
+  });
+  const saveToLibrary = useCallback(() => {
+    const name = (payload.name || payload.sceneName || "").trim();
+    if (!name) { toast.error(kind === "scene" ? "请先填写场景名" : "请先填写角色名"); return; }
+    // Strip graph-specific/transient fields so a re-instantiated character doesn't
+    // inherit the original's agent ownership / scene membership / creator.
+    const { createdBy: _c, ownerAgentId: _o, sceneGroup: _s, ...clean } = payload as Record<string, unknown>;
+    void _c; void _o; void _s;
+    saveLibMut.mutate({ name, characterKind: kind, payload: clean, thumbnail: payload.referenceImageUrl || undefined });
+  }, [payload, kind, saveLibMut]);
+
   const consistencyMut = trpc.scripts.checkCharacterConsistency.useMutation({
     onSuccess: (result) => {
       setConsistencyResult(result as ConsistencyResult);
@@ -175,7 +190,13 @@ export const CharacterNode = memo(function CharacterNode({ id, selected, data }:
         if (!loras.some((l) => l.name === loraName)) p.loras = [...loras, { name: loraName, strengthModel: payload.loraStrength ?? 0.8 }];
       }
       if (refs[0]) p.referenceImageUrl = refs[0];
-    } else if (nt === "image_gen" || nt === "storyboard" || nt === "video_task" || nt === "comfyui_video") {
+    } else if (nt === "comfyui_video") {
+      if (refs[0]) p.referenceImageUrl = refs[0];
+      if (loraName) {
+        const loras = (tp.loras as { name: string; strengthModel: number }[] | undefined) ?? [];
+        if (!loras.some((l) => l.name === loraName)) p.loras = [...loras, { name: loraName, strengthModel: payload.loraStrength ?? 0.8 }];
+      }
+    } else if (nt === "image_gen" || nt === "storyboard" || nt === "video_task") {
       if (refs[0]) p.referenceImageUrl = refs[0];
     }
     return p;
@@ -596,6 +617,12 @@ export const CharacterNode = memo(function CharacterNode({ id, selected, data }:
                 本场景
               </button>
             </div>
+            <button onClick={saveToLibrary} disabled={saveLibMut.isPending}
+              className="nodrag flex items-center justify-center gap-1.5 w-full py-1.5 rounded-lg transition-all mt-1.5"
+              style={{ fontSize: 11, fontWeight: 600, background: "var(--c-input)", border: "1px solid var(--c-bd2)", color: "var(--c-t2)", cursor: saveLibMut.isPending ? "wait" : "pointer" }}
+              title="把本角色保存到全局角色库，跨项目快速复用">
+              <Save className="w-3.5 h-3.5" /> 保存到角色库
+            </button>
             <div style={{ fontSize: 9, color: "var(--c-t4)", marginTop: 5, lineHeight: 1.4 }}>
               连到 ComfyUI 图像节点会自动填 IPAdapter 人脸参考（需在该节点选 IPAdapter 模型；服务端仅 SD 体系支持 IPAdapter，Flux/SD3 走参考图/提示词）。
             </div>

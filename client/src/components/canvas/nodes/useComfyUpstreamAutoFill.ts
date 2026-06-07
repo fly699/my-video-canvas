@@ -26,11 +26,12 @@ export function useComfyUpstreamAutoFill(
   id: string,
   payload: AutoFillPayload,
   updateNodeData: (id: string, patch: Record<string, unknown>, silent?: boolean) => void,
-  opts?: { characterConditioning?: boolean },
+  opts?: { characterConditioning?: boolean; characterLora?: boolean },
 ) {
   const edges = useCanvasStore((s) => s.edges);
   const nodes = useCanvasStore((s) => s.nodes);
   const characterConditioning = opts?.characterConditioning ?? false;
+  const characterLora = opts?.characterLora ?? false;
   useEffect(() => {
     const patch: Record<string, unknown> = {};
 
@@ -58,20 +59,21 @@ export function useComfyUpstreamAutoFill(
       }
     }
 
-    // Character → IPAdapter face-lock + character LoRA (comfyui_image only, opt-in).
+    // Character → IPAdapter face-lock + character LoRA (comfyui_image, opt-in), or
+    // character LoRA only (comfyui_video, which has no IPAdapter path).
     // Fill-only-when-blank, so user edits and the no-op once-filled guard hold.
-    if (characterConditioning) {
+    if (characterConditioning || characterLora) {
       const charPayload = upstreamCharacter(id, edges, nodes);
       if (charPayload) {
         const cond = deriveCharacterConditioning(charPayload, { ipadapter: payload.ipadapter, loras: payload.loras });
-        if (cond.ipadapter) patch.ipadapter = cond.ipadapter;
+        if (characterConditioning && cond.ipadapter) patch.ipadapter = cond.ipadapter;
         if (cond.loras) patch.loras = cond.loras;
       }
     }
 
     if (Object.keys(patch).length > 0) updateNodeData(id, patch, true);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [id, edges, nodes, payload.prompt, payload.negPrompt, payload.referenceImageUrl, characterConditioning]);
+  }, [id, edges, nodes, payload.prompt, payload.negPrompt, payload.referenceImageUrl, characterConditioning, characterLora]);
 }
 
 /** First connected upstream `character` node's payload (with any conditioning). */

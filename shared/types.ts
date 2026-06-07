@@ -760,6 +760,9 @@ export interface ComfyuiVideoNodeData {
   freeVramAfterRun?: boolean;
   // Models
   ckpt?: string;
+  /** Character/style LoRAs — applied to checkpoint-based templates (AnimateDiff);
+   *  auto-filled from a connected Character node's LoRA. */
+  loras?: ComfyuiLoraEntry[];
   motionModule?: string;
   /** CLIP/T5 text encoder (Wan / LTX use a separate CLIPLoader). */
   clip?: string;
