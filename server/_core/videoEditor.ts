@@ -329,6 +329,22 @@ export function buildAudioMixGraph(
   return { complex: parts.join(";"), outLabel };
 }
 
+/** Whether a local media file has at least one audio stream (ffprobe). A muted
+ *  source must NOT be referenced as `[0:a]` in a filtergraph — that errors with
+ *  "matches no streams". Best-effort: on probe failure assume there IS audio
+ *  (preserves prior behavior for normal videos). */
+async function hasAudioStream(path: string): Promise<boolean> {
+  try {
+    const { stdout } = await execFileAsync("ffprobe", [
+      "-v", "error", "-select_streams", "a", "-show_entries", "stream=index",
+      "-of", "csv=p=0", path,
+    ]);
+    return (stdout ?? "").trim().length > 0;
+  } catch {
+    return true;
+  }
+}
+
 export async function trimVideo(opts: TrimOptions): Promise<TrimResult> {
   const speed = opts.speed ?? 1.0;
   const audioVolume = opts.audioVolume ?? 1.0;
@@ -371,8 +387,11 @@ export async function trimVideo(opts: TrimOptions): Promise<TrimResult> {
     const needVideoEncode = allVideoFilters.length > 0 || fpsArg != null || fmt === "webm";
 
     // ── Audio sources (original + external tracks) ──
+    // Only include the source's own audio if it actually has an audio stream —
+    // a silent video would make `[0:a]` match no streams and abort ffmpeg.
+    const originalHasAudio = !edit.muteOriginal && await hasAudioStream(inputPath);
     const sources: AudioSourceSpec[] = [];
-    if (!edit.muteOriginal) {
+    if (originalHasAudio) {
       sources.push({
         label: "0:a",
         volume: edit.originalVolume ?? 1.0,
