@@ -187,6 +187,8 @@ export const MergeNode = memo(function MergeNode({ id, selected, data }: Props) 
     update({ status: "processing", errorMessage: undefined });
     mergeMutation.mutate({
       inputUrls: urls,
+      projectId: data.projectId,
+      nodeId: id,
       transition: payload.transition,
       transitionDuration: payload.transition !== "none" ? payload.transitionDuration : undefined,
       bgMusicUrl: effectiveBgMusicUrl || undefined,

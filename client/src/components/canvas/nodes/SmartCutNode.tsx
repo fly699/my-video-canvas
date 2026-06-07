@@ -78,6 +78,8 @@ export const SmartCutNode = memo(function SmartCutNode({ id, selected, data }: P
     update({ status: "processing", errorMessage: undefined });
     smartCutMutation.mutate({
       inputUrl: videoUrl,
+      projectId: data.projectId,
+      nodeId: id,
       aggressiveness: payload.aggressiveness ?? "medium",
       targetDuration: payload.targetDuration,
     });
