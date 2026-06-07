@@ -11,6 +11,7 @@ import { toast } from "sonner";
 import { Sparkles, ImageIcon, Loader2, Upload, X, Wand2, History, Languages, Film, ZoomIn, Download, Copy } from "lucide-react";
 import { isOwnStorageUrl } from "@/lib/ownStorage";
 import { mergeCharactersIntoPrompt } from "../../../lib/characterPrompt";
+import { connectedCharacters } from "../../../lib/characterConditioning";
 import { IMAGE_MODELS } from "@/lib/models";
 import { MediaImage } from "../MediaImage";
 import { RefImageReachabilityBadge, RefImageSwitchButton, useRefImageGuard, usePreferUpstreamRefSource, useAutoPreferUpstreamRefSource } from "../mediaReachability";
@@ -300,18 +301,12 @@ export const StoryboardNode = memo(function StoryboardNode({ id, selected, data 
     // template engine used by VideoTaskNode + PromptNode, so all three node
     // types produce consistent injected prompts from a shared CharacterNode.
     const { nodes: allNodes, edges: allEdges } = useCanvasStore.getState();
-    const incomingEdges = allEdges.filter((e) => e.target === id);
+    // Position-ordered so the prompt's 角色1/角色2 numbering matches the convention
+    // used elsewhere (reference image priority = topmost connected character).
+    const chars = connectedCharacters(id, allEdges, allNodes);
     let charRefUrl: string | undefined = payload.referenceImageUrl;
-    const connectedCharacters: import("../../../../../shared/types").CharacterNodeData[] = [];
-    for (const edge of incomingEdges) {
-      const srcNode = allNodes.find((n) => n.id === edge.source);
-      if (srcNode?.data.nodeType === "character") {
-        const cp = srcNode.data.payload as import("../../../../../shared/types").CharacterNodeData;
-        if (cp.referenceImageUrl && !charRefUrl) charRefUrl = cp.referenceImageUrl;
-        connectedCharacters.push(cp);
-      }
-    }
-    const rawPrompt = mergeCharactersIntoPrompt(payload.promptText, connectedCharacters);
+    if (!charRefUrl) charRefUrl = chars.find((c) => c.referenceImageUrl?.trim())?.referenceImageUrl;
+    const rawPrompt = mergeCharactersIntoPrompt(payload.promptText, chars);
     const enhancedPrompt = Array.from(rawPrompt).length > 2000
       ? Array.from(rawPrompt).slice(0, 2000).join("")
       : rawPrompt;
