@@ -11,7 +11,7 @@ import { toast } from "sonner";
 import { Sparkles, ImageIcon, Loader2, Upload, X, Wand2, History, Languages, Film, ZoomIn, Download, Copy } from "lucide-react";
 import { isOwnStorageUrl } from "@/lib/ownStorage";
 import { mergeCharactersIntoPrompt } from "../../../lib/characterPrompt";
-import { connectedCharacters } from "../../../lib/characterConditioning";
+import { connectedCharacters, connectedCharacterRefImages } from "../../../lib/characterConditioning";
 import { IMAGE_MODELS } from "@/lib/models";
 import { MediaImage } from "../MediaImage";
 import { RefImageReachabilityBadge, RefImageSwitchButton, useRefImageGuard, usePreferUpstreamRefSource, useAutoPreferUpstreamRefSource } from "../mediaReachability";
@@ -307,9 +307,13 @@ export const StoryboardNode = memo(function StoryboardNode({ id, selected, data 
     // Position-ordered so the prompt's 角色1/角色2 numbering matches the convention
     // used elsewhere (reference image priority = topmost connected character).
     const chars = connectedCharacters(id, allEdges, allNodes);
-    let charRefUrl: string | undefined = payload.referenceImageUrl;
-    // PERSON characters only — a 场景's image is location, not an identity reference.
-    if (!charRefUrl) charRefUrl = chars.find((c) => (c.characterKind ?? "person") !== "scene" && c.referenceImageUrl?.trim())?.referenceImageUrl;
+    // Identity lock: when no reference image is manually attached, use ALL views of
+    // every connected PERSON character (multi-reference → image_urls server-side),
+    // matching ImageGenNode — previously only the FIRST person's primary image was
+    // sent, losing multi-view / multi-character locking. Cap to the server's max(8).
+    const manualRef = payload.referenceImageUrl?.trim();
+    const charRefs = manualRef ? [] : connectedCharacterRefImages(id, allEdges, allNodes).slice(0, 8);
+    const charRefUrl: string | undefined = manualRef || charRefs[0];
     const rawPrompt = mergeCharactersIntoPrompt(payload.promptText, chars);
     const enhancedPrompt = Array.from(rawPrompt).length > 2000
       ? Array.from(rawPrompt).slice(0, 2000).join("")
@@ -356,6 +360,7 @@ export const StoryboardNode = memo(function StoryboardNode({ id, selected, data 
         negativePrompt: payload.negativePrompt,
         style: payload.colorTone,
         referenceImageUrl: charRefUrl,
+        referenceImageUrls: charRefs.length > 1 ? charRefs : undefined,
         model,
         batchSize: model === "hf_soul_standard" && batchCount > 1 ? batchCount : undefined,
         ...sizingFields,
