@@ -205,14 +205,22 @@ export function useWorkflowRunner() {
   const comfyuiVideoMutation = trpc.comfyui.generateVideo.useMutation();
   const comfyuiWorkflowMutation = trpc.comfyui.executeWorkflow.useMutation();
 
-  const runWorkflow = useCallback(async (startNodeId: string | null) => {
+  const runWorkflow = useCallback(async (startNodeId: string | null, opts?: { onlyIds?: string[] }) => {
     if (runningRef.current) return;
     runningRef.current = true;
     const { nodes, edges } = useCanvasStore.getState();
 
     // Determine which nodes are runnable
     let runnableIds: string[];
-    if (startNodeId) {
+    const onlyIds = opts?.onlyIds;
+    if (onlyIds && onlyIds.length > 0) {
+      // Box-select run: ONLY the selected nodes participate (no auto-pulled
+      // ancestors/descendants). Their existing outputs feed any unselected deps.
+      const sel = new Set(onlyIds);
+      runnableIds = nodes
+        .filter((n) => sel.has(n.id) && RUNNABLE_TYPES.includes(n.data.nodeType))
+        .map((n) => n.id);
+    } else if (startNodeId) {
       // Collect the start node + all its descendants (forward DFS).
       // Also collect all upstream ancestors of the start node so that their
       // outputs are available as inputs before the start node executes.

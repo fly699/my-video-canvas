@@ -471,18 +471,29 @@ function CanvasInner({ projectId }: { projectId: number }) {
   const { runState, runWorkflow, reset: resetWorkflowRun } = useWorkflowRunner();
   const [showRunConfirm, setShowRunConfirm] = useState(false);
   const [pendingRunNodeId, setPendingRunNodeId] = useState<string | null>(null);
+  // When set, the run is restricted to exactly these (box-selected) node ids.
+  const [pendingRunOnlyIds, setPendingRunOnlyIds] = useState<string[] | null>(null);
   const [runConfirmCountdown, setRunConfirmCountdown] = useState(3);
   const runConfirmOpenRef = useRef(false);
   const runStateRunningRef = useRef(false);
   runStateRunningRef.current = runState.running;
 
-  const handleRunRequest = useCallback((startNodeId: string | null) => {
+  const handleRunRequest = useCallback((startNodeId: string | null, onlyIds?: string[]) => {
     if (runConfirmOpenRef.current) return;
     runConfirmOpenRef.current = true;
     setPendingRunNodeId(startNodeId);
+    setPendingRunOnlyIds(onlyIds && onlyIds.length > 0 ? onlyIds : null);
     setRunConfirmCountdown(3);
     setShowRunConfirm(true);
   }, []);
+
+  // Box-selected runnable nodes: when ≥2 are selected, the run is scoped to just
+  // them ("run selected only"). Drives the run button label + Shift+R behavior.
+  const selectedRunnableIds = useMemo(
+    () => nodes.filter((n) => n.selected && RUNNABLE_TYPES.includes(n.data.nodeType as NodeType)).map((n) => n.id),
+    [nodes],
+  );
+  const runSelectedOnly = selectedRunnableIds.length >= 2;
 
   // Route store-level run requests (e.g. the agent's auto-run) through the normal
   // run-confirm dialog so generation still gets one explicit user confirmation.
@@ -1211,12 +1222,14 @@ function CanvasInner({ projectId }: { projectId: number }) {
         if (selected.length > 0) toast.success(`已复制 ${selected.length} 个节点`, { duration: 1200 });
       }
 
-      // Shift+R: run workflow from selected node
+      // Shift+R: ≥2 box-selected → run ONLY those; 1 selected → run from it
+      // (its up/downstream chain); none → run everything.
       if (!isEditing && e.shiftKey && e.key === "R") {
         e.preventDefault();
         if (runStateRunningRef.current) return;
-        const selected = nodes.find((n) => n.selected);
-        handleRunRequest(selected?.id ?? null);
+        const selIds = nodes.filter((n) => n.selected && RUNNABLE_TYPES.includes(n.data.nodeType as NodeType)).map((n) => n.id);
+        if (selIds.length >= 2) handleRunRequest(null, selIds);
+        else handleRunRequest(nodes.find((n) => n.selected)?.id ?? null);
       }
 
       // Undo: Cmd+Z / Ctrl+Z
@@ -2241,7 +2254,7 @@ function CanvasInner({ projectId }: { projectId: number }) {
             {!isReadOnly && <Tooltip>
               <TooltipTrigger asChild>
                 <button
-                  onClick={() => handleRunRequest(null)}
+                  onClick={() => handleRunRequest(null, runSelectedOnly ? selectedRunnableIds : undefined)}
                   disabled={runState.running || nodes.length === 0}
                   className="flex items-center gap-1.5 h-8 px-3 rounded-xl text-xs font-semibold transition-all"
                   style={{
@@ -2262,13 +2275,13 @@ function CanvasInner({ projectId }: { projectId: number }) {
                   ) : (
                     <>
                       <Play className="w-3 h-3" />
-                      <span data-toolbar-label>运行</span>
+                      <span data-toolbar-label>{runSelectedOnly ? `运行选中 (${selectedRunnableIds.length})` : "运行"}</span>
                     </>
                   )}
                 </button>
               </TooltipTrigger>
               <TooltipContent side="top" className="text-xs">
-                运行工作流 <kbd className="ml-1 px-1 py-0.5 rounded text-[10px] bg-background/15 border border-background/25 font-mono">Shift+R</kbd>
+                {runSelectedOnly ? `仅运行框选的 ${selectedRunnableIds.length} 个节点` : "运行工作流"} <kbd className="ml-1 px-1 py-0.5 rounded text-[10px] bg-background/15 border border-background/25 font-mono">Shift+R</kbd>
               </TooltipContent>
             </Tooltip>}
 
@@ -2327,7 +2340,7 @@ function CanvasInner({ projectId }: { projectId: number }) {
                       { key: "Ctrl + Y", desc: "重做（Windows）" },
                     ]},
                     { group: "工作流", items: [
-                      { key: "Shift + R", desc: "从选中节点运行工作流" },
+                      { key: "Shift + R", desc: "运行工作流（框选多个=仅运行选中；选 1 个=从该节点运行）" },
                     ]},
                     { group: "其他", items: [
                       { key: "Cmd/Ctrl + K", desc: "搜索节点" },
@@ -2814,11 +2827,15 @@ function CanvasInner({ projectId }: { projectId: number }) {
         // Keeping this in sync with RUNNABLE_TYPES prevents the dialog from claiming
         // "N AI nodes will run" for stub/manual-only nodes (pose_control / voice_clone /
         // lip_sync / avatar) that runWorkflow() refuses to dispatch.
-        const aiNodes = nodes.filter(n => RUNNABLE_TYPES.includes(n.data.nodeType as NodeType));
-        const totalNodes = nodes.length;
-        const startLabel = pendingRunNodeId
-          ? `从节点「${nodes.find(n => n.id === pendingRunNodeId)?.data.title ?? pendingRunNodeId}」开始执行`
-          : "从头执行全部流程";
+        const onlySet = pendingRunOnlyIds ? new Set(pendingRunOnlyIds) : null;
+        const scopeNodes = onlySet ? nodes.filter(n => onlySet.has(n.id)) : nodes;
+        const aiNodes = scopeNodes.filter(n => RUNNABLE_TYPES.includes(n.data.nodeType as NodeType));
+        const totalNodes = scopeNodes.length;
+        const startLabel = onlySet
+          ? `仅运行框选的 ${aiNodes.length} 个节点（不自动带上下游）`
+          : pendingRunNodeId
+            ? `从节点「${nodes.find(n => n.id === pendingRunNodeId)?.data.title ?? pendingRunNodeId}」开始执行`
+            : "从头执行全部流程";
         return (
           <div
             style={{
@@ -2883,7 +2900,7 @@ function CanvasInner({ projectId }: { projectId: number }) {
                   onClick={() => {
                     runConfirmOpenRef.current = false;
                     setShowRunConfirm(false);
-                    runWorkflow(pendingRunNodeId);
+                    runWorkflow(pendingRunNodeId, { onlyIds: pendingRunOnlyIds ?? undefined });
                   }}
                   style={{
                     padding: "7px 20px", borderRadius: 8, fontSize: 13, fontWeight: 600,
