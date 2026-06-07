@@ -16,6 +16,7 @@ import {
 } from "../../../lib/characterPrompt";
 import { CharacterConsistencyPanel, type ConsistencyResult } from "../CharacterConsistencyPanel";
 import { NodeTextArea, NodeInput } from "../NodeTextInput";
+import { characterReferenceImages } from "@/lib/characterConditioning";
 
 interface Props {
   id: string;
@@ -154,6 +155,42 @@ export const CharacterNode = memo(function CharacterNode({ id, selected, data }:
     (key: keyof CharacterNodeData, value: unknown) => updateNodeData(id, { [key]: value }),
     [id, updateNodeData],
   );
+
+  // "应用到所有连接的分镜" — push this character's identity conditioning into every
+  // downstream generation node: comfyui_image gets IPAdapter face-lock (images +
+  // weight, preserving the user's model) + the character LoRA; other generation
+  // nodes get the face reference image. Explicit action → overwrites the face ref.
+  const batchUpdateNodeData = useCanvasStore((s) => s.batchUpdateNodeData);
+  const applyToConnectedShots = useCallback(() => {
+    const st = useCanvasStore.getState();
+    const refs = characterReferenceImages(payload);
+    const loraName = payload.loraName?.trim();
+    const updates: { id: string; payload: Record<string, unknown> }[] = [];
+    for (const e of st.edges) {
+      if (e.source !== id) continue;
+      const t = st.nodes.find((n) => n.id === e.target);
+      if (!t) continue;
+      const nt = t.data.nodeType;
+      const tp = t.data.payload as Record<string, unknown>;
+      const p: Record<string, unknown> = {};
+      if (nt === "comfyui_image") {
+        if (refs.length > 0) {
+          const curIp = tp.ipadapter as { model?: string; clipVision?: string; weight?: number } | undefined;
+          p.ipadapter = { model: curIp?.model ?? "", imageUrl: refs[0], imageUrls: refs, clipVision: curIp?.clipVision, weight: curIp?.weight ?? payload.ipadapterWeight ?? 0.8 };
+        }
+        if (loraName) {
+          const loras = (tp.loras as { name: string; strengthModel: number }[] | undefined) ?? [];
+          if (!loras.some((l) => l.name === loraName)) p.loras = [...loras, { name: loraName, strengthModel: payload.loraStrength ?? 0.8 }];
+        }
+        if (refs[0]) p.referenceImageUrl = refs[0];
+      } else if (nt === "image_gen" || nt === "storyboard" || nt === "video_task" || nt === "comfyui_video") {
+        if (refs[0]) p.referenceImageUrl = refs[0];
+      }
+      if (Object.keys(p).length > 0) updates.push({ id: t.id, payload: p });
+    }
+    if (updates.length > 0) { batchUpdateNodeData(updates); toast.success(`角色已套用到 ${updates.length} 个连接的节点`); }
+    else toast.info("没有可套用的连接节点（先把本角色连到生成/分镜节点）");
+  }, [id, payload, batchUpdateNodeData]);
 
   const uploadMutation = trpc.upload.uploadImage.useMutation({
     onSuccess: (result) => {
@@ -499,6 +536,41 @@ export const CharacterNode = memo(function CharacterNode({ id, selected, data }:
             onChange={(urls) => update("additionalImageUrls", urls.length > 0 ? urls : undefined)}
             accent={accent}
           />
+        )}
+
+        {/* ── ComfyUI identity lock (IPAdapter face-lock + character LoRA) ──
+            Connecting this character upstream of a ComfyUI 图像 node auto-fills its
+            IPAdapter with the reference image(s) (face-lock) + adds the LoRA. The
+            button below force-applies to every connected node at once. */}
+        {selected && (
+          <div className="nodrag" style={{ marginTop: 10, padding: "9px 10px", borderRadius: 8, background: "var(--c-surface)", border: "1px solid var(--c-bd1)" }}>
+            <div style={{ fontSize: 11, fontWeight: 700, color: "var(--c-t2)", marginBottom: 6 }}>ComfyUI 身份锁定（IPAdapter + 角色 LoRA）</div>
+            <div style={{ display: "flex", gap: 6, marginBottom: 6 }}>
+              <div style={{ flex: 1 }}>
+                <label style={labelStyle}>角色 LoRA 文件（可选）</label>
+                <NodeInput value={payload.loraName ?? ""} placeholder="character_xxx.safetensors"
+                  onValueChange={(v: string) => update("loraName", v.trim() || undefined)} />
+              </div>
+              <div style={{ width: 78 }}>
+                <label style={labelStyle}>LoRA 强度</label>
+                <NodeInput value={String(payload.loraStrength ?? "")} placeholder="0.8"
+                  onValueChange={(v: string) => { const n = parseFloat(v); update("loraStrength", Number.isFinite(n) ? n : undefined); }} />
+              </div>
+              <div style={{ width: 78 }}>
+                <label style={labelStyle}>人脸强度</label>
+                <NodeInput value={String(payload.ipadapterWeight ?? "")} placeholder="0.8"
+                  onValueChange={(v: string) => { const n = parseFloat(v); update("ipadapterWeight", Number.isFinite(n) ? n : undefined); }} />
+              </div>
+            </div>
+            <button onClick={applyToConnectedShots} className="nodrag flex items-center justify-center gap-1.5 w-full py-1.5 rounded-lg transition-all"
+              style={{ fontSize: 11.5, fontWeight: 600, background: accentA(0.16), border: `1px solid ${accentA(0.4)}`, color: accent, cursor: "pointer" }}
+              title="把本角色的人脸参考 + LoRA 套用到所有连接的生成/分镜节点（comfyui_image 走 IPAdapter）">
+              <User className="w-3.5 h-3.5" /> 应用到所有连接的分镜
+            </button>
+            <div style={{ fontSize: 9, color: "var(--c-t4)", marginTop: 5, lineHeight: 1.4 }}>
+              连到 ComfyUI 图像节点会自动填 IPAdapter 人脸参考（需在该节点选 IPAdapter 模型；服务端仅 SD 体系支持 IPAdapter，Flux/SD3 走参考图/提示词）。
+            </div>
+          </div>
         )}
 
         {/* ── Live prompt preview + customizable template ──

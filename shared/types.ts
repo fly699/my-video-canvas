@@ -428,6 +428,15 @@ export interface CharacterNodeData {
    * placeholders documented in lib/characterPrompt.ts.
    */
   customPromptTemplate?: string;
+  /**
+   * Identity conditioning for ComfyUI generation (consumed when a character is
+   * connected upstream of a comfyui_image node — see lib/characterConditioning.ts).
+   * Reference image(s) drive IPAdapter face-lock; an optional character LoRA is
+   * added to the lora stack. All optional; absence = current text-only behavior.
+   */
+  loraName?: string;          // character-specific LoRA filename on the ComfyUI server
+  loraStrength?: number;      // LoRA model strength (default 0.8)
+  ipadapterWeight?: number;   // IPAdapter face-lock strength 0–2 (default 0.8)
 }
 
 export type PostProcessOp = "upscale2x" | "upscale4x" | "denoise" | "sharpen" | "fps2x";

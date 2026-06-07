@@ -45,7 +45,7 @@ import { signUploadToken } from "../_core/uploadToken";
 import { getCachedStorageSettings } from "../_core/storageConfig";
 import { invokeLLM, extractTextContent } from "../_core/llm";
 import { generateImage } from "../_core/imageGeneration";
-import { generateComfyImage, generateComfyVideo, fetchComfyModels, fetchComfyServerStatus, analyzeWorkflow, convertUiWorkflowToApi, executeCustomWorkflow, executeCloudWorkflow, testCloudConnection, uploadImageForWorkflow, interruptComfy, freeComfyMemory, clearComfyQueue, emptyModelList } from "../_core/comfyui";
+import { generateComfyImage, generateComfyVideo, fetchComfyModels, fetchComfyServerStatus, analyzeWorkflow, convertUiWorkflowToApi, extractControlMap, CONTROL_MAP_PREPROCESSORS, executeCustomWorkflow, executeCloudWorkflow, testCloudConnection, uploadImageForWorkflow, interruptComfy, freeComfyMemory, clearComfyQueue, emptyModelList } from "../_core/comfyui";
 import type { ComfyModelList } from "../_core/comfyui";
 import { ENV } from "../_core/env";
 import { isPoyoVideoProvider, submitPoyoVideo, checkPoyoVideoStatus } from "../_core/poyoVideo";
@@ -2541,6 +2541,26 @@ export const comfyuiRouter = router({
         return await analyzeWorkflow(input.workflowJson, baseUrl);
       } catch (err) {
         throw new TRPCError({ code: "BAD_REQUEST", message: err instanceof Error ? err.message : String(err) });
+      }
+    }),
+
+  // Shot continuity: extract a ControlNet control map (depth/pose/canny…) from a
+  // shot's output image, so the next shot can reuse the structure. Returns the
+  // stored URL of the extracted map.
+  extractControlMap: protectedProcedure
+    .input(z.object({
+      customBaseUrl: z.string().max(2048).optional(),
+      sourceImageUrl: z.string().min(1).max(2048),
+      preprocessor: z.enum(CONTROL_MAP_PREPROCESSORS),
+    }))
+    .mutation(async ({ ctx, input }) => {
+      await assertComfyuiAllowed(ctx);
+      const baseUrl = input.customBaseUrl?.trim() || ENV.comfyuiBaseUrl;
+      if (!baseUrl) throw new TRPCError({ code: "BAD_REQUEST", message: "未配置 ComfyUI 服务器地址" });
+      try {
+        return { url: await extractControlMap(baseUrl, input.sourceImageUrl, input.preprocessor) };
+      } catch (err) {
+        throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: err instanceof Error ? err.message : String(err) });
       }
     }),
 

@@ -39,6 +39,20 @@ export const AGENT_NODE_CATALOG: AgentNodeSpec[] = [
     ],
   },
   {
+    type: "character", label: "角色/场景", purpose: "可复用的角色（人物）或场景设定，连到分镜/生成节点以保持跨镜一致（脸/服装/特征）",
+    connectsTo: ["storyboard", "image_gen", "video_task", "prompt", "comfyui_image", "comfyui_video"],
+    fields: [
+      { name: "characterKind", type: "string", desc: "person（人物）或 scene（场景）" },
+      { name: "name", type: "string", desc: "角色姓名（人物）" },
+      { name: "role", type: "string", desc: "职业/角色定位，如 主角/侦探" },
+      { name: "appearance", type: "string", desc: "外貌描述（发型/脸型/体型等）" },
+      { name: "outfit", type: "string", desc: "服装，如 黑色西装+红领带" },
+      { name: "signature", type: "string", desc: "标志性物件/特征，如 银怀表/左眼疤痕" },
+      { name: "sceneName", type: "string", desc: "场景名（characterKind=scene 时）" },
+      { name: "sceneDescription", type: "string", desc: "场景描述（characterKind=scene 时）" },
+    ],
+  },
+  {
     type: "storyboard", label: "分镜", purpose: "单个分镜的画面描述与生成提示词",
     connectsTo: ["image_gen", "video_task", "prompt", "comfyui_image", "comfyui_video"],
     fields: [

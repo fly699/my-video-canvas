@@ -5,7 +5,7 @@ import { handleStyle } from "../../../lib/handleStyle";
 import { useConnectState } from "../../../hooks/useConnectingStore";
 import { useHoverStore } from "../../../hooks/useHoverStore";
 import { useCanvasStore } from "../../../hooks/useCanvasStore";
-import { propagateRefImage, propagatePromptToVideo } from "../../../lib/refImagePropagation";
+import { propagateRefImage, propagatePromptToVideo, propagateControlMap } from "../../../lib/refImagePropagation";
 import { usePreferUpstreamRefSource, useAutoPreferUpstreamRefSource } from "../mediaReachability";
 import type { ComfyuiImageNodeData, ComfyuiLoraEntry } from "../../../../../shared/types";
 import { trpc } from "@/lib/trpc";
@@ -73,7 +73,7 @@ export const ComfyuiImageNode = memo(function ComfyuiImageNode({ id, selected, d
   const connectState = useConnectState(id, "comfyui_image");
   const updateNodeData = useCanvasStore((s) => s.updateNodeData);
   const payload = data.payload;
-  useComfyUpstreamAutoFill(id, payload, updateNodeData);
+  useComfyUpstreamAutoFill(id, payload, updateNodeData, { characterConditioning: true });
   // Auto-prefer the upstream AI temporary public URL as the reference source when
   // the admin toggle is on and that URL probes alive (no-op when off / default).
   const preferUpstreamRef = usePreferUpstreamRefSource();
@@ -424,6 +424,25 @@ export const ComfyuiImageNode = memo(function ComfyuiImageNode({ id, selected, d
     void downloadMedia(url, `${base}_${Date.now()}.png`, "image");
   };
 
+  // ── Shot continuity: extract a control map (pose/depth/canny) from THIS shot's
+  //    output and push it into downstream comfyui_image ControlNet guides. ──
+  const [continuityKind, setContinuityKind] = useState<"DWPreprocessor" | "DepthAnythingV2Preprocessor" | "CannyEdgePreprocessor">("DWPreprocessor");
+  const extractMapMut = trpc.comfyui.extractControlMap.useMutation();
+  const handleExtractContinuity = useCallback(async () => {
+    if (!payload.imageUrl) { toast.error("请先生成本镜图像"); return; }
+    try {
+      const { url } = await extractMapMut.mutateAsync({
+        customBaseUrl: payload.customBaseUrl?.trim() || undefined,
+        sourceImageUrl: payload.imageUrl,
+        preprocessor: continuityKind,
+      });
+      const n = propagateControlMap(id, url);
+      toast.success(n > 0 ? `控制图已注入 ${n} 个下游 ComfyUI 图像节点` : "已提取控制图，但没有连接的下游 ComfyUI 图像节点");
+    } catch (err) {
+      toast.error("提取控制图失败：" + (err instanceof Error ? err.message : String(err)));
+    }
+  }, [id, payload.imageUrl, payload.customBaseUrl, continuityKind, extractMapMut]);
+
   const isImg2Img = payload.workflowTemplate === "img2img";
   const isInpaint = payload.workflowTemplate === "inpaint";
   const needsRefImage = isImg2Img || isInpaint;
@@ -667,6 +686,22 @@ export const ComfyuiImageNode = memo(function ComfyuiImageNode({ id, selected, d
               >
                 <Download className="w-3 h-3" />
                 下载
+              </button>
+            </div>
+            {/* Shot continuity: derive a control map from this shot → downstream ControlNet. */}
+            <div className="nodrag flex items-center gap-1.5" style={{ marginTop: 6 }} title="从本镜成图提取构图（姿态/深度/线稿），注入下游 ComfyUI 图像节点的 ControlNet，保持镜头连贯。需 ComfyUI 装 comfyui_controlnet_aux。">
+              <span style={{ fontSize: 10, color: "var(--c-t4)", flexShrink: 0 }}>镜头连续性</span>
+              <select value={continuityKind} onChange={(e) => setContinuityKind(e.target.value as typeof continuityKind)}
+                className="nodrag" style={{ fontSize: 10, padding: "2px 4px", borderRadius: 5, background: "var(--c-input)", border: "1px solid var(--c-bd2)", color: "var(--c-t2)" }}>
+                <option value="DWPreprocessor">姿态</option>
+                <option value="DepthAnythingV2Preprocessor">深度</option>
+                <option value="CannyEdgePreprocessor">线稿</option>
+              </select>
+              <button onClick={handleExtractContinuity} disabled={extractMapMut.isPending}
+                className="nodrag flex items-center gap-1 px-2 py-1 rounded text-[10px] font-medium"
+                style={{ background: "oklch(0.68 0.22 285 / 0.14)", border: "1px solid oklch(0.68 0.22 285 / 0.4)", color: "oklch(0.74 0.16 285)", cursor: extractMapMut.isPending ? "wait" : "pointer" }}>
+                {extractMapMut.isPending ? <Loader2 className="w-3 h-3 animate-spin" /> : null}
+                提取构图→下游
               </button>
             </div>
           </div>

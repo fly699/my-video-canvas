@@ -13,6 +13,9 @@ import { storagePut, resolveToAbsoluteUrl, assertMinioOnlyWrite, isOwnStorageUrl
 import { assertSafeUrl } from "./videoEditor";
 import { ensureCrystoolsMonitor, getCrystoolsReading, getCrystoolsGpus } from "./comfyMonitor";
 import { convertUiWorkflowToApiPrompt } from "./comfyWorkflowConvert";
+import { buildControlMapWorkflow, CONTROL_MAP_PREPROCESSORS } from "./controlMapWorkflow";
+
+export { CONTROL_MAP_PREPROCESSORS };
 import type { WorkflowParamBinding } from "@shared/types";
 
 const POLL_INTERVAL_MS = 3_000;
@@ -1752,6 +1755,23 @@ export async function executeCustomWorkflow(
 
   if (allUrls.length === 0) throw new Error("ComfyUI 任务完成但未返回任何输出");
   return { urls: allUrls, outputType: resolvedOutputType };
+}
+
+// ── Shot continuity: control-map extraction ──────────────────────────────────
+/** Extract a ControlNet control map (depth/pose/canny…) from a source image on the
+ *  given ComfyUI server, persisting the result and returning its stored URL.
+ *  Reuses the execute/poll/persist path of executeCustomWorkflow. */
+export async function extractControlMap(rawBaseUrl: string, sourceImageUrl: string, preprocessor: string): Promise<string> {
+  const wf = buildControlMapWorkflow(preprocessor);
+  const { urls } = await executeCustomWorkflow(rawBaseUrl, {
+    workflowJson: JSON.stringify(wf),
+    paramValues: { "1.inputs.image": sourceImageUrl },
+    imageParamKeys: ["1.inputs.image"],
+    outputNodeIds: ["3"],
+    outputType: "image",
+  });
+  if (!urls[0]) throw new Error("控制图提取未返回结果（请确认 ComfyUI 装了 comfyui_controlnet_aux 节点）");
+  return urls[0];
 }
 
 // ── Official ComfyUI cloud (cloud.comfy.org) ──────────────────────────────────
