@@ -542,6 +542,8 @@ export const ClipNode = memo(function ClipNode({ id, selected, data }: Props) {
 
     trimMutation.mutate({
       inputUrl: activeVideoUrl,
+      projectId: data.projectId,
+      nodeId: id,
       startTime,
       endTime,
       speed: Math.abs(speed - 1.0) > 0.01 ? speed : undefined,
@@ -562,7 +564,7 @@ export const ClipNode = memo(function ClipNode({ id, selected, data }: Props) {
   const handleExtractFrame = () => {
     if (frameMutation.isPending) return;
     if (!activeVideoUrl) { toast.error("请先连接视频节点"); return; }
-    frameMutation.mutate({ inputUrl: activeVideoUrl, time: currentTime });
+    frameMutation.mutate({ inputUrl: activeVideoUrl, time: currentTime, projectId: data.projectId, nodeId: id });
   };
 
   const handleReset = () => {

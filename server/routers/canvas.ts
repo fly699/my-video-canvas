@@ -1902,11 +1902,29 @@ export const audioGenRouter = router({
 });
 
 // ── Video Clip Editor ─────────────────────────────────────────────────────────
+
+// Register an ffmpeg-editing output (clip / merge / overlay / subtitle / smart-cut /
+// frame) into the assets table — just like every other generator — so it shows up in
+// the 素材库, flows to downstream 素材 nodes, and is tracked/cleanable. Without this
+// the file lands in MinIO but stays an orphan object (not in the DB).
+async function recordEditedAsset(opts: {
+  userId: number; projectId?: number; nodeId?: string;
+  url: string; type: "video" | "image"; name: string; mimeType?: string;
+}): Promise<void> {
+  await recordGeneratedAsset({
+    userId: opts.userId, projectId: opts.projectId ?? null, nodeId: opts.nodeId ?? null,
+    type: opts.type, source: "generated", provider: "ffmpeg", model: null,
+    url: opts.url, name: opts.name, mimeType: opts.mimeType ?? (opts.type === "video" ? "video/mp4" : "image/png"),
+  });
+}
+
 export const clipRouter = router({
   trimVideo: protectedProcedure
     .input(
       z.object({
         inputUrl: mediaUrlSchema,
+        projectId: z.number().optional(),
+        nodeId: z.string().optional(),
         startTime: z.number().min(0),
         endTime: z.number().min(0),
         speed: z.number().min(0.1).max(10.0).optional(),
@@ -1955,15 +1973,17 @@ export const clipRouter = router({
       if (input.audioUrl) guardUrl(input.audioUrl);
       for (const t of input.audioTracks ?? []) guardUrl(t.url);
       const result = await trimVideo(input);
+      await recordEditedAsset({ userId: ctx.user.id, projectId: input.projectId, nodeId: input.nodeId, url: result.url, type: "video", name: "剪辑", mimeType: input.output?.format === "webm" ? "video/webm" : "video/mp4" });
       return { url: result.url, duration: result.duration };
     }),
 
   extractFrame: protectedProcedure
-    .input(z.object({ inputUrl: mediaUrlSchema, time: z.number().min(0) }))
+    .input(z.object({ inputUrl: mediaUrlSchema, time: z.number().min(0), projectId: z.number().optional(), nodeId: z.string().optional() }))
     .mutation(async ({ ctx, input }) => {
       // local ffmpeg, no third-party AI — not whitelist-gated
       guardUrl(input.inputUrl);
       const result = await extractFrame(input);
+      await recordEditedAsset({ userId: ctx.user.id, projectId: input.projectId, nodeId: input.nodeId, url: result.url, type: "image", name: "剪辑封面帧" });
       return { url: result.url };
     }),
 
@@ -1982,6 +2002,8 @@ export const clipRouter = router({
       aggressiveness: z.enum(["low", "medium", "high"]).default("medium"),
       targetDuration: z.number().min(5).max(3600).optional(),
       model: z.string().optional(),
+      projectId: z.number().optional(),
+      nodeId: z.string().optional(),
     }))
     .mutation(async ({ ctx, input }) => {
       await assertWhitelisted(ctx);
@@ -2030,6 +2052,7 @@ export const clipRouter = router({
         const outputDuration = originalDuration > 0
           ? Math.min(result.outputDuration, originalDuration)
           : result.outputDuration;
+        await recordEditedAsset({ userId: ctx.user.id, projectId: input.projectId, nodeId: input.nodeId, url: result.url, type: "video", name: "智能剪辑" });
         return { url: result.url, outputDuration, originalDuration };
       });
     }),
@@ -2065,6 +2088,8 @@ export const mergeRouter = router({
         transitionDuration: z.number().min(0.1).max(2.0).optional(),
         bgMusicUrl: mediaUrlSchema.optional(),
         bgMusicVolume: z.number().min(0).max(1).optional(),
+        projectId: z.number().optional(),
+        nodeId: z.string().optional(),
       })
     )
     .mutation(async ({ ctx, input }) => {
@@ -2072,6 +2097,7 @@ export const mergeRouter = router({
       for (const url of input.inputUrls) guardUrl(url);
       if (input.bgMusicUrl) guardUrl(input.bgMusicUrl);
       const result = await mergeVideos(input);
+      await recordEditedAsset({ userId: ctx.user.id, projectId: input.projectId, nodeId: input.nodeId, url: result.url, type: "video", name: "合并视频" });
       return { url: result.url, duration: result.duration };
     }),
 });
@@ -2116,6 +2142,8 @@ export const subtitleRouter = router({
         entries: z.array(z.object({ start: z.number(), end: z.number(), text: z.string().max(500) })).max(2000),
         fontSize: z.number().int().min(8).max(48).optional(),
         fontColor: z.string().optional(),
+        projectId: z.number().optional(),
+        nodeId: z.string().optional(),
       })
     )
     .mutation(async ({ ctx, input }) => {
@@ -2125,6 +2153,7 @@ export const subtitleRouter = router({
         fontSize: input.fontSize,
         fontColor: input.fontColor,
       });
+      await recordEditedAsset({ userId: ctx.user.id, projectId: input.projectId, nodeId: input.nodeId, url: result.url, type: "video", name: "字幕" });
       return { url: result.url };
     }),
 
@@ -2162,6 +2191,8 @@ export const subtitleMotionRouter = router({
       motionStyle: z.enum(["fade", "roll", "karaoke", "bounce"]).optional(),
       fontSize: z.number().int().min(8).max(48).optional(),
       fontColor: z.string().optional(),
+      projectId: z.number().optional(),
+      nodeId: z.string().optional(),
     }))
     .mutation(async ({ ctx, input }) => {
       // local ffmpeg (ASS burn), no third-party AI — not whitelist-gated
@@ -2172,6 +2203,7 @@ export const subtitleMotionRouter = router({
           input.entries as SubtitleEntry[],
           { motionStyle: input.motionStyle, fontSize: input.fontSize, fontColor: input.fontColor },
         );
+        await recordEditedAsset({ userId: ctx.user.id, projectId: input.projectId, nodeId: input.nodeId, url: result.url, type: "video", name: "字幕动效" });
         return { url: result.url };
       });
     }),
@@ -2226,6 +2258,8 @@ export const overlayRouter = router({
         brightness: z.number().min(-1).max(1).optional(),
         contrast: z.number().min(0).max(2).optional(),
         saturation: z.number().min(0).max(3).optional(),
+        projectId: z.number().optional(),
+        nodeId: z.string().optional(),
       })
     )
     .mutation(async ({ ctx, input }) => {
@@ -2234,6 +2268,7 @@ export const overlayRouter = router({
       if (input.overlayImageUrl) guardUrl(input.overlayImageUrl);
       if (input.pipVideoUrl) guardUrl(input.pipVideoUrl);
       const result = await overlayVideo(input);
+      await recordEditedAsset({ userId: ctx.user.id, projectId: input.projectId, nodeId: input.nodeId, url: result.url, type: "video", name: "叠加" });
       return { url: result.url };
     }),
 });

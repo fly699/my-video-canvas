@@ -8,6 +8,7 @@ import { Sparkles, Loader2, Send, Check, Plus, Link2, Pencil, Trash2, LayoutGrid
 import { LLMModelPicker, type LLMModelId } from "../LLMModelPicker";
 import { NodeTextArea } from "../NodeTextInput";
 import { applyAgentOperations, buildGraphSummary, distributeServers } from "@/lib/agentApply";
+import { ownedNodeIds } from "@/lib/agentOwnership";
 import { getNodeConfig } from "../../../lib/nodeConfig";
 import { LAYOUTS, computeLayout } from "@/lib/layoutUtils";
 import { estimateOpsBudget, budgetLabel } from "@/lib/agentBudget";
@@ -199,7 +200,7 @@ export const AgentNode = memo(function AgentNode({ id, selected, data }: Props) 
     if (ops.length === 0) return;
     const pos = useCanvasStore.getState().nodes.find((n) => n.id === id)?.position ?? { x: 0, y: 0 };
     const templates = (templatesQuery.data ?? []).map((t) => ({ id: t.id, label: t.label, payload: t.payload }));
-    const r = applyAgentOperations(ops, pos, { templates, freeVramAfterRun: planPrefs.freeVramAfterRun }); // mutates op.status/op.error in place
+    const r = applyAgentOperations(ops, pos, { templates, freeVramAfterRun: planPrefs.freeVramAfterRun, ownerAgentId: id }); // mutates op.status/op.error in place
     setAppliedIdx((prev) => new Set(prev).add(msgIdx));
     // Persist op statuses (read fresh so an auto-apply right after send is correct).
     setMessages(freshMessages().map((m, i) => (i === msgIdx ? { ...m, operations: [...ops] } : m)));
@@ -209,10 +210,12 @@ export const AgentNode = memo(function AgentNode({ id, selected, data }: Props) 
     } else {
       toast.success(parts.length ? `已应用：${parts.join(" · ")}` : "无可应用的操作");
     }
-    // 自动执行（一句话成片）：应用了新建/更新后，发起一次工作流运行（经画布确认 + 余额守卫）。
+    // 自动执行（一句话成片）：应用了新建/更新后，发起一次工作流运行。多智能体下
+    // 只运行本智能体名下的节点，互不干扰（经画布确认 + 余额守卫）。
     if (autoRun && (r.created > 0 || r.updated > 0) && budgetGuardPasses(ops)) {
       runInitiatedRef.current = true;
-      useCanvasStore.getState().requestRun(null);
+      const mine = ownedNodeIds(useCanvasStore.getState().nodes, id);
+      useCanvasStore.getState().requestRun(null, mine.length > 0 ? mine : undefined);
     }
   };
 
@@ -223,7 +226,11 @@ export const AgentNode = memo(function AgentNode({ id, selected, data }: Props) 
   const runChat = async (text: string, baseMessages: AgentMessage[], focusNodeIds?: string[]) => {
     if (!text || chat.isPending) return;
     const history = baseMessages.slice(0, -1).map((m) => ({ role: m.role, content: m.content }));
-    const summary = buildGraphSummary(id, focusNodeIds ? { focusNodeIds } : {});
+    // Multi-agent isolation: scope the planning context to THIS agent's own nodes
+    // (so it never sees or rewrites another agent's subgraph). An explicit
+    // focusNodeIds (e.g. 微调选中) still wins. First plan owns nothing → empty context.
+    const scope = focusNodeIds ?? ownedNodeIds(useCanvasStore.getState().nodes, id);
+    const summary = buildGraphSummary(id, { focusNodeIds: scope });
     const assistantIdx = baseMessages.length; // index the assistant reply will occupy
     setMessages(baseMessages);
     // Read the freshest template choice from the store (the picker may have just set it).
@@ -370,6 +377,30 @@ export const AgentNode = memo(function AgentNode({ id, selected, data }: Props) 
     const text = input.trim() || "请优化/完善这些选中节点的参数与内容。";
     handleSend(`【仅微调选中的 ${selectedNodeIds.length} 个节点，不要新建无关节点；只对它们用 update 操作】\n${text}`, selectedNodeIds);
     setInput("");
+  };
+
+  // ── 多智能体：分管本智能体名下的节点 ───────────────────────────────────────
+  const handleSelectMine = () => {
+    const st = useCanvasStore.getState();
+    const mine = new Set(ownedNodeIds(st.nodes, id));
+    if (mine.size === 0) { toast.info("本智能体还没有生成任何节点"); return; }
+    st.setNodes(st.nodes.map((n) => ({ ...n, selected: mine.has(n.id) })));
+    st.setSelectedNodeIds(Array.from(mine));
+    toast.success(`已选中本智能体的 ${mine.size} 个节点`);
+  };
+  const handleRunMine = () => {
+    const mine = ownedNodeIds(useCanvasStore.getState().nodes, id);
+    if (mine.length === 0) { toast.info("本智能体还没有生成任何节点"); return; }
+    runInitiatedRef.current = true;
+    useCanvasStore.getState().requestRun(null, mine);
+  };
+  const handleClearMine = () => {
+    const st = useCanvasStore.getState();
+    const mine = ownedNodeIds(st.nodes, id);
+    if (mine.length === 0) { toast.info("本智能体还没有生成任何节点"); return; }
+    if (!window.confirm(`确定清空本智能体生成的 ${mine.length} 个节点？此操作可撤销 (Ctrl+Z)。`)) return;
+    mine.forEach((nid) => st.deleteNode(nid));
+    toast.success(`已清空 ${mine.length} 个节点`);
   };
 
   // ── 执行感知 + 自动续作 ───────────────────────────────────────────────────
@@ -542,6 +573,30 @@ export const AgentNode = memo(function AgentNode({ id, selected, data }: Props) 
               style={{ background: selectedNodeIds.length ? accentA(0.1) : "var(--c-surface)", border: `1px solid ${selectedNodeIds.length ? accentA(0.3) : "var(--c-bd2)"}`, color: selectedNodeIds.length ? accent : "var(--c-t4)", cursor: selectedNodeIds.length && !chat.isPending ? "pointer" : "not-allowed" }}
             >
               <Focus className="w-3 h-3" />微调选中{selectedNodeIds.length ? `(${selectedNodeIds.length})` : ""}
+            </button>
+            <button
+              onClick={handleSelectMine}
+              className="nodrag flex items-center gap-1 px-2 py-1 rounded-lg text-[10px] font-medium"
+              title="选中本智能体生成的全部节点"
+              style={{ background: accentA(0.1), border: `1px solid ${accentA(0.3)}`, color: accent, cursor: "pointer" }}
+            >
+              <Focus className="w-3 h-3" />选中我的
+            </button>
+            <button
+              onClick={handleRunMine}
+              className="nodrag flex items-center gap-1 px-2 py-1 rounded-lg text-[10px] font-medium"
+              title="只运行本智能体名下的节点（不影响其它智能体）"
+              style={{ background: accentA(0.1), border: `1px solid ${accentA(0.3)}`, color: accent, cursor: "pointer" }}
+            >
+              <Zap className="w-3 h-3" />运行我的
+            </button>
+            <button
+              onClick={handleClearMine}
+              className="nodrag flex items-center gap-1 px-2 py-1 rounded-lg text-[10px] font-medium"
+              title="清空本智能体生成的全部节点（可撤销）"
+              style={{ background: "oklch(0.70 0.18 25 / 0.1)", border: "1px solid oklch(0.70 0.18 25 / 0.3)", color: "oklch(0.70 0.18 25)", cursor: "pointer" }}
+            >
+              <Trash2 className="w-3 h-3" />清空我的
             </button>
             <button
               onClick={handleSmartLayout}

@@ -105,6 +105,8 @@ export const OverlayNode = memo(function OverlayNode({ id, selected, data }: Pro
     updateNodeData(id, { status: "processing", errorMessage: undefined });
     overlayMutation.mutate({
       inputUrl: effectiveInputUrl,
+      projectId: data.projectId,
+      nodeId: id,
       mode,
       overlayImageUrl: payload.overlayImageUrl,
       overlayPosition: payload.overlayPosition,

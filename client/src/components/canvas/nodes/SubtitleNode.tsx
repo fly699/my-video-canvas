@@ -148,6 +148,8 @@ export const SubtitleNode = memo(function SubtitleNode({ id, selected, data }: P
     update({ status: "burning" });
     burnMutation.mutate({
       videoUrl,
+      projectId: data.projectId,
+      nodeId: id,
       entries: payload.entries,
       fontSize: payload.fontSize,
       fontColor: payload.fontColor,

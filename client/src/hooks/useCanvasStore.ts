@@ -107,8 +107,8 @@ interface CanvasStore {
   setCurrentUserId: (id: number | null) => void;
   /** Cross-component "please run the workflow" request (the agent's auto-run sets
    *  it; Canvas watches the token and routes it through the normal run-confirm). */
-  runRequest: { startNodeId: string | null; token: number } | null;
-  requestRun: (startNodeId: string | null) => void;
+  runRequest: { startNodeId: string | null; onlyIds?: string[]; token: number } | null;
+  requestRun: (startNodeId: string | null, onlyIds?: string[]) => void;
   setNodes: (nodes: CanvasNode[]) => void;
   setEdges: (edges: CanvasEdge[]) => void;
   onNodesChange: (changes: NodeChange[]) => void;
@@ -190,7 +190,7 @@ export const useCanvasStore = create<CanvasStore>((set, get) => ({
   setProjectId: (id) => set({ projectId: id }),
   setCurrentUserId: (id) => set({ currentUserId: id }),
   runRequest: null,
-  requestRun: (startNodeId) => set((s) => ({ runRequest: { startNodeId, token: (s.runRequest?.token ?? 0) + 1 } })),
+  requestRun: (startNodeId, onlyIds) => set((s) => ({ runRequest: { startNodeId, onlyIds, token: (s.runRequest?.token ?? 0) + 1 } })),
 
   // setNodes / setEdges are used for initial load — don't push to history
   setNodes: (nodes) => set({ nodes }),
