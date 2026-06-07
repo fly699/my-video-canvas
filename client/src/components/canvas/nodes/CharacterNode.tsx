@@ -120,7 +120,11 @@ export const CharacterNode = memo(function CharacterNode({ id, selected, data }:
   const saveToLibrary = useCallback(() => {
     const name = (payload.name || payload.sceneName || "").trim();
     if (!name) { toast.error(kind === "scene" ? "请先填写场景名" : "请先填写角色名"); return; }
-    saveLibMut.mutate({ name, characterKind: kind, payload: payload as Record<string, unknown>, thumbnail: payload.referenceImageUrl || undefined });
+    // Strip graph-specific/transient fields so a re-instantiated character doesn't
+    // inherit the original's agent ownership / scene membership / creator.
+    const { createdBy: _c, ownerAgentId: _o, sceneGroup: _s, ...clean } = payload as Record<string, unknown>;
+    void _c; void _o; void _s;
+    saveLibMut.mutate({ name, characterKind: kind, payload: clean, thumbnail: payload.referenceImageUrl || undefined });
   }, [payload, kind, saveLibMut]);
 
   const consistencyMut = trpc.scripts.checkCharacterConsistency.useMutation({
