@@ -154,9 +154,9 @@ const MULTI_IMAGE_SPEC: Record<string, MultiImageSpec> = {
   "kling-o3/standard": { imageUrls: 2, referenceImages: 4 },
   "kling-o3/pro":      { imageUrls: 2, referenceImages: 4 },
   "kling-o3/4K":       { imageUrls: 2, referenceImages: 4 },
-  // Wan 2.7 reference mode: reference_image_urls and/or reference_video_urls.
-  "wan2.7-text-to-video":       { referenceImages: 4, referenceVideos: 3 },
-  "wan2.7-image-to-video":      { imageUrls: 2, referenceImages: 4, referenceVideos: 3 },
+  // Wan 2.7 t2v/i2v do NOT accept reference_*_urls — the multi-modal "参考生" path
+  // is a SEPARATE wire model (`wan2.7-reference-to-video`), not yet mapped here.
+  "wan2.7-image-to-video":      { imageUrls: 2 },
   "wan2.2-image-to-video-fast": { imageUrls: 2 },
   "happy-horse":     { imageUrls: 1, referenceImages: 9 },
 };
@@ -242,19 +242,23 @@ export async function submitPoyoVideo(opts: {
     ...(opts.negativePrompt ? { negative_prompt: opts.negativePrompt } : {}),
   };
 
-  // Single image → historical per-model field (unchanged). Multiple images →
-  // per-model multi-image mapping (首尾帧 / reference). See helpers above.
-  if (resolvedRefs.length === 1) applySingleImage(input, model, resolvedRefs[0]);
-  else if (resolvedRefs.length > 1) applyMultiImage(input, model, resolvedRefs);
-
-  // Reference videos / audios (capped per the model's multi-modal spec).
   const refSpec = MULTI_IMAGE_SPEC[model];
-  if (refSpec?.referenceVideos && resolvedVideoRefs.length > 0) {
-    input.reference_video_urls = resolvedVideoRefs.slice(0, refSpec.referenceVideos);
+  const refVideos = (refSpec?.referenceVideos && resolvedVideoRefs.length > 0) ? resolvedVideoRefs.slice(0, refSpec.referenceVideos) : [];
+  const refAudios = (refSpec?.referenceAudios && resolvedAudioRefs.length > 0) ? resolvedAudioRefs.slice(0, refSpec.referenceAudios) : [];
+  // Multi-modal reference mode (reference_*_urls) is MUTUALLY EXCLUSIVE with the
+  // first/last-frame image_urls path (docs/poyo-video-api.md §五/§六). When any
+  // reference video/audio is present, route the images to reference_image_urls
+  // (reference mode) instead of image_urls (frame mode).
+  const inReferenceMode = refVideos.length > 0 || refAudios.length > 0;
+  if (inReferenceMode && refSpec?.referenceImages && resolvedRefs.length > 0) {
+    input.reference_image_urls = resolvedRefs.slice(0, refSpec.referenceImages);
+  } else if (resolvedRefs.length === 1) {
+    applySingleImage(input, model, resolvedRefs[0]);
+  } else if (resolvedRefs.length > 1) {
+    applyMultiImage(input, model, resolvedRefs);
   }
-  if (refSpec?.referenceAudios && resolvedAudioRefs.length > 0) {
-    input.reference_audio_urls = resolvedAudioRefs.slice(0, refSpec.referenceAudios);
-  }
+  if (refVideos.length > 0) input.reference_video_urls = refVideos;
+  if (refAudios.length > 0) input.reference_audio_urls = refAudios;
 
   // Spec-driven: copy only the keys this model accepts (docs/poyo-video-api.md),
   // coercing numeric/boolean fields. Models not in the table send just prompt +

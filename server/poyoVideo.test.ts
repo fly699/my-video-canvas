@@ -164,9 +164,9 @@ describe("submitPoyoVideo multi-modal references (video/audio)", () => {
     expect((body.input.reference_video_urls as string[]).length).toBe(3);
   });
 
-  it("forwards reference videos for wan2.7 but NOT audios (unsupported)", async () => {
+  it("does NOT forward references to wan2.7 t2v/i2v (reference mode is a separate wire model)", async () => {
     const body = await submitMM("poyo_wan27_t2v", { videos: [V], audios: [AU] });
-    expect(body.input.reference_video_urls).toEqual([V]);
+    expect(body.input.reference_video_urls).toBeUndefined();
     expect(body.input.reference_audio_urls).toBeUndefined();
   });
 
@@ -174,5 +174,17 @@ describe("submitPoyoVideo multi-modal references (video/audio)", () => {
     const body = await submitMM("poyo_kling26", { videos: [V], audios: [AU] });
     expect(body.input.reference_video_urls).toBeUndefined();
     expect(body.input.reference_audio_urls).toBeUndefined();
+  });
+
+  it("reference mode is mutually exclusive with image_urls (image → reference_image_urls)", async () => {
+    const { submitPoyoVideo } = await import("./_core/poyoVideo");
+    await submitPoyoVideo({
+      provider: "poyo_seedance", prompt: "hi", params: {},
+      referenceImageUrl: "https://cdn.example.com/img.png",
+      referenceVideoUrls: [V],
+    });
+    expect(lastBody!.input.image_urls).toBeUndefined();
+    expect(lastBody!.input.reference_image_urls).toEqual(["https://cdn.example.com/img.png"]);
+    expect(lastBody!.input.reference_video_urls).toEqual([V]);
   });
 });

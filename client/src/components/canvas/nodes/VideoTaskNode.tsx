@@ -236,10 +236,11 @@ const SUPPORTS_NEGATIVE_PROMPT = new Set<string>([
   "poyo_kling21_std", "poyo_kling21_pro", "poyo_kling25_turbo",
 ]);
 
-// Multi-modal reference (docs/poyo-video-api.md §五/§六): models that accept
-// reference videos / audios. Collected from connected upstream `asset` nodes
-// (video / audio) and sent as reference_video_urls / reference_audio_urls.
-const SUPPORTS_REF_VIDEO = new Set<string>(["poyo_seedance", "poyo_seedance2_fast", "poyo_wan27_t2v", "poyo_wan27_i2v"]);
+// Multi-modal reference (docs/poyo-video-api.md §六): models that accept reference
+// videos / audios on the SAME wire model. Only Seedance-2 qualifies — Wan 2.7's
+// reference mode is a separate wire model not yet mapped. Collected from connected
+// upstream `asset` nodes (video / audio) → reference_video_urls / reference_audio_urls.
+const SUPPORTS_REF_VIDEO = new Set<string>(["poyo_seedance", "poyo_seedance2_fast"]);
 const SUPPORTS_REF_AUDIO = new Set<string>(["poyo_seedance", "poyo_seedance2_fast"]);
 
 // ── Reusable param sets for the expanded model catalog ──
