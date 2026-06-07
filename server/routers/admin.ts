@@ -97,6 +97,31 @@ export const adminRouter = router({
     }),
   }),
 
+  // Per-user ComfyUI server usage logs (detailed: server/host, model, status,
+  // duration, result, error) + per-user / per-server analytics.
+  comfyLogs: router({
+    list: adminProcedure
+      .input(z.object({
+        limit: z.number().int().min(1).max(200).default(50),
+        offset: z.number().int().min(0).default(0),
+        userId: z.number().int().optional(),
+        host: z.string().max(255).optional(),
+        status: z.enum(["success", "error"]).optional(),
+        action: z.string().max(64).optional(),
+        sinceMs: z.number().int().optional(),
+      }))
+      .query(async ({ input }) => db.getComfyUsageLogs(input)),
+
+    summary: adminProcedure
+      .input(z.object({ sinceMs: z.number().int().optional() }).optional())
+      .query(async ({ input }) => db.getComfyUsageSummary({ sinceMs: input?.sinceMs })),
+
+    clear: adminProcedure.mutation(async () => {
+      await db.clearComfyUsageLogs();
+      return { success: true };
+    }),
+  }),
+
   whitelist: router({
     getSettings: adminProcedure.query(async () => {
       const settings = await db.getWhitelistSettings();

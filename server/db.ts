@@ -1,4 +1,4 @@
-import { eq, and, desc, sql, inArray, isNull, like, count } from "drizzle-orm";
+import { eq, and, desc, sql, inArray, isNull, like, count, gte } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/mysql2";
 import {
   InsertUser,
@@ -14,6 +14,7 @@ import {
   whitelistEntries,
   storageSettings,
   auditLogs,
+  comfyUsageLogs,
   poyoBalanceSnapshots,
   projectCollaborators,
   projectShareLinks,
@@ -24,6 +25,7 @@ import {
   InsertVideoTask,
   InsertChatMessage,
   InsertAuditLog,
+  InsertComfyUsageLog,
   InsertProjectCollaborator,
   InsertProjectShareLink,
   lanChatRooms,
@@ -1550,6 +1552,109 @@ export async function clearAuditLogs(): Promise<void> {
   const db = await getDb();
   if (!db) { devAuditLogs.splice(0); return; }
   await db.delete(auditLogs);
+}
+
+// ── ComfyUI usage logs ──────────────────────────────────────────────────────
+type DevComfyUsageLog = typeof comfyUsageLogs.$inferSelect;
+const devComfyUsageLogs: DevComfyUsageLog[] = []; // newest first
+let devComfyUsageLogId = 1;
+
+export async function insertComfyUsageLog(data: InsertComfyUsageLog): Promise<void> {
+  const db = await getDb();
+  if (!db) {
+    devComfyUsageLogs.unshift({ ...data, id: devComfyUsageLogId++, createdAt: new Date() } as DevComfyUsageLog);
+    if (devComfyUsageLogs.length > 1000) devComfyUsageLogs.pop();
+    return;
+  }
+  await db.insert(comfyUsageLogs).values(data);
+}
+
+export async function getComfyUsageLogs(opts: {
+  limit?: number; offset?: number;
+  userId?: number; host?: string; status?: string; action?: string; sinceMs?: number;
+}): Promise<{ rows: DevComfyUsageLog[]; total: number }> {
+  const limit = opts.limit ?? 50;
+  const offset = opts.offset ?? 0;
+  const db = await getDb();
+
+  if (!db) {
+    const f = devComfyUsageLogs.filter((l) =>
+      (opts.userId == null || l.userId === opts.userId) &&
+      (!opts.host || l.host === opts.host) &&
+      (!opts.status || l.status === opts.status) &&
+      (!opts.action || l.action === opts.action) &&
+      (opts.sinceMs == null || (l.createdAt instanceof Date ? l.createdAt.getTime() : 0) >= opts.sinceMs));
+    return { rows: f.slice(offset, offset + limit), total: f.length };
+  }
+
+  const conds = [
+    opts.userId != null ? eq(comfyUsageLogs.userId, opts.userId) : undefined,
+    opts.host ? eq(comfyUsageLogs.host, opts.host) : undefined,
+    opts.status ? eq(comfyUsageLogs.status, opts.status) : undefined,
+    opts.action ? eq(comfyUsageLogs.action, opts.action) : undefined,
+    opts.sinceMs != null ? gte(comfyUsageLogs.createdAt, new Date(opts.sinceMs)) : undefined,
+  ].filter(Boolean);
+  const where = conds.length > 0 ? and(...conds) : undefined;
+
+  const [rows, countRows] = await Promise.all([
+    db.select().from(comfyUsageLogs).where(where).orderBy(desc(comfyUsageLogs.createdAt)).limit(limit).offset(offset),
+    db.select({ count: sql<number>`COUNT(*)` }).from(comfyUsageLogs).where(where),
+  ]);
+  return { rows, total: Number(countRows[0]?.count ?? 0) };
+}
+
+/** Aggregate stats per user and per server/host (success/error counts, avg ms). */
+export async function getComfyUsageSummary(opts: { sinceMs?: number } = {}): Promise<{
+  byUser: { userId: number | null; userEmail: string | null; runs: number; errors: number; avgMs: number }[];
+  byHost: { host: string | null; runs: number; errors: number; avgMs: number }[];
+  totals: { runs: number; errors: number; avgMs: number };
+}> {
+  const db = await getDb();
+  const errExpr = sql<number>`SUM(CASE WHEN ${comfyUsageLogs.status} = 'error' THEN 1 ELSE 0 END)`;
+  const avgExpr = sql<number>`AVG(${comfyUsageLogs.durationMs})`;
+
+  if (!db) {
+    const since = opts.sinceMs ?? 0;
+    const rows = devComfyUsageLogs.filter((l) => (l.createdAt instanceof Date ? l.createdAt.getTime() : 0) >= since);
+    const grp = <K extends string | number | null>(key: (l: DevComfyUsageLog) => K) => {
+      const m = new Map<K, { runs: number; errors: number; sum: number; n: number; sample: DevComfyUsageLog }>();
+      for (const l of rows) {
+        const k = key(l); const e = m.get(k) ?? { runs: 0, errors: 0, sum: 0, n: 0, sample: l };
+        e.runs++; if (l.status === "error") e.errors++; if (typeof l.durationMs === "number") { e.sum += l.durationMs; e.n++; }
+        m.set(k, e);
+      }
+      return m;
+    };
+    const byUserM = grp((l) => l.userId);
+    const byHostM = grp((l) => l.host);
+    const byUser = Array.from(byUserM.entries()).map(([userId, v]) => ({ userId, userEmail: v.sample.userEmail, runs: v.runs, errors: v.errors, avgMs: v.n ? Math.round(v.sum / v.n) : 0 })).sort((a, b) => b.runs - a.runs);
+    const byHost = Array.from(byHostM.entries()).map(([host, v]) => ({ host, runs: v.runs, errors: v.errors, avgMs: v.n ? Math.round(v.sum / v.n) : 0 })).sort((a, b) => b.runs - a.runs);
+    const runs = rows.length, errors = rows.filter((l) => l.status === "error").length;
+    const durs = rows.filter((l) => typeof l.durationMs === "number");
+    const avgMs = durs.length ? Math.round(durs.reduce((s, l) => s + (l.durationMs ?? 0), 0) / durs.length) : 0;
+    return { byUser, byHost, totals: { runs, errors, avgMs } };
+  }
+
+  const where = opts.sinceMs != null ? gte(comfyUsageLogs.createdAt, new Date(opts.sinceMs)) : undefined;
+  const [byUserRows, byHostRows, totalRows] = await Promise.all([
+    db.select({ userId: comfyUsageLogs.userId, userEmail: comfyUsageLogs.userEmail, runs: sql<number>`COUNT(*)`, errors: errExpr, avgMs: avgExpr })
+      .from(comfyUsageLogs).where(where).groupBy(comfyUsageLogs.userId, comfyUsageLogs.userEmail).orderBy(desc(sql`COUNT(*)`)).limit(50),
+    db.select({ host: comfyUsageLogs.host, runs: sql<number>`COUNT(*)`, errors: errExpr, avgMs: avgExpr })
+      .from(comfyUsageLogs).where(where).groupBy(comfyUsageLogs.host).orderBy(desc(sql`COUNT(*)`)).limit(50),
+    db.select({ runs: sql<number>`COUNT(*)`, errors: errExpr, avgMs: avgExpr }).from(comfyUsageLogs).where(where),
+  ]);
+  const num = (v: unknown) => Math.round(Number(v ?? 0));
+  return {
+    byUser: byUserRows.map((r) => ({ userId: r.userId, userEmail: r.userEmail, runs: num(r.runs), errors: num(r.errors), avgMs: num(r.avgMs) })),
+    byHost: byHostRows.map((r) => ({ host: r.host, runs: num(r.runs), errors: num(r.errors), avgMs: num(r.avgMs) })),
+    totals: { runs: num(totalRows[0]?.runs), errors: num(totalRows[0]?.errors), avgMs: num(totalRows[0]?.avgMs) },
+  };
+}
+
+export async function clearComfyUsageLogs(): Promise<void> {
+  const db = await getDb();
+  if (!db) { devComfyUsageLogs.splice(0); return; }
+  await db.delete(comfyUsageLogs);
 }
 
 // ── Poyo balance snapshots ──────────────────────────────────────────────────
