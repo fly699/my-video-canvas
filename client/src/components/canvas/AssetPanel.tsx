@@ -196,42 +196,41 @@ export function AssetPanel({ projectId, onClose, onHeaderMouseDown }: Props) {
         </button>
       </div>
 
-      {/* ── Upload zone ── */}
-      <div className="px-3 py-3 flex-shrink-0" style={{ borderBottom: "1px solid var(--c-elevated)" }}>
+      {/* ── Upload zone (compact single row) ── */}
+      <div className="px-3 py-2 flex-shrink-0" style={{ borderBottom: "1px solid var(--c-elevated)" }}>
         <input ref={fileInputRef} type="file" accept="image/*,video/*,audio/*" multiple onChange={handleFileSelect} className="hidden" />
-        <div
-          onClick={() => !uploading && fileInputRef.current?.click()}
-          onDragOver={(e) => { e.preventDefault(); setDragOver(true); }}
-          onDragLeave={() => setDragOver(false)}
-          onDrop={handleDrop}
-          className="flex flex-col items-center justify-center gap-2 rounded-xl py-5 cursor-pointer transition-all"
-          style={{
-            border: `1.5px dashed ${dragOver ? "oklch(0.65 0.18 60 / 0.6)" : "var(--c-bd2)"}`,
-            background: dragOver ? "oklch(0.65 0.18 60 / 0.06)" : "var(--c-input)",
-          }}
-        >
-          {uploading ? (
-            <Loader2 className="w-5 h-5 animate-spin" style={{ color: "oklch(0.65 0.18 60)" }} />
-          ) : (
-            <Upload className="w-5 h-5" style={{ color: dragOver ? "oklch(0.65 0.18 60)" : "var(--c-t4)" }} />
-          )}
-          <div className="text-center">
-            <p className="text-xs font-medium" style={{ color: uploading ? "oklch(0.65 0.18 60)" : "var(--c-t3)" }}>
-              {uploading ? "上传中..." : "点击、拖拽或粘贴上传（可多选）"}
-            </p>
-            <p className="text-[10px] mt-0.5" style={{ color: "var(--c-t4)" }}>
-              图片 · 视频 · 音频 · 最大 5000MB
-            </p>
+        <div className="flex items-center gap-1.5">
+          <div
+            onClick={() => !uploading && fileInputRef.current?.click()}
+            onDragOver={(e) => { e.preventDefault(); setDragOver(true); }}
+            onDragLeave={() => setDragOver(false)}
+            onDrop={handleDrop}
+            title="点击、拖拽或粘贴上传（可多选）· 图片 / 视频 / 音频 · 最大 5000MB"
+            className="flex items-center justify-center gap-1.5 rounded-lg py-1.5 px-2 cursor-pointer transition-all flex-1 min-w-0"
+            style={{
+              border: `1.5px dashed ${dragOver ? "oklch(0.65 0.18 60 / 0.6)" : "var(--c-bd2)"}`,
+              background: dragOver ? "oklch(0.65 0.18 60 / 0.06)" : "var(--c-input)",
+            }}
+          >
+            {uploading ? (
+              <Loader2 className="w-3.5 h-3.5 animate-spin flex-shrink-0" style={{ color: "oklch(0.65 0.18 60)" }} />
+            ) : (
+              <Upload className="w-3.5 h-3.5 flex-shrink-0" style={{ color: dragOver ? "oklch(0.65 0.18 60)" : "var(--c-t4)" }} />
+            )}
+            <span className="text-[11px] font-medium truncate" style={{ color: uploading ? "oklch(0.65 0.18 60)" : "var(--c-t3)" }}>
+              {uploading ? "上传中..." : "点击 / 拖拽 / 粘贴上传"}
+            </span>
           </div>
+          <button
+            onClick={handleImportUrl}
+            disabled={importMutation.isPending}
+            title="从链接导入"
+            className="text-[11px] py-1.5 px-2.5 rounded-lg transition-all flex-shrink-0 whitespace-nowrap"
+            style={{ border: "1px dashed var(--c-bd2)", background: "transparent", color: "var(--c-t3)", cursor: "pointer" }}
+          >
+            {importMutation.isPending ? "导入中…" : "＋ 链接"}
+          </button>
         </div>
-        <button
-          onClick={handleImportUrl}
-          disabled={importMutation.isPending}
-          className="mt-2 w-full text-[11px] py-1.5 rounded-lg transition-all"
-          style={{ border: "1px dashed var(--c-bd2)", background: "transparent", color: "var(--c-t3)", cursor: "pointer" }}
-        >
-          {importMutation.isPending ? "导入中…" : "＋ 从链接导入"}
-        </button>
       </div>
 
       {/* ── Filters (collapsible — collapsed by default to save space) ── */}
