@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { useLocation } from "wouter";
-import { Lock, Paperclip, Send, ShieldCheck, Users, Trash2, LogOut, X, FileIcon, ImageIcon, Film, FolderOpen, Download } from "lucide-react";
+import { Lock, Paperclip, Send, ShieldCheck, Users, Trash2, LogOut, X, FileIcon, ImageIcon, Film, FolderOpen, Download, Camera } from "lucide-react";
+import { captureScreen, ScreenshotEditor } from "./ScreenshotEditor";
 import { useChat, SERVERLESS_ENCRYPT_PROMPT_BYTES } from "@/hooks/useChat";
 import { useAuth } from "@/_core/hooks/useAuth";
 import { trpc } from "@/lib/trpc";
@@ -19,6 +20,20 @@ export function ChatView({ membersOpen: _m }: { membersOpen?: boolean }) {
   const [dragOver, setDragOver] = useState(false);
   const [askEncrypt, setAskEncrypt] = useState(false);
   const [showFiles, setShowFiles] = useState(false);
+  // Screenshot capture → annotate → stage as an attachment.
+  const [shotUrl, setShotUrl] = useState<string | null>(null);
+  const [capturing, setCapturing] = useState(false);
+  async function onScreenshot() {
+    if (capturing) return;
+    setCapturing(true);
+    try {
+      const url = await captureScreen();
+      if (url) setShotUrl(url);
+      else toast.info("已取消，或当前浏览器/环境不支持屏幕截图（需 HTTPS）");
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "截图失败");
+    } finally { setCapturing(false); }
+  }
   const filesQuery = trpc.chat.listFiles.useQuery({ conversationId: activeConv?.id ?? 0 }, { enabled: showFiles && !!activeConv });
   const fileRef = useRef<HTMLInputElement>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -177,6 +192,7 @@ export function ChatView({ membersOpen: _m }: { membersOpen?: boolean }) {
       <div style={{ display: "flex", alignItems: "flex-end", gap: 8, padding: "8px 16px 14px", flexShrink: 0 }}>
         <input ref={fileRef} type="file" hidden multiple onChange={(e) => { if (e.target.files) addFiles(e.target.files); e.target.value = ""; }} />
         <button onClick={() => fileRef.current?.click()} title={`添加文件（单文件 ≤ ${maxFileMb}MB）`} style={iconBtn}><Paperclip size={18} /></button>
+        <button onClick={onScreenshot} disabled={capturing} title="截图（截屏后可标注，再发送）" style={{ ...iconBtn, opacity: capturing ? 0.5 : 1 }}><Camera size={18} /></button>
         <textarea value={text} onChange={(e) => { setText(e.target.value); emitTyping(); }}
           onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); void doSend(); } }}
           onPaste={(e) => {
@@ -197,6 +213,9 @@ export function ChatView({ membersOpen: _m }: { membersOpen?: boolean }) {
           <Send size={18} />
         </button>
       </div>
+
+      {/* Screenshot annotate editor (portal) */}
+      {shotUrl && <ScreenshotEditor imageUrl={shotUrl} onCancel={() => setShotUrl(null)} onConfirm={(file) => { addFiles([file]); setShotUrl(null); }} />}
 
       {/* drag overlay */}
       {dragOver && (
