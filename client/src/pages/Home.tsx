@@ -17,6 +17,7 @@ import {
   Layers,
   Wand2,
   Users,
+  User,
   Zap,
   Clock,
   ChevronRight,
@@ -740,6 +741,24 @@ export default function Home() {
                     badge: "NEW",
                   },
                   {
+                    icon: Clapperboard, color: "oklch(0.68 0.20 55)",
+                    title: "剪辑节点 · 专业升级",
+                    desc: "双向裁剪+精确入出点/自定义倍速/截帧；多音轨混音（音量·延迟·淡入淡出·静音·独奏·语音闪避）、响度标准化+降噪、调色预设、裁剪比例/旋转、输出分辨率·帧率·格式，预览可循环",
+                    badge: "NEW",
+                  },
+                  {
+                    icon: User, color: "oklch(0.66 0.18 30)",
+                    title: "角色一致性 · 全局角色库",
+                    desc: "角色多视角参考图自动锁定身份，贯穿 ComfyUI 图/视频/工作流与 Poyo 图/视频；一键套用整组分镜、多角色优先级、一致性校验；角色存入全局库跨项目复用",
+                    badge: "NEW",
+                  },
+                  {
+                    icon: Bot, color: "oklch(0.70 0.18 250)",
+                    title: "多智能体编排",
+                    desc: "一个画布多个智能体各管各的：归属彩标、规划上下文隔离，一键选中/运行/清空我的节点，互不干扰",
+                    badge: "NEW",
+                  },
+                  {
                     icon: Boxes, color: "oklch(0.68 0.20 100)",
                     title: "分类模型选择器",
                     desc: "图像 / 视频 / 对话统一选择器：按供应商与家族分组、可搜索，每模型标注消耗点数，按预算挑选",
@@ -748,8 +767,8 @@ export default function Home() {
                   {
                     icon: Boxes, color: "oklch(0.68 0.20 100)",
                     title: "ComfyUI 自建集成",
-                    desc: "图像（多 LoRA / ControlNet / IPAdapter / Inpaint / 放大）+ 视频（Wan / LTX）、自定义工作流；标题栏模型标注、随机/固定种子、多行提示词批量出图",
-                    badge: null,
+                    desc: "图像（多 LoRA / ControlNet / IPAdapter / Inpaint / 放大）+ 视频（AnimateDiff / Wan / LTX，支持角色 LoRA）、自定义工作流；上游提示词优先/转发、运行后自动清显存、绑定失同步校验、随机/固定种子、批量出图",
+                    badge: "NEW",
                   },
                   {
                     icon: Bookmark, color: "oklch(0.65 0.20 140)",

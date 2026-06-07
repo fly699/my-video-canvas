@@ -2,7 +2,7 @@ import { useState, useEffect } from "react";
 import {
   X, Sparkles, Layers, Wand2, Video, Boxes, Bot, Users, ScrollText, Activity,
   Shield, ArrowRight, MessageCircle, Music, Wallet, Clapperboard, Bookmark,
-  Palette, Upload,
+  Palette, Upload, User,
 } from "lucide-react";
 import type { NodeType } from "../../../../shared/types";
 import { getNodeConfig } from "../../lib/nodeConfig";
@@ -59,13 +59,22 @@ function WelcomeModal({ onClose }: { onClose: () => void }) {
       title: "AI 视频生成", desc: "扩充至 37 个模型：Sora 2、Veo 3.1、Kling 2.1~3.0、Wan、Seedance、Hailuo、Runway、Higgsfield DoP，覆盖文生 / 图生 / 首尾帧",
       badge: "NEW" },
     { Icon: Clapperboard, color: "oklch(0.65 0.19 310)",
-      title: "内置综合剪辑器", desc: "多片段时间轴 · 单遍 ffmpeg 导出高素质成片；转场 / 特效 / 画面适配（模糊填充）/ 倒放 / 变速、富文本字幕、AI 配乐配音，撤销重做 + 自动保存",
+      title: "内置综合剪辑器", desc: "多片段时间轴 · 单遍 ffmpeg 导出高素质成片；转场 / 特效 / 画面适配 / 倒放 / 变速、富文本字幕、AI 配乐配音，撤销重做 + 自动保存",
+      badge: "NEW" },
+    { Icon: Clapperboard, color: "oklch(0.68 0.20 55)",
+      title: "剪辑节点 · 专业升级", desc: "节点级精剪：双向裁剪 + 精确入出点 / 自定义倍速 / 截取封面帧；多音轨混音（每轨音量·延迟·淡入淡出·静音·独奏·语音闪避 Ducking）、响度标准化 + 降噪、调色预设、淡入淡出、裁剪比例 / 旋转翻转、输出分辨率·帧率·格式；预览可循环播放并随节点缩放充满",
+      badge: "NEW" },
+    { Icon: User, color: "oklch(0.66 0.18 30)",
+      title: "角色一致性 · 全局角色库", desc: "角色节点的多视角参考图自动锁定身份，贯穿 ComfyUI 图/视频/工作流（IPAdapter / LoRA / 参考图）与 Poyo 图/视频（多模态参考）；一键「应用到本场景所有镜头」、多角色按布局定优先级、LLM 一致性校验；角色保存到全局角色库，跨项目快速调用",
+      badge: "NEW" },
+    { Icon: Bot, color: "oklch(0.70 0.18 250)",
+      title: "多智能体编排", desc: "一个画布可放多个智能体，各自分管自己规划生成的节点：归属彩色徽标标识、规划上下文相互隔离，一键「选中 / 运行 / 清空我的节点」，互不干扰",
       badge: "NEW" },
     { Icon: Boxes, color: "oklch(0.68 0.20 100)",
       title: "分类模型选择器", desc: "图像 / 视频 / 对话节点统一的模型选择器：按供应商与家族分组、支持搜索，每个模型标注消耗点数（credits），按预算挑选",
       badge: "NEW" },
     { Icon: Boxes, color: "oklch(0.68 0.20 100)",
-      title: "ComfyUI 自建集成", desc: "图像（多 LoRA / ControlNet+预处理 / IPAdapter / Inpaint / 放大）+ 视频（Wan 文生·图生 / LTX）、15 类模型自动发现、自定义工作流导入；标题栏常驻模型标注、随机/固定种子、多行提示词批量出图" },
+      title: "ComfyUI 自建集成", desc: "图像（多 LoRA / ControlNet+预处理 / IPAdapter / Inpaint / 放大）+ 视频（AnimateDiff / Wan / LTX，支持角色 LoRA）、15 类模型自动发现、自定义工作流导入；上游提示词「优先/转发」、运行后队列空闲自动清显存、参数绑定失同步校验、随机/固定种子、多行提示词批量出图" },
     { Icon: Bookmark, color: "oklch(0.65 0.20 140)",
       title: "ComfyUI 节点模板库", desc: "右键任意 ComfyUI 节点把全部参数（含提示词 / 工作流）存为共享模板，全员可调用；按节点外框颜色分类、可搜索 / 注释 / 重命名，点击即在画布快速新建带参节点",
       badge: "NEW" },
