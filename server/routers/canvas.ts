@@ -592,6 +592,9 @@ export const videoTasksRouter = router({
         // Multi-modal references (Seedance-2 / Wan-2.7 reference mode).
         referenceVideoUrls: z.array(z.string()).max(3).optional(),
         referenceAudioUrls: z.array(z.string()).max(3).optional(),
+        // "reference" = the reference images are character SUBJECTS (identity), so
+        // route them to reference_image_urls (multi-reference) rather than首尾帧.
+        referenceMode: z.enum(["reference", "frame"]).optional(),
         params: z.record(z.string(), z.unknown()).optional(),
       })
     )
@@ -628,13 +631,16 @@ export const videoTasksRouter = router({
       // The `_referenceImageUrls` key is filtered out of the upstream payload by
       // VIDEO_PARAM_KEYS, so it never poisons the provider request.
       const baseParams = (input.params as Record<string, unknown> | undefined) ?? undefined;
-      const needsStash = refList.length > 1 || refVideos.length > 0 || refAudios.length > 0;
+      // Only stash reference mode when it'd actually change mapping (reference + ≥1 ref).
+      const stashRefMode = input.referenceMode === "reference" && refList.length > 0;
+      const needsStash = refList.length > 1 || refVideos.length > 0 || refAudios.length > 0 || stashRefMode;
       const mergedParams: Record<string, unknown> | undefined = needsStash
         ? {
             ...(baseParams ?? {}),
             ...(refList.length > 1 ? { _referenceImageUrls: refList } : {}),
             ...(refVideos.length > 0 ? { _referenceVideoUrls: refVideos } : {}),
             ...(refAudios.length > 0 ? { _referenceAudioUrls: refAudios } : {}),
+            ...(stashRefMode ? { _refMode: "reference" } : {}),
           }
         : baseParams;
 
@@ -698,6 +704,7 @@ export const videoTasksRouter = router({
               referenceImageUrls: refList.length > 1 ? refList : undefined,
               referenceVideoUrls: refVideos.length > 0 ? refVideos : undefined,
               referenceAudioUrls: refAudios.length > 0 ? refAudios : undefined,
+              referenceMode: input.referenceMode,
               params: input.params as Record<string, unknown>,
             });
             externalTaskId = result.externalTaskId;

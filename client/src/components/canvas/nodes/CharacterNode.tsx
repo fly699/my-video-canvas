@@ -10,6 +10,7 @@ import { toast } from "sonner";
 import { User, Mountain, Upload, X, Image as ImageIcon, Loader2, Plus, Search, Save } from "lucide-react";
 import {
   characterToPromptInjection,
+  clampLen,
   CHARACTER_PLACEHOLDERS,
   DEFAULT_PERSON_TEMPLATE,
   DEFAULT_SCENE_TEMPLATE,
@@ -122,8 +123,16 @@ export const CharacterNode = memo(function CharacterNode({ id, selected, data }:
     if (!name) { toast.error(kind === "scene" ? "请先填写场景名" : "请先填写角色名"); return; }
     // Strip graph-specific/transient fields so a re-instantiated character doesn't
     // inherit the original's agent ownership / scene membership / creator.
-    const { createdBy: _c, ownerAgentId: _o, sceneGroup: _s, ...clean } = payload as Record<string, unknown>;
+    const { createdBy: _c, ownerAgentId: _o, sceneGroup: _s, ...rest } = payload as Record<string, unknown>;
     void _c; void _o; void _s;
+    // Strip the OPPOSITE kind's fields: a node toggled person↔scene keeps the now-hidden
+    // fields in its payload, which would otherwise be saved and resurface if the library
+    // entry is later toggled. Keep only this kind's fields + the shared ones.
+    const PERSON_ONLY = ["name", "role", "gender", "age", "appearance", "personality", "outfit", "signature", "loraName", "loraStrength", "ipadapterWeight"];
+    const SCENE_ONLY = ["sceneName", "locationType", "sceneDescription", "atmosphere", "timeOfDay"];
+    const stripKeys = kind === "scene" ? PERSON_ONLY : SCENE_ONLY;
+    const clean = Object.fromEntries(Object.entries(rest).filter(([k]) => !stripKeys.includes(k)));
+    clean.characterKind = kind; // pin authoritatively (covers legacy/undefined)
     saveLibMut.mutate({ name, characterKind: kind, payload: clean, thumbnail: payload.referenceImageUrl || undefined });
   }, [payload, kind, saveLibMut]);
 
@@ -157,9 +166,11 @@ export const CharacterNode = memo(function CharacterNode({ id, selected, data }:
     const urls = sorted.map((s) => s.imageUrl).slice(0, 10);
     setConsistencyScenes({ ids: ids.slice(0, 10), urls });
     consistencyMut.mutate({
-      characterName: payload.name || payload.sceneName || undefined,
+      // Clamp to the server's zod limits (characterName max 120, profileText max 1500)
+      // so a long name / customPromptTemplate-driven profile can't trigger BAD_REQUEST.
+      characterName: clampLen((payload.name || payload.sceneName || "").trim(), 120) || undefined,
       characterKind: kind,
-      profileText: profileText.length > 0 ? profileText : undefined,
+      profileText: profileText.length > 0 ? clampLen(profileText, 1500) : undefined,
       imageUrls: urls,
     });
   };
@@ -205,8 +216,12 @@ export const CharacterNode = memo(function CharacterNode({ id, selected, data }:
   // scenes stamp `sceneGroup` on nodes), so one click covers the whole scene.
   const applyToConnectedShots = useCallback((wholeScene = false) => {
     const st = useCanvasStore.getState();
-    const refs = characterReferenceImages(payload);
-    const loraName = payload.loraName?.trim();
+    // 场景 (scene) nodes contribute location TEXT only (via prompt injection) — their
+    // image is a backdrop, never a face/identity reference, so don't push it into any
+    // downstream referenceImageUrl/LoRA. Consistent with connectedCharacterRefImages.
+    const isScene = (payload.characterKind ?? "person") === "scene";
+    const refs = isScene ? [] : characterReferenceImages(payload);
+    const loraName = isScene ? undefined : payload.loraName?.trim();
     const directTargetIds = new Set(st.edges.filter((e) => e.source === id).map((e) => e.target));
     const targetIds = new Set(directTargetIds);
     if (wholeScene) {
@@ -230,6 +245,7 @@ export const CharacterNode = memo(function CharacterNode({ id, selected, data }:
       if (Object.keys(p).length > 0) updates.push({ id: t.id, payload: p });
     }
     if (updates.length > 0) { batchUpdateNodeData(updates); toast.success(`角色已套用到 ${updates.length} 个${wholeScene ? "本场景" : "连接的"}节点`); }
+    else if (isScene) toast.info("场景节点的描述会在生成时自动注入提示词，无需手动套用参考图");
     else toast.info(wholeScene ? "未找到本场景的镜头（场景信息由智能体规划时生成）" : "没有可套用的连接节点（先把本角色连到生成/分镜节点）");
   }, [id, payload, batchUpdateNodeData, buildShotPatch]);
 

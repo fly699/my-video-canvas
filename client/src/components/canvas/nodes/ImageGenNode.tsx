@@ -255,7 +255,10 @@ export const ImageGenNode = memo(function ImageGenNode({ id, selected, data }: P
     const charRefs = manualRefs.length === 0
       ? connectedCharacterRefImages(id, gedges, gnodes)
       : [];
-    const effectiveRefs = manualRefs.length ? manualRefs : charRefs;
+    // Cap to the server's referenceImageUrls limit (z.array().max(8)). Multiple
+    // connected characters × multi-view can exceed 8, which would otherwise be
+    // rejected as BAD_REQUEST before any image is generated.
+    const effectiveRefs = (manualRefs.length ? manualRefs : charRefs).slice(0, 8);
     const finalPrompt = mergeCharactersIntoPrompt(payload.prompt ?? "", connChars);
     const submit = () => genMutation.mutate({
       prompt: finalPrompt,

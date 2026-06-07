@@ -70,7 +70,7 @@ export function setupVideoTaskPoller(io: SocketIOServer) {
                 // Poyo.ai: Seedance 2 / Veo 3.1 / Wan 2.6 / etc.
                 // Multi-reference images/videos/audios are stashed in params._reference*Urls
                 // by videoTasks.create (the table has no dedicated columns).
-                const tp = (task.params as { _referenceImageUrls?: unknown; _referenceVideoUrls?: unknown; _referenceAudioUrls?: unknown } | null);
+                const tp = (task.params as { _referenceImageUrls?: unknown; _referenceVideoUrls?: unknown; _referenceAudioUrls?: unknown; _refMode?: unknown } | null);
                 const arr = (v: unknown) => (Array.isArray(v) ? (v as string[]) : undefined);
                 submitResult = await submitPoyoVideo({
                   provider: task.provider,
@@ -80,6 +80,7 @@ export function setupVideoTaskPoller(io: SocketIOServer) {
                   referenceImageUrls: arr(tp?._referenceImageUrls),
                   referenceVideoUrls: arr(tp?._referenceVideoUrls),
                   referenceAudioUrls: arr(tp?._referenceAudioUrls),
+                  referenceMode: tp?._refMode === "reference" ? "reference" : undefined,
                   params: (task.params as Record<string, unknown>) ?? undefined,
                 });
               } else if (isHiggsfieldVideoProvider(task.provider)) {

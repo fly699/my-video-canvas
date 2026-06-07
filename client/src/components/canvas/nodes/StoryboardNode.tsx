@@ -11,7 +11,7 @@ import { toast } from "sonner";
 import { Sparkles, ImageIcon, Loader2, Upload, X, Wand2, History, Languages, Film, ZoomIn, Download, Copy } from "lucide-react";
 import { isOwnStorageUrl } from "@/lib/ownStorage";
 import { mergeCharactersIntoPrompt } from "../../../lib/characterPrompt";
-import { connectedCharacters } from "../../../lib/characterConditioning";
+import { connectedCharacters, connectedCharacterRefImages } from "../../../lib/characterConditioning";
 import { IMAGE_MODELS } from "@/lib/models";
 import { MediaImage } from "../MediaImage";
 import { RefImageReachabilityBadge, RefImageSwitchButton, useRefImageGuard, usePreferUpstreamRefSource, useAutoPreferUpstreamRefSource } from "../mediaReachability";
@@ -74,6 +74,9 @@ export const StoryboardNode = memo(function StoryboardNode({ id, selected, data 
       const srcNode = s.nodes.find((n) => n.id === edge.source);
       if (srcNode?.data.nodeType !== "character") continue;
       const cp = srcNode.data.payload as import("../../../../../shared/types").CharacterNodeData;
+      // Scene-kind characters contribute text only — never use them as an
+      // identity/face reference image (consistent with round-5 fixes).
+      if ((cp.characterKind ?? "person") === "scene") continue;
       if (cp.referenceImageUrl) return cp.referenceImageUrl;
     }
     return undefined;
@@ -304,12 +307,17 @@ export const StoryboardNode = memo(function StoryboardNode({ id, selected, data 
     // Position-ordered so the prompt's 角色1/角色2 numbering matches the convention
     // used elsewhere (reference image priority = topmost connected character).
     const chars = connectedCharacters(id, allEdges, allNodes);
-    let charRefUrl: string | undefined = payload.referenceImageUrl;
-    if (!charRefUrl) charRefUrl = chars.find((c) => c.referenceImageUrl?.trim())?.referenceImageUrl;
-    const rawPrompt = mergeCharactersIntoPrompt(payload.promptText, chars);
-    const enhancedPrompt = Array.from(rawPrompt).length > 2000
-      ? Array.from(rawPrompt).slice(0, 2000).join("")
-      : rawPrompt;
+    // Identity lock: when no reference image is manually attached, use ALL views of
+    // every connected PERSON character (multi-reference → image_urls server-side),
+    // matching ImageGenNode — previously only the FIRST person's primary image was
+    // sent, losing multi-view / multi-character locking. Cap to the server's max(8).
+    const manualRef = payload.referenceImageUrl?.trim();
+    const charRefs = manualRef ? [] : connectedCharacterRefImages(id, allEdges, allNodes).slice(0, 8);
+    const charRefUrl: string | undefined = manualRef || charRefs[0];
+    // Cap to 2000 while PRESERVING the user's scene text — the previous crude
+    // slice(0, 2000) cut from the END, dropping the scene description (which sits
+    // after the prepended character blocks). maxLength trims the injection instead.
+    const enhancedPrompt = mergeCharactersIntoPrompt(payload.promptText, chars, 2000);
 
     // Per-model sizing: pass only the fields the chosen model actually
     // consumes. The imageGen.generate tRPC procedure validates each field
@@ -352,6 +360,7 @@ export const StoryboardNode = memo(function StoryboardNode({ id, selected, data 
         negativePrompt: payload.negativePrompt,
         style: payload.colorTone,
         referenceImageUrl: charRefUrl,
+        referenceImageUrls: charRefs.length > 1 ? charRefs : undefined,
         model,
         batchSize: model === "hf_soul_standard" && batchCount > 1 ? batchCount : undefined,
         ...sizingFields,
