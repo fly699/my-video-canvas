@@ -9,6 +9,7 @@ import { isOwnStorageUrl } from "@/lib/ownStorage";
 import { WatermarkedVideo } from "@/components/WatermarkedVideo";
 import { NodeTextArea } from "../NodeTextInput";
 import { compareUpstreamNodes } from "../../../lib/inputOrder";
+import { getNodeVideoOutput } from "@/lib/canvasPassthrough";
 import { Merge, Loader2, RotateCcw, Music, ChevronDown, GripVertical, X } from "lucide-react";
 
 interface Props {
@@ -127,24 +128,28 @@ export const MergeNode = memo(function MergeNode({ id, selected, data }: Props) 
     for (const { e } of incoming) {
       const srcNode = byId.get(e.source);
       if (!srcNode || !VIDEO_SOURCE_TYPES.has(srcNode.data.nodeType)) continue;
-      if (srcNode.data.nodeType === "asset") {
-        const mt = (srcNode.data.payload as { mimeType?: string }).mimeType;
-        if (mt && mt.startsWith("audio/")) continue;
-      }
       const p = srcNode.data.payload as Record<string, unknown>;
-      const url = (p.resultVideoUrl ?? p.outputUrl ?? p.url) as string | undefined;
+      // Helper skips non-video assets (audio/image) and image-output comfyui_workflow
+      // runs — so the merged film never includes an image/audio URL as a "video".
+      const url = getNodeVideoOutput(srcNode.data.nodeType, p);
       if (url) items.push({ url, label: srcNode.data.title || url.split("/").pop() || url });
     }
     return items;
   };
-  const collectInputUrls = (): string[] => collectInputItems().map((x) => x.url);
 
   // Effective ordered inputs for the drag-reorder list: explicit manual order if
   // set, otherwise the smart-ordered connected inputs. Labels prefer source titles.
   const graphItems = collectInputItems();
   const labelByUrl = new Map(graphItems.map((x) => [x.url, x.label]));
-  const orderItems: { url: string; label: string }[] = (payload.inputVideoUrls ?? []).length
-    ? (payload.inputVideoUrls ?? []).map((u) => ({ url: u, label: labelByUrl.get(u) ?? u.split("/").pop() ?? u }))
+  const manualOrder = payload.inputVideoUrls ?? [];
+  // When a manual order exists, keep it BUT append any newly-connected inputs not yet
+  // in the list — otherwise connecting a clip after reordering silently drops it from
+  // the merge. (Manually-typed URLs not present in the graph are preserved as-is.)
+  const orderItems: { url: string; label: string }[] = manualOrder.length
+    ? [
+        ...manualOrder.map((u) => ({ url: u, label: labelByUrl.get(u) ?? u.split("/").pop() ?? u })),
+        ...graphItems.filter((g) => !manualOrder.includes(g.url)),
+      ]
     : graphItems;
   const reorder = (from: number, to: number) => {
     if (from === to) return;
@@ -175,12 +180,18 @@ export const MergeNode = memo(function MergeNode({ id, selected, data }: Props) 
 
   const handleMerge = () => {
     if (mergeMutation.isPending || payload.status === "processing") return;
-    const urls = payload.inputVideoUrls?.length
-      ? payload.inputVideoUrls
-      : collectInputUrls();
+    // Use the effective ordered list (manual order + appended new connections), so a
+    // clip connected after reordering is included rather than silently dropped.
+    const urls = orderItems.map((x) => x.url);
 
     if (urls.length < 2) {
       toast.error("至少需要 2 个已完成的视频节点输入，或手动填写视频 URL");
+      return;
+    }
+    if (urls.length > 50) {
+      // Server enforces inputUrls.max(50); block with a clear message instead of
+      // letting the request 400, and don't silently drop clips from the final film.
+      toast.error(`最多合并 50 个视频，当前有 ${urls.length} 个，请减少后再试`);
       return;
     }
 

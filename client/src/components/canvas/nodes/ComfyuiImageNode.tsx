@@ -164,6 +164,7 @@ export const ComfyuiImageNode = memo(function ComfyuiImageNode({ id, selected, d
       } else if (uploadTargetRef.current === "ipadapter") {
         const p = cur?.ipadapter;
         const prev = p?.imageUrls?.length ? p.imageUrls : (p?.imageUrl ? [p.imageUrl] : []);
+        if (prev.length >= 8) { toast.warning("IPAdapter 参考图最多 8 张"); return; } // server imageUrls.max(8)
         const next = [...prev, result.url];
         updateNodeData(id, { ipadapter: { model: p?.model ?? "", clipVision: p?.clipVision, weight: p?.weight, imageUrl: next[0], imageUrls: next } });
         toast.success("IPAdapter 参考图上传成功");
@@ -311,7 +312,8 @@ export const ComfyuiImageNode = memo(function ComfyuiImageNode({ id, selected, d
     // visual conditioning—IPAdapter/refs—is filled separately; this adds the textual
     // identity like 外貌/服装). Not persisted, mirrors video_task.
     const { nodes: gnodes, edges: gedges } = useCanvasStore.getState();
-    const finalPrompt = mergeCharactersIntoPrompt(payload.prompt ?? "", connectedCharacters(id, gedges, gnodes));
+    // Cap to the server's prompt max(2000); preserves the base prompt, trims injection.
+    const finalPrompt = mergeCharactersIntoPrompt(payload.prompt ?? "", connectedCharacters(id, gedges, gnodes), 2000);
     genMutation.mutate({
       nodeId: id,
       projectId: data.projectId,
@@ -329,7 +331,7 @@ export const ComfyuiImageNode = memo(function ComfyuiImageNode({ id, selected, d
         ? { model: cn.model.trim(), imageUrl: cn.imageUrl, strength: cn.strength, startPercent: cn.startPercent, endPercent: cn.endPercent, preprocessor: cn.preprocessor?.trim() || undefined }
         : undefined,
       ipadapter: ip?.model?.trim() && ipImages.length
-        ? { model: ip.model.trim(), imageUrl: ipImages[0], imageUrls: ipImages.length > 1 ? ipImages : undefined, clipVision: ip.clipVision?.trim() || undefined, weight: ip.weight }
+        ? { model: ip.model.trim(), imageUrl: ipImages[0], imageUrls: ipImages.length > 1 ? ipImages.slice(0, 8) : undefined, clipVision: ip.clipVision?.trim() || undefined, weight: ip.weight }
         : undefined,
       clip: payload.clip?.name1?.trim()
         ? { clipType: payload.clip.clipType, name1: payload.clip.name1.trim(), name2: payload.clip.name2?.trim() || undefined, name3: payload.clip.name3?.trim() || undefined }

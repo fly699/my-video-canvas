@@ -144,7 +144,11 @@ export function detectUpstreamPrompt(
           if (extras.length) pos = [pos, ...extras].filter(Boolean).join(", ");
           break;
         }
-        case "storyboard": pos = str(p.description); neg = str(p.negativePrompt); break;
+        // Forward the storyboard's REFINED image prompt (promptText) — the same text
+        // it generates its own image from — so a downstream comfyui node stays
+        // consistent with it. Fall back to the raw scene description when not yet
+        // expanded (preserves prior behavior).
+        case "storyboard": pos = str(p.promptText) ?? str(p.description); neg = str(p.negativePrompt); break;
         case "script": pos = str(p.content); break;
         case "ai_chat": {
           const msgs = Array.isArray(p.messages) ? (p.messages as Array<{ role?: string; content?: string }>) : [];

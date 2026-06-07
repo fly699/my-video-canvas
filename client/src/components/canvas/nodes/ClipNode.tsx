@@ -10,6 +10,7 @@ import type { ClipNodeData } from "../../../../../shared/types";
 import { trpc } from "@/lib/trpc";
 import { toast } from "sonner";
 import { downloadMedia, mediaFetchUrl } from "@/lib/download";
+import { getNodeVideoOutput } from "@/lib/canvasPassthrough";
 import {
   Scissors, Play, Pause, Loader2, Download, RotateCcw, Repeat,
   ArrowRight, Volume2, Music, Film, Image as ImageIcon,
@@ -397,8 +398,9 @@ export const ClipNode = memo(function ClipNode({ id, selected, data }: Props) {
         const node = s.nodes.find(n => n.id === edge.source);
         if (!node) continue;
         const p = node.data.payload as Record<string, unknown>;
-        // Covers: video_task (resultVideoUrl), clip/merge/overlay/subtitle/subtitle_motion/smart_cut (outputUrl), asset (url)
-        const url = (p.resultVideoUrl ?? p.outputUrl ?? (p.type === "video" ? p.url : undefined)) as string | undefined;
+        // Covers: video_task (resultVideoUrl), clip/merge/overlay/subtitle/… (outputUrl),
+        // asset (url, video-only), and skips image-output comfyui_workflow runs.
+        const url = getNodeVideoOutput(node.data.nodeType, p);
         if (url) return url;
       }
       return null;
@@ -524,7 +526,7 @@ export const ClipNode = memo(function ClipNode({ id, selected, data }: Props) {
     // Build multi-track audio: per-source settings keyed by node id; respect solo/mute.
     const trackCfg = payload.audioTracks ?? {};
     const anySolo = audioSources.some((s) => trackCfg[s.id]?.solo);
-    const audioTracks = audioSources
+    const allTracks = audioSources
       .filter((s) => { const c = trackCfg[s.id] ?? {}; return anySolo ? c.solo : !c.muted; })
       .map((s) => { const c = trackCfg[s.id] ?? {}; return {
         url: s.url,
@@ -534,6 +536,9 @@ export const ClipNode = memo(function ClipNode({ id, selected, data }: Props) {
         fadeOut: c.fadeOut || undefined,
         isVoice: c.isVoice || undefined,
       }; });
+    // Server enforces audioTracks.max(8); cap (after solo/mute) to avoid a 400.
+    const audioTracks = allTracks.slice(0, 8);
+    if (allTracks.length > 8) toast.warning(`音轨过多，仅使用前 8 条（共 ${allTracks.length} 条）`);
 
     const output = payload.output && (payload.output.resolution && payload.output.resolution !== "source"
       || payload.output.fps || (payload.output.format && payload.output.format !== "mp4"))

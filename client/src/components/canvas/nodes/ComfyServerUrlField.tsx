@@ -72,7 +72,9 @@ export function ComfyServerUrlField({
   // Live server status (online · VRAM · queue), fetched on demand.
   const [probe, setProbe] = useState(false);
   const probeUrls = useMemo(
-    () => Array.from(new Set([value.trim(), ...allServers].filter(Boolean))),
+    // Cap to the server's serverStatus baseUrls.max(20) — allServers (per-node legacy
+    // + global registry) can exceed 20, which would otherwise 400 the status probe.
+    () => Array.from(new Set([value.trim(), ...allServers].filter(Boolean))).slice(0, 20),
     [value, allServers],
   );
   const statusQuery = trpc.comfyui.serverStatus.useQuery(

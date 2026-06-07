@@ -8,6 +8,7 @@ import type { VideoTaskNodeData, VideoProvider, CharacterNodeData } from "../../
 import { maxRefImagesForProvider } from "../../../../../shared/videoRefCaps";
 import { mergeCharactersIntoPrompt } from "../../../lib/characterPrompt";
 import { connectedCharacterRefImages, connectedCharacters } from "../../../lib/characterConditioning";
+import { detectUpstreamPrompt } from "../../../lib/comfyWorkflowParams";
 import { trpc } from "@/lib/trpc";
 import { toast } from "sonner";
 import { Handle, Position } from "@xyflow/react";
@@ -598,6 +599,15 @@ export const VideoTaskNode = memo(function VideoTaskNode({ id, selected, data }:
   // Use selector to avoid re-rendering on every store change (other nodes' updates)
   const updateNodeData = useCanvasStore((s) => s.updateNodeData);
   const payload = data.payload;
+  // Pull a connected upstream prompt (提示词 / 分镜) into this node's blank prompt —
+  // video_task advertises "← 提示词 / 分镜" but never consumed them. Primitive selector
+  // result → only re-renders when the upstream prompt text actually changes.
+  const upstreamPrompt = useCanvasStore((s) => detectUpstreamPrompt(id, s.edges, s.nodes).positive);
+  useEffect(() => {
+    if (!upstreamPrompt) return;
+    if (payload.prompt && payload.prompt.trim()) return; // fill-only-when-blank
+    updateNodeData(id, { prompt: upstreamPrompt }, true);
+  }, [upstreamPrompt, payload.prompt, id, updateNodeData]);
   // Auto-prefer the upstream AI temporary public URL as the reference source when
   // the admin toggle is on and that URL probes alive (no-op when off / default).
   const preferUpstreamRef = usePreferUpstreamRefSource();

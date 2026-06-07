@@ -267,7 +267,10 @@ export const AIChatNode = memo(function AIChatNode({ id, selected, data }: Props
         "";
       if (content) parts.push(`[${node.data.title}]: ${content}`);
     }
-    return parts.join("\n\n") || undefined;
+    // Cap to the server's contextContent.max(8000) — a connected script with long
+    // content would otherwise 400 the whole chat.
+    const joined = parts.join("\n\n");
+    return (joined.length > 8000 ? joined.slice(0, 8000) : joined) || undefined;
   }, [id, payload.contextNodeIds]);
 
   // ── Slash commands ─────────────────────────────────────────────────────
@@ -366,8 +369,10 @@ export const AIChatNode = memo(function AIChatNode({ id, selected, data }: Props
     sendMutation.mutate({
       nodeId: id,
       projectId: data.projectId,
-      message: msg,
-      systemPrompt: payload.systemPrompt,
+      // Clamp to server zod caps (message max 10000, systemPrompt max 2000) so a long
+      // paste or a /canvas summary on a big graph can't 400 the request.
+      message: msg.length > 10_000 ? msg.slice(0, 10_000) : msg,
+      systemPrompt: payload.systemPrompt && payload.systemPrompt.length > 2000 ? payload.systemPrompt.slice(0, 2000) : payload.systemPrompt,
       contextContent: buildContext(),
       model,
       attachments: attachmentsToSend.length > 0 ? attachmentsToSend : undefined,

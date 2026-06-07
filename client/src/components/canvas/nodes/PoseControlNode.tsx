@@ -4,6 +4,7 @@ import { isOwnStorageUrl } from "@/lib/ownStorage";
 import { MediaImage } from "../MediaImage";
 import { useCanvasStore } from "../../../hooks/useCanvasStore";
 import { propagateRefImage } from "../../../lib/refImagePropagation";
+import { getNodeImageOutput } from "@/lib/canvasPassthrough";
 import type { PoseControlNodeData } from "../../../../../shared/types";
 import { trpc } from "@/lib/trpc";
 import { toast } from "sonner";
@@ -49,7 +50,9 @@ export const PoseControlNode = memo(function PoseControlNode({ id, selected, dat
       const src = nodes.find((n) => n.id === edge.source);
       if (!src) continue;
       const p = src.data.payload as Record<string, unknown>;
-      const url = (p.imageUrl ?? p.outputUrl ?? p.url) as string | undefined;
+      // getNodeImageOutput restricts assets to type==="image" and skips a video-output
+      // comfyui_workflow — so a connected video/audio asset is never read as the image.
+      const url = getNodeImageOutput(src.data.nodeType, p);
       if (url) return url;
     }
     return undefined;
@@ -70,6 +73,7 @@ export const PoseControlNode = memo(function PoseControlNode({ id, selected, dat
     const refUrl = payload.referenceImageUrl || sourceImageUrl;
     if (!refUrl) { toast.error("请先连接图像节点或填写参考图 URL"); return; }
     if (!payload.prompt?.trim()) { toast.error("请填写图像描述提示词"); return; }
+    if (payload.prompt.trim().length > 1000) { toast.error("提示词上限 1000 字，请截断"); return; } // server max(1000)
     update({ status: "processing", errorMessage: undefined });
     poseControlMutation.mutate({
       referenceImageUrl: refUrl,

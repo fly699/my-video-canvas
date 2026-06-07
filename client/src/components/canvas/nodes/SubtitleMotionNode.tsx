@@ -7,6 +7,7 @@ import { trpc } from "@/lib/trpc";
 import { toast } from "sonner";
 import { mediaFetchUrl, onDownloadMedia } from "@/lib/download";
 import { WatermarkedVideo } from "@/components/WatermarkedVideo";
+import { getNodeVideoOutput } from "@/lib/canvasPassthrough";
 import { Clapperboard, Loader2, Download, RotateCcw, Mic2, Plus, Trash2, X } from "lucide-react";
 import { NodeInput } from "../NodeTextInput";
 
@@ -73,8 +74,8 @@ export const SubtitleMotionNode = memo(function SubtitleMotionNode({ id, selecte
       const src = nodes.find((n) => n.id === edge.source);
       if (!src || !VIDEO_SOURCE_TYPES.has(src.data.nodeType)) continue;
       const p = src.data.payload as Record<string, unknown>;
-      if (src.data.nodeType === "asset" && (p.mimeType as string | undefined)?.startsWith("audio/")) continue;
-      const url = (p.resultVideoUrl ?? p.outputUrl ?? p.url) as string | undefined;
+      // Helper skips non-video assets and image-output comfyui_workflow runs.
+      const url = getNodeVideoOutput(src.data.nodeType, p);
       if (url) return url;
     }
     return undefined;

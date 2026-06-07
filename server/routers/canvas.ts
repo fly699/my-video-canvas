@@ -2083,7 +2083,11 @@ export const clipRouter = router({
 
   poseControl: protectedProcedure
     .input(z.object({
-      referenceImageUrl: z.string().url(),
+      // Was z.string().url() — that rejected our own /manus-storage/ relative paths,
+      // which is exactly what a connected upstream image node feeds in. Use the shared
+      // mediaUrlSchema (http(s) OR /manus-storage/); guardUrl + resolveToAbsoluteUrl
+      // (in generateImage) still handle the relative case downstream.
+      referenceImageUrl: mediaUrlSchema,
       prompt: z.string().min(1).max(1000),
       guidanceScale: z.number().min(1).max(10).optional(),
     }))
