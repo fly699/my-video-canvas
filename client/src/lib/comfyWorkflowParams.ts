@@ -100,46 +100,104 @@ export function resolveImageParamsWithMap(
 
 const PROMPT_SOURCE_TYPES = new Set(["prompt", "storyboard", "script", "ai_chat"]);
 
+const _str = (v: unknown) => (typeof v === "string" && v.trim() ? v.trim() : undefined);
+
 /** Auto-detect positive / negative prompt text from upstream text-producing
- *  nodes wired into targetId (first match each). */
-export function detectUpstreamPrompt(targetId: string, edges: MiniEdge[], nodes: MiniNode[]): { positive?: string; negative?: string } {
+ *  nodes wired into targetId (first match each).
+ *
+ *  A `comfyui_workflow` node is treated as a TRANSPARENT prompt forwarder: it
+ *  re-emits the prompt it effectively uses (its own typed prompt param, or — when
+ *  blank / 上游优先 — the prompt from ITS upstream, recursively). This lets a chain
+ *  of workflow nodes carry the prompt downstream. `_visited` guards against cycles. */
+export function detectUpstreamPrompt(
+  targetId: string,
+  edges: MiniEdge[],
+  nodes: MiniNode[],
+  _visited: Set<string> = new Set(),
+): { positive?: string; negative?: string } {
+  if (_visited.has(targetId)) return {};
+  _visited.add(targetId);
   let positive: string | undefined;
   let negative: string | undefined;
-  const str = (v: unknown) => (typeof v === "string" && v.trim() ? v.trim() : undefined);
+  const str = _str;
   for (const edge of edges) {
     if (edge.target !== targetId) continue;
     const src = nodes.find((n) => n.id === edge.source);
-    if (!src || !PROMPT_SOURCE_TYPES.has(src.data.nodeType)) continue;
+    if (!src) continue;
     const p = (src.data.payload ?? {}) as Record<string, unknown>;
     let pos: string | undefined;
     let neg: string | undefined;
-    switch (src.data.nodeType) {
-      case "prompt": {
-        pos = str(p.positivePrompt);
-        neg = str(p.negativePrompt);
-        // Style / aspect-ratio opt into the outgoing prompt text via per-field
-        // checkboxes (the 提示词 node is text-only — it has no separate downstream
-        // channel for these), appended after the positive prompt.
-        const extras: string[] = [];
-        if (p.passStyle && str(p.style)) extras.push(str(p.style)!);
-        if (p.passRatio && str(p.aspectRatio)) extras.push(str(p.aspectRatio)!);
-        if (extras.length) pos = [pos, ...extras].filter(Boolean).join(", ");
-        break;
+    if (src.data.nodeType === "comfyui_workflow") {
+      const fwd = resolveWorkflowOutputPrompt(src, edges, nodes, _visited);
+      pos = fwd.positive; neg = fwd.negative;
+    } else if (PROMPT_SOURCE_TYPES.has(src.data.nodeType)) {
+      switch (src.data.nodeType) {
+        case "prompt": {
+          pos = str(p.positivePrompt);
+          neg = str(p.negativePrompt);
+          // Style / aspect-ratio opt into the outgoing prompt text via per-field
+          // checkboxes (the 提示词 node is text-only — it has no separate downstream
+          // channel for these), appended after the positive prompt.
+          const extras: string[] = [];
+          if (p.passStyle && str(p.style)) extras.push(str(p.style)!);
+          if (p.passRatio && str(p.aspectRatio)) extras.push(str(p.aspectRatio)!);
+          if (extras.length) pos = [pos, ...extras].filter(Boolean).join(", ");
+          break;
+        }
+        case "storyboard": pos = str(p.description); neg = str(p.negativePrompt); break;
+        case "script": pos = str(p.content); break;
+        case "ai_chat": {
+          const msgs = Array.isArray(p.messages) ? (p.messages as Array<{ role?: string; content?: string }>) : [];
+          const lastAssistant = [...msgs].reverse().find((m) => m.role === "assistant");
+          pos = str(lastAssistant?.content);
+          break;
+        }
       }
-      case "storyboard": pos = str(p.description); neg = str(p.negativePrompt); break;
-      case "script": pos = str(p.content); break;
-      case "ai_chat": {
-        const msgs = Array.isArray(p.messages) ? (p.messages as Array<{ role?: string; content?: string }>) : [];
-        const lastAssistant = [...msgs].reverse().find((m) => m.role === "assistant");
-        pos = str(lastAssistant?.content);
-        break;
-      }
+    } else {
+      continue;
     }
     positive ??= pos;
     negative ??= neg;
     if (positive && negative) break;
   }
   return { positive, negative };
+}
+
+/** The positive / negative prompt a `comfyui_workflow` node effectively uses and
+ *  thus forwards downstream. Mirrors the run-time rule in fillWorkflowPromptParams:
+ *  with 上游优先 (preferUpstreamPrompt !== false) an upstream prompt wins over the
+ *  node's own param value; otherwise the node's own value wins unless blank/default. */
+function resolveWorkflowOutputPrompt(
+  node: MiniNode,
+  edges: MiniEdge[],
+  nodes: MiniNode[],
+  visited: Set<string>,
+): { positive?: string; negative?: string } {
+  const payload = (node.data.payload ?? {}) as {
+    paramBindings?: WorkflowParamBinding[];
+    paramValues?: Record<string, unknown>;
+    preferUpstreamPrompt?: boolean;
+    forwardPrompt?: boolean;
+  };
+  // Forwarding is opt-out: a node with forwardPrompt === false stops the prompt here.
+  if (payload.forwardPrompt === false) return {};
+  const texts = (payload.paramBindings ?? []).filter((b) => b.type === "text");
+  const isNeg = (b: WorkflowParamBinding) => b.role === "negative" || (!b.role && /负|negative/i.test(b.label));
+  const posB = texts.find((b) => b.role === "positive")
+    ?? texts.find((b) => !b.role && /提示词|prompt/i.test(b.label) && !isNeg(b))
+    ?? texts.find((b) => !isNeg(b));
+  const negB = texts.find((b) => b.role === "negative") ?? texts.find(isNeg);
+  const force = payload.preferUpstreamPrompt !== false;
+  const values = payload.paramValues ?? {};
+  const upstream = detectUpstreamPrompt(node.id, edges, nodes, visited);
+  const ownVal = (b: WorkflowParamBinding | undefined) => (b ? _str(values[`${b.nodeId}.${b.fieldPath}`]) : undefined);
+  const pick = (b: WorkflowParamBinding | undefined, up: string | undefined) => {
+    const own = ownVal(b);
+    if (force) return up ?? own; // 上游优先：upstream wins, fall back to own
+    // 仅填空：own value wins unless it's blank or still the workflow's built-in default
+    return b && !isParamAtDefault(values[`${b.nodeId}.${b.fieldPath}`], b) ? own : (up ?? own);
+  };
+  return { positive: pick(posB, upstream.positive), negative: pick(negB, upstream.negative) };
 }
 
 /** A param is "overridable by an explicitly connected upstream node" when it is

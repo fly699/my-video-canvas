@@ -793,6 +793,10 @@ export interface ComfyuiWorkflowNodeData {
    *  ON (undefined ⇒ upstream-priority); set explicitly to false for "fill only
    *  when blank / at the workflow's default". */
   preferUpstreamPrompt?: boolean;
+  /** Whether this workflow node re-emits its effective prompt to DOWNSTREAM nodes
+   *  (acting as a transparent prompt forwarder). Defaults to ON (undefined ⇒
+   *  forward); set false to stop the prompt at this node. */
+  forwardPrompt?: boolean;
   paramBindings?: WorkflowParamBinding[];
   paramValues?: Record<string, unknown>;
   /** Explicit per-image-param source: paramKey → upstream nodeId. Unmapped params

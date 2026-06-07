@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { fillWorkflowPromptParams, resolveWorkflowImageParams, resolveImageParamsWithMap } from "./comfyWorkflowParams";
+import { fillWorkflowPromptParams, resolveWorkflowImageParams, resolveImageParamsWithMap, detectUpstreamPrompt } from "./comfyWorkflowParams";
 import type { WorkflowParamBinding } from "../../../shared/types";
 
 // Mirrors the z_image_turbo workflow: node 6 = positive (literal default text),
@@ -88,5 +88,82 @@ describe("fillWorkflowPromptParams — upstream overrides workflow defaults", ()
     const out = fillWorkflowPromptParams(noRole, {}, { positive: "P", negative: "N" });
     expect(out["6.inputs.text"]).toBe("P"); // 正向 label → positive
     expect(out["7.inputs.text"]).toBe("N"); // 负向 label → negative
+  });
+});
+
+describe("detectUpstreamPrompt — comfyui_workflow forwards prompt downstream", () => {
+  type N = { id: string; data: { nodeType: string; payload?: unknown; title?: string } };
+  const wfPayload = (extra: Record<string, unknown> = {}) => ({
+    paramBindings: bindings,
+    ...extra,
+  });
+
+  it("a prompt node → workflow node → downstream sees the forwarded prompt", () => {
+    const nodes: N[] = [
+      { id: "p1", data: { nodeType: "prompt", payload: { positivePrompt: "森林精灵", negativePrompt: "低质量" } } },
+      { id: "w1", data: { nodeType: "comfyui_workflow", payload: wfPayload() } }, // default = 上游优先, no own values
+      { id: "d1", data: { nodeType: "comfyui_image", payload: {} } },
+    ];
+    const edges = [{ source: "p1", target: "w1" }, { source: "w1", target: "d1" }];
+    const r = detectUpstreamPrompt("d1", edges, nodes);
+    expect(r.positive).toBe("森林精灵");
+    expect(r.negative).toBe("低质量");
+  });
+
+  it("仅填空 + workflow has its own typed prompt → forwards the OWN value", () => {
+    const nodes: N[] = [
+      { id: "p1", data: { nodeType: "prompt", payload: { positivePrompt: "上游内容" } } },
+      { id: "w1", data: { nodeType: "comfyui_workflow", payload: wfPayload({
+        preferUpstreamPrompt: false,
+        paramValues: { "6.inputs.text": "工作流自己的提示词" },
+      }) } },
+      { id: "d1", data: { nodeType: "comfyui_image", payload: {} } },
+    ];
+    const edges = [{ source: "p1", target: "w1" }, { source: "w1", target: "d1" }];
+    expect(detectUpstreamPrompt("d1", edges, nodes).positive).toBe("工作流自己的提示词");
+  });
+
+  it("上游优先 (default) + own typed prompt → forwards the UPSTREAM value", () => {
+    const nodes: N[] = [
+      { id: "p1", data: { nodeType: "prompt", payload: { positivePrompt: "上游内容" } } },
+      { id: "w1", data: { nodeType: "comfyui_workflow", payload: wfPayload({
+        paramValues: { "6.inputs.text": "工作流自己的提示词" },
+      }) } },
+      { id: "d1", data: { nodeType: "comfyui_image", payload: {} } },
+    ];
+    const edges = [{ source: "p1", target: "w1" }, { source: "w1", target: "d1" }];
+    expect(detectUpstreamPrompt("d1", edges, nodes).positive).toBe("上游内容");
+  });
+
+  it("chains through two workflow nodes", () => {
+    const nodes: N[] = [
+      { id: "p1", data: { nodeType: "prompt", payload: { positivePrompt: "链路头" } } },
+      { id: "w1", data: { nodeType: "comfyui_workflow", payload: wfPayload() } },
+      { id: "w2", data: { nodeType: "comfyui_workflow", payload: wfPayload() } },
+      { id: "d1", data: { nodeType: "comfyui_image", payload: {} } },
+    ];
+    const edges = [
+      { source: "p1", target: "w1" }, { source: "w1", target: "w2" }, { source: "w2", target: "d1" },
+    ];
+    expect(detectUpstreamPrompt("d1", edges, nodes).positive).toBe("链路头");
+  });
+
+  it("forwardPrompt === false stops the prompt at that node", () => {
+    const nodes: N[] = [
+      { id: "p1", data: { nodeType: "prompt", payload: { positivePrompt: "不该传下去" } } },
+      { id: "w1", data: { nodeType: "comfyui_workflow", payload: wfPayload({ forwardPrompt: false }) } },
+      { id: "d1", data: { nodeType: "comfyui_image", payload: {} } },
+    ];
+    const edges = [{ source: "p1", target: "w1" }, { source: "w1", target: "d1" }];
+    expect(detectUpstreamPrompt("d1", edges, nodes).positive).toBeUndefined();
+  });
+
+  it("a cycle of workflow nodes does not infinite-loop", () => {
+    const nodes: N[] = [
+      { id: "w1", data: { nodeType: "comfyui_workflow", payload: wfPayload() } },
+      { id: "w2", data: { nodeType: "comfyui_workflow", payload: wfPayload() } },
+    ];
+    const edges = [{ source: "w1", target: "w2" }, { source: "w2", target: "w1" }];
+    expect(() => detectUpstreamPrompt("w1", edges, nodes)).not.toThrow();
   });
 });
