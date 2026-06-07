@@ -136,14 +136,20 @@ export const MergeNode = memo(function MergeNode({ id, selected, data }: Props) 
     }
     return items;
   };
-  const collectInputUrls = (): string[] => collectInputItems().map((x) => x.url);
 
   // Effective ordered inputs for the drag-reorder list: explicit manual order if
   // set, otherwise the smart-ordered connected inputs. Labels prefer source titles.
   const graphItems = collectInputItems();
   const labelByUrl = new Map(graphItems.map((x) => [x.url, x.label]));
-  const orderItems: { url: string; label: string }[] = (payload.inputVideoUrls ?? []).length
-    ? (payload.inputVideoUrls ?? []).map((u) => ({ url: u, label: labelByUrl.get(u) ?? u.split("/").pop() ?? u }))
+  const manualOrder = payload.inputVideoUrls ?? [];
+  // When a manual order exists, keep it BUT append any newly-connected inputs not yet
+  // in the list — otherwise connecting a clip after reordering silently drops it from
+  // the merge. (Manually-typed URLs not present in the graph are preserved as-is.)
+  const orderItems: { url: string; label: string }[] = manualOrder.length
+    ? [
+        ...manualOrder.map((u) => ({ url: u, label: labelByUrl.get(u) ?? u.split("/").pop() ?? u })),
+        ...graphItems.filter((g) => !manualOrder.includes(g.url)),
+      ]
     : graphItems;
   const reorder = (from: number, to: number) => {
     if (from === to) return;
@@ -174,9 +180,9 @@ export const MergeNode = memo(function MergeNode({ id, selected, data }: Props) 
 
   const handleMerge = () => {
     if (mergeMutation.isPending || payload.status === "processing") return;
-    const urls = payload.inputVideoUrls?.length
-      ? payload.inputVideoUrls
-      : collectInputUrls();
+    // Use the effective ordered list (manual order + appended new connections), so a
+    // clip connected after reordering is included rather than silently dropped.
+    const urls = orderItems.map((x) => x.url);
 
     if (urls.length < 2) {
       toast.error("至少需要 2 个已完成的视频节点输入，或手动填写视频 URL");
