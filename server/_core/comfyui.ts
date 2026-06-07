@@ -98,6 +98,38 @@ export async function freeComfyMemory(rawBaseUrl: string): Promise<void> {
   if (!res.ok) throw new Error(`ComfyUI 释放显存失败 (${res.status})`);
 }
 
+/** Current queue depth on a ComfyUI server (GET /queue). Returns null on any
+ *  failure (offline / older build without /queue) so callers can decide to skip
+ *  rather than assume the server is idle. */
+export async function getComfyQueueDepth(rawBaseUrl: string): Promise<{ running: number; pending: number } | null> {
+  try {
+    const baseUrl = normalizeBaseUrl(rawBaseUrl);
+    const res = await fetch(`${baseUrl}/queue`, { signal: AbortSignal.timeout(5_000) });
+    if (!res.ok) return null;
+    const q = (await res.json()) as { queue_running?: unknown[]; queue_pending?: unknown[] };
+    return {
+      running: Array.isArray(q.queue_running) ? q.queue_running.length : 0,
+      pending: Array.isArray(q.queue_pending) ? q.queue_pending.length : 0,
+    };
+  } catch {
+    return null;
+  }
+}
+
+/** Pure decision: should we free VRAM after a workflow run? Only when the feature
+ *  is enabled, the target is a local server (never the shared cloud), and the
+ *  server's queue is fully idle — i.e. no OTHER task is using that GPU (the just-
+ *  finished task has already left queue_running by the time we poll). A null queue
+ *  reading (unknown) is treated as "not idle" so we never disrupt other work. */
+export function shouldFreeVram(opts: {
+  enabled: boolean;
+  isCloud: boolean;
+  queue: { running: number; pending: number } | null;
+}): boolean {
+  if (!opts.enabled || opts.isCloud || !opts.queue) return false;
+  return opts.queue.running === 0 && opts.queue.pending === 0;
+}
+
 /** Clear the pending queue on a ComfyUI server (POST /queue { clear: true }). */
 export async function clearComfyQueue(rawBaseUrl: string): Promise<void> {
   const baseUrl = normalizeBaseUrl(rawBaseUrl);

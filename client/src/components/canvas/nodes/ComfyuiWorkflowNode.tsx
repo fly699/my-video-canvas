@@ -430,6 +430,7 @@ export const ComfyuiWorkflowNode = memo(function ComfyuiWorkflowNode({ id, selec
         imageParamKeys: imageParamKeys.length > 0 ? imageParamKeys : undefined,
         outputNodeIds: payload.outputNodeIds,
         outputType: payload.outputType ?? "auto",
+        freeVramAfterRun: payload.freeVramAfterRun === true,
       });
       update({
         outputUrl: result.urls[0] ?? "",
@@ -1055,6 +1056,37 @@ export const ComfyuiWorkflowNode = memo(function ComfyuiWorkflowNode({ id, selec
                           key={k}
                           onClick={() => update({ randomizeSeed: val })}
                           title={val ? "每次运行自动生成新随机种子" : "固定使用下方表单里的种子值"}
+                          style={{
+                            flex: 1, padding: "5px 4px", fontSize: 11, borderRadius: 7, cursor: "pointer",
+                            borderWidth: 1, borderStyle: "solid",
+                            borderColor: active ? accent : BORDER_DEFAULT,
+                            background: active ? `${accent}1f` : "transparent",
+                            color: active ? accent : "var(--c-t2)", fontWeight: active ? 600 : 400,
+                          }}
+                        >{lbl}</button>
+                      );
+                    })}
+                  </div>
+                </div>
+              );
+            })()}
+
+            {/* Post-run VRAM cleanup — unload models + free VRAM on the server after
+                a run completes, ONLY when that server's queue is idle. Cloud is
+                skipped server-side. Default 保留 (off). */}
+            {payload.useCloudComfy !== true && (() => {
+              const clear = payload.freeVramAfterRun === true;
+              return (
+                <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 4 }}>
+                  <label style={{ ...labelStyle, marginBottom: 0 }}>完成后</label>
+                  <div style={{ display: "flex", gap: 6, flex: 1 }}>
+                    {([["keep", "保留", false], ["clear", "清显存", true]] as const).map(([k, lbl, val]) => {
+                      const active = clear === val;
+                      return (
+                        <button
+                          key={k}
+                          onClick={() => update({ freeVramAfterRun: val })}
+                          title={val ? "运行完成且该服务器无其它队列任务时，卸载模型释放显存（下次同卡任务需重新加载）" : "运行后保留显存中的模型（下次同卡任务更快）"}
                           style={{
                             flex: 1, padding: "5px 4px", fontSize: 11, borderRadius: 7, cursor: "pointer",
                             borderWidth: 1, borderStyle: "solid",
