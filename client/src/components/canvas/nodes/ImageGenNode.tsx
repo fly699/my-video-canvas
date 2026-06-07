@@ -10,6 +10,7 @@ import { useReferenceImages } from "../../../hooks/useReferenceImages";
 import { refUrls } from "../../../lib/referenceImages";
 import { connectedCharacterRefImages, connectedCharacters } from "../../../lib/characterConditioning";
 import { mergeCharactersIntoPrompt } from "../../../lib/characterPrompt";
+import { detectUpstreamPrompt } from "../../../lib/comfyWorkflowParams";
 import { ReferenceImageStrip } from "../ReferenceImageStrip";
 import { Layers } from "lucide-react";
 import type { ImageGenNodeData, ImageGenModel } from "../../../../../shared/types";
@@ -109,6 +110,15 @@ export const ImageGenNode = memo(function ImageGenNode({ id, selected, data }: P
   // the admin toggle is on and that URL probes alive (no-op when off / default).
   const preferUpstreamRef = usePreferUpstreamRefSource();
   useAutoPreferUpstreamRefSource({ nodeId: id, refImageUrl: payload.referenceImageUrl, enabled: preferUpstreamRef, onSwitch: (u) => updateNodeData(id, { referenceImageUrl: u }, true) });
+  // Pull a connected upstream prompt (提示词 / 分镜) into this node's blank prompt —
+  // image_gen advertises "← 提示词 / 分镜" as inputs but never consumed them. The
+  // selector returns a primitive string, so it only re-renders when that text changes.
+  const upstreamPrompt = useCanvasStore((s) => detectUpstreamPrompt(id, s.edges, s.nodes).positive);
+  useEffect(() => {
+    if (!upstreamPrompt) return;
+    if (payload.prompt && payload.prompt.trim()) return; // fill-only-when-blank
+    updateNodeData(id, { prompt: upstreamPrompt }, true);
+  }, [upstreamPrompt, payload.prompt, id, updateNodeData]);
   const [uploading, setUploading] = useState(false);
   const [lightboxIndex, setLightboxIndex] = useState<number | null>(null);
   const [refZoom, setRefZoom] = useState<number | null>(null);
