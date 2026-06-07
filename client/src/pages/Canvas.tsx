@@ -1296,7 +1296,7 @@ function CanvasInner({ projectId }: { projectId: number }) {
       <header
         className="canvas-topbar h-11 flex items-center px-3 gap-2 flex-shrink-0 z-20"
         style={{
-          background: "color-mix(in oklch, var(--c-base) 68%, transparent)",
+          background: "color-mix(in oklch, var(--c-base) 45%, transparent)",
           backdropFilter: "blur(20px) saturate(1.4)",
           WebkitBackdropFilter: "blur(20px) saturate(1.4)",
           borderBottom: "1px solid var(--c-bd1)",
@@ -2160,7 +2160,7 @@ function CanvasInner({ projectId }: { projectId: number }) {
               ...(barEdge === "left" && { left: 20, top: `calc(50% + ${barAlong}px)`, transform: "translateY(-50%)" }),
               ...(barEdge === "right" && { right: 20, top: `calc(50% + ${barAlong}px)`, transform: "translateY(-50%)" }),
               cursor: "default",
-              background: "color-mix(in oklch, var(--c-base) 55%, transparent)",
+              background: "color-mix(in oklch, var(--c-base) 38%, transparent)",
               backdropFilter: "blur(24px)",
               border: "1px solid var(--c-bd2)",
               boxShadow: "var(--c-node-shadow-hover), 0 0 0 1px var(--c-bd2)",
