@@ -2452,6 +2452,11 @@ export const comfyuiRouter = router({
         motionModule: z.string().max(255).optional(),
         clip: z.string().max(255).optional(),
         clipVision: z.string().max(255).optional(),
+        loras: z.array(z.object({
+          name: z.string().min(1).max(255),
+          strengthModel: z.number().min(-10).max(10),
+          strengthClip: z.number().min(-10).max(10).optional(),
+        })).max(8).optional(),
         steps: z.number().int().min(1).max(150).default(20),
         cfg: z.number().min(1).max(30).default(7),
         seed: z.number().int().default(-1),
@@ -2507,6 +2512,7 @@ export const comfyuiRouter = router({
             vae: input.vae,
             batchSize: input.batchSize,
             referenceImageUrl: input.referenceImageUrl,
+            loras: input.loras,
             projectId: input.projectId,
             nodeId: input.nodeId,
           });

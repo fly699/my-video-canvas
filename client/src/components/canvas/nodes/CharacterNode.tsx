@@ -186,7 +186,13 @@ export const CharacterNode = memo(function CharacterNode({ id, selected, data }:
         if (!loras.some((l) => l.name === loraName)) p.loras = [...loras, { name: loraName, strengthModel: payload.loraStrength ?? 0.8 }];
       }
       if (refs[0]) p.referenceImageUrl = refs[0];
-    } else if (nt === "image_gen" || nt === "storyboard" || nt === "video_task" || nt === "comfyui_video") {
+    } else if (nt === "comfyui_video") {
+      if (refs[0]) p.referenceImageUrl = refs[0];
+      if (loraName) {
+        const loras = (tp.loras as { name: string; strengthModel: number }[] | undefined) ?? [];
+        if (!loras.some((l) => l.name === loraName)) p.loras = [...loras, { name: loraName, strengthModel: payload.loraStrength ?? 0.8 }];
+      }
+    } else if (nt === "image_gen" || nt === "storyboard" || nt === "video_task") {
       if (refs[0]) p.referenceImageUrl = refs[0];
     }
     return p;

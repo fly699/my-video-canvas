@@ -76,7 +76,7 @@ export const ComfyuiVideoNode = memo(function ComfyuiVideoNode({ id, selected, d
   const connectState = useConnectState(id, "comfyui_video");
   const updateNodeData = useCanvasStore((s) => s.updateNodeData);
   const payload = data.payload;
-  useComfyUpstreamAutoFill(id, payload, updateNodeData);
+  useComfyUpstreamAutoFill(id, payload, updateNodeData, { characterLora: true });
   // Auto-prefer the upstream AI temporary public URL as the reference source when
   // the admin toggle is on and that URL probes alive (no-op when off / default).
   const preferUpstreamRef = usePreferUpstreamRefSource();
@@ -222,6 +222,7 @@ export const ComfyuiVideoNode = memo(function ComfyuiVideoNode({ id, selected, d
       prompt: payload.prompt,
       negPrompt: payload.negPrompt,
       ckpt: payload.ckpt,
+      loras: payload.loras && payload.loras.length > 0 ? payload.loras.filter((l) => l.name?.trim()) : undefined,
       motionModule: payload.motionModule,
       clip: payload.clip?.trim() || undefined,
       clipVision: payload.clipVision?.trim() || undefined,
