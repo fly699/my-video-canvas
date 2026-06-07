@@ -30,9 +30,20 @@ export const AssetNode = memo(function AssetNode({ id, selected, data }: Props) 
   const [videoPreview, setVideoPreview] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
+  const replacedMimeRef = useRef<string | undefined>(undefined);
   const uploadMutation = trpc.upload.uploadImage.useMutation({
     onSuccess: (result) => {
-      updateNodeData(id, { url: result.url, storageKey: result.storageKey });
+      // The replace input accepts image/video/audio, so re-derive type+mimeType from
+      // the new file — otherwise replacing e.g. an image asset with a video leaves
+      // type="image" and the preview renders an <img> on a video URL (broken).
+      const mt = replacedMimeRef.current;
+      const newType = mt?.startsWith("video/") ? "video" : mt?.startsWith("audio/") ? "audio" : mt?.startsWith("image/") ? "image" : undefined;
+      updateNodeData(id, {
+        url: result.url,
+        storageKey: result.storageKey,
+        ...(mt ? { mimeType: mt } : {}),
+        ...(newType ? { type: newType } : {}),
+      });
       setUploading(false);
       toast.success("素材已替换");
     },
@@ -47,6 +58,7 @@ export const AssetNode = memo(function AssetNode({ id, selected, data }: Props) 
     e.target.value = "";
     if (!file) return;
     if (file.size > 32 * 1024 * 1024) { toast.error("文件不能超过 32MB"); return; }
+    replacedMimeRef.current = file.type || undefined;
     setUploading(true);
     const reader = new FileReader();
     reader.onload = () => {
