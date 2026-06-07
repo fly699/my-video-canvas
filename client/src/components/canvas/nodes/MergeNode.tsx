@@ -183,6 +183,12 @@ export const MergeNode = memo(function MergeNode({ id, selected, data }: Props) 
       toast.error("至少需要 2 个已完成的视频节点输入，或手动填写视频 URL");
       return;
     }
+    if (urls.length > 50) {
+      // Server enforces inputUrls.max(50); block with a clear message instead of
+      // letting the request 400, and don't silently drop clips from the final film.
+      toast.error(`最多合并 50 个视频，当前有 ${urls.length} 个，请减少后再试`);
+      return;
+    }
 
     update({ status: "processing", errorMessage: undefined });
     mergeMutation.mutate({

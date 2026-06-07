@@ -145,12 +145,16 @@ export const SubtitleNode = memo(function SubtitleNode({ id, selected, data }: P
     const videoUrl = payload.inputVideoUrl || findSourceVideoUrl();
     if (!videoUrl) { toast.error("请先填写视频 URL"); return; }
     if (!payload.entries?.length) { toast.error("没有字幕数据，请先转录或手动添加字幕"); return; }
+    // Drop invalid entries (end ≤ start would yield broken ASS/SRT timing in ffmpeg)
+    // and cap to the server's max(2000) — mirrors SubtitleMotionNode / smartCut.
+    const entries = payload.entries.filter((e) => e.end > e.start).slice(0, 2000);
+    if (entries.length === 0) { toast.error("没有有效字幕（每条的结束时间需大于开始时间）"); return; }
     update({ status: "burning" });
     burnMutation.mutate({
       videoUrl,
       projectId: data.projectId,
       nodeId: id,
-      entries: payload.entries,
+      entries,
       fontSize: payload.fontSize,
       fontColor: payload.fontColor,
     });

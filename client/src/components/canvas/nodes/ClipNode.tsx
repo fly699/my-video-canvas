@@ -524,7 +524,7 @@ export const ClipNode = memo(function ClipNode({ id, selected, data }: Props) {
     // Build multi-track audio: per-source settings keyed by node id; respect solo/mute.
     const trackCfg = payload.audioTracks ?? {};
     const anySolo = audioSources.some((s) => trackCfg[s.id]?.solo);
-    const audioTracks = audioSources
+    const allTracks = audioSources
       .filter((s) => { const c = trackCfg[s.id] ?? {}; return anySolo ? c.solo : !c.muted; })
       .map((s) => { const c = trackCfg[s.id] ?? {}; return {
         url: s.url,
@@ -534,6 +534,9 @@ export const ClipNode = memo(function ClipNode({ id, selected, data }: Props) {
         fadeOut: c.fadeOut || undefined,
         isVoice: c.isVoice || undefined,
       }; });
+    // Server enforces audioTracks.max(8); cap (after solo/mute) to avoid a 400.
+    const audioTracks = allTracks.slice(0, 8);
+    if (allTracks.length > 8) toast.warning(`音轨过多，仅使用前 8 条（共 ${allTracks.length} 条）`);
 
     const output = payload.output && (payload.output.resolution && payload.output.resolution !== "source"
       || payload.output.fps || (payload.output.format && payload.output.format !== "mp4"))
