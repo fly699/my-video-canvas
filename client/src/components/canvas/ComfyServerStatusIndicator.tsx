@@ -190,9 +190,11 @@ export function ComfyServerStatusIndicator() {
   // Effective precedence: local override > admin global pin > auto-by-host-order.
   const effectiveIndexByUrl: Record<string, number> = { ...autoIndexByUrl, ...globalGpuIndex, ...gpuIndexByUrl };
 
+  // Faster polling while the monitor panel is open (live GPU/VRAM/queue should
+  // feel real-time); back off when only the compact header bars are shown.
   const statusQuery = trpc.comfyui.serverStatus.useQuery(
     { baseUrls: servers, gpuIndexByUrl: effectiveIndexByUrl },
-    { refetchInterval: 2000, refetchOnWindowFocus: true, staleTime: 1500 },
+    { refetchInterval: visible ? 1000 : 3000, refetchOnWindowFocus: true, staleTime: 800 },
   );
   // Render the CONFIGURED server union (global ∪ local) directly, overlaying live
   // status when available. The status probe (serverStatus) is whitelist-gated and
