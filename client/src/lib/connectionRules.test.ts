@@ -30,4 +30,9 @@ describe("isConnectionValid", () => {
     expect(isConnectionValid(null, "comfyui_image")).toBe(true);
     expect(isConnectionValid("note", "note")).toBe(true);
   });
+
+  it("lets a merge (合并) video feed a clip (剪辑) node", () => {
+    expect(isConnectionValid("merge", "clip")).toBe(true);
+    expect(isConnectionValid("merge", "asset")).toBe(true); // still allowed
+  });
 });
