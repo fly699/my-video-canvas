@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { characterReferenceImages, characterHasConditioning, deriveCharacterConditioning, connectedCharacterRefImages } from "./characterConditioning";
+import { characterReferenceImages, characterHasConditioning, deriveCharacterConditioning, connectedCharacterRefImages, connectedCharacterLora } from "./characterConditioning";
 import type { CharacterNodeData } from "../../../shared/types";
 
 const char = (over: Partial<CharacterNodeData>): CharacterNodeData => ({ characterKind: "person", ...over });
@@ -74,5 +74,22 @@ describe("connectedCharacterRefImages", () => {
     // edges list the low character first, but the higher (smaller y) wins priority
     const edges = [{ source: "low", target: "vt" }, { source: "high", target: "vt" }];
     expect(connectedCharacterRefImages("vt", edges, nodes)).toEqual(["high.png", "low.png"]);
+  });
+});
+
+describe("connectedCharacterLora", () => {
+  const N = (id: string, nodeType: string, payload?: unknown, y = 0) => ({ id, data: { nodeType, payload }, position: { x: 0, y } });
+  it("returns the topmost connected character's LoRA", () => {
+    const nodes = [
+      N("c1", "character", { characterKind: "person", loraName: "low.safetensors" }, 500),
+      N("c2", "character", { characterKind: "person", loraName: "hi.safetensors", loraStrength: 0.6 }, 100),
+      N("wf", "comfyui_workflow", {}),
+    ];
+    const edges = [{ source: "c1", target: "wf" }, { source: "c2", target: "wf" }];
+    expect(connectedCharacterLora("wf", edges, nodes)).toEqual({ name: "hi.safetensors", strengthModel: 0.6 });
+  });
+  it("returns null when no connected character has a LoRA", () => {
+    const nodes = [N("c1", "character", { characterKind: "person" }), N("wf", "comfyui_workflow", {})];
+    expect(connectedCharacterLora("wf", [{ source: "c1", target: "wf" }], nodes)).toBeNull();
   });
 });

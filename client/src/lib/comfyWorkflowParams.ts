@@ -237,6 +237,38 @@ export function resolveWorkflowImageParams(
   return { paramValues: next, imageParamKeys };
 }
 
+/** Fill the workflow's exposed LoRA-name param from a connected character's LoRA.
+ *  Targets the binding whose fieldPath/label looks like a LoRA model selector
+ *  (`lora_name` / 「LoRA 模型」). Fill-only-when-blank or at the built-in default —
+ *  a value the user picked is preserved. Returns the (possibly) updated values. */
+export function fillWorkflowLoraParam(
+  bindings: WorkflowParamBinding[] | undefined,
+  paramValues: Record<string, unknown>,
+  loraName: string | undefined,
+): Record<string, unknown> {
+  if (!loraName) return paramValues;
+  const b = (bindings ?? []).find((x) =>
+    (x.type === "select" || x.type === "text") &&
+    (/lora_name$/i.test(x.fieldPath) || /lora/i.test(x.label)) &&
+    !/strength|权重|强度/i.test(x.label));
+  if (!b) return paramValues;
+  const key = `${b.nodeId}.${b.fieldPath}`;
+  if (!isParamAtDefault(paramValues[key], b)) return paramValues; // user-picked → keep
+  return { ...paramValues, [key]: loraName };
+}
+
+/** The workflow's positive-prompt param key (`nodeId.fieldPath`), or null. Same
+ *  resolution as fillWorkflowPromptParams' posB — exported so callers can AUGMENT
+ *  the effective positive (e.g. prepend character identity) without replacing it. */
+export function positivePromptParamKey(bindings: WorkflowParamBinding[] | undefined): string | null {
+  const texts = (bindings ?? []).filter((b) => b.type === "text");
+  const isNeg = (b: WorkflowParamBinding) => b.role === "negative" || (!b.role && /负|negative/i.test(b.label));
+  const posB = texts.find((b) => b.role === "positive")
+    ?? texts.find((b) => !b.role && /提示词|prompt/i.test(b.label) && !isNeg(b))
+    ?? texts.find((b) => !isNeg(b));
+  return posB ? `${posB.nodeId}.${posB.fieldPath}` : null;
+}
+
 /** Fill blank positive / negative prompt params from upstream prompt text.
  *  Positive param = first text binding labelled 提示词 (not 负…); negative =
  *  first labelled 负…. Only fills params the user hasn't set. */

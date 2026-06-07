@@ -167,3 +167,27 @@ describe("detectUpstreamPrompt — comfyui_workflow forwards prompt downstream",
     expect(() => detectUpstreamPrompt("w1", edges, nodes)).not.toThrow();
   });
 });
+
+import { fillWorkflowLoraParam } from "./comfyWorkflowParams";
+describe("fillWorkflowLoraParam — character LoRA into workflow lora_name param", () => {
+  const loraBinding: WorkflowParamBinding[] = [
+    { nodeId: "10", fieldPath: "inputs.lora_name", type: "select", label: "LoRA 模型", defaultValue: "", options: ["a.safetensors", "hero.safetensors"] },
+    { nodeId: "10", fieldPath: "inputs.strength_model", type: "number", label: "LoRA 强度", defaultValue: 1 },
+  ];
+  it("fills the lora_name param when blank/default", () => {
+    const out = fillWorkflowLoraParam(loraBinding, {}, "hero.safetensors");
+    expect(out["10.inputs.lora_name"]).toBe("hero.safetensors");
+  });
+  it("does not target the strength param", () => {
+    const out = fillWorkflowLoraParam(loraBinding, {}, "hero.safetensors");
+    expect(out["10.inputs.strength_model"]).toBeUndefined();
+  });
+  it("preserves a user-picked lora", () => {
+    const out = fillWorkflowLoraParam(loraBinding, { "10.inputs.lora_name": "a.safetensors" }, "hero.safetensors");
+    expect(out["10.inputs.lora_name"]).toBe("a.safetensors");
+  });
+  it("no-op when the workflow has no lora param", () => {
+    const out = fillWorkflowLoraParam([{ nodeId: "1", fieldPath: "inputs.text", type: "text", label: "提示词" }], {}, "hero.safetensors");
+    expect(out).toEqual({});
+  });
+});

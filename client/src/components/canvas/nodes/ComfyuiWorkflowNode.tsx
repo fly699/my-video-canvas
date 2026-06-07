@@ -9,7 +9,9 @@ import { useCanvasStore } from "../../../hooks/useCanvasStore";
 import { propagateRefImage, propagateWorkflowPrompt } from "../../../lib/refImagePropagation";
 import type { ComfyuiWorkflowNodeData, WorkflowParamBinding } from "../../../../../shared/types";
 import { trpc } from "@/lib/trpc";
-import { detectUpstreamImageUrl, detectUpstreamPrompt, fillWorkflowPromptParams, listUpstreamImageSources, resolveImageParamsWithMap } from "@/lib/comfyWorkflowParams";
+import { detectUpstreamImageUrl, detectUpstreamPrompt, fillWorkflowPromptParams, fillWorkflowLoraParam, positivePromptParamKey, listUpstreamImageSources, resolveImageParamsWithMap } from "@/lib/comfyWorkflowParams";
+import { connectedCharacters, connectedCharacterLora, connectedCharacterRefImages } from "@/lib/characterConditioning";
+import { mergeCharactersIntoPrompt } from "@/lib/characterPrompt";
 import { applyFreeVramToAllComfyNodes } from "@/lib/comfyFreeVram";
 import { summarizeComfyWorkflow } from "@/lib/comfyWorkflowSummary";
 import { detectWorkflowFormat, extractComfyWorkflowsFromPng } from "@/lib/comfyWorkflowImport";
@@ -399,12 +401,28 @@ export const ComfyuiWorkflowNode = memo(function ComfyuiWorkflowNode({ id, selec
       // Pull upstream images (multi-reference → fill blank image params in order)
       // and upstream prompt text (→ blank positive/negative prompt params).
       const { nodes, edges } = useCanvasStore.getState();
-      const sources = listUpstreamImageSources(id, edges, nodes);
       const upstreamPrompt = detectUpstreamPrompt(id, edges, nodes);
+      // Connected Character(s): their reference image becomes an extra image source,
+      // their LoRA fills the workflow's lora_name param, and their profile text is
+      // PREPENDED to the effective positive prompt (augment, never replace it).
+      const chars = connectedCharacters(id, edges, nodes);
+      const charRefImgs = connectedCharacterRefImages(id, edges, nodes);
+      const sources = [
+        ...listUpstreamImageSources(id, edges, nodes),
+        ...charRefImgs.map((url, i) => ({ id: `char_ref_${i}`, title: `角色参考${i + 1}`, url })),
+      ];
       // Explicit per-param「来源」mapping first, then smart auto-fill the rest.
       const imgResolved = resolveImageParamsWithMap(payload.paramBindings, payload.paramValues ?? {}, sources, payload.imageSourceMap ?? {});
       const imageParamKeys = imgResolved.imageParamKeys;
-      const paramValues = fillWorkflowPromptParams(payload.paramBindings, imgResolved.paramValues, upstreamPrompt, { force: payload.preferUpstreamPrompt !== false });
+      let paramValues = fillWorkflowPromptParams(payload.paramBindings, imgResolved.paramValues, upstreamPrompt, { force: payload.preferUpstreamPrompt !== false });
+      // Prepend character identity to the resolved positive (augment, not replace).
+      const charPosKey = positivePromptParamKey(payload.paramBindings);
+      if (chars.length > 0 && charPosKey) {
+        const cur = typeof paramValues[charPosKey] === "string" ? (paramValues[charPosKey] as string) : "";
+        paramValues = { ...paramValues, [charPosKey]: mergeCharactersIntoPrompt(cur, chars) };
+      }
+      const charLora = connectedCharacterLora(id, edges, nodes);
+      if (charLora) paramValues = fillWorkflowLoraParam(payload.paramBindings, paramValues, charLora.name);
       // Seed handling: unless the user pinned the seed (randomizeSeed === false),
       // re-randomize every seed param each run, and persist the used value back so
       // the form reflects what was actually sent.

@@ -28,27 +28,51 @@ export function characterHasConditioning(c: CharacterNodeData): boolean {
  *  character is primary (its views come first) and the user controls priority just
  *  by arranging nodes — instead of relying on edge insertion order. Lets a downstream
  *  shot lock identity on ALL views. Pure / unit-testable. */
-export function connectedCharacterRefImages(
+type CharNodeLike = { id: string; data: { nodeType: string; payload?: unknown }; position?: { x: number; y: number } };
+
+/** Connected `character` nodes' payloads, ordered by canvas position (top→bottom,
+ *  then left→right) so the topmost character has priority. De-duped. */
+export function connectedCharacters(
   targetId: string,
   edges: { source: string; target: string }[],
-  nodes: { id: string; data: { nodeType: string; payload?: unknown }; position?: { x: number; y: number } }[],
-): string[] {
+  nodes: CharNodeLike[],
+): CharacterNodeData[] {
   const byId = new Map(nodes.map((n) => [n.id, n]));
   const chars = edges
     .filter((e) => e.target === targetId)
     .map((e) => byId.get(e.source))
-    .filter((n): n is NonNullable<typeof n> => !!n && n.data.nodeType === "character");
-  // De-dupe character nodes, then order by position (y, then x) for stable priority.
+    .filter((n): n is CharNodeLike => !!n && n.data.nodeType === "character");
   const uniq = Array.from(new Map(chars.map((n) => [n.id, n])).values());
   uniq.sort((a, b) => (a.position?.y ?? 0) - (b.position?.y ?? 0) || (a.position?.x ?? 0) - (b.position?.x ?? 0));
+  return uniq.map((n) => n.data.payload as CharacterNodeData);
+}
+
+export function connectedCharacterRefImages(
+  targetId: string,
+  edges: { source: string; target: string }[],
+  nodes: CharNodeLike[],
+): string[] {
   const out: string[] = [];
   const seen = new Set<string>();
-  for (const n of uniq) {
-    for (const url of characterReferenceImages(n.data.payload as CharacterNodeData)) {
+  for (const c of connectedCharacters(targetId, edges, nodes)) {
+    for (const url of characterReferenceImages(c)) {
       if (!seen.has(url)) { seen.add(url); out.push(url); }
     }
   }
   return out;
+}
+
+/** First connected character's LoRA (name + strength), or null. Priority by position. */
+export function connectedCharacterLora(
+  targetId: string,
+  edges: { source: string; target: string }[],
+  nodes: CharNodeLike[],
+): { name: string; strengthModel: number } | null {
+  for (const c of connectedCharacters(targetId, edges, nodes)) {
+    const name = c.loraName?.trim();
+    if (name) return { name, strengthModel: c.loraStrength ?? 0.8 };
+  }
+  return null;
 }
 
 export interface CharacterConditioningPatch {
