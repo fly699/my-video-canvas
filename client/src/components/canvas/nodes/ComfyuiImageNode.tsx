@@ -6,6 +6,7 @@ import { useConnectState } from "../../../hooks/useConnectingStore";
 import { useHoverStore } from "../../../hooks/useHoverStore";
 import { useCanvasStore } from "../../../hooks/useCanvasStore";
 import { propagateRefImage, propagatePromptToVideo, propagateControlMap } from "../../../lib/refImagePropagation";
+import { applyFreeVramToAllComfyNodes } from "../../../lib/comfyFreeVram";
 import { usePreferUpstreamRefSource, useAutoPreferUpstreamRefSource } from "../mediaReachability";
 import type { ComfyuiImageNodeData, ComfyuiLoraEntry } from "../../../../../shared/types";
 import { trpc } from "@/lib/trpc";
@@ -345,6 +346,7 @@ export const ComfyuiImageNode = memo(function ComfyuiImageNode({ id, selected, d
       batchSize: payload.batchSize ?? 1,
       referenceImageUrl: payload.referenceImageUrl,
       maskUrl: payload.maskUrl,
+      freeVramAfterRun: payload.freeVramAfterRun === true,
     });
   };
 
@@ -942,6 +944,32 @@ export const ComfyuiImageNode = memo(function ComfyuiImageNode({ id, selected, d
             }} />
           </span>
         </button>
+
+        {/* ── 运行后清显存（队列空闲时 /free，仅本地） ── */}
+        <div className="flex items-center gap-1.5">
+          <button
+            onClick={() => update("freeVramAfterRun", !payload.freeVramAfterRun)}
+            className="nodrag flex items-center justify-between flex-1 px-2.5 py-1.5 rounded-lg text-[10.5px] transition-all"
+            style={{
+              background: payload.freeVramAfterRun ? "oklch(0.68 0.20 285 / 0.12)" : "var(--c-input)",
+              border: `1px solid ${payload.freeVramAfterRun ? "oklch(0.68 0.20 285 / 0.5)" : "var(--c-bd2)"}`,
+              color: payload.freeVramAfterRun ? "oklch(0.74 0.18 285)" : "var(--c-t3)",
+              cursor: "pointer",
+            }}
+            title="开启后，运行完成且该服务器无其它队列任务时，卸载模型释放显存（下次同卡任务需重新加载）"
+          >
+            <span>完成后清显存</span>
+            <span style={{ width: 26, height: 15, borderRadius: 99, flexShrink: 0, position: "relative", background: payload.freeVramAfterRun ? "oklch(0.68 0.20 285)" : "var(--c-bd3)", transition: "background 150ms ease" }}>
+              <span style={{ position: "absolute", top: 2, left: payload.freeVramAfterRun ? 13 : 2, width: 11, height: 11, borderRadius: "50%", background: "#fff", transition: "left 150ms ease" }} />
+            </span>
+          </button>
+          <button
+            onClick={() => { const n = applyFreeVramToAllComfyNodes(payload.freeVramAfterRun === true); toast.success(`已应用到 ${n} 个 ComfyUI 节点`); }}
+            title="把本节点的清显存设置同步到画布上所有 ComfyUI 节点（图/视频/工作流）"
+            className="nodrag"
+            style={{ fontSize: 10, padding: "5px 7px", borderRadius: 7, cursor: "pointer", background: "var(--c-input)", border: "1px solid var(--c-bd2)", color: "var(--c-t3)", whiteSpace: "nowrap" }}
+          >应用到全部</button>
+        </div>
 
         </>)}
         {cfgTab === "model" && (<>

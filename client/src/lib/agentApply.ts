@@ -51,11 +51,23 @@ export function distributeServers(ops: AgentOperation[], chosen: string[], strat
   }
 }
 
+/** When enabled, set freeVramAfterRun=true on every comfy create op's payload, so
+ *  the agent's planned ComfyUI nodes free VRAM after each run. Pure / in place. */
+export function injectFreeVramIntoOps(ops: AgentOperation[], enabled: boolean): AgentOperation[] {
+  if (!enabled) return ops;
+  for (const o of ops) {
+    if (o.op !== "create" || !o.nodeType || !COMFY_NODE_TYPES.has(o.nodeType)) continue;
+    o.payload = { ...(o.payload ?? {}), freeVramAfterRun: true };
+  }
+  return ops;
+}
+
 export function applyAgentOperations(
   ops: AgentOperation[],
   anchor: { x: number; y: number },
-  opts: { templates?: AgentTemplate[] } = {},
+  opts: { templates?: AgentTemplate[]; freeVramAfterRun?: boolean } = {},
 ): ApplyResult {
+  injectFreeVramIntoOps(ops, opts.freeVramAfterRun === true);
   const store = useCanvasStore.getState();
   const idMap = new Map<string, string>(); // tempId → real node id
   const resolve = (ref?: string): string | undefined => (ref ? idMap.get(ref) ?? ref : undefined);
@@ -118,11 +130,13 @@ export function applyAgentOperations(
               fail(index, op, `模板「${tpl.label}」(id=${tpl.id}) 不是工作流模板（无 workflowJson），无法作为 comfyui_workflow 节点`);
               return;
             }
-            // Preserve a multi-server-distribution override (set client-side before
-            // apply) — materializeTemplate rebuilds payload from the template.
+            // Preserve client-side overrides (set before apply) — materializeTemplate
+            // rebuilds payload from the template and would otherwise drop them.
             const serverOverride = typeof payload.customBaseUrl === "string" ? payload.customBaseUrl : undefined;
+            const freeVramOverride = payload.freeVramAfterRun === true;
             payload = materializeTemplate(tpl, String(payload.prompt ?? ""), String(payload.negPrompt ?? ""));
             if (serverOverride) payload.customBaseUrl = serverOverride;
+            if (freeVramOverride) payload.freeVramAfterRun = true;
           }
           // Scene layout when planned, else fan out 3 per row to the agent's right.
           const pos = posByOp.get(op) ?? {
