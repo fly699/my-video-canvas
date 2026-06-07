@@ -7,6 +7,7 @@ import { useCanvasStore } from "../../../hooks/useCanvasStore";
 import type { VideoTaskNodeData, VideoProvider, CharacterNodeData } from "../../../../../shared/types";
 import { maxRefImagesForProvider } from "../../../../../shared/videoRefCaps";
 import { mergeCharactersIntoPrompt } from "../../../lib/characterPrompt";
+import { connectedCharacterRefImages } from "../../../lib/characterConditioning";
 import { trpc } from "@/lib/trpc";
 import { toast } from "sonner";
 import { Handle, Position } from "@xyflow/react";
@@ -867,10 +868,17 @@ export const VideoTaskNode = memo(function VideoTaskNode({ id, selected, data }:
   // backend keeps its unchanged single-image mapping.
   const buildRefUrls = useCallback((provider: string, primary: string | undefined): string[] | undefined => {
     const all = refImages.images.map((i) => i.url).filter((u): u is string => Boolean(u));
-    const base = all.length ? all : (primary ? [primary] : []);
+    let base = all;
+    if (base.length === 0) {
+      // No manually-attached refs → lock identity on ALL views of any connected
+      // character (multi-reference), falling back to the single primary ref.
+      const { nodes: gn, edges: ge } = useCanvasStore.getState();
+      const charRefs = connectedCharacterRefImages(id, ge, gn);
+      base = charRefs.length ? charRefs : (primary ? [primary] : []);
+    }
     const max = maxRefImagesForProvider(provider);
     return max > 1 && base.length > 1 ? base.slice(0, max) : undefined;
-  }, [refImages.images]);
+  }, [refImages.images, id]);
 
   // Multi-modal references: pull video/audio URLs from connected upstream `asset`
   // nodes (which can already wire into video_task), for models that accept them.

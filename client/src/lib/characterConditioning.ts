@@ -22,6 +22,28 @@ export function characterHasConditioning(c: CharacterNodeData): boolean {
   return characterReferenceImages(c).length > 0 || !!c.loraName?.trim();
 }
 
+/** Reference images (main + extra views, de-duped, edge order) from every
+ *  `character` node connected into targetId. Lets a downstream shot lock identity
+ *  on ALL of a character's views, not just the first — used to feed multi-reference
+ *  (reference_image_urls / IPAdapter). Pure / unit-testable. */
+export function connectedCharacterRefImages(
+  targetId: string,
+  edges: { source: string; target: string }[],
+  nodes: { id: string; data: { nodeType: string; payload?: unknown } }[],
+): string[] {
+  const out: string[] = [];
+  const seen = new Set<string>();
+  for (const e of edges) {
+    if (e.target !== targetId) continue;
+    const src = nodes.find((n) => n.id === e.source);
+    if (!src || src.data.nodeType !== "character") continue;
+    for (const url of characterReferenceImages(src.data.payload as CharacterNodeData)) {
+      if (!seen.has(url)) { seen.add(url); out.push(url); }
+    }
+  }
+  return out;
+}
+
 export interface CharacterConditioningPatch {
   ipadapter?: ComfyuiIPAdapter;
   loras?: ComfyuiLoraEntry[];
