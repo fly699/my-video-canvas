@@ -8,6 +8,7 @@ import { useCanvasStore } from "../../../hooks/useCanvasStore";
 import { propagateRefImage } from "../../../lib/refImagePropagation";
 import { useReferenceImages } from "../../../hooks/useReferenceImages";
 import { refUrls } from "../../../lib/referenceImages";
+import { connectedCharacterRefImages } from "../../../lib/characterConditioning";
 import { ReferenceImageStrip } from "../ReferenceImageStrip";
 import { Layers } from "lucide-react";
 import type { ImageGenNodeData, ImageGenModel } from "../../../../../shared/types";
@@ -245,12 +246,19 @@ export const ImageGenNode = memo(function ImageGenNode({ id, selected, data }: P
       GenInput,
       "imageSize" | "imageResolution" | "imageN" | "imageOutputFormat" | "poyoAspectRatio"
     >;
+    // Identity lock: when no reference image is manually attached, fall back to ALL
+    // views of any connected Character node (multi-reference → image_urls server-side).
+    const manualRefs = refUrls(payload);
+    const charRefs = manualRefs.length === 0
+      ? connectedCharacterRefImages(id, useCanvasStore.getState().edges, useCanvasStore.getState().nodes)
+      : [];
+    const effectiveRefs = manualRefs.length ? manualRefs : charRefs;
     const submit = () => genMutation.mutate({
       prompt: payload.prompt,
       negativePrompt: payload.negativePrompt,
       style: payload.style,
-      referenceImageUrl: payload.referenceImageUrl,
-      referenceImageUrls: refUrls(payload),
+      referenceImageUrl: payload.referenceImageUrl ?? charRefs[0],
+      referenceImageUrls: effectiveRefs.length ? effectiveRefs : undefined,
       // Match the picker, which displays "manus_forge" when unset — otherwise a
       // fresh node shows Manus Forge but the backend's undefined-fallback routes
       // to Poyo gpt-image-2 (different model; errors with no Poyo key).
@@ -292,7 +300,7 @@ export const ImageGenNode = memo(function ImageGenNode({ id, selected, data }: P
       } : {}),
       projectId: data.projectId,
     });
-    guard({ model: payload.model ?? "manus_forge", refImageUrl: payload.referenceImageUrl }, submit);
+    guard({ model: payload.model ?? "manus_forge", refImageUrl: payload.referenceImageUrl ?? charRefs[0] }, submit);
   };
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
