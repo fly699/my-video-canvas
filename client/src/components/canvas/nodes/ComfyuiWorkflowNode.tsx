@@ -961,6 +961,28 @@ export const ComfyuiWorkflowNode = memo(function ComfyuiWorkflowNode({ id, selec
               </div>
             )}
 
+            {/* Prompt forwarding — re-emit this node's effective prompt to downstream
+                nodes (transparent forwarder). Only meaningful when there's a text
+                param to forward. Default ON. */}
+            {(payload.paramBindings ?? []).some((b) => b.type === "text") && (
+              <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 4 }}>
+                <label style={{ ...labelStyle, marginBottom: 0 }}>向下游转发</label>
+                <div style={{ display: "flex", gap: 6, flex: 1 }}>
+                  {([["on", "转发", true], ["off", "不转发", false]] as const).map(([k, lbl, val]) => {
+                    const active = (payload.forwardPrompt !== false) === val;
+                    return (
+                      <button
+                        key={k}
+                        onClick={() => update({ forwardPrompt: val })}
+                        title={val ? "把本节点实际生效的提示词继续传给下游节点（可串联）" : "提示词在本节点终止，不再传给下游"}
+                        style={{ flex: 1, padding: "5px 4px", fontSize: 11, borderRadius: 7, cursor: "pointer", borderWidth: 1, borderStyle: "solid", borderColor: active ? accent : BORDER_DEFAULT, background: active ? `${accent}1f` : "transparent", color: active ? accent : "var(--c-t2)", fontWeight: active ? 600 : 400 }}
+                      >{lbl}</button>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
+
             {/* Stale binding map warning: a binding points at a node id no longer in
                 the workflow → its value (incl. forced upstream prompt) won't inject.
                 Run is gated on this in handleRun; surface it here too. */}

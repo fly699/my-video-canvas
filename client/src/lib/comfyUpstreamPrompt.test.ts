@@ -148,6 +148,16 @@ describe("detectUpstreamPrompt — comfyui_workflow forwards prompt downstream",
     expect(detectUpstreamPrompt("d1", edges, nodes).positive).toBe("链路头");
   });
 
+  it("forwardPrompt === false stops the prompt at that node", () => {
+    const nodes: N[] = [
+      { id: "p1", data: { nodeType: "prompt", payload: { positivePrompt: "不该传下去" } } },
+      { id: "w1", data: { nodeType: "comfyui_workflow", payload: wfPayload({ forwardPrompt: false }) } },
+      { id: "d1", data: { nodeType: "comfyui_image", payload: {} } },
+    ];
+    const edges = [{ source: "p1", target: "w1" }, { source: "w1", target: "d1" }];
+    expect(detectUpstreamPrompt("d1", edges, nodes).positive).toBeUndefined();
+  });
+
   it("a cycle of workflow nodes does not infinite-loop", () => {
     const nodes: N[] = [
       { id: "w1", data: { nodeType: "comfyui_workflow", payload: wfPayload() } },

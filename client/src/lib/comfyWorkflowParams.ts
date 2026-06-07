@@ -177,7 +177,10 @@ function resolveWorkflowOutputPrompt(
     paramBindings?: WorkflowParamBinding[];
     paramValues?: Record<string, unknown>;
     preferUpstreamPrompt?: boolean;
+    forwardPrompt?: boolean;
   };
+  // Forwarding is opt-out: a node with forwardPrompt === false stops the prompt here.
+  if (payload.forwardPrompt === false) return {};
   const texts = (payload.paramBindings ?? []).filter((b) => b.type === "text");
   const isNeg = (b: WorkflowParamBinding) => b.role === "negative" || (!b.role && /负|negative/i.test(b.label));
   const posB = texts.find((b) => b.role === "positive")
