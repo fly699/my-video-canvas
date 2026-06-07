@@ -188,15 +188,15 @@ export const PromptNode = memo(function PromptNode({ id, selected, data }: Props
             <p style={{ fontSize: 11, color: "var(--c-t4)", fontFamily: "monospace", margin: 0 }}>未填写提示词</p>
           )
         )}
-        <div style={{ overflow: "hidden", maxHeight: expanded ? "9999px" : "0px", transition: expanded ? "max-height 220ms cubic-bezier(0.23, 1, 0.32, 1)" : "max-height 160ms cubic-bezier(0.77, 0, 0.175, 1)" }}>
-          <div className="flex flex-col gap-3">
+        <div className={expanded ? "nowheel" : undefined} style={{ overflow: expanded ? "auto" : "hidden", flex: expanded ? "1 1 auto" : undefined, minHeight: 0, maxHeight: expanded ? "100000px" : "0px", transition: expanded ? "max-height 220ms cubic-bezier(0.23, 1, 0.32, 1)" : "max-height 160ms cubic-bezier(0.77, 0, 0.175, 1)" }}>
+          <div className="flex flex-col gap-3 h-full">
 
-            {/* Positive prompt */}
-            <div>
+            {/* Positive prompt — grows to fill the node's height when resized taller */}
+            <div className="flex flex-col" style={{ flex: 1, minHeight: 90 }}>
               <label style={{ fontSize: 10.5, fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.06em", color: "var(--c-t4)", display: "block", marginBottom: 5 }}>正向提示词（输出至下游）</label>
               <NodeTextArea className="nodrag nowheel" placeholder="masterpiece, best quality, cinematic lighting..."
                 value={payload.positivePrompt ?? ""} onValueChange={(v) => handleChange("positivePrompt", v)} rows={3}
-                style={{ ...monoStyle, borderColor: accentA(0.3) }} onFocus={onFocusAccent} onBlur={onBlurAccent} />
+                style={{ ...monoStyle, borderColor: accentA(0.3), flex: 1, minHeight: 64, height: "100%" }} onFocus={onFocusAccent} onBlur={onBlurAccent} />
             </div>
 
             {/* Negative prompt */}

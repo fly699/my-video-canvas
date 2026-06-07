@@ -12,6 +12,7 @@ interface RegionRect { x: number; y: number; w: number; h: number }
  * style) and we crop to it. Returns the cropped PNG via onSelect.
  */
 export function CropSelectOverlay({ imageUrl, onSelect, onCancel }: { imageUrl: string; onSelect: (dataUrl: string) => void; onCancel: () => void }) {
+  const rootRef = useRef<HTMLDivElement>(null);
   const imgRef = useRef<HTMLImageElement>(null);
   const [start, setStart] = useState<{ x: number; y: number } | null>(null);
   const [cur, setCur] = useState<{ x: number; y: number } | null>(null);
@@ -20,6 +21,14 @@ export function CropSelectOverlay({ imageUrl, onSelect, onCancel }: { imageUrl: 
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
   }, [onCancel]);
+  // Go fullscreen so the frozen capture fills the monitor at ~native size — so the
+  // user box-selects on the real-size screen (esp. inside a small PWA chat window).
+  // Best-effort: harmless if the browser declines (falls back to a viewport overlay).
+  useEffect(() => {
+    const el = rootRef.current;
+    el?.requestFullscreen?.().catch(() => { /* declined → viewport overlay */ });
+    return () => { if (document.fullscreenElement) document.exitFullscreen?.().catch(() => {}); };
+  }, []);
   const rect: RegionRect | null = start && cur ? { x: Math.min(start.x, cur.x), y: Math.min(start.y, cur.y), w: Math.abs(cur.x - start.x), h: Math.abs(cur.y - start.y) } : null;
 
   function crop(full: boolean) {
@@ -46,6 +55,7 @@ export function CropSelectOverlay({ imageUrl, onSelect, onCancel }: { imageUrl: 
   const btn: React.CSSProperties = { padding: "7px 12px", borderRadius: 9, fontSize: 13, fontWeight: 600, cursor: "pointer", color: "#fff", background: "rgba(255,255,255,0.14)", border: "1px solid rgba(255,255,255,0.25)" };
   return createPortal(
     <div
+      ref={rootRef}
       onPointerDown={(e) => { (e.target as HTMLElement).setPointerCapture?.(e.pointerId); setStart({ x: e.clientX, y: e.clientY }); setCur({ x: e.clientX, y: e.clientY }); }}
       onPointerMove={(e) => { if (start) setCur({ x: e.clientX, y: e.clientY }); }}
       onPointerUp={() => { if (rect && rect.w > 4 && rect.h > 4) crop(false); }}
@@ -75,7 +85,8 @@ export async function captureScreen(): Promise<string | null> {
   if (!md?.getDisplayMedia) return null;
   let stream: MediaStream;
   try {
-    stream = await md.getDisplayMedia({ video: true, audio: false });
+    // Bias the picker toward the whole monitor (so "框选" frames the entire screen).
+    stream = await md.getDisplayMedia({ video: { displaySurface: "monitor" } as MediaTrackConstraints, audio: false });
   } catch {
     return null; // user cancelled or denied
   }
