@@ -10,6 +10,7 @@ import { toast } from "sonner";
 import { User, Mountain, Upload, X, Image as ImageIcon, Loader2, Plus, Search, Save } from "lucide-react";
 import {
   characterToPromptInjection,
+  clampLen,
   CHARACTER_PLACEHOLDERS,
   DEFAULT_PERSON_TEMPLATE,
   DEFAULT_SCENE_TEMPLATE,
@@ -165,9 +166,11 @@ export const CharacterNode = memo(function CharacterNode({ id, selected, data }:
     const urls = sorted.map((s) => s.imageUrl).slice(0, 10);
     setConsistencyScenes({ ids: ids.slice(0, 10), urls });
     consistencyMut.mutate({
-      characterName: payload.name || payload.sceneName || undefined,
+      // Clamp to the server's zod limits (characterName max 120, profileText max 1500)
+      // so a long name / customPromptTemplate-driven profile can't trigger BAD_REQUEST.
+      characterName: clampLen((payload.name || payload.sceneName || "").trim(), 120) || undefined,
       characterKind: kind,
-      profileText: profileText.length > 0 ? profileText : undefined,
+      profileText: profileText.length > 0 ? clampLen(profileText, 1500) : undefined,
       imageUrls: urls,
     });
   };

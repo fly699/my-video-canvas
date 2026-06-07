@@ -83,7 +83,7 @@ function cleanupSeparators(s: string): string {
 
 /** Clamp a string to `max` UTF-16 code units (matching the server's z.string().max()
  *  semantics), without leaving a dangling high surrogate that'd render as `�`. */
-function clampLen(s: string, max: number): string {
+export function clampLen(s: string, max: number): string {
   if (s.length <= max) return s;
   let out = s.slice(0, max);
   const last = out.charCodeAt(out.length - 1);
