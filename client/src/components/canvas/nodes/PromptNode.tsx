@@ -170,7 +170,7 @@ export const PromptNode = memo(function PromptNode({ id, selected, data }: Props
             fully readable (no line clamp) by scrolling. */}
         {!expanded && (
           hasAnyPrompt ? (
-            <div className="nodrag nowheel" style={{ flex: 1, minHeight: 0, overflowY: "auto", display: "flex", flexDirection: "column", gap: 8 }}>
+            <div className="nodrag nowheel" style={{ flex: 1, minHeight: 0, maxHeight: 1000, overflowY: "auto", display: "flex", flexDirection: "column", gap: 8 }}>
               {pos && (
                 <div>
                   <div style={{ fontSize: 9, fontWeight: 700, letterSpacing: "0.06em", textTransform: "uppercase", color: accentColor, marginBottom: 3 }}>正向</div>

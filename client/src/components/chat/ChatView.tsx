@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { useLocation } from "wouter";
 import { Lock, Paperclip, Send, ShieldCheck, Users, Trash2, LogOut, X, FileIcon, ImageIcon, Film, FolderOpen, Download, Camera, Crop } from "lucide-react";
-import { captureScreen, captureRegion, RegionSelectOverlay, ScreenshotEditor } from "./ScreenshotEditor";
+import { captureScreen, CropSelectOverlay, ScreenshotEditor } from "./ScreenshotEditor";
 import { ComfyServerStatusIndicator } from "../canvas/ComfyServerStatusIndicator";
 import { useChat, SERVERLESS_ENCRYPT_PROMPT_BYTES } from "@/hooks/useChat";
 import { useAuth } from "@/_core/hooks/useAuth";
@@ -21,33 +21,23 @@ export function ChatView({ membersOpen: _m }: { membersOpen?: boolean }) {
   const [dragOver, setDragOver] = useState(false);
   const [askEncrypt, setAskEncrypt] = useState(false);
   const [showFiles, setShowFiles] = useState(false);
-  // Screenshots → annotate → stage as an attachment. Two entry points:
-  //  • 截图: whole screen/window/tab via getDisplayMedia (can grab other windows).
-  //  • 框选: drag a box over THIS page → capture just that region (no OS picker).
+  // Screenshots → annotate → stage as an attachment. Both capture via
+  // getDisplayMedia (so they work cross-screen / cross-window — the browser
+  // requires its share-screen picker once):
+  //  • 截图: annotate the whole captured screen/window/tab.
+  //  • 框选: then drag a box on the frozen capture to crop to a region first.
   const [shotUrl, setShotUrl] = useState<string | null>(null);
-  const [selecting, setSelecting] = useState(false);
+  const [cropSrc, setCropSrc] = useState<string | null>(null);
   const [capturing, setCapturing] = useState(false);
-  async function fullScreenshot() {
+  async function screenshot(crop: boolean) {
     if (capturing) return;
     setCapturing(true);
     try {
       const url = await captureScreen();
-      if (url) setShotUrl(url);
-      else toast.info("已取消，或当前浏览器/环境不支持屏幕截图（需 HTTPS）");
+      if (!url) { toast.info("已取消，或当前浏览器/环境不支持屏幕截图（需 HTTPS）"); return; }
+      if (crop) setCropSrc(url); else setShotUrl(url);
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "截图失败");
-    } finally { setCapturing(false); }
-  }
-  async function onRegionSelected(rect: { x: number; y: number; w: number; h: number }) {
-    setSelecting(false);
-    // Let the selection overlay unmount (and repaint) before snapshotting the DOM.
-    await new Promise<void>((r) => requestAnimationFrame(() => requestAnimationFrame(() => r())));
-    setCapturing(true);
-    try {
-      const url = await captureRegion(rect);
-      if (url) setShotUrl(url);
-    } catch (e) {
-      toast.error("框选截图失败：" + (e instanceof Error ? e.message : String(e)));
     } finally { setCapturing(false); }
   }
   const filesQuery = trpc.chat.listFiles.useQuery({ conversationId: activeConv?.id ?? 0 }, { enabled: showFiles && !!activeConv });
@@ -209,8 +199,8 @@ export function ChatView({ membersOpen: _m }: { membersOpen?: boolean }) {
       <div style={{ display: "flex", alignItems: "flex-end", gap: 8, padding: "8px 16px 14px", flexShrink: 0 }}>
         <input ref={fileRef} type="file" hidden multiple onChange={(e) => { if (e.target.files) addFiles(e.target.files); e.target.value = ""; }} />
         <button onClick={() => fileRef.current?.click()} title={`添加文件（单文件 ≤ ${maxFileMb}MB）`} style={iconBtn}><Paperclip size={18} /></button>
-        <button onClick={fullScreenshot} disabled={capturing} title="截图（整屏/窗口，可截浏览器外内容；截屏后可标注再发送）" style={{ ...iconBtn, opacity: capturing ? 0.5 : 1 }}><Camera size={18} /></button>
-        <button onClick={() => setSelecting(true)} disabled={capturing} title="框选截图（点击后直接在页面上拖框，框完即截）" style={{ ...iconBtn, opacity: capturing ? 0.5 : 1 }}><Crop size={18} /></button>
+        <button onClick={() => screenshot(false)} disabled={capturing} title="整屏截图（选择屏幕/窗口后，整张可标注再发送）" style={{ ...iconBtn, opacity: capturing ? 0.5 : 1 }}><Camera size={18} /></button>
+        <button onClick={() => screenshot(true)} disabled={capturing} title="框选截图（跨屏跨窗口：选择屏幕/窗口后，在截图上拖框选区域）" style={{ ...iconBtn, opacity: capturing ? 0.5 : 1 }}><Crop size={18} /></button>
         <textarea value={text} onChange={(e) => { setText(e.target.value); emitTyping(); }}
           onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); void doSend(); } }}
           onPaste={(e) => {
@@ -233,7 +223,7 @@ export function ChatView({ membersOpen: _m }: { membersOpen?: boolean }) {
       </div>
 
       {/* Screenshot annotate editor (portal) */}
-      {selecting && <RegionSelectOverlay onCancel={() => setSelecting(false)} onSelect={onRegionSelected} />}
+      {cropSrc && <CropSelectOverlay imageUrl={cropSrc} onCancel={() => setCropSrc(null)} onSelect={(url) => { setCropSrc(null); setShotUrl(url); }} />}
       {shotUrl && <ScreenshotEditor imageUrl={shotUrl} onCancel={() => setShotUrl(null)} onConfirm={(file) => { addFiles([file]); setShotUrl(null); }} />}
 
       {/* drag overlay */}

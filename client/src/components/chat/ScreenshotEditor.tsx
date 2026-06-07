@@ -1,32 +1,18 @@
 import { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
-import { toCanvas } from "html-to-image";
 import { X, Pencil, Square, ArrowUpRight, Undo2, Check, Crop, Scissors } from "lucide-react";
 
 interface RegionRect { x: number; y: number; w: number; h: number }
 
 /**
- * Direct region screenshot: the user drags a box over the CURRENT PAGE (no OS
- * share-screen picker), and we render just that region from the DOM via
- * html-to-image. Captures app content (DOM + same-origin media); cannot capture
- * other windows (use captureScreen for that). Returns a PNG data URL or null.
+ * Region selection over a FROZEN captured screenshot — supports cross-screen /
+ * cross-window because the source comes from getDisplayMedia (captureScreen). The
+ * browser MANDATES the share-screen permission picker once to capture beyond the
+ * page; afterwards the user just drags a box on the frozen image (snipping-tool
+ * style) and we crop to it. Returns the cropped PNG via onSelect.
  */
-export async function captureRegion(rect: RegionRect): Promise<string | null> {
-  const dpr = window.devicePixelRatio || 1;
-  const full = await toCanvas(document.documentElement, { pixelRatio: dpr, cacheBust: true, backgroundColor: getComputedStyle(document.body).backgroundColor || "#111" });
-  const sx = (rect.x + window.scrollX) * dpr;
-  const sy = (rect.y + window.scrollY) * dpr;
-  const w = Math.max(1, Math.round(rect.w * dpr));
-  const h = Math.max(1, Math.round(rect.h * dpr));
-  const out = document.createElement("canvas");
-  out.width = w; out.height = h;
-  out.getContext("2d")?.drawImage(full, sx, sy, rect.w * dpr, rect.h * dpr, 0, 0, w, h);
-  return out.toDataURL("image/png");
-}
-
-/** Full-viewport drag-to-select overlay. Calls onSelect(rect in viewport coords)
- *  on release, or onCancel on Esc / a too-small selection. */
-export function RegionSelectOverlay({ onSelect, onCancel }: { onSelect: (r: RegionRect) => void; onCancel: () => void }) {
+export function CropSelectOverlay({ imageUrl, onSelect, onCancel }: { imageUrl: string; onSelect: (dataUrl: string) => void; onCancel: () => void }) {
+  const imgRef = useRef<HTMLImageElement>(null);
   const [start, setStart] = useState<{ x: number; y: number } | null>(null);
   const [cur, setCur] = useState<{ x: number; y: number } | null>(null);
   useEffect(() => {
@@ -35,15 +21,44 @@ export function RegionSelectOverlay({ onSelect, onCancel }: { onSelect: (r: Regi
     return () => window.removeEventListener("keydown", onKey);
   }, [onCancel]);
   const rect: RegionRect | null = start && cur ? { x: Math.min(start.x, cur.x), y: Math.min(start.y, cur.y), w: Math.abs(cur.x - start.x), h: Math.abs(cur.y - start.y) } : null;
+
+  function crop(full: boolean) {
+    const img = imgRef.current; if (!img || !img.naturalWidth) return;
+    const nat = { w: img.naturalWidth, h: img.naturalHeight };
+    let src: RegionRect;
+    if (full) src = { x: 0, y: 0, w: nat.w, h: nat.h };
+    else {
+      if (!rect || rect.w < 4 || rect.h < 4) return;
+      const b = img.getBoundingClientRect();
+      const fx = nat.w / b.width, fy = nat.h / b.height;
+      let x = (rect.x - b.left) * fx, y = (rect.y - b.top) * fy;
+      let w = rect.w * fx, h = rect.h * fy;
+      x = Math.max(0, x); y = Math.max(0, y); w = Math.min(nat.w - x, w); h = Math.min(nat.h - y, h);
+      if (w < 1 || h < 1) return;
+      src = { x, y, w, h };
+    }
+    const out = document.createElement("canvas");
+    out.width = Math.round(src.w); out.height = Math.round(src.h);
+    out.getContext("2d")?.drawImage(img, src.x, src.y, src.w, src.h, 0, 0, out.width, out.height);
+    onSelect(out.toDataURL("image/png"));
+  }
+
+  const btn: React.CSSProperties = { padding: "7px 12px", borderRadius: 9, fontSize: 13, fontWeight: 600, cursor: "pointer", color: "#fff", background: "rgba(255,255,255,0.14)", border: "1px solid rgba(255,255,255,0.25)" };
   return createPortal(
     <div
       onPointerDown={(e) => { (e.target as HTMLElement).setPointerCapture?.(e.pointerId); setStart({ x: e.clientX, y: e.clientY }); setCur({ x: e.clientX, y: e.clientY }); }}
       onPointerMove={(e) => { if (start) setCur({ x: e.clientX, y: e.clientY }); }}
-      onPointerUp={() => { if (rect && rect.w > 4 && rect.h > 4) onSelect(rect); else onCancel(); }}
-      style={{ position: "fixed", inset: 0, zIndex: 100002, cursor: "crosshair", background: rect ? "transparent" : "rgba(0,0,0,0.2)" }}
+      onPointerUp={() => { if (rect && rect.w > 4 && rect.h > 4) crop(false); }}
+      style={{ position: "fixed", inset: 0, zIndex: 100002, cursor: "crosshair", background: "#000", userSelect: "none" }}
     >
-      {rect && <div style={{ position: "fixed", left: rect.x, top: rect.y, width: rect.w, height: rect.h, border: "1.5px solid #0a84ff", boxShadow: "0 0 0 9999px rgba(0,0,0,0.42)", pointerEvents: "none" }} />}
-      {!start && <div style={{ position: "fixed", top: 18, left: "50%", transform: "translateX(-50%)", padding: "7px 16px", borderRadius: 9, background: "rgba(0,0,0,0.72)", color: "#fff", fontSize: 13, fontWeight: 600, pointerEvents: "none" }}>拖动鼠标框选要截图的区域（Esc 取消）</div>}
+      <img ref={imgRef} src={imageUrl} alt="" draggable={false}
+        style={{ position: "absolute", inset: 0, margin: "auto", maxWidth: "100vw", maxHeight: "100vh", objectFit: "contain", pointerEvents: "none", display: "block" }} />
+      {rect && <div style={{ position: "fixed", left: rect.x, top: rect.y, width: rect.w, height: rect.h, border: "1.5px solid #0a84ff", boxShadow: "0 0 0 9999px rgba(0,0,0,0.5)", pointerEvents: "none" }} />}
+      <div style={{ position: "fixed", top: 16, left: "50%", transform: "translateX(-50%)", display: "flex", gap: 8, alignItems: "center" }} onPointerDown={(e) => e.stopPropagation()}>
+        <span style={{ padding: "7px 14px", borderRadius: 9, background: "rgba(0,0,0,0.7)", color: "#fff", fontSize: 13, fontWeight: 600 }}>在截图上拖动框选区域（Esc 取消）</span>
+        <button style={btn} onClick={() => crop(true)}>全图</button>
+        <button style={btn} onClick={onCancel}>取消</button>
+      </div>
     </div>,
     document.body,
   );
