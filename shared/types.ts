@@ -788,9 +788,10 @@ export interface ComfyuiWorkflowNodeData {
   /** Seed handling on run: when true (default), seed params are re-randomized
    *  each run; when false, the fixed value from the form is used as-is. */
   randomizeSeed?: boolean;
-  /** When true, a connected upstream prompt/storyboard OVERRIDES this node's
-   *  positive/negative prompt params even if the user typed a value. Default off
-   *  = fill only when the prompt param is blank / at the workflow's default. */
+  /** Whether a connected upstream prompt/storyboard OVERRIDES this node's
+   *  positive/negative prompt params even if the user typed a value. Defaults to
+   *  ON (undefined ⇒ upstream-priority); set explicitly to false for "fill only
+   *  when blank / at the workflow's default". */
   preferUpstreamPrompt?: boolean;
   paramBindings?: WorkflowParamBinding[];
   paramValues?: Record<string, unknown>;

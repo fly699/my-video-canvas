@@ -355,7 +355,7 @@ export const ComfyuiWorkflowNode = memo(function ComfyuiWorkflowNode({ id, selec
       // Explicit per-param「来源」mapping first, then smart auto-fill the rest.
       const imgResolved = resolveImageParamsWithMap(payload.paramBindings, payload.paramValues ?? {}, sources, payload.imageSourceMap ?? {});
       const imageParamKeys = imgResolved.imageParamKeys;
-      const paramValues = fillWorkflowPromptParams(payload.paramBindings, imgResolved.paramValues, upstreamPrompt, { force: payload.preferUpstreamPrompt === true });
+      const paramValues = fillWorkflowPromptParams(payload.paramBindings, imgResolved.paramValues, upstreamPrompt, { force: payload.preferUpstreamPrompt !== false });
       // Seed handling: unless the user pinned the seed (randomizeSeed === false),
       // re-randomize every seed param each run, and persist the used value back so
       // the form reflects what was actually sent.
@@ -899,7 +899,7 @@ export const ComfyuiWorkflowNode = memo(function ComfyuiWorkflowNode({ id, selec
                 <label style={{ ...labelStyle, marginBottom: 0 }}>提示词</label>
                 <div style={{ display: "flex", gap: 6, flex: 1 }}>
                   {([["fill", "仅填空", false], ["prefer", "上游优先", true]] as const).map(([k, lbl, val]) => {
-                    const active = (payload.preferUpstreamPrompt === true) === val;
+                    const active = (payload.preferUpstreamPrompt !== false) === val;
                     return (
                       <button
                         key={k}
