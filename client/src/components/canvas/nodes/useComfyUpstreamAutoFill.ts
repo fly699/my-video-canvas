@@ -1,7 +1,7 @@
 import { useEffect } from "react";
 import { useCanvasStore } from "../../../hooks/useCanvasStore";
 import { detectUpstreamPrompt, detectUpstreamImages } from "../../../lib/comfyWorkflowParams";
-import { deriveCharacterConditioning, connectedCharacterRefImages } from "../../../lib/characterConditioning";
+import { deriveCharacterConditioning, connectedCharacterRefImages, connectedCharacters } from "../../../lib/characterConditioning";
 import type { CharacterNodeData, ComfyuiIPAdapter, ComfyuiLoraEntry } from "../../../../../shared/types";
 
 interface AutoFillPayload {
@@ -76,16 +76,13 @@ export function useComfyUpstreamAutoFill(
   }, [id, edges, nodes, payload.prompt, payload.negPrompt, payload.referenceImageUrl, characterConditioning, characterLora]);
 }
 
-/** First connected upstream `character` node's payload (with any conditioning). */
+/** The PRIMARY connected upstream `character` payload — the topmost by canvas
+ *  position, matching the prompt-text injection order so the IPAdapter face and the
+ *  injected identity text refer to the same character. */
 function upstreamCharacter(
   id: string,
   edges: { source: string; target: string }[],
-  nodes: { id: string; data: { nodeType: string; payload?: unknown } }[],
+  nodes: { id: string; data: { nodeType: string; payload?: unknown }; position?: { x: number; y: number } }[],
 ): CharacterNodeData | undefined {
-  for (const e of edges) {
-    if (e.target !== id) continue;
-    const src = nodes.find((n) => n.id === e.source);
-    if (src?.data.nodeType === "character") return src.data.payload as CharacterNodeData;
-  }
-  return undefined;
+  return connectedCharacters(id, edges, nodes)[0];
 }
