@@ -141,9 +141,32 @@ export interface TrimOptions {
   inputUrl: string;
   startTime: number;    // seconds
   endTime: number;      // seconds
-  speed?: number;       // 0.25–4.0, default 1.0 (1.0 = no change)
+  speed?: number;       // 0.1–10.0, default 1.0 (1.0 = no change)
   audioUrl?: string;    // optional audio track URL to replace/mix in
-  audioVolume?: number; // 0.0–2.0 volume for mixed audio (default 1.0)
+  audioVolume?: number; // 0.0–2.0 volume for the EXTERNAL audio (default 1.0)
+  edit?: ClipEdit;      // optional picture/audio adjustments (default = none)
+}
+
+/** Picture/audio adjustments applied during a clip trim. All optional; omitting a
+ *  field leaves that aspect untouched (neutral). Pure filter strings are built by
+ *  buildClipVideoFilters / buildClipAudioFilters (unit-tested). */
+export interface ClipEdit {
+  // Picture
+  reverse?: boolean;                 // play the clip backwards (video + audio)
+  rotate?: 0 | 90 | 180 | 270;       // clockwise rotation
+  flipH?: boolean;                   // mirror horizontally
+  flipV?: boolean;                   // mirror vertically
+  brightness?: number;               // eq brightness, -1..1 (neutral 0)
+  contrast?: number;                 // eq contrast, 0..2 (neutral 1)
+  saturation?: number;               // eq saturation, 0..3 (neutral 1)
+  aspect?: string;                   // center-crop to "9:16" | "16:9" | "1:1" (else original)
+  fadeIn?: number;                   // seconds; fades picture + sound in from black/silence
+  fadeOut?: number;                  // seconds; fades out at the clip's end
+  // Audio
+  muteOriginal?: boolean;            // drop the source's own audio
+  mixAudio?: boolean;                // when an external audio is connected, MIX it with the
+                                     //   original instead of replacing it
+  originalVolume?: number;           // 0..2 volume for the source's own audio (default 1.0)
 }
 
 export interface TrimResult {
@@ -151,9 +174,58 @@ export interface TrimResult {
   duration: number;
 }
 
+/** Pure: ordered ffmpeg `-vf` chain for a clip edit. `clipDuration` is the trimmed,
+ *  speed-adjusted output length (needed to anchor the fade-out). */
+export function buildClipVideoFilters(o: ClipEdit, speed: number, clipDuration: number): string[] {
+  const f: string[] = [];
+  if (o.reverse) f.push("reverse");
+  if (o.rotate === 90) f.push("transpose=1");
+  else if (o.rotate === 180) f.push("transpose=2,transpose=2");
+  else if (o.rotate === 270) f.push("transpose=2");
+  if (o.flipH) f.push("hflip");
+  if (o.flipV) f.push("vflip");
+  if (o.aspect && o.aspect !== "original") {
+    const [aw, ah] = o.aspect.split(":").map(Number);
+    if (aw > 0 && ah > 0) {
+      const ar = (aw / ah).toFixed(6);
+      // Center-crop to the target ratio; force even dimensions for yuv420p.
+      f.push(`crop='trunc(min(iw,ih*${ar})/2)*2':'trunc(min(ih,iw/${ar})/2)*2'`);
+    }
+  }
+  const b = o.brightness ?? 0, c = o.contrast ?? 1, s = o.saturation ?? 1;
+  if (Math.abs(b) > 1e-3 || Math.abs(c - 1) > 1e-3 || Math.abs(s - 1) > 1e-3) {
+    f.push(`eq=brightness=${b.toFixed(3)}:contrast=${c.toFixed(3)}:saturation=${s.toFixed(3)}`);
+  }
+  if (Math.abs(speed - 1) > 1e-3) f.push(`setpts=${(1 / speed).toFixed(6)}*PTS`);
+  if (o.fadeIn && o.fadeIn > 0) f.push(`fade=t=in:st=0:d=${o.fadeIn.toFixed(3)}`);
+  if (o.fadeOut && o.fadeOut > 0) {
+    f.push(`fade=t=out:st=${Math.max(0, clipDuration - o.fadeOut).toFixed(3)}:d=${o.fadeOut.toFixed(3)}`);
+  }
+  return f;
+}
+
+/** Pure: ordered ffmpeg audio filter chain for ONE audio stream (the source's own
+ *  track). `applySpeed` is false for an external replacement track (independent music
+ *  shouldn't be time-stretched), true for the source audio. */
+export function buildClipAudioFilters(
+  o: ClipEdit, speed: number, clipDuration: number, volume: number, applySpeed: boolean,
+): string[] {
+  const f: string[] = [];
+  if (o.reverse && applySpeed) f.push("areverse");
+  if (Math.abs(volume - 1) > 1e-3) f.push(`volume=${volume.toFixed(4)}`);
+  if (applySpeed && Math.abs(speed - 1) > 1e-3) f.push(...buildAtempoFilters(speed));
+  if (o.fadeIn && o.fadeIn > 0) f.push(`afade=t=in:st=0:d=${o.fadeIn.toFixed(3)}`);
+  if (o.fadeOut && o.fadeOut > 0) {
+    f.push(`afade=t=out:st=${Math.max(0, clipDuration - o.fadeOut).toFixed(3)}:d=${o.fadeOut.toFixed(3)}`);
+  }
+  return f;
+}
+
 export async function trimVideo(opts: TrimOptions): Promise<TrimResult> {
   const speed = opts.speed ?? 1.0;
   const audioVolume = opts.audioVolume ?? 1.0;
+  const edit = opts.edit ?? {};
+  const clipDuration = (opts.endTime - opts.startTime) / speed;
 
   const ext = "mp4";
   const inputPath = await downloadToTemp(opts.inputUrl, ext);
@@ -175,57 +247,57 @@ export async function trimVideo(opts: TrimOptions): Promise<TrimResult> {
     args.push("-ss", String(opts.startTime));
     args.push("-to", String(opts.endTime));
     args.push("-i", inputPath);
+    if (audioPath) args.push("-i", audioPath);
 
-    if (audioPath) {
-      args.push("-i", audioPath);
-    }
+    const videoFilters = buildClipVideoFilters(edit, speed, clipDuration);
+    const needVideoEncode = videoFilters.length > 0;
 
-    const hasSpeedChange = Math.abs(speed - 1.0) > 0.001;
+    // Decide the audio output mode.
+    //   none     — muted, no external track
+    //   external — replace source audio with the connected track
+    //   mix      — blend external track with the source audio
+    //   original — keep (and process) the source's own audio
+    const audioMode: "none" | "external" | "mix" | "original" =
+      (edit.muteOriginal && !audioPath) ? "none"
+        : audioPath ? (edit.mixAudio && !edit.muteOriginal ? "mix" : "external")
+        : edit.muteOriginal ? "none"
+        : "original";
 
-    if (!hasSpeedChange && !audioPath) {
-      // Simple copy — fastest path
-      args.push("-c:v", "copy");
-      args.push("-c:a", "copy");
-    } else if (!hasSpeedChange && audioPath) {
-      // Replace audio, no speed change
-      args.push("-map", "0:v");
-      args.push("-map", "1:a");
-      args.push("-c:v", "copy");
+    // Audio sub-chains (per stream). External music is NOT time-stretched/reversed.
+    const origAudio = buildClipAudioFilters(edit, speed, clipDuration, edit.originalVolume ?? 1.0, true);
+    const extAudio = buildClipAudioFilters(edit, speed, clipDuration, audioVolume, false);
+
+    if (audioMode === "mix") {
+      // Two audio inputs → filter_complex (also routes video through it when filtered).
+      const parts: string[] = [];
+      if (needVideoEncode) parts.push(`[0:v]${videoFilters.join(",")}[vout]`);
+      parts.push(`[0:a]${(origAudio.length ? origAudio : ["anull"]).join(",")}[a0]`);
+      parts.push(`[1:a]${(extAudio.length ? extAudio : ["anull"]).join(",")}[a1]`);
+      parts.push(`[a0][a1]amix=inputs=2:duration=first:dropout_transition=0[aout]`);
+      args.push("-filter_complex", parts.join(";"));
+      args.push("-map", needVideoEncode ? "[vout]" : "0:v", "-map", "[aout]");
+      args.push("-c:v", needVideoEncode ? "libx264" : "copy");
+      if (needVideoEncode) args.push("-preset", "fast");
       args.push("-c:a", "aac");
-      if (Math.abs(audioVolume - 1.0) > 0.001) {
-        args.push("-af", `volume=${audioVolume.toFixed(4)}`);
-      }
+    } else if (audioMode === "external") {
+      args.push("-map", "0:v", "-map", "1:a");
+      if (needVideoEncode) args.push("-vf", videoFilters.join(","));
+      if (extAudio.length) args.push("-af", extAudio.join(","));
+      args.push("-c:v", needVideoEncode ? "libx264" : "copy");
+      if (needVideoEncode) args.push("-preset", "fast");
+      args.push("-c:a", "aac");
       args.push("-shortest");
+    } else if (audioMode === "none") {
+      if (needVideoEncode) { args.push("-vf", videoFilters.join(",")); args.push("-c:v", "libx264", "-preset", "fast"); }
+      else args.push("-c:v", "copy");
+      args.push("-an");
     } else {
-      // Speed change required — must re-encode
-      const videoFilter = `setpts=${(1 / speed).toFixed(6)}*PTS`;
-      const atempoFilters = buildAtempoFilters(speed);
-
-      if (audioPath) {
-        // Custom audio + speed change
-        const audioFilter = [
-          `volume=${audioVolume.toFixed(4)}`,
-          ...atempoFilters,
-        ].join(",");
-
-        args.push("-map", "0:v");
-        args.push("-map", "1:a");
-        args.push("-vf", videoFilter);
-        args.push("-af", audioFilter);
-        args.push("-c:v", "libx264");
-        args.push("-preset", "fast");
-        args.push("-c:a", "aac");
-        args.push("-shortest");
-      } else {
-        // Speed change on original audio
-        const audioFilter = atempoFilters.join(",");
-
-        args.push("-vf", videoFilter);
-        args.push("-af", audioFilter);
-        args.push("-c:v", "libx264");
-        args.push("-preset", "fast");
-        args.push("-c:a", "aac");
-      }
+      // original
+      const needAudioEncode = origAudio.length > 0;
+      if (needVideoEncode) { args.push("-vf", videoFilters.join(",")); args.push("-c:v", "libx264", "-preset", "fast"); }
+      else args.push("-c:v", "copy");
+      if (needAudioEncode) { args.push("-af", origAudio.join(",")); args.push("-c:a", "aac"); }
+      else args.push("-c:a", "copy");
     }
 
     // Output options
@@ -250,10 +322,7 @@ export async function trimVideo(opts: TrimOptions): Promise<TrimResult> {
     await assertObjectStorageWritable();
     const { url } = await storagePut(`generated/clip-${Date.now()}.mp4`, outBuffer, "video/mp4");
 
-    // Calculate duration
-    const duration = (opts.endTime - opts.startTime) / speed;
-
-    return { url, duration };
+    return { url, duration: clipDuration };
   } finally {
     // Clean up all temp files
     await fs.unlink(inputPath).catch(() => undefined);
@@ -261,6 +330,26 @@ export async function trimVideo(opts: TrimOptions): Promise<TrimResult> {
     if (audioPath) {
       await fs.unlink(audioPath).catch(() => undefined);
     }
+  }
+}
+
+// ── Extract a single frame as a PNG (clip cover / still) ───────────────────────
+
+export interface ExtractFrameResult { url: string }
+
+export async function extractFrame(opts: { inputUrl: string; time: number }): Promise<ExtractFrameResult> {
+  const inputPath = await downloadToTemp(opts.inputUrl, "mp4");
+  const outPath = path.join(os.tmpdir(), `frame-${Date.now()}-${Math.random().toString(36).slice(2)}.png`);
+  try {
+    // -ss before -i = fast seek; one frame; high quality.
+    await execFileAsync("ffmpeg", ["-ss", String(Math.max(0, opts.time)), "-i", inputPath, "-frames:v", "1", "-q:v", "2", "-y", outPath]);
+    const buf = await fs.readFile(outPath);
+    await assertObjectStorageWritable();
+    const { url } = await storagePut(`generated/frame-${Date.now()}.png`, buf, "image/png");
+    return { url };
+  } finally {
+    await fs.unlink(inputPath).catch(() => undefined);
+    await fs.unlink(outPath).catch(() => undefined);
   }
 }
 

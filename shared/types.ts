@@ -470,9 +470,23 @@ export interface ClipNodeData {
   startTime?: number;        // seconds, default 0
   endTime?: number;          // seconds, default = sourceDuration
   // Speed
-  speed?: number;            // 0.25-4.0, default 1.0
-  // Audio mix
+  speed?: number;            // 0.1-10.0, default 1.0
+  // Audio mix (external connected track)
   audioVolume?: number;      // 0.0-2.0, default 1.0
+  // ── Picture/audio adjustments (all optional, default = neutral) ──
+  reverse?: boolean;
+  rotate?: 0 | 90 | 180 | 270;
+  flipH?: boolean;
+  flipV?: boolean;
+  brightness?: number;       // -1..1, neutral 0
+  contrast?: number;         // 0..2, neutral 1
+  saturation?: number;       // 0..3, neutral 1
+  aspect?: "original" | "9:16" | "16:9" | "1:1";
+  fadeIn?: number;           // seconds
+  fadeOut?: number;          // seconds
+  muteOriginal?: boolean;    // drop the source's own audio
+  mixAudio?: boolean;        // mix external audio with original instead of replacing
+  originalVolume?: number;   // 0..2 for source's own audio, default 1.0
   // Output
   outputUrl?: string;
   outputDuration?: number;

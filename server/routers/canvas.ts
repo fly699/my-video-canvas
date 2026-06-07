@@ -54,7 +54,7 @@ import { persistVideoOrFallback, persistVideosOrFallback } from "../_core/persis
 import { submitAndPollPoyoMusic, type PoyoMusicModel } from "../_core/poyoAudio";
 import { submitAndPollPoyoTTS } from "../_core/poyoAudio";
 import { synthesizeOpenAITTS, type OpenAITTSModel } from "../_core/openaiTTS";
-import { trimVideo, getVideoDuration, mergeVideos, burnSubtitles, generateSRT, overlayVideo, assertSafeUrl, burnAssSubtitles, smartCutVideo } from "../_core/videoEditor";
+import { trimVideo, getVideoDuration, mergeVideos, burnSubtitles, generateSRT, overlayVideo, assertSafeUrl, burnAssSubtitles, smartCutVideo, extractFrame } from "../_core/videoEditor";
 import { transcribeAudio } from "../_core/voiceTranscription";
 import { VIDEO_PROVIDERS, IMAGE_GEN_MODELS } from "../../shared/types";
 import type { SubtitleEntry } from "../../shared/types";
@@ -1909,9 +1909,24 @@ export const clipRouter = router({
         inputUrl: mediaUrlSchema,
         startTime: z.number().min(0),
         endTime: z.number().min(0),
-        speed: z.number().min(0.25).max(4.0).optional(),
+        speed: z.number().min(0.1).max(10.0).optional(),
         audioUrl: mediaUrlSchema.optional(),
         audioVolume: z.number().min(0).max(2.0).optional(),
+        edit: z.object({
+          reverse: z.boolean().optional(),
+          rotate: z.union([z.literal(0), z.literal(90), z.literal(180), z.literal(270)]).optional(),
+          flipH: z.boolean().optional(),
+          flipV: z.boolean().optional(),
+          brightness: z.number().min(-1).max(1).optional(),
+          contrast: z.number().min(0).max(2).optional(),
+          saturation: z.number().min(0).max(3).optional(),
+          aspect: z.enum(["original", "9:16", "16:9", "1:1"]).optional(),
+          fadeIn: z.number().min(0).max(10).optional(),
+          fadeOut: z.number().min(0).max(10).optional(),
+          muteOriginal: z.boolean().optional(),
+          mixAudio: z.boolean().optional(),
+          originalVolume: z.number().min(0).max(2).optional(),
+        }).optional(),
       }).refine(d => d.endTime > d.startTime, { message: "出点必须大于入点", path: ["endTime"] })
     )
     .mutation(async ({ ctx, input }) => {
@@ -1920,6 +1935,15 @@ export const clipRouter = router({
       if (input.audioUrl) guardUrl(input.audioUrl);
       const result = await trimVideo(input);
       return { url: result.url, duration: result.duration };
+    }),
+
+  extractFrame: protectedProcedure
+    .input(z.object({ inputUrl: mediaUrlSchema, time: z.number().min(0) }))
+    .mutation(async ({ ctx, input }) => {
+      // local ffmpeg, no third-party AI — not whitelist-gated
+      guardUrl(input.inputUrl);
+      const result = await extractFrame(input);
+      return { url: result.url };
     }),
 
   getVideoDuration: protectedProcedure
