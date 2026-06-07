@@ -7,6 +7,7 @@ import { trpc } from "@/lib/trpc";
 import { toast } from "sonner";
 import { mediaFetchUrl, onDownloadMedia } from "@/lib/download";
 import { WatermarkedVideo } from "@/components/WatermarkedVideo";
+import { getNodeVideoOutput } from "@/lib/canvasPassthrough";
 import { Blend, Loader2, CheckCircle2, XCircle, Download, Play } from "lucide-react";
 
 interface Props {
@@ -76,10 +77,10 @@ export const OverlayNode = memo(function OverlayNode({ id, selected, data }: Pro
       const src = nodes.find((n) => n.id === edge.source);
       if (!src || !VIDEO_SOURCE_TYPES.has(src.data.nodeType)) continue;
       const p = src.data.payload as Record<string, unknown>;
-      const url =
-        (p.resultVideoUrl as string | undefined) ??
-        (p.outputUrl as string | undefined) ??
-        (p.url as string | undefined);
+      // getNodeVideoOutput correctly skips a comfyui_workflow whose run produced an
+      // IMAGE (outputType==="image") and an asset that isn't a video — so we never
+      // feed an image/audio URL into the video overlay pipeline.
+      const url = getNodeVideoOutput(src.data.nodeType, p);
       if (url) return url;
     }
     return undefined;

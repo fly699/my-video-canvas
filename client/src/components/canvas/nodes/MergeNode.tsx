@@ -9,6 +9,7 @@ import { isOwnStorageUrl } from "@/lib/ownStorage";
 import { WatermarkedVideo } from "@/components/WatermarkedVideo";
 import { NodeTextArea } from "../NodeTextInput";
 import { compareUpstreamNodes } from "../../../lib/inputOrder";
+import { getNodeVideoOutput } from "@/lib/canvasPassthrough";
 import { Merge, Loader2, RotateCcw, Music, ChevronDown, GripVertical, X } from "lucide-react";
 
 interface Props {
@@ -127,12 +128,10 @@ export const MergeNode = memo(function MergeNode({ id, selected, data }: Props) 
     for (const { e } of incoming) {
       const srcNode = byId.get(e.source);
       if (!srcNode || !VIDEO_SOURCE_TYPES.has(srcNode.data.nodeType)) continue;
-      if (srcNode.data.nodeType === "asset") {
-        const mt = (srcNode.data.payload as { mimeType?: string }).mimeType;
-        if (mt && mt.startsWith("audio/")) continue;
-      }
       const p = srcNode.data.payload as Record<string, unknown>;
-      const url = (p.resultVideoUrl ?? p.outputUrl ?? p.url) as string | undefined;
+      // Helper skips non-video assets (audio/image) and image-output comfyui_workflow
+      // runs — so the merged film never includes an image/audio URL as a "video".
+      const url = getNodeVideoOutput(srcNode.data.nodeType, p);
       if (url) items.push({ url, label: srcNode.data.title || url.split("/").pop() || url });
     }
     return items;
