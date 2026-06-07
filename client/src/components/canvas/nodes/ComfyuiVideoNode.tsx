@@ -226,7 +226,8 @@ export const ComfyuiVideoNode = memo(function ComfyuiVideoNode({ id, selected, d
     updateNodeData(id, { status: "processing", errorMessage: undefined, progress: 0 });
     // Inject connected characters' profile text into the prompt (visual refs/LoRA
     // are filled separately). Not persisted.
-    const finalPrompt = mergeCharactersIntoPrompt(payload.prompt ?? "", connectedCharacters(id, gedges, gnodes));
+    // Cap to the server's prompt max(2000); preserves the base prompt, trims injection.
+    const finalPrompt = mergeCharactersIntoPrompt(payload.prompt ?? "", connectedCharacters(id, gedges, gnodes), 2000);
     genMutation.mutate({
       nodeId: id,
       projectId: data.projectId,
