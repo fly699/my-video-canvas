@@ -42,6 +42,11 @@ export function resolveNodeOutputImageUrl(node: CanvasNode | undefined): string 
       return str(p.outputImageUrl) ?? str(p.outputUrl);
     case "post_process":
       return str(p.outputUrl);
+    case "asset":
+      // An uploaded/imported IMAGE asset is a valid reference source (asset →
+      // video_task / comfyui_video / comfyui_image are common i2v wirings). Only
+      // images — never a video/audio asset's url.
+      return p.type === "image" ? str(p.url) : undefined;
     case "comfyui_workflow":
       // Only image outputs feed a reference-image target — never a video output.
       if (p.outputType === "video") return undefined;
