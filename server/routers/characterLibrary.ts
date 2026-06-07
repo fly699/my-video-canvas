@@ -25,10 +25,23 @@ function toClient(r: CharacterLibraryRow) {
 }
 
 export const characterLibraryRouter = router({
-  list: protectedProcedure.query(async () => {
-    const rows = await db.listCharacterLibrary();
+  // Private library — each user sees only their own saved characters.
+  list: protectedProcedure.query(async ({ ctx }) => {
+    const rows = await db.listCharacterLibrary(ctx.user.id);
     return rows.map(toClient);
   }),
+
+  rename: protectedProcedure
+    .input(z.object({ id: z.number(), name: z.string().trim().min(1).max(120) }))
+    .mutation(async ({ ctx, input }) => {
+      const existing = await db.getCharacterLibrary(input.id);
+      if (!existing) throw new TRPCError({ code: "NOT_FOUND" });
+      if (existing.userId !== ctx.user.id && ctx.user.role !== "admin") {
+        throw new TRPCError({ code: "FORBIDDEN", message: "只能修改自己保存的角色" });
+      }
+      await db.updateCharacterLibrary(input.id, { name: input.name.trim() });
+      return { success: true };
+    }),
 
   create: protectedProcedure
     .input(z.object({

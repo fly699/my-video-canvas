@@ -16,7 +16,7 @@ import {
 } from "../../../lib/characterPrompt";
 import { CharacterConsistencyPanel, type ConsistencyResult } from "../CharacterConsistencyPanel";
 import { NodeTextArea, NodeInput } from "../NodeTextInput";
-import { characterReferenceImages } from "@/lib/characterConditioning";
+import { characterReferenceImages, deriveCharacterConditioning } from "@/lib/characterConditioning";
 
 interface Props {
   id: string;
@@ -171,36 +171,33 @@ export const CharacterNode = memo(function CharacterNode({ id, selected, data }:
     [id, updateNodeData],
   );
 
-  // "应用到所有连接的分镜" — push this character's identity conditioning into every
-  // downstream generation node: comfyui_image gets IPAdapter face-lock (images +
-  // weight, preserving the user's model) + the character LoRA; other generation
-  // nodes get the face reference image. Explicit action → overwrites the face ref.
+  // "应用到所有连接的分镜" — push this character's identity into every downstream
+  // generation node, NON-DESTRUCTIVELY: a reference image / IPAdapter the user
+  // already set is preserved; only blank fields are filled. comfyui_image gets
+  // IPAdapter face-lock (via deriveCharacterConditioning) + character LoRA; others
+  // get the face reference image when they have none.
   const batchUpdateNodeData = useCanvasStore((s) => s.batchUpdateNodeData);
-  // Build the identity patch for one target shot node (IPAdapter+LoRA for ComfyUI
-  // image; reference image for the rest). Returns {} when nothing applies.
   const buildShotPatch = useCallback((nt: string, tp: Record<string, unknown>, refs: string[], loraName?: string): Record<string, unknown> => {
     const p: Record<string, unknown> = {};
+    const addLora = () => {
+      if (!loraName) return;
+      const loras = (tp.loras as { name: string; strengthModel: number }[] | undefined) ?? [];
+      if (!loras.some((l) => l.name === loraName)) p.loras = [...loras, { name: loraName, strengthModel: payload.loraStrength ?? 0.8 }];
+    };
+    const fillRefIfBlank = () => { if (refs[0] && !((tp.referenceImageUrl as string | undefined)?.trim())) p.referenceImageUrl = refs[0]; };
     if (nt === "comfyui_image") {
-      if (refs.length > 0) {
-        const curIp = tp.ipadapter as { model?: string; clipVision?: string; weight?: number } | undefined;
-        p.ipadapter = { model: curIp?.model ?? "", imageUrl: refs[0], imageUrls: refs, clipVision: curIp?.clipVision, weight: curIp?.weight ?? payload.ipadapterWeight ?? 0.8 };
-      }
-      if (loraName) {
-        const loras = (tp.loras as { name: string; strengthModel: number }[] | undefined) ?? [];
-        if (!loras.some((l) => l.name === loraName)) p.loras = [...loras, { name: loraName, strengthModel: payload.loraStrength ?? 0.8 }];
-      }
-      if (refs[0]) p.referenceImageUrl = refs[0];
+      const cond = deriveCharacterConditioning(payload, { ipadapter: tp.ipadapter as never, loras: tp.loras as never });
+      if (cond.ipadapter) p.ipadapter = cond.ipadapter; // fill-only-when-blank inside
+      if (cond.loras) p.loras = cond.loras;
+      fillRefIfBlank();
     } else if (nt === "comfyui_video") {
-      if (refs[0]) p.referenceImageUrl = refs[0];
-      if (loraName) {
-        const loras = (tp.loras as { name: string; strengthModel: number }[] | undefined) ?? [];
-        if (!loras.some((l) => l.name === loraName)) p.loras = [...loras, { name: loraName, strengthModel: payload.loraStrength ?? 0.8 }];
-      }
+      fillRefIfBlank();
+      addLora();
     } else if (nt === "image_gen" || nt === "storyboard" || nt === "video_task") {
-      if (refs[0]) p.referenceImageUrl = refs[0];
+      fillRefIfBlank();
     }
     return p;
-  }, [payload.ipadapterWeight, payload.loraStrength]);
+  }, [payload]);
 
   // Apply this character's identity to its shots. `wholeScene`: also reach every
   // shot sharing a sceneGroup with any directly-connected shot (agent-planned
@@ -707,7 +704,7 @@ export const CharacterNode = memo(function CharacterNode({ id, selected, data }:
 // Up to 4 alternate views. Each slot is a square with thumbnail + delete X
 // on hover; an empty slot opens a file picker. Uploads reuse the same
 // trpc.upload.uploadImage mutation as the primary reference image.
-const MAX_ADDITIONAL_IMAGES = 4;
+const MAX_ADDITIONAL_IMAGES = 8;
 function AdditionalImagesSection({
   urls,
   onChange,

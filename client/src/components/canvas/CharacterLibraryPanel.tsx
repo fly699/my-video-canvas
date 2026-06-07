@@ -15,6 +15,14 @@ export function CharacterLibraryPanel({ onClose }: { onClose: () => void }) {
     onSuccess: () => { toast.success("已从角色库删除"); refetch(); },
     onError: (e) => toast.error("删除失败：" + e.message),
   });
+  const renameMut = trpc.characterLibrary.rename.useMutation({
+    onSuccess: () => { toast.success("已重命名"); refetch(); },
+    onError: (e) => toast.error("重命名失败：" + e.message),
+  });
+  const rename = (id: number, cur: string) => {
+    const name = window.prompt("重命名角色", cur)?.trim();
+    if (name && name !== cur) renameMut.mutate({ id, name });
+  };
 
   const addToCanvas = (payload: Record<string, unknown>, i: number) => {
     try {
@@ -58,9 +66,9 @@ export function CharacterLibraryPanel({ onClose }: { onClose: () => void }) {
                 ? <img src={mediaFetchUrl(it.thumbnail)} alt="" style={{ width: "100%", height: "100%", objectFit: "cover" }} />
                 : (it.characterKind === "scene" ? <Mountain className="w-4 h-4" style={{ color: "var(--c-t4)" }} /> : <UserIcon className="w-4 h-4" style={{ color: "var(--c-t4)" }} />)}
             </div>
-            <div className="flex-1 min-w-0">
-              <div style={{ fontSize: 12, fontWeight: 600, color: "var(--c-t1)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{it.name}</div>
-              <div style={{ fontSize: 9.5, color: "var(--c-t4)" }}>{it.characterKind === "scene" ? "场景" : "人物"}{it.creatorName ? ` · ${it.creatorName}` : ""}</div>
+            <div className="flex-1 min-w-0" onDoubleClick={() => rename(it.id, it.name)} title="双击重命名">
+              <div style={{ fontSize: 12, fontWeight: 600, color: "var(--c-t1)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", cursor: "text" }}>{it.name}</div>
+              <div style={{ fontSize: 9.5, color: "var(--c-t4)" }}>{it.characterKind === "scene" ? "场景" : "人物"}</div>
             </div>
             <button onClick={() => addToCanvas(it.payload, i)} title="添加到画布" className="nodrag flex-shrink-0 flex items-center justify-center" style={{ width: 26, height: 26, borderRadius: 6, background: "oklch(0.66 0.18 30 / 0.12)", border: "1px solid oklch(0.66 0.18 30 / 0.3)", color: "oklch(0.66 0.18 30)", cursor: "pointer" }}>
               <Plus className="w-3.5 h-3.5" />

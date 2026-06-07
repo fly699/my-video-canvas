@@ -7,6 +7,8 @@ import { useHoverStore } from "../../../hooks/useHoverStore";
 import { useCanvasStore } from "../../../hooks/useCanvasStore";
 import { propagateRefImage, propagatePromptToVideo, propagateControlMap } from "../../../lib/refImagePropagation";
 import { applyFreeVramToAllComfyNodes } from "../../../lib/comfyFreeVram";
+import { connectedCharacters } from "../../../lib/characterConditioning";
+import { mergeCharactersIntoPrompt } from "../../../lib/characterPrompt";
 import { usePreferUpstreamRefSource, useAutoPreferUpstreamRefSource } from "../mediaReachability";
 import type { ComfyuiImageNodeData, ComfyuiLoraEntry } from "../../../../../shared/types";
 import { trpc } from "@/lib/trpc";
@@ -305,12 +307,17 @@ export const ComfyuiImageNode = memo(function ComfyuiImageNode({ id, selected, d
     }
     cancelledRef.current = false;
     updateNodeData(id, { status: "processing", errorMessage: undefined, progress: 0 });
+    // Inject connected characters' profile text into the prompt at submit time (the
+    // visual conditioning—IPAdapter/refs—is filled separately; this adds the textual
+    // identity like 外貌/服装). Not persisted, mirrors video_task.
+    const { nodes: gnodes, edges: gedges } = useCanvasStore.getState();
+    const finalPrompt = mergeCharactersIntoPrompt(payload.prompt ?? "", connectedCharacters(id, gedges, gnodes));
     genMutation.mutate({
       nodeId: id,
       projectId: data.projectId,
       customBaseUrl: payload.customBaseUrl?.trim() || undefined,
       workflowTemplate: payload.workflowTemplate ?? "txt2img",
-      prompt: payload.prompt,
+      prompt: finalPrompt,
       negPrompt: payload.negPrompt,
       ckpt: payload.ckpt,
       // Auto-fill the SaveImage prefix from node title + model so ComfyUI outputs
