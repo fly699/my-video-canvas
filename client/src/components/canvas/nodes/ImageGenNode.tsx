@@ -8,7 +8,8 @@ import { useCanvasStore } from "../../../hooks/useCanvasStore";
 import { propagateRefImage } from "../../../lib/refImagePropagation";
 import { useReferenceImages } from "../../../hooks/useReferenceImages";
 import { refUrls } from "../../../lib/referenceImages";
-import { connectedCharacterRefImages } from "../../../lib/characterConditioning";
+import { connectedCharacterRefImages, connectedCharacters } from "../../../lib/characterConditioning";
+import { mergeCharactersIntoPrompt } from "../../../lib/characterPrompt";
 import { ReferenceImageStrip } from "../ReferenceImageStrip";
 import { Layers } from "lucide-react";
 import type { ImageGenNodeData, ImageGenModel } from "../../../../../shared/types";
@@ -249,12 +250,15 @@ export const ImageGenNode = memo(function ImageGenNode({ id, selected, data }: P
     // Identity lock: when no reference image is manually attached, fall back to ALL
     // views of any connected Character node (multi-reference → image_urls server-side).
     const manualRefs = refUrls(payload);
+    const { edges: gedges, nodes: gnodes } = useCanvasStore.getState();
+    const connChars = connectedCharacters(id, gedges, gnodes);
     const charRefs = manualRefs.length === 0
-      ? connectedCharacterRefImages(id, useCanvasStore.getState().edges, useCanvasStore.getState().nodes)
+      ? connectedCharacterRefImages(id, gedges, gnodes)
       : [];
     const effectiveRefs = manualRefs.length ? manualRefs : charRefs;
+    const finalPrompt = mergeCharactersIntoPrompt(payload.prompt ?? "", connChars);
     const submit = () => genMutation.mutate({
-      prompt: payload.prompt,
+      prompt: finalPrompt,
       negativePrompt: payload.negativePrompt,
       style: payload.style,
       referenceImageUrl: payload.referenceImageUrl ?? charRefs[0],

@@ -85,12 +85,15 @@ function cleanupSeparators(s: string): string {
  * Each character becomes a bracketed `[…]` block prepended to the prompt so
  * the model sees structured identity context before the scene description. */
 export function mergeCharactersIntoPrompt(basePrompt: string, characters: CharacterNodeData[]): string {
-  const blocks: string[] = [];
-  for (const c of characters) {
-    const text = characterToPromptInjection(c);
-    if (text.length > 0) blocks.push(`[${text}]`);
-  }
-  if (blocks.length === 0) return basePrompt;
+  const rendered = characters
+    .map((c) => characterToPromptInjection(c))
+    .filter((t) => t.length > 0);
+  if (rendered.length === 0) return basePrompt;
+  // With multiple characters, prefix each block with an ordinal (角色1/角色2…) so
+  // models that support ordered references (@Image1 / character1) can align each
+  // identity with its reference image (passed in the same character order).
+  const multi = rendered.length > 1;
+  const blocks = rendered.map((t, i) => (multi ? `[角色${i + 1}：${t}]` : `[${t}]`));
   const prefix = blocks.join(" ");
   return basePrompt.trim().length === 0 ? prefix : `${prefix} ${basePrompt}`;
 }

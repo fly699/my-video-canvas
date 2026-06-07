@@ -8,6 +8,8 @@ import { ComfyServerUrlField } from "./ComfyServerUrlField";
 import { SyncConfigDialog } from "../SyncConfigDialog";
 import { NodeConfigTabs } from "../NodeConfigTabs";
 import { useCanvasStore } from "../../../hooks/useCanvasStore";
+import { connectedCharacters } from "../../../lib/characterConditioning";
+import { mergeCharactersIntoPrompt } from "../../../lib/characterPrompt";
 import { usePreferUpstreamRefSource, useAutoPreferUpstreamRefSource } from "../mediaReachability";
 import { WatermarkedVideo } from "@/components/WatermarkedVideo";
 import type { ComfyuiVideoNodeData } from "../../../../../shared/types";
@@ -214,12 +216,16 @@ export const ComfyuiVideoNode = memo(function ComfyuiVideoNode({ id, selected, d
     }
     cancelledRef.current = false;
     updateNodeData(id, { status: "processing", errorMessage: undefined, progress: 0 });
+    // Inject connected characters' profile text into the prompt (visual refs/LoRA
+    // are filled separately). Not persisted.
+    const { nodes: gnodes, edges: gedges } = useCanvasStore.getState();
+    const finalPrompt = mergeCharactersIntoPrompt(payload.prompt ?? "", connectedCharacters(id, gedges, gnodes));
     genMutation.mutate({
       nodeId: id,
       projectId: data.projectId,
       customBaseUrl: payload.customBaseUrl?.trim() || undefined,
       workflowTemplate: payload.workflowTemplate ?? "animatediff",
-      prompt: payload.prompt,
+      prompt: finalPrompt,
       negPrompt: payload.negPrompt,
       ckpt: payload.ckpt,
       loras: payload.loras && payload.loras.length > 0 ? payload.loras.filter((l) => l.name?.trim()) : undefined,

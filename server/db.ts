@@ -2089,10 +2089,27 @@ export async function deleteComfyNodeTemplate(id: number): Promise<void> {
 const _devCharLib: CharacterLibraryRow[] = [];
 let _devCharLibSeq = 1;
 
-export async function listCharacterLibrary(): Promise<CharacterLibraryRow[]> {
+export async function listCharacterLibrary(userId?: number): Promise<CharacterLibraryRow[]> {
   const db = await getDb();
-  if (!db) return DEV_MODE ? [..._devCharLib].sort((a, b) => +b.updatedAt - +a.updatedAt) : [];
-  return db.select().from(characterLibrary).orderBy(desc(characterLibrary.updatedAt));
+  if (!db) {
+    if (!DEV_MODE) return [];
+    const rows = userId != null ? _devCharLib.filter((r) => r.userId === userId) : _devCharLib;
+    return [...rows].sort((a, b) => +b.updatedAt - +a.updatedAt);
+  }
+  const q = db.select().from(characterLibrary);
+  const rows = userId != null
+    ? await q.where(eq(characterLibrary.userId, userId)).orderBy(desc(characterLibrary.updatedAt))
+    : await q.orderBy(desc(characterLibrary.updatedAt));
+  return rows;
+}
+
+export async function updateCharacterLibrary(id: number, patch: Partial<Pick<InsertCharacterLibrary, "name" | "note" | "payload" | "thumbnail">>): Promise<void> {
+  const db = await getDb();
+  if (!db) {
+    if (DEV_MODE) { const r = _devCharLib.find((x) => x.id === id); if (r) Object.assign(r, patch, { updatedAt: new Date() }); return; }
+    throw new Error("DB unavailable");
+  }
+  await db.update(characterLibrary).set(patch).where(eq(characterLibrary.id, id));
 }
 
 export async function getCharacterLibrary(id: number): Promise<CharacterLibraryRow | undefined> {
