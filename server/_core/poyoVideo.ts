@@ -137,11 +137,13 @@ interface MultiImageSpec {
   imageUrls?: number;       // image_urls array cap (frame mode: [0]=start [1]=end …)
   startEnd?: boolean;       // start_image_url + end_image_url (2 frames)
   referenceImages?: number; // reference_image_urls cap (multi-reference mode)
+  referenceVideos?: number; // reference_video_urls cap (multi-modal reference)
+  referenceAudios?: number; // reference_audio_urls cap (multi-modal reference)
   veoGenType?: boolean;     // also derive generation_type (frame=2 / reference=3)
 }
 const MULTI_IMAGE_SPEC: Record<string, MultiImageSpec> = {
-  "seedance-2":      { imageUrls: 2, referenceImages: 9 },
-  "seedance-2-fast": { imageUrls: 2, referenceImages: 9 },
+  "seedance-2":      { imageUrls: 2, referenceImages: 9, referenceVideos: 3, referenceAudios: 3 },
+  "seedance-2-fast": { imageUrls: 2, referenceImages: 9, referenceVideos: 3, referenceAudios: 3 },
   "veo3.1-fast":     { imageUrls: 3, veoGenType: true },
   "veo3.1-quality":  { imageUrls: 2, veoGenType: true }, // frame only, no reference
   "kling-2.1/pro":        { startEnd: true },
@@ -152,7 +154,9 @@ const MULTI_IMAGE_SPEC: Record<string, MultiImageSpec> = {
   "kling-o3/standard": { imageUrls: 2, referenceImages: 4 },
   "kling-o3/pro":      { imageUrls: 2, referenceImages: 4 },
   "kling-o3/4K":       { imageUrls: 2, referenceImages: 4 },
-  "wan2.7-image-to-video":      { imageUrls: 2 },
+  // Wan 2.7 reference mode: reference_image_urls and/or reference_video_urls.
+  "wan2.7-text-to-video":       { referenceImages: 4, referenceVideos: 3 },
+  "wan2.7-image-to-video":      { imageUrls: 2, referenceImages: 4, referenceVideos: 3 },
   "wan2.2-image-to-video-fast": { imageUrls: 2 },
   "happy-horse":     { imageUrls: 1, referenceImages: 9 },
 };
@@ -206,6 +210,10 @@ export async function submitPoyoVideo(opts: {
   /** Multi-reference images (首尾帧 / reference / elements). [0] mirrors
    *  referenceImageUrl. When >1, mapped per-model via MULTI_IMAGE_SPEC. */
   referenceImageUrls?: string[];
+  /** Multi-modal reference videos → reference_video_urls (Seedance-2 / Wan-2.7). */
+  referenceVideoUrls?: string[];
+  /** Multi-modal reference audios → reference_audio_urls (Seedance-2). */
+  referenceAudioUrls?: string[];
   params?: Record<string, unknown>;
 }): Promise<SubmitPoyoVideoResult> {
   if (!ENV.poyoApiKey) throw new Error("POYO_API_KEY is not configured");
@@ -223,6 +231,12 @@ export async function submitPoyoVideo(opts: {
   // an absolute presigned S3 URL before submitting.
   const resolvedRefs = await Promise.all(uniqueRefs.map((u) => resolveToAbsoluteUrl(u)));
 
+  // Multi-modal reference videos/audios (only forwarded for models that accept
+  // them — see MULTI_IMAGE_SPEC). Resolved to absolute URLs like images.
+  const cleanList = (list?: string[]) => Array.from(new Set((list ?? []).map((u) => u?.trim()).filter((u): u is string => Boolean(u))));
+  const resolvedVideoRefs = await Promise.all(cleanList(opts.referenceVideoUrls).map((u) => resolveToAbsoluteUrl(u)));
+  const resolvedAudioRefs = await Promise.all(cleanList(opts.referenceAudioUrls).map((u) => resolveToAbsoluteUrl(u)));
+
   const input: Record<string, unknown> = {
     prompt: opts.prompt,
     ...(opts.negativePrompt ? { negative_prompt: opts.negativePrompt } : {}),
@@ -232,6 +246,15 @@ export async function submitPoyoVideo(opts: {
   // per-model multi-image mapping (首尾帧 / reference). See helpers above.
   if (resolvedRefs.length === 1) applySingleImage(input, model, resolvedRefs[0]);
   else if (resolvedRefs.length > 1) applyMultiImage(input, model, resolvedRefs);
+
+  // Reference videos / audios (capped per the model's multi-modal spec).
+  const refSpec = MULTI_IMAGE_SPEC[model];
+  if (refSpec?.referenceVideos && resolvedVideoRefs.length > 0) {
+    input.reference_video_urls = resolvedVideoRefs.slice(0, refSpec.referenceVideos);
+  }
+  if (refSpec?.referenceAudios && resolvedAudioRefs.length > 0) {
+    input.reference_audio_urls = resolvedAudioRefs.slice(0, refSpec.referenceAudios);
+  }
 
   // Spec-driven: copy only the keys this model accepts (docs/poyo-video-api.md),
   // coercing numeric/boolean fields. Models not in the table send just prompt +

@@ -589,6 +589,9 @@ export const videoTasksRouter = router({
         // Multi-reference images (首尾帧 / reference / elements). [0] mirrors
         // referenceImageUrl; the backend maps the list per-model.
         referenceImageUrls: z.array(z.string()).max(9).optional(),
+        // Multi-modal references (Seedance-2 / Wan-2.7 reference mode).
+        referenceVideoUrls: z.array(z.string()).max(3).optional(),
+        referenceAudioUrls: z.array(z.string()).max(3).optional(),
         params: z.record(z.string(), z.unknown()).optional(),
       })
     )
@@ -602,10 +605,15 @@ export const videoTasksRouter = router({
       };
       if (input.referenceImageUrl) validateRef(input.referenceImageUrl);
       for (const u of input.referenceImageUrls ?? []) if (u?.trim()) validateRef(u.trim());
+      for (const u of input.referenceVideoUrls ?? []) if (u?.trim()) validateRef(u.trim());
+      for (const u of input.referenceAudioUrls ?? []) if (u?.trim()) validateRef(u.trim());
       // Coalesced reference list: prefer the multi-image array, fall back to the
       // single field. Drives both the inline submit and the persisted params.
       const refList = (input.referenceImageUrls?.length ? input.referenceImageUrls : (input.referenceImageUrl ? [input.referenceImageUrl] : []))
         .map((u) => u?.trim()).filter((u): u is string => Boolean(u));
+      const clean = (l?: string[]) => (l ?? []).map((u) => u?.trim()).filter((u): u is string => Boolean(u));
+      const refVideos = clean(input.referenceVideoUrls);
+      const refAudios = clean(input.referenceAudioUrls);
       // Higgsfield DoP is strictly image-to-video — fail fast at the API edge
       // so the user sees an immediate "需要参考图" error instead of waiting
       // for the background poller to retry 10 times (~100s) before failing.
@@ -619,9 +627,16 @@ export const videoTasksRouter = router({
       // dedicated column) so the background poller can re-submit with all images.
       // The `_referenceImageUrls` key is filtered out of the upstream payload by
       // VIDEO_PARAM_KEYS, so it never poisons the provider request.
-      const mergedParams: Record<string, unknown> | undefined = refList.length > 1
-        ? { ...((input.params as Record<string, unknown> | undefined) ?? {}), _referenceImageUrls: refList }
-        : (input.params as Record<string, unknown> | undefined);
+      const baseParams = (input.params as Record<string, unknown> | undefined) ?? undefined;
+      const needsStash = refList.length > 1 || refVideos.length > 0 || refAudios.length > 0;
+      const mergedParams: Record<string, unknown> | undefined = needsStash
+        ? {
+            ...(baseParams ?? {}),
+            ...(refList.length > 1 ? { _referenceImageUrls: refList } : {}),
+            ...(refVideos.length > 0 ? { _referenceVideoUrls: refVideos } : {}),
+            ...(refAudios.length > 0 ? { _referenceAudioUrls: refAudios } : {}),
+          }
+        : baseParams;
 
       // Idempotency: if this node already has a pending/processing task, return it
       // instead of creating a new one. Prevents double-charges when the client is
@@ -681,6 +696,8 @@ export const videoTasksRouter = router({
               negativePrompt: input.negativePrompt,
               referenceImageUrl: refList[0] ?? input.referenceImageUrl,
               referenceImageUrls: refList.length > 1 ? refList : undefined,
+              referenceVideoUrls: refVideos.length > 0 ? refVideos : undefined,
+              referenceAudioUrls: refAudios.length > 0 ? refAudios : undefined,
               params: input.params as Record<string, unknown>,
             });
             externalTaskId = result.externalTaskId;

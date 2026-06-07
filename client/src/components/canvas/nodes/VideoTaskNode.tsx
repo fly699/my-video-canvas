@@ -236,6 +236,12 @@ const SUPPORTS_NEGATIVE_PROMPT = new Set<string>([
   "poyo_kling21_std", "poyo_kling21_pro", "poyo_kling25_turbo",
 ]);
 
+// Multi-modal reference (docs/poyo-video-api.md §五/§六): models that accept
+// reference videos / audios. Collected from connected upstream `asset` nodes
+// (video / audio) and sent as reference_video_urls / reference_audio_urls.
+const SUPPORTS_REF_VIDEO = new Set<string>(["poyo_seedance", "poyo_seedance2_fast", "poyo_wan27_t2v", "poyo_wan27_i2v"]);
+const SUPPORTS_REF_AUDIO = new Set<string>(["poyo_seedance", "poyo_seedance2_fast"]);
+
 // ── Reusable param sets for the expanded model catalog ──
 const AR_3 = [{ value: "16:9", label: "16:9 横屏" }, { value: "9:16", label: "9:16 竖屏" }, { value: "1:1", label: "1:1 方形" }];
 const AR_2 = [{ value: "16:9", label: "16:9 横屏" }, { value: "9:16", label: "9:16 竖屏" }];
@@ -808,6 +814,7 @@ export const VideoTaskNode = memo(function VideoTaskNode({ id, selected, data }:
 
     const { prompt: finalPrompt, referenceImageUrl: finalRefImage } = composeSubmissionContext();
 
+    const refMedia = collectRefMedia(payload.provider);
     const submit = () => createTaskMutation.mutate({
       projectId: data.projectId, nodeId: id,
       provider: payload.provider, prompt: finalPrompt,
@@ -815,6 +822,8 @@ export const VideoTaskNode = memo(function VideoTaskNode({ id, selected, data }:
       negativePrompt: SUPPORTS_NEGATIVE_PROMPT.has(payload.provider) ? payload.negativePrompt : undefined,
       referenceImageUrl: finalRefImage,
       referenceImageUrls: buildRefUrls(payload.provider, finalRefImage),
+      referenceVideoUrls: refMedia.videoRefs,
+      referenceAudioUrls: refMedia.audioRefs,
       params: withParamDefaults(payload.provider, payload.params),
     });
     guard({ model: payload.provider, refImageUrl: finalRefImage }, submit);
@@ -861,6 +870,24 @@ export const VideoTaskNode = memo(function VideoTaskNode({ id, selected, data }:
     const max = maxRefImagesForProvider(provider);
     return max > 1 && base.length > 1 ? base.slice(0, max) : undefined;
   }, [refImages.images]);
+
+  // Multi-modal references: pull video/audio URLs from connected upstream `asset`
+  // nodes (which can already wire into video_task), for models that accept them.
+  const collectRefMedia = useCallback((provider: string): { videoRefs?: string[]; audioRefs?: string[] } => {
+    if (!SUPPORTS_REF_VIDEO.has(provider) && !SUPPORTS_REF_AUDIO.has(provider)) return {};
+    const { nodes: allNodes, edges: allEdges } = useCanvasStore.getState();
+    const vids: string[] = [], auds: string[] = [];
+    for (const e of allEdges) {
+      if (e.target !== id) continue;
+      const src = allNodes.find((n) => n.id === e.source);
+      if (!src || src.data.nodeType !== "asset") continue;
+      const p = src.data.payload as { type?: string; url?: string };
+      if (!p.url) continue;
+      if (p.type === "video" && SUPPORTS_REF_VIDEO.has(provider)) vids.push(p.url);
+      else if (p.type === "audio" && SUPPORTS_REF_AUDIO.has(provider)) auds.push(p.url);
+    }
+    return { videoRefs: vids.length ? vids.slice(0, 3) : undefined, audioRefs: auds.length ? auds.slice(0, 3) : undefined };
+  }, [id]);
 
   // [CHARGED] / [CHARGED?] are server-side markers that indicate the upstream
   // provider has (almost certainly / possibly) already billed for this task,
@@ -1278,7 +1305,7 @@ export const VideoTaskNode = memo(function VideoTaskNode({ id, selected, data }:
                       // but each provider still needs its OWN required-field defaults
                       // (resolution/aspect_ratio/duration/...) since the backend no longer
                       // hard-defaults them — so pass that provider's ParamDef defaults.
-                      { nodeId: id, projectId: data.projectId, provider, prompt: submission.prompt, negativePrompt: SUPPORTS_NEGATIVE_PROMPT.has(provider) ? payload.negativePrompt : undefined, referenceImageUrl: submission.referenceImageUrl, referenceImageUrls: buildRefUrls(provider, submission.referenceImageUrl), params: withParamDefaults(provider, {}) },
+                      { nodeId: id, projectId: data.projectId, provider, prompt: submission.prompt, negativePrompt: SUPPORTS_NEGATIVE_PROMPT.has(provider) ? payload.negativePrompt : undefined, referenceImageUrl: submission.referenceImageUrl, referenceImageUrls: buildRefUrls(provider, submission.referenceImageUrl), referenceVideoUrls: collectRefMedia(provider).videoRefs, referenceAudioUrls: collectRefMedia(provider).audioRefs, params: withParamDefaults(provider, {}) },
                       {
                         onSuccess: (result) => {
                           if (parallelGenRef.current !== gen) return; // stale — user closed parallel mode
