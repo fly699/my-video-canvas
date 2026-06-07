@@ -11,7 +11,7 @@ import { compareUpstreamNodes } from "./inputOrder";
 type MiniNode = { id: string; data: { nodeType: string; payload?: unknown; title?: string }; position?: { y?: number } };
 type MiniEdge = { source: string; target: string };
 
-const IMAGE_SOURCE_TYPES = new Set(["image_gen", "comfyui_image", "storyboard", "comfyui_workflow", "asset", "character"]);
+const IMAGE_SOURCE_TYPES = new Set(["image_gen", "comfyui_image", "storyboard", "comfyui_workflow", "asset"]);
 
 /** Pick a node's image-output URL regardless of which field/type it uses. */
 function getNodeImageUrl(nodeType: string, payload: Record<string, unknown>): string | undefined {
@@ -20,8 +20,6 @@ function getNodeImageUrl(nodeType: string, payload: Record<string, unknown>): st
     if (mt && !mt.startsWith("image/")) return undefined;
     return payload.url as string | undefined;
   }
-  // A connected Character contributes its primary reference image (identity lock).
-  if (nodeType === "character") return payload.referenceImageUrl as string | undefined;
   // comfyui_workflow stores its result in outputUrl, but only treat it as an
   // image when the run produced images (not a video).
   if (nodeType === "comfyui_workflow" && payload.outputType === "video") return undefined;
@@ -257,6 +255,18 @@ export function fillWorkflowLoraParam(
   const key = `${b.nodeId}.${b.fieldPath}`;
   if (!isParamAtDefault(paramValues[key], b)) return paramValues; // user-picked → keep
   return { ...paramValues, [key]: loraName };
+}
+
+/** The workflow's positive-prompt param key (`nodeId.fieldPath`), or null. Same
+ *  resolution as fillWorkflowPromptParams' posB — exported so callers can AUGMENT
+ *  the effective positive (e.g. prepend character identity) without replacing it. */
+export function positivePromptParamKey(bindings: WorkflowParamBinding[] | undefined): string | null {
+  const texts = (bindings ?? []).filter((b) => b.type === "text");
+  const isNeg = (b: WorkflowParamBinding) => b.role === "negative" || (!b.role && /负|negative/i.test(b.label));
+  const posB = texts.find((b) => b.role === "positive")
+    ?? texts.find((b) => !b.role && /提示词|prompt/i.test(b.label) && !isNeg(b))
+    ?? texts.find((b) => !isNeg(b));
+  return posB ? `${posB.nodeId}.${posB.fieldPath}` : null;
 }
 
 /** Fill blank positive / negative prompt params from upstream prompt text.
