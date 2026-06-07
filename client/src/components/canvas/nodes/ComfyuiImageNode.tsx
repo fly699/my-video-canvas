@@ -73,7 +73,7 @@ export const ComfyuiImageNode = memo(function ComfyuiImageNode({ id, selected, d
   const connectState = useConnectState(id, "comfyui_image");
   const updateNodeData = useCanvasStore((s) => s.updateNodeData);
   const payload = data.payload;
-  useComfyUpstreamAutoFill(id, payload, updateNodeData);
+  useComfyUpstreamAutoFill(id, payload, updateNodeData, { characterConditioning: true });
   // Auto-prefer the upstream AI temporary public URL as the reference source when
   // the admin toggle is on and that URL probes alive (no-op when off / default).
   const preferUpstreamRef = usePreferUpstreamRefSource();

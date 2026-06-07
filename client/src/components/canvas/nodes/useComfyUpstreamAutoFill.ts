@@ -1,12 +1,17 @@
 import { useEffect } from "react";
 import { useCanvasStore } from "../../../hooks/useCanvasStore";
 import { detectUpstreamPrompt, detectUpstreamImages } from "../../../lib/comfyWorkflowParams";
+import { deriveCharacterConditioning } from "../../../lib/characterConditioning";
+import type { CharacterNodeData, ComfyuiIPAdapter, ComfyuiLoraEntry } from "../../../../../shared/types";
 
 interface AutoFillPayload {
   prompt?: string;
   negPrompt?: string;
   referenceImageUrl?: string;
   referenceImages?: { id: string; url: string; source?: string }[];
+  // ComfyUI image-node conditioning (present only on comfyui_image nodes).
+  ipadapter?: ComfyuiIPAdapter;
+  loras?: ComfyuiLoraEntry[];
 }
 
 /**
@@ -21,9 +26,11 @@ export function useComfyUpstreamAutoFill(
   id: string,
   payload: AutoFillPayload,
   updateNodeData: (id: string, patch: Record<string, unknown>, silent?: boolean) => void,
+  opts?: { characterConditioning?: boolean },
 ) {
   const edges = useCanvasStore((s) => s.edges);
   const nodes = useCanvasStore((s) => s.nodes);
+  const characterConditioning = opts?.characterConditioning ?? false;
   useEffect(() => {
     const patch: Record<string, unknown> = {};
 
@@ -45,7 +52,32 @@ export function useComfyUpstreamAutoFill(
       }
     }
 
+    // Character → IPAdapter face-lock + character LoRA (comfyui_image only, opt-in).
+    // Fill-only-when-blank, so user edits and the no-op once-filled guard hold.
+    if (characterConditioning) {
+      const charPayload = upstreamCharacter(id, edges, nodes);
+      if (charPayload) {
+        const cond = deriveCharacterConditioning(charPayload, { ipadapter: payload.ipadapter, loras: payload.loras });
+        if (cond.ipadapter) patch.ipadapter = cond.ipadapter;
+        if (cond.loras) patch.loras = cond.loras;
+      }
+    }
+
     if (Object.keys(patch).length > 0) updateNodeData(id, patch, true);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [id, edges, nodes, payload.prompt, payload.negPrompt, payload.referenceImageUrl]);
+  }, [id, edges, nodes, payload.prompt, payload.negPrompt, payload.referenceImageUrl, characterConditioning]);
+}
+
+/** First connected upstream `character` node's payload (with any conditioning). */
+function upstreamCharacter(
+  id: string,
+  edges: { source: string; target: string }[],
+  nodes: { id: string; data: { nodeType: string; payload?: unknown } }[],
+): CharacterNodeData | undefined {
+  for (const e of edges) {
+    if (e.target !== id) continue;
+    const src = nodes.find((n) => n.id === e.source);
+    if (src?.data.nodeType === "character") return src.data.payload as CharacterNodeData;
+  }
+  return undefined;
 }
