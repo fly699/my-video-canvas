@@ -150,11 +150,12 @@ export function applyAgentOperations(
           liveIds.add(node.id);
           typeById.set(node.id, op.nodeType as NodeType);
           if (op.title) store.updateNodeTitle(node.id, op.title);
-          // Stamp ownership so the originating agent can scope/select/run/clear its
-          // own nodes (multi-agent canvases). Stored in payload like `createdBy`.
+          // Stamp ownership (multi-agent) + scene membership (so a Character can
+          // "应用到本场景所有镜头"). Both stored in payload like `createdBy`.
           const ownedPayload = {
             ...(payload ?? {}),
             ...(opts.ownerAgentId ? { ownerAgentId: opts.ownerAgentId } : {}),
+            ...(op.sceneGroup?.trim() ? { sceneGroup: op.sceneGroup.trim() } : {}),
           };
           if (Object.keys(ownedPayload).length) {
             store.updateNodeData(node.id, ownedPayload as Partial<NodeData>, true);

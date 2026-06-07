@@ -161,36 +161,58 @@ export const CharacterNode = memo(function CharacterNode({ id, selected, data }:
   // weight, preserving the user's model) + the character LoRA; other generation
   // nodes get the face reference image. Explicit action → overwrites the face ref.
   const batchUpdateNodeData = useCanvasStore((s) => s.batchUpdateNodeData);
-  const applyToConnectedShots = useCallback(() => {
+  // Build the identity patch for one target shot node (IPAdapter+LoRA for ComfyUI
+  // image; reference image for the rest). Returns {} when nothing applies.
+  const buildShotPatch = useCallback((nt: string, tp: Record<string, unknown>, refs: string[], loraName?: string): Record<string, unknown> => {
+    const p: Record<string, unknown> = {};
+    if (nt === "comfyui_image") {
+      if (refs.length > 0) {
+        const curIp = tp.ipadapter as { model?: string; clipVision?: string; weight?: number } | undefined;
+        p.ipadapter = { model: curIp?.model ?? "", imageUrl: refs[0], imageUrls: refs, clipVision: curIp?.clipVision, weight: curIp?.weight ?? payload.ipadapterWeight ?? 0.8 };
+      }
+      if (loraName) {
+        const loras = (tp.loras as { name: string; strengthModel: number }[] | undefined) ?? [];
+        if (!loras.some((l) => l.name === loraName)) p.loras = [...loras, { name: loraName, strengthModel: payload.loraStrength ?? 0.8 }];
+      }
+      if (refs[0]) p.referenceImageUrl = refs[0];
+    } else if (nt === "image_gen" || nt === "storyboard" || nt === "video_task" || nt === "comfyui_video") {
+      if (refs[0]) p.referenceImageUrl = refs[0];
+    }
+    return p;
+  }, [payload.ipadapterWeight, payload.loraStrength]);
+
+  // Apply this character's identity to its shots. `wholeScene`: also reach every
+  // shot sharing a sceneGroup with any directly-connected shot (agent-planned
+  // scenes stamp `sceneGroup` on nodes), so one click covers the whole scene.
+  const applyToConnectedShots = useCallback((wholeScene = false) => {
     const st = useCanvasStore.getState();
     const refs = characterReferenceImages(payload);
     const loraName = payload.loraName?.trim();
-    const updates: { id: string; payload: Record<string, unknown> }[] = [];
-    for (const e of st.edges) {
-      if (e.source !== id) continue;
-      const t = st.nodes.find((n) => n.id === e.target);
-      if (!t) continue;
-      const nt = t.data.nodeType;
-      const tp = t.data.payload as Record<string, unknown>;
-      const p: Record<string, unknown> = {};
-      if (nt === "comfyui_image") {
-        if (refs.length > 0) {
-          const curIp = tp.ipadapter as { model?: string; clipVision?: string; weight?: number } | undefined;
-          p.ipadapter = { model: curIp?.model ?? "", imageUrl: refs[0], imageUrls: refs, clipVision: curIp?.clipVision, weight: curIp?.weight ?? payload.ipadapterWeight ?? 0.8 };
-        }
-        if (loraName) {
-          const loras = (tp.loras as { name: string; strengthModel: number }[] | undefined) ?? [];
-          if (!loras.some((l) => l.name === loraName)) p.loras = [...loras, { name: loraName, strengthModel: payload.loraStrength ?? 0.8 }];
-        }
-        if (refs[0]) p.referenceImageUrl = refs[0];
-      } else if (nt === "image_gen" || nt === "storyboard" || nt === "video_task" || nt === "comfyui_video") {
-        if (refs[0]) p.referenceImageUrl = refs[0];
+    const directTargetIds = new Set(st.edges.filter((e) => e.source === id).map((e) => e.target));
+    const targetIds = new Set(directTargetIds);
+    if (wholeScene) {
+      const sceneKeys = new Set<string>();
+      for (const t of st.nodes) {
+        if (!directTargetIds.has(t.id)) continue;
+        const sg = (t.data.payload as { sceneGroup?: string }).sceneGroup?.trim();
+        if (sg) sceneKeys.add(sg);
       }
+      if (sceneKeys.size > 0) {
+        for (const n of st.nodes) {
+          const sg = (n.data.payload as { sceneGroup?: string }).sceneGroup?.trim();
+          if (sg && sceneKeys.has(sg)) targetIds.add(n.id);
+        }
+      }
+    }
+    const updates: { id: string; payload: Record<string, unknown> }[] = [];
+    for (const t of st.nodes) {
+      if (!targetIds.has(t.id)) continue;
+      const p = buildShotPatch(t.data.nodeType, (t.data.payload ?? {}) as Record<string, unknown>, refs, loraName);
       if (Object.keys(p).length > 0) updates.push({ id: t.id, payload: p });
     }
-    if (updates.length > 0) { batchUpdateNodeData(updates); toast.success(`角色已套用到 ${updates.length} 个连接的节点`); }
-    else toast.info("没有可套用的连接节点（先把本角色连到生成/分镜节点）");
-  }, [id, payload, batchUpdateNodeData]);
+    if (updates.length > 0) { batchUpdateNodeData(updates); toast.success(`角色已套用到 ${updates.length} 个${wholeScene ? "本场景" : "连接的"}节点`); }
+    else toast.info(wholeScene ? "未找到本场景的镜头（场景信息由智能体规划时生成）" : "没有可套用的连接节点（先把本角色连到生成/分镜节点）");
+  }, [id, payload, batchUpdateNodeData, buildShotPatch]);
 
   const uploadMutation = trpc.upload.uploadImage.useMutation({
     onSuccess: (result) => {
@@ -562,11 +584,18 @@ export const CharacterNode = memo(function CharacterNode({ id, selected, data }:
                   onValueChange={(v: string) => { const n = parseFloat(v); update("ipadapterWeight", Number.isFinite(n) ? n : undefined); }} />
               </div>
             </div>
-            <button onClick={applyToConnectedShots} className="nodrag flex items-center justify-center gap-1.5 w-full py-1.5 rounded-lg transition-all"
-              style={{ fontSize: 11.5, fontWeight: 600, background: accentA(0.16), border: `1px solid ${accentA(0.4)}`, color: accent, cursor: "pointer" }}
-              title="把本角色的人脸参考 + LoRA 套用到所有连接的生成/分镜节点（comfyui_image 走 IPAdapter）">
-              <User className="w-3.5 h-3.5" /> 应用到所有连接的分镜
-            </button>
+            <div className="flex gap-1.5">
+              <button onClick={() => applyToConnectedShots(false)} className="nodrag flex items-center justify-center gap-1.5 flex-1 py-1.5 rounded-lg transition-all"
+                style={{ fontSize: 11.5, fontWeight: 600, background: accentA(0.16), border: `1px solid ${accentA(0.4)}`, color: accent, cursor: "pointer" }}
+                title="把本角色的人脸参考 + LoRA 套用到所有连接的生成/分镜节点（comfyui_image 走 IPAdapter）">
+                <User className="w-3.5 h-3.5" /> 应用到连接的分镜
+              </button>
+              <button onClick={() => applyToConnectedShots(true)} className="nodrag flex items-center justify-center gap-1 py-1.5 px-2.5 rounded-lg transition-all whitespace-nowrap"
+                style={{ fontSize: 11, fontWeight: 600, background: "transparent", border: `1px solid ${accentA(0.4)}`, color: accent, cursor: "pointer" }}
+                title="套用到与已连接镜头同属一个场景的全部镜头（场景信息由智能体规划时生成）">
+                本场景
+              </button>
+            </div>
             <div style={{ fontSize: 9, color: "var(--c-t4)", marginTop: 5, lineHeight: 1.4 }}>
               连到 ComfyUI 图像节点会自动填 IPAdapter 人脸参考（需在该节点选 IPAdapter 模型；服务端仅 SD 体系支持 IPAdapter，Flux/SD3 走参考图/提示词）。
             </div>

@@ -68,4 +68,11 @@ describe("connectedCharacterRefImages", () => {
     const nodes = [N("a", "asset", { url: "x.png" })];
     expect(connectedCharacterRefImages("vt", [{ source: "a", target: "vt" }], nodes)).toEqual([]);
   });
+  it("orders by position (topmost character is primary) regardless of edge order", () => {
+    const P = (id: string, y: number, url: string) => ({ id, data: { nodeType: "character", payload: { characterKind: "person", referenceImageUrl: url } }, position: { x: 0, y } });
+    const nodes = [P("low", 500, "low.png"), P("high", 100, "high.png"), N("vt", "video_task", {})];
+    // edges list the low character first, but the higher (smaller y) wins priority
+    const edges = [{ source: "low", target: "vt" }, { source: "high", target: "vt" }];
+    expect(connectedCharacterRefImages("vt", edges, nodes)).toEqual(["high.png", "low.png"]);
+  });
 });
