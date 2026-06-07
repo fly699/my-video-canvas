@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { useLocation } from "wouter";
-import { Lock, Paperclip, Send, ShieldCheck, Users, Trash2, LogOut, X, FileIcon, ImageIcon, Film, FolderOpen, Download, Camera, Crop } from "lucide-react";
+import { Lock, Paperclip, Send, ShieldCheck, Users, Trash2, LogOut, X, FileIcon, ImageIcon, Film, FolderOpen, Download, Crop } from "lucide-react";
 import { captureScreen, CropSelectOverlay, ScreenshotEditor } from "./ScreenshotEditor";
 import { ComfyServerStatusIndicator } from "../canvas/ComfyServerStatusIndicator";
 import { useChat, SERVERLESS_ENCRYPT_PROMPT_BYTES } from "@/hooks/useChat";
@@ -29,13 +29,13 @@ export function ChatView({ membersOpen: _m }: { membersOpen?: boolean }) {
   const [shotUrl, setShotUrl] = useState<string | null>(null);
   const [cropSrc, setCropSrc] = useState<string | null>(null);
   const [capturing, setCapturing] = useState(false);
-  async function screenshot(crop: boolean) {
+  async function screenshot() {
     if (capturing) return;
     setCapturing(true);
     try {
       const url = await captureScreen();
       if (!url) { toast.info("已取消，或当前浏览器/环境不支持屏幕截图（需 HTTPS）"); return; }
-      if (crop) setCropSrc(url); else setShotUrl(url);
+      setCropSrc(url);
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "截图失败");
     } finally { setCapturing(false); }
@@ -199,8 +199,7 @@ export function ChatView({ membersOpen: _m }: { membersOpen?: boolean }) {
       <div style={{ display: "flex", alignItems: "flex-end", gap: 8, padding: "8px 16px 14px", flexShrink: 0 }}>
         <input ref={fileRef} type="file" hidden multiple onChange={(e) => { if (e.target.files) addFiles(e.target.files); e.target.value = ""; }} />
         <button onClick={() => fileRef.current?.click()} title={`添加文件（单文件 ≤ ${maxFileMb}MB）`} style={iconBtn}><Paperclip size={18} /></button>
-        <button onClick={() => screenshot(false)} disabled={capturing} title="整屏截图（选择屏幕/窗口后，整张可标注再发送）" style={{ ...iconBtn, opacity: capturing ? 0.5 : 1 }}><Camera size={18} /></button>
-        <button onClick={() => screenshot(true)} disabled={capturing} title="框选截图（跨屏跨窗口：选择屏幕/窗口后，在截图上拖框选区域）" style={{ ...iconBtn, opacity: capturing ? 0.5 : 1 }}><Crop size={18} /></button>
+        <button onClick={() => screenshot()} disabled={capturing} title="框选截图（跨屏跨窗口：选择屏幕/窗口后，在截图上拖框选区域）" style={{ ...iconBtn, opacity: capturing ? 0.5 : 1 }}><Crop size={18} /></button>
         <textarea value={text} onChange={(e) => { setText(e.target.value); emitTyping(); }}
           onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); void doSend(); } }}
           onPaste={(e) => {
