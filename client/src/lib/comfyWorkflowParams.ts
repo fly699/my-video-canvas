@@ -186,6 +186,7 @@ export function fillWorkflowPromptParams(
   bindings: WorkflowParamBinding[] | undefined,
   paramValues: Record<string, unknown>,
   prompts: { positive?: string; negative?: string },
+  opts?: { force?: boolean },
 ): Record<string, unknown> {
   if (!prompts.positive && !prompts.negative) return paramValues;
   const texts = (bindings ?? []).filter((b) => b.type === "text");
@@ -201,10 +202,12 @@ export function fillWorkflowPromptParams(
   // default text (e.g. "一个女孩在操场上") doesn't silently ignore an explicitly
   // connected upstream prompt node. A value the user deliberately typed in the
   // node (i.e. differing from the default) is preserved, matching prior behavior.
+  // `force` (上游提示词优先): override even a user-typed value whenever an upstream
+  // prompt exists. Default = fill only when blank / at the workflow's built-in default.
   const set = (b: WorkflowParamBinding | undefined, v: string | undefined) => {
     if (!b || !v) return;
     const key = `${b.nodeId}.${b.fieldPath}`;
-    if (isParamAtDefault(next[key], b)) next[key] = v;
+    if (opts?.force || isParamAtDefault(next[key], b)) next[key] = v;
   };
   set(posB, prompts.positive);
   set(negB, prompts.negative);

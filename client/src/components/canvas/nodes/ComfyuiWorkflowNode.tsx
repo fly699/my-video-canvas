@@ -355,7 +355,7 @@ export const ComfyuiWorkflowNode = memo(function ComfyuiWorkflowNode({ id, selec
       // Explicit per-param「来源」mapping first, then smart auto-fill the rest.
       const imgResolved = resolveImageParamsWithMap(payload.paramBindings, payload.paramValues ?? {}, sources, payload.imageSourceMap ?? {});
       const imageParamKeys = imgResolved.imageParamKeys;
-      const paramValues = fillWorkflowPromptParams(payload.paramBindings, imgResolved.paramValues, upstreamPrompt);
+      const paramValues = fillWorkflowPromptParams(payload.paramBindings, imgResolved.paramValues, upstreamPrompt, { force: payload.preferUpstreamPrompt === true });
       // Seed handling: unless the user pinned the seed (randomizeSeed === false),
       // re-randomize every seed param each run, and persist the used value back so
       // the form reflects what was actually sent.
@@ -888,6 +888,28 @@ export const ComfyuiWorkflowNode = memo(function ComfyuiWorkflowNode({ id, selec
               <div style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 10.5, color: "oklch(0.7 0.16 145)" }}>
                 <ImageIcon size={11} />
                 已连接上游图片，运行时将自动填入留空的图像参数
+              </div>
+            )}
+
+            {/* Prompt priority — only when the workflow exposes a text/prompt param.
+                仅填空(默认): only fill blank/default prompt from upstream; 上游优先:
+                a connected upstream prompt overrides this node's prompt on run. */}
+            {(payload.paramBindings ?? []).some((b) => b.type === "text") && (
+              <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 4 }}>
+                <label style={{ ...labelStyle, marginBottom: 0 }}>提示词</label>
+                <div style={{ display: "flex", gap: 6, flex: 1 }}>
+                  {([["fill", "仅填空", false], ["prefer", "上游优先", true]] as const).map(([k, lbl, val]) => {
+                    const active = (payload.preferUpstreamPrompt === true) === val;
+                    return (
+                      <button
+                        key={k}
+                        onClick={() => update({ preferUpstreamPrompt: val })}
+                        title={val ? "运行时若连了上游提示词/分镜，强制覆盖本节点的提示词参数" : "仅当本节点提示词为空或为工作流默认值时，才用上游提示词填入"}
+                        style={{ flex: 1, padding: "5px 4px", fontSize: 11, borderRadius: 7, cursor: "pointer", borderWidth: 1, borderStyle: "solid", borderColor: active ? accent : BORDER_DEFAULT, background: active ? `${accent}1f` : "transparent", color: active ? accent : "var(--c-t2)", fontWeight: active ? 600 : 400 }}
+                      >{lbl}</button>
+                    );
+                  })}
+                </div>
               </div>
             )}
 

@@ -34,6 +34,11 @@ describe("fillWorkflowPromptParams — upstream overrides workflow defaults", ()
     expect(out["6.inputs.text"]).toBe("我自己写的提示词"); // user edit wins over upstream-fill
   });
 
+  it("force (上游提示词优先) overrides even a user-typed prompt", () => {
+    const out = fillWorkflowPromptParams(bindings, { "6.inputs.text": "我自己写的提示词" }, { positive: "上游提示" }, { force: true });
+    expect(out["6.inputs.text"]).toBe("上游提示"); // upstream wins when prefer-upstream is on
+  });
+
   it("never touches non-text params (e.g. seed)", () => {
     const out = fillWorkflowPromptParams(bindings, { "3.inputs.seed": 42 }, { positive: "x" });
     expect(out["3.inputs.seed"]).toBe(42);
