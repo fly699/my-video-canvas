@@ -19,7 +19,7 @@ import { ImageLightbox } from "../ImageLightbox";
 import { toast } from "sonner";
 import {
   Workflow, Loader2, Upload, X, ChevronDown, ChevronRight,
-  Server, Play, RotateCcw, ImageIcon, FileVideo, Plus, Trash2, Copy,
+  Server, Play, RotateCcw, ImageIcon, FileVideo, Plus, Trash2, Copy, AlertTriangle,
 } from "lucide-react";
 import { SyncConfigDialog } from "../SyncConfigDialog";
 import { NodeTextArea, NodeInput } from "../NodeTextInput";
@@ -204,6 +204,17 @@ export const ComfyuiWorkflowNode = memo(function ComfyuiWorkflowNode({ id, selec
       ?? texts.find((b) => !isNeg(b));
     return { detected, hasTextParam: texts.length > 0, hasPosTarget: !!posB };
   }, [id, edgesForSources, nodesForSources, payload.paramBindings]);
+  // Param bindings whose node id no longer exists in the current workflow JSON —
+  // a stale binding map (workflow re-imported/edited without re-analyzing). Their
+  // values won't be injected, so we warn and gate Run on it (see handleRun).
+  const staleBindingNodeIds = useMemo(() => {
+    const bindings = payload.paramBindings ?? [];
+    if (bindings.length === 0 || !payload.workflowJson?.trim()) return [] as string[];
+    let wf: Record<string, unknown> | null = null;
+    try { wf = JSON.parse(payload.workflowJson) as Record<string, unknown>; } catch { return [] as string[]; }
+    if (!wf || typeof wf !== "object") return [] as string[];
+    return Array.from(new Set(bindings.filter((b) => !(b.nodeId in wf!)).map((b) => b.nodeId)));
+  }, [payload.paramBindings, payload.workflowJson]);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const [localJson, setLocalJson] = useState(payload.workflowJson ?? "");
@@ -358,6 +369,25 @@ export const ComfyuiWorkflowNode = memo(function ComfyuiWorkflowNode({ id, selec
   const handleRun = useCallback(async () => {
     const workflowJson = payload.workflowJson ?? "";
     if (!workflowJson.trim()) { toast.error("请先加载 Workflow JSON"); return; }
+    // Guard against a stale binding map: if any param binding points at a node id
+    // that no longer exists in the current workflow JSON (e.g. the workflow was
+    // re-imported/edited without re-analyzing), its value — including a forced
+    // upstream prompt — would be injected onto a missing node and silently dropped,
+    // making「上游优先」appear broken. Abort and ask the user to re-analyze.
+    const bindings = payload.paramBindings ?? [];
+    if (bindings.length > 0) {
+      let wfNodes: Record<string, unknown> | null = null;
+      try { wfNodes = JSON.parse(workflowJson) as Record<string, unknown>; } catch { wfNodes = null; }
+      if (wfNodes && typeof wfNodes === "object") {
+        const missing = Array.from(new Set(
+          bindings.filter((b) => !(b.nodeId in wfNodes!)).map((b) => b.nodeId),
+        ));
+        if (missing.length > 0) {
+          toast.error(`参数绑定已与当前 Workflow 不同步（缺失节点 ${missing.join("、")}），提示词/参数可能无法生效。请点「分析参数」重新分析后再运行。`);
+          return;
+        }
+      }
+    }
     update({ status: "processing", errorMessage: undefined, progress: 0 }, true);
     try {
       // Pull upstream images (multi-reference → fill blank image params in order)
@@ -923,6 +953,16 @@ export const ComfyuiWorkflowNode = memo(function ComfyuiWorkflowNode({ id, selec
                     );
                   })}
                 </div>
+              </div>
+            )}
+
+            {/* Stale binding map warning: a binding points at a node id no longer in
+                the workflow → its value (incl. forced upstream prompt) won't inject.
+                Run is gated on this in handleRun; surface it here too. */}
+            {staleBindingNodeIds.length > 0 && (
+              <div style={{ fontSize: 10.5, color: "oklch(0.7 0.2 25)", marginBottom: 4, lineHeight: 1.4, display: "flex", alignItems: "flex-start", gap: 4 }}>
+                <AlertTriangle size={12} style={{ flexShrink: 0, marginTop: 1 }} />
+                <span>参数绑定与当前 Workflow 不同步（缺失节点 {staleBindingNodeIds.join("、")}）。请点「分析参数」重新分析，否则提示词/参数不会生效。</span>
               </div>
             )}
 
