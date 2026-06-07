@@ -11,6 +11,7 @@ import { refUrls } from "../../../lib/referenceImages";
 import { connectedCharacterRefImages, connectedCharacters } from "../../../lib/characterConditioning";
 import { mergeCharactersIntoPrompt } from "../../../lib/characterPrompt";
 import { detectUpstreamPrompt } from "../../../lib/comfyWorkflowParams";
+import { connectedEffectPrompts, appendEffectPrompts } from "../../../lib/effectPrompt";
 import { ReferenceImageStrip } from "../ReferenceImageStrip";
 import { Layers } from "lucide-react";
 import type { ImageGenNodeData, ImageGenModel } from "../../../../../shared/types";
@@ -269,7 +270,12 @@ export const ImageGenNode = memo(function ImageGenNode({ id, selected, data }: P
     // connected characters × multi-view can exceed 8, which would otherwise be
     // rejected as BAD_REQUEST before any image is generated.
     const effectiveRefs = (manualRefs.length ? manualRefs : charRefs).slice(0, 8);
-    const finalPrompt = mergeCharactersIntoPrompt(payload.prompt ?? "", connChars);
+    // Augment with any connected post_process「效果注入」effect prompts (after the
+    // character merge), so a wired post_process node actually affects the image.
+    const finalPrompt = appendEffectPrompts(
+      mergeCharactersIntoPrompt(payload.prompt ?? "", connChars),
+      connectedEffectPrompts(id, gedges, gnodes),
+    );
     const submit = () => genMutation.mutate({
       prompt: finalPrompt,
       negativePrompt: payload.negativePrompt,

@@ -8,6 +8,7 @@ import type { VideoTaskNodeData, VideoProvider, CharacterNodeData } from "../../
 import { maxRefImagesForProvider } from "../../../../../shared/videoRefCaps";
 import { mergeCharactersIntoPrompt } from "../../../lib/characterPrompt";
 import { connectedCharacterRefImages, connectedCharacters } from "../../../lib/characterConditioning";
+import { connectedEffectPrompts, appendEffectPrompts } from "../../../lib/effectPrompt";
 import { detectUpstreamPrompt } from "../../../lib/comfyWorkflowParams";
 import { trpc } from "@/lib/trpc";
 import { toast } from "sonner";
@@ -864,8 +865,13 @@ export const VideoTaskNode = memo(function VideoTaskNode({ id, selected, data }:
     return {
       // Cap to the server's prompt limit (z.string().max(4000)); the base prompt is
       // preserved and only the injected character text is trimmed to fit — otherwise
-      // many/long character profiles could push it over 4000 → BAD_REQUEST.
-      prompt: mergeCharactersIntoPrompt(payload.prompt ?? "", chars, 4000),
+      // many/long character profiles could push it over 4000 → BAD_REQUEST. Also append
+      // any connected post_process「效果注入」effect prompts so a wired post_process works.
+      prompt: appendEffectPrompts(
+        mergeCharactersIntoPrompt(payload.prompt ?? "", chars, 4000),
+        connectedEffectPrompts(id, allEdges, allNodes),
+        4000,
+      ),
       referenceImageUrl: payload.referenceImageUrl?.trim() || charRefFallback,
     };
   }, [id, payload.prompt, payload.referenceImageUrl]);
