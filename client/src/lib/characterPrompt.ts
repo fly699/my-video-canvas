@@ -90,11 +90,18 @@ export function mergeCharactersIntoPrompt(basePrompt: string, characters: Charac
     .filter((x) => x.text.length > 0);
   if (items.length === 0) return basePrompt;
   // With multiple items, prefix each block with a kind-appropriate ordinal
-  // (角色1 / 场景2…), numbered by the same order references are passed, so models
-  // that support ordered references (@Image1 / character1) can align them.
+  // (角色1 / 场景1…). CRITICAL: number PERSON and SCENE with INDEPENDENT counters,
+  // because only PERSON characters contribute reference images (scenes are text-only —
+  // connectedCharacterRefImages skips them). Numbering persons per-kind makes the Nth
+  // 角色 align with the Nth person reference image even when 场景 nodes are interleaved
+  // between persons — so models with ordered references (@Image1 / character1) match.
   const multi = items.length > 1;
-  const blocks = items.map((x, i) => {
-    const label = multi ? `${x.kind === "scene" ? "场景" : "角色"}${i + 1}：` : "";
+  let personN = 0;
+  let sceneN = 0;
+  const blocks = items.map((x) => {
+    const isScene = x.kind === "scene";
+    const ord = isScene ? ++sceneN : ++personN;
+    const label = multi ? `${isScene ? "场景" : "角色"}${ord}：` : "";
     return `[${label}${x.text}]`;
   });
   const prefix = blocks.join(" ");

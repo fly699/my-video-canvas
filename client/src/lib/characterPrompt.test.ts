@@ -33,12 +33,28 @@ describe("mergeCharactersIntoPrompt", () => {
 });
 
 describe("mergeCharactersIntoPrompt scene labelling", () => {
-  it("labels person vs scene with kind-appropriate ordinals", () => {
+  it("numbers person and scene with INDEPENDENT counters (per-kind)", () => {
     const out = mergeCharactersIntoPrompt("", [
       c({ name: "Alice" }),
       c({ characterKind: "scene", sceneName: "夜街" }),
     ]);
     expect(out).toContain("角色1：");
-    expect(out).toContain("场景2：");
+    expect(out).toContain("场景1："); // scene gets its own counter, not 场景2
+  });
+
+  it("person ordinals align with person-only reference order across interleaved scenes", () => {
+    // [personA, scene, personB] — reference images are person-only [A, B], so the
+    // prompt's 角色N must count persons only: A→角色1, B→角色2 (scene must NOT bump it).
+    const out = mergeCharactersIntoPrompt("", [
+      c({ name: "Alice" }),
+      c({ characterKind: "scene", sceneName: "夜街" }),
+      c({ name: "Bob" }),
+    ]);
+    expect(out).toContain("角色1：");
+    expect(out).toContain("场景1：");
+    expect(out).toContain("角色2："); // Bob is the 2nd PERSON → aligns with 2nd ref image
+    expect(out).not.toContain("角色3");
+    const iA = out.indexOf("Alice"), iB = out.indexOf("Bob");
+    expect(iB).toBeGreaterThan(iA); // block order still position-preserved
   });
 });

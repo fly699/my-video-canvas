@@ -188,3 +188,44 @@ describe("submitPoyoVideo multi-modal references (video/audio)", () => {
     expect(lastBody!.input.reference_video_urls).toEqual([V]);
   });
 });
+
+describe("submitPoyoVideo explicit referenceMode (character SUBJECT references)", () => {
+  async function submitMode(provider: string, urls: string[], mode?: "reference" | "frame") {
+    const { submitPoyoVideo } = await import("./_core/poyoVideo");
+    await submitPoyoVideo({
+      provider, prompt: "hi", params: {},
+      referenceImageUrl: urls[0],
+      referenceImageUrls: urls.length > 1 ? urls : undefined,
+      referenceMode: mode,
+    });
+    return lastBody!;
+  }
+
+  it("seedance: 2 SUBJECT refs route to reference_image_urls (NOT首尾帧 image_urls)", async () => {
+    // Without the flag, 2 imgs ≤ frame cap → image_urls (start/end frame).
+    expect((await submitMode("poyo_seedance", [A, B])).input.image_urls).toEqual([A, B]);
+    // With referenceMode:"reference", they're subjects → reference_image_urls.
+    const ref = await submitMode("poyo_seedance", [A, B], "reference");
+    expect(ref.input.reference_image_urls).toEqual([A, B]);
+    expect("image_urls" in ref.input).toBe(false);
+  });
+
+  it("seedance: a SINGLE subject ref also goes to reference_image_urls", async () => {
+    const ref = await submitMode("poyo_seedance", [A], "reference");
+    expect(ref.input.reference_image_urls).toEqual([A]);
+    expect("image_urls" in ref.input).toBe(false);
+  });
+
+  it("kling-o3: subject refs route to reference_image_urls (cap 4)", async () => {
+    const ref = await submitMode("poyo_kling_o3_pro", [A, B], "reference");
+    expect(ref.input.reference_image_urls).toEqual([A, B]);
+  });
+
+  it("model without a reference mode (wan i2v) falls back to frame image_urls", async () => {
+    // wan2.7-i2v has no referenceImages in its spec → reference mode can't apply,
+    // so the start image still maps to image_urls (graceful, no regression).
+    const ref = await submitMode("poyo_wan27_i2v", [A, B], "reference");
+    expect(ref.input.image_urls).toEqual([A, B]);
+    expect("reference_image_urls" in ref.input).toBe(false);
+  });
+});

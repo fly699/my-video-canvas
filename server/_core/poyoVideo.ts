@@ -214,6 +214,12 @@ export async function submitPoyoVideo(opts: {
   referenceVideoUrls?: string[];
   /** Multi-modal reference audios → reference_audio_urls (Seedance-2). */
   referenceAudioUrls?: string[];
+  /** "reference" forces multi-reference (subject) mode — reference images route to
+   *  `reference_image_urls` instead of the首尾帧 `image_urls` path — for models that
+   *  support it (MULTI_IMAGE_SPEC.referenceImages). Used when the images are character
+   *  SUBJECTS (identity), not start/end frames. Falls back to the normal mapping for
+   *  models without a reference mode. Omitted = legacy frame-first behavior. */
+  referenceMode?: "reference" | "frame";
   params?: Record<string, unknown>;
 }): Promise<SubmitPoyoVideoResult> {
   if (!ENV.poyoApiKey) throw new Error("POYO_API_KEY is not configured");
@@ -247,9 +253,10 @@ export async function submitPoyoVideo(opts: {
   const refAudios = (refSpec?.referenceAudios && resolvedAudioRefs.length > 0) ? resolvedAudioRefs.slice(0, refSpec.referenceAudios) : [];
   // Multi-modal reference mode (reference_*_urls) is MUTUALLY EXCLUSIVE with the
   // first/last-frame image_urls path (docs/poyo-video-api.md §五/§六). When any
-  // reference video/audio is present, route the images to reference_image_urls
-  // (reference mode) instead of image_urls (frame mode).
-  const inReferenceMode = refVideos.length > 0 || refAudios.length > 0;
+  // reference video/audio is present — OR the caller explicitly asked for reference
+  // (subject) mode because the images are character identities, not start/end frames —
+  // route the images to reference_image_urls (reference mode) instead of image_urls.
+  const inReferenceMode = refVideos.length > 0 || refAudios.length > 0 || opts.referenceMode === "reference";
   if (inReferenceMode && refSpec?.referenceImages && resolvedRefs.length > 0) {
     input.reference_image_urls = resolvedRefs.slice(0, refSpec.referenceImages);
   } else if (resolvedRefs.length === 1) {

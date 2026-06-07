@@ -826,6 +826,7 @@ export const VideoTaskNode = memo(function VideoTaskNode({ id, selected, data }:
       referenceImageUrls: buildRefUrls(payload.provider, finalRefImage),
       referenceVideoUrls: refMedia.videoRefs,
       referenceAudioUrls: refMedia.audioRefs,
+      referenceMode: refModeForSubmit(),
       params: withParamDefaults(payload.provider, payload.params),
     });
     guard({ model: payload.provider, refImageUrl: finalRefImage }, submit);
@@ -872,6 +873,18 @@ export const VideoTaskNode = memo(function VideoTaskNode({ id, selected, data }:
     }
     const max = maxRefImagesForProvider(provider);
     return max > 1 && base.length > 1 ? base.slice(0, max) : undefined;
+  }, [refImages.images, id]);
+
+  // Reference (subject) mode: when the references come from connected CHARACTERS
+  // (identity), they are SUBJECTS, not 首尾帧 — so on multi-reference-capable models
+  // (seedance-2 / kling-o3 / happy-horse) they should route to reference_image_urls
+  // instead of the start/end-frame image_urls path. Only when the user hasn't manually
+  // attached frame references (those keep the default frame mapping). Server falls back
+  // gracefully for models without a reference mode, so this is safe to always send.
+  const refModeForSubmit = useCallback((): "reference" | undefined => {
+    if (refImages.images.length > 0) return undefined; // manual refs → keep frame default
+    const { nodes: gn, edges: ge } = useCanvasStore.getState();
+    return connectedCharacterRefImages(id, ge, gn).length > 0 ? "reference" : undefined;
   }, [refImages.images, id]);
 
   // Multi-modal references: pull video/audio URLs from connected upstream `asset`
@@ -1308,7 +1321,7 @@ export const VideoTaskNode = memo(function VideoTaskNode({ id, selected, data }:
                       // but each provider still needs its OWN required-field defaults
                       // (resolution/aspect_ratio/duration/...) since the backend no longer
                       // hard-defaults them — so pass that provider's ParamDef defaults.
-                      { nodeId: id, projectId: data.projectId, provider, prompt: submission.prompt, negativePrompt: SUPPORTS_NEGATIVE_PROMPT.has(provider) ? payload.negativePrompt : undefined, referenceImageUrl: submission.referenceImageUrl, referenceImageUrls: buildRefUrls(provider, submission.referenceImageUrl), referenceVideoUrls: collectRefMedia(provider).videoRefs, referenceAudioUrls: collectRefMedia(provider).audioRefs, params: withParamDefaults(provider, {}) },
+                      { nodeId: id, projectId: data.projectId, provider, prompt: submission.prompt, negativePrompt: SUPPORTS_NEGATIVE_PROMPT.has(provider) ? payload.negativePrompt : undefined, referenceImageUrl: submission.referenceImageUrl, referenceImageUrls: buildRefUrls(provider, submission.referenceImageUrl), referenceVideoUrls: collectRefMedia(provider).videoRefs, referenceAudioUrls: collectRefMedia(provider).audioRefs, referenceMode: refModeForSubmit(), params: withParamDefaults(provider, {}) },
                       {
                         onSuccess: (result) => {
                           if (parallelGenRef.current !== gen) return; // stale — user closed parallel mode
