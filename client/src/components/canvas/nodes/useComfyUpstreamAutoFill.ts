@@ -1,7 +1,7 @@
 import { useEffect } from "react";
 import { useCanvasStore } from "../../../hooks/useCanvasStore";
 import { detectUpstreamPrompt, detectUpstreamImages } from "../../../lib/comfyWorkflowParams";
-import { deriveCharacterConditioning } from "../../../lib/characterConditioning";
+import { deriveCharacterConditioning, connectedCharacterRefImages } from "../../../lib/characterConditioning";
 import type { CharacterNodeData, ComfyuiIPAdapter, ComfyuiLoraEntry } from "../../../../../shared/types";
 
 interface AutoFillPayload {
@@ -43,7 +43,13 @@ export function useComfyUpstreamAutoFill(
     }
 
     if (!payload.referenceImageUrl) {
-      const imgs = detectUpstreamImages(id, edges, nodes);
+      // Nodes WITHOUT the IPAdapter path (e.g. comfyui_video) lock character
+      // identity via referenceImages instead — so fold any connected character's
+      // views in alongside upstream images. comfyui_image uses IPAdapter (below),
+      // so we don't duplicate the character into its img2img references.
+      const upstream = detectUpstreamImages(id, edges, nodes);
+      const charRefs = characterConditioning ? [] : connectedCharacterRefImages(id, edges, nodes);
+      const imgs = Array.from(new Set([...upstream, ...charRefs]));
       if (imgs.length > 0) {
         patch.referenceImageUrl = imgs[0];
         if (imgs.length > 1 && !(payload.referenceImages && payload.referenceImages.length > 1)) {

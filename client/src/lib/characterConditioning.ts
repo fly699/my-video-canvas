@@ -22,6 +22,35 @@ export function characterHasConditioning(c: CharacterNodeData): boolean {
   return characterReferenceImages(c).length > 0 || !!c.loraName?.trim();
 }
 
+/** Reference images (main + extra views, de-duped) from every `character` node
+ *  connected into targetId. Multi-character PRIORITY is deterministic: characters
+ *  are ordered top→bottom (then left→right) by canvas position, so the topmost
+ *  character is primary (its views come first) and the user controls priority just
+ *  by arranging nodes — instead of relying on edge insertion order. Lets a downstream
+ *  shot lock identity on ALL views. Pure / unit-testable. */
+export function connectedCharacterRefImages(
+  targetId: string,
+  edges: { source: string; target: string }[],
+  nodes: { id: string; data: { nodeType: string; payload?: unknown }; position?: { x: number; y: number } }[],
+): string[] {
+  const byId = new Map(nodes.map((n) => [n.id, n]));
+  const chars = edges
+    .filter((e) => e.target === targetId)
+    .map((e) => byId.get(e.source))
+    .filter((n): n is NonNullable<typeof n> => !!n && n.data.nodeType === "character");
+  // De-dupe character nodes, then order by position (y, then x) for stable priority.
+  const uniq = Array.from(new Map(chars.map((n) => [n.id, n])).values());
+  uniq.sort((a, b) => (a.position?.y ?? 0) - (b.position?.y ?? 0) || (a.position?.x ?? 0) - (b.position?.x ?? 0));
+  const out: string[] = [];
+  const seen = new Set<string>();
+  for (const n of uniq) {
+    for (const url of characterReferenceImages(n.data.payload as CharacterNodeData)) {
+      if (!seen.has(url)) { seen.add(url); out.push(url); }
+    }
+  }
+  return out;
+}
+
 export interface CharacterConditioningPatch {
   ipadapter?: ComfyuiIPAdapter;
   loras?: ComfyuiLoraEntry[];
