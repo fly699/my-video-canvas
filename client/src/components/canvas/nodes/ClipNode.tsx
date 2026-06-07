@@ -11,7 +11,7 @@ import { trpc } from "@/lib/trpc";
 import { toast } from "sonner";
 import { downloadMedia, mediaFetchUrl } from "@/lib/download";
 import {
-  Scissors, Play, Pause, Loader2, Download, RotateCcw,
+  Scissors, Play, Pause, Loader2, Download, RotateCcw, Repeat,
   ArrowRight, Volume2, Music, Film, Image as ImageIcon,
   RotateCw, FlipHorizontal, FlipVertical, ChevronDown, ChevronRight, Sliders,
 } from "lucide-react";
@@ -378,6 +378,7 @@ export const ClipNode = memo(function ClipNode({ id, selected, data }: Props) {
   const { updateNodeData } = useCanvasStore();
   const payload = data.payload;
   const [isPlaying, setIsPlaying] = useState(false);
+  const [loopPlayback, setLoopPlayback] = useState(false);
   const [currentTime, setCurrentTime] = useState(0);
   const [previewMode, setPreviewMode] = useState<"source" | "output">("source");
   const videoRef = useRef<HTMLVideoElement>(null);
@@ -449,9 +450,8 @@ export const ClipNode = memo(function ClipNode({ id, selected, data }: Props) {
     // Use !v.paused instead of isPlaying to avoid stale-closure misses during
     // the window between v.play() being called and the next React render
     if (!v.paused && v.currentTime >= endTime) {
-      v.pause();
-      v.currentTime = startTime;
-      setIsPlaying(false);
+      if (loopPlayback) { v.currentTime = startTime; } // loop the selected range
+      else { v.pause(); v.currentTime = startTime; setIsPlaying(false); }
     }
   };
 
@@ -468,13 +468,12 @@ export const ClipNode = memo(function ClipNode({ id, selected, data }: Props) {
     if (!v || !isPlaying) return;
     const timerId = setInterval(() => {
       if (v.currentTime >= endTime) {
-        v.pause();
-        v.currentTime = startTime;
-        setIsPlaying(false);
+        if (loopPlayback) { v.currentTime = startTime; }
+        else { v.pause(); v.currentTime = startTime; setIsPlaying(false); }
       }
     }, 100);
     return () => clearInterval(timerId);
-  }, [isPlaying, endTime, startTime]);
+  }, [isPlaying, endTime, startTime, loopPlayback]);
 
   const seekToStart = () => {
     if (videoRef.current) videoRef.current.currentTime = startTime;
@@ -610,7 +609,7 @@ export const ClipNode = memo(function ClipNode({ id, selected, data }: Props) {
         title="剪辑输出 → 连接素材节点保存"
       />
 
-      <div className="flex flex-col gap-3 p-3.5">
+      <div className="flex flex-col gap-3 p-3.5 h-full">
 
         {/* No source state */}
         {!activeVideoUrl && (
@@ -651,14 +650,15 @@ export const ClipNode = memo(function ClipNode({ id, selected, data }: Props) {
               </div>
             )}
 
-            {/* Video */}
-            <div className="relative rounded-lg overflow-hidden" style={{ background: "var(--c-canvas)", border: `1px solid ${accentA(0.25)}` }}>
+            {/* Video — fills the (resizable) node, letterboxed to keep aspect. */}
+            <div className="relative rounded-lg overflow-hidden" style={{ background: "var(--c-canvas)", border: `1px solid ${accentA(0.25)}`, flex: 1, minHeight: 160 }}>
               <video
                 key={displayUrl}
                 ref={videoRef}
                 src={displayUrl ? mediaFetchUrl(displayUrl) : undefined}
-                className="w-full nodrag"
-                style={{ maxHeight: 200, display: "block" }}
+                className="nodrag"
+                style={{ width: "100%", height: "100%", objectFit: "contain", display: "block" }}
+                loop={loopPlayback}
                 onLoadedMetadata={handleVideoMetadata}
                 onTimeUpdate={handleTimeUpdate}
                 onEnded={() => setIsPlaying(false)}
@@ -689,6 +689,14 @@ export const ClipNode = memo(function ClipNode({ id, selected, data }: Props) {
                   style={{ background: accentA(0.25), border: `1px solid ${accentA(0.5)}`, color: accent, cursor: "pointer" }}
                 >
                   {isPlaying ? <Pause style={{ width: 11, height: 11 }} /> : <Play style={{ width: 11, height: 11 }} />}
+                </button>
+                <button
+                  onClick={() => setLoopPlayback((v) => !v)}
+                  title={loopPlayback ? "循环播放：开（点击关闭）" : "循环播放：关（点击开启）"}
+                  className="nodrag flex items-center justify-center w-5 h-5 rounded transition-all"
+                  style={{ background: loopPlayback ? accentA(0.3) : "none", border: loopPlayback ? `1px solid ${accentA(0.5)}` : "none", color: loopPlayback ? accent : "var(--c-t2)", cursor: "pointer" }}
+                >
+                  <Repeat style={{ width: 11, height: 11 }} />
                 </button>
                 <span style={{ fontSize: 10, color: "var(--c-t3)", fontVariantNumeric: "tabular-nums" }}>
                   {fmt(currentTime)}

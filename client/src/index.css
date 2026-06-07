@@ -1171,3 +1171,32 @@ button:active:not(:disabled) {
   background: transparent;
   cursor: ew-resize;
 }
+
+/* Loop toggle overlaid on WatermarkedVideo (top-left, clear of the bottom native
+   controls). Hidden until hover; stays visible (highlighted) while loop is on. */
+.wm-loop-btn {
+  position: absolute;
+  top: 8px;
+  left: 8px;
+  z-index: 5;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border-radius: 7px;
+  color: #fff;
+  background: rgba(0, 0, 0, 0.45);
+  border: 1px solid rgba(255, 255, 255, 0.25);
+  cursor: pointer;
+  opacity: 0;
+  transition: opacity 160ms ease, background 160ms ease, border-color 160ms ease;
+}
+.wm-video-wrap:hover .wm-loop-btn,
+.wm-video-wrap:fullscreen .wm-loop-btn { opacity: 1; }
+.wm-loop-btn:hover { background: rgba(0, 0, 0, 0.7); }
+.wm-loop-btn[data-on="true"] {
+  opacity: 1;
+  background: oklch(0.68 0.20 285 / 0.85);
+  border-color: oklch(0.78 0.16 285);
+}
