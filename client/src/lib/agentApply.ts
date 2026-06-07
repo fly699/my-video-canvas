@@ -65,7 +65,7 @@ export function injectFreeVramIntoOps(ops: AgentOperation[], enabled: boolean): 
 export function applyAgentOperations(
   ops: AgentOperation[],
   anchor: { x: number; y: number },
-  opts: { templates?: AgentTemplate[]; freeVramAfterRun?: boolean } = {},
+  opts: { templates?: AgentTemplate[]; freeVramAfterRun?: boolean; ownerAgentId?: string } = {},
 ): ApplyResult {
   injectFreeVramIntoOps(ops, opts.freeVramAfterRun === true);
   const store = useCanvasStore.getState();
@@ -148,8 +148,14 @@ export function applyAgentOperations(
           liveIds.add(node.id);
           typeById.set(node.id, op.nodeType as NodeType);
           if (op.title) store.updateNodeTitle(node.id, op.title);
-          if (payload && Object.keys(payload).length) {
-            store.updateNodeData(node.id, payload as Partial<NodeData>, true);
+          // Stamp ownership so the originating agent can scope/select/run/clear its
+          // own nodes (multi-agent canvases). Stored in payload like `createdBy`.
+          const ownedPayload = {
+            ...(payload ?? {}),
+            ...(opts.ownerAgentId ? { ownerAgentId: opts.ownerAgentId } : {}),
+          };
+          if (Object.keys(ownedPayload).length) {
+            store.updateNodeData(node.id, ownedPayload as Partial<NodeData>, true);
           }
           op.status = "applied";
           res.created++;

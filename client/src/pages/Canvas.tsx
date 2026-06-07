@@ -499,7 +499,7 @@ function CanvasInner({ projectId }: { projectId: number }) {
   // run-confirm dialog so generation still gets one explicit user confirmation.
   const runRequest = useCanvasStore((s) => s.runRequest);
   useEffect(() => {
-    if (runRequest) handleRunRequest(runRequest.startNodeId);
+    if (runRequest) handleRunRequest(runRequest.startNodeId, runRequest.onlyIds);
     // token changes each request → re-fires even for the same startNodeId
   }, [runRequest?.token]); // eslint-disable-line react-hooks/exhaustive-deps
 
