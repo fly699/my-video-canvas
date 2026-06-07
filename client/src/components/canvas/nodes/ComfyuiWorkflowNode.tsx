@@ -191,6 +191,19 @@ export const ComfyuiWorkflowNode = memo(function ComfyuiWorkflowNode({ id, selec
   const nodesForSources = useCanvasStore((s) => s.nodes);
   const upstreamSources = useMemo(() => listUpstreamImageSources(id, edgesForSources, nodesForSources), [id, edgesForSources, nodesForSources]);
   const payload = data.payload;
+  // Reactively detect the upstream prompt text + whether this workflow exposes a
+  // positive/negative prompt param it can be written into. Surfaces exactly why
+  // 上游优先 may appear to do nothing: no upstream prompt detected, or no text
+  // param to receive it. Mirrors the run-time logic in fillWorkflowPromptParams.
+  const upstreamPromptInfo = useMemo(() => {
+    const detected = detectUpstreamPrompt(id, edgesForSources, nodesForSources);
+    const texts = (payload.paramBindings ?? []).filter((b) => b.type === "text");
+    const isNeg = (b: WorkflowParamBinding) => b.role === "negative" || (!b.role && /负|negative/i.test(b.label));
+    const posB = texts.find((b) => b.role === "positive")
+      ?? texts.find((b) => !b.role && /提示词|prompt/i.test(b.label) && !isNeg(b))
+      ?? texts.find((b) => !isNeg(b));
+    return { detected, hasTextParam: texts.length > 0, hasPosTarget: !!posB };
+  }, [id, edgesForSources, nodesForSources, payload.paramBindings]);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const [localJson, setLocalJson] = useState(payload.workflowJson ?? "");
@@ -912,6 +925,34 @@ export const ComfyuiWorkflowNode = memo(function ComfyuiWorkflowNode({ id, selec
                 </div>
               </div>
             )}
+
+            {/* Upstream-prompt diagnostics: make 上游优先 observable. Shows whether an
+                upstream prompt was detected and whether a positive prompt param exists
+                to receive it — so "上游优先没生效" can be told apart from a wiring issue. */}
+            {upstreamPromptInfo.hasTextParam && (() => {
+              const { detected, hasPosTarget } = upstreamPromptInfo;
+              const hasUpstream = !!(detected.positive || detected.negative);
+              if (!hasUpstream) {
+                return (
+                  <div style={{ fontSize: 10.5, color: "var(--c-t3)", marginBottom: 4, lineHeight: 1.4 }}>
+                    未检测到上游提示词。请将「提示词 / 分镜 / 脚本」节点的输出连到本节点，「上游优先」才有内容可覆盖。
+                  </div>
+                );
+              }
+              if (!hasPosTarget) {
+                return (
+                  <div style={{ fontSize: 10.5, color: "oklch(0.72 0.17 65)", marginBottom: 4, lineHeight: 1.4 }}>
+                    已连上游提示词，但本工作流未识别到「正向提示词」参数。请在上方「参数绑定」里把对应文本参数的角色设为「正向」。
+                  </div>
+                );
+              }
+              return (
+                <div style={{ fontSize: 10.5, color: "oklch(0.7 0.16 145)", marginBottom: 4, lineHeight: 1.4, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }} title={detected.positive || detected.negative}>
+                  {payload.preferUpstreamPrompt !== false ? "运行时将用上游提示词覆盖：" : "运行时仅在留空/默认时填入上游提示词："}
+                  {(detected.positive || detected.negative || "").slice(0, 60)}
+                </div>
+              );
+            })()}
 
             {/* Seed mode — only when the workflow has a seed param. Random (default):
                 re-roll each run; Fixed: use the value in the form below as-is. */}
