@@ -141,3 +141,50 @@ describe("submitPoyoVideo multi-image mapping (per-model)", () => {
     expect("end_image_url" in body.input).toBe(false); // dupe dropped → single
   });
 });
+
+describe("submitPoyoVideo multi-modal references (video/audio)", () => {
+  async function submitMM(provider: string, opts: { videos?: string[]; audios?: string[] }) {
+    const { submitPoyoVideo } = await import("./_core/poyoVideo");
+    await submitPoyoVideo({ provider, prompt: "hi", params: {}, referenceVideoUrls: opts.videos, referenceAudioUrls: opts.audios });
+    return lastBody!;
+  }
+  const V = "https://cdn.example.com/v1.mp4";
+  const V2 = "https://cdn.example.com/v2.mp4";
+  const AU = "https://cdn.example.com/a1.mp3";
+
+  it("maps reference videos/audios for seedance-2", async () => {
+    const body = await submitMM("poyo_seedance", { videos: [V, V2], audios: [AU] });
+    expect(body.input.reference_video_urls).toEqual([V, V2]);
+    expect(body.input.reference_audio_urls).toEqual([AU]);
+  });
+
+  it("caps reference videos at the model's limit (3)", async () => {
+    const many = ["1", "2", "3", "4"].map((n) => `https://cdn.example.com/${n}.mp4`);
+    const body = await submitMM("poyo_seedance", { videos: many });
+    expect((body.input.reference_video_urls as string[]).length).toBe(3);
+  });
+
+  it("does NOT forward references to wan2.7 t2v/i2v (reference mode is a separate wire model)", async () => {
+    const body = await submitMM("poyo_wan27_t2v", { videos: [V], audios: [AU] });
+    expect(body.input.reference_video_urls).toBeUndefined();
+    expect(body.input.reference_audio_urls).toBeUndefined();
+  });
+
+  it("omits both for a model without multi-modal reference (e.g. kling 2.6)", async () => {
+    const body = await submitMM("poyo_kling26", { videos: [V], audios: [AU] });
+    expect(body.input.reference_video_urls).toBeUndefined();
+    expect(body.input.reference_audio_urls).toBeUndefined();
+  });
+
+  it("reference mode is mutually exclusive with image_urls (image → reference_image_urls)", async () => {
+    const { submitPoyoVideo } = await import("./_core/poyoVideo");
+    await submitPoyoVideo({
+      provider: "poyo_seedance", prompt: "hi", params: {},
+      referenceImageUrl: "https://cdn.example.com/img.png",
+      referenceVideoUrls: [V],
+    });
+    expect(lastBody!.input.image_urls).toBeUndefined();
+    expect(lastBody!.input.reference_image_urls).toEqual(["https://cdn.example.com/img.png"]);
+    expect(lastBody!.input.reference_video_urls).toEqual([V]);
+  });
+});
