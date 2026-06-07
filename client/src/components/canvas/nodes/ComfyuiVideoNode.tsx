@@ -8,7 +8,7 @@ import { ComfyServerUrlField } from "./ComfyServerUrlField";
 import { SyncConfigDialog } from "../SyncConfigDialog";
 import { NodeConfigTabs } from "../NodeConfigTabs";
 import { useCanvasStore } from "../../../hooks/useCanvasStore";
-import { connectedCharacters } from "../../../lib/characterConditioning";
+import { connectedCharacters, connectedCharacterRefImages } from "../../../lib/characterConditioning";
 import { mergeCharactersIntoPrompt } from "../../../lib/characterPrompt";
 import { usePreferUpstreamRefSource, useAutoPreferUpstreamRefSource } from "../mediaReachability";
 import { WatermarkedVideo } from "@/components/WatermarkedVideo";
@@ -208,7 +208,15 @@ export const ComfyuiVideoNode = memo(function ComfyuiVideoNode({ id, selected, d
     if (uploading) { toast.error("参考图正在上传中，请稍候"); return; }
     if (!payload.prompt?.trim()) { toast.error("请先填写提示词"); return; }
     if (!payload.ckpt?.trim()) { toast.error("请先填写模型名称"); return; }
-    if (needsRef && !payload.referenceImageUrl) {
+    // Identity fallback: SVD / Wan-I2V need a起始图; if none is attached, use a
+    // connected PERSON character's reference image (scene-kind is filtered out by
+    // connectedCharacterRefImages) — consistent with image_gen / video_task folding.
+    const { nodes: gnodes, edges: gedges } = useCanvasStore.getState();
+    const charRef = needsRef && !payload.referenceImageUrl
+      ? connectedCharacterRefImages(id, gedges, gnodes)[0]
+      : undefined;
+    const effectiveRefUrl = payload.referenceImageUrl || charRef;
+    if (needsRef && !effectiveRefUrl) {
       toast.error("该模板需要起始图/参考图"); return;
     }
     if (isAnimateDiff && !payload.motionModule?.trim()) {
@@ -218,7 +226,6 @@ export const ComfyuiVideoNode = memo(function ComfyuiVideoNode({ id, selected, d
     updateNodeData(id, { status: "processing", errorMessage: undefined, progress: 0 });
     // Inject connected characters' profile text into the prompt (visual refs/LoRA
     // are filled separately). Not persisted.
-    const { nodes: gnodes, edges: gedges } = useCanvasStore.getState();
     const finalPrompt = mergeCharactersIntoPrompt(payload.prompt ?? "", connectedCharacters(id, gedges, gnodes));
     genMutation.mutate({
       nodeId: id,
@@ -244,7 +251,7 @@ export const ComfyuiVideoNode = memo(function ComfyuiVideoNode({ id, selected, d
       denoise: typeof payload.denoise === "number" ? payload.denoise : undefined,
       vae: payload.vae || undefined,
       batchSize: payload.batchSize ?? 1,
-      referenceImageUrl: payload.referenceImageUrl,
+      referenceImageUrl: effectiveRefUrl,
       freeVramAfterRun: payload.freeVramAfterRun === true,
     });
   };

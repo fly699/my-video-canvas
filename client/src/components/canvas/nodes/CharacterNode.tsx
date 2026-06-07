@@ -205,8 +205,12 @@ export const CharacterNode = memo(function CharacterNode({ id, selected, data }:
   // scenes stamp `sceneGroup` on nodes), so one click covers the whole scene.
   const applyToConnectedShots = useCallback((wholeScene = false) => {
     const st = useCanvasStore.getState();
-    const refs = characterReferenceImages(payload);
-    const loraName = payload.loraName?.trim();
+    // 场景 (scene) nodes contribute location TEXT only (via prompt injection) — their
+    // image is a backdrop, never a face/identity reference, so don't push it into any
+    // downstream referenceImageUrl/LoRA. Consistent with connectedCharacterRefImages.
+    const isScene = (payload.characterKind ?? "person") === "scene";
+    const refs = isScene ? [] : characterReferenceImages(payload);
+    const loraName = isScene ? undefined : payload.loraName?.trim();
     const directTargetIds = new Set(st.edges.filter((e) => e.source === id).map((e) => e.target));
     const targetIds = new Set(directTargetIds);
     if (wholeScene) {
@@ -230,6 +234,7 @@ export const CharacterNode = memo(function CharacterNode({ id, selected, data }:
       if (Object.keys(p).length > 0) updates.push({ id: t.id, payload: p });
     }
     if (updates.length > 0) { batchUpdateNodeData(updates); toast.success(`角色已套用到 ${updates.length} 个${wholeScene ? "本场景" : "连接的"}节点`); }
+    else if (isScene) toast.info("场景节点的描述会在生成时自动注入提示词，无需手动套用参考图");
     else toast.info(wholeScene ? "未找到本场景的镜头（场景信息由智能体规划时生成）" : "没有可套用的连接节点（先把本角色连到生成/分镜节点）");
   }, [id, payload, batchUpdateNodeData, buildShotPatch]);
 
