@@ -33,6 +33,7 @@ import { poyoRouter } from "./routers/poyo";
 import { downloadsRouter } from "./routers/downloads";
 import { editorRouter } from "./routers/editor";
 import { comfyTemplatesRouter } from "./routers/comfyTemplates";
+import { characterLibraryRouter } from "./routers/characterLibrary";
 import { agentRouter } from "./routers/agent";
 
 export const appRouter = router({
@@ -81,6 +82,7 @@ export const appRouter = router({
   downloads: downloadsRouter,
   editor: editorRouter,
   comfyTemplates: comfyTemplatesRouter,
+  characterLibrary: characterLibraryRouter,
 });
 
 export type AppRouter = typeof appRouter;

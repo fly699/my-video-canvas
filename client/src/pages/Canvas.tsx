@@ -27,6 +27,7 @@ import { CustomEdge } from "../components/canvas/CustomEdge";
 import { ContextMenu } from "../components/canvas/ContextMenu";
 import { CollaboratorCursors } from "../components/canvas/CollaboratorCursors";
 import { FloatingAssetPanel } from "../components/canvas/FloatingAssetPanel";
+import { CharacterLibraryPanel } from "../components/canvas/CharacterLibraryPanel";
 import { TemplatePanel } from "../components/canvas/TemplatePanel";
 import { NodeTemplateLibrary } from "../components/canvas/NodeTemplateLibrary";
 import { NodeSearch } from "../components/canvas/NodeSearch";
@@ -394,6 +395,9 @@ function CanvasInner({ projectId }: { projectId: number }) {
   );
   const [showTemplates, setShowTemplates] = useState(false);
   const [showNodeLib, setShowNodeLib] = useState(false);
+  const [showCharLib, setShowCharLib] = usePersistentState<boolean>(
+    "ui:panel:charlib:v1", false, { validate: validateBool, crossTab: false },
+  );
   const [comfySaveTarget, setComfySaveTarget] = useState<
     { nodeType: ComfyNodeType; payload: Record<string, unknown>; useCloud: boolean; defaultName: string; thumbnail?: string } | null
   >(null);
@@ -1528,6 +1532,21 @@ function CanvasInner({ projectId }: { projectId: number }) {
             <TooltipContent side="bottom" className="text-xs">素材库</TooltipContent>
           </Tooltip>
 
+          {/* Character library */}
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <button
+                onClick={() => setShowCharLib(!showCharLib)}
+                className="topbar-btn"
+                data-active={showCharLib ? "true" : undefined}
+                style={showCharLib ? { background: "oklch(0.66 0.18 30 / 0.12)", border: "1px solid oklch(0.66 0.18 30 / 0.3)", color: "oklch(0.66 0.18 30)" } : undefined}
+              >
+                <Users className="w-3.5 h-3.5" />
+              </button>
+            </TooltipTrigger>
+            <TooltipContent side="bottom" className="text-xs">角色库</TooltipContent>
+          </Tooltip>
+
           {/* Video editor (jump to the timeline editor) */}
           <Tooltip>
             <TooltipTrigger asChild>
@@ -2595,6 +2614,7 @@ function CanvasInner({ projectId }: { projectId: number }) {
         )}
 
         {/* ── Asset panel (floating, draggable, resizable) ── */}
+        {showCharLib && <CharacterLibraryPanel onClose={() => setShowCharLib(false)} />}
         {showAssets && (
           <FloatingAssetPanel projectId={projectId} onClose={() => setShowAssets(false)} />
         )}
