@@ -1,7 +1,8 @@
 import { useEffect, useRef, useState } from "react";
 import { useLocation } from "wouter";
-import { Lock, Paperclip, Send, ShieldCheck, Users, Trash2, LogOut, X, FileIcon, ImageIcon, Film, FolderOpen, Download, Camera } from "lucide-react";
+import { Lock, Paperclip, Send, ShieldCheck, Users, Trash2, LogOut, X, FileIcon, ImageIcon, Film, FolderOpen, Download, Camera, Crop } from "lucide-react";
 import { captureScreen, ScreenshotEditor } from "./ScreenshotEditor";
+import { ComfyServerStatusIndicator } from "../canvas/ComfyServerStatusIndicator";
 import { useChat, SERVERLESS_ENCRYPT_PROMPT_BYTES } from "@/hooks/useChat";
 import { useAuth } from "@/_core/hooks/useAuth";
 import { trpc } from "@/lib/trpc";
@@ -20,15 +21,16 @@ export function ChatView({ membersOpen: _m }: { membersOpen?: boolean }) {
   const [dragOver, setDragOver] = useState(false);
   const [askEncrypt, setAskEncrypt] = useState(false);
   const [showFiles, setShowFiles] = useState(false);
-  // Screenshot capture → annotate → stage as an attachment.
+  // Screenshot capture → (optional region crop) → annotate → stage as an attachment.
   const [shotUrl, setShotUrl] = useState<string | null>(null);
+  const [shotMode, setShotMode] = useState<"full" | "crop">("full");
   const [capturing, setCapturing] = useState(false);
-  async function onScreenshot() {
+  async function onScreenshot(mode: "full" | "crop") {
     if (capturing) return;
     setCapturing(true);
     try {
       const url = await captureScreen();
-      if (url) setShotUrl(url);
+      if (url) { setShotMode(mode); setShotUrl(url); }
       else toast.info("已取消，或当前浏览器/环境不支持屏幕截图（需 HTTPS）");
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "截图失败");
@@ -141,6 +143,7 @@ export function ChatView({ membersOpen: _m }: { membersOpen?: boolean }) {
           </div>
         </div>
         <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+          <ComfyServerStatusIndicator />
           <button onClick={() => setShowFiles(true)} title="文件" style={{ ...pill, border: `1px solid ${C.borderStrong}`, background: "var(--c-elevated, rgba(128,128,128,0.10))", color: C.t1 }}><FolderOpen size={14} /> 文件</button>
           {activeConv.type === "group" && (isOwner
             ? <button onClick={onDelete} title="删除群聊（群主）" style={{ ...pill, border: `1px solid rgba(239,68,68,0.3)`, background: C.dangerSoft, color: C.danger }}><Trash2 size={14} /> 删除</button>
@@ -192,7 +195,8 @@ export function ChatView({ membersOpen: _m }: { membersOpen?: boolean }) {
       <div style={{ display: "flex", alignItems: "flex-end", gap: 8, padding: "8px 16px 14px", flexShrink: 0 }}>
         <input ref={fileRef} type="file" hidden multiple onChange={(e) => { if (e.target.files) addFiles(e.target.files); e.target.value = ""; }} />
         <button onClick={() => fileRef.current?.click()} title={`添加文件（单文件 ≤ ${maxFileMb}MB）`} style={iconBtn}><Paperclip size={18} /></button>
-        <button onClick={onScreenshot} disabled={capturing} title="截图（截屏后可标注，再发送）" style={{ ...iconBtn, opacity: capturing ? 0.5 : 1 }}><Camera size={18} /></button>
+        <button onClick={() => onScreenshot("full")} disabled={capturing} title="截图（整屏/窗口，截屏后可标注再发送）" style={{ ...iconBtn, opacity: capturing ? 0.5 : 1 }}><Camera size={18} /></button>
+        <button onClick={() => onScreenshot("crop")} disabled={capturing} title="框选截图（截屏后用鼠标拖框选区域）" style={{ ...iconBtn, opacity: capturing ? 0.5 : 1 }}><Crop size={18} /></button>
         <textarea value={text} onChange={(e) => { setText(e.target.value); emitTyping(); }}
           onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); void doSend(); } }}
           onPaste={(e) => {
@@ -215,7 +219,7 @@ export function ChatView({ membersOpen: _m }: { membersOpen?: boolean }) {
       </div>
 
       {/* Screenshot annotate editor (portal) */}
-      {shotUrl && <ScreenshotEditor imageUrl={shotUrl} onCancel={() => setShotUrl(null)} onConfirm={(file) => { addFiles([file]); setShotUrl(null); }} />}
+      {shotUrl && <ScreenshotEditor imageUrl={shotUrl} startTool={shotMode === "crop" ? "crop" : "pen"} onCancel={() => setShotUrl(null)} onConfirm={(file) => { addFiles([file]); setShotUrl(null); }} />}
 
       {/* drag overlay */}
       {dragOver && (

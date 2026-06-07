@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
-import { X, Pencil, Square, ArrowUpRight, Undo2, Check } from "lucide-react";
+import { X, Pencil, Square, ArrowUpRight, Undo2, Check, Crop, Scissors } from "lucide-react";
 
 // Screen capture + lightweight annotation for the chat composer. Captured via the
 // browser's getDisplayMedia (the standard share-screen/window/tab picker), then
@@ -38,23 +38,29 @@ export async function captureScreen(): Promise<string | null> {
   }
 }
 
-type Tool = "pen" | "rect" | "arrow";
+type DrawTool = "pen" | "rect" | "arrow";
+type Tool = DrawTool | "crop";
 interface Pt { x: number; y: number }
-interface Shape { tool: Tool; color: string; w: number; points: Pt[] }
+interface Shape { tool: DrawTool; color: string; w: number; points: Pt[] }
+interface Rect { x: number; y: number; w: number; h: number }
 
 const COLORS = ["#ff3b30", "#ffcc00", "#34c759", "#0a84ff", "#ffffff", "#111111"];
+const normRect = (a: Pt, b: Pt): Rect => ({ x: Math.min(a.x, b.x), y: Math.min(a.y, b.y), w: Math.abs(b.x - a.x), h: Math.abs(b.y - a.y) });
 
-export function ScreenshotEditor({ imageUrl, onCancel, onConfirm }: {
+export function ScreenshotEditor({ imageUrl, onCancel, onConfirm, startTool }: {
   imageUrl: string;
   onCancel: () => void;
   onConfirm: (file: File) => void;
+  startTool?: Tool;
 }) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const imgRef = useRef<HTMLImageElement | null>(null);
   const drawingRef = useRef<Shape | null>(null);
-  const [tool, setTool] = useState<Tool>("pen");
+  const cropDragRef = useRef<{ a: Pt; b: Pt } | null>(null);
+  const [tool, setTool] = useState<Tool>(startTool ?? "pen");
   const [color, setColor] = useState(COLORS[0]);
   const [shapes, setShapes] = useState<Shape[]>([]);
+  const [cropRect, setCropRect] = useState<Rect | null>(null);
 
   function drawArrow(ctx: CanvasRenderingContext2D, a: Pt, b: Pt, w: number) {
     ctx.beginPath(); ctx.moveTo(a.x, a.y); ctx.lineTo(b.x, b.y); ctx.stroke();
@@ -79,6 +85,19 @@ export function ScreenshotEditor({ imageUrl, onCancel, onConfirm }: {
     ctx.drawImage(img, 0, 0);
     const all = drawingRef.current ? [...shapes, drawingRef.current] : shapes;
     for (const s of all) drawShape(ctx, s);
+    // Crop selection: dim outside + dashed outline.
+    if (tool === "crop") {
+      const r = cropDragRef.current ? normRect(cropDragRef.current.a, cropDragRef.current.b) : cropRect;
+      if (r && r.w > 1 && r.h > 1) {
+        ctx.fillStyle = "rgba(0,0,0,0.5)";
+        ctx.fillRect(0, 0, canvas.width, r.y);
+        ctx.fillRect(0, r.y, r.x, r.h);
+        ctx.fillRect(r.x + r.w, r.y, canvas.width - (r.x + r.w), r.h);
+        ctx.fillRect(0, r.y + r.h, canvas.width, canvas.height - (r.y + r.h));
+        ctx.strokeStyle = "#0a84ff"; ctx.lineWidth = Math.max(2, canvas.width / 600); ctx.setLineDash([8, 5]);
+        ctx.strokeRect(r.x, r.y, r.w, r.h); ctx.setLineDash([]);
+      }
+    }
   }
 
   useEffect(() => {
@@ -94,9 +113,43 @@ export function ScreenshotEditor({ imageUrl, onCancel, onConfirm }: {
     const c = canvasRef.current!; const r = c.getBoundingClientRect();
     return { x: (e.clientX - r.left) * (c.width / r.width), y: (e.clientY - r.top) * (c.height / r.height) };
   }
-  function onDown(e: React.PointerEvent) { (e.target as HTMLElement).setPointerCapture?.(e.pointerId); drawingRef.current = { tool, color, w: lineW(), points: [pos(e)] }; }
-  function onMove(e: React.PointerEvent) { const d = drawingRef.current; if (!d) return; const p = pos(e); if (tool === "pen") d.points.push(p); else d.points = [d.points[0], p]; redraw(); }
-  function onUp() { const d = drawingRef.current; if (d) { drawingRef.current = null; setShapes((s) => [...s, d]); } }
+  function onDown(e: React.PointerEvent) {
+    (e.target as HTMLElement).setPointerCapture?.(e.pointerId);
+    const p = pos(e);
+    if (tool === "crop") { cropDragRef.current = { a: p, b: p }; redraw(); return; }
+    drawingRef.current = { tool, color, w: lineW(), points: [p] };
+  }
+  function onMove(e: React.PointerEvent) {
+    const p = pos(e);
+    if (tool === "crop") { if (cropDragRef.current) { cropDragRef.current.b = p; redraw(); } return; }
+    const d = drawingRef.current; if (!d) return;
+    if (tool === "pen") d.points.push(p); else d.points = [d.points[0], p];
+    redraw();
+  }
+  function onUp() {
+    if (tool === "crop") {
+      if (cropDragRef.current) { const r = normRect(cropDragRef.current.a, cropDragRef.current.b); cropDragRef.current = null; setCropRect(r.w > 4 && r.h > 4 ? r : null); }
+      return;
+    }
+    const d = drawingRef.current; if (d) { drawingRef.current = null; setShapes((s) => [...s, d]); }
+  }
+
+  /** Bake the current canvas (image + annotations) cropped to the selection into a
+   *  new base image, then drop back to draw mode. */
+  function applyCrop() {
+    const c = canvasRef.current; if (!c || !cropRect || cropRect.w < 4 || cropRect.h < 4) return;
+    const { x, y, w, h } = cropRect;
+    cropDragRef.current = null; setCropRect(null); // so the dim overlay isn't baked in
+    const ctx = c.getContext("2d"); if (!ctx || !imgRef.current) return;
+    ctx.clearRect(0, 0, c.width, c.height); ctx.drawImage(imgRef.current, 0, 0);
+    for (const s of shapes) drawShape(ctx, s);
+    const out = document.createElement("canvas"); out.width = Math.round(w); out.height = Math.round(h);
+    out.getContext("2d")?.drawImage(c, x, y, w, h, 0, 0, w, h);
+    const url = out.toDataURL("image/png");
+    const img = new Image();
+    img.onload = () => { imgRef.current = img; setShapes([]); setTool("pen"); redraw(); };
+    img.src = url;
+  }
 
   function confirm() {
     const c = canvasRef.current; if (!c) return;
@@ -115,6 +168,12 @@ export function ScreenshotEditor({ imageUrl, onCancel, onConfirm }: {
     <div style={{ position: "fixed", inset: 0, zIndex: 100001, background: "oklch(0 0 0 / 0.78)", backdropFilter: "blur(4px)", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 12, padding: 16 }}>
       {/* Toolbar */}
       <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap", padding: "8px 12px", borderRadius: 12, background: "oklch(0.18 0.01 285)", border: "1px solid rgba(255,255,255,0.12)" }}>
+        {toolBtn("crop", Crop, "框选")}
+        {tool === "crop" && cropRect && (
+          <button onClick={applyCrop} title="裁剪到选区" style={{ display: "flex", alignItems: "center", gap: 5, height: 32, padding: "0 10px", borderRadius: 8, fontSize: 12.5, fontWeight: 700, cursor: "pointer", background: "oklch(0.7 0.18 150 / 0.2)", border: "1px solid oklch(0.7 0.18 150 / 0.5)", color: "oklch(0.82 0.16 150)" }}>
+            <Scissors size={15} /> 应用裁剪
+          </button>
+        )}
         {toolBtn("pen", Pencil, "画笔")}
         {toolBtn("rect", Square, "矩形")}
         {toolBtn("arrow", ArrowUpRight, "箭头")}
