@@ -654,6 +654,9 @@ export interface ComfyuiImageNodeData {
   /** When on, a workflow run pushes this node's prompt(s) to downstream
    *  comfyui_video nodes before they run, so the video matches the image. */
   sendPromptToVideo?: boolean;
+  /** After a successful run, unload models + free VRAM on the ComfyUI server when
+   *  its queue is idle (no other task on that GPU). Local servers only. Default OFF. */
+  freeVramAfterRun?: boolean;
   // Models
   ckpt?: string;
   lora?: string;
@@ -721,6 +724,9 @@ export interface ComfyuiVideoNodeData {
   // Prompts
   prompt: string;
   negPrompt?: string;
+  /** After a successful run, unload models + free VRAM on the ComfyUI server when
+   *  its queue is idle (no other task on that GPU). Local servers only. Default OFF. */
+  freeVramAfterRun?: boolean;
   // Models
   ckpt?: string;
   motionModule?: string;
@@ -882,6 +888,8 @@ export interface AgentPlanPrefs {
   aspect?: string;
   /** 整体视觉风格（自由文本）。 */
   style?: string;
+  /** 规划生成的 ComfyUI 节点运行后清显存（仅本地 ComfyUI）。 */
+  freeVramAfterRun?: boolean;
 }
 
 export type NodeData =

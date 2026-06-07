@@ -10,6 +10,7 @@ import { propagateRefImage, propagateWorkflowPrompt } from "../../../lib/refImag
 import type { ComfyuiWorkflowNodeData, WorkflowParamBinding } from "../../../../../shared/types";
 import { trpc } from "@/lib/trpc";
 import { detectUpstreamImageUrl, detectUpstreamPrompt, fillWorkflowPromptParams, listUpstreamImageSources, resolveImageParamsWithMap } from "@/lib/comfyWorkflowParams";
+import { applyFreeVramToAllComfyNodes } from "@/lib/comfyFreeVram";
 import { summarizeComfyWorkflow } from "@/lib/comfyWorkflowSummary";
 import { detectWorkflowFormat, extractComfyWorkflowsFromPng } from "@/lib/comfyWorkflowImport";
 import { MediaImage } from "../MediaImage";
@@ -1098,6 +1099,11 @@ export const ComfyuiWorkflowNode = memo(function ComfyuiWorkflowNode({ id, selec
                       );
                     })}
                   </div>
+                  <button
+                    onClick={() => { const n = applyFreeVramToAllComfyNodes(clear); toast.success(`已应用到 ${n} 个 ComfyUI 节点`); }}
+                    title="把本节点的清显存设置同步到画布上所有 ComfyUI 节点（图/视频/工作流）"
+                    style={{ fontSize: 10.5, padding: "3px 7px", borderRadius: 6, cursor: "pointer", background: "var(--c-input)", border: "1px solid var(--c-bd2)", color: "var(--c-t2)", whiteSpace: "nowrap", fontFamily: "var(--font-sans)" }}
+                  >应用到全部</button>
                 </div>
               );
             })()}

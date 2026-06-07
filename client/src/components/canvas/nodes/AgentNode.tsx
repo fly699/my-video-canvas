@@ -199,7 +199,7 @@ export const AgentNode = memo(function AgentNode({ id, selected, data }: Props) 
     if (ops.length === 0) return;
     const pos = useCanvasStore.getState().nodes.find((n) => n.id === id)?.position ?? { x: 0, y: 0 };
     const templates = (templatesQuery.data ?? []).map((t) => ({ id: t.id, label: t.label, payload: t.payload }));
-    const r = applyAgentOperations(ops, pos, { templates }); // mutates op.status/op.error in place
+    const r = applyAgentOperations(ops, pos, { templates, freeVramAfterRun: planPrefs.freeVramAfterRun }); // mutates op.status/op.error in place
     setAppliedIdx((prev) => new Set(prev).add(msgIdx));
     // Persist op statuses (read fresh so an auto-apply right after send is correct).
     setMessages(freshMessages().map((m, i) => (i === msgIdx ? { ...m, operations: [...ops] } : m)));
@@ -652,6 +652,7 @@ export const AgentNode = memo(function AgentNode({ id, selected, data }: Props) 
                 ["imageFirst", "生图 → 再生视频", "先出静帧再图生视频，不直接文生视频"],
                 ["addMusic", "自动配乐", "添加 audio 节点并入合并"],
                 ["addSubtitle", "自动字幕", "添加 subtitle 字幕节点"],
+                ["freeVramAfterRun", "各节点清显存", "规划生成的 ComfyUI 节点运行后清显存（仅本地服务器）"],
               ] as const).map(([key, label, hint]) => (
                 <label key={key} className="nodrag" style={{ display: "flex", alignItems: "flex-start", gap: 8, cursor: "pointer" }}>
                   <input type="checkbox" checked={!!planPrefs[key]} onChange={(e) => setPref({ [key]: e.target.checked })} style={{ accentColor: accent, marginTop: 2 }} />

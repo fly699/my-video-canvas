@@ -2263,6 +2263,8 @@ export const comfyuiRouter = router({
         batchSize: z.number().int().min(1).max(8).default(1),
         referenceImageUrl: z.string().max(2048).optional(),
         maskUrl: z.string().max(2048).optional(),
+        // Opt-in: after a successful run, free VRAM on the (local) server when idle.
+        freeVramAfterRun: z.boolean().optional(),
       }).refine(
         (v) => (v.workflowTemplate !== "img2img" && v.workflowTemplate !== "inpaint") || (v.referenceImageUrl && v.referenceImageUrl.trim().length > 0),
         { message: "img2img / inpaint 模板必须提供 referenceImageUrl", path: ["referenceImageUrl"] }
@@ -2323,6 +2325,14 @@ export const comfyuiRouter = router({
           for (const u of (result.urls?.length ? result.urls : [result.url])) {
             await recordGeneratedAsset({ userId: ctx.user.id, projectId: input.projectId, nodeId: input.nodeId, type: "image", source: "generated", provider: "comfyui", model: input.ckpt, url: u, name: input.ckpt || "ComfyUI 图像" });
           }
+          // Optional post-run VRAM cleanup (local only, queue must be idle); awaited
+          // so the runner advances only after the cache is freed. Best-effort.
+          if (input.freeVramAfterRun) {
+            try {
+              const queue = await getComfyQueueDepth(baseUrl);
+              if (shouldFreeVram({ enabled: true, isCloud: false, queue })) await freeComfyMemory(baseUrl);
+            } catch { /* cleanup is best-effort */ }
+          }
           return { url: result.url, urls: result.urls };
         } catch (err) {
           throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: err instanceof Error ? err.message : String(err) });
@@ -2358,6 +2368,8 @@ export const comfyuiRouter = router({
         vae: z.string().max(255).optional(),
         batchSize: z.number().int().min(1).max(8).default(1),
         referenceImageUrl: z.string().max(2048).optional(),
+        // Opt-in: after a successful run, free VRAM on the (local) server when idle.
+        freeVramAfterRun: z.boolean().optional(),
       }).refine(
         (v) => v.workflowTemplate !== "animatediff" || (v.motionModule && v.motionModule.trim().length > 0),
         { message: "AnimateDiff 模板必须提供 motionModule", path: ["motionModule"] }
@@ -2407,6 +2419,13 @@ export const comfyuiRouter = router({
             detail: { template: input.workflowTemplate, ckpt: input.ckpt, prompt: truncate(input.prompt), resultUrl: result.url, nodeId: input.nodeId },
           });
           await recordGeneratedAsset({ userId: ctx.user.id, projectId: input.projectId, nodeId: input.nodeId, type: "video", source: "generated", provider: "comfyui", model: input.ckpt, url: result.url, name: input.ckpt || "ComfyUI 视频" });
+          // Optional post-run VRAM cleanup (local only, queue must be idle). Best-effort.
+          if (input.freeVramAfterRun) {
+            try {
+              const queue = await getComfyQueueDepth(baseUrl);
+              if (shouldFreeVram({ enabled: true, isCloud: false, queue })) await freeComfyMemory(baseUrl);
+            } catch { /* cleanup is best-effort */ }
+          }
           return { url: result.url };
         } catch (err) {
           throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: err instanceof Error ? err.message : String(err) });
