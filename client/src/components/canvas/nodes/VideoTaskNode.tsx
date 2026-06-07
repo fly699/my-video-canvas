@@ -848,7 +848,8 @@ export const VideoTaskNode = memo(function VideoTaskNode({ id, selected, data }:
     // Position-ordered (topmost first) so the prompt's 角色1/角色2 numbering aligns
     // with the reference image order in buildRefUrls (both use connectedCharacters).
     const chars = connectedCharacters(id, allEdges, allNodes);
-    const charRefFallback = chars.find((c) => c.referenceImageUrl?.trim())?.referenceImageUrl;
+    // Single-ref fallback: PERSON characters only — a 场景's image is location, not identity.
+    const charRefFallback = chars.find((c) => (c.characterKind ?? "person") !== "scene" && c.referenceImageUrl?.trim())?.referenceImageUrl;
     return {
       prompt: mergeCharactersIntoPrompt(payload.prompt ?? "", chars),
       referenceImageUrl: payload.referenceImageUrl?.trim() || charRefFallback,

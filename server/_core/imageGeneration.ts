@@ -125,7 +125,12 @@ async function buildPoyoImageInput(spec: PoyoImageSpec, options: GenerateImageOp
   if (spec.n && options.n) input.n = options.n;
   if (spec.outputFormat && options.outputFormat) input.output_format = options.outputFormat;
 
-  if (hasRefs) {
+  // Only attach reference images when the model can actually consume them (it's an
+  // edit/reference model — `editOnly`, or it has an `edit` variant we switch to via
+  // `isEdit`). Plain text-to-image models (z-image / wan-image / grok-image) have no
+  // edit variant; sending `image_urls` there makes Poyo reject the request, so we
+  // drop the reference instead (e.g. a connected character on a non-reference model).
+  if (hasRefs && isEdit) {
     // Edit/unified models read reference images from `image_urls`.
     input.image_urls = refUrls;
     // Legacy single-ref field kept for models that historically used it.

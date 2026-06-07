@@ -74,6 +74,9 @@ export const StoryboardNode = memo(function StoryboardNode({ id, selected, data 
       const srcNode = s.nodes.find((n) => n.id === edge.source);
       if (srcNode?.data.nodeType !== "character") continue;
       const cp = srcNode.data.payload as import("../../../../../shared/types").CharacterNodeData;
+      // Scene-kind characters contribute text only — never use them as an
+      // identity/face reference image (consistent with round-5 fixes).
+      if ((cp.characterKind ?? "person") === "scene") continue;
       if (cp.referenceImageUrl) return cp.referenceImageUrl;
     }
     return undefined;
@@ -305,7 +308,8 @@ export const StoryboardNode = memo(function StoryboardNode({ id, selected, data 
     // used elsewhere (reference image priority = topmost connected character).
     const chars = connectedCharacters(id, allEdges, allNodes);
     let charRefUrl: string | undefined = payload.referenceImageUrl;
-    if (!charRefUrl) charRefUrl = chars.find((c) => c.referenceImageUrl?.trim())?.referenceImageUrl;
+    // PERSON characters only — a 场景's image is location, not an identity reference.
+    if (!charRefUrl) charRefUrl = chars.find((c) => (c.characterKind ?? "person") !== "scene" && c.referenceImageUrl?.trim())?.referenceImageUrl;
     const rawPrompt = mergeCharactersIntoPrompt(payload.promptText, chars);
     const enhancedPrompt = Array.from(rawPrompt).length > 2000
       ? Array.from(rawPrompt).slice(0, 2000).join("")
