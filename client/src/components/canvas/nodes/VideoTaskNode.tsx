@@ -1573,16 +1573,6 @@ export const VideoTaskNode = memo(function VideoTaskNode({ id, selected, data }:
               reachable={reachable}
               onSwitch={(u) => handleChange("referenceImageUrl", u)}
             />
-            {refImages.images.length >= 1 && (
-              <button
-                onClick={() => setStripOpen(!stripOpen)}
-                className="nodrag"
-                style={{ marginLeft: "auto", display: "flex", alignItems: "center", gap: 3, fontSize: 10, color: stripOpen ? accentColor : "var(--c-t3)", border: `1px solid ${stripOpen ? "oklch(0.62 0.20 25 / 0.5)" : "var(--c-bd2)"}`, borderRadius: 6, padding: "1px 6px" }}
-                title="展开左侧参考图列表"
-              >
-                <Layers style={{ width: 11, height: 11 }} /> {stripOpen ? "收起" : "展开"}
-              </button>
-            )}
           </label>
 
           {refImages.images.length > 0 && (
