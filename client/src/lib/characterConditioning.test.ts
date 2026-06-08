@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { characterReferenceImages, characterHasConditioning, deriveCharacterConditioning, connectedCharacterRefImages, connectedCharacterLora } from "./characterConditioning";
+import { characterReferenceImages, characterHasConditioning, deriveCharacterConditioning, connectedCharacterRefImages, connectedSceneRefImages, connectedCharacterLora } from "./characterConditioning";
 import type { CharacterNodeData } from "../../../shared/types";
 
 const char = (over: Partial<CharacterNodeData>): CharacterNodeData => ({ characterKind: "person", ...over });
@@ -111,5 +111,15 @@ describe("scene characters are excluded from identity (image/LoRA)", () => {
   });
   it("deriveCharacterConditioning returns empty for a scene", () => {
     expect(deriveCharacterConditioning({ characterKind: "scene", referenceImageUrl: "street.png" }, {})).toEqual({});
+  });
+  it("connectedSceneRefImages returns ONLY scene-kind images (the complement)", () => {
+    const nodes = [
+      N("person", { characterKind: "person", referenceImageUrl: "face.png" }, 100),
+      N("scene", { characterKind: "scene", referenceImageUrl: "street.png", additionalImageUrls: ["alley.png"] }, 200),
+    ];
+    const edges = [{ source: "person", target: "x" }, { source: "scene", target: "x" }];
+    expect(connectedSceneRefImages("x", edges, nodes)).toEqual(["street.png", "alley.png"]);
+    // person + scene refs are disjoint
+    expect(connectedCharacterRefImages("x", edges, nodes)).toEqual(["face.png"]);
   });
 });

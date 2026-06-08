@@ -65,6 +65,26 @@ export function connectedCharacterRefImages(
   return out;
 }
 
+/** Reference images from connected SCENE characters — backdrop / location / style refs,
+ *  NOT identity/face refs. Kept SEPARATE from connectedCharacterRefImages so a scene's
+ *  image never feeds IPAdapter face-lock; callers append these as general image context
+ *  (POYO edit/reference models) after the person identity refs. Position-ordered. */
+export function connectedSceneRefImages(
+  targetId: string,
+  edges: { source: string; target: string }[],
+  nodes: CharNodeLike[],
+): string[] {
+  const out: string[] = [];
+  const seen = new Set<string>();
+  for (const c of connectedCharacters(targetId, edges, nodes)) {
+    if ((c.characterKind ?? "person") !== "scene") continue;
+    for (const url of characterReferenceImages(c)) {
+      if (!seen.has(url)) { seen.add(url); out.push(url); }
+    }
+  }
+  return out;
+}
+
 /** First connected PERSON character's LoRA (name + strength), or null. Priority by
  *  position. Scene nodes carry no character LoRA. */
 export function connectedCharacterLora(

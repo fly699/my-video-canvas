@@ -11,7 +11,7 @@ import { toast } from "sonner";
 import { Sparkles, ImageIcon, Loader2, Upload, X, Wand2, History, Languages, Film, ZoomIn, Download, Copy } from "lucide-react";
 import { isOwnStorageUrl } from "@/lib/ownStorage";
 import { mergeCharactersIntoPrompt } from "../../../lib/characterPrompt";
-import { connectedCharacters, connectedCharacterRefImages } from "../../../lib/characterConditioning";
+import { connectedCharacters, connectedCharacterRefImages, connectedSceneRefImages } from "../../../lib/characterConditioning";
 import { IMAGE_MODELS } from "@/lib/models";
 import { MediaImage } from "../MediaImage";
 import { RefImageReachabilityBadge, RefImageSwitchButton, useRefImageGuard, usePreferUpstreamRefSource, useAutoPreferUpstreamRefSource } from "../mediaReachability";
@@ -312,7 +312,10 @@ export const StoryboardNode = memo(function StoryboardNode({ id, selected, data 
     // matching ImageGenNode — previously only the FIRST person's primary image was
     // sent, losing multi-view / multi-character locking. Cap to the server's max(8).
     const manualRef = payload.referenceImageUrl?.trim();
-    const charRefs = manualRef ? [] : connectedCharacterRefImages(id, allEdges, allNodes).slice(0, 8);
+    // Person identity refs first, then SCENE backdrop refs (location/style context).
+    const charRefs = manualRef
+      ? []
+      : [...connectedCharacterRefImages(id, allEdges, allNodes), ...connectedSceneRefImages(id, allEdges, allNodes)].slice(0, 8);
     const charRefUrl: string | undefined = manualRef || charRefs[0];
     // Cap to 2000 while PRESERVING the user's scene text — the previous crude
     // slice(0, 2000) cut from the END, dropping the scene description (which sits
