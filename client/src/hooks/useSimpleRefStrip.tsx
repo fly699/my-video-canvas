@@ -1,8 +1,9 @@
-import { useCallback, useState, type ReactNode } from "react";
+import { useCallback, type ReactNode } from "react";
 import { Layers } from "lucide-react";
 import { toast } from "sonner";
 import type { ReferenceImage } from "../../../shared/types";
 import { useCanvasStore } from "./useCanvasStore";
+import { usePersistentState } from "./usePersistentState";
 import { trpc } from "@/lib/trpc";
 import { ReferenceImageStrip } from "../components/canvas/ReferenceImageStrip";
 import { openNodeImage } from "../components/canvas/NodeImageLightbox";
@@ -31,7 +32,8 @@ export function useSimpleRefStrip(
   const accent = opts?.accent ?? "oklch(0.72 0.20 330)";
   const maxAdditional = opts?.maxAdditional ?? 8;
   const updateNodeData = useCanvasStore((s) => s.updateNodeData);
-  const [open, setOpen] = useState(false);
+  // 吸附窗展开/收起状态持久化（按节点 id 存 localStorage），刷新/折叠后保留。
+  const [open, setOpen] = usePersistentState<boolean>(`ui:refstrip:${id}`, false, { crossTab: false });
   const uploadMut = trpc.upload.uploadImage.useMutation();
 
   const combine = (p: Payload): string[] => {

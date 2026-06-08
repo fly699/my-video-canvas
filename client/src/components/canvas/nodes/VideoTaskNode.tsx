@@ -4,6 +4,7 @@ import { handleStyle } from "../../../lib/handleStyle";
 import { useConnectState } from "../../../hooks/useConnectingStore";
 import { useHoverStore } from "../../../hooks/useHoverStore";
 import { useCanvasStore } from "../../../hooks/useCanvasStore";
+import { usePersistentState } from "../../../hooks/usePersistentState";
 import type { VideoTaskNodeData, VideoProvider, CharacterNodeData } from "../../../../../shared/types";
 import { maxRefImagesForProvider } from "../../../../../shared/videoRefCaps";
 import { mergeCharactersIntoPrompt } from "../../../lib/characterPrompt";
@@ -630,7 +631,7 @@ export const VideoTaskNode = memo(function VideoTaskNode({ id, selected, data }:
   // Multi-reference-image management. Only the first (首图) feeds the video
   // model's start frame; the rest are managed alternates the user can reorder.
   const refImages = useReferenceImages(id, payload);
-  const [stripOpen, setStripOpen] = useState(false);
+  const [stripOpen, setStripOpen] = usePersistentState<boolean>(`ui:refstrip:${id}`, false, { crossTab: false });
   const [refZoom, setRefZoom] = useState<number | null>(null);
   const [refUploading, setRefUploading] = useState(false);
   const refFileInputRef = useRef<HTMLInputElement>(null);

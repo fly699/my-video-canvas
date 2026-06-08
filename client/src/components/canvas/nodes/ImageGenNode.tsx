@@ -5,6 +5,7 @@ import { handleStyle } from "../../../lib/handleStyle";
 import { useConnectState } from "../../../hooks/useConnectingStore";
 import { useHoverStore } from "../../../hooks/useHoverStore";
 import { useCanvasStore } from "../../../hooks/useCanvasStore";
+import { usePersistentState } from "../../../hooks/usePersistentState";
 import { propagateRefImage } from "../../../lib/refImagePropagation";
 import { useReferenceImages } from "../../../hooks/useReferenceImages";
 import { refUrls } from "../../../lib/referenceImages";
@@ -143,7 +144,7 @@ export const ImageGenNode = memo(function ImageGenNode({ id, selected, data }: P
     // refImages 每渲染重建，但 hasRefs 守卫 + addUrls 去重使其幂等
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [upstreamRefKey, hasUpstreamChar, payload.referenceImages, payload.referenceImageUrl]);
-  const [stripOpen, setStripOpen] = useState(false);
+  const [stripOpen, setStripOpen] = usePersistentState<boolean>(`ui:refstrip:${id}`, false, { crossTab: false });
   const [paramsExpanded, setParamsExpanded] = useState(false);
   // Derived, not local state — stays in sync with collaboration/undo updates
   const seedLocked = payload.seed != null;
