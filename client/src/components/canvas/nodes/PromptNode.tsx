@@ -178,6 +178,7 @@ export const PromptNode = memo(function PromptNode({ id, selected, data }: Props
     <BaseNode
       id={id} selected={selected} nodeType="prompt" title={data.title} minHeight={200} resizable heroMedia={heroMedia}
       onRun={handleRunPipeline} running={busy === "pipeline"} canRun={canRun} hasResult={!!payload.positivePrompt?.trim()}
+      onAssetImageDrop={(urls) => updateNodeData(id, { referenceImageUrl: urls[0] })}
     >
       <div className="flex flex-col h-full p-3.5 gap-3">
         {/* Collapsed summary (professional mode): fills the remaining node height and

@@ -539,6 +539,7 @@ export const ComfyuiImageNode = memo(function ComfyuiImageNode({ id, selected, d
   return (
     <BaseNode id={id} selected={selected} nodeType="comfyui_image" title={data.title} minHeight={320} resizable heroMedia={heroMedia}
       onRun={handleGenerate} running={genMutation.isPending} canRun={!!payload.prompt?.trim() && !!payload.ckpt?.trim()} hasResult={!!payload.imageUrl}
+      onAssetImageDrop={(urls) => updateNodeData(id, { referenceImageUrl: urls[0], ...(payload.workflowTemplate !== "img2img" && payload.workflowTemplate !== "inpaint" ? { workflowTemplate: "img2img" } : {}) })}
       headerTooltip={modelTip || undefined}
       hideTypeBadge
       headerRight={cornerText ? (
