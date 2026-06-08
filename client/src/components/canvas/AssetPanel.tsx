@@ -16,16 +16,17 @@ interface Props {
   onHeaderMouseDown?: (e: React.MouseEvent) => void;
 }
 
-type TypeFilter = "" | "image" | "video" | "audio" | "other";
-type SourceFilter = "" | "upload" | "generated" | "external";
+type TypeFilter = "image" | "video" | "audio" | "other";
+type SourceFilter = "upload" | "generated" | "external";
 
 export function AssetPanel({ projectId, onClose, onHeaderMouseDown }: Props) {
   const { addNode, updateNodeData } = useCanvasStore();
   const [uploading, setUploading] = useState(false);
   const [dragOver, setDragOver] = useState(false);
   const [scope, setScope] = useState<"project" | "all">("project");
-  const [typeFilter, setTypeFilter] = useState<TypeFilter>("");
-  const [sourceFilter, setSourceFilter] = useState<SourceFilter>("");
+  // 复选：空集合 = 全部。按类型 / 来源各自多选。
+  const [typeFilter, setTypeFilter] = useState<Set<TypeFilter>>(new Set());
+  const [sourceFilter, setSourceFilter] = useState<Set<SourceFilter>>(new Set());
   const [filtersOpen, setFiltersOpen] = useState(false);
   const [lightboxIdx, setLightboxIdx] = useState<number | null>(null);
   const [videoPreview, setVideoPreview] = useState<string | null>(null);
@@ -34,11 +35,10 @@ export function AssetPanel({ projectId, onClose, onHeaderMouseDown }: Props) {
   const [selected, setSelected] = useState<Set<number>>(new Set());
   const fileInputRef = useRef<HTMLInputElement>(null);
 
+  // 类型/来源为客户端复选过滤，故服务端只按 scope 取数（不传 type/source）。
   const { data: assets, refetch } = trpc.assets.list.useQuery({
     projectId: scope === "all" ? undefined : projectId,
     allProjects: scope === "all",
-    type: typeFilter || undefined,
-    source: sourceFilter || undefined,
   }, {
     // Auto-pick up newly generated/uploaded assets while the panel is open
     // (generation completes asynchronously elsewhere on the canvas).
@@ -46,8 +46,14 @@ export function AssetPanel({ projectId, onClose, onHeaderMouseDown }: Props) {
     refetchOnWindowFocus: true,
   });
 
+  // 应用复选过滤（空集合 = 全部）。
+  const filteredAssets = (assets ?? []).filter((a) =>
+    (typeFilter.size === 0 || typeFilter.has(a.type as TypeFilter)) &&
+    (sourceFilter.size === 0 || sourceFilter.has((a.source ?? "") as SourceFilter))
+  );
+
   // Image URLs (in list order) for the click-to-zoom lightbox.
-  const imageUrls = (assets ?? []).filter((a) => a.type === "image").map((a) => a.url);
+  const imageUrls = filteredAssets.filter((a) => a.type === "image").map((a) => a.url);
 
   const utils = trpc.useUtils();
   const deleteMutation = trpc.assets.delete.useMutation({
@@ -181,7 +187,7 @@ export function AssetPanel({ projectId, onClose, onHeaderMouseDown }: Props) {
         <div>
           <h3 className="text-sm font-semibold" style={{ color: "var(--c-t1)" }}>素材库</h3>
           <p className="text-[10px] mt-0.5" style={{ color: "var(--c-t4)" }}>
-            {assets?.length ?? 0} 个素材
+            {filteredAssets.length} 个素材{(typeFilter.size || sourceFilter.size) ? ` / 共 ${assets?.length ?? 0}` : ""}
           </p>
         </div>
         <button
@@ -242,9 +248,16 @@ export function AssetPanel({ projectId, onClose, onHeaderMouseDown }: Props) {
             background: active ? "oklch(0.65 0.18 285 / 0.12)" : "transparent",
             color: active ? "oklch(0.72 0.16 285)" : "var(--c-t3)",
           });
-          const typeLabel = ({ "": "全部", image: "图片", video: "视频", audio: "音频", other: "其他" } as Record<string, string>)[typeFilter];
-          const srcLabel = ({ "": "全来源", upload: "上传", generated: "生成", external: "外部" } as Record<string, string>)[sourceFilter];
+          const TYPE_LABEL: Record<TypeFilter, string> = { image: "图片", video: "视频", audio: "音频", other: "其他" };
+          const SRC_LABEL: Record<SourceFilter, string> = { upload: "上传", generated: "生成", external: "外部" };
+          const typeLabel = typeFilter.size === 0 ? "全部" : Array.from(typeFilter).map((v) => TYPE_LABEL[v]).join("/");
+          const srcLabel = sourceFilter.size === 0 ? "全来源" : Array.from(sourceFilter).map((v) => SRC_LABEL[v]).join("/");
           const summary = `${scope === "all" ? "全部项目" : "本项目"} · ${typeLabel} · ${srcLabel}`;
+          const toggle = <T,>(set: Set<T>, setter: (s: Set<T>) => void, v: T) => {
+            const n = new Set(set);
+            n.has(v) ? n.delete(v) : n.add(v);
+            setter(n);
+          };
           return (
             <>
               <button
@@ -265,13 +278,15 @@ export function AssetPanel({ projectId, onClose, onHeaderMouseDown }: Props) {
                     <button style={chip(scope === "all")} onClick={() => setScope("all")}>全部项目</button>
                   </div>
                   <div className="flex items-center gap-1 flex-wrap">
-                    {([["", "全部"], ["image", "图片"], ["video", "视频"], ["audio", "音频"], ["other", "其他"]] as [TypeFilter, string][]).map(([v, l]) => (
-                      <button key={v} style={chip(typeFilter === v)} onClick={() => setTypeFilter(v)}>{l}</button>
+                    <button style={chip(typeFilter.size === 0)} onClick={() => setTypeFilter(new Set())}>全部</button>
+                    {([["image", "图片"], ["video", "视频"], ["audio", "音频"], ["other", "其他"]] as [TypeFilter, string][]).map(([v, l]) => (
+                      <button key={v} style={chip(typeFilter.has(v))} onClick={() => toggle(typeFilter, setTypeFilter, v)}>{l}</button>
                     ))}
                   </div>
                   <div className="flex items-center gap-1 flex-wrap">
-                    {([["", "全来源"], ["upload", "上传"], ["generated", "生成"], ["external", "外部"]] as [SourceFilter, string][]).map(([v, l]) => (
-                      <button key={v} style={chip(sourceFilter === v)} onClick={() => setSourceFilter(v)}>{l}</button>
+                    <button style={chip(sourceFilter.size === 0)} onClick={() => setSourceFilter(new Set())}>全来源</button>
+                    {([["upload", "上传"], ["generated", "生成"], ["external", "外部"]] as [SourceFilter, string][]).map(([v, l]) => (
+                      <button key={v} style={chip(sourceFilter.has(v))} onClick={() => toggle(sourceFilter, setSourceFilter, v)}>{l}</button>
                     ))}
                   </div>
                 </div>
@@ -283,7 +298,7 @@ export function AssetPanel({ projectId, onClose, onHeaderMouseDown }: Props) {
 
       {/* ── Asset list ── */}
       <div className="flex-1 overflow-y-auto px-3 py-2">
-        {!assets || assets.length === 0 ? (
+        {filteredAssets.length === 0 ? (
           <div className="flex flex-col items-center justify-center py-16 gap-3">
             <div
               className="w-12 h-12 rounded-2xl flex items-center justify-center"
@@ -292,15 +307,15 @@ export function AssetPanel({ projectId, onClose, onHeaderMouseDown }: Props) {
               <FileImage className="w-6 h-6" style={{ color: "var(--c-bd3)" }} />
             </div>
             <p className="text-xs text-center" style={{ color: "var(--c-t4)" }}>
-              暂无素材<br />
-              <span style={{ color: "var(--c-bd3)", fontSize: 10 }}>上传后将在此显示</span>
+              {(typeFilter.size || sourceFilter.size) ? "没有符合筛选的素材" : "暂无素材"}<br />
+              <span style={{ color: "var(--c-bd3)", fontSize: 10 }}>{(typeFilter.size || sourceFilter.size) ? "试试调整筛选条件" : "上传后将在此显示"}</span>
             </p>
           </div>
         ) : (
           // Auto multi-column thumbnail grid — adapts to panel width; file names
           // are hidden (shown on hover + as title) to stay compact.
           <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(64px, 1fr))", gap: 6 }}>
-            {assets.map((asset) => {
+            {filteredAssets.map((asset) => {
               const Icon = getIcon(asset.type);
               const accent = getAccent(asset.type);
               const isSel = selected.has(asset.id);
