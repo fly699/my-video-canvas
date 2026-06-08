@@ -1096,7 +1096,7 @@ export const VideoTaskNode = memo(function VideoTaskNode({ id, selected, data }:
   return (
     <BaseNode id={id} selected={selected} nodeType="video_task" title={data.title} minHeight={260} heroMedia={heroMedia}
       onAssetImageDrop={(urls) => refImages.addUrls(urls, "drop")}
-      headerRight={refImages.images.length > 1 ? (
+      headerRight={refImages.images.length >= 1 ? (
         <button
           onClick={() => setStripOpen((v) => !v)}
           className="nodrag flex items-center gap-1"
@@ -1541,7 +1541,7 @@ export const VideoTaskNode = memo(function VideoTaskNode({ id, selected, data }:
               reachable={reachable}
               onSwitch={(u) => handleChange("referenceImageUrl", u)}
             />
-            {refImages.images.length > 1 && (
+            {refImages.images.length >= 1 && (
               <button
                 onClick={() => setStripOpen((v) => !v)}
                 className="nodrag"
