@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, type ReactNode } from "react";
-import { AlertTriangle, Link2 } from "lucide-react";
+import { AlertTriangle, Link2, CircleCheck } from "lucide-react";
 import { trpc } from "@/lib/trpc";
 import { useCanvasStore } from "../../hooks/useCanvasStore";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
@@ -74,14 +74,17 @@ export function shouldWarnRefImage(args: {
  * 查询部署级"上游可拉取媒体"标志。部署期内基本不变，故 staleTime 设长、不重复请求。
  * 查询失败时按"可达"处理（reachable=true），以免误拦正常部署（Forge / 已配公网端点）。
  */
-export function useMediaReachability(): { reachable: boolean; isLoading: boolean } {
+export function useMediaReachability(): { reachable: boolean; poyoStaging: boolean; isLoading: boolean } {
   const q = trpc.config.mediaReachability.useQuery(undefined, {
     staleTime: 5 * 60_000,
     refetchOnWindowFocus: false,
     retry: 1,
   });
+  // Poyo 暂存开启时，参考图会被暂存到 Poyo 公网链接给上游读取 → 视为可达。
+  const poyoStaging = q.data?.poyoStagingActive ?? false;
   return {
-    reachable: q.data?.upstreamCanFetchMedia ?? true,
+    reachable: (q.data?.upstreamCanFetchMedia ?? true) || poyoStaging,
+    poyoStaging,
     isLoading: q.isLoading,
   };
 }
@@ -98,6 +101,32 @@ export function RefImageReachabilityBadge(props: {
   reachable: boolean;
   className?: string;
 }) {
+  const { poyoStaging } = useMediaReachability();
+  // 这次生成是否「本会因不可达而警告」的同等场景（URL-only 上游 + 内部参考图）。
+  const relevant =
+    Boolean(props.refImageUrl) &&
+    providerNeedsPublicMedia(props.model) &&
+    !isExternalPublicUrl(props.refImageUrl);
+  // Poyo 暂存开启 → 亮绿灯，提示参考图会经 Poyo 暂存给上游读取。
+  if (relevant && poyoStaging) {
+    return (
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <span
+            className={
+              "inline-flex items-center gap-1 rounded-full bg-emerald-100 px-1.5 py-0.5 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300 " +
+              (props.className ?? "")
+            }
+          >
+            <CircleCheck className="h-3 w-3" />
+          </span>
+        </TooltipTrigger>
+        <TooltipContent className="max-w-[260px] text-left">
+          已连接有效 Poyo 暂存：参考图会自动暂存到 Poyo 公网链接供上游读取，无需公网存储。
+        </TooltipContent>
+      </Tooltip>
+    );
+  }
   if (!shouldWarnRefImage(props)) return null;
   return (
     <Tooltip>
