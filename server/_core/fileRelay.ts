@@ -36,6 +36,47 @@ function ensureDir(): string {
   return dir;
 }
 
+// ── 自动清理（保留 N 天，0=关闭）──────────────────────────────────────────────
+// 配置存中转目录下的隐藏文件，默认取环境变量 RELAY_RETENTION_DAYS。
+const RELAY_CONFIG_FILE = ".relay-config.json";
+
+function relayConfigPath(): string {
+  return path.join(relayDir(), RELAY_CONFIG_FILE);
+}
+
+export function getRetentionDays(): number {
+  try {
+    const raw = fs.readFileSync(relayConfigPath(), "utf8");
+    const v = Number((JSON.parse(raw) as { retentionDays?: unknown }).retentionDays);
+    if (Number.isFinite(v) && v >= 0) return Math.floor(v);
+  } catch { /* 无配置 → 用环境变量兜底 */ }
+  const env = Number(process.env.RELAY_RETENTION_DAYS);
+  return Number.isFinite(env) && env > 0 ? Math.floor(env) : 0;
+}
+
+function setRetentionDays(days: number): number {
+  const n = Number.isFinite(days) && days >= 0 ? Math.min(3650, Math.floor(days)) : 0;
+  ensureDir();
+  fs.writeFileSync(relayConfigPath(), JSON.stringify({ retentionDays: n }), "utf8");
+  return n;
+}
+
+/** 删除超过保留期的文件（按 mtime 从旧到新顺序删），并清理变空的子目录。retention<=0 不删。 */
+export function sweepExpiredRelayFiles(): { removed: number } {
+  const days = getRetentionDays();
+  if (days <= 0) return { removed: 0 };
+  const cutoff = Date.now() - days * 24 * 60 * 60 * 1000;
+  const files = walkRelay().filter((f) => f.mtime < cutoff).sort((a, b) => a.mtime - b.mtime); // 旧→新
+  let removed = 0;
+  for (const f of files) {
+    const full = fullOf(f.name);
+    if (!full) continue;
+    try { fs.unlinkSync(full); removed++; pruneEmptyDirs(path.dirname(full)); } catch { /* skip */ }
+  }
+  if (removed > 0) console.log(`[relay] 自动清理：删除 ${removed} 个超过 ${days} 天的中转文件`);
+  return { removed };
+}
+
 /** 把外部传入的文件名收敛为安全的纯文件名（去目录、拒绝穿越）；非法返回 null。 */
 export function safeName(raw: string): string | null {
   const n = path.basename(String(raw ?? "").trim());
@@ -99,7 +140,7 @@ function walkRelay(): Array<{ name: string; size: number; mtime: number }> {
     let entries: fs.Dirent[];
     try { entries = fs.readdirSync(abs, { withFileTypes: true }); } catch { continue; }
     for (const e of entries) {
-      if (e.name.endsWith(".part")) continue;
+      if (e.name.endsWith(".part") || e.name.startsWith(".")) continue; // 跳过临时块与隐藏配置
       const childRel = rel ? `${rel}/${e.name}` : e.name;
       if (e.isDirectory()) { stack.push(childRel); continue; }
       if (!e.isFile()) continue;
@@ -160,10 +201,29 @@ function checkToken(req: Request, res: Response): boolean {
 }
 
 export function registerFileRelay(app: Express): void {
+  // 自动清理：启动跑一次，之后每小时一次（保留期 0 时为空操作）。
+  try { sweepExpiredRelayFiles(); } catch { /* ignore */ }
+  const sweepTimer = setInterval(() => { try { sweepExpiredRelayFiles(); } catch { /* ignore */ } }, 60 * 60 * 1000);
+  if (typeof sweepTimer.unref === "function") sweepTimer.unref();
+
   // ── 管理页 ──
   app.get("/relay", (_req, res) => {
     res.setHeader("Content-Type", "text/html; charset=utf-8");
     res.send(RELAY_HTML);
+  });
+
+  // ── 自动清理配置（保留天数）──
+  app.get("/relay/api/config", (req, res) => {
+    if (!checkToken(req, res)) return;
+    res.json({ retentionDays: getRetentionDays() });
+  });
+  app.put("/relay/api/config", (req, res) => {
+    if (!checkToken(req, res)) return;
+    const d = Number(req.query.retentionDays);
+    if (!Number.isFinite(d) || d < 0) { res.status(400).json({ error: "天数非法" }); return; }
+    const saved = setRetentionDays(d);
+    const swept = sweepExpiredRelayFiles();
+    res.json({ retentionDays: saved, removed: swept.removed });
   });
 
   // ── 列表（递归，name 为相对路径，支持文件夹）──
@@ -321,7 +381,14 @@ const RELAY_HTML = `<!doctype html>
   </div>
   <div class="bar" id="bar"><i id="barfill"></i></div>
   <div id="status"></div>
-  <div class="listhead"><span class="lbl">中转文件</span><span class="cnt" id="cnt"></span></div>
+  <div class="listhead">
+    <span class="lbl">中转文件</span>
+    <span style="display:flex;align-items:center;gap:6px;font-size:12px;color:var(--t3)">
+      自动清理：保留 <input id="retention" type="number" min="0" max="3650" style="width:56px;padding:3px 6px;border-radius:7px;border:1px solid var(--bd);background:var(--card);color:var(--t1);font-size:12px" /> 天
+      <button id="saveret" class="copy">保存</button>
+      <span class="cnt" id="cnt"></span>
+    </span>
+  </div>
   <div id="list"></div>
   <div id="empty" class="empty" style="display:none">暂无文件，先上传一个吧</div>
   <div class="cli">
@@ -408,6 +475,17 @@ function uploadOne(file, rel, idx, total){ return new Promise(res=>{
   xhr.onerror=()=>{ bar.style.display='none'; statusEl.textContent=tag+'✗ 上传出错：'+rel; res(); };
   xhr.send(file);
 }); }
+// 自动清理配置：保留 N 天（0=不清理），保存后立即清一次。
+const retEl=document.getElementById('retention'), saveRet=document.getElementById('saveret');
+async function loadRetention(){ try{ const j=await (await fetch('/relay/api/config')).json(); retEl.value=j.retentionDays??0; }catch{} }
+saveRet.onclick=async()=>{
+  const d=Math.max(0,Math.floor(Number(retEl.value)||0));
+  try{ const j=await (await fetch('/relay/api/config?retentionDays='+d,{method:'PUT'})).json();
+    retEl.value=j.retentionDays; statusEl.textContent = j.retentionDays>0? ('已设置：保留 '+j.retentionDays+' 天'+(j.removed?('，本次清理 '+j.removed+' 个'):'')) : '已关闭自动清理';
+    refresh();
+  }catch{ statusEl.textContent='保存失败'; }
+};
+loadRetention();
 refresh();
 </script>
 </body></html>`;
