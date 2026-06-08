@@ -1874,35 +1874,38 @@ export async function executeCustomWorkflow(
 
   // Determine which output nodes to collect from
   const targetNodeIds = new Set(options.outputNodeIds ?? []);
-  const useAll = targetNodeIds.size === 0;
 
   const imageUrls: string[] = [];
   const videoUrls: string[] = [];
+  const VIDEO_EXT = /\.(mp4|webm|mkv|mov|avi|gif|webp)$/i;
+  const AUDIO_EXT = /\.(mp3|wav|flac|m4a|aac|ogg)$/i;
 
-  for (const [nodeId, nodeOutput] of Object.entries(entry.outputs ?? {})) {
-    if (!useAll && !targetNodeIds.has(nodeId)) continue;
-
-    // Video outputs (gifs array from VHS_VideoCombine)
-    for (const v of nodeOutput.gifs ?? []) {
-      const dlUrl = downloadUrl(baseUrl, v.filename, v.subfolder, v.type);
-      const ext = v.filename.split(".").pop() || "mp4";
-      const stored = await downloadAndStore(dlUrl, ext, "video/mp4", apiKey);
-      videoUrls.push(stored.url);
-    }
-
-    // Image outputs
-    for (const img of nodeOutput.images ?? []) {
-      if (/\.(mp4|webm|gif|webp)$/i.test(img.filename)) {
-        const dlUrl = downloadUrl(baseUrl, img.filename, img.subfolder, img.type);
-        const ext = img.filename.split(".").pop() || "mp4";
-        const stored = await downloadAndStore(dlUrl, ext, "video/mp4", apiKey);
-        videoUrls.push(stored.url);
-      } else {
-        const dlUrl = downloadUrl(baseUrl, img.filename, img.subfolder, img.type);
-        const stored = await downloadAndStore(dlUrl, "png", "image/png", apiKey);
-        imageUrls.push(stored.url);
+  // Generic media collector: ComfyUI history outputs put media under various keys
+  // (SaveImage→`images`, VHS_VideoCombine→`gifs`, some newer nodes→`videos`). Scan
+  // EVERY array-of-objects-with-`filename` key rather than hard-coding key names, so
+  // unusual output nodes (LTX 数字人 等) don't silently yield "no output".
+  const collect = async (onlyTargets: boolean) => {
+    for (const [nodeId, nodeOutput] of Object.entries(entry.outputs ?? {})) {
+      if (onlyTargets && targetNodeIds.size > 0 && !targetNodeIds.has(nodeId)) continue;
+      for (const [outKey, arr] of Object.entries(nodeOutput as Record<string, unknown>)) {
+        if (!Array.isArray(arr)) continue;
+        for (const it of arr as Array<{ filename?: string; subfolder?: string; type?: string }>) {
+          if (!it || typeof it.filename !== "string" || !it.filename) continue;
+          if (AUDIO_EXT.test(it.filename)) continue; // 不把纯音频当成图/视频输出
+          const isVideo = outKey === "gifs" || outKey === "videos" || VIDEO_EXT.test(it.filename);
+          const dlUrl = downloadUrl(baseUrl, it.filename, it.subfolder ?? "", it.type ?? "output");
+          const ext = it.filename.split(".").pop() || (isVideo ? "mp4" : "png");
+          const stored = await downloadAndStore(dlUrl, ext, isVideo ? "video/mp4" : "image/png", apiKey);
+          (isVideo ? videoUrls : imageUrls).push(stored.url);
+        }
       }
     }
+  };
+
+  await collect(true);
+  // 选中的输出节点没产出 → 回退扫描全部输出节点（防 outputNodeIds 选错/漏选）。
+  if (imageUrls.length === 0 && videoUrls.length === 0 && targetNodeIds.size > 0) {
+    await collect(false);
   }
 
   const resolvedOutputType = options.outputType === "video" ? "video"
@@ -1913,7 +1916,10 @@ export async function executeCustomWorkflow(
     ? (videoUrls.length > 0 ? videoUrls : imageUrls)
     : (imageUrls.length > 0 ? imageUrls : videoUrls);
 
-  if (allUrls.length === 0) throw new Error("ComfyUI 任务完成但未返回任何输出");
+  if (allUrls.length === 0) {
+    const dbg = Object.entries(entry.outputs ?? {}).map(([nid, o]) => `${nid}:[${Object.keys(o as object).join(",")}]`).join(" ");
+    throw new Error(`ComfyUI 任务完成但未返回任何输出。历史输出节点：${dbg || "（空）"}（请确认输出节点已勾选 save_output，或在「输出选择」里选中正确的输出节点）`);
+  }
   return { urls: allUrls, outputType: resolvedOutputType };
 }
 
