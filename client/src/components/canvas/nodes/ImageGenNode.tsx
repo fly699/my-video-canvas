@@ -9,14 +9,14 @@ import { usePersistentState } from "../../../hooks/usePersistentState";
 import { propagateRefImage } from "../../../lib/refImagePropagation";
 import { useReferenceImages } from "../../../hooks/useReferenceImages";
 import { refUrls } from "../../../lib/referenceImages";
-import { effectiveCharacterRefImages, effectiveSceneRefImages, effectiveCharacters, stripCharacterMentions, connectedCharacterRefImages, connectedSceneRefImages } from "../../../lib/characterConditioning";
+import { effectiveCharacterRefImages, effectiveSceneRefImages, effectiveCharacters, stripCharacterMentions } from "../../../lib/characterConditioning";
 import { mergeCharactersIntoPrompt } from "../../../lib/characterPrompt";
 import { detectUpstreamPrompt, detectUpstreamImagesExpanded } from "../../../lib/comfyWorkflowParams";
 import { connectedEffectPrompts, appendEffectPrompts } from "../../../lib/effectPrompt";
-import { ReferenceImageStrip } from "../ReferenceImageStrip";
+import { ReferenceImageStrip, type StripItem } from "../ReferenceImageStrip";
 import { openNodeImage } from "../NodeImageLightbox";
 import { PromptDock } from "../PromptDock";
-import { useNodeDocks } from "../../../hooks/useNodeDocks";
+import { useNodeDocks, useCharSceneItems } from "../../../hooks/useNodeDocks";
 import type { ImageGenNodeData, ImageGenModel } from "../../../../../shared/types";
 import { trpc } from "@/lib/trpc";
 import { toast } from "sonner";
@@ -157,14 +157,13 @@ export const ImageGenNode = memo(function ImageGenNode({ id, selected, data }: P
     );
   });
   const hasCharInject = useCanvasStore((s) => effectiveCharacters(id, payload.prompt ?? "", s.edges, s.nodes).length > 0);
-  // 无自己的参考图、但连了角色/场景时，左侧吸附窗回落显示其首图（只读，标题「角色」/「场景」）。
-  const charImgUrl = useCanvasStore((s) => connectedCharacterRefImages(id, s.edges, s.nodes)[0]);
-  const sceneImgUrl = useCanvasStore((s) => connectedSceneRefImages(id, s.edges, s.nodes)[0]);
-  const charRefUrl = charImgUrl ?? sceneImgUrl;
-  const charRefTitle = charImgUrl ? "角色" : "场景";
-  const showingChar = refImages.images.length === 0 && !!charRefUrl;
-  const stripImages = showingChar ? [{ id: charRefUrl!, url: charRefUrl!, source: "url" as const, label: charRefTitle }] : refImages.images;
-  const docks = useNodeDocks(id, { hasRef: refImages.images.length >= 1 || !!charRefUrl, hasPrompt: !!finalPromptDisplay.trim() });
+  // 左侧吸附窗 = 自有参考图（可编辑）+ 最终参与的角色/场景图（@提及或连线，只读），各带类型标签。
+  const charSceneItems = useCharSceneItems(id, payload.prompt ?? "");
+  const stripImages: StripItem[] = [
+    ...refImages.images.map((img) => ({ ...img, label: "参考图", removable: true })),
+    ...charSceneItems,
+  ];
+  const docks = useNodeDocks(id, { hasRef: stripImages.length > 0, hasPrompt: !!finalPromptDisplay.trim() });
   const { refOpen: stripOpen, setRefOpen: setStripOpen } = docks;
   const [paramsExpanded, setParamsExpanded] = useState(false);
   // Derived, not local state — stays in sync with collaboration/undo updates
@@ -493,15 +492,12 @@ export const ImageGenNode = memo(function ImageGenNode({ id, selected, data }: P
             images={stripImages}
             open={stripOpen}
             accent={accent}
-            title={showingChar ? charRefTitle : "参考图"}
-            readOnly={showingChar}
-            allowRemove={!showingChar}
             onClose={() => setStripOpen(false)}
             onRemove={refImages.removeId}
             onMove={refImages.moveId}
             onInsertUrls={(urls, index) => refImages.insertUrls(urls, index, "drop")}
             onDropFiles={(files, index) => void uploadFilesToRef(files, index)}
-            onZoom={(i) => { if (showingChar) { const u = stripImages[i]?.url; if (u) openNodeImage(u); } else setRefZoom(i); }}
+            onZoom={(i) => { const u = stripImages[i]?.url; if (u) openNodeImage(u); }}
             onHoverChange={docks.onDockHoverChange}
             onPin={docks.pinRef}
           />

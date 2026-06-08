@@ -8,7 +8,7 @@ import { ComfyServerUrlField } from "./ComfyServerUrlField";
 import { SyncConfigDialog } from "../SyncConfigDialog";
 import { NodeConfigTabs } from "../NodeConfigTabs";
 import { useCanvasStore } from "../../../hooks/useCanvasStore";
-import { effectiveCharacters, effectiveCharacterRefImages, stripCharacterMentions, connectedCharacterRefImages, connectedSceneRefImages } from "../../../lib/characterConditioning";
+import { effectiveCharacters, effectiveCharacterRefImages, stripCharacterMentions } from "../../../lib/characterConditioning";
 import { mergeCharactersIntoPrompt } from "../../../lib/characterPrompt";
 import { usePreferUpstreamRefSource, useAutoPreferUpstreamRefSource } from "../mediaReachability";
 import { WatermarkedVideo } from "@/components/WatermarkedVideo";
@@ -24,7 +24,7 @@ import { isOwnStorageUrl } from "@/lib/ownStorage";
 import { mediaFetchUrl } from "@/lib/download";
 import { useComfyUpstreamAutoFill } from "./useComfyUpstreamAutoFill";
 import { PromptDock } from "../PromptDock";
-import { useNodeDocks } from "../../../hooks/useNodeDocks";
+import { useNodeDocks, useCharSceneItems } from "../../../hooks/useNodeDocks";
 import { LLMModelPicker, type LLMModelId } from "../LLMModelPicker";
 import { NodeTextArea, NodeInput } from "../NodeTextInput";
 import { useSimpleRefStrip } from "../../../hooks/useSimpleRefStrip";
@@ -88,14 +88,11 @@ export const ComfyuiVideoNode = memo(function ComfyuiVideoNode({ id, selected, d
     return mergeCharactersIntoPrompt(stripCharacterMentions(base, s.nodes), effectiveCharacters(id, base, s.edges, s.nodes), 2000);
   });
   const hasCharInject = useCanvasStore((s) => effectiveCharacters(id, payload.prompt ?? "", s.edges, s.nodes).length > 0);
-  // 连了角色/场景但本节点无自己的参考图时，左侧吸附窗回落显示其首图（标题「角色」/「场景」）。
-  const charImgUrl = useCanvasStore((s) => connectedCharacterRefImages(id, s.edges, s.nodes)[0]);
-  const sceneImgUrl = useCanvasStore((s) => connectedSceneRefImages(id, s.edges, s.nodes)[0]);
-  const charRefUrl = charImgUrl ?? sceneImgUrl;
-  const charRefTitle = charImgUrl ? "角色" : "场景";
-  const docks = useNodeDocks(id, { hasRef: !!payload.referenceImageUrl?.trim() || !!charRefUrl, hasPrompt: !!finalPromptDisplay.trim() });
+  // 左侧吸附窗 = 自有参考图 + 最终参与的角色/场景图（@提及或连线，只读），各带类型标签。
+  const charSceneItems = useCharSceneItems(id, payload.prompt ?? "");
+  const docks = useNodeDocks(id, { hasRef: !!payload.referenceImageUrl?.trim() || charSceneItems.length > 0, hasPrompt: !!finalPromptDisplay.trim() });
   // 左侧吸附参考图预览窗（单张参考，与内嵌预览并存；不触碰其它逻辑）。受控于悬停/钉住。
-  const refStrip = useSimpleRefStrip(id, payload, "single", { accent, open: docks.refOpen, onOpenChange: docks.setRefOpen, onHoverChange: docks.onDockHoverChange, onPin: docks.pinRef, fallbackImage: charRefUrl, fallbackTitle: charRefTitle });
+  const refStrip = useSimpleRefStrip(id, payload, "single", { accent, open: docks.refOpen, onOpenChange: docks.setRefOpen, onHoverChange: docks.onDockHoverChange, onPin: docks.pinRef, extraItems: charSceneItems });
   // Auto-prefer the upstream AI temporary public URL as the reference source when
   // the admin toggle is on and that URL probes alive (no-op when off / default).
   const preferUpstreamRef = usePreferUpstreamRefSource();

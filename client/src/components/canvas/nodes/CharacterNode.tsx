@@ -462,7 +462,7 @@ export const CharacterNode = memo(function CharacterNode({ id, selected, data }:
         <div>
           <label style={labelStyle}>参考图</label>
           {payload.referenceImageUrl ? (
-            <div className="relative rounded-lg overflow-hidden" style={{ border: `1px solid ${accentA(0.3)}` }}>
+            <div className="relative rounded-lg overflow-hidden" style={{ border: `1px solid ${accentA(0.3)}`, width: "fit-content", maxWidth: "100%", marginInline: "auto" }}>
               <ZoomableImage src={payload.referenceImageUrl} alt="参考图" maxHeight={200} radius={0} />
               {isOwnStorageUrl(payload.referenceImageUrl) && (
                 <div title="已存储到 MinIO·长期有效" className="absolute top-1.5 left-1.5 z-10 rounded-full pointer-events-none"
