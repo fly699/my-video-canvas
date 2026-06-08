@@ -1,6 +1,7 @@
-import { memo, useCallback, useRef, useState } from "react";
+import { memo, useCallback, useEffect, useRef, useState } from "react";
 import { BaseNode } from "../BaseNode";
 import { useCanvasStore } from "../../../hooks/useCanvasStore";
+import { detectUpstreamPrompt } from "../../../lib/comfyWorkflowParams";
 import { useCanvasMode } from "../../../contexts/CanvasModeContext";
 import type { PromptNodeData } from "../../../../../shared/types";
 import { trpc } from "@/lib/trpc";
@@ -42,6 +43,20 @@ export const PromptNode = memo(function PromptNode({ id, selected, data }: Props
   const isCreative = canvasMode === "creative";
   const payload = data.payload;
   const expanded = Boolean(selected) || Boolean((payload as { pinned?: boolean }).pinned);
+
+  // Consume a connected upstream prompt (脚本 / 分镜 / AI对话) into this node's blank
+  // positive/negative prompt — these incoming connections are advertised ("← 脚本 /
+  // 分镜 / 角色 / AI对话") but were previously dead (nothing filled this node). Primitive
+  // selector results → only re-renders when the upstream text actually changes;
+  // fill-only-when-blank so the user's own edits are never overwritten.
+  const upstreamPos = useCanvasStore((s) => detectUpstreamPrompt(id, s.edges, s.nodes).positive);
+  const upstreamNeg = useCanvasStore((s) => detectUpstreamPrompt(id, s.edges, s.nodes).negative);
+  useEffect(() => {
+    const patch: Record<string, string> = {};
+    if (upstreamPos && !payload.positivePrompt?.trim()) patch.positivePrompt = upstreamPos;
+    if (upstreamNeg && !payload.negativePrompt?.trim()) patch.negativePrompt = upstreamNeg;
+    if (Object.keys(patch).length) updateNodeData(id, patch, true);
+  }, [upstreamPos, upstreamNeg, payload.positivePrompt, payload.negativePrompt, id, updateNodeData]);
 
   const llmModel = (payload.llmModel as LLMModelId) ?? DEFAULT_LLM;
   const setLlmModel = (m: LLMModelId) => updateNodeData(id, { llmModel: m });
