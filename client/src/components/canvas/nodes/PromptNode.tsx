@@ -11,6 +11,7 @@ import { ZoomableImage } from "../ZoomableImage";
 import { LLMModelPicker, type LLMModelId } from "../LLMModelPicker";
 import { NodeTextArea, NodeInput } from "../NodeTextInput";
 import { useNodeDocks } from "../../../hooks/useNodeDocks";
+import { useSimpleRefStrip } from "../../../hooks/useSimpleRefStrip";
 import { PromptDock } from "../PromptDock";
 
 interface Props {
@@ -176,9 +177,10 @@ export const PromptNode = memo(function PromptNode({ id, selected, data }: Props
 
   const canRun = !!payload.positivePrompt?.trim() || (!!payload.referenceImageUrl && !!payload.enableAnalyze);
 
-  // 顶部「提示词」吸附窗：展示本节点输出、传给下游的正向/负向提示词。无按钮：悬停标题栏
-  // 1 秒临时展开、点击钉住。本节点本身就是提示词编辑器，吸附窗带简要说明以免与正文混淆。
-  const docks = useNodeDocks(id, { hasRef: false, hasPrompt: !!payload.positivePrompt?.trim() });
+  // 顶部「提示词」吸附窗 + 左侧「分析图」吸附窗（本节点的输入图是供视觉分析的图，
+  // 标题用「分析图」与生成节点的「参考图」区分）。无按钮：悬停标题栏 1 秒临时展开、点击钉住。
+  const docks = useNodeDocks(id, { hasRef: !!payload.referenceImageUrl?.trim(), hasPrompt: !!payload.positivePrompt?.trim() });
+  const refStrip = useSimpleRefStrip(id, payload, "single", { accent: accentColor, title: "分析图", open: docks.refOpen, onOpenChange: docks.setRefOpen, onHoverChange: docks.onDockHoverChange, onPin: docks.pinRef });
 
   return (
     <BaseNode
@@ -187,17 +189,20 @@ export const PromptNode = memo(function PromptNode({ id, selected, data }: Props
       onAssetImageDrop={(urls) => updateNodeData(id, { referenceImageUrl: urls[0] })}
       onHeaderHoverChange={docks.onHeaderHoverChange}
       leftDock={
-        <PromptDock
-          open={docks.promptOpen}
-          text={payload.positivePrompt ?? ""}
-          negText={payload.negativePrompt}
-          label="提示词"
-          note="本节点输出的提示词 · 连线后传给下游节点（图像/视频生成等）"
-          accent={accentColor}
-          onClose={() => docks.setPromptOpen(false)}
-          onHoverChange={docks.onDockHoverChange}
-          onPin={docks.pinPrompt}
-        />
+        <>
+          {refStrip.strip}
+          <PromptDock
+            open={docks.promptOpen}
+            text={payload.positivePrompt ?? ""}
+            negText={payload.negativePrompt}
+            label="提示词"
+            note="传给下游节点"
+            accent={accentColor}
+            onClose={() => docks.setPromptOpen(false)}
+            onHoverChange={docks.onDockHoverChange}
+            onPin={docks.pinPrompt}
+          />
+        </>
       }
     >
       <div className="flex flex-col h-full p-3.5 gap-3">

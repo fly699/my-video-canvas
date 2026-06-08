@@ -404,7 +404,7 @@ export const CharacterNode = memo(function CharacterNode({ id, selected, data }:
             open={docks.promptOpen}
             text={charPromptText}
             label="角色提示词"
-            note="角色特征文字 · 连接到下游生成节点时，自动注入其提示词"
+            note="注入下游提示词"
             accent={accent}
             onClose={() => docks.setPromptOpen(false)}
             onHoverChange={docks.onDockHoverChange}

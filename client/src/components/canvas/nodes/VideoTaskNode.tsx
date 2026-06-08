@@ -8,7 +8,7 @@ import { usePersistentState } from "../../../hooks/usePersistentState";
 import type { VideoTaskNodeData, VideoProvider, CharacterNodeData } from "../../../../../shared/types";
 import { maxRefImagesForProvider } from "../../../../../shared/videoRefCaps";
 import { mergeCharactersIntoPrompt } from "../../../lib/characterPrompt";
-import { effectiveCharacterRefImages, effectiveSceneRefImages, effectiveCharacters, stripCharacterMentions } from "../../../lib/characterConditioning";
+import { effectiveCharacterRefImages, effectiveSceneRefImages, effectiveCharacters, stripCharacterMentions, connectedCharacterRefImages, connectedSceneRefImages } from "../../../lib/characterConditioning";
 import { connectedEffectPrompts, appendEffectPrompts } from "../../../lib/effectPrompt";
 import { detectUpstreamPrompt } from "../../../lib/comfyWorkflowParams";
 import { trpc } from "@/lib/trpc";
@@ -25,6 +25,7 @@ import { ModelPicker } from "../ModelPicker";
 import { ImageLightbox } from "../ImageLightbox";
 import { WatermarkedVideo } from "@/components/WatermarkedVideo";
 import { ReferenceImageStrip } from "../ReferenceImageStrip";
+import { openNodeImage } from "../NodeImageLightbox";
 import { PromptDock } from "../PromptDock";
 import { useNodeDocks } from "../../../hooks/useNodeDocks";
 import { useReferenceImages } from "../../../hooks/useReferenceImages";
@@ -643,7 +644,14 @@ export const VideoTaskNode = memo(function VideoTaskNode({ id, selected, data }:
     );
   });
   const hasCharInject = useCanvasStore((s) => effectiveCharacters(id, payload.prompt ?? "", s.edges, s.nodes).length > 0);
-  const docks = useNodeDocks(id, { hasRef: refImages.images.length >= 1, hasPrompt: !!finalPromptDisplay.trim() });
+  // 无自己的参考图、但连了角色/场景时，左侧吸附窗回落显示其首图（只读，标题「角色」/「场景」）。
+  const charImgUrl = useCanvasStore((s) => connectedCharacterRefImages(id, s.edges, s.nodes)[0]);
+  const sceneImgUrl = useCanvasStore((s) => connectedSceneRefImages(id, s.edges, s.nodes)[0]);
+  const charRefUrl = charImgUrl ?? sceneImgUrl;
+  const charRefTitle = charImgUrl ? "角色" : "场景";
+  const showingChar = refImages.images.length === 0 && !!charRefUrl;
+  const stripImages = showingChar ? [{ id: charRefUrl!, url: charRefUrl!, source: "url" as const, label: charRefTitle }] : refImages.images;
+  const docks = useNodeDocks(id, { hasRef: refImages.images.length >= 1 || !!charRefUrl, hasPrompt: !!finalPromptDisplay.trim() });
   const { refOpen: stripOpen, setRefOpen: setStripOpen } = docks;
   const [refZoom, setRefZoom] = useState<number | null>(null);
   const [refUploading, setRefUploading] = useState(false);
@@ -1114,15 +1122,18 @@ export const VideoTaskNode = memo(function VideoTaskNode({ id, selected, data }:
       leftDock={
         <>
           <ReferenceImageStrip
-            images={refImages.images}
+            images={stripImages}
             open={stripOpen}
             accent={accentColor}
+            title={showingChar ? charRefTitle : "参考图"}
+            readOnly={showingChar}
+            allowRemove={!showingChar}
             onClose={() => setStripOpen(false)}
             onRemove={refImages.removeId}
             onMove={refImages.moveId}
             onInsertUrls={(urls, index) => refImages.insertUrls(urls, index, "drop")}
             onDropFiles={(files, index) => void uploadRefFiles(files, index)}
-            onZoom={(i) => setRefZoom(i)}
+            onZoom={(i) => { if (showingChar) { const u = stripImages[i]?.url; if (u) openNodeImage(u); } else setRefZoom(i); }}
             onHoverChange={docks.onDockHoverChange}
             onPin={docks.pinRef}
           />
