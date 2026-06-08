@@ -39,7 +39,14 @@ export const characterLibraryRouter = router({
       if (existing.userId !== ctx.user.id && ctx.user.role !== "admin") {
         throw new TRPCError({ code: "FORBIDDEN", message: "只能修改自己保存的角色" });
       }
-      await db.updateCharacterLibrary(input.id, { name: input.name.trim() });
+      const nm = input.name.trim();
+      const kind = existing.characterKind === "scene" ? "scene" : "person";
+      // 同名查重（同类型、排除自身）——避免重命名撞到已有角色。
+      const dup = (await db.listCharacterLibrary(ctx.user.id)).find(
+        (r) => r.id !== input.id && r.name.trim() === nm && (r.characterKind === "scene" ? "scene" : "person") === kind,
+      );
+      if (dup) throw new TRPCError({ code: "CONFLICT", message: `已存在同名${kind === "scene" ? "场景" : "角色"}「${nm}」` });
+      await db.updateCharacterLibrary(input.id, { name: nm });
       return { success: true };
     }),
 
@@ -50,15 +57,36 @@ export const characterLibraryRouter = router({
       payload: z.record(z.string(), z.unknown()),
       thumbnail: z.string().max(2048).optional(),
       note: z.string().max(2000).optional(),
+      // 同名时是否覆盖（默认否：返回 CONFLICT 让前端提示）。覆盖即「编辑保存」。
+      overwrite: z.boolean().optional(),
     }))
     .mutation(async ({ ctx, input }) => {
       if (JSON.stringify(input.payload).length > MAX_JSON) {
         throw new TRPCError({ code: "BAD_REQUEST", message: "角色内容过大" });
       }
+      const nm = input.name.trim();
+      // 同名查重（同类型）：默认拒绝并提示；overwrite 时更新既有条目（用于编辑/覆盖）。
+      const existing = (await db.listCharacterLibrary(ctx.user.id)).find(
+        (r) => r.name.trim() === nm && (r.characterKind === "scene" ? "scene" : "person") === input.characterKind,
+      );
+      if (existing) {
+        if (!input.overwrite) {
+          throw new TRPCError({ code: "CONFLICT", message: `已存在同名${input.characterKind === "scene" ? "场景" : "角色"}「${nm}」` });
+        }
+        await db.updateCharacterLibrary(existing.id, {
+          name: nm,
+          payload: input.payload,
+          thumbnail: input.thumbnail || null,
+          note: input.note?.trim() || null,
+        });
+        const updated = await db.getCharacterLibrary(existing.id);
+        if (!updated) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "保存失败" });
+        return toClient(updated);
+      }
       const row = await db.createCharacterLibrary({
         userId: ctx.user.id,
         creatorName: ctx.user.name ?? ctx.user.email ?? null,
-        name: input.name.trim(),
+        name: nm,
         characterKind: input.characterKind,
         payload: input.payload,
         thumbnail: input.thumbnail || null,

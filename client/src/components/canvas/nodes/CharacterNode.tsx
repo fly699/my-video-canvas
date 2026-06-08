@@ -164,9 +164,24 @@ export const CharacterNode = memo(function CharacterNode({ id, selected, data }:
   };
 
   const utils = trpc.useUtils();
+  // 缓存待保存输入，便于同名冲突时确认覆盖再次提交。
+  const pendingSaveRef = useRef<{ name: string; characterKind: "person" | "scene"; payload: Record<string, unknown>; thumbnail?: string } | null>(null);
   const saveLibMut = trpc.characterLibrary.create.useMutation({
-    onSuccess: () => { toast.success("已保存到角色库"); utils.characterLibrary.list.invalidate(); },
-    onError: (err) => toast.error("保存到角色库失败：" + err.message),
+    onSuccess: () => { pendingSaveRef.current = null; toast.success("已保存到角色库"); utils.characterLibrary.list.invalidate(); },
+    onError: (err) => {
+      // 同名冲突 → 询问是否覆盖（即编辑保存）。
+      const isConflict = err.data?.code === "CONFLICT" || /已存在同名/.test(err.message);
+      if (isConflict && pendingSaveRef.current) {
+        const inp = pendingSaveRef.current;
+        if (window.confirm(`${err.message}。是否覆盖更新该角色？`)) {
+          saveLibMut.mutate({ ...inp, overwrite: true });
+          return;
+        }
+        pendingSaveRef.current = null;
+        return;
+      }
+      toast.error("保存到角色库失败：" + err.message);
+    },
   });
   const saveToLibrary = useCallback(() => {
     const name = (payload.name || payload.sceneName || "").trim();
@@ -183,7 +198,9 @@ export const CharacterNode = memo(function CharacterNode({ id, selected, data }:
     const stripKeys = kind === "scene" ? PERSON_ONLY : SCENE_ONLY;
     const clean = Object.fromEntries(Object.entries(rest).filter(([k]) => !stripKeys.includes(k)));
     clean.characterKind = kind; // pin authoritatively (covers legacy/undefined)
-    saveLibMut.mutate({ name, characterKind: kind, payload: clean, thumbnail: payload.referenceImageUrl || undefined });
+    const input = { name, characterKind: kind, payload: clean, thumbnail: payload.referenceImageUrl || undefined };
+    pendingSaveRef.current = input; // for overwrite-on-conflict
+    saveLibMut.mutate(input);
   }, [payload, kind, saveLibMut]);
 
   const consistencyMut = trpc.scripts.checkCharacterConsistency.useMutation({

@@ -4,7 +4,8 @@ import { useCanvasStore } from "../../hooks/useCanvasStore";
 import { usePersistentState } from "../../hooks/usePersistentState";
 import { useFloatingBox, type Corner } from "../../hooks/useFloatingBox";
 import { mediaFetchUrl } from "@/lib/download";
-import { Users, X, Plus, Trash2, User as UserIcon, Mountain, Pin, PinOff } from "lucide-react";
+import { useReactFlow } from "@xyflow/react";
+import { Users, X, Plus, Trash2, User as UserIcon, Mountain, Pin, PinOff, Pencil } from "lucide-react";
 
 const DOCK_W = 300;
 
@@ -16,6 +17,7 @@ const DOCK_W = 300;
  */
 export function CharacterLibraryPanel({ onClose }: { onClose: () => void }) {
   const { addNode, updateNodeData } = useCanvasStore();
+  const reactFlow = useReactFlow();
   const { box, onHeaderMouseDown, onResizeMouseDown } = useFloatingBox(
     "ui:character-library:v1",
     { x: Math.max(16, (typeof window !== "undefined" ? window.innerWidth : 1200) - DOCK_W - 16), y: 56, w: DOCK_W, h: 480 },
@@ -37,12 +39,21 @@ export function CharacterLibraryPanel({ onClose }: { onClose: () => void }) {
     if (name && name !== cur) renameMut.mutate({ id, name });
   };
 
-  const addToCanvas = (payload: Record<string, unknown>, kind: string, i: number) => {
+  // 放在当前视口中心（而非固定世界坐标），轻微抖动避免叠放。focus=true 时
+  // 选中并居中到该节点，方便立即编辑。
+  const dropOnCanvas = (payload: Record<string, unknown>, kind: string, focus: boolean) => {
     try {
-      const node = addNode("character", { x: 240 + i * 28, y: 220 + i * 28 });
+      const c = reactFlow.screenToFlowPosition({ x: window.innerWidth / 2, y: window.innerHeight / 2 });
+      const pos = { x: c.x + (Math.random() * 50 - 25), y: c.y + (Math.random() * 50 - 25) };
+      const node = addNode("character", pos);
       const merged: Record<string, unknown> = { ...payload, characterKind: payload.characterKind ?? kind ?? "person" };
       updateNodeData(node.id, merged, true);
-      toast.success("已添加到画布");
+      if (focus) {
+        const { nodes, setNodes } = useCanvasStore.getState();
+        setNodes(nodes.map((n) => ({ ...n, selected: n.id === node.id })));
+        reactFlow.setCenter(pos.x + 150, pos.y + 120, { zoom: Math.max(reactFlow.getZoom(), 0.9), duration: 400 });
+      }
+      toast.success(focus ? "已添加到画布，可直接编辑后「保存到角色库」覆盖" : "已添加到画布");
     } catch (e) {
       toast.error("添加失败：" + (e instanceof Error ? e.message : String(e)));
     }
@@ -106,7 +117,7 @@ export function CharacterLibraryPanel({ onClose }: { onClose: () => void }) {
             还没有保存的角色。<br />在角色节点点「保存到角色库」即可。
           </div>
         )}
-        {items?.map((it, i) => (
+        {items?.map((it) => (
           <div key={it.id} className="flex items-center gap-2 px-2 py-1.5 rounded-lg" style={{ background: "var(--c-input)", border: "1px solid var(--c-bd2)" }}>
             <div className="flex-shrink-0 rounded-md overflow-hidden flex items-center justify-center" style={{ width: 36, height: 36, background: "var(--c-canvas)", border: "1px solid var(--c-bd2)" }}>
               {it.thumbnail
@@ -117,7 +128,10 @@ export function CharacterLibraryPanel({ onClose }: { onClose: () => void }) {
               <div style={{ fontSize: 12, fontWeight: 600, color: "var(--c-t1)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", cursor: "text" }}>{it.name}</div>
               <div style={{ fontSize: 9.5, color: "var(--c-t4)" }}>{it.characterKind === "scene" ? "场景" : "人物"}</div>
             </div>
-            <button onClick={() => addToCanvas(it.payload, it.characterKind, i)} title="添加到画布" className="nodrag flex-shrink-0 flex items-center justify-center" style={{ width: 26, height: 26, borderRadius: 6, background: "oklch(0.66 0.18 30 / 0.12)", border: "1px solid oklch(0.66 0.18 30 / 0.3)", color: "oklch(0.66 0.18 30)", cursor: "pointer" }}>
+            <button onClick={() => dropOnCanvas(it.payload, it.characterKind, true)} title="编辑（放到画布并选中，改完「保存到角色库」即可覆盖更新）" className="nodrag flex-shrink-0 flex items-center justify-center" style={{ width: 26, height: 26, borderRadius: 6, background: "none", border: "1px solid var(--c-bd2)", color: "var(--c-t3)", cursor: "pointer" }}>
+              <Pencil className="w-3 h-3" />
+            </button>
+            <button onClick={() => dropOnCanvas(it.payload, it.characterKind, false)} title="添加到画布" className="nodrag flex-shrink-0 flex items-center justify-center" style={{ width: 26, height: 26, borderRadius: 6, background: "oklch(0.66 0.18 30 / 0.12)", border: "1px solid oklch(0.66 0.18 30 / 0.3)", color: "oklch(0.66 0.18 30)", cursor: "pointer" }}>
               <Plus className="w-3.5 h-3.5" />
             </button>
             <button onClick={() => { if (window.confirm(`从角色库删除「${it.name}」？`)) delMut.mutate({ id: it.id }); }} title="删除" className="nodrag flex-shrink-0 flex items-center justify-center" style={{ width: 26, height: 26, borderRadius: 6, background: "none", border: "none", color: "var(--c-t4)", cursor: "pointer" }}>
