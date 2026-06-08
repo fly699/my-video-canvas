@@ -1877,35 +1877,49 @@ export async function executeCustomWorkflow(
 
   const imageUrls: string[] = [];
   const videoUrls: string[] = [];
-  const VIDEO_EXT = /\.(mp4|webm|mkv|mov|avi|gif|webp)$/i;
-  const AUDIO_EXT = /\.(mp3|wav|flac|m4a|aac|ogg)$/i;
 
   // Generic media collector: ComfyUI history outputs put media under various keys
   // (SaveImage→`images`, VHS_VideoCombine→`gifs`, some newer nodes→`videos`). Scan
   // EVERY array-of-objects-with-`filename` key rather than hard-coding key names, so
   // unusual output nodes (LTX 数字人 等) don't silently yield "no output".
-  const collect = async (onlyTargets: boolean) => {
-    for (const [nodeId, nodeOutput] of Object.entries(entry.outputs ?? {})) {
+  const collectInto = async (outputs: HistoryEntry["outputs"], onlyTargets: boolean, imgs: string[], vids: string[]) => {
+    for (const [nodeId, nodeOutput] of Object.entries(outputs ?? {})) {
       if (onlyTargets && targetNodeIds.size > 0 && !targetNodeIds.has(nodeId)) continue;
       for (const [outKey, arr] of Object.entries(nodeOutput as Record<string, unknown>)) {
         if (!Array.isArray(arr)) continue;
         for (const it of arr as Array<{ filename?: string; subfolder?: string; type?: string }>) {
           if (!it || typeof it.filename !== "string" || !it.filename) continue;
-          if (AUDIO_EXT.test(it.filename)) continue; // 不把纯音频当成图/视频输出
-          const isVideo = outKey === "gifs" || outKey === "videos" || VIDEO_EXT.test(it.filename);
+          if (COMFY_AUDIO_EXT.test(it.filename)) continue; // 不把纯音频当成图/视频输出
+          const isVideo = outKey === "gifs" || outKey === "videos" || COMFY_VIDEO_EXT.test(it.filename);
           const dlUrl = downloadUrl(baseUrl, it.filename, it.subfolder ?? "", it.type ?? "output");
           const ext = it.filename.split(".").pop() || (isVideo ? "mp4" : "png");
           const stored = await downloadAndStore(dlUrl, ext, isVideo ? "video/mp4" : "image/png", apiKey);
-          (isVideo ? videoUrls : imageUrls).push(stored.url);
+          (isVideo ? vids : imgs).push(stored.url);
         }
       }
     }
   };
 
-  await collect(true);
+  await collectInto(entry.outputs, true, imageUrls, videoUrls);
   // 选中的输出节点没产出 → 回退扫描全部输出节点（防 outputNodeIds 选错/漏选）。
   if (imageUrls.length === 0 && videoUrls.length === 0 && targetNodeIds.size > 0) {
-    await collect(false);
+    await collectInto(entry.outputs, false, imageUrls, videoUrls);
+  }
+
+  // 缓存恢复：ComfyUI 不会把「被缓存、未重新执行」的输出节点结果放进本次 prompt 的
+  // 历史里（固定种子的工作流重复运行时常见）。本次没采到媒体 → 回查近期历史，取目标
+  // 输出节点最近一次真正产出的媒体（固定种子下即为同一确定性结果）。
+  if (imageUrls.length === 0 && videoUrls.length === 0) {
+    try {
+      const hres = await fetch(`${baseUrl}/history?max_items=64`, { signal: AbortSignal.timeout(10_000), ...(apiKey ? { headers: comfyAuthHeaders(apiKey) } : {}) });
+      if (hres.ok) {
+        const all = (await hres.json()) as Record<string, HistoryEntry>;
+        const entries = Object.values(all); // 插入顺序≈时间顺序，新的在后
+        for (let k = entries.length - 1; k >= 0 && imageUrls.length === 0 && videoUrls.length === 0; k--) {
+          await collectInto(entries[k]?.outputs, true, imageUrls, videoUrls);
+        }
+      }
+    } catch { /* 历史恢复尽力而为 */ }
   }
 
   const resolvedOutputType = options.outputType === "video" ? "video"
@@ -1918,10 +1932,13 @@ export async function executeCustomWorkflow(
 
   if (allUrls.length === 0) {
     const dbg = Object.entries(entry.outputs ?? {}).map(([nid, o]) => `${nid}:[${Object.keys(o as object).join(",")}]`).join(" ");
-    throw new Error(`ComfyUI 任务完成但未返回任何输出。历史输出节点：${dbg || "（空）"}（请确认输出节点已勾选 save_output，或在「输出选择」里选中正确的输出节点）`);
+    throw new Error(`ComfyUI 任务完成但未返回任何输出。历史输出节点：${dbg || "（空）"}。常见原因：工作流用了固定种子，输出节点被 ComfyUI 缓存未重新执行——请把「种子」设为「随机」或重启 ComfyUI 清缓存后重试；也确认输出节点已勾选 save_output。`);
   }
   return { urls: allUrls, outputType: resolvedOutputType };
 }
+
+const COMFY_VIDEO_EXT = /\.(mp4|webm|mkv|mov|avi|gif|webp)$/i;
+const COMFY_AUDIO_EXT = /\.(mp3|wav|flac|m4a|aac|ogg)$/i;
 
 // ── Shot continuity: control-map extraction ──────────────────────────────────
 /** Extract a ControlNet control map (depth/pose/canny…) from a source image on the
