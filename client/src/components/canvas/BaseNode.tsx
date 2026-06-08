@@ -331,13 +331,13 @@ export const BaseNode = memo(function BaseNode({
 
       {/* ── Header ── */}
       <div
-        className="flex items-center gap-2.5 px-3.5 py-2.5 select-none flex-shrink-0"
+        className="flex items-center gap-2 px-3.5 py-1.5 select-none flex-shrink-0"
         style={{
           background: isCreative
             ? `${config.color}0a`
             : `linear-gradient(180deg, ${config.color}0e 0%, transparent 100%)`,
           borderBottom: `1px solid ${(isCreative || isLight) ? "var(--c-bd1)" : "oklch(0.20 0.008 260 / 0.60)"}`,
-          minHeight: isCreative ? 40 : 44,
+          minHeight: isCreative ? 32 : 36,
         }}
       >
         {/* Drag grip */}
@@ -351,7 +351,7 @@ export const BaseNode = memo(function BaseNode({
 
         {/* Node type icon */}
         <div
-          className="w-6 h-6 rounded-lg flex items-center justify-center flex-shrink-0"
+          className="w-5 h-5 rounded-lg flex items-center justify-center flex-shrink-0"
           style={{
             background: `${config.color}1a`,
             border: `1px solid ${config.color}35`,
