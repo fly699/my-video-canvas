@@ -8,7 +8,7 @@ import { useCanvasStore } from "../../../hooks/useCanvasStore";
 import { propagateRefImage } from "../../../lib/refImagePropagation";
 import { useReferenceImages } from "../../../hooks/useReferenceImages";
 import { refUrls } from "../../../lib/referenceImages";
-import { connectedCharacterRefImages, connectedCharacters } from "../../../lib/characterConditioning";
+import { connectedCharacterRefImages, connectedSceneRefImages, connectedCharacters } from "../../../lib/characterConditioning";
 import { mergeCharactersIntoPrompt } from "../../../lib/characterPrompt";
 import { detectUpstreamPrompt } from "../../../lib/comfyWorkflowParams";
 import { connectedEffectPrompts, appendEffectPrompts } from "../../../lib/effectPrompt";
@@ -265,8 +265,10 @@ export const ImageGenNode = memo(function ImageGenNode({ id, selected, data }: P
     const manualRefs = refUrls(payload);
     const { edges: gedges, nodes: gnodes } = useCanvasStore.getState();
     const connChars = connectedCharacters(id, gedges, gnodes);
+    // Person identity refs first, then SCENE backdrop refs (location/style context for
+    // edit/reference models) — scene images never go through IPAdapter face-lock.
     const charRefs = manualRefs.length === 0
-      ? connectedCharacterRefImages(id, gedges, gnodes)
+      ? [...connectedCharacterRefImages(id, gedges, gnodes), ...connectedSceneRefImages(id, gedges, gnodes)]
       : [];
     // Cap to the server's referenceImageUrls limit (z.array().max(8)). Multiple
     // connected characters × multi-view can exceed 8, which would otherwise be

@@ -7,7 +7,7 @@ import { useCanvasStore } from "../../../hooks/useCanvasStore";
 import type { VideoTaskNodeData, VideoProvider, CharacterNodeData } from "../../../../../shared/types";
 import { maxRefImagesForProvider } from "../../../../../shared/videoRefCaps";
 import { mergeCharactersIntoPrompt } from "../../../lib/characterPrompt";
-import { connectedCharacterRefImages, connectedCharacters } from "../../../lib/characterConditioning";
+import { connectedCharacterRefImages, connectedSceneRefImages, connectedCharacters } from "../../../lib/characterConditioning";
 import { connectedEffectPrompts, appendEffectPrompts } from "../../../lib/effectPrompt";
 import { detectUpstreamPrompt } from "../../../lib/comfyWorkflowParams";
 import { trpc } from "@/lib/trpc";
@@ -887,9 +887,10 @@ export const VideoTaskNode = memo(function VideoTaskNode({ id, selected, data }:
     let base = all;
     if (base.length === 0) {
       // No manually-attached refs → lock identity on ALL views of any connected
-      // character (multi-reference), falling back to the single primary ref.
+      // character (multi-reference); person identity refs first, then SCENE backdrop
+      // refs (location/style context), falling back to the single primary ref.
       const { nodes: gn, edges: ge } = useCanvasStore.getState();
-      const charRefs = connectedCharacterRefImages(id, ge, gn);
+      const charRefs = [...connectedCharacterRefImages(id, ge, gn), ...connectedSceneRefImages(id, ge, gn)];
       base = charRefs.length ? charRefs : (primary ? [primary] : []);
     }
     const max = maxRefImagesForProvider(provider);
@@ -905,7 +906,9 @@ export const VideoTaskNode = memo(function VideoTaskNode({ id, selected, data }:
   const refModeForSubmit = useCallback((): "reference" | undefined => {
     if (refImages.images.length > 0) return undefined; // manual refs → keep frame default
     const { nodes: gn, edges: ge } = useCanvasStore.getState();
-    return connectedCharacterRefImages(id, ge, gn).length > 0 ? "reference" : undefined;
+    // Person identity OR scene backdrop refs are context, not 首尾帧 → reference mode.
+    const hasCharRefs = connectedCharacterRefImages(id, ge, gn).length > 0 || connectedSceneRefImages(id, ge, gn).length > 0;
+    return hasCharRefs ? "reference" : undefined;
   }, [refImages.images, id]);
 
   // Multi-modal references: pull video/audio URLs from connected upstream `asset`
