@@ -206,6 +206,15 @@ export const BaseNode = memo(function BaseNode({
   const titleInputRef = useRef<HTMLInputElement>(null);
   const titleCancelingRef = useRef(false);
   const [isHovered, setIsHovered] = useState(false);
+  // 标题栏操作按钮（编辑名称/复制/删除）：单击节点后显示，3 秒后自动隐藏。
+  const [clickShowActions, setClickShowActions] = useState(false);
+  const hideActionsTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const armHideActions = () => {
+    if (hideActionsTimer.current) clearTimeout(hideActionsTimer.current);
+    hideActionsTimer.current = setTimeout(() => setClickShowActions(false), 3000);
+  };
+  const revealActions = () => { setClickShowActions(true); armHideActions(); };
+  useEffect(() => () => { if (hideActionsTimer.current) clearTimeout(hideActionsTimer.current); }, []);
   const [assetDragOver, setAssetDragOver] = useState(false);
 
   const handleTitleSave = useCallback(() => {
@@ -232,7 +241,8 @@ export const BaseNode = memo(function BaseNode({
   const [entered, setEntered] = useState(false);
   useEffect(() => { const t = setTimeout(() => setEntered(true), 20); return () => clearTimeout(t); }, []);
 
-  const showActions = isHovered || selected;
+  // 仅在"单击节点后 3 秒内"显示标题栏操作按钮；编辑名称进行中保持显示。
+  const showActions = clickShowActions || editingTitle;
 
   // Connection handles — shared subtle-at-rest / filled-on-hover styling (see
   // lib/handleStyle). Target = square (receives), source = circle (sends).
@@ -307,6 +317,7 @@ export const BaseNode = memo(function BaseNode({
       }}
       onMouseEnter={() => { setIsHovered(true); useHoverStore.getState().setHovered(id); }}
       onMouseLeave={() => { setIsHovered(false); if (useHoverStore.getState().nodeId === id) useHoverStore.getState().setHovered(null); }}
+      onClick={() => revealActions()}
       onDragOver={onAssetImageDrop ? (e) => {
         if (!e.dataTransfer.types.includes("application/x-asset-list")) return;
         e.preventDefault(); e.dataTransfer.dropEffect = "copy"; if (!assetDragOver) setAssetDragOver(true);
@@ -450,7 +461,7 @@ export const BaseNode = memo(function BaseNode({
               <button
                 onClick={(e) => { e.stopPropagation(); setEditingTitle(true); setTitleValue(title); }}
                 title="编辑标题（含编号）"
-                className="opacity-0 group-hover/title:opacity-100 transition-opacity flex-shrink-0"
+                className="transition-opacity flex-shrink-0"
                 style={{
                   width: 18, height: 18, padding: 0,
                   border: "none", background: "transparent",
@@ -458,6 +469,8 @@ export const BaseNode = memo(function BaseNode({
                   borderRadius: 4,
                   color: "var(--c-t4)",
                   cursor: "pointer",
+                  opacity: showActions ? 1 : 0,
+                  pointerEvents: showActions ? "auto" : "none",
                 }}
                 onMouseEnter={(e) => {
                   (e.currentTarget as HTMLElement).style.background = "var(--c-elevated)";
@@ -617,7 +630,7 @@ export const BaseNode = memo(function BaseNode({
           </div>
         )}
 
-        {/* Action buttons — fade in on hover/select */}
+        {/* Action buttons — 单击节点后显示 3 秒；鼠标悬停其上时保持显示（移开后重新计时）。 */}
         <div
           className="flex items-center gap-0.5 flex-shrink-0"
           style={{
@@ -625,6 +638,8 @@ export const BaseNode = memo(function BaseNode({
             transition: "opacity 150ms ease",
             pointerEvents: showActions ? "auto" : "none",
           }}
+          onMouseEnter={() => { if (hideActionsTimer.current) clearTimeout(hideActionsTimer.current); }}
+          onMouseLeave={() => armHideActions()}
         >
           {VARIANT_TYPES.includes(nodeType) && (
             <button
