@@ -1,14 +1,12 @@
-import { useCallback, type ReactNode } from "react";
+import { useCallback, useState, type ReactNode } from "react";
 import { Layers, FileText } from "lucide-react";
 import { usePersistentState } from "./usePersistentState";
 
 /**
- * 统一管理一个节点的两个吸附窗开关状态：左侧「参考图」+ 顶部「最终提示词」。
- * 标题栏复用同一个循环按钮，按点击次数循环：
- *   两者都有：全收起 → 开参考图 → 参考图+提示词 → 全收起 …
- *   只有其一：直接单控该窗的开/关。
- * 状态分别持久化（ui:refstrip / ui:promptdock，按节点 id）。内容消失时自动判为收起，
- * 避免「开着却没内容」。
+ * 管理一个节点的两个吸附窗：左侧「参考图」+ 顶部「最终提示词」。
+ * - 两个独立开关（toggleRef / togglePrompt），各自持久化（ui:refstrip / ui:promptdock）。
+ * - 标题栏悬停满 1 秒触发的「临时展开」：onHeaderHoverChange(true) 时两窗都临时显示，
+ *   离开（false）即回到各自的持久化状态。临时展开不写入持久化，按钮高亮只反映持久态。
  */
 export function useNodeDocks(
   id: string,
@@ -16,67 +14,79 @@ export function useNodeDocks(
 ): {
   refOpen: boolean;
   promptOpen: boolean;
+  refActive: boolean;
+  promptActive: boolean;
   setRefOpen: (v: boolean) => void;
   setPromptOpen: (v: boolean) => void;
-  cycle: () => void;
+  toggleRef: () => void;
+  togglePrompt: () => void;
+  onHeaderHoverChange: (hovering: boolean) => void;
 } {
   const { hasRef, hasPrompt } = opts;
-  const [refOpenRaw, setRefOpen] = usePersistentState<boolean>(`ui:refstrip:${id}`, false, { crossTab: false });
-  const [promptOpenRaw, setPromptOpen] = usePersistentState<boolean>(`ui:promptdock:${id}`, false, { crossTab: false });
-  const refOpen = hasRef && refOpenRaw;
-  const promptOpen = hasPrompt && promptOpenRaw;
+  const [refPersist, setRefPersist] = usePersistentState<boolean>(`ui:refstrip:${id}`, false, { crossTab: false });
+  const [promptPersist, setPromptPersist] = usePersistentState<boolean>(`ui:promptdock:${id}`, false, { crossTab: false });
+  const [hoverPeek, setHoverPeek] = useState(false);
 
-  const cycle = useCallback(() => {
-    if (hasRef && hasPrompt) {
-      if (!refOpen && !promptOpen) { setRefOpen(true); }
-      else if (refOpen && !promptOpen) { setPromptOpen(true); }
-      else { setRefOpen(false); setPromptOpen(false); }
-    } else if (hasRef) {
-      setPromptOpen(false); setRefOpen(!refOpen);
-    } else if (hasPrompt) {
-      setRefOpen(false); setPromptOpen(!promptOpen);
-    }
-  }, [hasRef, hasPrompt, refOpen, promptOpen, setRefOpen, setPromptOpen]);
+  const refActive = hasRef && refPersist;
+  const promptActive = hasPrompt && promptPersist;
+  const refOpen = hasRef && (refPersist || hoverPeek);
+  const promptOpen = hasPrompt && (promptPersist || hoverPeek);
 
-  return { refOpen, promptOpen, setRefOpen, setPromptOpen, cycle };
+  const toggleRef = useCallback(() => setRefPersist((v) => !v), [setRefPersist]);
+  const togglePrompt = useCallback(() => setPromptPersist((v) => !v), [setPromptPersist]);
+
+  return {
+    refOpen, promptOpen, refActive, promptActive,
+    setRefOpen: setRefPersist, setPromptOpen: setPromptPersist,
+    toggleRef, togglePrompt, onHeaderHoverChange: setHoverPeek,
+  };
 }
 
 /**
- * 标题栏循环按钮：左侧参考图（Layers + 张数）+ 顶部提示词（FileText）。
- * 点击触发 useNodeDocks 的 cycle。无参考图且无提示词时不渲染。
+ * 标题栏的两个独立吸附窗开关：参考图（Layers + 张数）/ 最终提示词（FileText）。
+ * 各自独立 toggle；无参考图时不渲染参考图按钮，无提示词时不渲染提示词按钮。
  */
-export function DockToggleButton({
-  refCount, hasPrompt, refOpen, promptOpen, accent, onClick,
+export function DockToggleButtons({
+  refCount, hasPrompt, refActive, promptActive, accent, onToggleRef, onTogglePrompt,
 }: {
   refCount: number;
   hasPrompt: boolean;
-  refOpen: boolean;
-  promptOpen: boolean;
+  refActive: boolean;
+  promptActive: boolean;
   accent: string;
-  onClick: () => void;
+  onToggleRef: () => void;
+  onTogglePrompt: () => void;
 }): ReactNode {
   if (refCount <= 0 && !hasPrompt) return null;
-  const anyOpen = refOpen || promptOpen;
+  const btn = (active: boolean): React.CSSProperties => ({
+    fontSize: 10,
+    color: active ? accent : "var(--c-t3)",
+    border: `1px solid ${active ? accent : "var(--c-bd2)"}`,
+    borderRadius: 6,
+    padding: "1px 6px",
+  });
   return (
-    <button
-      onClick={onClick}
-      className="nodrag flex items-center"
-      style={{
-        gap: 5, fontSize: 10,
-        color: anyOpen ? accent : "var(--c-t3)",
-        border: `1px solid ${anyOpen ? accent : "var(--c-bd2)"}`,
-        borderRadius: 6, padding: "1px 6px",
-      }}
-      title="展开/收起 参考图 / 最终提示词（循环：参考图 → +提示词 → 全部收起）"
-    >
+    <span className="flex items-center" style={{ gap: 4 }}>
       {refCount > 0 && (
-        <span className="flex items-center" style={{ gap: 2, color: refOpen ? accent : "var(--c-t3)" }}>
+        <button
+          onClick={onToggleRef}
+          className="nodrag flex items-center"
+          style={{ gap: 2, ...btn(refActive) }}
+          title="展开/收起左侧参考图"
+        >
           <Layers style={{ width: 11, height: 11 }} /> {refCount}
-        </span>
+        </button>
       )}
       {hasPrompt && (
-        <FileText style={{ width: 11, height: 11, color: promptOpen ? accent : "var(--c-t3)" }} />
+        <button
+          onClick={onTogglePrompt}
+          className="nodrag flex items-center"
+          style={{ ...btn(promptActive) }}
+          title="展开/收起顶部「最终提示词」"
+        >
+          <FileText style={{ width: 11, height: 11 }} />
+        </button>
       )}
-    </button>
+    </span>
   );
 }

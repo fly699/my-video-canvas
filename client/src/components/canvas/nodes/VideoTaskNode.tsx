@@ -26,7 +26,7 @@ import { ImageLightbox } from "../ImageLightbox";
 import { WatermarkedVideo } from "@/components/WatermarkedVideo";
 import { ReferenceImageStrip } from "../ReferenceImageStrip";
 import { PromptDock } from "../PromptDock";
-import { useNodeDocks, DockToggleButton } from "../../../hooks/useNodeDocks";
+import { useNodeDocks, DockToggleButtons } from "../../../hooks/useNodeDocks";
 import { useReferenceImages } from "../../../hooks/useReferenceImages";
 import { MediaImage } from "../MediaImage";
 import {
@@ -1110,14 +1110,16 @@ export const VideoTaskNode = memo(function VideoTaskNode({ id, selected, data }:
   return (
     <BaseNode id={id} selected={selected} nodeType="video_task" title={data.title} minHeight={260} heroMedia={heroMedia}
       onAssetImageDrop={(urls) => refImages.addUrls(urls, "drop")}
+      onHeaderHoverChange={docks.onHeaderHoverChange}
       headerRight={
-        <DockToggleButton
+        <DockToggleButtons
           refCount={refImages.images.length}
           hasPrompt={!!finalPromptDisplay.trim()}
-          refOpen={docks.refOpen}
-          promptOpen={docks.promptOpen}
+          refActive={docks.refActive}
+          promptActive={docks.promptActive}
           accent={accentColor}
-          onClick={docks.cycle}
+          onToggleRef={docks.toggleRef}
+          onTogglePrompt={docks.togglePrompt}
         />
       }
       leftDock={

@@ -31,7 +31,7 @@ import { NodeConfigTabs } from "../NodeConfigTabs";
 import { NodeTextArea, NodeInput } from "../NodeTextInput";
 import { useSimpleRefStrip } from "../../../hooks/useSimpleRefStrip";
 import { PromptDock } from "../PromptDock";
-import { useNodeDocks, DockToggleButton } from "../../../hooks/useNodeDocks";
+import { useNodeDocks, DockToggleButtons } from "../../../hooks/useNodeDocks";
 
 interface Props {
   id: string;
@@ -554,6 +554,7 @@ export const ComfyuiImageNode = memo(function ComfyuiImageNode({ id, selected, d
       onAssetImageDrop={(urls) => updateNodeData(id, { referenceImageUrl: urls[0], ...(payload.workflowTemplate !== "img2img" && payload.workflowTemplate !== "inpaint" ? { workflowTemplate: "img2img" } : {}) })}
       headerTooltip={modelTip || undefined}
       hideTypeBadge
+      onHeaderHoverChange={docks.onHeaderHoverChange}
       leftDock={
         <>
           {refStrip.strip}
@@ -577,13 +578,14 @@ export const ComfyuiImageNode = memo(function ComfyuiImageNode({ id, selected, d
               {cornerText}
             </span>
           )}
-          <DockToggleButton
+          <DockToggleButtons
             refCount={refStrip.images.length}
             hasPrompt={!!finalPromptDisplay.trim()}
-            refOpen={docks.refOpen}
-            promptOpen={docks.promptOpen}
+            refActive={docks.refActive}
+            promptActive={docks.promptActive}
             accent={accent}
-            onClick={docks.cycle}
+            onToggleRef={docks.toggleRef}
+            onTogglePrompt={docks.togglePrompt}
           />
         </span>
       }>

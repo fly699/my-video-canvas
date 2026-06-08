@@ -24,7 +24,7 @@ import { isOwnStorageUrl } from "@/lib/ownStorage";
 import { mediaFetchUrl } from "@/lib/download";
 import { useComfyUpstreamAutoFill } from "./useComfyUpstreamAutoFill";
 import { PromptDock } from "../PromptDock";
-import { useNodeDocks, DockToggleButton } from "../../../hooks/useNodeDocks";
+import { useNodeDocks, DockToggleButtons } from "../../../hooks/useNodeDocks";
 import { LLMModelPicker, type LLMModelId } from "../LLMModelPicker";
 import { NodeTextArea, NodeInput } from "../NodeTextInput";
 import { useSimpleRefStrip } from "../../../hooks/useSimpleRefStrip";
@@ -332,6 +332,7 @@ export const ComfyuiVideoNode = memo(function ComfyuiVideoNode({ id, selected, d
       onAssetImageDrop={(urls) => updateNodeData(id, { referenceImageUrl: urls[0] })}
       headerTooltip={modelTip || undefined}
       hideTypeBadge
+      onHeaderHoverChange={docks.onHeaderHoverChange}
       leftDock={
         <>
           {refStrip.strip}
@@ -355,13 +356,14 @@ export const ComfyuiVideoNode = memo(function ComfyuiVideoNode({ id, selected, d
               {cornerText}
             </span>
           )}
-          <DockToggleButton
+          <DockToggleButtons
             refCount={refStrip.images.length}
             hasPrompt={!!finalPromptDisplay.trim()}
-            refOpen={docks.refOpen}
-            promptOpen={docks.promptOpen}
+            refActive={docks.refActive}
+            promptActive={docks.promptActive}
             accent={accent}
-            onClick={docks.cycle}
+            onToggleRef={docks.toggleRef}
+            onTogglePrompt={docks.togglePrompt}
           />
         </span>
       }>

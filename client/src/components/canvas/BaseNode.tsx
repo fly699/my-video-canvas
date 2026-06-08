@@ -60,6 +60,8 @@ interface BaseNodeProps {
   /** 可选：从素材面板把图片直接拖到整个节点上时，接收这些图片 URL（按顺序）。提供后，
    *  拖放被节点消费（preventDefault），画布不再新建素材节点。供有参考图字段的节点接入。 */
   onAssetImageDrop?: (urls: string[]) => void;
+  /** 可选：鼠标悬停标题栏满 1 秒触发（true）、离开时（false）。用于临时展开参考图/提示词吸附窗。 */
+  onHeaderHoverChange?: (hovering: boolean) => void;
 }
 
 /** 从拖拽数据里提取图片素材的 URL（仅 image 类型）。 */
@@ -77,6 +79,7 @@ export const BaseNode = memo(function BaseNode({
   minWidth = 280, minHeight = 140, showHandles = true, headerRight, resizable = false,
   onRun, canRun = true, running: nodeRunning = false, hasResult = false,
   heroMedia, leftDock, borderTint, headerTooltip, hideTypeBadge, capNodeHeight = false, onAssetImageDrop,
+  onHeaderHoverChange,
 }: BaseNodeProps) {
   const config = getNodeConfig(nodeType);
   const Icon = NODE_ICONS[config.icon] ?? FileText;
@@ -215,6 +218,21 @@ export const BaseNode = memo(function BaseNode({
   };
   const revealActions = () => { setClickShowActions(true); armHideActions(); };
   useEffect(() => () => { if (hideActionsTimer.current) clearTimeout(hideActionsTimer.current); }, []);
+
+  // 标题栏悬停满 1 秒 → 临时展开参考图/提示词吸附窗（onHeaderHoverChange(true)）；离开即收起。
+  const headerHoverTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const onHeaderEnter = () => {
+    if (!onHeaderHoverChange) return;
+    if (headerHoverTimer.current) clearTimeout(headerHoverTimer.current);
+    headerHoverTimer.current = setTimeout(() => onHeaderHoverChange(true), 1000);
+  };
+  const onHeaderLeave = () => {
+    if (!onHeaderHoverChange) return;
+    if (headerHoverTimer.current) { clearTimeout(headerHoverTimer.current); headerHoverTimer.current = null; }
+    onHeaderHoverChange(false);
+  };
+  useEffect(() => () => { if (headerHoverTimer.current) clearTimeout(headerHoverTimer.current); }, []);
+
   const [assetDragOver, setAssetDragOver] = useState(false);
 
   const handleTitleSave = useCallback(() => {
@@ -377,6 +395,8 @@ export const BaseNode = memo(function BaseNode({
       {/* ── Header ── */}
       <div
         className="flex items-center gap-2 px-3.5 py-1.5 select-none flex-shrink-0"
+        onMouseEnter={onHeaderEnter}
+        onMouseLeave={onHeaderLeave}
         style={{
           background: isCreative
             ? `${config.color}0a`
