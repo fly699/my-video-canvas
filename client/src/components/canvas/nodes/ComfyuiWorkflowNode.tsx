@@ -405,10 +405,14 @@ export const ComfyuiWorkflowNode = memo(function ComfyuiWorkflowNode({ id, selec
       // Connected Character(s): their reference image becomes an extra image source,
       // their LoRA fills the workflow's lora_name param, and their profile text is
       // PREPENDED to the effective positive prompt (augment, never replace it).
-      // 角色 = 连线 + prompt 里的「@角色」提及。提及文本取 正向提示词参数当前值 + 上游提示词。
+      // 角色 = 连线 + prompt 里的「@角色」提及。@提及只从「实际生效」的提示词解析：
+      // 上游优先(force)时用上游、仅填空时本地有就用本地，与 fillWorkflowPromptParams 一致，
+      // 否则会同时采用上游和本节点的 @角色。
       const posPromptKey = positivePromptParamKey(payload.paramBindings);
       const posCur = posPromptKey && typeof payload.paramValues?.[posPromptKey] === "string" ? (payload.paramValues[posPromptKey] as string) : "";
-      const mentionText = `${posCur} ${upstreamPrompt.positive ?? ""}`;
+      const upPos = (upstreamPrompt.positive ?? "").trim();
+      const preferUpstream = payload.preferUpstreamPrompt !== false;
+      const mentionText = preferUpstream ? (upPos || posCur) : (posCur.trim() ? posCur : upPos);
       const chars = effectiveCharacters(id, mentionText, edges, nodes);
       const charRefImgs = effectiveCharacterRefImages(id, mentionText, edges, nodes);
       const sources = [
