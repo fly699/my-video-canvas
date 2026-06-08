@@ -731,7 +731,15 @@ function CanvasInner({ projectId }: { projectId: number }) {
         label: e.label ?? undefined,
       };
     });
-    setEdges(flowEdges);
+    // 清理历史重复边：同一对「源→目标」只保留第一条（修复此前可能积累的重叠重复连线）。
+    const seenPair = new Set<string>();
+    const dedupedEdges = flowEdges.filter((e) => {
+      const k = `${e.source}->${e.target}`;
+      if (seenPair.has(k)) return false;
+      seenPair.add(k);
+      return true;
+    });
+    setEdges(dedupedEdges);
   }, [dbEdges, dbNodes]);
 
   // Restore the saved viewport ONCE on initial load. Previously this re-ran on

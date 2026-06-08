@@ -225,6 +225,14 @@ export const useCanvasStore = create<CanvasStore>((set, get) => ({
 
   onConnect: (connection) => {
     set((state) => {
+      // 防重复连线：本画布中同一对节点之间只需要一条连线（多源汇入用「来自不同源的多条边」，
+      // 从不需要同一对节点多条）。ReactFlow 的 addEdge 只按「源+目标+两端句柄」去重，落点没
+      // 精确命中句柄时 targetHandle 不同会绕过去重，产生重叠的重复边（表现为「连一根线却出现
+      // 多个序号、实际多条线」）。这里按「源+目标」彻底去重。
+      if (connection.source && connection.target &&
+          state.edges.some((e) => e.source === connection.source && e.target === connection.target)) {
+        return {};
+      }
       // Pre-populate so the video node is ready immediately if an image was generated before connecting
       let updatedNodes = state.nodes;
       if (connection.source && connection.target) {
