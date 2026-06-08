@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { safeName, parseRange } from "./_core/fileRelay";
+import { safeName, parseRange, safeRelPath } from "./_core/fileRelay";
 
 describe("fileRelay.safeName", () => {
   it("保留普通文件名（含中文/空格/点）", () => {
@@ -20,6 +20,28 @@ describe("fileRelay.safeName", () => {
   it("超长拒绝", () => {
     expect(safeName("x".repeat(256))).toBeNull();
     expect(safeName("x".repeat(255))).toBe("x".repeat(255));
+  });
+});
+
+describe("fileRelay.safeRelPath", () => {
+  it("保留多段相对路径", () => {
+    expect(safeRelPath("model/sub/a.bin")).toBe("model/sub/a.bin");
+    expect(safeRelPath("我的模型/权重.safetensors")).toBe("我的模型/权重.safetensors");
+  });
+  it("规整空段、点段、反斜杠", () => {
+    expect(safeRelPath("a//b/./c")).toBe("a/b/c");
+    expect(safeRelPath("a\\b\\c")).toBe("a/b/c");
+    expect(safeRelPath("/leading/slash")).toBe("leading/slash");
+  });
+  it("拒绝穿越段", () => {
+    expect(safeRelPath("a/../../etc/passwd")).toBeNull();
+    expect(safeRelPath("../x")).toBeNull();
+    expect(safeRelPath("a/..")).toBeNull();
+    expect(safeRelPath("")).toBeNull();
+    expect(safeRelPath("a/b\0c")).toBeNull();
+  });
+  it("层级过深拒绝", () => {
+    expect(safeRelPath(Array(65).fill("x").join("/"))).toBeNull();
   });
 });
 
