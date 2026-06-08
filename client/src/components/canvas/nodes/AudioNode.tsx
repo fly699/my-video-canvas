@@ -112,12 +112,13 @@ function modelIsVoxCPM(model?: string): boolean {
 }
 
 // VoxCPM 控制指令快速模板：多级（分类 → 短语），点击把短语拼进控制指令。
-const VOX_CONTROL_TEMPLATES: { cat: string; items: string[] }[] = [
-  { cat: "方言口音", items: ["用普通话", "用粤语", "用四川话", "用东北话", "用河南话", "用陕西话", "用天津话", "用上海话", "用闽南语", "用客家话", "台湾腔", "港普"] },
-  { cat: "语种口音", items: ["美式英语口音", "英式英语口音", "日语口音", "韩语口音", "法语口音", "德语口音"] },
-  { cat: "语速", items: ["语速很慢", "语速较慢", "语速正常", "语速较快", "语速很快"] },
-  { cat: "语气情感", items: ["语气平静", "热情洋溢", "严肃正式", "温柔", "活泼可爱", "悲伤", "愤怒", "神秘低语", "新闻播音腔", "撒娇", "冷淡", "搞笑夸张"] },
-  { cat: "音色风格", items: ["低沉磁性", "清亮", "沙哑", "浑厚", "甜美", "童声", "少年音", "老年音", "机械音"] },
+// pos: "front" 的（方言/语种口音）插到指令最前面，其余追加到末尾。
+const VOX_CONTROL_TEMPLATES: { cat: string; pos: "front" | "end"; items: string[] }[] = [
+  { cat: "方言口音", pos: "front", items: ["普通话", "粤语", "四川话", "东北话", "河南话", "陕西话", "天津话", "山东话", "上海话", "重庆话", "云南话", "湖南话", "江西话", "闽南语", "客家话", "潮汕话", "台湾腔", "香港普通话", "新疆口音", "甜美奶音"] },
+  { cat: "语种口音", pos: "front", items: ["美式英语", "英式英语", "澳洲英语", "印度英语", "日语", "韩语", "法语", "德语", "西班牙语", "意大利语", "葡萄牙语", "俄语", "泰语", "越南语", "印尼语", "阿拉伯语"] },
+  { cat: "语速", pos: "end", items: ["语速很慢", "语速较慢", "语速正常", "语速较快", "语速很快", "语速极快"] },
+  { cat: "语气情感", pos: "end", items: ["语气平静", "热情洋溢", "严肃正式", "温柔", "活泼可爱", "甜美", "深情", "悲伤", "愤怒", "惊讶", "害怕", "神秘低语", "新闻播音腔", "纪录片旁白", "广告腔", "撒娇", "慵懒", "俏皮", "冷淡", "急促紧张", "搞笑夸张", "阴森恐怖"] },
+  { cat: "音色风格", pos: "end", items: ["低沉磁性", "清亮", "沙哑", "浑厚", "明亮", "温暖", "空灵", "童声", "少年音", "青年音", "中年音", "老年音", "御姐音", "萝莉音", "大叔音", "机械音", "电音"] },
 ];
 
 // 配音文本翻译目标：语言 + 中文方言（分组下拉）。
@@ -133,10 +134,11 @@ const DEFAULT_LLM: LLMModelId = (LLM_MODELS.find((m) => !m.hidden) ?? LLM_MODELS
 function ControlTemplatePicker({ value, onChange }: { value: string; onChange: (v: string) => void }) {
   const [open, setOpen] = useState(false);
   const [tab, setTab] = useState(0);
-  const append = (phrase: string) => {
+  const insert = (phrase: string, pos: "front" | "end") => {
     const cur = (value ?? "").trim();
-    if (cur.includes(phrase)) return; // 已含则不重复
-    onChange(cur ? cur + "，" + phrase : phrase);
+    if (cur.includes(phrase)) return;                       // 已含则不重复
+    if (!cur) { onChange(phrase); return; }
+    onChange(pos === "front" ? phrase + "，" + cur : cur + "，" + phrase);  // 语种/方言插最前
   };
   return (
     <div style={{ marginTop: 6 }}>
@@ -163,7 +165,7 @@ function ControlTemplatePicker({ value, onChange }: { value: string; onChange: (
           </div>
           <div className="flex flex-wrap gap-1">
             {VOX_CONTROL_TEMPLATES[tab].items.map((it) => (
-              <button key={it} onClick={() => append(it)} className="nodrag"
+              <button key={it} onClick={() => insert(it, VOX_CONTROL_TEMPLATES[tab].pos)} className="nodrag"
                 style={{ fontSize: 10.5, padding: "3px 8px", borderRadius: 6, cursor: "pointer",
                   background: "var(--c-input)", border: "1px solid var(--c-bd2)", color: "var(--c-t2)" }}>
                 {it}
