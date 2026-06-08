@@ -29,6 +29,7 @@ import { ComfyServerUrlField } from "./ComfyServerUrlField";
 import { SyncConfigDialog } from "../SyncConfigDialog";
 import { NodeConfigTabs } from "../NodeConfigTabs";
 import { NodeTextArea, NodeInput } from "../NodeTextInput";
+import { useSimpleRefStrip } from "../../../hooks/useSimpleRefStrip";
 
 interface Props {
   id: string;
@@ -76,6 +77,8 @@ export const ComfyuiImageNode = memo(function ComfyuiImageNode({ id, selected, d
   const connectState = useConnectState(id, "comfyui_image");
   const updateNodeData = useCanvasStore((s) => s.updateNodeData);
   const payload = data.payload;
+  // 左侧吸附参考图预览窗（单张 img2img 参考；不触碰 IPAdapter 多图/模板逻辑）。
+  const refStrip = useSimpleRefStrip(id, payload, "single", { accent });
   useComfyUpstreamAutoFill(id, payload, updateNodeData, { characterConditioning: true });
   // Auto-prefer the upstream AI temporary public URL as the reference source when
   // the admin toggle is on and that URL probes alive (no-op when off / default).
@@ -542,14 +545,19 @@ export const ComfyuiImageNode = memo(function ComfyuiImageNode({ id, selected, d
       onAssetImageDrop={(urls) => updateNodeData(id, { referenceImageUrl: urls[0], ...(payload.workflowTemplate !== "img2img" && payload.workflowTemplate !== "inpaint" ? { workflowTemplate: "img2img" } : {}) })}
       headerTooltip={modelTip || undefined}
       hideTypeBadge
-      headerRight={cornerText ? (
-        <span
-          title={modelTip || cornerText}
-          style={{ fontSize: 10.5, fontWeight: 600, color: accent, maxWidth: 150, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", display: "block" }}
-        >
-          {cornerText}
+      headerRight={
+        <span className="flex items-center gap-1.5">
+          {cornerText && (
+            <span
+              title={modelTip || cornerText}
+              style={{ fontSize: 10.5, fontWeight: 600, color: accent, maxWidth: 150, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", display: "block" }}
+            >
+              {cornerText}
+            </span>
+          )}
+          {refStrip.toggle}
         </span>
-      ) : undefined}>
+      }>
       <div
         className="flex flex-col h-full p-3.5 gap-3 overflow-auto"
         onDragOver={(e) => { if (e.dataTransfer.types.includes("application/x-asset-list") || e.dataTransfer.types.includes("Files") || e.dataTransfer.types.includes("text/uri-list")) { e.preventDefault(); e.dataTransfer.dropEffect = "copy"; } }}
@@ -1785,6 +1793,7 @@ export const ComfyuiImageNode = memo(function ComfyuiImageNode({ id, selected, d
           onNavigate={(idx) => setIpZoomIndex(idx)}
         />
       )}
+      {refStrip.strip}
     </BaseNode>
   );
 });

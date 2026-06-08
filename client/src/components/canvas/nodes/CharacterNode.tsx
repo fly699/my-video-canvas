@@ -1,4 +1,5 @@
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useSimpleRefStrip } from "../../../hooks/useSimpleRefStrip";
 import { useShallow } from "zustand/react/shallow";
 import { BaseNode } from "../BaseNode";
 import { isOwnStorageUrl } from "@/lib/ownStorage";
@@ -79,6 +80,8 @@ export const CharacterNode = memo(function CharacterNode({ id, selected, data }:
   const { updateNodeData } = useCanvasStore();
   const payload = data.payload;
   const [uploading, setUploading] = useState(false);
+  // 左侧吸附参考图预览窗（与内嵌主图/备用视角网格并存、同源同步）。
+  const refStrip = useSimpleRefStrip(id, payload, "multi", { accent, maxAdditional: MAX_ADDITIONAL_IMAGES });
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const kind: CharacterKind = payload.characterKind ?? "person";
@@ -386,6 +389,7 @@ export const CharacterNode = memo(function CharacterNode({ id, selected, data }:
 
   return (
     <BaseNode id={id} selected={selected} nodeType="character" title={data.title} minHeight={160} resizable heroMedia={heroMedia}
+      headerRight={refStrip.toggle}
       onAssetImageDrop={(urls) => updateNodeData(id, { referenceImageUrl: urls[0], referenceStorageKey: undefined, ...(urls.length > 1 ? { additionalImageUrls: urls.slice(1, 1 + MAX_ADDITIONAL_IMAGES) } : {}) })}>
       {consistencyOpen && consistencyResult && (
         <CharacterConsistencyPanel
@@ -812,6 +816,7 @@ export const CharacterNode = memo(function CharacterNode({ id, selected, data }:
         )}
 
       </div>
+      {refStrip.strip}
     </BaseNode>
   );
 });
