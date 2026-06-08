@@ -121,22 +121,38 @@ async function uploadRef(
   throw new Error("Gradio 上传端点不存在（/upload 与 /gradio_api/upload 均 404）——请确认地址与 Gradio 版本");
 }
 
-/** 提交调用，返回 event_id。 */
-async function submitCall(base: string, prefix: string, apiName: string, data: unknown[]): Promise<string> {
-  const res = await gfetch(`${base}${prefix}/call/${apiName}`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ data }),
-    signal: AbortSignal.timeout(20_000),
-  }, "提交 Gradio 调用");
-  if (!res.ok) {
-    const t = await res.text().catch(() => "");
-    if (res.status === 404) throw new Error(`Gradio 端点 "/${apiName}" 不存在 (404)。响应：${t.slice(0, 200)}`);
-    throw new Error(`Gradio 提交失败 (${res.status})：${t.slice(0, 300)}`);
+/**
+ * 提交调用，返回 { event_id, prefix }。无参考音频时不经过 upload 步骤，故这里
+ * 自己做 /gradio_api 与无前缀的回退；有参考音频时传 preferredPrefix（上传已探明）
+ * 优先尝试，回退仍兜底。
+ */
+async function submitCall(
+  base: string,
+  apiName: string,
+  data: unknown[],
+  preferredPrefix?: string,
+): Promise<{ eventId: string; prefix: string }> {
+  const order = preferredPrefix !== undefined
+    ? [preferredPrefix, preferredPrefix === "/gradio_api" ? "" : "/gradio_api"]
+    : ["/gradio_api", ""];
+  const prefixes = order.filter((p, i) => order.indexOf(p) === i); // 去重，保序
+  for (const prefix of prefixes) {
+    const res = await gfetch(`${base}${prefix}/call/${apiName}`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ data }),
+      signal: AbortSignal.timeout(20_000),
+    }, "提交 Gradio 调用");
+    if (res.status === 404) continue; // 换前缀重试
+    if (!res.ok) {
+      const t = await res.text().catch(() => "");
+      throw new Error(`Gradio 提交失败 (${res.status})：${t.slice(0, 300)}`);
+    }
+    const j = (await res.json()) as { event_id?: string };
+    if (!j.event_id) throw new Error(`Gradio 提交未返回 event_id：${JSON.stringify(j).slice(0, 200)}`);
+    return { eventId: j.event_id, prefix };
   }
-  const j = (await res.json()) as { event_id?: string };
-  if (!j.event_id) throw new Error(`Gradio 提交未返回 event_id：${JSON.stringify(j).slice(0, 200)}`);
-  return j.event_id;
+  throw new Error(`Gradio 端点 "/${apiName}" 不存在（/call 与 /gradio_api/call 均 404）——请确认地址与 Gradio 版本`);
 }
 
 /** 读取 SSE 结果流，返回 complete 事件里的输出数组。 */
@@ -225,18 +241,23 @@ export function resolveAudioUrl(base: string, prefix: string, result: unknown): 
 export async function synthesizeGradioTTS(opts: SynthesizeGradioTTSOptions): Promise<GradioTTSResult> {
   const base = normalizeBase(opts.baseUrl);
   if (!opts.text?.trim()) throw new Error("配音文本为空");
-  if (!opts.refWavUrl?.trim()) throw new Error("VoxCPM 需要参考音频(ref_wav)——请上传或从上游音频/素材节点接入");
   const apiName = opts.apiName?.trim() || "generate";
 
-  // 1) 取参考音频字节并上传到 Gradio
-  const ref = await fetchRefBytes(opts.refWavUrl);
-  const { path, prefix } = await uploadRef(base, ref);
+  // 1) 参考音频可选：有就取字节上传、用作克隆音色；没有则传 null，由模型自带/随机音色生成。
+  let refData: unknown = null;
+  let preferredPrefix: string | undefined;
+  if (opts.refWavUrl?.trim()) {
+    const ref = await fetchRefBytes(opts.refWavUrl);
+    const up = await uploadRef(base, ref);
+    refData = { path: up.path, meta: { _type: "gradio.FileData" } };
+    preferredPrefix = up.prefix;
+  }
 
   // 2) 按 /generate 的入参顺序构造 data 数组（与文档一致）
   const data: unknown[] = [
     opts.text,
     opts.controlInstruction ?? "",
-    { path, meta: { _type: "gradio.FileData" } },
+    refData,
     opts.usePromptText ?? false,
     opts.promptTextValue ?? "",
     opts.cfgValue ?? 2,
@@ -244,7 +265,7 @@ export async function synthesizeGradioTTS(opts: SynthesizeGradioTTSOptions): Pro
     opts.denoise ?? false,
     opts.ditSteps ?? 10,
   ];
-  const eventId = await submitCall(base, prefix, apiName, data);
+  const { eventId, prefix } = await submitCall(base, apiName, data, preferredPrefix);
 
   // 3) 读 SSE 结果并解析音频 URL
   const result = await readSseResult(base, prefix, apiName, eventId);

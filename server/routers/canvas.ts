@@ -1978,14 +1978,10 @@ export const audioGenRouter = router({
         throw new TRPCError({ code: "BAD_REQUEST", message: `${model} 单次配音上限 ${limit} 字（当前 ${input.text.length}）` });
       }
 
-      // Local Gradio needs a server address and a reference voice up front.
-      if (isGradioTTS) {
-        if (!input.customBaseUrl?.trim()) {
-          throw new TRPCError({ code: "BAD_REQUEST", message: "本地 VoxCPM 需要填写 Gradio 服务地址" });
-        }
-        if (!input.refWavUrl?.trim()) {
-          throw new TRPCError({ code: "BAD_REQUEST", message: "本地 VoxCPM 需要参考音频(ref_wav)——请上传或从上游音频/素材节点接入" });
-        }
+      // Local Gradio needs a server address. 参考音频(ref_wav)可选——不给则用
+      // 模型自带/随机音色生成（与 VoxCPM 网页版一致）。
+      if (isGradioTTS && !input.customBaseUrl?.trim()) {
+        throw new TRPCError({ code: "BAD_REQUEST", message: "本地 VoxCPM 需要填写 Gradio 服务地址" });
       }
 
       return dedupe("audioGen.generateDubbing", ctx.user.id, input, async () => {
