@@ -461,16 +461,16 @@ export const BaseNode = memo(function BaseNode({
               <button
                 onClick={(e) => { e.stopPropagation(); setEditingTitle(true); setTitleValue(title); }}
                 title="编辑标题（含编号）"
-                className="transition-opacity flex-shrink-0"
+                className="flex-shrink-0"
                 style={{
                   width: 18, height: 18, padding: 0,
                   border: "none", background: "transparent",
-                  display: "flex", alignItems: "center", justifyContent: "center",
+                  // 隐藏时 display:none 让出空间，标题获得更多显示宽度。
+                  display: showActions ? "flex" : "none",
+                  alignItems: "center", justifyContent: "center",
                   borderRadius: 4,
                   color: "var(--c-t4)",
                   cursor: "pointer",
-                  opacity: showActions ? 1 : 0,
-                  pointerEvents: showActions ? "auto" : "none",
                 }}
                 onMouseEnter={(e) => {
                   (e.currentTarget as HTMLElement).style.background = "var(--c-elevated)";
@@ -630,14 +630,11 @@ export const BaseNode = memo(function BaseNode({
           </div>
         )}
 
-        {/* Action buttons — 单击节点后显示 3 秒；鼠标悬停其上时保持显示（移开后重新计时）。 */}
+        {/* Action buttons — 单击节点后显示 3 秒；隐藏时用 display:none 让出空间（其它按钮靠右、
+            标题获得更多显示宽度）；鼠标悬停其上时保持显示（移开后重新计时）。 */}
         <div
-          className="flex items-center gap-0.5 flex-shrink-0"
-          style={{
-            opacity: showActions ? 1 : 0,
-            transition: "opacity 150ms ease",
-            pointerEvents: showActions ? "auto" : "none",
-          }}
+          className="items-center gap-0.5 flex-shrink-0"
+          style={{ display: showActions ? "flex" : "none" }}
           onMouseEnter={() => { if (hideActionsTimer.current) clearTimeout(hideActionsTimer.current); }}
           onMouseLeave={() => armHideActions()}
         >
