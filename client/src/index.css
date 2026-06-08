@@ -1049,11 +1049,14 @@ button:active:not(:disabled) {
   border-top-color: var(--c-bd2) !important;
 }
 
-/* Toolbar vertical layout: flip dividers (1×18 → 18×1) when bar is on left/right */
-.canvas-bottombar[data-bar-edge="left"] > div[style*="height: 18px"][style*="width: 1px"],
-.canvas-bottombar[data-bar-edge="right"] > div[style*="height: 18px"][style*="width: 1px"] {
+/* Toolbar vertical layout: flip dividers (1×18 → 18×1) and HIDE button labels so the
+   vertical bar stays narrow (icon-only) instead of being as wide as the longest label. */
+.canvas-bottombar[data-bar-orient="v"] > div[style*="height: 18px"][style*="width: 1px"] {
   width: 18px !important;
   height: 1px !important;
+}
+.canvas-bottombar[data-bar-orient="v"] [data-toolbar-label] {
+  display: none !important;
 }
 
 /* Creative mode edge lines */

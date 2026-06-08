@@ -94,6 +94,8 @@ import {
   MessageSquare,
   MonitorUp,
   Boxes,
+  MoveHorizontal,
+  MoveVertical,
 } from "lucide-react";
 import { loadNamedSnapshots, type NamedSnapshot } from "../hooks/useCanvasStore";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
@@ -531,15 +533,17 @@ function CanvasInner({ projectId }: { projectId: number }) {
   // `ui:*` so the localStorage admin can grep for them. The validate fn
   // discards corrupted payloads (e.g. partial migrations) rather than
   // crashing the app — falls back to the default.
-  const [barEdge, setBarEdge] = usePersistentState<"bottom" | "top" | "left" | "right">(
-    "ui:toolbar:edge:v1",
-    "bottom",
-    { validate: (v) => (v === "bottom" || v === "top" || v === "left" || v === "right" ? v : null) },
+  // Floating toolbar: free {x,y} position (drop anywhere) + explicit orientation.
+  // `x:-1` = "not yet placed" → defaults to bottom-center on first paint.
+  const [toolbarPos, setToolbarPos] = usePersistentState<{ x: number; y: number }>(
+    "ui:toolbar:pos:v2",
+    { x: -1, y: -1 },
+    { validate: (v) => { const o = v as { x?: unknown; y?: unknown }; return o && typeof o.x === "number" && typeof o.y === "number" ? { x: o.x, y: o.y } : null; } },
   );
-  const [barAlong, setBarAlong] = usePersistentState<number>(
-    "ui:toolbar:along:v1",
-    0,
-    { validate: (v) => (typeof v === "number" && Number.isFinite(v) ? v : null) },
+  const [toolbarOrient, setToolbarOrient] = usePersistentState<"h" | "v">(
+    "ui:toolbar:orient:v1",
+    "h",
+    { validate: (v) => (v === "h" || v === "v" ? v : null) },
   );
   const [mmPos, setMmPos] = usePersistentState<{ bottom: number; right: number }>(
     "ui:minimap:pos:v1",
@@ -575,16 +579,15 @@ function CanvasInner({ projectId }: { projectId: number }) {
         bottom: Math.max(4, Math.min(p.bottom, Math.max(4, window.innerHeight - mmSize.h - 4))),
         right: Math.max(4, Math.min(p.right, Math.max(4, window.innerWidth - mmSize.w - 4))),
       }));
-      setBarAlong((a) => {
-        const horiz = barEdge === "bottom" || barEdge === "top";
-        const limit = horiz ? Math.max(0, window.innerWidth / 2 - 260) : Math.max(0, window.innerHeight / 2 - 160);
-        return Math.max(-limit, Math.min(limit, a));
+      setToolbarPos((p) => {
+        if (p.x < 0) return p; // unplaced — leave the sentinel for default placement
+        return { x: Math.max(0, Math.min(p.x, window.innerWidth - 80)), y: Math.max(0, Math.min(p.y, window.innerHeight - 40)) };
       });
     };
     window.addEventListener("resize", fix);
     fix();
     return () => window.removeEventListener("resize", fix);
-  }, [setMmPos, setBarAlong, mmSize.h, mmSize.w, barEdge]);
+  }, [setMmPos, setToolbarPos, mmSize.h, mmSize.w]);
   const [renamingProject, setRenamingProject] = useState(false);
   const [renameValue, setRenameValue] = useState("");
   const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -2135,56 +2138,59 @@ function CanvasInner({ projectId }: { projectId: number }) {
             <NarrativeArcPicker onClose={() => setShowArcPicker(false)} />
           )}
 
-          {/* ── Floating toolbar — snaps to viewport edge; vertical when on left/right ── */}
+          {/* ── Floating toolbar — drops anywhere; horizontal/vertical via toggle ── */}
           <div
-            className={`canvas-bottombar absolute z-20 flex items-center gap-1.5 px-2.5 py-1.5 rounded-2xl ${barEdge === "left" || barEdge === "right" ? "flex-col" : ""}`}
-            data-bar-edge={barEdge}
+            className={`canvas-bottombar absolute z-20 flex items-center gap-1.5 px-2.5 py-1.5 rounded-2xl ${toolbarOrient === "v" ? "flex-col" : ""}`}
+            data-bar-orient={toolbarOrient}
             onClick={(e) => e.stopPropagation()}
             onMouseDown={(e) => {
               // 只响应直接在工具栏背景上的拖拽（不拦截按钮点击）
               if ((e.target as HTMLElement).closest("button,input,select")) return;
               e.preventDefault();
+              const el = e.currentTarget as HTMLElement;
+              const rect = el.getBoundingClientRect();
+              const offX = e.clientX - rect.left, offY = e.clientY - rect.top;
               const startX = e.clientX, startY = e.clientY;
               let dragged = false;
               const onMove = (mv: MouseEvent) => {
-                // require 5px movement before snapping (avoid accidental snap on click)
                 if (!dragged && Math.hypot(mv.clientX - startX, mv.clientY - startY) < 5) return;
                 dragged = true;
-                const cx = mv.clientX, cy = mv.clientY;
-                const W = window.innerWidth, H = window.innerHeight;
-                // Distance to each edge
-                const dT = cy, dB = H - cy, dL = cx, dR = W - cx;
-                const minD = Math.min(dT, dB, dL, dR);
-                if (minD === dB) {
-                  setBarEdge("bottom");
-                  setBarAlong(Math.max(-400, Math.min(400, cx - W / 2)));
-                } else if (minD === dT) {
-                  setBarEdge("top");
-                  setBarAlong(Math.max(-400, Math.min(400, cx - W / 2)));
-                } else if (minD === dL) {
-                  setBarEdge("left");
-                  setBarAlong(Math.max(-300, Math.min(300, cy - H / 2)));
-                } else {
-                  setBarEdge("right");
-                  setBarAlong(Math.max(-300, Math.min(300, cy - H / 2)));
-                }
+                const w = el.offsetWidth, h = el.offsetHeight;
+                const x = Math.max(0, Math.min(window.innerWidth - w, mv.clientX - offX));
+                const y = Math.max(0, Math.min(window.innerHeight - h, mv.clientY - offY));
+                setToolbarPos({ x, y });
               };
               const onUp = () => { window.removeEventListener("mousemove", onMove); window.removeEventListener("mouseup", onUp); };
               window.addEventListener("mousemove", onMove);
               window.addEventListener("mouseup", onUp);
             }}
             style={{
-              ...(barEdge === "bottom" && { bottom: 20, left: `calc(50% + ${barAlong}px)`, transform: "translateX(-50%)" }),
-              ...(barEdge === "top" && { top: 20, left: `calc(50% + ${barAlong}px)`, transform: "translateX(-50%)" }),
-              ...(barEdge === "left" && { left: 20, top: `calc(50% + ${barAlong}px)`, transform: "translateY(-50%)" }),
-              ...(barEdge === "right" && { right: 20, top: `calc(50% + ${barAlong}px)`, transform: "translateY(-50%)" }),
-              cursor: "default",
+              left: toolbarPos.x < 0 ? Math.max(8, window.innerWidth / 2 - 180) : toolbarPos.x,
+              top: toolbarPos.x < 0 ? window.innerHeight - 64 : toolbarPos.y,
+              cursor: "grab",
               background: "color-mix(in oklch, var(--c-base) 38%, transparent)",
               backdropFilter: "blur(24px)",
               border: "1px solid var(--c-bd2)",
               boxShadow: "var(--c-node-shadow-hover), 0 0 0 1px var(--c-bd2)",
             }}
           >
+            {/* Orientation toggle (horizontal ↔ vertical) */}
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <button
+                  onClick={() => setToolbarOrient((o) => (o === "h" ? "v" : "h"))}
+                  className="w-7 h-7 rounded-xl flex items-center justify-center transition-all flex-shrink-0"
+                  style={{ color: "var(--c-t3)" }}
+                  onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.background = "var(--c-bd1)"; (e.currentTarget as HTMLElement).style.color = "var(--c-t1)"; }}
+                  onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.background = "transparent"; (e.currentTarget as HTMLElement).style.color = "var(--c-t3)"; }}
+                >
+                  {toolbarOrient === "h" ? <MoveVertical className="w-3.5 h-3.5" /> : <MoveHorizontal className="w-3.5 h-3.5" />}
+                </button>
+              </TooltipTrigger>
+              <TooltipContent side="top" className="text-xs">{toolbarOrient === "h" ? "切换为竖排" : "切换为横排"}</TooltipContent>
+            </Tooltip>
+            <div style={{ width: 1, height: 18, background: "var(--c-bd2)", flexShrink: 0 }} />
+
             {/* Add node — primary action (hidden for viewers) */}
             {!isReadOnly && <Tooltip>
               <TooltipTrigger asChild>
