@@ -91,16 +91,24 @@ const DUBBING_MODELS = [
   { value: "openai_gpt4o_mini_tts", label: "GPT-4o Mini TTS",  desc: "新 · 支持 instructions", group: "OpenAI" },
   // ── Live (Poyo) ───
   { value: "elevenlabs-v3-tts",     label: "ElevenLabs v3 TTS", desc: "Poyo · 16 积分/1k 字",  group: "ElevenLabs" },
+  // ── 本地 / 自托管（Gradio）───
+  { value: "voxcpm-local",          label: "本地 VoxCPM2",      desc: "自托管 · 参考音色克隆",  group: "本地" },
 ];
 
 // Per-model TTS text limit (characters). Submitting more than this either errors
 // at the provider or is silently truncated — in both cases the user pays.
 const TTS_TEXT_LIMIT: Record<string, number> = {
   "elevenlabs-v3-tts":   5000,
+  "voxcpm-local":        5000,
   openai_tts_real:       4096,
   openai_tts_hd_real:    4096,
   openai_gpt4o_mini_tts: 4096,
 };
+
+// 本地 VoxCPM（Gradio）模型：靠参考音频克隆音色，无固定音色列表。
+function modelIsVoxCPM(model?: string): boolean {
+  return model === "voxcpm-local";
+}
 
 // SFX — coming soon
 const SFX_MODELS = [
@@ -146,6 +154,7 @@ const ELEVENLABS_VOICES = [
 ];
 
 function voicesForModel(model?: string): { value: string; label: string; desc: string }[] {
+  if (modelIsVoxCPM(model)) return []; // 音色来自参考音频，无固定列表
   if (modelIsElevenLabs(model)) return ELEVENLABS_VOICES;
   return OPENAI_VOICES; // default for openai_tts_real / *_hd_real / gpt4o-mini / unknown
 }
@@ -158,7 +167,21 @@ function modelIsElevenLabs(model?: string): boolean {
 // `speed` is only meaningful for OpenAI TTS. ElevenLabs V3 uses `stability`
 // instead, so the speed slider is hidden for it.
 function modelSupportsSpeed(model?: string): boolean {
-  return !modelIsElevenLabs(model);
+  return !modelIsElevenLabs(model) && !modelIsVoxCPM(model);
+}
+
+/** 探测上游连入的音频 URL（素材[音频] / 音频节点），用作 VoxCPM 参考音色。 */
+function detectUpstreamAudioUrl(nodeId: string): { url: string; name?: string } | undefined {
+  const { edges, nodes } = useCanvasStore.getState();
+  for (const e of edges) {
+    if (e.target !== nodeId) continue;
+    const src = nodes.find((n) => n.id === e.source);
+    if (!src) continue;
+    const p = src.data.payload as { url?: string; type?: string; name?: string };
+    if (src.data.nodeType === "audio" && p.url) return { url: p.url, name: p.name };
+    if (src.data.nodeType === "asset" && p.type === "audio" && p.url) return { url: p.url, name: p.name };
+  }
+  return undefined;
 }
 
 // Suno/Poyo style tags expect English genre keywords. Submitting raw Chinese
@@ -249,6 +272,7 @@ export const AudioNode = memo(function AudioNode({ id, selected, data }: Props) 
   const [uploading, setUploading] = useState(false);
   const audioRef = useRef<HTMLAudioElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const refFileInputRef = useRef<HTMLInputElement>(null);
 
   const musicMutation = trpc.audioGen.generateMusic.useMutation({
     onSuccess: (result) => {
@@ -302,6 +326,34 @@ export const AudioNode = memo(function AudioNode({ id, selected, data }: Props) 
     },
     onError: (err) => { setUploading(false); toast.error("上传失败：" + err.message); },
   });
+
+  // 参考音频（VoxCPM 克隆音色）单独上传 —— 写入 ttsRefWavUrl，不覆盖节点的输出 url。
+  const [refUploading, setRefUploading] = useState(false);
+  const refUploadMutation = trpc.upload.uploadImage.useMutation({
+    onSuccess: (result) => {
+      updateNodeData(id, { ttsRefWavUrl: result.url });
+      setRefUploading(false);
+      toast.success("参考音频已上传");
+    },
+    onError: (err) => { setRefUploading(false); toast.error("参考音频上传失败：" + err.message); },
+  });
+
+  const handleRefUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    if (!file.type.startsWith("audio/")) { toast.error("请选择音频文件"); e.target.value = ""; return; }
+    if (file.size > 16 * 1024 * 1024) { toast.error("参考音频不能超过 16MB"); e.target.value = ""; return; }
+    setRefUploading(true);
+    const reader = new FileReader();
+    reader.onload = () => {
+      const base64 = (reader.result as string).split(",")[1];
+      updateNodeData(id, { ttsRefWavName: file.name });
+      refUploadMutation.mutate({ base64, mimeType: file.type, filename: file.name });
+    };
+    reader.onerror = () => { setRefUploading(false); toast.error("文件读取失败"); };
+    reader.readAsDataURL(file);
+    e.target.value = "";
+  };
 
   const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -391,6 +443,26 @@ export const AudioNode = memo(function AudioNode({ id, selected, data }: Props) 
     const limit = TTS_TEXT_LIMIT[model] ?? (modelIsElevenLabs(model) ? 5000 : 4096);
     if (payload.ttsText.length > limit) {
       toast.error(`${model} 单次配音上限 ${limit} 字，当前 ${payload.ttsText.length} 字，请截断`);
+      return;
+    }
+    const isVox = modelIsVoxCPM(model);
+    // 本地 VoxCPM：必须有服务地址 + 参考音频（上传或上游）。
+    if (isVox) {
+      if (!payload.ttsGradioBaseUrl?.trim()) { toast.error("请先填写本地 VoxCPM 的 Gradio 服务地址"); return; }
+      const refUrl = payload.ttsRefWavUrl?.trim() || detectUpstreamAudioUrl(id)?.url;
+      if (!refUrl) { toast.error("VoxCPM 需要参考音频：请上传，或从上游音频/素材节点连入"); return; }
+      ttsMutation.mutate({
+        model: "voxcpm-local",
+        text: payload.ttsText,
+        projectId: data.projectId,
+        customBaseUrl: payload.ttsGradioBaseUrl.trim(),
+        refWavUrl: refUrl,
+        controlInstruction: payload.ttsControlInstruction?.trim() || undefined,
+        cfgValue: payload.ttsCfg ?? 2,
+        ditSteps: payload.ttsDitSteps ?? 10,
+        denoise: payload.ttsDenoise ?? false,
+        doNormalize: payload.ttsDoNormalize ?? false,
+      });
       return;
     }
     // Voice names differ per provider; refuse a voice not valid for this model.
@@ -627,6 +699,8 @@ export const AudioNode = memo(function AudioNode({ id, selected, data }: Props) 
           const textLimit = TTS_TEXT_LIMIT[ttsModel] ?? (modelIsElevenLabs(ttsModel) ? 5000 : 4096);
           const supportsSpeed = modelSupportsSpeed(ttsModel);
           const isEleven = modelIsElevenLabs(ttsModel);
+          const isVox = modelIsVoxCPM(ttsModel);
+          const upstreamRef = isVox ? detectUpstreamAudioUrl(id) : undefined;
           const textLen = (payload.ttsText ?? "").length;
           return (
           <>
@@ -665,7 +739,8 @@ export const AudioNode = memo(function AudioNode({ id, selected, data }: Props) 
                 onBlur={(e) => { e.currentTarget.style.borderColor = BORDER_DEFAULT; }}
               />
             </div>
-            {/* Voice selector — varies per provider */}
+            {/* Voice selector — varies per provider (本地 VoxCPM 无固定音色，隐藏) */}
+            {voices.length > 0 && (
             <div>
               <label style={labelStyle}>音色</label>
               <div className="flex flex-wrap gap-1">
@@ -688,6 +763,156 @@ export const AudioNode = memo(function AudioNode({ id, selected, data }: Props) 
                 ))}
               </div>
             </div>
+            )}
+            {/* ── 本地 VoxCPM（Gradio）专属：服务地址 + 参考音色 + 参数 ── */}
+            {isVox && (
+              <>
+                {/* Gradio 服务地址 */}
+                <div>
+                  <label style={labelStyle}>Gradio 服务地址</label>
+                  <NodeInput
+                    placeholder="例如：http://172.16.0.177:8808"
+                    value={payload.ttsGradioBaseUrl ?? ""}
+                    onValueChange={(v) => update("ttsGradioBaseUrl", v)}
+                    className="nodrag"
+                    noMention
+                    style={fieldStyle}
+                    onFocus={(e) => { e.currentTarget.style.borderColor = BORDER_ACCENT; }}
+                    onBlur={(e) => { e.currentTarget.style.borderColor = BORDER_DEFAULT; }}
+                  />
+                </div>
+                {/* 参考音频（克隆音色）：上传 or 上游接入 */}
+                <div>
+                  <label style={labelStyle}>参考音频（克隆音色）</label>
+                  {payload.ttsRefWavUrl ? (
+                    <div className="flex items-center gap-2" style={{ ...fieldStyle, padding: "6px 8px" }}>
+                      <Volume2 style={{ width: 12, height: 12, color: accent, flexShrink: 0 }} />
+                      <span style={{ fontSize: 11, color: "var(--c-t2)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", flex: 1 }}>
+                        {payload.ttsRefWavName ?? "已上传参考音频"}
+                      </span>
+                      <button
+                        onClick={() => updateNodeData(id, { ttsRefWavUrl: undefined, ttsRefWavName: undefined })}
+                        className="nodrag flex-shrink-0"
+                        style={{ background: "transparent", border: "none", cursor: "pointer", color: "var(--c-t4)" }}
+                        title="移除参考音频"
+                      >
+                        <X style={{ width: 12, height: 12 }} />
+                      </button>
+                    </div>
+                  ) : upstreamRef ? (
+                    <div className="flex items-center gap-2" style={{ ...fieldStyle, padding: "6px 8px", borderColor: accentA(0.4) }}>
+                      <Volume2 style={{ width: 12, height: 12, color: accent, flexShrink: 0 }} />
+                      <span style={{ fontSize: 11, color: "var(--c-t2)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", flex: 1 }}>
+                        上游音频：{upstreamRef.name ?? "已连入"}
+                      </span>
+                    </div>
+                  ) : null}
+                  <button
+                    onClick={() => refFileInputRef.current?.click()}
+                    disabled={refUploading}
+                    className="nodrag flex items-center justify-center gap-1.5 w-full py-1.5 rounded-lg text-[11px] transition-all"
+                    style={{
+                      marginTop: 6,
+                      background: "var(--c-input)",
+                      border: `1px dashed ${BORDER_DEFAULT}`,
+                      color: "var(--c-t3)",
+                      cursor: refUploading ? "not-allowed" : "pointer",
+                    }}
+                  >
+                    {refUploading
+                      ? <Loader2 style={{ width: 11, height: 11 }} className="animate-spin" />
+                      : <Upload style={{ width: 11, height: 11 }} />}
+                    {refUploading ? "上传中..." : (payload.ttsRefWavUrl ? "更换参考音频" : "上传参考音频")}
+                  </button>
+                  {!payload.ttsRefWavUrl && !upstreamRef && (
+                    <p style={{ fontSize: 10, color: "var(--c-t4)", marginTop: 4, lineHeight: 1.5 }}>
+                      也可从上游「音频 / 素材(音频)」节点连线提供参考音色
+                    </p>
+                  )}
+                </div>
+                {/* 音色/风格控制指令（可选） */}
+                <div>
+                  <label style={labelStyle}>控制指令（可选）</label>
+                  <NodeInput
+                    placeholder="例如：语气平静、语速稍慢"
+                    value={payload.ttsControlInstruction ?? ""}
+                    onValueChange={(v) => update("ttsControlInstruction", v)}
+                    className="nodrag"
+                    noMention
+                    style={fieldStyle}
+                    onFocus={(e) => { e.currentTarget.style.borderColor = BORDER_ACCENT; }}
+                    onBlur={(e) => { e.currentTarget.style.borderColor = BORDER_DEFAULT; }}
+                  />
+                </div>
+                {/* CFG */}
+                <div>
+                  <div className="flex items-center justify-between" style={{ marginBottom: 5 }}>
+                    <label style={{ ...labelStyle, marginBottom: 0 }}>CFG</label>
+                    <span style={{ fontSize: 11, color: "var(--c-t3)", fontVariantNumeric: "tabular-nums" }}>
+                      {(payload.ttsCfg ?? 2).toFixed(1)}
+                    </span>
+                  </div>
+                  <input
+                    type="range" min={0} max={5} step={0.1}
+                    value={payload.ttsCfg ?? 2}
+                    onChange={(e) => update("ttsCfg", Number(e.target.value))}
+                    className="nodrag w-full"
+                    style={{ accentColor: accent }}
+                  />
+                </div>
+                {/* 扩散步数 */}
+                <div>
+                  <div className="flex items-center justify-between" style={{ marginBottom: 5 }}>
+                    <label style={{ ...labelStyle, marginBottom: 0 }}>扩散步数</label>
+                    <span style={{ fontSize: 11, color: "var(--c-t3)", fontVariantNumeric: "tabular-nums" }}>
+                      {payload.ttsDitSteps ?? 10}
+                    </span>
+                  </div>
+                  <input
+                    type="range" min={4} max={50} step={1}
+                    value={payload.ttsDitSteps ?? 10}
+                    onChange={(e) => update("ttsDitSteps", Number(e.target.value))}
+                    className="nodrag w-full"
+                    style={{ accentColor: accent }}
+                  />
+                </div>
+                {/* 降噪 / 文本规范化 开关 */}
+                {([
+                  { key: "ttsDenoise" as const, label: "参考音频降噪" },
+                  { key: "ttsDoNormalize" as const, label: "文本规范化" },
+                ]).map(({ key, label }) => {
+                  const on = (payload[key] as boolean | undefined) ?? false;
+                  return (
+                    <div key={key} className="flex items-center justify-between">
+                      <label style={{ ...labelStyle, marginBottom: 0 }}>{label}</label>
+                      <button
+                        onClick={() => update(key, !on)}
+                        className="nodrag relative flex-shrink-0"
+                        style={{
+                          width: 32, height: 18, borderRadius: 9,
+                          background: on ? accentA(0.5) : "var(--c-bd1)",
+                          border: `1px solid ${on ? accentA(0.5) : "var(--c-bd3)"}`,
+                          cursor: "pointer", transition: "background 150ms ease",
+                        }}
+                      >
+                        <span style={{
+                          position: "absolute", top: 2, left: on ? 14 : 2,
+                          width: 12, height: 12, borderRadius: "50%",
+                          background: "var(--c-t1)", transition: "left 150ms ease",
+                        }} />
+                      </button>
+                    </div>
+                  );
+                })}
+                <input
+                  ref={refFileInputRef}
+                  type="file"
+                  accept="audio/*"
+                  onChange={handleRefUpload}
+                  style={{ display: "none" }}
+                />
+              </>
+            )}
             {/* Speed slider — ElevenLabs v3 doesn't honour this; hide rather than mislead */}
             {supportsSpeed && (
               <div>
