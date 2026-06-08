@@ -1673,15 +1673,20 @@ score 为 0-100 整数，issues 数组最多 8 条，每条包含 type/line/sugg
             },
           ],
           model: input.model ?? "claude-sonnet-4-6",
-          maxTokens: 1500,
+          // Detailed person profiles (8 Chinese fields) can exceed a small budget and get
+          // truncated → unterminated JSON → "未返回有效 JSON". Give ample room.
+          maxTokens: 2600,
         });
 
-        const text = extractTextContent(response);
+        // Strip ```json fences some models add, then grab the JSON object.
+        const text = extractTextContent(response).replace(/```(?:json)?/gi, "").trim();
         const jsonMatch = text.match(/\{[\s\S]*\}/);
-        if (!jsonMatch) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "AI 未返回有效 JSON" });
+        if (!jsonMatch) {
+          throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: `AI 未返回有效 JSON（模型「${input.model ?? "claude-sonnet-4-6"}」可能不支持读图，请换一个视觉模型）` });
+        }
         let parsed: Record<string, unknown>;
         try { parsed = JSON.parse(jsonMatch[0]) as Record<string, unknown>; }
-        catch { throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "JSON 解析失败" }); }
+        catch { throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "AI 返回的 JSON 解析失败（可能被截断，请重试或换模型）" }); }
 
         const FIELDS: { key: string; max: number }[] = isScene
           ? [{ key: "sceneName", max: 120 }, { key: "locationType", max: 60 }, { key: "sceneDescription", max: 500 }, { key: "atmosphere", max: 60 }, { key: "timeOfDay", max: 60 }]

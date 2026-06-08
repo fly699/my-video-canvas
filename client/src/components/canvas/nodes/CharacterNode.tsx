@@ -18,6 +18,7 @@ import {
 import { CharacterConsistencyPanel, type ConsistencyResult } from "../CharacterConsistencyPanel";
 import { CharacterRecognitionPanel } from "../CharacterRecognitionPanel";
 import { buildRecognitionRows, type RecognitionFieldRow } from "@/lib/characterRecognition";
+import { LLMModelPicker, type LLMModelId } from "../LLMModelPicker";
 import { NodeTextArea, NodeInput } from "../NodeTextInput";
 import { characterReferenceImages, deriveCharacterConditioning } from "@/lib/characterConditioning";
 import { detectUpstreamImagesExpanded } from "@/lib/comfyWorkflowParams";
@@ -89,15 +90,21 @@ export const CharacterNode = memo(function CharacterNode({ id, selected, data }:
   // uploads / edits are never overwritten (per user choice).
   const upstreamImagesKey = useCanvasStore((s) => detectUpstreamImagesExpanded(id, s.edges, s.nodes).join("\n"));
   useEffect(() => {
-    if (payload.referenceImageUrl?.trim() || (payload.additionalImageUrls?.length ?? 0) > 0) return;
     const list = upstreamImagesKey ? upstreamImagesKey.split("\n").filter(Boolean) : [];
     if (list.length === 0) return;
-    const extras = list.slice(1, 1 + MAX_ADDITIONAL_IMAGES);
-    updateNodeData(id, {
-      referenceImageUrl: list[0],
-      referenceStorageKey: undefined,
-      ...(extras.length ? { additionalImageUrls: extras } : {}),
-    }, true);
+    // Fill main + alternate views INDEPENDENTLY (each only-when-blank). Independent gating
+    // matters because upstream images can arrive in stages (a batch finishes after the
+    // first image): once the main ref was set, a combined "no refs at all" gate would block
+    // the alternate views forever. Each fills once, then stays under the user's control.
+    const patch: Record<string, unknown> = {};
+    const hasMain = !!payload.referenceImageUrl?.trim();
+    if (!hasMain) { patch.referenceImageUrl = list[0]; patch.referenceStorageKey = undefined; }
+    if ((payload.additionalImageUrls?.length ?? 0) === 0) {
+      const main = payload.referenceImageUrl?.trim() || list[0];
+      const extras = list.filter((u) => u !== main).slice(0, MAX_ADDITIONAL_IMAGES);
+      if (extras.length) patch.additionalImageUrls = extras;
+    }
+    if (Object.keys(patch).length) updateNodeData(id, patch, true);
   }, [upstreamImagesKey, payload.referenceImageUrl, payload.additionalImageUrls, id, updateNodeData]);
 
   // ── Connected storyboards with generated images (downstream of this character)
@@ -135,8 +142,9 @@ export const CharacterNode = memo(function CharacterNode({ id, selected, data }:
   const [consistencyResult, setConsistencyResult] = useState<ConsistencyResult | null>(null);
   const [consistencyScenes, setConsistencyScenes] = useState<{ ids: string[]; urls: string[] }>({ ids: [], urls: [] });
 
-  // AI 参考图识别 → 预览弹窗（勾选后才写入字段）
+  // AI 参考图识别 → 预览弹窗（勾选后才写入字段）。模型可选（需视觉能力）。
   const [recognizeRows, setRecognizeRows] = useState<RecognitionFieldRow[] | null>(null);
+  const [recognizeModel, setRecognizeModel] = useState<LLMModelId>("claude-sonnet-4-6");
   const recognizeMut = trpc.scripts.analyzeCharacterFromImages.useMutation({
     onSuccess: (res) => {
       const rows = buildRecognitionRows(payload, res.fields);
@@ -149,7 +157,7 @@ export const CharacterNode = memo(function CharacterNode({ id, selected, data }:
     if (recognizeMut.isPending) return;
     const imgs = characterReferenceImages(payload).slice(0, 9);
     if (imgs.length === 0) { toast.error("请先上传或连接参考图"); return; }
-    recognizeMut.mutate({ imageUrls: imgs, characterKind: kind });
+    recognizeMut.mutate({ imageUrls: imgs, characterKind: kind, model: recognizeModel });
   };
 
   const utils = trpc.useUtils();
@@ -647,22 +655,27 @@ export const CharacterNode = memo(function CharacterNode({ id, selected, data }:
 
         {/* AI 识别：依据参考图（含备用视角）分析并填充角色/场景参数（弹窗勾选后应用） */}
         {selected && (
-          <button
-            onClick={handleRecognize}
-            disabled={recognizeMut.isPending || characterReferenceImages(payload).length === 0}
-            className="nodrag flex items-center justify-center gap-1.5 w-full rounded-lg text-[11px] font-medium transition-all"
-            style={{
-              padding: "7px 10px",
-              background: characterReferenceImages(payload).length === 0 ? "var(--c-input)" : "oklch(0.68 0.18 300 / 0.12)",
-              border: `1px solid ${characterReferenceImages(payload).length === 0 ? "var(--c-bd2)" : "oklch(0.68 0.18 300 / 0.4)"}`,
-              color: characterReferenceImages(payload).length === 0 ? "var(--c-t4)" : "oklch(0.72 0.16 300)",
-              cursor: recognizeMut.isPending || characterReferenceImages(payload).length === 0 ? "not-allowed" : "pointer",
-            }}
-            title={kind === "scene" ? "AI 依据参考图识别场景设定" : "AI 依据参考图识别人物设定"}
-          >
-            {recognizeMut.isPending ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Sparkles className="w-3.5 h-3.5" />}
-            {recognizeMut.isPending ? "识别中…" : (kind === "scene" ? "AI 识别场景" : "AI 识别人物")}
-          </button>
+          <div className="flex flex-col gap-1.5">
+            <div className="nodrag" onPointerDown={(e) => e.stopPropagation()}>
+              <LLMModelPicker value={recognizeModel} onChange={setRecognizeModel} disabled={recognizeMut.isPending} />
+            </div>
+            <button
+              onClick={handleRecognize}
+              disabled={recognizeMut.isPending || characterReferenceImages(payload).length === 0}
+              className="nodrag flex items-center justify-center gap-1.5 w-full rounded-lg text-[11px] font-medium transition-all"
+              style={{
+                padding: "7px 10px",
+                background: characterReferenceImages(payload).length === 0 ? "var(--c-input)" : "oklch(0.68 0.18 300 / 0.12)",
+                border: `1px solid ${characterReferenceImages(payload).length === 0 ? "var(--c-bd2)" : "oklch(0.68 0.18 300 / 0.4)"}`,
+                color: characterReferenceImages(payload).length === 0 ? "var(--c-t4)" : "oklch(0.72 0.16 300)",
+                cursor: recognizeMut.isPending || characterReferenceImages(payload).length === 0 ? "not-allowed" : "pointer",
+              }}
+              title={kind === "scene" ? "AI 依据参考图识别场景设定" : "AI 依据参考图识别人物设定"}
+            >
+              {recognizeMut.isPending ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Sparkles className="w-3.5 h-3.5" />}
+              {recognizeMut.isPending ? "识别中…" : (kind === "scene" ? "AI 识别场景" : "AI 识别人物")}
+            </button>
+          </div>
         )}
 
         {/* ── ComfyUI identity lock (IPAdapter face-lock + character LoRA) ──
