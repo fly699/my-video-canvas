@@ -1,4 +1,4 @@
-import { memo, useCallback, useMemo, useRef, useState } from "react";
+import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useShallow } from "zustand/react/shallow";
 import { BaseNode } from "../BaseNode";
 import { isOwnStorageUrl } from "@/lib/ownStorage";
@@ -18,6 +18,7 @@ import {
 import { CharacterConsistencyPanel, type ConsistencyResult } from "../CharacterConsistencyPanel";
 import { NodeTextArea, NodeInput } from "../NodeTextInput";
 import { characterReferenceImages, deriveCharacterConditioning } from "@/lib/characterConditioning";
+import { getNodeImageOutput } from "@/lib/canvasPassthrough";
 
 interface Props {
   id: string;
@@ -77,6 +78,26 @@ export const CharacterNode = memo(function CharacterNode({ id, selected, data }:
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const kind: CharacterKind = payload.characterKind ?? "person";
+
+  // Receive an upstream IMAGE (素材 / 图像生成 / ComfyUI 图像 / ComfyUI 自定义) as this
+  // character/scene's reference image. getNodeImageOutput is kind-safe (image assets
+  // only, skips video-output workflows). Fill-only-when-blank — a manually-uploaded
+  // reference is never overwritten. Primitive selector result → minimal re-renders.
+  const upstreamRefImage = useCanvasStore((s) => {
+    for (const e of s.edges) {
+      if (e.target !== id) continue;
+      const src = s.nodes.find((n) => n.id === e.source);
+      if (!src) continue;
+      const url = getNodeImageOutput(src.data.nodeType, (src.data.payload ?? {}) as Record<string, unknown>);
+      if (url) return url;
+    }
+    return undefined;
+  });
+  useEffect(() => {
+    if (!upstreamRefImage) return;
+    if (payload.referenceImageUrl?.trim()) return; // fill-only-when-blank
+    updateNodeData(id, { referenceImageUrl: upstreamRefImage, referenceStorageKey: undefined }, true);
+  }, [upstreamRefImage, payload.referenceImageUrl, id, updateNodeData]);
 
   // ── Connected storyboards with generated images (downstream of this character)
   // Select FLAT tuples (id, imageUrl, sceneNumber) — useShallow uses Object.is

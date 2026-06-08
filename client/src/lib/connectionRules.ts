@@ -5,10 +5,10 @@ export const CONNECTION_MATRIX: Partial<Record<NodeType, NodeType[]>> = {
   storyboard: ["image_gen", "video_task", "prompt", "comfyui_image", "comfyui_video", "comfyui_workflow"],
   prompt: ["image_gen", "video_task", "storyboard", "script", "comfyui_image", "comfyui_video", "comfyui_workflow"],
   character: ["storyboard", "image_gen", "video_task", "prompt", "comfyui_image", "comfyui_video", "comfyui_workflow"],
-  image_gen: ["video_task", "asset", "clip", "pose_control", "comfyui_video", "comfyui_workflow"],
+  image_gen: ["video_task", "asset", "clip", "pose_control", "character", "comfyui_video", "comfyui_workflow"],
   video_task: ["clip", "asset", "overlay", "merge", "subtitle", "subtitle_motion", "smart_cut"],
   audio: ["clip"],
-  asset: ["image_gen", "video_task", "clip", "merge", "subtitle", "subtitle_motion", "smart_cut", "pose_control", "comfyui_image", "comfyui_video", "comfyui_workflow"],
+  asset: ["image_gen", "video_task", "clip", "merge", "subtitle", "subtitle_motion", "smart_cut", "pose_control", "character", "comfyui_image", "comfyui_video", "comfyui_workflow"],
   ai_chat: ["script", "storyboard", "prompt"],
   clip: ["asset", "overlay", "merge", "subtitle", "subtitle_motion", "smart_cut"],
   post_process: ["video_task", "image_gen", "asset"],
@@ -25,9 +25,9 @@ export const CONNECTION_MATRIX: Partial<Record<NodeType, NodeType[]>> = {
   lip_sync: [],
   avatar: [],
   merge: ["asset", "clip"],
-  comfyui_image: ["video_task", "asset", "clip", "pose_control", "comfyui_image", "comfyui_video", "comfyui_workflow"],
+  comfyui_image: ["video_task", "asset", "clip", "pose_control", "character", "comfyui_image", "comfyui_video", "comfyui_workflow"],
   comfyui_video: ["clip", "asset", "overlay", "merge", "subtitle", "subtitle_motion", "smart_cut", "comfyui_image", "comfyui_video", "comfyui_workflow"],
-  comfyui_workflow: ["video_task", "asset", "clip", "overlay", "merge", "subtitle", "subtitle_motion", "smart_cut", "comfyui_workflow", "comfyui_image", "comfyui_video"],
+  comfyui_workflow: ["video_task", "asset", "clip", "overlay", "merge", "subtitle", "subtitle_motion", "smart_cut", "character", "comfyui_workflow", "comfyui_image", "comfyui_video"],
   note: [],
   group: [],
   // The agent (Copilot) orchestrates by CREATING nodes via chat, not via edges —
@@ -90,11 +90,11 @@ export const CONNECTION_HINTS: Record<
   character: {
     label: "角色/场景",
     outgoing: "→ 分镜 / 图像生成 / 视频任务 / 提示词",
-    incoming: "← 脚本",
+    incoming: "← 脚本 / 素材 / 图像生成 / ComfyUI 图像 / ComfyUI 自定义（参考图）",
   },
   image_gen: {
     label: "图像生成",
-    outgoing: "→ 视频任务 / 素材 / 剪辑",
+    outgoing: "→ 视频任务 / 素材 / 剪辑 / 角色（参考图）",
     incoming: "← 分镜 / 提示词 / 角色 / 素材",
   },
   video_task: {
@@ -109,7 +109,7 @@ export const CONNECTION_HINTS: Record<
   },
   asset: {
     label: "素材",
-    outgoing: "→ 图像生成 / 视频任务 / 剪辑 / 合并 / 字幕 / 动态字幕 / 智能剪辑 / 构图控制",
+    outgoing: "→ 图像生成 / 视频任务 / 剪辑 / 合并 / 字幕 / 动态字幕 / 智能剪辑 / 构图控制 / 角色",
     incoming: "← 图像生成 / 视频任务 / 剪辑 / 叠加 / 字幕 / 动态字幕 / 智能剪辑 / 合并",
   },
   ai_chat: {
@@ -184,7 +184,7 @@ export const CONNECTION_HINTS: Record<
   },
   comfyui_image: {
     label: "ComfyUI 图像",
-    outgoing: "→ 视频任务 / 素材 / 剪辑 / 构图控制 / ComfyUI 视频",
+    outgoing: "→ 视频任务 / 素材 / 剪辑 / 构图控制 / ComfyUI 视频 / 角色",
     incoming: "← 分镜 / 提示词 / 角色 / 素材",
   },
   comfyui_video: {
@@ -194,7 +194,7 @@ export const CONNECTION_HINTS: Record<
   },
   comfyui_workflow: {
     label: "ComfyUI 自定义",
-    outgoing: "→ 视频任务 / 素材 / 剪辑 / 叠加 / 合并 / 字幕",
+    outgoing: "→ 视频任务 / 素材 / 剪辑 / 叠加 / 合并 / 字幕 / 角色",
     incoming: "← 分镜 / 提示词 / 角色 / 素材 / 图像生成",
   },
   agent: {

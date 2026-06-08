@@ -35,4 +35,14 @@ describe("isConnectionValid", () => {
     expect(isConnectionValid("merge", "clip")).toBe(true);
     expect(isConnectionValid("merge", "asset")).toBe(true); // still allowed
   });
+
+  it("lets image producers feed a character (角色) node as a reference image", () => {
+    expect(isConnectionValid("asset", "character")).toBe(true);
+    expect(isConnectionValid("image_gen", "character")).toBe(true);
+    expect(isConnectionValid("comfyui_image", "character")).toBe(true);
+    expect(isConnectionValid("comfyui_workflow", "character")).toBe(true);
+    // video producers must NOT feed a character image reference
+    expect(isConnectionValid("video_task", "character")).toBe(false);
+    expect(isConnectionValid("comfyui_video", "character")).toBe(false);
+  });
 });
