@@ -3071,11 +3071,18 @@ export const configRouter = router({
   // public internet" — true for Forge backend or when S3_PUBLIC_ENDPOINT is
   // configured. When false, a fully-private deployment can't pass reference
   // images to URL-only providers, so the frontend warns before spending credits.
-  mediaReachability: protectedProcedure.query(async () => ({
-    upstreamCanFetchMedia: canBrowserReachStorageDirectly(),
-    backend: storageBackend(),
-    // Admin toggle (readable by all users): auto-prefer the upstream AI temporary
-    // public URL as the reference source when it probes alive. Off by default.
-    preferUpstreamRefSource: (await getCachedStorageSettings()).preferUpstreamRefSource,
-  })),
+  mediaReachability: protectedProcedure.query(async () => {
+    const settings = await getCachedStorageSettings();
+    // Poyo 暂存：开关开启 + 配了 Poyo Key 时，即便本地存储不对公网开放，参考图也会
+    // 被暂存到 Poyo 公网链接给上游读取——此时视为「可达」，并据此在前端亮绿灯。
+    const poyoStagingActive = settings.poyoUploadFallback && !!ENV.poyoApiKey;
+    return {
+      upstreamCanFetchMedia: canBrowserReachStorageDirectly(),
+      poyoStagingActive,
+      backend: storageBackend(),
+      // Admin toggle (readable by all users): auto-prefer the upstream AI temporary
+      // public URL as the reference source when it probes alive. Off by default.
+      preferUpstreamRefSource: settings.preferUpstreamRefSource,
+    };
+  }),
 });

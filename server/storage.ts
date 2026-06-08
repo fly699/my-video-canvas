@@ -381,7 +381,10 @@ export async function resolveToAbsoluteUrl(urlOrRelPath: string): Promise<string
         const ct = contentType ?? "application/octet-stream";
         const ext = key.split(".").pop() || "bin";
         const fileName = `ref-${Date.now()}.${ext}`;
-        return await uploadStreamToPoyo(buf, fileName, ct);
+        const poyoUrl = await uploadStreamToPoyo(buf, fileName, ct);
+        // 暂存到 Poyo 的每个文件都留 log（便于审计/排查）。
+        console.log(`[storage] Poyo 暂存：key=${key} size=${buf.length}B type=${ct} → ${poyoUrl}`);
+        return poyoUrl;
       }
     } catch (err) {
       console.warn("[storage] Poyo upload fallback failed, using presigned URL:", err instanceof Error ? err.message : err);
