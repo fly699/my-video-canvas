@@ -10,7 +10,7 @@ import { useReferenceImages } from "../../../hooks/useReferenceImages";
 import { refUrls } from "../../../lib/referenceImages";
 import { effectiveCharacterRefImages, effectiveSceneRefImages, effectiveCharacters, stripCharacterMentions } from "../../../lib/characterConditioning";
 import { mergeCharactersIntoPrompt } from "../../../lib/characterPrompt";
-import { detectUpstreamPrompt } from "../../../lib/comfyWorkflowParams";
+import { detectUpstreamPrompt, detectUpstreamImagesExpanded } from "../../../lib/comfyWorkflowParams";
 import { connectedEffectPrompts, appendEffectPrompts } from "../../../lib/effectPrompt";
 import { ReferenceImageStrip } from "../ReferenceImageStrip";
 import { Layers } from "lucide-react";
@@ -127,6 +127,22 @@ export const ImageGenNode = memo(function ImageGenNode({ id, selected, data }: P
   const [refZoom, setRefZoom] = useState<number | null>(null);
   // Multi-reference-image list + left-docked expandable strip.
   const refImages = useReferenceImages(id, payload);
+  // 上游图像（图像生成 / ComfyUI 图像·自定义 / 素材 / 分镜）自动作为参考图填充——
+  // 仅当本节点尚无任何参考图时（fill-only-when-blank），绝不覆盖手动参考图，也不改变
+  // 「无参考图时用连线角色」的既有优先级（角色不在图源类型里，单独走 connectedCharacterRefImages）。
+  const upstreamRefKey = useCanvasStore((s) => detectUpstreamImagesExpanded(id, s.edges, s.nodes).join("\n"));
+  // 有连线「角色」上游时，保留既有「无参考图→用连线角色」的优先级，不自动填上游图（避免破坏）。
+  const hasUpstreamChar = useCanvasStore((s) => s.edges.some((e) => e.target === id && s.nodes.find((n) => n.id === e.source)?.data.nodeType === "character"));
+  useEffect(() => {
+    if (hasUpstreamChar) return;
+    const list = upstreamRefKey ? upstreamRefKey.split("\n").filter(Boolean) : [];
+    if (list.length === 0) return;
+    const hasRefs = (payload.referenceImages?.length ?? 0) > 0 || !!payload.referenceImageUrl?.trim();
+    if (hasRefs) return;
+    refImages.addUrls(list, "upstream");
+    // refImages 每渲染重建，但 hasRefs 守卫 + addUrls 去重使其幂等
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [upstreamRefKey, hasUpstreamChar, payload.referenceImages, payload.referenceImageUrl]);
   const [stripOpen, setStripOpen] = useState(false);
   const [paramsExpanded, setParamsExpanded] = useState(false);
   // Derived, not local state — stays in sync with collaboration/undo updates
