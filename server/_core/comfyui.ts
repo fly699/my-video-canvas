@@ -1830,6 +1830,12 @@ export async function executeCustomWorkflow(
       value = await uploadImageToComfy(baseUrl, value as string, apiKey);
     } else if (audioKeys.has(key) && isUploadableUrl) {
       value = await uploadAudioToComfy(baseUrl, value as string, apiKey);
+      // VHS_LoadAudioUpload 模板常带 start_time（如 6 秒，针对原示例音频）。换成
+      // 用户自己的（可能更短的）音频后，原 start_time 会 seek 越过音频末尾导致
+      // ffmpeg 读到 0 字节而报错。换音频时把字面量 start_time 归零，从头读取。
+      if (fieldParts[0] === "audio" && typeof node.inputs.start_time === "number" && node.inputs.start_time > 0) {
+        node.inputs.start_time = 0;
+      }
     }
 
     // Walk the path and set the value
@@ -2103,6 +2109,10 @@ export async function executeCloudWorkflow(
       value = await uploadImageToCloud(baseUrl, value as string, apiKey);
     } else if (audioKeys.has(key) && isUploadableUrl) {
       value = await uploadAudioToCloud(baseUrl, value as string, apiKey);
+      // 换音频后归零模板遗留的 start_time，避免 seek 越过音频末尾（见本地路径注释）。
+      if (fieldParts[0] === "audio" && typeof node.inputs.start_time === "number" && node.inputs.start_time > 0) {
+        node.inputs.start_time = 0;
+      }
     }
     if (fieldParts.length === 1) { node.inputs[fieldParts[0]] = value; }
     else {
