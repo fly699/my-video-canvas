@@ -14,6 +14,14 @@ interface Props {
   onDropFiles: (files: File[], index: number) => void;
   onZoom: (index: number) => void;
   accent?: string;
+  /**
+   * 只读汇总模式（ComfyUI 自定义工作流用）：每张图绑定到某个具体的工作流图像参数，
+   * 排序/插入都没有意义，故禁用拖拽重排、拖入新图与底部「拖拽添加」提示；仅保留
+   * 预览、点击放大与删除（删除＝清空对应参数）。
+   */
+  readOnly?: boolean;
+  /** 顶部标题文案（默认「参考图」）。 */
+  title?: string;
 }
 
 /** Pull image URLs out of a drag payload (asset-list JSON, then uri/text). */
@@ -41,6 +49,7 @@ function urlsFromDrag(dt: DataTransfer): string[] {
  */
 export function ReferenceImageStrip({
   images, open, onClose, onRemove, onMove, onInsertUrls, onDropFiles, onZoom, accent = "oklch(0.72 0.20 330)",
+  readOnly = false, title = "参考图",
 }: Props) {
   const listRef = useRef<HTMLDivElement>(null);
   const [dropIndex, setDropIndex] = useState<number | null>(null);
@@ -88,19 +97,21 @@ export function ReferenceImageStrip({
       style={{
         position: "absolute", right: "calc(100% + 8px)", top: 0, width: 92, maxHeight: "100%",
         display: "flex", flexDirection: "column", gap: 6, padding: 8,
-        borderRadius: 12, border: "1px solid var(--c-bd2)",
+        borderRadius: 12,
+        // 拖拽中整框高亮，提示「拖到框内任意处即可添加」（无需独立拖拽区）
+        border: `1px ${!readOnly && dropIndex !== null ? "dashed" : "solid"} ${!readOnly && dropIndex !== null ? accent : "var(--c-bd2)"}`,
         background: "color-mix(in oklch, var(--c-base) 94%, transparent)",
         backdropFilter: "blur(16px)", boxShadow: "0 12px 36px oklch(0 0 0 / 0.4)",
         zIndex: 30,
       }}
       onMouseDown={(e) => e.stopPropagation()}
       onWheel={(e) => e.stopPropagation()}
-      onDragOver={onDragOver}
-      onDragLeave={() => setDropIndex(null)}
-      onDrop={onDrop}
+      onDragOver={readOnly ? undefined : onDragOver}
+      onDragLeave={readOnly ? undefined : () => setDropIndex(null)}
+      onDrop={readOnly ? undefined : onDrop}
     >
       <div className="flex items-center justify-between" style={{ paddingInline: 2 }}>
-        <span style={{ fontSize: 10, color: "var(--c-t3)", fontWeight: 600 }}>参考图 {images.length}</span>
+        <span style={{ fontSize: 10, color: "var(--c-t3)", fontWeight: 600 }}>{title} {images.length}</span>
         <button onClick={onClose} className="nodrag" style={{ color: "var(--c-t4)", lineHeight: 0 }} title="收起">
           <X style={{ width: 12, height: 12 }} />
         </button>
@@ -109,17 +120,18 @@ export function ReferenceImageStrip({
       <div ref={listRef} className="nowheel" style={{ display: "flex", flexDirection: "column", gap: 6, overflowY: "auto" }}>
         {images.map((img, i) => (
           <div key={img.id}>
-            {dropIndex === i && <div style={{ height: 2, background: accent, borderRadius: 2, margin: "1px 0" }} />}
+            {!readOnly && dropIndex === i && <div style={{ height: 2, background: accent, borderRadius: 2, margin: "1px 0" }} />}
             <div
               data-ref-item
-              draggable
-              onDragStart={(e) => { e.dataTransfer.setData("application/x-ref-reorder", img.id); e.dataTransfer.effectAllowed = "move"; }}
+              draggable={!readOnly}
+              onDragStart={readOnly ? undefined : (e) => { e.dataTransfer.setData("application/x-ref-reorder", img.id); e.dataTransfer.effectAllowed = "move"; }}
+              title={img.label}
               className="relative group rounded-lg overflow-hidden"
-              style={{ height: 72, border: `1px solid var(--c-bd2)`, background: "var(--c-canvas)", cursor: "grab" }}
+              style={{ height: 72, border: `1px solid var(--c-bd2)`, background: "var(--c-canvas)", cursor: readOnly ? "default" : "grab" }}
             >
               <MediaImage
                 src={img.url}
-                alt={`ref-${i + 1}`}
+                alt={img.label ?? `ref-${i + 1}`}
                 className="w-full h-full object-cover"
                 draggable={false}
                 style={{ cursor: "zoom-in" }}
@@ -155,16 +167,13 @@ export function ReferenceImageStrip({
             </div>
           </div>
         ))}
-        {/* trailing insertion indicator + drop hint */}
-        {dropIndex === images.length && <div style={{ height: 2, background: accent, borderRadius: 2, margin: "1px 0" }} />}
-        <div
-          style={{
-            marginTop: 2, padding: "10px 4px", borderRadius: 8, textAlign: "center",
-            border: "1px dashed var(--c-bd3)", fontSize: 9.5, color: "var(--c-t4)", lineHeight: 1.3,
-          }}
-        >
-          拖拽图片<br />到此处添加
-        </div>
+        {/* 末尾插入指示线（拖到框内任意处即可添加，独立拖拽区已移除，节省空间） */}
+        {!readOnly && dropIndex === images.length && <div style={{ height: 2, background: accent, borderRadius: 2, margin: "1px 0" }} />}
+        {readOnly && (
+          <div style={{ marginTop: 2, padding: "6px 4px", textAlign: "center", fontSize: 9, color: "var(--c-t4)", lineHeight: 1.3 }}>
+            工作流图像参数<br />删除＝清空该参数
+          </div>
+        )}
       </div>
     </div>
   );

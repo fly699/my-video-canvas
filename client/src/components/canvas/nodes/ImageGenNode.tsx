@@ -14,6 +14,8 @@ import { mergeCharactersIntoPrompt } from "../../../lib/characterPrompt";
 import { detectUpstreamPrompt, detectUpstreamImagesExpanded } from "../../../lib/comfyWorkflowParams";
 import { connectedEffectPrompts, appendEffectPrompts } from "../../../lib/effectPrompt";
 import { ReferenceImageStrip } from "../ReferenceImageStrip";
+import { PromptDock } from "../PromptDock";
+import { useNodeDocks, DockToggleButton } from "../../../hooks/useNodeDocks";
 import { Layers } from "lucide-react";
 import type { ImageGenNodeData, ImageGenModel } from "../../../../../shared/types";
 import { trpc } from "@/lib/trpc";
@@ -144,7 +146,19 @@ export const ImageGenNode = memo(function ImageGenNode({ id, selected, data }: P
     // refImages 每渲染重建，但 hasRefs 守卫 + addUrls 去重使其幂等
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [upstreamRefKey, hasUpstreamChar, payload.referenceImages, payload.referenceImageUrl]);
-  const [stripOpen, setStripOpen] = usePersistentState<boolean>(`ui:refstrip:${id}`, false, { crossTab: false });
+  // 「最终提示词」= 真正会送去生成的正向词：本地/上游已自动填入 payload.prompt，
+  // 这里再叠加「@角色 / 连线角色」结构化注入与 post_process 效果词，和 handleGenerate 同源。
+  const finalPromptDisplay = useCanvasStore((s) => {
+    const base = payload.prompt ?? "";
+    const chars = effectiveCharacters(id, base, s.edges, s.nodes);
+    return appendEffectPrompts(
+      mergeCharactersIntoPrompt(stripCharacterMentions(base, s.nodes), chars),
+      connectedEffectPrompts(id, s.edges, s.nodes),
+    );
+  });
+  const hasCharInject = useCanvasStore((s) => effectiveCharacters(id, payload.prompt ?? "", s.edges, s.nodes).length > 0);
+  const docks = useNodeDocks(id, { hasRef: refImages.images.length >= 1, hasPrompt: !!finalPromptDisplay.trim() });
+  const { refOpen: stripOpen, setRefOpen: setStripOpen } = docks;
   const [paramsExpanded, setParamsExpanded] = useState(false);
   // Derived, not local state — stays in sync with collaboration/undo updates
   const seedLocked = payload.seed != null;
@@ -465,28 +479,38 @@ export const ImageGenNode = memo(function ImageGenNode({ id, selected, data }: P
     <BaseNode id={id} selected={selected} nodeType="image_gen" title={data.title} minHeight={300} heroMedia={heroMedia}
       onRun={handleGenerate} running={genMutation.isPending} canRun={!!payload.prompt?.trim()} hasResult={!!payload.imageUrl}
       onAssetImageDrop={(urls) => refImages.addUrls(urls, "drop")}
-      headerRight={refImages.images.length >= 1 ? (
-        <button
-          onClick={() => setStripOpen((v) => !v)}
-          className="nodrag flex items-center gap-1"
-          style={{ fontSize: 10, color: stripOpen ? accent : "var(--c-t3)", border: `1px solid ${stripOpen ? BORDER_ACCENT : "var(--c-bd2)"}`, borderRadius: 6, padding: "1px 6px" }}
-          title="展开/收起左侧参考图列表"
-        >
-          <Layers style={{ width: 11, height: 11 }} /> {refImages.images.length}
-        </button>
-      ) : undefined}
-      leftDock={
-        <ReferenceImageStrip
-          images={refImages.images}
-          open={stripOpen}
+      headerRight={
+        <DockToggleButton
+          refCount={refImages.images.length}
+          hasPrompt={!!finalPromptDisplay.trim()}
+          refOpen={docks.refOpen}
+          promptOpen={docks.promptOpen}
           accent={accent}
-          onClose={() => setStripOpen(false)}
-          onRemove={refImages.removeId}
-          onMove={refImages.moveId}
-          onInsertUrls={(urls, index) => refImages.insertUrls(urls, index, "drop")}
-          onDropFiles={(files, index) => void uploadFilesToRef(files, index)}
-          onZoom={(i) => setRefZoom(i)}
+          onClick={docks.cycle}
         />
+      }
+      leftDock={
+        <>
+          <ReferenceImageStrip
+            images={refImages.images}
+            open={stripOpen}
+            accent={accent}
+            onClose={() => setStripOpen(false)}
+            onRemove={refImages.removeId}
+            onMove={refImages.moveId}
+            onInsertUrls={(urls, index) => refImages.insertUrls(urls, index, "drop")}
+            onDropFiles={(files, index) => void uploadFilesToRef(files, index)}
+            onZoom={(i) => setRefZoom(i)}
+          />
+          <PromptDock
+            open={docks.promptOpen}
+            text={finalPromptDisplay}
+            negText={payload.negativePrompt}
+            source={hasCharInject ? "含角色" : undefined}
+            accent={accent}
+            onClose={() => docks.setPromptOpen(false)}
+          />
+        </>
       }>
       <div className="flex flex-col h-full p-3.5 gap-3 overflow-auto">
 
@@ -1040,7 +1064,7 @@ export const ImageGenNode = memo(function ImageGenNode({ id, selected, data }: P
             />
             {refImages.images.length >= 1 && (
               <button
-                onClick={() => setStripOpen((v) => !v)}
+                onClick={() => setStripOpen(!stripOpen)}
                 className="nodrag"
                 style={{ marginLeft: "auto", display: "flex", alignItems: "center", gap: 3, fontSize: 10, color: stripOpen ? accent : "var(--c-t3)", border: `1px solid ${stripOpen ? BORDER_ACCENT : "var(--c-bd2)"}`, borderRadius: 6, padding: "1px 6px" }}
                 title="展开左侧参考图列表"

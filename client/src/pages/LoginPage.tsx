@@ -174,7 +174,7 @@ export default function LoginPage() {
         display: "flex",
         alignItems: "center",
         justifyContent: "center",
-        background: "var(--color-background, #0d0d10)",
+        background: "var(--c-canvas, #0d0d10)",
         padding: "24px",
       }}
     >
@@ -250,7 +250,7 @@ export default function LoginPage() {
           style={{
             display: "flex",
             gap: "2px",
-            background: "rgba(255,255,255,0.04)",
+            background: "var(--c-input, rgba(255,255,255,0.04))",
             borderRadius: "8px",
             padding: "3px",
             marginBottom: "24px",
@@ -270,7 +270,8 @@ export default function LoginPage() {
                 fontSize: "13px",
                 fontWeight: 500,
                 transition: "all 0.15s",
-                background: mode === m ? "rgba(255,255,255,0.08)" : "transparent",
+                background: mode === m ? "var(--c-elevated, rgba(255,255,255,0.08))" : "transparent",
+                boxShadow: mode === m ? "0 1px 3px oklch(0 0 0 / 0.12)" : "none",
                 color: mode === m ? "var(--c-t1, #f0f0f4)" : "var(--c-t2, rgba(255,255,255,0.45))",
               }}
             >
@@ -357,12 +358,12 @@ export default function LoginPage() {
                 <Check label="随系统启动" checked={startWithSystem} onChange={setStartWithSystem} />
               </div>
               {startWithSystem && (
-                <div style={{ fontSize: "11px", color: "rgba(255,255,255,0.4)", lineHeight: 1.5 }}>
+                <div style={{ fontSize: "11px", color: "var(--c-t3, rgba(255,255,255,0.4))", lineHeight: 1.5 }}>
                   「随系统启动」需在桌面端配合：把本应用加入 Windows 启动项（运行 deploy\add-to-startup.bat 一键添加）。配合「下次自动登录」即可开机自动进入。
                 </div>
               )}
               {rememberPass && (
-                <div style={{ fontSize: "11px", color: "rgba(245,158,11,0.7)", lineHeight: 1.5 }}>
+                <div style={{ fontSize: "11px", color: "oklch(0.62 0.15 70)", lineHeight: 1.5 }}>
                   ⚠️ 记住密码会把密码保存在本机浏览器（仅混淆、非加密）。请仅在私人电脑上使用。
                 </div>
               )}
@@ -395,9 +396,9 @@ export default function LoginPage() {
               border: "none",
               borderRadius: "8px",
               background: loading
-                ? "rgba(255,255,255,0.06)"
+                ? "var(--c-input, rgba(255,255,255,0.06))"
                 : "oklch(0.58 0.22 285 / 0.85)",
-              color: loading ? "rgba(255,255,255,0.4)" : "#fff",
+              color: loading ? "var(--c-t3, rgba(255,255,255,0.4))" : "#fff",
               fontSize: "14px",
               fontWeight: 600,
               cursor: loading ? "not-allowed" : "pointer",
@@ -413,9 +414,9 @@ export default function LoginPage() {
         {(oauthAvailable || googleAvailable) && (
           <>
             <div style={{ display: "flex", alignItems: "center", gap: "10px", margin: "20px 0 0" }}>
-              <div style={{ flex: 1, height: "1px", background: "rgba(255,255,255,0.07)" }} />
+              <div style={{ flex: 1, height: "1px", background: "var(--c-bd1, rgba(255,255,255,0.07))" }} />
               <span style={{ fontSize: "12px", color: "var(--c-t2, rgba(255,255,255,0.3))" }}>或</span>
-              <div style={{ flex: 1, height: "1px", background: "rgba(255,255,255,0.07)" }} />
+              <div style={{ flex: 1, height: "1px", background: "var(--c-bd1, rgba(255,255,255,0.07))" }} />
             </div>
 
             {/* Google sign-in */}
@@ -459,9 +460,9 @@ export default function LoginPage() {
                   marginTop: "12px",
                   padding: "11px 0",
                   width: "100%",
-                  border: "1px solid rgba(255,255,255,0.1)",
+                  border: "1px solid var(--c-bd2, rgba(255,255,255,0.1))",
                   borderRadius: "8px",
-                  background: "rgba(255,255,255,0.04)",
+                  background: "var(--c-input, rgba(255,255,255,0.04))",
                   color: "var(--c-t1, #f0f0f4)",
                   fontSize: "14px",
                   fontWeight: 500,
@@ -482,7 +483,7 @@ export default function LoginPage() {
           display: "flex", gap: "8px", alignItems: "flex-start",
         }}>
           <ShieldCheck style={{ width: 15, height: 15, color: "#22c55e", flexShrink: 0, marginTop: "2px" }} />
-          <span style={{ fontSize: "11px", lineHeight: 1.6, color: "rgba(180,225,190,0.78)" }}>
+          <span style={{ fontSize: "11px", lineHeight: 1.6, color: "oklch(0.52 0.13 150)" }}>
             © {new Date().getFullYear()} 金泰智算（KingTai Smart）版权所有。本工具由金泰智算自主研发，所有模板、预设库与界面设计均受版权保护。未经授权，禁止复制或商业使用。
           </span>
         </div>
@@ -524,7 +525,7 @@ const inputStyle: React.CSSProperties = {
   padding: "9px 12px",
   border: "1px solid var(--c-bd2, rgba(255,255,255,0.08))",
   borderRadius: "8px",
-  background: "rgba(255,255,255,0.04)",
+  background: "var(--c-input, rgba(255,255,255,0.04))",
   color: "var(--c-t1, #f0f0f4)",
   fontSize: "14px",
   outline: "none",

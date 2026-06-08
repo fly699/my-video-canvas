@@ -160,7 +160,9 @@ function WelcomeModal({ onClose }: { onClose: () => void }) {
             style={{
               position: "absolute", top: 12, right: 12, zIndex: 2,
               width: 28, height: 28, borderRadius: 6, border: "none",
-              background: "transparent", color: "var(--c-t3)",
+              // Hero banner is dark in every theme → keep the X light (var(--c-t3)
+              // would turn near-black & vanish in light theme).
+              background: "transparent", color: "oklch(0.72 0.02 285)",
               cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center",
             }}
             onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.background = "var(--c-overlay)"; }}
@@ -185,7 +187,7 @@ function WelcomeModal({ onClose }: { onClose: () => void }) {
             {/* Title block */}
             <div style={{ flex: 1, minWidth: 0 }}>
               <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 6, flexWrap: "wrap" }}>
-                <h1 style={{ margin: 0, fontSize: 22, fontWeight: 700, color: "var(--c-t1)", letterSpacing: "-0.01em" }}>
+                <h1 style={{ margin: 0, fontSize: 22, fontWeight: 700, color: "oklch(0.97 0.01 285)", letterSpacing: "-0.01em" }}>
                   AI 视频画布
                 </h1>
                 <span
@@ -202,10 +204,10 @@ function WelcomeModal({ onClose }: { onClose: () => void }) {
                   v1.0 · 全新发布
                 </span>
               </div>
-              <div style={{ fontSize: 12, color: "var(--c-t3)", marginBottom: 10 }}>
+              <div style={{ fontSize: 12, color: "oklch(0.70 0.02 285)", marginBottom: 10 }}>
                 专业 · AI 影视创作工作流 · 由 金泰智算（KingTai Smart）出品
               </div>
-              <p style={{ margin: 0, fontSize: 13, lineHeight: 1.7, color: "var(--c-t2)" }}>
+              <p style={{ margin: 0, fontSize: 13, lineHeight: 1.7, color: "oklch(0.86 0.015 285)" }}>
                 支持 <Hl>23+ 种专业节点</Hl>、覆盖<Hl>脚本创作</Hl>、<Hl>AI 图像生成</Hl>、
                 <Hl>视频任务</Hl>、<Hl>智能剪辑</Hl> 全流程，全新集成{" "}
                 <Hl strong>ComfyUI 自建服务器</Hl> 与{" "}
@@ -305,7 +307,7 @@ function WelcomeModal({ onClose }: { onClose: () => void }) {
           >
             <Shield size={16} color="oklch(0.70 0.18 160)" style={{ flexShrink: 0, marginTop: 2 }} />
             <p style={{ margin: 0, fontSize: 11, lineHeight: 1.7, color: "var(--c-t3)" }}>
-              <span style={{ color: "oklch(0.78 0.16 160)", fontWeight: 700 }}>
+              <span style={{ color: "oklch(0.58 0.15 160)", fontWeight: 700 }}>
                 © 金泰智算（KingTai Smart）
               </span>{" "}
               版权所有。本工具由 金泰智算 自主研发，所有模板、预设库及界面设计均受版权保护。

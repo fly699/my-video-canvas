@@ -7,7 +7,7 @@ import { useHoverStore } from "../../../hooks/useHoverStore";
 import { ComfyServerUrlField } from "./ComfyServerUrlField";
 import { useCanvasStore } from "../../../hooks/useCanvasStore";
 import { propagateRefImage, propagateWorkflowPrompt } from "../../../lib/refImagePropagation";
-import type { ComfyuiWorkflowNodeData, WorkflowParamBinding } from "../../../../../shared/types";
+import type { ComfyuiWorkflowNodeData, WorkflowParamBinding, ReferenceImage } from "../../../../../shared/types";
 import { trpc } from "@/lib/trpc";
 import { detectUpstreamImageUrl, detectUpstreamPrompt, fillWorkflowPromptParams, fillWorkflowLoraParam, positivePromptParamKey, listUpstreamImageSources, resolveImageParamsWithMap, listUpstreamAudioSources, resolveAudioParamsWithMap } from "@/lib/comfyWorkflowParams";
 import { effectiveCharacters, connectedCharacterLora, effectiveCharacterRefImages, stripCharacterMentions } from "@/lib/characterConditioning";
@@ -19,6 +19,10 @@ import { MediaImage } from "../MediaImage";
 import { isOwnStorageUrl } from "@/lib/ownStorage";
 import { WatermarkedVideo } from "@/components/WatermarkedVideo";
 import { ImageLightbox } from "../ImageLightbox";
+import { ReferenceImageStrip } from "../ReferenceImageStrip";
+import { PromptDock } from "../PromptDock";
+import { useNodeDocks, DockToggleButton } from "../../../hooks/useNodeDocks";
+import { openNodeImage } from "../NodeImageLightbox";
 import { toast } from "sonner";
 import {
   Workflow, Loader2, Upload, X, ChevronDown, ChevronRight,
@@ -579,6 +583,52 @@ export const ComfyuiWorkflowNode = memo(function ComfyuiWorkflowNode({ id, selec
     setEditingBindings(false);
   }, [localBindings, update]);
 
+  // ── 左侧只读「汇总吸附窗」：把本工作流所有图像参数当前绑定的图集中预览 ──
+  // 每张图绑定到一个具体的工作流图像参数（key=`节点.字段`），排序/插入无意义，
+  // 故只读：仅预览 + 点击放大 + 删除（删除＝清空该参数）。节点折叠后仍可见。
+  const isPreviewableUrl = (v: unknown): v is string =>
+    typeof v === "string" && /^(https?:|data:|blob:|\/)/.test(v.trim());
+  const stripImages: ReferenceImage[] = useMemo(() => {
+    const out: ReferenceImage[] = [];
+    for (const b of payload.paramBindings ?? []) {
+      if (b.type !== "image") continue;
+      const key = `${b.nodeId}.${b.fieldPath}`;
+      const val = payload.paramValues?.[key];
+      if (isPreviewableUrl(val)) out.push({ id: key, url: val.trim(), source: "url", label: b.label });
+    }
+    return out;
+  }, [payload.paramBindings, payload.paramValues]);
+  const clearImageParam = useCallback((key: string) => {
+    update({ paramValues: { ...payload.paramValues, [key]: "" } }, true);
+  }, [payload.paramValues, update]);
+
+  // ── 顶部「最终提示词」：工作流正向/负向词参数，按「上游优先」与角色注入解析后的结果 ──
+  // 与 handleRun 同源：preferUpstream 时用上游、否则本地非空则本地；再叠加 @角色/连线角色注入。
+  const finalPromptInfo = useMemo(() => {
+    const bindings = payload.paramBindings ?? [];
+    const up = detectUpstreamPrompt(id, edgesForSources, nodesForSources);
+    const preferUpstream = payload.preferUpstreamPrompt !== false;
+    const posKey = positivePromptParamKey(bindings);
+    const posCur = posKey && typeof payload.paramValues?.[posKey] === "string" ? (payload.paramValues[posKey] as string) : "";
+    const upPos = (up.positive ?? "").trim();
+    const basePos = preferUpstream ? (upPos || posCur) : (posCur.trim() ? posCur : upPos);
+    const chars = effectiveCharacters(id, basePos, edgesForSources, nodesForSources);
+    const finalPos = mergeCharactersIntoPrompt(stripCharacterMentions(basePos, nodesForSources), chars);
+    const negB = bindings.find((b) => b.role === "negative") ?? bindings.find((b) => b.type === "text" && /负|negative/i.test(b.label));
+    const negKey = negB ? `${negB.nodeId}.${negB.fieldPath}` : undefined;
+    const negCur = negKey ? String(payload.paramValues?.[negKey] ?? "") : "";
+    const upNeg = (up.negative ?? "").trim();
+    const finalNeg = preferUpstream ? (upNeg || negCur) : (negCur.trim() ? negCur : upNeg);
+    const usedUpstream = preferUpstream && !!upPos;
+    const source = `${usedUpstream ? "上游" : "本地"}${chars.length ? "+角色" : ""}`;
+    return { pos: finalPos, neg: finalNeg, source, hasPos: !!finalPos.trim() };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [id, edgesForSources, nodesForSources, payload.paramBindings, payload.paramValues, payload.preferUpstreamPrompt]);
+
+  const docks = useNodeDocks(id, { hasRef: stripImages.length >= 1, hasPrompt: finalPromptInfo.hasPos });
+  const stripOpen = docks.refOpen;
+  const setStripOpen = docks.setRefOpen;
+
   return (
     <BaseNode
       id={id}
@@ -593,14 +643,51 @@ export const ComfyuiWorkflowNode = memo(function ComfyuiWorkflowNode({ id, selec
       borderTint={accentColor}
       headerTooltip={summary.ok ? annotationDetail : undefined}
       hideTypeBadge
-      headerRight={cornerText ? (
-        <span
-          title={annotationDetail || cornerText}
-          style={{ fontSize: 10.5, fontWeight: 600, color: accentColor, maxWidth: 150, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", display: "block" }}
-        >
-          {cornerText}
-        </span>
+      headerRight={(cornerText || stripImages.length >= 1 || finalPromptInfo.hasPos) ? (
+        <div style={{ display: "flex", alignItems: "center", gap: 6, minWidth: 0 }}>
+          {cornerText ? (
+            <span
+              title={annotationDetail || cornerText}
+              style={{ fontSize: 10.5, fontWeight: 600, color: accentColor, maxWidth: 150, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", display: "block" }}
+            >
+              {cornerText}
+            </span>
+          ) : null}
+          <DockToggleButton
+            refCount={stripImages.length}
+            hasPrompt={finalPromptInfo.hasPos}
+            refOpen={docks.refOpen}
+            promptOpen={docks.promptOpen}
+            accent={accent}
+            onClick={docks.cycle}
+          />
+        </div>
       ) : undefined}
+      leftDock={
+        <>
+          <ReferenceImageStrip
+            images={stripImages}
+            open={stripOpen}
+            accent={accent}
+            readOnly
+            title="工作流图"
+            onClose={() => setStripOpen(false)}
+            onRemove={clearImageParam}
+            onMove={() => {}}
+            onInsertUrls={() => {}}
+            onDropFiles={() => {}}
+            onZoom={(i) => { const u = stripImages[i]?.url; if (u) openNodeImage(u); }}
+          />
+          <PromptDock
+            open={docks.promptOpen}
+            text={finalPromptInfo.pos}
+            negText={finalPromptInfo.neg}
+            source={finalPromptInfo.source}
+            accent={accent}
+            onClose={() => docks.setPromptOpen(false)}
+          />
+        </>
+      }
     >
       {/* ref-image-in (top:28%): feed an upstream image into the first blank image
           param. The generic input/output dots are provided by BaseNode (id="input"

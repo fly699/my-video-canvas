@@ -128,7 +128,7 @@ export default function AdminPage() {
         </div>
 
         {/* Tabs */}
-        <div style={{ display: "flex", gap: "4px", marginBottom: "20px", borderBottom: "1px solid rgba(255,255,255,0.06)", paddingBottom: "0" }}>
+        <div style={{ display: "flex", gap: "4px", marginBottom: "20px", borderBottom: "1px solid var(--c-bd1, rgba(255,255,255,0.06))", paddingBottom: "0" }}>
           {([["whitelist", "白名单管理"], ["logs", "操作日志"], ["comfyLogs", "ComfyUI 日志"], ["storage", "存储设置"], ["chat", "聊天管理"], ["comfyStress", "ComfyUI 压测"], ["assets", "素材库(全用户)"], ["downloads", "下载审批"], ["system", "系统更新"]] as [Tab, string][]).map(([tab, label]) => (
             <button
               key={tab}
@@ -1481,7 +1481,7 @@ const chatPrimarySm: React.CSSProperties = { padding: "7px 16px", borderRadius: 
 const pageStyle: React.CSSProperties = {
   height: "100dvh", overflowY: "auto",
   display: "flex", flexDirection: "column", alignItems: "center",
-  justifyContent: "flex-start", padding: "48px 24px", background: "var(--color-background, #0d0d10)",
+  justifyContent: "flex-start", padding: "48px 24px", background: "var(--c-canvas, #0d0d10)",
 };
 
 const cardStyle: React.CSSProperties = {
@@ -1499,7 +1499,7 @@ const labelStyle: React.CSSProperties = {
 const inputStyle: React.CSSProperties = {
   width: "100%", padding: "8px 11px",
   border: "1px solid var(--c-bd2, rgba(255,255,255,0.08))",
-  borderRadius: "7px", background: "rgba(255,255,255,0.04)",
+  borderRadius: "7px", background: "var(--c-input, rgba(255,255,255,0.04))",
   color: "var(--c-t1, #f0f0f4)", fontSize: "13px", outline: "none", boxSizing: "border-box",
 };
 
@@ -1512,14 +1512,14 @@ const thStyle: React.CSSProperties = {
 
 const iconBtn: React.CSSProperties = {
   display: "inline-flex", alignItems: "center", justifyContent: "center",
-  width: "30px", height: "30px", border: "1px solid rgba(255,255,255,0.1)",
-  borderRadius: "7px", background: "rgba(255,255,255,0.04)",
+  width: "30px", height: "30px", border: "1px solid var(--c-bd2, rgba(255,255,255,0.1))",
+  borderRadius: "7px", background: "var(--c-input, rgba(255,255,255,0.04))",
   color: "var(--c-t2, rgba(255,255,255,0.45))", cursor: "pointer",
 };
 
 const paginBtn: React.CSSProperties = {
-  padding: "6px 14px", border: "1px solid rgba(255,255,255,0.1)",
-  borderRadius: "7px", background: "rgba(255,255,255,0.04)",
+  padding: "6px 14px", border: "1px solid var(--c-bd2, rgba(255,255,255,0.1))",
+  borderRadius: "7px", background: "var(--c-input, rgba(255,255,255,0.04))",
   color: "var(--c-t1, #f0f0f4)", fontSize: "13px", cursor: "pointer",
 };
 
@@ -1566,7 +1566,7 @@ function DownloadsAdminPanel() {
 
   const chip = (active: boolean): React.CSSProperties => ({
     fontSize: 12, padding: "4px 11px", borderRadius: 999, cursor: "pointer",
-    border: `1px solid ${active ? "oklch(0.72 0.2 285)" : "rgba(255,255,255,0.12)"}`,
+    border: `1px solid ${active ? "oklch(0.72 0.2 285)" : "var(--c-bd2)"}`,
     background: active ? "oklch(0.72 0.2 285 / 0.15)" : "transparent",
     color: active ? "oklch(0.78 0.16 285)" : "var(--c-t2, rgba(255,255,255,0.55))",
   });
@@ -1592,7 +1592,7 @@ function DownloadsAdminPanel() {
           const owned = projects.filter((p) => p.role === "owner");
           const collab = projects.filter((p) => p.role === "collaborator");
           const canGrant = !!u && grantProjectSel.size > 0 && !grantMut.isPending;
-          const inp: React.CSSProperties = { fontSize: 12.5, padding: "6px 9px", borderRadius: 7, border: "1px solid rgba(255,255,255,0.14)", background: "rgba(255,255,255,0.04)", color: "var(--c-t1,#f0f0f4)", width: "100%" };
+          const inp: React.CSSProperties = { fontSize: 12.5, padding: "6px 9px", borderRadius: 7, border: "1px solid var(--c-bd2, rgba(255,255,255,0.14))", background: "var(--c-input, rgba(255,255,255,0.04))", color: "var(--c-t1,#f0f0f4)", width: "100%" };
           const toggleProj = (id: number) => setGrantProjectSel((prev) => { const n = new Set(prev); if (n.has(id)) n.delete(id); else n.add(id); return n; });
           const submit = async () => {
             if (!u || grantProjectSel.size === 0) return;
@@ -1622,7 +1622,7 @@ function DownloadsAdminPanel() {
 
               {/* 该用户的项目（自有 + 协作）— 勾选要授权的 */}
               {u && (
-                <div style={{ border: "1px solid rgba(255,255,255,0.1)", borderRadius: 7, maxHeight: 240, overflowY: "auto", padding: "4px 0" }}>
+                <div style={{ border: "1px solid var(--c-bd2, rgba(255,255,255,0.1))", borderRadius: 7, maxHeight: 240, overflowY: "auto", padding: "4px 0" }}>
                   {projects.length === 0 && <div style={{ fontSize: 12, color: "var(--c-t4,rgba(255,255,255,0.4))", padding: "10px 10px", textAlign: "center" }}>该用户暂无可授权的项目</div>}
                   {owned.length > 0 && <>
                     <div style={{ fontSize: 10.5, color: "var(--c-t3,rgba(255,255,255,0.5))", padding: "4px 10px 2px", fontWeight: 600 }}>自有项目（{owned.length}）</div>
@@ -1660,10 +1660,10 @@ function DownloadsAdminPanel() {
           有效期
           <input type="number" min={1} disabled={expForever} value={expAmount}
             onChange={(e) => setExpAmount(Math.max(1, Math.round(Number(e.target.value) || 1)))}
-            style={{ width: 56, fontSize: 12, padding: "3px 6px", borderRadius: 6, border: "1px solid rgba(255,255,255,0.14)", background: "rgba(255,255,255,0.04)", color: "var(--c-t1,#f0f0f4)", opacity: expForever ? 0.5 : 1 }}
+            style={{ width: 56, fontSize: 12, padding: "3px 6px", borderRadius: 6, border: "1px solid var(--c-bd2, rgba(255,255,255,0.14))", background: "var(--c-input, rgba(255,255,255,0.04))", color: "var(--c-t1,#f0f0f4)", opacity: expForever ? 0.5 : 1 }}
           />
           <select disabled={expForever} value={expUnit} onChange={(e) => setExpUnit(e.target.value as "hour" | "day")}
-            style={{ fontSize: 12, padding: "3px 6px", borderRadius: 6, border: "1px solid rgba(255,255,255,0.14)", background: "rgba(255,255,255,0.04)", color: "var(--c-t1,#f0f0f4)", opacity: expForever ? 0.5 : 1 }}>
+            style={{ fontSize: 12, padding: "3px 6px", borderRadius: 6, border: "1px solid var(--c-bd2, rgba(255,255,255,0.14))", background: "var(--c-input, rgba(255,255,255,0.04))", color: "var(--c-t1,#f0f0f4)", opacity: expForever ? 0.5 : 1 }}>
             <option value="hour">小时</option>
             <option value="day">天</option>
           </select>
@@ -1678,7 +1678,7 @@ function DownloadsAdminPanel() {
           const isImg = g.fileType === "image" && g.fileUrl;
           const openPreview = () => g.fileUrl && setPreview({ id: g.id, name: g.fileName ?? "文件", type: g.fileType ?? "other", url: g.fileUrl, userId: g.userId, source: null, provider: null, model: null });
           return (
-          <div key={g.id} style={{ display: "flex", alignItems: "center", gap: 12, padding: "10px 12px", borderRadius: 8, border: "1px solid rgba(255,255,255,0.08)", background: "rgba(255,255,255,0.02)" }}>
+          <div key={g.id} style={{ display: "flex", alignItems: "center", gap: 12, padding: "10px 12px", borderRadius: 8, border: "1px solid var(--c-bd1, rgba(255,255,255,0.08))", background: "var(--c-surface, rgba(255,255,255,0.02))" }}>
             {/* File preview thumbnail — click to verify */}
             <div
               onClick={g.fileUrl ? openPreview : undefined}
@@ -1754,14 +1754,14 @@ function AdminAssetLightbox({ asset, onClose }: { asset: AdminAsset; onClose: ()
       onClick={onClose}
     >
       <div
-        style={{ position: "relative", maxWidth: 960, width: "100%", maxHeight: "88vh", display: "flex", flexDirection: "column", borderRadius: 16, overflow: "hidden", background: "var(--c-elevated, #1a1a20)", border: "1px solid rgba(255,255,255,0.12)" }}
+        style={{ position: "relative", maxWidth: 960, width: "100%", maxHeight: "88vh", display: "flex", flexDirection: "column", borderRadius: 16, overflow: "hidden", background: "var(--c-elevated, #1a1a20)", border: "1px solid var(--c-bd2, rgba(255,255,255,0.12))" }}
         onClick={(e) => e.stopPropagation()}
       >
-        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "12px 16px", borderBottom: "1px solid rgba(255,255,255,0.08)" }}>
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "12px 16px", borderBottom: "1px solid var(--c-bd1, rgba(255,255,255,0.08))" }}>
           <span style={{ fontSize: 13, fontWeight: 500, color: "var(--c-t1,#f0f0f4)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{asset.name}</span>
           <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
             <a href={asset.url} download={asset.name} target="_blank" rel="noreferrer"
-              style={{ display: "inline-flex", alignItems: "center", gap: 4, padding: "4px 10px", borderRadius: 8, fontSize: 12, color: "var(--c-t2,rgba(255,255,255,0.6))", border: "1px solid rgba(255,255,255,0.12)" }}>
+              style={{ display: "inline-flex", alignItems: "center", gap: 4, padding: "4px 10px", borderRadius: 8, fontSize: 12, color: "var(--c-t2,rgba(255,255,255,0.6))", border: "1px solid var(--c-bd2, rgba(255,255,255,0.12))" }}>
               <Download style={{ width: 13, height: 13 }} /> 下载
             </a>
             <button onClick={onClose} style={{ width: 28, height: 28, borderRadius: 8, display: "flex", alignItems: "center", justifyContent: "center", color: "var(--c-t3,rgba(255,255,255,0.4))", background: "transparent", border: "none", cursor: "pointer" }}>
@@ -1861,7 +1861,7 @@ function AssetsAdminPanel() {
   };
   const chip = (active: boolean): React.CSSProperties => ({
     fontSize: 11, padding: "3px 10px", borderRadius: 999, cursor: "pointer",
-    border: `1px solid ${active ? "oklch(0.72 0.2 285)" : "rgba(255,255,255,0.12)"}`,
+    border: `1px solid ${active ? "oklch(0.72 0.2 285)" : "var(--c-bd2)"}`,
     background: active ? "oklch(0.72 0.2 285 / 0.15)" : "transparent",
     color: active ? "oklch(0.78 0.16 285)" : "var(--c-t2, rgba(255,255,255,0.55))",
   });
@@ -1869,15 +1869,15 @@ function AssetsAdminPanel() {
     <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
       <div style={{ display: "flex", flexWrap: "wrap", gap: 8, alignItems: "center" }}>
         <input value={userId} onChange={(e) => setUserId(e.target.value)} placeholder="用户 ID（空=全部）" inputMode="numeric"
-          style={{ width: 130, padding: "6px 10px", borderRadius: 7, border: "1px solid rgba(255,255,255,0.12)", background: "rgba(255,255,255,0.04)", color: "var(--c-t1,#f0f0f4)", fontSize: 13 }} />
+          style={{ width: 130, padding: "6px 10px", borderRadius: 7, border: "1px solid var(--c-bd2, rgba(255,255,255,0.12))", background: "var(--c-input, rgba(255,255,255,0.04))", color: "var(--c-t1,#f0f0f4)", fontSize: 13 }} />
         <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="按名称搜索"
-          style={{ flex: 1, minWidth: 140, padding: "6px 10px", borderRadius: 7, border: "1px solid rgba(255,255,255,0.12)", background: "rgba(255,255,255,0.04)", color: "var(--c-t1,#f0f0f4)", fontSize: 13 }} />
+          style={{ flex: 1, minWidth: 140, padding: "6px 10px", borderRadius: 7, border: "1px solid var(--c-bd2, rgba(255,255,255,0.12))", background: "var(--c-input, rgba(255,255,255,0.04))", color: "var(--c-t1,#f0f0f4)", fontSize: 13 }} />
       </div>
       <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
         {([["", "全部"], ["image", "图片"], ["video", "视频"], ["audio", "音频"], ["other", "其他"]] as const).map(([v, l]) => (
           <button key={v} style={chip(type === v)} onClick={() => setType(v)}>{l}</button>
         ))}
-        <span style={{ width: 1, background: "rgba(255,255,255,0.1)", margin: "0 4px" }} />
+        <span style={{ width: 1, background: "var(--c-bd2, rgba(255,255,255,0.1))", margin: "0 4px" }} />
         {([["", "全来源"], ["upload", "上传"], ["generated", "生成"], ["external", "外部"]] as const).map(([v, l]) => (
           <button key={v} style={chip(source === v)} onClick={() => setSource(v)}>{l}</button>
         ))}
@@ -1886,7 +1886,7 @@ function AssetsAdminPanel() {
       <div style={{
         display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap",
         padding: "10px 12px", borderRadius: 8,
-        border: "1px solid rgba(255,255,255,0.08)", background: "rgba(255,255,255,0.02)",
+        border: "1px solid var(--c-bd1, rgba(255,255,255,0.08))", background: "var(--c-surface, rgba(255,255,255,0.02))",
       }}>
         <button
           onClick={handleBackfill}
@@ -1894,7 +1894,7 @@ function AssetsAdminPanel() {
           style={{
             display: "flex", alignItems: "center", gap: 7,
             padding: "7px 14px", fontSize: 12.5, fontWeight: 600,
-            background: bfRunning ? "rgba(255,255,255,0.06)" : "oklch(0.62 0.18 60 / 0.85)",
+            background: bfRunning ? "var(--c-input, rgba(255,255,255,0.06))" : "oklch(0.62 0.18 60 / 0.85)",
             border: "1px solid oklch(0.68 0.18 60 / 0.4)", borderRadius: 8,
             color: bfRunning ? "var(--c-t3, rgba(255,255,255,0.4))" : "#1a1205",
             cursor: bfRunning ? "not-allowed" : "pointer", flexShrink: 0,
@@ -1924,7 +1924,7 @@ function AssetsAdminPanel() {
             {isFetching ? "加载中…" : `${list.length} 个素材`}
           </span>
           {list.length > 0 && (
-            <button onClick={toggleSelectAll} style={{ display: "inline-flex", alignItems: "center", gap: 5, fontSize: 12, padding: "4px 9px", borderRadius: 7, border: "1px solid rgba(255,255,255,0.12)", background: "transparent", color: "var(--c-t2,rgba(255,255,255,0.6))", cursor: "pointer" }}>
+            <button onClick={toggleSelectAll} style={{ display: "inline-flex", alignItems: "center", gap: 5, fontSize: 12, padding: "4px 9px", borderRadius: 7, border: "1px solid var(--c-bd2, rgba(255,255,255,0.12))", background: "transparent", color: "var(--c-t2,rgba(255,255,255,0.6))", cursor: "pointer" }}>
               {allSelected ? <CheckSquare style={{ width: 14, height: 14, color: "oklch(0.72 0.2 285)" }} /> : <Square style={{ width: 14, height: 14 }} />}
               {allSelected ? "取消全选" : "全选"}
               {selecting && <span style={{ color: "oklch(0.78 0.16 285)" }}>· 已选 {selected.size}</span>}
@@ -1942,7 +1942,7 @@ function AssetsAdminPanel() {
               {hardDeleteMut.isPending ? <Loader2 className="animate-spin" style={{ width: 13, height: 13 }} /> : <Trash2 style={{ width: 13, height: 13 }} />} 彻底删除
             </button>
             <button onClick={() => setSelected(new Set())}
-              style={{ display: "inline-flex", alignItems: "center", gap: 4, fontSize: 12, padding: "5px 9px", borderRadius: 7, border: "1px solid rgba(255,255,255,0.12)", background: "transparent", color: "var(--c-t3,rgba(255,255,255,0.4))", cursor: "pointer" }}>
+              style={{ display: "inline-flex", alignItems: "center", gap: 4, fontSize: 12, padding: "5px 9px", borderRadius: 7, border: "1px solid var(--c-bd2, rgba(255,255,255,0.12))", background: "transparent", color: "var(--c-t3,rgba(255,255,255,0.4))", cursor: "pointer" }}>
               <X style={{ width: 13, height: 13 }} /> 取消
             </button>
           </div>
@@ -1954,7 +1954,7 @@ function AssetsAdminPanel() {
         {list.map((a) => {
           const isSel = selected.has(a.id);
           return (
-          <div key={a.id} style={{ position: "relative", border: `1px solid ${isSel ? "oklch(0.72 0.2 285)" : "rgba(255,255,255,0.1)"}`, borderRadius: 10, overflow: "hidden", background: "rgba(255,255,255,0.03)", boxShadow: isSel ? "0 0 0 1px oklch(0.72 0.2 285)" : "none" }}>
+          <div key={a.id} style={{ position: "relative", border: `1px solid ${isSel ? "oklch(0.72 0.2 285)" : "rgba(255,255,255,0.1)"}`, borderRadius: 10, overflow: "hidden", background: "var(--c-surface, rgba(255,255,255,0.03))", boxShadow: isSel ? "0 0 0 1px oklch(0.72 0.2 285)" : "none" }}>
             {/* checkbox */}
             <button
               onClick={(e) => { e.stopPropagation(); toggleSelect(a.id); }}
