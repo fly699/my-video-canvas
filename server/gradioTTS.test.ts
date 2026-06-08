@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { normalizeBase, resolveAudioUrl, describeFetchError } from "./_core/gradioTTS";
+import { normalizeBase, resolveAudioUrl, describeFetchError, formatGradioError } from "./_core/gradioTTS";
 
 describe("gradioTTS.normalizeBase", () => {
   it("去掉末尾斜杠并补全 http 协议", () => {
@@ -57,5 +57,29 @@ describe("gradioTTS.describeFetchError", () => {
   it("报错文案包含目标 URL 与底层 code", () => {
     expect(() => describeFetchError(mk("ECONNREFUSED"), "连接 Gradio 服务", url)).toThrow(/172\.16\.0\.177:8808/);
     expect(() => describeFetchError(mk("ECONNREFUSED"), "连接 Gradio 服务", url)).toThrow(/ECONNREFUSED/);
+  });
+});
+
+describe("gradioTTS.formatGradioError", () => {
+  it("从 JSON 提取 error 字段，并对 HF 模型加载失败附镜像提示", () => {
+    const payload = JSON.stringify({
+      error: "An error happened while trying to locate the file on the Hub and we cannot find the requested files in the local cache. Please check your connection and try again or make sure your Internet connection is on.",
+      visible: true,
+    });
+    const out = formatGradioError(payload);
+    expect(out).toContain("locate the file on the Hub");
+    expect(out).not.toContain("visible"); // 只取 error 字段，不带原始 JSON 包裹
+    expect(out).toContain("hf-mirror.com");
+  });
+
+  it("普通错误不追加 HF 提示", () => {
+    const out = formatGradioError(JSON.stringify({ error: "CUDA out of memory" }));
+    expect(out).toContain("CUDA out of memory");
+    expect(out).not.toContain("hf-mirror.com");
+  });
+
+  it("非 JSON 文本原样保留", () => {
+    const out = formatGradioError("Traceback: something broke");
+    expect(out).toContain("something broke");
   });
 });

@@ -167,7 +167,7 @@ async function readSseResult(base: string, prefix: string, apiName: string, even
             try { return JSON.parse(payload); } catch { return payload; }
           }
           if (currentEvent === "error") {
-            throw new Error(`Gradio 生成出错：${payload.slice(0, 300)}`);
+            throw new Error(formatGradioError(payload));
           }
           // generating / heartbeat 等中间事件忽略
         }
@@ -178,6 +178,27 @@ async function readSseResult(base: string, prefix: string, apiName: string, even
     try { reader.releaseLock(); } catch { /* ignore */ }
   }
   throw new Error("Gradio 结果流结束但未收到 complete 事件");
+}
+
+/**
+ * 把 Gradio `error` 事件的 data 整理成可读中文报错：优先取 JSON 里的 `error`
+ * 字段，并针对「HuggingFace Hub 拉取模型失败（机器无外网/未缓存）」这类服务端
+ * 模型加载问题附上可操作提示——这属于 Gradio 服务自身的部署问题，非本应用。
+ */
+export function formatGradioError(payload: string): string {
+  let msg = payload;
+  try {
+    const j = JSON.parse(payload) as { error?: unknown };
+    if (j && typeof j === "object" && typeof j.error === "string") msg = j.error;
+  } catch { /* 非 JSON，保留原文 */ }
+  const lower = msg.toLowerCase();
+  const isHfModelLoad =
+    (lower.includes("hub") || lower.includes("local cache") || lower.includes("huggingface")) &&
+    (lower.includes("cache") || lower.includes("connection") || lower.includes("internet") || lower.includes("locate"));
+  const hint = isHfModelLoad
+    ? "（这是 VoxCPM/Gradio 服务自身从 HuggingFace 拉取模型失败：请让该机器能访问 huggingface.co，或预先把模型缓存到本地；国内可设镜像 HF_ENDPOINT=https://hf-mirror.com 后重启服务）"
+    : "";
+  return `Gradio 生成出错：${msg.slice(0, 400)}${hint}`;
 }
 
 /** 从 complete 输出里解析音频文件的可访问 URL。 */
