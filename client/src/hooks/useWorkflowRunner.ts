@@ -4,7 +4,7 @@ import { useCanvasStore, type CanvasNode } from "./useCanvasStore";
 import { toast } from "sonner";
 import type { NodeType, WorkflowParamBinding } from "../../../shared/types";
 import { VIDEO_PROVIDERS } from "../../../shared/types";
-import { detectUpstreamImageUrl, resolveWorkflowImageParams } from "../lib/comfyWorkflowParams";
+import { detectUpstreamImageUrl, resolveWorkflowImageParams, resolveAudioParamsWithMap, listUpstreamAudioSources } from "../lib/comfyWorkflowParams";
 import { computeRefImageUpdates, computePromptToVideoUpdates } from "../lib/refImagePropagation";
 import { handleWhitelistError } from "./useWhitelistBlocked";
 import { effectiveCharacters, effectiveCharacterRefImages, effectiveSceneRefImages, stripCharacterMentions } from "../lib/characterConditioning";
@@ -882,13 +882,21 @@ export function useWorkflowRunner() {
             (p.paramValues as Record<string, unknown>) || {},
             upstreamImg,
           );
+          // 音频参数：上游音频来源映射 + 自动填充（服务端运行时上传到 ComfyUI）。
+          const audioRes = resolveAudioParamsWithMap(
+            p.paramBindings as WorkflowParamBinding[] | undefined,
+            paramValues,
+            listUpstreamAudioSources(nodeId, preEdges, preNodes),
+            (p.audioSourceMap as Record<string, string>) || {},
+          );
           const result = await comfyuiWorkflowMutation.mutateAsync({
             nodeId,
             projectId: node.data.projectId,
             customBaseUrl: ((p.customBaseUrl as string) || "").trim() || undefined,
             workflowJson,
-            paramValues,
+            paramValues: audioRes.paramValues,
             imageParamKeys: imageParamKeys.length > 0 ? imageParamKeys : undefined,
+            audioParamKeys: audioRes.audioParamKeys.length > 0 ? audioRes.audioParamKeys : undefined,
             outputNodeIds: (p.outputNodeIds as string[]) || undefined,
             outputType: ((p.outputType as string) || "auto") as "image" | "video" | "auto",
           });

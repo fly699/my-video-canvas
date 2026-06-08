@@ -817,7 +817,7 @@ export interface WorkflowParamBinding {
   nodeId: string;
   fieldPath: string;
   label: string;
-  type: "text" | "number" | "select" | "image" | "boolean";
+  type: "text" | "number" | "select" | "image" | "audio" | "boolean";
   role?: WorkflowParamRole;
   defaultValue?: unknown;
   options?: string[];
@@ -859,6 +859,8 @@ export interface ComfyuiWorkflowNodeData {
   /** Explicit per-image-param source: paramKey → upstream nodeId. Unmapped params
    *  auto-fill from connected upstream images in smart order. */
   imageSourceMap?: Record<string, string>;
+  /** 同 imageSourceMap，但针对音频参数（VHS_LoadAudioUpload 等）：paramKey → 上游音频节点 id。 */
+  audioSourceMap?: Record<string, string>;
   outputNodeIds?: string[];
   /** All detected output nodes (for the "输出选择" UI). */
   outputNodes?: { id: string; classType: string; isVideo: boolean }[];

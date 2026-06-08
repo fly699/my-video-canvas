@@ -2886,6 +2886,7 @@ export const comfyuiRouter = router({
       workflowJson: z.string().max(500_000),
       paramValues: z.record(z.string(), z.unknown()),
       imageParamKeys: z.array(z.string().max(512)).max(64).optional(),
+      audioParamKeys: z.array(z.string().max(512)).max(64).optional(),
       outputNodeIds: z.array(z.string()).optional(),
       outputType: z.enum(["image", "video", "auto"]).default("auto"),
       // Opt-in: after a successful run, unload models + free VRAM on the server —
@@ -2921,6 +2922,7 @@ export const comfyuiRouter = router({
             workflowJson: input.workflowJson,
             paramValues: input.paramValues,
             imageParamKeys: input.imageParamKeys,
+            audioParamKeys: input.audioParamKeys,
             outputNodeIds: input.outputNodeIds,
             outputType: input.outputType === "auto" ? undefined : input.outputType,
             projectId: input.projectId,
