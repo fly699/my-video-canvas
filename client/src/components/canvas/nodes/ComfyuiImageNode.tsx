@@ -30,6 +30,8 @@ import { SyncConfigDialog } from "../SyncConfigDialog";
 import { NodeConfigTabs } from "../NodeConfigTabs";
 import { NodeTextArea, NodeInput } from "../NodeTextInput";
 import { useSimpleRefStrip } from "../../../hooks/useSimpleRefStrip";
+import { PromptDock } from "../PromptDock";
+import { useNodeDocks, DockToggleButton } from "../../../hooks/useNodeDocks";
 
 interface Props {
   id: string;
@@ -77,9 +79,16 @@ export const ComfyuiImageNode = memo(function ComfyuiImageNode({ id, selected, d
   const connectState = useConnectState(id, "comfyui_image");
   const updateNodeData = useCanvasStore((s) => s.updateNodeData);
   const payload = data.payload;
-  // 左侧吸附参考图预览窗（单张 img2img 参考；不触碰 IPAdapter 多图/模板逻辑）。
-  const refStrip = useSimpleRefStrip(id, payload, "single", { accent });
   useComfyUpstreamAutoFill(id, payload, updateNodeData, { characterConditioning: true });
+  // 「最终提示词」= 角色注入后的正向词（payload.prompt 已含上游自动填充结果）。
+  const finalPromptDisplay = useCanvasStore((s) => {
+    const base = payload.prompt ?? "";
+    return mergeCharactersIntoPrompt(stripCharacterMentions(base, s.nodes), effectiveCharacters(id, base, s.edges, s.nodes), 2000);
+  });
+  const hasCharInject = useCanvasStore((s) => effectiveCharacters(id, payload.prompt ?? "", s.edges, s.nodes).length > 0);
+  const docks = useNodeDocks(id, { hasRef: !!payload.referenceImageUrl?.trim(), hasPrompt: !!finalPromptDisplay.trim() });
+  // 左侧吸附参考图预览窗（单张 img2img 参考；不触碰 IPAdapter 多图/模板逻辑）。受控于循环按钮。
+  const refStrip = useSimpleRefStrip(id, payload, "single", { accent, open: docks.refOpen, onOpenChange: docks.setRefOpen });
   // Auto-prefer the upstream AI temporary public URL as the reference source when
   // the admin toggle is on and that URL probes alive (no-op when off / default).
   const preferUpstreamRef = usePreferUpstreamRefSource();
@@ -545,7 +554,19 @@ export const ComfyuiImageNode = memo(function ComfyuiImageNode({ id, selected, d
       onAssetImageDrop={(urls) => updateNodeData(id, { referenceImageUrl: urls[0], ...(payload.workflowTemplate !== "img2img" && payload.workflowTemplate !== "inpaint" ? { workflowTemplate: "img2img" } : {}) })}
       headerTooltip={modelTip || undefined}
       hideTypeBadge
-      leftDock={refStrip.strip}
+      leftDock={
+        <>
+          {refStrip.strip}
+          <PromptDock
+            open={docks.promptOpen}
+            text={finalPromptDisplay}
+            negText={payload.negPrompt}
+            source={hasCharInject ? "含角色" : undefined}
+            accent={accent}
+            onClose={() => docks.setPromptOpen(false)}
+          />
+        </>
+      }
       headerRight={
         <span className="flex items-center gap-1.5">
           {cornerText && (
@@ -556,7 +577,14 @@ export const ComfyuiImageNode = memo(function ComfyuiImageNode({ id, selected, d
               {cornerText}
             </span>
           )}
-          {refStrip.toggle}
+          <DockToggleButton
+            refCount={refStrip.images.length}
+            hasPrompt={!!finalPromptDisplay.trim()}
+            refOpen={docks.refOpen}
+            promptOpen={docks.promptOpen}
+            accent={accent}
+            onClick={docks.cycle}
+          />
         </span>
       }>
       <div

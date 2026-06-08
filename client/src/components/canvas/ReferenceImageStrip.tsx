@@ -97,7 +97,9 @@ export function ReferenceImageStrip({
       style={{
         position: "absolute", right: "calc(100% + 8px)", top: 0, width: 92, maxHeight: "100%",
         display: "flex", flexDirection: "column", gap: 6, padding: 8,
-        borderRadius: 12, border: "1px solid var(--c-bd2)",
+        borderRadius: 12,
+        // 拖拽中整框高亮，提示「拖到框内任意处即可添加」（无需独立拖拽区）
+        border: `1px ${!readOnly && dropIndex !== null ? "dashed" : "solid"} ${!readOnly && dropIndex !== null ? accent : "var(--c-bd2)"}`,
         background: "color-mix(in oklch, var(--c-base) 94%, transparent)",
         backdropFilter: "blur(16px)", boxShadow: "0 12px 36px oklch(0 0 0 / 0.4)",
         zIndex: 30,
@@ -165,20 +167,11 @@ export function ReferenceImageStrip({
             </div>
           </div>
         ))}
-        {/* trailing insertion indicator + drop hint — 只读模式不接受拖入，隐藏 */}
+        {/* 末尾插入指示线（拖到框内任意处即可添加，独立拖拽区已移除，节省空间） */}
         {!readOnly && dropIndex === images.length && <div style={{ height: 2, background: accent, borderRadius: 2, margin: "1px 0" }} />}
-        {readOnly ? (
+        {readOnly && (
           <div style={{ marginTop: 2, padding: "6px 4px", textAlign: "center", fontSize: 9, color: "var(--c-t4)", lineHeight: 1.3 }}>
             工作流图像参数<br />删除＝清空该参数
-          </div>
-        ) : (
-          <div
-            style={{
-              marginTop: 2, padding: "10px 4px", borderRadius: 8, textAlign: "center",
-              border: "1px dashed var(--c-bd3)", fontSize: 9.5, color: "var(--c-t4)", lineHeight: 1.3,
-            }}
-          >
-            拖拽图片<br />到此处添加
           </div>
         )}
       </div>

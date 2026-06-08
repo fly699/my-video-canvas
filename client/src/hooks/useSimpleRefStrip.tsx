@@ -27,13 +27,20 @@ export function useSimpleRefStrip(
   id: string,
   payload: Payload,
   mode: "multi" | "single",
-  opts?: { accent?: string; maxAdditional?: number },
+  opts?: { accent?: string; maxAdditional?: number; open?: boolean; onOpenChange?: (v: boolean) => void },
 ): { images: ReferenceImage[]; open: boolean; toggle: ReactNode; strip: ReactNode } {
   const accent = opts?.accent ?? "oklch(0.72 0.20 330)";
   const maxAdditional = opts?.maxAdditional ?? 8;
   const updateNodeData = useCanvasStore((s) => s.updateNodeData);
   // 吸附窗展开/收起状态持久化（按节点 id 存 localStorage），刷新/折叠后保留。
-  const [open, setOpen] = usePersistentState<boolean>(`ui:refstrip:${id}`, false, { crossTab: false });
+  // 受控模式（传入 open/onOpenChange）下交由外部统一管理（用于「参考图/提示词」循环按钮）。
+  const [openInternal, setOpenInternal] = usePersistentState<boolean>(`ui:refstrip:${id}`, false, { crossTab: false });
+  const controlled = opts?.open !== undefined;
+  const open = controlled ? (opts!.open as boolean) : openInternal;
+  const setOpen = useCallback((v: boolean | ((p: boolean) => boolean)) => {
+    const next = typeof v === "function" ? (v as (p: boolean) => boolean)(open) : v;
+    if (controlled) opts!.onOpenChange?.(next); else setOpenInternal(next);
+  }, [controlled, opts, open, setOpenInternal]);
   const uploadMut = trpc.upload.uploadImage.useMutation();
 
   const combine = (p: Payload): string[] => {

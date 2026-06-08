@@ -25,6 +25,8 @@ import { ModelPicker } from "../ModelPicker";
 import { ImageLightbox } from "../ImageLightbox";
 import { WatermarkedVideo } from "@/components/WatermarkedVideo";
 import { ReferenceImageStrip } from "../ReferenceImageStrip";
+import { PromptDock } from "../PromptDock";
+import { useNodeDocks, DockToggleButton } from "../../../hooks/useNodeDocks";
 import { useReferenceImages } from "../../../hooks/useReferenceImages";
 import { MediaImage } from "../MediaImage";
 import {
@@ -631,7 +633,18 @@ export const VideoTaskNode = memo(function VideoTaskNode({ id, selected, data }:
   // Multi-reference-image management. Only the first (首图) feeds the video
   // model's start frame; the rest are managed alternates the user can reorder.
   const refImages = useReferenceImages(id, payload);
-  const [stripOpen, setStripOpen] = usePersistentState<boolean>(`ui:refstrip:${id}`, false, { crossTab: false });
+  // 「最终提示词」= 真正送去生成的正向词：本地/上游已填入 payload.prompt，再叠加角色注入与效果词。
+  const finalPromptDisplay = useCanvasStore((s) => {
+    const base = payload.prompt ?? "";
+    const chars = effectiveCharacters(id, base, s.edges, s.nodes);
+    return appendEffectPrompts(
+      mergeCharactersIntoPrompt(stripCharacterMentions(base, s.nodes), chars, 4000),
+      connectedEffectPrompts(id, s.edges, s.nodes),
+    );
+  });
+  const hasCharInject = useCanvasStore((s) => effectiveCharacters(id, payload.prompt ?? "", s.edges, s.nodes).length > 0);
+  const docks = useNodeDocks(id, { hasRef: refImages.images.length >= 1, hasPrompt: !!finalPromptDisplay.trim() });
+  const { refOpen: stripOpen, setRefOpen: setStripOpen } = docks;
   const [refZoom, setRefZoom] = useState<number | null>(null);
   const [refUploading, setRefUploading] = useState(false);
   const refFileInputRef = useRef<HTMLInputElement>(null);
@@ -1097,28 +1110,38 @@ export const VideoTaskNode = memo(function VideoTaskNode({ id, selected, data }:
   return (
     <BaseNode id={id} selected={selected} nodeType="video_task" title={data.title} minHeight={260} heroMedia={heroMedia}
       onAssetImageDrop={(urls) => refImages.addUrls(urls, "drop")}
-      headerRight={refImages.images.length >= 1 ? (
-        <button
-          onClick={() => setStripOpen((v) => !v)}
-          className="nodrag flex items-center gap-1"
-          style={{ fontSize: 10, color: stripOpen ? accentColor : "var(--c-t3)", border: `1px solid ${stripOpen ? "oklch(0.62 0.20 25 / 0.5)" : "var(--c-bd2)"}`, borderRadius: 6, padding: "1px 6px" }}
-          title="展开/收起左侧参考图列表"
-        >
-          <Layers style={{ width: 11, height: 11 }} /> {refImages.images.length}
-        </button>
-      ) : undefined}
-      leftDock={
-        <ReferenceImageStrip
-          images={refImages.images}
-          open={stripOpen}
+      headerRight={
+        <DockToggleButton
+          refCount={refImages.images.length}
+          hasPrompt={!!finalPromptDisplay.trim()}
+          refOpen={docks.refOpen}
+          promptOpen={docks.promptOpen}
           accent={accentColor}
-          onClose={() => setStripOpen(false)}
-          onRemove={refImages.removeId}
-          onMove={refImages.moveId}
-          onInsertUrls={(urls, index) => refImages.insertUrls(urls, index, "drop")}
-          onDropFiles={(files, index) => void uploadRefFiles(files, index)}
-          onZoom={(i) => setRefZoom(i)}
+          onClick={docks.cycle}
         />
+      }
+      leftDock={
+        <>
+          <ReferenceImageStrip
+            images={refImages.images}
+            open={stripOpen}
+            accent={accentColor}
+            onClose={() => setStripOpen(false)}
+            onRemove={refImages.removeId}
+            onMove={refImages.moveId}
+            onInsertUrls={(urls, index) => refImages.insertUrls(urls, index, "drop")}
+            onDropFiles={(files, index) => void uploadRefFiles(files, index)}
+            onZoom={(i) => setRefZoom(i)}
+          />
+          <PromptDock
+            open={docks.promptOpen}
+            text={finalPromptDisplay}
+            negText={SUPPORTS_NEGATIVE_PROMPT.has(payload.provider) ? payload.negativePrompt : undefined}
+            source={hasCharInject ? "含角色" : undefined}
+            accent={accentColor}
+            onClose={() => docks.setPromptOpen(false)}
+          />
+        </>
       }>
       <div className="flex flex-col h-full p-3.5 gap-3 overflow-auto">
 
@@ -1557,7 +1580,7 @@ export const VideoTaskNode = memo(function VideoTaskNode({ id, selected, data }:
             />
             {refImages.images.length >= 1 && (
               <button
-                onClick={() => setStripOpen((v) => !v)}
+                onClick={() => setStripOpen(!stripOpen)}
                 className="nodrag"
                 style={{ marginLeft: "auto", display: "flex", alignItems: "center", gap: 3, fontSize: 10, color: stripOpen ? accentColor : "var(--c-t3)", border: `1px solid ${stripOpen ? "oklch(0.62 0.20 25 / 0.5)" : "var(--c-bd2)"}`, borderRadius: 6, padding: "1px 6px" }}
                 title="展开左侧参考图列表"
