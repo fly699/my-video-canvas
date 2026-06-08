@@ -7,7 +7,7 @@ import { useCanvasStore } from "../../../hooks/useCanvasStore";
 import type { VideoTaskNodeData, VideoProvider, CharacterNodeData } from "../../../../../shared/types";
 import { maxRefImagesForProvider } from "../../../../../shared/videoRefCaps";
 import { mergeCharactersIntoPrompt } from "../../../lib/characterPrompt";
-import { connectedCharacterRefImages, connectedSceneRefImages, connectedCharacters } from "../../../lib/characterConditioning";
+import { effectiveCharacterRefImages, effectiveSceneRefImages, effectiveCharacters, stripCharacterMentions } from "../../../lib/characterConditioning";
 import { connectedEffectPrompts, appendEffectPrompts } from "../../../lib/effectPrompt";
 import { detectUpstreamPrompt } from "../../../lib/comfyWorkflowParams";
 import { trpc } from "@/lib/trpc";
@@ -861,7 +861,8 @@ export const VideoTaskNode = memo(function VideoTaskNode({ id, selected, data }:
     const { nodes: allNodes, edges: allEdges } = useCanvasStore.getState();
     // Position-ordered (topmost first) so the prompt's 角色1/角色2 numbering aligns
     // with the reference image order in buildRefUrls (both use connectedCharacters).
-    const chars = connectedCharacters(id, allEdges, allNodes);
+    // 角色 = 连线 + prompt 里的「@角色」提及，两者等价生效。
+    const chars = effectiveCharacters(id, payload.prompt, allEdges, allNodes);
     // Single-ref fallback: PERSON characters only — a 场景's image is location, not identity.
     const charRefFallback = chars.find((c) => (c.characterKind ?? "person") !== "scene" && c.referenceImageUrl?.trim())?.referenceImageUrl;
     return {
@@ -870,7 +871,7 @@ export const VideoTaskNode = memo(function VideoTaskNode({ id, selected, data }:
       // many/long character profiles could push it over 4000 → BAD_REQUEST. Also append
       // any connected post_process「效果注入」effect prompts so a wired post_process works.
       prompt: appendEffectPrompts(
-        mergeCharactersIntoPrompt(payload.prompt ?? "", chars, 4000),
+        mergeCharactersIntoPrompt(stripCharacterMentions(payload.prompt, allNodes), chars, 4000),
         connectedEffectPrompts(id, allEdges, allNodes),
         4000,
       ),
@@ -890,12 +891,12 @@ export const VideoTaskNode = memo(function VideoTaskNode({ id, selected, data }:
       // character (multi-reference); person identity refs first, then SCENE backdrop
       // refs (location/style context), falling back to the single primary ref.
       const { nodes: gn, edges: ge } = useCanvasStore.getState();
-      const charRefs = [...connectedCharacterRefImages(id, ge, gn), ...connectedSceneRefImages(id, ge, gn)];
+      const charRefs = [...effectiveCharacterRefImages(id, payload.prompt, ge, gn), ...effectiveSceneRefImages(id, payload.prompt, ge, gn)];
       base = charRefs.length ? charRefs : (primary ? [primary] : []);
     }
     const max = maxRefImagesForProvider(provider);
     return max > 1 && base.length > 1 ? base.slice(0, max) : undefined;
-  }, [refImages.images, id]);
+  }, [refImages.images, id, payload.prompt]);
 
   // Reference (subject) mode: when the references come from connected CHARACTERS
   // (identity), they are SUBJECTS, not 首尾帧 — so on multi-reference-capable models
@@ -907,9 +908,9 @@ export const VideoTaskNode = memo(function VideoTaskNode({ id, selected, data }:
     if (refImages.images.length > 0) return undefined; // manual refs → keep frame default
     const { nodes: gn, edges: ge } = useCanvasStore.getState();
     // Person identity OR scene backdrop refs are context, not 首尾帧 → reference mode.
-    const hasCharRefs = connectedCharacterRefImages(id, ge, gn).length > 0 || connectedSceneRefImages(id, ge, gn).length > 0;
+    const hasCharRefs = effectiveCharacterRefImages(id, payload.prompt, ge, gn).length > 0 || effectiveSceneRefImages(id, payload.prompt, ge, gn).length > 0;
     return hasCharRefs ? "reference" : undefined;
-  }, [refImages.images, id]);
+  }, [refImages.images, id, payload.prompt]);
 
   // Multi-modal references: pull video/audio URLs from connected upstream `asset`
   // nodes (which can already wire into video_task), for models that accept them.

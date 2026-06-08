@@ -11,7 +11,7 @@ import { toast } from "sonner";
 import { Sparkles, ImageIcon, Loader2, Upload, X, Wand2, History, Languages, Film, ZoomIn, Download, Copy } from "lucide-react";
 import { isOwnStorageUrl } from "@/lib/ownStorage";
 import { mergeCharactersIntoPrompt } from "../../../lib/characterPrompt";
-import { connectedCharacters, connectedCharacterRefImages, connectedSceneRefImages } from "../../../lib/characterConditioning";
+import { effectiveCharacters, effectiveCharacterRefImages, effectiveSceneRefImages, stripCharacterMentions } from "../../../lib/characterConditioning";
 import { IMAGE_MODELS } from "@/lib/models";
 import { MediaImage } from "../MediaImage";
 import { RefImageReachabilityBadge, RefImageSwitchButton, useRefImageGuard, usePreferUpstreamRefSource, useAutoPreferUpstreamRefSource } from "../mediaReachability";
@@ -306,7 +306,8 @@ export const StoryboardNode = memo(function StoryboardNode({ id, selected, data 
     const { nodes: allNodes, edges: allEdges } = useCanvasStore.getState();
     // Position-ordered so the prompt's 角色1/角色2 numbering matches the convention
     // used elsewhere (reference image priority = topmost connected character).
-    const chars = connectedCharacters(id, allEdges, allNodes);
+    // 角色 = 连线 + prompt 里的「@角色」提及，两者等价生效。
+    const chars = effectiveCharacters(id, payload.promptText, allEdges, allNodes);
     // Identity lock: when no reference image is manually attached, use ALL views of
     // every connected PERSON character (multi-reference → image_urls server-side),
     // matching ImageGenNode — previously only the FIRST person's primary image was
@@ -315,12 +316,13 @@ export const StoryboardNode = memo(function StoryboardNode({ id, selected, data 
     // Person identity refs first, then SCENE backdrop refs (location/style context).
     const charRefs = manualRef
       ? []
-      : [...connectedCharacterRefImages(id, allEdges, allNodes), ...connectedSceneRefImages(id, allEdges, allNodes)].slice(0, 8);
+      : [...effectiveCharacterRefImages(id, payload.promptText, allEdges, allNodes), ...effectiveSceneRefImages(id, payload.promptText, allEdges, allNodes)].slice(0, 8);
     const charRefUrl: string | undefined = manualRef || charRefs[0];
     // Cap to 2000 while PRESERVING the user's scene text — the previous crude
     // slice(0, 2000) cut from the END, dropping the scene description (which sits
     // after the prepended character blocks). maxLength trims the injection instead.
-    const enhancedPrompt = mergeCharactersIntoPrompt(payload.promptText, chars, 2000);
+    // 去掉字面量「@名字」，改用结构化注入。
+    const enhancedPrompt = mergeCharactersIntoPrompt(stripCharacterMentions(payload.promptText, allNodes), chars, 2000);
 
     // Per-model sizing: pass only the fields the chosen model actually
     // consumes. The imageGen.generate tRPC procedure validates each field

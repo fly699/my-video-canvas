@@ -7,7 +7,7 @@ import { useHoverStore } from "../../../hooks/useHoverStore";
 import { useCanvasStore } from "../../../hooks/useCanvasStore";
 import { propagateRefImage, propagatePromptToVideo, propagateControlMap } from "../../../lib/refImagePropagation";
 import { applyFreeVramToAllComfyNodes } from "../../../lib/comfyFreeVram";
-import { connectedCharacters } from "../../../lib/characterConditioning";
+import { effectiveCharacters, stripCharacterMentions } from "../../../lib/characterConditioning";
 import { mergeCharactersIntoPrompt } from "../../../lib/characterPrompt";
 import { usePreferUpstreamRefSource, useAutoPreferUpstreamRefSource } from "../mediaReachability";
 import type { ComfyuiImageNodeData, ComfyuiLoraEntry } from "../../../../../shared/types";
@@ -313,7 +313,7 @@ export const ComfyuiImageNode = memo(function ComfyuiImageNode({ id, selected, d
     // identity like 外貌/服装). Not persisted, mirrors video_task.
     const { nodes: gnodes, edges: gedges } = useCanvasStore.getState();
     // Cap to the server's prompt max(2000); preserves the base prompt, trims injection.
-    const finalPrompt = mergeCharactersIntoPrompt(payload.prompt ?? "", connectedCharacters(id, gedges, gnodes), 2000);
+    const finalPrompt = mergeCharactersIntoPrompt(stripCharacterMentions(payload.prompt, gnodes), effectiveCharacters(id, payload.prompt, gedges, gnodes), 2000);
     genMutation.mutate({
       nodeId: id,
       projectId: data.projectId,

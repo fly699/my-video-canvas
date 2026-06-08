@@ -10,7 +10,7 @@ import { propagateRefImage, propagateWorkflowPrompt } from "../../../lib/refImag
 import type { ComfyuiWorkflowNodeData, WorkflowParamBinding } from "../../../../../shared/types";
 import { trpc } from "@/lib/trpc";
 import { detectUpstreamImageUrl, detectUpstreamPrompt, fillWorkflowPromptParams, fillWorkflowLoraParam, positivePromptParamKey, listUpstreamImageSources, resolveImageParamsWithMap } from "@/lib/comfyWorkflowParams";
-import { connectedCharacters, connectedCharacterLora, connectedCharacterRefImages } from "@/lib/characterConditioning";
+import { effectiveCharacters, connectedCharacterLora, effectiveCharacterRefImages, stripCharacterMentions } from "@/lib/characterConditioning";
 import { mergeCharactersIntoPrompt } from "@/lib/characterPrompt";
 import { applyFreeVramToAllComfyNodes } from "@/lib/comfyFreeVram";
 import { summarizeComfyWorkflow } from "@/lib/comfyWorkflowSummary";
@@ -405,8 +405,12 @@ export const ComfyuiWorkflowNode = memo(function ComfyuiWorkflowNode({ id, selec
       // Connected Character(s): their reference image becomes an extra image source,
       // their LoRA fills the workflow's lora_name param, and their profile text is
       // PREPENDED to the effective positive prompt (augment, never replace it).
-      const chars = connectedCharacters(id, edges, nodes);
-      const charRefImgs = connectedCharacterRefImages(id, edges, nodes);
+      // 角色 = 连线 + prompt 里的「@角色」提及。提及文本取 正向提示词参数当前值 + 上游提示词。
+      const posPromptKey = positivePromptParamKey(payload.paramBindings);
+      const posCur = posPromptKey && typeof payload.paramValues?.[posPromptKey] === "string" ? (payload.paramValues[posPromptKey] as string) : "";
+      const mentionText = `${posCur} ${upstreamPrompt.positive ?? ""}`;
+      const chars = effectiveCharacters(id, mentionText, edges, nodes);
+      const charRefImgs = effectiveCharacterRefImages(id, mentionText, edges, nodes);
       const sources = [
         ...listUpstreamImageSources(id, edges, nodes),
         ...charRefImgs.map((url, i) => ({ id: `char_ref_${i}`, title: `角色参考${i + 1}`, url })),
@@ -416,10 +420,10 @@ export const ComfyuiWorkflowNode = memo(function ComfyuiWorkflowNode({ id, selec
       const imageParamKeys = imgResolved.imageParamKeys;
       let paramValues = fillWorkflowPromptParams(payload.paramBindings, imgResolved.paramValues, upstreamPrompt, { force: payload.preferUpstreamPrompt !== false });
       // Prepend character identity to the resolved positive (augment, not replace).
-      const charPosKey = positivePromptParamKey(payload.paramBindings);
-      if (chars.length > 0 && charPosKey) {
-        const cur = typeof paramValues[charPosKey] === "string" ? (paramValues[charPosKey] as string) : "";
-        paramValues = { ...paramValues, [charPosKey]: mergeCharactersIntoPrompt(cur, chars) };
+      // 去掉字面量「@名字」，改用结构化注入。
+      if (chars.length > 0 && posPromptKey) {
+        const cur = typeof paramValues[posPromptKey] === "string" ? (paramValues[posPromptKey] as string) : "";
+        paramValues = { ...paramValues, [posPromptKey]: mergeCharactersIntoPrompt(stripCharacterMentions(cur, nodes), chars) };
       }
       const charLora = connectedCharacterLora(id, edges, nodes);
       if (charLora) paramValues = fillWorkflowLoraParam(payload.paramBindings, paramValues, charLora.name);
