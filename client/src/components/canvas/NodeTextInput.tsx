@@ -1,4 +1,14 @@
-import { forwardRef, useEffect, useRef, useState, type ChangeEvent, type CompositionEvent, type FocusEvent } from "react";
+import { forwardRef, useCallback, useEffect, useRef, useState, type ChangeEvent, type CompositionEvent, type FocusEvent } from "react";
+import { useMention } from "./useMention";
+
+/** 稳定的「合并外部转发 ref + 内部 ref」回调（避免每次渲染重建导致 ref 反复挂卸）。 */
+function useMergedRef<T>(external: React.ForwardedRef<T>, internal: React.MutableRefObject<T | null>) {
+  return useCallback((el: T | null) => {
+    internal.current = el;
+    if (typeof external === "function") external(el);
+    else if (external) external.current = el;
+  }, [external, internal]);
+}
 
 /**
  * IME-safe controlled inputs for canvas nodes.
@@ -50,47 +60,69 @@ function useImeSafeValue<T extends HTMLInputElement | HTMLTextAreaElement>(
   const onFocus = () => { focused.current = true; };
   const onBlur = () => { focused.current = false; onValueChange?.(local); };
 
-  return { local, onChange, onCompositionStart, onCompositionEnd, onFocus, onBlur };
+  // Programmatic value set (used by the @mention插入): update local + push to store.
+  const commit = (next: string) => { setLocal(next); onValueChange?.(next); };
+
+  return { local, onChange, onCompositionStart, onCompositionEnd, onFocus, onBlur, commit };
 }
 
-type TextAreaProps = Omit<React.TextareaHTMLAttributes<HTMLTextAreaElement>, "onChange"> & CommonProps;
+// `noMention`: 关闭「@」角色/场景自动补全（默认开启）。
+type TextAreaProps = Omit<React.TextareaHTMLAttributes<HTMLTextAreaElement>, "onChange"> & CommonProps & { noMention?: boolean };
 
 export const NodeTextArea = forwardRef<HTMLTextAreaElement, TextAreaProps>(function NodeTextArea(
-  { value, onValueChange, onCompositionStart, onCompositionEnd, onFocus, onBlur, ...rest },
+  { value, onValueChange, onCompositionStart, onCompositionEnd, onFocus, onBlur, onKeyDown, onKeyUp, onClick, noMention, ...rest },
   ref,
 ) {
   const ime = useImeSafeValue<HTMLTextAreaElement>(value, onValueChange);
+  const innerRef = useRef<HTMLTextAreaElement | null>(null);
+  const mergedRef = useMergedRef(ref, innerRef);
+  const mention = useMention(!noMention, innerRef, ime.commit);
   return (
-    <textarea
-      ref={ref}
-      {...rest}
-      value={ime.local}
-      onChange={ime.onChange}
-      onCompositionStart={(e) => { ime.onCompositionStart(); onCompositionStart?.(e); }}
-      onCompositionEnd={(e) => { ime.onCompositionEnd(e); onCompositionEnd?.(e); }}
-      onFocus={(e: FocusEvent<HTMLTextAreaElement>) => { ime.onFocus(); onFocus?.(e); }}
-      onBlur={(e: FocusEvent<HTMLTextAreaElement>) => { ime.onBlur(); onBlur?.(e); }}
-    />
+    <>
+      <textarea
+        ref={mergedRef}
+        {...rest}
+        value={ime.local}
+        onChange={(e) => { ime.onChange(e); mention.probe(); }}
+        onKeyDown={(e) => { if (!e.nativeEvent.isComposing && mention.onKeyDown(e)) return; onKeyDown?.(e); }}
+        onKeyUp={(e) => { mention.probe(); onKeyUp?.(e); }}
+        onClick={(e) => { mention.probe(); onClick?.(e); }}
+        onCompositionStart={(e) => { ime.onCompositionStart(); onCompositionStart?.(e); }}
+        onCompositionEnd={(e) => { ime.onCompositionEnd(e); onCompositionEnd?.(e); mention.probe(); }}
+        onFocus={(e: FocusEvent<HTMLTextAreaElement>) => { ime.onFocus(); onFocus?.(e); }}
+        onBlur={(e: FocusEvent<HTMLTextAreaElement>) => { ime.onBlur(); onBlur?.(e); setTimeout(() => mention.close(), 120); }}
+      />
+      {mention.dropdown}
+    </>
   );
 });
 
-type InputProps = Omit<React.InputHTMLAttributes<HTMLInputElement>, "onChange"> & CommonProps;
+type InputProps = Omit<React.InputHTMLAttributes<HTMLInputElement>, "onChange"> & CommonProps & { noMention?: boolean };
 
 export const NodeInput = forwardRef<HTMLInputElement, InputProps>(function NodeInput(
-  { value, onValueChange, onCompositionStart, onCompositionEnd, onFocus, onBlur, ...rest },
+  { value, onValueChange, onCompositionStart, onCompositionEnd, onFocus, onBlur, onKeyDown, onKeyUp, onClick, noMention, ...rest },
   ref,
 ) {
   const ime = useImeSafeValue<HTMLInputElement>(value, onValueChange);
+  const innerRef = useRef<HTMLInputElement | null>(null);
+  const mergedRef = useMergedRef(ref, innerRef);
+  const mention = useMention(!noMention, innerRef, ime.commit);
   return (
-    <input
-      ref={ref}
-      {...rest}
-      value={ime.local}
-      onChange={ime.onChange}
-      onCompositionStart={(e) => { ime.onCompositionStart(); onCompositionStart?.(e); }}
-      onCompositionEnd={(e) => { ime.onCompositionEnd(e); onCompositionEnd?.(e); }}
-      onFocus={(e: FocusEvent<HTMLInputElement>) => { ime.onFocus(); onFocus?.(e); }}
-      onBlur={(e: FocusEvent<HTMLInputElement>) => { ime.onBlur(); onBlur?.(e); }}
-    />
+    <>
+      <input
+        ref={mergedRef}
+        {...rest}
+        value={ime.local}
+        onChange={(e) => { ime.onChange(e); mention.probe(); }}
+        onKeyDown={(e) => { if (!e.nativeEvent.isComposing && mention.onKeyDown(e)) return; onKeyDown?.(e); }}
+        onKeyUp={(e) => { mention.probe(); onKeyUp?.(e); }}
+        onClick={(e) => { mention.probe(); onClick?.(e); }}
+        onCompositionStart={(e) => { ime.onCompositionStart(); onCompositionStart?.(e); }}
+        onCompositionEnd={(e) => { ime.onCompositionEnd(e); onCompositionEnd?.(e); mention.probe(); }}
+        onFocus={(e: FocusEvent<HTMLInputElement>) => { ime.onFocus(); onFocus?.(e); }}
+        onBlur={(e: FocusEvent<HTMLInputElement>) => { ime.onBlur(); onBlur?.(e); setTimeout(() => mention.close(), 120); }}
+      />
+      {mention.dropdown}
+    </>
   );
 });
