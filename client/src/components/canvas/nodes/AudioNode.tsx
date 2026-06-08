@@ -5,11 +5,12 @@ import type { AudioNodeData, AudioCategory } from "../../../../../shared/types";
 import { trpc } from "@/lib/trpc";
 import { toast } from "sonner";
 import {
-  Music, Upload, Mic, Loader2, Play, Pause, X, Volume2, Zap, Wind, HardDriveDownload,
+  Music, Upload, Mic, Loader2, Play, Pause, X, Volume2, Zap, Wind, HardDriveDownload, Languages, Sparkles,
 } from "lucide-react";
 import { isOwnStorageUrl } from "@/lib/ownStorage";
 import { mediaFetchUrl } from "@/lib/download";
 import { NodeTextArea, NodeInput } from "../NodeTextInput";
+import { LLMModelPicker, LLM_MODELS, type LLMModelId } from "../LLMModelPicker";
 
 interface Props {
   id: string;
@@ -108,6 +109,78 @@ const TTS_TEXT_LIMIT: Record<string, number> = {
 // 本地 VoxCPM（Gradio）模型：靠参考音频克隆音色，无固定音色列表。
 function modelIsVoxCPM(model?: string): boolean {
   return model === "voxcpm-local";
+}
+
+// VoxCPM 控制指令快速模板：多级（分类 → 短语），点击把短语拼进控制指令。
+const VOX_CONTROL_TEMPLATES: { cat: string; items: string[] }[] = [
+  { cat: "方言口音", items: ["用普通话", "用粤语", "用四川话", "用东北话", "用河南话", "用陕西话", "用天津话", "用上海话", "用闽南语", "用客家话", "台湾腔", "港普"] },
+  { cat: "语种口音", items: ["美式英语口音", "英式英语口音", "日语口音", "韩语口音", "法语口音", "德语口音"] },
+  { cat: "语速", items: ["语速很慢", "语速较慢", "语速正常", "语速较快", "语速很快"] },
+  { cat: "语气情感", items: ["语气平静", "热情洋溢", "严肃正式", "温柔", "活泼可爱", "悲伤", "愤怒", "神秘低语", "新闻播音腔", "撒娇", "冷淡", "搞笑夸张"] },
+  { cat: "音色风格", items: ["低沉磁性", "清亮", "沙哑", "浑厚", "甜美", "童声", "少年音", "老年音", "机械音"] },
+];
+
+// 配音文本翻译目标：语言 + 中文方言（分组下拉）。
+const TRANSLATE_TARGETS: { group: string; items: string[] }[] = [
+  { group: "语言", items: ["英语", "日语", "韩语", "法语", "德语", "西班牙语", "俄语", "繁体中文", "简体中文"] },
+  { group: "方言", items: ["粤语", "四川话", "东北话", "河南话", "陕西话", "天津话", "上海话", "闽南语", "客家话", "台湾腔"] },
+];
+
+// 翻译默认模型：取第一个非隐藏的 LLM。
+const DEFAULT_LLM: LLMModelId = (LLM_MODELS.find((m) => !m.hidden) ?? LLM_MODELS[0]).id;
+
+// 控制指令「快速模板」多级选择器：分类 tab + 短语 chip，点击拼接进控制指令。
+function ControlTemplatePicker({ value, onChange }: { value: string; onChange: (v: string) => void }) {
+  const [open, setOpen] = useState(false);
+  const [tab, setTab] = useState(0);
+  const append = (phrase: string) => {
+    const cur = (value ?? "").trim();
+    if (cur.includes(phrase)) return; // 已含则不重复
+    onChange(cur ? cur + "，" + phrase : phrase);
+  };
+  return (
+    <div style={{ marginTop: 6 }}>
+      <button
+        onClick={() => setOpen((o) => !o)}
+        className="nodrag flex items-center gap-1"
+        style={{ fontSize: 10.5, padding: "3px 8px", borderRadius: 7, cursor: "pointer",
+          background: open ? accentA(0.15) : "var(--c-input)", border: `1px solid ${open ? accentA(0.4) : "var(--c-bd2)"}`,
+          color: open ? accent : "var(--c-t3)" }}
+      >
+        <Sparkles style={{ width: 11, height: 11 }} /> 快速模板（方言/语速/语气/音色）
+      </button>
+      {open && (
+        <div className="nodrag nowheel" style={{ marginTop: 6, padding: 8, borderRadius: 9, background: "var(--c-surface)", border: "1px solid var(--c-bd2)" }}>
+          <div className="flex flex-wrap gap-1" style={{ marginBottom: 7 }}>
+            {VOX_CONTROL_TEMPLATES.map((t, i) => (
+              <button key={t.cat} onClick={() => setTab(i)} className="nodrag"
+                style={{ fontSize: 10, padding: "3px 8px", borderRadius: 6, cursor: "pointer",
+                  background: tab === i ? accentA(0.18) : "transparent", border: `1px solid ${tab === i ? accentA(0.4) : "var(--c-bd2)"}`,
+                  color: tab === i ? accent : "var(--c-t3)", fontWeight: tab === i ? 600 : 400 }}>
+                {t.cat}
+              </button>
+            ))}
+          </div>
+          <div className="flex flex-wrap gap-1">
+            {VOX_CONTROL_TEMPLATES[tab].items.map((it) => (
+              <button key={it} onClick={() => append(it)} className="nodrag"
+                style={{ fontSize: 10.5, padding: "3px 8px", borderRadius: 6, cursor: "pointer",
+                  background: "var(--c-input)", border: "1px solid var(--c-bd2)", color: "var(--c-t2)" }}>
+                {it}
+              </button>
+            ))}
+          </div>
+          {(value ?? "").trim() && (
+            <button onClick={() => onChange("")} className="nodrag"
+              style={{ marginTop: 7, fontSize: 10, padding: "2px 7px", borderRadius: 6, cursor: "pointer",
+                background: "transparent", border: "none", color: "var(--c-t4)" }}>
+              清空控制指令
+            </button>
+          )}
+        </div>
+      )}
+    </div>
+  );
 }
 
 // SFX — coming soon
@@ -287,6 +360,29 @@ export const AudioNode = memo(function AudioNode({ id, selected, data }: Props) 
     },
     onError: (err) => toast.error("生成失败：" + err.message),
   });
+
+  // 配音文本翻译（支持语言与中文方言），翻译后覆盖 ttsText。
+  const translateMut = trpc.aiEnhance.translate.useMutation({
+    onSuccess: (r) => {
+      if (r.result?.trim()) {
+        updateNodeData(id, { ttsText: r.result.trim() });
+        toast.success("已翻译并覆盖配音文本");
+      } else {
+        toast.error("翻译返回为空");
+      }
+    },
+    onError: (err) => toast.error("翻译失败：" + err.message),
+  });
+  const handleTranslate = () => {
+    if (translateMut.isPending) return;
+    const text = payload.ttsText?.trim();
+    if (!text) { toast.error("请先输入配音文本"); return; }
+    translateMut.mutate({
+      text,
+      target: payload.ttsTranslateTarget ?? "英语",
+      model: payload.ttsTranslateModel || undefined,
+    });
+  };
 
   const ttsMutation = trpc.audioGen.generateDubbing.useMutation({
     onSuccess: (result) => {
@@ -737,6 +833,47 @@ export const AudioNode = memo(function AudioNode({ id, selected, data }: Props) 
                 onFocus={(e) => { e.currentTarget.style.borderColor = BORDER_ACCENT; }}
                 onBlur={(e) => { e.currentTarget.style.borderColor = BORDER_DEFAULT; }}
               />
+              {/* AI 翻译（支持语言与方言）：翻译后覆盖配音文本 */}
+              {isVox && (
+                <div style={{ marginTop: 7 }}>
+                  <div className="flex items-center gap-1.5 flex-wrap">
+                    <Languages style={{ width: 12, height: 12, color: "var(--c-t4)", flexShrink: 0 }} />
+                    <select
+                      value={payload.ttsTranslateTarget ?? "英语"}
+                      onChange={(e) => update("ttsTranslateTarget", e.target.value)}
+                      className="nodrag"
+                      style={{ ...fieldStyle, width: "auto", flex: "0 0 auto", padding: "4px 8px", fontSize: 11, cursor: "pointer" }}
+                    >
+                      {TRANSLATE_TARGETS.map((g) => (
+                        <optgroup key={g.group} label={g.group}>
+                          {g.items.map((it) => <option key={it} value={it} style={{ background: "var(--c-base)" }}>{it}</option>)}
+                        </optgroup>
+                      ))}
+                    </select>
+                    <LLMModelPicker
+                      value={(payload.ttsTranslateModel as LLMModelId) || DEFAULT_LLM}
+                      onChange={(m) => update("ttsTranslateModel", m)}
+                      disabled={translateMut.isPending}
+                    />
+                    <button
+                      onClick={handleTranslate}
+                      disabled={translateMut.isPending || !payload.ttsText?.trim()}
+                      className="nodrag flex items-center gap-1"
+                      style={{ fontSize: 11, padding: "4px 10px", borderRadius: 7, marginLeft: "auto",
+                        background: translateMut.isPending ? "var(--c-surface)" : accentA(0.15),
+                        border: `1px solid ${translateMut.isPending ? BORDER_DEFAULT : accentA(0.4)}`,
+                        color: translateMut.isPending ? "var(--c-t4)" : accent,
+                        cursor: translateMut.isPending || !payload.ttsText?.trim() ? "not-allowed" : "pointer" }}
+                    >
+                      {translateMut.isPending
+                        ? <Loader2 style={{ width: 11, height: 11 }} className="animate-spin" />
+                        : <Languages style={{ width: 11, height: 11 }} />}
+                      {translateMut.isPending ? "翻译中..." : "翻译"}
+                    </button>
+                  </div>
+                  <p style={{ fontSize: 10, color: "var(--c-t4)", marginTop: 4 }}>翻译后覆盖配音文本，可选目标语言或方言（粤语 / 四川话 / 东北话…）</p>
+                </div>
+              )}
             </div>
             {/* Voice selector — varies per provider (本地 VoxCPM 无固定音色，隐藏) */}
             {voices.length > 0 && (
@@ -829,11 +966,11 @@ export const AudioNode = memo(function AudioNode({ id, selected, data }: Props) 
                     </p>
                   )}
                 </div>
-                {/* 音色/风格控制指令（可选） */}
+                {/* 音色/风格控制指令（可选）+ 快速模板 */}
                 <div>
                   <label style={labelStyle}>控制指令（可选）</label>
                   <NodeInput
-                    placeholder="例如：语气平静、语速稍慢"
+                    placeholder="例如：用粤语，语速较慢，语气温柔"
                     value={payload.ttsControlInstruction ?? ""}
                     onValueChange={(v) => update("ttsControlInstruction", v)}
                     className="nodrag"
@@ -841,6 +978,10 @@ export const AudioNode = memo(function AudioNode({ id, selected, data }: Props) 
                     style={fieldStyle}
                     onFocus={(e) => { e.currentTarget.style.borderColor = BORDER_ACCENT; }}
                     onBlur={(e) => { e.currentTarget.style.borderColor = BORDER_DEFAULT; }}
+                  />
+                  <ControlTemplatePicker
+                    value={payload.ttsControlInstruction ?? ""}
+                    onChange={(v) => update("ttsControlInstruction", v)}
                   />
                 </div>
                 {/* CFG */}

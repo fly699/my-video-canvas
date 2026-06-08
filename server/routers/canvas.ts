@@ -2996,6 +2996,35 @@ Output an optimized English prompt under 80 words. Output ONLY the prompt text.`
       return { result: extractTextContent(response).trim() };
     }),
 
+  // Translate / localize text into an arbitrary target language OR a Chinese
+  // dialect (粤语/四川话/东北话…). Used by the audio dubbing node so the user can
+  // translate the spoken text before synthesis. Dialect targets rewrite into the
+  // dialect's colloquial written form (suitable to be read aloud), not Mandarin.
+  translate: protectedProcedure
+    .input(
+      z.object({
+        text: z.string().min(1).max(8000),
+        target: z.string().min(1).max(40),   // 目标语言/方言，自由文本（如 "英语"/"粤语"/"四川话"）
+        model: z.string().optional(),
+      })
+    )
+    .mutation(async ({ input }) => {
+      const system = `You are a professional translator and Chinese-dialect (topolect) localizer.
+Rewrite the user's text into the target form: "${input.target}".
+- If the target is a language, translate faithfully and naturally for spoken delivery.
+- If the target is a Chinese dialect/topolect (粤语/四川话/东北话/闽南语/上海话/陕西话/河南话/天津话/客家话/台湾腔 等), rewrite into that dialect's natural COLLOQUIAL written form — its characteristic vocabulary, particles and phrasing — suitable to be read aloud, NOT standard Mandarin.
+Preserve the original meaning, tone, proper nouns and numbers. Output ONLY the resulting text — no quotes, no labels, no notes.`;
+      const response = await invokeLLM({
+        messages: [
+          { role: "system" as const, content: system },
+          { role: "user" as const, content: input.text },
+        ],
+        model: input.model ?? "claude-sonnet-4-5-20250929",
+        maxTokens: 2400,
+      });
+      return { result: extractTextContent(response).trim() };
+    }),
+
   // Vision: reverse-engineer a generation prompt from an input image. Used by the
   // 提示词 node's「分析提取」action — the prompt node consumes images only to
   // extract text, it never outputs an image.
