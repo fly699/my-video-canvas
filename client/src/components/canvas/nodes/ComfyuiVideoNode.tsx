@@ -25,6 +25,7 @@ import { mediaFetchUrl } from "@/lib/download";
 import { useComfyUpstreamAutoFill } from "./useComfyUpstreamAutoFill";
 import { LLMModelPicker, type LLMModelId } from "../LLMModelPicker";
 import { NodeTextArea, NodeInput } from "../NodeTextInput";
+import { useSimpleRefStrip } from "../../../hooks/useSimpleRefStrip";
 
 interface Props {
   id: string;
@@ -78,6 +79,8 @@ export const ComfyuiVideoNode = memo(function ComfyuiVideoNode({ id, selected, d
   const connectState = useConnectState(id, "comfyui_video");
   const updateNodeData = useCanvasStore((s) => s.updateNodeData);
   const payload = data.payload;
+  // 左侧吸附参考图预览窗（单张参考，与内嵌预览并存；不触碰其它逻辑）。
+  const refStrip = useSimpleRefStrip(id, payload, "single", { accent });
   useComfyUpstreamAutoFill(id, payload, updateNodeData, { characterLora: true });
   // Auto-prefer the upstream AI temporary public URL as the reference source when
   // the admin toggle is on and that URL probes alive (no-op when off / default).
@@ -320,14 +323,19 @@ export const ComfyuiVideoNode = memo(function ComfyuiVideoNode({ id, selected, d
       onAssetImageDrop={(urls) => updateNodeData(id, { referenceImageUrl: urls[0] })}
       headerTooltip={modelTip || undefined}
       hideTypeBadge
-      headerRight={cornerText ? (
-        <span
-          title={modelTip || cornerText}
-          style={{ fontSize: 10.5, fontWeight: 600, color: accent, maxWidth: 150, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", display: "block" }}
-        >
-          {cornerText}
+      headerRight={
+        <span className="flex items-center gap-1.5">
+          {cornerText && (
+            <span
+              title={modelTip || cornerText}
+              style={{ fontSize: 10.5, fontWeight: 600, color: accent, maxWidth: 150, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", display: "block" }}
+            >
+              {cornerText}
+            </span>
+          )}
+          {refStrip.toggle}
         </span>
-      ) : undefined}>
+      }>
       <div className="flex flex-col h-full p-3.5 gap-3 overflow-auto">
 
         {/* ── Status pill ── (hidden once done — the player + green MinIO dot suffice) */}
@@ -993,6 +1001,7 @@ export const ComfyuiVideoNode = memo(function ComfyuiVideoNode({ id, selected, d
 
       {/* Output handle — provided by BaseNode default (id="output" on Position.Right);
           no custom handle to avoid overlapping with the default. */}
+      {refStrip.strip}
     </BaseNode>
   );
 });
