@@ -145,7 +145,9 @@ export const CharacterNode = memo(function CharacterNode({ id, selected, data }:
 
   // AI 参考图识别 → 预览弹窗（勾选后才写入字段）。模型可选（需视觉能力）。
   const [recognizeRows, setRecognizeRows] = useState<RecognitionFieldRow[] | null>(null);
-  const [recognizeModel, setRecognizeModel] = useState<LLMModelId>("claude-sonnet-4-6");
+  // 看图识人需要视觉模型。本部署里 Claude 不支持读图（Poyo Claude 不接受 image_url），
+  // 故默认 GPT-5.2，且选择器只显示支持视觉的模型（见 models.ts 的 vision 标记）。
+  const [recognizeModel, setRecognizeModel] = useState<LLMModelId>("gpt-5.2");
   const recognizeMut = trpc.scripts.analyzeCharacterFromImages.useMutation({
     onSuccess: (res) => {
       const rows = buildRecognitionRows(payload, res.fields);
@@ -654,7 +656,7 @@ export const CharacterNode = memo(function CharacterNode({ id, selected, data }:
         {selected && (
           <div className="flex flex-col gap-1.5">
             <div className="nodrag" onPointerDown={(e) => e.stopPropagation()}>
-              <LLMModelPicker value={recognizeModel} onChange={setRecognizeModel} disabled={recognizeMut.isPending} />
+              <LLMModelPicker value={recognizeModel} onChange={setRecognizeModel} disabled={recognizeMut.isPending} filter={(m) => !!m.vision} />
             </div>
             <button
               onClick={handleRecognize}
