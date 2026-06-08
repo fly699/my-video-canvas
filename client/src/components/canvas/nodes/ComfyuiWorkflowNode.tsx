@@ -21,7 +21,7 @@ import { WatermarkedVideo } from "@/components/WatermarkedVideo";
 import { ImageLightbox } from "../ImageLightbox";
 import { ReferenceImageStrip } from "../ReferenceImageStrip";
 import { PromptDock } from "../PromptDock";
-import { useNodeDocks, DockToggleButtons } from "../../../hooks/useNodeDocks";
+import { useNodeDocks } from "../../../hooks/useNodeDocks";
 import { openNodeImage } from "../NodeImageLightbox";
 import { toast } from "sonner";
 import {
@@ -644,26 +644,13 @@ export const ComfyuiWorkflowNode = memo(function ComfyuiWorkflowNode({ id, selec
       headerTooltip={summary.ok ? annotationDetail : undefined}
       hideTypeBadge
       onHeaderHoverChange={docks.onHeaderHoverChange}
-      headerRight={(cornerText || stripImages.length >= 1 || finalPromptInfo.hasPos) ? (
-        <div style={{ display: "flex", alignItems: "center", gap: 6, minWidth: 0 }}>
-          {cornerText ? (
-            <span
-              title={annotationDetail || cornerText}
-              style={{ fontSize: 10.5, fontWeight: 600, color: accentColor, maxWidth: 150, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", display: "block" }}
-            >
-              {cornerText}
-            </span>
-          ) : null}
-          <DockToggleButtons
-            refCount={stripImages.length}
-            hasPrompt={finalPromptInfo.hasPos}
-            refActive={docks.refActive}
-            promptActive={docks.promptActive}
-            accent={accent}
-            onToggleRef={docks.toggleRef}
-            onTogglePrompt={docks.togglePrompt}
-          />
-        </div>
+      headerRight={cornerText ? (
+        <span
+          title={annotationDetail || cornerText}
+          style={{ fontSize: 10.5, fontWeight: 600, color: accentColor, maxWidth: 150, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", display: "block" }}
+        >
+          {cornerText}
+        </span>
       ) : undefined}
       leftDock={
         <>
@@ -679,6 +666,8 @@ export const ComfyuiWorkflowNode = memo(function ComfyuiWorkflowNode({ id, selec
             onInsertUrls={() => {}}
             onDropFiles={() => {}}
             onZoom={(i) => { const u = stripImages[i]?.url; if (u) openNodeImage(u); }}
+            onHoverChange={docks.onDockHoverChange}
+            onPin={docks.pinRef}
           />
           <PromptDock
             open={docks.promptOpen}
@@ -687,6 +676,8 @@ export const ComfyuiWorkflowNode = memo(function ComfyuiWorkflowNode({ id, selec
             source={finalPromptInfo.source}
             accent={accent}
             onClose={() => docks.setPromptOpen(false)}
+            onHoverChange={docks.onDockHoverChange}
+            onPin={docks.pinPrompt}
           />
         </>
       }

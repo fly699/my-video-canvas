@@ -219,19 +219,9 @@ export const BaseNode = memo(function BaseNode({
   const revealActions = () => { setClickShowActions(true); armHideActions(); };
   useEffect(() => () => { if (hideActionsTimer.current) clearTimeout(hideActionsTimer.current); }, []);
 
-  // 标题栏悬停满 1 秒 → 临时展开参考图/提示词吸附窗（onHeaderHoverChange(true)）；离开即收起。
-  const headerHoverTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const onHeaderEnter = () => {
-    if (!onHeaderHoverChange) return;
-    if (headerHoverTimer.current) clearTimeout(headerHoverTimer.current);
-    headerHoverTimer.current = setTimeout(() => onHeaderHoverChange(true), 1000);
-  };
-  const onHeaderLeave = () => {
-    if (!onHeaderHoverChange) return;
-    if (headerHoverTimer.current) { clearTimeout(headerHoverTimer.current); headerHoverTimer.current = null; }
-    onHeaderHoverChange(false);
-  };
-  useEffect(() => () => { if (headerHoverTimer.current) clearTimeout(headerHoverTimer.current); }, []);
+  // 标题栏悬停进/出 → 透传给 useNodeDocks（由其做 1 秒延时展开 + 离开延时收起）。
+  const onHeaderEnter = () => onHeaderHoverChange?.(true);
+  const onHeaderLeave = () => onHeaderHoverChange?.(false);
 
   const [assetDragOver, setAssetDragOver] = useState(false);
 

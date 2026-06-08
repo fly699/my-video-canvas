@@ -31,7 +31,7 @@ import { NodeConfigTabs } from "../NodeConfigTabs";
 import { NodeTextArea, NodeInput } from "../NodeTextInput";
 import { useSimpleRefStrip } from "../../../hooks/useSimpleRefStrip";
 import { PromptDock } from "../PromptDock";
-import { useNodeDocks, DockToggleButtons } from "../../../hooks/useNodeDocks";
+import { useNodeDocks } from "../../../hooks/useNodeDocks";
 
 interface Props {
   id: string;
@@ -87,8 +87,8 @@ export const ComfyuiImageNode = memo(function ComfyuiImageNode({ id, selected, d
   });
   const hasCharInject = useCanvasStore((s) => effectiveCharacters(id, payload.prompt ?? "", s.edges, s.nodes).length > 0);
   const docks = useNodeDocks(id, { hasRef: !!payload.referenceImageUrl?.trim(), hasPrompt: !!finalPromptDisplay.trim() });
-  // 左侧吸附参考图预览窗（单张 img2img 参考；不触碰 IPAdapter 多图/模板逻辑）。受控于循环按钮。
-  const refStrip = useSimpleRefStrip(id, payload, "single", { accent, open: docks.refOpen, onOpenChange: docks.setRefOpen });
+  // 左侧吸附参考图预览窗（单张 img2img 参考；不触碰 IPAdapter 多图/模板逻辑）。受控于悬停/钉住。
+  const refStrip = useSimpleRefStrip(id, payload, "single", { accent, open: docks.refOpen, onOpenChange: docks.setRefOpen, onHoverChange: docks.onDockHoverChange, onPin: docks.pinRef });
   // Auto-prefer the upstream AI temporary public URL as the reference source when
   // the admin toggle is on and that URL probes alive (no-op when off / default).
   const preferUpstreamRef = usePreferUpstreamRefSource();
@@ -565,30 +565,19 @@ export const ComfyuiImageNode = memo(function ComfyuiImageNode({ id, selected, d
             source={hasCharInject ? "含角色" : undefined}
             accent={accent}
             onClose={() => docks.setPromptOpen(false)}
+            onHoverChange={docks.onDockHoverChange}
+            onPin={docks.pinPrompt}
           />
         </>
       }
-      headerRight={
-        <span className="flex items-center gap-1.5">
-          {cornerText && (
-            <span
-              title={modelTip || cornerText}
-              style={{ fontSize: 10.5, fontWeight: 600, color: accent, maxWidth: 150, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", display: "block" }}
-            >
-              {cornerText}
-            </span>
-          )}
-          <DockToggleButtons
-            refCount={refStrip.images.length}
-            hasPrompt={!!finalPromptDisplay.trim()}
-            refActive={docks.refActive}
-            promptActive={docks.promptActive}
-            accent={accent}
-            onToggleRef={docks.toggleRef}
-            onTogglePrompt={docks.togglePrompt}
-          />
+      headerRight={cornerText ? (
+        <span
+          title={modelTip || cornerText}
+          style={{ fontSize: 10.5, fontWeight: 600, color: accent, maxWidth: 150, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", display: "block" }}
+        >
+          {cornerText}
         </span>
-      }>
+      ) : undefined}>
       <div
         className="flex flex-col h-full p-3.5 gap-3 overflow-auto"
         onDragOver={(e) => { if (e.dataTransfer.types.includes("application/x-asset-list") || e.dataTransfer.types.includes("Files") || e.dataTransfer.types.includes("text/uri-list")) { e.preventDefault(); e.dataTransfer.dropEffect = "copy"; } }}

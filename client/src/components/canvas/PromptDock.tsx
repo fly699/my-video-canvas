@@ -13,6 +13,10 @@ interface Props {
   onClose: () => void;
   /** 收缩态下正文区高度（≈提示词节点收缩后的高度），点击可向上展开。 */
   collapsedHeight?: number;
+  /** 鼠标进/出本吸附窗（用于「悬停临时展开」期间保持展开，便于点击钉住）。 */
+  onHoverChange?: (hovering: boolean) => void;
+  /** 点击吸附窗（非关闭按钮）→ 钉住持久展开。 */
+  onPin?: () => void;
 }
 
 /**
@@ -23,6 +27,7 @@ interface Props {
  */
 export function PromptDock({
   open, text, negText, source, accent = "oklch(0.68 0.18 250)", onClose, collapsedHeight = 34,
+  onHoverChange, onPin,
 }: Props) {
   const [expanded, setExpanded] = useState(false);
   if (!open) return null;
@@ -42,6 +47,9 @@ export function PromptDock({
       }}
       onMouseDown={(e) => e.stopPropagation()}
       onWheel={(e) => e.stopPropagation()}
+      onMouseEnter={() => onHoverChange?.(true)}
+      onMouseLeave={() => onHoverChange?.(false)}
+      onClick={() => onPin?.()}
     >
       {/* 标题栏：点击向上展开 / 收起 */}
       <div

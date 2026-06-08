@@ -27,7 +27,7 @@ export function useSimpleRefStrip(
   id: string,
   payload: Payload,
   mode: "multi" | "single",
-  opts?: { accent?: string; maxAdditional?: number; open?: boolean; onOpenChange?: (v: boolean) => void },
+  opts?: { accent?: string; maxAdditional?: number; open?: boolean; onOpenChange?: (v: boolean) => void; onHoverChange?: (hovering: boolean) => void; onPin?: () => void },
 ): { images: ReferenceImage[]; open: boolean; toggle: ReactNode; strip: ReactNode } {
   const accent = opts?.accent ?? "oklch(0.72 0.20 330)";
   const maxAdditional = opts?.maxAdditional ?? 8;
@@ -129,6 +129,8 @@ export function useSimpleRefStrip(
       onInsertUrls={(urls, index) => insertUrls(urls, index)}
       onDropFiles={(files, index) => void onDropFiles(files, index)}
       onZoom={(i) => { const u = images[i]?.url; if (u) openNodeImage(u); }}
+      onHoverChange={opts?.onHoverChange}
+      onPin={opts?.onPin}
     />
   );
 

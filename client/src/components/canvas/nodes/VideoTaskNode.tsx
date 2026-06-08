@@ -26,7 +26,7 @@ import { ImageLightbox } from "../ImageLightbox";
 import { WatermarkedVideo } from "@/components/WatermarkedVideo";
 import { ReferenceImageStrip } from "../ReferenceImageStrip";
 import { PromptDock } from "../PromptDock";
-import { useNodeDocks, DockToggleButtons } from "../../../hooks/useNodeDocks";
+import { useNodeDocks } from "../../../hooks/useNodeDocks";
 import { useReferenceImages } from "../../../hooks/useReferenceImages";
 import { MediaImage } from "../MediaImage";
 import {
@@ -1111,17 +1111,6 @@ export const VideoTaskNode = memo(function VideoTaskNode({ id, selected, data }:
     <BaseNode id={id} selected={selected} nodeType="video_task" title={data.title} minHeight={260} heroMedia={heroMedia}
       onAssetImageDrop={(urls) => refImages.addUrls(urls, "drop")}
       onHeaderHoverChange={docks.onHeaderHoverChange}
-      headerRight={
-        <DockToggleButtons
-          refCount={refImages.images.length}
-          hasPrompt={!!finalPromptDisplay.trim()}
-          refActive={docks.refActive}
-          promptActive={docks.promptActive}
-          accent={accentColor}
-          onToggleRef={docks.toggleRef}
-          onTogglePrompt={docks.togglePrompt}
-        />
-      }
       leftDock={
         <>
           <ReferenceImageStrip
@@ -1134,6 +1123,8 @@ export const VideoTaskNode = memo(function VideoTaskNode({ id, selected, data }:
             onInsertUrls={(urls, index) => refImages.insertUrls(urls, index, "drop")}
             onDropFiles={(files, index) => void uploadRefFiles(files, index)}
             onZoom={(i) => setRefZoom(i)}
+            onHoverChange={docks.onDockHoverChange}
+            onPin={docks.pinRef}
           />
           <PromptDock
             open={docks.promptOpen}
@@ -1142,6 +1133,8 @@ export const VideoTaskNode = memo(function VideoTaskNode({ id, selected, data }:
             source={hasCharInject ? "含角色" : undefined}
             accent={accentColor}
             onClose={() => docks.setPromptOpen(false)}
+            onHoverChange={docks.onDockHoverChange}
+            onPin={docks.pinPrompt}
           />
         </>
       }>
