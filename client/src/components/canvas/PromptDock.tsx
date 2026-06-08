@@ -9,6 +9,10 @@ interface Props {
   negText?: string;
   /** 来源标注（如「上游」「本地」「上游+角色」），用于一眼看清这条提示词从哪来。 */
   source?: string;
+  /** 框内简要说明（小字常驻一行，解释这段文字是什么 / 用途），可选。 */
+  note?: string;
+  /** 标题文案，默认「最终提示词」。 */
+  label?: string;
   accent?: string;
   onClose: () => void;
   /** 收缩态下正文区高度（≈提示词节点收缩后的高度），点击可向上展开。 */
@@ -26,7 +30,7 @@ interface Props {
  * 开关由节点标题栏「参考图/提示词」循环按钮统一控制（见 useNodeDocks）。
  */
 export function PromptDock({
-  open, text, negText, source, accent = "oklch(0.68 0.18 250)", onClose, collapsedHeight = 34,
+  open, text, negText, source, note, label = "最终提示词", accent = "oklch(0.68 0.18 250)", onClose, collapsedHeight = 34,
   onHoverChange, onPin,
 }: Props) {
   const [expanded, setExpanded] = useState(false);
@@ -60,7 +64,7 @@ export function PromptDock({
       >
         <span style={{ fontSize: 10, color: "var(--c-t3)", fontWeight: 600, display: "flex", alignItems: "center", gap: 4, minWidth: 0 }}>
           <FileText style={{ width: 11, height: 11, flexShrink: 0 }} />
-          <span style={{ whiteSpace: "nowrap" }}>最终提示词</span>
+          <span style={{ whiteSpace: "nowrap" }}>{label}</span>
           {source && (
             <span style={{ color: accent, fontWeight: 700, whiteSpace: "nowrap" }}>· {source}</span>
           )}
@@ -79,6 +83,13 @@ export function PromptDock({
           </button>
         </div>
       </div>
+
+      {/* 框内简要说明（常驻一行，解释这段文字的用途） */}
+      {note && (
+        <div style={{ padding: "0 10px 4px", fontSize: 9.5, lineHeight: 1.4, color: "var(--c-t4)", flexShrink: 0 }}>
+          {note}
+        </div>
+      )}
 
       {/* 正文：收缩态露一两行，展开态限高 500 滚动 */}
       <div
