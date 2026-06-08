@@ -394,6 +394,8 @@ export interface AudioNodeData {
   ttsDitSteps?: number;                           // 扩散步数，默认 10
   ttsDenoise?: boolean;                           // 参考音频降噪
   ttsDoNormalize?: boolean;                       // 文本规范化
+  ttsTranslateTarget?: string;                    // 配音文本翻译目标语言/方言
+  ttsTranslateModel?: string;                     // 翻译所用 AI 模型（可选）
   // SFX (音效)
   sfxPrompt?: string;
   sfxDuration?: number;
