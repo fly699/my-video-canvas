@@ -22,11 +22,15 @@ export type LLMModelMeta = {
   color: string;
   costTier: "低" | "中" | "高";
   hidden?: boolean;    // kept for back-compat but not listed
+  /** 是否支持图片输入（看图）。本部署里 Poyo 的 Claude 不接受 image_url、Forge 的 Claude
+   *  也不稳定，故 Claude 系标记为非视觉；GPT / Gemini 支持。供「看图识人」等需要视觉的功能
+   *  过滤模型选择器。 */
+  vision?: boolean;
 };
 
 export const LLM_MODELS: readonly LLMModelMeta[] = [
   // Gemini (Google) — routed to Forge
-  { id: "gemini-3-flash-preview",    label: "Gemini 3 Flash",    short: "Gemini3", family: "Gemini", tag: "最新", provider: "Forge", color: "oklch(0.68 0.18 160)", costTier: "低" },
+  { id: "gemini-3-flash-preview",    label: "Gemini 3 Flash",    short: "Gemini3", family: "Gemini", tag: "最新", provider: "Forge", color: "oklch(0.68 0.18 160)", costTier: "低", vision: true },
   // No longer served by the upstream gateway (returns unknown-model). Hidden from
   // the picker; the backend remaps this id to gemini-3-flash-preview (MODEL_ALIASES
   // in server/_core/llm.ts) so old node payloads still run. Kept here (not dropped)
@@ -38,7 +42,7 @@ export const LLM_MODELS: readonly LLMModelMeta[] = [
   { id: "claude-sonnet-4-5-20250929", label: "Claude Sonnet 4.5", short: "Sonnet", family: "Claude", tag: "默认", provider: "Poyo",  color: "oklch(0.68 0.18 280)", costTier: "高" },
   { id: "claude-haiku-4-5-20251001",  label: "Claude Haiku 4.5",  short: "Haiku",  family: "Claude", tag: "快速", provider: "Forge", color: "oklch(0.68 0.18 55)",  costTier: "低" },
   // GPT (OpenAI) — routed to Poyo
-  { id: "gpt-5.2",                   label: "GPT-5.2",           short: "GPT-5.2", family: "GPT",    tag: "强力", provider: "Poyo",  color: "oklch(0.62 0.16 240)", costTier: "中" },
+  { id: "gpt-5.2",                   label: "GPT-5.2",           short: "GPT-5.2", family: "GPT",    tag: "强力", provider: "Poyo",  color: "oklch(0.62 0.16 240)", costTier: "中", vision: true },
 ] as const;
 
 // Legacy export name — AIChatNode and scriptCreationTemplates reference CHAT_MODELS.

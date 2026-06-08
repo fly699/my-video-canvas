@@ -1567,7 +1567,7 @@ score 为 0-100 整数，issues 数组最多 8 条，每条包含 type/line/sugg
               ],
             },
           ],
-          model: input.model ?? "claude-sonnet-4-6",
+          model: input.model ?? "gpt-5.2", // 视觉任务：默认用支持读图的模型（Claude 在本部署不支持）
           maxTokens: 3000,  // Chinese descriptions encode ~2 tok/char; 8 issues
           // + 5 recs + 100-char summary worst-case ≈ 1470 tokens — at the
           // previous 1500 ceiling responses got truncated and JSON.parse failed.
@@ -1672,7 +1672,7 @@ score 为 0-100 整数，issues 数组最多 8 条，每条包含 type/line/sugg
               ],
             },
           ],
-          model: input.model ?? "claude-sonnet-4-6",
+          model: input.model ?? "gpt-5.2", // 视觉任务：默认用支持读图的模型（Claude 在本部署不支持）
           // Detailed person profiles (8 Chinese fields) can exceed a small budget and get
           // truncated → unterminated JSON → "未返回有效 JSON". Give ample room.
           maxTokens: 2600,
@@ -1682,7 +1682,7 @@ score 为 0-100 整数，issues 数组最多 8 条，每条包含 type/line/sugg
         const text = extractTextContent(response).replace(/```(?:json)?/gi, "").trim();
         const jsonMatch = text.match(/\{[\s\S]*\}/);
         if (!jsonMatch) {
-          throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: `AI 未返回有效 JSON（模型「${input.model ?? "claude-sonnet-4-6"}」可能不支持读图，请换一个视觉模型）` });
+          throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: `AI 未返回有效 JSON（模型「${input.model ?? "gpt-5.2"}」可能不支持读图，请换一个视觉模型，如 GPT-5.2）` });
         }
         let parsed: Record<string, unknown>;
         try { parsed = JSON.parse(jsonMatch[0]) as Record<string, unknown>; }

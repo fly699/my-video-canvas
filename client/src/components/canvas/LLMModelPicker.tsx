@@ -16,9 +16,12 @@ interface Props {
   value: LLMModelId;
   onChange: (v: LLMModelId) => void;
   disabled?: boolean;
+  /** 可选：进一步筛选可选模型（如只显示支持视觉的模型）。 */
+  filter?: (m: (typeof ALL_LLM_MODELS)[number]) => boolean;
 }
 
-export function LLMModelPicker({ value, onChange, disabled }: Props) {
+export function LLMModelPicker({ value, onChange, disabled, filter }: Props) {
+  const visible = filter ? VISIBLE_MODELS.filter(filter) : VISIBLE_MODELS;
   const [open, setOpen] = useState(false);
   const btnRef = useRef<HTMLButtonElement>(null);
   const [btnRect, setBtnRect] = useState<DOMRect | null>(null);
@@ -92,7 +95,7 @@ export function LLMModelPicker({ value, onChange, disabled }: Props) {
             >
               选择 AI 模型
             </div>
-            {VISIBLE_MODELS.map((m) => {
+            {visible.map((m) => {
               const selected = m.id === value;
               return (
                 <button
