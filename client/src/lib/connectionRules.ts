@@ -5,7 +5,7 @@ export const CONNECTION_MATRIX: Partial<Record<NodeType, NodeType[]>> = {
   storyboard: ["image_gen", "video_task", "prompt", "comfyui_image", "comfyui_video", "comfyui_workflow"],
   prompt: ["image_gen", "video_task", "storyboard", "script", "comfyui_image", "comfyui_video", "comfyui_workflow"],
   character: ["storyboard", "image_gen", "video_task", "prompt", "comfyui_image", "comfyui_video", "comfyui_workflow"],
-  image_gen: ["video_task", "asset", "clip", "pose_control", "character", "comfyui_video", "comfyui_workflow"],
+  image_gen: ["video_task", "asset", "clip", "pose_control", "character", "image_gen", "comfyui_video", "comfyui_workflow"],
   video_task: ["clip", "asset", "overlay", "merge", "subtitle", "subtitle_motion", "smart_cut"],
   // audio → audio: 把一段音频作为本地 VoxCPM 配音的参考音色喂给下游音频节点。
   // audio → comfyui_workflow: 作为自定义工作流的音频参数来源（VHS_LoadAudioUpload 等）。
@@ -96,8 +96,8 @@ export const CONNECTION_HINTS: Record<
   },
   image_gen: {
     label: "图像生成",
-    outgoing: "→ 视频任务 / 素材 / 剪辑 / 角色（参考图）",
-    incoming: "← 分镜 / 提示词 / 角色 / 素材 / ComfyUI 图像 / ComfyUI 自定义（参考图）",
+    outgoing: "→ 视频任务 / 素材 / 剪辑 / 角色 / 图像生成（参考图）",
+    incoming: "← 分镜 / 提示词 / 角色 / 素材 / 图像生成 / ComfyUI 图像 / ComfyUI 自定义（参考图）",
   },
   video_task: {
     label: "视频任务",
