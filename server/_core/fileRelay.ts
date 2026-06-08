@@ -194,70 +194,115 @@ const RELAY_HTML = `<!doctype html>
 <meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
 <title>局域网文件中转</title>
 <style>
-  :root { color-scheme: dark; }
+  :root { color-scheme: dark; --acc:#6f7bff; --bg:#0d0e12; --card:#15171e; --bd:#23262f; --t1:#e8e9ec; --t2:#a3a6b0; --t3:#73767f; }
   * { box-sizing: border-box; }
-  body { margin:0; font-family: system-ui, -apple-system, "Segoe UI", Roboto, "PingFang SC", "Microsoft YaHei", sans-serif;
-    background:#0e0f13; color:#e6e7ea; }
-  .wrap { max-width: 920px; margin: 0 auto; padding: 28px 20px 60px; }
-  h1 { font-size: 20px; margin: 0 0 4px; }
-  .sub { color:#8a8d96; font-size: 13px; margin-bottom: 20px; }
-  .drop { border:2px dashed #2c3040; border-radius:14px; padding:28px; text-align:center; color:#9aa; cursor:pointer;
-    transition: all .15s; background:#14161c; }
-  .drop.over { border-color:#6f7bff; background:#181b27; color:#cfd3ff; }
-  .drop b { color:#cfd3ff; }
-  table { width:100%; border-collapse:collapse; margin-top:22px; font-size:13px; }
-  th,td { text-align:left; padding:9px 10px; border-bottom:1px solid #1d2029; }
-  th { color:#8a8d96; font-weight:600; font-size:11px; text-transform:uppercase; letter-spacing:.05em; }
-  td.name { word-break:break-all; }
-  a.btn, button.btn { display:inline-block; padding:5px 10px; border-radius:8px; font-size:12px; cursor:pointer;
-    border:1px solid #2c3040; background:#171a22; color:#cfd3ff; text-decoration:none; }
-  button.btn.del { color:#ff9b9b; border-color:#3a2730; }
-  .bar { height:6px; background:#1d2029; border-radius:4px; overflow:hidden; margin-top:8px; display:none; }
-  .bar > i { display:block; height:100%; width:0; background:#6f7bff; transition: width .1s; }
-  .muted { color:#8a8d96; }
-  .curl { margin-top:26px; background:#0b0c10; border:1px solid #1d2029; border-radius:10px; padding:14px 16px; font-size:12px; }
-  .curl code { color:#9cdcfe; }
-  .empty { text-align:center; color:#6a6d76; padding:26px; }
+  body { margin:0; background:var(--bg); color:var(--t1);
+    font-family: system-ui, -apple-system, "Segoe UI", Roboto, "PingFang SC", "Microsoft YaHei", sans-serif; }
+  .wrap { max-width: 760px; margin: 0 auto; padding: 34px 20px 64px; }
+  .head { display:flex; align-items:center; gap:12px; margin-bottom:4px; }
+  .logo { width:38px; height:38px; border-radius:11px; flex-shrink:0; display:flex; align-items:center; justify-content:center;
+    background:linear-gradient(135deg,#6f7bff,#9a6bff); box-shadow:0 4px 14px rgba(111,123,255,.35); }
+  h1 { font-size: 19px; margin: 0; letter-spacing:.2px; }
+  .sub { color:var(--t2); font-size: 13px; margin: 6px 0 22px; line-height:1.6; }
+  .drop { position:relative; border:1.5px dashed #30343f; border-radius:16px; padding:34px 20px; text-align:center;
+    color:var(--t2); cursor:pointer; transition:.16s; background:var(--card); }
+  .drop:hover { border-color:#3c4150; background:#181b22; }
+  .drop.over { border-color:var(--acc); background:#181c2a; color:#cfd3ff; box-shadow:0 0 0 4px rgba(111,123,255,.12) inset; }
+  .drop .big { font-size:14px; color:var(--t1); margin-bottom:4px; }
+  .drop .big b { color:var(--acc); }
+  .drop .hint { font-size:12px; color:var(--t3); }
+  .bar { height:6px; background:#23262f; border-radius:99px; overflow:hidden; margin-top:12px; display:none; }
+  .bar > i { display:block; height:100%; width:0; border-radius:99px; background:linear-gradient(90deg,#6f7bff,#9a6bff); transition:width .12s; }
+  #status { margin-top:9px; font-size:12px; color:var(--t2); min-height:16px; }
+  .listhead { display:flex; align-items:center; justify-content:space-between; margin:26px 2px 10px; }
+  .listhead .lbl { font-size:11px; font-weight:700; letter-spacing:.08em; text-transform:uppercase; color:var(--t3); }
+  .listhead .cnt { font-size:12px; color:var(--t3); }
+  .row { display:flex; align-items:center; gap:13px; padding:11px 13px; border:1px solid var(--bd); border-radius:13px;
+    background:var(--card); margin-bottom:9px; transition:.14s; }
+  .row:hover { border-color:#33384a; background:#171a22; }
+  .ic { width:42px; height:42px; border-radius:10px; flex-shrink:0; display:flex; align-items:center; justify-content:center;
+    background:#1c1f2a; color:#8ea0ff; font-size:10.5px; font-weight:800; letter-spacing:.02em; }
+  .meta { min-width:0; flex:1; }
+  .fn { font-size:13.5px; font-weight:600; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  .submeta { font-size:11.5px; color:var(--t3); margin-top:3px; }
+  .submeta b { color:var(--t2); font-weight:600; }
+  .acts { display:flex; gap:7px; flex-shrink:0; }
+  .btn { display:inline-flex; align-items:center; padding:6px 12px; border-radius:9px; font-size:12px; font-weight:600;
+    cursor:pointer; border:1px solid var(--bd); background:#1a1d26; color:#cfd3ff; text-decoration:none; transition:.13s; }
+  .btn:hover { border-color:#3c4150; background:#20242f; }
+  .btn.dl { color:#bfc6ff; }
+  .btn.del { color:#ff9b9b; }
+  .btn.del:hover { border-color:#5a2c34; background:#2a1a1e; }
+  .empty { text-align:center; color:var(--t3); padding:34px; border:1px dashed var(--bd); border-radius:13px; font-size:13px; }
+  .cli { margin-top:30px; background:#0a0b0f; border:1px solid var(--bd); border-radius:13px; padding:16px 16px 8px; }
+  .cli .ttl { font-size:11px; font-weight:700; letter-spacing:.08em; text-transform:uppercase; color:var(--t3); margin-bottom:12px; }
+  .cmd { display:flex; align-items:center; gap:10px; padding:9px 0; border-top:1px solid #15171d; }
+  .cmd:first-of-type { border-top:none; }
+  .cmd .k { font-size:11.5px; color:var(--t3); width:64px; flex-shrink:0; }
+  .cmd code { flex:1; min-width:0; font-size:12px; color:#9cdcfe; overflow-x:auto; white-space:nowrap;
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
+  .copy { flex-shrink:0; padding:4px 9px; border-radius:7px; font-size:11px; cursor:pointer; border:1px solid var(--bd);
+    background:#1a1d26; color:var(--t2); }
+  .copy:hover { color:var(--t1); border-color:#3c4150; }
 </style></head>
 <body><div class="wrap">
-  <h1>局域网文件中转</h1>
-  <div class="sub">把大文件拖到下面上传，内网其它机器即可下载。支持断点续传（Range）。</div>
-  <div id="drop" class="drop"><b>点击选择</b> 或把文件拖到这里上传<input id="file" type="file" multiple style="display:none"></div>
+  <div class="head">
+    <div class="logo"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg></div>
+    <h1>局域网文件中转</h1>
+  </div>
+  <div class="sub">把大文件拖到下面上传，内网其它机器即可下载。支持断点续传（Range），适合几十 GB 大文件。</div>
+  <div id="drop" class="drop">
+    <div class="big"><b>点击选择</b> 或把文件拖到这里</div>
+    <div class="hint">支持多文件 · 流式直传，不限大小</div>
+    <input id="file" type="file" multiple style="display:none">
+  </div>
   <div class="bar" id="bar"><i id="barfill"></i></div>
-  <div id="status" class="muted" style="margin-top:8px;font-size:12px"></div>
-  <table><thead><tr><th>文件名</th><th style="width:120px">大小</th><th style="width:170px">修改时间</th><th style="width:150px">操作</th></tr></thead>
-  <tbody id="list"></tbody></table>
-  <div id="empty" class="empty" style="display:none">暂无文件</div>
-  <div class="curl">
-    <div style="margin-bottom:6px;color:#8a8d96">命令行（其它机器）：</div>
-    上传：<code id="cup">curl -T ./bigfile.mov ORIGIN/relay/api/upload/bigfile.mov</code><br>
-    下载：<code id="cdown">curl -O ORIGIN/relay/api/download/bigfile.mov</code><br>
-    续传下载：<code>curl -C - -O ORIGIN/relay/api/download/bigfile.mov</code>
+  <div id="status"></div>
+  <div class="listhead"><span class="lbl">中转文件</span><span class="cnt" id="cnt"></span></div>
+  <div id="list"></div>
+  <div id="empty" class="empty" style="display:none">暂无文件，先上传一个吧</div>
+  <div class="cli">
+    <div class="ttl">命令行（其它机器）</div>
+    <div class="cmd"><span class="k">上传</span><code id="cup"></code><button class="copy" data-t="cup">复制</button></div>
+    <div class="cmd"><span class="k">下载</span><code id="cdown"></code><button class="copy" data-t="cdown">复制</button></div>
+    <div class="cmd"><span class="k">续传下载</span><code id="cresume"></code><button class="copy" data-t="cresume">复制</button></div>
   </div>
 </div>
 <script>
 const origin = location.origin;
-document.getElementById('cup').textContent = 'curl -T ./bigfile.mov ' + origin + '/relay/api/upload/bigfile.mov';
-document.getElementById('cdown').textContent = 'curl -O ' + origin + '/relay/api/download/bigfile.mov';
+const cmds = {
+  cup: 'curl -T ./bigfile.mov ' + origin + '/relay/api/upload/bigfile.mov',
+  cdown: 'curl -O ' + origin + '/relay/api/download/bigfile.mov',
+  cresume: 'curl -C - -O ' + origin + '/relay/api/download/bigfile.mov',
+};
+for (const k in cmds) document.getElementById(k).textContent = cmds[k];
+document.querySelectorAll('.copy').forEach(b => b.onclick = async () => {
+  try { await navigator.clipboard.writeText(cmds[b.dataset.t]); const o=b.textContent; b.textContent='已复制'; setTimeout(()=>b.textContent=o,1200); } catch {}
+});
 function human(n){ if(n<1024)return n+' B'; const u=['KB','MB','GB','TB']; let i=-1; do{n/=1024;i++;}while(n>=1024&&i<u.length-1); return n.toFixed(n<10?2:1)+' '+u[i]; }
 function fmt(ms){ const d=new Date(ms); const p=x=>String(x).padStart(2,'0'); return d.getFullYear()+'-'+p(d.getMonth()+1)+'-'+p(d.getDate())+' '+p(d.getHours())+':'+p(d.getMinutes()); }
+function ext(n){ const i=n.lastIndexOf('.'); const e=i>=0? n.slice(i+1):''; return (e||'file').slice(0,4).toUpperCase(); }
+function esc(s){ return s.replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
 async function refresh(){
-  const r = await fetch('/relay/api/list'); const j = await r.json();
-  const tb = document.getElementById('list'); tb.innerHTML='';
+  let j={files:[]}; try{ j = await (await fetch('/relay/api/list')).json(); }catch{}
+  const box = document.getElementById('list'); box.innerHTML='';
   document.getElementById('empty').style.display = j.files.length? 'none':'block';
+  document.getElementById('cnt').textContent = j.files.length? (j.files.length+' 个文件'):'';
   for(const f of j.files){
-    const tr=document.createElement('tr');
     const dl='/relay/api/download/'+encodeURIComponent(f.name);
-    tr.innerHTML='<td class="name">'+esc(f.name)+'</td><td>'+human(f.size)+'</td><td>'+fmt(f.mtime)+'</td>'+
-      '<td><a class="btn" href="'+dl+'">下载</a> <button class="btn del" data-n="'+esc(f.name)+'">删除</button></td>';
-    tb.appendChild(tr);
+    const row=document.createElement('div'); row.className='row';
+    row.innerHTML='<div class="ic">'+esc(ext(f.name))+'</div>'+
+      '<div class="meta"><div class="fn" title="'+esc(f.name)+'">'+esc(f.name)+'</div>'+
+      '<div class="submeta"><b>'+human(f.size)+'</b> · '+fmt(f.mtime)+'</div></div>'+
+      '<div class="acts"><a class="btn dl" href="'+dl+'">下载</a>'+
+      '<button class="btn del" data-n="'+esc(f.name)+'">删除</button></div>';
+    box.appendChild(row);
   }
-  tb.querySelectorAll('button.del').forEach(b=>b.onclick=async()=>{
+  box.querySelectorAll('button.del').forEach(b=>b.onclick=async()=>{
     if(!confirm('删除 '+b.dataset.n+' ?'))return;
     await fetch('/relay/api/delete/'+encodeURIComponent(b.dataset.n),{method:'DELETE'}); refresh();
   });
 }
-function esc(s){ return s.replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
 const drop=document.getElementById('drop'), fileInput=document.getElementById('file');
 const bar=document.getElementById('bar'), fill=document.getElementById('barfill'), statusEl=document.getElementById('status');
 drop.onclick=()=>fileInput.click();
@@ -273,8 +318,8 @@ function uploadOne(file){ return new Promise(res=>{
   xhr.upload.onprogress=e=>{ if(e.lengthComputable){ const p=e.loaded/e.total*100; fill.style.width=p+'%';
     statusEl.textContent='上传 '+file.name+'  '+human(e.loaded)+' / '+human(e.total)+'  ('+p.toFixed(1)+'%)'; } };
   xhr.onload=()=>{ fill.style.width='0'; bar.style.display='none';
-    statusEl.textContent = xhr.status<300? ('已上传 '+file.name) : ('上传失败：'+file.name+' '+xhr.responseText); res(); };
-  xhr.onerror=()=>{ bar.style.display='none'; statusEl.textContent='上传出错：'+file.name; res(); };
+    statusEl.textContent = xhr.status<300? ('✓ 已上传 '+file.name) : ('✗ 上传失败：'+file.name+' '+xhr.responseText); res(); };
+  xhr.onerror=()=>{ bar.style.display='none'; statusEl.textContent='✗ 上传出错：'+file.name; res(); };
   xhr.send(file);
 }); }
 refresh();
