@@ -18,7 +18,7 @@ import {
 import { CharacterConsistencyPanel, type ConsistencyResult } from "../CharacterConsistencyPanel";
 import { NodeTextArea, NodeInput } from "../NodeTextInput";
 import { characterReferenceImages, deriveCharacterConditioning } from "@/lib/characterConditioning";
-import { getNodeImageOutput } from "@/lib/canvasPassthrough";
+import { detectUpstreamImagesExpanded } from "@/lib/comfyWorkflowParams";
 
 interface Props {
   id: string;
@@ -79,25 +79,24 @@ export const CharacterNode = memo(function CharacterNode({ id, selected, data }:
 
   const kind: CharacterKind = payload.characterKind ?? "person";
 
-  // Receive an upstream IMAGE (素材 / 图像生成 / ComfyUI 图像 / ComfyUI 自定义) as this
-  // character/scene's reference image. getNodeImageOutput is kind-safe (image assets
-  // only, skips video-output workflows). Fill-only-when-blank — a manually-uploaded
-  // reference is never overwritten. Primitive selector result → minimal re-renders.
-  const upstreamRefImage = useCanvasStore((s) => {
-    for (const e of s.edges) {
-      if (e.target !== id) continue;
-      const src = s.nodes.find((n) => n.id === e.source);
-      if (!src) continue;
-      const url = getNodeImageOutput(src.data.nodeType, (src.data.payload ?? {}) as Record<string, unknown>);
-      if (url) return url;
-    }
-    return undefined;
-  });
+  // Receive upstream IMAGES (素材 / 图像生成 / ComfyUI 图像 / ComfyUI 自定义) as this
+  // character/scene's reference images, IN ORDER: first → main 参考图, the rest → 备用视角
+  // (additionalImageUrls, cap 8). Batch-expanded (a single node outputting N images fills
+  // N slots). Kind-safe (image-only). Selector returns a stable string key (join) to avoid
+  // array-ref churn. Triggers ONLY when the character has no reference images yet, so manual
+  // uploads / edits are never overwritten (per user choice).
+  const upstreamImagesKey = useCanvasStore((s) => detectUpstreamImagesExpanded(id, s.edges, s.nodes).join("\n"));
   useEffect(() => {
-    if (!upstreamRefImage) return;
-    if (payload.referenceImageUrl?.trim()) return; // fill-only-when-blank
-    updateNodeData(id, { referenceImageUrl: upstreamRefImage, referenceStorageKey: undefined }, true);
-  }, [upstreamRefImage, payload.referenceImageUrl, id, updateNodeData]);
+    if (payload.referenceImageUrl?.trim() || (payload.additionalImageUrls?.length ?? 0) > 0) return;
+    const list = upstreamImagesKey ? upstreamImagesKey.split("\n").filter(Boolean) : [];
+    if (list.length === 0) return;
+    const extras = list.slice(1, 1 + MAX_ADDITIONAL_IMAGES);
+    updateNodeData(id, {
+      referenceImageUrl: list[0],
+      referenceStorageKey: undefined,
+      ...(extras.length ? { additionalImageUrls: extras } : {}),
+    }, true);
+  }, [upstreamImagesKey, payload.referenceImageUrl, payload.additionalImageUrls, id, updateNodeData]);
 
   // ── Connected storyboards with generated images (downstream of this character)
   // Select FLAT tuples (id, imageUrl, sceneNumber) — useShallow uses Object.is
