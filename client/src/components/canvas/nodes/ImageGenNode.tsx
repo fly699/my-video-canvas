@@ -16,7 +16,6 @@ import { connectedEffectPrompts, appendEffectPrompts } from "../../../lib/effect
 import { ReferenceImageStrip } from "../ReferenceImageStrip";
 import { PromptDock } from "../PromptDock";
 import { useNodeDocks } from "../../../hooks/useNodeDocks";
-import { Layers } from "lucide-react";
 import type { ImageGenNodeData, ImageGenModel } from "../../../../../shared/types";
 import { trpc } from "@/lib/trpc";
 import { toast } from "sonner";
@@ -1057,16 +1056,6 @@ export const ImageGenNode = memo(function ImageGenNode({ id, selected, data }: P
               reachable={reachable}
               onSwitch={(u) => update("referenceImageUrl", u)}
             />
-            {refImages.images.length >= 1 && (
-              <button
-                onClick={() => setStripOpen(!stripOpen)}
-                className="nodrag"
-                style={{ marginLeft: "auto", display: "flex", alignItems: "center", gap: 3, fontSize: 10, color: stripOpen ? accent : "var(--c-t3)", border: `1px solid ${stripOpen ? BORDER_ACCENT : "var(--c-bd2)"}`, borderRadius: 6, padding: "1px 6px" }}
-                title="展开左侧参考图列表"
-              >
-                <Layers style={{ width: 11, height: 11 }} /> {stripOpen ? "收起" : "展开"}
-              </button>
-            )}
           </label>
 
           {/* Horizontal thumbnails (numbered) */}

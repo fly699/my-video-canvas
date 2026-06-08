@@ -12,6 +12,9 @@ import { Sparkles, ImageIcon, Loader2, Upload, X, Wand2, History, Languages, Fil
 import { isOwnStorageUrl } from "@/lib/ownStorage";
 import { mergeCharactersIntoPrompt } from "../../../lib/characterPrompt";
 import { effectiveCharacters, effectiveCharacterRefImages, effectiveSceneRefImages, stripCharacterMentions } from "../../../lib/characterConditioning";
+import { useSimpleRefStrip } from "../../../hooks/useSimpleRefStrip";
+import { useNodeDocks } from "../../../hooks/useNodeDocks";
+import { PromptDock } from "../PromptDock";
 import { IMAGE_MODELS } from "@/lib/models";
 import { MediaImage } from "../MediaImage";
 import { RefImageReachabilityBadge, RefImageSwitchButton, useRefImageGuard, usePreferUpstreamRefSource, useAutoPreferUpstreamRefSource } from "../mediaReachability";
@@ -36,6 +39,7 @@ interface Props {
 
 const BORDER_DEFAULT = "var(--c-bd2)";
 const BORDER_FOCUS   = "oklch(0.65 0.20 160 / 0.6)";
+const STORY_ACCENT   = "oklch(0.65 0.20 160)";
 
 function formatAIError(err: unknown): string {
   if (err instanceof TRPCClientError) {
@@ -106,6 +110,17 @@ export const StoryboardNode = memo(function StoryboardNode({ id, selected, data 
   // Effective reference the next generation will use (local overrides character)
   const effectiveRefUrl = payload.referenceImageUrl?.trim() || connectedCharRefUrl;
   const [generating, setGenerating] = useState(false);
+
+  // 统一吸附窗：左侧参考图（单张）+ 顶部「最终提示词」（角色注入后的实际正向词，与 handleGenerate 同源）。
+  // 无按钮：悬停标题栏 1 秒临时展开，点击吸附窗钉住持久展开。
+  const finalPromptDisplay = useCanvasStore((s) => {
+    const base = payload.promptText ?? "";
+    const chars = effectiveCharacters(id, base, s.edges, s.nodes);
+    return mergeCharactersIntoPrompt(stripCharacterMentions(base, s.nodes), chars, 2000);
+  });
+  const hasCharInject = useCanvasStore((s) => effectiveCharacters(id, payload.promptText ?? "", s.edges, s.nodes).length > 0);
+  const docks = useNodeDocks(id, { hasRef: !!payload.referenceImageUrl?.trim(), hasPrompt: !!finalPromptDisplay.trim() });
+  const refStrip = useSimpleRefStrip(id, payload, "single", { accent: STORY_ACCENT, open: docks.refOpen, onOpenChange: docks.setRefOpen, onHoverChange: docks.onDockHoverChange, onPin: docks.pinRef });
   const [inputExpanded, setInputExpanded] = useState(!!selected);
   const [llmModel, setLlmModel] = useState<LLMModelId>("claude-sonnet-4-5-20250929");
   const [showHistory, setShowHistory] = useState(false);
@@ -429,7 +444,23 @@ export const StoryboardNode = memo(function StoryboardNode({ id, selected, data 
     <>
     <BaseNode id={id} selected={selected} nodeType="storyboard" title={data.title} minHeight={280} heroMedia={heroMedia}
       onRun={handleGenerate} running={generating} canRun={!!payload.promptText?.trim()} hasResult={!!payload.imageUrl}
-      onAssetImageDrop={(urls) => updateNodeData(id, { referenceImageUrl: urls[0] })}>
+      onAssetImageDrop={(urls) => updateNodeData(id, { referenceImageUrl: urls[0] })}
+      onHeaderHoverChange={docks.onHeaderHoverChange}
+      leftDock={
+        <>
+          {refStrip.strip}
+          <PromptDock
+            open={docks.promptOpen}
+            text={finalPromptDisplay}
+            negText={payload.negativePrompt}
+            source={hasCharInject ? "含角色" : undefined}
+            accent={STORY_ACCENT}
+            onClose={() => docks.setPromptOpen(false)}
+            onHoverChange={docks.onDockHoverChange}
+            onPin={docks.pinPrompt}
+          />
+        </>
+      }>
       <div className="flex flex-col h-full p-3.5 gap-3">
 
         {/* ── Image preview — hidden in creative mode (image shown in heroMedia instead) ── */}

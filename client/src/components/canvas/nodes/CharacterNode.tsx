@@ -1,5 +1,6 @@
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useSimpleRefStrip } from "../../../hooks/useSimpleRefStrip";
+import { useNodeDocks } from "../../../hooks/useNodeDocks";
 import { useShallow } from "zustand/react/shallow";
 import { BaseNode } from "../BaseNode";
 import { isOwnStorageUrl } from "@/lib/ownStorage";
@@ -80,8 +81,11 @@ export const CharacterNode = memo(function CharacterNode({ id, selected, data }:
   const { updateNodeData } = useCanvasStore();
   const payload = data.payload;
   const [uploading, setUploading] = useState(false);
-  // 左侧吸附参考图预览窗（与内嵌主图/备用视角网格并存、同源同步）。
-  const refStrip = useSimpleRefStrip(id, payload, "multi", { accent, maxAdditional: MAX_ADDITIONAL_IMAGES });
+  // 左侧吸附参考图预览窗（与内嵌主图/备用视角网格并存、同源同步）。无按钮：悬停标题栏
+  // 1 秒临时展开，点击吸附窗钉住持久展开（与其它生成节点统一）。角色无「最终提示词」概念。
+  const hasRefImg = !!(payload.referenceImageUrl?.trim() || (payload.additionalImageUrls?.length ?? 0) > 0);
+  const docks = useNodeDocks(id, { hasRef: hasRefImg, hasPrompt: false });
+  const refStrip = useSimpleRefStrip(id, payload, "multi", { accent, maxAdditional: MAX_ADDITIONAL_IMAGES, open: docks.refOpen, onOpenChange: docks.setRefOpen, onHoverChange: docks.onDockHoverChange, onPin: docks.pinRef });
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const kind: CharacterKind = payload.characterKind ?? "person";
@@ -389,7 +393,7 @@ export const CharacterNode = memo(function CharacterNode({ id, selected, data }:
 
   return (
     <BaseNode id={id} selected={selected} nodeType="character" title={data.title} minHeight={160} resizable heroMedia={heroMedia}
-      headerRight={refStrip.toggle}
+      onHeaderHoverChange={docks.onHeaderHoverChange}
       leftDock={refStrip.strip}
       onAssetImageDrop={(urls) => updateNodeData(id, { referenceImageUrl: urls[0], referenceStorageKey: undefined, ...(urls.length > 1 ? { additionalImageUrls: urls.slice(1, 1 + MAX_ADDITIONAL_IMAGES) } : {}) })}>
       {consistencyOpen && consistencyResult && (
