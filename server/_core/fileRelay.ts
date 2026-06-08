@@ -44,6 +44,74 @@ export function safeName(raw: string): string | null {
   return n;
 }
 
+/**
+ * 收敛一个相对路径（支持子目录）为安全的「a/b/c.ext」形式；每段都过 safeName
+ * 校验（拒绝 .. / 反斜杠 / null / 超长），跳过空段与 "."。非法返回 null。用于文件夹上传。
+ */
+export function safeRelPath(raw: string): string | null {
+  const parts = String(raw ?? "").replace(/\\/g, "/").split("/");
+  const out: string[] = [];
+  for (const seg of parts) {
+    if (seg === "" || seg === ".") continue;
+    const s = safeName(seg);
+    if (s === null) return null;
+    out.push(s);
+  }
+  if (out.length === 0 || out.length > 64) return null; // 限制层级，防滥用
+  return out.join("/");
+}
+
+/** 把相对路径解析为中转目录内的绝对路径；越界返回 null（纵深防御）。 */
+function fullOf(rel: string): string | null {
+  const root = path.resolve(relayDir());
+  const full = path.resolve(root, rel);
+  if (full !== root && !full.startsWith(root + path.sep)) return null;
+  return full;
+}
+
+/** 从请求取目标相对路径：优先 ?path=（支持子目录），否则用 :name（单段）。 */
+function pickRel(req: Request): string | null {
+  const q = typeof req.query.path === "string" ? req.query.path : "";
+  if (q) return safeRelPath(q);
+  return safeName(req.params.name);
+}
+
+/** 删除文件后，自底向上清理变空的中转子目录（不删根）。 */
+function pruneEmptyDirs(startDir: string): void {
+  const root = path.resolve(relayDir());
+  let cur = path.resolve(startDir);
+  while (cur !== root && cur.startsWith(root + path.sep)) {
+    try {
+      if (fs.readdirSync(cur).length === 0) { fs.rmdirSync(cur); cur = path.dirname(cur); }
+      else break;
+    } catch { break; }
+  }
+}
+
+/** 递归遍历中转目录，返回所有文件（name 为相对路径），按 mtime 倒序。 */
+function walkRelay(): Array<{ name: string; size: number; mtime: number }> {
+  const root = ensureDir();
+  const out: Array<{ name: string; size: number; mtime: number }> = [];
+  const stack: string[] = [""];
+  while (stack.length) {
+    const rel = stack.pop() as string;
+    const abs = rel ? path.join(root, rel) : root;
+    let entries: fs.Dirent[];
+    try { entries = fs.readdirSync(abs, { withFileTypes: true }); } catch { continue; }
+    for (const e of entries) {
+      if (e.name.endsWith(".part")) continue;
+      const childRel = rel ? `${rel}/${e.name}` : e.name;
+      if (e.isDirectory()) { stack.push(childRel); continue; }
+      if (!e.isFile()) continue;
+      try {
+        const st = fs.statSync(path.join(root, childRel));
+        out.push({ name: childRel, size: st.size, mtime: st.mtimeMs });
+      } catch { /* skip */ }
+    }
+  }
+  return out.sort((a, b) => b.mtime - a.mtime);
+}
+
 /** 解析 Range 头。返回 {start,end} | "invalid"（416）| null（无 Range，整文件）。 */
 export function parseRange(rangeHeader: string | undefined, size: number): { start: number; end: number } | "invalid" | null {
   if (!rangeHeader) return null;
@@ -98,33 +166,21 @@ export function registerFileRelay(app: Express): void {
     res.send(RELAY_HTML);
   });
 
-  // ── 列表 ──
+  // ── 列表（递归，name 为相对路径，支持文件夹）──
   app.get("/relay/api/list", (req, res) => {
     if (!checkToken(req, res)) return;
-    const dir = ensureDir();
-    fs.readdir(dir, (err, names) => {
-      if (err) { res.json({ files: [] }); return; }
-      const files = names
-        .filter((n) => !n.endsWith(".part"))
-        .map((n) => {
-          try {
-            const st = fs.statSync(path.join(dir, n));
-            return st.isFile() ? { name: n, size: st.size, mtime: st.mtimeMs } : null;
-          } catch { return null; }
-        })
-        .filter((x): x is { name: string; size: number; mtime: number } => x !== null)
-        .sort((a, b) => b.mtime - a.mtime);
-      res.json({ files });
-    });
+    try { res.json({ files: walkRelay() }); } catch { res.json({ files: [] }); }
   });
 
-  // ── 流式上传（覆盖同名）──
+  // ── 流式上传（覆盖同名）：?path= 支持子目录（文件夹上传）──
   app.put("/relay/api/upload/:name", (req, res) => {
     if (!checkToken(req, res)) return;
-    const name = safeName(req.params.name);
-    if (!name) { res.status(400).json({ error: "非法文件名" }); return; }
-    const dir = ensureDir();
-    const finalPath = path.join(dir, name);
+    const rel = pickRel(req);
+    if (!rel) { res.status(400).json({ error: "非法文件名/路径" }); return; }
+    ensureDir();
+    const finalPath = fullOf(rel);
+    if (!finalPath) { res.status(400).json({ error: "非法路径" }); return; }
+    fs.mkdirSync(path.dirname(finalPath), { recursive: true });
     const tmpPath = `${finalPath}.${Date.now()}.part`;
     const max = relayMaxBytes();
     const ws = fs.createWriteStream(tmpPath);
@@ -137,7 +193,7 @@ export function registerFileRelay(app: Express): void {
     void pipeline(req, ws)
       .then(() => {
         fs.renameSync(tmpPath, finalPath);
-        res.json({ ok: true, name, size: bytes, download: `/relay/api/download/${encodeURIComponent(name)}` });
+        res.json({ ok: true, name: rel, size: bytes, download: `/relay/api/download/${encodeURIComponent(path.basename(rel))}?path=${encodeURIComponent(rel)}` });
       })
       .catch((err: unknown) => {
         try { fs.unlinkSync(tmpPath); } catch { /* ignore */ }
@@ -147,17 +203,19 @@ export function registerFileRelay(app: Express): void {
       });
   });
 
-  // ── 流式下载（支持 Range 续传）──
+  // ── 流式下载（支持 Range 续传）：?path= 支持子目录 ──
   app.get("/relay/api/download/:name", (req, res) => {
     if (!checkToken(req, res)) return;
-    const name = safeName(req.params.name);
-    if (!name) { res.status(400).json({ error: "非法文件名" }); return; }
-    const full = path.join(relayDir(), name);
+    const rel = pickRel(req);
+    if (!rel) { res.status(400).json({ error: "非法文件名/路径" }); return; }
+    const full = fullOf(rel);
+    if (!full) { res.status(400).json({ error: "非法路径" }); return; }
+    const base = path.basename(rel);
     fs.stat(full, (err, st) => {
       if (err || !st.isFile()) { res.status(404).json({ error: "文件不存在" }); return; }
       res.setHeader("Accept-Ranges", "bytes");
-      res.setHeader("Content-Type", mimeFromName(name));
-      res.setHeader("Content-Disposition", `attachment; filename*=UTF-8''${encodeURIComponent(name)}`);
+      res.setHeader("Content-Type", mimeFromName(base));
+      res.setHeader("Content-Disposition", `attachment; filename*=UTF-8''${encodeURIComponent(base)}`);
       const range = parseRange(req.headers.range, st.size);
       if (range === "invalid") {
         res.status(416).setHeader("Content-Range", `bytes */${st.size}`);
@@ -176,13 +234,16 @@ export function registerFileRelay(app: Express): void {
     });
   });
 
-  // ── 删除 ──
+  // ── 删除：?path= 支持子目录；删后清理变空的目录 ──
   app.delete("/relay/api/delete/:name", (req, res) => {
     if (!checkToken(req, res)) return;
-    const name = safeName(req.params.name);
-    if (!name) { res.status(400).json({ error: "非法文件名" }); return; }
-    fs.unlink(path.join(relayDir(), name), (err) => {
+    const rel = pickRel(req);
+    if (!rel) { res.status(400).json({ error: "非法文件名/路径" }); return; }
+    const full = fullOf(rel);
+    if (!full) { res.status(400).json({ error: "非法路径" }); return; }
+    fs.unlink(full, (err) => {
       if (err) { res.status(404).json({ error: "删除失败或文件不存在" }); return; }
+      pruneEmptyDirs(path.dirname(full));
       res.json({ ok: true });
     });
   });
@@ -250,11 +311,13 @@ const RELAY_HTML = `<!doctype html>
     <div class="logo"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg></div>
     <h1>局域网文件中转</h1>
   </div>
-  <div class="sub">把大文件拖到下面上传，内网其它机器即可下载。支持断点续传（Range），适合几十 GB 大文件。</div>
+  <div class="sub">把大文件或整个文件夹拖到下面上传，内网其它机器即可下载。支持断点续传（Range），适合几十 GB 大文件。</div>
   <div id="drop" class="drop">
-    <div class="big"><b>点击选择</b> 或把文件拖到这里</div>
-    <div class="hint">支持多文件 · 流式直传，不限大小</div>
+    <div class="big"><b>点击选择文件</b> 或把文件/文件夹拖到这里</div>
+    <div class="hint">支持多文件与整个文件夹（保留目录结构）· 流式直传，不限大小</div>
+    <button id="pickdir" class="btn" style="margin-top:12px">选择文件夹</button>
     <input id="file" type="file" multiple style="display:none">
+    <input id="dir" type="file" webkitdirectory directory multiple style="display:none">
   </div>
   <div class="bar" id="bar"><i id="barfill"></i></div>
   <div id="status"></div>
@@ -289,7 +352,8 @@ async function refresh(){
   document.getElementById('empty').style.display = j.files.length? 'none':'block';
   document.getElementById('cnt').textContent = j.files.length? (j.files.length+' 个文件'):'';
   for(const f of j.files){
-    const dl='/relay/api/download/'+encodeURIComponent(f.name);
+    const enc=encodeURIComponent(f.name);
+    const dl='/relay/api/download/'+encodeURIComponent(f.name.split('/').pop())+'?path='+enc;
     const row=document.createElement('div'); row.className='row';
     row.innerHTML='<div class="ic">'+esc(ext(f.name))+'</div>'+
       '<div class="meta"><div class="fn" title="'+esc(f.name)+'">'+esc(f.name)+'</div>'+
@@ -300,26 +364,48 @@ async function refresh(){
   }
   box.querySelectorAll('button.del').forEach(b=>b.onclick=async()=>{
     if(!confirm('删除 '+b.dataset.n+' ?'))return;
-    await fetch('/relay/api/delete/'+encodeURIComponent(b.dataset.n),{method:'DELETE'}); refresh();
+    await fetch('/relay/api/delete/'+encodeURIComponent(b.dataset.n.split('/').pop())+'?path='+encodeURIComponent(b.dataset.n),{method:'DELETE'}); refresh();
   });
 }
-const drop=document.getElementById('drop'), fileInput=document.getElementById('file');
+const drop=document.getElementById('drop'), fileInput=document.getElementById('file'), dirInput=document.getElementById('dir');
 const bar=document.getElementById('bar'), fill=document.getElementById('barfill'), statusEl=document.getElementById('status');
-drop.onclick=()=>fileInput.click();
-fileInput.onchange=()=>{ uploadAll([...fileInput.files]); fileInput.value=''; };
+drop.onclick=(e)=>{ if(e.target.id!=='pickdir') fileInput.click(); };
+document.getElementById('pickdir').onclick=(e)=>{ e.stopPropagation(); dirInput.click(); };
+fileInput.onchange=()=>{ uploadList([...fileInput.files].map(f=>({file:f, rel:f.name}))); fileInput.value=''; };
+dirInput.onchange=()=>{ uploadList([...dirInput.files].map(f=>({file:f, rel:f.webkitRelativePath||f.name}))); dirInput.value=''; };
 ['dragenter','dragover'].forEach(e=>drop.addEventListener(e,ev=>{ev.preventDefault();drop.classList.add('over');}));
 ['dragleave','drop'].forEach(e=>drop.addEventListener(e,ev=>{ev.preventDefault();drop.classList.remove('over');}));
-drop.addEventListener('drop',ev=>{ uploadAll([...ev.dataTransfer.files]); });
-async function uploadAll(files){ for(const f of files){ await uploadOne(f); } refresh(); }
-function uploadOne(file){ return new Promise(res=>{
+drop.addEventListener('drop',async ev=>{ const items=await itemsFromDrop(ev.dataTransfer); uploadList(items); });
+// 拖入：用 webkitGetAsEntry 递归目录，保留相对路径；不支持则退回平铺 files
+async function itemsFromDrop(dt){
+  const entries=[...(dt.items||[])].map(i=>i.webkitGetAsEntry&&i.webkitGetAsEntry()).filter(Boolean);
+  if(!entries.length) return [...dt.files].map(f=>({file:f, rel:f.name}));
+  const out=[];
+  async function walk(entry, prefix){
+    if(entry.isFile){ const file=await new Promise((r,j)=>entry.file(r,j)); out.push({file, rel:prefix+entry.name}); }
+    else if(entry.isDirectory){ const rd=entry.createReader(); let batch;
+      do{ batch=await new Promise((r,j)=>rd.readEntries(r,j)); for(const c of batch) await walk(c, prefix+entry.name+'/'); }while(batch.length);
+    }
+  }
+  for(const e of entries) await walk(e,'');
+  return out;
+}
+async function uploadList(items){
+  let i=0;
+  for(const it of items){ i++; await uploadOne(it.file, it.rel, i, items.length); }
+  statusEl.textContent = items.length>1? ('✓ 已上传 '+items.length+' 个文件') : statusEl.textContent;
+  refresh();
+}
+function uploadOne(file, rel, idx, total){ return new Promise(res=>{
   const xhr=new XMLHttpRequest();
-  xhr.open('PUT','/relay/api/upload/'+encodeURIComponent(file.name));
+  xhr.open('PUT','/relay/api/upload/'+encodeURIComponent(rel.split('/').pop())+'?path='+encodeURIComponent(rel));
   bar.style.display='block';
+  const tag = total>1? ('['+idx+'/'+total+'] ') : '';
   xhr.upload.onprogress=e=>{ if(e.lengthComputable){ const p=e.loaded/e.total*100; fill.style.width=p+'%';
-    statusEl.textContent='上传 '+file.name+'  '+human(e.loaded)+' / '+human(e.total)+'  ('+p.toFixed(1)+'%)'; } };
+    statusEl.textContent=tag+'上传 '+rel+'  '+human(e.loaded)+' / '+human(e.total)+'  ('+p.toFixed(1)+'%)'; } };
   xhr.onload=()=>{ fill.style.width='0'; bar.style.display='none';
-    statusEl.textContent = xhr.status<300? ('✓ 已上传 '+file.name) : ('✗ 上传失败：'+file.name+' '+xhr.responseText); res(); };
-  xhr.onerror=()=>{ bar.style.display='none'; statusEl.textContent='✗ 上传出错：'+file.name; res(); };
+    statusEl.textContent = xhr.status<300? (tag+'✓ 已上传 '+rel) : (tag+'✗ 上传失败：'+rel+' '+xhr.responseText); res(); };
+  xhr.onerror=()=>{ bar.style.display='none'; statusEl.textContent=tag+'✗ 上传出错：'+rel; res(); };
   xhr.send(file);
 }); }
 refresh();
