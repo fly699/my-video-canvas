@@ -545,6 +545,7 @@ export const ComfyuiImageNode = memo(function ComfyuiImageNode({ id, selected, d
       onAssetImageDrop={(urls) => updateNodeData(id, { referenceImageUrl: urls[0], ...(payload.workflowTemplate !== "img2img" && payload.workflowTemplate !== "inpaint" ? { workflowTemplate: "img2img" } : {}) })}
       headerTooltip={modelTip || undefined}
       hideTypeBadge
+      leftDock={refStrip.strip}
       headerRight={
         <span className="flex items-center gap-1.5">
           {cornerText && (
@@ -1793,7 +1794,6 @@ export const ComfyuiImageNode = memo(function ComfyuiImageNode({ id, selected, d
           onNavigate={(idx) => setIpZoomIndex(idx)}
         />
       )}
-      {refStrip.strip}
     </BaseNode>
   );
 });

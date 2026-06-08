@@ -1105,7 +1105,20 @@ export const VideoTaskNode = memo(function VideoTaskNode({ id, selected, data }:
         >
           <Layers style={{ width: 11, height: 11 }} /> {refImages.images.length}
         </button>
-      ) : undefined}>
+      ) : undefined}
+      leftDock={
+        <ReferenceImageStrip
+          images={refImages.images}
+          open={stripOpen}
+          accent={accentColor}
+          onClose={() => setStripOpen(false)}
+          onRemove={refImages.removeId}
+          onMove={refImages.moveId}
+          onInsertUrls={(urls, index) => refImages.insertUrls(urls, index, "drop")}
+          onDropFiles={(files, index) => void uploadRefFiles(files, index)}
+          onZoom={(i) => setRefZoom(i)}
+        />
+      }>
       <div className="flex flex-col h-full p-3.5 gap-3 overflow-auto">
 
         {/* ── Status pill ── */}
@@ -2034,18 +2047,6 @@ export const VideoTaskNode = memo(function VideoTaskNode({ id, selected, data }:
           onNavigate={(idx) => setRefZoom(idx)}
         />
       )}
-
-      <ReferenceImageStrip
-        images={refImages.images}
-        open={stripOpen}
-        accent={accentColor}
-        onClose={() => setStripOpen(false)}
-        onRemove={refImages.removeId}
-        onMove={refImages.moveId}
-        onInsertUrls={(urls, index) => refImages.insertUrls(urls, index, "drop")}
-        onDropFiles={(files, index) => void uploadRefFiles(files, index)}
-        onZoom={(i) => setRefZoom(i)}
-      />
 
       {reachabilityDialog}
     </BaseNode>
