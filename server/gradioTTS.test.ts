@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { normalizeBase, resolveAudioUrl } from "./_core/gradioTTS";
+import { normalizeBase, resolveAudioUrl, describeFetchError } from "./_core/gradioTTS";
 
 describe("gradioTTS.normalizeBase", () => {
   it("去掉末尾斜杠并补全 http 协议", () => {
@@ -38,5 +38,24 @@ describe("gradioTTS.resolveAudioUrl", () => {
 
   it("既无 url 又无 path 时抛错", () => {
     expect(() => resolveAudioUrl(base, "/gradio_api", [{ foo: 1 }])).toThrow();
+  });
+});
+
+describe("gradioTTS.describeFetchError", () => {
+  const url = "http://172.16.0.177:8808";
+  const mk = (code: string) => Object.assign(new TypeError("fetch failed"), { cause: { code, message: `connect ${code}` } });
+
+  it("ECONNREFUSED 提示端口未监听/绑定 127.0.0.1", () => {
+    expect(() => describeFetchError(mk("ECONNREFUSED"), "连接 Gradio 服务", url)).toThrow(/连接被拒绝/);
+  });
+  it("ETIMEDOUT 提示网络不通/防火墙", () => {
+    expect(() => describeFetchError(mk("ETIMEDOUT"), "连接 Gradio 服务", url)).toThrow(/连接超时/);
+  });
+  it("ENOTFOUND 提示解析失败", () => {
+    expect(() => describeFetchError(mk("ENOTFOUND"), "连接 Gradio 服务", url)).toThrow(/解析失败/);
+  });
+  it("报错文案包含目标 URL 与底层 code", () => {
+    expect(() => describeFetchError(mk("ECONNREFUSED"), "连接 Gradio 服务", url)).toThrow(/172\.16\.0\.177:8808/);
+    expect(() => describeFetchError(mk("ECONNREFUSED"), "连接 Gradio 服务", url)).toThrow(/ECONNREFUSED/);
   });
 });

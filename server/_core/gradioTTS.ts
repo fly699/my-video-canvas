@@ -41,6 +41,37 @@ export function normalizeBase(u: string): string {
   return s;
 }
 
+/** 把 Node 的笼统 "fetch failed" 翻译成可定位根因的中文报错（含底层 code）。 */
+export function describeFetchError(err: unknown, what: string, url: string): never {
+  const e = err as { name?: string; message?: string; cause?: { code?: string; message?: string } };
+  const code = e?.cause?.code;
+  const causeMsg = e?.cause?.message ?? e?.message ?? String(err);
+  let hint: string;
+  if (e?.name === "TimeoutError" || code === "UND_ERR_CONNECT_TIMEOUT" || code === "ETIMEDOUT") {
+    hint = "连接超时：后端与该地址网络不通（多为不在同一局域网或被防火墙拦截）";
+  } else if (code === "ECONNREFUSED") {
+    hint = "连接被拒绝：目标端口未在监听。常见原因是 Gradio 仅绑定了 127.0.0.1——请用 server_name=\"0.0.0.0\" 启动，并确认端口与防火墙";
+  } else if (code === "ENOTFOUND" || code === "EAI_AGAIN") {
+    hint = "域名/主机解析失败：地址写错或 DNS 不可达";
+  } else if (code === "ECONNRESET") {
+    hint = "连接被重置：可能是 https/http 协议不匹配或反代异常";
+  } else {
+    hint = "连接失败";
+  }
+  throw new Error(
+    `${what}失败（${hint}${code ? `，${code}` : ""}）。注意：是「部署后端的服务器」去访问该地址、不是浏览器，请确认后端所在机器能访问 ${url}。底层信息：${causeMsg}`,
+  );
+}
+
+/** 带诊断的 fetch：连接级失败时抛出可定位根因的中文报错。 */
+async function gfetch(url: string, init: RequestInit, what: string): Promise<Response> {
+  try {
+    return await fetch(url, init);
+  } catch (e) {
+    describeFetchError(e, what, url);
+  }
+}
+
 /** 读取参考音频字节：本地 /manus-storage/ 走存储读取，绝对 URL 直接 fetch。 */
 async function fetchRefBytes(urlOrPath: string): Promise<{ buf: Buffer; mime: string; name: string }> {
   if (urlOrPath.startsWith("/manus-storage/")) {
@@ -52,7 +83,7 @@ async function fetchRefBytes(urlOrPath: string): Promise<{ buf: Buffer; mime: st
     const ext = (contentType ?? "").includes("mpeg") || (contentType ?? "").includes("mp3") ? "mp3" : "wav";
     return { buf, mime: contentType ?? "audio/wav", name: `ref.${ext}` };
   }
-  const res = await fetch(urlOrPath, { signal: AbortSignal.timeout(30_000) });
+  const res = await gfetch(urlOrPath, { signal: AbortSignal.timeout(30_000) }, "读取参考音频");
   if (!res.ok) throw new Error(`读取参考音频失败 (${res.status})：${urlOrPath.slice(0, 120)}`);
   const mime = res.headers.get("content-type") ?? "audio/wav";
   const ext = mime.includes("mpeg") || mime.includes("mp3") ? "mp3" : "wav";
@@ -67,11 +98,11 @@ async function uploadRef(
   const form = new FormData();
   form.append("files", new Blob([new Uint8Array(ref.buf)], { type: ref.mime }), ref.name);
   for (const prefix of ["/gradio_api", ""]) {
-    const res = await fetch(`${base}${prefix}/upload`, {
+    const res = await gfetch(`${base}${prefix}/upload`, {
       method: "POST",
       body: form,
       signal: AbortSignal.timeout(60_000),
-    });
+    }, "连接 Gradio 服务（上传参考音频）");
     if (res.status === 404) continue; // 换前缀重试
     if (!res.ok) {
       const t = await res.text().catch(() => "");
@@ -92,12 +123,12 @@ async function uploadRef(
 
 /** 提交调用，返回 event_id。 */
 async function submitCall(base: string, prefix: string, apiName: string, data: unknown[]): Promise<string> {
-  const res = await fetch(`${base}${prefix}/call/${apiName}`, {
+  const res = await gfetch(`${base}${prefix}/call/${apiName}`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ data }),
     signal: AbortSignal.timeout(20_000),
-  });
+  }, "提交 Gradio 调用");
   if (!res.ok) {
     const t = await res.text().catch(() => "");
     if (res.status === 404) throw new Error(`Gradio 端点 "/${apiName}" 不存在 (404)。响应：${t.slice(0, 200)}`);
@@ -110,10 +141,10 @@ async function submitCall(base: string, prefix: string, apiName: string, data: u
 
 /** 读取 SSE 结果流，返回 complete 事件里的输出数组。 */
 async function readSseResult(base: string, prefix: string, apiName: string, eventId: string): Promise<unknown> {
-  const res = await fetch(`${base}${prefix}/call/${apiName}/${eventId}`, {
+  const res = await gfetch(`${base}${prefix}/call/${apiName}/${eventId}`, {
     headers: { Accept: "text/event-stream" },
     signal: AbortSignal.timeout(300_000), // 长合成最多等 5 分钟
-  });
+  }, "读取 Gradio 结果流");
   if (!res.ok || !res.body) throw new Error(`Gradio 结果流获取失败 (${res.status})`);
   const reader = res.body.getReader();
   const decoder = new TextDecoder();
@@ -199,7 +230,7 @@ export async function synthesizeGradioTTS(opts: SynthesizeGradioTTSOptions): Pro
   const { url: gradioUrl, duration } = resolveAudioUrl(base, prefix, result);
 
   // 4) 强制下载并重新落盘到对象存储（本地 Gradio URL 浏览器多不可达）
-  const audioRes = await fetch(gradioUrl, { signal: AbortSignal.timeout(120_000) });
+  const audioRes = await gfetch(gradioUrl, { signal: AbortSignal.timeout(120_000) }, "下载 Gradio 生成音频");
   if (!audioRes.ok) throw new Error(`下载 Gradio 生成音频失败 (${audioRes.status})`);
   const buf = Buffer.from(await audioRes.arrayBuffer());
   const ct = audioRes.headers.get("content-type") ?? "audio/wav";
