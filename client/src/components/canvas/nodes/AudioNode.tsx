@@ -446,17 +446,16 @@ export const AudioNode = memo(function AudioNode({ id, selected, data }: Props) 
       return;
     }
     const isVox = modelIsVoxCPM(model);
-    // 本地 VoxCPM：必须有服务地址 + 参考音频（上传或上游）。
+    // 本地 VoxCPM：需服务地址；参考音频可选（上传或上游接入），不给则用模型自带/随机音色。
     if (isVox) {
       if (!payload.ttsGradioBaseUrl?.trim()) { toast.error("请先填写本地 VoxCPM 的 Gradio 服务地址"); return; }
       const refUrl = payload.ttsRefWavUrl?.trim() || detectUpstreamAudioUrl(id)?.url;
-      if (!refUrl) { toast.error("VoxCPM 需要参考音频：请上传，或从上游音频/素材节点连入"); return; }
       ttsMutation.mutate({
         model: "voxcpm-local",
         text: payload.ttsText,
         projectId: data.projectId,
         customBaseUrl: payload.ttsGradioBaseUrl.trim(),
-        refWavUrl: refUrl,
+        refWavUrl: refUrl || undefined,
         controlInstruction: payload.ttsControlInstruction?.trim() || undefined,
         cfgValue: payload.ttsCfg ?? 2,
         ditSteps: payload.ttsDitSteps ?? 10,
@@ -781,9 +780,9 @@ export const AudioNode = memo(function AudioNode({ id, selected, data }: Props) 
                     onBlur={(e) => { e.currentTarget.style.borderColor = BORDER_DEFAULT; }}
                   />
                 </div>
-                {/* 参考音频（克隆音色）：上传 or 上游接入 */}
+                {/* 参考音频（可选，克隆音色）：上传 or 上游接入；不给则用模型自带/随机音色 */}
                 <div>
-                  <label style={labelStyle}>参考音频（克隆音色）</label>
+                  <label style={labelStyle}>参考音频（可选，克隆音色）</label>
                   {payload.ttsRefWavUrl ? (
                     <div className="flex items-center gap-2" style={{ ...fieldStyle, padding: "6px 8px" }}>
                       <Volume2 style={{ width: 12, height: 12, color: accent, flexShrink: 0 }} />
@@ -826,7 +825,7 @@ export const AudioNode = memo(function AudioNode({ id, selected, data }: Props) 
                   </button>
                   {!payload.ttsRefWavUrl && !upstreamRef && (
                     <p style={{ fontSize: 10, color: "var(--c-t4)", marginTop: 4, lineHeight: 1.5 }}>
-                      也可从上游「音频 / 素材(音频)」节点连线提供参考音色
+                      可不填：留空则用模型自带/随机音色；也可上传或从上游「音频 / 素材(音频)」节点连线克隆音色
                     </p>
                   )}
                 </div>
