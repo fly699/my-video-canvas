@@ -22,6 +22,10 @@ interface Props {
   readOnly?: boolean;
   /** 顶部标题文案（默认「参考图」）。 */
   title?: string;
+  /** 鼠标进/出本吸附窗（用于「悬停临时展开」期间保持展开，便于点击钉住）。 */
+  onHoverChange?: (hovering: boolean) => void;
+  /** 点击吸附窗（非关闭按钮）→ 钉住持久展开。 */
+  onPin?: () => void;
 }
 
 /** Pull image URLs out of a drag payload (asset-list JSON, then uri/text). */
@@ -49,7 +53,7 @@ function urlsFromDrag(dt: DataTransfer): string[] {
  */
 export function ReferenceImageStrip({
   images, open, onClose, onRemove, onMove, onInsertUrls, onDropFiles, onZoom, accent = "oklch(0.72 0.20 330)",
-  readOnly = false, title = "参考图",
+  readOnly = false, title = "参考图", onHoverChange, onPin,
 }: Props) {
   const listRef = useRef<HTMLDivElement>(null);
   const [dropIndex, setDropIndex] = useState<number | null>(null);
@@ -106,13 +110,16 @@ export function ReferenceImageStrip({
       }}
       onMouseDown={(e) => e.stopPropagation()}
       onWheel={(e) => e.stopPropagation()}
+      onMouseEnter={() => onHoverChange?.(true)}
+      onMouseLeave={() => onHoverChange?.(false)}
+      onClick={() => onPin?.()}
       onDragOver={readOnly ? undefined : onDragOver}
       onDragLeave={readOnly ? undefined : () => setDropIndex(null)}
       onDrop={readOnly ? undefined : onDrop}
     >
       <div className="flex items-center justify-between" style={{ paddingInline: 2 }}>
         <span style={{ fontSize: 10, color: "var(--c-t3)", fontWeight: 600 }}>{title} {images.length}</span>
-        <button onClick={onClose} className="nodrag" style={{ color: "var(--c-t4)", lineHeight: 0 }} title="收起">
+        <button onClick={(e) => { e.stopPropagation(); onClose(); }} className="nodrag" style={{ color: "var(--c-t4)", lineHeight: 0 }} title="收起">
           <X style={{ width: 12, height: 12 }} />
         </button>
       </div>

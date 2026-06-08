@@ -15,7 +15,7 @@ import { detectUpstreamPrompt, detectUpstreamImagesExpanded } from "../../../lib
 import { connectedEffectPrompts, appendEffectPrompts } from "../../../lib/effectPrompt";
 import { ReferenceImageStrip } from "../ReferenceImageStrip";
 import { PromptDock } from "../PromptDock";
-import { useNodeDocks, DockToggleButtons } from "../../../hooks/useNodeDocks";
+import { useNodeDocks } from "../../../hooks/useNodeDocks";
 import { Layers } from "lucide-react";
 import type { ImageGenNodeData, ImageGenModel } from "../../../../../shared/types";
 import { trpc } from "@/lib/trpc";
@@ -480,17 +480,6 @@ export const ImageGenNode = memo(function ImageGenNode({ id, selected, data }: P
       onRun={handleGenerate} running={genMutation.isPending} canRun={!!payload.prompt?.trim()} hasResult={!!payload.imageUrl}
       onAssetImageDrop={(urls) => refImages.addUrls(urls, "drop")}
       onHeaderHoverChange={docks.onHeaderHoverChange}
-      headerRight={
-        <DockToggleButtons
-          refCount={refImages.images.length}
-          hasPrompt={!!finalPromptDisplay.trim()}
-          refActive={docks.refActive}
-          promptActive={docks.promptActive}
-          accent={accent}
-          onToggleRef={docks.toggleRef}
-          onTogglePrompt={docks.togglePrompt}
-        />
-      }
       leftDock={
         <>
           <ReferenceImageStrip
@@ -503,6 +492,8 @@ export const ImageGenNode = memo(function ImageGenNode({ id, selected, data }: P
             onInsertUrls={(urls, index) => refImages.insertUrls(urls, index, "drop")}
             onDropFiles={(files, index) => void uploadFilesToRef(files, index)}
             onZoom={(i) => setRefZoom(i)}
+            onHoverChange={docks.onDockHoverChange}
+            onPin={docks.pinRef}
           />
           <PromptDock
             open={docks.promptOpen}
@@ -511,6 +502,8 @@ export const ImageGenNode = memo(function ImageGenNode({ id, selected, data }: P
             source={hasCharInject ? "含角色" : undefined}
             accent={accent}
             onClose={() => docks.setPromptOpen(false)}
+            onHoverChange={docks.onDockHoverChange}
+            onPin={docks.pinPrompt}
           />
         </>
       }>
