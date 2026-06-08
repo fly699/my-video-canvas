@@ -10,6 +10,8 @@ import { Sparkles, Loader2, Upload, X, Languages, ScanText } from "lucide-react"
 import { ZoomableImage } from "../ZoomableImage";
 import { LLMModelPicker, type LLMModelId } from "../LLMModelPicker";
 import { NodeTextArea, NodeInput } from "../NodeTextInput";
+import { useNodeDocks } from "../../../hooks/useNodeDocks";
+import { PromptDock } from "../PromptDock";
 
 interface Props {
   id: string;
@@ -174,11 +176,29 @@ export const PromptNode = memo(function PromptNode({ id, selected, data }: Props
 
   const canRun = !!payload.positivePrompt?.trim() || (!!payload.referenceImageUrl && !!payload.enableAnalyze);
 
+  // 顶部「提示词」吸附窗：展示本节点输出、传给下游的正向/负向提示词。无按钮：悬停标题栏
+  // 1 秒临时展开、点击钉住。本节点本身就是提示词编辑器，吸附窗带简要说明以免与正文混淆。
+  const docks = useNodeDocks(id, { hasRef: false, hasPrompt: !!payload.positivePrompt?.trim() });
+
   return (
     <BaseNode
       id={id} selected={selected} nodeType="prompt" title={data.title} minHeight={200} resizable heroMedia={heroMedia}
       onRun={handleRunPipeline} running={busy === "pipeline"} canRun={canRun} hasResult={!!payload.positivePrompt?.trim()}
       onAssetImageDrop={(urls) => updateNodeData(id, { referenceImageUrl: urls[0] })}
+      onHeaderHoverChange={docks.onHeaderHoverChange}
+      leftDock={
+        <PromptDock
+          open={docks.promptOpen}
+          text={payload.positivePrompt ?? ""}
+          negText={payload.negativePrompt}
+          label="提示词"
+          note="本节点输出的提示词 · 连线后传给下游节点（图像/视频生成等）"
+          accent={accentColor}
+          onClose={() => docks.setPromptOpen(false)}
+          onHoverChange={docks.onDockHoverChange}
+          onPin={docks.pinPrompt}
+        />
+      }
     >
       <div className="flex flex-col h-full p-3.5 gap-3">
         {/* Collapsed summary (professional mode): fills the remaining node height and
