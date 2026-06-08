@@ -115,11 +115,13 @@ export const ImageGenNode = memo(function ImageGenNode({ id, selected, data }: P
   // image_gen advertises "← 提示词 / 分镜" as inputs but never consumed them. The
   // selector returns a primitive string, so it only re-renders when that text changes.
   const upstreamPrompt = useCanvasStore((s) => detectUpstreamPrompt(id, s.edges, s.nodes).positive);
+  const upstreamNeg = useCanvasStore((s) => detectUpstreamPrompt(id, s.edges, s.nodes).negative);
   useEffect(() => {
-    if (!upstreamPrompt) return;
-    if (payload.prompt && payload.prompt.trim()) return; // fill-only-when-blank
-    updateNodeData(id, { prompt: upstreamPrompt }, true);
-  }, [upstreamPrompt, payload.prompt, id, updateNodeData]);
+    const patch: Record<string, string> = {};
+    if (upstreamPrompt && !payload.prompt?.trim()) patch.prompt = upstreamPrompt;
+    if (upstreamNeg && !payload.negativePrompt?.trim()) patch.negativePrompt = upstreamNeg;
+    if (Object.keys(patch).length) updateNodeData(id, patch, true); // fill-only-when-blank
+  }, [upstreamPrompt, upstreamNeg, payload.prompt, payload.negativePrompt, id, updateNodeData]);
   const [uploading, setUploading] = useState(false);
   const [lightboxIndex, setLightboxIndex] = useState<number | null>(null);
   const [refZoom, setRefZoom] = useState<number | null>(null);
