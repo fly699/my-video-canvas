@@ -8,7 +8,7 @@ import { ComfyServerUrlField } from "./ComfyServerUrlField";
 import { SyncConfigDialog } from "../SyncConfigDialog";
 import { NodeConfigTabs } from "../NodeConfigTabs";
 import { useCanvasStore } from "../../../hooks/useCanvasStore";
-import { connectedCharacters, connectedCharacterRefImages } from "../../../lib/characterConditioning";
+import { effectiveCharacters, effectiveCharacterRefImages, stripCharacterMentions } from "../../../lib/characterConditioning";
 import { mergeCharactersIntoPrompt } from "../../../lib/characterPrompt";
 import { usePreferUpstreamRefSource, useAutoPreferUpstreamRefSource } from "../mediaReachability";
 import { WatermarkedVideo } from "@/components/WatermarkedVideo";
@@ -213,7 +213,7 @@ export const ComfyuiVideoNode = memo(function ComfyuiVideoNode({ id, selected, d
     // connectedCharacterRefImages) — consistent with image_gen / video_task folding.
     const { nodes: gnodes, edges: gedges } = useCanvasStore.getState();
     const charRef = needsRef && !payload.referenceImageUrl
-      ? connectedCharacterRefImages(id, gedges, gnodes)[0]
+      ? effectiveCharacterRefImages(id, payload.prompt, gedges, gnodes)[0]
       : undefined;
     const effectiveRefUrl = payload.referenceImageUrl || charRef;
     if (needsRef && !effectiveRefUrl) {
@@ -227,7 +227,7 @@ export const ComfyuiVideoNode = memo(function ComfyuiVideoNode({ id, selected, d
     // Inject connected characters' profile text into the prompt (visual refs/LoRA
     // are filled separately). Not persisted.
     // Cap to the server's prompt max(2000); preserves the base prompt, trims injection.
-    const finalPrompt = mergeCharactersIntoPrompt(payload.prompt ?? "", connectedCharacters(id, gedges, gnodes), 2000);
+    const finalPrompt = mergeCharactersIntoPrompt(stripCharacterMentions(payload.prompt, gnodes), effectiveCharacters(id, payload.prompt, gedges, gnodes), 2000);
     genMutation.mutate({
       nodeId: id,
       projectId: data.projectId,

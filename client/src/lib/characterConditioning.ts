@@ -85,6 +85,90 @@ export function connectedSceneRefImages(
   return out;
 }
 
+// ── @角色 提及解析 ────────────────────────────────────────────────────────────
+// 在文本框输入「@角色名」是一种「无需连线」就引用画布上角色/场景的方式。生成时
+// 必须把这些 @提及 当成和「连线」等价：注入该角色的结构化描述 + 参考图，并把
+// 字面量「@名字」从 prompt 里去掉（否则模型只看到一串无意义的 "@名字"）。
+
+/** 角色/场景节点的显示名（person 用 name，scene 用 sceneName）。 */
+export function charDisplayName(p: CharacterNodeData): string {
+  return (((p.characterKind ?? "person") === "scene" ? p.sceneName : p.name) ?? "").trim();
+}
+
+/** prompt 里被「@名字」提及到的角色/场景（去重）。长名优先：匹配后「消费」掉该段，
+ *  避免 @张三 在 @张三丰 内部被误匹配。 */
+export function mentionedCharacters(prompt: string | undefined, nodes: CharNodeLike[]): CharacterNodeData[] {
+  let scan = prompt ?? "";
+  if (!scan.includes("@")) return [];
+  const named = nodes
+    .filter((n) => n.data.nodeType === "character")
+    .map((n) => ({ p: n.data.payload as CharacterNodeData, name: charDisplayName(n.data.payload as CharacterNodeData) }))
+    .filter((x) => x.name.length > 0)
+    .sort((a, b) => b.name.length - a.name.length);
+  const out: CharacterNodeData[] = [];
+  const seen = new Set<string>();
+  for (const { p, name } of named) {
+    const token = "@" + name;
+    if (!scan.includes(token)) continue;
+    scan = scan.split(token).join(" "); // 消费匹配段，短名不再命中长名内部
+    if (seen.has(name)) continue;
+    seen.add(name);
+    out.push(p);
+  }
+  return out;
+}
+
+/** 去掉 prompt 里所有「@名字」字面量（生成改用结构化注入，不让模型看到 "@名字"）。 */
+export function stripCharacterMentions(prompt: string | undefined, nodes: CharNodeLike[]): string {
+  let text = prompt ?? "";
+  if (!text.includes("@")) return text;
+  for (const c of mentionedCharacters(text, nodes)) {
+    const name = charDisplayName(c);
+    if (name) text = text.split("@" + name).join(" ");
+  }
+  return text.replace(/[ \t]{2,}/g, " ").replace(/\s+([，,。.!！?？])/g, "$1").trim();
+}
+
+/** 连线 + @提及 合并后的「实际生效角色」：连线优先（位置序），@提及补充未连线者，按名去重。 */
+export function effectiveCharacters(
+  targetId: string,
+  prompt: string | undefined,
+  edges: { source: string; target: string }[],
+  nodes: CharNodeLike[],
+): CharacterNodeData[] {
+  const conn = connectedCharacters(targetId, edges, nodes);
+  const seen = new Set(conn.map(charDisplayName));
+  const extra = mentionedCharacters(prompt, nodes).filter((c) => !seen.has(charDisplayName(c)));
+  return [...conn, ...extra];
+}
+
+function dedupeRefImages(chars: CharacterNodeData[]): string[] {
+  const out: string[] = [];
+  const seen = new Set<string>();
+  for (const c of chars) {
+    for (const u of characterReferenceImages(c)) {
+      if (!seen.has(u)) { seen.add(u); out.push(u); }
+    }
+  }
+  return out;
+}
+
+/** PERSON 参考图（连线 + @提及，去重，连线优先）。 */
+export function effectiveCharacterRefImages(
+  targetId: string, prompt: string | undefined,
+  edges: { source: string; target: string }[], nodes: CharNodeLike[],
+): string[] {
+  return dedupeRefImages(effectiveCharacters(targetId, prompt, edges, nodes).filter((c) => (c.characterKind ?? "person") !== "scene"));
+}
+
+/** SCENE 参考图（连线 + @提及，去重，连线优先）。 */
+export function effectiveSceneRefImages(
+  targetId: string, prompt: string | undefined,
+  edges: { source: string; target: string }[], nodes: CharNodeLike[],
+): string[] {
+  return dedupeRefImages(effectiveCharacters(targetId, prompt, edges, nodes).filter((c) => (c.characterKind ?? "person") === "scene"));
+}
+
 /** First connected PERSON character's LoRA (name + strength), or null. Priority by
  *  position. Scene nodes carry no character LoRA. */
 export function connectedCharacterLora(

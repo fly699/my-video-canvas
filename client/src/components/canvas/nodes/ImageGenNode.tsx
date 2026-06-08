@@ -8,7 +8,7 @@ import { useCanvasStore } from "../../../hooks/useCanvasStore";
 import { propagateRefImage } from "../../../lib/refImagePropagation";
 import { useReferenceImages } from "../../../hooks/useReferenceImages";
 import { refUrls } from "../../../lib/referenceImages";
-import { connectedCharacterRefImages, connectedSceneRefImages, connectedCharacters } from "../../../lib/characterConditioning";
+import { effectiveCharacterRefImages, effectiveSceneRefImages, effectiveCharacters, stripCharacterMentions } from "../../../lib/characterConditioning";
 import { mergeCharactersIntoPrompt } from "../../../lib/characterPrompt";
 import { detectUpstreamPrompt } from "../../../lib/comfyWorkflowParams";
 import { connectedEffectPrompts, appendEffectPrompts } from "../../../lib/effectPrompt";
@@ -264,11 +264,12 @@ export const ImageGenNode = memo(function ImageGenNode({ id, selected, data }: P
     // views of any connected Character node (multi-reference → image_urls server-side).
     const manualRefs = refUrls(payload);
     const { edges: gedges, nodes: gnodes } = useCanvasStore.getState();
-    const connChars = connectedCharacters(id, gedges, gnodes);
+    // 角色 = 连线 + prompt 里的「@角色」提及，两者等价生效。
+    const connChars = effectiveCharacters(id, payload.prompt, gedges, gnodes);
     // Person identity refs first, then SCENE backdrop refs (location/style context for
     // edit/reference models) — scene images never go through IPAdapter face-lock.
     const charRefs = manualRefs.length === 0
-      ? [...connectedCharacterRefImages(id, gedges, gnodes), ...connectedSceneRefImages(id, gedges, gnodes)]
+      ? [...effectiveCharacterRefImages(id, payload.prompt, gedges, gnodes), ...effectiveSceneRefImages(id, payload.prompt, gedges, gnodes)]
       : [];
     // Cap to the server's referenceImageUrls limit (z.array().max(8)). Multiple
     // connected characters × multi-view can exceed 8, which would otherwise be
@@ -276,8 +277,9 @@ export const ImageGenNode = memo(function ImageGenNode({ id, selected, data }: P
     const effectiveRefs = (manualRefs.length ? manualRefs : charRefs).slice(0, 8);
     // Augment with any connected post_process「效果注入」effect prompts (after the
     // character merge), so a wired post_process node actually affects the image.
+    // Strip the literal「@名字」from the base prompt — the character is injected structurally.
     const finalPrompt = appendEffectPrompts(
-      mergeCharactersIntoPrompt(payload.prompt ?? "", connChars),
+      mergeCharactersIntoPrompt(stripCharacterMentions(payload.prompt, gnodes), connChars),
       connectedEffectPrompts(id, gedges, gnodes),
     );
     const submit = () => genMutation.mutate({

@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { characterReferenceImages, characterHasConditioning, deriveCharacterConditioning, connectedCharacterRefImages, connectedSceneRefImages, connectedCharacterLora } from "./characterConditioning";
+import { characterReferenceImages, characterHasConditioning, deriveCharacterConditioning, connectedCharacterRefImages, connectedSceneRefImages, connectedCharacterLora, mentionedCharacters, stripCharacterMentions, effectiveCharacters, effectiveCharacterRefImages } from "./characterConditioning";
 import type { CharacterNodeData } from "../../../shared/types";
 
 const char = (over: Partial<CharacterNodeData>): CharacterNodeData => ({ characterKind: "person", ...over });
@@ -121,5 +121,42 @@ describe("scene characters are excluded from identity (image/LoRA)", () => {
     expect(connectedSceneRefImages("x", edges, nodes)).toEqual(["street.png", "alley.png"]);
     // person + scene refs are disjoint
     expect(connectedCharacterRefImages("x", edges, nodes)).toEqual(["face.png"]);
+  });
+});
+
+describe("@角色 提及解析", () => {
+  const N = (id: string, payload: Partial<CharacterNodeData>, pos?: { x: number; y: number }) =>
+    ({ id, data: { nodeType: "character", payload: { characterKind: "person", ...payload } }, position: pos });
+  const nodes = [
+    N("c1", { name: "张三", referenceImageUrl: "z3.png" }, { x: 0, y: 0 }),
+    N("c2", { name: "张三丰", referenceImageUrl: "z3f.png" }, { x: 0, y: 100 }),
+    N("s1", { characterKind: "scene", sceneName: "竹林", referenceImageUrl: "zl.png" }, { x: 0, y: 200 }),
+    { id: "p1", data: { nodeType: "prompt", payload: {} } },
+  ];
+
+  it("识别 @名字 提及（长名优先，不被短名吃掉）", () => {
+    const m = mentionedCharacters("一个男人 @张三丰 在 @竹林", nodes).map((c) => c.name ?? c.sceneName);
+    expect(m).toContain("张三丰");
+    expect(m).toContain("竹林");
+    expect(m).not.toContain("张三"); // @张三丰 不应额外匹配出 @张三
+  });
+
+  it("无 @ 时返回空、原样", () => {
+    expect(mentionedCharacters("普通提示词", nodes)).toEqual([]);
+    expect(stripCharacterMentions("普通提示词", nodes)).toBe("普通提示词");
+  });
+
+  it("去掉字面量 @名字", () => {
+    expect(stripCharacterMentions("男人 @张三 跑步", nodes)).toBe("男人 跑步");
+  });
+
+  it("effectiveCharacters 合并连线 + 提及并去重", () => {
+    const edges = [{ source: "c1", target: "vt" }];
+    const names = effectiveCharacters("vt", "还有 @张三丰", edges, nodes).map((c) => c.name);
+    expect(names).toEqual(["张三", "张三丰"]); // 连线的张三 + 提及的张三丰
+  });
+
+  it("effectiveCharacterRefImages 含被 @ 的人物参考图（场景不计入身份参考）", () => {
+    expect(effectiveCharacterRefImages("vt", "@张三 @竹林", [], nodes)).toEqual(["z3.png"]);
   });
 });
