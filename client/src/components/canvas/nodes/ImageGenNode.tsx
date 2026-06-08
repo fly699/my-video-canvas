@@ -448,7 +448,7 @@ export const ImageGenNode = memo(function ImageGenNode({ id, selected, data }: P
     <BaseNode id={id} selected={selected} nodeType="image_gen" title={data.title} minHeight={300} heroMedia={heroMedia}
       onRun={handleGenerate} running={genMutation.isPending} canRun={!!payload.prompt?.trim()} hasResult={!!payload.imageUrl}
       onAssetImageDrop={(urls) => refImages.addUrls(urls, "drop")}
-      headerRight={refImages.images.length > 1 ? (
+      headerRight={refImages.images.length >= 1 ? (
         <button
           onClick={() => setStripOpen((v) => !v)}
           className="nodrag flex items-center gap-1"
@@ -1008,7 +1008,7 @@ export const ImageGenNode = memo(function ImageGenNode({ id, selected, data }: P
               reachable={reachable}
               onSwitch={(u) => update("referenceImageUrl", u)}
             />
-            {refImages.images.length > 1 && (
+            {refImages.images.length >= 1 && (
               <button
                 onClick={() => setStripOpen((v) => !v)}
                 className="nodrag"
