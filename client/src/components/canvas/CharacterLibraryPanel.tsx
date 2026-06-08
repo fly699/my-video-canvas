@@ -1,15 +1,28 @@
 import { trpc } from "@/lib/trpc";
 import { toast } from "sonner";
 import { useCanvasStore } from "../../hooks/useCanvasStore";
+import { usePersistentState } from "../../hooks/usePersistentState";
+import { useFloatingBox, type Corner } from "../../hooks/useFloatingBox";
 import { mediaFetchUrl } from "@/lib/download";
-import { Users, X, Plus, Trash2, User as UserIcon, Mountain } from "lucide-react";
+import { Users, X, Plus, Trash2, User as UserIcon, Mountain, Pin, PinOff } from "lucide-react";
+
+const DOCK_W = 300;
 
 /**
- * Global character library: reusable identities saved across projects. Click an
- * entry to drop it onto the canvas as a `character` node (full payload restored).
+ * Global character library: reusable identities saved across projects. Click an entry to
+ * drop it on the canvas as a `character` node. The panel floats (drag by header), resizes
+ * from any corner, and can be PINNED (固定) — pinned snaps to the top-right dock and locks
+ * drag/resize; unpin returns to the floating box. Position/size/pin persist.
  */
 export function CharacterLibraryPanel({ onClose }: { onClose: () => void }) {
   const { addNode, updateNodeData } = useCanvasStore();
+  const { box, onHeaderMouseDown, onResizeMouseDown } = useFloatingBox(
+    "ui:character-library:v1",
+    { x: Math.max(16, (typeof window !== "undefined" ? window.innerWidth : 1200) - DOCK_W - 16), y: 56, w: DOCK_W, h: 480 },
+    { minW: 220, minH: 200 },
+  );
+  const [pinned, setPinned] = usePersistentState<boolean>("ui:character-library:pinned:v1", false, { crossTab: false });
+
   const { data: items, refetch } = trpc.characterLibrary.list.useQuery(undefined, { refetchOnWindowFocus: true });
   const delMut = trpc.characterLibrary.delete.useMutation({
     onSuccess: () => { toast.success("已从角色库删除"); refetch(); },
@@ -27,9 +40,6 @@ export function CharacterLibraryPanel({ onClose }: { onClose: () => void }) {
   const addToCanvas = (payload: Record<string, unknown>, kind: string, i: number) => {
     try {
       const node = addNode("character", { x: 240 + i * 28, y: 220 + i * 28 });
-      // Pin characterKind from the authoritative library row column — legacy entries
-      // saved before characterKind lived in the payload would otherwise default to
-      // "person" even when the row is a 场景.
       const merged: Record<string, unknown> = { ...payload, characterKind: payload.characterKind ?? kind ?? "person" };
       updateNodeData(node.id, merged, true);
       toast.success("已添加到画布");
@@ -38,26 +48,59 @@ export function CharacterLibraryPanel({ onClose }: { onClose: () => void }) {
     }
   };
 
+  // Pinned → dock top-right at fixed width; floating → the persisted box.
+  const vw = typeof window !== "undefined" ? window.innerWidth : 1200;
+  const left = pinned ? vw - DOCK_W - 16 : box.x;
+  const top = pinned ? 56 : box.y;
+  const width = pinned ? DOCK_W : box.w;
+  const height = pinned ? Math.min(640, (typeof window !== "undefined" ? window.innerHeight : 800) - 96) : box.h;
+
+  const cornerHandle = (corner: Corner, style: React.CSSProperties) => (
+    <div
+      onMouseDown={onResizeMouseDown(corner)}
+      style={{
+        position: "absolute", width: 16, height: 16, zIndex: 3,
+        cursor: corner === "tl" || corner === "br" ? "nwse-resize" : "nesw-resize",
+        ...style,
+      }}
+    />
+  );
+
   return (
     <div
-      className="flex flex-col"
+      className="nodrag nowheel flex flex-col"
       style={{
-        position: "absolute", top: 56, right: 16, zIndex: 40,
-        width: 300, maxHeight: "70vh",
+        position: "fixed", left, top, width, height, zIndex: 40,
         background: "var(--c-base)", border: "1px solid var(--c-bd1)", borderRadius: 12,
         boxShadow: "var(--c-node-shadow-hover)", overflow: "hidden",
       }}
+      onMouseDown={(e) => e.stopPropagation()}
+      onWheel={(e) => e.stopPropagation()}
     >
-      <div className="flex items-center justify-between px-3.5 py-3 flex-shrink-0" style={{ borderBottom: "1px solid var(--c-elevated)" }}>
+      <div
+        className="flex items-center justify-between px-3.5 py-3 flex-shrink-0"
+        style={{ borderBottom: "1px solid var(--c-elevated)", cursor: pinned ? "default" : "move", userSelect: "none" }}
+        onMouseDown={pinned ? undefined : onHeaderMouseDown}
+      >
         <div className="flex items-center gap-2">
           <Users className="w-4 h-4" style={{ color: "oklch(0.66 0.18 30)" }} />
           <span style={{ fontSize: 13, fontWeight: 700, color: "var(--c-t1)" }}>角色库</span>
           <span style={{ fontSize: 11, color: "var(--c-t4)" }}>{items?.length ?? 0}</span>
         </div>
-        <button onClick={onClose} className="nodrag" style={{ color: "var(--c-t3)", cursor: "pointer", background: "none", border: "none" }}><X className="w-4 h-4" /></button>
+        <div className="flex items-center gap-1">
+          <button
+            onClick={() => setPinned((p) => !p)}
+            className="nodrag"
+            title={pinned ? "取消固定（恢复浮动）" : "固定到右上角"}
+            style={{ color: pinned ? "oklch(0.66 0.18 30)" : "var(--c-t3)", cursor: "pointer", background: "none", border: "none", padding: 2 }}
+          >
+            {pinned ? <Pin className="w-3.5 h-3.5" /> : <PinOff className="w-3.5 h-3.5" />}
+          </button>
+          <button onClick={onClose} className="nodrag" style={{ color: "var(--c-t3)", cursor: "pointer", background: "none", border: "none" }}><X className="w-4 h-4" /></button>
+        </div>
       </div>
 
-      <div className="flex flex-col gap-1.5 p-2 overflow-y-auto">
+      <div className="flex flex-col gap-1.5 p-2 overflow-y-auto" style={{ flex: 1, minHeight: 0 }}>
         {(!items || items.length === 0) && (
           <div style={{ fontSize: 11, color: "var(--c-t4)", textAlign: "center", padding: "24px 8px" }}>
             还没有保存的角色。<br />在角色节点点「保存到角色库」即可。
@@ -83,6 +126,16 @@ export function CharacterLibraryPanel({ onClose }: { onClose: () => void }) {
           </div>
         ))}
       </div>
+
+      {/* Four-corner resize handles (floating only — pinned is docked & locked) */}
+      {!pinned && (
+        <>
+          {cornerHandle("tl", { left: 0, top: 0 })}
+          {cornerHandle("tr", { right: 0, top: 0 })}
+          {cornerHandle("bl", { left: 0, bottom: 0 })}
+          {cornerHandle("br", { right: 0, bottom: 0 })}
+        </>
+      )}
     </div>
   );
 }
