@@ -145,6 +145,45 @@ export function RefImageReachabilityBadge(props: {
   );
 }
 
+/**
+ * 顶部工具栏常驻的存储/暂存状态灯：
+ * - Poyo 暂存有效 → 绿灯「Poyo 暂存」；
+ * - 否则存储不对公网开放 → 琥珀「存储未公网」预警；
+ * - 存储本就公网可达 → 不显示（无需打扰）。
+ */
+export function PoyoStorageStatusChip(props: { className?: string }) {
+  const { reachable, poyoStaging } = useMediaReachability();
+  if (poyoStaging) {
+    return (
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <span className={"nodrag inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-medium bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300 " + (props.className ?? "")}>
+            <CircleCheck className="h-3 w-3" /> Poyo 暂存
+          </span>
+        </TooltipTrigger>
+        <TooltipContent side="top" className="max-w-[240px] text-xs text-left">
+          已连接有效 Poyo 暂存：参考图/视频会经 Poyo 换取公网链接供上游读取。生成时后端打印 [storage] Poyo 暂存 日志，管理后台「系统日志」可查（动作=Poyo 暂存）。
+        </TooltipContent>
+      </Tooltip>
+    );
+  }
+  if (!reachable) {
+    return (
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <span className={"nodrag inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-medium bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300 " + (props.className ?? "")}>
+            <AlertTriangle className="h-3 w-3" /> 存储未公网
+          </span>
+        </TooltipTrigger>
+        <TooltipContent side="top" className="max-w-[240px] text-xs text-left">
+          存储未对公网开放，且未开启 Poyo 暂存——带参考图的 Poyo/Higgsfield 生成可能失败。可在管理后台开启「Poyo 流式暂存」。
+        </TooltipContent>
+      </Tooltip>
+    );
+  }
+  return null;
+}
+
 export const REF_IMAGE_UNREACHABLE_CONFIRM = WARN_TEXT + "\n\n仍要继续生成吗？";
 
 /**

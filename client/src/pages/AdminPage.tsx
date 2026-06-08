@@ -20,6 +20,7 @@ const ACTION_LABELS: Record<string, string> = {
   audio_music: "音乐生成",
   audio_dubbing: "配音生成",
   subtitle_transcribe: "语音转录",
+  poyo_stage: "Poyo 暂存",
 };
 
 const ACTION_COLORS: Record<string, string> = {

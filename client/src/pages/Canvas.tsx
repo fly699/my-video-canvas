@@ -23,6 +23,7 @@ import { CanvasChatWindow } from "../components/chat/CanvasChatWindow";
 import { PoyoBalanceDashboard } from "../components/PoyoBalanceDashboard";
 import { CustomNode } from "../components/canvas/CustomNode";
 import { ComfyServerStatusIndicator } from "../components/canvas/ComfyServerStatusIndicator";
+import { PoyoStorageStatusChip } from "../components/canvas/mediaReachability";
 import { CustomEdge } from "../components/canvas/CustomEdge";
 import { ContextMenu } from "../components/canvas/ContextMenu";
 import { CollaboratorCursors } from "../components/canvas/CollaboratorCursors";
@@ -2219,6 +2220,8 @@ function CanvasInner({ projectId }: { projectId: number }) {
               </TooltipTrigger>
               <TooltipContent side="top" className="text-xs">{toolbarOrient === "h" ? "切换为竖排" : "切换为横排"}</TooltipContent>
             </Tooltip>
+            {/* Poyo 暂存/存储可达状态灯（常驻；可达且未暂存时不显示） */}
+            <PoyoStorageStatusChip className="flex-shrink-0" />
             <div style={{ width: 1, height: 18, background: "var(--c-bd2)", flexShrink: 0 }} />
 
             {/* Add node — primary action (hidden for viewers) */}

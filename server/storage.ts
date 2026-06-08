@@ -382,8 +382,12 @@ export async function resolveToAbsoluteUrl(urlOrRelPath: string): Promise<string
         const ext = key.split(".").pop() || "bin";
         const fileName = `ref-${Date.now()}.${ext}`;
         const poyoUrl = await uploadStreamToPoyo(buf, fileName, ct);
-        // 暂存到 Poyo 的每个文件都留 log（便于审计/排查）。
+        // 暂存到 Poyo 的每个文件都留 log：控制台 + 审计日志（管理后台「系统日志」可查）。
         console.log(`[storage] Poyo 暂存：key=${key} size=${buf.length}B type=${ct} → ${poyoUrl}`);
+        try {
+          const { writeAuditLog } = await import("./_core/auditLog");
+          writeAuditLog({ action: "poyo_stage", detail: { key, sizeBytes: buf.length, contentType: ct, poyoUrl } });
+        } catch { /* 审计失败不影响主流程 */ }
         return poyoUrl;
       }
     } catch (err) {
