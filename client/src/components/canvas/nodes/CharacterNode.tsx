@@ -19,6 +19,7 @@ import { CharacterConsistencyPanel, type ConsistencyResult } from "../CharacterC
 import { CharacterRecognitionPanel } from "../CharacterRecognitionPanel";
 import { buildRecognitionRows, type RecognitionFieldRow } from "@/lib/characterRecognition";
 import { LLMModelPicker, type LLMModelId } from "../LLMModelPicker";
+import { ZoomableImage } from "../ZoomableImage";
 import { NodeTextArea, NodeInput } from "../NodeTextInput";
 import { characterReferenceImages, deriveCharacterConditioning } from "@/lib/characterConditioning";
 import { detectUpstreamImagesExpanded } from "@/lib/comfyWorkflowParams";
@@ -416,12 +417,7 @@ export const CharacterNode = memo(function CharacterNode({ id, selected, data }:
           <label style={labelStyle}>参考图</label>
           {payload.referenceImageUrl ? (
             <div className="relative rounded-lg overflow-hidden" style={{ border: `1px solid ${accentA(0.3)}` }}>
-              <MediaImage
-                src={payload.referenceImageUrl}
-                alt="参考图"
-                className="w-full object-cover"
-                style={{ maxHeight: 140 }}
-              />
+              <ZoomableImage src={payload.referenceImageUrl} alt="参考图" maxHeight={200} radius={0} />
               {isOwnStorageUrl(payload.referenceImageUrl) && (
                 <div title="已存储到 MinIO·长期有效" className="absolute top-1.5 left-1.5 z-10 rounded-full pointer-events-none"
                   style={{ width: 10, height: 10, background: "oklch(0.72 0.18 155)", boxShadow: "0 0 0 2.5px oklch(0.72 0.18 155 / 0.35)" }} />

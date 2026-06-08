@@ -1,7 +1,7 @@
 import { memo, useCallback, useMemo } from "react";
 import { BaseNode } from "../BaseNode";
 import { isOwnStorageUrl } from "@/lib/ownStorage";
-import { MediaImage } from "../MediaImage";
+import { ZoomableImage } from "../ZoomableImage";
 import { useCanvasStore } from "../../../hooks/useCanvasStore";
 import { propagateRefImage } from "../../../lib/refImagePropagation";
 import { getNodeImageOutput } from "@/lib/canvasPassthrough";
@@ -113,12 +113,7 @@ export const PoseControlNode = memo(function PoseControlNode({ id, selected, dat
 
         {/* Reference image preview */}
         {(payload.referenceImageUrl || sourceImageUrl) && (
-          <MediaImage
-            src={payload.referenceImageUrl || sourceImageUrl}
-            alt="参考构图"
-            className="w-full rounded-lg nodrag"
-            style={{ maxHeight: 100, objectFit: "cover", border: `1px solid ${accentA(0.3)}` }}
-          />
+          <ZoomableImage src={(payload.referenceImageUrl || sourceImageUrl)!} alt="参考构图" maxHeight={160} border={`1px solid ${accentA(0.3)}`} />
         )}
 
         {/* Prompt */}
@@ -155,8 +150,7 @@ export const PoseControlNode = memo(function PoseControlNode({ id, selected, dat
           <div className="flex flex-col gap-1.5">
             <label style={labelStyle}>生成结果</label>
             <div className="relative">
-              <MediaImage src={payload.outputImageUrl} alt="生成结果" className="w-full rounded-lg nodrag"
-                style={{ maxHeight: 160, objectFit: "cover", border: `1px solid ${accentA(0.4)}` }} />
+              <ZoomableImage src={payload.outputImageUrl} alt="生成结果" maxHeight={200} border={`1px solid ${accentA(0.4)}`} />
               {isOwnStorageUrl(payload.outputImageUrl) && (
                 <div title="已存储到 MinIO·长期有效" className="absolute top-1.5 left-1.5 z-10 rounded-full pointer-events-none"
                   style={{ width: 10, height: 10, background: "oklch(0.72 0.18 155)", boxShadow: "0 0 0 2.5px oklch(0.72 0.18 155 / 0.35)" }} />

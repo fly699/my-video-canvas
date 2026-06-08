@@ -28,6 +28,7 @@ import { ContextMenu } from "../components/canvas/ContextMenu";
 import { CollaboratorCursors } from "../components/canvas/CollaboratorCursors";
 import { FloatingAssetPanel } from "../components/canvas/FloatingAssetPanel";
 import { CharacterLibraryPanel } from "../components/canvas/CharacterLibraryPanel";
+import { NodeImageLightbox } from "../components/canvas/NodeImageLightbox";
 import { TemplatePanel } from "../components/canvas/TemplatePanel";
 import { NodeTemplateLibrary } from "../components/canvas/NodeTemplateLibrary";
 import { NodeSearch } from "../components/canvas/NodeSearch";
@@ -2618,6 +2619,9 @@ function CanvasInner({ projectId }: { projectId: number }) {
             }}
           />
         )}
+
+        {/* 画布级图片放大预览（节点参考图点击放大） */}
+        <NodeImageLightbox />
 
         {/* ── Asset panel (floating, draggable, resizable) ── */}
         {showCharLib && <CharacterLibraryPanel onClose={() => setShowCharLib(false)} />}
