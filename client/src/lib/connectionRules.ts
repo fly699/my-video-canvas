@@ -7,8 +7,9 @@ export const CONNECTION_MATRIX: Partial<Record<NodeType, NodeType[]>> = {
   character: ["storyboard", "image_gen", "video_task", "prompt", "comfyui_image", "comfyui_video", "comfyui_workflow"],
   image_gen: ["video_task", "asset", "clip", "pose_control", "character", "comfyui_video", "comfyui_workflow"],
   video_task: ["clip", "asset", "overlay", "merge", "subtitle", "subtitle_motion", "smart_cut"],
-  audio: ["clip"],
-  asset: ["image_gen", "video_task", "clip", "merge", "subtitle", "subtitle_motion", "smart_cut", "pose_control", "character", "comfyui_image", "comfyui_video", "comfyui_workflow"],
+  // audio → audio: 把一段音频作为本地 VoxCPM 配音的参考音色喂给下游音频节点。
+  audio: ["clip", "audio"],
+  asset: ["image_gen", "video_task", "clip", "merge", "subtitle", "subtitle_motion", "smart_cut", "pose_control", "character", "comfyui_image", "comfyui_video", "comfyui_workflow", "audio"],
   ai_chat: ["script", "storyboard", "prompt"],
   clip: ["asset", "overlay", "merge", "subtitle", "subtitle_motion", "smart_cut"],
   post_process: ["video_task", "image_gen", "asset"],
@@ -104,12 +105,12 @@ export const CONNECTION_HINTS: Record<
   },
   audio: {
     label: "音频",
-    outgoing: "→ 剪辑",
-    incoming: "无上游连接",
+    outgoing: "→ 剪辑 / 音频（作参考音色）",
+    incoming: "← 音频 / 素材（本地 VoxCPM 参考音色）",
   },
   asset: {
     label: "素材",
-    outgoing: "→ 图像生成 / 视频任务 / 剪辑 / 合并 / 字幕 / 动态字幕 / 智能剪辑 / 构图控制 / 角色",
+    outgoing: "→ 图像生成 / 视频任务 / 剪辑 / 合并 / 字幕 / 动态字幕 / 智能剪辑 / 构图控制 / 角色 / 音频（参考音色）",
     incoming: "← 图像生成 / 视频任务 / 剪辑 / 叠加 / 字幕 / 动态字幕 / 智能剪辑 / 合并",
   },
   ai_chat: {

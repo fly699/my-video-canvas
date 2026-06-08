@@ -54,6 +54,7 @@ import { persistVideoOrFallback, persistVideosOrFallback } from "../_core/persis
 import { submitAndPollPoyoMusic, type PoyoMusicModel } from "../_core/poyoAudio";
 import { submitAndPollPoyoTTS } from "../_core/poyoAudio";
 import { synthesizeOpenAITTS, type OpenAITTSModel } from "../_core/openaiTTS";
+import { synthesizeGradioTTS } from "../_core/gradioTTS";
 import { trimVideo, getVideoDuration, mergeVideos, burnSubtitles, generateSRT, overlayVideo, assertSafeUrl, burnAssSubtitles, smartCutVideo, extractFrame } from "../_core/videoEditor";
 import { transcribeAudio } from "../_core/voiceTranscription";
 import { VIDEO_PROVIDERS, IMAGE_GEN_MODELS } from "../../shared/types";
@@ -1914,6 +1915,8 @@ export const audioGenRouter = router({
           "openai_gpt4o_mini_tts",
           // Live (Poyo)
           "elevenlabs-v3-tts",
+          // Local / self-hosted Gradio TTS (VoxCPM2 等), via customBaseUrl
+          "voxcpm-local",
           // Legacy aliases — accepted for backward compat with saved nodes and
           // normalized below (elevenlabs_v3→live Poyo; the rest→openai_tts_real)
           // so old payloads don't hit an opaque Zod validation error.
@@ -1930,6 +1933,14 @@ export const audioGenRouter = router({
         timestamps: z.boolean().optional(),
         languageCode: z.string().optional(),
         applyTextNormalization: z.enum(["auto", "on", "off"]).optional(),
+        // Local Gradio TTS (VoxCPM2) params
+        customBaseUrl: z.string().max(2048).optional(),          // Gradio 服务地址
+        refWavUrl: z.string().max(4096).optional(),              // 参考音频 URL（克隆音色）
+        controlInstruction: z.string().max(2000).optional(),
+        cfgValue: z.number().min(0).max(10).optional(),
+        ditSteps: z.number().int().min(1).max(100).optional(),
+        denoise: z.boolean().optional(),
+        doNormalize: z.boolean().optional(),
         projectId: z.number().optional(),
       })
     )
@@ -1947,10 +1958,13 @@ export const audioGenRouter = router({
       };
       const model = LEGACY_TO_LIVE[input.model] ?? input.model;
       const isPoyoTTS = model === "elevenlabs-v3-tts";
+      const isGradioTTS = model === "voxcpm-local";
 
-      // Per-model text limits. ElevenLabs V3 allows 5000; OpenAI TTS 4096.
+      // Per-model text limits. ElevenLabs V3 allows 5000; OpenAI TTS 4096;
+      // local VoxCPM has no hard provider cap so it uses the 5000 schema max.
       const TEXT_LIMIT: Record<string, number> = {
         "elevenlabs-v3-tts":   5000,
+        "voxcpm-local":        5000,
         openai_tts_real:       4096,
         openai_tts_hd_real:    4096,
         openai_gpt4o_mini_tts: 4096,
@@ -1960,8 +1974,29 @@ export const audioGenRouter = router({
         throw new TRPCError({ code: "BAD_REQUEST", message: `${model} 单次配音上限 ${limit} 字（当前 ${input.text.length}）` });
       }
 
+      // Local Gradio needs a server address and a reference voice up front.
+      if (isGradioTTS) {
+        if (!input.customBaseUrl?.trim()) {
+          throw new TRPCError({ code: "BAD_REQUEST", message: "本地 VoxCPM 需要填写 Gradio 服务地址" });
+        }
+        if (!input.refWavUrl?.trim()) {
+          throw new TRPCError({ code: "BAD_REQUEST", message: "本地 VoxCPM 需要参考音频(ref_wav)——请上传或从上游音频/素材节点接入" });
+        }
+      }
+
       return dedupe("audioGen.generateDubbing", ctx.user.id, input, async () => {
-        const result = isPoyoTTS
+        const result = isGradioTTS
+          ? await synthesizeGradioTTS({
+              baseUrl: input.customBaseUrl!,
+              text: input.text,
+              refWavUrl: input.refWavUrl!,
+              controlInstruction: input.controlInstruction,
+              cfgValue: input.cfgValue,
+              ditSteps: input.ditSteps,
+              denoise: input.denoise,
+              doNormalize: input.doNormalize,
+            })
+          : isPoyoTTS
           ? await submitAndPollPoyoTTS({
               model: "elevenlabs-v3-tts",
               text: input.text,
@@ -1987,9 +2022,11 @@ export const audioGenRouter = router({
             resultUrl: result.url,
             duration: result.duration ?? null,
             ...(isPoyoTTS ? { stability: input.stability ?? null, timestamps: input.timestamps ?? false } : {}),
+            ...(isGradioTTS ? { gradioBaseUrl: input.customBaseUrl ?? null } : {}),
           },
         });
-        await recordGeneratedAsset({ userId: ctx.user.id, projectId: input.projectId ?? null, type: "audio", source: "generated", provider: isPoyoTTS ? "poyo" : "openai", model, url: result.url, name: model });
+        const provider = isGradioTTS ? "gradio" : isPoyoTTS ? "poyo" : "openai";
+        await recordGeneratedAsset({ userId: ctx.user.id, projectId: input.projectId ?? null, type: "audio", source: "generated", provider, model, url: result.url, name: model });
         return {
           url: result.url,
           duration: result.duration,

@@ -384,6 +384,16 @@ export interface AudioNodeData {
   ttsLanguageCode?: string;                       // ISO 639-1
   ttsTextNormalization?: "auto" | "on" | "off";
   ttsTimestampsUrl?: string;                      // download URL when timestamps returned
+  // 本地 / 自托管 Gradio TTS（VoxCPM2 等，model === "voxcpm-local"）
+  ttsGradioBaseUrl?: string;                      // Gradio 服务地址（如 http://172.16.0.177:8808）
+  ttsGradioServerUrls?: string[];                 // 节点级保存的地址列表
+  ttsRefWavUrl?: string;                          // 参考音频（克隆音色）——上传所得 URL
+  ttsRefWavName?: string;                          // 参考音频显示名
+  ttsControlInstruction?: string;                 // 音色/风格控制指令（可选）
+  ttsCfg?: number;                                // CFG，默认 2
+  ttsDitSteps?: number;                           // 扩散步数，默认 10
+  ttsDenoise?: boolean;                           // 参考音频降噪
+  ttsDoNormalize?: boolean;                       // 文本规范化
   // SFX (音效)
   sfxPrompt?: string;
   sfxDuration?: number;
