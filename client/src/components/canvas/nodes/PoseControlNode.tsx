@@ -85,7 +85,8 @@ export const PoseControlNode = memo(function PoseControlNode({ id, selected, dat
   const isProcessing = payload.status === "processing" || poseControlMutation.isPending;
 
   return (
-    <BaseNode id={id} selected={selected} nodeType="pose_control" title={data.title} minHeight={200} resizable>
+    <BaseNode id={id} selected={selected} nodeType="pose_control" title={data.title} minHeight={200} resizable
+      onAssetImageDrop={(urls) => update({ referenceImageUrl: urls[0] })}>
 
       <div className="flex flex-col gap-3 p-3.5">
 

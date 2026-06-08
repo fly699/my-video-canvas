@@ -55,13 +55,26 @@ interface BaseNodeProps {
   /** 可选：给整个节点高度封顶为 3×宽度，超出由节点内部滚动消化（如 Agent 长输出）。
    *  用户手动 resize（写入 style.height）后自动解除该上限。 */
   capNodeHeight?: boolean;
+  /** 可选：从素材面板把图片直接拖到整个节点上时，接收这些图片 URL（按顺序）。提供后，
+   *  拖放被节点消费（preventDefault），画布不再新建素材节点。供有参考图字段的节点接入。 */
+  onAssetImageDrop?: (urls: string[]) => void;
+}
+
+/** 从拖拽数据里提取图片素材的 URL（仅 image 类型）。 */
+function imageUrlsFromAssetDrag(dt: DataTransfer): string[] {
+  const raw = dt.getData("application/x-asset-list");
+  if (!raw) return [];
+  try {
+    const list = JSON.parse(raw) as Array<{ url?: string; type?: string }>;
+    return list.filter((a) => a.url && (!a.type || a.type === "image")).map((a) => a.url!);
+  } catch { return []; }
 }
 
 export const BaseNode = memo(function BaseNode({
   id, selected, nodeType, title, children,
   minWidth = 280, minHeight = 140, showHandles = true, headerRight, resizable = false,
   onRun, canRun = true, running: nodeRunning = false, hasResult = false,
-  heroMedia, borderTint, headerTooltip, hideTypeBadge, capNodeHeight = false,
+  heroMedia, borderTint, headerTooltip, hideTypeBadge, capNodeHeight = false, onAssetImageDrop,
 }: BaseNodeProps) {
   const config = getNodeConfig(nodeType);
   const Icon = NODE_ICONS[config.icon] ?? FileText;
@@ -191,6 +204,7 @@ export const BaseNode = memo(function BaseNode({
   const titleInputRef = useRef<HTMLInputElement>(null);
   const titleCancelingRef = useRef(false);
   const [isHovered, setIsHovered] = useState(false);
+  const [assetDragOver, setAssetDragOver] = useState(false);
 
   const handleTitleSave = useCallback(() => {
     if (titleCancelingRef.current) { titleCancelingRef.current = false; return; }
@@ -291,7 +305,25 @@ export const BaseNode = memo(function BaseNode({
       }}
       onMouseEnter={() => { setIsHovered(true); useHoverStore.getState().setHovered(id); }}
       onMouseLeave={() => { setIsHovered(false); if (useHoverStore.getState().nodeId === id) useHoverStore.getState().setHovered(null); }}
+      onDragOver={onAssetImageDrop ? (e) => {
+        if (!e.dataTransfer.types.includes("application/x-asset-list")) return;
+        e.preventDefault(); e.dataTransfer.dropEffect = "copy"; if (!assetDragOver) setAssetDragOver(true);
+      } : undefined}
+      onDragLeave={onAssetImageDrop ? (e) => { if (e.currentTarget === e.target) setAssetDragOver(false); } : undefined}
+      onDrop={onAssetImageDrop ? (e) => {
+        const urls = imageUrlsFromAssetDrag(e.dataTransfer);
+        setAssetDragOver(false);
+        if (urls.length === 0) return;
+        e.preventDefault(); e.stopPropagation(); // consume → 画布不再新建素材节点
+        onAssetImageDrop(urls);
+      } : undefined}
     >
+      {/* 素材拖入高亮 */}
+      {assetDragOver && (
+        <div className="pointer-events-none absolute inset-0 z-30 flex items-center justify-center" style={{ borderRadius: 16, border: `2px dashed ${config.color}`, background: `${config.color}14` }}>
+          <span style={{ fontSize: 12, fontWeight: 700, color: config.color, background: "var(--c-base)", padding: "4px 10px", borderRadius: 8, border: `1px solid ${config.color}55` }}>放到此处用作参考图</span>
+        </div>
+      )}
       {/* Resize handles — outside overflow:hidden so corner grips aren't clipped */}
       <NodeResizer
         minWidth={minWidth}

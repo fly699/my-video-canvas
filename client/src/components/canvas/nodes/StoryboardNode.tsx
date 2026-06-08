@@ -426,7 +426,8 @@ export const StoryboardNode = memo(function StoryboardNode({ id, selected, data 
   return (
     <>
     <BaseNode id={id} selected={selected} nodeType="storyboard" title={data.title} minHeight={280} heroMedia={heroMedia}
-      onRun={handleGenerate} running={generating} canRun={!!payload.promptText?.trim()} hasResult={!!payload.imageUrl}>
+      onRun={handleGenerate} running={generating} canRun={!!payload.promptText?.trim()} hasResult={!!payload.imageUrl}
+      onAssetImageDrop={(urls) => updateNodeData(id, { referenceImageUrl: urls[0] })}>
       <div className="flex flex-col h-full p-3.5 gap-3">
 
         {/* ── Image preview — hidden in creative mode (image shown in heroMedia instead) ── */}
