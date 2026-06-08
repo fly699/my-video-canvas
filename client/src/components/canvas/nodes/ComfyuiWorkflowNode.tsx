@@ -659,6 +659,7 @@ export const ComfyuiWorkflowNode = memo(function ComfyuiWorkflowNode({ id, selec
             open={stripOpen}
             accent={accent}
             readOnly
+            readOnlyHint={<>工作流图像参数<br />删除＝清空该参数</>}
             title="工作流图"
             onClose={() => setStripOpen(false)}
             onRemove={clearImageParam}

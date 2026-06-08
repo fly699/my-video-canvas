@@ -27,7 +27,7 @@ export function useSimpleRefStrip(
   id: string,
   payload: Payload,
   mode: "multi" | "single",
-  opts?: { accent?: string; maxAdditional?: number; open?: boolean; onOpenChange?: (v: boolean) => void; onHoverChange?: (hovering: boolean) => void; onPin?: () => void },
+  opts?: { accent?: string; maxAdditional?: number; open?: boolean; onOpenChange?: (v: boolean) => void; onHoverChange?: (hovering: boolean) => void; onPin?: () => void; title?: string; fallbackImage?: string; fallbackTitle?: string },
 ): { images: ReferenceImage[]; open: boolean; toggle: ReactNode; strip: ReactNode } {
   const accent = opts?.accent ?? "oklch(0.72 0.20 330)";
   const maxAdditional = opts?.maxAdditional ?? 8;
@@ -49,7 +49,13 @@ export function useSimpleRefStrip(
     return Array.from(new Set([main, ...extra].filter(Boolean)));
   };
 
-  const images: ReferenceImage[] = combine(payload).map((u) => ({ id: u, url: u, source: "url" }));
+  const ownImages: ReferenceImage[] = combine(payload).map((u) => ({ id: u, url: u, source: "url" }));
+  // 本节点没有自己的参考图、但连了角色/场景时，回落显示其首图（只读、不可删、标题改为「角色/场景」）。
+  const showingFallback = ownImages.length === 0 && !!opts?.fallbackImage;
+  const images: ReferenceImage[] = showingFallback
+    ? [{ id: opts!.fallbackImage!, url: opts!.fallbackImage!, source: "url", label: opts?.fallbackTitle }]
+    : ownImages;
+  const stripTitle = showingFallback ? (opts?.fallbackTitle ?? "角色") : (opts?.title ?? "参考图");
 
   const live = useCallback((): string[] => {
     const p = (useCanvasStore.getState().nodes.find((n) => n.id === id)?.data.payload ?? payload) as Payload;
@@ -123,6 +129,9 @@ export function useSimpleRefStrip(
       images={images}
       open={open}
       accent={accent}
+      title={stripTitle}
+      readOnly={showingFallback}
+      allowRemove={!showingFallback}
       onClose={() => setOpen(false)}
       onRemove={removeId}
       onMove={moveId}
