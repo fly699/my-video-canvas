@@ -7,6 +7,7 @@ import type { NodeType } from "../../../../shared/types";
 import { isOwnStorageUrl } from "../../lib/ownStorage";
 import { usePersistentState } from "../../hooks/usePersistentState";
 import { useHorizontalWheelScroll } from "../../hooks/useHorizontalWheelScroll";
+import { resizePanelByCorner, type Corner } from "../../lib/panelCornerResize";
 
 interface TimelinePanelProps {
   onClose: () => void;
@@ -147,7 +148,7 @@ export function TimelinePanel({ onClose }: TimelinePanelProps) {
     window.addEventListener("mouseup", onUp);
   };
 
-  const startCornerResize = (e: React.MouseEvent) => {
+  const startCornerResize = (corner: Corner) => (e: React.MouseEvent) => {
     e.preventDefault();
     e.stopPropagation();
     dragRef.current = {
@@ -158,9 +159,13 @@ export function TimelinePanel({ onClose }: TimelinePanelProps) {
     const onMove = (mv: MouseEvent) => {
       const d = dragRef.current;
       if (!d) return;
-      const nextW = Math.max(TL_MIN_W, Math.min(window.innerWidth - d.initLeft, d.initW + (mv.clientX - d.startX)));
-      const nextH = Math.max(TL_MIN_H, Math.min(TL_MAX_H, d.initH + (mv.clientY - d.startY)));
-      setLayout((cur) => ({ ...cur, width: nextW, height: nextH }));
+      const r = resizePanelByCorner(
+        corner,
+        { left: d.initLeft, top: d.initTop, width: d.initW, height: d.initH },
+        mv.clientX - d.startX, mv.clientY - d.startY,
+        { minW: TL_MIN_W, minH: TL_MIN_H, maxH: TL_MAX_H, vw: window.innerWidth },
+      );
+      setLayout((cur) => ({ ...cur, left: r.left, top: r.top, width: r.width, height: r.height }));
     };
     const onUp = () => {
       dragRef.current = null;
@@ -455,28 +460,32 @@ export function TimelinePanel({ onClose }: TimelinePanelProps) {
         )}
       </div>
 
-      {/* Corner resize — floating only */}
-      {!layout.docked && (
+      {/* Four-corner resize — floating only */}
+      {!layout.docked && (["tl", "tr", "bl", "br"] as Corner[]).map((corner) => (
         <div
-          onMouseDown={startCornerResize}
-          title="拖动调整大小"
+          key={corner}
+          onMouseDown={startCornerResize(corner)}
+          title="拖动四角调整大小"
           style={{
-            position: "absolute",
-            right: 0, bottom: 0,
-            width: 16, height: 16,
-            cursor: "nwse-resize",
-            zIndex: 2,
-            display: "flex", alignItems: "flex-end", justifyContent: "flex-end",
+            position: "absolute", width: 18, height: 18, zIndex: 2,
+            cursor: corner === "tl" || corner === "br" ? "nwse-resize" : "nesw-resize",
+            ...(corner.includes("t") ? { top: 0 } : { bottom: 0 }),
+            ...(corner.includes("l") ? { left: 0 } : { right: 0 }),
+            display: "flex",
+            alignItems: corner.includes("t") ? "flex-start" : "flex-end",
+            justifyContent: corner.includes("l") ? "flex-start" : "flex-end",
             padding: 2,
           }}
         >
-          <svg width="9" height="9" viewBox="0 0 9 9" fill="none" style={{ opacity: 0.45 }}>
-            <circle cx="1.5" cy="7.5" r="1" fill="var(--c-t3)" />
-            <circle cx="4.5" cy="4.5" r="1" fill="var(--c-t3)" />
-            <circle cx="7.5" cy="1.5" r="1" fill="var(--c-t3)" />
-          </svg>
+          {corner === "br" && (
+            <svg width="9" height="9" viewBox="0 0 9 9" fill="none" style={{ opacity: 0.45 }}>
+              <circle cx="1.5" cy="7.5" r="1" fill="var(--c-t3)" />
+              <circle cx="4.5" cy="4.5" r="1" fill="var(--c-t3)" />
+              <circle cx="7.5" cy="1.5" r="1" fill="var(--c-t3)" />
+            </svg>
+          )}
         </div>
-      )}
+      ))}
     </div>
   );
 }

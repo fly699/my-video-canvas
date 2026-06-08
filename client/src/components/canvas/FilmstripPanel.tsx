@@ -7,6 +7,7 @@ import type { NodeType } from "../../../../shared/types";
 import { isOwnStorageUrl } from "../../lib/ownStorage";
 import { usePersistentState } from "../../hooks/usePersistentState";
 import { useHorizontalWheelScroll } from "../../hooks/useHorizontalWheelScroll";
+import { resizePanelByCorner, type Corner } from "../../lib/panelCornerResize";
 
 interface FilmstripPanelProps {
   onClose: () => void;
@@ -160,9 +161,9 @@ export function FilmstripPanel({ onClose }: FilmstripPanelProps) {
     window.addEventListener("mouseup", onUp);
   };
 
-  // Bottom-right corner resize — width + height. Floating only (docked is
-  // always full-width by design). When docked, only top-edge resize applies.
-  const startCornerResize = (e: React.MouseEvent) => {
+  // Four-corner resize — width + height, opposite corner anchored. Floating only
+  // (docked is always full-width by design). When docked, only top-edge resize applies.
+  const startCornerResize = (corner: Corner) => (e: React.MouseEvent) => {
     e.preventDefault();
     e.stopPropagation();
     dragRef.current = {
@@ -173,9 +174,13 @@ export function FilmstripPanel({ onClose }: FilmstripPanelProps) {
     const onMove = (mv: MouseEvent) => {
       const d = dragRef.current;
       if (!d) return;
-      const nextW = Math.max(MIN_WIDTH, Math.min(window.innerWidth - d.initLeft, d.initW + (mv.clientX - d.startX)));
-      const nextH = Math.max(MIN_HEIGHT, Math.min(MAX_HEIGHT, d.initH + (mv.clientY - d.startY)));
-      setLayout((cur) => ({ ...cur, width: nextW, height: nextH }));
+      const r = resizePanelByCorner(
+        corner,
+        { left: d.initLeft, top: d.initTop, width: d.initW, height: d.initH },
+        mv.clientX - d.startX, mv.clientY - d.startY,
+        { minW: MIN_WIDTH, minH: MIN_HEIGHT, maxH: MAX_HEIGHT, vw: window.innerWidth },
+      );
+      setLayout((cur) => ({ ...cur, left: r.left, top: r.top, width: r.width, height: r.height }));
     };
     const onUp = () => {
       dragRef.current = null;
@@ -452,29 +457,33 @@ export function FilmstripPanel({ onClose }: FilmstripPanelProps) {
         )}
       </div>
 
-      {/* Bottom-right corner — width + height resize. Floating mode only:
+      {/* Four-corner resize handles — width + height. Floating mode only:
           docked panels span full width by definition. */}
-      {!layout.docked && (
+      {!layout.docked && (["tl", "tr", "bl", "br"] as Corner[]).map((corner) => (
         <div
-          onMouseDown={startCornerResize}
-          title="拖动调整大小"
+          key={corner}
+          onMouseDown={startCornerResize(corner)}
+          title="拖动四角调整大小"
           style={{
-            position: "absolute",
-            right: 0, bottom: 0,
-            width: 16, height: 16,
-            cursor: "nwse-resize",
-            zIndex: 2,
-            display: "flex", alignItems: "flex-end", justifyContent: "flex-end",
+            position: "absolute", width: 18, height: 18, zIndex: 2,
+            cursor: corner === "tl" || corner === "br" ? "nwse-resize" : "nesw-resize",
+            ...(corner.includes("t") ? { top: 0 } : { bottom: 0 }),
+            ...(corner.includes("l") ? { left: 0 } : { right: 0 }),
+            display: "flex",
+            alignItems: corner.includes("t") ? "flex-start" : "flex-end",
+            justifyContent: corner.includes("l") ? "flex-start" : "flex-end",
             padding: 2,
           }}
         >
-          <svg width="9" height="9" viewBox="0 0 9 9" fill="none" style={{ opacity: 0.45 }}>
-            <circle cx="1.5" cy="7.5" r="1" fill="var(--c-t3)" />
-            <circle cx="4.5" cy="4.5" r="1" fill="var(--c-t3)" />
-            <circle cx="7.5" cy="1.5" r="1" fill="var(--c-t3)" />
-          </svg>
+          {corner === "br" && (
+            <svg width="9" height="9" viewBox="0 0 9 9" fill="none" style={{ opacity: 0.45 }}>
+              <circle cx="1.5" cy="7.5" r="1" fill="var(--c-t3)" />
+              <circle cx="4.5" cy="4.5" r="1" fill="var(--c-t3)" />
+              <circle cx="7.5" cy="1.5" r="1" fill="var(--c-t3)" />
+            </svg>
+          )}
         </div>
-      )}
+      ))}
     </div>
   );
 }
