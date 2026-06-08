@@ -77,6 +77,7 @@ import {
   LayoutGrid,
   BarChart2,
   Maximize2,
+  Scan,
   Play,
   LogOut,
   Undo2,
@@ -344,6 +345,45 @@ function CanvasInner({ projectId }: { projectId: number }) {
   const [, navigate] = useLocation();
   const reactFlow = useReactFlow();
   const isMobile = useIsMobile();
+
+  // ── 框选放大区域：开启后在画布上拖出一个矩形，松手即把该区域放大铺满全屏 ──
+  // 纯交互、一次性动作（不持久化）。Esc 取消；矩形过小忽略。
+  const [regionZoomActive, setRegionZoomActive] = useState(false);
+  const [regionRect, setRegionRect] = useState<{ x: number; y: number; w: number; h: number } | null>(null);
+  const regionStartRef = useRef<{ x: number; y: number } | null>(null);
+  const onRegionPointerDown = useCallback((e: React.PointerEvent) => {
+    if (e.button !== 0) return;
+    e.preventDefault();
+    (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
+    regionStartRef.current = { x: e.clientX, y: e.clientY };
+    setRegionRect({ x: e.clientX, y: e.clientY, w: 0, h: 0 });
+  }, []);
+  const onRegionPointerMove = useCallback((e: React.PointerEvent) => {
+    const s = regionStartRef.current;
+    if (!s) return;
+    setRegionRect({ x: Math.min(s.x, e.clientX), y: Math.min(s.y, e.clientY), w: Math.abs(e.clientX - s.x), h: Math.abs(e.clientY - s.y) });
+  }, []);
+  const onRegionPointerUp = useCallback((e: React.PointerEvent) => {
+    const s = regionStartRef.current;
+    regionStartRef.current = null;
+    setRegionRect(null);
+    setRegionZoomActive(false);
+    if (!s) return;
+    const x1 = s.x, y1 = s.y, x2 = e.clientX, y2 = e.clientY;
+    // 太小的框（误点）忽略
+    if (Math.abs(x2 - x1) < 12 || Math.abs(y2 - y1) < 12) return;
+    const p1 = reactFlow.screenToFlowPosition({ x: Math.min(x1, x2), y: Math.min(y1, y2) });
+    const p2 = reactFlow.screenToFlowPosition({ x: Math.max(x1, x2), y: Math.max(y1, y2) });
+    reactFlow.fitBounds({ x: p1.x, y: p1.y, width: Math.max(1, p2.x - p1.x), height: Math.max(1, p2.y - p1.y) }, { duration: 400, padding: 0.04 });
+  }, [reactFlow]);
+  useEffect(() => {
+    if (!regionZoomActive) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") { regionStartRef.current = null; setRegionRect(null); setRegionZoomActive(false); }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [regionZoomActive]);
 
   const {
     nodes, edges, setNodes, setEdges,
@@ -1409,6 +1449,9 @@ function CanvasInner({ projectId }: { projectId: number }) {
           </div>
         )}
 
+        {/* Poyo 暂存/存储可达状态灯（顶部工具栏左侧；可达且未暂存时不显示） */}
+        <PoyoStorageStatusChip className="flex-shrink-0" />
+
         <PoyoBalanceDashboard />
 
         <div className="flex-1" />
@@ -2169,6 +2212,31 @@ function CanvasInner({ projectId }: { projectId: number }) {
             <NarrativeArcPicker onClose={() => setShowArcPicker(false)} />
           )}
 
+          {/* ── 框选放大遮罩：开启后全屏捕获鼠标，拖出矩形 → 松手放大该区域 ── */}
+          {regionZoomActive && (
+            <div
+              onPointerDown={onRegionPointerDown}
+              onPointerMove={onRegionPointerMove}
+              onPointerUp={onRegionPointerUp}
+              style={{ position: "fixed", inset: 0, zIndex: 60, cursor: "crosshair", background: "oklch(0 0 0 / 0.06)" }}
+            >
+              {regionRect && regionRect.w > 0 && regionRect.h > 0 && (
+                <div style={{
+                  position: "fixed", left: regionRect.x, top: regionRect.y, width: regionRect.w, height: regionRect.h,
+                  border: "1.5px dashed oklch(0.68 0.22 285)", background: "oklch(0.68 0.22 285 / 0.12)", pointerEvents: "none",
+                }} />
+              )}
+              <div style={{
+                position: "fixed", top: 18, left: "50%", transform: "translateX(-50%)", pointerEvents: "none",
+                padding: "5px 12px", borderRadius: 999, fontSize: 12, fontWeight: 600,
+                background: "color-mix(in oklch, var(--c-base) 80%, transparent)", backdropFilter: "blur(12px)",
+                border: "1px solid var(--c-bd2)", color: "var(--c-t1)", boxShadow: "var(--c-node-shadow-hover)",
+              }}>
+                框选要放大的区域，松手即放大铺满全屏（Esc 取消）
+              </div>
+            </div>
+          )}
+
           {/* ── Floating toolbar — drops anywhere; horizontal/vertical via toggle ── */}
           <div
             className={`canvas-bottombar absolute z-20 flex items-center gap-1.5 px-2.5 py-1.5 rounded-2xl ${toolbarOrient === "v" ? "flex-col" : ""}`}
@@ -2220,8 +2288,6 @@ function CanvasInner({ projectId }: { projectId: number }) {
               </TooltipTrigger>
               <TooltipContent side="top" className="text-xs">{toolbarOrient === "h" ? "切换为竖排" : "切换为横排"}</TooltipContent>
             </Tooltip>
-            {/* Poyo 暂存/存储可达状态灯（常驻；可达且未暂存时不显示） */}
-            <PoyoStorageStatusChip className="flex-shrink-0" />
             <div style={{ width: 1, height: 18, background: "var(--c-bd2)", flexShrink: 0 }} />
 
             {/* Add node — primary action (hidden for viewers) */}
@@ -2303,6 +2369,24 @@ function CanvasInner({ projectId }: { projectId: number }) {
                 </button>
               </TooltipTrigger>
               <TooltipContent side="top" className="text-xs">适应视图</TooltipContent>
+            </Tooltip>
+
+            {/* 框选放大区域：开启后在画布拖出矩形，松手放大铺满全屏 */}
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <button
+                  onClick={() => setRegionZoomActive((v) => !v)}
+                  className="w-8 h-8 rounded-xl flex items-center justify-center transition-all"
+                  style={regionZoomActive
+                    ? { background: "oklch(0.68 0.22 285 / 0.18)", color: "oklch(0.72 0.18 285)", border: "1px solid oklch(0.68 0.22 285 / 0.4)" }
+                    : { color: "var(--c-t3)" }}
+                  onMouseEnter={(e) => { if (!regionZoomActive) { (e.currentTarget as HTMLElement).style.background = "var(--c-bd1)"; (e.currentTarget as HTMLElement).style.color = "var(--c-t1)"; } }}
+                  onMouseLeave={(e) => { if (!regionZoomActive) { (e.currentTarget as HTMLElement).style.background = "transparent"; (e.currentTarget as HTMLElement).style.color = "var(--c-t3)"; } }}
+                >
+                  <Scan className="w-3.5 h-3.5" />
+                </button>
+              </TooltipTrigger>
+              <TooltipContent side="top" className="text-xs">框选放大区域（拖出矩形放大铺满全屏 · Esc 取消）</TooltipContent>
             </Tooltip>
 
             {/* Divider */}
