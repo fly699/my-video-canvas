@@ -1945,7 +1945,11 @@ export const audioGenRouter = router({
       })
     )
     .mutation(async ({ ctx, input }) => {
-      await assertWhitelisted(ctx);
+      // 本地 / 自托管 VoxCPM 走用户自己的 Gradio 服务、不消耗任何平台积分，
+      // 故对该模型放开白名单——任何已登录用户都可使用。其余 TTS（OpenAI /
+      // ElevenLabs）仍是计费的外部服务，白名单照常拦截。
+      const isLocalGradio = input.model === "voxcpm-local";
+      if (!isLocalGradio) await assertWhitelisted(ctx);
       if (input.projectId != null) await assertProjectAccess(input.projectId, ctx.user.id, "editor");
 
       // Normalize legacy ids: elevenlabs_v3 → live Poyo TTS; the retired
