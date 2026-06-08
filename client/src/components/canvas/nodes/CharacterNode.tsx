@@ -390,6 +390,7 @@ export const CharacterNode = memo(function CharacterNode({ id, selected, data }:
   return (
     <BaseNode id={id} selected={selected} nodeType="character" title={data.title} minHeight={160} resizable heroMedia={heroMedia}
       headerRight={refStrip.toggle}
+      leftDock={refStrip.strip}
       onAssetImageDrop={(urls) => updateNodeData(id, { referenceImageUrl: urls[0], referenceStorageKey: undefined, ...(urls.length > 1 ? { additionalImageUrls: urls.slice(1, 1 + MAX_ADDITIONAL_IMAGES) } : {}) })}>
       {consistencyOpen && consistencyResult && (
         <CharacterConsistencyPanel
@@ -816,7 +817,6 @@ export const CharacterNode = memo(function CharacterNode({ id, selected, data }:
         )}
 
       </div>
-      {refStrip.strip}
     </BaseNode>
   );
 });

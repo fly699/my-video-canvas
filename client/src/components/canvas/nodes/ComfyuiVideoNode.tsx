@@ -323,6 +323,7 @@ export const ComfyuiVideoNode = memo(function ComfyuiVideoNode({ id, selected, d
       onAssetImageDrop={(urls) => updateNodeData(id, { referenceImageUrl: urls[0] })}
       headerTooltip={modelTip || undefined}
       hideTypeBadge
+      leftDock={refStrip.strip}
       headerRight={
         <span className="flex items-center gap-1.5">
           {cornerText && (
@@ -1001,7 +1002,6 @@ export const ComfyuiVideoNode = memo(function ComfyuiVideoNode({ id, selected, d
 
       {/* Output handle — provided by BaseNode default (id="output" on Position.Right);
           no custom handle to avoid overlapping with the default. */}
-      {refStrip.strip}
     </BaseNode>
   );
 });

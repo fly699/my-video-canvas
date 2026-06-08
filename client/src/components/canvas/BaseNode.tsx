@@ -36,6 +36,8 @@ interface BaseNodeProps {
   resizable?: boolean;
   /** 创意模式下显示在标题栏下方的媒体英雄区（图片/视频预览），选中时展开表单控件 */
   heroMedia?: React.ReactNode;
+  /** 左侧吸附浮层（如参考图预览条带）。渲染在折叠 body 之外，故节点收缩后仍常驻可见。 */
+  leftDock?: React.ReactNode;
   /** 标题栏常驻"运行/重新生成"按钮的处理器；提供则渲染按钮（覆盖所有主题/模式）。 */
   onRun?: () => void;
   /** 是否允许运行（默认 true）；false 时按钮禁用置灰。 */
@@ -74,7 +76,7 @@ export const BaseNode = memo(function BaseNode({
   id, selected, nodeType, title, children,
   minWidth = 280, minHeight = 140, showHandles = true, headerRight, resizable = false,
   onRun, canRun = true, running: nodeRunning = false, hasResult = false,
-  heroMedia, borderTint, headerTooltip, hideTypeBadge, capNodeHeight = false, onAssetImageDrop,
+  heroMedia, leftDock, borderTint, headerTooltip, hideTypeBadge, capNodeHeight = false, onAssetImageDrop,
 }: BaseNodeProps) {
   const config = getNodeConfig(nodeType);
   const Icon = NODE_ICONS[config.icon] ?? FileText;
@@ -755,6 +757,9 @@ export const BaseNode = memo(function BaseNode({
       </NodeSelectedContext.Provider>
 
       </div>{/* end inner overflow:hidden content wrapper */}
+
+      {/* 左侧吸附浮层：渲染在折叠 body 之外，节点收缩后仍常驻可见（绝对定位于节点根，向左吸附）。 */}
+      {leftDock}
 
       {/* ── Connection Handles — outside overflow:hidden so ::before hit-area works ── */}
       {showHandles && (() => {
