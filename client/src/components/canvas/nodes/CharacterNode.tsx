@@ -7,7 +7,7 @@ import { useCanvasStore } from "../../../hooks/useCanvasStore";
 import type { CharacterNodeData, CharacterKind, StoryboardNodeData } from "../../../../../shared/types";
 import { trpc } from "@/lib/trpc";
 import { toast } from "sonner";
-import { User, Mountain, Upload, X, Image as ImageIcon, Loader2, Plus, Search, Save } from "lucide-react";
+import { User, Mountain, Upload, X, Image as ImageIcon, Loader2, Plus, Search, Save, Sparkles } from "lucide-react";
 import {
   characterToPromptInjection,
   clampLen,
@@ -16,6 +16,8 @@ import {
   DEFAULT_SCENE_TEMPLATE,
 } from "../../../lib/characterPrompt";
 import { CharacterConsistencyPanel, type ConsistencyResult } from "../CharacterConsistencyPanel";
+import { CharacterRecognitionPanel } from "../CharacterRecognitionPanel";
+import { buildRecognitionRows, type RecognitionFieldRow } from "@/lib/characterRecognition";
 import { NodeTextArea, NodeInput } from "../NodeTextInput";
 import { characterReferenceImages, deriveCharacterConditioning } from "@/lib/characterConditioning";
 import { detectUpstreamImagesExpanded } from "@/lib/comfyWorkflowParams";
@@ -132,6 +134,23 @@ export const CharacterNode = memo(function CharacterNode({ id, selected, data }:
   const [consistencyOpen, setConsistencyOpen] = useState(false);
   const [consistencyResult, setConsistencyResult] = useState<ConsistencyResult | null>(null);
   const [consistencyScenes, setConsistencyScenes] = useState<{ ids: string[]; urls: string[] }>({ ids: [], urls: [] });
+
+  // AI 参考图识别 → 预览弹窗（勾选后才写入字段）
+  const [recognizeRows, setRecognizeRows] = useState<RecognitionFieldRow[] | null>(null);
+  const recognizeMut = trpc.scripts.analyzeCharacterFromImages.useMutation({
+    onSuccess: (res) => {
+      const rows = buildRecognitionRows(payload, res.fields);
+      if (rows.length === 0) { toast.info("未识别出可填充的字段"); return; }
+      setRecognizeRows(rows);
+    },
+    onError: (err) => toast.error("AI 识别失败：" + err.message),
+  });
+  const handleRecognize = () => {
+    if (recognizeMut.isPending) return;
+    const imgs = characterReferenceImages(payload).slice(0, 9);
+    if (imgs.length === 0) { toast.error("请先上传或连接参考图"); return; }
+    recognizeMut.mutate({ imageUrls: imgs, characterKind: kind });
+  };
 
   const utils = trpc.useUtils();
   const saveLibMut = trpc.characterLibrary.create.useMutation({
@@ -346,6 +365,17 @@ export const CharacterNode = memo(function CharacterNode({ id, selected, data }:
           imageUrls={consistencyScenes.urls}
           result={consistencyResult}
           onClose={() => setConsistencyOpen(false)}
+        />
+      )}
+      {recognizeRows && (
+        <CharacterRecognitionPanel
+          kind={kind}
+          rows={recognizeRows}
+          onApply={(patch) => {
+            if (Object.keys(patch).length > 0) { updateNodeData(id, patch); toast.success(`已填充 ${Object.keys(patch).length} 个字段`); }
+            setRecognizeRows(null);
+          }}
+          onClose={() => setRecognizeRows(null)}
         />
       )}
       <div className="flex flex-col gap-3 p-3.5">
@@ -613,6 +643,26 @@ export const CharacterNode = memo(function CharacterNode({ id, selected, data }:
             onChange={(urls) => update("additionalImageUrls", urls.length > 0 ? urls : undefined)}
             accent={accent}
           />
+        )}
+
+        {/* AI 识别：依据参考图（含备用视角）分析并填充角色/场景参数（弹窗勾选后应用） */}
+        {selected && (
+          <button
+            onClick={handleRecognize}
+            disabled={recognizeMut.isPending || characterReferenceImages(payload).length === 0}
+            className="nodrag flex items-center justify-center gap-1.5 w-full rounded-lg text-[11px] font-medium transition-all"
+            style={{
+              padding: "7px 10px",
+              background: characterReferenceImages(payload).length === 0 ? "var(--c-input)" : "oklch(0.68 0.18 300 / 0.12)",
+              border: `1px solid ${characterReferenceImages(payload).length === 0 ? "var(--c-bd2)" : "oklch(0.68 0.18 300 / 0.4)"}`,
+              color: characterReferenceImages(payload).length === 0 ? "var(--c-t4)" : "oklch(0.72 0.16 300)",
+              cursor: recognizeMut.isPending || characterReferenceImages(payload).length === 0 ? "not-allowed" : "pointer",
+            }}
+            title={kind === "scene" ? "AI 依据参考图识别场景设定" : "AI 依据参考图识别人物设定"}
+          >
+            {recognizeMut.isPending ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Sparkles className="w-3.5 h-3.5" />}
+            {recognizeMut.isPending ? "识别中…" : (kind === "scene" ? "AI 识别场景" : "AI 识别人物")}
+          </button>
         )}
 
         {/* ── ComfyUI identity lock (IPAdapter face-lock + character LoRA) ──

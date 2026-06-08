@@ -1631,6 +1631,75 @@ score 为 0-100 整数，issues 数组最多 8 条，每条包含 type/line/sugg
       });
     }),
 
+  // AI 看图识人/识景：依据参考图（含备用视角）分析出结构化角色/场景字段，供前端弹窗
+  // 预览后勾选填充。镜像 checkCharacterConsistency 的视觉-LLM 多图 + 结构化 JSON 链路。
+  analyzeCharacterFromImages: protectedProcedure
+    .input(z.object({
+      imageUrls: z.array(z.string().min(1).max(2048)).min(1).max(9),
+      characterKind: z.enum(["person", "scene"]).default("person"),
+      model: z.string().optional(),
+    }))
+    .mutation(async ({ ctx, input }) => {
+      await assertLLMAllowed(ctx);
+      return dedupe("scripts.analyzeCharacterFromImages", ctx.user.id, input, async () => {
+        const absoluteUrls: string[] = [];
+        for (const u of input.imageUrls) {
+          try { absoluteUrls.push(await resolveToAbsoluteUrl(u)); }
+          catch (err) {
+            throw new TRPCError({ code: "BAD_REQUEST", message: `图像 URL 无法解析为绝对路径：${u.slice(0, 80)}（${err instanceof Error ? err.message : "未知错误"}）` });
+          }
+        }
+
+        const isScene = input.characterKind === "scene";
+        const systemPrompt = isScene
+          ? `你是影视美术指导。给你 ${absoluteUrls.length} 张同一「场景/地点」的参考图，请提炼出可复用的场景设定。\n`
+            + `仅输出合法 JSON（无 markdown、无解释）：\n`
+            + `{"sceneName":"场景名(简短)","locationType":"室内/室外/城市/自然/历史/科幻/奇幻/水下 之一","sceneDescription":"环境细节(布景/材质/光线/关键道具)","atmosphere":"明亮/昏暗/神秘/浪漫/紧张/宁静/史诗 之一","timeOfDay":"清晨/上午/正午/下午/黄昏/夜晚/深夜 之一"}\n`
+            + `约束：只描述图中可见信息，无法判断的字段填空字符串 ""；全部用中文；不要编造。`
+          : `你是专业的角色设定师。给你 ${absoluteUrls.length} 张同一「人物」的参考图（可能含不同视角），请提炼出该角色的设定。\n`
+            + `仅输出合法 JSON（无 markdown、无解释）：\n`
+            + `{"name":"角色名(若无法判断留空)","role":"身份/职业","gender":"男 或 女 或 中性","age":"年龄段(如 青年/30岁左右)","appearance":"外貌(脸型/发型/发色/五官/体型)","personality":"性格气质(从神态衣着推断)","outfit":"服装(款式/颜色/配饰)","signature":"标志性特征(疤痕/眼镜/纹身/饰品等)"}\n`
+            + `约束：gender 只能是 男/女/中性 三者之一或空；只描述图中可见信息，无法判断的字段填空字符串 ""；全部用中文；不要编造。`;
+
+        const response = await invokeLLM({
+          messages: [
+            { role: "system" as const, content: systemPrompt },
+            {
+              role: "user" as const,
+              content: [
+                { type: "text" as const, text: `请分析以下 ${absoluteUrls.length} 张参考图：` },
+                ...absoluteUrls.map((url) => ({ type: "image_url" as const, image_url: { url, detail: "high" as const } })),
+              ],
+            },
+          ],
+          model: input.model ?? "claude-sonnet-4-6",
+          maxTokens: 1500,
+        });
+
+        const text = extractTextContent(response);
+        const jsonMatch = text.match(/\{[\s\S]*\}/);
+        if (!jsonMatch) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "AI 未返回有效 JSON" });
+        let parsed: Record<string, unknown>;
+        try { parsed = JSON.parse(jsonMatch[0]) as Record<string, unknown>; }
+        catch { throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "JSON 解析失败" }); }
+
+        const FIELDS: { key: string; max: number }[] = isScene
+          ? [{ key: "sceneName", max: 120 }, { key: "locationType", max: 60 }, { key: "sceneDescription", max: 500 }, { key: "atmosphere", max: 60 }, { key: "timeOfDay", max: 60 }]
+          : [{ key: "name", max: 120 }, { key: "role", max: 120 }, { key: "gender", max: 10 }, { key: "age", max: 60 }, { key: "appearance", max: 500 }, { key: "personality", max: 500 }, { key: "outfit", max: 500 }, { key: "signature", max: 300 }];
+        const fields: Record<string, string> = {};
+        for (const { key, max } of FIELDS) {
+          const v = parsed[key];
+          if (typeof v !== "string") continue;
+          let s = v.trim().slice(0, max);
+          if (key === "gender" && !["男", "女", "中性"].includes(s)) s = ""; // whitelist
+          if (s) fields[key] = s;
+        }
+
+        writeAuditLog({ ctx, action: "image_gen", detail: { kind: "character_recognition", imageCount: absoluteUrls.length, characterKind: input.characterKind } });
+        return { characterKind: input.characterKind, fields };
+      });
+    }),
+
   generateVariants: protectedProcedure
     .input(z.object({
       synopsis: z.string().min(1).max(2000),
