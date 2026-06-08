@@ -27,9 +27,9 @@ export const CONNECTION_MATRIX: Partial<Record<NodeType, NodeType[]>> = {
   lip_sync: [],
   avatar: [],
   merge: ["asset", "clip"],
-  comfyui_image: ["video_task", "asset", "clip", "pose_control", "character", "comfyui_image", "comfyui_video", "comfyui_workflow"],
+  comfyui_image: ["video_task", "asset", "clip", "pose_control", "character", "image_gen", "comfyui_image", "comfyui_video", "comfyui_workflow"],
   comfyui_video: ["clip", "asset", "overlay", "merge", "subtitle", "subtitle_motion", "smart_cut", "comfyui_image", "comfyui_video", "comfyui_workflow"],
-  comfyui_workflow: ["video_task", "asset", "clip", "overlay", "merge", "subtitle", "subtitle_motion", "smart_cut", "character", "comfyui_workflow", "comfyui_image", "comfyui_video"],
+  comfyui_workflow: ["video_task", "asset", "clip", "overlay", "merge", "subtitle", "subtitle_motion", "smart_cut", "character", "image_gen", "comfyui_workflow", "comfyui_image", "comfyui_video"],
   note: [],
   group: [],
   // The agent (Copilot) orchestrates by CREATING nodes via chat, not via edges —
@@ -97,7 +97,7 @@ export const CONNECTION_HINTS: Record<
   image_gen: {
     label: "图像生成",
     outgoing: "→ 视频任务 / 素材 / 剪辑 / 角色（参考图）",
-    incoming: "← 分镜 / 提示词 / 角色 / 素材",
+    incoming: "← 分镜 / 提示词 / 角色 / 素材 / ComfyUI 图像 / ComfyUI 自定义（参考图）",
   },
   video_task: {
     label: "视频任务",
