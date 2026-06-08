@@ -1,4 +1,5 @@
 import { useState, useRef, useCallback, useEffect } from "react";
+import { useReactFlow } from "@xyflow/react";
 import { createPortal } from "react-dom";
 import { trpc } from "@/lib/trpc";
 import { toast } from "sonner";
@@ -21,6 +22,7 @@ type SourceFilter = "upload" | "generated" | "external";
 
 export function AssetPanel({ projectId, onClose, onHeaderMouseDown }: Props) {
   const { addNode, updateNodeData } = useCanvasStore();
+  const reactFlow = useReactFlow();
   const [uploading, setUploading] = useState(false);
   const [dragOver, setDragOver] = useState(false);
   const [scope, setScope] = useState<"project" | "all">("project");
@@ -121,8 +123,10 @@ export function AssetPanel({ projectId, onClose, onHeaderMouseDown }: Props) {
   const addAssetsToCanvas = (list: Asset[]) => {
     if (list.length === 0) return;
     try {
+      // 放在当前视口中心（而非固定世界坐标），批量时斜向错开。
+      const c = reactFlow.screenToFlowPosition({ x: window.innerWidth / 2, y: window.innerHeight / 2 });
       list.forEach((asset, i) => {
-        const node = addNode("asset", { x: 200 + i * 28, y: 200 + i * 28 });
+        const node = addNode("asset", { x: c.x + i * 28, y: c.y + i * 28 });
         const t = asset.type === "video" || asset.type === "audio" || asset.type === "image" ? asset.type : "other";
         updateNodeData(node.id, {
           url: asset.url, name: asset.name, type: t,
