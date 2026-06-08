@@ -87,7 +87,8 @@ export type AuditAction =
   | "download:denied"
   | "editor:create"
   | "editor:delete"
-  | "editor:export";
+  | "editor:export"
+  | "poyo_stage";
 
 export interface AuditOpts {
   ctx?: TrpcContext;
