@@ -7,8 +7,26 @@ import { VIDEO_PROVIDERS } from "../../../shared/types";
 import { detectUpstreamImageUrl, resolveWorkflowImageParams } from "../lib/comfyWorkflowParams";
 import { computeRefImageUpdates, computePromptToVideoUpdates } from "../lib/refImagePropagation";
 import { handleWhitelistError } from "./useWhitelistBlocked";
+import { effectiveCharacters, effectiveCharacterRefImages, effectiveSceneRefImages, stripCharacterMentions } from "../lib/characterConditioning";
+import { mergeCharactersIntoPrompt } from "../lib/characterPrompt";
 
 export type NodeRunPhase = "pending" | "running" | "done" | "failed" | "skipped";
+
+/**
+ * 把「连线角色 + 提示词里的 @角色」注入到批量运行用的提示词与参考图里，使「运行全部」
+ * 与逐节点「生成」按钮行为一致（此前 runner 直接用原始 payload.prompt，角色完全不生效）。
+ */
+function injectCharacters(nodeId: string, rawPrompt: string, maxLen: number): {
+  prompt: string; personRefs: string[]; sceneRefs: string[];
+} {
+  const { edges, nodes } = useCanvasStore.getState();
+  const chars = effectiveCharacters(nodeId, rawPrompt, edges, nodes);
+  return {
+    prompt: mergeCharactersIntoPrompt(stripCharacterMentions(rawPrompt, nodes), chars, maxLen),
+    personRefs: effectiveCharacterRefImages(nodeId, rawPrompt, edges, nodes),
+    sceneRefs: effectiveSceneRefImages(nodeId, rawPrompt, edges, nodes),
+  };
+}
 
 export interface NodeRunStatus {
   phase: NodeRunPhase;
@@ -368,15 +386,19 @@ export function useWorkflowRunner() {
 
         // ── Image generation (storyboard / image_gen) ───────────────────────
         } else if (nodeType === "storyboard" || nodeType === "image_gen") {
-          const prompt =
+          const rawPrompt =
             (p.promptText as string) ||
             (p.positivePrompt as string) ||
             (p.prompt as string) ||
             "";
-          if (!prompt.trim()) {
+          if (!rawPrompt.trim()) {
             failed.push(nodeId);
             return "fail";
           }
+          // 注入连线 + @角色（描述合并入 prompt；无手动参考图时用角色参考图锁身份）。
+          const ci = injectCharacters(nodeId, rawPrompt, 2000);
+          const manualRef = ((p.referenceImageUrl as string) || "").trim();
+          const charRefs = manualRef ? [] : [...ci.personRefs, ...ci.sceneRefs].slice(0, 8);
 
           const VALID_IMAGE_MODELS = new Set([
             "manus_forge", "poyo_flux", "poyo_sdxl",
@@ -385,13 +407,14 @@ export function useWorkflowRunner() {
           ]);
           const rawModel = (p.imageModel as string) || (p.model as string) || "";
           const result = await imageGenMutation.mutateAsync({
-            prompt,
+            prompt: ci.prompt,
             negativePrompt: (p.negativePrompt as string) || undefined,
             style: (p.style as string) || undefined,
             model: (VALID_IMAGE_MODELS.has(rawModel) ? rawModel : undefined) as Parameters<typeof imageGenMutation.mutateAsync>[0]["model"],
             seed: typeof p.seed === "number" ? p.seed : undefined,
             batchSize: ([1, 4] as number[]).includes(p.batchSize as number) ? (p.batchSize as 1 | 4) : undefined,
-            referenceImageUrl: (p.referenceImageUrl as string) || undefined,
+            referenceImageUrl: manualRef || charRefs[0] || undefined,
+            referenceImageUrls: charRefs.length > 1 ? charRefs : undefined,
             projectId: node.data.projectId,
           });
           const bestUrl = result.url ?? result.urls?.[0];
@@ -422,11 +445,15 @@ export function useWorkflowRunner() {
 
         // ── Video task ──────────────────────────────────────────────────────
         } else if (nodeType === "video_task") {
-          const prompt = (p.prompt as string) || "";
-          if (!prompt.trim() && !(p.referenceImageUrl as string)) {
+          const rawPrompt = (p.prompt as string) || "";
+          if (!rawPrompt.trim() && !(p.referenceImageUrl as string)) {
             failed.push(nodeId);
             return "fail";
           }
+          // 注入连线 + @角色（描述合并入 prompt；无手动参考图时用角色参考图作主体参考）。
+          const ci = injectCharacters(nodeId, rawPrompt, 4000);
+          const manualRef = ((p.referenceImageUrl as string) || "").trim();
+          const charRefs = manualRef ? [] : [...ci.personRefs, ...ci.sceneRefs].slice(0, 9);
 
           type VideoProvider = (typeof VIDEO_PROVIDERS)[number];
           const providerValue = (p.provider as string) || "poyo_seedance";
@@ -438,8 +465,9 @@ export function useWorkflowRunner() {
             projectId: node.data.projectId,
             nodeId,
             provider,
-            prompt: prompt || "cinematic video",
-            referenceImageUrl: (p.referenceImageUrl as string) || undefined,
+            prompt: ci.prompt || "cinematic video",
+            referenceImageUrl: manualRef || charRefs[0] || undefined,
+            referenceImageUrls: charRefs.length > 1 ? charRefs : undefined,
             params: (p.params as Record<string, unknown>) || {},
           });
           useCanvasStore
@@ -662,13 +690,15 @@ export function useWorkflowRunner() {
 
         // ── ComfyUI Image ────────────────────────────────────────────────────
         } else if (nodeType === "comfyui_image") {
-          const prompt = (p.prompt as string) || "";
+          const rawPrompt = (p.prompt as string) || "";
           const ckpt = (p.ckpt as string) || "";
-          if (!prompt.trim() || !ckpt.trim()) {
+          if (!rawPrompt.trim() || !ckpt.trim()) {
             toast.error(`节点 "${node.data.title}"：提示词和 Checkpoint 必填`);
             failed.push(nodeId);
             return "fail";
           }
+          // 注入连线 + @角色（ComfyUI 图像仅把角色描述并入提示词，视觉条件另行配置）。
+          const prompt = injectCharacters(nodeId, rawPrompt, 2000).prompt;
           const tplRaw = p.workflowTemplate as string;
           const template = (tplRaw === "img2img" || tplRaw === "inpaint") ? tplRaw : "txt2img";
           const refUrl = (p.referenceImageUrl as string) || undefined;
@@ -772,16 +802,19 @@ export function useWorkflowRunner() {
 
         // ── ComfyUI Video ────────────────────────────────────────────────────
         } else if (nodeType === "comfyui_video") {
-          const prompt = (p.prompt as string) || "";
+          const rawPrompt = (p.prompt as string) || "";
           const ckpt = (p.ckpt as string) || "";
-          if (!prompt.trim() || !ckpt.trim()) {
+          if (!rawPrompt.trim() || !ckpt.trim()) {
             toast.error(`节点 "${node.data.title}"：提示词和 Checkpoint 必填`);
             failed.push(nodeId);
             return "fail";
           }
+          // 注入连线 + @角色（描述并入提示词；needsRef 模板无起始图时用角色人物参考图兜底）。
+          const ciV = injectCharacters(nodeId, rawPrompt, 2000);
+          const prompt = ciV.prompt;
           const vtplRaw = p.workflowTemplate as string;
           const template = (["svd", "wan_t2v", "wan_i2v", "ltxv"].includes(vtplRaw) ? vtplRaw : "animatediff") as "animatediff" | "svd" | "wan_t2v" | "wan_i2v" | "ltxv";
-          const refUrl = (p.referenceImageUrl as string) || undefined;
+          const refUrl = ((p.referenceImageUrl as string) || "").trim() || ciV.personRefs[0] || undefined;
           if ((template === "svd" || template === "wan_i2v") && !refUrl) {
             toast.error(`节点 "${node.data.title}"：该模板需要起始图`);
             failed.push(nodeId);
