@@ -9,7 +9,7 @@ import { useCanvasStore } from "../../../hooks/useCanvasStore";
 import { propagateRefImage, propagateWorkflowPrompt } from "../../../lib/refImagePropagation";
 import type { ComfyuiWorkflowNodeData, WorkflowParamBinding } from "../../../../../shared/types";
 import { trpc } from "@/lib/trpc";
-import { detectUpstreamImageUrl, detectUpstreamPrompt, fillWorkflowPromptParams, fillWorkflowLoraParam, positivePromptParamKey, listUpstreamImageSources, resolveImageParamsWithMap } from "@/lib/comfyWorkflowParams";
+import { detectUpstreamImageUrl, detectUpstreamPrompt, fillWorkflowPromptParams, fillWorkflowLoraParam, positivePromptParamKey, listUpstreamImageSources, resolveImageParamsWithMap, listUpstreamAudioSources, resolveAudioParamsWithMap } from "@/lib/comfyWorkflowParams";
 import { effectiveCharacters, connectedCharacterLora, effectiveCharacterRefImages, stripCharacterMentions } from "@/lib/characterConditioning";
 import { mergeCharactersIntoPrompt } from "@/lib/characterPrompt";
 import { applyFreeVramToAllComfyNodes } from "@/lib/comfyFreeVram";
@@ -193,6 +193,7 @@ export const ComfyuiWorkflowNode = memo(function ComfyuiWorkflowNode({ id, selec
   const edgesForSources = useCanvasStore((s) => s.edges);
   const nodesForSources = useCanvasStore((s) => s.nodes);
   const upstreamSources = useMemo(() => listUpstreamImageSources(id, edgesForSources, nodesForSources), [id, edgesForSources, nodesForSources]);
+  const upstreamAudioSources = useMemo(() => listUpstreamAudioSources(id, edgesForSources, nodesForSources), [id, edgesForSources, nodesForSources]);
   const payload = data.payload;
   // Reactively detect the upstream prompt text + whether this workflow exposes a
   // positive/negative prompt param it can be written into. Surfaces exactly why
@@ -422,7 +423,10 @@ export const ComfyuiWorkflowNode = memo(function ComfyuiWorkflowNode({ id, selec
       // Explicit per-param「来源」mapping first, then smart auto-fill the rest.
       const imgResolved = resolveImageParamsWithMap(payload.paramBindings, payload.paramValues ?? {}, sources, payload.imageSourceMap ?? {});
       const imageParamKeys = imgResolved.imageParamKeys;
-      let paramValues = fillWorkflowPromptParams(payload.paramBindings, imgResolved.paramValues, upstreamPrompt, { force: payload.preferUpstreamPrompt !== false });
+      // 音频参数：上游音频来源映射 + 自动填充（服务端运行时上传到 ComfyUI）。
+      const audioResolved = resolveAudioParamsWithMap(payload.paramBindings, imgResolved.paramValues, listUpstreamAudioSources(id, edges, nodes), payload.audioSourceMap ?? {});
+      const audioParamKeys = audioResolved.audioParamKeys;
+      let paramValues = fillWorkflowPromptParams(payload.paramBindings, audioResolved.paramValues, upstreamPrompt, { force: payload.preferUpstreamPrompt !== false });
       // Prepend character identity to the resolved positive (augment, not replace).
       // 去掉字面量「@名字」，改用结构化注入。
       if (chars.length > 0 && posPromptKey) {
@@ -455,6 +459,7 @@ export const ComfyuiWorkflowNode = memo(function ComfyuiWorkflowNode({ id, selec
         workflowJson,
         paramValues: effectiveParamValues,
         imageParamKeys: imageParamKeys.length > 0 ? imageParamKeys : undefined,
+        audioParamKeys: audioParamKeys.length > 0 ? audioParamKeys : undefined,
         outputNodeIds: payload.outputNodeIds,
         outputType: payload.outputType ?? "auto",
         freeVramAfterRun: payload.freeVramAfterRun === true,
@@ -531,6 +536,22 @@ export const ComfyuiWorkflowNode = memo(function ComfyuiWorkflowNode({ id, selec
   const uploadLocalImage = useCallback((file: File): Promise<string | null> => new Promise((resolve) => {
     if (!file.type.startsWith("image/")) { toast.error("请选择图片文件"); resolve(null); return; }
     if (file.size > 16 * 1024 * 1024) { toast.error("文件不能超过 16MB"); resolve(null); return; }
+    const reader = new FileReader();
+    reader.onload = async () => {
+      try {
+        const base64 = (reader.result as string).split(",")[1];
+        const r = await imgUploadMutation.mutateAsync({ base64, mimeType: file.type, filename: file.name });
+        resolve(r.url);
+      } catch (e) { toast.error("上传失败：" + (e instanceof Error ? e.message : String(e))); resolve(null); }
+    };
+    reader.onerror = () => { toast.error("文件读取失败"); resolve(null); };
+    reader.readAsDataURL(file);
+  }), [imgUploadMutation]);
+
+  // 上传本地音频到我们的存储，返回 URL；运行时服务端再把该 URL 上传到 ComfyUI。
+  const uploadLocalAudio = useCallback((file: File): Promise<string | null> => new Promise((resolve) => {
+    if (!file.type.startsWith("audio/")) { toast.error("请选择音频文件"); resolve(null); return; }
+    if (file.size > 200 * 1024 * 1024) { toast.error("音频不能超过 200MB"); resolve(null); return; }
     const reader = new FileReader();
     reader.onload = async () => {
       try {
@@ -1254,6 +1275,42 @@ export const ComfyuiWorkflowNode = memo(function ComfyuiWorkflowNode({ id, selec
                           />
                         </>
                       )}
+                      {b.type === "audio" && (
+                        <>
+                          {/* 音频来源映射（与图像一致）：指定上游音频/素材(音频)节点，或自动 */}
+                          {upstreamAudioSources.length > 0 ? (
+                            <select
+                              value={payload.audioSourceMap?.[key] ?? ""}
+                              onChange={(e) => {
+                                const map = { ...(payload.audioSourceMap ?? {}) };
+                                if (e.target.value) map[key] = e.target.value; else delete map[key];
+                                update({ audioSourceMap: map });
+                              }}
+                              style={{ ...fieldBase, padding: "5px 8px", fontSize: 11, marginBottom: 5, cursor: "pointer" }}
+                              title="来源：选某个上游音频节点，或自动（按位置/连线顺序）"
+                            >
+                              <option value="">来源：自动排序</option>
+                              {upstreamAudioSources.map((s, i) => (
+                                <option key={s.id} value={s.id}>来源：{i + 1}. {s.title}</option>
+                              ))}
+                            </select>
+                          ) : (
+                            <select
+                              disabled
+                              value=""
+                              style={{ ...fieldBase, padding: "5px 8px", fontSize: 11, marginBottom: 5, cursor: "default", opacity: 0.6 }}
+                              title="把上游「音频 / 素材(音频)」节点连到本节点后，即可在此指定该音频参数来源"
+                            >
+                              <option value="">来源：连接上游音频后可选 ▸</option>
+                            </select>
+                          )}
+                          <AudioParamField
+                            value={String(value ?? "")}
+                            onChangeUrl={(u) => setParamValue(key, u)}
+                            uploadFile={uploadLocalAudio}
+                          />
+                        </>
+                      )}
                     </div>
                   );
                 })}
@@ -1527,6 +1584,60 @@ function ImageParamField({
         ref={fileRef}
         type="file"
         accept="image/*"
+        style={{ display: "none" }}
+        onChange={(e) => { const f = e.target.files?.[0]; e.target.value = ""; if (f) void doUploadFile(f); }}
+      />
+    </div>
+  );
+}
+
+// 音频参数输入：URL/文件名 + 上传本地音频 + 试听 + 清除。运行时服务端把 URL 上传到 ComfyUI。
+function AudioParamField({
+  value, onChangeUrl, uploadFile,
+}: {
+  value: string;
+  onChangeUrl: (url: string) => void;
+  uploadFile: (file: File) => Promise<string | null>;
+}) {
+  const [uploading, setUploading] = useState(false);
+  const fileRef = useRef<HTMLInputElement>(null);
+  const doUploadFile = async (file: File) => {
+    setUploading(true);
+    const url = await uploadFile(file).finally(() => setUploading(false));
+    if (url) onChangeUrl(url);
+  };
+  const isUrl = /^https?:\/\//.test(value) || value.startsWith("/");
+  return (
+    <div className="nodrag" style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+      <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
+        <NodeInput
+          style={{ ...fieldBase, flex: 1 }}
+          placeholder="音频 URL / 文件名 / 上传文件"
+          value={value}
+          noMention
+          onValueChange={(v) => onChangeUrl(v)}
+        />
+        <button
+          onClick={() => fileRef.current?.click()}
+          disabled={uploading}
+          title="上传本地音频"
+          style={{ padding: "6px 8px", borderRadius: 6, cursor: uploading ? "not-allowed" : "pointer", background: "var(--c-input)", border: "1px solid var(--c-bd2)", color: "var(--c-t2)", fontSize: 11, lineHeight: 0 }}
+        >
+          {uploading ? <Loader2 size={12} style={{ animation: "spin 1s linear infinite" }} /> : <Upload size={12} />}
+        </button>
+        {value && (
+          <button onClick={() => onChangeUrl("")} title="清除" style={{ padding: "6px 8px", borderRadius: 6, cursor: "pointer", background: "var(--c-input)", border: "1px solid var(--c-bd2)", color: "var(--c-t3)", fontSize: 11, lineHeight: 0 }}>
+            <X size={12} />
+          </button>
+        )}
+      </div>
+      {isUrl && value && (
+        <audio src={value} controls preload="none" style={{ width: "100%", height: 30 }} />
+      )}
+      <input
+        ref={fileRef}
+        type="file"
+        accept="audio/*"
         style={{ display: "none" }}
         onChange={(e) => { const f = e.target.files?.[0]; e.target.value = ""; if (f) void doUploadFile(f); }}
       />

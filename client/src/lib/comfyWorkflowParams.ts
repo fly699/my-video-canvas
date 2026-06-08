@@ -101,6 +101,65 @@ export function listUpstreamImageSources(targetId: string, edges: MiniEdge[], no
   return out;
 }
 
+// ── Audio params (VHS_LoadAudioUpload 等) — 与 image 完全对称 ─────────────────
+const AUDIO_SOURCE_TYPES = new Set(["audio", "asset"]);
+
+/** Pick a node's audio-output URL (audio 节点 / 素材[音频]). */
+function getNodeAudioUrl(nodeType: string, payload: Record<string, unknown>): string | undefined {
+  if (nodeType === "asset") {
+    const mt = payload.mimeType as string | undefined;
+    const t = payload.type as string | undefined;
+    if ((mt && !mt.startsWith("audio/")) || (t && t !== "audio")) return undefined;
+    return payload.url as string | undefined;
+  }
+  if (nodeType === "audio") return payload.url as string | undefined;
+  return undefined;
+}
+
+export interface UpstreamAudioSource { id: string; title: string; url: string }
+
+/** 连入 targetId 的上游音频来源（id + 标题 + url），智能排序。供音频参数「来源」下拉用。 */
+export function listUpstreamAudioSources(targetId: string, edges: MiniEdge[], nodes: MiniNode[]): UpstreamAudioSource[] {
+  const byId = new Map(nodes.map((n) => [n.id, n]));
+  const incoming = (edges as Array<{ source: string; target: string }>).map((e, i) => ({ e, i })).filter(({ e }) => e.target === targetId);
+  incoming.sort((a, b) => compareUpstreamNodes(byId.get(a.e.source), byId.get(b.e.source), a.i, b.i));
+  const out: UpstreamAudioSource[] = [];
+  const seen = new Set<string>();
+  for (const { e } of incoming) {
+    const src = byId.get(e.source);
+    if (!src || seen.has(e.source) || !AUDIO_SOURCE_TYPES.has(src.data.nodeType)) continue;
+    const url = getNodeAudioUrl(src.data.nodeType, (src.data.payload ?? {}) as Record<string, unknown>);
+    if (url) { seen.add(e.source); out.push({ id: e.source, title: src.data.title || e.source, url }); }
+  }
+  return out;
+}
+
+/** 解析音频参数：显式来源映射优先，剩余空位按顺序自动填充。镜像 resolveImageParamsWithMap。 */
+export function resolveAudioParamsWithMap(
+  bindings: WorkflowParamBinding[] | undefined,
+  paramValues: Record<string, unknown>,
+  sources: UpstreamAudioSource[],
+  sourceMap: Record<string, string> = {},
+): { paramValues: Record<string, unknown>; audioParamKeys: string[] } {
+  const audioBindings = (bindings ?? []).filter((b) => b.type === "audio");
+  const audioParamKeys = audioBindings.map((b) => `${b.nodeId}.${b.fieldPath}`);
+  const next = { ...paramValues };
+  const mappedIds = new Set(Object.values(sourceMap));
+  const autoUrls = sources.filter((s) => !mappedIds.has(s.id)).map((s) => s.url);
+  let ai = 0;
+  for (const b of audioBindings) {
+    const key = `${b.nodeId}.${b.fieldPath}`;
+    if (!isParamAtDefault(next[key], b)) continue; // 用户已填的值不覆盖
+    const mappedId = sourceMap[key];
+    if (mappedId) {
+      const s = sources.find((x) => x.id === mappedId);
+      if (s) { next[key] = s.url; continue; }
+    }
+    if (ai < autoUrls.length) next[key] = autoUrls[ai++];
+  }
+  return { paramValues: next, audioParamKeys };
+}
+
 /** Resolve image params from an EXPLICIT source map (paramKey → upstream nodeId)
  *  first, then auto-fill remaining blanks from the unused sources in smart order.
  *  User-typed values are never overwritten. */

@@ -699,6 +699,48 @@ async function uploadImageToComfy(baseUrl: string, sourceUrl: string, apiKey?: s
   return data.name ?? filename;
 }
 
+// Upload an audio URL to ComfyUI's input dir (same generic /upload/image endpoint,
+// which accepts any file). Returns the stored filename, written back into the
+// workflow's VHS_LoadAudioUpload.audio field so the run can read it.
+async function uploadAudioToComfy(baseUrl: string, sourceUrl: string, apiKey?: string): Promise<string> {
+  let fetchUrl = sourceUrl;
+  const internalPath = toInternalStoragePath(sourceUrl);
+  if (internalPath) {
+    fetchUrl = await resolveToAbsoluteUrl(internalPath);
+  } else if (/^https?:\/\//i.test(sourceUrl)) {
+    if (!isOwnStorageUrl(sourceUrl)) assertSafeUrl(sourceUrl);
+  } else {
+    throw new Error("音频 URL 协议不受支持，仅允许 http/https 或 /manus-storage/ 相对路径");
+  }
+  const { buf, contentType } = await fetchWithSizeLimit(fetchUrl, 200 * 1024 * 1024, 120_000, "下载音频");
+  const ct = contentType ?? "audio/mpeg";
+  const ext = ct.includes("wav") ? "wav"
+    : (ct.includes("mp4") || ct.includes("m4a") || ct.includes("aac")) ? "m4a"
+    : ct.includes("ogg") ? "ogg"
+    : ct.includes("flac") ? "flac"
+    : sourceUrl.toLowerCase().match(/\.(wav|m4a|aac|ogg|flac|mp3)(?:\?|$)/)?.[1]
+    || "mp3";
+  const filename = `comfy_input_audio_${Date.now()}.${ext}`;
+
+  const form = new FormData();
+  const blob = new Blob([new Uint8Array(buf)], { type: ct });
+  form.append("image", blob, filename); // ComfyUI 的 /upload/image 接受任意文件，存入 input/
+  form.append("overwrite", "true");
+
+  const upRes = await fetch(`${baseUrl}/upload/image`, {
+    method: "POST",
+    body: form,
+    signal: AbortSignal.timeout(120_000),
+    ...(apiKey ? { headers: comfyAuthHeaders(apiKey) } : {}),
+  });
+  if (!upRes.ok) {
+    const text = await upRes.text().catch(() => "");
+    throw new Error(`上传音频到 ComfyUI 失败 (${upRes.status}): ${text.slice(0, 200)}`);
+  }
+  const data = (await upRes.json()) as { name?: string; subfolder?: string };
+  return data.name ?? filename;
+}
+
 // ── WebSocket progress subscription ──────────────────────────────────────────
 
 interface ComfyProgressEvent {
@@ -1606,6 +1648,17 @@ export async function analyzeWorkflow(
         role: isMask ? "mask" : "reference",
         defaultValue: inputs.image ?? "",
       });
+    } else if (ct === "VHS_LoadAudioUpload" || ct === "LoadAudio" || ct === "VHS_LoadAudio") {
+      // Audio upload nodes (VHS) — expose the `audio` filename field as an audio
+      // param so it can be bound to an upstream audio source or uploaded; the
+      // server re-uploads the URL to ComfyUI's input dir at run time.
+      detectedParams.push({
+        nodeId, fieldPath: "inputs.audio",
+        label: node._meta?.title?.trim() || "输入音频",
+        type: "audio",
+        role: "reference",
+        defaultValue: inputs.audio ?? "",
+      });
     } else if (ct === "ControlNetLoader" || ct === "DiffControlNetLoader") {
       const nets = pickFirstArray(info, ct, "control_net_name");
       detectedParams.push({ nodeId, fieldPath: "inputs.control_net_name", label: "ControlNet 模型", type: nets.length > 0 ? "select" : "text", defaultValue: inputs.control_net_name ?? "", options: nets.length > 0 ? nets : undefined });
@@ -1724,6 +1777,7 @@ export interface ExecuteCustomWorkflowOptions {
   // Keys (same format as paramValues) whose value is an image: a URL here is
   // auto-uploaded to ComfyUI and replaced with the returned input filename.
   imageParamKeys?: string[];
+  audioParamKeys?: string[];
   outputNodeIds?: string[];
   outputType?: "image" | "video" | "auto";
   projectId?: number;
@@ -1754,6 +1808,7 @@ export async function executeCustomWorkflow(
   // Key format: "nodeId.inputs.fieldName" (e.g., "3.inputs.seed")
   // or shorter "nodeId.fieldName" (legacy, treated as "nodeId.inputs.fieldName")
   const imageKeys = new Set(options.imageParamKeys ?? []);
+  const audioKeys = new Set(options.audioParamKeys ?? []);
   for (const [key, rawValue] of Object.entries(options.paramValues)) {
     const parts = key.split(".");
     if (parts.length < 2) continue;
@@ -1765,13 +1820,16 @@ export async function executeCustomWorkflow(
     const fieldParts = pathParts[0] === "inputs" ? pathParts.slice(1) : pathParts;
     if (fieldParts.length === 0) continue;
 
-    // Image params: a URL is not a valid ComfyUI input value (LoadImage expects a
-    // filename already present in ComfyUI's input dir), so upload it first and
-    // substitute the returned filename. This makes both manual URL entry and
-    // upstream-node image feeds work without a separate client upload step.
+    // Image/audio params: a URL is not a valid ComfyUI input value (LoadImage /
+    // VHS_LoadAudioUpload expect a filename already present in ComfyUI's input dir),
+    // so upload it first and substitute the returned filename. Works for both manual
+    // URL entry and upstream-node feeds without a separate client upload step.
     let value = rawValue;
-    if (imageKeys.has(key) && typeof value === "string" && (/^https?:\/\//i.test(value) || value.startsWith("/manus-storage/"))) {
-      value = await uploadImageToComfy(baseUrl, value, apiKey);
+    const isUploadableUrl = typeof value === "string" && (/^https?:\/\//i.test(value) || value.startsWith("/manus-storage/"));
+    if (imageKeys.has(key) && isUploadableUrl) {
+      value = await uploadImageToComfy(baseUrl, value as string, apiKey);
+    } else if (audioKeys.has(key) && isUploadableUrl) {
+      value = await uploadAudioToComfy(baseUrl, value as string, apiKey);
     }
 
     // Walk the path and set the value
@@ -1997,6 +2055,25 @@ async function uploadImageToCloud(baseUrl: string, sourceUrl: string, apiKey: st
   return data.subfolder ? `${data.subfolder}/${data.name}` : data.name;
 }
 
+async function uploadAudioToCloud(baseUrl: string, sourceUrl: string, apiKey: string): Promise<string> {
+  let fetchUrl = sourceUrl;
+  const internalPath = toInternalStoragePath(sourceUrl);
+  if (internalPath) fetchUrl = await resolveToAbsoluteUrl(internalPath);
+  else if (/^https?:\/\//i.test(sourceUrl)) { if (!isOwnStorageUrl(sourceUrl)) assertSafeUrl(sourceUrl); }
+  else throw new Error("音频 URL 协议不受支持，仅允许 http/https 或 /manus-storage/ 相对路径");
+  const { buf, contentType } = await fetchWithSizeLimit(fetchUrl, 200 * 1024 * 1024, 120_000, "下载音频");
+  const ct = contentType ?? "audio/mpeg";
+  const ext = ct.includes("wav") ? "wav" : (ct.includes("mp4") || ct.includes("m4a") || ct.includes("aac")) ? "m4a" : ct.includes("ogg") ? "ogg" : ct.includes("flac") ? "flac" : "mp3";
+  const form = new FormData();
+  form.append("image", new Blob([new Uint8Array(buf)], { type: ct }), `comfy_input_audio_${Date.now()}.${ext}`);
+  form.append("overwrite", "true");
+  const upRes = await fetch(`${baseUrl}/api/upload/image`, { method: "POST", body: form, headers: { "X-API-Key": apiKey }, signal: AbortSignal.timeout(120_000) });
+  if (!upRes.ok) { const t = await upRes.text().catch(() => ""); throw new Error(`上传音频到云端失败 (${upRes.status}): ${t.slice(0, 200)}`); }
+  const data = (await upRes.json()) as { name?: string; subfolder?: string };
+  if (!data.name) throw new Error("云端上传未返回文件名");
+  return data.subfolder ? `${data.subfolder}/${data.name}` : data.name;
+}
+
 export async function executeCloudWorkflow(
   rawBaseUrl: string,
   options: ExecuteCustomWorkflowOptions,
@@ -2013,6 +2090,7 @@ export async function executeCloudWorkflow(
   // Inject paramValues (same key format as local). Image-typed params with a URL
   // are uploaded to the cloud first and replaced with the returned filename.
   const imageKeys = new Set(options.imageParamKeys ?? []);
+  const audioKeys = new Set(options.audioParamKeys ?? []);
   for (const [key, rawValue] of Object.entries(options.paramValues)) {
     const parts = key.split("."); if (parts.length < 2) continue;
     const [wfNodeId, ...pathParts] = parts;
@@ -2020,8 +2098,11 @@ export async function executeCloudWorkflow(
     const fieldParts = pathParts[0] === "inputs" ? pathParts.slice(1) : pathParts;
     if (fieldParts.length === 0) continue;
     let value = rawValue;
-    if (imageKeys.has(key) && typeof value === "string" && (/^https?:\/\//i.test(value) || value.startsWith("/manus-storage/"))) {
-      value = await uploadImageToCloud(baseUrl, value, apiKey);
+    const isUploadableUrl = typeof value === "string" && (/^https?:\/\//i.test(value) || value.startsWith("/manus-storage/"));
+    if (imageKeys.has(key) && isUploadableUrl) {
+      value = await uploadImageToCloud(baseUrl, value as string, apiKey);
+    } else if (audioKeys.has(key) && isUploadableUrl) {
+      value = await uploadAudioToCloud(baseUrl, value as string, apiKey);
     }
     if (fieldParts.length === 1) { node.inputs[fieldParts[0]] = value; }
     else {
