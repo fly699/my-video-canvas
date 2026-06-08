@@ -9,6 +9,7 @@ import { registerOAuthRoutes } from "./oauth";
 import { registerEmailAuthRoutes } from "./emailAuth";
 import { registerGoogleAuthRoutes } from "./googleAuth";
 import { registerStorageProxy, registerStorageUploadProxy } from "./storageProxy";
+import { registerFileRelay } from "./fileRelay";
 import { registerVideoProxy } from "./videoProxy";
 import { registerImageProxy } from "./imageProxy";
 import { appRouter } from "../routers";
@@ -79,6 +80,9 @@ async function startServer() {
   // Streamed upload proxy must be registered BEFORE the body parsers so the raw
   // file stream reaches S3/MinIO untouched (no 50MB JSON limit, no base64).
   registerStorageUploadProxy(app);
+
+  // 局域网大文件中转站（同样需在 body 解析器之前注册，PUT 走原始流式写盘）。
+  registerFileRelay(app);
 
   // Configure body parser with larger size limit for file uploads
   app.use(express.json({ limit: "50mb" }));
