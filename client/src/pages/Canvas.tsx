@@ -1075,6 +1075,22 @@ function CanvasInner({ projectId }: { projectId: number }) {
     // preventDefault), don't ALSO spawn an asset node on the canvas — that was
     // the "dropped into a node but a duplicate appears on the canvas" bug.
     if (e.defaultPrevented) return;
+    // Node tiles from the picker carry a node type — drop one onto blank canvas
+    // and it lands at the cursor (instead of always being added to the center).
+    const dropType = e.dataTransfer.getData("application/x-node-type");
+    if (dropType) {
+      e.preventDefault();
+      if (isReadOnly) { toast.error("只读协作者无法添加节点"); return; }
+      const at = reactFlow.screenToFlowPosition({ x: e.clientX, y: e.clientY });
+      try {
+        const newNode = addNode(dropType as NodeType, at);
+        emitCollabEvent("node:add", newNode);
+      } catch (err) {
+        toast.error(err instanceof Error ? err.message : "添加节点失败");
+      }
+      setShowNodePicker(false);
+      return;
+    }
     const raw = e.dataTransfer.getData("application/x-asset-list");
     if (!raw) return;
     e.preventDefault();
@@ -1097,7 +1113,7 @@ function CanvasInner({ projectId }: { projectId: number }) {
       }
     });
     toast.success(`已添加 ${items.length} 个素材到画布`);
-  }, [isReadOnly, reactFlow, addNode, updateNodeData, emitCollabEvent]);
+  }, [isReadOnly, reactFlow, addNode, updateNodeData, emitCollabEvent, setShowNodePicker]);
 
   // ── Global aspect ratio lock ────────────────────────────────────────────────
   const RATIO_PRESETS = ["16:9", "9:16", "1:1", "4:3", "3:4", "2.35:1"];
@@ -1879,7 +1895,7 @@ function CanvasInner({ projectId }: { projectId: number }) {
                   添加节点
                 </p>
               </div>
-              <p className="text-[10px]" style={{ color: "var(--c-t4)" }}>点击添加到画布中心</p>
+              <p className="text-[10px]" style={{ color: "var(--c-t4)" }}>点击居中 · 拖拽到指定位置</p>
             </div>
             {/* Search */}
             <div className="px-2.5 pt-2.5">
@@ -1901,7 +1917,12 @@ function CanvasInner({ projectId }: { projectId: number }) {
                     <button
                       key={config.type}
                       onClick={() => addNodeAtCenter(config.type)}
-                      title={soon ? "即将上线" : undefined}
+                      draggable={!soon}
+                      onDragStart={(e) => {
+                        e.dataTransfer.setData("application/x-node-type", config.type);
+                        e.dataTransfer.effectAllowed = "copy";
+                      }}
+                      title={soon ? "即将上线" : "点击居中添加，或拖拽到画布指定位置"}
                       className="group/picker relative flex flex-col items-center gap-2.5 px-2 py-3 rounded-xl transition-all text-center"
                       style={{ color: "var(--c-t2)", opacity: soon ? 0.5 : 1 }}
                       onMouseEnter={(e) => { const el = e.currentTarget as HTMLElement; el.style.background = "var(--c-elevated)"; el.style.color = "var(--c-t1)"; }}
@@ -1987,7 +2008,7 @@ function CanvasInner({ projectId }: { projectId: number }) {
             onMoveEnd={(_, vp) => { setViewport(vp); if (viewportRestoredRef.current) markDirty(); }}
             onDrop={handleAssetDrop}
             onDragOver={(e) => {
-              if (e.dataTransfer.types.includes("application/x-asset-list")) {
+              if (e.dataTransfer.types.includes("application/x-asset-list") || e.dataTransfer.types.includes("application/x-node-type")) {
                 e.preventDefault();
                 e.dataTransfer.dropEffect = "copy";
               }
