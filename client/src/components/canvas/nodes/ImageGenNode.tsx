@@ -15,7 +15,7 @@ import { detectUpstreamPrompt, detectUpstreamImagesExpanded } from "../../../lib
 import { connectedEffectPrompts, appendEffectPrompts } from "../../../lib/effectPrompt";
 import { ReferenceImageStrip } from "../ReferenceImageStrip";
 import { PromptDock } from "../PromptDock";
-import { useNodeDocks, DockToggleButton } from "../../../hooks/useNodeDocks";
+import { useNodeDocks, DockToggleButtons } from "../../../hooks/useNodeDocks";
 import { Layers } from "lucide-react";
 import type { ImageGenNodeData, ImageGenModel } from "../../../../../shared/types";
 import { trpc } from "@/lib/trpc";
@@ -479,14 +479,16 @@ export const ImageGenNode = memo(function ImageGenNode({ id, selected, data }: P
     <BaseNode id={id} selected={selected} nodeType="image_gen" title={data.title} minHeight={300} heroMedia={heroMedia}
       onRun={handleGenerate} running={genMutation.isPending} canRun={!!payload.prompt?.trim()} hasResult={!!payload.imageUrl}
       onAssetImageDrop={(urls) => refImages.addUrls(urls, "drop")}
+      onHeaderHoverChange={docks.onHeaderHoverChange}
       headerRight={
-        <DockToggleButton
+        <DockToggleButtons
           refCount={refImages.images.length}
           hasPrompt={!!finalPromptDisplay.trim()}
-          refOpen={docks.refOpen}
-          promptOpen={docks.promptOpen}
+          refActive={docks.refActive}
+          promptActive={docks.promptActive}
           accent={accent}
-          onClick={docks.cycle}
+          onToggleRef={docks.toggleRef}
+          onTogglePrompt={docks.togglePrompt}
         />
       }
       leftDock={

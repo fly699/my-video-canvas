@@ -21,7 +21,7 @@ import { WatermarkedVideo } from "@/components/WatermarkedVideo";
 import { ImageLightbox } from "../ImageLightbox";
 import { ReferenceImageStrip } from "../ReferenceImageStrip";
 import { PromptDock } from "../PromptDock";
-import { useNodeDocks, DockToggleButton } from "../../../hooks/useNodeDocks";
+import { useNodeDocks, DockToggleButtons } from "../../../hooks/useNodeDocks";
 import { openNodeImage } from "../NodeImageLightbox";
 import { toast } from "sonner";
 import {
@@ -643,6 +643,7 @@ export const ComfyuiWorkflowNode = memo(function ComfyuiWorkflowNode({ id, selec
       borderTint={accentColor}
       headerTooltip={summary.ok ? annotationDetail : undefined}
       hideTypeBadge
+      onHeaderHoverChange={docks.onHeaderHoverChange}
       headerRight={(cornerText || stripImages.length >= 1 || finalPromptInfo.hasPos) ? (
         <div style={{ display: "flex", alignItems: "center", gap: 6, minWidth: 0 }}>
           {cornerText ? (
@@ -653,13 +654,14 @@ export const ComfyuiWorkflowNode = memo(function ComfyuiWorkflowNode({ id, selec
               {cornerText}
             </span>
           ) : null}
-          <DockToggleButton
+          <DockToggleButtons
             refCount={stripImages.length}
             hasPrompt={finalPromptInfo.hasPos}
-            refOpen={docks.refOpen}
-            promptOpen={docks.promptOpen}
+            refActive={docks.refActive}
+            promptActive={docks.promptActive}
             accent={accent}
-            onClick={docks.cycle}
+            onToggleRef={docks.toggleRef}
+            onTogglePrompt={docks.togglePrompt}
           />
         </div>
       ) : undefined}
