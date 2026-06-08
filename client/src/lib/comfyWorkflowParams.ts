@@ -51,6 +51,37 @@ export function detectUpstreamImages(targetId: string, edges: MiniEdge[], nodes:
   return out;
 }
 
+/** Like detectUpstreamImages, but BATCH-EXPANDED: when a single upstream node holds a
+ *  batch (image_gen / comfyui_image `imageUrls`, comfyui_workflow `outputUrls`), ALL of
+ *  its images are collected in array order (not just the primary one). Same deterministic
+ *  node ordering + kind-safe guards + global de-dup. Used to fill a character node's main
+ *  + alternate-view reference images from connected upstream image producers. */
+export function detectUpstreamImagesExpanded(targetId: string, edges: MiniEdge[], nodes: MiniNode[]): string[] {
+  const byId = new Map(nodes.map((n) => [n.id, n]));
+  const incoming = edges.map((e, i) => ({ e, i })).filter(({ e }) => e.target === targetId);
+  incoming.sort((a, b) => compareUpstreamNodes(byId.get(a.e.source), byId.get(b.e.source), a.i, b.i));
+  const out: string[] = [];
+  const seen = new Set<string>();
+  const push = (u: unknown) => {
+    if (typeof u === "string" && u.trim() && !seen.has(u)) { seen.add(u); out.push(u); }
+  };
+  for (const { e } of incoming) {
+    const src = byId.get(e.source);
+    if (!src || !IMAGE_SOURCE_TYPES.has(src.data.nodeType)) continue;
+    const p = (src.data.payload ?? {}) as Record<string, unknown>;
+    // Skip a comfyui_workflow that produced a video (kind-safe, mirrors getNodeImageUrl).
+    if (src.data.nodeType === "comfyui_workflow" && p.outputType === "video") continue;
+    // Batch field: image_gen/comfyui_image → imageUrls; comfyui_workflow → outputUrls.
+    const batch = (p.imageUrls ?? p.outputUrls) as unknown;
+    if (Array.isArray(batch) && batch.length > 0) {
+      for (const u of batch) push(u);
+    } else {
+      push(getNodeImageUrl(src.data.nodeType, p)); // asset/storyboard/single-output fallback
+    }
+  }
+  return out;
+}
+
 export interface UpstreamImageSource { id: string; title: string; url: string }
 
 /** Connected upstream image sources (id + display title + url), in smart order.
