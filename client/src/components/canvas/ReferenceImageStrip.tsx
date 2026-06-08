@@ -3,8 +3,11 @@ import { X, ZoomIn } from "lucide-react";
 import type { ReferenceImage } from "../../../../shared/types";
 import { MediaImage } from "./MediaImage";
 
+/** 吸附窗里的一张图：可带类型标签（角色/场景/参考图/分析图/工作流图）与可删标记。 */
+export type StripItem = ReferenceImage & { label?: string; removable?: boolean };
+
 interface Props {
-  images: ReferenceImage[];
+  images: StripItem[];
   open: boolean;
   onClose: () => void;
   onRemove: (id: string) => void;
@@ -26,8 +29,6 @@ interface Props {
   onHoverChange?: (hovering: boolean) => void;
   /** 点击吸附窗（非关闭按钮）→ 钉住持久展开。 */
   onPin?: () => void;
-  /** 是否允许删除缩略图（默认 true）。用于「角色/场景」只读图：仅预览、不可删。 */
-  allowRemove?: boolean;
   /** 只读模式底部的说明文字（仅 readOnly 时显示）。如工作流的「删除＝清空该参数」。 */
   readOnlyHint?: React.ReactNode;
 }
@@ -57,7 +58,7 @@ function urlsFromDrag(dt: DataTransfer): string[] {
  */
 export function ReferenceImageStrip({
   images, open, onClose, onRemove, onMove, onInsertUrls, onDropFiles, onZoom, accent = "oklch(0.72 0.20 330)",
-  readOnly = false, title = "参考图", onHoverChange, onPin, allowRemove = true, readOnlyHint,
+  readOnly = false, title = "参考图", onHoverChange, onPin, readOnlyHint,
 }: Props) {
   const listRef = useRef<HTMLDivElement>(null);
   const [dropIndex, setDropIndex] = useState<number | null>(null);
@@ -129,57 +130,67 @@ export function ReferenceImageStrip({
       </div>
 
       <div ref={listRef} className="nowheel" style={{ display: "flex", flexDirection: "column", gap: 6, overflowY: "auto" }}>
-        {images.map((img, i) => (
-          <div key={img.id}>
-            {!readOnly && dropIndex === i && <div style={{ height: 2, background: accent, borderRadius: 2, margin: "1px 0" }} />}
-            <div
-              data-ref-item
-              draggable={!readOnly}
-              onDragStart={readOnly ? undefined : (e) => { e.dataTransfer.setData("application/x-ref-reorder", img.id); e.dataTransfer.effectAllowed = "move"; }}
-              title={img.label}
-              className="relative group rounded-lg overflow-hidden"
-              style={{ height: 72, border: `1px solid var(--c-bd2)`, background: "var(--c-canvas)", cursor: readOnly ? "default" : "grab" }}
-            >
-              <MediaImage
-                src={img.url}
-                alt={img.label ?? `ref-${i + 1}`}
-                className="w-full h-full object-cover"
-                draggable={false}
-                style={{ cursor: "zoom-in" }}
-                onClick={() => onZoom(i)}
-              />
-              {/* number badge */}
-              <span
-                style={{
-                  position: "absolute", left: 3, top: 3, minWidth: 15, height: 15, paddingInline: 3,
-                  borderRadius: 8, fontSize: 9, fontWeight: 700, lineHeight: "15px", textAlign: "center",
-                  background: accent, color: "white",
-                }}
+        {images.map((img, i) => {
+          const canRemove = img.removable !== false;     // 角色/场景为派生只读，不可删
+          const canDrag = !readOnly && canRemove;         // 仅可删的「自有」图能拖动排序
+          // 同标签出现多张时，给出 1/2/3… 序号（单张则只显示标签文字）
+          const sameLabelTotal = img.label ? images.filter((x) => x.label === img.label).length : 0;
+          const sameLabelIdx = img.label ? images.slice(0, i + 1).filter((x) => x.label === img.label).length : 0;
+          const caption = img.label ? (sameLabelTotal > 1 ? `${img.label} ${sameLabelIdx}` : img.label) : "";
+          return (
+            <div key={img.id}>
+              {!readOnly && dropIndex === i && <div style={{ height: 2, background: accent, borderRadius: 2, margin: "1px 0" }} />}
+              <div
+                data-ref-item
+                draggable={canDrag}
+                onDragStart={canDrag ? (e) => { e.dataTransfer.setData("application/x-ref-reorder", img.id); e.dataTransfer.effectAllowed = "move"; } : undefined}
+                title={img.label}
+                className="relative group rounded-lg overflow-hidden"
+                style={{ height: 72, border: `1px solid var(--c-bd2)`, background: "var(--c-canvas)", cursor: canDrag ? "grab" : "default" }}
               >
-                {i + 1}
-              </span>
-              {/* zoom + delete on hover */}
-              <button
-                onClick={(e) => { e.stopPropagation(); onZoom(i); }}
-                className="nodrag absolute opacity-0 group-hover:opacity-100 transition-opacity"
-                style={{ right: 3, bottom: 3, padding: 2, borderRadius: 6, background: "oklch(0 0 0 / 0.6)", color: "white", lineHeight: 0 }}
-                title="放大"
-              >
-                <ZoomIn style={{ width: 11, height: 11 }} />
-              </button>
-              {allowRemove && (
+                <MediaImage
+                  src={img.url}
+                  alt={img.label ?? `ref-${i + 1}`}
+                  className="w-full h-full object-cover"
+                  draggable={false}
+                  style={{ cursor: "zoom-in" }}
+                  onClick={() => onZoom(i)}
+                />
+                {/* 类型标签（角色/场景/参考图/分析图/工作流图），常驻底部小条 */}
+                {caption && (
+                  <span
+                    style={{
+                      position: "absolute", left: 0, right: 0, bottom: 0, padding: "1px 4px",
+                      fontSize: 8.5, fontWeight: 700, lineHeight: 1.3, color: "white",
+                      background: "oklch(0 0 0 / 0.62)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis",
+                    }}
+                  >
+                    {caption}
+                  </span>
+                )}
+                {/* zoom + delete on hover */}
                 <button
-                  onClick={(e) => { e.stopPropagation(); onRemove(img.id); }}
+                  onClick={(e) => { e.stopPropagation(); onZoom(i); }}
                   className="nodrag absolute opacity-0 group-hover:opacity-100 transition-opacity"
-                  style={{ right: 3, top: 3, padding: 2, borderRadius: "50%", background: "oklch(0 0 0 / 0.7)", color: "white", lineHeight: 0 }}
-                  title="删除"
+                  style={{ right: 3, bottom: 14, padding: 2, borderRadius: 6, background: "oklch(0 0 0 / 0.6)", color: "white", lineHeight: 0 }}
+                  title="放大"
                 >
-                  <X style={{ width: 11, height: 11 }} />
+                  <ZoomIn style={{ width: 11, height: 11 }} />
                 </button>
-              )}
+                {canRemove && (
+                  <button
+                    onClick={(e) => { e.stopPropagation(); onRemove(img.id); }}
+                    className="nodrag absolute opacity-0 group-hover:opacity-100 transition-opacity"
+                    style={{ right: 3, top: 3, padding: 2, borderRadius: "50%", background: "oklch(0 0 0 / 0.7)", color: "white", lineHeight: 0 }}
+                    title="删除"
+                  >
+                    <X style={{ width: 11, height: 11 }} />
+                  </button>
+                )}
+              </div>
             </div>
-          </div>
-        ))}
+          );
+        })}
         {/* 末尾插入指示线（拖到框内任意处即可添加，独立拖拽区已移除，节省空间） */}
         {!readOnly && dropIndex === images.length && <div style={{ height: 2, background: accent, borderRadius: 2, margin: "1px 0" }} />}
         {readOnly && readOnlyHint && (

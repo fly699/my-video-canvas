@@ -11,9 +11,9 @@ import { toast } from "sonner";
 import { Sparkles, ImageIcon, Loader2, Upload, X, Wand2, History, Languages, Film, ZoomIn, Download, Copy } from "lucide-react";
 import { isOwnStorageUrl } from "@/lib/ownStorage";
 import { mergeCharactersIntoPrompt } from "../../../lib/characterPrompt";
-import { effectiveCharacters, effectiveCharacterRefImages, effectiveSceneRefImages, stripCharacterMentions, connectedCharacterRefImages, connectedSceneRefImages } from "../../../lib/characterConditioning";
+import { effectiveCharacters, effectiveCharacterRefImages, effectiveSceneRefImages, stripCharacterMentions } from "../../../lib/characterConditioning";
 import { useSimpleRefStrip } from "../../../hooks/useSimpleRefStrip";
-import { useNodeDocks } from "../../../hooks/useNodeDocks";
+import { useNodeDocks, useCharSceneItems } from "../../../hooks/useNodeDocks";
 import { PromptDock } from "../PromptDock";
 import { IMAGE_MODELS } from "@/lib/models";
 import { MediaImage } from "../MediaImage";
@@ -119,13 +119,10 @@ export const StoryboardNode = memo(function StoryboardNode({ id, selected, data 
     return mergeCharactersIntoPrompt(stripCharacterMentions(base, s.nodes), chars, 2000);
   });
   const hasCharInject = useCanvasStore((s) => effectiveCharacters(id, payload.promptText ?? "", s.edges, s.nodes).length > 0);
-  // 连了角色/场景但本节点无自己的参考图时，左侧吸附窗回落显示其首图（标题「角色」/「场景」）。
-  const charImgUrl = useCanvasStore((s) => connectedCharacterRefImages(id, s.edges, s.nodes)[0]);
-  const sceneImgUrl = useCanvasStore((s) => connectedSceneRefImages(id, s.edges, s.nodes)[0]);
-  const charRefUrl = charImgUrl ?? sceneImgUrl;
-  const charRefTitle = charImgUrl ? "角色" : "场景";
-  const docks = useNodeDocks(id, { hasRef: !!payload.referenceImageUrl?.trim() || !!charRefUrl, hasPrompt: !!finalPromptDisplay.trim() });
-  const refStrip = useSimpleRefStrip(id, payload, "single", { accent: STORY_ACCENT, open: docks.refOpen, onOpenChange: docks.setRefOpen, onHoverChange: docks.onDockHoverChange, onPin: docks.pinRef, fallbackImage: charRefUrl, fallbackTitle: charRefTitle });
+  // 左侧吸附窗 = 自有参考图 + 最终参与的角色/场景图（@提及或连线，只读），各带类型标签。
+  const charSceneItems = useCharSceneItems(id, payload.promptText ?? "");
+  const docks = useNodeDocks(id, { hasRef: !!payload.referenceImageUrl?.trim() || charSceneItems.length > 0, hasPrompt: !!finalPromptDisplay.trim() });
+  const refStrip = useSimpleRefStrip(id, payload, "single", { accent: STORY_ACCENT, open: docks.refOpen, onOpenChange: docks.setRefOpen, onHoverChange: docks.onDockHoverChange, onPin: docks.pinRef, extraItems: charSceneItems });
   const [inputExpanded, setInputExpanded] = useState(!!selected);
   const [llmModel, setLlmModel] = useState<LLMModelId>("claude-sonnet-4-5-20250929");
   const [showHistory, setShowHistory] = useState(false);

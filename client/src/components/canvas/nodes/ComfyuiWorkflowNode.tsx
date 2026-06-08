@@ -19,9 +19,9 @@ import { MediaImage } from "../MediaImage";
 import { isOwnStorageUrl } from "@/lib/ownStorage";
 import { WatermarkedVideo } from "@/components/WatermarkedVideo";
 import { ImageLightbox } from "../ImageLightbox";
-import { ReferenceImageStrip } from "../ReferenceImageStrip";
+import { ReferenceImageStrip, type StripItem } from "../ReferenceImageStrip";
 import { PromptDock } from "../PromptDock";
-import { useNodeDocks } from "../../../hooks/useNodeDocks";
+import { useNodeDocks, useCharSceneItems } from "../../../hooks/useNodeDocks";
 import { openNodeImage } from "../NodeImageLightbox";
 import { toast } from "sonner";
 import {
@@ -588,13 +588,13 @@ export const ComfyuiWorkflowNode = memo(function ComfyuiWorkflowNode({ id, selec
   // 故只读：仅预览 + 点击放大 + 删除（删除＝清空该参数）。节点折叠后仍可见。
   const isPreviewableUrl = (v: unknown): v is string =>
     typeof v === "string" && /^(https?:|data:|blob:|\/)/.test(v.trim());
-  const stripImages: ReferenceImage[] = useMemo(() => {
-    const out: ReferenceImage[] = [];
+  const paramImages: StripItem[] = useMemo(() => {
+    const out: StripItem[] = [];
     for (const b of payload.paramBindings ?? []) {
       if (b.type !== "image") continue;
       const key = `${b.nodeId}.${b.fieldPath}`;
       const val = payload.paramValues?.[key];
-      if (isPreviewableUrl(val)) out.push({ id: key, url: val.trim(), source: "url", label: b.label });
+      if (isPreviewableUrl(val)) out.push({ id: key, url: val.trim(), source: "url", label: "工作流图", removable: true });
     }
     return out;
   }, [payload.paramBindings, payload.paramValues]);
@@ -621,10 +621,14 @@ export const ComfyuiWorkflowNode = memo(function ComfyuiWorkflowNode({ id, selec
     const finalNeg = preferUpstream ? (upNeg || negCur) : (negCur.trim() ? negCur : upNeg);
     const usedUpstream = preferUpstream && !!upPos;
     const source = `${usedUpstream ? "上游" : "本地"}${chars.length ? "+角色" : ""}`;
-    return { pos: finalPos, neg: finalNeg, source, hasPos: !!finalPos.trim() };
+    // basePos 保留 @角色 提及（未被 merge 改写），供左侧吸附窗解析参与的角色/场景。
+    return { pos: finalPos, neg: finalNeg, source, hasPos: !!finalPos.trim(), basePos };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [id, edgesForSources, nodesForSources, payload.paramBindings, payload.paramValues, payload.preferUpstreamPrompt]);
 
+  // 工作流图像参数 + 最终参与的角色/场景图（按解析前正向词里的 @提及/连线，只读）。
+  const charSceneItems = useCharSceneItems(id, finalPromptInfo.basePos);
+  const stripImages: StripItem[] = [...paramImages, ...charSceneItems];
   const docks = useNodeDocks(id, { hasRef: stripImages.length >= 1, hasPrompt: finalPromptInfo.hasPos });
   const stripOpen = docks.refOpen;
   const setStripOpen = docks.setRefOpen;

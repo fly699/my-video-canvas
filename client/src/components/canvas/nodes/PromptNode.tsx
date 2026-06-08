@@ -10,7 +10,7 @@ import { Sparkles, Loader2, Upload, X, Languages, ScanText } from "lucide-react"
 import { ZoomableImage } from "../ZoomableImage";
 import { LLMModelPicker, type LLMModelId } from "../LLMModelPicker";
 import { NodeTextArea, NodeInput } from "../NodeTextInput";
-import { useNodeDocks } from "../../../hooks/useNodeDocks";
+import { useNodeDocks, useCharSceneItems } from "../../../hooks/useNodeDocks";
 import { useSimpleRefStrip } from "../../../hooks/useSimpleRefStrip";
 import { PromptDock } from "../PromptDock";
 
@@ -179,8 +179,9 @@ export const PromptNode = memo(function PromptNode({ id, selected, data }: Props
 
   // 顶部「提示词」吸附窗 + 左侧「分析图」吸附窗（本节点的输入图是供视觉分析的图，
   // 标题用「分析图」与生成节点的「参考图」区分）。无按钮：悬停标题栏 1 秒临时展开、点击钉住。
-  const docks = useNodeDocks(id, { hasRef: !!payload.referenceImageUrl?.trim(), hasPrompt: !!payload.positivePrompt?.trim() });
-  const refStrip = useSimpleRefStrip(id, payload, "single", { accent: accentColor, title: "分析图", open: docks.refOpen, onOpenChange: docks.setRefOpen, onHoverChange: docks.onDockHoverChange, onPin: docks.pinRef });
+  const charSceneItems = useCharSceneItems(id, payload.positivePrompt ?? "");
+  const docks = useNodeDocks(id, { hasRef: !!payload.referenceImageUrl?.trim() || charSceneItems.length > 0, hasPrompt: !!payload.positivePrompt?.trim() });
+  const refStrip = useSimpleRefStrip(id, payload, "single", { accent: accentColor, title: "分析图", mainLabel: "分析图", extraItems: charSceneItems, open: docks.refOpen, onOpenChange: docks.setRefOpen, onHoverChange: docks.onDockHoverChange, onPin: docks.pinRef });
 
   return (
     <BaseNode

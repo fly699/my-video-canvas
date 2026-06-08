@@ -5,7 +5,7 @@ import type { ReferenceImage } from "../../../shared/types";
 import { useCanvasStore } from "./useCanvasStore";
 import { usePersistentState } from "./usePersistentState";
 import { trpc } from "@/lib/trpc";
-import { ReferenceImageStrip } from "../components/canvas/ReferenceImageStrip";
+import { ReferenceImageStrip, type StripItem } from "../components/canvas/ReferenceImageStrip";
 import { openNodeImage } from "../components/canvas/NodeImageLightbox";
 
 interface Payload { referenceImageUrl?: string; additionalImageUrls?: string[] }
@@ -27,8 +27,8 @@ export function useSimpleRefStrip(
   id: string,
   payload: Payload,
   mode: "multi" | "single",
-  opts?: { accent?: string; maxAdditional?: number; open?: boolean; onOpenChange?: (v: boolean) => void; onHoverChange?: (hovering: boolean) => void; onPin?: () => void; title?: string; fallbackImage?: string; fallbackTitle?: string },
-): { images: ReferenceImage[]; open: boolean; toggle: ReactNode; strip: ReactNode } {
+  opts?: { accent?: string; maxAdditional?: number; open?: boolean; onOpenChange?: (v: boolean) => void; onHoverChange?: (hovering: boolean) => void; onPin?: () => void; title?: string; mainLabel?: string; extraItems?: StripItem[] },
+): { images: StripItem[]; open: boolean; toggle: ReactNode; strip: ReactNode } {
   const accent = opts?.accent ?? "oklch(0.72 0.20 330)";
   const maxAdditional = opts?.maxAdditional ?? 8;
   const updateNodeData = useCanvasStore((s) => s.updateNodeData);
@@ -49,13 +49,11 @@ export function useSimpleRefStrip(
     return Array.from(new Set([main, ...extra].filter(Boolean)));
   };
 
-  const ownImages: ReferenceImage[] = combine(payload).map((u) => ({ id: u, url: u, source: "url" }));
-  // 本节点没有自己的参考图、但连了角色/场景时，回落显示其首图（只读、不可删、标题改为「角色/场景」）。
-  const showingFallback = ownImages.length === 0 && !!opts?.fallbackImage;
-  const images: ReferenceImage[] = showingFallback
-    ? [{ id: opts!.fallbackImage!, url: opts!.fallbackImage!, source: "url", label: opts?.fallbackTitle }]
-    : ownImages;
-  const stripTitle = showingFallback ? (opts?.fallbackTitle ?? "角色") : (opts?.title ?? "参考图");
+  const mainLabel = opts?.mainLabel ?? "参考图";
+  const ownImages: StripItem[] = combine(payload).map((u) => ({ id: u, url: u, source: "url", label: mainLabel, removable: true }));
+  // 自有参考图 + 「参与本节点」的角色/场景图（extraItems，只读不可删），统一展示。
+  const images: StripItem[] = [...ownImages, ...(opts?.extraItems ?? [])];
+  const stripTitle = opts?.title ?? "参考图";
 
   const live = useCallback((): string[] => {
     const p = (useCanvasStore.getState().nodes.find((n) => n.id === id)?.data.payload ?? payload) as Payload;
@@ -130,8 +128,6 @@ export function useSimpleRefStrip(
       open={open}
       accent={accent}
       title={stripTitle}
-      readOnly={showingFallback}
-      allowRemove={!showingFallback}
       onClose={() => setOpen(false)}
       onRemove={removeId}
       onMove={moveId}

@@ -1,5 +1,22 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { usePersistentState } from "./usePersistentState";
+import { useCanvasStore } from "./useCanvasStore";
+import { effectiveCharacterRefImages, effectiveSceneRefImages } from "../lib/characterConditioning";
+import type { StripItem } from "../components/canvas/ReferenceImageStrip";
+
+/**
+ * 「最终参与本节点」的角色/场景图片（只读、不可删），用于左侧吸附窗展示。
+ * 角色判定 = effectiveCharacters（连线 + 提示词里的 @角色 提及都算参与），而非仅连线。
+ * 返回带类型标签「角色」/「场景」的图项；basePrompt 传本节点最终生效的提示词以解析 @提及。
+ */
+export function useCharSceneItems(id: string, basePrompt: string): StripItem[] {
+  const charKey = useCanvasStore((s) => effectiveCharacterRefImages(id, basePrompt, s.edges, s.nodes).join("\n"));
+  const sceneKey = useCanvasStore((s) => effectiveSceneRefImages(id, basePrompt, s.edges, s.nodes).join("\n"));
+  return useMemo(() => [
+    ...charKey.split("\n").filter(Boolean).map((u) => ({ id: "char:" + u, url: u, label: "角色", removable: false })),
+    ...sceneKey.split("\n").filter(Boolean).map((u) => ({ id: "scene:" + u, url: u, label: "场景", removable: false })),
+  ], [charKey, sceneKey]);
+}
 
 /**
  * 管理一个节点的两个吸附窗：左侧「参考图」+ 顶部「最终提示词」。无标题栏按钮。
