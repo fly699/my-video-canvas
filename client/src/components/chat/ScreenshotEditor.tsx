@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
-import { X, Pencil, Square, ArrowUpRight, Undo2, Check, Crop, Scissors, Download } from "lucide-react";
+import { toast } from "sonner";
+import { X, Pencil, Square, ArrowUpRight, Undo2, Check, Crop, Scissors, Download, Copy } from "lucide-react";
 
 interface RegionRect { x: number; y: number; w: number; h: number }
 
@@ -247,6 +248,24 @@ export function ScreenshotEditor({ imageUrl, onCancel, onConfirm, startTool }: {
     }, "image/png");
   }
 
+  /** 把当前截图（图片 + 标注，不含框选遮罩）复制到系统剪贴板。 */
+  async function copyToClipboard() {
+    const c = canvasRef.current, img = imgRef.current; if (!c || !img) return;
+    const out = document.createElement("canvas"); out.width = c.width; out.height = c.height;
+    const ctx = out.getContext("2d"); if (!ctx) return;
+    ctx.drawImage(img, 0, 0);
+    for (const s of shapes) drawShape(ctx, s);
+    try {
+      if (!navigator.clipboard || typeof ClipboardItem === "undefined") throw new Error("浏览器不支持");
+      // ClipboardItem 接收 Promise<Blob>，确保在用户手势内异步生成 PNG（兼容 Safari）。
+      const item = new ClipboardItem({ "image/png": new Promise<Blob>((resolve, reject) => out.toBlob((b) => b ? resolve(b) : reject(new Error("生成失败")), "image/png")) });
+      await navigator.clipboard.write([item]);
+      toast.success("已复制到剪贴板");
+    } catch (e) {
+      toast.error("复制失败：" + (e instanceof Error ? e.message : "浏览器不支持或需 HTTPS"));
+    }
+  }
+
   const toolBtn = (t: Tool, Icon: typeof Pencil, label: string) => (
     <button onClick={() => setTool(t)} title={label}
       style={{ display: "flex", alignItems: "center", gap: 5, height: 32, padding: "0 10px", borderRadius: 8, fontSize: 12.5, fontWeight: 600, cursor: "pointer",
@@ -277,6 +296,7 @@ export function ScreenshotEditor({ imageUrl, onCancel, onConfirm, startTool }: {
           style={{ display: "flex", alignItems: "center", gap: 5, height: 32, padding: "0 10px", borderRadius: 8, fontSize: 12.5, cursor: shapes.length ? "pointer" : "not-allowed", background: "rgba(255,255,255,0.06)", border: "1px solid rgba(255,255,255,0.12)", color: "#e6e6ea", opacity: shapes.length ? 1 : 0.5 }}>
           <Undo2 size={15} /> 撤销
         </button>
+        <button onClick={copyToClipboard} title="复制到剪贴板" style={{ display: "flex", alignItems: "center", gap: 5, height: 32, padding: "0 10px", borderRadius: 8, fontSize: 12.5, fontWeight: 600, cursor: "pointer", background: "rgba(255,255,255,0.06)", border: "1px solid rgba(255,255,255,0.12)", color: "#e6e6ea" }}><Copy size={15} /> 复制</button>
         <button onClick={saveLocal} title="保存到本地" style={{ display: "flex", alignItems: "center", gap: 5, height: 32, padding: "0 10px", borderRadius: 8, fontSize: 12.5, fontWeight: 600, cursor: "pointer", background: "rgba(255,255,255,0.06)", border: "1px solid rgba(255,255,255,0.12)", color: "#e6e6ea" }}><Download size={15} /> 保存</button>
         <button onClick={onCancel} title="取消" style={{ display: "flex", alignItems: "center", gap: 5, height: 32, padding: "0 10px", borderRadius: 8, fontSize: 12.5, cursor: "pointer", background: "rgba(255,255,255,0.06)", border: "1px solid rgba(255,255,255,0.12)", color: "#e6e6ea" }}><X size={15} /> 取消</button>
         <button onClick={confirm} title="添加到消息" style={{ display: "flex", alignItems: "center", gap: 5, height: 32, padding: "0 14px", borderRadius: 8, fontSize: 12.5, fontWeight: 700, cursor: "pointer", background: "oklch(0.68 0.22 285 / 0.2)", border: "1px solid oklch(0.68 0.22 285 / 0.55)", color: "oklch(0.8 0.14 285)" }}><Check size={15} /> 添加到消息</button>
