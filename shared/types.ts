@@ -181,6 +181,8 @@ export interface ReferenceImage {
   id: string;
   url: string;
   source?: "upload" | "paste" | "drop" | "url" | "upstream";
+  /** 可选标签（如 ComfyUI 工作流图像参数名），只读吸附窗用作角标 tooltip。 */
+  label?: string;
 }
 
 export interface VideoTaskNodeData {
