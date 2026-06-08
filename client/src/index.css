@@ -1058,6 +1058,11 @@ button:active:not(:disabled) {
 .canvas-bottombar[data-bar-orient="v"] [data-toolbar-label] {
   display: none !important;
 }
+/* Vertical toolbar: stack the theme swatches column-wise too (otherwise this inner
+   row stays horizontal and makes the vertical bar wide). */
+.canvas-bottombar[data-bar-orient="v"] [data-theme-swatches] {
+  flex-direction: column !important;
+}
 
 /* Creative mode edge lines */
 :root[data-canvas-mode="creative"] .react-flow__edge-path {

@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
-import { X, Pencil, Square, ArrowUpRight, Undo2, Check, Crop, Scissors } from "lucide-react";
+import { X, Pencil, Square, ArrowUpRight, Undo2, Check, Crop, Scissors, Download } from "lucide-react";
 
 interface RegionRect { x: number; y: number; w: number; h: number }
 
@@ -229,6 +229,24 @@ export function ScreenshotEditor({ imageUrl, onCancel, onConfirm, startTool }: {
     c.toBlob((blob) => { if (blob) onConfirm(new File([blob], `screenshot-${Date.now()}.png`, { type: "image/png" })); }, "image/png");
   }
 
+  /** Save the screenshot (image + annotations, full resolution, without the crop dim
+   *  overlay) to a local PNG file. */
+  function saveLocal() {
+    const c = canvasRef.current, img = imgRef.current; if (!c || !img) return;
+    const out = document.createElement("canvas"); out.width = c.width; out.height = c.height;
+    const ctx = out.getContext("2d"); if (!ctx) return;
+    ctx.drawImage(img, 0, 0);
+    for (const s of shapes) drawShape(ctx, s);
+    out.toBlob((blob) => {
+      if (!blob) return;
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url; a.download = `screenshot-${Date.now()}.png`;
+      document.body.appendChild(a); a.click(); a.remove();
+      setTimeout(() => URL.revokeObjectURL(url), 1000);
+    }, "image/png");
+  }
+
   const toolBtn = (t: Tool, Icon: typeof Pencil, label: string) => (
     <button onClick={() => setTool(t)} title={label}
       style={{ display: "flex", alignItems: "center", gap: 5, height: 32, padding: "0 10px", borderRadius: 8, fontSize: 12.5, fontWeight: 600, cursor: "pointer",
@@ -259,6 +277,7 @@ export function ScreenshotEditor({ imageUrl, onCancel, onConfirm, startTool }: {
           style={{ display: "flex", alignItems: "center", gap: 5, height: 32, padding: "0 10px", borderRadius: 8, fontSize: 12.5, cursor: shapes.length ? "pointer" : "not-allowed", background: "rgba(255,255,255,0.06)", border: "1px solid rgba(255,255,255,0.12)", color: "#e6e6ea", opacity: shapes.length ? 1 : 0.5 }}>
           <Undo2 size={15} /> 撤销
         </button>
+        <button onClick={saveLocal} title="保存到本地" style={{ display: "flex", alignItems: "center", gap: 5, height: 32, padding: "0 10px", borderRadius: 8, fontSize: 12.5, fontWeight: 600, cursor: "pointer", background: "rgba(255,255,255,0.06)", border: "1px solid rgba(255,255,255,0.12)", color: "#e6e6ea" }}><Download size={15} /> 保存</button>
         <button onClick={onCancel} title="取消" style={{ display: "flex", alignItems: "center", gap: 5, height: 32, padding: "0 10px", borderRadius: 8, fontSize: 12.5, cursor: "pointer", background: "rgba(255,255,255,0.06)", border: "1px solid rgba(255,255,255,0.12)", color: "#e6e6ea" }}><X size={15} /> 取消</button>
         <button onClick={confirm} title="添加到消息" style={{ display: "flex", alignItems: "center", gap: 5, height: 32, padding: "0 14px", borderRadius: 8, fontSize: 12.5, fontWeight: 700, cursor: "pointer", background: "oklch(0.68 0.22 285 / 0.2)", border: "1px solid oklch(0.68 0.22 285 / 0.55)", color: "oklch(0.8 0.14 285)" }}><Check size={15} /> 添加到消息</button>
       </div>
