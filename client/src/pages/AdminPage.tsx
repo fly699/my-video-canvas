@@ -178,8 +178,13 @@ export default function AdminPage() {
 function StoragePanel() {
   const settingsQuery = trpc.admin.storage.getSettings.useQuery();
   const utils = trpc.useUtils();
+  const reach = trpc.config.mediaReachability.useQuery(undefined, { staleTime: 30_000 });
+  const poyoStagingActive = reach.data?.poyoStagingActive ?? false;
   const setMut = trpc.admin.storage.setPersist.useMutation({
-    onSuccess: () => utils.admin.storage.getSettings.invalidate(),
+    onSuccess: () => {
+      utils.admin.storage.getSettings.invalidate();
+      utils.config.mediaReachability.invalidate(); // 刷新「已生效」绿灯
+    },
   });
   // Active probe: uploads a small object via storagePut to confirm the S3
   // pipeline really works. Without this, the admin can flip toggles to ON
@@ -441,7 +446,9 @@ function StoragePanel() {
             enabled={settings.poyoUploadFallback}
             disabled={setMut.isPending}
             onClick={() => setMut.mutate({ poyoUploadFallback: !settings.poyoUploadFallback })}
-            statusOn="已开启（仅在 MinIO/S3 未公网时中转）"
+            statusOn={poyoStagingActive
+              ? "🟢 已生效：参考图/视频会经 Poyo 暂存换取公网链接（生成时后端打印 [storage] Poyo 暂存 日志）"
+              : "⚠️ 已开启，但未检测到 POYO_API_KEY → 暂不生效，请在服务端配置 POYO_API_KEY 后重启"}
             statusOff="已关闭（不影响原有存储逻辑）"
           />
           <ToggleRow
