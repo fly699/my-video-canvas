@@ -60,7 +60,8 @@ export function useMention(
     const el = elRef.current; const s = stRef.current;
     if (!el || s.start < 0) { close(); return; }
     const caret = el.selectionStart ?? el.value.length;
-    const insert = item.name + " ";
+    // 保留「@」前缀，插入成 @角色名（s.start 指向「@」位置，覆盖原「@查询」）
+    const insert = "@" + item.name + " ";
     const next = el.value.slice(0, s.start) + insert + el.value.slice(caret);
     commit(next);
     close();
