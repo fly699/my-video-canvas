@@ -34,7 +34,10 @@ export interface ResolvedKieKey { key: string; source: KieKeySource; label: stri
  * Throws FORBIDDEN/INTERNAL when no usable key is available.
  */
 export async function resolveKieKey(ctx: TrpcContext, tempKey?: string | null): Promise<ResolvedKieKey> {
-  const t = tempKey?.trim();
+  // 显式传入的 tempKey 优先；否则回退到请求头 x-kie-temp-key（前端 tRPC client 全局附带），
+  // 这样所有走 ctx 的 kie 入口都能用上用户的临时 key，而不必每个接口单独加 input。
+  const headerKey = typeof ctx.req?.headers?.["x-kie-temp-key"] === "string" ? (ctx.req.headers["x-kie-temp-key"] as string) : undefined;
+  const t = (tempKey ?? headerKey)?.trim();
   if (t) return { key: t, source: "temp", label: "临时" };
 
   const userId = ctx.user?.id;

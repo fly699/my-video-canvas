@@ -30,6 +30,15 @@ describe("invokeLLM — transient-error retry", () => {
     expect(extractTextContent(r)).toBe("kie-reply");
   });
 
+  it("kie_* 使用调用方传入的用户 key（临时/分配），而非仅公用 key", async () => {
+    const fetchMock = vi.fn().mockResolvedValueOnce({ ok: true, json: async () => ({ content: [{ type: "text", text: "ok" }] }) });
+    vi.stubGlobal("fetch", fetchMock);
+    const { invokeLLM } = await import("./_core/llm");
+    await invokeLLM({ model: "kie_claude_opus_48", messages: [{ role: "user" as const, content: "hi" }], kieApiKey: "user-kie-key" });
+    const init = fetchMock.mock.calls[0][1] as { headers: Record<string, string> };
+    expect(init.headers.Authorization).toBe("Bearer user-kie-key"); // 用用户 key，而非 ENV 公用 key
+  });
+
   it("retries a 5xx upstream error then succeeds", async () => {
     const fetchMock = vi.fn()
       .mockResolvedValueOnce(fail(500, '{"error":{"message":"Server exception"}}', "Internal Server Error"))

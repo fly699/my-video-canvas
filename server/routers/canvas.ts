@@ -43,7 +43,8 @@ import {
 import { storagePut, resolveToAbsoluteUrl, canBrowserReachStorageDirectly, storageBackend, assertObjectStorageWritable, isOwnStorageUrl, toInternalStoragePath, storagePresignPut, isStorageConfigured, finalizeStorageKey } from "../storage";
 import { signUploadToken } from "../_core/uploadToken";
 import { getCachedStorageSettings } from "../_core/storageConfig";
-import { invokeLLM, extractTextContent } from "../_core/llm";
+import { extractTextContent } from "../_core/llm";
+import { invokeLLMWithKie } from "../_core/llmWithKie";
 import { generateImage } from "../_core/imageGeneration";
 import { generateComfyImage, generateComfyVideo, fetchComfyModels, fetchComfyServerStatus, analyzeWorkflow, convertUiWorkflowToApi, extractControlMap, CONTROL_MAP_PREPROCESSORS, executeCustomWorkflow, executeCloudWorkflow, testCloudConnection, uploadImageForWorkflow, interruptComfy, freeComfyMemory, getComfyQueueDepth, shouldFreeVram, clearComfyQueue, emptyModelList } from "../_core/comfyui";
 import type { ComfyModelList } from "../_core/comfyui";
@@ -1069,7 +1070,7 @@ export const aiChatRouter = router({
           const r = await invokeKieLLM({ model: input.model!, messages, apiKey: kieLLMKey });
           assistantContent = r.text || "（模型返回内容为空）";
         } else {
-          const response = await invokeLLM({ messages, model: input.model });
+          const response = await invokeLLMWithKie(ctx, { messages, model: input.model });
           assistantContent = extractTextContent(response) || "（模型返回内容为空）";
         }
       } catch (err) {
@@ -1363,7 +1364,7 @@ ${sceneFieldsInstruction(promptLangName, avgDuration)}`;
         `Script:\n${input.content}`,
       ].join("");
 
-      const response = await invokeLLM({
+      const response = await invokeLLMWithKie(ctx, {
         messages: [
           { role: "system" as const, content: systemPrompt },
           { role: "user" as const, content: userContent },
@@ -1451,7 +1452,7 @@ ${sceneFieldsInstruction(promptLangName, avgDuration)}`;
         ? `${scriptSystemPrompt}\n\n## 模板专属写作要求\n${input.templatePromptOverride}`
         : scriptSystemPrompt;
 
-      const scriptResponse = await invokeLLM({
+      const scriptResponse = await invokeLLMWithKie(ctx, {
         messages: [
           { role: "system" as const, content: fullScriptSystemPrompt },
           { role: "user" as const, content: `故事梗概：\n${input.synopsis}` },
@@ -1475,7 +1476,7 @@ ${sceneFieldsInstruction(promptLangName, avgDuration)}`;
       // nothing) so scenes match the actual narrative. Cap input to keep the
       // request bounded.
       const sceneSource = (scriptText || input.synopsis).slice(0, 8000);
-      const scenesResponse = await invokeLLM({
+      const scenesResponse = await invokeLLMWithKie(ctx, {
         messages: [
           { role: "system" as const, content: scenesSystemPrompt },
           { role: "user" as const, content: `Script:\n${sceneSource}` },
@@ -1521,7 +1522,7 @@ ${sceneFieldsInstruction(promptLangName, avgDuration)}`;
         const userContent = input.intent
           ? `意图：${input.intent}\n\n原场景：\n${input.sceneText}`
           : `请优化以下场景：\n${input.sceneText}`;
-        const response = await invokeLLM({
+        const response = await invokeLLMWithKie(ctx, {
           messages: [
             { role: "system" as const, content: systemPrompt },
             { role: "user" as const, content: userContent },
@@ -1543,7 +1544,7 @@ ${sceneFieldsInstruction(promptLangName, avgDuration)}`;
 仅输出合法 JSON，无 markdown 代码块，无额外文字：
 {"score":85,"issues":[{"type":"节奏","line":"场景二","suggestion":"节奏过快，建议增加过渡描写"},{"type":"对白","line":"第15行","suggestion":"对白生硬，可改为自然口语"}]}
 score 为 0-100 整数，issues 数组最多 8 条，每条包含 type/line/suggestion 字段。`;
-      const response = await invokeLLM({
+      const response = await invokeLLMWithKie(ctx, {
         messages: [
           { role: "system" as const, content: systemPrompt },
           { role: "user" as const, content: input.scriptText },
@@ -1622,7 +1623,7 @@ score 为 0-100 整数，issues 数组最多 8 条，每条包含 type/line/sugg
           + `- issues 至多 8 条；sceneIndices 是 0-based 数组（指向输入图片顺序）；aspect 取值 hairstyle/outfit/facial/age/signature/other；severity 取值 low/medium/high\n`
           + `- recommendations 至多 5 条，每条具体可操作`;
 
-        const response = await invokeLLM({
+        const response = await invokeLLMWithKie(ctx, {
           messages: [
             { role: "system" as const, content: systemPrompt },
             {
@@ -1730,7 +1731,7 @@ score 为 0-100 整数，issues 数组最多 8 条，每条包含 type/line/sugg
             + `{"name":"角色名(若无法判断留空)","role":"身份/职业","gender":"男 或 女 或 中性","age":"年龄段(如 青年/30岁左右)","appearance":"外貌(脸型/发型/发色/五官/体型)","personality":"性格气质(从神态衣着推断)","outfit":"服装(款式/颜色/配饰)","signature":"标志性特征(疤痕/眼镜/纹身/饰品等)"}\n`
             + `约束：gender 只能是 男/女/中性 三者之一或空；只描述图中可见信息，无法判断的字段填空字符串 ""；全部用中文；不要编造。`;
 
-        const response = await invokeLLM({
+        const response = await invokeLLMWithKie(ctx, {
           messages: [
             { role: "system" as const, content: systemPrompt },
             {
@@ -1784,7 +1785,7 @@ score 为 0-100 整数，issues 数组最多 8 条，每条包含 type/line/sugg
       return dedupe("scripts.generateVariants", ctx.user.id, input, async () => {
       const systemPrompt = `你是专业编剧。根据相同的故事梗概，生成风格各异的剧本开场段落（不超过200字/版本）。
 仅输出合法 JSON 数组，无 markdown 代码块：[{"label":"版本A","text":"..."},{"label":"版本B","text":"..."}]`;
-      const response = await invokeLLM({
+      const response = await invokeLLMWithKie(ctx, {
         messages: [
           { role: "system" as const, content: systemPrompt },
           { role: "user" as const, content: `梗概：${input.synopsis}\n\n请生成 ${input.variantCount} 个风格不同的开场版本。` },
@@ -1813,7 +1814,7 @@ score 为 0-100 整数，issues 数组最多 8 条，每条包含 type/line/sugg
         const userContent = input.intent
           ? `优化要求：${input.intent}\n\n原对白：\n${input.dialogueText}`
           : `请优化以下对白，使其更自然流畅：\n${input.dialogueText}`;
-        const response = await invokeLLM({
+        const response = await invokeLLMWithKie(ctx, {
           messages: [
             { role: "system" as const, content: systemPrompt },
             { role: "user" as const, content: userContent },
@@ -1841,7 +1842,7 @@ score 为 0-100 整数，issues 数组最多 8 条，每条包含 type/line/sugg
         幽默: "轻松诙谐，妙语连珠，多用反转和对比制造喜感",
       };
       const systemPrompt = `你是专业编剧，负责将剧本改写为特定风格。风格要求：${STYLE_GUIDES[input.style]}。保留原故事框架和角色，只改变文风。只输出改写后的剧本，不加任何说明。`;
-      const response = await invokeLLM({
+      const response = await invokeLLMWithKie(ctx, {
         messages: [
           { role: "system" as const, content: systemPrompt },
           { role: "user" as const, content: input.scriptText },
@@ -1861,7 +1862,7 @@ score 为 0-100 整数，issues 数组最多 8 条，每条包含 type/line/sugg
     .mutation(async ({ ctx, input }) => {
       return dedupe("scripts.extractDialogue", ctx.user.id, input, async () => {
         const systemPrompt = `你是剧本分析师。从剧本中提取所有对白，格式化为清单：每行一条，格式为"角色名：台词内容"。若无明确角色名则用"旁白"。只输出对白清单，不加任何说明。`;
-        const response = await invokeLLM({
+        const response = await invokeLLMWithKie(ctx, {
           messages: [
             { role: "system" as const, content: systemPrompt },
             { role: "user" as const, content: input.scriptText },
@@ -1888,7 +1889,7 @@ score 为 0-100 整数，issues 数组最多 8 条，每条包含 type/line/sugg
 为每个主要场景生成一条${langName}视觉提示词（cinematic prompt）和一条负面提示词。提示词必须使用${langName}书写。
 仅输出合法 JSON 数组，无 markdown 代码块：
 [{"sceneIndex":1,"sceneTitle":"场景名称（中文）","prompt":"${promptExample}","negPrompt":"blurry, low quality, text"}]`;
-      const response = await invokeLLM({
+      const response = await invokeLLMWithKie(ctx, {
         messages: [
           { role: "system" as const, content: systemPrompt },
           { role: "user" as const, content: input.scriptText },
@@ -2273,7 +2274,7 @@ export const clipRouter = router({
 仅输出合法 JSON，无 markdown：{"keep":[{"start":0.5,"end":5.2},{"start":8.1,"end":15.0}]}`;
 
         const transcriptJson = JSON.stringify(segments.map((s) => ({ s: s.start, e: s.end, t: s.text, ns: s.no_speech_prob })));
-        const response = await invokeLLM({
+        const response = await invokeLLMWithKie(ctx, {
           messages: [
             { role: "system" as const, content: systemPrompt },
             { role: "user" as const, content: `片段列表（JSON）：\n${transcriptJson}` },
@@ -3096,7 +3097,7 @@ Output an optimized English prompt under 80 words. Output ONLY the prompt text.`
         condense: `You are a professional script editor. Condense the given script to approximately 60% of its original length while preserving all key story beats, character names, plot points, and dramatic tension. Maintain the original writing style and language. Output ONLY the condensed text, nothing else.`,
         summarize: `You are a professional story analyst. Extract a compelling one-to-two sentence synopsis from the given script or story content. Capture the core conflict, main characters, setting, and emotional tone. If the input is in Chinese, respond in Chinese. Output ONLY the synopsis, no labels or extra text.`,
       };
-      const response = await invokeLLM({
+      const response = await invokeLLMWithKie(ctx, {
         messages: [
           { role: "system" as const, content: systemPrompts[input.mode] },
           { role: "user" as const, content: input.text },
@@ -3118,13 +3119,13 @@ Output an optimized English prompt under 80 words. Output ONLY the prompt text.`
         model: z.string().optional(),
       })
     )
-    .mutation(async ({ input }) => {
+    .mutation(async ({ ctx, input }) => {
       const system = `You are a professional translator and Chinese-dialect (topolect) localizer.
 Rewrite the user's text into the target form: "${input.target}".
 - If the target is a language, translate faithfully and naturally for spoken delivery.
 - If the target is a Chinese dialect/topolect (粤语/四川话/东北话/闽南语/上海话/陕西话/河南话/天津话/客家话/台湾腔 等), rewrite into that dialect's natural COLLOQUIAL written form — its characteristic vocabulary, particles and phrasing — suitable to be read aloud, NOT standard Mandarin.
 Preserve the original meaning, tone, proper nouns and numbers. Output ONLY the resulting text — no quotes, no labels, no notes.`;
-      const response = await invokeLLM({
+      const response = await invokeLLMWithKie(ctx, {
         messages: [
           { role: "system" as const, content: system },
           { role: "user" as const, content: input.text },
@@ -3146,7 +3147,7 @@ Preserve the original meaning, tone, proper nouns and numbers. Output ONLY the r
         model: z.string().optional(),
       })
     )
-    .mutation(async ({ input }) => {
+    .mutation(async ({ ctx, input }) => {
       let absoluteUrl = input.imageUrl;
       try { absoluteUrl = await resolveToAbsoluteUrl(input.imageUrl); }
       catch (err) { console.warn("[analyzeImage] resolveToAbsoluteUrl failed:", err instanceof Error ? err.message : err); }
@@ -3154,7 +3155,7 @@ Preserve the original meaning, tone, proper nouns and numbers. Output ONLY the r
 Study the image and produce a single detailed prompt that could regenerate it.
 Cover: subject, composition, style/medium, lighting, color palette, mood, and notable details.
 Output ONLY the prompt as vivid, comma-separated English descriptive phrases — no preamble, no labels.`;
-      const response = await invokeLLM({
+      const response = await invokeLLMWithKie(ctx, {
         messages: [
           { role: "system" as const, content: system },
           {
