@@ -11,6 +11,8 @@ import { getUpdateStatus, getVersionInfo, getUpdateAvailable, startUpdate } from
 import { startBackfill, getBackfillStatus } from "../_core/assetBackfill";
 import { writeAuditLog } from "../_core/auditLog";
 import { adminDownloadsRouter } from "./downloads";
+import { encryptKieKey, kieKeyHash, kieKeyLast4, isKieCryptoConfigured } from "../_core/kieCrypto";
+import { fetchKieCredit } from "../_core/kie";
 
 const AUDIT_ACTIONS = [
   "login_email", "login_oauth",
@@ -125,8 +127,16 @@ export const adminRouter = router({
   whitelist: router({
     getSettings: adminProcedure.query(async () => {
       const settings = await db.getWhitelistSettings();
-      return { enabled: settings?.enabled ?? false, comfyuiBypass: settings?.comfyuiBypass ?? false, llmBypass: settings?.llmBypass ?? false };
+      return { enabled: settings?.enabled ?? false, comfyuiBypass: settings?.comfyuiBypass ?? false, llmBypass: settings?.llmBypass ?? false, kieEnabled: settings?.kieEnabled ?? false };
     }),
+
+    setKieEnabled: adminProcedure
+      .input(z.object({ kieEnabled: z.boolean() }))
+      .mutation(async ({ input }) => {
+        await db.setWhitelistKieEnabled(input.kieEnabled);
+        invalidateWhitelistCache();
+        return { success: true };
+      }),
 
     setEnabled: adminProcedure
       .input(z.object({ enabled: z.boolean() }))
@@ -180,6 +190,84 @@ export const adminRouter = router({
         const deleted = await db.removeWhitelistEntry(input.id);
         if (!deleted) throw new TRPCError({ code: "NOT_FOUND", message: "白名单条目不存在" });
         invalidateWhitelistCache();
+        return { success: true };
+      }),
+  }),
+
+  // kie.ai distributed-key management (encrypted at rest; never in env).
+  kie: router({
+    cryptoConfigured: adminProcedure.query(() => ({ configured: isKieCryptoConfigured() })),
+
+    listKeys: adminProcedure.query(async () => db.listKieKeysWithCounts()),
+
+    addKey: adminProcedure
+      .input(z.object({
+        name: z.string().trim().min(1).max(128),
+        apiKey: z.string().trim().min(8).max(256),
+        note: z.string().max(255).optional(),
+      }))
+      .mutation(async ({ ctx, input }) => {
+        if (!isKieCryptoConfigured()) throw new TRPCError({ code: "PRECONDITION_FAILED", message: "未配置 KIE_KEY_SECRET，无法加密存储 kie 密钥" });
+        // Best-effort liveness check (returns null on failure — still allow storing).
+        const credit = await fetchKieCredit(input.apiKey);
+        const res = await db.addKieKey({
+          name: input.name, encryptedKey: encryptKieKey(input.apiKey),
+          keyLast4: kieKeyLast4(input.apiKey), keyHash: kieKeyHash(input.apiKey),
+          note: input.note ?? null, createdBy: ctx.user.id,
+        });
+        if (!res) throw new TRPCError({ code: "CONFLICT", message: "该 kie 密钥已存在" });
+        writeAuditLog({ ctx, action: "kie_key_add", detail: { id: res.id, name: input.name, last4: kieKeyLast4(input.apiKey) } });
+        return { id: res.id, credit };
+      }),
+
+    setKeyEnabled: adminProcedure
+      .input(z.object({ keyId: z.number().int(), enabled: z.boolean() }))
+      .mutation(async ({ ctx, input }) => {
+        const ok = await db.setKieKeyEnabled(input.keyId, input.enabled);
+        if (!ok) throw new TRPCError({ code: "NOT_FOUND", message: "kie 密钥不存在" });
+        writeAuditLog({ ctx, action: "kie_key_toggle", detail: { keyId: input.keyId, enabled: input.enabled } });
+        return { success: true };
+      }),
+
+    deleteKey: adminProcedure
+      .input(z.object({ keyId: z.number().int() }))
+      .mutation(async ({ ctx, input }) => {
+        const ok = await db.deleteKieKey(input.keyId);
+        if (!ok) throw new TRPCError({ code: "NOT_FOUND", message: "kie 密钥不存在" });
+        writeAuditLog({ ctx, action: "kie_key_delete", detail: { keyId: input.keyId } });
+        return { success: true };
+      }),
+
+    listBindings: adminProcedure
+      .input(z.object({ keyId: z.number().int() }))
+      .query(async ({ input }) => db.listKieBindings(input.keyId)),
+
+    bindUser: adminProcedure
+      .input(z.object({ keyId: z.number().int(), userId: z.number().int().positive(), note: z.string().max(255).optional() }))
+      .mutation(async ({ ctx, input }) => {
+        const user = await db.getUserById(input.userId);
+        if (!user) throw new TRPCError({ code: "NOT_FOUND", message: "用户不存在" });
+        const res = await db.bindKieUser(input.keyId, input.userId, input.note ?? null, ctx.user.id);
+        if (!res) throw new TRPCError({ code: "CONFLICT", message: "该用户已绑定此 key" });
+        writeAuditLog({ ctx, action: "kie_bind", detail: { keyId: input.keyId, userId: input.userId } });
+        return { id: res.id };
+      }),
+
+    setBindingEnabled: adminProcedure
+      .input(z.object({ bindingId: z.number().int(), enabled: z.boolean() }))
+      .mutation(async ({ ctx, input }) => {
+        const ok = await db.setKieBindingEnabled(input.bindingId, input.enabled);
+        if (!ok) throw new TRPCError({ code: "NOT_FOUND", message: "绑定不存在" });
+        writeAuditLog({ ctx, action: "kie_binding_toggle", detail: { bindingId: input.bindingId, enabled: input.enabled } });
+        return { success: true };
+      }),
+
+    unbind: adminProcedure
+      .input(z.object({ bindingId: z.number().int() }))
+      .mutation(async ({ ctx, input }) => {
+        const ok = await db.deleteKieBinding(input.bindingId);
+        if (!ok) throw new TRPCError({ code: "NOT_FOUND", message: "绑定不存在" });
+        writeAuditLog({ ctx, action: "kie_unbind", detail: { bindingId: input.bindingId } });
         return { success: true };
       }),
   }),

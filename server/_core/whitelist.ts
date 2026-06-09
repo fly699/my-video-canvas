@@ -6,6 +6,7 @@ interface WhitelistSettingsCache {
   enabled: boolean;
   comfyuiBypass: boolean;
   llmBypass: boolean;
+  kieEnabled: boolean;
 }
 
 let _cachedSettings: WhitelistSettingsCache | null = null;
@@ -13,7 +14,7 @@ let _cacheExpiry = 0;
 // Incremented on every invalidation so in-flight DB reads don't overwrite with stale data.
 let _cacheGeneration = 0;
 
-const DISABLED: WhitelistSettingsCache = { enabled: false, comfyuiBypass: false, llmBypass: false };
+const DISABLED: WhitelistSettingsCache = { enabled: false, comfyuiBypass: false, llmBypass: false, kieEnabled: false };
 
 export function invalidateWhitelistCache(): void {
   _cachedSettings = null;
@@ -35,6 +36,7 @@ async function getWhitelistSettingsCached(): Promise<WhitelistSettingsCache> {
       enabled: settings?.enabled ?? false,
       comfyuiBypass: settings?.comfyuiBypass ?? false,
       llmBypass: settings?.llmBypass ?? false,
+      kieEnabled: settings?.kieEnabled ?? false,
     };
     // Only write cache if no invalidation happened while awaiting.
     if (_cacheGeneration === gen) {
@@ -50,6 +52,7 @@ async function getWhitelistSettingsCached(): Promise<WhitelistSettingsCache> {
       enabled: fresh?.enabled ?? false,
       comfyuiBypass: fresh?.comfyuiBypass ?? false,
       llmBypass: fresh?.llmBypass ?? false,
+      kieEnabled: fresh?.kieEnabled ?? false,
     };
     if (_cacheGeneration === postInvalidationGen) {
       _cachedSettings = freshValue;
@@ -114,6 +117,19 @@ export async function assertLLMAllowed(ctx: TrpcContext): Promise<void> {
 export async function assertComfyuiAllowed(ctx: TrpcContext): Promise<void> {
   const { comfyuiBypass } = await getWhitelistSettingsCached();
   if (comfyuiBypass) return;
+  await assertWhitelisted(ctx);
+}
+
+/** Whether the caller may use the shared "house" kie.ai key (KIE_API_KEY env).
+ * Admins always may. Otherwise the whitelist kie switch (kieEnabled) must be on
+ * AND the caller must pass the standard whitelist (when the global whitelist is
+ * off, assertWhitelisted resolves for everyone, so kieEnabled alone gates it). */
+export async function assertKieHouseAllowed(ctx: TrpcContext): Promise<void> {
+  if (ctx.user?.role === "admin") return;
+  const { kieEnabled } = await getWhitelistSettingsCached();
+  if (!kieEnabled) {
+    throw new TRPCError({ code: "FORBIDDEN", message: "kie.ai 公用额度未开放，请联系管理员分配专属 key 或开启白名单 kie 开关" });
+  }
   await assertWhitelisted(ctx);
 }
 

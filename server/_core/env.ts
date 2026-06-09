@@ -37,6 +37,12 @@ export const ENV = {
   s3SecretKey: process.env.S3_SECRET_KEY ?? "",
   s3ForcePathStyle: (process.env.S3_FORCE_PATH_STYLE ?? "true") !== "false",
   poyoApiKey: process.env.POYO_API_KEY ?? "",
+  // kie.ai shared "house" API key (Bearer). Balance shown in the canvas toolbar.
+  // Usable by non-admins only when the whitelist kie switch is on (+ whitelisted).
+  kieApiKey: process.env.KIE_API_KEY ?? "",
+  // Secret used to AES-256-GCM encrypt admin-distributed kie keys at rest (these
+  // are stored in the DB, never in env). Required to add/use distributed keys.
+  kieKeySecret: process.env.KIE_KEY_SECRET ?? "",
   higgsfieldApiKey: process.env.HIGGSFIELD_API_KEY ?? "",
   higgsfieldApiSecret: process.env.HIGGSFIELD_API_SECRET ?? "",
   openaiApiKey: process.env.OPENAI_API_KEY ?? "",

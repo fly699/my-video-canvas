@@ -30,6 +30,7 @@ import { adminRouter } from "./routers/admin";
 import { collaborationRouter } from "./routers/collaboration";
 import { chatRouter } from "./routers/chat";
 import { poyoRouter } from "./routers/poyo";
+import { kieRouter } from "./routers/kie";
 import { downloadsRouter } from "./routers/downloads";
 import { editorRouter } from "./routers/editor";
 import { comfyTemplatesRouter } from "./routers/comfyTemplates";
@@ -79,6 +80,7 @@ export const appRouter = router({
   collaboration: collaborationRouter,
   chat: chatRouter,
   poyo: poyoRouter,
+  kie: kieRouter,
   downloads: downloadsRouter,
   editor: editorRouter,
   comfyTemplates: comfyTemplatesRouter,

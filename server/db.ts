@@ -12,6 +12,9 @@ import {
   whitelistSettings,
   comfySettings,
   whitelistEntries,
+  kieApiKeys,
+  kieKeyBindings,
+  kieBalanceSnapshots,
   storageSettings,
   auditLogs,
   comfyUsageLogs,
@@ -79,7 +82,7 @@ import { ENV } from "./_core/env";
 import * as dev from "./_core/devStore";
 
 // Dev-mode whitelist state
-const devWhitelistSettings = { id: 1, enabled: false, comfyuiBypass: false, llmBypass: false, updatedAt: new Date() };
+const devWhitelistSettings = { id: 1, enabled: false, comfyuiBypass: false, llmBypass: false, kieEnabled: false, updatedAt: new Date() };
 const devStorageSettings = { id: 1, persistAudio: true, persistVideo: true, persistImage: true, presignTtlSec: 3600, poyoUploadFallback: false, minioOnly: true, preferUpstreamRefSource: false, downloadAuthEnabled: false, forceStorageRelay: false, watermarkEnabled: false, downloadWatermarkEnabled: false, devtoolsBlockEnabled: false, updatedAt: new Date() };
 const devWhitelistEntries: Array<{ id: number; type: "ip" | "user"; value: string; note: string | null; createdBy: number | null; createdAt: Date }> = [];
 let devNextWhitelistId = 1;
@@ -1190,6 +1193,14 @@ export async function setWhitelistLlmBypass(llmBypass: boolean): Promise<void> {
     .onDuplicateKeyUpdate({ set: { llmBypass } });
 }
 
+// Whether (whitelisted/admin) users may use the shared "house" kie.ai key.
+export async function setWhitelistKieEnabled(kieEnabled: boolean): Promise<void> {
+  const db = await getDb();
+  if (!db) { devWhitelistSettings.kieEnabled = kieEnabled; return; }
+  await db.insert(whitelistSettings).values({ id: 1, kieEnabled })
+    .onDuplicateKeyUpdate({ set: { kieEnabled } });
+}
+
 export async function getWhitelistEntries() {
   const db = await getDb();
   if (!db) return [...devWhitelistEntries];
@@ -1308,6 +1319,159 @@ export async function isWhitelisted(type: "ip" | "user", value: string): Promise
     .where(and(eq(whitelistEntries.type, type), eq(whitelistEntries.value, value)))
     .limit(1);
   return rows.length > 0;
+}
+
+// ── kie.ai keys (admin-distributed, encrypted at rest) ────────────────────────
+type KieKeyRow = typeof kieApiKeys.$inferSelect;
+type KieBindingRow = typeof kieKeyBindings.$inferSelect;
+type KieSnapRow = typeof kieBalanceSnapshots.$inferSelect;
+const devKieKeys: KieKeyRow[] = [];
+let devKieKeyId = 1;
+const devKieBindings: KieBindingRow[] = [];
+let devKieBindingId = 1;
+const devKieSnaps: KieSnapRow[] = []; // newest first
+let devKieSnapId = 1;
+
+export interface KieKeySummary {
+  id: number; name: string; keyLast4: string; enabled: boolean; note: string | null;
+  createdAt: Date; bindingCount: number; activeBindingCount: number;
+}
+
+/** Add an encrypted kie key. Returns null if a key with the same hash already exists. */
+export async function addKieKey(data: { name: string; encryptedKey: string; keyLast4: string; keyHash: string; note: string | null; createdBy: number | null }): Promise<{ id: number } | null> {
+  const db = await getDb();
+  if (!db) {
+    if (devKieKeys.some(k => k.keyHash === data.keyHash)) return null;
+    const row = { id: devKieKeyId++, name: data.name, encryptedKey: data.encryptedKey, keyLast4: data.keyLast4, keyHash: data.keyHash, enabled: true, note: data.note, createdBy: data.createdBy, createdAt: new Date(), updatedAt: new Date() } as KieKeyRow;
+    devKieKeys.push(row);
+    return { id: row.id };
+  }
+  const existing = await db.select({ id: kieApiKeys.id }).from(kieApiKeys).where(eq(kieApiKeys.keyHash, data.keyHash)).limit(1);
+  if (existing.length) return null;
+  const [res] = await db.insert(kieApiKeys).values({ name: data.name, encryptedKey: data.encryptedKey, keyLast4: data.keyLast4, keyHash: data.keyHash, note: data.note ?? undefined, createdBy: data.createdBy ?? undefined });
+  return { id: (res as { insertId?: number }).insertId ?? 0 };
+}
+
+export async function listKieKeysWithCounts(): Promise<KieKeySummary[]> {
+  const db = await getDb();
+  if (!db) {
+    return devKieKeys.map(k => {
+      const binds = devKieBindings.filter(b => b.keyId === k.id);
+      return { id: k.id, name: k.name, keyLast4: k.keyLast4, enabled: k.enabled, note: k.note, createdAt: k.createdAt, bindingCount: binds.length, activeBindingCount: binds.filter(b => b.enabled).length };
+    });
+  }
+  const keys = await db.select().from(kieApiKeys).orderBy(desc(kieApiKeys.id));
+  const binds = await db.select({ keyId: kieKeyBindings.keyId, enabled: kieKeyBindings.enabled }).from(kieKeyBindings);
+  return keys.map(k => {
+    const kb = binds.filter(b => b.keyId === k.id);
+    return { id: k.id, name: k.name, keyLast4: k.keyLast4, enabled: k.enabled, note: k.note, createdAt: k.createdAt, bindingCount: kb.length, activeBindingCount: kb.filter(b => b.enabled).length };
+  });
+}
+
+export async function setKieKeyEnabled(id: number, enabled: boolean): Promise<boolean> {
+  const db = await getDb();
+  if (!db) { const k = devKieKeys.find(x => x.id === id); if (!k) return false; k.enabled = enabled; return true; }
+  const [res] = await db.update(kieApiKeys).set({ enabled }).where(eq(kieApiKeys.id, id));
+  return (res as { affectedRows?: number }).affectedRows !== 0;
+}
+
+export async function deleteKieKey(id: number): Promise<boolean> {
+  const db = await getDb();
+  if (!db) {
+    const idx = devKieKeys.findIndex(x => x.id === id);
+    if (idx === -1) return false;
+    devKieKeys.splice(idx, 1);
+    for (let i = devKieBindings.length - 1; i >= 0; i--) if (devKieBindings[i].keyId === id) devKieBindings.splice(i, 1);
+    return true;
+  }
+  await db.delete(kieKeyBindings).where(eq(kieKeyBindings.keyId, id));
+  const [res] = await db.delete(kieApiKeys).where(eq(kieApiKeys.id, id));
+  return (res as { affectedRows?: number }).affectedRows !== 0;
+}
+
+export interface KieBindingSummary { id: number; userId: number; enabled: boolean; note: string | null; createdAt: Date; userEmail: string | null; userName: string | null }
+
+export async function listKieBindings(keyId: number): Promise<KieBindingSummary[]> {
+  const db = await getDb();
+  if (!db) {
+    return devKieBindings.filter(b => b.keyId === keyId).map(b => ({ id: b.id, userId: b.userId, enabled: b.enabled, note: b.note, createdAt: b.createdAt, userEmail: null, userName: null }));
+  }
+  const rows = await db.select({
+    id: kieKeyBindings.id, userId: kieKeyBindings.userId, enabled: kieKeyBindings.enabled, note: kieKeyBindings.note, createdAt: kieKeyBindings.createdAt,
+    userEmail: users.email, userName: users.name,
+  }).from(kieKeyBindings).leftJoin(users, eq(kieKeyBindings.userId, users.id)).where(eq(kieKeyBindings.keyId, keyId)).orderBy(desc(kieKeyBindings.id));
+  return rows.map(r => ({ id: r.id, userId: r.userId, enabled: r.enabled, note: r.note, createdAt: r.createdAt, userEmail: r.userEmail ?? null, userName: r.userName ?? null }));
+}
+
+/** Bind a user to a key. Returns null if the binding already exists. */
+export async function bindKieUser(keyId: number, userId: number, note: string | null, createdBy: number | null): Promise<{ id: number } | null> {
+  const db = await getDb();
+  if (!db) {
+    if (devKieBindings.some(b => b.keyId === keyId && b.userId === userId)) return null;
+    const row = { id: devKieBindingId++, keyId, userId, enabled: true, note, createdBy, createdAt: new Date() } as KieBindingRow;
+    devKieBindings.push(row);
+    return { id: row.id };
+  }
+  const existing = await db.select({ id: kieKeyBindings.id }).from(kieKeyBindings).where(and(eq(kieKeyBindings.keyId, keyId), eq(kieKeyBindings.userId, userId))).limit(1);
+  if (existing.length) return null;
+  const [res] = await db.insert(kieKeyBindings).values({ keyId, userId, note: note ?? undefined, createdBy: createdBy ?? undefined });
+  return { id: (res as { insertId?: number }).insertId ?? 0 };
+}
+
+export async function setKieBindingEnabled(bindingId: number, enabled: boolean): Promise<boolean> {
+  const db = await getDb();
+  if (!db) { const b = devKieBindings.find(x => x.id === bindingId); if (!b) return false; b.enabled = enabled; return true; }
+  const [res] = await db.update(kieKeyBindings).set({ enabled }).where(eq(kieKeyBindings.id, bindingId));
+  return (res as { affectedRows?: number }).affectedRows !== 0;
+}
+
+export async function deleteKieBinding(bindingId: number): Promise<boolean> {
+  const db = await getDb();
+  if (!db) { const idx = devKieBindings.findIndex(x => x.id === bindingId); if (idx === -1) return false; devKieBindings.splice(idx, 1); return true; }
+  const [res] = await db.delete(kieKeyBindings).where(eq(kieKeyBindings.id, bindingId));
+  return (res as { affectedRows?: number }).affectedRows !== 0;
+}
+
+/** A user's effective assigned kie key: an enabled binding whose key is also enabled. */
+export async function getEffectiveKieKeyForUser(userId: number): Promise<{ keyId: number; name: string; keyLast4: string; encryptedKey: string } | null> {
+  const db = await getDb();
+  if (!db) {
+    const b = devKieBindings.find(x => x.userId === userId && x.enabled);
+    if (!b) return null;
+    const k = devKieKeys.find(x => x.id === b.keyId && x.enabled);
+    return k ? { keyId: k.id, name: k.name, keyLast4: k.keyLast4, encryptedKey: k.encryptedKey } : null;
+  }
+  const rows = await db.select({ keyId: kieApiKeys.id, name: kieApiKeys.name, keyLast4: kieApiKeys.keyLast4, encryptedKey: kieApiKeys.encryptedKey })
+    .from(kieKeyBindings)
+    .innerJoin(kieApiKeys, eq(kieKeyBindings.keyId, kieApiKeys.id))
+    .where(and(eq(kieKeyBindings.userId, userId), eq(kieKeyBindings.enabled, true), eq(kieApiKeys.enabled, true)))
+    .orderBy(desc(kieApiKeys.id))
+    .limit(1);
+  return rows[0] ?? null;
+}
+
+export async function insertKieBalanceSnapshotThrottled(creditsAmount: number, windowMs = 5 * 60_000): Promise<boolean> {
+  const now = Date.now();
+  const db = await getDb();
+  if (!db) {
+    const last = devKieSnaps[0];
+    if (last && now - last.createdAt.getTime() < windowMs) return false;
+    devKieSnaps.unshift({ id: devKieSnapId++, creditsAmount, createdAt: new Date() } as KieSnapRow);
+    if (devKieSnaps.length > 500) devKieSnaps.pop();
+    return true;
+  }
+  const lastRows = await db.select({ createdAt: kieBalanceSnapshots.createdAt }).from(kieBalanceSnapshots).orderBy(desc(kieBalanceSnapshots.createdAt)).limit(1);
+  const last = lastRows[0];
+  if (last && now - last.createdAt.getTime() < windowMs) return false;
+  await db.insert(kieBalanceSnapshots).values({ creditsAmount });
+  return true;
+}
+
+export async function getRecentKieBalanceSnapshots(limit = 50): Promise<Array<{ creditsAmount: number; at: Date }>> {
+  const db = await getDb();
+  if (!db) return devKieSnaps.slice(0, limit).map(r => ({ creditsAmount: r.creditsAmount, at: r.createdAt }));
+  const rows = await db.select().from(kieBalanceSnapshots).orderBy(desc(kieBalanceSnapshots.createdAt)).limit(limit);
+  return rows.map(r => ({ creditsAmount: r.creditsAmount, at: r.createdAt }));
 }
 
 // ── LAN Chat ─────────────────────────────────────────────────────────────────
