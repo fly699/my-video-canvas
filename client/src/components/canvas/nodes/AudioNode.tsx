@@ -1,4 +1,4 @@
-import { memo, useCallback, useRef, useState } from "react";
+import { memo, useCallback, useMemo, useRef, useState } from "react";
 import { BaseNode } from "../BaseNode";
 import { useCanvasStore } from "../../../hooks/useCanvasStore";
 import type { AudioNodeData, AudioCategory } from "../../../../../shared/types";
@@ -11,7 +11,8 @@ import { isOwnStorageUrl } from "@/lib/ownStorage";
 import { mediaFetchUrl } from "@/lib/download";
 import { NodeTextArea, NodeInput } from "../NodeTextInput";
 import { PromptDock } from "../PromptDock";
-import { useNodeDocks } from "../../../hooks/useNodeDocks";
+import { ReferenceImageStrip, type StripItem } from "../ReferenceImageStrip";
+import { useNodeDocks, useAudioStripItems } from "../../../hooks/useNodeDocks";
 import { LLMModelPicker, LLM_MODELS, type LLMModelId } from "../LLMModelPicker";
 
 interface Props {
@@ -421,7 +422,15 @@ export const AudioNode = memo(function AudioNode({ id, selected, data }: Props) 
     if (category === "sfx") return { text: payload.sfxPrompt ?? "", neg: undefined as string | undefined, label: "音效描述", note: "送去音效生成的描述" };
     return { text: "", neg: undefined as string | undefined, label: "提示词", note: undefined as string | undefined };
   })();
-  const docks = useNodeDocks(id, { hasRef: false, hasPrompt: !!promptDock.text.trim() });
+  // 左侧吸附窗的「音频」波形项：参与本节点的上游音频 + 配音的参考音色（只读、放末尾）。
+  const upstreamAudio = useAudioStripItems(id);
+  const audioItems: StripItem[] = useMemo(() => {
+    const own: StripItem[] = (category === "dubbing" && payload.ttsRefWavUrl?.trim())
+      ? [{ id: "refvoice:" + payload.ttsRefWavUrl, url: payload.ttsRefWavUrl, name: payload.ttsRefWavName || "参考音色", label: "音频", kind: "audio", removable: false }]
+      : [];
+    return [...upstreamAudio, ...own];
+  }, [upstreamAudio, category, payload.ttsRefWavUrl, payload.ttsRefWavName]);
+  const docks = useNodeDocks(id, { hasRef: audioItems.length > 0, hasPrompt: !!promptDock.text.trim() });
 
   const update = useCallback(
     (key: keyof AudioNodeData, value: unknown) => updateNodeData(id, { [key]: value }),
@@ -657,17 +666,35 @@ export const AudioNode = memo(function AudioNode({ id, selected, data }: Props) 
     <BaseNode id={id} selected={selected} nodeType="audio" title={data.title} minHeight={160} resizable
       onHeaderHoverChange={docks.onHeaderHoverChange}
       leftDock={
-        <PromptDock
-          open={docks.promptOpen}
-          text={promptDock.text}
-          negText={promptDock.neg}
-          label={promptDock.label}
-          note={promptDock.note}
-          accent={accent}
-          onClose={() => docks.setPromptOpen(false)}
-          onHoverChange={docks.onDockHoverChange}
-          onPin={docks.pinPrompt}
-        />
+        <>
+          <ReferenceImageStrip
+            images={audioItems}
+            open={docks.refOpen}
+            accent={accent}
+            readOnly
+            title="音频"
+            readOnlyHint={<>参与本节点的音频<br />（上游连入 / 参考音色）</>}
+            onClose={() => docks.setRefOpen(false)}
+            onRemove={() => {}}
+            onMove={() => {}}
+            onInsertUrls={() => {}}
+            onDropFiles={() => {}}
+            onZoom={() => {}}
+            onHoverChange={docks.onDockHoverChange}
+            onPin={docks.pinRef}
+          />
+          <PromptDock
+            open={docks.promptOpen}
+            text={promptDock.text}
+            negText={promptDock.neg}
+            label={promptDock.label}
+            note={promptDock.note}
+            accent={accent}
+            onClose={() => docks.setPromptOpen(false)}
+            onHoverChange={docks.onDockHoverChange}
+            onPin={docks.pinPrompt}
+          />
+        </>
       }>
       <div
         style={{
