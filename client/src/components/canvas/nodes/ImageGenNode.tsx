@@ -469,13 +469,12 @@ export const ImageGenNode = memo(function ImageGenNode({ id, selected, data }: P
         style={{ background: "oklch(0 0 0 / 0.45)" }}
       >
         <button
-          onClick={handleGenerate}
-          disabled={genMutation.isPending}
+          onClick={() => setLightboxIndex(0)}
           className="nodrag flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-medium"
           style={{ background: "color-mix(in oklch, var(--c-base) 80%, transparent)", backdropFilter: "blur(10px)", borderWidth: 1, borderStyle: "solid", borderColor: "var(--c-bd2)", color: "var(--c-t1)" }}
         >
-          {genMutation.isPending ? <Loader2 className="w-3 h-3 animate-spin" /> : <RefreshCw className="w-3 h-3" />}
-          重新生成
+          <ZoomIn className="w-3 h-3" />
+          放大
         </button>
       </div>
     </div>
