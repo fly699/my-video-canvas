@@ -366,8 +366,14 @@ export const ImageGenNode = memo(function ImageGenNode({ id, selected, data }: P
         fluxNumImages: fluxNum,
       } : {}),
       // kie.ai models: send the user's temporary key (if any) so the server can
-      // resolve temp > assigned > house. Only meaningful for kie_* models.
-      ...(payload.model?.startsWith("kie_") ? { kieTempKey: localStorage.getItem("kie:tempKey") || undefined } : {}),
+      // resolve temp > assigned > house, AND the chosen aspect ratio (the generic
+      // 比例 selector writes payload.aspectRatio — the server clamps it to each
+      // kie model's allowed enum). Without this kie returns 422 "aspect_ratio
+      // cannot be empty".
+      ...(payload.model?.startsWith("kie_") ? {
+        kieTempKey: localStorage.getItem("kie:tempKey") || undefined,
+        aspectRatio: payload.aspectRatio || undefined,
+      } : {}),
       projectId: data.projectId,
     });
     guard({ model: payload.model ?? "manus_forge", refImageUrl: payload.referenceImageUrl ?? charRefs[0] }, submit);
