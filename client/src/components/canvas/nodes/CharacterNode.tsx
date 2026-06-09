@@ -10,7 +10,7 @@ import { useCanvasStore } from "../../../hooks/useCanvasStore";
 import type { CharacterNodeData, CharacterKind, StoryboardNodeData } from "../../../../../shared/types";
 import { trpc } from "@/lib/trpc";
 import { toast } from "sonner";
-import { User, Mountain, Upload, X, Image as ImageIcon, Loader2, Plus, Search, Save, Sparkles } from "lucide-react";
+import { User, Mountain, Upload, X, Image as ImageIcon, Loader2, Plus, Search, Save, Sparkles, Music } from "lucide-react";
 import {
   characterToPromptInjection,
   clampLen,
@@ -695,6 +695,25 @@ export const CharacterNode = memo(function CharacterNode({ id, selected, data }:
           />
         )}
 
+        {/* ── 角色携带的音频 / 视频参考（@音频 / @视频，供数字人 / omni 模型）──
+            urls[0]→referenceXxxUrl（主项），其余→additionalXxxUrls。库 payload 存任意字段，无需迁移。 */}
+        {selected && (
+          <MediaRefsSection
+            kind="audio"
+            urls={[payload.referenceAudioUrl, ...(payload.additionalAudioUrls ?? [])].filter((u): u is string => !!u)}
+            onChange={(urls) => updateNodeData(id, { referenceAudioUrl: urls[0], additionalAudioUrls: urls.length > 1 ? urls.slice(1) : undefined })}
+            accent={accent}
+          />
+        )}
+        {selected && (
+          <MediaRefsSection
+            kind="video"
+            urls={[payload.referenceVideoUrl, ...(payload.additionalVideoUrls ?? [])].filter((u): u is string => !!u)}
+            onChange={(urls) => updateNodeData(id, { referenceVideoUrl: urls[0], additionalVideoUrls: urls.length > 1 ? urls.slice(1) : undefined })}
+            accent={accent}
+          />
+        )}
+
         {/* AI 识别：依据参考图（含备用视角）分析并填充角色/场景参数（弹窗勾选后应用） */}
         {selected && (
           <div className="flex flex-col gap-1.5">
@@ -980,6 +999,76 @@ function AdditionalImagesSection({
         style={{ display: "none" }}
         onChange={handleFile}
       />
+    </div>
+  );
+}
+
+const MAX_MEDIA_REFS = 4;
+/**
+ * 角色携带的音频 / 视频参考上传区（与备用视角图同构）。复用 upload.uploadImage（其白名单
+ * 已含 audio/* 与 video/*）。urls[0]→referenceXxxUrl，其余→additionalXxxUrls（由父组件拆分写回）。
+ * audio 用播放磁贴，video 用 <video> 首帧磁贴；点击播放/暂停，悬停删除。
+ */
+function MediaRefsSection({ kind, urls, onChange, accent }: {
+  kind: "audio" | "video";
+  urls: string[];
+  onChange: (urls: string[]) => void;
+  accent: string;
+}) {
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const [uploadingIdx, setUploadingIdx] = useState<number | null>(null);
+  const uploadMut = trpc.upload.uploadImage.useMutation({
+    onSuccess: (result) => {
+      if (uploadingIdx === null) return;
+      const next = urls.slice(); next[uploadingIdx] = result.url; onChange(next); setUploadingIdx(null);
+    },
+    onError: (err) => { toast.error(`${kind === "audio" ? "音频" : "视频"}上传失败：${err.message}`); setUploadingIdx(null); },
+  });
+  const handlePick = (slotIdx: number) => { setUploadingIdx(slotIdx); fileInputRef.current?.click(); };
+  const handleFile = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) { setUploadingIdx(null); return; }
+    if (file.size > 16 * 1024 * 1024) { toast.error(`${kind === "audio" ? "音频" : "视频"}不能超过 16MB`); setUploadingIdx(null); return; }
+    const reader = new FileReader();
+    reader.onload = () => uploadMut.mutate({ base64: (reader.result as string).split(",")[1], mimeType: file.type, filename: file.name });
+    reader.readAsDataURL(file);
+    e.target.value = "";
+  };
+  const handleRemove = (slotIdx: number) => { const next = urls.slice(); next.splice(slotIdx, 1); onChange(next); };
+  const label = kind === "audio" ? "音频参考" : "视频参考";
+  return (
+    <div>
+      <label style={{ fontSize: 10.5, fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.06em", color: "var(--c-t4)", display: "block", marginBottom: 5 }}>
+        {label} ({urls.length}/{MAX_MEDIA_REFS})
+      </label>
+      <div className="grid grid-cols-4 gap-1.5 nodrag">
+        {Array.from({ length: MAX_MEDIA_REFS }).map((_, idx) => {
+          const url = urls[idx];
+          const isLoading = uploadingIdx === idx && uploadMut.isPending;
+          if (url) {
+            return (
+              <div key={idx} className="group/slot relative" style={{ aspectRatio: "1", borderRadius: 6, overflow: "hidden", border: `1px solid ${accent}30`, background: "var(--c-input)" }}>
+                {kind === "video"
+                  ? <video src={url.startsWith("http") ? `/api/image-proxy?url=${encodeURIComponent(url)}` : url} muted playsInline preload="metadata" style={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }} onMouseEnter={(e) => void (e.currentTarget as HTMLVideoElement).play().catch(() => {})} onMouseLeave={(e) => (e.currentTarget as HTMLVideoElement).pause()} />
+                  : <div style={{ width: "100%", height: "100%", display: "flex", alignItems: "center", justifyContent: "center", color: accent }}><Music style={{ width: 16, height: 16 }} /></div>}
+                <button onClick={() => handleRemove(idx)} className="opacity-0 group-hover/slot:opacity-100" style={{ position: "absolute", top: 2, right: 2, width: 16, height: 16, padding: 0, borderRadius: "50%", background: "oklch(0 0 0 / 0.6)", border: "none", color: "white", cursor: "pointer", transition: "opacity 150ms ease", display: "flex", alignItems: "center", justifyContent: "center" }}>
+                  <X style={{ width: 9, height: 9 }} />
+                </button>
+              </div>
+            );
+          }
+          const isNextSlot = idx === urls.length;
+          return (
+            <button key={idx} onClick={() => isNextSlot && handlePick(urls.length)} disabled={!isNextSlot || isLoading}
+              style={{ aspectRatio: "1", borderRadius: 6, background: isNextSlot ? "var(--c-input)" : "transparent", border: `1px dashed ${isNextSlot ? "var(--c-bd3)" : "var(--c-bd1)"}`, cursor: isNextSlot ? "pointer" : "not-allowed", opacity: isNextSlot ? 1 : 0.4, display: "flex", alignItems: "center", justifyContent: "center", color: "var(--c-t4)", transition: "border-color 150ms ease" }}
+              onMouseEnter={(e) => { if (isNextSlot) (e.currentTarget as HTMLElement).style.borderColor = accent; }}
+              onMouseLeave={(e) => { if (isNextSlot) (e.currentTarget as HTMLElement).style.borderColor = "var(--c-bd3)"; }}>
+              {isLoading ? <Loader2 className="animate-spin" style={{ width: 14, height: 14 }} /> : <Plus style={{ width: 14, height: 14 }} />}
+            </button>
+          );
+        })}
+      </div>
+      <input ref={fileInputRef} type="file" accept={kind === "audio" ? "audio/*" : "video/*"} style={{ display: "none" }} onChange={handleFile} />
     </div>
   );
 }

@@ -250,6 +250,28 @@ export const characterLibrary = mysqlTable("character_library", {
 export type CharacterLibraryRow = typeof characterLibrary.$inferSelect;
 export type InsertCharacterLibrary = typeof characterLibrary.$inferInsert;
 
+// ── Quick prompt library (per-user custom prompts + 10 favorite quick-slots) ───
+// 每行是用户的一个自定义提示词，按 category 分组。slot(0..9) 非空时该行占用一个
+// 「/」快捷槽位：slotKind="prompt" 表示直接插入其 text；slotKind="category" 表示该槽位
+// 是一个类别入口，点击展开 `category` 下的二级菜单。私有库（每用户只见自己的）。
+export const promptLibrary = mysqlTable("prompt_library", {
+  id: int("id").autoincrement().primaryKey(),
+  userId: int("userId").notNull(),
+  label: varchar("label", { length: 120 }).notNull(),
+  text: text("text").notNull(),
+  category: varchar("category", { length: 120 }).notNull().default("通用"),
+  slot: int("slot"),                                  // 0..9 占用快捷槽位；否则 null
+  slotKind: varchar("slotKind", { length: 16 }),      // slot 非空时："prompt" | "category"
+  sortOrder: int("sortOrder").notNull().default(0),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+}, (t) => ({
+  userIdx: index("prompt_library_user_idx").on(t.userId),
+}));
+
+export type PromptLibraryRow = typeof promptLibrary.$inferSelect;
+export type InsertPromptLibrary = typeof promptLibrary.$inferInsert;
+
 // ── ComfyUI template functional analysis (for the agent's planning) ───────────
 // One row per template (1:1 via unique templateId). The agent reads these
 // LLM-produced functional summaries to recommend/configure comfyui_workflow nodes.

@@ -17,9 +17,28 @@ export function characterReferenceImages(c: CharacterNodeData): string[] {
   return Array.from(new Set(urls));
 }
 
+/** Distinct, non-empty reference AUDIO URLs for a character (main + extras). */
+export function characterReferenceAudios(c: CharacterNodeData): string[] {
+  const urls = [c.referenceAudioUrl, ...(c.additionalAudioUrls ?? [])]
+    .filter((u): u is string => typeof u === "string" && u.trim().length > 0);
+  return Array.from(new Set(urls));
+}
+
+/** Distinct, non-empty reference VIDEO URLs for a character (main + extras). */
+export function characterReferenceVideos(c: CharacterNodeData): string[] {
+  const urls = [c.referenceVideoUrl, ...(c.additionalVideoUrls ?? [])]
+    .filter((u): u is string => typeof u === "string" && u.trim().length > 0);
+  return Array.from(new Set(urls));
+}
+
 /** True when the character carries any conditioning we can apply downstream. */
 export function characterHasConditioning(c: CharacterNodeData): boolean {
   return characterReferenceImages(c).length > 0 || !!c.loraName?.trim();
+}
+
+/** True when the character carries any audio / video reference (for omni models). */
+export function characterHasMedia(c: CharacterNodeData): boolean {
+  return characterReferenceAudios(c).length > 0 || characterReferenceVideos(c).length > 0;
 }
 
 /** Reference images (main + extra views, de-duped) from every `character` node
@@ -185,6 +204,33 @@ export function effectiveSceneRefImages(
   edges: { source: string; target: string }[], nodes: CharNodeLike[],
 ): string[] {
   return dedupeRefImages(effectiveCharacters(targetId, prompt, edges, nodes).filter((c) => (c.characterKind ?? "person") === "scene"));
+}
+
+function dedupeBy(chars: CharacterNodeData[], pick: (c: CharacterNodeData) => string[]): string[] {
+  const out: string[] = [];
+  const seen = new Set<string>();
+  for (const c of chars) {
+    for (const u of pick(c)) {
+      if (!seen.has(u)) { seen.add(u); out.push(u); }
+    }
+  }
+  return out;
+}
+
+/** 角色携带的音频参考（连线 + @提及，去重，连线优先）。供数字人 / omni 模型当声音参考。 */
+export function effectiveCharacterAudioRefs(
+  targetId: string, prompt: string | undefined,
+  edges: { source: string; target: string }[], nodes: CharNodeLike[],
+): string[] {
+  return dedupeBy(effectiveCharacters(targetId, prompt, edges, nodes), characterReferenceAudios);
+}
+
+/** 角色携带的视频参考（连线 + @提及，去重，连线优先）。供动作控制 / omni 模型当动作参考。 */
+export function effectiveCharacterVideoRefs(
+  targetId: string, prompt: string | undefined,
+  edges: { source: string; target: string }[], nodes: CharNodeLike[],
+): string[] {
+  return dedupeBy(effectiveCharacters(targetId, prompt, edges, nodes), characterReferenceVideos);
 }
 
 /** First connected PERSON character's LoRA (name + strength), or null. Priority by

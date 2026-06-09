@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { characterReferenceImages, characterHasConditioning, deriveCharacterConditioning, connectedCharacterRefImages, connectedSceneRefImages, connectedCharacterLora, mentionedCharacters, stripCharacterMentions, effectiveCharacters, effectiveCharacterRefImages, effectiveSceneRefImages, setLibraryCharacters } from "./characterConditioning";
+import { characterReferenceImages, characterHasConditioning, deriveCharacterConditioning, connectedCharacterRefImages, connectedSceneRefImages, connectedCharacterLora, mentionedCharacters, stripCharacterMentions, effectiveCharacters, effectiveCharacterRefImages, effectiveSceneRefImages, setLibraryCharacters, characterReferenceAudios, characterReferenceVideos, characterHasMedia, effectiveCharacterAudioRefs, effectiveCharacterVideoRefs } from "./characterConditioning";
 import type { CharacterNodeData } from "../../../shared/types";
 
 const char = (over: Partial<CharacterNodeData>): CharacterNodeData => ({ characterKind: "person", ...over });
@@ -194,5 +194,35 @@ describe("@角色 提及解析", () => {
     } finally {
       setLibraryCharacters([]); // 复位，避免污染其它用例
     }
+  });
+});
+
+describe("角色携带音频/视频参考（@音频 / @视频）", () => {
+  const N = (id: string, payload: Partial<CharacterNodeData>, pos?: { x: number; y: number }) =>
+    ({ id, data: { nodeType: "character", payload }, position: pos ?? { x: 0, y: 0 } });
+
+  it("characterReferenceAudios / Videos：主项 + 附加项，去重去空", () => {
+    expect(characterReferenceAudios(char({ referenceAudioUrl: "a.mp3", additionalAudioUrls: ["b.mp3", "a.mp3", " "] }))).toEqual(["a.mp3", "b.mp3"]);
+    expect(characterReferenceVideos(char({ referenceVideoUrl: "v.mp4", additionalVideoUrls: ["w.mp4"] }))).toEqual(["v.mp4", "w.mp4"]);
+    expect(characterReferenceAudios(char({}))).toEqual([]);
+  });
+
+  it("characterHasMedia：有音频或视频参考即为真", () => {
+    expect(characterHasMedia(char({ referenceAudioUrl: "a.mp3" }))).toBe(true);
+    expect(characterHasMedia(char({ referenceVideoUrl: "v.mp4" }))).toBe(true);
+    expect(characterHasMedia(char({ referenceImageUrl: "i.png" }))).toBe(false);
+  });
+
+  it("effectiveCharacterAudioRefs / VideoRefs：连线 + @提及合并去重", () => {
+    const nodes = [
+      N("c1", { name: "主角", referenceAudioUrl: "voice1.mp3", referenceVideoUrl: "move1.mp4" }, { x: 0, y: 0 }),
+      N("c2", { name: "配角", referenceAudioUrl: "voice2.mp3" }, { x: 0, y: 100 }),
+    ];
+    // c1 连线 → 拿到其音/视频；@配角 → 补充 voice2。
+    const edges = [{ source: "c1", target: "vt" }];
+    expect(effectiveCharacterAudioRefs("vt", "@配角", edges, nodes)).toEqual(["voice1.mp3", "voice2.mp3"]);
+    expect(effectiveCharacterVideoRefs("vt", "@配角", edges, nodes)).toEqual(["move1.mp4"]);
+    // 无连线无提及 → 空。
+    expect(effectiveCharacterAudioRefs("vt", "", [], nodes)).toEqual([]);
   });
 });

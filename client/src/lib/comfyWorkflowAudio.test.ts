@@ -52,3 +52,48 @@ describe("resolveAudioParamsWithMap", () => {
     expect(r.paramValues[key]).toBe("user-typed.mp3");
   });
 });
+
+import { listUpstreamVideoSources, listCanvasMediaSources, mentionedMediaUrls, stripMediaMentions } from "./comfyWorkflowParams";
+
+const NV = (id: string, nodeType: string, payload: unknown, title?: string) => ({ id, data: { nodeType, payload, title } });
+
+describe("listUpstreamVideoSources", () => {
+  it("收集上游 video_task/comfyui_video/素材(视频) 的 url，忽略图像/音频源", () => {
+    const nodes = [
+      NV("vt", "video_task", { resultVideoUrl: "out.mp4" }, "成片"),
+      NV("cv", "comfyui_video", { resultVideoUrl: "cv.mp4" }, "Comfy视频"),
+      NV("as", "asset", { url: "clip.mov", type: "video", mimeType: "video/quicktime" }, "素材片段"),
+      NV("img", "asset", { url: "p.png", type: "image", mimeType: "image/png" }, "图"),
+      NV("aud", "asset", { url: "a.mp3", type: "audio", mimeType: "audio/mpeg" }, "音"),
+    ];
+    const edges = [
+      { source: "vt", target: "t" }, { source: "cv", target: "t" }, { source: "as", target: "t" },
+      { source: "img", target: "t" }, { source: "aud", target: "t" },
+    ];
+    expect(listUpstreamVideoSources("t", edges, nodes).map((v) => v.url)).toEqual(["out.mp4", "cv.mp4", "clip.mov"]);
+  });
+});
+
+describe("@音频名 / @视频名（独立媒体节点）", () => {
+  const nodes = [
+    NV("a1", "audio", { url: "voice.mp3" }, "旁白"),
+    NV("v1", "video_task", { resultVideoUrl: "dance.mp4" }, "舞蹈"),
+    NV("v2", "asset", { url: "scene.mp4", type: "video", mimeType: "video/mp4" }, "外景"),
+  ];
+
+  it("listCanvasMediaSources 列出有标题的音/视频节点", () => {
+    expect(listCanvasMediaSources(nodes).map((m) => [m.name, m.kind, m.url])).toEqual([
+      ["旁白", "audio", "voice.mp3"], ["舞蹈", "video", "dance.mp4"], ["外景", "video", "scene.mp4"],
+    ]);
+  });
+
+  it("mentionedMediaUrls 按 kind 解析 @名字", () => {
+    expect(mentionedMediaUrls("配上 @旁白 旁白音", "audio", nodes)).toEqual(["voice.mp3"]);
+    expect(mentionedMediaUrls("参考 @舞蹈 和 @外景 的动作", "video", nodes)).toEqual(["dance.mp4", "scene.mp4"]);
+    expect(mentionedMediaUrls("无提及", "audio", nodes)).toEqual([]);
+  });
+
+  it("stripMediaMentions 去掉 @媒体名 字面量", () => {
+    expect(stripMediaMentions("配上 @旁白 做 @舞蹈 动作", nodes)).toBe("配上 做 动作");
+  });
+});

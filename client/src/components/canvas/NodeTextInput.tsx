@@ -1,5 +1,6 @@
 import { forwardRef, useCallback, useEffect, useRef, useState, type ChangeEvent, type CompositionEvent, type FocusEvent } from "react";
 import { useMention } from "./useMention";
+import { useSlashMenu } from "./useSlashMenu";
 
 /** 稳定的「合并外部转发 ref + 内部 ref」回调（避免每次渲染重建导致 ref 反复挂卸）。 */
 function useMergedRef<T>(external: React.ForwardedRef<T>, internal: React.MutableRefObject<T | null>) {
@@ -77,22 +78,25 @@ export const NodeTextArea = forwardRef<HTMLTextAreaElement, TextAreaProps>(funct
   const innerRef = useRef<HTMLTextAreaElement | null>(null);
   const mergedRef = useMergedRef(ref, innerRef);
   const mention = useMention(!noMention, innerRef, ime.commit);
+  const slash = useSlashMenu(!noMention, innerRef, ime.commit);
+  const probe = () => { mention.probe(); slash.probe(); };
   return (
     <>
       <textarea
         ref={mergedRef}
         {...rest}
         value={ime.local}
-        onChange={(e) => { ime.onChange(e); mention.probe(); }}
-        onKeyDown={(e) => { if (!e.nativeEvent.isComposing && mention.onKeyDown(e)) return; onKeyDown?.(e); }}
-        onKeyUp={(e) => { mention.probe(); onKeyUp?.(e); }}
-        onClick={(e) => { mention.probe(); onClick?.(e); }}
+        onChange={(e) => { ime.onChange(e); probe(); }}
+        onKeyDown={(e) => { if (!e.nativeEvent.isComposing && (mention.onKeyDown(e) || slash.onKeyDown(e))) return; onKeyDown?.(e); }}
+        onKeyUp={(e) => { probe(); onKeyUp?.(e); }}
+        onClick={(e) => { probe(); onClick?.(e); }}
         onCompositionStart={(e) => { ime.onCompositionStart(); onCompositionStart?.(e); }}
-        onCompositionEnd={(e) => { ime.onCompositionEnd(e); onCompositionEnd?.(e); mention.probe(); }}
+        onCompositionEnd={(e) => { ime.onCompositionEnd(e); onCompositionEnd?.(e); probe(); }}
         onFocus={(e: FocusEvent<HTMLTextAreaElement>) => { ime.onFocus(); onFocus?.(e); }}
-        onBlur={(e: FocusEvent<HTMLTextAreaElement>) => { ime.onBlur(); onBlur?.(e); setTimeout(() => mention.close(), 120); }}
+        onBlur={(e: FocusEvent<HTMLTextAreaElement>) => { ime.onBlur(); onBlur?.(e); setTimeout(() => { mention.close(); slash.close(); }, 120); }}
       />
       {mention.dropdown}
+      {slash.dropdown}
     </>
   );
 });
@@ -107,22 +111,25 @@ export const NodeInput = forwardRef<HTMLInputElement, InputProps>(function NodeI
   const innerRef = useRef<HTMLInputElement | null>(null);
   const mergedRef = useMergedRef(ref, innerRef);
   const mention = useMention(!noMention, innerRef, ime.commit);
+  const slash = useSlashMenu(!noMention, innerRef, ime.commit);
+  const probe = () => { mention.probe(); slash.probe(); };
   return (
     <>
       <input
         ref={mergedRef}
         {...rest}
         value={ime.local}
-        onChange={(e) => { ime.onChange(e); mention.probe(); }}
-        onKeyDown={(e) => { if (!e.nativeEvent.isComposing && mention.onKeyDown(e)) return; onKeyDown?.(e); }}
-        onKeyUp={(e) => { mention.probe(); onKeyUp?.(e); }}
-        onClick={(e) => { mention.probe(); onClick?.(e); }}
+        onChange={(e) => { ime.onChange(e); probe(); }}
+        onKeyDown={(e) => { if (!e.nativeEvent.isComposing && (mention.onKeyDown(e) || slash.onKeyDown(e))) return; onKeyDown?.(e); }}
+        onKeyUp={(e) => { probe(); onKeyUp?.(e); }}
+        onClick={(e) => { probe(); onClick?.(e); }}
         onCompositionStart={(e) => { ime.onCompositionStart(); onCompositionStart?.(e); }}
-        onCompositionEnd={(e) => { ime.onCompositionEnd(e); onCompositionEnd?.(e); mention.probe(); }}
+        onCompositionEnd={(e) => { ime.onCompositionEnd(e); onCompositionEnd?.(e); probe(); }}
         onFocus={(e: FocusEvent<HTMLInputElement>) => { ime.onFocus(); onFocus?.(e); }}
-        onBlur={(e: FocusEvent<HTMLInputElement>) => { ime.onBlur(); onBlur?.(e); setTimeout(() => mention.close(), 120); }}
+        onBlur={(e: FocusEvent<HTMLInputElement>) => { ime.onBlur(); onBlur?.(e); setTimeout(() => { mention.close(); slash.close(); }, 120); }}
       />
       {mention.dropdown}
+      {slash.dropdown}
     </>
   );
 });

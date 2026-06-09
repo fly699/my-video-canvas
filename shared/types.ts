@@ -485,6 +485,16 @@ export interface CharacterNodeData {
    */
   additionalImageUrls?: string[];
   /**
+   * 角色携带的音频 / 视频参考（@音频 / @视频 的「角色携带」来源）。供全能（omni）
+   * 模型把角色的声音 / 动作视频一并作为参考输入（见 characterConditioning.ts 的
+   * effectiveCharacterAudioRefs / effectiveCharacterVideoRefs）。镜像图片参考的结构：
+   * referenceXxxUrl 为主项，additionalXxxUrls 为附加项。库 payload 存任意字段，无需迁移。
+   */
+  referenceAudioUrl?: string;
+  additionalAudioUrls?: string[];
+  referenceVideoUrl?: string;
+  additionalVideoUrls?: string[];
+  /**
    * Optional user-authored template that overrides the auto-generated
    * prompt injection. Supports the same `{name}`, `{outfit}` etc.
    * placeholders documented in lib/characterPrompt.ts.
