@@ -697,9 +697,14 @@ export const AIChatNode = memo(function AIChatNode({ id, selected, data }: Props
                   onMouseEnter={(e) => { if (model !== m.id) (e.currentTarget as HTMLElement).style.background = "var(--c-elevated)"; }}
                   onMouseLeave={(e) => { if (model !== m.id) (e.currentTarget as HTMLElement).style.background = "transparent"; }}
                 >
-                  <span style={{ fontSize: 11, color: model === m.id ? "oklch(0.72 0.20 330)" : "var(--c-t2)", fontWeight: model === m.id ? 500 : 400 }}>
-                    {m.label}
-                  </span>
+                  <div style={{ display: "flex", flexDirection: "column", minWidth: 0 }}>
+                    <span style={{ fontSize: 11, color: model === m.id ? "oklch(0.72 0.20 330)" : "var(--c-t2)", fontWeight: model === m.id ? 500 : 400 }}>
+                      {m.label}
+                    </span>
+                    {m.costNote && (
+                      <span style={{ fontSize: 8.5, color: "var(--c-t4)" }}>{m.costNote} 点/百万tokens</span>
+                    )}
+                  </div>
                   <span style={{ display: "flex", alignItems: "center", gap: 4 }}>
                     {/* 上游平台（Forge / Poyo / Kie）— 统一分色标签 */}
                     <span style={{
