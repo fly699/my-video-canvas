@@ -100,6 +100,18 @@ export function imageModelRequiresRef(value?: string): boolean {
   return IMAGE_MODELS.find((m) => m.value === value)?.requiresRef ?? false;
 }
 
+// ── 来源平台分色标签（统一所有节点的模型下拉「来源平台」注释）──────────────────
+// 每个上游平台一种色相，所有节点的模型选择器统一用它渲染来源标签（Poyo/Kie/Forge…），
+// 便于一眼区分。脚本/对话节点的 Forge/Poyo 绿/蓝即源于此。
+const PLATFORM_HUE: Record<string, number> = {
+  Poyo: 240, Manus: 160, Forge: 160, Higgsfield: 310, Kie: 200,
+  Suno: 285, MiniMax: 30, OpenAI: 150, Local: 95, Dev: 20,
+};
+export function platformBadge(name: string): { bg: string; fg: string } {
+  const h = PLATFORM_HUE[name] ?? 265;
+  return { bg: `oklch(0.70 0.15 ${h} / 0.18)`, fg: `oklch(0.74 0.14 ${h})` };
+}
+
 export const IMAGE_MODELS: readonly ImageModelMeta[] = [
   // --- Manus (built-in, free) ---
   { value: "manus_forge", label: "Manus Forge", desc: "内置 · 稳定", group: "Manus", family: "Manus", provider: "Manus", costNote: "内置", caps: ["内置", "离线兜底"] },

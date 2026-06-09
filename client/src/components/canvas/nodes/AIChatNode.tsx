@@ -7,7 +7,7 @@ import type { AIChatNodeData, ChatAttachment, NodeType } from "../../../../../sh
 import { trpc } from "@/lib/trpc";
 import { toast } from "sonner";
 import { Send, Loader2, Trash2, Bot, User, Sparkles, ChevronDown, ArrowRight, Copy, BookOpen, Paperclip, ImageIcon, FileText, X, PictureInPicture2, ChevronsRight, GripHorizontal, Download, Layers, Slash } from "lucide-react";
-import { CHAT_MODELS } from "@/lib/models";
+import { CHAT_MODELS, platformBadge } from "@/lib/models";
 // Streamdown removed — replaced with safe inline markdown renderer to avoid ReactFlow DOM conflicts
 function SimpleMarkdown({ children }: { children: string }) {
   // Convert basic markdown to safe HTML
@@ -701,11 +701,11 @@ export const AIChatNode = memo(function AIChatNode({ id, selected, data }: Props
                     {m.label}
                   </span>
                   <span style={{ display: "flex", alignItems: "center", gap: 4 }}>
-                    {/* 上游平台（Forge / Poyo） */}
+                    {/* 上游平台（Forge / Poyo / Kie）— 统一分色标签 */}
                     <span style={{
                       fontSize: 9, fontWeight: 700, borderRadius: 99, padding: "1px 6px", letterSpacing: "0.04em",
-                      background: m.provider === "Poyo" ? "oklch(0.62 0.16 240 / 0.18)" : "oklch(0.68 0.16 160 / 0.18)",
-                      color: m.provider === "Poyo" ? "oklch(0.70 0.15 240)" : "oklch(0.70 0.15 160)",
+                      background: platformBadge(m.provider).bg,
+                      color: platformBadge(m.provider).fg,
                     }}>
                       {m.provider}
                     </span>

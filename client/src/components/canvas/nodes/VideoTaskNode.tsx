@@ -22,6 +22,7 @@ import { ensureNotificationPermission, showCompletionNotification } from "@/lib/
 import { CinematographyPicker } from "../CinematographyPicker";
 import { RefImageReachabilityBadge, RefImageSwitchButton, useRefImageGuard, providerNeedsPublicMedia, usePreferUpstreamRefSource, useAutoPreferUpstreamRefSource } from "../mediaReachability";
 import { ModelPicker } from "../ModelPicker";
+import { platformBadge } from "../../../lib/models";
 import { ImageLightbox } from "../ImageLightbox";
 import { WatermarkedVideo } from "@/components/WatermarkedVideo";
 import { ReferenceImageStrip, type StripItem } from "../ReferenceImageStrip";
@@ -1443,7 +1444,7 @@ export const VideoTaskNode = memo(function VideoTaskNode({ id, selected, data }:
                       {checked && <span style={{ color: "white", fontSize: 9, fontWeight: 700 }}>✓</span>}
                     </div>
                     <span>{p.label}</span>
-                    <span style={{ marginLeft: "auto", fontSize: 9, color: "var(--c-t4)", background: "var(--c-surface)", borderRadius: 99, padding: "1px 5px" }}>{p.group}</span>
+                    <span style={{ marginLeft: "auto", fontSize: 9, color: platformBadge(p.group).fg, background: platformBadge(p.group).bg, borderRadius: 99, padding: "1px 5px", fontWeight: 700 }}>{p.group}</span>
                     {parallelResults[p.value] && (
                       <span style={{
                         fontSize: 9, borderRadius: 99, padding: "1px 5px",

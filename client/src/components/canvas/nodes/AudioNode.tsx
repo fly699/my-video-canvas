@@ -14,6 +14,7 @@ import { PromptDock } from "../PromptDock";
 import { ReferenceImageStrip, type StripItem } from "../ReferenceImageStrip";
 import { useNodeDocks, useAudioStripItems } from "../../../hooks/useNodeDocks";
 import { LLMModelPicker, LLM_MODELS, type LLMModelId } from "../LLMModelPicker";
+import { ModelPicker } from "../ModelPicker";
 
 interface Props {
   id: string;
@@ -305,23 +306,24 @@ function ModelSelect({ models, value, onChange }: {
   value?: string;
   onChange: (v: string) => void;
 }) {
+  // 用统一的 ModelPicker（分色来源平台标签），与脚本/图像/视频节点一致。
+  // 来源平台：kie_* → Kie，其余 Suno/MiniMax 由 Poyo 提供 → Poyo；家族放副标签。
+  const options = models.map((m) => ({
+    value: m.value,
+    label: m.label,
+    group: m.value.startsWith("kie_") ? "Kie" : "Poyo",
+    family: m.group,
+    caps: [m.desc],
+  }));
   return (
     <div>
       <label style={labelStyle}>AI 模型</label>
-      <select
+      <ModelPicker
         value={value ?? models[0]?.value ?? ""}
-        onChange={(e) => onChange(e.target.value)}
-        className="nodrag"
-        style={{ ...fieldStyle, cursor: "pointer" }}
-        onFocus={(e) => { e.currentTarget.style.borderColor = BORDER_ACCENT; }}
-        onBlur={(e) => { e.currentTarget.style.borderColor = BORDER_DEFAULT; }}
-      >
-        {models.map((m) => (
-          <option key={m.value} value={m.value} style={{ background: "var(--c-base)" }}>
-            {m.label} — {m.desc}
-          </option>
-        ))}
-      </select>
+        onChange={onChange}
+        options={options}
+        searchable={false}
+      />
     </div>
   );
 }
