@@ -54,7 +54,7 @@ import { trpc } from "@/lib/trpc";
 import { useAuth } from "@/_core/hooks/useAuth";
 import { useIsMobile } from "@/hooks/useMobile";
 import { toast } from "sonner";
-import type { NodeType, CollaboratorCursor, NodeData } from "../../../shared/types";
+import type { NodeType, CollaboratorCursor, NodeData, GroupNodeData } from "../../../shared/types";
 import { getNodeConfig, NODE_TYPE_LIST, NODE_ICONS, COLLABORATOR_COLORS, type NodeConfig } from "../lib/nodeConfig";
 import { sortNodeConfigsForPalette } from "../lib/nodeOrder";
 import { io, type Socket } from "socket.io-client";
@@ -1037,6 +1037,29 @@ function CanvasInner({ projectId }: { projectId: number }) {
     setContextMenu({ x: e.clientX, y: e.clientY, type: "node", nodeId: node.id });
   }, []);
 
+  // ── 群组「统一拖动」：拖动 group 容器时，其成员（childIds 中、且未被一起多选拖动的）
+  //    按相同位移实时跟随（绝对坐标 + 静默更新，与普通拖动一致不入历史）。 ──
+  const groupDragRef = useRef<{ groupStart: { x: number; y: number }; children: { id: string; start: { x: number; y: number } }[] } | null>(null);
+  const handleNodeDragStart = useCallback((_: React.MouseEvent, node: CanvasNode) => {
+    if (node.data.nodeType !== "group") { groupDragRef.current = null; return; }
+    const childIds = ((node.data.payload as GroupNodeData).childIds) ?? [];
+    const all = useCanvasStore.getState().nodes;
+    const children = childIds
+      .map((cid) => all.find((n) => n.id === cid))
+      .filter((c): c is CanvasNode => !!c && !c.selected)
+      .map((c) => ({ id: c.id, start: { x: c.position.x, y: c.position.y } }));
+    groupDragRef.current = { groupStart: { x: node.position.x, y: node.position.y }, children };
+  }, []);
+  const handleNodeDrag = useCallback((_: React.MouseEvent, node: CanvasNode) => {
+    const g = groupDragRef.current;
+    if (!g || node.data.nodeType !== "group" || g.children.length === 0) return;
+    const dx = node.position.x - g.groupStart.x;
+    const dy = node.position.y - g.groupStart.y;
+    useCanvasStore.getState().setNodePositionsSilent(
+      g.children.map((c) => ({ id: c.id, position: { x: c.start.x + dx, y: c.start.y + dy } })),
+    );
+  }, []);
+
   // Mobile/tablet have no right-click; double-tap (== double-click) opens the
   // same canvas context menu so users can still add nodes from empty space.
   // Skip when the gesture lands on a node, edge, or any interactive widget so
@@ -1295,6 +1318,21 @@ function CanvasInner({ projectId }: { projectId: number }) {
         if (selected.length > 0) toast.success(`已复制 ${selected.length} 个节点`, { duration: 1200 });
       }
 
+      // 群组：Cmd/Ctrl+G 组合选中节点；Cmd/Ctrl+Shift+G 解组（删除选中的 group 容器）。
+      if (!isEditing && (e.metaKey || e.ctrlKey) && (e.key === "g" || e.key === "G")) {
+        e.preventDefault();
+        const store = useCanvasStore.getState();
+        if (e.shiftKey) {
+          const groups = store.nodes.filter((n) => n.selected && n.data.nodeType === "group");
+          groups.forEach((g) => { store.ungroup(g.id); deleteNodeMutation.mutate({ id: g.id, projectId }); emitCollabEvent("node:delete", { id: g.id }); });
+          if (groups.length > 0) toast.success(`已解组 ${groups.length} 个群组`, { duration: 1200 });
+        } else {
+          const ids = store.nodes.filter((n) => n.selected && n.data.nodeType !== "group").map((n) => n.id);
+          if (ids.length >= 2) { const gid = store.groupSelected(ids); if (gid) toast.success(`已组合 ${ids.length} 个节点为群组`, { duration: 1200 }); }
+          else toast.info("请先框选至少 2 个节点再组合", { duration: 1500 });
+        }
+      }
+
       // Shift+R: ≥2 box-selected → run ONLY those; 1 selected → run from it
       // (its up/downstream chain); none → run everything.
       if (!isEditing && e.shiftKey && e.key === "R") {
@@ -1361,6 +1399,37 @@ function CanvasInner({ projectId }: { projectId: number }) {
       </div>
     );
   }
+
+  // ── 群组派生层：折叠群组隐藏成员（含相连边）；选中群组给成员加高亮描边类 ──
+  const { displayNodes, displayEdges } = useMemo(() => {
+    const collapsedHiddenIds = new Set<string>();
+    const highlightIds = new Set<string>();
+    for (const n of nodes) {
+      if (n.data.nodeType !== "group") continue;
+      const gp = n.data.payload as GroupNodeData;
+      const cids = gp.childIds ?? [];
+      if (gp.collapsed) cids.forEach((c) => collapsedHiddenIds.add(c));
+      if (n.selected) cids.forEach((c) => highlightIds.add(c));
+    }
+    if (collapsedHiddenIds.size === 0 && highlightIds.size === 0) {
+      return { displayNodes: nodes, displayEdges: edges };
+    }
+    const dNodes = nodes.map((n) => {
+      const hide = collapsedHiddenIds.has(n.id);
+      const hl = highlightIds.has(n.id) && !hide;
+      if (!hide && !hl) return n;
+      return {
+        ...n,
+        hidden: hide || n.hidden,
+        className: hl ? `${n.className ?? ""} group-member-highlight`.trim() : n.className,
+      };
+    });
+    const dEdges = collapsedHiddenIds.size === 0
+      ? edges
+      : edges.map((e) => (collapsedHiddenIds.has(e.source) || collapsedHiddenIds.has(e.target)
+          ? { ...e, hidden: true } : e));
+    return { displayNodes: dNodes, displayEdges: dEdges };
+  }, [nodes, edges]);
 
   return (
     <div className="w-screen h-screen flex flex-col overflow-hidden" style={{ background: "var(--c-canvas)" }}>
@@ -2020,13 +2089,49 @@ function CanvasInner({ projectId }: { projectId: number }) {
           )}
           <WorkflowRunProvider value={runState}>
           <ReactFlow
-            nodes={nodes}
-            edges={edges}
+            nodes={displayNodes}
+            edges={displayEdges}
             nodeTypes={nodeTypes}
             edgeTypes={edgeTypes}
             style={{ background: effectiveBgColor }}
             onNodesChange={onNodesChange}
+            onNodeDragStart={handleNodeDragStart as unknown as Parameters<typeof ReactFlow>[0]["onNodeDragStart"]}
+            onNodeDrag={handleNodeDrag as unknown as Parameters<typeof ReactFlow>[0]["onNodeDrag"]}
             onNodeDragStop={(_, node, draggedNodes) => {
+              // 群组容器拖动结束：成员已随动（静默），这里广播成员的最终位置给协作者。
+              const g = groupDragRef.current;
+              if (g && (node as CanvasNode).data.nodeType === "group" && g.children.length > 0) {
+                const dx = node.position.x - g.groupStart.x;
+                const dy = node.position.y - g.groupStart.y;
+                for (const c of g.children) {
+                  emitCollabEvent("node:move", { id: c.id, x: c.start.x + dx, y: c.start.y + dy });
+                }
+              }
+              groupDragRef.current = null;
+              // 拖入/拖出自动归组：被拖动的非 group 节点，按其中心落点归入命中的群组
+              // （取面积最小者，便于嵌套时归入最内层）；未命中则从原群组移出。
+              if ((node as CanvasNode).data.nodeType !== "group") {
+                const all = useCanvasStore.getState().nodes;
+                const groups = all.filter((n) => n.data.nodeType === "group");
+                const moved = (draggedNodes?.length ? draggedNodes : [node]).filter((n) => (n as CanvasNode).data.nodeType !== "group");
+                for (const mn of moved) {
+                  const mw = (mn as CanvasNode).measured?.width ?? 280;
+                  const mh = (mn as CanvasNode).measured?.height ?? 120;
+                  const cx = mn.position.x + mw / 2;
+                  const cy = mn.position.y + mh / 2;
+                  let hit: CanvasNode | null = null;
+                  let hitArea = Infinity;
+                  for (const grp of groups) {
+                    const gw = typeof grp.style?.width === "number" ? grp.style.width : 320;
+                    const gh = typeof grp.style?.height === "number" ? grp.style.height : 200;
+                    if (cx >= grp.position.x && cx <= grp.position.x + gw && cy >= grp.position.y && cy <= grp.position.y + gh) {
+                      const area = gw * gh;
+                      if (area < hitArea) { hit = grp; hitArea = area; }
+                    }
+                  }
+                  useCanvasStore.getState().assignNodeToGroup(mn.id, hit?.id ?? null);
+                }
+              }
               // Broadcast the final position(s) to collaborators (live-move sync).
               for (const n of (draggedNodes?.length ? draggedNodes : [node])) {
                 emitCollabEvent("node:move", { id: n.id, x: n.position.x, y: n.position.y });
@@ -2883,6 +2988,8 @@ function CanvasInner({ projectId }: { projectId: number }) {
         // tplBump is read so this list refreshes after a save/delete.
         void tplBump;
         const ctxTemplates = ctxNodeType && !ctxIsComfy ? listNodeTemplates(ctxNodeType) : [];
+        // 群组：选中 ≥2 个非 group 节点 → 可组合；右键 group 容器 → 可解组。
+        const selectedGroupableIds = nodes.filter((n) => n.selected && n.data.nodeType !== "group").map((n) => n.id);
         return (
           <ContextMenu
             x={contextMenu.x} y={contextMenu.y}
@@ -2940,7 +3047,27 @@ function CanvasInner({ projectId }: { projectId: number }) {
               emitCollabEvent("node:delete", { id: nid });
             } : undefined}
             onDuplicateNode={contextMenu.nodeId ? () => duplicateNode(contextMenu.nodeId!) : undefined}
-            onRunWorkflow={contextMenu.nodeId ? () => handleRunRequest(contextMenu.nodeId ?? null) : undefined}
+            onGroup={selectedGroupableIds.length >= 2 ? () => {
+              const gid = useCanvasStore.getState().groupSelected(selectedGroupableIds);
+              if (gid) toast.success(`已组合 ${selectedGroupableIds.length} 个节点为群组`);
+            } : undefined}
+            onUngroup={ctxNodeType === "group" ? () => {
+              const gid = contextMenu.nodeId!;
+              useCanvasStore.getState().ungroup(gid);
+              deleteNodeMutation.mutate({ id: gid, projectId });
+              emitCollabEvent("node:delete", { id: gid });
+            } : undefined}
+            onDeleteGroup={ctxNodeType === "group" ? () => {
+              const gid = contextMenu.nodeId!;
+              const cnt = (((nodes.find((n) => n.id === gid)?.data.payload) as GroupNodeData | undefined)?.childIds ?? []).length;
+              if (!window.confirm(`确定删除该群组及其 ${cnt} 个成员节点？此操作可撤销（Ctrl+Z）。`)) return;
+              const removed = useCanvasStore.getState().deleteGroupWithMembers(gid);
+              for (const rid of removed) {
+                deleteNodeMutation.mutate({ id: rid, projectId });
+                emitCollabEvent("node:delete", { id: rid });
+              }
+            } : undefined}
+            onRunWorkflow={contextMenu.nodeId && ctxNodeType !== "group" ? () => handleRunRequest(contextMenu.nodeId ?? null) : undefined}
             // Pin: toggle payload.pinned so the node's input area stays expanded
             // even when the user clicks elsewhere on the canvas.
             onTogglePin={contextMenu.nodeId ? () => {

@@ -2,7 +2,7 @@ import { memo, useState, useEffect } from "react";
 import { NodeResizer } from "@xyflow/react";
 import { useCanvasStore } from "../../../hooks/useCanvasStore";
 import type { GroupNodeData } from "../../../../../shared/types";
-import { FolderOpen, FolderClosed, Pencil, Check } from "lucide-react";
+import { FolderOpen, FolderClosed, Maximize2 } from "lucide-react";
 
 interface Props {
   id: string;
@@ -24,7 +24,7 @@ const GROUP_COLORS = [
 ];
 
 export const GroupNode = memo(function GroupNode({ id, selected, data }: Props) {
-  const { updateNodeData, updateNodeTitle } = useCanvasStore();
+  const { updateNodeData, updateNodeTitle, fitGroupToMembers } = useCanvasStore();
   const payload = data.payload;
   const [editingLabel, setEditingLabel] = useState(false);
   const [labelValue, setLabelValue] = useState(data.title);
@@ -34,6 +34,7 @@ export const GroupNode = memo(function GroupNode({ id, selected, data }: Props) 
   const collapsed = payload.collapsed ?? false;
   const colorKey = payload.color ?? "gray";
   const color = GROUP_COLORS.find(c => c.value === colorKey) ?? GROUP_COLORS[4];
+  const memberCount = payload.childIds?.length ?? 0;
 
   const handleSaveLabel = () => {
     updateNodeTitle(id, labelValue.trim() || "分组");
@@ -101,10 +102,26 @@ export const GroupNode = memo(function GroupNode({ id, selected, data }: Props) 
           ) : (
             <span
               onDoubleClick={() => setEditingLabel(true)}
-              style={{ flex: 1, fontSize: 12, fontWeight: 600, color: color.accent, cursor: "text", userSelect: "none" }}
+              style={{ flex: 1, fontSize: 12, fontWeight: 600, color: color.accent, cursor: "text", userSelect: "none", display: "flex", alignItems: "center", gap: 6 }}
             >
               {data.title}
+              {memberCount > 0 && (
+                <span style={{ fontSize: 10, fontWeight: 600, color: color.accent, opacity: 0.7, background: `${color.accent}1a`, border: `1px solid ${color.border}`, borderRadius: 6, padding: "0 5px", lineHeight: "15px" }}>
+                  {memberCount} 个节点
+                </span>
+              )}
             </span>
+          )}
+
+          {/* Fit-to-members: 重新包裹当前成员 */}
+          {memberCount > 0 && (
+            <button
+              onClick={() => fitGroupToMembers(id)}
+              title="适应成员（重新包裹）"
+              style={{ color: color.accent, background: "none", border: "none", cursor: "pointer", lineHeight: 0, padding: 0, opacity: 0.8 }}
+            >
+              <Maximize2 style={{ width: 13, height: 13 }} />
+            </button>
           )}
 
           {/* Color picker */}
@@ -124,8 +141,21 @@ export const GroupNode = memo(function GroupNode({ id, selected, data }: Props) 
           </div>
         </div>
 
-        {/* Body — visible when expanded */}
-        {!collapsed && (
+        {/* Body */}
+        {collapsed ? (
+          <button
+            onClick={() => updateNodeData(id, { collapsed: false })}
+            className="nodrag"
+            style={{
+              flex: 1, width: "100%", padding: 12, display: "flex", alignItems: "center", justifyContent: "center",
+              gap: 6, background: "none", border: "none", cursor: "pointer",
+              fontSize: 11, color: color.accent, opacity: 0.85, userSelect: "none",
+            }}
+          >
+            <FolderClosed style={{ width: 13, height: 13 }} />
+            已折叠 {memberCount} 个节点 · 点击展开
+          </button>
+        ) : (
           <div style={{ flex: 1, padding: 12, display: "flex", alignItems: "flex-start" }}>
             <p style={{ fontSize: 10, color: color.border, userSelect: "none", fontStyle: "italic" }}>
               拖动节点到此区域进行分组
