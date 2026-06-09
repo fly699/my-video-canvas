@@ -1,5 +1,7 @@
 import { analyzeWorkflow } from "./comfyui";
-import { invokeLLM, extractTextContent } from "./llm";
+import { extractTextContent } from "./llm";
+import { invokeLLMWithKie } from "./llmWithKie";
+import type { TrpcContext } from "./context";
 import * as db from "../db";
 import type { ComfyNodeTemplateRow, InsertComfyTemplateAnalysis } from "../../drizzle/schema";
 import type { WorkflowParamBinding } from "../../shared/types";
@@ -58,7 +60,7 @@ async function mapLimit<T, R>(items: T[], limit: number, fn: (t: T) => Promise<R
  * functional summary. Degrades gracefully when there is no workflowJson or the
  * structural parse fails. Returns a row ready for upsertComfyTemplateAnalysis.
  */
-export async function analyzeTemplate(template: ComfyNodeTemplateRow, model: string): Promise<InsertComfyTemplateAnalysis> {
+export async function analyzeTemplate(ctx: TrpcContext, template: ComfyNodeTemplateRow, model: string): Promise<InsertComfyTemplateAnalysis> {
   const payload = (template.payload ?? {}) as Record<string, unknown>;
   const workflowJson = typeof payload.workflowJson === "string" ? payload.workflowJson : undefined;
 
@@ -105,7 +107,7 @@ export async function analyzeTemplate(template: ComfyNodeTemplateRow, model: str
 备注：${template.note || "无"}
 可编辑参数：${paramBrief || "无"}
 ${workflowJson ? `工作流JSON(截断)：\n${workflowJson.slice(0, 6000)}` : ""}`;
-    const resp = await invokeLLM({
+    const resp = await invokeLLMWithKie(ctx, {
       messages: [
         { role: "system", content: sys },
         { role: "user", content: user },
@@ -174,6 +176,7 @@ function resolveVideoCaps(
  * turn isn't blocked analyzing a huge backlog — the rest get done next turn).
  */
 export async function runLibraryAnalysis(
+  ctx: TrpcContext,
   model: string,
   opts: { full?: boolean; max?: number } = {},
 ): Promise<{ total: number; analyzed: number; failed: number; skipped: number }> {
@@ -206,7 +209,7 @@ export async function runLibraryAnalysis(
   // analyzes the whole library on a comfyOnly turn). Failures are logged, not
   // swallowed silently, so a recurring parse/LLM problem is diagnosable.
   const outcomes = await mapLimit(toAnalyze, 4, async (t) => {
-    try { await db.upsertComfyTemplateAnalysis(await analyzeTemplate(t, model)); return true; }
+    try { await db.upsertComfyTemplateAnalysis(await analyzeTemplate(ctx, t, model)); return true; }
     catch (e) { console.warn(`[templateAnalysis] failed for template id=${t.id} 「${t.label}」:`, e instanceof Error ? e.message : e); return false; }
   });
   const analyzed = outcomes.filter(Boolean).length;

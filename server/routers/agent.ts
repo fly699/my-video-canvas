@@ -52,7 +52,7 @@ export const agentRouter = router({
       // library be analyzed (otherwise the agent only "knows" a partial subset and
       // picks the wrong templates), so analyze many per turn there; results are
       // cached so only new/changed templates re-run on later turns.
-      try { await runLibraryAnalysis(model, { max: input.comfyOnly ? 40 : 6 }); } catch { /* non-fatal */ }
+      try { await runLibraryAnalysis(ctx, model, { max: input.comfyOnly ? 40 : 6 }); } catch { /* non-fatal */ }
       let templateSection = "";
       const validTemplateIds = new Set<number>();
       let hasImageTemplate = false;

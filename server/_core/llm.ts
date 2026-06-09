@@ -387,11 +387,12 @@ export async function invokeLLM(params: InvokeParams): Promise<InvokeResult> {
 
   // kie.ai 自有对话模型（kie_*）走专属 SDK（claude/openai-chat/responses 三种端点形态），
   // 而非 OpenAI 兼容的 Forge/Poyo 网关——否则会把 kie_* 模型串发去 Forge 导致 404。
-  // 这里用公用 key（KIE_API_KEY）统一接入：所有走 invokeLLM 的功能（脚本/分镜/看图/
-  // 增强/agent 等）因此都能用 kie 模型。AI 对话节点另走带用户 key 的 invokeKieLLM，不受影响。
+  // 密钥必须由调用方（invokeLLMWithKie）按「临时>分配>公用」解析、并经各自权限门控
+  // （temp=用户自有放行 / assigned=绑定启用 / house=assertKieHouseAllowed 白名单）校验后注入。
+  // 底层这里【绝不】回退 ENV.kieApiKey，否则会绕过 house key 的白名单门控（未授权用户也能用公用 key）。
   if (isKieLLMModel(resolvedModel)) {
-    const apiKey = params.kieApiKey?.trim() || ENV.kieApiKey;
-    if (!apiKey) throw new Error("kie.ai LLM 模型需要密钥（用户临时/分配 key，或公用 KIE_API_KEY）");
+    const apiKey = params.kieApiKey?.trim();
+    if (!apiKey) throw new Error("kie.ai LLM 模型需经 invokeLLMWithKie 提供已授权的密钥（临时/分配/公用）");
     const { text } = await invokeKieLLM({
       model: resolvedModel,
       messages: messages as unknown as OAMessage[],
