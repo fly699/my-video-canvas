@@ -1,11 +1,11 @@
-import { useEffect, useLayoutEffect, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { usePersistentState } from "../../hooks/usePersistentState";
 import { NODE_TYPE_LIST, type NodeConfig } from "../../lib/nodeConfig";
 import { sortNodeConfigsForPalette } from "../../lib/nodeOrder";
 import type { NodeType } from "../../../../shared/types";
 import {
   FileText, Copy, Trash2, Plus, Play, Pin, PinOff, ChevronUp, X, GripHorizontal,
-  BookmarkPlus, Bookmark, Download, Upload, Boxes, Group, Ungroup,
+  BookmarkPlus, Bookmark, Download, Upload, Boxes, Group, Ungroup, Pencil, GripVertical, Check, RotateCcw,
 } from "lucide-react";
 import type { NodeTemplate } from "../../lib/nodeTemplates";
 import { NODE_ICONS } from "../../lib/nodeConfig";
@@ -117,6 +117,48 @@ export function ContextMenu({
     onMove: (e: MouseEvent) => void;
     onUp: () => void;
   } | null>(null);
+
+  // ── 节点选择菜单的「编辑态」：自定义显示名 + 拖拽排序，持久化到 localStorage ──
+  const [paletteEdit, setPaletteEdit] = useState(false);
+  const [paletteOrder, setPaletteOrder] = usePersistentState<string[]>(
+    "ui:palette:order:v1", [],
+    { validate: (v) => (Array.isArray(v) && v.every((x) => typeof x === "string") ? (v as string[]) : null) },
+  );
+  const [paletteLabels, setPaletteLabels] = usePersistentState<Record<string, string>>(
+    "ui:palette:labels:v1", {},
+    { validate: (v) => (v && typeof v === "object" ? (v as Record<string, string>) : null) },
+  );
+  const [dragType, setDragType] = useState<string | null>(null);
+  const dragTypeRef = useRef<string | null>(null); // 同步可读，避免依赖异步 setState 的时序
+
+  // 应用自定义顺序：在 customOrder 里的按其顺序排前，其余保持默认调色板顺序（稳定）。
+  const orderedConfigs = useMemo(() => {
+    const base = sortNodeConfigsForPalette(NODE_TYPE_LIST);
+    if (paletteOrder.length === 0) return base;
+    const rank = (t: string) => { const i = paletteOrder.indexOf(t); return i === -1 ? Infinity : i; };
+    return [...base].sort((a, b) => rank(a.type) - rank(b.type));
+  }, [paletteOrder]);
+
+  const labelOf = (c: NodeConfig) => paletteLabels[c.type] ?? c.label;
+  const setLabelFor = (type: string, raw: string) => {
+    const def = NODE_TYPE_LIST.find((c) => c.type === type)?.label;
+    const trimmed = raw.trim();
+    setPaletteLabels((prev) => {
+      const next = { ...prev };
+      if (!trimmed || trimmed === def) delete next[type]; else next[type] = trimmed;
+      return next;
+    });
+  };
+  const reorderPalette = (fromType: string, toType: string) => {
+    if (fromType === toType) return;
+    const types: string[] = orderedConfigs.map((c) => c.type);
+    const from = types.indexOf(fromType);
+    const to = types.indexOf(toType);
+    if (from === -1 || to === -1) return;
+    types.splice(to, 0, types.splice(from, 1)[0]);
+    setPaletteOrder(types);
+  };
+  const resetPalette = () => { setPaletteOrder([]); setPaletteLabels({}); };
 
   // Cancel any in-flight resize drag when unpinned to avoid listener leak.
   // Don't reset panelSize — we now persist size, and clobbering it on every
@@ -315,6 +357,35 @@ export function ContextMenu({
               }}>
                 {persistent ? "添加节点（已固定）" : "添加节点"}
               </span>
+              {paletteEdit && (
+                <button
+                  onClick={resetPalette}
+                  title="恢复默认名称与顺序"
+                  style={{
+                    background: "none", border: "none", padding: 3, borderRadius: 4,
+                    cursor: "pointer", color: "var(--c-t3)",
+                    display: "flex", alignItems: "center", justifyContent: "center",
+                  }}
+                  onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.background = "var(--c-elevated)"; (e.currentTarget as HTMLElement).style.color = "var(--c-t1)"; }}
+                  onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.background = "transparent"; (e.currentTarget as HTMLElement).style.color = "var(--c-t3)"; }}
+                >
+                  <RotateCcw size={11} />
+                </button>
+              )}
+              <button
+                onClick={() => setPaletteEdit((v) => !v)}
+                title={paletteEdit ? "完成编辑" : "编辑：改名称、拖拽排序"}
+                style={{
+                  background: paletteEdit ? "oklch(0.68 0.22 285 / 0.16)" : "none", border: "none", padding: 3, borderRadius: 4,
+                  cursor: "pointer",
+                  color: paletteEdit ? "oklch(0.82 0.16 285)" : "var(--c-t3)",
+                  display: "flex", alignItems: "center", justifyContent: "center",
+                }}
+                onMouseEnter={(e) => { if (!paletteEdit) (e.currentTarget as HTMLElement).style.background = "var(--c-elevated)"; }}
+                onMouseLeave={(e) => { if (!paletteEdit) (e.currentTarget as HTMLElement).style.background = "transparent"; }}
+              >
+                {paletteEdit ? <Check size={12} /> : <Pencil size={11} />}
+              </button>
               <button
                 onClick={() => setPersistent((v) => !v)}
                 title={persistent ? "取消固定 — 关闭后将自动隐藏" : "固定显示 — 保持菜单在画布上，可拖拽位置"}
@@ -386,9 +457,62 @@ export function ContextMenu({
               {/* Flat list: ComfyUI nodes pinned to the top, rest preserves
                   the source order from NODE_CONFIGS (same sort as the bottom
                   NodePicker). */}
-              {sortNodeConfigsForPalette(NODE_TYPE_LIST).map((config: NodeConfig) => {
+              {orderedConfigs.map((config: NodeConfig) => {
                 const Icon = NODE_ICONS[config.icon] ?? FileText;
                 const soon = config.comingSoon === true;
+                const label = labelOf(config);
+                const iconBox = (
+                  <div
+                    style={{
+                      width: 22, height: 22, borderRadius: 6,
+                      display: "flex", alignItems: "center", justifyContent: "center",
+                      background: `${config.color}18`,
+                      border: `1px solid ${config.color}35`,
+                      flexShrink: 0,
+                    }}
+                  >
+                    <Icon className="w-3 h-3" style={{ color: config.color }} />
+                  </div>
+                );
+                // ── 编辑态：拖拽手柄排序 + 行内改名（不触发添加节点）──
+                if (paletteEdit) {
+                  return (
+                    <div
+                      key={config.type}
+                      onDragOver={(e) => { e.preventDefault(); e.dataTransfer.dropEffect = "move"; }}
+                      onDrop={(e) => { e.preventDefault(); if (dragTypeRef.current) reorderPalette(dragTypeRef.current, config.type); dragTypeRef.current = null; setDragType(null); }}
+                      style={{
+                        display: "flex", alignItems: "center", gap: 8, width: "100%",
+                        padding: "4px 6px", borderRadius: 8, marginBottom: 1,
+                        background: dragType === config.type ? "var(--c-elevated)" : "transparent",
+                        border: `1px dashed ${dragType === config.type ? "var(--c-bd3)" : "transparent"}`,
+                        opacity: soon ? 0.6 : 1,
+                      }}
+                    >
+                      <div
+                        draggable
+                        onDragStart={(e) => { dragTypeRef.current = config.type; setDragType(config.type); e.dataTransfer.effectAllowed = "move"; }}
+                        onDragEnd={() => { dragTypeRef.current = null; setDragType(null); }}
+                        title="拖拽排序"
+                        style={{ cursor: "grab", lineHeight: 0, flexShrink: 0, color: "var(--c-t4)" }}
+                      >
+                        <GripVertical className="w-3.5 h-3.5" />
+                      </div>
+                      {iconBox}
+                      <input
+                        value={label}
+                        onChange={(e) => setLabelFor(config.type, e.target.value)}
+                        onKeyDown={(e) => { if (e.key === "Enter") (e.currentTarget as HTMLInputElement).blur(); }}
+                        spellCheck={false}
+                        style={{
+                          flex: 1, minWidth: 0, fontSize: 12, fontWeight: 500, color: "var(--c-t1)",
+                          background: "var(--c-elevated)", border: "1px solid var(--c-bd2)",
+                          borderRadius: 6, padding: "3px 6px", outline: "none",
+                        }}
+                      />
+                    </div>
+                  );
+                }
                 return (
                   <button
                     key={config.type}
@@ -419,19 +543,9 @@ export function ContextMenu({
                       (e.currentTarget as HTMLElement).style.color = "var(--c-t2)";
                     }}
                   >
-                    <div
-                      style={{
-                        width: 22, height: 22, borderRadius: 6,
-                        display: "flex", alignItems: "center", justifyContent: "center",
-                        background: `${config.color}18`,
-                        border: `1px solid ${config.color}35`,
-                        flexShrink: 0,
-                      }}
-                    >
-                      <Icon className="w-3 h-3" style={{ color: config.color }} />
-                    </div>
+                    {iconBox}
                     <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-                      <div style={{ fontWeight: 500, lineHeight: 1.2 }}>{config.label}</div>
+                      <div style={{ fontWeight: 500, lineHeight: 1.2 }}>{label}</div>
                       {soon && (
                         <span style={{ fontSize: 8, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.05em", padding: "0 4px", borderRadius: 4, background: "var(--c-elevated)", color: "var(--c-t4)", border: "1px solid var(--c-bd2)", lineHeight: "13px" }}>Soon</span>
                       )}
