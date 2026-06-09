@@ -94,7 +94,12 @@ export type AuditAction =
   | "kie_key_delete"
   | "kie_bind"
   | "kie_binding_toggle"
-  | "kie_unbind";
+  | "kie_unbind"
+  | "system_restart"
+  | "user_reset_password"
+  | "user_set_disabled"
+  | "user_delete"
+  | "user_change_password";
 
 export interface AuditOpts {
   ctx?: TrpcContext;
