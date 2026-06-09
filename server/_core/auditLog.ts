@@ -88,7 +88,13 @@ export type AuditAction =
   | "editor:create"
   | "editor:delete"
   | "editor:export"
-  | "poyo_stage";
+  | "poyo_stage"
+  | "kie_key_add"
+  | "kie_key_toggle"
+  | "kie_key_delete"
+  | "kie_bind"
+  | "kie_binding_toggle"
+  | "kie_unbind";
 
 export interface AuditOpts {
   ctx?: TrpcContext;

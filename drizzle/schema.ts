@@ -556,6 +556,10 @@ export const whitelistSettings = mysqlTable("whitelistSettings", {
   // cheap LLM features open while gating paid image/video generation. Default
   // false = no behavior change.
   llmBypass: boolean("llmBypass").notNull().default(false),
+  // When true, whitelisted (or admin) users may use the shared "house" kie.ai
+  // key (KIE_API_KEY env). When false, only users with an admin-assigned kie key
+  // or a temporary key they enter themselves can use kie.ai. Default false.
+  kieEnabled: boolean("kieEnabled").notNull().default(false),
   updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
 });
 
@@ -751,3 +755,58 @@ export const downloadConsumptions = mysqlTable("download_consumptions", {
 
 export type DownloadConsumption = typeof downloadConsumptions.$inferSelect;
 export type InsertDownloadConsumption = typeof downloadConsumptions.$inferInsert;
+
+// ── kie.ai keys ───────────────────────────────────────────────────────────────
+// Admin-distributed, quota-limited kie.ai API keys. The real key is NEVER stored
+// in plaintext — `encryptedKey` is AES-256-GCM (see server/_core/kieCrypto.ts).
+// One key can be shared by many users (kieKeyBindings). `enabled` here is the
+// group switch (disabling it revokes ALL its bindings at once).
+export const kieApiKeys = mysqlTable("kieApiKeys", {
+  id: int("id").autoincrement().primaryKey(),
+  name: varchar("name", { length: 128 }).notNull(),
+  encryptedKey: varchar("encryptedKey", { length: 1024 }).notNull(),
+  keyLast4: varchar("keyLast4", { length: 8 }).notNull(),
+  keyHash: varchar("keyHash", { length: 64 }).notNull(),
+  enabled: boolean("enabled").notNull().default(true),
+  note: varchar("note", { length: 255 }),
+  createdBy: int("createdBy"),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+}, (t) => ({
+  keyHashUniq: uniqueIndex("kieApiKeys_keyHash_uniq").on(t.keyHash),
+}));
+
+export type KieApiKey = typeof kieApiKeys.$inferSelect;
+export type InsertKieApiKey = typeof kieApiKeys.$inferInsert;
+
+// Binds a kie key to a user. Many users can bind to one key. `enabled` here is
+// the per-user authorization switch (independent of the key's group switch). A
+// user's "effective assigned key" = a binding where binding.enabled && key.enabled.
+export const kieKeyBindings = mysqlTable("kieKeyBindings", {
+  id: int("id").autoincrement().primaryKey(),
+  keyId: int("keyId").notNull(),
+  userId: int("userId").notNull(),
+  enabled: boolean("enabled").notNull().default(true),
+  note: varchar("note", { length: 255 }),
+  createdBy: int("createdBy"),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+}, (t) => ({
+  keyUserUniq: uniqueIndex("kieKeyBindings_key_user_uniq").on(t.keyId, t.userId),
+  userIdx: index("kieKeyBindings_user_idx").on(t.userId),
+}));
+
+export type KieKeyBinding = typeof kieKeyBindings.$inferSelect;
+export type InsertKieKeyBinding = typeof kieKeyBindings.$inferInsert;
+
+// Throttled balance snapshots for the HOUSE (env) kie key only — admin trend
+// view. User/assigned keys are not snapshotted (privacy + volume).
+export const kieBalanceSnapshots = mysqlTable("kieBalanceSnapshots", {
+  id: int("id").autoincrement().primaryKey(),
+  creditsAmount: float("creditsAmount").notNull(),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+}, (t) => ({
+  createdAtIdx: index("kieBalanceSnapshots_createdAt_idx").on(t.createdAt),
+}));
+
+export type KieBalanceSnapshot = typeof kieBalanceSnapshots.$inferSelect;
+export type InsertKieBalanceSnapshot = typeof kieBalanceSnapshots.$inferInsert;

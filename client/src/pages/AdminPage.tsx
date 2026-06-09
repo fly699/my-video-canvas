@@ -10,7 +10,7 @@ import { toast } from "sonner";
 import { adminTabFromUrl, ADMIN_TAB_EVENT } from "@/lib/adminNav";
 
 type EntryType = "ip" | "user";
-type Tab = "whitelist" | "logs" | "comfyLogs" | "storage" | "chat" | "comfyStress" | "assets" | "downloads" | "system";
+type Tab = "whitelist" | "kie" | "logs" | "comfyLogs" | "storage" | "chat" | "comfyStress" | "assets" | "downloads" | "system";
 
 const ACTION_LABELS: Record<string, string> = {
   login_email: "邮箱登录",
@@ -129,7 +129,7 @@ export default function AdminPage() {
 
         {/* Tabs */}
         <div style={{ display: "flex", gap: "4px", marginBottom: "20px", borderBottom: "1px solid var(--c-bd1, rgba(255,255,255,0.06))", paddingBottom: "0" }}>
-          {([["whitelist", "白名单管理"], ["logs", "操作日志"], ["comfyLogs", "ComfyUI 日志"], ["storage", "存储设置"], ["chat", "聊天管理"], ["comfyStress", "ComfyUI 压测"], ["assets", "素材库(全用户)"], ["downloads", "下载审批"], ["system", "系统更新"]] as [Tab, string][]).map(([tab, label]) => (
+          {([["whitelist", "白名单管理"], ["kie", "kie.ai 密钥"], ["logs", "操作日志"], ["comfyLogs", "ComfyUI 日志"], ["storage", "存储设置"], ["chat", "聊天管理"], ["comfyStress", "ComfyUI 压测"], ["assets", "素材库(全用户)"], ["downloads", "下载审批"], ["system", "系统更新"]] as [Tab, string][]).map(([tab, label]) => (
             <button
               key={tab}
               onClick={() => setActiveTab(tab)}
@@ -159,6 +159,7 @@ export default function AdminPage() {
         </div>
 
         {activeTab === "whitelist" && <WhitelistPanel />}
+        {activeTab === "kie" && <KiePanel />}
         {activeTab === "logs" && <LogsPanel />}
         {activeTab === "comfyLogs" && <ComfyUsageLogsPanel />}
         {activeTab === "storage" && <StoragePanel />}
@@ -1483,6 +1484,156 @@ const pageStyle: React.CSSProperties = {
   display: "flex", flexDirection: "column", alignItems: "center",
   justifyContent: "flex-start", padding: "48px 24px", background: "var(--c-canvas, #0d0d10)",
 };
+
+// ── kie.ai key management ─────────────────────────────────────────────────────
+
+function KiePanel() {
+  const utils = trpc.useUtils();
+  const wl = trpc.admin.whitelist.getSettings.useQuery();
+  const cryptoQ = trpc.admin.kie.cryptoConfigured.useQuery();
+  const keysQ = trpc.admin.kie.listKeys.useQuery();
+  const [selKey, setSelKey] = useState<{ id: number; name: string } | null>(null);
+  const [name, setName] = useState("");
+  const [apiKey, setApiKey] = useState("");
+  const [note, setNote] = useState("");
+
+  const setKieEnabled = trpc.admin.whitelist.setKieEnabled.useMutation({ onSuccess: () => utils.admin.whitelist.getSettings.invalidate() });
+  const addKey = trpc.admin.kie.addKey.useMutation({
+    onSuccess: (r) => { utils.admin.kie.listKeys.invalidate(); setName(""); setApiKey(""); setNote(""); toast.success(`已添加${typeof r.credit === "number" ? `（当前余额 ${r.credit}）` : "（余额校验失败，仍已保存）"}`); },
+    onError: (e) => toast.error(e.message),
+  });
+  const toggleKey = trpc.admin.kie.setKeyEnabled.useMutation({ onSuccess: () => utils.admin.kie.listKeys.invalidate() });
+  const delKey = trpc.admin.kie.deleteKey.useMutation({ onSuccess: () => { utils.admin.kie.listKeys.invalidate(); setSelKey(null); } });
+
+  const kieEnabled = wl.data?.kieEnabled ?? false;
+  const cryptoOk = cryptoQ.data?.configured ?? false;
+  const keys = keysQ.data ?? [];
+
+  return (
+    <>
+      <div style={{ marginBottom: 20 }}>
+        <ToggleRow
+          label="公用 kie 额度（白名单 kie 开关）"
+          description={"开启：通过白名单的非管理员用户可使用主 env key（KIE_API_KEY）跑 kie。\n关闭：仅有管理员分配 key、或自填临时 key 的用户能用。管理员始终可用。"}
+          enabled={kieEnabled}
+          disabled={setKieEnabled.isPending}
+          onClick={() => setKieEnabled.mutate({ kieEnabled: !kieEnabled })}
+          statusOn="已开启（白名单用户可用公用 key）"
+          statusOff="已关闭（仅分配/临时 key 可用）"
+        />
+      </div>
+
+      {!cryptoOk && (
+        <div style={{ ...cardStyle, marginBottom: 20, border: "1px solid rgba(239,68,68,0.3)" }}>
+          <div style={{ color: "#f87171", fontSize: 13, lineHeight: 1.6 }}>
+            未配置 <code style={{ fontFamily: "monospace" }}>KIE_KEY_SECRET</code> 环境变量 —— 无法加密存储分配 key。请在部署环境设置后重启，再录入 key。
+          </div>
+        </div>
+      )}
+
+      <div style={{ ...cardStyle, marginBottom: 20 }}>
+        <h3 style={{ margin: "0 0 14px", fontSize: 15, color: "var(--c-t1)" }}>录入 kie API key（加密存储，不入 env）</h3>
+        <div style={{ display: "flex", gap: 10, flexWrap: "wrap", marginBottom: 12 }}>
+          <div style={{ flex: "1 1 160px" }}><label style={labelStyle}>别名</label><input style={inputStyle} value={name} onChange={(e) => setName(e.target.value)} placeholder="如：员工A-限额" /></div>
+          <div style={{ flex: "2 1 260px" }}><label style={labelStyle}>API key</label><input type="password" style={inputStyle} value={apiKey} onChange={(e) => setApiKey(e.target.value)} placeholder="kie.ai API key" /></div>
+          <div style={{ flex: "1 1 160px" }}><label style={labelStyle}>备注（可选）</label><input style={inputStyle} value={note} onChange={(e) => setNote(e.target.value)} placeholder="用途说明" /></div>
+        </div>
+        <button
+          disabled={!name.trim() || !apiKey.trim() || addKey.isPending || !cryptoOk}
+          onClick={() => addKey.mutate({ name: name.trim(), apiKey: apiKey.trim(), note: note.trim() || undefined })}
+          style={{ display: "inline-flex", alignItems: "center", gap: 6, padding: "8px 16px", borderRadius: 8, border: "1px solid oklch(0.72 0.15 200 / 0.3)", background: "oklch(0.72 0.15 200 / 0.14)", color: "oklch(0.72 0.15 200)", fontSize: 13, fontWeight: 600, cursor: (!name.trim() || !apiKey.trim() || addKey.isPending || !cryptoOk) ? "not-allowed" : "pointer", opacity: (!name.trim() || !apiKey.trim() || addKey.isPending || !cryptoOk) ? 0.5 : 1 }}
+        >
+          <Plus style={{ width: 14, height: 14 }} /> {addKey.isPending ? "添加中…" : "添加并校验余额"}
+        </button>
+      </div>
+
+      <div style={{ ...cardStyle, marginBottom: 20 }}>
+        <h3 style={{ margin: "0 0 12px", fontSize: 15, color: "var(--c-t1)" }}>已录入的 key（{keys.length}）</h3>
+        <div style={{ overflowX: "auto" }}>
+          <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
+            <thead><tr>{["别名", "末4位", "授权用户", "成组状态", "操作"].map((h) => <th key={h} style={thStyle}>{h}</th>)}</tr></thead>
+            <tbody>
+              {keys.length === 0 && <tr><td style={{ ...tdStyle, color: "var(--c-t3)" }} colSpan={5}>暂无 key</td></tr>}
+              {keys.map((k) => (
+                <tr key={k.id} style={{ borderBottom: "1px solid var(--c-bd1)" }}>
+                  <td style={tdStyle}>{k.name}{k.note ? <span style={{ color: "var(--c-t3)", fontSize: 11 }}> · {k.note}</span> : null}</td>
+                  <td style={{ ...tdStyle, fontFamily: "monospace", color: "var(--c-t2)" }}>…{k.keyLast4}</td>
+                  <td style={tdStyle}>{k.activeBindingCount}/{k.bindingCount}</td>
+                  <td style={tdStyle}>
+                    <button onClick={() => toggleKey.mutate({ keyId: k.id, enabled: !k.enabled })} disabled={toggleKey.isPending} style={{ padding: "3px 10px", borderRadius: 6, fontSize: 12, fontWeight: 600, cursor: "pointer", border: `1px solid ${k.enabled ? "oklch(0.7 0.18 145 / 0.3)" : "rgba(239,68,68,0.25)"}`, background: k.enabled ? "oklch(0.7 0.18 145 / 0.1)" : "rgba(239,68,68,0.08)", color: k.enabled ? "oklch(0.7 0.18 145)" : "#f87171" }}>
+                      {k.enabled ? "已启用" : "已停用"}
+                    </button>
+                  </td>
+                  <td style={tdStyle}>
+                    <div className="flex items-center gap-2">
+                      <button onClick={() => setSelKey(selKey?.id === k.id ? null : { id: k.id, name: k.name })} style={{ padding: "3px 10px", borderRadius: 6, fontSize: 12, border: "1px solid var(--c-bd2)", background: selKey?.id === k.id ? "var(--c-elevated)" : "transparent", color: "var(--c-t2)", cursor: "pointer" }}>
+                        {selKey?.id === k.id ? "收起绑定" : "管理绑定"}
+                      </button>
+                      <button onClick={() => { if (window.confirm(`删除 key「${k.name}」及其全部绑定？`)) delKey.mutate({ keyId: k.id }); }} style={{ display: "inline-flex", alignItems: "center", gap: 4, padding: "3px 10px", border: "1px solid rgba(239,68,68,0.2)", borderRadius: 6, background: "rgba(239,68,68,0.08)", color: "#f87171", fontSize: 12, cursor: "pointer" }}>
+                        <Trash2 style={{ width: 12, height: 12 }} /> 删除
+                      </button>
+                    </div>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      {selKey && <KieBindings keyId={selKey.id} keyName={selKey.name} />}
+    </>
+  );
+}
+
+function KieBindings({ keyId, keyName }: { keyId: number; keyName: string }) {
+  const utils = trpc.useUtils();
+  const listQ = trpc.admin.kie.listBindings.useQuery({ keyId });
+  const [userId, setUserId] = useState("");
+  const [note, setNote] = useState("");
+
+  const invalidate = () => { utils.admin.kie.listBindings.invalidate({ keyId }); utils.admin.kie.listKeys.invalidate(); };
+  const bind = trpc.admin.kie.bindUser.useMutation({ onSuccess: () => { invalidate(); setUserId(""); setNote(""); toast.success("已绑定"); }, onError: (e) => toast.error(e.message) });
+  const toggleBinding = trpc.admin.kie.setBindingEnabled.useMutation({ onSuccess: invalidate });
+  const unbind = trpc.admin.kie.unbind.useMutation({ onSuccess: invalidate });
+
+  const rows = listQ.data ?? [];
+  return (
+    <div style={{ ...cardStyle, marginBottom: 20, border: "1px solid oklch(0.72 0.15 200 / 0.3)" }}>
+      <h3 style={{ margin: "0 0 12px", fontSize: 15, color: "var(--c-t1)" }}>key「{keyName}」的授权用户</h3>
+      <div style={{ display: "flex", gap: 10, flexWrap: "wrap", marginBottom: 14, alignItems: "flex-end" }}>
+        <div style={{ flex: "1 1 140px" }}><label style={labelStyle}>用户 ID</label><input style={inputStyle} value={userId} onChange={(e) => setUserId(e.target.value)} placeholder="如：42" /></div>
+        <div style={{ flex: "1 1 200px" }}><label style={labelStyle}>备注（可选）</label><input style={inputStyle} value={note} onChange={(e) => setNote(e.target.value)} /></div>
+        <button disabled={!/^\d+$/.test(userId.trim()) || bind.isPending} onClick={() => bind.mutate({ keyId, userId: parseInt(userId.trim(), 10), note: note.trim() || undefined })} style={{ display: "inline-flex", alignItems: "center", gap: 6, padding: "8px 14px", borderRadius: 8, border: "1px solid var(--c-bd2)", background: "var(--c-elevated)", color: "var(--c-t1)", fontSize: 13, cursor: (/^\d+$/.test(userId.trim()) && !bind.isPending) ? "pointer" : "not-allowed", opacity: (/^\d+$/.test(userId.trim()) && !bind.isPending) ? 1 : 0.5 }}>
+          <Plus style={{ width: 14, height: 14 }} /> 绑定用户
+        </button>
+      </div>
+      <div style={{ overflowX: "auto" }}>
+        <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
+          <thead><tr>{["用户", "授权状态", "操作"].map((h) => <th key={h} style={thStyle}>{h}</th>)}</tr></thead>
+          <tbody>
+            {rows.length === 0 && <tr><td style={{ ...tdStyle, color: "var(--c-t3)" }} colSpan={3}>暂无绑定用户</td></tr>}
+            {rows.map((b) => (
+              <tr key={b.id} style={{ borderBottom: "1px solid var(--c-bd1)" }}>
+                <td style={tdStyle}>ID {b.userId}{b.userEmail ? <span style={{ color: "var(--c-t3)", fontSize: 11 }}> · {b.userEmail}</span> : null}{b.note ? <span style={{ color: "var(--c-t3)", fontSize: 11 }}> · {b.note}</span> : null}</td>
+                <td style={tdStyle}>
+                  <button onClick={() => toggleBinding.mutate({ bindingId: b.id, enabled: !b.enabled })} disabled={toggleBinding.isPending} style={{ padding: "3px 10px", borderRadius: 6, fontSize: 12, fontWeight: 600, cursor: "pointer", border: `1px solid ${b.enabled ? "oklch(0.7 0.18 145 / 0.3)" : "rgba(239,68,68,0.25)"}`, background: b.enabled ? "oklch(0.7 0.18 145 / 0.1)" : "rgba(239,68,68,0.08)", color: b.enabled ? "oklch(0.7 0.18 145)" : "#f87171" }}>
+                    {b.enabled ? "已授权" : "已停用"}
+                  </button>
+                </td>
+                <td style={tdStyle}>
+                  <button onClick={() => unbind.mutate({ bindingId: b.id })} style={{ display: "inline-flex", alignItems: "center", gap: 4, padding: "3px 10px", border: "1px solid rgba(239,68,68,0.2)", borderRadius: 6, background: "rgba(239,68,68,0.08)", color: "#f87171", fontSize: 12, cursor: "pointer" }}>
+                    <Trash2 style={{ width: 12, height: 12 }} /> 解绑
+                  </button>
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  );
+}
 
 const cardStyle: React.CSSProperties = {
   display: "flex", flexDirection: "column",

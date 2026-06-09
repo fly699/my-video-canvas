@@ -330,6 +330,13 @@
       "when": 1780502100000,
       "tag": "0046_character_library",
       "breakpoints": true
+    },
+    {
+      "idx": 47,
+      "version": "5",
+      "when": 1780986126503,
+      "tag": "0047_kie_keys",
+      "breakpoints": true
     }
   ]
 }

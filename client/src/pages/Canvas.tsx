@@ -21,6 +21,7 @@ import { useWorkflowRunner, RUNNABLE_TYPES } from "../hooks/useWorkflowRunner";
 import { WorkflowRunProvider } from "../contexts/WorkflowRunContext";
 import { CanvasChatWindow } from "../components/chat/CanvasChatWindow";
 import { PoyoBalanceDashboard } from "../components/PoyoBalanceDashboard";
+import { KieBalanceDashboard } from "../components/KieBalanceDashboard";
 import { CustomNode } from "../components/canvas/CustomNode";
 import { ComfyServerStatusIndicator } from "../components/canvas/ComfyServerStatusIndicator";
 import { PoyoStorageStatusChip } from "../components/canvas/mediaReachability";
@@ -1536,6 +1537,7 @@ function CanvasInner({ projectId }: { projectId: number }) {
         <PoyoStorageStatusChip className="flex-shrink-0" />
 
         <PoyoBalanceDashboard />
+        <KieBalanceDashboard />
 
         <div className="flex-1" />
 
