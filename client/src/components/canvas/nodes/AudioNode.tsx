@@ -301,19 +301,32 @@ const CATEGORIES: { id: AudioCategory; label: string; icon: React.ReactNode }[] 
 
 // ── Shared sub-components (defined at module level to avoid React remount) ─────
 
+// 音频模型的真实「来源平台」（按 value 准确判定，别再一刀切成 Poyo）：
+//  - kie_*            → Kie
+//  - openai_*         → OpenAI（直连 OpenAI /v1/audio/speech）
+//  - voxcpm*          → 本地（自托管 Gradio）
+//  - elevenlabs*      → Poyo（ElevenLabs V3 经 Poyo）
+//  - suno-* / minimax / mureka → Poyo
+function audioModelPlatform(value: string): string {
+  if (value.startsWith("kie_")) return "Kie";
+  if (value.startsWith("openai_")) return "OpenAI";
+  if (value.startsWith("voxcpm")) return "本地";
+  if (value.startsWith("elevenlabs")) return "Poyo";
+  return "Poyo";
+}
+
 function ModelSelect({ models, value, onChange }: {
   models: typeof MUSIC_MODELS;
   value?: string;
   onChange: (v: string) => void;
 }) {
-  // 用统一的 ModelPicker，与脚本/图像/视频节点一致。
-  // 按【厂家】分类（Suno / MiniMax）；【来源平台】(Poyo / Kie) 作副标签；价格来自
-  // docs/kie-pricing.md（kie Suno 生成 = 12 点/次，行276）。其它平台不标价。
+  // 统一 ModelPicker：group=厂家（Suno/MiniMax/OpenAI/ElevenLabs/本地），family=真实来源平台。
+  // kie Suno 标价 12 点/次（docs/kie-pricing.md 行276）；其它平台价格写在 desc 里。
   const options = models.map((m) => ({
     value: m.value,
     label: m.label,
-    group: m.group,                                          // 厂家：Suno / MiniMax
-    family: m.value.startsWith("kie_") ? "Kie" : "Poyo",     // 来源平台
+    group: m.group,                          // 厂家
+    family: audioModelPlatform(m.value),     // 来源平台（准确）
     caps: [m.desc],
     costLabel: m.value.startsWith("kie_") ? "12 点/次" : undefined,
   }));
