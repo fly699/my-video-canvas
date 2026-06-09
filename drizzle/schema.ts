@@ -272,6 +272,22 @@ export const promptLibrary = mysqlTable("prompt_library", {
 export type PromptLibraryRow = typeof promptLibrary.$inferSelect;
 export type InsertPromptLibrary = typeof promptLibrary.$inferInsert;
 
+// ── Per-user preferences (通用偏好 KV) ────────────────────────────────────────
+// 每用户一组 (prefKey → JSON value) 偏好，唯一 (userId, prefKey)。首个用途：拉线建
+// 节点菜单的节点类型自定义排序（prefKey="connectMenuOrder"，value=节点类型 id 数组）。
+export const userPrefs = mysqlTable("user_prefs", {
+  id: int("id").autoincrement().primaryKey(),
+  userId: int("userId").notNull(),
+  prefKey: varchar("prefKey", { length: 64 }).notNull(),
+  value: json("value").notNull(),
+  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+}, (t) => ({
+  userKeyUniq: uniqueIndex("user_prefs_user_key_uniq").on(t.userId, t.prefKey),
+}));
+
+export type UserPrefRow = typeof userPrefs.$inferSelect;
+export type InsertUserPref = typeof userPrefs.$inferInsert;
+
 // ── ComfyUI template functional analysis (for the agent's planning) ───────────
 // One row per template (1:1 via unique templateId). The agent reads these
 // LLM-produced functional summaries to recommend/configure comfyui_workflow nodes.
