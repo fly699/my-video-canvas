@@ -136,7 +136,10 @@ export function ContextMenu({
   const orderedConfigs = useMemo(() => {
     const base = sortNodeConfigsForPalette(NODE_TYPE_LIST);
     if (paletteOrder.length === 0) return base;
-    const rank = (t: string) => { const i = paletteOrder.indexOf(t); return i === -1 ? Infinity : i; };
+    // 未在自定义顺序里的类型（如新版本新增节点）排到末尾。用一个大常数而非 Infinity，
+    // 避免「两个未排序项」相减得到 NaN（NaN 比较器会打乱排序）；Array.sort 稳定，相等项保持默认序。
+    const END = paletteOrder.length + NODE_TYPE_LIST.length + 1;
+    const rank = (t: string) => { const i = paletteOrder.indexOf(t); return i === -1 ? END : i; };
     return [...base].sort((a, b) => rank(a.type) - rank(b.type));
   }, [paletteOrder]);
 
