@@ -2,7 +2,7 @@ import { describe, it, expect, vi, beforeEach, afterEach, beforeAll } from "vite
 
 // invokeLLM reads ENV (process.env) at import time and needs an API key, so set
 // one before the dynamic import below.
-beforeAll(() => { process.env.BUILT_IN_FORGE_API_KEY = "test-key"; });
+beforeAll(() => { process.env.BUILT_IN_FORGE_API_KEY = "test-key"; process.env.KIE_API_KEY = "kie-test-key"; });
 
 const ok = (content: string) => ({
   ok: true,
@@ -17,6 +17,18 @@ const baseParams = { model: "gemini-3-flash-preview", messages: [{ role: "user" 
 describe("invokeLLM — transient-error retry", () => {
   beforeEach(() => { vi.restoreAllMocks(); });
   afterEach(() => { vi.unstubAllGlobals(); });
+
+  it("kie_* 对话模型转发到 kie 专属端点（不打 Forge，修复 404）", async () => {
+    // claude 格式响应：content[].text。
+    const fetchMock = vi.fn().mockResolvedValueOnce({ ok: true, json: async () => ({ content: [{ type: "text", text: "kie-reply" }] }) });
+    vi.stubGlobal("fetch", fetchMock);
+    const { invokeLLM, extractTextContent } = await import("./_core/llm");
+    const r = await invokeLLM({ model: "kie_claude_sonnet_46", messages: [{ role: "user", content: "hi" }] });
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(String(fetchMock.mock.calls[0][0])).toContain("/claude/v1/messages");
+    expect(String(fetchMock.mock.calls[0][0])).not.toContain("forge");
+    expect(extractTextContent(r)).toBe("kie-reply");
+  });
 
   it("retries a 5xx upstream error then succeeds", async () => {
     const fetchMock = vi.fn()
