@@ -1060,6 +1060,38 @@ function CanvasInner({ projectId }: { projectId: number }) {
     );
   }, []);
 
+  // ── 群组派生层：折叠群组隐藏成员（含相连边）；选中群组给成员加高亮描边类 ──
+  // 必须放在所有 early return 之前（Hooks 规则：每次渲染 hook 数量须一致）。
+  const { displayNodes, displayEdges } = useMemo(() => {
+    const collapsedHiddenIds = new Set<string>();
+    const highlightIds = new Set<string>();
+    for (const n of nodes) {
+      if (n.data.nodeType !== "group") continue;
+      const gp = n.data.payload as GroupNodeData;
+      const cids = gp.childIds ?? [];
+      if (gp.collapsed) cids.forEach((c) => collapsedHiddenIds.add(c));
+      if (n.selected) cids.forEach((c) => highlightIds.add(c));
+    }
+    if (collapsedHiddenIds.size === 0 && highlightIds.size === 0) {
+      return { displayNodes: nodes, displayEdges: edges };
+    }
+    const dNodes = nodes.map((n) => {
+      const hide = collapsedHiddenIds.has(n.id);
+      const hl = highlightIds.has(n.id) && !hide;
+      if (!hide && !hl) return n;
+      return {
+        ...n,
+        hidden: hide || n.hidden,
+        className: hl ? `${n.className ?? ""} group-member-highlight`.trim() : n.className,
+      };
+    });
+    const dEdges = collapsedHiddenIds.size === 0
+      ? edges
+      : edges.map((e) => (collapsedHiddenIds.has(e.source) || collapsedHiddenIds.has(e.target)
+          ? { ...e, hidden: true } : e));
+    return { displayNodes: dNodes, displayEdges: dEdges };
+  }, [nodes, edges]);
+
   // Mobile/tablet have no right-click; double-tap (== double-click) opens the
   // same canvas context menu so users can still add nodes from empty space.
   // Skip when the gesture lands on a node, edge, or any interactive widget so
@@ -1399,37 +1431,6 @@ function CanvasInner({ projectId }: { projectId: number }) {
       </div>
     );
   }
-
-  // ── 群组派生层：折叠群组隐藏成员（含相连边）；选中群组给成员加高亮描边类 ──
-  const { displayNodes, displayEdges } = useMemo(() => {
-    const collapsedHiddenIds = new Set<string>();
-    const highlightIds = new Set<string>();
-    for (const n of nodes) {
-      if (n.data.nodeType !== "group") continue;
-      const gp = n.data.payload as GroupNodeData;
-      const cids = gp.childIds ?? [];
-      if (gp.collapsed) cids.forEach((c) => collapsedHiddenIds.add(c));
-      if (n.selected) cids.forEach((c) => highlightIds.add(c));
-    }
-    if (collapsedHiddenIds.size === 0 && highlightIds.size === 0) {
-      return { displayNodes: nodes, displayEdges: edges };
-    }
-    const dNodes = nodes.map((n) => {
-      const hide = collapsedHiddenIds.has(n.id);
-      const hl = highlightIds.has(n.id) && !hide;
-      if (!hide && !hl) return n;
-      return {
-        ...n,
-        hidden: hide || n.hidden,
-        className: hl ? `${n.className ?? ""} group-member-highlight`.trim() : n.className,
-      };
-    });
-    const dEdges = collapsedHiddenIds.size === 0
-      ? edges
-      : edges.map((e) => (collapsedHiddenIds.has(e.source) || collapsedHiddenIds.has(e.target)
-          ? { ...e, hidden: true } : e));
-    return { displayNodes: dNodes, displayEdges: dEdges };
-  }, [nodes, edges]);
 
   return (
     <div className="w-screen h-screen flex flex-col overflow-hidden" style={{ background: "var(--c-canvas)" }}>
