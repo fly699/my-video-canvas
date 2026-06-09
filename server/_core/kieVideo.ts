@@ -41,6 +41,12 @@ export interface KieVideoSpec {
   /** Seedance-style multimodal: besides first_frame_url, also accepts
    *  reference_image_urls / reference_video_urls / reference_audio_urls. */
   multiModal?: boolean;
+  /** Source-video input field (motion-control / Wan Animate). Filled from the
+   *  node's connected video upstream (referenceVideoUrls). */
+  videoRef?: { key: string; array: boolean };
+  /** Driving-audio input field (Kling Avatar talking-head). Filled from the
+   *  node's connected audio upstream (referenceAudioUrls[0]). */
+  audioRef?: { key: string };
   /** Authoritative credit note shown in the node UI (from the pricing table). */
   creditNote: string;
 }
@@ -318,6 +324,56 @@ export const KIE_VIDEO_SPECS: Record<string, KieVideoSpec> = {
     ref: { key: "image_url", array: false, required: true },
     creditNote: "720p 16 / 1080p 32 点·秒",
   },
+  // ── 第三批：特殊输入（动作控制 / 数字人 / 替身）──
+  kie_kling26_motion: {
+    wire: "kling-2.6/motion-control", endpoint: "jobs", label: "Kling 2.6 动作控制", family: "Kling",
+    params: [
+      { key: "character_orientation", type: "str", def: "video" },
+      { key: "mode", type: "str", def: "720p" },
+    ],
+    ref: { key: "input_urls", array: true, required: true },
+    videoRef: { key: "video_urls", array: true },
+    creditNote: "720p 8 / 1080p 12 点·秒",
+  },
+  kie_kling30_motion: {
+    wire: "kling-3.0/motion-control", endpoint: "jobs", label: "Kling 3.0 动作控制", family: "Kling",
+    params: [
+      { key: "mode", type: "str", def: "720p" },
+      { key: "character_orientation", type: "str", def: "video" },
+      { key: "background_source", type: "str", def: "input_video" },
+    ],
+    ref: { key: "input_urls", array: true, required: true },
+    videoRef: { key: "video_urls", array: true },
+    creditNote: "720p 9 / 1080p 15 点·秒",
+  },
+  kie_kling_avatar_std: {
+    wire: "kling/ai-avatar-standard", endpoint: "jobs", label: "Kling 数字人 标准", family: "Kling",
+    params: [],
+    ref: { key: "image_url", array: false, required: true },
+    audioRef: { key: "audio_url" },
+    creditNote: "7 点·秒",
+  },
+  kie_kling_avatar_pro: {
+    wire: "kling/ai-avatar-pro", endpoint: "jobs", label: "Kling 数字人 专业", family: "Kling",
+    params: [],
+    ref: { key: "image_url", array: false, required: true },
+    audioRef: { key: "audio_url" },
+    creditNote: "14 点·秒",
+  },
+  kie_wan_animate_move: {
+    wire: "wan/2-2-animate-move", endpoint: "jobs", label: "Wan 2.2 Animate 动作迁移", family: "Wan",
+    params: [{ key: "resolution", type: "str", def: "480p" }],
+    ref: { key: "image_url", array: false, required: true },
+    videoRef: { key: "video_url", array: false },
+    creditNote: "480p 7 / 580p 12 / 720p 15 点·条",
+  },
+  kie_wan_animate_replace: {
+    wire: "wan/2-2-animate-replace", endpoint: "jobs", label: "Wan 2.2 Animate 角色替换", family: "Wan",
+    params: [{ key: "resolution", type: "str", def: "480p" }],
+    ref: { key: "image_url", array: false, required: true },
+    videoRef: { key: "video_url", array: false },
+    creditNote: "480p 7 / 580p 12 / 720p 15 点·条",
+  },
 };
 
 export function isKieVideoProvider(provider: string): boolean {
@@ -400,6 +456,18 @@ export async function submitKieVideo(opts: KieVideoSubmitOptions): Promise<{ ext
       const auds = (opts.referenceAudioUrls ?? []).filter(Boolean);
       if (vids.length) input.reference_video_urls = vids;
       if (auds.length) input.reference_audio_urls = auds;
+    }
+    // Source-video input (motion-control / Wan Animate) — required.
+    if (spec.videoRef) {
+      const vids = (opts.referenceVideoUrls ?? []).map((u) => u?.trim()).filter((u): u is string => !!u);
+      if (vids.length === 0) throw new Error(`${spec.label} 需要源视频，请连线一个视频节点（剪辑/视频/素材）`);
+      input[spec.videoRef.key] = spec.videoRef.array ? vids : vids[0];
+    }
+    // Driving-audio input (Kling Avatar) — required.
+    if (spec.audioRef) {
+      const auds = (opts.referenceAudioUrls ?? []).map((u) => u?.trim()).filter((u): u is string => !!u);
+      if (auds.length === 0) throw new Error(`${spec.label} 需要音频，请连线一个音频节点`);
+      input[spec.audioRef.key] = auds[0];
     }
     url = `${KIE_BASE_URL}/api/v1/jobs/createTask`;
     body = { model: spec.wire, input };

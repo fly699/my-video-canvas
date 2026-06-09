@@ -99,6 +99,10 @@ export const VIDEO_PROVIDERS = [
   "kie_hailuo02_std", "kie_hailuo02_pro_t2v", "kie_hailuo02_pro_i2v",
   "kie_grok_t2v", "kie_grok_i2v",
   "kie_happyhorse_t2v", "kie_happyhorse_i2v",
+  // ── kie 视频 第三批：特殊输入（动作控制 / 数字人 / 替身）──
+  "kie_kling26_motion", "kie_kling30_motion",
+  "kie_kling_avatar_std", "kie_kling_avatar_pro",
+  "kie_wan_animate_move", "kie_wan_animate_replace",
 ] as const;
 export type VideoProvider = (typeof VIDEO_PROVIDERS)[number];
 export type VideoTaskStatus = "pending" | "processing" | "succeeded" | "failed";
