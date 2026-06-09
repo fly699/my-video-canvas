@@ -26,7 +26,7 @@ export interface KieVideoSpec {
   /** UI provider value persisted on video_tasks rows (kie_*). */
   wire: string;
   /** Upstream endpoint family. */
-  endpoint: "jobs" | "veo" | "runway";
+  endpoint: "jobs" | "veo" | "runway" | "aleph";
   label: string;
   family: string;
   /** Allow-listed input params copied from the node's `params` (with defaults
@@ -385,6 +385,21 @@ export const KIE_VIDEO_SPECS: Record<string, KieVideoSpec> = {
     ref: { key: "imageUrl", array: false }, // 可选：有图则图生视频
     creditNote: "5s 75 / 10s 150 点·条",
   },
+  // Topaz 视频放大（jobs + 源视频 video_url）
+  kie_topaz_upscale: {
+    wire: "topaz/video-upscale", endpoint: "jobs", label: "Topaz 视频放大", family: "Topaz",
+    params: [{ key: "upscale_factor", type: "str", def: "2" }],
+    videoRef: { key: "video_url", array: false },
+    creditNote: "1x/2x 8 / 4x 14 点·秒",
+  },
+  // Runway Aleph 视频转视频（专属端点 /api/v1/aleph/generate；轮询同 Runway record-detail）
+  kie_runway_aleph: {
+    wire: "runway-aleph", endpoint: "aleph", label: "Runway Aleph 视频转视频", family: "Runway",
+    params: [{ key: "aspectRatio", type: "str", def: "16:9" }, { key: "seed", type: "num" }],
+    ref: { key: "referenceImage", array: false }, // 可选：风格参考图
+    videoRef: { key: "videoUrl", array: false },  // 必填：源视频（在 aleph 提交分支强校验）
+    creditNote: "110 点·条",
+  },
 };
 
 export function isKieVideoProvider(provider: string): boolean {
@@ -454,6 +469,14 @@ export async function submitKieVideo(opts: KieVideoSubmitOptions): Promise<{ ext
     url = `${KIE_BASE_URL}/api/v1/runway/generate`;
     body = { prompt: opts.prompt, ...bag }; // duration / quality / aspectRatio
     if (refs[0]) body.imageUrl = refs[0]; // 有图 → 图生视频（覆盖 aspectRatio 推断）
+    if (opts.callBackUrl) body.callBackUrl = opts.callBackUrl;
+  } else if (spec.endpoint === "aleph") {
+    // Runway Aleph: 视频转视频，专属 /api/v1/aleph/generate，扁平 body，源视频 videoUrl 必填。
+    const vids = (opts.referenceVideoUrls ?? []).map((u) => u?.trim()).filter((u): u is string => !!u);
+    if (vids.length === 0) throw new Error(`${spec.label} 需要源视频，请连线一个视频节点（剪辑/视频/素材）`);
+    url = `${KIE_BASE_URL}/api/v1/aleph/generate`;
+    body = { prompt: opts.prompt, videoUrl: vids[0], ...bag }; // aspectRatio / seed
+    if (refs[0]) body.referenceImage = refs[0]; // 可选风格参考图
     if (opts.callBackUrl) body.callBackUrl = opts.callBackUrl;
   } else if (spec.endpoint === "veo") {
     // Veo: flat body, params + prompt at top level.
@@ -529,8 +552,7 @@ export async function checkKieVideoStatus(provider: string, externalTaskId: stri
   const spec = KIE_VIDEO_SPECS[provider];
   if (!spec) throw new Error(`未知 kie 视频模型：${provider}`);
 
-  // Runway has its OWN record-detail endpoint with a different response shape
-  // (data.state + data.videoInfo.videoUrl, not successFlag + resultUrls).
+  // Runway Gen-4.5 — record-detail（data.state + data.videoInfo.videoUrl）。
   if (spec.endpoint === "runway") {
     const r = await fetch(`${KIE_BASE_URL}/api/v1/runway/record-detail?taskId=${encodeURIComponent(externalTaskId)}`, {
       headers: { Authorization: `Bearer ${apiKey}` }, signal: AbortSignal.timeout(15_000),
@@ -545,6 +567,31 @@ export async function checkKieVideoStatus(provider: string, externalTaskId: stri
     }
     if (st === "fail" || st === "failed") return { status: "failed", errorMessage: b.data?.failMsg ?? "生成失败" };
     return { status: "processing" }; // wait / queueing / generating
+  }
+
+  // Runway Aleph — 专属 record-info，响应形态与 Runway 完全不同：
+  // data.successFlag(1=成功, 0=失败或进行中) + data.response.resultVideoUrl，
+  // 失败靠 errorMessage/errorCode 区分（successFlag 0 时若有 error 即失败，否则仍在进行）。
+  if (spec.endpoint === "aleph") {
+    const r = await fetch(`${KIE_BASE_URL}/api/v1/aleph/record-info?taskId=${encodeURIComponent(externalTaskId)}`, {
+      headers: { Authorization: `Bearer ${apiKey}` }, signal: AbortSignal.timeout(15_000),
+    });
+    if (!r.ok) throw new Error(`kie 视频状态查询失败 (${r.status})`);
+    const b = (await r.json()) as {
+      code?: number;
+      data?: { successFlag?: number; errorCode?: number; errorMessage?: string; response?: { resultVideoUrl?: string } };
+    };
+    const d = b.data;
+    if (!d) return { status: "processing" };
+    if (d.successFlag === 1) {
+      const u = d.response?.resultVideoUrl;
+      return u ? { status: "finished", resultVideoUrls: [u] }
+        : { status: "failed", errorMessage: "[CHARGED] Aleph 已生成但未返回 URL（积分已扣，请勿重试）" };
+    }
+    if (d.errorMessage || (typeof d.errorCode === "number" && d.errorCode !== 0)) {
+      return { status: "failed", errorMessage: d.errorMessage ?? "生成失败" };
+    }
+    return { status: "processing" };
   }
 
   const base = spec.endpoint === "veo"

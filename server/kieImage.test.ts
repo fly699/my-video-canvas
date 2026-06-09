@@ -49,6 +49,17 @@ describe("kie image model map", () => {
     expect(KIE_IMAGE_MODELS.kie_grok_image.aspects).toContain("16:9");
   });
 
+  it("专属端点模型 endpoint/ref 字段正确（Flux Kontext / OpenAI 4o）", () => {
+    expect(KIE_IMAGE_MODELS.kie_flux_kontext_pro.endpoint).toBe("flux-kontext");
+    expect(KIE_IMAGE_MODELS.kie_flux_kontext_max.endpoint).toBe("flux-kontext");
+    expect(KIE_IMAGE_MODELS.kie_flux_kontext_pro.ref).toBe("inputImage"); // 单数，可选编辑图
+    expect(KIE_IMAGE_MODELS.kie_gpt_4o_image.endpoint).toBe("gpt4o");
+    expect(KIE_IMAGE_MODELS.kie_gpt_4o_image.ref).toBe("filesUrl");       // 数组 ≤5
+    expect(KIE_IMAGE_MODELS.kie_gpt_4o_image.aspect).toBe("image_size_raw"); // size 字段
+    // 4o size 仅 1:1 / 3:2 / 2:3（不含 16:9）。
+    expect(KIE_IMAGE_MODELS.kie_gpt_4o_image.aspects).not.toContain("16:9");
+  });
+
   it("有额外必填参数的模型带 fixed 默认（Seedream4.5/GPT quality、Flux resolution）", () => {
     expect(KIE_IMAGE_MODELS.kie_seedream_45.fixed).toMatchObject({ quality: expect.any(String) });
     expect(KIE_IMAGE_MODELS.kie_gpt_image_15.fixed).toMatchObject({ quality: expect.any(String) });

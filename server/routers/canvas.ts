@@ -65,6 +65,7 @@ import { isKieImageModel } from "../_core/kieImage";
 import { isKieVideoProvider, submitKieVideo } from "../_core/kieVideo";
 import { isKieMusicModel, submitAndPollKieMusic } from "../_core/kieMusic";
 import { isKieLLMModel, invokeKieLLM } from "../_core/kieLLM";
+import { isKieTTS, submitAndPollKieTTS } from "../_core/kieTTS";
 import { encryptKieKey, decryptKieKey } from "../_core/kieCrypto";
 import { writeAuditLog, truncate } from "../_core/auditLog";
 import { withComfyUsageLog } from "../_core/comfyUsageLog";
@@ -2008,6 +2009,8 @@ export const audioGenRouter = router({
           "elevenlabs-v3-tts",
           // Local / self-hosted Gradio TTS (VoxCPM2 等), via customBaseUrl
           "voxcpm-local",
+          // kie.ai ElevenLabs TTS（自有 key 体系，见 kieTTS.ts）
+          "kie_elevenlabs_tts", "kie_elevenlabs_tts_ml", "kie_elevenlabs_v3",
           // Legacy aliases — accepted for backward compat with saved nodes and
           // normalized below (elevenlabs_v3→live Poyo; the rest→openai_tts_real)
           // so old payloads don't hit an opaque Zod validation error.
@@ -2032,15 +2035,17 @@ export const audioGenRouter = router({
         ditSteps: z.number().int().min(1).max(100).optional(),
         denoise: z.boolean().optional(),
         doNormalize: z.boolean().optional(),
+        kieTempKey: z.string().max(256).optional(), // kie_elevenlabs_* only
         projectId: z.number().optional(),
       })
     )
     .mutation(async ({ ctx, input }) => {
       // 本地 / 自托管 VoxCPM 走用户自己的 Gradio 服务、不消耗任何平台积分，
-      // 故对该模型放开白名单——任何已登录用户都可使用。其余 TTS（OpenAI /
-      // ElevenLabs）仍是计费的外部服务，白名单照常拦截。
+      // 故对该模型放开白名单——任何已登录用户都可使用。kie ElevenLabs 走 kie 自有 key
+      // 体系（resolveKieKey）绕平台白名单。其余 TTS（OpenAI/Poyo）白名单照常拦截。
       const isLocalGradio = input.model === "voxcpm-local";
-      if (!isLocalGradio) await assertWhitelisted(ctx);
+      const isKieTTSModel = isKieTTS(input.model);
+      if (!isLocalGradio && !isKieTTSModel) await assertWhitelisted(ctx);
       if (input.projectId != null) await assertProjectAccess(input.projectId, ctx.user.id, "editor");
 
       // Normalize legacy ids: elevenlabs_v3 → live Poyo TTS; the retired
@@ -2060,11 +2065,16 @@ export const audioGenRouter = router({
       const TEXT_LIMIT: Record<string, number> = {
         "elevenlabs-v3-tts":   5000,
         "voxcpm-local":        5000,
+        kie_elevenlabs_tts:    5000,
+        kie_elevenlabs_tts_ml: 5000,
+        kie_elevenlabs_v3:     5000,
         openai_tts_real:       4096,
         openai_tts_hd_real:    4096,
         openai_gpt4o_mini_tts: 4096,
       };
       const limit = TEXT_LIMIT[model] ?? 4096;
+      // kie ElevenLabs 走自有 key（临时 > 分配 > 公用）。
+      const kieTTSKey = isKieTTSModel ? (await resolveKieKey(ctx, input.kieTempKey)).key : undefined;
       if (input.text.length > limit) {
         throw new TRPCError({ code: "BAD_REQUEST", message: `${model} 单次配音上限 ${limit} 字（当前 ${input.text.length}）` });
       }
@@ -2086,6 +2096,13 @@ export const audioGenRouter = router({
               ditSteps: input.ditSteps,
               denoise: input.denoise,
               doNormalize: input.doNormalize,
+            })
+          : isKieTTSModel
+          ? await submitAndPollKieTTS({
+              model, apiKey: kieTTSKey!,
+              text: input.text, voice: input.voice,
+              stability: input.stability,
+              languageCode: input.languageCode,
             })
           : isPoyoTTS
           ? await submitAndPollPoyoTTS({
@@ -2116,7 +2133,7 @@ export const audioGenRouter = router({
             ...(isGradioTTS ? { gradioBaseUrl: input.customBaseUrl ?? null } : {}),
           },
         });
-        const provider = isGradioTTS ? "gradio" : isPoyoTTS ? "poyo" : "openai";
+        const provider = isGradioTTS ? "gradio" : isKieTTSModel ? "kie" : isPoyoTTS ? "poyo" : "openai";
         await recordGeneratedAsset({ userId: ctx.user.id, projectId: input.projectId ?? null, type: "audio", source: "generated", provider, model, url: result.url, name: model });
         return {
           url: result.url,

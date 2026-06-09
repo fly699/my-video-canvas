@@ -208,6 +208,8 @@ const PROVIDERS: { value: VideoProvider; label: string; group: string; family: s
   { value: "kie_wan_animate_move",    label: "Wan Animate 动作迁移", group: "Kie", family: "Wan",        costLabel: "480p 7/720p 15 点",      caps: ["图+源视频"] },
   { value: "kie_wan_animate_replace", label: "Wan Animate 角色替换", group: "Kie", family: "Wan",        costLabel: "480p 7/720p 15 点",      caps: ["图+源视频"] },
   { value: "kie_runway45",            label: "Runway Gen 4.5",      group: "Kie", family: "Runway",     costLabel: "5s 75/10s 150 点",       caps: ["T2V", "I2V", "5/10s"] },
+  { value: "kie_topaz_upscale",       label: "Topaz 视频放大",      group: "Kie", family: "Topaz",      costLabel: "1x/2x 8/4x 14 点·秒",    caps: ["视频放大", "需源视频"] },
+  { value: "kie_runway_aleph",        label: "Runway Aleph 视频转视频", group: "Kie", family: "Runway",  costLabel: "110 点·条",              caps: ["视频转视频", "需源视频"] },
   { value: "mock",                    label: "Mock 测试",           group: "Dev",        family: "Dev", costLabel: "免费",       caps: ["测试"] },
 ];
 
@@ -296,8 +298,9 @@ const SUPPORTS_NEGATIVE_PROMPT = new Set<string>([
 // reference mode is a separate wire model not yet mapped. Collected from connected
 // upstream `asset` nodes (video / audio) → reference_video_urls / reference_audio_urls.
 const SUPPORTS_REF_VIDEO = new Set<string>(["poyo_seedance", "poyo_seedance2_fast", "kie_seedance2", "kie_seedance2_fast",
-  // 动作控制 / Animate：需连线源视频
-  "kie_kling26_motion", "kie_kling30_motion", "kie_wan_animate_move", "kie_wan_animate_replace"]);
+  // 动作控制 / Animate / 放大 / Aleph：需连线源视频
+  "kie_kling26_motion", "kie_kling30_motion", "kie_wan_animate_move", "kie_wan_animate_replace",
+  "kie_topaz_upscale", "kie_runway_aleph"]);
 const SUPPORTS_REF_AUDIO = new Set<string>(["poyo_seedance", "poyo_seedance2_fast", "kie_seedance2", "kie_seedance2_fast",
   // 数字人：需连线音频
   "kie_kling_avatar_std", "kie_kling_avatar_pro"]);
@@ -570,6 +573,13 @@ const KIE_RUNWAY_PARAMS: ParamDef[] = [
   { type: "select", key: "quality", label: "画质", default: "720p", options: MODE_720_1080 },
   { type: "select", key: "aspectRatio", label: "宽高比", default: "16:9", options: AR_5 },
 ];
+const KIE_TOPAZ_PARAMS: ParamDef[] = [
+  { type: "select", key: "upscale_factor", label: "放大倍数", default: "2", options: [{ value: "1", label: "1x" }, { value: "2", label: "2x" }, { value: "4", label: "4x" }] },
+];
+const AR_ALEPH = [{ value: "16:9", label: "16:9 横屏" }, { value: "9:16", label: "9:16 竖屏" }, { value: "1:1", label: "1:1 方形" }, { value: "4:3", label: "4:3" }, { value: "3:4", label: "3:4" }, { value: "21:9", label: "21:9 超宽" }];
+const KIE_ALEPH_PARAMS: ParamDef[] = [
+  { type: "select", key: "aspectRatio", label: "宽高比", default: "16:9", options: AR_ALEPH }, seedDef,
+];
 
 const PROVIDER_PARAMS: Record<string, ParamDef[]> = {
   poyo_seedance: [
@@ -714,6 +724,8 @@ const PROVIDER_PARAMS: Record<string, ParamDef[]> = {
   kie_wan_animate_move: KIE_WAN_ANIMATE_PARAMS,
   kie_wan_animate_replace: KIE_WAN_ANIMATE_PARAMS,
   kie_runway45: KIE_RUNWAY_PARAMS,
+  kie_topaz_upscale: KIE_TOPAZ_PARAMS,
+  kie_runway_aleph: KIE_ALEPH_PARAMS,
   mock: [],
 };
 

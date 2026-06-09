@@ -16,7 +16,11 @@ import type { GenerateImageOptions, GenerateImageResponse } from "./imageGenerat
 //   - outFmt: whether the model accepts output_format (Google/Nano Banana only).
 export interface KieImageSpec {
   id: string; label: string; family: string;
-  /** 参考图字段名（image_urls/input_urls 数组；image_url 单数见 refSingle）。 */
+  /** 上游端点：jobs(统一 createTask,默认) | flux-kontext(/flux/kontext) | gpt4o(/gpt4o-image)。
+   *  专属端点是扁平 body + 各自 record-info 轮询、响应形态不同。 */
+  endpoint?: "jobs" | "flux-kontext" | "gpt4o";
+  /** 参考图字段名（jobs: image_urls/input_urls 数组或 image_url 单数；flux: inputImage 单数;
+   *  gpt4o: filesUrl 数组）。jobs 端点下 ref 存在=编辑模型(必填)；flux/gpt4o 下为可选(有图即编辑)。 */
   ref?: string;
   /** ref 字段为单个 URL 字符串（如 Qwen 的 image_url），而非数组。 */
   refSingle?: boolean;
@@ -48,6 +52,8 @@ const A_NANO2 = ["1:1", "1:4", "1:8", "2:3", "3:2", "3:4", "4:1", "4:3", "4:5", 
 const A_GPT2 = ["auto", "1:1", "3:2", "2:3", "4:3", "3:4", "5:4", "4:5", "16:9", "9:16", "2:1", "1:2", "3:1", "1:3", "21:9", "9:21"] as const;
 const A_WAN27 = ["1:1", "16:9", "4:3", "21:9", "3:4", "9:16", "8:1", "1:8"] as const;
 const A_QWEN2 = ["1:1", "2:3", "3:2", "3:4", "4:3", "9:16", "16:9", "21:9"] as const;
+const A_FLUX_KONTEXT = ["21:9", "16:9", "4:3", "1:1", "3:4", "9:16"] as const;
+const A_4O = ["1:1", "3:2", "2:3"] as const;
 export const KIE_IMAGE_MODELS: Record<string, KieImageSpec> = {
   // text-to-image
   kie_nano_banana:      { id: "google/nano-banana", label: "Nano Banana", family: "Nano Banana", aspect: "aspect_ratio", aspects: A_NANO, outFmt: true },
@@ -80,6 +86,11 @@ export const KIE_IMAGE_MODELS: Record<string, KieImageSpec> = {
   kie_qwen_image_i2i:  { id: "qwen/image-to-image", label: "Qwen Image 图生图", family: "Qwen", ref: "image_url", refSingle: true, aspect: "image_size" },
   kie_qwen_image_edit: { id: "qwen/image-edit", label: "Qwen Image 编辑", family: "Qwen", ref: "image_url", refSingle: true, aspect: "image_size" },
   kie_qwen2_image_edit:{ id: "qwen2/image-edit", label: "Qwen2 Image 编辑", family: "Qwen", ref: "image_url", refSingle: true, aspect: "image_size_raw", aspects: A_QWEN2 },
+  // ── 专属端点批：Flux Kontext（/flux/kontext）+ OpenAI 4o Image（/gpt4o-image）──
+  // ref 在这两个端点下为「可选」（有图即编辑），不抛缺图错误（仅 jobs 端点的编辑模型必填）。
+  kie_flux_kontext_pro: { id: "flux-kontext-pro", label: "Flux Kontext Pro", family: "Flux Kontext", endpoint: "flux-kontext", ref: "inputImage", aspect: "aspect_ratio", aspects: A_FLUX_KONTEXT },
+  kie_flux_kontext_max: { id: "flux-kontext-max", label: "Flux Kontext Max", family: "Flux Kontext", endpoint: "flux-kontext", ref: "inputImage", aspect: "aspect_ratio", aspects: A_FLUX_KONTEXT },
+  kie_gpt_4o_image:     { id: "gpt-4o-image", label: "GPT-4o Image", family: "GPT Image", endpoint: "gpt4o", ref: "filesUrl", aspect: "image_size_raw", aspects: A_4O },
 };
 
 // Seedream 4.0 uses `image_size` with a token vocabulary instead of "16:9" ratios.
@@ -106,36 +117,56 @@ export async function generateImageKie(options: GenerateImageOptions): Promise<G
   const spec = KIE_IMAGE_MODELS[options.model ?? ""];
   if (!spec) throw new Error(`未知 kie 图像模型：${options.model}`);
 
-  const input: Record<string, unknown> = { prompt: options.prompt };
-  if (spec.outFmt) input.output_format = "png"; // Google models only — others 422-safe but cleaner to omit
+  const endpoint = spec.endpoint ?? "jobs";
   const aspect = options.size ?? options.reveAspectRatio;
-  // ALWAYS set the aspect field with a model-valid value — kie 422s on an empty
-  // OR out-of-enum aspect_ratio (e.g. sending "16:9" to GPT Image which only
-  // allows 1:1/2:3/3:2). Clamp the chosen ratio to the model's enum, else default.
-  if (spec.aspect === "image_size") {
-    // Seedream 4.0 / Qwen / Ideogram use the image_size token space; default square_hd.
-    input.image_size = (aspect && SEEDREAM_SIZE[aspect]) || "square_hd";
-  } else if (spec.aspect === "image_size_raw") {
-    // Qwen2: image_size field but takes the aspect-ratio VALUE directly (clamped to enum).
-    const allowed = spec.aspects ?? ["1:1"];
-    input.image_size = aspect && allowed.includes(aspect) ? aspect : allowed[0];
+  const clampAspect = (def: string): string => {
+    const a = spec.aspects ?? [def];
+    return aspect && a.includes(aspect) ? aspect : a[0];
+  };
+  const refs = (options.originalImages ?? []).map((o) => o.url).filter((u): u is string => !!u);
+
+  // ── Build per-endpoint submit URL + body ──
+  let submitUrl: string;
+  let submitBody: Record<string, unknown>;
+  if (endpoint === "flux-kontext") {
+    // Flux Kontext: 扁平 body，inputImage 可选(有图即编辑)，aspectRatio 枚举，输出 png。
+    const b: Record<string, unknown> = {
+      model: spec.id, prompt: options.prompt,
+      aspectRatio: clampAspect("16:9"), outputFormat: "png",
+      enableTranslation: true, safetyTolerance: 2,
+    };
+    if (refs[0]) b.inputImage = refs[0];
+    submitUrl = `${KIE_BASE_URL}/api/v1/flux/kontext/generate`;
+    submitBody = b;
+  } else if (endpoint === "gpt4o") {
+    // GPT-4o Image: size 必填(1:1/3:2/2:3)，filesUrl 数组(≤5)可选(有图即编辑)，带回退。
+    const b: Record<string, unknown> = {
+      prompt: options.prompt || undefined, size: clampAspect("1:1"),
+      enableFallback: true, fallbackModel: "FLUX_MAX",
+    };
+    if (refs.length) b.filesUrl = refs.slice(0, 5);
+    submitUrl = `${KIE_BASE_URL}/api/v1/gpt4o-image/generate`;
+    submitBody = b;
   } else {
-    const allowed = spec.aspects ?? ["1:1"];
-    input.aspect_ratio = aspect && allowed.includes(aspect) ? aspect : allowed[0];
-  }
-  // Required per-model params (quality / resolution) — kie rejects without them.
-  if (spec.fixed) for (const [k, v] of Object.entries(spec.fixed)) input[k] = v;
-  if (spec.ref) {
-    const refs = (options.originalImages ?? []).map((o) => o.url).filter((u): u is string => !!u);
-    if (refs.length === 0) throw new Error(`${spec.label} 需要参考图，请先连接或上传参考图`);
-    input[spec.ref] = spec.refSingle ? refs[0] : refs; // 单数 image_url(Qwen) vs 数组 image_urls/input_urls
+    // 统一 jobs：参数嵌在 input 内（既有逻辑，零回归）。
+    const input: Record<string, unknown> = { prompt: options.prompt };
+    if (spec.outFmt) input.output_format = "png";
+    if (spec.aspect === "image_size") input.image_size = (aspect && SEEDREAM_SIZE[aspect]) || "square_hd";
+    else if (spec.aspect === "image_size_raw") input.image_size = clampAspect("1:1");
+    else input.aspect_ratio = clampAspect("1:1");
+    if (spec.fixed) for (const [k, v] of Object.entries(spec.fixed)) input[k] = v;
+    if (spec.ref) { // jobs 端点下 ref 存在 = 编辑模型，必填
+      if (refs.length === 0) throw new Error(`${spec.label} 需要参考图，请先连接或上传参考图`);
+      input[spec.ref] = spec.refSingle ? refs[0] : refs;
+    }
+    submitUrl = `${KIE_BASE_URL}/api/v1/jobs/createTask`;
+    submitBody = { model: spec.id, input };
   }
 
-  // createTask
-  const submitRes = await fetch(`${KIE_BASE_URL}/api/v1/jobs/createTask`, {
+  const submitRes = await fetch(submitUrl, {
     method: "POST",
     headers: { "Content-Type": "application/json", Authorization: `Bearer ${apiKey}` },
-    body: JSON.stringify({ model: spec.id, input }),
+    body: JSON.stringify(submitBody),
     signal: AbortSignal.timeout(15_000),
   });
   if (!submitRes.ok) {
@@ -148,10 +179,15 @@ export async function generateImageKie(options: GenerateImageOptions): Promise<G
   }
   const taskId = submitData.data.taskId;
 
-  // poll recordInfo until success/failed
+  // ── Poll per-endpoint record URL until success/failed ──
+  const recordUrl = endpoint === "flux-kontext"
+    ? `${KIE_BASE_URL}/api/v1/flux/kontext/record-info?taskId=`
+    : endpoint === "gpt4o"
+    ? `${KIE_BASE_URL}/api/v1/gpt4o-image/record-info?taskId=`
+    : `${KIE_BASE_URL}/api/v1/jobs/recordInfo?taskId=`;
   for (let i = 0; i < POLL_MAX_ATTEMPTS; i++) {
     await new Promise((r) => setTimeout(r, POLL_INTERVAL_MS));
-    const statusRes = await fetch(`${KIE_BASE_URL}/api/v1/jobs/recordInfo?taskId=${encodeURIComponent(taskId)}`, {
+    const statusRes = await fetch(`${recordUrl}${encodeURIComponent(taskId)}`, {
       headers: { Authorization: `Bearer ${apiKey}` },
       signal: AbortSignal.timeout(10_000),
     });
@@ -161,16 +197,29 @@ export async function generateImageKie(options: GenerateImageOptions): Promise<G
     }
     const body = (await statusRes.json()) as {
       code?: number;
-      data?: { successFlag?: number; errorMessage?: string; response?: { result_urls?: string[]; resultUrls?: string[] | string } };
+      data?: {
+        successFlag?: number; errorMessage?: string;
+        // record-info 轮询响应统一把结果放在 data.response（回调才是 data.info，勿混用）：
+        //   flux-kontext → response.resultImageUrl（单数驼峰）
+        //   gpt4o        → response.result_urls（数组蛇形）
+        //   jobs         → response.result_urls / resultUrls
+        response?: { resultImageUrl?: string; result_urls?: string[]; resultUrls?: string[] | string };
+      };
     };
     const d = body.data;
     if (!d) continue;
     if (d.successFlag === 1) {
-      // result_urls (array) for market models; some endpoints use resultUrls (may be a JSON string).
-      let urls = d.response?.result_urls ?? [];
-      if (!urls.length && d.response?.resultUrls) {
-        const ru = d.response.resultUrls;
-        urls = Array.isArray(ru) ? ru : (() => { try { return JSON.parse(ru) as string[]; } catch { return []; } })();
+      let urls: string[] = [];
+      if (endpoint === "flux-kontext") {
+        if (d.response?.resultImageUrl) urls = [d.response.resultImageUrl];
+      } else if (endpoint === "gpt4o") {
+        urls = d.response?.result_urls ?? [];
+      } else {
+        urls = d.response?.result_urls ?? [];
+        if (!urls.length && d.response?.resultUrls) {
+          const ru = d.response.resultUrls;
+          urls = Array.isArray(ru) ? ru : (() => { try { return JSON.parse(ru) as string[]; } catch { return []; } })();
+        }
       }
       if (!urls.length) throw new Error("[CHARGED] kie 图像生成完成但未返回 URL（积分可能已扣，请勿重试）");
       return persistKieImages(urls);
