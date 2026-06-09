@@ -2,21 +2,28 @@ import { useCallback, useRef, useState, type RefObject } from "react";
 import { createPortal } from "react-dom";
 import { User, Mountain } from "lucide-react";
 import { useCanvasStore } from "../../hooks/useCanvasStore";
+import { getLibraryCharacters } from "../../lib/characterConditioning";
 
-export interface MentionItem { name: string; kind: "person" | "scene" }
+export interface MentionItem { name: string; kind: "person" | "scene"; fromLibrary?: boolean }
 
-/** 当前画布上所有「角色 / 场景」节点的名字（去重）。用快照读取，不订阅 store，避免每个输入框
- *  都随节点变化而重渲染。仅在用户输入「@」触发下拉时调用。 */
+/** 可被「@」引用的角色 / 场景：画布上的角色节点 + 全局角色库（画布上没有该节点也能引用）。
+ *  去重，画布优先。用快照读取，不订阅 store，仅在用户输入「@」触发下拉时调用。 */
 function listCanvasCharacters(): MentionItem[] {
   const nodes = useCanvasStore.getState().nodes;
   const out: MentionItem[] = [];
   const seen = new Set<string>();
-  for (const n of nodes) {
-    if (n.data.nodeType !== "character") continue;
-    const p = n.data.payload as { characterKind?: string; name?: string; sceneName?: string };
+  const add = (p: { characterKind?: string; name?: string; sceneName?: string }, fromLibrary: boolean) => {
     const kind: MentionItem["kind"] = (p.characterKind ?? "person") === "scene" ? "scene" : "person";
     const name = (kind === "scene" ? p.sceneName : p.name)?.trim();
-    if (name && !seen.has(name)) { seen.add(name); out.push({ name, kind }); }
+    if (name && !seen.has(name)) { seen.add(name); out.push({ name, kind, fromLibrary }); }
+  };
+  for (const n of nodes) {
+    if (n.data.nodeType !== "character") continue;
+    add(n.data.payload as { characterKind?: string; name?: string; sceneName?: string }, false);
+  }
+  // 角色库补充：画布上没有同名节点时，也能 @ 引用库里的角色（无需先拖到画布）。
+  for (const n of getLibraryCharacters()) {
+    add(n.data.payload as { characterKind?: string; name?: string; sceneName?: string }, true);
   }
   return out;
 }

@@ -95,12 +95,20 @@ export function charDisplayName(p: CharacterNodeData): string {
   return (((p.characterKind ?? "person") === "scene" ? p.sceneName : p.name) ?? "").trim();
 }
 
+// 角色库（全局保存的角色/场景）的「影子节点」。画布上没有对应节点时，@引用也能命中
+// 库里的角色——由画布顶层用 trpc.characterLibrary.list 填充（setLibraryCharacters）。
+// 影子节点没有连线（不参与 connectedCharacters），只在 @提及解析里作补充；画布上的
+// 真实节点优先（同名时取画布的），所以合并时画布节点排在库角色之前。
+let _libraryChars: CharNodeLike[] = [];
+export function setLibraryCharacters(chars: CharNodeLike[]): void { _libraryChars = chars; }
+export function getLibraryCharacters(): CharNodeLike[] { return _libraryChars; }
+
 /** prompt 里被「@名字」提及到的角色/场景（去重）。长名优先：匹配后「消费」掉该段，
- *  避免 @张三 在 @张三丰 内部被误匹配。 */
+ *  避免 @张三 在 @张三丰 内部被误匹配。画布节点 + 角色库影子节点（画布优先）都可命中。 */
 export function mentionedCharacters(prompt: string | undefined, nodes: CharNodeLike[]): CharacterNodeData[] {
   let scan = prompt ?? "";
   if (!scan.includes("@")) return [];
-  const named = nodes
+  const named = [...nodes, ..._libraryChars]
     .filter((n) => n.data.nodeType === "character")
     .map((n) => ({ p: n.data.payload as CharacterNodeData, name: charDisplayName(n.data.payload as CharacterNodeData) }))
     .filter((x) => x.name.length > 0)
