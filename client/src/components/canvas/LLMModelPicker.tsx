@@ -119,9 +119,14 @@ export function LLMModelPicker({ value, onChange, disabled, filter }: Props) {
                       flexShrink: 0,
                     }}
                   />
-                  <span style={{ fontSize: 11, color: selected ? "var(--c-t1)" : "var(--c-t3)", flex: 1, fontWeight: selected ? 600 : 400 }}>
-                    {m.label}
-                  </span>
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div style={{ fontSize: 11, color: selected ? "var(--c-t1)" : "var(--c-t3)", fontWeight: selected ? 600 : 400, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                      {m.label}
+                    </div>
+                    {m.costNote && (
+                      <div style={{ fontSize: 8.5, color: "var(--c-t4)", marginTop: 1 }}>{m.costNote} 点/百万tokens</div>
+                    )}
+                  </div>
                   {/* Upstream provider (Forge / Poyo / Kie) — 统一分色标签 */}
                   <span
                     style={{

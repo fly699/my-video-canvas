@@ -73,12 +73,12 @@ const MUSIC_MODELS = [
   { value: "suno-v4",          label: "Suno v4",          desc: "稳定 · 经典",   group: "Suno" },
   // ── MiniMax (status endpoint) ───
   { value: "minimax-music-2.6", label: "MiniMax Music 2.6", desc: "歌词 / 器乐", group: "MiniMax" },
-  // ── kie.ai Suno (own key system; ≈12 点/次) ───
-  { value: "kie_suno_v5_5",     label: "Suno v5.5（kie）", desc: "≈12 点/次",     group: "Kie" },
-  { value: "kie_suno_v5",       label: "Suno v5（kie）",   desc: "≈12 点/次",     group: "Kie" },
-  { value: "kie_suno_v4_5plus", label: "Suno v4.5 PLUS（kie）", desc: "≈12 点/次", group: "Kie" },
-  { value: "kie_suno_v4_5",     label: "Suno v4.5（kie）", desc: "≈12 点/次",     group: "Kie" },
-  { value: "kie_suno_v4",       label: "Suno v4（kie）",   desc: "≈12 点/次",     group: "Kie" },
+  // ── kie.ai Suno（厂家仍是 Suno，平台是 Kie；12 点/次，docs/kie-pricing.md 行276）───
+  { value: "kie_suno_v5_5",     label: "Suno v5.5（kie）", desc: "最新",   group: "Suno" },
+  { value: "kie_suno_v5",       label: "Suno v5（kie）",   desc: "最高质量", group: "Suno" },
+  { value: "kie_suno_v4_5plus", label: "Suno v4.5 PLUS（kie）", desc: "增强版", group: "Suno" },
+  { value: "kie_suno_v4_5",     label: "Suno v4.5（kie）", desc: "旗舰",   group: "Suno" },
+  { value: "kie_suno_v4",       label: "Suno v4（kie）",   desc: "经典",   group: "Suno" },
 ];
 
 function musicModelIsMiniMax(m?: string): boolean {
@@ -306,14 +306,16 @@ function ModelSelect({ models, value, onChange }: {
   value?: string;
   onChange: (v: string) => void;
 }) {
-  // 用统一的 ModelPicker（分色来源平台标签），与脚本/图像/视频节点一致。
-  // 来源平台：kie_* → Kie，其余 Suno/MiniMax 由 Poyo 提供 → Poyo；家族放副标签。
+  // 用统一的 ModelPicker，与脚本/图像/视频节点一致。
+  // 按【厂家】分类（Suno / MiniMax）；【来源平台】(Poyo / Kie) 作副标签；价格来自
+  // docs/kie-pricing.md（kie Suno 生成 = 12 点/次，行276）。其它平台不标价。
   const options = models.map((m) => ({
     value: m.value,
     label: m.label,
-    group: m.value.startsWith("kie_") ? "Kie" : "Poyo",
-    family: m.group,
+    group: m.group,                                          // 厂家：Suno / MiniMax
+    family: m.value.startsWith("kie_") ? "Kie" : "Poyo",     // 来源平台
     caps: [m.desc],
+    costLabel: m.value.startsWith("kie_") ? "12 点/次" : undefined,
   }));
   return (
     <div>
