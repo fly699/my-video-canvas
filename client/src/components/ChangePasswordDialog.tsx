@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { createPortal } from "react-dom";
 import { toast } from "sonner";
 import { KeyRound, X, Loader2 } from "lucide-react";
 
@@ -43,7 +44,9 @@ export function ChangePasswordDialog({ open, onClose }: { open: boolean; onClose
     color: "var(--c-t1)", outline: "none",
   };
 
-  return (
+  // 必须 portal 到 body：否则若挂在带 transform 的祖先（画布顶栏等）下，
+  // position:fixed 会相对该祖先定位，导致弹窗错位/被截断。
+  return createPortal((
     <div onMouseDown={close} style={{ position: "fixed", inset: 0, zIndex: 100000, background: "oklch(0 0 0 / 0.5)", display: "flex", alignItems: "center", justifyContent: "center", padding: 16 }}>
       <div onMouseDown={(e) => e.stopPropagation()} style={{ width: 360, maxWidth: "100%", background: "var(--c-base)", border: "1px solid var(--c-bd2)", borderRadius: 14, boxShadow: "0 12px 40px oklch(0 0 0 / 0.5)", padding: 18 }}>
         <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 14 }}>
@@ -65,5 +68,5 @@ export function ChangePasswordDialog({ open, onClose }: { open: boolean; onClose
         </div>
       </div>
     </div>
-  );
+  ), document.body);
 }
