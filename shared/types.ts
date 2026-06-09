@@ -473,6 +473,8 @@ export interface GroupNodeData {
   color?: string;
   collapsed?: boolean;
   childIds?: string[];
+  /** 折叠成小条前的容器高度，展开时恢复（见 toggleGroupCollapsed）。 */
+  expandedHeight?: number;
 }
 
 export interface ClipNodeData {
