@@ -257,14 +257,16 @@ const SUPPORTS_NEGATIVE_PROMPT = new Set<string>([
   "poyo_seedance",
   "poyo_kling_o3_std", "poyo_kling_o3_pro", "poyo_kling_o3_4k",
   "poyo_kling21_std", "poyo_kling21_pro", "poyo_kling25_turbo",
+  // kie: Kling 2.5 Turbo + Wan 2.5 document negative_prompt.
+  "kie_kling25turbo_t2v", "kie_kling25turbo_i2v", "kie_wan25_t2v", "kie_wan25_i2v",
 ]);
 
 // Multi-modal reference (docs/poyo-video-api.md §六): models that accept reference
 // videos / audios on the SAME wire model. Only Seedance-2 qualifies — Wan 2.7's
 // reference mode is a separate wire model not yet mapped. Collected from connected
 // upstream `asset` nodes (video / audio) → reference_video_urls / reference_audio_urls.
-const SUPPORTS_REF_VIDEO = new Set<string>(["poyo_seedance", "poyo_seedance2_fast"]);
-const SUPPORTS_REF_AUDIO = new Set<string>(["poyo_seedance", "poyo_seedance2_fast"]);
+const SUPPORTS_REF_VIDEO = new Set<string>(["poyo_seedance", "poyo_seedance2_fast", "kie_seedance2", "kie_seedance2_fast"]);
+const SUPPORTS_REF_AUDIO = new Set<string>(["poyo_seedance", "poyo_seedance2_fast", "kie_seedance2", "kie_seedance2_fast"]);
 
 // ── Reusable param sets for the expanded model catalog ──
 const AR_3 = [{ value: "16:9", label: "16:9 横屏" }, { value: "9:16", label: "9:16 竖屏" }, { value: "1:1", label: "1:1 方形" }];
@@ -437,11 +439,13 @@ const KIE_WAN25_T2V_PARAMS: ParamDef[] = [
   { type: "select", key: "resolution", label: "分辨率", default: "1080p", options: KIE_RES_WAN },
   { type: "select", key: "aspect_ratio", label: "宽高比", default: "16:9", options: AR_3 },
   { type: "select", key: "duration", label: "时长（秒）", default: 5, options: DUR_5_10 },
+  { type: "toggle", key: "enable_prompt_expansion", label: "提示词扩写", default: false },
   seedDef,
 ];
 const KIE_WAN25_I2V_PARAMS: ParamDef[] = [
   { type: "select", key: "resolution", label: "分辨率", default: "1080p", options: KIE_RES_WAN },
   { type: "select", key: "duration", label: "时长（秒）", default: 5, options: DUR_5_10 },
+  { type: "toggle", key: "enable_prompt_expansion", label: "提示词扩写", default: false },
   seedDef,
 ];
 const KIE_WAN26_PARAMS: ParamDef[] = [

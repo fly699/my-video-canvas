@@ -35,6 +35,12 @@ export interface KieVideoSpec {
   /** Reference-image input field + arity, or null for text-only models.
    *  `top` = sits at body top-level (Veo) instead of inside `input`. */
   ref?: { key: string; array: boolean; top?: boolean; required?: boolean };
+  /** Model accepts `negative_prompt` (Kling Turbo / Wan 2.5) — fed from the
+   *  node's negativePrompt field (docs/kie-api.md). */
+  negPrompt?: boolean;
+  /** Seedance-style multimodal: besides first_frame_url, also accepts
+   *  reference_image_urls / reference_video_urls / reference_audio_urls. */
+  multiModal?: boolean;
   /** Authoritative credit note shown in the node UI (from the pricing table). */
   creditNote: string;
 }
@@ -92,19 +98,19 @@ export const KIE_VIDEO_SPECS: Record<string, KieVideoSpec> = {
     params: [
       { key: "duration", type: "str", def: "5" },
       { key: "aspect_ratio", type: "str", def: "16:9" },
-      { key: "negative_prompt", type: "str" },
       { key: "cfg_scale", type: "num" },
     ],
+    negPrompt: true,
     creditNote: "5s 42 / 10s 84 点·条",
   },
   kie_kling25turbo_i2v: {
     wire: "kling/v2-5-turbo-image-to-video-pro", endpoint: "jobs", label: "Kling 2.5 Turbo 图生视频", family: "Kling",
     params: [
       { key: "duration", type: "str", def: "5" },
-      { key: "negative_prompt", type: "str" },
       { key: "cfg_scale", type: "num" },
     ],
     ref: { key: "image_url", array: false, required: true },
+    negPrompt: true,
     creditNote: "5s 42 / 10s 84 点·条",
   },
 
@@ -115,9 +121,10 @@ export const KIE_VIDEO_SPECS: Record<string, KieVideoSpec> = {
       { key: "duration", type: "str", def: "5" },
       { key: "aspect_ratio", type: "str", def: "16:9" },
       { key: "resolution", type: "str", def: "1080p" },
-      { key: "negative_prompt", type: "str" },
+      { key: "enable_prompt_expansion", type: "bool" },
       { key: "seed", type: "num" },
     ],
+    negPrompt: true,
     creditNote: "5s 720p60/1080p100 · 10s 720p120/1080p200 点",
   },
   kie_wan25_i2v: {
@@ -125,10 +132,11 @@ export const KIE_VIDEO_SPECS: Record<string, KieVideoSpec> = {
     params: [
       { key: "duration", type: "str", def: "5" },
       { key: "resolution", type: "str", def: "1080p" },
-      { key: "negative_prompt", type: "str" },
+      { key: "enable_prompt_expansion", type: "bool" },
       { key: "seed", type: "num" },
     ],
     ref: { key: "image_url", array: false, required: true },
+    negPrompt: true,
     creditNote: "5s 720p60/1080p100 · 10s 720p120/1080p200 点",
   },
   // ── Wan 2.6 ──
@@ -181,6 +189,7 @@ export const KIE_VIDEO_SPECS: Record<string, KieVideoSpec> = {
       { key: "seed", type: "num" },
     ],
     ref: { key: "first_frame_url", array: false },
+    multiModal: true,
     creditNote: "480p 19 / 720p 41 / 1080p 102 点·秒（无视频输入）",
   },
   kie_seedance2_fast: {
@@ -193,6 +202,7 @@ export const KIE_VIDEO_SPECS: Record<string, KieVideoSpec> = {
       { key: "seed", type: "num" },
     ],
     ref: { key: "first_frame_url", array: false },
+    multiModal: true,
     creditNote: "480p 15.5 / 720p 33 点·秒（无视频输入）",
   },
 };
@@ -223,6 +233,11 @@ export interface KieVideoSubmitOptions {
   apiKey: string;
   /** Coalesced reference image URLs (caller already validated + made public). */
   referenceImageUrls?: string[];
+  /** Multimodal references (Seedance only). */
+  referenceVideoUrls?: string[];
+  referenceAudioUrls?: string[];
+  /** Negative prompt (Kling Turbo / Wan 2.5 only — ignored by other models). */
+  negativePrompt?: string;
   params?: Record<string, unknown>;
   callBackUrl?: string;
 }
@@ -245,6 +260,9 @@ export async function submitKieVideo(opts: KieVideoSubmitOptions): Promise<{ ext
     if (val !== undefined) bag[p.key] = val;
   }
 
+  // Negative prompt only for models that document it.
+  if (spec.negPrompt && opts.negativePrompt?.trim()) bag.negative_prompt = opts.negativePrompt.trim();
+
   // Reference image: single string vs array, top-level (Veo) vs inside input.
   const refValue = spec.ref ? (spec.ref.array ? refs : refs[0]) : undefined;
   const hasRef = spec.ref && (spec.ref.array ? refs.length > 0 : !!refs[0]);
@@ -261,6 +279,15 @@ export async function submitKieVideo(opts: KieVideoSubmitOptions): Promise<{ ext
     // Unified jobs: params nested under `input`.
     const input: Record<string, unknown> = { prompt: opts.prompt, ...bag };
     if (hasRef && spec.ref) input[spec.ref.key] = refValue;
+    // Seedance multimodal: first_frame_url carries refs[0] (above); also pass the
+    // full reference image/video/audio lists when present (docs/kie-api.md).
+    if (spec.multiModal) {
+      if (refs.length > 0) input.reference_image_urls = refs;
+      const vids = (opts.referenceVideoUrls ?? []).filter(Boolean);
+      const auds = (opts.referenceAudioUrls ?? []).filter(Boolean);
+      if (vids.length) input.reference_video_urls = vids;
+      if (auds.length) input.reference_audio_urls = auds;
+    }
     url = `${KIE_BASE_URL}/api/v1/jobs/createTask`;
     body = { model: spec.wire, input };
     if (opts.callBackUrl) body.callBackUrl = opts.callBackUrl;
