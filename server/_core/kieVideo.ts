@@ -26,7 +26,7 @@ export interface KieVideoSpec {
   /** UI provider value persisted on video_tasks rows (kie_*). */
   wire: string;
   /** Upstream endpoint family. */
-  endpoint: "jobs" | "veo";
+  endpoint: "jobs" | "veo" | "runway";
   label: string;
   family: string;
   /** Allow-listed input params copied from the node's `params` (with defaults
@@ -41,6 +41,12 @@ export interface KieVideoSpec {
   /** Seedance-style multimodal: besides first_frame_url, also accepts
    *  reference_image_urls / reference_video_urls / reference_audio_urls. */
   multiModal?: boolean;
+  /** Source-video input field (motion-control / Wan Animate). Filled from the
+   *  node's connected video upstream (referenceVideoUrls). */
+  videoRef?: { key: string; array: boolean };
+  /** Driving-audio input field (Kling Avatar talking-head). Filled from the
+   *  node's connected audio upstream (referenceAudioUrls[0]). */
+  audioRef?: { key: string };
   /** Authoritative credit note shown in the node UI (from the pricing table). */
   creditNote: string;
 }
@@ -318,6 +324,67 @@ export const KIE_VIDEO_SPECS: Record<string, KieVideoSpec> = {
     ref: { key: "image_url", array: false, required: true },
     creditNote: "720p 16 / 1080p 32 点·秒",
   },
+  // ── 第三批：特殊输入（动作控制 / 数字人 / 替身）──
+  kie_kling26_motion: {
+    wire: "kling-2.6/motion-control", endpoint: "jobs", label: "Kling 2.6 动作控制", family: "Kling",
+    params: [
+      { key: "character_orientation", type: "str", def: "video" },
+      { key: "mode", type: "str", def: "720p" },
+    ],
+    ref: { key: "input_urls", array: true, required: true },
+    videoRef: { key: "video_urls", array: true },
+    creditNote: "720p 8 / 1080p 12 点·秒",
+  },
+  kie_kling30_motion: {
+    wire: "kling-3.0/motion-control", endpoint: "jobs", label: "Kling 3.0 动作控制", family: "Kling",
+    params: [
+      { key: "mode", type: "str", def: "720p" },
+      { key: "character_orientation", type: "str", def: "video" },
+      { key: "background_source", type: "str", def: "input_video" },
+    ],
+    ref: { key: "input_urls", array: true, required: true },
+    videoRef: { key: "video_urls", array: true },
+    creditNote: "720p 9 / 1080p 15 点·秒",
+  },
+  kie_kling_avatar_std: {
+    wire: "kling/ai-avatar-standard", endpoint: "jobs", label: "Kling 数字人 标准", family: "Kling",
+    params: [],
+    ref: { key: "image_url", array: false, required: true },
+    audioRef: { key: "audio_url" },
+    creditNote: "7 点·秒",
+  },
+  kie_kling_avatar_pro: {
+    wire: "kling/ai-avatar-pro", endpoint: "jobs", label: "Kling 数字人 专业", family: "Kling",
+    params: [],
+    ref: { key: "image_url", array: false, required: true },
+    audioRef: { key: "audio_url" },
+    creditNote: "14 点·秒",
+  },
+  kie_wan_animate_move: {
+    wire: "wan/2-2-animate-move", endpoint: "jobs", label: "Wan 2.2 Animate 动作迁移", family: "Wan",
+    params: [{ key: "resolution", type: "str", def: "480p" }],
+    ref: { key: "image_url", array: false, required: true },
+    videoRef: { key: "video_url", array: false },
+    creditNote: "480p 7 / 580p 12 / 720p 15 点·条",
+  },
+  kie_wan_animate_replace: {
+    wire: "wan/2-2-animate-replace", endpoint: "jobs", label: "Wan 2.2 Animate 角色替换", family: "Wan",
+    params: [{ key: "resolution", type: "str", def: "480p" }],
+    ref: { key: "image_url", array: false, required: true },
+    videoRef: { key: "video_url", array: false },
+    creditNote: "480p 7 / 580p 12 / 720p 15 点·条",
+  },
+  // ── Runway（专属端点 /api/v1/runway/generate；轮询 /record-detail，响应形态不同）──
+  kie_runway45: {
+    wire: "runway-gen-4.5", endpoint: "runway", label: "Runway Gen 4.5", family: "Runway",
+    params: [
+      { key: "duration", type: "num", def: 5 },
+      { key: "quality", type: "str", def: "720p" },
+      { key: "aspectRatio", type: "str", def: "16:9" },
+    ],
+    ref: { key: "imageUrl", array: false }, // 可选：有图则图生视频
+    creditNote: "5s 75 / 10s 150 点·条",
+  },
 };
 
 export function isKieVideoProvider(provider: string): boolean {
@@ -382,7 +449,13 @@ export async function submitKieVideo(opts: KieVideoSubmitOptions): Promise<{ ext
 
   let url: string;
   let body: Record<string, unknown>;
-  if (spec.endpoint === "veo") {
+  if (spec.endpoint === "runway") {
+    // Runway: dedicated endpoint, flat camelCase body, NO model field.
+    url = `${KIE_BASE_URL}/api/v1/runway/generate`;
+    body = { prompt: opts.prompt, ...bag }; // duration / quality / aspectRatio
+    if (refs[0]) body.imageUrl = refs[0]; // 有图 → 图生视频（覆盖 aspectRatio 推断）
+    if (opts.callBackUrl) body.callBackUrl = opts.callBackUrl;
+  } else if (spec.endpoint === "veo") {
     // Veo: flat body, params + prompt at top level.
     url = `${KIE_BASE_URL}/api/v1/veo/generate`;
     body = { model: spec.wire, prompt: opts.prompt, ...bag };
@@ -400,6 +473,18 @@ export async function submitKieVideo(opts: KieVideoSubmitOptions): Promise<{ ext
       const auds = (opts.referenceAudioUrls ?? []).filter(Boolean);
       if (vids.length) input.reference_video_urls = vids;
       if (auds.length) input.reference_audio_urls = auds;
+    }
+    // Source-video input (motion-control / Wan Animate) — required.
+    if (spec.videoRef) {
+      const vids = (opts.referenceVideoUrls ?? []).map((u) => u?.trim()).filter((u): u is string => !!u);
+      if (vids.length === 0) throw new Error(`${spec.label} 需要源视频，请连线一个视频节点（剪辑/视频/素材）`);
+      input[spec.videoRef.key] = spec.videoRef.array ? vids : vids[0];
+    }
+    // Driving-audio input (Kling Avatar) — required.
+    if (spec.audioRef) {
+      const auds = (opts.referenceAudioUrls ?? []).map((u) => u?.trim()).filter((u): u is string => !!u);
+      if (auds.length === 0) throw new Error(`${spec.label} 需要音频，请连线一个音频节点`);
+      input[spec.audioRef.key] = auds[0];
     }
     url = `${KIE_BASE_URL}/api/v1/jobs/createTask`;
     body = { model: spec.wire, input };
@@ -443,6 +528,25 @@ function parseUrls(v: unknown): string[] {
 export async function checkKieVideoStatus(provider: string, externalTaskId: string, apiKey: string): Promise<KieVideoStatus> {
   const spec = KIE_VIDEO_SPECS[provider];
   if (!spec) throw new Error(`未知 kie 视频模型：${provider}`);
+
+  // Runway has its OWN record-detail endpoint with a different response shape
+  // (data.state + data.videoInfo.videoUrl, not successFlag + resultUrls).
+  if (spec.endpoint === "runway") {
+    const r = await fetch(`${KIE_BASE_URL}/api/v1/runway/record-detail?taskId=${encodeURIComponent(externalTaskId)}`, {
+      headers: { Authorization: `Bearer ${apiKey}` }, signal: AbortSignal.timeout(15_000),
+    });
+    if (!r.ok) throw new Error(`kie 视频状态查询失败 (${r.status})`);
+    const b = (await r.json()) as { code?: number; data?: { state?: string; failMsg?: string; videoInfo?: { videoUrl?: string } } };
+    const st = b.data?.state;
+    if (st === "success") {
+      const u = b.data?.videoInfo?.videoUrl;
+      return u ? { status: "finished", resultVideoUrls: [u] }
+        : { status: "failed", errorMessage: "[CHARGED] Runway 已生成但未返回 URL（积分已扣，请勿重试）" };
+    }
+    if (st === "fail" || st === "failed") return { status: "failed", errorMessage: b.data?.failMsg ?? "生成失败" };
+    return { status: "processing" }; // wait / queueing / generating
+  }
+
   const base = spec.endpoint === "veo"
     ? `${KIE_BASE_URL}/api/v1/veo/record-info?taskId=`
     : `${KIE_BASE_URL}/api/v1/jobs/recordInfo?taskId=`;

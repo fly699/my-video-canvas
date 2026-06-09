@@ -51,6 +51,9 @@ const REQUIRES_REFERENCE_IMAGE = new Set<string>([
   // kie 第二批 i2v（需起始帧/参考图）
   "kie_kling21_std", "kie_kling21_pro", "kie_wan22_i2v", "kie_wan27_i2v",
   "kie_hailuo02_pro_i2v", "kie_grok_i2v", "kie_happyhorse_i2v",
+  // kie 第三批（图 + 视频/音频，至少需要图片）
+  "kie_kling26_motion", "kie_kling30_motion", "kie_kling_avatar_std", "kie_kling_avatar_pro",
+  "kie_wan_animate_move", "kie_wan_animate_replace",
 ]);
 
 // Heuristic: only allow http(s) / same-origin paths to render. Reject data:/blob:/javascript:.
@@ -197,6 +200,14 @@ const PROVIDERS: { value: VideoProvider; label: string; group: string; family: s
   { value: "kie_grok_i2v",            label: "Grok Imagine 图生",   group: "Kie", family: "Grok",     costLabel: "6s 30/10s 40 点",  caps: ["I2V", "6/10s"] },
   { value: "kie_happyhorse_t2v",      label: "HappyHorse 文生视频", group: "Kie", family: "HappyHorse", costLabel: "720p 16/1080p 32 点·秒", caps: ["T2V", "1080p"] },
   { value: "kie_happyhorse_i2v",      label: "HappyHorse 图生视频", group: "Kie", family: "HappyHorse", costLabel: "720p 16/1080p 32 点·秒", caps: ["I2V", "1080p"] },
+  // ── kie 视频 第三批：特殊输入（图+视频 / 图+音频）──
+  { value: "kie_kling26_motion",      label: "Kling 2.6 动作控制",  group: "Kie", family: "Kling",      costLabel: "720p 8/1080p 12 点·秒",  caps: ["图+源视频", "动作迁移"] },
+  { value: "kie_kling30_motion",      label: "Kling 3.0 动作控制",  group: "Kie", family: "Kling",      costLabel: "720p 9/1080p 15 点·秒",  caps: ["图+源视频", "动作迁移"] },
+  { value: "kie_kling_avatar_std",    label: "Kling 数字人 标准",   group: "Kie", family: "Kling",      costLabel: "7 点·秒",                caps: ["图+音频", "对口型"] },
+  { value: "kie_kling_avatar_pro",    label: "Kling 数字人 专业",   group: "Kie", family: "Kling",      costLabel: "14 点·秒",               caps: ["图+音频", "对口型"] },
+  { value: "kie_wan_animate_move",    label: "Wan Animate 动作迁移", group: "Kie", family: "Wan",        costLabel: "480p 7/720p 15 点",      caps: ["图+源视频"] },
+  { value: "kie_wan_animate_replace", label: "Wan Animate 角色替换", group: "Kie", family: "Wan",        costLabel: "480p 7/720p 15 点",      caps: ["图+源视频"] },
+  { value: "kie_runway45",            label: "Runway Gen 4.5",      group: "Kie", family: "Runway",     costLabel: "5s 75/10s 150 点",       caps: ["T2V", "I2V", "5/10s"] },
   { value: "mock",                    label: "Mock 测试",           group: "Dev",        family: "Dev", costLabel: "免费",       caps: ["测试"] },
 ];
 
@@ -284,8 +295,12 @@ const SUPPORTS_NEGATIVE_PROMPT = new Set<string>([
 // videos / audios on the SAME wire model. Only Seedance-2 qualifies — Wan 2.7's
 // reference mode is a separate wire model not yet mapped. Collected from connected
 // upstream `asset` nodes (video / audio) → reference_video_urls / reference_audio_urls.
-const SUPPORTS_REF_VIDEO = new Set<string>(["poyo_seedance", "poyo_seedance2_fast", "kie_seedance2", "kie_seedance2_fast"]);
-const SUPPORTS_REF_AUDIO = new Set<string>(["poyo_seedance", "poyo_seedance2_fast", "kie_seedance2", "kie_seedance2_fast"]);
+const SUPPORTS_REF_VIDEO = new Set<string>(["poyo_seedance", "poyo_seedance2_fast", "kie_seedance2", "kie_seedance2_fast",
+  // 动作控制 / Animate：需连线源视频
+  "kie_kling26_motion", "kie_kling30_motion", "kie_wan_animate_move", "kie_wan_animate_replace"]);
+const SUPPORTS_REF_AUDIO = new Set<string>(["poyo_seedance", "poyo_seedance2_fast", "kie_seedance2", "kie_seedance2_fast",
+  // 数字人：需连线音频
+  "kie_kling_avatar_std", "kie_kling_avatar_pro"]);
 
 // ── Reusable param sets for the expanded model catalog ──
 const AR_3 = [{ value: "16:9", label: "16:9 横屏" }, { value: "9:16", label: "9:16 竖屏" }, { value: "1:1", label: "1:1 方形" }];
@@ -535,6 +550,26 @@ const KIE_HAPPYHORSE_PARAMS: ParamDef[] = [
   { type: "select", key: "aspect_ratio", label: "宽高比", default: "16:9", options: AR_5 },
   { type: "range", key: "duration", label: "时长（秒）", min: 3, max: 15, step: 1, default: 5, unit: "s" }, seedDef,
 ];
+// 第三批：动作控制 / Animate
+const MODE_720_1080 = [{ value: "720p", label: "720p" }, { value: "1080p", label: "1080p" }];
+const ORIENT_OPTS = [{ value: "video", label: "跟随源视频" }, { value: "image", label: "跟随图片" }];
+const KIE_KLING26_MOTION_PARAMS: ParamDef[] = [
+  { type: "select", key: "mode", label: "分辨率", default: "720p", options: MODE_720_1080 },
+  { type: "select", key: "character_orientation", label: "朝向", default: "video", options: ORIENT_OPTS },
+];
+const KIE_KLING30_MOTION_PARAMS: ParamDef[] = [
+  { type: "select", key: "mode", label: "分辨率", default: "720p", options: MODE_720_1080 },
+  { type: "select", key: "character_orientation", label: "朝向", default: "video", options: ORIENT_OPTS },
+  { type: "select", key: "background_source", label: "背景来源", default: "input_video", options: [{ value: "input_video", label: "源视频" }, { value: "input_image", label: "图片" }] },
+];
+const KIE_WAN_ANIMATE_PARAMS: ParamDef[] = [
+  { type: "select", key: "resolution", label: "分辨率", default: "480p", options: [{ value: "480p", label: "480p" }, { value: "580p", label: "580p" }, { value: "720p", label: "720p" }] },
+];
+const KIE_RUNWAY_PARAMS: ParamDef[] = [
+  { type: "select", key: "duration", label: "时长（秒）", default: 5, options: DUR_5_10 },
+  { type: "select", key: "quality", label: "画质", default: "720p", options: MODE_720_1080 },
+  { type: "select", key: "aspectRatio", label: "宽高比", default: "16:9", options: AR_5 },
+];
 
 const PROVIDER_PARAMS: Record<string, ParamDef[]> = {
   poyo_seedance: [
@@ -672,6 +707,13 @@ const PROVIDER_PARAMS: Record<string, ParamDef[]> = {
   kie_grok_i2v: KIE_GROK_I2V_PARAMS,
   kie_happyhorse_t2v: KIE_HAPPYHORSE_PARAMS,
   kie_happyhorse_i2v: KIE_HAPPYHORSE_PARAMS,
+  kie_kling26_motion: KIE_KLING26_MOTION_PARAMS,
+  kie_kling30_motion: KIE_KLING30_MOTION_PARAMS,
+  kie_kling_avatar_std: [],
+  kie_kling_avatar_pro: [],
+  kie_wan_animate_move: KIE_WAN_ANIMATE_PARAMS,
+  kie_wan_animate_replace: KIE_WAN_ANIMATE_PARAMS,
+  kie_runway45: KIE_RUNWAY_PARAMS,
   mock: [],
 };
 
