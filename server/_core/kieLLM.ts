@@ -40,10 +40,20 @@ export const KIE_LLM_MODELS: Record<string, KieLLMSpec> = {
   // Gemini (OpenAI chat/completions, model in path)
   kie_gemini_3_pro:     { model: "gemini-3-pro", path: "/gemini-3-pro/v1/chat/completions", format: "openai-chat", label: "Gemini 3 Pro（kie）", provider: "Gemini", creditNote: "入 100 / 出 700 点·百万tokens" },
   kie_gemini_3_flash:   { model: "gemini-3-flash", path: "/gemini-3-flash/v1/chat/completions", format: "openai-chat", label: "Gemini 3 Flash（kie）", provider: "Gemini", creditNote: "入 30 / 出 180 点·百万tokens" },
-  // GPT (5.5/5.4 = Responses API; 5.2 = chat/completions)
+  kie_gemini_31_pro:    { model: "gemini-3.1-pro", path: "/gemini-3.1-pro/v1/chat/completions", format: "openai-chat", label: "Gemini 3.1 Pro（kie）", provider: "Gemini", creditNote: "入 100 / 出 700 点·百万tokens" },
+  kie_gemini_25_pro:    { model: "gemini-2.5-pro", path: "/gemini-2.5-pro/v1/chat/completions", format: "openai-chat", label: "Gemini 2.5 Pro（kie）", provider: "Gemini", creditNote: "入 76 / 出 600 点·百万tokens" },
+  kie_gemini_25_flash:  { model: "gemini-2.5-flash", path: "/gemini-2.5-flash/v1/chat/completions", format: "openai-chat", label: "Gemini 2.5 Flash（kie）", provider: "Gemini", creditNote: "入 18 / 出 150 点·百万tokens" },
+  kie_gemini_35_flash:  { model: "gemini-3-5-flash", path: "/gemini-3-5-flash-openai/v1/chat/completions", format: "openai-chat", label: "Gemini 3.5 Flash（kie）", provider: "Gemini", creditNote: "入 90 / 出 540 点·百万tokens" },
+  // GPT (5.5/5.4 = Responses API; 5.2 = chat/completions; codex = /api/v1/responses)
   kie_gpt_5_5:          { model: "gpt-5-5", path: "/codex/v1/responses", format: "responses", label: "GPT 5.5（kie）", provider: "GPT", creditNote: "入 280 / 出 1680 点·百万tokens" },
   kie_gpt_5_4:          { model: "gpt-5-4", path: "/codex/v1/responses", format: "responses", label: "GPT 5.4（kie）", provider: "GPT", creditNote: "入 140 / 出 1120 点·百万tokens" },
   kie_gpt_5_2:          { model: "gpt-5-2", path: "/gpt-5-2/v1/chat/completions", format: "openai-chat", label: "GPT 5.2（kie）", provider: "GPT", creditNote: "入 87.5 / 出 700 点·百万tokens" },
+  // GPT Codex（统一 /api/v1/responses，model 在 body）
+  kie_gpt_5_codex:      { model: "gpt-5-codex", path: "/api/v1/responses", format: "responses", label: "GPT 5 Codex（kie）", provider: "GPT", creditNote: "入 100 / 出 800 点·百万tokens" },
+  kie_gpt_51_codex:     { model: "gpt-5.1-codex", path: "/api/v1/responses", format: "responses", label: "GPT 5.1 Codex（kie）", provider: "GPT", creditNote: "入 100 / 出 800 点·百万tokens" },
+  kie_gpt_52_codex:     { model: "gpt-5.2-codex", path: "/api/v1/responses", format: "responses", label: "GPT 5.2 Codex（kie）", provider: "GPT", creditNote: "入 140 / 出 1120 点·百万tokens" },
+  kie_gpt_53_codex:     { model: "gpt-5.3-codex", path: "/api/v1/responses", format: "responses", label: "GPT 5.3 Codex（kie）", provider: "GPT", creditNote: "入 140 / 出 1120 点·百万tokens" },
+  kie_gpt_54_codex:     { model: "gpt-5.4-codex", path: "/api/v1/responses", format: "responses", label: "GPT 5.4 Codex（kie）", provider: "GPT", creditNote: "入 140 / 出 1120 点·百万tokens" },
 };
 
 export function isKieLLMModel(model?: string): boolean {

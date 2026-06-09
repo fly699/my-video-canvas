@@ -59,6 +59,15 @@ export const LLM_MODELS: readonly LLMModelMeta[] = [
   { id: "kie_gpt_5_5",          label: "GPT 5.5（kie）",           short: "GPT5.5", family: "GPT",    tag: "kie·旗舰", provider: "Kie", color: "oklch(0.62 0.16 240)", costTier: "高", vision: true, costNote: "入280/出1680" },
   { id: "kie_gpt_5_4",          label: "GPT 5.4（kie）",           short: "GPT5.4", family: "GPT",    tag: "kie",     provider: "Kie", color: "oklch(0.62 0.16 240)", costTier: "中", vision: true, costNote: "入140/出1120" },
   { id: "kie_gpt_5_2",          label: "GPT 5.2（kie）",           short: "GPT5.2", family: "GPT",    tag: "kie",     provider: "Kie", color: "oklch(0.62 0.16 240)", costTier: "中", vision: true, costNote: "入87.5/出700" },
+  { id: "kie_gemini_31_pro",    label: "Gemini 3.1 Pro（kie）",    short: "G31Pro", family: "Gemini", tag: "kie",     provider: "Kie", color: "oklch(0.68 0.18 160)", costTier: "中", vision: true, costNote: "入100/出700" },
+  { id: "kie_gemini_25_pro",    label: "Gemini 2.5 Pro（kie）",    short: "G25Pro", family: "Gemini", tag: "kie",     provider: "Kie", color: "oklch(0.68 0.18 160)", costTier: "中", vision: true, costNote: "入76/出600" },
+  { id: "kie_gemini_25_flash",  label: "Gemini 2.5 Flash（kie）",  short: "G25Fl",  family: "Gemini", tag: "kie·快",   provider: "Kie", color: "oklch(0.68 0.18 160)", costTier: "低", vision: true, costNote: "入18/出150" },
+  { id: "kie_gemini_35_flash",  label: "Gemini 3.5 Flash（kie）",  short: "G35Fl",  family: "Gemini", tag: "kie",     provider: "Kie", color: "oklch(0.68 0.18 160)", costTier: "中", vision: true, costNote: "入90/出540" },
+  { id: "kie_gpt_5_codex",      label: "GPT 5 Codex（kie）",       short: "Codex5", family: "GPT",    tag: "kie·代码", provider: "Kie", color: "oklch(0.62 0.16 240)", costTier: "中", costNote: "入100/出800" },
+  { id: "kie_gpt_51_codex",     label: "GPT 5.1 Codex（kie）",     short: "Cdx51",  family: "GPT",    tag: "kie·代码", provider: "Kie", color: "oklch(0.62 0.16 240)", costTier: "中", costNote: "入100/出800" },
+  { id: "kie_gpt_52_codex",     label: "GPT 5.2 Codex（kie）",     short: "Cdx52",  family: "GPT",    tag: "kie·代码", provider: "Kie", color: "oklch(0.62 0.16 240)", costTier: "高", costNote: "入140/出1120" },
+  { id: "kie_gpt_53_codex",     label: "GPT 5.3 Codex（kie）",     short: "Cdx53",  family: "GPT",    tag: "kie·代码", provider: "Kie", color: "oklch(0.62 0.16 240)", costTier: "高", costNote: "入140/出1120" },
+  { id: "kie_gpt_54_codex",     label: "GPT 5.4 Codex（kie）",     short: "Cdx54",  family: "GPT",    tag: "kie·代码", provider: "Kie", color: "oklch(0.62 0.16 240)", costTier: "高", costNote: "入140/出1120" },
 ] as const;
 
 // Legacy export name — AIChatNode and scriptCreationTemplates reference CHAT_MODELS.
@@ -188,6 +197,9 @@ export const IMAGE_MODELS: readonly ImageModelMeta[] = [
   { value: "kie_wan27_image_pro",   label: "Wan 2.7 Image Pro",  desc: "Alibaba · 高质量",  group: "Kie", family: "Wan",         provider: "Kie", costNote: "12 点/张", caps: ["T2I"] },
   { value: "kie_ideogram_v3",       label: "Ideogram V3",        desc: "排版/文字强",       group: "Kie", family: "Ideogram",    provider: "Kie", costNote: "3.5-10 点/张", caps: ["T2I"] },
   { value: "kie_qwen_image",        label: "Qwen Image",         desc: "通义 · 中文友好",   group: "Kie", family: "Qwen",        provider: "Kie", costNote: "4 点/百万像素", caps: ["T2I"] },
+  { value: "kie_qwen_image_i2i",    label: "Qwen Image 图生图",  desc: "图生图 · 需参考图",  group: "Kie", family: "Qwen",        provider: "Kie", costNote: "4 点/百万像素", caps: ["I2I"], requiresRef: true },
+  { value: "kie_qwen_image_edit",   label: "Qwen Image 编辑",    desc: "编辑 · 需参考图",    group: "Kie", family: "Qwen",        provider: "Kie", costNote: "5 点/百万像素", caps: ["I2I", "编辑"], requiresRef: true },
+  { value: "kie_qwen2_image_edit",  label: "Qwen2 Image 编辑",   desc: "编辑 · 需参考图",    group: "Kie", family: "Qwen",        provider: "Kie", costNote: "5.6 点/张", caps: ["I2I", "编辑"], requiresRef: true },
 ] as const;
 
 export type ChatModelId = typeof CHAT_MODELS[number]["id"];

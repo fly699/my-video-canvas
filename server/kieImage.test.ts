@@ -24,7 +24,7 @@ describe("kie image model map", () => {
   it("每个 id 非空，编辑模型有正确的参考图字段（image_urls vs input_urls）", () => {
     for (const [, spec] of Object.entries(KIE_IMAGE_MODELS)) {
       expect(spec.id.length).toBeGreaterThan(0);
-      expect(["aspect_ratio", "image_size"]).toContain(spec.aspect);
+      expect(["aspect_ratio", "image_size", "image_size_raw"]).toContain(spec.aspect);
     }
     // 编辑模型必须有 ref；Flux-2 / GPT 用 input_urls，Seedream / Nano 用 image_urls（文档约定）。
     expect(KIE_IMAGE_MODELS.kie_nano_banana_edit.ref).toBe("image_urls");

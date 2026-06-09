@@ -325,7 +325,8 @@ export type ImageGenModel =
   // kie.ai — 第二批扩充
   | "kie_nano_banana_2" | "kie_flux2_flex" | "kie_flux2_flex_i2i"
   | "kie_gpt_image_2" | "kie_gpt_image_2_i2i" | "kie_seedream_5lite" | "kie_seedream_5lite_i2i"
-  | "kie_wan27_image" | "kie_wan27_image_pro" | "kie_ideogram_v3" | "kie_qwen_image";
+  | "kie_wan27_image" | "kie_wan27_image_pro" | "kie_ideogram_v3" | "kie_qwen_image"
+  | "kie_qwen_image_i2i" | "kie_qwen_image_edit" | "kie_qwen2_image_edit";
 
 /** UI value strings for every image model — single source for the Zod enum. */
 export const IMAGE_GEN_MODELS = [
@@ -344,6 +345,7 @@ export const IMAGE_GEN_MODELS = [
   "kie_nano_banana_2", "kie_flux2_flex", "kie_flux2_flex_i2i",
   "kie_gpt_image_2", "kie_gpt_image_2_i2i", "kie_seedream_5lite", "kie_seedream_5lite_i2i",
   "kie_wan27_image", "kie_wan27_image_pro", "kie_ideogram_v3", "kie_qwen_image",
+  "kie_qwen_image_i2i", "kie_qwen_image_edit", "kie_qwen2_image_edit",
 ] as const satisfies readonly ImageGenModel[];
 export interface ImageGenNodeData {
   prompt: string;

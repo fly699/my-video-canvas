@@ -16,8 +16,13 @@ import type { GenerateImageOptions, GenerateImageResponse } from "./imageGenerat
 //   - outFmt: whether the model accepts output_format (Google/Nano Banana only).
 export interface KieImageSpec {
   id: string; label: string; family: string;
-  ref?: "image_urls" | "input_urls";
-  aspect: "aspect_ratio" | "image_size";
+  /** 参考图字段名（image_urls/input_urls 数组；image_url 单数见 refSingle）。 */
+  ref?: string;
+  /** ref 字段为单个 URL 字符串（如 Qwen 的 image_url），而非数组。 */
+  refSingle?: boolean;
+  /** aspect 字段：aspect_ratio | image_size(令牌空间,Seedream) | image_size_raw(image_size
+   *  字段但直接放 aspect 值,Qwen2)。 */
+  aspect: "aspect_ratio" | "image_size" | "image_size_raw";
   /** Allowed aspect_ratio enum (verbatim from docs/kie-api.md). The chosen ratio
    *  is clamped to this set; `aspects[0]` is the default. Required for
    *  aspect="aspect_ratio" models (kie 422s on an empty/invalid aspect_ratio). */
@@ -42,6 +47,7 @@ const A_GROK = ["1:1", "2:3", "3:2", "16:9", "9:16"] as const;
 const A_NANO2 = ["1:1", "1:4", "1:8", "2:3", "3:2", "3:4", "4:1", "4:3", "4:5", "5:4", "8:1", "9:16", "16:9", "21:9", "auto"] as const;
 const A_GPT2 = ["auto", "1:1", "3:2", "2:3", "4:3", "3:4", "5:4", "4:5", "16:9", "9:16", "2:1", "1:2", "3:1", "1:3", "21:9", "9:21"] as const;
 const A_WAN27 = ["1:1", "16:9", "4:3", "21:9", "3:4", "9:16", "8:1", "1:8"] as const;
+const A_QWEN2 = ["1:1", "2:3", "3:2", "3:4", "4:3", "9:16", "16:9", "21:9"] as const;
 export const KIE_IMAGE_MODELS: Record<string, KieImageSpec> = {
   // text-to-image
   kie_nano_banana:      { id: "google/nano-banana", label: "Nano Banana", family: "Nano Banana", aspect: "aspect_ratio", aspects: A_NANO, outFmt: true },
@@ -70,6 +76,10 @@ export const KIE_IMAGE_MODELS: Record<string, KieImageSpec> = {
   kie_wan27_image_pro: { id: "wan/2-7-image-pro", label: "Wan 2.7 Image Pro", family: "Wan", aspect: "aspect_ratio", aspects: A_WAN27, fixed: { resolution: "1K" } },
   kie_ideogram_v3:     { id: "ideogram/v3-text-to-image", label: "Ideogram V3", family: "Ideogram", aspect: "image_size" },
   kie_qwen_image:      { id: "qwen/text-to-image", label: "Qwen Image", family: "Qwen", aspect: "image_size" },
+  // ── 特殊端点批：Qwen 图生图/编辑（参考图字段是单数 image_url；Qwen2 用 image_size 放 aspect 值）──
+  kie_qwen_image_i2i:  { id: "qwen/image-to-image", label: "Qwen Image 图生图", family: "Qwen", ref: "image_url", refSingle: true, aspect: "image_size" },
+  kie_qwen_image_edit: { id: "qwen/image-edit", label: "Qwen Image 编辑", family: "Qwen", ref: "image_url", refSingle: true, aspect: "image_size" },
+  kie_qwen2_image_edit:{ id: "qwen2/image-edit", label: "Qwen2 Image 编辑", family: "Qwen", ref: "image_url", refSingle: true, aspect: "image_size_raw", aspects: A_QWEN2 },
 };
 
 // Seedream 4.0 uses `image_size` with a token vocabulary instead of "16:9" ratios.
@@ -103,8 +113,12 @@ export async function generateImageKie(options: GenerateImageOptions): Promise<G
   // OR out-of-enum aspect_ratio (e.g. sending "16:9" to GPT Image which only
   // allows 1:1/2:3/3:2). Clamp the chosen ratio to the model's enum, else default.
   if (spec.aspect === "image_size") {
-    // Seedream 4.0 uses the image_size token space; default square_hd.
+    // Seedream 4.0 / Qwen / Ideogram use the image_size token space; default square_hd.
     input.image_size = (aspect && SEEDREAM_SIZE[aspect]) || "square_hd";
+  } else if (spec.aspect === "image_size_raw") {
+    // Qwen2: image_size field but takes the aspect-ratio VALUE directly (clamped to enum).
+    const allowed = spec.aspects ?? ["1:1"];
+    input.image_size = aspect && allowed.includes(aspect) ? aspect : allowed[0];
   } else {
     const allowed = spec.aspects ?? ["1:1"];
     input.aspect_ratio = aspect && allowed.includes(aspect) ? aspect : allowed[0];
@@ -114,7 +128,7 @@ export async function generateImageKie(options: GenerateImageOptions): Promise<G
   if (spec.ref) {
     const refs = (options.originalImages ?? []).map((o) => o.url).filter((u): u is string => !!u);
     if (refs.length === 0) throw new Error(`${spec.label} 需要参考图，请先连接或上传参考图`);
-    input[spec.ref] = refs; // image_urls (Seedream/Nano) vs input_urls (Flux-2/GPT)
+    input[spec.ref] = spec.refSingle ? refs[0] : refs; // 单数 image_url(Qwen) vs 数组 image_urls/input_urls
   }
 
   // createTask
