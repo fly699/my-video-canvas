@@ -10,6 +10,8 @@ import {
 import { isOwnStorageUrl } from "@/lib/ownStorage";
 import { mediaFetchUrl } from "@/lib/download";
 import { NodeTextArea, NodeInput } from "../NodeTextInput";
+import { PromptDock } from "../PromptDock";
+import { useNodeDocks } from "../../../hooks/useNodeDocks";
 import { LLMModelPicker, LLM_MODELS, type LLMModelId } from "../LLMModelPicker";
 
 interface Props {
@@ -411,6 +413,16 @@ export const AudioNode = memo(function AudioNode({ id, selected, data }: Props) 
   const category: AudioCategory = payload.audioCategory
     ?? (payload.source === "tts" ? "dubbing" : "upload");
 
+  // 顶部「提示词吸附框」(PromptDock)：把本节点真正送去生成的文本按类别汇总，
+  // 节点收缩后也能一眼确认。配音=配音文本、音乐=音乐描述(另有歌词时备注)、音效=音效描述。
+  const promptDock = (() => {
+    if (category === "dubbing") return { text: payload.ttsText ?? "", neg: undefined as string | undefined, label: "配音文本", note: "送去 TTS 合成的文本" };
+    if (category === "music") return { text: payload.musicPrompt ?? "", neg: payload.musicNegativeTags?.trim() || undefined, label: "音乐描述", note: payload.musicLyrics?.trim() ? "AI 音乐描述（另含歌词）" : "AI 音乐描述" };
+    if (category === "sfx") return { text: payload.sfxPrompt ?? "", neg: undefined as string | undefined, label: "音效描述", note: "送去音效生成的描述" };
+    return { text: "", neg: undefined as string | undefined, label: "提示词", note: undefined as string | undefined };
+  })();
+  const docks = useNodeDocks(id, { hasRef: false, hasPrompt: !!promptDock.text.trim() });
+
   const update = useCallback(
     (key: keyof AudioNodeData, value: unknown) => updateNodeData(id, { [key]: value }),
     [id, updateNodeData],
@@ -642,7 +654,21 @@ export const AudioNode = memo(function AudioNode({ id, selected, data }: Props) 
   const expanded = Boolean(selected) || Boolean((payload as { pinned?: boolean }).pinned);
 
   return (
-    <BaseNode id={id} selected={selected} nodeType="audio" title={data.title} minHeight={160} resizable>
+    <BaseNode id={id} selected={selected} nodeType="audio" title={data.title} minHeight={160} resizable
+      onHeaderHoverChange={docks.onHeaderHoverChange}
+      leftDock={
+        <PromptDock
+          open={docks.promptOpen}
+          text={promptDock.text}
+          negText={promptDock.neg}
+          label={promptDock.label}
+          note={promptDock.note}
+          accent={accent}
+          onClose={() => docks.setPromptOpen(false)}
+          onHoverChange={docks.onDockHoverChange}
+          onPin={docks.pinPrompt}
+        />
+      }>
       <div
         style={{
           overflow: "hidden",
