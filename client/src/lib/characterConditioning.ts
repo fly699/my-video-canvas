@@ -95,21 +95,10 @@ export function charDisplayName(p: CharacterNodeData): string {
   return (((p.characterKind ?? "person") === "scene" ? p.sceneName : p.name) ?? "").trim();
 }
 
-// 「@名字」的边界匹配：名字两侧不能再接「名字字符」(字母/数字/下划线/CJK 文字)，
-// 否则会把 @李明 误命中到 @李明华、把 @Bob 误命中到 @Bobby——而 李明华/Bobby 往往
-// 是用户随手打的另一个人名（并非画布角色），导致「凭空多出一个并不在角色库里的人物」。
-// 用 Unicode 词边界把「@名字」锁成完整一段：前面不接名字字符、后面不接名字字符
-// （空格 / 标点 / 行尾 / 另一个 @ 都算边界，下拉插入的「@名字 」天然带空格，正常命中）。
-const NAME_CHAR = "\\p{L}\\p{N}_";
-function mentionRegex(name: string): RegExp {
-  const esc = name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-  return new RegExp(`(?<![${NAME_CHAR}])@${esc}(?![${NAME_CHAR}])`, "gu");
-}
-
-/** prompt 里被「@名字」提及到的角色/场景（去重）。长名优先；用词边界匹配，
- *  避免 @李明 误命中 @李明华、@Bob 误命中 @Bobby。 */
+/** prompt 里被「@名字」提及到的角色/场景（去重）。长名优先：匹配后「消费」掉该段，
+ *  避免 @张三 在 @张三丰 内部被误匹配。 */
 export function mentionedCharacters(prompt: string | undefined, nodes: CharNodeLike[]): CharacterNodeData[] {
-  const scan = prompt ?? "";
+  let scan = prompt ?? "";
   if (!scan.includes("@")) return [];
   const named = nodes
     .filter((n) => n.data.nodeType === "character")
@@ -119,22 +108,23 @@ export function mentionedCharacters(prompt: string | undefined, nodes: CharNodeL
   const out: CharacterNodeData[] = [];
   const seen = new Set<string>();
   for (const { p, name } of named) {
+    const token = "@" + name;
+    if (!scan.includes(token)) continue;
+    scan = scan.split(token).join(" "); // 消费匹配段，短名不再命中长名内部
     if (seen.has(name)) continue;
-    if (!mentionRegex(name).test(scan)) continue; // 边界匹配：整段「@名字」才算
     seen.add(name);
     out.push(p);
   }
   return out;
 }
 
-/** 去掉 prompt 里所有「@名字」字面量（生成改用结构化注入，不让模型看到 "@名字"）。
- *  仅去掉边界匹配到的整段，避免误删 @李明华 里的 @李明。 */
+/** 去掉 prompt 里所有「@名字」字面量（生成改用结构化注入，不让模型看到 "@名字"）。 */
 export function stripCharacterMentions(prompt: string | undefined, nodes: CharNodeLike[]): string {
   let text = prompt ?? "";
   if (!text.includes("@")) return text;
   for (const c of mentionedCharacters(text, nodes)) {
     const name = charDisplayName(c);
-    if (name) text = text.replace(mentionRegex(name), " ");
+    if (name) text = text.split("@" + name).join(" ");
   }
   return text.replace(/[ \t]{2,}/g, " ").replace(/\s+([，,。.!！?？])/g, "$1").trim();
 }
