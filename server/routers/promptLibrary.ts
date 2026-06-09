@@ -27,6 +27,15 @@ function toClient(r: PromptLibraryRow) {
 const slotSchema = z.number().int().min(0).max(9).nullable().optional();
 const slotKindSchema = z.enum(["prompt", "category"]).nullable().optional();
 
+// 设置某 slot 前，清空同用户其它项对该 slot 的占用——保证每个槽位唯一（防 JSON 导入/异常路径
+// 产生「两条都指向同一 slot」的脏数据；客户端 favoriteSlots 只取首个会丢另一条）。
+async function clearSlotOccupant(userId: number, slot: number | null | undefined, exceptId?: number): Promise<void> {
+  if (slot == null) return;
+  for (const r of await db.listPromptLibrary(userId)) {
+    if (r.slot === slot && r.id !== exceptId) await db.updatePromptLibrary(r.id, { slot: null, slotKind: null });
+  }
+}
+
 export const promptLibraryRouter = router({
   list: protectedProcedure.query(async ({ ctx }) => {
     const rows = await db.listPromptLibrary(ctx.user.id);
@@ -45,6 +54,7 @@ export const promptLibraryRouter = router({
     .mutation(async ({ ctx, input }) => {
       const total = (await db.listPromptLibrary(ctx.user.id)).length;
       if (total >= MAX_TOTAL) throw new TRPCError({ code: "BAD_REQUEST", message: "提示词数量已达上限" });
+      await clearSlotOccupant(ctx.user.id, input.slot); // 槽位唯一
       const row = await db.createPromptLibrary({
         userId: ctx.user.id,
         label: input.label.trim(),
@@ -84,6 +94,7 @@ export const promptLibraryRouter = router({
         patch.slotKind = input.slotKind;
       }
       if (input.sortOrder !== undefined) patch.sortOrder = input.sortOrder;
+      if (input.slot !== undefined) await clearSlotOccupant(ctx.user.id, input.slot, input.id); // 槽位唯一
       await db.updatePromptLibrary(input.id, patch);
       const updated = await db.getPromptLibrary(input.id);
       return updated ? toClient(updated) : { success: true };
