@@ -21,6 +21,7 @@ const ACTION_LABELS: Record<string, string> = {
   audio_dubbing: "配音生成",
   subtitle_transcribe: "语音转录",
   poyo_stage: "Poyo 暂存",
+  kie_gen: "kie 生成",
 };
 
 const ACTION_COLORS: Record<string, string> = {
@@ -1163,18 +1164,21 @@ function WhitelistPanel() {
 
 // ── Logs Panel ────────────────────────────────────────────────────────────────
 
-type AuditAction = "login_email" | "login_oauth" | "image_gen" | "video_gen" | "audio_music" | "audio_dubbing" | "subtitle_transcribe";
+type AuditAction = "login_email" | "login_oauth" | "image_gen" | "video_gen" | "audio_music" | "audio_dubbing" | "subtitle_transcribe" | "kie_gen";
 
 function LogsPanel() {
   const [offset, setOffset] = useState(0);
   const [actionFilter, setActionFilter] = useState<AuditAction | "">("");
+  const [userInput, setUserInput] = useState("");   // 输入框（回车/失焦才应用）
+  const [userFilter, setUserFilter] = useState(""); // 已应用的用户名/邮箱/ID 筛选
   const utils = trpc.useUtils();
   const LIMIT = 50;
 
   const logsQuery = trpc.admin.logs.list.useQuery(
-    { limit: LIMIT, offset, action: actionFilter || undefined },
+    { limit: LIMIT, offset, action: actionFilter || undefined, user: userFilter || undefined },
     { keepPreviousData: true } as object
   );
+  const applyUser = () => { setUserFilter(userInput.trim()); setOffset(0); };
 
   const clearMut = trpc.admin.logs.clear.useMutation({
     onSuccess: () => { utils.admin.logs.list.invalidate(); setOffset(0); },
@@ -1196,7 +1200,18 @@ function LogsPanel() {
             {total > 0 && <span style={{ fontWeight: 400, color: "var(--c-t2, rgba(255,255,255,0.4))", fontSize: "13px", marginLeft: "8px" }}>（共 {total} 条）</span>}
           </h3>
         </div>
-        <div style={{ display: "flex", gap: "8px", alignItems: "center" }}>
+        <div style={{ display: "flex", gap: "8px", alignItems: "center", flexWrap: "wrap" }}>
+          <input
+            value={userInput}
+            onChange={(e) => setUserInput(e.target.value)}
+            onKeyDown={(e) => { if (e.key === "Enter") applyUser(); }}
+            onBlur={applyUser}
+            placeholder="用户名 / 邮箱 / ID"
+            style={{ ...inputStyle, width: 150, padding: "6px 10px", fontSize: "12px" }}
+          />
+          {userFilter && (
+            <button onClick={() => { setUserInput(""); setUserFilter(""); setOffset(0); }} style={{ ...inputStyle, width: "auto", padding: "6px 10px", fontSize: 12, cursor: "pointer" }} title="清除用户筛选">用户：{userFilter} ✕</button>
+          )}
           <select
             value={actionFilter}
             onChange={(e) => { setActionFilter(e.target.value as AuditAction | ""); setOffset(0); }}

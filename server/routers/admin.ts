@@ -78,10 +78,12 @@ export const adminRouter = router({
       .input(z.object({
         limit: z.number().int().min(1).max(200).default(50),
         offset: z.number().int().min(0).default(0),
-        action: z.enum(AUDIT_ACTIONS).optional(),
+        // "kie_gen" 伪类别：只看 kie 的生成日志（image/video/music 中 model/provider 为 kie_*）。
+        action: z.enum([...AUDIT_ACTIONS, "kie_gen", "poyo_stage"]).optional(),
+        user: z.string().max(320).optional(), // 用户名 / 邮箱 / ID 模糊筛选
       }))
       .query(async ({ input }) => {
-        return db.getAuditLogs({ limit: input.limit, offset: input.offset, action: input.action });
+        return db.getAuditLogs({ limit: input.limit, offset: input.offset, action: input.action, user: input.user });
       }),
 
     clear: adminProcedure.mutation(async ({ ctx }) => {
