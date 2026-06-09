@@ -176,6 +176,18 @@ export const IMAGE_MODELS: readonly ImageModelMeta[] = [
   { value: "kie_imagen4",           label: "Imagen 4",           desc: "Google · 通用",     group: "Kie", family: "Imagen",      provider: "Kie", costNote: "4-12 点/张", caps: ["T2I"] },
   { value: "kie_z_image",           label: "Z-Image",            desc: "超快 · 风格化",     group: "Kie", family: "Z-Image",     provider: "Kie", costNote: "0.8 点/张", caps: ["T2I"] },
   { value: "kie_grok_image",        label: "Grok Image",         desc: "xAI · 高对比",      group: "Kie", family: "Grok",        provider: "Kie", costNote: "≈1 点/张", caps: ["T2I"] },
+  // ── kie 第二批扩充 ──
+  { value: "kie_nano_banana_2",     label: "Nano Banana 2",      desc: "Google · 1-4K",     group: "Kie", family: "Nano Banana", provider: "Kie", costNote: "8-18 点/张", caps: ["T2I", "4K"] },
+  { value: "kie_flux2_flex",        label: "Flux-2 Flex",        desc: "BFL · 快速多风格",  group: "Kie", family: "Flux-2",      provider: "Kie", costNote: "14-24 点/张", caps: ["T2I"] },
+  { value: "kie_flux2_flex_i2i",    label: "Flux-2 Flex 图生图", desc: "图生图 · 需参考图",  group: "Kie", family: "Flux-2",      provider: "Kie", costNote: "14-24 点/张", caps: ["I2I"], requiresRef: true },
+  { value: "kie_gpt_image_2",       label: "GPT Image 2",        desc: "OpenAI · 1-4K",     group: "Kie", family: "GPT Image",   provider: "Kie", costNote: "6-16 点/张", caps: ["T2I", "4K"] },
+  { value: "kie_gpt_image_2_i2i",   label: "GPT Image 2 图生图", desc: "图生图 · 需参考图",  group: "Kie", family: "GPT Image",   provider: "Kie", costNote: "6-16 点/张", caps: ["I2I"], requiresRef: true },
+  { value: "kie_seedream_5lite",    label: "Seedream 5.0 Lite",  desc: "ByteDance · 高性价比", group: "Kie", family: "Seedream",  provider: "Kie", costNote: "5.5 点/张", caps: ["T2I"] },
+  { value: "kie_seedream_5lite_i2i",label: "Seedream 5.0 Lite 编辑", desc: "图生图 · 需参考图", group: "Kie", family: "Seedream", provider: "Kie", costNote: "5.5 点/张", caps: ["I2I", "编辑"], requiresRef: true },
+  { value: "kie_wan27_image",       label: "Wan 2.7 Image",      desc: "Alibaba · 性价比",  group: "Kie", family: "Wan",         provider: "Kie", costNote: "4.8 点/张", caps: ["T2I"] },
+  { value: "kie_wan27_image_pro",   label: "Wan 2.7 Image Pro",  desc: "Alibaba · 高质量",  group: "Kie", family: "Wan",         provider: "Kie", costNote: "12 点/张", caps: ["T2I"] },
+  { value: "kie_ideogram_v3",       label: "Ideogram V3",        desc: "排版/文字强",       group: "Kie", family: "Ideogram",    provider: "Kie", costNote: "3.5-10 点/张", caps: ["T2I"] },
+  { value: "kie_qwen_image",        label: "Qwen Image",         desc: "通义 · 中文友好",   group: "Kie", family: "Qwen",        provider: "Kie", costNote: "4 点/百万像素", caps: ["T2I"] },
 ] as const;
 
 export type ChatModelId = typeof CHAT_MODELS[number]["id"];

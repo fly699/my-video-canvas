@@ -39,6 +39,9 @@ const A_GPT = ["1:1", "2:3", "3:2"] as const;
 const A_IMAGEN = ["1:1", "16:9", "9:16", "3:4", "4:3", "auto"] as const;
 const A_Z = ["1:1", "4:3", "3:4", "16:9", "9:16"] as const;
 const A_GROK = ["1:1", "2:3", "3:2", "16:9", "9:16"] as const;
+const A_NANO2 = ["1:1", "1:4", "1:8", "2:3", "3:2", "3:4", "4:1", "4:3", "4:5", "5:4", "8:1", "9:16", "16:9", "21:9", "auto"] as const;
+const A_GPT2 = ["auto", "1:1", "3:2", "2:3", "4:3", "3:4", "5:4", "4:5", "16:9", "9:16", "2:1", "1:2", "3:1", "1:3", "21:9", "9:21"] as const;
+const A_WAN27 = ["1:1", "16:9", "4:3", "21:9", "3:4", "9:16", "8:1", "1:8"] as const;
 export const KIE_IMAGE_MODELS: Record<string, KieImageSpec> = {
   // text-to-image
   kie_nano_banana:      { id: "google/nano-banana", label: "Nano Banana", family: "Nano Banana", aspect: "aspect_ratio", aspects: A_NANO, outFmt: true },
@@ -55,6 +58,18 @@ export const KIE_IMAGE_MODELS: Record<string, KieImageSpec> = {
   kie_seedream_v4_edit: { id: "bytedance/seedream-v4-edit", label: "Seedream 4.0 编辑", family: "Seedream", ref: "image_urls", aspect: "image_size" },
   kie_flux2_pro_i2i:    { id: "flux-2/pro-image-to-image", label: "Flux-2 Pro 图生图", family: "Flux-2", ref: "input_urls", aspect: "aspect_ratio", aspects: A_FLUX_I2I, fixed: { resolution: "1K" } },
   kie_gpt_image_15_edit:{ id: "gpt-image/1.5-image-to-image", label: "GPT Image 1.5 编辑", family: "GPT Image", ref: "input_urls", aspect: "aspect_ratio", aspects: A_GPT, fixed: { quality: "medium" } },
+  // ── 第二批扩充（均走 jobs/createTask，参数对照 docs/kie-api.md）──
+  kie_nano_banana_2:   { id: "nano-banana-2", label: "Nano Banana 2", family: "Nano Banana", aspect: "aspect_ratio", aspects: A_NANO2, fixed: { resolution: "1K", output_format: "jpg" } },
+  kie_flux2_flex:      { id: "flux-2/flex-text-to-image", label: "Flux-2 Flex", family: "Flux-2", aspect: "aspect_ratio", aspects: A_FLUX, fixed: { resolution: "1K" } },
+  kie_flux2_flex_i2i:  { id: "flux-2/flex-image-to-image", label: "Flux-2 Flex 图生图", family: "Flux-2", ref: "input_urls", aspect: "aspect_ratio", aspects: A_FLUX_I2I, fixed: { resolution: "1K" } },
+  kie_gpt_image_2:     { id: "gpt-image-2-text-to-image", label: "GPT Image 2", family: "GPT Image", aspect: "aspect_ratio", aspects: A_GPT2, fixed: { resolution: "1K" } },
+  kie_gpt_image_2_i2i: { id: "gpt-image-2-image-to-image", label: "GPT Image 2 图生图", family: "GPT Image", ref: "input_urls", aspect: "aspect_ratio", aspects: A_GPT2, fixed: { resolution: "1K" } },
+  kie_seedream_5lite:  { id: "seedream/5-lite-text-to-image", label: "Seedream 5.0 Lite", family: "Seedream", aspect: "aspect_ratio", aspects: A_SEEDREAM45, fixed: { quality: "basic" } },
+  kie_seedream_5lite_i2i: { id: "seedream/5-lite-image-to-image", label: "Seedream 5.0 Lite 编辑", family: "Seedream", ref: "image_urls", aspect: "aspect_ratio", aspects: A_SEEDREAM45, fixed: { quality: "basic" } },
+  kie_wan27_image:     { id: "wan/2-7-image", label: "Wan 2.7 Image", family: "Wan", aspect: "aspect_ratio", aspects: A_WAN27, fixed: { resolution: "1K" } },
+  kie_wan27_image_pro: { id: "wan/2-7-image-pro", label: "Wan 2.7 Image Pro", family: "Wan", aspect: "aspect_ratio", aspects: A_WAN27, fixed: { resolution: "1K" } },
+  kie_ideogram_v3:     { id: "ideogram/v3-text-to-image", label: "Ideogram V3", family: "Ideogram", aspect: "image_size" },
+  kie_qwen_image:      { id: "qwen/text-to-image", label: "Qwen Image", family: "Qwen", aspect: "image_size" },
 };
 
 // Seedream 4.0 uses `image_size` with a token vocabulary instead of "16:9" ratios.
