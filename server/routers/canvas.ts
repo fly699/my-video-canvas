@@ -1114,6 +1114,9 @@ export const imageGenRouter = router({
         style: z.string().optional(),
         model: z.enum(IMAGE_GEN_MODELS).optional(),
         poyoAspectRatio: z.string().optional(),
+        // Generic aspect ratio (the 比例 selector) — used by kie image models,
+        // clamped per-model server-side.
+        aspectRatio: z.string().max(32).optional(),
         poyoQuality: z.enum(["low", "medium", "high"]).optional(),
         // Generic Poyo image params (schema-driven, extended model set)
         imageSize: z.string().max(64).optional(),
@@ -1220,7 +1223,7 @@ export const imageGenRouter = router({
         // input.aspect_ratio). originalImages (above) feeds image_urls for edit models.
         ...(isKieImageModel(input.model) ? {
           kieApiKey,
-          size: input.imageSize ?? input.poyoAspectRatio ?? input.reveAspectRatio,
+          size: input.aspectRatio ?? input.imageSize ?? input.poyoAspectRatio ?? input.reveAspectRatio,
         } : {}),
       });
 
