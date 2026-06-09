@@ -39,7 +39,7 @@ import { NodeSearch } from "../components/canvas/NodeSearch";
 import { PresentationMode } from "../components/canvas/PresentationMode";
 import { FilmstripPanel } from "../components/canvas/FilmstripPanel";
 import { TimelinePanel } from "../components/canvas/TimelinePanel";
-import { isConnectionValid } from "../lib/connectionRules";
+import { isConnectionValid, getCompatibleTargets, getCompatibleSources, CONNECTION_HINTS } from "../lib/connectionRules";
 import { listNodeTemplates, saveNodeTemplate, deleteNodeTemplate, exportNodeTemplatesJson, importNodeTemplatesJson } from "../lib/nodeTemplates";
 import { isComfyNodeType, suggestComfyTemplateName, describeComfyTemplate, extractComfyThumbnail, type ComfyNodeType } from "../lib/comfyNodeTemplates";
 import { SaveComfyTemplateDialog } from "../components/canvas/SaveComfyTemplateDialog";
@@ -519,6 +519,8 @@ function CanvasInner({ projectId }: { projectId: number }) {
     else setShowFilmstrip(false);
   }, [canvasMode, setShowFilmstrip]);
   const [connectingFromType, setConnectingFromType] = useState<NodeType | null>(null);
+  // 拉线松手落在空白处时，在鼠标位置弹出的「建节点并连线」小菜单（仅列可连接类型）。
+  const [connectMenu, setConnectMenu] = useState<{ x: number; y: number; types: NodeType[]; fromId: string; fromHandleType: "source" | "target"; fromHandle: string | null } | null>(null);
 
   // Workflow runner
   const { runState, runWorkflow, reset: resetWorkflowRun } = useWorkflowRunner();
@@ -1274,10 +1276,37 @@ function CanvasInner({ projectId }: { projectId: number }) {
     }
   }, [nodes]);
 
-  const handleConnectEnd = useCallback(() => {
+  const handleConnectEnd = useCallback((event: MouseEvent | TouchEvent, connectionState: { isValid: boolean | null; toNode?: { id: string } | null; fromHandle?: { id?: string | null } | null }) => {
+    const drag = useConnectingStore.getState();
+    const fromType = drag.fromType, fromId = drag.fromId, fromHandleType = drag.fromHandleType;
+    const fromHandle = connectionState.fromHandle?.id ?? null;
     setConnectingFromType(null);
     useConnectingStore.getState().end();
-  }, []);
+    // 仅在「未连到任何节点」（落在空白）时弹建节点菜单；落在节点上＝原行为（onConnect 已处理）。
+    if (isReadOnly || !fromType || !fromId || !fromHandleType || connectionState.toNode) return;
+    // 候选 = 该桩点「现有方向」可连接的节点类型（连接矩阵已排除不可连接者，列表里不会出现）。
+    const types = fromHandleType === "source" ? getCompatibleTargets(fromType) : getCompatibleSources(fromType);
+    if (types.length === 0) return;
+    const pt = "changedTouches" in event ? event.changedTouches[0] : (event as MouseEvent);
+    setConnectMenu({ x: pt.clientX, y: pt.clientY, types, fromId, fromHandleType, fromHandle });
+  }, [isReadOnly]);
+
+  // 在菜单里选了一个节点类型：在落点建该节点，并按拖出方向连边。
+  const handlePickConnectType = useCallback((type: NodeType) => {
+    if (!connectMenu) return;
+    const pos = reactFlow.screenToFlowPosition({ x: connectMenu.x, y: connectMenu.y });
+    const newNode = addNode(type, pos);
+    setConnectMenu(null);
+    if (!newNode) return;
+    emitCollabEvent("node:add", newNode);
+    const conn: Connection = connectMenu.fromHandleType === "source"
+      ? { source: connectMenu.fromId, sourceHandle: connectMenu.fromHandle ?? "output", target: newNode.id, targetHandle: "input" }
+      : { source: newNode.id, sourceHandle: "output", target: connectMenu.fromId, targetHandle: connectMenu.fromHandle ?? "input" };
+    const prevIds = new Set(useCanvasStore.getState().edges.map((e) => e.id));
+    onConnect(conn);
+    const newEdge = useCanvasStore.getState().edges.find((e) => !prevIds.has(e.id));
+    if (newEdge) emitCollabEvent("edge:add", newEdge);
+  }, [connectMenu, reactFlow, addNode, onConnect, emitCollabEvent]);
 
   // ── Export ──────────────────────────────────────────────────────────────────
   const handleExport = () => {
@@ -1354,7 +1383,7 @@ function CanvasInner({ projectId }: { projectId: number }) {
         saveCanvas();
         if (wasDirty) toast.success("已保存");
       }
-      if (e.key === "Escape") { setContextMenu(null); setShowNodePicker(false); setShowNodeSearch(false); setShowTemplates(false); setShowNodeLib(false); runConfirmOpenRef.current = false; setShowRunConfirm(false); setRunConfirmCountdown(5); setShowHelp(false); setShowArcPicker(false); }
+      if (e.key === "Escape") { setContextMenu(null); setConnectMenu(null); setShowNodePicker(false); setShowNodeSearch(false); setShowTemplates(false); setShowNodeLib(false); runConfirmOpenRef.current = false; setShowRunConfirm(false); setRunConfirmCountdown(5); setShowHelp(false); setShowArcPicker(false); }
 
       // Cmd+K / Ctrl+K — Node search (skip when typing in an input)
       if (!isEditing && (e.metaKey || e.ctrlKey) && e.key === "k") {
@@ -3135,6 +3164,51 @@ function CanvasInner({ projectId }: { projectId: number }) {
           />
         );
       })()}
+
+      {/* ── 拉线松手建节点小菜单（落在空白处时，仅列可连接类型）── */}
+      {connectMenu && (
+        <>
+          {/* 透明遮罩：点击空白 / Esc 关闭 */}
+          <div
+            onClick={() => setConnectMenu(null)}
+            onContextMenu={(e) => { e.preventDefault(); setConnectMenu(null); }}
+            style={{ position: "fixed", inset: 0, zIndex: 100050 }}
+          />
+          <div
+            className="nodrag nowheel"
+            style={{
+              position: "fixed", left: Math.min(connectMenu.x, window.innerWidth - 200), top: Math.min(connectMenu.y, window.innerHeight - 320),
+              zIndex: 100051, minWidth: 168, maxHeight: 300, overflowY: "auto",
+              background: "var(--c-base)", border: "1px solid var(--c-bd2)", borderRadius: 10,
+              boxShadow: "0 12px 36px oklch(0 0 0 / 0.45)", padding: 4,
+            }}
+          >
+            <div style={{ fontSize: 9.5, color: "var(--c-t4)", padding: "4px 8px 5px" }}>
+              {connectMenu.fromHandleType === "source" ? "连接到新节点…" : "从新节点连入…"}
+            </div>
+            {connectMenu.types.map((t) => {
+              const cfg = getNodeConfig(t);
+              const Icon = cfg ? (NODE_ICONS[cfg.icon] ?? FileText) : FileText;
+              const color = cfg?.color ?? "var(--c-t3)";
+              return (
+                <button
+                  key={t}
+                  onClick={() => handlePickConnectType(t)}
+                  className="nodrag flex items-center gap-2 w-full text-left"
+                  style={{ padding: "6px 8px", borderRadius: 7, cursor: "pointer", border: "none", background: "transparent", color: "var(--c-t1)", fontSize: 12 }}
+                  onMouseEnter={(e) => (e.currentTarget.style.background = `${color}1f`)}
+                  onMouseLeave={(e) => (e.currentTarget.style.background = "transparent")}
+                >
+                  <span className="flex items-center justify-center flex-shrink-0" style={{ width: 20, height: 20, borderRadius: 5, background: `${color}1a` }}>
+                    <Icon style={{ width: 12, height: 12, color }} />
+                  </span>
+                  <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{cfg?.label ?? CONNECTION_HINTS[t]?.label ?? t}</span>
+                </button>
+              );
+            })}
+          </div>
+        </>
+      )}
 
       {/* ── Node search ── */}
       {showNodeSearch && (
