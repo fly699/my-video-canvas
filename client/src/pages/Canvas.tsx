@@ -30,6 +30,7 @@ import { ContextMenu } from "../components/canvas/ContextMenu";
 import { CollaboratorCursors } from "../components/canvas/CollaboratorCursors";
 import { FloatingAssetPanel } from "../components/canvas/FloatingAssetPanel";
 import { CharacterLibraryPanel } from "../components/canvas/CharacterLibraryPanel";
+import { setLibraryCharacters } from "../lib/characterConditioning";
 import { NodeImageLightbox } from "../components/canvas/NodeImageLightbox";
 import { TemplatePanel } from "../components/canvas/TemplatePanel";
 import { NodeTemplateLibrary } from "../components/canvas/NodeTemplateLibrary";
@@ -657,6 +658,27 @@ function CanvasInner({ projectId }: { projectId: number }) {
   const { data: dbEdges } = trpc.edges.list.useQuery(
     { projectId }, { enabled: !!projectId && isAuthenticated }
   );
+
+  // 全局角色库 → 灌进「影子节点」，让 @引用 无需先把角色拖到画布也能命中库里的角色。
+  const { data: libraryChars } = trpc.characterLibrary.list.useQuery(undefined, {
+    enabled: isAuthenticated, refetchOnWindowFocus: true,
+  });
+  useEffect(() => {
+    setLibraryCharacters(
+      (libraryChars ?? []).map((it) => ({
+        id: "lib:" + it.id,
+        data: {
+          nodeType: "character",
+          // 用库里的 name 覆盖 payload，确保改名后仍以最新名字被 @ 命中。
+          payload: {
+            ...(it.payload as Record<string, unknown>),
+            characterKind: it.characterKind,
+            ...(it.characterKind === "scene" ? { sceneName: it.name } : { name: it.name }),
+          },
+        },
+      })),
+    );
+  }, [libraryChars]);
 
   const utils = trpc.useUtils();
   const createComfyTemplateMut = trpc.comfyTemplates.create.useMutation();

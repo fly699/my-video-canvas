@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { characterReferenceImages, characterHasConditioning, deriveCharacterConditioning, connectedCharacterRefImages, connectedSceneRefImages, connectedCharacterLora, mentionedCharacters, stripCharacterMentions, effectiveCharacters, effectiveCharacterRefImages, effectiveSceneRefImages } from "./characterConditioning";
+import { characterReferenceImages, characterHasConditioning, deriveCharacterConditioning, connectedCharacterRefImages, connectedSceneRefImages, connectedCharacterLora, mentionedCharacters, stripCharacterMentions, effectiveCharacters, effectiveCharacterRefImages, effectiveSceneRefImages, setLibraryCharacters } from "./characterConditioning";
 import type { CharacterNodeData } from "../../../shared/types";
 
 const char = (over: Partial<CharacterNodeData>): CharacterNodeData => ({ characterKind: "person", ...over });
@@ -175,5 +175,24 @@ describe("@角色 提及解析", () => {
     expect(effectiveCharacterRefImages("ig", "", edges, dup)).toEqual(["lx-a.png"]);
     expect(effectiveSceneRefImages("ig", "", edges, dup)).toEqual(["s-a.png"]);
     expect(effectiveCharacters("ig", "", edges, dup).map((c) => c.name ?? c.sceneName)).toEqual(["林晓", "场景1"]);
+  });
+
+  it("角色库回退：画布无该角色节点，@引用库里角色也生效；画布同名节点优先", () => {
+    // 库里有「阿狸」(人物) + 「茶室」(场景)，画布上都没有对应节点。
+    setLibraryCharacters([
+      { id: "lib:1", data: { nodeType: "character", payload: { characterKind: "person", name: "阿狸", referenceImageUrl: "ali.png" } } },
+      { id: "lib:2", data: { nodeType: "character", payload: { characterKind: "scene", sceneName: "茶室", referenceImageUrl: "teahouse.png" } } },
+    ]);
+    try {
+      // 画布 nodes 为空，但 @阿狸 / @茶室 仍能命中库里的角色并注入参考图。
+      expect(mentionedCharacters("@阿狸 @茶室", []).map((c) => c.name ?? c.sceneName)).toEqual(["阿狸", "茶室"]);
+      expect(effectiveCharacterRefImages("ig", "@阿狸", [], [])).toEqual(["ali.png"]);
+      expect(effectiveSceneRefImages("ig", "@茶室", [], [])).toEqual(["teahouse.png"]);
+      // 画布上有同名「阿狸」节点（不同图）时，画布优先。
+      const onCanvas = [N("c1", { name: "阿狸", referenceImageUrl: "ali-canvas.png" })];
+      expect(effectiveCharacterRefImages("ig", "@阿狸", [], onCanvas)).toEqual(["ali-canvas.png"]);
+    } finally {
+      setLibraryCharacters([]); // 复位，避免污染其它用例
+    }
   });
 });
