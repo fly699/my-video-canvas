@@ -77,6 +77,7 @@ import {
   promptLibrary,
   type PromptLibraryRow,
   type InsertPromptLibrary,
+  userPrefs,
   comfyTemplateAnalysis,
   type ComfyTemplateAnalysisRow,
   type InsertComfyTemplateAnalysis,
@@ -2413,6 +2414,22 @@ export async function deletePromptLibrary(id: number): Promise<void> {
   const db = await getDb();
   if (!db) { if (DEV_MODE) { const i = _devPromptLib.findIndex((r) => r.id === id); if (i >= 0) _devPromptLib.splice(i, 1); return; } throw new Error("DB unavailable"); }
   await db.delete(promptLibrary).where(eq(promptLibrary.id, id));
+}
+
+// ── 通用 per-user 偏好（user_prefs，upsert by (userId, prefKey)）─────────────────
+const _devUserPrefs = new Map<string, unknown>(); // key = `${userId}:${prefKey}`
+
+export async function getUserPref(userId: number, prefKey: string): Promise<unknown | undefined> {
+  const db = await getDb();
+  if (!db) return DEV_MODE ? _devUserPrefs.get(`${userId}:${prefKey}`) : undefined;
+  const rows = await db.select().from(userPrefs).where(and(eq(userPrefs.userId, userId), eq(userPrefs.prefKey, prefKey))).limit(1);
+  return rows[0]?.value;
+}
+
+export async function setUserPref(userId: number, prefKey: string, value: unknown): Promise<void> {
+  const db = await getDb();
+  if (!db) { if (DEV_MODE) { _devUserPrefs.set(`${userId}:${prefKey}`, value); return; } throw new Error("DB unavailable"); }
+  await db.insert(userPrefs).values({ userId, prefKey, value }).onDuplicateKeyUpdate({ set: { value } });
 }
 
 // ── ComfyUI template analysis (agent planning knowledge) ──────────────────────
