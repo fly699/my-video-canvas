@@ -26,7 +26,7 @@ export interface KieVideoSpec {
   /** UI provider value persisted on video_tasks rows (kie_*). */
   wire: string;
   /** Upstream endpoint family. */
-  endpoint: "jobs" | "veo";
+  endpoint: "jobs" | "veo" | "runway";
   label: string;
   family: string;
   /** Allow-listed input params copied from the node's `params` (with defaults
@@ -374,6 +374,17 @@ export const KIE_VIDEO_SPECS: Record<string, KieVideoSpec> = {
     videoRef: { key: "video_url", array: false },
     creditNote: "480p 7 / 580p 12 / 720p 15 点·条",
   },
+  // ── Runway（专属端点 /api/v1/runway/generate；轮询 /record-detail，响应形态不同）──
+  kie_runway45: {
+    wire: "runway-gen-4.5", endpoint: "runway", label: "Runway Gen 4.5", family: "Runway",
+    params: [
+      { key: "duration", type: "num", def: 5 },
+      { key: "quality", type: "str", def: "720p" },
+      { key: "aspectRatio", type: "str", def: "16:9" },
+    ],
+    ref: { key: "imageUrl", array: false }, // 可选：有图则图生视频
+    creditNote: "5s 75 / 10s 150 点·条",
+  },
 };
 
 export function isKieVideoProvider(provider: string): boolean {
@@ -438,7 +449,13 @@ export async function submitKieVideo(opts: KieVideoSubmitOptions): Promise<{ ext
 
   let url: string;
   let body: Record<string, unknown>;
-  if (spec.endpoint === "veo") {
+  if (spec.endpoint === "runway") {
+    // Runway: dedicated endpoint, flat camelCase body, NO model field.
+    url = `${KIE_BASE_URL}/api/v1/runway/generate`;
+    body = { prompt: opts.prompt, ...bag }; // duration / quality / aspectRatio
+    if (refs[0]) body.imageUrl = refs[0]; // 有图 → 图生视频（覆盖 aspectRatio 推断）
+    if (opts.callBackUrl) body.callBackUrl = opts.callBackUrl;
+  } else if (spec.endpoint === "veo") {
     // Veo: flat body, params + prompt at top level.
     url = `${KIE_BASE_URL}/api/v1/veo/generate`;
     body = { model: spec.wire, prompt: opts.prompt, ...bag };
@@ -511,6 +528,25 @@ function parseUrls(v: unknown): string[] {
 export async function checkKieVideoStatus(provider: string, externalTaskId: string, apiKey: string): Promise<KieVideoStatus> {
   const spec = KIE_VIDEO_SPECS[provider];
   if (!spec) throw new Error(`未知 kie 视频模型：${provider}`);
+
+  // Runway has its OWN record-detail endpoint with a different response shape
+  // (data.state + data.videoInfo.videoUrl, not successFlag + resultUrls).
+  if (spec.endpoint === "runway") {
+    const r = await fetch(`${KIE_BASE_URL}/api/v1/runway/record-detail?taskId=${encodeURIComponent(externalTaskId)}`, {
+      headers: { Authorization: `Bearer ${apiKey}` }, signal: AbortSignal.timeout(15_000),
+    });
+    if (!r.ok) throw new Error(`kie 视频状态查询失败 (${r.status})`);
+    const b = (await r.json()) as { code?: number; data?: { state?: string; failMsg?: string; videoInfo?: { videoUrl?: string } } };
+    const st = b.data?.state;
+    if (st === "success") {
+      const u = b.data?.videoInfo?.videoUrl;
+      return u ? { status: "finished", resultVideoUrls: [u] }
+        : { status: "failed", errorMessage: "[CHARGED] Runway 已生成但未返回 URL（积分已扣，请勿重试）" };
+    }
+    if (st === "fail" || st === "failed") return { status: "failed", errorMessage: b.data?.failMsg ?? "生成失败" };
+    return { status: "processing" }; // wait / queueing / generating
+  }
+
   const base = spec.endpoint === "veo"
     ? `${KIE_BASE_URL}/api/v1/veo/record-info?taskId=`
     : `${KIE_BASE_URL}/api/v1/jobs/recordInfo?taskId=`;

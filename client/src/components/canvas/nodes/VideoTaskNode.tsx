@@ -207,6 +207,7 @@ const PROVIDERS: { value: VideoProvider; label: string; group: string; family: s
   { value: "kie_kling_avatar_pro",    label: "Kling 数字人 专业",   group: "Kie", family: "Kling",      costLabel: "14 点·秒",               caps: ["图+音频", "对口型"] },
   { value: "kie_wan_animate_move",    label: "Wan Animate 动作迁移", group: "Kie", family: "Wan",        costLabel: "480p 7/720p 15 点",      caps: ["图+源视频"] },
   { value: "kie_wan_animate_replace", label: "Wan Animate 角色替换", group: "Kie", family: "Wan",        costLabel: "480p 7/720p 15 点",      caps: ["图+源视频"] },
+  { value: "kie_runway45",            label: "Runway Gen 4.5",      group: "Kie", family: "Runway",     costLabel: "5s 75/10s 150 点",       caps: ["T2V", "I2V", "5/10s"] },
   { value: "mock",                    label: "Mock 测试",           group: "Dev",        family: "Dev", costLabel: "免费",       caps: ["测试"] },
 ];
 
@@ -564,6 +565,11 @@ const KIE_KLING30_MOTION_PARAMS: ParamDef[] = [
 const KIE_WAN_ANIMATE_PARAMS: ParamDef[] = [
   { type: "select", key: "resolution", label: "分辨率", default: "480p", options: [{ value: "480p", label: "480p" }, { value: "580p", label: "580p" }, { value: "720p", label: "720p" }] },
 ];
+const KIE_RUNWAY_PARAMS: ParamDef[] = [
+  { type: "select", key: "duration", label: "时长（秒）", default: 5, options: DUR_5_10 },
+  { type: "select", key: "quality", label: "画质", default: "720p", options: MODE_720_1080 },
+  { type: "select", key: "aspectRatio", label: "宽高比", default: "16:9", options: AR_5 },
+];
 
 const PROVIDER_PARAMS: Record<string, ParamDef[]> = {
   poyo_seedance: [
@@ -707,6 +713,7 @@ const PROVIDER_PARAMS: Record<string, ParamDef[]> = {
   kie_kling_avatar_pro: [],
   kie_wan_animate_move: KIE_WAN_ANIMATE_PARAMS,
   kie_wan_animate_replace: KIE_WAN_ANIMATE_PARAMS,
+  kie_runway45: KIE_RUNWAY_PARAMS,
   mock: [],
 };
 
