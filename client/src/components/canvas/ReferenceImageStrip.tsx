@@ -1,10 +1,52 @@
-import { useRef, useState } from "react";
-import { X, ZoomIn } from "lucide-react";
+import { useMemo, useRef, useState } from "react";
+import { X, ZoomIn, Play, Pause } from "lucide-react";
 import type { ReferenceImage } from "../../../../shared/types";
 import { MediaImage } from "./MediaImage";
+import { mediaFetchUrl } from "@/lib/download";
+import { audioWaveBars } from "../../lib/audioWaveform";
 
-/** 吸附窗里的一张图：可带类型标签（角色/场景/参考图/分析图/工作流图）与可删标记。 */
-export type StripItem = ReferenceImage & { label?: string; removable?: boolean };
+/**
+ * 吸附窗里的一项：默认是图片（角色/场景/参考图/分析图/工作流图），可带类型标签与可删标记。
+ * `kind:"audio"` 时表示音频项，用波形缩略图展示（点击播放/暂停），`name` 为显示名。
+ */
+export type StripItem = ReferenceImage & { label?: string; removable?: boolean; kind?: "image" | "audio"; name?: string };
+
+/** 音频项的波形缩略图磁贴：伪波形 + 居中播放/暂停按钮，点击就地播放。 */
+function AudioWaveTile({ url, name, accent }: { url: string; name?: string; accent: string }) {
+  const [playing, setPlaying] = useState(false);
+  const audioRef = useRef<HTMLAudioElement | null>(null);
+  const bars = useMemo(() => audioWaveBars(url), [url]);
+  const toggle = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    const a = audioRef.current;
+    if (!a) return;
+    if (a.paused) void a.play().catch(() => {}); else a.pause();
+  };
+  return (
+    <div
+      onClick={toggle}
+      title={name ? `音频 · ${name}（点击播放）` : "音频（点击播放）"}
+      style={{ width: "100%", height: "100%", display: "flex", alignItems: "center", justifyContent: "center", gap: 1.5, padding: "0 6px", position: "relative", cursor: "pointer" }}
+    >
+      <audio
+        ref={audioRef}
+        src={mediaFetchUrl(url)}
+        preload="none"
+        onPlay={() => setPlaying(true)}
+        onPause={() => setPlaying(false)}
+        onEnded={() => setPlaying(false)}
+      />
+      {bars.map((b, i) => (
+        <div key={i} style={{ width: 2.5, height: `${Math.round(b * 64)}%`, background: accent, opacity: playing ? 0.92 : 0.5, borderRadius: 2, transition: "opacity 150ms ease" }} />
+      ))}
+      <div style={{ position: "absolute", inset: 0, display: "flex", alignItems: "center", justifyContent: "center", pointerEvents: "none" }}>
+        <div style={{ width: 22, height: 22, borderRadius: "50%", background: "oklch(0 0 0 / 0.45)", backdropFilter: "blur(4px)", display: "flex", alignItems: "center", justifyContent: "center", color: "white" }}>
+          {playing ? <Pause style={{ width: 11, height: 11 }} /> : <Play style={{ width: 11, height: 11 }} />}
+        </div>
+      </div>
+    </div>
+  );
+}
 
 interface Props {
   images: StripItem[];
@@ -144,19 +186,34 @@ export function ReferenceImageStrip({
                 data-ref-item
                 draggable={canDrag}
                 onDragStart={canDrag ? (e) => { e.dataTransfer.setData("application/x-ref-reorder", img.id); e.dataTransfer.effectAllowed = "move"; } : undefined}
-                title={img.label}
+                title={img.kind === "audio" ? (img.name ? `${img.label ?? "音频"} · ${img.name}` : (img.label ?? "音频")) : img.label}
                 className="relative group rounded-lg overflow-hidden"
                 style={{ height: 72, border: `1px solid var(--c-bd2)`, background: "var(--c-canvas)", cursor: canDrag ? "grab" : "default" }}
               >
-                <MediaImage
-                  src={img.url}
-                  alt={img.label ?? `ref-${i + 1}`}
-                  className="w-full h-full object-cover"
-                  draggable={false}
-                  style={{ cursor: "zoom-in" }}
-                  onClick={() => onZoom(i)}
-                />
-                {/* 类型标签（角色/场景/参考图/分析图/工作流图），常驻底部小条 */}
+                {img.kind === "audio" ? (
+                  <AudioWaveTile url={img.url} name={img.name} accent={accent} />
+                ) : (
+                  <>
+                    <MediaImage
+                      src={img.url}
+                      alt={img.label ?? `ref-${i + 1}`}
+                      className="w-full h-full object-cover"
+                      draggable={false}
+                      style={{ cursor: "zoom-in" }}
+                      onClick={() => onZoom(i)}
+                    />
+                    {/* zoom on hover (images only) */}
+                    <button
+                      onClick={(e) => { e.stopPropagation(); onZoom(i); }}
+                      className="nodrag absolute opacity-0 group-hover:opacity-100 transition-opacity"
+                      style={{ right: 3, bottom: 14, padding: 2, borderRadius: 6, background: "oklch(0 0 0 / 0.6)", color: "white", lineHeight: 0 }}
+                      title="放大"
+                    >
+                      <ZoomIn style={{ width: 11, height: 11 }} />
+                    </button>
+                  </>
+                )}
+                {/* 类型标签（角色/场景/参考图/分析图/工作流图/音频），常驻底部小条 */}
                 {caption && (
                   <span
                     style={{
@@ -168,15 +225,7 @@ export function ReferenceImageStrip({
                     {caption}
                   </span>
                 )}
-                {/* zoom + delete on hover */}
-                <button
-                  onClick={(e) => { e.stopPropagation(); onZoom(i); }}
-                  className="nodrag absolute opacity-0 group-hover:opacity-100 transition-opacity"
-                  style={{ right: 3, bottom: 14, padding: 2, borderRadius: 6, background: "oklch(0 0 0 / 0.6)", color: "white", lineHeight: 0 }}
-                  title="放大"
-                >
-                  <ZoomIn style={{ width: 11, height: 11 }} />
-                </button>
+                {/* delete on hover (both image & audio) */}
                 {canRemove && (
                   <button
                     onClick={(e) => { e.stopPropagation(); onRemove(img.id); }}

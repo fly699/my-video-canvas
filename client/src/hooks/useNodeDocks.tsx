@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { usePersistentState } from "./usePersistentState";
 import { useCanvasStore } from "./useCanvasStore";
 import { effectiveCharacterRefImages, effectiveSceneRefImages } from "../lib/characterConditioning";
+import { listUpstreamAudioSources } from "../lib/comfyWorkflowParams";
 import type { StripItem } from "../components/canvas/ReferenceImageStrip";
 
 /**
@@ -16,6 +17,23 @@ export function useCharSceneItems(id: string, basePrompt: string): StripItem[] {
     ...charKey.split("\n").filter(Boolean).map((u) => ({ id: "char:" + u, url: u, label: "角色", removable: false })),
     ...sceneKey.split("\n").filter(Boolean).map((u) => ({ id: "scene:" + u, url: u, label: "场景", removable: false })),
   ], [charKey, sceneKey]);
+}
+
+/**
+ * 「参与本节点工作」的上游音频元素（连入的 audio / asset 音频节点），只读不可删，
+ * 作为吸附窗里的「音频」波形项（放在图片项之后/末尾）。任何接入吸附窗的音频相关节点
+ * 都可调用并把结果拼到 stripImages 末尾。
+ */
+export function useAudioStripItems(id: string): StripItem[] {
+  const key = useCanvasStore((s) =>
+    JSON.stringify(listUpstreamAudioSources(id, s.edges, s.nodes).map((a) => [a.id, a.url, a.title])),
+  );
+  return useMemo(() => {
+    const arr = JSON.parse(key) as [string, string, string][];
+    return arr.map(([sid, url, title]) => ({
+      id: "audio:" + sid, url, name: title || undefined, label: "音频", kind: "audio" as const, removable: false,
+    }));
+  }, [key]);
 }
 
 /**

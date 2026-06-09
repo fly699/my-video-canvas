@@ -21,7 +21,7 @@ import { WatermarkedVideo } from "@/components/WatermarkedVideo";
 import { ImageLightbox } from "../ImageLightbox";
 import { ReferenceImageStrip, type StripItem } from "../ReferenceImageStrip";
 import { PromptDock } from "../PromptDock";
-import { useNodeDocks, useCharSceneItems } from "../../../hooks/useNodeDocks";
+import { useNodeDocks, useCharSceneItems, useAudioStripItems } from "../../../hooks/useNodeDocks";
 import { openNodeImage } from "../NodeImageLightbox";
 import { toast } from "sonner";
 import {
@@ -628,7 +628,8 @@ export const ComfyuiWorkflowNode = memo(function ComfyuiWorkflowNode({ id, selec
 
   // 工作流图像参数 + 最终参与的角色/场景图（按解析前正向词里的 @提及/连线，只读）。
   const charSceneItems = useCharSceneItems(id, finalPromptInfo.basePos);
-  const stripImages: StripItem[] = [...paramImages, ...charSceneItems];
+  const audioItems = useAudioStripItems(id); // 「音频」波形项放最后
+  const stripImages: StripItem[] = [...paramImages, ...charSceneItems, ...audioItems];
   const docks = useNodeDocks(id, { hasRef: stripImages.length >= 1, hasPrompt: finalPromptInfo.hasPos });
   const stripOpen = docks.refOpen;
   const setStripOpen = docks.setRefOpen;
