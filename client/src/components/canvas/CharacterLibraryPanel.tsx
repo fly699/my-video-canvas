@@ -61,10 +61,14 @@ export function CharacterLibraryPanel({ onClose }: { onClose: () => void }) {
 
   // Pinned → dock top-right at fixed width; floating → the persisted box.
   const vw = typeof window !== "undefined" ? window.innerWidth : 1200;
+  const vh = typeof window !== "undefined" ? window.innerHeight : 800;
   const left = pinned ? vw - DOCK_W - 16 : box.x;
   const top = pinned ? 56 : box.y;
   const width = pinned ? DOCK_W : box.w;
-  const height = pinned ? Math.min(640, (typeof window !== "undefined" ? window.innerHeight : 800) - 96) : box.h;
+  // 高度自适应内容：框高随角色数量自然增长（少则矮、不再固定 480 留白），
+  // 超过上限再由内部列表滚动。浮动模式下 box.h（四角缩放）作为高度上限，
+  // 并以视口可用高度兜底；pinned 模式上限为视口内固定值。
+  const maxHeight = pinned ? Math.min(640, vh - 96) : Math.min(box.h, vh - top - 16);
 
   const cornerHandle = (corner: Corner, style: React.CSSProperties) => (
     <div
@@ -81,7 +85,7 @@ export function CharacterLibraryPanel({ onClose }: { onClose: () => void }) {
     <div
       className="nodrag nowheel flex flex-col"
       style={{
-        position: "fixed", left, top, width, height, zIndex: 40,
+        position: "fixed", left, top, width, height: "auto", maxHeight, zIndex: 40,
         background: "var(--c-base)", border: "1px solid var(--c-bd1)", borderRadius: 12,
         boxShadow: "var(--c-node-shadow-hover)", overflow: "hidden",
       }}

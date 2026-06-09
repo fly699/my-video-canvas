@@ -444,13 +444,14 @@ export function FilmstripPanel({ onClose }: FilmstripPanelProps) {
         className="nowheel"
         style={{
           flex: 1,
-          overflowX: "auto",
+          // 失焦（浮动模式）时隐藏底部横向滚动条：不展示 chrome 时禁用横向滚动。
+          overflowX: showChrome ? "auto" : "hidden",
           overflowY: "hidden",
           display: "flex",
           alignItems: "center",
           gap: 8,
           padding: "6px 12px",
-          scrollbarWidth: "thin",
+          scrollbarWidth: showChrome ? "thin" : "none",
           scrollbarColor: "var(--c-bd3) transparent",
         }}
       >
