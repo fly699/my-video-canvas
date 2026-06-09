@@ -1,5 +1,5 @@
 import { useReactFlow } from "@xyflow/react";
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import { X, Film, ImageOff, GripHorizontal, Pin } from "lucide-react";
 import { useCanvasStore } from "../../hooks/useCanvasStore";
 import { getNodeConfig } from "../../lib/nodeConfig";
@@ -7,7 +7,7 @@ import type { NodeType } from "../../../../shared/types";
 import { isOwnStorageUrl } from "../../lib/ownStorage";
 import { usePersistentState } from "../../hooks/usePersistentState";
 import { useHorizontalWheelScroll } from "../../hooks/useHorizontalWheelScroll";
-import { resizePanelByCorner, type Corner } from "../../lib/panelCornerResize";
+import { resizePanelByCorner, resizePanelByEdge, type Corner, type Edge } from "../../lib/panelCornerResize";
 
 interface FilmstripPanelProps {
   onClose: () => void;
@@ -92,10 +92,15 @@ export function FilmstripPanel({ onClose }: FilmstripPanelProps) {
     return () => window.removeEventListener("resize", fix);
   }, [setLayout]);
   const dragRef = useRef<{
-    mode: "move" | "resize-height" | "resize-corner";
+    mode: "move" | "resize-height" | "resize-corner" | "resize-edge";
     startX: number; startY: number;
     initLeft: number; initTop: number; initW: number; initH: number;
   } | null>(null);
+
+  // 悬浮（浮动）模式下，鼠标离开面板时自动隐藏标题栏 + 缩略图下方节点名称，
+  // 移入恢复；拖动/缩放进行中（dragRef 非空）不隐藏。吸附模式始终常显。
+  const [hovered, setHovered] = useState(false);
+  const showChrome = layout.docked || hovered;
 
   // Top-edge grip: vertical-only resize (grow panel upward by dragging up).
   // Works in both docked and floating modes.
@@ -181,6 +186,36 @@ export function FilmstripPanel({ onClose }: FilmstripPanelProps) {
         { minW: MIN_WIDTH, minH: MIN_HEIGHT, maxH: MAX_HEIGHT, vw: window.innerWidth },
       );
       setLayout((cur) => ({ ...cur, left: r.left, top: r.top, width: r.width, height: r.height }));
+    };
+    const onUp = () => {
+      dragRef.current = null;
+      window.removeEventListener("mousemove", onMove);
+      window.removeEventListener("mouseup", onUp);
+    };
+    window.addEventListener("mousemove", onMove);
+    window.addEventListener("mouseup", onUp);
+  };
+
+  // Left/right edge resize — width only, opposite edge anchored (height/top unchanged).
+  // Floating only. Lets users widen/narrow without the four-corner handles touching height.
+  const startEdgeResize = (edge: Edge) => (e: React.MouseEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    dragRef.current = {
+      mode: "resize-edge",
+      startX: e.clientX, startY: e.clientY,
+      initLeft: layout.left, initTop: layout.top, initW: layout.width, initH: layout.height,
+    };
+    const onMove = (mv: MouseEvent) => {
+      const d = dragRef.current;
+      if (!d) return;
+      const r = resizePanelByEdge(
+        edge,
+        { left: d.initLeft, top: d.initTop, width: d.initW, height: d.initH },
+        mv.clientX - d.startX,
+        { minW: MIN_WIDTH, vw: window.innerWidth },
+      );
+      setLayout((cur) => ({ ...cur, left: r.left, width: r.width }));
     };
     const onUp = () => {
       dragRef.current = null;
@@ -283,6 +318,8 @@ export function FilmstripPanel({ onClose }: FilmstripPanelProps) {
   return (
     <div
       className="canvas-filmstrip"
+      onMouseEnter={() => setHovered(true)}
+      onMouseLeave={() => { if (!dragRef.current) setHovered(false); }}
       style={{
         // z-index 15 keeps the panel above the canvas but below the floating
         // toolbar (z-20). The minimap (z-30) and timeline (z-25) intentionally
@@ -332,16 +369,20 @@ export function FilmstripPanel({ onClose }: FilmstripPanelProps) {
       <div
         onMouseDown={startHeaderDrag}
         style={{
-          height: 28,
+          height: showChrome ? 28 : 0,
+          opacity: showChrome ? 1 : 0,
+          overflow: "hidden",
           display: "flex",
           alignItems: "center",
           justifyContent: "space-between",
           paddingLeft: 12,
           paddingRight: 8,
           flexShrink: 0,
-          borderBottom: "1px solid var(--c-bd1)",
+          borderBottom: showChrome ? "1px solid var(--c-bd1)" : "none",
           cursor: "move",
           userSelect: "none",
+          transition: "height 180ms ease, opacity 180ms ease",
+          pointerEvents: showChrome ? undefined : "none",
         }}
       >
         <div style={{ display: "flex", alignItems: "center", gap: 5 }}>
@@ -450,6 +491,7 @@ export function FilmstripPanel({ onClose }: FilmstripPanelProps) {
                 sceneNumber={sceneNumber}
                 accentColor={accentColor}
                 isSelected={!!isSelected}
+                showFooter={showChrome}
                 onClick={() => handleFrameClick(node.id)}
               />
             );
@@ -457,6 +499,20 @@ export function FilmstripPanel({ onClose }: FilmstripPanelProps) {
         )}
       </div>
 
+      {/* Left/right edge resize — width only (floating mode only). Sits between the
+          top/bottom corner handles so the corners still own the diagonal resize. */}
+      {!layout.docked && (["l", "r"] as Edge[]).map((edge) => (
+        <div
+          key={edge}
+          onMouseDown={startEdgeResize(edge)}
+          title="拖动左右边缘调整宽度"
+          style={{
+            position: "absolute", top: 18, bottom: 18, width: 8, zIndex: 2,
+            cursor: "ew-resize",
+            ...(edge === "l" ? { left: -2 } : { right: -2 }),
+          }}
+        />
+      ))}
       {/* Four-corner resize handles — width + height. Floating mode only:
           docked panels span full width by definition. */}
       {!layout.docked && (["tl", "tr", "bl", "br"] as Corner[]).map((corner) => (
@@ -498,6 +554,7 @@ interface FilmFrameProps {
   sceneNumber?: number | string;
   accentColor: string;
   isSelected: boolean;
+  showFooter: boolean;
   onClick: () => void;
 }
 
@@ -511,6 +568,7 @@ function FilmFrame({
   sceneNumber,
   accentColor,
   isSelected,
+  showFooter,
   onClick,
 }: FilmFrameProps) {
   const mediaUrl = isVideo ? videoUrl : imageUrl;
@@ -556,7 +614,7 @@ function FilmFrame({
       onDragStart={onDragStart}
       style={{
         width: imgSide,
-        height: imgSide + 22,
+        height: imgSide + (showFooter ? 22 : 0),
         flexShrink: 0,
         background: "var(--c-base)",
         border: isSelected
@@ -567,7 +625,7 @@ function FilmFrame({
         cursor: "pointer",
         display: "flex",
         flexDirection: "column",
-        transition: "transform 150ms ease, border-color 150ms ease, box-shadow 150ms ease",
+        transition: "transform 150ms ease, border-color 150ms ease, box-shadow 150ms ease, height 180ms ease",
         boxShadow: isSelected
           ? `0 0 0 1px ${accentColor}40, 0 4px 16px oklch(0 0 0 / 0.15)`
           : "0 2px 8px oklch(0 0 0 / 0.08)",
@@ -658,17 +716,20 @@ function FilmFrame({
         </div>
       </div>
 
-      {/* Footer strip */}
+      {/* Footer strip — collapses when chrome is hidden (floating + mouse away) */}
       <div
         style={{
-          height: 22,
+          height: showFooter ? 22 : 0,
+          opacity: showFooter ? 1 : 0,
+          overflow: "hidden",
           flexShrink: 0,
           display: "flex",
           alignItems: "center",
           paddingLeft: 5,
           paddingRight: 5,
           background: "var(--c-base)",
-          borderTop: "1px solid var(--c-bd1)",
+          borderTop: showFooter ? "1px solid var(--c-bd1)" : "none",
+          transition: "height 180ms ease, opacity 180ms ease",
         }}
       >
         <span

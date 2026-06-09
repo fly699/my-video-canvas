@@ -3,8 +3,27 @@
 // opposite corner stays anchored. Pure / unit-testable; pointer plumbing lives in the panels.
 
 export type Corner = "tl" | "tr" | "bl" | "br";
+export type Edge = "l" | "r";
 export interface Rect { left: number; top: number; width: number; height: number }
 export interface PanelBounds { minW: number; minH: number; maxH: number; vw: number }
+
+/**
+ * Horizontal-only edge resize: drag the left or right edge; the opposite edge stays
+ * anchored and height/top are untouched. Lets users widen/narrow the filmstrip & timeline
+ * panels without the four-corner handles also changing height. Pure / unit-testable.
+ */
+export function resizePanelByEdge(edge: Edge, init: Rect, dx: number, b: { minW: number; vw: number }): Rect {
+  const right = init.left + init.width;
+  let left = init.left;
+  let width = init.width;
+  if (edge === "r") {
+    width = Math.max(b.minW, Math.min(b.vw - init.left, init.width + dx)); // left edge anchored
+  } else { // "l" — right edge anchored, left moves (≥ 0)
+    left = Math.max(0, Math.min(right - b.minW, init.left + dx));
+    width = right - left;
+  }
+  return { left, top: init.top, width, height: init.height };
+}
 
 export function resizePanelByCorner(corner: Corner, init: Rect, dx: number, dy: number, b: PanelBounds): Rect {
   const right = init.left + init.width;

@@ -7,7 +7,7 @@ import type { NodeType } from "../../../../shared/types";
 import { isOwnStorageUrl } from "../../lib/ownStorage";
 import { usePersistentState } from "../../hooks/usePersistentState";
 import { useHorizontalWheelScroll } from "../../hooks/useHorizontalWheelScroll";
-import { resizePanelByCorner, type Corner } from "../../lib/panelCornerResize";
+import { resizePanelByCorner, resizePanelByEdge, type Corner, type Edge } from "../../lib/panelCornerResize";
 
 interface TimelinePanelProps {
   onClose: () => void;
@@ -85,10 +85,15 @@ export function TimelinePanel({ onClose }: TimelinePanelProps) {
     return () => window.removeEventListener("resize", fix);
   }, [setLayout]);
   const dragRef = useRef<{
-    mode: "move" | "resize-height" | "resize-corner";
+    mode: "move" | "resize-height" | "resize-corner" | "resize-edge";
     startX: number; startY: number;
     initLeft: number; initTop: number; initW: number; initH: number;
   } | null>(null);
+
+  // 浮动模式下鼠标离开面板时自动隐藏标题栏 + 片段下方名称，移入恢复；
+  // 拖动/缩放进行中不隐藏；吸附模式始终常显。
+  const [hovered, setHovered] = useState(false);
+  const showChrome = layout.docked || hovered;
 
   const startTopResize = (e: React.MouseEvent) => {
     e.preventDefault();
@@ -166,6 +171,35 @@ export function TimelinePanel({ onClose }: TimelinePanelProps) {
         { minW: TL_MIN_W, minH: TL_MIN_H, maxH: TL_MAX_H, vw: window.innerWidth },
       );
       setLayout((cur) => ({ ...cur, left: r.left, top: r.top, width: r.width, height: r.height }));
+    };
+    const onUp = () => {
+      dragRef.current = null;
+      window.removeEventListener("mousemove", onMove);
+      window.removeEventListener("mouseup", onUp);
+    };
+    window.addEventListener("mousemove", onMove);
+    window.addEventListener("mouseup", onUp);
+  };
+
+  // Left/right edge resize — width only, opposite edge anchored. Floating only.
+  const startEdgeResize = (edge: Edge) => (e: React.MouseEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    dragRef.current = {
+      mode: "resize-edge",
+      startX: e.clientX, startY: e.clientY,
+      initLeft: layout.left, initTop: layout.top, initW: layout.width, initH: layout.height,
+    };
+    const onMove = (mv: MouseEvent) => {
+      const d = dragRef.current;
+      if (!d) return;
+      const r = resizePanelByEdge(
+        edge,
+        { left: d.initLeft, top: d.initTop, width: d.initW, height: d.initH },
+        mv.clientX - d.startX,
+        { minW: TL_MIN_W, vw: window.innerWidth },
+      );
+      setLayout((cur) => ({ ...cur, left: r.left, width: r.width }));
     };
     const onUp = () => {
       dragRef.current = null;
@@ -292,6 +326,8 @@ export function TimelinePanel({ onClose }: TimelinePanelProps) {
 
   return (
     <div
+      onMouseEnter={() => setHovered(true)}
+      onMouseLeave={() => { if (!dragRef.current) setHovered(false); }}
       style={{
         position: "absolute",
         ...rectStyle,
@@ -327,16 +363,20 @@ export function TimelinePanel({ onClose }: TimelinePanelProps) {
       <div
         onMouseDown={startHeaderDrag}
         style={{
-          height: 28,
+          height: showChrome ? 28 : 0,
+          opacity: showChrome ? 1 : 0,
+          overflow: "hidden",
           display: "flex",
           alignItems: "center",
           justifyContent: "space-between",
           paddingLeft: 12,
           paddingRight: 8,
           flexShrink: 0,
-          borderBottom: "1px solid var(--c-bd1)",
+          borderBottom: showChrome ? "1px solid var(--c-bd1)" : "none",
           cursor: "move",
           userSelect: "none",
+          transition: "height 180ms ease, opacity 180ms ease",
+          pointerEvents: showChrome ? undefined : "none",
         }}
       >
         <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
@@ -450,6 +490,7 @@ export function TimelinePanel({ onClose }: TimelinePanelProps) {
               videoH={clipVideoH}
               clip={clip}
               isPlaying={playingId === clip.nodeId}
+              showFooter={showChrome}
               videoRef={(el) => { videoRefs.current[clip.nodeId] = el; }}
               proxySrc={proxySrc}
               onNavigate={() => handleFrameClick(clip.nodeId)}
@@ -460,6 +501,19 @@ export function TimelinePanel({ onClose }: TimelinePanelProps) {
         )}
       </div>
 
+      {/* Left/right edge resize — width only (floating mode only) */}
+      {!layout.docked && (["l", "r"] as Edge[]).map((edge) => (
+        <div
+          key={edge}
+          onMouseDown={startEdgeResize(edge)}
+          title="拖动左右边缘调整宽度"
+          style={{
+            position: "absolute", top: 18, bottom: 18, width: 8, zIndex: 2,
+            cursor: "ew-resize",
+            ...(edge === "l" ? { left: -2 } : { right: -2 }),
+          }}
+        />
+      ))}
       {/* Four-corner resize — floating only */}
       {!layout.docked && (["tl", "tr", "bl", "br"] as Corner[]).map((corner) => (
         <div
@@ -496,6 +550,7 @@ interface TimelineClipProps {
   videoH: number;
   clip: VideoClip;
   isPlaying: boolean;
+  showFooter: boolean;
   videoRef: (el: HTMLVideoElement | null) => void;
   proxySrc: (url: string) => string;
   onNavigate: () => void;
@@ -503,7 +558,7 @@ interface TimelineClipProps {
   onEnded: () => void;
 }
 
-function TimelineClip({ index, clipW, videoH, clip, isPlaying, videoRef, proxySrc, onNavigate, onPlay, onEnded }: TimelineClipProps) {
+function TimelineClip({ index, clipW, videoH, clip, isPlaying, showFooter, videoRef, proxySrc, onNavigate, onPlay, onEnded }: TimelineClipProps) {
   const storedInMinio = isOwnStorageUrl(clip.videoUrl);
 
   // Drag-to-attach: timeline clips are always videos, which LLMs can't read
@@ -531,7 +586,7 @@ function TimelineClip({ index, clipW, videoH, clip, isPlaying, videoRef, proxySr
       onDragStart={onDragStart}
       style={{
         width: clipW,
-        height: videoH + 22,
+        height: videoH + (showFooter ? 22 : 0),
         flexShrink: 0,
         display: "flex",
         flexDirection: "column",
@@ -544,7 +599,7 @@ function TimelineClip({ index, clipW, videoH, clip, isPlaying, videoRef, proxySr
         boxShadow: clip.isSelected
           ? `0 0 0 1px ${clip.accentColor}40, 0 4px 16px oklch(0 0 0 / 0.5)`
           : "0 2px 8px oklch(0 0 0 / 0.4)",
-        transition: "border-color 150ms ease, box-shadow 150ms ease",
+        transition: "border-color 150ms ease, box-shadow 150ms ease, height 180ms ease",
         position: "relative",
       }}
     >
@@ -659,17 +714,20 @@ function TimelineClip({ index, clipW, videoH, clip, isPlaying, videoRef, proxySr
         </button>
       </div>
 
-      {/* Footer strip */}
+      {/* Footer strip — collapses when chrome is hidden (floating + mouse away) */}
       <div
         style={{
-          height: 22,
+          height: showFooter ? 22 : 0,
+          opacity: showFooter ? 1 : 0,
+          overflow: "hidden",
           flexShrink: 0,
           display: "flex",
           alignItems: "center",
           paddingLeft: 5,
           paddingRight: 5,
           background: "var(--c-base)",
-          borderTop: "1px solid var(--c-bd1)",
+          borderTop: showFooter ? "1px solid var(--c-bd1)" : "none",
+          transition: "height 180ms ease, opacity 180ms ease",
         }}
       >
         <span
