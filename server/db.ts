@@ -1720,22 +1720,45 @@ export async function getAuditLogs(opts: {
   limit?: number;
   offset?: number;
   action?: string;
+  /** 按用户名 / 邮箱 / ID 模糊筛选。 */
+  user?: string;
 }): Promise<{ rows: typeof auditLogs.$inferSelect[]; total: number }> {
   const limit = opts.limit ?? 50;
   const offset = opts.offset ?? 0;
   const db = await getDb();
 
+  // "kie_gen" 是个伪类别：kie 的图/视频/音乐生成走的是 image_gen/video_gen/audio_music
+  // 等动作，靠 detail 里的 model/provider 以 "kie_" 开头来识别。
+  const KIE_GEN_ACTIONS = ["image_gen", "video_gen", "audio_music", "audio_dubbing"];
+
   if (!db) {
-    const filtered = opts.action
-      ? devAuditLogs.filter((l) => l.action === opts.action)
-      : devAuditLogs;
+    const uq = opts.user?.trim().toLowerCase();
+    const filtered = devAuditLogs.filter((l) => {
+      if (opts.action === "kie_gen") {
+        const d = (l.detail ?? {}) as { model?: string; provider?: string };
+        if (!(KIE_GEN_ACTIONS.includes(l.action) && (String(d.model ?? "").startsWith("kie_") || String(d.provider ?? "").startsWith("kie_")))) return false;
+      } else if (opts.action && l.action !== opts.action) return false;
+      if (uq && !(`${l.userName ?? ""} ${l.userEmail ?? ""} ${l.userId ?? ""}`.toLowerCase().includes(uq))) return false;
+      return true;
+    });
     return {
       rows: filtered.slice(offset, offset + limit) as typeof auditLogs.$inferSelect[],
       total: filtered.length,
     };
   }
 
-  const where = opts.action ? eq(auditLogs.action, opts.action) : undefined;
+  const conds = [];
+  if (opts.action === "kie_gen") {
+    conds.push(inArray(auditLogs.action, KIE_GEN_ACTIONS));
+    conds.push(sql`(JSON_UNQUOTE(JSON_EXTRACT(${auditLogs.detail}, '$.model')) LIKE 'kie_%' OR JSON_UNQUOTE(JSON_EXTRACT(${auditLogs.detail}, '$.provider')) LIKE 'kie_%')`);
+  } else if (opts.action) {
+    conds.push(eq(auditLogs.action, opts.action));
+  }
+  if (opts.user?.trim()) {
+    const like = `%${opts.user.trim()}%`;
+    conds.push(sql`(${auditLogs.userName} LIKE ${like} OR ${auditLogs.userEmail} LIKE ${like} OR CAST(${auditLogs.userId} AS CHAR) LIKE ${like})`);
+  }
+  const where = conds.length ? and(...conds) : undefined;
 
   const [rows, countRows] = await Promise.all([
     db.select().from(auditLogs)

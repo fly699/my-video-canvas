@@ -175,13 +175,12 @@ function WelcomeModal({ onClose }: { onClose: () => void }) {
             {/* Brand logo */}
             <div
               style={{
-                width: 56, height: 56, borderRadius: 12, flexShrink: 0,
-                background: "linear-gradient(135deg, oklch(0.68 0.22 285), oklch(0.60 0.20 310))",
+                width: 56, height: 56, borderRadius: 12, flexShrink: 0, overflow: "hidden",
                 display: "flex", alignItems: "center", justifyContent: "center",
                 boxShadow: "0 6px 20px oklch(0.68 0.22 285 / 0.4)",
               }}
             >
-              <Sparkles size={26} color="white" strokeWidth={2.2} />
+              <img src="/chat-icon.svg" alt="KingTai" style={{ width: "100%", height: "100%", objectFit: "cover" }} />
             </div>
 
             {/* Title block */}

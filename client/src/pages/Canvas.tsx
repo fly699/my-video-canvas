@@ -31,6 +31,7 @@ import { CollaboratorCursors } from "../components/canvas/CollaboratorCursors";
 import { FloatingAssetPanel } from "../components/canvas/FloatingAssetPanel";
 import { CharacterLibraryPanel } from "../components/canvas/CharacterLibraryPanel";
 import { setLibraryCharacters } from "../lib/characterConditioning";
+import { ChangePasswordDialog } from "../components/ChangePasswordDialog";
 import { NodeImageLightbox } from "../components/canvas/NodeImageLightbox";
 import { TemplatePanel } from "../components/canvas/TemplatePanel";
 import { NodeTemplateLibrary } from "../components/canvas/NodeTemplateLibrary";
@@ -82,6 +83,7 @@ import {
   Scan,
   Play,
   LogOut,
+  KeyRound,
   Undo2,
   Redo2,
   Search,
@@ -344,6 +346,7 @@ function validateBool(v: unknown): boolean | null {
 
 function CanvasInner({ projectId }: { projectId: number }) {
   const { user, isAuthenticated, logout } = useAuth();
+  const [showChangePw, setShowChangePw] = useState(false);
   const [, navigate] = useLocation();
   const reactFlow = useReactFlow();
   const isMobile = useIsMobile();
@@ -2001,6 +2004,16 @@ function CanvasInner({ projectId }: { projectId: number }) {
 
           {/* Divider */}
           <div className="w-px h-4 mx-1" style={{ background: "var(--c-bd2)" }} />
+          {/* 修改密码 */}
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <button onClick={() => setShowChangePw(true)} className="topbar-btn">
+                <KeyRound className="w-3.5 h-3.5" />
+              </button>
+            </TooltipTrigger>
+            <TooltipContent side="bottom" className="text-xs">修改密码</TooltipContent>
+          </Tooltip>
+          <ChangePasswordDialog open={showChangePw} onClose={() => setShowChangePw(false)} />
           {/* Logout */}
           <Tooltip>
             <TooltipTrigger asChild>
