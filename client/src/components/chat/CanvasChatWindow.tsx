@@ -27,7 +27,8 @@ export function CanvasChatWindow({ onClose }: { onClose: () => void }) {
   const dragRef = useRef<{ mx: number; my: number; x: number; y: number } | null>(null);
   const rezRef = useRef<{ mx: number; my: number; w: number; h: number } | null>(null);
   // UI scale (zoom) of the window content — independent of window size.
-  const [scale, setScale] = usePersistentState<number>("ui:chat-window:scale:v1", 1,
+  // 默认 70%（用户偏好更紧凑）；改动后持久化记忆（localStorage）。
+  const [scale, setScale] = usePersistentState<number>("ui:chat-window:scale:v1", 0.7,
     { validate: (p) => (typeof p === "number" && p >= 0.6 && p <= 1.6 ? p : null) });
   const bumpScale = (d: number) => setScale((s) => Math.round(clamp(s + d, 0.6, 1.6) * 100) / 100);
 
@@ -79,7 +80,7 @@ export function CanvasChatWindow({ onClose }: { onClose: () => void }) {
           <span style={{ fontWeight: 700, fontSize: 13, color: C.accent }}>聊天</span>
           <div style={{ marginLeft: "auto", display: "flex", alignItems: "center", gap: 4 }}>
             <Btn title="缩小界面" onClick={() => bumpScale(-0.1)}><ZoomOut size={15} /></Btn>
-            <span title="界面缩放比例" onMouseDown={(e) => e.stopPropagation()} onClick={() => setScale(1)} style={{ fontSize: 11, color: C.t3, minWidth: 30, textAlign: "center", cursor: "pointer", userSelect: "none" }}>{Math.round(scale * 100)}%</span>
+            <span title="界面缩放比例 · 点击恢复默认 70%" onMouseDown={(e) => e.stopPropagation()} onClick={() => setScale(0.7)} style={{ fontSize: 11, color: C.t3, minWidth: 30, textAlign: "center", cursor: "pointer", userSelect: "none" }}>{Math.round(scale * 100)}%</span>
             <Btn title="放大界面" onClick={() => bumpScale(0.1)}><ZoomIn size={15} /></Btn>
             <Btn title={sidebar ? "隐藏会话栏" : "显示会话栏"} active={sidebar} onClick={() => setSidebar((v) => !v)}><PanelLeft size={15} /></Btn>
             <Btn title="成员/在线" active={members} onClick={() => setMembers((v) => !v)}><Users size={15} /></Btn>
