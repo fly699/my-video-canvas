@@ -63,6 +63,7 @@ import { assertWhitelisted, assertLLMAllowed, assertComfyuiAllowed, assertComfyu
 import { resolveKieKey } from "../_core/kie";
 import { isKieImageModel } from "../_core/kieImage";
 import { isKieVideoProvider, submitKieVideo } from "../_core/kieVideo";
+import { isKieMusicModel, submitAndPollKieMusic } from "../_core/kieMusic";
 import { encryptKieKey, decryptKieKey } from "../_core/kieCrypto";
 import { writeAuditLog, truncate } from "../_core/auditLog";
 import { withComfyUsageLog } from "../_core/comfyUsageLog";
@@ -1900,18 +1901,42 @@ export const audioGenRouter = router({
           "suno-v4", "suno-v4.5", "suno-v4.5plus", "suno-v4.5all", "suno-v5", "suno-v5.5",
           // Live (MiniMax via status endpoint)
           "minimax-music-2.6",
+          // kie.ai Suno (own key system, /api/v1/generate)
+          "kie_suno_v4", "kie_suno_v4_5", "kie_suno_v4_5plus", "kie_suno_v5", "kie_suno_v5_5",
           // Legacy aliases — normalized below
           "suno-v3.5", "minimax-music-02", "mureka",
         ]),
         prompt: z.string().min(1),
         style: z.string().optional(),
+        title: z.string().max(120).optional(),     // Suno custom-mode title
         instrumental: z.boolean().optional(),
         negativeTags: z.string().optional(),
         lyrics: z.string().max(3500).optional(),   // MiniMax only
+        kieTempKey: z.string().max(256).optional(), // kie_suno_* only
         projectId: z.number().optional(),
       })
     )
     .mutation(async ({ ctx, input }) => {
+      // kie Suno authenticates with its own key (temp > assigned > house) and
+      // bypasses the Poyo whitelist; non-kie keeps the whitelist gate.
+      if (isKieMusicModel(input.model)) {
+        if (input.projectId != null) await assertProjectAccess(input.projectId, ctx.user.id, "editor");
+        const resolved = await resolveKieKey(ctx, input.kieTempKey);
+        return dedupe("audioGen.generateMusic", ctx.user.id, input, async () => {
+          const result = await submitAndPollKieMusic({
+            model: input.model,
+            apiKey: resolved.key,
+            prompt: input.prompt,
+            style: input.style,
+            title: input.title,
+            instrumental: input.instrumental,
+            negativeTags: input.negativeTags,
+          });
+          writeAuditLog({ ctx, action: "audio_music", detail: { model: input.model, prompt: truncate(input.prompt), resultUrl: result.url, duration: result.duration } });
+          await recordGeneratedAsset({ userId: ctx.user.id, projectId: input.projectId ?? null, type: "audio", source: "generated", provider: "kie", model: input.model, url: result.url, name: input.model });
+          return { url: result.url, duration: result.duration, imageUrl: result.imageUrl };
+        });
+      }
       await assertWhitelisted(ctx);
       if (input.projectId != null) await assertProjectAccess(input.projectId, ctx.user.id, "editor");
 
