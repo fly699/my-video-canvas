@@ -7,7 +7,7 @@ import { invalidateStorageSettingsCache } from "../_core/storageConfig";
 import { storagePut, storageBackend, isStorageConfigured, storageDeleteObject } from "../storage";
 import { ENV } from "../_core/env";
 import { randomBytes } from "crypto";
-import { getUpdateStatus, getVersionInfo, getUpdateAvailable, startUpdate } from "../_core/selfUpdate";
+import { getUpdateStatus, getVersionInfo, getUpdateAvailable, startUpdate, restartServer } from "../_core/selfUpdate";
 import { startBackfill, getBackfillStatus } from "../_core/assetBackfill";
 import { writeAuditLog } from "../_core/auditLog";
 import { adminDownloadsRouter } from "./downloads";
@@ -545,6 +545,11 @@ export const adminRouter = router({
     }),
     run: adminProcedure.mutation(async () => {
       return startUpdate();
+    }),
+    // 仅重启服务（不更新代码）——用于加载手动改过的 .env。退出进程由 NSSM/pm2 拉起。
+    restart: adminProcedure.mutation(async ({ ctx }) => {
+      writeAuditLog({ ctx, action: "system_restart", detail: {} });
+      return restartServer();
     }),
   }),
 });

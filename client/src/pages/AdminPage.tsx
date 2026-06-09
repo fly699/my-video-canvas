@@ -664,6 +664,19 @@ function SystemUpdatePanel() {
   const runMut = trpc.admin.update.run.useMutation({
     onSuccess: () => { void utils.admin.update.status.invalidate(); },
   });
+  const restartMut = trpc.admin.update.restart.useMutation({
+    onSuccess: (r) => {
+      if (r.restarting) toast.success("服务正在重启，约 5–15 秒后请刷新页面");
+      else toast.message(r.reason ?? "当前环境不支持自动重启");
+    },
+    onError: (e) => toast.error("重启失败：" + e.message),
+  });
+
+  const handleRestart = () => {
+    if (running || restartMut.isPending) return;
+    if (!confirm("确定重启服务？\n\n用于加载手动修改过的 .env。期间页面会短暂中断（约 5–15 秒），请稍候刷新。")) return;
+    restartMut.mutate();
+  };
 
   const status = statusQuery.data;
   const running = status?.state === "running";
@@ -740,6 +753,18 @@ function SystemUpdatePanel() {
                   ? <Loader2 className="animate-spin" style={{ width: 13, height: 13 }} />
                   : <RotateCw style={{ width: 13, height: 13 }} />}
                 {running ? "更新中…" : "立即更新"}
+              </button>
+
+              <button
+                onClick={handleRestart}
+                disabled={running || restartMut.isPending}
+                style={btnSecondary(running || restartMut.isPending)}
+                title="仅重启服务（不更新代码），用于加载手动修改过的 .env 配置"
+              >
+                {restartMut.isPending
+                  ? <Loader2 className="animate-spin" style={{ width: 12, height: 12 }} />
+                  : <RotateCw style={{ width: 12, height: 12 }} />}
+                重启服务
               </button>
 
               {available && (

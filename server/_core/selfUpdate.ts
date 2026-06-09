@@ -321,3 +321,15 @@ export async function startUpdate(): Promise<{ started: boolean; reason?: string
 
   return { started: true };
 }
+
+// ── 仅重启服务（不更新代码）：退出进程由 NSSM/pm2 自动拉起，用于加载改动后的 .env。──
+// 生产环境才真正退出（有守护进程拉起）；开发/无守护环境只回提示，避免把服务搞挂不回来。
+export function restartServer(): { restarting: boolean; reason?: string } {
+  const isProd = process.env.NODE_ENV === "production";
+  if (!isProd) {
+    return { restarting: false, reason: "仅生产环境支持自动重启（由 NSSM/pm2 拉起）；开发模式请手动重启。" };
+  }
+  // 给前端留出收到响应的时间，再退出让守护进程重启。
+  setTimeout(() => process.exit(0), 800);
+  return { restarting: true };
+}
