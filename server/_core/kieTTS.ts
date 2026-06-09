@@ -63,6 +63,9 @@ export async function submitAndPollKieTTS(opts: KieTTSOptions): Promise<KieTTSRe
   if (!spec) throw new Error(`未知 kie TTS 模型：${opts.model}`);
   const voice = opts.voice?.trim() || DEFAULT_VOICE;
 
+  // language_code 仅 Turbo v2.5 / Flash v2.5 支持；其他模型（多语 v2）若带该字段上游会报错，
+  // 故只对 turbo 透传（docs/kie-api.md：“Currently only Turbo v2.5 and Flash v2.5 support language enforcement”）。
+  const supportsLangCode = spec.model === "elevenlabs/text-to-speech-turbo-2-5";
   const input: Record<string, unknown> = spec.kind === "dialogue"
     ? { dialogue: [{ text: opts.text, voice }] }
     : {
@@ -71,7 +74,7 @@ export async function submitAndPollKieTTS(opts: KieTTSOptions): Promise<KieTTSRe
         similarity_boost: opts.similarityBoost ?? 0.75,
         style: opts.style ?? 0,
         speed: opts.speed ?? 1,
-        ...(opts.languageCode?.trim() ? { language_code: opts.languageCode.trim() } : {}),
+        ...(supportsLangCode && opts.languageCode?.trim() ? { language_code: opts.languageCode.trim() } : {}),
       };
 
   const submitRes = await fetch(`${KIE_BASE_URL}/api/v1/jobs/createTask`, {

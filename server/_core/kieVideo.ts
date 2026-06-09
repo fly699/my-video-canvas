@@ -552,9 +552,8 @@ export async function checkKieVideoStatus(provider: string, externalTaskId: stri
   const spec = KIE_VIDEO_SPECS[provider];
   if (!spec) throw new Error(`未知 kie 视频模型：${provider}`);
 
-  // Runway / Aleph share the record-detail endpoint with a different response shape
-  // (data.state + data.videoInfo.videoUrl, not successFlag + resultUrls).
-  if (spec.endpoint === "runway" || spec.endpoint === "aleph") {
+  // Runway Gen-4.5 — record-detail（data.state + data.videoInfo.videoUrl）。
+  if (spec.endpoint === "runway") {
     const r = await fetch(`${KIE_BASE_URL}/api/v1/runway/record-detail?taskId=${encodeURIComponent(externalTaskId)}`, {
       headers: { Authorization: `Bearer ${apiKey}` }, signal: AbortSignal.timeout(15_000),
     });
@@ -568,6 +567,31 @@ export async function checkKieVideoStatus(provider: string, externalTaskId: stri
     }
     if (st === "fail" || st === "failed") return { status: "failed", errorMessage: b.data?.failMsg ?? "生成失败" };
     return { status: "processing" }; // wait / queueing / generating
+  }
+
+  // Runway Aleph — 专属 record-info，响应形态与 Runway 完全不同：
+  // data.successFlag(1=成功, 0=失败或进行中) + data.response.resultVideoUrl，
+  // 失败靠 errorMessage/errorCode 区分（successFlag 0 时若有 error 即失败，否则仍在进行）。
+  if (spec.endpoint === "aleph") {
+    const r = await fetch(`${KIE_BASE_URL}/api/v1/aleph/record-info?taskId=${encodeURIComponent(externalTaskId)}`, {
+      headers: { Authorization: `Bearer ${apiKey}` }, signal: AbortSignal.timeout(15_000),
+    });
+    if (!r.ok) throw new Error(`kie 视频状态查询失败 (${r.status})`);
+    const b = (await r.json()) as {
+      code?: number;
+      data?: { successFlag?: number; errorCode?: number; errorMessage?: string; response?: { resultVideoUrl?: string } };
+    };
+    const d = b.data;
+    if (!d) return { status: "processing" };
+    if (d.successFlag === 1) {
+      const u = d.response?.resultVideoUrl;
+      return u ? { status: "finished", resultVideoUrls: [u] }
+        : { status: "failed", errorMessage: "[CHARGED] Aleph 已生成但未返回 URL（积分已扣，请勿重试）" };
+    }
+    if (d.errorMessage || (typeof d.errorCode === "number" && d.errorCode !== 0)) {
+      return { status: "failed", errorMessage: d.errorMessage ?? "生成失败" };
+    }
+    return { status: "processing" };
   }
 
   const base = spec.endpoint === "veo"

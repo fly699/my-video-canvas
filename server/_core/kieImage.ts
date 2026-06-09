@@ -199,8 +199,11 @@ export async function generateImageKie(options: GenerateImageOptions): Promise<G
       code?: number;
       data?: {
         successFlag?: number; errorMessage?: string;
-        info?: { resultImageUrl?: string; result_urls?: string[] };          // flux-kontext / gpt4o
-        response?: { result_urls?: string[]; resultUrls?: string[] | string }; // jobs
+        // record-info 轮询响应统一把结果放在 data.response（回调才是 data.info，勿混用）：
+        //   flux-kontext → response.resultImageUrl（单数驼峰）
+        //   gpt4o        → response.result_urls（数组蛇形）
+        //   jobs         → response.result_urls / resultUrls
+        response?: { resultImageUrl?: string; result_urls?: string[]; resultUrls?: string[] | string };
       };
     };
     const d = body.data;
@@ -208,9 +211,9 @@ export async function generateImageKie(options: GenerateImageOptions): Promise<G
     if (d.successFlag === 1) {
       let urls: string[] = [];
       if (endpoint === "flux-kontext") {
-        if (d.info?.resultImageUrl) urls = [d.info.resultImageUrl];
+        if (d.response?.resultImageUrl) urls = [d.response.resultImageUrl];
       } else if (endpoint === "gpt4o") {
-        urls = d.info?.result_urls ?? [];
+        urls = d.response?.result_urls ?? [];
       } else {
         urls = d.response?.result_urls ?? [];
         if (!urls.length && d.response?.resultUrls) {

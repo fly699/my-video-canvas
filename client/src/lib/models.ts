@@ -201,9 +201,9 @@ export const IMAGE_MODELS: readonly ImageModelMeta[] = [
   { value: "kie_qwen_image_edit",   label: "Qwen Image 编辑",    desc: "编辑 · 需参考图",    group: "Kie", family: "Qwen",        provider: "Kie", costNote: "5 点/百万像素", caps: ["I2I", "编辑"], requiresRef: true },
   { value: "kie_qwen2_image_edit",  label: "Qwen2 Image 编辑",   desc: "编辑 · 需参考图",    group: "Kie", family: "Qwen",        provider: "Kie", costNote: "5.6 点/张", caps: ["I2I", "编辑"], requiresRef: true },
   // ── 专属端点批（Flux Kontext / OpenAI 4o；有图即编辑、无图即文生图，参考图可选）──
-  { value: "kie_flux_kontext_pro",  label: "Flux Kontext Pro",   desc: "上下文编辑 · 文/图",  group: "Kie", family: "Flux Kontext", provider: "Kie", costNote: "8 点/张",  caps: ["T2I", "I2I", "编辑"] },
-  { value: "kie_flux_kontext_max",  label: "Flux Kontext Max",   desc: "上下文编辑 · 排版",   group: "Kie", family: "Flux Kontext", provider: "Kie", costNote: "16 点/张", caps: ["T2I", "I2I", "编辑", "排版"] },
-  { value: "kie_gpt_4o_image",      label: "GPT-4o Image",       desc: "GPT-4o · 文/图编辑",  group: "Kie", family: "GPT Image",    provider: "Kie", costNote: "4 点/张",  caps: ["T2I", "I2I", "蒙版"] },
+  { value: "kie_flux_kontext_pro",  label: "Flux Kontext Pro",   desc: "上下文编辑 · 文/图",  group: "Kie", family: "Flux Kontext", provider: "Kie", costNote: "5 点/张",  caps: ["T2I", "I2I", "编辑"] },
+  { value: "kie_flux_kontext_max",  label: "Flux Kontext Max",   desc: "上下文编辑 · 排版",   group: "Kie", family: "Flux Kontext", provider: "Kie", costNote: "10 点/张", caps: ["T2I", "I2I", "编辑", "排版"] },
+  { value: "kie_gpt_4o_image",      label: "GPT-4o Image",       desc: "GPT-4o · 文/图编辑",  group: "Kie", family: "GPT Image",    provider: "Kie", costNote: "6 点/张",  caps: ["T2I", "I2I", "蒙版"] },
 ] as const;
 
 export type ChatModelId = typeof CHAT_MODELS[number]["id"];
