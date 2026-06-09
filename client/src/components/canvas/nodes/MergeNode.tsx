@@ -1,5 +1,7 @@
-import { memo, useState } from "react";
+import { memo, useMemo, useState } from "react";
 import { BaseNode } from "../BaseNode";
+import { ReferenceImageStrip, type StripItem } from "../ReferenceImageStrip";
+import { useNodeDocks, useAudioStripItems } from "../../../hooks/useNodeDocks";
 import { useCanvasStore } from "../../../hooks/useCanvasStore";
 import type { MergeNodeData, MergeTransition } from "../../../../../shared/types";
 import { trpc } from "@/lib/trpc";
@@ -62,6 +64,16 @@ export const MergeNode = memo(function MergeNode({ id, selected, data }: Props) 
   const { updateNodeData, nodes, edges } = useCanvasStore();
   const payload = data.payload;
   const [showBgMusic, setShowBgMusic] = useState(false);
+
+  // 左侧吸附窗「音频」波形项：上游音频 + 本节点背景音乐（只读，放末尾）。
+  const upstreamAudio = useAudioStripItems(id);
+  const audioItems: StripItem[] = useMemo(() => {
+    const own: StripItem[] = payload.bgMusicUrl?.trim()
+      ? [{ id: "bgm:" + payload.bgMusicUrl, url: payload.bgMusicUrl, name: "背景音乐", label: "音频", kind: "audio", removable: false }]
+      : [];
+    return [...upstreamAudio, ...own];
+  }, [upstreamAudio, payload.bgMusicUrl]);
+  const docks = useNodeDocks(id, { hasRef: audioItems.length > 0, hasPrompt: false });
   const [dragIdx, setDragIdx] = useState<number | null>(null);
   // Auto-collapse the editing controls when the node is deselected; expand when
   // selected or pinned (mirrors NodeSelectedContext / the other nodes' behavior).
@@ -216,7 +228,26 @@ export const MergeNode = memo(function MergeNode({ id, selected, data }: Props) 
   const isFailed = payload.status === "failed";
 
   return (
-    <BaseNode id={id} selected={selected} nodeType="merge" title={data.title} minHeight={200} resizable>
+    <BaseNode id={id} selected={selected} nodeType="merge" title={data.title} minHeight={200} resizable
+      onHeaderHoverChange={docks.onHeaderHoverChange}
+      leftDock={
+        <ReferenceImageStrip
+          images={audioItems}
+          open={docks.refOpen}
+          accent={accent}
+          readOnly
+          title="音频"
+          readOnlyHint={<>参与本节点的音频<br />（上游 / 背景音乐）</>}
+          onClose={() => docks.setRefOpen(false)}
+          onRemove={() => {}}
+          onMove={() => {}}
+          onInsertUrls={() => {}}
+          onDropFiles={() => {}}
+          onZoom={() => {}}
+          onHoverChange={docks.onDockHoverChange}
+          onPin={docks.pinRef}
+        />
+      }>
 
       <div className="flex flex-col gap-3 p-3.5 h-full" onDragOver={handleDragOver} onDrop={handleDrop}>
 

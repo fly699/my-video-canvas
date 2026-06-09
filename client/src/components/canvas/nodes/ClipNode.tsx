@@ -1,6 +1,8 @@
-import { memo, useCallback, useEffect, useRef, useState } from "react";
+import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Handle, Position } from "@xyflow/react";
 import { BaseNode } from "../BaseNode";
+import { ReferenceImageStrip, type StripItem } from "../ReferenceImageStrip";
+import { useNodeDocks, useAudioStripItems } from "../../../hooks/useNodeDocks";
 import { isOwnStorageUrl } from "@/lib/ownStorage";
 import { handleStyle } from "../../../lib/handleStyle";
 import { useConnectState } from "../../../hooks/useConnectingStore";
@@ -378,6 +380,16 @@ export const ClipNode = memo(function ClipNode({ id, selected, data }: Props) {
   const connectState = useConnectState(id, "clip");
   const { updateNodeData } = useCanvasStore();
   const payload = data.payload;
+
+  // 左侧吸附窗「音频」波形项：上游音频 + 本节点输入音频（只读，放末尾）。
+  const upstreamAudio = useAudioStripItems(id);
+  const audioItems: StripItem[] = useMemo(() => {
+    const own: StripItem[] = payload.inputAudioUrl?.trim()
+      ? [{ id: "inaudio:" + payload.inputAudioUrl, url: payload.inputAudioUrl, name: "输入音频", label: "音频", kind: "audio", removable: false }]
+      : [];
+    return [...upstreamAudio, ...own];
+  }, [upstreamAudio, payload.inputAudioUrl]);
+  const docks = useNodeDocks(id, { hasRef: audioItems.length > 0, hasPrompt: false });
   const [isPlaying, setIsPlaying] = useState(false);
   const [loopPlayback, setLoopPlayback] = useState(false);
   const [currentTime, setCurrentTime] = useState(0);
@@ -595,7 +607,26 @@ export const ClipNode = memo(function ClipNode({ id, selected, data }: Props) {
     : activeVideoUrl ?? undefined;
 
   return (
-    <BaseNode id={id} selected={selected} nodeType="clip" title={data.title} minHeight={280} resizable showHandles={false}>
+    <BaseNode id={id} selected={selected} nodeType="clip" title={data.title} minHeight={280} resizable showHandles={false}
+      onHeaderHoverChange={docks.onHeaderHoverChange}
+      leftDock={
+        <ReferenceImageStrip
+          images={audioItems}
+          open={docks.refOpen}
+          accent={accent}
+          readOnly
+          title="音频"
+          readOnlyHint={<>参与本节点的音频<br />（上游 / 输入音轨）</>}
+          onClose={() => docks.setRefOpen(false)}
+          onRemove={() => {}}
+          onMove={() => {}}
+          onInsertUrls={() => {}}
+          onDropFiles={() => {}}
+          onZoom={() => {}}
+          onHoverChange={docks.onDockHoverChange}
+          onPin={docks.pinRef}
+        />
+      }>
       {/* Input handles — square = target/receives */}
       <Handle
         type="target"
