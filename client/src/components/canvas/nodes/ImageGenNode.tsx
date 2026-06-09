@@ -20,7 +20,8 @@ import { useNodeDocks, useCharSceneItems } from "../../../hooks/useNodeDocks";
 import type { ImageGenNodeData, ImageGenModel } from "../../../../../shared/types";
 import { trpc } from "@/lib/trpc";
 import { toast } from "sonner";
-import { Sparkles, Loader2, RefreshCw, Upload, X, Cpu, Check, Grid2X2, Download, ZoomIn, ChevronDown, ChevronRight, Lock, Unlock, ImagePlus } from "lucide-react";
+import { Sparkles, Loader2, RefreshCw, Upload, X, Cpu, Check, Grid2X2, Download, ZoomIn, ChevronDown, ChevronRight, Lock, Unlock, ImagePlus, AlertTriangle } from "lucide-react";
+import { imageModelRequiresRef } from "../../../lib/models";
 import { isOwnStorageUrl } from "@/lib/ownStorage";
 import { downloadMedia } from "@/lib/download";
 import { ImageLightbox } from "../ImageLightbox";
@@ -724,6 +725,17 @@ export const ImageGenNode = memo(function ImageGenNode({ id, selected, data }: P
             onChange={(v) => update("model", v as ImageGenModel)}
             options={IMAGE_MODEL_PICKER_OPTIONS}
           />
+          {/* 编辑 / 图生图模型必须有参考图——缺图时提前提示，避免提交后才被上游退回扣费 */}
+          {imageModelRequiresRef(payload.model) && stripImages.length === 0 && (
+            <div style={{
+              marginTop: 6, display: "flex", alignItems: "center", gap: 5, fontSize: 11,
+              color: "oklch(0.62 0.20 25)", background: "oklch(0.62 0.20 25 / 0.08)",
+              border: "1px solid oklch(0.62 0.20 25 / 0.28)", borderRadius: 6, padding: "4px 7px",
+            }}>
+              <AlertTriangle className="w-3 h-3" style={{ flexShrink: 0 }} />
+              此模型为图生图 / 编辑，需先连接或上传参考图
+            </div>
+          )}
         </div>
 
         {/* Prompt */}

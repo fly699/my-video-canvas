@@ -90,7 +90,15 @@ export type ImageModelMeta = {
   cost?: number;
   costNote?: string;
   caps?: string[];
+  /** 图生图 / 编辑模型：必须提供参考图，否则上游会报错。驱动节点内的「需参考图」提示。 */
+  requiresRef?: boolean;
 };
+
+/** 选定模型是否强制需要参考图（编辑 / 图生图）。供节点 UI 在缺图时给出提示。 */
+export function imageModelRequiresRef(value?: string): boolean {
+  if (!value) return false;
+  return IMAGE_MODELS.find((m) => m.value === value)?.requiresRef ?? false;
+}
 
 export const IMAGE_MODELS: readonly ImageModelMeta[] = [
   // --- Manus (built-in, free) ---
@@ -138,14 +146,14 @@ export const IMAGE_MODELS: readonly ImageModelMeta[] = [
   // --- kie.ai (统一 jobs API；用「当前生效 kie key」计费，见工具栏 kie 余额) ---
   { value: "kie_nano_banana",       label: "Nano Banana",        desc: "Google · 写实",     group: "Kie", family: "Nano Banana", provider: "Kie", costNote: "kie 计费", caps: ["T2I"] },
   { value: "kie_nano_banana_pro",   label: "Nano Banana Pro",    desc: "文字/图表 · 4K",    group: "Kie", family: "Nano Banana", provider: "Kie", costNote: "kie 计费", caps: ["T2I", "4K"] },
-  { value: "kie_nano_banana_edit",  label: "Nano Banana 编辑",   desc: "图生图 · 需参考图",  group: "Kie", family: "Nano Banana", provider: "Kie", costNote: "kie 计费", caps: ["I2I", "编辑"] },
+  { value: "kie_nano_banana_edit",  label: "Nano Banana 编辑",   desc: "图生图 · 需参考图",  group: "Kie", family: "Nano Banana", provider: "Kie", costNote: "kie 计费", caps: ["I2I", "编辑"], requiresRef: true },
   { value: "kie_seedream_v4",       label: "Seedream 4.0",       desc: "ByteDance · 4K",    group: "Kie", family: "Seedream",    provider: "Kie", costNote: "kie 计费", caps: ["T2I", "4K"] },
-  { value: "kie_seedream_v4_edit",  label: "Seedream 4.0 编辑",  desc: "图生图 · 需参考图",  group: "Kie", family: "Seedream",    provider: "Kie", costNote: "kie 计费", caps: ["I2I", "编辑"] },
+  { value: "kie_seedream_v4_edit",  label: "Seedream 4.0 编辑",  desc: "图生图 · 需参考图",  group: "Kie", family: "Seedream",    provider: "Kie", costNote: "kie 计费", caps: ["I2I", "编辑"], requiresRef: true },
   { value: "kie_seedream_45",       label: "Seedream 4.5",       desc: "精确控制 · 4K",     group: "Kie", family: "Seedream",    provider: "Kie", costNote: "kie 计费", caps: ["T2I", "4K"] },
   { value: "kie_flux2_pro",         label: "Flux-2 Pro",         desc: "BFL · 高质量",      group: "Kie", family: "Flux-2",      provider: "Kie", costNote: "kie 计费", caps: ["T2I"] },
-  { value: "kie_flux2_pro_i2i",     label: "Flux-2 Pro 图生图",  desc: "图生图 · 需参考图",  group: "Kie", family: "Flux-2",      provider: "Kie", costNote: "kie 计费", caps: ["I2I"] },
+  { value: "kie_flux2_pro_i2i",     label: "Flux-2 Pro 图生图",  desc: "图生图 · 需参考图",  group: "Kie", family: "Flux-2",      provider: "Kie", costNote: "kie 计费", caps: ["I2I"], requiresRef: true },
   { value: "kie_gpt_image_15",      label: "GPT Image 1.5",      desc: "最佳文字 · logo",   group: "Kie", family: "GPT Image",   provider: "Kie", costNote: "kie 计费", caps: ["T2I"] },
-  { value: "kie_gpt_image_15_edit", label: "GPT Image 1.5 编辑", desc: "图生图 · 需参考图",  group: "Kie", family: "GPT Image",   provider: "Kie", costNote: "kie 计费", caps: ["I2I", "编辑"] },
+  { value: "kie_gpt_image_15_edit", label: "GPT Image 1.5 编辑", desc: "图生图 · 需参考图",  group: "Kie", family: "GPT Image",   provider: "Kie", costNote: "kie 计费", caps: ["I2I", "编辑"], requiresRef: true },
   { value: "kie_imagen4",           label: "Imagen 4",           desc: "Google · 通用",     group: "Kie", family: "Imagen",      provider: "Kie", costNote: "kie 计费", caps: ["T2I"] },
   { value: "kie_z_image",           label: "Z-Image",            desc: "超快 · 风格化",     group: "Kie", family: "Z-Image",     provider: "Kie", costNote: "kie 计费", caps: ["T2I"] },
   { value: "kie_grok_image",        label: "Grok Image",         desc: "xAI · 高对比",      group: "Kie", family: "Grok",        provider: "Kie", costNote: "kie 计费", caps: ["T2I"] },
