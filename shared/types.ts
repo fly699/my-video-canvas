@@ -92,6 +92,13 @@ export const VIDEO_PROVIDERS = [
   "kie_hailuo23_std",
   "kie_seedance2",
   "kie_seedance2_fast",
+  // ── kie 视频 第二批扩充 ──
+  "kie_kling21_std", "kie_kling21_pro",
+  "kie_wan22_t2v", "kie_wan22_i2v",
+  "kie_wan27_t2v", "kie_wan27_i2v",
+  "kie_hailuo02_std", "kie_hailuo02_pro_t2v", "kie_hailuo02_pro_i2v",
+  "kie_grok_t2v", "kie_grok_i2v",
+  "kie_happyhorse_t2v", "kie_happyhorse_i2v",
 ] as const;
 export type VideoProvider = (typeof VIDEO_PROVIDERS)[number];
 export type VideoTaskStatus = "pending" | "processing" | "succeeded" | "failed";

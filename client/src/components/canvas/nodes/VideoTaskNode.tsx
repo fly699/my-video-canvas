@@ -48,6 +48,9 @@ const REQUIRES_REFERENCE_IMAGE = new Set<string>([
   // image-to-video models that require a start frame
   "poyo_kling21_std", "poyo_kling21_pro",
   "poyo_wan27_i2v", "poyo_wan22_i2v_fast",
+  // kie 第二批 i2v（需起始帧/参考图）
+  "kie_kling21_std", "kie_kling21_pro", "kie_wan22_i2v", "kie_wan27_i2v",
+  "kie_hailuo02_pro_i2v", "kie_grok_i2v", "kie_happyhorse_i2v",
 ]);
 
 // Heuristic: only allow http(s) / same-origin paths to render. Reject data:/blob:/javascript:.
@@ -180,6 +183,20 @@ const PROVIDERS: { value: VideoProvider; label: string; group: string; family: s
   { value: "kie_hailuo23_std",        label: "Hailuo 2.3 标准",     group: "Kie", family: "Hailuo",   costLabel: "6s 30-50/10s 50 点",           caps: ["I2V", "768P/1080P"] },
   { value: "kie_seedance2",           label: "Seedance 2.0",        group: "Kie", family: "Seedance", costLabel: "19-102 点·秒",                 caps: ["T2V", "首帧", "音频"] },
   { value: "kie_seedance2_fast",      label: "Seedance 2.0 Fast",   group: "Kie", family: "Seedance", costLabel: "15.5-33 点·秒",                caps: ["T2V", "首帧", "音频"] },
+  // ── kie 视频 第二批扩充 ──
+  { value: "kie_kling21_std",         label: "Kling 2.1 标准",      group: "Kie", family: "Kling",    costLabel: "5s 30/10s 60 点",  caps: ["I2V", "5/10s"] },
+  { value: "kie_kling21_pro",         label: "Kling 2.1 专业",      group: "Kie", family: "Kling",    costLabel: "5s 55/10s 110 点", caps: ["I2V", "首尾帧"] },
+  { value: "kie_wan22_t2v",           label: "Wan 2.2 文生(快)",    group: "Kie", family: "Wan",      costLabel: "480p 6/720p 12 点", caps: ["T2V", "720p"] },
+  { value: "kie_wan22_i2v",           label: "Wan 2.2 图生(快)",    group: "Kie", family: "Wan",      costLabel: "480p 6/720p 12 点", caps: ["I2V", "720p"] },
+  { value: "kie_wan27_t2v",           label: "Wan 2.7 文生视频",    group: "Kie", family: "Wan",      costLabel: "720p 12/1080p 18 点·秒", caps: ["T2V", "1080p"] },
+  { value: "kie_wan27_i2v",           label: "Wan 2.7 图生视频",    group: "Kie", family: "Wan",      costLabel: "720p 12/1080p 18 点·秒", caps: ["I2V", "首尾帧"] },
+  { value: "kie_hailuo02_std",        label: "Hailuo 02 标准",      group: "Kie", family: "Hailuo",   costLabel: "768p 7 点·秒",      caps: ["T2V", "768p"] },
+  { value: "kie_hailuo02_pro_t2v",    label: "Hailuo 02 专业 文生", group: "Kie", family: "Hailuo",   costLabel: "65 点·条",          caps: ["T2V", "1080p"] },
+  { value: "kie_hailuo02_pro_i2v",    label: "Hailuo 02 专业 图生", group: "Kie", family: "Hailuo",   costLabel: "65 点·条",          caps: ["I2V", "1080p"] },
+  { value: "kie_grok_t2v",            label: "Grok Imagine 文生",   group: "Kie", family: "Grok",     costLabel: "6s 30/10s 40 点",  caps: ["T2V", "6/10s"] },
+  { value: "kie_grok_i2v",            label: "Grok Imagine 图生",   group: "Kie", family: "Grok",     costLabel: "6s 30/10s 40 点",  caps: ["I2V", "6/10s"] },
+  { value: "kie_happyhorse_t2v",      label: "HappyHorse 文生视频", group: "Kie", family: "HappyHorse", costLabel: "720p 16/1080p 32 点·秒", caps: ["T2V", "1080p"] },
+  { value: "kie_happyhorse_i2v",      label: "HappyHorse 图生视频", group: "Kie", family: "HappyHorse", costLabel: "720p 16/1080p 32 点·秒", caps: ["I2V", "1080p"] },
   { value: "mock",                    label: "Mock 测试",           group: "Dev",        family: "Dev", costLabel: "免费",       caps: ["测试"] },
 ];
 
@@ -260,6 +277,7 @@ const SUPPORTS_NEGATIVE_PROMPT = new Set<string>([
   "poyo_kling21_std", "poyo_kling21_pro", "poyo_kling25_turbo",
   // kie: Kling 2.5 Turbo + Wan 2.5 document negative_prompt.
   "kie_kling25turbo_t2v", "kie_kling25turbo_i2v", "kie_wan25_t2v", "kie_wan25_i2v",
+  "kie_kling21_std", "kie_kling21_pro",
 ]);
 
 // Multi-modal reference (docs/poyo-video-api.md §六): models that accept reference
@@ -464,6 +482,59 @@ const KIE_SEEDANCE2_PARAMS: ParamDef[] = [
   { type: "toggle", key: "generate_audio", label: "AI 生成音频", default: true },
   seedDef,
 ];
+// ── kie 视频 第二批扩充的参数控件 ──
+const KIE_RES_WAN22 = [{ value: "480p", label: "480p" }, { value: "720p", label: "720p" }];
+const RES_GROK = [{ value: "480p", label: "480p" }, { value: "720p", label: "720p" }];
+const AR_GROK = [{ value: "2:3", label: "2:3 竖" }, { value: "3:2", label: "3:2 横" }, { value: "1:1", label: "1:1 方" }, { value: "16:9", label: "16:9 横" }, { value: "9:16", label: "9:16 竖" }];
+const MODE_GROK = [{ value: "normal", label: "标准" }, { value: "fun", label: "趣味" }, { value: "spicy", label: "大胆" }];
+const AR_5 = [{ value: "16:9", label: "16:9 横屏" }, { value: "9:16", label: "9:16 竖屏" }, { value: "1:1", label: "1:1 方形" }, { value: "4:3", label: "4:3" }, { value: "3:4", label: "3:4" }];
+const cfgDef: ParamDef = { type: "range", key: "cfg_scale", label: "灵活度 cfg", min: 0, max: 1, step: 0.1, default: 0.5 };
+const KIE_KLING21_PARAMS: ParamDef[] = [
+  { type: "select", key: "duration", label: "时长（秒）", default: 5, options: DUR_5_10 }, cfgDef,
+];
+const KIE_WAN22_T2V_PARAMS: ParamDef[] = [
+  { type: "select", key: "resolution", label: "分辨率", default: "720p", options: KIE_RES_WAN22 },
+  { type: "select", key: "aspect_ratio", label: "宽高比", default: "16:9", options: AR_2 },
+  { type: "toggle", key: "enable_prompt_expansion", label: "提示词扩写", default: false }, seedDef,
+];
+const KIE_WAN22_I2V_PARAMS: ParamDef[] = [
+  { type: "select", key: "resolution", label: "分辨率", default: "720p", options: KIE_RES_WAN22 },
+  { type: "toggle", key: "enable_prompt_expansion", label: "提示词扩写", default: false }, seedDef,
+];
+const KIE_WAN27_T2V_PARAMS: ParamDef[] = [
+  { type: "select", key: "resolution", label: "分辨率", default: "1080p", options: KIE_RES_WAN },
+  { type: "select", key: "ratio", label: "宽高比", default: "16:9", options: AR_5 },
+  { type: "range", key: "duration", label: "时长（秒）", min: 2, max: 15, step: 1, default: 5, unit: "s" },
+  { type: "toggle", key: "prompt_extend", label: "提示词扩写", default: true }, seedDef,
+];
+const KIE_WAN27_I2V_PARAMS: ParamDef[] = [
+  { type: "select", key: "resolution", label: "分辨率", default: "1080p", options: KIE_RES_WAN },
+  { type: "range", key: "duration", label: "时长（秒）", min: 2, max: 15, step: 1, default: 5, unit: "s" },
+  { type: "toggle", key: "prompt_extend", label: "提示词扩写", default: true }, seedDef,
+];
+const KIE_HAILUO02_STD_PARAMS: ParamDef[] = [
+  { type: "select", key: "duration", label: "时长（秒）", default: 6, options: DUR_6_10 },
+  { type: "toggle", key: "prompt_optimizer", label: "提示词优化", default: true },
+];
+const KIE_HAILUO02_PRO_PARAMS: ParamDef[] = [
+  { type: "toggle", key: "prompt_optimizer", label: "提示词优化", default: true },
+];
+const KIE_GROK_T2V_PARAMS: ParamDef[] = [
+  { type: "select", key: "resolution", label: "分辨率", default: "480p", options: RES_GROK },
+  { type: "select", key: "aspect_ratio", label: "宽高比", default: "16:9", options: AR_GROK },
+  { type: "select", key: "mode", label: "风格", default: "normal", options: MODE_GROK },
+  { type: "range", key: "duration", label: "时长（秒）", min: 6, max: 30, step: 1, default: 6, unit: "s" },
+];
+const KIE_GROK_I2V_PARAMS: ParamDef[] = [
+  { type: "select", key: "resolution", label: "分辨率", default: "480p", options: RES_GROK },
+  { type: "select", key: "mode", label: "风格", default: "normal", options: MODE_GROK },
+  { type: "range", key: "duration", label: "时长（秒）", min: 6, max: 30, step: 1, default: 6, unit: "s" },
+];
+const KIE_HAPPYHORSE_PARAMS: ParamDef[] = [
+  { type: "select", key: "resolution", label: "分辨率", default: "1080p", options: KIE_RES_WAN },
+  { type: "select", key: "aspect_ratio", label: "宽高比", default: "16:9", options: AR_5 },
+  { type: "range", key: "duration", label: "时长（秒）", min: 3, max: 15, step: 1, default: 5, unit: "s" }, seedDef,
+];
 
 const PROVIDER_PARAMS: Record<string, ParamDef[]> = {
   poyo_seedance: [
@@ -587,6 +658,20 @@ const PROVIDER_PARAMS: Record<string, ParamDef[]> = {
   kie_hailuo23_std: KIE_HAILUO23_PARAMS,
   kie_seedance2: KIE_SEEDANCE2_PARAMS,
   kie_seedance2_fast: KIE_SEEDANCE2_PARAMS,
+  // ── kie 视频 第二批 ──
+  kie_kling21_std: KIE_KLING21_PARAMS,
+  kie_kling21_pro: KIE_KLING21_PARAMS,
+  kie_wan22_t2v: KIE_WAN22_T2V_PARAMS,
+  kie_wan22_i2v: KIE_WAN22_I2V_PARAMS,
+  kie_wan27_t2v: KIE_WAN27_T2V_PARAMS,
+  kie_wan27_i2v: KIE_WAN27_I2V_PARAMS,
+  kie_hailuo02_std: KIE_HAILUO02_STD_PARAMS,
+  kie_hailuo02_pro_t2v: KIE_HAILUO02_PRO_PARAMS,
+  kie_hailuo02_pro_i2v: KIE_HAILUO02_PRO_PARAMS,
+  kie_grok_t2v: KIE_GROK_T2V_PARAMS,
+  kie_grok_i2v: KIE_GROK_I2V_PARAMS,
+  kie_happyhorse_t2v: KIE_HAPPYHORSE_PARAMS,
+  kie_happyhorse_i2v: KIE_HAPPYHORSE_PARAMS,
   mock: [],
 };
 
