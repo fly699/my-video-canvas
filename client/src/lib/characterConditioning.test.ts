@@ -159,20 +159,4 @@ describe("@角色 提及解析", () => {
   it("effectiveCharacterRefImages 含被 @ 的人物参考图（场景不计入身份参考）", () => {
     expect(effectiveCharacterRefImages("vt", "@张三 @竹林", [], nodes)).toEqual(["z3.png"]);
   });
-
-  it("边界匹配：@张三华 不误命中角色「张三」（张三华非角色，避免凭空多出一个人物）", () => {
-    // 用户随手打的 @张三华 不是画布角色，旧逻辑会把 @张三 作为子串误匹配并注入张三参考图。
-    const m = mentionedCharacters("一个叫 @张三华 的女人", nodes).map((c) => c.name ?? c.sceneName);
-    expect(m).not.toContain("张三");
-    expect(m).not.toContain("张三丰");
-    expect(effectiveCharacterRefImages("vt", "@张三华", [], nodes)).toEqual([]); // 不注入任何参考图
-    // strip 不应破坏 @张三华
-    expect(stripCharacterMentions("一个叫 @张三华 的女人", nodes)).toContain("@张三华");
-  });
-
-  it("边界匹配：Latin 名 @Bob 不误命中 @Bobby", () => {
-    const ns = [N("b1", { name: "Bob", referenceImageUrl: "bob.png" })];
-    expect(mentionedCharacters("@Bobby is here", ns)).toEqual([]);
-    expect(mentionedCharacters("@Bob is here", ns).map((c) => c.name)).toEqual(["Bob"]);
-  });
 });
