@@ -19,6 +19,7 @@ const DEV_USER: User = {
   loginMethod: "dev",
   passwordHash: null,
   role: "user",
+  disabled: false,
   createdAt: new Date("2024-01-01"),
   updatedAt: new Date("2024-01-01"),
   lastSignedIn: new Date(),
@@ -48,7 +49,8 @@ export async function isRequestAuthenticated(req: CreateExpressContextOptions["r
 export async function resolveRequestUser(req: CreateExpressContextOptions["req"]): Promise<User | null> {
   if (isDevBypass) return DEV_USER;
   try {
-    return await sdk.authenticateRequest(req);
+    const u = await sdk.authenticateRequest(req);
+    return u?.disabled ? null : u; // 冻结用户视为未登录
   } catch {
     return null;
   }
@@ -74,6 +76,7 @@ export async function createContext(
   } else {
     try {
       user = await sdk.authenticateRequest(opts.req);
+      if (user?.disabled) user = null; // 冻结用户视为未登录，立即失去 API 访问
     } catch (error) {
       // Authentication is optional for public procedures.
       user = null;

@@ -8,6 +8,7 @@ import { storagePut, storageBackend, isStorageConfigured, storageDeleteObject } 
 import { ENV } from "../_core/env";
 import { randomBytes } from "crypto";
 import { getUpdateStatus, getVersionInfo, getUpdateAvailable, startUpdate, restartServer } from "../_core/selfUpdate";
+import { hashPassword } from "../_core/emailAuth";
 import { startBackfill, getBackfillStatus } from "../_core/assetBackfill";
 import { writeAuditLog } from "../_core/auditLog";
 import { adminDownloadsRouter } from "./downloads";
@@ -524,6 +525,36 @@ export const adminRouter = router({
       .mutation(async ({ input }) => {
         const s = await db.setChatSettings(input);
         return { serverlessAllowed: s.serverlessAllowed, lobbyEnabled: s.lobbyEnabled, maxFileMb: s.maxFileMb };
+      }),
+  }),
+
+  // ── 用户管理（仅管理员）：列表 / 重置密码 / 冻结·解冻 / 删除 ──
+  users: router({
+    list: adminProcedure.query(async () => {
+      return db.listAllUsers();
+    }),
+    resetPassword: adminProcedure
+      .input(z.object({ userId: z.number().int().positive(), newPassword: z.string().min(6).max(200) }))
+      .mutation(async ({ ctx, input }) => {
+        await db.adminSetUserPassword(input.userId, await hashPassword(input.newPassword));
+        writeAuditLog({ ctx, action: "user_reset_password", detail: { userId: input.userId } });
+        return { success: true };
+      }),
+    setDisabled: adminProcedure
+      .input(z.object({ userId: z.number().int().positive(), disabled: z.boolean() }))
+      .mutation(async ({ ctx, input }) => {
+        if (input.userId === ctx.user.id) throw new TRPCError({ code: "BAD_REQUEST", message: "不能冻结自己" });
+        await db.setUserDisabled(input.userId, input.disabled);
+        writeAuditLog({ ctx, action: "user_set_disabled", detail: { userId: input.userId, disabled: input.disabled } });
+        return { success: true };
+      }),
+    delete: adminProcedure
+      .input(z.object({ userId: z.number().int().positive() }))
+      .mutation(async ({ ctx, input }) => {
+        if (input.userId === ctx.user.id) throw new TRPCError({ code: "BAD_REQUEST", message: "不能删除自己" });
+        await db.deleteUserById(input.userId);
+        writeAuditLog({ ctx, action: "user_delete", detail: { userId: input.userId } });
+        return { success: true };
       }),
   }),
 

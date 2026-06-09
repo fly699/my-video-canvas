@@ -136,6 +136,7 @@ async function startServer() {
     loginMethod: "dev",
     passwordHash: null,
     role: "user",
+    disabled: false,
     createdAt: new Date("2024-01-01"),
     updatedAt: new Date("2024-01-01"),
     lastSignedIn: new Date(),
