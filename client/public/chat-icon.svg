@@ -1,33 +1,58 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
+<svg viewBox="0 0 400 340" xmlns="http://www.w3.org/2000/svg" width="400" height="340">
   <defs>
-    <linearGradient id="glass" x1="0" y1="0" x2="0.4" y2="1">
-      <stop offset="0" stop-color="#ffffff" stop-opacity="0.24"/>
-      <stop offset="0.5" stop-color="#a78bfa" stop-opacity="0.10"/>
-      <stop offset="1" stop-color="#7c5cfc" stop-opacity="0.18"/>
+    <linearGradient id="kt-goldGradient" x1="0%" y1="100%" x2="0%" y2="0%">
+      <stop offset="0%" stop-color="#8a6b3f" />
+      <stop offset="30%" stop-color="#cfa35e" />
+      <stop offset="70%" stop-color="#fdf0b0" />
+      <stop offset="100%" stop-color="#ffffff" />
     </linearGradient>
-    <linearGradient id="rim" x1="0" y1="0" x2="1" y2="1">
-      <stop offset="0" stop-color="#ffffff" stop-opacity="0.75"/>
-      <stop offset="0.45" stop-color="#ffffff" stop-opacity="0.12"/>
-      <stop offset="1" stop-color="#ffffff" stop-opacity="0.45"/>
+    <linearGradient id="kt-silverGradient" x1="0%" y1="100%" x2="0%" y2="0%">
+      <stop offset="0%" stop-color="#475569" />
+      <stop offset="50%" stop-color="#94a3b8" />
+      <stop offset="100%" stop-color="#f1f5f9" />
     </linearGradient>
-    <linearGradient id="ink" x1="0" y1="0" x2="1" y2="1">
-      <stop offset="0" stop-color="#f5edff"/>
-      <stop offset="1" stop-color="#c4b5fd"/>
-    </linearGradient>
+    <filter id="kt-textShadow" x="-20%" y="-20%" width="140%" height="140%">
+      <feDropShadow dx="0" dy="2" stdDeviation="4" flood-color="#000000" flood-opacity="0.85"/>
+    </filter>
+    <filter id="kt-glow" x="-20%" y="-20%" width="140%" height="140%">
+      <feGaussianBlur stdDeviation="3" result="blur" />
+      <feComposite in="SourceGraphic" in2="blur" operator="over" />
+    </filter>
   </defs>
 
-  <!-- frosted glass tile -->
-  <rect x="34" y="34" width="444" height="444" rx="124" fill="url(#glass)"/>
-  <!-- top sheen highlight -->
-  <path d="M158 34h196a124 124 0 0 1 124 124v18c-90-34-354-34-444 0v-18A124 124 0 0 1 158 34z"
-        fill="#ffffff" opacity="0.10"/>
-  <!-- glass rim -->
-  <rect x="34" y="34" width="444" height="444" rx="124" fill="none" stroke="url(#rim)" stroke-width="6"/>
+  <g transform="translate(0, -10 )">
+    <path d="M 200,160 C 180,190 150,150 100,60" stroke="url(#kt-silverGradient)" stroke-width="1.5" fill="none" stroke-linecap="round" />
+    <path d="M 200,160 C 170,200 120,160 60,50" stroke="url(#kt-goldGradient)" stroke-width="3" fill="none" stroke-linecap="round" />
+    <path d="M 200,160 C 160,210 100,170 20,60" stroke="url(#kt-silverGradient)" stroke-width="2.5" fill="none" stroke-linecap="round" />
+    <path d="M 200,160 C 150,220 70,180 10,90" stroke="url(#kt-goldGradient)" stroke-width="1.5" fill="none" stroke-linecap="round" />
+    <path d="M 200,160 C 140,230 50,190 5,120" stroke="url(#kt-silverGradient)" stroke-width="1" fill="none" stroke-linecap="round" />
+    <path d="M 200,160 C 220,190 250,150 300,60" stroke="url(#kt-silverGradient)" stroke-width="1.5" fill="none" stroke-linecap="round" />
+    <path d="M 200,160 C 230,200 280,160 340,50" stroke="url(#kt-goldGradient)" stroke-width="3" fill="none" stroke-linecap="round" />
+    <path d="M 200,160 C 240,210 300,170 380,60" stroke="url(#kt-silverGradient)" stroke-width="2.5" fill="none" stroke-linecap="round" />
+    <path d="M 200,160 C 250,220 330,180 390,90" stroke="url(#kt-goldGradient)" stroke-width="1.5" fill="none" stroke-linecap="round" />
+    <path d="M 200,160 C 260,230 350,190 395,120" stroke="url(#kt-silverGradient)" stroke-width="1" fill="none" stroke-linecap="round" />
+    <path d="M 192,160 L 192,60" stroke="url(#kt-silverGradient)" stroke-width="2" fill="none" stroke-linecap="round" />
+    <path d="M 208,160 L 208,60" stroke="url(#kt-silverGradient)" stroke-width="2" fill="none" stroke-linecap="round" />
+    <path d="M 176,160 L 176,110" stroke="url(#kt-silverGradient)" stroke-width="2" fill="none" stroke-linecap="round" />
+    <path d="M 224,160 L 224,110" stroke="url(#kt-silverGradient)" stroke-width="2" fill="none" stroke-linecap="round" />
+    <path d="M 184,160 L 184,85" stroke="url(#kt-goldGradient)" stroke-width="2.5" fill="none" stroke-linecap="round" />
+    <path d="M 216,160 L 216,85" stroke="url(#kt-goldGradient)" stroke-width="2.5" fill="none" stroke-linecap="round" />
+    <path d="M 168,160 L 168,135" stroke="url(#kt-goldGradient)" stroke-width="1.5" fill="none" stroke-linecap="round" />
+    <path d="M 232,160 L 232,135" stroke="url(#kt-goldGradient)" stroke-width="1.5" fill="none" stroke-linecap="round" />
+    <path d="M 200,160 L 200,40" stroke="url(#kt-goldGradient)" stroke-width="4" fill="none" />
+    <polygon points="200,20 195,45 205,45" fill="url(#kt-goldGradient)" filter="url(#kt-glow)"/>
+    <polygon points="200,10 197,25 200,30 203,25" fill="#ffffff" filter="url(#kt-glow)"/>
+    <g fill="#fdf0b0" filter="url(#kt-glow)">
+      <circle cx="60" cy="50" r="1.5" />
+      <circle cx="100" cy="60" r="1.5" />
+      <circle cx="20" cy="60" r="1.5" />
+      <circle cx="340" cy="50" r="1.5" />
+      <circle cx="300" cy="60" r="1.5" />
+      <circle cx="380" cy="60" r="1.5" />
+    </g>
+  </g>
 
-  <!-- line-art chat bubble -->
-  <path d="M158 176h196a36 36 0 0 1 36 36v92a36 36 0 0 1 -36 36H242l-62 50a9 9 0 0 1 -15 -7v-43h-7a36 36 0 0 1 -36 -36v-92a36 36 0 0 1 36 -36z"
-        fill="none" stroke="url(#ink)" stroke-width="15" stroke-linejoin="round"/>
-  <circle cx="201" cy="258" r="14" fill="url(#ink)"/>
-  <circle cx="256" cy="258" r="14" fill="url(#ink)"/>
-  <circle cx="311" cy="258" r="14" fill="url(#ink)"/>
+  <text x="200" y="225" fill="url(#kt-goldGradient)" filter="url(#kt-textShadow)" font-size="60" font-weight="900" text-anchor="middle" style="font-family:system-ui,-apple-system,sans-serif;letter-spacing:2px">KingTai</text>
+  <text x="200" y="285" fill="#f8fafc" filter="url(#kt-textShadow)" font-size="56" font-weight="900" text-anchor="middle" style="font-family:system-ui,-apple-system,sans-serif;letter-spacing:6px">金泰智算</text>
+  <text x="200" y="315" fill="url(#kt-goldGradient)" filter="url(#kt-textShadow)" font-size="18" font-weight="bold" text-anchor="middle" style="font-family:system-ui,-apple-system,sans-serif;letter-spacing:4px">AI Computing</text>
 </svg>
