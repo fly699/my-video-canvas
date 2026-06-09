@@ -65,7 +65,7 @@ import { resolveKieKey } from "../_core/kie";
 import { isKieImageModel } from "../_core/kieImage";
 import { isKieVideoProvider, submitKieVideo } from "../_core/kieVideo";
 import { isKieMusicModel, submitAndPollKieMusic } from "../_core/kieMusic";
-import { isKieLLMModel, invokeKieLLM } from "../_core/kieLLM";
+import { isKieLLMModel } from "../_core/kieLLM";
 import { isKieTTS, submitAndPollKieTTS } from "../_core/kieTTS";
 import { encryptKieKey, decryptKieKey } from "../_core/kieCrypto";
 import { writeAuditLog, truncate } from "../_core/auditLog";
@@ -960,11 +960,8 @@ export const aiChatRouter = router({
     .mutation(async ({ ctx, input }) => {
       // kie chat models authenticate with their own key (temp > assigned > house)
       // and bypass the LLM whitelist; everything else keeps the LLM gate.
-      let kieLLMKey: string | undefined;
-      if (isKieLLMModel(input.model)) {
-        const resolved = await resolveKieKey(ctx, input.kieTempKey);
-        kieLLMKey = resolved.key;
-      } else {
+      // 实际的 key 解析与权限门控在下方 invokeLLMWithKie 内统一进行（与所有其它 LLM 入口一致）。
+      if (!isKieLLMModel(input.model)) {
         // Gate on whitelist before access check so banned users get a uniform
         // "not whitelisted" error rather than a project FORBIDDEN; this also
         // closes the gap that let an editor invoke the LLM without any
@@ -1066,13 +1063,10 @@ export const aiChatRouter = router({
 
       let assistantContent: string;
       try {
-        if (kieLLMKey) {
-          const r = await invokeKieLLM({ model: input.model!, messages, apiKey: kieLLMKey });
-          assistantContent = r.text || "（模型返回内容为空）";
-        } else {
-          const response = await invokeLLMWithKie(ctx, { messages, model: input.model });
-          assistantContent = extractTextContent(response) || "（模型返回内容为空）";
-        }
+        // kie 模型与其它模型统一走 invokeLLMWithKie：内部按 临时(显式 kieTempKey 或请求头)>分配>公用
+        // 解析并校验权限。显式 input.kieTempKey 优先（与历史行为一致）。
+        const response = await invokeLLMWithKie(ctx, { messages, model: input.model }, input.kieTempKey);
+        assistantContent = extractTextContent(response) || "（模型返回内容为空）";
       } catch (err) {
         throw new TRPCError({
           code: "INTERNAL_SERVER_ERROR",
