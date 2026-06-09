@@ -809,6 +809,15 @@ export const videoTasksRouter = router({
       // the owner could see the task in the UI but couldn't poll it.
       await assertProjectAccess(task.projectId, ctx.user.id, "editor");
 
+      // 同步上游状态会用平台公用 key（Poyo/Higgsfield）。非白名单用户/协作者不得借 poll 触达公用 key——
+      // 此时跳过上游同步、直接返回当前状态（后台 poller 用平台凭证仍会推进），既守门控又不打断 UI。
+      // kie 任务不在此处同步（用任务内自带 key），故只对 Poyo/Higgsfield 门控。
+      const usesHouseUpstream = task.status === "processing" && !!task.externalTaskId &&
+        (isPoyoVideoProvider(task.provider) || isHiggsfieldVideoProvider(task.provider));
+      if (usesHouseUpstream) {
+        try { await assertWhitelisted(ctx); } catch { return task; }
+      }
+
       // For poyo.ai tasks still processing, sync status from upstream (throttled)
       if (task.status === "processing" && task.externalTaskId && isPoyoVideoProvider(task.provider)) {
         const now = Date.now();
