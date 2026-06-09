@@ -1,5 +1,4 @@
 import { useLocation } from "wouter";
-import { Film } from "lucide-react";
 
 export default function NotFound() {
   const [, navigate] = useLocation();
@@ -11,13 +10,10 @@ export default function NotFound() {
     >
       {/* Logo */}
       <div
-        className="w-12 h-12 rounded-2xl flex items-center justify-center"
-        style={{
-          background: "linear-gradient(135deg, oklch(0.68 0.22 285), oklch(0.60 0.20 310))",
-          boxShadow: "0 8px 32px oklch(0.68 0.22 285 / 0.30)",
-        }}
+        className="w-12 h-12 rounded-2xl overflow-hidden flex items-center justify-center"
+        style={{ boxShadow: "0 8px 32px oklch(0.68 0.22 285 / 0.30)" }}
       >
-        <Film className="w-6 h-6 text-white" />
+        <img src="/chat-icon.svg" alt="KingTai" className="w-full h-full object-cover" />
       </div>
 
       {/* 404 */}
