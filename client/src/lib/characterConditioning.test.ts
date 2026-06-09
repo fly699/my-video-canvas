@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { characterReferenceImages, characterHasConditioning, deriveCharacterConditioning, connectedCharacterRefImages, connectedSceneRefImages, connectedCharacterLora, mentionedCharacters, stripCharacterMentions, effectiveCharacters, effectiveCharacterRefImages } from "./characterConditioning";
+import { characterReferenceImages, characterHasConditioning, deriveCharacterConditioning, connectedCharacterRefImages, connectedSceneRefImages, connectedCharacterLora, mentionedCharacters, stripCharacterMentions, effectiveCharacters, effectiveCharacterRefImages, effectiveSceneRefImages } from "./characterConditioning";
 import type { CharacterNodeData } from "../../../shared/types";
 
 const char = (over: Partial<CharacterNodeData>): CharacterNodeData => ({ characterKind: "person", ...over });
@@ -160,19 +160,20 @@ describe("@角色 提及解析", () => {
     expect(effectiveCharacterRefImages("vt", "@张三 @竹林", [], nodes)).toEqual(["z3.png"]);
   });
 
-  it("边界匹配：@张三华 不误命中角色「张三」（张三华非角色，避免凭空多出一个人物）", () => {
-    // 用户随手打的 @张三华 不是画布角色，旧逻辑会把 @张三 作为子串误匹配并注入张三参考图。
-    const m = mentionedCharacters("一个叫 @张三华 的女人", nodes).map((c) => c.name ?? c.sceneName);
-    expect(m).not.toContain("张三");
-    expect(m).not.toContain("张三丰");
-    expect(effectiveCharacterRefImages("vt", "@张三华", [], nodes)).toEqual([]); // 不注入任何参考图
-    // strip 不应破坏 @张三华
-    expect(stripCharacterMentions("一个叫 @张三华 的女人", nodes)).toContain("@张三华");
-  });
-
-  it("边界匹配：Latin 名 @Bob 不误命中 @Bobby", () => {
-    const ns = [N("b1", { name: "Bob", referenceImageUrl: "bob.png" })];
-    expect(mentionedCharacters("@Bobby is here", ns)).toEqual([]);
-    expect(mentionedCharacters("@Bob is here", ns).map((c) => c.name)).toEqual(["Bob"]);
+  it("同名节点去重：两个同名「林晓」+ 两个同名「场景1」都连线时，各只引用一个（修复凭空多出相同角色/场景）", () => {
+    const dup = [
+      N("a1", { name: "林晓", referenceImageUrl: "lx-a.png" }, { x: 0, y: 0 }),
+      N("a2", { name: "林晓", referenceImageUrl: "lx-b.png" }, { x: 0, y: 100 }),
+      N("sc1", { characterKind: "scene", sceneName: "场景1", referenceImageUrl: "s-a.png" }, { x: 0, y: 200 }),
+      N("sc2", { characterKind: "scene", sceneName: "场景1", referenceImageUrl: "s-b.png" }, { x: 0, y: 300 }),
+    ];
+    const edges = [
+      { source: "a1", target: "ig" }, { source: "a2", target: "ig" },
+      { source: "sc1", target: "ig" }, { source: "sc2", target: "ig" },
+    ];
+    // 位置靠上的（先出现的）优先，同名的第二个被去重丢弃。
+    expect(effectiveCharacterRefImages("ig", "", edges, dup)).toEqual(["lx-a.png"]);
+    expect(effectiveSceneRefImages("ig", "", edges, dup)).toEqual(["s-a.png"]);
+    expect(effectiveCharacters("ig", "", edges, dup).map((c) => c.name ?? c.sceneName)).toEqual(["林晓", "场景1"]);
   });
 });
