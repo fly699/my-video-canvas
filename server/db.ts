@@ -74,6 +74,9 @@ import {
   characterLibrary,
   type CharacterLibraryRow,
   type InsertCharacterLibrary,
+  promptLibrary,
+  type PromptLibraryRow,
+  type InsertPromptLibrary,
   comfyTemplateAnalysis,
   type ComfyTemplateAnalysisRow,
   type InsertComfyTemplateAnalysis,
@@ -2359,6 +2362,57 @@ export async function deleteCharacterLibrary(id: number): Promise<void> {
   const db = await getDb();
   if (!db) { if (DEV_MODE) { const i = _devCharLib.findIndex((r) => r.id === id); if (i >= 0) _devCharLib.splice(i, 1); return; } throw new Error("DB unavailable"); }
   await db.delete(characterLibrary).where(eq(characterLibrary.id, id));
+}
+
+// ── Prompt library（每用户私有；自定义提示词 + 10 个「/」快捷槽位）────────────────
+const _devPromptLib: PromptLibraryRow[] = [];
+let _devPromptLibSeq = 1;
+
+export async function listPromptLibrary(userId: number): Promise<PromptLibraryRow[]> {
+  const db = await getDb();
+  if (!db) {
+    if (!DEV_MODE) return [];
+    return [..._devPromptLib.filter((r) => r.userId === userId)]
+      .sort((a, b) => a.sortOrder - b.sortOrder || a.id - b.id);
+  }
+  return db.select().from(promptLibrary).where(eq(promptLibrary.userId, userId)).orderBy(promptLibrary.sortOrder);
+}
+
+export async function getPromptLibrary(id: number): Promise<PromptLibraryRow | undefined> {
+  const db = await getDb();
+  if (!db) return DEV_MODE ? _devPromptLib.find((r) => r.id === id) : undefined;
+  const rows = await db.select().from(promptLibrary).where(eq(promptLibrary.id, id)).limit(1);
+  return rows[0];
+}
+
+export async function createPromptLibrary(data: InsertPromptLibrary): Promise<PromptLibraryRow | null> {
+  const db = await getDb();
+  if (!db) {
+    if (!DEV_MODE) throw new Error("DB unavailable");
+    const now = new Date();
+    const row = { id: _devPromptLibSeq++, category: "通用", slot: null, slotKind: null, sortOrder: 0, ...data, createdAt: now, updatedAt: now } as PromptLibraryRow;
+    _devPromptLib.push(row);
+    return row;
+  }
+  const [header] = await db.insert(promptLibrary).values(data);
+  const insertId = (header as unknown as { insertId: number }).insertId;
+  const rows = await db.select().from(promptLibrary).where(eq(promptLibrary.id, insertId));
+  return rows[0] ?? null;
+}
+
+export async function updatePromptLibrary(id: number, patch: Partial<Pick<InsertPromptLibrary, "label" | "text" | "category" | "slot" | "slotKind" | "sortOrder">>): Promise<void> {
+  const db = await getDb();
+  if (!db) {
+    if (DEV_MODE) { const r = _devPromptLib.find((x) => x.id === id); if (r) Object.assign(r, patch, { updatedAt: new Date() }); return; }
+    throw new Error("DB unavailable");
+  }
+  await db.update(promptLibrary).set(patch).where(eq(promptLibrary.id, id));
+}
+
+export async function deletePromptLibrary(id: number): Promise<void> {
+  const db = await getDb();
+  if (!db) { if (DEV_MODE) { const i = _devPromptLib.findIndex((r) => r.id === id); if (i >= 0) _devPromptLib.splice(i, 1); return; } throw new Error("DB unavailable"); }
+  await db.delete(promptLibrary).where(eq(promptLibrary.id, id));
 }
 
 // ── ComfyUI template analysis (agent planning knowledge) ──────────────────────

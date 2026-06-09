@@ -30,7 +30,9 @@ import { ContextMenu } from "../components/canvas/ContextMenu";
 import { CollaboratorCursors } from "../components/canvas/CollaboratorCursors";
 import { FloatingAssetPanel } from "../components/canvas/FloatingAssetPanel";
 import { CharacterLibraryPanel } from "../components/canvas/CharacterLibraryPanel";
+import { PromptLibraryPanel } from "../components/canvas/PromptLibraryPanel";
 import { setLibraryCharacters } from "../lib/characterConditioning";
+import { setPromptLibrary } from "../lib/promptLibraryStore";
 import { ChangePasswordDialog } from "../components/ChangePasswordDialog";
 import { NodeImageLightbox } from "../components/canvas/NodeImageLightbox";
 import { TemplatePanel } from "../components/canvas/TemplatePanel";
@@ -103,6 +105,7 @@ import {
   Boxes,
   MoveHorizontal,
   MoveVertical,
+  BookText,
 } from "lucide-react";
 import { loadNamedSnapshots, type NamedSnapshot } from "../hooks/useCanvasStore";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
@@ -447,6 +450,9 @@ function CanvasInner({ projectId }: { projectId: number }) {
   const [showCharLib, setShowCharLib] = usePersistentState<boolean>(
     "ui:panel:charlib:v1", false, { validate: validateBool, crossTab: false },
   );
+  const [showPromptLib, setShowPromptLib] = usePersistentState<boolean>(
+    "ui:panel:promptlib:v1", false, { validate: validateBool, crossTab: false },
+  );
   const [comfySaveTarget, setComfySaveTarget] = useState<
     { nodeType: ComfyNodeType; payload: Record<string, unknown>; useCloud: boolean; defaultName: string; thumbnail?: string } | null
   >(null);
@@ -684,6 +690,12 @@ function CanvasInner({ projectId }: { projectId: number }) {
       })),
     );
   }, [libraryChars]);
+
+  // 提示词库 → 灌进客户端镜像，让「/」快捷菜单 / 提示词库面板无需各自订阅 tRPC。
+  const { data: promptLib } = trpc.promptLibrary.list.useQuery(undefined, {
+    enabled: isAuthenticated, refetchOnWindowFocus: true,
+  });
+  useEffect(() => { setPromptLibrary((promptLib ?? []).map((it) => ({ ...it }))); }, [promptLib]);
 
   const utils = trpc.useUtils();
   const createComfyTemplateMut = trpc.comfyTemplates.create.useMutation();
@@ -1750,6 +1762,21 @@ function CanvasInner({ projectId }: { projectId: number }) {
               </button>
             </TooltipTrigger>
             <TooltipContent side="bottom" className="text-xs">角色库</TooltipContent>
+          </Tooltip>
+
+          {/* Prompt library */}
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <button
+                onClick={() => setShowPromptLib(!showPromptLib)}
+                className="topbar-btn"
+                data-active={showPromptLib ? "true" : undefined}
+                style={showPromptLib ? { background: "oklch(0.66 0.18 30 / 0.12)", border: "1px solid oklch(0.66 0.18 30 / 0.3)", color: "oklch(0.66 0.18 30)" } : undefined}
+              >
+                <BookText className="w-3.5 h-3.5" />
+              </button>
+            </TooltipTrigger>
+            <TooltipContent side="bottom" className="text-xs">提示词库（/ 唤出）</TooltipContent>
           </Tooltip>
 
           {/* Video editor (jump to the timeline editor) */}
@@ -2920,6 +2947,7 @@ function CanvasInner({ projectId }: { projectId: number }) {
 
         {/* ── Asset panel (floating, draggable, resizable) ── */}
         {showCharLib && <CharacterLibraryPanel onClose={() => setShowCharLib(false)} />}
+        {showPromptLib && <PromptLibraryPanel onClose={() => setShowPromptLib(false)} />}
         {showAssets && (
           <FloatingAssetPanel projectId={projectId} onClose={() => setShowAssets(false)} />
         )}
