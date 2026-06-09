@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { Film, ShieldCheck } from "lucide-react";
+import { ShieldCheck } from "lucide-react";
 
 type Mode = "login" | "register";
 
@@ -211,17 +211,11 @@ export default function LoginPage() {
               width: "52px",
               height: "52px",
               borderRadius: "14px",
-              background: "oklch(0.58 0.22 285 / 0.15)",
+              overflow: "hidden",
               marginBottom: "12px",
             }}
           >
-            <Film
-              style={{
-                width: "26px",
-                height: "26px",
-                color: "oklch(0.72 0.2 285)",
-              }}
-            />
+            <img src="/chat-icon.svg" alt="KingTai" style={{ width: "100%", height: "100%", objectFit: "cover" }} />
           </div>
           <h1
             style={{

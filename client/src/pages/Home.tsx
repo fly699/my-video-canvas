@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef } from "react";
 import { useAuth } from "@/_core/hooks/useAuth";
+import { ChangePasswordDialog } from "@/components/ChangePasswordDialog";
 import { getLoginUrl } from "@/const";
 import { trpc } from "@/lib/trpc";
 import { useLocation } from "wouter";
@@ -7,6 +8,7 @@ import { toast } from "sonner";
 import {
   Plus,
   Film,
+  KeyRound,
   Clapperboard,
   ArrowRight,
   MoreHorizontal,
@@ -469,6 +471,7 @@ function NewProjectCard({ onClick }: { onClick: () => void }) {
 // ── Main ──────────────────────────────────────────────────────────────────────
 export default function Home() {
   const { user, isAuthenticated, loading, logout } = useAuth();
+  const [showChangePw, setShowChangePw] = useState(false);
   const [, navigate] = useLocation();
   const [creating, setCreating] = useState(false);
 
@@ -555,13 +558,8 @@ export default function Home() {
         {/* Nav */}
         <nav className="relative z-10 flex items-center justify-between px-8 py-5">
           <div className="flex items-center gap-2.5">
-            <div
-              className="w-7 h-7 rounded-lg flex items-center justify-center"
-              style={{
-                background: "linear-gradient(135deg, oklch(0.68 0.22 285), oklch(0.60 0.20 310))",
-              }}
-            >
-              <Film className="w-4 h-4 text-white" />
+            <div className="w-7 h-7 rounded-lg overflow-hidden flex items-center justify-center">
+              <img src="/chat-icon.svg" alt="KingTai" className="w-full h-full object-cover" />
             </div>
             <span className="text-sm font-semibold tracking-tight" style={{ color: "var(--c-t1)" }}>
               AI Video Canvas
@@ -602,13 +600,10 @@ export default function Home() {
                 <div className="flex items-center justify-between mb-5 flex-wrap gap-2">
                   <div className="flex items-center gap-2.5">
                     <div
-                      className="w-9 h-9 rounded-xl flex items-center justify-center"
-                      style={{
-                        background: "linear-gradient(135deg, oklch(0.68 0.22 285), oklch(0.60 0.20 310))",
-                        boxShadow: "0 4px 16px oklch(0.68 0.22 285 / 0.35)",
-                      }}
+                      className="w-9 h-9 rounded-xl overflow-hidden flex items-center justify-center"
+                      style={{ boxShadow: "0 4px 16px oklch(0.68 0.22 285 / 0.35)" }}
                     >
-                      <Film className="w-5 h-5 text-white" />
+                      <img src="/chat-icon.svg" alt="KingTai" className="w-full h-full object-cover" />
                     </div>
                     <span className="text-sm font-bold tracking-tight" style={{ color: "var(--c-t1)" }}>
                       AI Video Canvas
@@ -1014,6 +1009,15 @@ export default function Home() {
             >
               {(user.name ?? user.email ?? "U")[0].toUpperCase()}
             </div>
+            <button
+              onClick={() => setShowChangePw(true)}
+              title="修改密码"
+              className="w-7 h-7 rounded-lg flex items-center justify-center transition-all duration-150"
+              style={{ background: "transparent", border: "1px solid var(--c-bd2)", color: "var(--c-t3)" }}
+            >
+              <KeyRound className="w-3.5 h-3.5" />
+            </button>
+            <ChangePasswordDialog open={showChangePw} onClose={() => setShowChangePw(false)} />
             <button
               onClick={async () => {
                 await logout();
