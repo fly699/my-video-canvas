@@ -205,6 +205,119 @@ export const KIE_VIDEO_SPECS: Record<string, KieVideoSpec> = {
     multiModal: true,
     creditNote: "480p 15.5 / 720p 33 点·秒（无视频输入）",
   },
+  // ── 第二批扩充（均走 jobs/createTask，参数对照 docs/kie-api.md）──
+  kie_kling21_std: {
+    wire: "kling/v2-1-standard", endpoint: "jobs", label: "Kling 2.1 标准 图生视频", family: "Kling",
+    params: [{ key: "duration", type: "str", def: "5" }, { key: "cfg_scale", type: "num" }],
+    ref: { key: "image_url", array: false, required: true }, negPrompt: true,
+    creditNote: "5s 30 / 10s 60 点·条",
+  },
+  kie_kling21_pro: {
+    wire: "kling/v2-1-pro", endpoint: "jobs", label: "Kling 2.1 专业 图生视频", family: "Kling",
+    params: [{ key: "duration", type: "str", def: "5" }, { key: "cfg_scale", type: "num" }],
+    ref: { key: "image_url", array: false, required: true }, negPrompt: true,
+    creditNote: "5s 55 / 10s 110 点·条",
+  },
+  kie_wan22_t2v: {
+    wire: "wan/2-2-a14b-text-to-video-turbo", endpoint: "jobs", label: "Wan 2.2 文生视频(快)", family: "Wan",
+    params: [
+      { key: "resolution", type: "str", def: "720p" },
+      { key: "aspect_ratio", type: "str", def: "16:9" },
+      { key: "enable_prompt_expansion", type: "bool" },
+      { key: "seed", type: "num" },
+    ],
+    creditNote: "480p 6 / 720p 12 点·条",
+  },
+  kie_wan22_i2v: {
+    wire: "wan/2-2-a14b-image-to-video-turbo", endpoint: "jobs", label: "Wan 2.2 图生视频(快)", family: "Wan",
+    params: [
+      { key: "resolution", type: "str", def: "720p" },
+      { key: "enable_prompt_expansion", type: "bool" },
+      { key: "seed", type: "num" },
+    ],
+    ref: { key: "image_url", array: false, required: true },
+    creditNote: "480p 6 / 720p 12 点·条",
+  },
+  kie_wan27_t2v: {
+    wire: "wan/2-7-text-to-video", endpoint: "jobs", label: "Wan 2.7 文生视频", family: "Wan",
+    params: [
+      { key: "resolution", type: "str", def: "1080p" },
+      { key: "ratio", type: "str", def: "16:9" },
+      { key: "duration", type: "num", def: 5 },
+      { key: "prompt_extend", type: "bool", def: true },
+      { key: "seed", type: "num" },
+    ],
+    creditNote: "720p 12 / 1080p 18 点·秒",
+  },
+  kie_wan27_i2v: {
+    wire: "wan/2-7-image-to-video", endpoint: "jobs", label: "Wan 2.7 图生视频", family: "Wan",
+    params: [
+      { key: "resolution", type: "str", def: "1080p" },
+      { key: "duration", type: "num", def: 5 },
+      { key: "prompt_extend", type: "bool", def: true },
+      { key: "seed", type: "num" },
+    ],
+    ref: { key: "first_frame_url", array: false, required: true },
+    creditNote: "720p 12 / 1080p 18 点·秒",
+  },
+  kie_hailuo02_std: {
+    wire: "hailuo/02-text-to-video-standard", endpoint: "jobs", label: "Hailuo 02 标准 文生视频", family: "Hailuo",
+    params: [{ key: "duration", type: "str", def: "6" }, { key: "prompt_optimizer", type: "bool", def: true }],
+    creditNote: "768p 7 点·秒",
+  },
+  kie_hailuo02_pro_t2v: {
+    wire: "hailuo/02-text-to-video-pro", endpoint: "jobs", label: "Hailuo 02 专业 文生视频", family: "Hailuo",
+    params: [{ key: "prompt_optimizer", type: "bool", def: true }],
+    creditNote: "固定 65 点·条",
+  },
+  kie_hailuo02_pro_i2v: {
+    wire: "hailuo/02-image-to-video-pro", endpoint: "jobs", label: "Hailuo 02 专业 图生视频", family: "Hailuo",
+    params: [{ key: "prompt_optimizer", type: "bool", def: true }],
+    ref: { key: "image_url", array: false, required: true },
+    creditNote: "固定 65 点·条",
+  },
+  kie_grok_t2v: {
+    wire: "grok-imagine/text-to-video", endpoint: "jobs", label: "Grok Imagine 文生视频", family: "Grok",
+    params: [
+      { key: "aspect_ratio", type: "str", def: "16:9" },
+      { key: "mode", type: "str", def: "normal" },
+      { key: "duration", type: "num", def: 6 },
+      { key: "resolution", type: "str", def: "480p" },
+    ],
+    creditNote: "6s 30 / 10s 40 点·条",
+  },
+  kie_grok_i2v: {
+    wire: "grok-imagine/image-to-video", endpoint: "jobs", label: "Grok Imagine 图生视频", family: "Grok",
+    params: [
+      { key: "mode", type: "str", def: "normal" },
+      { key: "duration", type: "num", def: 6 },
+      { key: "resolution", type: "str", def: "480p" },
+      { key: "aspect_ratio", type: "str", def: "16:9" },
+    ],
+    ref: { key: "image_urls", array: true, required: true },
+    creditNote: "6s 30 / 10s 40 点·条",
+  },
+  kie_happyhorse_t2v: {
+    wire: "happyhorse/text-to-video", endpoint: "jobs", label: "HappyHorse 文生视频", family: "HappyHorse",
+    params: [
+      { key: "resolution", type: "str", def: "1080p" },
+      { key: "aspect_ratio", type: "str", def: "16:9" },
+      { key: "duration", type: "num", def: 5 },
+      { key: "seed", type: "num" },
+    ],
+    creditNote: "720p 16 / 1080p 32 点·秒",
+  },
+  kie_happyhorse_i2v: {
+    wire: "happyhorse/image-to-video", endpoint: "jobs", label: "HappyHorse 图生视频", family: "HappyHorse",
+    params: [
+      { key: "resolution", type: "str", def: "1080p" },
+      { key: "aspect_ratio", type: "str", def: "16:9" },
+      { key: "duration", type: "num", def: 5 },
+      { key: "seed", type: "num" },
+    ],
+    ref: { key: "image_url", array: false, required: true },
+    creditNote: "720p 16 / 1080p 32 点·秒",
+  },
 };
 
 export function isKieVideoProvider(provider: string): boolean {
