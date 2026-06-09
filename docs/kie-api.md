@@ -2,7 +2,7 @@
 
 **Author:** Manus AI
 
-**Build date:** 2026-06-09 04:52 UTC
+**Build date:** 2026-06-09 08:47 UTC
 
 > This archive consolidates the publicly available English Markdown API documentation exposed by the KIE.ai documentation index. It is intended as a searchable, offline-friendly technical reference for implementation, endpoint discovery, request/response review, callback handling, and operational onboarding.
 
@@ -18,6 +18,10 @@ This document was generated from the public KIE.ai documentation home and its ma
 | Fetch result | 100% success for identified English and Chinese pages |
 
 The archive preserves the original source URL for each page immediately below that page title. Internal examples, parameters, request payloads, callbacks, code blocks, and endpoint descriptions are retained in source order.
+
+### LLM Page Rendering and Model-ID Evidence Correction
+
+After user review, all English LLM market pages under Chat, Claude, Gemini, and Codex were re-extracted from their rendered documentation URLs to replace previously captured HTML/render-failure content. The corrected archive treats precise chat model IDs as **document-confirmed** only when the OpenAPI page provides a request schema enum or a documented endpoint path. Values appearing only in examples, operation metadata, or pricing data are preserved but should not be treated as schema-proof model IDs without additional confirmation.
 
 ## Category Coverage
 
@@ -61129,40 +61133,691 @@ import("https://file-assets.apidog.com/docs-site/v1/assets/entry.client-mUtkjgQm
 
 **Source:** [https://docs.kie.ai/market/chat/gpt-5-2.md][149]
 
-<!DOCTYPE html><html lang="en-US" class="group/root" id="html" data-theme="light" data-accent-color="purple"><head><script src="https://file-assets.apidog.com/docs-site/v1/assets/prepareDocsConfigScript-CLIBKQbk.js"></script><script>__prepareDocsConfigScript(JSON.parse("{\"theme\":\"system\",\"themePrimarySettings\":{\"light\":{\"accentColor\":\"purple\"},\"dark\":{\"accentColor\":\"purple\"}},\"logoSettings\":{\"light\":{\"icon\":\"\",\"type\":\"project\"},\"dark\":{\"icon\":\"\",\"type\":\"followLight\"}},\"backgroundImageSettings\":{\"light\":{\"type\":\"custom\",\"color\":\"\"},\"dark\":{\"type\":\"followLight\",\"color\":\"\"}},\"id\":0,\"subdirectory\":\"\"}"));</script><script>window.eventTracking = {
-      dataLayer: []
-    }
-    window.eventTracking.report = function(){
-        window.eventTracking.dataLayer.push(arguments);
-    }</script><meta charSet="utf-8"/><meta name="viewport" content="width=device-width, initial-scale=1"/><title>API Documentation</title><meta name="description" content="Design. Debug. Test. Document. Mock. Build APIs Faster &amp; Together."/><meta name="keywords" content="API Design, API Specification, API Test, API Documentation, API Mock"/><link rel="stylesheet" href="https://file-assets.apidog.com/docs-site/v1/assets/root-CpC_E1fb.css"/></head><body class="overflow-hidden g-body"><div class="flex h-full w-full flex-col overflow-auto"><div class="flex flex-1 flex-col items-center justify-center"><div class="flex w-auto flex-col items-center justify-center max-os:p-5 os:w-[480px]"><svg width="104" height="104" viewBox="0 0 104 104" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M92.9557 41.8969L88.7262 25.2175C87.4089 19.8194 84.8039 16.1447 80.9015 14.1934L80.3963 13.9458C79.802 13.6685 79.178 13.4407 78.5243 13.2426C75.4142 12.3214 72.0268 12.371 68.362 13.3813C65.8759 14.0747 63.2612 15.2038 60.5176 16.7886C56.7835 18.9478 53.3167 21.6319 50.1076 24.8708C49.0973 25.8711 48.1266 26.9209 47.1956 28.0204C46.314 29.0406 45.4622 30.1105 44.6302 31.2198C42.9266 33.4781 41.3121 35.9245 39.7868 38.5492C34.1015 48.3648 31.2588 57.9329 31.2588 67.2631C31.2588 72.0471 32.1106 76.1181 33.8142 79.4461C34.6759 81.1101 35.6862 82.5263 36.8748 83.7248C37.9346 84.7846 39.1232 85.6564 40.4405 86.3398L41.0151 86.627V98.9485C41.0151 99.9984 41.3221 100.712 41.9461 101.058C42.5701 101.415 43.3426 101.326 44.2637 100.801L67.0249 87.6571C67.946 87.1223 68.7186 86.3199 69.3426 85.2502C69.9666 84.1706 70.2736 83.1008 70.2736 82.0509V78.3169L76.7811 74.5629C78.5639 73.5328 80.0993 71.9184 81.377 69.7195C82.6448 67.5207 83.2786 65.4011 83.2786 63.341V52.1485L89.786 48.3946C90.8657 47.7706 91.7373 46.79 92.391 45.4429C93.0348 44.1058 93.2231 42.927 92.9557 41.8969ZM62.8352 66.6095C62.2112 67.6891 61.4387 68.4914 60.5176 69.0263C59.5964 69.5512 58.8237 69.6404 58.1997 69.2838C57.5856 68.9371 57.2687 68.2238 57.2687 67.164C57.2687 66.1042 57.5856 65.0445 58.1997 63.9748C58.2592 63.8658 58.3186 63.7667 58.378 63.6676C58.9129 62.8356 59.5468 62.1819 60.2797 61.7164C60.359 61.6569 60.4383 61.6075 60.5176 61.558C61.4387 61.033 62.2112 60.9439 62.8352 61.2906C63.4592 61.6471 63.7761 62.3604 63.7761 63.4103C63.7761 64.4602 63.4592 65.5398 62.8352 66.6095ZM69.5011 38.7572C69.402 39.1336 69.2832 39.5101 69.1346 39.8865C68.5997 41.3227 67.4607 43.6206 65.7274 46.8C64.9647 48.1768 64.41 49.3158 64.0535 50.237C63.8157 50.861 63.6176 51.4748 63.4691 52.0592C63.3997 52.3366 63.3304 52.6041 63.2809 52.8715C63.1224 53.7729 62.7856 54.6148 62.2706 55.3774C61.7556 56.1401 61.2009 56.6948 60.6066 57.0315C59.8935 57.4475 59.319 57.4971 58.8535 57.2099C58.3978 56.9128 58.2196 56.358 58.3285 55.5557C58.487 54.2186 58.8039 52.931 59.2596 51.7029C59.7251 50.4747 60.4679 48.9392 61.498 47.0969C62.3201 45.6409 62.9837 44.4029 63.4691 43.4026C63.7761 42.7885 64.0138 42.2636 64.1921 41.8278C64.202 41.7981 64.2119 41.7782 64.2218 41.7485C64.6775 40.5797 64.9153 39.5001 64.9153 38.4997C64.9153 37.321 64.5191 36.5881 63.7366 36.2909C62.9442 36.0037 61.9537 36.2019 60.7652 36.8853C60.0025 37.3211 59.2794 37.945 58.5662 38.7572C57.863 39.5694 57.239 40.5105 56.7041 41.5604C56.2683 42.5013 55.7632 43.2442 55.1986 43.7889C54.6241 44.3337 54.0397 44.6209 53.4455 44.6506C52.8512 44.6902 52.4055 44.4525 52.1083 43.9374C51.8112 43.4224 51.8211 42.7687 52.1479 41.9565C53.0691 39.7477 54.2973 37.7074 55.8424 35.8552C56.5754 34.9737 57.338 34.1811 58.1205 33.4878C58.9822 32.735 59.8638 32.0913 60.7652 31.5664C63.3701 30.0708 65.5491 29.7141 67.3121 30.4966C69.0752 31.279 69.9468 32.9829 69.9468 35.5977C69.9468 36.6476 69.7982 37.7073 69.5011 38.7572Z" stroke="#667085" stroke-linecap="round" stroke-linejoin="round"></path><path d="M63.777 63.4086C63.777 64.4684 63.46 65.5381 62.836 66.6078C62.212 67.6874 61.4395 68.4896 60.5184 69.0245C59.5972 69.5494 58.8246 69.6387 58.2006 69.2821C57.5865 68.9354 57.2695 68.2221 57.2695 67.1623C57.2695 66.1025 57.5865 65.0428 58.2006 63.973C58.26 63.8641 58.3194 63.7649 58.3789 63.6659C58.9137 62.8339 59.5476 62.1802 60.2806 61.7147C60.3598 61.6552 60.4392 61.6058 60.5184 61.5563C61.4395 61.0313 62.212 60.9422 62.836 61.2888C63.46 61.6454 63.777 62.3587 63.777 63.4086Z" stroke="#667085" stroke-linecap="round" stroke-linejoin="round"></path><path d="M63.7373 36.2894C62.9449 36.0021 61.9544 36.2003 60.7659 36.8838C60.0032 37.3196 59.2801 37.9435 58.567 38.7557C57.8638 39.5679 57.2398 40.5089 56.7049 41.5588C56.2691 42.4998 55.7639 43.2426 55.1994 43.7874C54.6249 44.3321 54.0405 44.6193 53.4462 44.649C52.8519 44.6886 52.4062 44.4509 52.1091 43.9359C51.8119 43.4208 51.8219 42.7671 52.1487 41.9549C53.0699 39.7461 54.298 37.7059 55.8432 35.8537C56.5761 34.9721 57.3388 34.1797 58.1213 33.4863L63.7373 36.2894Z" stroke="#667085" stroke-linecap="round" stroke-linejoin="round"></path><path d="M69.9474 35.596C69.9474 36.6459 69.7988 37.7056 69.5017 38.7555C69.4026 39.1319 69.2838 39.5085 69.1352 39.8849C68.6003 41.321 67.4613 43.6189 65.728 46.7984C64.9653 48.1751 64.4106 49.3141 64.054 50.2352C63.8163 50.8592 63.6182 51.4732 63.4697 52.0576C63.4003 52.3349 63.331 52.6024 63.2815 52.8698C63.123 53.7711 62.7862 54.6131 62.2712 55.3758C61.7561 56.1385 61.2015 56.693 60.6072 57.0298C59.894 57.4458 59.3196 57.4955 58.854 57.2083C58.3984 56.9111 58.2201 56.3563 58.3291 55.554C58.4876 54.2168 58.8045 52.9293 59.2601 51.7011C59.7257 50.4729 60.4685 48.9376 61.4986 47.0953C62.3207 45.6393 62.9843 44.4012 63.4697 43.4008C63.7767 42.7868 64.0144 42.2619 64.1927 41.8261C64.2026 41.7964 64.2125 41.7766 64.2224 41.7468C64.678 40.5781 64.9158 39.4984 64.9158 38.498C64.9158 37.3193 64.5196 36.5865 63.7371 36.2893L58.1211 33.4862C58.9828 32.7334 59.8643 32.0896 60.7657 31.5647C63.3706 30.069 65.5497 29.7125 67.3127 30.4949C69.0758 31.2774 69.9474 32.9811 69.9474 35.596Z" stroke="#667085" stroke-linecap="round" stroke-linejoin="round"></path><path d="M41.9466 101.059L22.3253 91.2429L22.1371 91.1537C21.5131 90.807 21.2061 90.094 21.2061 89.0441V76.7227L41.0156 86.6274V98.9488C41.0156 99.9988 41.3226 100.712 41.9466 101.059Z" stroke="#667085" stroke-linecap="round" stroke-linejoin="round"></path><path d="M80.3972 13.9448C79.8029 13.6675 79.1789 13.4397 78.5252 13.2416C75.4151 12.3204 72.0277 12.3701 68.3629 13.3804C65.8768 14.0737 63.2621 15.2028 60.5185 16.7876C56.7844 18.9468 53.3176 21.6309 50.1085 24.8698C49.0982 25.8702 48.1275 26.92 47.1965 28.0194C46.3149 29.0396 45.4631 30.1096 44.6311 31.2189C42.9275 33.4772 41.313 35.9236 39.7877 38.5484C34.1024 48.364 31.2597 57.932 31.2597 67.2623C31.2597 72.0463 32.1115 76.1171 33.8151 79.4451C34.6768 81.1091 35.6871 82.5253 36.8757 83.7238C37.9355 84.7836 39.1241 85.6554 40.4414 86.3388L21.2065 76.7213C18.1161 75.2752 15.7192 72.8783 14.0056 69.5404C12.302 66.2124 11.4502 62.1415 11.4502 57.3575C11.4502 48.0272 14.2929 38.4592 19.9782 28.6436C25.6734 18.828 32.587 11.5678 40.7089 6.88282C47.4838 2.97044 53.486 1.79169 58.7157 3.33683C59.4784 3.56464 60.2113 3.84208 60.8948 4.17884L61.281 4.37688L80.3972 13.9448Z" stroke="#667085" stroke-linecap="round" stroke-linejoin="round"></path></svg><div class="align-center mt-8 flex justify-center text-center text-2xl font-semibold text-color">An abnormal error occurred, please try &#x27;Reload&#x27; or &#x27;get Support&#x27; to help you solve it!</div><div class="align-center mt-2 text-center text-lg font-400 text-secondary">Unexpected token &#x27;o&#x27;, &quot;forbidden
-&quot; is not valid JSON: /api/v1/published-projects/domains/docs.kie.ai</div></div></div><div class="flex flex-col items-center justify-center p-8 text-base font-base text-secondary"><div class="inline-flex items-center text-base font-400 text-secondary _footer-logo-wrapper_1kbjg_1"><a class="_footer-logo_1kbjg_1 flex-shrink-0" aria-label="homepage link" href="https://apidog.com"><span class="inline-flex items-center"><span class="mr-[-4px]">Built with</span><svg width="61" height="18" viewBox="0 0 61 18" fill="none" xmlns="http://www.w3.org/2000/svg" class="h-[18px] w-[80px]"><path d="M12.3836 1.67806C11.6452 0.940647 10.4478 0.940647 9.70932 1.67806L8.99795 2.3884L8.30644 1.69789C7.57144 0.963937 6.37437 0.936241 5.62991 1.66043C4.88545 2.38463 4.86748 3.60515 5.61194 4.34854L6.32331 5.05888C7.80026 6.53371 10.195 6.53371 11.6723 5.05888L12.3836 4.34854C13.1221 3.61113 13.1221 2.41547 12.3836 1.67806Z" fill="#667085"></path><path d="M12.3838 13.6515L11.6729 12.9412C10.1968 11.4664 7.80339 11.4664 6.32699 12.9412L5.61603 13.6515C4.87799 14.389 4.87799 15.5846 5.61603 16.322C6.35408 17.0594 7.55076 17.0594 8.28881 16.322L8.99976 15.6117L9.69087 16.3022C10.4255 17.0361 11.6218 17.0638 12.3659 16.3396C13.1219 15.6038 13.1278 14.3949 12.3838 13.6515Z" fill="#667085"></path><path d="M15.6105 8.99642L16.3214 8.28481C17.0655 7.54009 17.0595 6.32906 16.3035 5.59191C15.5595 4.86643 14.3631 4.89418 13.6285 5.62943L13.3098 5.94851C12.1666 7.09269 10.6166 7.73526 9 7.73526C7.38344 7.73526 5.83335 7.09238 4.69023 5.94851L4.37146 5.62943C3.63689 4.89418 2.44054 4.86643 1.69652 5.59191C0.940527 6.32906 0.934542 7.54009 1.67856 8.28481L2.38951 8.99642L1.67856 9.70803C0.940527 10.4468 0.940527 11.6445 1.67856 12.3833C2.4166 13.122 3.61326 13.122 4.3513 12.3833L4.74347 11.9907C5.85225 10.8809 7.35604 10.2576 8.92409 10.2576H8.9874C10.6162 10.2576 12.1666 10.9005 13.3098 12.0446C13.5126 12.2477 13.6484 12.3836 13.6484 12.3836C14.3864 13.1223 15.5831 13.1223 16.3211 12.3836C17.0592 11.6449 17.0592 10.4471 16.3211 9.70834L15.6102 8.99673L15.6105 8.99642Z" fill="#667085"></path><path fill-rule="evenodd" clip-rule="evenodd" d="M37.3559 4.00331C37.4694 3.95752 37.5911 3.93521 37.7136 3.93768C37.8343 3.93606 37.9541 3.95884 38.0656 4.0046C38.1772 4.05035 38.2781 4.11814 38.3624 4.20384C38.4483 4.29095 38.5158 4.39418 38.561 4.50749C38.6061 4.6208 38.628 4.7419 38.6253 4.8637C38.628 4.98551 38.6061 5.10664 38.561 5.21995C38.5158 5.33326 38.4483 5.43648 38.3624 5.52357C38.2781 5.60926 38.1772 5.67705 38.0656 5.72284C37.9541 5.7686 37.8343 5.79134 37.7136 5.78975C37.5911 5.79222 37.4694 5.76989 37.3559 5.72413C37.2425 5.67837 37.1396 5.61011 37.0536 5.52357C36.9677 5.43648 36.9002 5.33326 36.8551 5.21995C36.8099 5.10664 36.7881 4.98551 36.7908 4.8637C36.7881 4.7419 36.8099 4.6208 36.8551 4.50749C36.9002 4.39418 36.9677 4.29095 37.0536 4.20384C37.1396 4.1173 37.2425 4.04907 37.3559 4.00331ZM25.6211 4.76389L24.0219 4.76389L21.175 12.7654H22.7355L23.2948 11.1795H26.371L26.9303 12.7654H28.5019L25.6211 4.76389ZM25.9403 9.91528H23.7255L24.8441 6.75459L25.9403 9.91528ZM34.4529 6.71022C33.9935 6.42603 33.4618 6.27789 32.9204 6.28324C32.4656 6.27789 32.0164 6.38257 31.6116 6.58824C31.3484 6.72112 31.1086 6.89528 30.9013 7.10393V6.38304H29.4248V15.6932H30.9181V12.0501C31.1303 12.2594 31.3736 12.4352 31.6396 12.5714C32.0799 12.7816 32.5659 12.88 33.0541 12.8577C33.5422 12.8355 34.0171 12.6932 34.4361 12.4438C34.899 12.1548 35.274 11.7466 35.5212 11.2627C35.7861 10.7302 35.9203 10.1431 35.9126 9.54929C35.923 8.96057 35.7887 8.37821 35.5212 7.8525C35.2797 7.38027 34.9096 6.98456 34.4529 6.71022ZM34.4137 9.55484C34.4161 9.91562 34.3297 10.2716 34.162 10.5918C34.0132 10.8769 33.7889 11.1165 33.5133 11.2849C33.2582 11.4309 32.9688 11.5078 32.6743 11.5078C32.3798 11.5078 32.0904 11.4309 31.8353 11.2849C31.5644 11.1203 31.341 10.8892 31.1866 10.6139C31.0195 10.284 30.937 9.91836 30.946 9.54929C30.9355 9.18364 31.0182 8.82126 31.1866 8.49571C31.331 8.22256 31.5426 7.98991 31.8018 7.81923C32.0627 7.67197 32.3573 7.59366 32.6575 7.5919C32.9606 7.59099 33.2582 7.67147 33.5188 7.82478C33.7952 7.97573 34.0193 8.20567 34.162 8.48465C34.3413 8.8105 34.4283 9.17839 34.4137 9.54929V9.55484ZM38.4519 6.38304H36.9585V12.7599H38.4519V6.38304ZM43.7037 6.56049C43.9895 6.68375 44.2509 6.85649 44.4756 7.07066V4.27038H45.9801V12.7654H44.4756V12.039C44.2733 12.2523 44.0347 12.4288 43.7709 12.5603C43.3696 12.7699 42.9211 12.8748 42.4677 12.8652C41.9296 12.8702 41.4008 12.7261 40.9408 12.4493C40.4817 12.1535 40.1078 11.7446 39.8557 11.2627C39.5908 10.7302 39.4566 10.1431 39.4642 9.54929C39.4539 8.96057 39.5882 8.37821 39.8557 7.8525C40.1049 7.3803 40.4803 6.98514 40.9408 6.71022C41.3529 6.46065 41.821 6.31637 42.3032 6.29024C42.7854 6.26412 43.2666 6.35695 43.7037 6.56049ZM44.4756 9.57146C44.4854 9.20459 44.3987 8.84147 44.2239 8.51792C44.0698 8.22608 43.835 7.98372 43.5471 7.81923C43.2921 7.67323 43.0027 7.59637 42.7082 7.59637C42.4136 7.59637 42.1243 7.67323 41.8692 7.81923C41.598 7.97735 41.377 8.20793 41.2316 8.48465C41.0626 8.80593 40.9798 9.16492 40.9911 9.52712C40.9825 9.89613 41.0651 10.2616 41.2316 10.5918C41.3883 10.8862 41.622 11.1333 41.9084 11.3071C42.1635 11.4531 42.4528 11.5299 42.7473 11.5299C43.0419 11.5299 43.3312 11.4531 43.5863 11.3071C43.8553 11.1436 44.0753 10.912 44.2239 10.6361C44.3961 10.3076 44.4826 9.94161 44.4756 9.57146ZM51.8863 6.71022C51.3775 6.44176 50.81 6.30134 50.2336 6.30134C49.6572 6.30134 49.0897 6.44176 48.5808 6.71022C48.1082 6.98053 47.7208 7.37607 47.4622 7.8525C47.1714 8.37882 47.0248 8.9715 47.0372 9.57146C47.026 10.1735 47.1684 10.7686 47.451 11.3016C47.7105 11.7817 48.0973 12.1824 48.5697 12.4605C49.0662 12.7315 49.6249 12.8709 50.1916 12.8652C50.7765 12.874 51.3541 12.7347 51.8695 12.4605C52.3652 12.1852 52.7752 11.7805 53.0553 11.2904C53.3515 10.7658 53.502 10.1726 53.4915 9.57146C53.5004 8.97048 53.35 8.37773 53.0553 7.8525C52.7813 7.37062 52.3763 6.97478 51.8863 6.71022ZM49.3639 7.81923C49.6253 7.67401 49.9199 7.59775 50.2196 7.59775C50.5193 7.59775 50.8139 7.67401 51.0753 7.81923C51.3499 7.97813 51.5716 8.21332 51.7129 8.49571C51.876 8.8305 51.9528 9.20008 51.9367 9.57146C51.9483 9.9474 51.8616 10.3199 51.685 10.6528C51.5392 10.9243 51.3204 11.1504 51.0529 11.3061C50.7853 11.4617 50.4794 11.5408 50.1693 11.5344C49.9454 11.5409 49.7227 11.4998 49.5162 11.4137C49.3097 11.3276 49.1243 11.1986 48.9724 11.0354C48.6355 10.6234 48.4678 10.1007 48.5025 9.57146C48.4901 9.19738 48.5708 8.82604 48.7374 8.4902C48.8747 8.21003 49.0927 7.97654 49.3639 7.81923ZM59.0394 7.03076V6.32653H60.5495V12.6812C60.5594 13.2247 60.4326 13.7622 60.1804 14.2449C59.9389 14.7103 59.5657 15.0957 59.1065 15.3539C58.5924 15.6305 58.0132 15.7664 57.4286 15.7476C56.67 15.7754 55.9226 15.5595 55.2977 15.1321C55.0204 14.9436 54.7884 14.6968 54.6182 14.4092C54.4481 14.1217 54.344 13.8006 54.3133 13.4686V13.3466L55.7954 13.3466C55.7954 13.6685 56.0907 13.9814 56.3547 14.134C56.6804 14.3328 57.0575 14.4331 57.4398 14.4223C57.6518 14.4311 57.8634 14.3968 58.0616 14.3215C58.2597 14.2462 58.4402 14.1314 58.592 13.9843C58.7493 13.8103 58.8699 13.6068 58.9468 13.3859C59.0236 13.1649 59.0394 12.931 59.0394 12.6978V11.9548C58.8328 12.1771 58.591 12.3644 58.3235 12.5093C57.9242 12.7189 57.4776 12.8239 57.0259 12.8143C56.4897 12.8185 55.9629 12.6744 55.5046 12.3984C55.0442 12.1041 54.6699 11.6949 54.4195 11.2117C54.1519 10.6801 54.0176 10.0924 54.0281 9.49832C54.0156 8.9094 54.1501 8.32653 54.4195 7.80153C54.6679 7.32727 55.0433 6.93011 55.5046 6.6537C55.9619 6.37401 56.4886 6.22618 57.0259 6.22672C57.4809 6.21907 57.9307 6.32389 58.3347 6.53172C58.5954 6.65891 58.8335 6.82746 59.0394 7.03076ZM58.7877 10.5796C58.9599 10.2511 59.0464 9.8851 59.0394 9.51494C59.0532 9.14059 58.9663 8.76931 58.7877 8.4392C58.6409 8.16062 58.4205 7.92682 58.1501 7.76271C57.8899 7.6138 57.5948 7.53538 57.2944 7.53538C56.994 7.53538 56.6988 7.6138 56.4387 7.76271C56.1645 7.92882 55.9419 8.16678 55.7954 8.4503C55.6308 8.76545 55.5463 9.11571 55.5494 9.4706C55.5427 9.84005 55.6271 10.2055 55.7954 10.5352C55.9406 10.827 56.1629 11.0743 56.4387 11.2505C56.6977 11.4028 56.9932 11.4832 57.2944 11.4832C57.5955 11.4832 57.8911 11.4028 58.1501 11.2505C58.419 11.0871 58.6392 10.8555 58.7877 10.5796Z" fill="#667085"></path></svg></span></a></div></div></div><script>
-            if (typeof window.__updateThemeElement === 'function') {
-              window.__updateThemeElement();
+### OpenAPI Specification
+
+```yaml
+openapi: 3.0.1
+info:
+  title: ''
+  description: ''
+  version: 1.0.0
+paths:
+  /gpt-5-2/v1/chat/completions:
+    post:
+      summary: GPT 5.2
+      deprecated: false
+      description: >
+        > GPT-5-2 API is a next-generation multimodal model with exceptional
+        reasoning capabilities, supporting text and image inputs with Web Search
+        grounding and adjustable reasoning effort.
+
+        <CardGroup cols={2}>
+          <Card title="Multimodal" icon="lucide-image">
+            Supports text and image inputs
+          </Card>
+          <Card title="Real-time Search" icon="lucide-search">
+            Web search grounding enabled
+          </Card>
+          <Card title="Reasoning Effort" icon="lucide-list-minus">
+            Adjustable reasoning effort level
+          </Card>
+          <Card title="Flexible Roles" icon="lucide-users">
+            Multiple message roles supported
+          </Card>
+        </CardGroup>
+
+        ## Unified Media File Format
+
+        :::caution
+
+        In the `messages` parameter's `content` array, only images are
+        supported. All image files use the same format structure:
+
+        - The `type` field is always `"image_url"`
+
+        - The `image_url` field name remains unchanged
+
+        - The only thing that changes is the `url` value, which points to the
+        corresponding image address
+
+        For example: `{ type: 'image_url', image_url: { url: '...' } }`
+        structure.
+
+        :::
+
+        ## Tools Parameter
+
+        The `tools` parameter is an optional array that allows you to enable Web
+        Search grounding.
+
+        ### Web Search
+
+        Use this format to enable Web Search grounding:
+
+        ```json
+
+        {
+          "type": "function",
+          "function": {
+            "name": "web_search"
+          }
+        }
+
+        ```
+
+        This enables real-time information retrieval via Web Search.
+
+        ## Response Example
+
+        ```json
+
+        {
+          "id": "chatcmpl-example-123",
+          "object": "chat.completion",
+          "created": 1741569952,
+          "model": "gpt-5-2",
+          "choices": [
+            {
+              "index": 0,
+              "message": {
+                "role": "assistant",
+                "content": "hello,can i help you?",
+                "refusal": null,
+                "annotations": []
+              },
+              "logprobs": null,
+              "finish_reason": "stop"
             }
-          </script><script>((STORAGE_KEY, restoreKey) => {
-    if (!window.history.state || !window.history.state.key) {
-      let key = Math.random().toString(32).slice(2);
-      window.history.replaceState({
-        key
-      }, "");
-    }
-    try {
-      let positions = JSON.parse(sessionStorage.getItem(STORAGE_KEY) || "{}");
-      let storedY = positions[restoreKey || window.history.state.key];
-      if (typeof storedY === "number") {
-        window.scrollTo(0, storedY);
-      }
-    } catch (error) {
-      console.error(error);
-      sessionStorage.removeItem(STORAGE_KEY);
-    }
-  })("positions", null)</script><link rel="modulepreload" href="https://file-assets.apidog.com/docs-site/v1/assets/manifest-db7ef313.js"/><link rel="modulepreload" href="https://file-assets.apidog.com/docs-site/v1/assets/entry.client-mUtkjgQm.js"/><link rel="modulepreload" href="https://file-assets.apidog.com/docs-site/v1/assets/jsx-runtime-CM5sU0Q5.js"/><link rel="modulepreload" href="https://file-assets.apidog.com/docs-site/v1/assets/client-BKxavTD9.js"/><link rel="modulepreload" href="https://file-assets.apidog.com/docs-site/v1/assets/components-DMSdXhQK.js"/><link rel="modulepreload" href="https://file-assets.apidog.com/docs-site/v1/assets/root-CQ054TXt.js"/><link rel="modulepreload" href="https://file-assets.apidog.com/docs-site/v1/assets/root-Dv513fR3.js"/><link rel="modulepreload" href="https://file-assets.apidog.com/docs-site/v1/assets/route-D_6YkXJe.js"/><script>window.__remixContext = {"basename":"/","future":{"v3_fetcherPersist":true,"v3_relativeSplatPath":true,"v3_throwAbortReason":true,"v3_routeConfig":false,"v3_singleFetch":true,"v3_lazyRouteDiscovery":false,"unstable_optimizeDeps":false},"isSpaMode":false};window.__remixContext.stream = new ReadableStream({start(controller){window.__remixContext.streamController = controller;}}).pipeThrough(new TextEncoderStream());</script><script type="module" async="">import "https://file-assets.apidog.com/docs-site/v1/assets/manifest-db7ef313.js";
-import * as route0 from "https://file-assets.apidog.com/docs-site/v1/assets/root-Dv513fR3.js";
-import * as route1 from "https://file-assets.apidog.com/docs-site/v1/assets/route-D_6YkXJe.js";
+          ],
+          "usage": {
+            "prompt_tokens": 10,
+            "completion_tokens": 50,
+            "total_tokens": 60
+          }
+        }
 
-window.__remixRouteModules = {"root":route0,"routes/_index/route":route1};
+        ```
+      operationId: gpt-5-2-chat-completions
+      tags:
+        - docs/en/Market/Chat  Models/GPT
+      parameters: []
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                messages:
+                  type: array
+                  description: >-
+                    An array of message objects. Each message has a role and
+                    content.
 
-import("https://file-assets.apidog.com/docs-site/v1/assets/entry.client-mUtkjgQm.js");</script></body></html><!--$--><script>window.__remixContext.streamController.enqueue("[{\"_1\":2,\"_231\":-5,\"_232\":-5},\"loaderData\",{\"_3\":4,\"_230\":-5},\"root\",{\"_5\":1,\"_6\":7,\"_19\":20,\"_23\":24,\"_33\":34,\"_52\":53,\"_112\":113,\"_155\":156,\"_229\":-7},\"type\",\"meta\",[8,11,16],{\"_9\":10},\"title\",\"API Documentation\",{\"_12\":13,\"_14\":15},\"name\",\"description\",\"content\",\"Design. Debug. Test. Document. Mock. Build APIs Faster \u0026 Together.\",{\"_12\":17,\"_14\":18},\"keywords\",\"API Design, API Specification, API Test, API Documentation, API Mock\",\"i18nState\",{\"_21\":22},\"clientLocale\",\"en-US\",\"errorCodeMessage\",{\"_25\":26,\"_27\":28,\"_29\":30,\"_31\":32},\"errorCode\",\"Unknown\",\"errorMessage\",\"Unexpected token 'o', \\\"forbidden\\n\\\" is not valid JSON: /api/v1/published-projects/domains/docs.kie.ai\",\"hideBuiltWith\",false,\"extra\",{},\"clientConfig\",{\"_35\":36,\"_37\":38,\"_39\":40,\"_41\":42,\"_47\":48,\"_49\":30,\"_50\":51},\"apiBaseUrl\",\"https://api.apidog.com\",\"appWebUrl\",\"https://app.apidog.com\",\"apidocBuiltinPrefixPath\",\"https://assets.apidog.com/app/static/apidoc\",\"cloudMockBaseUrls\",{\"_43\":44,\"_45\":46},\"pathMode\",\"https://mock.apidog.com/m1/{projectId}-{version}-{service}\",\"idMode\",\"https://mock.apidog.com/m2/{projectId}-{version}-{service}\",\"apidocIsShowLogo\",true,\"markdownDisableBreaks\",\"webhookGenerateCodeDefaultUrl\",\"https://your-api-server.com\",\"urlConfig\",{\"_54\":55,\"_58\":59,\"_99\":100,\"_108\":109},\"home\",{\"_56\":57},\"index\",\"https://apidog.com\",\"icon\",{\"_60\":61,\"_62\":63,\"_64\":63,\"_65\":66,\"_67\":68,\"_69\":70,\"_71\":72,\"_73\":74,\"_75\":76,\"_77\":78,\"_79\":80,\"_81\":82,\"_83\":84,\"_85\":86,\"_87\":88,\"_89\":90,\"_91\":92,\"_93\":94,\"_95\":96,\"_97\":98},\"apidoc\",\"https://assets.apidog.com/app/static/brand/apidoc.png\",\"apidog\",\"https://assets.apidog.com/app/static/brand/apidog-logo-256.png\",\"apidog europe\",\"googleDiscovery\",\"https://assets.apidog.com/app/static/brand/google-discovery.png\",\"har\",\"https://assets.apidog.com/app/static/brand/har.png\",\"iodocs\",\"https://assets.apidog.com/app/static/brand/io-doc.png\",\"jmeter\",\"https://assets.apidog.com/app/static/brand/jmeter.png\",\"openapi\",\"https://assets.apidog.com/app/static/brand/openapi.png\",\"postman\",\"https://assets.apidog.com/app/static/brand/postman.png\",\"raml\",\"https://assets.apidog.com/app/static/brand/raml.png\",\"wadl\",\"https://assets.apidog.com/app/static/brand/wadl.png\",\"curl\",\"https://assets.apidog.com/app/static/brand/curl.png\",\"insomnia\",\"https://assets.apidog.com/app/static/brand/insomnia.png\",\"wsdl\",\"https://assets.apidog.com/app/static/brand/wsdl.png\",\"markdown\",\"https://assets.apidog.com/app/static/brand/markdown.png\",\"html\",\"https://assets.apidog.com/app/static/brand/html.png\",\"protobuf\",\"https://assets.apidog.com/app/static/brand/protobuf.png\",\"soapui\",\"https://assets.apidog.com/app/static/brand/soapui.svg\",\"hoppscotch\",\"https://assets.apidog.com/app/static/brand/hoppscotch.svg\",\"javaProject\",\"https://assets.apidog.com/app/static/brand/java-project.png\",\"help\",{\"_56\":101,\"_102\":103,\"_104\":105,\"_106\":107},\"https://apidog.com/help\",\"browserExtension\",\"https://chromewebstore.google.com/detail/apidog-browser-extension/dmhljjnonlhapikmelaefohecogokhio\",\"csv\",\"https://apidog.com/help/reference/csv\",\"appMcpServer\",\"https://docs.apidog.com/apidog-mcp-server\",\"assets\",{\"_110\":111},\"logo512Png\",\"https://assets.apidog.com/static/logo/apidog-logo-512.png\",\"envConfig\",{\"_114\":60,\"_115\":116,\"_117\":116,\"_118\":119,\"_120\":121,\"_122\":123,\"_124\":57,\"_125\":62,\"_126\":22,\"_127\":128,\"_129\":130,\"_132\":133,\"_134\":135,\"_136\":137,\"_138\":139,\"_140\":141,\"_142\":143,\"_149\":150,\"_151\":48,\"_152\":153,\"_154\":30},\"RELEASE_BASE\",\"DEBUG_API_BASE\",\"\",\"DEBUG_WEB_URL_BASE\",\"AGENT_SERVER_API_BASE\",\"https://web-proxy.apidog.com\",\"APP_REGION\",\"GLOBAL\",\"APP_NAME\",\"Apidog\",\"APP_HOMEPAGE\",\"APP_NAME_LOWER\",\"DEFAULT_LOCALE\",\"APP_BROWSER_EXTENSION_ADAPTER\",\"apidogAgentCrossRequest\",\"APP_API_SERVER_HOSTNAMES\",[131],\"api.apidog.com\",\"APP_SUPPORT_EMAIL\",\"support@apidog.com\",\"APP_SCRIPT_MAIN_OBJECTS\",\"$\",\"SERVER_PROTOCOL\",\"http\",\"SERVER_HOST\",\"apidog-api-fordoc-svc\",\"DEFAULT_DOC_LAYOUT\",\"TwoColumn\",\"NOT_CUSTOM_DOMAIN_HOSTNAMES\",[144,145,146,147,148],\"www.apidog.com\",\"apidog.com\",\"www.apidog.io\",\"apidog.io\",\"share.apidog.com\",\"SERVER_REQUEST_TIMEOUT\",15000,\"IS_SHARED_DOC_INDEPENDENT_DOMAIN\",\"APIDOC_CUSTOM_DOMAIN_CNAME_REGEX\",[\"R\",\"\\\\d+\\\\.cname\\\\.apidog\\\\.com\",\"\"],\"IS_ALWAYS_USE_ORIGIN_FETCH\",\"docsDataState\",{\"_157\":158,\"_162\":163,\"_175\":176,\"_177\":178,\"_179\":180,\"_189\":190,\"_202\":203,\"_204\":205,\"_206\":207,\"_213\":214,\"_220\":-7,\"_221\":222,\"_223\":-7,\"_224\":-7,\"_225\":226,\"_228\":-7},\"navigation\",{\"_5\":159,\"_160\":161},\"NONE\",\"navRightLinkItems\",[],\"sidebarTree\",{\"_164\":-7,\"_165\":-7,\"_166\":167,\"_168\":-7,\"_169\":170,\"_171\":-7,\"_172\":-7,\"_173\":174},\"goBackSidebarTreeApiFolderNode\",\"rootSidebarTreeApiFolderNode\",\"sidebarTreeList\",[],\"selectedSidebarTreeNode\",\"parentSidebarTreeApiFolderNodes\",[],\"previousSidebarTreeNode\",\"nextSidebarTreeNode\",\"homeLink\",\"/\",\"docsBaseConfig\",{},\"versionList\",[],\"resourceData\",{\"_5\":181,\"_182\":-7,\"_183\":184},\"NotFound\",\"data\",\"extraData\",{\"_185\":186,\"_187\":188},\"apiFieldList\",[],\"dataSchemaDefinitions\",{},\"docsIdTypeData\",{\"_191\":192,\"_193\":194,\"_195\":194,\"_196\":194,\"_197\":116,\"_198\":194,\"_199\":200,\"_201\":-7},\"onlineType\",\"APIDOC\",\"branchId\",0,\"onlineId\",\"projectId\",\"subdirectory\",\"teamId\",\"visitType\",\"customDomain\",\"specialFileType\",\"notification\",[],\"footerBanner\",[],\"projectSetting\",{\"_208\":209,\"_210\":211},\"advancedSettings\",{},\"auth\",{\"_5\":212},\"noauth\",\"environments\",{\"_215\":216,\"_217\":-7,\"_218\":219},\"environmentList\",[],\"selectedEnvironment\",\"servers\",[],\"searchSettings\",\"versionSettings\",[],\"seoInfos\",\"itemPathPrefix\",\"appEnvMap\",{\"_227\":128},\"appBrowserExtensionAdapterKey\",\"customCodes\",\"primaryColorVariable\",\"routes/_index/route\",\"actionData\",\"errors\"]\n");</script><!--$--><script>window.__remixContext.streamController.close();</script><!--/$--><!--/$-->
+                    **Unified Media File Format:**
+
+                    In the content array, only images are supported. All image
+                    files use the same format structure:
+
+                    - The `type` field is always `"image_url"`
+
+                    - The `image_url` field name remains unchanged
+
+                    - The only thing that changes is the `url` value, which
+                    points to the corresponding image address
+
+                    For example: `{ type: 'image_url', image_url: { url: '...' }
+                    }` structure.
+                  items:
+                    $ref: '#/components/schemas/Message'
+                  minItems: 1
+                tools:
+                  type: array
+                  description: >-
+                    An optional array of tools the model may call. Supports Web
+                    Search: `{"type": "function", "function": {"name":
+                    "web_search"}}` - Enables real-time information retrieval
+                    via Web Search.
+                  items:
+                    $ref: '#/components/schemas/Tool'
+                  minItems: 0
+                reasoning_effort:
+                  type: string
+                  enum:
+                    - low
+                    - high
+                  description: >-
+                    The effort level for the model to use for reasoning. Low
+                    effort is faster to respond, high effort is slower to
+                    respond but solves more complex problems. Default is "high".
+                  default: high
+              required:
+                - messages
+              x-apidog-orders:
+                - messages
+                - tools
+                - reasoning_effort
+              examples:
+                - messages:
+                    - role: user
+                      content:
+                        - type: text
+                          text: What is in this image?
+                        - type: image_url
+                          image_url:
+                            url: >-
+                              https://file.aiquickdraw.com/custom-page/akr/section-images/1759055072437dqlsclj2.png
+                  tools:
+                    - type: function
+                      function:
+                        name: web_search
+                  reasoning_effort: high
+              x-apidog-ignore-properties: []
+            example:
+              messages:
+                - role: user
+                  content:
+                    - type: text
+                      text: What is in this image?
+                    - type: image_url
+                      image_url:
+                        url: >-
+                          https://file.aiquickdraw.com/custom-page/akr/section-images/1759055072437dqlsclj2.png
+              tools:
+                - type: function
+                  function:
+                    name: web_search
+              reasoning_effort: high
+      responses:
+        '200':
+          description: Request successful. Returns the standard chat completion format.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  id:
+                    type: string
+                    description: Unique identifier for the chat completion
+                    examples:
+                      - chatcmpl-example-123
+                  object:
+                    type: string
+                    description: Object type
+                    examples:
+                      - chat.completion
+                  created:
+                    type: integer
+                    format: int64
+                    description: Unix timestamp of when the completion was created
+                    examples:
+                      - 1677652288
+                  model:
+                    type: string
+                    description: Model name
+                    examples:
+                      - gpt-5-2
+                  choices:
+                    type: array
+                    description: Array of completion choices
+                    items:
+                      type: object
+                      properties:
+                        index:
+                          type: integer
+                          description: Index of the choice
+                          examples:
+                            - 0
+                        message:
+                          type: object
+                          properties:
+                            role:
+                              type: string
+                              examples:
+                                - assistant
+                            content:
+                              type: string
+                              description: Message content
+                          required:
+                            - role
+                            - content
+                          x-apidog-orders:
+                            - role
+                            - content
+                          x-apidog-ignore-properties: []
+                        finish_reason:
+                          type: string
+                          description: Reason why the completion finished
+                          examples:
+                            - stop
+                      required:
+                        - index
+                        - message
+                        - finish_reason
+                      x-apidog-orders:
+                        - index
+                        - message
+                        - finish_reason
+                      x-apidog-ignore-properties: []
+                  usage:
+                    type: object
+                    properties:
+                      prompt_tokens:
+                        type: integer
+                        description: Number of tokens in the prompt
+                        examples:
+                          - 10
+                      completion_tokens:
+                        type: integer
+                        description: Number of tokens in the completion
+                        examples:
+                          - 50
+                      total_tokens:
+                        type: integer
+                        description: Total number of tokens
+                        examples:
+                          - 60
+                    required:
+                      - prompt_tokens
+                      - completion_tokens
+                      - total_tokens
+                    x-apidog-orders:
+                      - prompt_tokens
+                      - completion_tokens
+                      - total_tokens
+                    x-apidog-ignore-properties: []
+                x-apidog-orders:
+                  - id
+                  - object
+                  - created
+                  - model
+                  - choices
+                  - usage
+                x-apidog-ignore-properties: []
+          headers: {}
+          x-apidog-name: ''
+        '400':
+          description: Bad Request - Invalid request parameters
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: object
+                    properties:
+                      message:
+                        type: string
+                        examples:
+                          - Invalid request parameters
+                      type:
+                        type: string
+                        examples:
+                          - invalid_request_error
+                    x-apidog-orders:
+                      - message
+                      - type
+                    x-apidog-ignore-properties: []
+                x-apidog-orders:
+                  - error
+                x-apidog-ignore-properties: []
+          headers: {}
+          x-apidog-name: ''
+        '401':
+          description: Unauthorized - Invalid or missing API key
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: object
+                    properties:
+                      message:
+                        type: string
+                        examples:
+                          - Unauthorized
+                      type:
+                        type: string
+                        examples:
+                          - authentication_error
+                    x-apidog-orders:
+                      - message
+                      - type
+                    x-apidog-ignore-properties: []
+                x-apidog-orders:
+                  - error
+                x-apidog-ignore-properties: []
+          headers: {}
+          x-apidog-name: ''
+        '429':
+          description: Rate Limited - Too many requests
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: object
+                    properties:
+                      message:
+                        type: string
+                        examples:
+                          - Rate limit exceeded
+                      type:
+                        type: string
+                        examples:
+                          - rate_limit_error
+                    x-apidog-orders:
+                      - message
+                      - type
+                    x-apidog-ignore-properties: []
+                x-apidog-orders:
+                  - error
+                x-apidog-ignore-properties: []
+          headers: {}
+          x-apidog-name: ''
+        '500':
+          description: request failed
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  code:
+                    type: integer
+                    description: >-
+                      Response status code
+
+                      - **200**: Success - Request has been processed
+                      successfully
+
+                      - **401**: Unauthorized - Authentication credentials are
+                      missing or invalid
+
+                      - **402**: Insufficient Credits - Account does not have
+                      enough credits to perform the operation
+
+                      - **404**: Not Found - The requested resource or endpoint
+                      does not exist
+
+                      - **408**: Upstream is currently experiencing service
+                      issues. No result has been returned for over 10 minutes.
+
+                      - **422**: Validation Error - The request parameters
+                      failed validation checks
+
+                      - **429**: Rate Limited - Request limit has been exceeded
+                      for this resource
+
+                      - **455**: Service Unavailable - System is currently
+                      undergoing maintenance
+
+                      - **500**: Server Error - An unexpected error occurred
+                      while processing the request
+
+                      - **501**: Generation Failed - Content generation task
+                      failed
+
+                      - **505**: Feature Disabled - The requested feature is
+                      currently disabled
+                  msg:
+                    type: string
+                    description: Response message, error description when failed
+                  data:
+                    type: object
+                    properties: {}
+                    x-apidog-orders: []
+                    x-apidog-ignore-properties: []
+                x-apidog-orders:
+                  - code
+                  - msg
+                  - data
+                required:
+                  - code
+                  - msg
+                  - data
+                x-apidog-ignore-properties: []
+              example:
+                code: 500
+                msg: >-
+                  Server Error - An unexpected error occurred while processing
+                  the request
+                data: null
+          headers: {}
+          x-apidog-name: ''
+      security:
+        - BearerAuth: []
+          x-apidog:
+            schemeGroups:
+              - id: kn8M4YUlc5i0A0179ezwx
+                schemeIds:
+                  - BearerAuth
+            required: true
+            use:
+              id: kn8M4YUlc5i0A0179ezwx
+            scopes:
+              kn8M4YUlc5i0A0179ezwx:
+                BearerAuth: []
+      x-apidog-folder: docs/en/Market/Chat  Models/GPT
+      x-apidog-status: released
+      x-run-in-apidog: https://app.apidog.com/web/project/1184766/apis/api-28563419-run
+components:
+  schemas:
+    Tool:
+      type: object
+      description: >-
+        Tool definition.
+
+        - **Enhanced Network Access**: `{"type": "function", "function":
+        {"name": "googleSearch"}}`
+      properties:
+        type:
+          type: string
+          enum:
+            - function
+          description: Utility type. Must be 'function'.
+          examples:
+            - function
+        function:
+          type: object
+          description: Function declarations for enhanced network access.
+          properties:
+            name:
+              type: string
+              description: Function name. Must be `googleSearch`.
+            description:
+              type: string
+              description: >-
+                Optional but recommended. A clear and specific description of
+                the function's purpose. Helps the model understand when to call
+                this function.
+            parameters:
+              type: object
+              description: >-
+                Defines a JSON Schema object for function parameters. Required
+                for custom functions; not used by 'googleSearch'. Follows the
+                JSON Schema specification.
+              properties:
+                type:
+                  type: string
+                  enum:
+                    - object
+                  description: Must be 'object' for function parameters
+                properties:
+                  type: object
+                  description: Map parameter names to objects defined in their JSON Schema.
+                  additionalProperties:
+                    type: string
+                  x-apidog-orders: []
+                  properties: {}
+                  x-apidog-ignore-properties: []
+                required:
+                  type: array
+                  items:
+                    type: string
+                  description: Required parameter name array
+              required:
+                - type
+                - properties
+              x-apidog-orders:
+                - type
+                - properties
+                - required
+              x-apidog-ignore-properties: []
+          required:
+            - name
+          x-apidog-orders:
+            - name
+            - description
+            - parameters
+          x-apidog-ignore-properties: []
+      required:
+        - type
+        - function
+      x-apidog-orders:
+        - type
+        - function
+      title: The tools parameter of the chat model
+      x-apidog-ignore-properties: []
+      x-apidog-folder: ''
+    Message:
+      type: object
+      properties:
+        role:
+          type: string
+          enum:
+            - developer
+            - system
+            - user
+            - assistant
+            - tool
+          description: >-
+            Message role
+
+            - **developer**: Developer-provided instructions that the model
+            should follow, regardless of user messages. In o1 models and newer
+            versions, developer messages replace the previous system messages.
+
+            - **system**: Developer-provided instructions that the model should
+            follow, regardless of user messages. In o1 models and newer
+            versions, please use developer messages instead.
+
+            - **user**: Messages sent by end users, containing prompts or
+            additional context information.
+
+            - **assistant**: Messages sent by the model in response to user
+            messages.
+
+            - **tool**: Content of tool messages.
+        content:
+          type: array
+          description: >-
+            Message content array that can contain text and image objects.
+
+            **Unified Media File Format:**
+
+            Whether it's images, videos, audio, or other document types, all
+            media files use the same format structure:
+
+            - The `type` field is always `"image_url"`
+
+            - The `image_url` field name remains unchanged
+
+            - The only thing that changes is the `url` value, which points to
+            the corresponding media file address
+
+            For example: images, videos, audio, PDFs, and other documents all
+            use the same `{ type: 'image_url', image_url: { url: '...' } }`
+            structure.
+          items:
+            oneOf:
+              - type: object
+                properties:
+                  type:
+                    type: string
+                    enum:
+                      - text
+                    examples:
+                      - text
+                  text:
+                    type: string
+                    description: 消息的文本内容
+                required:
+                  - type
+                  - text
+                x-apidog-orders:
+                  - type
+                  - text
+                x-apidog-ignore-properties: []
+              - type: object
+                properties:
+                  type:
+                    type: string
+                    enum:
+                      - image_url
+                    examples:
+                      - image_url
+                  image_url:
+                    type: object
+                    properties:
+                      url:
+                        type: string
+                        format: uri
+                        description: 图像的 URL
+                    required:
+                      - url
+                    x-apidog-orders:
+                      - url
+                    x-apidog-ignore-properties: []
+                required:
+                  - type
+                  - image_url
+                x-apidog-orders:
+                  - type
+                  - image_url
+                x-apidog-ignore-properties: []
+      required:
+        - role
+        - content
+      title: The messages parameter of the chat model
+      x-apidog-orders:
+        - role
+        - content
+      x-apidog-ignore-properties: []
+      x-apidog-folder: ''
+  securitySchemes:
+    BearerAuth:
+      type: bearer
+      scheme: bearer
+      bearerFormat: API Key
+      description: >-
+        All API requests require a Bearer Token. Add the header `Authorization:
+        Bearer YOUR_API_KEY` to authenticate requests.
+    BearerAuth1:
+      type: bearer
+      scheme: bearer
+      bearerFormat: API Key
+      description: >-
+        所有 API 请求都需要 Bearer Token。请在请求头中添加 `Authorization: Bearer YOUR_API_KEY`
+        进行身份验证。
+servers:
+  - url: https://api.kie.ai
+    description: 正式环境
+security:
+  - BearerAuth: []
+    x-apidog:
+      schemeGroups:
+        - id: kn8M4YUlc5i0A0179ezwx
+          schemeIds:
+            - BearerAuth
+      required: true
+      use:
+        id: kn8M4YUlc5i0A0179ezwx
+      scopes:
+        kn8M4YUlc5i0A0179ezwx:
+          BearerAuth: []
+
+```
 
 ---
 
@@ -61176,40 +61831,583 @@ import("https://file-assets.apidog.com/docs-site/v1/assets/entry.client-mUtkjgQm
 
 **Source:** [https://docs.kie.ai/market/chat/gpt-5-4.md][150]
 
-<!DOCTYPE html><html lang="en-US" class="group/root" id="html" data-theme="light" data-accent-color="purple"><head><script src="https://file-assets.apidog.com/docs-site/v1/assets/prepareDocsConfigScript-CLIBKQbk.js"></script><script>__prepareDocsConfigScript(JSON.parse("{\"theme\":\"system\",\"themePrimarySettings\":{\"light\":{\"accentColor\":\"purple\"},\"dark\":{\"accentColor\":\"purple\"}},\"logoSettings\":{\"light\":{\"icon\":\"\",\"type\":\"project\"},\"dark\":{\"icon\":\"\",\"type\":\"followLight\"}},\"backgroundImageSettings\":{\"light\":{\"type\":\"custom\",\"color\":\"\"},\"dark\":{\"type\":\"followLight\",\"color\":\"\"}},\"id\":0,\"subdirectory\":\"\"}"));</script><script>window.eventTracking = {
-      dataLayer: []
-    }
-    window.eventTracking.report = function(){
-        window.eventTracking.dataLayer.push(arguments);
-    }</script><meta charSet="utf-8"/><meta name="viewport" content="width=device-width, initial-scale=1"/><title>API Documentation</title><meta name="description" content="Design. Debug. Test. Document. Mock. Build APIs Faster &amp; Together."/><meta name="keywords" content="API Design, API Specification, API Test, API Documentation, API Mock"/><link rel="stylesheet" href="https://file-assets.apidog.com/docs-site/v1/assets/root-CpC_E1fb.css"/></head><body class="overflow-hidden g-body"><div class="flex h-full w-full flex-col overflow-auto"><div class="flex flex-1 flex-col items-center justify-center"><div class="flex w-auto flex-col items-center justify-center max-os:p-5 os:w-[480px]"><svg width="104" height="104" viewBox="0 0 104 104" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M92.9557 41.8969L88.7262 25.2175C87.4089 19.8194 84.8039 16.1447 80.9015 14.1934L80.3963 13.9458C79.802 13.6685 79.178 13.4407 78.5243 13.2426C75.4142 12.3214 72.0268 12.371 68.362 13.3813C65.8759 14.0747 63.2612 15.2038 60.5176 16.7886C56.7835 18.9478 53.3167 21.6319 50.1076 24.8708C49.0973 25.8711 48.1266 26.9209 47.1956 28.0204C46.314 29.0406 45.4622 30.1105 44.6302 31.2198C42.9266 33.4781 41.3121 35.9245 39.7868 38.5492C34.1015 48.3648 31.2588 57.9329 31.2588 67.2631C31.2588 72.0471 32.1106 76.1181 33.8142 79.4461C34.6759 81.1101 35.6862 82.5263 36.8748 83.7248C37.9346 84.7846 39.1232 85.6564 40.4405 86.3398L41.0151 86.627V98.9485C41.0151 99.9984 41.3221 100.712 41.9461 101.058C42.5701 101.415 43.3426 101.326 44.2637 100.801L67.0249 87.6571C67.946 87.1223 68.7186 86.3199 69.3426 85.2502C69.9666 84.1706 70.2736 83.1008 70.2736 82.0509V78.3169L76.7811 74.5629C78.5639 73.5328 80.0993 71.9184 81.377 69.7195C82.6448 67.5207 83.2786 65.4011 83.2786 63.341V52.1485L89.786 48.3946C90.8657 47.7706 91.7373 46.79 92.391 45.4429C93.0348 44.1058 93.2231 42.927 92.9557 41.8969ZM62.8352 66.6095C62.2112 67.6891 61.4387 68.4914 60.5176 69.0263C59.5964 69.5512 58.8237 69.6404 58.1997 69.2838C57.5856 68.9371 57.2687 68.2238 57.2687 67.164C57.2687 66.1042 57.5856 65.0445 58.1997 63.9748C58.2592 63.8658 58.3186 63.7667 58.378 63.6676C58.9129 62.8356 59.5468 62.1819 60.2797 61.7164C60.359 61.6569 60.4383 61.6075 60.5176 61.558C61.4387 61.033 62.2112 60.9439 62.8352 61.2906C63.4592 61.6471 63.7761 62.3604 63.7761 63.4103C63.7761 64.4602 63.4592 65.5398 62.8352 66.6095ZM69.5011 38.7572C69.402 39.1336 69.2832 39.5101 69.1346 39.8865C68.5997 41.3227 67.4607 43.6206 65.7274 46.8C64.9647 48.1768 64.41 49.3158 64.0535 50.237C63.8157 50.861 63.6176 51.4748 63.4691 52.0592C63.3997 52.3366 63.3304 52.6041 63.2809 52.8715C63.1224 53.7729 62.7856 54.6148 62.2706 55.3774C61.7556 56.1401 61.2009 56.6948 60.6066 57.0315C59.8935 57.4475 59.319 57.4971 58.8535 57.2099C58.3978 56.9128 58.2196 56.358 58.3285 55.5557C58.487 54.2186 58.8039 52.931 59.2596 51.7029C59.7251 50.4747 60.4679 48.9392 61.498 47.0969C62.3201 45.6409 62.9837 44.4029 63.4691 43.4026C63.7761 42.7885 64.0138 42.2636 64.1921 41.8278C64.202 41.7981 64.2119 41.7782 64.2218 41.7485C64.6775 40.5797 64.9153 39.5001 64.9153 38.4997C64.9153 37.321 64.5191 36.5881 63.7366 36.2909C62.9442 36.0037 61.9537 36.2019 60.7652 36.8853C60.0025 37.3211 59.2794 37.945 58.5662 38.7572C57.863 39.5694 57.239 40.5105 56.7041 41.5604C56.2683 42.5013 55.7632 43.2442 55.1986 43.7889C54.6241 44.3337 54.0397 44.6209 53.4455 44.6506C52.8512 44.6902 52.4055 44.4525 52.1083 43.9374C51.8112 43.4224 51.8211 42.7687 52.1479 41.9565C53.0691 39.7477 54.2973 37.7074 55.8424 35.8552C56.5754 34.9737 57.338 34.1811 58.1205 33.4878C58.9822 32.735 59.8638 32.0913 60.7652 31.5664C63.3701 30.0708 65.5491 29.7141 67.3121 30.4966C69.0752 31.279 69.9468 32.9829 69.9468 35.5977C69.9468 36.6476 69.7982 37.7073 69.5011 38.7572Z" stroke="#667085" stroke-linecap="round" stroke-linejoin="round"></path><path d="M63.777 63.4086C63.777 64.4684 63.46 65.5381 62.836 66.6078C62.212 67.6874 61.4395 68.4896 60.5184 69.0245C59.5972 69.5494 58.8246 69.6387 58.2006 69.2821C57.5865 68.9354 57.2695 68.2221 57.2695 67.1623C57.2695 66.1025 57.5865 65.0428 58.2006 63.973C58.26 63.8641 58.3194 63.7649 58.3789 63.6659C58.9137 62.8339 59.5476 62.1802 60.2806 61.7147C60.3598 61.6552 60.4392 61.6058 60.5184 61.5563C61.4395 61.0313 62.212 60.9422 62.836 61.2888C63.46 61.6454 63.777 62.3587 63.777 63.4086Z" stroke="#667085" stroke-linecap="round" stroke-linejoin="round"></path><path d="M63.7373 36.2894C62.9449 36.0021 61.9544 36.2003 60.7659 36.8838C60.0032 37.3196 59.2801 37.9435 58.567 38.7557C57.8638 39.5679 57.2398 40.5089 56.7049 41.5588C56.2691 42.4998 55.7639 43.2426 55.1994 43.7874C54.6249 44.3321 54.0405 44.6193 53.4462 44.649C52.8519 44.6886 52.4062 44.4509 52.1091 43.9359C51.8119 43.4208 51.8219 42.7671 52.1487 41.9549C53.0699 39.7461 54.298 37.7059 55.8432 35.8537C56.5761 34.9721 57.3388 34.1797 58.1213 33.4863L63.7373 36.2894Z" stroke="#667085" stroke-linecap="round" stroke-linejoin="round"></path><path d="M69.9474 35.596C69.9474 36.6459 69.7988 37.7056 69.5017 38.7555C69.4026 39.1319 69.2838 39.5085 69.1352 39.8849C68.6003 41.321 67.4613 43.6189 65.728 46.7984C64.9653 48.1751 64.4106 49.3141 64.054 50.2352C63.8163 50.8592 63.6182 51.4732 63.4697 52.0576C63.4003 52.3349 63.331 52.6024 63.2815 52.8698C63.123 53.7711 62.7862 54.6131 62.2712 55.3758C61.7561 56.1385 61.2015 56.693 60.6072 57.0298C59.894 57.4458 59.3196 57.4955 58.854 57.2083C58.3984 56.9111 58.2201 56.3563 58.3291 55.554C58.4876 54.2168 58.8045 52.9293 59.2601 51.7011C59.7257 50.4729 60.4685 48.9376 61.4986 47.0953C62.3207 45.6393 62.9843 44.4012 63.4697 43.4008C63.7767 42.7868 64.0144 42.2619 64.1927 41.8261C64.2026 41.7964 64.2125 41.7766 64.2224 41.7468C64.678 40.5781 64.9158 39.4984 64.9158 38.498C64.9158 37.3193 64.5196 36.5865 63.7371 36.2893L58.1211 33.4862C58.9828 32.7334 59.8643 32.0896 60.7657 31.5647C63.3706 30.069 65.5497 29.7125 67.3127 30.4949C69.0758 31.2774 69.9474 32.9811 69.9474 35.596Z" stroke="#667085" stroke-linecap="round" stroke-linejoin="round"></path><path d="M41.9466 101.059L22.3253 91.2429L22.1371 91.1537C21.5131 90.807 21.2061 90.094 21.2061 89.0441V76.7227L41.0156 86.6274V98.9488C41.0156 99.9988 41.3226 100.712 41.9466 101.059Z" stroke="#667085" stroke-linecap="round" stroke-linejoin="round"></path><path d="M80.3972 13.9448C79.8029 13.6675 79.1789 13.4397 78.5252 13.2416C75.4151 12.3204 72.0277 12.3701 68.3629 13.3804C65.8768 14.0737 63.2621 15.2028 60.5185 16.7876C56.7844 18.9468 53.3176 21.6309 50.1085 24.8698C49.0982 25.8702 48.1275 26.92 47.1965 28.0194C46.3149 29.0396 45.4631 30.1096 44.6311 31.2189C42.9275 33.4772 41.313 35.9236 39.7877 38.5484C34.1024 48.364 31.2597 57.932 31.2597 67.2623C31.2597 72.0463 32.1115 76.1171 33.8151 79.4451C34.6768 81.1091 35.6871 82.5253 36.8757 83.7238C37.9355 84.7836 39.1241 85.6554 40.4414 86.3388L21.2065 76.7213C18.1161 75.2752 15.7192 72.8783 14.0056 69.5404C12.302 66.2124 11.4502 62.1415 11.4502 57.3575C11.4502 48.0272 14.2929 38.4592 19.9782 28.6436C25.6734 18.828 32.587 11.5678 40.7089 6.88282C47.4838 2.97044 53.486 1.79169 58.7157 3.33683C59.4784 3.56464 60.2113 3.84208 60.8948 4.17884L61.281 4.37688L80.3972 13.9448Z" stroke="#667085" stroke-linecap="round" stroke-linejoin="round"></path></svg><div class="align-center mt-8 flex justify-center text-center text-2xl font-semibold text-color">An abnormal error occurred, please try &#x27;Reload&#x27; or &#x27;get Support&#x27; to help you solve it!</div><div class="align-center mt-2 text-center text-lg font-400 text-secondary">Unexpected token &#x27;o&#x27;, &quot;forbidden
-&quot; is not valid JSON: /api/v1/configs/url</div></div></div><div class="flex flex-col items-center justify-center p-8 text-base font-base text-secondary"><div class="inline-flex items-center text-base font-400 text-secondary _footer-logo-wrapper_1kbjg_1"><a class="_footer-logo_1kbjg_1 flex-shrink-0" aria-label="homepage link" href="https://apidog.com"><span class="inline-flex items-center"><span class="mr-[-4px]">Built with</span><svg width="61" height="18" viewBox="0 0 61 18" fill="none" xmlns="http://www.w3.org/2000/svg" class="h-[18px] w-[80px]"><path d="M12.3836 1.67806C11.6452 0.940647 10.4478 0.940647 9.70932 1.67806L8.99795 2.3884L8.30644 1.69789C7.57144 0.963937 6.37437 0.936241 5.62991 1.66043C4.88545 2.38463 4.86748 3.60515 5.61194 4.34854L6.32331 5.05888C7.80026 6.53371 10.195 6.53371 11.6723 5.05888L12.3836 4.34854C13.1221 3.61113 13.1221 2.41547 12.3836 1.67806Z" fill="#667085"></path><path d="M12.3838 13.6515L11.6729 12.9412C10.1968 11.4664 7.80339 11.4664 6.32699 12.9412L5.61603 13.6515C4.87799 14.389 4.87799 15.5846 5.61603 16.322C6.35408 17.0594 7.55076 17.0594 8.28881 16.322L8.99976 15.6117L9.69087 16.3022C10.4255 17.0361 11.6218 17.0638 12.3659 16.3396C13.1219 15.6038 13.1278 14.3949 12.3838 13.6515Z" fill="#667085"></path><path d="M15.6105 8.99642L16.3214 8.28481C17.0655 7.54009 17.0595 6.32906 16.3035 5.59191C15.5595 4.86643 14.3631 4.89418 13.6285 5.62943L13.3098 5.94851C12.1666 7.09269 10.6166 7.73526 9 7.73526C7.38344 7.73526 5.83335 7.09238 4.69023 5.94851L4.37146 5.62943C3.63689 4.89418 2.44054 4.86643 1.69652 5.59191C0.940527 6.32906 0.934542 7.54009 1.67856 8.28481L2.38951 8.99642L1.67856 9.70803C0.940527 10.4468 0.940527 11.6445 1.67856 12.3833C2.4166 13.122 3.61326 13.122 4.3513 12.3833L4.74347 11.9907C5.85225 10.8809 7.35604 10.2576 8.92409 10.2576H8.9874C10.6162 10.2576 12.1666 10.9005 13.3098 12.0446C13.5126 12.2477 13.6484 12.3836 13.6484 12.3836C14.3864 13.1223 15.5831 13.1223 16.3211 12.3836C17.0592 11.6449 17.0592 10.4471 16.3211 9.70834L15.6102 8.99673L15.6105 8.99642Z" fill="#667085"></path><path fill-rule="evenodd" clip-rule="evenodd" d="M37.3559 4.00331C37.4694 3.95752 37.5911 3.93521 37.7136 3.93768C37.8343 3.93606 37.9541 3.95884 38.0656 4.0046C38.1772 4.05035 38.2781 4.11814 38.3624 4.20384C38.4483 4.29095 38.5158 4.39418 38.561 4.50749C38.6061 4.6208 38.628 4.7419 38.6253 4.8637C38.628 4.98551 38.6061 5.10664 38.561 5.21995C38.5158 5.33326 38.4483 5.43648 38.3624 5.52357C38.2781 5.60926 38.1772 5.67705 38.0656 5.72284C37.9541 5.7686 37.8343 5.79134 37.7136 5.78975C37.5911 5.79222 37.4694 5.76989 37.3559 5.72413C37.2425 5.67837 37.1396 5.61011 37.0536 5.52357C36.9677 5.43648 36.9002 5.33326 36.8551 5.21995C36.8099 5.10664 36.7881 4.98551 36.7908 4.8637C36.7881 4.7419 36.8099 4.6208 36.8551 4.50749C36.9002 4.39418 36.9677 4.29095 37.0536 4.20384C37.1396 4.1173 37.2425 4.04907 37.3559 4.00331ZM25.6211 4.76389L24.0219 4.76389L21.175 12.7654H22.7355L23.2948 11.1795H26.371L26.9303 12.7654H28.5019L25.6211 4.76389ZM25.9403 9.91528H23.7255L24.8441 6.75459L25.9403 9.91528ZM34.4529 6.71022C33.9935 6.42603 33.4618 6.27789 32.9204 6.28324C32.4656 6.27789 32.0164 6.38257 31.6116 6.58824C31.3484 6.72112 31.1086 6.89528 30.9013 7.10393V6.38304H29.4248V15.6932H30.9181V12.0501C31.1303 12.2594 31.3736 12.4352 31.6396 12.5714C32.0799 12.7816 32.5659 12.88 33.0541 12.8577C33.5422 12.8355 34.0171 12.6932 34.4361 12.4438C34.899 12.1548 35.274 11.7466 35.5212 11.2627C35.7861 10.7302 35.9203 10.1431 35.9126 9.54929C35.923 8.96057 35.7887 8.37821 35.5212 7.8525C35.2797 7.38027 34.9096 6.98456 34.4529 6.71022ZM34.4137 9.55484C34.4161 9.91562 34.3297 10.2716 34.162 10.5918C34.0132 10.8769 33.7889 11.1165 33.5133 11.2849C33.2582 11.4309 32.9688 11.5078 32.6743 11.5078C32.3798 11.5078 32.0904 11.4309 31.8353 11.2849C31.5644 11.1203 31.341 10.8892 31.1866 10.6139C31.0195 10.284 30.937 9.91836 30.946 9.54929C30.9355 9.18364 31.0182 8.82126 31.1866 8.49571C31.331 8.22256 31.5426 7.98991 31.8018 7.81923C32.0627 7.67197 32.3573 7.59366 32.6575 7.5919C32.9606 7.59099 33.2582 7.67147 33.5188 7.82478C33.7952 7.97573 34.0193 8.20567 34.162 8.48465C34.3413 8.8105 34.4283 9.17839 34.4137 9.54929V9.55484ZM38.4519 6.38304H36.9585V12.7599H38.4519V6.38304ZM43.7037 6.56049C43.9895 6.68375 44.2509 6.85649 44.4756 7.07066V4.27038H45.9801V12.7654H44.4756V12.039C44.2733 12.2523 44.0347 12.4288 43.7709 12.5603C43.3696 12.7699 42.9211 12.8748 42.4677 12.8652C41.9296 12.8702 41.4008 12.7261 40.9408 12.4493C40.4817 12.1535 40.1078 11.7446 39.8557 11.2627C39.5908 10.7302 39.4566 10.1431 39.4642 9.54929C39.4539 8.96057 39.5882 8.37821 39.8557 7.8525C40.1049 7.3803 40.4803 6.98514 40.9408 6.71022C41.3529 6.46065 41.821 6.31637 42.3032 6.29024C42.7854 6.26412 43.2666 6.35695 43.7037 6.56049ZM44.4756 9.57146C44.4854 9.20459 44.3987 8.84147 44.2239 8.51792C44.0698 8.22608 43.835 7.98372 43.5471 7.81923C43.2921 7.67323 43.0027 7.59637 42.7082 7.59637C42.4136 7.59637 42.1243 7.67323 41.8692 7.81923C41.598 7.97735 41.377 8.20793 41.2316 8.48465C41.0626 8.80593 40.9798 9.16492 40.9911 9.52712C40.9825 9.89613 41.0651 10.2616 41.2316 10.5918C41.3883 10.8862 41.622 11.1333 41.9084 11.3071C42.1635 11.4531 42.4528 11.5299 42.7473 11.5299C43.0419 11.5299 43.3312 11.4531 43.5863 11.3071C43.8553 11.1436 44.0753 10.912 44.2239 10.6361C44.3961 10.3076 44.4826 9.94161 44.4756 9.57146ZM51.8863 6.71022C51.3775 6.44176 50.81 6.30134 50.2336 6.30134C49.6572 6.30134 49.0897 6.44176 48.5808 6.71022C48.1082 6.98053 47.7208 7.37607 47.4622 7.8525C47.1714 8.37882 47.0248 8.9715 47.0372 9.57146C47.026 10.1735 47.1684 10.7686 47.451 11.3016C47.7105 11.7817 48.0973 12.1824 48.5697 12.4605C49.0662 12.7315 49.6249 12.8709 50.1916 12.8652C50.7765 12.874 51.3541 12.7347 51.8695 12.4605C52.3652 12.1852 52.7752 11.7805 53.0553 11.2904C53.3515 10.7658 53.502 10.1726 53.4915 9.57146C53.5004 8.97048 53.35 8.37773 53.0553 7.8525C52.7813 7.37062 52.3763 6.97478 51.8863 6.71022ZM49.3639 7.81923C49.6253 7.67401 49.9199 7.59775 50.2196 7.59775C50.5193 7.59775 50.8139 7.67401 51.0753 7.81923C51.3499 7.97813 51.5716 8.21332 51.7129 8.49571C51.876 8.8305 51.9528 9.20008 51.9367 9.57146C51.9483 9.9474 51.8616 10.3199 51.685 10.6528C51.5392 10.9243 51.3204 11.1504 51.0529 11.3061C50.7853 11.4617 50.4794 11.5408 50.1693 11.5344C49.9454 11.5409 49.7227 11.4998 49.5162 11.4137C49.3097 11.3276 49.1243 11.1986 48.9724 11.0354C48.6355 10.6234 48.4678 10.1007 48.5025 9.57146C48.4901 9.19738 48.5708 8.82604 48.7374 8.4902C48.8747 8.21003 49.0927 7.97654 49.3639 7.81923ZM59.0394 7.03076V6.32653H60.5495V12.6812C60.5594 13.2247 60.4326 13.7622 60.1804 14.2449C59.9389 14.7103 59.5657 15.0957 59.1065 15.3539C58.5924 15.6305 58.0132 15.7664 57.4286 15.7476C56.67 15.7754 55.9226 15.5595 55.2977 15.1321C55.0204 14.9436 54.7884 14.6968 54.6182 14.4092C54.4481 14.1217 54.344 13.8006 54.3133 13.4686V13.3466L55.7954 13.3466C55.7954 13.6685 56.0907 13.9814 56.3547 14.134C56.6804 14.3328 57.0575 14.4331 57.4398 14.4223C57.6518 14.4311 57.8634 14.3968 58.0616 14.3215C58.2597 14.2462 58.4402 14.1314 58.592 13.9843C58.7493 13.8103 58.8699 13.6068 58.9468 13.3859C59.0236 13.1649 59.0394 12.931 59.0394 12.6978V11.9548C58.8328 12.1771 58.591 12.3644 58.3235 12.5093C57.9242 12.7189 57.4776 12.8239 57.0259 12.8143C56.4897 12.8185 55.9629 12.6744 55.5046 12.3984C55.0442 12.1041 54.6699 11.6949 54.4195 11.2117C54.1519 10.6801 54.0176 10.0924 54.0281 9.49832C54.0156 8.9094 54.1501 8.32653 54.4195 7.80153C54.6679 7.32727 55.0433 6.93011 55.5046 6.6537C55.9619 6.37401 56.4886 6.22618 57.0259 6.22672C57.4809 6.21907 57.9307 6.32389 58.3347 6.53172C58.5954 6.65891 58.8335 6.82746 59.0394 7.03076ZM58.7877 10.5796C58.9599 10.2511 59.0464 9.8851 59.0394 9.51494C59.0532 9.14059 58.9663 8.76931 58.7877 8.4392C58.6409 8.16062 58.4205 7.92682 58.1501 7.76271C57.8899 7.6138 57.5948 7.53538 57.2944 7.53538C56.994 7.53538 56.6988 7.6138 56.4387 7.76271C56.1645 7.92882 55.9419 8.16678 55.7954 8.4503C55.6308 8.76545 55.5463 9.11571 55.5494 9.4706C55.5427 9.84005 55.6271 10.2055 55.7954 10.5352C55.9406 10.827 56.1629 11.0743 56.4387 11.2505C56.6977 11.4028 56.9932 11.4832 57.2944 11.4832C57.5955 11.4832 57.8911 11.4028 58.1501 11.2505C58.419 11.0871 58.6392 10.8555 58.7877 10.5796Z" fill="#667085"></path></svg></span></a></div></div></div><script>
-            if (typeof window.__updateThemeElement === 'function') {
-              window.__updateThemeElement();
+### OpenAPI Specification
+
+```yaml
+openapi: 3.0.1
+info:
+  title: ''
+  description: ''
+  version: 1.0.0
+paths:
+  /codex/v1/responses:
+    post:
+      summary: GPT 5.4 (response)
+      deprecated: false
+      description: >-
+        > GPT-5-4 is a multimodal chat-completions style endpoint that accepts
+        structured input arrays, supports adjustable reasoning effort, and
+        integrates web search or function calling tools.
+
+        <CardGroup cols={2}>
+          <Card title="Multimodal Input" icon="🖼️">
+            Supports mixed text, image, and file inputs in a single message.
+          </Card>
+
+          <Card title="Reasoning Control" icon="🧠">
+            Adjustable reasoning effort from low to xhigh.
+          </Card>
+
+          <Card title="Tools & Web Search" icon="✨">
+            Integrates web search or custom function calling tools.
+          </Card>
+
+          <Card title="Unified Endpoint" icon="💻">
+            Uses the unified <code>/codex/v1/responses</code> endpoint with <code>model</code> set to one of <code>gpt-5-4</code>.
+          </Card>
+        </CardGroup>
+
+        ## Tools & tool\_choice
+
+        The `tools` array enables **web search** or **function calling**
+        capabilities.
+
+        :::caution
+
+        Web Search and Function Calling are **mutually exclusive**.  
+
+        In a single request you should choose only one: do not include both
+        `{"type": "web_search"}` and `{"type": "function", ...}` in the same
+        `tools` array.
+
+        :::
+
+        <AccordionGroup>
+          <Accordion title="Web Search">
+            Use the built-in Web Search tool to retrieve up-to-date information:
+
+            ```json
+            {
+              "tools": [
+                {
+                  "type": "web_search"
+                }
+              ]
             }
-          </script><script>((STORAGE_KEY, restoreKey) => {
-    if (!window.history.state || !window.history.state.key) {
-      let key = Math.random().toString(32).slice(2);
-      window.history.replaceState({
-        key
-      }, "");
-    }
-    try {
-      let positions = JSON.parse(sessionStorage.getItem(STORAGE_KEY) || "{}");
-      let storedY = positions[restoreKey || window.history.state.key];
-      if (typeof storedY === "number") {
-        window.scrollTo(0, storedY);
-      }
-    } catch (error) {
-      console.error(error);
-      sessionStorage.removeItem(STORAGE_KEY);
-    }
-  })("positions", null)</script><link rel="modulepreload" href="https://file-assets.apidog.com/docs-site/v1/assets/manifest-db7ef313.js"/><link rel="modulepreload" href="https://file-assets.apidog.com/docs-site/v1/assets/entry.client-mUtkjgQm.js"/><link rel="modulepreload" href="https://file-assets.apidog.com/docs-site/v1/assets/jsx-runtime-CM5sU0Q5.js"/><link rel="modulepreload" href="https://file-assets.apidog.com/docs-site/v1/assets/client-BKxavTD9.js"/><link rel="modulepreload" href="https://file-assets.apidog.com/docs-site/v1/assets/components-DMSdXhQK.js"/><link rel="modulepreload" href="https://file-assets.apidog.com/docs-site/v1/assets/root-CQ054TXt.js"/><link rel="modulepreload" href="https://file-assets.apidog.com/docs-site/v1/assets/root-Dv513fR3.js"/><link rel="modulepreload" href="https://file-assets.apidog.com/docs-site/v1/assets/route-D_6YkXJe.js"/><script>window.__remixContext = {"basename":"/","future":{"v3_fetcherPersist":true,"v3_relativeSplatPath":true,"v3_throwAbortReason":true,"v3_routeConfig":false,"v3_singleFetch":true,"v3_lazyRouteDiscovery":false,"unstable_optimizeDeps":false},"isSpaMode":false};window.__remixContext.stream = new ReadableStream({start(controller){window.__remixContext.streamController = controller;}}).pipeThrough(new TextEncoderStream());</script><script type="module" async="">import "https://file-assets.apidog.com/docs-site/v1/assets/manifest-db7ef313.js";
-import * as route0 from "https://file-assets.apidog.com/docs-site/v1/assets/root-Dv513fR3.js";
-import * as route1 from "https://file-assets.apidog.com/docs-site/v1/assets/route-D_6YkXJe.js";
+            ```
+          </Accordion>
 
-window.__remixRouteModules = {"root":route0,"routes/_index/route":route1};
+          <Accordion title="Function Calling">
+            Define business functions that the model can call when needed:
 
-import("https://file-assets.apidog.com/docs-site/v1/assets/entry.client-mUtkjgQm.js");</script></body></html><!--$--><script>window.__remixContext.streamController.enqueue("[{\"_1\":2,\"_160\":-5,\"_161\":-5},\"loaderData\",{\"_3\":4,\"_159\":-5},\"root\",{\"_5\":1,\"_6\":7,\"_19\":20,\"_23\":24,\"_33\":34,\"_35\":36,\"_37\":38,\"_84\":85,\"_158\":-7},\"type\",\"meta\",[8,11,16],{\"_9\":10},\"title\",\"API Documentation\",{\"_12\":13,\"_14\":15},\"name\",\"description\",\"content\",\"Design. Debug. Test. Document. Mock. Build APIs Faster \u0026 Together.\",{\"_12\":17,\"_14\":18},\"keywords\",\"API Design, API Specification, API Test, API Documentation, API Mock\",\"i18nState\",{\"_21\":22},\"clientLocale\",\"en-US\",\"errorCodeMessage\",{\"_25\":26,\"_27\":28,\"_29\":30,\"_31\":32},\"errorCode\",\"Unknown\",\"errorMessage\",\"Unexpected token 'o', \\\"forbidden\\n\\\" is not valid JSON: /api/v1/configs/url\",\"hideBuiltWith\",false,\"extra\",{},\"clientConfig\",{},\"urlConfig\",{},\"envConfig\",{\"_39\":40,\"_41\":42,\"_43\":42,\"_44\":45,\"_46\":47,\"_48\":49,\"_50\":51,\"_52\":53,\"_54\":22,\"_55\":56,\"_57\":58,\"_60\":61,\"_62\":63,\"_64\":65,\"_66\":67,\"_68\":69,\"_70\":71,\"_77\":78,\"_79\":80,\"_81\":82,\"_83\":30},\"RELEASE_BASE\",\"apidoc\",\"DEBUG_API_BASE\",\"\",\"DEBUG_WEB_URL_BASE\",\"AGENT_SERVER_API_BASE\",\"https://web-proxy.apidog.com\",\"APP_REGION\",\"GLOBAL\",\"APP_NAME\",\"Apidog\",\"APP_HOMEPAGE\",\"https://apidog.com\",\"APP_NAME_LOWER\",\"apidog\",\"DEFAULT_LOCALE\",\"APP_BROWSER_EXTENSION_ADAPTER\",\"apidogAgentCrossRequest\",\"APP_API_SERVER_HOSTNAMES\",[59],\"api.apidog.com\",\"APP_SUPPORT_EMAIL\",\"support@apidog.com\",\"APP_SCRIPT_MAIN_OBJECTS\",\"$\",\"SERVER_PROTOCOL\",\"http\",\"SERVER_HOST\",\"apidog-api-fordoc-svc\",\"DEFAULT_DOC_LAYOUT\",\"TwoColumn\",\"NOT_CUSTOM_DOMAIN_HOSTNAMES\",[72,73,74,75,76],\"www.apidog.com\",\"apidog.com\",\"www.apidog.io\",\"apidog.io\",\"share.apidog.com\",\"SERVER_REQUEST_TIMEOUT\",15000,\"IS_SHARED_DOC_INDEPENDENT_DOMAIN\",true,\"APIDOC_CUSTOM_DOMAIN_CNAME_REGEX\",[\"R\",\"\\\\d+\\\\.cname\\\\.apidog\\\\.com\",\"\"],\"IS_ALWAYS_USE_ORIGIN_FETCH\",\"docsDataState\",{\"_86\":87,\"_91\":92,\"_104\":105,\"_106\":107,\"_108\":109,\"_118\":119,\"_131\":132,\"_133\":134,\"_135\":136,\"_142\":143,\"_149\":-7,\"_150\":151,\"_152\":-7,\"_153\":-7,\"_154\":155,\"_157\":-7},\"navigation\",{\"_5\":88,\"_89\":90},\"NONE\",\"navRightLinkItems\",[],\"sidebarTree\",{\"_93\":-7,\"_94\":-7,\"_95\":96,\"_97\":-7,\"_98\":99,\"_100\":-7,\"_101\":-7,\"_102\":103},\"goBackSidebarTreeApiFolderNode\",\"rootSidebarTreeApiFolderNode\",\"sidebarTreeList\",[],\"selectedSidebarTreeNode\",\"parentSidebarTreeApiFolderNodes\",[],\"previousSidebarTreeNode\",\"nextSidebarTreeNode\",\"homeLink\",\"/\",\"docsBaseConfig\",{},\"versionList\",[],\"resourceData\",{\"_5\":110,\"_111\":-7,\"_112\":113},\"NotFound\",\"data\",\"extraData\",{\"_114\":115,\"_116\":117},\"apiFieldList\",[],\"dataSchemaDefinitions\",{},\"docsIdTypeData\",{\"_120\":121,\"_122\":123,\"_124\":123,\"_125\":123,\"_126\":42,\"_127\":123,\"_128\":129,\"_130\":-7},\"onlineType\",\"APIDOC\",\"branchId\",0,\"onlineId\",\"projectId\",\"subdirectory\",\"teamId\",\"visitType\",\"customDomain\",\"specialFileType\",\"notification\",[],\"footerBanner\",[],\"projectSetting\",{\"_137\":138,\"_139\":140},\"advancedSettings\",{},\"auth\",{\"_5\":141},\"noauth\",\"environments\",{\"_144\":145,\"_146\":-7,\"_147\":148},\"environmentList\",[],\"selectedEnvironment\",\"servers\",[],\"searchSettings\",\"versionSettings\",[],\"seoInfos\",\"itemPathPrefix\",\"appEnvMap\",{\"_156\":56},\"appBrowserExtensionAdapterKey\",\"customCodes\",\"primaryColorVariable\",\"routes/_index/route\",\"actionData\",\"errors\"]\n");</script><!--$--><script>window.__remixContext.streamController.close();</script><!--/$--><!--/$-->
+            ```json
+            {
+              "tools": [
+                {
+                  "type": "function",
+                  "name": "get_current_weather",
+                  "description": "Get the current weather in a given location",
+                  "parameters": {
+                    "type": "object",
+                    "properties": {
+                      "location": {
+                        "type": "string",
+                        "description": "The city and state, e.g. San Francisco, CA"
+                      },
+                      "unit": {
+                        "type": "string",
+                        "enum": ["celsius", "fahrenheit"]
+                      }
+                    },
+                    "required": ["location", "unit"]
+                  }
+                }
+              ],
+              "tool_choice": "auto"
+            }
+            ```
+
+            When function tools are configured in `tools`, set `tool_choice` to `"auto"` so the model can decide when to call them.  
+            If you do not configure any function tools, omit the `tool_choice` field.
+          </Accordion>
+        </AccordionGroup>
+      operationId: gpt-5-4-chat-completions
+      tags:
+        - docs/en/Market/Chat  Models/GPT
+      parameters: []
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                model:
+                  type: string
+                  description: 'Target model name. Allowed values: `gpt-5-4`.'
+                  enum:
+                    - gpt-5-4
+                  x-apidog-enum:
+                    - value: gpt-5-4
+                      name: ''
+                      description: ''
+                  examples:
+                    - gpt-5-4
+                stream:
+                  type: boolean
+                  description: >-
+                    When true, responses stream in real time as server-sent
+                    events. When false, the full response is returned at once
+                    after completion. Default is true.
+                  default: false
+                input:
+                  oneOf:
+                    - type: string
+                      description: Input can be a string.
+                    - type: array
+                      description: >-
+                        Input can be an array; each element is a message object
+                        with role and content.
+                      items:
+                        $ref: '#/components/schemas/InputMessage'
+                      minItems: 1
+                reasoning:
+                  type: object
+                  description: Reasoning configuration for the model.
+                  properties:
+                    effort:
+                      type: string
+                      description: >-
+                        Reasoning effort level. Higher values provide more
+                        thorough reasoning but may increase latency. Defaults to
+                        "low".
+                      enum:
+                        - low
+                        - medium
+                        - high
+                        - xhigh
+                      default: low
+                      examples:
+                        - low
+                      x-apidog-enum:
+                        - value: low
+                          name: ''
+                          description: ''
+                        - value: medium
+                          name: ''
+                          description: ''
+                        - value: high
+                          name: ''
+                          description: ''
+                        - value: xhigh
+                          name: ''
+                          description: ''
+                  x-apidog-orders:
+                    - effort
+                  x-apidog-ignore-properties: []
+                tools:
+                  type: array
+                  description: >-
+                    Optional tools that the model may call. Either web search OR
+                    function calling should be configured, but not both
+                    simultaneously.
+                  items:
+                    oneOf:
+                      - $ref: '#/components/schemas/ToolWebSearch'
+                      - $ref: '#/components/schemas/ToolFunction'
+                tool_choice:
+                  type: string
+                  description: >-
+                    Tool selection behavior. When function tools are configured
+                    in `tools`, set this to `auto` so the model can decide when
+                    to call them.
+                  examples:
+                    - auto
+              required:
+                - model
+                - input
+              x-apidog-orders:
+                - model
+                - stream
+                - input
+                - reasoning
+                - tools
+                - tool_choice
+              examples:
+                - model: gpt-5.1-codex
+                  input:
+                    - role: user
+                      content:
+                        - type: input_text
+                          text: What is in this image?
+                        - type: input_image
+                          image_url: >-
+                            https://file.aiquickdraw.com/custom-page/akr/section-images/1759055072437dqlsclj2.png
+                  tools:
+                    - type: web_search
+                  reasoning:
+                    effort: high
+              x-apidog-ignore-properties: []
+            example:
+              model: gpt-5-4
+              stream: false
+              input:
+                - role: user
+                  content:
+                    - type: input_text
+                      text: What is in this image?
+                    - type: input_image
+                      image_url: >-
+                        https://file.aiquickdraw.com/custom-page/akr/section-images/1759055072437dqlsclj2.png
+              tools:
+                - type: web_search
+              reasoning:
+                effort: high
+      responses:
+        '200':
+          description: 'Request successful. '
+          content:
+            text/event-stream:
+              schema:
+                type: string
+                description: >-
+                  Streaming responses are sent as Server-Sent Events (SSE) with
+                  `Content-Type: text/event-stream`.
+
+                  **Standard output**
+
+                  - **Text delta event**: `event: response.output_text.delta`
+                    - `data.delta`: The incremental text content in the stream
+                    - `data.type`: Event type, always `response.output_text.delta`
+                  - **Completion event**: `event: response.completed`
+                    - `data.response.usage`: Token usage information, such as `input_tokens` and `output_tokens`
+
+                  **Function Calling**
+
+                  - **Function call arguments delta event**: `event:
+                  response.function_call_arguments.delta`
+                    - `data.delta`: Incremental string content of the function call arguments
+                    - `data.type`: Event type, always `response.function_call_arguments.delta`
+                  - **Completion event**: `event: response.completed`
+                    - `data.response.usage`: Token usage information, such as `input_tokens` and `output_tokens`
+
+                  The final line `data: [DONE]` is the stream end marker,
+                  indicating that no more events will be sent.
+              example: |-
+                {
+                  "output": [
+                    {
+                      "type": "reasoning",
+                      "id": "rs_xxx",
+                      "summary": []
+                    },
+                    {
+                      "type": "message",
+                      "role": "assistant",
+                      "id": "msg_xxx",
+                      "content": [
+                        {
+                          "type": "output_text",
+                          "text": "Hello! How can I help you today?"
+                        }
+                      ],
+                      "status": "completed"
+                    }
+                  ],
+                  "usage": {
+                    "total_tokens": 4490,
+                    "output_tokens": 47,
+                    "input_tokens": 4443
+                  },
+                  "credits_consumed": 0.48,
+                  "status": "completed"
+                }
+          headers: {}
+          x-apidog-name: ''
+        '400':
+          description: Bad Request - Invalid request parameters
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: object
+                    properties:
+                      message:
+                        type: string
+                        examples:
+                          - Invalid request parameters
+                      type:
+                        type: string
+                        examples:
+                          - invalid_request_error
+                    x-apidog-orders:
+                      - message
+                      - type
+                    x-apidog-ignore-properties: []
+                x-apidog-orders:
+                  - error
+                x-apidog-ignore-properties: []
+          headers: {}
+          x-apidog-name: ''
+        '401':
+          description: Unauthorized - Invalid or missing API key
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: object
+                    properties:
+                      message:
+                        type: string
+                        examples:
+                          - Unauthorized
+                      type:
+                        type: string
+                        examples:
+                          - authentication_error
+                    x-apidog-orders:
+                      - message
+                      - type
+                    x-apidog-ignore-properties: []
+                x-apidog-orders:
+                  - error
+                x-apidog-ignore-properties: []
+          headers: {}
+          x-apidog-name: ''
+        '429':
+          description: Rate Limited - Too many requests
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: object
+                    properties:
+                      message:
+                        type: string
+                        examples:
+                          - Rate limit exceeded
+                      type:
+                        type: string
+                        examples:
+                          - rate_limit_error
+                    x-apidog-orders:
+                      - message
+                      - type
+                    x-apidog-ignore-properties: []
+                x-apidog-orders:
+                  - error
+                x-apidog-ignore-properties: []
+          headers: {}
+          x-apidog-name: ''
+        '500':
+          description: 请求失败
+          content:
+            application/json:
+              schema:
+                type: object
+                properties: {}
+                x-apidog-orders: []
+                x-apidog-ignore-properties: []
+          headers: {}
+          x-apidog-name: Error
+      security:
+        - BearerAuth: []
+          x-apidog:
+            schemeGroups:
+              - id: kn8M4YUlc5i0A0179ezwx
+                schemeIds:
+                  - BearerAuth
+            required: true
+            use:
+              id: kn8M4YUlc5i0A0179ezwx
+            scopes:
+              kn8M4YUlc5i0A0179ezwx:
+                BearerAuth: []
+      x-apidog-folder: docs/en/Market/Chat  Models/GPT
+      x-apidog-status: released
+      x-run-in-apidog: https://app.apidog.com/web/project/1184766/apis/api-30556553-run
+components:
+  schemas:
+    ToolFunction:
+      type: object
+      description: 函数调用工具定义。
+      properties:
+        type:
+          type: string
+          enum:
+            - function
+          examples:
+            - function
+        name:
+          type: string
+          description: 函数名称。
+          examples:
+            - get_current_weather
+        description:
+          type: string
+          description: 对该函数用途的可读性描述。
+        parameters:
+          type: object
+          description: 描述函数参数的 JSON Schema。
+          x-apidog-orders: []
+          properties: {}
+          x-apidog-ignore-properties: []
+      required:
+        - type
+        - name
+        - description
+        - parameters
+      x-apidog-orders:
+        - type
+        - name
+        - description
+        - parameters
+      x-apidog-ignore-properties: []
+      x-apidog-folder: ''
+    ToolWebSearch:
+      type: object
+      description: 联网搜索工具配置。
+      properties:
+        type:
+          type: string
+          enum:
+            - web_search
+          examples:
+            - web_search
+      required:
+        - type
+      x-apidog-orders:
+        - type
+      x-apidog-ignore-properties: []
+      x-apidog-folder: ''
+    InputMessage:
+      type: object
+      description: input 数组中的单条消息。
+      properties:
+        role:
+          type: string
+          description: 消息角色。
+          enum:
+            - user
+            - assistant
+            - system
+            - developer
+            - tool
+          examples:
+            - user
+        content:
+          type: array
+          description: 支持文本、图片和文件等多种输入类型的内容数组。
+          items:
+            $ref: '#/components/schemas/InputContentItem'
+          minItems: 1
+      required:
+        - role
+        - content
+      x-apidog-orders:
+        - role
+        - content
+      x-apidog-ignore-properties: []
+      x-apidog-folder: ''
+    InputContentItem:
+      description: input 消息 content 数组中的单个内容项。
+      oneOf:
+        - type: object
+          properties:
+            type:
+              type: string
+              enum:
+                - input_text
+              examples:
+                - input_text
+            text:
+              type: string
+              description: 纯文本内容。
+          required:
+            - type
+            - text
+          x-apidog-orders:
+            - type
+            - text
+          x-apidog-ignore-properties: []
+        - type: object
+          properties:
+            type:
+              type: string
+              enum:
+                - input_image
+              examples:
+                - input_image
+            image_url:
+              type: string
+              format: uri
+              description: 可公开访问的图片 URL。
+          required:
+            - type
+            - image_url
+          x-apidog-orders:
+            - type
+            - image_url
+          x-apidog-ignore-properties: []
+        - type: object
+          properties:
+            type:
+              type: string
+              enum:
+                - input_file
+              examples:
+                - input_file
+            file_url:
+              type: string
+              format: uri
+              description: 可公开访问的文件 URL（PDF、文档等）。
+          required:
+            - type
+            - file_url
+          x-apidog-orders:
+            - type
+            - file_url
+          x-apidog-ignore-properties: []
+      x-apidog-orders: []
+      x-apidog-folder: ''
+  securitySchemes:
+    BearerAuth:
+      type: bearer
+      scheme: bearer
+      bearerFormat: API Key
+      description: >-
+        All API requests require a Bearer Token. Add the header `Authorization:
+        Bearer YOUR_API_KEY` to authenticate requests.
+    BearerAuth1:
+      type: bearer
+      scheme: bearer
+      bearerFormat: API Key
+      description: >-
+        所有 API 请求都需要 Bearer Token。请在请求头中添加 `Authorization: Bearer YOUR_API_KEY`
+        进行身份验证。
+servers:
+  - url: https://api.kie.ai
+    description: 正式环境
+security:
+  - BearerAuth: []
+    x-apidog:
+      schemeGroups:
+        - id: kn8M4YUlc5i0A0179ezwx
+          schemeIds:
+            - BearerAuth
+      required: true
+      use:
+        id: kn8M4YUlc5i0A0179ezwx
+      scopes:
+        kn8M4YUlc5i0A0179ezwx:
+          BearerAuth: []
+
+```
 
 ---
 
@@ -61223,40 +62421,586 @@ import("https://file-assets.apidog.com/docs-site/v1/assets/entry.client-mUtkjgQm
 
 **Source:** [https://docs.kie.ai/market/chat/gpt-5-5.md][151]
 
-<!DOCTYPE html><html lang="en-US" class="group/root" id="html" data-theme="light" data-accent-color="purple"><head><script src="https://file-assets.apidog.com/docs-site/v1/assets/prepareDocsConfigScript-CLIBKQbk.js"></script><script>__prepareDocsConfigScript(JSON.parse("{\"theme\":\"system\",\"themePrimarySettings\":{\"light\":{\"accentColor\":\"purple\"},\"dark\":{\"accentColor\":\"purple\"}},\"logoSettings\":{\"light\":{\"icon\":\"\",\"type\":\"project\"},\"dark\":{\"icon\":\"\",\"type\":\"followLight\"}},\"backgroundImageSettings\":{\"light\":{\"type\":\"custom\",\"color\":\"\"},\"dark\":{\"type\":\"followLight\",\"color\":\"\"}},\"id\":0,\"subdirectory\":\"\"}"));</script><script>window.eventTracking = {
-      dataLayer: []
-    }
-    window.eventTracking.report = function(){
-        window.eventTracking.dataLayer.push(arguments);
-    }</script><meta charSet="utf-8"/><meta name="viewport" content="width=device-width, initial-scale=1"/><title>API Documentation</title><meta name="description" content="Design. Debug. Test. Document. Mock. Build APIs Faster &amp; Together."/><meta name="keywords" content="API Design, API Specification, API Test, API Documentation, API Mock"/><link rel="stylesheet" href="https://file-assets.apidog.com/docs-site/v1/assets/root-CpC_E1fb.css"/></head><body class="overflow-hidden g-body"><div class="flex h-full w-full flex-col overflow-auto"><div class="flex flex-1 flex-col items-center justify-center"><div class="flex w-auto flex-col items-center justify-center max-os:p-5 os:w-[480px]"><svg width="104" height="104" viewBox="0 0 104 104" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M92.9557 41.8969L88.7262 25.2175C87.4089 19.8194 84.8039 16.1447 80.9015 14.1934L80.3963 13.9458C79.802 13.6685 79.178 13.4407 78.5243 13.2426C75.4142 12.3214 72.0268 12.371 68.362 13.3813C65.8759 14.0747 63.2612 15.2038 60.5176 16.7886C56.7835 18.9478 53.3167 21.6319 50.1076 24.8708C49.0973 25.8711 48.1266 26.9209 47.1956 28.0204C46.314 29.0406 45.4622 30.1105 44.6302 31.2198C42.9266 33.4781 41.3121 35.9245 39.7868 38.5492C34.1015 48.3648 31.2588 57.9329 31.2588 67.2631C31.2588 72.0471 32.1106 76.1181 33.8142 79.4461C34.6759 81.1101 35.6862 82.5263 36.8748 83.7248C37.9346 84.7846 39.1232 85.6564 40.4405 86.3398L41.0151 86.627V98.9485C41.0151 99.9984 41.3221 100.712 41.9461 101.058C42.5701 101.415 43.3426 101.326 44.2637 100.801L67.0249 87.6571C67.946 87.1223 68.7186 86.3199 69.3426 85.2502C69.9666 84.1706 70.2736 83.1008 70.2736 82.0509V78.3169L76.7811 74.5629C78.5639 73.5328 80.0993 71.9184 81.377 69.7195C82.6448 67.5207 83.2786 65.4011 83.2786 63.341V52.1485L89.786 48.3946C90.8657 47.7706 91.7373 46.79 92.391 45.4429C93.0348 44.1058 93.2231 42.927 92.9557 41.8969ZM62.8352 66.6095C62.2112 67.6891 61.4387 68.4914 60.5176 69.0263C59.5964 69.5512 58.8237 69.6404 58.1997 69.2838C57.5856 68.9371 57.2687 68.2238 57.2687 67.164C57.2687 66.1042 57.5856 65.0445 58.1997 63.9748C58.2592 63.8658 58.3186 63.7667 58.378 63.6676C58.9129 62.8356 59.5468 62.1819 60.2797 61.7164C60.359 61.6569 60.4383 61.6075 60.5176 61.558C61.4387 61.033 62.2112 60.9439 62.8352 61.2906C63.4592 61.6471 63.7761 62.3604 63.7761 63.4103C63.7761 64.4602 63.4592 65.5398 62.8352 66.6095ZM69.5011 38.7572C69.402 39.1336 69.2832 39.5101 69.1346 39.8865C68.5997 41.3227 67.4607 43.6206 65.7274 46.8C64.9647 48.1768 64.41 49.3158 64.0535 50.237C63.8157 50.861 63.6176 51.4748 63.4691 52.0592C63.3997 52.3366 63.3304 52.6041 63.2809 52.8715C63.1224 53.7729 62.7856 54.6148 62.2706 55.3774C61.7556 56.1401 61.2009 56.6948 60.6066 57.0315C59.8935 57.4475 59.319 57.4971 58.8535 57.2099C58.3978 56.9128 58.2196 56.358 58.3285 55.5557C58.487 54.2186 58.8039 52.931 59.2596 51.7029C59.7251 50.4747 60.4679 48.9392 61.498 47.0969C62.3201 45.6409 62.9837 44.4029 63.4691 43.4026C63.7761 42.7885 64.0138 42.2636 64.1921 41.8278C64.202 41.7981 64.2119 41.7782 64.2218 41.7485C64.6775 40.5797 64.9153 39.5001 64.9153 38.4997C64.9153 37.321 64.5191 36.5881 63.7366 36.2909C62.9442 36.0037 61.9537 36.2019 60.7652 36.8853C60.0025 37.3211 59.2794 37.945 58.5662 38.7572C57.863 39.5694 57.239 40.5105 56.7041 41.5604C56.2683 42.5013 55.7632 43.2442 55.1986 43.7889C54.6241 44.3337 54.0397 44.6209 53.4455 44.6506C52.8512 44.6902 52.4055 44.4525 52.1083 43.9374C51.8112 43.4224 51.8211 42.7687 52.1479 41.9565C53.0691 39.7477 54.2973 37.7074 55.8424 35.8552C56.5754 34.9737 57.338 34.1811 58.1205 33.4878C58.9822 32.735 59.8638 32.0913 60.7652 31.5664C63.3701 30.0708 65.5491 29.7141 67.3121 30.4966C69.0752 31.279 69.9468 32.9829 69.9468 35.5977C69.9468 36.6476 69.7982 37.7073 69.5011 38.7572Z" stroke="#667085" stroke-linecap="round" stroke-linejoin="round"></path><path d="M63.777 63.4086C63.777 64.4684 63.46 65.5381 62.836 66.6078C62.212 67.6874 61.4395 68.4896 60.5184 69.0245C59.5972 69.5494 58.8246 69.6387 58.2006 69.2821C57.5865 68.9354 57.2695 68.2221 57.2695 67.1623C57.2695 66.1025 57.5865 65.0428 58.2006 63.973C58.26 63.8641 58.3194 63.7649 58.3789 63.6659C58.9137 62.8339 59.5476 62.1802 60.2806 61.7147C60.3598 61.6552 60.4392 61.6058 60.5184 61.5563C61.4395 61.0313 62.212 60.9422 62.836 61.2888C63.46 61.6454 63.777 62.3587 63.777 63.4086Z" stroke="#667085" stroke-linecap="round" stroke-linejoin="round"></path><path d="M63.7373 36.2894C62.9449 36.0021 61.9544 36.2003 60.7659 36.8838C60.0032 37.3196 59.2801 37.9435 58.567 38.7557C57.8638 39.5679 57.2398 40.5089 56.7049 41.5588C56.2691 42.4998 55.7639 43.2426 55.1994 43.7874C54.6249 44.3321 54.0405 44.6193 53.4462 44.649C52.8519 44.6886 52.4062 44.4509 52.1091 43.9359C51.8119 43.4208 51.8219 42.7671 52.1487 41.9549C53.0699 39.7461 54.298 37.7059 55.8432 35.8537C56.5761 34.9721 57.3388 34.1797 58.1213 33.4863L63.7373 36.2894Z" stroke="#667085" stroke-linecap="round" stroke-linejoin="round"></path><path d="M69.9474 35.596C69.9474 36.6459 69.7988 37.7056 69.5017 38.7555C69.4026 39.1319 69.2838 39.5085 69.1352 39.8849C68.6003 41.321 67.4613 43.6189 65.728 46.7984C64.9653 48.1751 64.4106 49.3141 64.054 50.2352C63.8163 50.8592 63.6182 51.4732 63.4697 52.0576C63.4003 52.3349 63.331 52.6024 63.2815 52.8698C63.123 53.7711 62.7862 54.6131 62.2712 55.3758C61.7561 56.1385 61.2015 56.693 60.6072 57.0298C59.894 57.4458 59.3196 57.4955 58.854 57.2083C58.3984 56.9111 58.2201 56.3563 58.3291 55.554C58.4876 54.2168 58.8045 52.9293 59.2601 51.7011C59.7257 50.4729 60.4685 48.9376 61.4986 47.0953C62.3207 45.6393 62.9843 44.4012 63.4697 43.4008C63.7767 42.7868 64.0144 42.2619 64.1927 41.8261C64.2026 41.7964 64.2125 41.7766 64.2224 41.7468C64.678 40.5781 64.9158 39.4984 64.9158 38.498C64.9158 37.3193 64.5196 36.5865 63.7371 36.2893L58.1211 33.4862C58.9828 32.7334 59.8643 32.0896 60.7657 31.5647C63.3706 30.069 65.5497 29.7125 67.3127 30.4949C69.0758 31.2774 69.9474 32.9811 69.9474 35.596Z" stroke="#667085" stroke-linecap="round" stroke-linejoin="round"></path><path d="M41.9466 101.059L22.3253 91.2429L22.1371 91.1537C21.5131 90.807 21.2061 90.094 21.2061 89.0441V76.7227L41.0156 86.6274V98.9488C41.0156 99.9988 41.3226 100.712 41.9466 101.059Z" stroke="#667085" stroke-linecap="round" stroke-linejoin="round"></path><path d="M80.3972 13.9448C79.8029 13.6675 79.1789 13.4397 78.5252 13.2416C75.4151 12.3204 72.0277 12.3701 68.3629 13.3804C65.8768 14.0737 63.2621 15.2028 60.5185 16.7876C56.7844 18.9468 53.3176 21.6309 50.1085 24.8698C49.0982 25.8702 48.1275 26.92 47.1965 28.0194C46.3149 29.0396 45.4631 30.1096 44.6311 31.2189C42.9275 33.4772 41.313 35.9236 39.7877 38.5484C34.1024 48.364 31.2597 57.932 31.2597 67.2623C31.2597 72.0463 32.1115 76.1171 33.8151 79.4451C34.6768 81.1091 35.6871 82.5253 36.8757 83.7238C37.9355 84.7836 39.1241 85.6554 40.4414 86.3388L21.2065 76.7213C18.1161 75.2752 15.7192 72.8783 14.0056 69.5404C12.302 66.2124 11.4502 62.1415 11.4502 57.3575C11.4502 48.0272 14.2929 38.4592 19.9782 28.6436C25.6734 18.828 32.587 11.5678 40.7089 6.88282C47.4838 2.97044 53.486 1.79169 58.7157 3.33683C59.4784 3.56464 60.2113 3.84208 60.8948 4.17884L61.281 4.37688L80.3972 13.9448Z" stroke="#667085" stroke-linecap="round" stroke-linejoin="round"></path></svg><div class="align-center mt-8 flex justify-center text-center text-2xl font-semibold text-color">An abnormal error occurred, please try &#x27;Reload&#x27; or &#x27;get Support&#x27; to help you solve it!</div><div class="align-center mt-2 text-center text-lg font-400 text-secondary">Unexpected token &#x27;o&#x27;, &quot;forbidden
-&quot; is not valid JSON: /api/v1/published-projects/domains/docs.kie.ai</div></div></div><div class="flex flex-col items-center justify-center p-8 text-base font-base text-secondary"><div class="inline-flex items-center text-base font-400 text-secondary _footer-logo-wrapper_1kbjg_1"><a class="_footer-logo_1kbjg_1 flex-shrink-0" aria-label="homepage link" href="https://apidog.com"><span class="inline-flex items-center"><span class="mr-[-4px]">Built with</span><svg width="61" height="18" viewBox="0 0 61 18" fill="none" xmlns="http://www.w3.org/2000/svg" class="h-[18px] w-[80px]"><path d="M12.3836 1.67806C11.6452 0.940647 10.4478 0.940647 9.70932 1.67806L8.99795 2.3884L8.30644 1.69789C7.57144 0.963937 6.37437 0.936241 5.62991 1.66043C4.88545 2.38463 4.86748 3.60515 5.61194 4.34854L6.32331 5.05888C7.80026 6.53371 10.195 6.53371 11.6723 5.05888L12.3836 4.34854C13.1221 3.61113 13.1221 2.41547 12.3836 1.67806Z" fill="#667085"></path><path d="M12.3838 13.6515L11.6729 12.9412C10.1968 11.4664 7.80339 11.4664 6.32699 12.9412L5.61603 13.6515C4.87799 14.389 4.87799 15.5846 5.61603 16.322C6.35408 17.0594 7.55076 17.0594 8.28881 16.322L8.99976 15.6117L9.69087 16.3022C10.4255 17.0361 11.6218 17.0638 12.3659 16.3396C13.1219 15.6038 13.1278 14.3949 12.3838 13.6515Z" fill="#667085"></path><path d="M15.6105 8.99642L16.3214 8.28481C17.0655 7.54009 17.0595 6.32906 16.3035 5.59191C15.5595 4.86643 14.3631 4.89418 13.6285 5.62943L13.3098 5.94851C12.1666 7.09269 10.6166 7.73526 9 7.73526C7.38344 7.73526 5.83335 7.09238 4.69023 5.94851L4.37146 5.62943C3.63689 4.89418 2.44054 4.86643 1.69652 5.59191C0.940527 6.32906 0.934542 7.54009 1.67856 8.28481L2.38951 8.99642L1.67856 9.70803C0.940527 10.4468 0.940527 11.6445 1.67856 12.3833C2.4166 13.122 3.61326 13.122 4.3513 12.3833L4.74347 11.9907C5.85225 10.8809 7.35604 10.2576 8.92409 10.2576H8.9874C10.6162 10.2576 12.1666 10.9005 13.3098 12.0446C13.5126 12.2477 13.6484 12.3836 13.6484 12.3836C14.3864 13.1223 15.5831 13.1223 16.3211 12.3836C17.0592 11.6449 17.0592 10.4471 16.3211 9.70834L15.6102 8.99673L15.6105 8.99642Z" fill="#667085"></path><path fill-rule="evenodd" clip-rule="evenodd" d="M37.3559 4.00331C37.4694 3.95752 37.5911 3.93521 37.7136 3.93768C37.8343 3.93606 37.9541 3.95884 38.0656 4.0046C38.1772 4.05035 38.2781 4.11814 38.3624 4.20384C38.4483 4.29095 38.5158 4.39418 38.561 4.50749C38.6061 4.6208 38.628 4.7419 38.6253 4.8637C38.628 4.98551 38.6061 5.10664 38.561 5.21995C38.5158 5.33326 38.4483 5.43648 38.3624 5.52357C38.2781 5.60926 38.1772 5.67705 38.0656 5.72284C37.9541 5.7686 37.8343 5.79134 37.7136 5.78975C37.5911 5.79222 37.4694 5.76989 37.3559 5.72413C37.2425 5.67837 37.1396 5.61011 37.0536 5.52357C36.9677 5.43648 36.9002 5.33326 36.8551 5.21995C36.8099 5.10664 36.7881 4.98551 36.7908 4.8637C36.7881 4.7419 36.8099 4.6208 36.8551 4.50749C36.9002 4.39418 36.9677 4.29095 37.0536 4.20384C37.1396 4.1173 37.2425 4.04907 37.3559 4.00331ZM25.6211 4.76389L24.0219 4.76389L21.175 12.7654H22.7355L23.2948 11.1795H26.371L26.9303 12.7654H28.5019L25.6211 4.76389ZM25.9403 9.91528H23.7255L24.8441 6.75459L25.9403 9.91528ZM34.4529 6.71022C33.9935 6.42603 33.4618 6.27789 32.9204 6.28324C32.4656 6.27789 32.0164 6.38257 31.6116 6.58824C31.3484 6.72112 31.1086 6.89528 30.9013 7.10393V6.38304H29.4248V15.6932H30.9181V12.0501C31.1303 12.2594 31.3736 12.4352 31.6396 12.5714C32.0799 12.7816 32.5659 12.88 33.0541 12.8577C33.5422 12.8355 34.0171 12.6932 34.4361 12.4438C34.899 12.1548 35.274 11.7466 35.5212 11.2627C35.7861 10.7302 35.9203 10.1431 35.9126 9.54929C35.923 8.96057 35.7887 8.37821 35.5212 7.8525C35.2797 7.38027 34.9096 6.98456 34.4529 6.71022ZM34.4137 9.55484C34.4161 9.91562 34.3297 10.2716 34.162 10.5918C34.0132 10.8769 33.7889 11.1165 33.5133 11.2849C33.2582 11.4309 32.9688 11.5078 32.6743 11.5078C32.3798 11.5078 32.0904 11.4309 31.8353 11.2849C31.5644 11.1203 31.341 10.8892 31.1866 10.6139C31.0195 10.284 30.937 9.91836 30.946 9.54929C30.9355 9.18364 31.0182 8.82126 31.1866 8.49571C31.331 8.22256 31.5426 7.98991 31.8018 7.81923C32.0627 7.67197 32.3573 7.59366 32.6575 7.5919C32.9606 7.59099 33.2582 7.67147 33.5188 7.82478C33.7952 7.97573 34.0193 8.20567 34.162 8.48465C34.3413 8.8105 34.4283 9.17839 34.4137 9.54929V9.55484ZM38.4519 6.38304H36.9585V12.7599H38.4519V6.38304ZM43.7037 6.56049C43.9895 6.68375 44.2509 6.85649 44.4756 7.07066V4.27038H45.9801V12.7654H44.4756V12.039C44.2733 12.2523 44.0347 12.4288 43.7709 12.5603C43.3696 12.7699 42.9211 12.8748 42.4677 12.8652C41.9296 12.8702 41.4008 12.7261 40.9408 12.4493C40.4817 12.1535 40.1078 11.7446 39.8557 11.2627C39.5908 10.7302 39.4566 10.1431 39.4642 9.54929C39.4539 8.96057 39.5882 8.37821 39.8557 7.8525C40.1049 7.3803 40.4803 6.98514 40.9408 6.71022C41.3529 6.46065 41.821 6.31637 42.3032 6.29024C42.7854 6.26412 43.2666 6.35695 43.7037 6.56049ZM44.4756 9.57146C44.4854 9.20459 44.3987 8.84147 44.2239 8.51792C44.0698 8.22608 43.835 7.98372 43.5471 7.81923C43.2921 7.67323 43.0027 7.59637 42.7082 7.59637C42.4136 7.59637 42.1243 7.67323 41.8692 7.81923C41.598 7.97735 41.377 8.20793 41.2316 8.48465C41.0626 8.80593 40.9798 9.16492 40.9911 9.52712C40.9825 9.89613 41.0651 10.2616 41.2316 10.5918C41.3883 10.8862 41.622 11.1333 41.9084 11.3071C42.1635 11.4531 42.4528 11.5299 42.7473 11.5299C43.0419 11.5299 43.3312 11.4531 43.5863 11.3071C43.8553 11.1436 44.0753 10.912 44.2239 10.6361C44.3961 10.3076 44.4826 9.94161 44.4756 9.57146ZM51.8863 6.71022C51.3775 6.44176 50.81 6.30134 50.2336 6.30134C49.6572 6.30134 49.0897 6.44176 48.5808 6.71022C48.1082 6.98053 47.7208 7.37607 47.4622 7.8525C47.1714 8.37882 47.0248 8.9715 47.0372 9.57146C47.026 10.1735 47.1684 10.7686 47.451 11.3016C47.7105 11.7817 48.0973 12.1824 48.5697 12.4605C49.0662 12.7315 49.6249 12.8709 50.1916 12.8652C50.7765 12.874 51.3541 12.7347 51.8695 12.4605C52.3652 12.1852 52.7752 11.7805 53.0553 11.2904C53.3515 10.7658 53.502 10.1726 53.4915 9.57146C53.5004 8.97048 53.35 8.37773 53.0553 7.8525C52.7813 7.37062 52.3763 6.97478 51.8863 6.71022ZM49.3639 7.81923C49.6253 7.67401 49.9199 7.59775 50.2196 7.59775C50.5193 7.59775 50.8139 7.67401 51.0753 7.81923C51.3499 7.97813 51.5716 8.21332 51.7129 8.49571C51.876 8.8305 51.9528 9.20008 51.9367 9.57146C51.9483 9.9474 51.8616 10.3199 51.685 10.6528C51.5392 10.9243 51.3204 11.1504 51.0529 11.3061C50.7853 11.4617 50.4794 11.5408 50.1693 11.5344C49.9454 11.5409 49.7227 11.4998 49.5162 11.4137C49.3097 11.3276 49.1243 11.1986 48.9724 11.0354C48.6355 10.6234 48.4678 10.1007 48.5025 9.57146C48.4901 9.19738 48.5708 8.82604 48.7374 8.4902C48.8747 8.21003 49.0927 7.97654 49.3639 7.81923ZM59.0394 7.03076V6.32653H60.5495V12.6812C60.5594 13.2247 60.4326 13.7622 60.1804 14.2449C59.9389 14.7103 59.5657 15.0957 59.1065 15.3539C58.5924 15.6305 58.0132 15.7664 57.4286 15.7476C56.67 15.7754 55.9226 15.5595 55.2977 15.1321C55.0204 14.9436 54.7884 14.6968 54.6182 14.4092C54.4481 14.1217 54.344 13.8006 54.3133 13.4686V13.3466L55.7954 13.3466C55.7954 13.6685 56.0907 13.9814 56.3547 14.134C56.6804 14.3328 57.0575 14.4331 57.4398 14.4223C57.6518 14.4311 57.8634 14.3968 58.0616 14.3215C58.2597 14.2462 58.4402 14.1314 58.592 13.9843C58.7493 13.8103 58.8699 13.6068 58.9468 13.3859C59.0236 13.1649 59.0394 12.931 59.0394 12.6978V11.9548C58.8328 12.1771 58.591 12.3644 58.3235 12.5093C57.9242 12.7189 57.4776 12.8239 57.0259 12.8143C56.4897 12.8185 55.9629 12.6744 55.5046 12.3984C55.0442 12.1041 54.6699 11.6949 54.4195 11.2117C54.1519 10.6801 54.0176 10.0924 54.0281 9.49832C54.0156 8.9094 54.1501 8.32653 54.4195 7.80153C54.6679 7.32727 55.0433 6.93011 55.5046 6.6537C55.9619 6.37401 56.4886 6.22618 57.0259 6.22672C57.4809 6.21907 57.9307 6.32389 58.3347 6.53172C58.5954 6.65891 58.8335 6.82746 59.0394 7.03076ZM58.7877 10.5796C58.9599 10.2511 59.0464 9.8851 59.0394 9.51494C59.0532 9.14059 58.9663 8.76931 58.7877 8.4392C58.6409 8.16062 58.4205 7.92682 58.1501 7.76271C57.8899 7.6138 57.5948 7.53538 57.2944 7.53538C56.994 7.53538 56.6988 7.6138 56.4387 7.76271C56.1645 7.92882 55.9419 8.16678 55.7954 8.4503C55.6308 8.76545 55.5463 9.11571 55.5494 9.4706C55.5427 9.84005 55.6271 10.2055 55.7954 10.5352C55.9406 10.827 56.1629 11.0743 56.4387 11.2505C56.6977 11.4028 56.9932 11.4832 57.2944 11.4832C57.5955 11.4832 57.8911 11.4028 58.1501 11.2505C58.419 11.0871 58.6392 10.8555 58.7877 10.5796Z" fill="#667085"></path></svg></span></a></div></div></div><script>
-            if (typeof window.__updateThemeElement === 'function') {
-              window.__updateThemeElement();
+### OpenAPI Specification
+
+```yaml
+openapi: 3.0.1
+info:
+  title: ''
+  description: ''
+  version: 1.0.0
+paths:
+  /codex/v1/responses:
+    post:
+      summary: GPT 5.5 (response)
+      deprecated: false
+      description: >-
+        > GPT-5.5 is OpenAI’s advanced reasoning model for agentic coding,
+        knowledge work, scientific research, and complex multi-step task
+        execution.
+
+        <CardGroup cols={2}>
+          <Card title="Multimodal Input" icon="🖼️">
+            Supports mixed text, image, and file inputs in a single message.
+          </Card>
+
+          <Card title="Reasoning Control" icon="🧠">
+            Adjustable reasoning effort from low to xhigh.
+          </Card>
+
+          <Card title="Tools & Web Search" icon="✨">
+            Integrates web search or custom function calling tools.
+          </Card>
+
+          <Card title="Unified Endpoint" icon="💻">
+            Uses the unified <code>/codex/v1/responses</code> endpoint with <code>model</code> set to one of <code>gpt-5-5</code>.
+          </Card>
+        </CardGroup>
+
+        ## Tools & tool\_choice
+
+        The `tools` array enables **web search** or **function calling**
+        capabilities.
+
+        :::caution
+
+        Web Search and Function Calling are **mutually exclusive**.  
+
+        In a single request you should choose only one: do not include both
+        `{"type": "web_search"}` and `{"type": "function", ...}` in the same
+        `tools` array.
+
+        :::
+
+        <AccordionGroup>
+          <Accordion title="Web Search">
+            Use the built-in Web Search tool to retrieve up-to-date information:
+
+            ```json
+            {
+              "tools": [
+                {
+                  "type": "web_search"
+                }
+              ]
             }
-          </script><script>((STORAGE_KEY, restoreKey) => {
-    if (!window.history.state || !window.history.state.key) {
-      let key = Math.random().toString(32).slice(2);
-      window.history.replaceState({
-        key
-      }, "");
-    }
-    try {
-      let positions = JSON.parse(sessionStorage.getItem(STORAGE_KEY) || "{}");
-      let storedY = positions[restoreKey || window.history.state.key];
-      if (typeof storedY === "number") {
-        window.scrollTo(0, storedY);
-      }
-    } catch (error) {
-      console.error(error);
-      sessionStorage.removeItem(STORAGE_KEY);
-    }
-  })("positions", null)</script><link rel="modulepreload" href="https://file-assets.apidog.com/docs-site/v1/assets/manifest-db7ef313.js"/><link rel="modulepreload" href="https://file-assets.apidog.com/docs-site/v1/assets/entry.client-mUtkjgQm.js"/><link rel="modulepreload" href="https://file-assets.apidog.com/docs-site/v1/assets/jsx-runtime-CM5sU0Q5.js"/><link rel="modulepreload" href="https://file-assets.apidog.com/docs-site/v1/assets/client-BKxavTD9.js"/><link rel="modulepreload" href="https://file-assets.apidog.com/docs-site/v1/assets/components-DMSdXhQK.js"/><link rel="modulepreload" href="https://file-assets.apidog.com/docs-site/v1/assets/root-CQ054TXt.js"/><link rel="modulepreload" href="https://file-assets.apidog.com/docs-site/v1/assets/root-Dv513fR3.js"/><link rel="modulepreload" href="https://file-assets.apidog.com/docs-site/v1/assets/route-D_6YkXJe.js"/><script>window.__remixContext = {"basename":"/","future":{"v3_fetcherPersist":true,"v3_relativeSplatPath":true,"v3_throwAbortReason":true,"v3_routeConfig":false,"v3_singleFetch":true,"v3_lazyRouteDiscovery":false,"unstable_optimizeDeps":false},"isSpaMode":false};window.__remixContext.stream = new ReadableStream({start(controller){window.__remixContext.streamController = controller;}}).pipeThrough(new TextEncoderStream());</script><script type="module" async="">import "https://file-assets.apidog.com/docs-site/v1/assets/manifest-db7ef313.js";
-import * as route0 from "https://file-assets.apidog.com/docs-site/v1/assets/root-Dv513fR3.js";
-import * as route1 from "https://file-assets.apidog.com/docs-site/v1/assets/route-D_6YkXJe.js";
+            ```
+          </Accordion>
 
-window.__remixRouteModules = {"root":route0,"routes/_index/route":route1};
+          <Accordion title="Function Calling">
+            Define business functions that the model can call when needed:
 
-import("https://file-assets.apidog.com/docs-site/v1/assets/entry.client-mUtkjgQm.js");</script></body></html><!--$--><script>window.__remixContext.streamController.enqueue("[{\"_1\":2,\"_231\":-5,\"_232\":-5},\"loaderData\",{\"_3\":4,\"_230\":-5},\"root\",{\"_5\":1,\"_6\":7,\"_19\":20,\"_23\":24,\"_33\":34,\"_52\":53,\"_112\":113,\"_155\":156,\"_229\":-7},\"type\",\"meta\",[8,11,16],{\"_9\":10},\"title\",\"API Documentation\",{\"_12\":13,\"_14\":15},\"name\",\"description\",\"content\",\"Design. Debug. Test. Document. Mock. Build APIs Faster \u0026 Together.\",{\"_12\":17,\"_14\":18},\"keywords\",\"API Design, API Specification, API Test, API Documentation, API Mock\",\"i18nState\",{\"_21\":22},\"clientLocale\",\"en-US\",\"errorCodeMessage\",{\"_25\":26,\"_27\":28,\"_29\":30,\"_31\":32},\"errorCode\",\"Unknown\",\"errorMessage\",\"Unexpected token 'o', \\\"forbidden\\n\\\" is not valid JSON: /api/v1/published-projects/domains/docs.kie.ai\",\"hideBuiltWith\",false,\"extra\",{},\"clientConfig\",{\"_35\":36,\"_37\":38,\"_39\":40,\"_41\":42,\"_47\":48,\"_49\":30,\"_50\":51},\"apiBaseUrl\",\"https://api.apidog.com\",\"appWebUrl\",\"https://app.apidog.com\",\"apidocBuiltinPrefixPath\",\"https://assets.apidog.com/app/static/apidoc\",\"cloudMockBaseUrls\",{\"_43\":44,\"_45\":46},\"pathMode\",\"https://mock.apidog.com/m1/{projectId}-{version}-{service}\",\"idMode\",\"https://mock.apidog.com/m2/{projectId}-{version}-{service}\",\"apidocIsShowLogo\",true,\"markdownDisableBreaks\",\"webhookGenerateCodeDefaultUrl\",\"https://your-api-server.com\",\"urlConfig\",{\"_54\":55,\"_58\":59,\"_99\":100,\"_108\":109},\"home\",{\"_56\":57},\"index\",\"https://apidog.com\",\"icon\",{\"_60\":61,\"_62\":63,\"_64\":63,\"_65\":66,\"_67\":68,\"_69\":70,\"_71\":72,\"_73\":74,\"_75\":76,\"_77\":78,\"_79\":80,\"_81\":82,\"_83\":84,\"_85\":86,\"_87\":88,\"_89\":90,\"_91\":92,\"_93\":94,\"_95\":96,\"_97\":98},\"apidoc\",\"https://assets.apidog.com/app/static/brand/apidoc.png\",\"apidog\",\"https://assets.apidog.com/app/static/brand/apidog-logo-256.png\",\"apidog europe\",\"googleDiscovery\",\"https://assets.apidog.com/app/static/brand/google-discovery.png\",\"har\",\"https://assets.apidog.com/app/static/brand/har.png\",\"iodocs\",\"https://assets.apidog.com/app/static/brand/io-doc.png\",\"jmeter\",\"https://assets.apidog.com/app/static/brand/jmeter.png\",\"openapi\",\"https://assets.apidog.com/app/static/brand/openapi.png\",\"postman\",\"https://assets.apidog.com/app/static/brand/postman.png\",\"raml\",\"https://assets.apidog.com/app/static/brand/raml.png\",\"wadl\",\"https://assets.apidog.com/app/static/brand/wadl.png\",\"curl\",\"https://assets.apidog.com/app/static/brand/curl.png\",\"insomnia\",\"https://assets.apidog.com/app/static/brand/insomnia.png\",\"wsdl\",\"https://assets.apidog.com/app/static/brand/wsdl.png\",\"markdown\",\"https://assets.apidog.com/app/static/brand/markdown.png\",\"html\",\"https://assets.apidog.com/app/static/brand/html.png\",\"protobuf\",\"https://assets.apidog.com/app/static/brand/protobuf.png\",\"soapui\",\"https://assets.apidog.com/app/static/brand/soapui.svg\",\"hoppscotch\",\"https://assets.apidog.com/app/static/brand/hoppscotch.svg\",\"javaProject\",\"https://assets.apidog.com/app/static/brand/java-project.png\",\"help\",{\"_56\":101,\"_102\":103,\"_104\":105,\"_106\":107},\"https://apidog.com/help\",\"browserExtension\",\"https://chromewebstore.google.com/detail/apidog-browser-extension/dmhljjnonlhapikmelaefohecogokhio\",\"csv\",\"https://apidog.com/help/reference/csv\",\"appMcpServer\",\"https://docs.apidog.com/apidog-mcp-server\",\"assets\",{\"_110\":111},\"logo512Png\",\"https://assets.apidog.com/static/logo/apidog-logo-512.png\",\"envConfig\",{\"_114\":60,\"_115\":116,\"_117\":116,\"_118\":119,\"_120\":121,\"_122\":123,\"_124\":57,\"_125\":62,\"_126\":22,\"_127\":128,\"_129\":130,\"_132\":133,\"_134\":135,\"_136\":137,\"_138\":139,\"_140\":141,\"_142\":143,\"_149\":150,\"_151\":48,\"_152\":153,\"_154\":30},\"RELEASE_BASE\",\"DEBUG_API_BASE\",\"\",\"DEBUG_WEB_URL_BASE\",\"AGENT_SERVER_API_BASE\",\"https://web-proxy.apidog.com\",\"APP_REGION\",\"GLOBAL\",\"APP_NAME\",\"Apidog\",\"APP_HOMEPAGE\",\"APP_NAME_LOWER\",\"DEFAULT_LOCALE\",\"APP_BROWSER_EXTENSION_ADAPTER\",\"apidogAgentCrossRequest\",\"APP_API_SERVER_HOSTNAMES\",[131],\"api.apidog.com\",\"APP_SUPPORT_EMAIL\",\"support@apidog.com\",\"APP_SCRIPT_MAIN_OBJECTS\",\"$\",\"SERVER_PROTOCOL\",\"http\",\"SERVER_HOST\",\"apidog-api-fordoc-svc\",\"DEFAULT_DOC_LAYOUT\",\"TwoColumn\",\"NOT_CUSTOM_DOMAIN_HOSTNAMES\",[144,145,146,147,148],\"www.apidog.com\",\"apidog.com\",\"www.apidog.io\",\"apidog.io\",\"share.apidog.com\",\"SERVER_REQUEST_TIMEOUT\",15000,\"IS_SHARED_DOC_INDEPENDENT_DOMAIN\",\"APIDOC_CUSTOM_DOMAIN_CNAME_REGEX\",[\"R\",\"\\\\d+\\\\.cname\\\\.apidog\\\\.com\",\"\"],\"IS_ALWAYS_USE_ORIGIN_FETCH\",\"docsDataState\",{\"_157\":158,\"_162\":163,\"_175\":176,\"_177\":178,\"_179\":180,\"_189\":190,\"_202\":203,\"_204\":205,\"_206\":207,\"_213\":214,\"_220\":-7,\"_221\":222,\"_223\":-7,\"_224\":-7,\"_225\":226,\"_228\":-7},\"navigation\",{\"_5\":159,\"_160\":161},\"NONE\",\"navRightLinkItems\",[],\"sidebarTree\",{\"_164\":-7,\"_165\":-7,\"_166\":167,\"_168\":-7,\"_169\":170,\"_171\":-7,\"_172\":-7,\"_173\":174},\"goBackSidebarTreeApiFolderNode\",\"rootSidebarTreeApiFolderNode\",\"sidebarTreeList\",[],\"selectedSidebarTreeNode\",\"parentSidebarTreeApiFolderNodes\",[],\"previousSidebarTreeNode\",\"nextSidebarTreeNode\",\"homeLink\",\"/\",\"docsBaseConfig\",{},\"versionList\",[],\"resourceData\",{\"_5\":181,\"_182\":-7,\"_183\":184},\"NotFound\",\"data\",\"extraData\",{\"_185\":186,\"_187\":188},\"apiFieldList\",[],\"dataSchemaDefinitions\",{},\"docsIdTypeData\",{\"_191\":192,\"_193\":194,\"_195\":194,\"_196\":194,\"_197\":116,\"_198\":194,\"_199\":200,\"_201\":-7},\"onlineType\",\"APIDOC\",\"branchId\",0,\"onlineId\",\"projectId\",\"subdirectory\",\"teamId\",\"visitType\",\"customDomain\",\"specialFileType\",\"notification\",[],\"footerBanner\",[],\"projectSetting\",{\"_208\":209,\"_210\":211},\"advancedSettings\",{},\"auth\",{\"_5\":212},\"noauth\",\"environments\",{\"_215\":216,\"_217\":-7,\"_218\":219},\"environmentList\",[],\"selectedEnvironment\",\"servers\",[],\"searchSettings\",\"versionSettings\",[],\"seoInfos\",\"itemPathPrefix\",\"appEnvMap\",{\"_227\":128},\"appBrowserExtensionAdapterKey\",\"customCodes\",\"primaryColorVariable\",\"routes/_index/route\",\"actionData\",\"errors\"]\n");</script><!--$--><script>window.__remixContext.streamController.close();</script><!--/$--><!--/$-->
+            ```json
+            {
+              "tools": [
+                {
+                  "type": "function",
+                  "name": "get_current_weather",
+                  "description": "Get the current weather in a given location",
+                  "parameters": {
+                    "type": "object",
+                    "properties": {
+                      "location": {
+                        "type": "string",
+                        "description": "The city and state, e.g. San Francisco, CA"
+                      },
+                      "unit": {
+                        "type": "string",
+                        "enum": ["celsius", "fahrenheit"]
+                      }
+                    },
+                    "required": ["location", "unit"]
+                  }
+                }
+              ],
+              "tool_choice": "auto"
+            }
+            ```
+
+            When function tools are configured in `tools`, set `tool_choice` to `"auto"` so the model can decide when to call them.  
+            If you do not configure any function tools, omit the `tool_choice` field.
+          </Accordion>
+        </AccordionGroup>
+      operationId: gpt-5-5-chat-completions
+      tags:
+        - docs/en/Market/Chat  Models/GPT
+      parameters: []
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                model:
+                  type: string
+                  description: 'Target model name. Allowed values: `gpt-5-5`.'
+                  enum:
+                    - gpt-5-5
+                  x-apidog-enum:
+                    - value: gpt-5-5
+                      name: ''
+                      description: ''
+                  examples:
+                    - gpt-5-5
+                stream:
+                  type: boolean
+                  description: >-
+                    When true, responses stream in real time as server-sent
+                    events. When false, the full response is returned at once
+                    after completion. Default is true.
+                  default: false
+                input:
+                  oneOf:
+                    - type: string
+                      description: Input can be a string.
+                    - type: array
+                      description: >-
+                        Input can be an array; each element is a message object
+                        with role and content.
+                      items:
+                        $ref: '#/components/schemas/InputMessage'
+                      minItems: 1
+                reasoning:
+                  type: object
+                  description: Reasoning configuration for the model.
+                  properties:
+                    effort:
+                      type: string
+                      description: >-
+                        Reasoning effort level. Higher values provide more
+                        thorough reasoning but may increase latency. Defaults to
+                        "low".
+                      enum:
+                        - low
+                        - medium
+                        - high
+                        - xhigh
+                      default: low
+                      examples:
+                        - low
+                      x-apidog-enum:
+                        - value: low
+                          name: ''
+                          description: ''
+                        - value: medium
+                          name: ''
+                          description: ''
+                        - value: high
+                          name: ''
+                          description: ''
+                        - value: xhigh
+                          name: ''
+                          description: ''
+                  x-apidog-orders:
+                    - effort
+                  x-apidog-ignore-properties: []
+                tools:
+                  type: array
+                  description: >-
+                    Optional tools that the model may call. Either web search OR
+                    function calling should be configured, but not both
+                    simultaneously.
+                  items:
+                    oneOf:
+                      - $ref: '#/components/schemas/ToolWebSearch'
+                      - $ref: '#/components/schemas/ToolFunction'
+                tool_choice:
+                  type: string
+                  description: >-
+                    Tool selection behavior. When function tools are configured
+                    in `tools`, set this to `auto` so the model can decide when
+                    to call them.
+                  examples:
+                    - auto
+              required:
+                - model
+                - input
+              x-apidog-orders:
+                - model
+                - stream
+                - input
+                - reasoning
+                - tools
+                - tool_choice
+              examples:
+                - model: gpt-5.1-codex
+                  input:
+                    - role: user
+                      content:
+                        - type: input_text
+                          text: What is in this image?
+                        - type: input_image
+                          image_url: >-
+                            https://file.aiquickdraw.com/custom-page/akr/section-images/1759055072437dqlsclj2.png
+                  tools:
+                    - type: web_search
+                  reasoning:
+                    effort: high
+              x-apidog-ignore-properties: []
+            example:
+              model: gpt-5-5
+              stream: false
+              input:
+                - role: user
+                  content:
+                    - type: input_text
+                      text: What is in this image?
+                    - type: input_image
+                      image_url: >-
+                        https://file.aiquickdraw.com/custom-page/akr/section-images/1759055072437dqlsclj2.png
+              tools:
+                - type: web_search
+              reasoning:
+                effort: high
+      responses:
+        '200':
+          description: 'Request successful. '
+          content:
+            text/event-stream:
+              schema:
+                type: string
+                description: >-
+                  Streaming responses are sent as Server-Sent Events (SSE) with
+                  `Content-Type: text/event-stream`.
+
+                  **Standard output**
+
+                  - **Text delta event**: `event: response.output_text.delta`
+                    - `data.delta`: The incremental text content in the stream
+                    - `data.type`: Event type, always `response.output_text.delta`
+                  - **Completion event**: `event: response.completed`
+                    - `data.response.usage`: Token usage information, such as `input_tokens` and `output_tokens`
+
+                  **Function Calling**
+
+                  - **Function call arguments delta event**: `event:
+                  response.function_call_arguments.delta`
+                    - `data.delta`: Incremental string content of the function call arguments
+                    - `data.type`: Event type, always `response.function_call_arguments.delta`
+                  - **Completion event**: `event: response.completed`
+                    - `data.response.usage`: Token usage information, such as `input_tokens` and `output_tokens`
+
+                  The final line `data: [DONE]` is the stream end marker,
+                  indicating that no more events will be sent.
+              example: |-
+                {
+                  "output": [
+                    {
+                      "type": "reasoning",
+                      "id": "rs_xxx",
+                      "summary": []
+                    },
+                    {
+                      "type": "message",
+                      "role": "assistant",
+                      "id": "msg_xxx",
+                      "content": [
+                        {
+                          "type": "output_text",
+                          "text": "Hello! How can I help you today?"
+                        }
+                      ],
+                      "status": "completed"
+                    }
+                  ],
+                  "usage": {
+                    "input_tokens_details": {
+                      "cached_tokens": 58
+                    },
+                    "total_tokens": 4490,
+                    "output_tokens": 47,
+                    "input_tokens": 4443
+                  },
+                  "credits_consumed": 0.48,
+                  "status": "completed"
+                }
+          headers: {}
+          x-apidog-name: ''
+        '400':
+          description: Bad Request - Invalid request parameters
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: object
+                    properties:
+                      message:
+                        type: string
+                        examples:
+                          - Invalid request parameters
+                      type:
+                        type: string
+                        examples:
+                          - invalid_request_error
+                    x-apidog-orders:
+                      - message
+                      - type
+                    x-apidog-ignore-properties: []
+                x-apidog-orders:
+                  - error
+                x-apidog-ignore-properties: []
+          headers: {}
+          x-apidog-name: ''
+        '401':
+          description: Unauthorized - Invalid or missing API key
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: object
+                    properties:
+                      message:
+                        type: string
+                        examples:
+                          - Unauthorized
+                      type:
+                        type: string
+                        examples:
+                          - authentication_error
+                    x-apidog-orders:
+                      - message
+                      - type
+                    x-apidog-ignore-properties: []
+                x-apidog-orders:
+                  - error
+                x-apidog-ignore-properties: []
+          headers: {}
+          x-apidog-name: ''
+        '429':
+          description: Rate Limited - Too many requests
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: object
+                    properties:
+                      message:
+                        type: string
+                        examples:
+                          - Rate limit exceeded
+                      type:
+                        type: string
+                        examples:
+                          - rate_limit_error
+                    x-apidog-orders:
+                      - message
+                      - type
+                    x-apidog-ignore-properties: []
+                x-apidog-orders:
+                  - error
+                x-apidog-ignore-properties: []
+          headers: {}
+          x-apidog-name: ''
+        '500':
+          description: 请求失败
+          content:
+            application/json:
+              schema:
+                type: object
+                properties: {}
+                x-apidog-orders: []
+                x-apidog-ignore-properties: []
+          headers: {}
+          x-apidog-name: Error
+      security:
+        - BearerAuth: []
+          x-apidog:
+            schemeGroups:
+              - id: kn8M4YUlc5i0A0179ezwx
+                schemeIds:
+                  - BearerAuth
+            required: true
+            use:
+              id: kn8M4YUlc5i0A0179ezwx
+            scopes:
+              kn8M4YUlc5i0A0179ezwx:
+                BearerAuth: []
+      x-apidog-folder: docs/en/Market/Chat  Models/GPT
+      x-apidog-status: released
+      x-run-in-apidog: https://app.apidog.com/web/project/1184766/apis/api-34229563-run
+components:
+  schemas:
+    ToolFunction:
+      type: object
+      description: 函数调用工具定义。
+      properties:
+        type:
+          type: string
+          enum:
+            - function
+          examples:
+            - function
+        name:
+          type: string
+          description: 函数名称。
+          examples:
+            - get_current_weather
+        description:
+          type: string
+          description: 对该函数用途的可读性描述。
+        parameters:
+          type: object
+          description: 描述函数参数的 JSON Schema。
+          x-apidog-orders: []
+          properties: {}
+          x-apidog-ignore-properties: []
+      required:
+        - type
+        - name
+        - description
+        - parameters
+      x-apidog-orders:
+        - type
+        - name
+        - description
+        - parameters
+      x-apidog-ignore-properties: []
+      x-apidog-folder: ''
+    ToolWebSearch:
+      type: object
+      description: 联网搜索工具配置。
+      properties:
+        type:
+          type: string
+          enum:
+            - web_search
+          examples:
+            - web_search
+      required:
+        - type
+      x-apidog-orders:
+        - type
+      x-apidog-ignore-properties: []
+      x-apidog-folder: ''
+    InputMessage:
+      type: object
+      description: input 数组中的单条消息。
+      properties:
+        role:
+          type: string
+          description: 消息角色。
+          enum:
+            - user
+            - assistant
+            - system
+            - developer
+            - tool
+          examples:
+            - user
+        content:
+          type: array
+          description: 支持文本、图片和文件等多种输入类型的内容数组。
+          items:
+            $ref: '#/components/schemas/InputContentItem'
+          minItems: 1
+      required:
+        - role
+        - content
+      x-apidog-orders:
+        - role
+        - content
+      x-apidog-ignore-properties: []
+      x-apidog-folder: ''
+    InputContentItem:
+      description: input 消息 content 数组中的单个内容项。
+      oneOf:
+        - type: object
+          properties:
+            type:
+              type: string
+              enum:
+                - input_text
+              examples:
+                - input_text
+            text:
+              type: string
+              description: 纯文本内容。
+          required:
+            - type
+            - text
+          x-apidog-orders:
+            - type
+            - text
+          x-apidog-ignore-properties: []
+        - type: object
+          properties:
+            type:
+              type: string
+              enum:
+                - input_image
+              examples:
+                - input_image
+            image_url:
+              type: string
+              format: uri
+              description: 可公开访问的图片 URL。
+          required:
+            - type
+            - image_url
+          x-apidog-orders:
+            - type
+            - image_url
+          x-apidog-ignore-properties: []
+        - type: object
+          properties:
+            type:
+              type: string
+              enum:
+                - input_file
+              examples:
+                - input_file
+            file_url:
+              type: string
+              format: uri
+              description: 可公开访问的文件 URL（PDF、文档等）。
+          required:
+            - type
+            - file_url
+          x-apidog-orders:
+            - type
+            - file_url
+          x-apidog-ignore-properties: []
+      x-apidog-orders: []
+      x-apidog-folder: ''
+  securitySchemes:
+    BearerAuth:
+      type: bearer
+      scheme: bearer
+      bearerFormat: API Key
+      description: >-
+        All API requests require a Bearer Token. Add the header `Authorization:
+        Bearer YOUR_API_KEY` to authenticate requests.
+    BearerAuth1:
+      type: bearer
+      scheme: bearer
+      bearerFormat: API Key
+      description: >-
+        所有 API 请求都需要 Bearer Token。请在请求头中添加 `Authorization: Bearer YOUR_API_KEY`
+        进行身份验证。
+servers:
+  - url: https://api.kie.ai
+    description: 正式环境
+security:
+  - BearerAuth: []
+    x-apidog:
+      schemeGroups:
+        - id: kn8M4YUlc5i0A0179ezwx
+          schemeIds:
+            - BearerAuth
+      required: true
+      use:
+        id: kn8M4YUlc5i0A0179ezwx
+      scopes:
+        kn8M4YUlc5i0A0179ezwx:
+          BearerAuth: []
+
+```
 
 ---
 
@@ -61270,40 +63014,483 @@ import("https://file-assets.apidog.com/docs-site/v1/assets/entry.client-mUtkjgQm
 
 **Source:** [https://docs.kie.ai/market/claude/claude-opus-4-7.md][152]
 
-<!DOCTYPE html><html lang="en-US" class="group/root" id="html" data-theme="light" data-accent-color="purple"><head><script src="https://file-assets.apidog.com/docs-site/v1/assets/prepareDocsConfigScript-CLIBKQbk.js"></script><script>__prepareDocsConfigScript(JSON.parse("{\"theme\":\"system\",\"themePrimarySettings\":{\"light\":{\"accentColor\":\"purple\"},\"dark\":{\"accentColor\":\"purple\"}},\"logoSettings\":{\"light\":{\"icon\":\"\",\"type\":\"project\"},\"dark\":{\"icon\":\"\",\"type\":\"followLight\"}},\"backgroundImageSettings\":{\"light\":{\"type\":\"custom\",\"color\":\"\"},\"dark\":{\"type\":\"followLight\",\"color\":\"\"}},\"id\":0,\"subdirectory\":\"\"}"));</script><script>window.eventTracking = {
-      dataLayer: []
-    }
-    window.eventTracking.report = function(){
-        window.eventTracking.dataLayer.push(arguments);
-    }</script><meta charSet="utf-8"/><meta name="viewport" content="width=device-width, initial-scale=1"/><title>API Documentation</title><meta name="description" content="Design. Debug. Test. Document. Mock. Build APIs Faster &amp; Together."/><meta name="keywords" content="API Design, API Specification, API Test, API Documentation, API Mock"/><link rel="stylesheet" href="https://file-assets.apidog.com/docs-site/v1/assets/root-CpC_E1fb.css"/></head><body class="overflow-hidden g-body"><div class="flex h-full w-full flex-col overflow-auto"><div class="flex flex-1 flex-col items-center justify-center"><div class="flex w-auto flex-col items-center justify-center max-os:p-5 os:w-[480px]"><svg width="104" height="104" viewBox="0 0 104 104" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M92.9557 41.8969L88.7262 25.2175C87.4089 19.8194 84.8039 16.1447 80.9015 14.1934L80.3963 13.9458C79.802 13.6685 79.178 13.4407 78.5243 13.2426C75.4142 12.3214 72.0268 12.371 68.362 13.3813C65.8759 14.0747 63.2612 15.2038 60.5176 16.7886C56.7835 18.9478 53.3167 21.6319 50.1076 24.8708C49.0973 25.8711 48.1266 26.9209 47.1956 28.0204C46.314 29.0406 45.4622 30.1105 44.6302 31.2198C42.9266 33.4781 41.3121 35.9245 39.7868 38.5492C34.1015 48.3648 31.2588 57.9329 31.2588 67.2631C31.2588 72.0471 32.1106 76.1181 33.8142 79.4461C34.6759 81.1101 35.6862 82.5263 36.8748 83.7248C37.9346 84.7846 39.1232 85.6564 40.4405 86.3398L41.0151 86.627V98.9485C41.0151 99.9984 41.3221 100.712 41.9461 101.058C42.5701 101.415 43.3426 101.326 44.2637 100.801L67.0249 87.6571C67.946 87.1223 68.7186 86.3199 69.3426 85.2502C69.9666 84.1706 70.2736 83.1008 70.2736 82.0509V78.3169L76.7811 74.5629C78.5639 73.5328 80.0993 71.9184 81.377 69.7195C82.6448 67.5207 83.2786 65.4011 83.2786 63.341V52.1485L89.786 48.3946C90.8657 47.7706 91.7373 46.79 92.391 45.4429C93.0348 44.1058 93.2231 42.927 92.9557 41.8969ZM62.8352 66.6095C62.2112 67.6891 61.4387 68.4914 60.5176 69.0263C59.5964 69.5512 58.8237 69.6404 58.1997 69.2838C57.5856 68.9371 57.2687 68.2238 57.2687 67.164C57.2687 66.1042 57.5856 65.0445 58.1997 63.9748C58.2592 63.8658 58.3186 63.7667 58.378 63.6676C58.9129 62.8356 59.5468 62.1819 60.2797 61.7164C60.359 61.6569 60.4383 61.6075 60.5176 61.558C61.4387 61.033 62.2112 60.9439 62.8352 61.2906C63.4592 61.6471 63.7761 62.3604 63.7761 63.4103C63.7761 64.4602 63.4592 65.5398 62.8352 66.6095ZM69.5011 38.7572C69.402 39.1336 69.2832 39.5101 69.1346 39.8865C68.5997 41.3227 67.4607 43.6206 65.7274 46.8C64.9647 48.1768 64.41 49.3158 64.0535 50.237C63.8157 50.861 63.6176 51.4748 63.4691 52.0592C63.3997 52.3366 63.3304 52.6041 63.2809 52.8715C63.1224 53.7729 62.7856 54.6148 62.2706 55.3774C61.7556 56.1401 61.2009 56.6948 60.6066 57.0315C59.8935 57.4475 59.319 57.4971 58.8535 57.2099C58.3978 56.9128 58.2196 56.358 58.3285 55.5557C58.487 54.2186 58.8039 52.931 59.2596 51.7029C59.7251 50.4747 60.4679 48.9392 61.498 47.0969C62.3201 45.6409 62.9837 44.4029 63.4691 43.4026C63.7761 42.7885 64.0138 42.2636 64.1921 41.8278C64.202 41.7981 64.2119 41.7782 64.2218 41.7485C64.6775 40.5797 64.9153 39.5001 64.9153 38.4997C64.9153 37.321 64.5191 36.5881 63.7366 36.2909C62.9442 36.0037 61.9537 36.2019 60.7652 36.8853C60.0025 37.3211 59.2794 37.945 58.5662 38.7572C57.863 39.5694 57.239 40.5105 56.7041 41.5604C56.2683 42.5013 55.7632 43.2442 55.1986 43.7889C54.6241 44.3337 54.0397 44.6209 53.4455 44.6506C52.8512 44.6902 52.4055 44.4525 52.1083 43.9374C51.8112 43.4224 51.8211 42.7687 52.1479 41.9565C53.0691 39.7477 54.2973 37.7074 55.8424 35.8552C56.5754 34.9737 57.338 34.1811 58.1205 33.4878C58.9822 32.735 59.8638 32.0913 60.7652 31.5664C63.3701 30.0708 65.5491 29.7141 67.3121 30.4966C69.0752 31.279 69.9468 32.9829 69.9468 35.5977C69.9468 36.6476 69.7982 37.7073 69.5011 38.7572Z" stroke="#667085" stroke-linecap="round" stroke-linejoin="round"></path><path d="M63.777 63.4086C63.777 64.4684 63.46 65.5381 62.836 66.6078C62.212 67.6874 61.4395 68.4896 60.5184 69.0245C59.5972 69.5494 58.8246 69.6387 58.2006 69.2821C57.5865 68.9354 57.2695 68.2221 57.2695 67.1623C57.2695 66.1025 57.5865 65.0428 58.2006 63.973C58.26 63.8641 58.3194 63.7649 58.3789 63.6659C58.9137 62.8339 59.5476 62.1802 60.2806 61.7147C60.3598 61.6552 60.4392 61.6058 60.5184 61.5563C61.4395 61.0313 62.212 60.9422 62.836 61.2888C63.46 61.6454 63.777 62.3587 63.777 63.4086Z" stroke="#667085" stroke-linecap="round" stroke-linejoin="round"></path><path d="M63.7373 36.2894C62.9449 36.0021 61.9544 36.2003 60.7659 36.8838C60.0032 37.3196 59.2801 37.9435 58.567 38.7557C57.8638 39.5679 57.2398 40.5089 56.7049 41.5588C56.2691 42.4998 55.7639 43.2426 55.1994 43.7874C54.6249 44.3321 54.0405 44.6193 53.4462 44.649C52.8519 44.6886 52.4062 44.4509 52.1091 43.9359C51.8119 43.4208 51.8219 42.7671 52.1487 41.9549C53.0699 39.7461 54.298 37.7059 55.8432 35.8537C56.5761 34.9721 57.3388 34.1797 58.1213 33.4863L63.7373 36.2894Z" stroke="#667085" stroke-linecap="round" stroke-linejoin="round"></path><path d="M69.9474 35.596C69.9474 36.6459 69.7988 37.7056 69.5017 38.7555C69.4026 39.1319 69.2838 39.5085 69.1352 39.8849C68.6003 41.321 67.4613 43.6189 65.728 46.7984C64.9653 48.1751 64.4106 49.3141 64.054 50.2352C63.8163 50.8592 63.6182 51.4732 63.4697 52.0576C63.4003 52.3349 63.331 52.6024 63.2815 52.8698C63.123 53.7711 62.7862 54.6131 62.2712 55.3758C61.7561 56.1385 61.2015 56.693 60.6072 57.0298C59.894 57.4458 59.3196 57.4955 58.854 57.2083C58.3984 56.9111 58.2201 56.3563 58.3291 55.554C58.4876 54.2168 58.8045 52.9293 59.2601 51.7011C59.7257 50.4729 60.4685 48.9376 61.4986 47.0953C62.3207 45.6393 62.9843 44.4012 63.4697 43.4008C63.7767 42.7868 64.0144 42.2619 64.1927 41.8261C64.2026 41.7964 64.2125 41.7766 64.2224 41.7468C64.678 40.5781 64.9158 39.4984 64.9158 38.498C64.9158 37.3193 64.5196 36.5865 63.7371 36.2893L58.1211 33.4862C58.9828 32.7334 59.8643 32.0896 60.7657 31.5647C63.3706 30.069 65.5497 29.7125 67.3127 30.4949C69.0758 31.2774 69.9474 32.9811 69.9474 35.596Z" stroke="#667085" stroke-linecap="round" stroke-linejoin="round"></path><path d="M41.9466 101.059L22.3253 91.2429L22.1371 91.1537C21.5131 90.807 21.2061 90.094 21.2061 89.0441V76.7227L41.0156 86.6274V98.9488C41.0156 99.9988 41.3226 100.712 41.9466 101.059Z" stroke="#667085" stroke-linecap="round" stroke-linejoin="round"></path><path d="M80.3972 13.9448C79.8029 13.6675 79.1789 13.4397 78.5252 13.2416C75.4151 12.3204 72.0277 12.3701 68.3629 13.3804C65.8768 14.0737 63.2621 15.2028 60.5185 16.7876C56.7844 18.9468 53.3176 21.6309 50.1085 24.8698C49.0982 25.8702 48.1275 26.92 47.1965 28.0194C46.3149 29.0396 45.4631 30.1096 44.6311 31.2189C42.9275 33.4772 41.313 35.9236 39.7877 38.5484C34.1024 48.364 31.2597 57.932 31.2597 67.2623C31.2597 72.0463 32.1115 76.1171 33.8151 79.4451C34.6768 81.1091 35.6871 82.5253 36.8757 83.7238C37.9355 84.7836 39.1241 85.6554 40.4414 86.3388L21.2065 76.7213C18.1161 75.2752 15.7192 72.8783 14.0056 69.5404C12.302 66.2124 11.4502 62.1415 11.4502 57.3575C11.4502 48.0272 14.2929 38.4592 19.9782 28.6436C25.6734 18.828 32.587 11.5678 40.7089 6.88282C47.4838 2.97044 53.486 1.79169 58.7157 3.33683C59.4784 3.56464 60.2113 3.84208 60.8948 4.17884L61.281 4.37688L80.3972 13.9448Z" stroke="#667085" stroke-linecap="round" stroke-linejoin="round"></path></svg><div class="align-center mt-8 flex justify-center text-center text-2xl font-semibold text-color">An abnormal error occurred, please try &#x27;Reload&#x27; or &#x27;get Support&#x27; to help you solve it!</div><div class="align-center mt-2 text-center text-lg font-400 text-secondary">Unexpected token &#x27;o&#x27;, &quot;forbidden
-&quot; is not valid JSON: /api/v1/published-projects/domains/docs.kie.ai</div></div></div><div class="flex flex-col items-center justify-center p-8 text-base font-base text-secondary"><div class="inline-flex items-center text-base font-400 text-secondary _footer-logo-wrapper_1kbjg_1"><a class="_footer-logo_1kbjg_1 flex-shrink-0" aria-label="homepage link" href="https://apidog.com"><span class="inline-flex items-center"><span class="mr-[-4px]">Built with</span><svg width="61" height="18" viewBox="0 0 61 18" fill="none" xmlns="http://www.w3.org/2000/svg" class="h-[18px] w-[80px]"><path d="M12.3836 1.67806C11.6452 0.940647 10.4478 0.940647 9.70932 1.67806L8.99795 2.3884L8.30644 1.69789C7.57144 0.963937 6.37437 0.936241 5.62991 1.66043C4.88545 2.38463 4.86748 3.60515 5.61194 4.34854L6.32331 5.05888C7.80026 6.53371 10.195 6.53371 11.6723 5.05888L12.3836 4.34854C13.1221 3.61113 13.1221 2.41547 12.3836 1.67806Z" fill="#667085"></path><path d="M12.3838 13.6515L11.6729 12.9412C10.1968 11.4664 7.80339 11.4664 6.32699 12.9412L5.61603 13.6515C4.87799 14.389 4.87799 15.5846 5.61603 16.322C6.35408 17.0594 7.55076 17.0594 8.28881 16.322L8.99976 15.6117L9.69087 16.3022C10.4255 17.0361 11.6218 17.0638 12.3659 16.3396C13.1219 15.6038 13.1278 14.3949 12.3838 13.6515Z" fill="#667085"></path><path d="M15.6105 8.99642L16.3214 8.28481C17.0655 7.54009 17.0595 6.32906 16.3035 5.59191C15.5595 4.86643 14.3631 4.89418 13.6285 5.62943L13.3098 5.94851C12.1666 7.09269 10.6166 7.73526 9 7.73526C7.38344 7.73526 5.83335 7.09238 4.69023 5.94851L4.37146 5.62943C3.63689 4.89418 2.44054 4.86643 1.69652 5.59191C0.940527 6.32906 0.934542 7.54009 1.67856 8.28481L2.38951 8.99642L1.67856 9.70803C0.940527 10.4468 0.940527 11.6445 1.67856 12.3833C2.4166 13.122 3.61326 13.122 4.3513 12.3833L4.74347 11.9907C5.85225 10.8809 7.35604 10.2576 8.92409 10.2576H8.9874C10.6162 10.2576 12.1666 10.9005 13.3098 12.0446C13.5126 12.2477 13.6484 12.3836 13.6484 12.3836C14.3864 13.1223 15.5831 13.1223 16.3211 12.3836C17.0592 11.6449 17.0592 10.4471 16.3211 9.70834L15.6102 8.99673L15.6105 8.99642Z" fill="#667085"></path><path fill-rule="evenodd" clip-rule="evenodd" d="M37.3559 4.00331C37.4694 3.95752 37.5911 3.93521 37.7136 3.93768C37.8343 3.93606 37.9541 3.95884 38.0656 4.0046C38.1772 4.05035 38.2781 4.11814 38.3624 4.20384C38.4483 4.29095 38.5158 4.39418 38.561 4.50749C38.6061 4.6208 38.628 4.7419 38.6253 4.8637C38.628 4.98551 38.6061 5.10664 38.561 5.21995C38.5158 5.33326 38.4483 5.43648 38.3624 5.52357C38.2781 5.60926 38.1772 5.67705 38.0656 5.72284C37.9541 5.7686 37.8343 5.79134 37.7136 5.78975C37.5911 5.79222 37.4694 5.76989 37.3559 5.72413C37.2425 5.67837 37.1396 5.61011 37.0536 5.52357C36.9677 5.43648 36.9002 5.33326 36.8551 5.21995C36.8099 5.10664 36.7881 4.98551 36.7908 4.8637C36.7881 4.7419 36.8099 4.6208 36.8551 4.50749C36.9002 4.39418 36.9677 4.29095 37.0536 4.20384C37.1396 4.1173 37.2425 4.04907 37.3559 4.00331ZM25.6211 4.76389L24.0219 4.76389L21.175 12.7654H22.7355L23.2948 11.1795H26.371L26.9303 12.7654H28.5019L25.6211 4.76389ZM25.9403 9.91528H23.7255L24.8441 6.75459L25.9403 9.91528ZM34.4529 6.71022C33.9935 6.42603 33.4618 6.27789 32.9204 6.28324C32.4656 6.27789 32.0164 6.38257 31.6116 6.58824C31.3484 6.72112 31.1086 6.89528 30.9013 7.10393V6.38304H29.4248V15.6932H30.9181V12.0501C31.1303 12.2594 31.3736 12.4352 31.6396 12.5714C32.0799 12.7816 32.5659 12.88 33.0541 12.8577C33.5422 12.8355 34.0171 12.6932 34.4361 12.4438C34.899 12.1548 35.274 11.7466 35.5212 11.2627C35.7861 10.7302 35.9203 10.1431 35.9126 9.54929C35.923 8.96057 35.7887 8.37821 35.5212 7.8525C35.2797 7.38027 34.9096 6.98456 34.4529 6.71022ZM34.4137 9.55484C34.4161 9.91562 34.3297 10.2716 34.162 10.5918C34.0132 10.8769 33.7889 11.1165 33.5133 11.2849C33.2582 11.4309 32.9688 11.5078 32.6743 11.5078C32.3798 11.5078 32.0904 11.4309 31.8353 11.2849C31.5644 11.1203 31.341 10.8892 31.1866 10.6139C31.0195 10.284 30.937 9.91836 30.946 9.54929C30.9355 9.18364 31.0182 8.82126 31.1866 8.49571C31.331 8.22256 31.5426 7.98991 31.8018 7.81923C32.0627 7.67197 32.3573 7.59366 32.6575 7.5919C32.9606 7.59099 33.2582 7.67147 33.5188 7.82478C33.7952 7.97573 34.0193 8.20567 34.162 8.48465C34.3413 8.8105 34.4283 9.17839 34.4137 9.54929V9.55484ZM38.4519 6.38304H36.9585V12.7599H38.4519V6.38304ZM43.7037 6.56049C43.9895 6.68375 44.2509 6.85649 44.4756 7.07066V4.27038H45.9801V12.7654H44.4756V12.039C44.2733 12.2523 44.0347 12.4288 43.7709 12.5603C43.3696 12.7699 42.9211 12.8748 42.4677 12.8652C41.9296 12.8702 41.4008 12.7261 40.9408 12.4493C40.4817 12.1535 40.1078 11.7446 39.8557 11.2627C39.5908 10.7302 39.4566 10.1431 39.4642 9.54929C39.4539 8.96057 39.5882 8.37821 39.8557 7.8525C40.1049 7.3803 40.4803 6.98514 40.9408 6.71022C41.3529 6.46065 41.821 6.31637 42.3032 6.29024C42.7854 6.26412 43.2666 6.35695 43.7037 6.56049ZM44.4756 9.57146C44.4854 9.20459 44.3987 8.84147 44.2239 8.51792C44.0698 8.22608 43.835 7.98372 43.5471 7.81923C43.2921 7.67323 43.0027 7.59637 42.7082 7.59637C42.4136 7.59637 42.1243 7.67323 41.8692 7.81923C41.598 7.97735 41.377 8.20793 41.2316 8.48465C41.0626 8.80593 40.9798 9.16492 40.9911 9.52712C40.9825 9.89613 41.0651 10.2616 41.2316 10.5918C41.3883 10.8862 41.622 11.1333 41.9084 11.3071C42.1635 11.4531 42.4528 11.5299 42.7473 11.5299C43.0419 11.5299 43.3312 11.4531 43.5863 11.3071C43.8553 11.1436 44.0753 10.912 44.2239 10.6361C44.3961 10.3076 44.4826 9.94161 44.4756 9.57146ZM51.8863 6.71022C51.3775 6.44176 50.81 6.30134 50.2336 6.30134C49.6572 6.30134 49.0897 6.44176 48.5808 6.71022C48.1082 6.98053 47.7208 7.37607 47.4622 7.8525C47.1714 8.37882 47.0248 8.9715 47.0372 9.57146C47.026 10.1735 47.1684 10.7686 47.451 11.3016C47.7105 11.7817 48.0973 12.1824 48.5697 12.4605C49.0662 12.7315 49.6249 12.8709 50.1916 12.8652C50.7765 12.874 51.3541 12.7347 51.8695 12.4605C52.3652 12.1852 52.7752 11.7805 53.0553 11.2904C53.3515 10.7658 53.502 10.1726 53.4915 9.57146C53.5004 8.97048 53.35 8.37773 53.0553 7.8525C52.7813 7.37062 52.3763 6.97478 51.8863 6.71022ZM49.3639 7.81923C49.6253 7.67401 49.9199 7.59775 50.2196 7.59775C50.5193 7.59775 50.8139 7.67401 51.0753 7.81923C51.3499 7.97813 51.5716 8.21332 51.7129 8.49571C51.876 8.8305 51.9528 9.20008 51.9367 9.57146C51.9483 9.9474 51.8616 10.3199 51.685 10.6528C51.5392 10.9243 51.3204 11.1504 51.0529 11.3061C50.7853 11.4617 50.4794 11.5408 50.1693 11.5344C49.9454 11.5409 49.7227 11.4998 49.5162 11.4137C49.3097 11.3276 49.1243 11.1986 48.9724 11.0354C48.6355 10.6234 48.4678 10.1007 48.5025 9.57146C48.4901 9.19738 48.5708 8.82604 48.7374 8.4902C48.8747 8.21003 49.0927 7.97654 49.3639 7.81923ZM59.0394 7.03076V6.32653H60.5495V12.6812C60.5594 13.2247 60.4326 13.7622 60.1804 14.2449C59.9389 14.7103 59.5657 15.0957 59.1065 15.3539C58.5924 15.6305 58.0132 15.7664 57.4286 15.7476C56.67 15.7754 55.9226 15.5595 55.2977 15.1321C55.0204 14.9436 54.7884 14.6968 54.6182 14.4092C54.4481 14.1217 54.344 13.8006 54.3133 13.4686V13.3466L55.7954 13.3466C55.7954 13.6685 56.0907 13.9814 56.3547 14.134C56.6804 14.3328 57.0575 14.4331 57.4398 14.4223C57.6518 14.4311 57.8634 14.3968 58.0616 14.3215C58.2597 14.2462 58.4402 14.1314 58.592 13.9843C58.7493 13.8103 58.8699 13.6068 58.9468 13.3859C59.0236 13.1649 59.0394 12.931 59.0394 12.6978V11.9548C58.8328 12.1771 58.591 12.3644 58.3235 12.5093C57.9242 12.7189 57.4776 12.8239 57.0259 12.8143C56.4897 12.8185 55.9629 12.6744 55.5046 12.3984C55.0442 12.1041 54.6699 11.6949 54.4195 11.2117C54.1519 10.6801 54.0176 10.0924 54.0281 9.49832C54.0156 8.9094 54.1501 8.32653 54.4195 7.80153C54.6679 7.32727 55.0433 6.93011 55.5046 6.6537C55.9619 6.37401 56.4886 6.22618 57.0259 6.22672C57.4809 6.21907 57.9307 6.32389 58.3347 6.53172C58.5954 6.65891 58.8335 6.82746 59.0394 7.03076ZM58.7877 10.5796C58.9599 10.2511 59.0464 9.8851 59.0394 9.51494C59.0532 9.14059 58.9663 8.76931 58.7877 8.4392C58.6409 8.16062 58.4205 7.92682 58.1501 7.76271C57.8899 7.6138 57.5948 7.53538 57.2944 7.53538C56.994 7.53538 56.6988 7.6138 56.4387 7.76271C56.1645 7.92882 55.9419 8.16678 55.7954 8.4503C55.6308 8.76545 55.5463 9.11571 55.5494 9.4706C55.5427 9.84005 55.6271 10.2055 55.7954 10.5352C55.9406 10.827 56.1629 11.0743 56.4387 11.2505C56.6977 11.4028 56.9932 11.4832 57.2944 11.4832C57.5955 11.4832 57.8911 11.4028 58.1501 11.2505C58.419 11.0871 58.6392 10.8555 58.7877 10.5796Z" fill="#667085"></path></svg></span></a></div></div></div><script>
-            if (typeof window.__updateThemeElement === 'function') {
-              window.__updateThemeElement();
-            }
-          </script><script>((STORAGE_KEY, restoreKey) => {
-    if (!window.history.state || !window.history.state.key) {
-      let key = Math.random().toString(32).slice(2);
-      window.history.replaceState({
-        key
-      }, "");
-    }
-    try {
-      let positions = JSON.parse(sessionStorage.getItem(STORAGE_KEY) || "{}");
-      let storedY = positions[restoreKey || window.history.state.key];
-      if (typeof storedY === "number") {
-        window.scrollTo(0, storedY);
-      }
-    } catch (error) {
-      console.error(error);
-      sessionStorage.removeItem(STORAGE_KEY);
-    }
-  })("positions", null)</script><link rel="modulepreload" href="https://file-assets.apidog.com/docs-site/v1/assets/manifest-db7ef313.js"/><link rel="modulepreload" href="https://file-assets.apidog.com/docs-site/v1/assets/entry.client-mUtkjgQm.js"/><link rel="modulepreload" href="https://file-assets.apidog.com/docs-site/v1/assets/jsx-runtime-CM5sU0Q5.js"/><link rel="modulepreload" href="https://file-assets.apidog.com/docs-site/v1/assets/client-BKxavTD9.js"/><link rel="modulepreload" href="https://file-assets.apidog.com/docs-site/v1/assets/components-DMSdXhQK.js"/><link rel="modulepreload" href="https://file-assets.apidog.com/docs-site/v1/assets/root-CQ054TXt.js"/><link rel="modulepreload" href="https://file-assets.apidog.com/docs-site/v1/assets/root-Dv513fR3.js"/><link rel="modulepreload" href="https://file-assets.apidog.com/docs-site/v1/assets/route-D_6YkXJe.js"/><script>window.__remixContext = {"basename":"/","future":{"v3_fetcherPersist":true,"v3_relativeSplatPath":true,"v3_throwAbortReason":true,"v3_routeConfig":false,"v3_singleFetch":true,"v3_lazyRouteDiscovery":false,"unstable_optimizeDeps":false},"isSpaMode":false};window.__remixContext.stream = new ReadableStream({start(controller){window.__remixContext.streamController = controller;}}).pipeThrough(new TextEncoderStream());</script><script type="module" async="">import "https://file-assets.apidog.com/docs-site/v1/assets/manifest-db7ef313.js";
-import * as route0 from "https://file-assets.apidog.com/docs-site/v1/assets/root-Dv513fR3.js";
-import * as route1 from "https://file-assets.apidog.com/docs-site/v1/assets/route-D_6YkXJe.js";
+### OpenAPI Specification
 
-window.__remixRouteModules = {"root":route0,"routes/_index/route":route1};
+```yaml
+openapi: 3.0.1
+info:
+  title: ''
+  description: ''
+  version: 1.0.0
+paths:
+  /claude/v1/messages:
+    post:
+      summary: Claude Opus 4.7
+      deprecated: false
+      description: >-
+        ### Streaming Support
 
-import("https://file-assets.apidog.com/docs-site/v1/assets/entry.client-mUtkjgQm.js");</script></body></html><!--$--><script>window.__remixContext.streamController.enqueue("[{\"_1\":2,\"_231\":-5,\"_232\":-5},\"loaderData\",{\"_3\":4,\"_230\":-5},\"root\",{\"_5\":1,\"_6\":7,\"_19\":20,\"_23\":24,\"_33\":34,\"_52\":53,\"_112\":113,\"_155\":156,\"_229\":-7},\"type\",\"meta\",[8,11,16],{\"_9\":10},\"title\",\"API Documentation\",{\"_12\":13,\"_14\":15},\"name\",\"description\",\"content\",\"Design. Debug. Test. Document. Mock. Build APIs Faster \u0026 Together.\",{\"_12\":17,\"_14\":18},\"keywords\",\"API Design, API Specification, API Test, API Documentation, API Mock\",\"i18nState\",{\"_21\":22},\"clientLocale\",\"en-US\",\"errorCodeMessage\",{\"_25\":26,\"_27\":28,\"_29\":30,\"_31\":32},\"errorCode\",\"Unknown\",\"errorMessage\",\"Unexpected token 'o', \\\"forbidden\\n\\\" is not valid JSON: /api/v1/published-projects/domains/docs.kie.ai\",\"hideBuiltWith\",false,\"extra\",{},\"clientConfig\",{\"_35\":36,\"_37\":38,\"_39\":40,\"_41\":42,\"_47\":48,\"_49\":30,\"_50\":51},\"apiBaseUrl\",\"https://api.apidog.com\",\"appWebUrl\",\"https://app.apidog.com\",\"apidocBuiltinPrefixPath\",\"https://assets.apidog.com/app/static/apidoc\",\"cloudMockBaseUrls\",{\"_43\":44,\"_45\":46},\"pathMode\",\"https://mock.apidog.com/m1/{projectId}-{version}-{service}\",\"idMode\",\"https://mock.apidog.com/m2/{projectId}-{version}-{service}\",\"apidocIsShowLogo\",true,\"markdownDisableBreaks\",\"webhookGenerateCodeDefaultUrl\",\"https://your-api-server.com\",\"urlConfig\",{\"_54\":55,\"_58\":59,\"_99\":100,\"_108\":109},\"home\",{\"_56\":57},\"index\",\"https://apidog.com\",\"icon\",{\"_60\":61,\"_62\":63,\"_64\":63,\"_65\":66,\"_67\":68,\"_69\":70,\"_71\":72,\"_73\":74,\"_75\":76,\"_77\":78,\"_79\":80,\"_81\":82,\"_83\":84,\"_85\":86,\"_87\":88,\"_89\":90,\"_91\":92,\"_93\":94,\"_95\":96,\"_97\":98},\"apidoc\",\"https://assets.apidog.com/app/static/brand/apidoc.png\",\"apidog\",\"https://assets.apidog.com/app/static/brand/apidog-logo-256.png\",\"apidog europe\",\"googleDiscovery\",\"https://assets.apidog.com/app/static/brand/google-discovery.png\",\"har\",\"https://assets.apidog.com/app/static/brand/har.png\",\"iodocs\",\"https://assets.apidog.com/app/static/brand/io-doc.png\",\"jmeter\",\"https://assets.apidog.com/app/static/brand/jmeter.png\",\"openapi\",\"https://assets.apidog.com/app/static/brand/openapi.png\",\"postman\",\"https://assets.apidog.com/app/static/brand/postman.png\",\"raml\",\"https://assets.apidog.com/app/static/brand/raml.png\",\"wadl\",\"https://assets.apidog.com/app/static/brand/wadl.png\",\"curl\",\"https://assets.apidog.com/app/static/brand/curl.png\",\"insomnia\",\"https://assets.apidog.com/app/static/brand/insomnia.png\",\"wsdl\",\"https://assets.apidog.com/app/static/brand/wsdl.png\",\"markdown\",\"https://assets.apidog.com/app/static/brand/markdown.png\",\"html\",\"https://assets.apidog.com/app/static/brand/html.png\",\"protobuf\",\"https://assets.apidog.com/app/static/brand/protobuf.png\",\"soapui\",\"https://assets.apidog.com/app/static/brand/soapui.svg\",\"hoppscotch\",\"https://assets.apidog.com/app/static/brand/hoppscotch.svg\",\"javaProject\",\"https://assets.apidog.com/app/static/brand/java-project.png\",\"help\",{\"_56\":101,\"_102\":103,\"_104\":105,\"_106\":107},\"https://apidog.com/help\",\"browserExtension\",\"https://chromewebstore.google.com/detail/apidog-browser-extension/dmhljjnonlhapikmelaefohecogokhio\",\"csv\",\"https://apidog.com/help/reference/csv\",\"appMcpServer\",\"https://docs.apidog.com/apidog-mcp-server\",\"assets\",{\"_110\":111},\"logo512Png\",\"https://assets.apidog.com/static/logo/apidog-logo-512.png\",\"envConfig\",{\"_114\":60,\"_115\":116,\"_117\":116,\"_118\":119,\"_120\":121,\"_122\":123,\"_124\":57,\"_125\":62,\"_126\":22,\"_127\":128,\"_129\":130,\"_132\":133,\"_134\":135,\"_136\":137,\"_138\":139,\"_140\":141,\"_142\":143,\"_149\":150,\"_151\":48,\"_152\":153,\"_154\":30},\"RELEASE_BASE\",\"DEBUG_API_BASE\",\"\",\"DEBUG_WEB_URL_BASE\",\"AGENT_SERVER_API_BASE\",\"https://web-proxy.apidog.com\",\"APP_REGION\",\"GLOBAL\",\"APP_NAME\",\"Apidog\",\"APP_HOMEPAGE\",\"APP_NAME_LOWER\",\"DEFAULT_LOCALE\",\"APP_BROWSER_EXTENSION_ADAPTER\",\"apidogAgentCrossRequest\",\"APP_API_SERVER_HOSTNAMES\",[131],\"api.apidog.com\",\"APP_SUPPORT_EMAIL\",\"support@apidog.com\",\"APP_SCRIPT_MAIN_OBJECTS\",\"$\",\"SERVER_PROTOCOL\",\"http\",\"SERVER_HOST\",\"apidog-api-fordoc-svc\",\"DEFAULT_DOC_LAYOUT\",\"TwoColumn\",\"NOT_CUSTOM_DOMAIN_HOSTNAMES\",[144,145,146,147,148],\"www.apidog.com\",\"apidog.com\",\"www.apidog.io\",\"apidog.io\",\"share.apidog.com\",\"SERVER_REQUEST_TIMEOUT\",15000,\"IS_SHARED_DOC_INDEPENDENT_DOMAIN\",\"APIDOC_CUSTOM_DOMAIN_CNAME_REGEX\",[\"R\",\"\\\\d+\\\\.cname\\\\.apidog\\\\.com\",\"\"],\"IS_ALWAYS_USE_ORIGIN_FETCH\",\"docsDataState\",{\"_157\":158,\"_162\":163,\"_175\":176,\"_177\":178,\"_179\":180,\"_189\":190,\"_202\":203,\"_204\":205,\"_206\":207,\"_213\":214,\"_220\":-7,\"_221\":222,\"_223\":-7,\"_224\":-7,\"_225\":226,\"_228\":-7},\"navigation\",{\"_5\":159,\"_160\":161},\"NONE\",\"navRightLinkItems\",[],\"sidebarTree\",{\"_164\":-7,\"_165\":-7,\"_166\":167,\"_168\":-7,\"_169\":170,\"_171\":-7,\"_172\":-7,\"_173\":174},\"goBackSidebarTreeApiFolderNode\",\"rootSidebarTreeApiFolderNode\",\"sidebarTreeList\",[],\"selectedSidebarTreeNode\",\"parentSidebarTreeApiFolderNodes\",[],\"previousSidebarTreeNode\",\"nextSidebarTreeNode\",\"homeLink\",\"/\",\"docsBaseConfig\",{},\"versionList\",[],\"resourceData\",{\"_5\":181,\"_182\":-7,\"_183\":184},\"NotFound\",\"data\",\"extraData\",{\"_185\":186,\"_187\":188},\"apiFieldList\",[],\"dataSchemaDefinitions\",{},\"docsIdTypeData\",{\"_191\":192,\"_193\":194,\"_195\":194,\"_196\":194,\"_197\":116,\"_198\":194,\"_199\":200,\"_201\":-7},\"onlineType\",\"APIDOC\",\"branchId\",0,\"onlineId\",\"projectId\",\"subdirectory\",\"teamId\",\"visitType\",\"customDomain\",\"specialFileType\",\"notification\",[],\"footerBanner\",[],\"projectSetting\",{\"_208\":209,\"_210\":211},\"advancedSettings\",{},\"auth\",{\"_5\":212},\"noauth\",\"environments\",{\"_215\":216,\"_217\":-7,\"_218\":219},\"environmentList\",[],\"selectedEnvironment\",\"servers\",[],\"searchSettings\",\"versionSettings\",[],\"seoInfos\",\"itemPathPrefix\",\"appEnvMap\",{\"_227\":128},\"appBrowserExtensionAdapterKey\",\"customCodes\",\"primaryColorVariable\",\"routes/_index/route\",\"actionData\",\"errors\"]\n");</script><!--$--><script>window.__remixContext.streamController.close();</script><!--/$--><!--/$-->
+        When `stream: true` is set in the request, the API returns responses as
+        server-sent events (SSE). Claude tool calling responses stream
+        `tool_use` blocks and `input_json_delta` fragments.
+
+        **Streaming Response Format:**
+
+        - Content-Type: `text/event-stream`
+
+        - Event names include `message_start`, `content_block_start`,
+        `content_block_delta`, `message_delta`, and `message_stop`
+
+        - Tool calls are emitted as `tool_use` content blocks
+
+        - Final stop reason is often `tool_use` for function-calling requests
+
+        ## Features
+
+        - Standard chat with `messages`.
+
+        - Function calling with `tools` and `input_schema`.
+
+        - Optional stream response with Claude events.
+
+        - Optional project-specific thinking flag.
+
+        ## Request Notes
+
+        - Put the current model name in the `model` field.
+
+        - Use `messages` for conversation history.
+
+        - Use `tools` to declare callable functions.
+
+        - Set `stream` to `true` for SSE output.
+
+        ## Authentication
+
+        Use the auth configuration for `X-Api-Key` and `anthropic-version`. Do
+        not add them as regular request parameters.
+      operationId: claude_opus_4_7
+      tags:
+        - docs/en/Market/Chat  Models/Claude
+      parameters: []
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                model:
+                  type: string
+                  description: Model name. It must match the current document.
+                  enum:
+                    - claude-opus-4-7
+                  x-apidog-enum:
+                    - value: claude-opus-4-7
+                      name: ''
+                      description: ''
+                  examples:
+                    - claude-opus-4-7
+                messages:
+                  type: array
+                  description: Conversation messages in chronological order.
+                  items:
+                    type: object
+                    properties:
+                      role:
+                        type: string
+                        enum:
+                          - user
+                          - assistant
+                        description: Message role.
+                        examples:
+                          - user
+                      content:
+                        oneOf:
+                          - type: string
+                            description: Plain text content.
+                          - type: array
+                            description: Structured content blocks.
+                            items:
+                              type: object
+                              additionalProperties: true
+                              x-apidog-orders: []
+                        description: Message content.
+                        examples:
+                          - What is the weather like in Boston today?
+                    required:
+                      - role
+                      - content
+                    x-apidog-orders:
+                      - role
+                      - content
+                  minItems: 1
+                tools:
+                  type: array
+                  description: >-
+                    Optional callable tools. Each tool includes a name,
+                    description, and input_schema.
+                  items:
+                    type: object
+                    properties:
+                      name:
+                        type: string
+                        description: Function name.
+                        examples:
+                          - get_current_weather
+                      description:
+                        type: string
+                        description: Human-readable function description.
+                        examples:
+                          - Get the current weather in a given location
+                      input_schema:
+                        type: object
+                        description: JSON Schema for function parameters.
+                        properties:
+                          type:
+                            type: string
+                            description: Schema type.
+                            examples:
+                              - object
+                          properties:
+                            type: object
+                            description: Function parameter definitions.
+                            additionalProperties: true
+                            x-apidog-orders: []
+                            properties: {}
+                          required:
+                            type: array
+                            description: Required parameter names.
+                            items:
+                              type: string
+                        x-apidog-orders:
+                          - type
+                          - properties
+                          - required
+                        examples:
+                          - type: object
+                            properties:
+                              location:
+                                type: string
+                                description: The city and state, e.g. Boston, MA
+                            required:
+                              - location
+                    required:
+                      - name
+                      - description
+                      - input_schema
+                    x-apidog-orders:
+                      - name
+                      - description
+                      - input_schema
+                thinkingFlag:
+                  type: boolean
+                  description: >-
+                    Project-specific thinking flag used by the current Claude
+                    adapter.
+                  examples:
+                    - true
+                stream:
+                  type: boolean
+                  default: true
+                  description: If set to true, the response is returned as an SSE stream.
+                  examples:
+                    - false
+                max_tokens:
+                  type: number
+                  default: 4096
+                  examples:
+                    - 4096
+                  description: >-
+                    Optional Claude output token limit. Leave empty to use the
+                    default of 4096.
+              required:
+                - model
+                - messages
+              x-apidog-orders:
+                - model
+                - messages
+                - tools
+                - thinkingFlag
+                - stream
+                - max_tokens
+              examples:
+                - model: claude-opus-4-6-v1messages
+                  messages:
+                    - role: user
+                      content: What is the weather like in Boston today?
+                  tools:
+                    - name: get_current_weather
+                      description: Get the current weather in a given location
+                      input_schema:
+                        type: object
+                        properties:
+                          location:
+                            type: string
+                            description: The city and state, e.g. Boston, MA
+                        required:
+                          - location
+                  thinkingFlag: true
+                  stream: false
+            example:
+              model: claude-opus-4-7
+              messages:
+                - role: user
+                  content: What is the weather like in Boston today?
+              tools:
+                - name: get_current_weather
+                  description: Get the current weather in a given location
+                  input_schema:
+                    type: object
+                    properties:
+                      location:
+                        type: string
+                        description: The city and state, e.g. Boston, MA
+                    required:
+                      - location
+              thinkingFlag: true
+              stream: false
+              max_tokens: 4096
+      responses:
+        '200':
+          description: Request successful.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  role:
+                    type: string
+                    description: Returned message role
+                    examples:
+                      - assistant
+                  usage:
+                    type: object
+                    description: Usage information returned by the provider
+                    properties:
+                      input_tokens:
+                        type: integer
+                        description: Input token count
+                        examples:
+                          - 600
+                      output_tokens:
+                        type: integer
+                        description: Output token count
+                        examples:
+                          - 57
+                      cache_creation_input_tokens:
+                        type: integer
+                        description: Cache creation input token count
+                        examples:
+                          - 0
+                      cache_read_input_tokens:
+                        type: integer
+                        description: Cache read input token count
+                        examples:
+                          - 0
+                      service_tier:
+                        type: string
+                        description: Service tier
+                        examples:
+                          - standard
+                    x-apidog-orders:
+                      - input_tokens
+                      - output_tokens
+                      - cache_creation_input_tokens
+                      - cache_read_input_tokens
+                      - service_tier
+                  stop_reason:
+                    type: string
+                    description: Reason why generation stopped
+                    examples:
+                      - tool_use
+                  model:
+                    type: string
+                    description: Actual model version returned by the provider
+                    examples:
+                      - claude-opus-4-5-20251101
+                  id:
+                    type: string
+                    description: Unique message identifier
+                    examples:
+                      - msg_01VSoxV4a8YWB3DBh9TdM63W
+                  credits_consumed:
+                    type: number
+                    description: Credits consumed by the request
+                    examples:
+                      - 0.25
+                  type:
+                    type: string
+                    description: Top-level response object type
+                    examples:
+                      - message
+                  content:
+                    type: array
+                    description: Response content blocks
+                    items:
+                      type: object
+                      properties:
+                        input:
+                          type: object
+                          description: Tool input arguments
+                          additionalProperties: true
+                          x-apidog-orders: []
+                          properties: {}
+                        caller:
+                          type: object
+                          description: Tool caller metadata
+                          properties:
+                            type:
+                              type: string
+                              examples:
+                                - direct
+                          x-apidog-orders:
+                            - type
+                        name:
+                          type: string
+                          description: Tool name
+                          examples:
+                            - get_current_weather
+                        id:
+                          type: string
+                          description: Tool call identifier
+                          examples:
+                            - toolu_018gdqs2FHxrRjQHLZv1qvbF
+                        type:
+                          type: string
+                          description: Content block type
+                          examples:
+                            - tool_use
+                      x-apidog-orders:
+                        - input
+                        - caller
+                        - name
+                        - id
+                        - type
+                x-apidog-orders:
+                  - role
+                  - usage
+                  - stop_reason
+                  - model
+                  - id
+                  - credits_consumed
+                  - type
+                  - content
+              example:
+                role: assistant
+                usage:
+                  cache_creation:
+                    ephemeral_1h_input_tokens: 0
+                    ephemeral_5m_input_tokens: 0
+                  output_tokens: 57
+                  service_tier: standard
+                  cache_creation_input_tokens: 0
+                  input_tokens: 600
+                  cache_read_input_tokens: 0
+                  inference_geo: not_available
+                stop_reason: tool_use
+                model: claude-opus-4-5-20251101
+                id: msg_01VSoxV4a8YWB3DBh9TdM63W
+                credits_consumed: 0.25
+                type: message
+                content:
+                  - input:
+                      location: Beijing, China
+                    caller:
+                      type: direct
+                    name: get_current_weather
+                    id: toolu_018gdqs2FHxrRjQHLZv1qvbF
+                    type: tool_use
+          headers: {}
+          x-apidog-name: ''
+        '400':
+          description: Bad Request - Invalid request parameters
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: object
+                    properties:
+                      message:
+                        type: string
+                        examples:
+                          - Invalid request parameters
+                      type:
+                        type: string
+                        examples:
+                          - invalid_request_error
+                    x-apidog-orders:
+                      - message
+                      - type
+                x-apidog-orders:
+                  - error
+          headers: {}
+          x-apidog-name: ''
+        '401':
+          description: Unauthorized - Invalid or missing API key
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: object
+                    properties:
+                      message:
+                        type: string
+                        examples:
+                          - Invalid or missing API key
+                      type:
+                        type: string
+                        examples:
+                          - authentication_error
+                    x-apidog-orders:
+                      - message
+                      - type
+                x-apidog-orders:
+                  - error
+          headers: {}
+          x-apidog-name: ''
+      security: []
+      x-apidog-folder: docs/en/Market/Chat  Models/Claude
+      x-apidog-status: released
+      x-run-in-apidog: https://app.apidog.com/web/project/1184766/apis/api-34931118-run
+components:
+  schemas: {}
+  securitySchemes:
+    BearerAuth:
+      type: bearer
+      scheme: bearer
+      bearerFormat: API Key
+      description: >-
+        All API requests require a Bearer Token. Add the header `Authorization:
+        Bearer YOUR_API_KEY` to authenticate requests.
+    BearerAuth1:
+      type: bearer
+      scheme: bearer
+      bearerFormat: API Key
+      description: >-
+        所有 API 请求都需要 Bearer Token。请在请求头中添加 `Authorization: Bearer YOUR_API_KEY`
+        进行身份验证。
+servers:
+  - url: https://api.kie.ai
+    description: 正式环境
+security:
+  - BearerAuth: []
+    x-apidog:
+      schemeGroups:
+        - id: kn8M4YUlc5i0A0179ezwx
+          schemeIds:
+            - BearerAuth
+      required: true
+      use:
+        id: kn8M4YUlc5i0A0179ezwx
+      scopes:
+        kn8M4YUlc5i0A0179ezwx:
+          BearerAuth: []
+
+```
 
 ---
 
@@ -61317,40 +63504,483 @@ import("https://file-assets.apidog.com/docs-site/v1/assets/entry.client-mUtkjgQm
 
 **Source:** [https://docs.kie.ai/market/claude/claude-opus-4-8.md][153]
 
-<!DOCTYPE html><html lang="en-US" class="group/root" id="html" data-theme="light" data-accent-color="purple"><head><script src="https://file-assets.apidog.com/docs-site/v1/assets/prepareDocsConfigScript-CLIBKQbk.js"></script><script>__prepareDocsConfigScript(JSON.parse("{\"theme\":\"system\",\"themePrimarySettings\":{\"light\":{\"accentColor\":\"purple\"},\"dark\":{\"accentColor\":\"purple\"}},\"logoSettings\":{\"light\":{\"icon\":\"\",\"type\":\"project\"},\"dark\":{\"icon\":\"\",\"type\":\"followLight\"}},\"backgroundImageSettings\":{\"light\":{\"type\":\"custom\",\"color\":\"\"},\"dark\":{\"type\":\"followLight\",\"color\":\"\"}},\"id\":0,\"subdirectory\":\"\"}"));</script><script>window.eventTracking = {
-      dataLayer: []
-    }
-    window.eventTracking.report = function(){
-        window.eventTracking.dataLayer.push(arguments);
-    }</script><meta charSet="utf-8"/><meta name="viewport" content="width=device-width, initial-scale=1"/><title>API Documentation</title><meta name="description" content="Design. Debug. Test. Document. Mock. Build APIs Faster &amp; Together."/><meta name="keywords" content="API Design, API Specification, API Test, API Documentation, API Mock"/><link rel="stylesheet" href="https://file-assets.apidog.com/docs-site/v1/assets/root-CpC_E1fb.css"/></head><body class="overflow-hidden g-body"><div class="flex h-full w-full flex-col overflow-auto"><div class="flex flex-1 flex-col items-center justify-center"><div class="flex w-auto flex-col items-center justify-center max-os:p-5 os:w-[480px]"><svg width="104" height="104" viewBox="0 0 104 104" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M92.9557 41.8969L88.7262 25.2175C87.4089 19.8194 84.8039 16.1447 80.9015 14.1934L80.3963 13.9458C79.802 13.6685 79.178 13.4407 78.5243 13.2426C75.4142 12.3214 72.0268 12.371 68.362 13.3813C65.8759 14.0747 63.2612 15.2038 60.5176 16.7886C56.7835 18.9478 53.3167 21.6319 50.1076 24.8708C49.0973 25.8711 48.1266 26.9209 47.1956 28.0204C46.314 29.0406 45.4622 30.1105 44.6302 31.2198C42.9266 33.4781 41.3121 35.9245 39.7868 38.5492C34.1015 48.3648 31.2588 57.9329 31.2588 67.2631C31.2588 72.0471 32.1106 76.1181 33.8142 79.4461C34.6759 81.1101 35.6862 82.5263 36.8748 83.7248C37.9346 84.7846 39.1232 85.6564 40.4405 86.3398L41.0151 86.627V98.9485C41.0151 99.9984 41.3221 100.712 41.9461 101.058C42.5701 101.415 43.3426 101.326 44.2637 100.801L67.0249 87.6571C67.946 87.1223 68.7186 86.3199 69.3426 85.2502C69.9666 84.1706 70.2736 83.1008 70.2736 82.0509V78.3169L76.7811 74.5629C78.5639 73.5328 80.0993 71.9184 81.377 69.7195C82.6448 67.5207 83.2786 65.4011 83.2786 63.341V52.1485L89.786 48.3946C90.8657 47.7706 91.7373 46.79 92.391 45.4429C93.0348 44.1058 93.2231 42.927 92.9557 41.8969ZM62.8352 66.6095C62.2112 67.6891 61.4387 68.4914 60.5176 69.0263C59.5964 69.5512 58.8237 69.6404 58.1997 69.2838C57.5856 68.9371 57.2687 68.2238 57.2687 67.164C57.2687 66.1042 57.5856 65.0445 58.1997 63.9748C58.2592 63.8658 58.3186 63.7667 58.378 63.6676C58.9129 62.8356 59.5468 62.1819 60.2797 61.7164C60.359 61.6569 60.4383 61.6075 60.5176 61.558C61.4387 61.033 62.2112 60.9439 62.8352 61.2906C63.4592 61.6471 63.7761 62.3604 63.7761 63.4103C63.7761 64.4602 63.4592 65.5398 62.8352 66.6095ZM69.5011 38.7572C69.402 39.1336 69.2832 39.5101 69.1346 39.8865C68.5997 41.3227 67.4607 43.6206 65.7274 46.8C64.9647 48.1768 64.41 49.3158 64.0535 50.237C63.8157 50.861 63.6176 51.4748 63.4691 52.0592C63.3997 52.3366 63.3304 52.6041 63.2809 52.8715C63.1224 53.7729 62.7856 54.6148 62.2706 55.3774C61.7556 56.1401 61.2009 56.6948 60.6066 57.0315C59.8935 57.4475 59.319 57.4971 58.8535 57.2099C58.3978 56.9128 58.2196 56.358 58.3285 55.5557C58.487 54.2186 58.8039 52.931 59.2596 51.7029C59.7251 50.4747 60.4679 48.9392 61.498 47.0969C62.3201 45.6409 62.9837 44.4029 63.4691 43.4026C63.7761 42.7885 64.0138 42.2636 64.1921 41.8278C64.202 41.7981 64.2119 41.7782 64.2218 41.7485C64.6775 40.5797 64.9153 39.5001 64.9153 38.4997C64.9153 37.321 64.5191 36.5881 63.7366 36.2909C62.9442 36.0037 61.9537 36.2019 60.7652 36.8853C60.0025 37.3211 59.2794 37.945 58.5662 38.7572C57.863 39.5694 57.239 40.5105 56.7041 41.5604C56.2683 42.5013 55.7632 43.2442 55.1986 43.7889C54.6241 44.3337 54.0397 44.6209 53.4455 44.6506C52.8512 44.6902 52.4055 44.4525 52.1083 43.9374C51.8112 43.4224 51.8211 42.7687 52.1479 41.9565C53.0691 39.7477 54.2973 37.7074 55.8424 35.8552C56.5754 34.9737 57.338 34.1811 58.1205 33.4878C58.9822 32.735 59.8638 32.0913 60.7652 31.5664C63.3701 30.0708 65.5491 29.7141 67.3121 30.4966C69.0752 31.279 69.9468 32.9829 69.9468 35.5977C69.9468 36.6476 69.7982 37.7073 69.5011 38.7572Z" stroke="#667085" stroke-linecap="round" stroke-linejoin="round"></path><path d="M63.777 63.4086C63.777 64.4684 63.46 65.5381 62.836 66.6078C62.212 67.6874 61.4395 68.4896 60.5184 69.0245C59.5972 69.5494 58.8246 69.6387 58.2006 69.2821C57.5865 68.9354 57.2695 68.2221 57.2695 67.1623C57.2695 66.1025 57.5865 65.0428 58.2006 63.973C58.26 63.8641 58.3194 63.7649 58.3789 63.6659C58.9137 62.8339 59.5476 62.1802 60.2806 61.7147C60.3598 61.6552 60.4392 61.6058 60.5184 61.5563C61.4395 61.0313 62.212 60.9422 62.836 61.2888C63.46 61.6454 63.777 62.3587 63.777 63.4086Z" stroke="#667085" stroke-linecap="round" stroke-linejoin="round"></path><path d="M63.7373 36.2894C62.9449 36.0021 61.9544 36.2003 60.7659 36.8838C60.0032 37.3196 59.2801 37.9435 58.567 38.7557C57.8638 39.5679 57.2398 40.5089 56.7049 41.5588C56.2691 42.4998 55.7639 43.2426 55.1994 43.7874C54.6249 44.3321 54.0405 44.6193 53.4462 44.649C52.8519 44.6886 52.4062 44.4509 52.1091 43.9359C51.8119 43.4208 51.8219 42.7671 52.1487 41.9549C53.0699 39.7461 54.298 37.7059 55.8432 35.8537C56.5761 34.9721 57.3388 34.1797 58.1213 33.4863L63.7373 36.2894Z" stroke="#667085" stroke-linecap="round" stroke-linejoin="round"></path><path d="M69.9474 35.596C69.9474 36.6459 69.7988 37.7056 69.5017 38.7555C69.4026 39.1319 69.2838 39.5085 69.1352 39.8849C68.6003 41.321 67.4613 43.6189 65.728 46.7984C64.9653 48.1751 64.4106 49.3141 64.054 50.2352C63.8163 50.8592 63.6182 51.4732 63.4697 52.0576C63.4003 52.3349 63.331 52.6024 63.2815 52.8698C63.123 53.7711 62.7862 54.6131 62.2712 55.3758C61.7561 56.1385 61.2015 56.693 60.6072 57.0298C59.894 57.4458 59.3196 57.4955 58.854 57.2083C58.3984 56.9111 58.2201 56.3563 58.3291 55.554C58.4876 54.2168 58.8045 52.9293 59.2601 51.7011C59.7257 50.4729 60.4685 48.9376 61.4986 47.0953C62.3207 45.6393 62.9843 44.4012 63.4697 43.4008C63.7767 42.7868 64.0144 42.2619 64.1927 41.8261C64.2026 41.7964 64.2125 41.7766 64.2224 41.7468C64.678 40.5781 64.9158 39.4984 64.9158 38.498C64.9158 37.3193 64.5196 36.5865 63.7371 36.2893L58.1211 33.4862C58.9828 32.7334 59.8643 32.0896 60.7657 31.5647C63.3706 30.069 65.5497 29.7125 67.3127 30.4949C69.0758 31.2774 69.9474 32.9811 69.9474 35.596Z" stroke="#667085" stroke-linecap="round" stroke-linejoin="round"></path><path d="M41.9466 101.059L22.3253 91.2429L22.1371 91.1537C21.5131 90.807 21.2061 90.094 21.2061 89.0441V76.7227L41.0156 86.6274V98.9488C41.0156 99.9988 41.3226 100.712 41.9466 101.059Z" stroke="#667085" stroke-linecap="round" stroke-linejoin="round"></path><path d="M80.3972 13.9448C79.8029 13.6675 79.1789 13.4397 78.5252 13.2416C75.4151 12.3204 72.0277 12.3701 68.3629 13.3804C65.8768 14.0737 63.2621 15.2028 60.5185 16.7876C56.7844 18.9468 53.3176 21.6309 50.1085 24.8698C49.0982 25.8702 48.1275 26.92 47.1965 28.0194C46.3149 29.0396 45.4631 30.1096 44.6311 31.2189C42.9275 33.4772 41.313 35.9236 39.7877 38.5484C34.1024 48.364 31.2597 57.932 31.2597 67.2623C31.2597 72.0463 32.1115 76.1171 33.8151 79.4451C34.6768 81.1091 35.6871 82.5253 36.8757 83.7238C37.9355 84.7836 39.1241 85.6554 40.4414 86.3388L21.2065 76.7213C18.1161 75.2752 15.7192 72.8783 14.0056 69.5404C12.302 66.2124 11.4502 62.1415 11.4502 57.3575C11.4502 48.0272 14.2929 38.4592 19.9782 28.6436C25.6734 18.828 32.587 11.5678 40.7089 6.88282C47.4838 2.97044 53.486 1.79169 58.7157 3.33683C59.4784 3.56464 60.2113 3.84208 60.8948 4.17884L61.281 4.37688L80.3972 13.9448Z" stroke="#667085" stroke-linecap="round" stroke-linejoin="round"></path></svg><div class="align-center mt-8 flex justify-center text-center text-2xl font-semibold text-color">An abnormal error occurred, please try &#x27;Reload&#x27; or &#x27;get Support&#x27; to help you solve it!</div><div class="align-center mt-2 text-center text-lg font-400 text-secondary">Unexpected token &#x27;o&#x27;, &quot;forbidden
-&quot; is not valid JSON: /api/v1/published-projects/domains/docs.kie.ai</div></div></div><div class="flex flex-col items-center justify-center p-8 text-base font-base text-secondary"><div class="inline-flex items-center text-base font-400 text-secondary _footer-logo-wrapper_1kbjg_1"><a class="_footer-logo_1kbjg_1 flex-shrink-0" aria-label="homepage link" href="https://apidog.com"><span class="inline-flex items-center"><span class="mr-[-4px]">Built with</span><svg width="61" height="18" viewBox="0 0 61 18" fill="none" xmlns="http://www.w3.org/2000/svg" class="h-[18px] w-[80px]"><path d="M12.3836 1.67806C11.6452 0.940647 10.4478 0.940647 9.70932 1.67806L8.99795 2.3884L8.30644 1.69789C7.57144 0.963937 6.37437 0.936241 5.62991 1.66043C4.88545 2.38463 4.86748 3.60515 5.61194 4.34854L6.32331 5.05888C7.80026 6.53371 10.195 6.53371 11.6723 5.05888L12.3836 4.34854C13.1221 3.61113 13.1221 2.41547 12.3836 1.67806Z" fill="#667085"></path><path d="M12.3838 13.6515L11.6729 12.9412C10.1968 11.4664 7.80339 11.4664 6.32699 12.9412L5.61603 13.6515C4.87799 14.389 4.87799 15.5846 5.61603 16.322C6.35408 17.0594 7.55076 17.0594 8.28881 16.322L8.99976 15.6117L9.69087 16.3022C10.4255 17.0361 11.6218 17.0638 12.3659 16.3396C13.1219 15.6038 13.1278 14.3949 12.3838 13.6515Z" fill="#667085"></path><path d="M15.6105 8.99642L16.3214 8.28481C17.0655 7.54009 17.0595 6.32906 16.3035 5.59191C15.5595 4.86643 14.3631 4.89418 13.6285 5.62943L13.3098 5.94851C12.1666 7.09269 10.6166 7.73526 9 7.73526C7.38344 7.73526 5.83335 7.09238 4.69023 5.94851L4.37146 5.62943C3.63689 4.89418 2.44054 4.86643 1.69652 5.59191C0.940527 6.32906 0.934542 7.54009 1.67856 8.28481L2.38951 8.99642L1.67856 9.70803C0.940527 10.4468 0.940527 11.6445 1.67856 12.3833C2.4166 13.122 3.61326 13.122 4.3513 12.3833L4.74347 11.9907C5.85225 10.8809 7.35604 10.2576 8.92409 10.2576H8.9874C10.6162 10.2576 12.1666 10.9005 13.3098 12.0446C13.5126 12.2477 13.6484 12.3836 13.6484 12.3836C14.3864 13.1223 15.5831 13.1223 16.3211 12.3836C17.0592 11.6449 17.0592 10.4471 16.3211 9.70834L15.6102 8.99673L15.6105 8.99642Z" fill="#667085"></path><path fill-rule="evenodd" clip-rule="evenodd" d="M37.3559 4.00331C37.4694 3.95752 37.5911 3.93521 37.7136 3.93768C37.8343 3.93606 37.9541 3.95884 38.0656 4.0046C38.1772 4.05035 38.2781 4.11814 38.3624 4.20384C38.4483 4.29095 38.5158 4.39418 38.561 4.50749C38.6061 4.6208 38.628 4.7419 38.6253 4.8637C38.628 4.98551 38.6061 5.10664 38.561 5.21995C38.5158 5.33326 38.4483 5.43648 38.3624 5.52357C38.2781 5.60926 38.1772 5.67705 38.0656 5.72284C37.9541 5.7686 37.8343 5.79134 37.7136 5.78975C37.5911 5.79222 37.4694 5.76989 37.3559 5.72413C37.2425 5.67837 37.1396 5.61011 37.0536 5.52357C36.9677 5.43648 36.9002 5.33326 36.8551 5.21995C36.8099 5.10664 36.7881 4.98551 36.7908 4.8637C36.7881 4.7419 36.8099 4.6208 36.8551 4.50749C36.9002 4.39418 36.9677 4.29095 37.0536 4.20384C37.1396 4.1173 37.2425 4.04907 37.3559 4.00331ZM25.6211 4.76389L24.0219 4.76389L21.175 12.7654H22.7355L23.2948 11.1795H26.371L26.9303 12.7654H28.5019L25.6211 4.76389ZM25.9403 9.91528H23.7255L24.8441 6.75459L25.9403 9.91528ZM34.4529 6.71022C33.9935 6.42603 33.4618 6.27789 32.9204 6.28324C32.4656 6.27789 32.0164 6.38257 31.6116 6.58824C31.3484 6.72112 31.1086 6.89528 30.9013 7.10393V6.38304H29.4248V15.6932H30.9181V12.0501C31.1303 12.2594 31.3736 12.4352 31.6396 12.5714C32.0799 12.7816 32.5659 12.88 33.0541 12.8577C33.5422 12.8355 34.0171 12.6932 34.4361 12.4438C34.899 12.1548 35.274 11.7466 35.5212 11.2627C35.7861 10.7302 35.9203 10.1431 35.9126 9.54929C35.923 8.96057 35.7887 8.37821 35.5212 7.8525C35.2797 7.38027 34.9096 6.98456 34.4529 6.71022ZM34.4137 9.55484C34.4161 9.91562 34.3297 10.2716 34.162 10.5918C34.0132 10.8769 33.7889 11.1165 33.5133 11.2849C33.2582 11.4309 32.9688 11.5078 32.6743 11.5078C32.3798 11.5078 32.0904 11.4309 31.8353 11.2849C31.5644 11.1203 31.341 10.8892 31.1866 10.6139C31.0195 10.284 30.937 9.91836 30.946 9.54929C30.9355 9.18364 31.0182 8.82126 31.1866 8.49571C31.331 8.22256 31.5426 7.98991 31.8018 7.81923C32.0627 7.67197 32.3573 7.59366 32.6575 7.5919C32.9606 7.59099 33.2582 7.67147 33.5188 7.82478C33.7952 7.97573 34.0193 8.20567 34.162 8.48465C34.3413 8.8105 34.4283 9.17839 34.4137 9.54929V9.55484ZM38.4519 6.38304H36.9585V12.7599H38.4519V6.38304ZM43.7037 6.56049C43.9895 6.68375 44.2509 6.85649 44.4756 7.07066V4.27038H45.9801V12.7654H44.4756V12.039C44.2733 12.2523 44.0347 12.4288 43.7709 12.5603C43.3696 12.7699 42.9211 12.8748 42.4677 12.8652C41.9296 12.8702 41.4008 12.7261 40.9408 12.4493C40.4817 12.1535 40.1078 11.7446 39.8557 11.2627C39.5908 10.7302 39.4566 10.1431 39.4642 9.54929C39.4539 8.96057 39.5882 8.37821 39.8557 7.8525C40.1049 7.3803 40.4803 6.98514 40.9408 6.71022C41.3529 6.46065 41.821 6.31637 42.3032 6.29024C42.7854 6.26412 43.2666 6.35695 43.7037 6.56049ZM44.4756 9.57146C44.4854 9.20459 44.3987 8.84147 44.2239 8.51792C44.0698 8.22608 43.835 7.98372 43.5471 7.81923C43.2921 7.67323 43.0027 7.59637 42.7082 7.59637C42.4136 7.59637 42.1243 7.67323 41.8692 7.81923C41.598 7.97735 41.377 8.20793 41.2316 8.48465C41.0626 8.80593 40.9798 9.16492 40.9911 9.52712C40.9825 9.89613 41.0651 10.2616 41.2316 10.5918C41.3883 10.8862 41.622 11.1333 41.9084 11.3071C42.1635 11.4531 42.4528 11.5299 42.7473 11.5299C43.0419 11.5299 43.3312 11.4531 43.5863 11.3071C43.8553 11.1436 44.0753 10.912 44.2239 10.6361C44.3961 10.3076 44.4826 9.94161 44.4756 9.57146ZM51.8863 6.71022C51.3775 6.44176 50.81 6.30134 50.2336 6.30134C49.6572 6.30134 49.0897 6.44176 48.5808 6.71022C48.1082 6.98053 47.7208 7.37607 47.4622 7.8525C47.1714 8.37882 47.0248 8.9715 47.0372 9.57146C47.026 10.1735 47.1684 10.7686 47.451 11.3016C47.7105 11.7817 48.0973 12.1824 48.5697 12.4605C49.0662 12.7315 49.6249 12.8709 50.1916 12.8652C50.7765 12.874 51.3541 12.7347 51.8695 12.4605C52.3652 12.1852 52.7752 11.7805 53.0553 11.2904C53.3515 10.7658 53.502 10.1726 53.4915 9.57146C53.5004 8.97048 53.35 8.37773 53.0553 7.8525C52.7813 7.37062 52.3763 6.97478 51.8863 6.71022ZM49.3639 7.81923C49.6253 7.67401 49.9199 7.59775 50.2196 7.59775C50.5193 7.59775 50.8139 7.67401 51.0753 7.81923C51.3499 7.97813 51.5716 8.21332 51.7129 8.49571C51.876 8.8305 51.9528 9.20008 51.9367 9.57146C51.9483 9.9474 51.8616 10.3199 51.685 10.6528C51.5392 10.9243 51.3204 11.1504 51.0529 11.3061C50.7853 11.4617 50.4794 11.5408 50.1693 11.5344C49.9454 11.5409 49.7227 11.4998 49.5162 11.4137C49.3097 11.3276 49.1243 11.1986 48.9724 11.0354C48.6355 10.6234 48.4678 10.1007 48.5025 9.57146C48.4901 9.19738 48.5708 8.82604 48.7374 8.4902C48.8747 8.21003 49.0927 7.97654 49.3639 7.81923ZM59.0394 7.03076V6.32653H60.5495V12.6812C60.5594 13.2247 60.4326 13.7622 60.1804 14.2449C59.9389 14.7103 59.5657 15.0957 59.1065 15.3539C58.5924 15.6305 58.0132 15.7664 57.4286 15.7476C56.67 15.7754 55.9226 15.5595 55.2977 15.1321C55.0204 14.9436 54.7884 14.6968 54.6182 14.4092C54.4481 14.1217 54.344 13.8006 54.3133 13.4686V13.3466L55.7954 13.3466C55.7954 13.6685 56.0907 13.9814 56.3547 14.134C56.6804 14.3328 57.0575 14.4331 57.4398 14.4223C57.6518 14.4311 57.8634 14.3968 58.0616 14.3215C58.2597 14.2462 58.4402 14.1314 58.592 13.9843C58.7493 13.8103 58.8699 13.6068 58.9468 13.3859C59.0236 13.1649 59.0394 12.931 59.0394 12.6978V11.9548C58.8328 12.1771 58.591 12.3644 58.3235 12.5093C57.9242 12.7189 57.4776 12.8239 57.0259 12.8143C56.4897 12.8185 55.9629 12.6744 55.5046 12.3984C55.0442 12.1041 54.6699 11.6949 54.4195 11.2117C54.1519 10.6801 54.0176 10.0924 54.0281 9.49832C54.0156 8.9094 54.1501 8.32653 54.4195 7.80153C54.6679 7.32727 55.0433 6.93011 55.5046 6.6537C55.9619 6.37401 56.4886 6.22618 57.0259 6.22672C57.4809 6.21907 57.9307 6.32389 58.3347 6.53172C58.5954 6.65891 58.8335 6.82746 59.0394 7.03076ZM58.7877 10.5796C58.9599 10.2511 59.0464 9.8851 59.0394 9.51494C59.0532 9.14059 58.9663 8.76931 58.7877 8.4392C58.6409 8.16062 58.4205 7.92682 58.1501 7.76271C57.8899 7.6138 57.5948 7.53538 57.2944 7.53538C56.994 7.53538 56.6988 7.6138 56.4387 7.76271C56.1645 7.92882 55.9419 8.16678 55.7954 8.4503C55.6308 8.76545 55.5463 9.11571 55.5494 9.4706C55.5427 9.84005 55.6271 10.2055 55.7954 10.5352C55.9406 10.827 56.1629 11.0743 56.4387 11.2505C56.6977 11.4028 56.9932 11.4832 57.2944 11.4832C57.5955 11.4832 57.8911 11.4028 58.1501 11.2505C58.419 11.0871 58.6392 10.8555 58.7877 10.5796Z" fill="#667085"></path></svg></span></a></div></div></div><script>
-            if (typeof window.__updateThemeElement === 'function') {
-              window.__updateThemeElement();
-            }
-          </script><script>((STORAGE_KEY, restoreKey) => {
-    if (!window.history.state || !window.history.state.key) {
-      let key = Math.random().toString(32).slice(2);
-      window.history.replaceState({
-        key
-      }, "");
-    }
-    try {
-      let positions = JSON.parse(sessionStorage.getItem(STORAGE_KEY) || "{}");
-      let storedY = positions[restoreKey || window.history.state.key];
-      if (typeof storedY === "number") {
-        window.scrollTo(0, storedY);
-      }
-    } catch (error) {
-      console.error(error);
-      sessionStorage.removeItem(STORAGE_KEY);
-    }
-  })("positions", null)</script><link rel="modulepreload" href="https://file-assets.apidog.com/docs-site/v1/assets/manifest-db7ef313.js"/><link rel="modulepreload" href="https://file-assets.apidog.com/docs-site/v1/assets/entry.client-mUtkjgQm.js"/><link rel="modulepreload" href="https://file-assets.apidog.com/docs-site/v1/assets/jsx-runtime-CM5sU0Q5.js"/><link rel="modulepreload" href="https://file-assets.apidog.com/docs-site/v1/assets/client-BKxavTD9.js"/><link rel="modulepreload" href="https://file-assets.apidog.com/docs-site/v1/assets/components-DMSdXhQK.js"/><link rel="modulepreload" href="https://file-assets.apidog.com/docs-site/v1/assets/root-CQ054TXt.js"/><link rel="modulepreload" href="https://file-assets.apidog.com/docs-site/v1/assets/root-Dv513fR3.js"/><link rel="modulepreload" href="https://file-assets.apidog.com/docs-site/v1/assets/route-D_6YkXJe.js"/><script>window.__remixContext = {"basename":"/","future":{"v3_fetcherPersist":true,"v3_relativeSplatPath":true,"v3_throwAbortReason":true,"v3_routeConfig":false,"v3_singleFetch":true,"v3_lazyRouteDiscovery":false,"unstable_optimizeDeps":false},"isSpaMode":false};window.__remixContext.stream = new ReadableStream({start(controller){window.__remixContext.streamController = controller;}}).pipeThrough(new TextEncoderStream());</script><script type="module" async="">import "https://file-assets.apidog.com/docs-site/v1/assets/manifest-db7ef313.js";
-import * as route0 from "https://file-assets.apidog.com/docs-site/v1/assets/root-Dv513fR3.js";
-import * as route1 from "https://file-assets.apidog.com/docs-site/v1/assets/route-D_6YkXJe.js";
+### OpenAPI Specification
 
-window.__remixRouteModules = {"root":route0,"routes/_index/route":route1};
+```yaml
+openapi: 3.0.1
+info:
+  title: ''
+  description: ''
+  version: 1.0.0
+paths:
+  /claude/v1/messages:
+    post:
+      summary: Claude Opus 4.8
+      deprecated: false
+      description: >-
+        ### Streaming Support
 
-import("https://file-assets.apidog.com/docs-site/v1/assets/entry.client-mUtkjgQm.js");</script></body></html><!--$--><script>window.__remixContext.streamController.enqueue("[{\"_1\":2,\"_231\":-5,\"_232\":-5},\"loaderData\",{\"_3\":4,\"_230\":-5},\"root\",{\"_5\":1,\"_6\":7,\"_19\":20,\"_23\":24,\"_33\":34,\"_52\":53,\"_112\":113,\"_155\":156,\"_229\":-7},\"type\",\"meta\",[8,11,16],{\"_9\":10},\"title\",\"API Documentation\",{\"_12\":13,\"_14\":15},\"name\",\"description\",\"content\",\"Design. Debug. Test. Document. Mock. Build APIs Faster \u0026 Together.\",{\"_12\":17,\"_14\":18},\"keywords\",\"API Design, API Specification, API Test, API Documentation, API Mock\",\"i18nState\",{\"_21\":22},\"clientLocale\",\"en-US\",\"errorCodeMessage\",{\"_25\":26,\"_27\":28,\"_29\":30,\"_31\":32},\"errorCode\",\"Unknown\",\"errorMessage\",\"Unexpected token 'o', \\\"forbidden\\n\\\" is not valid JSON: /api/v1/published-projects/domains/docs.kie.ai\",\"hideBuiltWith\",false,\"extra\",{},\"clientConfig\",{\"_35\":36,\"_37\":38,\"_39\":40,\"_41\":42,\"_47\":48,\"_49\":30,\"_50\":51},\"apiBaseUrl\",\"https://api.apidog.com\",\"appWebUrl\",\"https://app.apidog.com\",\"apidocBuiltinPrefixPath\",\"https://assets.apidog.com/app/static/apidoc\",\"cloudMockBaseUrls\",{\"_43\":44,\"_45\":46},\"pathMode\",\"https://mock.apidog.com/m1/{projectId}-{version}-{service}\",\"idMode\",\"https://mock.apidog.com/m2/{projectId}-{version}-{service}\",\"apidocIsShowLogo\",true,\"markdownDisableBreaks\",\"webhookGenerateCodeDefaultUrl\",\"https://your-api-server.com\",\"urlConfig\",{\"_54\":55,\"_58\":59,\"_99\":100,\"_108\":109},\"home\",{\"_56\":57},\"index\",\"https://apidog.com\",\"icon\",{\"_60\":61,\"_62\":63,\"_64\":63,\"_65\":66,\"_67\":68,\"_69\":70,\"_71\":72,\"_73\":74,\"_75\":76,\"_77\":78,\"_79\":80,\"_81\":82,\"_83\":84,\"_85\":86,\"_87\":88,\"_89\":90,\"_91\":92,\"_93\":94,\"_95\":96,\"_97\":98},\"apidoc\",\"https://assets.apidog.com/app/static/brand/apidoc.png\",\"apidog\",\"https://assets.apidog.com/app/static/brand/apidog-logo-256.png\",\"apidog europe\",\"googleDiscovery\",\"https://assets.apidog.com/app/static/brand/google-discovery.png\",\"har\",\"https://assets.apidog.com/app/static/brand/har.png\",\"iodocs\",\"https://assets.apidog.com/app/static/brand/io-doc.png\",\"jmeter\",\"https://assets.apidog.com/app/static/brand/jmeter.png\",\"openapi\",\"https://assets.apidog.com/app/static/brand/openapi.png\",\"postman\",\"https://assets.apidog.com/app/static/brand/postman.png\",\"raml\",\"https://assets.apidog.com/app/static/brand/raml.png\",\"wadl\",\"https://assets.apidog.com/app/static/brand/wadl.png\",\"curl\",\"https://assets.apidog.com/app/static/brand/curl.png\",\"insomnia\",\"https://assets.apidog.com/app/static/brand/insomnia.png\",\"wsdl\",\"https://assets.apidog.com/app/static/brand/wsdl.png\",\"markdown\",\"https://assets.apidog.com/app/static/brand/markdown.png\",\"html\",\"https://assets.apidog.com/app/static/brand/html.png\",\"protobuf\",\"https://assets.apidog.com/app/static/brand/protobuf.png\",\"soapui\",\"https://assets.apidog.com/app/static/brand/soapui.svg\",\"hoppscotch\",\"https://assets.apidog.com/app/static/brand/hoppscotch.svg\",\"javaProject\",\"https://assets.apidog.com/app/static/brand/java-project.png\",\"help\",{\"_56\":101,\"_102\":103,\"_104\":105,\"_106\":107},\"https://apidog.com/help\",\"browserExtension\",\"https://chromewebstore.google.com/detail/apidog-browser-extension/dmhljjnonlhapikmelaefohecogokhio\",\"csv\",\"https://apidog.com/help/reference/csv\",\"appMcpServer\",\"https://docs.apidog.com/apidog-mcp-server\",\"assets\",{\"_110\":111},\"logo512Png\",\"https://assets.apidog.com/static/logo/apidog-logo-512.png\",\"envConfig\",{\"_114\":60,\"_115\":116,\"_117\":116,\"_118\":119,\"_120\":121,\"_122\":123,\"_124\":57,\"_125\":62,\"_126\":22,\"_127\":128,\"_129\":130,\"_132\":133,\"_134\":135,\"_136\":137,\"_138\":139,\"_140\":141,\"_142\":143,\"_149\":150,\"_151\":48,\"_152\":153,\"_154\":30},\"RELEASE_BASE\",\"DEBUG_API_BASE\",\"\",\"DEBUG_WEB_URL_BASE\",\"AGENT_SERVER_API_BASE\",\"https://web-proxy.apidog.com\",\"APP_REGION\",\"GLOBAL\",\"APP_NAME\",\"Apidog\",\"APP_HOMEPAGE\",\"APP_NAME_LOWER\",\"DEFAULT_LOCALE\",\"APP_BROWSER_EXTENSION_ADAPTER\",\"apidogAgentCrossRequest\",\"APP_API_SERVER_HOSTNAMES\",[131],\"api.apidog.com\",\"APP_SUPPORT_EMAIL\",\"support@apidog.com\",\"APP_SCRIPT_MAIN_OBJECTS\",\"$\",\"SERVER_PROTOCOL\",\"http\",\"SERVER_HOST\",\"apidog-api-fordoc-svc\",\"DEFAULT_DOC_LAYOUT\",\"TwoColumn\",\"NOT_CUSTOM_DOMAIN_HOSTNAMES\",[144,145,146,147,148],\"www.apidog.com\",\"apidog.com\",\"www.apidog.io\",\"apidog.io\",\"share.apidog.com\",\"SERVER_REQUEST_TIMEOUT\",15000,\"IS_SHARED_DOC_INDEPENDENT_DOMAIN\",\"APIDOC_CUSTOM_DOMAIN_CNAME_REGEX\",[\"R\",\"\\\\d+\\\\.cname\\\\.apidog\\\\.com\",\"\"],\"IS_ALWAYS_USE_ORIGIN_FETCH\",\"docsDataState\",{\"_157\":158,\"_162\":163,\"_175\":176,\"_177\":178,\"_179\":180,\"_189\":190,\"_202\":203,\"_204\":205,\"_206\":207,\"_213\":214,\"_220\":-7,\"_221\":222,\"_223\":-7,\"_224\":-7,\"_225\":226,\"_228\":-7},\"navigation\",{\"_5\":159,\"_160\":161},\"NONE\",\"navRightLinkItems\",[],\"sidebarTree\",{\"_164\":-7,\"_165\":-7,\"_166\":167,\"_168\":-7,\"_169\":170,\"_171\":-7,\"_172\":-7,\"_173\":174},\"goBackSidebarTreeApiFolderNode\",\"rootSidebarTreeApiFolderNode\",\"sidebarTreeList\",[],\"selectedSidebarTreeNode\",\"parentSidebarTreeApiFolderNodes\",[],\"previousSidebarTreeNode\",\"nextSidebarTreeNode\",\"homeLink\",\"/\",\"docsBaseConfig\",{},\"versionList\",[],\"resourceData\",{\"_5\":181,\"_182\":-7,\"_183\":184},\"NotFound\",\"data\",\"extraData\",{\"_185\":186,\"_187\":188},\"apiFieldList\",[],\"dataSchemaDefinitions\",{},\"docsIdTypeData\",{\"_191\":192,\"_193\":194,\"_195\":194,\"_196\":194,\"_197\":116,\"_198\":194,\"_199\":200,\"_201\":-7},\"onlineType\",\"APIDOC\",\"branchId\",0,\"onlineId\",\"projectId\",\"subdirectory\",\"teamId\",\"visitType\",\"customDomain\",\"specialFileType\",\"notification\",[],\"footerBanner\",[],\"projectSetting\",{\"_208\":209,\"_210\":211},\"advancedSettings\",{},\"auth\",{\"_5\":212},\"noauth\",\"environments\",{\"_215\":216,\"_217\":-7,\"_218\":219},\"environmentList\",[],\"selectedEnvironment\",\"servers\",[],\"searchSettings\",\"versionSettings\",[],\"seoInfos\",\"itemPathPrefix\",\"appEnvMap\",{\"_227\":128},\"appBrowserExtensionAdapterKey\",\"customCodes\",\"primaryColorVariable\",\"routes/_index/route\",\"actionData\",\"errors\"]\n");</script><!--$--><script>window.__remixContext.streamController.close();</script><!--/$--><!--/$-->
+        When `stream: true` is set in the request, the API returns responses as
+        server-sent events (SSE). Claude tool calling responses stream
+        `tool_use` blocks and `input_json_delta` fragments.
+
+        **Streaming Response Format:**
+
+        - Content-Type: `text/event-stream`
+
+        - Event names include `message_start`, `content_block_start`,
+        `content_block_delta`, `message_delta`, and `message_stop`
+
+        - Tool calls are emitted as `tool_use` content blocks
+
+        - Final stop reason is often `tool_use` for function-calling requests
+
+        ## Features
+
+        - Standard chat with `messages`.
+
+        - Function calling with `tools` and `input_schema`.
+
+        - Optional stream response with Claude events.
+
+        - Optional project-specific thinking flag.
+
+        ## Request Notes
+
+        - Put the current model name in the `model` field.
+
+        - Use `messages` for conversation history.
+
+        - Use `tools` to declare callable functions.
+
+        - Set `stream` to `true` for SSE output.
+
+        ## Authentication
+
+        Use the auth configuration for `X-Api-Key` and `anthropic-version`. Do
+        not add them as regular request parameters.
+      operationId: claude_opus_4_8
+      tags:
+        - docs/en/Market/Chat  Models/Claude
+      parameters: []
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                model:
+                  type: string
+                  description: Model name. It must match the current document.
+                  enum:
+                    - claude-opus-4-8
+                  x-apidog-enum:
+                    - value: claude-opus-4-8
+                      name: ''
+                      description: ''
+                  examples:
+                    - claude-opus-4-8
+                messages:
+                  type: array
+                  description: Conversation messages in chronological order.
+                  items:
+                    type: object
+                    properties:
+                      role:
+                        type: string
+                        enum:
+                          - user
+                          - assistant
+                        description: Message role.
+                        examples:
+                          - user
+                      content:
+                        oneOf:
+                          - type: string
+                            description: Plain text content.
+                          - type: array
+                            description: Structured content blocks.
+                            items:
+                              type: object
+                              additionalProperties: true
+                              x-apidog-orders: []
+                        description: Message content.
+                        examples:
+                          - What is the weather like in Boston today?
+                    required:
+                      - role
+                      - content
+                    x-apidog-orders:
+                      - role
+                      - content
+                  minItems: 1
+                tools:
+                  type: array
+                  description: >-
+                    Optional callable tools. Each tool includes a name,
+                    description, and input_schema.
+                  items:
+                    type: object
+                    properties:
+                      name:
+                        type: string
+                        description: Function name.
+                        examples:
+                          - get_current_weather
+                      description:
+                        type: string
+                        description: Human-readable function description.
+                        examples:
+                          - Get the current weather in a given location
+                      input_schema:
+                        type: object
+                        description: JSON Schema for function parameters.
+                        properties:
+                          type:
+                            type: string
+                            description: Schema type.
+                            examples:
+                              - object
+                          properties:
+                            type: object
+                            description: Function parameter definitions.
+                            additionalProperties: true
+                            x-apidog-orders: []
+                            properties: {}
+                          required:
+                            type: array
+                            description: Required parameter names.
+                            items:
+                              type: string
+                        x-apidog-orders:
+                          - type
+                          - properties
+                          - required
+                        examples:
+                          - type: object
+                            properties:
+                              location:
+                                type: string
+                                description: The city and state, e.g. Boston, MA
+                            required:
+                              - location
+                    required:
+                      - name
+                      - description
+                      - input_schema
+                    x-apidog-orders:
+                      - name
+                      - description
+                      - input_schema
+                thinkingFlag:
+                  type: boolean
+                  description: >-
+                    Project-specific thinking flag used by the current Claude
+                    adapter.
+                  examples:
+                    - true
+                stream:
+                  type: boolean
+                  default: true
+                  description: If set to true, the response is returned as an SSE stream.
+                  examples:
+                    - false
+                max_tokens:
+                  type: number
+                  default: 4096
+                  examples:
+                    - 4096
+                  description: >-
+                    Optional Claude output token limit. Leave empty to use the
+                    default of 4096.
+              required:
+                - model
+                - messages
+              x-apidog-orders:
+                - model
+                - messages
+                - tools
+                - thinkingFlag
+                - stream
+                - max_tokens
+              examples:
+                - model: claude-opus-4-6-v1messages
+                  messages:
+                    - role: user
+                      content: What is the weather like in Boston today?
+                  tools:
+                    - name: get_current_weather
+                      description: Get the current weather in a given location
+                      input_schema:
+                        type: object
+                        properties:
+                          location:
+                            type: string
+                            description: The city and state, e.g. Boston, MA
+                        required:
+                          - location
+                  thinkingFlag: true
+                  stream: false
+            example:
+              model: claude-opus-4-8
+              messages:
+                - role: user
+                  content: What is the weather like in Boston today?
+              tools:
+                - name: get_current_weather
+                  description: Get the current weather in a given location
+                  input_schema:
+                    type: object
+                    properties:
+                      location:
+                        type: string
+                        description: The city and state, e.g. Boston, MA
+                    required:
+                      - location
+              thinkingFlag: true
+              stream: false
+              max_tokens: 4096
+      responses:
+        '200':
+          description: Request successful.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  role:
+                    type: string
+                    description: Returned message role
+                    examples:
+                      - assistant
+                  usage:
+                    type: object
+                    description: Usage information returned by the provider
+                    properties:
+                      input_tokens:
+                        type: integer
+                        description: Input token count
+                        examples:
+                          - 600
+                      output_tokens:
+                        type: integer
+                        description: Output token count
+                        examples:
+                          - 57
+                      cache_creation_input_tokens:
+                        type: integer
+                        description: Cache creation input token count
+                        examples:
+                          - 0
+                      cache_read_input_tokens:
+                        type: integer
+                        description: Cache read input token count
+                        examples:
+                          - 0
+                      service_tier:
+                        type: string
+                        description: Service tier
+                        examples:
+                          - standard
+                    x-apidog-orders:
+                      - input_tokens
+                      - output_tokens
+                      - cache_creation_input_tokens
+                      - cache_read_input_tokens
+                      - service_tier
+                  stop_reason:
+                    type: string
+                    description: Reason why generation stopped
+                    examples:
+                      - tool_use
+                  model:
+                    type: string
+                    description: Actual model version returned by the provider
+                    examples:
+                      - claude-opus-4-5-20251101
+                  id:
+                    type: string
+                    description: Unique message identifier
+                    examples:
+                      - msg_01VSoxV4a8YWB3DBh9TdM63W
+                  credits_consumed:
+                    type: number
+                    description: Credits consumed by the request
+                    examples:
+                      - 0.25
+                  type:
+                    type: string
+                    description: Top-level response object type
+                    examples:
+                      - message
+                  content:
+                    type: array
+                    description: Response content blocks
+                    items:
+                      type: object
+                      properties:
+                        input:
+                          type: object
+                          description: Tool input arguments
+                          additionalProperties: true
+                          x-apidog-orders: []
+                          properties: {}
+                        caller:
+                          type: object
+                          description: Tool caller metadata
+                          properties:
+                            type:
+                              type: string
+                              examples:
+                                - direct
+                          x-apidog-orders:
+                            - type
+                        name:
+                          type: string
+                          description: Tool name
+                          examples:
+                            - get_current_weather
+                        id:
+                          type: string
+                          description: Tool call identifier
+                          examples:
+                            - toolu_018gdqs2FHxrRjQHLZv1qvbF
+                        type:
+                          type: string
+                          description: Content block type
+                          examples:
+                            - tool_use
+                      x-apidog-orders:
+                        - input
+                        - caller
+                        - name
+                        - id
+                        - type
+                x-apidog-orders:
+                  - role
+                  - usage
+                  - stop_reason
+                  - model
+                  - id
+                  - credits_consumed
+                  - type
+                  - content
+              example:
+                role: assistant
+                usage:
+                  cache_creation:
+                    ephemeral_1h_input_tokens: 0
+                    ephemeral_5m_input_tokens: 0
+                  output_tokens: 57
+                  service_tier: standard
+                  cache_creation_input_tokens: 0
+                  input_tokens: 600
+                  cache_read_input_tokens: 0
+                  inference_geo: not_available
+                stop_reason: tool_use
+                model: claude-opus-4-5-20251101
+                id: msg_01VSoxV4a8YWB3DBh9TdM63W
+                credits_consumed: 0.25
+                type: message
+                content:
+                  - input:
+                      location: Beijing, China
+                    caller:
+                      type: direct
+                    name: get_current_weather
+                    id: toolu_018gdqs2FHxrRjQHLZv1qvbF
+                    type: tool_use
+          headers: {}
+          x-apidog-name: ''
+        '400':
+          description: Bad Request - Invalid request parameters
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: object
+                    properties:
+                      message:
+                        type: string
+                        examples:
+                          - Invalid request parameters
+                      type:
+                        type: string
+                        examples:
+                          - invalid_request_error
+                    x-apidog-orders:
+                      - message
+                      - type
+                x-apidog-orders:
+                  - error
+          headers: {}
+          x-apidog-name: ''
+        '401':
+          description: Unauthorized - Invalid or missing API key
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: object
+                    properties:
+                      message:
+                        type: string
+                        examples:
+                          - Invalid or missing API key
+                      type:
+                        type: string
+                        examples:
+                          - authentication_error
+                    x-apidog-orders:
+                      - message
+                      - type
+                x-apidog-orders:
+                  - error
+          headers: {}
+          x-apidog-name: ''
+      security: []
+      x-apidog-folder: docs/en/Market/Chat  Models/Claude
+      x-apidog-status: released
+      x-run-in-apidog: https://app.apidog.com/web/project/1184766/apis/api-36804145-run
+components:
+  schemas: {}
+  securitySchemes:
+    BearerAuth:
+      type: bearer
+      scheme: bearer
+      bearerFormat: API Key
+      description: >-
+        All API requests require a Bearer Token. Add the header `Authorization:
+        Bearer YOUR_API_KEY` to authenticate requests.
+    BearerAuth1:
+      type: bearer
+      scheme: bearer
+      bearerFormat: API Key
+      description: >-
+        所有 API 请求都需要 Bearer Token。请在请求头中添加 `Authorization: Bearer YOUR_API_KEY`
+        进行身份验证。
+servers:
+  - url: https://api.kie.ai
+    description: 正式环境
+security:
+  - BearerAuth: []
+    x-apidog:
+      schemeGroups:
+        - id: kn8M4YUlc5i0A0179ezwx
+          schemeIds:
+            - BearerAuth
+      required: true
+      use:
+        id: kn8M4YUlc5i0A0179ezwx
+      scopes:
+        kn8M4YUlc5i0A0179ezwx:
+          BearerAuth: []
+
+```
 
 ---
 
@@ -61364,40 +63994,477 @@ import("https://file-assets.apidog.com/docs-site/v1/assets/entry.client-mUtkjgQm
 
 **Source:** [https://docs.kie.ai/market/claude/claude-haiku-4-5.md][154]
 
-<!DOCTYPE html><html lang="en-US" class="group/root" id="html" data-theme="light" data-accent-color="purple"><head><script src="https://file-assets.apidog.com/docs-site/v1/assets/prepareDocsConfigScript-CLIBKQbk.js"></script><script>__prepareDocsConfigScript(JSON.parse("{\"theme\":\"system\",\"themePrimarySettings\":{\"light\":{\"accentColor\":\"purple\"},\"dark\":{\"accentColor\":\"purple\"}},\"logoSettings\":{\"light\":{\"icon\":\"\",\"type\":\"project\"},\"dark\":{\"icon\":\"\",\"type\":\"followLight\"}},\"backgroundImageSettings\":{\"light\":{\"type\":\"custom\",\"color\":\"\"},\"dark\":{\"type\":\"followLight\",\"color\":\"\"}},\"id\":0,\"subdirectory\":\"\"}"));</script><script>window.eventTracking = {
-      dataLayer: []
-    }
-    window.eventTracking.report = function(){
-        window.eventTracking.dataLayer.push(arguments);
-    }</script><meta charSet="utf-8"/><meta name="viewport" content="width=device-width, initial-scale=1"/><title>API Documentation</title><meta name="description" content="Design. Debug. Test. Document. Mock. Build APIs Faster &amp; Together."/><meta name="keywords" content="API Design, API Specification, API Test, API Documentation, API Mock"/><link rel="stylesheet" href="https://file-assets.apidog.com/docs-site/v1/assets/root-CpC_E1fb.css"/></head><body class="overflow-hidden g-body"><div class="flex h-full w-full flex-col overflow-auto"><div class="flex flex-1 flex-col items-center justify-center"><div class="flex w-auto flex-col items-center justify-center max-os:p-5 os:w-[480px]"><svg width="104" height="104" viewBox="0 0 104 104" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M92.9557 41.8969L88.7262 25.2175C87.4089 19.8194 84.8039 16.1447 80.9015 14.1934L80.3963 13.9458C79.802 13.6685 79.178 13.4407 78.5243 13.2426C75.4142 12.3214 72.0268 12.371 68.362 13.3813C65.8759 14.0747 63.2612 15.2038 60.5176 16.7886C56.7835 18.9478 53.3167 21.6319 50.1076 24.8708C49.0973 25.8711 48.1266 26.9209 47.1956 28.0204C46.314 29.0406 45.4622 30.1105 44.6302 31.2198C42.9266 33.4781 41.3121 35.9245 39.7868 38.5492C34.1015 48.3648 31.2588 57.9329 31.2588 67.2631C31.2588 72.0471 32.1106 76.1181 33.8142 79.4461C34.6759 81.1101 35.6862 82.5263 36.8748 83.7248C37.9346 84.7846 39.1232 85.6564 40.4405 86.3398L41.0151 86.627V98.9485C41.0151 99.9984 41.3221 100.712 41.9461 101.058C42.5701 101.415 43.3426 101.326 44.2637 100.801L67.0249 87.6571C67.946 87.1223 68.7186 86.3199 69.3426 85.2502C69.9666 84.1706 70.2736 83.1008 70.2736 82.0509V78.3169L76.7811 74.5629C78.5639 73.5328 80.0993 71.9184 81.377 69.7195C82.6448 67.5207 83.2786 65.4011 83.2786 63.341V52.1485L89.786 48.3946C90.8657 47.7706 91.7373 46.79 92.391 45.4429C93.0348 44.1058 93.2231 42.927 92.9557 41.8969ZM62.8352 66.6095C62.2112 67.6891 61.4387 68.4914 60.5176 69.0263C59.5964 69.5512 58.8237 69.6404 58.1997 69.2838C57.5856 68.9371 57.2687 68.2238 57.2687 67.164C57.2687 66.1042 57.5856 65.0445 58.1997 63.9748C58.2592 63.8658 58.3186 63.7667 58.378 63.6676C58.9129 62.8356 59.5468 62.1819 60.2797 61.7164C60.359 61.6569 60.4383 61.6075 60.5176 61.558C61.4387 61.033 62.2112 60.9439 62.8352 61.2906C63.4592 61.6471 63.7761 62.3604 63.7761 63.4103C63.7761 64.4602 63.4592 65.5398 62.8352 66.6095ZM69.5011 38.7572C69.402 39.1336 69.2832 39.5101 69.1346 39.8865C68.5997 41.3227 67.4607 43.6206 65.7274 46.8C64.9647 48.1768 64.41 49.3158 64.0535 50.237C63.8157 50.861 63.6176 51.4748 63.4691 52.0592C63.3997 52.3366 63.3304 52.6041 63.2809 52.8715C63.1224 53.7729 62.7856 54.6148 62.2706 55.3774C61.7556 56.1401 61.2009 56.6948 60.6066 57.0315C59.8935 57.4475 59.319 57.4971 58.8535 57.2099C58.3978 56.9128 58.2196 56.358 58.3285 55.5557C58.487 54.2186 58.8039 52.931 59.2596 51.7029C59.7251 50.4747 60.4679 48.9392 61.498 47.0969C62.3201 45.6409 62.9837 44.4029 63.4691 43.4026C63.7761 42.7885 64.0138 42.2636 64.1921 41.8278C64.202 41.7981 64.2119 41.7782 64.2218 41.7485C64.6775 40.5797 64.9153 39.5001 64.9153 38.4997C64.9153 37.321 64.5191 36.5881 63.7366 36.2909C62.9442 36.0037 61.9537 36.2019 60.7652 36.8853C60.0025 37.3211 59.2794 37.945 58.5662 38.7572C57.863 39.5694 57.239 40.5105 56.7041 41.5604C56.2683 42.5013 55.7632 43.2442 55.1986 43.7889C54.6241 44.3337 54.0397 44.6209 53.4455 44.6506C52.8512 44.6902 52.4055 44.4525 52.1083 43.9374C51.8112 43.4224 51.8211 42.7687 52.1479 41.9565C53.0691 39.7477 54.2973 37.7074 55.8424 35.8552C56.5754 34.9737 57.338 34.1811 58.1205 33.4878C58.9822 32.735 59.8638 32.0913 60.7652 31.5664C63.3701 30.0708 65.5491 29.7141 67.3121 30.4966C69.0752 31.279 69.9468 32.9829 69.9468 35.5977C69.9468 36.6476 69.7982 37.7073 69.5011 38.7572Z" stroke="#667085" stroke-linecap="round" stroke-linejoin="round"></path><path d="M63.777 63.4086C63.777 64.4684 63.46 65.5381 62.836 66.6078C62.212 67.6874 61.4395 68.4896 60.5184 69.0245C59.5972 69.5494 58.8246 69.6387 58.2006 69.2821C57.5865 68.9354 57.2695 68.2221 57.2695 67.1623C57.2695 66.1025 57.5865 65.0428 58.2006 63.973C58.26 63.8641 58.3194 63.7649 58.3789 63.6659C58.9137 62.8339 59.5476 62.1802 60.2806 61.7147C60.3598 61.6552 60.4392 61.6058 60.5184 61.5563C61.4395 61.0313 62.212 60.9422 62.836 61.2888C63.46 61.6454 63.777 62.3587 63.777 63.4086Z" stroke="#667085" stroke-linecap="round" stroke-linejoin="round"></path><path d="M63.7373 36.2894C62.9449 36.0021 61.9544 36.2003 60.7659 36.8838C60.0032 37.3196 59.2801 37.9435 58.567 38.7557C57.8638 39.5679 57.2398 40.5089 56.7049 41.5588C56.2691 42.4998 55.7639 43.2426 55.1994 43.7874C54.6249 44.3321 54.0405 44.6193 53.4462 44.649C52.8519 44.6886 52.4062 44.4509 52.1091 43.9359C51.8119 43.4208 51.8219 42.7671 52.1487 41.9549C53.0699 39.7461 54.298 37.7059 55.8432 35.8537C56.5761 34.9721 57.3388 34.1797 58.1213 33.4863L63.7373 36.2894Z" stroke="#667085" stroke-linecap="round" stroke-linejoin="round"></path><path d="M69.9474 35.596C69.9474 36.6459 69.7988 37.7056 69.5017 38.7555C69.4026 39.1319 69.2838 39.5085 69.1352 39.8849C68.6003 41.321 67.4613 43.6189 65.728 46.7984C64.9653 48.1751 64.4106 49.3141 64.054 50.2352C63.8163 50.8592 63.6182 51.4732 63.4697 52.0576C63.4003 52.3349 63.331 52.6024 63.2815 52.8698C63.123 53.7711 62.7862 54.6131 62.2712 55.3758C61.7561 56.1385 61.2015 56.693 60.6072 57.0298C59.894 57.4458 59.3196 57.4955 58.854 57.2083C58.3984 56.9111 58.2201 56.3563 58.3291 55.554C58.4876 54.2168 58.8045 52.9293 59.2601 51.7011C59.7257 50.4729 60.4685 48.9376 61.4986 47.0953C62.3207 45.6393 62.9843 44.4012 63.4697 43.4008C63.7767 42.7868 64.0144 42.2619 64.1927 41.8261C64.2026 41.7964 64.2125 41.7766 64.2224 41.7468C64.678 40.5781 64.9158 39.4984 64.9158 38.498C64.9158 37.3193 64.5196 36.5865 63.7371 36.2893L58.1211 33.4862C58.9828 32.7334 59.8643 32.0896 60.7657 31.5647C63.3706 30.069 65.5497 29.7125 67.3127 30.4949C69.0758 31.2774 69.9474 32.9811 69.9474 35.596Z" stroke="#667085" stroke-linecap="round" stroke-linejoin="round"></path><path d="M41.9466 101.059L22.3253 91.2429L22.1371 91.1537C21.5131 90.807 21.2061 90.094 21.2061 89.0441V76.7227L41.0156 86.6274V98.9488C41.0156 99.9988 41.3226 100.712 41.9466 101.059Z" stroke="#667085" stroke-linecap="round" stroke-linejoin="round"></path><path d="M80.3972 13.9448C79.8029 13.6675 79.1789 13.4397 78.5252 13.2416C75.4151 12.3204 72.0277 12.3701 68.3629 13.3804C65.8768 14.0737 63.2621 15.2028 60.5185 16.7876C56.7844 18.9468 53.3176 21.6309 50.1085 24.8698C49.0982 25.8702 48.1275 26.92 47.1965 28.0194C46.3149 29.0396 45.4631 30.1096 44.6311 31.2189C42.9275 33.4772 41.313 35.9236 39.7877 38.5484C34.1024 48.364 31.2597 57.932 31.2597 67.2623C31.2597 72.0463 32.1115 76.1171 33.8151 79.4451C34.6768 81.1091 35.6871 82.5253 36.8757 83.7238C37.9355 84.7836 39.1241 85.6554 40.4414 86.3388L21.2065 76.7213C18.1161 75.2752 15.7192 72.8783 14.0056 69.5404C12.302 66.2124 11.4502 62.1415 11.4502 57.3575C11.4502 48.0272 14.2929 38.4592 19.9782 28.6436C25.6734 18.828 32.587 11.5678 40.7089 6.88282C47.4838 2.97044 53.486 1.79169 58.7157 3.33683C59.4784 3.56464 60.2113 3.84208 60.8948 4.17884L61.281 4.37688L80.3972 13.9448Z" stroke="#667085" stroke-linecap="round" stroke-linejoin="round"></path></svg><div class="align-center mt-8 flex justify-center text-center text-2xl font-semibold text-color">An abnormal error occurred, please try &#x27;Reload&#x27; or &#x27;get Support&#x27; to help you solve it!</div><div class="align-center mt-2 text-center text-lg font-400 text-secondary">Unexpected token &#x27;o&#x27;, &quot;forbidden
-&quot; is not valid JSON: /api/v1/published-projects/domains/docs.kie.ai</div></div></div><div class="flex flex-col items-center justify-center p-8 text-base font-base text-secondary"><div class="inline-flex items-center text-base font-400 text-secondary _footer-logo-wrapper_1kbjg_1"><a class="_footer-logo_1kbjg_1 flex-shrink-0" aria-label="homepage link" href="https://apidog.com"><span class="inline-flex items-center"><span class="mr-[-4px]">Built with</span><svg width="61" height="18" viewBox="0 0 61 18" fill="none" xmlns="http://www.w3.org/2000/svg" class="h-[18px] w-[80px]"><path d="M12.3836 1.67806C11.6452 0.940647 10.4478 0.940647 9.70932 1.67806L8.99795 2.3884L8.30644 1.69789C7.57144 0.963937 6.37437 0.936241 5.62991 1.66043C4.88545 2.38463 4.86748 3.60515 5.61194 4.34854L6.32331 5.05888C7.80026 6.53371 10.195 6.53371 11.6723 5.05888L12.3836 4.34854C13.1221 3.61113 13.1221 2.41547 12.3836 1.67806Z" fill="#667085"></path><path d="M12.3838 13.6515L11.6729 12.9412C10.1968 11.4664 7.80339 11.4664 6.32699 12.9412L5.61603 13.6515C4.87799 14.389 4.87799 15.5846 5.61603 16.322C6.35408 17.0594 7.55076 17.0594 8.28881 16.322L8.99976 15.6117L9.69087 16.3022C10.4255 17.0361 11.6218 17.0638 12.3659 16.3396C13.1219 15.6038 13.1278 14.3949 12.3838 13.6515Z" fill="#667085"></path><path d="M15.6105 8.99642L16.3214 8.28481C17.0655 7.54009 17.0595 6.32906 16.3035 5.59191C15.5595 4.86643 14.3631 4.89418 13.6285 5.62943L13.3098 5.94851C12.1666 7.09269 10.6166 7.73526 9 7.73526C7.38344 7.73526 5.83335 7.09238 4.69023 5.94851L4.37146 5.62943C3.63689 4.89418 2.44054 4.86643 1.69652 5.59191C0.940527 6.32906 0.934542 7.54009 1.67856 8.28481L2.38951 8.99642L1.67856 9.70803C0.940527 10.4468 0.940527 11.6445 1.67856 12.3833C2.4166 13.122 3.61326 13.122 4.3513 12.3833L4.74347 11.9907C5.85225 10.8809 7.35604 10.2576 8.92409 10.2576H8.9874C10.6162 10.2576 12.1666 10.9005 13.3098 12.0446C13.5126 12.2477 13.6484 12.3836 13.6484 12.3836C14.3864 13.1223 15.5831 13.1223 16.3211 12.3836C17.0592 11.6449 17.0592 10.4471 16.3211 9.70834L15.6102 8.99673L15.6105 8.99642Z" fill="#667085"></path><path fill-rule="evenodd" clip-rule="evenodd" d="M37.3559 4.00331C37.4694 3.95752 37.5911 3.93521 37.7136 3.93768C37.8343 3.93606 37.9541 3.95884 38.0656 4.0046C38.1772 4.05035 38.2781 4.11814 38.3624 4.20384C38.4483 4.29095 38.5158 4.39418 38.561 4.50749C38.6061 4.6208 38.628 4.7419 38.6253 4.8637C38.628 4.98551 38.6061 5.10664 38.561 5.21995C38.5158 5.33326 38.4483 5.43648 38.3624 5.52357C38.2781 5.60926 38.1772 5.67705 38.0656 5.72284C37.9541 5.7686 37.8343 5.79134 37.7136 5.78975C37.5911 5.79222 37.4694 5.76989 37.3559 5.72413C37.2425 5.67837 37.1396 5.61011 37.0536 5.52357C36.9677 5.43648 36.9002 5.33326 36.8551 5.21995C36.8099 5.10664 36.7881 4.98551 36.7908 4.8637C36.7881 4.7419 36.8099 4.6208 36.8551 4.50749C36.9002 4.39418 36.9677 4.29095 37.0536 4.20384C37.1396 4.1173 37.2425 4.04907 37.3559 4.00331ZM25.6211 4.76389L24.0219 4.76389L21.175 12.7654H22.7355L23.2948 11.1795H26.371L26.9303 12.7654H28.5019L25.6211 4.76389ZM25.9403 9.91528H23.7255L24.8441 6.75459L25.9403 9.91528ZM34.4529 6.71022C33.9935 6.42603 33.4618 6.27789 32.9204 6.28324C32.4656 6.27789 32.0164 6.38257 31.6116 6.58824C31.3484 6.72112 31.1086 6.89528 30.9013 7.10393V6.38304H29.4248V15.6932H30.9181V12.0501C31.1303 12.2594 31.3736 12.4352 31.6396 12.5714C32.0799 12.7816 32.5659 12.88 33.0541 12.8577C33.5422 12.8355 34.0171 12.6932 34.4361 12.4438C34.899 12.1548 35.274 11.7466 35.5212 11.2627C35.7861 10.7302 35.9203 10.1431 35.9126 9.54929C35.923 8.96057 35.7887 8.37821 35.5212 7.8525C35.2797 7.38027 34.9096 6.98456 34.4529 6.71022ZM34.4137 9.55484C34.4161 9.91562 34.3297 10.2716 34.162 10.5918C34.0132 10.8769 33.7889 11.1165 33.5133 11.2849C33.2582 11.4309 32.9688 11.5078 32.6743 11.5078C32.3798 11.5078 32.0904 11.4309 31.8353 11.2849C31.5644 11.1203 31.341 10.8892 31.1866 10.6139C31.0195 10.284 30.937 9.91836 30.946 9.54929C30.9355 9.18364 31.0182 8.82126 31.1866 8.49571C31.331 8.22256 31.5426 7.98991 31.8018 7.81923C32.0627 7.67197 32.3573 7.59366 32.6575 7.5919C32.9606 7.59099 33.2582 7.67147 33.5188 7.82478C33.7952 7.97573 34.0193 8.20567 34.162 8.48465C34.3413 8.8105 34.4283 9.17839 34.4137 9.54929V9.55484ZM38.4519 6.38304H36.9585V12.7599H38.4519V6.38304ZM43.7037 6.56049C43.9895 6.68375 44.2509 6.85649 44.4756 7.07066V4.27038H45.9801V12.7654H44.4756V12.039C44.2733 12.2523 44.0347 12.4288 43.7709 12.5603C43.3696 12.7699 42.9211 12.8748 42.4677 12.8652C41.9296 12.8702 41.4008 12.7261 40.9408 12.4493C40.4817 12.1535 40.1078 11.7446 39.8557 11.2627C39.5908 10.7302 39.4566 10.1431 39.4642 9.54929C39.4539 8.96057 39.5882 8.37821 39.8557 7.8525C40.1049 7.3803 40.4803 6.98514 40.9408 6.71022C41.3529 6.46065 41.821 6.31637 42.3032 6.29024C42.7854 6.26412 43.2666 6.35695 43.7037 6.56049ZM44.4756 9.57146C44.4854 9.20459 44.3987 8.84147 44.2239 8.51792C44.0698 8.22608 43.835 7.98372 43.5471 7.81923C43.2921 7.67323 43.0027 7.59637 42.7082 7.59637C42.4136 7.59637 42.1243 7.67323 41.8692 7.81923C41.598 7.97735 41.377 8.20793 41.2316 8.48465C41.0626 8.80593 40.9798 9.16492 40.9911 9.52712C40.9825 9.89613 41.0651 10.2616 41.2316 10.5918C41.3883 10.8862 41.622 11.1333 41.9084 11.3071C42.1635 11.4531 42.4528 11.5299 42.7473 11.5299C43.0419 11.5299 43.3312 11.4531 43.5863 11.3071C43.8553 11.1436 44.0753 10.912 44.2239 10.6361C44.3961 10.3076 44.4826 9.94161 44.4756 9.57146ZM51.8863 6.71022C51.3775 6.44176 50.81 6.30134 50.2336 6.30134C49.6572 6.30134 49.0897 6.44176 48.5808 6.71022C48.1082 6.98053 47.7208 7.37607 47.4622 7.8525C47.1714 8.37882 47.0248 8.9715 47.0372 9.57146C47.026 10.1735 47.1684 10.7686 47.451 11.3016C47.7105 11.7817 48.0973 12.1824 48.5697 12.4605C49.0662 12.7315 49.6249 12.8709 50.1916 12.8652C50.7765 12.874 51.3541 12.7347 51.8695 12.4605C52.3652 12.1852 52.7752 11.7805 53.0553 11.2904C53.3515 10.7658 53.502 10.1726 53.4915 9.57146C53.5004 8.97048 53.35 8.37773 53.0553 7.8525C52.7813 7.37062 52.3763 6.97478 51.8863 6.71022ZM49.3639 7.81923C49.6253 7.67401 49.9199 7.59775 50.2196 7.59775C50.5193 7.59775 50.8139 7.67401 51.0753 7.81923C51.3499 7.97813 51.5716 8.21332 51.7129 8.49571C51.876 8.8305 51.9528 9.20008 51.9367 9.57146C51.9483 9.9474 51.8616 10.3199 51.685 10.6528C51.5392 10.9243 51.3204 11.1504 51.0529 11.3061C50.7853 11.4617 50.4794 11.5408 50.1693 11.5344C49.9454 11.5409 49.7227 11.4998 49.5162 11.4137C49.3097 11.3276 49.1243 11.1986 48.9724 11.0354C48.6355 10.6234 48.4678 10.1007 48.5025 9.57146C48.4901 9.19738 48.5708 8.82604 48.7374 8.4902C48.8747 8.21003 49.0927 7.97654 49.3639 7.81923ZM59.0394 7.03076V6.32653H60.5495V12.6812C60.5594 13.2247 60.4326 13.7622 60.1804 14.2449C59.9389 14.7103 59.5657 15.0957 59.1065 15.3539C58.5924 15.6305 58.0132 15.7664 57.4286 15.7476C56.67 15.7754 55.9226 15.5595 55.2977 15.1321C55.0204 14.9436 54.7884 14.6968 54.6182 14.4092C54.4481 14.1217 54.344 13.8006 54.3133 13.4686V13.3466L55.7954 13.3466C55.7954 13.6685 56.0907 13.9814 56.3547 14.134C56.6804 14.3328 57.0575 14.4331 57.4398 14.4223C57.6518 14.4311 57.8634 14.3968 58.0616 14.3215C58.2597 14.2462 58.4402 14.1314 58.592 13.9843C58.7493 13.8103 58.8699 13.6068 58.9468 13.3859C59.0236 13.1649 59.0394 12.931 59.0394 12.6978V11.9548C58.8328 12.1771 58.591 12.3644 58.3235 12.5093C57.9242 12.7189 57.4776 12.8239 57.0259 12.8143C56.4897 12.8185 55.9629 12.6744 55.5046 12.3984C55.0442 12.1041 54.6699 11.6949 54.4195 11.2117C54.1519 10.6801 54.0176 10.0924 54.0281 9.49832C54.0156 8.9094 54.1501 8.32653 54.4195 7.80153C54.6679 7.32727 55.0433 6.93011 55.5046 6.6537C55.9619 6.37401 56.4886 6.22618 57.0259 6.22672C57.4809 6.21907 57.9307 6.32389 58.3347 6.53172C58.5954 6.65891 58.8335 6.82746 59.0394 7.03076ZM58.7877 10.5796C58.9599 10.2511 59.0464 9.8851 59.0394 9.51494C59.0532 9.14059 58.9663 8.76931 58.7877 8.4392C58.6409 8.16062 58.4205 7.92682 58.1501 7.76271C57.8899 7.6138 57.5948 7.53538 57.2944 7.53538C56.994 7.53538 56.6988 7.6138 56.4387 7.76271C56.1645 7.92882 55.9419 8.16678 55.7954 8.4503C55.6308 8.76545 55.5463 9.11571 55.5494 9.4706C55.5427 9.84005 55.6271 10.2055 55.7954 10.5352C55.9406 10.827 56.1629 11.0743 56.4387 11.2505C56.6977 11.4028 56.9932 11.4832 57.2944 11.4832C57.5955 11.4832 57.8911 11.4028 58.1501 11.2505C58.419 11.0871 58.6392 10.8555 58.7877 10.5796Z" fill="#667085"></path></svg></span></a></div></div></div><script>
-            if (typeof window.__updateThemeElement === 'function') {
-              window.__updateThemeElement();
-            }
-          </script><script>((STORAGE_KEY, restoreKey) => {
-    if (!window.history.state || !window.history.state.key) {
-      let key = Math.random().toString(32).slice(2);
-      window.history.replaceState({
-        key
-      }, "");
-    }
-    try {
-      let positions = JSON.parse(sessionStorage.getItem(STORAGE_KEY) || "{}");
-      let storedY = positions[restoreKey || window.history.state.key];
-      if (typeof storedY === "number") {
-        window.scrollTo(0, storedY);
-      }
-    } catch (error) {
-      console.error(error);
-      sessionStorage.removeItem(STORAGE_KEY);
-    }
-  })("positions", null)</script><link rel="modulepreload" href="https://file-assets.apidog.com/docs-site/v1/assets/manifest-db7ef313.js"/><link rel="modulepreload" href="https://file-assets.apidog.com/docs-site/v1/assets/entry.client-mUtkjgQm.js"/><link rel="modulepreload" href="https://file-assets.apidog.com/docs-site/v1/assets/jsx-runtime-CM5sU0Q5.js"/><link rel="modulepreload" href="https://file-assets.apidog.com/docs-site/v1/assets/client-BKxavTD9.js"/><link rel="modulepreload" href="https://file-assets.apidog.com/docs-site/v1/assets/components-DMSdXhQK.js"/><link rel="modulepreload" href="https://file-assets.apidog.com/docs-site/v1/assets/root-CQ054TXt.js"/><link rel="modulepreload" href="https://file-assets.apidog.com/docs-site/v1/assets/root-Dv513fR3.js"/><link rel="modulepreload" href="https://file-assets.apidog.com/docs-site/v1/assets/route-D_6YkXJe.js"/><script>window.__remixContext = {"basename":"/","future":{"v3_fetcherPersist":true,"v3_relativeSplatPath":true,"v3_throwAbortReason":true,"v3_routeConfig":false,"v3_singleFetch":true,"v3_lazyRouteDiscovery":false,"unstable_optimizeDeps":false},"isSpaMode":false};window.__remixContext.stream = new ReadableStream({start(controller){window.__remixContext.streamController = controller;}}).pipeThrough(new TextEncoderStream());</script><script type="module" async="">import "https://file-assets.apidog.com/docs-site/v1/assets/manifest-db7ef313.js";
-import * as route0 from "https://file-assets.apidog.com/docs-site/v1/assets/root-Dv513fR3.js";
-import * as route1 from "https://file-assets.apidog.com/docs-site/v1/assets/route-D_6YkXJe.js";
+### OpenAPI Specification
 
-window.__remixRouteModules = {"root":route0,"routes/_index/route":route1};
+```yaml
+openapi: 3.0.1
+info:
+  title: ''
+  description: ''
+  version: 1.0.0
+paths:
+  /claude/v1/messages:
+    post:
+      summary: Claude Haiku 4.5
+      deprecated: false
+      description: >-
+        ### Streaming Support
 
-import("https://file-assets.apidog.com/docs-site/v1/assets/entry.client-mUtkjgQm.js");</script></body></html><!--$--><script>window.__remixContext.streamController.enqueue("[{\"_1\":2,\"_231\":-5,\"_232\":-5},\"loaderData\",{\"_3\":4,\"_230\":-5},\"root\",{\"_5\":1,\"_6\":7,\"_19\":20,\"_23\":24,\"_33\":34,\"_52\":53,\"_112\":113,\"_155\":156,\"_229\":-7},\"type\",\"meta\",[8,11,16],{\"_9\":10},\"title\",\"API Documentation\",{\"_12\":13,\"_14\":15},\"name\",\"description\",\"content\",\"Design. Debug. Test. Document. Mock. Build APIs Faster \u0026 Together.\",{\"_12\":17,\"_14\":18},\"keywords\",\"API Design, API Specification, API Test, API Documentation, API Mock\",\"i18nState\",{\"_21\":22},\"clientLocale\",\"en-US\",\"errorCodeMessage\",{\"_25\":26,\"_27\":28,\"_29\":30,\"_31\":32},\"errorCode\",\"Unknown\",\"errorMessage\",\"Unexpected token 'o', \\\"forbidden\\n\\\" is not valid JSON: /api/v1/published-projects/domains/docs.kie.ai\",\"hideBuiltWith\",false,\"extra\",{},\"clientConfig\",{\"_35\":36,\"_37\":38,\"_39\":40,\"_41\":42,\"_47\":48,\"_49\":30,\"_50\":51},\"apiBaseUrl\",\"https://api.apidog.com\",\"appWebUrl\",\"https://app.apidog.com\",\"apidocBuiltinPrefixPath\",\"https://assets.apidog.com/app/static/apidoc\",\"cloudMockBaseUrls\",{\"_43\":44,\"_45\":46},\"pathMode\",\"https://mock.apidog.com/m1/{projectId}-{version}-{service}\",\"idMode\",\"https://mock.apidog.com/m2/{projectId}-{version}-{service}\",\"apidocIsShowLogo\",true,\"markdownDisableBreaks\",\"webhookGenerateCodeDefaultUrl\",\"https://your-api-server.com\",\"urlConfig\",{\"_54\":55,\"_58\":59,\"_99\":100,\"_108\":109},\"home\",{\"_56\":57},\"index\",\"https://apidog.com\",\"icon\",{\"_60\":61,\"_62\":63,\"_64\":63,\"_65\":66,\"_67\":68,\"_69\":70,\"_71\":72,\"_73\":74,\"_75\":76,\"_77\":78,\"_79\":80,\"_81\":82,\"_83\":84,\"_85\":86,\"_87\":88,\"_89\":90,\"_91\":92,\"_93\":94,\"_95\":96,\"_97\":98},\"apidoc\",\"https://assets.apidog.com/app/static/brand/apidoc.png\",\"apidog\",\"https://assets.apidog.com/app/static/brand/apidog-logo-256.png\",\"apidog europe\",\"googleDiscovery\",\"https://assets.apidog.com/app/static/brand/google-discovery.png\",\"har\",\"https://assets.apidog.com/app/static/brand/har.png\",\"iodocs\",\"https://assets.apidog.com/app/static/brand/io-doc.png\",\"jmeter\",\"https://assets.apidog.com/app/static/brand/jmeter.png\",\"openapi\",\"https://assets.apidog.com/app/static/brand/openapi.png\",\"postman\",\"https://assets.apidog.com/app/static/brand/postman.png\",\"raml\",\"https://assets.apidog.com/app/static/brand/raml.png\",\"wadl\",\"https://assets.apidog.com/app/static/brand/wadl.png\",\"curl\",\"https://assets.apidog.com/app/static/brand/curl.png\",\"insomnia\",\"https://assets.apidog.com/app/static/brand/insomnia.png\",\"wsdl\",\"https://assets.apidog.com/app/static/brand/wsdl.png\",\"markdown\",\"https://assets.apidog.com/app/static/brand/markdown.png\",\"html\",\"https://assets.apidog.com/app/static/brand/html.png\",\"protobuf\",\"https://assets.apidog.com/app/static/brand/protobuf.png\",\"soapui\",\"https://assets.apidog.com/app/static/brand/soapui.svg\",\"hoppscotch\",\"https://assets.apidog.com/app/static/brand/hoppscotch.svg\",\"javaProject\",\"https://assets.apidog.com/app/static/brand/java-project.png\",\"help\",{\"_56\":101,\"_102\":103,\"_104\":105,\"_106\":107},\"https://apidog.com/help\",\"browserExtension\",\"https://chromewebstore.google.com/detail/apidog-browser-extension/dmhljjnonlhapikmelaefohecogokhio\",\"csv\",\"https://apidog.com/help/reference/csv\",\"appMcpServer\",\"https://docs.apidog.com/apidog-mcp-server\",\"assets\",{\"_110\":111},\"logo512Png\",\"https://assets.apidog.com/static/logo/apidog-logo-512.png\",\"envConfig\",{\"_114\":60,\"_115\":116,\"_117\":116,\"_118\":119,\"_120\":121,\"_122\":123,\"_124\":57,\"_125\":62,\"_126\":22,\"_127\":128,\"_129\":130,\"_132\":133,\"_134\":135,\"_136\":137,\"_138\":139,\"_140\":141,\"_142\":143,\"_149\":150,\"_151\":48,\"_152\":153,\"_154\":30},\"RELEASE_BASE\",\"DEBUG_API_BASE\",\"\",\"DEBUG_WEB_URL_BASE\",\"AGENT_SERVER_API_BASE\",\"https://web-proxy.apidog.com\",\"APP_REGION\",\"GLOBAL\",\"APP_NAME\",\"Apidog\",\"APP_HOMEPAGE\",\"APP_NAME_LOWER\",\"DEFAULT_LOCALE\",\"APP_BROWSER_EXTENSION_ADAPTER\",\"apidogAgentCrossRequest\",\"APP_API_SERVER_HOSTNAMES\",[131],\"api.apidog.com\",\"APP_SUPPORT_EMAIL\",\"support@apidog.com\",\"APP_SCRIPT_MAIN_OBJECTS\",\"$\",\"SERVER_PROTOCOL\",\"http\",\"SERVER_HOST\",\"apidog-api-fordoc-svc\",\"DEFAULT_DOC_LAYOUT\",\"TwoColumn\",\"NOT_CUSTOM_DOMAIN_HOSTNAMES\",[144,145,146,147,148],\"www.apidog.com\",\"apidog.com\",\"www.apidog.io\",\"apidog.io\",\"share.apidog.com\",\"SERVER_REQUEST_TIMEOUT\",15000,\"IS_SHARED_DOC_INDEPENDENT_DOMAIN\",\"APIDOC_CUSTOM_DOMAIN_CNAME_REGEX\",[\"R\",\"\\\\d+\\\\.cname\\\\.apidog\\\\.com\",\"\"],\"IS_ALWAYS_USE_ORIGIN_FETCH\",\"docsDataState\",{\"_157\":158,\"_162\":163,\"_175\":176,\"_177\":178,\"_179\":180,\"_189\":190,\"_202\":203,\"_204\":205,\"_206\":207,\"_213\":214,\"_220\":-7,\"_221\":222,\"_223\":-7,\"_224\":-7,\"_225\":226,\"_228\":-7},\"navigation\",{\"_5\":159,\"_160\":161},\"NONE\",\"navRightLinkItems\",[],\"sidebarTree\",{\"_164\":-7,\"_165\":-7,\"_166\":167,\"_168\":-7,\"_169\":170,\"_171\":-7,\"_172\":-7,\"_173\":174},\"goBackSidebarTreeApiFolderNode\",\"rootSidebarTreeApiFolderNode\",\"sidebarTreeList\",[],\"selectedSidebarTreeNode\",\"parentSidebarTreeApiFolderNodes\",[],\"previousSidebarTreeNode\",\"nextSidebarTreeNode\",\"homeLink\",\"/\",\"docsBaseConfig\",{},\"versionList\",[],\"resourceData\",{\"_5\":181,\"_182\":-7,\"_183\":184},\"NotFound\",\"data\",\"extraData\",{\"_185\":186,\"_187\":188},\"apiFieldList\",[],\"dataSchemaDefinitions\",{},\"docsIdTypeData\",{\"_191\":192,\"_193\":194,\"_195\":194,\"_196\":194,\"_197\":116,\"_198\":194,\"_199\":200,\"_201\":-7},\"onlineType\",\"APIDOC\",\"branchId\",0,\"onlineId\",\"projectId\",\"subdirectory\",\"teamId\",\"visitType\",\"customDomain\",\"specialFileType\",\"notification\",[],\"footerBanner\",[],\"projectSetting\",{\"_208\":209,\"_210\":211},\"advancedSettings\",{},\"auth\",{\"_5\":212},\"noauth\",\"environments\",{\"_215\":216,\"_217\":-7,\"_218\":219},\"environmentList\",[],\"selectedEnvironment\",\"servers\",[],\"searchSettings\",\"versionSettings\",[],\"seoInfos\",\"itemPathPrefix\",\"appEnvMap\",{\"_227\":128},\"appBrowserExtensionAdapterKey\",\"customCodes\",\"primaryColorVariable\",\"routes/_index/route\",\"actionData\",\"errors\"]\n");</script><!--$--><script>window.__remixContext.streamController.close();</script><!--/$--><!--/$-->
+        When `stream: true` is set in the request, the API returns responses as
+        server-sent events (SSE). Claude tool calling responses stream
+        `tool_use` blocks and `input_json_delta` fragments.
+
+        **Streaming Response Format:**
+
+        - Content-Type: `text/event-stream`
+
+        - Event names include `message_start`, `content_block_start`,
+        `content_block_delta`, `message_delta`, and `message_stop`
+
+        - Tool calls are emitted as `tool_use` content blocks
+
+        - Final stop reason is often `tool_use` for function-calling requests
+
+        ## Features
+
+        - Standard chat with `messages`.
+
+        - Function calling with `tools` and `input_schema`.
+
+        - Optional stream response with Claude events.
+
+        ## Request Notes
+
+        - Put the current model name in the `model` field.
+
+        - Use `messages` for conversation history.
+
+        - Use `tools` to declare callable functions.
+
+        - Set `stream` to `true` for SSE output.
+
+        ## Authentication
+
+        Use the auth configuration for `X-Api-Key` and `anthropic-version`. Do
+        not add them as regular request parameters.
+      operationId: claude_haiku_4_5
+      tags:
+        - docs/en/Market/Chat  Models/Claude
+      parameters: []
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                model:
+                  type: string
+                  description: Model name. It must match the current document.
+                  enum:
+                    - claude-haiku-4-5
+                  examples:
+                    - claude-haiku-4-5
+                messages:
+                  type: array
+                  description: Conversation messages in chronological order.
+                  items:
+                    type: object
+                    properties:
+                      role:
+                        type: string
+                        enum:
+                          - user
+                          - assistant
+                        description: Message role.
+                        examples:
+                          - user
+                      content:
+                        oneOf:
+                          - type: string
+                            description: Plain text content.
+                          - type: array
+                            description: Structured content blocks.
+                            items:
+                              type: object
+                              additionalProperties: true
+                              x-apidog-orders: []
+                        description: Message content.
+                        examples:
+                          - What is the weather like in Boston today?
+                    required:
+                      - role
+                      - content
+                    x-apidog-orders:
+                      - role
+                      - content
+                  minItems: 1
+                tools:
+                  type: array
+                  description: >-
+                    Optional callable tools. Each tool includes a name,
+                    description, and input_schema.
+                  items:
+                    type: object
+                    properties:
+                      name:
+                        type: string
+                        description: Function name.
+                        examples:
+                          - get_current_weather
+                      description:
+                        type: string
+                        description: Human-readable function description.
+                        examples:
+                          - Get the current weather in a given location
+                      input_schema:
+                        type: object
+                        description: JSON Schema for function parameters.
+                        properties:
+                          type:
+                            type: string
+                            description: Schema type.
+                            examples:
+                              - object
+                          properties:
+                            type: object
+                            description: Function parameter definitions.
+                            additionalProperties: true
+                            x-apidog-orders: []
+                            properties: {}
+                          required:
+                            type: array
+                            description: Required parameter names.
+                            items:
+                              type: string
+                        x-apidog-orders:
+                          - type
+                          - properties
+                          - required
+                        examples:
+                          - type: object
+                            properties:
+                              location:
+                                type: string
+                                description: The city and state, e.g. Boston, MA
+                            required:
+                              - location
+                    required:
+                      - name
+                      - description
+                      - input_schema
+                    x-apidog-orders:
+                      - name
+                      - description
+                      - input_schema
+                thinkingFlag:
+                  type: boolean
+                  description: >-
+                    Project-specific thinking flag used by the current Claude
+                    adapter.
+                  examples:
+                    - true
+                stream:
+                  type: boolean
+                  default: true
+                  description: If set to true, the response is returned as an SSE stream.
+                  examples:
+                    - false
+                max_tokens:
+                  type: number
+                  default: 4096
+                  examples:
+                    - 4096
+                  description: >-
+                    Optional Claude output token limit. Leave empty to use the
+                    default of 4096.
+              required:
+                - model
+                - messages
+              x-apidog-orders:
+                - model
+                - messages
+                - tools
+                - thinkingFlag
+                - stream
+                - max_tokens
+              examples:
+                - model: claude-haiku-4-5-v1messages
+                  messages:
+                    - role: user
+                      content: What is the weather like in Boston today?
+                  tools:
+                    - name: get_current_weather
+                      description: Get the current weather in a given location
+                      input_schema:
+                        type: object
+                        properties:
+                          location:
+                            type: string
+                            description: The city and state, e.g. Boston, MA
+                        required:
+                          - location
+                  thinkingFlag: true
+                  stream: false
+            example:
+              model: claude-haiku-4-5
+              messages:
+                - role: user
+                  content: What is the weather like in Boston today?
+              tools:
+                - name: get_current_weather
+                  description: Get the current weather in a given location
+                  input_schema:
+                    type: object
+                    properties:
+                      location:
+                        type: string
+                        description: The city and state, e.g. Boston, MA
+                    required:
+                      - location
+              thinkingFlag: true
+              stream: false
+              max_tokens: 4096
+      responses:
+        '200':
+          description: Request successful.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  role:
+                    type: string
+                    description: Returned message role
+                    examples:
+                      - assistant
+                  usage:
+                    type: object
+                    description: Usage information returned by the provider
+                    properties:
+                      input_tokens:
+                        type: integer
+                        description: Input token count
+                        examples:
+                          - 600
+                      output_tokens:
+                        type: integer
+                        description: Output token count
+                        examples:
+                          - 57
+                      cache_creation_input_tokens:
+                        type: integer
+                        description: Cache creation input token count
+                        examples:
+                          - 0
+                      cache_read_input_tokens:
+                        type: integer
+                        description: Cache read input token count
+                        examples:
+                          - 0
+                      service_tier:
+                        type: string
+                        description: Service tier
+                        examples:
+                          - standard
+                    x-apidog-orders:
+                      - input_tokens
+                      - output_tokens
+                      - cache_creation_input_tokens
+                      - cache_read_input_tokens
+                      - service_tier
+                  stop_reason:
+                    type: string
+                    description: Reason why generation stopped
+                    examples:
+                      - tool_use
+                  model:
+                    type: string
+                    description: Actual model version returned by the provider
+                    examples:
+                      - claude-opus-4-5-20251101
+                  id:
+                    type: string
+                    description: Unique message identifier
+                    examples:
+                      - msg_01VSoxV4a8YWB3DBh9TdM63W
+                  credits_consumed:
+                    type: number
+                    description: Credits consumed by the request
+                    examples:
+                      - 0.25
+                  type:
+                    type: string
+                    description: Top-level response object type
+                    examples:
+                      - message
+                  content:
+                    type: array
+                    description: Response content blocks
+                    items:
+                      type: object
+                      properties:
+                        input:
+                          type: object
+                          description: Tool input arguments
+                          additionalProperties: true
+                          x-apidog-orders: []
+                          properties: {}
+                        caller:
+                          type: object
+                          description: Tool caller metadata
+                          properties:
+                            type:
+                              type: string
+                              examples:
+                                - direct
+                          x-apidog-orders:
+                            - type
+                        name:
+                          type: string
+                          description: Tool name
+                          examples:
+                            - get_current_weather
+                        id:
+                          type: string
+                          description: Tool call identifier
+                          examples:
+                            - toolu_018gdqs2FHxrRjQHLZv1qvbF
+                        type:
+                          type: string
+                          description: Content block type
+                          examples:
+                            - tool_use
+                      x-apidog-orders:
+                        - input
+                        - caller
+                        - name
+                        - id
+                        - type
+                x-apidog-orders:
+                  - role
+                  - usage
+                  - stop_reason
+                  - model
+                  - id
+                  - credits_consumed
+                  - type
+                  - content
+              example:
+                role: assistant
+                usage:
+                  cache_creation:
+                    ephemeral_1h_input_tokens: 0
+                    ephemeral_5m_input_tokens: 0
+                  output_tokens: 57
+                  service_tier: standard
+                  cache_creation_input_tokens: 0
+                  input_tokens: 600
+                  cache_read_input_tokens: 0
+                  inference_geo: not_available
+                stop_reason: tool_use
+                model: claude-opus-4-5-20251101
+                id: msg_01VSoxV4a8YWB3DBh9TdM63W
+                credits_consumed: 0.25
+                type: message
+                content:
+                  - input:
+                      location: Beijing, China
+                    caller:
+                      type: direct
+                    name: get_current_weather
+                    id: toolu_018gdqs2FHxrRjQHLZv1qvbF
+                    type: tool_use
+          headers: {}
+          x-apidog-name: ''
+        '400':
+          description: Bad Request - Invalid request parameters
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: object
+                    properties:
+                      message:
+                        type: string
+                        examples:
+                          - Invalid request parameters
+                      type:
+                        type: string
+                        examples:
+                          - invalid_request_error
+                    x-apidog-orders:
+                      - message
+                      - type
+                x-apidog-orders:
+                  - error
+          headers: {}
+          x-apidog-name: ''
+        '401':
+          description: Unauthorized - Invalid or missing API key
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: object
+                    properties:
+                      message:
+                        type: string
+                        examples:
+                          - Invalid or missing API key
+                      type:
+                        type: string
+                        examples:
+                          - authentication_error
+                    x-apidog-orders:
+                      - message
+                      - type
+                x-apidog-orders:
+                  - error
+          headers: {}
+          x-apidog-name: ''
+      security: []
+      x-apidog-folder: docs/en/Market/Chat  Models/Claude
+      x-apidog-status: released
+      x-run-in-apidog: https://app.apidog.com/web/project/1184766/apis/api-30749621-run
+components:
+  schemas: {}
+  securitySchemes:
+    BearerAuth:
+      type: bearer
+      scheme: bearer
+      bearerFormat: API Key
+      description: >-
+        All API requests require a Bearer Token. Add the header `Authorization:
+        Bearer YOUR_API_KEY` to authenticate requests.
+    BearerAuth1:
+      type: bearer
+      scheme: bearer
+      bearerFormat: API Key
+      description: >-
+        所有 API 请求都需要 Bearer Token。请在请求头中添加 `Authorization: Bearer YOUR_API_KEY`
+        进行身份验证。
+servers:
+  - url: https://api.kie.ai
+    description: 正式环境
+security:
+  - BearerAuth: []
+    x-apidog:
+      schemeGroups:
+        - id: kn8M4YUlc5i0A0179ezwx
+          schemeIds:
+            - BearerAuth
+      required: true
+      use:
+        id: kn8M4YUlc5i0A0179ezwx
+      scopes:
+        kn8M4YUlc5i0A0179ezwx:
+          BearerAuth: []
+
+```
 
 ---
 
@@ -61411,40 +64478,482 @@ import("https://file-assets.apidog.com/docs-site/v1/assets/entry.client-mUtkjgQm
 
 **Source:** [https://docs.kie.ai/market/claude/claude-opus-4-5.md][155]
 
-<!DOCTYPE html><html lang="en-US" class="group/root" id="html" data-theme="light" data-accent-color="purple"><head><script src="https://file-assets.apidog.com/docs-site/v1/assets/prepareDocsConfigScript-CLIBKQbk.js"></script><script>__prepareDocsConfigScript(JSON.parse("{\"theme\":\"system\",\"themePrimarySettings\":{\"light\":{\"accentColor\":\"purple\"},\"dark\":{\"accentColor\":\"purple\"}},\"logoSettings\":{\"light\":{\"icon\":\"\",\"type\":\"project\"},\"dark\":{\"icon\":\"\",\"type\":\"followLight\"}},\"backgroundImageSettings\":{\"light\":{\"type\":\"custom\",\"color\":\"\"},\"dark\":{\"type\":\"followLight\",\"color\":\"\"}},\"id\":0,\"subdirectory\":\"\"}"));</script><script>window.eventTracking = {
-      dataLayer: []
-    }
-    window.eventTracking.report = function(){
-        window.eventTracking.dataLayer.push(arguments);
-    }</script><meta charSet="utf-8"/><meta name="viewport" content="width=device-width, initial-scale=1"/><title>API Documentation</title><meta name="description" content="Design. Debug. Test. Document. Mock. Build APIs Faster &amp; Together."/><meta name="keywords" content="API Design, API Specification, API Test, API Documentation, API Mock"/><link rel="stylesheet" href="https://file-assets.apidog.com/docs-site/v1/assets/root-CpC_E1fb.css"/></head><body class="overflow-hidden g-body"><div class="flex h-full w-full flex-col overflow-auto"><div class="flex flex-1 flex-col items-center justify-center"><div class="flex w-auto flex-col items-center justify-center max-os:p-5 os:w-[480px]"><svg width="104" height="104" viewBox="0 0 104 104" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M92.9557 41.8969L88.7262 25.2175C87.4089 19.8194 84.8039 16.1447 80.9015 14.1934L80.3963 13.9458C79.802 13.6685 79.178 13.4407 78.5243 13.2426C75.4142 12.3214 72.0268 12.371 68.362 13.3813C65.8759 14.0747 63.2612 15.2038 60.5176 16.7886C56.7835 18.9478 53.3167 21.6319 50.1076 24.8708C49.0973 25.8711 48.1266 26.9209 47.1956 28.0204C46.314 29.0406 45.4622 30.1105 44.6302 31.2198C42.9266 33.4781 41.3121 35.9245 39.7868 38.5492C34.1015 48.3648 31.2588 57.9329 31.2588 67.2631C31.2588 72.0471 32.1106 76.1181 33.8142 79.4461C34.6759 81.1101 35.6862 82.5263 36.8748 83.7248C37.9346 84.7846 39.1232 85.6564 40.4405 86.3398L41.0151 86.627V98.9485C41.0151 99.9984 41.3221 100.712 41.9461 101.058C42.5701 101.415 43.3426 101.326 44.2637 100.801L67.0249 87.6571C67.946 87.1223 68.7186 86.3199 69.3426 85.2502C69.9666 84.1706 70.2736 83.1008 70.2736 82.0509V78.3169L76.7811 74.5629C78.5639 73.5328 80.0993 71.9184 81.377 69.7195C82.6448 67.5207 83.2786 65.4011 83.2786 63.341V52.1485L89.786 48.3946C90.8657 47.7706 91.7373 46.79 92.391 45.4429C93.0348 44.1058 93.2231 42.927 92.9557 41.8969ZM62.8352 66.6095C62.2112 67.6891 61.4387 68.4914 60.5176 69.0263C59.5964 69.5512 58.8237 69.6404 58.1997 69.2838C57.5856 68.9371 57.2687 68.2238 57.2687 67.164C57.2687 66.1042 57.5856 65.0445 58.1997 63.9748C58.2592 63.8658 58.3186 63.7667 58.378 63.6676C58.9129 62.8356 59.5468 62.1819 60.2797 61.7164C60.359 61.6569 60.4383 61.6075 60.5176 61.558C61.4387 61.033 62.2112 60.9439 62.8352 61.2906C63.4592 61.6471 63.7761 62.3604 63.7761 63.4103C63.7761 64.4602 63.4592 65.5398 62.8352 66.6095ZM69.5011 38.7572C69.402 39.1336 69.2832 39.5101 69.1346 39.8865C68.5997 41.3227 67.4607 43.6206 65.7274 46.8C64.9647 48.1768 64.41 49.3158 64.0535 50.237C63.8157 50.861 63.6176 51.4748 63.4691 52.0592C63.3997 52.3366 63.3304 52.6041 63.2809 52.8715C63.1224 53.7729 62.7856 54.6148 62.2706 55.3774C61.7556 56.1401 61.2009 56.6948 60.6066 57.0315C59.8935 57.4475 59.319 57.4971 58.8535 57.2099C58.3978 56.9128 58.2196 56.358 58.3285 55.5557C58.487 54.2186 58.8039 52.931 59.2596 51.7029C59.7251 50.4747 60.4679 48.9392 61.498 47.0969C62.3201 45.6409 62.9837 44.4029 63.4691 43.4026C63.7761 42.7885 64.0138 42.2636 64.1921 41.8278C64.202 41.7981 64.2119 41.7782 64.2218 41.7485C64.6775 40.5797 64.9153 39.5001 64.9153 38.4997C64.9153 37.321 64.5191 36.5881 63.7366 36.2909C62.9442 36.0037 61.9537 36.2019 60.7652 36.8853C60.0025 37.3211 59.2794 37.945 58.5662 38.7572C57.863 39.5694 57.239 40.5105 56.7041 41.5604C56.2683 42.5013 55.7632 43.2442 55.1986 43.7889C54.6241 44.3337 54.0397 44.6209 53.4455 44.6506C52.8512 44.6902 52.4055 44.4525 52.1083 43.9374C51.8112 43.4224 51.8211 42.7687 52.1479 41.9565C53.0691 39.7477 54.2973 37.7074 55.8424 35.8552C56.5754 34.9737 57.338 34.1811 58.1205 33.4878C58.9822 32.735 59.8638 32.0913 60.7652 31.5664C63.3701 30.0708 65.5491 29.7141 67.3121 30.4966C69.0752 31.279 69.9468 32.9829 69.9468 35.5977C69.9468 36.6476 69.7982 37.7073 69.5011 38.7572Z" stroke="#667085" stroke-linecap="round" stroke-linejoin="round"></path><path d="M63.777 63.4086C63.777 64.4684 63.46 65.5381 62.836 66.6078C62.212 67.6874 61.4395 68.4896 60.5184 69.0245C59.5972 69.5494 58.8246 69.6387 58.2006 69.2821C57.5865 68.9354 57.2695 68.2221 57.2695 67.1623C57.2695 66.1025 57.5865 65.0428 58.2006 63.973C58.26 63.8641 58.3194 63.7649 58.3789 63.6659C58.9137 62.8339 59.5476 62.1802 60.2806 61.7147C60.3598 61.6552 60.4392 61.6058 60.5184 61.5563C61.4395 61.0313 62.212 60.9422 62.836 61.2888C63.46 61.6454 63.777 62.3587 63.777 63.4086Z" stroke="#667085" stroke-linecap="round" stroke-linejoin="round"></path><path d="M63.7373 36.2894C62.9449 36.0021 61.9544 36.2003 60.7659 36.8838C60.0032 37.3196 59.2801 37.9435 58.567 38.7557C57.8638 39.5679 57.2398 40.5089 56.7049 41.5588C56.2691 42.4998 55.7639 43.2426 55.1994 43.7874C54.6249 44.3321 54.0405 44.6193 53.4462 44.649C52.8519 44.6886 52.4062 44.4509 52.1091 43.9359C51.8119 43.4208 51.8219 42.7671 52.1487 41.9549C53.0699 39.7461 54.298 37.7059 55.8432 35.8537C56.5761 34.9721 57.3388 34.1797 58.1213 33.4863L63.7373 36.2894Z" stroke="#667085" stroke-linecap="round" stroke-linejoin="round"></path><path d="M69.9474 35.596C69.9474 36.6459 69.7988 37.7056 69.5017 38.7555C69.4026 39.1319 69.2838 39.5085 69.1352 39.8849C68.6003 41.321 67.4613 43.6189 65.728 46.7984C64.9653 48.1751 64.4106 49.3141 64.054 50.2352C63.8163 50.8592 63.6182 51.4732 63.4697 52.0576C63.4003 52.3349 63.331 52.6024 63.2815 52.8698C63.123 53.7711 62.7862 54.6131 62.2712 55.3758C61.7561 56.1385 61.2015 56.693 60.6072 57.0298C59.894 57.4458 59.3196 57.4955 58.854 57.2083C58.3984 56.9111 58.2201 56.3563 58.3291 55.554C58.4876 54.2168 58.8045 52.9293 59.2601 51.7011C59.7257 50.4729 60.4685 48.9376 61.4986 47.0953C62.3207 45.6393 62.9843 44.4012 63.4697 43.4008C63.7767 42.7868 64.0144 42.2619 64.1927 41.8261C64.2026 41.7964 64.2125 41.7766 64.2224 41.7468C64.678 40.5781 64.9158 39.4984 64.9158 38.498C64.9158 37.3193 64.5196 36.5865 63.7371 36.2893L58.1211 33.4862C58.9828 32.7334 59.8643 32.0896 60.7657 31.5647C63.3706 30.069 65.5497 29.7125 67.3127 30.4949C69.0758 31.2774 69.9474 32.9811 69.9474 35.596Z" stroke="#667085" stroke-linecap="round" stroke-linejoin="round"></path><path d="M41.9466 101.059L22.3253 91.2429L22.1371 91.1537C21.5131 90.807 21.2061 90.094 21.2061 89.0441V76.7227L41.0156 86.6274V98.9488C41.0156 99.9988 41.3226 100.712 41.9466 101.059Z" stroke="#667085" stroke-linecap="round" stroke-linejoin="round"></path><path d="M80.3972 13.9448C79.8029 13.6675 79.1789 13.4397 78.5252 13.2416C75.4151 12.3204 72.0277 12.3701 68.3629 13.3804C65.8768 14.0737 63.2621 15.2028 60.5185 16.7876C56.7844 18.9468 53.3176 21.6309 50.1085 24.8698C49.0982 25.8702 48.1275 26.92 47.1965 28.0194C46.3149 29.0396 45.4631 30.1096 44.6311 31.2189C42.9275 33.4772 41.313 35.9236 39.7877 38.5484C34.1024 48.364 31.2597 57.932 31.2597 67.2623C31.2597 72.0463 32.1115 76.1171 33.8151 79.4451C34.6768 81.1091 35.6871 82.5253 36.8757 83.7238C37.9355 84.7836 39.1241 85.6554 40.4414 86.3388L21.2065 76.7213C18.1161 75.2752 15.7192 72.8783 14.0056 69.5404C12.302 66.2124 11.4502 62.1415 11.4502 57.3575C11.4502 48.0272 14.2929 38.4592 19.9782 28.6436C25.6734 18.828 32.587 11.5678 40.7089 6.88282C47.4838 2.97044 53.486 1.79169 58.7157 3.33683C59.4784 3.56464 60.2113 3.84208 60.8948 4.17884L61.281 4.37688L80.3972 13.9448Z" stroke="#667085" stroke-linecap="round" stroke-linejoin="round"></path></svg><div class="align-center mt-8 flex justify-center text-center text-2xl font-semibold text-color">An abnormal error occurred, please try &#x27;Reload&#x27; or &#x27;get Support&#x27; to help you solve it!</div><div class="align-center mt-2 text-center text-lg font-400 text-secondary">Unexpected token &#x27;o&#x27;, &quot;forbidden
-&quot; is not valid JSON: /api/v1/published-projects/domains/docs.kie.ai</div></div></div><div class="flex flex-col items-center justify-center p-8 text-base font-base text-secondary"><div class="inline-flex items-center text-base font-400 text-secondary _footer-logo-wrapper_1kbjg_1"><a class="_footer-logo_1kbjg_1 flex-shrink-0" aria-label="homepage link" href="https://apidog.com"><span class="inline-flex items-center"><span class="mr-[-4px]">Built with</span><svg width="61" height="18" viewBox="0 0 61 18" fill="none" xmlns="http://www.w3.org/2000/svg" class="h-[18px] w-[80px]"><path d="M12.3836 1.67806C11.6452 0.940647 10.4478 0.940647 9.70932 1.67806L8.99795 2.3884L8.30644 1.69789C7.57144 0.963937 6.37437 0.936241 5.62991 1.66043C4.88545 2.38463 4.86748 3.60515 5.61194 4.34854L6.32331 5.05888C7.80026 6.53371 10.195 6.53371 11.6723 5.05888L12.3836 4.34854C13.1221 3.61113 13.1221 2.41547 12.3836 1.67806Z" fill="#667085"></path><path d="M12.3838 13.6515L11.6729 12.9412C10.1968 11.4664 7.80339 11.4664 6.32699 12.9412L5.61603 13.6515C4.87799 14.389 4.87799 15.5846 5.61603 16.322C6.35408 17.0594 7.55076 17.0594 8.28881 16.322L8.99976 15.6117L9.69087 16.3022C10.4255 17.0361 11.6218 17.0638 12.3659 16.3396C13.1219 15.6038 13.1278 14.3949 12.3838 13.6515Z" fill="#667085"></path><path d="M15.6105 8.99642L16.3214 8.28481C17.0655 7.54009 17.0595 6.32906 16.3035 5.59191C15.5595 4.86643 14.3631 4.89418 13.6285 5.62943L13.3098 5.94851C12.1666 7.09269 10.6166 7.73526 9 7.73526C7.38344 7.73526 5.83335 7.09238 4.69023 5.94851L4.37146 5.62943C3.63689 4.89418 2.44054 4.86643 1.69652 5.59191C0.940527 6.32906 0.934542 7.54009 1.67856 8.28481L2.38951 8.99642L1.67856 9.70803C0.940527 10.4468 0.940527 11.6445 1.67856 12.3833C2.4166 13.122 3.61326 13.122 4.3513 12.3833L4.74347 11.9907C5.85225 10.8809 7.35604 10.2576 8.92409 10.2576H8.9874C10.6162 10.2576 12.1666 10.9005 13.3098 12.0446C13.5126 12.2477 13.6484 12.3836 13.6484 12.3836C14.3864 13.1223 15.5831 13.1223 16.3211 12.3836C17.0592 11.6449 17.0592 10.4471 16.3211 9.70834L15.6102 8.99673L15.6105 8.99642Z" fill="#667085"></path><path fill-rule="evenodd" clip-rule="evenodd" d="M37.3559 4.00331C37.4694 3.95752 37.5911 3.93521 37.7136 3.93768C37.8343 3.93606 37.9541 3.95884 38.0656 4.0046C38.1772 4.05035 38.2781 4.11814 38.3624 4.20384C38.4483 4.29095 38.5158 4.39418 38.561 4.50749C38.6061 4.6208 38.628 4.7419 38.6253 4.8637C38.628 4.98551 38.6061 5.10664 38.561 5.21995C38.5158 5.33326 38.4483 5.43648 38.3624 5.52357C38.2781 5.60926 38.1772 5.67705 38.0656 5.72284C37.9541 5.7686 37.8343 5.79134 37.7136 5.78975C37.5911 5.79222 37.4694 5.76989 37.3559 5.72413C37.2425 5.67837 37.1396 5.61011 37.0536 5.52357C36.9677 5.43648 36.9002 5.33326 36.8551 5.21995C36.8099 5.10664 36.7881 4.98551 36.7908 4.8637C36.7881 4.7419 36.8099 4.6208 36.8551 4.50749C36.9002 4.39418 36.9677 4.29095 37.0536 4.20384C37.1396 4.1173 37.2425 4.04907 37.3559 4.00331ZM25.6211 4.76389L24.0219 4.76389L21.175 12.7654H22.7355L23.2948 11.1795H26.371L26.9303 12.7654H28.5019L25.6211 4.76389ZM25.9403 9.91528H23.7255L24.8441 6.75459L25.9403 9.91528ZM34.4529 6.71022C33.9935 6.42603 33.4618 6.27789 32.9204 6.28324C32.4656 6.27789 32.0164 6.38257 31.6116 6.58824C31.3484 6.72112 31.1086 6.89528 30.9013 7.10393V6.38304H29.4248V15.6932H30.9181V12.0501C31.1303 12.2594 31.3736 12.4352 31.6396 12.5714C32.0799 12.7816 32.5659 12.88 33.0541 12.8577C33.5422 12.8355 34.0171 12.6932 34.4361 12.4438C34.899 12.1548 35.274 11.7466 35.5212 11.2627C35.7861 10.7302 35.9203 10.1431 35.9126 9.54929C35.923 8.96057 35.7887 8.37821 35.5212 7.8525C35.2797 7.38027 34.9096 6.98456 34.4529 6.71022ZM34.4137 9.55484C34.4161 9.91562 34.3297 10.2716 34.162 10.5918C34.0132 10.8769 33.7889 11.1165 33.5133 11.2849C33.2582 11.4309 32.9688 11.5078 32.6743 11.5078C32.3798 11.5078 32.0904 11.4309 31.8353 11.2849C31.5644 11.1203 31.341 10.8892 31.1866 10.6139C31.0195 10.284 30.937 9.91836 30.946 9.54929C30.9355 9.18364 31.0182 8.82126 31.1866 8.49571C31.331 8.22256 31.5426 7.98991 31.8018 7.81923C32.0627 7.67197 32.3573 7.59366 32.6575 7.5919C32.9606 7.59099 33.2582 7.67147 33.5188 7.82478C33.7952 7.97573 34.0193 8.20567 34.162 8.48465C34.3413 8.8105 34.4283 9.17839 34.4137 9.54929V9.55484ZM38.4519 6.38304H36.9585V12.7599H38.4519V6.38304ZM43.7037 6.56049C43.9895 6.68375 44.2509 6.85649 44.4756 7.07066V4.27038H45.9801V12.7654H44.4756V12.039C44.2733 12.2523 44.0347 12.4288 43.7709 12.5603C43.3696 12.7699 42.9211 12.8748 42.4677 12.8652C41.9296 12.8702 41.4008 12.7261 40.9408 12.4493C40.4817 12.1535 40.1078 11.7446 39.8557 11.2627C39.5908 10.7302 39.4566 10.1431 39.4642 9.54929C39.4539 8.96057 39.5882 8.37821 39.8557 7.8525C40.1049 7.3803 40.4803 6.98514 40.9408 6.71022C41.3529 6.46065 41.821 6.31637 42.3032 6.29024C42.7854 6.26412 43.2666 6.35695 43.7037 6.56049ZM44.4756 9.57146C44.4854 9.20459 44.3987 8.84147 44.2239 8.51792C44.0698 8.22608 43.835 7.98372 43.5471 7.81923C43.2921 7.67323 43.0027 7.59637 42.7082 7.59637C42.4136 7.59637 42.1243 7.67323 41.8692 7.81923C41.598 7.97735 41.377 8.20793 41.2316 8.48465C41.0626 8.80593 40.9798 9.16492 40.9911 9.52712C40.9825 9.89613 41.0651 10.2616 41.2316 10.5918C41.3883 10.8862 41.622 11.1333 41.9084 11.3071C42.1635 11.4531 42.4528 11.5299 42.7473 11.5299C43.0419 11.5299 43.3312 11.4531 43.5863 11.3071C43.8553 11.1436 44.0753 10.912 44.2239 10.6361C44.3961 10.3076 44.4826 9.94161 44.4756 9.57146ZM51.8863 6.71022C51.3775 6.44176 50.81 6.30134 50.2336 6.30134C49.6572 6.30134 49.0897 6.44176 48.5808 6.71022C48.1082 6.98053 47.7208 7.37607 47.4622 7.8525C47.1714 8.37882 47.0248 8.9715 47.0372 9.57146C47.026 10.1735 47.1684 10.7686 47.451 11.3016C47.7105 11.7817 48.0973 12.1824 48.5697 12.4605C49.0662 12.7315 49.6249 12.8709 50.1916 12.8652C50.7765 12.874 51.3541 12.7347 51.8695 12.4605C52.3652 12.1852 52.7752 11.7805 53.0553 11.2904C53.3515 10.7658 53.502 10.1726 53.4915 9.57146C53.5004 8.97048 53.35 8.37773 53.0553 7.8525C52.7813 7.37062 52.3763 6.97478 51.8863 6.71022ZM49.3639 7.81923C49.6253 7.67401 49.9199 7.59775 50.2196 7.59775C50.5193 7.59775 50.8139 7.67401 51.0753 7.81923C51.3499 7.97813 51.5716 8.21332 51.7129 8.49571C51.876 8.8305 51.9528 9.20008 51.9367 9.57146C51.9483 9.9474 51.8616 10.3199 51.685 10.6528C51.5392 10.9243 51.3204 11.1504 51.0529 11.3061C50.7853 11.4617 50.4794 11.5408 50.1693 11.5344C49.9454 11.5409 49.7227 11.4998 49.5162 11.4137C49.3097 11.3276 49.1243 11.1986 48.9724 11.0354C48.6355 10.6234 48.4678 10.1007 48.5025 9.57146C48.4901 9.19738 48.5708 8.82604 48.7374 8.4902C48.8747 8.21003 49.0927 7.97654 49.3639 7.81923ZM59.0394 7.03076V6.32653H60.5495V12.6812C60.5594 13.2247 60.4326 13.7622 60.1804 14.2449C59.9389 14.7103 59.5657 15.0957 59.1065 15.3539C58.5924 15.6305 58.0132 15.7664 57.4286 15.7476C56.67 15.7754 55.9226 15.5595 55.2977 15.1321C55.0204 14.9436 54.7884 14.6968 54.6182 14.4092C54.4481 14.1217 54.344 13.8006 54.3133 13.4686V13.3466L55.7954 13.3466C55.7954 13.6685 56.0907 13.9814 56.3547 14.134C56.6804 14.3328 57.0575 14.4331 57.4398 14.4223C57.6518 14.4311 57.8634 14.3968 58.0616 14.3215C58.2597 14.2462 58.4402 14.1314 58.592 13.9843C58.7493 13.8103 58.8699 13.6068 58.9468 13.3859C59.0236 13.1649 59.0394 12.931 59.0394 12.6978V11.9548C58.8328 12.1771 58.591 12.3644 58.3235 12.5093C57.9242 12.7189 57.4776 12.8239 57.0259 12.8143C56.4897 12.8185 55.9629 12.6744 55.5046 12.3984C55.0442 12.1041 54.6699 11.6949 54.4195 11.2117C54.1519 10.6801 54.0176 10.0924 54.0281 9.49832C54.0156 8.9094 54.1501 8.32653 54.4195 7.80153C54.6679 7.32727 55.0433 6.93011 55.5046 6.6537C55.9619 6.37401 56.4886 6.22618 57.0259 6.22672C57.4809 6.21907 57.9307 6.32389 58.3347 6.53172C58.5954 6.65891 58.8335 6.82746 59.0394 7.03076ZM58.7877 10.5796C58.9599 10.2511 59.0464 9.8851 59.0394 9.51494C59.0532 9.14059 58.9663 8.76931 58.7877 8.4392C58.6409 8.16062 58.4205 7.92682 58.1501 7.76271C57.8899 7.6138 57.5948 7.53538 57.2944 7.53538C56.994 7.53538 56.6988 7.6138 56.4387 7.76271C56.1645 7.92882 55.9419 8.16678 55.7954 8.4503C55.6308 8.76545 55.5463 9.11571 55.5494 9.4706C55.5427 9.84005 55.6271 10.2055 55.7954 10.5352C55.9406 10.827 56.1629 11.0743 56.4387 11.2505C56.6977 11.4028 56.9932 11.4832 57.2944 11.4832C57.5955 11.4832 57.8911 11.4028 58.1501 11.2505C58.419 11.0871 58.6392 10.8555 58.7877 10.5796Z" fill="#667085"></path></svg></span></a></div></div></div><script>
-            if (typeof window.__updateThemeElement === 'function') {
-              window.__updateThemeElement();
-            }
-          </script><script>((STORAGE_KEY, restoreKey) => {
-    if (!window.history.state || !window.history.state.key) {
-      let key = Math.random().toString(32).slice(2);
-      window.history.replaceState({
-        key
-      }, "");
-    }
-    try {
-      let positions = JSON.parse(sessionStorage.getItem(STORAGE_KEY) || "{}");
-      let storedY = positions[restoreKey || window.history.state.key];
-      if (typeof storedY === "number") {
-        window.scrollTo(0, storedY);
-      }
-    } catch (error) {
-      console.error(error);
-      sessionStorage.removeItem(STORAGE_KEY);
-    }
-  })("positions", null)</script><link rel="modulepreload" href="https://file-assets.apidog.com/docs-site/v1/assets/manifest-db7ef313.js"/><link rel="modulepreload" href="https://file-assets.apidog.com/docs-site/v1/assets/entry.client-mUtkjgQm.js"/><link rel="modulepreload" href="https://file-assets.apidog.com/docs-site/v1/assets/jsx-runtime-CM5sU0Q5.js"/><link rel="modulepreload" href="https://file-assets.apidog.com/docs-site/v1/assets/client-BKxavTD9.js"/><link rel="modulepreload" href="https://file-assets.apidog.com/docs-site/v1/assets/components-DMSdXhQK.js"/><link rel="modulepreload" href="https://file-assets.apidog.com/docs-site/v1/assets/root-CQ054TXt.js"/><link rel="modulepreload" href="https://file-assets.apidog.com/docs-site/v1/assets/root-Dv513fR3.js"/><link rel="modulepreload" href="https://file-assets.apidog.com/docs-site/v1/assets/route-D_6YkXJe.js"/><script>window.__remixContext = {"basename":"/","future":{"v3_fetcherPersist":true,"v3_relativeSplatPath":true,"v3_throwAbortReason":true,"v3_routeConfig":false,"v3_singleFetch":true,"v3_lazyRouteDiscovery":false,"unstable_optimizeDeps":false},"isSpaMode":false};window.__remixContext.stream = new ReadableStream({start(controller){window.__remixContext.streamController = controller;}}).pipeThrough(new TextEncoderStream());</script><script type="module" async="">import "https://file-assets.apidog.com/docs-site/v1/assets/manifest-db7ef313.js";
-import * as route0 from "https://file-assets.apidog.com/docs-site/v1/assets/root-Dv513fR3.js";
-import * as route1 from "https://file-assets.apidog.com/docs-site/v1/assets/route-D_6YkXJe.js";
+### OpenAPI Specification
 
-window.__remixRouteModules = {"root":route0,"routes/_index/route":route1};
+```yaml
+openapi: 3.0.1
+info:
+  title: ''
+  description: ''
+  version: 1.0.0
+paths:
+  /claude/v1/messages:
+    post:
+      summary: Claude Opus 4.5
+      deprecated: false
+      description: >-
+        ### Streaming Support
 
-import("https://file-assets.apidog.com/docs-site/v1/assets/entry.client-mUtkjgQm.js");</script></body></html><!--$--><script>window.__remixContext.streamController.enqueue("[{\"_1\":2,\"_231\":-5,\"_232\":-5},\"loaderData\",{\"_3\":4,\"_230\":-5},\"root\",{\"_5\":1,\"_6\":7,\"_19\":20,\"_23\":24,\"_33\":34,\"_52\":53,\"_112\":113,\"_155\":156,\"_229\":-7},\"type\",\"meta\",[8,11,16],{\"_9\":10},\"title\",\"API Documentation\",{\"_12\":13,\"_14\":15},\"name\",\"description\",\"content\",\"Design. Debug. Test. Document. Mock. Build APIs Faster \u0026 Together.\",{\"_12\":17,\"_14\":18},\"keywords\",\"API Design, API Specification, API Test, API Documentation, API Mock\",\"i18nState\",{\"_21\":22},\"clientLocale\",\"en-US\",\"errorCodeMessage\",{\"_25\":26,\"_27\":28,\"_29\":30,\"_31\":32},\"errorCode\",\"Unknown\",\"errorMessage\",\"Unexpected token 'o', \\\"forbidden\\n\\\" is not valid JSON: /api/v1/published-projects/domains/docs.kie.ai\",\"hideBuiltWith\",false,\"extra\",{},\"clientConfig\",{\"_35\":36,\"_37\":38,\"_39\":40,\"_41\":42,\"_47\":48,\"_49\":30,\"_50\":51},\"apiBaseUrl\",\"https://api.apidog.com\",\"appWebUrl\",\"https://app.apidog.com\",\"apidocBuiltinPrefixPath\",\"https://assets.apidog.com/app/static/apidoc\",\"cloudMockBaseUrls\",{\"_43\":44,\"_45\":46},\"pathMode\",\"https://mock.apidog.com/m1/{projectId}-{version}-{service}\",\"idMode\",\"https://mock.apidog.com/m2/{projectId}-{version}-{service}\",\"apidocIsShowLogo\",true,\"markdownDisableBreaks\",\"webhookGenerateCodeDefaultUrl\",\"https://your-api-server.com\",\"urlConfig\",{\"_54\":55,\"_58\":59,\"_99\":100,\"_108\":109},\"home\",{\"_56\":57},\"index\",\"https://apidog.com\",\"icon\",{\"_60\":61,\"_62\":63,\"_64\":63,\"_65\":66,\"_67\":68,\"_69\":70,\"_71\":72,\"_73\":74,\"_75\":76,\"_77\":78,\"_79\":80,\"_81\":82,\"_83\":84,\"_85\":86,\"_87\":88,\"_89\":90,\"_91\":92,\"_93\":94,\"_95\":96,\"_97\":98},\"apidoc\",\"https://assets.apidog.com/app/static/brand/apidoc.png\",\"apidog\",\"https://assets.apidog.com/app/static/brand/apidog-logo-256.png\",\"apidog europe\",\"googleDiscovery\",\"https://assets.apidog.com/app/static/brand/google-discovery.png\",\"har\",\"https://assets.apidog.com/app/static/brand/har.png\",\"iodocs\",\"https://assets.apidog.com/app/static/brand/io-doc.png\",\"jmeter\",\"https://assets.apidog.com/app/static/brand/jmeter.png\",\"openapi\",\"https://assets.apidog.com/app/static/brand/openapi.png\",\"postman\",\"https://assets.apidog.com/app/static/brand/postman.png\",\"raml\",\"https://assets.apidog.com/app/static/brand/raml.png\",\"wadl\",\"https://assets.apidog.com/app/static/brand/wadl.png\",\"curl\",\"https://assets.apidog.com/app/static/brand/curl.png\",\"insomnia\",\"https://assets.apidog.com/app/static/brand/insomnia.png\",\"wsdl\",\"https://assets.apidog.com/app/static/brand/wsdl.png\",\"markdown\",\"https://assets.apidog.com/app/static/brand/markdown.png\",\"html\",\"https://assets.apidog.com/app/static/brand/html.png\",\"protobuf\",\"https://assets.apidog.com/app/static/brand/protobuf.png\",\"soapui\",\"https://assets.apidog.com/app/static/brand/soapui.svg\",\"hoppscotch\",\"https://assets.apidog.com/app/static/brand/hoppscotch.svg\",\"javaProject\",\"https://assets.apidog.com/app/static/brand/java-project.png\",\"help\",{\"_56\":101,\"_102\":103,\"_104\":105,\"_106\":107},\"https://apidog.com/help\",\"browserExtension\",\"https://chromewebstore.google.com/detail/apidog-browser-extension/dmhljjnonlhapikmelaefohecogokhio\",\"csv\",\"https://apidog.com/help/reference/csv\",\"appMcpServer\",\"https://docs.apidog.com/apidog-mcp-server\",\"assets\",{\"_110\":111},\"logo512Png\",\"https://assets.apidog.com/static/logo/apidog-logo-512.png\",\"envConfig\",{\"_114\":60,\"_115\":116,\"_117\":116,\"_118\":119,\"_120\":121,\"_122\":123,\"_124\":57,\"_125\":62,\"_126\":22,\"_127\":128,\"_129\":130,\"_132\":133,\"_134\":135,\"_136\":137,\"_138\":139,\"_140\":141,\"_142\":143,\"_149\":150,\"_151\":48,\"_152\":153,\"_154\":30},\"RELEASE_BASE\",\"DEBUG_API_BASE\",\"\",\"DEBUG_WEB_URL_BASE\",\"AGENT_SERVER_API_BASE\",\"https://web-proxy.apidog.com\",\"APP_REGION\",\"GLOBAL\",\"APP_NAME\",\"Apidog\",\"APP_HOMEPAGE\",\"APP_NAME_LOWER\",\"DEFAULT_LOCALE\",\"APP_BROWSER_EXTENSION_ADAPTER\",\"apidogAgentCrossRequest\",\"APP_API_SERVER_HOSTNAMES\",[131],\"api.apidog.com\",\"APP_SUPPORT_EMAIL\",\"support@apidog.com\",\"APP_SCRIPT_MAIN_OBJECTS\",\"$\",\"SERVER_PROTOCOL\",\"http\",\"SERVER_HOST\",\"apidog-api-fordoc-svc\",\"DEFAULT_DOC_LAYOUT\",\"TwoColumn\",\"NOT_CUSTOM_DOMAIN_HOSTNAMES\",[144,145,146,147,148],\"www.apidog.com\",\"apidog.com\",\"www.apidog.io\",\"apidog.io\",\"share.apidog.com\",\"SERVER_REQUEST_TIMEOUT\",15000,\"IS_SHARED_DOC_INDEPENDENT_DOMAIN\",\"APIDOC_CUSTOM_DOMAIN_CNAME_REGEX\",[\"R\",\"\\\\d+\\\\.cname\\\\.apidog\\\\.com\",\"\"],\"IS_ALWAYS_USE_ORIGIN_FETCH\",\"docsDataState\",{\"_157\":158,\"_162\":163,\"_175\":176,\"_177\":178,\"_179\":180,\"_189\":190,\"_202\":203,\"_204\":205,\"_206\":207,\"_213\":214,\"_220\":-7,\"_221\":222,\"_223\":-7,\"_224\":-7,\"_225\":226,\"_228\":-7},\"navigation\",{\"_5\":159,\"_160\":161},\"NONE\",\"navRightLinkItems\",[],\"sidebarTree\",{\"_164\":-7,\"_165\":-7,\"_166\":167,\"_168\":-7,\"_169\":170,\"_171\":-7,\"_172\":-7,\"_173\":174},\"goBackSidebarTreeApiFolderNode\",\"rootSidebarTreeApiFolderNode\",\"sidebarTreeList\",[],\"selectedSidebarTreeNode\",\"parentSidebarTreeApiFolderNodes\",[],\"previousSidebarTreeNode\",\"nextSidebarTreeNode\",\"homeLink\",\"/\",\"docsBaseConfig\",{},\"versionList\",[],\"resourceData\",{\"_5\":181,\"_182\":-7,\"_183\":184},\"NotFound\",\"data\",\"extraData\",{\"_185\":186,\"_187\":188},\"apiFieldList\",[],\"dataSchemaDefinitions\",{},\"docsIdTypeData\",{\"_191\":192,\"_193\":194,\"_195\":194,\"_196\":194,\"_197\":116,\"_198\":194,\"_199\":200,\"_201\":-7},\"onlineType\",\"APIDOC\",\"branchId\",0,\"onlineId\",\"projectId\",\"subdirectory\",\"teamId\",\"visitType\",\"customDomain\",\"specialFileType\",\"notification\",[],\"footerBanner\",[],\"projectSetting\",{\"_208\":209,\"_210\":211},\"advancedSettings\",{},\"auth\",{\"_5\":212},\"noauth\",\"environments\",{\"_215\":216,\"_217\":-7,\"_218\":219},\"environmentList\",[],\"selectedEnvironment\",\"servers\",[],\"searchSettings\",\"versionSettings\",[],\"seoInfos\",\"itemPathPrefix\",\"appEnvMap\",{\"_227\":128},\"appBrowserExtensionAdapterKey\",\"customCodes\",\"primaryColorVariable\",\"routes/_index/route\",\"actionData\",\"errors\"]\n");</script><!--$--><script>window.__remixContext.streamController.close();</script><!--/$--><!--/$-->
+        When `stream: true` is set in the request, the API returns responses as
+        server-sent events (SSE). Claude tool calling responses stream
+        `tool_use` blocks and `input_json_delta` fragments.
+
+        **Streaming Response Format:**
+
+        - Content-Type: `text/event-stream`
+
+        - Event names include `message_start`, `content_block_start`,
+        `content_block_delta`, `message_delta`, and `message_stop`
+
+        - Tool calls are emitted as `tool_use` content blocks
+
+        - Final stop reason is often `tool_use` for function-calling requests
+
+        ## Features
+
+        - Standard chat with `messages`.
+
+        - Function calling with `tools` and `input_schema`.
+
+        - Optional stream response with Claude events.
+
+        - Optional project-specific thinking flag.
+
+        ## Request Notes
+
+        - Put the current model name in the `model` field.
+
+        - Use `messages` for conversation history.
+
+        - Use `tools` to declare callable functions.
+
+        - Set `stream` to `true` for SSE output.
+
+        ## Authentication
+
+        Use the auth configuration for `X-Api-Key` and `anthropic-version`. Do
+        not add them as regular request parameters.
+      operationId: claude_opus_4_5
+      tags:
+        - docs/en/Market/Chat  Models/Claude
+      parameters: []
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                model:
+                  type: string
+                  description: Model name. It must match the current document.
+                  enum:
+                    - claude-opus-4-5
+                  x-apidog-enum:
+                    - value: claude-opus-4-5
+                      name: ''
+                      description: ''
+                  examples:
+                    - claude-opus-4-5
+                messages:
+                  type: array
+                  description: Conversation messages in chronological order.
+                  items:
+                    type: object
+                    properties:
+                      role:
+                        type: string
+                        enum:
+                          - user
+                          - assistant
+                        description: Message role.
+                        examples:
+                          - user
+                      content:
+                        oneOf:
+                          - type: string
+                            description: Plain text content.
+                          - type: array
+                            description: Structured content blocks.
+                            items:
+                              type: object
+                              additionalProperties: true
+                              x-apidog-orders: []
+                        description: Message content.
+                        examples:
+                          - What is the weather like in Boston today?
+                    required:
+                      - role
+                      - content
+                    x-apidog-orders:
+                      - role
+                      - content
+                  minItems: 1
+                tools:
+                  type: array
+                  description: >-
+                    Optional callable tools. Each tool includes a name,
+                    description, and input_schema.
+                  items:
+                    type: object
+                    properties:
+                      name:
+                        type: string
+                        description: Function name.
+                        examples:
+                          - get_current_weather
+                      description:
+                        type: string
+                        description: Human-readable function description.
+                        examples:
+                          - Get the current weather in a given location
+                      input_schema:
+                        type: object
+                        description: JSON Schema for function parameters.
+                        properties:
+                          type:
+                            type: string
+                            description: Schema type.
+                            examples:
+                              - object
+                          properties:
+                            type: object
+                            description: Function parameter definitions.
+                            additionalProperties: true
+                            x-apidog-orders: []
+                            properties: {}
+                          required:
+                            type: array
+                            description: Required parameter names.
+                            items:
+                              type: string
+                        x-apidog-orders:
+                          - type
+                          - properties
+                          - required
+                        examples:
+                          - type: object
+                            properties:
+                              location:
+                                type: string
+                                description: The city and state, e.g. Boston, MA
+                            required:
+                              - location
+                    required:
+                      - name
+                      - description
+                      - input_schema
+                    x-apidog-orders:
+                      - name
+                      - description
+                      - input_schema
+                thinkingFlag:
+                  type: boolean
+                  description: >-
+                    Project-specific thinking flag used by the current Claude
+                    adapter.
+                  examples:
+                    - true
+                stream:
+                  type: boolean
+                  default: true
+                  description: If set to true, the response is returned as an SSE stream.
+                  examples:
+                    - false
+                max_tokens:
+                  type: number
+                  default: 4096
+                  examples:
+                    - 4096
+                  description: >-
+                    Optional Claude output token limit. Leave empty to use the
+                    default of 4096.
+              required:
+                - model
+                - messages
+              x-apidog-orders:
+                - model
+                - messages
+                - tools
+                - thinkingFlag
+                - stream
+                - max_tokens
+              examples:
+                - model: claude-opus-4-5-v1messages
+                  messages:
+                    - role: user
+                      content: What is the weather like in Boston today?
+                  tools:
+                    - name: get_current_weather
+                      description: Get the current weather in a given location
+                      input_schema:
+                        type: object
+                        properties:
+                          location:
+                            type: string
+                            description: The city and state, e.g. Boston, MA
+                        required:
+                          - location
+                  thinkingFlag: true
+                  stream: false
+            example:
+              model: claude-opus-4-5
+              messages:
+                - role: user
+                  content: What is the weather like in Boston today?
+              tools:
+                - name: get_current_weather
+                  description: Get the current weather in a given location
+                  input_schema:
+                    type: object
+                    properties:
+                      location:
+                        type: string
+                        description: The city and state, e.g. Boston, MA
+                    required:
+                      - location
+              thinkingFlag: true
+              stream: false
+              max_tokens: 4096
+      responses:
+        '200':
+          description: Request successful.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  role:
+                    type: string
+                    description: Returned message role
+                    examples:
+                      - assistant
+                  usage:
+                    type: object
+                    description: Usage information returned by the provider
+                    properties:
+                      input_tokens:
+                        type: integer
+                        description: Input token count
+                        examples:
+                          - 600
+                      output_tokens:
+                        type: integer
+                        description: Output token count
+                        examples:
+                          - 57
+                      cache_creation_input_tokens:
+                        type: integer
+                        description: Cache creation input token count
+                        examples:
+                          - 0
+                      cache_read_input_tokens:
+                        type: integer
+                        description: Cache read input token count
+                        examples:
+                          - 0
+                      service_tier:
+                        type: string
+                        description: Service tier
+                        examples:
+                          - standard
+                    x-apidog-orders:
+                      - input_tokens
+                      - output_tokens
+                      - cache_creation_input_tokens
+                      - cache_read_input_tokens
+                      - service_tier
+                  stop_reason:
+                    type: string
+                    description: Reason why generation stopped
+                    examples:
+                      - tool_use
+                  model:
+                    type: string
+                    description: Actual model version returned by the provider
+                    examples:
+                      - claude-opus-4-5-20251101
+                  id:
+                    type: string
+                    description: Unique message identifier
+                    examples:
+                      - msg_01VSoxV4a8YWB3DBh9TdM63W
+                  credits_consumed:
+                    type: number
+                    description: Credits consumed by the request
+                    examples:
+                      - 0.25
+                  type:
+                    type: string
+                    description: Top-level response object type
+                    examples:
+                      - message
+                  content:
+                    type: array
+                    description: Response content blocks
+                    items:
+                      type: object
+                      properties:
+                        input:
+                          type: object
+                          description: Tool input arguments
+                          additionalProperties: true
+                          x-apidog-orders: []
+                        caller:
+                          type: object
+                          description: Tool caller metadata
+                          properties:
+                            type:
+                              type: string
+                              examples:
+                                - direct
+                          x-apidog-orders:
+                            - type
+                        name:
+                          type: string
+                          description: Tool name
+                          examples:
+                            - get_current_weather
+                        id:
+                          type: string
+                          description: Tool call identifier
+                          examples:
+                            - toolu_018gdqs2FHxrRjQHLZv1qvbF
+                        type:
+                          type: string
+                          description: Content block type
+                          examples:
+                            - tool_use
+                      x-apidog-orders:
+                        - input
+                        - caller
+                        - name
+                        - id
+                        - type
+                x-apidog-orders:
+                  - role
+                  - usage
+                  - stop_reason
+                  - model
+                  - id
+                  - credits_consumed
+                  - type
+                  - content
+              example:
+                role: assistant
+                usage:
+                  cache_creation:
+                    ephemeral_1h_input_tokens: 0
+                    ephemeral_5m_input_tokens: 0
+                  output_tokens: 57
+                  service_tier: standard
+                  cache_creation_input_tokens: 0
+                  input_tokens: 600
+                  cache_read_input_tokens: 0
+                  inference_geo: not_available
+                stop_reason: tool_use
+                model: claude-opus-4-5-20251101
+                id: msg_01VSoxV4a8YWB3DBh9TdM63W
+                credits_consumed: 0.25
+                type: message
+                content:
+                  - input:
+                      location: Beijing, China
+                    caller:
+                      type: direct
+                    name: get_current_weather
+                    id: toolu_018gdqs2FHxrRjQHLZv1qvbF
+                    type: tool_use
+          headers: {}
+          x-apidog-name: ''
+        '400':
+          description: Bad Request - Invalid request parameters
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: object
+                    properties:
+                      message:
+                        type: string
+                        examples:
+                          - Invalid request parameters
+                      type:
+                        type: string
+                        examples:
+                          - invalid_request_error
+                    x-apidog-orders:
+                      - message
+                      - type
+                x-apidog-orders:
+                  - error
+          headers: {}
+          x-apidog-name: ''
+        '401':
+          description: Unauthorized - Invalid or missing API key
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: object
+                    properties:
+                      message:
+                        type: string
+                        examples:
+                          - Invalid or missing API key
+                      type:
+                        type: string
+                        examples:
+                          - authentication_error
+                    x-apidog-orders:
+                      - message
+                      - type
+                x-apidog-orders:
+                  - error
+          headers: {}
+          x-apidog-name: ''
+      security: []
+      x-apidog-folder: docs/en/Market/Chat  Models/Claude
+      x-apidog-status: released
+      x-run-in-apidog: https://app.apidog.com/web/project/1184766/apis/api-30749665-run
+components:
+  schemas: {}
+  securitySchemes:
+    BearerAuth:
+      type: bearer
+      scheme: bearer
+      bearerFormat: API Key
+      description: >-
+        All API requests require a Bearer Token. Add the header `Authorization:
+        Bearer YOUR_API_KEY` to authenticate requests.
+    BearerAuth1:
+      type: bearer
+      scheme: bearer
+      bearerFormat: API Key
+      description: >-
+        所有 API 请求都需要 Bearer Token。请在请求头中添加 `Authorization: Bearer YOUR_API_KEY`
+        进行身份验证。
+servers:
+  - url: https://api.kie.ai
+    description: 正式环境
+security:
+  - BearerAuth: []
+    x-apidog:
+      schemeGroups:
+        - id: kn8M4YUlc5i0A0179ezwx
+          schemeIds:
+            - BearerAuth
+      required: true
+      use:
+        id: kn8M4YUlc5i0A0179ezwx
+      scopes:
+        kn8M4YUlc5i0A0179ezwx:
+          BearerAuth: []
+
+```
 
 ---
 
@@ -61458,40 +64967,483 @@ import("https://file-assets.apidog.com/docs-site/v1/assets/entry.client-mUtkjgQm
 
 **Source:** [https://docs.kie.ai/market/claude/claude-opus-4-6.md][156]
 
-<!DOCTYPE html><html lang="en-US" class="group/root" id="html" data-theme="light" data-accent-color="purple"><head><script src="https://file-assets.apidog.com/docs-site/v1/assets/prepareDocsConfigScript-CLIBKQbk.js"></script><script>__prepareDocsConfigScript(JSON.parse("{\"theme\":\"system\",\"themePrimarySettings\":{\"light\":{\"accentColor\":\"purple\"},\"dark\":{\"accentColor\":\"purple\"}},\"logoSettings\":{\"light\":{\"icon\":\"\",\"type\":\"project\"},\"dark\":{\"icon\":\"\",\"type\":\"followLight\"}},\"backgroundImageSettings\":{\"light\":{\"type\":\"custom\",\"color\":\"\"},\"dark\":{\"type\":\"followLight\",\"color\":\"\"}},\"id\":0,\"subdirectory\":\"\"}"));</script><script>window.eventTracking = {
-      dataLayer: []
-    }
-    window.eventTracking.report = function(){
-        window.eventTracking.dataLayer.push(arguments);
-    }</script><meta charSet="utf-8"/><meta name="viewport" content="width=device-width, initial-scale=1"/><title>API Documentation</title><meta name="description" content="Design. Debug. Test. Document. Mock. Build APIs Faster &amp; Together."/><meta name="keywords" content="API Design, API Specification, API Test, API Documentation, API Mock"/><link rel="stylesheet" href="https://file-assets.apidog.com/docs-site/v1/assets/root-CpC_E1fb.css"/></head><body class="overflow-hidden g-body"><div class="flex h-full w-full flex-col overflow-auto"><div class="flex flex-1 flex-col items-center justify-center"><div class="flex w-auto flex-col items-center justify-center max-os:p-5 os:w-[480px]"><svg width="104" height="104" viewBox="0 0 104 104" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M92.9557 41.8969L88.7262 25.2175C87.4089 19.8194 84.8039 16.1447 80.9015 14.1934L80.3963 13.9458C79.802 13.6685 79.178 13.4407 78.5243 13.2426C75.4142 12.3214 72.0268 12.371 68.362 13.3813C65.8759 14.0747 63.2612 15.2038 60.5176 16.7886C56.7835 18.9478 53.3167 21.6319 50.1076 24.8708C49.0973 25.8711 48.1266 26.9209 47.1956 28.0204C46.314 29.0406 45.4622 30.1105 44.6302 31.2198C42.9266 33.4781 41.3121 35.9245 39.7868 38.5492C34.1015 48.3648 31.2588 57.9329 31.2588 67.2631C31.2588 72.0471 32.1106 76.1181 33.8142 79.4461C34.6759 81.1101 35.6862 82.5263 36.8748 83.7248C37.9346 84.7846 39.1232 85.6564 40.4405 86.3398L41.0151 86.627V98.9485C41.0151 99.9984 41.3221 100.712 41.9461 101.058C42.5701 101.415 43.3426 101.326 44.2637 100.801L67.0249 87.6571C67.946 87.1223 68.7186 86.3199 69.3426 85.2502C69.9666 84.1706 70.2736 83.1008 70.2736 82.0509V78.3169L76.7811 74.5629C78.5639 73.5328 80.0993 71.9184 81.377 69.7195C82.6448 67.5207 83.2786 65.4011 83.2786 63.341V52.1485L89.786 48.3946C90.8657 47.7706 91.7373 46.79 92.391 45.4429C93.0348 44.1058 93.2231 42.927 92.9557 41.8969ZM62.8352 66.6095C62.2112 67.6891 61.4387 68.4914 60.5176 69.0263C59.5964 69.5512 58.8237 69.6404 58.1997 69.2838C57.5856 68.9371 57.2687 68.2238 57.2687 67.164C57.2687 66.1042 57.5856 65.0445 58.1997 63.9748C58.2592 63.8658 58.3186 63.7667 58.378 63.6676C58.9129 62.8356 59.5468 62.1819 60.2797 61.7164C60.359 61.6569 60.4383 61.6075 60.5176 61.558C61.4387 61.033 62.2112 60.9439 62.8352 61.2906C63.4592 61.6471 63.7761 62.3604 63.7761 63.4103C63.7761 64.4602 63.4592 65.5398 62.8352 66.6095ZM69.5011 38.7572C69.402 39.1336 69.2832 39.5101 69.1346 39.8865C68.5997 41.3227 67.4607 43.6206 65.7274 46.8C64.9647 48.1768 64.41 49.3158 64.0535 50.237C63.8157 50.861 63.6176 51.4748 63.4691 52.0592C63.3997 52.3366 63.3304 52.6041 63.2809 52.8715C63.1224 53.7729 62.7856 54.6148 62.2706 55.3774C61.7556 56.1401 61.2009 56.6948 60.6066 57.0315C59.8935 57.4475 59.319 57.4971 58.8535 57.2099C58.3978 56.9128 58.2196 56.358 58.3285 55.5557C58.487 54.2186 58.8039 52.931 59.2596 51.7029C59.7251 50.4747 60.4679 48.9392 61.498 47.0969C62.3201 45.6409 62.9837 44.4029 63.4691 43.4026C63.7761 42.7885 64.0138 42.2636 64.1921 41.8278C64.202 41.7981 64.2119 41.7782 64.2218 41.7485C64.6775 40.5797 64.9153 39.5001 64.9153 38.4997C64.9153 37.321 64.5191 36.5881 63.7366 36.2909C62.9442 36.0037 61.9537 36.2019 60.7652 36.8853C60.0025 37.3211 59.2794 37.945 58.5662 38.7572C57.863 39.5694 57.239 40.5105 56.7041 41.5604C56.2683 42.5013 55.7632 43.2442 55.1986 43.7889C54.6241 44.3337 54.0397 44.6209 53.4455 44.6506C52.8512 44.6902 52.4055 44.4525 52.1083 43.9374C51.8112 43.4224 51.8211 42.7687 52.1479 41.9565C53.0691 39.7477 54.2973 37.7074 55.8424 35.8552C56.5754 34.9737 57.338 34.1811 58.1205 33.4878C58.9822 32.735 59.8638 32.0913 60.7652 31.5664C63.3701 30.0708 65.5491 29.7141 67.3121 30.4966C69.0752 31.279 69.9468 32.9829 69.9468 35.5977C69.9468 36.6476 69.7982 37.7073 69.5011 38.7572Z" stroke="#667085" stroke-linecap="round" stroke-linejoin="round"></path><path d="M63.777 63.4086C63.777 64.4684 63.46 65.5381 62.836 66.6078C62.212 67.6874 61.4395 68.4896 60.5184 69.0245C59.5972 69.5494 58.8246 69.6387 58.2006 69.2821C57.5865 68.9354 57.2695 68.2221 57.2695 67.1623C57.2695 66.1025 57.5865 65.0428 58.2006 63.973C58.26 63.8641 58.3194 63.7649 58.3789 63.6659C58.9137 62.8339 59.5476 62.1802 60.2806 61.7147C60.3598 61.6552 60.4392 61.6058 60.5184 61.5563C61.4395 61.0313 62.212 60.9422 62.836 61.2888C63.46 61.6454 63.777 62.3587 63.777 63.4086Z" stroke="#667085" stroke-linecap="round" stroke-linejoin="round"></path><path d="M63.7373 36.2894C62.9449 36.0021 61.9544 36.2003 60.7659 36.8838C60.0032 37.3196 59.2801 37.9435 58.567 38.7557C57.8638 39.5679 57.2398 40.5089 56.7049 41.5588C56.2691 42.4998 55.7639 43.2426 55.1994 43.7874C54.6249 44.3321 54.0405 44.6193 53.4462 44.649C52.8519 44.6886 52.4062 44.4509 52.1091 43.9359C51.8119 43.4208 51.8219 42.7671 52.1487 41.9549C53.0699 39.7461 54.298 37.7059 55.8432 35.8537C56.5761 34.9721 57.3388 34.1797 58.1213 33.4863L63.7373 36.2894Z" stroke="#667085" stroke-linecap="round" stroke-linejoin="round"></path><path d="M69.9474 35.596C69.9474 36.6459 69.7988 37.7056 69.5017 38.7555C69.4026 39.1319 69.2838 39.5085 69.1352 39.8849C68.6003 41.321 67.4613 43.6189 65.728 46.7984C64.9653 48.1751 64.4106 49.3141 64.054 50.2352C63.8163 50.8592 63.6182 51.4732 63.4697 52.0576C63.4003 52.3349 63.331 52.6024 63.2815 52.8698C63.123 53.7711 62.7862 54.6131 62.2712 55.3758C61.7561 56.1385 61.2015 56.693 60.6072 57.0298C59.894 57.4458 59.3196 57.4955 58.854 57.2083C58.3984 56.9111 58.2201 56.3563 58.3291 55.554C58.4876 54.2168 58.8045 52.9293 59.2601 51.7011C59.7257 50.4729 60.4685 48.9376 61.4986 47.0953C62.3207 45.6393 62.9843 44.4012 63.4697 43.4008C63.7767 42.7868 64.0144 42.2619 64.1927 41.8261C64.2026 41.7964 64.2125 41.7766 64.2224 41.7468C64.678 40.5781 64.9158 39.4984 64.9158 38.498C64.9158 37.3193 64.5196 36.5865 63.7371 36.2893L58.1211 33.4862C58.9828 32.7334 59.8643 32.0896 60.7657 31.5647C63.3706 30.069 65.5497 29.7125 67.3127 30.4949C69.0758 31.2774 69.9474 32.9811 69.9474 35.596Z" stroke="#667085" stroke-linecap="round" stroke-linejoin="round"></path><path d="M41.9466 101.059L22.3253 91.2429L22.1371 91.1537C21.5131 90.807 21.2061 90.094 21.2061 89.0441V76.7227L41.0156 86.6274V98.9488C41.0156 99.9988 41.3226 100.712 41.9466 101.059Z" stroke="#667085" stroke-linecap="round" stroke-linejoin="round"></path><path d="M80.3972 13.9448C79.8029 13.6675 79.1789 13.4397 78.5252 13.2416C75.4151 12.3204 72.0277 12.3701 68.3629 13.3804C65.8768 14.0737 63.2621 15.2028 60.5185 16.7876C56.7844 18.9468 53.3176 21.6309 50.1085 24.8698C49.0982 25.8702 48.1275 26.92 47.1965 28.0194C46.3149 29.0396 45.4631 30.1096 44.6311 31.2189C42.9275 33.4772 41.313 35.9236 39.7877 38.5484C34.1024 48.364 31.2597 57.932 31.2597 67.2623C31.2597 72.0463 32.1115 76.1171 33.8151 79.4451C34.6768 81.1091 35.6871 82.5253 36.8757 83.7238C37.9355 84.7836 39.1241 85.6554 40.4414 86.3388L21.2065 76.7213C18.1161 75.2752 15.7192 72.8783 14.0056 69.5404C12.302 66.2124 11.4502 62.1415 11.4502 57.3575C11.4502 48.0272 14.2929 38.4592 19.9782 28.6436C25.6734 18.828 32.587 11.5678 40.7089 6.88282C47.4838 2.97044 53.486 1.79169 58.7157 3.33683C59.4784 3.56464 60.2113 3.84208 60.8948 4.17884L61.281 4.37688L80.3972 13.9448Z" stroke="#667085" stroke-linecap="round" stroke-linejoin="round"></path></svg><div class="align-center mt-8 flex justify-center text-center text-2xl font-semibold text-color">An abnormal error occurred, please try &#x27;Reload&#x27; or &#x27;get Support&#x27; to help you solve it!</div><div class="align-center mt-2 text-center text-lg font-400 text-secondary">Unexpected token &#x27;o&#x27;, &quot;forbidden
-&quot; is not valid JSON: /api/v1/published-projects/domains/docs.kie.ai</div></div></div><div class="flex flex-col items-center justify-center p-8 text-base font-base text-secondary"><div class="inline-flex items-center text-base font-400 text-secondary _footer-logo-wrapper_1kbjg_1"><a class="_footer-logo_1kbjg_1 flex-shrink-0" aria-label="homepage link" href="https://apidog.com"><span class="inline-flex items-center"><span class="mr-[-4px]">Built with</span><svg width="61" height="18" viewBox="0 0 61 18" fill="none" xmlns="http://www.w3.org/2000/svg" class="h-[18px] w-[80px]"><path d="M12.3836 1.67806C11.6452 0.940647 10.4478 0.940647 9.70932 1.67806L8.99795 2.3884L8.30644 1.69789C7.57144 0.963937 6.37437 0.936241 5.62991 1.66043C4.88545 2.38463 4.86748 3.60515 5.61194 4.34854L6.32331 5.05888C7.80026 6.53371 10.195 6.53371 11.6723 5.05888L12.3836 4.34854C13.1221 3.61113 13.1221 2.41547 12.3836 1.67806Z" fill="#667085"></path><path d="M12.3838 13.6515L11.6729 12.9412C10.1968 11.4664 7.80339 11.4664 6.32699 12.9412L5.61603 13.6515C4.87799 14.389 4.87799 15.5846 5.61603 16.322C6.35408 17.0594 7.55076 17.0594 8.28881 16.322L8.99976 15.6117L9.69087 16.3022C10.4255 17.0361 11.6218 17.0638 12.3659 16.3396C13.1219 15.6038 13.1278 14.3949 12.3838 13.6515Z" fill="#667085"></path><path d="M15.6105 8.99642L16.3214 8.28481C17.0655 7.54009 17.0595 6.32906 16.3035 5.59191C15.5595 4.86643 14.3631 4.89418 13.6285 5.62943L13.3098 5.94851C12.1666 7.09269 10.6166 7.73526 9 7.73526C7.38344 7.73526 5.83335 7.09238 4.69023 5.94851L4.37146 5.62943C3.63689 4.89418 2.44054 4.86643 1.69652 5.59191C0.940527 6.32906 0.934542 7.54009 1.67856 8.28481L2.38951 8.99642L1.67856 9.70803C0.940527 10.4468 0.940527 11.6445 1.67856 12.3833C2.4166 13.122 3.61326 13.122 4.3513 12.3833L4.74347 11.9907C5.85225 10.8809 7.35604 10.2576 8.92409 10.2576H8.9874C10.6162 10.2576 12.1666 10.9005 13.3098 12.0446C13.5126 12.2477 13.6484 12.3836 13.6484 12.3836C14.3864 13.1223 15.5831 13.1223 16.3211 12.3836C17.0592 11.6449 17.0592 10.4471 16.3211 9.70834L15.6102 8.99673L15.6105 8.99642Z" fill="#667085"></path><path fill-rule="evenodd" clip-rule="evenodd" d="M37.3559 4.00331C37.4694 3.95752 37.5911 3.93521 37.7136 3.93768C37.8343 3.93606 37.9541 3.95884 38.0656 4.0046C38.1772 4.05035 38.2781 4.11814 38.3624 4.20384C38.4483 4.29095 38.5158 4.39418 38.561 4.50749C38.6061 4.6208 38.628 4.7419 38.6253 4.8637C38.628 4.98551 38.6061 5.10664 38.561 5.21995C38.5158 5.33326 38.4483 5.43648 38.3624 5.52357C38.2781 5.60926 38.1772 5.67705 38.0656 5.72284C37.9541 5.7686 37.8343 5.79134 37.7136 5.78975C37.5911 5.79222 37.4694 5.76989 37.3559 5.72413C37.2425 5.67837 37.1396 5.61011 37.0536 5.52357C36.9677 5.43648 36.9002 5.33326 36.8551 5.21995C36.8099 5.10664 36.7881 4.98551 36.7908 4.8637C36.7881 4.7419 36.8099 4.6208 36.8551 4.50749C36.9002 4.39418 36.9677 4.29095 37.0536 4.20384C37.1396 4.1173 37.2425 4.04907 37.3559 4.00331ZM25.6211 4.76389L24.0219 4.76389L21.175 12.7654H22.7355L23.2948 11.1795H26.371L26.9303 12.7654H28.5019L25.6211 4.76389ZM25.9403 9.91528H23.7255L24.8441 6.75459L25.9403 9.91528ZM34.4529 6.71022C33.9935 6.42603 33.4618 6.27789 32.9204 6.28324C32.4656 6.27789 32.0164 6.38257 31.6116 6.58824C31.3484 6.72112 31.1086 6.89528 30.9013 7.10393V6.38304H29.4248V15.6932H30.9181V12.0501C31.1303 12.2594 31.3736 12.4352 31.6396 12.5714C32.0799 12.7816 32.5659 12.88 33.0541 12.8577C33.5422 12.8355 34.0171 12.6932 34.4361 12.4438C34.899 12.1548 35.274 11.7466 35.5212 11.2627C35.7861 10.7302 35.9203 10.1431 35.9126 9.54929C35.923 8.96057 35.7887 8.37821 35.5212 7.8525C35.2797 7.38027 34.9096 6.98456 34.4529 6.71022ZM34.4137 9.55484C34.4161 9.91562 34.3297 10.2716 34.162 10.5918C34.0132 10.8769 33.7889 11.1165 33.5133 11.2849C33.2582 11.4309 32.9688 11.5078 32.6743 11.5078C32.3798 11.5078 32.0904 11.4309 31.8353 11.2849C31.5644 11.1203 31.341 10.8892 31.1866 10.6139C31.0195 10.284 30.937 9.91836 30.946 9.54929C30.9355 9.18364 31.0182 8.82126 31.1866 8.49571C31.331 8.22256 31.5426 7.98991 31.8018 7.81923C32.0627 7.67197 32.3573 7.59366 32.6575 7.5919C32.9606 7.59099 33.2582 7.67147 33.5188 7.82478C33.7952 7.97573 34.0193 8.20567 34.162 8.48465C34.3413 8.8105 34.4283 9.17839 34.4137 9.54929V9.55484ZM38.4519 6.38304H36.9585V12.7599H38.4519V6.38304ZM43.7037 6.56049C43.9895 6.68375 44.2509 6.85649 44.4756 7.07066V4.27038H45.9801V12.7654H44.4756V12.039C44.2733 12.2523 44.0347 12.4288 43.7709 12.5603C43.3696 12.7699 42.9211 12.8748 42.4677 12.8652C41.9296 12.8702 41.4008 12.7261 40.9408 12.4493C40.4817 12.1535 40.1078 11.7446 39.8557 11.2627C39.5908 10.7302 39.4566 10.1431 39.4642 9.54929C39.4539 8.96057 39.5882 8.37821 39.8557 7.8525C40.1049 7.3803 40.4803 6.98514 40.9408 6.71022C41.3529 6.46065 41.821 6.31637 42.3032 6.29024C42.7854 6.26412 43.2666 6.35695 43.7037 6.56049ZM44.4756 9.57146C44.4854 9.20459 44.3987 8.84147 44.2239 8.51792C44.0698 8.22608 43.835 7.98372 43.5471 7.81923C43.2921 7.67323 43.0027 7.59637 42.7082 7.59637C42.4136 7.59637 42.1243 7.67323 41.8692 7.81923C41.598 7.97735 41.377 8.20793 41.2316 8.48465C41.0626 8.80593 40.9798 9.16492 40.9911 9.52712C40.9825 9.89613 41.0651 10.2616 41.2316 10.5918C41.3883 10.8862 41.622 11.1333 41.9084 11.3071C42.1635 11.4531 42.4528 11.5299 42.7473 11.5299C43.0419 11.5299 43.3312 11.4531 43.5863 11.3071C43.8553 11.1436 44.0753 10.912 44.2239 10.6361C44.3961 10.3076 44.4826 9.94161 44.4756 9.57146ZM51.8863 6.71022C51.3775 6.44176 50.81 6.30134 50.2336 6.30134C49.6572 6.30134 49.0897 6.44176 48.5808 6.71022C48.1082 6.98053 47.7208 7.37607 47.4622 7.8525C47.1714 8.37882 47.0248 8.9715 47.0372 9.57146C47.026 10.1735 47.1684 10.7686 47.451 11.3016C47.7105 11.7817 48.0973 12.1824 48.5697 12.4605C49.0662 12.7315 49.6249 12.8709 50.1916 12.8652C50.7765 12.874 51.3541 12.7347 51.8695 12.4605C52.3652 12.1852 52.7752 11.7805 53.0553 11.2904C53.3515 10.7658 53.502 10.1726 53.4915 9.57146C53.5004 8.97048 53.35 8.37773 53.0553 7.8525C52.7813 7.37062 52.3763 6.97478 51.8863 6.71022ZM49.3639 7.81923C49.6253 7.67401 49.9199 7.59775 50.2196 7.59775C50.5193 7.59775 50.8139 7.67401 51.0753 7.81923C51.3499 7.97813 51.5716 8.21332 51.7129 8.49571C51.876 8.8305 51.9528 9.20008 51.9367 9.57146C51.9483 9.9474 51.8616 10.3199 51.685 10.6528C51.5392 10.9243 51.3204 11.1504 51.0529 11.3061C50.7853 11.4617 50.4794 11.5408 50.1693 11.5344C49.9454 11.5409 49.7227 11.4998 49.5162 11.4137C49.3097 11.3276 49.1243 11.1986 48.9724 11.0354C48.6355 10.6234 48.4678 10.1007 48.5025 9.57146C48.4901 9.19738 48.5708 8.82604 48.7374 8.4902C48.8747 8.21003 49.0927 7.97654 49.3639 7.81923ZM59.0394 7.03076V6.32653H60.5495V12.6812C60.5594 13.2247 60.4326 13.7622 60.1804 14.2449C59.9389 14.7103 59.5657 15.0957 59.1065 15.3539C58.5924 15.6305 58.0132 15.7664 57.4286 15.7476C56.67 15.7754 55.9226 15.5595 55.2977 15.1321C55.0204 14.9436 54.7884 14.6968 54.6182 14.4092C54.4481 14.1217 54.344 13.8006 54.3133 13.4686V13.3466L55.7954 13.3466C55.7954 13.6685 56.0907 13.9814 56.3547 14.134C56.6804 14.3328 57.0575 14.4331 57.4398 14.4223C57.6518 14.4311 57.8634 14.3968 58.0616 14.3215C58.2597 14.2462 58.4402 14.1314 58.592 13.9843C58.7493 13.8103 58.8699 13.6068 58.9468 13.3859C59.0236 13.1649 59.0394 12.931 59.0394 12.6978V11.9548C58.8328 12.1771 58.591 12.3644 58.3235 12.5093C57.9242 12.7189 57.4776 12.8239 57.0259 12.8143C56.4897 12.8185 55.9629 12.6744 55.5046 12.3984C55.0442 12.1041 54.6699 11.6949 54.4195 11.2117C54.1519 10.6801 54.0176 10.0924 54.0281 9.49832C54.0156 8.9094 54.1501 8.32653 54.4195 7.80153C54.6679 7.32727 55.0433 6.93011 55.5046 6.6537C55.9619 6.37401 56.4886 6.22618 57.0259 6.22672C57.4809 6.21907 57.9307 6.32389 58.3347 6.53172C58.5954 6.65891 58.8335 6.82746 59.0394 7.03076ZM58.7877 10.5796C58.9599 10.2511 59.0464 9.8851 59.0394 9.51494C59.0532 9.14059 58.9663 8.76931 58.7877 8.4392C58.6409 8.16062 58.4205 7.92682 58.1501 7.76271C57.8899 7.6138 57.5948 7.53538 57.2944 7.53538C56.994 7.53538 56.6988 7.6138 56.4387 7.76271C56.1645 7.92882 55.9419 8.16678 55.7954 8.4503C55.6308 8.76545 55.5463 9.11571 55.5494 9.4706C55.5427 9.84005 55.6271 10.2055 55.7954 10.5352C55.9406 10.827 56.1629 11.0743 56.4387 11.2505C56.6977 11.4028 56.9932 11.4832 57.2944 11.4832C57.5955 11.4832 57.8911 11.4028 58.1501 11.2505C58.419 11.0871 58.6392 10.8555 58.7877 10.5796Z" fill="#667085"></path></svg></span></a></div></div></div><script>
-            if (typeof window.__updateThemeElement === 'function') {
-              window.__updateThemeElement();
-            }
-          </script><script>((STORAGE_KEY, restoreKey) => {
-    if (!window.history.state || !window.history.state.key) {
-      let key = Math.random().toString(32).slice(2);
-      window.history.replaceState({
-        key
-      }, "");
-    }
-    try {
-      let positions = JSON.parse(sessionStorage.getItem(STORAGE_KEY) || "{}");
-      let storedY = positions[restoreKey || window.history.state.key];
-      if (typeof storedY === "number") {
-        window.scrollTo(0, storedY);
-      }
-    } catch (error) {
-      console.error(error);
-      sessionStorage.removeItem(STORAGE_KEY);
-    }
-  })("positions", null)</script><link rel="modulepreload" href="https://file-assets.apidog.com/docs-site/v1/assets/manifest-db7ef313.js"/><link rel="modulepreload" href="https://file-assets.apidog.com/docs-site/v1/assets/entry.client-mUtkjgQm.js"/><link rel="modulepreload" href="https://file-assets.apidog.com/docs-site/v1/assets/jsx-runtime-CM5sU0Q5.js"/><link rel="modulepreload" href="https://file-assets.apidog.com/docs-site/v1/assets/client-BKxavTD9.js"/><link rel="modulepreload" href="https://file-assets.apidog.com/docs-site/v1/assets/components-DMSdXhQK.js"/><link rel="modulepreload" href="https://file-assets.apidog.com/docs-site/v1/assets/root-CQ054TXt.js"/><link rel="modulepreload" href="https://file-assets.apidog.com/docs-site/v1/assets/root-Dv513fR3.js"/><link rel="modulepreload" href="https://file-assets.apidog.com/docs-site/v1/assets/route-D_6YkXJe.js"/><script>window.__remixContext = {"basename":"/","future":{"v3_fetcherPersist":true,"v3_relativeSplatPath":true,"v3_throwAbortReason":true,"v3_routeConfig":false,"v3_singleFetch":true,"v3_lazyRouteDiscovery":false,"unstable_optimizeDeps":false},"isSpaMode":false};window.__remixContext.stream = new ReadableStream({start(controller){window.__remixContext.streamController = controller;}}).pipeThrough(new TextEncoderStream());</script><script type="module" async="">import "https://file-assets.apidog.com/docs-site/v1/assets/manifest-db7ef313.js";
-import * as route0 from "https://file-assets.apidog.com/docs-site/v1/assets/root-Dv513fR3.js";
-import * as route1 from "https://file-assets.apidog.com/docs-site/v1/assets/route-D_6YkXJe.js";
+### OpenAPI Specification
 
-window.__remixRouteModules = {"root":route0,"routes/_index/route":route1};
+```yaml
+openapi: 3.0.1
+info:
+  title: ''
+  description: ''
+  version: 1.0.0
+paths:
+  /claude/v1/messages:
+    post:
+      summary: Claude Opus 4.6
+      deprecated: false
+      description: >-
+        ### Streaming Support
 
-import("https://file-assets.apidog.com/docs-site/v1/assets/entry.client-mUtkjgQm.js");</script></body></html><!--$--><script>window.__remixContext.streamController.enqueue("[{\"_1\":2,\"_231\":-5,\"_232\":-5},\"loaderData\",{\"_3\":4,\"_230\":-5},\"root\",{\"_5\":1,\"_6\":7,\"_19\":20,\"_23\":24,\"_33\":34,\"_52\":53,\"_112\":113,\"_155\":156,\"_229\":-7},\"type\",\"meta\",[8,11,16],{\"_9\":10},\"title\",\"API Documentation\",{\"_12\":13,\"_14\":15},\"name\",\"description\",\"content\",\"Design. Debug. Test. Document. Mock. Build APIs Faster \u0026 Together.\",{\"_12\":17,\"_14\":18},\"keywords\",\"API Design, API Specification, API Test, API Documentation, API Mock\",\"i18nState\",{\"_21\":22},\"clientLocale\",\"en-US\",\"errorCodeMessage\",{\"_25\":26,\"_27\":28,\"_29\":30,\"_31\":32},\"errorCode\",\"Unknown\",\"errorMessage\",\"Unexpected token 'o', \\\"forbidden\\n\\\" is not valid JSON: /api/v1/published-projects/domains/docs.kie.ai\",\"hideBuiltWith\",false,\"extra\",{},\"clientConfig\",{\"_35\":36,\"_37\":38,\"_39\":40,\"_41\":42,\"_47\":48,\"_49\":30,\"_50\":51},\"apiBaseUrl\",\"https://api.apidog.com\",\"appWebUrl\",\"https://app.apidog.com\",\"apidocBuiltinPrefixPath\",\"https://assets.apidog.com/app/static/apidoc\",\"cloudMockBaseUrls\",{\"_43\":44,\"_45\":46},\"pathMode\",\"https://mock.apidog.com/m1/{projectId}-{version}-{service}\",\"idMode\",\"https://mock.apidog.com/m2/{projectId}-{version}-{service}\",\"apidocIsShowLogo\",true,\"markdownDisableBreaks\",\"webhookGenerateCodeDefaultUrl\",\"https://your-api-server.com\",\"urlConfig\",{\"_54\":55,\"_58\":59,\"_99\":100,\"_108\":109},\"home\",{\"_56\":57},\"index\",\"https://apidog.com\",\"icon\",{\"_60\":61,\"_62\":63,\"_64\":63,\"_65\":66,\"_67\":68,\"_69\":70,\"_71\":72,\"_73\":74,\"_75\":76,\"_77\":78,\"_79\":80,\"_81\":82,\"_83\":84,\"_85\":86,\"_87\":88,\"_89\":90,\"_91\":92,\"_93\":94,\"_95\":96,\"_97\":98},\"apidoc\",\"https://assets.apidog.com/app/static/brand/apidoc.png\",\"apidog\",\"https://assets.apidog.com/app/static/brand/apidog-logo-256.png\",\"apidog europe\",\"googleDiscovery\",\"https://assets.apidog.com/app/static/brand/google-discovery.png\",\"har\",\"https://assets.apidog.com/app/static/brand/har.png\",\"iodocs\",\"https://assets.apidog.com/app/static/brand/io-doc.png\",\"jmeter\",\"https://assets.apidog.com/app/static/brand/jmeter.png\",\"openapi\",\"https://assets.apidog.com/app/static/brand/openapi.png\",\"postman\",\"https://assets.apidog.com/app/static/brand/postman.png\",\"raml\",\"https://assets.apidog.com/app/static/brand/raml.png\",\"wadl\",\"https://assets.apidog.com/app/static/brand/wadl.png\",\"curl\",\"https://assets.apidog.com/app/static/brand/curl.png\",\"insomnia\",\"https://assets.apidog.com/app/static/brand/insomnia.png\",\"wsdl\",\"https://assets.apidog.com/app/static/brand/wsdl.png\",\"markdown\",\"https://assets.apidog.com/app/static/brand/markdown.png\",\"html\",\"https://assets.apidog.com/app/static/brand/html.png\",\"protobuf\",\"https://assets.apidog.com/app/static/brand/protobuf.png\",\"soapui\",\"https://assets.apidog.com/app/static/brand/soapui.svg\",\"hoppscotch\",\"https://assets.apidog.com/app/static/brand/hoppscotch.svg\",\"javaProject\",\"https://assets.apidog.com/app/static/brand/java-project.png\",\"help\",{\"_56\":101,\"_102\":103,\"_104\":105,\"_106\":107},\"https://apidog.com/help\",\"browserExtension\",\"https://chromewebstore.google.com/detail/apidog-browser-extension/dmhljjnonlhapikmelaefohecogokhio\",\"csv\",\"https://apidog.com/help/reference/csv\",\"appMcpServer\",\"https://docs.apidog.com/apidog-mcp-server\",\"assets\",{\"_110\":111},\"logo512Png\",\"https://assets.apidog.com/static/logo/apidog-logo-512.png\",\"envConfig\",{\"_114\":60,\"_115\":116,\"_117\":116,\"_118\":119,\"_120\":121,\"_122\":123,\"_124\":57,\"_125\":62,\"_126\":22,\"_127\":128,\"_129\":130,\"_132\":133,\"_134\":135,\"_136\":137,\"_138\":139,\"_140\":141,\"_142\":143,\"_149\":150,\"_151\":48,\"_152\":153,\"_154\":30},\"RELEASE_BASE\",\"DEBUG_API_BASE\",\"\",\"DEBUG_WEB_URL_BASE\",\"AGENT_SERVER_API_BASE\",\"https://web-proxy.apidog.com\",\"APP_REGION\",\"GLOBAL\",\"APP_NAME\",\"Apidog\",\"APP_HOMEPAGE\",\"APP_NAME_LOWER\",\"DEFAULT_LOCALE\",\"APP_BROWSER_EXTENSION_ADAPTER\",\"apidogAgentCrossRequest\",\"APP_API_SERVER_HOSTNAMES\",[131],\"api.apidog.com\",\"APP_SUPPORT_EMAIL\",\"support@apidog.com\",\"APP_SCRIPT_MAIN_OBJECTS\",\"$\",\"SERVER_PROTOCOL\",\"http\",\"SERVER_HOST\",\"apidog-api-fordoc-svc\",\"DEFAULT_DOC_LAYOUT\",\"TwoColumn\",\"NOT_CUSTOM_DOMAIN_HOSTNAMES\",[144,145,146,147,148],\"www.apidog.com\",\"apidog.com\",\"www.apidog.io\",\"apidog.io\",\"share.apidog.com\",\"SERVER_REQUEST_TIMEOUT\",15000,\"IS_SHARED_DOC_INDEPENDENT_DOMAIN\",\"APIDOC_CUSTOM_DOMAIN_CNAME_REGEX\",[\"R\",\"\\\\d+\\\\.cname\\\\.apidog\\\\.com\",\"\"],\"IS_ALWAYS_USE_ORIGIN_FETCH\",\"docsDataState\",{\"_157\":158,\"_162\":163,\"_175\":176,\"_177\":178,\"_179\":180,\"_189\":190,\"_202\":203,\"_204\":205,\"_206\":207,\"_213\":214,\"_220\":-7,\"_221\":222,\"_223\":-7,\"_224\":-7,\"_225\":226,\"_228\":-7},\"navigation\",{\"_5\":159,\"_160\":161},\"NONE\",\"navRightLinkItems\",[],\"sidebarTree\",{\"_164\":-7,\"_165\":-7,\"_166\":167,\"_168\":-7,\"_169\":170,\"_171\":-7,\"_172\":-7,\"_173\":174},\"goBackSidebarTreeApiFolderNode\",\"rootSidebarTreeApiFolderNode\",\"sidebarTreeList\",[],\"selectedSidebarTreeNode\",\"parentSidebarTreeApiFolderNodes\",[],\"previousSidebarTreeNode\",\"nextSidebarTreeNode\",\"homeLink\",\"/\",\"docsBaseConfig\",{},\"versionList\",[],\"resourceData\",{\"_5\":181,\"_182\":-7,\"_183\":184},\"NotFound\",\"data\",\"extraData\",{\"_185\":186,\"_187\":188},\"apiFieldList\",[],\"dataSchemaDefinitions\",{},\"docsIdTypeData\",{\"_191\":192,\"_193\":194,\"_195\":194,\"_196\":194,\"_197\":116,\"_198\":194,\"_199\":200,\"_201\":-7},\"onlineType\",\"APIDOC\",\"branchId\",0,\"onlineId\",\"projectId\",\"subdirectory\",\"teamId\",\"visitType\",\"customDomain\",\"specialFileType\",\"notification\",[],\"footerBanner\",[],\"projectSetting\",{\"_208\":209,\"_210\":211},\"advancedSettings\",{},\"auth\",{\"_5\":212},\"noauth\",\"environments\",{\"_215\":216,\"_217\":-7,\"_218\":219},\"environmentList\",[],\"selectedEnvironment\",\"servers\",[],\"searchSettings\",\"versionSettings\",[],\"seoInfos\",\"itemPathPrefix\",\"appEnvMap\",{\"_227\":128},\"appBrowserExtensionAdapterKey\",\"customCodes\",\"primaryColorVariable\",\"routes/_index/route\",\"actionData\",\"errors\"]\n");</script><!--$--><script>window.__remixContext.streamController.close();</script><!--/$--><!--/$-->
+        When `stream: true` is set in the request, the API returns responses as
+        server-sent events (SSE). Claude tool calling responses stream
+        `tool_use` blocks and `input_json_delta` fragments.
+
+        **Streaming Response Format:**
+
+        - Content-Type: `text/event-stream`
+
+        - Event names include `message_start`, `content_block_start`,
+        `content_block_delta`, `message_delta`, and `message_stop`
+
+        - Tool calls are emitted as `tool_use` content blocks
+
+        - Final stop reason is often `tool_use` for function-calling requests
+
+        ## Features
+
+        - Standard chat with `messages`.
+
+        - Function calling with `tools` and `input_schema`.
+
+        - Optional stream response with Claude events.
+
+        - Optional project-specific thinking flag.
+
+        ## Request Notes
+
+        - Put the current model name in the `model` field.
+
+        - Use `messages` for conversation history.
+
+        - Use `tools` to declare callable functions.
+
+        - Set `stream` to `true` for SSE output.
+
+        ## Authentication
+
+        Use the auth configuration for `X-Api-Key` and `anthropic-version`. Do
+        not add them as regular request parameters.
+      operationId: claude_opus_4_6
+      tags:
+        - docs/en/Market/Chat  Models/Claude
+      parameters: []
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                model:
+                  type: string
+                  description: Model name. It must match the current document.
+                  enum:
+                    - claude-opus-4-6
+                  x-apidog-enum:
+                    - value: claude-opus-4-6
+                      name: ''
+                      description: ''
+                  examples:
+                    - claude-opus-4-6
+                messages:
+                  type: array
+                  description: Conversation messages in chronological order.
+                  items:
+                    type: object
+                    properties:
+                      role:
+                        type: string
+                        enum:
+                          - user
+                          - assistant
+                        description: Message role.
+                        examples:
+                          - user
+                      content:
+                        oneOf:
+                          - type: string
+                            description: Plain text content.
+                          - type: array
+                            description: Structured content blocks.
+                            items:
+                              type: object
+                              additionalProperties: true
+                              x-apidog-orders: []
+                        description: Message content.
+                        examples:
+                          - What is the weather like in Boston today?
+                    required:
+                      - role
+                      - content
+                    x-apidog-orders:
+                      - role
+                      - content
+                  minItems: 1
+                tools:
+                  type: array
+                  description: >-
+                    Optional callable tools. Each tool includes a name,
+                    description, and input_schema.
+                  items:
+                    type: object
+                    properties:
+                      name:
+                        type: string
+                        description: Function name.
+                        examples:
+                          - get_current_weather
+                      description:
+                        type: string
+                        description: Human-readable function description.
+                        examples:
+                          - Get the current weather in a given location
+                      input_schema:
+                        type: object
+                        description: JSON Schema for function parameters.
+                        properties:
+                          type:
+                            type: string
+                            description: Schema type.
+                            examples:
+                              - object
+                          properties:
+                            type: object
+                            description: Function parameter definitions.
+                            additionalProperties: true
+                            x-apidog-orders: []
+                            properties: {}
+                          required:
+                            type: array
+                            description: Required parameter names.
+                            items:
+                              type: string
+                        x-apidog-orders:
+                          - type
+                          - properties
+                          - required
+                        examples:
+                          - type: object
+                            properties:
+                              location:
+                                type: string
+                                description: The city and state, e.g. Boston, MA
+                            required:
+                              - location
+                    required:
+                      - name
+                      - description
+                      - input_schema
+                    x-apidog-orders:
+                      - name
+                      - description
+                      - input_schema
+                thinkingFlag:
+                  type: boolean
+                  description: >-
+                    Project-specific thinking flag used by the current Claude
+                    adapter.
+                  examples:
+                    - true
+                stream:
+                  type: boolean
+                  default: true
+                  description: If set to true, the response is returned as an SSE stream.
+                  examples:
+                    - false
+                max_tokens:
+                  type: number
+                  default: 4096
+                  examples:
+                    - 4096
+                  description: >-
+                    Optional Claude output token limit. Leave empty to use the
+                    default of 4096.
+              required:
+                - model
+                - messages
+              x-apidog-orders:
+                - model
+                - messages
+                - tools
+                - thinkingFlag
+                - stream
+                - max_tokens
+              examples:
+                - model: claude-opus-4-6-v1messages
+                  messages:
+                    - role: user
+                      content: What is the weather like in Boston today?
+                  tools:
+                    - name: get_current_weather
+                      description: Get the current weather in a given location
+                      input_schema:
+                        type: object
+                        properties:
+                          location:
+                            type: string
+                            description: The city and state, e.g. Boston, MA
+                        required:
+                          - location
+                  thinkingFlag: true
+                  stream: false
+            example:
+              model: claude-opus-4-6
+              messages:
+                - role: user
+                  content: What is the weather like in Boston today?
+              tools:
+                - name: get_current_weather
+                  description: Get the current weather in a given location
+                  input_schema:
+                    type: object
+                    properties:
+                      location:
+                        type: string
+                        description: The city and state, e.g. Boston, MA
+                    required:
+                      - location
+              thinkingFlag: true
+              stream: false
+              max_tokens: 4096
+      responses:
+        '200':
+          description: Request successful.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  role:
+                    type: string
+                    description: Returned message role
+                    examples:
+                      - assistant
+                  usage:
+                    type: object
+                    description: Usage information returned by the provider
+                    properties:
+                      input_tokens:
+                        type: integer
+                        description: Input token count
+                        examples:
+                          - 600
+                      output_tokens:
+                        type: integer
+                        description: Output token count
+                        examples:
+                          - 57
+                      cache_creation_input_tokens:
+                        type: integer
+                        description: Cache creation input token count
+                        examples:
+                          - 0
+                      cache_read_input_tokens:
+                        type: integer
+                        description: Cache read input token count
+                        examples:
+                          - 0
+                      service_tier:
+                        type: string
+                        description: Service tier
+                        examples:
+                          - standard
+                    x-apidog-orders:
+                      - input_tokens
+                      - output_tokens
+                      - cache_creation_input_tokens
+                      - cache_read_input_tokens
+                      - service_tier
+                  stop_reason:
+                    type: string
+                    description: Reason why generation stopped
+                    examples:
+                      - tool_use
+                  model:
+                    type: string
+                    description: Actual model version returned by the provider
+                    examples:
+                      - claude-opus-4-5-20251101
+                  id:
+                    type: string
+                    description: Unique message identifier
+                    examples:
+                      - msg_01VSoxV4a8YWB3DBh9TdM63W
+                  credits_consumed:
+                    type: number
+                    description: Credits consumed by the request
+                    examples:
+                      - 0.25
+                  type:
+                    type: string
+                    description: Top-level response object type
+                    examples:
+                      - message
+                  content:
+                    type: array
+                    description: Response content blocks
+                    items:
+                      type: object
+                      properties:
+                        input:
+                          type: object
+                          description: Tool input arguments
+                          additionalProperties: true
+                          x-apidog-orders: []
+                          properties: {}
+                        caller:
+                          type: object
+                          description: Tool caller metadata
+                          properties:
+                            type:
+                              type: string
+                              examples:
+                                - direct
+                          x-apidog-orders:
+                            - type
+                        name:
+                          type: string
+                          description: Tool name
+                          examples:
+                            - get_current_weather
+                        id:
+                          type: string
+                          description: Tool call identifier
+                          examples:
+                            - toolu_018gdqs2FHxrRjQHLZv1qvbF
+                        type:
+                          type: string
+                          description: Content block type
+                          examples:
+                            - tool_use
+                      x-apidog-orders:
+                        - input
+                        - caller
+                        - name
+                        - id
+                        - type
+                x-apidog-orders:
+                  - role
+                  - usage
+                  - stop_reason
+                  - model
+                  - id
+                  - credits_consumed
+                  - type
+                  - content
+              example:
+                role: assistant
+                usage:
+                  cache_creation:
+                    ephemeral_1h_input_tokens: 0
+                    ephemeral_5m_input_tokens: 0
+                  output_tokens: 57
+                  service_tier: standard
+                  cache_creation_input_tokens: 0
+                  input_tokens: 600
+                  cache_read_input_tokens: 0
+                  inference_geo: not_available
+                stop_reason: tool_use
+                model: claude-opus-4-5-20251101
+                id: msg_01VSoxV4a8YWB3DBh9TdM63W
+                credits_consumed: 0.25
+                type: message
+                content:
+                  - input:
+                      location: Beijing, China
+                    caller:
+                      type: direct
+                    name: get_current_weather
+                    id: toolu_018gdqs2FHxrRjQHLZv1qvbF
+                    type: tool_use
+          headers: {}
+          x-apidog-name: ''
+        '400':
+          description: Bad Request - Invalid request parameters
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: object
+                    properties:
+                      message:
+                        type: string
+                        examples:
+                          - Invalid request parameters
+                      type:
+                        type: string
+                        examples:
+                          - invalid_request_error
+                    x-apidog-orders:
+                      - message
+                      - type
+                x-apidog-orders:
+                  - error
+          headers: {}
+          x-apidog-name: ''
+        '401':
+          description: Unauthorized - Invalid or missing API key
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: object
+                    properties:
+                      message:
+                        type: string
+                        examples:
+                          - Invalid or missing API key
+                      type:
+                        type: string
+                        examples:
+                          - authentication_error
+                    x-apidog-orders:
+                      - message
+                      - type
+                x-apidog-orders:
+                  - error
+          headers: {}
+          x-apidog-name: ''
+      security: []
+      x-apidog-folder: docs/en/Market/Chat  Models/Claude
+      x-apidog-status: released
+      x-run-in-apidog: https://app.apidog.com/web/project/1184766/apis/api-30749668-run
+components:
+  schemas: {}
+  securitySchemes:
+    BearerAuth:
+      type: bearer
+      scheme: bearer
+      bearerFormat: API Key
+      description: >-
+        All API requests require a Bearer Token. Add the header `Authorization:
+        Bearer YOUR_API_KEY` to authenticate requests.
+    BearerAuth1:
+      type: bearer
+      scheme: bearer
+      bearerFormat: API Key
+      description: >-
+        所有 API 请求都需要 Bearer Token。请在请求头中添加 `Authorization: Bearer YOUR_API_KEY`
+        进行身份验证。
+servers:
+  - url: https://api.kie.ai
+    description: 正式环境
+security:
+  - BearerAuth: []
+    x-apidog:
+      schemeGroups:
+        - id: kn8M4YUlc5i0A0179ezwx
+          schemeIds:
+            - BearerAuth
+      required: true
+      use:
+        id: kn8M4YUlc5i0A0179ezwx
+      scopes:
+        kn8M4YUlc5i0A0179ezwx:
+          BearerAuth: []
+
+```
 
 ---
 
@@ -61505,40 +65457,527 @@ import("https://file-assets.apidog.com/docs-site/v1/assets/entry.client-mUtkjgQm
 
 **Source:** [https://docs.kie.ai/market/claude/claude-sonnet-4-5.md][157]
 
-<!DOCTYPE html><html lang="en-US" class="group/root" id="html" data-theme="light" data-accent-color="purple"><head><script src="https://file-assets.apidog.com/docs-site/v1/assets/prepareDocsConfigScript-CLIBKQbk.js"></script><script>__prepareDocsConfigScript(JSON.parse("{\"theme\":\"system\",\"themePrimarySettings\":{\"light\":{\"accentColor\":\"purple\"},\"dark\":{\"accentColor\":\"purple\"}},\"logoSettings\":{\"light\":{\"icon\":\"\",\"type\":\"project\"},\"dark\":{\"icon\":\"\",\"type\":\"followLight\"}},\"backgroundImageSettings\":{\"light\":{\"type\":\"custom\",\"color\":\"\"},\"dark\":{\"type\":\"followLight\",\"color\":\"\"}},\"id\":0,\"subdirectory\":\"\"}"));</script><script>window.eventTracking = {
-      dataLayer: []
-    }
-    window.eventTracking.report = function(){
-        window.eventTracking.dataLayer.push(arguments);
-    }</script><meta charSet="utf-8"/><meta name="viewport" content="width=device-width, initial-scale=1"/><title>API Documentation</title><meta name="description" content="Design. Debug. Test. Document. Mock. Build APIs Faster &amp; Together."/><meta name="keywords" content="API Design, API Specification, API Test, API Documentation, API Mock"/><link rel="stylesheet" href="https://file-assets.apidog.com/docs-site/v1/assets/root-CpC_E1fb.css"/></head><body class="overflow-hidden g-body"><div class="flex h-full w-full flex-col overflow-auto"><div class="flex flex-1 flex-col items-center justify-center"><div class="flex w-auto flex-col items-center justify-center max-os:p-5 os:w-[480px]"><svg width="104" height="104" viewBox="0 0 104 104" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M92.9557 41.8969L88.7262 25.2175C87.4089 19.8194 84.8039 16.1447 80.9015 14.1934L80.3963 13.9458C79.802 13.6685 79.178 13.4407 78.5243 13.2426C75.4142 12.3214 72.0268 12.371 68.362 13.3813C65.8759 14.0747 63.2612 15.2038 60.5176 16.7886C56.7835 18.9478 53.3167 21.6319 50.1076 24.8708C49.0973 25.8711 48.1266 26.9209 47.1956 28.0204C46.314 29.0406 45.4622 30.1105 44.6302 31.2198C42.9266 33.4781 41.3121 35.9245 39.7868 38.5492C34.1015 48.3648 31.2588 57.9329 31.2588 67.2631C31.2588 72.0471 32.1106 76.1181 33.8142 79.4461C34.6759 81.1101 35.6862 82.5263 36.8748 83.7248C37.9346 84.7846 39.1232 85.6564 40.4405 86.3398L41.0151 86.627V98.9485C41.0151 99.9984 41.3221 100.712 41.9461 101.058C42.5701 101.415 43.3426 101.326 44.2637 100.801L67.0249 87.6571C67.946 87.1223 68.7186 86.3199 69.3426 85.2502C69.9666 84.1706 70.2736 83.1008 70.2736 82.0509V78.3169L76.7811 74.5629C78.5639 73.5328 80.0993 71.9184 81.377 69.7195C82.6448 67.5207 83.2786 65.4011 83.2786 63.341V52.1485L89.786 48.3946C90.8657 47.7706 91.7373 46.79 92.391 45.4429C93.0348 44.1058 93.2231 42.927 92.9557 41.8969ZM62.8352 66.6095C62.2112 67.6891 61.4387 68.4914 60.5176 69.0263C59.5964 69.5512 58.8237 69.6404 58.1997 69.2838C57.5856 68.9371 57.2687 68.2238 57.2687 67.164C57.2687 66.1042 57.5856 65.0445 58.1997 63.9748C58.2592 63.8658 58.3186 63.7667 58.378 63.6676C58.9129 62.8356 59.5468 62.1819 60.2797 61.7164C60.359 61.6569 60.4383 61.6075 60.5176 61.558C61.4387 61.033 62.2112 60.9439 62.8352 61.2906C63.4592 61.6471 63.7761 62.3604 63.7761 63.4103C63.7761 64.4602 63.4592 65.5398 62.8352 66.6095ZM69.5011 38.7572C69.402 39.1336 69.2832 39.5101 69.1346 39.8865C68.5997 41.3227 67.4607 43.6206 65.7274 46.8C64.9647 48.1768 64.41 49.3158 64.0535 50.237C63.8157 50.861 63.6176 51.4748 63.4691 52.0592C63.3997 52.3366 63.3304 52.6041 63.2809 52.8715C63.1224 53.7729 62.7856 54.6148 62.2706 55.3774C61.7556 56.1401 61.2009 56.6948 60.6066 57.0315C59.8935 57.4475 59.319 57.4971 58.8535 57.2099C58.3978 56.9128 58.2196 56.358 58.3285 55.5557C58.487 54.2186 58.8039 52.931 59.2596 51.7029C59.7251 50.4747 60.4679 48.9392 61.498 47.0969C62.3201 45.6409 62.9837 44.4029 63.4691 43.4026C63.7761 42.7885 64.0138 42.2636 64.1921 41.8278C64.202 41.7981 64.2119 41.7782 64.2218 41.7485C64.6775 40.5797 64.9153 39.5001 64.9153 38.4997C64.9153 37.321 64.5191 36.5881 63.7366 36.2909C62.9442 36.0037 61.9537 36.2019 60.7652 36.8853C60.0025 37.3211 59.2794 37.945 58.5662 38.7572C57.863 39.5694 57.239 40.5105 56.7041 41.5604C56.2683 42.5013 55.7632 43.2442 55.1986 43.7889C54.6241 44.3337 54.0397 44.6209 53.4455 44.6506C52.8512 44.6902 52.4055 44.4525 52.1083 43.9374C51.8112 43.4224 51.8211 42.7687 52.1479 41.9565C53.0691 39.7477 54.2973 37.7074 55.8424 35.8552C56.5754 34.9737 57.338 34.1811 58.1205 33.4878C58.9822 32.735 59.8638 32.0913 60.7652 31.5664C63.3701 30.0708 65.5491 29.7141 67.3121 30.4966C69.0752 31.279 69.9468 32.9829 69.9468 35.5977C69.9468 36.6476 69.7982 37.7073 69.5011 38.7572Z" stroke="#667085" stroke-linecap="round" stroke-linejoin="round"></path><path d="M63.777 63.4086C63.777 64.4684 63.46 65.5381 62.836 66.6078C62.212 67.6874 61.4395 68.4896 60.5184 69.0245C59.5972 69.5494 58.8246 69.6387 58.2006 69.2821C57.5865 68.9354 57.2695 68.2221 57.2695 67.1623C57.2695 66.1025 57.5865 65.0428 58.2006 63.973C58.26 63.8641 58.3194 63.7649 58.3789 63.6659C58.9137 62.8339 59.5476 62.1802 60.2806 61.7147C60.3598 61.6552 60.4392 61.6058 60.5184 61.5563C61.4395 61.0313 62.212 60.9422 62.836 61.2888C63.46 61.6454 63.777 62.3587 63.777 63.4086Z" stroke="#667085" stroke-linecap="round" stroke-linejoin="round"></path><path d="M63.7373 36.2894C62.9449 36.0021 61.9544 36.2003 60.7659 36.8838C60.0032 37.3196 59.2801 37.9435 58.567 38.7557C57.8638 39.5679 57.2398 40.5089 56.7049 41.5588C56.2691 42.4998 55.7639 43.2426 55.1994 43.7874C54.6249 44.3321 54.0405 44.6193 53.4462 44.649C52.8519 44.6886 52.4062 44.4509 52.1091 43.9359C51.8119 43.4208 51.8219 42.7671 52.1487 41.9549C53.0699 39.7461 54.298 37.7059 55.8432 35.8537C56.5761 34.9721 57.3388 34.1797 58.1213 33.4863L63.7373 36.2894Z" stroke="#667085" stroke-linecap="round" stroke-linejoin="round"></path><path d="M69.9474 35.596C69.9474 36.6459 69.7988 37.7056 69.5017 38.7555C69.4026 39.1319 69.2838 39.5085 69.1352 39.8849C68.6003 41.321 67.4613 43.6189 65.728 46.7984C64.9653 48.1751 64.4106 49.3141 64.054 50.2352C63.8163 50.8592 63.6182 51.4732 63.4697 52.0576C63.4003 52.3349 63.331 52.6024 63.2815 52.8698C63.123 53.7711 62.7862 54.6131 62.2712 55.3758C61.7561 56.1385 61.2015 56.693 60.6072 57.0298C59.894 57.4458 59.3196 57.4955 58.854 57.2083C58.3984 56.9111 58.2201 56.3563 58.3291 55.554C58.4876 54.2168 58.8045 52.9293 59.2601 51.7011C59.7257 50.4729 60.4685 48.9376 61.4986 47.0953C62.3207 45.6393 62.9843 44.4012 63.4697 43.4008C63.7767 42.7868 64.0144 42.2619 64.1927 41.8261C64.2026 41.7964 64.2125 41.7766 64.2224 41.7468C64.678 40.5781 64.9158 39.4984 64.9158 38.498C64.9158 37.3193 64.5196 36.5865 63.7371 36.2893L58.1211 33.4862C58.9828 32.7334 59.8643 32.0896 60.7657 31.5647C63.3706 30.069 65.5497 29.7125 67.3127 30.4949C69.0758 31.2774 69.9474 32.9811 69.9474 35.596Z" stroke="#667085" stroke-linecap="round" stroke-linejoin="round"></path><path d="M41.9466 101.059L22.3253 91.2429L22.1371 91.1537C21.5131 90.807 21.2061 90.094 21.2061 89.0441V76.7227L41.0156 86.6274V98.9488C41.0156 99.9988 41.3226 100.712 41.9466 101.059Z" stroke="#667085" stroke-linecap="round" stroke-linejoin="round"></path><path d="M80.3972 13.9448C79.8029 13.6675 79.1789 13.4397 78.5252 13.2416C75.4151 12.3204 72.0277 12.3701 68.3629 13.3804C65.8768 14.0737 63.2621 15.2028 60.5185 16.7876C56.7844 18.9468 53.3176 21.6309 50.1085 24.8698C49.0982 25.8702 48.1275 26.92 47.1965 28.0194C46.3149 29.0396 45.4631 30.1096 44.6311 31.2189C42.9275 33.4772 41.313 35.9236 39.7877 38.5484C34.1024 48.364 31.2597 57.932 31.2597 67.2623C31.2597 72.0463 32.1115 76.1171 33.8151 79.4451C34.6768 81.1091 35.6871 82.5253 36.8757 83.7238C37.9355 84.7836 39.1241 85.6554 40.4414 86.3388L21.2065 76.7213C18.1161 75.2752 15.7192 72.8783 14.0056 69.5404C12.302 66.2124 11.4502 62.1415 11.4502 57.3575C11.4502 48.0272 14.2929 38.4592 19.9782 28.6436C25.6734 18.828 32.587 11.5678 40.7089 6.88282C47.4838 2.97044 53.486 1.79169 58.7157 3.33683C59.4784 3.56464 60.2113 3.84208 60.8948 4.17884L61.281 4.37688L80.3972 13.9448Z" stroke="#667085" stroke-linecap="round" stroke-linejoin="round"></path></svg><div class="align-center mt-8 flex justify-center text-center text-2xl font-semibold text-color">An abnormal error occurred, please try &#x27;Reload&#x27; or &#x27;get Support&#x27; to help you solve it!</div><div class="align-center mt-2 text-center text-lg font-400 text-secondary">Unexpected token &#x27;o&#x27;, &quot;forbidden
-&quot; is not valid JSON: /api/v1/published-projects/domains/docs.kie.ai</div></div></div><div class="flex flex-col items-center justify-center p-8 text-base font-base text-secondary"><div class="inline-flex items-center text-base font-400 text-secondary _footer-logo-wrapper_1kbjg_1"><a class="_footer-logo_1kbjg_1 flex-shrink-0" aria-label="homepage link" href="https://apidog.com"><span class="inline-flex items-center"><span class="mr-[-4px]">Built with</span><svg width="61" height="18" viewBox="0 0 61 18" fill="none" xmlns="http://www.w3.org/2000/svg" class="h-[18px] w-[80px]"><path d="M12.3836 1.67806C11.6452 0.940647 10.4478 0.940647 9.70932 1.67806L8.99795 2.3884L8.30644 1.69789C7.57144 0.963937 6.37437 0.936241 5.62991 1.66043C4.88545 2.38463 4.86748 3.60515 5.61194 4.34854L6.32331 5.05888C7.80026 6.53371 10.195 6.53371 11.6723 5.05888L12.3836 4.34854C13.1221 3.61113 13.1221 2.41547 12.3836 1.67806Z" fill="#667085"></path><path d="M12.3838 13.6515L11.6729 12.9412C10.1968 11.4664 7.80339 11.4664 6.32699 12.9412L5.61603 13.6515C4.87799 14.389 4.87799 15.5846 5.61603 16.322C6.35408 17.0594 7.55076 17.0594 8.28881 16.322L8.99976 15.6117L9.69087 16.3022C10.4255 17.0361 11.6218 17.0638 12.3659 16.3396C13.1219 15.6038 13.1278 14.3949 12.3838 13.6515Z" fill="#667085"></path><path d="M15.6105 8.99642L16.3214 8.28481C17.0655 7.54009 17.0595 6.32906 16.3035 5.59191C15.5595 4.86643 14.3631 4.89418 13.6285 5.62943L13.3098 5.94851C12.1666 7.09269 10.6166 7.73526 9 7.73526C7.38344 7.73526 5.83335 7.09238 4.69023 5.94851L4.37146 5.62943C3.63689 4.89418 2.44054 4.86643 1.69652 5.59191C0.940527 6.32906 0.934542 7.54009 1.67856 8.28481L2.38951 8.99642L1.67856 9.70803C0.940527 10.4468 0.940527 11.6445 1.67856 12.3833C2.4166 13.122 3.61326 13.122 4.3513 12.3833L4.74347 11.9907C5.85225 10.8809 7.35604 10.2576 8.92409 10.2576H8.9874C10.6162 10.2576 12.1666 10.9005 13.3098 12.0446C13.5126 12.2477 13.6484 12.3836 13.6484 12.3836C14.3864 13.1223 15.5831 13.1223 16.3211 12.3836C17.0592 11.6449 17.0592 10.4471 16.3211 9.70834L15.6102 8.99673L15.6105 8.99642Z" fill="#667085"></path><path fill-rule="evenodd" clip-rule="evenodd" d="M37.3559 4.00331C37.4694 3.95752 37.5911 3.93521 37.7136 3.93768C37.8343 3.93606 37.9541 3.95884 38.0656 4.0046C38.1772 4.05035 38.2781 4.11814 38.3624 4.20384C38.4483 4.29095 38.5158 4.39418 38.561 4.50749C38.6061 4.6208 38.628 4.7419 38.6253 4.8637C38.628 4.98551 38.6061 5.10664 38.561 5.21995C38.5158 5.33326 38.4483 5.43648 38.3624 5.52357C38.2781 5.60926 38.1772 5.67705 38.0656 5.72284C37.9541 5.7686 37.8343 5.79134 37.7136 5.78975C37.5911 5.79222 37.4694 5.76989 37.3559 5.72413C37.2425 5.67837 37.1396 5.61011 37.0536 5.52357C36.9677 5.43648 36.9002 5.33326 36.8551 5.21995C36.8099 5.10664 36.7881 4.98551 36.7908 4.8637C36.7881 4.7419 36.8099 4.6208 36.8551 4.50749C36.9002 4.39418 36.9677 4.29095 37.0536 4.20384C37.1396 4.1173 37.2425 4.04907 37.3559 4.00331ZM25.6211 4.76389L24.0219 4.76389L21.175 12.7654H22.7355L23.2948 11.1795H26.371L26.9303 12.7654H28.5019L25.6211 4.76389ZM25.9403 9.91528H23.7255L24.8441 6.75459L25.9403 9.91528ZM34.4529 6.71022C33.9935 6.42603 33.4618 6.27789 32.9204 6.28324C32.4656 6.27789 32.0164 6.38257 31.6116 6.58824C31.3484 6.72112 31.1086 6.89528 30.9013 7.10393V6.38304H29.4248V15.6932H30.9181V12.0501C31.1303 12.2594 31.3736 12.4352 31.6396 12.5714C32.0799 12.7816 32.5659 12.88 33.0541 12.8577C33.5422 12.8355 34.0171 12.6932 34.4361 12.4438C34.899 12.1548 35.274 11.7466 35.5212 11.2627C35.7861 10.7302 35.9203 10.1431 35.9126 9.54929C35.923 8.96057 35.7887 8.37821 35.5212 7.8525C35.2797 7.38027 34.9096 6.98456 34.4529 6.71022ZM34.4137 9.55484C34.4161 9.91562 34.3297 10.2716 34.162 10.5918C34.0132 10.8769 33.7889 11.1165 33.5133 11.2849C33.2582 11.4309 32.9688 11.5078 32.6743 11.5078C32.3798 11.5078 32.0904 11.4309 31.8353 11.2849C31.5644 11.1203 31.341 10.8892 31.1866 10.6139C31.0195 10.284 30.937 9.91836 30.946 9.54929C30.9355 9.18364 31.0182 8.82126 31.1866 8.49571C31.331 8.22256 31.5426 7.98991 31.8018 7.81923C32.0627 7.67197 32.3573 7.59366 32.6575 7.5919C32.9606 7.59099 33.2582 7.67147 33.5188 7.82478C33.7952 7.97573 34.0193 8.20567 34.162 8.48465C34.3413 8.8105 34.4283 9.17839 34.4137 9.54929V9.55484ZM38.4519 6.38304H36.9585V12.7599H38.4519V6.38304ZM43.7037 6.56049C43.9895 6.68375 44.2509 6.85649 44.4756 7.07066V4.27038H45.9801V12.7654H44.4756V12.039C44.2733 12.2523 44.0347 12.4288 43.7709 12.5603C43.3696 12.7699 42.9211 12.8748 42.4677 12.8652C41.9296 12.8702 41.4008 12.7261 40.9408 12.4493C40.4817 12.1535 40.1078 11.7446 39.8557 11.2627C39.5908 10.7302 39.4566 10.1431 39.4642 9.54929C39.4539 8.96057 39.5882 8.37821 39.8557 7.8525C40.1049 7.3803 40.4803 6.98514 40.9408 6.71022C41.3529 6.46065 41.821 6.31637 42.3032 6.29024C42.7854 6.26412 43.2666 6.35695 43.7037 6.56049ZM44.4756 9.57146C44.4854 9.20459 44.3987 8.84147 44.2239 8.51792C44.0698 8.22608 43.835 7.98372 43.5471 7.81923C43.2921 7.67323 43.0027 7.59637 42.7082 7.59637C42.4136 7.59637 42.1243 7.67323 41.8692 7.81923C41.598 7.97735 41.377 8.20793 41.2316 8.48465C41.0626 8.80593 40.9798 9.16492 40.9911 9.52712C40.9825 9.89613 41.0651 10.2616 41.2316 10.5918C41.3883 10.8862 41.622 11.1333 41.9084 11.3071C42.1635 11.4531 42.4528 11.5299 42.7473 11.5299C43.0419 11.5299 43.3312 11.4531 43.5863 11.3071C43.8553 11.1436 44.0753 10.912 44.2239 10.6361C44.3961 10.3076 44.4826 9.94161 44.4756 9.57146ZM51.8863 6.71022C51.3775 6.44176 50.81 6.30134 50.2336 6.30134C49.6572 6.30134 49.0897 6.44176 48.5808 6.71022C48.1082 6.98053 47.7208 7.37607 47.4622 7.8525C47.1714 8.37882 47.0248 8.9715 47.0372 9.57146C47.026 10.1735 47.1684 10.7686 47.451 11.3016C47.7105 11.7817 48.0973 12.1824 48.5697 12.4605C49.0662 12.7315 49.6249 12.8709 50.1916 12.8652C50.7765 12.874 51.3541 12.7347 51.8695 12.4605C52.3652 12.1852 52.7752 11.7805 53.0553 11.2904C53.3515 10.7658 53.502 10.1726 53.4915 9.57146C53.5004 8.97048 53.35 8.37773 53.0553 7.8525C52.7813 7.37062 52.3763 6.97478 51.8863 6.71022ZM49.3639 7.81923C49.6253 7.67401 49.9199 7.59775 50.2196 7.59775C50.5193 7.59775 50.8139 7.67401 51.0753 7.81923C51.3499 7.97813 51.5716 8.21332 51.7129 8.49571C51.876 8.8305 51.9528 9.20008 51.9367 9.57146C51.9483 9.9474 51.8616 10.3199 51.685 10.6528C51.5392 10.9243 51.3204 11.1504 51.0529 11.3061C50.7853 11.4617 50.4794 11.5408 50.1693 11.5344C49.9454 11.5409 49.7227 11.4998 49.5162 11.4137C49.3097 11.3276 49.1243 11.1986 48.9724 11.0354C48.6355 10.6234 48.4678 10.1007 48.5025 9.57146C48.4901 9.19738 48.5708 8.82604 48.7374 8.4902C48.8747 8.21003 49.0927 7.97654 49.3639 7.81923ZM59.0394 7.03076V6.32653H60.5495V12.6812C60.5594 13.2247 60.4326 13.7622 60.1804 14.2449C59.9389 14.7103 59.5657 15.0957 59.1065 15.3539C58.5924 15.6305 58.0132 15.7664 57.4286 15.7476C56.67 15.7754 55.9226 15.5595 55.2977 15.1321C55.0204 14.9436 54.7884 14.6968 54.6182 14.4092C54.4481 14.1217 54.344 13.8006 54.3133 13.4686V13.3466L55.7954 13.3466C55.7954 13.6685 56.0907 13.9814 56.3547 14.134C56.6804 14.3328 57.0575 14.4331 57.4398 14.4223C57.6518 14.4311 57.8634 14.3968 58.0616 14.3215C58.2597 14.2462 58.4402 14.1314 58.592 13.9843C58.7493 13.8103 58.8699 13.6068 58.9468 13.3859C59.0236 13.1649 59.0394 12.931 59.0394 12.6978V11.9548C58.8328 12.1771 58.591 12.3644 58.3235 12.5093C57.9242 12.7189 57.4776 12.8239 57.0259 12.8143C56.4897 12.8185 55.9629 12.6744 55.5046 12.3984C55.0442 12.1041 54.6699 11.6949 54.4195 11.2117C54.1519 10.6801 54.0176 10.0924 54.0281 9.49832C54.0156 8.9094 54.1501 8.32653 54.4195 7.80153C54.6679 7.32727 55.0433 6.93011 55.5046 6.6537C55.9619 6.37401 56.4886 6.22618 57.0259 6.22672C57.4809 6.21907 57.9307 6.32389 58.3347 6.53172C58.5954 6.65891 58.8335 6.82746 59.0394 7.03076ZM58.7877 10.5796C58.9599 10.2511 59.0464 9.8851 59.0394 9.51494C59.0532 9.14059 58.9663 8.76931 58.7877 8.4392C58.6409 8.16062 58.4205 7.92682 58.1501 7.76271C57.8899 7.6138 57.5948 7.53538 57.2944 7.53538C56.994 7.53538 56.6988 7.6138 56.4387 7.76271C56.1645 7.92882 55.9419 8.16678 55.7954 8.4503C55.6308 8.76545 55.5463 9.11571 55.5494 9.4706C55.5427 9.84005 55.6271 10.2055 55.7954 10.5352C55.9406 10.827 56.1629 11.0743 56.4387 11.2505C56.6977 11.4028 56.9932 11.4832 57.2944 11.4832C57.5955 11.4832 57.8911 11.4028 58.1501 11.2505C58.419 11.0871 58.6392 10.8555 58.7877 10.5796Z" fill="#667085"></path></svg></span></a></div></div></div><script>
-            if (typeof window.__updateThemeElement === 'function') {
-              window.__updateThemeElement();
-            }
-          </script><script>((STORAGE_KEY, restoreKey) => {
-    if (!window.history.state || !window.history.state.key) {
-      let key = Math.random().toString(32).slice(2);
-      window.history.replaceState({
-        key
-      }, "");
-    }
-    try {
-      let positions = JSON.parse(sessionStorage.getItem(STORAGE_KEY) || "{}");
-      let storedY = positions[restoreKey || window.history.state.key];
-      if (typeof storedY === "number") {
-        window.scrollTo(0, storedY);
-      }
-    } catch (error) {
-      console.error(error);
-      sessionStorage.removeItem(STORAGE_KEY);
-    }
-  })("positions", null)</script><link rel="modulepreload" href="https://file-assets.apidog.com/docs-site/v1/assets/manifest-db7ef313.js"/><link rel="modulepreload" href="https://file-assets.apidog.com/docs-site/v1/assets/entry.client-mUtkjgQm.js"/><link rel="modulepreload" href="https://file-assets.apidog.com/docs-site/v1/assets/jsx-runtime-CM5sU0Q5.js"/><link rel="modulepreload" href="https://file-assets.apidog.com/docs-site/v1/assets/client-BKxavTD9.js"/><link rel="modulepreload" href="https://file-assets.apidog.com/docs-site/v1/assets/components-DMSdXhQK.js"/><link rel="modulepreload" href="https://file-assets.apidog.com/docs-site/v1/assets/root-CQ054TXt.js"/><link rel="modulepreload" href="https://file-assets.apidog.com/docs-site/v1/assets/root-Dv513fR3.js"/><link rel="modulepreload" href="https://file-assets.apidog.com/docs-site/v1/assets/route-D_6YkXJe.js"/><script>window.__remixContext = {"basename":"/","future":{"v3_fetcherPersist":true,"v3_relativeSplatPath":true,"v3_throwAbortReason":true,"v3_routeConfig":false,"v3_singleFetch":true,"v3_lazyRouteDiscovery":false,"unstable_optimizeDeps":false},"isSpaMode":false};window.__remixContext.stream = new ReadableStream({start(controller){window.__remixContext.streamController = controller;}}).pipeThrough(new TextEncoderStream());</script><script type="module" async="">import "https://file-assets.apidog.com/docs-site/v1/assets/manifest-db7ef313.js";
-import * as route0 from "https://file-assets.apidog.com/docs-site/v1/assets/root-Dv513fR3.js";
-import * as route1 from "https://file-assets.apidog.com/docs-site/v1/assets/route-D_6YkXJe.js";
+### OpenAPI Specification
 
-window.__remixRouteModules = {"root":route0,"routes/_index/route":route1};
+```yaml
+openapi: 3.0.1
+info:
+  title: ''
+  description: ''
+  version: 1.0.0
+paths:
+  /claude/v1/messages:
+    post:
+      summary: Claude Sonnet 4.5
+      deprecated: false
+      description: >-
+        ### Streaming Support
 
-import("https://file-assets.apidog.com/docs-site/v1/assets/entry.client-mUtkjgQm.js");</script></body></html><!--$--><script>window.__remixContext.streamController.enqueue("[{\"_1\":2,\"_231\":-5,\"_232\":-5},\"loaderData\",{\"_3\":4,\"_230\":-5},\"root\",{\"_5\":1,\"_6\":7,\"_19\":20,\"_23\":24,\"_33\":34,\"_52\":53,\"_112\":113,\"_155\":156,\"_229\":-7},\"type\",\"meta\",[8,11,16],{\"_9\":10},\"title\",\"API Documentation\",{\"_12\":13,\"_14\":15},\"name\",\"description\",\"content\",\"Design. Debug. Test. Document. Mock. Build APIs Faster \u0026 Together.\",{\"_12\":17,\"_14\":18},\"keywords\",\"API Design, API Specification, API Test, API Documentation, API Mock\",\"i18nState\",{\"_21\":22},\"clientLocale\",\"en-US\",\"errorCodeMessage\",{\"_25\":26,\"_27\":28,\"_29\":30,\"_31\":32},\"errorCode\",\"Unknown\",\"errorMessage\",\"Unexpected token 'o', \\\"forbidden\\n\\\" is not valid JSON: /api/v1/published-projects/domains/docs.kie.ai\",\"hideBuiltWith\",false,\"extra\",{},\"clientConfig\",{\"_35\":36,\"_37\":38,\"_39\":40,\"_41\":42,\"_47\":48,\"_49\":30,\"_50\":51},\"apiBaseUrl\",\"https://api.apidog.com\",\"appWebUrl\",\"https://app.apidog.com\",\"apidocBuiltinPrefixPath\",\"https://assets.apidog.com/app/static/apidoc\",\"cloudMockBaseUrls\",{\"_43\":44,\"_45\":46},\"pathMode\",\"https://mock.apidog.com/m1/{projectId}-{version}-{service}\",\"idMode\",\"https://mock.apidog.com/m2/{projectId}-{version}-{service}\",\"apidocIsShowLogo\",true,\"markdownDisableBreaks\",\"webhookGenerateCodeDefaultUrl\",\"https://your-api-server.com\",\"urlConfig\",{\"_54\":55,\"_58\":59,\"_99\":100,\"_108\":109},\"home\",{\"_56\":57},\"index\",\"https://apidog.com\",\"icon\",{\"_60\":61,\"_62\":63,\"_64\":63,\"_65\":66,\"_67\":68,\"_69\":70,\"_71\":72,\"_73\":74,\"_75\":76,\"_77\":78,\"_79\":80,\"_81\":82,\"_83\":84,\"_85\":86,\"_87\":88,\"_89\":90,\"_91\":92,\"_93\":94,\"_95\":96,\"_97\":98},\"apidoc\",\"https://assets.apidog.com/app/static/brand/apidoc.png\",\"apidog\",\"https://assets.apidog.com/app/static/brand/apidog-logo-256.png\",\"apidog europe\",\"googleDiscovery\",\"https://assets.apidog.com/app/static/brand/google-discovery.png\",\"har\",\"https://assets.apidog.com/app/static/brand/har.png\",\"iodocs\",\"https://assets.apidog.com/app/static/brand/io-doc.png\",\"jmeter\",\"https://assets.apidog.com/app/static/brand/jmeter.png\",\"openapi\",\"https://assets.apidog.com/app/static/brand/openapi.png\",\"postman\",\"https://assets.apidog.com/app/static/brand/postman.png\",\"raml\",\"https://assets.apidog.com/app/static/brand/raml.png\",\"wadl\",\"https://assets.apidog.com/app/static/brand/wadl.png\",\"curl\",\"https://assets.apidog.com/app/static/brand/curl.png\",\"insomnia\",\"https://assets.apidog.com/app/static/brand/insomnia.png\",\"wsdl\",\"https://assets.apidog.com/app/static/brand/wsdl.png\",\"markdown\",\"https://assets.apidog.com/app/static/brand/markdown.png\",\"html\",\"https://assets.apidog.com/app/static/brand/html.png\",\"protobuf\",\"https://assets.apidog.com/app/static/brand/protobuf.png\",\"soapui\",\"https://assets.apidog.com/app/static/brand/soapui.svg\",\"hoppscotch\",\"https://assets.apidog.com/app/static/brand/hoppscotch.svg\",\"javaProject\",\"https://assets.apidog.com/app/static/brand/java-project.png\",\"help\",{\"_56\":101,\"_102\":103,\"_104\":105,\"_106\":107},\"https://apidog.com/help\",\"browserExtension\",\"https://chromewebstore.google.com/detail/apidog-browser-extension/dmhljjnonlhapikmelaefohecogokhio\",\"csv\",\"https://apidog.com/help/reference/csv\",\"appMcpServer\",\"https://docs.apidog.com/apidog-mcp-server\",\"assets\",{\"_110\":111},\"logo512Png\",\"https://assets.apidog.com/static/logo/apidog-logo-512.png\",\"envConfig\",{\"_114\":60,\"_115\":116,\"_117\":116,\"_118\":119,\"_120\":121,\"_122\":123,\"_124\":57,\"_125\":62,\"_126\":22,\"_127\":128,\"_129\":130,\"_132\":133,\"_134\":135,\"_136\":137,\"_138\":139,\"_140\":141,\"_142\":143,\"_149\":150,\"_151\":48,\"_152\":153,\"_154\":30},\"RELEASE_BASE\",\"DEBUG_API_BASE\",\"\",\"DEBUG_WEB_URL_BASE\",\"AGENT_SERVER_API_BASE\",\"https://web-proxy.apidog.com\",\"APP_REGION\",\"GLOBAL\",\"APP_NAME\",\"Apidog\",\"APP_HOMEPAGE\",\"APP_NAME_LOWER\",\"DEFAULT_LOCALE\",\"APP_BROWSER_EXTENSION_ADAPTER\",\"apidogAgentCrossRequest\",\"APP_API_SERVER_HOSTNAMES\",[131],\"api.apidog.com\",\"APP_SUPPORT_EMAIL\",\"support@apidog.com\",\"APP_SCRIPT_MAIN_OBJECTS\",\"$\",\"SERVER_PROTOCOL\",\"http\",\"SERVER_HOST\",\"apidog-api-fordoc-svc\",\"DEFAULT_DOC_LAYOUT\",\"TwoColumn\",\"NOT_CUSTOM_DOMAIN_HOSTNAMES\",[144,145,146,147,148],\"www.apidog.com\",\"apidog.com\",\"www.apidog.io\",\"apidog.io\",\"share.apidog.com\",\"SERVER_REQUEST_TIMEOUT\",15000,\"IS_SHARED_DOC_INDEPENDENT_DOMAIN\",\"APIDOC_CUSTOM_DOMAIN_CNAME_REGEX\",[\"R\",\"\\\\d+\\\\.cname\\\\.apidog\\\\.com\",\"\"],\"IS_ALWAYS_USE_ORIGIN_FETCH\",\"docsDataState\",{\"_157\":158,\"_162\":163,\"_175\":176,\"_177\":178,\"_179\":180,\"_189\":190,\"_202\":203,\"_204\":205,\"_206\":207,\"_213\":214,\"_220\":-7,\"_221\":222,\"_223\":-7,\"_224\":-7,\"_225\":226,\"_228\":-7},\"navigation\",{\"_5\":159,\"_160\":161},\"NONE\",\"navRightLinkItems\",[],\"sidebarTree\",{\"_164\":-7,\"_165\":-7,\"_166\":167,\"_168\":-7,\"_169\":170,\"_171\":-7,\"_172\":-7,\"_173\":174},\"goBackSidebarTreeApiFolderNode\",\"rootSidebarTreeApiFolderNode\",\"sidebarTreeList\",[],\"selectedSidebarTreeNode\",\"parentSidebarTreeApiFolderNodes\",[],\"previousSidebarTreeNode\",\"nextSidebarTreeNode\",\"homeLink\",\"/\",\"docsBaseConfig\",{},\"versionList\",[],\"resourceData\",{\"_5\":181,\"_182\":-7,\"_183\":184},\"NotFound\",\"data\",\"extraData\",{\"_185\":186,\"_187\":188},\"apiFieldList\",[],\"dataSchemaDefinitions\",{},\"docsIdTypeData\",{\"_191\":192,\"_193\":194,\"_195\":194,\"_196\":194,\"_197\":116,\"_198\":194,\"_199\":200,\"_201\":-7},\"onlineType\",\"APIDOC\",\"branchId\",0,\"onlineId\",\"projectId\",\"subdirectory\",\"teamId\",\"visitType\",\"customDomain\",\"specialFileType\",\"notification\",[],\"footerBanner\",[],\"projectSetting\",{\"_208\":209,\"_210\":211},\"advancedSettings\",{},\"auth\",{\"_5\":212},\"noauth\",\"environments\",{\"_215\":216,\"_217\":-7,\"_218\":219},\"environmentList\",[],\"selectedEnvironment\",\"servers\",[],\"searchSettings\",\"versionSettings\",[],\"seoInfos\",\"itemPathPrefix\",\"appEnvMap\",{\"_227\":128},\"appBrowserExtensionAdapterKey\",\"customCodes\",\"primaryColorVariable\",\"routes/_index/route\",\"actionData\",\"errors\"]\n");</script><!--$--><script>window.__remixContext.streamController.close();</script><!--/$--><!--/$-->
+        When `stream: true` is set in the request, the API returns responses as
+        server-sent events (SSE). Claude tool calling responses stream
+        `tool_use` blocks and `input_json_delta` fragments.
+
+        **Streaming Response Format:**
+
+        - Content-Type: `text/event-stream`
+
+        - Event names include `message_start`, `content_block_start`,
+        `content_block_delta`, `message_delta`, and `message_stop`
+
+        - Tool calls are emitted as `tool_use` content blocks
+
+        - Final stop reason is often `tool_use` for function-calling requests
+
+        ## Features
+
+        - Standard chat with `messages`.
+
+        - Function calling with `tools` and `input_schema`.
+
+        - Optional stream response with Claude events.
+
+        - Optional project-specific thinking flag.
+
+        ## Request Notes
+
+        - Put the current model name in the `model` field.
+
+        - Use `messages` for conversation history.
+
+        - Use `tools` to declare callable functions.
+
+        - Set `stream` to `true` for SSE output.
+
+        ## Authentication
+
+        Use the auth configuration for `X-Api-Key` and `anthropic-version`. Do
+        not add them as regular request parameters.
+      operationId: claude_sonnet_4_5
+      tags:
+        - docs/en/Market/Chat  Models/Claude
+      parameters: []
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                model:
+                  type: string
+                  description: Model name. It must match the current document.
+                  enum:
+                    - claude-sonnet-4-5
+                  x-apidog-enum:
+                    - value: claude-sonnet-4-5
+                      name: ''
+                      description: ''
+                  examples:
+                    - claude-sonnet-4-5
+                messages:
+                  type: array
+                  description: Conversation messages in chronological order.
+                  items:
+                    type: object
+                    properties:
+                      role:
+                        type: string
+                        enum:
+                          - user
+                          - assistant
+                        description: Message role.
+                        examples:
+                          - user
+                      content:
+                        oneOf:
+                          - type: string
+                            description: Plain text content.
+                          - type: array
+                            description: Structured content blocks.
+                            items:
+                              type: object
+                              additionalProperties: true
+                              x-apidog-orders: []
+                        description: Message content.
+                        examples:
+                          - What is the weather like in Boston today?
+                    required:
+                      - role
+                      - content
+                    x-apidog-orders:
+                      - role
+                      - content
+                  minItems: 1
+                tools:
+                  type: array
+                  description: >-
+                    Optional callable tools. Each tool includes a name,
+                    description, and input_schema.
+                  items:
+                    type: object
+                    properties:
+                      name:
+                        type: string
+                        description: Function name.
+                        examples:
+                          - get_current_weather
+                      description:
+                        type: string
+                        description: Human-readable function description.
+                        examples:
+                          - Get the current weather in a given location
+                      input_schema:
+                        type: object
+                        description: JSON Schema for function parameters.
+                        properties:
+                          type:
+                            type: string
+                            description: Schema type.
+                            examples:
+                              - object
+                          properties:
+                            type: object
+                            description: Function parameter definitions.
+                            additionalProperties: true
+                            x-apidog-orders: []
+                            properties: {}
+                          required:
+                            type: array
+                            description: Required parameter names.
+                            items:
+                              type: string
+                        x-apidog-orders:
+                          - type
+                          - properties
+                          - required
+                        examples:
+                          - type: object
+                            properties:
+                              location:
+                                type: string
+                                description: The city and state, e.g. Boston, MA
+                            required:
+                              - location
+                    required:
+                      - name
+                      - description
+                      - input_schema
+                    x-apidog-orders:
+                      - name
+                      - description
+                      - input_schema
+                thinkingFlag:
+                  type: boolean
+                  description: >-
+                    Project-specific thinking flag used by the current Claude
+                    adapter.
+                  examples:
+                    - true
+                stream:
+                  type: boolean
+                  default: true
+                  description: If set to true, the response is returned as an SSE stream.
+                  examples:
+                    - false
+                max_tokens:
+                  type: number
+                  default: 4096
+                  examples:
+                    - 4096
+                  description: >-
+                    Optional Claude output token limit. Leave empty to use the
+                    default of 4096.
+                output_config:
+                  type: object
+                  description: Structured output configuration.
+                  properties:
+                    format:
+                      type: object
+                      description: Output format configuration.
+                      properties:
+                        type:
+                          type: string
+                          enum:
+                            - json_schema
+                          description: Structured output type.
+                        schema:
+                          type: object
+                          description: JSON Schema for constrained output.
+                          additionalProperties: true
+                          x-apidog-orders: []
+                          properties: {}
+                      x-apidog-orders:
+                        - type
+                        - schema
+                  x-apidog-orders:
+                    - format
+              required:
+                - model
+                - messages
+              x-apidog-orders:
+                - model
+                - messages
+                - tools
+                - thinkingFlag
+                - stream
+                - output_config
+                - max_tokens
+              examples:
+                - model: claude-sonnet-4-5-v1messages
+                  messages:
+                    - role: user
+                      content: What is the weather like in Boston today?
+                  tools:
+                    - name: get_current_weather
+                      description: Get the current weather in a given location
+                      input_schema:
+                        type: object
+                        properties:
+                          location:
+                            type: string
+                            description: The city and state, e.g. Boston, MA
+                        required:
+                          - location
+                  thinkingFlag: true
+                  stream: false
+                  output_config:
+                    format:
+                      type: json_schema
+                      schema:
+                        type: object
+                        properties:
+                          answer:
+                            type: string
+                        required:
+                          - answer
+            example:
+              model: claude-sonnet-4-5
+              messages:
+                - role: user
+                  content: What is the weather like in Boston today?
+              tools:
+                - name: get_current_weather
+                  description: Get the current weather in a given location
+                  input_schema:
+                    type: object
+                    properties:
+                      location:
+                        type: string
+                        description: The city and state, e.g. Boston, MA
+                    required:
+                      - location
+              thinkingFlag: true
+              stream: false
+              max_tokens: 4096
+              output_config:
+                format:
+                  type: json_schema
+                  schema:
+                    type: object
+                    properties:
+                      answer:
+                        type: string
+                    required:
+                      - answer
+      responses:
+        '200':
+          description: Request successful.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  role:
+                    type: string
+                    description: Returned message role
+                    examples:
+                      - assistant
+                  usage:
+                    type: object
+                    description: Usage information returned by the provider
+                    properties:
+                      input_tokens:
+                        type: integer
+                        description: Input token count
+                        examples:
+                          - 600
+                      output_tokens:
+                        type: integer
+                        description: Output token count
+                        examples:
+                          - 57
+                      cache_creation_input_tokens:
+                        type: integer
+                        description: Cache creation input token count
+                        examples:
+                          - 0
+                      cache_read_input_tokens:
+                        type: integer
+                        description: Cache read input token count
+                        examples:
+                          - 0
+                      service_tier:
+                        type: string
+                        description: Service tier
+                        examples:
+                          - standard
+                    x-apidog-orders:
+                      - input_tokens
+                      - output_tokens
+                      - cache_creation_input_tokens
+                      - cache_read_input_tokens
+                      - service_tier
+                  stop_reason:
+                    type: string
+                    description: Reason why generation stopped
+                    examples:
+                      - tool_use
+                  model:
+                    type: string
+                    description: Actual model version returned by the provider
+                    examples:
+                      - claude-opus-4-5-20251101
+                  id:
+                    type: string
+                    description: Unique message identifier
+                    examples:
+                      - msg_01VSoxV4a8YWB3DBh9TdM63W
+                  credits_consumed:
+                    type: number
+                    description: Credits consumed by the request
+                    examples:
+                      - 0.25
+                  type:
+                    type: string
+                    description: Top-level response object type
+                    examples:
+                      - message
+                  content:
+                    type: array
+                    description: Response content blocks
+                    items:
+                      type: object
+                      properties:
+                        input:
+                          type: object
+                          description: Tool input arguments
+                          additionalProperties: true
+                          x-apidog-orders: []
+                        caller:
+                          type: object
+                          description: Tool caller metadata
+                          properties:
+                            type:
+                              type: string
+                              examples:
+                                - direct
+                          x-apidog-orders:
+                            - type
+                        name:
+                          type: string
+                          description: Tool name
+                          examples:
+                            - get_current_weather
+                        id:
+                          type: string
+                          description: Tool call identifier
+                          examples:
+                            - toolu_018gdqs2FHxrRjQHLZv1qvbF
+                        type:
+                          type: string
+                          description: Content block type
+                          examples:
+                            - tool_use
+                      x-apidog-orders:
+                        - input
+                        - caller
+                        - name
+                        - id
+                        - type
+                x-apidog-orders:
+                  - role
+                  - usage
+                  - stop_reason
+                  - model
+                  - id
+                  - credits_consumed
+                  - type
+                  - content
+              example:
+                role: assistant
+                usage:
+                  cache_creation:
+                    ephemeral_1h_input_tokens: 0
+                    ephemeral_5m_input_tokens: 0
+                  output_tokens: 57
+                  service_tier: standard
+                  cache_creation_input_tokens: 0
+                  input_tokens: 600
+                  cache_read_input_tokens: 0
+                  inference_geo: not_available
+                stop_reason: tool_use
+                model: claude-opus-4-5-20251101
+                id: msg_01VSoxV4a8YWB3DBh9TdM63W
+                credits_consumed: 0.25
+                type: message
+                content:
+                  - input:
+                      location: Beijing, China
+                    caller:
+                      type: direct
+                    name: get_current_weather
+                    id: toolu_018gdqs2FHxrRjQHLZv1qvbF
+                    type: tool_use
+          headers: {}
+          x-apidog-name: ''
+        '400':
+          description: Bad Request - Invalid request parameters
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: object
+                    properties:
+                      message:
+                        type: string
+                        examples:
+                          - Invalid request parameters
+                      type:
+                        type: string
+                        examples:
+                          - invalid_request_error
+                    x-apidog-orders:
+                      - message
+                      - type
+                x-apidog-orders:
+                  - error
+          headers: {}
+          x-apidog-name: ''
+        '401':
+          description: Unauthorized - Invalid or missing API key
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: object
+                    properties:
+                      message:
+                        type: string
+                        examples:
+                          - Invalid or missing API key
+                      type:
+                        type: string
+                        examples:
+                          - authentication_error
+                    x-apidog-orders:
+                      - message
+                      - type
+                x-apidog-orders:
+                  - error
+          headers: {}
+          x-apidog-name: ''
+      security: []
+      x-apidog-folder: docs/en/Market/Chat  Models/Claude
+      x-apidog-status: released
+      x-run-in-apidog: https://app.apidog.com/web/project/1184766/apis/api-30749672-run
+components:
+  schemas: {}
+  securitySchemes:
+    BearerAuth:
+      type: bearer
+      scheme: bearer
+      bearerFormat: API Key
+      description: >-
+        All API requests require a Bearer Token. Add the header `Authorization:
+        Bearer YOUR_API_KEY` to authenticate requests.
+    BearerAuth1:
+      type: bearer
+      scheme: bearer
+      bearerFormat: API Key
+      description: >-
+        所有 API 请求都需要 Bearer Token。请在请求头中添加 `Authorization: Bearer YOUR_API_KEY`
+        进行身份验证。
+servers:
+  - url: https://api.kie.ai
+    description: 正式环境
+security:
+  - BearerAuth: []
+    x-apidog:
+      schemeGroups:
+        - id: kn8M4YUlc5i0A0179ezwx
+          schemeIds:
+            - BearerAuth
+      required: true
+      use:
+        id: kn8M4YUlc5i0A0179ezwx
+      scopes:
+        kn8M4YUlc5i0A0179ezwx:
+          BearerAuth: []
+
+```
 
 ---
 
@@ -61552,40 +65991,483 @@ import("https://file-assets.apidog.com/docs-site/v1/assets/entry.client-mUtkjgQm
 
 **Source:** [https://docs.kie.ai/market/claude/claude-sonnet-4-6.md][158]
 
-<!DOCTYPE html><html lang="en-US" class="group/root" id="html" data-theme="light" data-accent-color="purple"><head><script src="https://file-assets.apidog.com/docs-site/v1/assets/prepareDocsConfigScript-CLIBKQbk.js"></script><script>__prepareDocsConfigScript(JSON.parse("{\"theme\":\"system\",\"themePrimarySettings\":{\"light\":{\"accentColor\":\"purple\"},\"dark\":{\"accentColor\":\"purple\"}},\"logoSettings\":{\"light\":{\"icon\":\"\",\"type\":\"project\"},\"dark\":{\"icon\":\"\",\"type\":\"followLight\"}},\"backgroundImageSettings\":{\"light\":{\"type\":\"custom\",\"color\":\"\"},\"dark\":{\"type\":\"followLight\",\"color\":\"\"}},\"id\":0,\"subdirectory\":\"\"}"));</script><script>window.eventTracking = {
-      dataLayer: []
-    }
-    window.eventTracking.report = function(){
-        window.eventTracking.dataLayer.push(arguments);
-    }</script><meta charSet="utf-8"/><meta name="viewport" content="width=device-width, initial-scale=1"/><title>API Documentation</title><meta name="description" content="Design. Debug. Test. Document. Mock. Build APIs Faster &amp; Together."/><meta name="keywords" content="API Design, API Specification, API Test, API Documentation, API Mock"/><link rel="stylesheet" href="https://file-assets.apidog.com/docs-site/v1/assets/root-CpC_E1fb.css"/></head><body class="overflow-hidden g-body"><div class="flex h-full w-full flex-col overflow-auto"><div class="flex flex-1 flex-col items-center justify-center"><div class="flex w-auto flex-col items-center justify-center max-os:p-5 os:w-[480px]"><svg width="104" height="104" viewBox="0 0 104 104" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M92.9557 41.8969L88.7262 25.2175C87.4089 19.8194 84.8039 16.1447 80.9015 14.1934L80.3963 13.9458C79.802 13.6685 79.178 13.4407 78.5243 13.2426C75.4142 12.3214 72.0268 12.371 68.362 13.3813C65.8759 14.0747 63.2612 15.2038 60.5176 16.7886C56.7835 18.9478 53.3167 21.6319 50.1076 24.8708C49.0973 25.8711 48.1266 26.9209 47.1956 28.0204C46.314 29.0406 45.4622 30.1105 44.6302 31.2198C42.9266 33.4781 41.3121 35.9245 39.7868 38.5492C34.1015 48.3648 31.2588 57.9329 31.2588 67.2631C31.2588 72.0471 32.1106 76.1181 33.8142 79.4461C34.6759 81.1101 35.6862 82.5263 36.8748 83.7248C37.9346 84.7846 39.1232 85.6564 40.4405 86.3398L41.0151 86.627V98.9485C41.0151 99.9984 41.3221 100.712 41.9461 101.058C42.5701 101.415 43.3426 101.326 44.2637 100.801L67.0249 87.6571C67.946 87.1223 68.7186 86.3199 69.3426 85.2502C69.9666 84.1706 70.2736 83.1008 70.2736 82.0509V78.3169L76.7811 74.5629C78.5639 73.5328 80.0993 71.9184 81.377 69.7195C82.6448 67.5207 83.2786 65.4011 83.2786 63.341V52.1485L89.786 48.3946C90.8657 47.7706 91.7373 46.79 92.391 45.4429C93.0348 44.1058 93.2231 42.927 92.9557 41.8969ZM62.8352 66.6095C62.2112 67.6891 61.4387 68.4914 60.5176 69.0263C59.5964 69.5512 58.8237 69.6404 58.1997 69.2838C57.5856 68.9371 57.2687 68.2238 57.2687 67.164C57.2687 66.1042 57.5856 65.0445 58.1997 63.9748C58.2592 63.8658 58.3186 63.7667 58.378 63.6676C58.9129 62.8356 59.5468 62.1819 60.2797 61.7164C60.359 61.6569 60.4383 61.6075 60.5176 61.558C61.4387 61.033 62.2112 60.9439 62.8352 61.2906C63.4592 61.6471 63.7761 62.3604 63.7761 63.4103C63.7761 64.4602 63.4592 65.5398 62.8352 66.6095ZM69.5011 38.7572C69.402 39.1336 69.2832 39.5101 69.1346 39.8865C68.5997 41.3227 67.4607 43.6206 65.7274 46.8C64.9647 48.1768 64.41 49.3158 64.0535 50.237C63.8157 50.861 63.6176 51.4748 63.4691 52.0592C63.3997 52.3366 63.3304 52.6041 63.2809 52.8715C63.1224 53.7729 62.7856 54.6148 62.2706 55.3774C61.7556 56.1401 61.2009 56.6948 60.6066 57.0315C59.8935 57.4475 59.319 57.4971 58.8535 57.2099C58.3978 56.9128 58.2196 56.358 58.3285 55.5557C58.487 54.2186 58.8039 52.931 59.2596 51.7029C59.7251 50.4747 60.4679 48.9392 61.498 47.0969C62.3201 45.6409 62.9837 44.4029 63.4691 43.4026C63.7761 42.7885 64.0138 42.2636 64.1921 41.8278C64.202 41.7981 64.2119 41.7782 64.2218 41.7485C64.6775 40.5797 64.9153 39.5001 64.9153 38.4997C64.9153 37.321 64.5191 36.5881 63.7366 36.2909C62.9442 36.0037 61.9537 36.2019 60.7652 36.8853C60.0025 37.3211 59.2794 37.945 58.5662 38.7572C57.863 39.5694 57.239 40.5105 56.7041 41.5604C56.2683 42.5013 55.7632 43.2442 55.1986 43.7889C54.6241 44.3337 54.0397 44.6209 53.4455 44.6506C52.8512 44.6902 52.4055 44.4525 52.1083 43.9374C51.8112 43.4224 51.8211 42.7687 52.1479 41.9565C53.0691 39.7477 54.2973 37.7074 55.8424 35.8552C56.5754 34.9737 57.338 34.1811 58.1205 33.4878C58.9822 32.735 59.8638 32.0913 60.7652 31.5664C63.3701 30.0708 65.5491 29.7141 67.3121 30.4966C69.0752 31.279 69.9468 32.9829 69.9468 35.5977C69.9468 36.6476 69.7982 37.7073 69.5011 38.7572Z" stroke="#667085" stroke-linecap="round" stroke-linejoin="round"></path><path d="M63.777 63.4086C63.777 64.4684 63.46 65.5381 62.836 66.6078C62.212 67.6874 61.4395 68.4896 60.5184 69.0245C59.5972 69.5494 58.8246 69.6387 58.2006 69.2821C57.5865 68.9354 57.2695 68.2221 57.2695 67.1623C57.2695 66.1025 57.5865 65.0428 58.2006 63.973C58.26 63.8641 58.3194 63.7649 58.3789 63.6659C58.9137 62.8339 59.5476 62.1802 60.2806 61.7147C60.3598 61.6552 60.4392 61.6058 60.5184 61.5563C61.4395 61.0313 62.212 60.9422 62.836 61.2888C63.46 61.6454 63.777 62.3587 63.777 63.4086Z" stroke="#667085" stroke-linecap="round" stroke-linejoin="round"></path><path d="M63.7373 36.2894C62.9449 36.0021 61.9544 36.2003 60.7659 36.8838C60.0032 37.3196 59.2801 37.9435 58.567 38.7557C57.8638 39.5679 57.2398 40.5089 56.7049 41.5588C56.2691 42.4998 55.7639 43.2426 55.1994 43.7874C54.6249 44.3321 54.0405 44.6193 53.4462 44.649C52.8519 44.6886 52.4062 44.4509 52.1091 43.9359C51.8119 43.4208 51.8219 42.7671 52.1487 41.9549C53.0699 39.7461 54.298 37.7059 55.8432 35.8537C56.5761 34.9721 57.3388 34.1797 58.1213 33.4863L63.7373 36.2894Z" stroke="#667085" stroke-linecap="round" stroke-linejoin="round"></path><path d="M69.9474 35.596C69.9474 36.6459 69.7988 37.7056 69.5017 38.7555C69.4026 39.1319 69.2838 39.5085 69.1352 39.8849C68.6003 41.321 67.4613 43.6189 65.728 46.7984C64.9653 48.1751 64.4106 49.3141 64.054 50.2352C63.8163 50.8592 63.6182 51.4732 63.4697 52.0576C63.4003 52.3349 63.331 52.6024 63.2815 52.8698C63.123 53.7711 62.7862 54.6131 62.2712 55.3758C61.7561 56.1385 61.2015 56.693 60.6072 57.0298C59.894 57.4458 59.3196 57.4955 58.854 57.2083C58.3984 56.9111 58.2201 56.3563 58.3291 55.554C58.4876 54.2168 58.8045 52.9293 59.2601 51.7011C59.7257 50.4729 60.4685 48.9376 61.4986 47.0953C62.3207 45.6393 62.9843 44.4012 63.4697 43.4008C63.7767 42.7868 64.0144 42.2619 64.1927 41.8261C64.2026 41.7964 64.2125 41.7766 64.2224 41.7468C64.678 40.5781 64.9158 39.4984 64.9158 38.498C64.9158 37.3193 64.5196 36.5865 63.7371 36.2893L58.1211 33.4862C58.9828 32.7334 59.8643 32.0896 60.7657 31.5647C63.3706 30.069 65.5497 29.7125 67.3127 30.4949C69.0758 31.2774 69.9474 32.9811 69.9474 35.596Z" stroke="#667085" stroke-linecap="round" stroke-linejoin="round"></path><path d="M41.9466 101.059L22.3253 91.2429L22.1371 91.1537C21.5131 90.807 21.2061 90.094 21.2061 89.0441V76.7227L41.0156 86.6274V98.9488C41.0156 99.9988 41.3226 100.712 41.9466 101.059Z" stroke="#667085" stroke-linecap="round" stroke-linejoin="round"></path><path d="M80.3972 13.9448C79.8029 13.6675 79.1789 13.4397 78.5252 13.2416C75.4151 12.3204 72.0277 12.3701 68.3629 13.3804C65.8768 14.0737 63.2621 15.2028 60.5185 16.7876C56.7844 18.9468 53.3176 21.6309 50.1085 24.8698C49.0982 25.8702 48.1275 26.92 47.1965 28.0194C46.3149 29.0396 45.4631 30.1096 44.6311 31.2189C42.9275 33.4772 41.313 35.9236 39.7877 38.5484C34.1024 48.364 31.2597 57.932 31.2597 67.2623C31.2597 72.0463 32.1115 76.1171 33.8151 79.4451C34.6768 81.1091 35.6871 82.5253 36.8757 83.7238C37.9355 84.7836 39.1241 85.6554 40.4414 86.3388L21.2065 76.7213C18.1161 75.2752 15.7192 72.8783 14.0056 69.5404C12.302 66.2124 11.4502 62.1415 11.4502 57.3575C11.4502 48.0272 14.2929 38.4592 19.9782 28.6436C25.6734 18.828 32.587 11.5678 40.7089 6.88282C47.4838 2.97044 53.486 1.79169 58.7157 3.33683C59.4784 3.56464 60.2113 3.84208 60.8948 4.17884L61.281 4.37688L80.3972 13.9448Z" stroke="#667085" stroke-linecap="round" stroke-linejoin="round"></path></svg><div class="align-center mt-8 flex justify-center text-center text-2xl font-semibold text-color">An abnormal error occurred, please try &#x27;Reload&#x27; or &#x27;get Support&#x27; to help you solve it!</div><div class="align-center mt-2 text-center text-lg font-400 text-secondary">Unexpected token &#x27;o&#x27;, &quot;forbidden
-&quot; is not valid JSON: /api/v1/published-projects/domains/docs.kie.ai</div></div></div><div class="flex flex-col items-center justify-center p-8 text-base font-base text-secondary"><div class="inline-flex items-center text-base font-400 text-secondary _footer-logo-wrapper_1kbjg_1"><a class="_footer-logo_1kbjg_1 flex-shrink-0" aria-label="homepage link" href="https://apidog.com"><span class="inline-flex items-center"><span class="mr-[-4px]">Built with</span><svg width="61" height="18" viewBox="0 0 61 18" fill="none" xmlns="http://www.w3.org/2000/svg" class="h-[18px] w-[80px]"><path d="M12.3836 1.67806C11.6452 0.940647 10.4478 0.940647 9.70932 1.67806L8.99795 2.3884L8.30644 1.69789C7.57144 0.963937 6.37437 0.936241 5.62991 1.66043C4.88545 2.38463 4.86748 3.60515 5.61194 4.34854L6.32331 5.05888C7.80026 6.53371 10.195 6.53371 11.6723 5.05888L12.3836 4.34854C13.1221 3.61113 13.1221 2.41547 12.3836 1.67806Z" fill="#667085"></path><path d="M12.3838 13.6515L11.6729 12.9412C10.1968 11.4664 7.80339 11.4664 6.32699 12.9412L5.61603 13.6515C4.87799 14.389 4.87799 15.5846 5.61603 16.322C6.35408 17.0594 7.55076 17.0594 8.28881 16.322L8.99976 15.6117L9.69087 16.3022C10.4255 17.0361 11.6218 17.0638 12.3659 16.3396C13.1219 15.6038 13.1278 14.3949 12.3838 13.6515Z" fill="#667085"></path><path d="M15.6105 8.99642L16.3214 8.28481C17.0655 7.54009 17.0595 6.32906 16.3035 5.59191C15.5595 4.86643 14.3631 4.89418 13.6285 5.62943L13.3098 5.94851C12.1666 7.09269 10.6166 7.73526 9 7.73526C7.38344 7.73526 5.83335 7.09238 4.69023 5.94851L4.37146 5.62943C3.63689 4.89418 2.44054 4.86643 1.69652 5.59191C0.940527 6.32906 0.934542 7.54009 1.67856 8.28481L2.38951 8.99642L1.67856 9.70803C0.940527 10.4468 0.940527 11.6445 1.67856 12.3833C2.4166 13.122 3.61326 13.122 4.3513 12.3833L4.74347 11.9907C5.85225 10.8809 7.35604 10.2576 8.92409 10.2576H8.9874C10.6162 10.2576 12.1666 10.9005 13.3098 12.0446C13.5126 12.2477 13.6484 12.3836 13.6484 12.3836C14.3864 13.1223 15.5831 13.1223 16.3211 12.3836C17.0592 11.6449 17.0592 10.4471 16.3211 9.70834L15.6102 8.99673L15.6105 8.99642Z" fill="#667085"></path><path fill-rule="evenodd" clip-rule="evenodd" d="M37.3559 4.00331C37.4694 3.95752 37.5911 3.93521 37.7136 3.93768C37.8343 3.93606 37.9541 3.95884 38.0656 4.0046C38.1772 4.05035 38.2781 4.11814 38.3624 4.20384C38.4483 4.29095 38.5158 4.39418 38.561 4.50749C38.6061 4.6208 38.628 4.7419 38.6253 4.8637C38.628 4.98551 38.6061 5.10664 38.561 5.21995C38.5158 5.33326 38.4483 5.43648 38.3624 5.52357C38.2781 5.60926 38.1772 5.67705 38.0656 5.72284C37.9541 5.7686 37.8343 5.79134 37.7136 5.78975C37.5911 5.79222 37.4694 5.76989 37.3559 5.72413C37.2425 5.67837 37.1396 5.61011 37.0536 5.52357C36.9677 5.43648 36.9002 5.33326 36.8551 5.21995C36.8099 5.10664 36.7881 4.98551 36.7908 4.8637C36.7881 4.7419 36.8099 4.6208 36.8551 4.50749C36.9002 4.39418 36.9677 4.29095 37.0536 4.20384C37.1396 4.1173 37.2425 4.04907 37.3559 4.00331ZM25.6211 4.76389L24.0219 4.76389L21.175 12.7654H22.7355L23.2948 11.1795H26.371L26.9303 12.7654H28.5019L25.6211 4.76389ZM25.9403 9.91528H23.7255L24.8441 6.75459L25.9403 9.91528ZM34.4529 6.71022C33.9935 6.42603 33.4618 6.27789 32.9204 6.28324C32.4656 6.27789 32.0164 6.38257 31.6116 6.58824C31.3484 6.72112 31.1086 6.89528 30.9013 7.10393V6.38304H29.4248V15.6932H30.9181V12.0501C31.1303 12.2594 31.3736 12.4352 31.6396 12.5714C32.0799 12.7816 32.5659 12.88 33.0541 12.8577C33.5422 12.8355 34.0171 12.6932 34.4361 12.4438C34.899 12.1548 35.274 11.7466 35.5212 11.2627C35.7861 10.7302 35.9203 10.1431 35.9126 9.54929C35.923 8.96057 35.7887 8.37821 35.5212 7.8525C35.2797 7.38027 34.9096 6.98456 34.4529 6.71022ZM34.4137 9.55484C34.4161 9.91562 34.3297 10.2716 34.162 10.5918C34.0132 10.8769 33.7889 11.1165 33.5133 11.2849C33.2582 11.4309 32.9688 11.5078 32.6743 11.5078C32.3798 11.5078 32.0904 11.4309 31.8353 11.2849C31.5644 11.1203 31.341 10.8892 31.1866 10.6139C31.0195 10.284 30.937 9.91836 30.946 9.54929C30.9355 9.18364 31.0182 8.82126 31.1866 8.49571C31.331 8.22256 31.5426 7.98991 31.8018 7.81923C32.0627 7.67197 32.3573 7.59366 32.6575 7.5919C32.9606 7.59099 33.2582 7.67147 33.5188 7.82478C33.7952 7.97573 34.0193 8.20567 34.162 8.48465C34.3413 8.8105 34.4283 9.17839 34.4137 9.54929V9.55484ZM38.4519 6.38304H36.9585V12.7599H38.4519V6.38304ZM43.7037 6.56049C43.9895 6.68375 44.2509 6.85649 44.4756 7.07066V4.27038H45.9801V12.7654H44.4756V12.039C44.2733 12.2523 44.0347 12.4288 43.7709 12.5603C43.3696 12.7699 42.9211 12.8748 42.4677 12.8652C41.9296 12.8702 41.4008 12.7261 40.9408 12.4493C40.4817 12.1535 40.1078 11.7446 39.8557 11.2627C39.5908 10.7302 39.4566 10.1431 39.4642 9.54929C39.4539 8.96057 39.5882 8.37821 39.8557 7.8525C40.1049 7.3803 40.4803 6.98514 40.9408 6.71022C41.3529 6.46065 41.821 6.31637 42.3032 6.29024C42.7854 6.26412 43.2666 6.35695 43.7037 6.56049ZM44.4756 9.57146C44.4854 9.20459 44.3987 8.84147 44.2239 8.51792C44.0698 8.22608 43.835 7.98372 43.5471 7.81923C43.2921 7.67323 43.0027 7.59637 42.7082 7.59637C42.4136 7.59637 42.1243 7.67323 41.8692 7.81923C41.598 7.97735 41.377 8.20793 41.2316 8.48465C41.0626 8.80593 40.9798 9.16492 40.9911 9.52712C40.9825 9.89613 41.0651 10.2616 41.2316 10.5918C41.3883 10.8862 41.622 11.1333 41.9084 11.3071C42.1635 11.4531 42.4528 11.5299 42.7473 11.5299C43.0419 11.5299 43.3312 11.4531 43.5863 11.3071C43.8553 11.1436 44.0753 10.912 44.2239 10.6361C44.3961 10.3076 44.4826 9.94161 44.4756 9.57146ZM51.8863 6.71022C51.3775 6.44176 50.81 6.30134 50.2336 6.30134C49.6572 6.30134 49.0897 6.44176 48.5808 6.71022C48.1082 6.98053 47.7208 7.37607 47.4622 7.8525C47.1714 8.37882 47.0248 8.9715 47.0372 9.57146C47.026 10.1735 47.1684 10.7686 47.451 11.3016C47.7105 11.7817 48.0973 12.1824 48.5697 12.4605C49.0662 12.7315 49.6249 12.8709 50.1916 12.8652C50.7765 12.874 51.3541 12.7347 51.8695 12.4605C52.3652 12.1852 52.7752 11.7805 53.0553 11.2904C53.3515 10.7658 53.502 10.1726 53.4915 9.57146C53.5004 8.97048 53.35 8.37773 53.0553 7.8525C52.7813 7.37062 52.3763 6.97478 51.8863 6.71022ZM49.3639 7.81923C49.6253 7.67401 49.9199 7.59775 50.2196 7.59775C50.5193 7.59775 50.8139 7.67401 51.0753 7.81923C51.3499 7.97813 51.5716 8.21332 51.7129 8.49571C51.876 8.8305 51.9528 9.20008 51.9367 9.57146C51.9483 9.9474 51.8616 10.3199 51.685 10.6528C51.5392 10.9243 51.3204 11.1504 51.0529 11.3061C50.7853 11.4617 50.4794 11.5408 50.1693 11.5344C49.9454 11.5409 49.7227 11.4998 49.5162 11.4137C49.3097 11.3276 49.1243 11.1986 48.9724 11.0354C48.6355 10.6234 48.4678 10.1007 48.5025 9.57146C48.4901 9.19738 48.5708 8.82604 48.7374 8.4902C48.8747 8.21003 49.0927 7.97654 49.3639 7.81923ZM59.0394 7.03076V6.32653H60.5495V12.6812C60.5594 13.2247 60.4326 13.7622 60.1804 14.2449C59.9389 14.7103 59.5657 15.0957 59.1065 15.3539C58.5924 15.6305 58.0132 15.7664 57.4286 15.7476C56.67 15.7754 55.9226 15.5595 55.2977 15.1321C55.0204 14.9436 54.7884 14.6968 54.6182 14.4092C54.4481 14.1217 54.344 13.8006 54.3133 13.4686V13.3466L55.7954 13.3466C55.7954 13.6685 56.0907 13.9814 56.3547 14.134C56.6804 14.3328 57.0575 14.4331 57.4398 14.4223C57.6518 14.4311 57.8634 14.3968 58.0616 14.3215C58.2597 14.2462 58.4402 14.1314 58.592 13.9843C58.7493 13.8103 58.8699 13.6068 58.9468 13.3859C59.0236 13.1649 59.0394 12.931 59.0394 12.6978V11.9548C58.8328 12.1771 58.591 12.3644 58.3235 12.5093C57.9242 12.7189 57.4776 12.8239 57.0259 12.8143C56.4897 12.8185 55.9629 12.6744 55.5046 12.3984C55.0442 12.1041 54.6699 11.6949 54.4195 11.2117C54.1519 10.6801 54.0176 10.0924 54.0281 9.49832C54.0156 8.9094 54.1501 8.32653 54.4195 7.80153C54.6679 7.32727 55.0433 6.93011 55.5046 6.6537C55.9619 6.37401 56.4886 6.22618 57.0259 6.22672C57.4809 6.21907 57.9307 6.32389 58.3347 6.53172C58.5954 6.65891 58.8335 6.82746 59.0394 7.03076ZM58.7877 10.5796C58.9599 10.2511 59.0464 9.8851 59.0394 9.51494C59.0532 9.14059 58.9663 8.76931 58.7877 8.4392C58.6409 8.16062 58.4205 7.92682 58.1501 7.76271C57.8899 7.6138 57.5948 7.53538 57.2944 7.53538C56.994 7.53538 56.6988 7.6138 56.4387 7.76271C56.1645 7.92882 55.9419 8.16678 55.7954 8.4503C55.6308 8.76545 55.5463 9.11571 55.5494 9.4706C55.5427 9.84005 55.6271 10.2055 55.7954 10.5352C55.9406 10.827 56.1629 11.0743 56.4387 11.2505C56.6977 11.4028 56.9932 11.4832 57.2944 11.4832C57.5955 11.4832 57.8911 11.4028 58.1501 11.2505C58.419 11.0871 58.6392 10.8555 58.7877 10.5796Z" fill="#667085"></path></svg></span></a></div></div></div><script>
-            if (typeof window.__updateThemeElement === 'function') {
-              window.__updateThemeElement();
-            }
-          </script><script>((STORAGE_KEY, restoreKey) => {
-    if (!window.history.state || !window.history.state.key) {
-      let key = Math.random().toString(32).slice(2);
-      window.history.replaceState({
-        key
-      }, "");
-    }
-    try {
-      let positions = JSON.parse(sessionStorage.getItem(STORAGE_KEY) || "{}");
-      let storedY = positions[restoreKey || window.history.state.key];
-      if (typeof storedY === "number") {
-        window.scrollTo(0, storedY);
-      }
-    } catch (error) {
-      console.error(error);
-      sessionStorage.removeItem(STORAGE_KEY);
-    }
-  })("positions", null)</script><link rel="modulepreload" href="https://file-assets.apidog.com/docs-site/v1/assets/manifest-db7ef313.js"/><link rel="modulepreload" href="https://file-assets.apidog.com/docs-site/v1/assets/entry.client-mUtkjgQm.js"/><link rel="modulepreload" href="https://file-assets.apidog.com/docs-site/v1/assets/jsx-runtime-CM5sU0Q5.js"/><link rel="modulepreload" href="https://file-assets.apidog.com/docs-site/v1/assets/client-BKxavTD9.js"/><link rel="modulepreload" href="https://file-assets.apidog.com/docs-site/v1/assets/components-DMSdXhQK.js"/><link rel="modulepreload" href="https://file-assets.apidog.com/docs-site/v1/assets/root-CQ054TXt.js"/><link rel="modulepreload" href="https://file-assets.apidog.com/docs-site/v1/assets/root-Dv513fR3.js"/><link rel="modulepreload" href="https://file-assets.apidog.com/docs-site/v1/assets/route-D_6YkXJe.js"/><script>window.__remixContext = {"basename":"/","future":{"v3_fetcherPersist":true,"v3_relativeSplatPath":true,"v3_throwAbortReason":true,"v3_routeConfig":false,"v3_singleFetch":true,"v3_lazyRouteDiscovery":false,"unstable_optimizeDeps":false},"isSpaMode":false};window.__remixContext.stream = new ReadableStream({start(controller){window.__remixContext.streamController = controller;}}).pipeThrough(new TextEncoderStream());</script><script type="module" async="">import "https://file-assets.apidog.com/docs-site/v1/assets/manifest-db7ef313.js";
-import * as route0 from "https://file-assets.apidog.com/docs-site/v1/assets/root-Dv513fR3.js";
-import * as route1 from "https://file-assets.apidog.com/docs-site/v1/assets/route-D_6YkXJe.js";
+### OpenAPI Specification
 
-window.__remixRouteModules = {"root":route0,"routes/_index/route":route1};
+```yaml
+openapi: 3.0.1
+info:
+  title: ''
+  description: ''
+  version: 1.0.0
+paths:
+  /claude/v1/messages:
+    post:
+      summary: Claude Sonnet 4.6
+      deprecated: false
+      description: >-
+        ### Streaming Support
 
-import("https://file-assets.apidog.com/docs-site/v1/assets/entry.client-mUtkjgQm.js");</script></body></html><!--$--><script>window.__remixContext.streamController.enqueue("[{\"_1\":2,\"_231\":-5,\"_232\":-5},\"loaderData\",{\"_3\":4,\"_230\":-5},\"root\",{\"_5\":1,\"_6\":7,\"_19\":20,\"_23\":24,\"_33\":34,\"_52\":53,\"_112\":113,\"_155\":156,\"_229\":-7},\"type\",\"meta\",[8,11,16],{\"_9\":10},\"title\",\"API Documentation\",{\"_12\":13,\"_14\":15},\"name\",\"description\",\"content\",\"Design. Debug. Test. Document. Mock. Build APIs Faster \u0026 Together.\",{\"_12\":17,\"_14\":18},\"keywords\",\"API Design, API Specification, API Test, API Documentation, API Mock\",\"i18nState\",{\"_21\":22},\"clientLocale\",\"en-US\",\"errorCodeMessage\",{\"_25\":26,\"_27\":28,\"_29\":30,\"_31\":32},\"errorCode\",\"Unknown\",\"errorMessage\",\"Unexpected token 'o', \\\"forbidden\\n\\\" is not valid JSON: /api/v1/published-projects/domains/docs.kie.ai\",\"hideBuiltWith\",false,\"extra\",{},\"clientConfig\",{\"_35\":36,\"_37\":38,\"_39\":40,\"_41\":42,\"_47\":48,\"_49\":30,\"_50\":51},\"apiBaseUrl\",\"https://api.apidog.com\",\"appWebUrl\",\"https://app.apidog.com\",\"apidocBuiltinPrefixPath\",\"https://assets.apidog.com/app/static/apidoc\",\"cloudMockBaseUrls\",{\"_43\":44,\"_45\":46},\"pathMode\",\"https://mock.apidog.com/m1/{projectId}-{version}-{service}\",\"idMode\",\"https://mock.apidog.com/m2/{projectId}-{version}-{service}\",\"apidocIsShowLogo\",true,\"markdownDisableBreaks\",\"webhookGenerateCodeDefaultUrl\",\"https://your-api-server.com\",\"urlConfig\",{\"_54\":55,\"_58\":59,\"_99\":100,\"_108\":109},\"home\",{\"_56\":57},\"index\",\"https://apidog.com\",\"icon\",{\"_60\":61,\"_62\":63,\"_64\":63,\"_65\":66,\"_67\":68,\"_69\":70,\"_71\":72,\"_73\":74,\"_75\":76,\"_77\":78,\"_79\":80,\"_81\":82,\"_83\":84,\"_85\":86,\"_87\":88,\"_89\":90,\"_91\":92,\"_93\":94,\"_95\":96,\"_97\":98},\"apidoc\",\"https://assets.apidog.com/app/static/brand/apidoc.png\",\"apidog\",\"https://assets.apidog.com/app/static/brand/apidog-logo-256.png\",\"apidog europe\",\"googleDiscovery\",\"https://assets.apidog.com/app/static/brand/google-discovery.png\",\"har\",\"https://assets.apidog.com/app/static/brand/har.png\",\"iodocs\",\"https://assets.apidog.com/app/static/brand/io-doc.png\",\"jmeter\",\"https://assets.apidog.com/app/static/brand/jmeter.png\",\"openapi\",\"https://assets.apidog.com/app/static/brand/openapi.png\",\"postman\",\"https://assets.apidog.com/app/static/brand/postman.png\",\"raml\",\"https://assets.apidog.com/app/static/brand/raml.png\",\"wadl\",\"https://assets.apidog.com/app/static/brand/wadl.png\",\"curl\",\"https://assets.apidog.com/app/static/brand/curl.png\",\"insomnia\",\"https://assets.apidog.com/app/static/brand/insomnia.png\",\"wsdl\",\"https://assets.apidog.com/app/static/brand/wsdl.png\",\"markdown\",\"https://assets.apidog.com/app/static/brand/markdown.png\",\"html\",\"https://assets.apidog.com/app/static/brand/html.png\",\"protobuf\",\"https://assets.apidog.com/app/static/brand/protobuf.png\",\"soapui\",\"https://assets.apidog.com/app/static/brand/soapui.svg\",\"hoppscotch\",\"https://assets.apidog.com/app/static/brand/hoppscotch.svg\",\"javaProject\",\"https://assets.apidog.com/app/static/brand/java-project.png\",\"help\",{\"_56\":101,\"_102\":103,\"_104\":105,\"_106\":107},\"https://apidog.com/help\",\"browserExtension\",\"https://chromewebstore.google.com/detail/apidog-browser-extension/dmhljjnonlhapikmelaefohecogokhio\",\"csv\",\"https://apidog.com/help/reference/csv\",\"appMcpServer\",\"https://docs.apidog.com/apidog-mcp-server\",\"assets\",{\"_110\":111},\"logo512Png\",\"https://assets.apidog.com/static/logo/apidog-logo-512.png\",\"envConfig\",{\"_114\":60,\"_115\":116,\"_117\":116,\"_118\":119,\"_120\":121,\"_122\":123,\"_124\":57,\"_125\":62,\"_126\":22,\"_127\":128,\"_129\":130,\"_132\":133,\"_134\":135,\"_136\":137,\"_138\":139,\"_140\":141,\"_142\":143,\"_149\":150,\"_151\":48,\"_152\":153,\"_154\":30},\"RELEASE_BASE\",\"DEBUG_API_BASE\",\"\",\"DEBUG_WEB_URL_BASE\",\"AGENT_SERVER_API_BASE\",\"https://web-proxy.apidog.com\",\"APP_REGION\",\"GLOBAL\",\"APP_NAME\",\"Apidog\",\"APP_HOMEPAGE\",\"APP_NAME_LOWER\",\"DEFAULT_LOCALE\",\"APP_BROWSER_EXTENSION_ADAPTER\",\"apidogAgentCrossRequest\",\"APP_API_SERVER_HOSTNAMES\",[131],\"api.apidog.com\",\"APP_SUPPORT_EMAIL\",\"support@apidog.com\",\"APP_SCRIPT_MAIN_OBJECTS\",\"$\",\"SERVER_PROTOCOL\",\"http\",\"SERVER_HOST\",\"apidog-api-fordoc-svc\",\"DEFAULT_DOC_LAYOUT\",\"TwoColumn\",\"NOT_CUSTOM_DOMAIN_HOSTNAMES\",[144,145,146,147,148],\"www.apidog.com\",\"apidog.com\",\"www.apidog.io\",\"apidog.io\",\"share.apidog.com\",\"SERVER_REQUEST_TIMEOUT\",15000,\"IS_SHARED_DOC_INDEPENDENT_DOMAIN\",\"APIDOC_CUSTOM_DOMAIN_CNAME_REGEX\",[\"R\",\"\\\\d+\\\\.cname\\\\.apidog\\\\.com\",\"\"],\"IS_ALWAYS_USE_ORIGIN_FETCH\",\"docsDataState\",{\"_157\":158,\"_162\":163,\"_175\":176,\"_177\":178,\"_179\":180,\"_189\":190,\"_202\":203,\"_204\":205,\"_206\":207,\"_213\":214,\"_220\":-7,\"_221\":222,\"_223\":-7,\"_224\":-7,\"_225\":226,\"_228\":-7},\"navigation\",{\"_5\":159,\"_160\":161},\"NONE\",\"navRightLinkItems\",[],\"sidebarTree\",{\"_164\":-7,\"_165\":-7,\"_166\":167,\"_168\":-7,\"_169\":170,\"_171\":-7,\"_172\":-7,\"_173\":174},\"goBackSidebarTreeApiFolderNode\",\"rootSidebarTreeApiFolderNode\",\"sidebarTreeList\",[],\"selectedSidebarTreeNode\",\"parentSidebarTreeApiFolderNodes\",[],\"previousSidebarTreeNode\",\"nextSidebarTreeNode\",\"homeLink\",\"/\",\"docsBaseConfig\",{},\"versionList\",[],\"resourceData\",{\"_5\":181,\"_182\":-7,\"_183\":184},\"NotFound\",\"data\",\"extraData\",{\"_185\":186,\"_187\":188},\"apiFieldList\",[],\"dataSchemaDefinitions\",{},\"docsIdTypeData\",{\"_191\":192,\"_193\":194,\"_195\":194,\"_196\":194,\"_197\":116,\"_198\":194,\"_199\":200,\"_201\":-7},\"onlineType\",\"APIDOC\",\"branchId\",0,\"onlineId\",\"projectId\",\"subdirectory\",\"teamId\",\"visitType\",\"customDomain\",\"specialFileType\",\"notification\",[],\"footerBanner\",[],\"projectSetting\",{\"_208\":209,\"_210\":211},\"advancedSettings\",{},\"auth\",{\"_5\":212},\"noauth\",\"environments\",{\"_215\":216,\"_217\":-7,\"_218\":219},\"environmentList\",[],\"selectedEnvironment\",\"servers\",[],\"searchSettings\",\"versionSettings\",[],\"seoInfos\",\"itemPathPrefix\",\"appEnvMap\",{\"_227\":128},\"appBrowserExtensionAdapterKey\",\"customCodes\",\"primaryColorVariable\",\"routes/_index/route\",\"actionData\",\"errors\"]\n");</script><!--$--><script>window.__remixContext.streamController.close();</script><!--/$--><!--/$-->
+        When `stream: true` is set in the request, the API returns responses as
+        server-sent events (SSE). Claude tool calling responses stream
+        `tool_use` blocks and `input_json_delta` fragments.
+
+        **Streaming Response Format:**
+
+        - Content-Type: `text/event-stream`
+
+        - Event names include `message_start`, `content_block_start`,
+        `content_block_delta`, `message_delta`, and `message_stop`
+
+        - Tool calls are emitted as `tool_use` content blocks
+
+        - Final stop reason is often `tool_use` for function-calling requests
+
+        ## Features
+
+        - Standard chat with `messages`.
+
+        - Function calling with `tools` and `input_schema`.
+
+        - Optional stream response with Claude events.
+
+        - Optional project-specific thinking flag.
+
+        ## Request Notes
+
+        - Put the current model name in the `model` field.
+
+        - Use `messages` for conversation history.
+
+        - Use `tools` to declare callable functions.
+
+        - Set `stream` to `true` for SSE output.
+
+        ## Authentication
+
+        Use the auth configuration for `X-Api-Key` and `anthropic-version`. Do
+        not add them as regular request parameters.
+      operationId: claude_sonnet_4_6
+      tags:
+        - docs/en/Market/Chat  Models/Claude
+      parameters: []
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                model:
+                  type: string
+                  description: Model name. It must match the current document.
+                  enum:
+                    - claude-sonnet-4-6
+                  x-apidog-enum:
+                    - value: claude-sonnet-4-6
+                      name: ''
+                      description: ''
+                  examples:
+                    - claude-sonnet-4-6
+                messages:
+                  type: array
+                  description: Conversation messages in chronological order.
+                  items:
+                    type: object
+                    properties:
+                      role:
+                        type: string
+                        enum:
+                          - user
+                          - assistant
+                        description: Message role.
+                        examples:
+                          - user
+                      content:
+                        oneOf:
+                          - type: string
+                            description: Plain text content.
+                          - type: array
+                            description: Structured content blocks.
+                            items:
+                              type: object
+                              additionalProperties: true
+                              x-apidog-orders: []
+                        description: Message content.
+                        examples:
+                          - What is the weather like in Boston today?
+                    required:
+                      - role
+                      - content
+                    x-apidog-orders:
+                      - role
+                      - content
+                  minItems: 1
+                tools:
+                  type: array
+                  description: >-
+                    Optional callable tools. Each tool includes a name,
+                    description, and input_schema.
+                  items:
+                    type: object
+                    properties:
+                      name:
+                        type: string
+                        description: Function name.
+                        examples:
+                          - get_current_weather
+                      description:
+                        type: string
+                        description: Human-readable function description.
+                        examples:
+                          - Get the current weather in a given location
+                      input_schema:
+                        type: object
+                        description: JSON Schema for function parameters.
+                        properties:
+                          type:
+                            type: string
+                            description: Schema type.
+                            examples:
+                              - object
+                          properties:
+                            type: object
+                            description: Function parameter definitions.
+                            additionalProperties: true
+                            x-apidog-orders: []
+                            properties: {}
+                          required:
+                            type: array
+                            description: Required parameter names.
+                            items:
+                              type: string
+                        x-apidog-orders:
+                          - type
+                          - properties
+                          - required
+                        examples:
+                          - type: object
+                            properties:
+                              location:
+                                type: string
+                                description: The city and state, e.g. Boston, MA
+                            required:
+                              - location
+                    required:
+                      - name
+                      - description
+                      - input_schema
+                    x-apidog-orders:
+                      - name
+                      - description
+                      - input_schema
+                thinkingFlag:
+                  type: boolean
+                  description: >-
+                    Project-specific thinking flag used by the current Claude
+                    adapter.
+                  examples:
+                    - true
+                stream:
+                  type: boolean
+                  default: true
+                  description: If set to true, the response is returned as an SSE stream.
+                  examples:
+                    - false
+                max_tokens:
+                  type: number
+                  default: 4096
+                  examples:
+                    - 4096
+                  description: >-
+                    Optional Claude output token limit. Leave empty to use the
+                    default of 4096.
+              required:
+                - model
+                - messages
+              x-apidog-orders:
+                - model
+                - messages
+                - tools
+                - thinkingFlag
+                - stream
+                - max_tokens
+              examples:
+                - model: claude-sonnet-4-6-v1messages
+                  messages:
+                    - role: user
+                      content: What is the weather like in Boston today?
+                  tools:
+                    - name: get_current_weather
+                      description: Get the current weather in a given location
+                      input_schema:
+                        type: object
+                        properties:
+                          location:
+                            type: string
+                            description: The city and state, e.g. Boston, MA
+                        required:
+                          - location
+                  thinkingFlag: true
+                  stream: false
+            example:
+              model: claude-sonnet-4-6
+              messages:
+                - role: user
+                  content: What is the weather like in Boston today?
+              tools:
+                - name: get_current_weather
+                  description: Get the current weather in a given location
+                  input_schema:
+                    type: object
+                    properties:
+                      location:
+                        type: string
+                        description: The city and state, e.g. Boston, MA
+                    required:
+                      - location
+              thinkingFlag: true
+              stream: false
+              max_tokens: 4096
+      responses:
+        '200':
+          description: Request successful.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  role:
+                    type: string
+                    description: Returned message role
+                    examples:
+                      - assistant
+                  usage:
+                    type: object
+                    description: Usage information returned by the provider
+                    properties:
+                      input_tokens:
+                        type: integer
+                        description: Input token count
+                        examples:
+                          - 600
+                      output_tokens:
+                        type: integer
+                        description: Output token count
+                        examples:
+                          - 57
+                      cache_creation_input_tokens:
+                        type: integer
+                        description: Cache creation input token count
+                        examples:
+                          - 0
+                      cache_read_input_tokens:
+                        type: integer
+                        description: Cache read input token count
+                        examples:
+                          - 0
+                      service_tier:
+                        type: string
+                        description: Service tier
+                        examples:
+                          - standard
+                    x-apidog-orders:
+                      - input_tokens
+                      - output_tokens
+                      - cache_creation_input_tokens
+                      - cache_read_input_tokens
+                      - service_tier
+                  stop_reason:
+                    type: string
+                    description: Reason why generation stopped
+                    examples:
+                      - tool_use
+                  model:
+                    type: string
+                    description: Actual model version returned by the provider
+                    examples:
+                      - claude-opus-4-5-20251101
+                  id:
+                    type: string
+                    description: Unique message identifier
+                    examples:
+                      - msg_01VSoxV4a8YWB3DBh9TdM63W
+                  credits_consumed:
+                    type: number
+                    description: Credits consumed by the request
+                    examples:
+                      - 0.25
+                  type:
+                    type: string
+                    description: Top-level response object type
+                    examples:
+                      - message
+                  content:
+                    type: array
+                    description: Response content blocks
+                    items:
+                      type: object
+                      properties:
+                        input:
+                          type: object
+                          description: Tool input arguments
+                          additionalProperties: true
+                          x-apidog-orders: []
+                          properties: {}
+                        caller:
+                          type: object
+                          description: Tool caller metadata
+                          properties:
+                            type:
+                              type: string
+                              examples:
+                                - direct
+                          x-apidog-orders:
+                            - type
+                        name:
+                          type: string
+                          description: Tool name
+                          examples:
+                            - get_current_weather
+                        id:
+                          type: string
+                          description: Tool call identifier
+                          examples:
+                            - toolu_018gdqs2FHxrRjQHLZv1qvbF
+                        type:
+                          type: string
+                          description: Content block type
+                          examples:
+                            - tool_use
+                      x-apidog-orders:
+                        - input
+                        - caller
+                        - name
+                        - id
+                        - type
+                x-apidog-orders:
+                  - role
+                  - usage
+                  - stop_reason
+                  - model
+                  - id
+                  - credits_consumed
+                  - type
+                  - content
+              example:
+                role: assistant
+                usage:
+                  cache_creation:
+                    ephemeral_1h_input_tokens: 0
+                    ephemeral_5m_input_tokens: 0
+                  output_tokens: 57
+                  service_tier: standard
+                  cache_creation_input_tokens: 0
+                  input_tokens: 600
+                  cache_read_input_tokens: 0
+                  inference_geo: not_available
+                stop_reason: tool_use
+                model: claude-opus-4-5-20251101
+                id: msg_01VSoxV4a8YWB3DBh9TdM63W
+                credits_consumed: 0.25
+                type: message
+                content:
+                  - input:
+                      location: Beijing, China
+                    caller:
+                      type: direct
+                    name: get_current_weather
+                    id: toolu_018gdqs2FHxrRjQHLZv1qvbF
+                    type: tool_use
+          headers: {}
+          x-apidog-name: ''
+        '400':
+          description: Bad Request - Invalid request parameters
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: object
+                    properties:
+                      message:
+                        type: string
+                        examples:
+                          - Invalid request parameters
+                      type:
+                        type: string
+                        examples:
+                          - invalid_request_error
+                    x-apidog-orders:
+                      - message
+                      - type
+                x-apidog-orders:
+                  - error
+          headers: {}
+          x-apidog-name: ''
+        '401':
+          description: Unauthorized - Invalid or missing API key
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: object
+                    properties:
+                      message:
+                        type: string
+                        examples:
+                          - Invalid or missing API key
+                      type:
+                        type: string
+                        examples:
+                          - authentication_error
+                    x-apidog-orders:
+                      - message
+                      - type
+                x-apidog-orders:
+                  - error
+          headers: {}
+          x-apidog-name: ''
+      security: []
+      x-apidog-folder: docs/en/Market/Chat  Models/Claude
+      x-apidog-status: released
+      x-run-in-apidog: https://app.apidog.com/web/project/1184766/apis/api-30749677-run
+components:
+  schemas: {}
+  securitySchemes:
+    BearerAuth:
+      type: bearer
+      scheme: bearer
+      bearerFormat: API Key
+      description: >-
+        All API requests require a Bearer Token. Add the header `Authorization:
+        Bearer YOUR_API_KEY` to authenticate requests.
+    BearerAuth1:
+      type: bearer
+      scheme: bearer
+      bearerFormat: API Key
+      description: >-
+        所有 API 请求都需要 Bearer Token。请在请求头中添加 `Authorization: Bearer YOUR_API_KEY`
+        进行身份验证。
+servers:
+  - url: https://api.kie.ai
+    description: 正式环境
+security:
+  - BearerAuth: []
+    x-apidog:
+      schemeGroups:
+        - id: kn8M4YUlc5i0A0179ezwx
+          schemeIds:
+            - BearerAuth
+      required: true
+      use:
+        id: kn8M4YUlc5i0A0179ezwx
+      scopes:
+        kn8M4YUlc5i0A0179ezwx:
+          BearerAuth: []
+
+```
 
 ---
 
@@ -61599,40 +66481,602 @@ import("https://file-assets.apidog.com/docs-site/v1/assets/entry.client-mUtkjgQm
 
 **Source:** [https://docs.kie.ai/market/codex/gpt-codex.md][159]
 
-<!DOCTYPE html><html lang="en-US" class="group/root" id="html" data-theme="light" data-accent-color="purple"><head><script src="https://file-assets.apidog.com/docs-site/v1/assets/prepareDocsConfigScript-CLIBKQbk.js"></script><script>__prepareDocsConfigScript(JSON.parse("{\"theme\":\"system\",\"themePrimarySettings\":{\"light\":{\"accentColor\":\"purple\"},\"dark\":{\"accentColor\":\"purple\"}},\"logoSettings\":{\"light\":{\"icon\":\"\",\"type\":\"project\"},\"dark\":{\"icon\":\"\",\"type\":\"followLight\"}},\"backgroundImageSettings\":{\"light\":{\"type\":\"custom\",\"color\":\"\"},\"dark\":{\"type\":\"followLight\",\"color\":\"\"}},\"id\":0,\"subdirectory\":\"\"}"));</script><script>window.eventTracking = {
-      dataLayer: []
-    }
-    window.eventTracking.report = function(){
-        window.eventTracking.dataLayer.push(arguments);
-    }</script><meta charSet="utf-8"/><meta name="viewport" content="width=device-width, initial-scale=1"/><title>API Documentation</title><meta name="description" content="Design. Debug. Test. Document. Mock. Build APIs Faster &amp; Together."/><meta name="keywords" content="API Design, API Specification, API Test, API Documentation, API Mock"/><link rel="stylesheet" href="https://file-assets.apidog.com/docs-site/v1/assets/root-CpC_E1fb.css"/></head><body class="overflow-hidden g-body"><div class="flex h-full w-full flex-col overflow-auto"><div class="flex flex-1 flex-col items-center justify-center"><div class="flex w-auto flex-col items-center justify-center max-os:p-5 os:w-[480px]"><svg width="104" height="104" viewBox="0 0 104 104" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M92.9557 41.8969L88.7262 25.2175C87.4089 19.8194 84.8039 16.1447 80.9015 14.1934L80.3963 13.9458C79.802 13.6685 79.178 13.4407 78.5243 13.2426C75.4142 12.3214 72.0268 12.371 68.362 13.3813C65.8759 14.0747 63.2612 15.2038 60.5176 16.7886C56.7835 18.9478 53.3167 21.6319 50.1076 24.8708C49.0973 25.8711 48.1266 26.9209 47.1956 28.0204C46.314 29.0406 45.4622 30.1105 44.6302 31.2198C42.9266 33.4781 41.3121 35.9245 39.7868 38.5492C34.1015 48.3648 31.2588 57.9329 31.2588 67.2631C31.2588 72.0471 32.1106 76.1181 33.8142 79.4461C34.6759 81.1101 35.6862 82.5263 36.8748 83.7248C37.9346 84.7846 39.1232 85.6564 40.4405 86.3398L41.0151 86.627V98.9485C41.0151 99.9984 41.3221 100.712 41.9461 101.058C42.5701 101.415 43.3426 101.326 44.2637 100.801L67.0249 87.6571C67.946 87.1223 68.7186 86.3199 69.3426 85.2502C69.9666 84.1706 70.2736 83.1008 70.2736 82.0509V78.3169L76.7811 74.5629C78.5639 73.5328 80.0993 71.9184 81.377 69.7195C82.6448 67.5207 83.2786 65.4011 83.2786 63.341V52.1485L89.786 48.3946C90.8657 47.7706 91.7373 46.79 92.391 45.4429C93.0348 44.1058 93.2231 42.927 92.9557 41.8969ZM62.8352 66.6095C62.2112 67.6891 61.4387 68.4914 60.5176 69.0263C59.5964 69.5512 58.8237 69.6404 58.1997 69.2838C57.5856 68.9371 57.2687 68.2238 57.2687 67.164C57.2687 66.1042 57.5856 65.0445 58.1997 63.9748C58.2592 63.8658 58.3186 63.7667 58.378 63.6676C58.9129 62.8356 59.5468 62.1819 60.2797 61.7164C60.359 61.6569 60.4383 61.6075 60.5176 61.558C61.4387 61.033 62.2112 60.9439 62.8352 61.2906C63.4592 61.6471 63.7761 62.3604 63.7761 63.4103C63.7761 64.4602 63.4592 65.5398 62.8352 66.6095ZM69.5011 38.7572C69.402 39.1336 69.2832 39.5101 69.1346 39.8865C68.5997 41.3227 67.4607 43.6206 65.7274 46.8C64.9647 48.1768 64.41 49.3158 64.0535 50.237C63.8157 50.861 63.6176 51.4748 63.4691 52.0592C63.3997 52.3366 63.3304 52.6041 63.2809 52.8715C63.1224 53.7729 62.7856 54.6148 62.2706 55.3774C61.7556 56.1401 61.2009 56.6948 60.6066 57.0315C59.8935 57.4475 59.319 57.4971 58.8535 57.2099C58.3978 56.9128 58.2196 56.358 58.3285 55.5557C58.487 54.2186 58.8039 52.931 59.2596 51.7029C59.7251 50.4747 60.4679 48.9392 61.498 47.0969C62.3201 45.6409 62.9837 44.4029 63.4691 43.4026C63.7761 42.7885 64.0138 42.2636 64.1921 41.8278C64.202 41.7981 64.2119 41.7782 64.2218 41.7485C64.6775 40.5797 64.9153 39.5001 64.9153 38.4997C64.9153 37.321 64.5191 36.5881 63.7366 36.2909C62.9442 36.0037 61.9537 36.2019 60.7652 36.8853C60.0025 37.3211 59.2794 37.945 58.5662 38.7572C57.863 39.5694 57.239 40.5105 56.7041 41.5604C56.2683 42.5013 55.7632 43.2442 55.1986 43.7889C54.6241 44.3337 54.0397 44.6209 53.4455 44.6506C52.8512 44.6902 52.4055 44.4525 52.1083 43.9374C51.8112 43.4224 51.8211 42.7687 52.1479 41.9565C53.0691 39.7477 54.2973 37.7074 55.8424 35.8552C56.5754 34.9737 57.338 34.1811 58.1205 33.4878C58.9822 32.735 59.8638 32.0913 60.7652 31.5664C63.3701 30.0708 65.5491 29.7141 67.3121 30.4966C69.0752 31.279 69.9468 32.9829 69.9468 35.5977C69.9468 36.6476 69.7982 37.7073 69.5011 38.7572Z" stroke="#667085" stroke-linecap="round" stroke-linejoin="round"></path><path d="M63.777 63.4086C63.777 64.4684 63.46 65.5381 62.836 66.6078C62.212 67.6874 61.4395 68.4896 60.5184 69.0245C59.5972 69.5494 58.8246 69.6387 58.2006 69.2821C57.5865 68.9354 57.2695 68.2221 57.2695 67.1623C57.2695 66.1025 57.5865 65.0428 58.2006 63.973C58.26 63.8641 58.3194 63.7649 58.3789 63.6659C58.9137 62.8339 59.5476 62.1802 60.2806 61.7147C60.3598 61.6552 60.4392 61.6058 60.5184 61.5563C61.4395 61.0313 62.212 60.9422 62.836 61.2888C63.46 61.6454 63.777 62.3587 63.777 63.4086Z" stroke="#667085" stroke-linecap="round" stroke-linejoin="round"></path><path d="M63.7373 36.2894C62.9449 36.0021 61.9544 36.2003 60.7659 36.8838C60.0032 37.3196 59.2801 37.9435 58.567 38.7557C57.8638 39.5679 57.2398 40.5089 56.7049 41.5588C56.2691 42.4998 55.7639 43.2426 55.1994 43.7874C54.6249 44.3321 54.0405 44.6193 53.4462 44.649C52.8519 44.6886 52.4062 44.4509 52.1091 43.9359C51.8119 43.4208 51.8219 42.7671 52.1487 41.9549C53.0699 39.7461 54.298 37.7059 55.8432 35.8537C56.5761 34.9721 57.3388 34.1797 58.1213 33.4863L63.7373 36.2894Z" stroke="#667085" stroke-linecap="round" stroke-linejoin="round"></path><path d="M69.9474 35.596C69.9474 36.6459 69.7988 37.7056 69.5017 38.7555C69.4026 39.1319 69.2838 39.5085 69.1352 39.8849C68.6003 41.321 67.4613 43.6189 65.728 46.7984C64.9653 48.1751 64.4106 49.3141 64.054 50.2352C63.8163 50.8592 63.6182 51.4732 63.4697 52.0576C63.4003 52.3349 63.331 52.6024 63.2815 52.8698C63.123 53.7711 62.7862 54.6131 62.2712 55.3758C61.7561 56.1385 61.2015 56.693 60.6072 57.0298C59.894 57.4458 59.3196 57.4955 58.854 57.2083C58.3984 56.9111 58.2201 56.3563 58.3291 55.554C58.4876 54.2168 58.8045 52.9293 59.2601 51.7011C59.7257 50.4729 60.4685 48.9376 61.4986 47.0953C62.3207 45.6393 62.9843 44.4012 63.4697 43.4008C63.7767 42.7868 64.0144 42.2619 64.1927 41.8261C64.2026 41.7964 64.2125 41.7766 64.2224 41.7468C64.678 40.5781 64.9158 39.4984 64.9158 38.498C64.9158 37.3193 64.5196 36.5865 63.7371 36.2893L58.1211 33.4862C58.9828 32.7334 59.8643 32.0896 60.7657 31.5647C63.3706 30.069 65.5497 29.7125 67.3127 30.4949C69.0758 31.2774 69.9474 32.9811 69.9474 35.596Z" stroke="#667085" stroke-linecap="round" stroke-linejoin="round"></path><path d="M41.9466 101.059L22.3253 91.2429L22.1371 91.1537C21.5131 90.807 21.2061 90.094 21.2061 89.0441V76.7227L41.0156 86.6274V98.9488C41.0156 99.9988 41.3226 100.712 41.9466 101.059Z" stroke="#667085" stroke-linecap="round" stroke-linejoin="round"></path><path d="M80.3972 13.9448C79.8029 13.6675 79.1789 13.4397 78.5252 13.2416C75.4151 12.3204 72.0277 12.3701 68.3629 13.3804C65.8768 14.0737 63.2621 15.2028 60.5185 16.7876C56.7844 18.9468 53.3176 21.6309 50.1085 24.8698C49.0982 25.8702 48.1275 26.92 47.1965 28.0194C46.3149 29.0396 45.4631 30.1096 44.6311 31.2189C42.9275 33.4772 41.313 35.9236 39.7877 38.5484C34.1024 48.364 31.2597 57.932 31.2597 67.2623C31.2597 72.0463 32.1115 76.1171 33.8151 79.4451C34.6768 81.1091 35.6871 82.5253 36.8757 83.7238C37.9355 84.7836 39.1241 85.6554 40.4414 86.3388L21.2065 76.7213C18.1161 75.2752 15.7192 72.8783 14.0056 69.5404C12.302 66.2124 11.4502 62.1415 11.4502 57.3575C11.4502 48.0272 14.2929 38.4592 19.9782 28.6436C25.6734 18.828 32.587 11.5678 40.7089 6.88282C47.4838 2.97044 53.486 1.79169 58.7157 3.33683C59.4784 3.56464 60.2113 3.84208 60.8948 4.17884L61.281 4.37688L80.3972 13.9448Z" stroke="#667085" stroke-linecap="round" stroke-linejoin="round"></path></svg><div class="align-center mt-8 flex justify-center text-center text-2xl font-semibold text-color">An abnormal error occurred, please try &#x27;Reload&#x27; or &#x27;get Support&#x27; to help you solve it!</div><div class="align-center mt-2 text-center text-lg font-400 text-secondary">Unexpected token &#x27;o&#x27;, &quot;forbidden
-&quot; is not valid JSON: /api/v1/published-projects/domains/docs.kie.ai</div></div></div><div class="flex flex-col items-center justify-center p-8 text-base font-base text-secondary"><div class="inline-flex items-center text-base font-400 text-secondary _footer-logo-wrapper_1kbjg_1"><a class="_footer-logo_1kbjg_1 flex-shrink-0" aria-label="homepage link" href="https://apidog.com"><span class="inline-flex items-center"><span class="mr-[-4px]">Built with</span><svg width="61" height="18" viewBox="0 0 61 18" fill="none" xmlns="http://www.w3.org/2000/svg" class="h-[18px] w-[80px]"><path d="M12.3836 1.67806C11.6452 0.940647 10.4478 0.940647 9.70932 1.67806L8.99795 2.3884L8.30644 1.69789C7.57144 0.963937 6.37437 0.936241 5.62991 1.66043C4.88545 2.38463 4.86748 3.60515 5.61194 4.34854L6.32331 5.05888C7.80026 6.53371 10.195 6.53371 11.6723 5.05888L12.3836 4.34854C13.1221 3.61113 13.1221 2.41547 12.3836 1.67806Z" fill="#667085"></path><path d="M12.3838 13.6515L11.6729 12.9412C10.1968 11.4664 7.80339 11.4664 6.32699 12.9412L5.61603 13.6515C4.87799 14.389 4.87799 15.5846 5.61603 16.322C6.35408 17.0594 7.55076 17.0594 8.28881 16.322L8.99976 15.6117L9.69087 16.3022C10.4255 17.0361 11.6218 17.0638 12.3659 16.3396C13.1219 15.6038 13.1278 14.3949 12.3838 13.6515Z" fill="#667085"></path><path d="M15.6105 8.99642L16.3214 8.28481C17.0655 7.54009 17.0595 6.32906 16.3035 5.59191C15.5595 4.86643 14.3631 4.89418 13.6285 5.62943L13.3098 5.94851C12.1666 7.09269 10.6166 7.73526 9 7.73526C7.38344 7.73526 5.83335 7.09238 4.69023 5.94851L4.37146 5.62943C3.63689 4.89418 2.44054 4.86643 1.69652 5.59191C0.940527 6.32906 0.934542 7.54009 1.67856 8.28481L2.38951 8.99642L1.67856 9.70803C0.940527 10.4468 0.940527 11.6445 1.67856 12.3833C2.4166 13.122 3.61326 13.122 4.3513 12.3833L4.74347 11.9907C5.85225 10.8809 7.35604 10.2576 8.92409 10.2576H8.9874C10.6162 10.2576 12.1666 10.9005 13.3098 12.0446C13.5126 12.2477 13.6484 12.3836 13.6484 12.3836C14.3864 13.1223 15.5831 13.1223 16.3211 12.3836C17.0592 11.6449 17.0592 10.4471 16.3211 9.70834L15.6102 8.99673L15.6105 8.99642Z" fill="#667085"></path><path fill-rule="evenodd" clip-rule="evenodd" d="M37.3559 4.00331C37.4694 3.95752 37.5911 3.93521 37.7136 3.93768C37.8343 3.93606 37.9541 3.95884 38.0656 4.0046C38.1772 4.05035 38.2781 4.11814 38.3624 4.20384C38.4483 4.29095 38.5158 4.39418 38.561 4.50749C38.6061 4.6208 38.628 4.7419 38.6253 4.8637C38.628 4.98551 38.6061 5.10664 38.561 5.21995C38.5158 5.33326 38.4483 5.43648 38.3624 5.52357C38.2781 5.60926 38.1772 5.67705 38.0656 5.72284C37.9541 5.7686 37.8343 5.79134 37.7136 5.78975C37.5911 5.79222 37.4694 5.76989 37.3559 5.72413C37.2425 5.67837 37.1396 5.61011 37.0536 5.52357C36.9677 5.43648 36.9002 5.33326 36.8551 5.21995C36.8099 5.10664 36.7881 4.98551 36.7908 4.8637C36.7881 4.7419 36.8099 4.6208 36.8551 4.50749C36.9002 4.39418 36.9677 4.29095 37.0536 4.20384C37.1396 4.1173 37.2425 4.04907 37.3559 4.00331ZM25.6211 4.76389L24.0219 4.76389L21.175 12.7654H22.7355L23.2948 11.1795H26.371L26.9303 12.7654H28.5019L25.6211 4.76389ZM25.9403 9.91528H23.7255L24.8441 6.75459L25.9403 9.91528ZM34.4529 6.71022C33.9935 6.42603 33.4618 6.27789 32.9204 6.28324C32.4656 6.27789 32.0164 6.38257 31.6116 6.58824C31.3484 6.72112 31.1086 6.89528 30.9013 7.10393V6.38304H29.4248V15.6932H30.9181V12.0501C31.1303 12.2594 31.3736 12.4352 31.6396 12.5714C32.0799 12.7816 32.5659 12.88 33.0541 12.8577C33.5422 12.8355 34.0171 12.6932 34.4361 12.4438C34.899 12.1548 35.274 11.7466 35.5212 11.2627C35.7861 10.7302 35.9203 10.1431 35.9126 9.54929C35.923 8.96057 35.7887 8.37821 35.5212 7.8525C35.2797 7.38027 34.9096 6.98456 34.4529 6.71022ZM34.4137 9.55484C34.4161 9.91562 34.3297 10.2716 34.162 10.5918C34.0132 10.8769 33.7889 11.1165 33.5133 11.2849C33.2582 11.4309 32.9688 11.5078 32.6743 11.5078C32.3798 11.5078 32.0904 11.4309 31.8353 11.2849C31.5644 11.1203 31.341 10.8892 31.1866 10.6139C31.0195 10.284 30.937 9.91836 30.946 9.54929C30.9355 9.18364 31.0182 8.82126 31.1866 8.49571C31.331 8.22256 31.5426 7.98991 31.8018 7.81923C32.0627 7.67197 32.3573 7.59366 32.6575 7.5919C32.9606 7.59099 33.2582 7.67147 33.5188 7.82478C33.7952 7.97573 34.0193 8.20567 34.162 8.48465C34.3413 8.8105 34.4283 9.17839 34.4137 9.54929V9.55484ZM38.4519 6.38304H36.9585V12.7599H38.4519V6.38304ZM43.7037 6.56049C43.9895 6.68375 44.2509 6.85649 44.4756 7.07066V4.27038H45.9801V12.7654H44.4756V12.039C44.2733 12.2523 44.0347 12.4288 43.7709 12.5603C43.3696 12.7699 42.9211 12.8748 42.4677 12.8652C41.9296 12.8702 41.4008 12.7261 40.9408 12.4493C40.4817 12.1535 40.1078 11.7446 39.8557 11.2627C39.5908 10.7302 39.4566 10.1431 39.4642 9.54929C39.4539 8.96057 39.5882 8.37821 39.8557 7.8525C40.1049 7.3803 40.4803 6.98514 40.9408 6.71022C41.3529 6.46065 41.821 6.31637 42.3032 6.29024C42.7854 6.26412 43.2666 6.35695 43.7037 6.56049ZM44.4756 9.57146C44.4854 9.20459 44.3987 8.84147 44.2239 8.51792C44.0698 8.22608 43.835 7.98372 43.5471 7.81923C43.2921 7.67323 43.0027 7.59637 42.7082 7.59637C42.4136 7.59637 42.1243 7.67323 41.8692 7.81923C41.598 7.97735 41.377 8.20793 41.2316 8.48465C41.0626 8.80593 40.9798 9.16492 40.9911 9.52712C40.9825 9.89613 41.0651 10.2616 41.2316 10.5918C41.3883 10.8862 41.622 11.1333 41.9084 11.3071C42.1635 11.4531 42.4528 11.5299 42.7473 11.5299C43.0419 11.5299 43.3312 11.4531 43.5863 11.3071C43.8553 11.1436 44.0753 10.912 44.2239 10.6361C44.3961 10.3076 44.4826 9.94161 44.4756 9.57146ZM51.8863 6.71022C51.3775 6.44176 50.81 6.30134 50.2336 6.30134C49.6572 6.30134 49.0897 6.44176 48.5808 6.71022C48.1082 6.98053 47.7208 7.37607 47.4622 7.8525C47.1714 8.37882 47.0248 8.9715 47.0372 9.57146C47.026 10.1735 47.1684 10.7686 47.451 11.3016C47.7105 11.7817 48.0973 12.1824 48.5697 12.4605C49.0662 12.7315 49.6249 12.8709 50.1916 12.8652C50.7765 12.874 51.3541 12.7347 51.8695 12.4605C52.3652 12.1852 52.7752 11.7805 53.0553 11.2904C53.3515 10.7658 53.502 10.1726 53.4915 9.57146C53.5004 8.97048 53.35 8.37773 53.0553 7.8525C52.7813 7.37062 52.3763 6.97478 51.8863 6.71022ZM49.3639 7.81923C49.6253 7.67401 49.9199 7.59775 50.2196 7.59775C50.5193 7.59775 50.8139 7.67401 51.0753 7.81923C51.3499 7.97813 51.5716 8.21332 51.7129 8.49571C51.876 8.8305 51.9528 9.20008 51.9367 9.57146C51.9483 9.9474 51.8616 10.3199 51.685 10.6528C51.5392 10.9243 51.3204 11.1504 51.0529 11.3061C50.7853 11.4617 50.4794 11.5408 50.1693 11.5344C49.9454 11.5409 49.7227 11.4998 49.5162 11.4137C49.3097 11.3276 49.1243 11.1986 48.9724 11.0354C48.6355 10.6234 48.4678 10.1007 48.5025 9.57146C48.4901 9.19738 48.5708 8.82604 48.7374 8.4902C48.8747 8.21003 49.0927 7.97654 49.3639 7.81923ZM59.0394 7.03076V6.32653H60.5495V12.6812C60.5594 13.2247 60.4326 13.7622 60.1804 14.2449C59.9389 14.7103 59.5657 15.0957 59.1065 15.3539C58.5924 15.6305 58.0132 15.7664 57.4286 15.7476C56.67 15.7754 55.9226 15.5595 55.2977 15.1321C55.0204 14.9436 54.7884 14.6968 54.6182 14.4092C54.4481 14.1217 54.344 13.8006 54.3133 13.4686V13.3466L55.7954 13.3466C55.7954 13.6685 56.0907 13.9814 56.3547 14.134C56.6804 14.3328 57.0575 14.4331 57.4398 14.4223C57.6518 14.4311 57.8634 14.3968 58.0616 14.3215C58.2597 14.2462 58.4402 14.1314 58.592 13.9843C58.7493 13.8103 58.8699 13.6068 58.9468 13.3859C59.0236 13.1649 59.0394 12.931 59.0394 12.6978V11.9548C58.8328 12.1771 58.591 12.3644 58.3235 12.5093C57.9242 12.7189 57.4776 12.8239 57.0259 12.8143C56.4897 12.8185 55.9629 12.6744 55.5046 12.3984C55.0442 12.1041 54.6699 11.6949 54.4195 11.2117C54.1519 10.6801 54.0176 10.0924 54.0281 9.49832C54.0156 8.9094 54.1501 8.32653 54.4195 7.80153C54.6679 7.32727 55.0433 6.93011 55.5046 6.6537C55.9619 6.37401 56.4886 6.22618 57.0259 6.22672C57.4809 6.21907 57.9307 6.32389 58.3347 6.53172C58.5954 6.65891 58.8335 6.82746 59.0394 7.03076ZM58.7877 10.5796C58.9599 10.2511 59.0464 9.8851 59.0394 9.51494C59.0532 9.14059 58.9663 8.76931 58.7877 8.4392C58.6409 8.16062 58.4205 7.92682 58.1501 7.76271C57.8899 7.6138 57.5948 7.53538 57.2944 7.53538C56.994 7.53538 56.6988 7.6138 56.4387 7.76271C56.1645 7.92882 55.9419 8.16678 55.7954 8.4503C55.6308 8.76545 55.5463 9.11571 55.5494 9.4706C55.5427 9.84005 55.6271 10.2055 55.7954 10.5352C55.9406 10.827 56.1629 11.0743 56.4387 11.2505C56.6977 11.4028 56.9932 11.4832 57.2944 11.4832C57.5955 11.4832 57.8911 11.4028 58.1501 11.2505C58.419 11.0871 58.6392 10.8555 58.7877 10.5796Z" fill="#667085"></path></svg></span></a></div></div></div><script>
-            if (typeof window.__updateThemeElement === 'function') {
-              window.__updateThemeElement();
+### OpenAPI Specification
+
+```yaml
+openapi: 3.0.1
+info:
+  title: ''
+  description: ''
+  version: 1.0.0
+paths:
+  /api/v1/responses:
+    post:
+      summary: GPT Codex
+      deprecated: false
+      description: >-
+        > GPT Codex API is a multimodal chat-completions style endpoint that
+        accepts structured input arrays, supports adjustable reasoning effort,
+        and integrates web search or function calling tools.
+
+        <CardGroup cols={2}>
+          <Card title="Multimodal Input" icon="🖼️">
+            Supports mixed text, image, and file inputs in a single message.
+          </Card>
+
+          <Card title="Reasoning Control" icon="🧠">
+            Adjustable reasoning effort from low to xhigh.
+          </Card>
+
+          <Card title="Tools & Web Search" icon="✨">
+            Integrates web search or custom function calling tools.
+          </Card>
+
+          <Card title="Unified Endpoint" icon="💻">
+            Uses the unified <code>/api/v1/responses</code> endpoint with <code>model</code> set to one of <code>gpt-5-codex</code>, <code>gpt-5.1-codex</code>, <code>gpt-5.2-codex</code>, <code>gpt-5.3-codex</code>, <code>gpt-5.4-codex</code>.
+          </Card>
+        </CardGroup>
+
+        ## Tools & tool\_choice
+
+        The `tools` array enables **web search** or **function calling**
+        capabilities.
+
+        :::caution
+
+        Web Search and Function Calling are **mutually exclusive**.  
+
+        In a single request you should choose only one: do not include both
+        `{"type": "web_search"}` and `{"type": "function", ...}` in the same
+        `tools` array.
+
+        :::
+
+        <AccordionGroup>
+          <Accordion title="Web Search">
+            Use the built-in Web Search tool to retrieve up-to-date information:
+
+            ```json
+            {
+              "tools": [
+                {
+                  "type": "web_search"
+                }
+              ]
             }
-          </script><script>((STORAGE_KEY, restoreKey) => {
-    if (!window.history.state || !window.history.state.key) {
-      let key = Math.random().toString(32).slice(2);
-      window.history.replaceState({
-        key
-      }, "");
-    }
-    try {
-      let positions = JSON.parse(sessionStorage.getItem(STORAGE_KEY) || "{}");
-      let storedY = positions[restoreKey || window.history.state.key];
-      if (typeof storedY === "number") {
-        window.scrollTo(0, storedY);
-      }
-    } catch (error) {
-      console.error(error);
-      sessionStorage.removeItem(STORAGE_KEY);
-    }
-  })("positions", null)</script><link rel="modulepreload" href="https://file-assets.apidog.com/docs-site/v1/assets/manifest-db7ef313.js"/><link rel="modulepreload" href="https://file-assets.apidog.com/docs-site/v1/assets/entry.client-mUtkjgQm.js"/><link rel="modulepreload" href="https://file-assets.apidog.com/docs-site/v1/assets/jsx-runtime-CM5sU0Q5.js"/><link rel="modulepreload" href="https://file-assets.apidog.com/docs-site/v1/assets/client-BKxavTD9.js"/><link rel="modulepreload" href="https://file-assets.apidog.com/docs-site/v1/assets/components-DMSdXhQK.js"/><link rel="modulepreload" href="https://file-assets.apidog.com/docs-site/v1/assets/root-CQ054TXt.js"/><link rel="modulepreload" href="https://file-assets.apidog.com/docs-site/v1/assets/root-Dv513fR3.js"/><link rel="modulepreload" href="https://file-assets.apidog.com/docs-site/v1/assets/route-D_6YkXJe.js"/><script>window.__remixContext = {"basename":"/","future":{"v3_fetcherPersist":true,"v3_relativeSplatPath":true,"v3_throwAbortReason":true,"v3_routeConfig":false,"v3_singleFetch":true,"v3_lazyRouteDiscovery":false,"unstable_optimizeDeps":false},"isSpaMode":false};window.__remixContext.stream = new ReadableStream({start(controller){window.__remixContext.streamController = controller;}}).pipeThrough(new TextEncoderStream());</script><script type="module" async="">import "https://file-assets.apidog.com/docs-site/v1/assets/manifest-db7ef313.js";
-import * as route0 from "https://file-assets.apidog.com/docs-site/v1/assets/root-Dv513fR3.js";
-import * as route1 from "https://file-assets.apidog.com/docs-site/v1/assets/route-D_6YkXJe.js";
+            ```
+          </Accordion>
 
-window.__remixRouteModules = {"root":route0,"routes/_index/route":route1};
+          <Accordion title="Function Calling">
+            Define business functions that the model can call when needed:
 
-import("https://file-assets.apidog.com/docs-site/v1/assets/entry.client-mUtkjgQm.js");</script></body></html><!--$--><script>window.__remixContext.streamController.enqueue("[{\"_1\":2,\"_231\":-5,\"_232\":-5},\"loaderData\",{\"_3\":4,\"_230\":-5},\"root\",{\"_5\":1,\"_6\":7,\"_19\":20,\"_23\":24,\"_33\":34,\"_52\":53,\"_112\":113,\"_155\":156,\"_229\":-7},\"type\",\"meta\",[8,11,16],{\"_9\":10},\"title\",\"API Documentation\",{\"_12\":13,\"_14\":15},\"name\",\"description\",\"content\",\"Design. Debug. Test. Document. Mock. Build APIs Faster \u0026 Together.\",{\"_12\":17,\"_14\":18},\"keywords\",\"API Design, API Specification, API Test, API Documentation, API Mock\",\"i18nState\",{\"_21\":22},\"clientLocale\",\"en-US\",\"errorCodeMessage\",{\"_25\":26,\"_27\":28,\"_29\":30,\"_31\":32},\"errorCode\",\"Unknown\",\"errorMessage\",\"Unexpected token 'o', \\\"forbidden\\n\\\" is not valid JSON: /api/v1/published-projects/domains/docs.kie.ai\",\"hideBuiltWith\",false,\"extra\",{},\"clientConfig\",{\"_35\":36,\"_37\":38,\"_39\":40,\"_41\":42,\"_47\":48,\"_49\":30,\"_50\":51},\"apiBaseUrl\",\"https://api.apidog.com\",\"appWebUrl\",\"https://app.apidog.com\",\"apidocBuiltinPrefixPath\",\"https://assets.apidog.com/app/static/apidoc\",\"cloudMockBaseUrls\",{\"_43\":44,\"_45\":46},\"pathMode\",\"https://mock.apidog.com/m1/{projectId}-{version}-{service}\",\"idMode\",\"https://mock.apidog.com/m2/{projectId}-{version}-{service}\",\"apidocIsShowLogo\",true,\"markdownDisableBreaks\",\"webhookGenerateCodeDefaultUrl\",\"https://your-api-server.com\",\"urlConfig\",{\"_54\":55,\"_58\":59,\"_99\":100,\"_108\":109},\"home\",{\"_56\":57},\"index\",\"https://apidog.com\",\"icon\",{\"_60\":61,\"_62\":63,\"_64\":63,\"_65\":66,\"_67\":68,\"_69\":70,\"_71\":72,\"_73\":74,\"_75\":76,\"_77\":78,\"_79\":80,\"_81\":82,\"_83\":84,\"_85\":86,\"_87\":88,\"_89\":90,\"_91\":92,\"_93\":94,\"_95\":96,\"_97\":98},\"apidoc\",\"https://assets.apidog.com/app/static/brand/apidoc.png\",\"apidog\",\"https://assets.apidog.com/app/static/brand/apidog-logo-256.png\",\"apidog europe\",\"googleDiscovery\",\"https://assets.apidog.com/app/static/brand/google-discovery.png\",\"har\",\"https://assets.apidog.com/app/static/brand/har.png\",\"iodocs\",\"https://assets.apidog.com/app/static/brand/io-doc.png\",\"jmeter\",\"https://assets.apidog.com/app/static/brand/jmeter.png\",\"openapi\",\"https://assets.apidog.com/app/static/brand/openapi.png\",\"postman\",\"https://assets.apidog.com/app/static/brand/postman.png\",\"raml\",\"https://assets.apidog.com/app/static/brand/raml.png\",\"wadl\",\"https://assets.apidog.com/app/static/brand/wadl.png\",\"curl\",\"https://assets.apidog.com/app/static/brand/curl.png\",\"insomnia\",\"https://assets.apidog.com/app/static/brand/insomnia.png\",\"wsdl\",\"https://assets.apidog.com/app/static/brand/wsdl.png\",\"markdown\",\"https://assets.apidog.com/app/static/brand/markdown.png\",\"html\",\"https://assets.apidog.com/app/static/brand/html.png\",\"protobuf\",\"https://assets.apidog.com/app/static/brand/protobuf.png\",\"soapui\",\"https://assets.apidog.com/app/static/brand/soapui.svg\",\"hoppscotch\",\"https://assets.apidog.com/app/static/brand/hoppscotch.svg\",\"javaProject\",\"https://assets.apidog.com/app/static/brand/java-project.png\",\"help\",{\"_56\":101,\"_102\":103,\"_104\":105,\"_106\":107},\"https://apidog.com/help\",\"browserExtension\",\"https://chromewebstore.google.com/detail/apidog-browser-extension/dmhljjnonlhapikmelaefohecogokhio\",\"csv\",\"https://apidog.com/help/reference/csv\",\"appMcpServer\",\"https://docs.apidog.com/apidog-mcp-server\",\"assets\",{\"_110\":111},\"logo512Png\",\"https://assets.apidog.com/static/logo/apidog-logo-512.png\",\"envConfig\",{\"_114\":60,\"_115\":116,\"_117\":116,\"_118\":119,\"_120\":121,\"_122\":123,\"_124\":57,\"_125\":62,\"_126\":22,\"_127\":128,\"_129\":130,\"_132\":133,\"_134\":135,\"_136\":137,\"_138\":139,\"_140\":141,\"_142\":143,\"_149\":150,\"_151\":48,\"_152\":153,\"_154\":30},\"RELEASE_BASE\",\"DEBUG_API_BASE\",\"\",\"DEBUG_WEB_URL_BASE\",\"AGENT_SERVER_API_BASE\",\"https://web-proxy.apidog.com\",\"APP_REGION\",\"GLOBAL\",\"APP_NAME\",\"Apidog\",\"APP_HOMEPAGE\",\"APP_NAME_LOWER\",\"DEFAULT_LOCALE\",\"APP_BROWSER_EXTENSION_ADAPTER\",\"apidogAgentCrossRequest\",\"APP_API_SERVER_HOSTNAMES\",[131],\"api.apidog.com\",\"APP_SUPPORT_EMAIL\",\"support@apidog.com\",\"APP_SCRIPT_MAIN_OBJECTS\",\"$\",\"SERVER_PROTOCOL\",\"http\",\"SERVER_HOST\",\"apidog-api-fordoc-svc\",\"DEFAULT_DOC_LAYOUT\",\"TwoColumn\",\"NOT_CUSTOM_DOMAIN_HOSTNAMES\",[144,145,146,147,148],\"www.apidog.com\",\"apidog.com\",\"www.apidog.io\",\"apidog.io\",\"share.apidog.com\",\"SERVER_REQUEST_TIMEOUT\",15000,\"IS_SHARED_DOC_INDEPENDENT_DOMAIN\",\"APIDOC_CUSTOM_DOMAIN_CNAME_REGEX\",[\"R\",\"\\\\d+\\\\.cname\\\\.apidog\\\\.com\",\"\"],\"IS_ALWAYS_USE_ORIGIN_FETCH\",\"docsDataState\",{\"_157\":158,\"_162\":163,\"_175\":176,\"_177\":178,\"_179\":180,\"_189\":190,\"_202\":203,\"_204\":205,\"_206\":207,\"_213\":214,\"_220\":-7,\"_221\":222,\"_223\":-7,\"_224\":-7,\"_225\":226,\"_228\":-7},\"navigation\",{\"_5\":159,\"_160\":161},\"NONE\",\"navRightLinkItems\",[],\"sidebarTree\",{\"_164\":-7,\"_165\":-7,\"_166\":167,\"_168\":-7,\"_169\":170,\"_171\":-7,\"_172\":-7,\"_173\":174},\"goBackSidebarTreeApiFolderNode\",\"rootSidebarTreeApiFolderNode\",\"sidebarTreeList\",[],\"selectedSidebarTreeNode\",\"parentSidebarTreeApiFolderNodes\",[],\"previousSidebarTreeNode\",\"nextSidebarTreeNode\",\"homeLink\",\"/\",\"docsBaseConfig\",{},\"versionList\",[],\"resourceData\",{\"_5\":181,\"_182\":-7,\"_183\":184},\"NotFound\",\"data\",\"extraData\",{\"_185\":186,\"_187\":188},\"apiFieldList\",[],\"dataSchemaDefinitions\",{},\"docsIdTypeData\",{\"_191\":192,\"_193\":194,\"_195\":194,\"_196\":194,\"_197\":116,\"_198\":194,\"_199\":200,\"_201\":-7},\"onlineType\",\"APIDOC\",\"branchId\",0,\"onlineId\",\"projectId\",\"subdirectory\",\"teamId\",\"visitType\",\"customDomain\",\"specialFileType\",\"notification\",[],\"footerBanner\",[],\"projectSetting\",{\"_208\":209,\"_210\":211},\"advancedSettings\",{},\"auth\",{\"_5\":212},\"noauth\",\"environments\",{\"_215\":216,\"_217\":-7,\"_218\":219},\"environmentList\",[],\"selectedEnvironment\",\"servers\",[],\"searchSettings\",\"versionSettings\",[],\"seoInfos\",\"itemPathPrefix\",\"appEnvMap\",{\"_227\":128},\"appBrowserExtensionAdapterKey\",\"customCodes\",\"primaryColorVariable\",\"routes/_index/route\",\"actionData\",\"errors\"]\n");</script><!--$--><script>window.__remixContext.streamController.close();</script><!--/$--><!--/$-->
+            ```json
+            {
+              "tools": [
+                {
+                  "type": "function",
+                  "name": "get_current_weather",
+                  "description": "Get the current weather in a given location",
+                  "parameters": {
+                    "type": "object",
+                    "properties": {
+                      "location": {
+                        "type": "string",
+                        "description": "The city and state, e.g. San Francisco, CA"
+                      },
+                      "unit": {
+                        "type": "string",
+                        "enum": ["celsius", "fahrenheit"]
+                      }
+                    },
+                    "required": ["location", "unit"]
+                  }
+                }
+              ],
+              "tool_choice": "auto"
+            }
+            ```
+
+            When function tools are configured in `tools`, set `tool_choice` to `"auto"` so the model can decide when to call them.  
+            If you do not configure any function tools, omit the `tool_choice` field.
+          </Accordion>
+        </AccordionGroup>
+      operationId: gpt-codex-responses
+      tags:
+        - docs/en/Market/Chat  Models/Codex
+      parameters: []
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                model:
+                  type: string
+                  description: >-
+                    Target model name. Allowed values: `gpt-5-codex`,
+                    `gpt-5.1-codex`, `gpt-5.2-codex`,
+                    `gpt-5.3-codex`、`gpt-5.4-codex`.
+                  enum:
+                    - gpt-5-codex
+                    - gpt-5.1-codex
+                    - gpt-5.2-codex
+                    - gpt-5.3-codex
+                    - gpt-5.4-codex
+                  examples:
+                    - gpt-5.1-codex
+                  x-apidog-enum:
+                    - value: gpt-5-codex
+                      name: ''
+                      description: ''
+                    - value: gpt-5.1-codex
+                      name: ''
+                      description: ''
+                    - value: gpt-5.2-codex
+                      name: ''
+                      description: ''
+                    - value: gpt-5.3-codex
+                      name: ''
+                      description: ''
+                    - value: gpt-5.4-codex
+                      name: ''
+                      description: ''
+                stream:
+                  type: boolean
+                  description: >-
+                    When true, responses stream in real time as server-sent
+                    events. When false, the full response is returned at once
+                    after completion. Default is true.
+                  default: false
+                input:
+                  oneOf:
+                    - type: string
+                      description: Input can be a string.
+                    - type: array
+                      description: >-
+                        Input can be an array; each element is a message object
+                        with role and content.
+                      items:
+                        $ref: '#/components/schemas/InputMessage'
+                      minItems: 1
+                reasoning:
+                  type: object
+                  description: Reasoning configuration for the model.
+                  properties:
+                    effort:
+                      type: string
+                      description: >-
+                        Reasoning effort level. Higher values provide more
+                        thorough reasoning but may increase latency. Defaults to
+                        "low".
+                      enum:
+                        - low
+                        - medium
+                        - high
+                        - xhigh
+                      default: low
+                      examples:
+                        - low
+                      x-apidog-enum:
+                        - value: low
+                          name: ''
+                          description: ''
+                        - value: medium
+                          name: ''
+                          description: ''
+                        - value: high
+                          name: ''
+                          description: ''
+                        - value: xhigh
+                          name: ''
+                          description: ''
+                  x-apidog-orders:
+                    - effort
+                  x-apidog-ignore-properties: []
+                tools:
+                  type: array
+                  description: >-
+                    Optional tools that the model may call. Either web search OR
+                    function calling should be configured, but not both
+                    simultaneously.
+                  items:
+                    oneOf:
+                      - $ref: '#/components/schemas/ToolWebSearch'
+                      - $ref: '#/components/schemas/ToolFunction'
+                tool_choice:
+                  type: string
+                  description: >-
+                    Tool selection behavior. When function tools are configured
+                    in `tools`, set this to `auto` so the model can decide when
+                    to call them.
+                  examples:
+                    - auto
+              required:
+                - model
+                - input
+              x-apidog-orders:
+                - model
+                - stream
+                - input
+                - reasoning
+                - tools
+                - tool_choice
+              examples:
+                - model: gpt-5.1-codex
+                  input:
+                    - role: user
+                      content:
+                        - type: input_text
+                          text: What is in this image?
+                        - type: input_image
+                          image_url: >-
+                            https://file.aiquickdraw.com/custom-page/akr/section-images/1759055072437dqlsclj2.png
+                  tools:
+                    - type: web_search
+                  reasoning:
+                    effort: high
+              x-apidog-ignore-properties: []
+            example:
+              model: gpt-5.1-codex
+              stream: false
+              input:
+                - role: user
+                  content:
+                    - type: input_text
+                      text: What is in this image?
+                    - type: input_image
+                      image_url: >-
+                        https://file.aiquickdraw.com/custom-page/akr/section-images/1759055072437dqlsclj2.png
+              tools:
+                - type: web_search
+              reasoning:
+                effort: high
+      responses:
+        '200':
+          description: 'Request successful. '
+          content:
+            text/event-stream:
+              schema:
+                type: string
+                description: >-
+                  Streaming responses are sent as Server-Sent Events (SSE) with
+                  `Content-Type: text/event-stream`.
+
+                  **Standard output**
+
+                  - **Text delta event**: `event: response.output_text.delta`
+                    - `data.delta`: The incremental text content in the stream
+                    - `data.type`: Event type, always `response.output_text.delta`
+                  - **Completion event**: `event: response.completed`
+                    - `data.response.usage`: Token usage information, such as `input_tokens` and `output_tokens`
+
+                  **Function Calling**
+
+                  - **Function call arguments delta event**: `event:
+                  response.function_call_arguments.delta`
+                    - `data.delta`: Incremental string content of the function call arguments
+                    - `data.type`: Event type, always `response.function_call_arguments.delta`
+                  - **Completion event**: `event: response.completed`
+                    - `data.response.usage`: Token usage information, such as `input_tokens` and `output_tokens`
+
+                  The final line `data: [DONE]` is the stream end marker,
+                  indicating that no more events will be sent.
+              example: |-
+                {
+                  "output": [
+                    {
+                      "type": "reasoning",
+                      "id": "rs_xxx",
+                      "summary": []
+                    },
+                    {
+                      "type": "message",
+                      "role": "assistant",
+                      "id": "msg_xxx",
+                      "content": [
+                        {
+                          "type": "output_text",
+                          "text": "Hello! How can I help you today?"
+                        }
+                      ],
+                      "status": "completed"
+                    }
+                  ],
+                  "usage": {
+                    "total_tokens": 4490,
+                    "output_tokens": 47,
+                    "input_tokens": 4443
+                  },
+                  "credits_consumed": 0.48,
+                  "status": "completed"
+                }
+          headers: {}
+          x-apidog-name: ''
+        '400':
+          description: Bad Request - Invalid request parameters
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: object
+                    properties:
+                      message:
+                        type: string
+                        examples:
+                          - Invalid request parameters
+                      type:
+                        type: string
+                        examples:
+                          - invalid_request_error
+                    x-apidog-orders:
+                      - message
+                      - type
+                    x-apidog-ignore-properties: []
+                x-apidog-orders:
+                  - error
+                x-apidog-ignore-properties: []
+          headers: {}
+          x-apidog-name: ''
+        '401':
+          description: Unauthorized - Invalid or missing API key
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: object
+                    properties:
+                      message:
+                        type: string
+                        examples:
+                          - Unauthorized
+                      type:
+                        type: string
+                        examples:
+                          - authentication_error
+                    x-apidog-orders:
+                      - message
+                      - type
+                    x-apidog-ignore-properties: []
+                x-apidog-orders:
+                  - error
+                x-apidog-ignore-properties: []
+          headers: {}
+          x-apidog-name: ''
+        '429':
+          description: Rate Limited - Too many requests
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: object
+                    properties:
+                      message:
+                        type: string
+                        examples:
+                          - Rate limit exceeded
+                      type:
+                        type: string
+                        examples:
+                          - rate_limit_error
+                    x-apidog-orders:
+                      - message
+                      - type
+                    x-apidog-ignore-properties: []
+                x-apidog-orders:
+                  - error
+                x-apidog-ignore-properties: []
+          headers: {}
+          x-apidog-name: ''
+        '500':
+          description: 请求失败
+          content:
+            application/json:
+              schema:
+                type: object
+                properties: {}
+                x-apidog-orders: []
+                x-apidog-ignore-properties: []
+          headers: {}
+          x-apidog-name: Error
+      security:
+        - BearerAuth: []
+          x-apidog:
+            schemeGroups:
+              - id: kn8M4YUlc5i0A0179ezwx
+                schemeIds:
+                  - BearerAuth
+            required: true
+            use:
+              id: kn8M4YUlc5i0A0179ezwx
+            scopes:
+              kn8M4YUlc5i0A0179ezwx:
+                BearerAuth: []
+      x-apidog-folder: docs/en/Market/Chat  Models/Codex
+      x-apidog-status: released
+      x-run-in-apidog: https://app.apidog.com/web/project/1184766/apis/api-29342626-run
+components:
+  schemas:
+    ToolFunction:
+      type: object
+      description: 函数调用工具定义。
+      properties:
+        type:
+          type: string
+          enum:
+            - function
+          examples:
+            - function
+        name:
+          type: string
+          description: 函数名称。
+          examples:
+            - get_current_weather
+        description:
+          type: string
+          description: 对该函数用途的可读性描述。
+        parameters:
+          type: object
+          description: 描述函数参数的 JSON Schema。
+          x-apidog-orders: []
+          properties: {}
+          x-apidog-ignore-properties: []
+      required:
+        - type
+        - name
+        - description
+        - parameters
+      x-apidog-orders:
+        - type
+        - name
+        - description
+        - parameters
+      x-apidog-ignore-properties: []
+      x-apidog-folder: ''
+    ToolWebSearch:
+      type: object
+      description: 联网搜索工具配置。
+      properties:
+        type:
+          type: string
+          enum:
+            - web_search
+          examples:
+            - web_search
+      required:
+        - type
+      x-apidog-orders:
+        - type
+      x-apidog-ignore-properties: []
+      x-apidog-folder: ''
+    InputMessage:
+      type: object
+      description: input 数组中的单条消息。
+      properties:
+        role:
+          type: string
+          description: 消息角色。
+          enum:
+            - user
+            - assistant
+            - system
+            - developer
+            - tool
+          examples:
+            - user
+        content:
+          type: array
+          description: 支持文本、图片和文件等多种输入类型的内容数组。
+          items:
+            $ref: '#/components/schemas/InputContentItem'
+          minItems: 1
+      required:
+        - role
+        - content
+      x-apidog-orders:
+        - role
+        - content
+      x-apidog-ignore-properties: []
+      x-apidog-folder: ''
+    InputContentItem:
+      description: input 消息 content 数组中的单个内容项。
+      oneOf:
+        - type: object
+          properties:
+            type:
+              type: string
+              enum:
+                - input_text
+              examples:
+                - input_text
+            text:
+              type: string
+              description: 纯文本内容。
+          required:
+            - type
+            - text
+          x-apidog-orders:
+            - type
+            - text
+          x-apidog-ignore-properties: []
+        - type: object
+          properties:
+            type:
+              type: string
+              enum:
+                - input_image
+              examples:
+                - input_image
+            image_url:
+              type: string
+              format: uri
+              description: 可公开访问的图片 URL。
+          required:
+            - type
+            - image_url
+          x-apidog-orders:
+            - type
+            - image_url
+          x-apidog-ignore-properties: []
+        - type: object
+          properties:
+            type:
+              type: string
+              enum:
+                - input_file
+              examples:
+                - input_file
+            file_url:
+              type: string
+              format: uri
+              description: 可公开访问的文件 URL（PDF、文档等）。
+          required:
+            - type
+            - file_url
+          x-apidog-orders:
+            - type
+            - file_url
+          x-apidog-ignore-properties: []
+      x-apidog-orders: []
+      x-apidog-folder: ''
+  securitySchemes:
+    BearerAuth:
+      type: bearer
+      scheme: bearer
+      bearerFormat: API Key
+      description: >-
+        All API requests require a Bearer Token. Add the header `Authorization:
+        Bearer YOUR_API_KEY` to authenticate requests.
+    BearerAuth1:
+      type: bearer
+      scheme: bearer
+      bearerFormat: API Key
+      description: >-
+        所有 API 请求都需要 Bearer Token。请在请求头中添加 `Authorization: Bearer YOUR_API_KEY`
+        进行身份验证。
+servers:
+  - url: https://api.kie.ai
+    description: 正式环境
+security:
+  - BearerAuth: []
+    x-apidog:
+      schemeGroups:
+        - id: kn8M4YUlc5i0A0179ezwx
+          schemeIds:
+            - BearerAuth
+      required: true
+      use:
+        id: kn8M4YUlc5i0A0179ezwx
+      scopes:
+        kn8M4YUlc5i0A0179ezwx:
+          BearerAuth: []
+
+```
 
 ---
 
@@ -61646,40 +67090,1098 @@ import("https://file-assets.apidog.com/docs-site/v1/assets/entry.client-mUtkjgQm
 
 **Source:** [https://docs.kie.ai/market/gemini/gemini-2-5-pro.md][160]
 
-<!DOCTYPE html><html lang="en-US" class="group/root" id="html" data-theme="light" data-accent-color="purple"><head><script src="https://file-assets.apidog.com/docs-site/v1/assets/prepareDocsConfigScript-CLIBKQbk.js"></script><script>__prepareDocsConfigScript(JSON.parse("{\"theme\":\"system\",\"themePrimarySettings\":{\"light\":{\"accentColor\":\"purple\"},\"dark\":{\"accentColor\":\"purple\"}},\"logoSettings\":{\"light\":{\"icon\":\"\",\"type\":\"project\"},\"dark\":{\"icon\":\"\",\"type\":\"followLight\"}},\"backgroundImageSettings\":{\"light\":{\"type\":\"custom\",\"color\":\"\"},\"dark\":{\"type\":\"followLight\",\"color\":\"\"}},\"id\":0,\"subdirectory\":\"\"}"));</script><script>window.eventTracking = {
-      dataLayer: []
-    }
-    window.eventTracking.report = function(){
-        window.eventTracking.dataLayer.push(arguments);
-    }</script><meta charSet="utf-8"/><meta name="viewport" content="width=device-width, initial-scale=1"/><title>API Documentation</title><meta name="description" content="Design. Debug. Test. Document. Mock. Build APIs Faster &amp; Together."/><meta name="keywords" content="API Design, API Specification, API Test, API Documentation, API Mock"/><link rel="stylesheet" href="https://file-assets.apidog.com/docs-site/v1/assets/root-CpC_E1fb.css"/></head><body class="overflow-hidden g-body"><div class="flex h-full w-full flex-col overflow-auto"><div class="flex flex-1 flex-col items-center justify-center"><div class="flex w-auto flex-col items-center justify-center max-os:p-5 os:w-[480px]"><svg width="104" height="104" viewBox="0 0 104 104" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M92.9557 41.8969L88.7262 25.2175C87.4089 19.8194 84.8039 16.1447 80.9015 14.1934L80.3963 13.9458C79.802 13.6685 79.178 13.4407 78.5243 13.2426C75.4142 12.3214 72.0268 12.371 68.362 13.3813C65.8759 14.0747 63.2612 15.2038 60.5176 16.7886C56.7835 18.9478 53.3167 21.6319 50.1076 24.8708C49.0973 25.8711 48.1266 26.9209 47.1956 28.0204C46.314 29.0406 45.4622 30.1105 44.6302 31.2198C42.9266 33.4781 41.3121 35.9245 39.7868 38.5492C34.1015 48.3648 31.2588 57.9329 31.2588 67.2631C31.2588 72.0471 32.1106 76.1181 33.8142 79.4461C34.6759 81.1101 35.6862 82.5263 36.8748 83.7248C37.9346 84.7846 39.1232 85.6564 40.4405 86.3398L41.0151 86.627V98.9485C41.0151 99.9984 41.3221 100.712 41.9461 101.058C42.5701 101.415 43.3426 101.326 44.2637 100.801L67.0249 87.6571C67.946 87.1223 68.7186 86.3199 69.3426 85.2502C69.9666 84.1706 70.2736 83.1008 70.2736 82.0509V78.3169L76.7811 74.5629C78.5639 73.5328 80.0993 71.9184 81.377 69.7195C82.6448 67.5207 83.2786 65.4011 83.2786 63.341V52.1485L89.786 48.3946C90.8657 47.7706 91.7373 46.79 92.391 45.4429C93.0348 44.1058 93.2231 42.927 92.9557 41.8969ZM62.8352 66.6095C62.2112 67.6891 61.4387 68.4914 60.5176 69.0263C59.5964 69.5512 58.8237 69.6404 58.1997 69.2838C57.5856 68.9371 57.2687 68.2238 57.2687 67.164C57.2687 66.1042 57.5856 65.0445 58.1997 63.9748C58.2592 63.8658 58.3186 63.7667 58.378 63.6676C58.9129 62.8356 59.5468 62.1819 60.2797 61.7164C60.359 61.6569 60.4383 61.6075 60.5176 61.558C61.4387 61.033 62.2112 60.9439 62.8352 61.2906C63.4592 61.6471 63.7761 62.3604 63.7761 63.4103C63.7761 64.4602 63.4592 65.5398 62.8352 66.6095ZM69.5011 38.7572C69.402 39.1336 69.2832 39.5101 69.1346 39.8865C68.5997 41.3227 67.4607 43.6206 65.7274 46.8C64.9647 48.1768 64.41 49.3158 64.0535 50.237C63.8157 50.861 63.6176 51.4748 63.4691 52.0592C63.3997 52.3366 63.3304 52.6041 63.2809 52.8715C63.1224 53.7729 62.7856 54.6148 62.2706 55.3774C61.7556 56.1401 61.2009 56.6948 60.6066 57.0315C59.8935 57.4475 59.319 57.4971 58.8535 57.2099C58.3978 56.9128 58.2196 56.358 58.3285 55.5557C58.487 54.2186 58.8039 52.931 59.2596 51.7029C59.7251 50.4747 60.4679 48.9392 61.498 47.0969C62.3201 45.6409 62.9837 44.4029 63.4691 43.4026C63.7761 42.7885 64.0138 42.2636 64.1921 41.8278C64.202 41.7981 64.2119 41.7782 64.2218 41.7485C64.6775 40.5797 64.9153 39.5001 64.9153 38.4997C64.9153 37.321 64.5191 36.5881 63.7366 36.2909C62.9442 36.0037 61.9537 36.2019 60.7652 36.8853C60.0025 37.3211 59.2794 37.945 58.5662 38.7572C57.863 39.5694 57.239 40.5105 56.7041 41.5604C56.2683 42.5013 55.7632 43.2442 55.1986 43.7889C54.6241 44.3337 54.0397 44.6209 53.4455 44.6506C52.8512 44.6902 52.4055 44.4525 52.1083 43.9374C51.8112 43.4224 51.8211 42.7687 52.1479 41.9565C53.0691 39.7477 54.2973 37.7074 55.8424 35.8552C56.5754 34.9737 57.338 34.1811 58.1205 33.4878C58.9822 32.735 59.8638 32.0913 60.7652 31.5664C63.3701 30.0708 65.5491 29.7141 67.3121 30.4966C69.0752 31.279 69.9468 32.9829 69.9468 35.5977C69.9468 36.6476 69.7982 37.7073 69.5011 38.7572Z" stroke="#667085" stroke-linecap="round" stroke-linejoin="round"></path><path d="M63.777 63.4086C63.777 64.4684 63.46 65.5381 62.836 66.6078C62.212 67.6874 61.4395 68.4896 60.5184 69.0245C59.5972 69.5494 58.8246 69.6387 58.2006 69.2821C57.5865 68.9354 57.2695 68.2221 57.2695 67.1623C57.2695 66.1025 57.5865 65.0428 58.2006 63.973C58.26 63.8641 58.3194 63.7649 58.3789 63.6659C58.9137 62.8339 59.5476 62.1802 60.2806 61.7147C60.3598 61.6552 60.4392 61.6058 60.5184 61.5563C61.4395 61.0313 62.212 60.9422 62.836 61.2888C63.46 61.6454 63.777 62.3587 63.777 63.4086Z" stroke="#667085" stroke-linecap="round" stroke-linejoin="round"></path><path d="M63.7373 36.2894C62.9449 36.0021 61.9544 36.2003 60.7659 36.8838C60.0032 37.3196 59.2801 37.9435 58.567 38.7557C57.8638 39.5679 57.2398 40.5089 56.7049 41.5588C56.2691 42.4998 55.7639 43.2426 55.1994 43.7874C54.6249 44.3321 54.0405 44.6193 53.4462 44.649C52.8519 44.6886 52.4062 44.4509 52.1091 43.9359C51.8119 43.4208 51.8219 42.7671 52.1487 41.9549C53.0699 39.7461 54.298 37.7059 55.8432 35.8537C56.5761 34.9721 57.3388 34.1797 58.1213 33.4863L63.7373 36.2894Z" stroke="#667085" stroke-linecap="round" stroke-linejoin="round"></path><path d="M69.9474 35.596C69.9474 36.6459 69.7988 37.7056 69.5017 38.7555C69.4026 39.1319 69.2838 39.5085 69.1352 39.8849C68.6003 41.321 67.4613 43.6189 65.728 46.7984C64.9653 48.1751 64.4106 49.3141 64.054 50.2352C63.8163 50.8592 63.6182 51.4732 63.4697 52.0576C63.4003 52.3349 63.331 52.6024 63.2815 52.8698C63.123 53.7711 62.7862 54.6131 62.2712 55.3758C61.7561 56.1385 61.2015 56.693 60.6072 57.0298C59.894 57.4458 59.3196 57.4955 58.854 57.2083C58.3984 56.9111 58.2201 56.3563 58.3291 55.554C58.4876 54.2168 58.8045 52.9293 59.2601 51.7011C59.7257 50.4729 60.4685 48.9376 61.4986 47.0953C62.3207 45.6393 62.9843 44.4012 63.4697 43.4008C63.7767 42.7868 64.0144 42.2619 64.1927 41.8261C64.2026 41.7964 64.2125 41.7766 64.2224 41.7468C64.678 40.5781 64.9158 39.4984 64.9158 38.498C64.9158 37.3193 64.5196 36.5865 63.7371 36.2893L58.1211 33.4862C58.9828 32.7334 59.8643 32.0896 60.7657 31.5647C63.3706 30.069 65.5497 29.7125 67.3127 30.4949C69.0758 31.2774 69.9474 32.9811 69.9474 35.596Z" stroke="#667085" stroke-linecap="round" stroke-linejoin="round"></path><path d="M41.9466 101.059L22.3253 91.2429L22.1371 91.1537C21.5131 90.807 21.2061 90.094 21.2061 89.0441V76.7227L41.0156 86.6274V98.9488C41.0156 99.9988 41.3226 100.712 41.9466 101.059Z" stroke="#667085" stroke-linecap="round" stroke-linejoin="round"></path><path d="M80.3972 13.9448C79.8029 13.6675 79.1789 13.4397 78.5252 13.2416C75.4151 12.3204 72.0277 12.3701 68.3629 13.3804C65.8768 14.0737 63.2621 15.2028 60.5185 16.7876C56.7844 18.9468 53.3176 21.6309 50.1085 24.8698C49.0982 25.8702 48.1275 26.92 47.1965 28.0194C46.3149 29.0396 45.4631 30.1096 44.6311 31.2189C42.9275 33.4772 41.313 35.9236 39.7877 38.5484C34.1024 48.364 31.2597 57.932 31.2597 67.2623C31.2597 72.0463 32.1115 76.1171 33.8151 79.4451C34.6768 81.1091 35.6871 82.5253 36.8757 83.7238C37.9355 84.7836 39.1241 85.6554 40.4414 86.3388L21.2065 76.7213C18.1161 75.2752 15.7192 72.8783 14.0056 69.5404C12.302 66.2124 11.4502 62.1415 11.4502 57.3575C11.4502 48.0272 14.2929 38.4592 19.9782 28.6436C25.6734 18.828 32.587 11.5678 40.7089 6.88282C47.4838 2.97044 53.486 1.79169 58.7157 3.33683C59.4784 3.56464 60.2113 3.84208 60.8948 4.17884L61.281 4.37688L80.3972 13.9448Z" stroke="#667085" stroke-linecap="round" stroke-linejoin="round"></path></svg><div class="align-center mt-8 flex justify-center text-center text-2xl font-semibold text-color">An abnormal error occurred, please try &#x27;Reload&#x27; or &#x27;get Support&#x27; to help you solve it!</div><div class="align-center mt-2 text-center text-lg font-400 text-secondary">Unexpected token &#x27;o&#x27;, &quot;forbidden
-&quot; is not valid JSON: /api/v1/published-projects/domains/docs.kie.ai</div></div></div><div class="flex flex-col items-center justify-center p-8 text-base font-base text-secondary"><div class="inline-flex items-center text-base font-400 text-secondary _footer-logo-wrapper_1kbjg_1"><a class="_footer-logo_1kbjg_1 flex-shrink-0" aria-label="homepage link" href="https://apidog.com"><span class="inline-flex items-center"><span class="mr-[-4px]">Built with</span><svg width="61" height="18" viewBox="0 0 61 18" fill="none" xmlns="http://www.w3.org/2000/svg" class="h-[18px] w-[80px]"><path d="M12.3836 1.67806C11.6452 0.940647 10.4478 0.940647 9.70932 1.67806L8.99795 2.3884L8.30644 1.69789C7.57144 0.963937 6.37437 0.936241 5.62991 1.66043C4.88545 2.38463 4.86748 3.60515 5.61194 4.34854L6.32331 5.05888C7.80026 6.53371 10.195 6.53371 11.6723 5.05888L12.3836 4.34854C13.1221 3.61113 13.1221 2.41547 12.3836 1.67806Z" fill="#667085"></path><path d="M12.3838 13.6515L11.6729 12.9412C10.1968 11.4664 7.80339 11.4664 6.32699 12.9412L5.61603 13.6515C4.87799 14.389 4.87799 15.5846 5.61603 16.322C6.35408 17.0594 7.55076 17.0594 8.28881 16.322L8.99976 15.6117L9.69087 16.3022C10.4255 17.0361 11.6218 17.0638 12.3659 16.3396C13.1219 15.6038 13.1278 14.3949 12.3838 13.6515Z" fill="#667085"></path><path d="M15.6105 8.99642L16.3214 8.28481C17.0655 7.54009 17.0595 6.32906 16.3035 5.59191C15.5595 4.86643 14.3631 4.89418 13.6285 5.62943L13.3098 5.94851C12.1666 7.09269 10.6166 7.73526 9 7.73526C7.38344 7.73526 5.83335 7.09238 4.69023 5.94851L4.37146 5.62943C3.63689 4.89418 2.44054 4.86643 1.69652 5.59191C0.940527 6.32906 0.934542 7.54009 1.67856 8.28481L2.38951 8.99642L1.67856 9.70803C0.940527 10.4468 0.940527 11.6445 1.67856 12.3833C2.4166 13.122 3.61326 13.122 4.3513 12.3833L4.74347 11.9907C5.85225 10.8809 7.35604 10.2576 8.92409 10.2576H8.9874C10.6162 10.2576 12.1666 10.9005 13.3098 12.0446C13.5126 12.2477 13.6484 12.3836 13.6484 12.3836C14.3864 13.1223 15.5831 13.1223 16.3211 12.3836C17.0592 11.6449 17.0592 10.4471 16.3211 9.70834L15.6102 8.99673L15.6105 8.99642Z" fill="#667085"></path><path fill-rule="evenodd" clip-rule="evenodd" d="M37.3559 4.00331C37.4694 3.95752 37.5911 3.93521 37.7136 3.93768C37.8343 3.93606 37.9541 3.95884 38.0656 4.0046C38.1772 4.05035 38.2781 4.11814 38.3624 4.20384C38.4483 4.29095 38.5158 4.39418 38.561 4.50749C38.6061 4.6208 38.628 4.7419 38.6253 4.8637C38.628 4.98551 38.6061 5.10664 38.561 5.21995C38.5158 5.33326 38.4483 5.43648 38.3624 5.52357C38.2781 5.60926 38.1772 5.67705 38.0656 5.72284C37.9541 5.7686 37.8343 5.79134 37.7136 5.78975C37.5911 5.79222 37.4694 5.76989 37.3559 5.72413C37.2425 5.67837 37.1396 5.61011 37.0536 5.52357C36.9677 5.43648 36.9002 5.33326 36.8551 5.21995C36.8099 5.10664 36.7881 4.98551 36.7908 4.8637C36.7881 4.7419 36.8099 4.6208 36.8551 4.50749C36.9002 4.39418 36.9677 4.29095 37.0536 4.20384C37.1396 4.1173 37.2425 4.04907 37.3559 4.00331ZM25.6211 4.76389L24.0219 4.76389L21.175 12.7654H22.7355L23.2948 11.1795H26.371L26.9303 12.7654H28.5019L25.6211 4.76389ZM25.9403 9.91528H23.7255L24.8441 6.75459L25.9403 9.91528ZM34.4529 6.71022C33.9935 6.42603 33.4618 6.27789 32.9204 6.28324C32.4656 6.27789 32.0164 6.38257 31.6116 6.58824C31.3484 6.72112 31.1086 6.89528 30.9013 7.10393V6.38304H29.4248V15.6932H30.9181V12.0501C31.1303 12.2594 31.3736 12.4352 31.6396 12.5714C32.0799 12.7816 32.5659 12.88 33.0541 12.8577C33.5422 12.8355 34.0171 12.6932 34.4361 12.4438C34.899 12.1548 35.274 11.7466 35.5212 11.2627C35.7861 10.7302 35.9203 10.1431 35.9126 9.54929C35.923 8.96057 35.7887 8.37821 35.5212 7.8525C35.2797 7.38027 34.9096 6.98456 34.4529 6.71022ZM34.4137 9.55484C34.4161 9.91562 34.3297 10.2716 34.162 10.5918C34.0132 10.8769 33.7889 11.1165 33.5133 11.2849C33.2582 11.4309 32.9688 11.5078 32.6743 11.5078C32.3798 11.5078 32.0904 11.4309 31.8353 11.2849C31.5644 11.1203 31.341 10.8892 31.1866 10.6139C31.0195 10.284 30.937 9.91836 30.946 9.54929C30.9355 9.18364 31.0182 8.82126 31.1866 8.49571C31.331 8.22256 31.5426 7.98991 31.8018 7.81923C32.0627 7.67197 32.3573 7.59366 32.6575 7.5919C32.9606 7.59099 33.2582 7.67147 33.5188 7.82478C33.7952 7.97573 34.0193 8.20567 34.162 8.48465C34.3413 8.8105 34.4283 9.17839 34.4137 9.54929V9.55484ZM38.4519 6.38304H36.9585V12.7599H38.4519V6.38304ZM43.7037 6.56049C43.9895 6.68375 44.2509 6.85649 44.4756 7.07066V4.27038H45.9801V12.7654H44.4756V12.039C44.2733 12.2523 44.0347 12.4288 43.7709 12.5603C43.3696 12.7699 42.9211 12.8748 42.4677 12.8652C41.9296 12.8702 41.4008 12.7261 40.9408 12.4493C40.4817 12.1535 40.1078 11.7446 39.8557 11.2627C39.5908 10.7302 39.4566 10.1431 39.4642 9.54929C39.4539 8.96057 39.5882 8.37821 39.8557 7.8525C40.1049 7.3803 40.4803 6.98514 40.9408 6.71022C41.3529 6.46065 41.821 6.31637 42.3032 6.29024C42.7854 6.26412 43.2666 6.35695 43.7037 6.56049ZM44.4756 9.57146C44.4854 9.20459 44.3987 8.84147 44.2239 8.51792C44.0698 8.22608 43.835 7.98372 43.5471 7.81923C43.2921 7.67323 43.0027 7.59637 42.7082 7.59637C42.4136 7.59637 42.1243 7.67323 41.8692 7.81923C41.598 7.97735 41.377 8.20793 41.2316 8.48465C41.0626 8.80593 40.9798 9.16492 40.9911 9.52712C40.9825 9.89613 41.0651 10.2616 41.2316 10.5918C41.3883 10.8862 41.622 11.1333 41.9084 11.3071C42.1635 11.4531 42.4528 11.5299 42.7473 11.5299C43.0419 11.5299 43.3312 11.4531 43.5863 11.3071C43.8553 11.1436 44.0753 10.912 44.2239 10.6361C44.3961 10.3076 44.4826 9.94161 44.4756 9.57146ZM51.8863 6.71022C51.3775 6.44176 50.81 6.30134 50.2336 6.30134C49.6572 6.30134 49.0897 6.44176 48.5808 6.71022C48.1082 6.98053 47.7208 7.37607 47.4622 7.8525C47.1714 8.37882 47.0248 8.9715 47.0372 9.57146C47.026 10.1735 47.1684 10.7686 47.451 11.3016C47.7105 11.7817 48.0973 12.1824 48.5697 12.4605C49.0662 12.7315 49.6249 12.8709 50.1916 12.8652C50.7765 12.874 51.3541 12.7347 51.8695 12.4605C52.3652 12.1852 52.7752 11.7805 53.0553 11.2904C53.3515 10.7658 53.502 10.1726 53.4915 9.57146C53.5004 8.97048 53.35 8.37773 53.0553 7.8525C52.7813 7.37062 52.3763 6.97478 51.8863 6.71022ZM49.3639 7.81923C49.6253 7.67401 49.9199 7.59775 50.2196 7.59775C50.5193 7.59775 50.8139 7.67401 51.0753 7.81923C51.3499 7.97813 51.5716 8.21332 51.7129 8.49571C51.876 8.8305 51.9528 9.20008 51.9367 9.57146C51.9483 9.9474 51.8616 10.3199 51.685 10.6528C51.5392 10.9243 51.3204 11.1504 51.0529 11.3061C50.7853 11.4617 50.4794 11.5408 50.1693 11.5344C49.9454 11.5409 49.7227 11.4998 49.5162 11.4137C49.3097 11.3276 49.1243 11.1986 48.9724 11.0354C48.6355 10.6234 48.4678 10.1007 48.5025 9.57146C48.4901 9.19738 48.5708 8.82604 48.7374 8.4902C48.8747 8.21003 49.0927 7.97654 49.3639 7.81923ZM59.0394 7.03076V6.32653H60.5495V12.6812C60.5594 13.2247 60.4326 13.7622 60.1804 14.2449C59.9389 14.7103 59.5657 15.0957 59.1065 15.3539C58.5924 15.6305 58.0132 15.7664 57.4286 15.7476C56.67 15.7754 55.9226 15.5595 55.2977 15.1321C55.0204 14.9436 54.7884 14.6968 54.6182 14.4092C54.4481 14.1217 54.344 13.8006 54.3133 13.4686V13.3466L55.7954 13.3466C55.7954 13.6685 56.0907 13.9814 56.3547 14.134C56.6804 14.3328 57.0575 14.4331 57.4398 14.4223C57.6518 14.4311 57.8634 14.3968 58.0616 14.3215C58.2597 14.2462 58.4402 14.1314 58.592 13.9843C58.7493 13.8103 58.8699 13.6068 58.9468 13.3859C59.0236 13.1649 59.0394 12.931 59.0394 12.6978V11.9548C58.8328 12.1771 58.591 12.3644 58.3235 12.5093C57.9242 12.7189 57.4776 12.8239 57.0259 12.8143C56.4897 12.8185 55.9629 12.6744 55.5046 12.3984C55.0442 12.1041 54.6699 11.6949 54.4195 11.2117C54.1519 10.6801 54.0176 10.0924 54.0281 9.49832C54.0156 8.9094 54.1501 8.32653 54.4195 7.80153C54.6679 7.32727 55.0433 6.93011 55.5046 6.6537C55.9619 6.37401 56.4886 6.22618 57.0259 6.22672C57.4809 6.21907 57.9307 6.32389 58.3347 6.53172C58.5954 6.65891 58.8335 6.82746 59.0394 7.03076ZM58.7877 10.5796C58.9599 10.2511 59.0464 9.8851 59.0394 9.51494C59.0532 9.14059 58.9663 8.76931 58.7877 8.4392C58.6409 8.16062 58.4205 7.92682 58.1501 7.76271C57.8899 7.6138 57.5948 7.53538 57.2944 7.53538C56.994 7.53538 56.6988 7.6138 56.4387 7.76271C56.1645 7.92882 55.9419 8.16678 55.7954 8.4503C55.6308 8.76545 55.5463 9.11571 55.5494 9.4706C55.5427 9.84005 55.6271 10.2055 55.7954 10.5352C55.9406 10.827 56.1629 11.0743 56.4387 11.2505C56.6977 11.4028 56.9932 11.4832 57.2944 11.4832C57.5955 11.4832 57.8911 11.4028 58.1501 11.2505C58.419 11.0871 58.6392 10.8555 58.7877 10.5796Z" fill="#667085"></path></svg></span></a></div></div></div><script>
-            if (typeof window.__updateThemeElement === 'function') {
-              window.__updateThemeElement();
+### OpenAPI Specification
+
+```yaml
+openapi: 3.0.1
+info:
+  title: ''
+  description: ''
+  version: 1.0.0
+paths:
+  /gemini-2.5-pro/v1/chat/completions:
+    post:
+      summary: Gemini  2.5 Pro (openai)
+      deprecated: false
+      description: >-
+        ### Streaming Support
+
+        When `stream: true` is set in the request, the API returns responses as
+        server-sent events (SSE) with `Content-Type: text/event-stream`. This
+        allows for progressive response delivery, where message deltas are sent
+        incrementally as they are generated. Each event contains partial message
+        content, enabling real-time display of responses in your application.
+
+        **Streaming Response Format:**
+
+        - Content-Type: `text/event-stream`
+
+        - Each event line starts with `data: ` followed by JSON
+
+        - Events contain incremental message deltas
+
+        - Final event indicates completion with `finish_reason`
+
+        <CardGroup cols={2}>
+          <Card title="Multimodal" icon="lucide-image">
+            Supports text and image inputs
+          </Card>
+          <Card title="Real-time Search" icon="lucide-search">
+            Google Search grounding enabled
+          </Card>
+          <Card title="Streaming" icon="lucide-list-minus">
+            Server-sent events support
+          </Card>
+          <Card title="Flexible Roles" icon="lucide-users">
+            Multiple message roles supported
+          </Card>
+        </CardGroup>
+
+        <div style="padding: 20px; background-color: rgba(255, 152, 0, 0.05);
+        border: 1px solid rgba(255, 152, 0, 0.15); border-left: 6px solid
+        #ff9800; border-radius: 10px; margin: 25px 0;">
+          <div style="display: flex; align-items: center; margin-bottom: 12px;">
+            ⚠️
+            <strong style="color: #e65100; font-size: 17px;">Important: Unified Media Structure</strong>
+          </div>
+
+          <p style="color: #444; margin-bottom: 15px; line-height: 1.6; font-size: 14px;">
+            To simplify integration, <b>all media types</b> (Images, Videos, Audio, or Documents) in the <code>messages</code> array share the <b>exact same JSON structure</b>:
+          </p>
+
+          <ul style="color: #555; line-height: 1.8; margin-bottom: 15px; font-size: 14px;">
+            <li>The <code>type</code> field is <b>fixed</b> as <code>"image_url"</code></li>
+            <li>The <code>image_url</code> key name <b>remains unchanged</b> for all file types</li>
+            <li>Only the <code>url</code> value points to your specific media file</li>
+          </ul>
+
+          <div style="background-color: #fdfdfd; padding: 12px; border-radius: 6px; border: 1px solid #eee; font-family: 'SFMono-Regular', Consolas, monospace; font-size: 13px; color: #d32f2f;">
+            // Example for Video/Audio/PDF/Image:<br>
+            { "type": "image_url", "image_url": { "url": "https://..." } }
+          </div>
+        </div>
+
+        ## Tools Parameter
+
+        The `tools` parameter is an optional array that allows you to define
+        functions the model can call. The array can contain multiple objects.
+        When using function calling, you can define multiple functions in the
+        array.
+
+        <div style="padding: 20px; background-color: rgba(255, 152, 0, 0.05);
+        border: 1px solid rgba(255, 152, 0, 0.15); border-left: 6px solid
+        #ffa000; border-radius: 12px; margin: 25px 0;">
+          <div style="display: flex; align-items: center; margin-bottom: 12px;">
+            <div style="background-color: #ffa000; color: #fff; padding: 4px 10px; border-radius: 6px; font-size: 12px; font-weight: 800; margin-right: 12px; letter-spacing: 1px;">RESTRICTION</div>
+            <strong style="color: #e65100; font-size: 16px;">Conflict Warning</strong>
+          </div>
+
+          <p style="color: #444; margin-bottom: 12px; line-height: 1.6; font-size: 14px;">
+            <b>Google Search</b> and <b>Function Calling</b> are mutually exclusive. 
+          </p>
+
+          <div style="display: flex; align-items: center; justify-content: center; background: rgba(255,255,255,0.5); padding: 10px; border-radius: 8px; border: 1px dashed #ffa000; margin-top: 10px;">
+            <div style="text-align: center; flex: 1;">
+              <code style="color: #ffa000; font-weight: bold;">Google Search</code>
+            </div>
+            <div style="color: #999; font-weight: bold; padding: 0 15px;">XOR</div>
+            <div style="text-align: center; flex: 1;">
+              <code style="color: #ffa000; font-weight: bold;">Function Calling</code>
+            </div>
+          </div>
+
+          <p style="color: #666; font-size: 13px; margin-top: 15px; font-style: italic;">
+            * You cannot use both features in the same request. Please choose the one that best suits your needs.
+          </p>
+        </div>
+
+        <AccordionGroup>
+
+        <Accordion title="Google Search">
+
+        Use this format to enable Google Search grounding:
+
+        ```json
+
+        {
+          "type": "function",
+          "function": {
+            "name": "googleSearch"
+          }
+        }
+
+        ```
+
+        This enables real-time information retrieval via Google Search.
+
+        </Accordion>
+
+        <Accordion title="Function Calling">
+
+        Define your own functions with parameters. You can define multiple
+        functions in the `tools` array:
+
+        ```json
+
+        [
+          {
+            "type": "function",
+            "function": {
+              "name": "get_current_weather",
+              "description": "Get the current weather in a given location",
+              "parameters": {
+                "type": "object",
+                "properties": {
+                  "location": {
+                    "type": "string",
+                    "description": "The city and state, e.g. San Francisco, CA"
+                  },
+                  "unit": {
+                    "type": "string",
+                    "enum": ["celsius", "fahrenheit"]
+                  }
+                },
+                "required": ["location"]
+              }
             }
-          </script><script>((STORAGE_KEY, restoreKey) => {
-    if (!window.history.state || !window.history.state.key) {
-      let key = Math.random().toString(32).slice(2);
-      window.history.replaceState({
-        key
-      }, "");
-    }
-    try {
-      let positions = JSON.parse(sessionStorage.getItem(STORAGE_KEY) || "{}");
-      let storedY = positions[restoreKey || window.history.state.key];
-      if (typeof storedY === "number") {
-        window.scrollTo(0, storedY);
-      }
-    } catch (error) {
-      console.error(error);
-      sessionStorage.removeItem(STORAGE_KEY);
-    }
-  })("positions", null)</script><link rel="modulepreload" href="https://file-assets.apidog.com/docs-site/v1/assets/manifest-db7ef313.js"/><link rel="modulepreload" href="https://file-assets.apidog.com/docs-site/v1/assets/entry.client-mUtkjgQm.js"/><link rel="modulepreload" href="https://file-assets.apidog.com/docs-site/v1/assets/jsx-runtime-CM5sU0Q5.js"/><link rel="modulepreload" href="https://file-assets.apidog.com/docs-site/v1/assets/client-BKxavTD9.js"/><link rel="modulepreload" href="https://file-assets.apidog.com/docs-site/v1/assets/components-DMSdXhQK.js"/><link rel="modulepreload" href="https://file-assets.apidog.com/docs-site/v1/assets/root-CQ054TXt.js"/><link rel="modulepreload" href="https://file-assets.apidog.com/docs-site/v1/assets/root-Dv513fR3.js"/><link rel="modulepreload" href="https://file-assets.apidog.com/docs-site/v1/assets/route-D_6YkXJe.js"/><script>window.__remixContext = {"basename":"/","future":{"v3_fetcherPersist":true,"v3_relativeSplatPath":true,"v3_throwAbortReason":true,"v3_routeConfig":false,"v3_singleFetch":true,"v3_lazyRouteDiscovery":false,"unstable_optimizeDeps":false},"isSpaMode":false};window.__remixContext.stream = new ReadableStream({start(controller){window.__remixContext.streamController = controller;}}).pipeThrough(new TextEncoderStream());</script><script type="module" async="">import "https://file-assets.apidog.com/docs-site/v1/assets/manifest-db7ef313.js";
-import * as route0 from "https://file-assets.apidog.com/docs-site/v1/assets/root-Dv513fR3.js";
-import * as route1 from "https://file-assets.apidog.com/docs-site/v1/assets/route-D_6YkXJe.js";
+          },
+          {
+            "type": "function",
+            "function": {
+              "name": "get_stock_price",
+              "description": "Get the current stock price for a given symbol",
+              "parameters": {
+                "type": "object",
+                "properties": {
+                  "symbol": {
+                    "type": "string",
+                    "description": "The stock symbol, e.g. AAPL"
+                  }
+                },
+                "required": ["symbol"]
+              }
+            }
+          }
+        ]
 
-window.__remixRouteModules = {"root":route0,"routes/_index/route":route1};
+        ```
 
-import("https://file-assets.apidog.com/docs-site/v1/assets/entry.client-mUtkjgQm.js");</script></body></html><!--$--><script>window.__remixContext.streamController.enqueue("[{\"_1\":2,\"_231\":-5,\"_232\":-5},\"loaderData\",{\"_3\":4,\"_230\":-5},\"root\",{\"_5\":1,\"_6\":7,\"_19\":20,\"_23\":24,\"_33\":34,\"_52\":53,\"_112\":113,\"_155\":156,\"_229\":-7},\"type\",\"meta\",[8,11,16],{\"_9\":10},\"title\",\"API Documentation\",{\"_12\":13,\"_14\":15},\"name\",\"description\",\"content\",\"Design. Debug. Test. Document. Mock. Build APIs Faster \u0026 Together.\",{\"_12\":17,\"_14\":18},\"keywords\",\"API Design, API Specification, API Test, API Documentation, API Mock\",\"i18nState\",{\"_21\":22},\"clientLocale\",\"en-US\",\"errorCodeMessage\",{\"_25\":26,\"_27\":28,\"_29\":30,\"_31\":32},\"errorCode\",\"Unknown\",\"errorMessage\",\"Unexpected token 'o', \\\"forbidden\\n\\\" is not valid JSON: /api/v1/published-projects/domains/docs.kie.ai\",\"hideBuiltWith\",false,\"extra\",{},\"clientConfig\",{\"_35\":36,\"_37\":38,\"_39\":40,\"_41\":42,\"_47\":48,\"_49\":30,\"_50\":51},\"apiBaseUrl\",\"https://api.apidog.com\",\"appWebUrl\",\"https://app.apidog.com\",\"apidocBuiltinPrefixPath\",\"https://assets.apidog.com/app/static/apidoc\",\"cloudMockBaseUrls\",{\"_43\":44,\"_45\":46},\"pathMode\",\"https://mock.apidog.com/m1/{projectId}-{version}-{service}\",\"idMode\",\"https://mock.apidog.com/m2/{projectId}-{version}-{service}\",\"apidocIsShowLogo\",true,\"markdownDisableBreaks\",\"webhookGenerateCodeDefaultUrl\",\"https://your-api-server.com\",\"urlConfig\",{\"_54\":55,\"_58\":59,\"_99\":100,\"_108\":109},\"home\",{\"_56\":57},\"index\",\"https://apidog.com\",\"icon\",{\"_60\":61,\"_62\":63,\"_64\":63,\"_65\":66,\"_67\":68,\"_69\":70,\"_71\":72,\"_73\":74,\"_75\":76,\"_77\":78,\"_79\":80,\"_81\":82,\"_83\":84,\"_85\":86,\"_87\":88,\"_89\":90,\"_91\":92,\"_93\":94,\"_95\":96,\"_97\":98},\"apidoc\",\"https://assets.apidog.com/app/static/brand/apidoc.png\",\"apidog\",\"https://assets.apidog.com/app/static/brand/apidog-logo-256.png\",\"apidog europe\",\"googleDiscovery\",\"https://assets.apidog.com/app/static/brand/google-discovery.png\",\"har\",\"https://assets.apidog.com/app/static/brand/har.png\",\"iodocs\",\"https://assets.apidog.com/app/static/brand/io-doc.png\",\"jmeter\",\"https://assets.apidog.com/app/static/brand/jmeter.png\",\"openapi\",\"https://assets.apidog.com/app/static/brand/openapi.png\",\"postman\",\"https://assets.apidog.com/app/static/brand/postman.png\",\"raml\",\"https://assets.apidog.com/app/static/brand/raml.png\",\"wadl\",\"https://assets.apidog.com/app/static/brand/wadl.png\",\"curl\",\"https://assets.apidog.com/app/static/brand/curl.png\",\"insomnia\",\"https://assets.apidog.com/app/static/brand/insomnia.png\",\"wsdl\",\"https://assets.apidog.com/app/static/brand/wsdl.png\",\"markdown\",\"https://assets.apidog.com/app/static/brand/markdown.png\",\"html\",\"https://assets.apidog.com/app/static/brand/html.png\",\"protobuf\",\"https://assets.apidog.com/app/static/brand/protobuf.png\",\"soapui\",\"https://assets.apidog.com/app/static/brand/soapui.svg\",\"hoppscotch\",\"https://assets.apidog.com/app/static/brand/hoppscotch.svg\",\"javaProject\",\"https://assets.apidog.com/app/static/brand/java-project.png\",\"help\",{\"_56\":101,\"_102\":103,\"_104\":105,\"_106\":107},\"https://apidog.com/help\",\"browserExtension\",\"https://chromewebstore.google.com/detail/apidog-browser-extension/dmhljjnonlhapikmelaefohecogokhio\",\"csv\",\"https://apidog.com/help/reference/csv\",\"appMcpServer\",\"https://docs.apidog.com/apidog-mcp-server\",\"assets\",{\"_110\":111},\"logo512Png\",\"https://assets.apidog.com/static/logo/apidog-logo-512.png\",\"envConfig\",{\"_114\":60,\"_115\":116,\"_117\":116,\"_118\":119,\"_120\":121,\"_122\":123,\"_124\":57,\"_125\":62,\"_126\":22,\"_127\":128,\"_129\":130,\"_132\":133,\"_134\":135,\"_136\":137,\"_138\":139,\"_140\":141,\"_142\":143,\"_149\":150,\"_151\":48,\"_152\":153,\"_154\":30},\"RELEASE_BASE\",\"DEBUG_API_BASE\",\"\",\"DEBUG_WEB_URL_BASE\",\"AGENT_SERVER_API_BASE\",\"https://web-proxy.apidog.com\",\"APP_REGION\",\"GLOBAL\",\"APP_NAME\",\"Apidog\",\"APP_HOMEPAGE\",\"APP_NAME_LOWER\",\"DEFAULT_LOCALE\",\"APP_BROWSER_EXTENSION_ADAPTER\",\"apidogAgentCrossRequest\",\"APP_API_SERVER_HOSTNAMES\",[131],\"api.apidog.com\",\"APP_SUPPORT_EMAIL\",\"support@apidog.com\",\"APP_SCRIPT_MAIN_OBJECTS\",\"$\",\"SERVER_PROTOCOL\",\"http\",\"SERVER_HOST\",\"apidog-api-fordoc-svc\",\"DEFAULT_DOC_LAYOUT\",\"TwoColumn\",\"NOT_CUSTOM_DOMAIN_HOSTNAMES\",[144,145,146,147,148],\"www.apidog.com\",\"apidog.com\",\"www.apidog.io\",\"apidog.io\",\"share.apidog.com\",\"SERVER_REQUEST_TIMEOUT\",15000,\"IS_SHARED_DOC_INDEPENDENT_DOMAIN\",\"APIDOC_CUSTOM_DOMAIN_CNAME_REGEX\",[\"R\",\"\\\\d+\\\\.cname\\\\.apidog\\\\.com\",\"\"],\"IS_ALWAYS_USE_ORIGIN_FETCH\",\"docsDataState\",{\"_157\":158,\"_162\":163,\"_175\":176,\"_177\":178,\"_179\":180,\"_189\":190,\"_202\":203,\"_204\":205,\"_206\":207,\"_213\":214,\"_220\":-7,\"_221\":222,\"_223\":-7,\"_224\":-7,\"_225\":226,\"_228\":-7},\"navigation\",{\"_5\":159,\"_160\":161},\"NONE\",\"navRightLinkItems\",[],\"sidebarTree\",{\"_164\":-7,\"_165\":-7,\"_166\":167,\"_168\":-7,\"_169\":170,\"_171\":-7,\"_172\":-7,\"_173\":174},\"goBackSidebarTreeApiFolderNode\",\"rootSidebarTreeApiFolderNode\",\"sidebarTreeList\",[],\"selectedSidebarTreeNode\",\"parentSidebarTreeApiFolderNodes\",[],\"previousSidebarTreeNode\",\"nextSidebarTreeNode\",\"homeLink\",\"/\",\"docsBaseConfig\",{},\"versionList\",[],\"resourceData\",{\"_5\":181,\"_182\":-7,\"_183\":184},\"NotFound\",\"data\",\"extraData\",{\"_185\":186,\"_187\":188},\"apiFieldList\",[],\"dataSchemaDefinitions\",{},\"docsIdTypeData\",{\"_191\":192,\"_193\":194,\"_195\":194,\"_196\":194,\"_197\":116,\"_198\":194,\"_199\":200,\"_201\":-7},\"onlineType\",\"APIDOC\",\"branchId\",0,\"onlineId\",\"projectId\",\"subdirectory\",\"teamId\",\"visitType\",\"customDomain\",\"specialFileType\",\"notification\",[],\"footerBanner\",[],\"projectSetting\",{\"_208\":209,\"_210\":211},\"advancedSettings\",{},\"auth\",{\"_5\":212},\"noauth\",\"environments\",{\"_215\":216,\"_217\":-7,\"_218\":219},\"environmentList\",[],\"selectedEnvironment\",\"servers\",[],\"searchSettings\",\"versionSettings\",[],\"seoInfos\",\"itemPathPrefix\",\"appEnvMap\",{\"_227\":128},\"appBrowserExtensionAdapterKey\",\"customCodes\",\"primaryColorVariable\",\"routes/_index/route\",\"actionData\",\"errors\"]\n");</script><!--$--><script>window.__remixContext.streamController.close();</script><!--/$--><!--/$-->
+        ### Function Declaration Requirements
+
+        When implementing function calling in your prompt, you need to create a
+        `tools` array containing one or more function declarations. You can
+        define functions using JSON (specifically, a selected subset of OpenAPI
+        schema format).
+
+        A single function declaration can include the following parameters:
+
+        - **`name`** (string, required): The unique name of the function (e.g.,
+        `get_weather_forecast`, `send_email`). Use descriptive names without
+        spaces or special characters (use underscores or camelCase).
+
+        - **`description`** (string, optional but recommended): A clear and
+        detailed description of what the function does and its purpose. This is
+        crucial for the model to understand when to use the function. Be
+        specific and provide examples when necessary (e.g., "Find movie theaters
+        by location, with an option to also find movies currently showing at
+        those theaters.").
+
+        - **`parameters`** (object, required): Defines the input parameters
+        expected by the function. Contains:
+          - **`type`** (string): Specifies the overall data type, must be `"object"`.
+          - **`properties`** (object): Lists individual parameters, each with:
+            - **`type`** (string): The parameter's data type, such as `string`, `integer`, `boolean`, `array`.
+            - **`description`** (string): Description of the parameter's purpose and format. Provide examples and constraints (e.g., "City and state, e.g. 'San Francisco, CA' or a postal code like '95616'.").
+            - **`enum`** (array, optional): If parameter values come from a fixed set, use `enum` to list allowed values rather than just describing them in the description. This helps improve accuracy (e.g., `"enum": ["daylight", "cool", "warm"]`).
+          - **`required`** (array): An array of strings listing the parameter names required for the function to run.
+        </Accordion>
+
+        </AccordionGroup>
+
+        ## Response Format Parameter
+
+        The `response_format` parameter is an optional JSON Schema object that
+        defines the structure of the response. When provided, the model will
+        generate responses that conform to this schema.
+
+        <div style="padding: 20px; background-color: rgba(255, 87, 34, 0.03);
+        border: 1px solid rgba(255, 87, 34, 0.15); border-left: 6px solid
+        #ff5722; border-radius: 12px; margin: 25px 0;">
+          <div style="display: flex; align-items: center; margin-bottom: 15px;">
+            <div style="background-color: #ff5722; color: #fff; padding: 3px 10px; border-radius: 5px; font-size: 11px; font-weight: 800; margin-right: 12px; letter-spacing: 1px;">PARAMETER CONFLICT</div>
+            <strong style="color: #bf360c; font-size: 16px;">Incompatible Configuration</strong>
+          </div>
+
+          <p style="color: #444; margin-bottom: 15px; line-height: 1.6; font-size: 14px;">
+            The <code>response_format</code> parameter and <b>Function Calling</b> (tools) are mutually exclusive.
+          </p>
+
+          <div style="display: flex; align-items: stretch; background: #fff; border-radius: 8px; border: 1px solid #eee; overflow: hidden; margin: 10px 0;">
+            <div style="flex: 1; padding: 12px; text-align: center; background: rgba(0,0,0,0.02);">
+               <code style="color: #ff5722; font-size: 13px;">response_format</code>
+            </div>
+            <div style="display: flex; align-items: center; background: #ff5722; color: #fff; padding: 0 15px; font-size: 12px; font-weight: bold;">
+
+            </div>
+            <div style="flex: 1; padding: 12px; text-align: center; background: rgba(0,0,0,0.02);">
+               <code style="color: #ff5722; font-size: 13px;">tools / functions</code>
+            </div>
+          </div>
+
+          <ul style="color: #666; font-size: 13px; margin-top: 15px; padding-left: 18px; line-height: 1.6;">
+            <li>Use <code>response_format</code> for structured JSON output (e.g., JSON Mode).</li>
+            <li>Use <b>Function Calling</b> for interacting with external tools and APIs.</li>
+          </ul>
+        </div>
+
+        <AccordionGroup>
+
+        <Accordion title="JSON Schema Support">
+
+        The `response_format` follows the JSON Schema specification. Supported
+        types include:
+
+        - **`string`**: For text values
+
+        - **`number`**: For floating-point numbers
+
+        - **`integer`**: For whole numbers
+
+        - **`boolean`**: For true/false values
+
+        - **`object`**: For structured data with key-value pairs
+
+        - **`array`**: For lists of items
+
+        - **`null`**: To allow null values, add `"null"` to the type array
+        (e.g., `{"type": ["string", "null"]}`)
+
+        #### Type-Specific Properties
+
+        **For `object` values:**
+
+        - `properties`: Object mapping property names to their schema
+        definitions
+
+        - `required`: Array of required property names
+
+        - `additionalProperties`: Controls whether properties not in
+        `properties` are allowed
+
+        **For `string` values:**
+
+        - `enum`: List of specific possible string values for classification
+
+        - `format`: Specifies string syntax (e.g., `date-time`, `date`, `time`)
+
+        **For `number` and `integer` values:**
+
+        - `enum`: List of specific possible numeric values
+
+        - `minimum`: Inclusive minimum value
+
+        - `maximum`: Inclusive maximum value
+
+        **For `array` values:**
+
+        - `items`: Schema definition for all array elements
+
+        - `prefixItems`: List of schemas for the first N items (tuple-like
+        structures)
+
+        - `minItems`: Minimum number of items in the array
+
+        - `maxItems`: Maximum number of items in the array
+
+        </Accordion>
+
+        <Accordion title="Example">
+
+        ```json
+
+        {
+          "response_format": {
+            "type": "json_schema",
+            "properties": {
+              "response": {
+                "type": "string"
+              }
+            }
+          }
+        }
+
+        ```
+
+        </Accordion>
+
+        <Accordion title="Best Practices">
+
+        - **Clear descriptions**: Use the `description` field in the schema to
+        clearly explain what each property means
+
+        - **Strong typing**: Use specific types (`integer`, `string`, `enum`)
+        whenever possible
+
+        - **Prompt engineering**: Clearly state in your prompt what you want the
+        model to extract or structure
+
+        - **Validation**: While structured output ensures JSON is syntactically
+        correct, always validate the semantic correctness of values in your
+        application code
+
+        </Accordion>
+
+        </AccordionGroup>
+      operationId: gemini-2.5-pro-chat-completions
+      tags:
+        - docs/en/Market/Chat  Models/Gemini
+      parameters: []
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                messages:
+                  type: array
+                  description: >-
+                    An array of message objects. Each message has a role and
+                    content.
+
+                    **Unified Media File Format:**
+
+                    In the content array, whether it's images, videos, audio, or
+                    other document types, all media files use the same format
+                    structure:
+
+                    - The `type` field is always `"image_url"`
+
+                    - The `image_url` field name remains unchanged
+
+                    - The only thing that changes is the `url` value, which
+                    points to the corresponding media file address
+
+                    For example: images, videos, audio, PDFs, and other
+                    documents all use the same `{ type: 'image_url', image_url:
+                    { url: '...' } }` structure.
+                  items:
+                    $ref: '#/components/schemas/Message'
+                  minItems: 1
+                stream:
+                  type: boolean
+                  default: true
+                  description: >-
+                    If set to true, partial message deltas will be sent as
+                    server-sent events. Default is true.
+                tools:
+                  type: array
+                  description: >-
+                    An optional array of tools the model may call. The array can
+                    contain multiple objects. Supports two formats:
+
+                    1. **Google Search**: `{"type": "function", "function":
+                    {"name": "googleSearch"}}` - Enables real-time information
+                    retrieval via Google Search.
+
+                    2. **Function calling**: Define your own functions with
+                    name, description, and parameters. You can define multiple
+                    functions in the array. Functions are defined using JSON
+                    (specifically, a selected subset of OpenAPI schema format).
+
+                    **Important**: Google Search and function calling are
+                    mutually exclusive - you cannot use both in the same
+                    request. When using function calling, you can include
+                    multiple function definitions. Function calling and
+                    `response_format` are also mutually exclusive - you cannot
+                    use both in the same request.
+                  items:
+                    $ref: '#/components/schemas/Tool'
+                  minItems: 0
+                include_thoughts:
+                  type: boolean
+                  description: >-
+                    Whether to include thoughts in the response. If set to true,
+                    thoughts will be included in the response, otherwise they
+                    will not be included. Default is true.
+                  default: true
+                reasoning_effort:
+                  type: string
+                  enum:
+                    - low
+                    - high
+                  description: >-
+                    The effort level for the model to use for reasoning. Low
+                    effort is faster to respond, high effort is slower to
+                    respond but solves more complex problems. Default is "high".
+                  default: high
+                response_format:
+                  description: >-
+                    Optional JSON Schema object defining the structure of the
+                    response. When provided, the model will generate responses
+                    that conform to this schema. **`response_format` and
+                    function calling are mutually exclusive** - you cannot use
+                    both in the same request.
+
+                    Example:
+
+                    ```json
+
+                    {
+                      "type": "json_schema",
+                      "properties": {
+                        "response": {
+                          "type": "string"
+                        }
+                      }
+                    }
+
+                    ```
+                  $ref: '#/components/schemas/ResponseFormat'
+              required:
+                - messages
+              x-apidog-orders:
+                - messages
+                - stream
+                - tools
+                - include_thoughts
+                - reasoning_effort
+                - response_format
+              examples:
+                - messages:
+                    - role: user
+                      content:
+                        - type: text
+                          text: What is in this image?
+                        - type: image_url
+                          image_url:
+                            url: >-
+                              https://file.aiquickdraw.com/custom-page/akr/section-images/1759055072437dqlsclj2.png
+                  tools:
+                    - type: function
+                      function:
+                        name: googleSearch
+                  stream: true
+                  include_thoughts: true
+                  reasoning_effort: high
+                  response_format:
+                    type: json_schema
+                    properties:
+                      response:
+                        type: string
+              x-apidog-ignore-properties: []
+            example:
+              messages:
+                - role: user
+                  content:
+                    - type: text
+                      text: What is in this image?
+                    - type: image_url
+                      image_url:
+                        url: >-
+                          https://file.aiquickdraw.com/custom-page/akr/section-images/1759055072437dqlsclj2.png
+              tools:
+                - type: function
+                  function:
+                    name: googleSearch
+              stream: true
+              include_thoughts: true
+              reasoning_effort: high
+              response_format:
+                type: json_schema
+                json_schema:
+                  name: structured_output
+                  strict: true
+                  schema:
+                    type: object
+                    properties:
+                      response:
+                        type: string
+      responses:
+        '200':
+          description: >-
+            Request successful. When `response_format` is provided, the response
+            will conform to the specified JSON schema. Otherwise, returns the
+            standard chat completion format.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  id:
+                    type: string
+                    description: Unique identifier for the chat completion
+                    examples:
+                      - chatcmpl-example-123
+                  object:
+                    type: string
+                    description: Object type
+                    examples:
+                      - chat.completion
+                  created:
+                    type: integer
+                    format: int64
+                    description: Unix timestamp of when the completion was created
+                    examples:
+                      - 1677652288
+                  model:
+                    type: string
+                    description: Model name
+                    examples:
+                      - gemini-2.5-pro
+                  choices:
+                    type: array
+                    description: Array of completion choices
+                    items:
+                      type: object
+                      properties:
+                        index:
+                          type: integer
+                          description: Index of the choice
+                          examples:
+                            - 0
+                        message:
+                          type: object
+                          properties:
+                            role:
+                              type: string
+                              examples:
+                                - assistant
+                            content:
+                              type: string
+                              description: Message content
+                          required:
+                            - role
+                            - content
+                          x-apidog-orders:
+                            - role
+                            - content
+                          x-apidog-ignore-properties: []
+                        finish_reason:
+                          type: string
+                          description: Reason why the completion finished
+                          examples:
+                            - stop
+                      required:
+                        - index
+                        - message
+                        - finish_reason
+                      x-apidog-orders:
+                        - index
+                        - message
+                        - finish_reason
+                      x-apidog-ignore-properties: []
+                  usage:
+                    type: object
+                    properties:
+                      prompt_tokens:
+                        type: integer
+                        description: Number of tokens in the prompt
+                        examples:
+                          - 10
+                      completion_tokens:
+                        type: integer
+                        description: Number of tokens in the completion
+                        examples:
+                          - 50
+                      total_tokens:
+                        type: integer
+                        description: Total number of tokens
+                        examples:
+                          - 60
+                    required:
+                      - prompt_tokens
+                      - completion_tokens
+                      - total_tokens
+                    x-apidog-orders:
+                      - prompt_tokens
+                      - completion_tokens
+                      - total_tokens
+                    x-apidog-ignore-properties: []
+                x-apidog-orders:
+                  - id
+                  - object
+                  - created
+                  - model
+                  - choices
+                  - usage
+                x-apidog-ignore-properties: []
+          headers: {}
+          x-apidog-name: ''
+        '400':
+          description: Bad Request - Invalid request parameters
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: object
+                    properties:
+                      message:
+                        type: string
+                        examples:
+                          - Invalid request parameters
+                      type:
+                        type: string
+                        examples:
+                          - invalid_request_error
+                    x-apidog-orders:
+                      - message
+                      - type
+                    x-apidog-ignore-properties: []
+                x-apidog-orders:
+                  - error
+                x-apidog-ignore-properties: []
+          headers: {}
+          x-apidog-name: ''
+        '401':
+          description: Unauthorized - Invalid or missing API key
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: object
+                    properties:
+                      message:
+                        type: string
+                        examples:
+                          - Unauthorized
+                      type:
+                        type: string
+                        examples:
+                          - authentication_error
+                    x-apidog-orders:
+                      - message
+                      - type
+                    x-apidog-ignore-properties: []
+                x-apidog-orders:
+                  - error
+                x-apidog-ignore-properties: []
+          headers: {}
+          x-apidog-name: ''
+        '429':
+          description: Rate Limited - Too many requests
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: object
+                    properties:
+                      message:
+                        type: string
+                        examples:
+                          - Rate limit exceeded
+                      type:
+                        type: string
+                        examples:
+                          - rate_limit_error
+                    x-apidog-orders:
+                      - message
+                      - type
+                    x-apidog-ignore-properties: []
+                x-apidog-orders:
+                  - error
+                x-apidog-ignore-properties: []
+          headers: {}
+          x-apidog-name: ''
+        '500':
+          description: request failed
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  code:
+                    type: integer
+                    description: >-
+                      Response status code
+
+                      - **200**: Success - Request has been processed
+                      successfully
+
+                      - **401**: Unauthorized - Authentication credentials are
+                      missing or invalid
+
+                      - **402**: Insufficient Credits - Account does not have
+                      enough credits to perform the operation
+
+                      - **404**: Not Found - The requested resource or endpoint
+                      does not exist
+
+                      - **408**: Upstream is currently experiencing service
+                      issues. No result has been returned for over 10 minutes.
+
+                      - **422**: Validation Error - The request parameters
+                      failed validation checks
+
+                      - **429**: Rate Limited - Request limit has been exceeded
+                      for this resource
+
+                      - **455**: Service Unavailable - System is currently
+                      undergoing maintenance
+
+                      - **500**: Server Error - An unexpected error occurred
+                      while processing the request
+
+                      - **501**: Generation Failed - Content generation task
+                      failed
+
+                      - **505**: Feature Disabled - The requested feature is
+                      currently disabled
+                  msg:
+                    type: string
+                    description: Response message, error description when failed
+                  data:
+                    type: object
+                    properties: {}
+                    x-apidog-orders: []
+                    x-apidog-ignore-properties: []
+                x-apidog-orders:
+                  - code
+                  - msg
+                  - data
+                required:
+                  - code
+                  - msg
+                  - data
+                x-apidog-ignore-properties: []
+              example:
+                code: 500
+                msg: >-
+                  Server Error - An unexpected error occurred while processing
+                  the request
+                data: null
+          headers: {}
+          x-apidog-name: 'Error '
+      security: []
+      x-apidog-folder: docs/en/Market/Chat  Models/Gemini
+      x-apidog-status: released
+      x-run-in-apidog: https://app.apidog.com/web/project/1184766/apis/api-28506434-run
+components:
+  schemas:
+    ResponseFormat:
+      type: object
+      properties:
+        type:
+          type: string
+          description: Only json_schema value
+        json_schema:
+          type: object
+          properties:
+            name:
+              type: string
+              description: Only structured_output value
+            strict:
+              type: boolean
+              description: Enable strict mode?
+            schema:
+              type: object
+              properties:
+                type:
+                  type: string
+                  description: >-
+                    The response_format follows the JSON Schema specification.
+                    Supported types include:
+
+                    string: For text values
+
+                    number: For floating-point numbers
+
+                    integer: For whole numbers
+
+                    boolean: For true/false values
+
+                    object: For structured data with key-value pairs
+
+                    array: For lists of items
+
+                    null: To allow null values, add "null" to the type array
+                properties:
+                  type: object
+                  properties:
+                    response:
+                      type: object
+                      properties:
+                        type:
+                          type: string
+                      required:
+                        - type
+                      x-apidog-orders:
+                        - type
+                      x-apidog-ignore-properties: []
+                  required:
+                    - response
+                  x-apidog-orders:
+                    - response
+                  description: >-
+                    Object mapping property names to their JSON Schema
+                    definitions
+                  x-apidog-ignore-properties: []
+                required:
+                  type: array
+                  items:
+                    type: string
+                  description: Array of required property names
+                title:
+                  type: string
+                  description: Short description of the schema
+                description:
+                  type: string
+                  description: Detailed description of the schema
+              required:
+                - type
+                - properties
+                - required
+                - title
+                - description
+              x-apidog-orders:
+                - type
+                - properties
+                - required
+                - title
+                - description
+              x-apidog-ignore-properties: []
+          required:
+            - name
+            - strict
+            - schema
+          x-apidog-orders:
+            - name
+            - strict
+            - schema
+          description: >-
+            JSON Schema object defining the structure of the response. When
+            provided, the model will generate responses that conform to this
+            schema.
+          x-apidog-ignore-properties: []
+      required:
+        - type
+        - json_schema
+      x-apidog-orders:
+        - type
+        - json_schema
+      title: chat model structured data structure
+      x-apidog-ignore-properties: []
+      x-apidog-folder: ''
+    Tool:
+      type: object
+      description: >-
+        Tool definition.
+
+        - **Enhanced Network Access**: `{"type": "function", "function":
+        {"name": "googleSearch"}}`
+      properties:
+        type:
+          type: string
+          enum:
+            - function
+          description: Utility type. Must be 'function'.
+          examples:
+            - function
+        function:
+          type: object
+          description: Function declarations for enhanced network access.
+          properties:
+            name:
+              type: string
+              description: Function name. Must be `googleSearch`.
+            description:
+              type: string
+              description: >-
+                Optional but recommended. A clear and specific description of
+                the function's purpose. Helps the model understand when to call
+                this function.
+            parameters:
+              type: object
+              description: >-
+                Defines a JSON Schema object for function parameters. Required
+                for custom functions; not used by 'googleSearch'. Follows the
+                JSON Schema specification.
+              properties:
+                type:
+                  type: string
+                  enum:
+                    - object
+                  description: Must be 'object' for function parameters
+                properties:
+                  type: object
+                  description: Map parameter names to objects defined in their JSON Schema.
+                  additionalProperties:
+                    type: string
+                  x-apidog-orders: []
+                  properties: {}
+                  x-apidog-ignore-properties: []
+                required:
+                  type: array
+                  items:
+                    type: string
+                  description: Required parameter name array
+              required:
+                - type
+                - properties
+              x-apidog-orders:
+                - type
+                - properties
+                - required
+              x-apidog-ignore-properties: []
+          required:
+            - name
+          x-apidog-orders:
+            - name
+            - description
+            - parameters
+          x-apidog-ignore-properties: []
+      required:
+        - type
+        - function
+      x-apidog-orders:
+        - type
+        - function
+      title: The tools parameter of the chat model
+      x-apidog-ignore-properties: []
+      x-apidog-folder: ''
+    Message:
+      type: object
+      properties:
+        role:
+          type: string
+          enum:
+            - developer
+            - system
+            - user
+            - assistant
+            - tool
+          description: >-
+            Message role
+
+            - **developer**: Developer-provided instructions that the model
+            should follow, regardless of user messages. In o1 models and newer
+            versions, developer messages replace the previous system messages.
+
+            - **system**: Developer-provided instructions that the model should
+            follow, regardless of user messages. In o1 models and newer
+            versions, please use developer messages instead.
+
+            - **user**: Messages sent by end users, containing prompts or
+            additional context information.
+
+            - **assistant**: Messages sent by the model in response to user
+            messages.
+
+            - **tool**: Content of tool messages.
+        content:
+          type: array
+          description: >-
+            Message content array that can contain text and image objects.
+
+            **Unified Media File Format:**
+
+            Whether it's images, videos, audio, or other document types, all
+            media files use the same format structure:
+
+            - The `type` field is always `"image_url"`
+
+            - The `image_url` field name remains unchanged
+
+            - The only thing that changes is the `url` value, which points to
+            the corresponding media file address
+
+            For example: images, videos, audio, PDFs, and other documents all
+            use the same `{ type: 'image_url', image_url: { url: '...' } }`
+            structure.
+          items:
+            oneOf:
+              - type: object
+                properties:
+                  type:
+                    type: string
+                    enum:
+                      - text
+                    examples:
+                      - text
+                  text:
+                    type: string
+                    description: 消息的文本内容
+                required:
+                  - type
+                  - text
+                x-apidog-orders:
+                  - type
+                  - text
+                x-apidog-ignore-properties: []
+              - type: object
+                properties:
+                  type:
+                    type: string
+                    enum:
+                      - image_url
+                    examples:
+                      - image_url
+                  image_url:
+                    type: object
+                    properties:
+                      url:
+                        type: string
+                        format: uri
+                        description: 图像的 URL
+                    required:
+                      - url
+                    x-apidog-orders:
+                      - url
+                    x-apidog-ignore-properties: []
+                required:
+                  - type
+                  - image_url
+                x-apidog-orders:
+                  - type
+                  - image_url
+                x-apidog-ignore-properties: []
+      required:
+        - role
+        - content
+      title: The messages parameter of the chat model
+      x-apidog-orders:
+        - role
+        - content
+      x-apidog-ignore-properties: []
+      x-apidog-folder: ''
+  securitySchemes:
+    BearerAuth:
+      type: bearer
+      scheme: bearer
+      bearerFormat: API Key
+      description: >-
+        All API requests require a Bearer Token. Add the header `Authorization:
+        Bearer YOUR_API_KEY` to authenticate requests.
+    BearerAuth1:
+      type: bearer
+      scheme: bearer
+      bearerFormat: API Key
+      description: >-
+        所有 API 请求都需要 Bearer Token。请在请求头中添加 `Authorization: Bearer YOUR_API_KEY`
+        进行身份验证。
+servers:
+  - url: https://api.kie.ai
+    description: 正式环境
+security:
+  - BearerAuth: []
+    x-apidog:
+      schemeGroups:
+        - id: kn8M4YUlc5i0A0179ezwx
+          schemeIds:
+            - BearerAuth
+      required: true
+      use:
+        id: kn8M4YUlc5i0A0179ezwx
+      scopes:
+        kn8M4YUlc5i0A0179ezwx:
+          BearerAuth: []
+
+```
 
 ---
 
@@ -61693,40 +68195,1098 @@ import("https://file-assets.apidog.com/docs-site/v1/assets/entry.client-mUtkjgQm
 
 **Source:** [https://docs.kie.ai/market/gemini/gemini-3-pro.md][161]
 
-<!DOCTYPE html><html lang="en-US" class="group/root" id="html" data-theme="light" data-accent-color="purple"><head><script src="https://file-assets.apidog.com/docs-site/v1/assets/prepareDocsConfigScript-CLIBKQbk.js"></script><script>__prepareDocsConfigScript(JSON.parse("{\"theme\":\"system\",\"themePrimarySettings\":{\"light\":{\"accentColor\":\"purple\"},\"dark\":{\"accentColor\":\"purple\"}},\"logoSettings\":{\"light\":{\"icon\":\"\",\"type\":\"project\"},\"dark\":{\"icon\":\"\",\"type\":\"followLight\"}},\"backgroundImageSettings\":{\"light\":{\"type\":\"custom\",\"color\":\"\"},\"dark\":{\"type\":\"followLight\",\"color\":\"\"}},\"id\":0,\"subdirectory\":\"\"}"));</script><script>window.eventTracking = {
-      dataLayer: []
-    }
-    window.eventTracking.report = function(){
-        window.eventTracking.dataLayer.push(arguments);
-    }</script><meta charSet="utf-8"/><meta name="viewport" content="width=device-width, initial-scale=1"/><title>API Documentation</title><meta name="description" content="Design. Debug. Test. Document. Mock. Build APIs Faster &amp; Together."/><meta name="keywords" content="API Design, API Specification, API Test, API Documentation, API Mock"/><link rel="stylesheet" href="https://file-assets.apidog.com/docs-site/v1/assets/root-CpC_E1fb.css"/></head><body class="overflow-hidden g-body"><div class="flex h-full w-full flex-col overflow-auto"><div class="flex flex-1 flex-col items-center justify-center"><div class="flex w-auto flex-col items-center justify-center max-os:p-5 os:w-[480px]"><svg width="104" height="104" viewBox="0 0 104 104" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M92.9557 41.8969L88.7262 25.2175C87.4089 19.8194 84.8039 16.1447 80.9015 14.1934L80.3963 13.9458C79.802 13.6685 79.178 13.4407 78.5243 13.2426C75.4142 12.3214 72.0268 12.371 68.362 13.3813C65.8759 14.0747 63.2612 15.2038 60.5176 16.7886C56.7835 18.9478 53.3167 21.6319 50.1076 24.8708C49.0973 25.8711 48.1266 26.9209 47.1956 28.0204C46.314 29.0406 45.4622 30.1105 44.6302 31.2198C42.9266 33.4781 41.3121 35.9245 39.7868 38.5492C34.1015 48.3648 31.2588 57.9329 31.2588 67.2631C31.2588 72.0471 32.1106 76.1181 33.8142 79.4461C34.6759 81.1101 35.6862 82.5263 36.8748 83.7248C37.9346 84.7846 39.1232 85.6564 40.4405 86.3398L41.0151 86.627V98.9485C41.0151 99.9984 41.3221 100.712 41.9461 101.058C42.5701 101.415 43.3426 101.326 44.2637 100.801L67.0249 87.6571C67.946 87.1223 68.7186 86.3199 69.3426 85.2502C69.9666 84.1706 70.2736 83.1008 70.2736 82.0509V78.3169L76.7811 74.5629C78.5639 73.5328 80.0993 71.9184 81.377 69.7195C82.6448 67.5207 83.2786 65.4011 83.2786 63.341V52.1485L89.786 48.3946C90.8657 47.7706 91.7373 46.79 92.391 45.4429C93.0348 44.1058 93.2231 42.927 92.9557 41.8969ZM62.8352 66.6095C62.2112 67.6891 61.4387 68.4914 60.5176 69.0263C59.5964 69.5512 58.8237 69.6404 58.1997 69.2838C57.5856 68.9371 57.2687 68.2238 57.2687 67.164C57.2687 66.1042 57.5856 65.0445 58.1997 63.9748C58.2592 63.8658 58.3186 63.7667 58.378 63.6676C58.9129 62.8356 59.5468 62.1819 60.2797 61.7164C60.359 61.6569 60.4383 61.6075 60.5176 61.558C61.4387 61.033 62.2112 60.9439 62.8352 61.2906C63.4592 61.6471 63.7761 62.3604 63.7761 63.4103C63.7761 64.4602 63.4592 65.5398 62.8352 66.6095ZM69.5011 38.7572C69.402 39.1336 69.2832 39.5101 69.1346 39.8865C68.5997 41.3227 67.4607 43.6206 65.7274 46.8C64.9647 48.1768 64.41 49.3158 64.0535 50.237C63.8157 50.861 63.6176 51.4748 63.4691 52.0592C63.3997 52.3366 63.3304 52.6041 63.2809 52.8715C63.1224 53.7729 62.7856 54.6148 62.2706 55.3774C61.7556 56.1401 61.2009 56.6948 60.6066 57.0315C59.8935 57.4475 59.319 57.4971 58.8535 57.2099C58.3978 56.9128 58.2196 56.358 58.3285 55.5557C58.487 54.2186 58.8039 52.931 59.2596 51.7029C59.7251 50.4747 60.4679 48.9392 61.498 47.0969C62.3201 45.6409 62.9837 44.4029 63.4691 43.4026C63.7761 42.7885 64.0138 42.2636 64.1921 41.8278C64.202 41.7981 64.2119 41.7782 64.2218 41.7485C64.6775 40.5797 64.9153 39.5001 64.9153 38.4997C64.9153 37.321 64.5191 36.5881 63.7366 36.2909C62.9442 36.0037 61.9537 36.2019 60.7652 36.8853C60.0025 37.3211 59.2794 37.945 58.5662 38.7572C57.863 39.5694 57.239 40.5105 56.7041 41.5604C56.2683 42.5013 55.7632 43.2442 55.1986 43.7889C54.6241 44.3337 54.0397 44.6209 53.4455 44.6506C52.8512 44.6902 52.4055 44.4525 52.1083 43.9374C51.8112 43.4224 51.8211 42.7687 52.1479 41.9565C53.0691 39.7477 54.2973 37.7074 55.8424 35.8552C56.5754 34.9737 57.338 34.1811 58.1205 33.4878C58.9822 32.735 59.8638 32.0913 60.7652 31.5664C63.3701 30.0708 65.5491 29.7141 67.3121 30.4966C69.0752 31.279 69.9468 32.9829 69.9468 35.5977C69.9468 36.6476 69.7982 37.7073 69.5011 38.7572Z" stroke="#667085" stroke-linecap="round" stroke-linejoin="round"></path><path d="M63.777 63.4086C63.777 64.4684 63.46 65.5381 62.836 66.6078C62.212 67.6874 61.4395 68.4896 60.5184 69.0245C59.5972 69.5494 58.8246 69.6387 58.2006 69.2821C57.5865 68.9354 57.2695 68.2221 57.2695 67.1623C57.2695 66.1025 57.5865 65.0428 58.2006 63.973C58.26 63.8641 58.3194 63.7649 58.3789 63.6659C58.9137 62.8339 59.5476 62.1802 60.2806 61.7147C60.3598 61.6552 60.4392 61.6058 60.5184 61.5563C61.4395 61.0313 62.212 60.9422 62.836 61.2888C63.46 61.6454 63.777 62.3587 63.777 63.4086Z" stroke="#667085" stroke-linecap="round" stroke-linejoin="round"></path><path d="M63.7373 36.2894C62.9449 36.0021 61.9544 36.2003 60.7659 36.8838C60.0032 37.3196 59.2801 37.9435 58.567 38.7557C57.8638 39.5679 57.2398 40.5089 56.7049 41.5588C56.2691 42.4998 55.7639 43.2426 55.1994 43.7874C54.6249 44.3321 54.0405 44.6193 53.4462 44.649C52.8519 44.6886 52.4062 44.4509 52.1091 43.9359C51.8119 43.4208 51.8219 42.7671 52.1487 41.9549C53.0699 39.7461 54.298 37.7059 55.8432 35.8537C56.5761 34.9721 57.3388 34.1797 58.1213 33.4863L63.7373 36.2894Z" stroke="#667085" stroke-linecap="round" stroke-linejoin="round"></path><path d="M69.9474 35.596C69.9474 36.6459 69.7988 37.7056 69.5017 38.7555C69.4026 39.1319 69.2838 39.5085 69.1352 39.8849C68.6003 41.321 67.4613 43.6189 65.728 46.7984C64.9653 48.1751 64.4106 49.3141 64.054 50.2352C63.8163 50.8592 63.6182 51.4732 63.4697 52.0576C63.4003 52.3349 63.331 52.6024 63.2815 52.8698C63.123 53.7711 62.7862 54.6131 62.2712 55.3758C61.7561 56.1385 61.2015 56.693 60.6072 57.0298C59.894 57.4458 59.3196 57.4955 58.854 57.2083C58.3984 56.9111 58.2201 56.3563 58.3291 55.554C58.4876 54.2168 58.8045 52.9293 59.2601 51.7011C59.7257 50.4729 60.4685 48.9376 61.4986 47.0953C62.3207 45.6393 62.9843 44.4012 63.4697 43.4008C63.7767 42.7868 64.0144 42.2619 64.1927 41.8261C64.2026 41.7964 64.2125 41.7766 64.2224 41.7468C64.678 40.5781 64.9158 39.4984 64.9158 38.498C64.9158 37.3193 64.5196 36.5865 63.7371 36.2893L58.1211 33.4862C58.9828 32.7334 59.8643 32.0896 60.7657 31.5647C63.3706 30.069 65.5497 29.7125 67.3127 30.4949C69.0758 31.2774 69.9474 32.9811 69.9474 35.596Z" stroke="#667085" stroke-linecap="round" stroke-linejoin="round"></path><path d="M41.9466 101.059L22.3253 91.2429L22.1371 91.1537C21.5131 90.807 21.2061 90.094 21.2061 89.0441V76.7227L41.0156 86.6274V98.9488C41.0156 99.9988 41.3226 100.712 41.9466 101.059Z" stroke="#667085" stroke-linecap="round" stroke-linejoin="round"></path><path d="M80.3972 13.9448C79.8029 13.6675 79.1789 13.4397 78.5252 13.2416C75.4151 12.3204 72.0277 12.3701 68.3629 13.3804C65.8768 14.0737 63.2621 15.2028 60.5185 16.7876C56.7844 18.9468 53.3176 21.6309 50.1085 24.8698C49.0982 25.8702 48.1275 26.92 47.1965 28.0194C46.3149 29.0396 45.4631 30.1096 44.6311 31.2189C42.9275 33.4772 41.313 35.9236 39.7877 38.5484C34.1024 48.364 31.2597 57.932 31.2597 67.2623C31.2597 72.0463 32.1115 76.1171 33.8151 79.4451C34.6768 81.1091 35.6871 82.5253 36.8757 83.7238C37.9355 84.7836 39.1241 85.6554 40.4414 86.3388L21.2065 76.7213C18.1161 75.2752 15.7192 72.8783 14.0056 69.5404C12.302 66.2124 11.4502 62.1415 11.4502 57.3575C11.4502 48.0272 14.2929 38.4592 19.9782 28.6436C25.6734 18.828 32.587 11.5678 40.7089 6.88282C47.4838 2.97044 53.486 1.79169 58.7157 3.33683C59.4784 3.56464 60.2113 3.84208 60.8948 4.17884L61.281 4.37688L80.3972 13.9448Z" stroke="#667085" stroke-linecap="round" stroke-linejoin="round"></path></svg><div class="align-center mt-8 flex justify-center text-center text-2xl font-semibold text-color">An abnormal error occurred, please try &#x27;Reload&#x27; or &#x27;get Support&#x27; to help you solve it!</div><div class="align-center mt-2 text-center text-lg font-400 text-secondary">Unexpected token &#x27;o&#x27;, &quot;forbidden
-&quot; is not valid JSON: /api/v1/published-projects/domains/docs.kie.ai</div></div></div><div class="flex flex-col items-center justify-center p-8 text-base font-base text-secondary"><div class="inline-flex items-center text-base font-400 text-secondary _footer-logo-wrapper_1kbjg_1"><a class="_footer-logo_1kbjg_1 flex-shrink-0" aria-label="homepage link" href="https://apidog.com"><span class="inline-flex items-center"><span class="mr-[-4px]">Built with</span><svg width="61" height="18" viewBox="0 0 61 18" fill="none" xmlns="http://www.w3.org/2000/svg" class="h-[18px] w-[80px]"><path d="M12.3836 1.67806C11.6452 0.940647 10.4478 0.940647 9.70932 1.67806L8.99795 2.3884L8.30644 1.69789C7.57144 0.963937 6.37437 0.936241 5.62991 1.66043C4.88545 2.38463 4.86748 3.60515 5.61194 4.34854L6.32331 5.05888C7.80026 6.53371 10.195 6.53371 11.6723 5.05888L12.3836 4.34854C13.1221 3.61113 13.1221 2.41547 12.3836 1.67806Z" fill="#667085"></path><path d="M12.3838 13.6515L11.6729 12.9412C10.1968 11.4664 7.80339 11.4664 6.32699 12.9412L5.61603 13.6515C4.87799 14.389 4.87799 15.5846 5.61603 16.322C6.35408 17.0594 7.55076 17.0594 8.28881 16.322L8.99976 15.6117L9.69087 16.3022C10.4255 17.0361 11.6218 17.0638 12.3659 16.3396C13.1219 15.6038 13.1278 14.3949 12.3838 13.6515Z" fill="#667085"></path><path d="M15.6105 8.99642L16.3214 8.28481C17.0655 7.54009 17.0595 6.32906 16.3035 5.59191C15.5595 4.86643 14.3631 4.89418 13.6285 5.62943L13.3098 5.94851C12.1666 7.09269 10.6166 7.73526 9 7.73526C7.38344 7.73526 5.83335 7.09238 4.69023 5.94851L4.37146 5.62943C3.63689 4.89418 2.44054 4.86643 1.69652 5.59191C0.940527 6.32906 0.934542 7.54009 1.67856 8.28481L2.38951 8.99642L1.67856 9.70803C0.940527 10.4468 0.940527 11.6445 1.67856 12.3833C2.4166 13.122 3.61326 13.122 4.3513 12.3833L4.74347 11.9907C5.85225 10.8809 7.35604 10.2576 8.92409 10.2576H8.9874C10.6162 10.2576 12.1666 10.9005 13.3098 12.0446C13.5126 12.2477 13.6484 12.3836 13.6484 12.3836C14.3864 13.1223 15.5831 13.1223 16.3211 12.3836C17.0592 11.6449 17.0592 10.4471 16.3211 9.70834L15.6102 8.99673L15.6105 8.99642Z" fill="#667085"></path><path fill-rule="evenodd" clip-rule="evenodd" d="M37.3559 4.00331C37.4694 3.95752 37.5911 3.93521 37.7136 3.93768C37.8343 3.93606 37.9541 3.95884 38.0656 4.0046C38.1772 4.05035 38.2781 4.11814 38.3624 4.20384C38.4483 4.29095 38.5158 4.39418 38.561 4.50749C38.6061 4.6208 38.628 4.7419 38.6253 4.8637C38.628 4.98551 38.6061 5.10664 38.561 5.21995C38.5158 5.33326 38.4483 5.43648 38.3624 5.52357C38.2781 5.60926 38.1772 5.67705 38.0656 5.72284C37.9541 5.7686 37.8343 5.79134 37.7136 5.78975C37.5911 5.79222 37.4694 5.76989 37.3559 5.72413C37.2425 5.67837 37.1396 5.61011 37.0536 5.52357C36.9677 5.43648 36.9002 5.33326 36.8551 5.21995C36.8099 5.10664 36.7881 4.98551 36.7908 4.8637C36.7881 4.7419 36.8099 4.6208 36.8551 4.50749C36.9002 4.39418 36.9677 4.29095 37.0536 4.20384C37.1396 4.1173 37.2425 4.04907 37.3559 4.00331ZM25.6211 4.76389L24.0219 4.76389L21.175 12.7654H22.7355L23.2948 11.1795H26.371L26.9303 12.7654H28.5019L25.6211 4.76389ZM25.9403 9.91528H23.7255L24.8441 6.75459L25.9403 9.91528ZM34.4529 6.71022C33.9935 6.42603 33.4618 6.27789 32.9204 6.28324C32.4656 6.27789 32.0164 6.38257 31.6116 6.58824C31.3484 6.72112 31.1086 6.89528 30.9013 7.10393V6.38304H29.4248V15.6932H30.9181V12.0501C31.1303 12.2594 31.3736 12.4352 31.6396 12.5714C32.0799 12.7816 32.5659 12.88 33.0541 12.8577C33.5422 12.8355 34.0171 12.6932 34.4361 12.4438C34.899 12.1548 35.274 11.7466 35.5212 11.2627C35.7861 10.7302 35.9203 10.1431 35.9126 9.54929C35.923 8.96057 35.7887 8.37821 35.5212 7.8525C35.2797 7.38027 34.9096 6.98456 34.4529 6.71022ZM34.4137 9.55484C34.4161 9.91562 34.3297 10.2716 34.162 10.5918C34.0132 10.8769 33.7889 11.1165 33.5133 11.2849C33.2582 11.4309 32.9688 11.5078 32.6743 11.5078C32.3798 11.5078 32.0904 11.4309 31.8353 11.2849C31.5644 11.1203 31.341 10.8892 31.1866 10.6139C31.0195 10.284 30.937 9.91836 30.946 9.54929C30.9355 9.18364 31.0182 8.82126 31.1866 8.49571C31.331 8.22256 31.5426 7.98991 31.8018 7.81923C32.0627 7.67197 32.3573 7.59366 32.6575 7.5919C32.9606 7.59099 33.2582 7.67147 33.5188 7.82478C33.7952 7.97573 34.0193 8.20567 34.162 8.48465C34.3413 8.8105 34.4283 9.17839 34.4137 9.54929V9.55484ZM38.4519 6.38304H36.9585V12.7599H38.4519V6.38304ZM43.7037 6.56049C43.9895 6.68375 44.2509 6.85649 44.4756 7.07066V4.27038H45.9801V12.7654H44.4756V12.039C44.2733 12.2523 44.0347 12.4288 43.7709 12.5603C43.3696 12.7699 42.9211 12.8748 42.4677 12.8652C41.9296 12.8702 41.4008 12.7261 40.9408 12.4493C40.4817 12.1535 40.1078 11.7446 39.8557 11.2627C39.5908 10.7302 39.4566 10.1431 39.4642 9.54929C39.4539 8.96057 39.5882 8.37821 39.8557 7.8525C40.1049 7.3803 40.4803 6.98514 40.9408 6.71022C41.3529 6.46065 41.821 6.31637 42.3032 6.29024C42.7854 6.26412 43.2666 6.35695 43.7037 6.56049ZM44.4756 9.57146C44.4854 9.20459 44.3987 8.84147 44.2239 8.51792C44.0698 8.22608 43.835 7.98372 43.5471 7.81923C43.2921 7.67323 43.0027 7.59637 42.7082 7.59637C42.4136 7.59637 42.1243 7.67323 41.8692 7.81923C41.598 7.97735 41.377 8.20793 41.2316 8.48465C41.0626 8.80593 40.9798 9.16492 40.9911 9.52712C40.9825 9.89613 41.0651 10.2616 41.2316 10.5918C41.3883 10.8862 41.622 11.1333 41.9084 11.3071C42.1635 11.4531 42.4528 11.5299 42.7473 11.5299C43.0419 11.5299 43.3312 11.4531 43.5863 11.3071C43.8553 11.1436 44.0753 10.912 44.2239 10.6361C44.3961 10.3076 44.4826 9.94161 44.4756 9.57146ZM51.8863 6.71022C51.3775 6.44176 50.81 6.30134 50.2336 6.30134C49.6572 6.30134 49.0897 6.44176 48.5808 6.71022C48.1082 6.98053 47.7208 7.37607 47.4622 7.8525C47.1714 8.37882 47.0248 8.9715 47.0372 9.57146C47.026 10.1735 47.1684 10.7686 47.451 11.3016C47.7105 11.7817 48.0973 12.1824 48.5697 12.4605C49.0662 12.7315 49.6249 12.8709 50.1916 12.8652C50.7765 12.874 51.3541 12.7347 51.8695 12.4605C52.3652 12.1852 52.7752 11.7805 53.0553 11.2904C53.3515 10.7658 53.502 10.1726 53.4915 9.57146C53.5004 8.97048 53.35 8.37773 53.0553 7.8525C52.7813 7.37062 52.3763 6.97478 51.8863 6.71022ZM49.3639 7.81923C49.6253 7.67401 49.9199 7.59775 50.2196 7.59775C50.5193 7.59775 50.8139 7.67401 51.0753 7.81923C51.3499 7.97813 51.5716 8.21332 51.7129 8.49571C51.876 8.8305 51.9528 9.20008 51.9367 9.57146C51.9483 9.9474 51.8616 10.3199 51.685 10.6528C51.5392 10.9243 51.3204 11.1504 51.0529 11.3061C50.7853 11.4617 50.4794 11.5408 50.1693 11.5344C49.9454 11.5409 49.7227 11.4998 49.5162 11.4137C49.3097 11.3276 49.1243 11.1986 48.9724 11.0354C48.6355 10.6234 48.4678 10.1007 48.5025 9.57146C48.4901 9.19738 48.5708 8.82604 48.7374 8.4902C48.8747 8.21003 49.0927 7.97654 49.3639 7.81923ZM59.0394 7.03076V6.32653H60.5495V12.6812C60.5594 13.2247 60.4326 13.7622 60.1804 14.2449C59.9389 14.7103 59.5657 15.0957 59.1065 15.3539C58.5924 15.6305 58.0132 15.7664 57.4286 15.7476C56.67 15.7754 55.9226 15.5595 55.2977 15.1321C55.0204 14.9436 54.7884 14.6968 54.6182 14.4092C54.4481 14.1217 54.344 13.8006 54.3133 13.4686V13.3466L55.7954 13.3466C55.7954 13.6685 56.0907 13.9814 56.3547 14.134C56.6804 14.3328 57.0575 14.4331 57.4398 14.4223C57.6518 14.4311 57.8634 14.3968 58.0616 14.3215C58.2597 14.2462 58.4402 14.1314 58.592 13.9843C58.7493 13.8103 58.8699 13.6068 58.9468 13.3859C59.0236 13.1649 59.0394 12.931 59.0394 12.6978V11.9548C58.8328 12.1771 58.591 12.3644 58.3235 12.5093C57.9242 12.7189 57.4776 12.8239 57.0259 12.8143C56.4897 12.8185 55.9629 12.6744 55.5046 12.3984C55.0442 12.1041 54.6699 11.6949 54.4195 11.2117C54.1519 10.6801 54.0176 10.0924 54.0281 9.49832C54.0156 8.9094 54.1501 8.32653 54.4195 7.80153C54.6679 7.32727 55.0433 6.93011 55.5046 6.6537C55.9619 6.37401 56.4886 6.22618 57.0259 6.22672C57.4809 6.21907 57.9307 6.32389 58.3347 6.53172C58.5954 6.65891 58.8335 6.82746 59.0394 7.03076ZM58.7877 10.5796C58.9599 10.2511 59.0464 9.8851 59.0394 9.51494C59.0532 9.14059 58.9663 8.76931 58.7877 8.4392C58.6409 8.16062 58.4205 7.92682 58.1501 7.76271C57.8899 7.6138 57.5948 7.53538 57.2944 7.53538C56.994 7.53538 56.6988 7.6138 56.4387 7.76271C56.1645 7.92882 55.9419 8.16678 55.7954 8.4503C55.6308 8.76545 55.5463 9.11571 55.5494 9.4706C55.5427 9.84005 55.6271 10.2055 55.7954 10.5352C55.9406 10.827 56.1629 11.0743 56.4387 11.2505C56.6977 11.4028 56.9932 11.4832 57.2944 11.4832C57.5955 11.4832 57.8911 11.4028 58.1501 11.2505C58.419 11.0871 58.6392 10.8555 58.7877 10.5796Z" fill="#667085"></path></svg></span></a></div></div></div><script>
-            if (typeof window.__updateThemeElement === 'function') {
-              window.__updateThemeElement();
+### OpenAPI Specification
+
+```yaml
+openapi: 3.0.1
+info:
+  title: ''
+  description: ''
+  version: 1.0.0
+paths:
+  /gemini-3-pro/v1/chat/completions:
+    post:
+      summary: Gemini 3 Pro (openai)
+      deprecated: false
+      description: >-
+        ### Streaming Support
+
+        When `stream: true` is set in the request, the API returns responses as
+        server-sent events (SSE) with `Content-Type: text/event-stream`. This
+        allows for progressive response delivery, where message deltas are sent
+        incrementally as they are generated. Each event contains partial message
+        content, enabling real-time display of responses in your application.
+
+        **Streaming Response Format:**
+
+        - Content-Type: `text/event-stream`
+
+        - Each event line starts with `data: ` followed by JSON
+
+        - Events contain incremental message deltas
+
+        - Final event indicates completion with `finish_reason`
+
+        <CardGroup cols={2}>
+          <Card title="Multimodal" icon="lucide-image">
+            Supports text and image inputs
+          </Card>
+          <Card title="Real-time Search" icon="lucide-search">
+            Google Search grounding enabled
+          </Card>
+          <Card title="Streaming" icon="lucide-list-minus">
+            Server-sent events support
+          </Card>
+          <Card title="Flexible Roles" icon="lucide-users">
+            Multiple message roles supported
+          </Card>
+        </CardGroup>
+
+        <div style="padding: 20px; background-color: rgba(255, 152, 0, 0.05);
+        border: 1px solid rgba(255, 152, 0, 0.15); border-left: 6px solid
+        #ff9800; border-radius: 10px; margin: 25px 0;">
+          <div style="display: flex; align-items: center; margin-bottom: 12px;">
+            ⚠️
+            <strong style="color: #e65100; font-size: 17px;">Important: Unified Media Structure</strong>
+          </div>
+
+          <p style="color: #444; margin-bottom: 15px; line-height: 1.6; font-size: 14px;">
+            To simplify integration, <b>all media types</b> (Images, Videos, Audio, or Documents) in the <code>messages</code> array share the <b>exact same JSON structure</b>:
+          </p>
+
+          <ul style="color: #555; line-height: 1.8; margin-bottom: 15px; font-size: 14px;">
+            <li>The <code>type</code> field is <b>fixed</b> as <code>"image_url"</code></li>
+            <li>The <code>image_url</code> key name <b>remains unchanged</b> for all file types</li>
+            <li>Only the <code>url</code> value points to your specific media file</li>
+          </ul>
+
+          <div style="background-color: #fdfdfd; padding: 12px; border-radius: 6px; border: 1px solid #eee; font-family: 'SFMono-Regular', Consolas, monospace; font-size: 13px; color: #d32f2f;">
+            // Example for Video/Audio/PDF/Image:<br>
+            { "type": "image_url", "image_url": { "url": "https://..." } }
+          </div>
+        </div>
+
+        ## Tools Parameter
+
+        The `tools` parameter is an optional array that allows you to define
+        functions the model can call. The array can contain multiple objects.
+        When using function calling, you can define multiple functions in the
+        array.
+
+        <div style="padding: 20px; background-color: rgba(255, 152, 0, 0.05);
+        border: 1px solid rgba(255, 152, 0, 0.15); border-left: 6px solid
+        #ffa000; border-radius: 12px; margin: 25px 0;">
+          <div style="display: flex; align-items: center; margin-bottom: 12px;">
+            <div style="background-color: #ffa000; color: #fff; padding: 4px 10px; border-radius: 6px; font-size: 12px; font-weight: 800; margin-right: 12px; letter-spacing: 1px;">RESTRICTION</div>
+            <strong style="color: #e65100; font-size: 16px;">Conflict Warning</strong>
+          </div>
+
+          <p style="color: #444; margin-bottom: 12px; line-height: 1.6; font-size: 14px;">
+            <b>Google Search</b> and <b>Function Calling</b> are mutually exclusive. 
+          </p>
+
+          <div style="display: flex; align-items: center; justify-content: center; background: rgba(255,255,255,0.5); padding: 10px; border-radius: 8px; border: 1px dashed #ffa000; margin-top: 10px;">
+            <div style="text-align: center; flex: 1;">
+              <code style="color: #ffa000; font-weight: bold;">Google Search</code>
+            </div>
+            <div style="color: #999; font-weight: bold; padding: 0 15px;">XOR</div>
+            <div style="text-align: center; flex: 1;">
+              <code style="color: #ffa000; font-weight: bold;">Function Calling</code>
+            </div>
+          </div>
+
+          <p style="color: #666; font-size: 13px; margin-top: 15px; font-style: italic;">
+            * You cannot use both features in the same request. Please choose the one that best suits your needs.
+          </p>
+        </div>
+
+        <AccordionGroup>
+
+        <Accordion title="Google Search">
+
+        Use this format to enable Google Search grounding:
+
+        ```json
+
+        {
+          "type": "function",
+          "function": {
+            "name": "googleSearch"
+          }
+        }
+
+        ```
+
+        This enables real-time information retrieval via Google Search.
+
+        </Accordion>
+
+        <Accordion title="Function Calling">
+
+        Define your own functions with parameters. You can define multiple
+        functions in the `tools` array:
+
+        ```json
+
+        [
+          {
+            "type": "function",
+            "function": {
+              "name": "get_current_weather",
+              "description": "Get the current weather in a given location",
+              "parameters": {
+                "type": "object",
+                "properties": {
+                  "location": {
+                    "type": "string",
+                    "description": "The city and state, e.g. San Francisco, CA"
+                  },
+                  "unit": {
+                    "type": "string",
+                    "enum": ["celsius", "fahrenheit"]
+                  }
+                },
+                "required": ["location"]
+              }
             }
-          </script><script>((STORAGE_KEY, restoreKey) => {
-    if (!window.history.state || !window.history.state.key) {
-      let key = Math.random().toString(32).slice(2);
-      window.history.replaceState({
-        key
-      }, "");
-    }
-    try {
-      let positions = JSON.parse(sessionStorage.getItem(STORAGE_KEY) || "{}");
-      let storedY = positions[restoreKey || window.history.state.key];
-      if (typeof storedY === "number") {
-        window.scrollTo(0, storedY);
-      }
-    } catch (error) {
-      console.error(error);
-      sessionStorage.removeItem(STORAGE_KEY);
-    }
-  })("positions", null)</script><link rel="modulepreload" href="https://file-assets.apidog.com/docs-site/v1/assets/manifest-db7ef313.js"/><link rel="modulepreload" href="https://file-assets.apidog.com/docs-site/v1/assets/entry.client-mUtkjgQm.js"/><link rel="modulepreload" href="https://file-assets.apidog.com/docs-site/v1/assets/jsx-runtime-CM5sU0Q5.js"/><link rel="modulepreload" href="https://file-assets.apidog.com/docs-site/v1/assets/client-BKxavTD9.js"/><link rel="modulepreload" href="https://file-assets.apidog.com/docs-site/v1/assets/components-DMSdXhQK.js"/><link rel="modulepreload" href="https://file-assets.apidog.com/docs-site/v1/assets/root-CQ054TXt.js"/><link rel="modulepreload" href="https://file-assets.apidog.com/docs-site/v1/assets/root-Dv513fR3.js"/><link rel="modulepreload" href="https://file-assets.apidog.com/docs-site/v1/assets/route-D_6YkXJe.js"/><script>window.__remixContext = {"basename":"/","future":{"v3_fetcherPersist":true,"v3_relativeSplatPath":true,"v3_throwAbortReason":true,"v3_routeConfig":false,"v3_singleFetch":true,"v3_lazyRouteDiscovery":false,"unstable_optimizeDeps":false},"isSpaMode":false};window.__remixContext.stream = new ReadableStream({start(controller){window.__remixContext.streamController = controller;}}).pipeThrough(new TextEncoderStream());</script><script type="module" async="">import "https://file-assets.apidog.com/docs-site/v1/assets/manifest-db7ef313.js";
-import * as route0 from "https://file-assets.apidog.com/docs-site/v1/assets/root-Dv513fR3.js";
-import * as route1 from "https://file-assets.apidog.com/docs-site/v1/assets/route-D_6YkXJe.js";
+          },
+          {
+            "type": "function",
+            "function": {
+              "name": "get_stock_price",
+              "description": "Get the current stock price for a given symbol",
+              "parameters": {
+                "type": "object",
+                "properties": {
+                  "symbol": {
+                    "type": "string",
+                    "description": "The stock symbol, e.g. AAPL"
+                  }
+                },
+                "required": ["symbol"]
+              }
+            }
+          }
+        ]
 
-window.__remixRouteModules = {"root":route0,"routes/_index/route":route1};
+        ```
 
-import("https://file-assets.apidog.com/docs-site/v1/assets/entry.client-mUtkjgQm.js");</script></body></html><!--$--><script>window.__remixContext.streamController.enqueue("[{\"_1\":2,\"_231\":-5,\"_232\":-5},\"loaderData\",{\"_3\":4,\"_230\":-5},\"root\",{\"_5\":1,\"_6\":7,\"_19\":20,\"_23\":24,\"_33\":34,\"_52\":53,\"_112\":113,\"_155\":156,\"_229\":-7},\"type\",\"meta\",[8,11,16],{\"_9\":10},\"title\",\"API Documentation\",{\"_12\":13,\"_14\":15},\"name\",\"description\",\"content\",\"Design. Debug. Test. Document. Mock. Build APIs Faster \u0026 Together.\",{\"_12\":17,\"_14\":18},\"keywords\",\"API Design, API Specification, API Test, API Documentation, API Mock\",\"i18nState\",{\"_21\":22},\"clientLocale\",\"en-US\",\"errorCodeMessage\",{\"_25\":26,\"_27\":28,\"_29\":30,\"_31\":32},\"errorCode\",\"Unknown\",\"errorMessage\",\"Unexpected token 'o', \\\"forbidden\\n\\\" is not valid JSON: /api/v1/published-projects/domains/docs.kie.ai\",\"hideBuiltWith\",false,\"extra\",{},\"clientConfig\",{\"_35\":36,\"_37\":38,\"_39\":40,\"_41\":42,\"_47\":48,\"_49\":30,\"_50\":51},\"apiBaseUrl\",\"https://api.apidog.com\",\"appWebUrl\",\"https://app.apidog.com\",\"apidocBuiltinPrefixPath\",\"https://assets.apidog.com/app/static/apidoc\",\"cloudMockBaseUrls\",{\"_43\":44,\"_45\":46},\"pathMode\",\"https://mock.apidog.com/m1/{projectId}-{version}-{service}\",\"idMode\",\"https://mock.apidog.com/m2/{projectId}-{version}-{service}\",\"apidocIsShowLogo\",true,\"markdownDisableBreaks\",\"webhookGenerateCodeDefaultUrl\",\"https://your-api-server.com\",\"urlConfig\",{\"_54\":55,\"_58\":59,\"_99\":100,\"_108\":109},\"home\",{\"_56\":57},\"index\",\"https://apidog.com\",\"icon\",{\"_60\":61,\"_62\":63,\"_64\":63,\"_65\":66,\"_67\":68,\"_69\":70,\"_71\":72,\"_73\":74,\"_75\":76,\"_77\":78,\"_79\":80,\"_81\":82,\"_83\":84,\"_85\":86,\"_87\":88,\"_89\":90,\"_91\":92,\"_93\":94,\"_95\":96,\"_97\":98},\"apidoc\",\"https://assets.apidog.com/app/static/brand/apidoc.png\",\"apidog\",\"https://assets.apidog.com/app/static/brand/apidog-logo-256.png\",\"apidog europe\",\"googleDiscovery\",\"https://assets.apidog.com/app/static/brand/google-discovery.png\",\"har\",\"https://assets.apidog.com/app/static/brand/har.png\",\"iodocs\",\"https://assets.apidog.com/app/static/brand/io-doc.png\",\"jmeter\",\"https://assets.apidog.com/app/static/brand/jmeter.png\",\"openapi\",\"https://assets.apidog.com/app/static/brand/openapi.png\",\"postman\",\"https://assets.apidog.com/app/static/brand/postman.png\",\"raml\",\"https://assets.apidog.com/app/static/brand/raml.png\",\"wadl\",\"https://assets.apidog.com/app/static/brand/wadl.png\",\"curl\",\"https://assets.apidog.com/app/static/brand/curl.png\",\"insomnia\",\"https://assets.apidog.com/app/static/brand/insomnia.png\",\"wsdl\",\"https://assets.apidog.com/app/static/brand/wsdl.png\",\"markdown\",\"https://assets.apidog.com/app/static/brand/markdown.png\",\"html\",\"https://assets.apidog.com/app/static/brand/html.png\",\"protobuf\",\"https://assets.apidog.com/app/static/brand/protobuf.png\",\"soapui\",\"https://assets.apidog.com/app/static/brand/soapui.svg\",\"hoppscotch\",\"https://assets.apidog.com/app/static/brand/hoppscotch.svg\",\"javaProject\",\"https://assets.apidog.com/app/static/brand/java-project.png\",\"help\",{\"_56\":101,\"_102\":103,\"_104\":105,\"_106\":107},\"https://apidog.com/help\",\"browserExtension\",\"https://chromewebstore.google.com/detail/apidog-browser-extension/dmhljjnonlhapikmelaefohecogokhio\",\"csv\",\"https://apidog.com/help/reference/csv\",\"appMcpServer\",\"https://docs.apidog.com/apidog-mcp-server\",\"assets\",{\"_110\":111},\"logo512Png\",\"https://assets.apidog.com/static/logo/apidog-logo-512.png\",\"envConfig\",{\"_114\":60,\"_115\":116,\"_117\":116,\"_118\":119,\"_120\":121,\"_122\":123,\"_124\":57,\"_125\":62,\"_126\":22,\"_127\":128,\"_129\":130,\"_132\":133,\"_134\":135,\"_136\":137,\"_138\":139,\"_140\":141,\"_142\":143,\"_149\":150,\"_151\":48,\"_152\":153,\"_154\":30},\"RELEASE_BASE\",\"DEBUG_API_BASE\",\"\",\"DEBUG_WEB_URL_BASE\",\"AGENT_SERVER_API_BASE\",\"https://web-proxy.apidog.com\",\"APP_REGION\",\"GLOBAL\",\"APP_NAME\",\"Apidog\",\"APP_HOMEPAGE\",\"APP_NAME_LOWER\",\"DEFAULT_LOCALE\",\"APP_BROWSER_EXTENSION_ADAPTER\",\"apidogAgentCrossRequest\",\"APP_API_SERVER_HOSTNAMES\",[131],\"api.apidog.com\",\"APP_SUPPORT_EMAIL\",\"support@apidog.com\",\"APP_SCRIPT_MAIN_OBJECTS\",\"$\",\"SERVER_PROTOCOL\",\"http\",\"SERVER_HOST\",\"apidog-api-fordoc-svc\",\"DEFAULT_DOC_LAYOUT\",\"TwoColumn\",\"NOT_CUSTOM_DOMAIN_HOSTNAMES\",[144,145,146,147,148],\"www.apidog.com\",\"apidog.com\",\"www.apidog.io\",\"apidog.io\",\"share.apidog.com\",\"SERVER_REQUEST_TIMEOUT\",15000,\"IS_SHARED_DOC_INDEPENDENT_DOMAIN\",\"APIDOC_CUSTOM_DOMAIN_CNAME_REGEX\",[\"R\",\"\\\\d+\\\\.cname\\\\.apidog\\\\.com\",\"\"],\"IS_ALWAYS_USE_ORIGIN_FETCH\",\"docsDataState\",{\"_157\":158,\"_162\":163,\"_175\":176,\"_177\":178,\"_179\":180,\"_189\":190,\"_202\":203,\"_204\":205,\"_206\":207,\"_213\":214,\"_220\":-7,\"_221\":222,\"_223\":-7,\"_224\":-7,\"_225\":226,\"_228\":-7},\"navigation\",{\"_5\":159,\"_160\":161},\"NONE\",\"navRightLinkItems\",[],\"sidebarTree\",{\"_164\":-7,\"_165\":-7,\"_166\":167,\"_168\":-7,\"_169\":170,\"_171\":-7,\"_172\":-7,\"_173\":174},\"goBackSidebarTreeApiFolderNode\",\"rootSidebarTreeApiFolderNode\",\"sidebarTreeList\",[],\"selectedSidebarTreeNode\",\"parentSidebarTreeApiFolderNodes\",[],\"previousSidebarTreeNode\",\"nextSidebarTreeNode\",\"homeLink\",\"/\",\"docsBaseConfig\",{},\"versionList\",[],\"resourceData\",{\"_5\":181,\"_182\":-7,\"_183\":184},\"NotFound\",\"data\",\"extraData\",{\"_185\":186,\"_187\":188},\"apiFieldList\",[],\"dataSchemaDefinitions\",{},\"docsIdTypeData\",{\"_191\":192,\"_193\":194,\"_195\":194,\"_196\":194,\"_197\":116,\"_198\":194,\"_199\":200,\"_201\":-7},\"onlineType\",\"APIDOC\",\"branchId\",0,\"onlineId\",\"projectId\",\"subdirectory\",\"teamId\",\"visitType\",\"customDomain\",\"specialFileType\",\"notification\",[],\"footerBanner\",[],\"projectSetting\",{\"_208\":209,\"_210\":211},\"advancedSettings\",{},\"auth\",{\"_5\":212},\"noauth\",\"environments\",{\"_215\":216,\"_217\":-7,\"_218\":219},\"environmentList\",[],\"selectedEnvironment\",\"servers\",[],\"searchSettings\",\"versionSettings\",[],\"seoInfos\",\"itemPathPrefix\",\"appEnvMap\",{\"_227\":128},\"appBrowserExtensionAdapterKey\",\"customCodes\",\"primaryColorVariable\",\"routes/_index/route\",\"actionData\",\"errors\"]\n");</script><!--$--><script>window.__remixContext.streamController.close();</script><!--/$--><!--/$-->
+        ### Function Declaration Requirements
+
+        When implementing function calling in your prompt, you need to create a
+        `tools` array containing one or more function declarations. You can
+        define functions using JSON (specifically, a selected subset of OpenAPI
+        schema format).
+
+        A single function declaration can include the following parameters:
+
+        - **`name`** (string, required): The unique name of the function (e.g.,
+        `get_weather_forecast`, `send_email`). Use descriptive names without
+        spaces or special characters (use underscores or camelCase).
+
+        - **`description`** (string, optional but recommended): A clear and
+        detailed description of what the function does and its purpose. This is
+        crucial for the model to understand when to use the function. Be
+        specific and provide examples when necessary (e.g., "Find movie theaters
+        by location, with an option to also find movies currently showing at
+        those theaters.").
+
+        - **`parameters`** (object, required): Defines the input parameters
+        expected by the function. Contains:
+          - **`type`** (string): Specifies the overall data type, must be `"object"`.
+          - **`properties`** (object): Lists individual parameters, each with:
+            - **`type`** (string): The parameter's data type, such as `string`, `integer`, `boolean`, `array`.
+            - **`description`** (string): Description of the parameter's purpose and format. Provide examples and constraints (e.g., "City and state, e.g. 'San Francisco, CA' or a postal code like '95616'.").
+            - **`enum`** (array, optional): If parameter values come from a fixed set, use `enum` to list allowed values rather than just describing them in the description. This helps improve accuracy (e.g., `"enum": ["daylight", "cool", "warm"]`).
+          - **`required`** (array): An array of strings listing the parameter names required for the function to run.
+        </Accordion>
+
+        </AccordionGroup>
+
+        ## Response Format Parameter
+
+        The `response_format` parameter is an optional JSON Schema object that
+        defines the structure of the response. When provided, the model will
+        generate responses that conform to this schema.
+
+        <div style="padding: 20px; background-color: rgba(255, 87, 34, 0.03);
+        border: 1px solid rgba(255, 87, 34, 0.15); border-left: 6px solid
+        #ff5722; border-radius: 12px; margin: 25px 0;">
+          <div style="display: flex; align-items: center; margin-bottom: 15px;">
+            <div style="background-color: #ff5722; color: #fff; padding: 3px 10px; border-radius: 5px; font-size: 11px; font-weight: 800; margin-right: 12px; letter-spacing: 1px;">PARAMETER CONFLICT</div>
+            <strong style="color: #bf360c; font-size: 16px;">Incompatible Configuration</strong>
+          </div>
+
+          <p style="color: #444; margin-bottom: 15px; line-height: 1.6; font-size: 14px;">
+            The <code>response_format</code> parameter and <b>Function Calling</b> (tools) are mutually exclusive.
+          </p>
+
+          <div style="display: flex; align-items: stretch; background: #fff; border-radius: 8px; border: 1px solid #eee; overflow: hidden; margin: 10px 0;">
+            <div style="flex: 1; padding: 12px; text-align: center; background: rgba(0,0,0,0.02);">
+               <code style="color: #ff5722; font-size: 13px;">response_format</code>
+            </div>
+            <div style="display: flex; align-items: center; background: #ff5722; color: #fff; padding: 0 15px; font-size: 12px; font-weight: bold;">
+
+            </div>
+            <div style="flex: 1; padding: 12px; text-align: center; background: rgba(0,0,0,0.02);">
+               <code style="color: #ff5722; font-size: 13px;">tools / functions</code>
+            </div>
+          </div>
+
+          <ul style="color: #666; font-size: 13px; margin-top: 15px; padding-left: 18px; line-height: 1.6;">
+            <li>Use <code>response_format</code> for structured JSON output (e.g., JSON Mode).</li>
+            <li>Use <b>Function Calling</b> for interacting with external tools and APIs.</li>
+          </ul>
+        </div>
+
+        <AccordionGroup>
+
+        <Accordion title="JSON Schema Support">
+
+        The `response_format` follows the JSON Schema specification. Supported
+        types include:
+
+        - **`string`**: For text values
+
+        - **`number`**: For floating-point numbers
+
+        - **`integer`**: For whole numbers
+
+        - **`boolean`**: For true/false values
+
+        - **`object`**: For structured data with key-value pairs
+
+        - **`array`**: For lists of items
+
+        - **`null`**: To allow null values, add `"null"` to the type array
+        (e.g., `{"type": ["string", "null"]}`)
+
+        #### Type-Specific Properties
+
+        **For `object` values:**
+
+        - `properties`: Object mapping property names to their schema
+        definitions
+
+        - `required`: Array of required property names
+
+        - `additionalProperties`: Controls whether properties not in
+        `properties` are allowed
+
+        **For `string` values:**
+
+        - `enum`: List of specific possible string values for classification
+
+        - `format`: Specifies string syntax (e.g., `date-time`, `date`, `time`)
+
+        **For `number` and `integer` values:**
+
+        - `enum`: List of specific possible numeric values
+
+        - `minimum`: Inclusive minimum value
+
+        - `maximum`: Inclusive maximum value
+
+        **For `array` values:**
+
+        - `items`: Schema definition for all array elements
+
+        - `prefixItems`: List of schemas for the first N items (tuple-like
+        structures)
+
+        - `minItems`: Minimum number of items in the array
+
+        - `maxItems`: Maximum number of items in the array
+
+        </Accordion>
+
+        <Accordion title="Example">
+
+        ```json
+
+        {
+          "response_format": {
+            "type": "json_schema",
+            "properties": {
+              "response": {
+                "type": "string"
+              }
+            }
+          }
+        }
+
+        ```
+
+        </Accordion>
+
+        <Accordion title="Best Practices">
+
+        - **Clear descriptions**: Use the `description` field in the schema to
+        clearly explain what each property means
+
+        - **Strong typing**: Use specific types (`integer`, `string`, `enum`)
+        whenever possible
+
+        - **Prompt engineering**: Clearly state in your prompt what you want the
+        model to extract or structure
+
+        - **Validation**: While structured output ensures JSON is syntactically
+        correct, always validate the semantic correctness of values in your
+        application code
+
+        </Accordion>
+
+        </AccordionGroup>
+      operationId: gemini-3-pro-chat-completions
+      tags:
+        - docs/en/Market/Chat  Models/Gemini
+      parameters: []
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                messages:
+                  type: array
+                  description: >-
+                    An array of message objects. Each message has a role and
+                    content.
+
+                    **Unified Media File Format:**
+
+                    In the content array, whether it's images, videos, audio, or
+                    other document types, all media files use the same format
+                    structure:
+
+                    - The `type` field is always `"image_url"`
+
+                    - The `image_url` field name remains unchanged
+
+                    - The only thing that changes is the `url` value, which
+                    points to the corresponding media file address
+
+                    For example: images, videos, audio, PDFs, and other
+                    documents all use the same `{ type: 'image_url', image_url:
+                    { url: '...' } }` structure.
+                  items:
+                    $ref: '#/components/schemas/Message'
+                  minItems: 1
+                stream:
+                  type: boolean
+                  default: true
+                  description: >-
+                    If set to true, partial message deltas will be sent as
+                    server-sent events. Default is true.
+                tools:
+                  type: array
+                  description: >-
+                    An optional array of tools the model may call. The array can
+                    contain multiple objects. Supports two formats:
+
+                    1. **Google Search**: `{"type": "function", "function":
+                    {"name": "googleSearch"}}` - Enables real-time information
+                    retrieval via Google Search.
+
+                    2. **Function calling**: Define your own functions with
+                    name, description, and parameters. You can define multiple
+                    functions in the array. Functions are defined using JSON
+                    (specifically, a selected subset of OpenAPI schema format).
+
+                    **Important**: Google Search and function calling are
+                    mutually exclusive - you cannot use both in the same
+                    request. When using function calling, you can include
+                    multiple function definitions. Function calling and
+                    `response_format` are also mutually exclusive - you cannot
+                    use both in the same request.
+                  items:
+                    $ref: '#/components/schemas/Tool'
+                  minItems: 0
+                include_thoughts:
+                  type: boolean
+                  description: >-
+                    Whether to include thoughts in the response. If set to true,
+                    thoughts will be included in the response, otherwise they
+                    will not be included. Default is true.
+                  default: true
+                reasoning_effort:
+                  type: string
+                  enum:
+                    - low
+                    - high
+                  description: >-
+                    The effort level for the model to use for reasoning. Low
+                    effort is faster to respond, high effort is slower to
+                    respond but solves more complex problems. Default is "high".
+                  default: high
+                response_format:
+                  description: >-
+                    Optional JSON Schema object defining the structure of the
+                    response. When provided, the model will generate responses
+                    that conform to this schema. **`response_format` and
+                    function calling are mutually exclusive** - you cannot use
+                    both in the same request.
+
+                    Example:
+
+                    ```json
+
+                    {
+                      "type": "json_schema",
+                      "properties": {
+                        "response": {
+                          "type": "string"
+                        }
+                      }
+                    }
+
+                    ```
+                  $ref: '#/components/schemas/ResponseFormat'
+              required:
+                - messages
+              x-apidog-orders:
+                - messages
+                - stream
+                - tools
+                - include_thoughts
+                - reasoning_effort
+                - response_format
+              examples:
+                - messages:
+                    - role: user
+                      content:
+                        - type: text
+                          text: What is in this image?
+                        - type: image_url
+                          image_url:
+                            url: >-
+                              https://file.aiquickdraw.com/custom-page/akr/section-images/1759055072437dqlsclj2.png
+                  tools:
+                    - type: function
+                      function:
+                        name: googleSearch
+                  stream: true
+                  include_thoughts: true
+                  reasoning_effort: high
+                  response_format:
+                    type: json_schema
+                    properties:
+                      response:
+                        type: string
+              x-apidog-ignore-properties: []
+            example:
+              messages:
+                - role: user
+                  content:
+                    - type: text
+                      text: What is in this image?
+                    - type: image_url
+                      image_url:
+                        url: >-
+                          https://file.aiquickdraw.com/custom-page/akr/section-images/1759055072437dqlsclj2.png
+              tools:
+                - type: function
+                  function:
+                    name: googleSearch
+              stream: true
+              include_thoughts: true
+              reasoning_effort: high
+              response_format:
+                type: json_schema
+                json_schema:
+                  name: structured_output
+                  strict: true
+                  schema:
+                    type: object
+                    properties:
+                      response:
+                        type: string
+      responses:
+        '200':
+          description: >-
+            Request successful. When `response_format` is provided, the response
+            will conform to the specified JSON schema. Otherwise, returns the
+            standard chat completion format.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  id:
+                    type: string
+                    description: Unique identifier for the chat completion
+                    examples:
+                      - chatcmpl-example-123
+                  object:
+                    type: string
+                    description: Object type
+                    examples:
+                      - chat.completion
+                  created:
+                    type: integer
+                    format: int64
+                    description: Unix timestamp of when the completion was created
+                    examples:
+                      - 1677652288
+                  model:
+                    type: string
+                    description: Model name
+                    examples:
+                      - gemini-3-pro
+                  choices:
+                    type: array
+                    description: Array of completion choices
+                    items:
+                      type: object
+                      properties:
+                        index:
+                          type: integer
+                          description: Index of the choice
+                          examples:
+                            - 0
+                        message:
+                          type: object
+                          properties:
+                            role:
+                              type: string
+                              examples:
+                                - assistant
+                            content:
+                              type: string
+                              description: Message content
+                          required:
+                            - role
+                            - content
+                          x-apidog-orders:
+                            - role
+                            - content
+                          x-apidog-ignore-properties: []
+                        finish_reason:
+                          type: string
+                          description: Reason why the completion finished
+                          examples:
+                            - stop
+                      required:
+                        - index
+                        - message
+                        - finish_reason
+                      x-apidog-orders:
+                        - index
+                        - message
+                        - finish_reason
+                      x-apidog-ignore-properties: []
+                  usage:
+                    type: object
+                    properties:
+                      prompt_tokens:
+                        type: integer
+                        description: Number of tokens in the prompt
+                        examples:
+                          - 10
+                      completion_tokens:
+                        type: integer
+                        description: Number of tokens in the completion
+                        examples:
+                          - 50
+                      total_tokens:
+                        type: integer
+                        description: Total number of tokens
+                        examples:
+                          - 60
+                    required:
+                      - prompt_tokens
+                      - completion_tokens
+                      - total_tokens
+                    x-apidog-orders:
+                      - prompt_tokens
+                      - completion_tokens
+                      - total_tokens
+                    x-apidog-ignore-properties: []
+                x-apidog-orders:
+                  - id
+                  - object
+                  - created
+                  - model
+                  - choices
+                  - usage
+                x-apidog-ignore-properties: []
+          headers: {}
+          x-apidog-name: ''
+        '400':
+          description: Bad Request - Invalid request parameters
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: object
+                    properties:
+                      message:
+                        type: string
+                        examples:
+                          - Invalid request parameters
+                      type:
+                        type: string
+                        examples:
+                          - invalid_request_error
+                    x-apidog-orders:
+                      - message
+                      - type
+                    x-apidog-ignore-properties: []
+                x-apidog-orders:
+                  - error
+                x-apidog-ignore-properties: []
+          headers: {}
+          x-apidog-name: ''
+        '401':
+          description: Unauthorized - Invalid or missing API key
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: object
+                    properties:
+                      message:
+                        type: string
+                        examples:
+                          - Unauthorized
+                      type:
+                        type: string
+                        examples:
+                          - authentication_error
+                    x-apidog-orders:
+                      - message
+                      - type
+                    x-apidog-ignore-properties: []
+                x-apidog-orders:
+                  - error
+                x-apidog-ignore-properties: []
+          headers: {}
+          x-apidog-name: ''
+        '429':
+          description: Rate Limited - Too many requests
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: object
+                    properties:
+                      message:
+                        type: string
+                        examples:
+                          - Rate limit exceeded
+                      type:
+                        type: string
+                        examples:
+                          - rate_limit_error
+                    x-apidog-orders:
+                      - message
+                      - type
+                    x-apidog-ignore-properties: []
+                x-apidog-orders:
+                  - error
+                x-apidog-ignore-properties: []
+          headers: {}
+          x-apidog-name: ''
+        '500':
+          description: request failed
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  code:
+                    type: integer
+                    description: >-
+                      Response status code
+
+                      - **200**: Success - Request has been processed
+                      successfully
+
+                      - **401**: Unauthorized - Authentication credentials are
+                      missing or invalid
+
+                      - **402**: Insufficient Credits - Account does not have
+                      enough credits to perform the operation
+
+                      - **404**: Not Found - The requested resource or endpoint
+                      does not exist
+
+                      - **408**: Upstream is currently experiencing service
+                      issues. No result has been returned for over 10 minutes.
+
+                      - **422**: Validation Error - The request parameters
+                      failed validation checks
+
+                      - **429**: Rate Limited - Request limit has been exceeded
+                      for this resource
+
+                      - **455**: Service Unavailable - System is currently
+                      undergoing maintenance
+
+                      - **500**: Server Error - An unexpected error occurred
+                      while processing the request
+
+                      - **501**: Generation Failed - Content generation task
+                      failed
+
+                      - **505**: Feature Disabled - The requested feature is
+                      currently disabled
+                  msg:
+                    type: string
+                    description: Response message, error description when failed
+                  data:
+                    type: object
+                    properties: {}
+                    x-apidog-orders: []
+                    x-apidog-ignore-properties: []
+                x-apidog-orders:
+                  - code
+                  - msg
+                  - data
+                required:
+                  - code
+                  - msg
+                  - data
+                x-apidog-ignore-properties: []
+              example:
+                code: 500
+                msg: >-
+                  Server Error - An unexpected error occurred while processing
+                  the request
+                data: null
+          headers: {}
+          x-apidog-name: 'Error '
+      security: []
+      x-apidog-folder: docs/en/Market/Chat  Models/Gemini
+      x-apidog-status: released
+      x-run-in-apidog: https://app.apidog.com/web/project/1184766/apis/api-28506433-run
+components:
+  schemas:
+    ResponseFormat:
+      type: object
+      properties:
+        type:
+          type: string
+          description: Only json_schema value
+        json_schema:
+          type: object
+          properties:
+            name:
+              type: string
+              description: Only structured_output value
+            strict:
+              type: boolean
+              description: Enable strict mode?
+            schema:
+              type: object
+              properties:
+                type:
+                  type: string
+                  description: >-
+                    The response_format follows the JSON Schema specification.
+                    Supported types include:
+
+                    string: For text values
+
+                    number: For floating-point numbers
+
+                    integer: For whole numbers
+
+                    boolean: For true/false values
+
+                    object: For structured data with key-value pairs
+
+                    array: For lists of items
+
+                    null: To allow null values, add "null" to the type array
+                properties:
+                  type: object
+                  properties:
+                    response:
+                      type: object
+                      properties:
+                        type:
+                          type: string
+                      required:
+                        - type
+                      x-apidog-orders:
+                        - type
+                      x-apidog-ignore-properties: []
+                  required:
+                    - response
+                  x-apidog-orders:
+                    - response
+                  description: >-
+                    Object mapping property names to their JSON Schema
+                    definitions
+                  x-apidog-ignore-properties: []
+                required:
+                  type: array
+                  items:
+                    type: string
+                  description: Array of required property names
+                title:
+                  type: string
+                  description: Short description of the schema
+                description:
+                  type: string
+                  description: Detailed description of the schema
+              required:
+                - type
+                - properties
+                - required
+                - title
+                - description
+              x-apidog-orders:
+                - type
+                - properties
+                - required
+                - title
+                - description
+              x-apidog-ignore-properties: []
+          required:
+            - name
+            - strict
+            - schema
+          x-apidog-orders:
+            - name
+            - strict
+            - schema
+          description: >-
+            JSON Schema object defining the structure of the response. When
+            provided, the model will generate responses that conform to this
+            schema.
+          x-apidog-ignore-properties: []
+      required:
+        - type
+        - json_schema
+      x-apidog-orders:
+        - type
+        - json_schema
+      title: chat model structured data structure
+      x-apidog-ignore-properties: []
+      x-apidog-folder: ''
+    Tool:
+      type: object
+      description: >-
+        Tool definition.
+
+        - **Enhanced Network Access**: `{"type": "function", "function":
+        {"name": "googleSearch"}}`
+      properties:
+        type:
+          type: string
+          enum:
+            - function
+          description: Utility type. Must be 'function'.
+          examples:
+            - function
+        function:
+          type: object
+          description: Function declarations for enhanced network access.
+          properties:
+            name:
+              type: string
+              description: Function name. Must be `googleSearch`.
+            description:
+              type: string
+              description: >-
+                Optional but recommended. A clear and specific description of
+                the function's purpose. Helps the model understand when to call
+                this function.
+            parameters:
+              type: object
+              description: >-
+                Defines a JSON Schema object for function parameters. Required
+                for custom functions; not used by 'googleSearch'. Follows the
+                JSON Schema specification.
+              properties:
+                type:
+                  type: string
+                  enum:
+                    - object
+                  description: Must be 'object' for function parameters
+                properties:
+                  type: object
+                  description: Map parameter names to objects defined in their JSON Schema.
+                  additionalProperties:
+                    type: string
+                  x-apidog-orders: []
+                  properties: {}
+                  x-apidog-ignore-properties: []
+                required:
+                  type: array
+                  items:
+                    type: string
+                  description: Required parameter name array
+              required:
+                - type
+                - properties
+              x-apidog-orders:
+                - type
+                - properties
+                - required
+              x-apidog-ignore-properties: []
+          required:
+            - name
+          x-apidog-orders:
+            - name
+            - description
+            - parameters
+          x-apidog-ignore-properties: []
+      required:
+        - type
+        - function
+      x-apidog-orders:
+        - type
+        - function
+      title: The tools parameter of the chat model
+      x-apidog-ignore-properties: []
+      x-apidog-folder: ''
+    Message:
+      type: object
+      properties:
+        role:
+          type: string
+          enum:
+            - developer
+            - system
+            - user
+            - assistant
+            - tool
+          description: >-
+            Message role
+
+            - **developer**: Developer-provided instructions that the model
+            should follow, regardless of user messages. In o1 models and newer
+            versions, developer messages replace the previous system messages.
+
+            - **system**: Developer-provided instructions that the model should
+            follow, regardless of user messages. In o1 models and newer
+            versions, please use developer messages instead.
+
+            - **user**: Messages sent by end users, containing prompts or
+            additional context information.
+
+            - **assistant**: Messages sent by the model in response to user
+            messages.
+
+            - **tool**: Content of tool messages.
+        content:
+          type: array
+          description: >-
+            Message content array that can contain text and image objects.
+
+            **Unified Media File Format:**
+
+            Whether it's images, videos, audio, or other document types, all
+            media files use the same format structure:
+
+            - The `type` field is always `"image_url"`
+
+            - The `image_url` field name remains unchanged
+
+            - The only thing that changes is the `url` value, which points to
+            the corresponding media file address
+
+            For example: images, videos, audio, PDFs, and other documents all
+            use the same `{ type: 'image_url', image_url: { url: '...' } }`
+            structure.
+          items:
+            oneOf:
+              - type: object
+                properties:
+                  type:
+                    type: string
+                    enum:
+                      - text
+                    examples:
+                      - text
+                  text:
+                    type: string
+                    description: 消息的文本内容
+                required:
+                  - type
+                  - text
+                x-apidog-orders:
+                  - type
+                  - text
+                x-apidog-ignore-properties: []
+              - type: object
+                properties:
+                  type:
+                    type: string
+                    enum:
+                      - image_url
+                    examples:
+                      - image_url
+                  image_url:
+                    type: object
+                    properties:
+                      url:
+                        type: string
+                        format: uri
+                        description: 图像的 URL
+                    required:
+                      - url
+                    x-apidog-orders:
+                      - url
+                    x-apidog-ignore-properties: []
+                required:
+                  - type
+                  - image_url
+                x-apidog-orders:
+                  - type
+                  - image_url
+                x-apidog-ignore-properties: []
+      required:
+        - role
+        - content
+      title: The messages parameter of the chat model
+      x-apidog-orders:
+        - role
+        - content
+      x-apidog-ignore-properties: []
+      x-apidog-folder: ''
+  securitySchemes:
+    BearerAuth:
+      type: bearer
+      scheme: bearer
+      bearerFormat: API Key
+      description: >-
+        All API requests require a Bearer Token. Add the header `Authorization:
+        Bearer YOUR_API_KEY` to authenticate requests.
+    BearerAuth1:
+      type: bearer
+      scheme: bearer
+      bearerFormat: API Key
+      description: >-
+        所有 API 请求都需要 Bearer Token。请在请求头中添加 `Authorization: Bearer YOUR_API_KEY`
+        进行身份验证。
+servers:
+  - url: https://api.kie.ai
+    description: 正式环境
+security:
+  - BearerAuth: []
+    x-apidog:
+      schemeGroups:
+        - id: kn8M4YUlc5i0A0179ezwx
+          schemeIds:
+            - BearerAuth
+      required: true
+      use:
+        id: kn8M4YUlc5i0A0179ezwx
+      scopes:
+        kn8M4YUlc5i0A0179ezwx:
+          BearerAuth: []
+
+```
 
 ---
 
@@ -61740,40 +69300,723 @@ import("https://file-assets.apidog.com/docs-site/v1/assets/entry.client-mUtkjgQm
 
 **Source:** [https://docs.kie.ai/market/gemini/gemini-3-1-pro.md][162]
 
-<!DOCTYPE html><html lang="en-US" class="group/root" id="html" data-theme="light" data-accent-color="purple"><head><script src="https://file-assets.apidog.com/docs-site/v1/assets/prepareDocsConfigScript-CLIBKQbk.js"></script><script>__prepareDocsConfigScript(JSON.parse("{\"theme\":\"system\",\"themePrimarySettings\":{\"light\":{\"accentColor\":\"purple\"},\"dark\":{\"accentColor\":\"purple\"}},\"logoSettings\":{\"light\":{\"icon\":\"\",\"type\":\"project\"},\"dark\":{\"icon\":\"\",\"type\":\"followLight\"}},\"backgroundImageSettings\":{\"light\":{\"type\":\"custom\",\"color\":\"\"},\"dark\":{\"type\":\"followLight\",\"color\":\"\"}},\"id\":0,\"subdirectory\":\"\"}"));</script><script>window.eventTracking = {
-      dataLayer: []
-    }
-    window.eventTracking.report = function(){
-        window.eventTracking.dataLayer.push(arguments);
-    }</script><meta charSet="utf-8"/><meta name="viewport" content="width=device-width, initial-scale=1"/><title>API Documentation</title><meta name="description" content="Design. Debug. Test. Document. Mock. Build APIs Faster &amp; Together."/><meta name="keywords" content="API Design, API Specification, API Test, API Documentation, API Mock"/><link rel="stylesheet" href="https://file-assets.apidog.com/docs-site/v1/assets/root-CpC_E1fb.css"/></head><body class="overflow-hidden g-body"><div class="flex h-full w-full flex-col overflow-auto"><div class="flex flex-1 flex-col items-center justify-center"><div class="flex w-auto flex-col items-center justify-center max-os:p-5 os:w-[480px]"><svg width="104" height="104" viewBox="0 0 104 104" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M92.9557 41.8969L88.7262 25.2175C87.4089 19.8194 84.8039 16.1447 80.9015 14.1934L80.3963 13.9458C79.802 13.6685 79.178 13.4407 78.5243 13.2426C75.4142 12.3214 72.0268 12.371 68.362 13.3813C65.8759 14.0747 63.2612 15.2038 60.5176 16.7886C56.7835 18.9478 53.3167 21.6319 50.1076 24.8708C49.0973 25.8711 48.1266 26.9209 47.1956 28.0204C46.314 29.0406 45.4622 30.1105 44.6302 31.2198C42.9266 33.4781 41.3121 35.9245 39.7868 38.5492C34.1015 48.3648 31.2588 57.9329 31.2588 67.2631C31.2588 72.0471 32.1106 76.1181 33.8142 79.4461C34.6759 81.1101 35.6862 82.5263 36.8748 83.7248C37.9346 84.7846 39.1232 85.6564 40.4405 86.3398L41.0151 86.627V98.9485C41.0151 99.9984 41.3221 100.712 41.9461 101.058C42.5701 101.415 43.3426 101.326 44.2637 100.801L67.0249 87.6571C67.946 87.1223 68.7186 86.3199 69.3426 85.2502C69.9666 84.1706 70.2736 83.1008 70.2736 82.0509V78.3169L76.7811 74.5629C78.5639 73.5328 80.0993 71.9184 81.377 69.7195C82.6448 67.5207 83.2786 65.4011 83.2786 63.341V52.1485L89.786 48.3946C90.8657 47.7706 91.7373 46.79 92.391 45.4429C93.0348 44.1058 93.2231 42.927 92.9557 41.8969ZM62.8352 66.6095C62.2112 67.6891 61.4387 68.4914 60.5176 69.0263C59.5964 69.5512 58.8237 69.6404 58.1997 69.2838C57.5856 68.9371 57.2687 68.2238 57.2687 67.164C57.2687 66.1042 57.5856 65.0445 58.1997 63.9748C58.2592 63.8658 58.3186 63.7667 58.378 63.6676C58.9129 62.8356 59.5468 62.1819 60.2797 61.7164C60.359 61.6569 60.4383 61.6075 60.5176 61.558C61.4387 61.033 62.2112 60.9439 62.8352 61.2906C63.4592 61.6471 63.7761 62.3604 63.7761 63.4103C63.7761 64.4602 63.4592 65.5398 62.8352 66.6095ZM69.5011 38.7572C69.402 39.1336 69.2832 39.5101 69.1346 39.8865C68.5997 41.3227 67.4607 43.6206 65.7274 46.8C64.9647 48.1768 64.41 49.3158 64.0535 50.237C63.8157 50.861 63.6176 51.4748 63.4691 52.0592C63.3997 52.3366 63.3304 52.6041 63.2809 52.8715C63.1224 53.7729 62.7856 54.6148 62.2706 55.3774C61.7556 56.1401 61.2009 56.6948 60.6066 57.0315C59.8935 57.4475 59.319 57.4971 58.8535 57.2099C58.3978 56.9128 58.2196 56.358 58.3285 55.5557C58.487 54.2186 58.8039 52.931 59.2596 51.7029C59.7251 50.4747 60.4679 48.9392 61.498 47.0969C62.3201 45.6409 62.9837 44.4029 63.4691 43.4026C63.7761 42.7885 64.0138 42.2636 64.1921 41.8278C64.202 41.7981 64.2119 41.7782 64.2218 41.7485C64.6775 40.5797 64.9153 39.5001 64.9153 38.4997C64.9153 37.321 64.5191 36.5881 63.7366 36.2909C62.9442 36.0037 61.9537 36.2019 60.7652 36.8853C60.0025 37.3211 59.2794 37.945 58.5662 38.7572C57.863 39.5694 57.239 40.5105 56.7041 41.5604C56.2683 42.5013 55.7632 43.2442 55.1986 43.7889C54.6241 44.3337 54.0397 44.6209 53.4455 44.6506C52.8512 44.6902 52.4055 44.4525 52.1083 43.9374C51.8112 43.4224 51.8211 42.7687 52.1479 41.9565C53.0691 39.7477 54.2973 37.7074 55.8424 35.8552C56.5754 34.9737 57.338 34.1811 58.1205 33.4878C58.9822 32.735 59.8638 32.0913 60.7652 31.5664C63.3701 30.0708 65.5491 29.7141 67.3121 30.4966C69.0752 31.279 69.9468 32.9829 69.9468 35.5977C69.9468 36.6476 69.7982 37.7073 69.5011 38.7572Z" stroke="#667085" stroke-linecap="round" stroke-linejoin="round"></path><path d="M63.777 63.4086C63.777 64.4684 63.46 65.5381 62.836 66.6078C62.212 67.6874 61.4395 68.4896 60.5184 69.0245C59.5972 69.5494 58.8246 69.6387 58.2006 69.2821C57.5865 68.9354 57.2695 68.2221 57.2695 67.1623C57.2695 66.1025 57.5865 65.0428 58.2006 63.973C58.26 63.8641 58.3194 63.7649 58.3789 63.6659C58.9137 62.8339 59.5476 62.1802 60.2806 61.7147C60.3598 61.6552 60.4392 61.6058 60.5184 61.5563C61.4395 61.0313 62.212 60.9422 62.836 61.2888C63.46 61.6454 63.777 62.3587 63.777 63.4086Z" stroke="#667085" stroke-linecap="round" stroke-linejoin="round"></path><path d="M63.7373 36.2894C62.9449 36.0021 61.9544 36.2003 60.7659 36.8838C60.0032 37.3196 59.2801 37.9435 58.567 38.7557C57.8638 39.5679 57.2398 40.5089 56.7049 41.5588C56.2691 42.4998 55.7639 43.2426 55.1994 43.7874C54.6249 44.3321 54.0405 44.6193 53.4462 44.649C52.8519 44.6886 52.4062 44.4509 52.1091 43.9359C51.8119 43.4208 51.8219 42.7671 52.1487 41.9549C53.0699 39.7461 54.298 37.7059 55.8432 35.8537C56.5761 34.9721 57.3388 34.1797 58.1213 33.4863L63.7373 36.2894Z" stroke="#667085" stroke-linecap="round" stroke-linejoin="round"></path><path d="M69.9474 35.596C69.9474 36.6459 69.7988 37.7056 69.5017 38.7555C69.4026 39.1319 69.2838 39.5085 69.1352 39.8849C68.6003 41.321 67.4613 43.6189 65.728 46.7984C64.9653 48.1751 64.4106 49.3141 64.054 50.2352C63.8163 50.8592 63.6182 51.4732 63.4697 52.0576C63.4003 52.3349 63.331 52.6024 63.2815 52.8698C63.123 53.7711 62.7862 54.6131 62.2712 55.3758C61.7561 56.1385 61.2015 56.693 60.6072 57.0298C59.894 57.4458 59.3196 57.4955 58.854 57.2083C58.3984 56.9111 58.2201 56.3563 58.3291 55.554C58.4876 54.2168 58.8045 52.9293 59.2601 51.7011C59.7257 50.4729 60.4685 48.9376 61.4986 47.0953C62.3207 45.6393 62.9843 44.4012 63.4697 43.4008C63.7767 42.7868 64.0144 42.2619 64.1927 41.8261C64.2026 41.7964 64.2125 41.7766 64.2224 41.7468C64.678 40.5781 64.9158 39.4984 64.9158 38.498C64.9158 37.3193 64.5196 36.5865 63.7371 36.2893L58.1211 33.4862C58.9828 32.7334 59.8643 32.0896 60.7657 31.5647C63.3706 30.069 65.5497 29.7125 67.3127 30.4949C69.0758 31.2774 69.9474 32.9811 69.9474 35.596Z" stroke="#667085" stroke-linecap="round" stroke-linejoin="round"></path><path d="M41.9466 101.059L22.3253 91.2429L22.1371 91.1537C21.5131 90.807 21.2061 90.094 21.2061 89.0441V76.7227L41.0156 86.6274V98.9488C41.0156 99.9988 41.3226 100.712 41.9466 101.059Z" stroke="#667085" stroke-linecap="round" stroke-linejoin="round"></path><path d="M80.3972 13.9448C79.8029 13.6675 79.1789 13.4397 78.5252 13.2416C75.4151 12.3204 72.0277 12.3701 68.3629 13.3804C65.8768 14.0737 63.2621 15.2028 60.5185 16.7876C56.7844 18.9468 53.3176 21.6309 50.1085 24.8698C49.0982 25.8702 48.1275 26.92 47.1965 28.0194C46.3149 29.0396 45.4631 30.1096 44.6311 31.2189C42.9275 33.4772 41.313 35.9236 39.7877 38.5484C34.1024 48.364 31.2597 57.932 31.2597 67.2623C31.2597 72.0463 32.1115 76.1171 33.8151 79.4451C34.6768 81.1091 35.6871 82.5253 36.8757 83.7238C37.9355 84.7836 39.1241 85.6554 40.4414 86.3388L21.2065 76.7213C18.1161 75.2752 15.7192 72.8783 14.0056 69.5404C12.302 66.2124 11.4502 62.1415 11.4502 57.3575C11.4502 48.0272 14.2929 38.4592 19.9782 28.6436C25.6734 18.828 32.587 11.5678 40.7089 6.88282C47.4838 2.97044 53.486 1.79169 58.7157 3.33683C59.4784 3.56464 60.2113 3.84208 60.8948 4.17884L61.281 4.37688L80.3972 13.9448Z" stroke="#667085" stroke-linecap="round" stroke-linejoin="round"></path></svg><div class="align-center mt-8 flex justify-center text-center text-2xl font-semibold text-color">An abnormal error occurred, please try &#x27;Reload&#x27; or &#x27;get Support&#x27; to help you solve it!</div><div class="align-center mt-2 text-center text-lg font-400 text-secondary">Unexpected token &#x27;o&#x27;, &quot;forbidden
-&quot; is not valid JSON: /api/v1/published-projects/domains/docs.kie.ai</div></div></div><div class="flex flex-col items-center justify-center p-8 text-base font-base text-secondary"><div class="inline-flex items-center text-base font-400 text-secondary _footer-logo-wrapper_1kbjg_1"><a class="_footer-logo_1kbjg_1 flex-shrink-0" aria-label="homepage link" href="https://apidog.com"><span class="inline-flex items-center"><span class="mr-[-4px]">Built with</span><svg width="61" height="18" viewBox="0 0 61 18" fill="none" xmlns="http://www.w3.org/2000/svg" class="h-[18px] w-[80px]"><path d="M12.3836 1.67806C11.6452 0.940647 10.4478 0.940647 9.70932 1.67806L8.99795 2.3884L8.30644 1.69789C7.57144 0.963937 6.37437 0.936241 5.62991 1.66043C4.88545 2.38463 4.86748 3.60515 5.61194 4.34854L6.32331 5.05888C7.80026 6.53371 10.195 6.53371 11.6723 5.05888L12.3836 4.34854C13.1221 3.61113 13.1221 2.41547 12.3836 1.67806Z" fill="#667085"></path><path d="M12.3838 13.6515L11.6729 12.9412C10.1968 11.4664 7.80339 11.4664 6.32699 12.9412L5.61603 13.6515C4.87799 14.389 4.87799 15.5846 5.61603 16.322C6.35408 17.0594 7.55076 17.0594 8.28881 16.322L8.99976 15.6117L9.69087 16.3022C10.4255 17.0361 11.6218 17.0638 12.3659 16.3396C13.1219 15.6038 13.1278 14.3949 12.3838 13.6515Z" fill="#667085"></path><path d="M15.6105 8.99642L16.3214 8.28481C17.0655 7.54009 17.0595 6.32906 16.3035 5.59191C15.5595 4.86643 14.3631 4.89418 13.6285 5.62943L13.3098 5.94851C12.1666 7.09269 10.6166 7.73526 9 7.73526C7.38344 7.73526 5.83335 7.09238 4.69023 5.94851L4.37146 5.62943C3.63689 4.89418 2.44054 4.86643 1.69652 5.59191C0.940527 6.32906 0.934542 7.54009 1.67856 8.28481L2.38951 8.99642L1.67856 9.70803C0.940527 10.4468 0.940527 11.6445 1.67856 12.3833C2.4166 13.122 3.61326 13.122 4.3513 12.3833L4.74347 11.9907C5.85225 10.8809 7.35604 10.2576 8.92409 10.2576H8.9874C10.6162 10.2576 12.1666 10.9005 13.3098 12.0446C13.5126 12.2477 13.6484 12.3836 13.6484 12.3836C14.3864 13.1223 15.5831 13.1223 16.3211 12.3836C17.0592 11.6449 17.0592 10.4471 16.3211 9.70834L15.6102 8.99673L15.6105 8.99642Z" fill="#667085"></path><path fill-rule="evenodd" clip-rule="evenodd" d="M37.3559 4.00331C37.4694 3.95752 37.5911 3.93521 37.7136 3.93768C37.8343 3.93606 37.9541 3.95884 38.0656 4.0046C38.1772 4.05035 38.2781 4.11814 38.3624 4.20384C38.4483 4.29095 38.5158 4.39418 38.561 4.50749C38.6061 4.6208 38.628 4.7419 38.6253 4.8637C38.628 4.98551 38.6061 5.10664 38.561 5.21995C38.5158 5.33326 38.4483 5.43648 38.3624 5.52357C38.2781 5.60926 38.1772 5.67705 38.0656 5.72284C37.9541 5.7686 37.8343 5.79134 37.7136 5.78975C37.5911 5.79222 37.4694 5.76989 37.3559 5.72413C37.2425 5.67837 37.1396 5.61011 37.0536 5.52357C36.9677 5.43648 36.9002 5.33326 36.8551 5.21995C36.8099 5.10664 36.7881 4.98551 36.7908 4.8637C36.7881 4.7419 36.8099 4.6208 36.8551 4.50749C36.9002 4.39418 36.9677 4.29095 37.0536 4.20384C37.1396 4.1173 37.2425 4.04907 37.3559 4.00331ZM25.6211 4.76389L24.0219 4.76389L21.175 12.7654H22.7355L23.2948 11.1795H26.371L26.9303 12.7654H28.5019L25.6211 4.76389ZM25.9403 9.91528H23.7255L24.8441 6.75459L25.9403 9.91528ZM34.4529 6.71022C33.9935 6.42603 33.4618 6.27789 32.9204 6.28324C32.4656 6.27789 32.0164 6.38257 31.6116 6.58824C31.3484 6.72112 31.1086 6.89528 30.9013 7.10393V6.38304H29.4248V15.6932H30.9181V12.0501C31.1303 12.2594 31.3736 12.4352 31.6396 12.5714C32.0799 12.7816 32.5659 12.88 33.0541 12.8577C33.5422 12.8355 34.0171 12.6932 34.4361 12.4438C34.899 12.1548 35.274 11.7466 35.5212 11.2627C35.7861 10.7302 35.9203 10.1431 35.9126 9.54929C35.923 8.96057 35.7887 8.37821 35.5212 7.8525C35.2797 7.38027 34.9096 6.98456 34.4529 6.71022ZM34.4137 9.55484C34.4161 9.91562 34.3297 10.2716 34.162 10.5918C34.0132 10.8769 33.7889 11.1165 33.5133 11.2849C33.2582 11.4309 32.9688 11.5078 32.6743 11.5078C32.3798 11.5078 32.0904 11.4309 31.8353 11.2849C31.5644 11.1203 31.341 10.8892 31.1866 10.6139C31.0195 10.284 30.937 9.91836 30.946 9.54929C30.9355 9.18364 31.0182 8.82126 31.1866 8.49571C31.331 8.22256 31.5426 7.98991 31.8018 7.81923C32.0627 7.67197 32.3573 7.59366 32.6575 7.5919C32.9606 7.59099 33.2582 7.67147 33.5188 7.82478C33.7952 7.97573 34.0193 8.20567 34.162 8.48465C34.3413 8.8105 34.4283 9.17839 34.4137 9.54929V9.55484ZM38.4519 6.38304H36.9585V12.7599H38.4519V6.38304ZM43.7037 6.56049C43.9895 6.68375 44.2509 6.85649 44.4756 7.07066V4.27038H45.9801V12.7654H44.4756V12.039C44.2733 12.2523 44.0347 12.4288 43.7709 12.5603C43.3696 12.7699 42.9211 12.8748 42.4677 12.8652C41.9296 12.8702 41.4008 12.7261 40.9408 12.4493C40.4817 12.1535 40.1078 11.7446 39.8557 11.2627C39.5908 10.7302 39.4566 10.1431 39.4642 9.54929C39.4539 8.96057 39.5882 8.37821 39.8557 7.8525C40.1049 7.3803 40.4803 6.98514 40.9408 6.71022C41.3529 6.46065 41.821 6.31637 42.3032 6.29024C42.7854 6.26412 43.2666 6.35695 43.7037 6.56049ZM44.4756 9.57146C44.4854 9.20459 44.3987 8.84147 44.2239 8.51792C44.0698 8.22608 43.835 7.98372 43.5471 7.81923C43.2921 7.67323 43.0027 7.59637 42.7082 7.59637C42.4136 7.59637 42.1243 7.67323 41.8692 7.81923C41.598 7.97735 41.377 8.20793 41.2316 8.48465C41.0626 8.80593 40.9798 9.16492 40.9911 9.52712C40.9825 9.89613 41.0651 10.2616 41.2316 10.5918C41.3883 10.8862 41.622 11.1333 41.9084 11.3071C42.1635 11.4531 42.4528 11.5299 42.7473 11.5299C43.0419 11.5299 43.3312 11.4531 43.5863 11.3071C43.8553 11.1436 44.0753 10.912 44.2239 10.6361C44.3961 10.3076 44.4826 9.94161 44.4756 9.57146ZM51.8863 6.71022C51.3775 6.44176 50.81 6.30134 50.2336 6.30134C49.6572 6.30134 49.0897 6.44176 48.5808 6.71022C48.1082 6.98053 47.7208 7.37607 47.4622 7.8525C47.1714 8.37882 47.0248 8.9715 47.0372 9.57146C47.026 10.1735 47.1684 10.7686 47.451 11.3016C47.7105 11.7817 48.0973 12.1824 48.5697 12.4605C49.0662 12.7315 49.6249 12.8709 50.1916 12.8652C50.7765 12.874 51.3541 12.7347 51.8695 12.4605C52.3652 12.1852 52.7752 11.7805 53.0553 11.2904C53.3515 10.7658 53.502 10.1726 53.4915 9.57146C53.5004 8.97048 53.35 8.37773 53.0553 7.8525C52.7813 7.37062 52.3763 6.97478 51.8863 6.71022ZM49.3639 7.81923C49.6253 7.67401 49.9199 7.59775 50.2196 7.59775C50.5193 7.59775 50.8139 7.67401 51.0753 7.81923C51.3499 7.97813 51.5716 8.21332 51.7129 8.49571C51.876 8.8305 51.9528 9.20008 51.9367 9.57146C51.9483 9.9474 51.8616 10.3199 51.685 10.6528C51.5392 10.9243 51.3204 11.1504 51.0529 11.3061C50.7853 11.4617 50.4794 11.5408 50.1693 11.5344C49.9454 11.5409 49.7227 11.4998 49.5162 11.4137C49.3097 11.3276 49.1243 11.1986 48.9724 11.0354C48.6355 10.6234 48.4678 10.1007 48.5025 9.57146C48.4901 9.19738 48.5708 8.82604 48.7374 8.4902C48.8747 8.21003 49.0927 7.97654 49.3639 7.81923ZM59.0394 7.03076V6.32653H60.5495V12.6812C60.5594 13.2247 60.4326 13.7622 60.1804 14.2449C59.9389 14.7103 59.5657 15.0957 59.1065 15.3539C58.5924 15.6305 58.0132 15.7664 57.4286 15.7476C56.67 15.7754 55.9226 15.5595 55.2977 15.1321C55.0204 14.9436 54.7884 14.6968 54.6182 14.4092C54.4481 14.1217 54.344 13.8006 54.3133 13.4686V13.3466L55.7954 13.3466C55.7954 13.6685 56.0907 13.9814 56.3547 14.134C56.6804 14.3328 57.0575 14.4331 57.4398 14.4223C57.6518 14.4311 57.8634 14.3968 58.0616 14.3215C58.2597 14.2462 58.4402 14.1314 58.592 13.9843C58.7493 13.8103 58.8699 13.6068 58.9468 13.3859C59.0236 13.1649 59.0394 12.931 59.0394 12.6978V11.9548C58.8328 12.1771 58.591 12.3644 58.3235 12.5093C57.9242 12.7189 57.4776 12.8239 57.0259 12.8143C56.4897 12.8185 55.9629 12.6744 55.5046 12.3984C55.0442 12.1041 54.6699 11.6949 54.4195 11.2117C54.1519 10.6801 54.0176 10.0924 54.0281 9.49832C54.0156 8.9094 54.1501 8.32653 54.4195 7.80153C54.6679 7.32727 55.0433 6.93011 55.5046 6.6537C55.9619 6.37401 56.4886 6.22618 57.0259 6.22672C57.4809 6.21907 57.9307 6.32389 58.3347 6.53172C58.5954 6.65891 58.8335 6.82746 59.0394 7.03076ZM58.7877 10.5796C58.9599 10.2511 59.0464 9.8851 59.0394 9.51494C59.0532 9.14059 58.9663 8.76931 58.7877 8.4392C58.6409 8.16062 58.4205 7.92682 58.1501 7.76271C57.8899 7.6138 57.5948 7.53538 57.2944 7.53538C56.994 7.53538 56.6988 7.6138 56.4387 7.76271C56.1645 7.92882 55.9419 8.16678 55.7954 8.4503C55.6308 8.76545 55.5463 9.11571 55.5494 9.4706C55.5427 9.84005 55.6271 10.2055 55.7954 10.5352C55.9406 10.827 56.1629 11.0743 56.4387 11.2505C56.6977 11.4028 56.9932 11.4832 57.2944 11.4832C57.5955 11.4832 57.8911 11.4028 58.1501 11.2505C58.419 11.0871 58.6392 10.8555 58.7877 10.5796Z" fill="#667085"></path></svg></span></a></div></div></div><script>
-            if (typeof window.__updateThemeElement === 'function') {
-              window.__updateThemeElement();
-            }
-          </script><script>((STORAGE_KEY, restoreKey) => {
-    if (!window.history.state || !window.history.state.key) {
-      let key = Math.random().toString(32).slice(2);
-      window.history.replaceState({
-        key
-      }, "");
-    }
-    try {
-      let positions = JSON.parse(sessionStorage.getItem(STORAGE_KEY) || "{}");
-      let storedY = positions[restoreKey || window.history.state.key];
-      if (typeof storedY === "number") {
-        window.scrollTo(0, storedY);
-      }
-    } catch (error) {
-      console.error(error);
-      sessionStorage.removeItem(STORAGE_KEY);
-    }
-  })("positions", null)</script><link rel="modulepreload" href="https://file-assets.apidog.com/docs-site/v1/assets/manifest-db7ef313.js"/><link rel="modulepreload" href="https://file-assets.apidog.com/docs-site/v1/assets/entry.client-mUtkjgQm.js"/><link rel="modulepreload" href="https://file-assets.apidog.com/docs-site/v1/assets/jsx-runtime-CM5sU0Q5.js"/><link rel="modulepreload" href="https://file-assets.apidog.com/docs-site/v1/assets/client-BKxavTD9.js"/><link rel="modulepreload" href="https://file-assets.apidog.com/docs-site/v1/assets/components-DMSdXhQK.js"/><link rel="modulepreload" href="https://file-assets.apidog.com/docs-site/v1/assets/root-CQ054TXt.js"/><link rel="modulepreload" href="https://file-assets.apidog.com/docs-site/v1/assets/root-Dv513fR3.js"/><link rel="modulepreload" href="https://file-assets.apidog.com/docs-site/v1/assets/route-D_6YkXJe.js"/><script>window.__remixContext = {"basename":"/","future":{"v3_fetcherPersist":true,"v3_relativeSplatPath":true,"v3_throwAbortReason":true,"v3_routeConfig":false,"v3_singleFetch":true,"v3_lazyRouteDiscovery":false,"unstable_optimizeDeps":false},"isSpaMode":false};window.__remixContext.stream = new ReadableStream({start(controller){window.__remixContext.streamController = controller;}}).pipeThrough(new TextEncoderStream());</script><script type="module" async="">import "https://file-assets.apidog.com/docs-site/v1/assets/manifest-db7ef313.js";
-import * as route0 from "https://file-assets.apidog.com/docs-site/v1/assets/root-Dv513fR3.js";
-import * as route1 from "https://file-assets.apidog.com/docs-site/v1/assets/route-D_6YkXJe.js";
+### OpenAPI Specification
 
-window.__remixRouteModules = {"root":route0,"routes/_index/route":route1};
+```yaml
+openapi: 3.0.1
+info:
+  title: ''
+  description: ''
+  version: 1.0.0
+paths:
+  /gemini-3.1-pro/v1/chat/completions:
+    post:
+      summary: Gemini 3.1 Pro (openai)
+      deprecated: false
+      description: >-
+        ### Streaming Support
 
-import("https://file-assets.apidog.com/docs-site/v1/assets/entry.client-mUtkjgQm.js");</script></body></html><!--$--><script>window.__remixContext.streamController.enqueue("[{\"_1\":2,\"_231\":-5,\"_232\":-5},\"loaderData\",{\"_3\":4,\"_230\":-5},\"root\",{\"_5\":1,\"_6\":7,\"_19\":20,\"_23\":24,\"_33\":34,\"_52\":53,\"_112\":113,\"_155\":156,\"_229\":-7},\"type\",\"meta\",[8,11,16],{\"_9\":10},\"title\",\"API Documentation\",{\"_12\":13,\"_14\":15},\"name\",\"description\",\"content\",\"Design. Debug. Test. Document. Mock. Build APIs Faster \u0026 Together.\",{\"_12\":17,\"_14\":18},\"keywords\",\"API Design, API Specification, API Test, API Documentation, API Mock\",\"i18nState\",{\"_21\":22},\"clientLocale\",\"en-US\",\"errorCodeMessage\",{\"_25\":26,\"_27\":28,\"_29\":30,\"_31\":32},\"errorCode\",\"Unknown\",\"errorMessage\",\"Unexpected token 'o', \\\"forbidden\\n\\\" is not valid JSON: /api/v1/published-projects/domains/docs.kie.ai\",\"hideBuiltWith\",false,\"extra\",{},\"clientConfig\",{\"_35\":36,\"_37\":38,\"_39\":40,\"_41\":42,\"_47\":48,\"_49\":30,\"_50\":51},\"apiBaseUrl\",\"https://api.apidog.com\",\"appWebUrl\",\"https://app.apidog.com\",\"apidocBuiltinPrefixPath\",\"https://assets.apidog.com/app/static/apidoc\",\"cloudMockBaseUrls\",{\"_43\":44,\"_45\":46},\"pathMode\",\"https://mock.apidog.com/m1/{projectId}-{version}-{service}\",\"idMode\",\"https://mock.apidog.com/m2/{projectId}-{version}-{service}\",\"apidocIsShowLogo\",true,\"markdownDisableBreaks\",\"webhookGenerateCodeDefaultUrl\",\"https://your-api-server.com\",\"urlConfig\",{\"_54\":55,\"_58\":59,\"_99\":100,\"_108\":109},\"home\",{\"_56\":57},\"index\",\"https://apidog.com\",\"icon\",{\"_60\":61,\"_62\":63,\"_64\":63,\"_65\":66,\"_67\":68,\"_69\":70,\"_71\":72,\"_73\":74,\"_75\":76,\"_77\":78,\"_79\":80,\"_81\":82,\"_83\":84,\"_85\":86,\"_87\":88,\"_89\":90,\"_91\":92,\"_93\":94,\"_95\":96,\"_97\":98},\"apidoc\",\"https://assets.apidog.com/app/static/brand/apidoc.png\",\"apidog\",\"https://assets.apidog.com/app/static/brand/apidog-logo-256.png\",\"apidog europe\",\"googleDiscovery\",\"https://assets.apidog.com/app/static/brand/google-discovery.png\",\"har\",\"https://assets.apidog.com/app/static/brand/har.png\",\"iodocs\",\"https://assets.apidog.com/app/static/brand/io-doc.png\",\"jmeter\",\"https://assets.apidog.com/app/static/brand/jmeter.png\",\"openapi\",\"https://assets.apidog.com/app/static/brand/openapi.png\",\"postman\",\"https://assets.apidog.com/app/static/brand/postman.png\",\"raml\",\"https://assets.apidog.com/app/static/brand/raml.png\",\"wadl\",\"https://assets.apidog.com/app/static/brand/wadl.png\",\"curl\",\"https://assets.apidog.com/app/static/brand/curl.png\",\"insomnia\",\"https://assets.apidog.com/app/static/brand/insomnia.png\",\"wsdl\",\"https://assets.apidog.com/app/static/brand/wsdl.png\",\"markdown\",\"https://assets.apidog.com/app/static/brand/markdown.png\",\"html\",\"https://assets.apidog.com/app/static/brand/html.png\",\"protobuf\",\"https://assets.apidog.com/app/static/brand/protobuf.png\",\"soapui\",\"https://assets.apidog.com/app/static/brand/soapui.svg\",\"hoppscotch\",\"https://assets.apidog.com/app/static/brand/hoppscotch.svg\",\"javaProject\",\"https://assets.apidog.com/app/static/brand/java-project.png\",\"help\",{\"_56\":101,\"_102\":103,\"_104\":105,\"_106\":107},\"https://apidog.com/help\",\"browserExtension\",\"https://chromewebstore.google.com/detail/apidog-browser-extension/dmhljjnonlhapikmelaefohecogokhio\",\"csv\",\"https://apidog.com/help/reference/csv\",\"appMcpServer\",\"https://docs.apidog.com/apidog-mcp-server\",\"assets\",{\"_110\":111},\"logo512Png\",\"https://assets.apidog.com/static/logo/apidog-logo-512.png\",\"envConfig\",{\"_114\":60,\"_115\":116,\"_117\":116,\"_118\":119,\"_120\":121,\"_122\":123,\"_124\":57,\"_125\":62,\"_126\":22,\"_127\":128,\"_129\":130,\"_132\":133,\"_134\":135,\"_136\":137,\"_138\":139,\"_140\":141,\"_142\":143,\"_149\":150,\"_151\":48,\"_152\":153,\"_154\":30},\"RELEASE_BASE\",\"DEBUG_API_BASE\",\"\",\"DEBUG_WEB_URL_BASE\",\"AGENT_SERVER_API_BASE\",\"https://web-proxy.apidog.com\",\"APP_REGION\",\"GLOBAL\",\"APP_NAME\",\"Apidog\",\"APP_HOMEPAGE\",\"APP_NAME_LOWER\",\"DEFAULT_LOCALE\",\"APP_BROWSER_EXTENSION_ADAPTER\",\"apidogAgentCrossRequest\",\"APP_API_SERVER_HOSTNAMES\",[131],\"api.apidog.com\",\"APP_SUPPORT_EMAIL\",\"support@apidog.com\",\"APP_SCRIPT_MAIN_OBJECTS\",\"$\",\"SERVER_PROTOCOL\",\"http\",\"SERVER_HOST\",\"apidog-api-fordoc-svc\",\"DEFAULT_DOC_LAYOUT\",\"TwoColumn\",\"NOT_CUSTOM_DOMAIN_HOSTNAMES\",[144,145,146,147,148],\"www.apidog.com\",\"apidog.com\",\"www.apidog.io\",\"apidog.io\",\"share.apidog.com\",\"SERVER_REQUEST_TIMEOUT\",15000,\"IS_SHARED_DOC_INDEPENDENT_DOMAIN\",\"APIDOC_CUSTOM_DOMAIN_CNAME_REGEX\",[\"R\",\"\\\\d+\\\\.cname\\\\.apidog\\\\.com\",\"\"],\"IS_ALWAYS_USE_ORIGIN_FETCH\",\"docsDataState\",{\"_157\":158,\"_162\":163,\"_175\":176,\"_177\":178,\"_179\":180,\"_189\":190,\"_202\":203,\"_204\":205,\"_206\":207,\"_213\":214,\"_220\":-7,\"_221\":222,\"_223\":-7,\"_224\":-7,\"_225\":226,\"_228\":-7},\"navigation\",{\"_5\":159,\"_160\":161},\"NONE\",\"navRightLinkItems\",[],\"sidebarTree\",{\"_164\":-7,\"_165\":-7,\"_166\":167,\"_168\":-7,\"_169\":170,\"_171\":-7,\"_172\":-7,\"_173\":174},\"goBackSidebarTreeApiFolderNode\",\"rootSidebarTreeApiFolderNode\",\"sidebarTreeList\",[],\"selectedSidebarTreeNode\",\"parentSidebarTreeApiFolderNodes\",[],\"previousSidebarTreeNode\",\"nextSidebarTreeNode\",\"homeLink\",\"/\",\"docsBaseConfig\",{},\"versionList\",[],\"resourceData\",{\"_5\":181,\"_182\":-7,\"_183\":184},\"NotFound\",\"data\",\"extraData\",{\"_185\":186,\"_187\":188},\"apiFieldList\",[],\"dataSchemaDefinitions\",{},\"docsIdTypeData\",{\"_191\":192,\"_193\":194,\"_195\":194,\"_196\":194,\"_197\":116,\"_198\":194,\"_199\":200,\"_201\":-7},\"onlineType\",\"APIDOC\",\"branchId\",0,\"onlineId\",\"projectId\",\"subdirectory\",\"teamId\",\"visitType\",\"customDomain\",\"specialFileType\",\"notification\",[],\"footerBanner\",[],\"projectSetting\",{\"_208\":209,\"_210\":211},\"advancedSettings\",{},\"auth\",{\"_5\":212},\"noauth\",\"environments\",{\"_215\":216,\"_217\":-7,\"_218\":219},\"environmentList\",[],\"selectedEnvironment\",\"servers\",[],\"searchSettings\",\"versionSettings\",[],\"seoInfos\",\"itemPathPrefix\",\"appEnvMap\",{\"_227\":128},\"appBrowserExtensionAdapterKey\",\"customCodes\",\"primaryColorVariable\",\"routes/_index/route\",\"actionData\",\"errors\"]\n");</script><!--$--><script>window.__remixContext.streamController.close();</script><!--/$--><!--/$-->
+        When `stream: true` is set in the request, the API returns responses as
+        server-sent events (SSE) with `Content-Type: text/event-stream`. This
+        allows for progressive response delivery, where message deltas are sent
+        incrementally as they are generated. Each event contains partial message
+        content, enabling real-time display of responses in your application.
+
+        **Streaming Response Format:**
+
+        - Content-Type: `text/event-stream`
+
+        - Each event line starts with `data: ` followed by JSON
+
+        - Events contain incremental message deltas
+
+        - Final event indicates completion with `finish_reason`
+
+        <CardGroup cols={2}>
+          <Card title="Multimodal" icon="lucide-image">
+            Supports text and image inputs
+          </Card>
+          <Card title="Real-time Search" icon="lucide-search">
+            Google Search grounding enabled
+          </Card>
+          <Card title="Streaming" icon="lucide-list-minus">
+            Server-sent events support
+          </Card>
+          <Card title="Flexible Roles" icon="lucide-users">
+            Multiple message roles supported
+          </Card>
+        </CardGroup>
+
+        <div style="padding: 20px; background-color: rgba(255, 152, 0, 0.05);
+        border: 1px solid rgba(255, 152, 0, 0.15); border-left: 6px solid
+        #ff9800; border-radius: 10px; margin: 25px 0;">
+          <div style="display: flex; align-items: center; margin-bottom: 12px;">
+            ⚠️
+            <strong style="color: #e65100; font-size: 17px;">Important: Unified Media Structure</strong>
+          </div>
+
+          <p style="color: #444; margin-bottom: 15px; line-height: 1.6; font-size: 14px;">
+            To simplify integration, <b>all media types</b> (Images, Videos, Audio, or Documents) in the <code>messages</code> array share the <b>exact same JSON structure</b>:
+          </p>
+
+          <ul style="color: #555; line-height: 1.8; margin-bottom: 15px; font-size: 14px;">
+            <li>The <code>type</code> field is <b>fixed</b> as <code>"image_url"</code></li>
+            <li>The <code>image_url</code> key name <b>remains unchanged</b> for all file types</li>
+            <li>Only the <code>url</code> value points to your specific media file</li>
+          </ul>
+
+          <div style="background-color: #fdfdfd; padding: 12px; border-radius: 6px; border: 1px solid #eee; font-family: 'SFMono-Regular', Consolas, monospace; font-size: 13px; color: #d32f2f;">
+            // Example for Video/Audio/PDF/Image:<br>
+            { "type": "image_url", "image_url": { "url": "https://..." } }
+          </div>
+        </div>
+
+        ## Tools Parameter
+
+        The `tools` parameter is an optional array that allows you to define
+        functions the model can call. The array can contain multiple objects.
+        When using function calling, you can define multiple functions in the
+        array.
+
+        <AccordionGroup>
+
+        <Accordion title="Google Search">
+
+        Use this format to enable Google Search grounding:
+
+        ```json
+
+        {
+          "type": "function",
+          "function": {
+            "name": "googleSearch"
+          }
+        }
+
+        ```
+
+        This enables real-time information retrieval via Google Search.
+
+        </Accordion>
+
+        </AccordionGroup>
+      operationId: gemini-3.1-pro-chat-completions
+      tags:
+        - docs/en/Market/Chat  Models/Gemini
+      parameters: []
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                messages:
+                  type: array
+                  description: >-
+                    An array of message objects. Each message has a role and
+                    content.
+
+                    **Unified Media File Format:**
+
+                    In the content array, whether it's images, videos, audio, or
+                    other document types, all media files use the same format
+                    structure:
+
+                    - The `type` field is always `"image_url"`
+
+                    - The `image_url` field name remains unchanged
+
+                    - The only thing that changes is the `url` value, which
+                    points to the corresponding media file address
+
+                    For example: images, videos, audio, PDFs, and other
+                    documents all use the same `{ type: 'image_url', image_url:
+                    { url: '...' } }` structure.
+                  items:
+                    $ref: '#/components/schemas/Message'
+                  minItems: 1
+                stream:
+                  type: boolean
+                  default: true
+                  description: >-
+                    If set to true, partial message deltas will be sent as
+                    server-sent events. Default is true.
+                tools:
+                  type: array
+                  description: >-
+                    An optional array of tools the model may call. The array can
+                    contain multiple objects. 
+
+                    **Google Search**: `{"type": "function", "function":
+                    {"name": "googleSearch"}}` - Enables real-time information
+                    retrieval via Google Search.
+                  items:
+                    $ref: '#/components/schemas/Tool'
+                  minItems: 0
+                include_thoughts:
+                  type: boolean
+                  description: >-
+                    Whether to include thoughts in the response. If set to true,
+                    thoughts will be included in the response, otherwise they
+                    will not be included. Default is true.
+                  default: true
+                reasoning_effort:
+                  type: string
+                  enum:
+                    - low
+                    - high
+                  description: >-
+                    The effort level for the model to use for reasoning. Low
+                    effort is faster to respond, high effort is slower to
+                    respond but solves more complex problems. Default is "high".
+                  default: high
+              required:
+                - messages
+              x-apidog-orders:
+                - messages
+                - stream
+                - tools
+                - include_thoughts
+                - reasoning_effort
+              examples:
+                - messages:
+                    - role: user
+                      content:
+                        - type: text
+                          text: What is in this image?
+                        - type: image_url
+                          image_url:
+                            url: >-
+                              https://file.aiquickdraw.com/custom-page/akr/section-images/1759055072437dqlsclj2.png
+                  tools:
+                    - type: function
+                      function:
+                        name: googleSearch
+                  stream: true
+                  include_thoughts: true
+                  reasoning_effort: high
+                  response_format:
+                    type: json_schema
+                    properties:
+                      response:
+                        type: string
+              x-apidog-ignore-properties: []
+            example:
+              messages:
+                - role: user
+                  content:
+                    - type: text
+                      text: What is in this image?
+                    - type: image_url
+                      image_url:
+                        url: >-
+                          https://file.aiquickdraw.com/custom-page/akr/section-images/1759055072437dqlsclj2.png
+              tools:
+                - type: function
+                  function:
+                    name: googleSearch
+              stream: true
+              include_thoughts: true
+              reasoning_effort: high
+      responses:
+        '200':
+          description: 'Request successful. '
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  id:
+                    type: string
+                    description: Unique identifier for the chat completion
+                    examples:
+                      - chatcmpl-example-123
+                  object:
+                    type: string
+                    description: Object type
+                    examples:
+                      - chat.completion
+                  created:
+                    type: integer
+                    format: int64
+                    description: Unix timestamp of when the completion was created
+                    examples:
+                      - 1677652288
+                  model:
+                    type: string
+                    description: Model name
+                    examples:
+                      - gemini-3-pro
+                  choices:
+                    type: array
+                    description: Array of completion choices
+                    items:
+                      type: object
+                      properties:
+                        index:
+                          type: integer
+                          description: Index of the choice
+                          examples:
+                            - 0
+                        message:
+                          type: object
+                          properties:
+                            role:
+                              type: string
+                              examples:
+                                - assistant
+                            content:
+                              type: string
+                              description: Message content
+                          required:
+                            - role
+                            - content
+                          x-apidog-orders:
+                            - role
+                            - content
+                          x-apidog-ignore-properties: []
+                        finish_reason:
+                          type: string
+                          description: Reason why the completion finished
+                          examples:
+                            - stop
+                      required:
+                        - index
+                        - message
+                        - finish_reason
+                      x-apidog-orders:
+                        - index
+                        - message
+                        - finish_reason
+                      x-apidog-ignore-properties: []
+                  usage:
+                    type: object
+                    properties:
+                      prompt_tokens:
+                        type: integer
+                        description: Number of tokens in the prompt
+                        examples:
+                          - 10
+                      completion_tokens:
+                        type: integer
+                        description: Number of tokens in the completion
+                        examples:
+                          - 50
+                      total_tokens:
+                        type: integer
+                        description: Total number of tokens
+                        examples:
+                          - 60
+                    required:
+                      - prompt_tokens
+                      - completion_tokens
+                      - total_tokens
+                    x-apidog-orders:
+                      - prompt_tokens
+                      - completion_tokens
+                      - total_tokens
+                    x-apidog-ignore-properties: []
+                x-apidog-orders:
+                  - id
+                  - object
+                  - created
+                  - model
+                  - choices
+                  - usage
+                x-apidog-ignore-properties: []
+              example:
+                choices:
+                  - finish_reason: stop
+                    index: 0
+                    message:
+                      content: Hello! How can I help you today?
+                      role: assistant
+                created: 1768283309
+                credits_consumed: 27
+                id: chatcmpl-********************z6IaTP6H
+                model: gemini-3.1-pro
+                object: chat.completion
+                usage:
+                  completion_tokens: 383
+                  completion_tokens_details:
+                    audio_tokens: 0
+                    text_tokens: 0
+                    reasoning_tokens: 374
+                  prompt_tokens: 1
+                  total_tokens: 384
+          headers: {}
+          x-apidog-name: ''
+        '400':
+          description: Bad Request - Invalid request parameters
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: object
+                    properties:
+                      message:
+                        type: string
+                        examples:
+                          - Invalid request parameters
+                      type:
+                        type: string
+                        examples:
+                          - invalid_request_error
+                    x-apidog-orders:
+                      - message
+                      - type
+                    x-apidog-ignore-properties: []
+                x-apidog-orders:
+                  - error
+                x-apidog-ignore-properties: []
+          headers: {}
+          x-apidog-name: ''
+        '401':
+          description: Unauthorized - Invalid or missing API key
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: object
+                    properties:
+                      message:
+                        type: string
+                        examples:
+                          - Unauthorized
+                      type:
+                        type: string
+                        examples:
+                          - authentication_error
+                    x-apidog-orders:
+                      - message
+                      - type
+                    x-apidog-ignore-properties: []
+                x-apidog-orders:
+                  - error
+                x-apidog-ignore-properties: []
+          headers: {}
+          x-apidog-name: ''
+        '429':
+          description: Rate Limited - Too many requests
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: object
+                    properties:
+                      message:
+                        type: string
+                        examples:
+                          - Rate limit exceeded
+                      type:
+                        type: string
+                        examples:
+                          - rate_limit_error
+                    x-apidog-orders:
+                      - message
+                      - type
+                    x-apidog-ignore-properties: []
+                x-apidog-orders:
+                  - error
+                x-apidog-ignore-properties: []
+          headers: {}
+          x-apidog-name: ''
+        '500':
+          description: request failed
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  code:
+                    type: integer
+                    description: >-
+                      Response status code
+
+                      - **200**: Success - Request has been processed
+                      successfully
+
+                      - **401**: Unauthorized - Authentication credentials are
+                      missing or invalid
+
+                      - **402**: Insufficient Credits - Account does not have
+                      enough credits to perform the operation
+
+                      - **404**: Not Found - The requested resource or endpoint
+                      does not exist
+
+                      - **408**: Upstream is currently experiencing service
+                      issues. No result has been returned for over 10 minutes.
+
+                      - **422**: Validation Error - The request parameters
+                      failed validation checks
+
+                      - **429**: Rate Limited - Request limit has been exceeded
+                      for this resource
+
+                      - **455**: Service Unavailable - System is currently
+                      undergoing maintenance
+
+                      - **500**: Server Error - An unexpected error occurred
+                      while processing the request
+
+                      - **501**: Generation Failed - Content generation task
+                      failed
+
+                      - **505**: Feature Disabled - The requested feature is
+                      currently disabled
+                  msg:
+                    type: string
+                    description: Response message, error description when failed
+                  data:
+                    type: object
+                    properties: {}
+                    x-apidog-orders: []
+                    x-apidog-ignore-properties: []
+                x-apidog-orders:
+                  - code
+                  - msg
+                  - data
+                required:
+                  - code
+                  - msg
+                  - data
+                x-apidog-ignore-properties: []
+              example:
+                code: 500
+                msg: >-
+                  Server Error - An unexpected error occurred while processing
+                  the request
+                data: null
+          headers: {}
+          x-apidog-name: 'Error '
+      security: []
+      x-apidog-folder: docs/en/Market/Chat  Models/Gemini
+      x-apidog-status: released
+      x-run-in-apidog: https://app.apidog.com/web/project/1184766/apis/api-30442144-run
+components:
+  schemas:
+    Tool:
+      type: object
+      description: >-
+        Tool definition.
+
+        - **Enhanced Network Access**: `{"type": "function", "function":
+        {"name": "googleSearch"}}`
+      properties:
+        type:
+          type: string
+          enum:
+            - function
+          description: Utility type. Must be 'function'.
+          examples:
+            - function
+        function:
+          type: object
+          description: Function declarations for enhanced network access.
+          properties:
+            name:
+              type: string
+              description: Function name. Must be `googleSearch`.
+            description:
+              type: string
+              description: >-
+                Optional but recommended. A clear and specific description of
+                the function's purpose. Helps the model understand when to call
+                this function.
+            parameters:
+              type: object
+              description: >-
+                Defines a JSON Schema object for function parameters. Required
+                for custom functions; not used by 'googleSearch'. Follows the
+                JSON Schema specification.
+              properties:
+                type:
+                  type: string
+                  enum:
+                    - object
+                  description: Must be 'object' for function parameters
+                properties:
+                  type: object
+                  description: Map parameter names to objects defined in their JSON Schema.
+                  additionalProperties:
+                    type: string
+                  x-apidog-orders: []
+                  properties: {}
+                  x-apidog-ignore-properties: []
+                required:
+                  type: array
+                  items:
+                    type: string
+                  description: Required parameter name array
+              required:
+                - type
+                - properties
+              x-apidog-orders:
+                - type
+                - properties
+                - required
+              x-apidog-ignore-properties: []
+          required:
+            - name
+          x-apidog-orders:
+            - name
+            - description
+            - parameters
+          x-apidog-ignore-properties: []
+      required:
+        - type
+        - function
+      x-apidog-orders:
+        - type
+        - function
+      title: The tools parameter of the chat model
+      x-apidog-ignore-properties: []
+      x-apidog-folder: ''
+    Message:
+      type: object
+      properties:
+        role:
+          type: string
+          enum:
+            - developer
+            - system
+            - user
+            - assistant
+            - tool
+          description: >-
+            Message role
+
+            - **developer**: Developer-provided instructions that the model
+            should follow, regardless of user messages. In o1 models and newer
+            versions, developer messages replace the previous system messages.
+
+            - **system**: Developer-provided instructions that the model should
+            follow, regardless of user messages. In o1 models and newer
+            versions, please use developer messages instead.
+
+            - **user**: Messages sent by end users, containing prompts or
+            additional context information.
+
+            - **assistant**: Messages sent by the model in response to user
+            messages.
+
+            - **tool**: Content of tool messages.
+        content:
+          type: array
+          description: >-
+            Message content array that can contain text and image objects.
+
+            **Unified Media File Format:**
+
+            Whether it's images, videos, audio, or other document types, all
+            media files use the same format structure:
+
+            - The `type` field is always `"image_url"`
+
+            - The `image_url` field name remains unchanged
+
+            - The only thing that changes is the `url` value, which points to
+            the corresponding media file address
+
+            For example: images, videos, audio, PDFs, and other documents all
+            use the same `{ type: 'image_url', image_url: { url: '...' } }`
+            structure.
+          items:
+            oneOf:
+              - type: object
+                properties:
+                  type:
+                    type: string
+                    enum:
+                      - text
+                    examples:
+                      - text
+                  text:
+                    type: string
+                    description: 消息的文本内容
+                required:
+                  - type
+                  - text
+                x-apidog-orders:
+                  - type
+                  - text
+                x-apidog-ignore-properties: []
+              - type: object
+                properties:
+                  type:
+                    type: string
+                    enum:
+                      - image_url
+                    examples:
+                      - image_url
+                  image_url:
+                    type: object
+                    properties:
+                      url:
+                        type: string
+                        format: uri
+                        description: 图像的 URL
+                    required:
+                      - url
+                    x-apidog-orders:
+                      - url
+                    x-apidog-ignore-properties: []
+                required:
+                  - type
+                  - image_url
+                x-apidog-orders:
+                  - type
+                  - image_url
+                x-apidog-ignore-properties: []
+      required:
+        - role
+        - content
+      title: The messages parameter of the chat model
+      x-apidog-orders:
+        - role
+        - content
+      x-apidog-ignore-properties: []
+      x-apidog-folder: ''
+  securitySchemes:
+    BearerAuth:
+      type: bearer
+      scheme: bearer
+      bearerFormat: API Key
+      description: >-
+        All API requests require a Bearer Token. Add the header `Authorization:
+        Bearer YOUR_API_KEY` to authenticate requests.
+    BearerAuth1:
+      type: bearer
+      scheme: bearer
+      bearerFormat: API Key
+      description: >-
+        所有 API 请求都需要 Bearer Token。请在请求头中添加 `Authorization: Bearer YOUR_API_KEY`
+        进行身份验证。
+servers:
+  - url: https://api.kie.ai
+    description: 正式环境
+security:
+  - BearerAuth: []
+    x-apidog:
+      schemeGroups:
+        - id: kn8M4YUlc5i0A0179ezwx
+          schemeIds:
+            - BearerAuth
+      required: true
+      use:
+        id: kn8M4YUlc5i0A0179ezwx
+      scopes:
+        kn8M4YUlc5i0A0179ezwx:
+          BearerAuth: []
+
+```
 
 ---
 
@@ -61787,40 +70030,1085 @@ import("https://file-assets.apidog.com/docs-site/v1/assets/entry.client-mUtkjgQm
 
 **Source:** [https://docs.kie.ai/market/gemini/gemini-2-5-flash.md][163]
 
-<!DOCTYPE html><html lang="en-US" class="group/root" id="html" data-theme="light" data-accent-color="purple"><head><script src="https://file-assets.apidog.com/docs-site/v1/assets/prepareDocsConfigScript-CLIBKQbk.js"></script><script>__prepareDocsConfigScript(JSON.parse("{\"theme\":\"system\",\"themePrimarySettings\":{\"light\":{\"accentColor\":\"purple\"},\"dark\":{\"accentColor\":\"purple\"}},\"logoSettings\":{\"light\":{\"icon\":\"\",\"type\":\"project\"},\"dark\":{\"icon\":\"\",\"type\":\"followLight\"}},\"backgroundImageSettings\":{\"light\":{\"type\":\"custom\",\"color\":\"\"},\"dark\":{\"type\":\"followLight\",\"color\":\"\"}},\"id\":0,\"subdirectory\":\"\"}"));</script><script>window.eventTracking = {
-      dataLayer: []
-    }
-    window.eventTracking.report = function(){
-        window.eventTracking.dataLayer.push(arguments);
-    }</script><meta charSet="utf-8"/><meta name="viewport" content="width=device-width, initial-scale=1"/><title>API Documentation</title><meta name="description" content="Design. Debug. Test. Document. Mock. Build APIs Faster &amp; Together."/><meta name="keywords" content="API Design, API Specification, API Test, API Documentation, API Mock"/><link rel="stylesheet" href="https://file-assets.apidog.com/docs-site/v1/assets/root-CpC_E1fb.css"/></head><body class="overflow-hidden g-body"><div class="flex h-full w-full flex-col overflow-auto"><div class="flex flex-1 flex-col items-center justify-center"><div class="flex w-auto flex-col items-center justify-center max-os:p-5 os:w-[480px]"><svg width="104" height="104" viewBox="0 0 104 104" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M92.9557 41.8969L88.7262 25.2175C87.4089 19.8194 84.8039 16.1447 80.9015 14.1934L80.3963 13.9458C79.802 13.6685 79.178 13.4407 78.5243 13.2426C75.4142 12.3214 72.0268 12.371 68.362 13.3813C65.8759 14.0747 63.2612 15.2038 60.5176 16.7886C56.7835 18.9478 53.3167 21.6319 50.1076 24.8708C49.0973 25.8711 48.1266 26.9209 47.1956 28.0204C46.314 29.0406 45.4622 30.1105 44.6302 31.2198C42.9266 33.4781 41.3121 35.9245 39.7868 38.5492C34.1015 48.3648 31.2588 57.9329 31.2588 67.2631C31.2588 72.0471 32.1106 76.1181 33.8142 79.4461C34.6759 81.1101 35.6862 82.5263 36.8748 83.7248C37.9346 84.7846 39.1232 85.6564 40.4405 86.3398L41.0151 86.627V98.9485C41.0151 99.9984 41.3221 100.712 41.9461 101.058C42.5701 101.415 43.3426 101.326 44.2637 100.801L67.0249 87.6571C67.946 87.1223 68.7186 86.3199 69.3426 85.2502C69.9666 84.1706 70.2736 83.1008 70.2736 82.0509V78.3169L76.7811 74.5629C78.5639 73.5328 80.0993 71.9184 81.377 69.7195C82.6448 67.5207 83.2786 65.4011 83.2786 63.341V52.1485L89.786 48.3946C90.8657 47.7706 91.7373 46.79 92.391 45.4429C93.0348 44.1058 93.2231 42.927 92.9557 41.8969ZM62.8352 66.6095C62.2112 67.6891 61.4387 68.4914 60.5176 69.0263C59.5964 69.5512 58.8237 69.6404 58.1997 69.2838C57.5856 68.9371 57.2687 68.2238 57.2687 67.164C57.2687 66.1042 57.5856 65.0445 58.1997 63.9748C58.2592 63.8658 58.3186 63.7667 58.378 63.6676C58.9129 62.8356 59.5468 62.1819 60.2797 61.7164C60.359 61.6569 60.4383 61.6075 60.5176 61.558C61.4387 61.033 62.2112 60.9439 62.8352 61.2906C63.4592 61.6471 63.7761 62.3604 63.7761 63.4103C63.7761 64.4602 63.4592 65.5398 62.8352 66.6095ZM69.5011 38.7572C69.402 39.1336 69.2832 39.5101 69.1346 39.8865C68.5997 41.3227 67.4607 43.6206 65.7274 46.8C64.9647 48.1768 64.41 49.3158 64.0535 50.237C63.8157 50.861 63.6176 51.4748 63.4691 52.0592C63.3997 52.3366 63.3304 52.6041 63.2809 52.8715C63.1224 53.7729 62.7856 54.6148 62.2706 55.3774C61.7556 56.1401 61.2009 56.6948 60.6066 57.0315C59.8935 57.4475 59.319 57.4971 58.8535 57.2099C58.3978 56.9128 58.2196 56.358 58.3285 55.5557C58.487 54.2186 58.8039 52.931 59.2596 51.7029C59.7251 50.4747 60.4679 48.9392 61.498 47.0969C62.3201 45.6409 62.9837 44.4029 63.4691 43.4026C63.7761 42.7885 64.0138 42.2636 64.1921 41.8278C64.202 41.7981 64.2119 41.7782 64.2218 41.7485C64.6775 40.5797 64.9153 39.5001 64.9153 38.4997C64.9153 37.321 64.5191 36.5881 63.7366 36.2909C62.9442 36.0037 61.9537 36.2019 60.7652 36.8853C60.0025 37.3211 59.2794 37.945 58.5662 38.7572C57.863 39.5694 57.239 40.5105 56.7041 41.5604C56.2683 42.5013 55.7632 43.2442 55.1986 43.7889C54.6241 44.3337 54.0397 44.6209 53.4455 44.6506C52.8512 44.6902 52.4055 44.4525 52.1083 43.9374C51.8112 43.4224 51.8211 42.7687 52.1479 41.9565C53.0691 39.7477 54.2973 37.7074 55.8424 35.8552C56.5754 34.9737 57.338 34.1811 58.1205 33.4878C58.9822 32.735 59.8638 32.0913 60.7652 31.5664C63.3701 30.0708 65.5491 29.7141 67.3121 30.4966C69.0752 31.279 69.9468 32.9829 69.9468 35.5977C69.9468 36.6476 69.7982 37.7073 69.5011 38.7572Z" stroke="#667085" stroke-linecap="round" stroke-linejoin="round"></path><path d="M63.777 63.4086C63.777 64.4684 63.46 65.5381 62.836 66.6078C62.212 67.6874 61.4395 68.4896 60.5184 69.0245C59.5972 69.5494 58.8246 69.6387 58.2006 69.2821C57.5865 68.9354 57.2695 68.2221 57.2695 67.1623C57.2695 66.1025 57.5865 65.0428 58.2006 63.973C58.26 63.8641 58.3194 63.7649 58.3789 63.6659C58.9137 62.8339 59.5476 62.1802 60.2806 61.7147C60.3598 61.6552 60.4392 61.6058 60.5184 61.5563C61.4395 61.0313 62.212 60.9422 62.836 61.2888C63.46 61.6454 63.777 62.3587 63.777 63.4086Z" stroke="#667085" stroke-linecap="round" stroke-linejoin="round"></path><path d="M63.7373 36.2894C62.9449 36.0021 61.9544 36.2003 60.7659 36.8838C60.0032 37.3196 59.2801 37.9435 58.567 38.7557C57.8638 39.5679 57.2398 40.5089 56.7049 41.5588C56.2691 42.4998 55.7639 43.2426 55.1994 43.7874C54.6249 44.3321 54.0405 44.6193 53.4462 44.649C52.8519 44.6886 52.4062 44.4509 52.1091 43.9359C51.8119 43.4208 51.8219 42.7671 52.1487 41.9549C53.0699 39.7461 54.298 37.7059 55.8432 35.8537C56.5761 34.9721 57.3388 34.1797 58.1213 33.4863L63.7373 36.2894Z" stroke="#667085" stroke-linecap="round" stroke-linejoin="round"></path><path d="M69.9474 35.596C69.9474 36.6459 69.7988 37.7056 69.5017 38.7555C69.4026 39.1319 69.2838 39.5085 69.1352 39.8849C68.6003 41.321 67.4613 43.6189 65.728 46.7984C64.9653 48.1751 64.4106 49.3141 64.054 50.2352C63.8163 50.8592 63.6182 51.4732 63.4697 52.0576C63.4003 52.3349 63.331 52.6024 63.2815 52.8698C63.123 53.7711 62.7862 54.6131 62.2712 55.3758C61.7561 56.1385 61.2015 56.693 60.6072 57.0298C59.894 57.4458 59.3196 57.4955 58.854 57.2083C58.3984 56.9111 58.2201 56.3563 58.3291 55.554C58.4876 54.2168 58.8045 52.9293 59.2601 51.7011C59.7257 50.4729 60.4685 48.9376 61.4986 47.0953C62.3207 45.6393 62.9843 44.4012 63.4697 43.4008C63.7767 42.7868 64.0144 42.2619 64.1927 41.8261C64.2026 41.7964 64.2125 41.7766 64.2224 41.7468C64.678 40.5781 64.9158 39.4984 64.9158 38.498C64.9158 37.3193 64.5196 36.5865 63.7371 36.2893L58.1211 33.4862C58.9828 32.7334 59.8643 32.0896 60.7657 31.5647C63.3706 30.069 65.5497 29.7125 67.3127 30.4949C69.0758 31.2774 69.9474 32.9811 69.9474 35.596Z" stroke="#667085" stroke-linecap="round" stroke-linejoin="round"></path><path d="M41.9466 101.059L22.3253 91.2429L22.1371 91.1537C21.5131 90.807 21.2061 90.094 21.2061 89.0441V76.7227L41.0156 86.6274V98.9488C41.0156 99.9988 41.3226 100.712 41.9466 101.059Z" stroke="#667085" stroke-linecap="round" stroke-linejoin="round"></path><path d="M80.3972 13.9448C79.8029 13.6675 79.1789 13.4397 78.5252 13.2416C75.4151 12.3204 72.0277 12.3701 68.3629 13.3804C65.8768 14.0737 63.2621 15.2028 60.5185 16.7876C56.7844 18.9468 53.3176 21.6309 50.1085 24.8698C49.0982 25.8702 48.1275 26.92 47.1965 28.0194C46.3149 29.0396 45.4631 30.1096 44.6311 31.2189C42.9275 33.4772 41.313 35.9236 39.7877 38.5484C34.1024 48.364 31.2597 57.932 31.2597 67.2623C31.2597 72.0463 32.1115 76.1171 33.8151 79.4451C34.6768 81.1091 35.6871 82.5253 36.8757 83.7238C37.9355 84.7836 39.1241 85.6554 40.4414 86.3388L21.2065 76.7213C18.1161 75.2752 15.7192 72.8783 14.0056 69.5404C12.302 66.2124 11.4502 62.1415 11.4502 57.3575C11.4502 48.0272 14.2929 38.4592 19.9782 28.6436C25.6734 18.828 32.587 11.5678 40.7089 6.88282C47.4838 2.97044 53.486 1.79169 58.7157 3.33683C59.4784 3.56464 60.2113 3.84208 60.8948 4.17884L61.281 4.37688L80.3972 13.9448Z" stroke="#667085" stroke-linecap="round" stroke-linejoin="round"></path></svg><div class="align-center mt-8 flex justify-center text-center text-2xl font-semibold text-color">An abnormal error occurred, please try &#x27;Reload&#x27; or &#x27;get Support&#x27; to help you solve it!</div><div class="align-center mt-2 text-center text-lg font-400 text-secondary">Unexpected token &#x27;o&#x27;, &quot;forbidden
-&quot; is not valid JSON: /api/v1/published-projects/domains/docs.kie.ai</div></div></div><div class="flex flex-col items-center justify-center p-8 text-base font-base text-secondary"><div class="inline-flex items-center text-base font-400 text-secondary _footer-logo-wrapper_1kbjg_1"><a class="_footer-logo_1kbjg_1 flex-shrink-0" aria-label="homepage link" href="https://apidog.com"><span class="inline-flex items-center"><span class="mr-[-4px]">Built with</span><svg width="61" height="18" viewBox="0 0 61 18" fill="none" xmlns="http://www.w3.org/2000/svg" class="h-[18px] w-[80px]"><path d="M12.3836 1.67806C11.6452 0.940647 10.4478 0.940647 9.70932 1.67806L8.99795 2.3884L8.30644 1.69789C7.57144 0.963937 6.37437 0.936241 5.62991 1.66043C4.88545 2.38463 4.86748 3.60515 5.61194 4.34854L6.32331 5.05888C7.80026 6.53371 10.195 6.53371 11.6723 5.05888L12.3836 4.34854C13.1221 3.61113 13.1221 2.41547 12.3836 1.67806Z" fill="#667085"></path><path d="M12.3838 13.6515L11.6729 12.9412C10.1968 11.4664 7.80339 11.4664 6.32699 12.9412L5.61603 13.6515C4.87799 14.389 4.87799 15.5846 5.61603 16.322C6.35408 17.0594 7.55076 17.0594 8.28881 16.322L8.99976 15.6117L9.69087 16.3022C10.4255 17.0361 11.6218 17.0638 12.3659 16.3396C13.1219 15.6038 13.1278 14.3949 12.3838 13.6515Z" fill="#667085"></path><path d="M15.6105 8.99642L16.3214 8.28481C17.0655 7.54009 17.0595 6.32906 16.3035 5.59191C15.5595 4.86643 14.3631 4.89418 13.6285 5.62943L13.3098 5.94851C12.1666 7.09269 10.6166 7.73526 9 7.73526C7.38344 7.73526 5.83335 7.09238 4.69023 5.94851L4.37146 5.62943C3.63689 4.89418 2.44054 4.86643 1.69652 5.59191C0.940527 6.32906 0.934542 7.54009 1.67856 8.28481L2.38951 8.99642L1.67856 9.70803C0.940527 10.4468 0.940527 11.6445 1.67856 12.3833C2.4166 13.122 3.61326 13.122 4.3513 12.3833L4.74347 11.9907C5.85225 10.8809 7.35604 10.2576 8.92409 10.2576H8.9874C10.6162 10.2576 12.1666 10.9005 13.3098 12.0446C13.5126 12.2477 13.6484 12.3836 13.6484 12.3836C14.3864 13.1223 15.5831 13.1223 16.3211 12.3836C17.0592 11.6449 17.0592 10.4471 16.3211 9.70834L15.6102 8.99673L15.6105 8.99642Z" fill="#667085"></path><path fill-rule="evenodd" clip-rule="evenodd" d="M37.3559 4.00331C37.4694 3.95752 37.5911 3.93521 37.7136 3.93768C37.8343 3.93606 37.9541 3.95884 38.0656 4.0046C38.1772 4.05035 38.2781 4.11814 38.3624 4.20384C38.4483 4.29095 38.5158 4.39418 38.561 4.50749C38.6061 4.6208 38.628 4.7419 38.6253 4.8637C38.628 4.98551 38.6061 5.10664 38.561 5.21995C38.5158 5.33326 38.4483 5.43648 38.3624 5.52357C38.2781 5.60926 38.1772 5.67705 38.0656 5.72284C37.9541 5.7686 37.8343 5.79134 37.7136 5.78975C37.5911 5.79222 37.4694 5.76989 37.3559 5.72413C37.2425 5.67837 37.1396 5.61011 37.0536 5.52357C36.9677 5.43648 36.9002 5.33326 36.8551 5.21995C36.8099 5.10664 36.7881 4.98551 36.7908 4.8637C36.7881 4.7419 36.8099 4.6208 36.8551 4.50749C36.9002 4.39418 36.9677 4.29095 37.0536 4.20384C37.1396 4.1173 37.2425 4.04907 37.3559 4.00331ZM25.6211 4.76389L24.0219 4.76389L21.175 12.7654H22.7355L23.2948 11.1795H26.371L26.9303 12.7654H28.5019L25.6211 4.76389ZM25.9403 9.91528H23.7255L24.8441 6.75459L25.9403 9.91528ZM34.4529 6.71022C33.9935 6.42603 33.4618 6.27789 32.9204 6.28324C32.4656 6.27789 32.0164 6.38257 31.6116 6.58824C31.3484 6.72112 31.1086 6.89528 30.9013 7.10393V6.38304H29.4248V15.6932H30.9181V12.0501C31.1303 12.2594 31.3736 12.4352 31.6396 12.5714C32.0799 12.7816 32.5659 12.88 33.0541 12.8577C33.5422 12.8355 34.0171 12.6932 34.4361 12.4438C34.899 12.1548 35.274 11.7466 35.5212 11.2627C35.7861 10.7302 35.9203 10.1431 35.9126 9.54929C35.923 8.96057 35.7887 8.37821 35.5212 7.8525C35.2797 7.38027 34.9096 6.98456 34.4529 6.71022ZM34.4137 9.55484C34.4161 9.91562 34.3297 10.2716 34.162 10.5918C34.0132 10.8769 33.7889 11.1165 33.5133 11.2849C33.2582 11.4309 32.9688 11.5078 32.6743 11.5078C32.3798 11.5078 32.0904 11.4309 31.8353 11.2849C31.5644 11.1203 31.341 10.8892 31.1866 10.6139C31.0195 10.284 30.937 9.91836 30.946 9.54929C30.9355 9.18364 31.0182 8.82126 31.1866 8.49571C31.331 8.22256 31.5426 7.98991 31.8018 7.81923C32.0627 7.67197 32.3573 7.59366 32.6575 7.5919C32.9606 7.59099 33.2582 7.67147 33.5188 7.82478C33.7952 7.97573 34.0193 8.20567 34.162 8.48465C34.3413 8.8105 34.4283 9.17839 34.4137 9.54929V9.55484ZM38.4519 6.38304H36.9585V12.7599H38.4519V6.38304ZM43.7037 6.56049C43.9895 6.68375 44.2509 6.85649 44.4756 7.07066V4.27038H45.9801V12.7654H44.4756V12.039C44.2733 12.2523 44.0347 12.4288 43.7709 12.5603C43.3696 12.7699 42.9211 12.8748 42.4677 12.8652C41.9296 12.8702 41.4008 12.7261 40.9408 12.4493C40.4817 12.1535 40.1078 11.7446 39.8557 11.2627C39.5908 10.7302 39.4566 10.1431 39.4642 9.54929C39.4539 8.96057 39.5882 8.37821 39.8557 7.8525C40.1049 7.3803 40.4803 6.98514 40.9408 6.71022C41.3529 6.46065 41.821 6.31637 42.3032 6.29024C42.7854 6.26412 43.2666 6.35695 43.7037 6.56049ZM44.4756 9.57146C44.4854 9.20459 44.3987 8.84147 44.2239 8.51792C44.0698 8.22608 43.835 7.98372 43.5471 7.81923C43.2921 7.67323 43.0027 7.59637 42.7082 7.59637C42.4136 7.59637 42.1243 7.67323 41.8692 7.81923C41.598 7.97735 41.377 8.20793 41.2316 8.48465C41.0626 8.80593 40.9798 9.16492 40.9911 9.52712C40.9825 9.89613 41.0651 10.2616 41.2316 10.5918C41.3883 10.8862 41.622 11.1333 41.9084 11.3071C42.1635 11.4531 42.4528 11.5299 42.7473 11.5299C43.0419 11.5299 43.3312 11.4531 43.5863 11.3071C43.8553 11.1436 44.0753 10.912 44.2239 10.6361C44.3961 10.3076 44.4826 9.94161 44.4756 9.57146ZM51.8863 6.71022C51.3775 6.44176 50.81 6.30134 50.2336 6.30134C49.6572 6.30134 49.0897 6.44176 48.5808 6.71022C48.1082 6.98053 47.7208 7.37607 47.4622 7.8525C47.1714 8.37882 47.0248 8.9715 47.0372 9.57146C47.026 10.1735 47.1684 10.7686 47.451 11.3016C47.7105 11.7817 48.0973 12.1824 48.5697 12.4605C49.0662 12.7315 49.6249 12.8709 50.1916 12.8652C50.7765 12.874 51.3541 12.7347 51.8695 12.4605C52.3652 12.1852 52.7752 11.7805 53.0553 11.2904C53.3515 10.7658 53.502 10.1726 53.4915 9.57146C53.5004 8.97048 53.35 8.37773 53.0553 7.8525C52.7813 7.37062 52.3763 6.97478 51.8863 6.71022ZM49.3639 7.81923C49.6253 7.67401 49.9199 7.59775 50.2196 7.59775C50.5193 7.59775 50.8139 7.67401 51.0753 7.81923C51.3499 7.97813 51.5716 8.21332 51.7129 8.49571C51.876 8.8305 51.9528 9.20008 51.9367 9.57146C51.9483 9.9474 51.8616 10.3199 51.685 10.6528C51.5392 10.9243 51.3204 11.1504 51.0529 11.3061C50.7853 11.4617 50.4794 11.5408 50.1693 11.5344C49.9454 11.5409 49.7227 11.4998 49.5162 11.4137C49.3097 11.3276 49.1243 11.1986 48.9724 11.0354C48.6355 10.6234 48.4678 10.1007 48.5025 9.57146C48.4901 9.19738 48.5708 8.82604 48.7374 8.4902C48.8747 8.21003 49.0927 7.97654 49.3639 7.81923ZM59.0394 7.03076V6.32653H60.5495V12.6812C60.5594 13.2247 60.4326 13.7622 60.1804 14.2449C59.9389 14.7103 59.5657 15.0957 59.1065 15.3539C58.5924 15.6305 58.0132 15.7664 57.4286 15.7476C56.67 15.7754 55.9226 15.5595 55.2977 15.1321C55.0204 14.9436 54.7884 14.6968 54.6182 14.4092C54.4481 14.1217 54.344 13.8006 54.3133 13.4686V13.3466L55.7954 13.3466C55.7954 13.6685 56.0907 13.9814 56.3547 14.134C56.6804 14.3328 57.0575 14.4331 57.4398 14.4223C57.6518 14.4311 57.8634 14.3968 58.0616 14.3215C58.2597 14.2462 58.4402 14.1314 58.592 13.9843C58.7493 13.8103 58.8699 13.6068 58.9468 13.3859C59.0236 13.1649 59.0394 12.931 59.0394 12.6978V11.9548C58.8328 12.1771 58.591 12.3644 58.3235 12.5093C57.9242 12.7189 57.4776 12.8239 57.0259 12.8143C56.4897 12.8185 55.9629 12.6744 55.5046 12.3984C55.0442 12.1041 54.6699 11.6949 54.4195 11.2117C54.1519 10.6801 54.0176 10.0924 54.0281 9.49832C54.0156 8.9094 54.1501 8.32653 54.4195 7.80153C54.6679 7.32727 55.0433 6.93011 55.5046 6.6537C55.9619 6.37401 56.4886 6.22618 57.0259 6.22672C57.4809 6.21907 57.9307 6.32389 58.3347 6.53172C58.5954 6.65891 58.8335 6.82746 59.0394 7.03076ZM58.7877 10.5796C58.9599 10.2511 59.0464 9.8851 59.0394 9.51494C59.0532 9.14059 58.9663 8.76931 58.7877 8.4392C58.6409 8.16062 58.4205 7.92682 58.1501 7.76271C57.8899 7.6138 57.5948 7.53538 57.2944 7.53538C56.994 7.53538 56.6988 7.6138 56.4387 7.76271C56.1645 7.92882 55.9419 8.16678 55.7954 8.4503C55.6308 8.76545 55.5463 9.11571 55.5494 9.4706C55.5427 9.84005 55.6271 10.2055 55.7954 10.5352C55.9406 10.827 56.1629 11.0743 56.4387 11.2505C56.6977 11.4028 56.9932 11.4832 57.2944 11.4832C57.5955 11.4832 57.8911 11.4028 58.1501 11.2505C58.419 11.0871 58.6392 10.8555 58.7877 10.5796Z" fill="#667085"></path></svg></span></a></div></div></div><script>
-            if (typeof window.__updateThemeElement === 'function') {
-              window.__updateThemeElement();
+### OpenAPI Specification
+
+```yaml
+openapi: 3.0.1
+info:
+  title: ''
+  description: ''
+  version: 1.0.0
+paths:
+  /gemini-2.5-flash/v1/chat/completions:
+    post:
+      summary: Gemini 2.5 Flash (openai)
+      deprecated: false
+      description: >-
+        ### Streaming Support
+
+        When `stream: true` is set in the request, the API returns responses as
+        server-sent events (SSE) with `Content-Type: text/event-stream`. This
+        allows for progressive response delivery, where message deltas are sent
+        incrementally as they are generated. Each event contains partial message
+        content, enabling real-time display of responses in your application.
+
+        **Streaming Response Format:**
+
+        - Content-Type: `text/event-stream`
+
+        - Each event line starts with `data: ` followed by JSON
+
+        - Events contain incremental message deltas
+
+        - Final event indicates completion with `finish_reason`
+
+        <CardGroup cols={2}>
+          <Card title="Multimodal" icon="lucide-image">
+            Supports text and image inputs
+          </Card>
+          <Card title="Real-time Search" icon="lucide-search">
+            Google Search grounding enabled
+          </Card>
+          <Card title="Streaming" icon="lucide-list-minus">
+            Server-sent events support
+          </Card>
+          <Card title="Flexible Roles" icon="lucide-users">
+            Multiple message roles supported
+          </Card>
+        </CardGroup>
+
+        <div style="padding: 20px; background-color: rgba(255, 152, 0, 0.05);
+        border: 1px solid rgba(255, 152, 0, 0.15); border-left: 6px solid
+        #ff9800; border-radius: 10px; margin: 25px 0;">
+          <div style="display: flex; align-items: center; margin-bottom: 12px;">
+            ⚠️
+            <strong style="color: #e65100; font-size: 17px;">Important: Unified Media Structure</strong>
+          </div>
+
+          <p style="color: #444; margin-bottom: 15px; line-height: 1.6; font-size: 14px;">
+            To simplify integration, <b>all media types</b> (Images, Videos, Audio, or Documents) in the <code>messages</code> array share the <b>exact same JSON structure</b>:
+          </p>
+
+          <ul style="color: #555; line-height: 1.8; margin-bottom: 15px; font-size: 14px;">
+            <li>The <code>type</code> field is <b>fixed</b> as <code>"image_url"</code></li>
+            <li>The <code>image_url</code> key name <b>remains unchanged</b> for all file types</li>
+            <li>Only the <code>url</code> value points to your specific media file</li>
+          </ul>
+
+          <div style="background-color: #fdfdfd; padding: 12px; border-radius: 6px; border: 1px solid #eee; font-family: 'SFMono-Regular', Consolas, monospace; font-size: 13px; color: #d32f2f;">
+            // Example for Video/Audio/PDF/Image:<br>
+            { "type": "image_url", "image_url": { "url": "https://..." } }
+          </div>
+        </div>
+
+        ## Tools Parameter
+
+        The `tools` parameter is an optional array that allows you to define
+        functions the model can call. The array can contain multiple objects.
+        When using function calling, you can define multiple functions in the
+        array.
+
+        <div style="padding: 20px; background-color: rgba(255, 152, 0, 0.05);
+        border: 1px solid rgba(255, 152, 0, 0.15); border-left: 6px solid
+        #ffa000; border-radius: 12px; margin: 25px 0;">
+          <div style="display: flex; align-items: center; margin-bottom: 12px;">
+            <div style="background-color: #ffa000; color: #fff; padding: 4px 10px; border-radius: 6px; font-size: 12px; font-weight: 800; margin-right: 12px; letter-spacing: 1px;">RESTRICTION</div>
+            <strong style="color: #e65100; font-size: 16px;">Conflict Warning</strong>
+          </div>
+
+          <p style="color: #444; margin-bottom: 12px; line-height: 1.6; font-size: 14px;">
+            <b>Google Search</b> and <b>Function Calling</b> are mutually exclusive. 
+          </p>
+
+          <div style="display: flex; align-items: center; justify-content: center; background: rgba(255,255,255,0.5); padding: 10px; border-radius: 8px; border: 1px dashed #ffa000; margin-top: 10px;">
+            <div style="text-align: center; flex: 1;">
+              <code style="color: #ffa000; font-weight: bold;">Google Search</code>
+            </div>
+            <div style="color: #999; font-weight: bold; padding: 0 15px;">XOR</div>
+            <div style="text-align: center; flex: 1;">
+              <code style="color: #ffa000; font-weight: bold;">Function Calling</code>
+            </div>
+          </div>
+
+          <p style="color: #666; font-size: 13px; margin-top: 15px; font-style: italic;">
+            * You cannot use both features in the same request. Please choose the one that best suits your needs.
+          </p>
+        </div>
+
+        <AccordionGroup>
+
+        <Accordion title="Google Search">
+
+        Use this format to enable Google Search grounding:
+
+        ```json
+
+        {
+          "type": "function",
+          "function": {
+            "name": "googleSearch"
+          }
+        }
+
+        ```
+
+        This enables real-time information retrieval via Google Search.
+
+        </Accordion>
+
+        <Accordion title="Function Calling">
+
+        Define your own functions with parameters. You can define multiple
+        functions in the `tools` array:
+
+        ```json
+
+        [
+          {
+            "type": "function",
+            "function": {
+              "name": "get_current_weather",
+              "description": "Get the current weather in a given location",
+              "parameters": {
+                "type": "object",
+                "properties": {
+                  "location": {
+                    "type": "string",
+                    "description": "The city and state, e.g. San Francisco, CA"
+                  },
+                  "unit": {
+                    "type": "string",
+                    "enum": ["celsius", "fahrenheit"]
+                  }
+                },
+                "required": ["location"]
+              }
             }
-          </script><script>((STORAGE_KEY, restoreKey) => {
-    if (!window.history.state || !window.history.state.key) {
-      let key = Math.random().toString(32).slice(2);
-      window.history.replaceState({
-        key
-      }, "");
-    }
-    try {
-      let positions = JSON.parse(sessionStorage.getItem(STORAGE_KEY) || "{}");
-      let storedY = positions[restoreKey || window.history.state.key];
-      if (typeof storedY === "number") {
-        window.scrollTo(0, storedY);
-      }
-    } catch (error) {
-      console.error(error);
-      sessionStorage.removeItem(STORAGE_KEY);
-    }
-  })("positions", null)</script><link rel="modulepreload" href="https://file-assets.apidog.com/docs-site/v1/assets/manifest-db7ef313.js"/><link rel="modulepreload" href="https://file-assets.apidog.com/docs-site/v1/assets/entry.client-mUtkjgQm.js"/><link rel="modulepreload" href="https://file-assets.apidog.com/docs-site/v1/assets/jsx-runtime-CM5sU0Q5.js"/><link rel="modulepreload" href="https://file-assets.apidog.com/docs-site/v1/assets/client-BKxavTD9.js"/><link rel="modulepreload" href="https://file-assets.apidog.com/docs-site/v1/assets/components-DMSdXhQK.js"/><link rel="modulepreload" href="https://file-assets.apidog.com/docs-site/v1/assets/root-CQ054TXt.js"/><link rel="modulepreload" href="https://file-assets.apidog.com/docs-site/v1/assets/root-Dv513fR3.js"/><link rel="modulepreload" href="https://file-assets.apidog.com/docs-site/v1/assets/route-D_6YkXJe.js"/><script>window.__remixContext = {"basename":"/","future":{"v3_fetcherPersist":true,"v3_relativeSplatPath":true,"v3_throwAbortReason":true,"v3_routeConfig":false,"v3_singleFetch":true,"v3_lazyRouteDiscovery":false,"unstable_optimizeDeps":false},"isSpaMode":false};window.__remixContext.stream = new ReadableStream({start(controller){window.__remixContext.streamController = controller;}}).pipeThrough(new TextEncoderStream());</script><script type="module" async="">import "https://file-assets.apidog.com/docs-site/v1/assets/manifest-db7ef313.js";
-import * as route0 from "https://file-assets.apidog.com/docs-site/v1/assets/root-Dv513fR3.js";
-import * as route1 from "https://file-assets.apidog.com/docs-site/v1/assets/route-D_6YkXJe.js";
+          },
+          {
+            "type": "function",
+            "function": {
+              "name": "get_stock_price",
+              "description": "Get the current stock price for a given symbol",
+              "parameters": {
+                "type": "object",
+                "properties": {
+                  "symbol": {
+                    "type": "string",
+                    "description": "The stock symbol, e.g. AAPL"
+                  }
+                },
+                "required": ["symbol"]
+              }
+            }
+          }
+        ]
 
-window.__remixRouteModules = {"root":route0,"routes/_index/route":route1};
+        ```
 
-import("https://file-assets.apidog.com/docs-site/v1/assets/entry.client-mUtkjgQm.js");</script></body></html><!--$--><script>window.__remixContext.streamController.enqueue("[{\"_1\":2,\"_231\":-5,\"_232\":-5},\"loaderData\",{\"_3\":4,\"_230\":-5},\"root\",{\"_5\":1,\"_6\":7,\"_19\":20,\"_23\":24,\"_33\":34,\"_52\":53,\"_112\":113,\"_155\":156,\"_229\":-7},\"type\",\"meta\",[8,11,16],{\"_9\":10},\"title\",\"API Documentation\",{\"_12\":13,\"_14\":15},\"name\",\"description\",\"content\",\"Design. Debug. Test. Document. Mock. Build APIs Faster \u0026 Together.\",{\"_12\":17,\"_14\":18},\"keywords\",\"API Design, API Specification, API Test, API Documentation, API Mock\",\"i18nState\",{\"_21\":22},\"clientLocale\",\"en-US\",\"errorCodeMessage\",{\"_25\":26,\"_27\":28,\"_29\":30,\"_31\":32},\"errorCode\",\"Unknown\",\"errorMessage\",\"Unexpected token 'o', \\\"forbidden\\n\\\" is not valid JSON: /api/v1/published-projects/domains/docs.kie.ai\",\"hideBuiltWith\",false,\"extra\",{},\"clientConfig\",{\"_35\":36,\"_37\":38,\"_39\":40,\"_41\":42,\"_47\":48,\"_49\":30,\"_50\":51},\"apiBaseUrl\",\"https://api.apidog.com\",\"appWebUrl\",\"https://app.apidog.com\",\"apidocBuiltinPrefixPath\",\"https://assets.apidog.com/app/static/apidoc\",\"cloudMockBaseUrls\",{\"_43\":44,\"_45\":46},\"pathMode\",\"https://mock.apidog.com/m1/{projectId}-{version}-{service}\",\"idMode\",\"https://mock.apidog.com/m2/{projectId}-{version}-{service}\",\"apidocIsShowLogo\",true,\"markdownDisableBreaks\",\"webhookGenerateCodeDefaultUrl\",\"https://your-api-server.com\",\"urlConfig\",{\"_54\":55,\"_58\":59,\"_99\":100,\"_108\":109},\"home\",{\"_56\":57},\"index\",\"https://apidog.com\",\"icon\",{\"_60\":61,\"_62\":63,\"_64\":63,\"_65\":66,\"_67\":68,\"_69\":70,\"_71\":72,\"_73\":74,\"_75\":76,\"_77\":78,\"_79\":80,\"_81\":82,\"_83\":84,\"_85\":86,\"_87\":88,\"_89\":90,\"_91\":92,\"_93\":94,\"_95\":96,\"_97\":98},\"apidoc\",\"https://assets.apidog.com/app/static/brand/apidoc.png\",\"apidog\",\"https://assets.apidog.com/app/static/brand/apidog-logo-256.png\",\"apidog europe\",\"googleDiscovery\",\"https://assets.apidog.com/app/static/brand/google-discovery.png\",\"har\",\"https://assets.apidog.com/app/static/brand/har.png\",\"iodocs\",\"https://assets.apidog.com/app/static/brand/io-doc.png\",\"jmeter\",\"https://assets.apidog.com/app/static/brand/jmeter.png\",\"openapi\",\"https://assets.apidog.com/app/static/brand/openapi.png\",\"postman\",\"https://assets.apidog.com/app/static/brand/postman.png\",\"raml\",\"https://assets.apidog.com/app/static/brand/raml.png\",\"wadl\",\"https://assets.apidog.com/app/static/brand/wadl.png\",\"curl\",\"https://assets.apidog.com/app/static/brand/curl.png\",\"insomnia\",\"https://assets.apidog.com/app/static/brand/insomnia.png\",\"wsdl\",\"https://assets.apidog.com/app/static/brand/wsdl.png\",\"markdown\",\"https://assets.apidog.com/app/static/brand/markdown.png\",\"html\",\"https://assets.apidog.com/app/static/brand/html.png\",\"protobuf\",\"https://assets.apidog.com/app/static/brand/protobuf.png\",\"soapui\",\"https://assets.apidog.com/app/static/brand/soapui.svg\",\"hoppscotch\",\"https://assets.apidog.com/app/static/brand/hoppscotch.svg\",\"javaProject\",\"https://assets.apidog.com/app/static/brand/java-project.png\",\"help\",{\"_56\":101,\"_102\":103,\"_104\":105,\"_106\":107},\"https://apidog.com/help\",\"browserExtension\",\"https://chromewebstore.google.com/detail/apidog-browser-extension/dmhljjnonlhapikmelaefohecogokhio\",\"csv\",\"https://apidog.com/help/reference/csv\",\"appMcpServer\",\"https://docs.apidog.com/apidog-mcp-server\",\"assets\",{\"_110\":111},\"logo512Png\",\"https://assets.apidog.com/static/logo/apidog-logo-512.png\",\"envConfig\",{\"_114\":60,\"_115\":116,\"_117\":116,\"_118\":119,\"_120\":121,\"_122\":123,\"_124\":57,\"_125\":62,\"_126\":22,\"_127\":128,\"_129\":130,\"_132\":133,\"_134\":135,\"_136\":137,\"_138\":139,\"_140\":141,\"_142\":143,\"_149\":150,\"_151\":48,\"_152\":153,\"_154\":30},\"RELEASE_BASE\",\"DEBUG_API_BASE\",\"\",\"DEBUG_WEB_URL_BASE\",\"AGENT_SERVER_API_BASE\",\"https://web-proxy.apidog.com\",\"APP_REGION\",\"GLOBAL\",\"APP_NAME\",\"Apidog\",\"APP_HOMEPAGE\",\"APP_NAME_LOWER\",\"DEFAULT_LOCALE\",\"APP_BROWSER_EXTENSION_ADAPTER\",\"apidogAgentCrossRequest\",\"APP_API_SERVER_HOSTNAMES\",[131],\"api.apidog.com\",\"APP_SUPPORT_EMAIL\",\"support@apidog.com\",\"APP_SCRIPT_MAIN_OBJECTS\",\"$\",\"SERVER_PROTOCOL\",\"http\",\"SERVER_HOST\",\"apidog-api-fordoc-svc\",\"DEFAULT_DOC_LAYOUT\",\"TwoColumn\",\"NOT_CUSTOM_DOMAIN_HOSTNAMES\",[144,145,146,147,148],\"www.apidog.com\",\"apidog.com\",\"www.apidog.io\",\"apidog.io\",\"share.apidog.com\",\"SERVER_REQUEST_TIMEOUT\",15000,\"IS_SHARED_DOC_INDEPENDENT_DOMAIN\",\"APIDOC_CUSTOM_DOMAIN_CNAME_REGEX\",[\"R\",\"\\\\d+\\\\.cname\\\\.apidog\\\\.com\",\"\"],\"IS_ALWAYS_USE_ORIGIN_FETCH\",\"docsDataState\",{\"_157\":158,\"_162\":163,\"_175\":176,\"_177\":178,\"_179\":180,\"_189\":190,\"_202\":203,\"_204\":205,\"_206\":207,\"_213\":214,\"_220\":-7,\"_221\":222,\"_223\":-7,\"_224\":-7,\"_225\":226,\"_228\":-7},\"navigation\",{\"_5\":159,\"_160\":161},\"NONE\",\"navRightLinkItems\",[],\"sidebarTree\",{\"_164\":-7,\"_165\":-7,\"_166\":167,\"_168\":-7,\"_169\":170,\"_171\":-7,\"_172\":-7,\"_173\":174},\"goBackSidebarTreeApiFolderNode\",\"rootSidebarTreeApiFolderNode\",\"sidebarTreeList\",[],\"selectedSidebarTreeNode\",\"parentSidebarTreeApiFolderNodes\",[],\"previousSidebarTreeNode\",\"nextSidebarTreeNode\",\"homeLink\",\"/\",\"docsBaseConfig\",{},\"versionList\",[],\"resourceData\",{\"_5\":181,\"_182\":-7,\"_183\":184},\"NotFound\",\"data\",\"extraData\",{\"_185\":186,\"_187\":188},\"apiFieldList\",[],\"dataSchemaDefinitions\",{},\"docsIdTypeData\",{\"_191\":192,\"_193\":194,\"_195\":194,\"_196\":194,\"_197\":116,\"_198\":194,\"_199\":200,\"_201\":-7},\"onlineType\",\"APIDOC\",\"branchId\",0,\"onlineId\",\"projectId\",\"subdirectory\",\"teamId\",\"visitType\",\"customDomain\",\"specialFileType\",\"notification\",[],\"footerBanner\",[],\"projectSetting\",{\"_208\":209,\"_210\":211},\"advancedSettings\",{},\"auth\",{\"_5\":212},\"noauth\",\"environments\",{\"_215\":216,\"_217\":-7,\"_218\":219},\"environmentList\",[],\"selectedEnvironment\",\"servers\",[],\"searchSettings\",\"versionSettings\",[],\"seoInfos\",\"itemPathPrefix\",\"appEnvMap\",{\"_227\":128},\"appBrowserExtensionAdapterKey\",\"customCodes\",\"primaryColorVariable\",\"routes/_index/route\",\"actionData\",\"errors\"]\n");</script><!--$--><script>window.__remixContext.streamController.close();</script><!--/$--><!--/$-->
+        ### Function Declaration Requirements
+
+        When implementing function calling in your prompt, you need to create a
+        `tools` array containing one or more function declarations. You can
+        define functions using JSON (specifically, a selected subset of OpenAPI
+        schema format).
+
+        A single function declaration can include the following parameters:
+
+        - **`name`** (string, required): The unique name of the function (e.g.,
+        `get_weather_forecast`, `send_email`). Use descriptive names without
+        spaces or special characters (use underscores or camelCase).
+
+        - **`description`** (string, optional but recommended): A clear and
+        detailed description of what the function does and its purpose. This is
+        crucial for the model to understand when to use the function. Be
+        specific and provide examples when necessary (e.g., "Find movie theaters
+        by location, with an option to also find movies currently showing at
+        those theaters.").
+
+        - **`parameters`** (object, required): Defines the input parameters
+        expected by the function. Contains:
+          - **`type`** (string): Specifies the overall data type, must be `"object"`.
+          - **`properties`** (object): Lists individual parameters, each with:
+            - **`type`** (string): The parameter's data type, such as `string`, `integer`, `boolean`, `array`.
+            - **`description`** (string): Description of the parameter's purpose and format. Provide examples and constraints (e.g., "City and state, e.g. 'San Francisco, CA' or a postal code like '95616'.").
+            - **`enum`** (array, optional): If parameter values come from a fixed set, use `enum` to list allowed values rather than just describing them in the description. This helps improve accuracy (e.g., `"enum": ["daylight", "cool", "warm"]`).
+          - **`required`** (array): An array of strings listing the parameter names required for the function to run.
+        </Accordion>
+
+        </AccordionGroup>
+
+        ## Response Format Parameter
+
+        The `response_format` parameter is an optional JSON Schema object that
+        defines the structure of the response. When provided, the model will
+        generate responses that conform to this schema.
+
+        <div style="padding: 20px; background-color: rgba(255, 87, 34, 0.03);
+        border: 1px solid rgba(255, 87, 34, 0.15); border-left: 6px solid
+        #ff5722; border-radius: 12px; margin: 25px 0;">
+          <div style="display: flex; align-items: center; margin-bottom: 15px;">
+            <div style="background-color: #ff5722; color: #fff; padding: 3px 10px; border-radius: 5px; font-size: 11px; font-weight: 800; margin-right: 12px; letter-spacing: 1px;">PARAMETER CONFLICT</div>
+            <strong style="color: #bf360c; font-size: 16px;">Incompatible Configuration</strong>
+          </div>
+
+          <p style="color: #444; margin-bottom: 15px; line-height: 1.6; font-size: 14px;">
+            The <code>response_format</code> parameter and <b>Function Calling</b> (tools) are mutually exclusive.
+          </p>
+
+          <div style="display: flex; align-items: stretch; background: #fff; border-radius: 8px; border: 1px solid #eee; overflow: hidden; margin: 10px 0;">
+            <div style="flex: 1; padding: 12px; text-align: center; background: rgba(0,0,0,0.02);">
+               <code style="color: #ff5722; font-size: 13px;">response_format</code>
+            </div>
+            <div style="display: flex; align-items: center; background: #ff5722; color: #fff; padding: 0 15px; font-size: 12px; font-weight: bold;">
+
+            </div>
+            <div style="flex: 1; padding: 12px; text-align: center; background: rgba(0,0,0,0.02);">
+               <code style="color: #ff5722; font-size: 13px;">tools / functions</code>
+            </div>
+          </div>
+
+          <ul style="color: #666; font-size: 13px; margin-top: 15px; padding-left: 18px; line-height: 1.6;">
+            <li>Use <code>response_format</code> for structured JSON output (e.g., JSON Mode).</li>
+            <li>Use <b>Function Calling</b> for interacting with external tools and APIs.</li>
+          </ul>
+        </div>
+
+        <AccordionGroup>
+
+        <Accordion title="JSON Schema Support">
+
+        The `response_format` follows the JSON Schema specification. Supported
+        types include:
+
+        - **`string`**: For text values
+
+        - **`number`**: For floating-point numbers
+
+        - **`integer`**: For whole numbers
+
+        - **`boolean`**: For true/false values
+
+        - **`object`**: For structured data with key-value pairs
+
+        - **`array`**: For lists of items
+
+        - **`null`**: To allow null values, add `"null"` to the type array
+        (e.g., `{"type": ["string", "null"]}`)
+
+        #### Type-Specific Properties
+
+        **For `object` values:**
+
+        - `properties`: Object mapping property names to their schema
+        definitions
+
+        - `required`: Array of required property names
+
+        - `additionalProperties`: Controls whether properties not in
+        `properties` are allowed
+
+        **For `string` values:**
+
+        - `enum`: List of specific possible string values for classification
+
+        - `format`: Specifies string syntax (e.g., `date-time`, `date`, `time`)
+
+        **For `number` and `integer` values:**
+
+        - `enum`: List of specific possible numeric values
+
+        - `minimum`: Inclusive minimum value
+
+        - `maximum`: Inclusive maximum value
+
+        **For `array` values:**
+
+        - `items`: Schema definition for all array elements
+
+        - `prefixItems`: List of schemas for the first N items (tuple-like
+        structures)
+
+        - `minItems`: Minimum number of items in the array
+
+        - `maxItems`: Maximum number of items in the array
+
+        </Accordion>
+
+        <Accordion title="Example">
+
+        ```json
+
+        {
+          "response_format": {
+            "type": "json_schema",
+            "properties": {
+              "response": {
+                "type": "string"
+              }
+            }
+          }
+        }
+
+        ```
+
+        </Accordion>
+
+        <Accordion title="Best Practices">
+
+        - **Clear descriptions**: Use the `description` field in the schema to
+        clearly explain what each property means
+
+        - **Strong typing**: Use specific types (`integer`, `string`, `enum`)
+        whenever possible
+
+        - **Prompt engineering**: Clearly state in your prompt what you want the
+        model to extract or structure
+
+        - **Validation**: While structured output ensures JSON is syntactically
+        correct, always validate the semantic correctness of values in your
+        application code
+
+        </Accordion>
+
+        </AccordionGroup>
+      operationId: gemini-2.5-flash-chat-completions
+      tags:
+        - docs/en/Market/Chat  Models/Gemini
+      parameters: []
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                messages:
+                  type: array
+                  description: >-
+                    An array of message objects. Each message has a role and
+                    content.
+
+                    **Unified Media File Format:**
+
+                    In the content array, whether it's images, videos, audio, or
+                    other document types, all media files use the same format
+                    structure:
+
+                    - The `type` field is always `"image_url"`
+
+                    - The `image_url` field name remains unchanged
+
+                    - The only thing that changes is the `url` value, which
+                    points to the corresponding media file address
+
+                    For example: images, videos, audio, PDFs, and other
+                    documents all use the same `{ type: 'image_url', image_url:
+                    { url: '...' } }` structure.
+                  items:
+                    $ref: '#/components/schemas/Message'
+                  minItems: 1
+                stream:
+                  type: boolean
+                  default: true
+                  description: >-
+                    If set to true, partial message deltas will be sent as
+                    server-sent events. Default is true.
+                tools:
+                  type: array
+                  description: >-
+                    An optional array of tools the model may call. The array can
+                    contain multiple objects. Supports two formats:
+
+                    1. **Google Search**: `{"type": "function", "function":
+                    {"name": "googleSearch"}}` - Enables real-time information
+                    retrieval via Google Search.
+
+                    2. **Function calling**: Define your own functions with
+                    name, description, and parameters. You can define multiple
+                    functions in the array. Functions are defined using JSON
+                    (specifically, a selected subset of OpenAPI schema format).
+
+                    **Important**: Google Search and function calling are
+                    mutually exclusive - you cannot use both in the same
+                    request. When using function calling, you can include
+                    multiple function definitions. Function calling and
+                    `response_format` are also mutually exclusive - you cannot
+                    use both in the same request.
+                  items:
+                    $ref: '#/components/schemas/Tool'
+                  minItems: 0
+                include_thoughts:
+                  type: boolean
+                  description: >-
+                    Whether to include thoughts in the response. If set to true,
+                    thoughts will be included in the response, otherwise they
+                    will not be included. Default is true.
+                  default: true
+                response_format:
+                  description: >-
+                    Optional JSON Schema object defining the structure of the
+                    response. When provided, the model will generate responses
+                    that conform to this schema. **`response_format` and
+                    function calling are mutually exclusive** - you cannot use
+                    both in the same request.
+
+                    Example:
+
+                    ```json
+
+                    {
+                      "type": "json_schema",
+                      "properties": {
+                        "response": {
+                          "type": "string"
+                        }
+                      }
+                    }
+
+                    ```
+                  $ref: '#/components/schemas/ResponseFormat'
+              required:
+                - messages
+              x-apidog-orders:
+                - messages
+                - stream
+                - tools
+                - include_thoughts
+                - response_format
+              examples:
+                - messages:
+                    - role: user
+                      content:
+                        - type: text
+                          text: What is in this image?
+                        - type: image_url
+                          image_url:
+                            url: >-
+                              https://file.aiquickdraw.com/custom-page/akr/section-images/1759055072437dqlsclj2.png
+                  tools:
+                    - type: function
+                      function:
+                        name: googleSearch
+                  stream: true
+                  include_thoughts: true
+                  response_format:
+                    type: json_schema
+                    properties:
+                      response:
+                        type: string
+              x-apidog-ignore-properties: []
+            example:
+              messages:
+                - role: user
+                  content:
+                    - type: text
+                      text: What is in this image?
+                    - type: image_url
+                      image_url:
+                        url: >-
+                          https://file.aiquickdraw.com/custom-page/akr/section-images/1759055072437dqlsclj2.png
+              tools:
+                - type: function
+                  function:
+                    name: googleSearch
+              stream: true
+              include_thoughts: true
+              response_format:
+                type: json_schema
+                json_schema:
+                  name: structured_output
+                  strict: true
+                  schema:
+                    type: object
+                    properties:
+                      response:
+                        type: string
+      responses:
+        '200':
+          description: >-
+            Request successful. When `response_format` is provided, the response
+            will conform to the specified JSON schema. Otherwise, returns the
+            standard chat completion format.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  id:
+                    type: string
+                    description: Unique identifier for the chat completion
+                    examples:
+                      - chatcmpl-example-123
+                  object:
+                    type: string
+                    description: Object type
+                    examples:
+                      - chat.completion
+                  created:
+                    type: integer
+                    format: int64
+                    description: Unix timestamp of when the completion was created
+                    examples:
+                      - 1677652288
+                  model:
+                    type: string
+                    description: Model name
+                    examples:
+                      - gemini-2.5-flash
+                  choices:
+                    type: array
+                    description: Array of completion choices
+                    items:
+                      type: object
+                      properties:
+                        index:
+                          type: integer
+                          description: Index of the choice
+                          examples:
+                            - 0
+                        message:
+                          type: object
+                          properties:
+                            role:
+                              type: string
+                              examples:
+                                - assistant
+                            content:
+                              type: string
+                              description: Message content
+                          required:
+                            - role
+                            - content
+                          x-apidog-orders:
+                            - role
+                            - content
+                          x-apidog-ignore-properties: []
+                        finish_reason:
+                          type: string
+                          description: Reason why the completion finished
+                          examples:
+                            - stop
+                      required:
+                        - index
+                        - message
+                        - finish_reason
+                      x-apidog-orders:
+                        - index
+                        - message
+                        - finish_reason
+                      x-apidog-ignore-properties: []
+                  usage:
+                    type: object
+                    properties:
+                      prompt_tokens:
+                        type: integer
+                        description: Number of tokens in the prompt
+                        examples:
+                          - 10
+                      completion_tokens:
+                        type: integer
+                        description: Number of tokens in the completion
+                        examples:
+                          - 50
+                      total_tokens:
+                        type: integer
+                        description: Total number of tokens
+                        examples:
+                          - 60
+                    required:
+                      - prompt_tokens
+                      - completion_tokens
+                      - total_tokens
+                    x-apidog-orders:
+                      - prompt_tokens
+                      - completion_tokens
+                      - total_tokens
+                    x-apidog-ignore-properties: []
+                x-apidog-orders:
+                  - id
+                  - object
+                  - created
+                  - model
+                  - choices
+                  - usage
+                x-apidog-ignore-properties: []
+          headers: {}
+          x-apidog-name: ''
+        '400':
+          description: Bad Request - Invalid request parameters
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: object
+                    properties:
+                      message:
+                        type: string
+                        examples:
+                          - Invalid request parameters
+                      type:
+                        type: string
+                        examples:
+                          - invalid_request_error
+                    x-apidog-orders:
+                      - message
+                      - type
+                    x-apidog-ignore-properties: []
+                x-apidog-orders:
+                  - error
+                x-apidog-ignore-properties: []
+          headers: {}
+          x-apidog-name: ''
+        '401':
+          description: Unauthorized - Invalid or missing API key
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: object
+                    properties:
+                      message:
+                        type: string
+                        examples:
+                          - Unauthorized
+                      type:
+                        type: string
+                        examples:
+                          - authentication_error
+                    x-apidog-orders:
+                      - message
+                      - type
+                    x-apidog-ignore-properties: []
+                x-apidog-orders:
+                  - error
+                x-apidog-ignore-properties: []
+          headers: {}
+          x-apidog-name: ''
+        '429':
+          description: Rate Limited - Too many requests
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: object
+                    properties:
+                      message:
+                        type: string
+                        examples:
+                          - Rate limit exceeded
+                      type:
+                        type: string
+                        examples:
+                          - rate_limit_error
+                    x-apidog-orders:
+                      - message
+                      - type
+                    x-apidog-ignore-properties: []
+                x-apidog-orders:
+                  - error
+                x-apidog-ignore-properties: []
+          headers: {}
+          x-apidog-name: ''
+        '500':
+          description: request failed
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  code:
+                    type: integer
+                    description: >-
+                      Response status code
+
+                      - **200**: Success - Request has been processed
+                      successfully
+
+                      - **401**: Unauthorized - Authentication credentials are
+                      missing or invalid
+
+                      - **402**: Insufficient Credits - Account does not have
+                      enough credits to perform the operation
+
+                      - **404**: Not Found - The requested resource or endpoint
+                      does not exist
+
+                      - **408**: Upstream is currently experiencing service
+                      issues. No result has been returned for over 10 minutes.
+
+                      - **422**: Validation Error - The request parameters
+                      failed validation checks
+
+                      - **429**: Rate Limited - Request limit has been exceeded
+                      for this resource
+
+                      - **455**: Service Unavailable - System is currently
+                      undergoing maintenance
+
+                      - **500**: Server Error - An unexpected error occurred
+                      while processing the request
+
+                      - **501**: Generation Failed - Content generation task
+                      failed
+
+                      - **505**: Feature Disabled - The requested feature is
+                      currently disabled
+                  msg:
+                    type: string
+                    description: Response message, error description when failed
+                  data:
+                    type: object
+                    properties: {}
+                    x-apidog-orders: []
+                    x-apidog-ignore-properties: []
+                x-apidog-orders:
+                  - code
+                  - msg
+                  - data
+                required:
+                  - code
+                  - msg
+                  - data
+                x-apidog-ignore-properties: []
+              example:
+                code: 500
+                msg: >-
+                  Server Error - An unexpected error occurred while processing
+                  the request
+                data: null
+          headers: {}
+          x-apidog-name: 'Error '
+      security: []
+      x-apidog-folder: docs/en/Market/Chat  Models/Gemini
+      x-apidog-status: released
+      x-run-in-apidog: https://app.apidog.com/web/project/1184766/apis/api-28506435-run
+components:
+  schemas:
+    ResponseFormat:
+      type: object
+      properties:
+        type:
+          type: string
+          description: Only json_schema value
+        json_schema:
+          type: object
+          properties:
+            name:
+              type: string
+              description: Only structured_output value
+            strict:
+              type: boolean
+              description: Enable strict mode?
+            schema:
+              type: object
+              properties:
+                type:
+                  type: string
+                  description: >-
+                    The response_format follows the JSON Schema specification.
+                    Supported types include:
+
+                    string: For text values
+
+                    number: For floating-point numbers
+
+                    integer: For whole numbers
+
+                    boolean: For true/false values
+
+                    object: For structured data with key-value pairs
+
+                    array: For lists of items
+
+                    null: To allow null values, add "null" to the type array
+                properties:
+                  type: object
+                  properties:
+                    response:
+                      type: object
+                      properties:
+                        type:
+                          type: string
+                      required:
+                        - type
+                      x-apidog-orders:
+                        - type
+                      x-apidog-ignore-properties: []
+                  required:
+                    - response
+                  x-apidog-orders:
+                    - response
+                  description: >-
+                    Object mapping property names to their JSON Schema
+                    definitions
+                  x-apidog-ignore-properties: []
+                required:
+                  type: array
+                  items:
+                    type: string
+                  description: Array of required property names
+                title:
+                  type: string
+                  description: Short description of the schema
+                description:
+                  type: string
+                  description: Detailed description of the schema
+              required:
+                - type
+                - properties
+                - required
+                - title
+                - description
+              x-apidog-orders:
+                - type
+                - properties
+                - required
+                - title
+                - description
+              x-apidog-ignore-properties: []
+          required:
+            - name
+            - strict
+            - schema
+          x-apidog-orders:
+            - name
+            - strict
+            - schema
+          description: >-
+            JSON Schema object defining the structure of the response. When
+            provided, the model will generate responses that conform to this
+            schema.
+          x-apidog-ignore-properties: []
+      required:
+        - type
+        - json_schema
+      x-apidog-orders:
+        - type
+        - json_schema
+      title: chat model structured data structure
+      x-apidog-ignore-properties: []
+      x-apidog-folder: ''
+    Tool:
+      type: object
+      description: >-
+        Tool definition.
+
+        - **Enhanced Network Access**: `{"type": "function", "function":
+        {"name": "googleSearch"}}`
+      properties:
+        type:
+          type: string
+          enum:
+            - function
+          description: Utility type. Must be 'function'.
+          examples:
+            - function
+        function:
+          type: object
+          description: Function declarations for enhanced network access.
+          properties:
+            name:
+              type: string
+              description: Function name. Must be `googleSearch`.
+            description:
+              type: string
+              description: >-
+                Optional but recommended. A clear and specific description of
+                the function's purpose. Helps the model understand when to call
+                this function.
+            parameters:
+              type: object
+              description: >-
+                Defines a JSON Schema object for function parameters. Required
+                for custom functions; not used by 'googleSearch'. Follows the
+                JSON Schema specification.
+              properties:
+                type:
+                  type: string
+                  enum:
+                    - object
+                  description: Must be 'object' for function parameters
+                properties:
+                  type: object
+                  description: Map parameter names to objects defined in their JSON Schema.
+                  additionalProperties:
+                    type: string
+                  x-apidog-orders: []
+                  properties: {}
+                  x-apidog-ignore-properties: []
+                required:
+                  type: array
+                  items:
+                    type: string
+                  description: Required parameter name array
+              required:
+                - type
+                - properties
+              x-apidog-orders:
+                - type
+                - properties
+                - required
+              x-apidog-ignore-properties: []
+          required:
+            - name
+          x-apidog-orders:
+            - name
+            - description
+            - parameters
+          x-apidog-ignore-properties: []
+      required:
+        - type
+        - function
+      x-apidog-orders:
+        - type
+        - function
+      title: The tools parameter of the chat model
+      x-apidog-ignore-properties: []
+      x-apidog-folder: ''
+    Message:
+      type: object
+      properties:
+        role:
+          type: string
+          enum:
+            - developer
+            - system
+            - user
+            - assistant
+            - tool
+          description: >-
+            Message role
+
+            - **developer**: Developer-provided instructions that the model
+            should follow, regardless of user messages. In o1 models and newer
+            versions, developer messages replace the previous system messages.
+
+            - **system**: Developer-provided instructions that the model should
+            follow, regardless of user messages. In o1 models and newer
+            versions, please use developer messages instead.
+
+            - **user**: Messages sent by end users, containing prompts or
+            additional context information.
+
+            - **assistant**: Messages sent by the model in response to user
+            messages.
+
+            - **tool**: Content of tool messages.
+        content:
+          type: array
+          description: >-
+            Message content array that can contain text and image objects.
+
+            **Unified Media File Format:**
+
+            Whether it's images, videos, audio, or other document types, all
+            media files use the same format structure:
+
+            - The `type` field is always `"image_url"`
+
+            - The `image_url` field name remains unchanged
+
+            - The only thing that changes is the `url` value, which points to
+            the corresponding media file address
+
+            For example: images, videos, audio, PDFs, and other documents all
+            use the same `{ type: 'image_url', image_url: { url: '...' } }`
+            structure.
+          items:
+            oneOf:
+              - type: object
+                properties:
+                  type:
+                    type: string
+                    enum:
+                      - text
+                    examples:
+                      - text
+                  text:
+                    type: string
+                    description: 消息的文本内容
+                required:
+                  - type
+                  - text
+                x-apidog-orders:
+                  - type
+                  - text
+                x-apidog-ignore-properties: []
+              - type: object
+                properties:
+                  type:
+                    type: string
+                    enum:
+                      - image_url
+                    examples:
+                      - image_url
+                  image_url:
+                    type: object
+                    properties:
+                      url:
+                        type: string
+                        format: uri
+                        description: 图像的 URL
+                    required:
+                      - url
+                    x-apidog-orders:
+                      - url
+                    x-apidog-ignore-properties: []
+                required:
+                  - type
+                  - image_url
+                x-apidog-orders:
+                  - type
+                  - image_url
+                x-apidog-ignore-properties: []
+      required:
+        - role
+        - content
+      title: The messages parameter of the chat model
+      x-apidog-orders:
+        - role
+        - content
+      x-apidog-ignore-properties: []
+      x-apidog-folder: ''
+  securitySchemes:
+    BearerAuth:
+      type: bearer
+      scheme: bearer
+      bearerFormat: API Key
+      description: >-
+        All API requests require a Bearer Token. Add the header `Authorization:
+        Bearer YOUR_API_KEY` to authenticate requests.
+    BearerAuth1:
+      type: bearer
+      scheme: bearer
+      bearerFormat: API Key
+      description: >-
+        所有 API 请求都需要 Bearer Token。请在请求头中添加 `Authorization: Bearer YOUR_API_KEY`
+        进行身份验证。
+servers:
+  - url: https://api.kie.ai
+    description: 正式环境
+security:
+  - BearerAuth: []
+    x-apidog:
+      schemeGroups:
+        - id: kn8M4YUlc5i0A0179ezwx
+          schemeIds:
+            - BearerAuth
+      required: true
+      use:
+        id: kn8M4YUlc5i0A0179ezwx
+      scopes:
+        kn8M4YUlc5i0A0179ezwx:
+          BearerAuth: []
+
+```
 
 ---
 
@@ -61834,40 +71122,693 @@ import("https://file-assets.apidog.com/docs-site/v1/assets/entry.client-mUtkjgQm
 
 **Source:** [https://docs.kie.ai/market/gemini/gemini-3-flash.md][164]
 
-<!DOCTYPE html><html lang="en-US" class="group/root" id="html" data-theme="light" data-accent-color="purple"><head><script src="https://file-assets.apidog.com/docs-site/v1/assets/prepareDocsConfigScript-CLIBKQbk.js"></script><script>__prepareDocsConfigScript(JSON.parse("{\"theme\":\"system\",\"themePrimarySettings\":{\"light\":{\"accentColor\":\"purple\"},\"dark\":{\"accentColor\":\"purple\"}},\"logoSettings\":{\"light\":{\"icon\":\"\",\"type\":\"project\"},\"dark\":{\"icon\":\"\",\"type\":\"followLight\"}},\"backgroundImageSettings\":{\"light\":{\"type\":\"custom\",\"color\":\"\"},\"dark\":{\"type\":\"followLight\",\"color\":\"\"}},\"id\":0,\"subdirectory\":\"\"}"));</script><script>window.eventTracking = {
-      dataLayer: []
-    }
-    window.eventTracking.report = function(){
-        window.eventTracking.dataLayer.push(arguments);
-    }</script><meta charSet="utf-8"/><meta name="viewport" content="width=device-width, initial-scale=1"/><title>API Documentation</title><meta name="description" content="Design. Debug. Test. Document. Mock. Build APIs Faster &amp; Together."/><meta name="keywords" content="API Design, API Specification, API Test, API Documentation, API Mock"/><link rel="stylesheet" href="https://file-assets.apidog.com/docs-site/v1/assets/root-CpC_E1fb.css"/></head><body class="overflow-hidden g-body"><div class="flex h-full w-full flex-col overflow-auto"><div class="flex flex-1 flex-col items-center justify-center"><div class="flex w-auto flex-col items-center justify-center max-os:p-5 os:w-[480px]"><svg width="104" height="104" viewBox="0 0 104 104" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M92.9557 41.8969L88.7262 25.2175C87.4089 19.8194 84.8039 16.1447 80.9015 14.1934L80.3963 13.9458C79.802 13.6685 79.178 13.4407 78.5243 13.2426C75.4142 12.3214 72.0268 12.371 68.362 13.3813C65.8759 14.0747 63.2612 15.2038 60.5176 16.7886C56.7835 18.9478 53.3167 21.6319 50.1076 24.8708C49.0973 25.8711 48.1266 26.9209 47.1956 28.0204C46.314 29.0406 45.4622 30.1105 44.6302 31.2198C42.9266 33.4781 41.3121 35.9245 39.7868 38.5492C34.1015 48.3648 31.2588 57.9329 31.2588 67.2631C31.2588 72.0471 32.1106 76.1181 33.8142 79.4461C34.6759 81.1101 35.6862 82.5263 36.8748 83.7248C37.9346 84.7846 39.1232 85.6564 40.4405 86.3398L41.0151 86.627V98.9485C41.0151 99.9984 41.3221 100.712 41.9461 101.058C42.5701 101.415 43.3426 101.326 44.2637 100.801L67.0249 87.6571C67.946 87.1223 68.7186 86.3199 69.3426 85.2502C69.9666 84.1706 70.2736 83.1008 70.2736 82.0509V78.3169L76.7811 74.5629C78.5639 73.5328 80.0993 71.9184 81.377 69.7195C82.6448 67.5207 83.2786 65.4011 83.2786 63.341V52.1485L89.786 48.3946C90.8657 47.7706 91.7373 46.79 92.391 45.4429C93.0348 44.1058 93.2231 42.927 92.9557 41.8969ZM62.8352 66.6095C62.2112 67.6891 61.4387 68.4914 60.5176 69.0263C59.5964 69.5512 58.8237 69.6404 58.1997 69.2838C57.5856 68.9371 57.2687 68.2238 57.2687 67.164C57.2687 66.1042 57.5856 65.0445 58.1997 63.9748C58.2592 63.8658 58.3186 63.7667 58.378 63.6676C58.9129 62.8356 59.5468 62.1819 60.2797 61.7164C60.359 61.6569 60.4383 61.6075 60.5176 61.558C61.4387 61.033 62.2112 60.9439 62.8352 61.2906C63.4592 61.6471 63.7761 62.3604 63.7761 63.4103C63.7761 64.4602 63.4592 65.5398 62.8352 66.6095ZM69.5011 38.7572C69.402 39.1336 69.2832 39.5101 69.1346 39.8865C68.5997 41.3227 67.4607 43.6206 65.7274 46.8C64.9647 48.1768 64.41 49.3158 64.0535 50.237C63.8157 50.861 63.6176 51.4748 63.4691 52.0592C63.3997 52.3366 63.3304 52.6041 63.2809 52.8715C63.1224 53.7729 62.7856 54.6148 62.2706 55.3774C61.7556 56.1401 61.2009 56.6948 60.6066 57.0315C59.8935 57.4475 59.319 57.4971 58.8535 57.2099C58.3978 56.9128 58.2196 56.358 58.3285 55.5557C58.487 54.2186 58.8039 52.931 59.2596 51.7029C59.7251 50.4747 60.4679 48.9392 61.498 47.0969C62.3201 45.6409 62.9837 44.4029 63.4691 43.4026C63.7761 42.7885 64.0138 42.2636 64.1921 41.8278C64.202 41.7981 64.2119 41.7782 64.2218 41.7485C64.6775 40.5797 64.9153 39.5001 64.9153 38.4997C64.9153 37.321 64.5191 36.5881 63.7366 36.2909C62.9442 36.0037 61.9537 36.2019 60.7652 36.8853C60.0025 37.3211 59.2794 37.945 58.5662 38.7572C57.863 39.5694 57.239 40.5105 56.7041 41.5604C56.2683 42.5013 55.7632 43.2442 55.1986 43.7889C54.6241 44.3337 54.0397 44.6209 53.4455 44.6506C52.8512 44.6902 52.4055 44.4525 52.1083 43.9374C51.8112 43.4224 51.8211 42.7687 52.1479 41.9565C53.0691 39.7477 54.2973 37.7074 55.8424 35.8552C56.5754 34.9737 57.338 34.1811 58.1205 33.4878C58.9822 32.735 59.8638 32.0913 60.7652 31.5664C63.3701 30.0708 65.5491 29.7141 67.3121 30.4966C69.0752 31.279 69.9468 32.9829 69.9468 35.5977C69.9468 36.6476 69.7982 37.7073 69.5011 38.7572Z" stroke="#667085" stroke-linecap="round" stroke-linejoin="round"></path><path d="M63.777 63.4086C63.777 64.4684 63.46 65.5381 62.836 66.6078C62.212 67.6874 61.4395 68.4896 60.5184 69.0245C59.5972 69.5494 58.8246 69.6387 58.2006 69.2821C57.5865 68.9354 57.2695 68.2221 57.2695 67.1623C57.2695 66.1025 57.5865 65.0428 58.2006 63.973C58.26 63.8641 58.3194 63.7649 58.3789 63.6659C58.9137 62.8339 59.5476 62.1802 60.2806 61.7147C60.3598 61.6552 60.4392 61.6058 60.5184 61.5563C61.4395 61.0313 62.212 60.9422 62.836 61.2888C63.46 61.6454 63.777 62.3587 63.777 63.4086Z" stroke="#667085" stroke-linecap="round" stroke-linejoin="round"></path><path d="M63.7373 36.2894C62.9449 36.0021 61.9544 36.2003 60.7659 36.8838C60.0032 37.3196 59.2801 37.9435 58.567 38.7557C57.8638 39.5679 57.2398 40.5089 56.7049 41.5588C56.2691 42.4998 55.7639 43.2426 55.1994 43.7874C54.6249 44.3321 54.0405 44.6193 53.4462 44.649C52.8519 44.6886 52.4062 44.4509 52.1091 43.9359C51.8119 43.4208 51.8219 42.7671 52.1487 41.9549C53.0699 39.7461 54.298 37.7059 55.8432 35.8537C56.5761 34.9721 57.3388 34.1797 58.1213 33.4863L63.7373 36.2894Z" stroke="#667085" stroke-linecap="round" stroke-linejoin="round"></path><path d="M69.9474 35.596C69.9474 36.6459 69.7988 37.7056 69.5017 38.7555C69.4026 39.1319 69.2838 39.5085 69.1352 39.8849C68.6003 41.321 67.4613 43.6189 65.728 46.7984C64.9653 48.1751 64.4106 49.3141 64.054 50.2352C63.8163 50.8592 63.6182 51.4732 63.4697 52.0576C63.4003 52.3349 63.331 52.6024 63.2815 52.8698C63.123 53.7711 62.7862 54.6131 62.2712 55.3758C61.7561 56.1385 61.2015 56.693 60.6072 57.0298C59.894 57.4458 59.3196 57.4955 58.854 57.2083C58.3984 56.9111 58.2201 56.3563 58.3291 55.554C58.4876 54.2168 58.8045 52.9293 59.2601 51.7011C59.7257 50.4729 60.4685 48.9376 61.4986 47.0953C62.3207 45.6393 62.9843 44.4012 63.4697 43.4008C63.7767 42.7868 64.0144 42.2619 64.1927 41.8261C64.2026 41.7964 64.2125 41.7766 64.2224 41.7468C64.678 40.5781 64.9158 39.4984 64.9158 38.498C64.9158 37.3193 64.5196 36.5865 63.7371 36.2893L58.1211 33.4862C58.9828 32.7334 59.8643 32.0896 60.7657 31.5647C63.3706 30.069 65.5497 29.7125 67.3127 30.4949C69.0758 31.2774 69.9474 32.9811 69.9474 35.596Z" stroke="#667085" stroke-linecap="round" stroke-linejoin="round"></path><path d="M41.9466 101.059L22.3253 91.2429L22.1371 91.1537C21.5131 90.807 21.2061 90.094 21.2061 89.0441V76.7227L41.0156 86.6274V98.9488C41.0156 99.9988 41.3226 100.712 41.9466 101.059Z" stroke="#667085" stroke-linecap="round" stroke-linejoin="round"></path><path d="M80.3972 13.9448C79.8029 13.6675 79.1789 13.4397 78.5252 13.2416C75.4151 12.3204 72.0277 12.3701 68.3629 13.3804C65.8768 14.0737 63.2621 15.2028 60.5185 16.7876C56.7844 18.9468 53.3176 21.6309 50.1085 24.8698C49.0982 25.8702 48.1275 26.92 47.1965 28.0194C46.3149 29.0396 45.4631 30.1096 44.6311 31.2189C42.9275 33.4772 41.313 35.9236 39.7877 38.5484C34.1024 48.364 31.2597 57.932 31.2597 67.2623C31.2597 72.0463 32.1115 76.1171 33.8151 79.4451C34.6768 81.1091 35.6871 82.5253 36.8757 83.7238C37.9355 84.7836 39.1241 85.6554 40.4414 86.3388L21.2065 76.7213C18.1161 75.2752 15.7192 72.8783 14.0056 69.5404C12.302 66.2124 11.4502 62.1415 11.4502 57.3575C11.4502 48.0272 14.2929 38.4592 19.9782 28.6436C25.6734 18.828 32.587 11.5678 40.7089 6.88282C47.4838 2.97044 53.486 1.79169 58.7157 3.33683C59.4784 3.56464 60.2113 3.84208 60.8948 4.17884L61.281 4.37688L80.3972 13.9448Z" stroke="#667085" stroke-linecap="round" stroke-linejoin="round"></path></svg><div class="align-center mt-8 flex justify-center text-center text-2xl font-semibold text-color">An abnormal error occurred, please try &#x27;Reload&#x27; or &#x27;get Support&#x27; to help you solve it!</div><div class="align-center mt-2 text-center text-lg font-400 text-secondary">Unexpected token &#x27;o&#x27;, &quot;forbidden
-&quot; is not valid JSON: /api/v1/published-projects/domains/docs.kie.ai</div></div></div><div class="flex flex-col items-center justify-center p-8 text-base font-base text-secondary"><div class="inline-flex items-center text-base font-400 text-secondary _footer-logo-wrapper_1kbjg_1"><a class="_footer-logo_1kbjg_1 flex-shrink-0" aria-label="homepage link" href="https://apidog.com"><span class="inline-flex items-center"><span class="mr-[-4px]">Built with</span><svg width="61" height="18" viewBox="0 0 61 18" fill="none" xmlns="http://www.w3.org/2000/svg" class="h-[18px] w-[80px]"><path d="M12.3836 1.67806C11.6452 0.940647 10.4478 0.940647 9.70932 1.67806L8.99795 2.3884L8.30644 1.69789C7.57144 0.963937 6.37437 0.936241 5.62991 1.66043C4.88545 2.38463 4.86748 3.60515 5.61194 4.34854L6.32331 5.05888C7.80026 6.53371 10.195 6.53371 11.6723 5.05888L12.3836 4.34854C13.1221 3.61113 13.1221 2.41547 12.3836 1.67806Z" fill="#667085"></path><path d="M12.3838 13.6515L11.6729 12.9412C10.1968 11.4664 7.80339 11.4664 6.32699 12.9412L5.61603 13.6515C4.87799 14.389 4.87799 15.5846 5.61603 16.322C6.35408 17.0594 7.55076 17.0594 8.28881 16.322L8.99976 15.6117L9.69087 16.3022C10.4255 17.0361 11.6218 17.0638 12.3659 16.3396C13.1219 15.6038 13.1278 14.3949 12.3838 13.6515Z" fill="#667085"></path><path d="M15.6105 8.99642L16.3214 8.28481C17.0655 7.54009 17.0595 6.32906 16.3035 5.59191C15.5595 4.86643 14.3631 4.89418 13.6285 5.62943L13.3098 5.94851C12.1666 7.09269 10.6166 7.73526 9 7.73526C7.38344 7.73526 5.83335 7.09238 4.69023 5.94851L4.37146 5.62943C3.63689 4.89418 2.44054 4.86643 1.69652 5.59191C0.940527 6.32906 0.934542 7.54009 1.67856 8.28481L2.38951 8.99642L1.67856 9.70803C0.940527 10.4468 0.940527 11.6445 1.67856 12.3833C2.4166 13.122 3.61326 13.122 4.3513 12.3833L4.74347 11.9907C5.85225 10.8809 7.35604 10.2576 8.92409 10.2576H8.9874C10.6162 10.2576 12.1666 10.9005 13.3098 12.0446C13.5126 12.2477 13.6484 12.3836 13.6484 12.3836C14.3864 13.1223 15.5831 13.1223 16.3211 12.3836C17.0592 11.6449 17.0592 10.4471 16.3211 9.70834L15.6102 8.99673L15.6105 8.99642Z" fill="#667085"></path><path fill-rule="evenodd" clip-rule="evenodd" d="M37.3559 4.00331C37.4694 3.95752 37.5911 3.93521 37.7136 3.93768C37.8343 3.93606 37.9541 3.95884 38.0656 4.0046C38.1772 4.05035 38.2781 4.11814 38.3624 4.20384C38.4483 4.29095 38.5158 4.39418 38.561 4.50749C38.6061 4.6208 38.628 4.7419 38.6253 4.8637C38.628 4.98551 38.6061 5.10664 38.561 5.21995C38.5158 5.33326 38.4483 5.43648 38.3624 5.52357C38.2781 5.60926 38.1772 5.67705 38.0656 5.72284C37.9541 5.7686 37.8343 5.79134 37.7136 5.78975C37.5911 5.79222 37.4694 5.76989 37.3559 5.72413C37.2425 5.67837 37.1396 5.61011 37.0536 5.52357C36.9677 5.43648 36.9002 5.33326 36.8551 5.21995C36.8099 5.10664 36.7881 4.98551 36.7908 4.8637C36.7881 4.7419 36.8099 4.6208 36.8551 4.50749C36.9002 4.39418 36.9677 4.29095 37.0536 4.20384C37.1396 4.1173 37.2425 4.04907 37.3559 4.00331ZM25.6211 4.76389L24.0219 4.76389L21.175 12.7654H22.7355L23.2948 11.1795H26.371L26.9303 12.7654H28.5019L25.6211 4.76389ZM25.9403 9.91528H23.7255L24.8441 6.75459L25.9403 9.91528ZM34.4529 6.71022C33.9935 6.42603 33.4618 6.27789 32.9204 6.28324C32.4656 6.27789 32.0164 6.38257 31.6116 6.58824C31.3484 6.72112 31.1086 6.89528 30.9013 7.10393V6.38304H29.4248V15.6932H30.9181V12.0501C31.1303 12.2594 31.3736 12.4352 31.6396 12.5714C32.0799 12.7816 32.5659 12.88 33.0541 12.8577C33.5422 12.8355 34.0171 12.6932 34.4361 12.4438C34.899 12.1548 35.274 11.7466 35.5212 11.2627C35.7861 10.7302 35.9203 10.1431 35.9126 9.54929C35.923 8.96057 35.7887 8.37821 35.5212 7.8525C35.2797 7.38027 34.9096 6.98456 34.4529 6.71022ZM34.4137 9.55484C34.4161 9.91562 34.3297 10.2716 34.162 10.5918C34.0132 10.8769 33.7889 11.1165 33.5133 11.2849C33.2582 11.4309 32.9688 11.5078 32.6743 11.5078C32.3798 11.5078 32.0904 11.4309 31.8353 11.2849C31.5644 11.1203 31.341 10.8892 31.1866 10.6139C31.0195 10.284 30.937 9.91836 30.946 9.54929C30.9355 9.18364 31.0182 8.82126 31.1866 8.49571C31.331 8.22256 31.5426 7.98991 31.8018 7.81923C32.0627 7.67197 32.3573 7.59366 32.6575 7.5919C32.9606 7.59099 33.2582 7.67147 33.5188 7.82478C33.7952 7.97573 34.0193 8.20567 34.162 8.48465C34.3413 8.8105 34.4283 9.17839 34.4137 9.54929V9.55484ZM38.4519 6.38304H36.9585V12.7599H38.4519V6.38304ZM43.7037 6.56049C43.9895 6.68375 44.2509 6.85649 44.4756 7.07066V4.27038H45.9801V12.7654H44.4756V12.039C44.2733 12.2523 44.0347 12.4288 43.7709 12.5603C43.3696 12.7699 42.9211 12.8748 42.4677 12.8652C41.9296 12.8702 41.4008 12.7261 40.9408 12.4493C40.4817 12.1535 40.1078 11.7446 39.8557 11.2627C39.5908 10.7302 39.4566 10.1431 39.4642 9.54929C39.4539 8.96057 39.5882 8.37821 39.8557 7.8525C40.1049 7.3803 40.4803 6.98514 40.9408 6.71022C41.3529 6.46065 41.821 6.31637 42.3032 6.29024C42.7854 6.26412 43.2666 6.35695 43.7037 6.56049ZM44.4756 9.57146C44.4854 9.20459 44.3987 8.84147 44.2239 8.51792C44.0698 8.22608 43.835 7.98372 43.5471 7.81923C43.2921 7.67323 43.0027 7.59637 42.7082 7.59637C42.4136 7.59637 42.1243 7.67323 41.8692 7.81923C41.598 7.97735 41.377 8.20793 41.2316 8.48465C41.0626 8.80593 40.9798 9.16492 40.9911 9.52712C40.9825 9.89613 41.0651 10.2616 41.2316 10.5918C41.3883 10.8862 41.622 11.1333 41.9084 11.3071C42.1635 11.4531 42.4528 11.5299 42.7473 11.5299C43.0419 11.5299 43.3312 11.4531 43.5863 11.3071C43.8553 11.1436 44.0753 10.912 44.2239 10.6361C44.3961 10.3076 44.4826 9.94161 44.4756 9.57146ZM51.8863 6.71022C51.3775 6.44176 50.81 6.30134 50.2336 6.30134C49.6572 6.30134 49.0897 6.44176 48.5808 6.71022C48.1082 6.98053 47.7208 7.37607 47.4622 7.8525C47.1714 8.37882 47.0248 8.9715 47.0372 9.57146C47.026 10.1735 47.1684 10.7686 47.451 11.3016C47.7105 11.7817 48.0973 12.1824 48.5697 12.4605C49.0662 12.7315 49.6249 12.8709 50.1916 12.8652C50.7765 12.874 51.3541 12.7347 51.8695 12.4605C52.3652 12.1852 52.7752 11.7805 53.0553 11.2904C53.3515 10.7658 53.502 10.1726 53.4915 9.57146C53.5004 8.97048 53.35 8.37773 53.0553 7.8525C52.7813 7.37062 52.3763 6.97478 51.8863 6.71022ZM49.3639 7.81923C49.6253 7.67401 49.9199 7.59775 50.2196 7.59775C50.5193 7.59775 50.8139 7.67401 51.0753 7.81923C51.3499 7.97813 51.5716 8.21332 51.7129 8.49571C51.876 8.8305 51.9528 9.20008 51.9367 9.57146C51.9483 9.9474 51.8616 10.3199 51.685 10.6528C51.5392 10.9243 51.3204 11.1504 51.0529 11.3061C50.7853 11.4617 50.4794 11.5408 50.1693 11.5344C49.9454 11.5409 49.7227 11.4998 49.5162 11.4137C49.3097 11.3276 49.1243 11.1986 48.9724 11.0354C48.6355 10.6234 48.4678 10.1007 48.5025 9.57146C48.4901 9.19738 48.5708 8.82604 48.7374 8.4902C48.8747 8.21003 49.0927 7.97654 49.3639 7.81923ZM59.0394 7.03076V6.32653H60.5495V12.6812C60.5594 13.2247 60.4326 13.7622 60.1804 14.2449C59.9389 14.7103 59.5657 15.0957 59.1065 15.3539C58.5924 15.6305 58.0132 15.7664 57.4286 15.7476C56.67 15.7754 55.9226 15.5595 55.2977 15.1321C55.0204 14.9436 54.7884 14.6968 54.6182 14.4092C54.4481 14.1217 54.344 13.8006 54.3133 13.4686V13.3466L55.7954 13.3466C55.7954 13.6685 56.0907 13.9814 56.3547 14.134C56.6804 14.3328 57.0575 14.4331 57.4398 14.4223C57.6518 14.4311 57.8634 14.3968 58.0616 14.3215C58.2597 14.2462 58.4402 14.1314 58.592 13.9843C58.7493 13.8103 58.8699 13.6068 58.9468 13.3859C59.0236 13.1649 59.0394 12.931 59.0394 12.6978V11.9548C58.8328 12.1771 58.591 12.3644 58.3235 12.5093C57.9242 12.7189 57.4776 12.8239 57.0259 12.8143C56.4897 12.8185 55.9629 12.6744 55.5046 12.3984C55.0442 12.1041 54.6699 11.6949 54.4195 11.2117C54.1519 10.6801 54.0176 10.0924 54.0281 9.49832C54.0156 8.9094 54.1501 8.32653 54.4195 7.80153C54.6679 7.32727 55.0433 6.93011 55.5046 6.6537C55.9619 6.37401 56.4886 6.22618 57.0259 6.22672C57.4809 6.21907 57.9307 6.32389 58.3347 6.53172C58.5954 6.65891 58.8335 6.82746 59.0394 7.03076ZM58.7877 10.5796C58.9599 10.2511 59.0464 9.8851 59.0394 9.51494C59.0532 9.14059 58.9663 8.76931 58.7877 8.4392C58.6409 8.16062 58.4205 7.92682 58.1501 7.76271C57.8899 7.6138 57.5948 7.53538 57.2944 7.53538C56.994 7.53538 56.6988 7.6138 56.4387 7.76271C56.1645 7.92882 55.9419 8.16678 55.7954 8.4503C55.6308 8.76545 55.5463 9.11571 55.5494 9.4706C55.5427 9.84005 55.6271 10.2055 55.7954 10.5352C55.9406 10.827 56.1629 11.0743 56.4387 11.2505C56.6977 11.4028 56.9932 11.4832 57.2944 11.4832C57.5955 11.4832 57.8911 11.4028 58.1501 11.2505C58.419 11.0871 58.6392 10.8555 58.7877 10.5796Z" fill="#667085"></path></svg></span></a></div></div></div><script>
-            if (typeof window.__updateThemeElement === 'function') {
-              window.__updateThemeElement();
+### OpenAPI Specification
+
+```yaml
+openapi: 3.0.1
+info:
+  title: ''
+  description: ''
+  version: 1.0.0
+paths:
+  /gemini-3-flash/v1/chat/completions:
+    post:
+      summary: Gemini 3 Flash (openai)
+      deprecated: false
+      description: >-
+        ### Streaming Support
+
+        When `stream: true` is set in the request, the API returns responses as
+        server-sent events (SSE) with `Content-Type: text/event-stream`. This
+        allows for progressive response delivery, where message deltas are sent
+        incrementally as they are generated. Each event contains partial message
+        content, enabling real-time display of responses in your application.
+
+        **Streaming Response Format:**
+
+        - Content-Type: `text/event-stream`
+
+        - Each event line starts with `data: ` followed by JSON
+
+        - Events contain incremental message deltas
+
+        - Final event indicates completion with `finish_reason`
+
+        <CardGroup cols={2}>
+          <Card title="Multimodal" icon="lucide-image">
+            Supports text and image inputs
+          </Card>
+          <Card title="Real-time Search" icon="lucide-search">
+            Google Search grounding enabled
+          </Card>
+          <Card title="Streaming" icon="lucide-list-minus">
+            Server-sent events support
+          </Card>
+          <Card title="Flexible Roles" icon="lucide-users">
+            Multiple message roles supported
+          </Card>
+        </CardGroup>
+
+        <div style="padding: 20px; background-color: rgba(255, 152, 0, 0.05);
+        border: 1px solid rgba(255, 152, 0, 0.15); border-left: 6px solid
+        #ff9800; border-radius: 10px; margin: 25px 0;">
+          <div style="display: flex; align-items: center; margin-bottom: 12px;">
+            ⚠️
+            <strong style="color: #e65100; font-size: 17px;">Important: Unified Media Structure</strong>
+          </div>
+
+          <p style="color: #444; margin-bottom: 15px; line-height: 1.6; font-size: 14px;">
+            To simplify integration, <b>all media types</b> (Images, Videos, Audio, or Documents) in the <code>messages</code> array share the <b>exact same JSON structure</b>:
+          </p>
+
+          <ul style="color: #555; line-height: 1.8; margin-bottom: 15px; font-size: 14px;">
+            <li>The <code>type</code> field is <b>fixed</b> as <code>"image_url"</code></li>
+            <li>The <code>image_url</code> key name <b>remains unchanged</b> for all file types</li>
+            <li>Only the <code>url</code> value points to your specific media file</li>
+          </ul>
+
+          <div style="background-color: #fdfdfd; padding: 12px; border-radius: 6px; border: 1px solid #eee; font-family: 'SFMono-Regular', Consolas, monospace; font-size: 13px; color: #d32f2f;">
+            // Example for Video/Audio/PDF/Image:<br>
+            { "type": "image_url", "image_url": { "url": "https://..." } }
+          </div>
+        </div>
+
+        ## Tools Parameter
+
+        The `tools` parameter is an optional array that allows you to define
+        functions the model can call. The array can contain multiple objects.
+        When using function calling, you can define multiple functions in the
+        array.
+
+        <AccordionGroup>
+
+        <Accordion title="Function Calling">
+
+        Define your own functions with parameters. You can define multiple
+        functions in the `tools` array:
+
+        ```json
+
+        [
+          {
+            "type": "function",
+            "function": {
+              "name": "get_current_weather",
+              "description": "Get the current weather in a given location",
+              "parameters": {
+                "type": "object",
+                "properties": {
+                  "location": {
+                    "type": "string",
+                    "description": "The city and state, e.g. San Francisco, CA"
+                  },
+                  "unit": {
+                    "type": "string",
+                    "enum": ["celsius", "fahrenheit"]
+                  }
+                },
+                "required": ["location"]
+              }
             }
-          </script><script>((STORAGE_KEY, restoreKey) => {
-    if (!window.history.state || !window.history.state.key) {
-      let key = Math.random().toString(32).slice(2);
-      window.history.replaceState({
-        key
-      }, "");
-    }
-    try {
-      let positions = JSON.parse(sessionStorage.getItem(STORAGE_KEY) || "{}");
-      let storedY = positions[restoreKey || window.history.state.key];
-      if (typeof storedY === "number") {
-        window.scrollTo(0, storedY);
-      }
-    } catch (error) {
-      console.error(error);
-      sessionStorage.removeItem(STORAGE_KEY);
-    }
-  })("positions", null)</script><link rel="modulepreload" href="https://file-assets.apidog.com/docs-site/v1/assets/manifest-db7ef313.js"/><link rel="modulepreload" href="https://file-assets.apidog.com/docs-site/v1/assets/entry.client-mUtkjgQm.js"/><link rel="modulepreload" href="https://file-assets.apidog.com/docs-site/v1/assets/jsx-runtime-CM5sU0Q5.js"/><link rel="modulepreload" href="https://file-assets.apidog.com/docs-site/v1/assets/client-BKxavTD9.js"/><link rel="modulepreload" href="https://file-assets.apidog.com/docs-site/v1/assets/components-DMSdXhQK.js"/><link rel="modulepreload" href="https://file-assets.apidog.com/docs-site/v1/assets/root-CQ054TXt.js"/><link rel="modulepreload" href="https://file-assets.apidog.com/docs-site/v1/assets/root-Dv513fR3.js"/><link rel="modulepreload" href="https://file-assets.apidog.com/docs-site/v1/assets/route-D_6YkXJe.js"/><script>window.__remixContext = {"basename":"/","future":{"v3_fetcherPersist":true,"v3_relativeSplatPath":true,"v3_throwAbortReason":true,"v3_routeConfig":false,"v3_singleFetch":true,"v3_lazyRouteDiscovery":false,"unstable_optimizeDeps":false},"isSpaMode":false};window.__remixContext.stream = new ReadableStream({start(controller){window.__remixContext.streamController = controller;}}).pipeThrough(new TextEncoderStream());</script><script type="module" async="">import "https://file-assets.apidog.com/docs-site/v1/assets/manifest-db7ef313.js";
-import * as route0 from "https://file-assets.apidog.com/docs-site/v1/assets/root-Dv513fR3.js";
-import * as route1 from "https://file-assets.apidog.com/docs-site/v1/assets/route-D_6YkXJe.js";
+          },
+          {
+            "type": "function",
+            "function": {
+              "name": "get_stock_price",
+              "description": "Get the current stock price for a given symbol",
+              "parameters": {
+                "type": "object",
+                "properties": {
+                  "symbol": {
+                    "type": "string",
+                    "description": "The stock symbol, e.g. AAPL"
+                  }
+                },
+                "required": ["symbol"]
+              }
+            }
+          }
+        ]
 
-window.__remixRouteModules = {"root":route0,"routes/_index/route":route1};
+        ```
 
-import("https://file-assets.apidog.com/docs-site/v1/assets/entry.client-mUtkjgQm.js");</script></body></html><!--$--><script>window.__remixContext.streamController.enqueue("[{\"_1\":2,\"_231\":-5,\"_232\":-5},\"loaderData\",{\"_3\":4,\"_230\":-5},\"root\",{\"_5\":1,\"_6\":7,\"_19\":20,\"_23\":24,\"_33\":34,\"_52\":53,\"_112\":113,\"_155\":156,\"_229\":-7},\"type\",\"meta\",[8,11,16],{\"_9\":10},\"title\",\"API Documentation\",{\"_12\":13,\"_14\":15},\"name\",\"description\",\"content\",\"Design. Debug. Test. Document. Mock. Build APIs Faster \u0026 Together.\",{\"_12\":17,\"_14\":18},\"keywords\",\"API Design, API Specification, API Test, API Documentation, API Mock\",\"i18nState\",{\"_21\":22},\"clientLocale\",\"en-US\",\"errorCodeMessage\",{\"_25\":26,\"_27\":28,\"_29\":30,\"_31\":32},\"errorCode\",\"Unknown\",\"errorMessage\",\"Unexpected token 'o', \\\"forbidden\\n\\\" is not valid JSON: /api/v1/published-projects/domains/docs.kie.ai\",\"hideBuiltWith\",false,\"extra\",{},\"clientConfig\",{\"_35\":36,\"_37\":38,\"_39\":40,\"_41\":42,\"_47\":48,\"_49\":30,\"_50\":51},\"apiBaseUrl\",\"https://api.apidog.com\",\"appWebUrl\",\"https://app.apidog.com\",\"apidocBuiltinPrefixPath\",\"https://assets.apidog.com/app/static/apidoc\",\"cloudMockBaseUrls\",{\"_43\":44,\"_45\":46},\"pathMode\",\"https://mock.apidog.com/m1/{projectId}-{version}-{service}\",\"idMode\",\"https://mock.apidog.com/m2/{projectId}-{version}-{service}\",\"apidocIsShowLogo\",true,\"markdownDisableBreaks\",\"webhookGenerateCodeDefaultUrl\",\"https://your-api-server.com\",\"urlConfig\",{\"_54\":55,\"_58\":59,\"_99\":100,\"_108\":109},\"home\",{\"_56\":57},\"index\",\"https://apidog.com\",\"icon\",{\"_60\":61,\"_62\":63,\"_64\":63,\"_65\":66,\"_67\":68,\"_69\":70,\"_71\":72,\"_73\":74,\"_75\":76,\"_77\":78,\"_79\":80,\"_81\":82,\"_83\":84,\"_85\":86,\"_87\":88,\"_89\":90,\"_91\":92,\"_93\":94,\"_95\":96,\"_97\":98},\"apidoc\",\"https://assets.apidog.com/app/static/brand/apidoc.png\",\"apidog\",\"https://assets.apidog.com/app/static/brand/apidog-logo-256.png\",\"apidog europe\",\"googleDiscovery\",\"https://assets.apidog.com/app/static/brand/google-discovery.png\",\"har\",\"https://assets.apidog.com/app/static/brand/har.png\",\"iodocs\",\"https://assets.apidog.com/app/static/brand/io-doc.png\",\"jmeter\",\"https://assets.apidog.com/app/static/brand/jmeter.png\",\"openapi\",\"https://assets.apidog.com/app/static/brand/openapi.png\",\"postman\",\"https://assets.apidog.com/app/static/brand/postman.png\",\"raml\",\"https://assets.apidog.com/app/static/brand/raml.png\",\"wadl\",\"https://assets.apidog.com/app/static/brand/wadl.png\",\"curl\",\"https://assets.apidog.com/app/static/brand/curl.png\",\"insomnia\",\"https://assets.apidog.com/app/static/brand/insomnia.png\",\"wsdl\",\"https://assets.apidog.com/app/static/brand/wsdl.png\",\"markdown\",\"https://assets.apidog.com/app/static/brand/markdown.png\",\"html\",\"https://assets.apidog.com/app/static/brand/html.png\",\"protobuf\",\"https://assets.apidog.com/app/static/brand/protobuf.png\",\"soapui\",\"https://assets.apidog.com/app/static/brand/soapui.svg\",\"hoppscotch\",\"https://assets.apidog.com/app/static/brand/hoppscotch.svg\",\"javaProject\",\"https://assets.apidog.com/app/static/brand/java-project.png\",\"help\",{\"_56\":101,\"_102\":103,\"_104\":105,\"_106\":107},\"https://apidog.com/help\",\"browserExtension\",\"https://chromewebstore.google.com/detail/apidog-browser-extension/dmhljjnonlhapikmelaefohecogokhio\",\"csv\",\"https://apidog.com/help/reference/csv\",\"appMcpServer\",\"https://docs.apidog.com/apidog-mcp-server\",\"assets\",{\"_110\":111},\"logo512Png\",\"https://assets.apidog.com/static/logo/apidog-logo-512.png\",\"envConfig\",{\"_114\":60,\"_115\":116,\"_117\":116,\"_118\":119,\"_120\":121,\"_122\":123,\"_124\":57,\"_125\":62,\"_126\":22,\"_127\":128,\"_129\":130,\"_132\":133,\"_134\":135,\"_136\":137,\"_138\":139,\"_140\":141,\"_142\":143,\"_149\":150,\"_151\":48,\"_152\":153,\"_154\":30},\"RELEASE_BASE\",\"DEBUG_API_BASE\",\"\",\"DEBUG_WEB_URL_BASE\",\"AGENT_SERVER_API_BASE\",\"https://web-proxy.apidog.com\",\"APP_REGION\",\"GLOBAL\",\"APP_NAME\",\"Apidog\",\"APP_HOMEPAGE\",\"APP_NAME_LOWER\",\"DEFAULT_LOCALE\",\"APP_BROWSER_EXTENSION_ADAPTER\",\"apidogAgentCrossRequest\",\"APP_API_SERVER_HOSTNAMES\",[131],\"api.apidog.com\",\"APP_SUPPORT_EMAIL\",\"support@apidog.com\",\"APP_SCRIPT_MAIN_OBJECTS\",\"$\",\"SERVER_PROTOCOL\",\"http\",\"SERVER_HOST\",\"apidog-api-fordoc-svc\",\"DEFAULT_DOC_LAYOUT\",\"TwoColumn\",\"NOT_CUSTOM_DOMAIN_HOSTNAMES\",[144,145,146,147,148],\"www.apidog.com\",\"apidog.com\",\"www.apidog.io\",\"apidog.io\",\"share.apidog.com\",\"SERVER_REQUEST_TIMEOUT\",15000,\"IS_SHARED_DOC_INDEPENDENT_DOMAIN\",\"APIDOC_CUSTOM_DOMAIN_CNAME_REGEX\",[\"R\",\"\\\\d+\\\\.cname\\\\.apidog\\\\.com\",\"\"],\"IS_ALWAYS_USE_ORIGIN_FETCH\",\"docsDataState\",{\"_157\":158,\"_162\":163,\"_175\":176,\"_177\":178,\"_179\":180,\"_189\":190,\"_202\":203,\"_204\":205,\"_206\":207,\"_213\":214,\"_220\":-7,\"_221\":222,\"_223\":-7,\"_224\":-7,\"_225\":226,\"_228\":-7},\"navigation\",{\"_5\":159,\"_160\":161},\"NONE\",\"navRightLinkItems\",[],\"sidebarTree\",{\"_164\":-7,\"_165\":-7,\"_166\":167,\"_168\":-7,\"_169\":170,\"_171\":-7,\"_172\":-7,\"_173\":174},\"goBackSidebarTreeApiFolderNode\",\"rootSidebarTreeApiFolderNode\",\"sidebarTreeList\",[],\"selectedSidebarTreeNode\",\"parentSidebarTreeApiFolderNodes\",[],\"previousSidebarTreeNode\",\"nextSidebarTreeNode\",\"homeLink\",\"/\",\"docsBaseConfig\",{},\"versionList\",[],\"resourceData\",{\"_5\":181,\"_182\":-7,\"_183\":184},\"NotFound\",\"data\",\"extraData\",{\"_185\":186,\"_187\":188},\"apiFieldList\",[],\"dataSchemaDefinitions\",{},\"docsIdTypeData\",{\"_191\":192,\"_193\":194,\"_195\":194,\"_196\":194,\"_197\":116,\"_198\":194,\"_199\":200,\"_201\":-7},\"onlineType\",\"APIDOC\",\"branchId\",0,\"onlineId\",\"projectId\",\"subdirectory\",\"teamId\",\"visitType\",\"customDomain\",\"specialFileType\",\"notification\",[],\"footerBanner\",[],\"projectSetting\",{\"_208\":209,\"_210\":211},\"advancedSettings\",{},\"auth\",{\"_5\":212},\"noauth\",\"environments\",{\"_215\":216,\"_217\":-7,\"_218\":219},\"environmentList\",[],\"selectedEnvironment\",\"servers\",[],\"searchSettings\",\"versionSettings\",[],\"seoInfos\",\"itemPathPrefix\",\"appEnvMap\",{\"_227\":128},\"appBrowserExtensionAdapterKey\",\"customCodes\",\"primaryColorVariable\",\"routes/_index/route\",\"actionData\",\"errors\"]\n");</script><!--$--><script>window.__remixContext.streamController.close();</script><!--/$--><!--/$-->
+        ### Function Declaration Requirements
+
+        When implementing function calling in your prompt, you need to create a
+        `tools` array containing one or more function declarations. You can
+        define functions using JSON (specifically, a selected subset of OpenAPI
+        schema format).
+
+        A single function declaration can include the following parameters:
+
+        - **`name`** (string, required): The unique name of the function (e.g.,
+        `get_weather_forecast`, `send_email`). Use descriptive names without
+        spaces or special characters (use underscores or camelCase).
+
+        - **`description`** (string, optional but recommended): A clear and
+        detailed description of what the function does and its purpose. This is
+        crucial for the model to understand when to use the function. Be
+        specific and provide examples when necessary (e.g., "Find movie theaters
+        by location, with an option to also find movies currently showing at
+        those theaters.").
+
+        - **`parameters`** (object, required): Defines the input parameters
+        expected by the function. Contains:
+          - **`type`** (string): Specifies the overall data type, must be `"object"`.
+          - **`properties`** (object): Lists individual parameters, each with:
+            - **`type`** (string): The parameter's data type, such as `string`, `integer`, `boolean`, `array`.
+            - **`description`** (string): Description of the parameter's purpose and format. Provide examples and constraints (e.g., "City and state, e.g. 'San Francisco, CA' or a postal code like '95616'.").
+            - **`enum`** (array, optional): If parameter values come from a fixed set, use `enum` to list allowed values rather than just describing them in the description. This helps improve accuracy (e.g., `"enum": ["daylight", "cool", "warm"]`).
+          - **`required`** (array): An array of strings listing the parameter names required for the function to run.
+        </Accordion>
+
+        </AccordionGroup>
+      operationId: gemini-3-flash-chat-completions
+      tags:
+        - docs/en/Market/Chat  Models/Gemini
+      parameters: []
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                messages:
+                  type: array
+                  description: >-
+                    An array of message objects. Each message has a role and
+                    content.
+
+                    **Unified Media File Format:**
+
+                    In the content array, whether it's images, videos, audio, or
+                    other document types, all media files use the same format
+                    structure:
+
+                    - The `type` field is always `"image_url"`
+
+                    - The `image_url` field name remains unchanged
+
+                    - The only thing that changes is the `url` value, which
+                    points to the corresponding media file address
+
+                    For example: images, videos, audio, PDFs, and other
+                    documents all use the same `{ type: 'image_url', image_url:
+                    { url: '...' } }` structure.
+                  items:
+                    $ref: '#/components/schemas/Message'
+                  minItems: 1
+                stream:
+                  type: boolean
+                  default: true
+                  description: >-
+                    If set to true, partial message deltas will be sent as
+                    server-sent events. Default is true.
+                tools:
+                  type: array
+                  description: >-
+                    An optional array of tools the model may call. The array can
+                    contain multiple objects. 
+                     **Function calling**: Define your own functions with name, description, and parameters. You can define multiple functions in the array. Functions are defined using JSON (specifically, a selected subset of OpenAPI schema format).
+                  items:
+                    type: object
+                    x-apidog-refs: {}
+                    x-apidog-orders: []
+                    properties: {}
+                    x-apidog-ignore-properties: []
+                  minItems: 0
+                include_thoughts:
+                  type: boolean
+                  description: >-
+                    Whether to include thoughts in the response. If set to true,
+                    thoughts will be included in the response, otherwise they
+                    will not be included. Default is true.
+                  default: true
+                reasoning_effort:
+                  type: string
+                  description: >-
+                    The effort level for the model to use for reasoning. Low
+                    effort is faster to respond, high effort is slower to
+                    respond but solves more complex problems. Default is "high".
+                  enum:
+                    - low
+                    - high
+                  x-apidog-enum:
+                    - value: low
+                      name: ''
+                      description: ''
+                    - value: high
+                      name: ''
+                      description: ''
+              required:
+                - messages
+              x-apidog-orders:
+                - messages
+                - stream
+                - tools
+                - include_thoughts
+                - reasoning_effort
+              examples:
+                - messages:
+                    - role: user
+                      content:
+                        - type: text
+                          text: What is in this image?
+                        - type: image_url
+                          image_url:
+                            url: >-
+                              https://file.aiquickdraw.com/custom-page/akr/section-images/1759055072437dqlsclj2.png
+                  tools:
+                    - type: function
+                      function:
+                        name: googleSearch
+                  stream: true
+                  include_thoughts: true
+                  response_format:
+                    type: json_schema
+                    properties:
+                      response:
+                        type: string
+              x-apidog-ignore-properties: []
+            example:
+              messages:
+                - role: user
+                  content:
+                    - type: text
+                      text: What is in this image?
+                    - type: image_url
+                      image_url:
+                        url: >-
+                          https://file.aiquickdraw.com/custom-page/akr/section-images/1759055072437dqlsclj2.png
+              tools:
+                - type: function
+                  function:
+                    name: googleSearch
+              stream: true
+              include_thoughts: true
+              reasoning_effort: high
+      responses:
+        '200':
+          description: 'Request successful. '
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  id:
+                    type: string
+                    description: Unique identifier for the chat completion
+                    examples:
+                      - chatcmpl-example-123
+                  object:
+                    type: string
+                    description: Object type
+                    examples:
+                      - chat.completion
+                  created:
+                    type: integer
+                    format: int64
+                    description: Unix timestamp of when the completion was created
+                    examples:
+                      - 1677652288
+                  model:
+                    type: string
+                    description: Model name
+                    examples:
+                      - gemini-2.5-flash
+                  choices:
+                    type: array
+                    description: Array of completion choices
+                    items:
+                      type: object
+                      properties:
+                        index:
+                          type: integer
+                          description: Index of the choice
+                          examples:
+                            - 0
+                        message:
+                          type: object
+                          properties:
+                            role:
+                              type: string
+                              examples:
+                                - assistant
+                            content:
+                              type: string
+                              description: Message content
+                          required:
+                            - role
+                            - content
+                          x-apidog-orders:
+                            - role
+                            - content
+                          x-apidog-ignore-properties: []
+                        finish_reason:
+                          type: string
+                          description: Reason why the completion finished
+                          examples:
+                            - stop
+                      required:
+                        - index
+                        - message
+                        - finish_reason
+                      x-apidog-orders:
+                        - index
+                        - message
+                        - finish_reason
+                      x-apidog-ignore-properties: []
+                  usage:
+                    type: object
+                    properties:
+                      prompt_tokens:
+                        type: integer
+                        description: Number of tokens in the prompt
+                        examples:
+                          - 10
+                      completion_tokens:
+                        type: integer
+                        description: Number of tokens in the completion
+                        examples:
+                          - 50
+                      total_tokens:
+                        type: integer
+                        description: Total number of tokens
+                        examples:
+                          - 60
+                    required:
+                      - prompt_tokens
+                      - completion_tokens
+                      - total_tokens
+                    x-apidog-orders:
+                      - prompt_tokens
+                      - completion_tokens
+                      - total_tokens
+                    x-apidog-ignore-properties: []
+                x-apidog-orders:
+                  - id
+                  - object
+                  - created
+                  - model
+                  - choices
+                  - usage
+                x-apidog-ignore-properties: []
+          headers: {}
+          x-apidog-name: ''
+        '400':
+          description: Bad Request - Invalid request parameters
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: object
+                    properties:
+                      message:
+                        type: string
+                        examples:
+                          - Invalid request parameters
+                      type:
+                        type: string
+                        examples:
+                          - invalid_request_error
+                    x-apidog-orders:
+                      - message
+                      - type
+                    x-apidog-ignore-properties: []
+                x-apidog-orders:
+                  - error
+                x-apidog-ignore-properties: []
+          headers: {}
+          x-apidog-name: ''
+        '401':
+          description: Unauthorized - Invalid or missing API key
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: object
+                    properties:
+                      message:
+                        type: string
+                        examples:
+                          - Unauthorized
+                      type:
+                        type: string
+                        examples:
+                          - authentication_error
+                    x-apidog-orders:
+                      - message
+                      - type
+                    x-apidog-ignore-properties: []
+                x-apidog-orders:
+                  - error
+                x-apidog-ignore-properties: []
+          headers: {}
+          x-apidog-name: ''
+        '429':
+          description: Rate Limited - Too many requests
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: object
+                    properties:
+                      message:
+                        type: string
+                        examples:
+                          - Rate limit exceeded
+                      type:
+                        type: string
+                        examples:
+                          - rate_limit_error
+                    x-apidog-orders:
+                      - message
+                      - type
+                    x-apidog-ignore-properties: []
+                x-apidog-orders:
+                  - error
+                x-apidog-ignore-properties: []
+          headers: {}
+          x-apidog-name: ''
+        '500':
+          description: request failed
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  code:
+                    type: integer
+                    description: >-
+                      Response status code
+
+                      - **200**: Success - Request has been processed
+                      successfully
+
+                      - **401**: Unauthorized - Authentication credentials are
+                      missing or invalid
+
+                      - **402**: Insufficient Credits - Account does not have
+                      enough credits to perform the operation
+
+                      - **404**: Not Found - The requested resource or endpoint
+                      does not exist
+
+                      - **408**: Upstream is currently experiencing service
+                      issues. No result has been returned for over 10 minutes.
+
+                      - **422**: Validation Error - The request parameters
+                      failed validation checks
+
+                      - **429**: Rate Limited - Request limit has been exceeded
+                      for this resource
+
+                      - **455**: Service Unavailable - System is currently
+                      undergoing maintenance
+
+                      - **500**: Server Error - An unexpected error occurred
+                      while processing the request
+
+                      - **501**: Generation Failed - Content generation task
+                      failed
+
+                      - **505**: Feature Disabled - The requested feature is
+                      currently disabled
+                  msg:
+                    type: string
+                    description: Response message, error description when failed
+                  data:
+                    type: object
+                    properties: {}
+                    x-apidog-orders: []
+                    x-apidog-ignore-properties: []
+                x-apidog-orders:
+                  - code
+                  - msg
+                  - data
+                required:
+                  - code
+                  - msg
+                  - data
+                x-apidog-ignore-properties: []
+              example:
+                code: 500
+                msg: >-
+                  Server Error - An unexpected error occurred while processing
+                  the request
+                data: null
+          headers: {}
+          x-apidog-name: 'Error '
+      security: []
+      x-apidog-folder: docs/en/Market/Chat  Models/Gemini
+      x-apidog-status: released
+      x-run-in-apidog: https://app.apidog.com/web/project/1184766/apis/api-30445303-run
+components:
+  schemas:
+    Message:
+      type: object
+      properties:
+        role:
+          type: string
+          enum:
+            - developer
+            - system
+            - user
+            - assistant
+            - tool
+          description: >-
+            Message role
+
+            - **developer**: Developer-provided instructions that the model
+            should follow, regardless of user messages. In o1 models and newer
+            versions, developer messages replace the previous system messages.
+
+            - **system**: Developer-provided instructions that the model should
+            follow, regardless of user messages. In o1 models and newer
+            versions, please use developer messages instead.
+
+            - **user**: Messages sent by end users, containing prompts or
+            additional context information.
+
+            - **assistant**: Messages sent by the model in response to user
+            messages.
+
+            - **tool**: Content of tool messages.
+        content:
+          type: array
+          description: >-
+            Message content array that can contain text and image objects.
+
+            **Unified Media File Format:**
+
+            Whether it's images, videos, audio, or other document types, all
+            media files use the same format structure:
+
+            - The `type` field is always `"image_url"`
+
+            - The `image_url` field name remains unchanged
+
+            - The only thing that changes is the `url` value, which points to
+            the corresponding media file address
+
+            For example: images, videos, audio, PDFs, and other documents all
+            use the same `{ type: 'image_url', image_url: { url: '...' } }`
+            structure.
+          items:
+            oneOf:
+              - type: object
+                properties:
+                  type:
+                    type: string
+                    enum:
+                      - text
+                    examples:
+                      - text
+                  text:
+                    type: string
+                    description: 消息的文本内容
+                required:
+                  - type
+                  - text
+                x-apidog-orders:
+                  - type
+                  - text
+                x-apidog-ignore-properties: []
+              - type: object
+                properties:
+                  type:
+                    type: string
+                    enum:
+                      - image_url
+                    examples:
+                      - image_url
+                  image_url:
+                    type: object
+                    properties:
+                      url:
+                        type: string
+                        format: uri
+                        description: 图像的 URL
+                    required:
+                      - url
+                    x-apidog-orders:
+                      - url
+                    x-apidog-ignore-properties: []
+                required:
+                  - type
+                  - image_url
+                x-apidog-orders:
+                  - type
+                  - image_url
+                x-apidog-ignore-properties: []
+      required:
+        - role
+        - content
+      title: The messages parameter of the chat model
+      x-apidog-orders:
+        - role
+        - content
+      x-apidog-ignore-properties: []
+      x-apidog-folder: ''
+  securitySchemes:
+    BearerAuth:
+      type: bearer
+      scheme: bearer
+      bearerFormat: API Key
+      description: >-
+        All API requests require a Bearer Token. Add the header `Authorization:
+        Bearer YOUR_API_KEY` to authenticate requests.
+    BearerAuth1:
+      type: bearer
+      scheme: bearer
+      bearerFormat: API Key
+      description: >-
+        所有 API 请求都需要 Bearer Token。请在请求头中添加 `Authorization: Bearer YOUR_API_KEY`
+        进行身份验证。
+servers:
+  - url: https://api.kie.ai
+    description: 正式环境
+security:
+  - BearerAuth: []
+    x-apidog:
+      schemeGroups:
+        - id: kn8M4YUlc5i0A0179ezwx
+          schemeIds:
+            - BearerAuth
+      required: true
+      use:
+        id: kn8M4YUlc5i0A0179ezwx
+      scopes:
+        kn8M4YUlc5i0A0179ezwx:
+          BearerAuth: []
+
+```
 
 ---
 
@@ -61881,40 +71822,525 @@ import("https://file-assets.apidog.com/docs-site/v1/assets/entry.client-mUtkjgQm
 
 **Source:** [https://docs.kie.ai/market/gemini/gemini-3-5-flash.md][165]
 
-<!DOCTYPE html><html lang="en-US" class="group/root" id="html" data-theme="light" data-accent-color="purple"><head><script src="https://file-assets.apidog.com/docs-site/v1/assets/prepareDocsConfigScript-CLIBKQbk.js"></script><script>__prepareDocsConfigScript(JSON.parse("{\"theme\":\"system\",\"themePrimarySettings\":{\"light\":{\"accentColor\":\"purple\"},\"dark\":{\"accentColor\":\"purple\"}},\"logoSettings\":{\"light\":{\"icon\":\"\",\"type\":\"project\"},\"dark\":{\"icon\":\"\",\"type\":\"followLight\"}},\"backgroundImageSettings\":{\"light\":{\"type\":\"custom\",\"color\":\"\"},\"dark\":{\"type\":\"followLight\",\"color\":\"\"}},\"id\":0,\"subdirectory\":\"\"}"));</script><script>window.eventTracking = {
-      dataLayer: []
-    }
-    window.eventTracking.report = function(){
-        window.eventTracking.dataLayer.push(arguments);
-    }</script><meta charSet="utf-8"/><meta name="viewport" content="width=device-width, initial-scale=1"/><title>API Documentation</title><meta name="description" content="Design. Debug. Test. Document. Mock. Build APIs Faster &amp; Together."/><meta name="keywords" content="API Design, API Specification, API Test, API Documentation, API Mock"/><link rel="stylesheet" href="https://file-assets.apidog.com/docs-site/v1/assets/root-CpC_E1fb.css"/></head><body class="overflow-hidden g-body"><div class="flex h-full w-full flex-col overflow-auto"><div class="flex flex-1 flex-col items-center justify-center"><div class="flex w-auto flex-col items-center justify-center max-os:p-5 os:w-[480px]"><svg width="104" height="104" viewBox="0 0 104 104" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M92.9557 41.8969L88.7262 25.2175C87.4089 19.8194 84.8039 16.1447 80.9015 14.1934L80.3963 13.9458C79.802 13.6685 79.178 13.4407 78.5243 13.2426C75.4142 12.3214 72.0268 12.371 68.362 13.3813C65.8759 14.0747 63.2612 15.2038 60.5176 16.7886C56.7835 18.9478 53.3167 21.6319 50.1076 24.8708C49.0973 25.8711 48.1266 26.9209 47.1956 28.0204C46.314 29.0406 45.4622 30.1105 44.6302 31.2198C42.9266 33.4781 41.3121 35.9245 39.7868 38.5492C34.1015 48.3648 31.2588 57.9329 31.2588 67.2631C31.2588 72.0471 32.1106 76.1181 33.8142 79.4461C34.6759 81.1101 35.6862 82.5263 36.8748 83.7248C37.9346 84.7846 39.1232 85.6564 40.4405 86.3398L41.0151 86.627V98.9485C41.0151 99.9984 41.3221 100.712 41.9461 101.058C42.5701 101.415 43.3426 101.326 44.2637 100.801L67.0249 87.6571C67.946 87.1223 68.7186 86.3199 69.3426 85.2502C69.9666 84.1706 70.2736 83.1008 70.2736 82.0509V78.3169L76.7811 74.5629C78.5639 73.5328 80.0993 71.9184 81.377 69.7195C82.6448 67.5207 83.2786 65.4011 83.2786 63.341V52.1485L89.786 48.3946C90.8657 47.7706 91.7373 46.79 92.391 45.4429C93.0348 44.1058 93.2231 42.927 92.9557 41.8969ZM62.8352 66.6095C62.2112 67.6891 61.4387 68.4914 60.5176 69.0263C59.5964 69.5512 58.8237 69.6404 58.1997 69.2838C57.5856 68.9371 57.2687 68.2238 57.2687 67.164C57.2687 66.1042 57.5856 65.0445 58.1997 63.9748C58.2592 63.8658 58.3186 63.7667 58.378 63.6676C58.9129 62.8356 59.5468 62.1819 60.2797 61.7164C60.359 61.6569 60.4383 61.6075 60.5176 61.558C61.4387 61.033 62.2112 60.9439 62.8352 61.2906C63.4592 61.6471 63.7761 62.3604 63.7761 63.4103C63.7761 64.4602 63.4592 65.5398 62.8352 66.6095ZM69.5011 38.7572C69.402 39.1336 69.2832 39.5101 69.1346 39.8865C68.5997 41.3227 67.4607 43.6206 65.7274 46.8C64.9647 48.1768 64.41 49.3158 64.0535 50.237C63.8157 50.861 63.6176 51.4748 63.4691 52.0592C63.3997 52.3366 63.3304 52.6041 63.2809 52.8715C63.1224 53.7729 62.7856 54.6148 62.2706 55.3774C61.7556 56.1401 61.2009 56.6948 60.6066 57.0315C59.8935 57.4475 59.319 57.4971 58.8535 57.2099C58.3978 56.9128 58.2196 56.358 58.3285 55.5557C58.487 54.2186 58.8039 52.931 59.2596 51.7029C59.7251 50.4747 60.4679 48.9392 61.498 47.0969C62.3201 45.6409 62.9837 44.4029 63.4691 43.4026C63.7761 42.7885 64.0138 42.2636 64.1921 41.8278C64.202 41.7981 64.2119 41.7782 64.2218 41.7485C64.6775 40.5797 64.9153 39.5001 64.9153 38.4997C64.9153 37.321 64.5191 36.5881 63.7366 36.2909C62.9442 36.0037 61.9537 36.2019 60.7652 36.8853C60.0025 37.3211 59.2794 37.945 58.5662 38.7572C57.863 39.5694 57.239 40.5105 56.7041 41.5604C56.2683 42.5013 55.7632 43.2442 55.1986 43.7889C54.6241 44.3337 54.0397 44.6209 53.4455 44.6506C52.8512 44.6902 52.4055 44.4525 52.1083 43.9374C51.8112 43.4224 51.8211 42.7687 52.1479 41.9565C53.0691 39.7477 54.2973 37.7074 55.8424 35.8552C56.5754 34.9737 57.338 34.1811 58.1205 33.4878C58.9822 32.735 59.8638 32.0913 60.7652 31.5664C63.3701 30.0708 65.5491 29.7141 67.3121 30.4966C69.0752 31.279 69.9468 32.9829 69.9468 35.5977C69.9468 36.6476 69.7982 37.7073 69.5011 38.7572Z" stroke="#667085" stroke-linecap="round" stroke-linejoin="round"></path><path d="M63.777 63.4086C63.777 64.4684 63.46 65.5381 62.836 66.6078C62.212 67.6874 61.4395 68.4896 60.5184 69.0245C59.5972 69.5494 58.8246 69.6387 58.2006 69.2821C57.5865 68.9354 57.2695 68.2221 57.2695 67.1623C57.2695 66.1025 57.5865 65.0428 58.2006 63.973C58.26 63.8641 58.3194 63.7649 58.3789 63.6659C58.9137 62.8339 59.5476 62.1802 60.2806 61.7147C60.3598 61.6552 60.4392 61.6058 60.5184 61.5563C61.4395 61.0313 62.212 60.9422 62.836 61.2888C63.46 61.6454 63.777 62.3587 63.777 63.4086Z" stroke="#667085" stroke-linecap="round" stroke-linejoin="round"></path><path d="M63.7373 36.2894C62.9449 36.0021 61.9544 36.2003 60.7659 36.8838C60.0032 37.3196 59.2801 37.9435 58.567 38.7557C57.8638 39.5679 57.2398 40.5089 56.7049 41.5588C56.2691 42.4998 55.7639 43.2426 55.1994 43.7874C54.6249 44.3321 54.0405 44.6193 53.4462 44.649C52.8519 44.6886 52.4062 44.4509 52.1091 43.9359C51.8119 43.4208 51.8219 42.7671 52.1487 41.9549C53.0699 39.7461 54.298 37.7059 55.8432 35.8537C56.5761 34.9721 57.3388 34.1797 58.1213 33.4863L63.7373 36.2894Z" stroke="#667085" stroke-linecap="round" stroke-linejoin="round"></path><path d="M69.9474 35.596C69.9474 36.6459 69.7988 37.7056 69.5017 38.7555C69.4026 39.1319 69.2838 39.5085 69.1352 39.8849C68.6003 41.321 67.4613 43.6189 65.728 46.7984C64.9653 48.1751 64.4106 49.3141 64.054 50.2352C63.8163 50.8592 63.6182 51.4732 63.4697 52.0576C63.4003 52.3349 63.331 52.6024 63.2815 52.8698C63.123 53.7711 62.7862 54.6131 62.2712 55.3758C61.7561 56.1385 61.2015 56.693 60.6072 57.0298C59.894 57.4458 59.3196 57.4955 58.854 57.2083C58.3984 56.9111 58.2201 56.3563 58.3291 55.554C58.4876 54.2168 58.8045 52.9293 59.2601 51.7011C59.7257 50.4729 60.4685 48.9376 61.4986 47.0953C62.3207 45.6393 62.9843 44.4012 63.4697 43.4008C63.7767 42.7868 64.0144 42.2619 64.1927 41.8261C64.2026 41.7964 64.2125 41.7766 64.2224 41.7468C64.678 40.5781 64.9158 39.4984 64.9158 38.498C64.9158 37.3193 64.5196 36.5865 63.7371 36.2893L58.1211 33.4862C58.9828 32.7334 59.8643 32.0896 60.7657 31.5647C63.3706 30.069 65.5497 29.7125 67.3127 30.4949C69.0758 31.2774 69.9474 32.9811 69.9474 35.596Z" stroke="#667085" stroke-linecap="round" stroke-linejoin="round"></path><path d="M41.9466 101.059L22.3253 91.2429L22.1371 91.1537C21.5131 90.807 21.2061 90.094 21.2061 89.0441V76.7227L41.0156 86.6274V98.9488C41.0156 99.9988 41.3226 100.712 41.9466 101.059Z" stroke="#667085" stroke-linecap="round" stroke-linejoin="round"></path><path d="M80.3972 13.9448C79.8029 13.6675 79.1789 13.4397 78.5252 13.2416C75.4151 12.3204 72.0277 12.3701 68.3629 13.3804C65.8768 14.0737 63.2621 15.2028 60.5185 16.7876C56.7844 18.9468 53.3176 21.6309 50.1085 24.8698C49.0982 25.8702 48.1275 26.92 47.1965 28.0194C46.3149 29.0396 45.4631 30.1096 44.6311 31.2189C42.9275 33.4772 41.313 35.9236 39.7877 38.5484C34.1024 48.364 31.2597 57.932 31.2597 67.2623C31.2597 72.0463 32.1115 76.1171 33.8151 79.4451C34.6768 81.1091 35.6871 82.5253 36.8757 83.7238C37.9355 84.7836 39.1241 85.6554 40.4414 86.3388L21.2065 76.7213C18.1161 75.2752 15.7192 72.8783 14.0056 69.5404C12.302 66.2124 11.4502 62.1415 11.4502 57.3575C11.4502 48.0272 14.2929 38.4592 19.9782 28.6436C25.6734 18.828 32.587 11.5678 40.7089 6.88282C47.4838 2.97044 53.486 1.79169 58.7157 3.33683C59.4784 3.56464 60.2113 3.84208 60.8948 4.17884L61.281 4.37688L80.3972 13.9448Z" stroke="#667085" stroke-linecap="round" stroke-linejoin="round"></path></svg><div class="align-center mt-8 flex justify-center text-center text-2xl font-semibold text-color">An abnormal error occurred, please try &#x27;Reload&#x27; or &#x27;get Support&#x27; to help you solve it!</div><div class="align-center mt-2 text-center text-lg font-400 text-secondary">Unexpected token &#x27;o&#x27;, &quot;forbidden
-&quot; is not valid JSON: /api/v1/published-projects/domains/docs.kie.ai</div></div></div><div class="flex flex-col items-center justify-center p-8 text-base font-base text-secondary"><div class="inline-flex items-center text-base font-400 text-secondary _footer-logo-wrapper_1kbjg_1"><a class="_footer-logo_1kbjg_1 flex-shrink-0" aria-label="homepage link" href="https://apidog.com"><span class="inline-flex items-center"><span class="mr-[-4px]">Built with</span><svg width="61" height="18" viewBox="0 0 61 18" fill="none" xmlns="http://www.w3.org/2000/svg" class="h-[18px] w-[80px]"><path d="M12.3836 1.67806C11.6452 0.940647 10.4478 0.940647 9.70932 1.67806L8.99795 2.3884L8.30644 1.69789C7.57144 0.963937 6.37437 0.936241 5.62991 1.66043C4.88545 2.38463 4.86748 3.60515 5.61194 4.34854L6.32331 5.05888C7.80026 6.53371 10.195 6.53371 11.6723 5.05888L12.3836 4.34854C13.1221 3.61113 13.1221 2.41547 12.3836 1.67806Z" fill="#667085"></path><path d="M12.3838 13.6515L11.6729 12.9412C10.1968 11.4664 7.80339 11.4664 6.32699 12.9412L5.61603 13.6515C4.87799 14.389 4.87799 15.5846 5.61603 16.322C6.35408 17.0594 7.55076 17.0594 8.28881 16.322L8.99976 15.6117L9.69087 16.3022C10.4255 17.0361 11.6218 17.0638 12.3659 16.3396C13.1219 15.6038 13.1278 14.3949 12.3838 13.6515Z" fill="#667085"></path><path d="M15.6105 8.99642L16.3214 8.28481C17.0655 7.54009 17.0595 6.32906 16.3035 5.59191C15.5595 4.86643 14.3631 4.89418 13.6285 5.62943L13.3098 5.94851C12.1666 7.09269 10.6166 7.73526 9 7.73526C7.38344 7.73526 5.83335 7.09238 4.69023 5.94851L4.37146 5.62943C3.63689 4.89418 2.44054 4.86643 1.69652 5.59191C0.940527 6.32906 0.934542 7.54009 1.67856 8.28481L2.38951 8.99642L1.67856 9.70803C0.940527 10.4468 0.940527 11.6445 1.67856 12.3833C2.4166 13.122 3.61326 13.122 4.3513 12.3833L4.74347 11.9907C5.85225 10.8809 7.35604 10.2576 8.92409 10.2576H8.9874C10.6162 10.2576 12.1666 10.9005 13.3098 12.0446C13.5126 12.2477 13.6484 12.3836 13.6484 12.3836C14.3864 13.1223 15.5831 13.1223 16.3211 12.3836C17.0592 11.6449 17.0592 10.4471 16.3211 9.70834L15.6102 8.99673L15.6105 8.99642Z" fill="#667085"></path><path fill-rule="evenodd" clip-rule="evenodd" d="M37.3559 4.00331C37.4694 3.95752 37.5911 3.93521 37.7136 3.93768C37.8343 3.93606 37.9541 3.95884 38.0656 4.0046C38.1772 4.05035 38.2781 4.11814 38.3624 4.20384C38.4483 4.29095 38.5158 4.39418 38.561 4.50749C38.6061 4.6208 38.628 4.7419 38.6253 4.8637C38.628 4.98551 38.6061 5.10664 38.561 5.21995C38.5158 5.33326 38.4483 5.43648 38.3624 5.52357C38.2781 5.60926 38.1772 5.67705 38.0656 5.72284C37.9541 5.7686 37.8343 5.79134 37.7136 5.78975C37.5911 5.79222 37.4694 5.76989 37.3559 5.72413C37.2425 5.67837 37.1396 5.61011 37.0536 5.52357C36.9677 5.43648 36.9002 5.33326 36.8551 5.21995C36.8099 5.10664 36.7881 4.98551 36.7908 4.8637C36.7881 4.7419 36.8099 4.6208 36.8551 4.50749C36.9002 4.39418 36.9677 4.29095 37.0536 4.20384C37.1396 4.1173 37.2425 4.04907 37.3559 4.00331ZM25.6211 4.76389L24.0219 4.76389L21.175 12.7654H22.7355L23.2948 11.1795H26.371L26.9303 12.7654H28.5019L25.6211 4.76389ZM25.9403 9.91528H23.7255L24.8441 6.75459L25.9403 9.91528ZM34.4529 6.71022C33.9935 6.42603 33.4618 6.27789 32.9204 6.28324C32.4656 6.27789 32.0164 6.38257 31.6116 6.58824C31.3484 6.72112 31.1086 6.89528 30.9013 7.10393V6.38304H29.4248V15.6932H30.9181V12.0501C31.1303 12.2594 31.3736 12.4352 31.6396 12.5714C32.0799 12.7816 32.5659 12.88 33.0541 12.8577C33.5422 12.8355 34.0171 12.6932 34.4361 12.4438C34.899 12.1548 35.274 11.7466 35.5212 11.2627C35.7861 10.7302 35.9203 10.1431 35.9126 9.54929C35.923 8.96057 35.7887 8.37821 35.5212 7.8525C35.2797 7.38027 34.9096 6.98456 34.4529 6.71022ZM34.4137 9.55484C34.4161 9.91562 34.3297 10.2716 34.162 10.5918C34.0132 10.8769 33.7889 11.1165 33.5133 11.2849C33.2582 11.4309 32.9688 11.5078 32.6743 11.5078C32.3798 11.5078 32.0904 11.4309 31.8353 11.2849C31.5644 11.1203 31.341 10.8892 31.1866 10.6139C31.0195 10.284 30.937 9.91836 30.946 9.54929C30.9355 9.18364 31.0182 8.82126 31.1866 8.49571C31.331 8.22256 31.5426 7.98991 31.8018 7.81923C32.0627 7.67197 32.3573 7.59366 32.6575 7.5919C32.9606 7.59099 33.2582 7.67147 33.5188 7.82478C33.7952 7.97573 34.0193 8.20567 34.162 8.48465C34.3413 8.8105 34.4283 9.17839 34.4137 9.54929V9.55484ZM38.4519 6.38304H36.9585V12.7599H38.4519V6.38304ZM43.7037 6.56049C43.9895 6.68375 44.2509 6.85649 44.4756 7.07066V4.27038H45.9801V12.7654H44.4756V12.039C44.2733 12.2523 44.0347 12.4288 43.7709 12.5603C43.3696 12.7699 42.9211 12.8748 42.4677 12.8652C41.9296 12.8702 41.4008 12.7261 40.9408 12.4493C40.4817 12.1535 40.1078 11.7446 39.8557 11.2627C39.5908 10.7302 39.4566 10.1431 39.4642 9.54929C39.4539 8.96057 39.5882 8.37821 39.8557 7.8525C40.1049 7.3803 40.4803 6.98514 40.9408 6.71022C41.3529 6.46065 41.821 6.31637 42.3032 6.29024C42.7854 6.26412 43.2666 6.35695 43.7037 6.56049ZM44.4756 9.57146C44.4854 9.20459 44.3987 8.84147 44.2239 8.51792C44.0698 8.22608 43.835 7.98372 43.5471 7.81923C43.2921 7.67323 43.0027 7.59637 42.7082 7.59637C42.4136 7.59637 42.1243 7.67323 41.8692 7.81923C41.598 7.97735 41.377 8.20793 41.2316 8.48465C41.0626 8.80593 40.9798 9.16492 40.9911 9.52712C40.9825 9.89613 41.0651 10.2616 41.2316 10.5918C41.3883 10.8862 41.622 11.1333 41.9084 11.3071C42.1635 11.4531 42.4528 11.5299 42.7473 11.5299C43.0419 11.5299 43.3312 11.4531 43.5863 11.3071C43.8553 11.1436 44.0753 10.912 44.2239 10.6361C44.3961 10.3076 44.4826 9.94161 44.4756 9.57146ZM51.8863 6.71022C51.3775 6.44176 50.81 6.30134 50.2336 6.30134C49.6572 6.30134 49.0897 6.44176 48.5808 6.71022C48.1082 6.98053 47.7208 7.37607 47.4622 7.8525C47.1714 8.37882 47.0248 8.9715 47.0372 9.57146C47.026 10.1735 47.1684 10.7686 47.451 11.3016C47.7105 11.7817 48.0973 12.1824 48.5697 12.4605C49.0662 12.7315 49.6249 12.8709 50.1916 12.8652C50.7765 12.874 51.3541 12.7347 51.8695 12.4605C52.3652 12.1852 52.7752 11.7805 53.0553 11.2904C53.3515 10.7658 53.502 10.1726 53.4915 9.57146C53.5004 8.97048 53.35 8.37773 53.0553 7.8525C52.7813 7.37062 52.3763 6.97478 51.8863 6.71022ZM49.3639 7.81923C49.6253 7.67401 49.9199 7.59775 50.2196 7.59775C50.5193 7.59775 50.8139 7.67401 51.0753 7.81923C51.3499 7.97813 51.5716 8.21332 51.7129 8.49571C51.876 8.8305 51.9528 9.20008 51.9367 9.57146C51.9483 9.9474 51.8616 10.3199 51.685 10.6528C51.5392 10.9243 51.3204 11.1504 51.0529 11.3061C50.7853 11.4617 50.4794 11.5408 50.1693 11.5344C49.9454 11.5409 49.7227 11.4998 49.5162 11.4137C49.3097 11.3276 49.1243 11.1986 48.9724 11.0354C48.6355 10.6234 48.4678 10.1007 48.5025 9.57146C48.4901 9.19738 48.5708 8.82604 48.7374 8.4902C48.8747 8.21003 49.0927 7.97654 49.3639 7.81923ZM59.0394 7.03076V6.32653H60.5495V12.6812C60.5594 13.2247 60.4326 13.7622 60.1804 14.2449C59.9389 14.7103 59.5657 15.0957 59.1065 15.3539C58.5924 15.6305 58.0132 15.7664 57.4286 15.7476C56.67 15.7754 55.9226 15.5595 55.2977 15.1321C55.0204 14.9436 54.7884 14.6968 54.6182 14.4092C54.4481 14.1217 54.344 13.8006 54.3133 13.4686V13.3466L55.7954 13.3466C55.7954 13.6685 56.0907 13.9814 56.3547 14.134C56.6804 14.3328 57.0575 14.4331 57.4398 14.4223C57.6518 14.4311 57.8634 14.3968 58.0616 14.3215C58.2597 14.2462 58.4402 14.1314 58.592 13.9843C58.7493 13.8103 58.8699 13.6068 58.9468 13.3859C59.0236 13.1649 59.0394 12.931 59.0394 12.6978V11.9548C58.8328 12.1771 58.591 12.3644 58.3235 12.5093C57.9242 12.7189 57.4776 12.8239 57.0259 12.8143C56.4897 12.8185 55.9629 12.6744 55.5046 12.3984C55.0442 12.1041 54.6699 11.6949 54.4195 11.2117C54.1519 10.6801 54.0176 10.0924 54.0281 9.49832C54.0156 8.9094 54.1501 8.32653 54.4195 7.80153C54.6679 7.32727 55.0433 6.93011 55.5046 6.6537C55.9619 6.37401 56.4886 6.22618 57.0259 6.22672C57.4809 6.21907 57.9307 6.32389 58.3347 6.53172C58.5954 6.65891 58.8335 6.82746 59.0394 7.03076ZM58.7877 10.5796C58.9599 10.2511 59.0464 9.8851 59.0394 9.51494C59.0532 9.14059 58.9663 8.76931 58.7877 8.4392C58.6409 8.16062 58.4205 7.92682 58.1501 7.76271C57.8899 7.6138 57.5948 7.53538 57.2944 7.53538C56.994 7.53538 56.6988 7.6138 56.4387 7.76271C56.1645 7.92882 55.9419 8.16678 55.7954 8.4503C55.6308 8.76545 55.5463 9.11571 55.5494 9.4706C55.5427 9.84005 55.6271 10.2055 55.7954 10.5352C55.9406 10.827 56.1629 11.0743 56.4387 11.2505C56.6977 11.4028 56.9932 11.4832 57.2944 11.4832C57.5955 11.4832 57.8911 11.4028 58.1501 11.2505C58.419 11.0871 58.6392 10.8555 58.7877 10.5796Z" fill="#667085"></path></svg></span></a></div></div></div><script>
-            if (typeof window.__updateThemeElement === 'function') {
-              window.__updateThemeElement();
-            }
-          </script><script>((STORAGE_KEY, restoreKey) => {
-    if (!window.history.state || !window.history.state.key) {
-      let key = Math.random().toString(32).slice(2);
-      window.history.replaceState({
-        key
-      }, "");
-    }
-    try {
-      let positions = JSON.parse(sessionStorage.getItem(STORAGE_KEY) || "{}");
-      let storedY = positions[restoreKey || window.history.state.key];
-      if (typeof storedY === "number") {
-        window.scrollTo(0, storedY);
-      }
-    } catch (error) {
-      console.error(error);
-      sessionStorage.removeItem(STORAGE_KEY);
-    }
-  })("positions", null)</script><link rel="modulepreload" href="https://file-assets.apidog.com/docs-site/v1/assets/manifest-db7ef313.js"/><link rel="modulepreload" href="https://file-assets.apidog.com/docs-site/v1/assets/entry.client-mUtkjgQm.js"/><link rel="modulepreload" href="https://file-assets.apidog.com/docs-site/v1/assets/jsx-runtime-CM5sU0Q5.js"/><link rel="modulepreload" href="https://file-assets.apidog.com/docs-site/v1/assets/client-BKxavTD9.js"/><link rel="modulepreload" href="https://file-assets.apidog.com/docs-site/v1/assets/components-DMSdXhQK.js"/><link rel="modulepreload" href="https://file-assets.apidog.com/docs-site/v1/assets/root-CQ054TXt.js"/><link rel="modulepreload" href="https://file-assets.apidog.com/docs-site/v1/assets/root-Dv513fR3.js"/><link rel="modulepreload" href="https://file-assets.apidog.com/docs-site/v1/assets/route-D_6YkXJe.js"/><script>window.__remixContext = {"basename":"/","future":{"v3_fetcherPersist":true,"v3_relativeSplatPath":true,"v3_throwAbortReason":true,"v3_routeConfig":false,"v3_singleFetch":true,"v3_lazyRouteDiscovery":false,"unstable_optimizeDeps":false},"isSpaMode":false};window.__remixContext.stream = new ReadableStream({start(controller){window.__remixContext.streamController = controller;}}).pipeThrough(new TextEncoderStream());</script><script type="module" async="">import "https://file-assets.apidog.com/docs-site/v1/assets/manifest-db7ef313.js";
-import * as route0 from "https://file-assets.apidog.com/docs-site/v1/assets/root-Dv513fR3.js";
-import * as route1 from "https://file-assets.apidog.com/docs-site/v1/assets/route-D_6YkXJe.js";
+### OpenAPI Specification
 
-window.__remixRouteModules = {"root":route0,"routes/_index/route":route1};
+```yaml
+openapi: 3.0.1
+info:
+  title: ''
+  description: ''
+  version: 1.0.0
+paths:
+  /gemini/v1/models/gemini-3-5-flash:streamGenerateContent:
+    post:
+      summary: Gemini 3.5 Flash
+      deprecated: false
+      description: >-
+        ### Streaming Support
 
-import("https://file-assets.apidog.com/docs-site/v1/assets/entry.client-mUtkjgQm.js");</script></body></html><!--$--><script>window.__remixContext.streamController.enqueue("[{\"_1\":2,\"_231\":-5,\"_232\":-5},\"loaderData\",{\"_3\":4,\"_230\":-5},\"root\",{\"_5\":1,\"_6\":7,\"_19\":20,\"_23\":24,\"_33\":34,\"_52\":53,\"_112\":113,\"_155\":156,\"_229\":-7},\"type\",\"meta\",[8,11,16],{\"_9\":10},\"title\",\"API Documentation\",{\"_12\":13,\"_14\":15},\"name\",\"description\",\"content\",\"Design. Debug. Test. Document. Mock. Build APIs Faster \u0026 Together.\",{\"_12\":17,\"_14\":18},\"keywords\",\"API Design, API Specification, API Test, API Documentation, API Mock\",\"i18nState\",{\"_21\":22},\"clientLocale\",\"en-US\",\"errorCodeMessage\",{\"_25\":26,\"_27\":28,\"_29\":30,\"_31\":32},\"errorCode\",\"Unknown\",\"errorMessage\",\"Unexpected token 'o', \\\"forbidden\\n\\\" is not valid JSON: /api/v1/published-projects/domains/docs.kie.ai\",\"hideBuiltWith\",false,\"extra\",{},\"clientConfig\",{\"_35\":36,\"_37\":38,\"_39\":40,\"_41\":42,\"_47\":48,\"_49\":30,\"_50\":51},\"apiBaseUrl\",\"https://api.apidog.com\",\"appWebUrl\",\"https://app.apidog.com\",\"apidocBuiltinPrefixPath\",\"https://assets.apidog.com/app/static/apidoc\",\"cloudMockBaseUrls\",{\"_43\":44,\"_45\":46},\"pathMode\",\"https://mock.apidog.com/m1/{projectId}-{version}-{service}\",\"idMode\",\"https://mock.apidog.com/m2/{projectId}-{version}-{service}\",\"apidocIsShowLogo\",true,\"markdownDisableBreaks\",\"webhookGenerateCodeDefaultUrl\",\"https://your-api-server.com\",\"urlConfig\",{\"_54\":55,\"_58\":59,\"_99\":100,\"_108\":109},\"home\",{\"_56\":57},\"index\",\"https://apidog.com\",\"icon\",{\"_60\":61,\"_62\":63,\"_64\":63,\"_65\":66,\"_67\":68,\"_69\":70,\"_71\":72,\"_73\":74,\"_75\":76,\"_77\":78,\"_79\":80,\"_81\":82,\"_83\":84,\"_85\":86,\"_87\":88,\"_89\":90,\"_91\":92,\"_93\":94,\"_95\":96,\"_97\":98},\"apidoc\",\"https://assets.apidog.com/app/static/brand/apidoc.png\",\"apidog\",\"https://assets.apidog.com/app/static/brand/apidog-logo-256.png\",\"apidog europe\",\"googleDiscovery\",\"https://assets.apidog.com/app/static/brand/google-discovery.png\",\"har\",\"https://assets.apidog.com/app/static/brand/har.png\",\"iodocs\",\"https://assets.apidog.com/app/static/brand/io-doc.png\",\"jmeter\",\"https://assets.apidog.com/app/static/brand/jmeter.png\",\"openapi\",\"https://assets.apidog.com/app/static/brand/openapi.png\",\"postman\",\"https://assets.apidog.com/app/static/brand/postman.png\",\"raml\",\"https://assets.apidog.com/app/static/brand/raml.png\",\"wadl\",\"https://assets.apidog.com/app/static/brand/wadl.png\",\"curl\",\"https://assets.apidog.com/app/static/brand/curl.png\",\"insomnia\",\"https://assets.apidog.com/app/static/brand/insomnia.png\",\"wsdl\",\"https://assets.apidog.com/app/static/brand/wsdl.png\",\"markdown\",\"https://assets.apidog.com/app/static/brand/markdown.png\",\"html\",\"https://assets.apidog.com/app/static/brand/html.png\",\"protobuf\",\"https://assets.apidog.com/app/static/brand/protobuf.png\",\"soapui\",\"https://assets.apidog.com/app/static/brand/soapui.svg\",\"hoppscotch\",\"https://assets.apidog.com/app/static/brand/hoppscotch.svg\",\"javaProject\",\"https://assets.apidog.com/app/static/brand/java-project.png\",\"help\",{\"_56\":101,\"_102\":103,\"_104\":105,\"_106\":107},\"https://apidog.com/help\",\"browserExtension\",\"https://chromewebstore.google.com/detail/apidog-browser-extension/dmhljjnonlhapikmelaefohecogokhio\",\"csv\",\"https://apidog.com/help/reference/csv\",\"appMcpServer\",\"https://docs.apidog.com/apidog-mcp-server\",\"assets\",{\"_110\":111},\"logo512Png\",\"https://assets.apidog.com/static/logo/apidog-logo-512.png\",\"envConfig\",{\"_114\":60,\"_115\":116,\"_117\":116,\"_118\":119,\"_120\":121,\"_122\":123,\"_124\":57,\"_125\":62,\"_126\":22,\"_127\":128,\"_129\":130,\"_132\":133,\"_134\":135,\"_136\":137,\"_138\":139,\"_140\":141,\"_142\":143,\"_149\":150,\"_151\":48,\"_152\":153,\"_154\":30},\"RELEASE_BASE\",\"DEBUG_API_BASE\",\"\",\"DEBUG_WEB_URL_BASE\",\"AGENT_SERVER_API_BASE\",\"https://web-proxy.apidog.com\",\"APP_REGION\",\"GLOBAL\",\"APP_NAME\",\"Apidog\",\"APP_HOMEPAGE\",\"APP_NAME_LOWER\",\"DEFAULT_LOCALE\",\"APP_BROWSER_EXTENSION_ADAPTER\",\"apidogAgentCrossRequest\",\"APP_API_SERVER_HOSTNAMES\",[131],\"api.apidog.com\",\"APP_SUPPORT_EMAIL\",\"support@apidog.com\",\"APP_SCRIPT_MAIN_OBJECTS\",\"$\",\"SERVER_PROTOCOL\",\"http\",\"SERVER_HOST\",\"apidog-api-fordoc-svc\",\"DEFAULT_DOC_LAYOUT\",\"TwoColumn\",\"NOT_CUSTOM_DOMAIN_HOSTNAMES\",[144,145,146,147,148],\"www.apidog.com\",\"apidog.com\",\"www.apidog.io\",\"apidog.io\",\"share.apidog.com\",\"SERVER_REQUEST_TIMEOUT\",15000,\"IS_SHARED_DOC_INDEPENDENT_DOMAIN\",\"APIDOC_CUSTOM_DOMAIN_CNAME_REGEX\",[\"R\",\"\\\\d+\\\\.cname\\\\.apidog\\\\.com\",\"\"],\"IS_ALWAYS_USE_ORIGIN_FETCH\",\"docsDataState\",{\"_157\":158,\"_162\":163,\"_175\":176,\"_177\":178,\"_179\":180,\"_189\":190,\"_202\":203,\"_204\":205,\"_206\":207,\"_213\":214,\"_220\":-7,\"_221\":222,\"_223\":-7,\"_224\":-7,\"_225\":226,\"_228\":-7},\"navigation\",{\"_5\":159,\"_160\":161},\"NONE\",\"navRightLinkItems\",[],\"sidebarTree\",{\"_164\":-7,\"_165\":-7,\"_166\":167,\"_168\":-7,\"_169\":170,\"_171\":-7,\"_172\":-7,\"_173\":174},\"goBackSidebarTreeApiFolderNode\",\"rootSidebarTreeApiFolderNode\",\"sidebarTreeList\",[],\"selectedSidebarTreeNode\",\"parentSidebarTreeApiFolderNodes\",[],\"previousSidebarTreeNode\",\"nextSidebarTreeNode\",\"homeLink\",\"/\",\"docsBaseConfig\",{},\"versionList\",[],\"resourceData\",{\"_5\":181,\"_182\":-7,\"_183\":184},\"NotFound\",\"data\",\"extraData\",{\"_185\":186,\"_187\":188},\"apiFieldList\",[],\"dataSchemaDefinitions\",{},\"docsIdTypeData\",{\"_191\":192,\"_193\":194,\"_195\":194,\"_196\":194,\"_197\":116,\"_198\":194,\"_199\":200,\"_201\":-7},\"onlineType\",\"APIDOC\",\"branchId\",0,\"onlineId\",\"projectId\",\"subdirectory\",\"teamId\",\"visitType\",\"customDomain\",\"specialFileType\",\"notification\",[],\"footerBanner\",[],\"projectSetting\",{\"_208\":209,\"_210\":211},\"advancedSettings\",{},\"auth\",{\"_5\":212},\"noauth\",\"environments\",{\"_215\":216,\"_217\":-7,\"_218\":219},\"environmentList\",[],\"selectedEnvironment\",\"servers\",[],\"searchSettings\",\"versionSettings\",[],\"seoInfos\",\"itemPathPrefix\",\"appEnvMap\",{\"_227\":128},\"appBrowserExtensionAdapterKey\",\"customCodes\",\"primaryColorVariable\",\"routes/_index/route\",\"actionData\",\"errors\"]\n");</script><!--$--><script>window.__remixContext.streamController.close();</script><!--/$--><!--/$-->
+        The Gemini endpoint returns streaming chunks from
+        `streamGenerateContent`. Function calling responses appear in
+        `candidates[].content.parts[].functionCall`.
+
+        **Streaming Response Format:**
+
+        - Content-Type: `text/event-stream` or provider stream chunks
+
+        - Function calls are returned inside `parts[].functionCall`
+
+        - Thinking output may be reflected through `thoughtSignature` and usage
+        metadata
+
+        ## Features
+
+        - Standard chat with `contents`.
+
+        - Google Search grounding with `googleSearch`.
+
+        - Function calling with `functionDeclarations`.
+
+        - Thinking configuration with `generationConfig.thinkingConfig`.
+
+        ## Request Notes
+
+        - Use `contents` as the primary conversation input.
+
+        - Use `tools.googleSearch` to enable Google Search grounding.
+
+        - Use `tools.functionDeclarations` to define callable functions.
+
+        - Use `generationConfig.thinkingConfig` to control thoughts output and
+        thinking level.
+
+        ## Authentication
+
+        Use the auth configuration for `X-Goog-Api-Key`. Do not add it as a
+        regular request parameter.
+      operationId: gemini_3.5_flash
+      tags:
+        - docs/en/Market/Chat  Models/Gemini
+      parameters: []
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                contents:
+                  type: array
+                  description: Conversation input for Gemini.
+                  items:
+                    type: object
+                    properties:
+                      role:
+                        type: string
+                        enum:
+                          - user
+                          - model
+                        description: Content role.
+                        examples:
+                          - user
+                      parts:
+                        type: array
+                        description: >-
+                          Content parts. Use text, inline_data, or
+                          provider-specific blocks.
+                        items:
+                          oneOf:
+                            - type: object
+                              properties:
+                                text:
+                                  type: string
+                                  description: Plain text input.
+                                  examples:
+                                    - What is the weather in Beijing today?
+                              x-apidog-orders:
+                                - text
+                            - type: object
+                              properties:
+                                inline_data:
+                                  type: object
+                                  description: Inline binary payload.
+                                  properties:
+                                    mime_type:
+                                      type: string
+                                      examples:
+                                        - image/jpeg
+                                    data:
+                                      type: string
+                                      description: Base64 content.
+                                  x-apidog-orders:
+                                    - mime_type
+                                    - data
+                              x-apidog-orders:
+                                - inline_data
+                            - type: object
+                              properties:
+                                file_data:
+                                  type: object
+                                  properties:
+                                    mime_type:
+                                      type: string
+                                      description: file mime type
+                                    file_uri:
+                                      type: string
+                                  x-apidog-orders:
+                                    - mime_type
+                                    - file_uri
+                              x-apidog-orders:
+                                - file_data
+                    required:
+                      - role
+                      - parts
+                    x-apidog-orders:
+                      - role
+                      - parts
+                  minItems: 1
+                tools:
+                  type: array
+                  description: >-
+                    Optional Gemini tools. Supports googleSearch and
+                    functionDeclarations.
+                  items:
+                    oneOf:
+                      - type: object
+                        properties:
+                          googleSearch:
+                            type: object
+                            description: Google Search grounding tool.
+                            additionalProperties: false
+                            x-apidog-orders: []
+                        x-apidog-orders:
+                          - googleSearch
+                      - type: object
+                        properties:
+                          functionDeclarations:
+                            type: array
+                            description: Function declaration list.
+                            items:
+                              type: object
+                              properties:
+                                name:
+                                  type: string
+                                  description: Function name.
+                                  examples:
+                                    - get_weather_forecast
+                                description:
+                                  type: string
+                                  description: Function description.
+                                  examples:
+                                    - >-
+                                      Get the weather forecast for a given
+                                      location
+                                parameters:
+                                  type: object
+                                  description: Function parameter schema.
+                                  properties:
+                                    type:
+                                      type: string
+                                      examples:
+                                        - OBJECT
+                                    properties:
+                                      type: object
+                                      additionalProperties: true
+                                      x-apidog-orders: []
+                                    required:
+                                      type: array
+                                      items:
+                                        type: string
+                                  x-apidog-orders:
+                                    - type
+                                    - properties
+                                    - required
+                                  examples:
+                                    - type: OBJECT
+                                      properties:
+                                        location:
+                                          type: STRING
+                                          description: The city name, e.g. Beijing
+                                      required:
+                                        - location
+                              required:
+                                - name
+                                - description
+                                - parameters
+                              x-apidog-orders:
+                                - name
+                                - description
+                                - parameters
+                        x-apidog-orders:
+                          - functionDeclarations
+                generationConfig:
+                  type: object
+                  description: Generation configuration.
+                  properties:
+                    thinkingConfig:
+                      type: object
+                      description: Thinking configuration.
+                      properties:
+                        includeThoughts:
+                          type: boolean
+                          description: Whether to include thought output.
+                          examples:
+                            - true
+                        thinkingLevel:
+                          type: string
+                          enum:
+                            - low
+                            - high
+                          description: Thinking level.
+                          examples:
+                            - high
+                      x-apidog-orders:
+                        - includeThoughts
+                        - thinkingLevel
+                  x-apidog-orders:
+                    - thinkingConfig
+                stream:
+                  type: boolean
+                  description: If set to true, the provider returns stream chunks.
+                  default: true
+              required:
+                - contents
+              x-apidog-orders:
+                - stream
+                - contents
+                - tools
+                - generationConfig
+              examples:
+                - stream: true
+                  contents:
+                    - role: user
+                      parts:
+                        - text: What is the weather in Beijing today?
+                  tools:
+                    - functionDeclarations:
+                        - name: get_weather_forecast
+                          description: Get the weather forecast for a given location
+                          parameters:
+                            type: OBJECT
+                            properties:
+                              location:
+                                type: STRING
+                                description: The city name, e.g. Beijing
+                            required:
+                              - location
+                  generationConfig:
+                    thinkingConfig:
+                      includeThoughts: true
+                      thinkingLevel: high
+            example:
+              stream: true
+              contents:
+                - role: user
+                  parts:
+                    - text: What is the weather in Beijing today?
+              tools:
+                - functionDeclarations:
+                    - name: get_weather_forecast
+                      description: Get the weather forecast for a given location
+                      parameters:
+                        type: OBJECT
+                        properties:
+                          location:
+                            type: STRING
+                            description: The city name, e.g. Beijing
+                        required:
+                          - location
+              generationConfig:
+                thinkingConfig:
+                  includeThoughts: true
+                  thinkingLevel: high
+      responses:
+        '200':
+          description: Request successful.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  candidates:
+                    type: array
+                    description: Candidate results
+                    items:
+                      type: object
+                      properties:
+                        content:
+                          type: object
+                          properties:
+                            role:
+                              type: string
+                              examples:
+                                - model
+                            parts:
+                              type: array
+                              items:
+                                type: object
+                                properties:
+                                  functionCall:
+                                    type: object
+                                    description: Function call payload
+                                    properties:
+                                      args:
+                                        type: object
+                                        description: Function arguments
+                                        additionalProperties: true
+                                        x-apidog-orders: []
+                                        properties: {}
+                                      name:
+                                        type: string
+                                        description: Function name
+                                        examples:
+                                          - get_weather_forecast
+                                      id:
+                                        type: string
+                                        description: Function call identifier
+                                        examples:
+                                          - gp737npz
+                                    x-apidog-orders:
+                                      - args
+                                      - name
+                                      - id
+                                  thoughtSignature:
+                                    type: string
+                                    description: Thought signature
+                                    examples:
+                                      - Es8CCswCAb4example
+                                  text:
+                                    type: string
+                                    description: Text output
+                                x-apidog-orders:
+                                  - functionCall
+                                  - thoughtSignature
+                                  - text
+                          x-apidog-orders:
+                            - role
+                            - parts
+                        finishReason:
+                          type: string
+                          description: Candidate finish reason
+                          examples:
+                            - STOP
+                      x-apidog-orders:
+                        - content
+                        - finishReason
+                  modelVersion:
+                    type: string
+                    description: Returned model version
+                    examples:
+                      - gemini-3-flash
+                  usageMetadata:
+                    type: object
+                    description: Token usage metadata
+                    properties:
+                      candidatesTokenCount:
+                        type: integer
+                        examples:
+                          - 18
+                      thoughtsTokenCount:
+                        type: integer
+                        examples:
+                          - 55
+                      totalTokenCount:
+                        type: integer
+                        examples:
+                          - 325
+                      promptTokenCount:
+                        type: integer
+                        examples:
+                          - 252
+                    x-apidog-orders:
+                      - candidatesTokenCount
+                      - thoughtsTokenCount
+                      - totalTokenCount
+                      - promptTokenCount
+                  credits_consumed:
+                    type: number
+                    description: Credits consumed by the request
+                    examples:
+                      - 0.01
+                  responseId:
+                    type: string
+                    description: Unique response identifier
+                    examples:
+                      - xRS0aZC5BNHVz7IPuaO42Qk
+                x-apidog-orders:
+                  - candidates
+                  - modelVersion
+                  - usageMetadata
+                  - credits_consumed
+                  - responseId
+              example:
+                candidates:
+                  - content:
+                      role: model
+                      parts:
+                        - functionCall:
+                            args:
+                              location: Beijing
+                            name: get_weather_forecast
+                            id: gp737npz
+                          thoughtSignature: Es8CCswCAb4example
+                    finishReason: STOP
+                modelVersion: gemini-3-5-flash
+                usageMetadata:
+                  candidatesTokenCount: 18
+                  thoughtsTokenCount: 55
+                  totalTokenCount: 325
+                  promptTokenCount: 252
+                credits_consumed: 0.01
+                responseId: xRS0aZC5BNHVz7IPuaO42Qk
+          headers: {}
+          x-apidog-name: ''
+        '400':
+          description: Bad Request - Invalid request parameters
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: object
+                    properties:
+                      message:
+                        type: string
+                        examples:
+                          - Invalid request parameters
+                      type:
+                        type: string
+                        examples:
+                          - invalid_request_error
+                    x-apidog-orders:
+                      - message
+                      - type
+                x-apidog-orders:
+                  - error
+          headers: {}
+          x-apidog-name: ''
+        '401':
+          description: Unauthorized - Invalid or missing API key
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: object
+                    properties:
+                      message:
+                        type: string
+                        examples:
+                          - Invalid or missing API key
+                      type:
+                        type: string
+                        examples:
+                          - authentication_error
+                    x-apidog-orders:
+                      - message
+                      - type
+                x-apidog-orders:
+                  - error
+          headers: {}
+          x-apidog-name: ''
+      security: []
+      x-apidog-folder: docs/en/Market/Chat  Models/Gemini
+      x-apidog-status: released
+      x-run-in-apidog: https://app.apidog.com/web/project/1184766/apis/api-36606599-run
+components:
+  schemas: {}
+  securitySchemes:
+    BearerAuth:
+      type: bearer
+      scheme: bearer
+      bearerFormat: API Key
+      description: >-
+        All API requests require a Bearer Token. Add the header `Authorization:
+        Bearer YOUR_API_KEY` to authenticate requests.
+    BearerAuth1:
+      type: bearer
+      scheme: bearer
+      bearerFormat: API Key
+      description: >-
+        所有 API 请求都需要 Bearer Token。请在请求头中添加 `Authorization: Bearer YOUR_API_KEY`
+        进行身份验证。
+servers:
+  - url: https://api.kie.ai
+    description: 正式环境
+security:
+  - BearerAuth: []
+    x-apidog:
+      schemeGroups:
+        - id: kn8M4YUlc5i0A0179ezwx
+          schemeIds:
+            - BearerAuth
+      required: true
+      use:
+        id: kn8M4YUlc5i0A0179ezwx
+      scopes:
+        kn8M4YUlc5i0A0179ezwx:
+          BearerAuth: []
+
+```
 
 ---
 
@@ -61928,40 +72354,692 @@ import("https://file-assets.apidog.com/docs-site/v1/assets/entry.client-mUtkjgQm
 
 **Source:** [https://docs.kie.ai/market/gemini/gemini-3-5-flash-openai.md][166]
 
-<!DOCTYPE html><html lang="en-US" class="group/root" id="html" data-theme="light" data-accent-color="purple"><head><script src="https://file-assets.apidog.com/docs-site/v1/assets/prepareDocsConfigScript-CLIBKQbk.js"></script><script>__prepareDocsConfigScript(JSON.parse("{\"theme\":\"system\",\"themePrimarySettings\":{\"light\":{\"accentColor\":\"purple\"},\"dark\":{\"accentColor\":\"purple\"}},\"logoSettings\":{\"light\":{\"icon\":\"\",\"type\":\"project\"},\"dark\":{\"icon\":\"\",\"type\":\"followLight\"}},\"backgroundImageSettings\":{\"light\":{\"type\":\"custom\",\"color\":\"\"},\"dark\":{\"type\":\"followLight\",\"color\":\"\"}},\"id\":0,\"subdirectory\":\"\"}"));</script><script>window.eventTracking = {
-      dataLayer: []
-    }
-    window.eventTracking.report = function(){
-        window.eventTracking.dataLayer.push(arguments);
-    }</script><meta charSet="utf-8"/><meta name="viewport" content="width=device-width, initial-scale=1"/><title>API Documentation</title><meta name="description" content="Design. Debug. Test. Document. Mock. Build APIs Faster &amp; Together."/><meta name="keywords" content="API Design, API Specification, API Test, API Documentation, API Mock"/><link rel="stylesheet" href="https://file-assets.apidog.com/docs-site/v1/assets/root-CpC_E1fb.css"/></head><body class="overflow-hidden g-body"><div class="flex h-full w-full flex-col overflow-auto"><div class="flex flex-1 flex-col items-center justify-center"><div class="flex w-auto flex-col items-center justify-center max-os:p-5 os:w-[480px]"><svg width="104" height="104" viewBox="0 0 104 104" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M92.9557 41.8969L88.7262 25.2175C87.4089 19.8194 84.8039 16.1447 80.9015 14.1934L80.3963 13.9458C79.802 13.6685 79.178 13.4407 78.5243 13.2426C75.4142 12.3214 72.0268 12.371 68.362 13.3813C65.8759 14.0747 63.2612 15.2038 60.5176 16.7886C56.7835 18.9478 53.3167 21.6319 50.1076 24.8708C49.0973 25.8711 48.1266 26.9209 47.1956 28.0204C46.314 29.0406 45.4622 30.1105 44.6302 31.2198C42.9266 33.4781 41.3121 35.9245 39.7868 38.5492C34.1015 48.3648 31.2588 57.9329 31.2588 67.2631C31.2588 72.0471 32.1106 76.1181 33.8142 79.4461C34.6759 81.1101 35.6862 82.5263 36.8748 83.7248C37.9346 84.7846 39.1232 85.6564 40.4405 86.3398L41.0151 86.627V98.9485C41.0151 99.9984 41.3221 100.712 41.9461 101.058C42.5701 101.415 43.3426 101.326 44.2637 100.801L67.0249 87.6571C67.946 87.1223 68.7186 86.3199 69.3426 85.2502C69.9666 84.1706 70.2736 83.1008 70.2736 82.0509V78.3169L76.7811 74.5629C78.5639 73.5328 80.0993 71.9184 81.377 69.7195C82.6448 67.5207 83.2786 65.4011 83.2786 63.341V52.1485L89.786 48.3946C90.8657 47.7706 91.7373 46.79 92.391 45.4429C93.0348 44.1058 93.2231 42.927 92.9557 41.8969ZM62.8352 66.6095C62.2112 67.6891 61.4387 68.4914 60.5176 69.0263C59.5964 69.5512 58.8237 69.6404 58.1997 69.2838C57.5856 68.9371 57.2687 68.2238 57.2687 67.164C57.2687 66.1042 57.5856 65.0445 58.1997 63.9748C58.2592 63.8658 58.3186 63.7667 58.378 63.6676C58.9129 62.8356 59.5468 62.1819 60.2797 61.7164C60.359 61.6569 60.4383 61.6075 60.5176 61.558C61.4387 61.033 62.2112 60.9439 62.8352 61.2906C63.4592 61.6471 63.7761 62.3604 63.7761 63.4103C63.7761 64.4602 63.4592 65.5398 62.8352 66.6095ZM69.5011 38.7572C69.402 39.1336 69.2832 39.5101 69.1346 39.8865C68.5997 41.3227 67.4607 43.6206 65.7274 46.8C64.9647 48.1768 64.41 49.3158 64.0535 50.237C63.8157 50.861 63.6176 51.4748 63.4691 52.0592C63.3997 52.3366 63.3304 52.6041 63.2809 52.8715C63.1224 53.7729 62.7856 54.6148 62.2706 55.3774C61.7556 56.1401 61.2009 56.6948 60.6066 57.0315C59.8935 57.4475 59.319 57.4971 58.8535 57.2099C58.3978 56.9128 58.2196 56.358 58.3285 55.5557C58.487 54.2186 58.8039 52.931 59.2596 51.7029C59.7251 50.4747 60.4679 48.9392 61.498 47.0969C62.3201 45.6409 62.9837 44.4029 63.4691 43.4026C63.7761 42.7885 64.0138 42.2636 64.1921 41.8278C64.202 41.7981 64.2119 41.7782 64.2218 41.7485C64.6775 40.5797 64.9153 39.5001 64.9153 38.4997C64.9153 37.321 64.5191 36.5881 63.7366 36.2909C62.9442 36.0037 61.9537 36.2019 60.7652 36.8853C60.0025 37.3211 59.2794 37.945 58.5662 38.7572C57.863 39.5694 57.239 40.5105 56.7041 41.5604C56.2683 42.5013 55.7632 43.2442 55.1986 43.7889C54.6241 44.3337 54.0397 44.6209 53.4455 44.6506C52.8512 44.6902 52.4055 44.4525 52.1083 43.9374C51.8112 43.4224 51.8211 42.7687 52.1479 41.9565C53.0691 39.7477 54.2973 37.7074 55.8424 35.8552C56.5754 34.9737 57.338 34.1811 58.1205 33.4878C58.9822 32.735 59.8638 32.0913 60.7652 31.5664C63.3701 30.0708 65.5491 29.7141 67.3121 30.4966C69.0752 31.279 69.9468 32.9829 69.9468 35.5977C69.9468 36.6476 69.7982 37.7073 69.5011 38.7572Z" stroke="#667085" stroke-linecap="round" stroke-linejoin="round"></path><path d="M63.777 63.4086C63.777 64.4684 63.46 65.5381 62.836 66.6078C62.212 67.6874 61.4395 68.4896 60.5184 69.0245C59.5972 69.5494 58.8246 69.6387 58.2006 69.2821C57.5865 68.9354 57.2695 68.2221 57.2695 67.1623C57.2695 66.1025 57.5865 65.0428 58.2006 63.973C58.26 63.8641 58.3194 63.7649 58.3789 63.6659C58.9137 62.8339 59.5476 62.1802 60.2806 61.7147C60.3598 61.6552 60.4392 61.6058 60.5184 61.5563C61.4395 61.0313 62.212 60.9422 62.836 61.2888C63.46 61.6454 63.777 62.3587 63.777 63.4086Z" stroke="#667085" stroke-linecap="round" stroke-linejoin="round"></path><path d="M63.7373 36.2894C62.9449 36.0021 61.9544 36.2003 60.7659 36.8838C60.0032 37.3196 59.2801 37.9435 58.567 38.7557C57.8638 39.5679 57.2398 40.5089 56.7049 41.5588C56.2691 42.4998 55.7639 43.2426 55.1994 43.7874C54.6249 44.3321 54.0405 44.6193 53.4462 44.649C52.8519 44.6886 52.4062 44.4509 52.1091 43.9359C51.8119 43.4208 51.8219 42.7671 52.1487 41.9549C53.0699 39.7461 54.298 37.7059 55.8432 35.8537C56.5761 34.9721 57.3388 34.1797 58.1213 33.4863L63.7373 36.2894Z" stroke="#667085" stroke-linecap="round" stroke-linejoin="round"></path><path d="M69.9474 35.596C69.9474 36.6459 69.7988 37.7056 69.5017 38.7555C69.4026 39.1319 69.2838 39.5085 69.1352 39.8849C68.6003 41.321 67.4613 43.6189 65.728 46.7984C64.9653 48.1751 64.4106 49.3141 64.054 50.2352C63.8163 50.8592 63.6182 51.4732 63.4697 52.0576C63.4003 52.3349 63.331 52.6024 63.2815 52.8698C63.123 53.7711 62.7862 54.6131 62.2712 55.3758C61.7561 56.1385 61.2015 56.693 60.6072 57.0298C59.894 57.4458 59.3196 57.4955 58.854 57.2083C58.3984 56.9111 58.2201 56.3563 58.3291 55.554C58.4876 54.2168 58.8045 52.9293 59.2601 51.7011C59.7257 50.4729 60.4685 48.9376 61.4986 47.0953C62.3207 45.6393 62.9843 44.4012 63.4697 43.4008C63.7767 42.7868 64.0144 42.2619 64.1927 41.8261C64.2026 41.7964 64.2125 41.7766 64.2224 41.7468C64.678 40.5781 64.9158 39.4984 64.9158 38.498C64.9158 37.3193 64.5196 36.5865 63.7371 36.2893L58.1211 33.4862C58.9828 32.7334 59.8643 32.0896 60.7657 31.5647C63.3706 30.069 65.5497 29.7125 67.3127 30.4949C69.0758 31.2774 69.9474 32.9811 69.9474 35.596Z" stroke="#667085" stroke-linecap="round" stroke-linejoin="round"></path><path d="M41.9466 101.059L22.3253 91.2429L22.1371 91.1537C21.5131 90.807 21.2061 90.094 21.2061 89.0441V76.7227L41.0156 86.6274V98.9488C41.0156 99.9988 41.3226 100.712 41.9466 101.059Z" stroke="#667085" stroke-linecap="round" stroke-linejoin="round"></path><path d="M80.3972 13.9448C79.8029 13.6675 79.1789 13.4397 78.5252 13.2416C75.4151 12.3204 72.0277 12.3701 68.3629 13.3804C65.8768 14.0737 63.2621 15.2028 60.5185 16.7876C56.7844 18.9468 53.3176 21.6309 50.1085 24.8698C49.0982 25.8702 48.1275 26.92 47.1965 28.0194C46.3149 29.0396 45.4631 30.1096 44.6311 31.2189C42.9275 33.4772 41.313 35.9236 39.7877 38.5484C34.1024 48.364 31.2597 57.932 31.2597 67.2623C31.2597 72.0463 32.1115 76.1171 33.8151 79.4451C34.6768 81.1091 35.6871 82.5253 36.8757 83.7238C37.9355 84.7836 39.1241 85.6554 40.4414 86.3388L21.2065 76.7213C18.1161 75.2752 15.7192 72.8783 14.0056 69.5404C12.302 66.2124 11.4502 62.1415 11.4502 57.3575C11.4502 48.0272 14.2929 38.4592 19.9782 28.6436C25.6734 18.828 32.587 11.5678 40.7089 6.88282C47.4838 2.97044 53.486 1.79169 58.7157 3.33683C59.4784 3.56464 60.2113 3.84208 60.8948 4.17884L61.281 4.37688L80.3972 13.9448Z" stroke="#667085" stroke-linecap="round" stroke-linejoin="round"></path></svg><div class="align-center mt-8 flex justify-center text-center text-2xl font-semibold text-color">An abnormal error occurred, please try &#x27;Reload&#x27; or &#x27;get Support&#x27; to help you solve it!</div><div class="align-center mt-2 text-center text-lg font-400 text-secondary">Unexpected token &#x27;o&#x27;, &quot;forbidden
-&quot; is not valid JSON: /api/v1/published-projects/domains/docs.kie.ai</div></div></div><div class="flex flex-col items-center justify-center p-8 text-base font-base text-secondary"><div class="inline-flex items-center text-base font-400 text-secondary _footer-logo-wrapper_1kbjg_1"><a class="_footer-logo_1kbjg_1 flex-shrink-0" aria-label="homepage link" href="https://apidog.com"><span class="inline-flex items-center"><span class="mr-[-4px]">Built with</span><svg width="61" height="18" viewBox="0 0 61 18" fill="none" xmlns="http://www.w3.org/2000/svg" class="h-[18px] w-[80px]"><path d="M12.3836 1.67806C11.6452 0.940647 10.4478 0.940647 9.70932 1.67806L8.99795 2.3884L8.30644 1.69789C7.57144 0.963937 6.37437 0.936241 5.62991 1.66043C4.88545 2.38463 4.86748 3.60515 5.61194 4.34854L6.32331 5.05888C7.80026 6.53371 10.195 6.53371 11.6723 5.05888L12.3836 4.34854C13.1221 3.61113 13.1221 2.41547 12.3836 1.67806Z" fill="#667085"></path><path d="M12.3838 13.6515L11.6729 12.9412C10.1968 11.4664 7.80339 11.4664 6.32699 12.9412L5.61603 13.6515C4.87799 14.389 4.87799 15.5846 5.61603 16.322C6.35408 17.0594 7.55076 17.0594 8.28881 16.322L8.99976 15.6117L9.69087 16.3022C10.4255 17.0361 11.6218 17.0638 12.3659 16.3396C13.1219 15.6038 13.1278 14.3949 12.3838 13.6515Z" fill="#667085"></path><path d="M15.6105 8.99642L16.3214 8.28481C17.0655 7.54009 17.0595 6.32906 16.3035 5.59191C15.5595 4.86643 14.3631 4.89418 13.6285 5.62943L13.3098 5.94851C12.1666 7.09269 10.6166 7.73526 9 7.73526C7.38344 7.73526 5.83335 7.09238 4.69023 5.94851L4.37146 5.62943C3.63689 4.89418 2.44054 4.86643 1.69652 5.59191C0.940527 6.32906 0.934542 7.54009 1.67856 8.28481L2.38951 8.99642L1.67856 9.70803C0.940527 10.4468 0.940527 11.6445 1.67856 12.3833C2.4166 13.122 3.61326 13.122 4.3513 12.3833L4.74347 11.9907C5.85225 10.8809 7.35604 10.2576 8.92409 10.2576H8.9874C10.6162 10.2576 12.1666 10.9005 13.3098 12.0446C13.5126 12.2477 13.6484 12.3836 13.6484 12.3836C14.3864 13.1223 15.5831 13.1223 16.3211 12.3836C17.0592 11.6449 17.0592 10.4471 16.3211 9.70834L15.6102 8.99673L15.6105 8.99642Z" fill="#667085"></path><path fill-rule="evenodd" clip-rule="evenodd" d="M37.3559 4.00331C37.4694 3.95752 37.5911 3.93521 37.7136 3.93768C37.8343 3.93606 37.9541 3.95884 38.0656 4.0046C38.1772 4.05035 38.2781 4.11814 38.3624 4.20384C38.4483 4.29095 38.5158 4.39418 38.561 4.50749C38.6061 4.6208 38.628 4.7419 38.6253 4.8637C38.628 4.98551 38.6061 5.10664 38.561 5.21995C38.5158 5.33326 38.4483 5.43648 38.3624 5.52357C38.2781 5.60926 38.1772 5.67705 38.0656 5.72284C37.9541 5.7686 37.8343 5.79134 37.7136 5.78975C37.5911 5.79222 37.4694 5.76989 37.3559 5.72413C37.2425 5.67837 37.1396 5.61011 37.0536 5.52357C36.9677 5.43648 36.9002 5.33326 36.8551 5.21995C36.8099 5.10664 36.7881 4.98551 36.7908 4.8637C36.7881 4.7419 36.8099 4.6208 36.8551 4.50749C36.9002 4.39418 36.9677 4.29095 37.0536 4.20384C37.1396 4.1173 37.2425 4.04907 37.3559 4.00331ZM25.6211 4.76389L24.0219 4.76389L21.175 12.7654H22.7355L23.2948 11.1795H26.371L26.9303 12.7654H28.5019L25.6211 4.76389ZM25.9403 9.91528H23.7255L24.8441 6.75459L25.9403 9.91528ZM34.4529 6.71022C33.9935 6.42603 33.4618 6.27789 32.9204 6.28324C32.4656 6.27789 32.0164 6.38257 31.6116 6.58824C31.3484 6.72112 31.1086 6.89528 30.9013 7.10393V6.38304H29.4248V15.6932H30.9181V12.0501C31.1303 12.2594 31.3736 12.4352 31.6396 12.5714C32.0799 12.7816 32.5659 12.88 33.0541 12.8577C33.5422 12.8355 34.0171 12.6932 34.4361 12.4438C34.899 12.1548 35.274 11.7466 35.5212 11.2627C35.7861 10.7302 35.9203 10.1431 35.9126 9.54929C35.923 8.96057 35.7887 8.37821 35.5212 7.8525C35.2797 7.38027 34.9096 6.98456 34.4529 6.71022ZM34.4137 9.55484C34.4161 9.91562 34.3297 10.2716 34.162 10.5918C34.0132 10.8769 33.7889 11.1165 33.5133 11.2849C33.2582 11.4309 32.9688 11.5078 32.6743 11.5078C32.3798 11.5078 32.0904 11.4309 31.8353 11.2849C31.5644 11.1203 31.341 10.8892 31.1866 10.6139C31.0195 10.284 30.937 9.91836 30.946 9.54929C30.9355 9.18364 31.0182 8.82126 31.1866 8.49571C31.331 8.22256 31.5426 7.98991 31.8018 7.81923C32.0627 7.67197 32.3573 7.59366 32.6575 7.5919C32.9606 7.59099 33.2582 7.67147 33.5188 7.82478C33.7952 7.97573 34.0193 8.20567 34.162 8.48465C34.3413 8.8105 34.4283 9.17839 34.4137 9.54929V9.55484ZM38.4519 6.38304H36.9585V12.7599H38.4519V6.38304ZM43.7037 6.56049C43.9895 6.68375 44.2509 6.85649 44.4756 7.07066V4.27038H45.9801V12.7654H44.4756V12.039C44.2733 12.2523 44.0347 12.4288 43.7709 12.5603C43.3696 12.7699 42.9211 12.8748 42.4677 12.8652C41.9296 12.8702 41.4008 12.7261 40.9408 12.4493C40.4817 12.1535 40.1078 11.7446 39.8557 11.2627C39.5908 10.7302 39.4566 10.1431 39.4642 9.54929C39.4539 8.96057 39.5882 8.37821 39.8557 7.8525C40.1049 7.3803 40.4803 6.98514 40.9408 6.71022C41.3529 6.46065 41.821 6.31637 42.3032 6.29024C42.7854 6.26412 43.2666 6.35695 43.7037 6.56049ZM44.4756 9.57146C44.4854 9.20459 44.3987 8.84147 44.2239 8.51792C44.0698 8.22608 43.835 7.98372 43.5471 7.81923C43.2921 7.67323 43.0027 7.59637 42.7082 7.59637C42.4136 7.59637 42.1243 7.67323 41.8692 7.81923C41.598 7.97735 41.377 8.20793 41.2316 8.48465C41.0626 8.80593 40.9798 9.16492 40.9911 9.52712C40.9825 9.89613 41.0651 10.2616 41.2316 10.5918C41.3883 10.8862 41.622 11.1333 41.9084 11.3071C42.1635 11.4531 42.4528 11.5299 42.7473 11.5299C43.0419 11.5299 43.3312 11.4531 43.5863 11.3071C43.8553 11.1436 44.0753 10.912 44.2239 10.6361C44.3961 10.3076 44.4826 9.94161 44.4756 9.57146ZM51.8863 6.71022C51.3775 6.44176 50.81 6.30134 50.2336 6.30134C49.6572 6.30134 49.0897 6.44176 48.5808 6.71022C48.1082 6.98053 47.7208 7.37607 47.4622 7.8525C47.1714 8.37882 47.0248 8.9715 47.0372 9.57146C47.026 10.1735 47.1684 10.7686 47.451 11.3016C47.7105 11.7817 48.0973 12.1824 48.5697 12.4605C49.0662 12.7315 49.6249 12.8709 50.1916 12.8652C50.7765 12.874 51.3541 12.7347 51.8695 12.4605C52.3652 12.1852 52.7752 11.7805 53.0553 11.2904C53.3515 10.7658 53.502 10.1726 53.4915 9.57146C53.5004 8.97048 53.35 8.37773 53.0553 7.8525C52.7813 7.37062 52.3763 6.97478 51.8863 6.71022ZM49.3639 7.81923C49.6253 7.67401 49.9199 7.59775 50.2196 7.59775C50.5193 7.59775 50.8139 7.67401 51.0753 7.81923C51.3499 7.97813 51.5716 8.21332 51.7129 8.49571C51.876 8.8305 51.9528 9.20008 51.9367 9.57146C51.9483 9.9474 51.8616 10.3199 51.685 10.6528C51.5392 10.9243 51.3204 11.1504 51.0529 11.3061C50.7853 11.4617 50.4794 11.5408 50.1693 11.5344C49.9454 11.5409 49.7227 11.4998 49.5162 11.4137C49.3097 11.3276 49.1243 11.1986 48.9724 11.0354C48.6355 10.6234 48.4678 10.1007 48.5025 9.57146C48.4901 9.19738 48.5708 8.82604 48.7374 8.4902C48.8747 8.21003 49.0927 7.97654 49.3639 7.81923ZM59.0394 7.03076V6.32653H60.5495V12.6812C60.5594 13.2247 60.4326 13.7622 60.1804 14.2449C59.9389 14.7103 59.5657 15.0957 59.1065 15.3539C58.5924 15.6305 58.0132 15.7664 57.4286 15.7476C56.67 15.7754 55.9226 15.5595 55.2977 15.1321C55.0204 14.9436 54.7884 14.6968 54.6182 14.4092C54.4481 14.1217 54.344 13.8006 54.3133 13.4686V13.3466L55.7954 13.3466C55.7954 13.6685 56.0907 13.9814 56.3547 14.134C56.6804 14.3328 57.0575 14.4331 57.4398 14.4223C57.6518 14.4311 57.8634 14.3968 58.0616 14.3215C58.2597 14.2462 58.4402 14.1314 58.592 13.9843C58.7493 13.8103 58.8699 13.6068 58.9468 13.3859C59.0236 13.1649 59.0394 12.931 59.0394 12.6978V11.9548C58.8328 12.1771 58.591 12.3644 58.3235 12.5093C57.9242 12.7189 57.4776 12.8239 57.0259 12.8143C56.4897 12.8185 55.9629 12.6744 55.5046 12.3984C55.0442 12.1041 54.6699 11.6949 54.4195 11.2117C54.1519 10.6801 54.0176 10.0924 54.0281 9.49832C54.0156 8.9094 54.1501 8.32653 54.4195 7.80153C54.6679 7.32727 55.0433 6.93011 55.5046 6.6537C55.9619 6.37401 56.4886 6.22618 57.0259 6.22672C57.4809 6.21907 57.9307 6.32389 58.3347 6.53172C58.5954 6.65891 58.8335 6.82746 59.0394 7.03076ZM58.7877 10.5796C58.9599 10.2511 59.0464 9.8851 59.0394 9.51494C59.0532 9.14059 58.9663 8.76931 58.7877 8.4392C58.6409 8.16062 58.4205 7.92682 58.1501 7.76271C57.8899 7.6138 57.5948 7.53538 57.2944 7.53538C56.994 7.53538 56.6988 7.6138 56.4387 7.76271C56.1645 7.92882 55.9419 8.16678 55.7954 8.4503C55.6308 8.76545 55.5463 9.11571 55.5494 9.4706C55.5427 9.84005 55.6271 10.2055 55.7954 10.5352C55.9406 10.827 56.1629 11.0743 56.4387 11.2505C56.6977 11.4028 56.9932 11.4832 57.2944 11.4832C57.5955 11.4832 57.8911 11.4028 58.1501 11.2505C58.419 11.0871 58.6392 10.8555 58.7877 10.5796Z" fill="#667085"></path></svg></span></a></div></div></div><script>
-            if (typeof window.__updateThemeElement === 'function') {
-              window.__updateThemeElement();
+### OpenAPI Specification
+
+```yaml
+openapi: 3.0.1
+info:
+  title: ''
+  description: ''
+  version: 1.0.0
+paths:
+  /gemini-3-5-flash-openai/v1/chat/completions:
+    post:
+      summary: Gemini 3.5 Flash (openai)
+      deprecated: false
+      description: >-
+        ### Streaming Support
+
+        When `stream: true` is set in the request, the API returns responses as
+        server-sent events (SSE) with `Content-Type: text/event-stream`. This
+        allows for progressive response delivery, where message deltas are sent
+        incrementally as they are generated. Each event contains partial message
+        content, enabling real-time display of responses in your application.
+
+        **Streaming Response Format:**
+
+        - Content-Type: `text/event-stream`
+
+        - Each event line starts with `data: ` followed by JSON
+
+        - Events contain incremental message deltas
+
+        - Final event indicates completion with `finish_reason`
+
+        <CardGroup cols={2}>
+          <Card title="Multimodal" icon="lucide-image">
+            Supports text and image inputs
+          </Card>
+          <Card title="Real-time Search" icon="lucide-search">
+            Google Search grounding enabled
+          </Card>
+          <Card title="Streaming" icon="lucide-list-minus">
+            Server-sent events support
+          </Card>
+          <Card title="Flexible Roles" icon="lucide-users">
+            Multiple message roles supported
+          </Card>
+        </CardGroup>
+
+        <div style="padding: 20px; background-color: rgba(255, 152, 0, 0.05);
+        border: 1px solid rgba(255, 152, 0, 0.15); border-left: 6px solid
+        #ff9800; border-radius: 10px; margin: 25px 0;">
+          <div style="display: flex; align-items: center; margin-bottom: 12px;">
+            ⚠️
+            <strong style="color: #e65100; font-size: 17px;">Important: Unified Media Structure</strong>
+          </div>
+
+          <p style="color: #444; margin-bottom: 15px; line-height: 1.6; font-size: 14px;">
+            To simplify integration, <b>all media types</b> (Images, Videos, Audio, or Documents) in the <code>messages</code> array share the <b>exact same JSON structure</b>:
+          </p>
+
+          <ul style="color: #555; line-height: 1.8; margin-bottom: 15px; font-size: 14px;">
+            <li>The <code>type</code> field is <b>fixed</b> as <code>"image_url"</code></li>
+            <li>The <code>image_url</code> key name <b>remains unchanged</b> for all file types</li>
+            <li>Only the <code>url</code> value points to your specific media file</li>
+          </ul>
+
+          <div style="background-color: #fdfdfd; padding: 12px; border-radius: 6px; border: 1px solid #eee; font-family: 'SFMono-Regular', Consolas, monospace; font-size: 13px; color: #d32f2f;">
+            // Example for Video/Audio/PDF/Image:<br>
+            { "type": "image_url", "image_url": { "url": "https://..." } }
+          </div>
+        </div>
+
+        ## Tools Parameter
+
+        The `tools` parameter is an optional array that allows you to define
+        functions the model can call. The array can contain multiple objects.
+        When using function calling, you can define multiple functions in the
+        array.
+
+        <AccordionGroup>
+
+        <Accordion title="Function Calling">
+
+        Define your own functions with parameters. You can define multiple
+        functions in the `tools` array:
+
+        ```json
+
+        [
+          {
+            "type": "function",
+            "function": {
+              "name": "get_current_weather",
+              "description": "Get the current weather in a given location",
+              "parameters": {
+                "type": "object",
+                "properties": {
+                  "location": {
+                    "type": "string",
+                    "description": "The city and state, e.g. San Francisco, CA"
+                  },
+                  "unit": {
+                    "type": "string",
+                    "enum": ["celsius", "fahrenheit"]
+                  }
+                },
+                "required": ["location"]
+              }
             }
-          </script><script>((STORAGE_KEY, restoreKey) => {
-    if (!window.history.state || !window.history.state.key) {
-      let key = Math.random().toString(32).slice(2);
-      window.history.replaceState({
-        key
-      }, "");
-    }
-    try {
-      let positions = JSON.parse(sessionStorage.getItem(STORAGE_KEY) || "{}");
-      let storedY = positions[restoreKey || window.history.state.key];
-      if (typeof storedY === "number") {
-        window.scrollTo(0, storedY);
-      }
-    } catch (error) {
-      console.error(error);
-      sessionStorage.removeItem(STORAGE_KEY);
-    }
-  })("positions", null)</script><link rel="modulepreload" href="https://file-assets.apidog.com/docs-site/v1/assets/manifest-db7ef313.js"/><link rel="modulepreload" href="https://file-assets.apidog.com/docs-site/v1/assets/entry.client-mUtkjgQm.js"/><link rel="modulepreload" href="https://file-assets.apidog.com/docs-site/v1/assets/jsx-runtime-CM5sU0Q5.js"/><link rel="modulepreload" href="https://file-assets.apidog.com/docs-site/v1/assets/client-BKxavTD9.js"/><link rel="modulepreload" href="https://file-assets.apidog.com/docs-site/v1/assets/components-DMSdXhQK.js"/><link rel="modulepreload" href="https://file-assets.apidog.com/docs-site/v1/assets/root-CQ054TXt.js"/><link rel="modulepreload" href="https://file-assets.apidog.com/docs-site/v1/assets/root-Dv513fR3.js"/><link rel="modulepreload" href="https://file-assets.apidog.com/docs-site/v1/assets/route-D_6YkXJe.js"/><script>window.__remixContext = {"basename":"/","future":{"v3_fetcherPersist":true,"v3_relativeSplatPath":true,"v3_throwAbortReason":true,"v3_routeConfig":false,"v3_singleFetch":true,"v3_lazyRouteDiscovery":false,"unstable_optimizeDeps":false},"isSpaMode":false};window.__remixContext.stream = new ReadableStream({start(controller){window.__remixContext.streamController = controller;}}).pipeThrough(new TextEncoderStream());</script><script type="module" async="">import "https://file-assets.apidog.com/docs-site/v1/assets/manifest-db7ef313.js";
-import * as route0 from "https://file-assets.apidog.com/docs-site/v1/assets/root-Dv513fR3.js";
-import * as route1 from "https://file-assets.apidog.com/docs-site/v1/assets/route-D_6YkXJe.js";
+          },
+          {
+            "type": "function",
+            "function": {
+              "name": "get_stock_price",
+              "description": "Get the current stock price for a given symbol",
+              "parameters": {
+                "type": "object",
+                "properties": {
+                  "symbol": {
+                    "type": "string",
+                    "description": "The stock symbol, e.g. AAPL"
+                  }
+                },
+                "required": ["symbol"]
+              }
+            }
+          }
+        ]
 
-window.__remixRouteModules = {"root":route0,"routes/_index/route":route1};
+        ```
 
-import("https://file-assets.apidog.com/docs-site/v1/assets/entry.client-mUtkjgQm.js");</script></body></html><!--$--><script>window.__remixContext.streamController.enqueue("[{\"_1\":2,\"_231\":-5,\"_232\":-5},\"loaderData\",{\"_3\":4,\"_230\":-5},\"root\",{\"_5\":1,\"_6\":7,\"_19\":20,\"_23\":24,\"_33\":34,\"_52\":53,\"_112\":113,\"_155\":156,\"_229\":-7},\"type\",\"meta\",[8,11,16],{\"_9\":10},\"title\",\"API Documentation\",{\"_12\":13,\"_14\":15},\"name\",\"description\",\"content\",\"Design. Debug. Test. Document. Mock. Build APIs Faster \u0026 Together.\",{\"_12\":17,\"_14\":18},\"keywords\",\"API Design, API Specification, API Test, API Documentation, API Mock\",\"i18nState\",{\"_21\":22},\"clientLocale\",\"en-US\",\"errorCodeMessage\",{\"_25\":26,\"_27\":28,\"_29\":30,\"_31\":32},\"errorCode\",\"Unknown\",\"errorMessage\",\"Unexpected token 'o', \\\"forbidden\\n\\\" is not valid JSON: /api/v1/published-projects/domains/docs.kie.ai\",\"hideBuiltWith\",false,\"extra\",{},\"clientConfig\",{\"_35\":36,\"_37\":38,\"_39\":40,\"_41\":42,\"_47\":48,\"_49\":30,\"_50\":51},\"apiBaseUrl\",\"https://api.apidog.com\",\"appWebUrl\",\"https://app.apidog.com\",\"apidocBuiltinPrefixPath\",\"https://assets.apidog.com/app/static/apidoc\",\"cloudMockBaseUrls\",{\"_43\":44,\"_45\":46},\"pathMode\",\"https://mock.apidog.com/m1/{projectId}-{version}-{service}\",\"idMode\",\"https://mock.apidog.com/m2/{projectId}-{version}-{service}\",\"apidocIsShowLogo\",true,\"markdownDisableBreaks\",\"webhookGenerateCodeDefaultUrl\",\"https://your-api-server.com\",\"urlConfig\",{\"_54\":55,\"_58\":59,\"_99\":100,\"_108\":109},\"home\",{\"_56\":57},\"index\",\"https://apidog.com\",\"icon\",{\"_60\":61,\"_62\":63,\"_64\":63,\"_65\":66,\"_67\":68,\"_69\":70,\"_71\":72,\"_73\":74,\"_75\":76,\"_77\":78,\"_79\":80,\"_81\":82,\"_83\":84,\"_85\":86,\"_87\":88,\"_89\":90,\"_91\":92,\"_93\":94,\"_95\":96,\"_97\":98},\"apidoc\",\"https://assets.apidog.com/app/static/brand/apidoc.png\",\"apidog\",\"https://assets.apidog.com/app/static/brand/apidog-logo-256.png\",\"apidog europe\",\"googleDiscovery\",\"https://assets.apidog.com/app/static/brand/google-discovery.png\",\"har\",\"https://assets.apidog.com/app/static/brand/har.png\",\"iodocs\",\"https://assets.apidog.com/app/static/brand/io-doc.png\",\"jmeter\",\"https://assets.apidog.com/app/static/brand/jmeter.png\",\"openapi\",\"https://assets.apidog.com/app/static/brand/openapi.png\",\"postman\",\"https://assets.apidog.com/app/static/brand/postman.png\",\"raml\",\"https://assets.apidog.com/app/static/brand/raml.png\",\"wadl\",\"https://assets.apidog.com/app/static/brand/wadl.png\",\"curl\",\"https://assets.apidog.com/app/static/brand/curl.png\",\"insomnia\",\"https://assets.apidog.com/app/static/brand/insomnia.png\",\"wsdl\",\"https://assets.apidog.com/app/static/brand/wsdl.png\",\"markdown\",\"https://assets.apidog.com/app/static/brand/markdown.png\",\"html\",\"https://assets.apidog.com/app/static/brand/html.png\",\"protobuf\",\"https://assets.apidog.com/app/static/brand/protobuf.png\",\"soapui\",\"https://assets.apidog.com/app/static/brand/soapui.svg\",\"hoppscotch\",\"https://assets.apidog.com/app/static/brand/hoppscotch.svg\",\"javaProject\",\"https://assets.apidog.com/app/static/brand/java-project.png\",\"help\",{\"_56\":101,\"_102\":103,\"_104\":105,\"_106\":107},\"https://apidog.com/help\",\"browserExtension\",\"https://chromewebstore.google.com/detail/apidog-browser-extension/dmhljjnonlhapikmelaefohecogokhio\",\"csv\",\"https://apidog.com/help/reference/csv\",\"appMcpServer\",\"https://docs.apidog.com/apidog-mcp-server\",\"assets\",{\"_110\":111},\"logo512Png\",\"https://assets.apidog.com/static/logo/apidog-logo-512.png\",\"envConfig\",{\"_114\":60,\"_115\":116,\"_117\":116,\"_118\":119,\"_120\":121,\"_122\":123,\"_124\":57,\"_125\":62,\"_126\":22,\"_127\":128,\"_129\":130,\"_132\":133,\"_134\":135,\"_136\":137,\"_138\":139,\"_140\":141,\"_142\":143,\"_149\":150,\"_151\":48,\"_152\":153,\"_154\":30},\"RELEASE_BASE\",\"DEBUG_API_BASE\",\"\",\"DEBUG_WEB_URL_BASE\",\"AGENT_SERVER_API_BASE\",\"https://web-proxy.apidog.com\",\"APP_REGION\",\"GLOBAL\",\"APP_NAME\",\"Apidog\",\"APP_HOMEPAGE\",\"APP_NAME_LOWER\",\"DEFAULT_LOCALE\",\"APP_BROWSER_EXTENSION_ADAPTER\",\"apidogAgentCrossRequest\",\"APP_API_SERVER_HOSTNAMES\",[131],\"api.apidog.com\",\"APP_SUPPORT_EMAIL\",\"support@apidog.com\",\"APP_SCRIPT_MAIN_OBJECTS\",\"$\",\"SERVER_PROTOCOL\",\"http\",\"SERVER_HOST\",\"apidog-api-fordoc-svc\",\"DEFAULT_DOC_LAYOUT\",\"TwoColumn\",\"NOT_CUSTOM_DOMAIN_HOSTNAMES\",[144,145,146,147,148],\"www.apidog.com\",\"apidog.com\",\"www.apidog.io\",\"apidog.io\",\"share.apidog.com\",\"SERVER_REQUEST_TIMEOUT\",15000,\"IS_SHARED_DOC_INDEPENDENT_DOMAIN\",\"APIDOC_CUSTOM_DOMAIN_CNAME_REGEX\",[\"R\",\"\\\\d+\\\\.cname\\\\.apidog\\\\.com\",\"\"],\"IS_ALWAYS_USE_ORIGIN_FETCH\",\"docsDataState\",{\"_157\":158,\"_162\":163,\"_175\":176,\"_177\":178,\"_179\":180,\"_189\":190,\"_202\":203,\"_204\":205,\"_206\":207,\"_213\":214,\"_220\":-7,\"_221\":222,\"_223\":-7,\"_224\":-7,\"_225\":226,\"_228\":-7},\"navigation\",{\"_5\":159,\"_160\":161},\"NONE\",\"navRightLinkItems\",[],\"sidebarTree\",{\"_164\":-7,\"_165\":-7,\"_166\":167,\"_168\":-7,\"_169\":170,\"_171\":-7,\"_172\":-7,\"_173\":174},\"goBackSidebarTreeApiFolderNode\",\"rootSidebarTreeApiFolderNode\",\"sidebarTreeList\",[],\"selectedSidebarTreeNode\",\"parentSidebarTreeApiFolderNodes\",[],\"previousSidebarTreeNode\",\"nextSidebarTreeNode\",\"homeLink\",\"/\",\"docsBaseConfig\",{},\"versionList\",[],\"resourceData\",{\"_5\":181,\"_182\":-7,\"_183\":184},\"NotFound\",\"data\",\"extraData\",{\"_185\":186,\"_187\":188},\"apiFieldList\",[],\"dataSchemaDefinitions\",{},\"docsIdTypeData\",{\"_191\":192,\"_193\":194,\"_195\":194,\"_196\":194,\"_197\":116,\"_198\":194,\"_199\":200,\"_201\":-7},\"onlineType\",\"APIDOC\",\"branchId\",0,\"onlineId\",\"projectId\",\"subdirectory\",\"teamId\",\"visitType\",\"customDomain\",\"specialFileType\",\"notification\",[],\"footerBanner\",[],\"projectSetting\",{\"_208\":209,\"_210\":211},\"advancedSettings\",{},\"auth\",{\"_5\":212},\"noauth\",\"environments\",{\"_215\":216,\"_217\":-7,\"_218\":219},\"environmentList\",[],\"selectedEnvironment\",\"servers\",[],\"searchSettings\",\"versionSettings\",[],\"seoInfos\",\"itemPathPrefix\",\"appEnvMap\",{\"_227\":128},\"appBrowserExtensionAdapterKey\",\"customCodes\",\"primaryColorVariable\",\"routes/_index/route\",\"actionData\",\"errors\"]\n");</script><!--$--><script>window.__remixContext.streamController.close();</script><!--/$--><!--/$-->
+        ### Function Declaration Requirements
+
+        When implementing function calling in your prompt, you need to create a
+        `tools` array containing one or more function declarations. You can
+        define functions using JSON (specifically, a selected subset of OpenAPI
+        schema format).
+
+        A single function declaration can include the following parameters:
+
+        - **`name`** (string, required): The unique name of the function (e.g.,
+        `get_weather_forecast`, `send_email`). Use descriptive names without
+        spaces or special characters (use underscores or camelCase).
+
+        - **`description`** (string, optional but recommended): A clear and
+        detailed description of what the function does and its purpose. This is
+        crucial for the model to understand when to use the function. Be
+        specific and provide examples when necessary (e.g., "Find movie theaters
+        by location, with an option to also find movies currently showing at
+        those theaters.").
+
+        - **`parameters`** (object, required): Defines the input parameters
+        expected by the function. Contains:
+          - **`type`** (string): Specifies the overall data type, must be `"object"`.
+          - **`properties`** (object): Lists individual parameters, each with:
+            - **`type`** (string): The parameter's data type, such as `string`, `integer`, `boolean`, `array`.
+            - **`description`** (string): Description of the parameter's purpose and format. Provide examples and constraints (e.g., "City and state, e.g. 'San Francisco, CA' or a postal code like '95616'.").
+            - **`enum`** (array, optional): If parameter values come from a fixed set, use `enum` to list allowed values rather than just describing them in the description. This helps improve accuracy (e.g., `"enum": ["daylight", "cool", "warm"]`).
+          - **`required`** (array): An array of strings listing the parameter names required for the function to run.
+        </Accordion>
+
+        </AccordionGroup>
+      operationId: gemini-3-5-flash-chat-completions
+      tags:
+        - docs/en/Market/Chat  Models/Gemini
+      parameters: []
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                messages:
+                  type: array
+                  description: >-
+                    An array of message objects. Each message has a role and
+                    content.
+
+                    **Unified Media File Format:**
+
+                    In the content array, whether it's images, videos, audio, or
+                    other document types, all media files use the same format
+                    structure:
+
+                    - The `type` field is always `"image_url"`
+
+                    - The `image_url` field name remains unchanged
+
+                    - The only thing that changes is the `url` value, which
+                    points to the corresponding media file address
+
+                    For example: images, videos, audio, PDFs, and other
+                    documents all use the same `{ type: 'image_url', image_url:
+                    { url: '...' } }` structure.
+                  items:
+                    $ref: '#/components/schemas/Message'
+                  minItems: 1
+                stream:
+                  type: boolean
+                  default: true
+                  description: >-
+                    If set to true, partial message deltas will be sent as
+                    server-sent events. Default is true.
+                tools:
+                  type: string
+                include_thoughts:
+                  type: boolean
+                  description: Whether to include thought output.
+                  examples:
+                    - true
+                reasoning_effort:
+                  type: string
+                  enum:
+                    - low
+                    - high
+                  description: Thinking level.
+                  examples:
+                    - high
+              required:
+                - messages
+              x-apidog-orders:
+                - messages
+                - stream
+                - tools
+                - include_thoughts
+                - reasoning_effort
+              examples:
+                - messages:
+                    - role: user
+                      content:
+                        - type: text
+                          text: What is in this image?
+                        - type: image_url
+                          image_url:
+                            url: >-
+                              https://file.aiquickdraw.com/custom-page/akr/section-images/1759055072437dqlsclj2.png
+                  tools:
+                    - type: function
+                      function:
+                        name: googleSearch
+                  stream: true
+                  include_thoughts: true
+                  response_format:
+                    type: json_schema
+                    properties:
+                      response:
+                        type: string
+              x-apidog-ignore-properties: []
+            example:
+              messages:
+                - role: user
+                  content:
+                    - type: text
+                      text: What is in this image?
+                    - type: image_url
+                      image_url:
+                        url: >-
+                          https://file.aiquickdraw.com/custom-page/akr/section-images/1759055072437dqlsclj2.png
+              tools:
+                - type: function
+                  function:
+                    name: googleSearch
+              stream: true
+              include_thoughts: true
+              reasoning_effort: high
+      responses:
+        '200':
+          description: Request successful.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  id:
+                    type: string
+                    description: Unique identifier for the chat completion
+                    examples:
+                      - chatcmpl-example-123
+                  object:
+                    type: string
+                    description: Object type
+                    examples:
+                      - chat.completion
+                  created:
+                    type: integer
+                    format: int64
+                    description: Unix timestamp of when the completion was created
+                    examples:
+                      - 1677652288
+                  model:
+                    type: string
+                    description: Model name
+                    examples:
+                      - gemini-2.5-flash
+                  choices:
+                    type: array
+                    description: Array of completion choices
+                    items:
+                      type: object
+                      properties:
+                        index:
+                          type: integer
+                          description: Index of the choice
+                          examples:
+                            - 0
+                        message:
+                          type: object
+                          properties:
+                            role:
+                              type: string
+                              examples:
+                                - assistant
+                            content:
+                              type: string
+                              description: Message content
+                          required:
+                            - role
+                            - content
+                          x-apidog-orders:
+                            - role
+                            - content
+                          x-apidog-ignore-properties: []
+                        finish_reason:
+                          type: string
+                          description: Reason why the completion finished
+                          examples:
+                            - stop
+                      required:
+                        - index
+                        - message
+                        - finish_reason
+                      x-apidog-orders:
+                        - index
+                        - message
+                        - finish_reason
+                      x-apidog-ignore-properties: []
+                  usage:
+                    type: object
+                    properties:
+                      prompt_tokens:
+                        type: integer
+                        description: Number of tokens in the prompt
+                        examples:
+                          - 10
+                      completion_tokens:
+                        type: integer
+                        description: Number of tokens in the completion
+                        examples:
+                          - 50
+                      total_tokens:
+                        type: integer
+                        description: Total number of tokens
+                        examples:
+                          - 60
+                    required:
+                      - prompt_tokens
+                      - completion_tokens
+                      - total_tokens
+                    x-apidog-orders:
+                      - prompt_tokens
+                      - completion_tokens
+                      - total_tokens
+                    x-apidog-ignore-properties: []
+                x-apidog-orders:
+                  - id
+                  - object
+                  - created
+                  - model
+                  - choices
+                  - usage
+                x-apidog-ignore-properties: []
+              example:
+                candidates:
+                  - content:
+                      role: model
+                      parts:
+                        - functionCall:
+                            args:
+                              location: Beijing
+                            name: get_weather_forecast
+                            id: gp737npz
+                          thoughtSignature: Es8CCswCAb4example
+                    finishReason: STOP
+                modelVersion: gemini-3-5-flash
+                usageMetadata:
+                  candidatesTokenCount: 18
+                  thoughtsTokenCount: 55
+                  totalTokenCount: 325
+                  promptTokenCount: 252
+                credits_consumed: 0.01
+                responseId: xRS0aZC5BNHVz7IPuaO42Qk
+          headers: {}
+          x-apidog-name: ''
+        '400':
+          description: Bad Request - Invalid request parameters
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: object
+                    properties:
+                      message:
+                        type: string
+                        examples:
+                          - Invalid request parameters
+                      type:
+                        type: string
+                        examples:
+                          - invalid_request_error
+                    x-apidog-orders:
+                      - message
+                      - type
+                    x-apidog-ignore-properties: []
+                x-apidog-orders:
+                  - error
+                x-apidog-ignore-properties: []
+          headers: {}
+          x-apidog-name: ''
+        '401':
+          description: Unauthorized - Invalid or missing API key
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: object
+                    properties:
+                      message:
+                        type: string
+                        examples:
+                          - Invalid or missing API key
+                      type:
+                        type: string
+                        examples:
+                          - authentication_error
+                    x-apidog-orders:
+                      - message
+                      - type
+                    x-apidog-ignore-properties: []
+                x-apidog-orders:
+                  - error
+                x-apidog-ignore-properties: []
+          headers: {}
+          x-apidog-name: ''
+        '429':
+          description: ''
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: object
+                    properties:
+                      message:
+                        type: string
+                        examples:
+                          - Rate limit exceeded
+                      type:
+                        type: string
+                        examples:
+                          - rate_limit_error
+                    x-apidog-orders:
+                      - message
+                      - type
+                    x-apidog-ignore-properties: []
+                x-apidog-orders:
+                  - error
+                x-apidog-ignore-properties: []
+          headers: {}
+          x-apidog-name: ''
+        '500':
+          description: request failed
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  code:
+                    type: integer
+                    description: >-
+                      Response status code
+
+                      - **200**: Success - Request has been processed
+                      successfully
+
+                      - **401**: Unauthorized - Authentication credentials are
+                      missing or invalid
+
+                      - **402**: Insufficient Credits - Account does not have
+                      enough credits to perform the operation
+
+                      - **404**: Not Found - The requested resource or endpoint
+                      does not exist
+
+                      - **408**: Upstream is currently experiencing service
+                      issues. No result has been returned for over 10 minutes.
+
+                      - **422**: Validation Error - The request parameters
+                      failed validation checks
+
+                      - **429**: Rate Limited - Request limit has been exceeded
+                      for this resource
+
+                      - **455**: Service Unavailable - System is currently
+                      undergoing maintenance
+
+                      - **500**: Server Error - An unexpected error occurred
+                      while processing the request
+
+                      - **501**: Generation Failed - Content generation task
+                      failed
+
+                      - **505**: Feature Disabled - The requested feature is
+                      currently disabled
+                  msg:
+                    type: string
+                    description: Response message, error description when failed
+                  data:
+                    type: object
+                    properties: {}
+                    x-apidog-orders: []
+                    x-apidog-ignore-properties: []
+                x-apidog-orders:
+                  - code
+                  - msg
+                  - data
+                required:
+                  - code
+                  - msg
+                  - data
+                x-apidog-ignore-properties: []
+              example:
+                code: 500
+                msg: >-
+                  Server Error - An unexpected error occurred while processing
+                  the request
+                data: null
+          headers: {}
+          x-apidog-name: ''
+      security: []
+      x-apidog-folder: docs/en/Market/Chat  Models/Gemini
+      x-apidog-status: released
+      x-run-in-apidog: https://app.apidog.com/web/project/1184766/apis/api-36906913-run
+components:
+  schemas:
+    Message:
+      type: object
+      properties:
+        role:
+          type: string
+          enum:
+            - developer
+            - system
+            - user
+            - assistant
+            - tool
+          description: >-
+            Message role
+
+            - **developer**: Developer-provided instructions that the model
+            should follow, regardless of user messages. In o1 models and newer
+            versions, developer messages replace the previous system messages.
+
+            - **system**: Developer-provided instructions that the model should
+            follow, regardless of user messages. In o1 models and newer
+            versions, please use developer messages instead.
+
+            - **user**: Messages sent by end users, containing prompts or
+            additional context information.
+
+            - **assistant**: Messages sent by the model in response to user
+            messages.
+
+            - **tool**: Content of tool messages.
+        content:
+          type: array
+          description: >-
+            Message content array that can contain text and image objects.
+
+            **Unified Media File Format:**
+
+            Whether it's images, videos, audio, or other document types, all
+            media files use the same format structure:
+
+            - The `type` field is always `"image_url"`
+
+            - The `image_url` field name remains unchanged
+
+            - The only thing that changes is the `url` value, which points to
+            the corresponding media file address
+
+            For example: images, videos, audio, PDFs, and other documents all
+            use the same `{ type: 'image_url', image_url: { url: '...' } }`
+            structure.
+          items:
+            oneOf:
+              - type: object
+                properties:
+                  type:
+                    type: string
+                    enum:
+                      - text
+                    examples:
+                      - text
+                  text:
+                    type: string
+                    description: 消息的文本内容
+                required:
+                  - type
+                  - text
+                x-apidog-orders:
+                  - type
+                  - text
+                x-apidog-ignore-properties: []
+              - type: object
+                properties:
+                  type:
+                    type: string
+                    enum:
+                      - image_url
+                    examples:
+                      - image_url
+                  image_url:
+                    type: object
+                    properties:
+                      url:
+                        type: string
+                        format: uri
+                        description: 图像的 URL
+                    required:
+                      - url
+                    x-apidog-orders:
+                      - url
+                    x-apidog-ignore-properties: []
+                required:
+                  - type
+                  - image_url
+                x-apidog-orders:
+                  - type
+                  - image_url
+                x-apidog-ignore-properties: []
+      required:
+        - role
+        - content
+      title: The messages parameter of the chat model
+      x-apidog-orders:
+        - role
+        - content
+      x-apidog-ignore-properties: []
+      x-apidog-folder: ''
+  securitySchemes:
+    BearerAuth:
+      type: bearer
+      scheme: bearer
+      bearerFormat: API Key
+      description: >-
+        All API requests require a Bearer Token. Add the header `Authorization:
+        Bearer YOUR_API_KEY` to authenticate requests.
+    BearerAuth1:
+      type: bearer
+      scheme: bearer
+      bearerFormat: API Key
+      description: >-
+        所有 API 请求都需要 Bearer Token。请在请求头中添加 `Authorization: Bearer YOUR_API_KEY`
+        进行身份验证。
+servers:
+  - url: https://api.kie.ai
+    description: 正式环境
+security:
+  - BearerAuth: []
+    x-apidog:
+      schemeGroups:
+        - id: kn8M4YUlc5i0A0179ezwx
+          schemeIds:
+            - BearerAuth
+      required: true
+      use:
+        id: kn8M4YUlc5i0A0179ezwx
+      scopes:
+        kn8M4YUlc5i0A0179ezwx:
+          BearerAuth: []
+
+```
 
 ---
 
@@ -61975,40 +73053,527 @@ import("https://file-assets.apidog.com/docs-site/v1/assets/entry.client-mUtkjgQm
 
 **Source:** [https://docs.kie.ai/market/gemini/gemini-3-flash-v1beta.md][167]
 
-<!DOCTYPE html><html lang="en-US" class="group/root" id="html" data-theme="light" data-accent-color="purple"><head><script src="https://file-assets.apidog.com/docs-site/v1/assets/prepareDocsConfigScript-CLIBKQbk.js"></script><script>__prepareDocsConfigScript(JSON.parse("{\"theme\":\"system\",\"themePrimarySettings\":{\"light\":{\"accentColor\":\"purple\"},\"dark\":{\"accentColor\":\"purple\"}},\"logoSettings\":{\"light\":{\"icon\":\"\",\"type\":\"project\"},\"dark\":{\"icon\":\"\",\"type\":\"followLight\"}},\"backgroundImageSettings\":{\"light\":{\"type\":\"custom\",\"color\":\"\"},\"dark\":{\"type\":\"followLight\",\"color\":\"\"}},\"id\":0,\"subdirectory\":\"\"}"));</script><script>window.eventTracking = {
-      dataLayer: []
-    }
-    window.eventTracking.report = function(){
-        window.eventTracking.dataLayer.push(arguments);
-    }</script><meta charSet="utf-8"/><meta name="viewport" content="width=device-width, initial-scale=1"/><title>API Documentation</title><meta name="description" content="Design. Debug. Test. Document. Mock. Build APIs Faster &amp; Together."/><meta name="keywords" content="API Design, API Specification, API Test, API Documentation, API Mock"/><link rel="stylesheet" href="https://file-assets.apidog.com/docs-site/v1/assets/root-CpC_E1fb.css"/></head><body class="overflow-hidden g-body"><div class="flex h-full w-full flex-col overflow-auto"><div class="flex flex-1 flex-col items-center justify-center"><div class="flex w-auto flex-col items-center justify-center max-os:p-5 os:w-[480px]"><svg width="104" height="104" viewBox="0 0 104 104" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M92.9557 41.8969L88.7262 25.2175C87.4089 19.8194 84.8039 16.1447 80.9015 14.1934L80.3963 13.9458C79.802 13.6685 79.178 13.4407 78.5243 13.2426C75.4142 12.3214 72.0268 12.371 68.362 13.3813C65.8759 14.0747 63.2612 15.2038 60.5176 16.7886C56.7835 18.9478 53.3167 21.6319 50.1076 24.8708C49.0973 25.8711 48.1266 26.9209 47.1956 28.0204C46.314 29.0406 45.4622 30.1105 44.6302 31.2198C42.9266 33.4781 41.3121 35.9245 39.7868 38.5492C34.1015 48.3648 31.2588 57.9329 31.2588 67.2631C31.2588 72.0471 32.1106 76.1181 33.8142 79.4461C34.6759 81.1101 35.6862 82.5263 36.8748 83.7248C37.9346 84.7846 39.1232 85.6564 40.4405 86.3398L41.0151 86.627V98.9485C41.0151 99.9984 41.3221 100.712 41.9461 101.058C42.5701 101.415 43.3426 101.326 44.2637 100.801L67.0249 87.6571C67.946 87.1223 68.7186 86.3199 69.3426 85.2502C69.9666 84.1706 70.2736 83.1008 70.2736 82.0509V78.3169L76.7811 74.5629C78.5639 73.5328 80.0993 71.9184 81.377 69.7195C82.6448 67.5207 83.2786 65.4011 83.2786 63.341V52.1485L89.786 48.3946C90.8657 47.7706 91.7373 46.79 92.391 45.4429C93.0348 44.1058 93.2231 42.927 92.9557 41.8969ZM62.8352 66.6095C62.2112 67.6891 61.4387 68.4914 60.5176 69.0263C59.5964 69.5512 58.8237 69.6404 58.1997 69.2838C57.5856 68.9371 57.2687 68.2238 57.2687 67.164C57.2687 66.1042 57.5856 65.0445 58.1997 63.9748C58.2592 63.8658 58.3186 63.7667 58.378 63.6676C58.9129 62.8356 59.5468 62.1819 60.2797 61.7164C60.359 61.6569 60.4383 61.6075 60.5176 61.558C61.4387 61.033 62.2112 60.9439 62.8352 61.2906C63.4592 61.6471 63.7761 62.3604 63.7761 63.4103C63.7761 64.4602 63.4592 65.5398 62.8352 66.6095ZM69.5011 38.7572C69.402 39.1336 69.2832 39.5101 69.1346 39.8865C68.5997 41.3227 67.4607 43.6206 65.7274 46.8C64.9647 48.1768 64.41 49.3158 64.0535 50.237C63.8157 50.861 63.6176 51.4748 63.4691 52.0592C63.3997 52.3366 63.3304 52.6041 63.2809 52.8715C63.1224 53.7729 62.7856 54.6148 62.2706 55.3774C61.7556 56.1401 61.2009 56.6948 60.6066 57.0315C59.8935 57.4475 59.319 57.4971 58.8535 57.2099C58.3978 56.9128 58.2196 56.358 58.3285 55.5557C58.487 54.2186 58.8039 52.931 59.2596 51.7029C59.7251 50.4747 60.4679 48.9392 61.498 47.0969C62.3201 45.6409 62.9837 44.4029 63.4691 43.4026C63.7761 42.7885 64.0138 42.2636 64.1921 41.8278C64.202 41.7981 64.2119 41.7782 64.2218 41.7485C64.6775 40.5797 64.9153 39.5001 64.9153 38.4997C64.9153 37.321 64.5191 36.5881 63.7366 36.2909C62.9442 36.0037 61.9537 36.2019 60.7652 36.8853C60.0025 37.3211 59.2794 37.945 58.5662 38.7572C57.863 39.5694 57.239 40.5105 56.7041 41.5604C56.2683 42.5013 55.7632 43.2442 55.1986 43.7889C54.6241 44.3337 54.0397 44.6209 53.4455 44.6506C52.8512 44.6902 52.4055 44.4525 52.1083 43.9374C51.8112 43.4224 51.8211 42.7687 52.1479 41.9565C53.0691 39.7477 54.2973 37.7074 55.8424 35.8552C56.5754 34.9737 57.338 34.1811 58.1205 33.4878C58.9822 32.735 59.8638 32.0913 60.7652 31.5664C63.3701 30.0708 65.5491 29.7141 67.3121 30.4966C69.0752 31.279 69.9468 32.9829 69.9468 35.5977C69.9468 36.6476 69.7982 37.7073 69.5011 38.7572Z" stroke="#667085" stroke-linecap="round" stroke-linejoin="round"></path><path d="M63.777 63.4086C63.777 64.4684 63.46 65.5381 62.836 66.6078C62.212 67.6874 61.4395 68.4896 60.5184 69.0245C59.5972 69.5494 58.8246 69.6387 58.2006 69.2821C57.5865 68.9354 57.2695 68.2221 57.2695 67.1623C57.2695 66.1025 57.5865 65.0428 58.2006 63.973C58.26 63.8641 58.3194 63.7649 58.3789 63.6659C58.9137 62.8339 59.5476 62.1802 60.2806 61.7147C60.3598 61.6552 60.4392 61.6058 60.5184 61.5563C61.4395 61.0313 62.212 60.9422 62.836 61.2888C63.46 61.6454 63.777 62.3587 63.777 63.4086Z" stroke="#667085" stroke-linecap="round" stroke-linejoin="round"></path><path d="M63.7373 36.2894C62.9449 36.0021 61.9544 36.2003 60.7659 36.8838C60.0032 37.3196 59.2801 37.9435 58.567 38.7557C57.8638 39.5679 57.2398 40.5089 56.7049 41.5588C56.2691 42.4998 55.7639 43.2426 55.1994 43.7874C54.6249 44.3321 54.0405 44.6193 53.4462 44.649C52.8519 44.6886 52.4062 44.4509 52.1091 43.9359C51.8119 43.4208 51.8219 42.7671 52.1487 41.9549C53.0699 39.7461 54.298 37.7059 55.8432 35.8537C56.5761 34.9721 57.3388 34.1797 58.1213 33.4863L63.7373 36.2894Z" stroke="#667085" stroke-linecap="round" stroke-linejoin="round"></path><path d="M69.9474 35.596C69.9474 36.6459 69.7988 37.7056 69.5017 38.7555C69.4026 39.1319 69.2838 39.5085 69.1352 39.8849C68.6003 41.321 67.4613 43.6189 65.728 46.7984C64.9653 48.1751 64.4106 49.3141 64.054 50.2352C63.8163 50.8592 63.6182 51.4732 63.4697 52.0576C63.4003 52.3349 63.331 52.6024 63.2815 52.8698C63.123 53.7711 62.7862 54.6131 62.2712 55.3758C61.7561 56.1385 61.2015 56.693 60.6072 57.0298C59.894 57.4458 59.3196 57.4955 58.854 57.2083C58.3984 56.9111 58.2201 56.3563 58.3291 55.554C58.4876 54.2168 58.8045 52.9293 59.2601 51.7011C59.7257 50.4729 60.4685 48.9376 61.4986 47.0953C62.3207 45.6393 62.9843 44.4012 63.4697 43.4008C63.7767 42.7868 64.0144 42.2619 64.1927 41.8261C64.2026 41.7964 64.2125 41.7766 64.2224 41.7468C64.678 40.5781 64.9158 39.4984 64.9158 38.498C64.9158 37.3193 64.5196 36.5865 63.7371 36.2893L58.1211 33.4862C58.9828 32.7334 59.8643 32.0896 60.7657 31.5647C63.3706 30.069 65.5497 29.7125 67.3127 30.4949C69.0758 31.2774 69.9474 32.9811 69.9474 35.596Z" stroke="#667085" stroke-linecap="round" stroke-linejoin="round"></path><path d="M41.9466 101.059L22.3253 91.2429L22.1371 91.1537C21.5131 90.807 21.2061 90.094 21.2061 89.0441V76.7227L41.0156 86.6274V98.9488C41.0156 99.9988 41.3226 100.712 41.9466 101.059Z" stroke="#667085" stroke-linecap="round" stroke-linejoin="round"></path><path d="M80.3972 13.9448C79.8029 13.6675 79.1789 13.4397 78.5252 13.2416C75.4151 12.3204 72.0277 12.3701 68.3629 13.3804C65.8768 14.0737 63.2621 15.2028 60.5185 16.7876C56.7844 18.9468 53.3176 21.6309 50.1085 24.8698C49.0982 25.8702 48.1275 26.92 47.1965 28.0194C46.3149 29.0396 45.4631 30.1096 44.6311 31.2189C42.9275 33.4772 41.313 35.9236 39.7877 38.5484C34.1024 48.364 31.2597 57.932 31.2597 67.2623C31.2597 72.0463 32.1115 76.1171 33.8151 79.4451C34.6768 81.1091 35.6871 82.5253 36.8757 83.7238C37.9355 84.7836 39.1241 85.6554 40.4414 86.3388L21.2065 76.7213C18.1161 75.2752 15.7192 72.8783 14.0056 69.5404C12.302 66.2124 11.4502 62.1415 11.4502 57.3575C11.4502 48.0272 14.2929 38.4592 19.9782 28.6436C25.6734 18.828 32.587 11.5678 40.7089 6.88282C47.4838 2.97044 53.486 1.79169 58.7157 3.33683C59.4784 3.56464 60.2113 3.84208 60.8948 4.17884L61.281 4.37688L80.3972 13.9448Z" stroke="#667085" stroke-linecap="round" stroke-linejoin="round"></path></svg><div class="align-center mt-8 flex justify-center text-center text-2xl font-semibold text-color">An abnormal error occurred, please try &#x27;Reload&#x27; or &#x27;get Support&#x27; to help you solve it!</div><div class="align-center mt-2 text-center text-lg font-400 text-secondary">Unexpected token &#x27;o&#x27;, &quot;forbidden
-&quot; is not valid JSON: /api/v1/published-projects/domains/docs.kie.ai</div></div></div><div class="flex flex-col items-center justify-center p-8 text-base font-base text-secondary"><div class="inline-flex items-center text-base font-400 text-secondary _footer-logo-wrapper_1kbjg_1"><a class="_footer-logo_1kbjg_1 flex-shrink-0" aria-label="homepage link" href="https://apidog.com"><span class="inline-flex items-center"><span class="mr-[-4px]">Built with</span><svg width="61" height="18" viewBox="0 0 61 18" fill="none" xmlns="http://www.w3.org/2000/svg" class="h-[18px] w-[80px]"><path d="M12.3836 1.67806C11.6452 0.940647 10.4478 0.940647 9.70932 1.67806L8.99795 2.3884L8.30644 1.69789C7.57144 0.963937 6.37437 0.936241 5.62991 1.66043C4.88545 2.38463 4.86748 3.60515 5.61194 4.34854L6.32331 5.05888C7.80026 6.53371 10.195 6.53371 11.6723 5.05888L12.3836 4.34854C13.1221 3.61113 13.1221 2.41547 12.3836 1.67806Z" fill="#667085"></path><path d="M12.3838 13.6515L11.6729 12.9412C10.1968 11.4664 7.80339 11.4664 6.32699 12.9412L5.61603 13.6515C4.87799 14.389 4.87799 15.5846 5.61603 16.322C6.35408 17.0594 7.55076 17.0594 8.28881 16.322L8.99976 15.6117L9.69087 16.3022C10.4255 17.0361 11.6218 17.0638 12.3659 16.3396C13.1219 15.6038 13.1278 14.3949 12.3838 13.6515Z" fill="#667085"></path><path d="M15.6105 8.99642L16.3214 8.28481C17.0655 7.54009 17.0595 6.32906 16.3035 5.59191C15.5595 4.86643 14.3631 4.89418 13.6285 5.62943L13.3098 5.94851C12.1666 7.09269 10.6166 7.73526 9 7.73526C7.38344 7.73526 5.83335 7.09238 4.69023 5.94851L4.37146 5.62943C3.63689 4.89418 2.44054 4.86643 1.69652 5.59191C0.940527 6.32906 0.934542 7.54009 1.67856 8.28481L2.38951 8.99642L1.67856 9.70803C0.940527 10.4468 0.940527 11.6445 1.67856 12.3833C2.4166 13.122 3.61326 13.122 4.3513 12.3833L4.74347 11.9907C5.85225 10.8809 7.35604 10.2576 8.92409 10.2576H8.9874C10.6162 10.2576 12.1666 10.9005 13.3098 12.0446C13.5126 12.2477 13.6484 12.3836 13.6484 12.3836C14.3864 13.1223 15.5831 13.1223 16.3211 12.3836C17.0592 11.6449 17.0592 10.4471 16.3211 9.70834L15.6102 8.99673L15.6105 8.99642Z" fill="#667085"></path><path fill-rule="evenodd" clip-rule="evenodd" d="M37.3559 4.00331C37.4694 3.95752 37.5911 3.93521 37.7136 3.93768C37.8343 3.93606 37.9541 3.95884 38.0656 4.0046C38.1772 4.05035 38.2781 4.11814 38.3624 4.20384C38.4483 4.29095 38.5158 4.39418 38.561 4.50749C38.6061 4.6208 38.628 4.7419 38.6253 4.8637C38.628 4.98551 38.6061 5.10664 38.561 5.21995C38.5158 5.33326 38.4483 5.43648 38.3624 5.52357C38.2781 5.60926 38.1772 5.67705 38.0656 5.72284C37.9541 5.7686 37.8343 5.79134 37.7136 5.78975C37.5911 5.79222 37.4694 5.76989 37.3559 5.72413C37.2425 5.67837 37.1396 5.61011 37.0536 5.52357C36.9677 5.43648 36.9002 5.33326 36.8551 5.21995C36.8099 5.10664 36.7881 4.98551 36.7908 4.8637C36.7881 4.7419 36.8099 4.6208 36.8551 4.50749C36.9002 4.39418 36.9677 4.29095 37.0536 4.20384C37.1396 4.1173 37.2425 4.04907 37.3559 4.00331ZM25.6211 4.76389L24.0219 4.76389L21.175 12.7654H22.7355L23.2948 11.1795H26.371L26.9303 12.7654H28.5019L25.6211 4.76389ZM25.9403 9.91528H23.7255L24.8441 6.75459L25.9403 9.91528ZM34.4529 6.71022C33.9935 6.42603 33.4618 6.27789 32.9204 6.28324C32.4656 6.27789 32.0164 6.38257 31.6116 6.58824C31.3484 6.72112 31.1086 6.89528 30.9013 7.10393V6.38304H29.4248V15.6932H30.9181V12.0501C31.1303 12.2594 31.3736 12.4352 31.6396 12.5714C32.0799 12.7816 32.5659 12.88 33.0541 12.8577C33.5422 12.8355 34.0171 12.6932 34.4361 12.4438C34.899 12.1548 35.274 11.7466 35.5212 11.2627C35.7861 10.7302 35.9203 10.1431 35.9126 9.54929C35.923 8.96057 35.7887 8.37821 35.5212 7.8525C35.2797 7.38027 34.9096 6.98456 34.4529 6.71022ZM34.4137 9.55484C34.4161 9.91562 34.3297 10.2716 34.162 10.5918C34.0132 10.8769 33.7889 11.1165 33.5133 11.2849C33.2582 11.4309 32.9688 11.5078 32.6743 11.5078C32.3798 11.5078 32.0904 11.4309 31.8353 11.2849C31.5644 11.1203 31.341 10.8892 31.1866 10.6139C31.0195 10.284 30.937 9.91836 30.946 9.54929C30.9355 9.18364 31.0182 8.82126 31.1866 8.49571C31.331 8.22256 31.5426 7.98991 31.8018 7.81923C32.0627 7.67197 32.3573 7.59366 32.6575 7.5919C32.9606 7.59099 33.2582 7.67147 33.5188 7.82478C33.7952 7.97573 34.0193 8.20567 34.162 8.48465C34.3413 8.8105 34.4283 9.17839 34.4137 9.54929V9.55484ZM38.4519 6.38304H36.9585V12.7599H38.4519V6.38304ZM43.7037 6.56049C43.9895 6.68375 44.2509 6.85649 44.4756 7.07066V4.27038H45.9801V12.7654H44.4756V12.039C44.2733 12.2523 44.0347 12.4288 43.7709 12.5603C43.3696 12.7699 42.9211 12.8748 42.4677 12.8652C41.9296 12.8702 41.4008 12.7261 40.9408 12.4493C40.4817 12.1535 40.1078 11.7446 39.8557 11.2627C39.5908 10.7302 39.4566 10.1431 39.4642 9.54929C39.4539 8.96057 39.5882 8.37821 39.8557 7.8525C40.1049 7.3803 40.4803 6.98514 40.9408 6.71022C41.3529 6.46065 41.821 6.31637 42.3032 6.29024C42.7854 6.26412 43.2666 6.35695 43.7037 6.56049ZM44.4756 9.57146C44.4854 9.20459 44.3987 8.84147 44.2239 8.51792C44.0698 8.22608 43.835 7.98372 43.5471 7.81923C43.2921 7.67323 43.0027 7.59637 42.7082 7.59637C42.4136 7.59637 42.1243 7.67323 41.8692 7.81923C41.598 7.97735 41.377 8.20793 41.2316 8.48465C41.0626 8.80593 40.9798 9.16492 40.9911 9.52712C40.9825 9.89613 41.0651 10.2616 41.2316 10.5918C41.3883 10.8862 41.622 11.1333 41.9084 11.3071C42.1635 11.4531 42.4528 11.5299 42.7473 11.5299C43.0419 11.5299 43.3312 11.4531 43.5863 11.3071C43.8553 11.1436 44.0753 10.912 44.2239 10.6361C44.3961 10.3076 44.4826 9.94161 44.4756 9.57146ZM51.8863 6.71022C51.3775 6.44176 50.81 6.30134 50.2336 6.30134C49.6572 6.30134 49.0897 6.44176 48.5808 6.71022C48.1082 6.98053 47.7208 7.37607 47.4622 7.8525C47.1714 8.37882 47.0248 8.9715 47.0372 9.57146C47.026 10.1735 47.1684 10.7686 47.451 11.3016C47.7105 11.7817 48.0973 12.1824 48.5697 12.4605C49.0662 12.7315 49.6249 12.8709 50.1916 12.8652C50.7765 12.874 51.3541 12.7347 51.8695 12.4605C52.3652 12.1852 52.7752 11.7805 53.0553 11.2904C53.3515 10.7658 53.502 10.1726 53.4915 9.57146C53.5004 8.97048 53.35 8.37773 53.0553 7.8525C52.7813 7.37062 52.3763 6.97478 51.8863 6.71022ZM49.3639 7.81923C49.6253 7.67401 49.9199 7.59775 50.2196 7.59775C50.5193 7.59775 50.8139 7.67401 51.0753 7.81923C51.3499 7.97813 51.5716 8.21332 51.7129 8.49571C51.876 8.8305 51.9528 9.20008 51.9367 9.57146C51.9483 9.9474 51.8616 10.3199 51.685 10.6528C51.5392 10.9243 51.3204 11.1504 51.0529 11.3061C50.7853 11.4617 50.4794 11.5408 50.1693 11.5344C49.9454 11.5409 49.7227 11.4998 49.5162 11.4137C49.3097 11.3276 49.1243 11.1986 48.9724 11.0354C48.6355 10.6234 48.4678 10.1007 48.5025 9.57146C48.4901 9.19738 48.5708 8.82604 48.7374 8.4902C48.8747 8.21003 49.0927 7.97654 49.3639 7.81923ZM59.0394 7.03076V6.32653H60.5495V12.6812C60.5594 13.2247 60.4326 13.7622 60.1804 14.2449C59.9389 14.7103 59.5657 15.0957 59.1065 15.3539C58.5924 15.6305 58.0132 15.7664 57.4286 15.7476C56.67 15.7754 55.9226 15.5595 55.2977 15.1321C55.0204 14.9436 54.7884 14.6968 54.6182 14.4092C54.4481 14.1217 54.344 13.8006 54.3133 13.4686V13.3466L55.7954 13.3466C55.7954 13.6685 56.0907 13.9814 56.3547 14.134C56.6804 14.3328 57.0575 14.4331 57.4398 14.4223C57.6518 14.4311 57.8634 14.3968 58.0616 14.3215C58.2597 14.2462 58.4402 14.1314 58.592 13.9843C58.7493 13.8103 58.8699 13.6068 58.9468 13.3859C59.0236 13.1649 59.0394 12.931 59.0394 12.6978V11.9548C58.8328 12.1771 58.591 12.3644 58.3235 12.5093C57.9242 12.7189 57.4776 12.8239 57.0259 12.8143C56.4897 12.8185 55.9629 12.6744 55.5046 12.3984C55.0442 12.1041 54.6699 11.6949 54.4195 11.2117C54.1519 10.6801 54.0176 10.0924 54.0281 9.49832C54.0156 8.9094 54.1501 8.32653 54.4195 7.80153C54.6679 7.32727 55.0433 6.93011 55.5046 6.6537C55.9619 6.37401 56.4886 6.22618 57.0259 6.22672C57.4809 6.21907 57.9307 6.32389 58.3347 6.53172C58.5954 6.65891 58.8335 6.82746 59.0394 7.03076ZM58.7877 10.5796C58.9599 10.2511 59.0464 9.8851 59.0394 9.51494C59.0532 9.14059 58.9663 8.76931 58.7877 8.4392C58.6409 8.16062 58.4205 7.92682 58.1501 7.76271C57.8899 7.6138 57.5948 7.53538 57.2944 7.53538C56.994 7.53538 56.6988 7.6138 56.4387 7.76271C56.1645 7.92882 55.9419 8.16678 55.7954 8.4503C55.6308 8.76545 55.5463 9.11571 55.5494 9.4706C55.5427 9.84005 55.6271 10.2055 55.7954 10.5352C55.9406 10.827 56.1629 11.0743 56.4387 11.2505C56.6977 11.4028 56.9932 11.4832 57.2944 11.4832C57.5955 11.4832 57.8911 11.4028 58.1501 11.2505C58.419 11.0871 58.6392 10.8555 58.7877 10.5796Z" fill="#667085"></path></svg></span></a></div></div></div><script>
-            if (typeof window.__updateThemeElement === 'function') {
-              window.__updateThemeElement();
-            }
-          </script><script>((STORAGE_KEY, restoreKey) => {
-    if (!window.history.state || !window.history.state.key) {
-      let key = Math.random().toString(32).slice(2);
-      window.history.replaceState({
-        key
-      }, "");
-    }
-    try {
-      let positions = JSON.parse(sessionStorage.getItem(STORAGE_KEY) || "{}");
-      let storedY = positions[restoreKey || window.history.state.key];
-      if (typeof storedY === "number") {
-        window.scrollTo(0, storedY);
-      }
-    } catch (error) {
-      console.error(error);
-      sessionStorage.removeItem(STORAGE_KEY);
-    }
-  })("positions", null)</script><link rel="modulepreload" href="https://file-assets.apidog.com/docs-site/v1/assets/manifest-db7ef313.js"/><link rel="modulepreload" href="https://file-assets.apidog.com/docs-site/v1/assets/entry.client-mUtkjgQm.js"/><link rel="modulepreload" href="https://file-assets.apidog.com/docs-site/v1/assets/jsx-runtime-CM5sU0Q5.js"/><link rel="modulepreload" href="https://file-assets.apidog.com/docs-site/v1/assets/client-BKxavTD9.js"/><link rel="modulepreload" href="https://file-assets.apidog.com/docs-site/v1/assets/components-DMSdXhQK.js"/><link rel="modulepreload" href="https://file-assets.apidog.com/docs-site/v1/assets/root-CQ054TXt.js"/><link rel="modulepreload" href="https://file-assets.apidog.com/docs-site/v1/assets/root-Dv513fR3.js"/><link rel="modulepreload" href="https://file-assets.apidog.com/docs-site/v1/assets/route-D_6YkXJe.js"/><script>window.__remixContext = {"basename":"/","future":{"v3_fetcherPersist":true,"v3_relativeSplatPath":true,"v3_throwAbortReason":true,"v3_routeConfig":false,"v3_singleFetch":true,"v3_lazyRouteDiscovery":false,"unstable_optimizeDeps":false},"isSpaMode":false};window.__remixContext.stream = new ReadableStream({start(controller){window.__remixContext.streamController = controller;}}).pipeThrough(new TextEncoderStream());</script><script type="module" async="">import "https://file-assets.apidog.com/docs-site/v1/assets/manifest-db7ef313.js";
-import * as route0 from "https://file-assets.apidog.com/docs-site/v1/assets/root-Dv513fR3.js";
-import * as route1 from "https://file-assets.apidog.com/docs-site/v1/assets/route-D_6YkXJe.js";
+### OpenAPI Specification
 
-window.__remixRouteModules = {"root":route0,"routes/_index/route":route1};
+```yaml
+openapi: 3.0.1
+info:
+  title: ''
+  description: ''
+  version: 1.0.0
+paths:
+  /gemini/v1/models/gemini-3-flash-v1betamodels:streamGenerateContent:
+    post:
+      summary: Gemini 3 Flash
+      deprecated: false
+      description: >-
+        ### Streaming Support
 
-import("https://file-assets.apidog.com/docs-site/v1/assets/entry.client-mUtkjgQm.js");</script></body></html><!--$--><script>window.__remixContext.streamController.enqueue("[{\"_1\":2,\"_231\":-5,\"_232\":-5},\"loaderData\",{\"_3\":4,\"_230\":-5},\"root\",{\"_5\":1,\"_6\":7,\"_19\":20,\"_23\":24,\"_33\":34,\"_52\":53,\"_112\":113,\"_155\":156,\"_229\":-7},\"type\",\"meta\",[8,11,16],{\"_9\":10},\"title\",\"API Documentation\",{\"_12\":13,\"_14\":15},\"name\",\"description\",\"content\",\"Design. Debug. Test. Document. Mock. Build APIs Faster \u0026 Together.\",{\"_12\":17,\"_14\":18},\"keywords\",\"API Design, API Specification, API Test, API Documentation, API Mock\",\"i18nState\",{\"_21\":22},\"clientLocale\",\"en-US\",\"errorCodeMessage\",{\"_25\":26,\"_27\":28,\"_29\":30,\"_31\":32},\"errorCode\",\"Unknown\",\"errorMessage\",\"Unexpected token 'o', \\\"forbidden\\n\\\" is not valid JSON: /api/v1/published-projects/domains/docs.kie.ai\",\"hideBuiltWith\",false,\"extra\",{},\"clientConfig\",{\"_35\":36,\"_37\":38,\"_39\":40,\"_41\":42,\"_47\":48,\"_49\":30,\"_50\":51},\"apiBaseUrl\",\"https://api.apidog.com\",\"appWebUrl\",\"https://app.apidog.com\",\"apidocBuiltinPrefixPath\",\"https://assets.apidog.com/app/static/apidoc\",\"cloudMockBaseUrls\",{\"_43\":44,\"_45\":46},\"pathMode\",\"https://mock.apidog.com/m1/{projectId}-{version}-{service}\",\"idMode\",\"https://mock.apidog.com/m2/{projectId}-{version}-{service}\",\"apidocIsShowLogo\",true,\"markdownDisableBreaks\",\"webhookGenerateCodeDefaultUrl\",\"https://your-api-server.com\",\"urlConfig\",{\"_54\":55,\"_58\":59,\"_99\":100,\"_108\":109},\"home\",{\"_56\":57},\"index\",\"https://apidog.com\",\"icon\",{\"_60\":61,\"_62\":63,\"_64\":63,\"_65\":66,\"_67\":68,\"_69\":70,\"_71\":72,\"_73\":74,\"_75\":76,\"_77\":78,\"_79\":80,\"_81\":82,\"_83\":84,\"_85\":86,\"_87\":88,\"_89\":90,\"_91\":92,\"_93\":94,\"_95\":96,\"_97\":98},\"apidoc\",\"https://assets.apidog.com/app/static/brand/apidoc.png\",\"apidog\",\"https://assets.apidog.com/app/static/brand/apidog-logo-256.png\",\"apidog europe\",\"googleDiscovery\",\"https://assets.apidog.com/app/static/brand/google-discovery.png\",\"har\",\"https://assets.apidog.com/app/static/brand/har.png\",\"iodocs\",\"https://assets.apidog.com/app/static/brand/io-doc.png\",\"jmeter\",\"https://assets.apidog.com/app/static/brand/jmeter.png\",\"openapi\",\"https://assets.apidog.com/app/static/brand/openapi.png\",\"postman\",\"https://assets.apidog.com/app/static/brand/postman.png\",\"raml\",\"https://assets.apidog.com/app/static/brand/raml.png\",\"wadl\",\"https://assets.apidog.com/app/static/brand/wadl.png\",\"curl\",\"https://assets.apidog.com/app/static/brand/curl.png\",\"insomnia\",\"https://assets.apidog.com/app/static/brand/insomnia.png\",\"wsdl\",\"https://assets.apidog.com/app/static/brand/wsdl.png\",\"markdown\",\"https://assets.apidog.com/app/static/brand/markdown.png\",\"html\",\"https://assets.apidog.com/app/static/brand/html.png\",\"protobuf\",\"https://assets.apidog.com/app/static/brand/protobuf.png\",\"soapui\",\"https://assets.apidog.com/app/static/brand/soapui.svg\",\"hoppscotch\",\"https://assets.apidog.com/app/static/brand/hoppscotch.svg\",\"javaProject\",\"https://assets.apidog.com/app/static/brand/java-project.png\",\"help\",{\"_56\":101,\"_102\":103,\"_104\":105,\"_106\":107},\"https://apidog.com/help\",\"browserExtension\",\"https://chromewebstore.google.com/detail/apidog-browser-extension/dmhljjnonlhapikmelaefohecogokhio\",\"csv\",\"https://apidog.com/help/reference/csv\",\"appMcpServer\",\"https://docs.apidog.com/apidog-mcp-server\",\"assets\",{\"_110\":111},\"logo512Png\",\"https://assets.apidog.com/static/logo/apidog-logo-512.png\",\"envConfig\",{\"_114\":60,\"_115\":116,\"_117\":116,\"_118\":119,\"_120\":121,\"_122\":123,\"_124\":57,\"_125\":62,\"_126\":22,\"_127\":128,\"_129\":130,\"_132\":133,\"_134\":135,\"_136\":137,\"_138\":139,\"_140\":141,\"_142\":143,\"_149\":150,\"_151\":48,\"_152\":153,\"_154\":30},\"RELEASE_BASE\",\"DEBUG_API_BASE\",\"\",\"DEBUG_WEB_URL_BASE\",\"AGENT_SERVER_API_BASE\",\"https://web-proxy.apidog.com\",\"APP_REGION\",\"GLOBAL\",\"APP_NAME\",\"Apidog\",\"APP_HOMEPAGE\",\"APP_NAME_LOWER\",\"DEFAULT_LOCALE\",\"APP_BROWSER_EXTENSION_ADAPTER\",\"apidogAgentCrossRequest\",\"APP_API_SERVER_HOSTNAMES\",[131],\"api.apidog.com\",\"APP_SUPPORT_EMAIL\",\"support@apidog.com\",\"APP_SCRIPT_MAIN_OBJECTS\",\"$\",\"SERVER_PROTOCOL\",\"http\",\"SERVER_HOST\",\"apidog-api-fordoc-svc\",\"DEFAULT_DOC_LAYOUT\",\"TwoColumn\",\"NOT_CUSTOM_DOMAIN_HOSTNAMES\",[144,145,146,147,148],\"www.apidog.com\",\"apidog.com\",\"www.apidog.io\",\"apidog.io\",\"share.apidog.com\",\"SERVER_REQUEST_TIMEOUT\",15000,\"IS_SHARED_DOC_INDEPENDENT_DOMAIN\",\"APIDOC_CUSTOM_DOMAIN_CNAME_REGEX\",[\"R\",\"\\\\d+\\\\.cname\\\\.apidog\\\\.com\",\"\"],\"IS_ALWAYS_USE_ORIGIN_FETCH\",\"docsDataState\",{\"_157\":158,\"_162\":163,\"_175\":176,\"_177\":178,\"_179\":180,\"_189\":190,\"_202\":203,\"_204\":205,\"_206\":207,\"_213\":214,\"_220\":-7,\"_221\":222,\"_223\":-7,\"_224\":-7,\"_225\":226,\"_228\":-7},\"navigation\",{\"_5\":159,\"_160\":161},\"NONE\",\"navRightLinkItems\",[],\"sidebarTree\",{\"_164\":-7,\"_165\":-7,\"_166\":167,\"_168\":-7,\"_169\":170,\"_171\":-7,\"_172\":-7,\"_173\":174},\"goBackSidebarTreeApiFolderNode\",\"rootSidebarTreeApiFolderNode\",\"sidebarTreeList\",[],\"selectedSidebarTreeNode\",\"parentSidebarTreeApiFolderNodes\",[],\"previousSidebarTreeNode\",\"nextSidebarTreeNode\",\"homeLink\",\"/\",\"docsBaseConfig\",{},\"versionList\",[],\"resourceData\",{\"_5\":181,\"_182\":-7,\"_183\":184},\"NotFound\",\"data\",\"extraData\",{\"_185\":186,\"_187\":188},\"apiFieldList\",[],\"dataSchemaDefinitions\",{},\"docsIdTypeData\",{\"_191\":192,\"_193\":194,\"_195\":194,\"_196\":194,\"_197\":116,\"_198\":194,\"_199\":200,\"_201\":-7},\"onlineType\",\"APIDOC\",\"branchId\",0,\"onlineId\",\"projectId\",\"subdirectory\",\"teamId\",\"visitType\",\"customDomain\",\"specialFileType\",\"notification\",[],\"footerBanner\",[],\"projectSetting\",{\"_208\":209,\"_210\":211},\"advancedSettings\",{},\"auth\",{\"_5\":212},\"noauth\",\"environments\",{\"_215\":216,\"_217\":-7,\"_218\":219},\"environmentList\",[],\"selectedEnvironment\",\"servers\",[],\"searchSettings\",\"versionSettings\",[],\"seoInfos\",\"itemPathPrefix\",\"appEnvMap\",{\"_227\":128},\"appBrowserExtensionAdapterKey\",\"customCodes\",\"primaryColorVariable\",\"routes/_index/route\",\"actionData\",\"errors\"]\n");</script><!--$--><script>window.__remixContext.streamController.close();</script><!--/$--><!--/$-->
+        The Gemini endpoint returns streaming chunks from
+        `streamGenerateContent`. Function calling responses appear in
+        `candidates[].content.parts[].functionCall`.
+
+        **Streaming Response Format:**
+
+        - Content-Type: `text/event-stream` or provider stream chunks
+
+        - Function calls are returned inside `parts[].functionCall`
+
+        - Thinking output may be reflected through `thoughtSignature` and usage
+        metadata
+
+        ## Features
+
+        - Standard chat with `contents`.
+
+        - Google Search grounding with `googleSearch`.
+
+        - Function calling with `functionDeclarations`.
+
+        - Thinking configuration with `generationConfig.thinkingConfig`.
+
+        ## Request Notes
+
+        - Use `contents` as the primary conversation input.
+
+        - Use `tools.googleSearch` to enable Google Search grounding.
+
+        - Use `tools.functionDeclarations` to define callable functions.
+
+        - Use `generationConfig.thinkingConfig` to control thoughts output and
+        thinking level.
+
+        ## Authentication
+
+        Use the auth configuration for `X-Goog-Api-Key`. Do not add it as a
+        regular request parameter.
+      operationId: gemini_3_flash_v1betamodels
+      tags:
+        - docs/en/Market/Chat  Models/Gemini
+      parameters: []
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                stream:
+                  type: boolean
+                  default: true
+                  description: If set to true, the provider returns stream chunks.
+                  examples:
+                    - true
+                contents:
+                  type: array
+                  description: Conversation input for Gemini.
+                  items:
+                    type: object
+                    properties:
+                      role:
+                        type: string
+                        enum:
+                          - user
+                          - model
+                        description: Content role.
+                        examples:
+                          - user
+                      parts:
+                        type: array
+                        description: >-
+                          Content parts. Use text, inline_data, or
+                          provider-specific blocks.
+                        items:
+                          oneOf:
+                            - type: object
+                              properties:
+                                text:
+                                  type: string
+                                  description: Plain text input.
+                                  examples:
+                                    - What is the weather in Beijing today?
+                              x-apidog-orders:
+                                - text
+                            - type: object
+                              properties:
+                                inline_data:
+                                  type: object
+                                  description: Inline binary payload.
+                                  properties:
+                                    mime_type:
+                                      type: string
+                                      examples:
+                                        - image/jpeg
+                                    data:
+                                      type: string
+                                      description: Base64 content.
+                                  x-apidog-orders:
+                                    - mime_type
+                                    - data
+                              x-apidog-orders:
+                                - inline_data
+                            - type: object
+                              properties:
+                                file_data:
+                                  type: object
+                                  properties:
+                                    mime_type:
+                                      type: string
+                                      description: file mime type
+                                    file_uri:
+                                      type: string
+                                  x-apidog-orders:
+                                    - mime_type
+                                    - file_uri
+                              x-apidog-orders:
+                                - file_data
+                    required:
+                      - role
+                      - parts
+                    x-apidog-orders:
+                      - role
+                      - parts
+                  minItems: 1
+                tools:
+                  type: array
+                  description: >-
+                    Optional Gemini tools. Supports googleSearch and
+                    functionDeclarations.
+                  items:
+                    oneOf:
+                      - type: object
+                        properties:
+                          googleSearch:
+                            type: object
+                            description: Google Search grounding tool.
+                            additionalProperties: false
+                            x-apidog-orders: []
+                        x-apidog-orders:
+                          - googleSearch
+                      - type: object
+                        properties:
+                          functionDeclarations:
+                            type: array
+                            description: Function declaration list.
+                            items:
+                              type: object
+                              properties:
+                                name:
+                                  type: string
+                                  description: Function name.
+                                  examples:
+                                    - get_weather_forecast
+                                description:
+                                  type: string
+                                  description: Function description.
+                                  examples:
+                                    - >-
+                                      Get the weather forecast for a given
+                                      location
+                                parameters:
+                                  type: object
+                                  description: Function parameter schema.
+                                  properties:
+                                    type:
+                                      type: string
+                                      examples:
+                                        - OBJECT
+                                    properties:
+                                      type: object
+                                      additionalProperties: true
+                                      x-apidog-orders: []
+                                    required:
+                                      type: array
+                                      items:
+                                        type: string
+                                  x-apidog-orders:
+                                    - type
+                                    - properties
+                                    - required
+                                  examples:
+                                    - type: OBJECT
+                                      properties:
+                                        location:
+                                          type: STRING
+                                          description: The city name, e.g. Beijing
+                                      required:
+                                        - location
+                              required:
+                                - name
+                                - description
+                                - parameters
+                              x-apidog-orders:
+                                - name
+                                - description
+                                - parameters
+                        x-apidog-orders:
+                          - functionDeclarations
+                generationConfig:
+                  type: object
+                  description: Generation configuration.
+                  properties:
+                    thinkingConfig:
+                      type: object
+                      description: Thinking configuration.
+                      properties:
+                        includeThoughts:
+                          type: boolean
+                          description: Whether to include thought output.
+                          examples:
+                            - true
+                        thinkingLevel:
+                          type: string
+                          enum:
+                            - low
+                            - high
+                          description: Thinking level.
+                          examples:
+                            - high
+                      x-apidog-orders:
+                        - includeThoughts
+                        - thinkingLevel
+                  x-apidog-orders:
+                    - thinkingConfig
+              required:
+                - contents
+              x-apidog-orders:
+                - stream
+                - contents
+                - tools
+                - generationConfig
+              examples:
+                - stream: true
+                  contents:
+                    - role: user
+                      parts:
+                        - text: What is the weather in Beijing today?
+                  tools:
+                    - functionDeclarations:
+                        - name: get_weather_forecast
+                          description: Get the weather forecast for a given location
+                          parameters:
+                            type: OBJECT
+                            properties:
+                              location:
+                                type: STRING
+                                description: The city name, e.g. Beijing
+                            required:
+                              - location
+                  generationConfig:
+                    thinkingConfig:
+                      includeThoughts: true
+                      thinkingLevel: high
+            example:
+              stream: true
+              contents:
+                - role: user
+                  parts:
+                    - text: What is the weather in Beijing today?
+              tools:
+                - functionDeclarations:
+                    - name: get_weather_forecast
+                      description: Get the weather forecast for a given location
+                      parameters:
+                        type: OBJECT
+                        properties:
+                          location:
+                            type: STRING
+                            description: The city name, e.g. Beijing
+                        required:
+                          - location
+              generationConfig:
+                thinkingConfig:
+                  includeThoughts: true
+                  thinkingLevel: high
+      responses:
+        '200':
+          description: Request successful.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  candidates:
+                    type: array
+                    description: Candidate results
+                    items:
+                      type: object
+                      properties:
+                        content:
+                          type: object
+                          properties:
+                            role:
+                              type: string
+                              examples:
+                                - model
+                            parts:
+                              type: array
+                              items:
+                                type: object
+                                properties:
+                                  functionCall:
+                                    type: object
+                                    description: Function call payload
+                                    properties:
+                                      args:
+                                        type: object
+                                        description: Function arguments
+                                        additionalProperties: true
+                                        x-apidog-orders: []
+                                        properties: {}
+                                      name:
+                                        type: string
+                                        description: Function name
+                                        examples:
+                                          - get_weather_forecast
+                                      id:
+                                        type: string
+                                        description: Function call identifier
+                                        examples:
+                                          - gp737npz
+                                    x-apidog-orders:
+                                      - args
+                                      - name
+                                      - id
+                                  thoughtSignature:
+                                    type: string
+                                    description: Thought signature
+                                    examples:
+                                      - Es8CCswCAb4example
+                                  text:
+                                    type: string
+                                    description: Text output
+                                x-apidog-orders:
+                                  - functionCall
+                                  - thoughtSignature
+                                  - text
+                          x-apidog-orders:
+                            - role
+                            - parts
+                        finishReason:
+                          type: string
+                          description: Candidate finish reason
+                          examples:
+                            - STOP
+                      x-apidog-orders:
+                        - content
+                        - finishReason
+                  modelVersion:
+                    type: string
+                    description: Returned model version
+                    examples:
+                      - gemini-3-flash
+                  usageMetadata:
+                    type: object
+                    description: Token usage metadata
+                    properties:
+                      candidatesTokenCount:
+                        type: integer
+                        examples:
+                          - 18
+                      thoughtsTokenCount:
+                        type: integer
+                        examples:
+                          - 55
+                      totalTokenCount:
+                        type: integer
+                        examples:
+                          - 325
+                      promptTokenCount:
+                        type: integer
+                        examples:
+                          - 252
+                    x-apidog-orders:
+                      - candidatesTokenCount
+                      - thoughtsTokenCount
+                      - totalTokenCount
+                      - promptTokenCount
+                  credits_consumed:
+                    type: number
+                    description: Credits consumed by the request
+                    examples:
+                      - 0.01
+                  responseId:
+                    type: string
+                    description: Unique response identifier
+                    examples:
+                      - xRS0aZC5BNHVz7IPuaO42Qk
+                x-apidog-orders:
+                  - candidates
+                  - modelVersion
+                  - usageMetadata
+                  - credits_consumed
+                  - responseId
+              example:
+                candidates:
+                  - content:
+                      role: model
+                      parts:
+                        - functionCall:
+                            args:
+                              location: Beijing
+                            name: get_weather_forecast
+                            id: gp737npz
+                          thoughtSignature: Es8CCswCAb4example
+                    finishReason: STOP
+                modelVersion: gemini-3-flash
+                usageMetadata:
+                  candidatesTokenCount: 18
+                  thoughtsTokenCount: 55
+                  totalTokenCount: 325
+                  promptTokenCount: 252
+                credits_consumed: 0.01
+                responseId: xRS0aZC5BNHVz7IPuaO42Qk
+          headers: {}
+          x-apidog-name: ''
+        '400':
+          description: Bad Request - Invalid request parameters
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: object
+                    properties:
+                      message:
+                        type: string
+                        examples:
+                          - Invalid request parameters
+                      type:
+                        type: string
+                        examples:
+                          - invalid_request_error
+                    x-apidog-orders:
+                      - message
+                      - type
+                x-apidog-orders:
+                  - error
+          headers: {}
+          x-apidog-name: ''
+        '401':
+          description: Unauthorized - Invalid or missing API key
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: object
+                    properties:
+                      message:
+                        type: string
+                        examples:
+                          - Invalid or missing API key
+                      type:
+                        type: string
+                        examples:
+                          - authentication_error
+                    x-apidog-orders:
+                      - message
+                      - type
+                x-apidog-orders:
+                  - error
+          headers: {}
+          x-apidog-name: ''
+      security: []
+      x-apidog-folder: docs/en/Market/Chat  Models/Gemini
+      x-apidog-status: released
+      x-run-in-apidog: https://app.apidog.com/web/project/1184766/apis/api-30749682-run
+components:
+  schemas: {}
+  securitySchemes:
+    BearerAuth:
+      type: bearer
+      scheme: bearer
+      bearerFormat: API Key
+      description: >-
+        All API requests require a Bearer Token. Add the header `Authorization:
+        Bearer YOUR_API_KEY` to authenticate requests.
+    BearerAuth1:
+      type: bearer
+      scheme: bearer
+      bearerFormat: API Key
+      description: >-
+        所有 API 请求都需要 Bearer Token。请在请求头中添加 `Authorization: Bearer YOUR_API_KEY`
+        进行身份验证。
+servers:
+  - url: https://api.kie.ai
+    description: 正式环境
+security:
+  - BearerAuth: []
+    x-apidog:
+      schemeGroups:
+        - id: kn8M4YUlc5i0A0179ezwx
+          schemeIds:
+            - BearerAuth
+      required: true
+      use:
+        id: kn8M4YUlc5i0A0179ezwx
+      scopes:
+        kn8M4YUlc5i0A0179ezwx:
+          BearerAuth: []
+
+```
 
 ---
 
