@@ -10,7 +10,7 @@ import { maxRefImagesForProvider } from "../../../../../shared/videoRefCaps";
 import { mergeCharactersIntoPrompt } from "../../../lib/characterPrompt";
 import { effectiveCharacterRefImages, effectiveSceneRefImages, effectiveCharacters, stripCharacterMentions, effectiveCharacterVideoRefs, effectiveCharacterAudioRefs } from "../../../lib/characterConditioning";
 import { connectedEffectPrompts, appendEffectPrompts } from "../../../lib/effectPrompt";
-import { detectUpstreamPrompt, listUpstreamVideoSources, listUpstreamAudioSources } from "../../../lib/comfyWorkflowParams";
+import { detectUpstreamPrompt, listUpstreamVideoSources, listUpstreamAudioSources, mentionedMediaUrls, stripMediaMentions } from "../../../lib/comfyWorkflowParams";
 import { trpc } from "@/lib/trpc";
 import { toast } from "sonner";
 import { Handle, Position } from "@xyflow/react";
@@ -880,8 +880,10 @@ export const VideoTaskNode = memo(function VideoTaskNode({ id, selected, data }:
   const finalPromptDisplay = useCanvasStore((s) => {
     const base = payload.prompt ?? "";
     const chars = effectiveCharacters(id, base, s.edges, s.nodes);
+    // 先去角色 @提及，再去 @音频名/@视频名 字面量（这些只作媒体引用，不应进 prompt 文本）。
+    const stripped = stripMediaMentions(stripCharacterMentions(base, s.nodes), s.nodes);
     return appendEffectPrompts(
-      mergeCharactersIntoPrompt(stripCharacterMentions(base, s.nodes), chars, 4000),
+      mergeCharactersIntoPrompt(stripped, chars, 4000),
       connectedEffectPrompts(id, s.edges, s.nodes),
     );
   });
@@ -1143,7 +1145,7 @@ export const VideoTaskNode = memo(function VideoTaskNode({ id, selected, data }:
       // many/long character profiles could push it over 4000 → BAD_REQUEST. Also append
       // any connected post_process「效果注入」effect prompts so a wired post_process works.
       prompt: appendEffectPrompts(
-        mergeCharactersIntoPrompt(stripCharacterMentions(payload.prompt, allNodes), chars, 4000),
+        mergeCharactersIntoPrompt(stripMediaMentions(stripCharacterMentions(payload.prompt, allNodes), allNodes), chars, 4000),
         connectedEffectPrompts(id, allEdges, allNodes),
         4000,
       ),
@@ -1198,10 +1200,12 @@ export const VideoTaskNode = memo(function VideoTaskNode({ id, selected, data }:
     if (wantsVideo) {
       for (const v of listUpstreamVideoSources(id, allEdges, allNodes)) pushUniq(vids, vSeen, v.url);
       for (const u of effectiveCharacterVideoRefs(id, prompt, allEdges, allNodes)) pushUniq(vids, vSeen, u);
+      for (const u of mentionedMediaUrls(prompt, "video", allNodes)) pushUniq(vids, vSeen, u); // @视频名 独立节点
     }
     if (wantsAudio) {
       for (const a of listUpstreamAudioSources(id, allEdges, allNodes)) pushUniq(auds, aSeen, a.url);
       for (const u of effectiveCharacterAudioRefs(id, prompt, allEdges, allNodes)) pushUniq(auds, aSeen, u);
+      for (const u of mentionedMediaUrls(prompt, "audio", allNodes)) pushUniq(auds, aSeen, u); // @音频名 独立节点
     }
     return { videoRefs: vids.length ? vids.slice(0, 3) : undefined, audioRefs: auds.length ? auds.slice(0, 3) : undefined };
   }, [id, payload.prompt]);

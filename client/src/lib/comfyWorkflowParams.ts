@@ -170,6 +170,53 @@ export function listUpstreamVideoSources(targetId: string, edges: MiniEdge[], no
   return out;
 }
 
+// ── @音频名 / @视频名：引用画布上「独立」音/视频节点（无需连线）──────────────────
+// 与「@角色名」对称：在文本框 @某个音频/视频节点的标题，即把该媒体计入参考。媒体节点的
+// 「名字」用节点标题（node.data.title）。供 omni / 数字人 / 动作控制等模型用。
+
+export interface CanvasMediaSource { id: string; name: string; url: string; kind: "audio" | "video" }
+
+/** 画布上所有可 @引用 的独立音/视频媒体节点（有标题 + 媒体 URL），按名去重。 */
+export function listCanvasMediaSources(nodes: MiniNode[]): CanvasMediaSource[] {
+  const out: CanvasMediaSource[] = [];
+  const seen = new Set<string>();
+  for (const n of nodes) {
+    const name = (n.data.title ?? "").trim();
+    if (!name) continue;
+    const payload = (n.data.payload ?? {}) as Record<string, unknown>;
+    const aud = getNodeAudioUrl(n.data.nodeType, payload);
+    if (aud && !seen.has("a:" + name)) { seen.add("a:" + name); out.push({ id: n.id, name, url: aud, kind: "audio" }); continue; }
+    const vid = getNodeVideoUrl(n.data.nodeType, payload);
+    if (vid && !seen.has("v:" + name)) { seen.add("v:" + name); out.push({ id: n.id, name, url: vid, kind: "video" }); }
+  }
+  return out;
+}
+
+/** prompt 里被「@名字」提及到的媒体 URL（按 kind 过滤，去重）。长名优先消费，避免短名命中长名内部。 */
+export function mentionedMediaUrls(prompt: string | undefined, kind: "audio" | "video", nodes: MiniNode[]): string[] {
+  let scan = prompt ?? "";
+  if (!scan.includes("@")) return [];
+  const sources = listCanvasMediaSources(nodes).filter((s) => s.kind === kind).sort((a, b) => b.name.length - a.name.length);
+  const out: string[] = [];
+  const seen = new Set<string>();
+  for (const s of sources) {
+    const token = "@" + s.name;
+    if (!scan.includes(token)) continue;
+    scan = scan.split(token).join(" ");
+    if (!seen.has(s.url)) { seen.add(s.url); out.push(s.url); }
+  }
+  return out;
+}
+
+/** 去掉 prompt 里所有被提及的「@媒体名」字面量（与 stripCharacterMentions 同理，避免模型读到 "@名字"）。 */
+export function stripMediaMentions(prompt: string | undefined, nodes: MiniNode[]): string {
+  let text = prompt ?? "";
+  if (!text.includes("@")) return text;
+  const names = listCanvasMediaSources(nodes).map((s) => s.name).sort((a, b) => b.length - a.length);
+  for (const name of names) text = text.split("@" + name).join(" ");
+  return text.replace(/[ \t]{2,}/g, " ").trim();
+}
+
 /** 解析音频参数：显式来源映射优先，剩余空位按顺序自动填充。镜像 resolveImageParamsWithMap。 */
 export function resolveAudioParamsWithMap(
   bindings: WorkflowParamBinding[] | undefined,
