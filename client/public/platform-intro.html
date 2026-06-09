@@ -201,7 +201,7 @@ footer .tech span{font-size:12px;color:var(--t2);background:var(--card);border:1
     <div class="hstat"><div class="num" data-n="27">0</div><div class="lab">创作节点类型</div></div>
     <div class="hstat"><div class="num" data-n="140" data-suf="+">0</div><div class="lab">接入 AI 模型</div></div>
     <div class="hstat"><div class="num" data-n="6">0</div><div class="lab">AI 服务商聚合</div></div>
-    <div class="hstat"><div class="num" data-n="12">0</div><div class="lab">核心功能模块</div></div>
+    <div class="hstat"><div class="num" data-n="13">0</div><div class="lab">核心功能模块</div></div>
     <div class="hstat"><div class="num" data-n="28">0</div><div class="lab">类操作审计</div></div>
   </div>
 </header>
@@ -214,7 +214,7 @@ footer .tech span{font-size:12px;color:var(--t2);background:var(--card);border:1
   <div class="arch reveal">
     <div class="layer">
       <div class="lh"><span class="ic ic-cyan">🖥️</span><h3>交互层 · 可视化创作前端</h3><span class="tag">Presentation</span></div>
-      <div class="chips"><span class="chip">节点式画布（React Flow）</span><span class="chip">实时多人协作</span><span class="chip">时间轴剪辑器</span><span class="chip">角色库 / 提示词库</span><span class="chip">@提及 与 / 快捷唤出</span><span class="chip">拉线建节点</span><span class="chip">演示模式</span></div>
+      <div class="chips"><span class="chip">节点式画布（React Flow）</span><span class="chip">实时多人协作</span><span class="chip">团队即时通讯（端到端加密）</span><span class="chip">时间轴剪辑器</span><span class="chip">角色库 / 提示词库</span><span class="chip">@提及 与 / 快捷唤出</span><span class="chip">拉线建节点</span><span class="chip">演示模式</span></div>
     </div>
     <div class="arch-flow">⇅</div>
     <div class="layer">
@@ -330,7 +330,7 @@ footer .tech span{font-size:12px;color:var(--t2);background:var(--card);border:1
 <!-- MODULES 手风琴 -->
 <section id="modules" class="wrap">
   <div class="reveal"><div class="sec-tag">🧱 功能模块全景</div>
-  <h2 class="sec-h">12 大核心模块，<span class="g">细分功能逐一展开</span></h2>
+  <h2 class="sec-h">13 大核心模块，<span class="g">细分功能逐一展开</span></h2>
   <p class="sec-sub">点击每个模块查看其全部细分功能。主干能力 → 分支细节，层层深入，不遗漏任何一项。</p></div>
   <div class="acc reveal">
     <!-- 1 画布 -->
@@ -402,9 +402,10 @@ footer .tech span{font-size:12px;color:var(--t2);background:var(--card);border:1
     </div>
     <!-- 6 ComfyUI -->
     <div class="acc-item feat-hot">
-      <div class="acc-head"><span class="ic ic-green">⚡</span><div class="tt"><h3>ComfyUI 自建算力深度集成 <span class="star">★核心壁垒</span></h3><p>私有 GPU 直驱 · 开闭互补 · 弹性扩容</p></div><span class="num-b">8 项</span><span class="arr">▾</span></div>
+      <div class="acc-head"><span class="ic ic-green">⚡</span><div class="tt"><h3>ComfyUI 自建算力深度集成 <span class="star">★核心壁垒</span></h3><p>私有 GPU 直驱 · 接口监测 · 开闭互补 · 弹性扩容</p></div><span class="num-b">10 项</span><span class="arr">▾</span></div>
       <div class="acc-body"><div class="acc-inner"><div class="divider"></div><div class="fgrid">
         <div class="fitem"><b><i>🖧</i>自建算力服务器对接</b><small>对接自有 ComfyUI / 私有 GPU 集群，算力与数据全程留在自有环境</small></div>
+        <div class="fitem"><b><i>📡</i>接口监测与连接健康 <span class="star">★新增</span></b><small>实时探测服务器可达性与鉴权状态，连续连接失败即判不可达并自动早退容错；本地与云连接均可一键测试</small></div>
         <div class="fitem"><b><i>⚖️</i>多服务器负载均衡</b><small>任务轮询分配到多台服务器，负载均匀打散，吞吐倍增</small></div>
         <div class="fitem"><b><i>🧹</i>显存智能释放</b><small>运行后自动释放显存（freeVramAfterRun），长任务稳定不爆显存</small></div>
         <div class="fitem"><b><i>☁️</i>本地 × 云 弹性互补</b><small>本地强算力主力 + 官方云按需扩容，产能与成本动态平衡</small></div>
@@ -416,14 +417,17 @@ footer .tech span{font-size:12px;color:var(--t2);background:var(--card);border:1
     </div>
     <!-- 7 密钥权限 -->
     <div class="acc-item">
-      <div class="acc-head"><span class="ic ic-violet">🔐</span><div class="tt"><h3>多密钥与权限体系</h3><p>额度可控、权限严密</p></div><span class="num-b">6 项</span><span class="arr">▾</span></div>
+      <div class="acc-head"><span class="ic ic-violet">🔐</span><div class="tt"><h3>密钥 · 计费 · 额度治理</h3><p>额度可控、计费透明、权限严密</p></div><span class="num-b">9 项</span><span class="arr">▾</span></div>
       <div class="acc-body"><div class="acc-inner"><div class="divider"></div><div class="fgrid">
-        <div class="fitem"><b><i>🔑</i>三级密钥优先级 <span class="star">★特色</span></b><small>临时 key（用户自填）> 分配 key（管理员绑定）> 公用 key（平台环境变量）</small></div>
+        <div class="fitem"><b><i>🔑</i>三级密钥优先级 <span class="star">★特色</span></b><small>临时 key（用户自填）> 分配 key（管理员绑定）> 公用 key（平台环境变量），自动择优</small></div>
+        <div class="fitem"><b><i>🎁</i>管理员密钥分配</b><small>为指定用户绑定专属 kie 密钥、加备注；可启用/停用绑定与密钥、解绑、增删</small></div>
+        <div class="fitem"><b><i>🧮</i>多租户额度隔离</b><small>用户走各自分配密钥，额度与成本按用户隔离、互不挤占</small></div>
         <div class="fitem"><b><i>🛡️</i>公用 key 白名单门控</b><small>所有平台公用 key 必经管理员白名单/开关门控，杜绝越权白嫖</small></div>
         <div class="fitem"><b><i>🔒</i>密钥加密存储</b><small>分配密钥 AES-256-GCM 加密落库，永不明文暴露</small></div>
         <div class="fitem"><b><i>🎚️</i>独立功能开关</b><small>LLM / ComfyUI / kie 公用额度可分别开放，付费媒体生成单独门控</small></div>
-        <div class="fitem"><b><i>🌐</i>用户与 IP 白名单</b><small>按用户或 IP 精细授权，格式严格校验防绕过</small></div>
-        <div class="fitem"><b><i>💳</i>余额与计费透明</b><small>各服务商余额实时查询，模型价格按官方计价标注</small></div>
+        <div class="fitem"><b><i>💳</i>余额实时查询</b><small>kie / Poyo 平台余额按密钥优先级实时查询，顶栏徽标常驻显示</small></div>
+        <div class="fitem"><b><i>📈</i>消费趋势快照</b><small>余额定时快照入库，绘制平台消费/额度趋势，成本一目了然</small></div>
+        <div class="fitem"><b><i>📥</i>下载/分享额度授权</b><small>下载消费授权（grant）与分享链接次数消费，产出物流转可计量可控</small></div>
       </div></div></div>
     </div>
     <!-- 8 数据安全防泄露 -->
@@ -478,7 +482,22 @@ footer .tech span{font-size:12px;color:var(--t2);background:var(--card);border:1
         <div class="fitem"><b><i>🔑</i>密钥分配</b><small>为指定用户绑定专属 kie 密钥，额度隔离</small></div>
       </div></div></div>
     </div>
-    <!-- 12 AI 工具 -->
+    <!-- 12 协作沟通 -->
+    <div class="acc-item feat-hot">
+      <div class="acc-head"><span class="ic ic-pink">🗨️</span><div class="tt"><h3>团队协作与即时沟通 <span class="star">★新增</span></h3><p>实时共创 · 内置即时通讯 · 端到端加密</p></div><span class="num-b">9 项</span><span class="arr">▾</span></div>
+      <div class="acc-body"><div class="acc-inner"><div class="divider"></div><div class="fgrid">
+        <div class="fitem"><b><i>🤝</i>实时多人协作</b><small>节点增删改/连线秒级同步；协作者光标可见，节点按创建者显示专属颜色，同项目共享素材库</small></div>
+        <div class="fitem"><b><i>🎭</i>分级协作角色</b><small>所有者 / 编辑者 / 只读者三级权限，升降即时生效，公开开关仅所有者可控</small></div>
+        <div class="fitem"><b><i>💬</i>私聊（DM）</b><small>一对一即时消息，团队成员随时直连沟通</small></div>
+        <div class="fitem"><b><i>👥</i>群聊房间</b><small>创建/邀请/加入/离开房间，可发现可加入的公共房间，项目级群组协作</small></div>
+        <div class="fitem"><b><i>🔐</i>端到端加密 <span class="star">★特色</span></b><small>公钥发布 + 客户端加密，消息内容服务端不可读，沟通隐私可信</small></div>
+        <div class="fitem"><b><i>📎</i>文件附件传输</b><small>聊天内上传/分享文件与图片，图片灯箱预览</small></div>
+        <div class="fitem"><b><i>✅</i>已读回执 + 表情回应</b><small>消息已读标记、表情互动，沟通状态一目了然</small></div>
+        <div class="fitem"><b><i>🖥️</i>画布内聊天窗 + 独立聊天页</b><small>边创作边沟通，或进入独立聊天页集中处理消息</small></div>
+        <div class="fitem"><b><i>🏠</i>局域网内网沟通</b><small>支持内网/局域网聊天与房间，离线环境团队也能高效协同</small></div>
+      </div></div></div>
+    </div>
+    <!-- 13 AI 工具 -->
     <div class="acc-item">
       <div class="acc-head"><span class="ic ic-violet">💬</span><div class="tt"><h3>AI 对话与内容工具</h3><p>贯穿创作的智能助手</p></div><span class="num-b">5 项</span><span class="arr">▾</span></div>
       <div class="acc-body"><div class="acc-inner"><div class="divider"></div><div class="fgrid">
