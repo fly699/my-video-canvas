@@ -3,7 +3,7 @@ import { trpc } from "@/lib/trpc";
 import { toast } from "sonner";
 import { usePersistentState } from "../../hooks/usePersistentState";
 import { useFloatingBox, type Corner } from "../../hooks/useFloatingBox";
-import { BookText, X, Plus, Trash2, Pin, PinOff, Pencil, Download, Upload, FolderOpen, Hash, Star } from "lucide-react";
+import { BookText, X, Plus, Trash2, Pin, PinOff, Pencil, Download, Upload, FolderOpen, Hash, Star, Check } from "lucide-react";
 import { PROMPT_PRESETS } from "../../lib/promptLibraryPresets";
 
 const DOCK_W = 340;
@@ -38,6 +38,14 @@ export function PromptLibraryPanel({ onClose }: { onClose: () => void }) {
 
   // 新增表单
   const [draft, setDraft] = useState<{ label: string; text: string; category: string }>({ label: "", text: "", category: "通用" });
+  // 内联编辑中的条目（id → 编辑草稿）。null = 不在编辑。
+  const [editing, setEditing] = useState<{ id: number; label: string; text: string; category: string } | null>(null);
+  const saveEdit = () => {
+    if (!editing) return;
+    if (!editing.label.trim() || !editing.text.trim()) { toast.error("名称与内容不能为空"); return; }
+    updateMut.mutate({ id: editing.id, label: editing.label.trim(), text: editing.text, category: editing.category.trim() || "通用" });
+    setEditing(null);
+  };
   const addPrompt = () => {
     if (!draft.label.trim() || !draft.text.trim()) { toast.error("请填写名称与内容"); return; }
     createMut.mutate({ label: draft.label.trim(), text: draft.text, category: draft.category.trim() || "通用" });
@@ -157,16 +165,31 @@ export function PromptLibraryPanel({ onClose }: { onClose: () => void }) {
               <div key={cat} className="flex flex-col gap-1">
                 <div className="flex items-center gap-1" style={{ fontSize: 10, fontWeight: 700, color: "var(--c-t4)", textTransform: "uppercase", letterSpacing: "0.05em" }}><FolderOpen className="w-3 h-3" /> {cat}</div>
                 {arr.map((it) => (
-                  <div key={it.id} className="flex items-center gap-1.5 px-2 py-1.5 rounded-lg" style={{ background: "var(--c-input)", border: "1px solid var(--c-bd2)" }}>
-                    {it.slot != null && <Star className="w-3 h-3 flex-shrink-0" style={{ color: "oklch(0.66 0.18 30)", fill: "oklch(0.66 0.18 30)" }} />}
-                    <div className="flex-1 min-w-0">
-                      <div style={{ fontSize: 11.5, fontWeight: 600, color: "var(--c-t1)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{it.label}</div>
-                      <div title={it.text} style={{ fontSize: 9.5, color: "var(--c-t4)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{it.text}</div>
+                  editing?.id === it.id ? (
+                    // 内联编辑：名称 / 类别 / 正文 + 保存/取消。
+                    <div key={it.id} className="flex flex-col gap-1.5 px-2 py-2 rounded-lg" style={{ background: "var(--c-input)", border: "1px solid oklch(0.66 0.18 30 / 0.4)" }}>
+                      <div className="flex gap-1.5">
+                        <input value={editing.label} onChange={(e) => setEditing((s) => s && { ...s, label: e.target.value })} placeholder="名称" className="nodrag" style={{ flex: 1, fontSize: 11, padding: "4px 6px", borderRadius: 6, background: "var(--c-base)", border: "1px solid var(--c-bd2)", color: "var(--c-t1)" }} />
+                        <input value={editing.category} onChange={(e) => setEditing((s) => s && { ...s, category: e.target.value })} placeholder="类别" className="nodrag" style={{ width: 88, fontSize: 11, padding: "4px 6px", borderRadius: 6, background: "var(--c-base)", border: "1px solid var(--c-bd2)", color: "var(--c-t1)" }} />
+                      </div>
+                      <textarea value={editing.text} onChange={(e) => setEditing((s) => s && { ...s, text: e.target.value })} placeholder="提示词内容" rows={2} className="nodrag" style={{ fontSize: 11, padding: "4px 6px", borderRadius: 6, background: "var(--c-base)", border: "1px solid var(--c-bd2)", color: "var(--c-t1)", resize: "vertical" }} />
+                      <div className="flex gap-1.5">
+                        <button onClick={saveEdit} disabled={updateMut.isPending} className="nodrag flex items-center justify-center gap-1" style={{ flex: 1, fontSize: 11, fontWeight: 600, padding: "4px", borderRadius: 6, cursor: "pointer", border: "none", background: "oklch(0.66 0.18 30 / 0.16)", color: "oklch(0.66 0.18 30)" }}><Check className="w-3 h-3" /> 保存</button>
+                        <button onClick={() => setEditing(null)} className="nodrag" style={{ fontSize: 11, padding: "4px 10px", borderRadius: 6, cursor: "pointer", border: "1px solid var(--c-bd2)", background: "transparent", color: "var(--c-t3)" }}>取消</button>
+                      </div>
                     </div>
-                    {slotPicker(it.id, "prompt", it.slot)}
-                    <button onClick={() => { const nl = window.prompt("修改名称", it.label)?.trim(); if (nl) updateMut.mutate({ id: it.id, label: nl }); }} className="nodrag flex-shrink-0" title="重命名" style={{ background: "none", border: "none", color: "var(--c-t4)", cursor: "pointer", padding: 2 }}><Pencil className="w-3 h-3" /></button>
-                    <button onClick={() => { if (window.confirm(`删除「${it.label}」？`)) deleteMut.mutate({ id: it.id }); }} className="nodrag flex-shrink-0" title="删除" style={{ background: "none", border: "none", color: "var(--c-t4)", cursor: "pointer", padding: 2 }}><Trash2 className="w-3 h-3" /></button>
-                  </div>
+                  ) : (
+                    <div key={it.id} className="flex items-center gap-1.5 px-2 py-1.5 rounded-lg" style={{ background: "var(--c-input)", border: "1px solid var(--c-bd2)" }}>
+                      {it.slot != null && <Star className="w-3 h-3 flex-shrink-0" style={{ color: "oklch(0.66 0.18 30)", fill: "oklch(0.66 0.18 30)" }} />}
+                      <div className="flex-1 min-w-0 cursor-pointer" onClick={() => setEditing({ id: it.id, label: it.label, text: it.text, category: it.category })} title="点击编辑">
+                        <div style={{ fontSize: 11.5, fontWeight: 600, color: "var(--c-t1)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{it.label}</div>
+                        <div title={it.text} style={{ fontSize: 9.5, color: "var(--c-t4)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{it.text}</div>
+                      </div>
+                      {slotPicker(it.id, "prompt", it.slot)}
+                      <button onClick={() => setEditing({ id: it.id, label: it.label, text: it.text, category: it.category })} className="nodrag flex-shrink-0" title="编辑（名称/类别/正文）" style={{ background: "none", border: "none", color: "var(--c-t4)", cursor: "pointer", padding: 2 }}><Pencil className="w-3 h-3" /></button>
+                      <button onClick={() => { if (window.confirm(`删除「${it.label}」？`)) deleteMut.mutate({ id: it.id }); }} className="nodrag flex-shrink-0" title="删除" style={{ background: "none", border: "none", color: "var(--c-t4)", cursor: "pointer", padding: 2 }}><Trash2 className="w-3 h-3" /></button>
+                    </div>
+                  )
                 ))}
               </div>
             ))}
