@@ -1707,21 +1707,57 @@ function KiePanel() {
 function KieBindings({ keyId, keyName }: { keyId: number; keyName: string }) {
   const utils = trpc.useUtils();
   const listQ = trpc.admin.kie.listBindings.useQuery({ keyId });
-  const [userId, setUserId] = useState("");
+  const usersQ = trpc.admin.users.list.useQuery();
+  const [userId, setUserId] = useState("");          // 解析后的目标用户 ID（字符串）
+  const [query, setQuery] = useState("");            // 搜索框：用户名 / 邮箱 / ID
+  const [picked, setPicked] = useState<{ id: number; label: string } | null>(null);
   const [note, setNote] = useState("");
 
   const invalidate = () => { utils.admin.kie.listBindings.invalidate({ keyId }); utils.admin.kie.listKeys.invalidate(); };
-  const bind = trpc.admin.kie.bindUser.useMutation({ onSuccess: () => { invalidate(); setUserId(""); setNote(""); toast.success("已绑定"); }, onError: (e) => toast.error(e.message) });
+  const reset = () => { setUserId(""); setQuery(""); setPicked(null); setNote(""); };
+  const bind = trpc.admin.kie.bindUser.useMutation({ onSuccess: () => { invalidate(); reset(); toast.success("已绑定"); }, onError: (e) => toast.error(e.message) });
   const toggleBinding = trpc.admin.kie.setBindingEnabled.useMutation({ onSuccess: invalidate });
   const unbind = trpc.admin.kie.unbind.useMutation({ onSuccess: invalidate });
+
+  // 按用户名 / 邮箱 / ID 模糊匹配（最多 8 条）。
+  const q = query.trim().toLowerCase();
+  const matches = q
+    ? (usersQ.data ?? []).filter((u) =>
+        String(u.id) === q || (u.name ?? "").toLowerCase().includes(q) || (u.email ?? "").toLowerCase().includes(q),
+      ).slice(0, 8)
+    : [];
 
   const rows = listQ.data ?? [];
   return (
     <div style={{ ...cardStyle, marginBottom: 20, border: "1px solid oklch(0.72 0.15 200 / 0.3)" }}>
       <h3 style={{ margin: "0 0 12px", fontSize: 15, color: "var(--c-t1)" }}>key「{keyName}」的授权用户</h3>
       <div style={{ display: "flex", gap: 10, flexWrap: "wrap", marginBottom: 14, alignItems: "flex-end" }}>
-        <div style={{ flex: "1 1 140px" }}><label style={labelStyle}>用户 ID</label><input style={inputStyle} value={userId} onChange={(e) => setUserId(e.target.value)} placeholder="如：42" /></div>
-        <div style={{ flex: "1 1 200px" }}><label style={labelStyle}>备注（可选）</label><input style={inputStyle} value={note} onChange={(e) => setNote(e.target.value)} /></div>
+        <div style={{ flex: "1 1 240px", position: "relative" }}>
+          <label style={labelStyle}>绑定用户（用户名 / 邮箱 / ID）</label>
+          {picked ? (
+            <div style={{ ...inputStyle, display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8 }}>
+              <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{picked.label}（ID {picked.id}）</span>
+              <button onClick={() => { setPicked(null); setUserId(""); }} style={{ background: "none", border: "none", color: "var(--c-t3)", cursor: "pointer", flexShrink: 0 }}><X style={{ width: 14, height: 14 }} /></button>
+            </div>
+          ) : (
+            <input style={inputStyle} value={query} onChange={(e) => setQuery(e.target.value)} placeholder="输入用户名 / 邮箱 / ID 搜索…" />
+          )}
+          {!picked && matches.length > 0 && (
+            <div style={{ position: "absolute", top: "100%", left: 0, right: 0, zIndex: 20, marginTop: 4, background: "var(--c-base)", border: "1px solid var(--c-bd2)", borderRadius: 8, boxShadow: "0 8px 24px oklch(0 0 0 / 0.4)", maxHeight: 220, overflowY: "auto" }}>
+              {matches.map((u) => {
+                const label = u.name || u.email || ("#" + u.id);
+                return (
+                  <button key={u.id} onClick={() => { setPicked({ id: u.id, label }); setUserId(String(u.id)); setQuery(""); }}
+                    style={{ display: "block", width: "100%", textAlign: "left", padding: "7px 10px", background: "none", border: "none", borderBottom: "1px solid var(--c-bd1)", cursor: "pointer", color: "var(--c-t1)", fontSize: 12 }}>
+                    <span style={{ fontWeight: 600 }}>{u.name || "—"}</span>
+                    <span style={{ color: "var(--c-t3)", fontSize: 11 }}> · {u.email || u.openId} · ID {u.id}{u.disabled ? " · 已冻结" : ""}</span>
+                  </button>
+                );
+              })}
+            </div>
+          )}
+        </div>
+        <div style={{ flex: "1 1 180px" }}><label style={labelStyle}>备注（可选）</label><input style={inputStyle} value={note} onChange={(e) => setNote(e.target.value)} /></div>
         <button disabled={!/^\d+$/.test(userId.trim()) || bind.isPending} onClick={() => bind.mutate({ keyId, userId: parseInt(userId.trim(), 10), note: note.trim() || undefined })} style={{ display: "inline-flex", alignItems: "center", gap: 6, padding: "8px 14px", borderRadius: 8, border: "1px solid var(--c-bd2)", background: "var(--c-elevated)", color: "var(--c-t1)", fontSize: 13, cursor: (/^\d+$/.test(userId.trim()) && !bind.isPending) ? "pointer" : "not-allowed", opacity: (/^\d+$/.test(userId.trim()) && !bind.isPending) ? 1 : 0.5 }}>
           <Plus style={{ width: 14, height: 14 }} /> 绑定用户
         </button>
