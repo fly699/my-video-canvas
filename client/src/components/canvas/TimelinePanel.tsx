@@ -29,6 +29,8 @@ const TL_MIN_H = 96;
 const TL_MAX_H = 360;
 const TL_DEFAULT_H = 148;
 const TL_DOCK_BOTTOM = 72; // matches the legacy bottom offset that clears the toolbar
+// 失焦隐藏 header(28)+片段下方名称(22) 时面板收缩量，使框高贴合片段、无上下空白。
+const TL_CHROME_COLLAPSE = 50;
 
 const TL_DEFAULT_LAYOUT: TimelineLayout = {
   docked: true,
@@ -311,7 +313,9 @@ export function TimelinePanel({ onClose }: TimelinePanelProps) {
   );
   // Floating mode: manual resize sets the baseline; auto-width can still
   // push it wider as clips are added — never narrower than what the user set.
-  const floatingWidth = Math.max(layout.width, autoWidth);
+  // Floating mode: user's manual width as-is, so narrowing lets the inner
+  // overflow-x scroll hide overflow clips (no force-expand to fit them all).
+  const floatingWidth = layout.width;
   const rectStyle = layout.docked
     ? {
         left: "50%" as const,
@@ -331,7 +335,9 @@ export function TimelinePanel({ onClose }: TimelinePanelProps) {
       style={{
         position: "absolute",
         ...rectStyle,
-        height: layout.height,
+        // 失焦（仅浮动模式）时收缩掉 header+名称高度，使框高贴合片段、无上下空白。
+        height: showChrome ? layout.height : Math.max(0, layout.height - TL_CHROME_COLLAPSE),
+        transition: "height 180ms ease",
         background: "color-mix(in oklch, var(--c-base) 97%, transparent)",
         border: layout.docked ? undefined : "1px solid var(--c-bd1)",
         borderTop: layout.docked ? "1px solid var(--c-bd1)" : undefined,

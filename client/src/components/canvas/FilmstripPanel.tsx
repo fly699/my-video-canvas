@@ -29,6 +29,8 @@ const MIN_WIDTH = 240;
 const MIN_HEIGHT = 84;
 const MAX_HEIGHT = 360;
 const DEFAULT_HEIGHT = 140;
+// 失焦隐藏 header(28)+缩略图下方名称(22) 时，面板高度收缩这么多，使框高贴合缩略图、无上下空白。
+const CHROME_COLLAPSE = 50;
 
 const DEFAULT_LAYOUT: FilmstripLayout = {
   docked: true,
@@ -302,7 +304,11 @@ export function FilmstripPanel({ onClose }: FilmstripPanelProps) {
       ? HEADER_MIN
       : sortedNodes.length * (FRAME_W + FRAME_GAP) - FRAME_GAP + SIDE_PADDING,
   );
-  const floatingWidth = Math.max(layout.width, autoWidth);
+  // Floating mode: use the user's manual width as-is. Narrowing past the total
+  // thumbnail width lets the inner overflow-x scroll hide the overflow frames —
+  // previously max(width, autoWidth) force-expanded to fit them all, so the panel
+  // couldn't be shrunk.
+  const floatingWidth = layout.width;
   const rectStyle = layout.docked
     ? {
         left: "50%" as const,
@@ -326,7 +332,9 @@ export function FilmstripPanel({ onClose }: FilmstripPanelProps) {
         // sit higher so the overview/timeline stay reachable.
         position: "absolute",
         ...rectStyle,
-        height: layout.height,
+        // 失焦（仅浮动模式）时收缩掉 header+名称的高度，使框高贴合缩略图、无上下空白。
+        height: showChrome ? layout.height : Math.max(0, layout.height - CHROME_COLLAPSE),
+        transition: "height 180ms ease",
         background: "var(--c-base)",
         backdropFilter: "blur(16px)",
         border: layout.docked ? undefined : "1px solid var(--c-bd1)",
