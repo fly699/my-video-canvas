@@ -132,6 +132,12 @@ interface CanvasStore {
   batchUpdateNodeData: (updates: { id: string; payload: Partial<NodeData> }[]) => void;
   /** Batch-move many nodes in one history step (used by the agent's auto-layout). */
   batchUpdateNodePositions: (updates: { id: string; position: { x: number; y: number } }[]) => void;
+  /** 静默批量移动（不入历史），用于群组容器拖动时让成员实时跟随；与普通拖动一致（拖动不入历史）。 */
+  setNodePositionsSilent: (updates: { id: string; position: { x: number; y: number } }[]) => void;
+  /** 把选中的多个节点用一个 `group` 容器框住（记录 childIds），返回新建的 group 节点 id；不足 2 个返回 null。 */
+  groupSelected: (childIds: string[], title?: string) => string | null;
+  /** 解组：仅删除 group 容器节点，成员保留。 */
+  ungroup: (groupId: string) => void;
   /** Run `fn` as a single undoable batch: snapshot history once up-front and
    *  suppress per-action history pushes during `fn` (used when the agent applies
    *  a multi-step plan so one Ctrl+Z reverts the whole batch). */
@@ -442,6 +448,64 @@ export const useCanvasStore = create<CanvasStore>((set, get) => ({
     set((state) => ({
       ...pushHistory(state),
       nodes: state.nodes.map((n) => (posMap.has(n.id) ? { ...n, position: posMap.get(n.id)! } : n)),
+      isDirty: true,
+    }));
+  },
+
+  setNodePositionsSilent: (updates) => {
+    if (updates.length === 0) return;
+    const posMap = new Map(updates.map((u) => [u.id, u.position]));
+    set((state) => ({
+      nodes: state.nodes.map((n) => (posMap.has(n.id) ? { ...n, position: posMap.get(n.id)! } : n)),
+      isDirty: true,
+    }));
+  },
+
+  groupSelected: (childIds, title) => {
+    const projectId = get().projectId;
+    if (!projectId) return null;
+    const members = get().nodes.filter((n) => childIds.includes(n.id) && n.data.nodeType !== "group");
+    if (members.length < 2) return null;
+    let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+    for (const n of members) {
+      const cfg = getNodeConfig(n.data.nodeType);
+      const w = (typeof n.style?.width === "number" ? n.style.width : cfg.defaultWidth) || 280;
+      const h = (typeof n.style?.height === "number" ? n.style.height : (cfg.defaultHeight ?? 200)) || 200;
+      minX = Math.min(minX, n.position.x);
+      minY = Math.min(minY, n.position.y);
+      maxX = Math.max(maxX, n.position.x + w);
+      maxY = Math.max(maxY, n.position.y + h);
+    }
+    const PAD = 36, HEADER = 44;
+    const rect = { x: minX - PAD, y: minY - PAD - HEADER, width: (maxX - minX) + PAD * 2, height: (maxY - minY) + PAD * 2 + HEADER };
+    const uid = get().currentUserId;
+    const id = nanoid();
+    const node: CanvasNode = {
+      id,
+      type: "custom",
+      position: { x: rect.x, y: rect.y },
+      zIndex: -1,
+      data: {
+        nodeType: "group",
+        title: title ?? "群组",
+        payload: { ...getDefaultPayload("group"), childIds: members.map((m) => m.id), ...(uid != null ? { createdBy: uid } : {}) } as NodeData,
+        projectId,
+      },
+      style: { width: rect.width, height: rect.height },
+    };
+    set((state) => ({
+      ...(get()._suppressHistory ? {} : pushHistory(state)),
+      nodes: [...state.nodes, node],
+      isDirty: true,
+    }));
+    return id;
+  },
+
+  ungroup: (groupId) => {
+    set((state) => ({
+      ...(get()._suppressHistory ? {} : pushHistory(state)),
+      nodes: state.nodes.filter((n) => n.id !== groupId),
+      deletedNodeIds: [...state.deletedNodeIds, groupId],
       isDirty: true,
     }));
   },

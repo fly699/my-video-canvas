@@ -34,6 +34,7 @@ export const GroupNode = memo(function GroupNode({ id, selected, data }: Props) 
   const collapsed = payload.collapsed ?? false;
   const colorKey = payload.color ?? "gray";
   const color = GROUP_COLORS.find(c => c.value === colorKey) ?? GROUP_COLORS[4];
+  const memberCount = payload.childIds?.length ?? 0;
 
   const handleSaveLabel = () => {
     updateNodeTitle(id, labelValue.trim() || "分组");
@@ -101,9 +102,14 @@ export const GroupNode = memo(function GroupNode({ id, selected, data }: Props) 
           ) : (
             <span
               onDoubleClick={() => setEditingLabel(true)}
-              style={{ flex: 1, fontSize: 12, fontWeight: 600, color: color.accent, cursor: "text", userSelect: "none" }}
+              style={{ flex: 1, fontSize: 12, fontWeight: 600, color: color.accent, cursor: "text", userSelect: "none", display: "flex", alignItems: "center", gap: 6 }}
             >
               {data.title}
+              {memberCount > 0 && (
+                <span style={{ fontSize: 10, fontWeight: 600, color: color.accent, opacity: 0.7, background: `${color.accent}1a`, border: `1px solid ${color.border}`, borderRadius: 6, padding: "0 5px", lineHeight: "15px" }}>
+                  {memberCount} 个节点
+                </span>
+              )}
             </span>
           )}
 
