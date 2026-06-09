@@ -4,25 +4,47 @@ import { KIE_BASE_URL } from "./kie";
 import type { GenerateImageOptions, GenerateImageResponse } from "./imageGeneration";
 
 // kie.ai image models via the UNIFIED jobs API (POST /api/v1/jobs/createTask +
-// GET /api/v1/jobs/recordInfo). `edit:true` models require reference image(s),
-// sent as input.image_urls. `id` is kie's wire `model` value (from the API docs).
-export interface KieImageSpec { id: string; label: string; family: string; edit: boolean }
+// GET /api/v1/jobs/recordInfo). `id` is kie's wire `model` value (from the API
+// docs). Per-model fields below are VERBATIM from docs/kie-api.md — they differ
+// per model and must not be sent uniformly (kie ignores unknown keys, but the
+// reference-image field name and the aspect field genuinely differ):
+//   - ref:    edit/i2i reference field name (image_urls vs input_urls). Presence
+//             marks the model as edit (reference image required).
+//   - aspect: which field the chosen ratio maps to — "aspect_ratio" for most,
+//             "image_size" for Seedream 4.0 (a DIFFERENT value space: tokens like
+//             `landscape_16_9`, not "16:9", so the ratio is translated).
+//   - outFmt: whether the model accepts output_format (Google/Nano Banana only).
+export interface KieImageSpec {
+  id: string; label: string; family: string;
+  ref?: "image_urls" | "input_urls";
+  aspect: "aspect_ratio" | "image_size";
+  outFmt?: boolean;
+}
 export const KIE_IMAGE_MODELS: Record<string, KieImageSpec> = {
   // text-to-image
-  kie_nano_banana:      { id: "google/nano-banana", label: "Nano Banana", family: "Nano Banana", edit: false },
-  kie_nano_banana_pro:  { id: "nano-banana-pro", label: "Nano Banana Pro", family: "Nano Banana", edit: false },
-  kie_seedream_v4:      { id: "bytedance/seedream-v4-text-to-image", label: "Seedream 4.0", family: "Seedream", edit: false },
-  kie_seedream_45:      { id: "seedream/4.5-text-to-image", label: "Seedream 4.5", family: "Seedream", edit: false },
-  kie_flux2_pro:        { id: "flux-2/pro-text-to-image", label: "Flux-2 Pro", family: "Flux-2", edit: false },
-  kie_gpt_image_15:     { id: "gpt-image/1.5-text-to-image", label: "GPT Image 1.5", family: "GPT Image", edit: false },
-  kie_imagen4:          { id: "google/imagen4", label: "Imagen 4", family: "Imagen", edit: false },
-  kie_z_image:          { id: "z-image", label: "Z-Image", family: "Z-Image", edit: false },
-  kie_grok_image:       { id: "grok-imagine/text-to-image", label: "Grok Image", family: "Grok", edit: false },
-  // image-to-image / edit (require reference image)
-  kie_nano_banana_edit: { id: "google/nano-banana-edit", label: "Nano Banana 编辑", family: "Nano Banana", edit: true },
-  kie_seedream_v4_edit: { id: "bytedance/seedream-v4-edit", label: "Seedream 4.0 编辑", family: "Seedream", edit: true },
-  kie_flux2_pro_i2i:    { id: "flux-2/pro-image-to-image", label: "Flux-2 Pro 图生图", family: "Flux-2", edit: true },
-  kie_gpt_image_15_edit:{ id: "gpt-image/1.5-image-to-image", label: "GPT Image 1.5 编辑", family: "GPT Image", edit: true },
+  kie_nano_banana:      { id: "google/nano-banana", label: "Nano Banana", family: "Nano Banana", aspect: "aspect_ratio", outFmt: true },
+  kie_nano_banana_pro:  { id: "nano-banana-pro", label: "Nano Banana Pro", family: "Nano Banana", aspect: "aspect_ratio", outFmt: true },
+  kie_seedream_v4:      { id: "bytedance/seedream-v4-text-to-image", label: "Seedream 4.0", family: "Seedream", aspect: "image_size" },
+  kie_seedream_45:      { id: "seedream/4.5-text-to-image", label: "Seedream 4.5", family: "Seedream", aspect: "aspect_ratio" },
+  kie_flux2_pro:        { id: "flux-2/pro-text-to-image", label: "Flux-2 Pro", family: "Flux-2", aspect: "aspect_ratio" },
+  kie_gpt_image_15:     { id: "gpt-image/1.5-text-to-image", label: "GPT Image 1.5", family: "GPT Image", aspect: "aspect_ratio" },
+  kie_imagen4:          { id: "google/imagen4", label: "Imagen 4", family: "Imagen", aspect: "aspect_ratio" },
+  kie_z_image:          { id: "z-image", label: "Z-Image", family: "Z-Image", aspect: "aspect_ratio" },
+  kie_grok_image:       { id: "grok-imagine/text-to-image", label: "Grok Image", family: "Grok", aspect: "aspect_ratio" },
+  // image-to-image / edit (require reference image — note the field name differs!)
+  kie_nano_banana_edit: { id: "google/nano-banana-edit", label: "Nano Banana 编辑", family: "Nano Banana", ref: "image_urls", aspect: "aspect_ratio", outFmt: true },
+  kie_seedream_v4_edit: { id: "bytedance/seedream-v4-edit", label: "Seedream 4.0 编辑", family: "Seedream", ref: "image_urls", aspect: "image_size" },
+  kie_flux2_pro_i2i:    { id: "flux-2/pro-image-to-image", label: "Flux-2 Pro 图生图", family: "Flux-2", ref: "input_urls", aspect: "aspect_ratio" },
+  kie_gpt_image_15_edit:{ id: "gpt-image/1.5-image-to-image", label: "GPT Image 1.5 编辑", family: "GPT Image", ref: "input_urls", aspect: "aspect_ratio" },
+};
+
+// Seedream 4.0 uses `image_size` with a token vocabulary instead of "16:9" ratios.
+// Translate the canvas's aspect-ratio string to the nearest Seedream token
+// (docs/kie-api.md §Seedream4.0); default square_hd when unknown.
+const SEEDREAM_SIZE: Record<string, string> = {
+  "1:1": "square_hd", "16:9": "landscape_16_9", "9:16": "portrait_16_9",
+  "4:3": "landscape_4_3", "3:4": "portrait_4_3", "3:2": "landscape_3_2",
+  "2:3": "portrait_3_2", "21:9": "landscape_21_9",
 };
 
 export function isKieImageModel(model?: string): boolean {
@@ -40,13 +62,19 @@ export async function generateImageKie(options: GenerateImageOptions): Promise<G
   const spec = KIE_IMAGE_MODELS[options.model ?? ""];
   if (!spec) throw new Error(`未知 kie 图像模型：${options.model}`);
 
-  const input: Record<string, unknown> = { prompt: options.prompt, output_format: "png" };
+  const input: Record<string, unknown> = { prompt: options.prompt };
+  if (spec.outFmt) input.output_format = "png"; // Google models only — others 422-safe but cleaner to omit
   const aspect = options.size ?? options.reveAspectRatio;
-  if (aspect) input.aspect_ratio = aspect;
-  if (spec.edit) {
+  if (aspect) {
+    // Map the chosen ratio onto the model's actual field (Seedream 4.0 uses the
+    // `image_size` token space, everyone else uses `aspect_ratio`).
+    if (spec.aspect === "image_size") input.image_size = SEEDREAM_SIZE[aspect] ?? "square_hd";
+    else input.aspect_ratio = aspect;
+  }
+  if (spec.ref) {
     const refs = (options.originalImages ?? []).map((o) => o.url).filter((u): u is string => !!u);
     if (refs.length === 0) throw new Error(`${spec.label} 需要参考图，请先连接或上传参考图`);
-    input.image_urls = refs;
+    input[spec.ref] = refs; // image_urls (Seedream/Nano) vs input_urls (Flux-2/GPT)
   }
 
   // createTask

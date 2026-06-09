@@ -163,6 +163,22 @@ const PROVIDERS: { value: VideoProvider; label: string; group: string; family: s
   { value: "hf_dop_standard",         label: "DoP Standard",        group: "Higgsfield", family: "DoP", costLabel: "HF 计费",    caps: ["I2V", "运镜"] },
   { value: "hf_dop_lite",             label: "DoP Lite",            group: "Higgsfield", family: "DoP", costLabel: "HF 计费",    caps: ["I2V", "4s"] },
   { value: "hf_dop_turbo",            label: "DoP Turbo",           group: "Higgsfield", family: "DoP", costLabel: "HF 计费",    caps: ["I2V", "4s"] },
+  // ── kie.ai (own key system: 临时 > 分配 > 公用; credits from docs/kie-pricing.md) ──
+  { value: "kie_veo31_quality",       label: "Veo 3.1 Quality",     group: "Kie", family: "Veo",      costLabel: "720p 250/1080p 255/4K 380 点", caps: ["T2V", "I2V", "8s", "4K"] },
+  { value: "kie_veo31_fast",          label: "Veo 3.1 Fast",        group: "Kie", family: "Veo",      costLabel: "720p 60/1080p 65/4K 180 点",   caps: ["T2V", "I2V", "8s", "4K"] },
+  { value: "kie_kling26_t2v",         label: "Kling 2.6 文生视频",  group: "Kie", family: "Kling",    costLabel: "5s 55-110/10s 110-220 点",     caps: ["T2V", "原生音频", "5/10s"] },
+  { value: "kie_kling26_i2v",         label: "Kling 2.6 图生视频",  group: "Kie", family: "Kling",    costLabel: "5s 55-110/10s 110-220 点",     caps: ["I2V", "原生音频", "5/10s"] },
+  { value: "kie_kling30",             label: "Kling 3.0",           group: "Kie", family: "Kling",    costLabel: "1080p≈18-27/4K 67 点·秒",      caps: ["T2V", "首尾帧", "音频", "4K"] },
+  { value: "kie_kling25turbo_t2v",    label: "Kling 2.5 Turbo 文生", group: "Kie", family: "Kling",   costLabel: "5s 42/10s 84 点",              caps: ["T2V", "5/10s"] },
+  { value: "kie_kling25turbo_i2v",    label: "Kling 2.5 Turbo 图生", group: "Kie", family: "Kling",   costLabel: "5s 42/10s 84 点",              caps: ["I2V", "5/10s"] },
+  { value: "kie_wan25_t2v",           label: "Wan 2.5 文生视频",    group: "Kie", family: "Wan",      costLabel: "5s 60-100/10s 120-200 点",     caps: ["T2V", "720p/1080p"] },
+  { value: "kie_wan25_i2v",           label: "Wan 2.5 图生视频",    group: "Kie", family: "Wan",      costLabel: "5s 60-100/10s 120-200 点",     caps: ["I2V", "720p/1080p"] },
+  { value: "kie_wan26_t2v",           label: "Wan 2.6 文生视频",    group: "Kie", family: "Wan",      costLabel: "5/10/15s 70-315 点",           caps: ["T2V", "5/10/15s"] },
+  { value: "kie_wan26_i2v",           label: "Wan 2.6 图生视频",    group: "Kie", family: "Wan",      costLabel: "5/10/15s 70-315 点",           caps: ["I2V", "5/10/15s"] },
+  { value: "kie_hailuo23_pro",        label: "Hailuo 2.3 Pro",      group: "Kie", family: "Hailuo",   costLabel: "6s 45-80/10s 90 点",           caps: ["I2V", "768P/1080P"] },
+  { value: "kie_hailuo23_std",        label: "Hailuo 2.3 标准",     group: "Kie", family: "Hailuo",   costLabel: "6s 30-50/10s 50 点",           caps: ["I2V", "768P/1080P"] },
+  { value: "kie_seedance2",           label: "Seedance 2.0",        group: "Kie", family: "Seedance", costLabel: "19-102 点·秒",                 caps: ["T2V", "首帧", "音频"] },
+  { value: "kie_seedance2_fast",      label: "Seedance 2.0 Fast",   group: "Kie", family: "Seedance", costLabel: "15.5-33 点·秒",                caps: ["T2V", "首帧", "音频"] },
   { value: "mock",                    label: "Mock 测试",           group: "Dev",        family: "Dev", costLabel: "免费",       caps: ["测试"] },
 ];
 
@@ -378,6 +394,72 @@ const GROK_PARAMS: ParamDef[] = [
     options: [{ value: "fun", label: "fun" }, { value: "normal", label: "normal" }, { value: "spicy", label: "spicy" }] },
 ];
 
+// ── kie.ai video param controls (keys = verbatim kie input fields; see
+// server/_core/kieVideo.ts + docs/kie-api.md). Duration sent as a number and
+// coerced to the doc's string enum server-side; Veo uses camelCase aspectRatio. ──
+const KIE_RES_WAN = [{ value: "720p", label: "720p" }, { value: "1080p", label: "1080p" }];
+const KIE_RES_HAILUO = [{ value: "768P", label: "768P" }, { value: "1080P", label: "1080P" }];
+const KIE_RES_SEEDANCE = [{ value: "480p", label: "480p" }, { value: "720p", label: "720p" }, { value: "1080p", label: "1080p" }];
+const KIE_DUR_5_10_15 = [{ value: 5, label: "5 秒" }, { value: 10, label: "10 秒" }, { value: 15, label: "15 秒" }];
+const KIE_AR_SEEDANCE = [
+  { value: "21:9", label: "21:9 超宽" }, { value: "16:9", label: "16:9 横屏" }, { value: "4:3", label: "4:3 标准" },
+  { value: "1:1", label: "1:1 方形" }, { value: "3:4", label: "3:4 竖屏" }, { value: "9:16", label: "9:16 竖屏" },
+];
+const KIE_VEO_PARAMS: ParamDef[] = [
+  { type: "select", key: "aspectRatio", label: "宽高比", default: "16:9", options: AR_2 },
+];
+const KIE_KLING26_T2V_PARAMS: ParamDef[] = [
+  { type: "select", key: "aspect_ratio", label: "宽高比", default: "16:9", options: AR_3 },
+  { type: "select", key: "duration", label: "时长（秒）", default: 5, options: DUR_5_10 },
+  { type: "toggle", key: "sound", label: "原生音频（有声 2x 计费）", default: false },
+];
+const KIE_KLING26_I2V_PARAMS: ParamDef[] = [
+  { type: "select", key: "duration", label: "时长（秒）", default: 5, options: DUR_5_10 },
+  { type: "toggle", key: "sound", label: "原生音频（有声 2x 计费）", default: false },
+];
+const KIE_KLING30_PARAMS: ParamDef[] = [
+  { type: "select", key: "mode", label: "画质档", default: "std",
+    options: [{ value: "std", label: "标准" }, { value: "pro", label: "Pro 1080p" }, { value: "4K", label: "4K" }] },
+  { type: "select", key: "aspect_ratio", label: "宽高比", default: "16:9", options: AR_3 },
+  { type: "range", key: "duration", label: "时长（秒）", min: 3, max: 15, step: 1, default: 5, unit: "s" },
+  { type: "toggle", key: "sound", label: "原生音频", default: false },
+];
+const KIE_KLING25T_T2V_PARAMS: ParamDef[] = [
+  { type: "select", key: "duration", label: "时长（秒）", default: 5, options: DUR_5_10 },
+  { type: "select", key: "aspect_ratio", label: "宽高比", default: "16:9", options: AR_3 },
+  { type: "range", key: "cfg_scale", label: "提示词贴合度", min: 0, max: 1, step: 0.1, default: 0.5 },
+];
+const KIE_KLING25T_I2V_PARAMS: ParamDef[] = [
+  { type: "select", key: "duration", label: "时长（秒）", default: 5, options: DUR_5_10 },
+  { type: "range", key: "cfg_scale", label: "提示词贴合度", min: 0, max: 1, step: 0.1, default: 0.5 },
+];
+const KIE_WAN25_T2V_PARAMS: ParamDef[] = [
+  { type: "select", key: "resolution", label: "分辨率", default: "1080p", options: KIE_RES_WAN },
+  { type: "select", key: "aspect_ratio", label: "宽高比", default: "16:9", options: AR_3 },
+  { type: "select", key: "duration", label: "时长（秒）", default: 5, options: DUR_5_10 },
+  seedDef,
+];
+const KIE_WAN25_I2V_PARAMS: ParamDef[] = [
+  { type: "select", key: "resolution", label: "分辨率", default: "1080p", options: KIE_RES_WAN },
+  { type: "select", key: "duration", label: "时长（秒）", default: 5, options: DUR_5_10 },
+  seedDef,
+];
+const KIE_WAN26_PARAMS: ParamDef[] = [
+  { type: "select", key: "resolution", label: "分辨率", default: "1080p", options: KIE_RES_WAN },
+  { type: "select", key: "duration", label: "时长（秒）", default: 5, options: KIE_DUR_5_10_15 },
+];
+const KIE_HAILUO23_PARAMS: ParamDef[] = [
+  { type: "select", key: "resolution", label: "分辨率", default: "768P", options: KIE_RES_HAILUO },
+  { type: "select", key: "duration", label: "时长（秒）", default: 6, options: DUR_6_10 },
+];
+const KIE_SEEDANCE2_PARAMS: ParamDef[] = [
+  { type: "select", key: "resolution", label: "分辨率", default: "720p", options: KIE_RES_SEEDANCE },
+  { type: "select", key: "aspect_ratio", label: "宽高比", default: "16:9", options: KIE_AR_SEEDANCE },
+  { type: "range", key: "duration", label: "时长（秒）", min: 4, max: 15, step: 1, default: 5, unit: "s" },
+  { type: "toggle", key: "generate_audio", label: "AI 生成音频", default: true },
+  seedDef,
+];
+
 const PROVIDER_PARAMS: Record<string, ParamDef[]> = {
   poyo_seedance: [
     { type: "select", key: "aspect_ratio", label: "宽高比", default: "16:9",
@@ -484,6 +566,22 @@ const PROVIDER_PARAMS: Record<string, ParamDef[]> = {
   poyo_hailuo23: HAILUO23_PARAMS,
   poyo_happy_horse: HAPPY_HORSE_PARAMS,
   poyo_grok_video: GROK_PARAMS,
+  // ── kie.ai video ──
+  kie_veo31_quality: KIE_VEO_PARAMS,
+  kie_veo31_fast: KIE_VEO_PARAMS,
+  kie_kling26_t2v: KIE_KLING26_T2V_PARAMS,
+  kie_kling26_i2v: KIE_KLING26_I2V_PARAMS,
+  kie_kling30: KIE_KLING30_PARAMS,
+  kie_kling25turbo_t2v: KIE_KLING25T_T2V_PARAMS,
+  kie_kling25turbo_i2v: KIE_KLING25T_I2V_PARAMS,
+  kie_wan25_t2v: KIE_WAN25_T2V_PARAMS,
+  kie_wan25_i2v: KIE_WAN25_I2V_PARAMS,
+  kie_wan26_t2v: KIE_WAN26_PARAMS,
+  kie_wan26_i2v: KIE_WAN26_PARAMS,
+  kie_hailuo23_pro: KIE_HAILUO23_PARAMS,
+  kie_hailuo23_std: KIE_HAILUO23_PARAMS,
+  kie_seedance2: KIE_SEEDANCE2_PARAMS,
+  kie_seedance2_fast: KIE_SEEDANCE2_PARAMS,
   mock: [],
 };
 
@@ -862,6 +960,8 @@ export const VideoTaskNode = memo(function VideoTaskNode({ id, selected, data }:
       referenceAudioUrls: refMedia.audioRefs,
       referenceMode: refModeForSubmit(),
       params: withParamDefaults(payload.provider, payload.params),
+      // kie video models auth via their own key (temp > assigned > house).
+      ...(payload.provider.startsWith("kie_") ? { kieTempKey: localStorage.getItem("kie:tempKey") || undefined } : {}),
     });
     guard({ model: payload.provider, refImageUrl: finalRefImage }, submit);
   };
@@ -1386,7 +1486,7 @@ export const VideoTaskNode = memo(function VideoTaskNode({ id, selected, data }:
                       // but each provider still needs its OWN required-field defaults
                       // (resolution/aspect_ratio/duration/...) since the backend no longer
                       // hard-defaults them — so pass that provider's ParamDef defaults.
-                      { nodeId: id, projectId: data.projectId, provider, prompt: submission.prompt, negativePrompt: SUPPORTS_NEGATIVE_PROMPT.has(provider) ? payload.negativePrompt : undefined, referenceImageUrl: submission.referenceImageUrl, referenceImageUrls: buildRefUrls(provider, submission.referenceImageUrl), referenceVideoUrls: collectRefMedia(provider).videoRefs, referenceAudioUrls: collectRefMedia(provider).audioRefs, referenceMode: refModeForSubmit(), params: withParamDefaults(provider, {}) },
+                      { nodeId: id, projectId: data.projectId, provider, prompt: submission.prompt, negativePrompt: SUPPORTS_NEGATIVE_PROMPT.has(provider) ? payload.negativePrompt : undefined, referenceImageUrl: submission.referenceImageUrl, referenceImageUrls: buildRefUrls(provider, submission.referenceImageUrl), referenceVideoUrls: collectRefMedia(provider).videoRefs, referenceAudioUrls: collectRefMedia(provider).audioRefs, referenceMode: refModeForSubmit(), params: withParamDefaults(provider, {}), ...(provider.startsWith("kie_") ? { kieTempKey: localStorage.getItem("kie:tempKey") || undefined } : {}) },
                       {
                         onSuccess: (result) => {
                           if (parallelGenRef.current !== gen) return; // stale — user closed parallel mode

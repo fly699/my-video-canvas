@@ -62,6 +62,10 @@ import type { SubtitleEntry } from "../../shared/types";
 import { assertWhitelisted, assertLLMAllowed, assertComfyuiAllowed, assertComfyuiCloudAllowed, isComfyuiCloudAllowed } from "../_core/whitelist";
 import { resolveKieKey } from "../_core/kie";
 import { isKieImageModel } from "../_core/kieImage";
+import { isKieVideoProvider, submitKieVideo } from "../_core/kieVideo";
+import { isKieMusicModel, submitAndPollKieMusic } from "../_core/kieMusic";
+import { isKieLLMModel, invokeKieLLM } from "../_core/kieLLM";
+import { encryptKieKey, decryptKieKey } from "../_core/kieCrypto";
 import { writeAuditLog, truncate } from "../_core/auditLog";
 import { withComfyUsageLog } from "../_core/comfyUsageLog";
 import { dedupe } from "../_core/idempotency";
@@ -599,10 +603,22 @@ export const videoTasksRouter = router({
         // route them to reference_image_urls (multi-reference) rather than首尾帧.
         referenceMode: z.enum(["reference", "frame"]).optional(),
         params: z.record(z.string(), z.unknown()).optional(),
+        // kie.ai temp key (localStorage kie:tempKey) — only used for kie_* providers.
+        kieTempKey: z.string().max(256).optional(),
       })
     )
     .mutation(async ({ ctx, input }) => {
-      await assertWhitelisted(ctx);
+      // kie.ai video models have their OWN auth (temp > assigned > house, see
+      // resolveKieKey) and bypass the Poyo/Higgsfield whitelist. The resolved key
+      // is stashed encrypted in params (_kieKeyEnc) so the detached poller can
+      // poll recordInfo without a user context. Non-kie keeps the whitelist gate.
+      let kieKeyEnc: string | undefined;
+      if (isKieVideoProvider(input.provider)) {
+        const resolved = await resolveKieKey(ctx, input.kieTempKey);
+        kieKeyEnc = encryptKieKey(resolved.key);
+      } else {
+        await assertWhitelisted(ctx);
+      }
       await assertProjectAccess(input.projectId, ctx.user.id, "editor");
       // Validate every reference URL (single + multi) the same way.
       const validateRef = (u: string) => {
@@ -636,7 +652,7 @@ export const videoTasksRouter = router({
       const baseParams = (input.params as Record<string, unknown> | undefined) ?? undefined;
       // Only stash reference mode when it'd actually change mapping (reference + ≥1 ref).
       const stashRefMode = input.referenceMode === "reference" && refList.length > 0;
-      const needsStash = refList.length > 1 || refVideos.length > 0 || refAudios.length > 0 || stashRefMode;
+      const needsStash = refList.length > 1 || refVideos.length > 0 || refAudios.length > 0 || stashRefMode || !!kieKeyEnc;
       const mergedParams: Record<string, unknown> | undefined = needsStash
         ? {
             ...(baseParams ?? {}),
@@ -644,6 +660,9 @@ export const videoTasksRouter = router({
             ...(refVideos.length > 0 ? { _referenceVideoUrls: refVideos } : {}),
             ...(refAudios.length > 0 ? { _referenceAudioUrls: refAudios } : {}),
             ...(stashRefMode ? { _refMode: "reference" } : {}),
+            // Encrypted kie key for the poller (filtered from any upstream payload
+            // by kieVideo's allow-list — it only copies spec'd param keys).
+            ...(kieKeyEnc ? { _kieKeyEnc: kieKeyEnc } : {}),
           }
         : baseParams;
 
@@ -717,6 +736,15 @@ export const videoTasksRouter = router({
               prompt: input.prompt,
               negativePrompt: input.negativePrompt,
               referenceImageUrl: input.referenceImageUrl,
+              params: input.params as Record<string, unknown>,
+            });
+            externalTaskId = result.externalTaskId;
+          } else if (isKieVideoProvider(input.provider)) {
+            const result = await submitKieVideo({
+              provider: input.provider,
+              prompt: input.prompt,
+              apiKey: decryptKieKey(kieKeyEnc!),
+              referenceImageUrls: refList,
               params: input.params as Record<string, unknown>,
             });
             externalTaskId = result.externalTaskId;
@@ -921,15 +949,24 @@ export const aiChatRouter = router({
           name: z.string().max(255),
           textContent: z.string().max(50_000).optional(),
         })).max(8).optional(),
+        kieTempKey: z.string().max(256).optional(), // kie_* chat models only
       })
     )
     .mutation(async ({ ctx, input }) => {
-      // Gate on whitelist before access check so banned users get a uniform
-      // "not whitelisted" error rather than a project FORBIDDEN; this also
-      // closes the gap that let an editor invoke the LLM without any
-      // platform-side limit (all other AI mutations call assertWhitelisted).
-      // LLM-scoped gate: respects the admin "open LLM" bypass.
-      await assertLLMAllowed(ctx);
+      // kie chat models authenticate with their own key (temp > assigned > house)
+      // and bypass the LLM whitelist; everything else keeps the LLM gate.
+      let kieLLMKey: string | undefined;
+      if (isKieLLMModel(input.model)) {
+        const resolved = await resolveKieKey(ctx, input.kieTempKey);
+        kieLLMKey = resolved.key;
+      } else {
+        // Gate on whitelist before access check so banned users get a uniform
+        // "not whitelisted" error rather than a project FORBIDDEN; this also
+        // closes the gap that let an editor invoke the LLM without any
+        // platform-side limit (all other AI mutations call assertWhitelisted).
+        // LLM-scoped gate: respects the admin "open LLM" bypass.
+        await assertLLMAllowed(ctx);
+      }
       await assertProjectAccess(input.projectId, ctx.user.id, "editor");
       // Allow empty message when there's at least one attachment — image-only prompts are valid.
       if (!input.message.trim() && !(input.attachments?.length ?? 0)) {
@@ -1024,8 +1061,13 @@ export const aiChatRouter = router({
 
       let assistantContent: string;
       try {
-        const response = await invokeLLM({ messages, model: input.model });
-        assistantContent = extractTextContent(response) || "（模型返回内容为空）";
+        if (kieLLMKey) {
+          const r = await invokeKieLLM({ model: input.model!, messages, apiKey: kieLLMKey });
+          assistantContent = r.text || "（模型返回内容为空）";
+        } else {
+          const response = await invokeLLM({ messages, model: input.model });
+          assistantContent = extractTextContent(response) || "（模型返回内容为空）";
+        }
       } catch (err) {
         throw new TRPCError({
           code: "INTERNAL_SERVER_ERROR",
@@ -1874,18 +1916,42 @@ export const audioGenRouter = router({
           "suno-v4", "suno-v4.5", "suno-v4.5plus", "suno-v4.5all", "suno-v5", "suno-v5.5",
           // Live (MiniMax via status endpoint)
           "minimax-music-2.6",
+          // kie.ai Suno (own key system, /api/v1/generate)
+          "kie_suno_v4", "kie_suno_v4_5", "kie_suno_v4_5plus", "kie_suno_v5", "kie_suno_v5_5",
           // Legacy aliases — normalized below
           "suno-v3.5", "minimax-music-02", "mureka",
         ]),
         prompt: z.string().min(1),
         style: z.string().optional(),
+        title: z.string().max(120).optional(),     // Suno custom-mode title
         instrumental: z.boolean().optional(),
         negativeTags: z.string().optional(),
         lyrics: z.string().max(3500).optional(),   // MiniMax only
+        kieTempKey: z.string().max(256).optional(), // kie_suno_* only
         projectId: z.number().optional(),
       })
     )
     .mutation(async ({ ctx, input }) => {
+      // kie Suno authenticates with its own key (temp > assigned > house) and
+      // bypasses the Poyo whitelist; non-kie keeps the whitelist gate.
+      if (isKieMusicModel(input.model)) {
+        if (input.projectId != null) await assertProjectAccess(input.projectId, ctx.user.id, "editor");
+        const resolved = await resolveKieKey(ctx, input.kieTempKey);
+        return dedupe("audioGen.generateMusic", ctx.user.id, input, async () => {
+          const result = await submitAndPollKieMusic({
+            model: input.model,
+            apiKey: resolved.key,
+            prompt: input.prompt,
+            style: input.style,
+            title: input.title,
+            instrumental: input.instrumental,
+            negativeTags: input.negativeTags,
+          });
+          writeAuditLog({ ctx, action: "audio_music", detail: { model: input.model, prompt: truncate(input.prompt), resultUrl: result.url, duration: result.duration } });
+          await recordGeneratedAsset({ userId: ctx.user.id, projectId: input.projectId ?? null, type: "audio", source: "generated", provider: "kie", model: input.model, url: result.url, name: input.model });
+          return { url: result.url, duration: result.duration, imageUrl: result.imageUrl };
+        });
+      }
       await assertWhitelisted(ctx);
       if (input.projectId != null) await assertProjectAccess(input.projectId, ctx.user.id, "editor");
 

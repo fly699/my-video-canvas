@@ -376,6 +376,8 @@ export const AIChatNode = memo(function AIChatNode({ id, selected, data }: Props
       contextContent: buildContext(),
       model,
       attachments: attachmentsToSend.length > 0 ? attachmentsToSend : undefined,
+      // kie chat models auth with their own key (临时 > 分配 > 公用).
+      ...(model.startsWith("kie_") ? { kieTempKey: localStorage.getItem("kie:tempKey") || undefined } : {}),
     });
   };
 

@@ -72,10 +72,19 @@ const MUSIC_MODELS = [
   { value: "suno-v4",          label: "Suno v4",          desc: "稳定 · 经典",   group: "Suno" },
   // ── MiniMax (status endpoint) ───
   { value: "minimax-music-2.6", label: "MiniMax Music 2.6", desc: "歌词 / 器乐", group: "MiniMax" },
+  // ── kie.ai Suno (own key system; ≈12 点/次) ───
+  { value: "kie_suno_v5_5",     label: "Suno v5.5（kie）", desc: "≈12 点/次",     group: "Kie" },
+  { value: "kie_suno_v5",       label: "Suno v5（kie）",   desc: "≈12 点/次",     group: "Kie" },
+  { value: "kie_suno_v4_5plus", label: "Suno v4.5 PLUS（kie）", desc: "≈12 点/次", group: "Kie" },
+  { value: "kie_suno_v4_5",     label: "Suno v4.5（kie）", desc: "≈12 点/次",     group: "Kie" },
+  { value: "kie_suno_v4",       label: "Suno v4（kie）",   desc: "≈12 点/次",     group: "Kie" },
 ];
 
 function musicModelIsMiniMax(m?: string): boolean {
   return m === "minimax-music-2.6";
+}
+function musicModelIsKie(m?: string): boolean {
+  return !!m && m.startsWith("kie_suno_");
 }
 
 // Normalize legacy saved model ids to a live one (mirrors server-side normalization).
@@ -543,6 +552,8 @@ export const AudioNode = memo(function AudioNode({ id, selected, data }: Props) 
       instrumental: payload.musicInstrumental ?? (isMiniMax ? false : true),
       negativeTags: !isMiniMax ? (payload.musicNegativeTags || undefined) : undefined,
       lyrics: isMiniMax ? (payload.musicLyrics || undefined) : undefined,
+      // kie Suno auths with its own key (临时 > 分配 > 公用).
+      ...(musicModelIsKie(modelVal) ? { kieTempKey: localStorage.getItem("kie:tempKey") || undefined } : {}),
       projectId: data.projectId,
     });
   };

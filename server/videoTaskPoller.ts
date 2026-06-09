@@ -2,6 +2,8 @@ import type { Server as SocketIOServer } from "socket.io";
 import { getPendingVideoTasks, updateVideoTask, claimVideoTaskForSubmit, recordGeneratedAsset } from "./db";
 import { isPoyoVideoProvider, submitPoyoVideo, checkPoyoVideoStatus } from "./_core/poyoVideo";
 import { isHiggsfieldVideoProvider, submitHiggsfieldVideo, checkHiggsfieldVideoStatus } from "./_core/higgsfield";
+import { isKieVideoProvider, submitKieVideo, checkKieVideoStatus } from "./_core/kieVideo";
+import { decryptKieKey } from "./_core/kieCrypto";
 import { persistVideoOrFallback, persistVideosOrFallback } from "./_core/persistVideo";
 
 
@@ -91,6 +93,22 @@ export function setupVideoTaskPoller(io: SocketIOServer) {
                   referenceImageUrl: task.referenceImageUrl ?? undefined,
                   params: (task.params as Record<string, unknown>) ?? undefined,
                 });
+              } else if (isKieVideoProvider(task.provider)) {
+                // kie key was stashed encrypted by videoTasks.create (the poller
+                // has no user context / env key to fall back on).
+                const enc = (task.params as { _kieKeyEnc?: string } | null)?._kieKeyEnc;
+                if (!enc) throw new Error("kie 视频任务缺少密钥，无法提交");
+                const tp = task.params as { _referenceImageUrls?: unknown } | null;
+                const refs = Array.isArray(tp?._referenceImageUrls)
+                  ? (tp!._referenceImageUrls as string[])
+                  : (task.referenceImageUrl ? [task.referenceImageUrl] : undefined);
+                submitResult = await submitKieVideo({
+                  provider: task.provider,
+                  prompt: task.prompt ?? "",
+                  apiKey: decryptKieKey(enc),
+                  referenceImageUrls: refs,
+                  params: (task.params as Record<string, unknown>) ?? undefined,
+                });
               } else if (task.provider === "mock") {
                 submitResult = await submitMockTask();
               } else {
@@ -150,6 +168,28 @@ export function setupVideoTaskPoller(io: SocketIOServer) {
               result = { status: "failed", errorMessage: upstream.errorMessage ?? "生成失败" };
             } else {
               result = { status: "processing" };
+            }
+          } else if (isKieVideoProvider(task.provider)) {
+            // kie status check — needs the per-task encrypted key (no env key).
+            const enc = (task.params as { _kieKeyEnc?: string } | null)?._kieKeyEnc;
+            if (!enc) {
+              result = { status: "failed", errorMessage: "kie 视频任务缺少密钥，无法查询状态" };
+            } else {
+              const upstream = await checkKieVideoStatus(task.provider, task.externalTaskId, decryptKieKey(enc));
+              if (upstream.status === "finished") {
+                const urls = upstream.resultVideoUrls ?? [];
+                if (urls.length > 0) {
+                  // kie media expires in 14 days — re-host to our storage.
+                  const persistedList = await persistVideosOrFallback(urls, task.provider);
+                  result = { status: "succeeded", resultVideoUrl: persistedList.join("\n") };
+                } else {
+                  result = { status: "failed", errorMessage: "[CHARGED] 视频已在 kie 生成完成，但本系统未识别 URL（积分已扣，请勿重试）" };
+                }
+              } else if (upstream.status === "failed") {
+                result = { status: "failed", errorMessage: upstream.errorMessage ?? "生成失败" };
+              } else {
+                result = { status: "processing" };
+              }
             }
           } else if (isHiggsfieldVideoProvider(task.provider)) {
             // Higgsfield status check
