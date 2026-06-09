@@ -1457,11 +1457,8 @@ function CanvasInner({ projectId }: { projectId: number }) {
         className="w-screen h-screen flex flex-col items-center justify-center gap-3"
         style={{ background: "var(--c-canvas)" }}
       >
-        <div
-          className="w-10 h-10 rounded-xl flex items-center justify-center"
-          style={{ background: "linear-gradient(135deg, oklch(0.68 0.22 285), oklch(0.60 0.20 310))" }}
-        >
-          <Film className="w-5 h-5 text-white" />
+        <div className="w-10 h-10 rounded-xl overflow-hidden flex items-center justify-center">
+          <img src="/chat-icon.svg" alt="KingTai" className="w-full h-full object-cover" />
         </div>
         <div className="flex items-center gap-2 text-sm" style={{ color: "var(--c-t4)" }}>
           <Loader2 className="w-4 h-4 animate-spin" />
@@ -1494,11 +1491,8 @@ function CanvasInner({ projectId }: { projectId: number }) {
 
         {/* Logo + Project name */}
         <div className="flex items-center gap-2 mr-2">
-          <div
-            className="w-6 h-6 rounded-md flex items-center justify-center flex-shrink-0"
-            style={{ background: "linear-gradient(135deg, oklch(0.68 0.22 285), oklch(0.60 0.20 310))" }}
-          >
-            <Film className="w-3.5 h-3.5 text-white" />
+          <div className="w-6 h-6 rounded-md overflow-hidden flex items-center justify-center flex-shrink-0">
+            <img src="/chat-icon.svg" alt="KingTai" className="w-full h-full object-cover" />
           </div>
 
           {renamingProject ? (
@@ -3276,11 +3270,8 @@ export default function Canvas() {
         className="w-screen h-screen flex flex-col items-center justify-center gap-3"
         style={{ background: "var(--c-canvas)" }}
       >
-        <div
-          className="w-10 h-10 rounded-xl flex items-center justify-center"
-          style={{ background: "linear-gradient(135deg, oklch(0.68 0.22 285), oklch(0.60 0.20 310))" }}
-        >
-          <Film className="w-5 h-5 text-white" />
+        <div className="w-10 h-10 rounded-xl overflow-hidden flex items-center justify-center">
+          <img src="/chat-icon.svg" alt="KingTai" className="w-full h-full object-cover" />
         </div>
         <div className="flex items-center gap-2 text-sm" style={{ color: "var(--c-t4)" }}>
           <Loader2 className="w-4 h-4 animate-spin" />

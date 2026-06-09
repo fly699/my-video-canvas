@@ -944,13 +944,8 @@ export default function Home() {
         style={{ background: "color-mix(in oklch, var(--c-base) 92%, transparent)", backdropFilter: "blur(20px)", borderColor: "var(--c-bd1)" }}
       >
         <div className="flex items-center gap-2.5">
-          <div
-            className="w-7 h-7 rounded-lg flex items-center justify-center"
-            style={{
-              background: "linear-gradient(135deg, oklch(0.68 0.22 285), oklch(0.60 0.20 310))",
-            }}
-          >
-            <Film className="w-4 h-4 text-white" />
+          <div className="w-7 h-7 rounded-lg overflow-hidden flex items-center justify-center">
+            <img src="/chat-icon.svg" alt="KingTai" className="w-full h-full object-cover" />
           </div>
           <span className="text-sm font-semibold tracking-tight" style={{ color: "var(--c-t1)" }}>
             AI Video Canvas
