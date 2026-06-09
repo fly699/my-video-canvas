@@ -104,6 +104,7 @@ export const VIDEO_PROVIDERS = [
   "kie_kling_avatar_std", "kie_kling_avatar_pro",
   "kie_wan_animate_move", "kie_wan_animate_replace",
   "kie_runway45",
+  "kie_topaz_upscale", "kie_runway_aleph",
 ] as const;
 export type VideoProvider = (typeof VIDEO_PROVIDERS)[number];
 export type VideoTaskStatus = "pending" | "processing" | "succeeded" | "failed";
