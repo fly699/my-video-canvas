@@ -1,7 +1,7 @@
 import { useState, useRef, useMemo } from "react";
 import { createPortal } from "react-dom";
 import { ChevronDown, Check, Search } from "lucide-react";
-import { IMAGE_MODELS } from "@/lib/models";
+import { IMAGE_MODELS, platformBadge } from "@/lib/models";
 
 // Shared, classified model picker used by image / video / LLM nodes.
 // Generalizes LLMModelPicker's createPortal + backdrop anchoring. Options are
@@ -137,18 +137,21 @@ export function ModelPicker({ value, onChange, options, disabled, searchable = t
 
             {groups.map(([group, items]) => (
               <div key={group}>
-                <div
-                  style={{
-                    fontSize: 8,
-                    fontWeight: 700,
-                    textTransform: "uppercase",
-                    letterSpacing: "0.08em",
-                    color: "var(--c-t4)",
-                    padding: "7px 10px 4px",
-                    background: "var(--c-surface)",
-                  }}
-                >
-                  {group}
+                {/* 来源平台分色标签（与脚本/对话节点一致），让「这是哪个平台的模型」一眼可辨 */}
+                <div style={{ display: "flex", alignItems: "center", padding: "7px 10px 4px", background: "var(--c-surface)" }}>
+                  <span
+                    style={{
+                      fontSize: 9,
+                      fontWeight: 700,
+                      letterSpacing: "0.06em",
+                      padding: "1px 6px",
+                      borderRadius: 4,
+                      background: platformBadge(group).bg,
+                      color: platformBadge(group).fg,
+                    }}
+                  >
+                    {group}
+                  </span>
                 </div>
                 {items.map((o) => {
                   const selected = o.value === value;
