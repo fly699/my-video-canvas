@@ -18,7 +18,7 @@ export type LLMModelMeta = {
   short: string;       // compact chip label
   family: "Gemini" | "Claude" | "GPT";
   tag: string;
-  provider: "Forge" | "Poyo"; // upstream API the model is served by
+  provider: "Forge" | "Poyo" | "Kie"; // upstream API the model is served by
   color: string;
   costTier: "低" | "中" | "高";
   hidden?: boolean;    // kept for back-compat but not listed
@@ -43,6 +43,15 @@ export const LLM_MODELS: readonly LLMModelMeta[] = [
   { id: "claude-haiku-4-5-20251001",  label: "Claude Haiku 4.5",  short: "Haiku",  family: "Claude", tag: "快速", provider: "Forge", color: "oklch(0.68 0.18 55)",  costTier: "低" },
   // GPT (OpenAI) — routed to Poyo
   { id: "gpt-5.2",                   label: "GPT-5.2",           short: "GPT-5.2", family: "GPT",    tag: "强力", provider: "Poyo",  color: "oklch(0.62 0.16 240)", costTier: "中", vision: true },
+  // ── kie.ai chat (own key system; ids = kie wire model, server/_core/kieLLM.ts) ──
+  { id: "kie_claude_opus_48",   label: "Claude Opus 4.8（kie）",   short: "Opus",   family: "Claude", tag: "kie·旗舰", provider: "Kie", color: "oklch(0.68 0.18 280)", costTier: "高" },
+  { id: "kie_claude_sonnet_46", label: "Claude Sonnet 4.6（kie）", short: "Sonnet", family: "Claude", tag: "kie",     provider: "Kie", color: "oklch(0.68 0.18 280)", costTier: "高" },
+  { id: "kie_claude_haiku_45",  label: "Claude Haiku 4.5（kie）",  short: "Haiku",  family: "Claude", tag: "kie·快",   provider: "Kie", color: "oklch(0.68 0.18 55)",  costTier: "低" },
+  { id: "kie_gemini_3_pro",     label: "Gemini 3 Pro（kie）",      short: "G3Pro",  family: "Gemini", tag: "kie",     provider: "Kie", color: "oklch(0.68 0.18 160)", costTier: "中", vision: true },
+  { id: "kie_gemini_3_flash",   label: "Gemini 3 Flash（kie）",    short: "G3Flash",family: "Gemini", tag: "kie·快",   provider: "Kie", color: "oklch(0.68 0.18 160)", costTier: "低", vision: true },
+  { id: "kie_gpt_5_5",          label: "GPT 5.5（kie）",           short: "GPT5.5", family: "GPT",    tag: "kie·旗舰", provider: "Kie", color: "oklch(0.62 0.16 240)", costTier: "高", vision: true },
+  { id: "kie_gpt_5_4",          label: "GPT 5.4（kie）",           short: "GPT5.4", family: "GPT",    tag: "kie",     provider: "Kie", color: "oklch(0.62 0.16 240)", costTier: "中", vision: true },
+  { id: "kie_gpt_5_2",          label: "GPT 5.2（kie）",           short: "GPT5.2", family: "GPT",    tag: "kie",     provider: "Kie", color: "oklch(0.62 0.16 240)", costTier: "中", vision: true },
 ] as const;
 
 // Legacy export name — AIChatNode and scriptCreationTemplates reference CHAT_MODELS.

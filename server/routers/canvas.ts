@@ -64,6 +64,7 @@ import { resolveKieKey } from "../_core/kie";
 import { isKieImageModel } from "../_core/kieImage";
 import { isKieVideoProvider, submitKieVideo } from "../_core/kieVideo";
 import { isKieMusicModel, submitAndPollKieMusic } from "../_core/kieMusic";
+import { isKieLLMModel, invokeKieLLM } from "../_core/kieLLM";
 import { encryptKieKey, decryptKieKey } from "../_core/kieCrypto";
 import { writeAuditLog, truncate } from "../_core/auditLog";
 import { withComfyUsageLog } from "../_core/comfyUsageLog";
@@ -948,15 +949,24 @@ export const aiChatRouter = router({
           name: z.string().max(255),
           textContent: z.string().max(50_000).optional(),
         })).max(8).optional(),
+        kieTempKey: z.string().max(256).optional(), // kie_* chat models only
       })
     )
     .mutation(async ({ ctx, input }) => {
-      // Gate on whitelist before access check so banned users get a uniform
-      // "not whitelisted" error rather than a project FORBIDDEN; this also
-      // closes the gap that let an editor invoke the LLM without any
-      // platform-side limit (all other AI mutations call assertWhitelisted).
-      // LLM-scoped gate: respects the admin "open LLM" bypass.
-      await assertLLMAllowed(ctx);
+      // kie chat models authenticate with their own key (temp > assigned > house)
+      // and bypass the LLM whitelist; everything else keeps the LLM gate.
+      let kieLLMKey: string | undefined;
+      if (isKieLLMModel(input.model)) {
+        const resolved = await resolveKieKey(ctx, input.kieTempKey);
+        kieLLMKey = resolved.key;
+      } else {
+        // Gate on whitelist before access check so banned users get a uniform
+        // "not whitelisted" error rather than a project FORBIDDEN; this also
+        // closes the gap that let an editor invoke the LLM without any
+        // platform-side limit (all other AI mutations call assertWhitelisted).
+        // LLM-scoped gate: respects the admin "open LLM" bypass.
+        await assertLLMAllowed(ctx);
+      }
       await assertProjectAccess(input.projectId, ctx.user.id, "editor");
       // Allow empty message when there's at least one attachment — image-only prompts are valid.
       if (!input.message.trim() && !(input.attachments?.length ?? 0)) {
@@ -1051,8 +1061,13 @@ export const aiChatRouter = router({
 
       let assistantContent: string;
       try {
-        const response = await invokeLLM({ messages, model: input.model });
-        assistantContent = extractTextContent(response) || "（模型返回内容为空）";
+        if (kieLLMKey) {
+          const r = await invokeKieLLM({ model: input.model!, messages, apiKey: kieLLMKey });
+          assistantContent = r.text || "（模型返回内容为空）";
+        } else {
+          const response = await invokeLLM({ messages, model: input.model });
+          assistantContent = extractTextContent(response) || "（模型返回内容为空）";
+        }
       } catch (err) {
         throw new TRPCError({
           code: "INTERNAL_SERVER_ERROR",
