@@ -161,14 +161,54 @@ footer .tech span{font-size:12px;color:var(--t2);background:var(--card);border:1
 .reveal{opacity:0;transform:translateY(28px);transition:.7s cubic-bezier(.2,.7,.2,1)}
 .reveal.show{opacity:1;transform:none}
 .tcenter{text-align:center}
+/* KingTai 品牌 LOGO + 防泄露身份水印 */
+.kt-defs{position:absolute;width:0;height:0;overflow:hidden}
+.kt-mark{display:inline-block;vertical-align:middle}
+.brand .logo{background:transparent!important;box-shadow:none!important;width:38px;height:38px;padding:0}
+.wm{position:fixed;inset:0;z-index:1;pointer-events:none;opacity:.05;background-repeat:repeat;
+  background-image:url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='340' height='200'><text x='10' y='110' fill='white' font-size='17' font-family='sans-serif' font-weight='700' transform='rotate(-28 170 100)'>KingTai · 金泰智算 · 机密</text></svg>")}
+.hero-logo{width:124px;height:106px;margin:0 auto 18px;display:block;filter:drop-shadow(0 10px 30px rgba(207,163,94,.3))}
+.foot-logo{width:120px;height:102px;margin:0 auto 14px;display:block;opacity:.95}
+.confid{display:inline-flex;align-items:center;gap:7px;padding:5px 13px;border-radius:30px;background:rgba(251,113,133,.1);border:1px solid rgba(251,113,133,.3);font-size:11.5px;color:var(--red);font-weight:700;letter-spacing:.5px;margin-top:18px}
 </style>
 </head>
 <body>
 <div class="glow a"></div><div class="glow b"></div><div class="glow c"></div>
+<div class="wm"></div>
+
+<!-- KingTai 金泰智算 品牌 LOGO（SVG symbol，多处复用）-->
+<svg class="kt-defs" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="kt-goldGradient" x1="0%" y1="100%" x2="0%" y2="0%"><stop offset="0%" stop-color="#8a6b3f"/><stop offset="30%" stop-color="#cfa35e"/><stop offset="70%" stop-color="#fdf0b0"/><stop offset="100%" stop-color="#ffffff"/></linearGradient>
+    <linearGradient id="kt-silverGradient" x1="0%" y1="100%" x2="0%" y2="0%"><stop offset="0%" stop-color="#475569"/><stop offset="50%" stop-color="#94a3b8"/><stop offset="100%" stop-color="#f1f5f9"/></linearGradient>
+    <filter id="kt-textShadow" x="-20%" y="-20%" width="140%" height="140%"><feDropShadow dx="0" dy="2" stdDeviation="4" flood-color="#000" flood-opacity="0.85"/></filter>
+    <filter id="kt-glow" x="-20%" y="-20%" width="140%" height="140%"><feGaussianBlur stdDeviation="3" result="b"/><feComposite in="SourceGraphic" in2="b" operator="over"/></filter>
+    <!-- 全标识（喷泉 + 文字）-->
+    <symbol id="kt-logo" viewBox="0 0 400 340">
+      <g transform="translate(0,-10)">
+        <path d="M 200,160 C 180,190 150,150 100,60" stroke="url(#kt-silverGradient)" stroke-width="1.5" fill="none" stroke-linecap="round"/><path d="M 200,160 C 170,200 120,160 60,50" stroke="url(#kt-goldGradient)" stroke-width="3" fill="none" stroke-linecap="round"/><path d="M 200,160 C 160,210 100,170 20,60" stroke="url(#kt-silverGradient)" stroke-width="2.5" fill="none" stroke-linecap="round"/><path d="M 200,160 C 150,220 70,180 10,90" stroke="url(#kt-goldGradient)" stroke-width="1.5" fill="none" stroke-linecap="round"/><path d="M 200,160 C 140,230 50,190 5,120" stroke="url(#kt-silverGradient)" stroke-width="1" fill="none" stroke-linecap="round"/><path d="M 200,160 C 220,190 250,150 300,60" stroke="url(#kt-silverGradient)" stroke-width="1.5" fill="none" stroke-linecap="round"/><path d="M 200,160 C 230,200 280,160 340,50" stroke="url(#kt-goldGradient)" stroke-width="3" fill="none" stroke-linecap="round"/><path d="M 200,160 C 240,210 300,170 380,60" stroke="url(#kt-silverGradient)" stroke-width="2.5" fill="none" stroke-linecap="round"/><path d="M 200,160 C 250,220 330,180 390,90" stroke="url(#kt-goldGradient)" stroke-width="1.5" fill="none" stroke-linecap="round"/><path d="M 200,160 C 260,230 350,190 395,120" stroke="url(#kt-silverGradient)" stroke-width="1" fill="none" stroke-linecap="round"/>
+        <path d="M 192,160 L 192,60" stroke="url(#kt-silverGradient)" stroke-width="2" fill="none" stroke-linecap="round"/><path d="M 208,160 L 208,60" stroke="url(#kt-silverGradient)" stroke-width="2" fill="none" stroke-linecap="round"/><path d="M 184,160 L 184,85" stroke="url(#kt-goldGradient)" stroke-width="2.5" fill="none" stroke-linecap="round"/><path d="M 216,160 L 216,85" stroke="url(#kt-goldGradient)" stroke-width="2.5" fill="none" stroke-linecap="round"/>
+        <path d="M 200,160 L 200,40" stroke="url(#kt-goldGradient)" stroke-width="4" fill="none"/><polygon points="200,20 195,45 205,45" fill="url(#kt-goldGradient)" filter="url(#kt-glow)"/><polygon points="200,10 197,25 200,30 203,25" fill="#fff" filter="url(#kt-glow)"/>
+        <g fill="#fdf0b0" filter="url(#kt-glow)"><circle cx="60" cy="50" r="1.5"/><circle cx="100" cy="60" r="1.5"/><circle cx="20" cy="60" r="1.5"/><circle cx="340" cy="50" r="1.5"/><circle cx="300" cy="60" r="1.5"/><circle cx="380" cy="60" r="1.5"/></g>
+      </g>
+      <text x="200" y="225" fill="url(#kt-goldGradient)" filter="url(#kt-textShadow)" font-size="60" font-weight="900" text-anchor="middle" style="font-family:system-ui,sans-serif;letter-spacing:2px">KingTai</text>
+      <text x="200" y="285" fill="#f8fafc" filter="url(#kt-textShadow)" font-size="56" font-weight="900" text-anchor="middle" style="font-family:system-ui,sans-serif;letter-spacing:6px">金泰智算</text>
+      <text x="200" y="315" fill="url(#kt-goldGradient)" filter="url(#kt-textShadow)" font-size="18" font-weight="bold" text-anchor="middle" style="font-family:system-ui,sans-serif;letter-spacing:4px">AI Computing</text>
+    </symbol>
+    <!-- 标记（仅喷泉，用于导航小图标）-->
+    <symbol id="kt-mark" viewBox="0 5 400 165">
+      <g transform="translate(0,-10)">
+        <path d="M 200,160 C 170,200 120,160 60,50" stroke="url(#kt-goldGradient)" stroke-width="6" fill="none" stroke-linecap="round"/><path d="M 200,160 C 160,210 100,170 20,60" stroke="url(#kt-silverGradient)" stroke-width="5" fill="none" stroke-linecap="round"/><path d="M 200,160 C 230,200 280,160 340,50" stroke="url(#kt-goldGradient)" stroke-width="6" fill="none" stroke-linecap="round"/><path d="M 200,160 C 240,210 300,170 380,60" stroke="url(#kt-silverGradient)" stroke-width="5" fill="none" stroke-linecap="round"/>
+        <path d="M 184,160 L 184,85" stroke="url(#kt-goldGradient)" stroke-width="5" fill="none" stroke-linecap="round"/><path d="M 216,160 L 216,85" stroke="url(#kt-goldGradient)" stroke-width="5" fill="none" stroke-linecap="round"/>
+        <path d="M 200,160 L 200,40" stroke="url(#kt-goldGradient)" stroke-width="7" fill="none"/><polygon points="200,18 193,46 207,46" fill="url(#kt-goldGradient)" filter="url(#kt-glow)"/>
+      </g>
+    </symbol>
+  </defs>
+</svg>
 
 <nav>
   <div class="nav-in">
-    <div class="brand"><span class="logo">🎬</span><span>AI 视频画布 <span style="color:var(--t3);font-weight:600">| 智能创作平台</span></span></div>
+    <div class="brand"><span class="logo"><svg class="kt-mark" width="38" height="22"><use href="#kt-mark"/></svg></span><span>AI 视频画布 <span style="color:var(--t3);font-weight:600">| 金泰智算 · 智能创作平台</span></span></div>
     <div class="nav-links">
       <a href="#overview" class="active">概览</a>
       <a href="#arch">系统架构</a>
@@ -186,6 +226,7 @@ footer .tech span{font-size:12px;color:var(--t2);background:var(--card);border:1
 <!-- HERO -->
 <header class="wrap hero" id="overview">
   <div class="reveal show">
+    <svg class="hero-logo"><use href="#kt-logo"/></svg>
     <div class="badge" style="margin-bottom:24px"><span class="dot"></span>企业级 · 私有化部署 · 全栈自主可控 · 数据不出域</div>
     <h1>一张画布，编排<span class="g">全链路 AI 视频创作</span></h1>
     <p class="lead">面向专业影视与营销内容生产的节点式 AI 创作中枢。从<b>脚本、分镜、角色</b>到<b>图像、视频、配音、剪辑成片</b>，将 6 大 AI 服务商、140+ 模型、27 类创作节点与<b>自建 ComfyUI 算力</b>汇聚于同一画布——<b>所见即所得、开闭互补、可控可信、私有定制</b>。</p>
@@ -196,6 +237,7 @@ footer .tech span{font-size:12px;color:var(--t2);background:var(--card);border:1
       <span class="badge">🔐 OAuth + 邮箱密码双认证</span>
       <span class="badge">🛡️ 13 轮安全审查 · 纵深防护</span>
     </div>
+    <div class="confid">🔒 KingTai 金泰智算 出品 · 内部资料 · 身份水印溯源保护</div>
   </div>
   <div class="hero-stats reveal">
     <div class="hstat"><div class="num" data-n="27">0</div><div class="lab">创作节点类型</div></div>
@@ -234,7 +276,7 @@ footer .tech span{font-size:12px;color:var(--t2);background:var(--card);border:1
     <div class="arch-flow">⇅</div>
     <div class="layer">
       <div class="lh"><span class="ic ic-blue">🛡️</span><h3>安全与基础设施层 · 数据 · 权限 · 审计</h3><span class="tag">Security & Infra</span></div>
-      <div class="chips"><span class="chip">tRPC v11 + Express</span><span class="chip">MySQL + Drizzle 迁移</span><span class="chip">MinIO / S3 自有存储</span><span class="chip">数据不出域</span><span class="chip">下载鉴权网关</span><span class="chip">白名单门控</span><span class="chip">全链路审计日志</span><span class="chip">一键系统更新</span></div>
+      <div class="chips"><span class="chip">tRPC v11 + Express</span><span class="chip">MySQL + Drizzle 迁移</span><span class="chip">MinIO / S3 自有存储</span><span class="chip">数据不出域</span><span class="chip">下载鉴权网关</span><span class="chip">身份水印溯源</span><span class="chip">开发者工具阻断</span><span class="chip">白名单门控</span><span class="chip">全链路审计日志</span><span class="chip">一键系统更新</span></div>
     </div>
   </div>
 </section>
@@ -432,7 +474,7 @@ footer .tech span{font-size:12px;color:var(--t2);background:var(--card);border:1
     </div>
     <!-- 8 数据安全防泄露 -->
     <div class="acc-item feat-hot">
-      <div class="acc-head"><span class="ic ic-red">🛡️</span><div class="tt"><h3>数据安全与产出物防泄露 <span class="star">★新增</span></h3><p>数据不出域 · 纵深防护 · 全程可控</p></div><span class="num-b">8 项</span><span class="arr">▾</span></div>
+      <div class="acc-head"><span class="ic ic-red">🛡️</span><div class="tt"><h3>数据安全 · 水印溯源 · 产出物防泄露 <span class="star">★强化</span></h3><p>数据不出域 · 身份水印可追责 · 纵深防护</p></div><span class="num-b">12 项</span><span class="arr">▾</span></div>
       <div class="acc-body"><div class="acc-inner"><div class="divider"></div><div class="fgrid">
         <div class="fitem"><b><i>🏠</i>数据不出域</b><small>素材与产出物全程存于自托管 MySQL + MinIO/S3，私有环境内闭环，绝不外发</small></div>
         <div class="fitem"><b><i>🚪</i>下载鉴权网关</b><small>所有媒体下载经登录态 + 所有权/项目角色校验，杜绝越权直取</small></div>
@@ -441,6 +483,10 @@ footer .tech span{font-size:12px;color:var(--t2);background:var(--card);border:1
         <div class="fitem"><b><i>🔗</i>限时分享 + 防暴力</b><small>项目分享链接限时有效，内置防暴力破解，公开开关仅所有者可控</small></div>
         <div class="fitem"><b><i>👁️</i>分级协作权限</b><small>所有者/编辑者/只读者三级，只读者不可导出/修改，权限即时生效</small></div>
         <div class="fitem"><b><i>♻️</i>产出物自主托管</b><small>第三方生成结果（如 14 天临时 URL）自动转存自有存储，杜绝外链失效与第三方留存</small></div>
+        <div class="fitem"><b><i>💧</i>下载身份水印溯源 <span class="star">★特色</span></b><small>下载时把下载者身份（邮箱/ID + 时间戳）烧录进图片/视频，一旦外泄即可溯源到具体下载人、可追责</small></div>
+        <div class="fitem"><b><i>👁️‍🗨️</i>页面级身份水印</b><small>开启后全站叠加淡身份水印，防截图/录屏盗用，截走的画面也带可追溯标识</small></div>
+        <div class="fitem"><b><i>🚫</i>开发者工具阻断</b><small>可启用防扒模式，阻断开发者工具，防止源码/接口/资源被探查窃取</small></div>
+        <div class="fitem"><b><i>🪪</i>下载鉴权 + 强制中继 + 仅自有存储</b><small>下载鉴权开关、强制经服务端中继（隐藏真实地址）、仅允许自有 MinIO 存储；预签名链接时效可配</small></div>
         <div class="fitem"><b><i>📋</i>敏感操作留痕</b><small>下载、删除、分享、密钥变更等全部写入审计日志，可回溯追责</small></div>
       </div></div></div>
     </div>
@@ -497,15 +543,19 @@ footer .tech span{font-size:12px;color:var(--t2);background:var(--card);border:1
         <div class="fitem"><b><i>🏠</i>局域网内网沟通</b><small>支持内网/局域网聊天与房间，离线环境团队也能高效协同</small></div>
       </div></div></div>
     </div>
-    <!-- 13 AI 工具 -->
+    <!-- 13 AI 工具与体验 -->
     <div class="acc-item">
-      <div class="acc-head"><span class="ic ic-violet">💬</span><div class="tt"><h3>AI 对话与内容工具</h3><p>贯穿创作的智能助手</p></div><span class="num-b">5 项</span><span class="arr">▾</span></div>
+      <div class="acc-head"><span class="ic ic-violet">💬</span><div class="tt"><h3>AI 内容工具与创作体验</h3><p>智能助手 + 演示 + 引导 + 通知</p></div><span class="num-b">9 项</span><span class="arr">▾</span></div>
       <div class="acc-body"><div class="acc-inner"><div class="divider"></div><div class="fgrid">
         <div class="fitem"><b><i>💭</i>多模态 AI 对话节点</b><small>支持图片输入的创意对话，可衔接脚本/分镜</small></div>
         <div class="fitem"><b><i>📜</i>剧本工具</b><small>生成、润色、缩写、一致性审查、分镜拆解</small></div>
         <div class="fitem"><b><i>🌍</i>翻译 / 方言本地化</b><small>多语言翻译 + 粤语/四川话/东北话等方言口语化朗读改写</small></div>
         <div class="fitem"><b><i>🔎</i>提示词分析提取</b><small>从图像反推生成提示词，沉淀到提示词库</small></div>
         <div class="fitem"><b><i>🎚️</i>效果注入</b><small>后处理节点效果词注入下游生成，统一风格</small></div>
+        <div class="fitem"><b><i>🎦</i>演示模式</b><small>将画布节点逐页全屏放映，平滑切换动画，方案评审/路演直接演示</small></div>
+        <div class="fitem"><b><i>🧭</i>新手引导</b><small>内置分步功能引导，新成员快速上手全平台能力</small></div>
+        <div class="fitem"><b><i>🔔</i>任务完成通知</b><small>长任务生成完成主动通知项目所有者，无需盯屏等待</small></div>
+        <div class="fitem"><b><i>🖼️</i>项目封面 / 看板</b><small>项目自动生成封面缩略，仓库素材统计概览，资产一览无余</small></div>
       </div></div></div>
     </div>
   </div>
@@ -519,7 +569,9 @@ footer .tech span{font-size:12px;color:var(--t2);background:var(--card);border:1
   <div class="shield reveal">
     <div class="slayer"><div class="e">🏠</div><b>存储层</b><small>自有 MinIO/S3，数据不出域</small></div>
     <div class="slayer"><div class="e">🚪</div><b>访问层</b><small>下载鉴权网关 + 所有权校验</small></div>
-    <div class="slayer"><div class="e">⏳</div><b>传输层</b><small>预签名短时链接 + 媒体代理</small></div>
+    <div class="slayer"><div class="e">⏳</div><b>传输层</b><small>预签名短链 + 媒体代理 + 强制中继</small></div>
+    <div class="slayer"><div class="e">💧</div><b>水印层</b><small>下载身份水印 + 页面水印，泄露可溯源</small></div>
+    <div class="slayer"><div class="e">🚫</div><b>防扒层</b><small>开发者工具阻断，防源码/接口窃取</small></div>
     <div class="slayer"><div class="e">🔗</div><b>分享层</b><small>限时链接 + 防暴力 + 仅所有者可公开</small></div>
     <div class="slayer"><div class="e">👁️</div><b>权限层</b><small>所有者/编辑者/只读者分级</small></div>
     <div class="slayer"><div class="e">♻️</div><b>托管层</b><small>第三方产出自动转存，杜绝外链留存</small></div>
@@ -560,10 +612,11 @@ footer .tech span{font-size:12px;color:var(--t2);background:var(--card);border:1
 
 <footer class="wrap">
   <div class="reveal">
-    <div class="f-h">🎬 AI 视频画布 · <span class="g">智能创作平台</span></div>
-    <p>把全链路 AI 视频创作汇聚于一块可视化画布，融合自建算力与多服务商模型——全面、严谨、技术先进、数据自主、产出可控。为专业创作团队打造的下一代生产力中枢。</p>
-    <div class="tech"><span>React + Vite</span><span>tRPC v11</span><span>Express</span><span>MySQL · Drizzle</span><span>React Flow</span><span>MinIO / S3</span><span>ComfyUI 算力</span><span>OAuth + 邮箱认证</span><span>AES-256-GCM</span></div>
-    <p style="margin-top:22px;color:var(--t4);font-size:12px">本汇报页为单文件交互网页 · 图文并茂 · 可离线浏览</p>
+    <svg class="foot-logo"><use href="#kt-logo"/></svg>
+    <div class="f-h">AI 视频画布 · <span class="g">金泰智算 · 智能创作平台</span></div>
+    <p>把全链路 AI 视频创作汇聚于一块可视化画布，融合自建算力与多服务商模型，以水印溯源与纵深防护守护每一份产出——全面、严谨、技术先进、数据自主、产出可控。为专业创作团队打造的下一代生产力中枢。</p>
+    <div class="tech"><span>React + Vite</span><span>tRPC v11</span><span>Express</span><span>MySQL · Drizzle</span><span>React Flow</span><span>MinIO / S3</span><span>ComfyUI 算力</span><span>身份水印溯源</span><span>OAuth + 邮箱认证</span><span>AES-256-GCM</span></div>
+    <p style="margin-top:22px;color:var(--t4);font-size:12px">© KingTai 金泰智算 · 本汇报页为单文件交互网页 · 图文并茂 · 可离线浏览 · 内部资料请勿外传</p>
   </div>
 </footer>
 
