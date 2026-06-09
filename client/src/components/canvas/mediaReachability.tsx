@@ -25,13 +25,14 @@ import {
 
 /**
  * 该模型是否依赖"上游能 fetch 我们的媒体 URL"。
- * - poyo* / hf_*：URL-only 上游，需要公网可达。
+ * - poyo* / hf_* / kie_*：URL-only 上游（kie 的编辑/图生图模型把我方 URL 作为
+ *   image_urls 交给 kie 服务器拉取），需要公网可达。
  * - manus_forge：Forge 图像返回 base64 内联，不下发 URL，豁免。
  * - ComfyUI 等自建：由用户自己的 ComfyUI 拉取，豁免。
  */
 export function providerNeedsPublicMedia(model: string | undefined | null): boolean {
   if (!model) return false;
-  return model.startsWith("poyo") || model.startsWith("hf_");
+  return model.startsWith("poyo") || model.startsWith("hf_") || model.startsWith("kie_");
 }
 
 /**
