@@ -24,7 +24,7 @@ const GROUP_COLORS = [
 ];
 
 export const GroupNode = memo(function GroupNode({ id, selected, data }: Props) {
-  const { updateNodeData, updateNodeTitle, fitGroupToMembers } = useCanvasStore();
+  const { updateNodeData, updateNodeTitle, fitGroupToMembers, toggleGroupCollapsed } = useCanvasStore();
   const payload = data.payload;
   const [editingLabel, setEditingLabel] = useState(false);
   const [labelValue, setLabelValue] = useState(data.title);
@@ -43,8 +43,9 @@ export const GroupNode = memo(function GroupNode({ id, selected, data }: Props) 
 
   return (
     <>
+      {/* 折叠成小条时禁用缩放（避免与小条高度冲突） */}
       <NodeResizer
-        isVisible={selected}
+        isVisible={selected && !collapsed}
         minWidth={200}
         minHeight={120}
         lineStyle={{ stroke: color.accent, strokeWidth: 1, opacity: 0.6 }}
@@ -77,7 +78,8 @@ export const GroupNode = memo(function GroupNode({ id, selected, data }: Props) 
           }}
         >
           <button
-            onClick={() => updateNodeData(id, { collapsed: !collapsed })}
+            onClick={() => toggleGroupCollapsed(id)}
+            title={collapsed ? "展开群组" : "折叠成小条"}
             style={{ color: color.accent, background: "none", border: "none", cursor: "pointer", lineHeight: 0, padding: 0 }}
           >
             {collapsed
@@ -141,21 +143,8 @@ export const GroupNode = memo(function GroupNode({ id, selected, data }: Props) 
           </div>
         </div>
 
-        {/* Body */}
-        {collapsed ? (
-          <button
-            onClick={() => updateNodeData(id, { collapsed: false })}
-            className="nodrag"
-            style={{
-              flex: 1, width: "100%", padding: 12, display: "flex", alignItems: "center", justifyContent: "center",
-              gap: 6, background: "none", border: "none", cursor: "pointer",
-              fontSize: 11, color: color.accent, opacity: 0.85, userSelect: "none",
-            }}
-          >
-            <FolderClosed style={{ width: 13, height: 13 }} />
-            已折叠 {memberCount} 个节点 · 点击展开
-          </button>
-        ) : (
+        {/* Body — 仅展开时显示；折叠后容器缩成标题小条，无正文 */}
+        {!collapsed && (
           <div style={{ flex: 1, padding: 12, display: "flex", alignItems: "flex-start" }}>
             <p style={{ fontSize: 10, color: color.border, userSelect: "none", fontStyle: "italic" }}>
               拖动节点到此区域进行分组

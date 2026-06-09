@@ -144,6 +144,10 @@ interface CanvasStore {
   deleteGroupWithMembers: (groupId: string) => string[];
   /** 重新计算群组容器边界以包裹其当前成员（一键自适应）。 */
   fitGroupToMembers: (groupId: string) => void;
+  /** 折叠/展开群组：折叠时把容器高度缩成标题小条并记下原高度，展开时恢复。 */
+  toggleGroupCollapsed: (groupId: string) => void;
+  /** 整体复制群组：连同成员节点 + 成员间内部连线一起克隆（新 id、整体偏移），返回新群组 id。 */
+  duplicateGroup: (groupId: string) => string | null;
   /** Run `fn` as a single undoable batch: snapshot history once up-front and
    *  suppress per-action history pushes during `fn` (used when the agent applies
    *  a multi-step plan so one Ctrl+Z reverts the whole batch). */
@@ -580,6 +584,73 @@ export const useCanvasStore = create<CanvasStore>((set, get) => ({
         : n)),
       isDirty: true,
     }));
+  },
+
+  toggleGroupCollapsed: (groupId) => {
+    const COLLAPSED_H = 46; // 折叠后只剩标题栏的小条高度
+    set((state) => ({
+      ...(get()._suppressHistory ? {} : pushHistory(state)),
+      nodes: state.nodes.map((n) => {
+        if (n.id !== groupId || n.data.nodeType !== "group") return n;
+        const gp = n.data.payload as GroupNodeData;
+        const collapsing = !(gp.collapsed ?? false);
+        const curH = typeof n.style?.height === "number" ? n.style.height : 200;
+        if (collapsing) {
+          return { ...n, style: { ...n.style, height: COLLAPSED_H }, data: { ...n.data, payload: { ...gp, collapsed: true, expandedHeight: curH } } };
+        }
+        const restore = gp.expandedHeight ?? 200;
+        return { ...n, style: { ...n.style, height: restore }, data: { ...n.data, payload: { ...gp, collapsed: false } } };
+      }),
+      isDirty: true,
+    }));
+  },
+
+  duplicateGroup: (groupId) => {
+    const all = get().nodes;
+    const grp = all.find((n) => n.id === groupId && n.data.nodeType === "group");
+    if (!grp) return null;
+    const childIds = (grp.data.payload as GroupNodeData).childIds ?? [];
+    const members = all.filter((n) => childIds.includes(n.id));
+    const OFFSET = 48;
+    const uid = get().currentUserId;
+    // 旧 id → 新 id 映射（含容器与成员），用于重映射 childIds 与内部连线。
+    const idMap = new Map<string, string>();
+    const newGroupId = nanoid();
+    idMap.set(groupId, newGroupId);
+    for (const m of members) idMap.set(m.id, nanoid());
+    // 克隆成员：剥离运行态/产物字段（与单节点复制一致），整体偏移。
+    const memberClones: CanvasNode[] = members.map((m) => {
+      const p = JSON.parse(JSON.stringify(m.data.payload)) as Record<string, unknown>;
+      for (const k of CLONE_RUNTIME_FIELDS) delete p[k];
+      if (uid != null) p.createdBy = uid;
+      return {
+        ...m,
+        id: idMap.get(m.id)!,
+        position: { x: m.position.x + OFFSET, y: m.position.y + OFFSET },
+        selected: false,
+        data: { ...m.data, payload: p as typeof m.data.payload },
+      };
+    });
+    const newGp: GroupNodeData = { ...(grp.data.payload as GroupNodeData), childIds: members.map((m) => idMap.get(m.id)!) };
+    const groupClone: CanvasNode = {
+      ...grp,
+      id: newGroupId,
+      position: { x: grp.position.x + OFFSET, y: grp.position.y + OFFSET },
+      selected: true,
+      data: { ...grp.data, payload: newGp as NodeData },
+    };
+    // 克隆成员间的内部连线（两端都在成员集合内），保留工作流结构。
+    const memberIdSet = new Set(members.map((m) => m.id));
+    const internalEdges: CanvasEdge[] = get().edges
+      .filter((e) => memberIdSet.has(e.source) && memberIdSet.has(e.target))
+      .map((e) => ({ ...e, id: nanoid(), source: idMap.get(e.source)!, target: idMap.get(e.target)! }));
+    set((state) => ({
+      ...(get()._suppressHistory ? {} : pushHistory(state)),
+      nodes: [...state.nodes.map((n) => ({ ...n, selected: false })), groupClone, ...memberClones],
+      edges: [...state.edges, ...internalEdges],
+      isDirty: true,
+    }));
+    return newGroupId;
   },
 
   runBatch: (fn) => {

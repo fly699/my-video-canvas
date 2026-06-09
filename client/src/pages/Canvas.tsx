@@ -1345,9 +1345,22 @@ function CanvasInner({ projectId }: { projectId: number }) {
       // Duplicate selected node: Cmd+D / Ctrl+D (skip when typing in an input)
       if (!isEditing && (e.metaKey || e.ctrlKey) && e.key === "d") {
         e.preventDefault();
-        const selected = useCanvasStore.getState().nodes.filter(n => n.selected);
-        selected.forEach(n => duplicateNode(n.id));
-        if (selected.length > 0) toast.success(`已复制 ${selected.length} 个节点`, { duration: 1200 });
+        const store = useCanvasStore.getState();
+        const selected = store.nodes.filter(n => n.selected);
+        // 选中的群组整体复制（含成员）；其成员若也被选中则不再单独复制，避免重复。
+        const groupSel = selected.filter(n => n.data.nodeType === "group");
+        const inGroups = new Set(groupSel.flatMap(g => (g.data.payload as GroupNodeData).childIds ?? []));
+        const loose = selected.filter(n => n.data.nodeType !== "group" && !inGroups.has(n.id));
+        if (selected.length > 0) {
+          store.runBatch(() => {
+            groupSel.forEach(g => store.duplicateGroup(g.id));
+            loose.forEach(n => store.duplicateNode(n.id));
+          });
+          const parts: string[] = [];
+          if (groupSel.length > 0) parts.push(`${groupSel.length} 个群组（含成员）`);
+          if (loose.length > 0) parts.push(`${loose.length} 个节点`);
+          toast.success(`已复制 ${parts.join(" + ")}`, { duration: 1200 });
+        }
       }
 
       // 群组：Cmd/Ctrl+G 组合选中节点；Cmd/Ctrl+Shift+G 解组（删除选中的 group 容器）。
@@ -3066,6 +3079,13 @@ function CanvasInner({ projectId }: { projectId: number }) {
               for (const rid of removed) {
                 deleteNodeMutation.mutate({ id: rid, projectId });
                 emitCollabEvent("node:delete", { id: rid });
+              }
+            } : undefined}
+            onDuplicateGroup={ctxNodeType === "group" ? () => {
+              const gid = useCanvasStore.getState().duplicateGroup(contextMenu.nodeId!);
+              if (gid) {
+                const cnt = (((useCanvasStore.getState().nodes.find((n) => n.id === gid)?.data.payload) as GroupNodeData | undefined)?.childIds ?? []).length;
+                toast.success(`已复制群组及 ${cnt} 个成员`);
               }
             } : undefined}
             onRunWorkflow={contextMenu.nodeId && ctxNodeType !== "group" ? () => handleRunRequest(contextMenu.nodeId ?? null) : undefined}
