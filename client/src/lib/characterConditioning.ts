@@ -129,7 +129,10 @@ export function stripCharacterMentions(prompt: string | undefined, nodes: CharNo
   return text.replace(/[ \t]{2,}/g, " ").replace(/\s+([，,。.!！?？])/g, "$1").trim();
 }
 
-/** 连线 + @提及 合并后的「实际生效角色」：连线优先（位置序），@提及补充未连线者，按名去重。 */
+/** 连线 + @提及 合并后的「实际生效角色」：连线优先（位置序），@提及补充未连线者，按名去重。
+ *  关键：去重要覆盖「连线集合内部」——画布上若存在两个同名节点（例如删掉旧的又新建了同名
+ *  的、或复制出的重复节点都还连着线），同名只取一个，否则会被重复引用、画面凭空多出一个
+ *  相同的角色/场景。无名节点（极少）不参与按名去重、原样保留。 */
 export function effectiveCharacters(
   targetId: string,
   prompt: string | undefined,
@@ -137,9 +140,16 @@ export function effectiveCharacters(
   nodes: CharNodeLike[],
 ): CharacterNodeData[] {
   const conn = connectedCharacters(targetId, edges, nodes);
-  const seen = new Set(conn.map(charDisplayName));
-  const extra = mentionedCharacters(prompt, nodes).filter((c) => !seen.has(charDisplayName(c)));
-  return [...conn, ...extra];
+  const mentioned = mentionedCharacters(prompt, nodes);
+  const out: CharacterNodeData[] = [];
+  const seen = new Set<string>();
+  for (const c of [...conn, ...mentioned]) {
+    const name = charDisplayName(c);
+    if (name && seen.has(name)) continue; // 同名（含重复/旧同名节点）只取首个
+    if (name) seen.add(name);
+    out.push(c);
+  }
+  return out;
 }
 
 function dedupeRefImages(chars: CharacterNodeData[]): string[] {

@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { characterReferenceImages, characterHasConditioning, deriveCharacterConditioning, connectedCharacterRefImages, connectedSceneRefImages, connectedCharacterLora, mentionedCharacters, stripCharacterMentions, effectiveCharacters, effectiveCharacterRefImages } from "./characterConditioning";
+import { characterReferenceImages, characterHasConditioning, deriveCharacterConditioning, connectedCharacterRefImages, connectedSceneRefImages, connectedCharacterLora, mentionedCharacters, stripCharacterMentions, effectiveCharacters, effectiveCharacterRefImages, effectiveSceneRefImages } from "./characterConditioning";
 import type { CharacterNodeData } from "../../../shared/types";
 
 const char = (over: Partial<CharacterNodeData>): CharacterNodeData => ({ characterKind: "person", ...over });
@@ -158,5 +158,22 @@ describe("@角色 提及解析", () => {
 
   it("effectiveCharacterRefImages 含被 @ 的人物参考图（场景不计入身份参考）", () => {
     expect(effectiveCharacterRefImages("vt", "@张三 @竹林", [], nodes)).toEqual(["z3.png"]);
+  });
+
+  it("同名节点去重：两个同名「林晓」+ 两个同名「场景1」都连线时，各只引用一个（修复凭空多出相同角色/场景）", () => {
+    const dup = [
+      N("a1", { name: "林晓", referenceImageUrl: "lx-a.png" }, { x: 0, y: 0 }),
+      N("a2", { name: "林晓", referenceImageUrl: "lx-b.png" }, { x: 0, y: 100 }),
+      N("sc1", { characterKind: "scene", sceneName: "场景1", referenceImageUrl: "s-a.png" }, { x: 0, y: 200 }),
+      N("sc2", { characterKind: "scene", sceneName: "场景1", referenceImageUrl: "s-b.png" }, { x: 0, y: 300 }),
+    ];
+    const edges = [
+      { source: "a1", target: "ig" }, { source: "a2", target: "ig" },
+      { source: "sc1", target: "ig" }, { source: "sc2", target: "ig" },
+    ];
+    // 位置靠上的（先出现的）优先，同名的第二个被去重丢弃。
+    expect(effectiveCharacterRefImages("ig", "", edges, dup)).toEqual(["lx-a.png"]);
+    expect(effectiveSceneRefImages("ig", "", edges, dup)).toEqual(["s-a.png"]);
+    expect(effectiveCharacters("ig", "", edges, dup).map((c) => c.name ?? c.sceneName)).toEqual(["林晓", "场景1"]);
   });
 });
