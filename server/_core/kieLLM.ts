@@ -31,7 +31,11 @@ export interface KieLLMSpec {
 export const KIE_LLM_MODELS: Record<string, KieLLMSpec> = {
   // Claude (Anthropic Messages format)
   kie_claude_opus_48:   { model: "claude-opus-4-8", path: "/claude/v1/messages", format: "claude", label: "Claude Opus 4.8（kie）", provider: "Claude", creditNote: "入 400 / 出 2000 点·百万tokens" },
+  kie_claude_opus_47:   { model: "claude-opus-4-7", path: "/claude/v1/messages", format: "claude", label: "Claude Opus 4.7（kie）", provider: "Claude", creditNote: "入 285 / 出 1430 点·百万tokens" },
+  kie_claude_opus_46:   { model: "claude-opus-4-6", path: "/claude/v1/messages", format: "claude", label: "Claude Opus 4.6（kie）", provider: "Claude", creditNote: "入 285 / 出 1430 点·百万tokens" },
+  kie_claude_opus_45:   { model: "claude-opus-4-5", path: "/claude/v1/messages", format: "claude", label: "Claude Opus 4.5（kie）", provider: "Claude", creditNote: "入 285 / 出 1430 点·百万tokens" },
   kie_claude_sonnet_46: { model: "claude-sonnet-4-6", path: "/claude/v1/messages", format: "claude", label: "Claude Sonnet 4.6（kie）", provider: "Claude", creditNote: "入 170 / 出 855 点·百万tokens" },
+  kie_claude_sonnet_45: { model: "claude-sonnet-4-5", path: "/claude/v1/messages", format: "claude", label: "Claude Sonnet 4.5（kie）", provider: "Claude", creditNote: "入 170 / 出 855 点·百万tokens" },
   kie_claude_haiku_45:  { model: "claude-haiku-4-5", path: "/claude/v1/messages", format: "claude", label: "Claude Haiku 4.5（kie）", provider: "Claude", creditNote: "入 55 / 出 285 点·百万tokens" },
   // Gemini (OpenAI chat/completions, model in path)
   kie_gemini_3_pro:     { model: "gemini-3-pro", path: "/gemini-3-pro/v1/chat/completions", format: "openai-chat", label: "Gemini 3 Pro（kie）", provider: "Gemini", creditNote: "入 100 / 出 700 点·百万tokens" },

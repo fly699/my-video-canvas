@@ -48,7 +48,11 @@ export const LLM_MODELS: readonly LLMModelMeta[] = [
   { id: "gpt-5.2",                   label: "GPT-5.2",           short: "GPT-5.2", family: "GPT",    tag: "强力", provider: "Poyo",  color: "oklch(0.62 0.16 240)", costTier: "中", vision: true },
   // ── kie.ai chat (own key system; ids = kie wire model, server/_core/kieLLM.ts) ──
   { id: "kie_claude_opus_48",   label: "Claude Opus 4.8（kie）",   short: "Opus",   family: "Claude", tag: "kie·旗舰", provider: "Kie", color: "oklch(0.68 0.18 280)", costTier: "高", costNote: "入400/出2000" },
+  { id: "kie_claude_opus_47",   label: "Claude Opus 4.7（kie）",   short: "Opus47", family: "Claude", tag: "kie",     provider: "Kie", color: "oklch(0.68 0.18 280)", costTier: "高", costNote: "入285/出1430" },
+  { id: "kie_claude_opus_46",   label: "Claude Opus 4.6（kie）",   short: "Opus46", family: "Claude", tag: "kie",     provider: "Kie", color: "oklch(0.68 0.18 280)", costTier: "高", costNote: "入285/出1430" },
+  { id: "kie_claude_opus_45",   label: "Claude Opus 4.5（kie）",   short: "Opus45", family: "Claude", tag: "kie",     provider: "Kie", color: "oklch(0.68 0.18 280)", costTier: "高", costNote: "入285/出1430" },
   { id: "kie_claude_sonnet_46", label: "Claude Sonnet 4.6（kie）", short: "Sonnet", family: "Claude", tag: "kie",     provider: "Kie", color: "oklch(0.68 0.18 280)", costTier: "高", costNote: "入170/出855" },
+  { id: "kie_claude_sonnet_45", label: "Claude Sonnet 4.5（kie）", short: "Son45",  family: "Claude", tag: "kie",     provider: "Kie", color: "oklch(0.68 0.18 280)", costTier: "高", costNote: "入170/出855" },
   { id: "kie_claude_haiku_45",  label: "Claude Haiku 4.5（kie）",  short: "Haiku",  family: "Claude", tag: "kie·快",   provider: "Kie", color: "oklch(0.68 0.18 55)",  costTier: "低", costNote: "入55/出285" },
   { id: "kie_gemini_3_pro",     label: "Gemini 3 Pro（kie）",      short: "G3Pro",  family: "Gemini", tag: "kie",     provider: "Kie", color: "oklch(0.68 0.18 160)", costTier: "中", vision: true, costNote: "入100/出700" },
   { id: "kie_gemini_3_flash",   label: "Gemini 3 Flash（kie）",    short: "G3Flash",family: "Gemini", tag: "kie·快",   provider: "Kie", color: "oklch(0.68 0.18 160)", costTier: "低", vision: true, costNote: "入30/出180" },
