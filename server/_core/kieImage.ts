@@ -100,8 +100,18 @@ export async function generateImageKie(options: GenerateImageOptions): Promise<G
   throw new Error("kie 图像生成超时");
 }
 
-// kie-generated media expires in 14 days → re-host to our storage when persistence
-// is on (mirrors the Poyo path). Keeps the kie CDN URL as a short-lived fallback.
+// 把 kie 生成结果转存到我方存储，避免链接失效。
+//
+// 为什么：kie 的结果 URL 只保留 14 天就会被删除（见 API 文档「Data Retention」），
+// 不转存的话画布里的图 14 天后就打不开。做法与现有 Poyo 图片完全一致（同一问题、
+// 同一解法，只是过期窗口不同：Poyo ~24h / kie 14 天）——这就是“镜像 Poyo”的含义，
+// 并非调用 Poyo，两者上游互相独立。
+//
+// 流程：
+//   1. 看管理后台「存储设置」的 persistImage 开关（isImagePersistenceEnabled）。
+//   2. 开 → 逐张 fetch kie 原图 → storagePut 存到我方 MinIO/S3/Forge → 返回我方长期 URL；
+//      同时把 kie 原始 URL 放进 sourceUrl 作短期兜底。
+//   3. 关 / 转存失败 → 回退用 kie 原始 URL（不占我方存储，但 14 天后会失效）。
 async function persistKieImages(urls: string[]): Promise<GenerateImageResponse> {
   if (!(await isImagePersistenceEnabled())) {
     return { url: urls[0], urls, sourceUrl: urls[0], sourceUrls: urls, sourceAt: Date.now() };
