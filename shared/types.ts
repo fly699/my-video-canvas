@@ -76,6 +76,22 @@ export const VIDEO_PROVIDERS = [
   // others
   "poyo_happy_horse",
   "poyo_grok_video",
+  // ── kie.ai video (additive; routed via server/_core/kieVideo.ts, NOT Poyo) ──
+  "kie_veo31_quality",
+  "kie_veo31_fast",
+  "kie_kling26_t2v",
+  "kie_kling26_i2v",
+  "kie_kling30",
+  "kie_kling25turbo_t2v",
+  "kie_kling25turbo_i2v",
+  "kie_wan25_t2v",
+  "kie_wan25_i2v",
+  "kie_wan26_t2v",
+  "kie_wan26_i2v",
+  "kie_hailuo23_pro",
+  "kie_hailuo23_std",
+  "kie_seedance2",
+  "kie_seedance2_fast",
 ] as const;
 export type VideoProvider = (typeof VIDEO_PROVIDERS)[number];
 export type VideoTaskStatus = "pending" | "processing" | "succeeded" | "failed";

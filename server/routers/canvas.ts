@@ -62,6 +62,8 @@ import type { SubtitleEntry } from "../../shared/types";
 import { assertWhitelisted, assertLLMAllowed, assertComfyuiAllowed, assertComfyuiCloudAllowed, isComfyuiCloudAllowed } from "../_core/whitelist";
 import { resolveKieKey } from "../_core/kie";
 import { isKieImageModel } from "../_core/kieImage";
+import { isKieVideoProvider, submitKieVideo } from "../_core/kieVideo";
+import { encryptKieKey, decryptKieKey } from "../_core/kieCrypto";
 import { writeAuditLog, truncate } from "../_core/auditLog";
 import { withComfyUsageLog } from "../_core/comfyUsageLog";
 import { dedupe } from "../_core/idempotency";
@@ -599,10 +601,22 @@ export const videoTasksRouter = router({
         // route them to reference_image_urls (multi-reference) rather than首尾帧.
         referenceMode: z.enum(["reference", "frame"]).optional(),
         params: z.record(z.string(), z.unknown()).optional(),
+        // kie.ai temp key (localStorage kie:tempKey) — only used for kie_* providers.
+        kieTempKey: z.string().max(256).optional(),
       })
     )
     .mutation(async ({ ctx, input }) => {
-      await assertWhitelisted(ctx);
+      // kie.ai video models have their OWN auth (temp > assigned > house, see
+      // resolveKieKey) and bypass the Poyo/Higgsfield whitelist. The resolved key
+      // is stashed encrypted in params (_kieKeyEnc) so the detached poller can
+      // poll recordInfo without a user context. Non-kie keeps the whitelist gate.
+      let kieKeyEnc: string | undefined;
+      if (isKieVideoProvider(input.provider)) {
+        const resolved = await resolveKieKey(ctx, input.kieTempKey);
+        kieKeyEnc = encryptKieKey(resolved.key);
+      } else {
+        await assertWhitelisted(ctx);
+      }
       await assertProjectAccess(input.projectId, ctx.user.id, "editor");
       // Validate every reference URL (single + multi) the same way.
       const validateRef = (u: string) => {
@@ -636,7 +650,7 @@ export const videoTasksRouter = router({
       const baseParams = (input.params as Record<string, unknown> | undefined) ?? undefined;
       // Only stash reference mode when it'd actually change mapping (reference + ≥1 ref).
       const stashRefMode = input.referenceMode === "reference" && refList.length > 0;
-      const needsStash = refList.length > 1 || refVideos.length > 0 || refAudios.length > 0 || stashRefMode;
+      const needsStash = refList.length > 1 || refVideos.length > 0 || refAudios.length > 0 || stashRefMode || !!kieKeyEnc;
       const mergedParams: Record<string, unknown> | undefined = needsStash
         ? {
             ...(baseParams ?? {}),
@@ -644,6 +658,9 @@ export const videoTasksRouter = router({
             ...(refVideos.length > 0 ? { _referenceVideoUrls: refVideos } : {}),
             ...(refAudios.length > 0 ? { _referenceAudioUrls: refAudios } : {}),
             ...(stashRefMode ? { _refMode: "reference" } : {}),
+            // Encrypted kie key for the poller (filtered from any upstream payload
+            // by kieVideo's allow-list — it only copies spec'd param keys).
+            ...(kieKeyEnc ? { _kieKeyEnc: kieKeyEnc } : {}),
           }
         : baseParams;
 
@@ -717,6 +734,15 @@ export const videoTasksRouter = router({
               prompt: input.prompt,
               negativePrompt: input.negativePrompt,
               referenceImageUrl: input.referenceImageUrl,
+              params: input.params as Record<string, unknown>,
+            });
+            externalTaskId = result.externalTaskId;
+          } else if (isKieVideoProvider(input.provider)) {
+            const result = await submitKieVideo({
+              provider: input.provider,
+              prompt: input.prompt,
+              apiKey: decryptKieKey(kieKeyEnc!),
+              referenceImageUrls: refList,
               params: input.params as Record<string, unknown>,
             });
             externalTaskId = result.externalTaskId;
