@@ -10,7 +10,7 @@ import { toast } from "sonner";
 import { adminTabFromUrl, ADMIN_TAB_EVENT } from "@/lib/adminNav";
 
 type EntryType = "ip" | "user";
-type Tab = "whitelist" | "kie" | "logs" | "comfyLogs" | "storage" | "chat" | "comfyStress" | "assets" | "downloads" | "system";
+type Tab = "whitelist" | "kie" | "users" | "logs" | "comfyLogs" | "storage" | "chat" | "comfyStress" | "assets" | "downloads" | "system";
 
 const ACTION_LABELS: Record<string, string> = {
   login_email: "邮箱登录",
@@ -129,7 +129,7 @@ export default function AdminPage() {
 
         {/* Tabs */}
         <div style={{ display: "flex", gap: "4px", marginBottom: "20px", borderBottom: "1px solid var(--c-bd1, rgba(255,255,255,0.06))", paddingBottom: "0" }}>
-          {([["whitelist", "白名单管理"], ["kie", "kie.ai 密钥"], ["logs", "操作日志"], ["comfyLogs", "ComfyUI 日志"], ["storage", "存储设置"], ["chat", "聊天管理"], ["comfyStress", "ComfyUI 压测"], ["assets", "素材库(全用户)"], ["downloads", "下载审批"], ["system", "系统更新"]] as [Tab, string][]).map(([tab, label]) => (
+          {([["whitelist", "白名单管理"], ["kie", "kie.ai 密钥"], ["users", "用户管理"], ["logs", "操作日志"], ["comfyLogs", "ComfyUI 日志"], ["storage", "存储设置"], ["chat", "聊天管理"], ["comfyStress", "ComfyUI 压测"], ["assets", "素材库(全用户)"], ["downloads", "下载审批"], ["system", "系统更新"]] as [Tab, string][]).map(([tab, label]) => (
             <button
               key={tab}
               onClick={() => setActiveTab(tab)}
@@ -160,6 +160,7 @@ export default function AdminPage() {
 
         {activeTab === "whitelist" && <WhitelistPanel />}
         {activeTab === "kie" && <KiePanel />}
+        {activeTab === "users" && <UsersPanel />}
         {activeTab === "logs" && <LogsPanel />}
         {activeTab === "comfyLogs" && <ComfyUsageLogsPanel />}
         {activeTab === "storage" && <StoragePanel />}
@@ -168,6 +169,98 @@ export default function AdminPage() {
         {activeTab === "assets" && <AssetsAdminPanel />}
         {activeTab === "downloads" && <DownloadsAdminPanel />}
         {activeTab === "system" && <SystemUpdatePanel />}
+      </div>
+    </div>
+  );
+}
+
+// ── 用户管理 Panel（管理员）─────────────────────────────────────────────────
+function UsersPanel() {
+  const utils = trpc.useUtils();
+  const { user: me } = useAuth();
+  const { data: users, isLoading } = trpc.admin.users.list.useQuery();
+  const resetMut = trpc.admin.users.resetPassword.useMutation({
+    onSuccess: () => toast.success("密码已重置"),
+    onError: (e) => toast.error("重置失败：" + e.message),
+  });
+  const disableMut = trpc.admin.users.setDisabled.useMutation({
+    onSuccess: () => { void utils.admin.users.list.invalidate(); },
+    onError: (e) => toast.error("操作失败：" + e.message),
+  });
+  const delMut = trpc.admin.users.delete.useMutation({
+    onSuccess: () => { toast.success("用户已删除"); void utils.admin.users.list.invalidate(); },
+    onError: (e) => toast.error("删除失败：" + e.message),
+  });
+
+  const onReset = (id: number, label: string) => {
+    const pw = window.prompt(`为「${label}」设置新密码（至少 6 位）：`)?.trim();
+    if (!pw) return;
+    if (pw.length < 6) { toast.error("新密码至少 6 位"); return; }
+    resetMut.mutate({ userId: id, newPassword: pw });
+  };
+  const onToggleDisabled = (id: number, disabled: boolean, label: string) => {
+    if (!confirm(`确定${disabled ? "冻结" : "解冻"}用户「${label}」？${disabled ? "\n冻结后该用户将无法登录、且当前会话立即失效。" : ""}`)) return;
+    disableMut.mutate({ userId: id, disabled });
+  };
+  const onDelete = (id: number, label: string) => {
+    if (!confirm(`确定删除用户「${label}」？此操作不可恢复（仅删除用户账号，其拥有的项目数据不在此处级联清理）。`)) return;
+    delMut.mutate({ userId: id });
+  };
+
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+      <div style={cardStyle}>
+        <h3 style={{ margin: 0, fontSize: 15, fontWeight: 600, color: "var(--c-t1)" }}>用户管理</h3>
+        <p style={{ margin: "4px 0 0", fontSize: 12, color: "var(--c-t2)", lineHeight: 1.5 }}>
+          重置密码、冻结/解冻、删除用户。冻结的用户无法登录、现有会话立即失效。不能对自己冻结或删除。
+        </p>
+      </div>
+      <div style={{ ...cardStyle, padding: 0, overflowX: "auto" }}>
+        {isLoading ? (
+          <div style={{ padding: 16, fontSize: 12, color: "var(--c-t3)" }}>加载中…</div>
+        ) : (
+          <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12 }}>
+            <thead>
+              <tr>
+                <th style={thStyle}>ID</th><th style={thStyle}>名称 / 邮箱</th><th style={thStyle}>登录方式</th>
+                <th style={thStyle}>角色</th><th style={thStyle}>状态</th><th style={thStyle}>最近登录</th><th style={thStyle}>操作</th>
+              </tr>
+            </thead>
+            <tbody>
+              {(users ?? []).map((u) => {
+                const label = u.name || u.email || ("#" + u.id);
+                const isSelf = u.id === me?.id;
+                return (
+                  <tr key={u.id} style={{ borderTop: "1px solid var(--c-bd2)", opacity: u.disabled ? 0.6 : 1 }}>
+                    <td style={tdStyle}>{u.id}</td>
+                    <td style={tdStyle}>
+                      <div style={{ fontWeight: 600 }}>{u.name || "—"}</div>
+                      <div style={{ fontSize: 11, color: "var(--c-t3)" }}>{u.email || u.openId}</div>
+                    </td>
+                    <td style={tdStyle}>{u.loginMethod || "—"}</td>
+                    <td style={tdStyle}>{u.role === "admin" ? "管理员" : "用户"}</td>
+                    <td style={tdStyle}>
+                      <span style={{ fontSize: 11, fontWeight: 700, padding: "1px 7px", borderRadius: 99,
+                        background: u.disabled ? "oklch(0.62 0.2 25 / 0.15)" : "oklch(0.72 0.18 155 / 0.15)",
+                        color: u.disabled ? "oklch(0.65 0.2 25)" : "oklch(0.6 0.18 155)" }}>
+                        {u.disabled ? "已冻结" : "正常"}
+                      </span>
+                    </td>
+                    <td style={tdStyle}>{u.lastSignedIn ? new Date(u.lastSignedIn).toLocaleString() : "—"}</td>
+                    <td style={tdStyle}>
+                      <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+                        <button onClick={() => onReset(u.id, label)} disabled={!u.hasPassword} style={btnSecondary(!u.hasPassword)} title={u.hasPassword ? "重置该用户密码" : "非邮箱密码账号，无法重置密码"}>重置密码</button>
+                        <button onClick={() => onToggleDisabled(u.id, !u.disabled, label)} disabled={isSelf} style={btnSecondary(isSelf)}>{u.disabled ? "解冻" : "冻结"}</button>
+                        <button onClick={() => onDelete(u.id, label)} disabled={isSelf} style={{ ...btnSecondary(isSelf), color: isSelf ? "var(--c-t4)" : "oklch(0.65 0.2 25)" }}>删除</button>
+                      </div>
+                    </td>
+                  </tr>
+                );
+              })}
+              {(users?.length ?? 0) === 0 && <tr><td colSpan={7} style={{ ...tdStyle, textAlign: "center", color: "var(--c-t3)" }}>暂无用户</td></tr>}
+            </tbody>
+          </table>
+        )}
       </div>
     </div>
   );

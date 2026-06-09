@@ -31,7 +31,7 @@ function checkRateLimit(ip: string): boolean {
   return true;
 }
 
-async function hashPassword(password: string): Promise<string> {
+export async function hashPassword(password: string): Promise<string> {
   const salt = randomBytes(16).toString("hex");
   const buf = (await scryptAsync(password, salt, 64)) as Buffer;
   return `${salt}:${buf.toString("hex")}`;
@@ -143,6 +143,9 @@ export function registerEmailAuthRoutes(app: Express) {
       if (!valid) {
         res.status(401).json({ error: "邮箱或密码错误" }); return;
       }
+      if (user.disabled) {
+        res.status(403).json({ error: "账号已被冻结，请联系管理员" }); return;
+      }
       await db.upsertUser({ openId, lastSignedIn: new Date() });
       const sessionToken = await sdk.createSessionToken(openId, {
         name: user.name || email.split("@")[0],
@@ -165,6 +168,31 @@ export function registerEmailAuthRoutes(app: Express) {
     } catch (err) {
       console.error("[EmailAuth] Login error", err);
       res.status(500).json({ error: "登录失败，请稍后重试" });
+    }
+  });
+
+  // 修改自己的密码（需登录，校验当前密码）。仅邮箱密码账号可用。
+  app.post("/api/auth/change-password", async (req: Request, res: Response) => {
+    try {
+      let user;
+      try { user = await sdk.authenticateRequest(req); } catch { user = null; }
+      if (!user) { res.status(401).json({ error: "未登录" }); return; }
+      if (user.disabled) { res.status(403).json({ error: "账号已被冻结" }); return; }
+      const { currentPassword, newPassword } = req.body as { currentPassword?: string; newPassword?: string };
+      if (!user.passwordHash) { res.status(400).json({ error: "当前账号非邮箱密码登录，无法修改密码" }); return; }
+      if (typeof newPassword !== "string" || newPassword.length < 6) { res.status(400).json({ error: "新密码至少 6 位" }); return; }
+      const ok = await verifyPassword(typeof currentPassword === "string" ? currentPassword : "", user.passwordHash);
+      if (!ok) { res.status(401).json({ error: "当前密码错误" }); return; }
+      await db.upsertUser({ openId: user.openId, passwordHash: await hashPassword(newPassword) });
+      writeAuditLog({
+        ip: req.ip ?? req.socket?.remoteAddress ?? "unknown",
+        userId: user.id, userEmail: user.email ?? null, userName: user.name ?? null,
+        action: "user_change_password", detail: {},
+      });
+      res.json({ success: true });
+    } catch (err) {
+      console.error("[EmailAuth] change-password error", err);
+      res.status(500).json({ error: "修改密码失败，请稍后重试" });
     }
   });
 }

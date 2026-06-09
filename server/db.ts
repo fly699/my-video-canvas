@@ -213,6 +213,40 @@ export async function getUserById(id: number) {
   return result[0];
 }
 
+// ── 用户管理（管理员）────────────────────────────────────────────────────────
+/** 所有用户（不含密码哈希），按最近登录倒序。供管理员用户管理界面。 */
+export async function listAllUsers() {
+  const db = await getDb();
+  if (!db) return [];
+  return db.select({
+    id: users.id, openId: users.openId, name: users.name, email: users.email,
+    loginMethod: users.loginMethod, role: users.role, disabled: users.disabled,
+    hasPassword: sql<boolean>`(${users.passwordHash} IS NOT NULL)`,
+    createdAt: users.createdAt, lastSignedIn: users.lastSignedIn,
+  }).from(users).orderBy(desc(users.lastSignedIn));
+}
+
+/** 冻结 / 解冻一个用户。 */
+export async function setUserDisabled(id: number, disabled: boolean): Promise<void> {
+  const db = await getDb();
+  if (!db) return;
+  await db.update(users).set({ disabled }).where(eq(users.id, id));
+}
+
+/** 管理员重置某用户的密码（直接写入新哈希）。 */
+export async function adminSetUserPassword(id: number, passwordHash: string): Promise<void> {
+  const db = await getDb();
+  if (!db) return;
+  await db.update(users).set({ passwordHash }).where(eq(users.id, id));
+}
+
+/** 删除一个用户（仅删 users 行；其拥有的项目等数据不在此处级联处理）。 */
+export async function deleteUserById(id: number): Promise<void> {
+  const db = await getDb();
+  if (!db) return;
+  await db.delete(users).where(eq(users.id, id));
+}
+
 // ── Projects ──────────────────────────────────────────────────────────────────
 
 export async function getProjectsByUser(userId: number) {
