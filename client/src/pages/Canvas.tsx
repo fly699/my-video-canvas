@@ -1400,6 +1400,37 @@ function CanvasInner({ projectId }: { projectId: number }) {
     );
   }
 
+  // ── 群组派生层：折叠群组隐藏成员（含相连边）；选中群组给成员加高亮描边类 ──
+  const { displayNodes, displayEdges } = useMemo(() => {
+    const collapsedHiddenIds = new Set<string>();
+    const highlightIds = new Set<string>();
+    for (const n of nodes) {
+      if (n.data.nodeType !== "group") continue;
+      const gp = n.data.payload as GroupNodeData;
+      const cids = gp.childIds ?? [];
+      if (gp.collapsed) cids.forEach((c) => collapsedHiddenIds.add(c));
+      if (n.selected) cids.forEach((c) => highlightIds.add(c));
+    }
+    if (collapsedHiddenIds.size === 0 && highlightIds.size === 0) {
+      return { displayNodes: nodes, displayEdges: edges };
+    }
+    const dNodes = nodes.map((n) => {
+      const hide = collapsedHiddenIds.has(n.id);
+      const hl = highlightIds.has(n.id) && !hide;
+      if (!hide && !hl) return n;
+      return {
+        ...n,
+        hidden: hide || n.hidden,
+        className: hl ? `${n.className ?? ""} group-member-highlight`.trim() : n.className,
+      };
+    });
+    const dEdges = collapsedHiddenIds.size === 0
+      ? edges
+      : edges.map((e) => (collapsedHiddenIds.has(e.source) || collapsedHiddenIds.has(e.target)
+          ? { ...e, hidden: true } : e));
+    return { displayNodes: dNodes, displayEdges: dEdges };
+  }, [nodes, edges]);
+
   return (
     <div className="w-screen h-screen flex flex-col overflow-hidden" style={{ background: "var(--c-canvas)" }}>
 
@@ -2058,8 +2089,8 @@ function CanvasInner({ projectId }: { projectId: number }) {
           )}
           <WorkflowRunProvider value={runState}>
           <ReactFlow
-            nodes={nodes}
-            edges={edges}
+            nodes={displayNodes}
+            edges={displayEdges}
             nodeTypes={nodeTypes}
             edgeTypes={edgeTypes}
             style={{ background: effectiveBgColor }}
@@ -2077,6 +2108,30 @@ function CanvasInner({ projectId }: { projectId: number }) {
                 }
               }
               groupDragRef.current = null;
+              // 拖入/拖出自动归组：被拖动的非 group 节点，按其中心落点归入命中的群组
+              // （取面积最小者，便于嵌套时归入最内层）；未命中则从原群组移出。
+              if ((node as CanvasNode).data.nodeType !== "group") {
+                const all = useCanvasStore.getState().nodes;
+                const groups = all.filter((n) => n.data.nodeType === "group");
+                const moved = (draggedNodes?.length ? draggedNodes : [node]).filter((n) => (n as CanvasNode).data.nodeType !== "group");
+                for (const mn of moved) {
+                  const mw = (mn as CanvasNode).measured?.width ?? 280;
+                  const mh = (mn as CanvasNode).measured?.height ?? 120;
+                  const cx = mn.position.x + mw / 2;
+                  const cy = mn.position.y + mh / 2;
+                  let hit: CanvasNode | null = null;
+                  let hitArea = Infinity;
+                  for (const grp of groups) {
+                    const gw = typeof grp.style?.width === "number" ? grp.style.width : 320;
+                    const gh = typeof grp.style?.height === "number" ? grp.style.height : 200;
+                    if (cx >= grp.position.x && cx <= grp.position.x + gw && cy >= grp.position.y && cy <= grp.position.y + gh) {
+                      const area = gw * gh;
+                      if (area < hitArea) { hit = grp; hitArea = area; }
+                    }
+                  }
+                  useCanvasStore.getState().assignNodeToGroup(mn.id, hit?.id ?? null);
+                }
+              }
               // Broadcast the final position(s) to collaborators (live-move sync).
               for (const n of (draggedNodes?.length ? draggedNodes : [node])) {
                 emitCollabEvent("node:move", { id: n.id, x: n.position.x, y: n.position.y });
@@ -3001,6 +3056,16 @@ function CanvasInner({ projectId }: { projectId: number }) {
               useCanvasStore.getState().ungroup(gid);
               deleteNodeMutation.mutate({ id: gid, projectId });
               emitCollabEvent("node:delete", { id: gid });
+            } : undefined}
+            onDeleteGroup={ctxNodeType === "group" ? () => {
+              const gid = contextMenu.nodeId!;
+              const cnt = (((nodes.find((n) => n.id === gid)?.data.payload) as GroupNodeData | undefined)?.childIds ?? []).length;
+              if (!window.confirm(`确定删除该群组及其 ${cnt} 个成员节点？此操作可撤销（Ctrl+Z）。`)) return;
+              const removed = useCanvasStore.getState().deleteGroupWithMembers(gid);
+              for (const rid of removed) {
+                deleteNodeMutation.mutate({ id: rid, projectId });
+                emitCollabEvent("node:delete", { id: rid });
+              }
             } : undefined}
             onRunWorkflow={contextMenu.nodeId && ctxNodeType !== "group" ? () => handleRunRequest(contextMenu.nodeId ?? null) : undefined}
             // Pin: toggle payload.pinned so the node's input area stays expanded

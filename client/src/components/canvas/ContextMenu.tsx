@@ -36,9 +36,10 @@ interface ContextMenuProps {
   // ComfyUI nodes only: save ALL params (incl. prompts / workflow JSON) into the
   // toolbar "节点模板库". Shown in place of the generic 存为模板 block.
   onSaveToLibrary?: () => void;
-  // 群组：选中 ≥2 个节点时「组合为群组」；右键 group 容器时「解组」。
+  // 群组：选中 ≥2 个节点时「组合为群组」；右键 group 容器时「解组」/「删除群组及成员」。
   onGroup?: () => void;
   onUngroup?: () => void;
+  onDeleteGroup?: () => void;
 }
 
 export function ContextMenu({
@@ -47,7 +48,7 @@ export function ContextMenu({
   onTogglePin, onCollapse,
   nodeTemplates, onSaveTemplate, onApplyTemplate, onDeleteTemplate,
   onExportTemplates, onImportTemplates, onSaveToLibrary,
-  onGroup, onUngroup,
+  onGroup, onUngroup, onDeleteGroup,
 }: ContextMenuProps) {
   const tplFileRef = useRef<HTMLInputElement>(null);
   const menuRef = useRef<HTMLDivElement>(null);
@@ -474,7 +475,23 @@ export function ContextMenu({
                 解组（保留成员）
               </button>
             )}
-            {(onGroup || onUngroup) && (onRunWorkflow || onTogglePin || onCollapse || onDuplicateNode || onDeleteNode) && (
+            {onDeleteGroup && (
+              <button
+                onClick={() => { onDeleteGroup(); onClose(); }}
+                style={{
+                  display: "flex", alignItems: "center", gap: 10,
+                  width: "100%", padding: "7px 8px", fontSize: 12,
+                  cursor: "pointer", background: "transparent", border: "none",
+                  textAlign: "left", color: "oklch(0.65 0.20 25)", borderRadius: 8, transition: "all 120ms ease",
+                }}
+                onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.background = "oklch(0.65 0.20 25 / 0.12)"; }}
+                onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.background = "transparent"; }}
+              >
+                <Trash2 className="w-3.5 h-3.5" />
+                删除群组及成员
+              </button>
+            )}
+            {(onGroup || onUngroup || onDeleteGroup) && (onRunWorkflow || onTogglePin || onCollapse || onDuplicateNode || onDeleteNode) && (
               <div style={{ height: 1, background: "var(--c-bd1)", margin: "3px 6px" }} />
             )}
             {onRunWorkflow && (

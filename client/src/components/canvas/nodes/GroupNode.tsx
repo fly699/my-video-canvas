@@ -2,7 +2,7 @@ import { memo, useState, useEffect } from "react";
 import { NodeResizer } from "@xyflow/react";
 import { useCanvasStore } from "../../../hooks/useCanvasStore";
 import type { GroupNodeData } from "../../../../../shared/types";
-import { FolderOpen, FolderClosed, Pencil, Check } from "lucide-react";
+import { FolderOpen, FolderClosed, Maximize2 } from "lucide-react";
 
 interface Props {
   id: string;
@@ -24,7 +24,7 @@ const GROUP_COLORS = [
 ];
 
 export const GroupNode = memo(function GroupNode({ id, selected, data }: Props) {
-  const { updateNodeData, updateNodeTitle } = useCanvasStore();
+  const { updateNodeData, updateNodeTitle, fitGroupToMembers } = useCanvasStore();
   const payload = data.payload;
   const [editingLabel, setEditingLabel] = useState(false);
   const [labelValue, setLabelValue] = useState(data.title);
@@ -113,6 +113,17 @@ export const GroupNode = memo(function GroupNode({ id, selected, data }: Props) 
             </span>
           )}
 
+          {/* Fit-to-members: 重新包裹当前成员 */}
+          {memberCount > 0 && (
+            <button
+              onClick={() => fitGroupToMembers(id)}
+              title="适应成员（重新包裹）"
+              style={{ color: color.accent, background: "none", border: "none", cursor: "pointer", lineHeight: 0, padding: 0, opacity: 0.8 }}
+            >
+              <Maximize2 style={{ width: 13, height: 13 }} />
+            </button>
+          )}
+
           {/* Color picker */}
           <div className="flex gap-1">
             {GROUP_COLORS.map((c) => (
@@ -130,8 +141,21 @@ export const GroupNode = memo(function GroupNode({ id, selected, data }: Props) 
           </div>
         </div>
 
-        {/* Body — visible when expanded */}
-        {!collapsed && (
+        {/* Body */}
+        {collapsed ? (
+          <button
+            onClick={() => updateNodeData(id, { collapsed: false })}
+            className="nodrag"
+            style={{
+              flex: 1, width: "100%", padding: 12, display: "flex", alignItems: "center", justifyContent: "center",
+              gap: 6, background: "none", border: "none", cursor: "pointer",
+              fontSize: 11, color: color.accent, opacity: 0.85, userSelect: "none",
+            }}
+          >
+            <FolderClosed style={{ width: 13, height: 13 }} />
+            已折叠 {memberCount} 个节点 · 点击展开
+          </button>
+        ) : (
           <div style={{ flex: 1, padding: 12, display: "flex", alignItems: "flex-start" }}>
             <p style={{ fontSize: 10, color: color.border, userSelect: "none", fontStyle: "italic" }}>
               拖动节点到此区域进行分组

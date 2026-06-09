@@ -781,6 +781,13 @@ button:active:not(:disabled) {
   background-color: var(--c-canvas) !important;
 }
 
+/* 选中群组时，其成员节点显示虚线高亮描边（不影响布局） */
+.react-flow__node.group-member-highlight {
+  outline: 2px dashed oklch(0.68 0.18 280 / 0.7);
+  outline-offset: 4px;
+  border-radius: 16px;
+}
+
 /* Fine dot grid — subtle, not distracting */
 .react-flow__background pattern circle {
   fill: var(--c-bd2) !important;

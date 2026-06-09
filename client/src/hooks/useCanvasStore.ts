@@ -10,7 +10,7 @@ import {
   applyEdgeChanges,
   addEdge,
 } from "@xyflow/react";
-import type { NodeType, NodeData, CollaboratorCursor } from "../../../shared/types";
+import type { NodeType, NodeData, CollaboratorCursor, GroupNodeData } from "../../../shared/types";
 import { getNodeConfig } from "../lib/nodeConfig";
 import { resolveNodeOutputImageUrl, isRefImageTarget } from "../lib/refImagePropagation";
 
@@ -138,6 +138,12 @@ interface CanvasStore {
   groupSelected: (childIds: string[], title?: string) => string | null;
   /** 解组：仅删除 group 容器节点，成员保留。 */
   ungroup: (groupId: string) => void;
+  /** 把某节点归入指定群组（同时从其它群组移除）；groupId 为 null 表示从所有群组移除。静默不入历史（拖动结束时调用）。 */
+  assignNodeToGroup: (nodeId: string, groupId: string | null) => void;
+  /** 删除群组容器及其全部成员节点（含相关边），返回被删除的所有节点 id（含容器，供服务端删除/协作广播）。 */
+  deleteGroupWithMembers: (groupId: string) => string[];
+  /** 重新计算群组容器边界以包裹其当前成员（一键自适应）。 */
+  fitGroupToMembers: (groupId: string) => void;
   /** Run `fn` as a single undoable batch: snapshot history once up-front and
    *  suppress per-action history pushes during `fn` (used when the agent applies
    *  a multi-step plan so one Ctrl+Z reverts the whole batch). */
@@ -506,6 +512,72 @@ export const useCanvasStore = create<CanvasStore>((set, get) => ({
       ...(get()._suppressHistory ? {} : pushHistory(state)),
       nodes: state.nodes.filter((n) => n.id !== groupId),
       deletedNodeIds: [...state.deletedNodeIds, groupId],
+      isDirty: true,
+    }));
+  },
+
+  assignNodeToGroup: (nodeId, groupId) => {
+    // 仅当归属确有变化时才写入，避免每次拖动结束都触发无谓的 set。
+    const cur = get().nodes;
+    const ownerNow = cur.find((n) => n.data.nodeType === "group" && ((n.data.payload as GroupNodeData).childIds ?? []).includes(nodeId));
+    if ((ownerNow?.id ?? null) === groupId) return;
+    set((state) => ({
+      nodes: state.nodes.map((n) => {
+        if (n.data.nodeType !== "group") return n;
+        const gp = n.data.payload as GroupNodeData;
+        const childIds = gp.childIds ?? [];
+        const has = childIds.includes(nodeId);
+        if (n.id === groupId) {
+          if (has) return n;
+          return { ...n, data: { ...n.data, payload: { ...gp, childIds: [...childIds, nodeId] } } };
+        }
+        if (!has) return n;
+        return { ...n, data: { ...n.data, payload: { ...gp, childIds: childIds.filter((c) => c !== nodeId) } } };
+      }),
+      isDirty: true,
+    }));
+  },
+
+  deleteGroupWithMembers: (groupId) => {
+    const grp = get().nodes.find((n) => n.id === groupId && n.data.nodeType === "group");
+    if (!grp) return [];
+    const childIds = (grp.data.payload as GroupNodeData).childIds ?? [];
+    const removeIds = [groupId, ...childIds];
+    const removeSet = new Set<string>(removeIds);
+    set((state) => ({
+      ...(get()._suppressHistory ? {} : pushHistory(state)),
+      nodes: state.nodes.filter((n) => !removeSet.has(n.id)),
+      edges: state.edges.filter((e) => !removeSet.has(e.source) && !removeSet.has(e.target)),
+      deletedNodeIds: [...state.deletedNodeIds, ...removeIds],
+      isDirty: true,
+    }));
+    return removeIds;
+  },
+
+  fitGroupToMembers: (groupId) => {
+    const all = get().nodes;
+    const grp = all.find((n) => n.id === groupId && n.data.nodeType === "group");
+    if (!grp) return;
+    const childIds = (grp.data.payload as GroupNodeData).childIds ?? [];
+    const members = all.filter((n) => childIds.includes(n.id) && n.data.nodeType !== "group");
+    if (members.length === 0) return;
+    let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+    for (const n of members) {
+      const cfg = getNodeConfig(n.data.nodeType);
+      const w = (typeof n.style?.width === "number" ? n.style.width : cfg.defaultWidth) || 280;
+      const h = (typeof n.style?.height === "number" ? n.style.height : (cfg.defaultHeight ?? 200)) || 200;
+      minX = Math.min(minX, n.position.x);
+      minY = Math.min(minY, n.position.y);
+      maxX = Math.max(maxX, n.position.x + w);
+      maxY = Math.max(maxY, n.position.y + h);
+    }
+    const PAD = 36, HEADER = 44;
+    const rect = { x: minX - PAD, y: minY - PAD - HEADER, width: (maxX - minX) + PAD * 2, height: (maxY - minY) + PAD * 2 + HEADER };
+    set((state) => ({
+      ...(get()._suppressHistory ? {} : pushHistory(state)),
+      nodes: state.nodes.map((n) => (n.id === groupId
+        ? { ...n, position: { x: rect.x, y: rect.y }, style: { ...n.style, width: rect.width, height: rect.height } }
+        : n)),
       isDirty: true,
     }));
   },
