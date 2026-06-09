@@ -105,6 +105,10 @@ const DUBBING_MODELS = [
   { value: "openai_gpt4o_mini_tts", label: "GPT-4o Mini TTS",  desc: "新 · 支持 instructions", group: "OpenAI" },
   // ── Live (Poyo) ───
   { value: "elevenlabs-v3-tts",     label: "ElevenLabs v3 TTS", desc: "Poyo · 16 积分/1k 字",  group: "ElevenLabs" },
+  // ── Live (kie ElevenLabs) ───
+  { value: "kie_elevenlabs_tts",    label: "ElevenLabs Turbo（kie）", desc: "kie · 6 积分/1k 字",  group: "ElevenLabs" },
+  { value: "kie_elevenlabs_tts_ml", label: "ElevenLabs 多语 v2（kie）", desc: "kie · 12 积分/1k 字", group: "ElevenLabs" },
+  { value: "kie_elevenlabs_v3",     label: "ElevenLabs V3 对话（kie）", desc: "kie · 14 积分/1k 字", group: "ElevenLabs" },
   // ── 本地 / 自托管（Gradio）───
   { value: "voxcpm-local",          label: "本地 VoxCPM2",      desc: "自托管 · 参考音色克隆",  group: "本地" },
 ];
@@ -247,9 +251,12 @@ function voicesForModel(model?: string): { value: string; label: string; desc: s
   return OPENAI_VOICES; // default for openai_tts_real / *_hd_real / gpt4o-mini / unknown
 }
 
-// The Poyo ElevenLabs V3 TTS id (and its legacy underscore alias on old nodes).
+// ElevenLabs TTS：Poyo V3（+旧别名）+ kie 的 ElevenLabs（共用 ElevenLabs 音色与参数）。
 function modelIsElevenLabs(model?: string): boolean {
-  return model === "elevenlabs-v3-tts" || model === "elevenlabs_v3";
+  return model === "elevenlabs-v3-tts" || model === "elevenlabs_v3" || (!!model && model.startsWith("kie_elevenlabs"));
+}
+function modelIsKieTTS(model?: string): boolean {
+  return !!model && model.startsWith("kie_elevenlabs");
 }
 
 // `speed` is only meaningful for OpenAI TTS. ElevenLabs V3 uses `stability`
@@ -629,6 +636,8 @@ export const AudioNode = memo(function AudioNode({ id, selected, data }: Props) 
       timestamps: isEleven ? (payload.ttsTimestamps ?? false) : undefined,
       languageCode: isEleven ? (payload.ttsLanguageCode || undefined) : undefined,
       applyTextNormalization: isEleven ? (payload.ttsTextNormalization ?? "auto") : undefined,
+      // kie ElevenLabs：自有 key（临时 > 分配 > 公用）
+      ...(modelIsKieTTS(model) ? { kieTempKey: localStorage.getItem("kie:tempKey") || undefined } : {}),
     });
   };
 
