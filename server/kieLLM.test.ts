@@ -16,6 +16,10 @@ describe("kie LLM specs", () => {
     expect(KIE_LLM_MODELS.kie_claude_opus_48).toMatchObject({ model: "claude-opus-4-8", path: "/claude/v1/messages", format: "claude" });
     expect(KIE_LLM_MODELS.kie_claude_sonnet_46.model).toBe("claude-sonnet-4-6");
     expect(KIE_LLM_MODELS.kie_claude_haiku_45.model).toBe("claude-haiku-4-5");
+    // 新增 Claude（均走 /claude/v1/messages）
+    for (const [k, m] of [["kie_claude_opus_47", "claude-opus-4-7"], ["kie_claude_opus_46", "claude-opus-4-6"], ["kie_claude_opus_45", "claude-opus-4-5"], ["kie_claude_sonnet_45", "claude-sonnet-4-5"]] as const) {
+      expect(KIE_LLM_MODELS[k]).toMatchObject({ model: m, path: "/claude/v1/messages", format: "claude" });
+    }
     // Gemini → OpenAI chat/completions，model 在路径里
     expect(KIE_LLM_MODELS.kie_gemini_3_pro).toMatchObject({ model: "gemini-3-pro", path: "/gemini-3-pro/v1/chat/completions", format: "openai-chat" });
     expect(KIE_LLM_MODELS.kie_gemini_3_flash.path).toBe("/gemini-3-flash/v1/chat/completions");

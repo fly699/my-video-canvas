@@ -314,7 +314,11 @@ export type ImageGenModel =
   | "kie_nano_banana" | "kie_nano_banana_pro" | "kie_seedream_v4" | "kie_seedream_45"
   | "kie_flux2_pro" | "kie_gpt_image_15" | "kie_imagen4" | "kie_z_image" | "kie_grok_image"
   // kie.ai — image-to-image / edit (require reference image)
-  | "kie_nano_banana_edit" | "kie_seedream_v4_edit" | "kie_flux2_pro_i2i" | "kie_gpt_image_15_edit";
+  | "kie_nano_banana_edit" | "kie_seedream_v4_edit" | "kie_flux2_pro_i2i" | "kie_gpt_image_15_edit"
+  // kie.ai — 第二批扩充
+  | "kie_nano_banana_2" | "kie_flux2_flex" | "kie_flux2_flex_i2i"
+  | "kie_gpt_image_2" | "kie_gpt_image_2_i2i" | "kie_seedream_5lite" | "kie_seedream_5lite_i2i"
+  | "kie_wan27_image" | "kie_wan27_image_pro" | "kie_ideogram_v3" | "kie_qwen_image";
 
 /** UI value strings for every image model — single source for the Zod enum. */
 export const IMAGE_GEN_MODELS = [
@@ -330,6 +334,9 @@ export const IMAGE_GEN_MODELS = [
   "kie_nano_banana", "kie_nano_banana_pro", "kie_seedream_v4", "kie_seedream_45",
   "kie_flux2_pro", "kie_gpt_image_15", "kie_imagen4", "kie_z_image", "kie_grok_image",
   "kie_nano_banana_edit", "kie_seedream_v4_edit", "kie_flux2_pro_i2i", "kie_gpt_image_15_edit",
+  "kie_nano_banana_2", "kie_flux2_flex", "kie_flux2_flex_i2i",
+  "kie_gpt_image_2", "kie_gpt_image_2_i2i", "kie_seedream_5lite", "kie_seedream_5lite_i2i",
+  "kie_wan27_image", "kie_wan27_image_pro", "kie_ideogram_v3", "kie_qwen_image",
 ] as const satisfies readonly ImageGenModel[];
 export interface ImageGenNodeData {
   prompt: string;
