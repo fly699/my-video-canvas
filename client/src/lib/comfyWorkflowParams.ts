@@ -134,6 +134,42 @@ export function listUpstreamAudioSources(targetId: string, edges: MiniEdge[], no
   return out;
 }
 
+// ── Video params — 与 audio 完全对称（视频任务输出 / comfy 视频 / 素材[视频]）─────
+const VIDEO_SOURCE_TYPES = new Set(["video_task", "comfyui_video", "asset"]);
+
+/** Pick a node's video-output URL（video_task / comfyui_video / 素材[视频]）。 */
+function getNodeVideoUrl(nodeType: string, payload: Record<string, unknown>): string | undefined {
+  if (nodeType === "asset") {
+    const mt = payload.mimeType as string | undefined;
+    const t = payload.type as string | undefined;
+    if ((mt && !mt.startsWith("video/")) || (t && t !== "video")) return undefined;
+    return payload.url as string | undefined;
+  }
+  if (nodeType === "video_task" || nodeType === "comfyui_video") {
+    const u = (payload.resultVideoUrl ?? payload.outputUrl ?? payload.url) as string | undefined;
+    return typeof u === "string" && u.trim() ? u : undefined;
+  }
+  return undefined;
+}
+
+export interface UpstreamVideoSource { id: string; title: string; url: string }
+
+/** 连入 targetId 的上游视频来源（id + 标题 + url），智能排序。供视频参考吸附栏 / 来源下拉用。 */
+export function listUpstreamVideoSources(targetId: string, edges: MiniEdge[], nodes: MiniNode[]): UpstreamVideoSource[] {
+  const byId = new Map(nodes.map((n) => [n.id, n]));
+  const incoming = (edges as Array<{ source: string; target: string }>).map((e, i) => ({ e, i })).filter(({ e }) => e.target === targetId);
+  incoming.sort((a, b) => compareUpstreamNodes(byId.get(a.e.source), byId.get(b.e.source), a.i, b.i));
+  const out: UpstreamVideoSource[] = [];
+  const seen = new Set<string>();
+  for (const { e } of incoming) {
+    const src = byId.get(e.source);
+    if (!src || seen.has(e.source) || !VIDEO_SOURCE_TYPES.has(src.data.nodeType)) continue;
+    const url = getNodeVideoUrl(src.data.nodeType, (src.data.payload ?? {}) as Record<string, unknown>);
+    if (url) { seen.add(e.source); out.push({ id: e.source, title: src.data.title || e.source, url }); }
+  }
+  return out;
+}
+
 /** 解析音频参数：显式来源映射优先，剩余空位按顺序自动填充。镜像 resolveImageParamsWithMap。 */
 export function resolveAudioParamsWithMap(
   bindings: WorkflowParamBinding[] | undefined,

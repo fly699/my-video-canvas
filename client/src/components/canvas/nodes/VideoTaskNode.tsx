@@ -8,9 +8,9 @@ import { usePersistentState } from "../../../hooks/usePersistentState";
 import type { VideoTaskNodeData, VideoProvider, CharacterNodeData } from "../../../../../shared/types";
 import { maxRefImagesForProvider } from "../../../../../shared/videoRefCaps";
 import { mergeCharactersIntoPrompt } from "../../../lib/characterPrompt";
-import { effectiveCharacterRefImages, effectiveSceneRefImages, effectiveCharacters, stripCharacterMentions } from "../../../lib/characterConditioning";
+import { effectiveCharacterRefImages, effectiveSceneRefImages, effectiveCharacters, stripCharacterMentions, effectiveCharacterVideoRefs, effectiveCharacterAudioRefs } from "../../../lib/characterConditioning";
 import { connectedEffectPrompts, appendEffectPrompts } from "../../../lib/effectPrompt";
-import { detectUpstreamPrompt } from "../../../lib/comfyWorkflowParams";
+import { detectUpstreamPrompt, listUpstreamVideoSources, listUpstreamAudioSources } from "../../../lib/comfyWorkflowParams";
 import { trpc } from "@/lib/trpc";
 import { toast } from "sonner";
 import { Handle, Position } from "@xyflow/react";
@@ -28,7 +28,7 @@ import { WatermarkedVideo } from "@/components/WatermarkedVideo";
 import { ReferenceImageStrip, type StripItem } from "../ReferenceImageStrip";
 import { openNodeImage } from "../NodeImageLightbox";
 import { PromptDock } from "../PromptDock";
-import { useNodeDocks, useCharSceneItems } from "../../../hooks/useNodeDocks";
+import { useNodeDocks, useCharSceneItems, useAudioStripItems, useVideoStripItems } from "../../../hooks/useNodeDocks";
 import { useReferenceImages } from "../../../hooks/useReferenceImages";
 import { MediaImage } from "../MediaImage";
 import {
@@ -888,9 +888,16 @@ export const VideoTaskNode = memo(function VideoTaskNode({ id, selected, data }:
   const hasCharInject = useCanvasStore((s) => effectiveCharacters(id, payload.prompt ?? "", s.edges, s.nodes).length > 0);
   // 左侧吸附窗 = 自有参考图（可编辑）+ 最终参与的角色/场景图（@提及或连线，只读），各带类型标签。
   const charSceneItems = useCharSceneItems(id, payload.prompt ?? "");
+  // 音视频参考磁贴：仅当该模型支持视频/音频输入时展示（含上游来源 + 角色携带，各注明来源）。
+  const supportsRefVideo = SUPPORTS_REF_VIDEO.has(payload.provider);
+  const supportsRefAudio = SUPPORTS_REF_AUDIO.has(payload.provider);
+  const videoItems = useVideoStripItems(id, payload.prompt ?? "");
+  const audioItems = useAudioStripItems(id, payload.prompt ?? "");
   const stripImages: StripItem[] = [
     ...refImages.images.map((img) => ({ ...img, label: "参考图", removable: true })),
     ...charSceneItems,
+    ...(supportsRefVideo ? videoItems : []),
+    ...(supportsRefAudio ? audioItems : []),
   ];
   const docks = useNodeDocks(id, { hasRef: stripImages.length > 0, hasPrompt: !!finalPromptDisplay.trim() });
   const { refOpen: stripOpen, setRefOpen: setStripOpen } = docks;
@@ -1177,23 +1184,27 @@ export const VideoTaskNode = memo(function VideoTaskNode({ id, selected, data }:
     return hasCharRefs ? "reference" : undefined;
   }, [refImages.images, id, payload.prompt]);
 
-  // Multi-modal references: pull video/audio URLs from connected upstream `asset`
-  // nodes (which can already wire into video_task), for models that accept them.
+  // Multi-modal references: gather video/audio URLs for models that accept them, from
+  // ALL participating sources — upstream 来源（video_task/comfyui_video/audio/asset 视频音频）
+  // + 角色携带（@视频/@音频 或连线角色），de-duped。镜像吸附栏「参与本节点工作」的口径。
   const collectRefMedia = useCallback((provider: string): { videoRefs?: string[]; audioRefs?: string[] } => {
-    if (!SUPPORTS_REF_VIDEO.has(provider) && !SUPPORTS_REF_AUDIO.has(provider)) return {};
+    const wantsVideo = SUPPORTS_REF_VIDEO.has(provider), wantsAudio = SUPPORTS_REF_AUDIO.has(provider);
+    if (!wantsVideo && !wantsAudio) return {};
     const { nodes: allNodes, edges: allEdges } = useCanvasStore.getState();
+    const prompt = payload.prompt ?? "";
+    const pushUniq = (arr: string[], seen: Set<string>, u?: string) => { const v = u?.trim(); if (v && !seen.has(v)) { seen.add(v); arr.push(v); } };
     const vids: string[] = [], auds: string[] = [];
-    for (const e of allEdges) {
-      if (e.target !== id) continue;
-      const src = allNodes.find((n) => n.id === e.source);
-      if (!src || src.data.nodeType !== "asset") continue;
-      const p = src.data.payload as { type?: string; url?: string };
-      if (!p.url) continue;
-      if (p.type === "video" && SUPPORTS_REF_VIDEO.has(provider)) vids.push(p.url);
-      else if (p.type === "audio" && SUPPORTS_REF_AUDIO.has(provider)) auds.push(p.url);
+    const vSeen = new Set<string>(), aSeen = new Set<string>();
+    if (wantsVideo) {
+      for (const v of listUpstreamVideoSources(id, allEdges, allNodes)) pushUniq(vids, vSeen, v.url);
+      for (const u of effectiveCharacterVideoRefs(id, prompt, allEdges, allNodes)) pushUniq(vids, vSeen, u);
+    }
+    if (wantsAudio) {
+      for (const a of listUpstreamAudioSources(id, allEdges, allNodes)) pushUniq(auds, aSeen, a.url);
+      for (const u of effectiveCharacterAudioRefs(id, prompt, allEdges, allNodes)) pushUniq(auds, aSeen, u);
     }
     return { videoRefs: vids.length ? vids.slice(0, 3) : undefined, audioRefs: auds.length ? auds.slice(0, 3) : undefined };
-  }, [id]);
+  }, [id, payload.prompt]);
 
   // [CHARGED] / [CHARGED?] are server-side markers that indicate the upstream
   // provider has (almost certainly / possibly) already billed for this task,

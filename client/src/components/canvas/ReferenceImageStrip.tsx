@@ -7,9 +7,10 @@ import { audioWaveBars } from "../../lib/audioWaveform";
 
 /**
  * 吸附窗里的一项：默认是图片（角色/场景/参考图/分析图/工作流图），可带类型标签与可删标记。
- * `kind:"audio"` 时表示音频项，用波形缩略图展示（点击播放/暂停），`name` 为显示名。
+ * `kind:"audio"` 时表示音频项，用波形缩略图展示（点击播放/暂停）；`kind:"video"` 时表示
+ * 视频项，用 <video>（首帧/可点击播放）展示。`name` 为显示名（@音频名 / @视频名 提及用）。
  */
-export type StripItem = ReferenceImage & { label?: string; removable?: boolean; kind?: "image" | "audio"; name?: string };
+export type StripItem = ReferenceImage & { label?: string; removable?: boolean; kind?: "image" | "audio" | "video"; name?: string };
 
 /** 音频项的波形缩略图磁贴：伪波形 + 居中播放/暂停按钮，点击就地播放。 */
 function AudioWaveTile({ url, name, accent }: { url: string; name?: string; accent: string }) {
@@ -39,6 +40,42 @@ function AudioWaveTile({ url, name, accent }: { url: string; name?: string; acce
       {bars.map((b, i) => (
         <div key={i} style={{ width: 2.5, height: `${Math.round(b * 64)}%`, background: accent, opacity: playing ? 0.92 : 0.5, borderRadius: 2, transition: "opacity 150ms ease" }} />
       ))}
+      <div style={{ position: "absolute", inset: 0, display: "flex", alignItems: "center", justifyContent: "center", pointerEvents: "none" }}>
+        <div style={{ width: 22, height: 22, borderRadius: "50%", background: "oklch(0 0 0 / 0.45)", backdropFilter: "blur(4px)", display: "flex", alignItems: "center", justifyContent: "center", color: "white" }}>
+          {playing ? <Pause style={{ width: 11, height: 11 }} /> : <Play style={{ width: 11, height: 11 }} />}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/** 视频项磁贴：<video> 显示首帧，点击就地播放/暂停，右下角播放角标。 */
+function VideoThumbTile({ url, name }: { url: string; name?: string }) {
+  const [playing, setPlaying] = useState(false);
+  const vidRef = useRef<HTMLVideoElement | null>(null);
+  const toggle = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    const v = vidRef.current;
+    if (!v) return;
+    if (v.paused) void v.play().catch(() => {}); else v.pause();
+  };
+  return (
+    <div
+      onClick={toggle}
+      title={name ? `视频 · ${name}（点击播放）` : "视频（点击播放）"}
+      style={{ width: "100%", height: "100%", position: "relative", cursor: "pointer", background: "oklch(0 0 0 / 0.25)" }}
+    >
+      <video
+        ref={vidRef}
+        src={mediaFetchUrl(url)}
+        preload="metadata"
+        muted
+        playsInline
+        style={{ width: "100%", height: "100%", objectFit: "cover" }}
+        onPlay={() => setPlaying(true)}
+        onPause={() => setPlaying(false)}
+        onEnded={() => setPlaying(false)}
+      />
       <div style={{ position: "absolute", inset: 0, display: "flex", alignItems: "center", justifyContent: "center", pointerEvents: "none" }}>
         <div style={{ width: 22, height: 22, borderRadius: "50%", background: "oklch(0 0 0 / 0.45)", backdropFilter: "blur(4px)", display: "flex", alignItems: "center", justifyContent: "center", color: "white" }}>
           {playing ? <Pause style={{ width: 11, height: 11 }} /> : <Play style={{ width: 11, height: 11 }} />}
@@ -186,12 +223,14 @@ export function ReferenceImageStrip({
                 data-ref-item
                 draggable={canDrag}
                 onDragStart={canDrag ? (e) => { e.dataTransfer.setData("application/x-ref-reorder", img.id); e.dataTransfer.effectAllowed = "move"; } : undefined}
-                title={img.kind === "audio" ? (img.name ? `${img.label ?? "音频"} · ${img.name}` : (img.label ?? "音频")) : img.label}
+                title={(img.kind === "audio" || img.kind === "video") ? (img.name ? `${img.label ?? (img.kind === "video" ? "视频" : "音频")} · ${img.name}` : (img.label ?? (img.kind === "video" ? "视频" : "音频"))) : img.label}
                 className="relative group rounded-lg overflow-hidden"
                 style={{ height: 72, border: `1px solid var(--c-bd2)`, background: "var(--c-canvas)", cursor: canDrag ? "grab" : "default" }}
               >
                 {img.kind === "audio" ? (
                   <AudioWaveTile url={img.url} name={img.name} accent={accent} />
+                ) : img.kind === "video" ? (
+                  <VideoThumbTile url={img.url} name={img.name} />
                 ) : (
                   <>
                     <MediaImage
