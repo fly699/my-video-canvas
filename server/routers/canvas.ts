@@ -60,6 +60,8 @@ import { transcribeAudio } from "../_core/voiceTranscription";
 import { VIDEO_PROVIDERS, IMAGE_GEN_MODELS } from "../../shared/types";
 import type { SubtitleEntry } from "../../shared/types";
 import { assertWhitelisted, assertLLMAllowed, assertComfyuiAllowed, assertComfyuiCloudAllowed, isComfyuiCloudAllowed } from "../_core/whitelist";
+import { resolveKieKey } from "../_core/kie";
+import { isKieImageModel } from "../_core/kieImage";
 import { writeAuditLog, truncate } from "../_core/auditLog";
 import { withComfyUsageLog } from "../_core/comfyUsageLog";
 import { dedupe } from "../_core/idempotency";
@@ -1087,11 +1089,22 @@ export const imageGenRouter = router({
         fluxGuidanceScale: z.number().min(1).max(20).optional(),
         fluxSeed: z.number().int().optional(),
         fluxNumImages: z.number().int().min(1).max(4).optional(),
+        // kie.ai: optional user-entered temporary key (from the toolbar popup).
+        kieTempKey: z.string().max(256).optional(),
         projectId: z.number().optional(),
       })
     )
     .mutation(async ({ ctx, input }) => {
-      await assertWhitelisted(ctx);
+      // kie.ai models have their OWN auth (temp > assigned > house, see resolveKieKey)
+      // — they bypass the global whitelist so admin-assigned/temp-key users can use
+      // them. Non-kie models keep the exact existing whitelist gate.
+      let kieApiKey: string | undefined;
+      if (isKieImageModel(input.model)) {
+        const resolved = await resolveKieKey(ctx, input.kieTempKey);
+        kieApiKey = resolved.key;
+      } else {
+        await assertWhitelisted(ctx);
+      }
       if (input.projectId != null) {
         await assertProjectAccess(input.projectId, ctx.user.id, "editor");
       }
@@ -1158,6 +1171,12 @@ export const imageGenRouter = router({
           reveAspectRatio: input.reveAspectRatio,
           reveResolution: input.reveResolution,
         } : {}),
+        // kie.ai models: pass the resolved key + a single aspect-ratio (createTask
+        // input.aspect_ratio). originalImages (above) feeds image_urls for edit models.
+        ...(isKieImageModel(input.model) ? {
+          kieApiKey,
+          size: input.imageSize ?? input.poyoAspectRatio ?? input.reveAspectRatio,
+        } : {}),
       });
 
       writeAuditLog({
@@ -1171,7 +1190,7 @@ export const imageGenRouter = router({
         },
       });
       {
-        const prov = input.model?.startsWith("hf_") ? "higgsfield" : input.model?.startsWith("poyo_") ? "poyo" : "forge";
+        const prov = input.model?.startsWith("hf_") ? "higgsfield" : input.model?.startsWith("poyo_") ? "poyo" : input.model?.startsWith("kie_") ? "kie" : "forge";
         for (const u of (result.urls?.length ? result.urls : (result.url ? [result.url] : []))) {
           await recordGeneratedAsset({ userId: ctx.user.id, projectId: input.projectId ?? null, type: "image", source: "generated", provider: prov, model: input.model ?? "default", url: u, name: input.model ?? "图像生成" });
         }
