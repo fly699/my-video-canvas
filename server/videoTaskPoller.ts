@@ -98,15 +98,17 @@ export function setupVideoTaskPoller(io: SocketIOServer) {
                 // has no user context / env key to fall back on).
                 const enc = (task.params as { _kieKeyEnc?: string } | null)?._kieKeyEnc;
                 if (!enc) throw new Error("kie 视频任务缺少密钥，无法提交");
-                const tp = task.params as { _referenceImageUrls?: unknown } | null;
-                const refs = Array.isArray(tp?._referenceImageUrls)
-                  ? (tp!._referenceImageUrls as string[])
-                  : (task.referenceImageUrl ? [task.referenceImageUrl] : undefined);
+                const tp = task.params as { _referenceImageUrls?: unknown; _referenceVideoUrls?: unknown; _referenceAudioUrls?: unknown } | null;
+                const arr = (v: unknown) => (Array.isArray(v) ? (v as string[]) : undefined);
+                const refs = arr(tp?._referenceImageUrls) ?? (task.referenceImageUrl ? [task.referenceImageUrl] : undefined);
                 submitResult = await submitKieVideo({
                   provider: task.provider,
                   prompt: task.prompt ?? "",
                   apiKey: decryptKieKey(enc),
                   referenceImageUrls: refs,
+                  referenceVideoUrls: arr(tp?._referenceVideoUrls),
+                  referenceAudioUrls: arr(tp?._referenceAudioUrls),
+                  negativePrompt: task.negativePrompt ?? undefined,
                   params: (task.params as Record<string, unknown>) ?? undefined,
                 });
               } else if (task.provider === "mock") {

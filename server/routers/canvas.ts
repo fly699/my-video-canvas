@@ -745,6 +745,9 @@ export const videoTasksRouter = router({
               prompt: input.prompt,
               apiKey: decryptKieKey(kieKeyEnc!),
               referenceImageUrls: refList,
+              referenceVideoUrls: refVideos.length ? refVideos : undefined,
+              referenceAudioUrls: refAudios.length ? refAudios : undefined,
+              negativePrompt: input.negativePrompt,
               params: input.params as Record<string, unknown>,
             });
             externalTaskId = result.externalTaskId;
