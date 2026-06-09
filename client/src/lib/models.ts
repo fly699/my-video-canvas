@@ -75,9 +75,9 @@ export type ImageModelMeta = {
   value: string;
   label: string;
   desc: string;
-  group: "Manus" | "Poyo" | "Higgsfield";
+  group: "Manus" | "Poyo" | "Higgsfield" | "Kie";
   family: string;
-  provider: "Manus" | "Poyo" | "Higgsfield";
+  provider: "Manus" | "Poyo" | "Higgsfield" | "Kie";
   cost?: number;
   costNote?: string;
   caps?: string[];
@@ -125,6 +125,21 @@ export const IMAGE_MODELS: readonly ImageModelMeta[] = [
   { value: "hf_reve",          label: "Reve",             desc: "通用 · 快速",     group: "Higgsfield", family: "Reve",     provider: "Higgsfield", costNote: "HF 计费", caps: ["T2I"] },
   { value: "hf_seedream_v4",   label: "Seedream v4",      desc: "ByteDance · 4K",  group: "Higgsfield", family: "Seedream", provider: "Higgsfield", costNote: "HF 计费", caps: ["T2I", "I2I", "4K"] },
   { value: "hf_flux_pro",      label: "Flux Pro Kontext", desc: "上下文感知 · Max", group: "Higgsfield", family: "Flux",     provider: "Higgsfield", costNote: "HF 计费", caps: ["I2I", "编辑"] },
+
+  // --- kie.ai (统一 jobs API；用「当前生效 kie key」计费，见工具栏 kie 余额) ---
+  { value: "kie_nano_banana",       label: "Nano Banana",        desc: "Google · 写实",     group: "Kie", family: "Nano Banana", provider: "Kie", costNote: "kie 计费", caps: ["T2I"] },
+  { value: "kie_nano_banana_pro",   label: "Nano Banana Pro",    desc: "文字/图表 · 4K",    group: "Kie", family: "Nano Banana", provider: "Kie", costNote: "kie 计费", caps: ["T2I", "4K"] },
+  { value: "kie_nano_banana_edit",  label: "Nano Banana 编辑",   desc: "图生图 · 需参考图",  group: "Kie", family: "Nano Banana", provider: "Kie", costNote: "kie 计费", caps: ["I2I", "编辑"] },
+  { value: "kie_seedream_v4",       label: "Seedream 4.0",       desc: "ByteDance · 4K",    group: "Kie", family: "Seedream",    provider: "Kie", costNote: "kie 计费", caps: ["T2I", "4K"] },
+  { value: "kie_seedream_v4_edit",  label: "Seedream 4.0 编辑",  desc: "图生图 · 需参考图",  group: "Kie", family: "Seedream",    provider: "Kie", costNote: "kie 计费", caps: ["I2I", "编辑"] },
+  { value: "kie_seedream_45",       label: "Seedream 4.5",       desc: "精确控制 · 4K",     group: "Kie", family: "Seedream",    provider: "Kie", costNote: "kie 计费", caps: ["T2I", "4K"] },
+  { value: "kie_flux2_pro",         label: "Flux-2 Pro",         desc: "BFL · 高质量",      group: "Kie", family: "Flux-2",      provider: "Kie", costNote: "kie 计费", caps: ["T2I"] },
+  { value: "kie_flux2_pro_i2i",     label: "Flux-2 Pro 图生图",  desc: "图生图 · 需参考图",  group: "Kie", family: "Flux-2",      provider: "Kie", costNote: "kie 计费", caps: ["I2I"] },
+  { value: "kie_gpt_image_15",      label: "GPT Image 1.5",      desc: "最佳文字 · logo",   group: "Kie", family: "GPT Image",   provider: "Kie", costNote: "kie 计费", caps: ["T2I"] },
+  { value: "kie_gpt_image_15_edit", label: "GPT Image 1.5 编辑", desc: "图生图 · 需参考图",  group: "Kie", family: "GPT Image",   provider: "Kie", costNote: "kie 计费", caps: ["I2I", "编辑"] },
+  { value: "kie_imagen4",           label: "Imagen 4",           desc: "Google · 通用",     group: "Kie", family: "Imagen",      provider: "Kie", costNote: "kie 计费", caps: ["T2I"] },
+  { value: "kie_z_image",           label: "Z-Image",            desc: "超快 · 风格化",     group: "Kie", family: "Z-Image",     provider: "Kie", costNote: "kie 计费", caps: ["T2I"] },
+  { value: "kie_grok_image",        label: "Grok Image",         desc: "xAI · 高对比",      group: "Kie", family: "Grok",        provider: "Kie", costNote: "kie 计费", caps: ["T2I"] },
 ] as const;
 
 export type ChatModelId = typeof CHAT_MODELS[number]["id"];

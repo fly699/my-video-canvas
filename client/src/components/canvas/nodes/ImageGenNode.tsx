@@ -364,6 +364,9 @@ export const ImageGenNode = memo(function ImageGenNode({ id, selected, data }: P
         fluxSeed: validSeed(payload.fluxSeed),
         fluxNumImages: fluxNum,
       } : {}),
+      // kie.ai models: send the user's temporary key (if any) so the server can
+      // resolve temp > assigned > house. Only meaningful for kie_* models.
+      ...(payload.model?.startsWith("kie_") ? { kieTempKey: localStorage.getItem("kie:tempKey") || undefined } : {}),
       projectId: data.projectId,
     });
     guard({ model: payload.model ?? "manus_forge", refImageUrl: payload.referenceImageUrl ?? charRefs[0] }, submit);

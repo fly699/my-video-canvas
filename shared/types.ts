@@ -293,7 +293,12 @@ export type ImageGenModel =
   // Poyo · others
   | "poyo_z_image" | "poyo_grok_image"
   // Higgsfield
-  | "hf_soul_standard" | "hf_reve" | "hf_seedream_v4" | "hf_flux_pro";
+  | "hf_soul_standard" | "hf_reve" | "hf_seedream_v4" | "hf_flux_pro"
+  // kie.ai (unified jobs API) — text-to-image
+  | "kie_nano_banana" | "kie_nano_banana_pro" | "kie_seedream_v4" | "kie_seedream_45"
+  | "kie_flux2_pro" | "kie_gpt_image_15" | "kie_imagen4" | "kie_z_image" | "kie_grok_image"
+  // kie.ai — image-to-image / edit (require reference image)
+  | "kie_nano_banana_edit" | "kie_seedream_v4_edit" | "kie_flux2_pro_i2i" | "kie_gpt_image_15_edit";
 
 /** UI value strings for every image model — single source for the Zod enum. */
 export const IMAGE_GEN_MODELS = [
@@ -306,6 +311,9 @@ export const IMAGE_GEN_MODELS = [
   "poyo_kling_o1_image", "poyo_kling_o3_image",
   "poyo_z_image", "poyo_grok_image",
   "hf_soul_standard", "hf_reve", "hf_seedream_v4", "hf_flux_pro",
+  "kie_nano_banana", "kie_nano_banana_pro", "kie_seedream_v4", "kie_seedream_45",
+  "kie_flux2_pro", "kie_gpt_image_15", "kie_imagen4", "kie_z_image", "kie_grok_image",
+  "kie_nano_banana_edit", "kie_seedream_v4_edit", "kie_flux2_pro_i2i", "kie_gpt_image_15_edit",
 ] as const satisfies readonly ImageGenModel[];
 export interface ImageGenNodeData {
   prompt: string;

@@ -2,6 +2,7 @@ import { storagePut, resolveToAbsoluteUrl } from "server/storage";
 import { ENV } from "./env";
 import { generateHiggsfieldImage, type HiggsfieldImageModel } from "./higgsfield";
 import { isImagePersistenceEnabled } from "./storageConfig";
+import { isKieImageModel, generateImageKie } from "./kieImage";
 
 export type GenerateImageOptions = {
   prompt: string;
@@ -30,6 +31,9 @@ export type GenerateImageOptions = {
   fluxGuidanceScale?: number;
   fluxSeed?: number;
   fluxNumImages?: number;
+  // kie.ai: the resolved key (router owns kie auth via resolveKieKey) — only set
+  // for kie_* models, ignored by all other providers.
+  kieApiKey?: string;
 };
 
 export type GenerateImageResponse = {
@@ -320,6 +324,8 @@ export async function generateImage(options: GenerateImageOptions): Promise<Gene
       sourceAt: result.sourceAt,
     };
   }
+  // kie.ai image models (unified jobs API) — additive branch, key resolved by router.
+  if (isKieImageModel(options.model)) return generateImageKie(options);
   // Default: use poyo if key available, else forge
   if (ENV.poyoApiKey) return generateImagePoyo(options);
   return generateImageForge(options);
