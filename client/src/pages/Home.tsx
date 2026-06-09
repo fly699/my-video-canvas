@@ -442,6 +442,43 @@ function EditorEntryCard({ onOpen }: { onOpen: () => void }) {
   );
 }
 
+// 平台介绍入口卡片 — 新标签打开单文件功能汇报网页（系统架构 / AI 模型矩阵 / 功能模块 / 特色一览）。
+function PlatformIntroCard() {
+  const accent = "oklch(0.7 0.16 200)"; // 平台介绍主色（青蓝）
+  return (
+    <div
+      className="group relative flex flex-col rounded-xl border transition-all duration-200 cursor-pointer overflow-hidden"
+      onClick={() => window.open("/platform-intro.html", "_blank", "noopener")}
+      style={{
+        borderColor: `${accent.replace(")", " / 0.35)")}`,
+        background: "var(--c-surface)",
+        boxShadow: "0 1px 2px oklch(0 0 0 / 0.2), 0 4px 16px oklch(0 0 0 / 0.1)",
+      }}
+      onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.borderColor = accent; (e.currentTarget as HTMLElement).style.background = "var(--c-elevated)"; }}
+      onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.borderColor = `${accent.replace(")", " / 0.35)")}`; (e.currentTarget as HTMLElement).style.background = "var(--c-surface)"; }}
+    >
+      <div className="relative h-36 flex items-center justify-center overflow-hidden" style={{ background: `${accent.replace(")", " / 0.07)")}` }}>
+        <div className="relative z-10 w-11 h-11 rounded-xl flex items-center justify-center" style={{ background: `${accent.replace(")", " / 0.18)")}`, border: `1px solid ${accent.replace(")", " / 0.4)")}` }}>
+          <Sparkles className="w-5 h-5" style={{ color: accent }} />
+        </div>
+        <span className="absolute top-2 left-2 z-10 px-1.5 py-0.5 rounded text-[9px] font-bold tracking-wide" style={{ background: `${accent.replace(")", " / 0.9)")}`, color: "#fff" }}>
+          平台介绍
+        </span>
+      </div>
+      <div className="flex flex-col gap-1 p-4">
+        <h3 className="text-sm font-semibold leading-snug flex items-center gap-1.5" style={{ color: "var(--c-t1)" }}>
+          功能总览
+          <ArrowRight className="w-3.5 h-3.5 transition-transform group-hover:translate-x-0.5" style={{ color: accent }} />
+        </h3>
+        <div className="flex items-center gap-1 text-xs" style={{ color: "var(--c-t4)" }}>
+          <Sparkles className="w-3 h-3" />
+          <span>架构 · 模型 · 特色一览</span>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ── New project card ──────────────────────────────────────────────────────────
 function NewProjectCard({ onClick }: { onClick: () => void }) {
   return (
@@ -1059,6 +1096,7 @@ export default function Home() {
                   onOpen={() => navigate("/library")}
                 />
                 <EditorEntryCard onOpen={() => navigate("/editor")} />
+                <PlatformIntroCard />
               </div>
             </div>
           )}
