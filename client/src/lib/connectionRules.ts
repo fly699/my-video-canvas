@@ -3,7 +3,8 @@ import type { NodeType } from "../../../shared/types";
 export const CONNECTION_MATRIX: Partial<Record<NodeType, NodeType[]>> = {
   // script → note：专业审查（Coverage）报告一键存为便签节点留档。
   script: ["storyboard", "prompt", "ai_chat", "character", "note"],
-  storyboard: ["image_gen", "video_task", "prompt", "comfyui_image", "comfyui_video", "comfyui_workflow"],
+  // storyboard → audio：分镜的「对白/旁白」字段自动喂给下游音频节点作配音文案。
+  storyboard: ["image_gen", "video_task", "prompt", "comfyui_image", "comfyui_video", "comfyui_workflow", "audio"],
   prompt: ["image_gen", "video_task", "storyboard", "script", "comfyui_image", "comfyui_video", "comfyui_workflow"],
   character: ["storyboard", "image_gen", "video_task", "prompt", "comfyui_image", "comfyui_video", "comfyui_workflow"],
   image_gen: ["video_task", "asset", "clip", "pose_control", "character", "image_gen", "comfyui_video", "comfyui_workflow"],
@@ -82,7 +83,7 @@ export const CONNECTION_HINTS: Record<
   },
   storyboard: {
     label: "分镜",
-    outgoing: "→ 图像生成 / 视频任务 / 提示词",
+    outgoing: "→ 图像生成 / 视频任务 / 提示词 / 音频(对白配音)",
     incoming: "← 脚本 / 提示词 / 角色 / AI对话",
   },
   prompt: {
@@ -108,7 +109,7 @@ export const CONNECTION_HINTS: Record<
   audio: {
     label: "音频",
     outgoing: "→ 剪辑 / 音频（作参考音色）/ ComfyUI 自定义（音频参数）",
-    incoming: "← 音频 / 素材（本地 VoxCPM 参考音色）",
+    incoming: "← 分镜（对白→配音文案）/ 音频 / 素材（本地 VoxCPM 参考音色）",
   },
   asset: {
     label: "素材",

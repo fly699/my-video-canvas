@@ -1,4 +1,4 @@
-import { memo, useCallback, useMemo, useRef, useState } from "react";
+import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { BaseNode } from "../BaseNode";
 import { useCanvasStore } from "../../../hooks/useCanvasStore";
 import type { AudioNodeData, AudioCategory } from "../../../../../shared/types";
@@ -388,6 +388,26 @@ function GenerateBtn({
 export const AudioNode = memo(function AudioNode({ id, selected, data }: Props) {
   const { updateNodeData } = useCanvasStore();
   const payload = data.payload;
+  // 上游分镜的「对白/旁白」→ 配音文案（只填空：本节点 ttsText 为空时才自动填入，
+  // 与「上游提示词只填空」同口径，不覆盖用户已写内容）。多个上游分镜按镜号顺序拼接。
+  const upstreamDialogue = useCanvasStore((st) => {
+    const incoming = st.edges.filter((e) => e.target === id);
+    const lines: { num: number; text: string }[] = [];
+    for (const e of incoming) {
+      const src = st.nodes.find((n) => n.id === e.source);
+      if (src?.data.nodeType !== "storyboard") continue;
+      const p = src.data.payload as { dialogue?: string; sceneNumber?: number | string };
+      const d = p.dialogue?.trim();
+      if (d) lines.push({ num: Number(p.sceneNumber) || 9999, text: d });
+    }
+    lines.sort((a, b) => a.num - b.num);
+    return lines.map((l) => l.text).join("\n");
+  });
+  useEffect(() => {
+    if (upstreamDialogue && !payload.ttsText?.trim()) {
+      updateNodeData(id, { ttsText: upstreamDialogue, audioCategory: payload.audioCategory ?? "dubbing" }, true);
+    }
+  }, [upstreamDialogue, payload.ttsText, payload.audioCategory, id, updateNodeData]);
   const [isPlaying, setIsPlaying] = useState(false);
   const [uploading, setUploading] = useState(false);
   const audioRef = useRef<HTMLAudioElement>(null);

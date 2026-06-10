@@ -8,12 +8,13 @@ import { useShallow } from "zustand/react/shallow";
 import type { StoryboardNodeData } from "../../../../../shared/types";
 import { trpc } from "@/lib/trpc";
 import { toast } from "sonner";
-import { Sparkles, ImageIcon, Loader2, Upload, X, Wand2, History, Languages, Film, ZoomIn, Download, Copy } from "lucide-react";
+import { Sparkles, ImageIcon, Loader2, Upload, X, Wand2, History, Languages, Film, ZoomIn, Download, Copy, ClipboardList } from "lucide-react";
 import { isOwnStorageUrl } from "@/lib/ownStorage";
 import { estimateImageCost, costEstimateLabel } from "@/lib/costEstimate";
 import { mergeCharactersIntoPrompt } from "../../../lib/characterPrompt";
 import { effectiveCharacters, effectiveCharacterRefImages, effectiveSceneRefImages, stripCharacterMentions } from "../../../lib/characterConditioning";
 import { mentionedMediaUrls, stripMediaMentions } from "../../../lib/comfyWorkflowParams";
+import { ShotListPanel } from "../ShotListPanel";
 import { useSimpleRefStrip } from "../../../hooks/useSimpleRefStrip";
 import { useNodeDocks, useCharSceneItems } from "../../../hooks/useNodeDocks";
 import { PromptDock } from "../PromptDock";
@@ -129,6 +130,8 @@ export const StoryboardNode = memo(function StoryboardNode({ id, selected, data 
   const [inputExpanded, setInputExpanded] = useState(!!selected);
   const [llmModel, setLlmModel] = useState<LLMModelId>("claude-sonnet-4-5-20250929");
   const [showHistory, setShowHistory] = useState(false);
+  // 「镜头表」侧向展开面板（同组分镜序列总览：重排/时长校验/衔接优化）。
+  const [showShotList, setShowShotList] = useState(false);
   const [batchCount, setBatchCount] = useState<1 | 4>(([1, 4].includes(payload.batchSize as number) ? payload.batchSize : 1) as 1 | 4);
   const [zoomUrl, setZoomUrl] = useState<string | null>(null);
 
@@ -451,6 +454,7 @@ export const StoryboardNode = memo(function StoryboardNode({ id, selected, data 
             onHoverChange={docks.onDockHoverChange}
             onPin={docks.pinPrompt}
           />
+          {showShotList && <ShotListPanel id={id} onClose={() => setShowShotList(false)} />}
         </>
       }>
       <div className="flex flex-col h-full p-3.5 gap-3">
@@ -619,6 +623,23 @@ export const StoryboardNode = memo(function StoryboardNode({ id, selected, data 
             gap: 12,
           }}
         >
+        {/* ── Shot List 工具行：镜头表（侧向展开） + 拍点 ── */}
+        <div className="flex items-center gap-1.5">
+          <button
+            onClick={() => setShowShotList((v) => !v)}
+            title="镜头表：同组分镜序列总览（重排 / 时长校验 / 衔接优化）"
+            className="nodrag flex items-center gap-1 px-2 py-1 rounded-md transition-all"
+            style={{ fontSize: 10, fontWeight: showShotList ? 700 : 500, background: showShotList ? "oklch(0.65 0.20 160 / 0.18)" : "var(--c-surface)", border: `1px solid ${showShotList ? "oklch(0.65 0.20 160 / 0.5)" : "var(--c-bd2)"}`, color: showShotList ? STORY_ACCENT : "var(--c-t3)", cursor: "pointer" }}
+          >
+            <ClipboardList style={{ width: 11, height: 11 }} /> 镜头表
+          </button>
+          {payload.beatRef && (
+            <span title="所属节拍表拍点（来自脚本节点的节拍表）" style={{ fontSize: 9.5, fontWeight: 700, padding: "2px 7px", borderRadius: 6, background: "oklch(0.66 0.18 250 / 0.14)", color: "oklch(0.66 0.18 250)" }}>
+              拍点 {payload.beatRef}
+            </span>
+          )}
+        </div>
+
         {/* ── Scene meta ── */}
         <div className="flex gap-1.5">
           <input
@@ -640,6 +661,50 @@ export const StoryboardNode = memo(function StoryboardNode({ id, selected, data 
             onFocus={onFocus}
             onBlur={onBlur}
           />
+          {/* 景别（行业 Shot List 标准字段） */}
+          <select
+            className="nodrag"
+            value={payload.shotType ?? ""}
+            onChange={(e) => handleChange("shotType", e.target.value || undefined)}
+            title="景别：ECU 大特写 / CU 特写 / MS 中景 / MLS 中远景 / WS 远景 / establishing 定场"
+            style={{ ...fieldStyle, width: 110, padding: "7px 6px" }}
+          >
+            <option value="">景别</option>
+            {["ECU", "CU", "MS", "MLS", "WS", "establishing"].map((t) => <option key={t} value={t}>{t}</option>)}
+          </select>
+        </div>
+
+        {/* ── Shot List：对白/旁白 + 音效意图 + 转场 ── */}
+        <NodeTextArea
+          placeholder="对白 / 旁白（可直接喂给下游音频节点作配音文案）"
+          value={payload.dialogue ?? ""}
+          onValueChange={(v) => handleChange("dialogue", v || undefined)}
+          rows={2}
+          className="nodrag"
+          style={{ ...fieldStyle, resize: "vertical", minHeight: 40 }}
+          onFocus={onFocus}
+          onBlur={onBlur}
+        />
+        <div className="flex gap-1.5">
+          <NodeInput
+            placeholder="音效 / BGM 意图（如：雨声渐强 + 低音弦乐）"
+            value={payload.sfx ?? ""}
+            onValueChange={(v) => handleChange("sfx", v || undefined)}
+            className="nodrag flex-1"
+            style={fieldStyle}
+            onFocus={onFocus}
+            onBlur={onBlur}
+          />
+          <select
+            className="nodrag"
+            value={payload.transition ?? ""}
+            onChange={(e) => handleChange("transition", e.target.value || undefined)}
+            title="到下一镜的转场方式"
+            style={{ ...fieldStyle, width: 110, padding: "7px 6px" }}
+          >
+            <option value="">转场→</option>
+            {["cut", "dissolve", "fade", "wipe", "match-cut"].map((t) => <option key={t} value={t}>{t}</option>)}
+          </select>
         </div>
         {/* ── Duration slider ── */}
         <div>
