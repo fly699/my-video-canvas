@@ -612,11 +612,15 @@ export async function mergeVideos(opts: MergeOptions): Promise<MergeResult> {
       }
 
       const globalXfade = transition === "dissolve" ? "dissolve" : "fade";
-      // 逐切点：type/duration 各自决定。"none"(cut/match-cut) → 1 帧 fade ≈ 硬切。
+      // 逐切点：type/duration 各自决定。"none"(cut/match-cut) → 极短 fade ≈ 硬切。
+      // 硬切时长必须 ≥ 一个帧间隔：真实 ffmpeg 复现发现 1/30 经 toFixed(3) 得 0.033 <
+      // 帧间隔 0.0333…，亚帧 duration 会让 xfade 在第一路 EOF 处提前终止、后段整段丢失
+      // （成片被截断）。取 1/15≈0.067（2 帧 @30fps；对 24fps 源也 > 单帧间隔 0.0417），
+      // 视觉上仍是硬切。
       const XFADE_MAP: Record<string, string> = { fade: "fade", dissolve: "dissolve", wipe: "wipeleft", none: "fade" };
       const cutAt = (i: number): { type: string; dur: number } => {
         const t = segTransitions?.[i] ?? (transition === "none" ? "none" : transition);
-        if (t === "none") return { type: "fade", dur: 1 / 30 };
+        if (t === "none") return { type: "fade", dur: 1 / 15 };
         return { type: XFADE_MAP[t] ?? globalXfade, dur: td };
       };
       let filterStr = "";
@@ -661,8 +665,23 @@ export async function mergeVideos(opts: MergeOptions): Promise<MergeResult> {
       let nextIdx = n; // 后续输入（bg / voices）的 ffmpeg 输入索引
       let pre = "";
       if (allHaveAudio) {
-        const audioInputs = Array.from({ length: n }, (_, i) => `[${i}:a]`).join("");
-        pre += `;${audioInputs}concat=n=${n}:v=0:a=1[acat]`;
+        // 原声与视频同步交叠：视频走 xfade（相邻段重叠 c.dur），音频若用 concat 则不
+        // 重叠，每个切点音画漂移累计一次转场时长（3 段 0.5s 转场即漂 1s+，且与按视频
+        // 时间轴 adelay 的配音/音效错位）——真实 ffmpeg 复现确认。改用 acrossfade 链、
+        // 每切点取与视频相同的时长，音频总长 = 视频总长，逐段起点与 segStarts 对齐。
+        if (n === 1) {
+          pre += `;[0:a]anull[acat]`;
+        } else {
+          let lastA = "[0:a]";
+          for (let i = 1; i < n; i++) {
+            const c = cutAt(i - 1);
+            // acrossfade 要求两路都长于 d：用相邻段视频时长的一半夹取，极短段也能过。
+            const d = Math.max(0.03, Math.min(c.dur, (durations[i - 1] ?? 2) / 2, (durations[i] ?? 2) / 2));
+            const outLabel = i === n - 1 ? "[acat]" : `[ac${i}]`;
+            pre += `;${lastA}[${i}:a]acrossfade=d=${d.toFixed(3)}${outLabel}`;
+            lastA = `[ac${i}]`;
+          }
+        }
         mixParts.push({ label: "[acat]", weight: 1 });
       }
       if (bgMusicPath) {
